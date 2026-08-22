@@ -42,6 +42,13 @@ void engine_init_background_noise(bool splat_color_is_linear) {
     bg.splat_color_is_linear = splat_color_is_linear;
 }
 
+void engine_init_background_pseudorandom(bool splat_color_is_linear) {
+    auto& bg = engine().background;
+    bg.mode    = EngineBackground::Mode::Pseudorandom;
+    bg.enabled = true;
+    bg.splat_color_is_linear = splat_color_is_linear;
+}
+
 // Allocate SH parameter table and seed slot 0 (DC) with `dc_color`. Higher
 void engine_init_background_sh(int sh_degree,
                                bool splat_color_is_linear) {
@@ -151,10 +158,12 @@ void _engine_background_forward() {
     DeviceTensor3D<float3> rgb_io(fwd_rgb_tensor);          // [C, H, W]
     DeviceTensor3D<float>  Ts_in (fwd_Ts_tensor);           // [C, H, W]
 
-    if (bg.mode == EngineBackground::Mode::Noise) {
+    if (bg.mode == EngineBackground::Mode::Noise ||
+        bg.mode == EngineBackground::Mode::Pseudorandom) {
         // Per-pixel local; in/out aliasing is safe.
         blend_background_noise_forward(
             bg.splat_color_is_linear,
+            bg.mode == EngineBackground::Mode::Pseudorandom,
             rgb_io, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             rgb_io);
@@ -226,7 +235,8 @@ void _engine_background_backward_hook(
     DeviceTensor3D<float3> v_rgb(v_render_rgb);
     DeviceTensor3D<float>  v_Ts_scratch_dt(v_Ts_scratch_tv);
 
-    if (bg.mode == EngineBackground::Mode::Noise) {
+    if (bg.mode == EngineBackground::Mode::Noise ||
+        bg.mode == EngineBackground::Mode::Pseudorandom) {
         // Forward overwrote rgb with post-blend; the noise blend formula is
         // linear in rgb so v_rgb doesn't actually depend on rgb_pre, but the
         // kernel API requires the buffer. Pass post-blend (harmless).
@@ -235,6 +245,7 @@ void _engine_background_backward_hook(
         DeviceTensor3D<float3> v_out   (v_render_rgb);
         blend_background_noise_backward(
             bg.splat_color_is_linear,
+            bg.mode == EngineBackground::Mode::Pseudorandom,
             rgb_post, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             v_out, v_rgb, v_Ts_scratch_dt);

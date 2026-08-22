@@ -356,11 +356,11 @@ struct BilagridNormal {
     bool quantize_value() const { return value_bits != 32; }
 };
 
-// Background blending. Applied BEFORE bilagrid/PPISP. Two modes:
-//   - Noise: random per-pixel color (warmup-weighted). No persistent state.
-//   - Sh:    skybox = SH(world ray dir) + DC color. DC + L1+ coeffs trained.
+// Background blending. Applied BEFORE bilagrid/PPISP. Noise and Pseudorandom
+// are the same stateless blend over a different draw; Sh is a trained skybox,
+// SH(world ray dir) + DC color, and carries the only persistent state here.
 struct EngineBackground {
-    enum class Mode { None = 0, Noise = 1, Sh = 2 };
+    enum class Mode { None = 0, Noise = 1, Sh = 2, Pseudorandom = 3 };
     Mode mode    = Mode::None;
     bool enabled = false;
 

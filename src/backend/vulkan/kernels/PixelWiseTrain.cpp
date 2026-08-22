@@ -24,9 +24,9 @@ static_assert(sizeof(BlendBgBwdParams) == 7 * 8 + 2 * 4, "layout");
 struct BlendBgNoiseBwdParams {
     uint64_t rgb, transmittance, v_out_rgb, v_rgb, v_transmittance;
     float randomize_weight;
-    uint32_t seed, HW, total, wgs_per_row;
+    uint32_t seed, HW, total, wgs_per_row, W, blocky;
 };
-static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 5 * 4 + 4 /*pad*/,
+static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 7 * 4 + 4 /*pad*/,
               "layout");
 
 // Mirrors RgbToSrgbBwdParams.
@@ -111,6 +111,7 @@ void blend_background_backward(
 
 void blend_background_noise_backward(
     bool is_linear,
+    bool blocky,
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
     float randomize_weight,
@@ -131,6 +132,8 @@ void blend_background_noise_backward(
     p.seed = seed;
     p.HW = (uint32_t)hw;
     p.total = (uint32_t)total;
+    p.W = (uint32_t)rgb.size<2>();
+    p.blocky = blocky ? 1u : 0u;
     vkk::dispatch_flat("pixel_wise_train.blend_bg_noise_bwd",
                        backend::vk::SpecList{is_linear ? 1u : 0u}, total, 128,
                        &p, sizeof(p), &p.wgs_per_row);

@@ -247,6 +247,7 @@ void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg);
 //
 // dc_color is the linear-space DC color used at SH init time (set slot 0).
 void engine_init_background_noise(bool splat_color_is_linear);
+void engine_init_background_pseudorandom(bool splat_color_is_linear);
 void engine_init_background_sh(
     int sh_degree, bool splat_color_is_linear);
 

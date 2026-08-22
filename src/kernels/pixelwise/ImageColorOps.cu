@@ -109,7 +109,61 @@ void blend_background_backward(
 // Blend Background with Random Noise
 // ================
 
-template<bool is_linear>
+// Side, in pixels, of a `blocky` background tile. Per-pixel noise is averaged
+// back into flat grey by SSIM's 11x11 window and by the multi-scale pyramid,
+// which is where the penalty is supposed to land; a tile this size survives both.
+static constexpr unsigned kBgBlockPx = 64u;
+
+// Murmur-style finalizer. Cheap, well-distributed, and stateless -- the whole
+// background is computed, never stored.
+__device__ __forceinline__ uint32_t _bg_mix(uint32_t x) {
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+// The unit sample the background is built from. `blocky` draws one of the 8 RGB
+// cube corners per tile, the extreme points of the cube, so residual
+// transparency costs the most it can; the plain path keeps its U[0,1).
+template<bool blocky>
+__device__ __forceinline__ float3 _bg_sample(uint32_t seed, unsigned gid,
+                                             unsigned bid, unsigned x, unsigned y) {
+    float3 u;
+    if constexpr (blocky) {
+        // The whole tile grid shifts each step, so no pixel keeps its colour
+        // and the pattern cannot be baked into the splats.
+        const unsigned ox = _bg_mix(seed * 2u + 1u) % kBgBlockPx;
+        const unsigned oy = _bg_mix(seed * 2u + 7u) % kBgBlockPx;
+        const uint32_t h  = _bg_mix(((x + ox) / kBgBlockPx) * 2654435761u
+                                    ^ ((y + oy) / kBgBlockPx) * 40503u
+                                    ^ (seed + bid * 0x9e3779b9u));
+        u.x = (h & 1u) ? 1.0f : -1.0f;
+        u.y = (h & 2u) ? 1.0f : -1.0f;
+        u.z = (h & 4u) ? 1.0f : -1.0f;
+    } else {
+        u.x = (float)hash_uint3(seed + 0, gid, bid) * exp2f(-32.0f);
+        u.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
+        u.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
+    }
+    return u;
+}
+
+template<bool is_linear, bool blocky>
+__device__ __forceinline__ float3 _bg_color(uint32_t seed, unsigned gid,
+                                            unsigned bid, unsigned x, unsigned y,
+                                            float randomize_weight) {
+    float3 background = _bg_sample<blocky>(seed, gid, bid, x, y);
+    background = 0.5 + 0.5*randomize_weight * background;
+    if (is_linear) {
+        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
+        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
+        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
+    }
+    return background;
+}
+
+template<bool is_linear, bool blocky>
 __global__ void blend_background_noise_forward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
@@ -128,23 +182,15 @@ __global__ void blend_background_noise_forward_kernel(
     float3 rgb = in_rgb.load3(bid, y, x);
     float transmittance = in_transmittance.load1(bid, y, x);
 
-    float3 background;
-    background.x = (float)hash_uint3(seed + 0, gid, bid) * exp2f(-32.0f);
-    background.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
-    background.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
-    background = 0.5 + 0.5*randomize_weight * background;
-    if (is_linear) {
-        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
-        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
-        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
-    }
+    float3 background =
+        _bg_color<is_linear, blocky>(seed, gid, bid, x, y, randomize_weight);
 
     rgb = SlangPixelWise::blend_background(rgb, transmittance, background);
 
     out_rgb.store3(bid, y, x, rgb);
 }
 
-template<bool is_linear>
+template<bool is_linear, bool blocky>
 __global__ void blend_background_noise_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
@@ -165,16 +211,8 @@ __global__ void blend_background_noise_backward_kernel(
     float3 rgb = in_rgb.load3(bid, y, x);
     float transmittance = in_transmittance.load1(bid, y, x);
 
-    float3 background;
-    background.x = (float)hash_uint3(seed + 0, gid, bid) * exp2f(-32.0f);
-    background.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
-    background.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
-    background = 0.5 + 0.5*randomize_weight * background;
-    if (is_linear) {
-        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
-        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
-        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
-    }
+    float3 background =
+        _bg_color<is_linear, blocky>(seed, gid, bid, x, y, randomize_weight);
 
     float3 v_out = v_out_rgb.load3(bid, y, x);
 
@@ -192,6 +230,7 @@ __global__ void blend_background_noise_backward_kernel(
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_forward(
     bool is_linear,
+    bool blocky,                          // tiled RGB corners instead of U[0,1)
     DeviceTensor3D<float3> rgb,           // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance, // [B, H, W, 1]
     float randomize_weight,
@@ -200,8 +239,12 @@ void blend_background_noise_forward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_linear ? blend_background_noise_forward_kernel<true> : blend_background_noise_forward_kernel<false>)
-    <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
+    auto k = is_linear
+        ? (blocky ? blend_background_noise_forward_kernel<true, true>
+                  : blend_background_noise_forward_kernel<true, false>)
+        : (blocky ? blend_background_noise_forward_kernel<false, true>
+                  : blend_background_noise_forward_kernel<false, false>);
+    k<<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
         randomize_weight, seed,
         _dt3d_to_tv4<float>(out_rgb)
@@ -212,6 +255,7 @@ void blend_background_noise_forward(
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_backward(
     bool is_linear,
+    bool blocky,                          // tiled RGB corners instead of U[0,1)
     DeviceTensor3D<float3> rgb,              // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
     float randomize_weight,
@@ -222,8 +266,12 @@ void blend_background_noise_backward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_linear ? blend_background_noise_backward_kernel<true> : blend_background_noise_backward_kernel<false>)
-    <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
+    auto k = is_linear
+        ? (blocky ? blend_background_noise_backward_kernel<true, true>
+                  : blend_background_noise_backward_kernel<true, false>)
+        : (blocky ? blend_background_noise_backward_kernel<false, true>
+                  : blend_background_noise_backward_kernel<false, false>);
+    k<<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
         randomize_weight, seed,
         _dt3d_to_tv4<float>(v_out_rgb),

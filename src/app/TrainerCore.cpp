@@ -431,7 +431,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.ppisp.run_before_bilagrid = c.apply_ppisp_before_bilagrid;
 
     // ---- background ----------------------------------------------------
-    if (c.background_mode == "noise") {
+    if (c.background_mode == "noise" || c.background_mode == "pseudorandom") {
         float rw = std::min((float)step / std::max(c.background_noise_warmup, 1), 1.0f);
         cfg.background.randomize_weight =
             1.0f - (1.0f - c.background_noise_pre_warmup) * (1.0f - rw);
@@ -682,6 +682,8 @@ void TrainerSession::setup_engine() {
     // Background blending.
     if (cfg.background_mode == "noise")
         engine_init_background_noise(color.splat_linear);
+    else if (cfg.background_mode == "pseudorandom")
+        engine_init_background_pseudorandom(color.splat_linear);
     else if (cfg.background_mode == "sh")
         engine_init_background_sh(cfg.background_sh_degree, color.splat_linear);
 

@@ -97,11 +97,13 @@ int main(int argc, char** argv) {
         readback_f(acc, d_vb, PIX * 3);
     }
 
-    // ---- blend_background_noise_backward (both linear modes) ----
-    for (int lin = 0; lin < 2; lin++) {
+    // ---- blend_background_noise_backward (both linear modes, both draws) ----
+    for (int lin = 0; lin < 2; lin++)
+    for (int blocky = 0; blocky < 2; blocky++) {
         float* d_vr = fresh3();
         float* d_vt = fresh1();
-        blend_background_noise_backward(lin != 0, t3(d_rgb), t1(d_T), 0.7f,
+        blend_background_noise_backward(lin != 0, blocky != 0,
+                                        t3(d_rgb), t1(d_T), 0.7f,
                                         1234u + lin, t3(d_vout), t3(d_vr),
                                         t1(d_vt));
         backend::device_synchronize();

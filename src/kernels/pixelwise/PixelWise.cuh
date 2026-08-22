@@ -142,6 +142,7 @@ void blend_background_backward(
 
 void blend_background_noise_forward(
     bool is_linear,
+    bool blocky,                          // tiled RGB corners instead of U[0,1)
     DeviceTensor3D<float3> rgb,           // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance, // [B, H, W, 1]
     float randomize_weight,
@@ -152,6 +153,7 @@ void blend_background_noise_forward(
 
 void blend_background_noise_backward(
     bool is_linear,
+    bool blocky,                          // tiled RGB corners instead of U[0,1)
     DeviceTensor3D<float3> rgb,              // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
     float randomize_weight,

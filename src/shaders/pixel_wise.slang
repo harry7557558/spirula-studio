@@ -41,21 +41,17 @@ float3 blend_background(float3 rgb, float transmittance, float3 background) {
 }
 
 [CudaDeviceExport]
+// Straight through the forward's clamp: the derivative of rgb + T*background,
+// as if it had not clamped. The clamp's own derivative is a ratchet -- zero
+// exactly where a pixel overshot, so nothing tells it to come back.
 void blend_background_bwd(
     float3 rgb, float transmittance, float3 background,
     float3 v_out_rgb,
     out float3 v_rgb, out float v_transmittance, out float3 v_background
 ) {
-    var p_rgb = diffPair(rgb);
-    var p_transmittance = diffPair(transmittance);
-    var p_background = diffPair(background);
-    bwd_diff(blend_background)(
-        p_rgb, p_transmittance, p_background,
-        v_out_rgb
-    );
-    v_rgb = p_rgb.d;
-    v_transmittance = p_transmittance.d;
-    v_background = p_background.d;
+    v_rgb = v_out_rgb;
+    v_transmittance = dot(v_out_rgb, background);
+    v_background = float3(transmittance, transmittance, transmittance) * v_out_rgb;
 }
 
 [ForceInline]
