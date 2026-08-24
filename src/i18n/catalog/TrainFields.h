@@ -2364,6 +2364,145 @@ SS_MSG(background_noise_pre_warmup_help,
     TR("Arka plan gürültüsünün en başta ne kadar güçlü olduğu; 0 ile 1 arası. "
        "Yüksek değerler splat'ların ilk adımlarda silinip gitmesini önler."));
 
+SS_MSG(init_ply,
+    EN("Initial splat PLY"), JA("初期スプラットの PLY"),
+    ZH_HANS("初始泼溅 PLY"), ZH_HANT("初始潑濺 PLY"), KO("초기 스플랫 PLY"),
+    DE("Start-PLY der Splats"), FR("PLY de splats initial"),
+    ES("PLY de splats inicial"), PT("PLY de splats inicial"),
+    IT("PLY di splat iniziale"), NL("Start-PLY met splats"),
+    RU("Начальный PLY сплатов"), TR("Başlangıç splat PLY'si"));
+SS_MSG(init_ply_help,
+    EN("Start from an already-trained 3D Gaussian Splatting PLY instead of the "
+       "dataset's point cloud: positions, sizes, rotations, opacities and colors "
+       "all come from the file. Training still begins at step 0 with a fresh "
+       "optimizer, and the file has to come from the same photos with the same "
+       "scene settings, or it will not line up."),
+    JA("データセットの点群の代わりに、すでに学習済みの 3D ガウシアンスプラッ"
+       "ティングの PLY から始めます。位置、大きさ、回転、不透明度、色はファイル"
+       "から読み込みます。学習はステップ 0 から、最適化器も新しい状態で始まりま"
+       "す。ファイルは同じ写真を同じシーン設定で学習したものである必要があり、"
+       "そうでないと位置が合いません。"),
+    ZH_HANS("从一个已经训练好的 3D 高斯泼溅 PLY 开始，而不是数据集的点云：位置、"
+            "大小、旋转、不透明度和颜色都来自该文件。训练仍然从第 0 步开始，优化"
+            "器也是全新的；文件必须用同样的照片、同样的场景设置训练出来，否则对"
+            "不上。"),
+    ZH_HANT("從一個已經訓練好的 3D 高斯潑濺 PLY 開始，而不是資料集的點雲：位置、"
+            "大小、旋轉、不透明度和顏色都來自該檔案。訓練仍然從第 0 步開始，最佳"
+            "化器也是全新的；檔案必須用同樣的照片、同樣的場景設定訓練出來，否則"
+            "對不上。"),
+    KO("데이터셋의 점 구름 대신, 이미 학습된 3D 가우시안 스플래팅 PLY에서 시작"
+       "합니다. 위치, 크기, 회전, 불투명도, 색은 파일에서 가져옵니다. 학습은 그"
+       "래도 0단계에서 최적화기도 새로 시작하며, 파일은 같은 사진을 같은 장면 설"
+       "정으로 학습한 것이어야 맞습니다."),
+    DE("Startet von einem bereits trainierten 3D-Gaussian-Splatting-PLY statt "
+       "von der Punktwolke des Datensatzes: Positionen, Größen, Drehungen, "
+       "Deckkraft und Farben kommen aus der Datei. Das Training beginnt trotzdem "
+       "bei Schritt 0 mit frischem Optimierer, und die Datei muss aus denselben "
+       "Fotos mit denselben Szeneneinstellungen stammen, sonst passt sie nicht."),
+    FR("Démarre depuis un PLY de 3D Gaussian Splatting déjà entraîné plutôt que "
+       "depuis le nuage de points du jeu de données : positions, tailles, "
+       "rotations, opacités et couleurs viennent du fichier. L'entraînement "
+       "commence quand même à l'étape 0 avec un optimiseur neuf, et le fichier "
+       "doit venir des mêmes photos avec les mêmes réglages de scène, sinon il "
+       "ne s'alignera pas."),
+    ES("Empieza desde un PLY de 3D Gaussian Splatting ya entrenado en vez de la "
+       "nube de puntos del conjunto de datos: posiciones, tamaños, rotaciones, "
+       "opacidades y colores salen del archivo. El entrenamiento sigue empezando "
+       "en el paso 0 con el optimizador en blanco, y el archivo tiene que venir "
+       "de las mismas fotos con los mismos ajustes de escena, o no encajará."),
+    PT("Começa a partir de um PLY de 3D Gaussian Splatting já treinado em vez "
+       "da nuvem de pontos do conjunto de dados: posições, tamanhos, rotações, "
+       "opacidades e cores vêm do arquivo. O treinamento ainda começa no passo 0 "
+       "com o otimizador zerado, e o arquivo tem que vir das mesmas fotos com os "
+       "mesmos ajustes de cena, senão não encaixa."),
+    IT("Parte da un PLY di 3D Gaussian Splatting già addestrato invece che "
+       "dalla nuvola di punti del set di dati: posizioni, dimensioni, rotazioni, "
+       "opacità e colori arrivano dal file. L'addestramento comincia comunque "
+       "dal passo 0 con l'ottimizzatore azzerato, e il file deve venire dalle "
+       "stesse foto con le stesse impostazioni di scena, altrimenti non "
+       "combacia."),
+    NL("Begint vanuit een al getraind 3D Gaussian Splatting-PLY in plaats van "
+       "vanuit de puntenwolk van de dataset: posities, formaten, rotaties, "
+       "dekking en kleuren komen uit het bestand. De training start nog steeds "
+       "bij stap 0 met een schone optimalisator, en het bestand moet van "
+       "dezelfde foto's met dezelfde scène-instellingen komen, anders sluit het "
+       "niet aan."),
+    RU("Начинает с уже обученного PLY 3D Gaussian Splatting, а не с облака "
+       "точек набора данных: положения, размеры, повороты, непрозрачность и "
+       "цвета берутся из файла. Обучение всё равно начинается с шага 0 и с "
+       "чистого оптимизатора, а файл должен быть получен из тех же фотографий "
+       "с теми же настройками сцены, иначе он не совпадёт."),
+    TR("Veri kümesinin nokta bulutu yerine, önceden eğitilmiş bir 3D Gaussian "
+       "Splatting PLY dosyasından başlar: konumlar, boyutlar, dönüşler, "
+       "opaklıklar ve renkler dosyadan gelir. Eğitim yine 0. adımdan ve "
+       "sıfırdan bir eniyileyiciyle başlar; dosyanın aynı fotoğraflardan aynı "
+       "sahne ayarlarıyla eğitilmiş olması gerekir, yoksa oturmaz."));
+
+SS_MSG(init_ply_add_points,
+    EN("Add the dataset's points"), JA("データセットの点も足す"),
+    ZH_HANS("同时加上数据集的点"), ZH_HANT("同時加上資料集的點"),
+    KO("데이터셋의 점도 더하기"),
+    DE("Punkte des Datensatzes ergänzen"),
+    FR("Ajouter les points du jeu de données"),
+    ES("Añadir los puntos del conjunto de datos"),
+    PT("Somar os pontos do conjunto de dados"),
+    IT("Aggiungere i punti del set di dati"),
+    NL("Punten van de dataset erbij"),
+    RU("Добавить точки набора данных"),
+    TR("Veri kümesinin noktalarını da ekle"));
+SS_MSG(init_ply_add_points_help,
+    EN("Seed from the dataset's point cloud as well, on top of the PLY rather "
+       "than instead of it: the PLY goes in first and the points fill what is "
+       "left up to the splat cap. For a dataset that has grown since that model "
+       "was trained; without a PLY it does nothing."),
+    JA("PLY を置き換えるのではなく、その上にデータセットの点群からも初期点を置"
+       "きます。先に PLY が入り、残りをスプラット数の上限まで点群が埋めます。そ"
+       "のモデルを学習したあとでデータセットが増えたときに使います。PLY がなけ"
+       "れば何もしません。"),
+    ZH_HANS("不是用 PLY 顶掉数据集的点云，而是两边都用：先放 PLY，再让点云把剩"
+            "下的名额填到泼溅数上限。适合那个模型训练完之后数据集又扩充了的情"
+            "况；没有 PLY 时不起作用。"),
+    ZH_HANT("不是用 PLY 頂掉資料集的點雲，而是兩邊都用：先放 PLY，再讓點雲把剩"
+            "下的名額填到潑濺數上限。適合那個模型訓練完之後資料集又擴充了的情"
+            "況；沒有 PLY 時不起作用。"),
+    KO("PLY로 데이터셋의 점 구름을 대체하지 않고 둘 다 씁니다. PLY가 먼저 들어"
+       "가고 남은 자리를 스플랫 상한까지 점 구름이 채웁니다. 그 모델을 학습한 "
+       "뒤 데이터셋이 늘어났을 때 쓰며, PLY가 없으면 아무 일도 하지 않습니다."),
+    DE("Nimmt zusätzlich die Punktwolke des Datensatzes als Startpunkte, statt "
+       "sie durch das PLY zu ersetzen: das PLY kommt zuerst, die Punkte füllen "
+       "auf, was bis zur Splat-Obergrenze übrig ist. Für einen Datensatz, der "
+       "seit dem Training jenes Modells gewachsen ist; ohne PLY ohne Wirkung."),
+    FR("Amorce aussi depuis le nuage de points du jeu de données, en plus du "
+       "PLY plutôt qu'à sa place : le PLY passe en premier et les points "
+       "remplissent ce qui reste jusqu'à la limite de splats. Pour un jeu de "
+       "données qui s'est étoffé depuis l'entraînement de ce modèle ; sans PLY, "
+       "sans effet."),
+    ES("Siembra también desde la nube de puntos del conjunto de datos, sumandola "
+       "al PLY en vez de sustituirla: el PLY entra primero y los puntos rellenan "
+       "lo que quede hasta el límite de splats. Para un conjunto de datos que ha "
+       "crecido desde que se entrenó ese modelo; sin PLY no hace nada."),
+    PT("Semeia também a partir da nuvem de pontos do conjunto de dados, somando "
+       "ao PLY em vez de substituí-la: o PLY entra primeiro e os pontos "
+       "preenchem o que sobrar até o limite de splats. Para um conjunto de dados "
+       "que cresceu depois que aquele modelo foi treinado; sem PLY não faz "
+       "nada."),
+    IT("Semina anche dalla nuvola di punti del set di dati, sommandola al PLY "
+       "invece di sostituirla: il PLY entra per primo e i punti riempiono quel "
+       "che resta fino al limite di splat. Per un set di dati cresciuto da "
+       "quando quel modello è stato addestrato; senza PLY non fa nulla."),
+    NL("Zaait ook vanuit de puntenwolk van de dataset, bovenop het PLY in plaats "
+       "van in de plaats daarvan: het PLY gaat er eerst in en de punten vullen "
+       "aan tot de bovengrens. Voor een dataset die gegroeid is sinds dat model "
+       "getraind werd; zonder PLY doet dit niets."),
+    RU("Берёт начальные точки ещё и из облака точек набора данных, добавляя их к "
+       "PLY, а не заменяя им: сначала идёт PLY, а точки заполняют то, что "
+       "осталось до предела числа сплатов. Для набора данных, выросшего с тех "
+       "пор, как ту модель обучали; без PLY ничего не делает."),
+    TR("Veri kümesinin nokta bulutunu PLY'nin yerine koymak yerine onun üstüne "
+       "ekler: önce PLY girer, kalan yeri splat sınırına kadar noktalar "
+       "doldurur. O model eğitildikten sonra büyümüş bir veri kümesi için; PLY "
+       "yoksa hiçbir şey yapmaz."));
+
 SS_MSG(scale_init,
     EN("Initial splat size"), JA("スプラットの初期サイズ"),
     ZH_HANS("泼溅初始大小"), ZH_HANT("潑濺初始大小"), KO("스플랫 초기 크기"),

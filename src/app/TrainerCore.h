@@ -83,6 +83,18 @@ struct SeedSplats {
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
                        const ColorResolution& color);
 
+// A warm start from a trained 3DGS PLY (--init-ply): the file supplies every
+// parameter, and only the layout is re-fitted to this run (cap_max, sh_degree,
+// relative_scale, splat gamut). The PLY must be in this run's training frame.
+SeedSplats seed_splats_from_ply(const std::string& path, const TrainConfig& cfg,
+                                const ColorResolution& color);
+
+// The dataset's own seeds appended after the PLY's (--init-ply-add-points), so
+// the warm start covers what the source model has and the point cloud covers
+// what it does not. Adds nothing once `s` already fills cap_max.
+void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
+                        const TrainConfig& cfg, const ColorResolution& color);
+
 
 // ===========================================================================
 // Per-step EngineStepConfig
@@ -227,6 +239,10 @@ public:
     // colour-corrected render). LPIPS is not computed here -- pass
     // --save-eval-images and run reference/python/eval_lpips.py over the PNGs.
     void eval();
+
+    // The seeds setup_engine() hands the engine, from the point cloud and/or
+    // cfg.init_ply.
+    SeedSplats seed_world(const ColorResolution& color);
 
     // Restore engine state from cfg.resume; sets start_step. Called by
     // setup_engine().
