@@ -1046,10 +1046,13 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             pause_clock_stop();
         }
         if (stop_requested.load()) break;
+        // Clock starts before the yield: a render the trainer stood aside for
+        // is time this step took. Timing only the work below reported 6 ms on
+        // a step the run was actually spending 24 ms on.
+        auto step_start = std::chrono::steady_clock::now();
         while (render_pending.load())
             std::this_thread::sleep_for(std::chrono::microseconds(500));
 
-        auto step_start = std::chrono::steady_clock::now();
         std::map<std::string, float> losses;
         std::string data_error;
         {

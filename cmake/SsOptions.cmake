@@ -284,6 +284,20 @@ else()
     set(SPLAT_C_FLAGS "-O3")
 endif()
 
+# Host line info. The option reached only the CUDA and SPIR-V compilers, so a
+# Vulkan build got none and crash reports stayed module+RVA (CrashLog.h). /Z7
+# rather than /Zi: one shared vc140.pdb serializes a parallel Ninja build.
+if(SS_DEBUG_SYMBOLS)
+    if(MSVC)
+        list(APPEND SPLAT_CXX_FLAGS "/Z7")
+        list(APPEND SPLAT_C_FLAGS "/Z7")
+        add_link_options("/DEBUG" "/OPT:REF" "/OPT:ICF")
+    else()
+        list(APPEND SPLAT_CXX_FLAGS "-g")
+        list(APPEND SPLAT_C_FLAGS "-g")
+    endif()
+endif()
+
 if(WIN32)
     add_compile_definitions(_USE_MATH_DEFINES NOMINMAX _CRT_SECURE_NO_WARNINGS)
 endif()

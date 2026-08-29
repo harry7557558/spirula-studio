@@ -5,7 +5,7 @@
 #include "app/gui/ColmapRunner.h"
 
 #include "i18n/catalog/Log.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/Subprocess.h"
 
@@ -245,7 +245,7 @@ std::string ColmapRunner::resolve_vocab_tree(const ColmapJob& job) {
         return "";
     }
     fs::path ws = job.workspace;
-    for (const fs::path& dir : {ws, ws.parent_path(), fs::path(cache_dir())}) {
+    for (const fs::path& dir : {ws, ws.parent_path(), fs::path(app::cache_dir())}) {
         if (!fs::is_directory(dir, ec)) continue;
         for (fs::directory_iterator it(dir, ec), end; !ec && it != end;
              it.increment(ec)) {
@@ -258,7 +258,7 @@ std::string ColmapRunner::resolve_vocab_tree(const ColmapJob& job) {
         }
     }
     // Download into the cache.
-    fs::path dst = fs::path(cache_dir()) / kVocabTreeName;
+    fs::path dst = fs::path(app::cache_dir()) / kVocabTreeName;
     set_stage(Stage::Matching, lmsg::stage_vocab_download.get());
     if (!command_exists("curl")) {
         log("curl not found -- download it manually:");

@@ -7,7 +7,8 @@
 
 #include "checkpoint/SplatPly.h"
 #include "data/Json.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
+#include "app/CrashLog.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/Subprocess.h"
@@ -176,7 +177,7 @@ void GuiApp::shutdown() {
 }
 
 std::string GuiApp::settings_path() {
-    return (fs::path(config_dir()) / "gui.conf").string();
+    return (fs::path(app::config_dir()) / "gui.conf").string();
 }
 
 void GuiApp::load_settings() {
@@ -420,6 +421,7 @@ void GuiApp::refresh_presets() {
 void GuiApp::open_dataset(std::string dir, std::string image_dir,
                           std::string mask_dir, bool keep_log) {
     if (dir.empty()) return;
+    app::set_crash_note("opening dataset " + dir);
     close_mesh_preview();
     close_splat();
     // A different dataset means the log so far is about something else --
@@ -489,6 +491,7 @@ void GuiApp::request_go_home() {
 // frame() attaches the viewport once the splats are on the device.
 void GuiApp::open_splat(std::string path) {
     if (path.empty()) return;
+    app::set_crash_note("opening model " + path);
     _log.clear();
     close_mesh_preview();
     detach_session_views();
@@ -528,6 +531,7 @@ void GuiApp::close_splat() {
 
 void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) {
     if (cfg.data.empty()) return;
+    app::set_crash_note("training " + cfg.data);
     close_mesh_preview();
     close_splat();      // the engine is one object; the viewer has to let go
     detach_session_views();
@@ -1981,6 +1985,7 @@ void GuiApp::update_dataset_job() {
 }
 
 void GuiApp::start_dataset_job() {
+    app::set_crash_note("building dataset " + _workspace);
     sync_dataset_jobs();
     // The preview holds a multi-gigabyte backbone; the run about to start
     // wants that VRAM for reconstruction.
@@ -5178,8 +5183,10 @@ void GuiApp::draw_status_strip() {
         float frac = (float)(p.step + 1) / (float)p.total_steps;
         ui::ProgressBar(frac, ImVec2(-8, 0), msg::status_step,
                         {p.step + 1, p.total_steps, (int)(frac * 100.0f)});
+        const double avg = _runner.avg_step_latency();
         char ms[32];
-        std::snprintf(ms, sizeof ms, "%.0f", p.step_latency * 1000.0);
+        std::snprintf(ms, sizeof ms, "%.0f",
+                      (avg >= 0.0 ? avg : p.step_latency) * 1000.0);
         ui::Text(_runner.paused() ? msg::status_rate_paused : msg::status_rate,
                  {ms, format_duration(_runner.elapsed_seconds()),
                   format_duration(_runner.eta_seconds()),

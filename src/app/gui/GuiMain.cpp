@@ -4,7 +4,8 @@
 
 #include "app/Tools.h"
 #include "i18n/catalog/Log.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
+#include "app/CrashLog.h"
 #include "app/gui/Fonts.h"
 #include "app/gui/GuiApp.h"
 #include "app/gui/Layout.h"
@@ -122,7 +123,9 @@ int spirula_gui_main(int argc, char** argv) {
 #endif
     // Before anything spawns a child, including the tools this binary re-runs
     // itself as: a Finder launch starts with almost nothing on PATH.
-    gui::add_desktop_search_paths();
+    app::add_desktop_search_paths();
+    // The one process with no console and nobody reading its stderr.
+    app::set_crash_dialog(true);
     // Checkpoints are fetched by the screen that asked for them, with a
     // progress bar and a button. Inherited by the children, so nothing this
     // window starts runs a curl the user did not press anything for.

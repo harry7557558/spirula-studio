@@ -6897,6 +6897,39 @@ SS_MSG(compare_at_step,
     RU("на шаге {0}"),
     TR("{0}. adımda"));
 
+// ===========================================================================
+// Crash report
+// ===========================================================================
+// The path follows on its own line rather than interpolated into the
+// sentence: the handler that shows this may not allocate.
+
+SS_MSG(crash_report_saved,
+    EN("Spirula Studio stopped unexpectedly. A report was saved to the file "
+       "below; please attach it to a bug report."),
+    JA("スピルラ・スタジオが予期せず終了しました。下のファイルにレポートを保存"
+       "しました。不具合の報告に添付してください。"),
+    ZH_HANS("旋影工坊意外退出。报告已保存到下面的文件，请在报告问题时附上它。"),
+    ZH_HANT("旋影工坊意外結束。報告已儲存到下面的檔案，回報問題時請附上它。"),
+    KO("스피룰라 스튜디오가 예기치 않게 종료되었습니다. 아래 파일에 보고서를 "
+       "저장했으니 버그 신고에 첨부해 주세요."),
+    DE("Spirula Studio wurde unerwartet beendet. Ein Bericht wurde in der "
+       "Datei unten gespeichert; bitte hängen Sie sie an einen Fehlerbericht an."),
+    FR("Spirula Studio s'est arrêté de façon inattendue. Un rapport a été "
+       "enregistré dans le fichier ci-dessous ; merci de le joindre à un "
+       "signalement de bogue."),
+    ES("Spirula Studio se cerró de forma inesperada. Se guardó un informe en "
+       "el archivo de abajo; adjúntalo al informar del error."),
+    PT("O Spirula Studio encerrou de forma inesperada. Um relatório foi salvo "
+       "no arquivo abaixo; anexe-o ao relatar o problema."),
+    IT("Spirula Studio si è chiuso in modo imprevisto. Un rapporto è stato "
+       "salvato nel file qui sotto; allegalo alla segnalazione del problema."),
+    NL("Spirula Studio is onverwacht gestopt. Er is een rapport opgeslagen in "
+       "het bestand hieronder; voeg het toe aan een foutmelding."),
+    RU("Spirula Studio неожиданно завершил работу. Отчёт сохранён в файл "
+       "ниже — приложите его к сообщению об ошибке."),
+    TR("Spirula Studio beklenmedik biçimde kapandı. Aşağıdaki dosyaya bir "
+       "rapor kaydedildi; hata bildirimine ekleyin."));
+
 }  // namespace gui
 }  // namespace msg
 }  // namespace i18n

@@ -13,6 +13,8 @@
 // screen. On a build with no GUI it is an error naming the subcommands, which
 // is the only thing such a build can do.
 
+#include "app/AppPaths.h"
+#include "app/CrashLog.h"
 #include "app/Tools.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
@@ -147,6 +149,11 @@ int main(int argc, char** argv) {
     const char* lang = spirula::i18n::take_lang_arg(&argc, argv);
     spirula::i18n::init(lang, nullptr);
 
+    // Every tool, not only the window: the GUI runs reconstruction, masking
+    // and meshing as child processes, and a child that dies of a fault leaves
+    // its parent an exit status and nothing else.
+    app::install_crash_log(app::config_dir());
+
     // An explicit subcommand wins over the argv[0] hint, so a binary that was
     // renamed or symlinked still answers to every tool it holds. No subcommand
     // name collides with an argument any of them takes, so `spirula-sfm auto`
@@ -156,6 +163,7 @@ int main(int argc, char** argv) {
             // The tool sees "spirula sfm" as its program name, so its own usage
             // text prints a command line that can be pasted back.
             std::string prog = std::string(argv[0] ? argv[0] : "spirula") + " " + t->name;
+            app::set_crash_note(prog);
             std::vector<char*> sub;
             sub.push_back(prog.data());
             for (int i = 2; i < argc; i++) sub.push_back(argv[i]);
@@ -166,8 +174,10 @@ int main(int argc, char** argv) {
 
     // Named as a tool: hand it everything, --help and --version included, so a
     // spirula-sfm symlink behaves exactly as the separate executable did.
-    if (const Tool* t = tool_from_argv0(argc > 0 ? argv[0] : nullptr))
+    if (const Tool* t = tool_from_argv0(argc > 0 ? argv[0] : nullptr)) {
+        app::set_crash_note(t->name);
         return t->run(argc, argv);
+    }
 
     if (argc > 1) {
         const std::string a = argv[1];

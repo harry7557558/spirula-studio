@@ -296,7 +296,7 @@ One behaviour is bundle-specific: a Finder launch inherits launchd's PATH
 (`/usr/bin:/bin:/usr/sbin:/sbin`), which has no Homebrew in it, so COLMAP,
 ffmpeg and python3 would be missing from an app that finds them fine when
 started from a shell. `gui::add_desktop_search_paths()`
-(`src/app/gui/AppPaths.h`) appends the package managers' directories at
+(`src/app/AppPaths.h`) appends the package managers' directories at
 startup, after any PATH the process actually inherited.
 
 ## Build-time cost

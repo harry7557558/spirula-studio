@@ -33,12 +33,22 @@ spirula::TrainerProgress TrainRunner::latest_progress() {
     return _latest;
 }
 
+double TrainRunner::avg_latency_locked() const {
+    if (_latencies.empty()) return -1.0;
+    double sum = 0.0;
+    for (double v : _latencies) sum += v;
+    return sum / (double)_latencies.size();
+}
+
+double TrainRunner::avg_step_latency() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return avg_latency_locked();
+}
+
 double TrainRunner::eta_seconds() {
     std::lock_guard<std::mutex> lk(_mu);
-    if (_latencies.empty() || _latest.total_steps <= 0) return -1.0;
-    double avg = 0;
-    for (double v : _latencies) avg += v;
-    avg /= (double)_latencies.size();
+    const double avg = avg_latency_locked();
+    if (avg < 0.0 || _latest.total_steps <= 0) return -1.0;
     return avg * std::max(0, _latest.total_steps - (_latest.step + 1));
 }
 

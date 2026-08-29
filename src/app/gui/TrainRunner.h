@@ -84,6 +84,10 @@ public:
 
     // Latest per-step progress (copy).
     spirula::TrainerProgress latest_progress();
+    // Mean over the last 100 steps, which is also what the ETA is built from.
+    // A single step's latency swings several-fold with whether a viewer
+    // render landed on it, so it is not a number to put on screen.
+    double avg_step_latency();
     double eta_seconds();         // < 0 when unknown
     // Time spent in the step loop, pauses excluded: < 0 before a session
     // exists, 0 until the loop starts, frozen once it ends.
@@ -102,6 +106,7 @@ public:
 
 private:
     void push_log(const std::string& s);
+    double avg_latency_locked() const;   // caller holds _mu
     void join_worker();
     bool await_data_decision(const std::string& what);
 

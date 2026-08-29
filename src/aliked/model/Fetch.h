@@ -31,9 +31,8 @@ struct ModelSource {
 const ModelSource* find_model_source(const std::string& id);
 
 // Where a cached checkpoint lives: <cache>/spirula-studio/models/<file>.
-// Mirrors src/app/gui/AppPaths.cpp's cache_dir(); duplicated rather than
-// shared because src/aliked/ sits below src/app/ in the layering and may not
-// include it.
+// Mirrors src/app/AppPaths.cpp's cache_dir(), duplicated because src/aliked/
+// sits below src/app/ in the layering and may not include it.
 std::string model_cache_path(const ModelSource& src);
 
 // Returns a path to a verified local copy, downloading through the system

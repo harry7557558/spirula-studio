@@ -127,7 +127,9 @@ std::string format_duration(double seconds);
 struct TrainerProgress {
     int step = 0;              // 0-based step that just finished
     int total_steps = 0;
-    double step_latency = 0.0; // seconds, this step
+    // Wall seconds, including any wait for a viewer render this step stood
+    // aside for -- what the run costs, not what the kernels cost.
+    double step_latency = 0.0;
     int64_t num_splats = 0;
     std::map<std::string, float> losses;
 };

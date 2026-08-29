@@ -59,10 +59,17 @@ set(SS_TOOL_SOURCES "")
 set(SS_TOOL_DEFS "")
 set(SS_TOOL_LIBS "")
 
-# The static frame stencil: shapes and border detection, stb and nothing else,
-# so every app target has it whichever subsystems this build carries.
+# What every app target has whichever subsystems this build carries: the static
+# frame stencil, and the two files src/app/Main.cpp needs to arm the crash
+# handler for every subcommand -- including the ones the GUI spawns.
 if(SS_BUILD_CLI OR SS_BUILD_GUI)
-    list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/FrameMask.cpp)
+    list(APPEND SS_TOOL_SOURCES
+         ${SS_SRC}/app/FrameMask.cpp
+         ${SS_SRC}/app/AppPaths.cpp
+         ${SS_SRC}/app/CrashLog.cpp)
+    if(WIN32)
+        list(APPEND SS_TOOL_LIBS dbghelp)   # CrashLog.cpp's stack walk
+    endif()
 endif()
 
 # Localization settings every app target gets. SS_DEFAULT_LANG is an

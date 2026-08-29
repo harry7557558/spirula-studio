@@ -5,7 +5,7 @@
 #include "i18n/Locale.h"
 #include "i18n/catalog/Log.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 #ifdef SS_TOOL_SFM
 // For the stage tags the child prints; a build without the module has no child
@@ -141,7 +141,7 @@ std::string SfmRunner::availability() {
 #ifndef SS_TOOL_SFM
     return lmsg::err_no_sfm_module.get();
 #else
-    if (exe_path().empty())
+    if (app::exe_path().empty())
         return lmsg::err_no_exe_path.get();
     return "";
 #endif
@@ -506,7 +506,7 @@ void SfmRunner::run(SfmJob job) {
                 // The child is this same executable, so it has the same
                 // thirteen languages -- tell it which one, or its output
                 // lands in the log in whatever the machine's locale is.
-                exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
+                app::exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
                 "sfm", "auto", prep.image_dir,
                 "-o", ws.string(),
                 "--progress-dir", (ws / ".progress").string(),

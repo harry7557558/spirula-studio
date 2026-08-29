@@ -3,7 +3,7 @@
 #include "app/gui/Fonts.h"
 #include "i18n/catalog/Log.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "core/Env.h"
 #include "core/Sha256.h"
 #include "i18n/Locale.h"
@@ -36,8 +36,8 @@ constexpr float kBaseSize = 16.0f;
 std::vector<fs::path> search_dirs() {
     std::vector<fs::path> dirs;
     if (const char* d = spirula::env("FONT_DIR")) dirs.emplace_back(d);
-    if (!exe_dir().empty()) dirs.push_back(fs::path(exe_dir()) / "fonts");
-    dirs.push_back(fs::path(cache_dir()) / "fonts");
+    if (!app::exe_dir().empty()) dirs.push_back(fs::path(app::exe_dir()) / "fonts");
+    dirs.push_back(fs::path(app::cache_dir()) / "fonts");
     return dirs;
 }
 
@@ -85,7 +85,7 @@ std::string cjk_face_path(const CjkFace& f) {
 }
 
 std::string cjk_face_download_path(const CjkFace& f) {
-    return (fs::path(cache_dir()) / "fonts" / f.file).string();
+    return (fs::path(app::cache_dir()) / "fonts" / f.file).string();
 }
 
 bool FontSet::fetch_enabled() {

@@ -124,6 +124,9 @@ src/
 │   │                         masks them in the same pass; the GUI masks after)
 │   ├── WriterPool.h        threads that encode/write images while the GPU runs
 │   │                         the next frame; every masking loop uses it
+│   ├── AppPaths.{h,cpp}    the config / cache directories and this exe's own path
+│   ├── CrashLog.{h,cpp}    the stack trace every tool leaves in <config>/crash.log
+│   │                         when it faults -- armed for all of them in Main.cpp
 │   ├── gui/                Dear ImGui desktop app (`spirula` with no arguments)
 │   ├── webviewer/          HTTP server + render worker + viewer.html (the ONE
 │   │                         browser client, embedded into the engine library

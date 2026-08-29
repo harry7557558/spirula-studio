@@ -3,7 +3,7 @@
 #include "app/gui/ModelCache.h"
 #include "i18n/catalog/Log.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 
 #include "i18n/catalog/Dataset.h"
@@ -88,7 +88,7 @@ const LicenseInfo& license_for(const std::string& family) {
 }
 
 std::string model_path(const ModelEntry& e) {
-    return (fs::path(cache_dir()) / "models" / e.file).string();
+    return (fs::path(app::cache_dir()) / "models" / e.file).string();
 }
 
 bool model_is_cached(const ModelEntry& e) {
