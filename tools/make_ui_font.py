@@ -7,26 +7,22 @@
     assets/fonts/SpirulaCJK-TC.otf    |   characters this program's own
     assets/fonts/SpirulaCJK-KR.otf   /    translations actually use
 
-Together they are ~490 KB and they are what makes a default build render all
-thirteen languages in SS_LANGUAGES with nothing to download. That is worth
-being precise about, because the obvious alternative is not:
+Together they are 3.3 MB and they cover two things with nothing to download:
+this program's own text in all thirteen languages of SS_LANGUAGES, and an
+ordinary FILE NAME in any of them. The second is most of the weight and the
+reason the character sets below are Unicode blocks and national common-use
+standards rather than a scrape of the catalogs -- a path is user data, and one
+uncovered character in it is a `?` in the middle of the path.
 
-  * A full Noto Sans CJK face is 4-8 MB, and there are four of them, because
-    Han unification gives the shared codepoints different default glyph forms
-    per region. Embedding all four is 23 MB of executable to render a menu.
-  * Downloading one on demand -- what this GUI did before -- means the first
-    thing a Japanese user sees after picking their language is a wall of
-    boxes and a download button. The language picker is exactly where a user
-    who cannot read the current UI language has arrived, so it is exactly the
-    wrong place to require reading.
+Embedding all four full faces instead would be 23 MB, and fetching one on
+demand -- what this GUI did before -- puts a wall of `?` and a download
+button in front of a user at the language picker, which is the one screen
+someone who cannot read the current UI language has arrived at. The full
+faces are still fetched (src/app/gui/Fonts.h), now only for the tail a
+common-use standard leaves out.
 
-Subsetting to the ~600 characters per region the UI actually writes costs
-~110 KB per face, so all four fit. The full faces are still fetched on demand
-(src/app/gui/Fonts.h) -- not for the UI, but for dataset paths and file names,
-which are user data and can hold any character at all.
-
-THE SUBSETS ARE DERIVED FROM THE CATALOGS. Edit a translation and they are
-stale, which would show up as one boxed character in the middle of a sentence.
+THE SUBSETS ARE PARTLY DERIVED FROM THE CATALOGS. Edit a translation and they
+can go stale, which shows up as one `?` in the middle of a sentence.
 tools/check_font_coverage.py is the guard: it runs on every build, needs no
 network and no fontTools, and fails when a catalog uses a character no
 committed font has.
@@ -58,6 +54,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import urllib.request
 import zipfile
 
@@ -73,28 +70,33 @@ SOURCE_SANS_URL = (
 )
 SOURCE_SANS_MEMBER = "TTF/SourceSans3-Regular.ttf"
 
-# What the twelve non-CJK locales in SS_LANGUAGES actually need. Ranges, not
-# a character list, because a translator will reach for a dash or a quote mark
-# nobody enumerated and tofu in the middle of a sentence is worse than 3 KB.
+# What the Latin face has to draw. Not "what the twelve non-CJK locales need":
+# most of this is for FILE NAMES, which are user data in any locale and where a
+# single uncovered character is a `?` in the middle of a path.
 UNICODES = ",".join([
     "U+0020-007E",     # Basic Latin
     "U+00A0-00FF",     # Latin-1: de/fr/es/pt/it/nl accents
     "U+0100-017F",     # Latin Extended-A: Turkish g-breve, s-cedilla, dotted I
-    "U+0192",          # florin, occasionally used as a function sign
-    "U+01FA-01FF",
-    "U+02C6-02DD",     # spacing modifiers (circumflex, caron, ...)
-    "U+0394,U+03A9,U+03BC,U+03C0",   # delta/omega/mu/pi -- they appear in help text
-    "U+0400-045F",     # Cyrillic: Russian
-    "U+0490-0491",     # Ukrainian ghe -- free, and stops one obvious hole
+    "U+0180-024F",     # Latin Extended-B: pinyin tone marks, Azerbaijani
+    "U+0250-02FF",     # IPA and spacing modifiers -- the Hawaiian okina is here
+    "U+0300-036F",     # combining marks: macOS hands out file names in NFD
+    "U+0370-03FF",     # Greek
+    "U+0400-04FF",     # Cyrillic, whole block -- Serbian and Macedonian too
+    "U+1E00-1EFF",     # Latin Extended Additional: Vietnamese
     "U+2000-206F",     # dashes, curly quotes, ellipsis, bullet
-    "U+20AC",          # euro
-    "U+2122",          # trademark
-    "U+2190-2193",     # arrows -- the UI writes "-> outputs/scene"
-    "U+2202,U+2206,U+2211,U+2212,U+221A,U+221E,U+2248,U+2260,U+2264,U+2265",
-    "U+25A0,U+25CF",   # square/circle bullets
+    "U+2070-209F",     # superscripts and subscripts
+    "U+20A0-20BF",     # currency: dong, won, rupee, ruble, lira
+    "U+2100-214F",     # letterlike: the numero sign a Russian path uses
+    "U+2150-218F",     # fractions and Roman numerals
+    "U+2190-21FF",     # arrows -- the UI writes "-> outputs/scene"
+    "U+2200-22FF",     # math operators
+    "U+2300-23FF",     # misc technical: the macOS command and option keys
+    "U+25A0-25FF",     # geometric shapes
+    "U+2600-26FF",     # misc symbols: stars and music notes name a lot of files
+    "U+2700-27BF",     # dingbats: check and cross marks
     "U+FB01-FB02",     # fi/fl ligatures
-    "U+FFFD",          # replacement character -- what a bad byte should look like
 ])
+# Not U+FFFD: no Source Sans or Noto face has it, so ImGui falls back to '?'.
 
 LAYOUT_FEATURES = "kern,liga,ccmp,locl,mark,mkmk"
 
@@ -102,16 +104,63 @@ LAYOUT_FEATURES = "kern,liga,ccmp,locl,mark,mkmk"
 # glyph forms that language is read in.
 TAG_REGION = {"JA": "jp", "ZH_HANS": "sc", "ZH_HANT": "tc", "KO": "kr"}
 
-# Characters every regional subset carries whether or not that language's
-# translations use them.
-#
-#   - the native name of every language in SS_LANGUAGES, because the language
-#     picker draws all thirteen at once and the whole point of this exercise
-#     is that a user can read their own language's name in it
-#   - SS_LANG_MENU_ICON, the language menu's label
-#   - CJK punctuation, because the alternative to two dozen free glyphs is
-#     regenerating four fonts because a translator wrote a full-width comma
-PUNCTUATION = "、。，．：；？！「」『』（）〔〕【】・…‥ー～〜／＼％＋－＝＜＞　"
+# Blocks every regional subset carries whatever its own translations use.
+# Regional forms differ across all three, so each face carries its own copy.
+CJK_ALWAYS = [
+    (0x2460, 0x24FF),   # enclosed alphanumerics
+    (0x3000, 0x303F),   # CJK symbols and punctuation
+    (0xFF01, 0xFFEE),   # halfwidth and fullwidth forms
+]
+
+# What ONE face carries for all of them: the four subsets share an atlas
+# (src/app/gui/Fonts.cpp), so a second copy would buy nothing but bytes.
+CJK_SINGLE = {
+    "jp": ([(0x3041, 0x30FF), (0x31F0, 0x31FF),     # kana
+            (0x3200, 0x32FF), (0x3300, 0x33FF)],    # enclosed CJK, square forms
+           # Of U+2600-27BF Noto Sans CJK has under a fifth, so these are named.
+           "★☆♪♫♬♩♥♡♠♣♦"
+           "◆◇○●◎△▲▽▼□■"
+           "※〒℃℉♂♀✓✔✗✘"
+           "☀☁☂☃☺☻❀✿❤➡"),
+    "tc": ([(0x3105, 0x312F)], ""),                 # bopomofo
+}
+
+# Assigned, but Noto Sans CJK draws nothing for it, so asking would only fail
+# tools/check_font_coverage.py -- correctly, since there is no glyph to embed.
+NO_GLYPH = {0x332C}                                 # SQUARE PAATU
+
+# The national common-use standard per region -- (codec, lead bytes, the block
+# to keep). Decoded out of Python's own codecs so no character list has to be
+# committed, downloaded, or kept in step with anything.
+COMMON_USE = {
+    "sc": ("gb2312", range(0xB0, 0xD8), (0x3400, 0x9FFF)),  # GB 2312 L1, 3755
+    "tc": ("big5",   range(0xA4, 0xC7), (0x3400, 0x9FFF)),  # Big5 L1, 5401
+    "jp": ("euc_jp", range(0xB0, 0xD0), (0x3400, 0x9FFF)),  # JIS X 0208 L1, 2965
+    "kr": ("euc_kr", range(0xB0, 0xC9), (0xAC00, 0xD7A3)),  # KS X 1001, 2350
+}
+
+_TRAIL = list(range(0x40, 0x7F)) + list(range(0xA1, 0xFF))
+
+
+def common_use(region: str) -> set:
+    """The region's common-use characters, decoded from its national standard."""
+    codec, lead, (lo, hi) = COMMON_USE[region]
+    out = set()
+    for a in lead:
+        for b in _TRAIL:
+            try:
+                c = bytes([a, b]).decode(codec)
+            except UnicodeDecodeError:
+                continue
+            if lo <= ord(c) <= hi:
+                out.add(c)
+    return out
+
+
+def _expand(ranges) -> set:
+    """Ranges -> characters, minus the codepoints no font could draw."""
+    return {chr(c) for lo, hi in ranges for c in range(lo, hi + 1)
+            if c not in NO_GLYPH and unicodedata.category(chr(c)) != "Cn"}
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +204,20 @@ def native_names() -> str:
     return "".join(r[2] for r in _languages_h())
 
 
-def always() -> set:
-    """What every regional subset carries regardless of its translations."""
+def menu_icon() -> str:
+    """SS_LANG_MENU_ICON -- the language menu's label."""
     text = LANGUAGES_H.read_text(encoding="utf-8")
     m = re.search(r'#define\s+SS_LANG_MENU_ICON\s+"([^"]*)"', text)
     if not m:
         raise SystemExit(f"could not read SS_LANG_MENU_ICON out of {LANGUAGES_H}")
-    return set(PUNCTUATION) | set(m.group(1)) | set(native_names())
+    return m.group(1)
+
+
+def always(region: str) -> set:
+    """What a regional subset carries regardless of its own translations."""
+    ranges, named = CJK_SINGLE.get(region, ([], ""))
+    return (set(menu_icon()) | set(native_names()) | common_use(region)
+            | set(named) | _expand(CJK_ALWAYS + ranges))
 
 
 def _tag_hits(text: str, tag: str):
@@ -180,7 +236,7 @@ def scan_catalogs() -> dict:
 
     Shared with tools/check_font_coverage.py, which imports it.
     """
-    per = {r: set(always()) for r in TAG_REGION.values()}
+    per = {r: always(r) for r in TAG_REGION.values()}
     text = _catalog_text()
     for tag, region in TAG_REGION.items():
         for s in _tag_hits(text, tag):
@@ -191,13 +247,14 @@ def scan_catalogs() -> dict:
 
 
 def scan_all() -> set:
-    """Every character the UI can draw from its own catalogs, all languages.
+    """Everything the committed fonts have to cover between them.
 
-    The union the committed fonts have to cover between them. Tags are derived
-    from SS_LANGUAGES (`zh_hans` -> `ZH_HANS`), so a new language is scanned
-    the moment it exists rather than when someone remembers this file.
+    The catalogs of all thirteen languages plus always(), the part that is
+    there for file names rather than for anything the UI writes. Tags are
+    derived from SS_LANGUAGES, so a new language is scanned the moment it
+    exists rather than when someone remembers this file.
     """
-    chars = always()
+    chars = set().union(*(always(r) for r in TAG_REGION.values()))
     text = _catalog_text()
     for row in _languages_h():
         for s in _tag_hits(text, row[0].upper()):

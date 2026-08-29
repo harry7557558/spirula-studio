@@ -257,12 +257,13 @@ if(SS_BUILD_CLI OR SS_BUILD_GUI)
     list(REMOVE_DUPLICATES SS_TOOL_SOURCES)
     list(REMOVE_DUPLICATES SS_TOOL_LIBS)
 
-    # app.rc carries the icon Explorer and the taskbar draw, which is a link
-    # input on Windows and has no counterpart elsewhere: macOS reads the
-    # bundle's .icns, and Linux has only the window icon GuiMain.cpp sets.
+    # app.rc is the icon Explorer and the taskbar draw; utf8.manifest makes the
+    # PROCESS code page UTF-8, so the -A Win32 calls, the CRT, argv and getenv
+    # agree with "/utf-8". A source, not /MANIFESTINPUT: CMake runs mt.exe too.
     if(WIN32)
         enable_language(RC)
-        list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/app.rc)
+        list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/app.rc
+                                    ${SS_SRC}/app/utf8.manifest)
     endif()
 
     add_executable(spirula ${SS_SRC}/app/Main.cpp ${SS_TOOL_SOURCES})
@@ -299,6 +300,9 @@ if(SS_BUILD_CLI OR SS_BUILD_GUI)
     # itself. Symlink `spirula` if you want those names.
     if(SS_SEPARATE_TOOLS)
         function(ss_tool_exe name sources defs libs)
+            if(WIN32)
+                list(APPEND sources ${SS_SRC}/app/utf8.manifest)
+            endif()
             # ss_i18n is linked explicitly: these targets deliberately do not
             # link the engine library, and Main.cpp's `--lang` handling needs
             # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.

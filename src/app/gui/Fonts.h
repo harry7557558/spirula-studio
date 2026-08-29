@@ -1,34 +1,14 @@
 #pragma once
 
-// The glyphs. Which font the UI draws with, and how the CJK faces get onto
-// disk.
+// Which face the UI draws with, and how the full CJK faces get onto disk.
 //
-// Three facts shape everything here:
-//
-//   * ImGui's built-in font is ASCII-only. German umlauts, French accents,
-//     Turkish dotless i and Cyrillic were all broken before this file existed,
-//     never mind Japanese -- so a Latin/Cyrillic face is EMBEDDED and always
-//     loaded. That is assets/fonts/SpirulaUI-Regular.ttf, 59 KB.
-//
-//   * A full CJK face is 4-8 MB and there are four of them, because Han
-//     unification means the shared codepoints render with different default
-//     glyph forms per region. A Japanese reader shown the Simplified Chinese
-//     face gets kanji in Chinese forms -- legible, and visibly wrong. Four
-//     times 4-8 MB is too much to embed.
-//
-//   * But this program only ever writes ~600 characters per region: its own
-//     translations. Subset to those and a regional face is ~110 KB, so all
-//     FOUR are embedded (assets/fonts/SpirulaCJK-*.otf, 422 KB together).
-//     That is what makes a default build render all thirteen languages, in
-//     the right regional forms, with nothing to download -- which matters
-//     most in the language picker, the one screen a user who cannot read the
-//     current UI language has to be able to read.
-//
-// The full faces are still fetched on demand, but for a much smaller job than
-// they used to do: dataset paths, file names and mask prompts are user data
-// and can hold any character at all, and no subset can cover that. Until one
-// is fetched, a folder called C:\写真\ may render as boxes; the UI itself
-// never does.
+// Five faces are embedded and always loaded: one Latin/Greek/Cyrillic and one
+// CJK per region, 3.3 MB together. Between them they cover the interface in
+// all thirteen languages AND an ordinary file name in any of them with
+// nothing to download, which is the whole design; the reasoning, the sizes
+// and what is still not covered are in assets/fonts/README.md. The full
+// 4-8 MB faces are still fetched on demand, for the tail a national
+// common-use standard leaves out.
 
 #include "i18n/Message.h"
 
@@ -82,8 +62,8 @@ public:
     void invalidate() { _dirty = true; }
 
     // The full face for the current language, when it is not installed. NOT
-    // an error state: the UI reads fine without it. It is what the language
-    // menu offers so that CJK file names and typed prompts render too.
+    // an error state: the UI and ordinary file names both render without it.
+    // It is what the language menu offers, for the rare characters it adds.
     const CjkFace* optional_face() const { return _optional; }
 
     // A build with SS_FONT_CJK=none has no fetch path, and should say so

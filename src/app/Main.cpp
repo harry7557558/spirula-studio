@@ -21,8 +21,11 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #ifdef _WIN32
 #include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>   // NOMINMAX comes from cmake/SsOptions.cmake
 #define isatty _isatty
 #define fileno _fileno
 #else
@@ -35,6 +38,20 @@
 namespace {
 
 namespace cmsg = spirula::i18n::msg::cli;
+
+#ifdef _WIN32
+UINT g_console_cp = 0;
+
+// A console keeps a code page of its own, which src/app/utf8.manifest does not
+// touch: every CJK path this prints into a cp437 window would be mojibake.
+// Restored at exit, because cmd.exe keeps whatever code page it is left with.
+void use_utf8_console() {
+    const UINT prev = GetConsoleOutputCP();
+    if (prev == 0 || prev == CP_UTF8 || !SetConsoleOutputCP(CP_UTF8)) return;
+    g_console_cp = prev;
+    std::atexit([] { SetConsoleOutputCP(g_console_cp); });
+}
+#endif
 
 // The subcommand NAME is an identifier and prints as it is written; the
 // summary is a message, so `spirula --help` follows --lang like everything
@@ -141,6 +158,9 @@ int main(int argc, char** argv) {
         std::setvbuf(stdout, nullptr, _IOLBF, 0);
 #endif
     }
+#ifdef _WIN32
+    use_utf8_console();
+#endif
 
     // --lang is handled here and removed from argv, so no tool's own parser
     // has to know about it. The chain that decides the language is in

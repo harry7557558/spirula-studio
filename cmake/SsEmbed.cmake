@@ -1,20 +1,35 @@
 # Embedding data files into the executables as byte arrays, so the apps are
 # self-contained (no runtime lookup of viewer.html or reference/scripts/mask.py).
 
+# ss_hex_to_literal(<hex string> <out var>)
+#
+# Bytes as a C++ string literal, not a `{0x..,}` array: the array form costs
+# g++ 440 MB of memory per 3 MB embedded, this one 43 MB (measured, g++ 13).
+function(ss_hex_to_literal hex out)
+    # 40 bytes a line keeps every literal far under MSVC's 64 KB cap. `\x` is
+    # greedy, but every byte is followed by a backslash, so it cannot run on.
+    string(REPEAT "[0-9a-f][0-9a-f]" 40 _grp)
+    string(REGEX REPLACE "(${_grp})" "\\1|" _s "${hex}")
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\\\x\\1" _s "${_s}")
+    string(REPLACE "|" "\"\n\"" _s "${_s}")
+    set(${out} "\"${_s}\"" PARENT_SCOPE)
+endfunction()
+
 # ss_embed_file(<input> <output_header> <symbol>)
 #
 # Writes a header defining `k<symbol>[]` / `k<symbol>Size` holding the bytes of
 # <input>. Regenerated at configure time whenever <input> changes.
 function(ss_embed_file input output_header symbol)
     file(READ ${input} _hex HEX)
-    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _bytes ${_hex})
+    ss_hex_to_literal("${_hex}" _bytes)
     file(RELATIVE_PATH _rel ${SS_ROOT} ${input})
+    # -1: a string literal brings a terminator the byte count must not include.
     string(CONCAT _text
         "#pragma once\n"
         "// AUTO-GENERATED from ${_rel} -- do not edit.\n"
         "#include <cstddef>\n"
-        "inline const unsigned char k${symbol}[] = {${_bytes}};\n"
-        "inline const size_t k${symbol}Size = sizeof(k${symbol});\n")
+        "inline const unsigned char k${symbol}[] =\n${_bytes};\n"
+        "inline const size_t k${symbol}Size = sizeof(k${symbol}) - 1;\n")
     ss_write_if_different(${output_header} "${_text}")
     set_property(DIRECTORY ${SS_ROOT} APPEND
         PROPERTY CMAKE_CONFIGURE_DEPENDS ${input})
@@ -22,21 +37,8 @@ endfunction()
 
 # ss_cjk_faces()
 #
-# Generates two headers from assets/fonts/cjk_faces.txt:
-#
-#   app_generated/cjk_faces.h    the table of downloadable FULL faces
-#   app_generated/cjk_subsets.h  the four SUBSETS, embedded as byte arrays
-#
-# and -- for a regional build (SS_FONT_CJK=sc|tc|jp|kr|all) -- downloads the
-# named full faces so the executable ships with them beside it.
-#
-# The subsets are embedded and the full faces are not, which is the whole
-# design in one line. A subset is ~110 KB because it holds only the characters
-# this program's own translations use, so all four fit in the executable and
-# every language renders with nothing to download. A full face is 4-8 MB, and
-# ss_embed_file() turns one byte into five characters of C source, so `all`
-# would be a 130 MB array literal. A regional build therefore installs
-# <exe dir>/fonts/, which is the first place Fonts.cpp looks.
+# assets/fonts/cjk_faces.txt -> cjk_faces.h (the downloadable full faces) and
+# cjk_subsets.h (the four embedded subsets). See assets/fonts/README.md.
 function(ss_cjk_faces)
     set(spec ${SS_ROOT}/assets/fonts/cjk_faces.txt)
     set(header ${CMAKE_BINARY_DIR}/app_generated/cjk_faces.h)
@@ -87,11 +89,11 @@ function(ss_cjk_faces)
                 "  python3 tools/make_ui_font.py")
         endif()
         file(READ ${sub} _sub_hex HEX)
-        string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _sub_bytes ${_sub_hex})
+        ss_hex_to_literal("${_sub_hex}" _sub_bytes)
         string(APPEND sub_arrays
-            "inline const unsigned char kCjkSubset${ID}[] = {${_sub_bytes}};\n")
+            "inline const unsigned char kCjkSubset${ID}[] =\n${_sub_bytes};\n")
         string(APPEND sub_table
-            "    {\"${id}\", kCjkSubset${ID}, sizeof(kCjkSubset${ID})},\n")
+            "    {\"${id}\", kCjkSubset${ID}, sizeof(kCjkSubset${ID}) - 1},\n")
         set_property(DIRECTORY ${SS_ROOT} APPEND
             PROPERTY CMAKE_CONFIGURE_DEPENDS ${sub})
 

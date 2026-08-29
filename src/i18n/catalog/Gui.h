@@ -305,46 +305,42 @@ SS_MSG(pick_vocab_tree,
 // Language picker
 // ===========================================================================
 
-// Shown under the language list when the FULL face for the chosen language is
-// not installed. Deliberately not a warning: the interface itself renders
-// fine from the embedded subsets (src/app/gui/Fonts.h). What is missing is
-// coverage for text this program did not write -- file names, folder names,
-// anything typed into a box. {0} is the script ("Japanese"), {1} the size.
+// Shown under the language list when the FULL face is not installed. Not a
+// warning: the interface and ordinary file names both render already, and what
+// is left is the tail. {0} is the language's own name, {1} the size.
 SS_MSG(font_needed,
-    EN("Text outside this program -- file and folder names, what you type -- "
-       "may show as boxes in {0} until the full font is installed ({1})."),
-    JA("ファイル名やフォルダー名、入力した文字など、このアプリ以外の{0}は、"
-       "完全なフォント（{1}）を入れるまで四角で表示されることがあります。"),
-    ZH_HANS("文件名、文件夹名和你输入的内容等本程序以外的{0}，在安装完整字体"
-            "（{1}）之前可能显示为方块。"),
-    ZH_HANT("檔案名稱、資料夾名稱和你輸入的內容等本程式以外的{0}，在安裝完整"
-            "字型（{1}）之前可能顯示為方塊。"),
-    KO("파일 이름과 폴더 이름, 직접 입력한 글자처럼 이 프로그램 밖의 {0}은(는) "
-       "전체 글꼴({1})을 설치하기 전까지 네모로 보일 수 있습니다."),
-    DE("Text außerhalb dieses Programms -- Datei- und Ordnernamen, Eingaben -- "
-       "kann auf {0} als Kästchen erscheinen, bis die vollständige Schriftart "
+    EN("Common {0} file names render already; a rare character can still show "
+       "as a box until the full font is installed ({1})."),
+    JA("よく使う{0}のファイル名はもう表示できます。まれな文字は、完全なフォント"
+       "（{1}）を入れるまで四角で表示されることがあります。"),
+    ZH_HANS("常用的{0}文件名已经可以显示；生僻字在安装完整字体（{1}）之前仍可能"
+            "显示为方块。"),
+    ZH_HANT("常用的{0}檔案名稱已經可以顯示；罕用字在安裝完整字型（{1}）之前仍"
+            "可能顯示為方塊。"),
+    KO("자주 쓰는 {0} 파일 이름은 이미 표시됩니다. 드문 글자는 전체 글꼴({1})을 "
+       "설치하기 전까지 네모로 보일 수 있습니다."),
+    DE("Gängige {0}-Dateinamen werden bereits angezeigt; ein seltenes Zeichen "
+       "kann noch als Kästchen erscheinen, bis die vollständige Schriftart "
        "installiert ist ({1})."),
-    FR("Le texte extérieur à ce programme -- noms de fichiers et de dossiers, "
-       "ce que vous saisissez -- peut s'afficher en carrés en {0} tant que la "
-       "police complète n'est pas installée ({1})."),
-    ES("El texto ajeno a este programa -- nombres de archivos y carpetas, lo "
-       "que escriba -- puede aparecer como recuadros en {0} hasta que instale "
-       "la fuente completa ({1})."),
-    PT("O texto fora deste programa -- nomes de arquivos e pastas, o que você "
-       "digitar -- pode aparecer como quadrados em {0} até instalar a fonte "
-       "completa ({1})."),
-    IT("Il testo esterno a questo programma -- nomi di file e cartelle, ciò "
-       "che digita -- può apparire come rettangoli in {0} finché non installa "
-       "il carattere completo ({1})."),
-    NL("Tekst buiten dit programma -- bestands- en mapnamen, wat u typt -- kan "
-       "in het {0} als blokjes verschijnen tot het volledige lettertype is "
+    FR("Les noms de fichiers en {0} courants s'affichent déjà ; un caractère "
+       "rare peut encore apparaître en carré tant que la police complète "
+       "n'est pas installée ({1})."),
+    ES("Los nombres de archivo habituales en {0} ya se muestran; un carácter "
+       "poco frecuente puede seguir apareciendo como recuadro hasta que "
+       "instale la fuente completa ({1})."),
+    PT("Os nomes de arquivo comuns em {0} já aparecem; um caractere raro ainda "
+       "pode surgir como quadrado até instalar a fonte completa ({1})."),
+    IT("I nomi di file in {0} più comuni vengono già visualizzati; un carattere "
+       "raro può ancora apparire come rettangolo finché non installa il "
+       "carattere completo ({1})."),
+    NL("Gangbare bestandsnamen in het {0} worden al weergegeven; een zeldzaam "
+       "teken kan nog als blokje verschijnen tot het volledige lettertype is "
        "geïnstalleerd ({1})."),
-    RU("Текст вне этой программы -- имена файлов и папок, то, что вы вводите, "
-       "-- может отображаться прямоугольниками на языке «{0}», пока не "
-       "установлен полный шрифт ({1})."),
-    TR("Bu programın dışındaki metinler -- dosya ve klasör adları, yazdıklarınız "
-       "-- tam yazı tipi kurulana kadar {0} dilinde kutu olarak görünebilir "
-       "({1})."));
+    RU("Обычные имена файлов на языке «{0}» уже отображаются; редкий символ "
+       "может по-прежнему показываться прямоугольником, пока не установлен "
+       "полный шрифт ({1})."),
+    TR("Yaygın {0} dosya adları zaten görünüyor; ender bir karakter, tam yazı "
+       "tipi kurulana kadar kutu olarak görünebilir ({1})."));
 
 SS_MSG(font_download,
     EN("Install the full font"),

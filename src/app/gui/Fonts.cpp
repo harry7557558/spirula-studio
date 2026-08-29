@@ -176,8 +176,7 @@ void FontSet::rebuild() {
 
     // The full face for the current language, when one has been fetched. It
     // goes ahead of the subsets because it is the same design with far more
-    // coverage: file names, typed prompts, anything the UI's own vocabulary
-    // does not contain.
+    // coverage: the characters a national common-use standard leaves out.
     if (!_cjk_data.empty()) {
         ImFontConfig cjk;
         cjk.MergeMode = true;

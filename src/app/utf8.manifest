@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Makes the process ANSI code page UTF-8 (Windows 10 1903+), so the -A Win32
+     entry points, the CRT, argv and getenv all speak the encoding the rest of
+     this codebase does. Without it a dataset path or a user profile name
+     outside the machine's legacy code page reaches CreateFileA as '?'.
+     Added to every executable's sources in cmake/SsApps.cmake. -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="Spirula.Studio" version="1.0.0.0"/>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage
+          xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>
