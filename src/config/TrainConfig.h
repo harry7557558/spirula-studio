@@ -226,7 +226,7 @@ inline int train_tier_rank(const char* tier) {
     X(float, scale_reg, 0.01f, "shape", "basic", "")                         \
     X(float, opacity_decay, 0.0f, "shape", "basic", "")                      \
     X(float, scale_decay, 0.0f, "shape", "basic", "")                        \
-    X(float, erank_reg, 0.0f, "shape", "basic", "")                          \
+    X(float, erank_reg, 0.001f, "shape", "basic", "")                        \
     X(float, erank_reg_s3, 0.0f, "shape", "advanced", "")                    \
     X(float, scale_regularization_weight, 0.0f, "shape", "advanced", "")     \
     X(float, max_gauss_ratio, 10.0f, "shape", "advanced", "")                \
@@ -375,7 +375,8 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
     if (name == "360-camera") {
         c.warp_to_pinhole = true;
         c.mask_boundary_offset = -0.025f;
-        c.primitive = "mip";
+        // c.primitive = "mip";
+        c.erank_reg = 0.01f;
         c.long_axis_split_opacity_k = {0.5f, 0.6f, 15000.0f};
         return true;
     }
