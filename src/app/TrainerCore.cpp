@@ -1114,6 +1114,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         for (const auto& e : engine_get_pool_breakdown()) cap += std::get<2>(e);
         engine_vram_mb = (double)(cap + engine_get_scratch_bytes()) / (1024.0 * 1024.0);
     }
+    engine_profile_capture_vram();
 
     if (cfg.steps_per_save != 0 && save_on_stop.load()) {
         std::lock_guard<std::mutex> lk(engine_mutex);
@@ -1480,6 +1481,9 @@ void TrainerSession::eval() {
     mf << ",\n    \"engine_vram\": " << engine_vram_mb;
     mf << "\n}\n";
     log(lfmt(lmsg::eval_metrics_written, {(out_dir / "metrics.json").string()}));
+    // Eval renders at full resolution and can push the pool past its
+    // training-time mark, so re-capture over train()'s snapshot.
+    engine_profile_capture_vram();
 }
 
 }  // namespace spirula

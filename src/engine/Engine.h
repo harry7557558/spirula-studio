@@ -644,6 +644,14 @@ std::vector<std::tuple<std::string, std::string, size_t, size_t>>
 engine_get_pool_breakdown_categorized();
 size_t engine_get_scratch_bytes();
 
+// Formatted per-category pool report (SS_PROFILE). Reads the pool's
+// high-water capacities, so it is a peak, not an instantaneous figure.
+std::string engine_vram_report();
+// Hand that report to the profiler, which prints it at process exit -- by
+// which time the pool this reads is already destroyed. No-op unless
+// SS_PROFILE is set.
+void engine_profile_capture_vram();
+
 // --- Checkpoint save ---
 //
 // Writes into `output_dir`:

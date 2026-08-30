@@ -3,8 +3,11 @@
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineState.h"
+#include "backend/common/Profiler.h"
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdio>
 
 
 void engine_copy_accum_buffer(TorchTensorView dst) {
@@ -249,4 +252,78 @@ engine_get_pool_breakdown_categorized() {
 
 size_t engine_get_scratch_bytes() {
     return DeviceScratch::global().capBytes();
+}
+
+
+// ===========================================================================
+// SS_PROFILE VRAM report
+// ===========================================================================
+
+std::string engine_vram_report() {
+    auto rows = DevicePool::global().getBreakdownCategorized();
+    const int kNCat = (int)VramCategory::Count;
+    size_t used[kNCat] = {}, cap[kNCat] = {}, count[kNCat] = {};
+    size_t used_total = 0, cap_total = 0;
+    for (const auto& r : rows) {
+        int c = std::get<1>(r);
+        count[c]++;
+        used[c] += std::get<2>(r);
+        cap[c]  += std::get<3>(r);
+        used_total += std::get<2>(r);
+        cap_total  += std::get<3>(r);
+    }
+
+    std::string out;
+    char tmp[512];
+    auto add = [&](const char* fmt, ...) {
+        va_list ap;
+        va_start(ap, fmt);
+        std::vsnprintf(tmp, sizeof tmp, fmt, ap);
+        va_end(ap);
+        out += tmp;
+    };
+    auto mib = [](size_t bytes) { return (double)bytes / (1024.0 * 1024.0); };
+
+    add("\n[spirula-profile] ---- VRAM breakdown (pool high-water) ----\n");
+    add("%-30s %11s %11s %11s\n", "category", "buffers", "used_MiB", "cap_MiB");
+    for (int c = 0; c < kNCat; c++) {
+        if (count[c] == 0) continue;
+        add("%-30s %11zu %11.2f %11.2f\n", to_string((VramCategory)c), count[c],
+            mib(used[c]), mib(cap[c]));
+    }
+    size_t scratch = engine_get_scratch_bytes();
+    add("%-30s %11zu %11.2f %11.2f\n", "  pool total", rows.size(),
+        mib(used_total), mib(cap_total));
+    add("%-30s %11s %11s %11.2f\n", "  scratch buffer", "-", "-", mib(scratch));
+    add("%-30s %11s %11s %11.2f\n", "  pool + scratch", "", "",
+        mib(cap_total + scratch));
+
+    // The driver's figures place the pool against everything else the process
+    // holds: staging buffers, backend allocations, NN models, GUI surfaces.
+    backend::MemoryUsage mem = backend::memory_usage();
+    if (mem.has_process)
+        add("%-30s %11s %11s %11.2f\n", "  process (driver)", "", "",
+            mib(mem.process_bytes));
+    if (mem.has_used && mem.has_total)
+        add("%-30s %11s %11s %11.2f / %.2f\n", "  device in use / total", "",
+            "", mib(mem.used_bytes), mib(mem.total_bytes));
+
+    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
+        return std::get<3>(a) > std::get<3>(b);
+    });
+    add("%-30s %11s %11s %11s\n", "individual buffers", "category", "used_MiB",
+        "cap_MiB");
+    for (size_t i = 0; i < rows.size(); i++) {
+        if (std::get<3>(rows[i]) == 0) break;
+        add("  %-28s %11s %11.2f %11.2f\n", std::get<0>(rows[i]).c_str(),
+            to_string((VramCategory)std::get<1>(rows[i])),
+            mib(std::get<2>(rows[i])), mib(std::get<3>(rows[i])));
+    }
+    add("[spirula-profile] --------------------------\n");
+    return out;
+}
+
+void engine_profile_capture_vram() {
+    if (backend::prof::enabled())
+        backend::prof::set_exit_note(engine_vram_report());
 }

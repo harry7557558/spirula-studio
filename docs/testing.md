@@ -191,3 +191,10 @@ expectation, one executable. Neither exists yet.
 (H2D / D2H / D2D / memset / device / host). Header-only, works on both
 backends — the right first tool when a backend is unexpectedly slow rather
 than wrong.
+
+A run that trains also prints a VRAM breakdown after the timing table: pool
+capacity per `VramCategory` (`src/core/PoolSlots.h`), the scratch buffer, the
+driver's process figure, and the twelve largest buffers. The pool never
+shrinks, so those are training peaks, not the numbers at exit. Both front
+ends emit it — the CLI at the end of the process, the GUI when its window
+closes.

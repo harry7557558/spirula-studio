@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <utility>
 #include "core/Env.h"
 
 namespace backend {
@@ -48,6 +50,9 @@ struct State {
     Bucket b[NCAT];
     std::chrono::steady_clock::time_point t0;
     bool on;
+    // Printed after the timing table. Captured by its producer while the
+    // source is live -- the VRAM pool is destroyed before ~State runs.
+    std::string note;
     State()
         : t0(std::chrono::steady_clock::now()),
           on(spirula::env("PROFILE") != nullptr) {}
@@ -60,6 +65,8 @@ struct State {
 inline State g_state;
 
 inline bool enabled() { return g_state.on; }
+
+inline void set_exit_note(std::string text) { g_state.note = std::move(text); }
 
 inline void add(Cat c, uint64_t ns, uint64_t bytes) {
     Bucket& x = g_state.b[c];
@@ -154,6 +161,7 @@ inline State::~State() {
                  wall_ms);
     std::fprintf(stderr,
                  "[spirula-profile] --------------------------\n");
+    if (!note.empty()) std::fputs(note.c_str(), stderr);
 }
 
 // Issue a device drain and attribute its wall to DEVSYNC. Called before a
