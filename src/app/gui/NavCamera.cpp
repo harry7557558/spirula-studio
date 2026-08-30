@@ -11,6 +11,8 @@ namespace gui {
 
 namespace {
 
+constexpr float kGamepadDeadzone = 0.1f;
+
 // ---- v3 (viewer.html) -------------------------------------------------------
 
 void v_add(const float a[3], const float b[3], float o[3]) {
@@ -262,10 +264,10 @@ bool NavCamera::gamepad_tick(float dt) {
         float lt = 0.5f * (st.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] + 1.0f);
         float rt = 0.5f * (st.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] + 1.0f);
         float roll_input = lt - rt;
-        const float deadzone = 0.1f;
         // Movement (triggers only apply while the left stick is deflected,
         // matching the browser implementation).
-        if (std::fabs(lx) > deadzone || std::fabs(ly) > deadzone) {
+        if (std::fabs(lx) > kGamepadDeadzone ||
+            std::fabs(ly) > kGamepadDeadzone) {
             const float s = speed() * dt * 1.0f;
             float fwd[3], right[3], move[3], step[3];
             axis_forward(fwd);
@@ -281,17 +283,36 @@ bool NavCamera::gamepad_tick(float dt) {
             moved = true;
         }
         // Look
-        if (std::fabs(rx) > deadzone || std::fabs(ry) > deadzone) {
+        if (std::fabs(rx) > kGamepadDeadzone ||
+            std::fabs(ry) > kGamepadDeadzone) {
             look(rx * dt * 400.0f, ry * dt * 400.0f);
             moved = true;
         }
         // Roll
-        if (std::fabs(roll_input) > deadzone) {
+        if (std::fabs(roll_input) > kGamepadDeadzone) {
             roll(roll_input * dt * 1.0f);
             moved = true;
         }
     }
     return moved;
+}
+
+// Stick and trigger input reaches no window event, so the GUI loop cannot
+// pace its frame rate on events alone.
+bool gamepad_deflected() {
+    for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; jid++) {
+        GLFWgamepadstate st;
+        if (!glfwGetGamepadState(jid, &st)) continue;
+        const float roll = 0.5f * (st.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] -
+                                   st.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER]);
+        if (std::fabs(st.axes[GLFW_GAMEPAD_AXIS_LEFT_X]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]) > kGamepadDeadzone ||
+            std::fabs(roll) > kGamepadDeadzone)
+            return true;
+    }
+    return false;
 }
 
 void NavCamera::look_at(const float eye[3], const float tgt[3],

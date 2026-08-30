@@ -56,4 +56,7 @@ struct NavCamera {
     void look_at(const float eye[3], const float tgt[3], const float up_world[3]);
 };
 
+// Any connected gamepad deflected past gamepad_tick's deadzone.
+bool gamepad_deflected();
+
 }  // namespace gui
