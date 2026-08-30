@@ -325,6 +325,34 @@ SS_MSG(masks_help,
     TR("Maske dizini; değeri sıfır (siyah) olan piksellerdeki anahtar noktalar "
        "atılır. auto, görüntü dizininin yanındaki `masks` dizinini varsayar"));
 
+SS_MSG(flip_mask_help,
+    EN("Swap keep and ignore in every mask, for the exporters that paint the "
+       "region to REMOVE rather than the region to keep"),
+    JA("すべてのマスクで残す領域と無視する領域を入れ替えます。残す領域ではなく取"
+       "り除く領域を塗る書き出しツール向けです"),
+    ZH_HANS("交换每个掩码里保留与忽略的区域，适用于画出要去掉的区域而不是要保留"
+            "区域的导出工具"),
+    ZH_HANT("交換每個遮罩裡保留與忽略的區域，適用於畫出要去掉的區域而不是要保留"
+            "區域的匯出工具"),
+    KO("모든 마스크에서 남길 영역과 무시할 영역을 맞바꿉니다. 남길 영역이 아니라 "
+       "지울 영역을 칠하는 내보내기 도구를 위한 것입니다"),
+    DE("Vertauscht in jeder Maske Behalten und Ignorieren, für Exporter, die den "
+       "zu ENTFERNENDEN Bereich zeichnen statt den zu behaltenden"),
+    FR("Échange garder et ignorer dans chaque masque, pour les exporteurs qui "
+       "peignent la zone à RETIRER plutôt que celle à garder"),
+    ES("Intercambia conservar e ignorar en cada máscara, para los exportadores "
+       "que pintan la zona a QUITAR en vez de la que se conserva"),
+    PT("Troca manter e ignorar em cada máscara, para os exportadores que pintam a "
+       "área a REMOVER em vez da área a manter"),
+    IT("Scambia conserva e ignora in ogni maschera, per gli esportatori che "
+       "dipingono l'area da TOGLIERE invece di quella da conservare"),
+    NL("Verwisselt behouden en negeren in elk masker, voor exporteurs die het te "
+       "VERWIJDEREN gebied inkleuren in plaats van het te behouden gebied"),
+    RU("Меняет местами «сохранить» и «пропустить» в каждой маске — для "
+       "экспортёров, которые закрашивают УДАЛЯЕМУЮ область, а не сохраняемую"),
+    TR("Her maskede korunanla yok sayılanı yer değiştirir; korunacak alan yerine "
+       "KALDIRILACAK alanı boyayan dışa aktarma araçları için"));
+
 SS_MSG(mask_dir_help,
     EN("Alias of --masks"),
     JA("--masks の別名"),

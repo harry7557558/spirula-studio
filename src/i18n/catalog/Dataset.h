@@ -6104,6 +6104,71 @@ SS_MSG(max_image_size_auto_help,
        "önce küçültülür. Anahtar noktalar yine kaynak görüntünün pikselleri "
        "cinsinden bildirilir."));
 
+SS_MSG(flip_found_masks,
+    EN("They mark what to remove"),
+    JA("取り除く側が塗られている"),
+    ZH_HANS("蒙版画的是要去掉的部分"),
+    ZH_HANT("遮罩畫的是要去掉的部分"),
+    KO("지울 부분이 칠해져 있음"),
+    DE("Sie zeichnen das zu Entfernende"),
+    FR("Ils peignent ce qui est à retirer"),
+    ES("Marcan lo que se quita"),
+    PT("Marcam o que se remove"),
+    IT("Segnano ciò che va tolto"),
+    NL("Ze markeren wat weg moet"),
+    RU("Они отмечают удаляемое"),
+    TR("Kaldırılacak yeri işaretliyorlar"));
+
+SS_MSG(flip_found_masks_help,
+    EN("A mask is normally white where the image is used. Turn this on when "
+       "the ones beside the photos are the other way round -- white on the "
+       "people or the rig to take out. The run reads them that way and writes "
+       "everything it makes the usual way, so nothing downstream needs telling."),
+    JA("マスクは通常、使う部分が白です。写真の隣にあるマスクが逆で、取り除く人や"
+       "機材の側が白い場合にこれを有効にしてください。実行時はその向きで読み取り、"
+       "書き出すものはすべて通常の向きになるので、後段に伝える設定は要りません。"),
+    ZH_HANS("蒙版通常以白色表示要用的部分。若照片旁边的蒙版正好相反——把要去掉的"
+            "人或器材涂成白色——请打开此项。运行时会按这个方向读取，写出的内容一"
+            "律用通常的方向，后续步骤无需再设置。"),
+    ZH_HANT("遮罩通常以白色表示要用的部分。若照片旁邊的遮罩正好相反——把要去掉的"
+            "人或器材塗成白色——請開啟此項。執行時會按這個方向讀取，寫出的內容一"
+            "律用通常的方向，後續步驟無需再設定。"),
+    KO("마스크는 보통 쓸 부분이 흰색입니다. 사진 옆의 마스크가 그 반대로 지울 "
+       "사람이나 장비 쪽이 흰색이라면 이 항목을 켜십시오. 실행은 그 방향으로 읽고 "
+       "만들어 내는 것은 모두 보통 방향으로 쓰므로 뒤쪽에 따로 알릴 필요가 없습니다."),
+    DE("Eine Maske ist normalerweise weiß, wo das Bild benutzt wird. Einschalten, "
+       "wenn die neben den Fotos andersherum sind -- weiß auf den Personen oder "
+       "dem Gestell, das weg soll. Der Lauf liest sie so und schreibt alles "
+       "Eigene wie üblich, sodass nichts danach davon wissen muss."),
+    FR("Un masque est normalement blanc là où l'image sert. Activez ceci quand "
+       "ceux à côté des photos sont à l'envers -- blancs sur les personnes ou le "
+       "support à retirer. L'exécution les lit ainsi et écrit tout le reste "
+       "comme d'habitude, donc rien ensuite n'a besoin d'être prévenu."),
+    ES("Una máscara es normalmente blanca donde se usa la imagen. Actívalo "
+       "cuando las que están junto a las fotos sean al revés: blancas sobre las "
+       "personas o el soporte que se quitan. La ejecución las lee así y escribe "
+       "lo suyo del modo habitual, así que nada posterior necesita saberlo."),
+    PT("Uma máscara é normalmente branca onde a imagem é usada. Ative isto "
+       "quando as que estão ao lado das fotos forem ao contrário: brancas sobre "
+       "as pessoas ou o suporte a remover. A execução lê-as assim e escreve o "
+       "que faz do modo habitual, por isso nada a seguir precisa de saber."),
+    IT("Una maschera è normalmente bianca dove l'immagine viene usata. Attivalo "
+       "quando quelle accanto alle foto sono al contrario: bianche sulle persone "
+       "o sul supporto da togliere. L'esecuzione le legge così e scrive il "
+       "proprio nel modo solito, quindi nulla a valle deve saperlo."),
+    NL("Een masker is normaal wit waar het beeld wordt gebruikt. Zet dit aan "
+       "wanneer die naast de foto's andersom zijn -- wit op de mensen of het "
+       "statief die weg moeten. De run leest ze zo en schrijft alles wat hij "
+       "zelf maakt op de gewone manier, dus verderop hoeft niets te weten."),
+    RU("Маска обычно белая там, где изображение используется. Включите это, "
+       "если те, что лежат рядом с фотографиями, наоборот — белые на людях или "
+       "штативе, которые надо убрать. Запуск читает их так, а всё своё пишет "
+       "как обычно, поэтому дальше об этом сообщать не нужно."),
+    TR("Maske normalde görüntünün kullanıldığı yerde beyazdır. Fotoğrafların "
+       "yanındakiler tersse -- kaldırılacak kişilerin ya da düzeneğin üstü "
+       "beyazsa -- bunu açın. Çalıştırma onları öyle okur, kendi yazdıklarını "
+       "her zamanki gibi yazar; sonrasında hiçbir yere söylemek gerekmez."));
+
 SS_MSG(keep_intermediate,
     EN("Keep intermediate files"),
     JA("中間ファイルを残す"),

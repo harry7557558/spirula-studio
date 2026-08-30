@@ -477,6 +477,7 @@ void decode_rgb_into(const std::string& path,
 
 void decode_mask_into(const std::string& path,
                       int dst_h, int dst_w,
+                      bool flip,
                       float boundary_offset_frac,
                       uint8_t* dst)
 {
@@ -495,6 +496,10 @@ void decode_mask_into(const std::string& path,
         cpu_nearest_resize_u8(img, h, w, dst, dst_h, dst_w);
     }
     stbi_image_free(img);
+
+    // Before the offset: a flipped mask's boundary is the one to grow or shrink.
+    if (flip)
+        for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) dst[i] = (uint8_t)!dst[i];
 
     // Apply signed boundary offset (dilate/erode) at the decoded resolution.
     // offset_px = fraction * sqrt(dst_W * dst_H).
@@ -1322,7 +1327,7 @@ void DataManagerImpl::preload_cpu_cache() {
                     int32_t mh = _mask_h_per[i], mw = _mask_w_per[i];
                     _mask_cache[i].assign((size_t)mw * mh, 0);
                     decode_mask_into(_mask_filenames[i], mh, mw,
-                                     _cfg.mask_boundary_offset,
+                                     _cfg.flip_mask, _cfg.mask_boundary_offset,
                                      _mask_cache[i].data());
                 } else if (has_masks() && _synth_white_mask[(size_t)i]) {
                     // Full-size all-ones mask matching the input image shape
@@ -1845,7 +1850,8 @@ void DataManagerImpl::worker_loop_mask() {
             !_synth_white_mask[(size_t)job.ds_index]) {
             if (!decode_or_park([&]{
                     decode_mask_into(_mask_filenames[job.ds_index], H, W,
-                                     _cfg.mask_boundary_offset, dst); }))
+                                     _cfg.flip_mask, _cfg.mask_boundary_offset,
+                                     dst); }))
                 return;
         } else {
             // Synthesized all-white: skip disk read, fill the slot directly.
@@ -2166,7 +2172,8 @@ void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
             } else if (!_mask_filenames.empty() &&
                        !_mask_filenames[index].empty()) {
                 decode_mask_into(_mask_filenames[index], out.mask_height,
-                                 out.mask_width, _cfg.mask_boundary_offset,
+                                 out.mask_width, _cfg.flip_mask,
+                                 _cfg.mask_boundary_offset,
                                  out.mask_buffer.data());
             }
             // Neither: the row stays zero, which is what the training path

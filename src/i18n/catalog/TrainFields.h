@@ -785,6 +785,59 @@ SS_MSG(apply_loss_for_mask_help,
        "dairesinin dışındaki siyah alan gibi istenmeyenler böyle gizlenir. Açıkken "
        "boş olarak eğitilir; arka plan kalkar ve yalnızca özne kalır."));
 
+SS_MSG(flip_mask,
+    EN("Flip masks"), JA("マスクを反転"),
+    ZH_HANS("反转蒙版"), ZH_HANT("反轉遮罩"),
+    KO("마스크 반전"), DE("Masken umkehren"),
+    FR("Inverser les masques"), ES("Invertir las máscaras"),
+    PT("Inverter as máscaras"),
+    IT("Invertire le maschere"),
+    NL("Maskers omkeren"), RU("Инвертировать маски"),
+    TR("Maskeleri ters çevir"));
+SS_MSG(flip_mask_help,
+    EN("Swap what a mask keeps for what it hides. Masks here are white where the "
+       "image is kept; turn this on for masks that instead paint the region to "
+       "remove. Applied before the mask edge adjustment."),
+    JA("マスクが残す領域と隠す領域を入れ替えます。ここでのマスクは残す部分が白"
+       "です。取り除く領域を塗ったマスクではこれを有効にしてください。マスク境"
+       "界の調整より前に適用されます。"),
+    ZH_HANS("交换蒙版保留与隐藏的区域。这里的蒙版以白色表示保留的部分；若蒙版画"
+            "的是要去掉的区域，请打开此项。它在蒙版边缘调整之前生效。"),
+    ZH_HANT("交換遮罩保留與隱藏的區域。這裡的遮罩以白色表示保留的部分；若遮罩畫"
+            "的是要去掉的區域，請開啟此項。它在遮罩邊緣調整之前生效。"),
+    KO("마스크가 남기는 영역과 가리는 영역을 맞바꿉니다. 여기서 마스크는 남길 "
+       "부분이 흰색입니다. 지울 영역을 칠한 마스크라면 이 항목을 켜십시오. 마스크 "
+       "가장자리 조정보다 먼저 적용됩니다."),
+    DE("Vertauscht, was eine Maske behält, mit dem, was sie verbirgt. Masken sind "
+       "hier weiß, wo das Bild behalten wird; für Masken, die stattdessen den zu "
+       "entfernenden Bereich zeichnen, einschalten. Wirkt vor der "
+       "Maskenrand-Anpassung."),
+    FR("Échange ce qu'un masque garde et ce qu'il cache. Ici les masques sont "
+       "blancs là où l'image est gardée ; activez ceci pour des masques qui "
+       "peignent au contraire la zone à retirer. Appliqué avant l'ajustement du "
+       "bord du masque."),
+    ES("Intercambia lo que una máscara conserva con lo que oculta. Aquí las "
+       "máscaras son blancas donde se conserva la imagen; actívalo para máscaras "
+       "que en cambio pintan la zona a quitar. Se aplica antes del ajuste del "
+       "borde de la máscara."),
+    PT("Troca o que uma máscara mantém pelo que ela esconde. Aqui as máscaras são "
+       "brancas onde a imagem é mantida; ative isto para máscaras que pintam antes "
+       "a área a remover. Aplicado antes do ajuste da borda da máscara."),
+    IT("Scambia ciò che una maschera conserva con ciò che nasconde. Qui le "
+       "maschere sono bianche dove l'immagine viene conservata; attivalo per "
+       "maschere che dipingono invece l'area da togliere. Si applica prima della "
+       "regolazione del bordo della maschera."),
+    NL("Verwisselt wat een masker behoudt met wat het verbergt. Maskers zijn hier "
+       "wit waar het beeld behouden blijft; zet dit aan voor maskers die juist het "
+       "te verwijderen gebied inkleuren. Werkt vóór de aanpassing van de maskerrand."),
+    RU("Меняет местами то, что маска сохраняет, и то, что она скрывает. Здесь "
+       "маски белые там, где изображение сохраняется; включите это для масок, "
+       "которые вместо этого закрашивают удаляемую область. Действует до правки "
+       "края маски."),
+    TR("Bir maskenin koruduğu ile gizlediğini yer değiştirir. Buradaki maskeler "
+       "görüntünün korunduğu yerde beyazdır; bunun yerine kaldırılacak alanı "
+       "boyayan maskeler için açın. Maske kenarı ayarından önce uygulanır."));
+
 SS_MSG(mask_boundary_offset,
     EN("Mask edge adjustment"), JA("マスク境界の調整"),
     ZH_HANS("蒙版边缘调整"), ZH_HANT("遮罩邊緣調整"),

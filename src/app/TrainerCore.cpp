@@ -789,6 +789,7 @@ void TrainerSession::setup_engine() {
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
     dm.val_batch_size   = val_bs;
+    dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     engine_setup_data_manager(
         dm, ds.camera_models, ds.camera_distortions,
@@ -1256,6 +1257,7 @@ void TrainerSession::eval() {
     dm.load_normals = false;
     dm.train_batch_size = 1;
     dm.val_batch_size   = 1;
+    dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     std::vector<int32_t> all_idx((size_t)eds.num_cameras);
     std::iota(all_idx.begin(), all_idx.end(), 0);

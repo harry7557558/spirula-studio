@@ -91,6 +91,7 @@ void SegmentPanel::open(const std::string& input, bool is_video,
     _needs_run = true;
     _kept_fraction = -1.0f;
     _border = app::BorderDetect{};
+    _border_camera.clear();
     _detect_asked = false;
     _shape_sel = -1;
     _drag_handle = -1;
@@ -148,13 +149,27 @@ app::FrameMask SegmentPanel::resolved(const app::FrameStencil& s) const {
     return fm;
 }
 
+std::string SegmentPanel::camera_of(const std::string& file) const {
+    if (file.empty()) return std::string();
+    return fs::path(file).lexically_relative(_src.input)
+        .parent_path().generic_string();
+}
+
 void SegmentPanel::start_detect() {
     if (_busy.load() || _detecting.load()) return;
     if (_worker.joinable()) _worker.join();
     _detect_asked = true;
     _detecting = true;
 
-    const std::vector<std::string> files = _all_files;
+    // One camera folder, not the flattened tree. A PortalCam capture is four
+    // of them, two not even fisheye: their union leaves no pixel dark in every
+    // frame and no ellipse to fit, so a fit the run makes per folder fails here.
+    _border_camera = _frames.empty()
+                         ? std::string()
+                         : camera_of(_frames[(size_t)_frame_idx].path);
+    std::vector<std::string> files;
+    for (const std::string& f : _all_files)
+        if (camera_of(f) == _border_camera) files.push_back(f);
     const std::string input = _src.input;
     const bool is_video = _src.is_video;
     const std::string ffmpeg_exe = _src.ffmpeg_exe;
@@ -732,6 +747,11 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
         // Lazily, here rather than off the checkbox: the option is on already
         // when the panel opens on an input that was set up before.
         if (!_detect_asked) start_detect();
+        // The slider walks into other camera folders, whose circle is not this
+        // one's; refit rather than draw the wrong ellipse over the frame.
+        else if (!_detecting.load() && !_frames.empty() &&
+                 camera_of(_frames[(size_t)_frame_idx].path) != _border_camera)
+            start_detect();
         ImGui::Indent();
         float pct = s.shrink * 100.0f;
         ImGui::SetNextItemWidth(-1);

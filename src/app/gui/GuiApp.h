@@ -101,7 +101,8 @@ private:
     // whatever was open before. The reconstruction handoff passes true,
     // because there the log is this dataset's own build log.
     void open_dataset(std::string dir, std::string image_dir = "",
-                      std::string mask_dir = "", bool keep_log = false);
+                      std::string mask_dir = "", bool mask_flipped = false,
+                      bool keep_log = false);
     // Route for user-initiated opens: confirms first when training.
     void request_open_dataset(std::string dir);
 
@@ -312,6 +313,8 @@ private:
     // images go into, and the default workspace.
     void refresh_sources();
     void rescan_found_masks();
+    // Did any input arrive with masks of its own?
+    bool any_found_masks() const;
     // Adopt the EXR colour space when the pictures are EXRs, unless the user
     // has already set one by hand.
     void adopt_exr_color_space();
@@ -573,6 +576,9 @@ private:
     // Masks sitting beside the photos are adopted automatically; this is the
     // way out for a folder whose masks/ describes something else.
     bool _use_found_masks = true;
+    // Those masks are white where the image is REMOVED, the other convention
+    // in the wild. Declared once here; the run normalizes what it writes.
+    bool _flip_found_masks = false;
 
     // workspace_state()'s cache: what it was asked about and when.
     WorkspaceState _ws_state;

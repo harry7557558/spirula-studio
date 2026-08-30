@@ -110,6 +110,7 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, mask_dir, "masks", "dataset", "basic", "")                \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
     X(bool, apply_loss_for_mask, false, "dataset", "basic", "")              \
+    X(bool, flip_mask, false, "dataset", "basic", "")                        \
     X(float, mask_boundary_offset, 0.0f, "dataset", "advanced", "")          \
     X(std::string, depth_dir, "depths", "dataset", "basic", "")              \
     X(std::string, normal_dir, "normals", "dataset", "basic", "")            \

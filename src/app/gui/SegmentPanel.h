@@ -102,22 +102,28 @@ private:
     // The settings hold every input's clicks; these are the ones on this picture.
     bool mine(const MaskClick& c) const { return c.source == _src.input; }
 
+    // Which camera folder a file of a photo input belongs to, keyed the way
+    // the run keys them (DatasetPrep's StencilRaster). "" for a video.
+    std::string camera_of(const std::string& file) const;
+
     bool _open = false;
     std::string _model_path;
     PreviewSource _src;
     std::vector<PreviewFrame> _frames;
-    // Every image of a photo input, which is what the border fit reads. The
-    // slider offers a dozen of them; a fit wants a spread of two dozen.
+    // Every image of a photo input; the border fit reads the ones sharing the
+    // shown frame's camera folder. The slider offers a dozen, a fit two dozen.
     std::vector<std::string> _all_files;
     int  _frame_idx = 0;
     bool _frame_dirty = true;           // the chosen frame changed
     bool _needs_run = false;            // prompt edited; rerun on release
 
     // ---- the stencil ----
-    // The border found for the frames this panel is showing, with no shrink
-    // applied -- the slider re-applies it without another fit. The dataset run
-    // fits one per camera; this is the one the preview can show.
+
+    // The border of the camera the shown frame belongs to -- the run fits one
+    // per camera and so does this -- carrying no shrink, so the slider
+    // re-applies it without another fit.
     app::BorderDetect _border;          // UI thread
+    std::string _border_camera;         // which camera _border was fitted on
     app::BorderDetect _border_pending;  // guarded by _mu
     bool _border_ready = false;         // guarded by _mu
     std::atomic<bool> _detecting{false};

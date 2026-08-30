@@ -419,7 +419,8 @@ void GuiApp::refresh_presets() {
 }
 
 void GuiApp::open_dataset(std::string dir, std::string image_dir,
-                          std::string mask_dir, bool keep_log) {
+                          std::string mask_dir, bool mask_flipped,
+                          bool keep_log) {
     if (dir.empty()) return;
     app::set_crash_note("opening dataset " + dir);
     close_mesh_preview();
@@ -440,6 +441,7 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     // user can set data.image_dir / data.mask_dir under Advanced.
     _cfg.image_dir = !image_dir.empty() ? image_dir : _defaults.image_dir;
     _cfg.mask_dir = !mask_dir.empty() ? mask_dir : _defaults.mask_dir;
+    _cfg.flip_mask = mask_flipped;
     // Default the output next to the dataset -- much easier to find than a
     // CWD-relative "outputs" for someone who launched from a desktop icon.
     // Follows the dataset unless the user customized it (i.e. it still
@@ -1196,6 +1198,12 @@ static bool attach_mask_folder(std::vector<PrepInput>& sources,
 // Re-answer "are there masks beside these photos?" after the switch moves.
 // Turning it off forgets them; turning it back on has to look again, because
 // the answer was thrown away rather than remembered.
+bool GuiApp::any_found_masks() const {
+    for (const PrepInput& s : _sources)
+        if (!s.is_video && !s.mask_dir.empty()) return true;
+    return false;
+}
+
 void GuiApp::rescan_found_masks() {
     for (PrepInput& s : _sources) {
         if (s.is_video) continue;
@@ -1910,6 +1918,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.ffmpeg_exe = _ffmpeg_exe;
     prep.python_exe = _python_exe;
     prep.mask_enable = _mask_enable;
+    prep.flip_found_masks = _use_found_masks && _flip_found_masks;
     prep.mask_prompt = _mask.prompt;
     prep.mask_negative_prompt = _mask.negative_prompt;
     prep.mask_keep_subject = _mask.keep_subject;
@@ -2094,6 +2103,15 @@ void GuiApp::draw_dataset_source() {
         if (ui::Checkbox(dmsg::use_found_masks, &_use_found_masks))
             rescan_found_masks();
         ui::help_on_hover(dmsg::use_found_masks_help);
+        // Which way round they are is a property of those files, so it is asked
+        // here rather than per stage: everything the run writes comes out in
+        // the one convention, whatever the folder arrived in.
+        if (_use_found_masks && any_found_masks()) {
+            ImGui::Indent();
+            ui::Checkbox(dmsg::flip_found_masks, &_flip_found_masks);
+            ui::help_on_hover(dmsg::flip_found_masks_help);
+            ImGui::Unindent();
+        }
     }
 
     ImGui::SetNextItemWidth(px(-220.0f));
@@ -3632,6 +3650,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     struct {
         bool done, failed, cancelled;
         std::string dir, image_dir, mask_dir, err;
+        bool mask_flipped;
     } st{};
     if (effective_engine() == Engine::BuiltIn) {
         st.done = _sfm.state() == SfmRunner::State::Done;
@@ -3640,6 +3659,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
         st.dir = _sfm.dataset_dir();
         st.image_dir = _sfm.image_dir();
         st.mask_dir = _sfm.mask_dir();
+        st.mask_flipped = _sfm.mask_flipped();
         st.err = _sfm.error();
     } else {
         st.done = _colmap.state() == ColmapRunner::State::Done;
@@ -3648,6 +3668,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
         st.dir = _colmap.dataset_dir();
         st.image_dir = _colmap.image_dir();
         st.mask_dir = _colmap.mask_dir();
+        st.mask_flipped = _colmap.mask_flipped();
         st.err = _colmap.error();
     }
     if (st.done) {
@@ -3660,7 +3681,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
                 _pending_path = st.dir;
                 _open_confirm = true;
             } else {
-                open_dataset(st.dir, st.image_dir, st.mask_dir,
+                open_dataset(st.dir, st.image_dir, st.mask_dir, st.mask_flipped,
                              /*keep_log=*/true);
             }
         }

@@ -260,6 +260,8 @@ std::string SfmRunner::image_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _image_dir;
 }
+bool SfmRunner::mask_flipped() const { return _mask_flipped.load(); }
+
 std::string SfmRunner::mask_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _mask_dir;
@@ -583,6 +585,9 @@ void SfmRunner::run(SfmJob job) {
             if (!prep.mask_dir.empty()) {
                 argv.push_back("--masks");
                 argv.push_back(prep.mask_dir);
+                // Only masks the run handed on untouched are still the other
+                // way round; anything it wrote is in the usual convention.
+                if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
             } else {
                 // Otherwise `auto` picks up a stale masks/ sitting beside the
                 // images from an earlier run with masking on.
@@ -658,6 +663,7 @@ void SfmRunner::run(SfmJob job) {
             _dataset_dir = ws.string();
             _image_dir = prep.image_dir_cfg;
             _mask_dir = prep.mask_dir_cfg;
+            _mask_flipped = prep.mask_dir_flipped;
         }
         _state = State::Done;
     } catch (const std::exception& e) {

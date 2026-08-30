@@ -37,6 +37,7 @@
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <thread>
@@ -130,6 +131,12 @@ fs::path under_root(const fs::path& file, const fs::path& root) {
     fs::path rel = file.lexically_relative(root);
     if (rel.empty() || *rel.begin() == "..") rel = file.filename();
     return rel;
+}
+
+// Lexical for the same reason: does this folder sit inside that one?
+bool inside(const fs::path& p, const fs::path& root) {
+    const fs::path rel = p.lexically_relative(root);
+    return !rel.empty() && *rel.begin() != "..";
 }
 
 // The frame number the masker should be given for each file, taken from the
@@ -821,6 +828,9 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         bool have_masks = false;
         // Segmentation already intersected this input's stencil into them.
         bool stencil_folded = false;
+        // The tree the stencil pass folds in, when it is not `masks` itself:
+        // the masks the photos arrived with, which stay as they are.
+        std::string merge_from;
     };
     std::vector<Prepared> per(job.inputs.size());
     // A masks/ nested under the images is not a folder of views (see
@@ -851,12 +861,29 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             // photos -- a folder we were only asked to read.
             per[0].masks = (ws / "masks").string();
             per[0].masks_rel = "masks";
-        } else {
-            per[0].masks = per[0].masks_rel = fs::absolute(in.mask_dir, ec).string();
-            per[0].have_masks = true;
-            out.mask_dir = out.mask_dir_cfg = per[0].masks;
             skip_dir = per[0].masks;
-            log(fmt(lmsg::using_bundled_masks, {out.mask_dir}), /*detail=*/false);
+        } else {
+            const std::string bundled = fs::absolute(in.mask_dir, ec).string();
+            per[0].have_masks = true;
+            log(fmt(lmsg::using_bundled_masks, {bundled}), /*detail=*/false);
+            if (in.stencil.empty()) {
+                // Nothing to fold in, so they are read where they lie and keep
+                // whichever convention they arrived in.
+                per[0].masks = per[0].masks_rel = bundled;
+                out.mask_dir_flipped = job.flip_found_masks;
+            } else {
+                // The stencil has to go somewhere, and a masks/ under the
+                // images is the one folder every reader already skips -- so
+                // when theirs is there, the combination replaces it.
+                per[0].merge_from = bundled;
+                const bool under_images =
+                    inside(fs::path(bundled), fs::path(out.image_dir));
+                per[0].masks = under_images ? bundled : (ws / "masks").string();
+                per[0].masks_rel = under_images ? bundled : std::string("masks");
+            }
+            out.mask_dir = per[0].masks;
+            out.mask_dir_cfg = per[0].masks_rel;
+            skip_dir = per[0].masks;
         }
     } else {
         out.image_dir = (ws / "images").string();
@@ -872,6 +899,11 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             p.masks = under((ws / "masks").string(), in.subdir).string();
             p.images_rel = under("images", in.subdir).generic_string();
             p.masks_rel = under("masks", in.subdir).generic_string();
+            // Folded in from where they lie, not from the copies gathered next
+            // to the images: a second run would otherwise fold the fold.
+            if (!in.mask_dir.empty() &&
+                (!in.stencil.empty() || job.flip_found_masks))
+                p.merge_from = fs::absolute(in.mask_dir, ec).string();
             // Several inputs share one image tree only by living in their own
             // folders, and a folder is what makes them separate cameras.
             if (!in.subdir.empty()) out.per_folder_cameras = true;
@@ -942,7 +974,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // are planned before either runs.
     std::vector<int64_t> stencil_planned(job.inputs.size(), 0);
     for (size_t i = 0; i < job.inputs.size(); i++)
-        if (!job.inputs[i].stencil.empty()) {
+        if (!job.inputs[i].stencil.empty() || !per[i].merge_from.empty()) {
             stencil_planned[i] = count_images(per[i].images, per[i].masks);
             _masks_tally.plan(stencil_planned[i]);
         }
@@ -968,7 +1000,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     }
 
     for (size_t i = 0; i < job.inputs.size(); i++) {
-        if (job.inputs[i].stencil.empty()) continue;
+        if (job.inputs[i].stencil.empty() && per[i].merge_from.empty()) continue;
         want_masks = true;
         // Segmentation intersected it as it went, so the pass planned for it
         // is not going to run.
@@ -976,7 +1008,8 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             _masks_tally.drop(stencil_planned[i]);
             continue;
         }
-        if (!apply_stencil(job.inputs[i], per[i].images, per[i].masks, error))
+        if (!apply_stencil(job, job.inputs[i], per[i].images, per[i].masks,
+                           per[i].merge_from, error))
             return false;
         _masks_tally.settle(stencil_planned[i], stencil_planned[i]);
     }
@@ -1466,16 +1499,16 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
 #endif
 }
 
-bool DatasetPrep::apply_stencil(const PrepInput& in, const std::string& images,
-                                const std::string& masks, std::string& error) {
+// Written into the destination when the fold flipped what it read, so a second
+// run over the same folder does not flip an already-flipped mask.
+static const char* kFlippedMarker = ".spirula-mask-convention";
+
+bool DatasetPrep::apply_stencil(const PrepJob& job, const PrepInput& in,
+                                const std::string& images,
+                                const std::string& masks,
+                                const std::string& merge_from,
+                                std::string& error) {
     std::error_code ec;
-    // Masks an input brought with it are in a folder we were only asked to
-    // read. Cutting the border into them would edit the user's own data.
-    if (!in.mask_dir.empty() &&
-        fs::weakly_canonical(masks, ec) == fs::weakly_canonical(in.mask_dir, ec)) {
-        log(fmt(lmsg::stencil_keeps_bundled, {in.path}), /*detail=*/false);
-        return true;
-    }
     enter(Stage::Masks, lmsg::stage_frame_mask.get());
 
     app::FrameStencilRun run;
@@ -1483,6 +1516,18 @@ bool DatasetPrep::apply_stencil(const PrepInput& in, const std::string& images,
     run.mask_dir = masks;
     run.skip_dir = masks;
     run.stencil = in.stencil;
+    run.merge_dir = merge_from;
+    run.flip_merge = job.flip_found_masks && !merge_from.empty();
+    // Reading and writing one folder cannot be repeated under a flip: the
+    // marker records that it has been done, and travels with the files.
+    const bool in_place =
+        !merge_from.empty() &&
+        fs::weakly_canonical(masks, ec) == fs::weakly_canonical(merge_from, ec);
+    const fs::path marker = fs::path(masks) / kFlippedMarker;
+    if (in_place) {
+        if (run.flip_merge && fs::exists(marker, ec)) run.flip_merge = false;
+        log(fmt(lmsg::masks_combined_in_place, {masks}), /*detail=*/false);
+    }
 
     RateLimitedProgress progress(_prog, Stage::Masks, lmsg::noun_images_masked,
                                  _masks_tally);
@@ -1509,6 +1554,7 @@ bool DatasetPrep::apply_stencil(const PrepInput& in, const std::string& images,
         error = lmsg::err_cancelled.get();
         return false;
     }
+    if (in_place && job.flip_found_masks) std::ofstream(marker.string());
     return true;
 }
 

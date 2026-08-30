@@ -991,6 +991,7 @@ static int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     lopt.want_color = true;  // sample per-keypoint colors while the image is hot
     lopt.gamut = cfg.image_gamut;
     lopt.is_linear = cfg.image_is_linear;
+    lopt.flip_mask = cfg.flip_mask;
     if (cfg.decode_budget_mb > 0)
         lopt.memory_budget_bytes = (size_t)cfg.decode_budget_mb << 20;
 
@@ -1153,7 +1154,7 @@ static int cmdExtract(int argc, char** argv) {
                     {image, cfg.mask_dir});
     }
     GrayImage img = loadGrayImage(image, cfg.max_image_size, /*want_color=*/true, maskpath,
-                                  cfg.image_gamut, cfg.image_is_linear);
+                                  cfg.image_gamut, cfg.image_is_linear, cfg.flip_mask);
     if (cfg.sift.verbose)
         L::err(Tag::Extract, M::extract_to_gray,
                {image, img.width, img.height});

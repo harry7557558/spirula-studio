@@ -82,6 +82,10 @@ struct DataManagerConfig {
     // Hard upper bound on RAM consumed by ready / partially-ready batches.
     int prefetch_batches = 4;
 
+    // Swap keep and ignore in every mask, before mask_boundary_offset. For
+    // masks that mark what to EXCLUDE, the other convention in the wild.
+    bool flip_mask = false;
+
     // Signed boundary offset applied to binarized masks at decode time,
     // expressed as a fraction of sqrt(W*H) of the decoded mask. Positive ->
     // dilate (grow) foreground; negative -> erode (shrink) foreground; zero

@@ -95,6 +95,9 @@ struct SfmConfig {
     // spending four times the VRAM on it.
     int max_image_size = 0;
     std::string mask_dir;
+    // Swap keep and ignore in every mask, for the exporters that paint the
+    // region to REMOVE (sfm/core/Mask.h).
+    bool flip_mask = false;
 
     // The input files' colour space. Pixels convert to sRGB on decode, which
     // is what the detectors and the AI models were trained on.
@@ -235,6 +238,8 @@ struct SfmConfig {
       20000, "", max_image_size)                                                                   \
     F(mask_dir, "masks", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "pipeline", 0, 0, "", masks)         \
     F(mask_dir, "mask-dir", CMD_AUTO | CMD_EXTRACT, Tier::Alias, "pipeline", 0, 0, "", mask_dir)   \
+    F(flip_mask, "flip-mask", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, "",        \
+      flip_mask)                                                                                   \
     /* ---- colour ---- */                                                                         \
     F(image_gamut, "image-gamut", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,          \
       "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3", image_gamut)                           \

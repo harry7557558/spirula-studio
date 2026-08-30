@@ -185,6 +185,8 @@ std::string ColmapRunner::image_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _image_dir;
 }
+bool ColmapRunner::mask_flipped() const { return _mask_flipped.load(); }
+
 std::string ColmapRunner::mask_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _mask_dir;
@@ -362,6 +364,7 @@ void ColmapRunner::run(ColmapJob job) {
         const int n_images = prep.n_images;
         const bool have_masks = !prep.mask_dir.empty();
         const std::string mask_dir_cfg = prep.mask_dir_cfg;
+        _mask_flipped = prep.mask_dir_flipped;
         if (prep.per_folder_cameras && job.camera_mode == 0) {
             log(lmsg::one_camera_per_folder.get());
             job.camera_mode = 1;
