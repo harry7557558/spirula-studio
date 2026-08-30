@@ -1735,6 +1735,99 @@ SS_MSG(warp_face_fit_help,
        "piksel çizip VRAM'den tasarruf eder, ancak boyut başına bir geçişe mal "
        "olur ve birleşik eniyileyiciyi kapatır."));
 
+SS_MSG(warp_back_face,
+    EN("Rear face when splitting"), JA("分割時に後方の面も使う"),
+    ZH_HANS("拆分时使用朝后的面"), ZH_HANT("拆分時使用朝後的面"),
+    KO("분할 시 뒤쪽 면 사용"), DE("Rückseitige Fläche beim Aufteilen"),
+    FR("Face arrière au découpage"), ES("Cara trasera al dividir"),
+    PT("Face traseira ao dividir"),
+    IT("Faccia posteriore nella suddivisione"),
+    NL("Achtervlak bij het opsplitsen"),
+    RU("Задняя грань при разбиении"), TR("Bölmede arka yüz"));
+SS_MSG(warp_back_face_help,
+    EN("Whether a lens seen past 135 degrees also gets a sixth pinhole face "
+       "pointing backwards. On a real fisheye that direction holds little but "
+       "the lens folded over itself, which is usually masked out anyway, and "
+       "the face slows every step down and takes one more appearance slot per "
+       "image (about 20% more bilateral grid memory). Turn it on for a lens "
+       "that genuinely sees behind itself. A panorama always uses all six."),
+    JA("135 度を超えて写るレンズに、後ろ向きのピンホール面をもう 1 枚加えるか"
+       "どうか。実際の魚眼ではその方向に写るのはレンズの折り返し像がほとんど"
+       "で、たいていマスクで除かれます。それでも 1 ステップごとの処理は遅くな"
+       "り、画像ごとの外観スロットを 1 つ余計に使います（バイラテラルグリッド"
+       "のメモリが約 20% 増）。本当に後方まで写るレンズのときだけ有効にしてく"
+       "ださい。パノラマは常に 6 面すべてを使います。"),
+    ZH_HANS("视场超过 135 度的镜头是否再加一张朝后的针孔面。真实鱼眼在这个方向"
+            "上几乎只有镜头折返的像，通常本来就会被遮罩掉，却会拖慢每一步，并"
+            "让每张图像多占一个外观槽（双边网格显存约多 20%）。只有镜头确实能"
+            "看到身后时才打开。全景图始终使用全部六个面。"),
+    ZH_HANT("視場超過 135 度的鏡頭是否再加一張朝後的針孔面。真實魚眼在這個方向"
+            "上幾乎只有鏡頭折返的影像，通常本來就會被遮罩掉，卻會拖慢每一步，"
+            "並讓每張影像多佔一個外觀槽（雙邊網格顯示記憶體約多 20%）。只有鏡"
+            "頭確實能看到身後時才開啟。全景影像一律使用全部六個面。"),
+    KO("135도를 넘겨 보이는 렌즈에 뒤를 향하는 핀홀 면을 하나 더 둘지 여부입니"
+       "다. 실제 어안에서 그 방향에는 렌즈가 접혀 생긴 상뿐이라 보통 마스크로 "
+       "지워지지만, 면이 늘면 스텝마다 느려지고 이미지당 외관 슬롯을 하나 더 "
+       "씁니다(양방향 그리드 메모리 약 20% 증가). 정말로 뒤까지 보는 렌즈에서"
+       "만 켜세요. 파노라마는 항상 여섯 면을 모두 씁니다."),
+    DE("Ob ein über 135 Grad hinaus sehendes Objektiv zusätzlich eine nach "
+       "hinten gerichtete Lochkamera-Fläche bekommt. Bei einem echten Fisheye "
+       "steht dort fast nur das umgeklappte Bild des Objektivs, das ohnehin "
+       "meist maskiert ist; die Fläche bremst jeden Schritt und kostet je Bild "
+       "einen weiteren Erscheinungs-Slot (rund 20% mehr Speicher für das "
+       "bilaterale Gitter). Nur einschalten, wenn das Objektiv wirklich nach "
+       "hinten sieht. Ein Panorama nutzt immer alle sechs."),
+    FR("Si un objectif vu au-delà de 135 degrés reçoit en plus une face "
+       "sténopé tournée vers l'arrière. Sur un vrai fisheye, cette direction "
+       "ne contient guère que l'image repliée de l'objectif, le plus souvent "
+       "masquée ; la face ralentit chaque étape et coûte un emplacement "
+       "d'apparence de plus par image (environ 20% de mémoire en plus pour la "
+       "grille bilatérale). À activer seulement pour un objectif qui voit "
+       "vraiment derrière lui. Un panorama utilise toujours les six."),
+    ES("Si un objetivo que ve más allá de 135 grados recibe además una cara "
+       "estenopeica orientada hacia atrás. En un ojo de pez real esa dirección "
+       "solo contiene la imagen plegada del objetivo, casi siempre enmascarada; "
+       "la cara ralentiza cada paso y ocupa una ranura de apariencia más por "
+       "imagen (alrededor de un 20% más de memoria para la rejilla bilateral). "
+       "Actívala solo con un objetivo que vea de verdad hacia atrás. Una "
+       "panorámica siempre usa las seis."),
+    PT("Se uma lente vista para além de 135 graus recebe também uma face "
+       "estenopeica virada para trás. Numa olho de peixe real essa direção "
+       "contém pouco mais do que a imagem dobrada da lente, quase sempre "
+       "mascarada; a face atrasa cada passo e ocupa mais um espaço de aparência "
+       "por imagem (cerca de 20% mais memória para a grelha bilateral). Ligue "
+       "apenas com uma lente que veja mesmo para trás. Um panorama usa sempre "
+       "as seis."),
+    IT("Se un obiettivo che vede oltre i 135 gradi riceve anche una faccia "
+       "stenopeica rivolta all'indietro. In un fisheye reale quella direzione "
+       "contiene quasi solo l'immagine ripiegata dell'obiettivo, di norma "
+       "mascherata; la faccia rallenta ogni passo e occupa uno slot di aspetto "
+       "in più per immagine (circa il 20% di memoria in più per la griglia "
+       "bilaterale). Attivala solo con un obiettivo che veda davvero dietro di "
+       "sé. Un panorama usa sempre tutte e sei."),
+    NL("Of een lens die verder dan 135 graden kijkt er een naar achteren "
+       "gericht pinhole-vlak bij krijgt. Bij een echte fisheye staat in die "
+       "richting bijna alleen het omgevouwen beeld van de lens, dat meestal "
+       "toch gemaskeerd is; het vlak vertraagt elke stap en kost per beeld een "
+       "extra uiterlijk-slot (ongeveer 20% meer geheugen voor het bilaterale "
+       "raster). Zet dit alleen aan voor een lens die echt achter zich kijkt. "
+       "Een panorama gebruikt altijd alle zes."),
+    RU("Получает ли объектив, видящий дальше 135 градусов, дополнительную "
+       "пинхол-грань, направленную назад. У настоящего фишая в этом "
+       "направлении почти всегда лишь завёрнутое изображение самого объектива, "
+       "которое обычно и так замаскировано; грань замедляет каждый шаг и "
+       "занимает ещё один слот внешнего вида на изображение (примерно на 20% "
+       "больше памяти под билатеральную сетку). Включайте только для "
+       "объектива, который действительно видит назад. Панорама всегда "
+       "использует все шесть."),
+    TR("135 dereceden geniş gören bir merceğe ayrıca arkaya bakan bir iğne "
+       "deliği yüzü eklenip eklenmeyeceği. Gerçek bir balıkgözünde o yönde "
+       "neredeyse yalnızca merceğin katlanmış görüntüsü bulunur ve zaten "
+       "çoğunlukla maskelenir; bu yüz her adımı yavaşlatır ve görüntü başına "
+       "bir görünüm yuvası daha harcar (bilateral ızgara belleğinde yaklaşık "
+       "%20 artış). Yalnızca gerçekten arkasını gören bir mercek için açın. "
+       "Panorama her zaman altı yüzü de kullanır."));
+
 SS_MSG(deblur_training_images,
     EN("Deblur training images"), JA("学習画像のぶれを補正"),
     ZH_HANS("对训练图像去模糊"), ZH_HANT("對訓練影像去模糊"),

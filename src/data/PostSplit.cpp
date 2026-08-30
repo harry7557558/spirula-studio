@@ -58,7 +58,7 @@ std::string camera_key(const camhost::Camera& c) {
 PostSplitCameras bake_post_split(const ParsedDataset& ds,
                                  bool warp_to_pinhole,
                                  bool warp_spherical_to_pinhole,
-                                 WarpFaceFit fit) {
+                                 WarpFaceFit fit, bool back_face) {
     const int64_t N = ds.num_cameras;
     const int PINHOLE_V   = (int)camera_model_from_name("PINHOLE");
     const int FISHEYE_V   = (int)camera_model_from_name("FISHEYE");
@@ -88,7 +88,8 @@ PostSplitCameras bake_post_split(const ParsedDataset& ds,
     std::vector<std::vector<camhost::SplitFace>> plans(plan_cams.size());
     #pragma omp parallel for schedule(dynamic)
     for (int p = 0; p < (int)plan_cams.size(); p++)
-        plans[(size_t)p] = camhost::plan_split_faces(plan_cams[(size_t)p], face_fit);
+        plans[(size_t)p] = camhost::plan_split_faces(plan_cams[(size_t)p], face_fit,
+                                                    back_face);
     // A lens that fits one face is not wide: the engine renders it as itself,
     // since K == 1 is what tells the DataManager a camera is not warped.
     for (int64_t i = 0; i < N; i++)

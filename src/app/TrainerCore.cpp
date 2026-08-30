@@ -602,7 +602,7 @@ void TrainerSession::load_dataset() {
     // POST-split camera bake (identity when no warp flag applies).
     post = bake_post_split(
         ds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole,
-        resolve_face_fit(cfg));
+        resolve_face_fit(cfg), cfg.warp_back_face);
 
     // Warp-path guards, plus: a modality no weight reads is not loaded at all.
     has_mask   = !ds.mask_filenames.empty()   && cfg.load_masks;
@@ -1245,7 +1245,7 @@ void TrainerSession::eval() {
     // and its metrics stay comparable between the two fits.
     PostSplitCameras epost = bake_post_split(
         eds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole,
-        WarpFaceFit::Uniform);
+        WarpFaceFit::Uniform, cfg.warp_back_face);
 
     // One image per step: metrics are per-image, and the batch scheduler would
     // otherwise pack several resolutions into one step.

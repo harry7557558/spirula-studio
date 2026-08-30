@@ -118,7 +118,9 @@ enum class FaceFit { Uniform, PerFace };
 
 // The focal is that of a 90-degree face of ceil(sqrt(W*H/K)) pixels, whatever
 // the lens, so the pixel density does not move with the field of view.
+// `back_face` admits the frame behind a fisheye; a panorama always takes it.
 std::vector<SplitFace> plan_split_faces(const Camera& cam,
-                                        FaceFit fit = FaceFit::Uniform);
+                                        FaceFit fit = FaceFit::Uniform,
+                                        bool back_face = false);
 
 }  // namespace camhost

@@ -1,5 +1,6 @@
 // Host-only check of camhost::plan_split_faces: one face per frame, every
-// visible ray covered, Uniform one size, PerFace never under half a frame.
+// visible ray covered, Uniform one size, PerFace never under half a frame,
+// the back frame only when asked for.
 // No GPU. Exit code 0 = every check passed.
 
 #include "core/CameraModel.h"
@@ -29,20 +30,24 @@ struct Case {
     int model, tier, w, h;
     double fx, fy, cx, cy;
     float dist[kCameraDistortionParams];
-    int faces;   // expected count, both fits
+    int faces;        // expected count, both fits
+    int back_faces;   // and with the back frame admitted
 };
 
 const Case kCases[] = {
-    {"fisheye 960x960, ~200 deg", 1, 0, 960, 960, 258.5, 258.5, 480, 480, {}, 5},
+    {"fisheye 960x960, ~200 deg", 1, 0, 960, 960, 258.5, 258.5, 480, 480, {}, 5, 5},
     {"fisheye 1000x1500 crop + prism", 1, 2, 1000, 1500, 530.4, 530.4, 501.2, 750.4,
-     {0.009f, 0.002f, -0.0006f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 5},
-    {"fisheye 16:9, 120 deg", 1, 0, 1920, 1080, 700, 700, 960, 540, {}, 5},
-    {"fisheye 800x800, 100 deg", 1, 0, 800, 800, 458, 458, 400, 400, {}, 5},
-    // Square sensor seen past 135 degrees in its corners: earns the back face.
-    {"equisolid circle", 2, 0, 1400, 1400, 420, 420, 700, 700, {}, 6},
-    {"equirect full", 3, 0, 1024, 512, 1024 / (2 * kPi), 1024 / (2 * kPi), 512, 256, {}, 6},
+     {0.009f, 0.002f, -0.0006f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, 5, 5},
+    {"fisheye 16:9, 120 deg", 1, 0, 1920, 1080, 700, 700, 960, 540, {}, 5, 5},
+    {"fisheye 800x800, 100 deg", 1, 0, 800, 800, 458, 458, 400, 400, {}, 5, 5},
+    // Square sensor seen past 135 degrees in its corners: the one case whose
+    // back frame is admitted, and only when asked for.
+    {"equisolid circle", 2, 0, 1400, 1400, 420, 420, 700, 700, {}, 5, 6},
+    {"equirect full", 3, 0, 1024, 512, 1024 / (2 * kPi), 1024 / (2 * kPi), 512, 256,
+     {}, 6, 6},
     // The polar faces' corners reach down to 35 degrees, so they stay.
-    {"equirect 360x90", 3, 0, 1024, 256, 1024 / (2 * kPi), 1024 / (2 * kPi), 512, 128, {}, 6},
+    {"equirect 360x90", 3, 0, 1024, 256, 1024 / (2 * kPi), 1024 / (2 * kPi), 512, 128,
+     {}, 6, 6},
 };
 
 camhost::Camera camera(const Case& c) {
@@ -55,7 +60,7 @@ camhost::Camera camera(const Case& c) {
 }
 
 // Rays the image holds and how many of them land in no face. A fisheye's
-// back frame (its cell reaches 125 degrees at the corners) may be dropped.
+// back frame (its cell reaches 125 degrees at the corners) is opt-in.
 void coverage(const Case& c, const camhost::Camera& cam,
               const std::vector<camhost::SplitFace>& faces,
               int64_t& seen, int64_t& missed) {
@@ -97,10 +102,10 @@ double pixels(const std::vector<camhost::SplitFace>& faces) {
 }
 
 void check_plan(const Case& c, const camhost::Camera& cam, camhost::FaceFit fit,
-                const std::vector<camhost::SplitFace>& faces) {
-    const char* fname = fit == camhost::FaceFit::Uniform ? "uniform" : "per-face";
-    CHECK((int)faces.size() == c.faces, "%s %s: %d faces, expected %d", c.name,
-          fname, (int)faces.size(), c.faces);
+                const std::vector<camhost::SplitFace>& faces, int expect,
+                const char* fname) {
+    CHECK((int)faces.size() == expect, "%s %s: %d faces, expected %d", c.name,
+          fname, (int)faces.size(), expect);
     if (faces.empty()) return;
     const int half = (int)std::lround(faces[0].fx);
     bool used[6] = {};
@@ -151,8 +156,11 @@ int main() {
         const camhost::Camera cam = camera(c);
         const auto uni = camhost::plan_split_faces(cam, camhost::FaceFit::Uniform);
         const auto per = camhost::plan_split_faces(cam, camhost::FaceFit::PerFace);
-        check_plan(c, cam, camhost::FaceFit::Uniform, uni);
-        check_plan(c, cam, camhost::FaceFit::PerFace, per);
+        const auto back =
+            camhost::plan_split_faces(cam, camhost::FaceFit::Uniform, true);
+        check_plan(c, cam, camhost::FaceFit::Uniform, uni, c.faces, "uniform");
+        check_plan(c, cam, camhost::FaceFit::PerFace, per, c.faces, "per-face");
+        check_plan(c, cam, camhost::FaceFit::Uniform, back, c.back_faces, "back");
         CHECK(pixels(per) <= pixels(uni) + 1, "%s: per-face draws more than uniform", c.name);
     }
     std::printf("%s\n", g_fail ? "FAILURES" : "split planner ok");

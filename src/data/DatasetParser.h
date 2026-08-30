@@ -294,7 +294,8 @@ struct PostSplitCameras {
 PostSplitCameras bake_post_split(const ParsedDataset& ds,
                                  bool warp_to_pinhole,
                                  bool warp_spherical_to_pinhole,
-                                 WarpFaceFit fit = WarpFaceFit::Uniform);
+                                 WarpFaceFit fit = WarpFaceFit::Uniform,
+                                 bool back_face = false);
 
 
 // ===========================================================================

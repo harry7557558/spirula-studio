@@ -390,7 +390,10 @@ int self_check() {
         hc.width = c.w; hc.height = c.h;
         hc.fx = c.fx; hc.fy = c.fy; hc.cx = c.cx; hc.cy = c.cy;
         std::copy(std::begin(c.dist), std::end(c.dist), std::begin(hc.dist));
-        const std::vector<camhost::SplitFace> faces = camhost::plan_split_faces(hc);
+        // With the back frame, so a lens seen past 135 degrees is checked for
+        // the coverage the whole cube owes it, not the trainer's default five.
+        const std::vector<camhost::SplitFace> faces =
+            camhost::plan_split_faces(hc, camhost::FaceFit::Uniform, true);
         const bool equi = c.model == (int)CameraModelType::EQUIRECTANGULAR;
         const double* table = equi ? camhost::equirect_face_axes()
                                    : camhost::fisheye_face_axes();

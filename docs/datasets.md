@@ -133,13 +133,12 @@ Two paths, both gathering per destination pixel:
 ## The split
 
 A wide camera is rendered as pinhole faces, one per frame of a fixed table:
-five around the optical axis for a fisheye (front, +x, +y, -x, -y; the back
-frame only when a quarter of it is seen, since corners past 135 degrees are
-usually outside the image circle), the six cube faces for a panorama. **Never
-more than one face per frame.** A frame is one 90-degree view, and a view is
-the unit the per-image appearance models are sized by -- bilagrid and PPISP
-hold one slot per post camera -- so cutting a frame into tiles would cost a
-slot per tile and hand each model a piece of a view.
+five around the optical axis for a fisheye (front, +x, +y, -x, -y), the six
+cube faces for a panorama. **Never more than one face per frame.** A frame is
+one 90-degree view, and a view is the unit the per-image appearance models are
+sized by -- bilagrid and PPISP hold one slot per post camera -- so cutting a
+frame into tiles would cost a slot per tile and hand each model a piece of a
+view.
 
 Every face has the focal a 90-degree face of `ceil(sqrt(W*H/K))` pixels would
 have -- the density of an uncropped split -- and is **cropped to the rays the
@@ -158,6 +157,17 @@ a projection of every splat, a sort, the loss -- and the fused
 projection-backward optimizer, which needs a single pass, is worth another
 10%. Measured on an RTX 5070 laptop: going from 2 to 5 passes added 21% to a
 step on a 200-degree capture, and from 3 to 4 added 15% on a cropped one.
+
+### The frame behind the lens
+
+`--warp-back-face` (off by default) admits a sixth face pointing backwards,
+and then only when a quarter of that frame is visible -- which needs a lens
+seen past 135 degrees. On a real fisheye what fills that direction is the lens
+**folded over itself**, and the face is not free: it is another face's worth of
+pixels in every pass, one more appearance slot per image (a 20% larger
+bilateral grid, since bilagrid and PPISP are sized per post camera) and a
+mirrored image for the optimizer to fit splats to. It is usually masked out
+anyway. A panorama always takes all six.
 
 ### One face size, or one per lens
 
