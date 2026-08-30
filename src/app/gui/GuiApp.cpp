@@ -4986,6 +4986,11 @@ void GuiApp::draw_basic_options() {
     ui::help_on_hover(msg::opt_steps_help);
 
     ImGui::SetNextItemWidth(w);
+    if (ui::InputFloat(fld::steps_scaler, &_cfg.steps_scaler))
+        _cfg_ui.touched.insert("steps_scaler");
+    ui::help_on_hover(fld::steps_scaler_help);
+
+    ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_max_splats, &_cfg.cap_max))
         _cfg_ui.touched.insert("cap_max");
     ui::help_on_hover(msg::opt_max_splats_help);

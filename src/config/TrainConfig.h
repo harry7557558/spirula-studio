@@ -40,7 +40,9 @@
 //   choices  '|'-separated list for string fields; "" is free-form; "none"
 //            means the empty string is allowed and displays as `none`.
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <optional>
@@ -96,6 +98,7 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, output_dir_prefix, "outputs", "run", "basic", "")         \
     X(std::string, output_dir_name, "", "run", "basic", "none")              \
     X(int, num_iterations, 30000, "run", "basic", "")                        \
+    X(float, steps_scaler, 1.0f, "run", "basic", "")                         \
     X(int, steps_per_save, 2000, "run", "advanced", "")                      \
     X(bool, save_only_latest_checkpoint, true, "run", "advanced", "")        \
     X(bool, save_full_checkpoint, false, "run", "advanced", "")              \
@@ -562,4 +565,48 @@ inline void train_resolve_macros(TrainConfig& c,
         put("max_screen_size", c.max_screen_size, strong ? 0.1f : 0.2f);
         put("max_screen_size_clip_hardness", c.max_screen_size_clip_hardness, strong ? 1.1f : 1.25f);
     }
+}
+
+// Positions in the schedule move; rates, ratios and budgets do not. Applied
+// ONCE, to the run's own copy, and clears the factor: the front ends
+// re-resolve their config every frame, and one that compounded would run away.
+inline void train_apply_steps_scaler(TrainConfig& c) {
+    const float s = c.steps_scaler;
+    if (!(s > 0.0f) || s == 1.0f)
+        return;
+    // A field already at 0 is off and stays off. One that is set must not
+    // round down into 0, which would read as off -- or, for the run length,
+    // as no run at all.
+    auto sc = [s](int v) {
+        return v > 0 ? std::max(1, (int)std::lround((double)v * (double)s)) : v;
+    };
+    c.num_iterations            = sc(c.num_iterations);
+    c.refine_start_iter         = sc(c.refine_start_iter);
+    c.refine_stop_num_iter      = sc(c.refine_stop_num_iter);
+    c.refine_stop_iter          = sc(c.refine_stop_iter);
+    // Named like a period, but it is a ramp: sh_degree = step / this, so a
+    // short run left as-is would end before the model ever renders full SH.
+    c.sh_degree_warmup_every    = sc(c.sh_degree_warmup_every);
+    c.background_noise_warmup   = sc(c.background_noise_warmup);
+    c.distortion_reg_warmup     = sc(c.distortion_reg_warmup);
+    c.normal_reg_warmup         = sc(c.normal_reg_warmup);
+    c.alpha_reg_warmup          = sc(c.alpha_reg_warmup);
+    c.reg_warmup_length         = sc(c.reg_warmup_length);
+    c.supervision_warmup        = sc(c.supervision_warmup);
+    c.median_warmup             = sc(c.median_warmup);
+    // These four are scheduled_lr's warmup, and its decay half already runs
+    // on step/max_steps. Scaling one half and not the other would leave a
+    // single schedule measuring its two ends against different clocks.
+    c.bilagrid_lr_warmup        = sc(c.bilagrid_lr_warmup);
+    c.bilagrid_depth_lr_warmup  = sc(c.bilagrid_depth_lr_warmup);
+    c.bilagrid_normal_lr_warmup = sc(c.bilagrid_normal_lr_warmup);
+    c.ppisp_lr_warmup           = sc(c.ppisp_lr_warmup);
+    if (c.max_steps)
+        c.max_steps = sc(*c.max_steps);
+    // The field packs (start value, end value, steps to move between them),
+    // so the schedule is the third component and the first two are not time.
+    if (c.long_axis_split_opacity_k[2] > 0.0f)
+        c.long_axis_split_opacity_k[2] =
+            std::max(1.0f, c.long_axis_split_opacity_k[2] * s);
+    c.steps_scaler = 1.0f;
 }

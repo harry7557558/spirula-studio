@@ -253,6 +253,119 @@ SS_MSG(num_iterations_help,
        "но отдача убывает, а ждать приходится пропорционально дольше."),
     TR("Eğitimin adım cinsinden uzunluğu. Daha çok adım genelde daha iyi görünür; "
        "kazanç azalarak sürer ve bekleme süresi orantılı olarak uzar."));
+SS_MSG(steps_scaler,
+    EN("Steps multiplier"),
+    JA("ステップ倍率"),
+    ZH_HANS("步数倍率"),
+    ZH_HANT("步數倍率"),
+    KO("스텝 배율"),
+    DE("Schritt-Multiplikator"),
+    FR("Multiplicateur d'étapes"),
+    ES("Multiplicador de pasos"),
+    PT("Multiplicador de passos"),
+    IT("Moltiplicatore di passi"),
+    NL("Stappenvermenigvuldiger"),
+    RU("Множитель шагов"),
+    TR("Adım çarpanı"));
+SS_MSG(steps_scaler_help,
+    EN("Multiplies the training steps and the settings that mark a "
+       "position in the schedule with them: the refine window, every "
+       "warmup, the SH ramp. 1.0 changes nothing. At 0.5 a 30000-step run "
+       "trains 15000 and each of those moves to match, instead of leaving "
+       "warmups tuned for a length the run never reaches. Rates and "
+       "budgets stay put: how often it refines or saves, the splat cap, "
+       "the resolution."),
+    JA("学習ステップ数と、それに合わせて位置が決まる設定（リファ"
+       "インの区間、各種ウォームアップ、SH 次数の立ち上がり）"
+       "を掛けます。1.0 なら何も変わりません。0.5 にする"
+       "と 30000 ステップの設定は 15000 ステップで"
+       "学習し、それらの位置も一緒に動くので、到達しない長さに合"
+       "わせたウォームアップが残りません。頻度と上限はそのままで"
+       "す（リファインや保存の間隔、スプラット数の上限、解像度）"
+       "。"),
+    ZH_HANS("把训练步数，以及随之标定位置的设置一起相乘：细化区间、各"
+            "种预热、球谐次数的爬升。1.0 表示什么都不变。设为 0"
+            ".5 时，30000 步的配置会训练 15000 步，这"
+            "些位置也跟着移动，而不是留下按永远到不了的长度调好的预热"
+            "。频率和上限保持不变：细化和保存的间隔、泼溅数上限、分辨"
+            "率。"),
+    ZH_HANT("把訓練步數，以及隨之標定位置的設定一起相乘：細化區間、各"
+            "種預熱、球諧次數的爬升。1.0 表示什麼都不變。設為 0"
+            ".5 時，30000 步的設定會訓練 15000 步，這"
+            "些位置也跟著移動，而不是留下按永遠到不了的長度調好的預熱"
+            "。頻率和上限保持不變：細化和儲存的間隔、潑濺數上限、解析"
+            "度。"),
+    KO("학습 스텝 수와, 그에 맞춰 위치가 정해지는 설정을"
+       " 함께 곱합니다: 리파인 구간, 각종 워밍업, SH"
+       " 차수 상승. 1.0이면 아무것도 바뀌지 않습니다."
+       " 0.5로 두면 30000 스텝 설정이 15000 "
+       "스텝을 학습하고 그 위치들도 함께 옮겨가므로, 도달"
+       "하지 못할 길이에 맞춘 워밍업이 남지 않습니다. 주"
+       "기와 상한은 그대로입니다: 리파인과 저장 간격, 스"
+       "플랫 상한, 해상도."),
+    DE("Multipliziert die Trainingsschritte und die Einstellungen, die "
+       "damit eine Position im Ablauf markieren: das Refine-Fenster, jedes "
+       "Warmup, die SH-Rampe. 1.0 ändert nichts. Bei 0.5 trainiert ein auf "
+       "30000 Schritte eingestellter Lauf 15000, und jede dieser Marken "
+       "wandert mit, statt Warmups für eine Länge stehen zu lassen, die "
+       "der Lauf nie erreicht. Takte und Obergrenzen bleiben: wie oft "
+       "verdichtet oder gespeichert wird, die Splat-Obergrenze, die "
+       "Auflösung."),
+    FR("Multiplie les étapes d'entraînement et les réglages qui marquent "
+       "une position dans le calendrier : la fenêtre d'affinage, chaque "
+       "warmup, la montée en degré SH. 1.0 ne change rien. À 0.5, un "
+       "réglage de 30000 étapes en entraîne 15000 et chacun de ces repères "
+       "suit, au lieu de laisser des warmups calés sur une durée jamais "
+       "atteinte. Les cadences et les plafonds ne bougent pas : la "
+       "fréquence d'affinage et de sauvegarde, le plafond de splats, la "
+       "résolution."),
+    ES("Multiplica los pasos de entrenamiento y los ajustes que marcan una "
+       "posición dentro del calendario: la ventana de refinado, todos los "
+       "warmups, la subida de grado SH. Con 1.0 no cambia nada. Con 0.5, "
+       "una configuración de 30000 pasos entrena 15000 y cada una de esas "
+       "marcas se mueve con ella, en vez de dejar warmups calculados para "
+       "una duración que el run nunca alcanza. Los ritmos y los topes se "
+       "quedan quietos: cada cuánto refina o guarda, el tope de splats, la "
+       "resolución."),
+    PT("Multiplica os passos de treinamento e os ajustes que marcam uma "
+       "posição no cronograma junto com eles: a janela de refinamento, "
+       "todos os warmups, a subida de grau SH. Com 1.0 nada muda. Com 0.5, "
+       "uma configuração de 30000 passos treina 15000 e cada uma dessas "
+       "marcas acompanha, em vez de deixar warmups ajustados para uma "
+       "duração que o treino nunca alcança. Os ritmos e os tetos ficam "
+       "parados: de quanto em quanto refina ou salva, o teto de splats, a "
+       "resolução."),
+    IT("Moltiplica i passi di addestramento e le impostazioni che con essi "
+       "segnano una posizione nel calendario: la finestra di raffinamento, "
+       "ogni warmup, la salita del grado SH. Con 1.0 non cambia nulla. Con "
+       "0.5 una configurazione da 30000 passi ne addestra 15000 e ognuno "
+       "di quei riferimenti si sposta di conseguenza, invece di lasciare "
+       "warmup tarati su una durata mai raggiunta. Le cadenze e i tetti "
+       "restano fermi: ogni quanto raffina o salva, il tetto di splat, la "
+       "risoluzione."),
+    NL("Vermenigvuldigt de trainingsstappen en de instellingen die daarmee "
+       "een plek in het schema aanduiden: het verfijningsvenster, elke "
+       "warmup, de SH-opbouw. Bij 1.0 verandert er niets. Bij 0.5 traint "
+       "een instelling van 30000 stappen er 15000 en schuift elk van die "
+       "punten mee, in plaats van warmups te laten staan die op een nooit "
+       "bereikte duur zijn afgestemd. Tempo's en plafonds blijven staan: "
+       "hoe vaak er verfijnd of opgeslagen wordt, het splatplafond, de "
+       "resolutie."),
+    RU("Умножает число шагов обучения и настройки, которые вместе с ними "
+       "отмечают место в расписании: окно уточнения, все прогревы, набор "
+       "степени SH. При 1.0 ничего не меняется. При 0.5 конфигурация на "
+       "30000 шагов обучает 15000, и каждая из этих отметок смещается "
+       "следом, вместо того чтобы оставить прогревы под длину, до которой "
+       "запуск не доходит. Частоты и пределы остаются на месте: как часто "
+       "идёт уточнение и сохранение, предел числа сплатов, разрешение."),
+    TR("Eğitim adımlarını ve onlarla birlikte takvimde bir konum "
+       "belirleyen ayarları çarpar: iyileştirme penceresi, her ısınma, SH "
+       "derecesinin yükselişi. 1.0 hiçbir şeyi değiştirmez. 0.5 iken 30000 "
+       "adımlık bir ayar 15000 adım eğitir ve bu işaretlerin her biri buna "
+       "göre kayar; böylece hiç ulaşılmayacak bir uzunluğa göre ayarlanmış "
+       "ısınmalar kalmaz. Tempolar ve üst sınırlar yerinde kalır: ne "
+       "sıklıkla iyileştirdiği veya kaydettiği, splat üst sınırı, "
+       "çözünürlük."));
 
 SS_MSG(steps_per_save,
     EN("Checkpoint interval"), JA("チェックポイントの間隔"),
