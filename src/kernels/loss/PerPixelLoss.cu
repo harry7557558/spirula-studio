@@ -1065,13 +1065,13 @@ LossValues compute_multi_scale_per_pixel_losses(
         // fully-masked tile go unrendered (docs/datasets.md, "Skipping tiles").
         auto ds_m = [&](TorchTensorView& prev, TorchTensorView& curr,
                         const std::string& name, int C) {
+            if (!_has(prev)) return;
             const TorchTensorView& mk = ref_alpha_s[sc-1];
             const auto& pps = std::get<2>(prev);
             const auto& mks = std::get<2>(mk);
             // A mask at its own resolution cannot index this image's children.
             const bool same = _has(mk) && mks[0] == pps[0] &&
                               mks[1] == pps[1] && mks[2] == pps[2];
-            if (!_has(prev)) return;
             if (!has_mask || !same) {
                 ds_f(prev, curr, name, C);
                 return;
