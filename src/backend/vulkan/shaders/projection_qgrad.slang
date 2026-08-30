@@ -290,9 +290,8 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                     if (fb == 0u && b == 3u) {
                         p.gq_sh_packed[w] = acc;
                     } else {
-                        uint mask = 0u;
-                        for (uint k = fb; k <= b; ++k)
-                            mask |= 0xffu << (8u * k);
+                        uint mask = (0xffffffffu >> (8u * (3u - b))) &
+                                    (0xffffffffu << (8u * fb));
                         InterlockedAnd(p.gq_sh_packed[w], ~mask);
                         InterlockedOr(p.gq_sh_packed[w], acc & mask);
                     }

@@ -458,6 +458,16 @@ the engine level.
   Intel spins forever -> VK_ERROR_DEVICE_LOST. The port uses the bounded
   ceil-halving form (identical probe sequence and converged split). Grep any
   future kernel port for loops whose exit depends on overflow.
+- **Nested-dynamic-loop rule (NVIDIA shader-compiler SIGILL)**: a
+  variable-trip-count loop under an `if` under another variable-trip-count
+  loop makes `libnvidia-gpucomp` (580.105.08) execute a `ud2` inside
+  `vkCreateComputePipelines` -- the process dies with SIGILL and no
+  `VkResult`, so nothing host-side can catch it. It cost
+  projection_qgrad.slang's SH writeback its `for (k = fb; k <= b; ++k)` byte
+  mask, now the closed-form `(~0u >> 8*(3-b)) & (~0u << 8*fb)`. Either
+  flattening (closed form, or a constant-trip loop with a predicated body)
+  clears it; the atomics around it are irrelevant. A 22-line shader with just
+  that loop nest reproduces it.
 - `EngineBackground.cu` became portable `EngineBackground.cpp` (its one raw
   kernel replaced by the existing `float_add_into` launcher, cudaMemcpy* ->
   backend::). It now compiles into BOTH backends unchanged.
