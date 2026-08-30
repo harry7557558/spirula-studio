@@ -20,6 +20,7 @@
 #include <engine/EngineInternal.h>
 #include <core/Tensor.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -180,6 +181,67 @@ int main(int argc, char** argv) {
                 ttv(v_params, {Bp, t.n_params}));
             readback_f(g_tight, v_params, Bp * t.n_params);
         }
+    }
+
+    // Negative-intensity pixels, exposure and vignetting neutralized so the
+    // colour stage stands alone: ~half of them sit below the RGI denominator
+    // floor, which is the only thing holding intensity through that branch.
+    {
+        const int64_t Bx = 2, np = Bx * H * W;
+        const int n_params = 24;  // no_crf: exposure(1) + vignetting(15) + colour(8)
+        std::vector<float> ph(Bx * n_params, 0.0f);
+        for (int64_t b = 0; b < Bx; b++)
+            for (int i = 16; i < n_params; i++)
+                ph[b * n_params + i] = r.uf(-0.4f, 0.4f);
+        float* params = upload(ph);
+        std::vector<float> intr_h;
+        for (int64_t b = 0; b < Bx; b++) {
+            intr_h.push_back(80.0f);
+            intr_h.push_back(80.0f);
+            intr_h.push_back(52.0f);
+            intr_h.push_back(44.0f);
+        }
+        float* intrins = upload(intr_h);
+        std::vector<float> in_h = r.vec(3 * np, -1.0f, 1.0f);
+        float* in_image = upload(in_h);
+        float* out_image = alloc_zero<float>(3 * np);
+        ppisp_forward(dt3(in_image, Bx, H, W), ttv(params, {Bx, n_params}),
+                      ttv(intrins, {Bx, 4}), aw, ah, "no_crf", ttv_null(),
+                      dt3(out_image, Bx, H, W));
+
+        std::vector<float> out_h(3 * np);
+        backend::memcpy_sync(out_h.data(), out_image,
+                             3 * np * sizeof(float), MemcpyKind::DeviceToHost);
+        double worst_di = 0.0, worst_mag = 0.0;
+        for (int64_t i = 0; i < np; i++) {
+            double si = (double)in_h[3 * i] + in_h[3 * i + 1] + in_h[3 * i + 2];
+            double so = (double)out_h[3 * i] + out_h[3 * i + 1] + out_h[3 * i + 2];
+            worst_di = std::max(worst_di, std::fabs(so - si));
+            for (int c = 0; c < 3; c++)
+                worst_mag = std::max(worst_mag, std::fabs((double)out_h[3 * i + c]));
+        }
+        std::printf("ppisp_parity: negative-intensity block, "
+                    "max |sum(out) - sum(in)| %.3g, max |out| %.3g\n",
+                    worst_di, worst_mag);
+        // Two-sided: unfloored these leave at |out| ~ 3 (H is near identity),
+        // floored they cap near 20x that, and without the floor at all the old
+        // 1e-5 denominator sent them past 1e5.
+        if (!(worst_di < 1e-3) || !(worst_mag > 10.0) || !(worst_mag < 1e3)) {
+            std::fprintf(stderr, "ppisp_parity: colour stage lost intensity, or "
+                                 "the denominator floor never bound / blew up\n");
+            return 1;
+        }
+        readback_f(g_tight, out_image, 3 * np);
+
+        float* v_out = upload(r.vec(3 * np, -0.3f, 0.3f));
+        float* v_in = alloc_zero<float>(3 * np);
+        float* v_params = alloc_zero<float>(Bx * n_params);
+        ppisp_backward(dt3(in_image, Bx, H, W), ttv(params, {Bx, n_params}),
+                       ttv(intrins, {Bx, 4}), aw, ah, dt3(v_out, Bx, H, W),
+                       "no_crf", ttv_null(), dt3(v_in, Bx, H, W),
+                       ttv(v_params, {Bx, n_params}));
+        readback_f(g_tight, v_in, 3 * np);
+        readback_f(g_loose, v_params, Bx * n_params);
     }
 
     auto write_all = [&](const char* path) {

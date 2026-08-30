@@ -213,7 +213,7 @@ void launch_fpbo_vk(
     p.erank_reg_weight = erank_reg_weight / (float)N;
     p.erank_reg_weight_s3 = erank_reg_weight_s3 / (float)N;
     p.quat_norm_reg_weight = quat_norm_reg_weight / (float)N;
-    p.dc_reg_weight = 2.0f * dc_reg_weight / (float)(3 * N);
+    p.dc_reg_weight = 2.0f * dc_reg_weight / 3.0f;
     p.sh_reg_weight = 2.0f * sh_reg_weight / (float)(3 * N);
     p.max_screen_size = max_screen_size;
     p.max_screen_size_penalty =

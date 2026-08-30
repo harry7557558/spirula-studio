@@ -748,26 +748,26 @@ __device__ __forceinline__ void apply_color_correction_ppisp_bwd(
 
     float3 rgi_out = H * rgi_in;
 
-    float norm_factor = __fdividef(intensity, fmaxf(rgi_out.z, 0.0f) + 1.0e-5f);
-    float3 rgi_out_norm = rgi_out * norm_factor;
+    float floor_z = kColorNormMinZ * fabsf(intensity) + 1.0e-8f;
+    float z = fmaxf(rgi_out.z, floor_z);
+    float norm_factor = __fdividef(intensity, z);
 
-    // Backward: rgb = [rgi[0], rgi[1], rgi[2] - rgi[0] - rgi[1]]
-    float3 grad_rgi_out_norm;
-    grad_rgi_out_norm.x = grad_rgb_out.x - grad_rgb_out.z;
-    grad_rgi_out_norm.y = grad_rgb_out.y - grad_rgb_out.z;
-    grad_rgi_out_norm.z = grad_rgb_out.z;
+    // Backward: rgb = [x * n, y * n, intensity - x * n - y * n]
+    float grad_out_r = grad_rgb_out.x - grad_rgb_out.z;
+    float grad_out_g = grad_rgb_out.y - grad_rgb_out.z;
+    float3 grad_rgi_out =
+        make_float3(norm_factor * grad_out_r, norm_factor * grad_out_g, 0.0f);
+    float grad_norm_factor = rgi_out.x * grad_out_r + rgi_out.y * grad_out_g;
 
-    // Gradient through normalization
-    float3 grad_rgi_out = grad_rgi_out_norm * norm_factor;
-
-    // Gradient to norm_factor through rgi_out
-    float grad_norm_factor = dot(grad_rgi_out_norm, rgi_out);
-
-    // Gradient to rgi_out.z through norm_factor
-    float grad_rgi_out_z_norm = rgi_out.z <= 0.0f ?
-        grad_norm_factor * intensity * 1e+5f :
-        -grad_norm_factor * norm_factor / (rgi_out.z + 1.0e-5f);
-    grad_rgi_out.z += grad_rgi_out_z_norm;
+    // n = intensity / max(rgi_out.z, floor_z). The tie splits the incoming
+    // gradient in half, and d|intensity| is 0 at 0, both matching Slang's
+    // vjps -- the two backends must agree at the seam, not just away from it.
+    float grad_z = -grad_norm_factor * norm_factor / z;
+    float w_z = rgi_out.z > floor_z ? 1.0f : (rgi_out.z < floor_z ? 0.0f : 0.5f);
+    grad_rgi_out.z = w_z * grad_z;
+    float sign_i = intensity > 0.0f ? 1.0f : (intensity < 0.0f ? -1.0f : 0.0f);
+    float grad_intensity = grad_rgb_out.z + grad_norm_factor / z +
+                           (1.0f - w_z) * grad_z * kColorNormMinZ * sign_i;
 
     // Gradient through homography: rgi_out = H * rgi_in
     // Use typed matrix backward: grad_rgi_in = H^T * grad_rgi_out
@@ -776,20 +776,10 @@ __device__ __forceinline__ void apply_color_correction_ppisp_bwd(
     mul_bwd(H, rgi_in, grad_rgi_out, grad_H, grad_rgi_in);
 
     // Gradient through RGI construction: rgi_in = [r, g, r+g+b]
-    grad_rgb_in.x = grad_rgi_in.x + grad_rgi_in.z;
-    grad_rgb_in.y = grad_rgi_in.y + grad_rgi_in.z;
-    grad_rgb_in.z = grad_rgi_in.z;
-
-    // Gradient through intensity (intensity = rgb_in.x + rgb_in.y + rgb_in.z)
-    float grad_intensity = 0.0f;
-    if (intensity > 1e-8f) {
-        grad_intensity = grad_norm_factor * norm_factor / intensity;
-    }
-
-    // Distribute gradient to all RGB channels (since intensity = sum of all)
-    grad_rgb_in.x += grad_intensity;
-    grad_rgb_in.y += grad_intensity;
-    grad_rgb_in.z += grad_intensity;
+    grad_intensity += grad_rgi_in.z;
+    grad_rgb_in.x = grad_rgi_in.x + grad_intensity;
+    grad_rgb_in.y = grad_rgi_in.y + grad_intensity;
+    grad_rgb_in.z = grad_intensity;
 
     // Backprop through compute_homography to get gradients for color_params
     compute_homography_bwd(color_params, grad_H, grad_color_params);

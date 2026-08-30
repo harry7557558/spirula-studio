@@ -165,6 +165,11 @@ float3x3 compute_homography(ColorPPISPParams params) {
     return H;
 }
 
+// Floor on the RGI renormalization denominator, as a fraction of |intensity|.
+// The identity homography gives rgi_out.z == intensity, so this binds only on
+// the pole line of an aggressive H, and caps the chroma gain at its reciprocal.
+static const float kColorNormMinZ = 0.05f;
+
 [ForceInline]
 [Differentiable]
 float3 apply_color_correction_ppisp(float3 rgb_in, ColorPPISPParams color_params) {
@@ -178,11 +183,15 @@ float3 apply_color_correction_ppisp(float3 rgb_in, ColorPPISPParams color_params
     // Apply homography
     float3 rgi_out = mul(H, rgi_in);
 
-    // Normalize and convert back to RGB
-    float norm_factor = intensity / (max(rgi_out.z, 0.0f) + 1.0e-5f);
-    rgi_out = rgi_out * norm_factor;
+    // Renormalize to the input intensity, off a strictly positive z.
+    float z = max(rgi_out.z, kColorNormMinZ * abs(intensity) + 1.0e-8f);
+    float norm_factor = intensity / z;
+    float out_r = rgi_out.x * norm_factor;
+    float out_g = rgi_out.y * norm_factor;
 
-    return float3(rgi_out.x, rgi_out.y, rgi_out.z - rgi_out.x - rgi_out.y);
+    // Third component is `intensity` by construction, so it is written back
+    // rather than recomputed: intensity is preserved exactly, at every z.
+    return float3(out_r, out_g, intensity - out_r - out_g);
 }
 
 

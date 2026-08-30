@@ -29,9 +29,9 @@ void rendered_depth_to_expected_depth_bwd(
     v_transmittance = p_transmittance.d;
 }
 
-// Straight-through derivative of the clamp below. Hand-written rather than
-// autodiffed: clamp's own backward drops only the "too bright" half of the
-// correction, so a pixel once over 1 could never come back down.
+// Hand-written: the Vulkan half's slangc autodiffs `transmittance` to zero
+// through the splat in the multiply below, so the SH skybox and the alpha
+// gradient would silently vanish. Exact -- the blend is affine.
 void blend_background_bwd_impl(
     inout DifferentialPair<float3> dp_rgb,
     inout DifferentialPair<float> dp_transmittance,
@@ -45,11 +45,14 @@ void blend_background_bwd_impl(
     dp_background = diffPair(bg, t * v_out);
 }
 
+// The composite is deliberately unclamped: clamping to [0,1] here costs the
+// photometric loss every gradient in a region that saturates in both render
+// and GT, which lets the pre-blend colour drift with nothing to pull it back.
 [BackwardDerivative(blend_background_bwd_impl)]
 [Differentiable]
 [CudaDeviceExport]
 float3 blend_background(float3 rgb, float transmittance, float3 background) {
-    return clamp(rgb + transmittance * background, 0.0, 1.0);
+    return rgb + transmittance * background;
 }
 
 // dL/dc of L = weight * mean(max(-c, c-1, 0)^2); scale is 2 * weight / N.
@@ -64,8 +67,7 @@ void blend_background_bwd(
     float3 v_out_rgb, float overexposure_scale,
     out float3 v_rgb, out float v_transmittance, out float3 v_background
 ) {
-    // `rgb` MUST be the pre-blend render: the overexposure term needs the
-    // unclamped composite, which no caller can recover from the blend output.
+    // `rgb` MUST be the pre-blend render, not the blend output.
     // Branch, not a multiply by zero: an infinite composite would make 0*inf.
     if (overexposure_scale != 0.0f)
         v_out_rgb += overexposure_grad(rgb + transmittance * background,

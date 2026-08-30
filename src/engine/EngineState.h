@@ -386,9 +386,8 @@ struct EngineBackground {
     DeviceVector<float3> sh_g1, sh_g2;
     bool sh_optim_initialized = false;
 
-    // Per-iter, resized each forward. fwd_pre_blend_rgb is kept in BOTH modes:
-    // the blend clamps its output, so backward cannot recover the composite.
-    // fwd_background is the skybox image (Sh mode).
+    // Per-iter, resized each forward. fwd_pre_blend_rgb is kept in BOTH modes
+    // (the backward reads it); fwd_background is the skybox image (Sh mode).
     DeviceTensor3D<float3> fwd_pre_blend_rgb;
     DeviceTensor3D<float3> fwd_background;
 

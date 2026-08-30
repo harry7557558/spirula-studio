@@ -788,8 +788,8 @@ static std::map<std::string, float> _engine_loss(
     }
 
     // --- Image-space overexposure regularization ---
-    // Skipped under a blend: that clamped this buffer to [0,1], so the penalty
-    // would be identically zero -- the blend backward applies it instead.
+    // Skipped under a blend: the blend backward applies it instead, on the
+    // composite rather than on this pre-blend buffer.
     if (overexposure_reg_weight != 0.0f && !engine().background.enabled) {
         // Both buffers are in the splat working color space here: cs.fwd_pre
         // is the pre-conversion render when color space is on (its bwd hook

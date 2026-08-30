@@ -175,6 +175,11 @@ inline __device__ void blend_background_bwd_impl_0(DiffPair_vectorx3Cfloatx2C3x3
     return;
 }
 
+inline __device__ float3  blend_background(float3  rgb_0, float transmittance_2, float3  background_0)
+{
+    return rgb_0 + make_float3 (transmittance_2) * background_0;
+}
+
 inline __device__ float3  min_0(float3  x_2, float3  y_2)
 {
     float3  result_4;
@@ -211,16 +216,6 @@ inline __device__ float3  max_0(float3  x_3, float3  y_3)
         i_3 = i_3 + int(1);
     }
     return result_5;
-}
-
-inline __device__ float3  clamp_0(float3  x_4, float3  minBound_0, float3  maxBound_0)
-{
-    return min_0(max_0(x_4, minBound_0), maxBound_0);
-}
-
-inline __device__ float3  blend_background(float3  rgb_0, float transmittance_2, float3  background_0)
-{
-    return clamp_0(rgb_0 + make_float3 (transmittance_2) * background_0, make_float3 (0.0f), make_float3 (1.0f));
 }
 
 inline __device__ float3  overexposure_grad(float3  c_0, float scale_0)
@@ -293,31 +288,31 @@ inline __device__ DiffPair_float_0 _d_pow_1(DiffPair_float_0 * dpx_3, DiffPair_f
     return _S27;
 }
 
-inline __device__ float linear_rgb_to_srgb(float x_5)
+inline __device__ float linear_rgb_to_srgb(float x_4)
 {
     float _S28;
-    if(x_5 < 0.00313080009073019f)
+    if(x_4 < 0.00313080009073019f)
     {
-        _S28 = x_5 * 12.92000007629394531f;
+        _S28 = x_4 * 12.92000007629394531f;
     }
     else
     {
-        _S28 = 1.0549999475479126f * (F32_pow((x_5), (0.4166666567325592f))) - 0.05499999970197678f;
+        _S28 = 1.0549999475479126f * (F32_pow((x_4), (0.4166666567325592f))) - 0.05499999970197678f;
     }
     return _S28;
 }
 
-inline __device__ float linear_rgb_to_srgb_grad(float x_6)
+inline __device__ float linear_rgb_to_srgb_grad(float x_5)
 {
     float _S29;
-    if(x_6 < 0.00313080009073019f)
+    if(x_5 < 0.00313080009073019f)
     {
         _S29 = 12.92000007629394531f;
     }
     else
     {
         DiffPair_float_0 _S30;
-        (&_S30)->primal_0 = x_6;
+        (&_S30)->primal_0 = x_5;
         (&_S30)->differential_0 = 1.0f;
         DiffPair_float_0 _S31;
         (&_S31)->primal_0 = 0.4166666567325592f;
@@ -328,31 +323,31 @@ inline __device__ float linear_rgb_to_srgb_grad(float x_6)
     return _S29;
 }
 
-inline __device__ float srgb_to_linear_rgb(float x_7)
+inline __device__ float srgb_to_linear_rgb(float x_6)
 {
     float _S33;
-    if(x_7 < 0.04044999927282333f)
+    if(x_6 < 0.04044999927282333f)
     {
-        _S33 = x_7 * 0.07739938050508499f;
+        _S33 = x_6 * 0.07739938050508499f;
     }
     else
     {
-        _S33 = (F32_pow((0.94786733388900757f * (x_7 + 0.05499999970197678f)), (2.40000009536743164f)));
+        _S33 = (F32_pow((0.94786733388900757f * (x_6 + 0.05499999970197678f)), (2.40000009536743164f)));
     }
     return _S33;
 }
 
-inline __device__ float srgb_to_linear_rgb_grad(float x_8)
+inline __device__ float srgb_to_linear_rgb_grad(float x_7)
 {
     float _S34;
-    if(x_8 < 0.04044999927282333f)
+    if(x_7 < 0.04044999927282333f)
     {
         _S34 = 0.07739938050508499f;
     }
     else
     {
         DiffPair_float_0 _S35;
-        (&_S35)->primal_0 = 0.94786733388900757f * (x_8 + 0.05499999970197678f);
+        (&_S35)->primal_0 = 0.94786733388900757f * (x_7 + 0.05499999970197678f);
         (&_S35)->differential_0 = 0.94786733388900757f;
         DiffPair_float_0 _S36;
         (&_S36)->primal_0 = 2.40000009536743164f;
@@ -387,10 +382,10 @@ inline __device__ float splat_dc_encode(float dc_0)
     return (w_0 - 2.0f * s_0) * s_0 / 0.282094806432724f;
 }
 
-inline __device__ float splat_dc_decode(float x_9)
+inline __device__ float splat_dc_decode(float x_8)
 {
     float s_1 = (F32_sqrt((0.50001537799835205f)));
-    float w_1 = x_9 * 0.282094806432724f / s_1 + 2.0f * s_1;
+    float w_1 = x_8 * 0.282094806432724f / s_1 + 2.0f * s_1;
     float u_1;
     if(w_1 >= 0.00784313771873713f)
     {
@@ -904,14 +899,14 @@ inline __device__ float3  cross_0(float3  left_2, float3  right_2)
     return make_float3 (_S144 * _S145 - _S146 * _S147, _S146 * _S148 - _S149 * _S145, _S149 * _S147 - _S144 * _S148);
 }
 
-inline __device__ float length_0(float3  x_10)
+inline __device__ float length_0(float3  x_9)
 {
-    return (F32_sqrt((dot_0(x_10, x_10))));
+    return (F32_sqrt((dot_0(x_9, x_9))));
 }
 
-inline __device__ float length_1(float2  x_11)
+inline __device__ float length_1(float2  x_10)
 {
-    return (F32_sqrt((dot_1(x_11, x_11))));
+    return (F32_sqrt((dot_1(x_10, x_10))));
 }
 
 inline __device__ float3  points_to_normal(FixedArray<float3 , 4>  points_0)
@@ -1290,7 +1285,7 @@ inline __device__ void points_to_normal_vjp(FixedArray<float3 , 4>  points_1, fl
     return;
 }
 
-inline __device__ Matrix<float, 2, 2>  transpose_0(Matrix<float, 2, 2>  x_12)
+inline __device__ Matrix<float, 2, 2>  transpose_0(Matrix<float, 2, 2>  x_11)
 {
     Matrix<float, 2, 2>  result_7;
     int r_0 = int(0);
@@ -1313,7 +1308,7 @@ inline __device__ Matrix<float, 2, 2>  transpose_0(Matrix<float, 2, 2>  x_12)
             {
                 break;
             }
-            *_slang_vector_get_element_ptr(((&result_7)->rows + (r_0)), c_1) = _slang_vector_get_element(x_12.rows[c_1], r_0);
+            *_slang_vector_get_element_ptr(((&result_7)->rows + (r_0)), c_1) = _slang_vector_get_element(x_11.rows[c_1], r_0);
             c_1 = c_1 + int(1);
         }
         r_0 = r_0 + int(1);
@@ -1663,9 +1658,9 @@ inline __device__ bool undistort_point_3(float2  uv_6, FixedArray<float, 8>  * d
     return _S345;
 }
 
-inline __device__ float3  normalize_0(float3  x_13)
+inline __device__ float3  normalize_0(float3  x_12)
 {
-    return x_13 / make_float3 (length_0(x_13));
+    return x_12 / make_float3 (length_0(x_12));
 }
 
 inline __device__ float3  unproject_raydir_0(float2  uv_7, int camera_model_0, bool is_ray_depth_0)

@@ -147,7 +147,7 @@ void _engine_bilagrid_tv_into(float* tv_buf3_device);
 
 // Background blend: forward runs inside forward_3dgs, out of place, so viewer
 // renders blend too. The backward hook adds v_T, rewrites v_render_rgb, and
-// folds in overexposure_reg -- which needs the pre-clamp composite.
+// folds in overexposure_reg -- which needs the blend composite.
 void _engine_background_forward();
 void _engine_background_backward_hook(
     TorchTensorView v_render_rgb,

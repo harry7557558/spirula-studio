@@ -287,6 +287,31 @@ void test_ppisp(Rng& r) {
         readback_f(g_loose, v_grid, (int64_t)N_img * 9 * L * Hg * Wg);
     }
 
+    // Negative-intensity pixels: ~half push rgi_out.z below the denominator
+    // floor, the one branch where the hand-written CUDA backward and the Slang
+    // autodiff one have to be made to agree.
+    {
+        const int N_img = 2, N_grids = 2, h = 30, w = 36;
+        Grid g = make_grid(r, N_grids, 9, L, Hg, Wg, -0.7f, 0.7f, false);
+        int64_t np = (int64_t)N_img * h * w;
+        float* rgb = upload(r.vec(3 * np, -1.0f, 1.0f));
+        float* out = alloc_zero<float>(3 * np);
+        bilagrid_ppisp_uniform_sample_forward(g.reader(false), rgb, out,
+                                              N_img, L, Hg, Wg, h, w,
+                                              backend::kDefaultStream,
+                                              nullptr);
+        readback_f(g_tight, out, 3 * np);
+
+        float* v_out = upload(r.vgrad(np, 3, -0.4f, 0.4f));
+        float* v_grid = alloc_zero<float>((int64_t)N_img * 9 * L * Hg * Wg);
+        float* v_rgb = alloc_zero<float>(3 * np);
+        bilagrid_ppisp_uniform_sample_backward_v1(
+            g.reader(false), rgb, v_out, v_grid, v_rgb, N_img, L, Hg, Wg, h,
+            w, 1, backend::kDefaultStream, nullptr);
+        readback_f(g_loose, v_rgb, 3 * np);
+        readback_f(g_loose, v_grid, (int64_t)N_img * 9 * L * Hg * Wg);
+    }
+
     // patched fwd + bwd v1
     {
         const int N_img = 2, m = 2, h = 16, w = 20, h0 = 40, w0 = 48;

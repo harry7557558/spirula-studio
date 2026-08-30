@@ -1066,7 +1066,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
         erank_reg_weight / (float)N,
         erank_reg_weight_s3 / (float)N,
         quat_norm_reg_weight / (float)N,
-        2.0f * dc_reg_weight / (float)(3*N),
+        2.0f * dc_reg_weight / 3.0f,
         2.0f * sh_reg_weight / (float)(3*N),
         max_screen_size, max_screen_size_penalty,
         eps_tr,

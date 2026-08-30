@@ -1,13 +1,12 @@
 // Engine background blending (none / random noise / SH skybox).
 //
 // Forward runs inside forward_3dgs (so viewer renders blend too), out of place
-// on fwd.renders.rgb: the pre-blend buffer is kept because the blend clamps to
-// [0,1] and nothing downstream can recover the composite from before it.
+// on fwd.renders.rgb, keeping the pre-blend buffer for the backward.
 // Backward order is PPISP -> bilagrid -> background -> raster; the hook here
 // rewrites v_render_rgb (post-blend -> pre-blend), ADDS into v_render_Ts, and
-// folds in overexposure_reg. The blend's own backward does NOT mask at the
-// clamp. SH mode also accumulates per-camera gradient into the SH coefficient
-// table; the rotation gradient is dropped (cameras are fixed here).
+// folds in overexposure_reg. SH mode also accumulates per-camera gradient into
+// the SH coefficient table; the rotation gradient is dropped (cameras are
+// fixed here).
 
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
@@ -141,8 +140,7 @@ void _engine_background_forward() {
     DeviceTensor3D<float>  Ts_in(fwd_Ts_tensor);            // [C, H, W]
 
     // Both modes blend out-of-place: pre-blend rgb is a pointer alias of the
-    // current renders.rgb (no copy), post goes to a fresh buffer. Backward
-    // needs pre to rebuild the composite the blend clamped away.
+    // current renders.rgb (no copy), post goes to a fresh buffer.
     bg.fwd_pre_blend_rgb = fwd_rgb_tensor;
     DeviceTensor3D<float3> post_rgb;
     post_rgb.resize(PoolSlot::EngBgSkyRgbPost, C_batch, H, W);
@@ -181,7 +179,7 @@ void _engine_background_forward() {
 void _engine_background_backward_hook(
     TorchTensorView v_render_rgb,   // [C, H, W, 3] in/out (post-blend in; pre-blend out)
     TorchTensorView v_render_Ts,    // [C, H, W, 1] in/out (accumulate blend's v_T)
-    float overexposure_reg_weight   // fused here: the blend output is clamped
+    float overexposure_reg_weight   // fused here: needs the blend composite
 ) {
     auto& bg = engine().background;
     if (!bg.enabled || bg.mode == EngineBackground::Mode::None) return;
