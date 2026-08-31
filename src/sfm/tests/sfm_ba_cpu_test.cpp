@@ -148,6 +148,23 @@ void testZeroRotation(const char* name, const double* intr) {
     if (!ok) g_fail++;
 }
 
+void testEquirectSeamResidual() {
+    const double intr[2] = {640.0, 480.0};
+    const double pose[6] = {0, 0, 0, 0, 0, 0};
+    const double d = 2.0 * M_PI * 2.0 / intr[0];
+    const double points[2][3] = {{std::sin(M_PI - d), 0, std::cos(M_PI - d)},
+                                 {std::sin(-M_PI + d), 0, std::cos(-M_PI + d)}};
+    const double obs[2][2] = {{2.0, 240.0}, {638.0, 240.0}};
+    double worst = 0;
+    for (int i = 0; i < 2; i++) {
+        double r[2];
+        bacpu::residual<bacpu::EquirectModel>(pose, intr, points[i], obs[i], r);
+        worst = std::max(worst, std::fabs(r[0] - (i == 0 ? -4.0 : 4.0)));
+        worst = std::max(worst, std::fabs(r[1]));
+    }
+    report("equirect seam residual", worst, 1e-10);
+}
+
 // ---------------------------------------------------------------------------
 // synthetic problems
 // ---------------------------------------------------------------------------
@@ -564,6 +581,7 @@ int run(int argc, char** argv) {
         testZeroRotation<bacpu::ThinPrismFisheyeModel>("zero rotation thin_prism",
                                                        defaultIntr(8, n));
         testZeroRotation<bacpu::EquirectModel>("zero rotation equirect", defaultIntr(9, n));
+        testEquirectSeamResidual();
     }
 
     for (uint32_t model = 0; model < (uint32_t)kNumModels; model++)
