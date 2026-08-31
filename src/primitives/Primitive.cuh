@@ -428,7 +428,7 @@ public:
         DeviceTensor2D<float> b;
         b.resize_dynamic(slot_category(key_prefix),
                          std::string(slot_name(key_prefix)) + ".0",
-                         size, (int64_t)STRIDE);
+                         size, (int64_t)STRIDE, slot_phase(key_prefix));
         return { DeviceTensorFloatND(b) };
     }
 
@@ -537,17 +537,18 @@ public:
         int64_t size, std::array<int32_t, N> strides, PoolSlot key_prefix
     ) {
         const VramCategory cat = slot_category(key_prefix);
+        const PoolPhase    ph  = slot_phase(key_prefix);
         const std::string  base = slot_name(key_prefix);
         std::vector<DeviceTensorFloatND> res;
         for (int i = 0; i < N; ++i) {
             if (strides[i] <= 0) { res.push_back(DeviceTensorFloatND()); continue; }
             std::string key = base + "." + std::to_string(i);
             switch (strides[i]) {
-                case 1: { DeviceVector<float>  b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 2: { DeviceVector<float2> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 3: { DeviceVector<float3> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 4: { DeviceVector<float4> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                default: { DeviceTensor2D<float> b; b.resize_dynamic(cat, key, size, (int64_t)strides[i]); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 1: { DeviceVector<float>  b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 2: { DeviceVector<float2> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 3: { DeviceVector<float3> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 4: { DeviceVector<float4> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                default: { DeviceTensor2D<float> b; b.resize_dynamic(cat, key, size, (int64_t)strides[i], ph); res.push_back(DeviceTensorFloatND(b)); break; }
             }
         }
         return res;

@@ -395,6 +395,11 @@ std::tuple<
     const uint32_t total_count = (uint32_t)depths.numel();
     const uint32_t N = packed ? total_count : total_count / I;
 
+    // Opens the tile-intersect phase: the key and count buffers below are
+    // scratch that dies here, so they share the arena with the raster
+    // backward (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::TileIsect);
+
     intersect_check_image_size(image_width, image_height);
     uint32_t tile_width = _CEIL_DIV(image_width, TILE_SIZE_IX);
     uint32_t tile_height = _CEIL_DIV(image_height, TILE_SIZE_IY);

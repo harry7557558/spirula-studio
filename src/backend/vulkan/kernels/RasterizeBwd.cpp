@@ -95,6 +95,9 @@ std::tuple<
     const bool md = v_median.data_ptr() != nullptr;
     const bool packed = gaussian_ids.data_ptr() != nullptr;
 
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGS<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);
@@ -221,6 +224,9 @@ std::tuple<
     const bool md = v_median.data_ptr() != nullptr;
     const bool packed = gaussian_ids.data_ptr() != nullptr;
 
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGUT<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);

@@ -33,6 +33,11 @@ void forward_3dgs(
     engine().sh_degree = sh_degree;
     engine().packed = packed;
 
+    // The stashed screen gradients live in the arena the intersect below
+    // reuses, so this view is already dead. Dropping it turns a stale
+    // fused-optim read into that step's "v_splats_s not stashed" error.
+    engine().fwd.v_splats_s.clear();
+
     // Build splats as DeviceTensorFloatND from typed device buffers.
     // For DeviceVector<float> (opacities), build a [N, 1] shape FND manually.
     DeviceTensorFloatND fnd_opac;

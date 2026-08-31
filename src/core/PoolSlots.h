@@ -453,6 +453,64 @@ constexpr const char* to_string(SaveClass s) {
 }
 
 
+// ---- Aliasing: phases that share one arena --------------------------------
+
+// A slot listed in POOL_ALIAS_TABLE below owns no storage: every phase carves
+// out of ONE arena, so it costs the largest phase and not the sum. Adding a
+// row is a lifetime claim -- docs/notes/vram-splat-x-img.md says how to test it.
+enum class PoolPhase : uint8_t {
+    None = 0,   // owns its allocation -- every slot not listed below
+    TileIsect,  // scratch that dies inside do_intersect_tile_generic
+    RasterBwd,  // raster backward -> projection backward / fused optim step
+    Count
+};
+
+// X(PoolSlot enumerator, PoolPhase enumerator)
+#define POOL_ALIAS_TABLE(X) \
+  /* The sort keys and tile counts: no caller reads the key array the \
+     intersector returns, and the counts never leave it. */ \
+  X(IsectIdsA          , TileIsect) \
+  X(IsectIdsB          , TileIsect) \
+  X(IsectTilesPerSplat , TileIsect) \
+  X(IsectCumTiles      , TileIsect) \
+  /* Screen-space gradients: written by the raster backward, consumed by the \
+     projection backward, or stashed for the fused optim step -- all before \
+     the next forward's intersection. forward_3dgs drops the stashed view. */ \
+  X(RasterBwdVScreen   , RasterBwd)
+
+struct AliasRow { PoolSlot slot; PoolPhase phase; };
+inline constexpr AliasRow kAliasRows[] = {
+#define X(name, ph) AliasRow{ PoolSlot::name, PoolPhase::ph },
+    POOL_ALIAS_TABLE(X)
+#undef X
+};
+
+constexpr PoolPhase slot_phase(PoolSlot s) {
+    for (const AliasRow& r : kAliasRows)
+        if (r.slot == s) return r.phase;
+    return PoolPhase::None;
+}
+
+constexpr bool ce_alias_rows_unique() {
+    const size_t n = sizeof(kAliasRows) / sizeof(kAliasRows[0]);
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = i + 1; j < n; ++j)
+            if (kAliasRows[i].slot == kAliasRows[j].slot) return false;
+    return true;
+}
+static_assert(ce_alias_rows_unique(),
+              "POOL_ALIAS_TABLE: a slot is listed twice");
+
+constexpr const char* to_string(PoolPhase p) {
+    switch (p) {
+        case PoolPhase::None:      return "none";
+        case PoolPhase::TileIsect: return "tile-isect";
+        case PoolPhase::RasterBwd: return "raster-bwd";
+        default:                   return "?";
+    }
+}
+
+
 // ---- Sub-index scheme -----------------------------------------------------
 // A single logical slot may back a bounded number of physical allocations
 // (a QuantizedTensor* needs packed bytes + per-block bounds). The pool is keyed

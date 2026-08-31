@@ -527,6 +527,14 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `kernels/bilagrid/BilagridConfig.cuh` for the 3D case) and pass the fold
   factor to the kernel. Related: the bilagrid samplers index cells with
   int32, which `engine_init_bilagrid_*` enforces up front.
+- **Some pool buffers do not own their memory.** A slot listed in
+  `POOL_ALIAS_TABLE` (`core/PoolSlots.h`) is a slice of one arena that every
+  `PoolPhase` reuses, so the arena costs the largest phase rather than the sum
+  (626 MiB on a 15M-splat step). Acquiring one outside its phase throws;
+  `SS_POOL_ALIAS_POISON=1` fills the arena at every phase switch so a read
+  that outlives its phase becomes NaNs a parity test catches, and
+  `SS_POOL_ALIAS=0` turns the whole thing off. Read
+  `docs/notes/vram-splat-x-img.md` before adding a row.
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
   a per-category VRAM breakdown after any run that trained. What the biggest

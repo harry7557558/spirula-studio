@@ -188,6 +188,9 @@ inline std::tuple<
     std::optional<std::vector<DeviceTensorFloatND>> v_splats_s,
     bool need_viewmat_grad
 ) {
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = SplatPrimitive::WorldBuffer::zeros_pool(splats_w, PoolSlot::RasterBwdVWorld);
     if (!v_splats_s.has_value())

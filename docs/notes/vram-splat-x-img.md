@@ -101,30 +101,85 @@ Worth revisiting only together with:
   cost scales with `n_isects` while the gather cost scales with `nnz`, so the
   same change should come out ahead. Measure before believing it.
 
+## The phase arena
+
+`isect.ids_a/b` and the tile counts are allocated, used and dead inside
+`do_intersect_tile_generic` -- no caller reads the key array it returns.
+`raster_bwd.v_screen` does not exist until the backward, and is gone by the
+next forward. They can never be live at once, so they share one allocation.
+
+`POOL_ALIAS_TABLE` (`core/PoolSlots.h`) is the whole declaration: one row per
+buffer, naming the `PoolPhase` its bytes are valid in. A phase-tagged slot
+owns nothing; `DevicePool` carves it out of a single arena with a bump
+allocator, and `pool_begin_phase()` resets the cursor. The arena therefore
+costs the LARGEST phase instead of the sum:
+
+Three paired art_gallery runs at `--cap-max 15000000` (the arena and the
+intersection buffers both follow `n_isects`, which moves with the cameras a run
+happens to sample, so pair the measurements):
+
+| | alias off | alias on |
+|---|---|---|
+| pool + scratch, MiB | 6594.65 / 6537.27 / 6544.67 | 5971.80 / 6078.39 / 6021.85 |
+| arena, MiB | - | 653.17 / 724.61 / 686.69 |
+| GPU-exec, ms per 10 iters | 6256 / 5762 / 5923 | 5611 / 5942 / 6005 |
+
+535 MiB off the pool on average (8.2%), for no measurable time: a bump
+allocation is a pointer add, and the arena is reallocated only when a phase
+asks for more than it holds. The saving is `raster_bwd.v_screen` in full --
+the intersect phase is the larger of the two, so it sets the arena and the
+gradient buffer rides along free.
+
+### Adding a buffer to a phase
+
+1. Add its row to `POOL_ALIAS_TABLE`. If the phase is new, add the enumerator
+   and the one `pool_begin_phase()` call that opens it -- put that call in the
+   launcher that allocates the phase's first buffer, not in the engine layer.
+2. Run the parity suite with `SS_POOL_ALIAS_POISON=1`, which fills the arena
+   with 0xff at every phase switch. A buffer that is still being read turns
+   into NaNs the tests catch instead of the plausible stale data they would
+   not. A deliberately wrong row (tagging `isect.offsets`, which the raster
+   backward reads) fails `raster_bwd_parity` even without the poison, and
+   hangs with it -- that is the shape of the failure to expect.
+3. `SS_POOL_ALIAS=0` turns the whole mechanism off (every slot owns its
+   allocation again). It changes memory layout and nothing else, so it is both
+   the A/B lever and the escape hatch if a lifetime claim turns out wrong.
+
+### What the mechanism checks for you
+
+- Acquiring a phase-tagged slot while a different phase is open throws, naming
+  the buffer and both phases. That is the ordering bug caught for free.
+- A request the arena cannot fit yet takes a private allocation for that call
+  and raises the arena's target, so a growing `n_isects` degrades to today's
+  behavior for one step rather than overflowing.
+- The VRAM report marks aliased rows `arena` in the cap column (they own
+  nothing) and prints the arena's one allocation as `of which alias arena`, so
+  the category caps and the pool total still add up.
+
+### Candidates not yet taken
+
+`raster_bwd.accum_weight` (114 MiB) would fit the `RasterBwd` phase and balance
+it against the intersect phase, for a net ~53 MiB. It is not tagged because
+the non-split training path can leave `engine().fwd.accum_weight` pointing at
+the previous step's buffer when a step produces none -- harmless today (stale
+but plausible numbers), garbage once the bytes are reused. Fix that stale view
+the way `_engine_train_step_split_batch` already does, then tag it.
+
 ## Remaining opportunities, largest first
 
-1. **Lifetime aliasing for phase-local scratch** (~550-1200 MiB). `isect.ids_a/b`
-   are allocated, sorted and dead inside `do_intersect_tile_generic` -- no
-   caller reads the returned key array. `raster_bwd.v_screen` is not allocated
-   until the backward. They can never be live at once, so one allocation could
-   serve both. The pool is one `device_malloc` per slot with no notion of
-   lifetime, so this needs a real change: an arena with explicit scoping, and a
-   fail-fast in-use flag rather than a comment, because getting a lifetime
-   wrong here corrupts silently. The viewer/eval render path shares these
-   slots, so it has to be part of the analysis.
-2. **`proj.aabb` as 4 x int16** (16 -> 8 bytes per `nnz`, 115 MiB here). The
+1. **`proj.aabb` as 4 x int16** (16 -> 8 bytes per `nnz`, 115 MiB here). The
    projection already clamps the box to `[0, W-1] x [0, H-1]`, and image sizes
    are now checked against 32767, so the values fit exactly; round outward
    (floor the min, ceil the max) to stay conservative. Wide but mechanical:
    the type is threaded through both projections, the intersector, three
    backward launchers and the meshing raster in both backends, and the
    backward passes only use it as an "is this pair valid" predicate.
-3. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
+2. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
    comfortably; `xy`, `conic` and `depth` would not. The blocker is
    `raster_bwd.v_screen`, which is accumulated with float atomics -- fp16
    atomic add is not portable to the Vulkan baseline, so only the forward row
    could shrink, and then the two buffers stop sharing a layout.
-4. **Splitting one training image into tile bands** -- low priority. It bounds
+3. **Splitting one training image into tile bands** -- low priority. It bounds
    `n_isects` per launch rather than per image, which is the only lever that
    helps the 4K case without touching precision. It does not help the
-   `nnz`-sized buffers at all, which is why it is below the three above.
+   `nnz`-sized buffers at all, which is why it is below the two above.

@@ -260,17 +260,20 @@ size_t engine_get_scratch_bytes() {
 // ===========================================================================
 
 std::string engine_vram_report() {
-    auto rows = DevicePool::global().getBreakdownCategorized();
+    // Arena-backed rows own nothing, so their cap is 0 and the arena's one
+    // allocation is a line of its own; the totals still add up.
+    auto rows = DevicePool::global().breakdown();
+    auto arena = DevicePool::global().arenaStats();
     const int kNCat = (int)VramCategory::Count;
     size_t used[kNCat] = {}, cap[kNCat] = {}, count[kNCat] = {};
     size_t used_total = 0, cap_total = 0;
     for (const auto& r : rows) {
-        int c = std::get<1>(r);
+        int c = (int)r.cat;
         count[c]++;
-        used[c] += std::get<2>(r);
-        cap[c]  += std::get<3>(r);
-        used_total += std::get<2>(r);
-        cap_total  += std::get<3>(r);
+        used[c] += r.used_bytes;
+        cap[c]  += r.cap_bytes;
+        used_total += r.used_bytes;
+        cap_total  += r.cap_bytes;
     }
 
     std::string out;
@@ -293,10 +296,13 @@ std::string engine_vram_report() {
     }
     size_t scratch = engine_get_scratch_bytes();
     add("%-30s %11zu %11.2f %11.2f\n", "  pool total", rows.size(),
-        mib(used_total), mib(cap_total));
+        mib(used_total), mib(cap_total + arena.cap_bytes));
+    if (arena.cap_bytes || arena.slots)
+        add("%-30s %11zu %11s %11.2f\n", "  of which alias arena", arena.slots,
+            "-", mib(arena.cap_bytes));
     add("%-30s %11s %11s %11.2f\n", "  scratch buffer", "-", "-", mib(scratch));
     add("%-30s %11s %11s %11.2f\n", "  pool + scratch", "", "",
-        mib(cap_total + scratch));
+        mib(cap_total + arena.cap_bytes + scratch));
 
     // The driver's figures place the pool against everything else the process
     // holds: staging buffers, backend allocations, NN models, GUI surfaces.
@@ -308,16 +314,24 @@ std::string engine_vram_report() {
         add("%-30s %11s %11s %11.2f / %.2f\n", "  device in use / total", "",
             "", mib(mem.used_bytes), mib(mem.total_bytes));
 
-    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
-        return std::get<3>(a) > std::get<3>(b);
+    // Aliased rows own nothing, so rank on whichever of the two is bigger.
+    auto weight = [](const auto& r) {
+        return std::max(r.used_bytes, r.cap_bytes);
+    };
+    std::sort(rows.begin(), rows.end(), [&](const auto& a, const auto& b) {
+        return weight(a) > weight(b);
     });
     add("%-30s %11s %11s %11s\n", "individual buffers", "category", "used_MiB",
         "cap_MiB");
-    for (size_t i = 0; i < rows.size(); i++) {
-        if (std::get<3>(rows[i]) == 0) break;
-        add("  %-28s %11s %11.2f %11.2f\n", std::get<0>(rows[i]).c_str(),
-            to_string((VramCategory)std::get<1>(rows[i])),
-            mib(std::get<2>(rows[i])), mib(std::get<3>(rows[i])));
+    for (const auto& r : rows) {
+        if (weight(r) == 0) break;
+        const char* cat = to_string(r.cat);
+        if (r.arena)
+            add("  %-28s %11s %11.2f %11s\n", r.name.c_str(), cat,
+                mib(r.used_bytes), "arena");
+        else
+            add("  %-28s %11s %11.2f %11.2f\n", r.name.c_str(), cat,
+                mib(r.used_bytes), mib(r.cap_bytes));
     }
     add("[spirula-profile] --------------------------\n");
     return out;
