@@ -562,6 +562,10 @@ void colmap_to_c2w(const ColmapImage& im, float* out12) {
 // parse_colmap_dataset
 // ===========================================================================
 
+// Which format each file of a COLMAP model dir is stored in.
+enum class ColmapFmt { None, Bin, Text };
+struct ColmapModelFmt { ColmapFmt cameras{}, images{}, points3D{}; };
+
 // Registered-image count of a COLMAP model dir, without parsing the whole
 // reconstruction: images.bin starts with a uint64 count; images.txt carries
 // it in a header comment (else count non-comment lines / 2). -1 = no model.
@@ -597,15 +601,27 @@ static std::string join_files(const std::vector<std::string>& v) {
     return s;
 }
 
-// Locate the reconstruction. Returns "" when the
-// dataset dir holds no COLMAP model; `text_format` says which extension
-// matched. `verbose` gates the multi-model note, so the auto-detect probe in
-// parse_dataset can call this silently. On failure `near_miss` (when given)
-// describes the closest partial model found, so the error can say what is
-// missing instead of just "not a dataset".
+// The three files are resolved independently rather than as one all-.bin or
+// all-.txt model: half-converted and hand-assembled reconstructions mix the
+// two, and each file parses on its own. .bin wins when both are present.
+static ColmapFmt colmap_file_fmt(const fs::path& dir, const char* base) {
+    std::error_code ec;
+    if (fs::exists(dir / (std::string(base) + ".bin"), ec)) return ColmapFmt::Bin;
+    if (fs::exists(dir / (std::string(base) + ".txt"), ec)) return ColmapFmt::Text;
+    return ColmapFmt::None;
+}
+
+static ColmapModelFmt colmap_model_fmt(const fs::path& dir) {
+    return {colmap_file_fmt(dir, "cameras"), colmap_file_fmt(dir, "images"),
+            colmap_file_fmt(dir, "points3D")};
+}
+
+// Locate the reconstruction; "" when there is none. `verbose` is off for
+// parse_dataset's auto-detect probe; `near_miss` names the closest partial
+// model, so the error says what is missing rather than "not a dataset".
 static std::string find_colmap_recon(const std::string& dataset_dir,
                                      const DatasetParserConfig& cfg,
-                                     bool* text_format, bool verbose,
+                                     ColmapModelFmt* fmt, bool verbose,
                                      std::string* near_miss = nullptr) {
     std::vector<std::string> probe;
     if (!cfg.recon_dir.empty()) {
@@ -645,39 +661,39 @@ static std::string find_colmap_recon(const std::string& dataset_dir,
     }
 
     // points3D is required only in strict (trainer) mode; the lenient viewer
-    // accepts a cameras-only reconstruction (poses / frustums). Binary and
-    // text (cameras.txt / images.txt / points3D.txt) formats both count.
-    auto has_recon = [&](const fs::path& d, const char* ext) {
-        return fs::exists(d / (std::string("cameras.") + ext)) &&
-               fs::exists(d / (std::string("images.") + ext)) &&
-               (fs::exists(d / (std::string("points3D.") + ext)) ||
-                !cfg.require_image_files);
+    // accepts a cameras-only reconstruction (poses / frustums).
+    auto has_recon = [&](const ColmapModelFmt& f) {
+        return f.cameras != ColmapFmt::None && f.images != ColmapFmt::None &&
+               (f.points3D != ColmapFmt::None || !cfg.require_image_files);
     };
-    *text_format = false;
+    *fmt = ColmapModelFmt{};
     for (const auto& rel : probe) {
         fs::path d = fs::path(dataset_dir) / rel;
-        if (has_recon(d, "bin")) return d.string();
-        if (has_recon(d, "txt")) { *text_format = true; return d.string(); }
+        ColmapModelFmt f = colmap_model_fmt(d);
+        if (has_recon(f)) { *fmt = f; return d.string(); }
     }
 
     // Nothing matched: report the first probed dir that holds *some* of the
     // three files (a recon that lost points3D, say) rather than none.
     if (near_miss) {
         for (const auto& rel : probe) {
-            fs::path d = fs::path(dataset_dir) / rel;
-            for (const char* ext : {"bin", "txt"}) {
-                std::vector<std::string> present, missing;
-                for (const char* base : {"cameras", "images", "points3D"}) {
-                    std::string name = std::string(base) + "." + ext;
-                    (fs::exists(d / name) ? present : missing).push_back(name);
-                }
-                if (present.empty() || missing.empty()) continue;
-                *near_miss = (rel.empty() ? std::string("the dataset dir")
-                                          : "'" + rel + "'") +
-                             " has " + join_files(present) + " but no " +
-                             join_files(missing);
-                return {};
-            }
+            ColmapModelFmt f = colmap_model_fmt(fs::path(dataset_dir) / rel);
+            const std::pair<const char*, ColmapFmt> files[] = {
+                {"cameras", f.cameras}, {"images", f.images},
+                {"points3D", f.points3D}};
+            std::vector<std::string> present, missing;
+            for (const auto& [base, e] : files)
+                (e == ColmapFmt::None ? missing : present)
+                    .push_back(std::string(base) +
+                               (e == ColmapFmt::Bin  ? ".bin"
+                                : e == ColmapFmt::Text ? ".txt"
+                                                       : ".bin or .txt"));
+            if (present.empty() || missing.empty()) continue;
+            *near_miss = (rel.empty() ? std::string("the dataset dir")
+                                      : "'" + rel + "'") +
+                         " has " + join_files(present) + " but no " +
+                         join_files(missing);
+            return {};
         }
     }
     return {};
@@ -685,9 +701,9 @@ static std::string find_colmap_recon(const std::string& dataset_dir,
 
 ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                    const DatasetParserConfig& cfg) {
-    bool text_format = false;
+    ColmapModelFmt fmt;
     std::string near_miss;
-    std::string recon_dir = find_colmap_recon(dataset_dir, cfg, &text_format,
+    std::string recon_dir = find_colmap_recon(dataset_dir, cfg, &fmt,
                                               /*verbose=*/true, &near_miss);
     if (recon_dir.empty())
         throw std::runtime_error(
@@ -695,10 +711,10 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
             " .bin or .txt) found under " + dataset_dir +
             (near_miss.empty() ? "" : " -- " + near_miss));
 
-    auto cameras = text_format ? read_cameras_text(recon_dir)
-                               : read_cameras_binary(recon_dir);
-    auto images  = text_format ? read_images_text(recon_dir)
-                               : read_images_binary(recon_dir);
+    auto cameras = fmt.cameras == ColmapFmt::Text ? read_cameras_text(recon_dir)
+                                                  : read_cameras_binary(recon_dir);
+    auto images  = fmt.images == ColmapFmt::Text ? read_images_text(recon_dir)
+                                                 : read_images_binary(recon_dir);
 
     // EQUIRECTANGULAR sanity, once per camera rather than once per frame.
     for (const auto& [id, cam] : cameras) {
@@ -874,12 +890,10 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
 
     // In lenient (viewer) mode, tolerate a missing points3D file so a
     // cameras-only reconstruction still yields camera poses / frustums.
-    if (fs::exists(fs::path(recon_dir) / "points3D.bin"))
+    if (fmt.points3D == ColmapFmt::Bin)
         ds.points = read_points3D_binary(recon_dir);
-    else if (fs::exists(fs::path(recon_dir) / "points3D.txt"))
+    else if (fmt.points3D == ColmapFmt::Text)
         ds.points = read_points3D_text(recon_dir);
-    else if (cfg.require_image_files)
-        ds.points = read_points3D_binary(recon_dir);   // throws "cannot open"
     // validation_fraction holds out part of the TRAIN set; the eval split is
     // already a held-out set, so it is all "train" from the DataManager's
     // point of view.
@@ -952,9 +966,9 @@ ParsedDataset parse_dataset(const std::string& dataset_dir,
     if (fs::exists(fs::path(dataset_dir) / "transforms.json"))
         return parse_nerfstudio_dataset(dataset_dir, cfg);
 
-    bool text_format = false;
+    ColmapModelFmt fmt;
     std::string colmap_near_miss;
-    bool has_colmap = !find_colmap_recon(dataset_dir, cfg, &text_format,
+    bool has_colmap = !find_colmap_recon(dataset_dir, cfg, &fmt,
                                          /*verbose=*/false,
                                          &colmap_near_miss).empty();
     bool has_metashape = has_metashape_xml(dataset_dir, cfg);
