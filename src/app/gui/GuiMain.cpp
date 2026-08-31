@@ -286,9 +286,6 @@ int spirula_gui_main(int argc, char** argv) {
             next_frame = now + 1.0 / (iconified        ? kFpsIconified
                                       : now < busy_until ? kFpsBusy
                                                          : kFpsIdle);
-            // The frame still runs while iconified -- it drives the runners'
-            // state machines -- but nothing is on screen to present it to.
-            if (iconified) continue;
 
             int w = 0, h = 0;
             glfwGetFramebufferSize(window, &w, &h);
