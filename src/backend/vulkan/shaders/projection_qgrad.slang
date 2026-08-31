@@ -333,17 +333,23 @@ struct QgCamBoundsParams {  // 24 bytes: pushed directly
     uint32_t _pad0;
 };
 
+// lower_bound over the sorted list, one thread per OUTPUT slot. Filling the
+// gaps from the input side makes one thread walk every id a sub-batch never
+// saw: 478 ms/call at N=20M, nnz=0.8M against ~2 ms here.
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void qgrad_camera_id_bounds(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                             uniform QgCamBoundsParams p) {
-    uint i = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (i > p.nnz)
+    uint k = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (k > p.N)
         return;
-    int hi = (i == p.nnz) ? int(p.N) : p.gaussian_ids_sorted[i];
-    int lo = (i == 0) ? 0 : p.gaussian_ids_sorted[i - 1] + 1;
-    for (int k = lo; k <= hi; ++k)
-        p.camera_id_bounds[k] = int(i);
+    int lo = 0, hi = int(p.nnz);
+    while (lo < hi) {
+        int mid = lo + ((hi - lo) >> 1);
+        if (p.gaussian_ids_sorted[mid] < int(k)) lo = mid + 1;
+        else hi = mid;
+    }
+    p.camera_id_bounds[k] = lo;
 }
 
 // Declared last: spec IDs follow declaration order (see dist_spec.slang).

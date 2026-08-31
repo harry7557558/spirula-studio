@@ -18,7 +18,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -47,7 +48,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -76,7 +78,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -105,7 +108,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -134,7 +138,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -163,7 +168,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -192,7 +198,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -221,7 +228,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
@@ -250,7 +258,8 @@ template void projection_packed_fwd_kernel_wrapper<
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]

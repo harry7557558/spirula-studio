@@ -73,21 +73,26 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
 
 
 
+// lower_bound over the sorted list, one thread per OUTPUT slot. Filling the
+// gaps from the input side makes one thread walk every id a sub-batch never
+// saw: 478 ms/call at N=20M, nnz=0.8M against ~2 ms here.
 __global__ void camera_id_bounds_kernel(
     int64_t nnz,
     int64_t N,
     const int32_t* __restrict__ gaussian_ids,  // [nnz]
     int32_t* __restrict__ camera_id_bounds  // [N+1]
 ) {
-    int64_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (gid > nnz)
+    int64_t k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N)
         return;
 
-    int32_t cid = (gid == nnz) ? N : gaussian_ids[gid];
-    int32_t cid_0 = (gid == 0) ? 0 : gaussian_ids[gid-1]+1;
-    for (int32_t i = cid_0; i <= cid; ++i) {
-        camera_id_bounds[i] = gid;
+    int32_t lo = 0, hi = (int32_t)nnz;
+    while (lo < hi) {
+        int32_t mid = lo + ((hi - lo) >> 1);
+        if (gaussian_ids[mid] < (int32_t)k) lo = mid + 1;
+        else hi = mid;
     }
+    camera_id_bounds[k] = lo;
 }
 
 
@@ -164,7 +169,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
         // gaussian_ids is already non-decreasing and cid_t is the out_idx --
         // no sort, no permutation to carry.
         camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
-        camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(nnz+1, 256)>>>(
+        camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(N+1, 256)>>>(
             nnz, N, gaussian_ids.data_ptr(), camera_id_bounds.data_ptr()
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());

@@ -15,6 +15,7 @@
 
 #define CudaDeviceExport ForceInline
 #include "int64_compat.slang"
+#include "shaders/packed_mask.h"
 #include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
 #include "shaders/harmonics.slang"
@@ -301,7 +302,8 @@ struct PackedMaskParams {  // fits in the 128-byte push floor: pushed direct
     float* viewmats;
     float4* intrins;
     float* dist_coeffs;
-    int* out_mask;  // [C*N] 0/1
+    uint* out_bits;      // [wgs * SS_PMASK_WORDS] visibility bitmask
+    int* out_counts;     // [wgs] popcount of this workgroup's bits
     uint32_t C;
     uint32_t N;
     uint32_t width;
@@ -311,7 +313,7 @@ struct PackedMaskParams {  // fits in the 128-byte push floor: pushed direct
 
 // GAUSSIAN-major, so the nnz list the prefix scan compacts comes out sorted
 // by gaussian id and the backward passes need no sort of their own.
-void run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
+bool run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
                      let eval3d: bool>(PackedMaskParams p, uint idx) {
     uint gid = idx / p.C;
     uint cid = idx % p.C;
@@ -355,23 +357,41 @@ void run_packed_mask<let cam: CameraModelType, D : ICameraDistortion,
     aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
     aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
     aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
-    p.out_mask[idx] =
-        (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) ? 1 : 0;
+    return aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f;
 }
 
-#define _pm_call_3d(M, D) run_packed_mask<M, D, true>(p, idx)
-#define _pm_call_2d(M, D) run_packed_mask<M, D, false>(p, idx)
+#define _pm_call_3d(M, D) keep = run_packed_mask<M, D, true>(p, idx)
+#define _pm_call_2d(M, D) keep = run_packed_mask<M, D, false>(p, idx)
+
+groupshared uint g_mask_bits[SS_PMASK_WORDS];
 
 [shader("compute")]
-[numthreads(128, 1, 1)]
+[numthreads(SS_PMASK_BLOCK, 1, 1)]
 void projection_packed_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                             uniform PackedMaskParams p) {
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
-    if (idx >= p.C * p.N) return;
-    if (kEval3d != 0) {
-        SS_DISPATCH_CAM_DIST(_pm_call_3d)
-    } else {
-        SS_DISPATCH_CAM_DIST(_pm_call_2d)
+    if (tid < SS_PMASK_WORDS) g_mask_bits[tid] = 0u;
+    GroupMemoryBarrierWithGroupSync();
+
+    uint blk = wg.y * p.wgs_per_row + wg.x;
+    uint idx = blk * SS_PMASK_BLOCK + tid;
+    if (idx < p.C * p.N) {
+        bool keep = false;
+        if (kEval3d != 0) {
+            SS_DISPATCH_CAM_DIST(_pm_call_3d)
+        } else {
+            SS_DISPATCH_CAM_DIST(_pm_call_2d)
+        }
+        if (keep) InterlockedOr(g_mask_bits[tid >> 5], 1u << (tid & 31));
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (tid < SS_PMASK_WORDS)
+        p.out_bits[blk * SS_PMASK_WORDS + tid] = g_mask_bits[tid];
+    if (tid == 0) {
+        int n = 0;
+        for (uint k = 0; k < SS_PMASK_WORDS; ++k)
+            n += int(countbits(g_mask_bits[k]));
+        p.out_counts[blk] = n;
     }
 }
 #undef _pm_call_3d
@@ -387,7 +407,8 @@ struct PackedFwdParams {
     float* viewmats;
     float4* intrins;
     float* dist_coeffs;
-    int* mask_scan;         // [C*N] inclusive scan of the mask
+    uint* mask_bits;        // [wgs * SS_PMASK_WORDS] visibility bitmask
+    int* block_scan;        // [wgs] inclusive scan of the workgroup counts
     int* out_camera_ids;    // [nnz]
     int* out_gaussian_ids;  // [nnz]
     float4* out_aabb;       // [nnz]
@@ -408,10 +429,7 @@ struct PackedFwdParams {
 };
 
 void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
-                    let eval3d: bool>(PackedFwdParams p, uint idx) {
-    int out_idx = idx == 0 ? 0 : p.mask_scan[idx - 1];
-    if (p.mask_scan[idx] == out_idx) return;
-
+                    let eval3d: bool>(PackedFwdParams p, uint idx, int out_idx) {
     uint gid = idx / p.C;  // see run_packed_mask
     uint cid = idx % p.C;
 
@@ -474,16 +492,33 @@ void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
     InterlockedMax(p.out_radii[gid], asuint(radius));
 }
 
-#define _pk_call_3d(M, D) run_packed_fwd<M, D, true>(p, idx)
-#define _pk_call_2d(M, D) run_packed_fwd<M, D, false>(p, idx)
+#define _pk_call_3d(M, D) run_packed_fwd<M, D, true>(p, idx, out_idx)
+#define _pk_call_2d(M, D) run_packed_fwd<M, D, false>(p, idx, out_idx)
+
+groupshared uint g_fwd_bits[SS_PMASK_WORDS];
 
 [shader("compute")]
-[numthreads(128, 1, 1)]
+[numthreads(SS_PMASK_BLOCK, 1, 1)]
 void projection_packed_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                            uniform PackedFwdParams* pp) {
     PackedFwdParams p = *pp;
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
-    if (idx >= p.C * p.N) return;
+    uint blk = wg.y * p.wgs_per_row + wg.x;
+    if (tid < SS_PMASK_WORDS)
+        g_fwd_bits[tid] = p.mask_bits[blk * SS_PMASK_WORDS + tid];
+    GroupMemoryBarrierWithGroupSync();
+
+    uint word = g_fwd_bits[tid >> 5];
+    if (((word >> (tid & 31)) & 1u) == 0u) return;
+
+    // Output slot = scanned count of the workgroups before this one + the bits
+    // set below this thread inside it. Out-of-range lanes never set a bit, so
+    // the range test is implicit.
+    int out_idx = blk == 0 ? 0 : p.block_scan[blk - 1];
+    for (uint k = 0; k < (tid >> 5); ++k)
+        out_idx += int(countbits(g_fwd_bits[k]));
+    out_idx += int(countbits(word & ((1u << (tid & 31)) - 1u)));
+
+    uint idx = blk * SS_PMASK_BLOCK + tid;
     if (kEval3d != 0) {
         SS_DISPATCH_CAM_DIST(_pk_call_3d)
     } else {

@@ -50,7 +50,10 @@
 // other.
 enum class VramCategory : uint8_t {
     Splat = 0,   // per-splat params, gradients, optimizer state, densify aux
-    SplatXImg,   // scratch sized ~ (splats seen per image): projection, tiling
+    // Scratch sized by (camera, gaussian), visible or splat-tile PAIRS, so it
+    // grows with the batch too. A buffer sized [N] is Splat however late it is
+    // allocated -- docs/notes/vram-splat-x-img.md.
+    SplatXImg,
     Image,       // per-image buffers: render outputs, GT, loss maps, img grads
     Appearance,  // bilagrid / background-SH / PPISP / color-space / color-shift
     Viewer,      // interactive viewer + sync visualizer caches and scratch
@@ -162,6 +165,7 @@ enum class SaveClass : uint8_t {
   X(ProjAabb                       , "proj.aabb",                         SplatXImg, Never) \
   X(ProjDepths                     , "proj.depths",                       SplatXImg, Never) \
   X(ProjMask                       , "proj.mask",                         SplatXImg, Never) \
+  X(ProjBlockCount                 , "proj.block_count",                  SplatXImg, Never) \
   X(ProjScan                       , "proj.scan",                         SplatXImg, Never) \
   X(ProjCameraIds                  , "proj.camera_ids",                   SplatXImg, Never) \
   X(ProjGaussianIds                , "proj.gaussian_ids",                 SplatXImg, Never) \
@@ -175,11 +179,6 @@ enum class SaveClass : uint8_t {
   X(IsectFlatA                     , "isect.flat_a",                      SplatXImg, Never) \
   X(IsectFlatB                     , "isect.flat_b",                      SplatXImg, Never) \
   X(IsectTileActive                , "isect.tile_active",                 Image    , Never) \
-  /* ---- tile intersect (post) scratch ---- */ \
-  X(IsectPostIds                   , "isect_post.ids",                    SplatXImg, Never) \
-  X(IsectPostFlat                  , "isect_post.flat",                   SplatXImg, Never) \
-  X(IsectPostNumSel                , "isect_post.num_sel",                SplatXImg, Never) \
-  X(IsectPostOffsets               , "isect_post.offsets",                SplatXImg, Never) \
   /* ---- render outputs ---- */ \
   X(RenderTs                       , "render.Ts",                         Image    , Never) \
   X(RenderLastIds                  , "render.last_ids",                   Image    , Never) \
@@ -188,15 +187,15 @@ enum class SaveClass : uint8_t {
   X(Renders                        , "renders",                           Image    , Never) \
   X(Distortions                    , "distortions",                       Image    , Never) \
   /* ---- raster backward scratch ---- */ \
-  X(RasterBwdAccumWeight           , "raster_bwd.accum_weight",           SplatXImg, Never) \
-  X(RasterBwdVViewmats             , "raster_bwd.v_viewmats",             SplatXImg, Never) \
+  X(RasterBwdAccumWeight           , "raster_bwd.accum_weight",           Splat    , Never) \
+  X(RasterBwdVViewmats             , "raster_bwd.v_viewmats",             Other    , Never) \
   X(RasterBwdVScreen               , "raster_bwd.v_screen",               SplatXImg, Never) \
-  X(RasterBwdVWorld                , "raster_bwd.v_world",                SplatXImg, Never) \
+  X(RasterBwdVWorld                , "raster_bwd.v_world",                Splat    , Never) \
   /* ---- fused proj-bwd scratch ---- */ \
   X(FusedProjBwdGaussSorted        , "fused_proj_bwd.gauss_sorted",       SplatXImg, Never) \
   X(FusedProjBwdPerm               , "fused_proj_bwd.perm",               SplatXImg, Never) \
   X(FusedProjBwdPermSorted         , "fused_proj_bwd.perm_sorted",        SplatXImg, Never) \
-  X(FusedProjBwdCamBounds          , "fused_proj_bwd.cam_bounds",         SplatXImg, Never) \
+  X(FusedProjBwdCamBounds          , "fused_proj_bwd.cam_bounds",         Splat    , Never) \
   /* ---- splat-tile intersector scratch ---- */ \
   X(StiBruteCount                  , "sti.brute.count",                   SplatXImg, Never) \
   X(StiBruteCountMap               , "sti.brute.count_map",               SplatXImg, Never) \
@@ -215,7 +214,7 @@ enum class SaveClass : uint8_t {
   X(StiLbvhCountMap                , "sti.lbvh.count_map",                SplatXImg, Never) \
   X(StiLbvhIds                     , "sti.lbvh.ids",                      SplatXImg, Never) \
   /* ---- meshing scratch ---- */ \
-  X(MeshingRenderRadii             , "meshing.render.radii",              SplatXImg, Never) \
+  X(MeshingRenderRadii             , "meshing.render.radii",              Splat    , Never) \
   /* ---- per-pixel-loss scratch ---- */ \
   X(PplLosses                      , "ppl.losses",                        Image    , Never) \
   X(PplLossMapScale                , "ppl.loss_map_scale",                Image    , Never) \

@@ -110,13 +110,13 @@ __global__ void intersect_tile_kernel(
     const float4 *__restrict__ aabb_buffer,  // [..., N, 4], int32, xyxy in pixels
     const float *__restrict__ depths_buffer,  // [..., N]
     const ProjEllipseView ellipse,  // packed screen rows; used iff is_ellipse
-    const int64_t *__restrict__ cum_tiles_per_splat, // [..., N], optional for counting pass
+    const int32_t *__restrict__ cum_tiles_per_splat, // [..., N], optional for counting pass
     const uint32_t tile_width,
     const uint32_t tile_height,
     // [I, tile_height, tile_width]: 0 marks a tile the loss never reads, which
     // both passes leave out so the raster gets an empty range for it.
     const int32_t *__restrict__ tile_active,
-    int64_t *__restrict__ tiles_per_splat, // [..., N]
+    int32_t *__restrict__ tiles_per_splat, // [..., N]
     int64_t *__restrict__ isect_ids,  // [n_isects]
     int32_t *__restrict__ flatten_ids  // [n_isects]
 ) {
@@ -136,8 +136,8 @@ __global__ void intersect_tile_kernel(
             // cur_idx should equal to max_idx
             // do this just in case compiler floating point optimization goes wild
             int64_t iid = (image_ids ? image_ids[idx] : idx / N);
-            int64_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
-            int64_t max_idx = cum_tiles_per_splat[idx];
+            int32_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
+            int32_t max_idx = cum_tiles_per_splat[idx];
             while (cur_idx < max_idx) {
                 int64_t tile_id = iid * tile_width * tile_height;
                 isect_ids[cur_idx] = (tile_id << 32) | (int64_t)0xffffffff;
@@ -200,8 +200,8 @@ __global__ void intersect_tile_kernel(
     else  // positive
         depth_u32 ^= (1u << 31u);
     
-    int64_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
-    int64_t max_idx = cum_tiles_per_splat[idx];
+    int32_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
+    int32_t max_idx = cum_tiles_per_splat[idx];
     if constexpr (is_ellipse) {
         if ((tile_max.y-tile_min.y)*TILE_SIZE_IX <= (tile_max.x-tile_min.x)*TILE_SIZE_IY) {
             for (int y = tile_min.y; y < tile_max.y; y++) {
@@ -395,12 +395,13 @@ std::tuple<
     const uint32_t total_count = (uint32_t)depths.numel();
     const uint32_t N = packed ? total_count : total_count / I;
 
+    intersect_check_image_size(image_width, image_height);
     uint32_t tile_width = _CEIL_DIV(image_width, TILE_SIZE_IX);
     uint32_t tile_height = _CEIL_DIV(image_height, TILE_SIZE_IY);
-    uint32_t n_tiles = tile_width * tile_height * I;
+    uint32_t n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
 
     /* Count tiles intersected per splat */
-    DeviceVector<int64_t> tiles_per_splat;
+    DeviceVector<int32_t> tiles_per_splat;
     tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
     (ellipse.data != nullptr ?
         intersect_tile_kernel<true, true> :
@@ -423,18 +424,19 @@ std::tuple<
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
     /* Inclusive prefix sum -> cumulative tile counts */
-    DeviceVector<int64_t> cum_tiles_per_splat;
+    DeviceVector<int32_t> cum_tiles_per_splat;
     cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
     CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
         tiles_per_splat.data_ptr(), cum_tiles_per_splat.data_ptr(), (int)total_count);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
     /* Read total intersection count from the last element */
-    int64_t n_isects = 0;
+    int32_t n_isects = 0;
     if (total_count > 0)
         cudaMemcpy(&n_isects,
                    cum_tiles_per_splat.data_ptr() + (total_count - 1),
-                   sizeof(int64_t), cudaMemcpyDeviceToHost);
+                   sizeof(int32_t), cudaMemcpyDeviceToHost);
+    intersect_check_isect_count(n_isects);
 
     // SS_TILE_SKIP_LOG=1: what the live-tile map removes from the sort and
     // the raster, which is what decides whether it pays.
@@ -496,59 +498,6 @@ std::tuple<
     DeviceVector<int32_t> flatten_ids_out = d_values.selector ? flatten_ids_b : flatten_ids_a;
 
     /* Compute per-tile start offsets */
-    intersect_offset_kernel<<<_LAUNCH_ARGS_1D(n_isects, 256)>>>(
-        n_isects,
-        isect_ids_out.data_ptr(),
-        I, tile_width, tile_height,
-        offsets_out.data_ptr()
-    );
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-
-    return std::make_tuple(isect_ids_out, flatten_ids_out, offsets_out);
-}
-
-
-std::tuple<
-    DeviceVector<int64_t>,    // isect_ids [n_isects_out]
-    DeviceVector<int32_t>,    // flatten_ids [n_isects_out]
-    DeviceTensor3D<int32_t>   // offsets [I, tile_h, tile_w]
-> do_intersect_tile_post(
-    DeviceVector<int64_t> isect_ids,   // [n_isects]
-    DeviceVector<int32_t> flatten_ids, // [n_isects]
-    DeviceVector<uint8_t> mask,        // [n_isects], non-zero = keep
-    const uint32_t I,
-    const uint32_t image_width,
-    const uint32_t image_height
-) {
-    uint32_t tile_width = _CEIL_DIV(image_width, TILE_SIZE_IX);
-    uint32_t tile_height = _CEIL_DIV(image_height, TILE_SIZE_IY);
-    int64_t n_in = isect_ids.size();
-
-    /* Allocate output at max possible size; CUB writes actual count to d_num_selected */
-    DeviceVector<int64_t> isect_ids_out;
-    isect_ids_out.resize(PoolSlot::IsectPostIds, n_in);
-    DeviceVector<int32_t> flatten_ids_out;
-    flatten_ids_out.resize(PoolSlot::IsectPostFlat, n_in);
-    DeviceVector<int32_t> d_num_selected;
-    d_num_selected.resize(PoolSlot::IsectPostNumSel, 1);
-
-    CUB_WRAPPER(cub::DeviceSelect::Flagged,
-        isect_ids.data_ptr(), mask.data_ptr(),
-        isect_ids_out.data_ptr(), d_num_selected.data_ptr(), (int)n_in);
-    CUB_WRAPPER(cub::DeviceSelect::Flagged,
-        flatten_ids.data_ptr(), mask.data_ptr(),
-        flatten_ids_out.data_ptr(), d_num_selected.data_ptr(), (int)n_in);
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-
-    /* Read back actual count and shrink logical sizes (no realloc — pool only grows) */
-    int32_t n_isects = 0;
-    cudaMemcpy(&n_isects, d_num_selected.data_ptr(), sizeof(int32_t), cudaMemcpyDeviceToHost);
-    isect_ids_out.resize(PoolSlot::IsectPostIds, n_isects);
-    flatten_ids_out.resize(PoolSlot::IsectPostFlat, n_isects);
-
-    /* Recompute per-tile start offsets */
-    DeviceTensor3D<int32_t> offsets_out;
-    offsets_out.resize(PoolSlot::IsectPostOffsets, I, tile_height, tile_width);
     intersect_offset_kernel<<<_LAUNCH_ARGS_1D(n_isects, 256)>>>(
         n_isects,
         isect_ids_out.data_ptr(),

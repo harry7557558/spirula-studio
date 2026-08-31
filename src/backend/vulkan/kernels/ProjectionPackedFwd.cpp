@@ -1,9 +1,8 @@
 // Vulkan implementation of the packed projection-forward launch API
 // (kernels/projection/ProjectionPackedFwd.cuh). Two-pass compaction mirroring
-// ProjectionPackedFwd.cu, with two deliberate substitutions:
-//  - the mask is int32 0/1 (bool would need 8-bit stores; see README rules)
-//  - the prefix sum is backend::inclusive_sum<int32> (SortScan) instead of
-//    CUB, with a 4-byte nnz readback.
+// ProjectionPackedFwd.cu: a visibility bitmask plus per-workgroup popcounts,
+// then backend::inclusive_sum<int32> (SortScan) over the workgroup counts
+// instead of CUB, with a 4-byte nnz readback.
 
 #include <kernels/projection/ProjectionPackedFwd.cuh>
 
@@ -16,17 +15,17 @@ namespace {
 struct PackedMaskParams {
     uint64_t means, quats, scales, opacities;
     uint64_t viewmats, intrins, dist_coeffs;
-    uint64_t out_mask;
+    uint64_t out_bits, out_counts;
     uint32_t C, N, width, height, wgs_per_row;
 };
-static_assert(sizeof(PackedMaskParams) == 8 * 8 + 5 * 4 + 4 /*pad*/,
+static_assert(sizeof(PackedMaskParams) == 9 * 8 + 5 * 4 + 4 /*pad*/,
               "params layout must match the slang struct");
 
 // Mirrors PackedFwdParams in shaders/projection_fwd.slang.
 struct PackedFwdParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
-    uint64_t mask_scan;
+    uint64_t mask_bits, block_scan;
     uint64_t out_camera_ids, out_gaussian_ids, out_aabb, out_depths,
         out_radii;
     uint64_t s_screen;
@@ -37,7 +36,7 @@ struct PackedFwdParams {
     uint32_t num_sh_buffer;
     uint32_t _pad0;
 };
-static_assert(sizeof(PackedFwdParams) == 19 * 8 + 8 * 4,
+static_assert(sizeof(PackedFwdParams) == 20 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 using vkk::resolve_sh_quant;
@@ -73,16 +72,20 @@ launch_projection_packed_vk(
     sh_degree = std::min(sh_degree, max_sh_degree);
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
 
+    packed_check_pair_count(C, (uint32_t)N);
     const uint64_t total_threads = (uint64_t)C * (uint64_t)N;
-    const uint32_t wgs = (uint32_t)((total_threads + 127) / 128);
+    const uint32_t wgs =
+        (uint32_t)((total_threads + SS_PMASK_BLOCK - 1) / SS_PMASK_BLOCK);
     const uint32_t per_row = std::min(std::max(wgs, 1u), 65535u);
     const uint32_t rows = (wgs + per_row - 1) / per_row;
 
-    // --- pass 1: intersection mask (int32 0/1) + inclusive scan + nnz ---
-    DeviceVector<int32_t> mask;
-    mask.resize(PoolSlot::ProjMask, (int64_t)C * N);
-    DeviceVector<int32_t> mask_scan;
-    mask_scan.resize(PoolSlot::ProjScan, (int64_t)C * N);
+    // --- pass 1: visibility bitmask + per-workgroup popcount, scanned ---
+    DeviceVector<uint32_t> mask_bits;
+    mask_bits.resize(PoolSlot::ProjMask, (int64_t)wgs * SS_PMASK_WORDS);
+    DeviceVector<int32_t> block_counts;
+    block_counts.resize(PoolSlot::ProjBlockCount, wgs);
+    DeviceVector<int32_t> block_scan;
+    block_scan.resize(PoolSlot::ProjScan, wgs);
 
     PackedMaskParams mp{};
     mp.means = (uint64_t)wb.raw_data(0);
@@ -92,7 +95,8 @@ launch_projection_packed_vk(
     mp.viewmats = std::get<0>(viewmats);
     mp.intrins = std::get<0>(intrins);
     mp.dist_coeffs = vkk::or_fallback(std::get<0>(dist_coeffs));
-    mp.out_mask = (uint64_t)mask.data_ptr();
+    mp.out_bits = (uint64_t)mask_bits.data_ptr();
+    mp.out_counts = (uint64_t)block_counts.data_ptr();
     mp.C = C;
     mp.N = (uint32_t)N;
     mp.width = image_width;
@@ -108,11 +112,11 @@ launch_projection_packed_vk(
     vkk::dispatch("projection_fwd.projection_packed_mask", spec, per_row,
                   rows, 1, &mp, sizeof(mp));
 
-    backend::inclusive_sum<int32_t>(mask.data_ptr(), mask_scan.data_ptr(),
-                                    (int64_t)C * N);
+    backend::inclusive_sum<int32_t>(block_counts.data_ptr(),
+                                    block_scan.data_ptr(), wgs);
     int32_t nnz = 0;
-    if ((int64_t)C * N > 0)
-        backend::memcpy_sync(&nnz, mask_scan.data_ptr() + ((int64_t)C * N - 1),
+    if (wgs > 0)
+        backend::memcpy_sync(&nnz, block_scan.data_ptr() + (wgs - 1),
                              sizeof(int32_t),
                              backend::MemcpyKind::DeviceToHost);
 
@@ -143,7 +147,8 @@ launch_projection_packed_vk(
         p.viewmats = mp.viewmats;
         p.intrins = mp.intrins;
         p.dist_coeffs = mp.dist_coeffs;
-        p.mask_scan = (uint64_t)mask_scan.data_ptr();
+        p.mask_bits = (uint64_t)mask_bits.data_ptr();
+        p.block_scan = (uint64_t)block_scan.data_ptr();
         p.out_camera_ids = (uint64_t)camera_ids.data_ptr();
         p.out_gaussian_ids = (uint64_t)gaussian_ids.data_ptr();
         p.out_aabb = (uint64_t)aabb.data_ptr();

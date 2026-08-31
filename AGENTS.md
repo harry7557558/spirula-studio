@@ -529,7 +529,14 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   int32, which `engine_init_bilagrid_*` enforces up front.
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
-  a per-category VRAM breakdown after any run that trained.
+  a per-category VRAM breakdown after any run that trained. What the biggest
+  category costs per element, and what has already been tried against it, is
+  `docs/notes/vram-splat-x-img.md`.
+- **A kernel that fills the gaps between sorted keys is a scaling trap.** One
+  thread per INPUT walking `[ids[i-1]+1, ids[i]]` is fine while the ids are
+  dense and quadratic when they are not: `qgrad_camera_id_bounds` measured
+  478 ms/call at 20M splats with 0.8M visible, 92% of the whole step. One
+  thread per OUTPUT doing a `lower_bound` is the shape that does not care.
 - **The engine is a process-global singleton.** Call `engine_reset()` between
   runs that swap datasets, or the new run inherits the old splats, camera
   table, optimizer moments and color-space matrices. The one exception is

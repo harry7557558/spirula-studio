@@ -229,7 +229,7 @@ inline PackedCameraRanges build_packed_camera_ranges(
     bp.camera_id_bounds = (uint64_t)out.camera_id_bounds.data_ptr();
     bp.nnz = (uint32_t)nnz;
     bp.N = (uint32_t)N;
-    dispatch_flat("projection_qgrad.qgrad_camera_id_bounds", {}, nnz + 1, 256,
+    dispatch_flat("projection_qgrad.qgrad_camera_id_bounds", {}, N + 1, 256,
                   &bp, sizeof(bp), &bp.wgs_per_row);
     return out;
 }

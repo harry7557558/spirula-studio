@@ -1,7 +1,7 @@
 // Vulkan implementation of the tile-intersection launch API
 // (kernels/tile/IntersectTile.cuh). Mirrors do_intersect_tile_generic in
 // IntersectTile.cu with the CUB spine swapped for backend:: SortScan:
-// count -> inclusive_sum<int64> -> n_isects readback -> key write ->
+// count -> inclusive_sum<int32> -> n_isects readback -> key write ->
 // sort_pairs<int64,int32> (begin_bit 0, end_bit 32 + tile bits) -> offsets.
 // Device work runs shaders/intersect_tile.slang.
 
@@ -97,9 +97,10 @@ std::tuple<
     const uint32_t total_count = (uint32_t)depths.numel();
     const uint32_t N = packed ? total_count : total_count / I;
 
+    intersect_check_image_size(image_width, image_height);
     uint32_t tile_width = _CEIL_DIV(image_width, TILE_SIZE_IX);
     uint32_t tile_height = _CEIL_DIV(image_height, TILE_SIZE_IY);
-    uint32_t n_tiles = tile_width * tile_height * I;
+    uint32_t n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
 
     const uint64_t p_screen = (uint64_t)ellipse.data;
 
@@ -111,7 +112,7 @@ std::tuple<
                                           tile_active ? 1u : 0u};
 
     /* Count tiles intersected per splat */
-    DeviceVector<int64_t> tiles_per_splat;
+    DeviceVector<int32_t> tiles_per_splat;
     tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
     {
         vkk::Fold g = vkk::fold_1d(total_count, 256);
@@ -135,19 +136,20 @@ std::tuple<
     }
 
     /* Inclusive prefix sum -> cumulative tile counts */
-    DeviceVector<int64_t> cum_tiles_per_splat;
+    DeviceVector<int32_t> cum_tiles_per_splat;
     cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
-    backend::inclusive_sum<int64_t>(tiles_per_splat.data_ptr(),
+    backend::inclusive_sum<int32_t>(tiles_per_splat.data_ptr(),
                                     cum_tiles_per_splat.data_ptr(),
                                     total_count);
 
     /* Read total intersection count from the last element */
-    int64_t n_isects = 0;
+    int32_t n_isects = 0;
     if (total_count > 0)
         backend::memcpy_sync(&n_isects,
                              cum_tiles_per_splat.data_ptr() + (total_count - 1),
-                             sizeof(int64_t),
+                             sizeof(int32_t),
                              backend::MemcpyKind::DeviceToHost);
+    intersect_check_isect_count(n_isects);
 
     DeviceTensor3D<int32_t> offsets_out;
     offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);

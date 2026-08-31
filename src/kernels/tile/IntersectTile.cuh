@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 
 #include <core/Tensor.h>
 
@@ -25,6 +27,36 @@ inline ProjEllipseView proj_ellipse_view(const float* rows, bool eval3d) {
     if (eval3d)
         return {rows, SCRG_STRIDE, -1, SCRG_SCALE, SCRG_OPAC};
     return {rows, SCR2_STRIDE, SCR2_XY, SCR2_CONIC, SCR2_OPAC};
+}
+
+// Pixel coordinates and every tile index derived from them ride in 16 bits.
+inline void intersect_check_image_size(uint32_t width, uint32_t height) {
+    if (width > 32767u || height > 32767u)
+        throw std::runtime_error(
+            "tile intersect: image " + std::to_string(width) + "x" +
+            std::to_string(height) + " exceeds the 32767-pixel limit");
+}
+
+// The sort key is (tile id << 32 | depth), so the batch's whole tile grid has
+// to be addressable in the 32 bits above the depth.
+inline uint32_t intersect_check_tile_count(uint32_t tile_width,
+                                           uint32_t tile_height, uint32_t I) {
+    const uint64_t n = (uint64_t)tile_width * tile_height * I;
+    if (n > 0xffffffffull)
+        throw std::runtime_error(
+            "tile intersect: " + std::to_string(n) +
+            " tiles in one batch exceeds the 2^32 tile-id limit");
+    return (uint32_t)n;
+}
+
+// flatten_ids and the per-tile offsets are int32, so a run must stay under
+// 2^31 splat-tile pairs. Wrapping past 2^32 would need ~51 GB of keys to have
+// been allocated first, so testing the int32 total for negative catches it.
+inline void intersect_check_isect_count(int32_t n_isects) {
+    if (n_isects < 0)
+        throw std::runtime_error(
+            "tile intersect: more than 2^31 splat-tile pairs in one batch; "
+            "lower --cap-max, the sub-batch size, or the image resolution");
 }
 
 
