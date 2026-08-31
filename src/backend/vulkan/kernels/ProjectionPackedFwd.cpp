@@ -41,7 +41,7 @@ static_assert(sizeof(PackedFwdParams) == 20 * 8 + 8 * 4,
 
 using vkk::resolve_sh_quant;
 
-std::tuple<DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+std::tuple<DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
            DeviceVector<float>, std::vector<DeviceTensorFloatND>>
 launch_projection_packed_vk(
     const bool eval3d, const bool antialiased,
@@ -125,7 +125,7 @@ launch_projection_packed_vk(
     camera_ids.resize(PoolSlot::ProjCameraIds, nnz);
     DeviceVector<int32_t> gaussian_ids;
     gaussian_ids.resize(PoolSlot::ProjGaussianIds, nnz);
-    DeviceVector<float4> aabb;
+    DeviceVector<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, nnz);
     DeviceVector<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, nnz);
@@ -185,7 +185,7 @@ launch_projection_packed_vk(
 
 #define _SS_DEF_PACKED(name, eval3d, antialiased)                        \
 std::tuple<                                                                  \
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,      \
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,      \
     DeviceVector<float>, std::vector<DeviceTensorFloatND>                    \
 > name(                                                                      \
     const int64_t num_splats,                                                \

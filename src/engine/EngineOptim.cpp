@@ -381,7 +381,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
     // engine's mutable world params, which the fused kernel updates in place.
     auto& splats_w = engine().fwd.splats_w;
 
-    auto aabb_nd = DeviceTensorFloatND(engine().fwd.aabb);
+    auto& aabb_q = engine().fwd.aabb;
 
     // Dispatch on primitive. Pass engine().sh_degree (= sh_degree_to_use) so
     // the kernel-template SH degree matches the forward pass during warmup --
@@ -451,7 +451,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             _dt2d_tv(engine().camera.dist_coeffs),
             engine().fwd.camera_ids,
             engine().fwd.gaussian_ids,
-            aabb_nd,
+            aabb_q,
             v_splats_w,
             engine().fwd.v_splats_s,
             g1, g2,

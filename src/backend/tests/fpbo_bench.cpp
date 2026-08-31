@@ -48,6 +48,13 @@ int check_error(const char* where) {
 
 }  // namespace
 
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
+}
+
+
 int main(int argc, char** argv) {
     const int64_t N = (argc > 1 ? std::atoll(argv[1]) : 5000000) / 256 * 256;
     const int iters = argc > 2 ? std::atoi(argv[2]) : 20;
@@ -122,7 +129,7 @@ int main(int argc, char** argv) {
         radii, shv_tv, shv_b_tv, (uint32_t)NUM_SH, 16, 0);
     DeviceVector<int32_t> cam_ids = std::get<0>(out);
     DeviceVector<int32_t> gauss_ids = std::get<1>(out);
-    DeviceTensorFloatND aabb_nd(std::get<2>(out));
+    DeviceTensor2D<uint2> aabb_2d = vec_to_2d_aabb(std::get<2>(out));
     const int64_t n_isect = cam_ids.size();
     backend::device_synchronize();
     if (check_error("fwd")) return 1;
@@ -197,7 +204,7 @@ int main(int argc, char** argv) {
             "PINHOLE", dist_fixture::kTierNames[0],
             ttv(d_dist + dist_fixture::row_offset(0, C),
                 {C, kCameraDistortionParams}),
-            cam_ids, gauss_ids, aabb_nd, v_world, v_screen, g1, g2, shq_tv,
+            cam_ids, gauss_ids, aabb_2d, v_world, v_screen, g1, g2, shq_tv,
             shq_b_tv, shv_tv, shv_b_tv, non_sh, radii, densify_score,
             1.28e-4f, 1.5e-3f, 0.02f, 0.025f, 5e-3f, 2.5e-4f, 10.f, 0.01f,
             0.01f, 0.01f, 0.f, 0.f, 0.f, 1e-3f, 1e-3f,

@@ -3,6 +3,7 @@
 
 #include <core/Common.cuh>
 
+#include "core/AabbQuant.cuh"
 #include "shaders/packed_mask.h"
 
 #ifndef NO_TORCH
@@ -126,7 +127,7 @@ __global__ void projection_packed_fwd_kernel(
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
-    float4 *__restrict__ aabbs,         // [nnz, 4]
+    uint2 *__restrict__ aabbs,          // [nnz] packed, core/AabbQuant.cuh
     float *__restrict__ sorting_depths,  // [nnz]
     float *__restrict__ radii,  // [N]
     typename SplatPrimitive::ScreenBuffer splats_screen,  // [nnz, ...]
@@ -199,11 +200,7 @@ __global__ void projection_packed_fwd_kernel(
     // Save results
     camera_ids[out_idx] = (int32_t)cid;
     gaussian_ids[out_idx] = (int32_t)gid;
-    aabb.x = fminf(fmaxf(aabb.x, 0.0f), image_width-1.0f);
-    aabb.y = fminf(fmaxf(aabb.y, 0.0f), image_height-1.0f);
-    aabb.z = fminf(fmaxf(aabb.z, 0.0f), image_width-1.0f);
-    aabb.w = fminf(fmaxf(aabb.w, 0.0f), image_height-1.0f);
-    aabbs[out_idx] = aabb;
+    aabbs[out_idx] = aabb16_encode(aabb, image_width, image_height);
     sorting_depths[out_idx] = sorting_depth;
     splat_screen.store(splats_screen, out_idx);
     atomicMax(&radii[gid], radius);
@@ -263,7 +260,7 @@ void projection_packed_fwd_kernel_wrapper(
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
-    float4 *__restrict__ aabbs,         // [nnz, 4]
+    uint2 *__restrict__ aabbs,          // [nnz] packed
     float *__restrict__ sorting_depths,         // [nnz]
     float *__restrict__ radii,  // [N]
     typename SplatPrimitive::ScreenBuffer splats_screen,  // [nnz, ...]

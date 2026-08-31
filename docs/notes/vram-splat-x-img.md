@@ -25,7 +25,7 @@ Per element, after the 2026-08-30 pass:
 | `proj.block_count`, `proj.scan` | `C*N / 32` bytes each | one popcount per 128-thread workgroup, and its scan |
 | `proj.screen` | 40 x `nnz` | `SCR2_STRIDE` floats: xy, conic, opac, depth, rgb |
 | `raster_bwd.v_screen` | 40 x `nnz` | its gradient, fp32 for the atomics |
-| `proj.aabb` | 16 x `nnz` | float4, clamped to the image |
+| `proj.aabb` | 8 x `nnz` | 16-bit fixed point, shaders/aabb16.h |
 | `proj.depths` / `camera_ids` / `gaussian_ids` | 4 x `nnz` each | |
 | `isect.tiles_per_splat`, `isect.cum_tiles` | 4 x `nnz` each | |
 | `isect.ids_a/b` | 8 x `n_isects` each | sort key `(tile_id << 32) \| depth` |
@@ -165,21 +165,49 @@ the previous step's buffer when a step produces none -- harmless today (stale
 but plausible numbers), garbage once the bytes are reused. Fix that stale view
 the way `_engine_train_step_split_batch` already does, then tag it.
 
+## The packed AABB
+
+`proj.aabb` is 8 bytes per visible pair instead of 16: 16 bits per edge, two
+edges to a uint32 (`shaders/aabb16.h`, with `core/AabbQuant.cuh` and
+`backend/vulkan/shaders/aabb16.slang` as the two implementations). 231 -> 116
+MiB on art_gallery, and the same halving for the non-packed `[C, N]` box the
+viewer and meshing paths allocate.
+
+Measured before vs after on the SAME backend, which isolates the quantization
+from everything else: `engine_train_parity` unchanged (tight max_abs 0,
+rel_rms 0 over 12 optimizer steps; loose rel_rms 2.8e-10), `meshing_parity` /
+`fpbo_parity` / `projqgrad_parity` bit-identical, and `engine_render_parity`'s
+8-bit output byte-identical with 388 of 4.9M raw floats moved. What does move
+is `render_parity`'s tile-offset array by up to 2 entries -- the extra tiles,
+below the run-to-run spread in `n_isects`.
+
+An edge is a uniform partition of [0, image extent], NOT an integer pixel.
+Integer pixels look tempting because the projection already clamps the box
+into the frame, but they round a sub-pixel splat up to a whole pixel -- and
+mid/low-resolution frames, where the wasted high bits would be, are exactly
+where splats ARE pixel-sized. The step is extent/65535: 0.009 px at 608 wide,
+0.09 px at 6000.
+
+Min edges round down and max edges up, which buys two things. The decoded box
+always contains the float one, so a splat can gain a tile but never lose one
+(measured: ~0.1% more splat-tile pairs, which the ellipse test then re-clamps
+in the mode training uses). And the order is preserved, so "is this box empty"
+-- the cull marker every backward pass tests -- is a comparison on the packed
+halves that needs no scale at all.
+
+The consumers that need the scale need the image size with it: the tile
+intersector gained `image_width`/`image_height` parameters, and the 3DGUT
+rasterizers already had them (they take the AABB *center* as the ellipse
+center, since 3DGUT stores none of its own).
+
 ## Remaining opportunities, largest first
 
-1. **`proj.aabb` as 4 x int16** (16 -> 8 bytes per `nnz`, 115 MiB here). The
-   projection already clamps the box to `[0, W-1] x [0, H-1]`, and image sizes
-   are now checked against 32767, so the values fit exactly; round outward
-   (floor the min, ceil the max) to stay conservative. Wide but mechanical:
-   the type is threaded through both projections, the intersector, three
-   backward launchers and the meshing raster in both backends, and the
-   backward passes only use it as an "is this pair valid" predicate.
-2. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
+1. **Packed screen rows** (up to 230 MiB). `opac` and `rgb` would survive fp16
    comfortably; `xy`, `conic` and `depth` would not. The blocker is
    `raster_bwd.v_screen`, which is accumulated with float atomics -- fp16
    atomic add is not portable to the Vulkan baseline, so only the forward row
    could shrink, and then the two buffers stop sharing a layout.
-3. **Splitting one training image into tile bands** -- low priority. It bounds
+2. **Splitting one training image into tile bands** -- low priority. It bounds
    `n_isects` per launch rather than per image, which is the only lever that
    helps the 4K case without touching precision. It does not help the
-   `nnz`-sized buffers at all, which is why it is below the two above.
+   `nnz`-sized buffers at all, which is why it is below the one above.

@@ -21,7 +21,7 @@ void projection_fused_fwd_kernel_wrapper(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     typename SplatPrimitive::ScreenBuffer splats_screen,
@@ -39,7 +39,7 @@ void projection_fused_fwd_kernel_wrapper(
 
 template<typename SplatPrimitive>
 inline std::tuple<
-    DeviceTensor2D<float4>,  // aabb [C, N]
+    DeviceTensor2D<uint2>,   // aabb [C, N] packed, core/AabbQuant.cuh
     DeviceTensor2D<float>,   // sorting_depths [C, N]
     std::vector<DeviceTensorFloatND>  // out splats
 > launch_projection_fused_fwd_kernel(
@@ -64,7 +64,7 @@ inline std::tuple<
 ) {
     typename SplatPrimitive::WorldBuffer splats_world(in_splats);
 
-    DeviceTensor2D<float4> aabb;
+    DeviceTensor2D<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, C, N);
     DeviceTensor2D<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, C, N);
@@ -102,7 +102,7 @@ inline std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -145,7 +145,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -189,7 +189,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,

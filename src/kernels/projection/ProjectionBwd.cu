@@ -28,7 +28,7 @@ void projection_fused_bwd_kernel_wrapper(
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -59,7 +59,7 @@ inline void launch_projection_projection_fused_bwd_kernel(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     // returns
@@ -146,7 +146,7 @@ void projection_3dgs_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns
@@ -197,7 +197,7 @@ void projection_mip_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns
@@ -249,7 +249,7 @@ void projection_3dgut_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns

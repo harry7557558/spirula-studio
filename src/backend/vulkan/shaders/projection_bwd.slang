@@ -17,6 +17,7 @@
 //   kDistortion   = CameraDistortionType (0..3), declared last
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
@@ -49,7 +50,7 @@ struct ProjectionBwd3dgsParams {
     // packed intersection ids (kPacked; fallback otherwise)
     int* camera_ids;    // [nnz]
     int* gaussian_ids;  // [nnz]
-    float4* aabb;       // [C,N] (non-packed cull; unused when kPacked)
+    uint2* aabb;        // [C,N] packed cull marker; unused when kPacked
     // screen-space gradients (inputs)
     float* vs_screen;  // [.., SCR2_STRIDE]
     // world-space gradients (outputs, CAS accumulate)
@@ -81,8 +82,7 @@ void _pb_run_3dgs<let cam : CameraModelType, D : ICameraDistortion>(
         cid = uint(p.camera_ids[idx]);
         gid = uint(p.gaussian_ids[idx]);
     } else {
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             return;
         cid = (idx / p.N) % p.C;
         gid = idx % p.N;
@@ -150,7 +150,7 @@ struct ProjectionBwd3dgutParams {
     float* dist_coeffs;
     int* camera_ids;
     int* gaussian_ids;
-    float4* aabb;
+    uint2* aabb;        // packed, aabb16.slang
     // screen grads {scale, opac, rgb}
     float* vs_screen;  // [.., SCRG_STRIDE]
     // world grads (outputs)
@@ -181,8 +181,7 @@ void _pb_run_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
         cid = uint(p.camera_ids[idx]);
         gid = uint(p.gaussian_ids[idx]);
     } else {
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             return;
         cid = (idx / p.N) % p.C;
         gid = idx % p.N;

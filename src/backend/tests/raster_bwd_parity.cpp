@@ -65,10 +65,10 @@ int check_error() {
 
 // static: the engine library these tools link defines the same helper
 // inline (engine/EngineCommon.h), and MSVC refuses the duplicate.
-static DeviceTensor2D<float4> vec_to_2d_float4(const DeviceVector<float4>& vec) {
-    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(float),
-                       {vec.size(), 1LL, 4LL}};
-    return DeviceTensor2D<float4>(tv);
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
 }
 
 int main(int argc, char** argv) {
@@ -196,9 +196,9 @@ int main(int argc, char** argv) {
         // --- projection ---
         std::vector<DeviceTensorFloatND> splats_s;
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceTensor2D<float4> aabb_2d;
-        DeviceVector<float4> aabb_vec;
-        DeviceTensorFloatND aabb_nd, depths_nd;
+        DeviceTensor2D<uint2> aabb_2d;
+        DeviceVector<uint2> aabb_vec;
+        DeviceTensorFloatND depths_nd;
         if (cfg.packed) {
             auto fn = cfg.prim == 0 ? projection_3dgs_packed_forward
                                     : projection_3dgut_packed_forward;
@@ -212,8 +212,7 @@ int main(int argc, char** argv) {
             aabb_vec = std::get<2>(out);
             auto depths_vec = std::get<3>(out);
             splats_s = std::get<4>(out);
-            aabb_2d = vec_to_2d_float4(aabb_vec);
-            aabb_nd = DeviceTensorFloatND(aabb_vec);
+            aabb_2d = vec_to_2d_aabb(aabb_vec);
             depths_nd = DeviceTensorFloatND(depths_vec);
         } else {
             auto fn = cfg.prim == 0 ? projection_3dgs_forward
@@ -226,7 +225,6 @@ int main(int argc, char** argv) {
             aabb_2d = std::get<0>(out);
             auto depths_2d = std::get<1>(out);
             splats_s = std::get<2>(out);
-            aabb_nd = DeviceTensorFloatND(aabb_2d);
             depths_nd = DeviceTensorFloatND(depths_2d);
         }
         backend::device_synchronize();
@@ -236,7 +234,7 @@ int main(int argc, char** argv) {
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
         auto [isect_ids, flatten_ids, tile_offsets] =
-            do_intersect_tile_generic(aabb_nd, depths_nd,
+            do_intersect_tile_generic(aabb_2d, depths_nd,
                                       ellipse_view(splats_s, cfg.prim == 2), C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
                                       image_ids_ptr, /*tile_active=*/nullptr);

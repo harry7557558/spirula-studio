@@ -28,6 +28,7 @@ namespace SlangProjectionUtils {
 #include "core/CameraDistortion.cuh"
 
 #include <core/Common.cuh>
+#include "core/AabbQuant.cuh"
 
 
 #ifndef IS_EVAL3D
@@ -74,7 +75,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
@@ -323,9 +324,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             // the AABB center (matches the tile intersector / forward mask).
             float c_opac = splat_sbuffer.opacities(sid);
             float3 c_conic = splat_sbuffer.scales(sid);
-            float4 c_bb = aabb[sid];
-            float c_ex = 0.5f * (c_bb.x + c_bb.z);
-            float c_ey = 0.5f * (c_bb.y + c_bb.w);
+            float2 c_ec = aabb16_center(aabb[sid], image_width, image_height);
+            float c_ex = c_ec.x, c_ey = c_ec.y;
         #else
             float c_opac = splat_sbuffer.opac(sid);
             float3 c_conic = splat_sbuffer.conic(sid);
@@ -665,7 +665,7 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,

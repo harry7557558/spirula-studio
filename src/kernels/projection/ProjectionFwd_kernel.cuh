@@ -10,6 +10,7 @@
 #include <cooperative_groups.h>
 namespace cg = cooperative_groups;
 
+#include "core/AabbQuant.cuh"
 
 
 template<typename SplatPrimitive, CameraModelType camera_model,
@@ -24,7 +25,7 @@ __global__ void projection_fused_fwd_kernel(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed, core/AabbQuant.cuh
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     typename SplatPrimitive::ScreenBuffer splats_screen,
@@ -99,11 +100,11 @@ __global__ void projection_fused_fwd_kernel(
     aabb.w = fminf(fmaxf(aabb.w, 0.0f), image_height-1.0f);
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         splat_screen.store(splats_screen, idx);
-        aabbs[idx] = aabb;
+        aabbs[idx] = aabb16_encode(aabb, image_width, image_height);
         sorting_depths[idx] = sorting_depth;
         atomicMax(&radii[idx%N], radius);
     } else {
-        aabbs[idx] = {0.0f, 0.0f, 0.0f, 0.0f};
+        aabbs[idx] = make_uint2(0u, 0u);
         sorting_depths[idx] = 0.0f;
     }
 }
@@ -122,7 +123,7 @@ void projection_fused_fwd_kernel_wrapper(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed, core/AabbQuant.cuh
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     typename SplatPrimitive::ScreenBuffer splats_screen,

@@ -11,6 +11,7 @@
 // constants (kDistortion declared last -- see dist_spec.slang).
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "shaders/projection_utils.slang"
 #undef CudaDeviceExport
@@ -52,7 +53,7 @@ struct RasterMomentsParams {
     float* viewmats;     // [I, 16] row-major
     float4* intrins;     // [I]
     float* dist_coeffs;  // [I, 8] (never null: zeroed fallback)
-    float4* aabb;        // [..] projected 2D AABB (xmin,ymin,xmax,ymax)
+    uint2* aabb;         // [..] packed 2D AABB, aabb16.slang
     int* tile_offsets;   // [I, tile_height, tile_width]
     int* flatten_ids;    // [n_isects]
     // outputs
@@ -154,9 +155,8 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float opac = scrg_opac(r);
             if (opac > ALPHA_THRESHOLD) {
                 float3 conic = scrg_scale(r);
-                float4 bb = p.aabb[g];
-                float ecx = 0.5f * (bb.x + bb.z);
-                float ecy = 0.5f * (bb.y + bb.w);
+                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
+                float ecx = ec.x, ecy = ec.y;
                 float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
                 float3 inv_cov = conic * kk;
                 hit = ellipse_box_overlap_test(

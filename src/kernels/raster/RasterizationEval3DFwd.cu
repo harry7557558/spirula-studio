@@ -26,7 +26,7 @@ void rasterize_to_pixels_eval3d_fwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB
+    const uint2 *__restrict__ aabb,   // [..., N] packed AABB
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
@@ -53,7 +53,7 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -77,7 +77,7 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
 
     const float* viewmats_ptr = (const float*)std::get<0>(viewmats);
     const float4* intrins_ptr = (const float4*)std::get<0>(intrins);
-    const float4* aabb_ptr = (const float4*)aabb.data_ptr();
+    const uint2* aabb_ptr = aabb.data_ptr();
 
     #define _LAUNCH_ARGS ( \
             (cudaStream_t)0, I, N, n_isects, \
@@ -123,7 +123,7 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -187,7 +187,7 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,

@@ -26,7 +26,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<1>::WorldBuffer v_splats_world,
     Vanilla3DGUT<1>::ScreenBuffer v_splats_screen,
@@ -86,7 +86,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<1>::WorldBuffer v_splats_world,
     Vanilla3DGUT<1>::ScreenBuffer v_splats_screen,
@@ -146,7 +146,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<1>::WorldBuffer v_splats_world,
     Vanilla3DGUT<1>::ScreenBuffer v_splats_screen,
@@ -206,7 +206,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<1>::WorldBuffer v_splats_world,
     Vanilla3DGUT<1>::ScreenBuffer v_splats_screen,
@@ -266,7 +266,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<1>::WorldBuffer v_splats_world,
     Vanilla3DGUT<1>::ScreenBuffer v_splats_screen,
@@ -326,7 +326,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<2>::WorldBuffer v_splats_world,
     Vanilla3DGUT<2>::ScreenBuffer v_splats_screen,
@@ -386,7 +386,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<2>::WorldBuffer v_splats_world,
     Vanilla3DGUT<2>::ScreenBuffer v_splats_screen,
@@ -446,7 +446,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<2>::WorldBuffer v_splats_world,
     Vanilla3DGUT<2>::ScreenBuffer v_splats_screen,
@@ -506,7 +506,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     Vanilla3DGUT<2>::WorldBuffer v_splats_world,
     Vanilla3DGUT<2>::ScreenBuffer v_splats_screen,

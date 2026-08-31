@@ -444,9 +444,9 @@ int main(int argc, char** argv) {
             ttv(d_dist + dist_fixture::row_offset(2, NCAM, cam),
                 {1, kCameraDistortionParams}),
             radii, std::nullopt, std::nullopt, 0, 32, 0);
-        DeviceTensorFloatND aabb_nd(aabb_2d), depths_nd(depths_2d);
+        DeviceTensorFloatND depths_nd(depths_2d);
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_nd, depths_nd, ellipse_view(splats_s, true), 1,
+            aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
             ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr);
         backend::device_synchronize();
         if (check_error()) return 1;

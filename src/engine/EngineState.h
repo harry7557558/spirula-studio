@@ -127,7 +127,7 @@ struct CameraTable {
 struct ForwardCache {
     DeviceVector<int32_t>             camera_ids;
     DeviceVector<int32_t>             gaussian_ids;
-    DeviceTensor2D<float4>            aabb;         // [nnz,1] packed or [C,N] non-packed
+    DeviceTensor2D<uint2>             aabb;         // [nnz,1] or [C,N]; core/AabbQuant.cuh
     std::vector<DeviceTensorFloatND>  splats_w;
     std::vector<DeviceTensorFloatND>  splats_s;
     DeviceTensor3D<int32_t>           tile_offsets;

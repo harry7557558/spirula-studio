@@ -25,6 +25,7 @@ namespace SlangPixelWise {
 }
 
 #include <cooperative_groups.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -192,7 +193,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz]
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
@@ -273,7 +274,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
         int idx = packed ? cid_t : cid_t * N + gid;
         int cid = (packed ? camera_ids[idx] : cid_t);
-        if (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)
+        if (aabb16_is_empty(aabb[idx]))
             continue;
 
         // Load camera
@@ -988,7 +989,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz]
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,

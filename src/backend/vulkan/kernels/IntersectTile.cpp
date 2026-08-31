@@ -19,19 +19,21 @@ inline constexpr int TILE_SIZE_IY = TILE_SIZE_Y * MACRO_TILE_SIZE_Y;
 struct IsectCountParams {
     uint64_t aabb, proj_screen, tiles_per_splat;
     uint64_t image_ids, tile_active;
-    uint32_t N, tile_width, tile_height, total, wgs_per_row;
+    uint32_t N, image_width, image_height, tile_width, tile_height, total,
+        wgs_per_row;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
-static_assert(sizeof(IsectCountParams) == 5 * 8 + 9 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectCountParams) == 5 * 8 + 11 * 4 + 4 /*pad*/,
               "params layout must match the slang struct");
 
 struct IsectWriteParams {
     uint64_t image_ids, aabb, depths, proj_screen;
     uint64_t cum_tiles, isect_ids, flatten_ids, tile_active;
-    uint32_t N, tile_width, tile_height, total, wgs_per_row;
+    uint32_t N, image_width, image_height, tile_width, tile_height, total,
+        wgs_per_row;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
-static_assert(sizeof(IsectWriteParams) == 8 * 8 + 9 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectWriteParams) == 8 * 8 + 11 * 4 + 4 /*pad*/,
               "params layout must match the slang struct");
 
 struct TileActiveParams {
@@ -81,7 +83,7 @@ std::tuple<
     DeviceVector<int32_t>,    // flatten_ids [n_isects]
     DeviceTensor3D<int32_t>   // offsets [I, tile_h, tile_w]
 > do_intersect_tile_generic(
-    DeviceTensorFloatND aabb,     // [*N, 4] float32
+    DeviceTensor2D<uint2> aabb,   // [*N] packed, core/AabbQuant.cuh
     DeviceTensorFloatND depths,   // [*N] float32
     ProjEllipseView ellipse,      // .data null for AABB mode
     const uint32_t I,
@@ -128,6 +130,8 @@ std::tuple<
         cp.image_ids = packed ? (uint64_t)image_ids->data_ptr() : 0;
         cp.tile_active = vkk::or_fallback(tile_active);
         cp.N = N;
+        cp.image_width = image_width;
+        cp.image_height = image_height;
         cp.tile_width = tile_width;
         cp.tile_height = tile_height;
         cp.total = total_count;
@@ -185,6 +189,8 @@ std::tuple<
         wp.flatten_ids = (uint64_t)flatten_ids_a.data_ptr();
         wp.tile_active = vkk::or_fallback(tile_active);
         wp.N = N;
+        wp.image_width = image_width;
+        wp.image_height = image_height;
         wp.tile_width = tile_width;
         wp.tile_height = tile_height;
         wp.total = total_count;

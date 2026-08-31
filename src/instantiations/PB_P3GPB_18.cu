@@ -22,7 +22,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -55,7 +55,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -88,7 +88,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -121,7 +121,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -154,7 +154,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -187,7 +187,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -220,7 +220,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -253,7 +253,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -286,7 +286,7 @@ template void projection_fused_bwd_kernel_wrapper<
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,          // [C, N, 4]
     // grad outputs
     Vanilla3DGUT<4>::ScreenBuffer v_splats_screen,
     // grad inputs

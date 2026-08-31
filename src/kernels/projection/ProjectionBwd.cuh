@@ -30,7 +30,7 @@ void projection_3dgs_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns
@@ -61,7 +61,7 @@ void projection_mip_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns
@@ -92,7 +92,7 @@ void projection_3dgut_backward(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,  // [nnz] or null
     const DeviceVector<int32_t> gaussian_ids,  // [nnz] or null
-    const DeviceTensor2D<float4> aabb,  // [C, N]
+    const DeviceTensor2D<uint2> aabb,  // [C, N]
     // grad outputs
     const std::vector<DeviceTensorFloatND> &v_splats_screen,
     // returns

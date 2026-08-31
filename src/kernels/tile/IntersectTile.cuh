@@ -79,7 +79,7 @@ std::tuple<
     DeviceVector<int32_t>,    // flatten_ids [n_isects]
     DeviceTensor3D<int32_t>   // offsets [I, tile_h, tile_w]
 > do_intersect_tile_generic(
-    DeviceTensorFloatND aabb,     // [*N, 4] float32
+    DeviceTensor2D<uint2> aabb,   // [*N] packed, core/AabbQuant.cuh
     DeviceTensorFloatND depths,   // [*N] float32
     ProjEllipseView ellipse,      // .data null for AABB mode
     const uint32_t I,

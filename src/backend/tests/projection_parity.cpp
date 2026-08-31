@@ -42,6 +42,23 @@ TorchTensorView ttv(const void* p, std::vector<int64_t> shape) {
     return std::make_tuple((uint64_t)p, (uint32_t)4, std::move(shape));
 }
 
+// The AABB rides as 16-bit fixed point (core/AabbQuant.cuh); compare the
+// quantized edges themselves, so a mismatch reads as whole steps.
+void readback_aabb(std::vector<float>& acc, const uint2* d, int64_t n) {
+    if (d == nullptr || n == 0) return;
+    std::vector<uint2> q((size_t)n);
+    backend::memcpy_sync(q.data(), d, q.size() * sizeof(uint2),
+                         backend::MemcpyKind::DeviceToHost);
+    size_t o = acc.size();
+    acc.resize(o + (size_t)n * 4);
+    for (int64_t i = 0; i < n; i++) {
+        acc[o + i * 4 + 0] = (float)(q[(size_t)i].x & 0xffffu);
+        acc[o + i * 4 + 1] = (float)(q[(size_t)i].y & 0xffffu);
+        acc[o + i * 4 + 2] = (float)(q[(size_t)i].x >> 16);
+        acc[o + i * 4 + 3] = (float)(q[(size_t)i].y >> 16);
+    }
+}
+
 void readback(std::vector<float>& acc, const float* d, int64_t n) {
     size_t off = acc.size();
     acc.resize(off + n);
@@ -147,7 +164,7 @@ int main(int argc, char** argv) {
                     auto& aabb = std::get<0>(out);
                     auto& depths = std::get<1>(out);
                     auto& screen = std::get<2>(out);
-                    readback(acc, (const float*)aabb.data_ptr(), C * N * 4);
+                    readback_aabb(acc, aabb.data_ptr(), (int64_t)C * N);
                     readback(acc, depths.data_ptr(), C * N);
                     readback(acc, d_radii, N);
                     if (prim == 2)
@@ -223,7 +240,7 @@ int main(int argc, char** argv) {
                 auto& aabb = std::get<0>(out);
                 auto& depths = std::get<1>(out);
                 auto& screen = std::get<2>(out);
-                readback(acc, (const float*)aabb.data_ptr(), C * N * 4);
+                readback_aabb(acc, aabb.data_ptr(), (int64_t)C * N);
                 readback(acc, depths.data_ptr(), C * N);
                 readback(acc, d_radii, N);
                 if (prim == 2)
@@ -266,7 +283,7 @@ int main(int argc, char** argv) {
             backend::memcpy_sync(ids.data() + nnz, gauss_ids.data_ptr(),
                                  nnz * 4, MemcpyKind::DeviceToHost);
             for (int32_t v : ids) acc.push_back((float)v);
-            readback(acc, (const float*)aabb.data_ptr(), nnz * 4);
+            readback_aabb(acc, aabb.data_ptr(), nnz);
             readback(acc, depths.data_ptr(), nnz);
             readback(acc, d_radii, N);
             if (prim == 2)
@@ -311,7 +328,7 @@ int main(int argc, char** argv) {
         backend::memcpy_sync(ids.data() + nnz, gauss_ids.data_ptr(), nnz * 4,
                              MemcpyKind::DeviceToHost);
         for (int32_t v : ids) acc.push_back((float)v);
-        readback(acc, (const float*)aabb.data_ptr(), nnz * 4);
+        readback_aabb(acc, aabb.data_ptr(), nnz);
         readback(acc, depths.data_ptr(), nnz);
         readback(acc, d_radii, N);
         if (prim == 2)

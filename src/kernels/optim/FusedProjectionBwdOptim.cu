@@ -33,7 +33,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
@@ -117,7 +117,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     // fwd outputs
     DeviceVector<int32_t> camera_ids,
     DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     // grad outputs
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
@@ -185,7 +185,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
             image_width, image_height, \
             packed ? camera_id_bounds.data_ptr() : nullptr, \
             packed ? camera_ids.data_ptr() : nullptr, \
-            (float4*)aabb.data_ptr(), \
+            aabb.data_ptr(), \
             v_splats_world, \
             v_splats_screen, \
             g1_splats_world, g2_splats_world, \
@@ -247,7 +247,7 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     // grad outputs
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
@@ -401,7 +401,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,
@@ -467,7 +467,7 @@ void fused_projection_bwd_optimizer_mip(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,
@@ -533,7 +533,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,

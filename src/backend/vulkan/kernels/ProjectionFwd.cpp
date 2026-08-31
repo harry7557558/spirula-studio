@@ -47,7 +47,7 @@ static_assert(sizeof(Projection3dgutParams) == 16 * 8 + 8 * 4,
 
 using vkk::resolve_sh_quant;
 
-std::tuple<DeviceTensor2D<float4>, DeviceTensor2D<float>,
+std::tuple<DeviceTensor2D<uint2>, DeviceTensor2D<float>,
            std::vector<DeviceTensorFloatND>>
 launch_projection_fwd_vk(
     const bool antialiased,
@@ -79,7 +79,7 @@ launch_projection_fwd_vk(
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
 
-    DeviceTensor2D<float4> aabb;
+    DeviceTensor2D<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, C, N);
     DeviceTensor2D<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, C, N);
@@ -131,7 +131,7 @@ launch_projection_fwd_vk(
 /* API definitions matching kernels/projection/ProjectionFwd.cuh */
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -154,7 +154,7 @@ std::tuple<
 }
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -177,7 +177,7 @@ std::tuple<
 }
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -208,7 +208,7 @@ std::tuple<
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
 
-    DeviceTensor2D<float4> aabb;
+    DeviceTensor2D<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, C, N);
     DeviceTensor2D<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, C, N);

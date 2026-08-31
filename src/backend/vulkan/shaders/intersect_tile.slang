@@ -8,6 +8,7 @@
 // uniform across the grid so the cost is nil). All params fit in the
 // 128-byte push floor and are pushed directly.
 
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "int8_compat.slang"
 
@@ -102,12 +103,14 @@ void tile_range(float4 aabb, uint tile_width, uint tile_height,
 // ---------------------------------------------------------------------------
 
 struct IsectCountParams {  // pushed directly
-    float4* aabb;              // [total] xyxy in pixels
+    uint2* aabb;               // [total] packed, aabb16.slang
     float* proj_screen;        // packed screen rows; null -> AABB mode
     int* tiles_per_splat;      // [total]
     int* image_ids;            // [total] (packed) or null (iid = idx / N)
     int* tile_active;          // [I, tile_h, tile_w] 0/1; read when kSkipTiles
     uint32_t N;                // splats per image
+    uint32_t image_width;      // the AABB's quantization extent
+    uint32_t image_height;
     uint32_t tile_width;
     uint32_t tile_height;
     uint32_t total;            // I * N (or nnz in packed mode)
@@ -135,8 +138,9 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.total) return;
 
-    float4 aabb = p.aabb[idx];
-    if (aabb.z <= aabb.x || aabb.w <= aabb.y) {
+    uint2 aabb_q = p.aabb[idx];
+    float4 aabb = aabb16_decode(aabb_q, p.image_width, p.image_height);
+    if (aabb16_is_empty(aabb_q)) {
         p.tiles_per_splat[idx] = 0;
         return;
     }
@@ -227,7 +231,7 @@ void tile_active_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
 struct IsectWriteParams {  // pushed directly
     int* image_ids;      // [total] (packed mode) or null (iid = idx / N)
-    float4* aabb;
+    uint2* aabb;         // [total] packed, aabb16.slang
     float* depths;       // [total] sorting depths
     float* proj_screen;  // packed screen rows; null -> AABB mode
     int* cum_tiles;      // [total] inclusive scan of tiles_per_splat
@@ -235,6 +239,8 @@ struct IsectWriteParams {  // pushed directly
     int* flatten_ids;    // [n_isects]
     int* tile_active;    // [I, tile_h, tile_w] 0/1; read when kSkipTiles
     uint32_t N;          // splats per image (non-packed iid = idx / N)
+    uint32_t image_width;      // the AABB's quantization extent
+    uint32_t image_height;
     uint32_t tile_width;
     uint32_t tile_height;
     uint32_t total;
@@ -254,8 +260,9 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     int cur_idx = (idx == 0) ? 0 : p.cum_tiles[idx - 1];
     int max_idx = p.cum_tiles[idx];
 
-    float4 aabb = p.aabb[idx];
-    if (aabb.z <= aabb.x || aabb.w <= aabb.y) {
+    uint2 aabb_q = p.aabb[idx];
+    float4 aabb = aabb16_decode(aabb_q, p.image_width, p.image_height);
+    if (aabb16_is_empty(aabb_q)) {
         // cur_idx should equal max_idx; fill just in case floating point
         // optimization goes wild (matches the CUDA kernel).
         gindex_t n_img_tiles = gindex_t(p.tile_width) * gindex_t(p.tile_height);

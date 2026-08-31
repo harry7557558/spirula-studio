@@ -56,7 +56,8 @@ void forward_3dgs(
     };
     engine().fwd.splats_w = in_splats;
 
-    DeviceTensorFloatND aabb_nd, depths_nd;
+    DeviceTensor2D<uint2> aabb_q;
+    DeviceTensorFloatND depths_nd;
 
     // Allocate and zero radii buffer before projection (kernel uses atomicMax).
     // In sub-batched mode, projection runs once per sub-batch; the optim step's
@@ -120,7 +121,7 @@ void forward_3dgs(
     // --- Projection ---
     if (packed) {
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceVector<float4> aabb_vec;
+        DeviceVector<uint2> aabb_vec;
         DeviceVector<float> depths_vec;
 
         if (primitive == "3dgs") {
@@ -162,11 +163,11 @@ void forward_3dgs(
 
         engine().fwd.camera_ids = cam_ids;
         engine().fwd.gaussian_ids = gauss_ids;
-        engine().fwd.aabb = vec_to_2d_float4(aabb_vec);  // [nnz, 1] view for backward
-        aabb_nd = DeviceTensorFloatND(aabb_vec);          // [nnz, 4] for intersect
+        engine().fwd.aabb = vec_to_2d_aabb(aabb_vec);  // [nnz, 1] view for backward
+        aabb_q = engine().fwd.aabb;
         depths_nd = DeviceTensorFloatND(depths_vec);      // [nnz]   for intersect
     } else {
-        DeviceTensor2D<float4> aabb_2d;
+        DeviceTensor2D<uint2> aabb_2d;
         DeviceTensor2D<float> depths_2d;  // [C, N] — sorting depths per camera
 
         if (primitive == "3dgs") {
@@ -209,7 +210,7 @@ void forward_3dgs(
         engine().fwd.camera_ids = DeviceVector<int32_t>();
         engine().fwd.gaussian_ids = DeviceVector<int32_t>();
         engine().fwd.aabb = aabb_2d;                           // [C, N] for backward
-        aabb_nd = DeviceTensorFloatND(aabb_2d);                // [C, N, 4] for intersect
+        aabb_q = aabb_2d;
         depths_nd = DeviceTensorFloatND(depths_2d);            // [C, N] -> numel=C*N for intersect
     }
 
@@ -224,7 +225,7 @@ void forward_3dgs(
         engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd, ellipse,
+        aabb_q, depths_nd, ellipse,
         (uint32_t)engine().camera.num,
         _dv_tv(engine().camera.intrins),
         (uint32_t)engine().camera.width,

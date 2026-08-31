@@ -23,7 +23,7 @@ template void projection_packed_fwd_kernel_wrapper<
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
-    float4 *__restrict__ aabbs,         // [nnz, 4]
+    uint2 *__restrict__ aabbs,          // [nnz] packed
     float *__restrict__ sorting_depths,         // [nnz]
     float *__restrict__ radii,  // [N]
     Vanilla3DGUT<4>::ScreenBuffer splats_screen,  // [nnz, ...]

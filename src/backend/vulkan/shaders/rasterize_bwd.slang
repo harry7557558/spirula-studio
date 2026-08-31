@@ -10,6 +10,7 @@
 // ID order RasterizeBwd.cpp pushes.
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "shaders/projection_utils.slang"
 #undef CudaDeviceExport
@@ -526,7 +527,7 @@ struct Raster3dgutBwdParams {  // via params ring
     float* viewmats;     // [I,16]
     float4* intrins;     // [I]
     float* dist_coeffs;  // [I,8] (fallback-backed)
-    float4* aabb;
+    uint2* aabb;         // packed, aabb16.slang
     int* tile_offsets;
     int* flatten_ids;
     float* render_Ts;
@@ -739,9 +740,8 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 // 3dgut keeps the projected 2D conic in the screen "scale"
                 // slot; ellipse center is the AABB center.
                 float3 c_conic = scrg_scale(c_row);
-                float4 c_bb = p.aabb[sid];
-                float c_ex = 0.5f * (c_bb.x + c_bb.z);
-                float c_ey = 0.5f * (c_bb.y + c_bb.w);
+                float2 c_ec = aabb16_center(p.aabb[sid], p.width, p.height);
+                float c_ex = c_ec.x, c_ey = c_ec.y;
                 if (c_opac > ALPHA_THRESHOLD) {
                     float kk = 0.5f / log(c_opac / ALPHA_THRESHOLD);
                     float3 inv_cov = c_conic * kk;

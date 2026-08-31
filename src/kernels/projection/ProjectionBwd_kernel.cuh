@@ -10,6 +10,7 @@
 #include "core/Common.cuh"
 
 #include <cooperative_groups.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -32,7 +33,7 @@ __global__ void projection_fused_bwd_kernel(
     // fwd outputs
     const int32_t *__restrict__ camera_ids,          // [nnz, 4]
     const int32_t *__restrict__ gaussian_ids,          // [nnz, 4]
-    const float4 *__restrict__ aabb,          // [C, N, 4]
+    const uint2 *__restrict__ aabb,           // [C, N] packed
     // grad outputs
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -55,7 +56,7 @@ __global__ void projection_fused_bwd_kernel(
         gid = gaussian_ids[idx];
     } else {
         // parallelize over C * N.
-        if (idx >= C * N || (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)) {
+        if (idx >= C * N || aabb16_is_empty(aabb[idx])) {
             return;
         }
         cid = (idx / N) % C; // camera id
@@ -146,7 +147,7 @@ void projection_fused_bwd_kernel_wrapper(
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,           // [C, N] packed
     // grad outputs
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     // grad inputs

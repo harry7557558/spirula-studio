@@ -53,7 +53,7 @@ void projection_packed_fwd_kernel_wrapper(
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
-    float4 *__restrict__ aabbs,         // [nnz, 4]
+    uint2 *__restrict__ aabbs,          // [nnz] packed
     float *__restrict__ sorting_depths,         // [nnz]
     float *__restrict__ radii,  // [N]
     typename SplatPrimitive::ScreenBuffer splats_screen,  // [nnz, ...]
@@ -69,7 +69,7 @@ template<typename SplatPrimitive>
 inline std::tuple<
     DeviceVector<int32_t>,    // camera_ids [nnz]
     DeviceVector<int32_t>,    // gaussian_ids [nnz]
-    DeviceVector<float4>,     // aabb [nnz]
+    DeviceVector<uint2>,      // aabb [nnz] packed, core/AabbQuant.cuh
     DeviceVector<float>,      // sorting_depths [nnz]
     std::vector<DeviceTensorFloatND>  // out splats
 > launch_projection_packed_fwd_kernel(
@@ -135,7 +135,7 @@ inline std::tuple<
 
     DeviceVector<int32_t> camera_ids; camera_ids.resize(PoolSlot::ProjCameraIds, nnz);
     DeviceVector<int32_t> gaussian_ids; gaussian_ids.resize(PoolSlot::ProjGaussianIds, nnz);
-    DeviceVector<float4> aabb; aabb.resize(PoolSlot::ProjAabb, nnz);
+    DeviceVector<uint2> aabb; aabb.resize(PoolSlot::ProjAabb, nnz);
     DeviceVector<float> sorting_depths; sorting_depths.resize(PoolSlot::ProjDepths, nnz);
 
     std::vector<DeviceTensorFloatND> splats_screen = SplatPrimitive::ScreenBuffer::empty_pool(nnz, PoolSlot::ProjScreen);
@@ -173,7 +173,7 @@ inline std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_packed_forward(
     const int64_t num_splats,
@@ -218,7 +218,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_packed_forward(
     const int64_t num_splats,
@@ -264,7 +264,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_packed_forward(
     const int64_t num_splats,

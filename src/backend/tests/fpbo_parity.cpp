@@ -92,6 +92,13 @@ int check_error(const char* where) {
     return 0;
 }
 
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
+}
+
+
 int main(int argc, char** argv) {
     if (argc != 3 ||
         (std::strcmp(argv[1], "dump") && std::strcmp(argv[1], "compare"))) {
@@ -235,7 +242,7 @@ int main(int argc, char** argv) {
 
         // --- forward: aabb (+ ids when packed) ---
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceTensorFloatND aabb_nd;
+        DeviceTensor2D<uint2> aabb_2d;
         int64_t n_isect = C * N;
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
@@ -249,7 +256,7 @@ int main(int argc, char** argv) {
                           level1 ? 0 : 256);
             cam_ids = std::get<0>(out);
             gauss_ids = std::get<1>(out);
-            aabb_nd = DeviceTensorFloatND(std::get<2>(out));
+            aabb_2d = vec_to_2d_aabb(std::get<2>(out));
             n_isect = cam_ids.size();
         } else {
             auto fn = cfg.prim == 0   ? projection_3dgs_forward
@@ -261,7 +268,7 @@ int main(int argc, char** argv) {
                           dist_tv(cfg.dist), radii, q_val_packed,
                           q_val_bounds, (uint32_t)NUM_SH, level1 ? 16 : 32,
                           level1 ? 0 : 256);
-            aabb_nd = DeviceTensorFloatND(std::get<0>(out));
+            aabb_2d = std::get<0>(out);
         }
         backend::device_synchronize();
         if (check_error("fwd")) return 1;
@@ -384,7 +391,7 @@ int main(int argc, char** argv) {
             fn(N, cfg.max_deg, splats, ttv(d_vm, {C, 16}),
                ttv(d_intr, {C, 4}), W, H, cams[cfg.cam],
                dist_fixture::kTierNames[cfg.dist], dist_tv(cfg.dist),
-               cam_ids, gauss_ids, aabb_nd, v_world,
+               cam_ids, gauss_ids, aabb_2d, v_world,
                v_screen, g1_world, g2_world, shq_tv, shq_b_tv, shv_tv,
                shv_b_tv, non_sh, radii, densify_score,
                /*lr_means=*/1.6e-4f, /*lr_quats=*/1e-3f, /*lr_scales=*/5e-3f,

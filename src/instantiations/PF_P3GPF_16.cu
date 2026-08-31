@@ -19,7 +19,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -48,7 +48,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -77,7 +77,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -106,7 +106,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -135,7 +135,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -164,7 +164,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<2>::ScreenBuffer splats_screen,
@@ -193,7 +193,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<3>::ScreenBuffer splats_screen,
@@ -222,7 +222,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<3>::ScreenBuffer splats_screen,
@@ -251,7 +251,7 @@ template void projection_fused_fwd_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     Vanilla3DGUT<3>::ScreenBuffer splats_screen,

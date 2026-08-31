@@ -9,6 +9,7 @@
 // docs/notes/sh-quant-layout.md), kNonShQuant, kVwMask (which
 // v_splats_world tensors exist), and kDistortion, declared last.
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
@@ -56,7 +57,7 @@ struct FpboParams {
     // packed intersection ranges (kPacked)
     int* camera_id_bounds;
     int* camera_ids;
-    float4* aabb;
+    uint2* aabb;        // packed, aabb16.slang
     // packed screen-space gradient rows (SCR2_* for 2D, SCRG_* for 3DGUT)
     float* vs_screen;
     // world-space gradients from rasterization backward (kVwMask)
@@ -147,8 +148,7 @@ void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
         // the out_idx that indexes aabb / camera_ids / vs_screen.
         int idx = (kPacked != 0) ? cid_t : cid_t * int(p.N) + int(gid);
         int cid = (kPacked != 0) ? p.camera_ids[idx] : cid_t;
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             continue;
         PbCamera<D> c = pb_load_camera<D>(p.viewmats, p.intrins,
                                           p.dist_coeffs, uint(cid));

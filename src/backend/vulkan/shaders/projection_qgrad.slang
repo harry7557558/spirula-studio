@@ -21,6 +21,7 @@
 // every block reduce.
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
@@ -54,7 +55,7 @@ struct ProjectionQgradParams {
     // packed intersection ranges (kPacked; fallback otherwise)
     int* camera_id_bounds;  // [N+1]
     int* camera_ids;        // [nnz] ORIGINAL order
-    float4* aabb;           // [C,N] or [nnz] (original order)
+    uint2* aabb;            // [C,N] or [nnz] packed (original order)
     // packed screen-space gradient rows (SCR2_* for 2D, SCRG_* for 3DGUT)
     float* vs_screen;
     // fp32 world grads (kWorldGradAdd: mean/quat/scale plain add)
@@ -147,8 +148,7 @@ void _qg_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
         // the out_idx that indexes aabb / camera_ids / vs_screen.
         int idx = (kPacked != 0) ? cid_t : cid_t * int(p.N) + int(gid);
         int cid = (kPacked != 0) ? p.camera_ids[idx] : cid_t;
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             continue;
         PbCamera<D> c = pb_load_camera<D>(p.viewmats, p.intrins,
                                           p.dist_coeffs, uint(cid));

@@ -12,6 +12,7 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -63,7 +64,7 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
     // fwd outputs (packed intersection ordering; nulls => non-packed C*N)
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,         // [nnz] ORIGINAL order
-    const float4 *__restrict__ aabb,                // [C, N] or [nnz]
+    const uint2 *__restrict__ aabb,                 // [C, N] or [nnz], packed
     // fp32 world grad (means/quats/scales for 3dgut; empty for 3dgs/mip)
     typename SplatPrimitive::WorldBuffer v_splats_world,
     // screen grad from rasterization backward
@@ -109,7 +110,7 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
         // the out_idx that indexes aabb / camera_ids / v_splats_screen.
         int idx = packed ? cid_t : cid_t * (int)N + (int)gid;
         int cid = packed ? camera_ids[idx] : cid_t;
-        if (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)
+        if (aabb16_is_empty(aabb[idx]))
             continue;
 
         float4 intrin = intrins[cid];
@@ -254,7 +255,7 @@ void projection_bwd_quantgrad_kernel_wrapper(
     const uint32_t image_height,
     const int32_t * camera_id_bounds,
     const int32_t * camera_ids,
-    const float4 * aabb,
+    const uint2 * aabb,
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     GradQuantBuffers gq,

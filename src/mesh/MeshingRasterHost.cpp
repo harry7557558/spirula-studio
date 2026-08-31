@@ -196,12 +196,11 @@ static void render_one(RenderContext* ctx, int cam_idx,
         /*sh_bounds_stride=*/0);
 
     // --- tile intersection (ellipse mode; center falls back to the AABB) ---
-    DeviceTensorFloatND aabb_nd(aabb_2d);
     DeviceTensorFloatND depths_nd(depths_2d);
     ProjEllipseView ellipse =
         proj_ellipse_view(splats_s[0].data_ptr(), /*eval3d=*/true);
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd, ellipse,
+        aabb_2d, depths_nd, ellipse,
         /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr);
 
     // --- moment (+ rgb) rasterization ---

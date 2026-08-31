@@ -27,7 +27,7 @@ void rasterize_to_pixels_eval3d_bwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB
+    const uint2 *__restrict__ aabb,   // [..., N] packed AABB
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
@@ -67,7 +67,7 @@ inline void launch_rasterize_to_pixels_eval3d_bwd_kernel(
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -113,7 +113,7 @@ inline void launch_rasterize_to_pixels_eval3d_bwd_kernel(
             (uint32_t*)gaussian_ids.data_ptr(), \
             splat_wbuffer, splat_sbuffer, \
             (const float*)std::get<0>(viewmats), (const float4*)std::get<0>(intrins), dist_coeffs, \
-            (const float4*)aabb.data_ptr(), \
+            aabb.data_ptr(), \
             image_width, image_height, tile_width, tile_height, \
             tile_offsets.data_ptr(), flatten_ids.data_ptr(), \
             render_Ts.data_ptr(), last_ids.data_ptr(), \
@@ -165,7 +165,7 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -260,7 +260,7 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -317,7 +317,7 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,

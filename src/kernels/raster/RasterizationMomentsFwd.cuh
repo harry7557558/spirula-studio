@@ -39,7 +39,7 @@ void rasterize_moments_3dgut_fwd(
     const std::string& camera_model,
     const std::string& distortion,
     TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,         // [..., N] projected 2D AABB
+    DeviceTensor2D<uint2> aabb,          // [..., N] packed AABB
     uint32_t image_width,
     uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,  // [I, tile_h, tile_w]

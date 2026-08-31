@@ -55,6 +55,13 @@ const char* mode_name(DensifyAccumMode m) {
     }
 }
 
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
+}
+
+
 void run_mode(bool packed, DensifyAccumMode accum_mode) {
     std::printf("-- %s projection, accum=%s --\n",
                 packed ? "packed" : "non-packed", mode_name(accum_mode));
@@ -114,11 +121,11 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         DeviceTensor3D<float3>(ttv(d_v_rgb, {(int64_t)C, H, W, 3})),
         t3f1(d_v_depth), DeviceTensor3D<float3>{}};
 
-    DeviceTensor2D<float4> aabb_2d;
-    DeviceTensorFloatND aabb_nd, depths_nd;
+    DeviceTensor2D<uint2> aabb_2d;
+    DeviceTensorFloatND depths_nd;
     std::vector<DeviceTensorFloatND> splats_s;
     DeviceVector<int32_t> cam_ids, gauss_ids;
-    DeviceVector<float4> aabb_vec;
+    DeviceVector<uint2> aabb_vec;
     if (packed) {
         auto out = projection_3dgs_packed_forward(
             N, 3, in_splats, ttv(d_vm, {(int64_t)C, 16}),
@@ -128,8 +135,8 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         cam_ids = std::get<0>(out);
         gauss_ids = std::get<1>(out);
         aabb_vec = std::get<2>(out);
+        aabb_2d = vec_to_2d_aabb(aabb_vec);
         splats_s = std::get<4>(out);
-        aabb_nd = DeviceTensorFloatND(aabb_vec);
         depths_nd = DeviceTensorFloatND(std::get<3>(out));
     } else {
         auto out = projection_3dgs_forward(
@@ -139,13 +146,12 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
             std::nullopt, 0, 32, 0);
         aabb_2d = std::get<0>(out);
         splats_s = std::get<2>(out);
-        aabb_nd = DeviceTensorFloatND(aabb_2d);
         depths_nd = DeviceTensorFloatND(std::get<1>(out));
     }
     DeviceVector<int32_t>* img_ids =
         (packed && cam_ids.data_ptr()) ? &cam_ids : nullptr;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd, ellipse_view(splats_s, false), C,
+        aabb_2d, depths_nd, ellipse_view(splats_s, false), C,
         ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr);
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
                                              W, H, tile_offsets, flatten_ids,

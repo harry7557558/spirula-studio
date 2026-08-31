@@ -58,7 +58,7 @@ void launch_fpbo_vk(
     const TorchTensorView& dist_coeffs,
     const DeviceVector<int32_t>& camera_ids,
     const DeviceVector<int32_t>& gaussian_ids,
-    DeviceTensorFloatND& aabb,
+    DeviceTensor2D<uint2>& aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& g1_splats_world,
@@ -274,7 +274,7 @@ void launch_fpbo_vk(
         const std::string camera_model, const std::string distortion,       \
         const TorchTensorView dist_coeffs,                                  \
         const DeviceVector<int32_t> camera_ids,                             \
-        const DeviceVector<int32_t> gaussian_ids, DeviceTensorFloatND aabb, \
+        const DeviceVector<int32_t> gaussian_ids, DeviceTensor2D<uint2> aabb, \
         const std::vector<DeviceTensorFloatND> v_splats_world,              \
         const std::vector<DeviceTensorFloatND> v_splats_screen,             \
         const std::vector<DeviceTensorFloatND> g1_splats_world,             \

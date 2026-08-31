@@ -29,6 +29,7 @@ namespace SlangProjectionUtils {
 #include "core/CameraDistortion.cuh"
 
 #include <core/Common.cuh>
+#include "core/AabbQuant.cuh"
 
 #include "primitives/Primitive.cuh"
 
@@ -69,7 +70,7 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
@@ -189,9 +190,8 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             float opac = splat_sbuffer.opacities(g);
             if (opac > ALPHA_THRESHOLD) {
                 float3 conic = splat_sbuffer.scales(g);
-                float4 bb = aabb[g];
-                float ecx = 0.5f * (bb.x + bb.z);
-                float ecy = 0.5f * (bb.y + bb.w);
+                float2 ec = aabb16_center(aabb[g], image_width, image_height);
+                float ecx = ec.x, ecy = ec.y;
                 float kk = 0.5f / __logf(opac / ALPHA_THRESHOLD);
                 float3 inv_cov = { conic.x * kk, conic.y * kk, conic.z * kk };
                 hit = ellipse_box_overlap_test(inv_cov,
@@ -337,7 +337,7 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,

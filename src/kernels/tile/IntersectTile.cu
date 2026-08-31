@@ -6,6 +6,7 @@ namespace SlangProjectionUtils {
 #include "generated/projection_utils.cuh"
 }
 
+#include "core/AabbQuant.cuh"
 #include "core/Common.cuh"
 #include "core/Env.h"
 #include "core/Interpolation.cuh"
@@ -107,7 +108,9 @@ __global__ void intersect_tile_kernel(
     const uint32_t N,  // or nnz in packed mode
     const int32_t *__restrict__ image_ids,  // [nnz], packed mode only
     const float4* __restrict__ intrins,
-    const float4 *__restrict__ aabb_buffer,  // [..., N, 4], int32, xyxy in pixels
+    const uint2 *__restrict__ aabb_buffer,  // [..., N] packed, core/AabbQuant.cuh
+    const uint32_t image_width,
+    const uint32_t image_height,
     const float *__restrict__ depths_buffer,  // [..., N]
     const ProjEllipseView ellipse,  // packed screen rows; used iff is_ellipse
     const int32_t *__restrict__ cum_tiles_per_splat, // [..., N], optional for counting pass
@@ -125,11 +128,12 @@ __global__ void intersect_tile_kernel(
         return;
     }
 
-    float4 aabb = aabb_buffer[idx];
+    const uint2 aabb_q = aabb_buffer[idx];
+    float4 aabb = aabb16_decode(aabb_q, image_width, image_height);
     float xmin = aabb.x, ymin = aabb.y;
     float xmax = aabb.z, ymax = aabb.w;
 
-    if (xmax <= xmin || ymax <= ymin) {
+    if (aabb16_is_empty(aabb_q)) {
         if (is_counting_pass) {
             tiles_per_splat[idx] = 0;
         } else {
@@ -379,7 +383,7 @@ std::tuple<
     DeviceVector<int32_t>,    // flatten_ids [n_isects]
     DeviceTensor3D<int32_t>   // offsets [I, tile_h, tile_w]
 > do_intersect_tile_generic(
-    DeviceTensorFloatND aabb,     // [*N, 4] float32
+    DeviceTensor2D<uint2> aabb,   // [*N] packed, core/AabbQuant.cuh
     DeviceTensorFloatND depths,   // [*N] float32
     ProjEllipseView ellipse,      // .data null for AABB mode
     const uint32_t I,
@@ -390,8 +394,8 @@ std::tuple<
     const int32_t* tile_active        // [I, tile_h, tile_w]; null = all live
 ) {
     bool packed = image_ids != nullptr;
-    // depths is always [*N] float32 (numel = N or nnz), while aabb is [*N, 4]
-    // whose numel() = N*4. Use depths.numel() to get the correct splat count.
+    // depths is [*N] float32 (numel = N or nnz); aabb is a [*N] packed box,
+    // so either would do, but depths is what the non-packed shape agrees on.
     const uint32_t total_count = (uint32_t)depths.numel();
     const uint32_t N = packed ? total_count : total_count / I;
 
@@ -417,7 +421,8 @@ std::tuple<
         // every splat would otherwise be counted against image 0's map.
         image_ids != nullptr ? image_ids->data_ptr() : nullptr,
         nullptr,  // intrins
-        reinterpret_cast<const float4*>(aabb.data_ptr()),
+        aabb.data_ptr(),
+        image_width, image_height,
         depths.data_ptr(),
         ellipse,
         nullptr,  // cum_tiles_per_splat
@@ -473,7 +478,8 @@ std::tuple<
         packed ? 1 : I, N,
         image_ids != nullptr ? image_ids->data_ptr() : nullptr,
         (const float4*)std::get<0>(intrins),
-        reinterpret_cast<const float4*>(aabb.data_ptr()),
+        aabb.data_ptr(),
+        image_width, image_height,
         depths.data_ptr(),
         ellipse,
         cum_tiles_per_splat.data_ptr(),

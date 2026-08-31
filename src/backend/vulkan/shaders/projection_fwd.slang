@@ -15,6 +15,7 @@
 
 #define CudaDeviceExport ForceInline
 #include "int64_compat.slang"
+#include "aabb16.slang"
 #include "shaders/packed_mask.h"
 #include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
@@ -76,7 +77,7 @@ struct ProjectionFwdParams {
     float4* intrins;      // [C]
     float* dist_coeffs;   // [C,8] or null
     // outputs
-    float4* out_aabb;     // [C,N]
+    uint2* out_aabb;      // [C,N] packed, aabb16.slang
     float* out_depths;    // [C,N]
     uint32_t* out_radii;  // [N] float bits; atomic max (radius >= 0)
     float* s_screen;      // packed ScreenBuffer rows [.., SCR2_STRIDE]
@@ -152,12 +153,12 @@ void run_projection<let cam: CameraModelType, D : ICameraDistortion>(
         if (!is_null(p.s_screen))
             scr2_store(scr2_row(p.s_screen, idx), s_xy, s_depth, s_conic,
                        s_opac, rgb);
-        p.out_aabb[idx] = aabb;
+        p.out_aabb[idx] = aabb16_encode(aabb, p.width, p.height);
         p.out_depths[idx] = sorting_depth;
         // float atomicMax on non-negative floats == uint max on bits.
         InterlockedMax(p.out_radii[gid], asuint(radius));
     } else {
-        p.out_aabb[idx] = float4(0.0f);
+        p.out_aabb[idx] = uint2(0u, 0u);
         p.out_depths[idx] = 0.0f;
     }
 }
@@ -191,7 +192,7 @@ struct Projection3dgutParams {
     float* viewmats;
     float4* intrins;
     float* dist_coeffs;
-    float4* out_aabb;
+    uint2* out_aabb;      // packed, aabb16.slang
     float* out_depths;
     uint32_t* out_radii;
     float* s_screen;  // [C*N, SCRG_STRIDE]
@@ -261,11 +262,11 @@ void run_projection_3dgut<let cam: CameraModelType, D : ICameraDistortion>(
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         if (!is_null(p.s_screen))
             scrg_store(scrg_row(p.s_screen, idx), s_scale, s_opac, rgb);
-        p.out_aabb[idx] = aabb;
+        p.out_aabb[idx] = aabb16_encode(aabb, p.width, p.height);
         p.out_depths[idx] = sorting_depth;
         InterlockedMax(p.out_radii[gid], asuint(radius));
     } else {
-        p.out_aabb[idx] = float4(0.0f);
+        p.out_aabb[idx] = uint2(0u, 0u);
         p.out_depths[idx] = 0.0f;
     }
 }
@@ -411,7 +412,7 @@ struct PackedFwdParams {
     int* block_scan;        // [wgs] inclusive scan of the workgroup counts
     int* out_camera_ids;    // [nnz]
     int* out_gaussian_ids;  // [nnz]
-    float4* out_aabb;       // [nnz]
+    uint2* out_aabb;        // [nnz] packed, aabb16.slang
     float* out_depths;      // [nnz]
     uint32_t* out_radii;    // [N] float bits, atomic max
     float* s_screen;        // packed rows: SCR2_* for 2D, SCRG_* for 3DGUT
@@ -476,11 +477,7 @@ void run_packed_fwd<let cam: CameraModelType, D : ICameraDistortion,
 
     p.out_camera_ids[out_idx] = int(cid);
     p.out_gaussian_ids[out_idx] = int(gid);
-    aabb.x = clamp(aabb.x, 0.0f, float(p.width) - 1.0f);
-    aabb.y = clamp(aabb.y, 0.0f, float(p.height) - 1.0f);
-    aabb.z = clamp(aabb.z, 0.0f, float(p.width) - 1.0f);
-    aabb.w = clamp(aabb.w, 0.0f, float(p.height) - 1.0f);
-    p.out_aabb[out_idx] = aabb;
+    p.out_aabb[out_idx] = aabb16_encode(aabb, p.width, p.height);
     p.out_depths[out_idx] = sorting_depth;
     if (!is_null(p.s_screen)) {
         if (eval3d)  // Screen = {scale, opacity, rgb}

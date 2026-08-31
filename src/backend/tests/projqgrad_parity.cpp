@@ -83,10 +83,10 @@ int check_error(const char* where) {
 
 // static: the engine library these tools link defines the same helper
 // inline (engine/EngineCommon.h), and MSVC refuses the duplicate.
-static DeviceTensor2D<float4> vec_to_2d_float4(const DeviceVector<float4>& vec) {
-    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(float),
-                       {vec.size(), 1LL, 4LL}};
-    return DeviceTensor2D<float4>(tv);
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
 }
 
 int main(int argc, char** argv) {
@@ -201,8 +201,8 @@ int main(int argc, char** argv) {
 
         // --- forward: aabb (+ ids when packed) ---
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceTensor2D<float4> aabb_2d;
-        DeviceVector<float4> aabb_vec;
+        DeviceTensor2D<uint2> aabb_2d;
+        DeviceVector<uint2> aabb_vec;
         int64_t n_isect = C * N;
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
             cam_ids = std::get<0>(out);
             gauss_ids = std::get<1>(out);
             aabb_vec = std::get<2>(out);
-            aabb_2d = vec_to_2d_float4(aabb_vec);
+            aabb_2d = vec_to_2d_aabb(aabb_vec);
             n_isect = cam_ids.size();
         } else {
             auto fn = cfg.prim == 0   ? projection_3dgs_forward

@@ -32,7 +32,7 @@ inline void packed_check_pair_count(uint32_t C, uint32_t N) {
 
 
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_packed_forward(
     const int64_t num_splats,
@@ -55,7 +55,7 @@ std::tuple<
 
 
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_packed_forward(
     const int64_t num_splats,
@@ -78,7 +78,7 @@ std::tuple<
 
 
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_packed_forward(
     const int64_t num_splats,

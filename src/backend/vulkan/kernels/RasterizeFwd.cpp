@@ -204,7 +204,7 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB
     const uint32_t image_width,
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
