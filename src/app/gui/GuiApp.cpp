@@ -297,6 +297,13 @@ void GuiApp::log(const std::string& s, bool detail) {
     _log_shown_dirty = true;
 }
 
+void GuiApp::clear_log() {
+    _log.clear();
+    _log_shown.clear();
+    _log_dropped = 0;
+    _log_shown_dirty = true;
+}
+
 void GuiApp::append_logs() {
     for (auto& s : _runner.drain_log()) log(s);
     for (auto& l : _colmap.steps().drain()) log(l.text, l.detail);
@@ -433,7 +440,7 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     // one (a reload, not a new job), and the handoff straight out of a
     // reconstruction, where the log is that reconstruction's and is the first
     // thing anyone would look at if the result seems wrong.
-    if (dir != _cfg.data && !keep_log) _log.clear();
+    if (dir != _cfg.data && !keep_log) clear_log();
     _cfg.data = dir;
     // image_dir / mask_dir: the runner hands its (possibly external) folders
     // over in-memory right after a run -- photos indexed where they are keep
@@ -494,7 +501,7 @@ void GuiApp::request_go_home() {
 void GuiApp::open_splat(std::string path) {
     if (path.empty()) return;
     app::set_crash_note("opening model " + path);
-    _log.clear();
+    clear_log();
     close_mesh_preview();
     detach_session_views();
     // Opening a file resets the engine; a finished run's session cannot be
@@ -5403,11 +5410,7 @@ void GuiApp::draw_log_panel(float height) {
             for (const auto& e : _log) { all += e.text; all += '\n'; }
             ImGui::SetClipboardText(all.c_str());
         }
-        if (ui::MenuItem(msg::log_clear)) {
-            _log.clear();
-            _log_dropped = 0;
-            _log_shown_dirty = true;
-        }
+        if (ui::MenuItem(msg::log_clear)) clear_log();
         ImGui::EndPopup();
     }
     ImGui::EndChild();

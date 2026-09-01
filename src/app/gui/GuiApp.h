@@ -321,6 +321,9 @@ private:
     void run_pending_if_stopped();
     void append_logs();
     void log(const std::string& s, bool detail = false);
+    // The only way to empty the log: _log_shown indexes into _log, so a
+    // bare _log.clear() leaves the panel dereferencing stale indices.
+    void clear_log();
 
     Screen _screen = Screen::Home;
     bool _quit = false;
