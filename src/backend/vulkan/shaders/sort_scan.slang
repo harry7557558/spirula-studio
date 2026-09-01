@@ -327,6 +327,7 @@ int load_flag_byte(uint32_t* words, uint idx) {
 void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
           uniform ScanParams p) {                                          \
     uint block = wg.y * p.blocks_per_row + wg.x;                           \
+    if (block * SCAN_BLOCK >= p.n) return;  /* 65535 fold overshoot */     \
     uint base = block * SCAN_BLOCK + tid * SCAN_ELEMS;                     \
     T* output = (T*)p.output;                                              \
     T* block_sums = (T*)p.block_sums;                                      \
@@ -430,6 +431,7 @@ struct ScanAddParams {
 void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
           uniform ScanAddParams p) {                                       \
     uint block = wg.y * p.blocks_per_row + wg.x;                           \
+    if (block * SCAN_BLOCK >= p.n) return;  /* 65535 fold overshoot */     \
     T* output = (T*)p.output;                                              \
     T addend = ((T*)p.block_sums)[block];                                  \
     uint base = block * SCAN_BLOCK + tid * SCAN_ELEMS;                     \

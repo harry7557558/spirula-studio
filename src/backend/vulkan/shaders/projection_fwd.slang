@@ -370,10 +370,14 @@ groupshared uint g_mask_bits[SS_PMASK_WORDS];
 [numthreads(SS_PMASK_BLOCK, 1, 1)]
 void projection_packed_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                             uniform PackedMaskParams p) {
+    uint blk = wg.y * p.wgs_per_row + wg.x;
+    // gridDim 65535 fold: the last row overshoots the ceil-div block count,
+    // while out_bits / out_counts hold exactly that many slots.
+    if (blk * SS_PMASK_BLOCK >= p.C * p.N) return;
+
     if (tid < SS_PMASK_WORDS) g_mask_bits[tid] = 0u;
     GroupMemoryBarrierWithGroupSync();
 
-    uint blk = wg.y * p.wgs_per_row + wg.x;
     uint idx = blk * SS_PMASK_BLOCK + tid;
     if (idx < p.C * p.N) {
         bool keep = false;
@@ -500,6 +504,7 @@ void projection_packed_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                            uniform PackedFwdParams* pp) {
     PackedFwdParams p = *pp;
     uint blk = wg.y * p.wgs_per_row + wg.x;
+    if (blk * SS_PMASK_BLOCK >= p.C * p.N) return;  // fold tail, see the mask
     if (tid < SS_PMASK_WORDS)
         g_fwd_bits[tid] = p.mask_bits[blk * SS_PMASK_WORDS + tid];
     GroupMemoryBarrierWithGroupSync();

@@ -210,6 +210,12 @@ int main() {
 
     for (int64_t n : sizes) test_select(n, rng);
 
+    // Past the 65535 grid-fold cap (SCAN_BLOCK = 2048): the fold tail
+    // launches whole workgroups with no block_sums slot, and an
+    // unguarded write there wedges the GPU.
+    test_scan<int32_t>(65536LL * 2048 + 1, true, rng);
+    test_scan<int32_t>(65536LL * 2048 + 1, false, rng);
+
     // Empty inputs are no-ops.
     backend::DoubleBuffer<int64_t> kb(nullptr, nullptr);
     backend::DoubleBuffer<int32_t> vb(nullptr, nullptr);
