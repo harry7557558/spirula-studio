@@ -61,6 +61,7 @@ uint64_t stream_flush(StreamImpl* s);
 // Called after every dispatch/copy recorded into a batch; reproduces CUDA
 // stream ordering (see README).
 void stream_barrier(VkCommandBuffer cb);
+void host_read_barrier(VkCommandBuffer cb);
 
 // Flushes every live stream and returns the highest submitted value.
 uint64_t flush_all_streams();

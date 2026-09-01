@@ -623,12 +623,9 @@ uint64_t Context::submit(VkCommandBuffer cb) {
 
 bool Context::wait(uint64_t value) {
     if (value == 0) return true;
-    // Poll the counter first (the timeline analog of vkGetFenceStatus,
-    // measurably cheaper than the blocking vkWaitSemaphores path on desktop
-    // drivers). The spin is bounded so a stuck device (device fault) ends up
-    // parked in the blocking wait instead of burning a core; CPU devices
-    // (llvmpipe) skip it entirely — the spinning host thread would compete
-    // with the driver's own worker threads.
+    // Spin on the counter before the blocking wait to save the park/wake
+    // round trip. It cannot replace that wait: reading the counter is a query,
+    // not the host domain operation that makes device writes visible.
     if (_poll_waits) {
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::milliseconds(100);
@@ -640,7 +637,7 @@ bool Context::wait(uint64_t value) {
                 set_error("vkGetSemaphoreCounterValue failed", r);
                 return false;
             }
-            if (current >= value) return true;
+            if (current >= value) break;
             std::this_thread::yield();
         } while (std::chrono::steady_clock::now() < deadline);
     }
