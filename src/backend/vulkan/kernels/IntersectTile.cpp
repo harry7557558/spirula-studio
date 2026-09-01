@@ -18,22 +18,22 @@ inline constexpr int TILE_SIZE_IY = TILE_SIZE_Y * MACRO_TILE_SIZE_Y;
 // Mirror the params structs in shaders/intersect_tile.slang.
 struct IsectCountParams {
     uint64_t aabb, proj_screen, tiles_per_splat;
-    uint64_t image_ids, tile_active;
+    uint64_t image_ids, tile_active, isect_total;
     uint32_t N, image_width, image_height, tile_width, tile_height, total,
         wgs_per_row;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
-static_assert(sizeof(IsectCountParams) == 5 * 8 + 11 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectCountParams) == 6 * 8 + 11 * 4 + 4 /*pad*/,
               "params layout must match the slang struct");
 
 struct IsectWriteParams {
     uint64_t image_ids, aabb, depths, proj_screen;
     uint64_t cum_tiles, isect_ids, flatten_ids, tile_active;
     uint32_t N, image_width, image_height, tile_width, tile_height, total,
-        wgs_per_row;
+        wgs_per_row, n_isects;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
-static_assert(sizeof(IsectWriteParams) == 8 * 8 + 11 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectWriteParams) == 8 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 struct TileActiveParams {
@@ -96,7 +96,12 @@ std::tuple<
     (void)intrins;
     bool packed = image_ids != nullptr;
     // depths is always [*N] float32 (numel = N or nnz), while aabb is [*N, 4].
-    const uint32_t total_count = (uint32_t)depths.numel();
+    const int64_t total_count64 = depths.numel();
+    if (total_count64 > 0x7fffffffLL)
+        throw std::runtime_error(
+            "tile intersect: " + std::to_string(total_count64) +
+            " (camera, gaussian) pairs in one batch exceeds the 2^31 limit");
+    const uint32_t total_count = (uint32_t)total_count64;
     const uint32_t N = packed ? total_count : total_count / I;
 
     // Opens the tile-intersect phase: the key and count buffers below are
@@ -121,6 +126,9 @@ std::tuple<
     /* Count tiles intersected per splat */
     DeviceVector<int32_t> tiles_per_splat;
     tiles_per_splat.resize(PoolSlot::IsectTilesPerSplat, total_count);
+    DeviceVector<uint32_t> isect_total;
+    isect_total.resize(PoolSlot::IsectTotal, 2);
+    isect_total.zero();
     {
         vkk::Fold g = vkk::fold_1d(total_count, 256);
         IsectCountParams cp{};
@@ -129,6 +137,7 @@ std::tuple<
         cp.tiles_per_splat = (uint64_t)tiles_per_splat.data_ptr();
         cp.image_ids = packed ? (uint64_t)image_ids->data_ptr() : 0;
         cp.tile_active = vkk::or_fallback(tile_active);
+        cp.isect_total = (uint64_t)isect_total.data_ptr();
         cp.N = N;
         cp.image_width = image_width;
         cp.image_height = image_height;
@@ -144,21 +153,25 @@ std::tuple<
                       g.rows, 1, &cp, sizeof(cp));
     }
 
+    /* Exact total from the count pass, checked before the int32 scan runs
+       over it: a wrapped prefix sum would otherwise drive the write pass off
+       the end of buffers sized from it. */
+    uint32_t total_words[2] = {0, 0};
+    if (total_count > 0)
+        backend::memcpy_sync(total_words, isect_total.data_ptr(),
+                             sizeof(total_words),
+                             backend::MemcpyKind::DeviceToHost);
+    const int64_t n_isects64 =
+        (int64_t)total_words[0] | ((int64_t)total_words[1] << 32);
+    intersect_check_isect_count(n_isects64);
+    const int32_t n_isects = (int32_t)n_isects64;
+
     /* Inclusive prefix sum -> cumulative tile counts */
     DeviceVector<int32_t> cum_tiles_per_splat;
     cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
     backend::inclusive_sum<int32_t>(tiles_per_splat.data_ptr(),
                                     cum_tiles_per_splat.data_ptr(),
                                     total_count);
-
-    /* Read total intersection count from the last element */
-    int32_t n_isects = 0;
-    if (total_count > 0)
-        backend::memcpy_sync(&n_isects,
-                             cum_tiles_per_splat.data_ptr() + (total_count - 1),
-                             sizeof(int32_t),
-                             backend::MemcpyKind::DeviceToHost);
-    intersect_check_isect_count(n_isects);
 
     DeviceTensor3D<int32_t> offsets_out;
     offsets_out.resize(PoolSlot::IsectOffsets, I, tile_height, tile_width);
@@ -188,6 +201,7 @@ std::tuple<
         wp.isect_ids = (uint64_t)isect_ids_a.data_ptr();
         wp.flatten_ids = (uint64_t)flatten_ids_a.data_ptr();
         wp.tile_active = vkk::or_fallback(tile_active);
+        wp.n_isects = (uint32_t)n_isects;
         wp.N = N;
         wp.image_width = image_width;
         wp.image_height = image_height;

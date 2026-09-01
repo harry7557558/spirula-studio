@@ -50,12 +50,13 @@ inline uint32_t intersect_check_tile_count(uint32_t tile_width,
 }
 
 // flatten_ids and the per-tile offsets are int32, so a run must stay under
-// 2^31 splat-tile pairs. Wrapping past 2^32 would need ~51 GB of keys to have
-// been allocated first, so testing the int32 total for negative catches it.
-inline void intersect_check_isect_count(int32_t n_isects) {
-    if (n_isects < 0)
+// 2^31 splat-tile pairs. The count pass accumulates the exact 64-bit total
+// (two words with a carry), because an int32 sum wraps before it can be read.
+inline void intersect_check_isect_count(int64_t n_isects) {
+    if (n_isects < 0 || n_isects > 0x7fffffffLL)
         throw std::runtime_error(
-            "tile intersect: more than 2^31 splat-tile pairs in one batch; "
+            "tile intersect: " + std::to_string(n_isects) +
+            " splat-tile pairs in one batch exceeds the 2^31 limit; "
             "lower --cap-max, the sub-batch size, or the image resolution");
 }
 

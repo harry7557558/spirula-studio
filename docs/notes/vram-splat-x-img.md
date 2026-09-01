@@ -59,10 +59,35 @@ rather than twice.
 gaussian) pairs. Both are now checked rather than wrapped:
 `packed_check_pair_count` (`kernels/projection/ProjectionPackedFwd.cuh`) and
 `intersect_check_isect_count` / `intersect_check_tile_count` /
-`intersect_check_image_size` (`kernels/tile/IntersectTile.cuh`). The tile
-counts are accumulated in `int32`: a total past 2^31 shows up negative, and
-wrapping past 2^32 would need ~51 GB of keys to have been allocated first, so
-the negative test is the whole check.
+`intersect_check_image_size` (`kernels/tile/IntersectTile.cuh`).
+
+Testing the `int32` prefix-sum total for negative is NOT enough, and a 91 GB
+device is where that shows: past 2^32 the sum wraps back to a plausible
+positive, the key buffers are then sized from it, and `intersect_tile_write`
+walks its `while (cur_idx < max_idx)` window off the end -- an unkillable GPU
+spin at ~6 W with no memory traffic, plus raw stores into whatever follows.
+So `intersect_tile_count` accumulates the **exact** total itself, as a (low
+word, carry) pair built with one `InterlockedAdd` per workgroup, and the host
+checks that 64-bit value before the scan runs. The write pass additionally
+clamps its window to the real allocation, so a miscount can never scatter.
+
+## The 4 GiB rule for any one buffer
+
+A shader may not reach past 4 GiB from a base pointer by *indexing*: drivers
+fold the `OpPtrAccessChain` element offset into 32 bits, so `base[i]` wraps
+onto the start of the buffer and corrupts it silently -- no error, no fault.
+Widening the index to 64-bit in the SPIR-V does not help; the fold happens
+below that. What does work is building the byte address explicitly, which is
+what `elem_at()` (`backend/vulkan/shaders/int64_compat.slang`) does, and a
+base pointer the host has already offset is fine at any size.
+
+Every buffer whose length follows `n_isects` or `nnz` goes through `elem_at`.
+The measured failure without it: `isect_ids` is 8 bytes per intersection, so
+it crosses 4 GiB at 537M pairs -- on mandeltorus at 7680x7680 that is ~13M
+splats, where PSNR fell from 21.7 to 16.0 and the step got 17x slower with
+nothing reported. Under `SS_EMULATE_INT64` (`.noint64` blobs) `gindex_t` is
+32-bit and `elem_at` degrades to plain indexing; `span_ok` in
+`backend/vulkan/SortScanVulkan.cpp` rejects those spans on the host instead.
 
 ## Rejected: LichtFeld's two-pass 32-bit sort
 

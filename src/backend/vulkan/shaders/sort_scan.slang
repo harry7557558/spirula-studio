@@ -99,11 +99,12 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
     for (uint i = tid; i < RADIX; i += SORT_WG) _hist_local[i] = 0;        \
     GroupMemoryBarrierWithGroupSync();                                     \
     KTYPE* keys = (KTYPE*)p.keys;                                          \
-    uint base = part * SORT_PART;                                          \
+    gindex_t base = gindex_t(part) * SORT_PART;                            \
     for (uint e = 0; e < SORT_ELEMS; e++) {                                \
-        uint idx = base + e * SORT_WG + tid;                               \
-        if (idx < p.n) {                                                   \
-            uint d = u64key_digit(keys[idx], p.shift, p.digit_mask);       \
+        gindex_t idx = base + e * SORT_WG + tid;                           \
+        if (idx < gindex_t(p.n)) {                                         \
+            uint d = u64key_digit(elem_at(keys, idx)[0], p.shift,          \
+                                  p.digit_mask);                           \
             InterlockedAdd(_hist_local[d], 1u);                            \
         }                                                                  \
     }                                                                      \
@@ -224,11 +225,11 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
     for (uint i = tid; i < RADIX * MAX_NSG; i += SORT_WG)                  \
         _ds_sg_hist[i] = 0;                                                \
     GroupMemoryBarrierWithGroupSync();                                     \
-    uint base = part * SORT_PART;                                          \
+    gindex_t base = gindex_t(part) * SORT_PART;                            \
     for (uint e = 0; e < SORT_ELEMS; e++) {                                \
-        uint idx = base + e * SORT_WG + tid;                               \
-        bool valid = idx < p.n;                                            \
-        KTYPE key = valid ? keys_in[idx] : KTYPE(0);                       \
+        gindex_t idx = base + e * SORT_WG + tid;                           \
+        bool valid = idx < gindex_t(p.n);                                  \
+        KTYPE key = valid ? elem_at(keys_in, idx)[0] : KTYPE(0);           \
         uint d = u64key_digit(key, p.shift, p.digit_mask);                     \
         uint4 match = match_digit(d, valid);                               \
         uint rank_sg = popcount4(match & lt);                              \
@@ -239,11 +240,11 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
             uint prior_sg = 0;                                             \
             for (uint s = 0; s < sg; s++)                                  \
                 prior_sg += _ds_sg_hist[d * MAX_NSG + s];                  \
-            uint pos = p.global_base[d] +                                  \
+            gindex_t pos = gindex_t(p.global_base[d]) +                    \
                        p.part_offsets[d * p.num_parts + part] +            \
                        _ds_running[d] + prior_sg + rank_sg;                \
-            keys_out[pos] = key;                                           \
-            p.vals_out[pos] = p.vals_in[idx];                              \
+            elem_at(keys_out, pos)[0] = key;                               \
+            elem_at(p.vals_out, pos)[0] = elem_at(p.vals_in, idx)[0];      \
         }                                                                  \
         GroupMemoryBarrierWithGroupSync();                                 \
         /* fold this iteration's counts into the running totals and */     \
@@ -328,15 +329,15 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
           uniform ScanParams p) {                                          \
     uint block = wg.y * p.blocks_per_row + wg.x;                           \
     if (block * SCAN_BLOCK >= p.n) return;  /* 65535 fold overshoot */     \
-    uint base = block * SCAN_BLOCK + tid * SCAN_ELEMS;                     \
+    gindex_t base = gindex_t(block) * SCAN_BLOCK + tid * SCAN_ELEMS;       \
     T* output = (T*)p.output;                                              \
     T* block_sums = (T*)p.block_sums;                                      \
     T loaded[SCAN_ELEMS];                                                  \
     T v[SCAN_ELEMS];                                                       \
     [ForceUnroll]                                                          \
     for (uint e = 0; e < SCAN_ELEMS; e++) {                                \
-        uint idx = base + e;                                               \
-        loaded[e] = idx < p.n ? (LOAD(idx)) : T(0);                        \
+        gindex_t idx = base + e;                                           \
+        loaded[e] = idx < gindex_t(p.n) ? (LOAD(idx)) : T(0);              \
         v[e] = loaded[e];                                                  \
     }                                                                      \
     T thread_total = T(0);                                                 \
@@ -358,20 +359,20 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
     T thread_base = acc_sub(TMP[tid], thread_total); /* excl across thr */ \
     [ForceUnroll]                                                          \
     for (uint e = 0; e < SCAN_ELEMS; e++) {                                \
-        uint idx = base + e;                                               \
-        if (idx < p.n) {                                                   \
+        gindex_t idx = base + e;                                           \
+        if (idx < gindex_t(p.n)) {                                         \
             T excl = acc_add(thread_base, v[e]);                           \
-            output[idx] = kInclusive != 0 ? acc_add(excl, loaded[e])       \
-                                          : excl;                          \
+            elem_at(output, idx)[0] = kInclusive != 0                      \
+                ? acc_add(excl, loaded[e]) : excl;                         \
         }                                                                  \
     }                                                                      \
     if (tid == SCAN_WG - 1)                                                \
         block_sums[block] = acc_add(thread_base, thread_total);            \
 }
 
-#define LOAD_I32(idx) (((int*)p.input)[idx])
-#define LOAD_I64(idx) (((i64acc_t*)p.input)[idx])
-#define LOAD_F32(idx) (((float*)p.input)[idx])
+#define LOAD_I32(idx) (elem_at((int*)p.input, idx)[0])
+#define LOAD_I64(idx) (elem_at((i64acc_t*)p.input, idx)[0])
+#define LOAD_F32(idx) (elem_at((float*)p.input, idx)[0])
 #define LOAD_FLAG(idx) (load_flag_byte((uint32_t*)p.input, idx) != 0 ? 1 : 0)
 
 DEF_SCAN_BLOCKS(scan_blocks_i32, int, _scan_tmp_i32, LOAD_I32)
@@ -434,11 +435,12 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
     if (block * SCAN_BLOCK >= p.n) return;  /* 65535 fold overshoot */     \
     T* output = (T*)p.output;                                              \
     T addend = ((T*)p.block_sums)[block];                                  \
-    uint base = block * SCAN_BLOCK + tid * SCAN_ELEMS;                     \
+    gindex_t base = gindex_t(block) * SCAN_BLOCK + tid * SCAN_ELEMS;       \
     [ForceUnroll]                                                          \
     for (uint e = 0; e < SCAN_ELEMS; e++) {                                \
-        uint idx = base + e;                                               \
-        if (idx < p.n) output[idx] = acc_add(output[idx], addend);         \
+        gindex_t idx = base + e;                                           \
+        if (idx < gindex_t(p.n)) elem_at(output, idx)[0] =                 \
+            acc_add(elem_at(output, idx)[0], addend);                      \
     }                                                                      \
 }
 
@@ -464,11 +466,12 @@ struct ScatterFlaggedParams {
 void scatter_flagged_u32(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                          uniform ScatterFlaggedParams p) {
     uint block = wg.y * p.blocks_per_row + wg.x;
-    uint base = block * SCAN_BLOCK + tid * SCAN_ELEMS;
+    gindex_t base = gindex_t(block) * SCAN_BLOCK + tid * SCAN_ELEMS;
     [ForceUnroll]
     for (uint e = 0; e < SCAN_ELEMS; e++) {
-        uint idx = base + e;
-        if (idx < p.n && load_flag_byte(p.flags, idx) != 0)
-            p.output[p.scan[idx]] = p.input[idx];
+        gindex_t idx = base + e;
+        if (idx < gindex_t(p.n) && load_flag_byte(p.flags, uint(idx)) != 0)
+            elem_at(p.output, gindex_t(elem_at(p.scan, idx)[0]))[0] =
+                elem_at(p.input, idx)[0];
     }
 }

@@ -102,6 +102,14 @@ inline __device__ int count_ellipse_grid_overlaps(
 }
 
 
+// cub::Sum takes one accumulator type, so widen the int32 counts on the way
+// in rather than summing them in the type that overflows.
+struct WidenToI64 {
+    __host__ __device__ int64_t operator()(int32_t v) const {
+        return (int64_t)v;
+    }
+};
+
 template<bool is_counting_pass, bool is_ellipse>
 __global__ void intersect_tile_kernel(
     const uint32_t I,  // or 1 in packed mode
@@ -121,7 +129,8 @@ __global__ void intersect_tile_kernel(
     const int32_t *__restrict__ tile_active,
     int32_t *__restrict__ tiles_per_splat, // [..., N]
     int64_t *__restrict__ isect_ids,  // [n_isects]
-    int32_t *__restrict__ flatten_ids  // [n_isects]
+    int32_t *__restrict__ flatten_ids,  // [n_isects]
+    const int32_t n_isects  // write pass: clamps the window below
 ) {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= I * N) {
@@ -140,8 +149,9 @@ __global__ void intersect_tile_kernel(
             // cur_idx should equal to max_idx
             // do this just in case compiler floating point optimization goes wild
             int64_t iid = (image_ids ? image_ids[idx] : idx / N);
-            int32_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
-            int32_t max_idx = cum_tiles_per_splat[idx];
+            int32_t cur_idx =
+                (idx == 0) ? 0 : max(cum_tiles_per_splat[idx - 1], 0);
+            int32_t max_idx = min(cum_tiles_per_splat[idx], n_isects);
             while (cur_idx < max_idx) {
                 int64_t tile_id = iid * tile_width * tile_height;
                 isect_ids[cur_idx] = (tile_id << 32) | (int64_t)0xffffffff;
@@ -204,8 +214,10 @@ __global__ void intersect_tile_kernel(
     else  // positive
         depth_u32 ^= (1u << 31u);
     
-    int32_t cur_idx = (idx == 0) ? 0 : cum_tiles_per_splat[idx - 1];
-    int32_t max_idx = cum_tiles_per_splat[idx];
+    // Clamped both ends: the count is exact now, but an out-of-range window
+    // here would scatter raw stores across device memory.
+    int32_t cur_idx = (idx == 0) ? 0 : max(cum_tiles_per_splat[idx - 1], 0);
+    int32_t max_idx = min(cum_tiles_per_splat[idx], n_isects);
     if constexpr (is_ellipse) {
         if ((tile_max.y-tile_min.y)*TILE_SIZE_IX <= (tile_max.x-tile_min.x)*TILE_SIZE_IY) {
             for (int y = tile_min.y; y < tile_max.y; y++) {
@@ -396,7 +408,12 @@ std::tuple<
     bool packed = image_ids != nullptr;
     // depths is [*N] float32 (numel = N or nnz); aabb is a [*N] packed box,
     // so either would do, but depths is what the non-packed shape agrees on.
-    const uint32_t total_count = (uint32_t)depths.numel();
+    const int64_t total_count64 = depths.numel();
+    if (total_count64 > 0x7fffffffLL)
+        throw std::runtime_error(
+            "tile intersect: " + std::to_string(total_count64) +
+            " (camera, gaussian) pairs in one batch exceeds the 2^31 limit");
+    const uint32_t total_count = (uint32_t)total_count64;
     const uint32_t N = packed ? total_count : total_count / I;
 
     // Opens the tile-intersect phase: the key and count buffers below are
@@ -429,9 +446,27 @@ std::tuple<
         tile_width, tile_height,
         tile_active,
         tiles_per_splat.data_ptr(),
-        nullptr, nullptr
+        nullptr, nullptr, 0
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
+
+    /* Exact total, reduced in int64: the int32 scan below wraps silently
+       past 2^31, and past 2^32 it wraps back to a plausible positive that
+       would size the key buffers and send the write pass off the end. */
+    int64_t n_isects64 = 0;
+    if (total_count > 0) {
+        DeviceVector<int64_t> isect_total;
+        isect_total.resize(PoolSlot::IsectTotal, 1);
+        cub::TransformInputIterator<int64_t, WidenToI64, const int32_t*>
+            widened(tiles_per_splat.data_ptr(), WidenToI64{});
+        CUB_WRAPPER(cub::DeviceReduce::Sum, widened, isect_total.data_ptr(),
+                    (int)total_count);
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+        cudaMemcpy(&n_isects64, isect_total.data_ptr(), sizeof(int64_t),
+                   cudaMemcpyDeviceToHost);
+    }
+    intersect_check_isect_count(n_isects64);
+    const int32_t n_isects = (int32_t)n_isects64;
 
     /* Inclusive prefix sum -> cumulative tile counts */
     DeviceVector<int32_t> cum_tiles_per_splat;
@@ -439,14 +474,6 @@ std::tuple<
     CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
         tiles_per_splat.data_ptr(), cum_tiles_per_splat.data_ptr(), (int)total_count);
     CHECK_DEVICE_ERROR(cudaGetLastError());
-
-    /* Read total intersection count from the last element */
-    int32_t n_isects = 0;
-    if (total_count > 0)
-        cudaMemcpy(&n_isects,
-                   cum_tiles_per_splat.data_ptr() + (total_count - 1),
-                   sizeof(int32_t), cudaMemcpyDeviceToHost);
-    intersect_check_isect_count(n_isects);
 
     // SS_TILE_SKIP_LOG=1: what the live-tile map removes from the sort and
     // the raster, which is what decides whether it pays.
@@ -487,7 +514,8 @@ std::tuple<
         tile_active,
         nullptr,
         isect_ids_a.data_ptr(),
-        flatten_ids_a.data_ptr()
+        flatten_ids_a.data_ptr(),
+        n_isects
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 

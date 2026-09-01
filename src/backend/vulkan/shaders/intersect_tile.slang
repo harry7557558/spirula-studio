@@ -108,6 +108,7 @@ struct IsectCountParams {  // pushed directly
     int* tiles_per_splat;      // [total]
     int* image_ids;            // [total] (packed) or null (iid = idx / N)
     int* tile_active;          // [I, tile_h, tile_w] 0/1; read when kSkipTiles
+    uint* isect_total;         // [2]: (low word, carry) of the exact sum
     uint32_t N;                // splats per image
     uint32_t image_width;      // the AABB's quantization extent
     uint32_t image_height;
@@ -131,49 +132,67 @@ const int kPacked = 0;   // image_ids present (packed projection)
 [SpecializationConstant]
 const int kSkipTiles = 0;  // tile_active present (masked tiles left out)
 
+groupshared uint _isect_wg_total;
+
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                           uniform IsectCountParams p) {
-    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.total) return;
+    if (tid == 0) _isect_wg_total = 0u;
+    GroupMemoryBarrierWithGroupSync();
 
-    uint2 aabb_q = p.aabb[idx];
-    float4 aabb = aabb16_decode(aabb_q, p.image_width, p.image_height);
-    if (aabb16_is_empty(aabb_q)) {
-        p.tiles_per_splat[idx] = 0;
-        return;
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    int n = 0;
+    if (idx < p.total) {
+        uint2 aabb_q = p.aabb[idx];
+        if (!aabb16_is_empty(aabb_q)) {
+            float4 aabb =
+                aabb16_decode(aabb_q, p.image_width, p.image_height);
+            uint2 tile_min, tile_max;
+            tile_range(aabb, p.tile_width, p.tile_height, tile_min, tile_max);
+
+            gindex_t iid = kPacked != 0 ? gindex_t(p.image_ids[idx])
+                                        : gindex_t(idx / p.N);
+            gindex_t tile_base =
+                iid * gindex_t(p.tile_width) * gindex_t(p.tile_height);
+
+            if (kEllipse != 0) {
+                float* row = p.proj_screen + p.row_stride * int(idx);
+                float2 xy = kHasXy != 0
+                    ? float2(row[p.xy_off], row[p.xy_off + 1])
+                    : float2(0.5f * (aabb.x + aabb.z),
+                             0.5f * (aabb.y + aabb.w));
+                float3 conic = float3(row[p.conic_off], row[p.conic_off + 1],
+                                      row[p.conic_off + 2]);
+                conic = conic * (0.5f / log(row[p.opac_off] / ALPHA_THRESHOLD));
+                n = count_ellipse_grid_overlaps(
+                    xy, conic,
+                    int(tile_min.x), int(tile_max.x), int(tile_min.y),
+                    int(tile_max.y), p.tile_active, tile_base, p.tile_width);
+            } else if (kSkipTiles == 0) {
+                n = max(int(tile_max.y - tile_min.y) *
+                        int(tile_max.x - tile_min.x), 0);
+            } else {
+                for (uint i = tile_min.y; i < tile_max.y; ++i)
+                    for (uint j = tile_min.x; j < tile_max.x; ++j)
+                        n += p.tile_active[tile_base +
+                                           gindex_t(i) * p.tile_width +
+                                           gindex_t(j)] != 0 ? 1 : 0;
+            }
+        }
+        p.tiles_per_splat[idx] = n;
     }
 
-    uint2 tile_min, tile_max;
-    tile_range(aabb, p.tile_width, p.tile_height, tile_min, tile_max);
-
-    gindex_t iid = kPacked != 0 ? gindex_t(p.image_ids[idx])
-                                : gindex_t(idx / p.N);
-    gindex_t tile_base = iid * gindex_t(p.tile_width) * gindex_t(p.tile_height);
-
-    if (kEllipse != 0) {
-        float* row = p.proj_screen + p.row_stride * int(idx);
-        float2 xy = kHasXy != 0
-            ? float2(row[p.xy_off], row[p.xy_off + 1])
-            : float2(0.5f * (aabb.x + aabb.z), 0.5f * (aabb.y + aabb.w));
-        float3 conic = float3(row[p.conic_off], row[p.conic_off + 1],
-                              row[p.conic_off + 2]);
-        conic = conic * (0.5f / log(row[p.opac_off] / ALPHA_THRESHOLD));
-        p.tiles_per_splat[idx] = count_ellipse_grid_overlaps(
-            xy, conic,
-            int(tile_min.x), int(tile_max.x), int(tile_min.y),
-            int(tile_max.y), p.tile_active, tile_base, p.tile_width);
-    } else if (kSkipTiles == 0) {
-        p.tiles_per_splat[idx] = max(
-            int(tile_max.y - tile_min.y) * int(tile_max.x - tile_min.x), 0);
-    } else {
-        int n = 0;
-        for (uint i = tile_min.y; i < tile_max.y; ++i)
-            for (uint j = tile_min.x; j < tile_max.x; ++j)
-                n += p.tile_active[tile_base + gindex_t(i) * p.tile_width +
-                                   gindex_t(j)] != 0 ? 1 : 0;
-        p.tiles_per_splat[idx] = n;
+    // The int32 scan downstream cannot report a total it has already wrapped
+    // through, so carry the exact 64-bit sum out in two words. A workgroup
+    // holds at most 256 * (tile grid) tiles, which stays inside uint32.
+    if (n > 0) InterlockedAdd(_isect_wg_total, uint(n));
+    GroupMemoryBarrierWithGroupSync();
+    if (tid == 0 && _isect_wg_total != 0u) {
+        uint prev;
+        InterlockedAdd(p.isect_total[0], _isect_wg_total, prev);
+        if (prev + _isect_wg_total < prev)
+            InterlockedAdd(p.isect_total[1], 1u);
     }
 }
 
@@ -245,6 +264,7 @@ struct IsectWriteParams {  // pushed directly
     uint32_t tile_height;
     uint32_t total;
     uint32_t wgs_per_row;
+    uint32_t n_isects;   // isect_ids / flatten_ids length
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
 
@@ -257,8 +277,11 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     gindex_t iid = kPacked != 0 ? gindex_t(p.image_ids[idx])
                                          : gindex_t(idx / p.N);
-    int cur_idx = (idx == 0) ? 0 : p.cum_tiles[idx - 1];
-    int max_idx = p.cum_tiles[idx];
+    // Clamped both ends: the counts are exact now, but an out-of-range
+    // window here would scatter raw stores across device memory.
+    gindex_t cur_idx =
+        (idx == 0) ? 0 : max(gindex_t(p.cum_tiles[idx - 1]), gindex_t(0));
+    gindex_t max_idx = min(gindex_t(p.cum_tiles[idx]), gindex_t(p.n_isects));
 
     uint2 aabb_q = p.aabb[idx];
     float4 aabb = aabb16_decode(aabb_q, p.image_width, p.image_height);
@@ -268,8 +291,8 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         gindex_t n_img_tiles = gindex_t(p.tile_width) * gindex_t(p.tile_height);
         while (cur_idx < max_idx) {
             gindex_t tile_id = iid * n_img_tiles;
-            p.isect_ids[cur_idx] = u64key_make(tile_id, 0xffffffffu);
-            p.flatten_ids[cur_idx] = int(idx);
+            elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id, 0xffffffffu);
+            elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
             ++cur_idx;
         }
         return;
@@ -311,8 +334,8 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                       gindex_t(y) * gindex_t(p.tile_width) +
                                       gindex_t(x);
                     if (kSkipTiles != 0 && p.tile_active[tile_id] == 0) continue;
-                    p.isect_ids[cur_idx] = u64key_make(tile_id, depth_u32);
-                    p.flatten_ids[cur_idx] = int(idx);
+                    elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id, depth_u32);
+                    elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
                     ++cur_idx;
                 }
             }
@@ -331,8 +354,8 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                       gindex_t(y) * gindex_t(p.tile_width) +
                                       gindex_t(x);
                     if (kSkipTiles != 0 && p.tile_active[tile_id] == 0) continue;
-                    p.isect_ids[cur_idx] = u64key_make(tile_id, depth_u32);
-                    p.flatten_ids[cur_idx] = int(idx);
+                    elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id, depth_u32);
+                    elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
                     ++cur_idx;
                 }
             }
@@ -345,8 +368,8 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                   gindex_t(i) * gindex_t(p.tile_width) +
                                   gindex_t(j);
                 if (kSkipTiles != 0 && p.tile_active[tile_id] == 0) continue;
-                p.isect_ids[cur_idx] = u64key_make(tile_id, depth_u32);
-                p.flatten_ids[cur_idx] = int(idx);
+                elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id, depth_u32);
+                elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
                 ++cur_idx;
             }
         }
@@ -354,8 +377,8 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // Don't leave invalid IDs behind if the count under-estimated.
     while (cur_idx < max_idx) {
         gindex_t tile_id = iid * n_img_tiles;
-        p.isect_ids[cur_idx] = u64key_make(tile_id, 0xffffffffu);
-        p.flatten_ids[cur_idx] = int(idx);
+        elem_at(p.isect_ids, cur_idx)[0] = u64key_make(tile_id, 0xffffffffu);
+        elem_at(p.flatten_ids, cur_idx)[0] = int(idx);
         ++cur_idx;
     }
 }
@@ -379,7 +402,7 @@ void intersect_offset(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.n_isects) return;
 
-    gindex_t tile_id = u64key_hi(p.isect_ids[idx]);
+    gindex_t tile_id = u64key_hi(elem_at(p.isect_ids, gindex_t(idx))[0]);
 
     if (idx == 0) {
         // write out the offsets until the first valid tile (inclusive)
@@ -393,7 +416,7 @@ void intersect_offset(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
 
     if (idx > 0) {
-        gindex_t tile_id_prev = u64key_hi(p.isect_ids[idx - 1]);
+        gindex_t tile_id_prev = u64key_hi(elem_at(p.isect_ids, gindex_t(idx) - 1)[0]);
         if (tile_id_prev == tile_id)
             return;
         // write out the offsets between the previous and current tiles

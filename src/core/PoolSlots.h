@@ -173,6 +173,7 @@ enum class SaveClass : uint8_t {
   /* ---- tile intersect scratch ---- */ \
   X(IsectTilesPerSplat             , "isect.tiles_per_splat",             SplatXImg, Never) \
   X(IsectCumTiles                  , "isect.cum_tiles",                   SplatXImg, Never) \
+  X(IsectTotal                     , "isect.total",                       SplatXImg, Never) \
   X(IsectOffsets                   , "isect.offsets",                     SplatXImg, Never) \
   X(IsectIdsA                      , "isect.ids_a",                       SplatXImg, Never) \
   X(IsectIdsB                      , "isect.ids_b",                       SplatXImg, Never) \
