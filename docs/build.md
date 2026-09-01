@@ -250,6 +250,32 @@ from the built `spirula` plus an icon resampled from `assets/icon.png` — via
 `sips` and `iconutil`, which are in the base system, so packaging needs no
 Xcode.
 
+### Windows: the Visual C++ runtime
+
+The Windows binary links the CRT dynamically, so the machine it lands on needs
+the Microsoft Visual C++ Redistributable (`MSVCP140.dll`, `VCRUNTIME140*.dll`,
+`VCOMP140.dll`). Most machines have one, and it is often years old.
+
+MSVC 14.40 (VS 2022 17.10) made `std::mutex`'s and `condition_variable`'s
+constructors `constexpr`: the storage is zeroed and `_Mtx_init_in_situ` is
+never called. A redistributable older than 14.40 still locks through a vptr
+that lives in that storage, so the first `lock()` reads through a null pointer
+and the process dies before it draws a frame -- an
+`ACCESS_VIOLATION ... reading 0x0` inside `MSVCP140.dll`, which
+`SymFromAddr` reports against whatever export precedes the internal
+`_Mtx_do_lock` (`Thrd_yield`, on some builds).
+
+`cmake/SsOptions.cmake` therefore defines `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`
+for every MSVC target, which restores the runtime-initialised constructors.
+Keep it global: one translation unit built without it is one crash. A quick
+check on a built binary --
+
+```bash
+dumpbin /imports build/spirula.exe | findstr _Mtx_init_in_situ
+```
+
+-- must print a line. If it does not, the define did not reach the build.
+
 ### The icon
 
 `tools/make_icon.py` renders everything in `assets/` and is the only thing

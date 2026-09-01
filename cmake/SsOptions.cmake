@@ -71,6 +71,27 @@ add_compile_definitions(SS_SOURCE_ROOT="${SS_ROOT}")
 # it used to be read out of pyproject.toml, back when there was a package.
 set(SS_VERSION "2026.8.28")
 
+# The commit goes in it too, so a crash report names an exact tree without
+# anyone having to bump a string by hand. Read at configure time, which is
+# every dev build: build_develop.bash/.bat re-run `cmake -B build`.
+find_package(Git QUIET)
+set(SS_COMMIT "")
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD
+                    WORKING_DIRECTORY ${SS_ROOT}
+                    OUTPUT_VARIABLE SS_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE
+                    ERROR_QUIET)
+    if(SS_COMMIT)
+        execute_process(COMMAND ${GIT_EXECUTABLE} diff --quiet HEAD
+                        WORKING_DIRECTORY ${SS_ROOT}
+                        RESULT_VARIABLE SS_GIT_CLEAN ERROR_QUIET)
+        if(NOT SS_GIT_CLEAN STREQUAL "0")
+            string(APPEND SS_COMMIT "-dirty")
+        endif()
+        string(APPEND SS_VERSION " (${SS_COMMIT})")
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Options
 #
@@ -300,6 +321,13 @@ endif()
 
 if(WIN32)
     add_compile_definitions(_USE_MATH_DEFINES NOMINMAX _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# MSVC 14.40 zeroes std::mutex storage in a constexpr constructor instead of
+# calling _Mtx_init_in_situ; an MSVCP140.dll older than that still dispatches
+# through a vptr there, and null-derefs on the first lock(). Global on purpose.
+if(MSVC)
+    add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 endif()
 
 # The same trim for the __FILE__ this project does not write: assert() in
