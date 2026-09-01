@@ -54,6 +54,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libvulkan-dev libgl1-mesa-dev xorg-dev
+          sudo apt install -y libwayland-dev libwayland-bin wayland-protocols libxkbcommon0 libxkbcommon-x11-0 libxkbcommon-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev spirv-tools
 
       - uses: actions/cache@v4
         with:
@@ -63,7 +64,7 @@ jobs:
           key: fetched-linux-${{ hashFiles('cmake/SsSlang.cmake', 'cmake/SsVulkan.cmake') }}
 
       - name: Build
-        run: bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan
+        run: bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
 
       - name: Smoke
         run: ./build/spirula train --help
@@ -86,8 +87,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON \
-               -DSS_BACKEND=vulkan 2>&1 | tee configure.log
+          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON 2>&1 | tee configure.log
 
       - name: OpenMP was found
         run: grep -q "Found OpenMP" configure.log
@@ -120,7 +120,7 @@ jobs:
 
       - name: Build
         shell: cmd
-        run: build_develop.bat -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan "-DSS_SFM_REALS=float;double"
+        run: build_develop.bat -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
 
       - name: Smoke
         shell: cmd

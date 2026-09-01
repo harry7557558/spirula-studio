@@ -20,8 +20,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON \
-               -DSS_BACKEND=vulkan 2>&1 | tee configure.log
+          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON 2>&1 | tee configure.log
 
       - name: OpenMP was found
         run: grep -q "Found OpenMP" configure.log
