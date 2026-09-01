@@ -17,6 +17,7 @@
 #include "app/GeometryWarp.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/ImageProbe.h"
 #include "app/GeometryModel.h"
 #include "nn/core/Log.h"
 #endif
@@ -291,6 +292,7 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                     try {
                         DatasetParserConfig cfg;
                         cfg.require_image_files = false;
+                        cfg.probe_image_size = probe_image_size;
                         if (!image_dir.empty()) cfg.image_dir = image_dir;
                         const ParsedDataset ds = parse_dataset(dataset, cfg, "");
                         const int64_t total = ds.num_cameras;

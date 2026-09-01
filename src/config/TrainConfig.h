@@ -121,7 +121,7 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, metashape_xml, "", "dataset", "advanced", "none")         \
     X(std::string, metashape_ply, "", "dataset", "advanced", "none")         \
     X(std::string, metashape_psx, "", "dataset", "advanced", "none")         \
-    X(float, rescale_camera_to_fit, 0.0f, "dataset", "advanced", "")         \
+    X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
     X(std::string, eval_mode, "all", "dataset", "advanced", "fraction|filename|interval|all") \
     X(int, eval_interval, 8, "dataset", "advanced", "")                      \
@@ -338,7 +338,7 @@ struct TrainConfig {
 #define SS_DATASET_PARSE_FIELDS(X) \
     X(data) X(data_format) X(colmap_recon_dir) X(image_dir) X(mask_dir) \
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
-    X(metashape_psx) X(rescale_camera_to_fit) X(downscale_rounding_mode) \
+    X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
     X(orientation_method) X(center_method) X(auto_scale_poses) \
     X(outlier_threshold) X(train_frame) X(eval_mode) X(train_split_fraction) \
     X(eval_interval) X(depth_unit_scale_factor) X(validation_fraction) \

@@ -140,10 +140,14 @@ struct DatasetParserConfig {
     // the geometric median of all camera positions. inf = off (default).
     float outlier_threshold = std::numeric_limits<float>::infinity();
 
-    // Divide stored intrinsics by this factor (Mip-NeRF 360 images_2/_4
-    // style). 0 = off. TODO: an auto-detect mode that probes the first
-    // image's actual resolution.
-    float       rescale_camera_to_fit = 0.0f;
+    // Pixel size of an image file (data/ImageProbe.h). Set: every camera trains
+    // at its own image's resolution. Null: a caller with no decoders -- the
+    // WebAssembly viewer, given a dataset's cameras but never its pixels.
+    bool (*probe_image_size)(const char* path, int* w, int* h) = nullptr;
+
+    // Divide the training resolution by this factor, on top of that fit. 0 or
+    // 1 trains at the images' own size.
+    float       train_resolution_divisor = 0.0f;
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
     // Metashape inputs (parse_metashape_dataset). Relative paths resolve
@@ -335,5 +339,14 @@ std::string find_aux_file(const std::string& aux_dir, const std::string& rel_nam
 // keep-flags, all-true when threshold is inf. positions = [N, 3].
 std::vector<char> outlier_keep_mask(const std::vector<double>& positions,
                                     int64_t n, float threshold);
+
+// The resolution one camera trains at: its image file's size when cfg probes
+// for one, divided by train_resolution_divisor. W/H and the intrinsics come in
+// as the reconstruction's and leave scaled to that; `src` (may be null) too.
+void fit_camera_resolution(const DatasetParserConfig& cfg,
+                           const std::string& image_path,
+                           double& W, double& H,
+                           double& fx, double& fy, double& cx, double& cy,
+                           RedistortSource* src);
 
 }  // namespace dsparse

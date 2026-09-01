@@ -588,19 +588,9 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         ds.camera_distortions.push_back(
             (int32_t)camera_distortion_demote(tier, dst, dst));
 
-        if (cfg.rescale_camera_to_fit > 0.0f) {
-            double s = cfg.rescale_camera_to_fit;
-            fx /= s; fy /= s; cx /= s; cy /= s;
-            if (!ds.redistort.empty() && ds.redistort[j].source_model >= 0)
-                srccam::rescale(ds.redistort[j].source_model,
-                                ds.redistort[j].params, s);
-            auto round_dim = [&](double v) {
-                if (cfg.downscale_rounding_mode == "ceil")  return std::ceil(v / s);
-                if (cfg.downscale_rounding_mode == "round") return std::round(v / s);
-                return std::floor(v / s);
-            };
-            W = round_dim(W); H = round_dim(H);
-        }
+        dsparse::fit_camera_resolution(
+            cfg, F.abs, W, H, fx, fy, cx, cy,
+            ds.redistort.empty() ? nullptr : &ds.redistort[j]);
 
         // Equirectangular: canonical panorama intrinsics.
         if ((int)model == EQUIRECT_V) {

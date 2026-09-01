@@ -9,6 +9,7 @@
 #include "core/ExrImage.h"
 #include "i18n/catalog/Log.h"
 #include "data/CameraMath.h"
+#include "data/ImageProbe.h"
 #include "data/Knn.h"
 #include "sfm/core/Exif.h"
 
@@ -519,7 +520,6 @@ std::string train_config_unsupported(const TrainConfig& c) {
     if (c.deblur_training_images)     return not_impl("--deblur-training-images");
     if (!c.optimizer_offload.empty()) return not_impl("--optimizer-offload");
     if (c.cache_images == "gpu")      return not_impl("--cache-images gpu");
-    if (c.rescale_camera_to_fit < 0)  return not_impl("--rescale-camera-to-fit auto-detect");
     if (c.train_frame != "points")    return not_impl("--train-frame " + c.train_frame);
     if (c.primitive != "3dgs" && c.primitive != "mip" && c.primitive != "3dgut")
         return not_impl("--primitive " + c.primitive);
@@ -563,7 +563,8 @@ void TrainerSession::load_dataset() {
     pcfg.eval_interval        = cfg.eval_interval;
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.rescale_camera_to_fit   = cfg.rescale_camera_to_fit;
+    pcfg.probe_image_size        = probe_image_size;
+    pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
@@ -1226,7 +1227,8 @@ void TrainerSession::eval() {
     pcfg.eval_interval        = cfg.eval_interval;
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.rescale_camera_to_fit   = cfg.rescale_camera_to_fit;
+    pcfg.probe_image_size        = probe_image_size;
+    pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;

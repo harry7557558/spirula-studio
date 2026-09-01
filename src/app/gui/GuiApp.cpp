@@ -5031,17 +5031,17 @@ void GuiApp::draw_basic_options() {
         ui::help_on_hover(msg::opt_primitive_help);
     }
 
-    int ds_idx = _cfg.rescale_camera_to_fit == 2.0f ? 1
-               : _cfg.rescale_camera_to_fit == 4.0f ? 2
-               : _cfg.rescale_camera_to_fit == 8.0f ? 3 : 0;
+    int ds_idx = _cfg.train_resolution_divisor == 2.0f ? 1
+               : _cfg.train_resolution_divisor == 4.0f ? 2
+               : _cfg.train_resolution_divisor == 8.0f ? 3 : 0;
     {
         // "1/2" is a fraction, not a word; only "native" is translated.
         const char* items[] = {msg::opt_resolution_native.get(), "1/2", "1/4", "1/8"};
         ImGui::SetNextItemWidth(w);
         if (ui::ComboRaw(ui::detail::label(msg::opt_resolution), &ds_idx, items, 4)) {
             const float vals[] = {0.0f, 2.0f, 4.0f, 8.0f};
-            _cfg.rescale_camera_to_fit = vals[ds_idx];
-            _cfg_ui.touched.insert("rescale_camera_to_fit");
+            _cfg.train_resolution_divisor = vals[ds_idx];
+            _cfg_ui.touched.insert("train_resolution_divisor");
         }
     }
     ui::help_on_hover(msg::opt_resolution_help);

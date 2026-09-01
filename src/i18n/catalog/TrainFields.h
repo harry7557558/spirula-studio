@@ -1227,68 +1227,71 @@ SS_MSG(metashape_psx_help,
     TR("Metashape proje dosyası; projede birden çok görüntü aynı dosya adını "
        "taşıdığında hangisinin kastedildiğini çözmek için kullanılır."));
 
-SS_MSG(rescale_camera_to_fit,
-    EN("Image downscale factor"), JA("画像の縮小率"),
-    ZH_HANS("图像缩小倍数"), ZH_HANT("影像縮小倍數"), KO("이미지 축소 배수"),
-    DE("Verkleinerungsfaktor der Bilder"),
-    FR("Facteur de réduction des images"),
-    ES("Factor de reducción de las imágenes"),
-    PT("Fator de redução das imagens"),
-    IT("Fattore di riduzione delle immagini"),
-    NL("Verkleiningsfactor van de beelden"),
-    RU("Коэффициент уменьшения изображений"), TR("Görüntü küçültme çarpanı"));
-SS_MSG(rescale_camera_to_fit_help,
-    EN("Fix a mismatch between image size and the camera parameters stored in "
-       "the dataset. Set it to the factor the images were shrunk by, such as "
-       "2 when training on images_2, or 0 to leave the cameras alone. Auto-detection "
-       "(-1) is not supported yet."),
-    JA("画像の大きさと、データセットに記録されたカメラパラメータの食い違いを直"
-       "します。画像を縮小した倍率を指定してください（images_2 で学習するなら"
-       " 2 など）。0 ならカメラには手を加えません。自動判定（-1）はまだ対応し"
-       "ていません。"),
-    ZH_HANS("修正图像尺寸与数据集中记录的相机参数之间的不一致。填入图像被缩小"
-            "的倍数，例如用 images_2 训练时填 2；填 0 则不改动相机。自动判断（"
-            "-1）尚未支持。"),
-    ZH_HANT("修正影像尺寸與資料集中記錄的相機參數之間的不一致。填入影像被縮小"
-            "的倍數，例如用 images_2 訓練時填 2；填 0 則不改動相機。自動判斷（"
-            "-1）尚未支援。"),
-    KO("이미지 크기와 데이터셋에 저장된 카메라 파라미터가 어긋난 것을 바로잡습"
-       "니다. 이미지를 줄인 배수를 넣으십시오(images_2로 학습하면 2). 0이면 카"
-       "메라를 그대로 둡니다. 자동 판별(-1)은 아직 지원하지 않습니다."),
-    DE("Eine Diskrepanz zwischen Bildgröße und den im Datensatz gespeicherten "
-       "Kameraparametern beheben. Auf den Faktor setzen, um den die Bilder verkleinert "
-       "wurden, etwa 2 beim Training auf images_2, oder 0, um die Kameras unangetastet "
-       "zu lassen. Automatische Erkennung (-1) wird noch nicht unterstützt."),
-    FR("Corriger un décalage entre la taille des images et les paramètres de "
-       "caméra enregistrés dans le jeu de données. Indiquez le facteur de réduction "
-       "des images, par exemple 2 pour un entraînement sur images_2, ou 0 pour "
-       "ne pas toucher aux caméras. La détection automatique (-1) n'est pas encore "
-       "prise en charge."),
-    ES("Corregir un desajuste entre el tamaño de las imágenes y los parámetros "
-       "de cámara guardados en el conjunto de datos. Indique el factor por el "
-       "que se redujeron las imágenes, por ejemplo 2 al entrenar con images_2, "
-       "o 0 para no tocar las cámaras. La detección automática (-1) todavía no "
-       "está admitida."),
-    PT("Corrigir um descompasso entre o tamanho das imagens e os parâmetros de "
-       "câmera guardados no conjunto de dados. Informe o fator pelo qual as imagens "
-       "foram reduzidas, por exemplo 2 ao treinar com images_2, ou 0 para não "
-       "mexer nas câmeras. A detecção automática (-1) ainda não é suportada."),
-    IT("Correggere una discrepanza tra la dimensione delle immagini e i parametri "
-       "della camera salvati nel set di dati. Indicare il fattore di riduzione "
-       "delle immagini, ad esempio 2 addestrando su images_2, oppure 0 per non "
-       "toccare le camere. Il rilevamento automatico (-1) non è ancora supportato."),
-    NL("Een verschil tussen de beeldgrootte en de in de dataset opgeslagen cameraparameters "
-       "rechtzetten. Geef de factor waarmee de beelden zijn verkleind, bijvoorbeeld "
-       "2 bij trainen op images_2, of 0 om de camera's met rust te laten. Automatische "
-       "detectie (-1) wordt nog niet ondersteund."),
-    RU("Исправить несоответствие между размером изображений и параметрами камер, "
-       "записанными в наборе данных. Укажите коэффициент, во сколько раз уменьшили "
-       "изображения, например 2 при обучении на images_2, или 0, чтобы не трогать "
-       "камеры. Автоопределение (-1) пока не поддерживается."),
-    TR("Görüntü boyutu ile veri kümesinde saklanan kamera parametreleri arasındaki "
-       "uyuşmazlığı giderir. Görüntülerin küçültüldüğü çarpanı girin; örneğin "
-       "images_2 üzerinde eğitirken 2, kameralara dokunmamak için 0. Otomatik "
-       "algılama (-1) henüz desteklenmiyor."));
+SS_MSG(train_resolution_divisor,
+    EN("Training resolution divisor"), JA("学習解像度の分母"),
+    ZH_HANS("训练分辨率缩小倍数"), ZH_HANT("訓練解析度縮小倍數"),
+    KO("학습 해상도 축소 배수"),
+    DE("Teiler der Trainingsauflösung"),
+    FR("Diviseur de la résolution d'entraînement"),
+    ES("Divisor de la resolución de entrenamiento"),
+    PT("Divisor da resolução de treino"),
+    IT("Divisore della risoluzione di addestramento"),
+    NL("Deler van de trainingsresolutie"),
+    RU("Делитель разрешения обучения"),
+    TR("Eğitim çözünürlüğü böleni"));
+SS_MSG(train_resolution_divisor_help,
+    EN("Train on smaller images than the ones on disk: 2 halves each side, 4 "
+       "quarters it. 0 or 1 trains at the images' own resolution. The cameras "
+       "always follow the image files, so a downscaled image folder needs no "
+       "factor here."),
+    JA("ディスク上の画像より小さくして学習します。2 なら各辺が半分、4 なら 4 "
+       "分の 1 です。0 か 1 なら画像そのものの解像度で学習します。カメラは常に"
+       "画像ファイルに合わせるので、縮小済みの画像フォルダにこの値は要りませ"
+       "ん。"),
+    ZH_HANS("以比磁盘上更小的图像训练：2 表示每边减半，4 表示为四分之一。0 或"
+            " 1 表示按图像本身的分辨率训练。相机始终跟随图像文件，因此已缩小的"
+            "图像目录无需在此填写倍数。"),
+    ZH_HANT("以比磁碟上更小的影像訓練：2 表示每邊減半，4 表示為四分之一。0 或"
+            " 1 表示依影像本身的解析度訓練。相機一律跟隨影像檔案，因此已縮小的"
+            "影像目錄無需在此填寫倍數。"),
+    KO("디스크에 있는 이미지보다 작게 학습합니다. 2는 각 변을 절반으로, 4는 4"
+       "분의 1로 줄입니다. 0 또는 1이면 이미지 자체 해상도로 학습합니다. 카메"
+       "라는 항상 이미지 파일을 따르므로, 이미 축소된 이미지 폴더에는 이 값이 "
+       "필요 없습니다."),
+    DE("Mit kleineren Bildern trainieren, als auf der Festplatte liegen: 2 "
+       "halbiert jede Seite, 4 viertelt sie. 0 oder 1 trainiert in der "
+       "Auflösung der Bilder selbst. Die Kameras richten sich immer nach den "
+       "Bilddateien, ein bereits verkleinerter Bildordner braucht hier also "
+       "keinen Faktor."),
+    FR("Entraîner sur des images plus petites que celles du disque : 2 divise "
+       "chaque côté par deux, 4 par quatre. 0 ou 1 entraîne à la résolution "
+       "des images elles-mêmes. Les caméras suivent toujours les fichiers "
+       "image, un dossier d'images déjà réduit n'a donc pas besoin de facteur "
+       "ici."),
+    ES("Entrenar con imágenes más pequeñas que las del disco: 2 reduce cada "
+       "lado a la mitad, 4 a la cuarta parte. 0 o 1 entrena a la resolución "
+       "propia de las imágenes. Las cámaras siguen siempre a los archivos de "
+       "imagen, así que una carpeta ya reducida no necesita factor aquí."),
+    PT("Treinar com imagens menores do que as do disco: 2 reduz cada lado à "
+       "metade, 4 a um quarto. 0 ou 1 treina na resolução das próprias "
+       "imagens. As câmeras seguem sempre os arquivos de imagem, portanto uma "
+       "pasta já reduzida não precisa de fator aqui."),
+    IT("Addestrare su immagini più piccole di quelle su disco: 2 dimezza ogni "
+       "lato, 4 lo riduce a un quarto. 0 o 1 addestra alla risoluzione delle "
+       "immagini stesse. Le camere seguono sempre i file immagine, quindi una "
+       "cartella già ridotta non richiede alcun fattore qui."),
+    NL("Trainen op kleinere beelden dan die op schijf: 2 halveert elke zijde, "
+       "4 brengt ze op een kwart. 0 of 1 traint op de eigen resolutie van de "
+       "beelden. De camera's volgen altijd de beeldbestanden, dus een al "
+       "verkleinde beeldmap heeft hier geen factor nodig."),
+    RU("Обучаться на изображениях меньше тех, что лежат на диске: 2 уменьшает "
+       "каждую сторону вдвое, 4 — вчетверо. 0 или 1 обучает в собственном "
+       "разрешении изображений. Камеры всегда следуют за файлами изображений, "
+       "поэтому уже уменьшенной папке коэффициент здесь не нужен."),
+    TR("Diskteki görüntülerden daha küçüğüyle eğitir: 2 her kenarı yarıya, 4 "
+       "dörtte bire indirir. 0 veya 1, görüntülerin kendi çözünürlüğünde "
+       "eğitir. Kameralar her zaman görüntü dosyalarını izler, bu yüzden "
+       "önceden küçültülmüş bir görüntü klasörü burada çarpan istemez."));
 
 SS_MSG(downscale_rounding_mode,
     EN("Downscale rounding"), JA("縮小時の丸め方"),
@@ -1299,50 +1302,41 @@ SS_MSG(downscale_rounding_mode,
     NL("Afronding bij verkleinen"), RU("Округление при уменьшении"),
     TR("Küçültmede yuvarlama"));
 SS_MSG(downscale_rounding_mode_help,
-    EN("How image size is rounded when divided by rescale_camera_to_fit. Most "
-       "image downscalers round, so switch to `round` if a pre-shrunk dataset "
-       "comes out a pixel off and the render looks slightly shifted."),
-    JA("rescale_camera_to_fit で割ったときの画像サイズの丸め方です。多くの縮小"
-       "ツールは四捨五入するので、あらかじめ縮小したデータセットで 1 画素ずれ"
-       "て描画がわずかにずれる場合は `round` に切り替えてください。"),
-    ZH_HANS("图像尺寸除以 rescale_camera_to_fit 后如何取整。多数缩图工具采用四"
-            "舍五入，所以如果事先缩小过的数据集差了一个像素、渲染看起来略有偏"
-            "移，就改成 `round`。"),
-    ZH_HANT("影像尺寸除以 rescale_camera_to_fit 後如何取整。多數縮圖工具採用四"
-            "捨五入，所以如果事先縮小過的資料集差了一個像素、算圖看起來略有偏"
-            "移，就改成 `round`。"),
-    KO("rescale_camera_to_fit로 나눌 때 이미지 크기를 어떻게 반올림할지입니다"
-       ". 대부분의 축소 도구는 반올림하므로, 미리 줄여 둔 데이터셋이 1픽셀 어"
-       "긋나고 렌더가 살짝 밀려 보이면 `round`로 바꾸십시오."),
-    DE("Wie die Bildgröße gerundet wird, wenn sie durch rescale_camera_to_fit "
-       "geteilt wird. Die meisten Verkleinerer runden kaufmännisch, also auf "
-       "`round` wechseln, wenn ein vorverkleinerter Datensatz um ein Pixel danebenliegt "
-       "und das Rendering leicht verschoben wirkt."),
-    FR("Comment la taille d'image est arrondie après division par rescale_camera_to_fit. "
-       "La plupart des réducteurs arrondissent, donc passez à `round` si un jeu "
-       "de données déjà réduit tombe à un pixel près et que le rendu paraît légèrement "
-       "décalé."),
-    ES("Cómo se redondea el tamaño de imagen al dividirlo por rescale_camera_to_fit. "
-       "La mayoría de los reductores redondean, así que cambie a `round` si un "
-       "conjunto ya reducido queda desviado un píxel y el render se ve algo desplazado."),
-    PT("Como o tamanho da imagem é arredondado ao ser dividido por rescale_camera_to_fit. "
-       "A maioria dos redutores arredonda, então mude para `round` se um conjunto "
-       "já reduzido ficar um pixel fora e a renderização parecer levemente deslocada."),
-    IT("Come viene arrotondata la dimensione dell'immagine quando è divisa per "
-       "rescale_camera_to_fit. La maggior parte dei riduttori arrotonda, quindi "
-       "passare a `round` se un set già ridotto risulta sfalsato di un pixel "
-       "e il render appare leggermente spostato."),
-    NL("Hoe de beeldgrootte wordt afgerond bij deling door rescale_camera_to_fit. "
-       "De meeste verkleiners ronden af, dus schakel over naar `round` als een "
-       "vooraf verkleinde dataset er een pixel naast zit en de rendering iets "
-       "verschoven lijkt."),
-    RU("Как округляется размер изображения при делении на rescale_camera_to_fit. "
-       "Большинство уменьшителей округляют, поэтому переключитесь на `round`, "
-       "если заранее уменьшенный набор промахивается на пиксель и рендер выглядит "
-       "слегка смещённым."),
-    TR("Görüntü boyutunun rescale_camera_to_fit'e bölünürken nasıl yuvarlanacağı. "
-       "Çoğu küçültücü yuvarlar; bu yüzden önceden küçültülmüş bir veri kümesi "
-       "bir piksel kayıyorsa ve çizim hafifçe kaymış görünüyorsa `round` seçin."));
+    EN("How each side is rounded when the size is divided by "
+       "train_resolution_divisor: `floor` never rounds a side up, `round` "
+       "takes the nearest, `ceil` always rounds up."),
+    JA("train_resolution_divisor で割ったとき、各辺をどう丸めるかです。`floor` "
+       "は切り捨て、`round` は四捨五入、`ceil` は切り上げです。"),
+    ZH_HANS("尺寸除以 train_resolution_divisor 后每条边如何取整：`floor` 向下取"
+            "整，`round` 取最接近的整数，`ceil` 向上取整。"),
+    ZH_HANT("尺寸除以 train_resolution_divisor 後每條邊如何取整：`floor` 向下取"
+            "整，`round` 取最接近的整數，`ceil` 向上取整。"),
+    KO("train_resolution_divisor로 나눌 때 각 변을 어떻게 반올림할지입니다. "
+       "`floor`는 내림, `round`는 가장 가까운 값, `ceil`은 올림입니다."),
+    DE("Wie jede Seite gerundet wird, wenn die Größe durch "
+       "train_resolution_divisor geteilt wird: `floor` rundet nie auf, `round` "
+       "nimmt den nächsten Wert, `ceil` rundet immer auf."),
+    FR("Comment chaque côté est arrondi après division par "
+       "train_resolution_divisor : `floor` n'arrondit jamais vers le haut, "
+       "`round` prend le plus proche, `ceil` arrondit toujours vers le haut."),
+    ES("Cómo se redondea cada lado al dividir el tamaño por "
+       "train_resolution_divisor: `floor` nunca redondea hacia arriba, `round` "
+       "toma el más cercano, `ceil` siempre redondea hacia arriba."),
+    PT("Como cada lado é arredondado ao dividir o tamanho por "
+       "train_resolution_divisor: `floor` nunca arredonda para cima, `round` "
+       "usa o mais próximo, `ceil` arredonda sempre para cima."),
+    IT("Come viene arrotondato ogni lato dividendo la dimensione per "
+       "train_resolution_divisor: `floor` non arrotonda mai per eccesso, "
+       "`round` prende il più vicino, `ceil` arrotonda sempre per eccesso."),
+    NL("Hoe elke zijde wordt afgerond bij deling van de grootte door "
+       "train_resolution_divisor: `floor` rondt nooit naar boven af, `round` "
+       "neemt de dichtstbijzijnde, `ceil` rondt altijd naar boven af."),
+    RU("Как округляется каждая сторона при делении размера на "
+       "train_resolution_divisor: `floor` никогда не округляет вверх, `round` "
+       "берёт ближайшее, `ceil` всегда округляет вверх."),
+    TR("Boyut train_resolution_divisor'e bölünürken her kenarın nasıl "
+       "yuvarlanacağı: `floor` asla yukarı yuvarlamaz, `round` en yakını "
+       "alır, `ceil` her zaman yukarı yuvarlar."));
 
 SS_MSG(eval_mode,
     EN("Evaluation split"), JA("評価用の分け方"), ZH_HANS("评估集划分方式"),

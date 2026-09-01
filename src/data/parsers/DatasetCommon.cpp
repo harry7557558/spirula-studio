@@ -3,10 +3,15 @@
 // nothing here may reach the engine or the host camera math.
 
 #include "data/DatasetParser.h"
+#include "data/SourceCamera.h"
+#include "i18n/catalog/Data.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
+#include <set>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -291,6 +296,76 @@ std::vector<char> outlier_keep_mask(const std::vector<double>& pos,
     for (int64_t i = 0; i < n; i++)
         keep[i] = dist[i] <= (double)threshold * mad;
     return keep;
+}
+
+// ---------------------------------------------------------------------------
+// Fitting a camera to its image
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string size_str(double w, double h) {
+    return std::to_string((long long)w) + "x" + std::to_string((long long)h);
+}
+
+// One line per distinct (kind, image, camera) size pair: a dataset is
+// thousands of frames over a handful of cameras, and the pair is what the
+// reader acts on.
+bool first_time(int kind, int iw, int ih, double W, double H) {
+    static std::set<std::array<int, 5>> seen;
+    return seen.insert({kind, iw, ih, (int)W, (int)H}).second;
+}
+
+void warn(const spirula::i18n::Msg& m, std::initializer_list<spirula::i18n::Arg> args) {
+    std::printf("%s %s\n", spirula::i18n::msg::data::word_warning.get(),
+                spirula::i18n::format(m, args).c_str());
+}
+
+}  // namespace
+
+void fit_camera_resolution(const DatasetParserConfig& cfg,
+                           const std::string& image_path,
+                           double& W, double& H,
+                           double& fx, double& fy, double& cx, double& cy,
+                           RedistortSource* src)
+{
+    if (!(W > 0.0) || !(H > 0.0)) return;
+    double tw = W, th = H;
+    int iw = 0, ih = 0;
+    if (cfg.probe_image_size && !image_path.empty() &&
+        cfg.probe_image_size(image_path.c_str(), &iw, &ih) && iw > 0 && ih > 0) {
+        tw = std::min(tw, (double)iw);
+        th = std::min(th, (double)ih);
+        // The height the width ratio implies, against the height on disk: one
+        // pixel of slack for the rounding an honest downscaler does.
+        if (std::fabs(H * ((double)iw / W) - (double)ih) > 1.0 &&
+            first_time(0, iw, ih, W, H))
+            warn(spirula::i18n::msg::data::camera_image_aspect,
+                 {image_path, size_str(iw, ih), size_str(W, H)});
+    }
+
+    const double s = (double)cfg.train_resolution_divisor;
+    if (s > 1.0) {
+        auto round_dim = [&](double v) {
+            if (cfg.downscale_rounding_mode == "ceil")  return std::ceil(v / s);
+            if (cfg.downscale_rounding_mode == "round") return std::round(v / s);
+            return std::floor(v / s);
+        };
+        tw = std::max(1.0, round_dim(tw));
+        th = std::max(1.0, round_dim(th));
+    }
+    if (tw == W && th == H) return;
+
+    if (iw > 0 && (iw != (int)W || ih != (int)H) && first_time(1, iw, ih, W, H))
+        warn(spirula::i18n::msg::data::camera_fit_to_image,
+             {image_path, size_str(iw, ih), size_str(W, H), size_str(tw, th)});
+
+    const double sx = tw / W, sy = th / H;
+    fx *= sx; cx *= sx;
+    fy *= sy; cy *= sy;
+    if (src && src->source_model >= 0)
+        srccam::rescale(src->source_model, src->params, sx, sy);
+    W = tw; H = th;
 }
 
 }  // namespace dsparse

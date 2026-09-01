@@ -2,6 +2,7 @@
 
 #include "data/DataManager.h"
 #include "core/ExrImage.h"
+#include "data/ImageProbe.h"
 #include "i18n/catalog/Data.h"
 
 #include "external/stb_image.h"
@@ -255,6 +256,53 @@ inline void cpu_bilinear_resize(const T* src, int sh, int sw,
     }
 }
 
+// Exact box average over the source rectangle each destination pixel covers.
+template<typename T, int C>
+inline void cpu_area_resize(const T* src, int sh, int sw,
+                            T* dst, int dh, int dw)
+{
+    const double sy = (double)sh / dh, sx = (double)sw / dw;
+    for (int y = 0; y < dh; ++y) {
+        const double v0 = y * sy, v1 = (y + 1) * sy;
+        const int y0 = (int)v0, y1 = std::min(sh, std::max((int)std::ceil(v1), y0 + 1));
+        for (int x = 0; x < dw; ++x) {
+            const double u0 = x * sx, u1 = (x + 1) * sx;
+            const int x0 = (int)u0, x1 = std::min(sw, std::max((int)std::ceil(u1), x0 + 1));
+            double acc[C] = {}, wsum = 0.0;
+            for (int yy = y0; yy < y1; ++yy) {
+                const double wy = std::min((double)yy + 1, v1) - std::max((double)yy, v0);
+                for (int xx = x0; xx < x1; ++xx) {
+                    const double wx = std::min((double)xx + 1, u1) - std::max((double)xx, u0);
+                    const double w = wy * wx;
+                    const T* p = src + ((size_t)yy * sw + xx) * C;
+                    for (int c = 0; c < C; ++c) acc[c] += w * (double)p[c];
+                    wsum += w;
+                }
+            }
+            T* q = dst + ((size_t)y * dw + x) * C;
+            for (int c = 0; c < C; ++c) {
+                double r = wsum > 0.0 ? acc[c] / wsum : 0.0;
+                if constexpr (std::is_integral_v<T>) {
+                    r = std::round(r);
+                    r = std::min(std::max(r, 0.0), (double)std::numeric_limits<T>::max());
+                }
+                q[c] = (T)r;
+            }
+        }
+    }
+}
+
+// A 2-tap bilinear shrinking 4x reads one source pixel in four and aliases the
+// rest away, which is exactly what train_resolution_divisor 4 and 8 ask for.
+template<typename T, int C>
+inline void cpu_resize(const T* src, int sh, int sw, T* dst, int dh, int dw)
+{
+    if (dh <= sh && dw <= sw && (dh < sh || dw < sw))
+        cpu_area_resize<T, C>(src, sh, sw, dst, dh, dw);
+    else
+        cpu_bilinear_resize<T, C>(src, sh, sw, dst, dh, dw);
+}
+
 inline void cpu_nearest_resize_u8(const uint8_t* src, int sh, int sw,
                                   uint8_t* dst, int dh, int dw)
 {
@@ -405,15 +453,15 @@ inline void apply_mask_boundary_offset_in_place(uint8_t* mask, int h, int w,
 // bilinear for depth / normal). The 1x1 mask case is a degenerate
 // nearest-neighbor broadcast and falls out for free.
 
-// Emit a one-shot warning the first time a given (kind, expected_w,
-// expected_h) tuple sees an on-disk size mismatch. Keyed on the IndexGroup's
-// promised dims, so each group fires at most one warning per modality even
-// though the worker pool decodes many files concurrently.
+// One warning per group, however many workers decode into it concurrently.
+// Only an upsample earns one: the parser fits each camera to its own image, so
+// a shrink here is what train_resolution_divisor asked for.
 static void _warn_rgb_dim_mismatch_once(
     const std::string& path,
     int actual_w, int actual_h,
     int expected_w, int expected_h)
 {
+    if (actual_w >= expected_w && actual_h >= expected_h) return;
     static std::mutex                       mu;
     static std::set<std::pair<int, int>>    seen;
     std::lock_guard<std::mutex> lk(mu);
@@ -447,8 +495,8 @@ void decode_rgb_into(const std::string& path,
             std::memcpy(dst, px.data(), px.size() * sizeof(float));
         } else {
             _warn_rgb_dim_mismatch_once(path, info.width, info.height, expected_w, expected_h);
-            cpu_bilinear_resize<float, 3>(px.data(), info.height, info.width,
-                                          (float*)dst, expected_h, expected_w);
+            cpu_resize<float, 3>(px.data(), info.height, info.width,
+                                 (float*)dst, expected_h, expected_w);
         }
     } else if (dtype == PixelDType::UINT16) {
         stbi_us* img = stbi_load_16(path.c_str(), &w, &h, &ch, 3);
@@ -457,7 +505,7 @@ void decode_rgb_into(const std::string& path,
             std::memcpy(dst, img, (size_t)w * h * 3 * sizeof(stbi_us));
         } else {
             _warn_rgb_dim_mismatch_once(path, w, h, expected_w, expected_h);
-            cpu_bilinear_resize<stbi_us, 3>(img, h, w, (stbi_us*)dst, expected_h, expected_w);
+            cpu_resize<stbi_us, 3>(img, h, w, (stbi_us*)dst, expected_h, expected_w);
         }
         stbi_image_free(img);
     } else if (dtype == PixelDType::UINT8) {
@@ -467,7 +515,7 @@ void decode_rgb_into(const std::string& path,
             std::memcpy(dst, img, (size_t)w * h * 3);
         } else {
             _warn_rgb_dim_mismatch_once(path, w, h, expected_w, expected_h);
-            cpu_bilinear_resize<stbi_uc, 3>(img, h, w, dst, expected_h, expected_w);
+            cpu_resize<stbi_uc, 3>(img, h, w, dst, expected_h, expected_w);
         }
         stbi_image_free(img);
     } else {
@@ -543,19 +591,8 @@ void decode_normal_into(const std::string& path,
     stbi_image_free(img);
 }
 
-// Quick (W, H) probe via stb_image's header-only reader. Returns false on
-// error. Used at construction to discover per-modality on-disk shape.
 bool probe_image_shape(const std::string& path, int& w, int& h) {
-    int ch;
-    if (path.empty()) return false;
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        if (!exr::probe(path, info).empty()) return false;
-        w = info.width;
-        h = info.height;
-        return true;
-    }
-    return stbi_info(path.c_str(), &w, &h, &ch) != 0;
+    return !path.empty() && probe_image_size(path.c_str(), &w, &h);
 }
 
 // On-disk RGB dtype. EXR is float32 whatever it stores: half carries values

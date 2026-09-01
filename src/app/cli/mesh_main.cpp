@@ -19,6 +19,7 @@
 #include "mesh/Meshing.h"
 #include "core/Camera.h"
 #include "data/DatasetParser.h"
+#include "data/ImageProbe.h"
 #include "data/Json.h"
 #include "i18n/catalog/Cli.h"
 #include "mesh/MeshLog.h"
@@ -75,11 +76,11 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const std::string& data_dir,
     pcfg.metashape_ply = dp_str("metashape_ply", "");
     pcfg.metashape_psx = dp_str("metashape_psx", "");
     pcfg.downscale_rounding_mode = dp_str("downscale_rounding_mode", "floor");
+    pcfg.probe_image_size = probe_image_size;
     {
-        const JsonValue* v = run_cfg.find("rescale_camera_to_fit");
-        // bool auto-detect is unported; a number divides intrinsics
+        const JsonValue* v = run_cfg.find("train_resolution_divisor");
         if (v && v->type == JsonValue::Type::Number)
-            pcfg.rescale_camera_to_fit = (float)v->as_double(0.0);
+            pcfg.train_resolution_divisor = (float)v->as_double(0.0);
         const JsonValue* fmt = run_cfg.find("data_format");
         if (data_format.empty() && fmt && !fmt->is_null()) data_format = fmt->as_string();
     }

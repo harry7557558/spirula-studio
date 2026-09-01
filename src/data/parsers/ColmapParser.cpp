@@ -845,25 +845,16 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
         ds.image_filenames.push_back(img_path.string());
 
         BakedIntrins bi = baked.at(im.camera_id);
-        float W = (float)cam.width, H = (float)cam.height;
-        if (cfg.rescale_camera_to_fit > 0.0f) {
-            float s = cfg.rescale_camera_to_fit;
-            bi.fx /= s; bi.fy /= s; bi.cx /= s; bi.cy /= s;
-            if (bi.source.source_model >= 0)
-                srccam::rescale(bi.source.source_model, bi.source.params, s);
-            auto round_dim = [&](float v) {
-                if (cfg.downscale_rounding_mode == "ceil")  return std::ceil(v / s);
-                if (cfg.downscale_rounding_mode == "round") return std::round(v / s);
-                return std::floor(v / s);
-            };
-            W = round_dim(W); H = round_dim(H);
-        }
+        double W = (double)cam.width, H = (double)cam.height;
+        double fx = bi.fx, fy = bi.fy, cx = bi.cx, cy = bi.cy;
+        dsparse::fit_camera_resolution(cfg, ds.image_filenames.back(),
+                                       W, H, fx, fy, cx, cy, &bi.source);
         ds.widths.push_back((int32_t)W);
         ds.heights.push_back((int32_t)H);
-        ds.intrins[j*4 + 0] = bi.fx;
-        ds.intrins[j*4 + 1] = bi.fy;
-        ds.intrins[j*4 + 2] = bi.cx;
-        ds.intrins[j*4 + 3] = bi.cy;
+        ds.intrins[j*4 + 0] = (float)fx;
+        ds.intrins[j*4 + 1] = (float)fy;
+        ds.intrins[j*4 + 2] = (float)cx;
+        ds.intrins[j*4 + 3] = (float)cy;
         std::copy(bi.dist.begin(), bi.dist.end(),
                   ds.dist_coeffs.begin() + j*kCameraDistortionParams);
 

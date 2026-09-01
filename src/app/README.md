@@ -286,8 +286,9 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
    progress bar is stage-based only, no mesh-export UI (use `spirula-mesh`).
 4. Seeding fidelity: jitter repeated seed points toward a neighbor instead of
    exact duplication; `suppress_initial_scales`. (Exact kNN: DONE, `Knn.h`.)
-5. `rescale_camera_to_fit` auto-detect (probe image resolution); COLMAP
-   **text** format fallback. (Metashape parser: DONE, `MetashapeParser.cpp`.)
+5. COLMAP **text** format fallback. (Metashape parser: DONE,
+   `MetashapeParser.cpp`. Camera-to-image resolution fit: DONE,
+   `dsparse::fit_camera_resolution`.)
 6. Non-default orientation/center methods (`pca`/`vertical`/`gsplat`/`focus`)
    — currently approximated as `up`/`poses` with a warning (only affects
    `train_frame_scale`).
@@ -368,7 +369,7 @@ and merges `lpips_*` into `metrics.json`.
 `--use-bvh`, `--use-camera-optimizer`,
 `--deblur-training-images`, `--optimizer-offload`,
 `--cache-images gpu`,
-`--train-frame` ≠ points, `--rescale-camera-to-fit` auto mode,
+`--train-frame` ≠ points,
 direct-equirect (`--warp-spherical-to-pinhole 0`) with depth/normal
 supervision. `--num-downscales` warns and is ignored (Python-data-path
 feature).

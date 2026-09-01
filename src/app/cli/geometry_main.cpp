@@ -14,6 +14,7 @@
 #include "app/WriterPool.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
+#include "data/ImageProbe.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Geometry.h"
 #include "nn/core/Error.h"
@@ -530,6 +531,7 @@ int spirula_geometry_main(int argc, char** argv) {
         DatasetParserConfig cfg;
         cfg.require_image_files = false;   // the point cloud is not our business
         cfg.image_dir = o.image_dir;
+        cfg.probe_image_size = probe_image_size;
         const ParsedDataset ds = parse_dataset(o.dataset, cfg, "");
         const int64_t N = ds.num_cameras;
         NN_CHECK(N > 0, "'%s' holds no images", o.dataset.c_str());

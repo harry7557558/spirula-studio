@@ -560,6 +560,73 @@ SS_MSG(final_frames,
     TR("tamamlanan veri kümesindeki kare: {0}"));
 
 // ===========================================================================
+// Fitting the cameras to the images
+// ===========================================================================
+
+SS_MSG(camera_fit_to_image,
+    EN("'{0}' is {1}, but its camera says {2}. Training at {3}. Further "
+       "messages for this pair are suppressed."),
+    JA("'{0}' は {1} ですが、カメラは {2} と言っています。{3} で学習します。"
+       "この組み合わせの以降のメッセージは出しません。"),
+    ZH_HANS("'{0}' 是 {1}，但其相机记为 {2}。将以 {3} 训练。"
+            "该组合的后续消息不再输出。"),
+    ZH_HANT("'{0}' 是 {1}，但其相機記為 {2}。將以 {3} 訓練。"
+            "該組合的後續訊息不再輸出。"),
+    KO("'{0}' 은(는) {1} 인데 카메라는 {2} 라고 합니다. {3} 으로 학습합니다. "
+       "이 조합의 이후 메시지는 생략합니다."),
+    DE("'{0}' ist {1}, seine Kamera sagt aber {2}. Training läuft mit {3}. "
+       "Weitere Meldungen für diese Kombination entfallen."),
+    FR("'{0}' fait {1}, mais sa caméra annonce {2}. L'entraînement se fera en "
+       "{3}. Les messages suivants pour cette combinaison sont supprimés."),
+    ES("'{0}' es de {1}, pero su cámara dice {2}. Se entrenará a {3}. Se omiten "
+       "los mensajes siguientes de esta combinación."),
+    PT("'{0}' é {1}, mas a sua câmera diz {2}. O treino será em {3}. As "
+       "mensagens seguintes desta combinação são omitidas."),
+    IT("'{0}' è {1}, ma la sua camera dice {2}. L'addestramento userà {3}. I "
+       "messaggi successivi per questa combinazione sono soppressi."),
+    NL("'{0}' is {1}, maar zijn camera zegt {2}. Er wordt getraind op {3}. "
+       "Verdere meldingen voor deze combinatie vervallen."),
+    RU("'{0}' имеет размер {1}, а его камера говорит {2}. Обучение пойдёт в "
+       "{3}. Дальнейшие сообщения по этой паре подавлены."),
+    TR("'{0}' {1}, ama kamerası {2} diyor. Eğitim {3} çözünürlüğünde "
+       "yapılacak. Bu ikili için sonraki iletiler bastırılıyor."));
+
+SS_MSG(camera_image_aspect,
+    EN("'{0}' is {1} and its camera {2} -- a different shape, not just a "
+       "different size. Check that the images belong to this reconstruction."),
+    JA("'{0}' は {1}、カメラは {2} で、大きさだけでなく縦横比も違います。"
+       "画像がこの復元結果のものか確認してください。"),
+    ZH_HANS("'{0}' 是 {1}，其相机是 {2}：不只是尺寸不同，长宽比也不同。"
+            "请确认这些图像属于该重建结果。"),
+    ZH_HANT("'{0}' 是 {1}，其相機是 {2}：不只是尺寸不同，長寬比也不同。"
+            "請確認這些影像屬於該重建結果。"),
+    KO("'{0}' 은(는) {1}, 카메라는 {2} 입니다. 크기뿐 아니라 가로세로 비율도 "
+       "다릅니다. 이 이미지가 해당 복원 결과의 것인지 확인하세요."),
+    DE("'{0}' ist {1}, seine Kamera {2} -- nicht nur eine andere Größe, "
+       "sondern ein anderes Seitenverhältnis. Prüfen Sie, ob die Bilder zu "
+       "dieser Rekonstruktion gehören."),
+    FR("'{0}' fait {1} et sa caméra {2} : le rapport d'aspect diffère, pas "
+       "seulement la taille. Vérifiez que les images correspondent à cette "
+       "reconstruction."),
+    ES("'{0}' es de {1} y su cámara de {2}: cambia la relación de aspecto, no "
+       "solo el tamaño. Compruebe que las imágenes pertenecen a esta "
+       "reconstrucción."),
+    PT("'{0}' é {1} e a sua câmera {2}: muda a proporção, não apenas o "
+       "tamanho. Verifique se as imagens pertencem a esta reconstrução."),
+    IT("'{0}' è {1} e la sua camera {2}: cambia il rapporto d'aspetto, non "
+       "solo la dimensione. Verifica che le immagini appartengano a questa "
+       "ricostruzione."),
+    NL("'{0}' is {1} en zijn camera {2}: een andere beeldverhouding, niet "
+       "alleen een ander formaat. Controleer of de beelden bij deze "
+       "reconstructie horen."),
+    RU("'{0}' имеет размер {1}, а его камера {2}: отличается не только "
+       "размер, но и соотношение сторон. Проверьте, относятся ли эти "
+       "изображения к данной реконструкции."),
+    TR("'{0}' {1}, kamerası ise {2}: yalnızca boyut değil, en-boy oranı da "
+       "farklı. Görüntülerin bu rekonstrüksiyona ait olduğunu doğrulayın."));
+
+
+// ===========================================================================
 // Loading the images
 // ===========================================================================
 

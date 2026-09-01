@@ -303,12 +303,25 @@ the geometric median of all camera positions are rejected (default: off).
 standalone viewer uses this to load camera poses from a dataset shipped
 without pixels.
 
-## Downscaling
+## Resolution
 
-Stored intrinsics can be divided by a fixed factor (the Mip-NeRF 360
-`images_2` / `images_4` convention). Note: the auto-detect mode that probes
-the first image's actual resolution is implemented on the Python side only;
-the native parser currently requires an explicit factor.
+Every camera trains at its own image file's resolution. The parser probes each
+file (`data/ImageProbe.h`, handed in as `DatasetParserConfig::probe_image_size`)
+and takes the per-axis minimum of that and the reconstruction's stored size,
+scaling `fx/fy/cx/cy` to match — so a reconstruction built at full size against
+an `images_2` / `images_4` folder needs no flag, and never renders pixels the
+images cannot supply. It warns once per distinct (image, camera) size pair, and
+separately when the two disagree in *shape* by more than a pixel, which means
+the images do not belong to the reconstruction.
+
+`train_resolution_divisor` then divides that further (`downscale_rounding_mode`
+picks floor/ceil/round per side): 2 halves each side, 0 or 1 trains at the
+images' own size. This is the "train smaller to go faster" knob — the GUI's
+Image resolution combo writes it — and it is relative to the images, not to the
+reconstruction.
+
+A caller with no image decoders leaves `probe_image_size` null and gets the
+reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
 
 ## Preprocessing tools
 
