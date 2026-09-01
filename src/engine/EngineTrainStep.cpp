@@ -2,6 +2,8 @@
 // loss/bwd + bilagrid forward/optim + ppisp forward/optim + splat optim + densify.
 
 #include "engine/Engine.h"
+
+#include <chrono>
 #include "engine/EngineInternal.h"
 #include "core/Env.h"
 #include "engine/EngineCommon.h"
@@ -63,6 +65,10 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     TorchTensorView bilagrid_cam_indices,
     const EngineStepConfig& cfg
 ) {
+    // Times the whole fwd+bwd for the binning search. Free: the loss values
+    // this returns are read back from the device, so the call already ends on
+    // a sync and the wall time here is the step's device time.
+    const auto step_t0 = std::chrono::steady_clock::now();
     engine().optim.use_fused_proj_bwd_optim = cfg.optim.use_fused_proj_bwd_optim;
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
     // (FPBO already avoids fp32 grad buffers) and only when quantization is on.
@@ -95,12 +101,14 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.weights[(int)LossWeightIndex::AlphaSupUnder] != 0.0f;
     if (engine().gt.has_mask && engine().gt.alpha.data_ptr() != nullptr &&
         !alpha_reads_masked) {
+        const int macro_log2 = engine_bin_macro_log2();
         const int64_t per_image = intersect_tile_count(
-            engine().camera.width, engine().camera.height);
+            engine().camera.width, engine().camera.height, macro_log2);
         engine().fwd.tile_active.resize(PoolSlot::IsectTileActive,
                                         per_image * engine().camera.num);
         compute_tile_active(_dt3d_tv(engine().gt.alpha), (int)engine().camera.num,
                             engine().camera.width, engine().camera.height,
+                            macro_log2,
                             engine().fwd.tile_active.data_ptr());
         // SS_TILE_SKIP_LOG=1: what the mask actually saves, in English like
         // the other deep diagnostics.
@@ -138,7 +146,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         if (engine().ppisp.enabled) engine_ppisp_forward(bilagrid_cam_indices);
     }
 
-    return engine_compute_loss_backward(
+    auto losses = engine_compute_loss_backward(
         step, cfg.loss.weights, cfg.loss.w_ssim,
         cfg.loss.num_loss_scales, cfg.loss.loss_scale_min_pixels,
         cfg.loss.compute_loss_map,
@@ -152,6 +160,9 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.overexposure_reg_weight,
         cfg.loss.color_shift_reg_weight,
         cfg.loss.color_shift_reg_beta);
+    engine_bin_tile_observe(std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - step_t0).count());
+    return losses;
 }
 
 

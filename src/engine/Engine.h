@@ -109,6 +109,21 @@ void set_training_data_warped(
 
 // --- Forward ---
 
+// Binning tile edge in pixels for subsequent forwards: a power of two in
+// [8, 128], or 0 to choose from the splat footprint each forward measures.
+// Sticky; throws on a size that is not a supported power of two.
+void engine_set_bin_tile_size(int pixels);
+
+// One training step's fwd+bwd wall time, which the automatic binning search
+// compares between granularities. Training only -- a viewport render must not
+// feed it. No-op when a size is forced.
+void engine_bin_tile_observe(double step_seconds);
+
+// Binning granularity the next forward at the current camera size will use.
+// Anything sized against the tile grid before the forward -- the live-tile
+// map -- has to ask, or it builds a grid the intersect then indexes wrongly.
+int engine_bin_macro_log2();
+
 void forward_3dgs(
     std::string primitive,
     int sh_degree,

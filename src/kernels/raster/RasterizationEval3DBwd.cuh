@@ -36,6 +36,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]

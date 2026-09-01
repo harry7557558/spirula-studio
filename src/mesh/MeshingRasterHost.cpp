@@ -199,15 +199,17 @@ static void render_one(RenderContext* ctx, int cam_idx,
     DeviceTensorFloatND depths_nd(depths_2d);
     ProjEllipseView ellipse =
         proj_ellipse_view(splats_s[0].data_ptr(), /*eval3d=*/true);
+    int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_2d, depths_nd, ellipse,
-        /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr);
+        /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr,
+        macro_log2);
 
     // --- moment (+ rgb) rasterization ---
     rasterize_moments_3dgut_fwd(
         (int64_t)ctx->N, in_splats, splats_s, DeviceVector<int32_t>(),
         viewmats, intrins, ctx->model, ctx->distortion, dist,
-        aabb_2d, W, H, tile_offsets, flatten_ids,
+        aabb_2d, W, H, tile_offsets, flatten_ids, macro_log2,
         d_moments, d_rgb);
 }
 

@@ -5,6 +5,10 @@
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include "core/Env.h"
+
+#include <algorithm>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
@@ -19,6 +23,115 @@ void engine_release_screen_buffers() {
     engine().fwd.splats_s.clear();
     DevicePool::global().free_dynamic_prefix(
         std::string(slot_name(PoolSlot::ProjScreen)) + ".");
+}
+
+void engine_set_bin_tile_size(int pixels) {
+    if (pixels != 0 && macro_log2_from_pixels(pixels) < 0)
+        throw std::runtime_error(
+            "bin tile size " + std::to_string(pixels) +
+            " is not a power of two in [" +
+            std::to_string(bin_tile_x(kMacroLog2Min)) + ", " +
+            std::to_string(bin_tile_x(kMacroLog2Max)) + "]");
+    engine().bin_tile_request = pixels;
+    engine().bin_tile_auto.clear();
+}
+
+namespace {
+using BinTileChoice = EngineState::BinTileChoice;
+
+BinTileChoice& bin_choice() {
+    return engine().bin_tile_auto[((uint64_t)engine().camera.width << 32) |
+                                  (uint32_t)engine().camera.height];
+}
+}  // namespace
+
+// Window and margin come from the noise floor: repeated runs vary ~4% where
+// the binning matters and ~28% on a scene too small for it to, so 6% over a
+// 4-step mean adopts on the former and stays put on the latter.
+namespace {
+constexpr int    kBinTileWindow = 4;    // observations averaged per decision
+constexpr int    kBinTileWarmup = 2;    // discarded after a granularity change
+constexpr double kBinTileMargin = 0.06;
+constexpr int    kBinTileRetry  = 40;   // windows before re-probing after a
+                                        // rejection -- splat size drifts, so
+                                        // a rejected direction is retried
+constexpr int    kBinTileNext   = 1;    // ... but an accepted one right away
+
+bool bin_tile_log() {
+    static const bool on = [] {
+        const char* v = spirula::env("BIN_TILE_LOG");
+        return v && v[0] && v[0] != '0';
+    }();
+    return on;
+}
+}  // namespace
+
+void engine_bin_tile_observe(double step_seconds) {
+    if (engine().bin_tile_request != 0) return;
+    BinTileChoice& c = bin_choice();
+    if (c.warmup > 0) { --c.warmup; return; }
+    c.sum += step_seconds;
+    if (++c.have < kBinTileWindow) return;
+    const double cost = c.sum / c.have;
+    c.sum = 0.0;
+    c.have = 0;
+
+    // A/B/A: splat size moves fast enough early on that one window drifts
+    // ~16% from the next, more than the margin. Bracketing the trial and
+    // comparing against the mean of the two cancels drift linear over it.
+    switch (c.probing) {
+    case 0: {  // baseline before
+        c.base = cost;
+        c.from = c.macro_log2;
+        if (--c.wait > 0) return;
+        const int next = c.macro_log2 + c.dir;
+        if (next < std::max(c.floor, kMacroLog2Min) || next > kMacroLog2Max) {
+            c.dir = -c.dir;
+            c.wait = kBinTileRetry;
+            return;
+        }
+        c.macro_log2 = next;
+        c.probing = 1;
+        c.warmup = kBinTileWarmup;
+        return;
+    }
+    case 1:  // the trial
+        c.trial = cost;
+        c.macro_log2 = c.from;
+        c.probing = 2;
+        c.warmup = kBinTileWarmup;
+        return;
+    default: {  // baseline after -> decide
+        const int probed = c.from + c.dir;
+        const double base = 0.5 * (c.base + cost);
+        const bool better = c.trial < base * (1.0 - kBinTileMargin);
+        if (bin_tile_log())
+            std::fprintf(stderr,
+                         "[bin-tile] %d px %.1f ms vs %d px %.1f ms -- %s\n",
+                         bin_tile_x(probed), 1e3 * c.trial,
+                         bin_tile_x(c.from), 1e3 * base,
+                         better ? "keep" : "revert");
+        c.probing = 0;
+        c.base = cost;
+        if (better) {
+            c.macro_log2 = probed;
+            c.wait = kBinTileNext;
+            c.warmup = kBinTileWarmup;
+        } else {
+            c.dir = -c.dir;
+            c.wait = kBinTileRetry;
+        }
+        return;
+    }
+    }
+}
+
+int engine_bin_macro_log2() {
+    const auto& bin = bin_choice();
+    return engine().bin_tile_request != 0
+               ? std::max(macro_log2_from_pixels(engine().bin_tile_request),
+                          bin.floor)
+               : bin.macro_log2;
 }
 
 void forward_3dgs(
@@ -224,6 +337,10 @@ void forward_3dgs(
     ProjEllipseView ellipse = proj_ellipse_view(
         engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
 
+    auto& bin = bin_choice();
+    engine().fwd.macro_log2 = engine_bin_macro_log2();
+    const int macro_before = engine().fwd.macro_log2;
+
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_q, depths_nd, ellipse,
         (uint32_t)engine().camera.num,
@@ -231,8 +348,21 @@ void forward_3dgs(
         (uint32_t)engine().camera.width,
         (uint32_t)engine().camera.height,
         image_ids_ptr,
-        engine().fwd.tile_active.data_ptr()
+        engine().fwd.tile_active.data_ptr(),
+        engine().fwd.macro_log2
     );
+
+    if (engine().fwd.macro_log2 > macro_before) {
+        // The intersect had to coarsen. That size is now a floor, and any
+        // search state below it measured a setting this run cannot use.
+        bin.floor = engine().fwd.macro_log2;
+        bin.macro_log2 = std::max(bin.macro_log2, bin.floor);
+        bin.from = bin.macro_log2;
+        bin.probing = 0;
+        bin.have = 0;
+        bin.sum = 0.0;
+        bin.warmup = kBinTileWarmup;
+    }
 
     engine().fwd.tile_offsets = tile_offsets;
     engine().fwd.flatten_ids = flatten_ids;
@@ -252,14 +382,16 @@ void forward_3dgs(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "mip") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_mip_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "3dgut") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
@@ -270,7 +402,8 @@ void forward_3dgs(
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
             engine().fwd.aabb,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     }
 

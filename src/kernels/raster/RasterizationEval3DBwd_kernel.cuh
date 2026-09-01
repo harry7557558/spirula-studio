@@ -81,6 +81,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -108,8 +109,12 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     auto block = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> warp = cg::tiled_partition<WARP_SIZE>(block);
     uint32_t image_id = block.group_index().x;
-    uint32_t tile_id = (block.group_index().y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) * tile_width +
-        (block.group_index().z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    // floor(floor(a/b)/M) == floor(a/(b*M)) for non-negative ints, so the
+    // macro factor folds out of the divisor into a shift.
+    uint32_t tile_id =
+        ((block.group_index().y * TILE_SIZE_DY / TILE_SIZE_Y) >> macro_log2) *
+            tile_width +
+        ((block.group_index().z * TILE_SIZE_DX / TILE_SIZE_X) >> macro_log2);
     uint32_t thread_id = block.thread_rank();
 
     tile_offsets += image_id * tile_height * tile_width;
@@ -671,6 +676,7 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -700,8 +706,8 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
         1, 1};
     dim3 grid = {
         I,
-        tile_height * (TILE_SIZE_Y * MACRO_TILE_SIZE_Y / TILE_SIZE_DY),
-        tile_width * (TILE_SIZE_X * MACRO_TILE_SIZE_X / TILE_SIZE_DX)
+        (tile_height << macro_log2) * (TILE_SIZE_Y / TILE_SIZE_DY),
+        (tile_width << macro_log2) * (TILE_SIZE_X / TILE_SIZE_DX)
     };
 
 #if IS_EVAL3D
@@ -725,7 +731,7 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     #if IS_EVAL3D
         viewmats, intrins, dist_coeffs_buffer, aabb,
     #endif
-        image_width, image_height, tile_width, tile_height,
+        image_width, image_height, tile_width, tile_height, macro_log2,
         tile_offsets, flatten_ids,
         render_Ts, last_ids,
         render_output_buffer, render_distortion_buffer, loss_map_buffer, accum_weight_map_buffer,

@@ -8603,6 +8603,93 @@ SS_MSG(packed_help,
     TR("Yansıtma sonuçlarını sıkışık saklar. Adım başına çok görüntü işlenirken "
        "GPU belleğinden tasarruf ettirir, kimi zaman az miktarda hız kaybıyla."));
 
+SS_MSG(bin_tile_size,
+    EN("Binning tile size"), JA("ビニングタイルのサイズ"),
+    ZH_HANS("分块尺寸"), ZH_HANT("分塊尺寸"), KO("타일 분할 크기"),
+    DE("Größe der Einteilungskachel"),
+    FR("Taille des tuiles de répartition"),
+    ES("Tamaño de la tesela de reparto"),
+    PT("Tamanho do bloco de distribuição"),
+    IT("Dimensione del riquadro di ripartizione"),
+    NL("Grootte van de indelingstegel"), RU("Размер тайла разбиения"),
+    TR("Bölmeleme karosu boyutu"));
+SS_MSG(bin_tile_size_help,
+    EN("Edge in pixels of the tiles splats are sorted into, a power of two from "
+       "8 to 128. Larger tiles produce far fewer splat-tile pairs, so sorting "
+       "gets faster and uses much less memory, but each tile then rasterizes a "
+       "longer list. 0 picks a size from the splat sizes actually measured, and "
+       "coarsens further by itself when a batch's intersections would otherwise "
+       "overflow or not fit."),
+    JA("スプラットを振り分けるタイルの一辺のピクセル数で、8 から 128 までの 2 "
+       "の累乗です。タイルを大きくするとスプラットとタイルの組が大幅に減り、"
+       "並べ替えが速くメモリも大きく節約できますが、各タイルが処理するリスト"
+       "は長くなります。0 なら実測したスプラットの大きさから選び、メモリが尽"
+       "れきらないときは自動でさらに粗くします。"),
+    ZH_HANS("泼溅分块排序所用瓦片的边长像素数，取 8 到 128 之间的 2 的幂。瓦片"
+            "越大，泼溅与瓦片的配对数越少，排序更快、内存占用小得多，但每个瓦"
+            "片要光栅化的列表更长。填 0 则依据实测的泼溅大小自动选择，并在内存"
+            "装不下时自行加粗。"),
+    ZH_HANT("潑濺分塊排序所用磚塊的邊長像素數，取 8 到 128 之間的 2 的冪。磚塊"
+            "越大，潑濺與磚塊的配對數越少，排序更快、記憶體佔用小得多，但每個"
+            "磚塊要光柵化的清單更長。填 0 則依據實測的潑濺大小自動選擇，並在記"
+            "憶體裝不下時自行加粗。"),
+    KO("스플랫을 나눠 담는 타일의 한 변 픽셀 수로, 8에서 128 사이의 2의 거듭제"
+       "곱입니다. 타일이 클수록 스플랫과 타일의 짝이 훨씬 줄어 정렬이 빨라지고"
+       " 메모리도 크게 아끼지만, 타일마다 처리할 목록은 길어집니다. 0이면 실제"
+       " 측정한 스플랫 크기에서 고르고, 한 배치의 교차가 넘치거나 들어가지 않으면"
+       " 스스로 더 거칠게 잡습니다."),
+    DE("Kantenlänge in Pixeln der Kacheln, in die Splats einsortiert werden, "
+       "eine Zweierpotenz von 8 bis 128. Größere Kacheln ergeben weit weniger "
+       "Splat-Kachel-Paare, das Sortieren wird schneller und braucht viel weniger "
+       "Speicher, doch jede Kachel rastert dann eine längere Liste. 0 wählt eine "
+       "Größe aus den tatsächlich gemessenen Splatgrößen und vergröbert von sich "
+       "aus weiter, wenn die Schnittmengen eines Stapels sonst überlaufen oder "
+       "nicht hineinpassen."),
+    FR("Côté en pixels des tuiles dans lesquelles les splats sont répartis, une "
+       "puissance de deux de 8 à 128. De plus grandes tuiles produisent bien "
+       "moins de paires splat-tuile, donc le tri devient plus rapide et occupe "
+       "beaucoup moins de mémoire, mais chaque tuile rastérise alors une liste "
+       "plus longue. 0 choisit une taille d'après les tailles de splats réellement "
+       "mesurées et grossit encore de lui-même quand les intersections d'un lot "
+       "déborderaient ou ne tiendraient pas."),
+    ES("Lado en píxeles de las teselas en las que se reparten los splats, una "
+       "potencia de dos de 8 a 128. Las teselas grandes producen muchos menos "
+       "pares splat-tesela, así que ordenar resulta más rápido y ocupa mucha menos "
+       "memoria, pero cada tesela rasteriza entonces una lista más larga. 0 elige "
+       "un tamaño a partir de los tamaños de splat medidos y se vuelve más grueso "
+       "por su cuenta cuando las intersecciones de un lote se desbordarían o no "
+       "cabrían."),
+    PT("Lado em pixels dos blocos em que os splats são distribuídos, uma potência "
+       "de dois de 8 a 128. Blocos maiores produzem bem menos pares splat-bloco, "
+       "então a ordenação fica mais rápida e usa muito menos memória, mas cada "
+       "bloco passa a rasterizar uma lista mais longa. 0 escolhe um tamanho a "
+       "partir dos tamanhos de splat medidos e engrossa ainda mais por conta "
+       "própria quando as interseções de um lote transbordariam ou não caberiam."),
+    IT("Lato in pixel dei riquadri in cui gli splat vengono ripartiti, una potenza "
+       "di due da 8 a 128. Riquadri più grandi producono molte meno coppie "
+       "splat-riquadro, quindi l'ordinamento è più veloce e occupa molta meno "
+       "memoria, ma ogni riquadro rasterizza poi un elenco più lungo. 0 sceglie "
+       "una dimensione dalle dimensioni degli splat effettivamente misurate e si "
+       "ingrossa ancora da solo quando le intersezioni di un lotto andrebbero in "
+       "overflow o non ci starebbero."),
+    NL("Zijde in pixels van de tegels waarover splats worden verdeeld, een macht "
+       "van twee van 8 tot 128. Grotere tegels leveren veel minder splat-tegelparen "
+       "op, dus sorteren gaat sneller en kost veel minder geheugen, maar elke tegel "
+       "rastert dan een langere lijst. 0 kiest een maat op grond van de werkelijk "
+       "gemeten splatgroottes en wordt uit zichzelf nog grover wanneer de snijdingen "
+       "van een batch anders zouden overlopen of niet zouden passen."),
+    RU("Сторона в пикселях тайлов, по которым распределяются сплаты, степень "
+       "двойки от 8 до 128. Крупные тайлы дают намного меньше пар «сплат — тайл», "
+       "поэтому сортировка идёт быстрее и занимает гораздо меньше памяти, но "
+       "каждый тайл растеризует более длинный список. 0 подбирает размер по "
+       "реально измеренным размерам сплатов и сам укрупняет его дальше, когда "
+       "пересечения пакета иначе переполнились бы или не поместились."),
+    TR("Splatların dağıtıldığı karoların piksel cinsinden kenarı, 8 ile 128 "
+       "arasında ikinin kuvveti. Büyük karolar çok daha az splat-karo çifti "
+       "üretir, böylece sıralama hızlanır ve çok daha az bellek kullanır, ama her "
+       "karo daha uzun bir liste tarar. 0, ölçülen splat boyutlarından bir değer "
+       "seçer ve bir yığının kesişimleri taşacak ya da sığmayacak olduğunda "
+       "kendiliğinden daha da kabalaşır."));
 SS_MSG(quantization_level,
     EN("Color storage precision"), JA("色の保存精度"),
     ZH_HANS("颜色存储精度"), ZH_HANT("顏色儲存精度"), KO("색 저장 정밀도"),

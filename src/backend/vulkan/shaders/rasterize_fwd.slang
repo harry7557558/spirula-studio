@@ -82,6 +82,7 @@ struct RasterFwd2dParams {
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
+    uint32_t macro_log2;
 };
 
 [shader("compute")]
@@ -93,8 +94,7 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // one workgroup per micro-tile; recover its macro tile for binning
     uint mt_y = wg.y;
     uint mt_x = wg.z;
-    int tile_id = int((mt_y / MACRO_TILE_SIZE_Y) * p.tile_width +
-                      (mt_x / MACRO_TILE_SIZE_X));
+    int tile_id = int(macro_tile_id(mt_y, mt_x, p.tile_width, p.macro_log2));
 
     int* tile_offsets =
         p.tile_offsets + image_id * p.tile_height * p.tile_width;
@@ -321,6 +321,7 @@ struct RasterFwd3dgutParams {
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
+    uint32_t macro_log2;
 };
 
 #define _rf_ray(D)                                                    \
@@ -336,8 +337,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint image_id = wg.x;
     uint mt_y = wg.y;
     uint mt_x = wg.z;
-    int tile_id = int((mt_y / MACRO_TILE_SIZE_Y) * p.tile_width +
-                      (mt_x / MACRO_TILE_SIZE_X));
+    int tile_id = int(macro_tile_id(mt_y, mt_x, p.tile_width, p.macro_log2));
 
     int* tile_offsets =
         p.tile_offsets + image_id * p.tile_height * p.tile_width;

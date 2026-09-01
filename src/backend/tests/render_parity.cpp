@@ -250,9 +250,12 @@ int main(int argc, char** argv) {
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
 
+        int macro_log2 = kMacroLog2Default;
+
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
             aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim == 2), C,
-            ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr);
+            ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr,
+        macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
 
@@ -272,12 +275,13 @@ int main(int argc, char** argv) {
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
-                tile_offsets, flatten_ids, cfg.dt, cfg.median);
+                tile_offsets, flatten_ids, macro_log2, cfg.dt,
+                cfg.median);
         } else {
             auto fn = cfg.prim == 0 ? rasterize_to_pixels_3dgs_fwd
                                     : rasterize_to_pixels_mip_fwd;
             rout = fn(N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
-                      flatten_ids, cfg.dt, cfg.median);
+                      flatten_ids, macro_log2, cfg.dt, cfg.median);
         }
         backend::device_synchronize();
         if (check_error()) return 1;

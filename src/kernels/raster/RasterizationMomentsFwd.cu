@@ -54,6 +54,7 @@ __global__ void moments_fwd_kernel(
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets,  // [I, tile_h, tile_w]
     const int32_t *__restrict__ flatten_ids,   // [n_isects]
     float3 *__restrict__ render_moments,        // [I, H, W] (m0, mean, std)
@@ -65,7 +66,8 @@ __global__ void moments_fwd_kernel(
 
     uint32_t mt_y = blockIdx.y;
     uint32_t mt_x = blockIdx.z;
-    int32_t tile_id = (mt_y / MACRO_TILE_SIZE_Y) * tile_width + (mt_x / MACRO_TILE_SIZE_X);
+    int32_t tile_id =
+        (int32_t)((mt_y >> macro_log2) * tile_width + (mt_x >> macro_log2));
 
     tile_offsets += image_id * tile_height * tile_width;
     render_moments += image_id * image_height * image_width;
@@ -218,16 +220,16 @@ void launch_moments(
     const Prim::WorldBuffer& wbuffer, const Prim::ScreenBuffer& sbuffer,
     const float* viewmats, const float4* intrins,
     const CameraDistortionCoeffsBuffer& dist_buf, const uint2* aabb,
-    uint32_t W, uint32_t H, uint32_t tw, uint32_t th,
+    uint32_t W, uint32_t H, uint32_t tw, uint32_t th, int macro_log2,
     const int32_t* tile_offsets, const int32_t* flatten_ids,
     float3* render_moments, float3* render_rgb
 ) {
     dim3 threads = { TILE_AREA_M, 1, 1 };
-    dim3 grid = { I, th * MACRO_TILE_SIZE_Y, tw * MACRO_TILE_SIZE_X };
+    dim3 grid = { I, th << macro_log2, tw << macro_log2 };
     moments_fwd_kernel<camera_model, distortion><<<grid, threads>>>(
         I, N, n_isects, gaussian_ids, wbuffer, sbuffer,
         viewmats, intrins, dist_buf, aabb,
-        W, H, tw, th, tile_offsets, flatten_ids,
+        W, H, tw, th, macro_log2, tile_offsets, flatten_ids,
         render_moments, render_rgb);
 }
 
@@ -249,6 +251,7 @@ void rasterize_moments_3dgut_fwd(
     uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,
     const DeviceVector<int32_t>& flatten_ids,
+    int macro_log2,
     float3* render_moments,
     float3* render_rgb
 ) {
@@ -273,7 +276,7 @@ void rasterize_moments_3dgut_fwd(
     #define _ARGS \
         I, N, n_isects, gids, wbuffer, sbuffer, \
         viewmats_ptr, intrins_ptr, dist_buf, aabb_ptr, \
-        image_width, image_height, tile_width, tile_height, \
+        image_width, image_height, tile_width, tile_height, macro_log2, \
         tile_offsets.data_ptr(), flatten_ids.data_ptr(), \
         render_moments, render_rgb
 

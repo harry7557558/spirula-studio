@@ -242,7 +242,7 @@ struct Raster2dBwdParams {  // via params ring
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
-    uint32_t _pad0;
+    uint32_t macro_log2;  // was _pad0; the struct size is unchanged
 };
 
 struct Frag2d_ {
@@ -330,10 +330,9 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                       uniform Raster2dBwdParams* pp) {
     Raster2dBwdParams p = *pp;
     uint image_id = wg.x;
-    uint tile_id =
-        (wg.y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) *
-            p.tile_width +
-        (wg.z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    uint tile_id = macro_tile_id(wg.y * TILE_SIZE_DY / TILE_SIZE_Y,
+                                 wg.z * TILE_SIZE_DX / TILE_SIZE_X,
+                                 p.tile_width, p.macro_log2);
     uint img_off = image_id * p.height * p.width;
 
     // ---- load pixel state (2 pixels per thread) ----
@@ -557,7 +556,7 @@ struct Raster3dgutBwdParams {  // via params ring
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
-    uint32_t _pad0;
+    uint32_t macro_log2;  // was _pad0; the struct size is unchanged
 };
 
 struct Frag3dgut_ {
@@ -663,10 +662,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                          uniform Raster3dgutBwdParams* pp) {
     Raster3dgutBwdParams p = *pp;
     uint image_id = wg.x;
-    uint tile_id =
-        (wg.y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) *
-            p.tile_width +
-        (wg.z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    uint tile_id = macro_tile_id(wg.y * TILE_SIZE_DY / TILE_SIZE_Y,
+                                 wg.z * TILE_SIZE_DX / TILE_SIZE_X,
+                                 p.tile_width, p.macro_log2);
     uint img_off = image_id * p.height * p.width;
 
     float* vm = p.viewmats + image_id * 16;

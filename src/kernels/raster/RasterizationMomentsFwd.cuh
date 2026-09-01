@@ -44,6 +44,7 @@ void rasterize_moments_3dgut_fwd(
     uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,  // [I, tile_h, tile_w]
     const DeviceVector<int32_t>& flatten_ids,     // [n_isects]
+    int macro_log2,                      // binning granularity, Common.cuh
     float3* render_moments,              // [I*H*W] device, (m0, z_lo, z_hi)
     float3* render_rgb = nullptr         // [I*H*W] device full-ray DC color, or null
 );

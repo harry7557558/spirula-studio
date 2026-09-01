@@ -18,9 +18,9 @@ struct RasterFwd2dParams {
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_rgb, out_depth, out_T, out_last_ids;
     uint64_t dist_rgb, dist_depth, out_median;
-    uint32_t I, n_isects, width, height, tile_width, tile_height;
+    uint32_t I, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
-static_assert(sizeof(RasterFwd2dParams) == 10 * 8 + 6 * 4,
+static_assert(sizeof(RasterFwd2dParams) == 10 * 8 + 7 * 4 + 4 /*pad*/,
               "params layout must match the slang struct");
 
 // Mirrors RasterFwd3dgutParams in shaders/rasterize_fwd.slang.
@@ -31,9 +31,10 @@ struct RasterFwd3dgutParams {
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_rgb, out_depth, out_T, out_last_ids;
     uint64_t dist_rgb, dist_depth, out_median;
-    uint32_t I, N, n_isects, width, height, tile_width, tile_height;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height,
+        macro_log2;
 };
-static_assert(sizeof(RasterFwd3dgutParams) == 18 * 8 + 7 * 4 + 4 /*pad*/,
+static_assert(sizeof(RasterFwd3dgutParams) == 18 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 struct RasterOutputs {
@@ -80,9 +81,12 @@ RasterOutputs alloc_raster_outputs(int64_t batch, uint32_t image_height,
 
 void dispatch_raster(const char* entry, const backend::vk::SpecList& spec,
                      uint32_t I, uint32_t tile_width, uint32_t tile_height,
-                     const void* params, uint32_t params_size) {
-    vkk::dispatch_ring(entry, spec, I, tile_height * MACRO_TILE_SIZE_Y,
-                       tile_width * MACRO_TILE_SIZE_X, params, params_size);
+                     int macro_log2, const void* params,
+                     uint32_t params_size) {
+    // One workgroup per micro tile: the macro-tile grid scaled up by the
+    // 1 << macro_log2 micro tiles a macro tile spans on each axis.
+    vkk::dispatch_ring(entry, spec, I, tile_height << macro_log2,
+                       tile_width << macro_log2, params, params_size);
 }
 
 // Shared implementation of the 2D forward (Vanilla3DGS + MipSplatting: the
@@ -95,6 +99,7 @@ launch_raster_2d_fwd(
     const uint32_t image_width, const uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,
     const DeviceVector<int32_t>& flatten_ids,
+    int macro_log2,
     DistortionType dist_type, bool output_median) {
     const int64_t batch = tile_offsets.size<0>();
     const uint32_t tile_height = (uint32_t)tile_offsets.size<1>();
@@ -122,11 +127,12 @@ launch_raster_2d_fwd(
     p.height = image_height;
     p.tile_width = tile_width;
     p.tile_height = tile_height;
+    p.macro_log2 = (uint32_t)macro_log2;
 
     backend::vk::SpecList spec{0u, dist_spec(dist_type),
                                output_median ? 1u : 0u};
     dispatch_raster("rasterize_fwd.rasterize_fwd_2d", spec, (uint32_t)batch,
-                    tile_width, tile_height, &p, sizeof(p));
+                    tile_width, tile_height, macro_log2, &p, sizeof(p));
 
     return std::make_tuple(o.renders, o.render_Ts, o.last_ids, o.distortions,
                            o.render_median);
@@ -151,6 +157,7 @@ std::tuple<
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
     DistortionType dist_type,
     bool output_median
 ) {
@@ -158,7 +165,7 @@ std::tuple<
     // gaussian_ids / splats_w never reach the kernel (as in the CUDA path).
     (void)num_splats; (void)splats_w; (void)gaussian_ids;
     return launch_raster_2d_fwd(splats_s, image_width, image_height,
-                                tile_offsets, flatten_ids, dist_type,
+                                tile_offsets, flatten_ids, macro_log2, dist_type,
                                 output_median);
 }
 
@@ -177,12 +184,13 @@ std::tuple<
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
     DistortionType dist_type,
     bool output_median
 ) {
     (void)num_splats; (void)splats_w; (void)gaussian_ids;
     return launch_raster_2d_fwd(splats_s, image_width, image_height,
-                                tile_offsets, flatten_ids, dist_type,
+                                tile_offsets, flatten_ids, macro_log2, dist_type,
                                 output_median);
 }
 
@@ -209,6 +217,7 @@ std::tuple<
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
     DistortionType dist_type,
     bool output_median
 ) {
@@ -252,6 +261,7 @@ std::tuple<
     p.height = image_height;
     p.tile_width = tile_width;
     p.tile_height = tile_height;
+    p.macro_log2 = (uint32_t)macro_log2;
 
     // Spec IDs: 0 = camera model, 1 = dist type, 2 = median,
     // 3 = kRasterPacked (gaussian_ids present), 4 = distortion tier.
@@ -259,7 +269,8 @@ std::tuple<
                                output_median ? 1u : 0u,
                                gaussian_ids.data_ptr() ? 1u : 0u, cd.dist};
     dispatch_raster("rasterize_fwd.rasterize_fwd_3dgut", spec,
-                    (uint32_t)batch, tile_width, tile_height, &p, sizeof(p));
+                    (uint32_t)batch, tile_width, tile_height, macro_log2, &p,
+                    sizeof(p));
 
     return std::make_tuple(o.renders, o.render_Ts, o.last_ids, o.distortions,
                            o.render_median);

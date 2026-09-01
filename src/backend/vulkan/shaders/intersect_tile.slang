@@ -12,8 +12,30 @@
 #include "int64_compat.slang"
 #include "int8_compat.slang"
 
-static const int TILE_SIZE_IX = 16;  // TILE_SIZE_X * MACRO_TILE_SIZE_X
-static const int TILE_SIZE_IY = 16;  // TILE_SIZE_Y * MACRO_TILE_SIZE_Y
+// Micro-tile edge (raster_common.slang TILE_SIZE_X/Y). The binning tile is
+// this shifted left by macro_log2, which rides in every params struct here.
+static const int TILE_MICRO_X = 8;
+static const int TILE_MICRO_Y = 8;
+
+// Binning tile geometry. The reciprocals are exact -- the edge is always a
+// power of two -- so `* inv_x` matches the `/ TILE_SIZE_IX` this replaced bit
+// for bit, and hoists the divide out of the per-row loops below.
+struct BinTile {
+    int ix, iy;
+    float x, y;
+    float inv_x, inv_y;
+};
+
+[ForceInline] BinTile bin_tile(uint macro_log2) {
+    BinTile t;
+    t.ix = TILE_MICRO_X << macro_log2;
+    t.iy = TILE_MICRO_Y << macro_log2;
+    t.x = float(t.ix);
+    t.y = float(t.iy);
+    t.inv_x = 1.0f / t.x;
+    t.inv_y = 1.0f / t.y;
+    return t;
+}
 
 static const float ALPHA_THRESHOLD = 1.0f / 255.0f;
 
@@ -40,18 +62,18 @@ float2 ellipse_range_bound(float3 inv_cov, float y0, float y1) {
 int count_ellipse_grid_overlaps(
     float2 xy, float3 inv_cov,
     int grid_xmin, int grid_xmax, int grid_ymin, int grid_ymax,
-    int* tile_active, gindex_t tile_base, uint tile_width
+    int* tile_active, gindex_t tile_base, uint tile_width, BinTile t
 ) {
     int n_tiles = 0;
 
-    if ((grid_ymax - grid_ymin) * TILE_SIZE_IX <=
-        (grid_xmax - grid_xmin) * TILE_SIZE_IY) {
+    if ((grid_ymax - grid_ymin) * t.ix <=
+        (grid_xmax - grid_xmin) * t.iy) {
         for (int y = grid_ymin; y < grid_ymax; y++) {
-            float y0 = y * TILE_SIZE_IY - xy.y;
-            float y1 = y0 + TILE_SIZE_IY;
+            float y0 = y * t.y - xy.y;
+            float y1 = y0 + t.y;
             float2 bound = ellipse_range_bound(inv_cov, y0, y1);
-            int x0 = int(floor((bound.x + xy.x) / TILE_SIZE_IX));
-            int x1 = int(ceil((bound.y + xy.x) / TILE_SIZE_IX));
+            int x0 = int(floor((bound.x + xy.x) * t.inv_x));
+            int x1 = int(ceil((bound.y + xy.x) * t.inv_x));
             x0 = clamp(x0, grid_xmin, grid_xmax);
             x1 = clamp(x1, grid_xmin, grid_xmax);
             if (kSkipTiles == 0) {
@@ -65,11 +87,11 @@ int count_ellipse_grid_overlaps(
     } else {
         inv_cov = float3(inv_cov.z, inv_cov.y, inv_cov.x);
         for (int x = grid_xmin; x < grid_xmax; x++) {
-            float x0 = x * TILE_SIZE_IX - xy.x;
-            float x1 = x0 + TILE_SIZE_IX;
+            float x0 = x * t.x - xy.x;
+            float x1 = x0 + t.x;
             float2 bound = ellipse_range_bound(inv_cov, x0, x1);
-            int y0 = int(floor((bound.x + xy.y) / TILE_SIZE_IY));
-            int y1 = int(ceil((bound.y + xy.y) / TILE_SIZE_IY));
+            int y0 = int(floor((bound.x + xy.y) * t.inv_y));
+            int y1 = int(ceil((bound.y + xy.y) * t.inv_y));
             y0 = clamp(y0, grid_ymin, grid_ymax);
             y1 = clamp(y1, grid_ymin, grid_ymax);
             if (kSkipTiles == 0) {
@@ -86,15 +108,15 @@ int count_ellipse_grid_overlaps(
 }
 
 // Shared tile-range setup for both passes; matches the CUDA kernel body.
-void tile_range(float4 aabb, uint tile_width, uint tile_height,
+void tile_range(float4 aabb, uint tile_width, uint tile_height, BinTile t,
                 out uint2 tile_min, out uint2 tile_max) {
-    tile_min.x = uint(min(max(0, int(floor((aabb.x + 0.5f) / TILE_SIZE_IX))),
+    tile_min.x = uint(min(max(0, int(floor((aabb.x + 0.5f) * t.inv_x))),
                           int(tile_width)));
-    tile_min.y = uint(min(max(0, int(floor((aabb.y + 0.5f) / TILE_SIZE_IY))),
+    tile_min.y = uint(min(max(0, int(floor((aabb.y + 0.5f) * t.inv_y))),
                           int(tile_height)));
-    tile_max.x = uint(min(max(0, int(ceil((aabb.z + 0.5f) / TILE_SIZE_IX))),
+    tile_max.x = uint(min(max(0, int(ceil((aabb.z + 0.5f) * t.inv_x))),
                           int(tile_width)));
-    tile_max.y = uint(min(max(0, int(ceil((aabb.w + 0.5f) / TILE_SIZE_IY))),
+    tile_max.y = uint(min(max(0, int(ceil((aabb.w + 0.5f) * t.inv_y))),
                           int(tile_height)));
 }
 
@@ -116,6 +138,7 @@ struct IsectCountParams {  // pushed directly
     uint32_t tile_height;
     uint32_t total;            // I * N (or nnz in packed mode)
     uint32_t wgs_per_row;
+    uint32_t macro_log2;       // binning tile = TILE_MICRO_X << macro_log2
     // Row layout of proj_screen; xy_off < 0 -> center from the AABB.
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
@@ -148,8 +171,10 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (!aabb16_is_empty(aabb_q)) {
             float4 aabb =
                 aabb16_decode(aabb_q, p.image_width, p.image_height);
+            BinTile bt = bin_tile(p.macro_log2);
             uint2 tile_min, tile_max;
-            tile_range(aabb, p.tile_width, p.tile_height, tile_min, tile_max);
+            tile_range(aabb, p.tile_width, p.tile_height, bt, tile_min,
+                       tile_max);
 
             gindex_t iid = kPacked != 0 ? gindex_t(p.image_ids[idx])
                                         : gindex_t(idx / p.N);
@@ -168,7 +193,8 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 n = count_ellipse_grid_overlaps(
                     xy, conic,
                     int(tile_min.x), int(tile_max.x), int(tile_min.y),
-                    int(tile_max.y), p.tile_active, tile_base, p.tile_width);
+                    int(tile_max.y), p.tile_active, tile_base, p.tile_width,
+                    bt);
             } else if (kSkipTiles == 0) {
                 n = max(int(tile_max.y - tile_min.y) *
                         int(tile_max.x - tile_min.x), 0);
@@ -210,6 +236,7 @@ struct TileActiveParams {  // 40 bytes: pushed directly
     uint32_t tile_width, tile_height;
     uint32_t total;
     uint32_t wgs_per_row;
+    uint32_t macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
 
@@ -223,12 +250,13 @@ void tile_active_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint ty = (t / p.tile_width) % p.tile_height;
     gindex_t b = gindex_t(t / (p.tile_width * p.tile_height));
     bool live = false;
-    for (int dy = -kMaskPad; dy < TILE_SIZE_IY + kMaskPad && !live; ++dy) {
-        int y = int(ty) * TILE_SIZE_IY + dy;
+    BinTile bt = bin_tile(p.macro_log2);
+    for (int dy = -kMaskPad; dy < bt.iy + kMaskPad && !live; ++dy) {
+        int y = int(ty) * bt.iy + dy;
         if (y >= p.height) break;
         if (y < 0) continue;
-        for (int dx = -kMaskPad; dx < TILE_SIZE_IX + kMaskPad; ++dx) {
-            int x = int(tx) * TILE_SIZE_IX + dx;
+        for (int dx = -kMaskPad; dx < bt.ix + kMaskPad; ++dx) {
+            int x = int(tx) * bt.ix + dx;
             if (x >= p.width) break;
             if (x < 0) continue;
             float u = (float(x) + 0.5f) * float(p.W_mask) / float(p.width) - 0.5f;
@@ -265,6 +293,7 @@ struct IsectWriteParams {  // pushed directly
     uint32_t total;
     uint32_t wgs_per_row;
     uint32_t n_isects;   // isect_ids / flatten_ids length
+    uint32_t macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
 };
 
@@ -299,8 +328,9 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
     gindex_t n_img_tiles = gindex_t(p.tile_width) * gindex_t(p.tile_height);
 
+    BinTile bt = bin_tile(p.macro_log2);
     uint2 tile_min, tile_max;
-    tile_range(aabb, p.tile_width, p.tile_height, tile_min, tile_max);
+    tile_range(aabb, p.tile_width, p.tile_height, bt, tile_min, tile_max);
 
     // Sorting depth -> order-preserving u32 (same bit trick as CUDA).
     float depth_f32 = abs(p.depths[idx]);
@@ -319,15 +349,15 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                               row[p.conic_off + 2]);
         conic = conic * (0.5f / log(row[p.opac_off] / ALPHA_THRESHOLD));
 
-        if (int(tile_max.y - tile_min.y) * TILE_SIZE_IX <=
-            int(tile_max.x - tile_min.x) * TILE_SIZE_IY) {
+        if (int(tile_max.y - tile_min.y) * bt.ix <=
+            int(tile_max.x - tile_min.x) * bt.iy) {
             for (int y = int(tile_min.y); y < int(tile_max.y); y++) {
-                float y0 = y * TILE_SIZE_IY - xy.y;
-                float y1 = y0 + TILE_SIZE_IY;
+                float y0 = y * bt.y - xy.y;
+                float y1 = y0 + bt.y;
                 float2 bound = ellipse_range_bound(conic, y0, y1);
-                int min_x = int(clamp(uint(floor((bound.x + xy.x) / TILE_SIZE_IX)),
+                int min_x = int(clamp(uint(floor((bound.x + xy.x) * bt.inv_x)),
                                       tile_min.x, tile_max.x));
-                int max_x = int(clamp(uint(ceil((bound.y + xy.x) / TILE_SIZE_IX)),
+                int max_x = int(clamp(uint(ceil((bound.y + xy.x) * bt.inv_x)),
                                       tile_min.x, tile_max.x));
                 for (int x = min_x; x < max_x && cur_idx < max_idx; x++) {
                     gindex_t tile_id = iid * n_img_tiles +
@@ -342,12 +372,12 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         } else {
             conic = float3(conic.z, conic.y, conic.x);
             for (int x = int(tile_min.x); x < int(tile_max.x); x++) {
-                float x0 = x * TILE_SIZE_IX - xy.x;
-                float x1 = x0 + TILE_SIZE_IX;
+                float x0 = x * bt.x - xy.x;
+                float x1 = x0 + bt.x;
                 float2 bound = ellipse_range_bound(conic, x0, x1);
-                int min_y = int(clamp(uint(floor((bound.x + xy.y) / TILE_SIZE_IY)),
+                int min_y = int(clamp(uint(floor((bound.x + xy.y) * bt.inv_y)),
                                       tile_min.y, tile_max.y));
-                int max_y = int(clamp(uint(ceil((bound.y + xy.y) / TILE_SIZE_IY)),
+                int max_y = int(clamp(uint(ceil((bound.y + xy.y) * bt.inv_y)),
                                       tile_min.y, tile_max.y));
                 for (int y = min_y; y < max_y && cur_idx < max_idx; y++) {
                     gindex_t tile_id = iid * n_img_tiles +

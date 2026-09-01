@@ -54,6 +54,10 @@ int main(int argc, char** argv) {
     }
     const bool dumping = std::strcmp(argv[1], "dump") == 0;
 
+    // Kernel parity, not binning policy: pin the granularity so a reference
+    // stays comparable across runs that would otherwise adapt it.
+    engine_set_bin_tile_size(bin_tile_x(kMacroLog2Default));
+
     std::mt19937 rng(20260717u);
     auto uf = [&](float lo, float hi) {
         return lo + (hi - lo) * (float)(rng() & 0xffffff) / 16777215.0f;

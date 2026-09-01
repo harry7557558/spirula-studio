@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
+#include <core/Common.cuh>
 #include <core/Tensor.h>
 
 #include "primitives/Primitive3DGS.cuh"
@@ -61,16 +63,36 @@ inline void intersect_check_isect_count(int64_t n_isects) {
 }
 
 
+// True when the pair total overflows int32 and the binning can still coarsen;
+// advances macro_log2 so the caller re-counts. A 100M-splat 7680^2 batch makes
+// 4.5e9 pairs at 16 px binning and 0.58e9 at 64 px, so this beats throwing.
+inline bool intersect_should_coarsen(int64_t n_isects, int& macro_log2) {
+    if (n_isects >= 0 && n_isects <= 0x7fffffffLL) return false;
+    if (macro_log2 >= kMacroLog2Max) return false;
+    ++macro_log2;
+    static int reported = -1;
+    if (reported != macro_log2) {
+        reported = macro_log2;
+        std::fprintf(stderr,
+                     "[bin-tile] %lld splat-tile pairs exceed the 2^31 limit; "
+                     "binning at %d px\n",
+                     (long long)n_isects, bin_tile_x(macro_log2));
+    }
+    return true;
+}
+
+
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */
 
 
 
-int64_t intersect_tile_count(int width, int height);
+int64_t intersect_tile_count(int width, int height, int macro_log2);
 
 
 void compute_tile_active(
     TorchTensorView mask,   // [I, H_mask, W_mask] bool
     int I, int width, int height,
+    int macro_log2,         // binning granularity, core/Common.cuh
     int32_t* tile_active    // [I, tile_h, tile_w]
 );
 
@@ -88,5 +110,7 @@ std::tuple<
     const uint32_t image_width,
     const uint32_t image_height,
     DeviceVector<int32_t>* image_ids, // null for non-packed
-    const int32_t* tile_active        // [I, tile_h, tile_w]; null = all live
+    const int32_t* tile_active,       // [I, tile_h, tile_w]; null = all live
+    int& macro_log2                   // in: binning granularity; out: what it
+                                      // coarsened to (core/Common.cuh)
 );

@@ -290,6 +290,7 @@ inline int train_tier_rank(const char* tier) {
     X(bool, use_fused_proj_bwd_optim, true, "perf", "advanced", "")          \
     X(bool, packed, true, "perf", "advanced", "")                            \
     X(int, quantization_level, 1, "perf", "advanced", "")                    \
+    X(int, bin_tile_size, 0, "perf", "expert", "")                           \
     X(bool, preallocate_splat_tensors, true, "perf", "expert", "")           \
     X(std::string, optimizer_offload, "", "perf", "stub", "sh|all|none")     \
     X(bool, use_bvh, false, "perf", "stub", "")                              \

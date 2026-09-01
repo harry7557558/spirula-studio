@@ -20,6 +20,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -45,6 +46,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -70,6 +72,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -95,6 +98,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -120,6 +124,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -145,6 +150,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]

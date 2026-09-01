@@ -150,11 +150,14 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
     }
     DeviceVector<int32_t>* img_ids =
         (packed && cam_ids.data_ptr()) ? &cam_ids : nullptr;
+    int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
         aabb_2d, depths_nd, ellipse_view(splats_s, false), C,
-        ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr);
+        ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr,
+        macro_log2);
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
                                              W, H, tile_offsets, flatten_ids,
+                                             macro_log2,
                                              DistortionType::None, false);
     backend::device_synchronize();
     auto& renders = std::get<0>(rout);
@@ -189,6 +192,7 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
                              MemcpyKind::HostToDevice);
         auto [vw, vs, aw] = rasterize_to_pixels_3dgs_bwd(
             N, in_splats, splats_s, gauss_ids, W, H, tile_offsets, flatten_ids,
+            macro_log2,
             render_Ts, last_ids, renders, std::nullopt, DistortionType::None,
             t3f1(d_awmap), accum_mode, v_renders, t3f1(d_v_T),
             DeviceTensor3D<float>{}, std::nullopt, std::nullopt, std::nullopt);

@@ -750,6 +750,9 @@ void TrainerSession::setup_engine() {
                   tv(seed.features_dc, {cap, 3}),
                   tv(seed.features_sh, {cap, dim_sh - 1, 3}));
 
+    // Binning granularity for the splat-tile intersection (0 = automatic).
+    engine_set_bin_tile_size(cfg.bin_tile_size);
+
     // Background blending.
     if (cfg.background_mode == "noise")
         engine_init_background_noise(color.splat_linear);

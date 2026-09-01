@@ -23,7 +23,7 @@ struct RasterMomentsParams {
     uint64_t viewmats, intrins, dist_coeffs, aabb;
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_moments, out_rgb;
-    uint32_t I, N, n_isects, width, height, tile_width, tile_height, _pad0;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
 static_assert(sizeof(RasterMomentsParams) == 13 * 8 + 8 * 4,
               "params layout must match the slang struct");
@@ -45,6 +45,7 @@ void rasterize_moments_3dgut_fwd(
     uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,
     const DeviceVector<int32_t>& flatten_ids,
+    int macro_log2,
     float3* render_moments,
     float3* render_rgb
 ) {
@@ -83,6 +84,7 @@ void rasterize_moments_3dgut_fwd(
     p.height = image_height;
     p.tile_width = tile_width;
     p.tile_height = tile_height;
+    p.macro_log2 = (uint32_t)macro_log2;
 
     // Spec IDs: 0 = camera model, 1 = kRasterPacked, 2 = kOutputRgb,
     // 3 = distortion tier.
@@ -90,6 +92,6 @@ void rasterize_moments_3dgut_fwd(
                                gaussian_ids.data_ptr() ? 1u : 0u,
                                render_rgb ? 1u : 0u, cd.dist};
     vkk::dispatch_ring("rasterize_moments.rasterize_moments_3dgut", spec, I,
-                       tile_height * MACRO_TILE_SIZE_Y,
-                       tile_width * MACRO_TILE_SIZE_X, &p, sizeof(p));
+                       tile_height << macro_log2,
+                       tile_width << macro_log2, &p, sizeof(p));
 }

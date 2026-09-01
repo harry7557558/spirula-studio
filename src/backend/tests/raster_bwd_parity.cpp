@@ -233,11 +233,13 @@ int main(int argc, char** argv) {
         // --- tile intersection ---
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
+        int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] =
             do_intersect_tile_generic(aabb_2d, depths_nd,
                                       ellipse_view(splats_s, cfg.prim == 2), C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
-                                      image_ids_ptr, /*tile_active=*/nullptr);
+                                      image_ids_ptr, /*tile_active=*/nullptr,
+                                      macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
 
@@ -252,11 +254,13 @@ int main(int argc, char** argv) {
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
-                tile_offsets, flatten_ids, cfg.dt, cfg.median);
+                tile_offsets, flatten_ids, macro_log2, cfg.dt,
+                cfg.median);
         } else {
             rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s,
                                                 gauss_ids, W, H, tile_offsets,
-                                                flatten_ids, cfg.dt,
+                                                flatten_ids,
+                                                macro_log2, cfg.dt,
                                                 cfg.median);
         }
         backend::device_synchronize();
@@ -286,7 +290,8 @@ int main(int argc, char** argv) {
                     ttv(d_intr, {(int64_t)C, 4}), cams[cfg.cam],
                     dist_fixture::kTierNames[cfg.dist], dist_tv(cfg.dist),
                     aabb_2d, W, H,
-                    tile_offsets, flatten_ids, render_Ts, last_ids, renders,
+                    tile_offsets, flatten_ids, macro_log2,
+                    render_Ts, last_ids, renders,
                     dist_fwd_opt, cfg.dt, DeviceTensor3D<float>{}, awmap_t,
                     cfg.aw, v_renders, t3f1(d_v_T), v_med_t, v_dist_opt,
                     std::nullopt, std::nullopt, cfg.vmg);
@@ -303,7 +308,8 @@ int main(int argc, char** argv) {
         } else {
             auto [v_w, v_s, aw_out] = rasterize_to_pixels_3dgs_bwd(
                 N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
-                flatten_ids, render_Ts, last_ids, renders, dist_fwd_opt,
+                flatten_ids, macro_log2, render_Ts, last_ids,
+                renders, dist_fwd_opt,
                 cfg.dt, awmap_t, cfg.aw, v_renders, t3f1(d_v_T), v_med_t,
                 v_dist_opt,
                 std::nullopt, std::nullopt);

@@ -206,7 +206,10 @@ struct DownsweepParams {
 // needs rank = (prior iterations) + (prior subgroups this iteration) +
 // (rank within subgroup), all in memory order.
 groupshared uint _ds_sg_hist[RADIX * MAX_NSG];  // [digit][subgroup]
-groupshared uint _ds_running[RADIX];            // prior-iterations count
+// Write cursor per digit: the partition's global base, advanced by each
+// iteration's counts. Holding the two global bases here keeps them out of the
+// inner loop, which read part_offsets once per key on a num_parts stride.
+groupshared uint _ds_cursor[RADIX];
 
 #define DEF_DOWNSWEEP(NAME, KTYPE)                                         \
 [shader("compute")]                                                        \
@@ -221,7 +224,9 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
     uint sg = tid / WaveGetLaneCount();                                    \
     uint nsg = (SORT_WG + WaveGetLaneCount() - 1) / WaveGetLaneCount();    \
     uint4 lt = lane_lt_mask(lane);                                         \
-    for (uint i = tid; i < RADIX; i += SORT_WG) _ds_running[i] = 0;        \
+    for (uint i = tid; i < RADIX; i += SORT_WG)                            \
+        _ds_cursor[i] = p.global_base[i] +                                 \
+                        p.part_offsets[i * p.num_parts + part];            \
     for (uint i = tid; i < RADIX * MAX_NSG; i += SORT_WG)                  \
         _ds_sg_hist[i] = 0;                                                \
     GroupMemoryBarrierWithGroupSync();                                     \
@@ -240,9 +245,7 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
             uint prior_sg = 0;                                             \
             for (uint s = 0; s < sg; s++)                                  \
                 prior_sg += _ds_sg_hist[d * MAX_NSG + s];                  \
-            gindex_t pos = gindex_t(p.global_base[d]) +                    \
-                       p.part_offsets[d * p.num_parts + part] +            \
-                       _ds_running[d] + prior_sg + rank_sg;                \
+            gindex_t pos = gindex_t(_ds_cursor[d] + prior_sg + rank_sg);   \
             elem_at(keys_out, pos)[0] = key;                               \
             elem_at(p.vals_out, pos)[0] = elem_at(p.vals_in, idx)[0];      \
         }                                                                  \
@@ -255,7 +258,7 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
                 total += _ds_sg_hist[dd * MAX_NSG + s];                    \
                 _ds_sg_hist[dd * MAX_NSG + s] = 0;                         \
             }                                                              \
-            _ds_running[dd] += total;                                      \
+            _ds_cursor[dd] += total;                                       \
         }                                                                  \
         GroupMemoryBarrierWithGroupSync();                                 \
     }                                                                      \
@@ -316,6 +319,11 @@ groupshared float _scan_tmp_f32[SCAN_WG];
 // the baseline (allocations are 16-byte rounded, so the word covering byte
 // n-1 stays in bounds), native byte loads in the ".int8" variant.
 int load_flag_byte(uint32_t* words, uint idx) {
+    return int(u8_load(words, idx));
+}
+// gindex_t overload, per the int8_compat convention: without it the scan
+// macros' 64-bit index would narrow to uint at the call.
+int load_flag_byte(uint32_t* words, gindex_t idx) {
     return int(u8_load(words, idx));
 }
 
@@ -470,7 +478,7 @@ void scatter_flagged_u32(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     [ForceUnroll]
     for (uint e = 0; e < SCAN_ELEMS; e++) {
         gindex_t idx = base + e;
-        if (idx < gindex_t(p.n) && load_flag_byte(p.flags, uint(idx)) != 0)
+        if (idx < gindex_t(p.n) && load_flag_byte(p.flags, idx) != 0)
             elem_at(p.output, gindex_t(elem_at(p.scan, idx)[0]))[0] =
                 elem_at(p.input, idx)[0];
     }

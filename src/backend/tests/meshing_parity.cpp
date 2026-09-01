@@ -445,9 +445,11 @@ int main(int argc, char** argv) {
                 {1, kCameraDistortionParams}),
             radii, std::nullopt, std::nullopt, 0, 32, 0);
         DeviceTensorFloatND depths_nd(depths_2d);
+        int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
             aabb_2d, depths_nd, ellipse_view(splats_s, true), 1,
-            ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr);
+            ttv(d_intr + 4 * cam, {1, 4}), W, H, nullptr, /*tile_active=*/nullptr,
+        macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
 
@@ -458,7 +460,8 @@ int main(int argc, char** argv) {
             "PINHOLE", "THIN_PRISM",
             ttv(d_dist + dist_fixture::row_offset(2, NCAM, cam),
                 {1, kCameraDistortionParams}),
-            aabb_2d, W, H, tile_offsets, flatten_ids, d_moments, nullptr);
+            aabb_2d, W, H, tile_offsets, flatten_ids, macro_log2,
+            d_moments, nullptr);
         backend::device_synchronize();
         if (check_error()) return 1;
         readback(lacc, (const float*)d_moments, (int64_t)npix * 3);
@@ -469,7 +472,8 @@ int main(int argc, char** argv) {
             "PINHOLE", "THIN_PRISM",
             ttv(d_dist + dist_fixture::row_offset(2, NCAM, cam),
                 {1, kCameraDistortionParams}),
-            aabb_2d, W, H, tile_offsets, flatten_ids, d_moments, d_rgbimg);
+            aabb_2d, W, H, tile_offsets, flatten_ids, macro_log2,
+            d_moments, d_rgbimg);
         backend::device_synchronize();
         if (check_error()) return 1;
         readback(lacc, (const float*)d_rgbimg, (int64_t)npix * 3);

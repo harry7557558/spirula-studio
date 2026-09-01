@@ -23,6 +23,7 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -57,6 +58,7 @@ inline void launch_rasterize_to_pixels_bwd_kernel(
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,   // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids,  // [I, image_height, image_width]
@@ -93,7 +95,7 @@ inline void launch_rasterize_to_pixels_bwd_kernel(
         (cudaStream_t)0, I, N, n_isects,
         (uint32_t*)gaussian_ids.data_ptr(),
         splat_wbuffer, splat_sbuffer,
-        image_width, image_height, tile_width, tile_height,
+        image_width, image_height, tile_width, tile_height, macro_log2,
         tile_offsets.data_ptr(), flatten_ids.data_ptr(),
         render_Ts.data_ptr(), last_ids.data_ptr(), render_outputs,
         distortion_fwd_outputs.has_value() ? distortion_fwd_outputs : RenderOutput::Buffer(),
@@ -125,6 +127,7 @@ inline std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -171,6 +174,7 @@ inline std::tuple<
         num_splats,
         splats_w, splats_s, gaussian_ids,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs,
         distortion_fwd_outputs, loss_map, accum_weight_map,
         v_render_outputs, v_render_Ts,
@@ -201,6 +205,7 @@ inline std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -239,6 +244,7 @@ inline std::tuple<
     auto [v_splats_w_1, v_splats_s_1, accum_weight] = funcs[di][(int)accum_mode][md](
         num_splats, splats_w, splats_s, gaussian_ids,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs_tuple, distortion_fwd_outputs,
         DeviceTensor3D<float>(), accum_weight_map,
         v_render_outputs, v_render_Ts, v_median, v_distortion_outputs, v_splats_w, v_splats_s
@@ -268,6 +274,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -287,6 +294,7 @@ std::tuple<
     return rasterize_to_pixels_bwd_tensor<Vanilla3DGS<0>>(
         num_splats, splats_w, splats_s, gaussian_ids,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs_tuple, distortion_fwd_outputs,
         dist_type, accum_weight_map, accum_mode, v_render_outputs, v_render_Ts,
         v_median, v_distortion_outputs, v_splats_w, v_splats_s
