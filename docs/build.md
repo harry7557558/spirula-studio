@@ -30,6 +30,7 @@ Always build through the dev scripts.
 | `SsEmbed.cmake` | `ss_embed_file()` — bake a file into a byte-array header |
 | `SsApps.cmake` | the `spirula` executable — every tool the build has, in one binary (backend-agnostic) |
 | `SsPackage.cmake` | the `macos_app` / `macos_dmg` targets ([Packaging](#packaging)) |
+| `SsMacBundle.cmake` | `ss_mac_prefer_static()` — the static linking a one-file bundle depends on ([Packaging](#packaging)) |
 | `SsChecks.cmake` | the source lints ([Lints](#lints)) — included last, so every target above depends on them |
 
 Exactly one backend module runs. It leaves behind `SS_WITH_TORCH` and
@@ -204,15 +205,19 @@ embedded into the binary. On an offline machine, transfer a matching `slangc`
 and point `-DSS_SLANGC=` at it.
 
 **macOS.** Vulkan backend only, through MoltenVK; `build_develop.bash` works
-as on Linux. Dependencies: `brew install cmake ninja`. Four things are
-macOS-only in the build: `cmake/SsVulkan.cmake` fetches a pinned universal
-MoltenVK and links it *statically* (`SS_MACOS_VULKAN=static`, the default) so
-the binary carries its own driver and copies to any Mac — the release tarball
-supplies the Vulkan headers too, so nothing comes from Homebrew;
-`cmake/SsSlang.cmake` pins a different Slang release (the one this project
-pins publishes no macOS assets); `build_develop.bash` reads free memory from
-`vm_stat` rather than `/proc`; and `ss_i18n` links CoreFoundation, which
-`i18n/Locale.cpp` asks for the user's locale.
+as on Linux. Dependencies: `brew install cmake ninja libomp`. The last is
+keg-only, so nothing finds it on its own — `build_develop.bash` passes
+`-DOpenMP_ROOT` at the keg, and a build without OpenMP runs meshing, UV unwrap
+and metrics serial. Five things are macOS-only in the build:
+`cmake/SsVulkan.cmake` fetches a pinned universal MoltenVK and links it
+*statically* (`SS_MACOS_VULKAN=static`, the default) so the binary carries its
+own driver and copies to any Mac — the release tarball supplies the Vulkan
+headers too, so nothing comes from Homebrew; `cmake/SsSlang.cmake` pins a
+different Slang release (the one this project pins publishes no macOS assets);
+`build_develop.bash` reads free memory from `vm_stat` rather than `/proc`;
+`ss_i18n` links CoreFoundation, which `i18n/Locale.cpp` asks for the user's
+locale; and `cmake/SsMacBundle.cmake` links the archive beside a dependency's
+dylib, which is what keeps the bundle one file ([Packaging](#packaging)).
 
 A static build has no loader, so it cannot load validation layers.
 `-DSS_MACOS_VULKAN=loader` links the installed loader instead (needs
@@ -271,10 +276,14 @@ taskbar. The banner carries no text — the product name and tagline are drawn
 over it by ImGui, so they stay translatable.
 
 The bundle carries **one binary**. That is only honest because a default
-macOS build links MoltenVK statically (`cmake/SsVulkan.cmake`), and the script
-checks rather than trusts it: `otool -L` output naming anything outside
+macOS build links MoltenVK statically (`cmake/SsVulkan.cmake`) and swaps every
+other dependency found as a dylib for the archive beside it
+(`ss_mac_prefer_static()` in `cmake/SsMacBundle.cmake` — libomp today), and the
+script checks rather than trusts it: `otool -L` output naming anything outside
 `/usr/lib` or `/System/Library` fails the packaging, since a bundle missing a
-dylib works on the build machine and nowhere else.
+dylib works on the build machine and nowhere else. Homebrew builds its archives
+for the host alone, so a bundle linking one is arm64-only and inherits that
+keg's minimum macOS version.
 
 Signing is ad-hoc (`--sign -`) by default. That is not optional decoration:
 Apple silicon kills an unsigned arm64 binary on exec, and copying the

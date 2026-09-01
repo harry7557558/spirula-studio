@@ -5,9 +5,9 @@
 #   bash tools/package_macos.sh [--build-dir DIR] [--out DIR]
 #                               [--sign IDENTITY] [--dmg]
 #
-# The bundle carries one binary and its icon, which only works because a static
-# MoltenVK build links nothing outside the system frameworks
-# (cmake/SsVulkan.cmake) -- verified below, not assumed.
+# The bundle carries one binary and its icon, which only works because MoltenVK
+# and libomp are linked statically (cmake/SsVulkan.cmake,
+# cmake/SsMacBundle.cmake) -- verified below, not assumed.
 #
 # --sign defaults to ad-hoc ("-"): enough for a Mac the app is copied to
 # directly, not enough to survive the quarantine flag a download attaches.
@@ -121,7 +121,9 @@ STRAY=$(otool -L "$APP/Contents/MacOS/spirula" | tail -n +2 | awk '{print $1}' \
 if [ -n "$STRAY" ]; then
     echo "package_macos.sh: the binary links libraries this bundle does not carry:" >&2
     echo "$STRAY" | sed 's/^/    /' >&2
-    echo "  build with -DSS_MACOS_VULKAN=static (the default) to avoid it" >&2
+    echo "  such a bundle runs only on this machine. libvulkan: rebuild with" >&2
+    echo "  -DSS_MACOS_VULKAN=static (the default). Anything else: install its" >&2
+    echo "  .a so cmake/SsMacBundle.cmake links that (brew install libomp)." >&2
     exit 1
 fi
 
