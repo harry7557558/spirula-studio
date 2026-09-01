@@ -151,18 +151,64 @@ void testZeroRotation(const char* name, const double* intr) {
 void testEquirectSeamResidual() {
     const double intr[2] = {640.0, 480.0};
     const double pose[6] = {0, 0, 0, 0, 0, 0};
-    const double d = 2.0 * M_PI * 2.0 / intr[0];
-    const double points[2][3] = {{std::sin(M_PI - d), 0, std::cos(M_PI - d)},
-                                 {std::sin(-M_PI + d), 0, std::cos(-M_PI + d)}};
-    const double obs[2][2] = {{2.0, 240.0}, {638.0, 240.0}};
+    struct Case { double projected, observed, expected; };
+    const Case cases[] = {
+        {638.0, 2.0, -4.0},
+        {2.0, 638.0, 4.0},
+        {330.0, 20.0, 310.0},
+        {20.0, 330.0, -310.0},
+        {321.0, 0.0, -319.0},
+        {0.0, 321.0, 319.0},
+        {320.0, 0.0, 320.0},
+        {0.0, 320.0, -320.0},
+    };
     double worst = 0;
-    for (int i = 0; i < 2; i++) {
+    for (const Case& c : cases) {
+        const double theta = (c.projected / intr[0] - 0.5) * 2.0 * M_PI;
+        const double point[3] = {std::sin(theta), 0.0, std::cos(theta)};
+        const double obs[2] = {c.observed, 240.0};
         double r[2];
-        bacpu::residual<bacpu::EquirectModel>(pose, intr, points[i], obs[i], r);
-        worst = std::max(worst, std::fabs(r[0] - (i == 0 ? -4.0 : 4.0)));
+        bacpu::residual<bacpu::EquirectModel>(pose, intr, point, obs, r);
+        worst = std::max(worst, std::fabs(r[0] - c.expected));
         worst = std::max(worst, std::fabs(r[1]));
     }
     report("equirect seam residual", worst, 1e-10);
+}
+
+void testEquirectSeamJacobian() {
+    const double intr0[2] = {640.0, 480.0};
+    const double pose0[6] = {0.002, -0.003, 0.001, 0.001, -0.002, 0.003};
+    struct Case { double projected, observed; };
+    const Case cases[] = {{638.0, 2.0}, {2.0, 638.0}};
+    double worst = 0;
+    for (const Case& c : cases) {
+        const double theta = (c.projected / intr0[0] - 0.5) * 2.0 * M_PI;
+        double X[3] = {std::sin(theta), 0.05, std::cos(theta)};
+        double pose[6], intr[2];
+        std::copy(pose0, pose0 + 6, pose);
+        std::copy(intr0, intr0 + 2, intr);
+        const double obs[2] = {c.observed, 240.0};
+        double r[2], Jc[16], Jp[6];
+        bacpu::jacobian<bacpu::EquirectModel>(pose, intr, X, obs, r, Jc, Jp);
+        for (int k = 0; k < 11; k++) {
+            double* p = k < 6 ? &pose[k] : k < 8 ? &intr[k - 6] : &X[k - 8];
+            const double h = 1e-6 * std::max(1.0, std::fabs(*p));
+            const double keep = *p;
+            double rp[2], rm[2];
+            *p = keep + h;
+            bacpu::residual<bacpu::EquirectModel>(pose, intr, X, obs, rp);
+            *p = keep - h;
+            bacpu::residual<bacpu::EquirectModel>(pose, intr, X, obs, rm);
+            *p = keep;
+            for (int row = 0; row < 2; row++) {
+                const double num = (rp[row] - rm[row]) / (2.0 * h);
+                const double ana = k < 8 ? Jc[8 * row + k] : Jp[3 * row + k - 8];
+                worst = std::max(worst, std::fabs(num - ana) /
+                                            std::max(1.0, std::fabs(num) + std::fabs(ana)));
+            }
+        }
+    }
+    report("equirect seam jacobian", worst, 1e-6);
 }
 
 // ---------------------------------------------------------------------------
@@ -582,6 +628,7 @@ int run(int argc, char** argv) {
                                                        defaultIntr(8, n));
         testZeroRotation<bacpu::EquirectModel>("zero rotation equirect", defaultIntr(9, n));
         testEquirectSeamResidual();
+        testEquirectSeamJacobian();
     }
 
     for (uint32_t model = 0; model < (uint32_t)kNumModels; model++)
