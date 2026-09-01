@@ -19,10 +19,9 @@
 
 #include "int64_compat.slang"
 
-// Each helper has a uint overload alongside the gindex_t one so 32-bit call
-// sites keep 32-bit index arithmetic — a lone gindex_t signature would
-// promote them to int64 and drag OpCapability Int64 into base blobs that
-// never had it.
+// A uint overload beside each gindex_t one keeps 32-bit call sites off
+// int64, which would drag OpCapability Int64 into base blobs. The gindex_t
+// ones use elem_at: their callers run past 4 GiB, where buf[i] wraps.
 
 #ifdef SS_NATIVE_INT8
 
@@ -31,20 +30,20 @@
     return uint(((uint8_t*)buf)[idx]);
 }
 [ForceInline] uint u8_load(uint* buf, gindex_t idx) {
-    return uint(((uint8_t*)buf)[idx]);
+    return uint(((uint8_t*)elem_at(buf, idx >> 2))[uint(idx) & 3u]);
 }
 // Sign-extended int8 load (-128..127).
 [ForceInline] int s8_load(uint* buf, uint idx) {
     return int(((int8_t*)buf)[idx]);
 }
 [ForceInline] int s8_load(uint* buf, gindex_t idx) {
-    return int(((int8_t*)buf)[idx]);
+    return int(((int8_t*)elem_at(buf, idx >> 2))[uint(idx) & 3u]);
 }
 [ForceInline] void u8_store(uint* buf, uint idx, uint v) {
     ((uint8_t*)buf)[idx] = uint8_t(v);
 }
 [ForceInline] void u8_store(uint* buf, gindex_t idx, uint v) {
-    ((uint8_t*)buf)[idx] = uint8_t(v);
+    ((uint8_t*)elem_at(buf, idx >> 2))[uint(idx) & 3u] = uint8_t(v);
 }
 
 #else  // !SS_NATIVE_INT8
@@ -54,7 +53,7 @@
     return (w >> ((idx & 3u) * 8u)) & 0xffu;
 }
 [ForceInline] uint u8_load(uint* buf, gindex_t idx) {
-    uint w = buf[idx >> 2];
+    uint w = elem_at(buf, idx >> 2)[0];
     return (w >> ((uint(idx) & 3u) * 8u)) & 0xffu;
 }
 [ForceInline] int s8_load(uint* buf, uint idx) {
@@ -70,8 +69,9 @@
 }
 [ForceInline] void u8_store(uint* buf, gindex_t idx, uint v) {
     uint shift = 8u * (uint(idx) & 3u);
-    InterlockedAnd(buf[idx >> 2], ~(0xffu << shift));
-    InterlockedOr(buf[idx >> 2], (v & 0xffu) << shift);
+    uint* w = elem_at(buf, idx >> 2);
+    InterlockedAnd(w[0], ~(0xffu << shift));
+    InterlockedOr(w[0], (v & 0xffu) << shift);
 }
 
 #endif  // SS_NATIVE_INT8

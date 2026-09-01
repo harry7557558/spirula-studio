@@ -86,9 +86,6 @@ void launch_projection_qgrad_vk(
         return;
     if (!packed && aabb.data_ptr() == nullptr)
         return;
-    if ((uint64_t)3 * num_sh_buffer * (uint64_t)N > UINT32_MAX)
-        throw std::runtime_error(
-            "projection_backward_quantgrad: SH cell count exceeds 2^32");
 
     // Packed: per-splat camera ranges (exactly the CUDA launcher's steps).
     vkk::PackedCameraRanges ranges;

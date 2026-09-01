@@ -244,14 +244,6 @@ uint32_t sh_optim_spec(int sh_optim_bits) {
     throw std::runtime_error("densify: sh_optim_bits must be 32, 8 or 4");
 }
 
-// Guards the u32 cell indexing in the SH quant/value paths.
-void check_sh_cells(int64_t num_splats, int num_sh_buffer, const char* what) {
-    if (num_splats * 3 * (int64_t)std::max(num_sh_buffer, 1) >
-        (int64_t)UINT32_MAX)
-        throw std::runtime_error(std::string(what) +
-                                 ": SH cell index exceeds the u32 range");
-}
-
 // Fills the shared SH-state fields of the relocate/MCMC param structs and
 // returns the kShOptimBits spec value. In quant mode g1_features_sh aliases
 // the packed byte buffer (as in the CUDA launchers).
@@ -635,7 +627,6 @@ void relocate_splats_with_long_axis_split_tensor(
     uint32_t seed
 ) {
     if (cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats, num_sh_buffer, "relocate_splats_las");
 
     // Relocation mask + atomic compaction of dst indices (Vulkan mask is an
     // int32 array; the CUDA bool layout is a launcher-internal detail).
@@ -710,8 +701,6 @@ void add_splats_with_long_axis_split_tensor(
     uint32_t seed
 ) {
     if (num_new_splats == 0 || cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats + num_new_splats, num_sh_buffer,
-                   "add_splats_las");
 
     const int32_t* split_indices = wswr_sample(
         cur_num_splats,
@@ -755,7 +744,6 @@ void relocate_splats_mcmc_tensor(
     uint32_t seed
 ) {
     if (cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats, num_sh_buffer, "relocate_splats_mcmc");
 
     DeviceVector<float> probs, cumsum;
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,
@@ -843,8 +831,6 @@ void add_splats_mcmc_tensor(
     uint32_t seed
 ) {
     if (num_add == 0 || cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats + num_add, num_sh_buffer,
-                   "add_splats_mcmc");
 
     DeviceVector<float> probs, cumsum;
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,

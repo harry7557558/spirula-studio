@@ -143,6 +143,7 @@ void _qg_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
     ShAddrW sha = sh_quant_addr_w(p.num_sh_buffer,
                                  i64mem_get(p.sh_value_bounds_stride));
     gindex_t qbase = sh_addr_base(sha, gid);
+    gindex_t sh_src = (gindex_t)gid * (gindex_t)p.sh_stride_src;
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
         // Packed: the forward emits (gaussian, camera) order, so cid_t is
         // the out_idx that indexes aabb / camera_ids / vs_screen.
@@ -158,7 +159,7 @@ void _qg_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
             float v_so = scrg_opac(v_row);
             float3 v_rgb = scrg_rgb(v_row);
             pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, v_ss, v_so, g);
-            pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src,
+            pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src),
                          p.sh_value_packed, p.sh_value_bounds, qbase,
                          sha.bounds_stride, sha.pair_pitch, v_rgb, g);
         } else {
@@ -170,7 +171,7 @@ void _qg_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
             float3 v_rgb = scr2_rgb(v_row);
             pb_vjp_2d<cam, D>(s, c, p.width, p.height, v_xy, v_depth, v_conic,
                               v_opac, g);
-            pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src,
+            pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src),
                          p.sh_value_packed, p.sh_value_bounds, qbase,
                          sha.bounds_stride, sha.pair_pitch, v_rgb, g);
         }
@@ -240,7 +241,12 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // warmup bands (contribution 0) stay re-encoded against the fresh bound.
     if ((kGqMask & 32) != 0) {
         const int num_sh = kShDegree * (kShDegree + 2);
-        const uint sh_base = 3u * p.num_sh_buffer * gid;
+        // Word pointer + in-word byte offset: the splat's run is addressed
+        // relatively from here, so it stays 32-bit past 2^32 cells.
+        const gindex_t sh_cell0 =
+            (gindex_t)(3u * p.num_sh_buffer) * (gindex_t)gid;
+        uint* sh_words = elem_at(p.gq_sh_packed, sh_cell0 >> 2);
+        const uint sh_base = uint(sh_cell0) & 3u;
         const int total = int(3u * p.num_sh_buffer);
         const float2 sh_old =
             inside ? p.gq_sh_bounds[block_id] : float2(0.0f, 0.0f);
@@ -252,7 +258,7 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ++ch) {
                     float nv = gradq_decode1<8>(
-                                   p.gq_sh_packed,
+                                   sh_words,
                                    sh_base + uint(3 * j + ch), sh_old) +
                                g.v_sh[j][ch];
                     sh_mm.x = min(sh_mm.x, nv);
@@ -260,7 +266,7 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 }
             }
             for (int c = 3 * num_sh; c < total; ++c) {
-                float nv = gradq_decode1<8>(p.gq_sh_packed,
+                float nv = gradq_decode1<8>(sh_words,
                                             sh_base + uint(c), sh_old);
                 sh_mm.x = min(sh_mm.x, nv);
                 sh_mm.y = max(sh_mm.y, nv);
@@ -278,7 +284,7 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             uint acc = 0u;
             for (uint cell = c0; cell < c1; ++cell) {
                 int c = int(cell - c0);
-                float old = gradq_decode1<8>(p.gq_sh_packed, cell, sh_old);
+                float old = gradq_decode1<8>(sh_words, cell, sh_old);
                 float contrib =
                     (c < 3 * num_sh) ? g.v_sh[c / 3][c % 3] : 0.0f;
                 uint code = gradq_encode1<8>(old + contrib, sh_mm) & 0xffu;
@@ -288,12 +294,12 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                     uint w = cell >> 2;
                     uint fb = (w == (c0 >> 2)) ? (c0 & 3u) : 0u;
                     if (fb == 0u && b == 3u) {
-                        p.gq_sh_packed[w] = acc;
+                        sh_words[w] = acc;
                     } else {
                         uint mask = (0xffffffffu >> (8u * (3u - b))) &
                                     (0xffffffffu << (8u * fb));
-                        InterlockedAnd(p.gq_sh_packed[w], ~mask);
-                        InterlockedOr(p.gq_sh_packed[w], acc & mask);
+                        InterlockedAnd(sh_words[w], ~mask);
+                        InterlockedOr(sh_words[w], acc & mask);
                     }
                     acc = 0u;
                 }

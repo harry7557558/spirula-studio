@@ -22,7 +22,7 @@ uint _sh_fetch_qw<let BITS : int>(uint* packed, gindex_t cell) {
     if (BITS == 8) {
         return u8_load(packed, cell);
     } else {
-        uint word = packed[cell >> 1];
+        uint word = elem_at(packed, cell >> 1)[0];
         return (word >> uint(16 * uint(cell & 1))) & 0xffffu;
     }
 }
@@ -35,13 +35,13 @@ float3 _sh_load_qw<let BITS : int>(uint* packed, float2* bounds, gindex_t base,
     gindex_t cell0 = sh_cell_at_w(base, 3 * j, pair_pitch);
     gindex_t cell1 = sh_cell_at_w(base, 3 * j + 1, pair_pitch);
     gindex_t cell2 = sh_cell_at_w(base, 3 * j + 2, pair_pitch);
-    // Bounds-block division runs in u32 — identical results while the packed
-    // buffer stays under 2^32 cells (4G coefficients); Intel/ANV's compiler
-    // effectively hangs lowering the slang-emitted 64-bit division.
-    uint stride32 = uint(bounds_stride);
-    float2 mm0 = bounds[uint(cell0) / stride32];
-    float2 mm1 = bounds[uint(cell1) / stride32];
-    float2 mm2 = bounds[uint(cell2) / stride32];
+    // Both strides are a multiple of 256, so shifting cell and stride down
+    // by 8 leaves the quotient exact and the numerator in u32; a 64-bit
+    // divide is not an option, Intel/ANV hangs lowering the one slang emits.
+    uint sblk = uint(bounds_stride >> 8);
+    float2 mm0 = bounds[uint(cell0 >> 8) / sblk];
+    float2 mm1 = bounds[uint(cell1 >> 8) / sblk];
+    float2 mm2 = bounds[uint(cell2 >> 8) / sblk];
     const float inv = BITS == 8 ? (1.0f / 255.0f) : (1.0f / 65535.0f);
     return float3(
         mm0.x + (mm0.y - mm0.x) * (float(_sh_fetch_qw<BITS>(packed, cell0)) * inv),

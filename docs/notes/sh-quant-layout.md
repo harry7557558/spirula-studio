@@ -51,3 +51,30 @@ so the decode path needs no separate block index.
 The transposed layout addresses whole blocks, so both buffers are sized
 `ceil(N / 256) * 256 * Rw * 2` cells rather than `N * R`: the tail block is
 rounded up, and an odd `R` leaves one unused cell per splat.
+
+## Past 2^32 cells
+
+100M splats at SH3 is 4.6e9 cells, so cell indices are 64-bit on both
+backends. CUDA needs nothing beyond that (`ShQuantAddr`, `core/Tensor.h`, is
+`int64_t` throughout). Vulkan needs two more things:
+
+- Every packed read and write goes through `elem_at`
+  (`backend/vulkan/shaders/int64_compat.slang`). A plain `buf[i]` past 4 GiB
+  wraps onto the start of the buffer -- drivers fold the `OpPtrAccessChain`
+  element index into 32 bits.
+- The bound index is `(cell >> 8) / (bounds_stride >> 8)`. That is exact for
+  both layouts because both strides are a multiple of 256 (AoS is 256; FPBO
+  is `Rw * 512`, and a splat's cells never leave its own block), and it keeps
+  the divide in u32. A 64-bit divide is not an option here: Intel/ANV's
+  compiler effectively hangs lowering the one slang emits.
+
+Per-splat work hoists one 64-bit base -- `sh_addr_base`, or a word pointer
+for the FPBO writeback and the grad-quant run -- and walks it with 32-bit
+offsets, so the per-cell instruction count is what it was before.
+
+The per-cell optimizer entries (`fused_adam_fwd`, `fused_adam_q`,
+`fused_adam_qq`, `fused_adamtr_rgb_sh`) still take a u32 cell index. Their
+launchers slice the parameter into runs of whole 256-cell blocks of whole
+splats and advance every pointer per slice, so the shaders never see an index
+they cannot hold (`optim_slice_cells`, `backend/vulkan/kernels/Optimizer.cpp`).
+Only SH ever needs more than one slice.

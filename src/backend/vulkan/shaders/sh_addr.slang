@@ -26,11 +26,14 @@ ShAddrW sh_quant_addr_w(uint num_sh_buffer, gindex_t arg_stride) {
     return a;
 }
 
+// Widened deliberately: 100M splats at SH3 is 4.6e9 cells, so the block
+// term overflows if it is formed in u32 first.
 [ForceInline]
 gindex_t sh_addr_base(ShAddrW a, uint gid) {
+    const uint block_cells = ((a.cells_per_splat + 1u) >> 1) * 512u;
     return a.pair_pitch > 0
-        ? (gindex_t)((gid >> 8) * (((a.cells_per_splat + 1u) >> 1) * 512u)
-                     + (gid & 255u) * 2u)
+        ? (gindex_t)(gid >> 8) * (gindex_t)block_cells
+          + (gindex_t)((gid & 255u) * 2u)
         : (gindex_t)gid * (gindex_t)a.cells_per_splat;
 }
 

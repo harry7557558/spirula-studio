@@ -105,7 +105,9 @@ void _pb_run_3dgs<let cam : CameraModelType, D : ICameraDistortion>(
                       g);
     ShAddrW a = sh_quant_addr_w(p.num_sh_buffer,
                                 i64mem_get(p.sh_bounds_stride));
-    pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src, p.sh_packed,
+    gindex_t sh_src = (gindex_t)gid * (gindex_t)p.sh_stride_src;
+    gindex_t sh_out = (gindex_t)gid * (gindex_t)p.sh_stride_v;
+    pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src), p.sh_packed,
                  p.sh_bounds, sh_addr_base(a, gid), a.bounds_stride,
                  a.pair_pitch, v_rgb, g);
 
@@ -114,7 +116,7 @@ void _pb_run_3dgs<let cam : CameraModelType, D : ICameraDistortion>(
     pb_add3(p.vw_scales + 3 * gid, g.v_scale);
     pb_add1(p.vw_opacities + gid, g.v_opacity);
     pb_add3(p.vw_dc + 3 * gid, g.v_dc);
-    pb_scatter_sh(p.vw_sh + gid * p.sh_stride_v, g.v_sh, kShDegree);
+    pb_scatter_sh(elem_at(p.vw_sh, sh_out), g.v_sh, kShDegree);
 
     if (kViewmatGrad != 0)
         pb_scatter_viewmat(p.v_viewmats, cid, g.v_R, g.v_t);
@@ -201,7 +203,9 @@ void _pb_run_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
     pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, v_sscale, v_sopac, g);
     ShAddrW a = sh_quant_addr_w(p.num_sh_buffer,
                                 i64mem_get(p.sh_bounds_stride));
-    pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src, p.sh_packed,
+    gindex_t sh_src = (gindex_t)gid * (gindex_t)p.sh_stride_src;
+    gindex_t sh_out = (gindex_t)gid * (gindex_t)p.sh_stride_v;
+    pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src), p.sh_packed,
                  p.sh_bounds, sh_addr_base(a, gid), a.bounds_stride,
                  a.pair_pitch, v_rgb, g);
 
@@ -210,7 +214,7 @@ void _pb_run_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
     pb_add3(p.vw_scales + 3 * gid, g.v_scale);
     pb_add1(p.vw_opacities + gid, g.v_opacity);
     pb_add3(p.vw_dc + 3 * gid, g.v_dc);
-    pb_scatter_sh(p.vw_sh + gid * p.sh_stride_v, g.v_sh, kShDegree);
+    pb_scatter_sh(elem_at(p.vw_sh, sh_out), g.v_sh, kShDegree);
 
     if (kViewmatGrad != 0)
         pb_scatter_viewmat(p.v_viewmats, cid, g.v_R, g.v_t);

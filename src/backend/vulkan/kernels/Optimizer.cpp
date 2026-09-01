@@ -9,7 +9,11 @@
 
 #include "backend/vulkan/kernels/KernelCommon.h"
 
+#include <core/Env.h>
+
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace {
 
@@ -76,6 +80,20 @@ uint32_t checked_u32_numel(int64_t numel, const char* what) {
     return (uint32_t)numel;
 }
 
+// Cells per launch for the per-cell optimizer entries, whose cell index is
+// u32: whole 256-cell blocks of whole splats, so a later slice only advances
+// pointers. Only SH reaches two; SS_OPTIM_SLICE_CELLS forces more, for tests.
+int64_t optim_slice_cells(int64_t stride) {
+    const int64_t grain = 256 * (stride > 0 ? stride : 1);
+    static const int64_t cap = [] {
+        const char* v = spirula::env("OPTIM_SLICE_CELLS");
+        const int64_t n = v ? std::atoll(v) : 0;
+        return n > 0 ? n : ((int64_t)1 << 30);
+    }();
+    const int64_t n = cap / grain * grain;
+    return n > 0 ? n : grain;
+}
+
 }  // namespace
 
 /* API definitions matching kernels/optim/Optimizer.cuh (engine-referenced subset) */
@@ -110,11 +128,22 @@ void fused_adam_step(
     p.decay_offset = l2_reg_offset;
     p.grad_scale = grad_scale;
     p.scalar_step = step;
-    p.numel = checked_u32_numel(numel, "fused_adam_step");
     p.stride = (uint32_t)stride;
     p.zero_grad = zero_grad ? 1u : 0u;
-    vkk::dispatch_flat("optimizer.fused_adam_fwd", backend::vk::SpecList{},
-                       numel, 256, &p, sizeof(p), &p.wgs_per_row);
+    const int64_t slice = optim_slice_cells(stride);
+    const uint64_t b_param = p.param, b_grad = p.grad;
+    const uint64_t b_m = p.exp_avg, b_v = p.exp_avg_sq, b_steps = p.steps;
+    for (int64_t base = 0; base < numel; base += slice) {
+        const int64_t n = std::min(slice, numel - base);
+        p.param = b_param + 4u * (uint64_t)base;
+        p.grad = b_grad + 4u * (uint64_t)base;
+        p.exp_avg = b_m + 4u * (uint64_t)base;
+        p.exp_avg_sq = b_v + 4u * (uint64_t)base;
+        if (p.has_steps) p.steps = b_steps + 4u * (uint64_t)(base / stride);
+        p.numel = checked_u32_numel(n, "fused_adam_step");
+        vkk::dispatch_flat("optimizer.fused_adam_fwd", backend::vk::SpecList{},
+                           n, 256, &p, sizeof(p), &p.wgs_per_row);
+    }
 }
 
 void fused_adagrad_step(
@@ -170,14 +199,27 @@ void fused_adam_step_quantized(
     p.decay_offset = l2_reg_offset;
     p.grad_scale = grad_scale;
     p.scalar_step = step;
-    p.numel = checked_u32_numel(numel, "fused_adam_step_quantized");
     p.stride = (uint32_t)stride;
     p.zero_grad = zero_grad ? 1u : 0u;
-    p.num_blocks = (uint32_t)((numel + 255) / 256);
-    // Spec IDs: 0 = kOptimBits (kValueBits unused by this entry).
-    vkk::dispatch_flat("optimizer.fused_adam_q",
-                       backend::vk::SpecList{(uint32_t)bits}, numel, 256, &p,
-                       sizeof(p), &p.wgs_per_row);
+    const int64_t slice = optim_slice_cells(stride);
+    const uint64_t cell_bytes = bits == 8 ? 2u : 1u;
+    const uint64_t b_param = p.param, b_grad = p.grad;
+    const uint64_t b_packed = p.packed, b_bounds = p.quant_bounds;
+    const uint64_t b_steps = p.steps;
+    for (int64_t base = 0; base < numel; base += slice) {
+        const int64_t n = std::min(slice, numel - base);
+        p.param = b_param + 4u * (uint64_t)base;
+        p.grad = b_grad + 4u * (uint64_t)base;
+        p.packed = b_packed + cell_bytes * (uint64_t)base;
+        p.quant_bounds = b_bounds + 16u * (uint64_t)(base / 256);
+        if (p.has_steps) p.steps = b_steps + 4u * (uint64_t)(base / stride);
+        p.numel = checked_u32_numel(n, "fused_adam_step_quantized");
+        p.num_blocks = (uint32_t)((n + 255) / 256);
+        // Spec IDs: 0 = kOptimBits (kValueBits unused by this entry).
+        vkk::dispatch_flat("optimizer.fused_adam_q",
+                           backend::vk::SpecList{(uint32_t)bits}, n, 256, &p,
+                           sizeof(p), &p.wgs_per_row);
+    }
 }
 
 void fused_adam_step_quantized_value(
@@ -226,15 +268,37 @@ void fused_adam_step_quantized_value(
     p.decay_offset = l2_reg_offset;
     p.grad_scale = grad_scale;
     p.scalar_step = step;
-    p.numel = checked_u32_numel(numel, "fused_adam_step_quantized_value");
     p.stride = (uint32_t)stride;
     p.zero_grad = zero_grad ? 1u : 0u;
-    p.num_blocks = (uint32_t)((numel + 255) / 256);
-    // Spec IDs: 0 = kOptimBits, 1 = kValueBits.
-    vkk::dispatch_flat(
-        "optimizer.fused_adam_qq",
-        backend::vk::SpecList{(uint32_t)optim_bits, (uint32_t)value_bits},
-        numel, 256, &p, sizeof(p), &p.wgs_per_row);
+    const int64_t slice = optim_slice_cells(stride);
+    const uint64_t optim_bytes = optim_bits == 8 ? 2u : 1u;
+    const uint64_t value_bytes = value_bits == 16 ? 2u : 1u;
+    const uint64_t b_grad = p.grad, b_gq = p.grad_q_packed;
+    const uint64_t b_gqb = p.grad_q_bounds;
+    const uint64_t b_op = p.optim_packed, b_ob = p.optim_bounds;
+    const uint64_t b_vp = p.value_packed, b_vb = p.value_bounds;
+    const uint64_t b_steps = p.steps;
+    for (int64_t base = 0; base < numel; base += slice) {
+        const int64_t n = std::min(slice, numel - base);
+        const uint64_t splat = (uint64_t)(base / stride);
+        if (grad.data_ptr()) p.grad = b_grad + 4u * (uint64_t)base;
+        if (p.grad_quant) {
+            p.grad_q_packed = b_gq + (uint64_t)base;
+            p.grad_q_bounds = b_gqb + 8u * (splat / 256);
+        }
+        p.optim_packed = b_op + optim_bytes * (uint64_t)base;
+        p.optim_bounds = b_ob + 16u * (uint64_t)(base / 256);
+        p.value_packed = b_vp + value_bytes * (uint64_t)base;
+        p.value_bounds = b_vb + 8u * (uint64_t)(base / 256);
+        if (p.has_steps) p.steps = b_steps + 4u * splat;
+        p.numel = checked_u32_numel(n, "fused_adam_step_quantized_value");
+        p.num_blocks = (uint32_t)((n + 255) / 256);
+        // Spec IDs: 0 = kOptimBits, 1 = kValueBits.
+        vkk::dispatch_flat(
+            "optimizer.fused_adam_qq",
+            backend::vk::SpecList{(uint32_t)optim_bits, (uint32_t)value_bits},
+            n, 256, &p, sizeof(p), &p.wgs_per_row);
+    }
 }
 
 void float_add_into(DeviceVector<float> dst, DeviceVector<float> src,
@@ -380,11 +444,26 @@ void launch_adamtr_rgb_sh(bool is_linear, TorchTensorView param,
     p.grad_scale = grad_scale;
     p.is_linear = is_linear ? 1u : 0u;
     p.zero_grad = zero_grad ? 1u : 0u;
-    p.num_params = checked_u32_numel(num_params, "fused_adamtr_rgb_sh_optim");
     p.num_sh = (uint32_t)num_sh;
-    vkk::dispatch_flat("optim_color.fused_adamtr_rgb_sh",
-                       backend::vk::SpecList{}, num_params, 256, &p, sizeof(p),
-                       &p.wgs_per_row);
+    const int64_t stride = num_sh * 3;
+    const int64_t slice = optim_slice_cells(stride);
+    const uint64_t b_param = p.param, b_grad = p.grad;
+    const uint64_t b_m = p.exp_avg, b_v = p.exp_avg_sq;
+    const uint64_t b_rgbs = p.rgbs, b_opac = p.opacities;
+    for (int64_t base = 0; base < num_params; base += slice) {
+        const int64_t n = std::min(slice, num_params - base);
+        const uint64_t splat = (uint64_t)(base / stride);
+        p.param = b_param + 4u * (uint64_t)base;
+        p.grad = b_grad + 4u * (uint64_t)base;
+        p.exp_avg = b_m + 4u * (uint64_t)base;
+        p.exp_avg_sq = b_v + 4u * (uint64_t)base;
+        p.rgbs = b_rgbs + 12u * splat;
+        p.opacities = b_opac + 4u * splat;
+        p.num_params = checked_u32_numel(n, "fused_adamtr_rgb_sh_optim");
+        vkk::dispatch_flat("optim_color.fused_adamtr_rgb_sh",
+                           backend::vk::SpecList{}, n, 256, &p, sizeof(p),
+                           &p.wgs_per_row);
+    }
 }
 
 }  // namespace

@@ -52,7 +52,7 @@ float3 eval_splat_color(float3 mean, float3x3 R, float3 t, float3 dc,
                                   sh_bounds, base, a.bounds_stride,
                                   a.pair_pitch);
     }
-    float* sh = features_sh + gid * sh_stride;
+    float* sh = elem_at(features_sh, (gindex_t)gid * (gindex_t)sh_stride);
     switch (kShDegree) {
     case 0: return sh0_to_color(mean, R, t, dc, sh);
     case 1: return sh1_to_color(mean, R, t, dc, sh);

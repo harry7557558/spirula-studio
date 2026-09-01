@@ -308,20 +308,20 @@ void _dn_zero_qsh_splat(uint* packed, uint splat, uint num_sh,
             s_q = _dn_qzero<255>(mm.z, mm.w);
             for (uint c = 0; c < cells; c++)
                 vkq_store_u16(packed,
-                              uint(sh_cell_at_w(base, int(c), a.pair_pitch)),
+                              sh_cell_at_w(base, int(c), a.pair_pitch),
                               u_q | (s_q << 8));
         } else {
             u_q = _dn_qzero<15>(mm.x, mm.y);
             s_q = _dn_qzero<15>(mm.z, mm.w);
             for (uint c = 0; c < cells; c++)
                 vkq_store_u8(packed,
-                             uint(sh_cell_at_w(base, int(c), a.pair_pitch)),
+                             sh_cell_at_w(base, int(c), a.pair_pitch),
                              (u_q & 0xfu) | ((s_q & 0xfu) << 4));
         }
     } else {
         for (uint c = 0; c < cells; c++) {
-            uint cell = uint(base) + c;
-            float4 mm = bounds[cell / 256u];
+            gindex_t cell = base + (gindex_t)c;
+            float4 mm = bounds[uint(cell >> 8)];
             if (kShOptimBits == 8) {
                 uint u_q = _dn_qzero<255>(mm.x, mm.y);
                 uint s_q = _dn_qzero<255>(mm.z, mm.w);
@@ -591,9 +591,11 @@ void densify_relocate_las(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // fp32 SH values may live in the value-codec packed buffer instead
     // (copied by densify_copy_qsh_pairs); skip the fp32 copy then.
     if (p.has_fp32_sh != 0) {
+        gindex_t R = (gindex_t)(3u * p.num_sh);
+        float* sh_dst = elem_at(p.features_sh, R * (gindex_t)idx_dst);
+        float* sh_src = elem_at(p.features_sh, R * (gindex_t)idx_src);
         for (uint i = 0; i < 3 * p.num_sh; i++)
-            p.features_sh[3 * p.num_sh * idx_dst + i] =
-                p.features_sh[3 * p.num_sh * idx_src + i];
+            sh_dst[i] = sh_src[i];
     }
 
     // optimizer state - zero (dst)
@@ -624,9 +626,12 @@ void densify_relocate_las(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         _dn_zero_nq_splat<3>(p.nq_dc_packed, p.nq_dc_bounds, idx_dst);
     }
     if (kShOptimBits == 0) {
+        gindex_t off = (gindex_t)(3u * p.num_sh) * (gindex_t)idx_dst;
+        float* g1 = elem_at(p.g1_sh, off);
+        float* g2 = elem_at(p.g2_sh, off);
         for (uint i = 0; i < 3 * p.num_sh; i++) {
-            p.g1_sh[3 * p.num_sh * idx_dst + i] = 0.0f;
-            p.g2_sh[3 * p.num_sh * idx_dst + i] = 0.0f;
+            g1[i] = 0.0f;
+            g2[i] = 0.0f;
         }
     } else {
         // g1 and g2 alias the same packed buffer; one pass covers both.
@@ -660,11 +665,11 @@ void _dn_copy_qsh_value(uint* packed, float2* bounds, uint src_splat,
     }
     uint cells = 3u * num_sh;
     for (uint c = 0; c < cells; c++) {
-        uint src_cell = uint(sh_cell_at_w(src_base, int(c), a.pair_pitch));
-        uint dst_cell = uint(sh_cell_at_w(dst_base, int(c), a.pair_pitch));
+        gindex_t src_cell = sh_cell_at_w(src_base, int(c), a.pair_pitch);
+        gindex_t dst_cell = sh_cell_at_w(dst_base, int(c), a.pair_pitch);
         if (!bounds_per_splat) {
-            src_mm = bounds[src_cell / 256u];
-            dst_mm = bounds[dst_cell / 256u];
+            src_mm = bounds[uint(src_cell >> 8)];
+            dst_mm = bounds[uint(dst_cell >> 8)];
         }
         if (kShValueBits == 16) {
             float v = qtensor_decode_v<16>(packed, src_cell, src_mm);
@@ -927,9 +932,12 @@ void densify_mcmc_relocation(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.g2_opacs[cur_idx] = 0.0f;
     }
     if (kShOptimBits == 0) {
+        gindex_t off = (gindex_t)(3u * p.num_sh) * (gindex_t)cur_idx;
+        float* g1 = elem_at(p.g1_sh, off);
+        float* g2 = elem_at(p.g2_sh, off);
         for (uint i = 0; i < 3 * p.num_sh; i++) {
-            p.g1_sh[3 * p.num_sh * cur_idx + i] = 0.0f;
-            p.g2_sh[3 * p.num_sh * cur_idx + i] = 0.0f;
+            g1[i] = 0.0f;
+            g2[i] = 0.0f;
         }
     } else {
         _dn_zero_qsh_splat(p.sh_packed, cur_idx, p.num_sh, p.sh_quant_bounds,
@@ -983,9 +991,11 @@ void densify_mcmc_update_reloc(uint3 wg: SV_GroupID,
         p.quats[4 * id_dst + i] = p.quats[4 * id_src + i];
     p.opacs[id_dst] = p.opacs[id_src];
     if (p.has_fp32_sh != 0) {
+        gindex_t R = (gindex_t)(3u * p.num_sh);
+        float* sh_dst = elem_at(p.features_sh, R * (gindex_t)id_dst);
+        float* sh_src = elem_at(p.features_sh, R * (gindex_t)id_src);
         for (uint i = 0; i < 3 * p.num_sh; i++)
-            p.features_sh[3 * p.num_sh * id_dst + i] =
-                p.features_sh[3 * p.num_sh * id_src + i];
+            sh_dst[i] = sh_src[i];
     }
 }
 
@@ -1091,9 +1101,11 @@ void densify_mcmc_update_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.quats[4 * id_dst + i] = p.quats[4 * id_src + i];
     p.opacs[id_dst] = p.opacs[id_src];
     if (p.has_fp32_sh != 0) {
+        gindex_t R = (gindex_t)(3u * p.num_sh);
+        float* sh_dst = elem_at(p.features_sh, R * (gindex_t)id_dst);
+        float* sh_src = elem_at(p.features_sh, R * (gindex_t)id_src);
         for (uint i = 0; i < 3 * p.num_sh; i++)
-            p.features_sh[3 * p.num_sh * id_dst + i] =
-                p.features_sh[3 * p.num_sh * id_src + i];
+            sh_dst[i] = sh_src[i];
     }
 
     // set grad to zero
@@ -1116,9 +1128,12 @@ void densify_mcmc_update_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.g2_opacs[id_dst] = 0.0f;
     }
     if (kShOptimBits == 0) {
+        gindex_t off = (gindex_t)(3u * p.num_sh) * (gindex_t)id_dst;
+        float* g1 = elem_at(p.g1_sh, off);
+        float* g2 = elem_at(p.g2_sh, off);
         for (uint i = 0; i < 3 * p.num_sh; i++) {
-            p.g1_sh[3 * p.num_sh * id_dst + i] = 0.0f;
-            p.g2_sh[3 * p.num_sh * id_dst + i] = 0.0f;
+            g1[i] = 0.0f;
+            g2[i] = 0.0f;
         }
     } else {
         _dn_zero_qsh_splat(p.sh_packed, id_dst, p.num_sh, p.sh_quant_bounds,

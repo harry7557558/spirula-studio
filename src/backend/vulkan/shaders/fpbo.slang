@@ -143,6 +143,8 @@ float _fp_sigmoid(float x) { return 1.0f / (1.0f + exp(-x)); }
 void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
     FpboParams p, PbSplat s, uint gid, int cid_0, int cid_1, gindex_t qbase,
     gindex_t vstride, gindex_t vpitch, inout PbGrads g) {
+    const gindex_t sh_row = (gindex_t)(3u * p.num_sh_buffer) * (gindex_t)gid;
+    float* sh_fp32 = elem_at(p.features_sh, sh_row);
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
         // Packed: the forward emits (gaussian, camera) order, so cid_t is
         // the out_idx that indexes aabb / camera_ids / vs_screen.
@@ -158,7 +160,7 @@ void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
             float v_so = scrg_opac(v_row);
             float3 v_rgb = scrg_rgb(v_row);
             pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, v_ss, v_so, g);
-            pb_sh_vjp<D>(s, c, p.features_sh + gid * 3 * p.num_sh_buffer,
+            pb_sh_vjp<D>(s, c, sh_fp32,
                          p.sh_value_packed, p.sh_value_bounds, qbase,
                          vstride, vpitch, v_rgb, g);
         } else {
@@ -170,7 +172,7 @@ void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
             float3 v_rgb = scr2_rgb(v_row);
             pb_vjp_2d<cam, D>(s, c, p.width, p.height, v_xy, v_depth, v_conic,
                               v_opac, g);
-            pb_sh_vjp<D>(s, c, p.features_sh + gid * 3 * p.num_sh_buffer,
+            pb_sh_vjp<D>(s, c, sh_fp32,
                          p.sh_value_packed, p.sh_value_bounds, qbase,
                          vstride, vpitch, v_rgb, g);
         }
@@ -545,9 +547,12 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         // fp32 SH state + values (no barriers below: early-out is safe).
         if (!inside)
             return;
-        uint sh_off = gid * 3u * p.num_sh_buffer;
+        gindex_t sh_off = (gindex_t)gid * (gindex_t)(3u * p.num_sh_buffer);
+        float* sh_v = elem_at(p.features_sh, sh_off);
+        float* sh_g1 = elem_at(p.g1_sh, sh_off);
+        float* sh_g2 = elem_at(p.g2_sh, sh_off);
         for (int i = 0; i < 3 * num_sh; ++i) {
-            float sh_coeff = p.features_sh[sh_off + uint(i)];
+            float sh_coeff = sh_v[i];
             float v_sh_coeff =
                 g.v_sh[i / 3][i % 3] + reg_weight * sh_coeff;
             const int ch = i % 3;
@@ -556,9 +561,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                                             : c_dc.z;
                 v_sh_coeff /= linear_rgb_to_srgb_grad(c_ch);
             }
-            float g1 = kFpboBeta1 * p.g1_sh[sh_off + uint(i)] +
+            float g1 = kFpboBeta1 * sh_g1[i] +
                        (1.0f - kFpboBeta1) * v_sh_coeff;
-            float g2 = kFpboBeta2 * p.g2_sh[sh_off + uint(i)] +
+            float g2 = kFpboBeta2 * sh_g2[i] +
                        (1.0f - kFpboBeta2) * v_sh_coeff * v_sh_coeff;
             float delta = -lr_sh * g1 /
                           (sqrt(max(g2 * ibc2, 0.0f)) + kFpboEps);
@@ -568,9 +573,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 delta = clamp(delta, -clip, clip);
                 delta = isfinite(delta) ? delta : 0.0f;
             }
-            p.features_sh[sh_off + uint(i)] = sh_coeff + delta;
-            p.g1_sh[sh_off + uint(i)] = g1;
-            p.g2_sh[sh_off + uint(i)] = g2;
+            sh_v[i] = sh_coeff + delta;
+            sh_g1[i] = g1;
+            sh_g2[i] = g2;
         }
         return;
     }
@@ -609,7 +614,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 for (int ch = 0; ch < 3; ch++) {
                     float2 ab = qadam_decode_g1g2<8>(
                         p.sh_packed,
-                        uint(sh_cell_at_w(sh_base, 3 * j + ch, shq.pair_pitch)),
+                        sh_cell_at_w(sh_base, 3 * j + ch, shq.pair_pitch),
                         quant_bounds);
                     g1v[ch] = ab.x;
                     g2v[ch] = ab.y;
@@ -619,7 +624,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 for (int ch = 0; ch < 3; ch++)
                     sh_coeff[ch] = qtensor_decode_v<16>(
                         p.sh_value_packed,
-                        uint(sh_cell_at_w(sh_base, 3 * j + ch, shq.pair_pitch)),
+                        sh_cell_at_w(sh_base, 3 * j + ch, shq.pair_pitch),
                         sh_value_old_mm);
                 float3 v_sh_coeff = float3(g.v_sh[j].x, g.v_sh[j].y,
                                            g.v_sh[j].z) +
@@ -691,8 +696,12 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint2 q0 = qadam_quantize_us<8>(us0.x, us0.y, mm);
         const uint warm_st = q0.x | (q0.y << 8);
         const uint warm_vv = qtensor_quantize_v<16>(0.0f, sh_value_new_mm);
+        // sh_base is even in this layout, so the two word pointers are
+        // exact; the walk off them stays 32-bit past 2^32 cells.
+        uint* wp_s = elem_at(p.sh_packed, sh_base >> 1);
+        uint* wp_v = elem_at(p.sh_value_packed, sh_base >> 1);
         if (inside) {
-            uint pend_s = 0, pend_v = 0, w = uint(sh_base >> 1);
+            uint pend_s = 0, pend_v = 0, w = 0u;
             for (int j = 0; j < num_sh; ++j) {
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ++ch) {
@@ -705,8 +714,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                         pend_s = st;
                         pend_v = vv;
                     } else {
-                        p.sh_packed[w] = pend_s | (st << 16);
-                        p.sh_value_packed[w] = pend_v | (vv << 16);
+                        wp_s[w] = pend_s | (st << 16);
+                        wp_v[w] = pend_v | (vv << 16);
                         w += 256u;
                     }
                 }
@@ -720,8 +729,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                     pend_s = warm_st;
                     pend_v = warm_vv;
                 } else {
-                    p.sh_packed[w] = pend_s | (warm_st << 16);
-                    p.sh_value_packed[w] = pend_v | (warm_vv << 16);
+                    wp_s[w] = pend_s | (warm_st << 16);
+                    wp_v[w] = pend_v | (warm_vv << 16);
                     w += 256u;
                 }
             }

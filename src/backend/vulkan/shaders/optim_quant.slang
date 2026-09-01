@@ -1,20 +1,15 @@
 // Block-wise quantized-state codecs (Vulkan backend) mirroring the CUDA
 // device codecs in core/Tensor.h (QuantizedAdamState, QuantizedTensor) and
-// core/GradQuant.cuh (gradq::Codec<8>). All packed storage is read and
-// written as u32 WORDS (no 8/16-bit storage features; README rules). Cell
-// indices are u32 — launchers validate numel < 2^32.
+// core/GradQuant.cuh (gradq::Codec<8>). Packed storage is read and written
+// as u32 WORDS; cell indices are u32, plus a gindex_t overload on the
+// helpers the SH buffers reach (past 2^32 cells).
 //
-// Word-write cooperation: cells narrower than a word are assembled in
-// groupshared (_oq_pack) and stored as whole words by the lowest thread of
-// each word group. A 256-cell quant block always starts word-aligned, and
-// the up-to-3 tail bytes past the last cell land in the allocation's 4-byte
-// rounding (backend::device_malloc guarantees it). Unlike CUDA — which
-// leaves tail bytes untouched — the tail bytes inside the final word are
-// written as zero; nothing reads them.
+// Sub-word cells are assembled in groupshared (_oq_pack) and stored whole by
+// the lowest thread of each word group; a 256-cell block starts word-aligned
+// and the tail bytes fall in the allocation's 4-byte rounding, written as
+// zero where CUDA leaves them (nothing reads them).
 //
-// log1p/expm1 use the classic compensated forms, tracking CUDA's
-// log1pf/expm1f closely but not bit-exactly; parity tests allow +-1
-// quantization step on packed cells.
+// log1p/expm1 are compensated forms: parity allows +-1 step per cell.
 
 #include "int8_compat.slang"
 
@@ -134,8 +129,23 @@ uint2 qadam_read_q<let BITS : int>(uint* packed, uint idx) {
 }
 
 [ForceInline]
-float2 qadam_decode_us<let BITS : int>(uint* packed, uint idx, float4 mm) {
-    uint2 q = qadam_read_q<BITS>(packed, idx);
+uint2 qadam_read_q<let BITS : int>(uint* packed, gindex_t idx) {
+    if (BITS == 16) {
+        uint w = elem_at(packed, idx)[0];
+        return uint2(w & 0xffffu, w >> 16);
+    } else if (BITS == 8) {
+        uint w = elem_at(packed, idx >> 1)[0];
+        uint h = (w >> (16u * (uint(idx) & 1u))) & 0xffffu;
+        return uint2(h & 0xffu, h >> 8);
+    } else {  // BITS == 4
+        uint w = elem_at(packed, idx >> 2)[0];
+        uint b = (w >> (8u * (uint(idx) & 3u))) & 0xffu;
+        return uint2(b & 0xfu, b >> 4);
+    }
+}
+
+[ForceInline]
+float2 _qadam_us_of<let BITS : int>(uint2 q, float4 mm) {
     float inv = 1.0f / qadam_qmax<BITS>();
     // See core/Tensor.h decode_us: a non-finite bound would decode all 256 of
     // the block's cells to NaN, and nothing later undoes that.
@@ -146,10 +156,26 @@ float2 qadam_decode_us<let BITS : int>(uint* packed, uint idx, float4 mm) {
 }
 
 [ForceInline]
-float2 qadam_decode_g1g2<let BITS : int>(uint* packed, uint idx, float4 mm) {
-    float2 prim = qadam_decode_us<BITS>(packed, idx, mm);
+float2 _qadam_g1g2_of(float2 prim) {
     float sqrt_g2 = kAdamEps * _oq_expm1(prim.y);
     return float2(prim.x * (sqrt_g2 + kAdamEps), sqrt_g2 * sqrt_g2);
+}
+
+[ForceInline]
+float2 qadam_decode_us<let BITS : int>(uint* packed, uint idx, float4 mm) {
+    return _qadam_us_of<BITS>(qadam_read_q<BITS>(packed, idx), mm);
+}
+
+[ForceInline]
+float2 qadam_decode_g1g2<let BITS : int>(uint* packed, uint idx, float4 mm) {
+    return _qadam_g1g2_of(qadam_decode_us<BITS>(packed, idx, mm));
+}
+
+[ForceInline]
+float2 qadam_decode_g1g2<let BITS : int>(uint* packed, gindex_t idx,
+                                         float4 mm) {
+    return _qadam_g1g2_of(
+        _qadam_us_of<BITS>(qadam_read_q<BITS>(packed, idx), mm));
 }
 
 // (g1, g2) -> linearly-quantized primitives (u, log_s); the block bounds
@@ -210,6 +236,18 @@ float qtensor_decode_v<let BITS : int>(uint* packed, uint idx, float2 mm) {
     if (BITS == 16) {
         uint w = packed[idx >> 1];
         q = float((w >> (16u * (idx & 1u))) & 0xffffu);
+    } else {  // BITS == 8
+        q = float(u8_load(packed, idx));
+    }
+    return mm.x + (mm.y - mm.x) * (q / float((1 << BITS) - 1));
+}
+
+[ForceInline]
+float qtensor_decode_v<let BITS : int>(uint* packed, gindex_t idx, float2 mm) {
+    float q;
+    if (BITS == 16) {
+        uint w = elem_at(packed, idx >> 1)[0];
+        q = float((w >> (16u * (uint(idx) & 1u))) & 0xffffu);
     } else {  // BITS == 8
         q = float(u8_load(packed, idx));
     }
@@ -330,6 +368,19 @@ void vkq_store_u16(uint* packed, uint idx, uint h) {  // idx in halfwords
 
 [ForceInline]
 void vkq_store_u8(uint* packed, uint idx, uint b) {  // idx in bytes
+    u8_store(packed, idx, b);
+}
+
+[ForceInline]
+void vkq_store_u16(uint* packed, gindex_t idx, uint h) {
+    uint shift = 16u * (uint(idx) & 1u);
+    uint* w = elem_at(packed, idx >> 1);
+    InterlockedAnd(w[0], ~(0xffffu << shift));
+    InterlockedOr(w[0], (h & 0xffffu) << shift);
+}
+
+[ForceInline]
+void vkq_store_u8(uint* packed, gindex_t idx, uint b) {
     u8_store(packed, idx, b);
 }
 

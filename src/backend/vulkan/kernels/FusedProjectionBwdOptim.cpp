@@ -103,9 +103,6 @@ void launch_fpbo_vk(
     const int buf_sh_deg = wb.sh_degree();
     const uint32_t num_sh_buffer = (uint32_t)(buf_sh_deg * (buf_sh_deg + 2));
     int sh_degree = std::min(buf_sh_deg, max_sh_degree);
-    if ((uint64_t)3 * num_sh_buffer * (uint64_t)N > UINT32_MAX)
-        throw std::runtime_error(
-            "fused_projection_bwd_optimizer: SH cell count exceeds 2^32");
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
     const bool packed = (camera_ids.data_ptr() && gaussian_ids.data_ptr());
