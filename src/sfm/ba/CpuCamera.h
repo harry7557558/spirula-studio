@@ -139,6 +139,7 @@ template <int N> inline Jet<N> atan2(const Jet<N>& y, const Jet<N>& x) {
 
 struct SnavelyModel {
     static constexpr int kNumIntr = 3;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& f_log = c[0];
         const T& k1 = c[1];
@@ -155,6 +156,7 @@ struct SnavelyModel {
 
 struct SnavelyFModel {
     static constexpr int kNumIntr = 3;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& f = c[0];
         const T& k1 = c[1];
@@ -170,6 +172,7 @@ struct SnavelyFModel {
 
 struct PinholeRadialModel {
     static constexpr int kNumIntr = 5;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& f = c[0];
         const T& k1 = c[1];
@@ -187,6 +190,7 @@ struct PinholeRadialModel {
 
 struct SimplePinholeModel {
     static constexpr int kNumIntr = 3;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         out[0] = c[0] * (p[0] / p[2]) + c[1];
         out[1] = c[0] * (p[1] / p[2]) + c[2];
@@ -195,6 +199,7 @@ struct SimplePinholeModel {
 
 struct PinholeModel {
     static constexpr int kNumIntr = 4;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         out[0] = c[0] * (p[0] / p[2]) + c[2];
         out[1] = c[1] * (p[1] / p[2]) + c[3];
@@ -203,6 +208,7 @@ struct PinholeModel {
 
 struct OpenCVModel {
     static constexpr int kNumIntr = 8;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& fx = c[0];
         const T& fy = c[1];
@@ -225,6 +231,7 @@ struct OpenCVModel {
 
 struct FisheyeModel {
     static constexpr int kNumIntr = 8;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& fx = c[0];
         const T& fy = c[1];
@@ -246,6 +253,7 @@ struct FisheyeModel {
 
 struct FullOpenCVModel {
     static constexpr int kNumIntr = 12;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& fx = c[0];
         const T& fy = c[1];
@@ -273,6 +281,7 @@ struct FullOpenCVModel {
 
 struct ThinPrismFisheyeModel {
     static constexpr int kNumIntr = 12;
+    static constexpr bool kPeriodicX = false;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& fx = c[0];
         const T& fy = c[1];
@@ -302,6 +311,7 @@ struct ThinPrismFisheyeModel {
 
 struct EquirectModel {
     static constexpr int kNumIntr = 2;
+    static constexpr bool kPeriodicX = true;
     template <class T> static void project(const T* c, const T p[3], T out[2]) {
         const T& w = c[0];
         const T& h = c[1];
@@ -389,6 +399,11 @@ inline void residual(const double pose[6], const double* intr, const double X[3]
     for (int i = 0; i < 3; i++) p[i] += pose[3 + i];
     M::template project<double>(intr, p, px);
     r[0] = px[0] - obs[0];
+    if constexpr (M::kPeriodicX) {
+        const double half = 0.5 * intr[0];
+        if (r[0] > half) r[0] -= intr[0];
+        else if (r[0] < -half) r[0] += intr[0];
+    }
     r[1] = px[1] - obs[1];
 }
 
@@ -434,21 +449,28 @@ inline void jacobian(const double pose[6], const double* intr, const double X[3]
     for (int i = 0; i < NI; i++) ic[i] = Jet<NP>::var(intr[i], 3 + i);
     M::template project<Jet<NP>>(ic, pc, px);
 
+    Jet<NP> rr[2] = {px[0] - obs[0], px[1] - obs[1]};
+    if constexpr (M::kPeriodicX) {
+        const double half = 0.5 * intr[0];
+        if (rr[0].a > half) rr[0] = rr[0] - ic[0];
+        else if (rr[0].a < -half) rr[0] = rr[0] + ic[0];
+    }
+
     for (int row = 0; row < 2; row++) {
-        r[row] = px[row].a - obs[row];
+        r[row] = rr[row].a;
         double* jc = Jc + row * DOF;
         double* jp = Jp + row * 3;
         for (int j = 0; j < 3; j++) {
             double da = 0, dx = 0;
             for (int k = 0; k < 3; k++) {
-                da += px[row].d[k] * pj[k].d[j];
-                dx += px[row].d[k] * R[3 * k + j];
+                da += rr[row].d[k] * pj[k].d[j];
+                dx += rr[row].d[k] * R[3 * k + j];
             }
             jc[j] = da;
-            jc[3 + j] = px[row].d[j];
+            jc[3 + j] = rr[row].d[j];
             jp[j] = dx;
         }
-        for (int i = 0; i < NI; i++) jc[6 + i] = px[row].d[3 + i];
+        for (int i = 0; i < NI; i++) jc[6 + i] = rr[row].d[3 + i];
     }
 }
 

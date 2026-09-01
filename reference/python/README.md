@@ -7,6 +7,7 @@ behaviour that has not been ported, and tools you run by hand.
 | file | what it is |
 |---|---|
 | [eval_lpips.py](eval_lpips.py) | Adds LPIPS to a run's `metrics.json`. `spirula train --save-eval-images 1` writes `eval-gt-*.png` / `eval-render-*.png` pairs and scores everything except LPIPS natively; this reads those PNGs and fills in `lpips_alex`, `lpips_vgg` and their `cc_` variants. Needs only torch + torchmetrics + pillow — the colour correction is reproduced in the file, so `fused_bilagrid` is not required. |
+| [equirect_ba_periodicity.ipynb](equirect_ba_periodicity.ipynb) | Demonstrates periodic equirectangular BA residuals, runs the native CPU/Vulkan seam regression, and provides a CLI harness for a real COLMAP sparse model. |
 
 ## Why LPIPS is not native
 
