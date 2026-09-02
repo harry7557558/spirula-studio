@@ -200,7 +200,9 @@ These are load-bearing; see `src/nn/vk/README.md` for the device baseline.
 5. Grids cap at 65535 per dimension. Long flat ranges fold across `y`
    (`Stream::fold1D` + `fold_index`); a kernel that keeps out-of-range threads
    alive for a groupshared reduction must gate its block-indexed writes,
-   because the last folded row is padding.
+   because the last folded row is padding. GEMM's row tiles hit the same cap at
+   4.2 M rows — a full-resolution 1x1 conv over a 2048x2048 map — and split
+   into several dispatches on shifted pointers rather than folding.
 6. Reductions use a deterministic groupshared tree, not wave intrinsics, so
    wave32 and wave64 devices agree bit for bit.
 

@@ -164,6 +164,32 @@ void test_gemm(vk::Arena& arena) {
         check(c.name, readback(to), want, 2e-4f);
     }
 
+    // Past 65535 row tiles of 64 the dispatch splits; +3 rows leaves a ragged
+    // tail on the far side of the split. A 2048x2048 ALIKED map is this shape.
+    {
+        vk::ArenaScope scope(arena);
+        const int64_t M = 65535ll * 64 + 3;
+        const int N = 2, K = 2;
+        auto x = randn((size_t)M * K);
+        auto w = randn((size_t)N * K, 0.1f);
+        auto b = randn((size_t)N);
+
+        Tensor to = arena_tensor(arena, DType::F32, M, N);
+        LinearOpts o;
+        o.bias = upload_f32(arena, b, N);
+        linear(to, upload_f32(arena, x, M, K), upload_f32(arena, w, N, K), o);
+
+        std::vector<float> want((size_t)M * N);
+        for (int64_t m = 0; m < M; ++m)
+            for (int n = 0; n < N; ++n) {
+                double s = 0;
+                for (int k = 0; k < K; ++k)
+                    s += (double)x[(size_t)m * K + k] * w[(size_t)n * K + k];
+                want[(size_t)m * N + n] = (float)s + b[n];
+            }
+        check("gemm 4.2M rows", readback(to), want, 2e-4f);
+    }
+
     // fp16 weights: the normal path for checkpoint tensors.
     {
         vk::ArenaScope scope(arena);

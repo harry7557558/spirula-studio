@@ -201,6 +201,7 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
     std::vector<std::string> errors(n);
     std::vector<char> ready(n, 0);
     std::atomic<size_t> next_claim{0};
+    std::atomic<bool> stop{false};
     size_t next_consume = 0;  // guarded by mtx
     std::mutex mtx;
     std::condition_variable cv_ready, cv_window;
@@ -211,11 +212,14 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         workers.emplace_back([&] {
             for (;;) {
                 size_t i = next_claim.fetch_add(1);
-                if (i >= n) return;
+                if (i >= n || stop) return;
                 {   // decode-ahead gate: keep the in-flight set bounded
                     std::unique_lock<std::mutex> lk(mtx);
-                    cv_window.wait(lk, [&] { return i < next_consume + (size_t)plan.window; });
+                    cv_window.wait(lk, [&] {
+                        return stop || i < next_consume + (size_t)plan.window;
+                    });
                 }
+                if (stop) return;
                 GrayImage img;
                 std::string err;
                 decodeOne(i, img, err);
@@ -230,25 +234,42 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         });
     }
 
-    for (size_t i = 0; i < n; i++) {
-        GrayImage img;
-        std::string err;
+    // A throwing consumer must not unwind past `workers`: destroying a joinable
+    // thread calls terminate, which on MSVC exits 0xC0000409 with no message
+    // and no chance for the caller's catch to print the real error.
+    auto join_workers = [&] {
         {
-            std::unique_lock<std::mutex> lk(mtx);
-            cv_ready.wait(lk, [&] { return ready[i] != 0; });
-            img = std::move(slots[i]);
-            slots[i] = GrayImage();  // release the window slot immediately
-            err = std::move(errors[i]);
-            next_consume = i + 1;
+            std::lock_guard<std::mutex> lk(mtx);
+            stop = true;
         }
         cv_window.notify_all();
-        if (!err.empty()) {
-            if (on_error) on_error(i, err);
-            continue;
+        for (std::thread& w : workers) w.join();
+    };
+
+    try {
+        for (size_t i = 0; i < n; i++) {
+            GrayImage img;
+            std::string err;
+            {
+                std::unique_lock<std::mutex> lk(mtx);
+                cv_ready.wait(lk, [&] { return ready[i] != 0; });
+                img = std::move(slots[i]);
+                slots[i] = GrayImage();  // release the window slot immediately
+                err = std::move(errors[i]);
+                next_consume = i + 1;
+            }
+            cv_window.notify_all();
+            if (!err.empty()) {
+                if (on_error) on_error(i, err);
+                continue;
+            }
+            consume(i, img);
         }
-        consume(i, img);
+    } catch (...) {
+        join_workers();
+        throw;
     }
-    for (std::thread& w : workers) w.join();
+    join_workers();
 }
 
 }  // namespace sfm

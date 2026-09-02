@@ -850,6 +850,21 @@ int cmdSelftest(int argc, char** argv) {
         printf("  decode error handling: %zu ok / %zu failed -> %s\n", got, errs,
                skip_ok ? "ok" : "BAD");
         if (!skip_ok) fails++;
+
+        // A consumer that throws has to reach the caller. Unwinding past the
+        // still-joinable decode threads instead calls terminate, which on MSVC
+        // exits 0xC0000409 with the real error never printed.
+        bool threw = false;
+        ImageLoadPlan pl3 = planImageLoad(dims, lo);
+        try {
+            loadImagesInOrder(paths, pl3, lo, [&](size_t k, GrayImage&) {
+                if (k == 3) throw std::runtime_error("consumer");
+            });
+        } catch (const std::exception&) {
+            threw = true;
+        }
+        printf("  throwing consumer propagates -> %s\n", threw ? "ok" : "BAD");
+        if (!threw) fails++;
         fs::remove_all(dir);
     }
 
