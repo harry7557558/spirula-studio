@@ -1404,6 +1404,49 @@ SS_MSG(opt_ppisp_help,
        "pozlama / beyaz dengesi değişimleri için uygundur. İşareti kaldırmak "
        "eğitimi hızlandırır."));
 
+SS_MSG(opt_distraction_warn,
+    EN("Only enable distractor robustness for captures where people, vehicles "
+       "or anything else moves between the photos and are not masked. On a "
+       "clean capture it costs detail and gains nothing."),
+    JA("「写り込みへの強さ」は、写真の間で人や車などが動き、それがマスクで"
+       "除かれていない撮影のときだけ有効にしてください。きれいな撮影では、"
+       "細部が失われるだけで効果はありません。"),
+    ZH_HANS("只有当照片之间有行人、车辆等在移动，而且没有被蒙版遮住时，才开启"
+            "“干扰物鲁棒性”。拍摄本身干净时，它只会损失细节而没有好处。"),
+    ZH_HANT("只有當相片之間有行人、車輛等在移動，而且沒有被遮罩擋住時，才開啟"
+            "「干擾物穩健度」。拍攝本身乾淨時，它只會損失細節而沒有好處。"),
+    KO("사진 사이에 사람이나 차량 등이 움직이고 그것이 마스크로 가려져 있지 "
+       "않은 촬영에서만 방해물 견고성을 켜세요. 깨끗한 촬영에서는 디테일만 "
+       "잃고 얻는 것이 없습니다."),
+    DE("\"Robustheit gegen Störobjekte\" nur für Aufnahmen einschalten, in "
+       "denen sich Personen, Fahrzeuge oder anderes zwischen den Fotos "
+       "bewegen und nicht maskiert sind. Bei einer sauberen Aufnahme kostet "
+       "es Details und bringt nichts."),
+    FR("N'activez « Robustesse aux intrus » que pour les prises de vue où des "
+       "passants, des véhicules ou autre chose bougent d'une photo à l'autre "
+       "sans être masqués. Sur une prise de vue propre, cela coûte du détail "
+       "sans rien apporter."),
+    ES("Activa «Robustez ante elementos molestos» solo en capturas donde "
+       "personas, coches u otra cosa se mueven entre las fotos y no están "
+       "enmascarados. En una captura limpia cuesta detalle y no aporta nada."),
+    PT("Ative «Robustez a elementos indesejados» apenas em capturas em que "
+       "pessoas, veículos ou outra coisa se movem entre as fotos e não estão "
+       "mascarados. Em uma captura limpa, custa detalhe e não traz nada."),
+    IT("Attiva «Robustezza agli elementi di disturbo» solo per riprese in cui "
+       "persone, veicoli o altro si muovono da una foto all'altra e non sono "
+       "mascherati. Su una ripresa pulita costa dettaglio e non porta nulla."),
+    NL("Zet \"Bestandheid tegen stoorelementen\" alleen aan bij opnamen waarin "
+       "mensen, voertuigen of iets anders tussen de foto's beweegt en niet "
+       "gemaskeerd is. Bij een schone opname kost het detail en levert het "
+       "niets op."),
+    RU("Включайте «Устойчивость к помехам» только для съёмок, где между "
+       "снимками движутся люди, машины или что-то ещё и они не скрыты маской. "
+       "На чистой съёмке это лишь снижает детализацию и ничего не даёт."),
+    TR("\"İstenmeyen nesnelere dayanıklılık\" seçeneğini yalnızca fotoğraflar "
+       "arasında insanların, araçların ya da başka bir şeyin hareket ettiği "
+       "ve maskelenmediği çekimlerde açın. Temiz bir çekimde ayrıntı "
+       "kaybettirir, karşılığında bir şey vermez."));
+
 // ---- controls ----
 SS_MSG(training_complete,
     EN("Training complete."),

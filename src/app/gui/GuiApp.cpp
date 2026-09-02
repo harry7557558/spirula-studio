@@ -5085,6 +5085,8 @@ void GuiApp::draw_basic_options() {
     macro_option("distraction_robustness", _cfg.distraction_robustness,
                  fld::distraction_robustness, fld::distraction_robustness_help,
                  {"off", "mild", "strong"});
+    if (_cfg.distraction_robustness != "off")
+        ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
 }
 
 void GuiApp::draw_train_controls() {
