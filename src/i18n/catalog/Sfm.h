@@ -730,6 +730,32 @@ SS_MSG(match_camera_mode_switched,
     TR("Farklı kare boyutu: {0} adet, {1} görüntüde -- bu tek bir kameranın çekimi değil, "
        "bir fotoğraf derlemesi. --camera-mode folder bunu geçersiz kılar."));
 
+SS_MSG(match_camera_size_split,
+    EN("Camera groups split by frame size: {0} -- images of different sizes "
+       "cannot share one camera."),
+    JA("フレームサイズで分割したカメラのまとまり: {0}。サイズの違う画像は1台のカメラを"
+       "共有できません。"),
+    ZH_HANS("按画幅尺寸拆分的相机分组: {0}——尺寸不同的图像无法共用一台相机。"),
+    ZH_HANT("按畫幅尺寸拆分的相機分組: {0}——尺寸不同的影像無法共用一台相機。"),
+    KO("프레임 크기로 나뉜 카메라 묶음: {0} -- 크기가 다른 이미지는 카메라 하나를 "
+       "함께 쓸 수 없습니다."),
+    DE("Nach Bildgröße aufgeteilte Kameragruppen: {0} -- Bilder verschiedener "
+       "Größe können sich keine Kamera teilen."),
+    FR("Groupes de caméras séparés par taille d'image : {0} -- des images de "
+       "tailles différentes ne peuvent pas partager une caméra."),
+    ES("Grupos de cámaras separados por tamaño de fotograma: {0}: imágenes de "
+       "distinto tamaño no pueden compartir una cámara."),
+    PT("Grupos de câmeras separados por tamanho de quadro: {0} -- imagens de "
+       "tamanhos diferentes não podem compartilhar uma câmera."),
+    IT("Gruppi di fotocamere separati per dimensione del fotogramma: {0}: "
+       "immagini di dimensioni diverse non possono condividere una fotocamera."),
+    NL("Cameragroepen gesplitst op beeldformaat: {0} -- afbeeldingen van "
+       "verschillend formaat kunnen geen camera delen."),
+    RU("Групп камер, разделённых по размеру кадра: {0} — изображения разных "
+       "размеров не могут использовать одну камеру."),
+    TR("Kare boyutuna göre ayrılan kamera grubu sayısı: {0} -- farklı boyuttaki "
+       "görüntüler tek bir kamerayı paylaşamaz."));
+
 SS_MSG(match_exif_focals,
     EN("Images carrying an EXIF focal length: {0}/{1}"),
     JA("EXIFに焦点距離がある画像: {0}/{1}"),

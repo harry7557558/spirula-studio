@@ -725,19 +725,35 @@ int DatasetPrep::count_images(const std::string& dir, const std::string& skip) {
     return (int)walk_images(dir, skip).size();
 }
 
-bool DatasetPrep::first_image_dims(const std::string& dir, int& W, int& H) {
-    for (const fs::path& f : walk_images(dir)) {
-        int c = 0;
-        if (exr::is_exr(f.string())) {
-            exr::Info info;
-            if (!exr::probe(f.string(), info).empty()) continue;
-            W = info.width;
-            H = info.height;
-            return true;
-        }
-        if (stbi_info(f.string().c_str(), &W, &H, &c) != 0) return true;
+// Pixel size from the header alone, no decode.
+static bool probe_dims(const fs::path& f, int& W, int& H) {
+    if (exr::is_exr(f.string())) {
+        exr::Info info;
+        if (!exr::probe(f.string(), info).empty()) return false;
+        W = info.width;
+        H = info.height;
+        return true;
     }
+    int c = 0;
+    return stbi_info(f.string().c_str(), &W, &H, &c) != 0;
+}
+
+bool DatasetPrep::first_image_dims(const std::string& dir, int& W, int& H) {
+    for (const fs::path& f : walk_images(dir))
+        if (probe_dims(f, W, H)) return true;
     return false;
+}
+
+std::vector<DatasetPrep::ImageSize> DatasetPrep::image_sizes(
+        const std::string& dir, const std::string& skip) {
+    std::vector<ImageSize> out;
+    for (const fs::path& f : walk_images(dir, skip)) {
+        ImageSize s;
+        s.name = under_root(f, dir).generic_string();
+        if (!probe_dims(f, s.w, s.h)) s.w = s.h = 0;
+        out.push_back(std::move(s));
+    }
+    return out;
 }
 
 void DatasetPrep::log(const std::string& s, bool detail) {

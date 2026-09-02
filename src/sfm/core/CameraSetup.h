@@ -196,6 +196,9 @@ struct CameraSetup {
     size_t exif_focal_images = 0;               // images that carried an EXIF focal
     size_t exif_camera_images = 0;              // images that carried an EXIF identity
     size_t dim_buckets = 0;                     // distinct frame sizes, 2% tolerance
+    // Groups --camera-mode asked for that hold more than one frame size, and
+    // were therefore split further.
+    size_t size_split_groups = 0;
     CameraMode mode_used = CameraMode::Folder;  // after any automatic switch
     bool mode_switched = false;                 // ... and whether there was one
 
@@ -361,25 +364,32 @@ inline CameraSetup buildCameras(const std::vector<ImageEntry>& images,
     // EXIF split needs all of a group's focals before it can say which of them
     // are the same lens setting, so it happens between the passes.
     std::vector<std::string> base_key(images.size());
+    std::map<std::string, std::set<size_t>> group_sizes;  // mode key -> buckets
     for (size_t i = 0; i < images.size(); i++) {
         const std::string& name = images[i].name;
         const CameraOverride* ovr = detail::cameraOverrideFor(name, opt.overrides);
+        const size_t bucket = dimBucket(feats[i].width, feats[i].height);
         char dims[64];
-        snprintf(dims, sizeof dims, "r%zu", dimBucket(feats[i].width, feats[i].height));
-        std::string key;
+        snprintf(dims, sizeof dims, "r%zu", bucket);
+        std::string key, group;
         switch (mode) {
             case CameraMode::Single: key = dims; break;
             case CameraMode::Image:  key = name; break;
             // The *full* relative parent path, so nested sub-folders are
             // distinct cameras (images/rig/cam0 != images/rig/cam1 !=
             // images/rig), which is how per-camera captures are laid out.
-            case CameraMode::Folder: key = detail::parentPath(name) + "|" + dims; break;
+            case CameraMode::Folder: group = detail::parentPath(name);
+                                     key = group + "|" + dims; break;
         }
+        if (mode != CameraMode::Image) group_sizes[group].insert(bucket);
         // An override splits the group it names off from everything else even
         // when the mode would have merged them (one folder holding two lenses).
         if (ovr && !ovr->prefix.empty()) key += "|@" + ovr->prefix;
         base_key[i] = key;
     }
+
+    for (const auto& kv : group_sizes)
+        if (kv.second.size() > 1) out.size_split_groups++;
 
     // Cluster each base group's EXIF focals independently: the question "is
     // this the same lens setting as that?" is only meaningful among images that

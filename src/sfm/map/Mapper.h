@@ -762,9 +762,13 @@ public:
     // mapper held now released: the principal point (D51) and the distortion
     // coefficients (D72). See src/sfm/README.md, "The finishing passes".
     Reconstruction polish(const Reconstruction& m, bool free_pp = true, bool free_extra = false) {
+        // This run's grouping, not the model's ids: a model read back from disk
+        // carries one camera per frame size (splitCamerasBySize).
         std::set<uint32_t> groups;
         for (const auto& kv : m.images)
-            if (kv.second.registered) groups.insert(kv.second.camera_id);
+            if (kv.second.registered)
+                groups.insert(kv.first < cam_ids_.size() ? cam_ids_[kv.first]
+                                                        : kv.second.camera_id);
         // Two groups or more and each principal point drifts its own way; the
         // difference is a real error in their relative orientation, which on a
         // dual-fisheye rig cost 21 points of AUC (D51).
@@ -1590,26 +1594,36 @@ private:
     // are then facts, not guesses), and its points re-added as fresh tracks.
     // Images the model does not hold keep the cleared state resetModel() left.
     void adopt(const Reconstruction& m) {
-        size_t cam_mismatch = 0, missing = 0, name_mismatch = 0, count_mismatch = 0;
+        size_t missing = 0, name_mismatch = 0, count_mismatch = 0;
         // point2D_idx is an index into this run's feature arrays, so a model
         // whose image holds a different number of keypoints indexes different
         // features -- what --compact-unused-features does on one side only.
         std::set<uint32_t> reindexed;
-        for (const auto& kv : m.cameras) {
-            rec_.cameras[kv.first] = kv.second;
-            // cameras.bin cannot carry pixel_scale (it says nothing about the
-            // lens), so an adopted model arrives with 1.0. Restore what the
-            // features say, or every threshold silently reverts to source
-            // pixels on --resume (D47).
-            auto d = default_cams_.find(kv.first);
-            if (d != default_cams_.end()) rec_.cameras[kv.first].pixel_scale = d->second.pixel_scale;
-            focal_known_.insert(kv.first);
+        // The file holds one camera per frame size; this run's grouping says what
+        // shares intrinsics, so the parameters land on the camera it gives the
+        // image. Frame and pixel_scale stay -- cameras.bin carries neither (D47).
+        std::set<uint32_t> adopted;
+        for (const auto& kv : m.images) {
+            if (!kv.second.registered) continue;
+            auto im = rec_.images.find(kv.first);
+            if (im == rec_.images.end()) continue;
+            auto mc = m.cameras.find(kv.second.camera_id);
+            auto cur = rec_.cameras.find(im->second.camera_id);
+            if (mc == m.cameras.end() || cur == rec_.cameras.end()) continue;
+            if (!adopted.insert(cur->first).second) continue;
+            const int w = cur->second.width, h = cur->second.height;
+            const double ps = cur->second.pixel_scale;
+            cur->second = mc->second;
+            cur->second.id = cur->first;
+            cur->second.width = w;
+            cur->second.height = h;
+            cur->second.pixel_scale = ps;
+            focal_known_.insert(cur->first);
         }
         for (const auto& kv : m.images) {
             if (!kv.second.registered) continue;
             auto it = rec_.images.find(kv.first);
             if (it == rec_.images.end()) { missing++; continue; }
-            if (it->second.camera_id != kv.second.camera_id) cam_mismatch++;
             // Image ids are positions in this database. A model from a
             // *different* database would adopt cleanly and silently reconstruct
             // nonsense, so the names are checked (the model's carry an
@@ -1658,10 +1672,9 @@ private:
                     "dropped, poses kept. Feature compaction on one side only does this; "
                     "--compact-unused-features has to match the run that wrote the model\n",
                     count_mismatch);
-        if ((missing || cam_mismatch) && opt_.verbose)
+        if (missing && opt_.verbose)
             fprintf(stderr,
-                    "[map] adopted model: %zu image(s) not in this database, %zu with a "
-                    "different camera group\n", missing, cam_mismatch);
+                    "[map] adopted model: %zu image(s) not in this database\n", missing);
     }
 
     // Sort, report and return. Split out only because run() has two exits.

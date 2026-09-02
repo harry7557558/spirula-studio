@@ -769,6 +769,39 @@ SS_MSG(one_camera_per_folder,
     TR("images/ her kamera için bir klasör içeriyor: klasör başına bir kameraya "
        "geçiliyor"));
 
+SS_MSG(colmap_split_frame_sizes,
+    EN("Images of several frame sizes share a camera group, which COLMAP cannot "
+       "do -- extracting one camera per size instead. Camera groups: {0}"),
+    JA("1つのカメラのまとまりに複数の画像サイズが混ざっています。COLMAP はこれを"
+       "扱えないため、サイズごとに1台のカメラとして特徴点を抽出します。"
+       "カメラのまとまり: {0}"),
+    ZH_HANS("同一相机分组里混有多种画幅尺寸，COLMAP 无法处理：改为每种尺寸一台相机"
+            "提取特征。相机分组: {0}"),
+    ZH_HANT("同一相機分組裡混有多種畫幅尺寸，COLMAP 無法處理：改為每種尺寸一台相機"
+            "擷取特徵。相機分組: {0}"),
+    KO("한 카메라 묶음에 여러 이미지 크기가 섞여 있습니다. COLMAP은 이렇게 하지 "
+       "못하므로 크기마다 카메라를 하나씩 두고 특징점을 추출합니다. 카메라 묶음: {0}"),
+    DE("In einer Kameragruppe stecken mehrere Bildgrößen, was COLMAP nicht kann "
+       "-- es wird stattdessen je Größe eine Kamera extrahiert. Kameragruppen: {0}"),
+    FR("Plusieurs tailles d'image se trouvent dans un même groupe de caméras, ce "
+       "que COLMAP ne sait pas faire : extraction avec une caméra par taille. "
+       "Groupes de caméras : {0}"),
+    ES("En un mismo grupo de cámaras hay varios tamaños de imagen, algo que "
+       "COLMAP no admite: se extrae con una cámara por tamaño. "
+       "Grupos de cámaras: {0}"),
+    PT("Um mesmo grupo de câmeras tem vários tamanhos de imagem, o que o COLMAP "
+       "não aceita: a extração usa uma câmera por tamanho. Grupos de câmeras: {0}"),
+    IT("In uno stesso gruppo di fotocamere ci sono più dimensioni di immagine, "
+       "cosa che COLMAP non ammette: l'estrazione usa una fotocamera per "
+       "dimensione. Gruppi di fotocamere: {0}"),
+    NL("Eén cameragroep bevat meerdere beeldformaten, wat COLMAP niet kan -- er "
+       "wordt per formaat één camera uitgelezen. Cameragroepen: {0}"),
+    RU("В одной группе камер оказались изображения разных размеров, чего COLMAP "
+       "не допускает: извлечение идёт по одной камере на размер. Групп камер: {0}"),
+    TR("Aynı kamera grubunda birden çok görüntü boyutu var; COLMAP bunu yapamaz, "
+       "bu yüzden her boyut için ayrı kamera ile çıkarım yapılıyor. "
+       "Kamera grubu sayısı: {0}"));
+
 SS_MSG(sfm_partial,
     EN("Note: only part of the capture reconstructed. It will still train, but "
        "expect gaps."),

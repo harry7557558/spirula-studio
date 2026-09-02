@@ -513,6 +513,51 @@ static void recolorPoints(std::vector<Reconstruction>& models, const SfmConfig& 
                                           cfg.image_is_linear);
 }
 
+// A COLMAP camera *is* a frame size, and grouping buckets sizes within 2%
+// (CameraSetup.h), so give each size in a group its own camera before writing.
+// The parameters stay the group's: the images shared them through BA.
+static void splitCamerasBySize(std::vector<Reconstruction>& models,
+                               const std::vector<FeatureSet>& feats) {
+    uint32_t next = 0;
+    for (const Reconstruction& rec : models)
+        for (const auto& kv : rec.cameras) next = std::max(next, kv.first);
+    // One id space over all the models: they overlap by design (D41), and a
+    // merge keeps the destination's camera for an id both sides use.
+    std::map<std::pair<uint32_t, uint64_t>, uint32_t> key2id;
+    std::set<uint32_t> kept;  // groups that a first size took the id of
+    for (Reconstruction& rec : models) {
+        std::map<uint32_t, Camera> cams;
+        for (auto& kv : rec.images) {
+            Image& im = kv.second;
+            if (!im.registered) continue;
+            auto c = rec.cameras.find(im.camera_id);
+            if (c == rec.cameras.end()) continue;
+            int w = c->second.width, h = c->second.height;
+            if (im.id < feats.size() && feats[im.id].width > 0 && feats[im.id].height > 0) {
+                w = feats[im.id].width;
+                h = feats[im.id].height;
+            }
+            const std::pair<uint32_t, uint64_t> key{
+                im.camera_id, ((uint64_t)(uint32_t)w << 32) | (uint32_t)h};
+            auto it = key2id.find(key);
+            if (it == key2id.end())
+                // The group keeps its id for the first size written with it, so
+                // a capture of one frame size writes what it always did.
+                it = key2id.emplace(
+                    key, kept.insert(im.camera_id).second ? im.camera_id : ++next).first;
+            if (!cams.count(it->second)) {
+                Camera nc = c->second;
+                nc.id = it->second;
+                nc.width = w;
+                nc.height = h;
+                cams[nc.id] = nc;
+            }
+            im.camera_id = it->second;
+        }
+        if (!cams.empty()) rec.cameras = std::move(cams);
+    }
+}
+
 // Write every reconstruction the mapper produced as <dir>/0, <dir>/1, ...
 // (D41). This is COLMAP's layout for a dataset that does not form one connected
 // view graph -- `sparse/0` is the model with the most 3D points, and the rest
@@ -843,6 +888,8 @@ static void printCameraSetup(Tag tag, const CameraSetup& cs,
     if (cs.mode_switched)
         L::err(tag, M::match_camera_mode_switched,
                {(long long)cs.dim_buckets, (long long)nimages});
+    if (cs.size_split_groups)
+        L::warn(tag, M::match_camera_size_split, {(long long)cs.size_split_groups});
     if (cs.exif_focal_images)
         L::err(tag, sopt.exif_focal ? M::match_exif_focals : M::match_exif_focals_ignored,
                {(long long)cs.exif_focal_images, (long long)nimages});
@@ -1794,6 +1841,7 @@ static int cmdMap(int argc, char** argv) {
     }
     orientModels(models, cfg.orient, opt.verbose);
     recolorPoints(models, cfg);
+    splitCamerasBySize(models, feats);
     if (!output.empty()) writeModels(models, output, opt.verbose);
     return 0;
 }
@@ -2102,6 +2150,10 @@ static int cmdAuto(int argc, char** argv) {
     resolveImageNames(models, imagedir);
     orientModels(models, cfg.orient, verbose);
     recolorPoints(models, cfg);
+    // Before the split: the summary reports what was estimated, and the file's
+    // one camera per frame size is not that.
+    const size_t n_cameras = models.empty() ? 0 : models.front().cameras.size();
+    splitCamerasBySize(models, feats);
     writeModels(models, sparsedir, verbose);
 
     // The mapper reports its own breakdown when `run()` returns; the passes
@@ -2129,7 +2181,7 @@ static int cmdAuto(int argc, char** argv) {
             (long long)mstats.inliers, (long long)mstats.putative});
     L::out(Tag::Run, M::sum_map,
            {L::num(t_map, 2), (long long)reg, (long long)est.images,
-            (long long)rec.points3D.size(), (long long)rec.cameras.size()});
+            (long long)rec.points3D.size(), (long long)n_cameras});
     printAssembly(ast, models.size(), Tag::Run);
     printFolderCoverage(models, db);
     L::out(Tag::Run, M::sum_total, {L::num(t_extract + t_match + t_map, 2)});

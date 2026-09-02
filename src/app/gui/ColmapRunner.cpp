@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <set>
 
 namespace fs = std::filesystem;
 namespace lmsg = spirula::i18n::msg::log;
@@ -77,6 +79,35 @@ std::string compose_camera_params(const std::string& model, double f,
 
 bool is_fisheye_model(const std::string& m) {
     return m.find("FISHEYE") != std::string::npos;
+}
+
+// The images one camera can cover: the folder --camera-mode asked for, split
+// by frame size, since a principal point is not shared across sizes.
+struct CameraGroup {
+    std::string folder;   // empty under one shared camera
+    int w = 0, h = 0;
+    std::vector<std::string> names;
+};
+
+std::vector<CameraGroup> camera_groups(
+        const std::vector<DatasetPrep::ImageSize>& images, bool per_folder) {
+    std::vector<CameraGroup> out;
+    for (const DatasetPrep::ImageSize& im : images) {
+        std::string folder;
+        if (per_folder) {
+            const size_t slash = im.name.find_last_of('/');
+            if (slash != std::string::npos) folder = im.name.substr(0, slash);
+        }
+        CameraGroup* g = nullptr;
+        for (CameraGroup& c : out)
+            if (c.folder == folder && c.w == im.w && c.h == im.h) { g = &c; break; }
+        if (!g) {
+            out.push_back(CameraGroup{folder, im.w, im.h, {}});
+            g = &out.back();
+        }
+        g->names.push_back(im.name);
+    }
+    return out;
 }
 
 // Registered-image count of a COLMAP model dir (uint64 head of images.bin;
@@ -385,75 +416,125 @@ void ColmapRunner::run(ColmapJob job) {
                           : job.quality == 1 ? 8192 : 16384);
             const std::string db = (ws / "database.db").string();
 
-            // An explicit ImageReader.camera_params wins; otherwise compose
-            // one from the focal factor. A good initial focal length stabilizes
-            // mapper initialization a lot, especially for fisheye lenses.
-            std::string cam_params = job.camera_params;
-            if (cam_params.empty() && job.init_focal_factor > 0) {
-                int W = 0, H = 0;
-                if (DatasetPrep::first_image_dims(images, W, H)) {
-                    cam_params = compose_camera_params(
-                        job.camera_model, (double)job.init_focal_factor * W,
-                        0.5 * W, 0.5 * H);
-                    if (cam_params.empty())
+            // An explicit ImageReader.camera_params wins; otherwise compose one
+            // from the focal factor per frame size -- the factor is a fraction
+            // of the width, so it describes a size and not the run.
+            auto add_camera_params = [&](std::vector<std::string>& fe,
+                                         int W, int H) {
+                std::string p = job.camera_params;
+                if (p.empty() && job.init_focal_factor > 0) {
+                    if (W <= 0) {
+                        log("warning: could not read an image size; skipping "
+                            "the initial focal length");
+                        return;
+                    }
+                    p = compose_camera_params(job.camera_model,
+                                              (double)job.init_focal_factor * W,
+                                              0.5 * W, 0.5 * H);
+                    if (p.empty()) {
                         log("warning: no camera_params template for " +
-                            job.camera_model + "; skipping the initial focal length");
-                    else
-                        log("Initial camera (" + job.camera_model + ", " +
-                            std::to_string(W) + "x" + std::to_string(H) +
-                            "): " + cam_params);
-                } else {
-                    log("warning: could not read an image size; skipping the "
-                        "initial focal length");
+                            job.camera_model +
+                            "; skipping the initial focal length");
+                        return;
+                    }
+                    log("Initial camera (" + job.camera_model + ", " +
+                        std::to_string(W) + "x" + std::to_string(H) + "): " + p);
                 }
+                if (p.empty()) return;
+                fe.push_back("--ImageReader.camera_params");
+                fe.push_back(p);
+            };
+
+            // COLMAP's ImageReader drops every image whose frame size differs
+            // from the first in its camera group -- one warning per image, exit
+            // code 0, half a capture missing. Split by size here instead.
+            std::vector<CameraGroup> groups;
+            size_t folders = 0;
+            if (job.camera_mode == 0 || job.camera_mode == 1) {
+                groups = camera_groups(
+                    DatasetPrep::image_sizes(images, prep.mask_dir),
+                    job.camera_mode == 1);
+                std::set<std::string> seen;
+                for (const CameraGroup& g : groups) seen.insert(g.folder);
+                folders = seen.size();
             }
+            const bool split_sizes = groups.size() > folders;
+            if (split_sizes)
+                log(spirula::i18n::format(lmsg::colmap_split_frame_sizes,
+                                          {(long long)groups.size()}));
 
             // ---- 3. feature extraction -----------------------------------------
             take_reconstruction(job);
             set_stage(Stage::Features,
                       aliked ? lmsg::stage_colmap_features_aliked.get()
                              : lmsg::stage_colmap_features.get());
-            std::vector<std::string> fe = {job.colmap_exe, "feature_extractor",
+            std::vector<std::string> shared = {job.colmap_exe, "feature_extractor",
                 "--database_path", db,
                 "--image_path", images,
                 "--ImageReader.camera_model", job.camera_model};
             if (aliked) {
-                fe.push_back("--FeatureExtraction.type");
-                fe.push_back("ALIKED");
-                fe.push_back("--AlikedExtraction.max_num_features");
-                fe.push_back(std::to_string(features));
+                shared.push_back("--FeatureExtraction.type");
+                shared.push_back("ALIKED");
+                shared.push_back("--AlikedExtraction.max_num_features");
+                shared.push_back(std::to_string(features));
             } else {
-                fe.push_back("--SiftExtraction.max_num_features");
-                fe.push_back(std::to_string(features));
-            }
-            if (!cam_params.empty()) {
-                fe.push_back("--ImageReader.camera_params");
-                fe.push_back(cam_params);
-            }
-            if (job.camera_mode == 0) {
-                fe.push_back("--ImageReader.single_camera");
-                fe.push_back("1");
-            } else if (job.camera_mode == 1) {
-                fe.push_back("--ImageReader.single_camera_per_folder");
-                fe.push_back("1");
+                shared.push_back("--SiftExtraction.max_num_features");
+                shared.push_back(std::to_string(features));
             }
             int size_cap = job.max_image_size > 0 ? job.max_image_size
                          : job.quality == 0 ? 2000 : 0;
             if (size_cap > 0) {
-                fe.push_back("--FeatureExtraction.max_image_size");
-                fe.push_back(std::to_string(size_cap));
+                shared.push_back("--FeatureExtraction.max_image_size");
+                shared.push_back(std::to_string(size_cap));
             }
             if (job.estimate_affine_shape && !aliked) {
-                fe.push_back("--SiftExtraction.estimate_affine_shape");
-                fe.push_back("1");
+                shared.push_back("--SiftExtraction.estimate_affine_shape");
+                shared.push_back("1");
             }
             if (have_masks) {
-                fe.push_back("--ImageReader.mask_path");
-                fe.push_back(prep.mask_dir);
+                shared.push_back("--ImageReader.mask_path");
+                shared.push_back(prep.mask_dir);
             }
-            int rc = exec(fe);
-            if (rc == kCancelled) return fail("cancelled");
-            if (rc != 0) return fail("colmap feature_extractor failed (see log)");
+            int rc = 0;
+            std::vector<std::vector<std::string>> passes;
+            if (!split_sizes) {
+                std::vector<std::string> fe = shared;
+                int W = 0, H = 0;
+                if (job.camera_params.empty() && job.init_focal_factor > 0)
+                    DatasetPrep::first_image_dims(images, W, H);
+                add_camera_params(fe, W, H);
+                if (job.camera_mode == 0) {
+                    fe.push_back("--ImageReader.single_camera");
+                    fe.push_back("1");
+                } else if (job.camera_mode == 1) {
+                    fe.push_back("--ImageReader.single_camera_per_folder");
+                    fe.push_back("1");
+                }
+                passes.push_back(std::move(fe));
+            } else {
+                const fs::path lists = ws / ".camera_groups";
+                fs::create_directories(lists);
+                for (size_t i = 0; i < groups.size(); i++) {
+                    const fs::path lf =
+                        lists / ("group" + std::to_string(i) + ".txt");
+                    std::ofstream f(lf);
+                    for (const std::string& n : groups[i].names) f << n << "\n";
+                    f.close();
+                    if (!f) return fail("could not write " + lf.string());
+                    std::vector<std::string> fe = shared;
+                    add_camera_params(fe, groups[i].w, groups[i].h);
+                    fe.push_back("--ImageReader.single_camera");
+                    fe.push_back("1");
+                    fe.push_back("--image_list_path");
+                    fe.push_back(lf.string());
+                    passes.push_back(std::move(fe));
+                }
+            }
+            for (const std::vector<std::string>& fe : passes) {
+                rc = exec(fe);
+                if (rc == kCancelled) return fail("cancelled");
+                if (rc != 0) return fail("colmap feature_extractor failed (see log)");
+            }
 
             // ---- 4. matching -----------------------------------------------------
             // An explicit choice: the GUI presets sequential for video and

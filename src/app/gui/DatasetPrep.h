@@ -367,6 +367,12 @@ public:
     static int count_images(const std::string& dir, const std::string& skip = "");
     // Dimensions of the first image found, for the focal-length prior.
     static bool first_image_dims(const std::string& dir, int& w, int& h);
+    // Every image under `dir`, named relative to it, with its pixel size --
+    // zero when nothing here reads that format's header (stb has no TIFF or
+    // WebP decoder; COLMAP's FreeImage does).
+    struct ImageSize { std::string name; int w = 0, h = 0; };
+    static std::vector<ImageSize> image_sizes(const std::string& dir,
+                                              const std::string& skip = "");
 
 private:
     void log(const std::string& s, bool detail = true);
