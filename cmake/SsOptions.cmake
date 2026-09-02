@@ -69,7 +69,7 @@ add_compile_definitions(SS_SOURCE_ROOT="${SS_ROOT}")
 
 # The version the apps report with --version. Declared here and nowhere else;
 # it used to be read out of pyproject.toml, back when there was a package.
-set(SS_VERSION "2026.8.28")
+set(SS_VERSION "2026.9.2")
 
 # The commit goes in it too, so a crash report names an exact tree without
 # anyone having to bump a string by hand. Read at configure time, which is

@@ -183,7 +183,7 @@ inline int train_tier_rank(const char* tier) {
     X(float, densify_oversize_split_fraction, 0.15f, "detail", "advanced", "") \
     X(float, densify_oversize_score_blend, 0.5f, "detail", "advanced", "")   \
     X(bool, use_long_axis_split, true, "detail", "expert", "")               \
-    X(TrainVec3f, long_axis_split_opacity_k, train_v3f(0.5f, 0.6f, 8000.0f), "detail", "basic", "") \
+    X(TrainVec3f, long_axis_split_opacity_k, train_v3f(0.5f, 0.6f, 15000.0f), "detail", "basic", "") \
     X(float, max_screen_size, 0.3f, "detail", "basic", "")                   \
     X(float, max_screen_size_clip_hardness, 1.5f, "detail", "basic", "")     \
     X(float, max_screen_size_penalty, 1.0f, "detail", "basic", "")           \
@@ -378,7 +378,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
     }
     if (name == "360-camera") {
         c.warp_to_pinhole = true;
-        c.mask_boundary_offset = -0.025f;
+        c.mask_boundary_offset = -0.005f;
         // c.primitive = "mip";
         c.erank_reg = 0.01f;
         c.long_axis_split_opacity_k = {0.5f, 0.6f, 15000.0f};
@@ -389,9 +389,9 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.outlier_threshold = 10.0f;
         c.load_depths = true;
         c.load_normals = true;
-        c.mask_boundary_offset = -0.025f;
+        c.mask_boundary_offset = -0.005f;
         // c.floater_suppression= "strong";
-        c.distraction_robustness = "strong";
+        // c.distraction_robustness = "strong";
         c.sh_degree_warmup_every = 0;
         c.long_axis_split_opacity_k = {0.5f, 0.6f, 30000.0f};
         c.noise_lr = 10.0f;
