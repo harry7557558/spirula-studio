@@ -141,9 +141,8 @@ GuiApp::GuiApp() {
     // overrides this anyway if the stored choice is unavailable.
     if (!builtin_sfm_available()) _engine = Engine::Colmap;
     _compare.set_pick_file([this] {
-        _pick = PickAction::AddSplatFile;
-        _dialog.open(msg::viewer_pick_file.get(), FileDialog::Mode::File,
-                     kViewableExtensions);
+        open_pick(PickAction::AddSplatFile, msg::viewer_pick_file.get(),
+                  FileDialog::Mode::File, kViewableExtensions);
     });
 }
 
@@ -176,11 +175,18 @@ void GuiApp::shutdown() {
     _runner.shutdown();
 }
 
+// One line per remembered pick directory, keyed by dir_key().
+static constexpr char kDirPrefix[] = "dialog_dir.";
+
 std::string GuiApp::settings_path() {
     return (fs::path(app::config_dir()) / "gui.conf").string();
 }
 
 void GuiApp::load_settings() {
+    // Presets have a folder of their own; every other kind of pick starts at
+    // the home directory until one of that kind has been made.
+    _dialog_dirs["preset"] = preset_dir();
+
     std::string saved_lang;
     FILE* f = std::fopen(settings_path().c_str(), "r");
     if (!f) {
@@ -220,6 +226,8 @@ void GuiApp::load_settings() {
         else if (k == "preview_h") _preview_h = (float)atof(v.c_str());
         else if (k == "show_settings") _show_settings = v != "0";
         else if (k == "native_dialogs") _dialog.use_native(v != "0");
+        else if (k.rfind(kDirPrefix, 0) == 0 && !v.empty())
+            _dialog_dirs[k.substr(sizeof kDirPrefix - 1)] = v;
     }
     std::fclose(f);
 
@@ -260,6 +268,8 @@ void GuiApp::save_settings() {
     std::fprintf(f, "preview_h=%.1f\n", _preview_h);
     std::fprintf(f, "show_settings=%d\n", _show_settings ? 1 : 0);
     std::fprintf(f, "native_dialogs=%d\n", _dialog.native_enabled() ? 1 : 0);
+    for (const auto& [key, dir] : _dialog_dirs)
+        std::fprintf(f, "%s%s=%s\n", kDirPrefix, key.c_str(), dir.c_str());
     for (const auto& l : _accepted_licenses)
         std::fprintf(f, "accepted_license=%s\n", l.c_str());
     std::fclose(f);
@@ -462,6 +472,9 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     _defaults.mask_dir = _cfg.mask_dir;
     _defaults.output_dir_prefix = _cfg.output_dir_prefix;
     add_recent(dir);
+    // However it was opened -- picked, dropped, from the recents list -- this
+    // is where the picker starts next time.
+    remember_dir("dataset", dir);
     save_settings();
     detach_session_views();
     // Training is the end of the dataset screen's business with the run, so
@@ -509,6 +522,7 @@ void GuiApp::open_splat(std::string path) {
     _runner.note_engine_taken();
     _compare.open(path);
     add_model_recent(path);
+    remember_dir("model", path);
     save_settings();
     _screen = Screen::Viewer;
 }
@@ -517,6 +531,7 @@ void GuiApp::add_splat(std::string path) {
     if (path.empty()) return;
     _compare.add(path);
     add_model_recent(path);
+    remember_dir("model", path);
     save_settings();
 }
 
@@ -1311,8 +1326,55 @@ void GuiApp::adopt_exr_color_space() {
     }
 }
 
+const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
+    switch (a) {
+        case PickAction::OpenDataset:
+        case PickAction::BatchDataset:
+        case PickAction::MeshPhotos:        return "dataset";
+        case PickAction::SourceImages:      return "photos";
+        case PickAction::SourceVideo:       return "video";
+        case PickAction::SourceReplace:
+            return m == FileDialog::Mode::File ? "video" : "photos";
+        case PickAction::SplatFile:
+        case PickAction::AddSplatFile:
+        case PickAction::MeshSource:        return "model";
+        case PickAction::Workspace:
+        case PickAction::OutputPrefix:
+        case PickAction::BatchOutput:
+        case PickAction::MeshOutput:        return "output";
+        case PickAction::VocabTree:         return "vocab";
+        case PickAction::PresetFile:
+        case PickAction::PresetSaveFolder:
+        case PickAction::BatchPresetFile:   return "preset";
+        case PickAction::MaskModelFile:
+        case PickAction::None:              return "";
+    }
+    return "";
+}
+
+void GuiApp::remember_dir(const std::string& key, const std::string& path) {
+    if (key.empty() || path.empty()) return;
+    std::string dir = fs::path(path).parent_path().string();
+    if (!dir.empty()) _dialog_dirs[key] = dir;
+}
+
+void GuiApp::open_pick(PickAction a, const std::string& title,
+                       FileDialog::Mode mode,
+                       const std::vector<std::string>& extensions,
+                       const std::string& start_dir, bool multi) {
+    _pick = a;
+    _pick_key = dir_key(a, mode);
+    std::string dir = start_dir;
+    if (dir.empty()) {
+        auto it = _dialog_dirs.find(_pick_key);
+        if (it != _dialog_dirs.end()) dir = it->second;
+    }
+    _dialog.open(title, mode, extensions, dir, multi);
+}
+
 void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
     const std::string path = paths.empty() ? std::string() : paths[0];
+    remember_dir(_pick_key, path);
     switch (_pick) {
         case PickAction::OpenDataset:
             request_open_dataset(path);
@@ -1415,6 +1477,7 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             break;
     }
     _pick = PickAction::None;
+    _pick_key.clear();
 }
 
 
@@ -1523,14 +1586,13 @@ void GuiApp::draw_menu_bar() {
     if (!ImGui::BeginMenuBar()) return;
     if (ui::BeginMenu(msg::menu_file)) {
         if (ui::MenuItem(msg::menu_open_dataset)) {
-            _pick = PickAction::OpenDataset;
-            _dialog.open(msg::menu_open_dataset.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::OpenDataset, msg::menu_open_dataset.get(),
+                      FileDialog::Mode::Folder);
         }
         if (ui::MenuItem(msg::menu_new_dataset)) _screen = Screen::NewDataset;
         if (ui::MenuItem(msg::menu_open_splat)) {
-            _pick = PickAction::SplatFile;
-            _dialog.open(msg::viewer_pick_file.get(), FileDialog::Mode::File,
-                         {".ply"});
+            open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
+                      FileDialog::Mode::File, {".ply"});
         }
         ImGui::Separator();
         if (ui::MenuItem(msg::menu_batch)) _screen = Screen::Batch;
@@ -1757,8 +1819,8 @@ void GuiApp::draw_home() {
     }
 
     if (ui::Button(msg::home_open_dataset, ImVec2(-1, bh))) {
-        _pick = PickAction::OpenDataset;
-        _dialog.open(msg::menu_open_dataset.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::OpenDataset, msg::menu_open_dataset.get(),
+                  FileDialog::Mode::Folder);
     }
     ui::help_on_hover(msg::home_open_dataset_help);
 
@@ -1770,9 +1832,8 @@ void GuiApp::draw_home() {
     ui::help_on_hover(msg::home_new_dataset_help);
 
     if (ui::Button(msg::home_open_splat, ImVec2(-1, bh))) {
-        _pick = PickAction::SplatFile;
-        _dialog.open(msg::viewer_pick_file.get(), FileDialog::Mode::File,
-                     kViewableExtensions);
+        open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
+                  FileDialog::Mode::File, kViewableExtensions);
     }
     ui::help_on_hover(msg::home_open_splat_help);
 
@@ -2045,13 +2106,14 @@ void GuiApp::draw_dataset_source() {
         }
         ImGui::SameLine();
         if (ui::Button(dmsg::browse)) {
-            _pick = PickAction::SourceReplace;
             _pick_source = (int)i;
             if (s.is_video)
-                _dialog.open(msg::pick_video_file.get(), FileDialog::Mode::File,
-                             video_dialog_filters());
+                open_pick(PickAction::SourceReplace, msg::pick_video_file.get(),
+                          FileDialog::Mode::File, video_dialog_filters());
             else
-                _dialog.open(msg::pick_photo_folder.get(), FileDialog::Mode::Folder);
+                open_pick(PickAction::SourceReplace,
+                          msg::pick_photo_folder.get(),
+                          FileDialog::Mode::Folder);
         }
         ImGui::SameLine();
         if (ui::Button(dmsg::remove)) remove = (int)i;
@@ -2084,15 +2146,15 @@ void GuiApp::draw_dataset_source() {
     if (edited) refresh_sources();
 
     if (ui::Button(dmsg::add_video)) {
-        _pick = PickAction::SourceVideo;
-        _dialog.open(msg::pick_videos.get(), FileDialog::Mode::File,
-                     video_dialog_filters(), "", /*multi_select=*/true);
+        open_pick(PickAction::SourceVideo, msg::pick_videos.get(),
+                  FileDialog::Mode::File, video_dialog_filters(), "",
+                  /*multi_select=*/true);
     }
     ui::help_on_hover(dmsg::add_video_help);
     ImGui::SameLine();
     if (ui::Button(dmsg::add_photos)) {
-        _pick = PickAction::SourceImages;
-        _dialog.open(msg::pick_photo_folder.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::SourceImages, msg::pick_photo_folder.get(),
+                  FileDialog::Mode::Folder);
     }
     ui::help_on_hover(dmsg::add_photos_help);
     if (_sources.empty()) {
@@ -2128,8 +2190,8 @@ void GuiApp::draw_dataset_source() {
     // they need distinguishing exactly as two identical literals would.
     ImGui::PushID("ws");
     if (ui::Button(dmsg::browse)) {
-        _pick = PickAction::Workspace;
-        _dialog.open(msg::pick_output_folder.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::Workspace, msg::pick_output_folder.get(),
+                  FileDialog::Mode::Folder);
     }
     ImGui::PopID();
     ImGui::SameLine();
@@ -3506,9 +3568,8 @@ void GuiApp::draw_colmap_options() {
         ImGui::SameLine();
         ImGui::PushID("vt");
         if (ui::Button(dmsg::browse)) {
-            _pick = PickAction::VocabTree;
-            _dialog.open(msg::pick_vocab_tree.get(), FileDialog::Mode::File,
-                         {".bin"});
+            open_pick(PickAction::VocabTree, msg::pick_vocab_tree.get(),
+                      FileDialog::Mode::File, {".bin"});
         }
         ImGui::PopID();
         ImGui::SameLine();
@@ -3939,9 +4000,8 @@ void GuiApp::draw_viewer() {
     if (ui::Button(msg::back_home)) request_go_home();
     ImGui::SameLine();
     if (ui::Button(msg::viewer_open_another)) {
-        _pick = PickAction::SplatFile;
-        _dialog.open(msg::viewer_pick_file.get(), FileDialog::Mode::File,
-                     kViewableExtensions);
+        open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
+                  FileDialog::Mode::File, kViewableExtensions);
     }
     ImGui::SameLine();
     _compare.set_recents(_model_recents);
@@ -4066,14 +4126,13 @@ void GuiApp::draw_mesh_options() {
     }
     ImGui::SameLine();
     if (ui::ButtonRaw("...##meshsrcdir", ImVec2(60, 0))) {
-        _pick = PickAction::MeshSource;
-        _dialog.open(msg::mesh_pick_model.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::MeshSource, msg::mesh_pick_model.get(),
+                  FileDialog::Mode::Folder);
     }
     ImGui::SameLine();
     if (ui::ButtonRaw(".ply##meshsrcfile", ImVec2(60, 0))) {
-        _pick = PickAction::MeshSource;
-        _dialog.open(msg::mesh_pick_model.get(), FileDialog::Mode::File,
-                     {".ply"});
+        open_pick(PickAction::MeshSource, msg::mesh_pick_model.get(),
+                  FileDialog::Mode::File, {".ply"});
     }
     ui::help_on_hover(msg::mesh_source_help);
     ui::TextDisabled(msg::mesh_drop_hint);
@@ -4093,8 +4152,8 @@ void GuiApp::draw_mesh_options() {
                                  &_mesh_job.data_dir);
         ImGui::SameLine();
         if (ui::ButtonRaw("...##meshdatapick", ImVec2(60, 0))) {
-            _pick = PickAction::MeshPhotos;
-            _dialog.open(msg::mesh_pick_photos.get(), FileDialog::Mode::Folder);
+            open_pick(PickAction::MeshPhotos, msg::mesh_pick_photos.get(),
+                      FileDialog::Mode::Folder);
         }
         ImGui::SameLine();
         ui::TextDisabled(msg::mesh_photos_dir);
@@ -4169,8 +4228,8 @@ void GuiApp::draw_mesh_options() {
     ui::InputTextRaw("##meshout", &_mesh_job.output);
     ImGui::SameLine();
     if (ui::ButtonRaw("...##meshoutpick", ImVec2(60, 0))) {
-        _pick = PickAction::MeshOutput;
-        _dialog.open(msg::mesh_pick_output.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::MeshOutput, msg::mesh_pick_output.get(),
+                  FileDialog::Mode::Folder);
     }
     ImGui::SameLine();
     ui::TextDisabled(msg::mesh_output);
@@ -4305,9 +4364,9 @@ void GuiApp::draw_batch() {
     ImGui::Spacing();
     ImGui::BeginDisabled(_batch_active);
     if (ui::Button(msg::batch_add_row)) {
-        _pick = PickAction::BatchDataset;
         _pick_row = -1;   // append
-        _dialog.open(msg::batch_pick_dataset.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::BatchDataset, msg::batch_pick_dataset.get(),
+                  FileDialog::Mode::Folder);
     }
     ImGui::SameLine();
     // The datasets already opened in the trainer, which is where a queue is
@@ -4420,10 +4479,9 @@ void GuiApp::draw_batch_table() {
         }
         ImGui::SameLine(0, 2);
         if (ui::ButtonRaw("...##ds")) {
-            _pick = PickAction::BatchDataset;
             _pick_row = i;
-            _dialog.open(msg::batch_pick_dataset.get(),
-                         FileDialog::Mode::Folder, {}, j.dataset);
+            open_pick(PickAction::BatchDataset, msg::batch_pick_dataset.get(),
+                      FileDialog::Mode::Folder, {}, j.dataset);
         }
 
         ImGui::TableNextColumn();
@@ -4458,10 +4516,9 @@ void GuiApp::draw_batch_table() {
         ui::help_on_hover(msg::batch_output_help);
         ImGui::SameLine(0, 2);
         if (ui::ButtonRaw("...##out")) {
-            _pick = PickAction::BatchOutput;
             _pick_row = i;
-            _dialog.open(msg::batch_pick_output.get(), FileDialog::Mode::Folder,
-                         {}, j.output_dir);
+            open_pick(PickAction::BatchOutput, msg::batch_pick_output.get(),
+                      FileDialog::Mode::Folder, {}, j.output_dir);
         }
         ImGui::EndDisabled();
 
@@ -4551,10 +4608,9 @@ void GuiApp::draw_batch_preset_combo(BatchJob& job, int row) {
 
     ImGui::Separator();
     if (ui::Selectable(msg::batch_preset_from_file)) {
-        _pick = PickAction::BatchPresetFile;
         _pick_row = row;
-        _dialog.open(msg::preset_pick_file.get(), FileDialog::Mode::File,
-                     {".json"}, preset_dir());
+        open_pick(PickAction::BatchPresetFile, msg::preset_pick_file.get(),
+                  FileDialog::Mode::File, {".json"});
     }
     ImGui::EndCombo();
 }
@@ -4605,8 +4661,8 @@ void GuiApp::draw_train_settings() {
     }
     ImGui::BeginDisabled(busy && ph != TrainRunner::Phase::Loading);
     if (ui::Button(msg::change_dataset)) {
-        _pick = PickAction::OpenDataset;
-        _dialog.open(msg::menu_open_dataset.get(), FileDialog::Mode::Folder);
+        open_pick(PickAction::OpenDataset, msg::menu_open_dataset.get(),
+                  FileDialog::Mode::Folder);
     }
     ImGui::EndDisabled();
 
@@ -4738,9 +4794,8 @@ void GuiApp::draw_preset_picker() {
     ui::help_on_hover(msg::preset_save_help);
     ImGui::SameLine();
     if (ui::Button(msg::preset_load)) {
-        _pick = PickAction::PresetFile;
-        _dialog.open(msg::preset_pick_file.get(), FileDialog::Mode::File,
-                     {".json"}, preset_dir());
+        open_pick(PickAction::PresetFile, msg::preset_pick_file.get(),
+                  FileDialog::Mode::File, {".json"});
     }
     ui::help_on_hover(msg::preset_load_help);
 
@@ -4851,10 +4906,10 @@ void GuiApp::draw_preset_save_modal() {
         _preset_path_edited = true;
     ImGui::SameLine();
     if (ui::ButtonRaw("...##preset_dir")) {
-        _pick = PickAction::PresetSaveFolder;
         _preset_path_edited = true;
-        _dialog.open(msg::preset_pick_folder.get(), FileDialog::Mode::Folder,
-                     {}, fs::path(_preset_save_path).parent_path().string());
+        open_pick(PickAction::PresetSaveFolder, msg::preset_pick_folder.get(),
+                  FileDialog::Mode::Folder, {},
+                  fs::path(_preset_save_path).parent_path().string());
         // ImGui shows one modal at a time and the dialog is one too, so this
         // one steps aside and is re-armed when the pick comes back. Nothing is
         // lost: the name, the description and the path are all state here.
@@ -4982,9 +5037,8 @@ void GuiApp::draw_basic_options() {
         _cfg_ui.touched.insert("output_dir_prefix");
     ImGui::SameLine();
     if (ui::ButtonRaw("...##outdir")) {
-        _pick = PickAction::OutputPrefix;
-        _dialog.open(msg::pick_output_folder.get(), FileDialog::Mode::Folder,
-                     {}, _cfg.output_dir_prefix);
+        open_pick(PickAction::OutputPrefix, msg::pick_output_folder.get(),
+                  FileDialog::Mode::Folder, {}, _cfg.output_dir_prefix);
     }
     ImGui::SameLine();
     ui::Text(msg::opt_output_folder);
