@@ -121,6 +121,7 @@ void blend_background_backward(
 }
 
 void blend_background_noise_backward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
@@ -146,12 +147,14 @@ void blend_background_noise_backward(
     p.HW = (uint32_t)hw;
     p.total = (uint32_t)total;
     vkk::dispatch_flat("pixel_wise_train.blend_bg_noise_bwd",
-                       backend::vk::SpecList{is_linear ? 1u : 0u}, total, 128,
-                       &p, sizeof(p), &p.wgs_per_row);
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
+                       total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
-void rgb_to_srgb_backward(
-    bool is_input_linear,
+void working_to_display_backward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,
     DeviceTensor2D<float3> color_matrix,
     DeviceTensor3D<float3> v_out_rgb,
@@ -164,8 +167,9 @@ void rgb_to_srgb_backward(
     p.v_out_rgb = (uint64_t)v_out_rgb.data_ptr();
     p.v_rgb = (uint64_t)v_rgb.data_ptr();
     p.total = (uint32_t)total;
-    vkk::dispatch_flat("pixel_wise_train.srgb_bwd",
-                       backend::vk::SpecList{is_input_linear ? 1u : 0u},
+    vkk::dispatch_flat("pixel_wise_train.working_to_display_bwd_k",
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
                        total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
@@ -213,7 +217,7 @@ void depth_to_normal_backward(
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_train.d2n_bwd",
-                  backend::vk::SpecList{0u, cd.dist}, (W + 15) / 16,
+                  backend::vk::SpecList{0u, 0u, cd.dist}, (W + 15) / 16,
                   (H + 15) / 16, B, &p, sizeof(p));
 }
 
@@ -256,7 +260,7 @@ void linear_depth_to_ray_depth_inplace(
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_train.lin_to_ray_depth",
-                  backend::vk::SpecList{0u, cd.dist},
+                  backend::vk::SpecList{0u, 0u, cd.dist},
                   (uint32_t)((w + 127) / 128), (uint32_t)h, (uint32_t)b, &p,
                   sizeof(p));
 }

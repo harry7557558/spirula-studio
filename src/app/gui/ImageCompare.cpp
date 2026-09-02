@@ -278,8 +278,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     // The source file is shown undecoded, so pair it with the render before
     // the working-space -> sRGB conversion rather than after.
     const auto color = spirula::resolve_color(s.cfg);
-    const bool want_raw = j.source_gt &&
-                          (color.splat_linear || !color.splat_gamut.empty());
+    const bool want_raw = j.source_gt && color.splat_on();
     int64_t C = 3;
     bool got_err = false;
     // This step's config, so the forward renders the channels the trainer's

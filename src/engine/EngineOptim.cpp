@@ -468,9 +468,8 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             cfg.quat_norm_reg_weight, cfg.dc_reg_weight, cfg.sh_reg_weight,
             cfg.max_screen_size, cfg.max_screen_size_penalty,
             cfg.use_scale_agnostic_mean,
-            // The two flags are tied to the same Python source
-            // (splat_color_is_linear); collapse to one to halve the FPBO
-            // color-space instantiation axis.
+            // Both are set from the same resolved flag (a linear splat
+            // working space); collapse to one to halve the FPBO axis.
             cfg.use_color_trust_region || cfg.color_is_linear,
             cfg.eps_tr,
             step_arg,

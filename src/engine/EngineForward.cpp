@@ -426,7 +426,7 @@ void forward_3dgs(
 
     // Linear / wide-gamut -> sRGB. Done AFTER the background blend so the
     // blend operates in the splat working color space (matches Python
-    // forward order: render -> bg -> rgb_to_srgb -> bilagrid -> PPISP -> loss).
+    // forward order: render -> bg -> display encode -> bilagrid -> PPISP -> loss).
     _engine_color_space_forward();
 
     // Results stay in pool — use engine_copy_render_to_host to fetch

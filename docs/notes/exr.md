@@ -81,7 +81,8 @@ promise. Nothing in the header says so, so the override has to be reachable:
 the trainer's `--image-color-is-linear` is a tri-state (`auto` / `true` /
 `false`, the same shape as `--splat-color-is-linear`) and `--image-color-gamut`
 lists **both** `none` (take it from the file) and `Rec.709` (sRGB primaries,
-whatever the file says). The two halves are adopted independently, so declaring
+whatever the file says). Which curve those linear values then leave through is
+a separate flag again -- `docs/notes/color-transfer.md`. The two halves are adopted independently, so declaring
 the transfer still leaves the primaries to the file and vice versa. The same split runs all the way down: `spirula sfm`, `spirula geometry` and
 `spirula sam` all take `--no-image-linear` beside `--image-linear`, the dataset
 screen offers **From the file / Linear light / Display-encoded** next to the

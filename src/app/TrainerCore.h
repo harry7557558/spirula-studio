@@ -19,6 +19,7 @@
 // finished one in the same process (the GUI's "train again" path).
 
 #include "engine/Engine.h"
+#include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
@@ -49,9 +50,24 @@ Mat3f invert3x3(const Mat3f& m);
 struct ColorResolution {
     std::string splat_gamut;   // "" = Rec.709 / none
     std::string image_gamut;
+    // Storage encoding and output curve are independent: `*_linear` says
+    // whether the buffer holds linear light, `*_transfer` is the curve out of
+    // it. See docs/notes/color-transfer.md.
     bool splat_linear  = false;
     bool image_linear  = false;
+    colorspace::Transfer splat_transfer = colorspace::Transfer::Srgb;
+    colorspace::Transfer image_transfer = colorspace::Transfer::Srgb;
     bool convert_seed  = false;  // convert_initial_point_cloud_color resolved
+
+    // Whether the render needs the conversion pass at all.
+    bool splat_on() const {
+        return splat_linear || splat_transfer != colorspace::Transfer::Srgb ||
+               !splat_gamut.empty();
+    }
+    bool image_on() const {
+        return image_linear || image_transfer != colorspace::Transfer::Srgb ||
+               !image_gamut.empty();
+    }
 };
 
 ColorResolution resolve_color(const TrainConfig& c);

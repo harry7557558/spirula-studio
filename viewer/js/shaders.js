@@ -562,23 +562,38 @@ void main() {
 
 // ---------------------------------------------------------------------------
 // TONEMAP / color-space fragment shader. Resolves the HDR splat buffer to the
-// canvas: applies the gamut matrix + sRGB encode (per the linear toggle) and
-// composites onto the background.
+// canvas: decodes per uIsLinear, applies the gamut matrix and the tone curve
+// (uTransfer, the same order as colorspace::Transfer), composites on the bg.
 // ---------------------------------------------------------------------------
 export const TONEMAP_FS = /* glsl */`#version 300 es
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uHdr;
 uniform mat3 uGamut;        // source gamut -> Rec.709
-uniform int  uIsLinear;     // 1 => apply OETF; 0 => decode/encode roundtrip
+uniform int  uTransfer;     // 0 srgb, 1 srgb-clamped, 2 aces, 3 filmic, 4 uncharted2
+uniform int  uIsLinear;     // 1 => the stored values are linear light
 uniform vec3 uBackground;
 uniform float uExposure;
 out vec4 outColor;
 
 float oetf(float x){ return x < 0.0031308 ? 12.92*x : 1.055*pow(x, 1.0/2.4) - 0.055; }
 float eotf(float x){ return x < 0.04045 ? x/12.92 : pow((x+0.055)/1.055, 2.4); }
-vec3 oetf3(vec3 c){ return vec3(oetf(c.r),oetf(c.g),oetf(c.b)); }
 vec3 eotf3(vec3 c){ return vec3(eotf(c.r),eotf(c.g),eotf(c.b)); }
+
+// Same curves as core/ColorSpace.h and shaders/pixel_wise.slang; a model must
+// be shown with the transfer it was trained with or its whites move.
+float aces(float x){ return (x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14); }
+float hable(float x){ return (x*(0.15*x+0.05)+0.004)/(x*(0.15*x+0.5)+0.06) - 0.02/0.3; }
+float filmic(float x){ float t = max(x-0.004,0.0); return (t*(6.2*t+0.5))/(t*(6.2*t+1.7)+0.06); }
+
+float encode(float x) {
+  if (uTransfer == 3) return filmic(x);
+  if (uTransfer == 2) return oetf(clamp(aces(max(x,0.0)), 0.0, 1.0));
+  if (uTransfer == 4) return oetf(clamp(hable(max(x,0.0))/hable(11.2), 0.0, 1.0));
+  if (uTransfer == 1) return oetf(clamp(x, 0.0, 1.0));
+  return oetf(x);
+}
+vec3 encode3(vec3 c){ return vec3(encode(c.r),encode(c.g),encode(c.b)); }
 
 void main() {
   vec4 hdr = texture(uHdr, vUv);
@@ -587,9 +602,9 @@ void main() {
   float cov = clamp(1.0 - hdr.a, 0.0, 1.0);
   vec3 rgb = cov > 1e-4 ? hdr.rgb / cov : vec3(0.0);
   rgb *= uExposure;
-  if (uIsLinear == 1) rgb = oetf3(clamp(uGamut*rgb, 0.0, 1.0));
-  else                rgb = oetf3(clamp(uGamut*eotf3(clamp(rgb,0.0,1.0)), 0.0, 1.0));
-  vec3 outc = mix(uBackground, rgb, cov);
+  if (uIsLinear == 0) rgb = eotf3(clamp(rgb, 0.0, 1.0));
+  rgb = encode3(uGamut * rgb);
+  vec3 outc = mix(uBackground, clamp(rgb, 0.0, 1.0), cov);
   outColor = vec4(clamp(outc,0.0,1.0), 1.0);
 }
 `;

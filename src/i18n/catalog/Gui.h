@@ -5268,49 +5268,32 @@ SS_MSG(viewport_gamut,
     TR("Renk gamı"));
 
 SS_MSG(viewport_gamut_help,
-    EN("The color space the model's values are in. Set it to what the run was "
-       "trained with; the render is converted to sRGB for the screen. "
-       "'Linear' says the values are linear light rather than already "
-       "gamma-encoded."),
-    JA("モデルの値がどの色空間かです。学習時の設定に合わせてください。表示用に"
-       "sRGBへ変換されます。「リニア」は、ガンマ済みではなくリニアな光の値だと"
-       "いう指定です。"),
-    ZH_HANS("模型数值所处的色彩空间。设成训练时用的那个；显示前会转成 sRGB。"
-            "“线性”表示数值是线性光，而不是已经做过伽马编码的。"),
-    ZH_HANT("模型數值所處的色彩空間。設成訓練時用的那個；顯示前會轉成 sRGB。"
-            "「線性」表示數值是線性光，而不是已經做過伽馬編碼的。"),
-    KO("모델 값이 어느 색 공간인지입니다. 학습할 때 쓴 것으로 맞추세요. 화면용 "
-       "sRGB로 변환됩니다. '선형'은 값이 감마가 적용된 값이 아니라 선형 광량이라는 "
-       "뜻입니다."),
-    DE("Der Farbraum, in dem die Werte des Modells liegen. Stellen Sie ihn auf "
-       "das ein, womit der Lauf trainiert wurde; für den Bildschirm wird nach "
-       "sRGB konvertiert. „Linear“ heißt, die Werte sind lineares Licht und "
-       "nicht bereits gammakodiert."),
-    FR("L'espace colorimétrique des valeurs du modèle. Réglez-le sur celui de "
-       "l'entraînement ; le rendu est converti en sRGB pour l'écran. "
-       "« Linéaire » signifie que les valeurs sont de la lumière linéaire et "
-       "non déjà encodées en gamma."),
-    ES("El espacio de color en el que están los valores del modelo. Ponlo "
-       "como se entrenó; el render se convierte a sRGB para la pantalla. "
-       "«Lineal» indica que los valores son luz lineal y no ya codificados "
-       "en gamma."),
-    PT("O espaço de cor em que estão os valores do modelo. Coloque como foi "
-       "treinado; o render é convertido para sRGB na tela. «Linear» indica "
-       "que os valores são luz linear e não já codificados em gama."),
-    IT("Lo spazio colore in cui stanno i valori del modello. Impostalo come "
-       "l'addestramento; il render viene convertito in sRGB per lo schermo. "
-       "«Lineare» significa che i valori sono luce lineare e non già "
-       "codificati in gamma."),
-    NL("De kleurruimte waarin de waarden van het model staan. Zet hem op "
-       "waarmee de run getraind is; de render wordt voor het scherm naar sRGB "
-       "omgezet. 'Lineair' betekent dat de waarden lineair licht zijn en niet "
-       "al gamma-gecodeerd."),
-    RU("Цветовое пространство значений модели. Поставьте то, с которым шло "
-       "обучение; для экрана рендер переводится в sRGB. «Линейно» означает, "
-       "что значения -- линейный свет, а не уже гамма-кодированные."),
-    TR("Modelin değerlerinin bulunduğu renk uzayı. Eğitimde ne kullanıldıysa "
-       "onu seçin; render ekran için sRGB'ye çevrilir. «Doğrusal», değerlerin "
-       "gama uygulanmış değil doğrusal ışık olduğunu söyler."));
+    EN("The gamut the model's values are in. Set it to what the run was "
+       "trained with; the render is converted to Rec.709 for the screen."),
+    JA("モデルの値がどの色域かです。学習時の設定に合わせてください。表示用に"
+       "Rec.709へ変換されます。"),
+    ZH_HANS("模型数值所处的色域。设成训练时用的那个；显示前会转成 Rec.709。"),
+    ZH_HANT("模型數值所處的色域。設成訓練時用的那個；顯示前會轉成 Rec.709。"),
+    KO("모델 값이 어느 색역인지입니다. 학습할 때 쓴 것으로 맞추세요. 화면용 "
+       "Rec.709로 변환됩니다."),
+    DE("Der Farbumfang, in dem die Werte des Modells liegen. Stellen Sie ihn "
+       "auf das ein, womit der Lauf trainiert wurde; für den Bildschirm wird "
+       "nach Rec.709 konvertiert."),
+    FR("Le gamut des valeurs du modèle. Réglez-le sur celui de "
+       "l'entraînement ; le rendu est converti en Rec.709 pour l'écran."),
+    ES("La gama de color en la que están los valores del modelo. Ponla como "
+       "se entrenó; el render se convierte a Rec.709 para la pantalla."),
+    PT("A gama de cor em que estão os valores do modelo. Coloque como foi "
+       "treinado; o render é convertido para Rec.709 na tela."),
+    IT("Il gamut in cui stanno i valori del modello. Impostalo come "
+       "l'addestramento; il render viene convertito in Rec.709 per lo schermo."),
+    NL("Het gamut waarin de waarden van het model staan. Zet het op waarmee "
+       "de run getraind is; de render wordt voor het scherm naar Rec.709 "
+       "omgezet."),
+    RU("Цветовой охват значений модели. Поставьте тот, с которым шло "
+       "обучение; для экрана рендер переводится в Rec.709."),
+    TR("Modelin değerlerinin bulunduğu renk gamı. Eğitimde ne kullanıldıysa "
+       "onu seçin; render ekran için Rec.709'a çevrilir."));
 
 SS_MSG(viewport_linear_color,
     EN("Linear"),
@@ -5326,6 +5309,81 @@ SS_MSG(viewport_linear_color,
     NL("Lineair"),
     RU("Линейно"),
     TR("Doğrusal"));
+
+SS_MSG(viewport_linear_help,
+    EN("The model's values are linear light rather than display values. Set it "
+       "to what the run was trained with (--splat-color-is-linear)."),
+    JA("モデルの値が表示値ではなくリニア光だという指定です。学習時の設定"
+       "（--splat-color-is-linear）に合わせてください。"),
+    ZH_HANS("模型数值是线性光，而不是显示值。设成训练时用的那个"
+            "（--splat-color-is-linear）。"),
+    ZH_HANT("模型數值是線性光，而不是顯示值。設成訓練時用的那個"
+            "（--splat-color-is-linear）。"),
+    KO("모델 값이 디스플레이 값이 아니라 선형 광량이라는 뜻입니다. 학습할 때 쓴 "
+       "것(--splat-color-is-linear)으로 맞추세요."),
+    DE("Die Werte des Modells sind lineares Licht statt Anzeigewerte. Auf das "
+       "einstellen, womit der Lauf trainiert wurde (--splat-color-is-linear)."),
+    FR("Les valeurs du modèle sont de la lumière linéaire et non des valeurs "
+       "d'affichage. Réglez-le sur celui de l'entraînement "
+       "(--splat-color-is-linear)."),
+    ES("Los valores del modelo son luz lineal y no valores de pantalla. Ponlo "
+       "como se entrenó (--splat-color-is-linear)."),
+    PT("Os valores do modelo são luz linear e não valores de exibição. Coloque "
+       "como foi treinado (--splat-color-is-linear)."),
+    IT("I valori del modello sono luce lineare e non valori di visualizzazione. "
+       "Impostalo come l'addestramento (--splat-color-is-linear)."),
+    NL("De waarden van het model zijn lineair licht in plaats van "
+       "weergavewaarden. Zet het op waarmee de run getraind is "
+       "(--splat-color-is-linear)."),
+    RU("Значения модели -- линейный свет, а не экранные значения. Поставьте то, "
+       "с которым шло обучение (--splat-color-is-linear)."),
+    TR("Modelin değerleri ekran değeri değil doğrusal ışıktır. Eğitimde ne "
+       "kullanıldıysa onu seçin (--splat-color-is-linear)."));
+
+SS_MSG(viewport_transfer_help,
+    EN("The curve the model's values leave through on their way to the screen. "
+       "`aces`, `filmic` and `uncharted2` roll the highlights off instead of "
+       "clipping them. Set it to what the run was trained with "
+       "(--splat-color-transfer)."),
+    JA("モデルの値が画面へ出ていくときに通るカーブです。aces・filmic・"
+       "uncharted2 はハイライトを切り捨てずになだらかに丸めます。学習時の設定"
+       "（--splat-color-transfer）に合わせてください。"),
+    ZH_HANS("模型数值送到屏幕时经过的曲线。aces、filmic、uncharted2 会把高光平滑"
+            "压下来而不是直接截断。设成训练时用的那个"
+            "（--splat-color-transfer）。"),
+    ZH_HANT("模型數值送到螢幕時經過的曲線。aces、filmic、uncharted2 會把高光平滑"
+            "壓下來而不是直接截斷。設成訓練時用的那個"
+            "（--splat-color-transfer）。"),
+    KO("모델 값이 화면으로 나갈 때 지나는 곡선입니다. aces, filmic, uncharted2는 "
+       "밝은 부분을 잘라내지 않고 완만하게 눌러 줍니다. 학습할 때 쓴 것"
+       "(--splat-color-transfer)으로 맞추세요."),
+    DE("Die Kurve, über die die Werte des Modells zum Bildschirm gehen. `aces`, "
+       "`filmic` und `uncharted2` rollen die Lichter ab, statt sie "
+       "abzuschneiden. Auf den Trainingswert einstellen "
+       "(--splat-color-transfer)."),
+    FR("La courbe par laquelle les valeurs du modèle sortent vers l'écran. "
+       "« aces », « filmic » et « uncharted2 » adoucissent les hautes lumières "
+       "au lieu de les écrêter. Réglez-le sur celui de l'entraînement "
+       "(--splat-color-transfer)."),
+    ES("La curva por la que los valores del modelo salen hacia la pantalla. "
+       "«aces», «filmic» y «uncharted2» suavizan las altas luces en vez de "
+       "recortarlas. Ponlo como se entrenó (--splat-color-transfer)."),
+    PT("A curva por que os valores do modelo saem para a tela. «aces», «filmic» "
+       "e «uncharted2» suavizam as altas luzes em vez de as cortar. Coloque como "
+       "foi treinado (--splat-color-transfer)."),
+    IT("La curva da cui i valori del modello escono verso lo schermo. «aces», "
+       "«filmic» e «uncharted2» addolciscono le alte luci invece di troncarle. "
+       "Impostalo come l'addestramento (--splat-color-transfer)."),
+    NL("De kromme waarlangs de waarden van het model naar het scherm gaan. "
+       "`aces`, `filmic` en `uncharted2` laten de hoge lichten aflopen in plaats "
+       "van ze af te kappen. Zet het op waarmee de run getraind is "
+       "(--splat-color-transfer)."),
+    RU("Кривая, через которую значения модели уходят на экран. «aces», «filmic» "
+       "и «uncharted2» плавно сводят света вместо обрезки. Поставьте то, с "
+       "которым шло обучение (--splat-color-transfer)."),
+    TR("Modelin değerlerinin ekrana çıkarken geçtiği eğri. `aces`, `filmic` ve "
+       "`uncharted2` parlak bölgeleri kırpmak yerine yumuşatarak indirir. "
+       "Eğitimde ne kullanıldıysa onu seçin (--splat-color-transfer)."));
 
 SS_MSG(viewport_gamut_none,
     EN("Rec.709 / sRGB"),

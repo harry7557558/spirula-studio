@@ -19,6 +19,7 @@ struct Scene {
     int64_t max_num_splats = 0;
     int num_sh = 0;
     bool cs_enabled = false;
+    int  cs_transfer = 0;
     bool cs_is_linear = false;
     std::vector<float> cs_matrix;
     uint64_t cs_gen = 1;
@@ -117,10 +118,12 @@ void engine_scene_set_data_3dgs(
 }
 
 
-void engine_scene_set_color_space(int slot, bool enabled, bool is_linear,
+void engine_scene_set_color_space(int slot, bool enabled, int transfer,
+                                  bool is_linear,
                                   std::vector<float> color_matrix) {
     Scene& s = at(slot);
     s.cs_enabled = enabled;
+    s.cs_transfer = transfer;
     s.cs_is_linear = is_linear;
     s.cs_matrix = std::move(color_matrix);
     s.cs_gen++;
@@ -136,8 +139,9 @@ void engine_scene_activate(int slot) {
     engine().max_num_splats = s.max_num_splats;
     engine().num_sh = s.num_sh;
     if (g_cs_slot != slot || g_cs_gen != s.cs_gen) {
-        engine_init_color_space(s.cs_enabled, s.cs_is_linear, s.cs_matrix,
-                                false, false, std::vector<float>{});
+        engine_init_color_space(s.cs_enabled, s.cs_transfer, s.cs_is_linear,
+                                s.cs_matrix, false, 0, false,
+                                std::vector<float>{});
         g_cs_slot = slot;
         g_cs_gen = s.cs_gen;
     }

@@ -181,7 +181,7 @@ inline int train_tier_rank(const char* tier) {
     X(float, densify_score_clip_quantile, 1.0f, "detail", "advanced", "")    \
     X(float, densify_final_score_power, 1.0f, "detail", "advanced", "")      \
     X(float, densify_oversize_split_fraction, 0.15f, "detail", "advanced", "") \
-    X(float, densify_oversize_score_blend, 0.5f, "detail", "advanced", "")   \
+    X(float, densify_oversize_score_blend, 1.0f, "detail", "advanced", "")   \
     X(bool, use_long_axis_split, true, "detail", "expert", "")               \
     X(TrainVec3f, long_axis_split_opacity_k, train_v3f(0.5f, 0.6f, 15000.0f), "detail", "basic", "") \
     X(float, max_screen_size, 0.3f, "detail", "basic", "")                   \
@@ -278,8 +278,10 @@ inline int train_tier_rank(const char* tier) {
                                                                              \
     /* ==== colorspace -- linear vs display encoding, and which gamut ==== */\
     X(std::optional<bool>, image_color_is_linear, std::nullopt, "colorspace", "basic", "") \
+    X(std::string, image_color_transfer, "", "colorspace", "basic", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, image_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
     X(std::optional<bool>, splat_color_is_linear, std::nullopt, "colorspace", "basic", "") \
+    X(std::string, splat_color_transfer, "", "colorspace", "basic", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, splat_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
     X(std::optional<bool>, convert_initial_point_cloud_color, std::nullopt, "colorspace", "basic", "") \
                                                                              \
@@ -404,10 +406,13 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
     if (name == "linear-color") {
         c.splat_color_gamut = "ACEScg";
         c.splat_color_is_linear = true;
-        c.image_color_gamut = "Rec.2020";
+        c.image_color_gamut = "Rec.709";
         c.image_color_is_linear = false;
+        // c.image_color_transfer = "uncharted2";
+        c.ppisp_param_type = "original";
         c.background_mode = "noise";
         c.dc_reg = 0.0f;
+        c.max_screen_size = 0.15f;
         c.features_dc_lr = 0.0015f;
         c.features_sh_lr = 0.000075f;
         return true;

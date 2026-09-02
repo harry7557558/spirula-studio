@@ -14,6 +14,7 @@
 #include "engine/EngineState.h"
 
 #include "kernels/background/BackgroundSphericalHarmonics.cuh"
+#include "core/ColorSpace.h"
 #include "kernels/pixelwise/PixelWise.cuh"
 #include "kernels/optim/Optimizer.cuh"
 
@@ -24,23 +25,25 @@
 // Init / setters
 // ============================================================================
 
-void engine_init_background_noise(bool splat_color_is_linear) {
+void engine_init_background_noise(int splat_transfer, bool splat_is_linear) {
     auto& bg = engine().background;
     bg.mode    = EngineBackground::Mode::Noise;
     bg.enabled = true;
-    bg.splat_color_is_linear = splat_color_is_linear;
+    bg.splat_transfer = splat_transfer;
+    bg.splat_is_linear = splat_is_linear;
 }
 
-// Allocate SH parameter table and seed slot 0 (DC) with `dc_color`. Higher
-void engine_init_background_sh(int sh_degree,
-                               bool splat_color_is_linear) {
+// Allocates the SH parameter table; slot 0 is the DC colour.
+void engine_init_background_sh(int sh_degree, int splat_transfer,
+                               bool splat_is_linear) {
     if (sh_degree < 0 || sh_degree > 4)
         throw std::runtime_error("engine_init_background_sh: sh_degree must be in [0, 4]");
     auto& bg = engine().background;
     bg.mode           = EngineBackground::Mode::Sh;
     bg.enabled        = true;
     bg.sh_degree      = sh_degree;
-    bg.splat_color_is_linear = splat_color_is_linear;
+    bg.splat_transfer = splat_transfer;
+    bg.splat_is_linear = splat_is_linear;
 
     // Layout: slot 0 = DC color, slots 1..(sh_degree+1)^2-1 = higher SH bands.
     // The kernel reads `sh_coeffs[0]` as DC and `sh_coeffs + 1` as the L1+
@@ -147,7 +150,7 @@ void _engine_background_forward() {
 
     if (bg.mode == EngineBackground::Mode::Noise) {
         blend_background_noise_forward(
-            bg.splat_color_is_linear,
+            bg.splat_transfer, bg.splat_is_linear,
             bg.fwd_pre_blend_rgb, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             post_rgb);
@@ -213,7 +216,7 @@ void _engine_background_backward_hook(
         DeviceTensor3D<float>  Ts_in(fwd_Ts_tensor);
         DeviceTensor3D<float3> v_out(v_render_rgb);
         blend_background_noise_backward(
-            bg.splat_color_is_linear,
+            bg.splat_transfer, bg.splat_is_linear,
             bg.fwd_pre_blend_rgb, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             overexposure_reg_weight,
@@ -362,8 +365,8 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
             DeviceTensor3D<float3> out_view(TorchTensorView(
                 (uint64_t)scratch, 4,
                 {(int64_t)C_batch, (int64_t)H, (int64_t)W, 3LL}));
-            rgb_to_srgb_forward(cs.splat_is_linear, in_view,
-                                cs.splat_color_matrix, out_view);
+            working_to_display_forward(cs.splat_transfer, cs.splat_is_linear,
+                                       in_view, cs.splat_color_matrix, out_view);
             src = scratch;
         }
         backend::memcpy_sync((void*)std::get<0>(out_image), src, nbytes,
@@ -375,9 +378,8 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
     // color space is configured we still return a uniform mid-gray; the host
     // value here is what shows up under regions blended toward random noise.
     float* h = (float*)std::get<0>(out_image);
-    float fill = bg.splat_color_is_linear
-        ? 0.21404114048223255f   // srgb_to_linear(0.5)
-        : 0.5f;
+    float fill = colorspace::display_to_working(
+        0.5f, (colorspace::Transfer)bg.splat_transfer, bg.splat_is_linear);
     int64_t n = (int64_t)C_batch * H * W * 3;
     for (int64_t i = 0; i < n; ++i) h[i] = fill;
     return 1;

@@ -778,13 +778,8 @@ static std::map<std::string, float> _engine_loss(
     }
 
     // --- Color space backward hook ---
-    // Forward order is render -> bg -> rgb_to_srgb -> {bilagrid, PPISP} ->
-    // loss (bilagrid/PPISP ordered per cfg.ppisp.run_before_bilagrid). Color
-    // space sits BEFORE both, so the bwd hook runs AFTER both bilagrid and
-    // PPISP bwd, regardless of their relative order. It rewrites v_render_rgb
-    // (sRGB -> linear/wide-gamut) and restores engine().fwd.renders.rgb to
-    // the pre-conversion values so the background bwd consumes the right rgb.
-    // No-op when disabled.
+    // Forward is render -> bg -> display encode -> {bilagrid, PPISP} -> loss,
+    // so this runs after BOTH of those backwards, in either of their orders.
     if (engine().color_space.splat_enabled) {
         _engine_color_space_backward_hook(pixel_grads.v_render_rgb);
     }
@@ -804,10 +799,8 @@ static std::map<std::string, float> _engine_loss(
     }
 
     // --- Background blend backward hook ---
-    // Forward order is render -> background -> rgb_to_srgb -> bilagrid ->
-    // PPISP -> loss, so background backward runs after the color-space hook.
-    // It rewrites v_render_rgb (post-blend -> pre-blend) and ADDS the blend's
-    // transmittance gradient into v_render_Ts before raster bwd consumes it.
+    // After the color-space hook, per the forward order above. It ADDS the
+    // blend's transmittance gradient into v_render_Ts, not overwrite.
     if (engine().background.enabled) {
         _engine_background_backward_hook(
             pixel_grads.v_render_rgb,

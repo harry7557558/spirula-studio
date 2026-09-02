@@ -15,10 +15,12 @@
 #include "atomic_float.slang"
 #include "dist_spec.slang"
 
-// Shared boolean variant flag (noise blend: is_linear; srgb:
-// is_input_linear), same convention as pixel_wise_render.slang.
+// colorspace::Transfer and the working space's linearity, same convention as
+// pixel_wise_render.slang.
 [SpecializationConstant]
-const int kFlagLinear = 0;
+const int kTransfer = 0;
+[SpecializationConstant]
+const int kIsLinear = 0;
 
 [ForceInline]
 bool _pwt_finitef(float v) {
@@ -123,11 +125,7 @@ void blend_bg_noise_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     background.y = float(_pwt_hash_uint3(p.seed + 1, gid, bid)) * exp2(-32.0f);
     background.z = float(_pwt_hash_uint3(p.seed + 2, gid, bid)) * exp2(-32.0f);
     background = 0.5f + 0.5f * p.randomize_weight * (2.0f * background - 1.0f);
-    if (kFlagLinear != 0) {
-        background.x = srgb_to_linear_rgb(background.x);
-        background.y = srgb_to_linear_rgb(background.y);
-        background.z = srgb_to_linear_rgb(background.z);
-    }
+    background = display_to_working3(background, kTransfer, kIsLinear != 0);
 
     float3 v_out = float3(p.v_out_rgb[3 * idx], p.v_out_rgb[3 * idx + 1],
                           p.v_out_rgb[3 * idx + 2]);
@@ -143,7 +141,7 @@ void blend_bg_noise_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// rgb_to_srgb_backward (kFlagLinear = is_input_linear)
+// working_to_display_backward (kTransfer / kIsLinear = the source encoding)
 // ---------------------------------------------------------------------------
 
 struct RgbToSrgbBwdParams {  // 40 bytes: pushed directly
@@ -157,8 +155,8 @@ struct RgbToSrgbBwdParams {  // 40 bytes: pushed directly
 
 [shader("compute")]
 [numthreads(128, 1, 1)]
-void srgb_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-              uniform RgbToSrgbBwdParams p) {
+void working_to_display_bwd_k(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                              uniform RgbToSrgbBwdParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.total) return;
     float3 rgb = float3(p.rgb[3 * idx], p.rgb[3 * idx + 1],
@@ -170,8 +168,8 @@ void srgb_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                        p.color_matrix[3 * r + 2]);
     float3 v_out = float3(p.v_out_rgb[3 * idx], p.v_out_rgb[3 * idx + 1],
                           p.v_out_rgb[3 * idx + 2]);
-    float3 v_rgb = kFlagLinear != 0 ? linear_rgb_to_srgb_bwd(rgb, cm, v_out)
-                                    : rgb_to_srgb_bwd(rgb, cm, v_out);
+    float3 v_rgb = working_to_display_bwd(rgb, cm, kTransfer, kIsLinear != 0,
+                                          v_out);
     p.v_rgb[3 * idx] = v_rgb.x;
     p.v_rgb[3 * idx + 1] = v_rgb.y;
     p.v_rgb[3 * idx + 2] = v_rgb.z;

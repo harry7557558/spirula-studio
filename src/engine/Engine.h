@@ -253,9 +253,9 @@ void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg);
 //          plus higher-order bands; both updated by Adam when train_color=true.
 //
 // dc_color is the linear-space DC color used at SH init time (set slot 0).
-void engine_init_background_noise(bool splat_color_is_linear);
+void engine_init_background_noise(int splat_transfer, bool splat_is_linear);
 void engine_init_background_sh(
-    int sh_degree, bool splat_color_is_linear);
+    int sh_degree, int splat_transfer, bool splat_is_linear);
 
 // Per-iter (seed, randomize_weight) for the next forward_3dgs background blend.
 // Training calls this each step; the viewer/eval path can ignore it and reuse
@@ -284,9 +284,11 @@ int engine_copy_background_to_host(TorchTensorView out_image);
 // matrices when the corresponding side is not enabled.
 void engine_init_color_space(
     bool splat_enabled,
-    bool splat_is_linear,
+    int splat_transfer,                       // colorspace::Transfer
+    bool splat_is_linear,                     // splats store linear light
     std::vector<float> splat_color_matrix,    // [9], row-major
     bool image_enabled,
+    int image_transfer,
     bool image_is_linear,
     std::vector<float> image_color_matrix     // [9], row-major
 );
@@ -642,7 +644,8 @@ void engine_scene_set_data_3dgs(
 // The model's own colour space, applied by engine_scene_activate. Two models
 // trained in different spaces are converted each its own way, which is the
 // whole point of carrying it here rather than in the engine's one slot.
-void engine_scene_set_color_space(int slot, bool enabled, bool is_linear,
+void engine_scene_set_color_space(int slot, bool enabled, int transfer,
+                                  bool is_linear,
                                   std::vector<float> color_matrix);
 
 // Bind `slot` to the world buffers. Throws when the slot holds nothing.

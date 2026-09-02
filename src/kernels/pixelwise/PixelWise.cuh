@@ -142,6 +142,7 @@ void blend_background_backward(
 
 
 void blend_background_noise_forward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,           // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance, // [B, H, W, 1]
@@ -152,6 +153,7 @@ void blend_background_noise_forward(
 
 
 void blend_background_noise_backward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,              // [B, H, W, 3] PRE-blend
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
@@ -164,16 +166,18 @@ void blend_background_noise_backward(
 );
 
 
-void rgb_to_srgb_forward(
-    bool is_input_linear,
+void working_to_display_forward(
+    int transfer,                        // colorspace::Transfer
+    bool is_linear,                      // does the source store linear light
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> out_rgb       // [B, H, W, 3]
 );
 
 
-void rgb_to_srgb_backward(
-    bool is_input_linear,
+void working_to_display_backward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> v_out_rgb,    // [B, H, W, 3]

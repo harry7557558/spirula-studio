@@ -377,7 +377,8 @@ struct EngineBackground {
     bool enabled = false;
 
     // Common config (set at init time)
-    bool splat_color_is_linear = false;  // noise mode: sRGB->linear conversion
+    int  splat_transfer = 0;             // noise mode: display -> working space
+    bool splat_is_linear = false;
 
     // SH mode config
     int  sh_degree       = 0;            // 0..4
@@ -408,16 +409,18 @@ struct EngineBackground {
 struct ColorSpaceState {
     // Splat (per-frame fwd + bwd)
     bool                   splat_enabled    = false;
+    int                    splat_transfer   = 0;   // colorspace::Transfer
     bool                   splat_is_linear  = false;
     DeviceTensor2D<float3> splat_color_matrix;   // [3, 3], stored as 3 float3 rows
 
     // Image (one-shot at upload)
     bool                   image_enabled    = false;
+    int                    image_transfer   = 0;
     bool                   image_is_linear  = false;
     DeviceTensor2D<float3> image_color_matrix;   // [3, 3], stored as 3 float3 rows
 
     // Per-iter scratch: pre-conversion render kept for the backward vjp
-    // (rgb_to_srgb_backward consumes the linear / wide-gamut input).
+    // (working_to_display_backward consumes the working-space input).
     DeviceTensor3D<float3> fwd_pre;
 };
 

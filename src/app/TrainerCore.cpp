@@ -76,24 +76,48 @@ Mat3f gamut_to_rec709(const std::string& name) {
 
 Mat3f invert3x3(const Mat3f& m) { return colorspace::invert3x3(m); }
 
+// "none" is how both front ends spell unset for a string field, and the GUI
+// writes it literally when a preset gave the field a value.
+static bool unset(const std::string& v) { return v.empty() || v == "none"; }
+
+// "Rec.709" is the config saying "sRGB, and do not take the file's word for
+// it"; resolved it is the identity, same as unset.
+static std::string resolved_gamut(const std::string& name) {
+    return name == "Rec.709" ? std::string() : name;
+}
+
 ColorResolution resolve_color(const TrainConfig& c) {
     ColorResolution r;
-    // "Rec.709" is how the config says "sRGB, and do not take the file's word
-    // for it"; resolved it is the identity, same as the unset "".
-    r.image_gamut  = c.image_color_gamut == "Rec.709" ? "" : c.image_color_gamut;
-    r.image_linear = c.image_color_is_linear.value_or(false);
+    r.image_gamut    = unset(c.image_color_gamut)
+                           ? std::string() : resolved_gamut(c.image_color_gamut);
+    r.image_linear   = c.image_color_is_linear.value_or(false);
+    r.image_transfer = colorspace::transfer_or(c.image_color_transfer,
+                                               colorspace::Transfer::Srgb);
     std::optional<bool> convert = c.convert_initial_point_cloud_color;
+    auto declared = [&] { if (!convert.has_value()) convert = true; };
 
-    r.splat_gamut = c.splat_color_gamut;
-    if (r.splat_gamut.empty()) r.splat_gamut = r.image_gamut;
-    else if (!convert.has_value()) convert = true;
-    if (r.splat_gamut == "Rec.709") r.splat_gamut = "";
+    // Each splat-side half falls back to the images, so declaring only the
+    // input still renders back into the space the input came from.
+    if (unset(c.splat_color_gamut)) {
+        r.splat_gamut = r.image_gamut;
+    } else {
+        r.splat_gamut = resolved_gamut(c.splat_color_gamut);
+        declared();
+    }
 
     if (c.splat_color_is_linear.has_value()) {
         r.splat_linear = *c.splat_color_is_linear;
-        if (!convert.has_value()) convert = true;
+        declared();
     } else {
         r.splat_linear = r.image_linear;
+    }
+
+    if (unset(c.splat_color_transfer)) {
+        r.splat_transfer = r.image_transfer;
+    } else {
+        r.splat_transfer = colorspace::transfer_or(c.splat_color_transfer,
+                                                   r.image_transfer);
+        declared();
     }
     r.convert_seed = convert.value_or(false);
     return r;
@@ -235,7 +259,10 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         for (int d = 0; d < 3; d++)
             col[d] = all_same ? uni(rng) : pts.rgb[pick[i]*3 + d] / 255.f;
         if (color.convert_seed) {
-            for (int d = 0; d < 3; d++) col[d] = colorspace::srgb_to_linear(col[d]);
+            // The gamut matrix belongs in linear light, so decode through the
+            // transfer, rotate, and re-encode only if the splats are stored so.
+            for (int d = 0; d < 3; d++)
+                col[d] = colorspace::tone_decode(col[d], color.splat_transfer);
             colorspace::apply3x3(to_splat, col);
             if (!color.splat_linear)
                 for (int d = 0; d < 3; d++) col[d] = colorspace::linear_to_srgb(col[d]);
@@ -756,19 +783,22 @@ void TrainerSession::setup_engine() {
 
     // Background blending.
     if (cfg.background_mode == "noise")
-        engine_init_background_noise(color.splat_linear);
+        engine_init_background_noise((int)color.splat_transfer,
+                                     color.splat_linear);
     else if (cfg.background_mode == "sh")
-        engine_init_background_sh(cfg.background_sh_degree, color.splat_linear);
+        engine_init_background_sh(cfg.background_sh_degree,
+                                  (int)color.splat_transfer,
+                                  color.splat_linear);
 
-    // Linear / wide-gamut color space.
-    bool splat_cs_on = color.splat_linear || !color.splat_gamut.empty();
-    bool image_cs_on = color.image_linear || !color.image_gamut.empty();
+    // Output transfer / wide-gamut color space.
+    const bool splat_cs_on = color.splat_on();
+    const bool image_cs_on = color.image_on();
     {
         auto vec = [](const Mat3f& m) { return std::vector<float>(m.begin(), m.end()); };
         engine_init_color_space(
-            splat_cs_on, color.splat_linear,
+            splat_cs_on, (int)color.splat_transfer, color.splat_linear,
             splat_cs_on ? vec(gamut_to_rec709(color.splat_gamut)) : std::vector<float>{},
-            image_cs_on, color.image_linear,
+            image_cs_on, (int)color.image_transfer, color.image_linear,
             image_cs_on ? vec(gamut_to_rec709(color.image_gamut)) : std::vector<float>{});
     }
 
@@ -1168,7 +1198,7 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
                            cfg.depth_distortion_reg != 0.0f ||
                            cfg.normal_distortion_reg != 0.0f;
     const auto color = resolve_color(cfg);
-    vc.color_space_on = color.splat_linear || !color.splat_gamut.empty();
+    vc.color_space_on = color.splat_on();
     vc.train_frame_scale = ds.train_frame_scale;
     vc.train_to_normalized = ds.train_to_normalized;
     vc.base_camera_size = viewer_base_camera_size;

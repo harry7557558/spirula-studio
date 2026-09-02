@@ -1,5 +1,5 @@
-// ImageColorOps.cu -- background blending (plain + random noise), log map
-// image (linear <-> sRGB), overexposure regularization.
+// ImageColorOps.cu -- background blending (plain + random noise), the working
+// space -> display transfer, overexposure regularization.
 //
 // Part of the PixelWise family -- see PixelWiseCommon.cuh.
 
@@ -11,6 +11,15 @@ static inline float _overexposure_scale(long b, long h, long w, float weight) {
     double n = (double)b * (double)h * (double)w * 3.0;
     return (float)(2.0 * (double)weight / n);
 }
+
+// Transfer and linearity are compile-time axes so the curve and its decode
+// fold away; the transfer values are colorspace::Transfer (core/ColorSpace.h).
+#define _XFER_PICK1(fn, lin, t)                                               \
+    ((t) == 1 ? fn<1, lin> : (t) == 2 ? fn<2, lin> : (t) == 3 ? fn<3, lin> :  \
+     (t) == 4 ? fn<4, lin> : fn<0, lin>)
+#define _XFER_PICK(fn, t, lin)                                                \
+    ((lin) ? _XFER_PICK1(fn, true, t) : _XFER_PICK1(fn, false, t))
+
 
 // ================
 // Blend Background
@@ -119,7 +128,7 @@ void blend_background_backward(
 // Blend Background with Random Noise
 // ================
 
-template<bool is_linear>
+template<int Transfer, bool IsLinear>
 __global__ void blend_background_noise_forward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
@@ -143,18 +152,14 @@ __global__ void blend_background_noise_forward_kernel(
     background.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
     background.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
     background = 0.5 + 0.5*randomize_weight * (2.0f * background - 1.0f);
-    if (is_linear) {
-        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
-        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
-        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
-    }
+    background = SlangPixelWise::display_to_working3(background, Transfer, IsLinear);
 
     rgb = SlangPixelWise::blend_background(rgb, transmittance, background);
 
     out_rgb.store3(bid, y, x, rgb);
 }
 
-template<bool is_linear>
+template<int Transfer, bool IsLinear>
 __global__ void blend_background_noise_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
@@ -181,11 +186,7 @@ __global__ void blend_background_noise_backward_kernel(
     background.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
     background.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
     background = 0.5 + 0.5*randomize_weight * (2.0f * background - 1.0f);
-    if (is_linear) {
-        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
-        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
-        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
-    }
+    background = SlangPixelWise::display_to_working3(background, Transfer, IsLinear);
 
     float3 v_out = v_out_rgb.load3(bid, y, x);
 
@@ -202,6 +203,7 @@ __global__ void blend_background_noise_backward_kernel(
 
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_forward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,           // [B, H, W, 3]
     DeviceTensor3D<float>  transmittance, // [B, H, W, 1]
@@ -211,7 +213,7 @@ void blend_background_noise_forward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_linear ? blend_background_noise_forward_kernel<true> : blend_background_noise_forward_kernel<false>)
+    _XFER_PICK(blend_background_noise_forward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
         randomize_weight, seed,
@@ -222,6 +224,7 @@ void blend_background_noise_forward(
 
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_backward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,              // [B, H, W, 3] PRE-blend
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
@@ -234,7 +237,7 @@ void blend_background_noise_backward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_linear ? blend_background_noise_backward_kernel<true> : blend_background_noise_backward_kernel<false>)
+    _XFER_PICK(blend_background_noise_backward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
         randomize_weight, seed,
@@ -247,11 +250,11 @@ void blend_background_noise_backward(
 
 
 // ================
-// Log Map Image
+// Working Space -> Display
 // ================
 
-template<bool is_input_linear>
-__global__ void rgb_to_srgb_forward_kernel(
+template<int Transfer, bool IsLinear>
+__global__ void working_to_display_forward_kernel(
     const TensorView<float, 4> in_rgb,
     const float* __restrict__ color_matrix_buffer,
     TensorView<float, 4> out_rgb
@@ -277,16 +280,13 @@ __global__ void rgb_to_srgb_forward_kernel(
     color_matrix[2].y = color_matrix_buffer[7];
     color_matrix[2].z = color_matrix_buffer[8];
 
-    if (is_input_linear)
-        rgb = SlangPixelWise::linear_rgb_to_srgb(rgb, color_matrix);
-    else
-        rgb = SlangPixelWise::rgb_to_srgb(rgb, color_matrix);
+    rgb = SlangPixelWise::working_to_display(rgb, color_matrix, Transfer, IsLinear);
 
     out_rgb.store3(bid, y, x, rgb);
 }
 
-template<bool is_input_linear>
-__global__ void rgb_to_srgb_backward_kernel(
+template<int Transfer, bool IsLinear>
+__global__ void working_to_display_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const float* __restrict__ color_matrix_buffer,
     const TensorView<float, 4> v_out_rgb,
@@ -315,25 +315,23 @@ __global__ void rgb_to_srgb_backward_kernel(
 
     float3 v_out = v_out_rgb.load3(bid, y, x);
 
-    float3 v_rgb;
-    if (is_input_linear)
-        v_rgb = SlangPixelWise::linear_rgb_to_srgb_bwd(rgb, color_matrix, v_out);
-    else
-        v_rgb = SlangPixelWise::rgb_to_srgb_bwd(rgb, color_matrix, v_out);
+    float3 v_rgb = SlangPixelWise::working_to_display_bwd(
+        rgb, color_matrix, Transfer, IsLinear, v_out);
 
     v_in_rgb.store3(bid, y, x, v_rgb);
 }
 
 /*[AutoHeaderGeneratorExport]*/
-void rgb_to_srgb_forward(
-    bool is_input_linear,
+void working_to_display_forward(
+    int transfer,                        // colorspace::Transfer
+    bool is_linear,                      // does the source store linear light
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> out_rgb       // [B, H, W, 3]
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_input_linear ? rgb_to_srgb_forward_kernel<true> : rgb_to_srgb_forward_kernel<false>)
+    _XFER_PICK(working_to_display_forward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb),
         (float*)color_matrix.data_ptr(),
@@ -343,8 +341,9 @@ void rgb_to_srgb_forward(
 }
 
 /*[AutoHeaderGeneratorExport]*/
-void rgb_to_srgb_backward(
-    bool is_input_linear,
+void working_to_display_backward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> v_out_rgb,    // [B, H, W, 3]
@@ -352,7 +351,7 @@ void rgb_to_srgb_backward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_input_linear ? rgb_to_srgb_backward_kernel<true> : rgb_to_srgb_backward_kernel<false>)
+    _XFER_PICK(working_to_display_backward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb),
         (float*)color_matrix.data_ptr(),

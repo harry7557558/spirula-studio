@@ -1,5 +1,5 @@
 // Vulkan implementations of the PixelWise launch APIs needed by the RENDER
-// path (kernels/pixelwise/PixelWise.cuh): background blends, color-space conversion,
+// path (kernels/pixelwise/PixelWise.cuh): background blends, the display encode,
 // depth->normal. Device work: shaders/pixel_wise_render.slang. The
 // training-time PixelWise kernels (losses, backwards, warps) are not here —
 // they land with the training phase.
@@ -66,6 +66,7 @@ void blend_background_forward(
 }
 
 void blend_background_noise_forward(
+    int transfer,
     bool is_linear,
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
@@ -84,12 +85,14 @@ void blend_background_noise_forward(
     p.HW = (uint32_t)hw;
     p.total = (uint32_t)total;
     vkk::dispatch_flat("pixel_wise_render.blend_background_noise_fwd",
-                       backend::vk::SpecList{is_linear ? 1u : 0u}, total, 128,
-                       &p, sizeof(p), &p.wgs_per_row);
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
+                       total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
-void rgb_to_srgb_forward(
-    bool is_input_linear,
+void working_to_display_forward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,
     DeviceTensor2D<float3> color_matrix,
     DeviceTensor3D<float3> out_rgb
@@ -100,8 +103,9 @@ void rgb_to_srgb_forward(
     p.color_matrix = (uint64_t)color_matrix.data_ptr();
     p.out_rgb = (uint64_t)out_rgb.data_ptr();
     p.total = (uint32_t)total;
-    vkk::dispatch_flat("pixel_wise_render.rgb_to_srgb_fwd",
-                       backend::vk::SpecList{is_input_linear ? 1u : 0u},
+    vkk::dispatch_flat("pixel_wise_render.working_to_display_fwd",
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
                        total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
@@ -130,7 +134,7 @@ void depth_to_normal_forward(
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_render.depth_to_normal_fwd",
-                  backend::vk::SpecList{0u, cd.dist}, (W + 15) / 16,
+                  backend::vk::SpecList{0u, 0u, cd.dist}, (W + 15) / 16,
                   (H + 15) / 16, B, &p, sizeof(p));
 }
 

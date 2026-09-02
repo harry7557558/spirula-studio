@@ -169,8 +169,10 @@ void CompareView::attach(Model& m) {
             // controls.
             m.panel.enable_scene_options(
                 m.src.render_config().primitive, m.src.sh_degree(),
-                m.src.gamut(), m.src.linear_color(),
-                [&m](const char* g, bool lin) { m.src.set_color_space(g, lin); },
+                m.src.gamut(), m.src.transfer(), m.src.linear_color(),
+                [&m](const char* g, int t, bool lin) {
+                    m.src.set_color_space(g, t, lin);
+                },
                 [&m] { m.src.release_screen_buffers(); });
             break;
     }

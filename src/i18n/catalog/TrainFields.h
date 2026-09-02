@@ -8123,6 +8123,86 @@ SS_MSG(image_color_is_linear_help,
        "söz budur -- diğer her şeyi ekran için kodlanmış sayar; pikselleri yine de "
        "ekran için kodlanmış bir EXR'de açıkça ayarlayın."));
 
+SS_MSG(image_color_transfer,
+    EN("Input tone curve"), JA("入力のトーンカーブ"),
+    ZH_HANS("输入色调曲线"), ZH_HANT("輸入色調曲線"),
+    KO("입력 톤 커브"), DE("Eingabe-Tonkurve"),
+    FR("Courbe de tonalité d'entrée"), ES("Curva tonal de entrada"),
+    PT("Curva tonal de entrada"), IT("Curva tonale in ingresso"),
+    NL("Toonkromme van de invoer"), RU("Тоновая кривая входа"),
+    TR("Girdi ton eğrisi"));
+SS_MSG(image_color_transfer_help,
+    EN("The curve that turns the input's light values into the picture the loss "
+       "is measured on. `srgb` is the plain sRGB encode and is what an ordinary "
+       "photo wants. `aces`, `filmic` and `uncharted2` roll the highlights off "
+       "instead of clipping them, which is for scene-linear HDR input that goes "
+       "far above 1.0. Independent of whether the input is linear -- that is "
+       "`--image-color-is-linear`."),
+    JA("入力の光の値を、損失を測る絵に変えるカーブです。srgb は素の sRGB 符号化"
+       "で、普通の写真はこれです。aces・filmic・uncharted2 はハイライトを切り"
+       "捨てずになだらかに丸めるので、1.0 をはるかに超えるシーンリニアの HDR 入力"
+       "向けです。入力がリニアかどうかとは独立で、それは "
+       "--image-color-is-linear です。"),
+    ZH_HANS("把输入的光值变成计算损失的那幅图的曲线。srgb 是普通的 sRGB 编码，"
+            "一般照片用它。aces、filmic、uncharted2 会把高光平滑压下来而不是直接"
+            "截断，适合远超 1.0 的场景线性 HDR 输入。这与输入是否线性无关，那由 "
+            "--image-color-is-linear 决定。"),
+    ZH_HANT("把輸入的光值變成計算損失的那幅圖的曲線。srgb 是普通的 sRGB 編碼，"
+            "一般照片用它。aces、filmic、uncharted2 會把高光平滑壓下來而不是直接"
+            "截斷，適合遠超 1.0 的場景線性 HDR 輸入。這與輸入是否線性無關，那由 "
+            "--image-color-is-linear 決定。"),
+    KO("입력의 빛 값을 손실을 재는 그림으로 바꾸는 곡선입니다. srgb는 평범한 "
+       "sRGB 인코딩이고 보통 사진은 이것을 씁니다. aces, filmic, uncharted2는 "
+       "밝은 부분을 잘라내지 않고 완만하게 눌러 주므로 1.0을 크게 넘는 장면 선형 "
+       "HDR 입력에 알맞습니다. 입력이 선형인지와는 무관하며 그것은 "
+       "--image-color-is-linear 입니다."),
+    DE("Die Kurve, die die Lichtwerte der Eingabe in das Bild überführt, an dem "
+       "der Verlust gemessen wird. `srgb` ist die schlichte sRGB-Codierung und "
+       "das, was ein gewöhnliches Foto will. `aces`, `filmic` und `uncharted2` "
+       "rollen die Lichter ab, statt sie abzuschneiden -- für szenenlineare "
+       "HDR-Eingaben weit über 1.0. Unabhängig davon, ob die Eingabe linear ist; "
+       "das ist `--image-color-is-linear`."),
+    FR("La courbe qui transforme les valeurs de lumière de l'entrée en l'image "
+       "sur laquelle la perte est mesurée. « srgb » est l'encodage sRGB simple, "
+       "ce que veut une photo ordinaire. « aces », « filmic » et « uncharted2 » "
+       "adoucissent les hautes lumières au lieu de les écrêter, pour une entrée "
+       "HDR linéaire scène bien au-dessus de 1.0. Indépendant du fait que "
+       "l'entrée soit linéaire : c'est « --image-color-is-linear »."),
+    ES("La curva que convierte los valores de luz de la entrada en la imagen "
+       "sobre la que se mide la pérdida. «srgb» es la codificación sRGB simple, "
+       "lo que quiere una foto normal. «aces», «filmic» y «uncharted2» suavizan "
+       "las altas luces en vez de recortarlas, para entrada HDR lineal de escena "
+       "muy por encima de 1.0. Independiente de si la entrada es lineal: eso es "
+       "«--image-color-is-linear»."),
+    PT("A curva que converte os valores de luz da entrada na imagem sobre a qual "
+       "a perda é medida. «srgb» é a codificação sRGB simples, o que uma foto "
+       "normal quer. «aces», «filmic» e «uncharted2» suavizam as altas luzes em "
+       "vez de as cortar, para entrada HDR linear de cena muito acima de 1.0. "
+       "Independente de a entrada ser linear: isso é «--image-color-is-linear»."),
+    IT("La curva che trasforma i valori di luce dell'ingresso nell'immagine su "
+       "cui si misura la perdita. «srgb» è la semplice codifica sRGB, ciò che "
+       "vuole una foto normale. «aces», «filmic» e «uncharted2» addolciscono le "
+       "alte luci invece di troncarle, per ingressi HDR lineari di scena molto "
+       "sopra 1.0. Indipendente dal fatto che l'ingresso sia lineare: quello è "
+       "«--image-color-is-linear»."),
+    NL("De kromme die de lichtwaarden van de invoer omzet in het beeld waarop "
+       "het verlies wordt gemeten. `srgb` is de gewone sRGB-codering en is wat "
+       "een normale foto wil. `aces`, `filmic` en `uncharted2` laten de hoge "
+       "lichten aflopen in plaats van ze af te kappen, voor scène-lineaire "
+       "HDR-invoer ver boven 1.0. Los van of de invoer lineair is; dat is "
+       "`--image-color-is-linear`."),
+    RU("Кривая, превращающая значения света на входе в картинку, на которой "
+       "меряется потеря. «srgb» -- обычное кодирование sRGB, то, что нужно "
+       "обычной фотографии. «aces», «filmic» и «uncharted2» плавно сводят света "
+       "вместо обрезки, для сценарно-линейного HDR-входа сильно выше 1.0. "
+       "Независимо от того, линеен ли вход: это «--image-color-is-linear»."),
+    TR("Girdinin ışık değerlerini, kaybın ölçüldüğü resme çeviren eğri. `srgb` "
+       "sade sRGB kodlamasıdır ve sıradan bir fotoğrafın istediği budur. `aces`, "
+       "`filmic` ve `uncharted2` parlak bölgeleri kırpmak yerine yumuşatarak "
+       "indirir; 1.0'ın çok üstüne çıkan sahne-doğrusal HDR girdi içindir. "
+       "Girdinin doğrusal olup olmamasından bağımsızdır, o "
+       "`--image-color-is-linear`'dır."));
+
 SS_MSG(image_color_gamut,
     EN("Input color space"), JA("入力の色空間"), ZH_HANS("输入色彩空间"),
     ZH_HANT("輸入色彩空間"), KO("입력 색 공간"), DE("Farbraum der Eingabe"),
@@ -8189,40 +8269,175 @@ SS_MSG(splat_color_is_linear,
     RU("Обучать сплаты в линейном свете"),
     TR("Splat'ları doğrusal ışıkta eğit"));
 SS_MSG(splat_color_is_linear_help,
-    EN("Train splat colors in linear light. Leave unset to follow the input images. "
-       "Linear color holds bright highlights better for HDR work."),
-    JA("スプラットの色をリニア光で学習します。未設定なら入力画像に合わせます。"
-       "リニアの色は明るいハイライトをよく保つので、HDR の作業に向きます。"),
-    ZH_HANS("在线性光下训练泼溅颜色。不设置则跟随输入图像。线性颜色能更好地保"
-            "留高光，适合 HDR 工作流。"),
-    ZH_HANT("在線性光下訓練潑濺顏色。不設定則跟隨輸入影像。線性顏色能更好地保"
-            "留高光，適合 HDR 工作流程。"),
-    KO("스플랫 색을 선형 광에서 학습합니다. 설정하지 않으면 입력 이미지를 따릅"
-       "니다. 선형 색은 밝은 하이라이트를 잘 유지해 HDR 작업에 알맞습니다."),
-    DE("Splatfarben in linearem Licht trainieren. Nicht gesetzt richtet es sich "
-       "nach den Eingabebildern. Lineare Farbe hält helle Lichter besser und "
-       "eignet sich für HDR-Arbeit."),
-    FR("Entraîner les couleurs des splats en lumière linéaire. Non défini, suit "
-       "les images d'entrée. La couleur linéaire retient mieux les hautes lumières, "
-       "ce qui convient au travail HDR."),
-    ES("Entrenar los colores de los splats en luz lineal. Sin definir, sigue "
-       "a las imágenes de entrada. El color lineal conserva mejor las altas luces, "
-       "útil para trabajo HDR."),
-    PT("Treinar as cores dos splats em luz linear. Sem definir, segue as imagens "
-       "de entrada. A cor linear retém melhor as altas luzes, útil para trabalho "
-       "HDR."),
-    IT("Addestrare i colori degli splat in luce lineare. Se non impostato, segue "
-       "le immagini in ingresso. Il colore lineare trattiene meglio le alte luci, "
-       "utile per il lavoro HDR."),
-    NL("Splatkleuren in lineair licht trainen. Niet ingesteld volgt het de invoerbeelden. "
-       "Lineaire kleur houdt heldere highlights beter vast, wat handig is voor "
-       "HDR-werk."),
-    RU("Обучать цвета сплатов в линейном свете. Если не задано, следует за входными "
-       "изображениями. Линейный цвет лучше удерживает яркие света, что нужно "
-       "для HDR."),
-    TR("Splat renklerini doğrusal ışıkta eğitir. Ayarlanmazsa girdi görüntülerini "
-       "izler. Doğrusal renk parlak ışıkları daha iyi tutar; HDR işlerinde işe "
-       "yarar."));
+    EN("Store splat colors as linear light rather than as display values. Leave "
+       "unset to follow the input images. Linear storage is what switches the "
+       "color optimizer to its square-root parameterization and trust region; "
+       "which curve the render leaves through is separate "
+       "(`--splat-color-transfer`)."),
+    JA("スプラットの色を表示値ではなくリニア光として保持します。未設定なら入力"
+       "画像に合わせます。リニアで持つことが、色の最適化を平方根パラメータ化と"
+       "信頼領域に切り替えます。レンダーが出ていくカーブは別で、"
+       "--splat-color-transfer です。"),
+    ZH_HANS("把泼溅颜色按线性光而不是显示值存储。不设置则跟随输入图像。以线性存"
+            "储会把颜色优化切换到平方根参数化和信赖域；渲染输出经过哪条曲线是另"
+            "一件事，由 --splat-color-transfer 决定。"),
+    ZH_HANT("把潑濺顏色依線性光而不是顯示值儲存。不設定則跟隨輸入影像。以線性儲"
+            "存會把顏色最佳化切換到平方根參數化和信賴域；算繪輸出經過哪條曲線是"
+            "另一件事，由 --splat-color-transfer 決定。"),
+    KO("스플랫 색을 디스플레이 값이 아니라 선형 광량으로 저장합니다. 설정하지 "
+       "않으면 입력 이미지를 따릅니다. 선형 저장이 색 최적화를 제곱근 매개변수화"
+       "와 신뢰 영역으로 바꿉니다. 렌더가 나가는 곡선은 별개이며 "
+       "--splat-color-transfer 입니다."),
+    DE("Splatfarben als lineares Licht statt als Anzeigewerte speichern. Nicht "
+       "gesetzt richtet es sich nach den Eingabebildern. Lineare Speicherung "
+       "schaltet die Farboptimierung auf ihre Wurzel-Parametrisierung und "
+       "Vertrauensregion um; welche Kurve das Rendering verlässt, ist davon "
+       "getrennt (`--splat-color-transfer`)."),
+    FR("Stocker les couleurs des splats en lumière linéaire plutôt qu'en valeurs "
+       "d'affichage. Non défini, suit les images d'entrée. Le stockage linéaire "
+       "est ce qui bascule l'optimiseur de couleur sur sa paramétrisation en "
+       "racine carrée et sa région de confiance ; la courbe par laquelle sort le "
+       "rendu est séparée (« --splat-color-transfer »)."),
+    ES("Guardar los colores de los splats como luz lineal en vez de como valores "
+       "de pantalla. Sin definir, sigue a las imágenes de entrada. El "
+       "almacenamiento lineal es lo que cambia el optimizador de color a su "
+       "parametrización en raíz cuadrada y su región de confianza; por qué curva "
+       "sale el render es aparte («--splat-color-transfer»)."),
+    PT("Guardar as cores dos splats como luz linear em vez de valores de "
+       "exibição. Sem definir, segue as imagens de entrada. O armazenamento "
+       "linear é o que muda o otimizador de cor para a sua parametrização em "
+       "raiz quadrada e região de confiança; por que curva o render sai é à "
+       "parte («--splat-color-transfer»)."),
+    IT("Memorizzare i colori degli splat come luce lineare invece che come "
+       "valori di visualizzazione. Se non impostato, segue le immagini in "
+       "ingresso. La memorizzazione lineare è ciò che porta l'ottimizzatore di "
+       "colore alla sua parametrizzazione in radice quadrata e alla regione di "
+       "fiducia; per quale curva esce il render è cosa distinta "
+       "(«--splat-color-transfer»)."),
+    NL("Splatkleuren als lineair licht opslaan in plaats van als weergavewaarden. "
+       "Niet ingesteld volgt het de invoerbeelden. Lineaire opslag is wat de "
+       "kleuroptimalisatie op haar wortelparametrisatie en vertrouwensgebied "
+       "zet; via welke kromme de render eruit gaat, staat daar los van "
+       "(`--splat-color-transfer`)."),
+    RU("Хранить цвета сплатов как линейный свет, а не как экранные значения. Без "
+       "значения следует за входными изображениями. Именно линейное хранение "
+       "переводит оптимизацию цвета на корневую параметризацию и доверительную "
+       "область; через какую кривую выходит рендер -- отдельный вопрос "
+       "(«--splat-color-transfer»)."),
+    TR("Splat renklerini ekran değerleri yerine doğrusal ışık olarak saklar. "
+       "Ayarlanmazsa girdi görüntülerini izler. Doğrusal saklama, renk "
+       "eniyilemesini karekök parametrelemesine ve güven bölgesine geçiren "
+       "şeydir; render'ın hangi eğriden çıktığı ayrıdır "
+       "(`--splat-color-transfer`)."));
+
+SS_MSG(splat_color_transfer,
+    EN("Splat tone curve"), JA("スプラットのトーンカーブ"),
+    ZH_HANS("泼溅色调曲线"), ZH_HANT("潑濺色調曲線"),
+    KO("스플랫 톤 커브"), DE("Splat-Tonkurve"),
+    FR("Courbe de tonalité des splats"), ES("Curva tonal de los splats"),
+    PT("Curva tonal dos splats"), IT("Curva tonale degli splat"),
+    NL("Toonkromme van de splats"), RU("Тоновая кривая сплатов"),
+    TR("Splat ton eğrisi"));
+SS_MSG(splat_color_transfer_help,
+    EN("The curve the render goes through before the loss compares it with the "
+       "photo. `none` uses the input's, which is what keeps the render matching "
+       "the photographs. `aces`, `filmic` and `uncharted2` put a highlight "
+       "roll-off in front of the loss instead, so a photo that is nearly white "
+       "at 0.99 can be explained by a splat many times brighter than 1.0 rather "
+       "than being pinned there -- dynamic range bought back from an almost-"
+       "clipped capture, at the price of having to VIEW the model the same way. "
+       "`overexposure-reg` pulls the other way and should stay at 0."),
+    JA("損失が写真と比べる前に、レンダーが通るカーブです。none は入力のものを使"
+       "い、これがレンダーを写真に一致させます。aces・filmic・uncharted2 は代わ"
+       "りに損失の手前へハイライトのロールオフを置くので、0.99 でほぼ白の写真を "
+       "1.0 の何倍も明るいスプラットで説明でき、そこに張り付きません。白飛び寸前"
+       "の撮影からダイナミックレンジを取り戻せる代わりに、モデルは同じ設定で表示"
+       "する必要があります。overexposure-reg は逆に働くので 0 のままにしてくださ"
+       "い。"),
+    ZH_HANS("在损失把渲染和照片相比之前，渲染要经过的曲线。none 用输入的那条，"
+            "这正是让渲染与照片一致的做法。aces、filmic、uncharted2 则在损失之前"
+            "加一段高光滚降，于是 0.99 这种接近纯白的照片可以由亮度远超 1.0 的泼"
+            "溅来解释，而不是被钉在 1.0——从几乎过曝的素材里换回动态范围，代价是"
+            "模型必须用同样的设置来观看。overexposure-reg 的作用相反，应保持为 0。"),
+    ZH_HANT("在損失把算繪和照片相比之前，算繪要經過的曲線。none 用輸入的那條，"
+            "這正是讓算繪與照片一致的做法。aces、filmic、uncharted2 則在損失之前"
+            "加一段高光滾降，於是 0.99 這種接近純白的照片可以由亮度遠超 1.0 的潑"
+            "濺來解釋，而不是被釘在 1.0——從幾乎過曝的素材裡換回動態範圍，代價是"
+            "模型必須用同樣的設定來觀看。overexposure-reg 的作用相反，應保持為 0。"),
+    KO("손실이 렌더를 사진과 비교하기 전에 렌더가 지나는 곡선입니다. none은 입력"
+       "의 것을 써서 렌더가 사진과 일치하게 합니다. aces, filmic, uncharted2는 "
+       "대신 손실 앞에 하이라이트 롤오프를 두므로 0.99처럼 거의 흰 사진을 1.0보다 "
+       "몇 배 밝은 스플랫으로 설명할 수 있고 그 값에 붙박이지 않습니다. 거의 날아"
+       "간 촬영에서 다이내믹 레인지를 되찾는 대신 모델도 같은 설정으로 봐야 합니"
+       "다. overexposure-reg는 반대로 작용하므로 0으로 두세요."),
+    DE("Die Kurve, die das Rendering durchläuft, bevor der Verlust es mit dem "
+       "Foto vergleicht. `none` nimmt die der Eingabe -- so bleibt das Rendering "
+       "deckungsgleich mit den Fotos. `aces`, `filmic` und `uncharted2` setzen "
+       "stattdessen einen Lichter-Abfall vor den Verlust, sodass ein bei 0.99 "
+       "fast weißes Foto von einem vielfach helleren Splat erklärt werden kann, "
+       "statt dort festzuhängen -- Dynamikumfang aus einer fast abgeschnittenen "
+       "Aufnahme, um den Preis, das Modell ebenso ANSEHEN zu müssen. "
+       "`overexposure-reg` wirkt dagegen und sollte auf 0 bleiben."),
+    FR("La courbe que traverse le rendu avant que la perte ne le compare à la "
+       "photo. « none » reprend celle de l'entrée, ce qui garde le rendu "
+       "conforme aux photographies. « aces », « filmic » et « uncharted2 » "
+       "placent au contraire une atténuation des hautes lumières avant la perte, "
+       "si bien qu'une photo presque blanche à 0.99 peut être expliquée par un "
+       "splat bien plus lumineux que 1.0 au lieu d'y être bloquée -- de la "
+       "dynamique récupérée sur une prise presque écrêtée, au prix de devoir "
+       "VISUALISER le modèle de la même façon. « overexposure-reg » tire en sens "
+       "inverse et devrait rester à 0."),
+    ES("La curva por la que pasa el render antes de que la pérdida lo compare "
+       "con la foto. «none» usa la de la entrada, que es lo que mantiene el "
+       "render igual a las fotografías. «aces», «filmic» y «uncharted2» ponen en "
+       "cambio una caída de altas luces delante de la pérdida, de modo que una "
+       "foto casi blanca en 0.99 puede explicarse con un splat muchas veces más "
+       "brillante que 1.0 en lugar de quedar clavada ahí: rango dinámico "
+       "recuperado de una toma casi recortada, a cambio de tener que VER el "
+       "modelo igual. «overexposure-reg» tira en sentido contrario y conviene "
+       "dejarlo en 0."),
+    PT("A curva por que passa o render antes de a perda o comparar com a foto. "
+       "«none» usa a da entrada, que é o que mantém o render igual às "
+       "fotografias. «aces», «filmic» e «uncharted2» põem em vez disso uma queda "
+       "das altas luzes antes da perda, de modo que uma foto quase branca em "
+       "0.99 pode ser explicada por um splat muitas vezes mais claro do que 1.0 "
+       "em vez de ficar preso ali: gama dinâmica recuperada de uma captura quase "
+       "cortada, ao preço de ter de VER o modelo do mesmo modo. "
+       "«overexposure-reg» puxa ao contrário e deve ficar em 0."),
+    IT("La curva che il render attraversa prima che la perdita lo confronti con "
+       "la foto. «none» usa quella dell'ingresso, ed è ciò che tiene il render "
+       "uguale alle fotografie. «aces», «filmic» e «uncharted2» mettono invece "
+       "uno smorzamento delle alte luci davanti alla perdita, così una foto "
+       "quasi bianca a 0.99 può essere spiegata da uno splat molte volte più "
+       "luminoso di 1.0 invece di restarvi inchiodata: gamma dinamica recuperata "
+       "da una ripresa quasi troncata, al prezzo di dover GUARDARE il modello "
+       "allo stesso modo. «overexposure-reg» tira in senso opposto e conviene "
+       "lasciarlo a 0."),
+    NL("De kromme die de render doorloopt voordat het verlies hem met de foto "
+       "vergelijkt. `none` neemt die van de invoer, en dat houdt de render "
+       "gelijk aan de foto's. `aces`, `filmic` en `uncharted2` zetten in plaats "
+       "daarvan aflopende hoge lichten vóór het verlies, zodat een foto die bij "
+       "0.99 bijna wit is verklaard kan worden door een splat vele malen "
+       "helderder dan 1.0 in plaats van daar vast te zitten -- dynamisch bereik "
+       "terug uit een bijna afgekapte opname, tegen de prijs dat het model ook "
+       "zo BEKEKEN moet worden. `overexposure-reg` trekt de andere kant op en "
+       "kan het beste 0 blijven."),
+    RU("Кривая, через которую проходит рендер, прежде чем потеря сравнит его с "
+       "фотографией. «none» берёт кривую входа -- именно так рендер совпадает с "
+       "фотографиями. «aces», «filmic» и «uncharted2» вместо этого ставят перед "
+       "потерей спад светов, так что почти белую при 0.99 фотографию может "
+       "объяснить сплат во много раз ярче 1.0, а не привязанный к этой границе: "
+       "динамический диапазон, возвращённый из почти пересвеченной съёмки, ценой "
+       "того, что и СМОТРЕТЬ модель надо так же. «overexposure-reg» тянет в "
+       "другую сторону, его лучше оставить на 0."),
+    TR("Kayıp, render'ı fotoğrafla karşılaştırmadan önce render'ın geçtiği eğri. "
+       "`none` girdininkini kullanır; render'ı fotoğraflarla örtüşük tutan "
+       "budur. `aces`, `filmic` ve `uncharted2` ise kaybın önüne bir parlaklık "
+       "yumuşatması koyar; böylece 0.99'da neredeyse beyaz olan bir fotoğraf, "
+       "oraya çakılmak yerine 1.0'ın kat kat üstünde bir splat ile "
+       "açıklanabilir: neredeyse kırpılmış bir çekimden geri kazanılan dinamik "
+       "aralık, karşılığında modelin de aynı şekilde İZLENMESİ gerekir. "
+       "`overexposure-reg` ters yönde çeker, 0'da kalmalıdır."));
 
 SS_MSG(splat_color_gamut,
     EN("Splat color space"), JA("スプラットの色空間"),
@@ -9558,6 +9773,12 @@ SS_MSG(choice_from_the_file,
     ES("según el archivo"), PT("conforme o arquivo"), IT("dal file"),
     NL("uit het bestand"), RU("из файла"),     TR("dosyadan"));
 
+SS_MSG(choice_srgb_default,
+    EN("plain sRGB"), JA("素の sRGB"), ZH_HANS("普通 sRGB"), ZH_HANT("普通 sRGB"),
+    KO("일반 sRGB"), DE("schlichtes sRGB"), FR("sRGB simple"), ES("sRGB simple"),
+    PT("sRGB simples"), IT("sRGB semplice"), NL("gewoon sRGB"),
+    RU("обычный sRGB"), TR("sade sRGB"));
+
 SS_MSG(choice_same_as_input,
     EN("same as the input"), JA("入力と同じ"),  ZH_HANS("与输入相同"), ZH_HANT("與輸入相同"),
     KO("입력과 동일"),       DE("wie die Eingabe"), FR("comme l'entrée"),
@@ -9613,10 +9834,13 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"cache_images", "gpu",  &choice_gpu},
     {"cache_images", "disk", &choice_disk},
 
-    // `none` is the UNSET value for these two, not a colour space -- Rec.709
-    // is the explicit one. Labelled so the dropdown cannot read as "no gamut".
+    // `none` is the UNSET value for these four, not a colour space -- Rec.709
+    // and `srgb` are the explicit ones. Labelled so the dropdown cannot read
+    // as "no gamut" / "no transfer".
     {"image_color_gamut", "none", &choice_from_the_file},
     {"splat_color_gamut", "none", &choice_same_as_input},
+    {"image_color_transfer", "none", &choice_srgb_default},
+    {"splat_color_transfer", "none", &choice_same_as_input},
 };
 inline constexpr size_t kNumChoiceText =
     sizeof(kChoiceText) / sizeof(kChoiceText[0]);
