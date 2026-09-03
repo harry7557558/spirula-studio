@@ -48,12 +48,51 @@ float load_elem(uint* base, uint i, bool is_f16) {
     return asfloat(base[i]);
 }
 
-// 64-bit-safe variant: SAM 3's 288x288x256 feature maps hold 21 M elements, so
-// an index can exceed 2^24 but never 2^31 -- uint is enough and keeps the
-// shader free of the Int64 capability.
-float load_elem_u(uint* base, uint i, bool is_f16) { return load_elem(base, i, is_f16); }
+// ---------------------------------------------------------------------------
+// Addressing past 4 GiB
+// ---------------------------------------------------------------------------
 
-void store_f32(float* base, uint i, float v) { base[i] = v; }
+// `base[i]` wraps to the base once i * 4 reaches 4 GiB, and a 64-bit index does
+// not change it -- only 64-bit pointer arithmetic does. NN_WIDE builds the
+// `<stem>_wide` copy that does; README rule 7 has the rest.
+#ifdef NN_WIDE
+
+uint* wide_u(uint* base, uint i) {
+    uint64_t off = uint64_t(i) * 4;
+    return spirv_asm {
+        %a : $$uint64_t = OpConvertPtrToU $base;
+        %b : $$uint64_t = OpIAdd %a $off;
+        result:$$uint* = OpConvertUToPtr %b
+    };
+}
+float* wide_f(float* base, uint i) {
+    uint64_t off = uint64_t(i) * 4;
+    return spirv_asm {
+        %a : $$uint64_t = OpConvertPtrToU $base;
+        %b : $$uint64_t = OpIAdd %a $off;
+        result:$$float* = OpConvertUToPtr %b
+    };
+}
+
+float load_at(uint* base, uint i, bool is_f16) {
+    if (is_f16) {
+        float2 h = unpack_half2(wide_u(base, i >> 1)[0]);
+        return ((i & 1u) == 0u) ? h.x : h.y;
+    }
+    return asfloat(wide_u(base, i)[0]);
+}
+uint load_u32_at(uint* base, uint i) { return wide_u(base, i)[0]; }
+void store_at(float* base, uint i, float v) { wide_f(base, i)[0] = v; }
+void store_u32_at(uint* base, uint i, uint v) { wide_u(base, i)[0] = v; }
+
+#else
+
+float load_at(uint* base, uint i, bool is_f16) { return load_elem(base, i, is_f16); }
+uint load_u32_at(uint* base, uint i) { return base[i]; }
+void store_at(float* base, uint i, float v) { base[i] = v; }
+void store_u32_at(uint* base, uint i, uint v) { base[i] = v; }
+
+#endif
 
 // ---------------------------------------------------------------------------
 // Activations. `kind` is always a specialization constant at the call site, so
@@ -151,10 +190,10 @@ float sample_bilinear(uint* src, bool src_f16, int H, int W, int C, int c, float
     x0 = clamp(x0, 0, W - 1);
     y0 = clamp(y0, 0, H - 1);
     uint stride_y = uint(W) * uint(C);
-    float v00 = load_elem(src, uint(y0) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
-    float v01 = load_elem(src, uint(y0) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
-    float v10 = load_elem(src, uint(y1) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
-    float v11 = load_elem(src, uint(y1) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
+    float v00 = load_at(src, uint(y0) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
+    float v01 = load_at(src, uint(y0) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
+    float v10 = load_at(src, uint(y1) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
+    float v11 = load_at(src, uint(y1) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
     return (1.0f - fy) * ((1.0f - fx) * v00 + fx * v01) +
            fy * ((1.0f - fx) * v10 + fx * v11);
 }
@@ -181,10 +220,10 @@ float sample_bilinear_zero(uint* src, bool src_f16, int H, int W, int C, int c, 
     float hx = 1.0f - lx;
     uint stride_y = uint(W) * uint(C);
     float v00 = 0.0f, v01 = 0.0f, v10 = 0.0f, v11 = 0.0f;
-    if (y0 >= 0 && x0 >= 0)     v00 = load_elem(src, uint(y0) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
-    if (y0 >= 0 && x1 <= W - 1) v01 = load_elem(src, uint(y0) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
-    if (y1 <= H - 1 && x0 >= 0) v10 = load_elem(src, uint(y1) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
-    if (y1 <= H - 1 && x1 <= W - 1) v11 = load_elem(src, uint(y1) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
+    if (y0 >= 0 && x0 >= 0)     v00 = load_at(src, uint(y0) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
+    if (y0 >= 0 && x1 <= W - 1) v01 = load_at(src, uint(y0) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
+    if (y1 <= H - 1 && x0 >= 0) v10 = load_at(src, uint(y1) * stride_y + uint(x0) * uint(C) + uint(c), src_f16);
+    if (y1 <= H - 1 && x1 <= W - 1) v11 = load_at(src, uint(y1) * stride_y + uint(x1) * uint(C) + uint(c), src_f16);
     return hy * (hx * v00 + lx * v01) + ly * (hx * v10 + lx * v11);
 }
 

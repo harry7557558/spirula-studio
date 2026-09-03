@@ -61,6 +61,8 @@ void attention(const Tensor& out, const Tensor& q, const Tensor& k, const Tensor
                o.head_dim);
     NN_CHECK(out.dtype == DType::F32, "attention output must be f32");
 
+    check_span("attention", {out, q, k, v, o.bias});
+
     const uint32_t dim = (uint32_t)(o.n_heads * o.head_dim);
     AttnParams p{};
     p.out = out.ptr;

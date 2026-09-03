@@ -21,6 +21,7 @@
 #include "aliked/model/Weights.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
+#include "nn/Tensor.h"
 #include "nn/vk/Context.h"
 #include "nn/vk/Memory.h"
 #include "nn/vk/Pipelines.h"
@@ -180,6 +181,63 @@ void check_checkpoint(const std::string& path) {
         threw = true;
     }
     check(threw, "a missing weight name did not throw");
+}
+
+// Kernels index the full-resolution aggregate from one pointer, so a working
+// resolution it cannot address is refused rather than detecting in part of the
+// frame. Checked at a lowered span, which costs no VRAM.
+void check_span_ceiling(const std::string& path) {
+    Extractor ex;
+    ex.load(path);
+    const std::vector<uint8_t> rgb(64 * 64 * 3, 128);
+    std::string what;
+    nn::set_max_span_bytes(64 * 64 * 128 * 4 - 1);
+    nn::set_wide_index(nn::WideIndex::Off);   // as a device without shaderInt64
+    try {
+        (void)ex.extract(rgb.data(), 64, 64);
+    } catch (const std::exception& e) {
+        what = e.what();
+    }
+    nn::set_wide_index(nn::WideIndex::Auto);
+    nn::set_max_span_bytes(0);
+    check(what.find("--max-image-size") != std::string::npos,
+          "an unaddressable working resolution did not name the ceiling: %s",
+          what.empty() ? "no error" : what.c_str());
+}
+
+// The whole forward pass on the 64-bit-addressing kernels, which a frame past
+// 2880 px square would take. Forced at a small size: the keypoints must be the
+// ones the narrow kernels find, to the bit.
+void check_wide_extraction(const std::string& path) {
+    if (!vk::Context::get().hasInt64()) {
+        std::printf("  SKIP wide addressing (no shaderInt64)\n");
+        return;
+    }
+    Extractor ex;
+    ex.load(path);
+    std::vector<uint8_t> rgb(192 * 192 * 3);
+    for (size_t i = 0; i < rgb.size(); ++i)
+        rgb[i] = (uint8_t)((i * 2654435761u) >> 24);
+
+    ExtractOptions o;
+    o.max_num_features = 128;
+    o.min_score = 0.0f;
+    const Features narrow = ex.extract(rgb.data(), 192, 192, o);
+    nn::set_wide_index(nn::WideIndex::Force);
+    const Features wide = ex.extract(rgb.data(), 192, 192, o);
+    nn::set_wide_index(nn::WideIndex::Auto);
+
+    bool same = narrow.keypoints.size() == wide.keypoints.size() &&
+                narrow.descriptors.size() == wide.descriptors.size();
+    for (size_t i = 0; same && i < narrow.keypoints.size(); ++i)
+        same = narrow.keypoints[i].x == wide.keypoints[i].x &&
+               narrow.keypoints[i].y == wide.keypoints[i].y &&
+               narrow.keypoints[i].score == wide.keypoints[i].score;
+    for (size_t i = 0; same && i < narrow.descriptors.size(); ++i)
+        same = narrow.descriptors[i] == wide.descriptors[i];
+    check(same && !narrow.keypoints.empty(),
+          "the 64-bit kernels return different features (%zu vs %zu keypoints)",
+          narrow.keypoints.size(), wide.keypoints.size());
 }
 
 // Extract from one image and write the result where a comparison script can
@@ -428,6 +486,8 @@ int main(int argc, char** argv) {
         }
 
         for (const std::string& p : paths) check_checkpoint(p);
+        check_span_ceiling(paths[0]);
+        check_wide_extraction(paths[0]);
         if (!match_a.empty()) {
             std::printf("\nMatching\n");
             run_matching(lg_model, match_a, match_b, out_path, 0.1f);

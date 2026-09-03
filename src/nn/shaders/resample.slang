@@ -69,8 +69,8 @@ void resize_bilinear(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
 
     float sy = src_coord(yo, p.Ho, p.Hi);
     float sx = src_coord(xo, p.Wo, p.Wi);
-    p.out[i] = sample_bilinear(p.x, kInputF16 != 0, int(p.Hi), int(p.Wi), int(p.C),
-                               int(c), sy, sx);
+    store_at(p.out, i, sample_bilinear(p.x, kInputF16 != 0, int(p.Hi), int(p.Wi),
+                                      int(p.C), int(c), sy, sx));
 }
 
 // Nearest-neighbour resample at an arbitrary scale.
@@ -92,7 +92,7 @@ void resize_nearest(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint yo = rest / p.Wo;
     uint ys = min(uint(floor(float(yo) * p.inv_scale_y)), p.Hi - 1u);
     uint xs = min(uint(floor(float(xo) * p.inv_scale_x)), p.Wi - 1u);
-    p.out[i] = load_elem(p.x, (ys * p.Wi + xs) * p.C + c, kInputF16 != 0);
+    store_at(p.out, i, load_at(p.x, (ys * p.Wi + xs) * p.C + c, kInputF16 != 0));
 }
 
 // Nearest-neighbour 2x upsample -- what the seg head's PixelDecoder uses
@@ -109,7 +109,7 @@ void upsample_nearest2x(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint yo = rest / p.Wo;
     uint ys = min(yo >> 1, p.Hi - 1u);
     uint xs = min(xo >> 1, p.Wi - 1u);
-    p.out[i] = load_elem(p.x, (ys * p.Wi + xs) * p.C + c, kInputF16 != 0);
+    store_at(p.out, i, load_at(p.x, (ys * p.Wi + xs) * p.C + c, kInputF16 != 0));
 }
 
 // 2x2 max pool, stride 2 -- the neck's 0.5x scale.
@@ -130,10 +130,10 @@ void maxpool2x2(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
         for (uint dx = 0; dx < 2u; ++dx) {
             uint x = xo * 2u + dx;
             if (x >= p.Wi) continue;
-            best = max(best, load_elem(p.x, (y * p.Wi + x) * p.C + c, kInputF16 != 0));
+            best = max(best, load_at(p.x, (y * p.Wi + x) * p.C + c, kInputF16 != 0));
         }
     }
-    p.out[i] = best;
+    store_at(p.out, i, best);
 }
 
 // nn.AvgPool2d(kernel, stride, padding). ALIKED's encoder feeds blocks 3 and 4
@@ -179,10 +179,10 @@ void avgpool(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
         for (uint kx = 0; kx < p.kw; ++kx) {
             int x = int(xo * p.stride_x + kx) - int(p.pad_x);
             if (x < 0 || x >= int(p.Wi)) continue;
-            sum += load_elem(p.x, (uint(y) * p.Wi + uint(x)) * p.C + c, kInputF16 != 0);
+            sum += load_at(p.x, (uint(y) * p.Wi + uint(x)) * p.C + c, kInputF16 != 0);
         }
     }
-    p.out[i] = sum / float(p.kh * p.kw);
+    store_at(p.out, i, sum / float(p.kh * p.kw));
 }
 
 // ---------------------------------------------------------------------------
@@ -225,5 +225,5 @@ void resize_binarize(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
         float v = sample_bilinear(p.x, kInputF16 != 0, int(p.Hi), int(p.Wi), 1, 0, sy, sx);
         if (v > p.threshold) packed |= 255u << (b * 8u);
     }
-    p.out[w] = packed;
+    store_u32_at(p.out, w, packed);
 }

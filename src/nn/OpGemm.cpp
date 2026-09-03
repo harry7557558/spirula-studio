@@ -195,12 +195,17 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
                       (uint32_t)(bias.valid() ? 1 : 0),
                       (uint32_t)(residual.valid() ? 1 : 0)};
 
-    // Row tiles take one grid axis, and every axis is capped at 65535: a
-    // full-resolution 1x1 conv passes 4.2 M rows. Rows are independent and
-    // out/x/residual are row-contiguous, so a tall GEMM is the same call again.
+    check_span("gemm", {w, bias});
     const int64_t x_elem = x.dtype == DType::F16 ? 2 : 4;
+
+    // Row tiles take one grid axis (65535 cap: a full-resolution 1x1 conv passes
+    // 4.2 M rows) and each call must also stay inside one pointer span. Rows are
+    // independent and row-contiguous, so a tall GEMM is the same call again.
     auto by_rows = [&](int64_t tile_m, const auto& run) {
-        const int64_t per_call = tile_m * 65535;
+        // A row tile is the dispatch granularity, so the span is counted in tiles.
+        const int64_t pitch = std::max(N * 4, (int64_t)p.x_row_stride * x_elem);
+        const int64_t tiles = span_rows("gemm", pitch * tile_m);
+        const int64_t per_call = std::min(tiles, (int64_t)65535) * tile_m;
         for (int64_t m0 = 0; m0 < M; m0 += per_call) {
             const int64_t rows = std::min(per_call, M - m0);
             GemmParams q = p;
@@ -243,6 +248,7 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
     if (M <= kThinRowLimit) {
         // One workgroup per output element, so N alone can exceed the 65535
         // grid cap; fold it across x and y and give the row to z.
+        check_span("gemm", {out, x, residual});
         const uint32_t per_row = (uint32_t)std::min<int64_t>(N, 65535);
         const uint32_t rows = (uint32_t)((N + per_row - 1) / per_row);
         p.groups_per_row = per_row;

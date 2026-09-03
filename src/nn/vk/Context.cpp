@@ -465,6 +465,16 @@ void Context::createDevice(const ContextOptions& opts) {
                      preferred_subgroup_, sp.minSubgroupSize, sp.maxSubgroupSize);
     }
 
+    // ---- 64-bit integers -------------------------------------------------
+    // Only the `*_wide` modules use them, to address past 4 GiB. Contained like
+    // the coop-matrix module: false keeps Int64 off the device entirely.
+    {
+        VkPhysicalDeviceFeatures pf{};
+        vkGetPhysicalDeviceFeatures(physical_, &pf);
+        int64_ = pf.shaderInt64 == VK_TRUE;
+    }
+    NN_LOG_DEBUG("[vk] shaderInt64: %s\n", int64_ ? "yes" : "no");
+
     // ---- cooperative matrix ---------------------------------------------
     // Everything the fp16 GEMM's tensor-core path needs, resolved to one flag.
     // The kernels that use it live in their own SPIR-V module: a module
@@ -640,6 +650,7 @@ void Context::createDevice(const ContextOptions& opts) {
 
     VkPhysicalDeviceFeatures2 f2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
     f2.pNext = chain;
+    if (int64_) f2.features.shaderInt64 = VK_TRUE;
 
     VkDeviceCreateInfo dci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.pNext = &f2;

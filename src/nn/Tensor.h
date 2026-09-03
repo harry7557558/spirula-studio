@@ -19,6 +19,7 @@
 #include "nn/vk/Memory.h"
 
 #include <cstdint>
+#include <initializer_list>
 
 namespace nn {
 
@@ -114,6 +115,43 @@ struct Tensor {
         return t;
     }
 };
+
+// A kernel indexes from its params pointers with a 32-bit element index and the
+// driver folds the byte offset to 32 bits, so an access 4 GiB past a pointer
+// wraps back to it. Launchers split, widen or refuse; README rule 7 has which.
+int64_t max_span_bytes();
+void    set_max_span_bytes(int64_t bytes);   // tests only; 0 restores the default
+
+// Rows one dispatch may cover at this row pitch. Throws if one row is over.
+int64_t span_rows(const char* op, int64_t row_bytes);
+
+// Same, rounded even: an f16 operand is read as u32 word pairs, so a chunk has
+// to start on an even element of it.
+int64_t span_rows_even(const char* op, int64_t row_bytes);
+
+// Throws unless a kernel can reach every element of each tensor from its base.
+void check_span(const char* op, std::initializer_list<Tensor> ts);
+
+// A kernel entry name, by value: two of them are live at once in group_norm.
+struct KernelName {
+    char text[64] = {};
+    operator const char*() const { return text; }
+};
+
+// `entry`, or its "<module>_wide.<name>" twin -- 64-bit addressing, needs
+// shaderInt64 -- when a tensor is past the narrow reach. Throws when the wide
+// kernel is needed and the device cannot run it. Only for entries that have one.
+KernelName span_entry(const char* entry, std::initializer_list<Tensor> ts);
+
+// Bytes of a `dtype` tensor a kernel can reach from one pointer here: the
+// narrow limit, or 2^32 elements where the wide kernels can run.
+int64_t span_reach(DType dtype);
+
+// Auto takes the wide kernel only past the narrow reach. Force takes it always,
+// so one process can check both paths against the same references; Off refuses
+// instead, which is what a device without shaderInt64 does.
+enum class WideIndex { Auto, Force, Off };
+void set_wide_index(WideIndex mode);
 
 // Allocate a tensor from an arena (activations) or the pool (persistent).
 Tensor arena_tensor(vk::Arena& a, DType t, int64_t d0, int64_t d1 = 1, int64_t d2 = 1,

@@ -124,7 +124,7 @@ void group_norm_stats(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     for (uint i = t; i < total; i += uint(WG)) {
         uint row = i / per_group;
         uint c = c0 + (i % per_group);
-        float v = load_elem(p.x, row * p.channels + c, kInputF16 != 0);
+        float v = load_at(p.x, row * p.channels + c, kInputF16 != 0);
         s += v;
         q += v * v;
     }
@@ -173,7 +173,7 @@ void group_norm_apply(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint g = c / (p.channels / p.groups);
     float mean = p.stats[g * 2 + 0];
     float inv = p.stats[g * 2 + 1];
-    float v = (load_elem(p.x, i, kInputF16 != 0) - mean) * inv;
+    float v = (load_at(p.x, i, kInputF16 != 0) - mean) * inv;
     v = v * asfloat(p.weight[c]) + asfloat(p.bias[c]);
-    p.out[i] = apply_act(v, int(p.act));
+    store_at(p.out, i, apply_act(v, int(p.act)));
 }
