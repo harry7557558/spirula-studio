@@ -6962,52 +6962,65 @@ SS_MSG(ppisp_param_type,
     TR("Modellenen kamera etkileri"));
 SS_MSG(ppisp_param_type_help,
     EN("Which camera effects get modeled. `no_crf` covers exposure, vignetting "
-       "and color, then simply clips the result. `original` adds a tone curve "
-       "on top. `rqs` uses a tone curve that behaves better in dark areas."),
+       "and color; `original` adds a tone curve on top, and `rqs` uses a tone "
+       "curve that behaves better in dark areas. Add `_no_vig` to drop "
+       "vignetting and `_clamp` to clip the result to the 0-1 range."),
     JA("どのカメラ効果をモデル化するかです。`no_crf` は露出・周辺減光・色を扱"
-       "い、結果はそのまま切り詰めます。`original` はさらにトーンカーブを重ね"
-       "ます。`rqs` は暗部での振る舞いがよいトーンカーブを使います。"),
-    ZH_HANS("要建模哪些相机效应。`no_crf` 处理曝光、暗角和颜色，然后直接截断结"
-            "果；`original` 在此基础上再加一条色调曲线；`rqs` 使用在暗部表现更"
-            "好的色调曲线。"),
-    ZH_HANT("要建模哪些相機效應。`no_crf` 處理曝光、暗角和顏色，然後直接截斷結"
-            "果；`original` 在此基礎上再加一條色調曲線；`rqs` 使用在暗部表現更"
-            "好的色調曲線。"),
-    KO("어떤 카메라 효과를 모델링할지입니다. `no_crf`는 노출·비네팅·색을 다루"
-       "고 결과를 그대로 잘라냅니다. `original`은 그 위에 톤 커브를 더합니다. "
-       "`rqs`는 어두운 영역에서 더 잘 동작하는 톤 커브를 씁니다."),
-    DE("Welche Kameraeffekte modelliert werden. `no_crf` deckt Belichtung, Vignettierung "
-       "und Farbe ab und beschneidet das Ergebnis dann einfach. `original` legt "
-       "eine Tonwertkurve darauf. `rqs` nutzt eine Tonwertkurve, die sich in "
-       "dunklen Bereichen besser verhält."),
+       "います。`original` はさらにトーンカーブを重ね、`rqs` は暗部での振る舞"
+       "いがよいトーンカーブを使います。`_no_vig` を付けると周辺減光を外し、"
+       "`_clamp` を付けると結果を 0 から 1 の範囲に切り詰めます。"),
+    ZH_HANS("要建模哪些相机效应。`no_crf` 处理曝光、暗角和颜色；`original` 在"
+            "此基础上再加一条色调曲线；`rqs` 使用在暗部表现更好的色调曲线。加"
+            "上 `_no_vig` 可去掉暗角，加上 `_clamp` 可把结果截断到 0 到 1 之"
+            "间。"),
+    ZH_HANT("要建模哪些相機效應。`no_crf` 處理曝光、暗角和顏色；`original` 在"
+            "此基礎上再加一條色調曲線；`rqs` 使用在暗部表現更好的色調曲線。加"
+            "上 `_no_vig` 可去掉暗角，加上 `_clamp` 可把結果截斷到 0 到 1 之"
+            "間。"),
+    KO("어떤 카메라 효과를 모델링할지입니다. `no_crf`는 노출·비네팅·색을 다룹"
+       "니다. `original`은 그 위에 톤 커브를 더하고, `rqs`는 어두운 영역에서 "
+       "더 잘 동작하는 톤 커브를 씁니다. `_no_vig`를 붙이면 비네팅을 빼고, "
+       "`_clamp`를 붙이면 결과를 0에서 1 사이로 잘라냅니다."),
+    DE("Welche Kameraeffekte modelliert werden. `no_crf` deckt Belichtung, "
+       "Vignettierung und Farbe ab; `original` legt eine Tonwertkurve darauf, "
+       "`rqs` nutzt eine Tonwertkurve, die sich in dunklen Bereichen besser "
+       "verhält. Mit `_no_vig` entfällt die Vignettierung, mit `_clamp` wird "
+       "das Ergebnis auf 0 bis 1 beschnitten."),
     FR("Quels effets caméra sont modélisés. `no_crf` couvre l'exposition, le "
-       "vignetage et la couleur, puis écrête simplement le résultat. `original` "
-       "y ajoute une courbe de tons. `rqs` emploie une courbe de tons qui se "
-       "comporte mieux dans les zones sombres."),
+       "vignetage et la couleur ; `original` y ajoute une courbe de tons, et "
+       "`rqs` emploie une courbe de tons qui se comporte mieux dans les zones "
+       "sombres. Le suffixe `_no_vig` retire le vignetage et `_clamp` écrête "
+       "le résultat entre 0 et 1."),
     ES("Qué efectos de cámara se modelan. `no_crf` cubre exposición, viñeteado "
-       "y color, y luego recorta el resultado sin más. `original` añade encima "
-       "una curva de tonos. `rqs` usa una curva de tonos que se comporta mejor "
-       "en las zonas oscuras."),
-    PT("Que efeitos de câmera são modelados. `no_crf` cobre exposição, vinhetagem "
-       "e cor e depois simplesmente corta o resultado. `original` acrescenta "
-       "por cima uma curva tonal. `rqs` usa uma curva tonal que se comporta melhor "
-       "nas áreas escuras."),
-    IT("Quali effetti della camera vengono modellati. `no_crf` copre esposizione, "
-       "vignettatura e colore, poi taglia semplicemente il risultato. `original` "
-       "vi aggiunge una curva tonale. `rqs` usa una curva tonale che si comporta "
-       "meglio nelle zone scure."),
-    NL("Welke cameraeffecten worden gemodelleerd. `no_crf` dekt belichting, vignettering "
-       "en kleur en kapt het resultaat daarna gewoon af. `original` legt daar "
-       "een tooncurve overheen. `rqs` gebruikt een tooncurve die zich in donkere "
-       "partijen beter gedraagt."),
-    RU("Какие эффекты камеры моделируются. `no_crf` охватывает экспозицию, виньетирование "
-       "и цвет, а затем просто обрезает результат. `original` добавляет сверху "
-       "тоновую кривую. `rqs` использует тоновую кривую, которая лучше ведёт "
-       "себя в тенях."),
+       "y color; `original` añade encima una curva de tonos y `rqs` usa una "
+       "curva de tonos que se comporta mejor en las zonas oscuras. El sufijo "
+       "`_no_vig` quita el viñeteado y `_clamp` recorta el resultado entre 0 "
+       "y 1."),
+    PT("Que efeitos de câmera são modelados. `no_crf` cobre exposição, "
+       "vinhetagem e cor; `original` acrescenta por cima uma curva tonal e "
+       "`rqs` usa uma curva tonal que se comporta melhor nas áreas escuras. O "
+       "sufixo `_no_vig` tira a vinhetagem e `_clamp` corta o resultado entre "
+       "0 e 1."),
+    IT("Quali effetti della camera vengono modellati. `no_crf` copre "
+       "esposizione, vignettatura e colore; `original` vi aggiunge una curva "
+       "tonale e `rqs` usa una curva tonale che si comporta meglio nelle zone "
+       "scure. Il suffisso `_no_vig` toglie la vignettatura e `_clamp` taglia "
+       "il risultato tra 0 e 1."),
+    NL("Welke cameraeffecten worden gemodelleerd. `no_crf` dekt belichting, "
+       "vignettering en kleur; `original` legt daar een tooncurve overheen en "
+       "`rqs` gebruikt een tooncurve die zich in donkere partijen beter "
+       "gedraagt. Met `_no_vig` vervalt de vignettering en met `_clamp` wordt "
+       "het resultaat op 0 tot 1 afgekapt."),
+    RU("Какие эффекты камеры моделируются. `no_crf` охватывает экспозицию, "
+       "виньетирование и цвет; `original` добавляет сверху тоновую кривую, а "
+       "`rqs` использует тоновую кривую, которая лучше ведёт себя в тенях. "
+       "Суффикс `_no_vig` убирает виньетирование, а `_clamp` обрезает "
+       "результат до диапазона от 0 до 1."),
     TR("Hangi kamera etkilerinin modelleneceği. `no_crf` pozlamayı, vinyeti ve "
-       "rengi kapsar, ardından sonucu düpedüz kırpar. `original` bunun üstüne "
-       "bir ton eğrisi ekler. `rqs` ise karanlık bölgelerde daha iyi davranan "
-       "bir ton eğrisi kullanır."));
+       "rengi kapsar; `original` bunun üstüne bir ton eğrisi ekler, `rqs` ise "
+       "karanlık bölgelerde daha iyi davranan bir ton eğrisi kullanır. "
+       "`_no_vig` eki vinyeti çıkarır, `_clamp` eki sonucu 0 ile 1 arasına "
+       "kırpar."));
 
 SS_MSG(ppisp_exposure_from_exif,
     EN("Exposure init from EXIF"), JA("EXIF による露出の初期化"),
@@ -7113,6 +7126,71 @@ SS_MSG(apply_ppisp_before_bilagrid_help,
     TR("Kamera etkisi modelini fotoğraf başına renk düzeltmesinden sonra değil "
        "önce çalıştırır. Yalnızca ikisi de açıkken önemlidir ve belirli bir renk "
        "farkını hangisinin soğuracağını belirler."));
+
+SS_MSG(apply_ppisp_before_color_space,
+    EN("Camera correction in the splat's own colors"),
+    JA("スプラット自身の色空間でカメラ補正"),
+    ZH_HANS("在高斯自身的色彩空间中做相机校正"),
+    ZH_HANT("在高斯自身的色彩空間中做相機校正"),
+    KO("스플랫 자체 색 공간에서 카메라 보정"),
+    DE("Kamerakorrektur im Farbraum der Splats"),
+    FR("Correction caméra dans les couleurs des splats"),
+    ES("Corrección de cámara en el color propio de los splats"),
+    PT("Correção de câmera nas cores dos próprios splats"),
+    IT("Correzione camera nei colori propri degli splat"),
+    NL("Cameracorrectie in de eigen kleuren van de splats"),
+    RU("Коррекция камеры в собственном цвете сплатов"),
+    TR("Kamera düzeltmesi splat'ların kendi renklerinde"));
+SS_MSG(apply_ppisp_before_color_space_help,
+    EN("Model the camera effects in the color space the splats are trained in, "
+       "before the conversion to display colors, which is where a real camera "
+       "applies them. Takes effect only when the splats use a color space of "
+       "their own, and needs the camera correction to run first."),
+    JA("カメラ効果を、表示用の色への変換より前、スプラットが学習されている色空"
+       "間でモデル化します。実際のカメラが効果を与えるのはその位置です。スプラ"
+       "ットが独自の色空間を使うときだけ効き、カメラ補正を先に適用する設定が必"
+       "要です。"),
+    ZH_HANS("在转换到显示色彩之前、高斯训练所用的色彩空间中建模相机效应，真实"
+            "相机正是在这一处施加它们。只有当高斯使用自己的色彩空间时才生效，"
+            "并且需要先做相机校正。"),
+    ZH_HANT("在轉換到顯示色彩之前、高斯訓練所用的色彩空間中建模相機效應，真實"
+            "相機正是在這一處施加它們。只有當高斯使用自己的色彩空間時才生效，"
+            "並且需要先做相機校正。"),
+    KO("표시용 색으로 변환하기 전, 스플랫이 학습되는 색 공간에서 카메라 효과를 "
+       "모델링합니다. 실제 카메라가 효과를 주는 지점이 바로 그곳입니다. 스플랫"
+       "이 자체 색 공간을 쓸 때만 적용되며, 카메라 보정을 먼저 적용해야 합니다."),
+    DE("Die Kameraeffekte in dem Farbraum modellieren, in dem die Splats "
+       "trainiert werden, also vor der Umrechnung in Anzeigefarben -- dort setzt "
+       "eine echte Kamera sie an. Wirkt nur, wenn die Splats einen eigenen "
+       "Farbraum nutzen, und setzt die Kamerakorrektur zuerst voraus."),
+    FR("Modéliser les effets caméra dans l'espace colorimétrique où les splats "
+       "sont entraînés, avant la conversion vers les couleurs d'affichage : "
+       "c'est là qu'un vrai appareil les applique. N'agit que si les splats ont "
+       "leur propre espace colorimétrique, et exige la correction caméra d'abord."),
+    ES("Modelar los efectos de cámara en el espacio de color en el que se "
+       "entrenan los splats, antes de la conversión a colores de pantalla, que "
+       "es donde los aplica una cámara real. Solo surte efecto si los splats "
+       "usan un espacio propio, y exige la corrección de cámara primero."),
+    PT("Modelar os efeitos de câmera no espaço de cor em que os splats são "
+       "treinados, antes da conversão para as cores de exibição, que é onde uma "
+       "câmera real os aplica. Só faz efeito quando os splats usam um espaço "
+       "próprio e exige a correção de câmera primeiro."),
+    IT("Modellare gli effetti della camera nello spazio colore in cui gli splat "
+       "sono addestrati, prima della conversione ai colori di visualizzazione, "
+       "che è dove li applica una camera vera. Ha effetto solo se gli splat "
+       "usano uno spazio proprio e richiede prima la correzione camera."),
+    NL("De cameraeffecten modelleren in de kleurruimte waarin de splats getraind "
+       "worden, vóór de omzetting naar weergavekleuren -- daar past een echte "
+       "camera ze toe. Werkt alleen als de splats een eigen kleurruimte "
+       "gebruiken, en vereist eerst de cameracorrectie."),
+    RU("Моделировать эффекты камеры в том цветовом пространстве, где обучаются "
+       "сплаты, до пересчёта в цвета экрана -- именно там их накладывает "
+       "настоящая камера. Действует, только когда у сплатов своё пространство, "
+       "и требует, чтобы коррекция камеры шла первой."),
+    TR("Kamera etkilerini, ekran renklerine dönüşümden önce, splat'ların "
+       "eğitildiği renk uzayında modeller; gerçek bir kamera da onları orada "
+       "uygular. Yalnızca splat'lar kendi renk uzayını kullandığında etkilidir "
+       "ve önce kamera düzeltmesini gerektirir."));
 
 SS_MSG(use_adagrad_ppisp_optim,
     EN("Steadier camera correction updates"),

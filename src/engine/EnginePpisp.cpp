@@ -45,13 +45,7 @@ void engine_init_ppisp(int n_grids, std::string param_type, bool use_adagrad,
     if (!exposure_init.empty() && (int)exposure_init.size() != n_grids)
         throw std::runtime_error(
             "engine_init_ppisp: exposure_init size must be n_grids");
-    int P;
-    if (param_type == "original" || param_type == "") P = 36;
-    else if (param_type == "rqs") P = 39;
-    else if (param_type == "no_crf") P = 24;
-    else throw std::runtime_error(
-        "engine_init_ppisp: unknown param_type \"" + param_type +
-        "\", must be \"original\", \"rqs\", or \"no_crf\"");
+    const int P = ppisp_param_spec(param_type).num_params;
 
     engine().ppisp.param_type = (param_type == "" ? std::string("original") : param_type);
     engine().ppisp.num_params = P;
@@ -76,11 +70,8 @@ void engine_init_ppisp(int n_grids, std::string param_type, bool use_adagrad,
 // Apply PPISP forward in place on the current rendered RGB. Reads the
 // per-image PPISP parameter slot via engine().bilagrid_cur_cam_indices (shared
 // with bilagrid). When that index buffer is empty, fall back to identity.
-void engine_ppisp_forward(TorchTensorView cam_indices) {
+void _engine_ppisp_forward_current() {
     if (!engine().ppisp.enabled) return;
-    // Repopulating with the same tensor is cheap (DeviceVector<int32_t> takes
-    // a view of device memory when the source is on device).
-    _set_cur_cam_indices(cam_indices);
 
     int H = engine().camera.height;
     int W = engine().camera.width;
@@ -108,6 +99,14 @@ void engine_ppisp_forward(TorchTensorView cam_indices) {
         post_rgb
     );
     fwd_rgb_tensor = post_rgb;
+}
+
+void engine_ppisp_forward(TorchTensorView cam_indices) {
+    if (!engine().ppisp.enabled) return;
+    // Repopulating with the same tensor is cheap (DeviceVector<int32_t> takes
+    // a view of device memory when the source is on device).
+    _set_cur_cam_indices(cam_indices);
+    _engine_ppisp_forward_current();
 }
 
 // Ensure PPISP optimizer state buffers are allocated + zeroed. Adam uses
@@ -172,10 +171,7 @@ float* _engine_ppisp_reg_loss_into(
     bool compute_grad
 ) {
     int N = (int)engine().ppisp.params.size<0>();
-    int kRaw =
-        (engine().ppisp.param_type == "rqs")    ? (int)RawPPISPRegLossIndexRQS::length :
-        (engine().ppisp.param_type == "no_crf") ? (int)RawPPISPRegLossIndexNoCRF::length :
-                                                  (int)RawPPISPRegLossIndex::length;
+    int kRaw = ppisp_param_spec(engine().ppisp.param_type).num_raw_losses;
     int kLoss = (int)PPISPRegLossIndex::length;
 
     // Output losses (zeroed each call so the in-kernel write is a clean store).

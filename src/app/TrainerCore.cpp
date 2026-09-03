@@ -477,6 +477,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     // Outside the guard: it is an ordering flag, not a rate, so it reflects
     // the config whether or not PPISP is live.
     cfg.ppisp.run_before_bilagrid = c.apply_ppisp_before_bilagrid;
+    cfg.ppisp.run_before_color_space = c.apply_ppisp_before_color_space;
 
     // ---- background ----------------------------------------------------
     if (c.background_mode == "noise") {
@@ -793,6 +794,13 @@ void TrainerSession::setup_engine() {
     // Output transfer / wide-gamut color space.
     const bool splat_cs_on = color.splat_on();
     const bool image_cs_on = color.image_on();
+    // PPISP ahead of the conversion leaves the bilagrid on the display side,
+    // where it belongs, so the two order flags cannot disagree.
+    if (splat_cs_on && cfg.apply_ppisp_before_color_space &&
+        !cfg.apply_ppisp_before_bilagrid)
+        throw std::runtime_error(lfmt(lmsg::ppisp_before_color_space_order,
+                                      {"--apply-ppisp-before-color-space",
+                                       "--apply-ppisp-before-bilagrid"}));
     {
         auto vec = [](const Mat3f& m) { return std::vector<float>(m.begin(), m.end()); };
         engine_init_color_space(

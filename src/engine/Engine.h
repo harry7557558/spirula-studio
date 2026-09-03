@@ -227,16 +227,15 @@ void engine_bilagrid_forward(TorchTensorView cam_indices);
 // Adam step + optional TV-loss regularization for each enabled bilagrid type.
 void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg);
 
-// --- PPISP (RGB only, applied AFTER bilagrid). ---
-// Table seeded with the param_type's defaults; exposure_init optionally seeds
-// params[:, 0] with [n_grids] log2 gains. use_adagrad: AdaGrad over Adam.
+// --- PPISP (RGB only; PpispStepConfig picks where in the chain it runs) ---
+// ppisp_param_spec (kernels/pixelwise/PixelWise.cuh) owns the param_type list.
+// exposure_init optionally seeds params[:, 0] with [n_grids] log2 gains.
 void engine_init_ppisp(int n_grids, std::string param_type, bool use_adagrad,
                        const std::vector<float>& exposure_init = {});
 
 // Apply PPISP forward in place on the current rendered RGB; saves a pre-PPISP
-// copy used by backward. cam_indices: [C_batch] int32, or null/empty for
-// identity. Must be called after forward_3dgs (and after engine_bilagrid_forward
-// when bilagrid is also enabled).
+// copy used by backward. cam_indices: [C_batch] int32, null/empty for identity.
+// After forward_3dgs -- the before-color-space order runs inside it instead.
 void engine_ppisp_forward(TorchTensorView cam_indices);
 
 // Optimizer step over the PPISP parameter table (Adam or AdaGrad depending on

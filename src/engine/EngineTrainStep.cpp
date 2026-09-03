@@ -132,18 +132,26 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     } else {
         engine().fwd.tile_active = DeviceVector<int32_t>();
     }
+    engine().ppisp.cur_run_before_bilagrid = cfg.ppisp.run_before_bilagrid;
+    engine().ppisp.cur_run_before_color_space =
+        cfg.ppisp.run_before_color_space && engine().color_space.splat_enabled;
+    engine().ppisp.forward_pending =
+        engine().ppisp.enabled && engine().ppisp.cur_run_before_color_space;
+
     forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
 
-    engine().ppisp.cur_run_before_bilagrid = cfg.ppisp.run_before_bilagrid;
+    // PPISP already ran inside the forward in the before-color-space order.
+    const bool ppisp_after = engine().ppisp.enabled &&
+                             !engine().ppisp.cur_run_before_color_space;
     const bool bg_enabled = engine().bilagrid_rgb.enabled ||
                             engine().bilagrid_depth.enabled ||
                             engine().bilagrid_normal.enabled;
     if (engine().ppisp.cur_run_before_bilagrid) {
-        if (engine().ppisp.enabled) engine_ppisp_forward(bilagrid_cam_indices);
-        if (bg_enabled)             engine_bilagrid_forward(bilagrid_cam_indices);
+        if (ppisp_after) engine_ppisp_forward(bilagrid_cam_indices);
+        if (bg_enabled)  engine_bilagrid_forward(bilagrid_cam_indices);
     } else {
-        if (bg_enabled)             engine_bilagrid_forward(bilagrid_cam_indices);
-        if (engine().ppisp.enabled) engine_ppisp_forward(bilagrid_cam_indices);
+        if (bg_enabled)  engine_bilagrid_forward(bilagrid_cam_indices);
+        if (ppisp_after) engine_ppisp_forward(bilagrid_cam_indices);
     }
 
     auto losses = engine_compute_loss_backward(

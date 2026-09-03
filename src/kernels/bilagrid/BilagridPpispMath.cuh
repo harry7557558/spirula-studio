@@ -446,7 +446,7 @@ __constant__ float COLOR_PINV_BLOCKS[4][4] = {
 // Floor on the RGI renormalization denominator, as a fraction of |intensity|:
 // the identity homography gives rgi_out.z == intensity, so it binds only on an
 // aggressive H's pole line, capping chroma gain. Mirrors shaders/ppisp.slang.
-__device__ constexpr float kColorNormMinZ = 0.05f;
+__device__ constexpr float kColorNormMinZ = 0.0001f;
 
 // Softplus transformation for bounded positive parameters
 __device__ __forceinline__ float bounded_positive_forward(float raw, float min_value = 0.1f) {

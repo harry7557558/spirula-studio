@@ -698,14 +698,15 @@ static std::map<std::string, float> _engine_loss(
         const bool bg_rgb_on = engine().bilagrid_rgb.enabled;
         const bool ppisp_on  = engine().ppisp.enabled;
         if (color_shift_reg_weight > 0.0f && (bg_rgb_on || ppisp_on)) {
-            // Identify the "pre" buffer = input to the FIRST forward transform.
-            // Forward order (set in EngineTrainStep.cpp):
-            //   run_before_bilagrid=false -> bilagrid -> PPISP : pre = bilagrid_rgb.fwd_pre
-            //   run_before_bilagrid=true  -> PPISP    -> bilagrid : pre = ppisp.fwd_pre
-            // When only one of the two is on, that one's fwd_pre is the splat
-            // output regardless of the flag.
+            // "pre" is the input to the first forward transform that runs in
+            // DISPLAY space, `post` being there too. With PPISP ahead of the
+            // encode only the bilagrid qualifies; with neither, skip.
             const float* pre_ptr = nullptr;
-            if (bg_rgb_on && ppisp_on) {
+            if (engine().ppisp.cur_run_before_color_space) {
+                pre_ptr = bg_rgb_on
+                    ? (const float*)engine().bilagrid_rgb.fwd_pre.data_ptr()
+                    : nullptr;
+            } else if (bg_rgb_on && ppisp_on) {
                 pre_ptr = engine().ppisp.cur_run_before_bilagrid
                     ? (const float*)engine().ppisp.fwd_pre.data_ptr()
                     : (const float*)engine().bilagrid_rgb.fwd_pre.data_ptr();
@@ -744,15 +745,9 @@ static std::map<std::string, float> _engine_loss(
         }
     }
 
-    // --- PPISP / Bilagrid backward hooks ---
-    // Backward order is the inverse of forward (set in EngineTrainStep.cpp
-    // and stashed on engine().ppisp.cur_run_before_bilagrid):
-    //   forward bilagrid->PPISP  =>  backward PPISP first, then bilagrid.
-    //   forward PPISP->bilagrid  =>  backward bilagrid first, then PPISP.
-    // Each hook rewrites v_render_rgb (post-<self> -> pre-<self>) and
-    // accumulates parameter grads into its own buffer; the next hook then
-    // consumes the rewritten v_render_rgb. Depth/normal grids are GT-side
-    // and live entirely inside the bilagrid hook regardless of order.
+    // Backward hooks, in the inverse of the forward order: each rewrites
+    // v_render_rgb (post-<self> -> pre-<self>) so the next consumes the
+    // rewrite. Depth/normal grids are GT-side, inside the bilagrid hook.
     auto _ppisp_bwd = [&]() {
         if (engine().ppisp.enabled) {
             _ensure_ppisp_optim_state();
@@ -769,31 +764,40 @@ static std::map<std::string, float> _engine_loss(
                 pixel_grads.v_ref_normal);
         }
     };
-    if (engine().ppisp.cur_run_before_bilagrid) {
+    // --- Color space backward hook ---
+    // Forward is render -> bg -> [PPISP] -> display encode -> bilagrid ->
+    // [PPISP] -> loss, so it sits either after both hooks or between them.
+    auto _color_space_bwd = [&]() {
+        if (engine().color_space.splat_enabled)
+            _engine_color_space_backward_hook(pixel_grads.v_render_rgb);
+    };
+    if (engine().ppisp.cur_run_before_color_space) {
+        _bilagrid_bwd();
+        _color_space_bwd();
+        _ppisp_bwd();
+    } else if (engine().ppisp.cur_run_before_bilagrid) {
         _bilagrid_bwd();
         _ppisp_bwd();
+        _color_space_bwd();
     } else {
         _ppisp_bwd();
         _bilagrid_bwd();
-    }
-
-    // --- Color space backward hook ---
-    // Forward is render -> bg -> display encode -> {bilagrid, PPISP} -> loss,
-    // so this runs after BOTH of those backwards, in either of their orders.
-    if (engine().color_space.splat_enabled) {
-        _engine_color_space_backward_hook(pixel_grads.v_render_rgb);
+        _color_space_bwd();
     }
 
     // --- Image-space overexposure regularization ---
     // Skipped under a blend: the blend backward applies it instead, on the
     // composite rather than on this pre-blend buffer.
     if (overexposure_reg_weight != 0.0f && !engine().background.enabled) {
-        // Both buffers are in the splat working color space here: cs.fwd_pre
-        // is the pre-conversion render when color space is on (its bwd hook
-        // does not re-point fwd.renders.rgb), render_rgb itself when off.
-        DeviceTensor3D<float3> rgb_t = engine().color_space.splat_enabled
-            ? engine().color_space.fwd_pre
-            : DeviceTensor3D<float3>(render_rgb);
+        // Both buffers are in the splat working color space here. Whose
+        // values v_render_rgb is the gradient OF is what picks between them:
+        // the color-space bwd hook does not re-point fwd.renders.rgb.
+        DeviceTensor3D<float3> rgb_t =
+            engine().ppisp.cur_run_before_color_space
+                ? engine().ppisp.fwd_pre
+            : engine().color_space.splat_enabled
+                ? engine().color_space.fwd_pre
+                : DeviceTensor3D<float3>(render_rgb);
         DeviceTensor3D<float3> v_rgb_t(pixel_grads.v_render_rgb);
         overexposure_grad_add(rgb_t, overexposure_reg_weight, v_rgb_t);
     }

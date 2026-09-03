@@ -441,11 +441,15 @@ struct PpispState {
     bool enabled            = false;
     bool optim_initialized  = false;
     bool use_adagrad        = false;
-    // Per-iteration: mirrors PpispStepConfig::run_before_bilagrid for the
-    // current step. The forward path stashes this before launching bilagrid /
-    // PPISP forwards; the backward hooks in EngineLoss.cpp read it back to
-    // invert the order. Reset each step.
+    // Per-iteration mirror of the PpispStepConfig order flags, stashed by the
+    // forward path so the backward hooks in EngineLoss.cpp can invert the
+    // order they picked. Reset each step.
     bool cur_run_before_bilagrid = false;
+    bool cur_run_before_color_space = false;
+    // Armed by the step that wants PPISP inside forward_3dgs (before the
+    // working->display conversion) and cleared there, so an eval or viewer
+    // render never picks the transform up off stale cam indices.
+    bool forward_pending = false;
 };
 
 

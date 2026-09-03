@@ -15,6 +15,7 @@
 
 extern void _engine_background_forward();
 extern void _engine_color_space_forward();
+extern void _engine_ppisp_forward_current();
 
 
 void engine_release_screen_buffers() {
@@ -145,6 +146,10 @@ void forward_3dgs(
     engine().primitive = primitive;
     engine().sh_degree = sh_degree;
     engine().packed = packed;
+    // Read-and-clear up front so a throw below cannot leave it armed for the
+    // next render, which has no reason to want the transform.
+    const bool ppisp_in_forward = engine().ppisp.forward_pending;
+    engine().ppisp.forward_pending = false;
 
     // The stashed screen gradients live in the arena the intersect below
     // reuses, so this view is already dead. Dropping it turns a stale
@@ -424,9 +429,14 @@ void forward_3dgs(
         _engine_background_forward();
     }
 
+    // PPISP ahead of the display encode, when the step asked for it: this is
+    // the only place between the blend and the conversion, and the arming
+    // flag is what keeps eval / viewer renders out of it.
+    if (ppisp_in_forward) _engine_ppisp_forward_current();
+
     // Linear / wide-gamut -> sRGB. Done AFTER the background blend so the
-    // blend operates in the splat working color space (matches Python
-    // forward order: render -> bg -> display encode -> bilagrid -> PPISP -> loss).
+    // blend operates in the splat working color space:
+    // render -> bg -> [PPISP] -> display encode -> bilagrid -> [PPISP] -> loss.
     _engine_color_space_forward();
 
     // Results stay in pool — use engine_copy_render_to_host to fetch

@@ -165,6 +165,8 @@ void _engine_color_space_apply_to_gt();
 
 // PPISP: backward hook + state setup + regularization-loss compute.
 void _engine_ppisp_backward_hook(TorchTensorView v_render_rgb);
+// PPISP forward on whatever cam indices are already installed.
+void _engine_ppisp_forward_current();
 void _ensure_ppisp_optim_state();
 
 // Force-allocate splat optimizer state to a given quant layout (checkpoint

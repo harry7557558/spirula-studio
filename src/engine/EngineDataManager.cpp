@@ -15,6 +15,7 @@
 #include "core/Camera.h"         // camera_model_to_string
 #include "data/DataManager.h"
 #include "engine/Engine.h"
+#include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 #include "i18n/catalog/Log.h"
 
@@ -271,6 +272,16 @@ static TorchTensorView _slice_rows(const TorchTensorView& tv, int64_t k_start,
                            std::get<1>(tv), std::move(out));
 }
 
+// How many post-split views one pass of a batch renders -- what
+// _install_and_forward returns, needed by its caller before the call.
+static int _batch_views(const DecodedBatch& b, int pass) {
+    if (b.K <= 1 && b.input_source_models.empty()) return (int)b.num;
+    const int C = b.face_passes.empty() ? 1 : (int)b.face_passes.size();
+    const int p = std::min(std::max(pass, 0), C - 1);
+    const int k0 = C == 1 ? 0 : b.face_passes[(size_t)p].k0;
+    return (C == 1 ? (int)b.K : b.face_passes[(size_t)p].k1) - k0;
+}
+
 // Install a decoded batch as GT + camera params and run the forward pass;
 // neither caller wants loss, backward or optim. `with_geometry` installs the
 // depth and normal GT too, which costs the linear->ray conversion.
@@ -325,12 +336,12 @@ static int _install_and_forward(const DecodedBatch& b, std::string primitive,
             _slice_rows(b.face_axes_view, k0, Kc));
         forward_3dgs(std::move(primitive), sh_degree, packed,
                      /*output_median=*/false, dist_type);
-        return Kc;
+        return _batch_views(b, pass);
     }
 
     forward_3dgs(std::move(primitive), sh_degree, packed,
                  /*output_median=*/false, dist_type);
-    return (int)b.num;
+    return _batch_views(b, pass);
 }
 
 int engine_eval_forward(std::string primitive, int sh_degree, bool packed) {
@@ -383,28 +394,39 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
         loss.weights[(int)LossWeightIndex::RgbDistReg],
         loss.weights[(int)LossWeightIndex::DepthDistReg],
         loss.weights[(int)LossWeightIndex::NormalDistReg]);
-    const int views = _install_and_forward(
+    // POST-split camera ids for this pass's faces, the same ones the training
+    // step hands the per-image tables. Built before the forward because the
+    // before-color-space order applies PPISP inside it.
+    const int views = _batch_views(b, pass);
+    std::vector<int32_t> cam_idx((size_t)views);
+    for (int v = 0; v < views; ++v)
+        cam_idx[(size_t)v] = b.post_offsets[0] + k0 + v;
+    TorchTensorView cam_view((uint64_t)cam_idx.data(), 4,
+                             {(int64_t)views, 1LL});
+    const bool ppisp_in_forward = apply_color_correction &&
+                                  engine().ppisp.enabled &&
+                                  engine().ppisp.cur_run_before_color_space;
+    if (ppisp_in_forward) {
+        _set_cur_cam_indices(cam_view);
+        engine().ppisp.forward_pending = true;
+    }
+
+    _install_and_forward(
         b, std::move(primitive), sh_degree, packed,
         /*with_geometry=*/true, loss.input_depth_is_ray_depth, (int)dist_type,
         pass);
 
     if (apply_color_correction) {
-        // POST-split camera ids, the same ones the training step hands the
-        // per-image tables (see build_bg_idx above), for this pass's faces.
-        std::vector<int32_t> cam_idx((size_t)views);
-        for (int v = 0; v < views; ++v)
-            cam_idx[(size_t)v] = b.post_offsets[0] + k0 + v;
-        TorchTensorView cam_view((uint64_t)cam_idx.data(), 4,
-                                 {(int64_t)views, 1LL});
+        const bool ppisp_after = engine().ppisp.enabled && !ppisp_in_forward;
         const bool bg_enabled = engine().bilagrid_rgb.enabled ||
                                 engine().bilagrid_depth.enabled ||
                                 engine().bilagrid_normal.enabled;
         if (engine().ppisp.cur_run_before_bilagrid) {
-            if (engine().ppisp.enabled) engine_ppisp_forward(cam_view);
-            if (bg_enabled)             engine_bilagrid_forward(cam_view);
+            if (ppisp_after) engine_ppisp_forward(cam_view);
+            if (bg_enabled)  engine_bilagrid_forward(cam_view);
         } else {
-            if (bg_enabled)             engine_bilagrid_forward(cam_view);
-            if (engine().ppisp.enabled) engine_ppisp_forward(cam_view);
+            if (bg_enabled)  engine_bilagrid_forward(cam_view);
+            if (ppisp_after) engine_ppisp_forward(cam_view);
         }
     }
     return views;

@@ -168,7 +168,7 @@ float3x3 compute_homography(ColorPPISPParams params) {
 // Floor on the RGI renormalization denominator, as a fraction of |intensity|.
 // The identity homography gives rgi_out.z == intensity, so this binds only on
 // the pole line of an aggressive H, and caps the chroma gain at its reciprocal.
-static const float kColorNormMinZ = 0.05f;
+static const float kColorNormMinZ = 0.0001f;
 
 [ForceInline]
 [Differentiable]
@@ -315,6 +315,14 @@ struct PPISPParamsNoCRF : IDifferentiable {
 
 static const int PPISP_NO_CRF_NUM_PARAMS = 1 + 5 * 3 + 8;
 
+// "no_crf_no_vig" variant: exposure + color only.
+struct PPISPParamsNoCRFNoVig : IDifferentiable {
+    float exposure;
+    ColorPPISPParams color_params;  // 8 params
+};
+
+static const int PPISP_NO_CRF_NO_VIG_NUM_PARAMS = 1 + 8;
+
 [ForceInline]
 [Differentiable]
 PPISPParams get_ppisp_params(float[PPISP_NUM_PARAMS] params) {
@@ -394,6 +402,23 @@ PPISPParamsNoCRF get_ppisp_no_crf_params(float[PPISP_NO_CRF_NUM_PARAMS] params) 
         p.vignette_params[i].alpha1 = params[idx++];
         p.vignette_params[i].alpha2 = params[idx++];
     }
+    p.color_params.b.x = params[idx++];
+    p.color_params.b.y = params[idx++];
+    p.color_params.r.x = params[idx++];
+    p.color_params.r.y = params[idx++];
+    p.color_params.g.x = params[idx++];
+    p.color_params.g.y = params[idx++];
+    p.color_params.n.x = params[idx++];
+    p.color_params.n.y = params[idx++];
+    return p;
+}
+
+[ForceInline]
+[Differentiable]
+PPISPParamsNoCRFNoVig get_ppisp_no_crf_no_vig_params(float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] params) {
+    PPISPParamsNoCRFNoVig p;
+    int idx = 0;
+    p.exposure = params[idx++];
     p.color_params.b.x = params[idx++];
     p.color_params.b.y = params[idx++];
     p.color_params.r.x = params[idx++];
@@ -494,15 +519,31 @@ float3 apply_ppisp_rqs(float3 rgb_in, no_diff float2 pix_coord, no_diff float2 i
     return rgb;
 }
 
+// `clamp_output` is the mode axis the CRF-less variants carry instead of a
+// tone curve: clamp()'s own derivative is what zeroes the gradient outside
+// [0, 1], so no straight-through override is wanted here.
 [CudaDeviceExport]
 [Differentiable]
-float3 apply_ppisp_no_crf(float3 rgb_in, no_diff float2 pix_coord, no_diff float2 image_center, no_diff float2 img_size, float[PPISP_NO_CRF_NUM_PARAMS] params) {
+float3 apply_ppisp_no_crf(float3 rgb_in, no_diff float2 pix_coord, no_diff float2 image_center, no_diff float2 img_size, float[PPISP_NO_CRF_NUM_PARAMS] params, no_diff bool clamp_output) {
     PPISPParamsNoCRF p = get_ppisp_no_crf_params(params);
     float3 rgb = rgb_in;
     rgb = apply_exposure(rgb, p.exposure);
     rgb = apply_vignetting(rgb, p.vignette_params, pix_coord, image_center, img_size);
     rgb = apply_color_correction_ppisp(rgb, p.color_params);
-    // rgb = clamp(rgb, 0.0f, 1.0f);
+    if (clamp_output)
+        rgb = clamp(rgb, 0.0f, 1.0f);
+    return rgb;
+}
+
+[CudaDeviceExport]
+[Differentiable]
+float3 apply_ppisp_no_crf_no_vig(float3 rgb_in, no_diff float2 pix_coord, no_diff float2 image_center, no_diff float2 img_size, float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] params, no_diff bool clamp_output) {
+    PPISPParamsNoCRFNoVig p = get_ppisp_no_crf_no_vig_params(params);
+    float3 rgb = rgb_in;
+    rgb = apply_exposure(rgb, p.exposure);
+    rgb = apply_color_correction_ppisp(rgb, p.color_params);
+    if (clamp_output)
+        rgb = clamp(rgb, 0.0f, 1.0f);
     return rgb;
 }
 
@@ -545,7 +586,7 @@ void apply_ppisp_rqs_vjp(
 [CudaDeviceExport]
 void apply_ppisp_no_crf_vjp(
     float3 rgb_in, float2 pix_coord, float2 image_center, float2 img_size,
-    float[PPISP_NO_CRF_NUM_PARAMS] params,
+    float[PPISP_NO_CRF_NUM_PARAMS] params, bool clamp_output,
     float3 grad_out,
     out float3 grad_rgb_in,
     out float[PPISP_NO_CRF_NUM_PARAMS] grad_params
@@ -553,7 +594,25 @@ void apply_ppisp_no_crf_vjp(
     DifferentialPair<float3> dp_rgb_in = diffPair(rgb_in);
     DifferentialPair<float[PPISP_NO_CRF_NUM_PARAMS]> dp_params = diffPair(params);
     bwd_diff(apply_ppisp_no_crf)(
-        dp_rgb_in, pix_coord, image_center, img_size, dp_params,
+        dp_rgb_in, pix_coord, image_center, img_size, dp_params, clamp_output,
+        grad_out
+    );
+    grad_rgb_in = dp_rgb_in.d;
+    grad_params = dp_params.d;
+}
+
+[CudaDeviceExport]
+void apply_ppisp_no_crf_no_vig_vjp(
+    float3 rgb_in, float2 pix_coord, float2 image_center, float2 img_size,
+    float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] params, bool clamp_output,
+    float3 grad_out,
+    out float3 grad_rgb_in,
+    out float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] grad_params
+) {
+    DifferentialPair<float3> dp_rgb_in = diffPair(rgb_in);
+    DifferentialPair<float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS]> dp_params = diffPair(params);
+    bwd_diff(apply_ppisp_no_crf_no_vig)(
+        dp_rgb_in, pix_coord, image_center, img_size, dp_params, clamp_output,
         grad_out
     );
     grad_rgb_in = dp_rgb_in.d;
@@ -600,6 +659,20 @@ enum RawPPISPRegLossIndexNoCRF {
     SumVignettingAlpha0ChannelVariance,
     SumVignettingAlpha1ChannelVariance,
     SumVignettingAlpha2ChannelVariance,
+    SumColorBx,
+    SumColorBy,
+    SumColorRx,
+    SumColorRy,
+    SumColorGx,
+    SumColorGy,
+    SumColorNx,
+    SumColorNy,
+    length
+};
+
+// "no_crf_no_vig" raw losses: exposure + the eight colour offsets.
+enum RawPPISPRegLossIndexNoCRFNoVig {
+    SumExposure,
     SumColorBx,
     SumColorBy,
     SumColorRx,
@@ -885,6 +958,48 @@ float[PPISP_NO_CRF_NUM_PARAMS] compute_raw_ppisp_no_crf_regularization_loss_vjp(
     return dp_params.d;
 }
 
+[CudaDeviceExport]
+[Differentiable]
+float[RawPPISPRegLossIndexNoCRFNoVig::length] compute_raw_ppisp_no_crf_no_vig_regularization_loss(
+    float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] params
+) {
+    PPISPParamsNoCRFNoVig p = get_ppisp_no_crf_no_vig_params(params);
+    float losses[RawPPISPRegLossIndexNoCRFNoVig::length] = { 0.0f };
+
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumExposure] = p.exposure;
+
+    const static float2x2 zca_b = float2x2(0.0480542f, -0.0043631f, -0.0043631f, 0.0481283f);
+    const static float2x2 zca_r = float2x2(0.0580570f, -0.0179872f, -0.0179872f, 0.0431061f);
+    const static float2x2 zca_g = float2x2(0.0433336f, -0.0180537f, -0.0180537f, 0.0580500f);
+    const static float2x2 zca_n = float2x2(0.0128369f, -0.0034654f, -0.0034654f, 0.0128158f);
+    float2 bd = mul(zca_b, p.color_params.b);
+    float2 rd = mul(zca_r, p.color_params.r);
+    float2 gd = mul(zca_g, p.color_params.g);
+    float2 nd = mul(zca_n, p.color_params.n);
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorBx] = bd.x;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorBy] = bd.y;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorRx] = rd.x;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorRy] = rd.y;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorGx] = gd.x;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorGy] = gd.y;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorNx] = nd.x;
+    losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorNy] = nd.y;
+
+    return losses;
+}
+
+[CudaDeviceExport]
+float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] compute_raw_ppisp_no_crf_no_vig_regularization_loss_vjp(
+    float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS] params,
+    float[RawPPISPRegLossIndexNoCRFNoVig::length] grad_out
+) {
+    DifferentialPair<float[PPISP_NO_CRF_NO_VIG_NUM_PARAMS]> dp_params = diffPair(params);
+    bwd_diff(compute_raw_ppisp_no_crf_no_vig_regularization_loss)(
+        dp_params, grad_out
+    );
+    return dp_params.d;
+}
+
 enum PPISPRegLossIndex {
     ExposureMean,
     VignettingCenter,
@@ -1145,6 +1260,60 @@ float[RawPPISPRegLossIndexNoCRF::length] compute_ppisp_no_crf_regularization_los
 ) {
     DifferentialPair<float[RawPPISPRegLossIndexNoCRF::length]> dp_raw_losses = diffPair(raw_losses);
     bwd_diff(compute_ppisp_no_crf_regularization_loss)(
+        dp_raw_losses, num_cameras, loss_weights, grad_out
+    );
+    return dp_raw_losses.d;
+}
+
+[CudaDeviceExport]
+[Differentiable]
+float[PPISPRegLossIndex::length] compute_ppisp_no_crf_no_vig_regularization_loss(
+    float[RawPPISPRegLossIndexNoCRFNoVig::length] raw_losses,
+    int num_cameras,
+    no_diff float[PPISPRegLossIndex::length] loss_weights
+) {
+    float losses[PPISPRegLossIndex::length];
+
+    // Exposure mean
+    losses[PPISPRegLossIndex::ExposureMean] =
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumExposure] / num_cameras, 0.1f);
+
+    // Color mean (latent offsets close to 0)
+    losses[PPISPRegLossIndex::ColorMean] = (
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorBx] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorBy] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorRx] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorRy] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorGx] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorGy] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorNx] / num_cameras, 0.005f) +
+        smooth_l1_loss(raw_losses[RawPPISPRegLossIndexNoCRFNoVig::SumColorNy] / num_cameras, 0.005f)
+    ) / 8.0f;
+
+    // No vignetting and no CRF in this mode
+    losses[PPISPRegLossIndex::VignettingCenter] = 0.0f;
+    losses[PPISPRegLossIndex::VignettingNonPositivity] = 0.0f;
+    losses[PPISPRegLossIndex::VignettingChannelVariance] = 0.0f;
+    losses[PPISPRegLossIndex::CRFChannelVariance] = 0.0f;
+
+    // Apply weights
+    losses[PPISPRegLossIndex::ExposureMean] *=
+        loss_weights[PPISPRegLossIndex::ExposureMean];
+    losses[PPISPRegLossIndex::ColorMean] *=
+        loss_weights[PPISPRegLossIndex::ColorMean];
+
+    return losses;
+}
+
+[CudaDeviceExport]
+float[RawPPISPRegLossIndexNoCRFNoVig::length] compute_ppisp_no_crf_no_vig_regularization_loss_vjp(
+    float[RawPPISPRegLossIndexNoCRFNoVig::length] raw_losses,
+    int num_cameras,
+    float[PPISPRegLossIndex::length] loss_weights,
+    float[PPISPRegLossIndex::length] grad_out
+) {
+    DifferentialPair<float[RawPPISPRegLossIndexNoCRFNoVig::length]> dp_raw_losses = diffPair(raw_losses);
+    bwd_diff(compute_ppisp_no_crf_no_vig_regularization_loss)(
         dp_raw_losses, num_cameras, loss_weights, grad_out
     );
     return dp_raw_losses.d;

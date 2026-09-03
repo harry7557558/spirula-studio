@@ -260,18 +260,14 @@ struct BackgroundStepConfig {
 };
 
 
-// PPISP Adam LR + 6-component regularization weights (indexed by PPISPRegLossIndex).
-//
-// run_before_bilagrid controls the forward order when both PPISP and bilagrid
-// RGB are enabled:
-//   false (default): render -> bilagrid -> PPISP -> loss.
-//   true           : render -> PPISP    -> bilagrid -> loss.
-// Backward hooks invert this automatically (the inner hook runs first).
-// Ignored when only one of the two is enabled.
+// PPISP Adam LR, the 6 regularization weights (PPISPRegLossIndex order), and
+// where PPISP sits in the chain render -> bg -> [PPISP] -> display encode ->
+// bilagrid -> [PPISP] -> loss. The backward hooks invert whichever it picks.
 struct PpispStepConfig {
     float lr = 0.0f;
     std::array<float, (int)PPISPRegLossIndex::length> reg_weights{};
     bool  run_before_bilagrid = false;
+    bool  run_before_color_space = false;
 };
 
 

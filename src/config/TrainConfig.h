@@ -249,9 +249,10 @@ inline int train_tier_rank(const char* tier) {
     X(float, bilagrid_tv_loss_weight_geometry, 10.0f, "correction", "advanced", "") \
     X(bool, use_adagrad_bilagrid_optim, true, "correction", "advanced", "")  \
     X(bool, use_ppisp, true, "correction", "basic", "")                      \
-    X(std::string, ppisp_param_type, "no_crf", "correction", "basic", "original|rqs|no_crf") \
+    X(std::string, ppisp_param_type, "no_crf_no_vig", "correction", "basic", "original|rqs|no_crf|no_crf_clamp|no_crf_no_vig|no_crf_no_vig_clamp") \
     X(bool, ppisp_exposure_from_exif, false, "correction", "basic", "")      \
     X(bool, apply_ppisp_before_bilagrid, true, "correction", "advanced", "") \
+    X(bool, apply_ppisp_before_color_space, false, "correction", "advanced", "") \
     X(bool, use_adagrad_ppisp_optim, true, "correction", "advanced", "")     \
     X(float, ppisp_reg_exposure_mean, 1.0f, "correction", "advanced", "")    \
     X(float, ppisp_reg_color_mean, 1.0f, "correction", "advanced", "")       \
@@ -408,9 +409,13 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.splat_color_is_linear = true;
         c.image_color_gamut = "Rec.709";
         c.image_color_is_linear = false;
-        // c.image_color_transfer = "uncharted2";
-        c.ppisp_param_type = "original";
+        // c.image_color_transfer = "srgb-clamped";
+        c.ppisp_param_type = "no_crf_no_vig_clamp";
+        // c.apply_ppisp_before_color_space = true;
+        // c.ppisp_adagrad_lr = 0.25f;
+        c.ppisp_exposure_from_exif = true;
         c.background_mode = "noise";
+        c.depth_distortion_reg = 0.01f;
         c.dc_reg = 0.0f;
         c.max_screen_size = 0.15f;
         c.features_dc_lr = 0.0015f;

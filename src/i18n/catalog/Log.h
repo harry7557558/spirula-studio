@@ -1430,6 +1430,26 @@ SS_MSG(not_supported_yet,
     NL("{0} wordt nog niet ondersteund"),
     RU("{0} пока не поддерживается"),
     TR("{0} henüz desteklenmiyor"));
+SS_MSG(ppisp_before_color_space_order,
+    EN("{0} needs {1}: the per-photo color correction is always applied in sRGB"),
+    JA("{0} には {1} が必要です。写真ごとの色補正はつねに sRGB で適用されます"),
+    ZH_HANS("{0} 需要同时开启 {1}：逐张照片的颜色校正始终在 sRGB 中进行"),
+    ZH_HANT("{0} 需要同時開啟 {1}：逐張照片的色彩校正始終在 sRGB 中進行"),
+    KO("{0}에는 {1}이(가) 필요합니다. 사진별 색 보정은 항상 sRGB에서 적용됩니다"),
+    DE("{0} setzt {1} voraus: Die Farbkorrektur pro Foto wird immer in sRGB "
+       "angewendet"),
+    FR("{0} requiert {1} : la correction de couleur par photo est toujours "
+       "appliquée en sRGB"),
+    ES("{0} requiere {1}: la corrección de color por foto siempre se aplica en "
+       "sRGB"),
+    PT("{0} exige {1}: a correção de cor por foto é sempre aplicada em sRGB"),
+    IT("{0} richiede {1}: la correzione del colore per foto è sempre applicata "
+       "in sRGB"),
+    NL("{0} vereist {1}: de kleurcorrectie per foto wordt altijd in sRGB "
+       "toegepast"),
+    RU("{0} требует {1}: покадровая коррекция цвета всегда применяется в sRGB"),
+    TR("{0}, {1} gerektirir: fotoğraf başına renk düzeltmesi her zaman sRGB'de "
+       "uygulanır"));
 SS_MSG(bad_quantization_level,
     EN("quantization_level must be 0 or 1"),
     JA("quantization_level は 0 か 1 にしてください"),
