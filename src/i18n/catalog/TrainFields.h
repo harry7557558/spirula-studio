@@ -5957,6 +5957,123 @@ SS_MSG(scale_reg_help,
     TR("Splat boyutunu yumuşakça düşürür. Splat'ları derli toplu tutar, böylece "
        "ayrıntı yerel kalır; aşırısı büyük düz alanları eksik doldurur."));
 
+SS_MSG(opacity_reg_decay_power,
+    EN("Opacity penalty decay power"), JA("不透明度ペナルティの減衰指数"),
+    ZH_HANS("不透明度惩罚衰减幂"), ZH_HANT("不透明度懲罰衰減冪"),
+    KO("불투명도 페널티 감쇠 지수"),
+    DE("Abklingexponent der Deckkraftstrafe"),
+    FR("Exposant de décroissance de la pénalité d'opacité"),
+    ES("Exponente de decaimiento de la penalización de opacidad"),
+    PT("Expoente de decaimento da penalidade de opacidade"),
+    IT("Esponente di decadimento della penalità di opacità"),
+    NL("Vervalexponent van de dekkingsstraf"),
+    RU("Показатель затухания штрафа за непрозрачность"),
+    TR("Saydamsızlık cezası sönümleme üssü"));
+SS_MSG(opacity_reg_decay_power_help,
+    EN("Fade the opacity penalty to zero over the run, as (1-t)^p with t the "
+       "fraction of steps done. Its average over the run stays at the value you "
+       "set, so this only moves the pressure earlier. 0 keeps it constant."),
+    JA("不透明度のペナルティを、進捗 t に対して (1-t)^p の形で学習の終わりまで"
+       "にゼロへ下げます。全体の平均は設定した値のままなので、効き目が前半に寄"
+       "るだけです。0 なら一定のままです。"),
+    ZH_HANS("让不透明度惩罚按 (1-t)^p 在训练过程中降到零，t 是已完成步数的比"
+            "例。全程平均值仍等于所设的值，所以这只是把力度提前。0 表示保持不"
+            "变。"),
+    ZH_HANT("讓不透明度懲罰按 (1-t)^p 在訓練過程中降到零，t 是已完成步數的比"
+            "例。全程平均值仍等於所設的值，所以這只是把力度提前。0 表示保持不"
+            "變。"),
+    KO("불투명도 페널티를 진행률 t에 대해 (1-t)^p 형태로 학습이 끝날 때 0까지 "
+       "낮춥니다. 전체 평균은 설정한 값 그대로여서 힘이 앞쪽으로 쏠릴 뿐입니"
+       "다. 0이면 일정하게 유지합니다."),
+    DE("Die Deckkraftstrafe über den Lauf auf null abklingen lassen, nach "
+       "(1-t)^p mit t als Anteil der erledigten Schritte. Ihr Mittel über den "
+       "Lauf bleibt der eingestellte Wert, der Druck rückt also nur nach vorn. "
+       "0 hält sie konstant."),
+    FR("Faire décroître la pénalité d'opacité jusqu'à zéro sur la durée du run, "
+       "en (1-t)^p où t est la fraction des étapes faites. Sa moyenne sur le run "
+       "reste la valeur réglée ; la pression est seulement avancée. 0 la garde "
+       "constante."),
+    ES("Bajar a cero la penalización de opacidad a lo largo del entrenamiento, "
+       "según (1-t)^p con t la fracción de pasos hechos. Su media sobre el "
+       "entrenamiento sigue siendo el valor fijado, así que solo adelanta la "
+       "presión. 0 la mantiene constante."),
+    PT("Fazer a penalidade de opacidade cair a zero ao longo do treino, segundo "
+       "(1-t)^p com t a fração de passos feitos. A média ao longo do treino "
+       "continua a ser o valor definido, por isso só adianta a pressão. 0 "
+       "mantém-na constante."),
+    IT("Far scendere a zero la penalità di opacità lungo l'addestramento, "
+       "secondo (1-t)^p con t la frazione di passi svolti. La sua media "
+       "sull'addestramento resta il valore impostato, quindi la pressione viene "
+       "solo anticipata. 0 la tiene costante."),
+    NL("De dekkingsstraf over de run naar nul laten zakken volgens (1-t)^p, met "
+       "t het deel van de stappen dat af is. Haar gemiddelde over de run blijft "
+       "de ingestelde waarde, dus de druk verschuift alleen naar voren. 0 houdt "
+       "haar constant."),
+    RU("Плавно сводить штраф за непрозрачность к нулю за прогон, по закону "
+       "(1-t)^p, где t — доля пройденных шагов. Среднее за прогон остаётся "
+       "заданным значением, так что нажим лишь смещается к началу. 0 оставляет "
+       "его постоянным."),
+    TR("Saydamsızlık cezasını, t tamamlanan adımların oranı olmak üzere (1-t)^p "
+       "ile eğitim boyunca sıfıra indirir. Eğitim boyunca ortalaması ayarlanan "
+       "değerde kalır, yani baskı yalnızca öne alınır. 0 onu sabit tutar."));
+
+SS_MSG(scale_reg_decay_power,
+    EN("Size penalty decay power"), JA("大きさペナルティの減衰指数"),
+    ZH_HANS("尺寸惩罚衰减幂"), ZH_HANT("尺寸懲罰衰減冪"),
+    KO("크기 페널티 감쇠 지수"), DE("Abklingexponent der Größenstrafe"),
+    FR("Exposant de décroissance de la pénalité de taille"),
+    ES("Exponente de decaimiento de la penalización de tamaño"),
+    PT("Expoente de decaimento da penalidade de tamanho"),
+    IT("Esponente di decadimento della penalità di dimensione"),
+    NL("Vervalexponent van de groottestraf"),
+    RU("Показатель затухания штрафа за размер"),
+    TR("Boyut cezası sönümleme üssü"));
+SS_MSG(scale_reg_decay_power_help,
+    EN("Fade the size penalty to zero over the run, as (1-t)^p with t the "
+       "fraction of steps done. Its average over the run stays at the value you "
+       "set, so this only moves the pressure earlier. 0 keeps it constant."),
+    JA("大きさのペナルティを、進捗 t に対して (1-t)^p の形で学習の終わりまでに"
+       "ゼロへ下げます。全体の平均は設定した値のままなので、効き目が前半に寄る"
+       "だけです。0 なら一定のままです。"),
+    ZH_HANS("让尺寸惩罚按 (1-t)^p 在训练过程中降到零，t 是已完成步数的比例。全"
+            "程平均值仍等于所设的值，所以这只是把力度提前。0 表示保持不变。"),
+    ZH_HANT("讓尺寸懲罰按 (1-t)^p 在訓練過程中降到零，t 是已完成步數的比例。全"
+            "程平均值仍等於所設的值，所以這只是把力度提前。0 表示保持不變。"),
+    KO("크기 페널티를 진행률 t에 대해 (1-t)^p 형태로 학습이 끝날 때 0까지 낮춥"
+       "니다. 전체 평균은 설정한 값 그대로여서 힘이 앞쪽으로 쏠릴 뿐입니다. 0이"
+       "면 일정하게 유지합니다."),
+    DE("Die Größenstrafe über den Lauf auf null abklingen lassen, nach (1-t)^p "
+       "mit t als Anteil der erledigten Schritte. Ihr Mittel über den Lauf "
+       "bleibt der eingestellte Wert, der Druck rückt also nur nach vorn. 0 "
+       "hält sie konstant."),
+    FR("Faire décroître la pénalité de taille jusqu'à zéro sur la durée du run, "
+       "en (1-t)^p où t est la fraction des étapes faites. Sa moyenne sur le run "
+       "reste la valeur réglée ; la pression est seulement avancée. 0 la garde "
+       "constante."),
+    ES("Bajar a cero la penalización de tamaño a lo largo del entrenamiento, "
+       "según (1-t)^p con t la fracción de pasos hechos. Su media sobre el "
+       "entrenamiento sigue siendo el valor fijado, así que solo adelanta la "
+       "presión. 0 la mantiene constante."),
+    PT("Fazer a penalidade de tamanho cair a zero ao longo do treino, segundo "
+       "(1-t)^p com t a fração de passos feitos. A média ao longo do treino "
+       "continua a ser o valor definido, por isso só adianta a pressão. 0 "
+       "mantém-na constante."),
+    IT("Far scendere a zero la penalità di dimensione lungo l'addestramento, "
+       "secondo (1-t)^p con t la frazione di passi svolti. La sua media "
+       "sull'addestramento resta il valore impostato, quindi la pressione viene "
+       "solo anticipata. 0 la tiene costante."),
+    NL("De groottestraf over de run naar nul laten zakken volgens (1-t)^p, met "
+       "t het deel van de stappen dat af is. Haar gemiddelde over de run blijft "
+       "de ingestelde waarde, dus de druk verschuift alleen naar voren. 0 houdt "
+       "haar constant."),
+    RU("Плавно сводить штраф за размер к нулю за прогон, по закону (1-t)^p, где "
+       "t — доля пройденных шагов. Среднее за прогон остаётся заданным "
+       "значением, так что нажим лишь смещается к началу. 0 оставляет его "
+       "постоянным."),
+    TR("Boyut cezasını, t tamamlanan adımların oranı olmak üzere (1-t)^p ile "
+       "eğitim boyunca sıfıra indirir. Eğitim boyunca ortalaması ayarlanan "
+       "değerde kalır, yani baskı yalnızca öne alınır. 0 onu sabit tutar."));
+
 SS_MSG(opacity_decay,
     EN("Opacity decay"), JA("不透明度の減衰"), ZH_HANS("不透明度衰减"),
     ZH_HANT("不透明度衰減"), KO("불투명도 감쇠"),

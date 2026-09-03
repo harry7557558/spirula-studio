@@ -386,8 +386,17 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.optim.lr_features_sh = scheduled_lr(step, max_steps_lr, c.features_sh_lr);
     cfg.optim.max_gauss_ratio             = c.max_gauss_ratio;
     cfg.optim.scale_regularization_weight = c.scale_regularization_weight;
-    cfg.optim.mcmc_opacity_reg_weight     = c.opacity_reg;
-    cfg.optim.mcmc_scale_reg_weight       = c.scale_reg / alpha;
+    // Front-loaded shape penalty. (p+1)(1-t)^p has unit integral over the run,
+    // so p moves when the pressure is spent, not how much of it.
+    float reg_t = std::min((float)step / (float)std::max(c.num_iterations, 1), 1.0f);
+    auto reg_decay = [reg_t](float p) {
+        p = std::max(p, 0.0f);
+        return (p + 1.0f) * std::pow(1.0f - reg_t, p);
+    };
+    cfg.optim.mcmc_opacity_reg_weight     =
+        c.opacity_reg * reg_decay(c.opacity_reg_decay_power);
+    cfg.optim.mcmc_scale_reg_weight       =
+        c.scale_reg * reg_decay(c.scale_reg_decay_power) / alpha;
     cfg.optim.erank_reg_weight            = c.erank_reg;
     cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3;
     cfg.optim.quat_norm_reg_weight        = c.quat_norm_reg;

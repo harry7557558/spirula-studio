@@ -163,8 +163,8 @@ inline int train_tier_rank(const char* tier) {
     X(float, min_opacity, 0.005f, "detail", "advanced", "")                  \
     X(int, refine_every, 100, "detail", "advanced", "")                      \
     X(int, refine_start_iter, 500, "detail", "expert", "")                   \
-    X(int, refine_stop_num_iter, 5000, "detail", "advanced", "")             \
-    X(int, refine_stop_iter, 25000, "detail", "advanced", "")                \
+    X(int, refine_stop_num_iter, 2500, "detail", "advanced", "")             \
+    X(int, refine_stop_iter, 14000, "detail", "advanced", "")                \
     X(float, noise_lr, 80.0f, "detail", "expert", "")                        \
     X(float, noise_lr_final, 0.8f, "detail", "expert", "")                   \
     X(bool, use_revised_densification, true, "detail", "expert", "")         \
@@ -224,8 +224,10 @@ inline int train_tier_rank(const char* tier) {
     X(int, median_warmup, 6000, "geometry", "expert", "")                    \
                                                                              \
     /* ==== shape -- keeping individual splats compact and well behaved ==== */ \
-    X(float, opacity_reg, 0.01f, "shape", "basic", "")                       \
+    X(float, opacity_reg, 0.005f, "shape", "basic", "")                      \
     X(float, scale_reg, 0.01f, "shape", "basic", "")                         \
+    X(float, opacity_reg_decay_power, 1.0f, "shape", "expert", "")           \
+    X(float, scale_reg_decay_power, 0.4f, "shape", "expert", "")             \
     X(float, opacity_decay, 0.0f, "shape", "basic", "")                      \
     X(float, scale_decay, 0.0f, "shape", "basic", "")                        \
     X(float, erank_reg, 0.001f, "shape", "basic", "")                        \

@@ -72,6 +72,7 @@ float scale_reg_2dgs(float2 scales, float max_gauss_ratio, float scale_regulariz
 [Differentiable]
 float mcmc_opacity_reg(float opacity, float mcmc_opacity_reg_weight) {
     float reg = 1.0 / (1.0 + exp(-opacity));
+    reg = max(reg, 0.5f + 0.25f * opacity);  // prevent vanishing gradient at high opacity
     return mcmc_opacity_reg_weight * reg;
 }
 
