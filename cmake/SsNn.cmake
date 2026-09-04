@@ -169,6 +169,21 @@ target_compile_options(ss_aliked PRIVATE
 set_property(TARGET ss_aliked PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
+# ss_loma -- the LoMa frontend (DaD + DeDoDe + the LoMa matcher). Same shape as
+# ss_aliked; the one general op it needed, bicubic resize, went into nn/.
+# ---------------------------------------------------------------------------
+ss_nn_shaders(loma ${SS_SRC}/loma/shaders SS_LOMA_EMBED)
+
+file(GLOB_RECURSE SS_LOMA_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/loma/*.cpp)
+list(FILTER SS_LOMA_SOURCES EXCLUDE REGEX "/tests/")
+
+add_library(ss_loma STATIC ${SS_LOMA_SOURCES} ${SS_LOMA_EMBED})
+target_link_libraries(ss_loma PUBLIC ss_nn)
+target_compile_options(ss_loma PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+set_property(TARGET ss_loma PROPERTY CXX_STANDARD 17)
+
+# ---------------------------------------------------------------------------
 # ss_metric3d -- Metric3D v2 monocular depth and normals
 #
 # Same shape as ss_aliked: the checkpoint is an ONNX file fetched from the
@@ -229,14 +244,16 @@ endif()
 # ---------------------------------------------------------------------------
 file(GLOB SS_NN_TESTS CONFIGURE_DEPENDS
      ${SS_SRC}/nn/tests/*.cpp ${SS_SRC}/sam/tests/*.cpp
-     ${SS_SRC}/aliked/tests/*.cpp ${SS_SRC}/metric3d/tests/*.cpp
+     ${SS_SRC}/aliked/tests/*.cpp ${SS_SRC}/loma/tests/*.cpp
+     ${SS_SRC}/metric3d/tests/*.cpp
      ${SS_SRC}/moge/tests/*.cpp)
 foreach(test_src ${SS_NN_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
     # Every test links every library above it: the four are small, and one
     # rule here beats a per-directory list that drifts.
-    target_link_libraries(${test_name} PRIVATE ss_sam ss_aliked ss_metric3d ss_moge)
+    target_link_libraries(${test_name} PRIVATE ss_sam ss_aliked ss_loma ss_metric3d
+                                                ss_moge)
     set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 17)
     target_compile_options(${test_name} PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)

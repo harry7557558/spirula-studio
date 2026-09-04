@@ -30,12 +30,26 @@ struct LightGlueOptions {
     bool   verbose = true;
 };
 
+// LoMa's matcher. Five released variants, all nine layers; they differ in the
+// embedding width and in which descriptor they were trained against, and both
+// are read off the checkpoint rather than spelled here.
+struct LomaMatchOptions {
+    // "loma-b", "loma-b128", "loma-r", "loma-l", "loma-g" (fetched and cached)
+    // or a path to an .onnx file. Empty means "whatever --matcher named".
+    std::string model;
+    // COLMAP's LomaMatchingOptions default, and LoMa's own filter threshold.
+    double min_score = 0.1;
+    int    device = -1;
+    bool   verbose = true;
+};
+
 bool isLearnedMatcher(const std::string& type);
 
 // Throws std::runtime_error naming the type when it is unknown, or when it is
 // learned and this binary has no inference layer.
 std::unique_ptr<IFeatureMatcher> createFeatureMatcher(const std::string& type,
                                                       const MatchOptions& match,
-                                                      const LightGlueOptions& lightglue);
+                                                      const LightGlueOptions& lightglue,
+                                                      const LomaMatchOptions& loma);
 
 }  // namespace sfm

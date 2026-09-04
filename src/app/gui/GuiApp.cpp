@@ -3355,18 +3355,22 @@ void GuiApp::draw_sfm_advanced() {
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::features, &_sfm_job.features,
               {&dmsg::features_sift, &dmsg::features_aliked_n16,
-               &dmsg::features_aliked_n32});
+               &dmsg::features_aliked_n32, &dmsg::features_loma_b128,
+               &dmsg::features_loma_b});
     ui::help_on_hover(dmsg::features_help);
 
     {
         // Brute force is the only option for SIFT, so say so by disabling the
-        // combo rather than by letting the run fail.
+        // combo. The second entry is whichever learned matcher goes with the
+        // frontend above: each reads only the descriptors it was trained on.
         const bool learned = _sfm_job.features != 0;
+        const bool is_loma = _sfm_job.features >= 3;
         ImGui::BeginDisabled(!learned);
         ImGui::SetNextItemWidth(px(260.0f));
         int shown = learned ? _sfm_job.matcher : 0;
         if (ui::Combo(dmsg::matcher, &shown,
-                      {&dmsg::matcher_brute_force, &dmsg::matcher_lightglue}) &&
+                      {&dmsg::matcher_brute_force,
+                       is_loma ? &dmsg::matcher_loma : &dmsg::matcher_lightglue}) &&
             learned)
             _sfm_job.matcher = shown;
         ImGui::EndDisabled();

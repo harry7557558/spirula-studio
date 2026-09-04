@@ -96,6 +96,9 @@ src/
 │                             -- READ src/sam/README.md
 ├── aliked/                 ALIKED keypoints + LightGlue, on top of nn/
 │                             -- READ src/aliked/README.md
+├── loma/                   LoMa: DaD keypoints + DeDoDe descriptors + the LoMa
+│                             matcher, on top of nn/. The other learned SfM
+│                             frontend -- READ src/loma/README.md
 ├── metric3d/               Metric3D v2 depth + normals, on top of nn/
 │                             -- READ src/metric3d/README.md
 ├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of
@@ -241,8 +244,9 @@ Rules:
 
 ## The Vulkan-only subsystems
 
-`src/sfm/`, `src/nn/`, `src/sam/`, `src/aliked/`, `src/metric3d/`,
-`src/moge/` and `src/video/` are **not** part of the two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
+`src/sfm/`, `src/nn/`, `src/sam/`, `src/aliked/`, `src/loma/`,
+`src/metric3d/`, `src/moge/` and `src/video/` are **not** part of the
+two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
 context, share nothing with the training engine, and are absent from a CUDA
 build by default (`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there).
 Nothing in them goes through `cmake/sources.txt`.
@@ -252,6 +256,7 @@ The layering runs one way and must keep doing so:
 ```
 app/gui, app/cli ──► sam ──────┬──► nn ──► nn/vk
                  ├──► aliked ──┤
+                 ├──► loma ────┤
                  ├──► metric3d ┤
                  ├──► moge ────┤
                  └──► video ───┘

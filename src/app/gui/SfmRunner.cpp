@@ -16,6 +16,8 @@
 
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
 #include "aliked/model/Fetch.h"
+#include "loma/Loma.h"
+#include "loma/model/Fetch.h"
 #include "nn/io/Fetch.h"
 #endif
 
@@ -50,12 +52,21 @@ const char* kDataType[] = {"individual", "video", "internet"};
 const char* kCameraMode[] = {"single", "folder", "image"};
 const char* kPairs[] = {"auto", "exhaustive", "sequential", "prefilter"};
 const char* kMapper[] = {"flat", "bottom-up"};
-const char* kFeatures[] = {"sift", "aliked-n16rot", "aliked-n32"};
-const char* kMatcher[] = {"bruteforce", "lightglue"};
+const char* kFeatures[] = {"sift", "aliked-n16rot", "aliked-n32", "loma-b128",
+                           "loma-b"};
 
 template <int N>
 const char* pick(const char* const (&table)[N], int i, int fallback = 0) {
     return table[(i >= 0 && i < N) ? i : fallback];
+}
+
+// The matcher combo is two entries -- brute force, or "the learned matcher for
+// this frontend" -- because a learned matcher only reads the descriptors it
+// was trained on. Which one that is follows --features.
+const char* matcher_for(int features, int matcher) {
+    if (features == 0 || matcher != 1) return "bruteforce";
+    const std::string f = pick(kFeatures, features);
+    return f.rfind("loma", 0) == 0 ? pick(kFeatures, features) : "lightglue";
 }
 
 // A failed Vulkan call is the child's own English diagnostic -- a result name
@@ -115,17 +126,29 @@ bool has_model(const fs::path& sparse) {
 std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     std::vector<PendingDownload> out;
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
-    auto want = [&](const char* id) {
-        const aliked::ModelSource* src = aliked::find_model_source(id);
-        if (!src) return;
-        const std::string dest = nn::cached_path(src->onnx);
-        if (!file_is_cached(dest, src->onnx.bytes))
-            out.push_back({src->onnx.url, dest, src->onnx.bytes});
+    auto take = [&](const nn::FetchFile& f) {
+        const std::string dest = nn::cached_path(f);
+        if (!file_is_cached(dest, f.bytes)) out.push_back({f.url, dest, f.bytes});
     };
-    if (features > 0) want(pick(kFeatures, features));
-    // The matcher combo is only read with a learned frontend, which is what
-    // the command line does too (pick(kMatcher, features == 0 ? 0 : matcher)).
-    if (features > 0 && matcher == 1) want("aliked-lightglue");
+    auto want_aliked = [&](const char* id) {
+        if (const aliked::ModelSource* src = aliked::find_model_source(id)) take(src->onnx);
+    };
+    auto want_loma = [&](const std::string& id) {
+        if (const loma::ModelSource* src = loma::find_model_source(id)) take(src->onnx);
+    };
+    if (features <= 0) return out;
+
+    const std::string f = pick(kFeatures, features);
+    if (f.rfind("loma", 0) == 0) {
+        // Three files, not one: the detector is shared, the descriptor follows
+        // the variant, and the matcher is only wanted if it is selected.
+        want_loma("loma-dad");
+        want_loma(loma::descriptor_for_matcher(f));
+        if (matcher == 1) want_loma(f);
+    } else {
+        want_aliked(f.c_str());
+        if (matcher == 1) want_aliked("aliked-lightglue");
+    }
 #else
     (void)features;
     (void)matcher;
@@ -518,10 +541,9 @@ void SfmRunner::run(SfmJob job) {
                 "--camera-mode", pick(kCameraMode, job.camera_mode, 1),
                 "--mapper", pick(kMapper, job.mapper),
                 "--features", pick(kFeatures, job.features),
-                // LightGlue only exists for the learned descriptors; asking
-                // for it with SIFT selected is a usage error, so do not.
-                "--matcher",
-                pick(kMatcher, job.features == 0 ? 0 : job.matcher),
+                // A learned matcher only exists for the learned descriptors;
+                // asking for one with SIFT selected is a usage error.
+                "--matcher", matcher_for(job.features, job.matcher),
             };
             if (job.pairs > 0) {
                 argv.push_back("--pairs");
@@ -563,8 +585,9 @@ void SfmRunner::run(SfmJob job) {
                 // are not comparable -- a learned detector emits a few
                 // thousand better-localized points where SIFT wants tens of
                 // thousands. One spinner, routed to whichever is running.
-                argv.push_back(job.features == 0 ? "--max-features"
-                                                 : "--aliked-max-features");
+                argv.push_back(job.features == 0     ? "--max-features"
+                               : job.features >= 3   ? "--loma-max-features"
+                                                     : "--aliked-max-features");
                 argv.push_back(std::to_string(job.max_features));
             }
             if (job.max_image_size > 0) {

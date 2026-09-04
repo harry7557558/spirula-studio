@@ -235,6 +235,7 @@ elements, where the `_wide` kernels run:
 | module | widest such tensor | narrow | wide |
 |---|---|---|---|
 | ALIKED | 512 B/px — the 128-channel aggregate | 2880² | 5792² |
+| LoMa | 384 B/px — DaD's finest refiner input | 3344² | 6688² |
 | Metric3D | 256 B/px, at the caller's resolution | 4096² | 8192² |
 | MoGe | ~66 KB/token, independent of the image | ~64 650 tokens | ~258 000 |
 | SAM | everything is sized by `img_size`, not the input | not reachable | — |

@@ -328,6 +328,9 @@ static void resize_op(const char* entry, const Tensor& out, const Tensor& in,
 void resize_bilinear(const Tensor& out, const Tensor& in, bool align_corners) {
     resize_op("resample.resize_bilinear", out, in, align_corners);
 }
+void resize_bicubic(const Tensor& out, const Tensor& in) {
+    resize_op("resample.resize_bicubic", out, in);
+}
 void upsample_nearest2x(const Tensor& out, const Tensor& in) {
     resize_op("resample.upsample_nearest2x", out, in);
 }

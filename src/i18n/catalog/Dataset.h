@@ -5325,6 +5325,36 @@ SS_MSG(features_aliked_n32,
     RU("ALIKED N32 (обученный, шире)"),
     TR("ALIKED N32 (öğrenilmiş, daha geniş)"));
 
+SS_MSG(features_loma_b128,
+    EN("LoMa-B128 (learned, compact)"),
+    JA("LoMa-B128（学習型・小さめ）"),
+    ZH_HANS("LoMa-B128（学习型，紧凑）"),
+    ZH_HANT("LoMa-B128（學習型，精簡）"),
+    KO("LoMa-B128(학습형, 소형)"),
+    DE("LoMa-B128 (gelernt, kompakt)"),
+    FR("LoMa-B128 (appris, compact)"),
+    ES("LoMa-B128 (aprendido, compacto)"),
+    PT("LoMa-B128 (aprendido, compacto)"),
+    IT("LoMa-B128 (appreso, compatto)"),
+    NL("LoMa-B128 (geleerd, compact)"),
+    RU("LoMa-B128 (обученный, компактный)"),
+    TR("LoMa-B128 (öğrenilmiş, küçük)"));
+
+SS_MSG(features_loma_b,
+    EN("LoMa-B (learned, most accurate)"),
+    JA("LoMa-B（学習型・最も高精度）"),
+    ZH_HANS("LoMa-B（学习型，最准确）"),
+    ZH_HANT("LoMa-B（學習型，最準確）"),
+    KO("LoMa-B(학습형, 가장 정확)"),
+    DE("LoMa-B (gelernt, am genauesten)"),
+    FR("LoMa-B (appris, le plus précis)"),
+    ES("LoMa-B (aprendido, el más preciso)"),
+    PT("LoMa-B (aprendido, o mais preciso)"),
+    IT("LoMa-B (appreso, il più preciso)"),
+    NL("LoMa-B (geleerd, nauwkeurigst)"),
+    RU("LoMa-B (обученный, самый точный)"),
+    TR("LoMa-B (öğrenilmiş, en doğru)"));
+
 SS_MSG(features_help,
     EN("Which detector and descriptor. SIFT is the classic one and needs "
        "nothing downloaded. The ALIKED options are a learned frontend: they "
@@ -5425,6 +5455,15 @@ SS_MSG(matcher_lightglue,
     ES("LightGlue (aprendido)"), PT("LightGlue (aprendido)"),
     IT("LightGlue (appreso)"), NL("LightGlue (geleerd)"),
     RU("LightGlue (обученный)"), TR("LightGlue (öğrenilmiş)"));
+
+SS_MSG(matcher_loma,
+    EN("LoMa (learned)"),
+    JA("LoMa（学習型）"), ZH_HANS("LoMa（学习型）"),
+    ZH_HANT("LoMa（學習型）"), KO("LoMa(학습형)"),
+    DE("LoMa (gelernt)"), FR("LoMa (appris)"),
+    ES("LoMa (aprendido)"), PT("LoMa (aprendido)"),
+    IT("LoMa (appreso)"), NL("LoMa (geleerd)"),
+    RU("LoMa (обученный)"), TR("LoMa (öğrenilmiş)"));
 
 SS_MSG(matcher_help,
     EN("How descriptors are matched. LightGlue is a learned matcher: it "

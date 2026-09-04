@@ -66,12 +66,19 @@ uint udot4add(uint a, uint b, uint acc) {
 uint udot4add(uint a, uint b, uint acc) { return dot4add_u8packed(a, b, acc); }
 #endif
 
-static const int DW = 32;    // uint words per descriptor (128 uint8)
+// 32 uint words = 128 uint8 (SIFT, ALIKED). DESC_WORDS=64 is a second build for
+// DeDoDe-G's 256; the tile halves so sTrain stays 8 KiB, and the header's
+// d2 < 2^23 becomes 2^24, still inside what the column packing leaves it.
+#ifndef DESC_WORDS
+#define DESC_WORDS 32
+#endif
+
+static const int DW = DESC_WORDS;
 static const uint TQ = 64;   // queries per workgroup for match_pair (see the
                              // column packing: 6 bits of local query index)
 static const uint TQR = 256; // ... and for match_rows, which has no column side
                              // (BruteForceMatcher::kRowThreads must agree)
-static const uint TT = 64;   // train descriptors per groupshared tile
+static const uint TT = (DESC_WORDS >= 64) ? 32 : 64;  // trains per shared tile
 
 [[vk::push_constant]] cbuffer PC {
     uint dQ;       // first descriptor index of image A
@@ -105,7 +112,7 @@ void descriptor_norms(uint3 tid : SV_DispatchThreadID) {
     norm[idx] = s;
 }
 
-groupshared uint sTrain[TT * uint(DW)];  // 8 KiB
+groupshared uint sTrain[TT * uint(DW)];  // 8 KiB at either width
 groupshared uint sCol[TT];               // packed (d2 << 6) | localQuery
 
 // Each train tile is read from VRAM once per *workgroup*, so a pair's train

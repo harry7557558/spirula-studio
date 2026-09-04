@@ -1081,7 +1081,7 @@ static int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                              (size_t)plan.window * plan.held_bytes) >> 20)});
 
     std::unique_ptr<IFeatureExtractor> ext =
-        createFeatureExtractor(cfg.features, opt, cfg.aliked);
+        createFeatureExtractor(cfg.features, opt, cfg.aliked, cfg.loma);
     if (opt.verbose) L::err(Tag::Extract, M::extract_frontend, {ext->name()});
     loadImagesInOrder(
         paths, plan, lopt,
@@ -1206,7 +1206,7 @@ static int cmdExtract(int argc, char** argv) {
         L::err(Tag::Extract, M::extract_to_gray,
                {image, img.width, img.height});
     std::unique_ptr<IFeatureExtractor> ext =
-        createFeatureExtractor(cfg.features, cfg.sift, cfg.aliked);
+        createFeatureExtractor(cfg.features, cfg.sift, cfg.aliked, cfg.loma);
     FeatureSet fset = ext->extract(img);
     sampleFeatureColors(fset, img);
     uint32_t masked_out = applyMask(fset, img.mask);
@@ -1372,7 +1372,7 @@ static int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, Pai
                {popt.num_features, popt.num_neighbors});
 
     std::unique_ptr<IFeatureMatcher> matcher =
-        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue);
+        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
     auto matchFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {

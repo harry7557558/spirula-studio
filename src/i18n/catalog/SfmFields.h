@@ -660,29 +660,29 @@ SS_MSG(exif_focal_tol_help,
 // ===========================================================================
 
 SS_MSG(features_help,
-    EN("Which detector and descriptor; the aliked ones are learned and fetch a "
-       "checkpoint on first use"),
-    JA("どの検出器と記述子を使うか。aliked のものは学習済みで、初回に"
+    EN("Which detector and descriptor; the aliked and loma ones are learned and "
+       "fetch a checkpoint on first use"),
+    JA("どの検出器と記述子を使うか。aliked と loma のものは学習済みで、初回に"
        "チェックポイントを取得します"),
-    ZH_HANS("使用哪种检测子与描述子；aliked 系列是学习得到的，首次使用时会下载检查点"),
-    ZH_HANT("使用哪種偵測子與描述子；aliked 系列是學習得到的，首次使用時會下載檢查點"),
-    KO("어떤 검출기와 기술자를 쓸지. aliked 계열은 학습된 것이라 처음 쓸 때 "
+    ZH_HANS("使用哪种检测子与描述子；aliked 与 loma 系列是学习得到的，首次使用时会下载检查点"),
+    ZH_HANT("使用哪種偵測子與描述子；aliked 與 loma 系列是學習得到的，首次使用時會下載檢查點"),
+    KO("어떤 검출기와 기술자를 쓸지. aliked 와 loma 계열은 학습된 것이라 처음 쓸 때 "
        "체크포인트를 내려받습니다"),
-    DE("Welcher Detektor und Deskriptor; die aliked-Varianten sind gelernt und "
+    DE("Welcher Detektor und Deskriptor; die aliked- und loma-Varianten sind gelernt und "
        "holen beim ersten Gebrauch einen Prüfpunkt"),
-    FR("Quel détecteur et quel descripteur ; les variantes aliked sont apprises "
+    FR("Quel détecteur et quel descripteur ; les variantes aliked et loma sont apprises "
        "et téléchargent un point de contrôle au premier usage"),
-    ES("Qué detector y qué descriptor; las variantes aliked son aprendidas y "
+    ES("Qué detector y qué descriptor; las variantes aliked y loma son aprendidas y "
        "descargan un punto de control la primera vez"),
-    PT("Qual detector e qual descritor; as variantes aliked são aprendidas e "
+    PT("Qual detector e qual descritor; as variantes aliked e loma são aprendidas e "
        "baixam um ponto de verificação no primeiro uso"),
-    IT("Quale rivelatore e quale descrittore; le varianti aliked sono apprese e "
+    IT("Quale rivelatore e quale descrittore; le varianti aliked e loma sono apprese e "
        "scaricano un checkpoint al primo uso"),
-    NL("Welke detector en descriptor; de aliked-varianten zijn geleerd en halen "
+    NL("Welke detector en descriptor; de aliked- en loma-varianten zijn geleerd en halen "
        "bij het eerste gebruik een controlepunt op"),
-    RU("Какой детектор и дескриптор; варианты aliked обучены и при первом "
+    RU("Какой детектор и дескриптор; варианты aliked и loma обучены и при первом "
        "использовании скачивают контрольную точку"),
-    TR("Hangi bulucu ve betimleyici; aliked olanlar öğrenilmiştir ve ilk "
+    TR("Hangi bulucu ve betimleyici; aliked ve loma olanlar öğrenilmiştir ve ilk "
        "kullanımda bir denetim noktası indirir"));
 
 SS_MSG(max_features_help,
@@ -879,42 +879,74 @@ SS_MSG(spv_path_help,
 // ===========================================================================
 
 SS_MSG(matcher_help,
-    EN("How descriptors are matched. lightglue is a learned matcher for "
-       "--features aliked-*; it is an order of magnitude slower per pair, so it "
-       "only makes sense behind pair selection"),
-    JA("記述子のマッチング方法。lightglue は --features aliked-* 向けの学習済み"
-       "マッチャーで、1 ペアあたり 1 桁遅いため、ペア選択の後ろでのみ意味が"
-       "あります"),
-    ZH_HANS("如何匹配描述子。lightglue 是面向 --features aliked-* 的学习型匹配器；"
-            "它每对慢一个数量级，因此只有放在像对筛选之后才划算"),
-    ZH_HANT("如何匹配描述子。lightglue 是面向 --features aliked-* 的學習型匹配器；"
-            "它每對慢一個數量級，因此只有放在影像對篩選之後才划算"),
-    KO("기술자를 매칭하는 방식. lightglue 는 --features aliked-* 용 학습된 "
-       "매처로, 쌍당 한 자릿수만큼 느리므로 쌍 선택 뒤에서만 쓸 만합니다"),
-    DE("Wie Deskriptoren zugeordnet werden. lightglue ist ein gelernter Matcher "
-       "für --features aliked-*; er ist je Paar eine Größenordnung langsamer und "
-       "lohnt sich daher nur hinter der Paarauswahl"),
-    FR("Comment les descripteurs sont appariés. lightglue est un apparieur "
-       "appris pour --features aliked-* ; il est un ordre de grandeur plus lent "
-       "par paire, et n'a donc de sens qu'après la sélection de paires"),
-    ES("Cómo se emparejan los descriptores. lightglue es un emparejador "
-       "aprendido para --features aliked-*; es un orden de magnitud más lento "
-       "por par, así que solo tiene sentido tras la selección de pares"),
-    PT("Como os descritores são emparelhados. lightglue é um emparelhador "
-       "aprendido para --features aliked-*; é uma ordem de grandeza mais lento "
-       "por par, então só faz sentido depois da seleção de pares"),
-    IT("Come vengono abbinati i descrittori. lightglue è un abbinatore appreso "
-       "per --features aliked-*; è un ordine di grandezza più lento per coppia, "
-       "quindi ha senso solo dopo la selezione delle coppie"),
-    NL("Hoe descriptoren gematcht worden. lightglue is een geleerde matcher voor "
-       "--features aliked-*; hij is per paar een orde van grootte trager en "
-       "loont dus alleen achter de paarselectie"),
-    RU("Как сопоставляются дескрипторы. lightglue -- обученный сопоставитель для "
-       "--features aliked-*; он на порядок медленнее на пару, поэтому имеет "
-       "смысл только после отбора пар"),
-    TR("Betimleyicilerin nasıl eşleştirileceği. lightglue, --features aliked-* "
-       "için öğrenilmiş bir eşleştiricidir; çift başına bir büyüklük derecesi "
-       "daha yavaştır, bu yüzden ancak çift seçiminin ardında anlamlıdır"));
+    EN("How descriptors are matched. lightglue and loma-* are learned matchers, "
+       "each for the --features of the same name; both are an order of "
+       "magnitude slower per pair, so they only make sense behind pair selection"),
+    JA("記述子のマッチング方法。lightglue と loma-* は同名の --features 向けの"
+       "学習済みマッチャーで、1 ペアあたり 1 桁遅いため、ペア選択の後ろでのみ"
+       "意味があります"),
+    ZH_HANS("如何匹配描述子。lightglue 与 loma-* 是学习型匹配器，各自面向同名的 "
+            "--features；它们每对慢一个数量级，因此只有放在像对筛选之后才划算"),
+    ZH_HANT("如何匹配描述子。lightglue 與 loma-* 是學習型匹配器，各自面向同名的 "
+            "--features；它們每對慢一個數量級，因此只有放在影像對篩選之後才划算"),
+    KO("기술자를 매칭하는 방식. lightglue 와 loma-* 는 각각 같은 이름의 --features "
+       "용 학습된 매처로, 쌍당 한 자릿수만큼 느리므로 쌍 선택 뒤에서만 쓸 "
+       "만합니다"),
+    DE("Wie Deskriptoren zugeordnet werden. lightglue und loma-* sind gelernte "
+       "Matcher, jeder für die gleichnamigen --features; beide sind je Paar eine "
+       "Größenordnung langsamer und lohnen sich nur hinter der Paarauswahl"),
+    FR("Comment les descripteurs sont appariés. lightglue et loma-* sont des "
+       "apparieurs appris, chacun pour les --features du même nom ; tous deux "
+       "sont bien plus lents par paire, et n'ont de sens qu'après la sélection "
+       "de paires"),
+    ES("Cómo se emparejan los descriptores. lightglue y loma-* son emparejadores "
+       "aprendidos, cada uno para las --features del mismo nombre; ambos son un "
+       "orden de magnitud más lentos por par, así que solo tienen sentido tras "
+       "la selección de pares"),
+    PT("Como os descritores são emparelhados. lightglue e loma-* são emparelhadores "
+       "aprendidos, cada um para as --features de mesmo nome; ambos são uma ordem "
+       "de grandeza mais lentos por par, então só fazem sentido depois da seleção "
+       "de pares"),
+    IT("Come vengono abbinati i descrittori. lightglue e loma-* sono abbinatori "
+       "appresi, ciascuno per le --features dello stesso nome; entrambi sono un "
+       "ordine di grandezza più lenti per coppia, quindi hanno senso solo dopo "
+       "la selezione delle coppie"),
+    NL("Hoe descriptoren gematcht worden. lightglue en loma-* zijn geleerde "
+       "matchers, elk voor de gelijknamige --features; beide zijn per paar een "
+       "orde van grootte trager en lonen dus alleen achter de paarselectie"),
+    RU("Как сопоставляются дескрипторы. lightglue и loma-* -- обученные "
+       "сопоставители, каждый для одноимённых --features; оба на порядок "
+       "медленнее на пару, поэтому имеют смысл только после отбора пар"),
+    TR("Betimleyicilerin nasıl eşleştirileceği. lightglue ve loma-*, aynı adlı "
+       "--features için öğrenilmiş eşleştiricilerdir; ikisi de çift başına bir "
+       "büyüklük derecesi daha yavaştır, bu yüzden ancak çift seçiminin ardında "
+       "anlamlıdır"));
+
+SS_MSG(loma_model_help,
+    EN("Path to a LoMa .onnx checkpoint, overriding the one --features or "
+       "--matcher names"),
+    JA("LoMa の .onnx チェックポイントへのパス。--features や --matcher が"
+       "指す既定を上書きします"),
+    ZH_HANS("LoMa 的 .onnx 检查点路径，覆盖 --features 或 --matcher 指定的那个"),
+    ZH_HANT("LoMa 的 .onnx 檢查點路徑，覆蓋 --features 或 --matcher 指定的那個"),
+    KO("LoMa .onnx 체크포인트 경로. --features 나 --matcher 가 가리키는 것을 "
+       "대신합니다"),
+    DE("Pfad zu einem LoMa-.onnx-Prüfpunkt, der den von --features oder "
+       "--matcher benannten ersetzt"),
+    FR("Chemin d'un point de contrôle LoMa .onnx, qui remplace celui que "
+       "désignent --features ou --matcher"),
+    ES("Ruta de un punto de control LoMa .onnx, que sustituye al que nombran "
+       "--features o --matcher"),
+    PT("Caminho de um ponto de verificação LoMa .onnx, que substitui o que "
+       "--features ou --matcher nomeia"),
+    IT("Percorso di un checkpoint LoMa .onnx, che sostituisce quello indicato "
+       "da --features o --matcher"),
+    NL("Pad naar een LoMa-.onnx-controlepunt, dat het door --features of "
+       "--matcher genoemde vervangt"),
+    RU("Путь к контрольной точке LoMa .onnx, заменяющей ту, что называют "
+       "--features или --matcher"),
+    TR("Bir LoMa .onnx denetim noktasının yolu; --features veya --matcher'ın "
+       "adlandırdığının yerine geçer"));
 
 SS_MSG(lightglue_min_score_help,
     EN("Assignment confidence a LightGlue match must reach"),
@@ -931,6 +963,21 @@ SS_MSG(lightglue_min_score_help,
     NL("Toewijzingsvertrouwen dat een LightGlue-match moet halen"),
     RU("Уверенность назначения, которой должно достичь соответствие LightGlue"),
     TR("Bir LightGlue eşleşmesinin ulaşması gereken atama güveni"));
+
+SS_MSG(loma_min_match_score_help,
+    EN("Assignment confidence a LoMa match must reach"),
+    JA("LoMa のマッチが達すべき割り当て信頼度"),
+    ZH_HANS("LoMa 匹配必须达到的指派置信度"),
+    ZH_HANT("LoMa 比對必須達到的指派信賴度"),
+    KO("LoMa 매치가 넘어야 하는 할당 신뢰도"),
+    DE("Zuordnungssicherheit, die eine LoMa-Zuordnung erreichen muss"),
+    FR("Confiance d'appariement qu'une correspondance LoMa doit atteindre"),
+    ES("Confianza de asignación que una correspondencia LoMa debe alcanzar"),
+    PT("Confiança de atribuição que uma correspondência LoMa deve alcançar"),
+    IT("Fiducia di assegnazione che un abbinamento LoMa deve raggiungere"),
+    NL("Toewijzingszekerheid die een LoMa-match moet halen"),
+    RU("Уверенность назначения, которой должно достичь соответствие LoMa"),
+    TR("Bir LoMa eşleşmesinin ulaşması gereken atama güveni"));
 
 SS_MSG(lightglue_model_help,
     EN("Path to a LightGlue .onnx checkpoint, overriding the fetched one"),

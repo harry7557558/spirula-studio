@@ -73,6 +73,50 @@ void resize_bilinear(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                                       int(p.C), int(c), sy, sx));
 }
 
+// torch's bicubic, a = -0.75. Two rules bilinear does not share: the source
+// coordinate is not clamped to zero, and an out-of-range tap keeps its weight
+// and reads the edge pixel (ONNX exclude_outside=0), or the border shifts.
+float cubic_weight(float t, float a) {
+    t = abs(t);
+    if (t <= 1.0f) return ((a + 2.0f) * t - (a + 3.0f)) * t * t + 1.0f;
+    if (t < 2.0f) return ((a * t - 5.0f * a) * t + 8.0f * a) * t - 4.0f * a;
+    return 0.0f;
+}
+
+[shader("compute")]
+[numthreads(WG, 1, 1)]
+void resize_bicubic(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
+                    uniform ResizeParams p) {
+    uint i = fold_index(gid, tid, p.groups_per_row, uint(WG));
+    if (i >= p.Ho * p.Wo * p.C) return;
+    uint c = i % p.C;
+    uint rest = i / p.C;
+    uint xo = rest % p.Wo;
+    uint yo = rest / p.Wo;
+
+    const float a = -0.75f;
+    float sy = (float(yo) + 0.5f) * (float(p.Hi) / float(p.Ho)) - 0.5f;
+    float sx = (float(xo) + 0.5f) * (float(p.Wi) / float(p.Wo)) - 0.5f;
+    int y0 = int(floor(sy)), x0 = int(floor(sx));
+
+    float wy[4], wx[4];
+    for (int k = 0; k < 4; ++k) {
+        wy[k] = cubic_weight(sy - float(y0 - 1 + k), a);
+        wx[k] = cubic_weight(sx - float(x0 - 1 + k), a);
+    }
+
+    float acc = 0.0f;
+    for (int ky = 0; ky < 4; ++ky) {
+        int yy = clamp(y0 - 1 + ky, 0, int(p.Hi) - 1);
+        for (int kx = 0; kx < 4; ++kx) {
+            int xx = clamp(x0 - 1 + kx, 0, int(p.Wi) - 1);
+            acc += wy[ky] * wx[kx] *
+                   load_at(p.x, (uint(yy) * p.Wi + uint(xx)) * p.C + c, kInputF16 != 0);
+        }
+    }
+    store_at(p.out, i, acc);
+}
+
 // Nearest-neighbour resample at an arbitrary scale.
 //
 // `scale` is the factor the CALLER asked torch for, not `n_out / n_in`, and
