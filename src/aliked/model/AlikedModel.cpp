@@ -220,6 +220,22 @@ Features Extractor::extract(const uint8_t* rgb, int width, int height,
     const int64_t Hp = round_up(height, kPadDivisor);
     NN_CHECK(Hp / 32 >= 1 && Wp / 32 >= 1, "image too small for ALIKED");
 
+    // The descriptor head gathers the full-resolution aggregate at arbitrary
+    // keypoint positions, so that one tensor has to be reachable from its base:
+    // 2880 px square at dim 128 without the 64-bit kernels, 5792 with them.
+    const int64_t agg_bytes = Hp * Wp * hp.dim * 4;
+    const int64_t reach = nn::span_reach(nn::DType::F32);
+    if (agg_bytes > reach) {
+        const int fit = (int)((double)std::max(width, height) *
+                              std::sqrt((double)reach / (double)agg_bytes)) /
+                        kPadDivisor * kPadDivisor;
+        nn::fail("ALIKED cannot run at %lldx%lld: its %d-channel aggregate spans %lld "
+                 "bytes, past the %lld a kernel can index from one pointer here. Cap "
+                 "the working resolution at %d px (--max-image-size).",
+                 (long long)Wp, (long long)Hp, hp.dim, (long long)agg_bytes,
+                 (long long)reach, fit);
+    }
+
     arena.reserve((uint64_t)plan_arena_bytes(Hp, Wp, hp));
     vk::ArenaScope root(arena);
 

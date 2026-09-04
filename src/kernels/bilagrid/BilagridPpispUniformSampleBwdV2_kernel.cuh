@@ -53,6 +53,17 @@ __global__ void bilagrid_ppisp_uniform_sample_backward_v2_kernel(
     float dg = v_rgb_out[g_off + 1];
     float db = v_rgb_out[g_off + 2];
 
+    // Both gradients this thread produces are linear in the incoming one, so
+    // a zero one -- a masked pixel, mostly -- contributes nothing anywhere.
+    if (dr == 0.0f && dg == 0.0f && db == 0.0f) {
+        if (NEEDS_IMAGE_GRAD && v_rgb_in != nullptr) {
+            v_rgb_in[g_off + 0] = 0.0f;
+            v_rgb_in[g_off + 1] = 0.0f;
+            v_rgb_in[g_off + 2] = 0.0f;
+        }
+        return;
+    }
+
     // grid coords (identical to v1)
     float x = (float)wi / (float)(w - 1) * (float)(W - 1);
     float y = (float)hi / (float)(h - 1) * (float)(H - 1);

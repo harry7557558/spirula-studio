@@ -34,12 +34,13 @@ public:
     GeometryPanel();
     ~GeometryPanel();
 
-    // `dataset`, the output folder, is preferred over `input` when it already
-    // holds a reconstruction: its CAMERAS are the only way a preview can be
-    // exact. Otherwise the input's frames, through the lens the screen names.
+    // `dataset` is preferred over `input` once it holds a reconstruction: its
+    // CAMERAS are the only way a preview can be exact. `image_dir` is where
+    // its images are -- not under it, for photos read where they lie.
     void open(const std::string& input, bool is_video, const std::string& dataset,
-              const std::string& lens, float focal_factor,
-              const std::string& ffmpeg_exe, bool force_ffmpeg);
+              const std::string& image_dir, const std::string& lens,
+              float focal_factor, const std::string& ffmpeg_exe,
+              bool force_ffmpeg);
     bool is_open() const { return _open; }
     void close();
 
@@ -56,7 +57,7 @@ private:
 
     bool _open = false;
     PreviewSource _src;
-    std::string _dataset;
+    std::string _dataset, _image_dir;
     // The lens the screen names for this input, for the frames that have no
     // camera of their own yet.
     std::string _lens;

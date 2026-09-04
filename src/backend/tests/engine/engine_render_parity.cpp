@@ -54,6 +54,10 @@ int main(int argc, char** argv) {
     }
     const bool dumping = std::strcmp(argv[1], "dump") == 0;
 
+    // Kernel parity, not binning policy: pin the granularity so a reference
+    // stays comparable across runs that would otherwise adapt it.
+    engine_set_bin_tile_size(bin_tile_x(kMacroLog2Default));
+
     std::mt19937 rng(20260717u);
     auto uf = [&](float lo, float hi) {
         return lo + (hi - lo) * (float)(rng() & 0xffffff) / 16777215.0f;
@@ -100,7 +104,8 @@ int main(int argc, char** argv) {
     };
 
     // --- background: SH skybox with deterministic coefficients ---
-    engine_init_background_sh(/*sh_degree=*/2, /*linear=*/false);
+    engine_init_background_sh(/*sh_degree=*/2, /*transfer=*/0,
+                              /*linear=*/false);
     {
         std::vector<float> bg_sh(9 * 3);
         for (auto& v : bg_sh) v = uf(-0.4f, 0.4f);
@@ -113,9 +118,9 @@ int main(int argc, char** argv) {
 
     // --- color space: mildly non-identity splat matrix (sRGB working) ---
     engine_init_color_space(
-        /*splat_enabled=*/true, /*splat_is_linear=*/false,
+        /*splat_enabled=*/true, /*splat_transfer=*/0, /*splat_is_linear=*/false,
         {0.9f, 0.08f, 0.02f, 0.05f, 0.9f, 0.05f, 0.02f, 0.08f, 0.9f},
-        /*image_enabled=*/false, /*image_is_linear=*/false,
+        /*image_enabled=*/false, /*image_transfer=*/0, /*image_is_linear=*/false,
         {1, 0, 0, 0, 1, 0, 0, 0, 1});
 
     std::vector<float> acc;      // float outputs
@@ -177,7 +182,7 @@ int main(int argc, char** argv) {
     }
 
     // --- noise background mode ---
-    engine_init_background_noise(/*linear=*/false);
+    engine_init_background_noise(/*transfer=*/0, /*linear=*/false);
     set_cams("PINHOLE", 1);
     forward_3dgs("3dgs", 3, false, false, 0);
     backend::device_synchronize();

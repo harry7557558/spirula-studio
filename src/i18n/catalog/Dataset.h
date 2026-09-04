@@ -5325,6 +5325,36 @@ SS_MSG(features_aliked_n32,
     RU("ALIKED N32 (обученный, шире)"),
     TR("ALIKED N32 (öğrenilmiş, daha geniş)"));
 
+SS_MSG(features_loma_b128,
+    EN("LoMa-B128 (learned, compact)"),
+    JA("LoMa-B128（学習型・小さめ）"),
+    ZH_HANS("LoMa-B128（学习型，紧凑）"),
+    ZH_HANT("LoMa-B128（學習型，精簡）"),
+    KO("LoMa-B128(학습형, 소형)"),
+    DE("LoMa-B128 (gelernt, kompakt)"),
+    FR("LoMa-B128 (appris, compact)"),
+    ES("LoMa-B128 (aprendido, compacto)"),
+    PT("LoMa-B128 (aprendido, compacto)"),
+    IT("LoMa-B128 (appreso, compatto)"),
+    NL("LoMa-B128 (geleerd, compact)"),
+    RU("LoMa-B128 (обученный, компактный)"),
+    TR("LoMa-B128 (öğrenilmiş, küçük)"));
+
+SS_MSG(features_loma_b,
+    EN("LoMa-B (learned, most accurate)"),
+    JA("LoMa-B（学習型・最も高精度）"),
+    ZH_HANS("LoMa-B（学习型，最准确）"),
+    ZH_HANT("LoMa-B（學習型，最準確）"),
+    KO("LoMa-B(학습형, 가장 정확)"),
+    DE("LoMa-B (gelernt, am genauesten)"),
+    FR("LoMa-B (appris, le plus précis)"),
+    ES("LoMa-B (aprendido, el más preciso)"),
+    PT("LoMa-B (aprendido, o mais preciso)"),
+    IT("LoMa-B (appreso, il più preciso)"),
+    NL("LoMa-B (geleerd, nauwkeurigst)"),
+    RU("LoMa-B (обученный, самый точный)"),
+    TR("LoMa-B (öğrenilmiş, en doğru)"));
+
 SS_MSG(features_help,
     EN("Which detector and descriptor. SIFT is the classic one and needs "
        "nothing downloaded. The ALIKED options are a learned frontend: they "
@@ -5425,6 +5455,15 @@ SS_MSG(matcher_lightglue,
     ES("LightGlue (aprendido)"), PT("LightGlue (aprendido)"),
     IT("LightGlue (appreso)"), NL("LightGlue (geleerd)"),
     RU("LightGlue (обученный)"), TR("LightGlue (öğrenilmiş)"));
+
+SS_MSG(matcher_loma,
+    EN("LoMa (learned)"),
+    JA("LoMa（学習型）"), ZH_HANS("LoMa（学习型）"),
+    ZH_HANT("LoMa（學習型）"), KO("LoMa(학습형)"),
+    DE("LoMa (gelernt)"), FR("LoMa (appris)"),
+    ES("LoMa (aprendido)"), PT("LoMa (aprendido)"),
+    IT("LoMa (appreso)"), NL("LoMa (geleerd)"),
+    RU("LoMa (обученный)"), TR("LoMa (öğrenilmiş)"));
 
 SS_MSG(matcher_help,
     EN("How descriptors are matched. LightGlue is a learned matcher: it "
@@ -6104,6 +6143,71 @@ SS_MSG(max_image_size_auto_help,
        "önce küçültülür. Anahtar noktalar yine kaynak görüntünün pikselleri "
        "cinsinden bildirilir."));
 
+SS_MSG(flip_found_masks,
+    EN("They mark what to remove"),
+    JA("取り除く側が塗られている"),
+    ZH_HANS("蒙版画的是要去掉的部分"),
+    ZH_HANT("遮罩畫的是要去掉的部分"),
+    KO("지울 부분이 칠해져 있음"),
+    DE("Sie zeichnen das zu Entfernende"),
+    FR("Ils peignent ce qui est à retirer"),
+    ES("Marcan lo que se quita"),
+    PT("Marcam o que se remove"),
+    IT("Segnano ciò che va tolto"),
+    NL("Ze markeren wat weg moet"),
+    RU("Они отмечают удаляемое"),
+    TR("Kaldırılacak yeri işaretliyorlar"));
+
+SS_MSG(flip_found_masks_help,
+    EN("A mask is normally white where the image is used. Turn this on when "
+       "the ones beside the photos are the other way round -- white on the "
+       "people or the rig to take out. The run reads them that way and writes "
+       "everything it makes the usual way, so nothing downstream needs telling."),
+    JA("マスクは通常、使う部分が白です。写真の隣にあるマスクが逆で、取り除く人や"
+       "機材の側が白い場合にこれを有効にしてください。実行時はその向きで読み取り、"
+       "書き出すものはすべて通常の向きになるので、後段に伝える設定は要りません。"),
+    ZH_HANS("蒙版通常以白色表示要用的部分。若照片旁边的蒙版正好相反——把要去掉的"
+            "人或器材涂成白色——请打开此项。运行时会按这个方向读取，写出的内容一"
+            "律用通常的方向，后续步骤无需再设置。"),
+    ZH_HANT("遮罩通常以白色表示要用的部分。若照片旁邊的遮罩正好相反——把要去掉的"
+            "人或器材塗成白色——請開啟此項。執行時會按這個方向讀取，寫出的內容一"
+            "律用通常的方向，後續步驟無需再設定。"),
+    KO("마스크는 보통 쓸 부분이 흰색입니다. 사진 옆의 마스크가 그 반대로 지울 "
+       "사람이나 장비 쪽이 흰색이라면 이 항목을 켜십시오. 실행은 그 방향으로 읽고 "
+       "만들어 내는 것은 모두 보통 방향으로 쓰므로 뒤쪽에 따로 알릴 필요가 없습니다."),
+    DE("Eine Maske ist normalerweise weiß, wo das Bild benutzt wird. Einschalten, "
+       "wenn die neben den Fotos andersherum sind -- weiß auf den Personen oder "
+       "dem Gestell, das weg soll. Der Lauf liest sie so und schreibt alles "
+       "Eigene wie üblich, sodass nichts danach davon wissen muss."),
+    FR("Un masque est normalement blanc là où l'image sert. Activez ceci quand "
+       "ceux à côté des photos sont à l'envers -- blancs sur les personnes ou le "
+       "support à retirer. L'exécution les lit ainsi et écrit tout le reste "
+       "comme d'habitude, donc rien ensuite n'a besoin d'être prévenu."),
+    ES("Una máscara es normalmente blanca donde se usa la imagen. Actívalo "
+       "cuando las que están junto a las fotos sean al revés: blancas sobre las "
+       "personas o el soporte que se quitan. La ejecución las lee así y escribe "
+       "lo suyo del modo habitual, así que nada posterior necesita saberlo."),
+    PT("Uma máscara é normalmente branca onde a imagem é usada. Ative isto "
+       "quando as que estão ao lado das fotos forem ao contrário: brancas sobre "
+       "as pessoas ou o suporte a remover. A execução lê-as assim e escreve o "
+       "que faz do modo habitual, por isso nada a seguir precisa de saber."),
+    IT("Una maschera è normalmente bianca dove l'immagine viene usata. Attivalo "
+       "quando quelle accanto alle foto sono al contrario: bianche sulle persone "
+       "o sul supporto da togliere. L'esecuzione le legge così e scrive il "
+       "proprio nel modo solito, quindi nulla a valle deve saperlo."),
+    NL("Een masker is normaal wit waar het beeld wordt gebruikt. Zet dit aan "
+       "wanneer die naast de foto's andersom zijn -- wit op de mensen of het "
+       "statief die weg moeten. De run leest ze zo en schrijft alles wat hij "
+       "zelf maakt op de gewone manier, dus verderop hoeft niets te weten."),
+    RU("Маска обычно белая там, где изображение используется. Включите это, "
+       "если те, что лежат рядом с фотографиями, наоборот — белые на людях или "
+       "штативе, которые надо убрать. Запуск читает их так, а всё своё пишет "
+       "как обычно, поэтому дальше об этом сообщать не нужно."),
+    TR("Maske normalde görüntünün kullanıldığı yerde beyazdır. Fotoğrafların "
+       "yanındakiler tersse -- kaldırılacak kişilerin ya da düzeneğin üstü "
+       "beyazsa -- bunu açın. Çalıştırma onları öyle okur, kendi yazdıklarını "
+       "her zamanki gibi yazar; sonrasında hiçbir yere söylemek gerekmez."));
+
 SS_MSG(keep_intermediate,
     EN("Keep intermediate files"),
     JA("中間ファイルを残す"),
@@ -6213,6 +6317,83 @@ SS_MSG(section_fallbacks,
     KO("대체 수단"),      DE("Ausweichwege"), FR("Solutions de repli"),
     ES("Alternativas"),  PT("Alternativas"), IT("Ripieghi"),
     NL("Terugvalopties"), RU("Запасные пути"), TR("Yedek yollar"));
+
+SS_MSG(sfm_ba_cpu,
+    EN("Bundle adjustment on the CPU"),
+    JA("バンドル調整を CPU で行う"),
+    ZH_HANS("在 CPU 上做光束法平差"),
+    ZH_HANT("在 CPU 上做光束法平差"),
+    KO("번들 조정을 CPU에서"),
+    DE("Bündelausgleichung auf der CPU"),
+    FR("Ajustement de faisceaux sur le CPU"),
+    ES("Ajuste de haces en la CPU"),
+    PT("Ajustamento de feixes na CPU"),
+    IT("Bundle adjustment sulla CPU"),
+    NL("Bundelaanpassing op de CPU"),
+    RU("Уравнивание связок на CPU"),
+    TR("Demet düzeltmesi CPU'da"));
+
+SS_MSG(sfm_ba_cpu_help,
+    EN("Solve the reconstruction's largest step on the CPU rather than the "
+       "GPU. Slower, and only worth it where the GPU cannot finish it: a "
+       "driver that resets under a long solve, or one card doing this and "
+       "something else at once. A run that hits either falls back by itself, "
+       "but the fallback costs the failure first."),
+    JA("復元でいちばん大きな計算を GPU ではなく CPU で解きます。遅くなるので、"
+       "GPU で完了できないときだけ使ってください。長い計算の途中でドライバが"
+       "リセットされる場合や、1 枚のカードでこれと別の作業を同時に走らせている"
+       "場合です。どちらに当たっても実行は自動で CPU に切り替わりますが、"
+       "そのぶん一度失敗する時間がかかります。"),
+    ZH_HANS("把重建里最大的一步放到 CPU 上解，而不是 GPU。会更慢，只在 GPU 跑不完"
+            "时才值得: 长时间计算中驱动被重置，或者同一块显卡还在做别的事。"
+            "遇到这两种情况时程序会自动改用 CPU，但要先花掉一次失败的时间。"),
+    ZH_HANT("把重建裡最大的一步放到 CPU 上解，而不是 GPU。會更慢，只在 GPU 跑不完"
+            "時才值得: 長時間計算中驅動被重設，或者同一張顯示卡還在做別的事。"
+            "遇到這兩種情況時程式會自動改用 CPU，但要先花掉一次失敗的時間。"),
+    KO("복원에서 가장 큰 단계를 GPU 대신 CPU에서 계산합니다. 느리므로 GPU가 끝내지 "
+       "못할 때만 쓸 만합니다. 긴 계산 도중 드라이버가 초기화되거나, 한 장의 "
+       "카드가 이 작업과 다른 작업을 함께 할 때입니다. 둘 중 하나에 걸리면 "
+       "실행이 알아서 CPU로 넘어가지만, 그전에 한 번 실패하는 시간이 듭니다."),
+    DE("Den größten Schritt der Rekonstruktion auf der CPU lösen statt auf der "
+       "GPU. Langsamer, und nur dort sinnvoll, wo die GPU ihn nicht zu Ende "
+       "bringt: ein Treiber, der bei einer langen Rechnung zurückgesetzt wird, "
+       "oder eine Karte, die nebenher noch etwas anderes tut. Ein Lauf weicht "
+       "in beiden Fällen von selbst aus, zahlt dafür aber erst den Fehlschlag."),
+    FR("Résoudre l'étape la plus lourde de la reconstruction sur le CPU plutôt "
+       "que sur le GPU. Plus lent, et utile seulement là où le GPU n'y arrive "
+       "pas : un pilote réinitialisé pendant un long calcul, ou une carte qui "
+       "fait autre chose en même temps. Un calcul qui tombe sur l'un ou "
+       "l'autre bascule tout seul, mais paie d'abord l'échec."),
+    ES("Resolver el paso más grande de la reconstrucción en la CPU en lugar de "
+       "la GPU. Más lento, y solo vale la pena donde la GPU no lo termina: un "
+       "controlador que se reinicia durante un cálculo largo, o una tarjeta "
+       "que además hace otra cosa. Una ejecución que se topa con eso cambia "
+       "sola, pero antes paga el fallo."),
+    PT("Resolver o passo maior da reconstrução na CPU em vez da GPU. Mais "
+       "lento, e só vale onde a GPU não consegue terminar: um driver que "
+       "reinicia durante um cálculo longo, ou uma placa que ainda faz outra "
+       "coisa. Uma execução que esbarra nisso muda sozinha, mas paga a falha "
+       "antes."),
+    IT("Risolvere il passaggio più grande della ricostruzione sulla CPU invece "
+       "che sulla GPU. Più lento, e utile solo dove la GPU non ci arriva: un "
+       "driver che si reimposta durante un calcolo lungo, o una scheda che sta "
+       "facendo anche altro. Un'esecuzione che incappa in questo ripiega da "
+       "sola, ma prima paga il fallimento."),
+    NL("De grootste stap van de reconstructie op de CPU oplossen in plaats van "
+       "op de GPU. Trager, en alleen de moeite waar de GPU hem niet afmaakt: "
+       "een stuurprogramma dat tijdens een lange berekening opnieuw start, of "
+       "een kaart die er iets anders bij doet. Een run die daartegenaan loopt "
+       "wijkt vanzelf uit, maar betaalt eerst de mislukking."),
+    RU("Решать самый большой шаг реконструкции на CPU, а не на GPU. Медленнее "
+       "и оправдано только там, где GPU его не заканчивает: драйвер "
+       "сбрасывается на длинном расчёте или та же карта занята чем-то ещё. "
+       "Запуск в обоих случаях переходит на CPU сам, но сначала теряет время "
+       "на неудачу."),
+    TR("Yeniden kurulumun en büyük adımını GPU yerine CPU'da çözer. Daha "
+       "yavaştır ve yalnızca GPU'nun bitiremediği yerde değer: uzun bir hesap "
+       "sırasında sıfırlanan bir sürücü ya da aynı anda başka iş de yapan bir "
+       "kart. Bunlara denk gelen bir çalışma kendiliğinden CPU'ya geçer, ama "
+       "önce başarısızlığın bedelini öder."));
 
 SS_MSG(use_ffmpeg,
     EN("Extract frames with ffmpeg"),

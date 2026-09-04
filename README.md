@@ -17,13 +17,11 @@
 
 Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video to splat to textured mesh &ndash; in one self-contained binary. No Python/PyTorch, no separate COLMAP install. Runs on NVIDIA, AMD, Intel, and Apple GPUs via Vulkan, trains 10M full-SH Gaussians in 8 GB VRAM, and has native support for fisheye and 360° cameras.
 
-<!-- TODO: should probably replace this with a training GIF/video -->
-
-![Spirula Studio GUI screenshot, showing it training 10 million Gaussians with full SH degree on 4K images, on a laptop GPU with 8GB VRAM](assets/screenshot.png)
-
 <div align="center">
 
-*Screenshot of Spirula Studio GUI, showing it training 10 million SH3 Gaussians on 4k images, on a laptop GPU with 8GB VRAM.*
+![Spirula Studio - Open Source 3D Gaussian Splatting Pipeline](https://spirula.studio/assets/video/spirula-studio-hero.webp?md5=0ff79909f5c779509664da20b9f9dd61)
+
+<sup>Dataset credit: [Garage](https://www.kaggle.com/datasets/simonbethke/garage) by Simon Bethke (CC BY-SA 4.0); Flight Systems and Control Lab at UTIAS; MegaDepth-X; Mip-NeRF 360.</sup>
 
 </div>
 

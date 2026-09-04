@@ -2,9 +2,11 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 #include "backend/api/BackendTypes.h"
 #include "backend/api/BackendRuntime.h"
+#include "core/Env.h"
 
 #include <mutex>
 #include <tuple>
@@ -151,41 +153,137 @@ private:
 class DevicePool {
     struct Slot {
         void*     ptr        = nullptr;
-        size_t    cap_bytes  = 0;  // allocated
+        size_t    cap_bytes  = 0;  // allocated (0 when the arena owns it)
         size_t    used_bytes = 0;  // logical (last requested)
         uint8_t   dtype_tag  = (uint8_t)NpyScalar::u1;  // scalar type of last acquire<T>
+        bool      owns       = true;  // false: ptr is a slice of _arena
+        uint32_t  epoch      = 0;     // phase instance this slice came from
     };
     struct DynSlot {
         Slot         slot;
         VramCategory cat = VramCategory::Other;
+        PoolPhase    phase = PoolPhase::None;
     };
+
+    // The one allocation every PoolPhase carves its buffers out of.
+    // `want` is the largest cursor any phase has asked for since the last
+    // grow; growing happens at a phase switch, when nothing holds a slice.
+    struct Arena {
+        void*  ptr    = nullptr;
+        size_t cap    = 0;
+        size_t cursor = 0;
+        size_t want   = 0;
+    };
+    static constexpr size_t kArenaAlign = 256;
 
     std::vector<Slot> _slots;                          // indexed by PoolKey
     std::unordered_map<std::string, DynSlot> _dyn;     // acquire_dynamic scratch
-    // Guards _slots / _dyn. Multiple threads (e.g., trainer + viewer
-    // post-processor) call acquire concurrently.
+    Arena     _arena;
+    PoolPhase _phase = PoolPhase::None;
+    uint32_t  _epoch = 0;   // bumped per begin_phase; 0 never matches a Slot
+    // Guards _slots / _dyn / _arena against concurrent acquire. It does NOT
+    // make the phase protocol thread-safe: two threads in different phases
+    // would fight over the arena, which the engine mutex is what prevents.
     mutable std::mutex _mu;
 
     DevicePool() : _slots(kNumPoolKeys) {}
     DevicePool(const DevicePool&) = delete;
     DevicePool& operator=(const DevicePool&) = delete;
 
+    static bool _poison_pool() {
+        static const bool on = [] {
+            const char* e = spirula::env("POISON_POOL");
+            return e && e[0] && e[0] != '0';
+        }();
+        return on;
+    }
+
+    // SS_POOL_ALIAS=0 gives every slot its own allocation again; the kill
+    // switch for the arena, and the A/B lever for measuring what it saves.
+    static bool _alias_enabled() {
+        static const bool on = [] {
+            const char* e = spirula::env("POOL_ALIAS");
+            return !(e && e[0] == '0');
+        }();
+        return on;
+    }
+
+    // SS_POOL_ALIAS_POISON=1 fills the arena on every phase switch, so a read
+    // that outlives its phase produces NaNs instead of plausible stale data.
+    static bool _poison_arena() {
+        static const bool on = [] {
+            const char* e = spirula::env("POOL_ALIAS_POISON");
+            return e && e[0] && e[0] != '0';
+        }();
+        return on;
+    }
+
     // Grow-if-needed on a Slot already selected by the caller (mutex held).
     template<typename T>
     static T* _acquire_into(Slot& slot, size_t n) {
         size_t bytes = n * sizeof(T);
+        // An arena slice is not capacity this slot may reuse; drop it first.
+        if (!slot.owns) { slot.ptr = nullptr; slot.cap_bytes = 0; slot.owns = true; }
         if (bytes > slot.cap_bytes) {
-            if (slot.ptr) backend::device_free(slot.ptr);
+            if (slot.ptr && slot.owns) backend::device_free(slot.ptr);
             // Reset before the (throwing) allocation so an OOM leaves the slot
             // in a consistent empty state rather than {null ptr, stale cap}.
             slot.ptr = nullptr;
             slot.cap_bytes = 0;
             slot.ptr = backend::device_malloc_checked(bytes);
             slot.cap_bytes = bytes;
+            // SS_POISON_POOL=1: fresh device memory holds whatever the
+            // driver left, so a read-before-write is silent where that is
+            // zero and catastrophic where it is not. NaN makes it show.
+            if (_poison_pool()) backend::memset_sync(slot.ptr, 0xff, bytes);
         }
+        slot.owns = true;
         slot.used_bytes = bytes;
         slot.dtype_tag  = (uint8_t)npy_scalar_tag<T>();
         return static_cast<T*>(slot.ptr);
+    }
+
+    // Bump-allocate out of the arena (mutex held). What does not fit yet gets
+    // a private allocation for this call and raises `want`, so the next phase
+    // switch grows the arena and the call after that is aliased again.
+    template<typename T>
+    T* _acquire_arena(Slot& slot, size_t n) {
+        // Each acquire gets a FRESH slice, so a second one in the same phase
+        // would silently move the buffer -- say so rather than hand it back.
+        if (slot.epoch == _epoch)
+            throw std::runtime_error(
+                "DevicePool: arena-backed buffer acquired twice in one phase; "
+                "resize it once, or split the phase");
+        slot.epoch = _epoch;
+        const size_t bytes = n * sizeof(T);
+        const size_t off = (_arena.cursor + kArenaAlign - 1) & ~(kArenaAlign - 1);
+        // The cursor advances even when the slice does not fit, or `want`
+        // would come out one buffer wide instead of one phase wide.
+        _arena.cursor = off + bytes;
+        if (_arena.want < _arena.cursor) _arena.want = _arena.cursor;
+        if (!_arena.ptr || off + bytes > _arena.cap)
+            return _acquire_into<T>(slot, n);
+        if (slot.ptr && slot.owns) backend::device_free(slot.ptr);
+        slot.ptr        = static_cast<char*>(_arena.ptr) + off;
+        slot.cap_bytes  = 0;
+        slot.used_bytes = bytes;
+        slot.dtype_tag  = (uint8_t)npy_scalar_tag<T>();
+        slot.owns       = false;
+        return static_cast<T*>(slot.ptr);
+    }
+
+    // The one place the phase rule is enforced (mutex held). `what` names the
+    // buffer for the error; enum slots and acquire_dynamic both come through.
+    template<typename T>
+    T* _acquire_checked(Slot& slot, size_t n, PoolPhase ph, const char* what) {
+        if (ph == PoolPhase::None || !_alias_enabled())
+            return _acquire_into<T>(slot, n);
+        if (ph != _phase)
+            throw std::runtime_error(
+                std::string("DevicePool: ") + what + " is arena-backed in phase "
+                + to_string(ph) + " but the open phase is " + to_string(_phase)
+                + " -- see POOL_ALIAS_TABLE in core/PoolSlots.h");
+        return _acquire_arena<T>(slot, n);
     }
 
 public:
@@ -194,12 +292,49 @@ public:
         return pool;
     }
 
+    // Open `p`. Every slice the previous phase carved out of the arena dies
+    // here -- POOL_ALIAS_TABLE's rows are the claim that nothing still reads
+    // one. Grows the arena first, which is safe for the same reason.
+    void begin_phase(PoolPhase p) {
+        std::lock_guard<std::mutex> lock(_mu);
+        _phase = p;
+        ++_epoch;
+        if (!_alias_enabled() || p == PoolPhase::None) return;
+        if (_arena.want > _arena.cap) {
+            for (Slot& s : _slots)
+                if (!s.owns) { s.ptr = nullptr; s.owns = true; }
+            for (auto& kv : _dyn) {
+                Slot& s = kv.second.slot;
+                if (!s.owns) { s.ptr = nullptr; s.owns = true; }
+            }
+            if (_arena.ptr) backend::device_free(_arena.ptr);
+            _arena.ptr = nullptr;
+            _arena.cap = 0;
+            _arena.ptr = backend::device_malloc_checked(_arena.want);
+            _arena.cap = _arena.want;
+        }
+        _arena.cursor = 0;
+        if (_poison_arena() && _arena.ptr)
+            backend::memset_sync(_arena.ptr, 0xff, _arena.cap);
+    }
+
+    struct ArenaStats { size_t cap_bytes; size_t want_bytes; size_t slots; };
+    ArenaStats arenaStats() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        size_t n = 0;
+        for (const Slot& s : _slots) if (!s.owns) ++n;
+        for (const auto& kv : _dyn) if (!kv.second.slot.owns) ++n;
+        return { _arena.cap, _arena.want, n };
+    }
+
     // Return a pointer to at least `n` elements of type T for the given key.
     // Reallocates only when current capacity is exceeded.
     template<typename T>
     T* acquire(PoolKey key, size_t n) {
         std::lock_guard<std::mutex> lock(_mu);
-        return _acquire_into<T>(_slots[key], n);
+        const PoolSlot slot = pool_key_slot(key);
+        return _acquire_checked<T>(_slots[key], n, slot_phase(slot),
+                                   slot_name(slot));
     }
 
     // Convenience: acquire a (slot, sub) buffer. sub defaults to the main slot.
@@ -211,11 +346,13 @@ public:
     // Escape hatch for Never-saved scratch whose key is built at runtime and so
     // has no compile-time PoolSlot. `cat` places it in the VRAM report; `name`
     // is the display/debug key. Returns raw bytes (caller casts).
-    void* acquire_dynamic(VramCategory cat, const std::string& name, size_t bytes) {
+    void* acquire_dynamic(VramCategory cat, const std::string& name,
+                          size_t bytes, PoolPhase phase = PoolPhase::None) {
         std::lock_guard<std::mutex> lock(_mu);
         DynSlot& d = _dyn[name];
         d.cat = cat;
-        return _acquire_into<uint8_t>(d.slot, bytes);
+        d.phase = phase;
+        return _acquire_checked<uint8_t>(d.slot, bytes, phase, name.c_str());
     }
 
     // Free a single logical buffer (all of its sub-allocations).
@@ -223,7 +360,8 @@ public:
         std::lock_guard<std::mutex> lock(_mu);
         for (uint32_t sub = 0; sub <= kSubMask; ++sub) {
             Slot& s = _slots[pool_key(slot, sub)];
-            if (s.ptr) { backend::device_free(s.ptr); s = Slot{}; }
+            if (s.ptr && s.owns) backend::device_free(s.ptr);
+            s = Slot{};
         }
     }
 
@@ -240,7 +378,8 @@ public:
         std::lock_guard<std::mutex> lock(_mu);
         for (auto it = _dyn.begin(); it != _dyn.end();) {
             if (it->first.rfind(prefix, 0) == 0) {
-                if (it->second.slot.ptr) backend::device_free(it->second.slot.ptr);
+                if (it->second.slot.ptr && it->second.slot.owns)
+                    backend::device_free(it->second.slot.ptr);
                 it = _dyn.erase(it);
             } else {
                 ++it;
@@ -251,15 +390,23 @@ public:
     // Free all managed device memory.
     void freeAll() {
         std::lock_guard<std::mutex> lock(_mu);
-        for (auto& s : _slots) if (s.ptr) { backend::device_free(s.ptr); s = Slot{}; }
-        for (auto& kv : _dyn) if (kv.second.slot.ptr) backend::device_free(kv.second.slot.ptr);
+        for (auto& s : _slots) {
+            if (s.ptr && s.owns) backend::device_free(s.ptr);
+            s = Slot{};
+        }
+        for (auto& kv : _dyn)
+            if (kv.second.slot.ptr && kv.second.slot.owns)
+                backend::device_free(kv.second.slot.ptr);
         _dyn.clear();
+        if (_arena.ptr) backend::device_free(_arena.ptr);
+        _arena = Arena{};
+        _phase = PoolPhase::None;
     }
 
     // Total bytes allocated (capacity, not logical size).
     size_t totalAllocBytes() const {
         std::lock_guard<std::mutex> lock(_mu);
-        size_t total = 0;
+        size_t total = _arena.cap;
         for (auto& s : _slots) total += s.cap_bytes;
         for (auto& kv : _dyn)  total += kv.second.slot.cap_bytes;
         return total;
@@ -273,7 +420,7 @@ public:
         std::vector<std::tuple<std::string, size_t, size_t>> result;
         for (uint32_t i = 0; i < _slots.size(); ++i) {
             const Slot& s = _slots[i];
-            if (!s.ptr && s.cap_bytes == 0) continue;
+            if (!s.ptr && s.cap_bytes == 0 && s.used_bytes == 0) continue;
             std::string name = std::string(slot_name(pool_key_slot(i)))
                              + sub_suffix(pool_key_sub(i));
             result.emplace_back(std::move(name), s.used_bytes, s.cap_bytes);
@@ -284,24 +431,44 @@ public:
         return result;
     }
 
+    // One row per live buffer. `arena` means the bytes are a slice of the
+    // shared arena, so `cap` is 0 and the allocation is counted once in
+    // arenaStats() instead.
+    struct BreakdownRow {
+        std::string  name;
+        VramCategory cat;
+        size_t       used_bytes;
+        size_t       cap_bytes;
+        bool         arena;
+    };
+
+    std::vector<BreakdownRow> breakdown() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        std::vector<BreakdownRow> result;
+        for (uint32_t i = 0; i < _slots.size(); ++i) {
+            const Slot& s = _slots[i];
+            if (!s.ptr && s.cap_bytes == 0 && s.used_bytes == 0) continue;
+            PoolSlot slot = pool_key_slot(i);
+            result.push_back({ std::string(slot_name(slot)) +
+                                   sub_suffix(pool_key_sub(i)),
+                               slot_category(slot), s.used_bytes, s.cap_bytes,
+                               !s.owns });
+        }
+        for (auto& kv : _dyn)
+            result.push_back({ kv.first, kv.second.cat,
+                               kv.second.slot.used_bytes,
+                               kv.second.slot.cap_bytes,
+                               !kv.second.slot.owns });
+        return result;
+    }
+
     // Categorized breakdown: [(name, category, used_bytes, cap_bytes), ...].
     // category is (int)VramCategory. Used by the C++-driven VRAM report.
     std::vector<std::tuple<std::string, int, size_t, size_t>>
     getBreakdownCategorized() const {
-        std::lock_guard<std::mutex> lock(_mu);
         std::vector<std::tuple<std::string, int, size_t, size_t>> result;
-        for (uint32_t i = 0; i < _slots.size(); ++i) {
-            const Slot& s = _slots[i];
-            if (!s.ptr && s.cap_bytes == 0) continue;
-            PoolSlot slot = pool_key_slot(i);
-            std::string name = std::string(slot_name(slot))
-                             + sub_suffix(pool_key_sub(i));
-            result.emplace_back(std::move(name), (int)slot_category(slot),
-                                s.used_bytes, s.cap_bytes);
-        }
-        for (auto& kv : _dyn)
-            result.emplace_back(kv.first, (int)kv.second.cat,
-                                kv.second.slot.used_bytes, kv.second.slot.cap_bytes);
+        for (auto& r : breakdown())
+            result.emplace_back(r.name, (int)r.cat, r.used_bytes, r.cap_bytes);
         return result;
     }
 
@@ -435,6 +602,14 @@ public:
 };
 
 
+// Open a pool phase; the arena's slices from the previous one die here.
+// Called by the launcher that owns a phase, not by the engine layer -- see
+// POOL_ALIAS_TABLE in core/PoolSlots.h.
+inline void pool_begin_phase(PoolPhase p) {
+    DevicePool::global().begin_phase(p);
+}
+
+
 // Free all device memory managed by the pool and scratch buffer.
 // Safe to call at VRAM pressure or before process exit.
 inline void freeAllDeviceMemory() {
@@ -490,9 +665,10 @@ public:
     // Dynamic-keyed resize for Never-class scratch whose name is built at
     // runtime (prefix + index / suffix). Routes to the pool's side map with an
     // explicit category. See DevicePool::acquire_dynamic.
-    void resize_dynamic(VramCategory cat, const std::string& name, int64_t numel) {
+    void resize_dynamic(VramCategory cat, const std::string& name, int64_t numel,
+                        PoolPhase phase = PoolPhase::None) {
         _data_ptr = (T*)DevicePool::global().acquire_dynamic(
-            cat, name, (size_t)numel * sizeof(T));
+            cat, name, (size_t)numel * sizeof(T), phase);
         _numel = numel;
     }
 
@@ -577,9 +753,10 @@ public:
 
     // Dynamic-keyed resize (Never-class scratch, runtime-built name).
     void resize_dynamic(VramCategory cat, const std::string& name,
-                        int64_t numel_0, int64_t numel_1) {
+                        int64_t numel_0, int64_t numel_1,
+                        PoolPhase phase = PoolPhase::None) {
         _data_ptr = (T*)DevicePool::global().acquire_dynamic(
-            cat, name, (size_t)(numel_0 * numel_1) * sizeof(T));
+            cat, name, (size_t)(numel_0 * numel_1) * sizeof(T), phase);
         _numel_0 = numel_0;
         _numel_1 = numel_1;
     }
@@ -680,9 +857,10 @@ public:
 
     // Dynamic-keyed resize (Never-class scratch, runtime-built name).
     void resize_dynamic(VramCategory cat, const std::string& name,
-                        int64_t numel_0, int64_t numel_1, int64_t numel_2) {
+                        int64_t numel_0, int64_t numel_1, int64_t numel_2,
+                        PoolPhase phase = PoolPhase::None) {
         _data_ptr = (T*)DevicePool::global().acquire_dynamic(
-            cat, name, (size_t)(numel_0 * numel_1 * numel_2) * sizeof(T));
+            cat, name, (size_t)(numel_0 * numel_1 * numel_2) * sizeof(T), phase);
         _numel_0 = numel_0;
         _numel_1 = numel_1;
         _numel_2 = numel_2;
@@ -975,6 +1153,51 @@ public:
 // straight-line arithmetic plus log1pf / expm1f (single CUDA math-lib calls).
 // ============================================================================
 
+// The finite test that survives every compiler this header sees; neither
+// spelling of isfinite does (AGENTS.md gotchas). Mirrors _oq_finite in
+// backend/vulkan/shaders/optim_quant.slang.
+__device__ inline bool q_finite(float v) {
+    uint32_t u;
+    std::memcpy(&u, &v, sizeof(u));
+    return (u & 0x7f800000u) != 0x7f800000u;
+}
+
+// Packed-SH cell addressing, shared by every reader of the two SH quant
+// buffers and by the host decoders. Layouts: docs/notes/sh-quant-layout.md.
+struct ShQuantAddr {
+    int64_t bounds_stride;    // cells per bound
+    int64_t pair_pitch;       // 0 = per-cell-block AoS, else cells per PAIR
+    int64_t cells_per_splat;
+
+    __device__ int64_t base(int64_t gid) const {
+        return pair_pitch > 0
+            ? (gid >> 8) * ((cells_per_splat + 1) >> 1) * 512 + (gid & 255) * 2
+            : gid * cells_per_splat;
+    }
+    // Branch-free (this runs per cell): AoS folds to (c >> 0) * 1 + (c & 0).
+    __device__ int64_t cell(int64_t base_cell, int c) const {
+        int pair = (int)(pair_pitch > 0 ? 1 : 0);
+        int64_t pitch = pair_pitch + (1 - pair);
+        return base_cell + (int64_t)(c >> pair) * pitch + (int64_t)(c & pair);
+    }
+};
+
+// `arg_stride` is the kernels' sh_bounds_stride argument: > 0 picks the
+// per-cell-block AoS layout with that stride, 0 the FPBO transposed one.
+__device__ inline ShQuantAddr sh_quant_addr(uint32_t num_sh_buffer,
+                                            int64_t arg_stride) {
+    const int64_t R = 3 * (int64_t)num_sh_buffer;
+    if (arg_stride > 0) return ShQuantAddr{arg_stride, 0, R};
+    return ShQuantAddr{((R + 1) >> 1) * 512, 512, R};
+}
+
+// Cells an FPBO-layout buffer needs for `n` splats: whole 256-splat blocks of
+// whole words, so an odd cell count per splat leaves one cell unused.
+inline int64_t sh_fpbo_cells(int64_t n, uint32_t num_sh_buffer) {
+    const int64_t R = 3 * (int64_t)num_sh_buffer;
+    return ((n + 255) / 256) * 256 * (((R + 1) >> 1) * 2);
+}
+
 template<int BITS, int BLOCK_SIZE = 256>
 class QuantizedAdamState {
 public:
@@ -1057,6 +1280,11 @@ public:
             u_q = (float)(b & 0x0Fu);
             s_q = (float)((b >> 4) & 0x0Fu);
         }
+        // A non-finite bound would decode every one of the block's 256 cells
+        // to NaN, which no later step can undo. Decode 0 instead: the block's
+        // Adam state restarts rather than staying poisoned.
+        if (!q_finite(mm.x) || !q_finite(mm.y)) { mm.x = 0.0f; mm.y = 0.0f; }
+        if (!q_finite(mm.z) || !q_finite(mm.w)) { mm.z = 0.0f; mm.w = 0.0f; }
         return float2{
             mm.x + (mm.y - mm.x) * (u_q * kInvQMax),
             mm.z + (mm.w - mm.z) * (s_q * kInvQMax)
@@ -1113,16 +1341,22 @@ public:
     // BITS == 8 only: one cell's packed byte pair (u_q | s_q << 8) as a
     // value, for callers that assemble whole words themselves (the FPBO
     // kernel's staged coalesced writeback). Same rounding as encode_us.
+    __device__ static inline uint32_t encode_us_code(
+        float u_val, float log_s_val, float4 mm
+    ) {
+        static_assert(BITS == 8, "cell-code encode is the 2-byte/cell AoS");
+        float u_range = fmaxf(mm.y - mm.x, kEps);
+        float s_range = fmaxf(mm.w - mm.z, kEps);
+        float u_qf = fminf(fmaxf(roundf(kQMax * (u_val - mm.x) / u_range), 0.0f), kQMax);
+        float s_qf = fminf(fmaxf(roundf(kQMax * (log_s_val - mm.z) / s_range), 0.0f), kQMax);
+        return (uint32_t)(uint8_t)u_qf | ((uint32_t)(uint8_t)s_qf << 8);
+    }
+
     __device__ static inline uint32_t encode_g1g2_code(
         float g1, float g2, float4 mm
     ) {
-        static_assert(BITS == 8, "cell-code encode is the 2-byte/cell AoS");
         float2 prim = g1g2_to_us(g1, g2);
-        float u_range = fmaxf(mm.y - mm.x, kEps);
-        float s_range = fmaxf(mm.w - mm.z, kEps);
-        float u_qf = fminf(fmaxf(roundf(kQMax * (prim.x - mm.x) / u_range), 0.0f), kQMax);
-        float s_qf = fminf(fmaxf(roundf(kQMax * (prim.y - mm.z) / s_range), 0.0f), kQMax);
-        return (uint32_t)(uint8_t)u_qf | ((uint32_t)(uint8_t)s_qf << 8);
+        return encode_us_code(prim.x, prim.y, mm);
     }
 
     // (g1, g2) -> linearly-quantized primitives (u, log_s). Block reduction

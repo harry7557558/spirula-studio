@@ -1,14 +1,17 @@
-// DatasetCommon.cpp -- shared dataset-bake helpers (see DatasetParser.h)
-// plus the POST-split camera expansion (bake_post_split), used by both the
-// COLMAP and nerfstudio parsers and by main.cpp.
+// DatasetCommon.cpp -- shared dataset-bake helpers (see DatasetParser.h),
+// used by every format parser. Also built into the WebAssembly viewer, so
+// nothing here may reach the engine or the host camera math.
 
 #include "data/DatasetParser.h"
-
-#include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
+#include "data/SourceCamera.h"
+#include "i18n/catalog/Data.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
+#include <set>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -295,199 +298,74 @@ std::vector<char> outlier_keep_mask(const std::vector<double>& pos,
     return keep;
 }
 
-}  // namespace dsparse
-
-
-// ===========================================================================
-// bake_post_split
-// ===========================================================================
+// ---------------------------------------------------------------------------
+// Fitting a camera to its image
+// ---------------------------------------------------------------------------
 
 namespace {
 
-// 5- / 6-face cubemap axis tables. MUST match DataManager.cpp's
-// kAxesFisheye5 / kAxesEquirect6 -- the engine's GPU warp kernel reads its
-// own copies; these drive the camera poses, and dsparse::warp_axes hands them
-// to `spirula geometry` so its depth and normals land in the same faces.
-const double kAxes5[5][3][3] = {
-    {{1,0,0},{0,1,0},{0,0,1}},
-    {{0,1,0},{0,0,1},{1,0,0}},
-    {{-1,0,0},{0,0,1},{0,1,0}},
-    {{0,-1,0},{0,0,1},{-1,0,0}},
-    {{1,0,0},{0,0,1},{0,-1,0}},
-};
-const double kAxes6[6][3][3] = {
-    {{1,0,0},{0,1,0},{0,0,1}},
-    {{0,0,-1},{0,1,0},{1,0,0}},
-    {{-1,0,0},{0,0,1},{0,1,0}},
-    {{0,-1,0},{0,0,1},{-1,0,0}},
-    {{1,0,0},{0,0,1},{0,-1,0}},
-    {{1,0,0},{0,-1,0},{0,0,-1}},
-};
+std::string size_str(double w, double h) {
+    return std::to_string((long long)w) + "x" + std::to_string((long long)h);
+}
+
+// One line per distinct (kind, image, camera) size pair: a dataset is
+// thousands of frames over a handful of cameras, and the pair is what the
+// reader acts on.
+bool first_time(int kind, int iw, int ih, double W, double H) {
+    static std::set<std::array<int, 5>> seen;
+    return seen.insert({kind, iw, ih, (int)W, (int)H}).second;
+}
+
+void warn(const spirula::i18n::Msg& m, std::initializer_list<spirula::i18n::Arg> args) {
+    std::printf("%s %s\n", spirula::i18n::msg::data::word_warning.get(),
+                spirula::i18n::format(m, args).c_str());
+}
 
 }  // namespace
 
-namespace dsparse {
-const double* warp_axes(int K) {
-    if (K == 5) return &kAxes5[0][0][0];
-    if (K == 6) return &kAxes6[0][0][0];
-    return nullptr;
+void fit_camera_resolution(const DatasetParserConfig& cfg,
+                           const std::string& image_path,
+                           double& W, double& H,
+                           double& fx, double& fy, double& cx, double& cy,
+                           RedistortSource* src)
+{
+    if (!(W > 0.0) || !(H > 0.0)) return;
+    double tw = W, th = H;
+    int iw = 0, ih = 0;
+    if (cfg.probe_image_size && !image_path.empty() &&
+        cfg.probe_image_size(image_path.c_str(), &iw, &ih) && iw > 0 && ih > 0) {
+        tw = std::min(tw, (double)iw);
+        th = std::min(th, (double)ih);
+        // The height the width ratio implies, against the height on disk: one
+        // pixel of slack for the rounding an honest downscaler does.
+        if (std::fabs(H * ((double)iw / W) - (double)ih) > 1.0 &&
+            first_time(0, iw, ih, W, H))
+            warn(spirula::i18n::msg::data::camera_image_aspect,
+                 {image_path, size_str(iw, ih), size_str(W, H)});
+    }
+
+    const double s = (double)cfg.train_resolution_divisor;
+    if (s > 1.0) {
+        auto round_dim = [&](double v) {
+            if (cfg.downscale_rounding_mode == "ceil")  return std::ceil(v / s);
+            if (cfg.downscale_rounding_mode == "round") return std::round(v / s);
+            return std::floor(v / s);
+        };
+        tw = std::max(1.0, round_dim(tw));
+        th = std::max(1.0, round_dim(th));
+    }
+    if (tw == W && th == H) return;
+
+    if (iw > 0 && (iw != (int)W || ih != (int)H) && first_time(1, iw, ih, W, H))
+        warn(spirula::i18n::msg::data::camera_fit_to_image,
+             {image_path, size_str(iw, ih), size_str(W, H), size_str(tw, th)});
+
+    const double sx = tw / W, sy = th / H;
+    fx *= sx; cx *= sx;
+    fy *= sy; cy *= sy;
+    if (src && src->source_model >= 0)
+        srccam::rescale(src->source_model, src->params, sx, sy);
+    W = tw; H = th;
 }
+
 }  // namespace dsparse
-
-PostSplitCameras bake_post_split(const ParsedDataset& ds,
-                                 bool warp_to_pinhole,
-                                 bool warp_spherical_to_pinhole) {
-    const int64_t N = ds.num_cameras;
-    const int PINHOLE_V   = (int)camera_model_from_name("PINHOLE");
-    const int FISHEYE_V   = (int)camera_model_from_name("FISHEYE");
-    const int EQUISOLID_V = (int)camera_model_from_name("EQUISOLID");
-    const int EQUIRECT_V  = (int)camera_model_from_name("EQUIRECTANGULAR");
-
-    PostSplitCameras out;
-    out.K_per_camera.resize(N);
-    out.post_offsets.resize(N);
-    int64_t n_post = 0;
-    for (int64_t i = 0; i < N; i++) {
-        int cm = ds.camera_models[i], K = 1;
-        if (cm == EQUIRECT_V)
-            K = warp_spherical_to_pinhole ? 6 : 1;
-        else if (warp_to_pinhole && (cm == FISHEYE_V || cm == EQUISOLID_V))
-            K = 5;
-        out.K_per_camera[i] = K;
-        out.post_offsets[i] = (int32_t)n_post;
-        n_post += K;
-        if (K > 1) {
-            out.any_warp = true;
-            if (cm != EQUIRECT_V) out.any_fisheye_warp = true;
-        } else if (cm == EQUIRECT_V) {
-            out.direct_equirect = true;
-        }
-    }
-    out.n_post = n_post;
-
-    out.viewmats.assign(n_post * 16, 0.f);
-    out.intrins.assign(n_post * 4, 0.f);
-    out.dist_coeffs.assign(n_post * kCameraDistortionParams, 0.f);
-    out.c2w_flip.assign(n_post * 12, 0.f);
-    out.post_widths.assign(n_post, 0);
-    out.post_heights.assign(n_post, 0);
-    out.post_models.assign(n_post, PINHOLE_V);
-    // Cubemap faces are canonical pinhole with zero coefficients; only a K == 1
-    // camera keeps the tier the parser chose.
-    out.post_distortions.assign(n_post, (int32_t)CameraDistortionType::None);
-
-    // POST-split c2w staging (double).
-    std::vector<double> post_c2w(n_post * 12);
-    static const double D[3] = {1.0, -1.0, -1.0};
-
-    for (int64_t i = 0; i < N; i++) {
-        const int K   = out.K_per_camera[i];
-        const int off = out.post_offsets[i];
-        double ci[3][4];
-        for (int r = 0; r < 3; r++)
-            for (int c = 0; c < 4; c++)
-                ci[r][c] = ds.c2w[i*12 + r*4 + c];
-
-        if (K == 1) {
-            std::copy(&ci[0][0], &ci[0][0] + 12, &post_c2w[off*12]);
-            out.post_widths[off]  = ds.widths[i];
-            out.post_heights[off] = ds.heights[i];
-            out.post_models[off]  = ds.camera_models[i];
-            if (ds.camera_models[i] == EQUIRECT_V) {
-                // Direct equirectangular: canonical panorama intrinsics
-                // matching the equirect projection kernel.
-                double f = ds.widths[i] / (2.0 * kPi);
-                out.intrins[off*4 + 0] = (float)f;
-                out.intrins[off*4 + 1] = (float)f;
-                out.intrins[off*4 + 2] = ds.widths[i]  / 2.0f;
-                out.intrins[off*4 + 3] = ds.heights[i] / 2.0f;
-            } else {
-                std::copy(&ds.intrins[i*4], &ds.intrins[i*4] + 4,
-                          &out.intrins[off*4]);
-            }
-            if (ds.camera_models[i] != EQUIRECT_V) {
-                std::copy(&ds.dist_coeffs[i*kCameraDistortionParams],
-                          &ds.dist_coeffs[i*kCameraDistortionParams] + kCameraDistortionParams,
-                          &out.dist_coeffs[off*kCameraDistortionParams]);
-                out.post_distortions[off] = ds.camera_distortions[i];
-            }
-            continue;
-        }
-
-        // K > 1: cubemap-face expansion.
-        //   R' = R_c2w * diag(1,-1,-1)   (columns; OpenGL -> OpenCV)
-        //   R_post[k] = (R' @ axes[k]^T) * diag(1,-1,-1)
-        const auto& axes = (K == 6) ? kAxes6 : kAxes5;
-        int out_shape = (int)std::ceil(
-            std::sqrt((double)ds.heights[i] * (double)ds.widths[i] / (double)K));
-        double R[3][3];
-        for (int r = 0; r < 3; r++)
-            for (int c = 0; c < 3; c++)
-                R[r][c] = ci[r][c] * D[c];
-        for (int k = 0; k < K; k++) {
-            double* pc = &post_c2w[(off + k) * 12];
-            for (int r = 0; r < 3; r++) {
-                for (int c = 0; c < 3; c++) {
-                    // (R @ axes[k]^T)[r][c] = sum_m R[r][m] * axes[k][c][m]
-                    double v = R[r][0]*axes[k][c][0] + R[r][1]*axes[k][c][1]
-                             + R[r][2]*axes[k][c][2];
-                    pc[r*4 + c] = v * D[c];
-                }
-                pc[r*4 + 3] = ci[r][3];
-            }
-            float s = out_shape / 2.0f;
-            for (int c = 0; c < 4; c++) out.intrins[(off + k)*4 + c] = s;
-            // dist_coeffs stay zero; faces render as canonical PINHOLE.
-            out.post_widths[off + k]  = out_shape;
-            out.post_heights[off + k] = out_shape;
-        }
-    }
-
-    // c2w -> engine viewmat over the POST arrays:
-    // R_v = R_post * diag(1,-1,-1) (columns); viewmat = [R_v^T | -R_v^T t].
-    // [R_v | t] is also the y/z-flipped c2w form the viewer blit expects.
-    for (int64_t j = 0; j < n_post; j++) {
-        const double* pc = &post_c2w[j*12];
-        double Rv[3][3], t[3];
-        for (int r = 0; r < 3; r++) {
-            for (int c = 0; c < 3; c++) Rv[r][c] = pc[r*4 + c] * D[c];
-            t[r] = pc[r*4 + 3];
-        }
-        float* vm = &out.viewmats[j*16];
-        float* cf = &out.c2w_flip[j*12];
-        for (int r = 0; r < 3; r++) {
-            double ti = 0.0;
-            for (int c = 0; c < 3; c++) {
-                vm[r*4 + c] = (float)Rv[c][r];
-                cf[r*4 + c] = (float)Rv[r][c];
-                ti -= Rv[c][r] * t[c];
-            }
-            vm[r*4 + 3] = (float)ti;
-            cf[r*4 + 3] = (float)t[r];
-        }
-        vm[15] = 1.f;
-    }
-
-    // A camera whose lens model had to be fitted needs its images resampled,
-    // which runs on the warp path's staging even when K == 1.
-    bool any_redistort = false;
-    for (const RedistortSource& r : ds.redistort)
-        any_redistort |= (r.source_model >= 0);
-    if (any_redistort) {
-        out.any_warp = true;
-        out.redistort_models.assign(N, -1);
-        out.redistort_params.assign((size_t)N * 16, 0.0f);
-        for (int64_t i = 0; i < N && i < (int64_t)ds.redistort.size(); i++) {
-            out.redistort_models[i] = ds.redistort[i].source_model;
-            for (int k = 0; k < 16; k++)
-                out.redistort_params[i*16 + k] = ds.redistort[i].params[k];
-        }
-    }
-
-    if (out.any_warp) {
-        out.input_intrins     = ds.intrins;
-        out.input_dist_coeffs = ds.dist_coeffs;
-        out.input_distortions = ds.camera_distortions;
-    }
-    return out;
-}

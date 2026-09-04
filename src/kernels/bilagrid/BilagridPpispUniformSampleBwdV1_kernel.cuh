@@ -214,6 +214,14 @@ __global__ void bilagrid_ppisp_uniform_sample_backward_v1_kernel_bilagrid(
             int z1 = min(z0 + 1, L - 1);
             if (zi != z0 && zi != z1) continue;
 
+            // Every grid gradient this pixel contributes is linear in its
+            // incoming gradient, so a zero one -- a masked pixel, mostly --
+            // buys nothing and skips the 9-channel interpolation below.
+            float dr = v_rgb_out[g_off + 0];
+            float dg = v_rgb_out[g_off + 1];
+            float db = v_rgb_out[g_off + 2];
+            if (dr == 0.0f && dg == 0.0f && db == 0.0f) continue;
+
             float fx = x - x0, fy = y - y0, fz = z - z0;
 
             // Shmem indices for the 8 corners. Clamp defensively: with
@@ -262,10 +270,6 @@ __global__ void bilagrid_ppisp_uniform_sample_backward_v1_kernel_bilagrid(
                     ci == 7 ? color_params.n.x :
                     color_params.n.y) = val;
             }
-
-            float dr = v_rgb_out[g_off + 0];
-            float dg = v_rgb_out[g_off + 1];
-            float db = v_rgb_out[g_off + 2];
 
             float3 rgb = {sr, sg, sb};
             float3 grad_rgb = {dr, dg, db};
@@ -401,6 +405,15 @@ __global__ void bilagrid_ppisp_uniform_sample_backward_v1_kernel_rgb(
     float dr = v_rgb_out[g_off+0];
     float dg = v_rgb_out[g_off+1];
     float db = v_rgb_out[g_off+2];
+
+    // The image gradient is linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- is zero out and skips 72 corner loads.
+    if (dr == 0.0f && dg == 0.0f && db == 0.0f) {
+        v_rgb_in[g_off+0] = 0.0f;
+        v_rgb_in[g_off+1] = 0.0f;
+        v_rgb_in[g_off+2] = 0.0f;
+        return;
+    }
 
     // grid coords
 #ifdef PATCHED

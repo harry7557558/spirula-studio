@@ -147,18 +147,19 @@ void pb_vjp_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
 [ForceInline]
 void pb_sh_vjp<D : ICameraDistortion>(
     PbSplat s, PbCamera<D> c, float* coeffs, uint* qpacked, float2* qbounds,
-    gindex_t qbase, gindex_t qstride, float3 v_rgb, inout PbGrads g) {
+    gindex_t qbase, gindex_t qstride, gindex_t qpitch, float3 v_rgb,
+    inout PbGrads g) {
     if (kShValueBits == 8)
         sh_color_vjp<8>(kShDegree, s.mean, c.R, c.t, s.dc, coeffs, qpacked,
-                        qbounds, qbase, qstride, v_rgb, g.v_dc, g.v_sh,
+                        qbounds, qbase, qstride, qpitch, v_rgb, g.v_dc, g.v_sh,
                         g.v_mean, g.v_R, g.v_t);
     else if (kShValueBits == 16)
         sh_color_vjp<16>(kShDegree, s.mean, c.R, c.t, s.dc, coeffs, qpacked,
-                         qbounds, qbase, qstride, v_rgb, g.v_dc, g.v_sh,
+                         qbounds, qbase, qstride, qpitch, v_rgb, g.v_dc, g.v_sh,
                          g.v_mean, g.v_R, g.v_t);
     else
         sh_color_vjp<0>(kShDegree, s.mean, c.R, c.t, s.dc, coeffs, qpacked,
-                        qbounds, qbase, qstride, v_rgb, g.v_dc, g.v_sh,
+                        qbounds, qbase, qstride, qpitch, v_rgb, g.v_dc, g.v_sh,
                         g.v_mean, g.v_R, g.v_t);
 }
 

@@ -35,8 +35,7 @@ void projection_bwd_quantgrad_kernel_wrapper(
     const uint32_t image_height,
     const int32_t * camera_id_bounds,
     const int32_t * camera_ids,
-    const int32_t * perm,
-    const float4 * aabb,
+    const uint2 * aabb,
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     GradQuantBuffers gq,
@@ -47,24 +46,23 @@ void projection_bwd_quantgrad_kernel_wrapper(
 );
 
 
-// Identity permutation + per-gaussian intersection ranges (copies of the FPBO
-// helpers; static so they don't clash with FusedProjectionBwdOptim.cu's).
-__global__ static void qg_iota_kernel(int64_t n, int32_t* __restrict__ buf) {
-    int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) buf[i] = (int32_t)i;
-}
-
+// lower_bound over the sorted list, one thread per OUTPUT slot. Filling the
+// gaps from the input side makes one thread walk every id a sub-batch never
+// saw: 478 ms/call at N=20M, nnz=0.8M against ~2 ms here.
 __global__ static void qg_camera_id_bounds_kernel(
     int64_t nnz, int64_t N,
     const int32_t* __restrict__ gaussian_ids,   // [nnz], sorted by gid
     int32_t* __restrict__ camera_id_bounds       // [N+1]
 ) {
-    int64_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (gid > nnz) return;
-    int32_t cid   = (gid == nnz) ? N : gaussian_ids[gid];
-    int32_t cid_0 = (gid == 0) ? 0 : gaussian_ids[gid-1] + 1;
-    for (int32_t i = cid_0; i <= cid; ++i)
-        camera_id_bounds[i] = gid;
+    int64_t k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N) return;
+    int32_t lo = 0, hi = (int32_t)nnz;
+    while (lo < hi) {
+        int32_t mid = lo + ((hi - lo) >> 1);
+        if (gaussian_ids[mid] < (int32_t)k) lo = mid + 1;
+        else hi = mid;
+    }
+    camera_id_bounds[k] = lo;
 }
 
 
@@ -82,7 +80,7 @@ static inline void launch_projection_bwd_quantgrad(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen_tuple,
     const std::vector<DeviceTensorFloatND>& v_splats_world_tuple,
     GradQuantBuffers gq,
@@ -107,31 +105,15 @@ static inline void launch_projection_bwd_quantgrad(
     if (N == 0) return;
     if (!is_packed && aabb.data_ptr() == nullptr) return;
 
-    // Build per-gaussian intersection ranges for the packed camera loop, exactly
-    // as the FPBO launcher does (sort a permutation alongside gaussian_ids so the
-    // kernel can recover original out_idx for aabb / screen-grad loads).
+    // Per-gaussian intersection ranges for the packed camera loop. The forward
+    // emits the list in (gaussian, camera) order, so gaussian_ids is already
+    // non-decreasing and cid_t is itself the out_idx.
     DeviceVector<int32_t> camera_id_bounds;
-    DeviceVector<int32_t> gaussian_ids_sorted_buf, perm_buf, perm_sorted_buf;
-    const int32_t* sorted_gaussian_ids_ptr = nullptr;
-    const int32_t* sorted_perm_ptr = nullptr;
     if (is_packed) {
         long nnz = camera_ids.size();
-        gaussian_ids_sorted_buf.resize(PoolSlot::FusedProjBwdGaussSorted, nnz);
-        perm_buf.resize(PoolSlot::FusedProjBwdPerm, nnz);
-        perm_sorted_buf.resize(PoolSlot::FusedProjBwdPermSorted, nnz);
-        qg_iota_kernel<<<_LAUNCH_ARGS_1D(nnz, 256)>>>(nnz, perm_buf.data_ptr());
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-        cub::DoubleBuffer<int32_t> d_keys(gaussian_ids.data_ptr(), gaussian_ids_sorted_buf.data_ptr());
-        cub::DoubleBuffer<int32_t> d_values(perm_buf.data_ptr(), perm_sorted_buf.data_ptr());
-        int n_bits = 0;
-        while ((1U << n_bits) <= N) ++n_bits;
-        CUB_WRAPPER(cub::DeviceRadixSort::SortPairs, d_keys, d_values, nnz, 0, n_bits);
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-        sorted_gaussian_ids_ptr = d_keys.selector ? gaussian_ids_sorted_buf.data_ptr() : gaussian_ids.data_ptr();
-        sorted_perm_ptr         = d_values.selector ? perm_sorted_buf.data_ptr() : perm_buf.data_ptr();
         camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
-        qg_camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(nnz+1, 256)>>>(
-            nnz, N, sorted_gaussian_ids_ptr, camera_id_bounds.data_ptr());
+        qg_camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(N+1, 256)>>>(
+            nnz, N, gaussian_ids.data_ptr(), camera_id_bounds.data_ptr());
         CHECK_DEVICE_ERROR(cudaGetLastError());
     }
 
@@ -141,7 +123,6 @@ static inline void launch_projection_bwd_quantgrad(
             image_width, image_height, \
             is_packed ? camera_id_bounds.data_ptr() : nullptr, \
             is_packed ? camera_ids.data_ptr() : nullptr, \
-            is_packed ? sorted_perm_ptr : nullptr, \
             aabb.data_ptr(), \
             v_splats_world, v_splats_screen, gq, \
             sh_value_packed, sh_value_bounds, sh_value_bounds_stride, sh_value_bits )
@@ -174,7 +155,7 @@ static inline void _projection_bwd_quantgrad_dispatch(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     GradQuantBuffers gq,
@@ -213,7 +194,7 @@ void projection_3dgs_backward_quantgrad(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     GradQuantBuffers gq,
@@ -245,7 +226,7 @@ void projection_mip_backward_quantgrad(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     GradQuantBuffers gq,
@@ -277,7 +258,7 @@ void projection_3dgut_backward_quantgrad(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     GradQuantBuffers gq,

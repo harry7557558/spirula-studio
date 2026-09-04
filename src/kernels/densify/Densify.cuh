@@ -114,7 +114,18 @@ void densify_update_weight(
     float blend_w,
     float score_power,
     DeviceVector<float2> accum_buffer,
-    int score_mode
+    int score_mode,
+    float max_scale2d,
+    DeviceVector<float> oversize_accum
+);
+
+
+void densify_oversize_weight_tensor(
+    int64_t num_splats,
+    float blend,
+    DeviceVector<float> oversize_accum,
+    DeviceVector<float2> score,
+    DeviceVector<float2> out
 );
 
 

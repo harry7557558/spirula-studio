@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,14 @@ struct ExifData {
     double focal_plane_x_res = 0;   // Exif:FocalPlaneXResolution
     int focal_plane_unit = 0;       // Exif:FocalPlaneResolutionUnit (2=in, 3=cm, 4=mm, 5=um)
     int pixel_width = 0, pixel_height = 0;  // Exif:PixelXDimension/PixelYDimension
+
+    double exposure_time = 0;   // Exif:ExposureTime, seconds
+    double f_number = 0;        // Exif:FNumber
+    double iso = 0;             // Exif:PhotographicSensitivity (+ SOS/REI/ISOSpeed fallbacks)
+    // APEX forms, NaN when absent (Tv=0 means a 1 s exposure, so 0 cannot
+    // mark "missing"): t = 2^-Tv, N = 2^(Av/2).
+    double shutter_apex  = std::numeric_limits<double>::quiet_NaN();  // Exif:ShutterSpeedValue
+    double aperture_apex = std::numeric_limits<double>::quiet_NaN();  // Exif:ApertureValue
 
     bool hasFocal() const { return focal_35mm > 0 || focal_mm > 0; }
 };
@@ -134,6 +143,14 @@ inline void parseIfd(const TiffReader& r, size_t off, ExifData& out, int depth) 
             case 0x8769:  // Exif sub-IFD, where the lens tags live
                 if (tiffValue(r, e, v) && v > 0) parseIfd(r, (size_t)v, out, depth + 1);
                 break;
+            case 0x829A: if (tiffValue(r, e, v) && v > 0) out.exposure_time = v; break;
+            case 0x829D: if (tiffValue(r, e, v) && v > 0) out.f_number = v; break;
+            case 0x8827: if (tiffValue(r, e, v) && v > 0) out.iso = v; break;
+            case 0x8831: case 0x8832: case 0x8833:  // SOS / REI / ISOSpeed
+                if (out.iso == 0 && tiffValue(r, e, v) && v > 0) out.iso = v;
+                break;
+            case 0x9201: if (tiffValue(r, e, v)) out.shutter_apex = v; break;
+            case 0x9202: if (tiffValue(r, e, v)) out.aperture_apex = v; break;
             case 0x920A: if (tiffValue(r, e, v)) out.focal_mm = v; break;
             case 0xA405: if (tiffValue(r, e, v)) out.focal_35mm = v; break;
             case 0xA20E: if (tiffValue(r, e, v)) out.focal_plane_x_res = v; break;
@@ -237,6 +254,23 @@ inline double exifFocalPx(const ExifData& e, int width, int height) {
         if (f > 0.1 * std::max(width, height) && f < 100.0 * std::max(width, height)) return f;
     }
     return 0;
+}
+
+// Relative capture exposure in EV stops, log2(t / N^2 * ISO), preferring the
+// direct tags over their APEX forms. A missing component counts as 1; false
+// only when the file records none of the three.
+inline bool exifExposureEv(const ExifData& e, double& ev) {
+    if (!e.valid) return false;
+    double t = e.exposure_time > 0 ? e.exposure_time
+             : std::isfinite(e.shutter_apex) ? std::exp2(-e.shutter_apex) : 0;
+    double N = e.f_number > 0 ? e.f_number
+             : std::isfinite(e.aperture_apex) ? std::exp2(e.aperture_apex / 2) : 0;
+    double s = e.iso;
+    if (t <= 0 && N <= 0 && s <= 0) return false;
+    double rel = (t > 0 ? t : 1) / ((N > 0 ? N : 1) * (N > 0 ? N : 1)) * (s > 0 ? s : 1);
+    if (!(rel > 0) || !std::isfinite(rel)) return false;
+    ev = std::log2(rel);
+    return true;
 }
 
 // The identity two images must share to be assumed the same physical camera:

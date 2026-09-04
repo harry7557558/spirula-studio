@@ -32,97 +32,91 @@ uint8_t to_byte(float v) {
     return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f + 0.5f);
 }
 
-// A split image's views are drawn as one picture, so the zoom moves over all
-// of them at once instead of paging between them.
-//
-// Where each one goes, and how far it has to be turned to sit flush against
-// its neighbours. The views are cubemap faces in the order of
-// DataManager.cpp's kAxesFisheye5 / kAxesEquirect6 -- 0 front, 1 right,
-// 2 down, 3 left, 4 up, and for the 6-face table 5 back -- so unfolding them
-// as a cross is what makes the seams meet: five of the twelve cube edges
-// join, which is as many as any flat unfolding can. The two tables differ in
-// the right face's roll, which is why one turns and the other does not.
-//
-// This is LAYOUT only. The texture behind it packs the views tightly (see
-// pack_rgb), and the cross's empty cells cost nothing: draw_pane places each
-// view from the packed texture on its own quad.
-const FaceCell kCross5[5] = {
-    {1, 1, 0}, {2, 1, 1}, {1, 2, 2}, {0, 1, 3}, {1, 0, 0},
+// A split image's views are drawn as one picture, unfolded as a cross (five
+// of the twelve cube edges join, as many as any flat unfolding can): per frame
+// of camhost::*_face_axes, its cell and the quarter turns that seat its roll.
+struct CrossCell { int col, row, turns; };
+const CrossCell kCrossFisheye[6] = {
+    {1, 1, 0}, {2, 1, 1}, {1, 2, 2}, {0, 1, 3}, {1, 0, 0}, {3, 1, 2},
 };
-const FaceCell kCross6[6] = {
-    {1, 1, 0}, {2, 1, 0}, {1, 2, 2}, {0, 1, 3}, {1, 0, 0}, {3, 1, 2},
+const CrossCell kCrossEquirect[6] = {
+    {1, 1, 0}, {2, 1, 0}, {1, 2, 2}, {0, 1, 0}, {1, 0, 0}, {3, 1, 0},
 };
 
-void face_layout(int views, std::vector<FaceCell>& cells, int& cols, int& rows) {
-    if (views == 5) { cells.assign(kCross5, kCross5 + 5); cols = 3; rows = 3; return; }
-    if (views == 6) { cells.assign(kCross6, kCross6 + 6); cols = 4; rows = 3; return; }
-    views = std::max(views, 1);
-    cols = (int)std::ceil(std::sqrt((double)views));
-    rows = (views + cols - 1) / cols;
+// The views of image `index` on the canvas: a crop's place inside its frame's
+// cell comes straight from its intrinsics, so the seams meet to the pixel.
+void face_layout(const PostSplitCameras& post, int model, int index,
+                 const std::vector<AtlasRect>& sizes, std::vector<FaceCell>& cells,
+                 int& cw, int& ch) {
     cells.clear();
-    for (int v = 0; v < views; v++) cells.push_back({v % cols, v / cols, 0});
-}
-
-// The packed grid: square-ish, and every cell used.
-void pack_shape(int views, int& cols, int& rows) {
-    views = std::max(views, 1);
-    cols = (int)std::ceil(std::sqrt((double)views));
-    rows = (views + cols - 1) / cols;
-}
-
-// float [B, h, w, C] -> uint8 [rows*h, cols*w, C], one view per packed cell.
-void pack_rgb(const float* src, int views, int h, int w, int C,
-              int cols, int rows, std::vector<uint8_t>& dst) {
-    const int W = cols * w;
-    dst.assign((size_t)rows * h * W * C, 0);
-    for (int v = 0; v < views; v++) {
-        const float* s = src + (size_t)v * h * w * C;
-        const int oy = (v / cols) * h, ox = (v % cols) * w;
-        for (int y = 0; y < h; y++) {
-            uint8_t* d = dst.data() + ((size_t)(oy + y) * W + ox) * C;
-            for (int x = 0; x < w * C; x++)
-                d[x] = to_byte(s[(size_t)y * w * C + x]);
-        }
+    const int views = (int)sizes.size();
+    const bool split = views > 1 && !post.K_per_camera.empty() &&
+                       index < (int)post.K_per_camera.size() &&
+                       post.K_per_camera[(size_t)index] == views;
+    if (!split) {
+        int vw = 1, vh = 1;
+        for (const AtlasRect& r : sizes) { vw = std::max(vw, r.w); vh = std::max(vh, r.h); }
+        const int cols = (int)std::ceil(std::sqrt((double)std::max(views, 1)));
+        const int rows = (std::max(views, 1) + cols - 1) / cols;
+        for (int v = 0; v < views; v++)
+            cells.push_back({(float)(v % cols * vw), (float)(v / cols * vh),
+                             (float)sizes[(size_t)v].w, (float)sizes[(size_t)v].h, 0});
+        cw = std::max(1, cols * vw);
+        ch = std::max(1, rows * vh);
+        return;
     }
-}
-
-// The same, for the mask -- which the engine keeps at whatever resolution the
-// files are (the loss samples it rather than resizing it), so it is generally
-// NOT the render's shape. Nearest, because it is boolean.
-void pack_mask(const uint8_t* src, int views, int h, int w, int mh, int mw,
-               int cols, int rows, std::vector<uint8_t>& dst) {
-    const int W = cols * w;
-    dst.assign((size_t)rows * h * W, 0);
+    const bool equi = model == (int)CameraModelType::EQUIRECTANGULAR;
+    const CrossCell* cross = equi ? kCrossEquirect : kCrossFisheye;
+    const int off = post.post_offsets[(size_t)index];
+    // Every face of a camera shares a focal, and a frame spans -1..1.
+    const float f = post.intrins[(size_t)off * 4];
+    const float side = 2.0f * f;
     for (int v = 0; v < views; v++) {
-        const uint8_t* s = src + (size_t)v * mh * mw;
-        const int oy = (v / cols) * h, ox = (v % cols) * w;
-        for (int y = 0; y < h; y++) {
-            const int my = (mh == h) ? y : (int)((int64_t)y * mh / h);
-            const uint8_t* sr = s + (size_t)my * mw;
-            uint8_t* d = dst.data() + (size_t)(oy + y) * W + ox;
-            for (int x = 0; x < w; x++)
-                d[x] = sr[(mw == w) ? x : (int)((int64_t)x * mw / w)];
+        const size_t p = (size_t)(off + v);
+        const int face = std::clamp(post.post_faces[p], 0, 5);
+        const float fx = post.intrins[p * 4 + 0], fy = post.intrins[p * 4 + 1];
+        const float cx = post.intrins[p * 4 + 2], cy = post.intrins[p * 4 + 3];
+        const float w = (float)post.post_widths[p], h = (float)post.post_heights[p];
+        // The crop's corners inside its cell, then turned about the centre.
+        float x0 = (-cx / fx + 1.0f) * f, x1 = ((w - cx) / fx + 1.0f) * f;
+        float y0 = (-cy / fy + 1.0f) * f, y1 = ((h - cy) / fy + 1.0f) * f;
+        for (int t = 0; t < (cross[face].turns & 3); t++) {
+            const float nx0 = side - y1, nx1 = side - y0;
+            y0 = x0; y1 = x1;
+            x0 = nx0; x1 = nx1;
         }
+        cells.push_back({cross[face].col * side + x0, cross[face].row * side + y0,
+                         x1 - x0, y1 - y0, cross[face].turns});
     }
+    // The canvas is what is actually DRAWN, not the whole 3x3 cross: a face
+    // cropped to its lens leaves its cell partly empty, and fitting the cross
+    // would draw the picture at a fraction of the pane and off centre.
+    float x0 = cells[0].x, y0 = cells[0].y, x1 = x0, y1 = y0;
+    for (const FaceCell& c : cells) {
+        x0 = std::min(x0, c.x);          y0 = std::min(y0, c.y);
+        x1 = std::max(x1, c.x + c.w);    y1 = std::max(y1, c.y + c.h);
+    }
+    for (FaceCell& c : cells) { c.x -= x0; c.y -= y0; }
+    cw = std::max(1, (int)std::lround(x1 - x0));
+    ch = std::max(1, (int)std::lround(y1 - y0));
 }
 
-// uint8 [views, sh, sw, 3] -> uint8 [rows*h, cols*w, 3]. Nearest, because a
-// supervision modality keeps whatever resolution its files are.
-void pack_bytes(const uint8_t* src, int views, int h, int w, int sh, int sw,
-                int cols, int rows, std::vector<uint8_t>& dst) {
-    const int W = cols * w;
-    dst.assign((size_t)rows * h * W * 3, 0);
-    for (int v = 0; v < views; v++) {
-        const uint8_t* s = src + (size_t)v * sh * sw * 3;
-        const int oy = (v / cols) * h, ox = (v % cols) * w;
-        for (int y = 0; y < h; y++) {
-            const int my = (sh == h) ? y : (int)((int64_t)y * sh / h);
-            const uint8_t* sr = s + (size_t)my * sw * 3;
-            uint8_t* d = dst.data() + ((size_t)(oy + y) * W + ox) * 3;
-            for (int x = 0; x < w; x++) {
-                const int mx = (sw == w) ? x : (int)((int64_t)x * sw / w);
-                for (int c = 0; c < 3; c++) d[x * 3 + c] = sr[mx * 3 + c];
-            }
+// Nearest-resample one view into its rect of the packed texture. `src` is
+// [sh, sw, srcC] and `cvt` turns one source element into a byte; a source of
+// one channel is broadcast, which is what a mask wants.
+template <typename T, typename Cvt>
+void blit(std::vector<uint8_t>& dst, int atlas_w, const AtlasRect& r,
+          const T* src, int sh, int sw, int srcC, int dstC, Cvt cvt) {
+    if (!src || sh <= 0 || sw <= 0) return;
+    for (int y = 0; y < r.h; y++) {
+        const int sy = (sh == r.h) ? y : (int)((int64_t)y * sh / r.h);
+        const T* srow = src + (size_t)sy * sw * srcC;
+        uint8_t* d = dst.data() + ((size_t)(r.y + y) * atlas_w + r.x) * dstC;
+        for (int x = 0; x < r.w; x++) {
+            const int sx = (sw == r.w) ? x : (int)((int64_t)x * sw / r.w);
+            for (int c = 0; c < dstC; c++)
+                d[(size_t)x * dstC + c] = cvt(srow[(size_t)sx * srcC +
+                                                   (srcC == 1 ? 0 : c)]);
         }
     }
 }
@@ -278,82 +272,101 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     std::vector<float>& render = _wrender;
     std::vector<float>& render_raw = _wrender_raw;
     std::vector<uint8_t>& alpha = _walpha;
-    alpha.clear();
-    render_raw.clear();
+    gt.clear(); render.clear(); render_raw.clear(); alpha.clear();
+    _wgt_depth.clear(); _wr_depth.clear();
+    _wgt_normal.clear(); _wr_normal.clear(); _werr.clear();
     // The source file is shown undecoded, so pair it with the render before
     // the working-space -> sRGB conversion rather than after.
     const auto color = spirula::resolve_color(s.cfg);
-    const bool want_raw = j.source_gt &&
-                          (color.splat_linear || !color.splat_gamut.empty());
-    int64_t B = 0, H = 0, W = 0, C = 0;
-    int64_t mh = 0, mw = 0;   // the mask's own resolution, which need not be H, W
-    int64_t dh = 0, dw = 0, nh = 0, nw = 0;   // ... and the modalities'
-    _wgt_depth.clear();
-    _wr_depth.clear();
-    _wgt_normal.clear();
-    _wr_normal.clear();
+    const bool want_raw = j.source_gt && color.splat_on();
+    int64_t C = 3;
     bool got_err = false;
     // This step's config, so the forward renders the channels the trainer's
     // does and the error map is weighted the way this step weights it.
     const LossConfig loss =
         spirula::build_step_config(s.cfg, s.st, out.step).loss;
-    {
+
+    // One pass per run of equal-size faces (Engine.h, engine_preview_forward).
+    // Views of one pass share a size, so each pass appends a block to every
+    // buffer and takes a row of the packed texture.
+    struct Pass {
+        int views = 0, H = 0, W = 0;
+        int64_t mh = 0, mw = 0, dh = 0, dw = 0, nh = 0, nw = 0;
+        size_t rgb = 0, mask = 0, depth = 0, normal = 0, err = 0;
+        size_t r_depth = 0, r_normal = 0;
+    };
+    std::vector<Pass> passes;
+    double se = 0.0;
+    int64_t se_n = 0;
+    int npass = 1;
+
+    for (int pi = 0; pi < npass; pi++) {
         std::lock_guard<std::mutex> lk(s.engine_mutex);
-        engine_preview_forward(j.index, s.cfg.primitive, sh_deg,
-                               s.cfg.packed || s.cfg.use_bvh, j.color_correct,
-                               loss);
+        const int views = engine_preview_forward(
+            j.index, s.cfg.primitive, sh_deg, s.cfg.packed || s.cfg.use_bvh,
+            j.color_correct, loss, pi, &npass);
         auto shape = engine_get_render_rgb_shape();
-        B = std::get<0>(shape); H = std::get<1>(shape);
-        W = std::get<2>(shape); C = std::get<3>(shape);
-        const int64_t n = B * H * W * C;
-        if (n <= 0) {
+        Pass q;
+        q.views = (int)std::get<0>(shape);
+        q.H = (int)std::get<1>(shape);
+        q.W = (int)std::get<2>(shape);
+        C = std::get<3>(shape);
+        if (views <= 0 || q.views <= 0 || q.H <= 0 || q.W <= 0 || C <= 0) {
             // Nothing came back and nothing threw. Say so rather than leave
             // the panel on "rendering" for the rest of the run.
             out.error = "engine_preview_forward produced no image";
             return;
         }
-        render.resize((size_t)n);
-        gt.resize((size_t)n);
-        if (want_raw) render_raw.resize((size_t)n);
+        const int64_t B = q.views, H = q.H, W = q.W;
+        auto tv = [](std::vector<float>& v, size_t off, int64_t b, int64_t h,
+                     int64_t w, int64_t c) {
+            return TorchTensorView{(uint64_t)(uintptr_t)(v.data() + off), 4,
+                                   {b, h, w, c}};
+        };
+
+        const size_t n = (size_t)(B * H * W * C);
+        q.rgb = render.size();
+        render.resize(q.rgb + n);
+        gt.resize(q.rgb + n);
+        if (want_raw) render_raw.resize(q.rgb + n);
         engine_copy_render_to_host(
-            TorchTensorView{(uint64_t)(uintptr_t)render.data(), 4, {B, H, W, C}},
+            tv(render, q.rgb, B, H, W, C),
             TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}},
-            want_raw ? TorchTensorView{(uint64_t)(uintptr_t)render_raw.data(), 4,
-                                       {B, H, W, C}}
+            want_raw ? tv(render_raw, q.rgb, B, H, W, C)
                      : TorchTensorView{0, 0, {}},
             TorchTensorView{0, 0, {}});
-        engine_copy_gt_rgb_to_host(
-            TorchTensorView{(uint64_t)(uintptr_t)gt.data(), 4, {B, H, W, C}});
+        engine_copy_gt_rgb_to_host(tv(gt, q.rgb, B, H, W, C));
+
         // The mask keeps its own resolution: the loss samples it rather than
         // resizing it, so an unsplit 1920x1920 fisheye trained against a
         // 1600x1600 mask is ordinary. Only the batch dimension has to agree.
         auto ashape = engine_get_gt_alpha_shape();
         if (std::get<0>(ashape) == B) {
-            mh = std::get<1>(ashape);
-            mw = std::get<2>(ashape);
-            alpha.resize((size_t)(B * mh * mw));
+            q.mh = std::get<1>(ashape);
+            q.mw = std::get<2>(ashape);
+            q.mask = alpha.size();
+            alpha.resize(q.mask + (size_t)(B * q.mh * q.mw));
             engine_copy_gt_alpha_to_host(
-                TorchTensorView{(uint64_t)(uintptr_t)alpha.data(), 1,
-                                {B, mh, mw, 1LL}});
+                TorchTensorView{(uint64_t)(uintptr_t)(alpha.data() + q.mask), 1,
+                                {B, q.mh, q.mw, 1LL}});
         }
 
         // The supervision modalities. Only what the run loads: a reference
         // pane for something no weight reads would be a picture of nothing.
-        auto tv = [](std::vector<float>& v, int64_t b, int64_t h, int64_t w,
-                     int64_t c) {
-            return TorchTensorView{(uint64_t)(uintptr_t)v.data(), 4, {b, h, w, c}};
-        };
         if (s.has_depth) {
             auto sh = engine_get_gt_depth_shape();
             if (std::get<0>(sh) == B) {
-                dh = std::get<1>(sh);
-                dw = std::get<2>(sh);
-                _wgt_depth.resize((size_t)(B * dh * dw));
-                engine_copy_gt_depth_to_host(tv(_wgt_depth, B, dh, dw, 1));
+                q.dh = std::get<1>(sh);
+                q.dw = std::get<2>(sh);
+                q.depth = _wgt_depth.size();
+                _wgt_depth.resize(q.depth + (size_t)(B * q.dh * q.dw));
+                engine_copy_gt_depth_to_host(
+                    tv(_wgt_depth, q.depth, B, q.dh, q.dw, 1));
             }
-            _wr_depth.resize((size_t)(B * H * W));
+            q.r_depth = _wr_depth.size();
+            _wr_depth.resize(q.r_depth + (size_t)(B * H * W));
             engine_copy_render_to_host(TorchTensorView{0, 0, {}},
-                                       tv(_wr_depth, B, H, W, 1),
+                                       tv(_wr_depth, q.r_depth, B, H, W, 1),
                                        TorchTensorView{0, 0, {}},
                                        TorchTensorView{0, 0, {}},
                                        TorchTensorView{0, 0, {}});
@@ -361,91 +374,143 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
         if (s.has_normal) {
             auto sh = engine_get_gt_normal_shape();
             if (std::get<0>(sh) == B) {
-                nh = std::get<1>(sh);
-                nw = std::get<2>(sh);
-                _wgt_normal.resize((size_t)(B * nh * nw * 3));
-                engine_copy_gt_normal_to_host(tv(_wgt_normal, B, nh, nw, 3));
+                q.nh = std::get<1>(sh);
+                q.nw = std::get<2>(sh);
+                q.normal = _wgt_normal.size();
+                _wgt_normal.resize(q.normal + (size_t)(B * q.nh * q.nw * 3));
+                engine_copy_gt_normal_to_host(
+                    tv(_wgt_normal, q.normal, B, q.nh, q.nw, 3));
             }
-            _wr_normal.resize((size_t)(B * H * W * 3));
-            engine_copy_render_depth_normal_to_host(tv(_wr_normal, B, H, W, 3));
+            q.r_normal = _wr_normal.size();
+            _wr_normal.resize(q.r_normal + (size_t)(B * H * W * 3));
+            engine_copy_render_depth_normal_to_host(
+                tv(_wr_normal, q.r_normal, B, H, W, 3));
         }
 
         if (j.error_map) {
-            _werr.resize((size_t)(B * H * W));
-            got_err = engine_preview_loss_map(loss, tv(_werr, B, H, W, 1));
+            q.err = _werr.size();
+            _werr.resize(q.err + (size_t)(B * H * W));
+            got_err = engine_preview_loss_map(
+                          loss, tv(_werr, q.err, B, H, W, 1)) || got_err;
         }
-    }
 
-    // Scored over the pixels the loss is computed on, which is why the mask
-    // enters here and not only on screen.
-    {
-        double se = 0.0;
-        int64_t n = 0;
+        // Scored over the pixels the loss is computed on, which is why the
+        // mask enters here and not only on screen.
         for (int64_t b = 0; b < B; b++)
             for (int64_t y = 0; y < H; y++)
                 for (int64_t x = 0; x < W; x++) {
-                    if (!alpha.empty()) {
-                        const int64_t my = mh == H ? y : y * mh / H;
-                        const int64_t mx = mw == W ? x : x * mw / W;
-                        if (!alpha[(size_t)((b * mh + my) * mw + mx)]) continue;
+                    if (q.mh > 0) {
+                        const int64_t my = q.mh == H ? y : y * q.mh / H;
+                        const int64_t mx = q.mw == W ? x : x * q.mw / W;
+                        if (!alpha[q.mask + (size_t)((b * q.mh + my) * q.mw + mx)])
+                            continue;
                     }
-                    const int64_t p = (b * H + y) * W + x;
+                    const size_t pix = q.rgb + (size_t)(((b * H + y) * W + x) * C);
                     for (int64_t c = 0; c < C; c++) {
-                        const double d = (double)gt[(size_t)(p * C + c)] -
-                                         (double)render[(size_t)(p * C + c)];
+                        const double d = (double)gt[pix + (size_t)c] -
+                                         (double)render[pix + (size_t)c];
                         se += d * d;
                     }
-                    n += C;
+                    se_n += C;
                 }
-        if (n > 0)
-            out.psnr = (float)(-10.0 * std::log10(std::max(se / (double)n, 1e-12)));
+        passes.push_back(q);
     }
+    if (se_n > 0)
+        out.psnr = (float)(-10.0 * std::log10(std::max(se / (double)se_n, 1e-12)));
 
-    out.views = (int)B;
-    out.view_w = (int)W;
-    out.view_h = (int)H;
-    face_layout(out.views, out.cells, out.lay_cols, out.lay_rows);
-    pack_shape(out.views, out.pack_cols, out.pack_rows);
-    pack_rgb(gt.data(), out.views, (int)H, (int)W, (int)C,
-             out.pack_cols, out.pack_rows, out.gt);
-    pack_rgb(render_raw.empty() ? render.data() : render_raw.data(),
-             out.views, (int)H, (int)W, (int)C,
-             out.pack_cols, out.pack_rows, out.render);
-    if (!alpha.empty())
-        pack_mask(alpha.data(), out.views, (int)H, (int)W, (int)mh, (int)mw,
-                  out.pack_cols, out.pack_rows, out.mask);
+    // ---- the packed texture: a row per pass, a rect per view ----
+    out.views = 0;
+    out.view_w = out.view_h = 0;
+    out.atlas_w = out.atlas_h = 0;
+    out.uv.clear();
+    for (const Pass& q : passes) {
+        out.atlas_w = std::max(out.atlas_w, q.views * q.W);
+        out.atlas_h += q.H;
+        out.view_w = std::max(out.view_w, q.W);
+        out.view_h = std::max(out.view_h, q.H);
+        out.views += q.views;
+    }
+    {
+        int y = 0;
+        for (const Pass& q : passes) {
+            for (int v = 0; v < q.views; v++)
+                out.uv.push_back(AtlasRect{v * q.W, y, q.W, q.H});
+            y += q.H;
+        }
+    }
+    face_layout(s.post, s.ds.camera_models[(size_t)j.index], j.index, out.uv,
+                out.cells, out.canvas_w, out.canvas_h);
+
+    const size_t atlas_rgb = (size_t)out.atlas_w * out.atlas_h * 3;
+    out.gt.assign(atlas_rgb, 0);
+    out.render.assign(atlas_rgb, 0);
+    if (!alpha.empty()) out.mask.assign((size_t)out.atlas_w * out.atlas_h, 0);
+    auto byte = [](float v) { return to_byte(v); };
+    auto keep = [](uint8_t v) { return v; };
+    int view = 0;
+    for (const Pass& q : passes) {
+        for (int v = 0; v < q.views; v++, view++) {
+            const AtlasRect& r = out.uv[(size_t)view];
+            const size_t px = (size_t)v * q.H * q.W;
+            blit(out.gt, out.atlas_w, r, gt.data() + q.rgb + px * (size_t)C,
+                 q.H, q.W, (int)C, 3, byte);
+            const std::vector<float>& src = render_raw.empty() ? render : render_raw;
+            blit(out.render, out.atlas_w, r, src.data() + q.rgb + px * (size_t)C,
+                 q.H, q.W, (int)C, 3, byte);
+            if (q.mh > 0)
+                blit(out.mask, out.atlas_w, r,
+                     alpha.data() + q.mask + (size_t)v * q.mh * q.mw,
+                     (int)q.mh, (int)q.mw, 1, 1, keep);
+        }
+    }
 
     // Coloured over ALL the views at once, so a split capture's faces share
     // one depth range instead of each getting its own.
-    auto colour = [&](const std::vector<float>& src, int64_t sh, int64_t sw,
-                      bool normal, bool skip_zero, std::vector<uint8_t>& dst) {
-        if (src.empty() || sh <= 0 || sw <= 0) return;
-        const size_t n = (size_t)(B * sh * sw);
+    auto colour = [&](std::vector<float>& src, bool normal, bool skip_zero,
+                      bool reference, std::vector<uint8_t>& dst) {
+        if (src.empty()) return;
+        const size_t n = src.size() / (normal ? 3 : 1);
         _wmodrgb.resize(n * 3);
         if (normal) app::normal_to_rgb(src.data(), n, _wmodrgb.data());
         else        app::depth_to_rgb(src.data(), n, skip_zero, _wmodrgb.data());
-        pack_bytes(_wmodrgb.data(), out.views, (int)H, (int)W, (int)sh, (int)sw,
-                   out.pack_cols, out.pack_rows, dst);
+        dst.assign(atlas_rgb, 0);
+        int vi = 0;
+        for (const Pass& q : passes) {
+            const int64_t h = reference ? (normal ? q.nh : q.dh) : q.H;
+            const int64_t w = reference ? (normal ? q.nw : q.dw) : q.W;
+            // The buffer's offset counts floats; a normal has three per pixel
+            // and the coloured copy is indexed in pixels.
+            const size_t off = (reference ? (normal ? q.normal : q.depth)
+                                          : (normal ? q.r_normal : q.r_depth)) /
+                               (normal ? 3u : 1u);
+            for (int v = 0; v < q.views; v++, vi++) {
+                if (h <= 0 || w <= 0) continue;
+                blit(dst, out.atlas_w, out.uv[(size_t)vi],
+                     _wmodrgb.data() + (off + (size_t)v * h * w) * 3,
+                     (int)h, (int)w, 3, 3, keep);
+            }
+        }
     };
     // 0 is the trainer's "no ground truth here" and must not drag the range
     // down to it; the render's own depth has no such sentinel.
-    colour(_wgt_depth, dh, dw, false, true, out.gt_depth);
-    colour(_wr_depth, H, W, false, false, out.render_depth);
-    colour(_wgt_normal, nh, nw, true, false, out.gt_normal);
-    colour(_wr_normal, H, W, true, false, out.render_normal);
+    colour(_wgt_depth,  false, true,  true,  out.gt_depth);
+    colour(_wr_depth,   false, false, false, out.render_depth);
+    colour(_wgt_normal, true,  false, true,  out.gt_normal);
+    colour(_wr_normal,  true,  false, false, out.render_normal);
 
-    if (got_err) {
-        const size_t n = (size_t)(B * H * W);
+    if (got_err && !_werr.empty()) {
         double sum = 0.0;
-        for (size_t i = 0; i < n; i++) {
-            sum += _werr[i];
-            out.err_max = std::max(out.err_max, _werr[i]);
-        }
-        out.err_mean = n > 0 ? (float)(sum / (double)n) : 0.0f;
-        _wmodrgb.resize(n * 3);
-        app::error_to_rgb(_werr.data(), n, 0.0f, _wmodrgb.data());
-        pack_bytes(_wmodrgb.data(), out.views, (int)H, (int)W, (int)H, (int)W,
-                   out.pack_cols, out.pack_rows, out.err_map);
+        for (float v : _werr) { sum += v; out.err_max = std::max(out.err_max, v); }
+        out.err_mean = (float)(sum / (double)_werr.size());
+        _wmodrgb.resize(_werr.size() * 3);
+        app::error_to_rgb(_werr.data(), _werr.size(), 0.0f, _wmodrgb.data());
+        out.err_map.assign(atlas_rgb, 0);
+        int vi = 0;
+        for (const Pass& q : passes)
+            for (int v = 0; v < q.views; v++, vi++)
+                blit(out.err_map, out.atlas_w, out.uv[(size_t)vi],
+                     _wmodrgb.data() + (q.err + (size_t)v * q.H * q.W) * 3,
+                     q.H, q.W, 3, 3, keep);
     }
 
     if (j.source_gt && j.index < (int)s.ds.image_filenames.size()) {
@@ -528,10 +593,9 @@ void ImageCompare::upload(GLuint& tex, const uint8_t* rgb, int w, int h) {
 
 void ImageCompare::rebuild_textures() {
     _tex_dirty = false;
-    if (_shot.view_w <= 0 || _shot.view_h <= 0) return;
+    if (_shot.atlas_w <= 0 || _shot.atlas_h <= 0) return;
 
-    const int pw = _shot.pack_cols * _shot.view_w;
-    const int ph = _shot.pack_rows * _shot.view_h;
+    const int pw = _shot.atlas_w, ph = _shot.atlas_h;
 
     // The excluded region is marked the same way on both sides, so a
     // difference between the panes is a difference in the model rather than
@@ -561,17 +625,13 @@ void ImageCompare::rebuild_textures() {
         p.tex_w = w;
         p.tex_h = h;
         if (packed) {
-            p.view_w = _shot.view_w;
-            p.view_h = _shot.view_h;
-            p.pack_cols = _shot.pack_cols;
             p.cells = _shot.cells;
-            p.canvas_w = _shot.lay_cols * _shot.view_w;
-            p.canvas_h = _shot.lay_rows * _shot.view_h;
+            p.uv = _shot.uv;
+            p.canvas_w = _shot.canvas_w;
+            p.canvas_h = _shot.canvas_h;
         } else {
-            p.view_w = w;
-            p.view_h = h;
-            p.pack_cols = 1;
-            p.cells.assign(1, FaceCell{0, 0, 0});
+            p.cells.assign(1, FaceCell{0.0f, 0.0f, (float)w, (float)h, 0});
+            p.uv.assign(1, AtlasRect{0, 0, w, h});
             p.canvas_w = w;
             p.canvas_h = h;
         }
@@ -604,7 +664,7 @@ int ImageCompare::faces() const {
 }
 
 bool ImageCompare::has_masks() const {
-    return !_session->ds.mask_filenames.empty() || _session->post.any_fisheye_warp;
+    return !_session->ds.mask_filenames.empty() || _session->post.any_fov_mask;
 }
 
 void ImageCompare::select(int index) {
@@ -836,13 +896,12 @@ void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
         const ImVec2 org = ImGui::GetCursorScreenPos();
         ImGui::Dummy(ImVec2(vw, vh));
 
-        // Canvas origin in screen space, and one cell's size there. Each view
-        // is drawn straight from its slot in the packed texture onto its own
-        // quad, so the cells the cross leaves empty simply are not drawn.
+        // Canvas origin in screen space, and canvas pixels to screen. Each
+        // view is drawn straight from its slot in the packed texture onto its
+        // own quad, so the cells the cross leaves empty simply are not drawn.
         const float ox = org.x - (_cx - fu * 0.5f) * disp_w;
         const float oy = org.y - (_cy - fv * 0.5f) * disp_h;
-        const float cw = (float)p.view_w * fit * _zoom;
-        const float ch = (float)p.view_h * fit * _zoom;
+        const float sc = fit * _zoom;
         // Half a texel in from each edge: adjacent cells come from slots that
         // are NOT adjacent in the texture, and linear filtering at the seam
         // would otherwise blend in whichever face happens to be packed next.
@@ -863,15 +922,15 @@ void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
         if (point) dl->AddCallback(pio.DrawCallback_SetSamplerNearest, nullptr);
         for (size_t v = 0; v < p.cells.size(); v++) {
             const FaceCell& fc = p.cells[v];
-            const float x0 = ox + fc.col * cw, x1 = x0 + cw;
-            const float y0 = oy + fc.row * ch, y1 = y0 + ch;
+            const float x0 = ox + fc.x * sc, x1 = x0 + fc.w * sc;
+            const float y0 = oy + fc.y * sc, y1 = y0 + fc.h * sc;
             if (x1 < org.x || x0 > org.x + vw || y1 < org.y || y0 > org.y + vh)
                 continue;
-            const int pc = (int)v % p.pack_cols, pr = (int)v / p.pack_cols;
-            const float u0 = (float)(pc * p.view_w) / p.tex_w + iu;
-            const float u1 = (float)((pc + 1) * p.view_w) / p.tex_w - iu;
-            const float v0 = (float)(pr * p.view_h) / p.tex_h + iv;
-            const float v1 = (float)((pr + 1) * p.view_h) / p.tex_h - iv;
+            const AtlasRect& a = p.uv[v];
+            const float u0 = (float)a.x / p.tex_w + iu;
+            const float u1 = (float)(a.x + a.w) / p.tex_w - iu;
+            const float v0 = (float)a.y / p.tex_h + iv;
+            const float v1 = (float)(a.y + a.h) / p.tex_h - iv;
             const ImVec2 quad[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
             const ImVec2 uv[4]   = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
             // A quarter turn clockwise is one step around the corner list.

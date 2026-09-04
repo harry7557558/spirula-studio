@@ -1,22 +1,13 @@
 // Dataset GT warp + re-distort + byte->float conversion kernels (Vulkan
 // backend), mirroring kernels/pixelwise/ImageWarp.cu + GtDepthNormalWarp.cu
-// (launch_warp_*) + ImageRedistort.cu (launch_redistort_*) and the raw
-// converters (uint8/16_*_to_float_raw). The wide warps project each
-// pinhole-face ray through the same canonical projection_utils.slang
-// *_proj_nav exports the CUDA kernels call, so per-pixel outputs differ only
-// by fast-math rounding (plus isolated valid-flip / nearest-rounding pixels
-// at projection boundaries).
+// + ImageRedistort.cu and the raw converters (uint8/16_*_to_float_raw),
+// through the same canonical projection_utils.slang the CUDA kernels call.
 //
-// Layout conventions match the CUDA launchers exactly: input byte/float
-// buffers are contiguous [B, Hin, Win, C], warp outputs are contiguous
-// [B, K, Hout, Wout, C] float. Sub-word (u8/u16) elements are extracted from
-// u32 words -- 8/16-bit storage access is not baseline SPIR-V -- and the
-// mask warp writes whole u32 words (4 output bytes per thread; allocations
-// are 16-byte rounded so the trailing partial word stays in bounds).
-//
-// The camera model is a plain runtime params field, exactly like the CUDA
-// kernels' `CameraModelType` argument (all loads go through the same
-// pointers on every path, so the branch is speculation-safe on llvmpipe).
+// Layouts match the CUDA launchers: input [B, Hin, Win, C], warp output
+// [B, K, Hout, Wout, C] float, post camera p = bid * K + ki with its unit
+// frame in axes[p] and its face intrinsics in post_intrins[p]
+// (kernels/pixelwise/WarpFace.cuh). Sub-word elements come out of u32 words
+// and the mask warp writes whole u32 words (allocations are 16-byte rounded).
 
 #define CudaDeviceExport ForceInline
 #include "int64_compat.slang"
@@ -196,12 +187,24 @@ float4 _wp_intrin(float* intrins, int bid) {
 }
 
 [ForceInline]
-void _wp_axes(float* axes, int ki, out float3 ax, out float3 ay,
+void _wp_axes(float* axes, int p, out float3 ax, out float3 ay,
               out float3 az) {
-    int b = 9 * ki;
+    int b = 9 * p;
     ax = float3(axes[b + 0], axes[b + 1], axes[b + 2]);
     ay = float3(axes[b + 3], axes[b + 4], axes[b + 5]);
     az = float3(axes[b + 6], axes[b + 7], axes[b + 8]);
+}
+
+// face_pixel_ray mirror: pixel (i, j) of post camera p through the face's own
+// pinhole intrinsics, then its frame.
+[ForceInline]
+float3 _wp_face_ray(float* axes, float* post_intrins, int p, int i, int j) {
+    float4 k = _wp_intrin(post_intrins, p);
+    float u = (float(i) + 0.5f - k.z) / k.x;
+    float v = (float(j) + 0.5f - k.w) / k.y;
+    float3 ax, ay, az;
+    _wp_axes(axes, p, ax, ay, az);
+    return az + u * ax + v * ay;
 }
 
 // Camera-model dispatch matching the CUDA kernels' ternary chain; the
@@ -244,14 +247,15 @@ bool _wp_to_pixel<D : ICameraDistortion>(int camera_model, float3 raydir,
     return _wp_proj<D>(camera_model, raydir, intrin, dist_coeffs, bid, uv);
 }
 
-// Equirectangular sample position for a face ray (see ImageWarp.cu; f is
-// w * (0.5 / pi)).
+// equi_ray_to_uv mirror: false past the rows the panorama holds, with a
+// pixel of slack at the poles.
 [ForceInline]
-float2 _wp_equi_uv(float3 raydir, int h, int w) {
+bool _wp_equi_uv(float3 raydir, int h, int w, out float2 uv) {
     float f = float(w) * (0.5f / kWarpPi);
-    return float2(
+    uv = float2(
         0.5f * float(w) + f * atan2(raydir.x, raydir.z),
         0.5f * float(h) + f * atan2(raydir.y, length(float2(raydir.x, raydir.z))));
+    return uv.y >= -1.0f && uv.y <= float(h) + 1.0f;
 }
 
 // _wide_depth_to_face_ray_depth mirror: linear (z) input divides by cos(theta)
@@ -273,13 +277,13 @@ float _wp_face_ray_depth(float d, float3 raydir, bool input_is_ray_depth) {
 [ForceInline]
 float3 _wp_one_normal(uint* src, int kind, gindex_t plane, int H, int W,
                       float x, float y, float norm_inv, float decode_off,
-                      bool wrap_u, float3 axis_x, float3 axis_y,
-                      float3 axis_z) {
+                      bool wrap_u, float* axes, int p) {
     float3 n;
     if (!_wp_bilinear_normal(src, kind, plane, H, W, x, y, norm_inv,
                              decode_off, wrap_u, n))
         return float3(-1.0f);
-    float3 ax = normalize(axis_x), ay = normalize(axis_y), az = normalize(axis_z);
+    float3 ax, ay, az;
+    _wp_axes(axes, p, ax, ay, az);
     float3 r = float3(dot(ax, n), dot(ay, n), dot(az, n));
     float rl = length(r);
     if (rl <= 1e-8f) return float3(-1.0f);
@@ -287,7 +291,7 @@ float3 _wp_one_normal(uint* src, int kind, gindex_t plane, int H, int W,
 }
 
 // Shared params for the image / depth / normal warp and re-distort entries.
-// 120 bytes: pushed directly (by value). Pointer fields are never null (zeros
+// 128 bytes: pushed directly (by value). Pointer fields are never null (zeros
 // fallback); the *_equi entries statically ignore intrins / dist_coeffs.
 struct WarpParams {
     float* intrins;        // [B, 4]
@@ -296,7 +300,8 @@ struct WarpParams {
     float* source_params;  // [B, 16] that model's parameters
     uint* src;             // [B, Hin, Win, C] u8 / u16 / f32 elements
     float* dst;            // [B, K, Hout, Wout, C] float
-    float* axes;           // [K, 3, 3] face axes
+    float* axes;           // [B*K, 3, 3] face frames
+    float* post_intrins;   // [B*K, 4] face intrinsics
     int B;
     int Hin;
     int Win;
@@ -319,24 +324,19 @@ struct WarpParams {
 // subgroup divides 256), grid = (ceil(Wout/16), ceil(Hout/16), B).
 [ForceInline]
 bool _wp_tile(WarpParams p, uint3 wg, uint tid, out int i, out int j,
-              out int bid, out float tx, out float ty) {
+              out int bid) {
     i = int(wg.x) * 16 + int(tid % 16u);
     j = int(wg.y) * 16 + int(tid / 16u);
     bid = int(wg.z);
-    tx = -1.0f + 2.0f * (float(i) + 0.5f) / float(p.Wout);
-    ty = -1.0f + 2.0f * (float(j) + 0.5f) / float(p.Hout);
     return i < p.Wout && j < p.Hout;
 }
 
 [ForceInline]
-void _wp_img_wide<D : ICameraDistortion>(WarpParams p, int i, int j, int bid,
-                                         float tx, float ty) {
+void _wp_img_wide<D : ICameraDistortion>(WarpParams p, int i, int j, int bid) {
     float4 intrin = _wp_intrin(p.intrins, bid);
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, bid * p.K + ki, i, j);
         float2 uv;
         bool valid = _wp_to_pixel<D>(p.camera_model, raydir, intrin,
                                      p.dist_coeffs, p.source_models,
@@ -352,15 +352,14 @@ void _wp_img_wide<D : ICameraDistortion>(WarpParams p, int i, int j, int bid,
     }
 }
 
-#define _wp_img_call(D) _wp_img_wide<D>(p, i, j, bid, tx, ty)
+#define _wp_img_call(D) _wp_img_wide<D>(p, i, j, bid)
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void warp_img_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
                    uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_wp_img_call)
 }
 #undef _wp_img_call
@@ -370,34 +369,33 @@ void warp_img_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
 void warp_img_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
                    uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
-        float2 uv = _wp_equi_uv(raydir, p.Hin, p.Win);
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, bid * p.K + ki, i, j);
+        float2 uv;
+        bool valid = _wp_equi_uv(raydir, p.Hin, p.Win, uv);
         gindex_t base = (((gindex_t(bid) * p.K + ki) * p.Hout + j) * p.Wout + i) * p.C;
-        for (int c = 0; c < p.C; c++)
-            p.dst[base + c] = _wp_bilinear(p.src, p.elem_kind, plane, p.Hin,
-                                           p.Win, p.C, c, uv.x, uv.y,
-                                           p.norm_inv, 0.5f, true);
+        for (int c = 0; c < p.C; c++) {
+            float v = 0.5f;
+            if (valid)
+                v = _wp_bilinear(p.src, p.elem_kind, plane, p.Hin, p.Win, p.C,
+                                 c, uv.x, uv.y, p.norm_inv, 0.5f, true);
+            p.dst[base + c] = v;
+        }
     }
 }
 
 [ForceInline]
 void _wp_depth_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
-                                           int bid, float tx, float ty) {
+                                           int bid) {
     float4 intrin = _wp_intrin(p.intrins, bid);
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     // Projected uv is in intrinsics-reference (RGB input) pixel space;
     // rescale to the GT depth map's own resolution.
     float sx = float(p.Win) / float(p.ref_W), sy = float(p.Hin) / float(p.ref_H);
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, bid * p.K + ki, i, j);
         float2 uv;
         bool valid = _wp_to_pixel<D>(p.camera_model, raydir, intrin,
                                      p.dist_coeffs, p.source_models,
@@ -412,15 +410,14 @@ void _wp_depth_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
     }
 }
 
-#define _wp_depth_call(D) _wp_depth_wide<D>(p, i, j, bid, tx, ty)
+#define _wp_depth_call(D) _wp_depth_wide<D>(p, i, j, bid)
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void warp_depth_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
                      uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_wp_depth_call)
 }
 #undef _wp_depth_call
@@ -430,16 +427,14 @@ void warp_depth_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
 void warp_depth_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
                      uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
-        float2 uv = _wp_equi_uv(raydir, p.Hin, p.Win);
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, bid * p.K + ki, i, j);
+        float2 uv;
         float d;
-        bool ok = _wp_bilinear_depth(p.src, p.elem_kind, plane, p.Hin, p.Win,
+        bool ok = _wp_equi_uv(raydir, p.Hin, p.Win, uv) &&
+                  _wp_bilinear_depth(p.src, p.elem_kind, plane, p.Hin, p.Win,
                                      uv.x, uv.y, p.norm_inv, true, d);
         p.dst[((gindex_t(bid) * p.K + ki) * p.Hout + j) * p.Wout + i] =
             ok ? _wp_face_ray_depth(d, raydir, p.ray_depth != 0) : 0.0f;
@@ -448,14 +443,13 @@ void warp_depth_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
 
 [ForceInline]
 void _wp_normal_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
-                                            int bid, float tx, float ty) {
+                                            int bid) {
     float4 intrin = _wp_intrin(p.intrins, bid);
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     float sx = float(p.Win) / float(p.ref_W), sy = float(p.Hin) / float(p.ref_H);
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
+        int pc = bid * p.K + ki;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc, i, j);
         float2 uv;
         bool valid = _wp_to_pixel<D>(p.camera_model, raydir, intrin,
                                      p.dist_coeffs, p.source_models,
@@ -464,7 +458,7 @@ void _wp_normal_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
         if (valid)
             nf = _wp_one_normal(p.src, p.elem_kind, plane, p.Hin, p.Win,
                                 uv.x * sx, uv.y * sy, p.norm_inv,
-                                p.decode_off, false, ax, ay, az);
+                                p.decode_off, false, p.axes, pc);
         gindex_t base = (((gindex_t(bid) * p.K + ki) * p.Hout + j) * p.Wout + i) * 3;
         p.dst[base + 0] = nf.x;
         p.dst[base + 1] = nf.y;
@@ -472,15 +466,14 @@ void _wp_normal_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
     }
 }
 
-#define _wp_normal_call(D) _wp_normal_wide<D>(p, i, j, bid, tx, ty)
+#define _wp_normal_call(D) _wp_normal_wide<D>(p, i, j, bid)
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void warp_normal_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
                       uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_wp_normal_call)
 }
 #undef _wp_normal_call
@@ -490,17 +483,17 @@ void warp_normal_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
 void warp_normal_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
                       uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     for (int ki = 0; ki < p.K; ki++) {
-        float3 ax, ay, az;
-        _wp_axes(p.axes, ki, ax, ay, az);
-        float3 raydir = az + tx * ax + ty * ay;
-        float2 uv = _wp_equi_uv(raydir, p.Hin, p.Win);
-        float3 nf = _wp_one_normal(p.src, p.elem_kind, plane, p.Hin, p.Win,
-                                   uv.x, uv.y, p.norm_inv, p.decode_off,
-                                   true, ax, ay, az);
+        int pc = bid * p.K + ki;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc, i, j);
+        float2 uv;
+        float3 nf = float3(-1.0f);
+        if (_wp_equi_uv(raydir, p.Hin, p.Win, uv))
+            nf = _wp_one_normal(p.src, p.elem_kind, plane, p.Hin, p.Win,
+                                uv.x, uv.y, p.norm_inv, p.decode_off,
+                                true, p.axes, pc);
         gindex_t base = (((gindex_t(bid) * p.K + ki) * p.Hout + j) * p.Wout + i) * 3;
         p.dst[base + 0] = nf.x;
         p.dst[base + 1] = nf.y;
@@ -512,14 +505,15 @@ void warp_normal_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
 // map to whole u32 OUTPUT words in the flat [B, K, Hout, Wout] byte space:
 // each thread decodes its 4 byte positions independently and stores one
 // word, so there is exactly one writer per word and no atomics.
-struct WarpMaskParams {    // 96 bytes: pushed directly
+struct WarpMaskParams {    // 104 bytes: pushed directly
     float* intrins;        // [B, 4]
     float* dist_coeffs;    // [B, 8]
     int* source_models;    // [B]
     float* source_params;  // [B, 16]
     uint* src;             // [B, Hin, Win] uint8
     uint* dst;             // [B, K, Hout, Wout] uint8 (word writes)
-    float* axes;           // [K, 3, 3]
+    float* axes;           // [B*K, 3, 3]
+    float* post_intrins;   // [B*K, 4]
     int B;
     int Hin;
     int Win;
@@ -541,14 +535,12 @@ uint _wp_mask_byte<D : ICameraDistortion>(WarpMaskParams p, uint n,
     t /= uint(p.Hout);
     uint ki = t % uint(p.K);
     uint bid = t / uint(p.K);
-    float tx = -1.0f + 2.0f * (float(i) + 0.5f) / float(p.Wout);
-    float ty = -1.0f + 2.0f * (float(j) + 0.5f) / float(p.Hout);
-    float3 ax, ay, az;
-    _wp_axes(p.axes, int(ki), ax, ay, az);
-    float3 raydir = az + tx * ax + ty * ay;
+    float3 raydir = _wp_face_ray(p.axes, p.post_intrins, int(bid) * p.K + int(ki),
+                                 int(i), int(j));
     int xs, ys;
     if (equi) {
-        float2 uv = _wp_equi_uv(raydir, p.Hin, p.Win);
+        float2 uv;
+        if (!_wp_equi_uv(raydir, p.Hin, p.Win, uv)) return 0u;
         xs = int(floor(uv.x));
         ys = int(floor(uv.y));
         // wrap u for equirectangular (panoramic continuity); clamp v.
@@ -659,8 +651,7 @@ void _rd_img<D : ICameraDistortion>(WarpParams p, int i, int j, int bid) {
 void redistort_img(uniform WarpParams p, uint3 wg: SV_GroupID,
                    uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_rd_img_call)
 }
 #undef _rd_img_call
@@ -688,8 +679,7 @@ void _rd_depth<D : ICameraDistortion>(WarpParams p, int i, int j, int bid) {
 void redistort_depth(uniform WarpParams p, uint3 wg: SV_GroupID,
                      uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_rd_depth_call)
 }
 #undef _rd_depth_call
@@ -725,8 +715,7 @@ void _rd_normal<D : ICameraDistortion>(WarpParams p, int i, int j, int bid) {
 void redistort_normal(uniform WarpParams p, uint3 wg: SV_GroupID,
                       uint tid: SV_GroupIndex) {
     int i, j, bid;
-    float tx, ty;
-    if (!_wp_tile(p, wg, tid, i, j, bid, tx, ty)) return;
+    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_rd_normal_call)
 }
 #undef _rd_normal_call

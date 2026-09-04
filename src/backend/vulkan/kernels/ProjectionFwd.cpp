@@ -14,7 +14,7 @@ struct ProjectionFwdParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
     uint64_t out_aabb, out_depths, out_radii;
-    uint64_t s_xy, s_depth, s_conic, s_opac, s_rgb;
+    uint64_t s_screen;
     uint64_t sh_packed, sh_bounds;
     int64_t sh_bounds_stride;
     uint32_t sh_stride;
@@ -24,7 +24,7 @@ struct ProjectionFwdParams {
     uint32_t num_sh_buffer;
     uint32_t _pad0;
 };
-static_assert(sizeof(ProjectionFwdParams) == 20 * 8 + 8 * 4,
+static_assert(sizeof(ProjectionFwdParams) == 16 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors Projection3dgutParams in shaders/projection_fwd.slang.
@@ -32,7 +32,7 @@ struct Projection3dgutParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
     uint64_t out_aabb, out_depths, out_radii;
-    uint64_t s_scale, s_opac, s_rgb;
+    uint64_t s_screen;
     uint64_t sh_packed, sh_bounds;
     int64_t sh_bounds_stride;
     uint32_t sh_stride;
@@ -42,12 +42,12 @@ struct Projection3dgutParams {
     uint32_t num_sh_buffer;
     uint32_t _pad0;
 };
-static_assert(sizeof(Projection3dgutParams) == 18 * 8 + 8 * 4,
+static_assert(sizeof(Projection3dgutParams) == 16 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 using vkk::resolve_sh_quant;
 
-std::tuple<DeviceTensor2D<float4>, DeviceTensor2D<float>,
+std::tuple<DeviceTensor2D<uint2>, DeviceTensor2D<float>,
            std::vector<DeviceTensorFloatND>>
 launch_projection_fwd_vk(
     const bool antialiased,
@@ -79,7 +79,7 @@ launch_projection_fwd_vk(
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
 
-    DeviceTensor2D<float4> aabb;
+    DeviceTensor2D<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, C, N);
     DeviceTensor2D<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, C, N);
@@ -107,11 +107,7 @@ launch_projection_fwd_vk(
     p.out_aabb = (uint64_t)aabb.data_ptr();
     p.out_depths = (uint64_t)sorting_depths.data_ptr();
     p.out_radii = (uint64_t)radii.data_ptr();
-    p.s_xy = (uint64_t)sb.raw_data(0);
-    p.s_depth = (uint64_t)sb.raw_data(1);
-    p.s_conic = (uint64_t)sb.raw_data(2);
-    p.s_opac = (uint64_t)sb.raw_data(3);
-    p.s_rgb = (uint64_t)sb.raw_data(4);
+    p.s_screen = (uint64_t)sb.raw_data();
     p.sh_packed = q_packed;
     p.sh_bounds = q_bounds;
     p.sh_bounds_stride = q_stride;
@@ -135,7 +131,7 @@ launch_projection_fwd_vk(
 /* API definitions matching kernels/projection/ProjectionFwd.cuh */
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -158,7 +154,7 @@ std::tuple<
 }
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -181,7 +177,7 @@ std::tuple<
 }
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -212,7 +208,7 @@ std::tuple<
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
 
-    DeviceTensor2D<float4> aabb;
+    DeviceTensor2D<uint2> aabb;
     aabb.resize(PoolSlot::ProjAabb, C, N);
     DeviceTensor2D<float> sorting_depths;
     sorting_depths.resize(PoolSlot::ProjDepths, C, N);
@@ -240,9 +236,7 @@ std::tuple<
     p.out_aabb = (uint64_t)aabb.data_ptr();
     p.out_depths = (uint64_t)sorting_depths.data_ptr();
     p.out_radii = (uint64_t)radii.data_ptr();
-    p.s_scale = (uint64_t)sb.raw_data(0);
-    p.s_opac = (uint64_t)sb.raw_data(1);
-    p.s_rgb = (uint64_t)sb.raw_data(2);
+    p.s_screen = (uint64_t)sb.raw_data();
     p.sh_packed = q_packed;
     p.sh_bounds = q_bounds;
     p.sh_bounds_stride = q_stride;

@@ -728,10 +728,12 @@ LossValues compute_multi_scale_per_pixel_losses(
             }
         };
 
-        // Both sides of the rgb comparison pool over the same unmasked
-        // children, so the coarse render and the coarse gt stay comparable.
-        auto ds_rgb = [&](TorchTensorView& prev, TorchTensorView& curr,
-                          const std::string& name) {
+        // Everything the loss compares pools over the same unmasked children,
+        // so a masked pixel reaches no coarse value -- which is what lets a
+        // fully-masked tile go unrendered (docs/datasets.md, "Skipping tiles").
+        auto ds_m = [&](TorchTensorView& prev, TorchTensorView& curr,
+                        const std::string& name, int C) {
+            if (!_has(prev)) return;
             const TorchTensorView& mk = ref_alpha_s[sc - 1];
             const auto& pps = std::get<2>(prev);
             const auto& mks = std::get<2>(mk);
@@ -739,26 +741,26 @@ LossValues compute_multi_scale_per_pixel_losses(
             const bool same = _has(mk) && mks[0] == pps[0] &&
                               mks[1] == pps[1] && mks[2] == pps[2];
             if (!has_mask || !same) {
-                ds_f(prev, curr, name, 3);
+                ds_f(prev, curr, name, C);
                 return;
             }
             curr = _pool_alloc_f(pfx + name, B, std::max((long)1, (long)pps[1] / 2),
-                                 std::max((long)1, (long)pps[2] / 2), 3);
+                                 std::max((long)1, (long)pps[2] / 2), C);
             avg_pool_downsample_masked_float_vk(prev, mk, curr);
         };
-        ds_rgb(render_rgb_s[sc - 1], render_rgb_s[sc], "rrgb");
-        ds_rgb(ref_rgb_s[sc - 1], ref_rgb_s[sc], "frgb");
-        ds_f(render_depth_s[sc - 1], render_depth_s[sc], "rd", 1);
+        ds_m(render_rgb_s[sc - 1], render_rgb_s[sc], "rrgb", 3);
+        ds_m(ref_rgb_s[sc - 1], ref_rgb_s[sc], "frgb", 3);
+        ds_m(render_depth_s[sc - 1], render_depth_s[sc], "rd", 1);
         ds_geo(ref_depth_s[sc - 1], ref_depth_s[sc], "fd", 1);
-        ds_f(render_normal_s[sc - 1], render_normal_s[sc], "rn", 3);
-        ds_f(depth_normal_s[sc - 1], depth_normal_s[sc], "dn", 3);
+        ds_m(render_normal_s[sc - 1], render_normal_s[sc], "rn", 3);
+        ds_m(depth_normal_s[sc - 1], depth_normal_s[sc], "dn", 3);
         ds_geo(ref_normal_s[sc - 1], ref_normal_s[sc], "fn", 3);
-        ds_f(render_Ts_s[sc - 1], render_Ts_s[sc], "rT", 1);
-        ds_f(rgb_dist_s[sc - 1], rgb_dist_s[sc], "rgbd", 3);
-        ds_f(depth_dist_s[sc - 1], depth_dist_s[sc], "dd", 1);
-        ds_f(normal_dist_s[sc - 1], normal_dist_s[sc], "nd", 3);
-        ds_f(median_depth_s[sc - 1], median_depth_s[sc], "md", 1);
-        ds_f(median_normal_s[sc - 1], median_normal_s[sc], "mn", 3);
+        ds_m(render_Ts_s[sc - 1], render_Ts_s[sc], "rT", 1);
+        ds_m(rgb_dist_s[sc - 1], rgb_dist_s[sc], "rgbd", 3);
+        ds_m(depth_dist_s[sc - 1], depth_dist_s[sc], "dd", 1);
+        ds_m(normal_dist_s[sc - 1], normal_dist_s[sc], "nd", 3);
+        ds_m(median_depth_s[sc - 1], median_depth_s[sc], "md", 1);
+        ds_m(median_normal_s[sc - 1], median_normal_s[sc], "mn", 3);
         ds_b(ref_alpha_s[sc - 1], ref_alpha_s[sc], "ra");
     }
 

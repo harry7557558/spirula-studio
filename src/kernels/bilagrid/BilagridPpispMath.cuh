@@ -443,6 +443,11 @@ __constant__ float COLOR_PINV_BLOCKS[4][4] = {
     {0.0128369f, -0.0034654f, -0.0034654f, 0.0128158f}   // Neutral
 };
 
+// Floor on the RGI renormalization denominator, as a fraction of |intensity|:
+// the identity homography gives rgi_out.z == intensity, so it binds only on an
+// aggressive H's pole line, capping chroma gain. Mirrors shaders/ppisp.slang.
+__device__ constexpr float kColorNormMinZ = 0.0001f;
+
 // Softplus transformation for bounded positive parameters
 __device__ __forceinline__ float bounded_positive_forward(float raw, float min_value = 0.1f) {
     return min_value + __logf(1.0f + __expf(raw));
@@ -634,11 +639,15 @@ __device__ __forceinline__ void apply_color_correction_ppisp(const float3 &rgb_i
     // Apply homography
     float3 rgi_out = H * rgi_in;
 
-    // Normalize and convert back to RGB
-    float norm_factor = __fdividef(intensity, fmaxf(rgi_out.z, 0.0f) + 1.0e-5f);
-    rgi_out = rgi_out * norm_factor;
+    // Renormalize to the input intensity, off a strictly positive z. Third
+    // component is `intensity` by construction, so it is written back rather
+    // than recomputed: intensity is preserved exactly, at every z.
+    float z = fmaxf(rgi_out.z, kColorNormMinZ * fabsf(intensity) + 1.0e-8f);
+    float norm_factor = __fdividef(intensity, z);
+    float out_r = rgi_out.x * norm_factor;
+    float out_g = rgi_out.y * norm_factor;
 
-    rgb_out = make_float3(rgi_out.x, rgi_out.y, rgi_out.z - rgi_out.x - rgi_out.y);
+    rgb_out = make_float3(out_r, out_g, intensity - out_r - out_g);
 }
 
 // ----------------------------------------------------------------------------

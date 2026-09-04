@@ -1,8 +1,8 @@
 // PixelWise render-path kernels (Vulkan backend): background blends, color
 // space conversion, depth->normal. Mirrors the corresponding kernels in
 // kernels/pixelwise/ImageColorOps.cu via the same pixel_wise.slang device functions
-// (blend_background, linear_rgb_to_srgb / rgb_to_srgb, generate_ray_d2n,
-// points_to_normal). Training backwards land with the training phase.
+// (blend_background, working_to_display, generate_ray_d2n, points_to_normal).
+// Training backwards land with the training phase.
 //
 // All buffers are contiguous [B, H, W, C] pool tensors, so the element-wise
 // kernels run flat over B*H*W with the usual wgs_per_row grid fold. The
@@ -16,10 +16,12 @@
 #undef CudaDeviceExport
 #include "dist_spec.slang"
 
-// Single boolean variant flag shared by the entries that need one
-// (noise blend: is_linear; srgb: is_input_linear).
+// colorspace::Transfer and whether the working space stores linear light,
+// shared by the entries that need them (noise blend and the display encode).
 [SpecializationConstant]
-const int kFlagLinear = 0;
+const int kTransfer = 0;
+[SpecializationConstant]
+const int kIsLinear = 0;
 
 // ---------------------------------------------------------------------------
 // blend_background_forward
@@ -105,9 +107,11 @@ float3 _bg_sample(uint blocky, uint seed, uint gid, uint bid, uint W) {
                       (h & 2u) != 0u ? 1.0f : -1.0f,
                       (h & 4u) != 0u ? 1.0f : -1.0f);
     }
-    return float3(float(hash_uint3(seed + 0, gid, bid)) * exp2(-32.0f),
-                  float(hash_uint3(seed + 1, gid, bid)) * exp2(-32.0f),
-                  float(hash_uint3(seed + 2, gid, bid)) * exp2(-32.0f));
+    // 2u-1: without it the plain path lands in [0.5, 0.5+w/2) instead of
+    // straddling 0.5, so every channel sits in the same bright half.
+    return float3(float(hash_uint3(seed + 0, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(hash_uint3(seed + 1, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(hash_uint3(seed + 2, gid, bid)) * exp2(-31.0f) - 1.0f);
 }
 
 struct BlendBgNoiseParams {  // 56 bytes: pushed directly
@@ -139,11 +143,7 @@ void blend_background_noise_fwd(uint3 wg: SV_GroupID,
 
     float3 background = _bg_sample(p.blocky, p.seed, gid, bid, p.W);
     background = 0.5f + 0.5f * p.randomize_weight * background;
-    if (kFlagLinear != 0) {
-        background.x = srgb_to_linear_rgb(background.x);
-        background.y = srgb_to_linear_rgb(background.y);
-        background.z = srgb_to_linear_rgb(background.z);
-    }
+    background = display_to_working3(background, kTransfer, kIsLinear != 0);
 
     rgb = blend_background(rgb, T, background);
     p.out_rgb[3 * idx] = rgb.x;
@@ -152,7 +152,7 @@ void blend_background_noise_fwd(uint3 wg: SV_GroupID,
 }
 
 // ---------------------------------------------------------------------------
-// rgb_to_srgb_forward (kFlagLinear = is_input_linear)
+// working_to_display_forward (kTransfer / kIsLinear = the source encoding)
 // ---------------------------------------------------------------------------
 
 struct RgbToSrgbParams {  // 32 bytes: pushed directly
@@ -165,8 +165,8 @@ struct RgbToSrgbParams {  // 32 bytes: pushed directly
 
 [shader("compute")]
 [numthreads(128, 1, 1)]
-void rgb_to_srgb_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                     uniform RgbToSrgbParams p) {
+void working_to_display_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                            uniform RgbToSrgbParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.total) return;
     float3 rgb = float3(p.rgb[3 * idx], p.rgb[3 * idx + 1],
@@ -176,10 +176,7 @@ void rgb_to_srgb_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     for (int r = 0; r < 3; r++)
         cm[r] = float3(p.color_matrix[3 * r], p.color_matrix[3 * r + 1],
                        p.color_matrix[3 * r + 2]);
-    if (kFlagLinear != 0)
-        rgb = linear_rgb_to_srgb(rgb, cm);
-    else
-        rgb = rgb_to_srgb(rgb, cm);
+    rgb = working_to_display(rgb, cm, kTransfer, kIsLinear != 0);
     p.out_rgb[3 * idx] = rgb.x;
     p.out_rgb[3 * idx + 1] = rgb.y;
     p.out_rgb[3 * idx + 2] = rgb.z;

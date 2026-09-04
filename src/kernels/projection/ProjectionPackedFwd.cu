@@ -11,6 +11,8 @@ namespace cg = cooperative_groups;
 
 #include <core/Tensor.h>
 
+#include "shaders/packed_mask.h"
+
 
 template<typename SplatPrimitive, CameraModelType camera_model,
          CameraDistortionType distortion>
@@ -25,7 +27,8 @@ void projection_packed_mask_kernel_wrapper(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -45,11 +48,12 @@ void projection_packed_fwd_kernel_wrapper(
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
     const uint32_t image_width,
     const uint32_t image_height,
-    const int64_t* __restrict__ intersection_mask_scan,  // [C, N], inclusive scan
+    const uint32_t* __restrict__ mask_bits,
+    const int32_t* __restrict__ block_scan,
     // outputs
     int32_t *__restrict__ camera_ids,    // [nnz]
     int32_t *__restrict__ gaussian_ids,  // [nnz]
-    float4 *__restrict__ aabbs,         // [nnz, 4]
+    uint2 *__restrict__ aabbs,          // [nnz] packed
     float *__restrict__ sorting_depths,         // [nnz]
     float *__restrict__ radii,  // [N]
     typename SplatPrimitive::ScreenBuffer splats_screen,  // [nnz, ...]
@@ -65,7 +69,7 @@ template<typename SplatPrimitive>
 inline std::tuple<
     DeviceVector<int32_t>,    // camera_ids [nnz]
     DeviceVector<int32_t>,    // gaussian_ids [nnz]
-    DeviceVector<float4>,     // aabb [nnz]
+    DeviceVector<uint2>,      // aabb [nnz] packed, core/AabbQuant.cuh
     DeviceVector<float>,      // sorting_depths [nnz]
     std::vector<DeviceTensorFloatND>  // out splats
 > launch_projection_packed_fwd_kernel(
@@ -88,16 +92,21 @@ inline std::tuple<
 ) {
     typename SplatPrimitive::WorldBuffer splats_world(in_splats);
 
-    // mask
+    // Visibility bitmask: one bit per (camera, gaussian) pair plus one
+    // popcount per launch block, so only the block counts get scanned.
+    packed_check_pair_count(C, N);
+    const int64_t n_blocks = _CEIL_DIV((int64_t)C * N, (int64_t)SS_PMASK_BLOCK);
 
-    DeviceVector<bool> intersection_mask;
-    intersection_mask.resize(PoolSlot::ProjMask, (int64_t)(C*N));
+    DeviceVector<uint32_t> mask_bits;
+    mask_bits.resize(PoolSlot::ProjMask, n_blocks * SS_PMASK_WORDS);
+    DeviceVector<int32_t> block_counts;
+    block_counts.resize(PoolSlot::ProjBlockCount, n_blocks);
 
     #define _LAUNCH_ARGS ( \
             (cudaStream_t)0, C, N, \
             splats_world, viewmats_ptr, intrins_ptr, dist_coeffs, \
             image_width, image_height, \
-            intersection_mask.data_ptr(), \
+            mask_bits.data_ptr(), block_counts.data_ptr(), \
             sh_value_packed, sh_value_bounds, num_sh_buffer, sh_value_bits, \
             sh_bounds_stride \
         )
@@ -114,19 +123,19 @@ inline std::tuple<
     #undef _LAUNCH_ARGS
 
     // prefix sum
-    DeviceVector<int64_t> intersection_mask_scan;
-    intersection_mask_scan.resize(PoolSlot::ProjScan, (int64_t)(C*N));
+    DeviceVector<int32_t> block_scan;
+    block_scan.resize(PoolSlot::ProjScan, n_blocks);
     CUB_WRAPPER(cub::DeviceScan::InclusiveSum,
-        intersection_mask.data_ptr(), intersection_mask_scan.data_ptr(), (int)(C*N));
-    int64_t nnz = 0;
-    if (C*N > 0)
-        cudaMemcpy(&nnz, intersection_mask_scan.data_ptr() + (C*N - 1), sizeof(int64_t), cudaMemcpyDeviceToHost);
+        block_counts.data_ptr(), block_scan.data_ptr(), (int)n_blocks);
+    int32_t nnz = 0;
+    if (n_blocks > 0)
+        cudaMemcpy(&nnz, block_scan.data_ptr() + (n_blocks - 1), sizeof(int32_t), cudaMemcpyDeviceToHost);
 
     // projection
 
     DeviceVector<int32_t> camera_ids; camera_ids.resize(PoolSlot::ProjCameraIds, nnz);
     DeviceVector<int32_t> gaussian_ids; gaussian_ids.resize(PoolSlot::ProjGaussianIds, nnz);
-    DeviceVector<float4> aabb; aabb.resize(PoolSlot::ProjAabb, nnz);
+    DeviceVector<uint2> aabb; aabb.resize(PoolSlot::ProjAabb, nnz);
     DeviceVector<float> sorting_depths; sorting_depths.resize(PoolSlot::ProjDepths, nnz);
 
     std::vector<DeviceTensorFloatND> splats_screen = SplatPrimitive::ScreenBuffer::empty_pool(nnz, PoolSlot::ProjScreen);
@@ -135,7 +144,7 @@ inline std::tuple<
             (cudaStream_t)0, C, N, \
             splats_world, viewmats_ptr, intrins_ptr, dist_coeffs, \
             image_width, image_height, \
-            intersection_mask_scan.data_ptr(), \
+            mask_bits.data_ptr(), block_scan.data_ptr(), \
             camera_ids.data_ptr(), gaussian_ids.data_ptr(), \
             aabb.data_ptr(), sorting_depths.data_ptr(), radii.data_ptr(), \
             splats_screen, \
@@ -164,7 +173,7 @@ inline std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_packed_forward(
     const int64_t num_splats,
@@ -209,7 +218,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_packed_forward(
     const int64_t num_splats,
@@ -255,7 +264,7 @@ std::tuple<
 
 /*[AutoHeaderGeneratorExport]*/
 std::tuple<
-    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<float4>,
+    DeviceVector<int32_t>, DeviceVector<int32_t>, DeviceVector<uint2>,
     DeviceVector<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_packed_forward(
     const int64_t num_splats,

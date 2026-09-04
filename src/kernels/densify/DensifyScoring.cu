@@ -221,7 +221,9 @@ __global__ void densify_update_weight_kernel(
     const float* __restrict__ accum_weight2,  // [N], optional blend partner
     float blend_w,  // weight of accum_weight2 in the geometric blend
     float score_power,  // exponent on this step's score, before the accumulator
-    float2* __restrict__ accum_buffer  // [N, 2]
+    float2* __restrict__ accum_buffer,  // [N, 2]
+    float max_scale2d,  // on-screen size limit for the oversize accumulator
+    float* __restrict__ oversize_accum  // [N], null to skip
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_splats)
@@ -229,6 +231,11 @@ __global__ void densify_update_weight_kernel(
 
     if (!(radii[idx] > 0))
         return;
+
+    // Summed, not maxed: a splat seen oversize from one camera in fifty is
+    // not the one to spend a split on.
+    if (oversize_accum != nullptr && radii[idx] > max_scale2d)
+        oversize_accum[idx] += log2f(radii[idx] / max_scale2d);
 
     float weight = fabsf(accum_weight[idx]);
     // Geometric blend: weight^(1-w) * |accum_weight2|^w. Invariant (up to a
@@ -389,7 +396,9 @@ void densify_update_weight(
     float blend_w,
     float score_power,
     DeviceVector<float2> accum_buffer,
-    int score_mode
+    int score_mode,
+    float max_scale2d,
+    DeviceVector<float> oversize_accum
 ) {
     densify_update_weight_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
         num_splats, score_mode,
@@ -401,9 +410,47 @@ void densify_update_weight(
         accum_weight2.data_ptr(),
         blend_w,
         score_power,
-        accum_buffer.data_ptr()
+        accum_buffer.data_ptr(),
+        max_scale2d,
+        oversize_accum.data_ptr()
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
 
+// Sampling weight for the oversize split channel. The floor makes an
+// all-zero accumulator degrade to a draw from the error score itself, so a
+// scene with nothing oversize spends its whole budget the usual way.
+__global__ void densify_oversize_weight_kernel(
+    long num_splats,
+    float blend,
+    const float* __restrict__ oversize_accum,  // [N]
+    const float2* __restrict__ score,          // [N, 2], lane 0 = error score
+    float2* __restrict__ out                   // [N, 2], lane 0 = weight
+) {
+    long idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= num_splats)
+        return;
+    constexpr float kOversizeFloor = 1e-3f;
+    float s = fmaxf(score[idx].x, 0.0f);
+    float w = oversize_accum[idx] + kOversizeFloor;
+    if (blend > 0.0f)
+        w *= (blend == 1.0f) ? s : powf(s, blend);
+    out[idx] = make_float2(isfinite(w) ? w : 0.0f, 0.0f);
+}
+
+/*[AutoHeaderGeneratorExport]*/
+void densify_oversize_weight_tensor(
+    int64_t num_splats,
+    float blend,
+    DeviceVector<float> oversize_accum,
+    DeviceVector<float2> score,
+    DeviceVector<float2> out
+) {
+    if (num_splats <= 0)
+        return;
+    densify_oversize_weight_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
+        (long)num_splats, blend,
+        oversize_accum.data_ptr(), score.data_ptr(), out.data_ptr());
+    CHECK_DEVICE_ERROR(cudaGetLastError());
+}

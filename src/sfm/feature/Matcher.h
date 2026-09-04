@@ -331,7 +331,10 @@ private:
         return 1.0f - 0.5f * (float)d2 * k * k;
     }
 
-    static constexpr int DW = 32;  // uint words per descriptor
+    // Bytes per descriptor: 128 for SIFT's and ALIKED's, 256 for DeDoDe-G's.
+    // Read off the first FeatureSet with any features in it, and the shader is
+    // built at both widths (cmake/SsSfm.cmake).
+    int descBytes() const { return desc_words_ * 4; }
     // Workgroup width of the row-only kernel; MUST equal TQR in
     // sfm/shaders/match/bruteforce.slang. Each workgroup streams the whole
     // train set through groupshared once, so a pair's train traffic is
@@ -340,13 +343,21 @@ private:
     // queries that are not even in range.
     static constexpr uint32_t kRowThreads = 256;
 
-    // 128 bytes per descriptor either way: uint8 as SIFT writes them, or f32
-    // quantized on upload (see kQuantHalfRange).
-    static void checkDescriptors(const FeatureSet& f) {
+    // One byte per component either way: uint8 as SIFT writes them, or f32
+    // normalized and quantized on upload (see kQuantHalfRange).
+    void checkDescriptors(const FeatureSet& f) {
         if (f.count() == 0) return;
-        if (f.dim != 128)
-            throw std::runtime_error("brute-force matcher expects 128-D descriptors, got " +
-                                     std::to_string(f.dim));
+        if (desc_words_ == 0 && (f.dim == 128 || f.dim == 256))
+            desc_words_ = (int)f.dim / 4;
+        if (f.dim != 128 && f.dim != 256)
+            throw std::runtime_error(
+                "brute-force matcher expects 128-D or 256-D descriptors, got " +
+                std::to_string(f.dim));
+        if ((int)f.dim != desc_words_ * 4)
+            throw std::runtime_error(
+                "brute-force matcher was set up for " + std::to_string(desc_words_ * 4) +
+                "-D descriptors and this image has " + std::to_string(f.dim) +
+                "; one batch cannot mix widths");
         if (f.dtype != DType::U8 && f.dtype != DType::F32)
             throw std::runtime_error("brute-force matcher expects uint8 or f32 descriptors");
     }
@@ -402,6 +413,9 @@ private:
     // pipelines are created against. Everything is sized once, from the whole
     // feature set, so nothing is reallocated underneath a live pipeline.
     void ensureSetup(const std::vector<const FeatureSet*>& feats) {
+        // Every image empty: nothing will be matched, but the buffers are still
+        // sized and divided by, so pick the ordinary width.
+        if (desc_words_ == 0) desc_words_ = 32;
         uint64_t total = 0, maxCount = 0;
         for (const FeatureSet* f : feats) {
             total += f->count();
@@ -424,7 +438,8 @@ private:
         // matcher first used on a two-image pair could never serve a real batch.
         const uint64_t batchFloor =
             (uint64_t)std::max(1, opt_.batch_pairs) * 2 * std::max<uint64_t>(maxCount, 1);
-        const uint64_t budget = std::max<uint64_t>(opt_.descriptor_budget_bytes / 128, batchFloor);
+        const uint64_t budget =
+            std::max<uint64_t>(opt_.descriptor_budget_bytes / descBytes(), batchFloor);
         descCap_ = (uint32_t)std::min<uint64_t>(std::max<uint64_t>(total, batchFloor), budget);
         // Worst case a batch can ask for: every pair contributing both images'
         // results, all at the largest feature count.
@@ -435,18 +450,18 @@ private:
         const uint64_t mc = std::max<uint64_t>(maxCount, 1);
         uint64_t colCap = ((mc + 63) / 64) * mc;
 
-        bDesc_ = ctx_.createBuffer((VkDeviceSize)descCap_ * DW * 4);
+        bDesc_ = ctx_.createBuffer((VkDeviceSize)descCap_ * descBytes());
         bNorm_ = ctx_.createBuffer((VkDeviceSize)descCap_ * 4);
         bResult_ = ctx_.createBuffer((VkDeviceSize)resultCap_ * 16);
         bCol_ = ctx_.createBuffer((VkDeviceSize)colCap * 4);
         ctx_.createDescriptors({bDesc_.buf, bNorm_.buf, bResult_.buf, bCol_.buf});
 
         size_t words = 0;
-        const char* blob = dot4_ ? "match" : "match_nodot";
-        const uint32_t* code = findSpirv(blob, &words);
+        const std::string blob = std::string(dot4_ ? "match" : "match_nodot") +
+                                 (desc_words_ == 64 ? "_d256" : "");
+        const uint32_t* code = findSpirv(blob.c_str(), &words);
         if (!code)
-            throw std::runtime_error(std::string(blob) +
-                                     " shader not built into this binary");
+            throw std::runtime_error(blob + " shader not built into this binary");
         ctx_.loadPipelines(code, words * 4,
                            {"match_pair", "match_rows", "reduce_cols", "descriptor_norms"});
         setup_ = true;
@@ -490,7 +505,8 @@ private:
         // contiguous descriptor range, so this is a single upload and a single
         // norm dispatch instead of one of each per image.
         const uint32_t first = used_;
-        blob_.resize((size_t)want * 128);
+        const size_t dsz = (size_t)descBytes();
+        blob_.resize((size_t)want * dsz);
         uint8_t* blob = blob_.data();
         size_t off = 0;
         for (uint32_t img : need) {
@@ -498,16 +514,26 @@ private:
             resident_[img] = used_;
             used_ += f.count();
             if (!f.count()) continue;
-            const size_t bytes = (size_t)f.count() * 128;
+            const size_t bytes = (size_t)f.count() * dsz;
             if (f.dtype == DType::U8) {
                 memcpy(blob + off, f.descriptors.data(), bytes);
             } else {
+                // Float descriptors are L2-normalized on the way in. ALIKED's
+                // already are, so this is a no-op there; DeDoDe's are NOT, and
+                // both the quantization range and similarityFromD2 assume it.
                 const float* src = reinterpret_cast<const float*>(f.descriptors.data());
-                for (size_t i = 0; i < bytes; i++) blob[off + i] = quantize(src[i]);
+                for (uint32_t r = 0; r < f.count(); r++) {
+                    const float* row = src + (size_t)r * dsz;
+                    double sq = 0;
+                    for (size_t i = 0; i < dsz; i++) sq += (double)row[i] * row[i];
+                    const float inv = sq > 0 ? (float)(1.0 / std::sqrt(sq)) : 1.0f;
+                    uint8_t* dst = blob + off + (size_t)r * dsz;
+                    for (size_t i = 0; i < dsz; i++) dst[i] = quantize(row[i] * inv);
+                }
             }
             off += bytes;
         }
-        ctx_.upload(bDesc_, blob, (VkDeviceSize)want * 128, (VkDeviceSize)first * 128);
+        ctx_.upload(bDesc_, blob, (VkDeviceSize)want * dsz, (VkDeviceSize)first * dsz);
         normDirty_ = {first, used_};
     }
 
@@ -523,6 +549,7 @@ private:
     std::vector<uint8_t> blob_;               // upload scratch, reused across chunks
     std::map<uint32_t, uint32_t> resident_;   // image index -> first descriptor index
     std::pair<uint32_t, uint32_t> normDirty_{0, 0};  // descriptor range awaiting ||d||^2
+    int desc_words_ = 0;                      // 32 or 64, from the first FeatureSet
     uint32_t used_ = 0, descCap_ = 0, resultCap_ = 0;
     uint64_t setupMaxCount_ = 0;  // largest feature count the buffers were sized for
 };

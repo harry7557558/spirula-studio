@@ -301,25 +301,29 @@ std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
     // FULL resolution, so working size is what its memory is spent on. Its
     // feature counts are lower too, which is the detector's design rather
     // than a budget: it emits fewer, better-localized points.
-    const bool learned = isAlikedType(cfg.features);
+    const bool learned = isAlikedType(cfg.features) || isLomaType(cfg.features);
     if (cfg.quality == "low") {
         presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 800 : 1000);
         presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 2048);
         presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 1024);
+        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 1024);
         presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 16);
     } else if (cfg.quality == "medium") {
         presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 1200 : 1600);
         presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 4096);
         presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 2048);
+        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 2048);
         presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 24);
     } else if (cfg.quality == "high") {
         presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 1600 : 2400);
         presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 8192);
         presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 4096);
+        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 4096);
     } else if (cfg.quality == "extreme") {
         presetSet(seen, moved, "max-image-size", cfg.max_image_size, learned ? 2400 : 3200);
         presetSet(seen, moved, "max-features", cfg.sift.max_num_features, 16384);
         presetSet(seen, moved, "aliked-max-features", cfg.aliked.max_num_features, 8192);
+        presetSet(seen, moved, "loma-max-features", cfg.loma.max_num_features, 8192);
         presetSet(seen, moved, "prefilter-neighbors", cfg.prefilter.num_neighbors, 48);
     } else {
         return "unknown --quality '" + cfg.quality + "' (low, medium, high or extreme)";
@@ -353,7 +357,7 @@ std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
     if (learned && !isLearnedMatcher(cfg.matcher))
         presetSet(seen, moved, "ratio", cfg.match.max_ratio, 0.92f);
 
-    // LightGlue decides on its own assignment, so the ratio test and the
+    // A learned matcher decides its own assignment, so the ratio test and the
     // cross-check are not merely unnecessary -- they are a second filter on a
     // quantity it does not produce. Its own confidence is the only threshold.
     if (isLearnedMatcher(cfg.matcher)) {
@@ -416,21 +420,37 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     twoview.ransac.max_error = max_error;
     mapper.max_reproj_error = max_error;
 
-    if (features != "sift" && !isAlikedType(features))
+    if (features != "sift" && !isAlikedType(features) && !isLomaType(features))
         return "unknown --features '" + features +
-               "' (sift, aliked-n16rot or aliked-n32)";
+               "' (sift, aliked-n16rot, aliked-n32, loma-b128 or loma-b)";
     if (matcher != "bruteforce" && !isLearnedMatcher(matcher))
-        return "unknown --matcher '" + matcher + "' (bruteforce or lightglue)";
-    // LightGlue is trained on one frontend's descriptors, and matching SIFT
-    // with it would run and return nonsense. Only `auto` can check that here:
-    // `match` reads features off disk and has no --features to compare
-    // against, so its guard is on the descriptors themselves, in
-    // LearnedMatcher.cpp, which is the more honest place for it anyway.
+        return "unknown --matcher '" + matcher +
+               "' (bruteforce, lightglue or loma-b128)";
+    // Matching SIFT with a learned matcher would run and return nonsense.
+    // Only `auto` can check it here; `match` reads features off disk, so its
+    // guard is on the descriptors themselves, in LearnedMatcher.cpp.
     if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && isLearnedMatcher(matcher) &&
-        !isAlikedType(features))
+        !isAlikedType(features) && !isLomaType(features))
         return "--matcher " + matcher + " needs learned descriptors; add "
                "--features aliked-n16rot";
+    // The two families do not mix either: LightGlue reads ALIKED's descriptors
+    // and a LoMa matcher reads DeDoDe's, and each would run on the other's and
+    // return nonsense rather than fail.
+    if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && isLomaType(matcher) != isLomaType(features) &&
+        isLearnedMatcher(matcher))
+        return "--matcher " + matcher + " and --features " + features +
+               " are different frontends; a learned matcher only reads the "
+               "descriptors it was trained on";
+    // Nor do two LoMa variants whose descriptors differ. The matcher would
+    // refuse them anyway, but only after the extraction had run.
+    if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && isLomaType(matcher) && isLomaType(features) &&
+        lomaDescriptorDim(matcher) != lomaDescriptorDim(features))
+        return "--matcher " + matcher + " wants " +
+               std::to_string(lomaDescriptorDim(matcher)) + "-D descriptors and "
+               "--features " + features + " makes " +
+               std::to_string(lomaDescriptorDim(features)) + "-D ones";
     lightglue.device = device;
+    loma.device = loma_match.device = device;
     if (max_image_size <= 0) max_image_size = defaultMaxImageSize(features);
 
     sift.device = match.device = prefilter.device = mapper.device = device;
@@ -438,7 +458,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     mapper.threads = threads;
     const bool v = !quiet;
     sift.verbose = mapper.verbose = manager.verbose = merge.verbose = aliked.verbose = v;
-    lightglue.verbose = v;
+    lightglue.verbose = loma.verbose = loma_match.verbose = v;
 
     // Scoring problems are ~1/32 the size of full matching, so the selection
     // pass batches at least as many pairs per submit as the matcher does.

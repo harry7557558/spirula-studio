@@ -9,7 +9,9 @@
 #include "core/ExrImage.h"
 #include "i18n/catalog/Log.h"
 #include "data/CameraMath.h"
+#include "data/ImageProbe.h"
 #include "data/Knn.h"
+#include "sfm/core/Exif.h"
 
 #ifndef _WIN32
 #include <ftw.h>
@@ -74,27 +76,57 @@ Mat3f gamut_to_rec709(const std::string& name) {
 
 Mat3f invert3x3(const Mat3f& m) { return colorspace::invert3x3(m); }
 
+// "none" is how both front ends spell unset for a string field, and the GUI
+// writes it literally when a preset gave the field a value.
+static bool unset(const std::string& v) { return v.empty() || v == "none"; }
+
+// "Rec.709" is the config saying "sRGB, and do not take the file's word for
+// it"; resolved it is the identity, same as unset.
+static std::string resolved_gamut(const std::string& name) {
+    return name == "Rec.709" ? std::string() : name;
+}
+
 ColorResolution resolve_color(const TrainConfig& c) {
     ColorResolution r;
-    // "Rec.709" is how the config says "sRGB, and do not take the file's word
-    // for it"; resolved it is the identity, same as the unset "".
-    r.image_gamut  = c.image_color_gamut == "Rec.709" ? "" : c.image_color_gamut;
-    r.image_linear = c.image_color_is_linear.value_or(false);
+    r.image_gamut    = unset(c.image_color_gamut)
+                           ? std::string() : resolved_gamut(c.image_color_gamut);
+    r.image_linear   = c.image_color_is_linear.value_or(false);
+    r.image_transfer = colorspace::transfer_or(c.image_color_transfer,
+                                               colorspace::Transfer::Srgb);
     std::optional<bool> convert = c.convert_initial_point_cloud_color;
+    auto declared = [&] { if (!convert.has_value()) convert = true; };
 
-    r.splat_gamut = c.splat_color_gamut;
-    if (r.splat_gamut.empty()) r.splat_gamut = r.image_gamut;
-    else if (!convert.has_value()) convert = true;
-    if (r.splat_gamut == "Rec.709") r.splat_gamut = "";
+    // Each splat-side half falls back to the images, so declaring only the
+    // input still renders back into the space the input came from.
+    if (unset(c.splat_color_gamut)) {
+        r.splat_gamut = r.image_gamut;
+    } else {
+        r.splat_gamut = resolved_gamut(c.splat_color_gamut);
+        declared();
+    }
 
     if (c.splat_color_is_linear.has_value()) {
         r.splat_linear = *c.splat_color_is_linear;
-        if (!convert.has_value()) convert = true;
+        declared();
     } else {
         r.splat_linear = r.image_linear;
     }
+
+    if (unset(c.splat_color_transfer)) {
+        r.splat_transfer = r.image_transfer;
+    } else {
+        r.splat_transfer = colorspace::transfer_or(c.splat_color_transfer,
+                                                   r.image_transfer);
+        declared();
+    }
     r.convert_seed = convert.value_or(false);
     return r;
+}
+
+static WarpFaceFit resolve_face_fit(const TrainConfig& c) {
+    if (c.warp_face_fit == "uniform")  return WarpFaceFit::Uniform;
+    if (c.warp_face_fit == "per-face") return WarpFaceFit::PerFace;
+    throw std::runtime_error("unknown warp_face_fit: " + c.warp_face_fit);
 }
 
 // What `depths/` measures when the flag does not say. `spirula geometry`
@@ -166,12 +198,13 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         std::shuffle(pick.begin(), pick.end(), rng);
         pick.resize(cfg.cap_max);
     } else {
-        // Repeat modulo when under min_init. TODO: jitter the repeats toward
-        // a nearest neighbor instead of duplicating exactly.
+        // Repeat modulo when under min_init; the repeats are jittered apart
+        // below, and pick[0 .. n_src) stay one per source point.
         int64_t n = std::max(n_src, min_init);
         pick.resize(n);
         for (int64_t i = 0; i < n; i++) pick[i] = i % n_src;
     }
+    const int64_t n_distinct = std::min<int64_t>((int64_t)pick.size(), n_src);
     const int64_t num = (int64_t)pick.size();
     const int64_t cap = cfg.preallocate_splat_tensors
         ? std::max<int64_t>(num, cfg.cap_max) : num;
@@ -192,11 +225,17 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         for (int d = 0; d < 3; d++)
             s.means[i*3 + d] = pts.xyz[pick[i]*3 + d] * rescale;
 
-    // log(scale_init * sqrt(mean d^2 of 4-NN)) over xyz.
-    // TODO: suppress_initial_scales.
-    std::vector<float> nn = knn::mean_knn_dist(s.means, num, 4);
+    // log(scale_init * sqrt(mean d^2 of 4-NN)) over xyz, over the DISTINCT
+    // points: a repeat is its own zero-distance neighbor, and would seed
+    // every splat at log(1e-8). TODO: suppress_initial_scales.
+    std::vector<float> nn = knn::mean_knn_dist(s.means, n_distinct, 4);
     for (int64_t i = 0; i < num; i++) {
-        float v = std::log(scale_init * nn[i] + 1e-8f);
+        float d = nn[i % n_distinct];
+        // Scatter the repeats through the neighborhood they copy.
+        if (i >= n_distinct)
+            for (int k = 0; k < 3; k++)
+                s.means[i*3 + k] += 0.25f * d * gauss(rng);
+        float v = std::log(scale_init * d + 1e-8f);
         s.scales[i*3+0] = s.scales[i*3+1] = s.scales[i*3+2] = v;
     }
 
@@ -220,7 +259,10 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         for (int d = 0; d < 3; d++)
             col[d] = all_same ? uni(rng) : pts.rgb[pick[i]*3 + d] / 255.f;
         if (color.convert_seed) {
-            for (int d = 0; d < 3; d++) col[d] = colorspace::srgb_to_linear(col[d]);
+            // The gamut matrix belongs in linear light, so decode through the
+            // transfer, rotate, and re-encode only if the splats are stored so.
+            for (int d = 0; d < 3; d++)
+                col[d] = colorspace::tone_decode(col[d], color.splat_transfer);
             colorspace::apply3x3(to_splat, col);
             if (!color.splat_linear)
                 for (int d = 0; d < 3; d++) col[d] = colorspace::linear_to_srgb(col[d]);
@@ -344,12 +386,24 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.optim.lr_features_sh = scheduled_lr(step, max_steps_lr, c.features_sh_lr);
     cfg.optim.max_gauss_ratio             = c.max_gauss_ratio;
     cfg.optim.scale_regularization_weight = c.scale_regularization_weight;
-    cfg.optim.mcmc_opacity_reg_weight     = c.opacity_reg;
-    cfg.optim.mcmc_scale_reg_weight       = c.scale_reg / alpha;
+    // Front-loaded shape penalty. (p+1)(1-t)^p has unit integral over the run,
+    // so p moves when the pressure is spent, not how much of it.
+    float reg_t = std::min((float)step / (float)std::max(c.num_iterations, 1), 1.0f);
+    auto reg_decay = [reg_t](float p) {
+        p = std::max(p, 0.0f);
+        return (p + 1.0f) * std::pow(1.0f - reg_t, p);
+    };
+    cfg.optim.mcmc_opacity_reg_weight     =
+        c.opacity_reg * reg_decay(c.opacity_reg_decay_power);
+    cfg.optim.mcmc_scale_reg_weight       =
+        c.scale_reg * reg_decay(c.scale_reg_decay_power) / alpha;
     cfg.optim.erank_reg_weight            = c.erank_reg;
     cfg.optim.erank_reg_weight_s3         = c.erank_reg_s3;
     cfg.optim.quat_norm_reg_weight        = c.quat_norm_reg;
+    cfg.optim.dc_reg_weight               = c.dc_reg;
     cfg.optim.sh_reg_weight               = c.sh_reg;
+    cfg.optim.max_screen_size             = c.max_screen_size;
+    cfg.optim.max_screen_size_penalty     = c.max_screen_size_penalty;
     cfg.optim.use_scale_agnostic_mean     = c.use_scale_agnostic_mean;
     // quantization level -> bit depths
     cfg.optim.quantization_level = c.quantization_level;
@@ -375,6 +429,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.min_opacity                   = c.min_opacity;
     cfg.densify.max_screen_size               = c.max_screen_size;
     cfg.densify.max_screen_size_clip_hardness = c.max_screen_size_clip_hardness;
+    cfg.densify.clip_screen_size_at_refine    = c.max_screen_size_penalty > 0.0f;
     cfg.densify.max_world_size                = c.max_world_size * alpha;
     cfg.densify.noise_lr                      = c.noise_lr * noise_lr_scalar;
     cfg.densify.noise_lr_final                = c.noise_lr_final * noise_lr_scalar;
@@ -386,6 +441,8 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.score_power = c.densify_score_power;
     cfg.densify.score_clip_quantile = c.densify_score_clip_quantile;
     cfg.densify.final_score_power = c.densify_final_score_power;
+    cfg.densify.oversize_split_fraction = c.densify_oversize_split_fraction;
+    cfg.densify.oversize_score_blend = c.densify_oversize_score_blend;
     cfg.densify.las_split_opacity_k_init   = c.long_axis_split_opacity_k[0];
     cfg.densify.las_split_opacity_k_final  = c.long_axis_split_opacity_k[1];
     cfg.densify.las_split_opacity_k_warmup = (int)c.long_axis_split_opacity_k[2];
@@ -429,6 +486,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     // Outside the guard: it is an ordering flag, not a rate, so it reflects
     // the config whether or not PPISP is live.
     cfg.ppisp.run_before_bilagrid = c.apply_ppisp_before_bilagrid;
+    cfg.ppisp.run_before_color_space = c.apply_ppisp_before_color_space;
 
     // ---- background ----------------------------------------------------
     if (c.background_mode == "noise" || c.background_mode == "pseudorandom") {
@@ -499,13 +557,24 @@ std::string train_config_unsupported(const TrainConfig& c) {
     if (c.deblur_training_images)     return not_impl("--deblur-training-images");
     if (!c.optimizer_offload.empty()) return not_impl("--optimizer-offload");
     if (c.cache_images == "gpu")      return not_impl("--cache-images gpu");
-    if (c.rescale_camera_to_fit < 0)  return not_impl("--rescale-camera-to-fit auto-detect");
     if (c.train_frame != "points")    return not_impl("--train-frame " + c.train_frame);
     if (c.primitive != "3dgs" && c.primitive != "mip" && c.primitive != "3dgut")
         return not_impl("--primitive " + c.primitive);
     if (c.quantization_level != 0 && c.quantization_level != 1)
         return lmsg::bad_quantization_level.get();
     return {};
+}
+
+std::string format_duration(double seconds) {
+    if (seconds < 0) return "--:--";
+    int t = (int)(seconds + 0.5);
+    char buf[32];
+    if (t >= 3600)
+        std::snprintf(buf, sizeof buf, "%d:%02d:%02d", t / 3600, (t / 60) % 60,
+                      t % 60);
+    else
+        std::snprintf(buf, sizeof buf, "%d:%02d", t / 60, t % 60);
+    return buf;
 }
 
 // Unported-feature guards: fail early rather than ignore a flag.
@@ -531,7 +600,8 @@ void TrainerSession::load_dataset() {
     pcfg.eval_interval        = cfg.eval_interval;
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.rescale_camera_to_fit   = cfg.rescale_camera_to_fit;
+    pcfg.probe_image_size        = probe_image_size;
+    pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
@@ -569,7 +639,8 @@ void TrainerSession::load_dataset() {
 
     // POST-split camera bake (identity when no warp flag applies).
     post = bake_post_split(
-        ds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole);
+        ds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole,
+        resolve_face_fit(cfg), cfg.warp_back_face);
 
     // Warp-path guards, plus: a modality no weight reads is not loaded at all.
     has_mask   = !ds.mask_filenames.empty()   && cfg.load_masks;
@@ -639,6 +710,44 @@ static void check_cuda_runtime() {
 }
 #endif  // SS_BACKEND_VULKAN
 
+// PPISP exposure seeds: mean-relative EXIF EV x 0.5 per POST-split slot; empty
+// when no image has the tags. The 0.5: PPISP multiplies the sRGB-encoded
+// render, where a bracketed +1 EV measures x2^0.49 (0.34-0.76 by tone curve).
+static std::vector<float> exif_exposure_evs(const ParsedDataset& ds,
+                                            const PostSplitCameras& post,
+                                            int& n_found) {
+    int64_t n = ds.num_cameras;
+    std::vector<double> ev(n, 0.0);
+    std::vector<char> has(n, 0);
+    double sum = 0.0;
+    n_found = 0;
+    for (int64_t i = 0; i < n; i++) {
+        double v;
+        if (sfm::exifExposureEv(sfm::readExif(ds.image_filenames[i]), v)) {
+            ev[i] = v;
+            has[i] = 1;
+            sum += v;
+            // sum += std::exp2(v);
+            n_found++;
+        }
+    }
+    if (n_found == 0) return {};
+    double mean = sum / n_found;
+    // double mean = std::log2(sum / n_found);
+    std::vector<float> out((size_t)post.n_post, 0.0f);
+    for (int64_t i = 0; i < n; i++) {
+        if (!has[i]) continue;
+        float v = 0.5f * (float)(ev[i] - mean);
+        if (post.K_per_camera.empty()) {
+            out[i] = v;
+        } else {
+            for (int k = 0; k < post.K_per_camera[i]; k++)
+                out[post.post_offsets[i] + k] = v;
+        }
+    }
+    return out;
+}
+
 void TrainerSession::setup_engine() {
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
@@ -679,23 +788,37 @@ void TrainerSession::setup_engine() {
                   tv(seed.features_dc, {cap, 3}),
                   tv(seed.features_sh, {cap, dim_sh - 1, 3}));
 
+    // Binning granularity for the splat-tile intersection (0 = automatic).
+    engine_set_bin_tile_size(cfg.bin_tile_size);
+
     // Background blending.
     if (cfg.background_mode == "noise")
-        engine_init_background_noise(color.splat_linear);
+        engine_init_background_noise((int)color.splat_transfer,
+                                     color.splat_linear);
     else if (cfg.background_mode == "pseudorandom")
-        engine_init_background_pseudorandom(color.splat_linear);
+        engine_init_background_pseudorandom((int)color.splat_transfer,
+                                            color.splat_linear);
     else if (cfg.background_mode == "sh")
-        engine_init_background_sh(cfg.background_sh_degree, color.splat_linear);
+        engine_init_background_sh(cfg.background_sh_degree,
+                                  (int)color.splat_transfer,
+                                  color.splat_linear);
 
-    // Linear / wide-gamut color space.
-    bool splat_cs_on = color.splat_linear || !color.splat_gamut.empty();
-    bool image_cs_on = color.image_linear || !color.image_gamut.empty();
+    // Output transfer / wide-gamut color space.
+    const bool splat_cs_on = color.splat_on();
+    const bool image_cs_on = color.image_on();
+    // PPISP ahead of the conversion leaves the bilagrid on the display side,
+    // where it belongs, so the two order flags cannot disagree.
+    if (splat_cs_on && cfg.apply_ppisp_before_color_space &&
+        !cfg.apply_ppisp_before_bilagrid)
+        throw std::runtime_error(lfmt(lmsg::ppisp_before_color_space_order,
+                                      {"--apply-ppisp-before-color-space",
+                                       "--apply-ppisp-before-bilagrid"}));
     {
         auto vec = [](const Mat3f& m) { return std::vector<float>(m.begin(), m.end()); };
         engine_init_color_space(
-            splat_cs_on, color.splat_linear,
+            splat_cs_on, (int)color.splat_transfer, color.splat_linear,
             splat_cs_on ? vec(gamut_to_rec709(color.splat_gamut)) : std::vector<float>{},
-            image_cs_on, color.image_linear,
+            image_cs_on, (int)color.image_transfer, color.image_linear,
             image_cs_on ? vec(gamut_to_rec709(color.image_gamut)) : std::vector<float>{});
     }
 
@@ -712,16 +835,16 @@ void TrainerSession::setup_engine() {
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
-    // A fisheye warp needs a mask even when none is on disk: the synthesized
-    // all-white one becomes the post-split FOV mask (0 outside the lens
-    // circle), without which the unseen face regions train as black.
-    dm.load_masks  = has_mask || post.any_fisheye_warp;
+    // A split needs a mask even when none is on disk: the synthesized
+    // all-white one becomes the post-split FOV mask (0 past the lens),
+    // without which the unseen face regions train as black.
+    dm.load_masks  = has_mask || post.any_fov_mask;
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
     dm.train_batch_size = train_bs;
     dm.val_batch_size   = val_bs;
+    dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
-    dm.warp_to_pinhole  = cfg.warp_to_pinhole;
     engine_setup_data_manager(
         dm, ds.camera_models, ds.camera_distortions,
         ds.image_filenames,
@@ -732,6 +855,9 @@ void TrainerSession::setup_engine() {
         post.any_warp ? post.K_per_camera : std::vector<int32_t>{},
         post.any_warp ? post.post_offsets : std::vector<int32_t>{},
         post.viewmats, post.intrins, post.dist_coeffs,
+        post.any_warp ? post.post_widths : std::vector<int32_t>{},
+        post.any_warp ? post.post_heights : std::vector<int32_t>{},
+        post.any_warp ? post.face_axes : std::vector<float>{},
         post.input_intrins, post.input_dist_coeffs,
         post.redistort_models, post.redistort_params,
         ds.train_indices, ds.val_indices);
@@ -792,7 +918,16 @@ void TrainerSession::setup_engine() {
     }
     if (cfg.use_ppisp &&
         (cfg.use_adagrad_ppisp_optim ? cfg.ppisp_adagrad_lr : cfg.ppisp_lr) > 0.0f) {
-        engine_init_ppisp(n_grids, cfg.ppisp_param_type, cfg.use_adagrad_ppisp_optim);
+        std::vector<float> exif_ev;
+        if (cfg.ppisp_exposure_from_exif) {
+            int n_exif = 0;
+            exif_ev = exif_exposure_evs(ds, post, n_exif);
+            if (n_exif > 0)
+                log(lfmt(lmsg::ppisp_exif_exposure,
+                         {(long long)n_exif, (long long)ds.num_cameras}));
+        }
+        engine_init_ppisp(n_grids, cfg.ppisp_param_type,
+                          cfg.use_adagrad_ppisp_optim, exif_ev);
         st.ppisp_init = true;
     }
 
@@ -874,9 +1009,36 @@ void TrainerSession::save_checkpoint(int step) {
 std::map<std::string, float> TrainerSession::train_step(int step) {
     int sh_degree_to_use = step / std::max(cfg.sh_degree_warmup_every, 1);
     EngineStepConfig sc = build_step_config(cfg, st, step);
-    return engine_train_step_managed(
+    auto losses = engine_train_step_managed(
         step, cfg.num_iterations, cfg.primitive, sh_degree_to_use,
         cfg.packed || cfg.use_bvh, sc);
+
+    // Sticky and returns-and-clears, and nothing else on the training thread
+    // reads it: a failed dispatch or copy would otherwise leave a buffer
+    // unwritten and training would carry on over whatever was in it.
+    if (const char* err = backend::last_error())
+        throw std::runtime_error("GPU backend error at step " +
+                                 std::to_string(step) + ": " + err);
+
+    // Divergence never recovers, and the run otherwise continues in silence to
+    // a black render and a checkpoint with zero splats. Reported values sit
+    // well under 10, so 1e3 is clear of anything legitimate.
+    if (!_diverged_loss_reported) {
+        for (const auto& [name, value] : losses) {
+            if (name == "cur_num_splats" || name == "max_num_splats" ||
+                name == "num_added")
+                continue;
+            // Magnitude only for rgb_loss: the others carry scene-dependent
+            // units (depth, TV) with no comparable ceiling.
+            const bool huge = name == "rgb_loss" && std::fabs(value) > 1e3f;
+            if (std::isfinite(value) && !huge) continue;
+            _diverged_loss_reported = true;
+            log(lfmt(lmsg::warn_diverged_loss,
+                     {(long long)step, name, (double)value}));
+            break;
+        }
+    }
+    return losses;
 }
 
 void TrainerSession::pause_clock_start() {
@@ -905,6 +1067,21 @@ double TrainerSession::elapsed_seconds() const {
     return std::max(0.0, s);
 }
 
+double TrainerSession::avg_step_latency() const {
+    std::lock_guard<std::mutex> lk(_progress_mutex);
+    if (_step_latencies.empty()) return -1.0;
+    double sum = 0.0;
+    for (double v : _step_latencies) sum += v;
+    return sum / (double)_step_latencies.size();
+}
+
+double TrainerSession::eta_seconds() const {
+    const double avg = avg_step_latency();
+    const int step = cur_step.load();
+    if (avg < 0.0 || step <= 0) return -1.0;
+    return std::max(0, cfg.num_iterations - step) * avg;
+}
+
 void TrainerSession::train(const TrainerCallbacks& cb) {
     {
         std::lock_guard<std::mutex> lk(_time_mutex);
@@ -924,10 +1101,13 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             pause_clock_stop();
         }
         if (stop_requested.load()) break;
+        // Clock starts before the yield: a render the trainer stood aside for
+        // is time this step took. Timing only the work below reported 6 ms on
+        // a step the run was actually spending 24 ms on.
+        auto step_start = std::chrono::steady_clock::now();
         while (render_pending.load())
             std::this_thread::sleep_for(std::chrono::microseconds(500));
 
-        auto step_start = std::chrono::steady_clock::now();
         std::map<std::string, float> losses;
         std::string data_error;
         {
@@ -988,28 +1168,27 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         for (const auto& e : engine_get_pool_breakdown()) cap += std::get<2>(e);
         engine_vram_mb = (double)(cap + engine_get_scratch_bytes()) / (1024.0 * 1024.0);
     }
+    engine_profile_capture_vram();
 
     if (cfg.steps_per_save != 0 && save_on_stop.load()) {
         std::lock_guard<std::mutex> lk(engine_mutex);
         save_checkpoint(step);
         log(lfmt(lmsg::checkpoint_saved, {fs::absolute(out_dir).string()}));
     }
+
+    // Steps THIS run, not cur_step: a resumed run's clock starts here too, and
+    // a count that included the checkpoint's steps would not match the time.
+    log(lfmt(lmsg::train_finished, {cur_step.load() - start_step,
+                                    format_duration(training_time_s)}));
 }
 
 std::string TrainerSession::progress_json() {
     int step = cur_step.load();
     double elapsed = elapsed_seconds();
-    double avg = 0.0;
-    size_t nlat = 0;
-    {
-        std::lock_guard<std::mutex> lk(_progress_mutex);
-        for (double v : _step_latencies) avg += v;
-        nlat = _step_latencies.size();
-    }
-    if (nlat) avg /= (double)nlat;
+    double avg = avg_step_latency();
+    double eta = eta_seconds();
     char buf[256];
-    if (nlat && step > 0) {
-        double eta = (cfg.num_iterations - step) * avg;
+    if (eta >= 0.0) {
         std::snprintf(buf, sizeof buf,
             "{\"step\": %d, \"total_steps\": %d, \"elapsed_time\": %.3f, "
             "\"eta\": %.3f, \"latency_ms\": %.3f, \"paused\": %s}",
@@ -1039,7 +1218,7 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
                            cfg.depth_distortion_reg != 0.0f ||
                            cfg.normal_distortion_reg != 0.0f;
     const auto color = resolve_color(cfg);
-    vc.color_space_on = color.splat_linear || !color.splat_gamut.empty();
+    vc.color_space_on = color.splat_on();
     vc.train_frame_scale = ds.train_frame_scale;
     vc.train_to_normalized = ds.train_to_normalized;
     vc.base_camera_size = viewer_base_camera_size;
@@ -1098,7 +1277,8 @@ void TrainerSession::eval() {
     pcfg.eval_interval        = cfg.eval_interval;
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.rescale_camera_to_fit   = cfg.rescale_camera_to_fit;
+    pcfg.probe_image_size        = probe_image_size;
+    pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
@@ -1117,21 +1297,24 @@ void TrainerSession::eval() {
         for (int64_t i = 0; i < eds.num_cameras; i++)
             for (int r = 0; r < 3; r++) eds.c2w[i*12 + r*4 + 3] *= rs;
     }
+    // Uniform whatever the run trains with: eval renders one pass per image,
+    // and its metrics stay comparable between the two fits.
     PostSplitCameras epost = bake_post_split(
-        eds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole);
+        eds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole,
+        WarpFaceFit::Uniform, cfg.warp_back_face);
 
     // One image per step: metrics are per-image, and the batch scheduler would
     // otherwise pack several resolutions into one step.
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
     const bool eval_masks = !eds.mask_filenames.empty() && cfg.load_masks;
-    dm.load_masks  = eval_masks || epost.any_fisheye_warp;
+    dm.load_masks  = eval_masks || epost.any_fov_mask;
     dm.load_depths = false;
     dm.load_normals = false;
     dm.train_batch_size = 1;
     dm.val_batch_size   = 1;
+    dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
-    dm.warp_to_pinhole  = cfg.warp_to_pinhole;
     std::vector<int32_t> all_idx((size_t)eds.num_cameras);
     std::iota(all_idx.begin(), all_idx.end(), 0);
 
@@ -1145,6 +1328,9 @@ void TrainerSession::eval() {
             epost.any_warp ? epost.K_per_camera : std::vector<int32_t>{},
             epost.any_warp ? epost.post_offsets : std::vector<int32_t>{},
             epost.viewmats, epost.intrins, epost.dist_coeffs,
+            epost.any_warp ? epost.post_widths : std::vector<int32_t>{},
+            epost.any_warp ? epost.post_heights : std::vector<int32_t>{},
+            epost.any_warp ? epost.face_axes : std::vector<float>{},
             epost.input_intrins, epost.input_dist_coeffs,
             epost.redistort_models, epost.redistort_params,
             all_idx, {});
@@ -1350,6 +1536,9 @@ void TrainerSession::eval() {
     mf << ",\n    \"engine_vram\": " << engine_vram_mb;
     mf << "\n}\n";
     log(lfmt(lmsg::eval_metrics_written, {(out_dir / "metrics.json").string()}));
+    // Eval renders at full resolution and can push the pool past its
+    // training-time mark, so re-capture over train()'s snapshot.
+    engine_profile_capture_vram();
 }
 
 }  // namespace spirula

@@ -38,6 +38,22 @@ struct AlikedOptions {
     int   device = -1;
 };
 
+// LoMa's knobs. Deliberately not loma::ExtractOptions, for the same reason as
+// AlikedOptions: src/sfm/ must build without the inference layer.
+struct LomaOptions {
+    // Which variant's DESCRIPTOR runs -- "loma-b128" (DeDoDe-B, 128-D) or any
+    // of loma-b / loma-r / loma-l / loma-g (DeDoDe-G, 256-D). The DaD detector
+    // is shared by all five, so this only picks the descriptor.
+    std::string variant = "loma-b128";
+    // Paths to .onnx files, overriding what `variant` names. Empty = fetch.
+    std::string detector_model;
+    std::string descriptor_model;
+    int    max_num_features = 2048;   // COLMAP's LomaExtractionOptions default
+    double min_score = 0.0;           // DaD's density has no useful floor
+    bool   verbose = true;
+    int    device = -1;
+};
+
 struct IFeatureExtractor {
     virtual ~IFeatureExtractor() = default;
 
@@ -53,17 +69,24 @@ struct IFeatureExtractor {
 };
 
 // Longest edge this extractor should run at when the user did not say, mirroring
-// COLMAP's FeatureExtractionOptions::EffMaxImageSize(): 3200 for SIFT, 1600 for
-// ALIKED, whose aggregated feature map is 128 channels at full resolution.
+// COLMAP's FeatureExtractionOptions::EffMaxImageSize(): 3200 for SIFT and 1600
+// for either learned frontend, both of which are full-resolution-map bound.
 int defaultMaxImageSize(const std::string& type);
 
-// Whether `type` names a learned frontend at all (as opposed to "sift").
+// Whether `type` names one of the learned frontends (as opposed to "sift").
 bool isAlikedType(const std::string& type);
+bool isLomaType(const std::string& type);
+
+// Descriptor width a LoMa variant works in -- 128 for loma-b128, 256 for the
+// other four, 0 for anything else. `auto` refuses a --features / --matcher
+// pair that disagrees on it, before spending the extraction.
+int lomaDescriptorDim(const std::string& variant);
 
 // Throws std::runtime_error naming the type when it is unknown, or when it is
-// ALIKED and this binary was built without the inference layer.
+// learned and this binary was built without the inference layer.
 std::unique_ptr<IFeatureExtractor> createFeatureExtractor(const std::string& type,
                                                           const SiftOptions& sift,
-                                                          const AlikedOptions& aliked);
+                                                          const AlikedOptions& aliked,
+                                                          const LomaOptions& loma);
 
 }  // namespace sfm

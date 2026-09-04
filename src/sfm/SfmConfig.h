@@ -95,6 +95,9 @@ struct SfmConfig {
     // spending four times the VRAM on it.
     int max_image_size = 0;
     std::string mask_dir;
+    // Swap keep and ignore in every mask, for the exporters that paint the
+    // region to REMOVE (sfm/core/Mask.h).
+    bool flip_mask = false;
 
     // The input files' colour space. Pixels convert to sRGB on decode, which
     // is what the detectors and the AI models were trained on.
@@ -146,18 +149,18 @@ struct SfmConfig {
     int device = -1;
     bool quiet = false;
 
-    // Which frontend runs. "sift" is the GPU SIFT that has always been here;
-    // the aliked-* values are the learned one (src/aliked/), which needs the
-    // inference layer compiled in. The pair is deliberately two flags and not
-    // one: ALIKED descriptors can be matched brute-force, and LightGlue is a
-    // matcher for them rather than a different extractor.
+    // Which frontend runs. "sift" is the GPU one; aliked-* and loma-* are the
+    // learned ones and need the inference layer. Two flags and not one because
+    // learned descriptors can also be matched brute-force.
     std::string features = "sift";
     std::string matcher = "bruteforce";
 
     // ---- the stage option structs, unchanged ----
     SiftOptions sift;
     AlikedOptions aliked;
+    LomaOptions loma;
     LightGlueOptions lightglue;
+    LomaMatchOptions loma_match;
     MatchOptions match;
     PairSelectionOptions prefilter;
     TwoViewOptions twoview;
@@ -235,6 +238,8 @@ struct SfmConfig {
       20000, "", max_image_size)                                                                   \
     F(mask_dir, "masks", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "pipeline", 0, 0, "", masks)         \
     F(mask_dir, "mask-dir", CMD_AUTO | CMD_EXTRACT, Tier::Alias, "pipeline", 0, 0, "", mask_dir)   \
+    F(flip_mask, "flip-mask", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, "",        \
+      flip_mask)                                                                                   \
     /* ---- colour ---- */                                                                         \
     F(image_gamut, "image-gamut", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,          \
       "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3", image_gamut)                           \
@@ -260,7 +265,7 @@ struct SfmConfig {
       "camera", 0.001, 1.0, "", exif_focal_tol)                                                    \
     /* ---- features ---- */                                                                       \
     F(features, "features", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "features", 0, 0,                 \
-      "sift|aliked-n16rot|aliked-n32", features)                                                   \
+      "sift|aliked-n16rot|aliked-n32|loma-b128|loma-b", features)                                  \
     F(sift.max_num_features, "max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features",   \
       128, 1000000, "", max_features)                                                              \
     F(aliked.max_num_features, "aliked-max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,      \
@@ -269,6 +274,14 @@ struct SfmConfig {
       1, "", aliked_min_score)                                                                     \
     F(aliked.model, "aliked-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "",  \
       aliked_model)                                                                                \
+    F(loma.max_num_features, "loma-max-features", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,          \
+      "features", 128, 1000000, "", aliked_max_features)                                           \
+    F(loma.min_score, "loma-min-score", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 0,     \
+      1, "", aliked_min_score)                                                                     \
+    F(loma.detector_model, "loma-detector-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,          \
+      "features", 0, 0, "", loma_model)                                                            \
+    F(loma.descriptor_model, "loma-descriptor-model", CMD_AUTO | CMD_EXTRACT, Tier::Advanced,      \
+      "features", 0, 0, "", loma_model)                                                            \
     F(sift.num_octaves, "octaves", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features", 1, 8, "",   \
       octaves)                                                                                     \
     F(sift.peak_threshold, "peak-threshold", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "features",   \
@@ -281,11 +294,15 @@ struct SfmConfig {
     F(sift.spv_path, "spv-path", CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "", spv_path)      \
     /* ---- matching ---- */                                                                       \
     F(matcher, "matcher", CMD_AUTO | CMD_MATCH, Tier::Basic, "matching", 0, 0,                     \
-      "bruteforce|lightglue", matcher)                                                             \
+      "bruteforce|lightglue|loma-b128|loma-b|loma-r|loma-l|loma-g", matcher)                       \
     F(lightglue.min_score, "lightglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,            \
       "matching", 0, 1, "", lightglue_min_score)                                                   \
     F(lightglue.model, "lightglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,  \
       "", lightglue_model)                                                                         \
+    F(loma_match.min_score, "loma-min-match-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
+      "matching", 0, 1, "", loma_min_match_score)                                                  \
+    F(loma_match.model, "loma-matcher-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching",    \
+      0, 0, "", loma_model)                                                                        \
     F(match.max_ratio, "ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 1, "", ratio) \
     F(match.min_similarity, "min-similarity", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, \
       1, "", min_similarity)                                                                       \

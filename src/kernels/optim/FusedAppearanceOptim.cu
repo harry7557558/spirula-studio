@@ -44,15 +44,23 @@ __global__ void fused_adam_with_steps_kernel(
     v += decay * (fmaxf(x - decay_offset, 0.0f) + fminf(x + decay_offset, 0.0f));
     float g1 = exp_avg[idx];
     float g2 = exp_avg_sq[idx];
+    // Self-heal: a moment that is already non-finite would otherwise pin this
+    // parameter for the rest of the run.
+    if (!isfinite(g1)) g1 = 0.0f;
+    if (!isfinite(g2)) g2 = 0.0f;
 
     g1 = beta1 * g1 + (1.0f - beta1) * v;
     g2 = beta2 * g2 + (1.0f - beta2) * v * v;
 
-    x -= lr * inv_bias_correction1 * g1 / (sqrtf(g2 * inv_bias_correction2) + eps);
+    float x_new = x - lr * inv_bias_correction1 * g1 /
+                          (sqrtf(g2 * inv_bias_correction2) + eps);
 
-    param[idx] = x;
-    exp_avg[idx] = g1;
-    exp_avg_sq[idx] = g2;
+    // For the per-photo appearance tables (PPISP, bilagrid) one non-finite
+    // entry poisons every pixel of that photo for the rest of the run, and
+    // nothing restores it. Drop the step instead.
+    if (isfinite(x_new)) param[idx] = x_new;
+    if (isfinite(g1)) exp_avg[idx] = g1;
+    if (isfinite(g2)) exp_avg_sq[idx] = g2;
 }
 
 /*[AutoHeaderGeneratorExport]*/
@@ -109,8 +117,14 @@ __global__ void fused_adagrad_kernel(
     if (idx >= numel) return;
     float v = grad[idx];
     if (!isfinite(v)) v = 0.0f;
-    float a = accum[idx] + v * v;
-    param[idx] -= lr * v / (sqrtf(a) + eps);
+    float a0 = accum[idx];
+    if (!isfinite(a0)) a0 = 0.0f;   // self-heal, see fused_adam_with_steps_kernel
+    float a = a0 + v * v;
+    if (!isfinite(a)) a = a0;
+    // See fused_adam_with_steps_kernel: a finite parameter must not become
+    // non-finite, or the photo it corrects renders NaN for the rest of the run.
+    float x_new = param[idx] - lr * v / (sqrtf(a) + eps);
+    if (isfinite(x_new)) param[idx] = x_new;
     accum[idx] = a;
 }
 

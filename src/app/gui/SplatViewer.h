@@ -78,15 +78,14 @@ public:
     const float* mesh_to_normalized() const { return _mesh_t2n; }
     int64_t num_faces() const { return _num_faces.load(); }
 
-    // Re-run the engine's linear / wide-gamut setup for the OPEN model.
-    // The viewer offers it because a PLY records no color space: a model
-    // trained in ACEScg looks wrong until it is told so, and the only way to
-    // find out is to try. Takes the engine lock; call from the GUI thread.
-    // `gamut` is a gamut_to_rec709 name, "" for Rec.709.
-    void set_color_space(const char* gamut, bool linear);
+    // Re-run the engine's transfer / gamut setup for the OPEN model. A PLY
+    // records neither, so trying is the only way to find out. Takes the engine
+    // lock; `gamut` is a gamut_to_rec709 name, "" for Rec.709.
+    void set_color_space(const char* gamut, int transfer, bool linear);
     // What the run's config.json said, so the controls open on the right
     // setting rather than on "none".
     std::string gamut() const;
+    int transfer() const;
     bool linear_color() const;
 
     // Hand the previous primitive's screen buffers back after a primitive
@@ -115,6 +114,7 @@ private:
     std::mutex _mu;                    // guards everything below
     std::string _error, _path, _file;
     std::string _gamut;                // "" = Rec.709
+    int _transfer = 0;                 // colorspace::Transfer
     bool _linear = false;
     ViewerRenderConfig _cfg;
     std::vector<std::string> _log;

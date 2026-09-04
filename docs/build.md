@@ -30,6 +30,7 @@ Always build through the dev scripts.
 | `SsEmbed.cmake` | `ss_embed_file()` — bake a file into a byte-array header |
 | `SsApps.cmake` | the `spirula` executable — every tool the build has, in one binary (backend-agnostic) |
 | `SsPackage.cmake` | the `macos_app` / `macos_dmg` targets ([Packaging](#packaging)) |
+| `SsMacBundle.cmake` | `ss_mac_prefer_static()` — the static linking a one-file bundle depends on ([Packaging](#packaging)) |
 | `SsChecks.cmake` | the source lints ([Lints](#lints)) — included last, so every target above depends on them |
 
 Exactly one backend module runs. It leaves behind `SS_WITH_TORCH` and
@@ -100,7 +101,7 @@ shipping one built with it on.
 
 ## Lints
 
-Five checks guard the source. Each fails the build, and each skips itself when
+Six checks guard the source. Each fails the build, and each skips itself when
 its interpreter is missing — none of them is a dependency of a fresh checkout.
 
 | check | what it refuses |
@@ -109,9 +110,10 @@ its interpreter is missing — none of them is a dependency of a fresh checkout.
 | `tools/check_i18n.sh` | a text-bearing ImGui call that skipped the `ui::` wrappers |
 | `tools/check_font_coverage.py` | a translation that outgrew the embedded font subsets |
 | `tools/check_comments.sh` | a comment citing a file that is not in the tree |
+| `tools/check_file_macro.sh` | a bare `__FILE__` where [`SS_FILE`](../src/core/SourcePath.h) belongs |
 | `tools/check_comment_length.py` | a comment block over the [budget](../AGENTS.md#budget) |
 
-The first four run from `build_develop.bash` only. The comment-length check
+The first five run from `build_develop.bash` only. The comment-length check
 also runs from CMake (`cmake/SsChecks.cmake`) as the `ss_check_comment_length`
 target, which every other target is made to depend on — so a bare `ninja`, a
 `make`, or `cmake --build build --target spirula` fails on it just as the dev
@@ -203,15 +205,19 @@ embedded into the binary. On an offline machine, transfer a matching `slangc`
 and point `-DSS_SLANGC=` at it.
 
 **macOS.** Vulkan backend only, through MoltenVK; `build_develop.bash` works
-as on Linux. Dependencies: `brew install cmake ninja`. Four things are
-macOS-only in the build: `cmake/SsVulkan.cmake` fetches a pinned universal
-MoltenVK and links it *statically* (`SS_MACOS_VULKAN=static`, the default) so
-the binary carries its own driver and copies to any Mac — the release tarball
-supplies the Vulkan headers too, so nothing comes from Homebrew;
-`cmake/SsSlang.cmake` pins a different Slang release (the one this project
-pins publishes no macOS assets); `build_develop.bash` reads free memory from
-`vm_stat` rather than `/proc`; and `ss_i18n` links CoreFoundation, which
-`i18n/Locale.cpp` asks for the user's locale.
+as on Linux. Dependencies: `brew install cmake ninja libomp`. The last is
+keg-only, so nothing finds it on its own — `build_develop.bash` passes
+`-DOpenMP_ROOT` at the keg, and a build without OpenMP runs meshing, UV unwrap
+and metrics serial. Five things are macOS-only in the build:
+`cmake/SsVulkan.cmake` fetches a pinned universal MoltenVK and links it
+*statically* (`SS_MACOS_VULKAN=static`, the default) so the binary carries its
+own driver and copies to any Mac — the release tarball supplies the Vulkan
+headers too, so nothing comes from Homebrew; `cmake/SsSlang.cmake` pins a
+different Slang release (the one this project pins publishes no macOS assets);
+`build_develop.bash` reads free memory from `vm_stat` rather than `/proc`;
+`ss_i18n` links CoreFoundation, which `i18n/Locale.cpp` asks for the user's
+locale; and `cmake/SsMacBundle.cmake` links the archive beside a dependency's
+dylib, which is what keeps the bundle one file ([Packaging](#packaging)).
 
 A static build has no loader, so it cannot load validation layers.
 `-DSS_MACOS_VULKAN=loader` links the installed loader instead (needs
@@ -249,6 +255,32 @@ from the built `spirula` plus an icon resampled from `assets/icon.png` — via
 `sips` and `iconutil`, which are in the base system, so packaging needs no
 Xcode.
 
+### Windows: the Visual C++ runtime
+
+The Windows binary links the CRT dynamically, so the machine it lands on needs
+the Microsoft Visual C++ Redistributable (`MSVCP140.dll`, `VCRUNTIME140*.dll`,
+`VCOMP140.dll`). Most machines have one, and it is often years old.
+
+MSVC 14.40 (VS 2022 17.10) made `std::mutex`'s and `condition_variable`'s
+constructors `constexpr`: the storage is zeroed and `_Mtx_init_in_situ` is
+never called. A redistributable older than 14.40 still locks through a vptr
+that lives in that storage, so the first `lock()` reads through a null pointer
+and the process dies before it draws a frame -- an
+`ACCESS_VIOLATION ... reading 0x0` inside `MSVCP140.dll`, which
+`SymFromAddr` reports against whatever export precedes the internal
+`_Mtx_do_lock` (`Thrd_yield`, on some builds).
+
+`cmake/SsOptions.cmake` therefore defines `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`
+for every MSVC target, which restores the runtime-initialised constructors.
+Keep it global: one translation unit built without it is one crash. A quick
+check on a built binary --
+
+```bash
+dumpbin /imports build/spirula.exe | findstr _Mtx_init_in_situ
+```
+
+-- must print a line. If it does not, the define did not reach the build.
+
 ### The icon
 
 `tools/make_icon.py` renders everything in `assets/` and is the only thing
@@ -270,10 +302,14 @@ taskbar. The banner carries no text — the product name and tagline are drawn
 over it by ImGui, so they stay translatable.
 
 The bundle carries **one binary**. That is only honest because a default
-macOS build links MoltenVK statically (`cmake/SsVulkan.cmake`), and the script
-checks rather than trusts it: `otool -L` output naming anything outside
+macOS build links MoltenVK statically (`cmake/SsVulkan.cmake`) and swaps every
+other dependency found as a dylib for the archive beside it
+(`ss_mac_prefer_static()` in `cmake/SsMacBundle.cmake` — libomp today), and the
+script checks rather than trusts it: `otool -L` output naming anything outside
 `/usr/lib` or `/System/Library` fails the packaging, since a bundle missing a
-dylib works on the build machine and nowhere else.
+dylib works on the build machine and nowhere else. Homebrew builds its archives
+for the host alone, so a bundle linking one is arm64-only and inherits that
+keg's minimum macOS version.
 
 Signing is ad-hoc (`--sign -`) by default. That is not optional decoration:
 Apple silicon kills an unsigned arm64 binary on exec, and copying the
@@ -295,7 +331,7 @@ One behaviour is bundle-specific: a Finder launch inherits launchd's PATH
 (`/usr/bin:/bin:/usr/sbin:/sbin`), which has no Homebrew in it, so COLMAP,
 ffmpeg and python3 would be missing from an app that finds them fine when
 started from a shell. `gui::add_desktop_search_paths()`
-(`src/app/gui/AppPaths.h`) appends the package managers' directories at
+(`src/app/AppPaths.h`) appends the package managers' directories at
 startup, after any PATH the process actually inherited.
 
 ## Build-time cost

@@ -29,6 +29,7 @@ namespace SlangProjectionUtils {
 #include "core/CameraDistortion.cuh"
 
 #include <core/Common.cuh>
+#include "core/AabbQuant.cuh"
 
 #include "primitives/Primitive.cuh"
 
@@ -69,12 +70,13 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, ...]
@@ -90,7 +92,8 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     // one block per micro-tile; recover the macro tile it belongs to for binning
     uint32_t mt_y = blockIdx.y;  // micro-tile row
     uint32_t mt_x = blockIdx.z;  // micro-tile col
-    int32_t tile_id = (mt_y / MACRO_TILE_SIZE_Y) * tile_width + (mt_x / MACRO_TILE_SIZE_X);
+    int32_t tile_id =
+        (int32_t)((mt_y >> macro_log2) * tile_width + (mt_x >> macro_log2));
 
     tile_offsets += image_id * tile_height * tile_width;
     render_Ts += image_id * image_height * image_width;
@@ -189,9 +192,8 @@ __global__ void rasterize_to_pixels_fwd_kernel(
             float opac = splat_sbuffer.opacities(g);
             if (opac > ALPHA_THRESHOLD) {
                 float3 conic = splat_sbuffer.scales(g);
-                float4 bb = aabb[g];
-                float ecx = 0.5f * (bb.x + bb.z);
-                float ecy = 0.5f * (bb.y + bb.w);
+                float2 ec = aabb16_center(aabb[g], image_width, image_height);
+                float ecx = ec.x, ecy = ec.y;
                 float kk = 0.5f / __logf(opac / ALPHA_THRESHOLD);
                 float3 inv_cov = { conic.x * kk, conic.y * kk, conic.z * kk };
                 hit = ellipse_box_overlap_test(inv_cov,
@@ -337,12 +339,13 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, ...]
@@ -351,10 +354,10 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
     float *__restrict__ render_median // [I, image_height, image_width, 1], optional
 ) {
-    // One block per micro-tile. The macro tile spans MACRO_TILE_SIZE_{X,Y}
-    // micro-tiles, so the grid is the macro-tile grid scaled up accordingly.
+    // One block per micro-tile. The macro tile spans 1 << macro_log2 micro
+    // tiles per axis, so the grid is the macro-tile grid scaled up by that.
     dim3 threads = {TILE_AREA, 1, 1};
-    dim3 grid = {I, tile_height * MACRO_TILE_SIZE_Y, tile_width * MACRO_TILE_SIZE_X};
+    dim3 grid = {I, tile_height << macro_log2, tile_width << macro_log2};
 
 #if IS_EVAL3D
     rasterize_to_pixels_eval3d_fwd_kernel<
@@ -373,7 +376,8 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     #if IS_EVAL3D
         viewmats, intrins, dist_coeffs_buffer, aabb,
     #endif
-        image_width, image_height, tile_width, tile_height, tile_offsets, flatten_ids,
+        image_width, image_height, tile_width, tile_height, macro_log2,
+        tile_offsets, flatten_ids,
         render_colors, render_Ts, last_ids,
         render_distortions,
         render_median

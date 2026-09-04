@@ -118,6 +118,10 @@ struct PrepJob {
     // cost the extraction as well.
     bool redo_frames = false;
     bool redo_masks = false;
+    // The masks that came with the photos mark what to REMOVE, not what to
+    // keep. Applied where those files are read, so everything this run writes
+    // is in the one convention every reader uses (sfm/core/Mask.h).
+    bool flip_found_masks = false;
 
     // ---- video extraction ----
     float video_fps = 2.0f;          // kept frames per second
@@ -171,6 +175,11 @@ inline bool reads_photos_in_place(const std::vector<PrepInput>& inputs) {
     return inputs.size() == 1 && !inputs[0].is_video;
 }
 
+// Where a job's images will be, before it has run: what PrepResult::image_dir
+// comes out as, for the panels that must read a dataset a previous run wrote.
+std::string planned_image_dir(const std::vector<PrepInput>& inputs,
+                              const std::string& workspace);
+
 struct PrepResult {
     std::string image_dir;           // absolute; what SfM should index
     std::string image_dir_cfg;       // what the trainer's image_dir should be
@@ -179,6 +188,10 @@ struct PrepResult {
     // put in the dataset, an absolute path for masks it only read (photos used
     // where they are bring theirs with them).
     std::string mask_dir_cfg;
+    // Those masks are still the other way round -- nonzero means REMOVE. True
+    // only where the run handed them on untouched; what it wrote itself is in
+    // the usual convention and the readers need no flag.
+    bool mask_dir_flipped = false;
     int  n_images = 0;
     // images/ came out holding one sub-folder per camera -- several inputs, or
     // a multi-track video -- so intrinsics must not be shared across them.
@@ -354,6 +367,12 @@ public:
     static int count_images(const std::string& dir, const std::string& skip = "");
     // Dimensions of the first image found, for the focal-length prior.
     static bool first_image_dims(const std::string& dir, int& w, int& h);
+    // Every image under `dir`, named relative to it, with its pixel size --
+    // zero when nothing here reads that format's header (stb has no TIFF or
+    // WebP decoder; COLMAP's FreeImage does).
+    struct ImageSize { std::string name; int w = 0, h = 0; };
+    static std::vector<ImageSize> image_sizes(const std::string& dir,
+                                              const std::string& skip = "");
 
 private:
     void log(const std::string& s, bool detail = true);
@@ -394,9 +413,11 @@ private:
     bool generate_masks_python(const PrepJob& job, const std::string& images_rel,
                                const std::string& masks_rel, std::string& error);
     // The static stencil on its own, for the masks segmentation did not make.
-    // No model and no GPU, so it runs whether or not segmentation did.
-    bool apply_stencil(const PrepInput& in, const std::string& images,
-                       const std::string& masks, std::string& error);
+    // `merge_from` names the masks it folds in when they are not the ones it
+    // writes -- the tree the photos arrived with; "" is `masks` itself.
+    bool apply_stencil(const PrepJob& job, const PrepInput& in,
+                       const std::string& images, const std::string& masks,
+                       const std::string& merge_from, std::string& error);
     int exec(const std::vector<std::string>& argv);
     // What this input is expected to put in images/, for the step's bar: the
     // container's frame count at the run's sampling rate for a video, the file

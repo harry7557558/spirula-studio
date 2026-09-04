@@ -19,6 +19,7 @@
 // finished one in the same process (the GUI's "train again" path).
 
 #include "engine/Engine.h"
+#include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
@@ -49,9 +50,24 @@ Mat3f invert3x3(const Mat3f& m);
 struct ColorResolution {
     std::string splat_gamut;   // "" = Rec.709 / none
     std::string image_gamut;
+    // Storage encoding and output curve are independent: `*_linear` says
+    // whether the buffer holds linear light, `*_transfer` is the curve out of
+    // it. See docs/notes/color-transfer.md.
     bool splat_linear  = false;
     bool image_linear  = false;
+    colorspace::Transfer splat_transfer = colorspace::Transfer::Srgb;
+    colorspace::Transfer image_transfer = colorspace::Transfer::Srgb;
     bool convert_seed  = false;  // convert_initial_point_cloud_color resolved
+
+    // Whether the render needs the conversion pass at all.
+    bool splat_on() const {
+        return splat_linear || splat_transfer != colorspace::Transfer::Srgb ||
+               !splat_gamut.empty();
+    }
+    bool image_on() const {
+        return image_linear || image_transfer != colorspace::Transfer::Srgb ||
+               !image_gamut.empty();
+    }
 };
 
 ColorResolution resolve_color(const TrainConfig& c);
@@ -121,10 +137,15 @@ std::string train_config_unsupported(const TrainConfig& c);
 // TrainerSession
 // ===========================================================================
 
+// "m:ss", or "h:mm:ss" past an hour; negative (not known yet) is "--:--".
+std::string format_duration(double seconds);
+
 struct TrainerProgress {
     int step = 0;              // 0-based step that just finished
     int total_steps = 0;
-    double step_latency = 0.0; // seconds, this step
+    // Wall seconds, including any wait for a viewer render this step stood
+    // aside for -- what the run costs, not what the kernels cost.
+    double step_latency = 0.0;
     int64_t num_splats = 0;
     std::map<std::string, float> losses;
 };
@@ -233,6 +254,10 @@ public:
     // train() starts, frozen once it returns.
     double elapsed_seconds() const;
 
+    // Remaining wall clock over the last 100 steps' average, or -1 before
+    // the first step lands.
+    double eta_seconds() const;
+
     // The /progress response body.
     std::string progress_json();
 
@@ -248,13 +273,17 @@ private:
     void pause_clock_start();
     void pause_clock_stop();
 
+    // Seconds per step over the window, or -1 while it is empty.
+    double avg_step_latency() const;
+
     mutable std::mutex _time_mutex;                        // guards the clock
     std::chrono::steady_clock::time_point _start_time{};   // {} = not started
     std::chrono::steady_clock::time_point _end_time{};     // {} = running
     std::chrono::steady_clock::time_point _pause_start{};  // {} = not paused
     double _paused_s = 0.0;
-    std::mutex _progress_mutex;            // guards the latency window
+    mutable std::mutex _progress_mutex;    // guards the latency window
     std::deque<double> _step_latencies;    // last 100, seconds
+    bool _diverged_loss_reported = false;
 };
 
 }  // namespace spirula

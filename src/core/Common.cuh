@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backend/api/BackendTypes.h"
+#include "core/SourcePath.h"
 #ifdef __CUDACC__
 #include <cuda_fp16.h>
 #endif
@@ -35,12 +36,32 @@ inline constexpr int WARP_SIZE = 32;
 
 inline constexpr int TILE_SIZE_X = 8;
 inline constexpr int TILE_SIZE_Y = 8;
-inline constexpr int MACRO_TILE_SIZE_X = 2;
-inline constexpr int MACRO_TILE_SIZE_Y = 2;
 
-// The per-microtile forward and the backward work for any macro size; only the
-// (retired) macro-block forward required MACRO_NUM_TILES == WARP_SIZE.
-static_assert(MACRO_TILE_SIZE_X >= 1 && MACRO_TILE_SIZE_Y >= 1);
+// Binning granularity: macro tiles of (TILE_SIZE_X << macro_log2) pixels, one
+// splat list per macro tile, walked by every micro tile in it. Runtime, not a
+// constant -- see docs/notes/binning-tile-size.md.
+inline constexpr int kMacroLog2Default = 1;  // 16 px, the historical tile
+inline constexpr int kMacroLog2Min = 0;      // 8 px
+inline constexpr int kMacroLog2Max = 4;      // 128 px
+// Where the automatic search starts. Coarse on purpose: the pool's high-water
+// only ever grows, so starting fine would pin the intersection buffers at the
+// finest size the run ever touches. Descending reaches the optimum from above.
+inline constexpr int kMacroLog2Start = 3;    // 64 px
+
+inline constexpr int bin_tile_x(int macro_log2) {
+    return TILE_SIZE_X << macro_log2;
+}
+inline constexpr int bin_tile_y(int macro_log2) {
+    return TILE_SIZE_Y << macro_log2;
+}
+
+// Binning tile edge in pixels -> macro_log2, or -1 if it is not a supported
+// power of two.
+inline int macro_log2_from_pixels(int px) {
+    for (int m = kMacroLog2Min; m <= kMacroLog2Max; ++m)
+        if (bin_tile_x(m) == px) return m;
+    return -1;
+}
 
 inline constexpr float ALPHA_THRESHOLD = (1.f/255.f);
 
@@ -197,7 +218,7 @@ do {                                                                \
     cudaError_t err = call;                                         \
     if (err != cudaSuccess) {                                       \
         fprintf(stderr, "\033[41mCUDA Error at %s:%d: %s\033[m\n",  \
-                __FILE__, __LINE__, cudaGetErrorString(err));       \
+                SS_FILE, __LINE__, cudaGetErrorString(err));        \
         exit(EXIT_FAILURE);                                         \
     }                                                               \
 } while (0)
@@ -214,7 +235,7 @@ do {                                                                \
         if ((x) != cudaSuccess) {                                              \
             printf(                                                            \
                 "Error at %s:%d - %s\n",                                       \
-                __FILE__,                                                      \
+                SS_FILE,                                                       \
                 __LINE__,                                                      \
                 cudaGetErrorString(cudaGetLastError())                         \
             );                                                                 \

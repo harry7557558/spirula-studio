@@ -22,13 +22,26 @@ using backend::MemcpyKind;
 // Mirrors DensifyUpdateWeightParams in shaders/densify.slang.
 struct DensifyUpdateWeightParams {
     uint64_t radii, opacs, accum_weight, accum_weight2, accum_buffer;
+    uint64_t oversize_accum;
     float blend_w;
     float score_power;
     int32_t score_mode;
     uint32_t use_opacs, use_w2, num_splats, wgs_per_row;
+    float max_scale2d;
+    uint32_t use_oversize;
     uint32_t _pad0;
 };
-static_assert(sizeof(DensifyUpdateWeightParams) == 5 * 8 + 8 * 4,
+static_assert(sizeof(DensifyUpdateWeightParams) == 6 * 8 + 10 * 4,
+              "params layout must match the slang struct");
+
+// Mirrors DensifyOversizeWeightParams.
+struct DensifyOversizeWeightParams {
+    uint64_t oversize_accum, score, out;
+    float blend;
+    uint32_t num_splats, wgs_per_row;
+    uint32_t _pad0;
+};
+static_assert(sizeof(DensifyOversizeWeightParams) == 3 * 8 + 4 * 4,
               "params layout must match the slang struct");
 
 // Mirrors DensifyClipScaleParams.
@@ -144,12 +157,12 @@ static_assert(sizeof(CopyQshMapParams) == 3 * 8 + 6 * 4,
 
 // Mirrors McmcProbsParams.
 struct McmcProbsParams {
-    uint64_t opacs, probs;
+    uint64_t opacs, scales, probs;
     float min_opacity;
     uint32_t num_splats, wgs_per_row;
     uint32_t _pad0;
 };
-static_assert(sizeof(McmcProbsParams) == 2 * 8 + 4 * 4,
+static_assert(sizeof(McmcProbsParams) == 3 * 8 + 4 * 4,
               "params layout must match the slang struct");
 
 // Mirrors McmcRelocIndexMapParams.
@@ -229,14 +242,6 @@ uint32_t sh_optim_spec(int sh_optim_bits) {
     if (sh_optim_bits == 8 || sh_optim_bits == 4)
         return (uint32_t)sh_optim_bits;
     throw std::runtime_error("densify: sh_optim_bits must be 32, 8 or 4");
-}
-
-// Guards the u32 cell indexing in the SH quant/value paths.
-void check_sh_cells(int64_t num_splats, int num_sh_buffer, const char* what) {
-    if (num_splats * 3 * (int64_t)std::max(num_sh_buffer, 1) >
-        (int64_t)UINT32_MAX)
-        throw std::runtime_error(std::string(what) +
-                                 ": SH cell index exceeds the u32 range");
 }
 
 // Fills the shared SH-state fields of the relocate/MCMC param structs and
@@ -405,13 +410,15 @@ void launch_copy_qsh_map(int64_t num_splats, const int32_t* index_map,
 
 // MCMC sampling-probability + cumsum stage shared by relocate/add.
 void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
-                       const DeviceVector<float>& opacs, PoolSlot probs_slot,
+                       const DeviceVector<float>& opacs,
+                       const DeviceVector<float3>& scales, PoolSlot probs_slot,
                        PoolSlot cumsum_slot, DeviceVector<float>& probs,
                        DeviceVector<float>& cumsum) {
     probs.resize(probs_slot, cur_num_splats);
     cumsum.resize(cumsum_slot, cur_num_splats);
     McmcProbsParams p{};
     p.opacs = (uint64_t)opacs.data_ptr();
+    p.scales = (uint64_t)scales.data_ptr();
     p.probs = (uint64_t)probs.data_ptr();
     p.min_opacity = min_opacity;
     p.num_splats = (uint32_t)cur_num_splats;
@@ -435,7 +442,9 @@ void densify_update_weight(
     float blend_w,
     float score_power,
     DeviceVector<float2> accum_buffer,
-    int score_mode
+    int score_mode,
+    float max_scale2d,
+    DeviceVector<float> oversize_accum
 ) {
     (void)scales_ptr;  // unused by the kernel, as in CUDA
     if (num_splats <= 0) return;
@@ -451,9 +460,30 @@ void densify_update_weight(
     p.use_opacs = opacs_ptr ? 1u : 0u;
     p.use_w2 = accum_weight2.data_ptr() ? 1u : 0u;
     p.num_splats = (uint32_t)num_splats;
+    p.oversize_accum = vkk::or_fallback(oversize_accum.data_ptr());
+    p.max_scale2d = max_scale2d;
+    p.use_oversize = oversize_accum.data_ptr() ? 1u : 0u;
     vkk::dispatch_flat("densify.densify_update_weight",
                        backend::vk::SpecList{}, num_splats, 256, &p,
                        sizeof(p), &p.wgs_per_row);
+}
+
+void densify_oversize_weight_tensor(
+    int64_t num_splats,
+    float blend,
+    DeviceVector<float> oversize_accum,
+    DeviceVector<float2> score,
+    DeviceVector<float2> out
+) {
+    if (num_splats <= 0) return;
+    DensifyOversizeWeightParams p{};
+    p.oversize_accum = (uint64_t)oversize_accum.data_ptr();
+    p.score = (uint64_t)score.data_ptr();
+    p.out = (uint64_t)out.data_ptr();
+    p.blend = blend;
+    p.num_splats = (uint32_t)num_splats;
+    vkk::dispatch_flat("densify.densify_oversize_weight", {}, num_splats, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
 }
 
 void densify_clip_scale_tensor(
@@ -597,7 +627,6 @@ void relocate_splats_with_long_axis_split_tensor(
     uint32_t seed
 ) {
     if (cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats, num_sh_buffer, "relocate_splats_las");
 
     // Relocation mask + atomic compaction of dst indices (Vulkan mask is an
     // int32 array; the CUDA bool layout is a launcher-internal detail).
@@ -672,8 +701,6 @@ void add_splats_with_long_axis_split_tensor(
     uint32_t seed
 ) {
     if (num_new_splats == 0 || cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats + num_new_splats, num_sh_buffer,
-                   "add_splats_las");
 
     const int32_t* split_indices = wswr_sample(
         cur_num_splats,
@@ -717,10 +744,9 @@ void relocate_splats_mcmc_tensor(
     uint32_t seed
 ) {
     if (cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats, num_sh_buffer, "relocate_splats_mcmc");
 
     DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs,
+    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,
                       PoolSlot::DensifyMcmcSampleProbs,
                       PoolSlot::DensifyMcmcSampleProbsCumsum, probs, cumsum);
 
@@ -805,11 +831,9 @@ void add_splats_mcmc_tensor(
     uint32_t seed
 ) {
     if (num_add == 0 || cur_num_splats <= 0) return;
-    check_sh_cells(cur_num_splats + num_add, num_sh_buffer,
-                   "add_splats_mcmc");
 
     DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs,
+    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,
                       PoolSlot::DensifyMcmcAddSampleProbs,
                       PoolSlot::DensifyMcmcAddSampleProbsCumsum, probs,
                       cumsum);

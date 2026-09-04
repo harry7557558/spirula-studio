@@ -139,6 +139,16 @@ bool has_extension(VkPhysicalDevice pd, const char* name) {
     return false;
 }
 
+bool has_instance_layer(const char* name) {
+    uint32_t n = 0;
+    vkEnumerateInstanceLayerProperties(&n, nullptr);
+    std::vector<VkLayerProperties> layers(n);
+    vkEnumerateInstanceLayerProperties(&n, layers.data());
+    for (const auto& l : layers)
+        if (std::strcmp(l.layerName, name) == 0) return true;
+    return false;
+}
+
 bool has_instance_extension(const char* name) {
     static const std::vector<VkExtensionProperties> exts = [] {
         uint32_t n = 0;
@@ -329,8 +339,14 @@ void Context::init() {
     const char* validation = "VK_LAYER_KHRONOS_validation";
     if (const char* env = spirula::env("VK_VALIDATION");
         env && env[0] == '1') {
-        ici.enabledLayerCount = 1;
-        ici.ppEnabledLayerNames = &validation;
+        if (has_instance_layer(validation)) {
+            ici.enabledLayerCount = 1;
+            ici.ppEnabledLayerNames = &validation;
+        } else {
+            std::fprintf(stderr,
+                "[spirula-vk] SS_VK_VALIDATION=1 ignored: %s is not installed "
+                "(it comes with the Vulkan SDK)\n", validation);
+        }
     }
 
     MvkSettings mvk;
@@ -491,6 +507,16 @@ void Context::init() {
             f12.pNext = &fsgc;
         }
     }
+    // Several kernels index subgroups as tid / WaveGetLaneCount() against a
+    // 32-wide workgroup, so a wider unpinned subgroup makes the count 0 and
+    // the result silently wrong (rasterize_bwd's survivor compaction).
+    if (!_caps.required_subgroup_size && _caps.subgroup_size > 32) {
+        std::fprintf(stderr,
+            "[spirula-vk] warning: %s reports subgroup size %u and does not "
+            "support VK_EXT_subgroup_size_control, which this build needs to "
+            "pin it to 32. Training results on this device are not trusted.\n",
+            _device_name.c_str(), _caps.subgroup_size);
+    }
 
     VkPhysicalDeviceFeatures features{};
     features.shaderInt64 = probe.shader_int64 ? VK_TRUE : VK_FALSE;
@@ -535,11 +561,24 @@ void Context::init() {
     g_context_created.store(true);
 
     if (spirula::env("VK_VERBOSE")) {
+        // The pinned size is what the shaders actually run at; printing the
+        // device default alone reads as "the pin did not happen".
+        char subgroup[48];
+        if (_caps.required_subgroup_size == _caps.subgroup_size)
+            std::snprintf(subgroup, sizeof(subgroup), "%u (pinned)",
+                          _caps.required_subgroup_size);
+        else if (_caps.required_subgroup_size)
+            std::snprintf(subgroup, sizeof(subgroup),
+                          "%u (pinned, device default %u)",
+                          _caps.required_subgroup_size, _caps.subgroup_size);
+        else
+            std::snprintf(subgroup, sizeof(subgroup), "%u (unpinned)",
+                          _caps.subgroup_size);
         std::fprintf(stderr,
-            "[spirula-vk] using %s (%s), subgroup %u, push %uB, "
+            "[spirula-vk] using %s (%s), subgroup %s, push %uB, "
             "float-atomic-add %s, int64 %s, int8 %s, timestamps %s\n",
             _device_name.c_str(), device_type_name(probe.props.deviceType),
-            _caps.subgroup_size, _caps.max_push_constants,
+            subgroup, _caps.max_push_constants,
             _caps.float32_atomic_add ? "native" : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",
             _caps.shader_int8 ? "native" : "emulated",
@@ -584,12 +623,9 @@ uint64_t Context::submit(VkCommandBuffer cb) {
 
 bool Context::wait(uint64_t value) {
     if (value == 0) return true;
-    // Poll the counter first (the timeline analog of vkGetFenceStatus,
-    // measurably cheaper than the blocking vkWaitSemaphores path on desktop
-    // drivers). The spin is bounded so a stuck device (device fault) ends up
-    // parked in the blocking wait instead of burning a core; CPU devices
-    // (llvmpipe) skip it entirely — the spinning host thread would compete
-    // with the driver's own worker threads.
+    // Spin on the counter before the blocking wait to save the park/wake
+    // round trip. It cannot replace that wait: reading the counter is a query,
+    // not the host domain operation that makes device writes visible.
     if (_poll_waits) {
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::milliseconds(100);
@@ -601,7 +637,7 @@ bool Context::wait(uint64_t value) {
                 set_error("vkGetSemaphoreCounterValue failed", r);
                 return false;
             }
-            if (current >= value) return true;
+            if (current >= value) break;
             std::this_thread::yield();
         } while (std::chrono::steady_clock::now() < deadline);
     }

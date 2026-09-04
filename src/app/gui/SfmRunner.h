@@ -128,6 +128,10 @@ struct SfmJob {
     // and the CLI refuses the combination outright.
     int matcher = 0;
     bool keep_intermediate = false;   // keep features/ and matches.bin
+    // Bundle adjustment on the host from the start. The escape hatch for a
+    // driver that resets under a long solve: a run falls back by itself when
+    // the device fails, but only after paying for the failure.
+    bool ba_cpu = false;
 
     // What colour space the photographs are in. Everything that reads pixels --
     // SfM, AI masking, depth and normals -- converts to sRGB first, which is
@@ -181,6 +185,9 @@ public:
     // masks. Usually "masks" (the parser default); an absolute path when the
     // masks were only read, which is what photos used where they are do.
     std::string mask_dir();
+    // Are those masks white where the image is REMOVED? Only ones the run
+    // handed on untouched can be; what it wrote is the usual way round.
+    bool mask_flipped() const;
     // 0..1 within the current stage, or -1 when it cannot be estimated.
     float progress() const;
     // Where the child is writing its snapshots, and the two folders the screen
@@ -232,6 +239,7 @@ private:
     RunFilms _films;
     std::mutex _mu;
     std::string _error, _dataset_dir, _image_dir, _mask_dir;
+    std::atomic<bool> _mask_flipped{false};
     // Absolute; what the screen polls while the run is going.
     std::string _progress_dir, _features_dir, _matches_path;
     std::string _sfm_image_dir, _sfm_mask_dir;

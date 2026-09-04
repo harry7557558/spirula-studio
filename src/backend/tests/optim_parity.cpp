@@ -302,29 +302,53 @@ int main(int argc, char** argv) {
         // fully compared.
         const int dcases[4][4] = {
             {0, 0, 0, 10}, {1, 1, 0, 10}, {3, 1, 1, 10}, {0, 0, 0, 5}};
+        std::vector<float> over0(N, 0.f);
         for (auto& c : dcases) {
             float* d_accum = upload(accum);
+            float* d_over = upload(over0);
             densify_update_weight(
                 N, dv_f(d_radii, N), nullptr, c[1] ? d_opacs : nullptr,
                 dv_f(d_w1, N),
                 c[2] ? dv_f(d_w2, N) : DeviceVector<float>{},
                 c[2] ? 0.3f : 0.f, 0.1f * (float)c[3], dv_f2(d_accum, N),
-                c[0]);
+                c[0], 5.0f, dv_f(d_over, N));
             backend::device_synchronize();
             readback_f(acc, d_accum, N * 2);
+            readback_f(acc, d_over, N);
         }
         // Median: hash-dependent random walk; compare only the count.
         {
             float* d_accum = upload(accum);
             densify_update_weight(N, dv_f(d_radii, N), nullptr, d_opacs,
                                   dv_f(d_w1, N), DeviceVector<float>{}, 0.f,
-                                  1.0f, dv_f2(d_accum, N), 2);
+                                  1.0f, dv_f2(d_accum, N), 2, 5.0f,
+                                  DeviceVector<float>{});
             backend::device_synchronize();
             std::vector<float> got(N * 2);
             backend::memcpy_sync(got.data(), d_accum, N * 2 * 4,
                                  MemcpyKind::DeviceToHost);
             for (int64_t i = 0; i < N; i++) got[2 * i] = 0.f;
             acc.insert(acc.end(), got.begin(), got.end());
+        }
+
+        // ---- densify_oversize_weight ----
+        {
+            std::vector<float> over(N), sc(N * 2);
+            for (int64_t i = 0; i < N; i++) {
+                over[i] = (i % 3 == 0) ? 0.f : uf(0.f, 4.f);
+                sc[2 * i] = (i % 7 == 0) ? 0.f : uf(0.f, 5.f);
+                sc[2 * i + 1] = uf(0.f, 3.f);
+            }
+            float* d_over = upload(over);
+            float* d_sc = upload(sc);
+            float* d_out = upload(std::vector<float>(N * 2, 0.f));
+            for (float blend : {0.0f, 0.5f, 1.0f}) {
+                densify_oversize_weight_tensor(N, blend, dv_f(d_over, N),
+                                               dv_f2(d_sc, N),
+                                               dv_f2(d_out, N));
+                backend::device_synchronize();
+                readback_f(acc, d_out, N * 2);
+            }
         }
 
         // ---- densify_clip_score ----

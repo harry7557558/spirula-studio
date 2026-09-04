@@ -26,7 +26,7 @@ constexpr int kElemF32 = 2;
 // Mirrors WarpParams in shaders/warp.slang.
 struct WarpParams {
     uint64_t intrins, dist_coeffs, source_models, source_params;
-    uint64_t src, dst, axes;
+    uint64_t src, dst, axes, post_intrins;
     int32_t B, Hin, Win, C;
     int32_t K, Hout, Wout;
     int32_t elem_kind, camera_model;
@@ -35,20 +35,20 @@ struct WarpParams {
     float norm_inv, decode_off, invalid;
     int32_t _pad0;
 };
-static_assert(sizeof(WarpParams) == 7 * 8 + 16 * 4,
+static_assert(sizeof(WarpParams) == 8 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
 // Mirrors WarpMaskParams in shaders/warp.slang.
 struct WarpMaskParams {
     uint64_t intrins, dist_coeffs, source_models, source_params;
-    uint64_t src, dst, axes;
+    uint64_t src, dst, axes, post_intrins;
     int32_t B, Hin, Win;
     int32_t K, Hout, Wout;
     int32_t camera_model;
     int32_t ref_H, ref_W;
     uint32_t wgs_per_row;
 };
-static_assert(sizeof(WarpMaskParams) == 7 * 8 + 10 * 4,
+static_assert(sizeof(WarpMaskParams) == 8 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
 // Mirrors BytesToFloatParams in shaders/warp.slang.
@@ -69,10 +69,17 @@ struct SourceCam {
     const float* params = nullptr;
 };
 
+// Per post camera: its frame and its face intrinsics (both null on the
+// re-distort path, which has no faces).
+struct Faces {
+    const float* post_intrins = nullptr;
+    const float* axes = nullptr;
+};
+
 // Common WarpParams assembly for the image / depth / normal warps.
 WarpParams make_warp_params(const float* d_intrins, const float* d_dist,
                             SourceCam src_cam, const void* d_src, float* d_dst,
-                            const float* d_axes, int B, int Hin, int Win,
+                            Faces faces, int B, int Hin, int Win,
                             int C, int K, int Hout, int Wout, int elem_kind,
                             CameraModelType cm, int ref_H, int ref_W,
                             bool ray_depth, float norm_inv,
@@ -84,7 +91,8 @@ WarpParams make_warp_params(const float* d_intrins, const float* d_dist,
     p.source_params = vkk::or_fallback(src_cam.params);
     p.src = vkk::or_fallback(d_src);
     p.dst = (uint64_t)d_dst;
-    p.axes = vkk::or_fallback(d_axes);
+    p.axes = vkk::or_fallback(faces.axes);
+    p.post_intrins = vkk::or_fallback(faces.post_intrins);
     p.B = B; p.Hin = Hin; p.Win = Win; p.C = C;
     p.K = K; p.Hout = Hout; p.Wout = Wout;
     p.elem_kind = elem_kind;
@@ -118,7 +126,7 @@ WarpParams make_redistort_params(const float* d_intrins, const float* d_dist,
                                  float norm_inv, float decode_off,
                                  float invalid) {
     WarpParams p = make_warp_params(d_intrins, d_dist, src_cam, d_src, d_dst,
-                                    nullptr, B, in_H, in_W, C, 1, out_H, out_W,
+                                    {}, B, in_H, in_W, C, 1, out_H, out_W,
                                     elem_kind, cm, ref_H, ref_W, false,
                                     norm_inv, decode_off);
     p.invalid = invalid;
@@ -206,6 +214,7 @@ void launch_warp_byte_to_float_wide(
     const void* d_byte, bool input_is_u16,
     int B, int Hin, int Win, int C,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
@@ -213,7 +222,7 @@ void launch_warp_byte_to_float_wide(
                   make_warp_params(
                       d_intrins, d_dist_coeffs,
                       {d_source_models, d_source_params},
-                      d_byte, d_float_out, d_axes,
+                      d_byte, d_float_out, {d_post_intrins, d_axes},
                       B, Hin, Win, C, K, Hout, Wout,
                       input_is_u16 ? kElemU16 : kElemU8,
                       (CameraModelType)cd.cam, Hin, Win, false,
@@ -225,11 +234,13 @@ void launch_warp_byte_to_float_equi(
     const void* d_byte, bool input_is_u16,
     int B, int Hin, int Win, int C,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     dispatch_warp("warp.warp_img_equi",
                   make_warp_params(
-                      nullptr, nullptr, {}, d_byte, d_float_out, d_axes,
+                      nullptr, nullptr, {}, d_byte, d_float_out,
+                      {d_post_intrins, d_axes},
                       B, Hin, Win, C, K, Hout, Wout,
                       input_is_u16 ? kElemU16 : kElemU8,
                       CameraModelType::EQUIRECTANGULAR, Hin, Win, false,
@@ -247,6 +258,7 @@ void launch_warp_mask_wide(
     const uint8_t* d_byte_mask,
     int B, int Hin, int Win,
     uint8_t* d_byte_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     WarpMaskParams p{};
@@ -257,6 +269,7 @@ void launch_warp_mask_wide(
     p.src = vkk::or_fallback(d_byte_mask);
     p.dst = (uint64_t)d_byte_out;
     p.axes = vkk::or_fallback(d_axes);
+    p.post_intrins = vkk::or_fallback(d_post_intrins);
     p.B = B; p.Hin = Hin; p.Win = Win;
     p.K = K; p.Hout = Hout; p.Wout = Wout;
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
@@ -271,6 +284,7 @@ void launch_warp_mask_equi(
     const uint8_t* d_byte_mask,
     int B, int Hin, int Win,
     uint8_t* d_byte_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     WarpMaskParams p{};
@@ -281,6 +295,7 @@ void launch_warp_mask_equi(
     p.src = vkk::or_fallback(d_byte_mask);
     p.dst = (uint64_t)d_byte_out;
     p.axes = vkk::or_fallback(d_axes);
+    p.post_intrins = vkk::or_fallback(d_post_intrins);
     p.B = B; p.Hin = Hin; p.Win = Win;
     p.K = K; p.Hout = Hout; p.Wout = Wout;
     p.camera_model = (int)CameraModelType::EQUIRECTANGULAR;
@@ -300,6 +315,7 @@ void launch_warp_depth_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes, bool input_is_ray_depth)
 {
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
@@ -307,7 +323,7 @@ void launch_warp_depth_wide(
                   make_warp_params(
                       d_intrins, d_dist_coeffs,
                       {d_source_models, d_source_params},
-                      d_depth, d_float_out, d_axes,
+                      d_depth, d_float_out, {d_post_intrins, d_axes},
                       B, Hin, Win, 1, K, Hout, Wout,
                       resolve_depth_kind(elem_size, "launch_warp_depth_wide"),
                       (CameraModelType)cd.cam, in_H, in_W, input_is_ray_depth,
@@ -319,11 +335,13 @@ void launch_warp_depth_equi(
     const void* d_depth, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes, bool input_is_ray_depth)
 {
     dispatch_warp("warp.warp_depth_equi",
                   make_warp_params(
-                      nullptr, nullptr, {}, d_depth, d_float_out, d_axes,
+                      nullptr, nullptr, {}, d_depth, d_float_out,
+                      {d_post_intrins, d_axes},
                       B, Hin, Win, 1, K, Hout, Wout,
                       resolve_depth_kind(elem_size, "launch_warp_depth_equi"),
                       CameraModelType::EQUIRECTANGULAR, Hin, Win,
@@ -342,6 +360,7 @@ void launch_warp_normal_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     if (elem_size != 1 && elem_size != 4)
@@ -353,7 +372,7 @@ void launch_warp_normal_wide(
                   make_warp_params(
                       d_intrins, d_dist_coeffs,
                       {d_source_models, d_source_params},
-                      d_normal, d_float_out, d_axes,
+                      d_normal, d_float_out, {d_post_intrins, d_axes},
                       B, Hin, Win, 3, K, Hout, Wout,
                       u8 ? kElemU8 : kElemF32, (CameraModelType)cd.cam, in_H,
                       in_W, false, u8 ? 1.0f / 127.5f : 1.0f,
@@ -365,6 +384,7 @@ void launch_warp_normal_equi(
     const void* d_normal, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     if (elem_size != 1 && elem_size != 4)
@@ -373,7 +393,8 @@ void launch_warp_normal_equi(
     bool u8 = elem_size == 1;
     dispatch_warp("warp.warp_normal_equi",
                   make_warp_params(
-                      nullptr, nullptr, {}, d_normal, d_float_out, d_axes,
+                      nullptr, nullptr, {}, d_normal, d_float_out,
+                      {d_post_intrins, d_axes},
                       B, Hin, Win, 3, K, Hout, Wout,
                       u8 ? kElemU8 : kElemF32,
                       CameraModelType::EQUIRECTANGULAR, Hin, Win, false,

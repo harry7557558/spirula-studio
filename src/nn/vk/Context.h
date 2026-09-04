@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+#include "core/SourcePath.h"
+
 namespace nn {
 namespace vk {
 
@@ -101,6 +103,10 @@ public:
     bool               hasCoopMat()    const { return coopmat_; }
     const std::string& coopMatReason() const { return coopmat_reason_; }
 
+    // 64-bit integer arithmetic, which only the `*_wide` shader modules use --
+    // to address past 4 GiB. Contained the same way the coop-matrix module is.
+    bool               hasInt64()      const { return int64_; }
+
     // Video decode support, resolved at device creation. `videoQueueFamily()`
     // is UINT32_MAX when unavailable; `videoUnavailableReason()` then explains
     // why, for the error video/VideoDecoder.cpp raises.
@@ -147,6 +153,7 @@ private:
     uint32_t preferred_subgroup_ = 32;
     bool     profiling_ = false;
 
+    bool        int64_ = false;
     bool        coopmat_ = false;
     std::string coopmat_reason_ = "not probed";
 };
@@ -163,5 +170,5 @@ private:
         if (_r != VK_SUCCESS)                                                  \
             ::nn::fail("%s failed: %s (%d) at %s:%d", #expr,                 \
                          ::nn::vk::Context::resultName(_r), (int)_r,         \
-                         __FILE__, __LINE__);                                  \
+                         SS_FILE, __LINE__);                                   \
     } while (0)

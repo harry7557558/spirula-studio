@@ -206,7 +206,7 @@ void ray_edges(const std::vector<uint8_t>& valid, int w, int h, float cx, float 
 
 // Ray-march, fit, drop the outliers, refit -- four times, re-centring on the
 // fit each round so a badly-placed starting centroid does not bias the edges
-// it finds.
+// it finds. `rms` comes back over the surviving inliers.
 bool fit_valid_region(const std::vector<uint8_t>& valid, int w, int h, int nrays,
                       Ellipse& out, float& rms) {
     size_t n_valid = 0;
@@ -217,33 +217,40 @@ bool fit_valid_region(const std::vector<uint8_t>& valid, int w, int h, int nrays
     if (n_valid < (size_t)w * h / 20) return false;
     float cx = (float)(sx / (double)n_valid), cy = (float)(sy / (double)n_valid);
 
-    std::vector<float> xs, ys, res;
+    std::vector<float> xs, ys, res, a, kx, ky;
     for (int it = 0; it < 4; it++) {
         ray_edges(valid, w, h, cx, cy, nrays, xs, ys);
         if (xs.size() < (size_t)nrays / 4) return false;
         Ellipse e;
         if (!fit_ellipse(xs, ys, w, h, e)) return false;
 
-        res.resize(xs.size());
-        for (size_t i = 0; i < xs.size(); i++) res[i] = radial_residual(e, xs[i], ys[i], w, h);
-        std::vector<float> a(res.size());
-        const float med = percentile(res, 0.5f);
-        for (size_t i = 0; i < res.size(); i++) a[i] = std::fabs(res[i] - med);
-        const float tol = std::max(3.0f * 1.4826f * percentile(a, 0.5f), 0.004f);
-        std::vector<float> kx, ky;
-        for (size_t i = 0; i < xs.size(); i++)
-            if (std::fabs(res[i]) <= tol) { kx.push_back(xs[i]); ky.push_back(ys[i]); }
-        if (kx.size() >= (size_t)nrays * 2 / 5) {
+        // To a fixed point, not once: a ray stopping on a still region inside
+        // the circle lands 20% short, and one round takes its tolerance from a
+        // fit those rays are in -- MAD 0.14 on the OSV captures, keeping them all.
+        for (int trim = 0; trim < 6; trim++) {
+            res.resize(xs.size());
+            for (size_t i = 0; i < xs.size(); i++)
+                res[i] = radial_residual(e, xs[i], ys[i], w, h);
+            a.resize(res.size());
+            const float med = percentile(res, 0.5f);
+            for (size_t i = 0; i < res.size(); i++) a[i] = std::fabs(res[i] - med);
+            const float tol = std::max(3.0f * 1.4826f * percentile(a, 0.5f), 0.004f);
+            kx.clear();
+            ky.clear();
+            for (size_t i = 0; i < xs.size(); i++)
+                if (std::fabs(res[i]) <= tol) { kx.push_back(xs[i]); ky.push_back(ys[i]); }
+            if (kx.size() < (size_t)nrays * 2 / 5) break;
             Ellipse e2;
-            if (fit_ellipse(kx, ky, w, h, e2)) {
-                e = e2;
-                xs.swap(kx);
-                ys.swap(ky);
-                res.resize(xs.size());
-                for (size_t i = 0; i < xs.size(); i++)
-                    res[i] = radial_residual(e, xs[i], ys[i], w, h);
-            }
+            if (!fit_ellipse(kx, ky, w, h, e2)) break;
+            const bool converged = kx.size() == xs.size();
+            e = e2;
+            xs.swap(kx);
+            ys.swap(ky);
+            if (converged) break;
         }
+        res.resize(xs.size());
+        for (size_t i = 0; i < xs.size(); i++)
+            res[i] = radial_residual(e, xs[i], ys[i], w, h);
         out = e;
         cx = e.cx * w;
         cy = e.cy * h;
@@ -515,16 +522,9 @@ BorderDetect BorderAccumulator::finish(const BorderDetectOptions& o) const {
         return true;
     };
 
-    std::vector<uint8_t> valid(n_px);
-    if (d.dark_fraction >= 0.02f) {
-        for (size_t p = 0; p < n_px; p++) valid[p] = dark[p] ? 0 : 1;
-        if (accept(valid, BorderCue::Dark)) return d;
-    }
-
-    // Nothing black enough, or the black region is not an ellipse. The second
-    // cue is where the image never resolves anything: the temporal spread of
-    // the gradient, averaged over a neighbourhood so that a flat wall (locally
-    // smooth, but different from frame to frame) does not read as border.
+    // Where the frame never resolves anything, blurred so that a flat wall does
+    // not read as border. It leads: black finds only where the light stops, and
+    // a flare ring costs 6% of the radius on PortalCam, 9% on OSV.
     std::vector<float> act(n_px);
     for (size_t p = 0; p < n_px; p++) {
         const float mean = s.gsum[p] / (float)s.n;
@@ -532,12 +532,20 @@ BorderDetect BorderAccumulator::finish(const BorderDetectOptions& o) const {
     }
     box_blur(act, w, h, std::max(4, w / 48));
     const float thr = 0.25f * percentile(act, 0.75f);
+    std::vector<uint8_t> valid(n_px);
     size_t n_still = 0;
     for (size_t p = 0; p < n_px; p++) {
         valid[p] = (act[p] <= thr || dark[p]) ? 0 : 1;
         n_still += valid[p] ? 0 : 1;
     }
-    if ((float)n_still / (float)n_px >= 0.02f) accept(valid, BorderCue::Activity);
+    if ((float)n_still / (float)n_px >= 0.02f && accept(valid, BorderCue::Activity))
+        return d;
+
+    // Too still a capture for that, or what it saw is not an ellipse.
+    if (d.dark_fraction >= 0.02f) {
+        for (size_t p = 0; p < n_px; p++) valid[p] = dark[p] ? 0 : 1;
+        accept(valid, BorderCue::Dark);
+    }
     return d;
 }
 
@@ -577,7 +585,7 @@ bool is_image_file(const fs::path& p) {
 }
 
 void intersect_with_file(std::vector<uint8_t>& px, int w, int h,
-                         const std::string& path) {
+                         const std::string& path, bool flip) {
     int mw = 0, mh = 0;
     std::vector<uint8_t> m;
     if (!load_stencil(path, mw, mh, m)) return;
@@ -585,7 +593,7 @@ void intersect_with_file(std::vector<uint8_t>& px, int w, int h,
         const int sy = mh == h ? y : std::min(mh - 1, (int)((float)y / h * mh));
         for (int x = 0; x < w; x++) {
             const int sx = mw == w ? x : std::min(mw - 1, (int)((float)x / w * mw));
-            if (!m[(size_t)sy * mw + sx]) px[(size_t)y * w + x] = 0;
+            if ((m[(size_t)sy * mw + sx] != 0) == flip) px[(size_t)y * w + x] = 0;
         }
     }
 }
@@ -631,6 +639,7 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
 
     std::error_code ec;
     const fs::path image_root(run.image_dir), mask_root(run.mask_dir);
+    const fs::path merge_root(run.merge_dir);
     int64_t written = 0, seen = 0;
     for (const auto& [rel, files] : groups) {
         if (sinks.cancel && sinks.cancel->load()) return written;
@@ -646,7 +655,10 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
             if (border.found) fm.shapes.insert(fm.shapes.begin(), border.shape);
         }
         if (sinks.resolved) sinks.resolved(rel, fm, border);
-        if (run.dry_run || fm.empty()) {
+        // Nothing to draw AND nothing to fold in. A camera whose border was not
+        // found still has to be walked when there are masks to read: leaving it
+        // out is what leaves half a dataset in the other convention.
+        if (run.dry_run || (fm.empty() && merge_root.empty())) {
             seen += (int64_t)files.size();
             continue;
         }
@@ -658,7 +670,7 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
             std::string first;
         };
         std::map<std::pair<int, int>, Sized> cache;
-        struct Item { std::string dst; int w, h; bool merge; };
+        struct Item { std::string dst, src; int w, h; };
         std::vector<Item> items;
         items.reserve(files.size());
         for (const std::string& f : files) {
@@ -667,18 +679,22 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
             if (!image_size(f, w, h)) continue;
             Sized& s = cache[{w, h}];
             if (s.px.empty() && !rasterize_frame_mask(fm, w, h, s.px, error)) return -1;
-            const fs::path dst =
-                mask_root / rel / (fs::path(f).stem().string() + ".png");
+            const std::string name = fs::path(f).stem().string() + ".png";
+            const fs::path dst = mask_root / rel / name;
             fs::create_directories(dst.parent_path(), ec);
-            items.push_back({dst.string(), w, h, !run.replace && fs::exists(dst, ec)});
+            const fs::path src = merge_root.empty() ? dst : merge_root / rel / name;
+            const bool have_src = (merge_root.empty() ? !run.replace : true) &&
+                                  fs::exists(src, ec);
+            items.push_back({dst.string(), have_src ? src.string() : std::string(),
+                             w, h});
         }
 
-        // A frame that already has a mask -- segmentation ran -- cannot share
-        // one: it costs a PNG decode and a re-encode, 131 ms per 2880-square
-        // fisheye frame. They are independent, so they go on every core.
+        // A frame with a mask to fold in cannot share the stencil image: it
+        // costs a PNG decode and a re-encode, 131 ms per 2880-square fisheye
+        // frame. They are independent, so they go on every core.
         std::vector<size_t> merges;
         for (size_t i = 0; i < items.size(); i++)
-            if (items[i].merge) merges.push_back(i);
+            if (!items[i].src.empty()) merges.push_back(i);
         std::atomic<bool> failed{false};
         std::atomic<int64_t> done{0};
         std::mutex sink_mu;
@@ -689,7 +705,12 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
                     (sinks.cancel && sinks.cancel->load())) return;
                 const Item& it = items[merges[(size_t)k]];
                 std::vector<uint8_t> px = cache.at({it.w, it.h}).px;
-                intersect_with_file(px, it.w, it.h, it.dst);
+                intersect_with_file(px, it.w, it.h, it.src, run.flip_merge);
+                // Masks gathered next to the images are HARD LINKS to the ones
+                // the photos came with; writing over one would edit the user's
+                // file. Unlink first, so this only ever adds a file.
+                std::error_code rm;
+                fs::remove(it.dst, rm);
                 if (!stbi_write_png(it.dst.c_str(), it.w, it.h, 1, px.data(), it.w)) {
                     std::lock_guard<std::mutex> lk(sink_mu);
                     merge_error = it.dst;
@@ -713,10 +734,11 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
         // every other frame of that size. A 1920-square gray mask costs ~150 ms
         // to encode -- a quarter of an hour over a two-track 2800-frame capture.
         for (const Item& it : items) {
-            if (it.merge) continue;
+            if (!it.src.empty()) continue;
             if (sinks.cancel && sinks.cancel->load()) return written;
             if (sinks.progress) sinks.progress(++seen, total);
             Sized& s = cache.at({it.w, it.h});
+            fs::remove(it.dst, ec);
             if (!s.first.empty()) {
                 fs::copy_file(s.first, it.dst, fs::copy_options::overwrite_existing, ec);
                 if (!ec) { written++; continue; }

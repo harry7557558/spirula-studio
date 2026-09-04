@@ -289,8 +289,8 @@ void ViewportPanel::attach_preview_data(const ParsedDataset& ds,
 
 void ViewportPanel::enable_scene_options(
     const std::string& primitive, int sh_degree_max,
-    const std::string& gamut, bool linear,
-    std::function<void(const char*, bool)> apply_color_space,
+    const std::string& gamut, int transfer, bool linear,
+    std::function<void(const char*, int, bool)> apply_color_space,
     std::function<void()> on_primitive_changed) {
     _scene_options = true;
     _primitive_idx = 0;
@@ -303,6 +303,7 @@ void ViewportPanel::enable_scene_options(
     _gamut_idx = 0;
     for (int i = 0; i < kNumViewerGamuts; i++)
         if (gamut == kViewerGamuts[i]) _gamut_idx = i;
+    _transfer_idx = transfer;
     _linear_color = linear;
     _apply_color_space = std::move(apply_color_space);
     _on_primitive_changed = std::move(on_primitive_changed);
@@ -613,9 +614,9 @@ void ViewportPanel::draw_controls(bool engine) {
     // A training session renders what it is training; only a file being
     // LOOKED at can be drawn a different way than it was made.
     if (engine && _scene_options) {
-        float w_group = px(80.0f) + px(120.0f) +
+        float w_group = px(80.0f) + px(120.0f) + px(120.0f) +
                         check_w(msg::viewport_linear_color) +
-                        2.0f * st.ItemSpacing.x;
+                        3.0f * st.ItemSpacing.x;
         if (_sh_degree_max > 0) w_group += px(kShW) + st.ItemSpacing.x;
         place_group(w_group);
         place(px(80.0f));
@@ -646,19 +647,25 @@ void ViewportPanel::draw_controls(bool engine) {
         const char* gamuts[kNumViewerGamuts];
         gamuts[0] = msg::viewport_gamut_none.get();
         for (int i = 1; i < kNumViewerGamuts; i++) gamuts[i] = kViewerGamuts[i];
-        if (ui::ComboRaw("##gamut", &_gamut_idx, gamuts, kNumViewerGamuts)) {
+        auto apply = [&] {
             if (_apply_color_space)
-                _apply_color_space(kViewerGamuts[_gamut_idx], _linear_color);
+                _apply_color_space(kViewerGamuts[_gamut_idx], _transfer_idx,
+                                   _linear_color);
             _dirty = true;
-        }
+        };
+        if (ui::ComboRaw("##gamut", &_gamut_idx, gamuts, kNumViewerGamuts))
+            apply();
         ui::help_on_hover(msg::viewport_gamut_help);
         place(check_w(msg::viewport_linear_color));
-        if (ui::Checkbox(msg::viewport_linear_color, &_linear_color)) {
-            if (_apply_color_space)
-                _apply_color_space(kViewerGamuts[_gamut_idx], _linear_color);
-            _dirty = true;
-        }
-        ui::help_on_hover(msg::viewport_gamut_help);
+        if (ui::Checkbox(msg::viewport_linear_color, &_linear_color)) apply();
+        ui::help_on_hover(msg::viewport_linear_help);
+        place(px(120.0f));
+        ImGui::SetNextItemWidth(px(120.0f));
+        // Transfer names are the identifiers --splat-color-transfer takes.
+        if (ui::ComboRaw("##transfer", &_transfer_idx, colorspace::kTransfers,
+                         kNumViewerTransfers))
+            apply();
+        ui::help_on_hover(msg::viewport_transfer_help);
     }
 
     if (_nav_controls) draw_nav_controls();

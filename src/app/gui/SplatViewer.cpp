@@ -140,16 +140,20 @@ std::string SplatViewer::gamut() const {
     std::lock_guard<std::mutex> lk(const_cast<std::mutex&>(_mu));
     return _gamut;
 }
+int SplatViewer::transfer() const {
+    std::lock_guard<std::mutex> lk(const_cast<std::mutex&>(_mu));
+    return _transfer;
+}
 bool SplatViewer::linear_color() const {
     std::lock_guard<std::mutex> lk(const_cast<std::mutex&>(_mu));
     return _linear;
 }
 
-void SplatViewer::set_color_space(const char* gamut, bool linear) {
+void SplatViewer::set_color_space(const char* gamut, int transfer, bool linear) {
     const int slot = _scene_slot.load();
     if (slot < 0) return;
     const std::string g = gamut ? gamut : "";
-    const bool on = linear || !g.empty();
+    const bool on = transfer != 0 || linear || !g.empty();
     {
         std::lock_guard<std::mutex> lk(*_engine_mutex);
         // Splat side only: there is no GT image to convert here.
@@ -157,11 +161,12 @@ void SplatViewer::set_color_space(const char* gamut, bool linear) {
             return std::vector<float>(m.begin(), m.end());
         };
         engine_scene_set_color_space(
-            slot, on, linear,
+            slot, on, transfer, linear,
             on ? vec(spirula::gamut_to_rec709(g)) : std::vector<float>{});
     }
     std::lock_guard<std::mutex> lk(_mu);
     _gamut = g;
+    _transfer = transfer;
     _linear = linear;
 }
 
@@ -321,6 +326,7 @@ void SplatViewer::run(std::string path) {
         {
             std::lock_guard<std::mutex> lk(_mu);
             _gamut = color.splat_gamut;
+            _transfer = (int)color.splat_transfer;
             _linear = color.splat_linear;
         }
 
@@ -363,12 +369,13 @@ void SplatViewer::run(std::string path) {
                           tv(c.opacities,   {c.num, 1}),
                           tv(c.features_dc, {c.num, 3}),
                           tv(c.features_sh, {c.num, K, 3}));
-            const bool cs_on = color.splat_linear || !color.splat_gamut.empty();
+            const bool cs_on = color.splat_on();
             auto vec = [](const spirula::Mat3f& m) {
                 return std::vector<float>(m.begin(), m.end());
             };
             engine_scene_set_color_space(
-                _pending_slot, cs_on, color.splat_linear,
+                _pending_slot, cs_on, (int)color.splat_transfer,
+                color.splat_linear,
                 cs_on ? vec(spirula::gamut_to_rec709(color.splat_gamut))
                       : std::vector<float>{});
         }

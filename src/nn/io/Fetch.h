@@ -26,7 +26,7 @@ struct FetchFile {
     uint64_t    bytes = 0;         // approximate, for the "downloading N MB" line
 };
 
-// <cache>/spirula-studio/models. Mirrors src/app/gui/AppPaths.cpp's
+// <cache>/spirula-studio/models. Mirrors src/app/AppPaths.cpp's
 // cache_dir(); duplicated rather than shared because src/nn/ sits below
 // src/app/ in the layering and may not include it.
 std::string model_cache_dir();

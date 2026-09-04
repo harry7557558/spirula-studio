@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <random>
 #include <vector>
+#include "backend/tests/ScreenRows.h"
 
 using backend::MemcpyKind;
 
@@ -53,6 +54,13 @@ const char* mode_name(DensifyAccumMode m) {
         default:                    return "avg";
     }
 }
+
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
+}
+
 
 void run_mode(bool packed, DensifyAccumMode accum_mode) {
     std::printf("-- %s projection, accum=%s --\n",
@@ -113,11 +121,11 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         DeviceTensor3D<float3>(ttv(d_v_rgb, {(int64_t)C, H, W, 3})),
         t3f1(d_v_depth), DeviceTensor3D<float3>{}};
 
-    DeviceTensor2D<float4> aabb_2d;
-    DeviceTensorFloatND aabb_nd, depths_nd;
+    DeviceTensor2D<uint2> aabb_2d;
+    DeviceTensorFloatND depths_nd;
     std::vector<DeviceTensorFloatND> splats_s;
     DeviceVector<int32_t> cam_ids, gauss_ids;
-    DeviceVector<float4> aabb_vec;
+    DeviceVector<uint2> aabb_vec;
     if (packed) {
         auto out = projection_3dgs_packed_forward(
             N, 3, in_splats, ttv(d_vm, {(int64_t)C, 16}),
@@ -127,8 +135,8 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         cam_ids = std::get<0>(out);
         gauss_ids = std::get<1>(out);
         aabb_vec = std::get<2>(out);
+        aabb_2d = vec_to_2d_aabb(aabb_vec);
         splats_s = std::get<4>(out);
-        aabb_nd = DeviceTensorFloatND(aabb_vec);
         depths_nd = DeviceTensorFloatND(std::get<3>(out));
     } else {
         auto out = projection_3dgs_forward(
@@ -138,16 +146,18 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
             std::nullopt, 0, 32, 0);
         aabb_2d = std::get<0>(out);
         splats_s = std::get<2>(out);
-        aabb_nd = DeviceTensorFloatND(aabb_2d);
         depths_nd = DeviceTensorFloatND(std::get<1>(out));
     }
     DeviceVector<int32_t>* img_ids =
         (packed && cam_ids.data_ptr()) ? &cam_ids : nullptr;
+    int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd, &splats_s[0], &splats_s[2], &splats_s[3], C,
-        ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids);
+        aabb_2d, depths_nd, ellipse_view(splats_s, false), C,
+        ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr,
+        macro_log2);
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
                                              W, H, tile_offsets, flatten_ids,
+                                             macro_log2,
                                              DistortionType::None, false);
     backend::device_synchronize();
     auto& renders = std::get<0>(rout);
@@ -159,9 +169,8 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
     std::vector<float> xy((size_t)C * N * 2, -1e9f);
     {
         int64_t rows = packed ? (int64_t)gauss_ids.size() : (int64_t)C * N;
-        std::vector<float> raw((size_t)rows * 2);
-        backend::memcpy_sync(raw.data(), splats_s[0].data_ptr(),
-                             raw.size() * 4, MemcpyKind::DeviceToHost);
+        std::vector<float> raw;
+        readback_screen(raw, splats_s[0], SCR2_STRIDE, {{SCR2_XY, 2}});
         if (!packed) {
             xy = raw;
         } else {
@@ -183,6 +192,7 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
                              MemcpyKind::HostToDevice);
         auto [vw, vs, aw] = rasterize_to_pixels_3dgs_bwd(
             N, in_splats, splats_s, gauss_ids, W, H, tile_offsets, flatten_ids,
+            macro_log2,
             render_Ts, last_ids, renders, std::nullopt, DistortionType::None,
             t3f1(d_awmap), accum_mode, v_renders, t3f1(d_v_T),
             DeviceTensor3D<float>{}, std::nullopt, std::nullopt, std::nullopt);

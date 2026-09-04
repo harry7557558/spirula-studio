@@ -3,6 +3,7 @@
 // Part of the Optimizer family -- see OptimizerCommon.cuh.
 
 #include "kernels/optim/OptimizerCommon.cuh"
+#include "kernels/optim/ScreenSizeHinge.cuh"
 
 // ================
 // Fused geometry optimizer
@@ -55,6 +56,13 @@ struct _OptimNonShQ {
 // Block reduction over a float4 (paired min/max for u and sqrt_g2).
 template<int BLOCK_SIZE>
 __device__ inline float4 _optim_block_reduce_minmax_f4(float4 mm) {
+    // cg::reduce's comparators keep or drop a NaN depending on which side it
+    // lands; one in a block bound decodes all 256 cells to NaN. Vulkan's
+    // _oq_min/_oq_max (optim_quant.slang) drops it the same way.
+    if (!isfinite(mm.x)) mm.x =  1e30f;
+    if (!isfinite(mm.y)) mm.y = -1e30f;
+    if (!isfinite(mm.z)) mm.z =  1e30f;
+    if (!isfinite(mm.w)) mm.w = -1e30f;
     cg::thread_block       block = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> warp = cg::tiled_partition<WARP_SIZE>(block);
     mm.x = cg::reduce(warp, mm.x, cg::less<float>());
@@ -119,7 +127,10 @@ __global__ void fused_optim_3dgs_geometry_kernel(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     const float grad_scale,
     // Non-SH Adam-state quantization bundle. Only read when non_sh_quant is on.
     const NonShQuantState non_sh,
@@ -215,6 +226,10 @@ __global__ void fused_optim_3dgs_geometry_kernel(
             g1_scale = g1_scales[idx];
             g2_scale = g2_scales[idx];
         }
+        if (radii != nullptr)
+            v_scale += screen_size_hinge_grad(
+                radii[idx], max_screen_size, max_screen_size_penalty, scale,
+                sqrtf(g2_scale * inv_bias_correction2) + eps);
         g1_scale = beta1 * g1_scale + (1.f - beta1) * v_scale;
         g2_scale = beta2 * g2_scale + (1.f - beta2) * v_scale*v_scale;
         float3 updated_scale = scale - lr_scales * g1_scale / (sqrtf(g2_scale * inv_bias_correction2) + eps);
@@ -333,15 +348,14 @@ __global__ void fused_optim_3dgs_geometry_kernel(
             float3 v_dc = grad_scale * gd_dc;
             if constexpr (zero_grad)
                 if (!gq.dc_packed) v_features_dc[idx] = make_float3(0.0f);
-            // L1-shrinkage regularization for SH/DC color: matches the
-            // existing fused_adam_step(features_dc) launch's
-            // l2_reg + l2_reg_offset = 0.5/kSh0 (mirror it here so non_sh_quant
-            // doesn't silently drop the DC color reg). reg pushes toward 0
-            // within [-0.5/kSh0, +0.5/kSh0] using a clamped grad.
+            // Mirrors the fused_adam_step(features_dc) launch's hinge
+            // (l2_reg + l2_reg_offset = 0.5/kSh0) so non_sh_quant does not
+            // silently drop the DC color reg.
             const float dc_off = 0.5f / kSh0;
-            v_dc.x += sh_reg_weight * (fmaxf(fdc.x - dc_off, 0.f) + fminf(fdc.x + dc_off, 0.f));
-            v_dc.y += sh_reg_weight * (fmaxf(fdc.y - dc_off, 0.f) + fminf(fdc.y + dc_off, 0.f));
-            v_dc.z += sh_reg_weight * (fmaxf(fdc.z - dc_off, 0.f) + fminf(fdc.z + dc_off, 0.f));
+            const float under_reg_weight = dc_reg_weight + sh_reg_weight;
+            v_dc.x += dc_reg_weight * fmaxf(fdc.x - dc_off, 0.f) + under_reg_weight * fminf(fdc.x + dc_off, 0.f);
+            v_dc.y += dc_reg_weight * fmaxf(fdc.y - dc_off, 0.f) + under_reg_weight * fminf(fdc.y + dc_off, 0.f);
+            v_dc.z += dc_reg_weight * fmaxf(fdc.z - dc_off, 0.f) + under_reg_weight * fminf(fdc.z + dc_off, 0.f);
 
             float3 g1_dc, g2_dc;
             _OptimNonShQ<3>::decode(non_sh.features_dc_packed, non_sh.features_dc_bounds, idx,
@@ -399,7 +413,8 @@ void fused_optim_3dgs_geometry(
     const float max_gauss_ratio, const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight, const float mcmc_scale_reg_weight,
     const float erank_reg_weight, const float erank_reg_weight_s3, const float quat_norm_reg_weight,
-    const float sh_reg_weight,
+    const float dc_reg_weight, const float sh_reg_weight,
+    const float max_screen_size, const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
     NonShQuantState non_sh,
     GradQuantBuffers gq,
@@ -421,7 +436,7 @@ void fused_optim_3dgs_geometry(
         float, float, float, float, float,
         const float, const float, const float, const float,
         const float, const float, const float, const float,
-        const float,
+        const float, const float, const float, const float,
         const NonShQuantState,
         const GradQuantBuffers,
         const int32_t, const int32_t*, const int64_t);
@@ -460,7 +475,8 @@ void fused_optim_3dgs_geometry(
         erank_reg_weight / (float)num_splats,
         erank_reg_weight_s3 / (float)num_splats,
         quat_norm_reg_weight / (float)num_splats,
-        sh_reg_weight,
+        dc_reg_weight, sh_reg_weight,
+        max_screen_size, max_screen_size_penalty,
         grad_scale,
         non_sh,
         gq,

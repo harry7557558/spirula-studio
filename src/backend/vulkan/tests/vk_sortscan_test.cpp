@@ -6,6 +6,7 @@
 // select_flagged.
 
 #include "backend/common/SortScan.h"
+#include "core/SourcePath.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -19,7 +20,7 @@ static int g_failures = 0;
 #define CHECK_MSG(cond, ...)                                              \
     do {                                                                  \
         if (!(cond)) {                                                    \
-            std::printf("FAIL %s:%d: ", __FILE__, __LINE__);              \
+            std::printf("FAIL %s:%d: ", SS_FILE, __LINE__);               \
             std::printf(__VA_ARGS__);                                     \
             std::printf("\n");                                            \
             g_failures++;                                                 \
@@ -30,7 +31,7 @@ static int g_failures = 0;
     do {                                                                  \
         const char* err_ = backend::last_error();                         \
         if (err_) {                                                       \
-            std::printf("FAIL %s:%d: backend error: %s\n", __FILE__,      \
+            std::printf("FAIL %s:%d: backend error: %s\n", SS_FILE,       \
                         __LINE__, err_);                                  \
             g_failures++;                                                 \
         }                                                                 \
@@ -208,6 +209,12 @@ int main() {
     }
 
     for (int64_t n : sizes) test_select(n, rng);
+
+    // Past the 65535 grid-fold cap (SCAN_BLOCK = 2048): the fold tail
+    // launches whole workgroups with no block_sums slot, and an
+    // unguarded write there wedges the GPU.
+    test_scan<int32_t>(65536LL * 2048 + 1, true, rng);
+    test_scan<int32_t>(65536LL * 2048 + 1, false, rng);
 
     // Empty inputs are no-ops.
     backend::DoubleBuffer<int64_t> kb(nullptr, nullptr);

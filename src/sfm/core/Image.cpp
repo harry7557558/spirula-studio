@@ -83,7 +83,8 @@ static void resizeGrayFromRgb(const unsigned char* rgb, int w, int h, int dw, in
 
 GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_color,
                         const std::string& mask_path,
-                        const std::string& gamut, std::optional<bool> is_linear) {
+                        const std::string& gamut, std::optional<bool> is_linear,
+                        bool flip_mask) {
     int w = 0, h = 0, chan = 0;
     // Force 3 channels; we do our own luma so behavior is decoder-independent.
     // An EXR decodes on this thread: the pool above already owns every core.
@@ -138,7 +139,10 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
     if (exr_rgb.empty()) stbi_image_free(rgb);
     // Kept at the mask file's own resolution: applyMask() samples it in uv, so
     // resampling it to match `img` would only lose detail (D39).
-    if (!mask_path.empty()) img.mask = loadMask(mask_path);
+    if (!mask_path.empty()) {
+        img.mask = loadMask(mask_path);
+        if (flip_mask) img.mask.invert();
+    }
     img.exif = readExif(path);  // header bytes only; see sfm/core/Exif.h
     return img;
 }

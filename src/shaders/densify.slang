@@ -10,6 +10,16 @@
 #undef _DENSIFY_LOCAL_CDE
 #endif
 
+// Covers no pixel under any plausible scene unit (a healthy 5th percentile
+// sits near -6), and mcmc_scale_reg floors here (per_splat_losses.slang), so
+// one that reaches it has stopped moving -- densification recycles it.
+static const float kDeadLogScale = -40.0;
+
+[CudaDeviceExport]
+bool splat_scale_is_dead(float3 log_scale) {
+    return !(max(max(log_scale.x, log_scale.y), log_scale.z) > kDeadLogScale);
+}
+
 [CudaDeviceExport]
 void mcmc_add_noise_3dgs(
     float scaler,  // unit: L^-1, same as mean_lr

@@ -137,6 +137,18 @@ __global__ void bilagrid_uniform_sample_backward_v2_kernel(
     dr = isfinite(dr) ? dr : 0.0f;
     dg = isfinite(dg) ? dg : 0.0f;
     db = isfinite(db) ? db : 0.0f;
+
+    // Both gradients are linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- contributes nothing anywhere.
+    if (dr == 0.0f && dg == 0.0f && db == 0.0f) {
+        if (v_rgb != nullptr && inside) {
+            v_rgb[g_off+0] = 0.0f;
+            v_rgb[g_off+1] = 0.0f;
+            v_rgb[g_off+2] = 0.0f;
+        }
+        return;
+    }
+
     float vr = 0.0, vg = 0.0, vb = 0.0;
 
     // spatial derivatives for coords

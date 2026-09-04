@@ -205,7 +205,9 @@ int main(int argc, char** argv) {
                 /*max_gauss_ratio=*/4.f, /*scale_reg=*/0.1f,
                 /*mcmc_op=*/0.05f, /*mcmc_scale=*/0.02f,
                 /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f,
-                /*sh_reg=*/0.01f, c.sam, nq, gq,
+                /*dc_reg=*/0.01f, /*sh_reg=*/0.01f,
+                /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.5f,
+                c.sam, nq, gq,
                 /*step=*/7 + step_i, steps, /*grad_scale=*/0.5f,
                 c.zero_grad);
             backend::device_synchronize();

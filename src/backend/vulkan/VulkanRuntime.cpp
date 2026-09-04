@@ -312,6 +312,20 @@ void stream_barrier(VkCommandBuffer cb) {
         0, 1, &mb, 0, nullptr, 0, nullptr);
 }
 
+// Device writes reach a mapped pointer only through a barrier naming the host
+// stage. Desktop drivers tolerate its absence; GB10 unified memory hands back
+// stale lines without it.
+void host_read_barrier(VkCommandBuffer cb) {
+    VkMemoryBarrier mb{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
+                       VK_ACCESS_SHADER_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(
+        cb,
+        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &mb, 0, nullptr, 0, nullptr);
+}
+
 uint64_t flush_all_streams() {
     std::vector<StreamImpl*> streams;
     {
@@ -542,6 +556,7 @@ void staged_download_sync(void* dst, const ResolvedPtr& src, size_t bytes) {
         vk::record_and_wait([&](VkCommandBuffer cb) {
             VkBufferCopy c{src.offset + done, reg.offset, n};
             vkCmdCopyBuffer(cb, src.alloc.buffer, reg.buffer, 1, &c);
+            vk::host_read_barrier(cb);
         });
         std::memcpy((char*)dst + done, reg.mapped, n);
         done += n;
@@ -617,6 +632,7 @@ void memcpy_sync(void* dst, const void* src, size_t bytes, MemcpyKind kind) {
             vk::record_and_wait([&](VkCommandBuffer cb) {
                 VkBufferCopy c{s.offset, d.offset, bytes};
                 vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
+                vk::host_read_barrier(cb);
             });
         } else {
             staged_download_sync(dst, s, bytes);
@@ -716,6 +732,7 @@ void memcpy_async(void* dst, const void* src, size_t bytes, MemcpyKind kind,
         VkBufferCopy c{s.offset, d.offset, bytes};
         vkCmdCopyBuffer(cb, s.alloc.buffer, d.alloc.buffer, 1, &c);
         vk::stream_barrier(cb);
+        vk::host_read_barrier(cb);
         return;
     }
     // Pageable destination degrades to sync (as CUDA does).
@@ -746,12 +763,18 @@ bool fill_params(const ResolvedPtr& d, size_t bytes, int value,
 // Stream-ordered device fill, shared by both memset entry points.
 void record_fill(const ResolvedPtr& d, size_t bytes, VkDeviceSize fill,
                  uint32_t word, Stream stream) {
-    std::optional<prof::Scope> _pms;
-    if (prof::enabled()) _pms.emplace(prof::MEMSET, bytes);
     vk::StreamImpl* st = vk::stream_impl(stream);
     if (!st) return;
+    // Opening a fresh command buffer waits for the ring entry's previous
+    // submission, so it is a GPU wait and not fill cost: charging it to
+    // MEMSET made a free 450 MB/step of zeroing read as 12 s of a 56 s run.
+    std::optional<prof::Scope> _pwait;
+    if (prof::enabled() && !st->recording) _pwait.emplace(prof::DEVSYNC);
     VkCommandBuffer cb = vk::stream_begin(st);
+    _pwait.reset();
     if (cb == VK_NULL_HANDLE) return;
+    std::optional<prof::Scope> _pms;
+    if (prof::enabled()) _pms.emplace(prof::MEMSET, bytes);
     vkCmdFillBuffer(cb, d.alloc.buffer, d.offset, fill, word);
     vk::stream_barrier(cb);
 }

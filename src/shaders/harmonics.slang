@@ -87,55 +87,56 @@ void sh_block_atomic_add_f3_512(float3 *dst, uint idx, float3 val, uint thread_i
 
 
 // ----------------------------------------------------------------------------
-// SH value-quantization load helpers (q8 / q16).
-//
-// Canonical SH parameter storage when sh_value_bits != 32 is a packed
-// uint8_t / uint16_t buffer plus a per-block float2 (min, max) bounds table
-// at block_size = 256 cells. Cell layout for splat i, SH basis j, channel ch:
-//   cell_idx = base(i) + 3*j + ch       where base(i) = i * 3 * n_sh
-// Each cell decodes via QuantizedTensor<BITS, 256>:
-//   decoded = mm.x + (mm.y - mm.x) * (q / kQMax)
-// where mm = bounds[cell_idx / 256] and kQMax is 255 (q8) or 65535 (q16).
-//
-// SH read paths (sh_coeffs_to_color_q{8,16} forward + VJP) use these helpers
-// in place of `coeffs[j]`. The helpers are [ForceInline] so the divisions
-// constant-fold at the call site and the resulting per-coef load is 3 byte
-// loads + 3 float2 loads + 6 fmas. The VJP `v_coeffs` writes stay fp32 --
-// gradients always live in engine().grad.features_sh; only the canonical
-// SH PARAMETER buffer is quantized.
-//
-// bounds_stride: number of cells per bound. Two supported layouts:
-//   - per-CELL-block (codec block_size=256):  bounds_stride = 256
-//   - per-SPLAT-block (FPBO writeback layout): bounds_stride = 256 * 3 * num_sh_buffer
-//     i.e. ONE bound per 256 splats covering all 3*num_sh_buffer cells/splat.
-// The caller picks the stride based on which buffer is in use.
+// SH value-quantization load helpers (q8 / q16). Cell addressing and both
+// layouts: docs/notes/sh-quant-layout.md -- callers pass the
+// (bounds_stride, pair_pitch) pair of whichever buffer they hold.
 // ----------------------------------------------------------------------------
 
+// Cell index of coefficient `c` of the splat whose cells start at `base`.
 [ForceInline]
-float3 _sh_load_q8(uint8_t* packed, float2* bounds, int64_t base, int j, int64_t bounds_stride) {
-    int64_t cell0 = base + (int64_t)(3*j);
-    float2 mm0 = bounds[(int)(cell0       / bounds_stride)];
-    float2 mm1 = bounds[(int)((cell0 + 1) / bounds_stride)];
-    float2 mm2 = bounds[(int)((cell0 + 2) / bounds_stride)];
+int64_t sh_cell_at(int64_t base, int c, int64_t pair_pitch) {
+    // Branch-free (per cell): AoS folds to (c >> 0) * 1 + (c & 0).
+    int pair = int(min(pair_pitch, int64_t(1)));
+    int64_t pitch = pair_pitch + int64_t(1 - pair);
+    return base + (int64_t)(c >> pair) * pitch + (int64_t)(c & pair);
+}
+
+// First cell of splat `gid` in the FPBO layout (pair_pitch 512).
+[ForceInline]
+int64_t sh_fpbo_base(int64_t gid, int cells_per_splat) {
+    return (gid >> 8) * (int64_t)((cells_per_splat + 1) >> 1) * 512
+           + (gid & 255) * 2;
+}
+
+[ForceInline]
+float3 _sh_load_q8(uint8_t* packed, float2* bounds, int64_t base, int j, int64_t bounds_stride, int64_t pair_pitch) {
+    int64_t cell0 = sh_cell_at(base, 3*j, pair_pitch);
+    int64_t cell1 = sh_cell_at(base, 3*j+1, pair_pitch);
+    int64_t cell2 = sh_cell_at(base, 3*j+2, pair_pitch);
+    float2 mm0 = bounds[(int)(cell0 / bounds_stride)];
+    float2 mm1 = bounds[(int)(cell1 / bounds_stride)];
+    float2 mm2 = bounds[(int)(cell2 / bounds_stride)];
     const float inv = 1.0f / 255.0f;
     return float3(
-        mm0.x + (mm0.y - mm0.x) * (float(packed[cell0    ]) * inv),
-        mm1.x + (mm1.y - mm1.x) * (float(packed[cell0 + 1]) * inv),
-        mm2.x + (mm2.y - mm2.x) * (float(packed[cell0 + 2]) * inv)
+        mm0.x + (mm0.y - mm0.x) * (float(packed[cell0]) * inv),
+        mm1.x + (mm1.y - mm1.x) * (float(packed[cell1]) * inv),
+        mm2.x + (mm2.y - mm2.x) * (float(packed[cell2]) * inv)
     );
 }
 
 [ForceInline]
-float3 _sh_load_q16(uint16_t* packed, float2* bounds, int64_t base, int j, int64_t bounds_stride) {
-    int64_t cell0 = base + (int64_t)(3*j);
-    float2 mm0 = bounds[(int)(cell0       / bounds_stride)];
-    float2 mm1 = bounds[(int)((cell0 + 1) / bounds_stride)];
-    float2 mm2 = bounds[(int)((cell0 + 2) / bounds_stride)];
+float3 _sh_load_q16(uint16_t* packed, float2* bounds, int64_t base, int j, int64_t bounds_stride, int64_t pair_pitch) {
+    int64_t cell0 = sh_cell_at(base, 3*j, pair_pitch);
+    int64_t cell1 = sh_cell_at(base, 3*j+1, pair_pitch);
+    int64_t cell2 = sh_cell_at(base, 3*j+2, pair_pitch);
+    float2 mm0 = bounds[(int)(cell0 / bounds_stride)];
+    float2 mm1 = bounds[(int)(cell1 / bounds_stride)];
+    float2 mm2 = bounds[(int)(cell2 / bounds_stride)];
     const float inv = 1.0f / 65535.0f;
     return float3(
-        mm0.x + (mm0.y - mm0.x) * (float(packed[cell0    ]) * inv),
-        mm1.x + (mm1.y - mm1.x) * (float(packed[cell0 + 1]) * inv),
-        mm2.x + (mm2.y - mm2.x) * (float(packed[cell0 + 2]) * inv)
+        mm0.x + (mm0.y - mm0.x) * (float(packed[cell0]) * inv),
+        mm1.x + (mm1.y - mm1.x) * (float(packed[cell1]) * inv),
+        mm2.x + (mm2.y - mm2.x) * (float(packed[cell2]) * inv)
     );
 }
 
@@ -1400,9 +1401,10 @@ float3 sh_coeffs_to_color_q8(
     uint8_t* packed,
     float2*  bounds,
     int64_t  base,
-    int64_t  bounds_stride
+    int64_t  bounds_stride,
+    int64_t  pair_pitch
 ) {
-    #define _C(j) _sh_load_q8(packed, bounds, base, j, bounds_stride)
+    #define _C(j) _sh_load_q8(packed, bounds, base, j, bounds_stride, pair_pitch)
     float3 colors = 0.2820947917738781f * coeff_dc;
 
     if (degree <= 0)
@@ -1504,9 +1506,10 @@ float3 sh_coeffs_to_color_q16(
     uint16_t* packed,
     float2*   bounds,
     int64_t   base,
-    int64_t  bounds_stride
+    int64_t  bounds_stride,
+    int64_t  pair_pitch
 ) {
-    #define _C(j) _sh_load_q16(packed, bounds, base, j, bounds_stride)
+    #define _C(j) _sh_load_q16(packed, bounds, base, j, bounds_stride, pair_pitch)
     float3 colors = 0.2820947917738781f * coeff_dc;
 
     if (degree <= 0)
@@ -1612,13 +1615,14 @@ void _sh_coeffs_to_color_vjp_q8<let inplace: int>(
     float2*  bounds,
     int64_t  base,
     int64_t  bounds_stride,
+    int64_t  pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc,
     float3 *v_coeffs,
     inout float3 v_dir,
     uint thread_id
 ) {
-    #define _C(j) _sh_load_q8(packed, bounds, base, j, bounds_stride)
+    #define _C(j) _sh_load_q8(packed, bounds, base, j, bounds_stride, pair_pitch)
     #define sv(i, v) \
         if (inplace == 0) v_coeffs[i] = (v); \
         else if (inplace == 1) v_coeffs[i] += (v); \
@@ -1891,13 +1895,14 @@ void _sh_coeffs_to_color_vjp_q16<let inplace: int>(
     float2*  bounds,
     int64_t  base,
     int64_t  bounds_stride,
+    int64_t  pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc,
     float3 *v_coeffs,
     inout float3 v_dir,
     uint thread_id
 ) {
-    #define _C(j) _sh_load_q16(packed, bounds, base, j, bounds_stride)
+    #define _C(j) _sh_load_q16(packed, bounds, base, j, bounds_stride, pair_pitch)
     #define sv(i, v) \
         if (inplace == 0) v_coeffs[i] = (v); \
         else if (inplace == 1) v_coeffs[i] += (v); \
@@ -2163,54 +2168,54 @@ void sh_coeffs_to_color_vjp_q8(
     const int degree,
     const float3 dir,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc,
     float3* v_coeffs,
     inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q8<0>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q8<0>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_inplace_q8(
     const int degree, const float3 dir, float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc, float3* v_coeffs, inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q8<1>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q8<1>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_atomic_q8(
     const int degree, const float3 dir, float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc, float3* v_coeffs, inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q8<2>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q8<2>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 
 // ---- direction-form public wrappers (q16) ----------------------------------
 [ForceInline]
 void sh_coeffs_to_color_vjp_q16(
     const int degree, const float3 dir, float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc, float3* v_coeffs, inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q16<0>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q16<0>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_inplace_q16(
     const int degree, const float3 dir, float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc, float3* v_coeffs, inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q16<1>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q16<1>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_atomic_q16(
     const int degree, const float3 dir, float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     const float3 v_colors,
     inout float3 v_coeff_dc, float3* v_coeffs, inout float3 v_dir
-) { _sh_coeffs_to_color_vjp_q16<2>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
+) { _sh_coeffs_to_color_vjp_q16<2>(degree, dir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_dir, 0u); }
 
 
 // ---- (mean, R, t) form forward (q8) ----------------------------------------
@@ -2219,10 +2224,10 @@ float3 sh_coeffs_to_color_q8(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch
 ) {
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
-    float3 rgb = sh_coeffs_to_color_q8(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride);
+    float3 rgb = sh_coeffs_to_color_q8(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch);
     return max(rgb + 0.5, 0.0);
 }
 
@@ -2232,10 +2237,10 @@ float3 sh_coeffs_to_color_q16(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch
 ) {
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
-    float3 rgb = sh_coeffs_to_color_q16(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride);
+    float3 rgb = sh_coeffs_to_color_q16(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch);
     return max(rgb + 0.5, 0.0);
 }
 
@@ -2246,19 +2251,19 @@ void _sh_coeffs_to_color_vjp_q8<let inplace: int>(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc,
     float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
 ) {
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
-    float3 rgb = sh_coeffs_to_color_q8(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride);
+    float3 rgb = sh_coeffs_to_color_q8(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch);
     v_colors *= float3(float(rgb.x >= -0.5), float(rgb.y >= -0.5), float(rgb.z >= -0.5));
 
     float3 v_viewdir;
     _sh_coeffs_to_color_vjp_q8<inplace>(
-        degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride,
+        degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch,
         v_colors, v_coeff_dc, v_coeffs, v_viewdir, 0u);
 
     DifferentialPair<float3> dp_mean = diffPair(mean);
@@ -2282,19 +2287,19 @@ void _sh_coeffs_to_color_vjp_q16<let inplace: int>(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc,
     float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
 ) {
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
-    float3 rgb = sh_coeffs_to_color_q16(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride);
+    float3 rgb = sh_coeffs_to_color_q16(degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch);
     v_colors *= float3(float(rgb.x >= -0.5), float(rgb.y >= -0.5), float(rgb.z >= -0.5));
 
     float3 v_viewdir;
     _sh_coeffs_to_color_vjp_q16<inplace>(
-        degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride,
+        degree, viewdir, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch,
         v_colors, v_coeff_dc, v_coeffs, v_viewdir, 0u);
 
     DifferentialPair<float3> dp_mean = diffPair(mean);
@@ -2319,13 +2324,13 @@ void sh_coeffs_to_color_vjp_q8(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     out float3 v_mean, out float3x3 v_R, out float3 v_t
 ) {
     v_mean = float3(0.0f); v_R = float3x3(0.0f); v_t = float3(0.0f);
-    _sh_coeffs_to_color_vjp_q8<0>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t);
+    _sh_coeffs_to_color_vjp_q8<0>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t);
 }
 
 [ForceInline]
@@ -2333,22 +2338,22 @@ void sh_coeffs_to_color_vjp_inplace_q8(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
-) { _sh_coeffs_to_color_vjp_q8<1>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
+) { _sh_coeffs_to_color_vjp_q8<1>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_atomic_q8(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint8_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
-) { _sh_coeffs_to_color_vjp_q8<2>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
+) { _sh_coeffs_to_color_vjp_q8<2>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
 
 
 // ---- (mean, R, t) form public wrappers (q16) -------------------------------
@@ -2357,13 +2362,13 @@ void sh_coeffs_to_color_vjp_q16(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     out float3 v_mean, out float3x3 v_R, out float3 v_t
 ) {
     v_mean = float3(0.0f); v_R = float3x3(0.0f); v_t = float3(0.0f);
-    _sh_coeffs_to_color_vjp_q16<0>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t);
+    _sh_coeffs_to_color_vjp_q16<0>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t);
 }
 
 [ForceInline]
@@ -2371,22 +2376,22 @@ void sh_coeffs_to_color_vjp_inplace_q16(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
-) { _sh_coeffs_to_color_vjp_q16<1>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
+) { _sh_coeffs_to_color_vjp_q16<1>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
 
 [ForceInline]
 void sh_coeffs_to_color_vjp_atomic_q16(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride,
+    uint16_t* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch,
     float3 v_colors,
     out float3 v_coeff_dc, float3* v_coeffs,
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t
-) { _sh_coeffs_to_color_vjp_q16<2>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
+) { _sh_coeffs_to_color_vjp_q16<2>(degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); }
 
 
 // ---- exports (q8 / q16, splat path) ----------------------------------------
@@ -2397,14 +2402,14 @@ void sh_coeffs_to_color_vjp_atomic_q16(
 // splat features_sh value-quant path.
 #define _DECL_Q(sh_degree, qbits, dtype) \
     [CudaDeviceExport] \
-    float3 sh##sh_degree##_to_color_q##qbits(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride) \
-        { return sh_coeffs_to_color_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride); } \
+    float3 sh##sh_degree##_to_color_q##qbits(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch) \
+        { return sh_coeffs_to_color_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch); } \
     [CudaDeviceExport] \
-    void sh##sh_degree##_to_color_q##qbits##_vjp_inplace(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, float3 v_colors, out float3 v_coeff_dc, float3 *v_coeffs, inout float3 v_mean, inout float3x3 v_R, inout float3 v_t) \
-        { sh_coeffs_to_color_vjp_inplace_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); } \
+    void sh##sh_degree##_to_color_q##qbits##_vjp_inplace(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch, float3 v_colors, out float3 v_coeff_dc, float3 *v_coeffs, inout float3 v_mean, inout float3x3 v_R, inout float3 v_t) \
+        { sh_coeffs_to_color_vjp_inplace_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); } \
     [CudaDeviceExport] \
-    void sh##sh_degree##_to_color_q##qbits##_vjp_atomic(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, float3 v_colors, out float3 v_coeff_dc, float3 *v_coeffs, inout float3 v_mean, inout float3x3 v_R, inout float3 v_t) \
-        { sh_coeffs_to_color_vjp_atomic_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); } \
+    void sh##sh_degree##_to_color_q##qbits##_vjp_atomic(float3 mean, float3x3 R, float3 t, float3 coeff_dc, dtype* packed, float2* bounds, int64_t base, int64_t bounds_stride, int64_t pair_pitch, float3 v_colors, out float3 v_coeff_dc, float3 *v_coeffs, inout float3 v_mean, inout float3x3 v_R, inout float3 v_t) \
+        { sh_coeffs_to_color_vjp_atomic_q##qbits(sh_degree, mean, R, t, coeff_dc, packed, bounds, base, bounds_stride, pair_pitch, v_colors, v_coeff_dc, v_coeffs, v_mean, v_R, v_t); } \
 
 _DECL_Q(0,  8, uint8_t)  _DECL_Q(1,  8, uint8_t)  _DECL_Q(2,  8, uint8_t)  _DECL_Q(3,  8, uint8_t)  _DECL_Q(4,  8, uint8_t)
 _DECL_Q(0, 16, uint16_t) _DECL_Q(1, 16, uint16_t) _DECL_Q(2, 16, uint16_t) _DECL_Q(3, 16, uint16_t) _DECL_Q(4, 16, uint16_t)

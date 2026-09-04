@@ -23,6 +23,7 @@
 #include <fstream>
 #include <random>
 #include <vector>
+#include "backend/tests/ScreenRows.h"
 
 using backend::MemcpyKind;
 
@@ -90,6 +91,13 @@ int check_error(const char* where) {
     }
     return 0;
 }
+
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
+}
+
 
 int main(int argc, char** argv) {
     if (argc != 3 ||
@@ -199,7 +207,8 @@ int main(int argc, char** argv) {
         uint8_t *d_shq = nullptr, *d_shv = nullptr;
         float *d_shq_b = nullptr, *d_shv_b = nullptr;
         std::optional<TorchTensorView> shq_tv, shq_b_tv, shv_tv, shv_b_tv;
-        const int64_t cells = N * 3 * NUM_SH;
+        // FPBO layout: whole 256-splat blocks of whole u32 words.
+        const int64_t cells = sh_fpbo_cells(N, NUM_SH);
         if (level1) {
             // Zero packed + zero bounds is the codec's documented valid
             // initial state (decodes to exactly (0, 0) on both backends).
@@ -233,7 +242,7 @@ int main(int argc, char** argv) {
 
         // --- forward: aabb (+ ids when packed) ---
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceTensorFloatND aabb_nd;
+        DeviceTensor2D<uint2> aabb_2d;
         int64_t n_isect = C * N;
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
@@ -247,7 +256,7 @@ int main(int argc, char** argv) {
                           level1 ? 0 : 256);
             cam_ids = std::get<0>(out);
             gauss_ids = std::get<1>(out);
-            aabb_nd = DeviceTensorFloatND(std::get<2>(out));
+            aabb_2d = vec_to_2d_aabb(std::get<2>(out));
             n_isect = cam_ids.size();
         } else {
             auto fn = cfg.prim == 0   ? projection_3dgs_forward
@@ -259,7 +268,7 @@ int main(int argc, char** argv) {
                           dist_tv(cfg.dist), radii, q_val_packed,
                           q_val_bounds, (uint32_t)NUM_SH, level1 ? 16 : 32,
                           level1 ? 0 : 256);
-            aabb_nd = DeviceTensorFloatND(std::get<0>(out));
+            aabb_2d = std::get<0>(out);
         }
         backend::device_synchronize();
         if (check_error("fwd")) return 1;
@@ -271,11 +280,10 @@ int main(int argc, char** argv) {
             for (auto& v : vs) v = uf(-0.1f, 0.1f);
             for (auto& v : vo) v = uf(-0.5f, 0.5f);
             for (auto& v : vr) v = uf(-1.f, 1.f);
-            v_screen = {
-                DeviceTensorFloatND(ttv(upload(vs), {n_isect, 3, 1})),
-                DeviceTensorFloatND(ttv(upload(vo), {n_isect, 1, 1})),
-                DeviceTensorFloatND(ttv(upload(vr), {n_isect, 3, 1})),
-            };
+            auto rows = interleave_screen(n_isect, SCRG_STRIDE,
+                {{SCRG_SCALE, &vs}, {SCRG_OPAC, &vo}, {SCRG_RGB, &vr}});
+            v_screen = {DeviceTensorFloatND(
+                ttv(upload(rows), {n_isect, SCRG_STRIDE, 1}))};
         } else {
             std::vector<float> vxy(n_isect * 2), vd(n_isect),
                 vc(n_isect * 3), vo(n_isect), vr(n_isect * 3);
@@ -284,13 +292,11 @@ int main(int argc, char** argv) {
             for (auto& v : vc) v = uf(-0.02f, 0.02f);
             for (auto& v : vo) v = uf(-0.5f, 0.5f);
             for (auto& v : vr) v = uf(-1.f, 1.f);
-            v_screen = {
-                DeviceTensorFloatND(ttv(upload(vxy), {n_isect, 2, 1})),
-                DeviceTensorFloatND(ttv(upload(vd), {n_isect, 1, 1})),
-                DeviceTensorFloatND(ttv(upload(vc), {n_isect, 3, 1})),
-                DeviceTensorFloatND(ttv(upload(vo), {n_isect, 1, 1})),
-                DeviceTensorFloatND(ttv(upload(vr), {n_isect, 3, 1})),
-            };
+            auto rows = interleave_screen(n_isect, SCR2_STRIDE,
+                {{SCR2_XY, &vxy}, {SCR2_DEPTH, &vd}, {SCR2_CONIC, &vc},
+                 {SCR2_OPAC, &vo}, {SCR2_RGB, &vr}});
+            v_screen = {DeviceTensorFloatND(
+                ttv(upload(rows), {n_isect, SCR2_STRIDE, 1}))};
         }
 
         // --- world-space gradients (vw_mask) ---
@@ -385,7 +391,7 @@ int main(int argc, char** argv) {
             fn(N, cfg.max_deg, splats, ttv(d_vm, {C, 16}),
                ttv(d_intr, {C, 4}), W, H, cams[cfg.cam],
                dist_fixture::kTierNames[cfg.dist], dist_tv(cfg.dist),
-               cam_ids, gauss_ids, aabb_nd, v_world,
+               cam_ids, gauss_ids, aabb_2d, v_world,
                v_screen, g1_world, g2_world, shq_tv, shq_b_tv, shv_tv,
                shv_b_tv, non_sh, radii, densify_score,
                /*lr_means=*/1.6e-4f, /*lr_quats=*/1e-3f, /*lr_scales=*/5e-3f,
@@ -393,7 +399,10 @@ int main(int argc, char** argv) {
                /*lr_features_sh=*/1.25e-4f, /*max_gauss_ratio=*/10.f,
                /*scale_reg=*/0.1f, /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
                /*erank=*/0.1f, /*erank_s3=*/0.02f, /*quat_norm=*/0.01f,
-               /*sh_reg=*/0.05f, cfg.sam, cfg.ctl, /*eps_tr=*/1e-4f,
+               /*dc_reg=*/0.02f, /*sh_reg=*/0.05f,
+               /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
+               cfg.sam, cfg.ctl,
+               /*eps_tr=*/1e-4f,
                call == 0 ? step
                          : std::variant<int32_t, TorchTensorView>(
                                (int32_t)11),

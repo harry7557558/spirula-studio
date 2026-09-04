@@ -15,8 +15,8 @@ namespace {
 struct FpboParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
-    uint64_t camera_id_bounds, camera_ids, perm, aabb;
-    uint64_t vs0, vs1, vs2, vs3, vs4;
+    uint64_t camera_id_bounds, camera_ids, aabb;
+    uint64_t vs_screen;
     uint64_t vw_means, vw_quats, vw_scales, vw_opacities, vw_dc;
     uint64_t g1_means, g1_quats, g1_scales, g1_opacities, g1_dc, g1_sh;
     uint64_t g2_means, g2_quats, g2_scales, g2_opacities, g2_dc, g2_sh;
@@ -31,8 +31,9 @@ struct FpboParams {
     float max_gauss_ratio, scale_regularization_weight;
     float mcmc_opacity_reg_weight, mcmc_scale_reg_weight;
     float erank_reg_weight, erank_reg_weight_s3;
-    float quat_norm_reg_weight, sh_reg_weight;
-    float eps_tr, _padf;
+    float quat_norm_reg_weight, dc_reg_weight, sh_reg_weight;
+    float max_screen_size, max_screen_size_penalty;
+    float eps_tr;
     int32_t scalar_step;
     uint32_t has_steps, has_densify_score;
     uint32_t C, N;
@@ -41,7 +42,7 @@ struct FpboParams {
     uint32_t num_sh_buffer;
     uint32_t _pad0;
 };
-static_assert(sizeof(FpboParams) == 52 * 8 + 16 * 4 + 10 * 4,
+static_assert(sizeof(FpboParams) == 47 * 8 + 18 * 4 + 10 * 4,
               "params layout must match the slang struct");
 
 using vkk::or_fallback;
@@ -57,7 +58,7 @@ void launch_fpbo_vk(
     const TorchTensorView& dist_coeffs,
     const DeviceVector<int32_t>& camera_ids,
     const DeviceVector<int32_t>& gaussian_ids,
-    DeviceTensorFloatND& aabb,
+    DeviceTensor2D<uint2>& aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& g1_splats_world,
@@ -75,7 +76,9 @@ void launch_fpbo_vk(
     const float scale_regularization_weight,
     const float mcmc_opacity_reg_weight, const float mcmc_scale_reg_weight,
     const float erank_reg_weight, const float erank_reg_weight_s3,
-    const float quat_norm_reg_weight, const float sh_reg_weight,
+    const float quat_norm_reg_weight, const float dc_reg_weight,
+    const float sh_reg_weight,
+    const float max_screen_size, const float max_screen_size_penalty,
     bool use_scale_agnostic_mean, bool color_trust_linear, float eps_tr,
     std::variant<int32_t, TorchTensorView> step, int quantization_level) {
     if (N == 0)
@@ -100,9 +103,6 @@ void launch_fpbo_vk(
     const int buf_sh_deg = wb.sh_degree();
     const uint32_t num_sh_buffer = (uint32_t)(buf_sh_deg * (buf_sh_deg + 2));
     int sh_degree = std::min(buf_sh_deg, max_sh_degree);
-    if ((uint64_t)3 * num_sh_buffer * (uint64_t)N > UINT32_MAX)
-        throw std::runtime_error(
-            "fused_projection_bwd_optimizer: SH cell count exceeds 2^32");
 
     const uint32_t C = (uint32_t)std::get<2>(viewmats)[0];
     const bool packed = (camera_ids.data_ptr() && gaussian_ids.data_ptr());
@@ -145,24 +145,15 @@ void launch_fpbo_vk(
         (uint64_t)(packed ? ranges.camera_id_bounds.data_ptr() : nullptr));
     p.camera_ids = or_fallback((uint64_t)(packed ? camera_ids.data_ptr()
                                                  : nullptr));
-    p.perm = or_fallback((uint64_t)(packed ? ranges.sorted_perm : nullptr));
     p.aabb = (uint64_t)aabb.data_ptr();
     if (eval3d) {
         Vanilla3DGUT<0>::ScreenBuffer vsb(
             const_cast<std::vector<DeviceTensorFloatND>&>(v_splats_screen));
-        p.vs0 = (uint64_t)vsb.raw_data(0);
-        p.vs1 = (uint64_t)vsb.raw_data(1);
-        p.vs2 = (uint64_t)vsb.raw_data(2);
-        p.vs3 = vkk::null_fallback();
-        p.vs4 = vkk::null_fallback();
+        p.vs_screen = (uint64_t)vsb.raw_data();
     } else {
         Vanilla3DGS<0>::ScreenBuffer vsb(
             const_cast<std::vector<DeviceTensorFloatND>&>(v_splats_screen));
-        p.vs0 = (uint64_t)vsb.raw_data(0);
-        p.vs1 = (uint64_t)vsb.raw_data(1);
-        p.vs2 = (uint64_t)vsb.raw_data(2);
-        p.vs3 = (uint64_t)vsb.raw_data(3);
-        p.vs4 = (uint64_t)vsb.raw_data(4);
+        p.vs_screen = (uint64_t)vsb.raw_data();
     }
     p.vw_means = or_fallback((uint64_t)vwb.raw_data(0));
     p.vw_quats = or_fallback((uint64_t)vwb.raw_data(1));
@@ -219,7 +210,11 @@ void launch_fpbo_vk(
     p.erank_reg_weight = erank_reg_weight / (float)N;
     p.erank_reg_weight_s3 = erank_reg_weight_s3 / (float)N;
     p.quat_norm_reg_weight = quat_norm_reg_weight / (float)N;
+    p.dc_reg_weight = 2.0f * dc_reg_weight / 3.0f;
     p.sh_reg_weight = 2.0f * sh_reg_weight / (float)(3 * N);
+    p.max_screen_size = max_screen_size;
+    p.max_screen_size_penalty =
+        radii.data_ptr() ? max_screen_size_penalty : 0.0f;
     p.eps_tr = eps_tr;
     p.scalar_step = scalar_step;
     p.has_steps = steps_ptr ? 1u : 0u;
@@ -263,9 +258,10 @@ void launch_fpbo_vk(
         lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,            \
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,       \
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight,   \
-        erank_reg_weight_s3, quat_norm_reg_weight, sh_reg_weight,           \
-        use_scale_agnostic_mean, color_trust_linear, eps_tr, step,          \
-        quantization_level
+        erank_reg_weight_s3, quat_norm_reg_weight, dc_reg_weight,           \
+        sh_reg_weight, max_screen_size, max_screen_size_penalty,            \
+        use_scale_agnostic_mean, color_trust_linear,                        \
+        eps_tr, step, quantization_level
 
 #define _FPBO_PARAMS                                                        \
     const int64_t num_splats, const int max_sh_degree,                      \
@@ -275,7 +271,7 @@ void launch_fpbo_vk(
         const std::string camera_model, const std::string distortion,       \
         const TorchTensorView dist_coeffs,                                  \
         const DeviceVector<int32_t> camera_ids,                             \
-        const DeviceVector<int32_t> gaussian_ids, DeviceTensorFloatND aabb, \
+        const DeviceVector<int32_t> gaussian_ids, DeviceTensor2D<uint2> aabb, \
         const std::vector<DeviceTensorFloatND> v_splats_world,              \
         const std::vector<DeviceTensorFloatND> v_splats_screen,             \
         const std::vector<DeviceTensorFloatND> g1_splats_world,             \
@@ -293,8 +289,10 @@ void launch_fpbo_vk(
         const float mcmc_opacity_reg_weight,                                \
         const float mcmc_scale_reg_weight, const float erank_reg_weight,    \
         const float erank_reg_weight_s3, const float quat_norm_reg_weight,  \
-        const float sh_reg_weight, bool use_scale_agnostic_mean,            \
-        bool color_trust_linear, float eps_tr,                              \
+        const float dc_reg_weight, const float sh_reg_weight,               \
+        const float max_screen_size, const float max_screen_size_penalty,   \
+        bool use_scale_agnostic_mean, bool color_trust_linear,              \
+        float eps_tr,                                                       \
         std::variant<int32_t, TorchTensorView> step, int quantization_level
 
 static void _fpbo_call(bool eval3d, bool antialiased, _FPBO_PARAMS) {
@@ -309,7 +307,8 @@ static void _fpbo_call(bool eval3d, bool antialiased, _FPBO_PARAMS) {
                    lr_features_dc, lr_features_sh, max_gauss_ratio,
                    scale_regularization_weight, mcmc_opacity_reg_weight,
                    mcmc_scale_reg_weight, erank_reg_weight,
-                   erank_reg_weight_s3, quat_norm_reg_weight, sh_reg_weight,
+                   erank_reg_weight_s3, quat_norm_reg_weight, dc_reg_weight,
+                   sh_reg_weight, max_screen_size, max_screen_size_penalty,
                    use_scale_agnostic_mean, color_trust_linear, eps_tr, step,
                    quantization_level);
 }

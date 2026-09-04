@@ -1,14 +1,19 @@
 // Tile-geometry constants and the ellipse/box culling test shared by the
 // rasterization forward (rasterize_fwd.slang) and backward
-// (rasterize_bwd.slang). Values mirror Common.cuh (TILE_SIZE_* /
-// MACRO_TILE_SIZE_*) — binning happens at macro-tile granularity, kernels
-// work on micro tiles.
+// (rasterize_bwd.slang). Values mirror Common.cuh — binning happens at
+// macro-tile granularity, kernels work on micro tiles.
 
 static const uint TILE_SIZE_X = 8;
 static const uint TILE_SIZE_Y = 8;
-static const uint MACRO_TILE_SIZE_X = 2;
-static const uint MACRO_TILE_SIZE_Y = 2;
 static const uint TILE_AREA = TILE_SIZE_X * TILE_SIZE_Y;
+
+// Which macro tile's splat list this micro tile walks. macro_log2 rides in
+// the params buffer rather than being a constant, so the binning tile is
+// retunable without respecializing any pipeline (core/Common.cuh).
+[ForceInline] uint macro_tile_id(uint mt_y, uint mt_x, uint tile_width,
+                                 uint macro_log2) {
+    return ((mt_y >> macro_log2) * tile_width) + (mt_x >> macro_log2);
+}
 
 // ALPHA_THRESHOLD comes from projection_utils.slang.
 static const float DEPTH_DIST_EPS = 1e-6f;
@@ -34,3 +39,4 @@ bool ellipse_box_overlap_test(float3 inv_cov, float x0, float x1, float y0,
     float mc = max(max(x0, -x1), max(y0, -y1));
     return min(mc, min(mx, my) - 1.0f) < 0.f;
 }
+

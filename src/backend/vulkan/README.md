@@ -230,11 +230,11 @@ still compile + emit identical CUDA exports with 2026.2.1):
 - `pixel_wise.slang`: 2026.12 SPIR-V codegen constant-folds the SCALAR's
   derivative of `scalar * vector` to zero under bwd_diff — SILENT wrong
   code (v_transmittance in blend_background came back all-zero; caught by
-  pwtrain_parity). Worked around with an explicit
-  `float3(t, t, t) * vector` splat. RULE: when a differentiable function
-  needs the gradient of a scalar that multiplies a vector, write the splat
-  explicitly, and treat parity coverage of every scalar gradient as
-  mandatory.
+  pwtrain_parity). The workaround was an explicit `float3(t, t, t) * vector`
+  splat; blend_background now carries a hand-written `[BackwardDerivative]`
+  and no longer needs it. RULE: when a differentiable function needs the
+  gradient of a scalar that multiplies a vector, write the splat explicitly,
+  and treat parity coverage of every scalar gradient as mandatory.
 
 ### slangc `[unroll]` is a hint; `[ForceUnroll]` is the one that unrolls
 
@@ -371,9 +371,11 @@ rasterizer for culling). Params exceeding the 128-byte push floor use the
 params-ring pattern (`vk::params_alloc` + 8-byte address push); the packed
 mask kernel fits and is pushed directly. Float `atomicMax` on radii is
 `InterlockedMax` on the u32 bit pattern (exact for non-negative floats).
-Packed projection substitutes an int32 0/1 mask (bool would need 8-bit
-stores) scanned by `backend::inclusive_sum<int32>` with a 4-byte nnz
-readback. Parity: `backend/tests/projection_parity.cpp` builds under BOTH
+Packed projection stores visibility as a bitmask (`shaders/packed_mask.h`):
+one bit per (camera, gaussian) pair built with `InterlockedOr` on
+groupshared words, plus one `countbits` per workgroup; only those workgroup
+counts go through `backend::inclusive_sum<int32>`, and the compaction pass
+rebuilds an element's slot from the scanned count and the bits below it. Parity: `backend/tests/projection_parity.cpp` builds under BOTH
 backends (CUDA `-DSS_BUILD_BACKEND_TESTS=ON` dumps, Vulkan compares);
 30 fused + 6 packed fp32 configs plus 12 fused + 2 packed value-quant
 configs, ~7.2M floats, zero tolerance violations on all three local devices
@@ -402,12 +404,11 @@ Vulkan.
   constant; camera model is a runtime int (as in CUDA). The backward throws
   until the training phase (`TODO` in the file).
 - `kernels/IntersectTile.cpp` + `backend/vulkan/shaders/intersect_tile.slang`:
-  `do_intersect_tile_generic` = count -> `backend::inclusive_sum<int64>` ->
-  8-byte n_isects readback -> key write -> `backend::sort_pairs<int64,int32>`
+  `do_intersect_tile_generic` = count -> `backend::inclusive_sum<int32>` ->
+  4-byte n_isects readback -> key write -> `backend::sort_pairs<int64,int32>`
   (begin 0, end 32 + tile bits, exactly the CUB call) -> offset kernel.
   Ellipse-vs-AABB mode is a runtime null-check on proj_conic (the CUDA
-  template bool only folds that check). `do_intersect_tile_post` has no
-  callers and is not ported.
+  template bool only folds that check).
 - `kernels/RasterizeFwd.cpp` + `backend/vulkan/shaders/rasterize_fwd.slang`: closely
   follows RasterizationEval3DFwd_kernel.cuh (the CUDA source of both the 2D
   and eval3D kernels). Two entries (2D shared by 3DGS/MIP; 3DGUT eval3d
@@ -458,6 +459,16 @@ the engine level.
   Intel spins forever -> VK_ERROR_DEVICE_LOST. The port uses the bounded
   ceil-halving form (identical probe sequence and converged split). Grep any
   future kernel port for loops whose exit depends on overflow.
+- **Nested-dynamic-loop rule (NVIDIA shader-compiler SIGILL)**: a
+  variable-trip-count loop under an `if` under another variable-trip-count
+  loop makes `libnvidia-gpucomp` (580.105.08) execute a `ud2` inside
+  `vkCreateComputePipelines` -- the process dies with SIGILL and no
+  `VkResult`, so nothing host-side can catch it. It cost
+  projection_qgrad.slang's SH writeback its `for (k = fb; k <= b; ++k)` byte
+  mask, now the closed-form `(~0u >> 8*(3-b)) & (~0u << 8*fb)`. Either
+  flattening (closed form, or a constant-trip loop with a predicated body)
+  clears it; the atomics around it are irrelevant. A 22-line shader with just
+  that loop nest reproduces it.
 - `EngineBackground.cu` became portable `EngineBackground.cpp` (its one raw
   kernel replaced by the existing `float_add_into` launcher, cudaMemcpy* ->
   backend::). It now compiles into BOTH backends unchanged.

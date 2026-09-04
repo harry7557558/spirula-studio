@@ -35,9 +35,9 @@ struct GeometryPrediction {
 
 class GeometryWarp;
 
-// One face of a planned warp: its size and the pinhole it is. Wanting both maps
+// Face k of a planned warp: its size and the pinhole it is. Wanting both maps
 // by default -- the caller turns off what it is not writing.
-GeometryRequest face_request(const GeometryWarp& warp, int num_tokens);
+GeometryRequest face_request(const GeometryWarp& warp, int k, int num_tokens);
 
 // One loaded checkpoint. Not thread-safe; both backends share the process-wide
 // inference device.

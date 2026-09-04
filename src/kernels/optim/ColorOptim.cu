@@ -262,7 +262,7 @@ void fused_adamtr_rgb_optim(
 
 template<bool is_linear, bool zero_grad>
 __global__ void fused_adamtr_rgb_sh_optim_kernel(
-    const int num_params,
+    const int64_t num_params,
     const int num_sh,
     float* __restrict__ param,  // [N, K, 3]
     float* __restrict__ grad,  // [N, K, 3]
@@ -280,7 +280,7 @@ __global__ void fused_adamtr_rgb_sh_optim_kernel(
     const float grad_scale,
     const int step
 ) {
-    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < num_params) {
         // Bias correction terms
@@ -341,13 +341,13 @@ void fused_adamtr_linear_rgb_sh_optim(
     float grad_scale, bool zero_grad
 ) {
     int64_t colors_numel = _tv_numel(colors);
-    const int num_gs = (int)(colors_numel / 3);
+    const int64_t num_gs = colors_numel / 3;
     if (num_gs == 0)
         return;
     const int num_sh = (int)(_tv_numel(param) / colors_numel);
     if (num_sh == 0)
         return;
-    const int num_params = num_gs * num_sh * 3;
+    const int64_t num_params = num_gs * num_sh * 3;
 
     auto kfn = zero_grad ? fused_adamtr_rgb_sh_optim_kernel<true,  true>
                          : fused_adamtr_rgb_sh_optim_kernel<true,  false>;
@@ -390,13 +390,13 @@ void fused_adamtr_rgb_sh_optim(
     float grad_scale, bool zero_grad
 ) {
     int64_t colors_numel = _tv_numel(colors);
-    const int num_gs = (int)(colors_numel / 3);
+    const int64_t num_gs = colors_numel / 3;
     if (num_gs == 0)
         return;
     const int num_sh = (int)(_tv_numel(param) / colors_numel);
     if (num_sh == 0)
         return;
-    const int num_params = num_gs * num_sh * 3;
+    const int64_t num_params = num_gs * num_sh * 3;
 
     auto kfn = zero_grad ? fused_adamtr_rgb_sh_optim_kernel<false, true>
                          : fused_adamtr_rgb_sh_optim_kernel<false, false>;

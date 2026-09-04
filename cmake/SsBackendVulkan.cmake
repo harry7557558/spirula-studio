@@ -13,6 +13,7 @@ message(STATUS "SS_BACKEND=vulkan: portable engine layer + "
 set(SS_BUILD_CLI ON)
 
 include(SsVulkan)
+include(SsMacBundle)
 ss_vulkan_lib()
 find_package(Threads REQUIRED)
 
@@ -35,7 +36,12 @@ target_link_libraries(csrc_portable PUBLIC ss_i18n)
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
+    ss_mac_prefer_static(OpenMP::OpenMP_CXX
+        "`brew install libomp` ships the archive; \
+-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON drops OpenMP instead.")
     target_link_libraries(csrc_portable PUBLIC OpenMP::OpenMP_CXX)
+else()
+    message(STATUS "No OpenMP: meshing, UV unwrap and metrics run serial")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -84,12 +90,14 @@ foreach(test_src ${SS_VULKAN_TESTS})
 endforeach()
 
 # Cross-backend parity tools (the same sources build in the CUDA branch, where
-# they dump the reference outputs these compare against).
+# they dump the reference outputs these compare against). The portable engine
+# is what the host-only tests among them (split_faces_test) call into.
 file(GLOB SS_PARITY_TESTS CONFIGURE_DEPENDS ${SS_SRC}/backend/tests/*.cpp)
 foreach(test_src ${SS_PARITY_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
-    target_link_libraries(${test_name} PRIVATE ss_backend_vulkan)
+    target_link_libraries(${test_name} PRIVATE csrc_portable ss_backend_vulkan
+        Threads::Threads)
     target_compile_options(${test_name} PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 endforeach()

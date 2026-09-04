@@ -209,6 +209,7 @@ public:
     std::string dataset_dir();           // valid when Done
     std::string image_dir();             // image_dir to train with ("" = default)
     std::string mask_dir();              // mask_dir to train with ("" = none)
+    bool mask_flipped() const;           // ... and are they white where REMOVED?
 
 private:
     void run(ColmapJob job);
@@ -231,6 +232,7 @@ private:
     RunFilms _films;
     std::mutex _mu;                      // guards the strings below
     std::string _error, _dataset_dir, _image_dir, _mask_dir;
+    std::atomic<bool> _mask_flipped{false};
     ColmapJob _live;                     // guarded by _mu; see update()
 };
 

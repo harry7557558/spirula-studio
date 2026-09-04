@@ -648,6 +648,117 @@ int cmdSelftest(int argc, char** argv) {
         }
     }
 
+    // 7b) The matcher at 256-D. Synthetic float descriptors, because the two
+    // widths are separate SPIR-V blobs and only the 128 one is on any other
+    // path here; the reference is the same distance computed on the host.
+    {
+        auto make = [](uint32_t n, uint32_t seed) {
+            FeatureSet f;
+            f.width = f.height = 1000;
+            f.dim = 256;
+            f.dtype = DType::F32;
+            f.keypoints.resize(n);
+            f.descriptors.resize((size_t)n * 256 * sizeof(float));
+            float* d = reinterpret_cast<float*>(f.descriptors.data());
+            uint32_t st = seed;
+            auto rnd = [&] {
+                st = st * 1664525u + 1013904223u;
+                return (float)((st >> 8) & 0xffff) / 32768.0f - 1.0f;
+            };
+            for (uint32_t i = 0; i < n; i++) {
+                f.keypoints[i] = {(float)(i % 100) * 7.0f, (float)(i / 100) * 7.0f, 0, 0, 1};
+                double sq = 0;
+                for (int c = 0; c < 256; c++) {
+                    const float v = rnd();
+                    d[(size_t)i * 256 + c] = v;
+                    sq += (double)v * v;
+                }
+                // Unit norm, as the matcher's cosine threshold assumes.
+                const float inv = (float)(1.0 / std::sqrt(sq));
+                for (int c = 0; c < 256; c++) d[(size_t)i * 256 + c] *= inv;
+            }
+            return f;
+        };
+        FeatureSet fa = make(300, 12345u);
+        // B is A perturbed, not independent noise: 256 random unit vectors are
+        // all nearly orthogonal, so an independent B produces a handful of
+        // matches and exercises almost none of the reduction.
+        FeatureSet fb = fa;
+        fb.keypoints.resize(280);
+        fb.descriptors.resize((size_t)280 * 256 * sizeof(float));
+        {
+            float* d = reinterpret_cast<float*>(fb.descriptors.data());
+            uint32_t st = 4242u;
+            for (uint32_t i = 0; i < 280; i++) {
+                double sq = 0;
+                for (int c = 0; c < 256; c++) {
+                    st = st * 1664525u + 1013904223u;
+                    const float n = ((float)((st >> 8) & 0xffff) / 32768.0f - 1.0f) * 0.05f;
+                    const float v = d[(size_t)i * 256 + c] + n;
+                    d[(size_t)i * 256 + c] = v;
+                    sq += (double)v * v;
+                }
+                const float inv = (float)(1.0 / std::sqrt(sq));
+                for (int c = 0; c < 256; c++) d[(size_t)i * 256 + c] *= inv;
+            }
+        }
+
+        MatchOptions mo;
+        mo.device = opt.device;
+        mo.max_ratio = 0.95f;
+        mo.cross_check = true;
+        BruteForceMatcher m256(mo);
+        const std::vector<FeatureMatch> gm = m256.match(fa, fb);
+
+        // Host reference over the SAME quantization the uploader applies, so
+        // this checks the kernel and not the rounding.
+        auto quant = [](float v) {
+            const float q = v * (127.0f / 0.4f) + 128.0f;
+            return (int)std::lround(std::min(255.0f, std::max(0.0f, q)));
+        };
+        std::vector<int> qa((size_t)fa.count() * 256), qb((size_t)fb.count() * 256);
+        const float* pa = reinterpret_cast<const float*>(fa.descriptors.data());
+        const float* pb = reinterpret_cast<const float*>(fb.descriptors.data());
+        for (size_t i = 0; i < qa.size(); i++) qa[i] = quant(pa[i]);
+        for (size_t i = 0; i < qb.size(); i++) qb[i] = quant(pb[i]);
+        auto d2 = [&](uint32_t i, uint32_t j) {
+            long long s = 0;
+            for (int c = 0; c < 256; c++) {
+                const long long e = qa[(size_t)i * 256 + c] - qb[(size_t)j * 256 + c];
+                s += e * e;
+            }
+            return s;
+        };
+        std::vector<uint32_t> bestB(fb.count(), 0u);
+        for (uint32_t j = 0; j < fb.count(); j++) {
+            long long bd = -1;
+            for (uint32_t i = 0; i < fa.count(); i++) {
+                const long long v = d2(i, j);
+                if (bd < 0 || v < bd) { bd = v; bestB[j] = i; }
+            }
+        }
+        std::vector<FeatureMatch> ref;
+        for (uint32_t i = 0; i < fa.count(); i++) {
+            long long b1 = -1, b2 = -1;
+            uint32_t bj = 0;
+            for (uint32_t j = 0; j < fb.count(); j++) {
+                const long long v = d2(i, j);
+                if (b1 < 0 || v < b1) { b2 = b1; b1 = v; bj = j; }
+                else if (b2 < 0 || v < b2) { b2 = v; }
+            }
+            if (b2 >= 0 && (double)b1 >= (double)mo.max_ratio * mo.max_ratio * (double)b2)
+                continue;
+            if (bestB[bj] != i) continue;
+            ref.push_back({i, bj, (float)std::sqrt((double)b1)});
+        }
+        bool ok = gm.size() == ref.size() && ref.size() > 200;
+        for (size_t k = 0; k < ref.size() && ok; k++)
+            if (gm[k].idx1 != ref[k].idx1 || gm[k].idx2 != ref[k].idx2) ok = false;
+        printf("  matcher 256-D vs host reference: %zu / %zu matches -> %s\n", gm.size(),
+               ref.size(), ok ? "ok" : "BAD");
+        if (!ok) fails++;
+    }
+
     // 7) brute-force matcher: self-match should be (near-)identity with dist 0
     {
         MatchOptions mo;
@@ -850,6 +961,21 @@ int cmdSelftest(int argc, char** argv) {
         printf("  decode error handling: %zu ok / %zu failed -> %s\n", got, errs,
                skip_ok ? "ok" : "BAD");
         if (!skip_ok) fails++;
+
+        // A consumer that throws has to reach the caller. Unwinding past the
+        // still-joinable decode threads instead calls terminate, which on MSVC
+        // exits 0xC0000409 with the real error never printed.
+        bool threw = false;
+        ImageLoadPlan pl3 = planImageLoad(dims, lo);
+        try {
+            loadImagesInOrder(paths, pl3, lo, [&](size_t k, GrayImage&) {
+                if (k == 3) throw std::runtime_error("consumer");
+            });
+        } catch (const std::exception&) {
+            threw = true;
+        }
+        printf("  throwing consumer propagates -> %s\n", threw ? "ok" : "BAD");
+        if (!threw) fails++;
         fs::remove_all(dir);
     }
 

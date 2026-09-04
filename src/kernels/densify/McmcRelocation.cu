@@ -35,7 +35,6 @@ inline __device__ void mcmc_relocation(float& opacity, float3& scale, int n_idx)
     n_idx = min(n_idx, 50);  // log_factorial only fits to 50
 
     opacity = sigmoid(opacity);
-    scale = {__expf(scale.x), __expf(scale.y), __expf(scale.z)};
 
     float new_opacity = 1.0f - powf(1.0f-opacity, 1.0f / n_idx);
 
@@ -47,13 +46,14 @@ inline __device__ void mcmc_relocation(float& opacity, float3& scale, int n_idx)
                 powf(new_opacity, k+1);
         }
     }
-    float coeff = (opacity / denom_sum);
+    // log(coeff * exp(s)) == log(coeff) + s, kept in log space: the round trip
+    // out and back flushes a splat near FLT_MIN to -inf, which per_splat_losses
+    // then turns into a NaN (shaders/per_splat_losses.slang).
+    float log_coeff = __logf(opacity / denom_sum);
 
-    opacity = new_opacity;
-    scale = coeff * scale;
-
-    opacity = logit(opacity);
-    scale = {__logf(scale.x), __logf(scale.y), __logf(scale.z)};
+    opacity = logit(new_opacity);
+    scale = make_float3(scale.x + log_coeff, scale.y + log_coeff,
+                        scale.z + log_coeff);
 }
 
 
@@ -61,6 +61,7 @@ __global__ void mcmc_compute_relocation_probabilities_kernel(
     uint32_t num_splats,
     float min_opacity,
     const float* __restrict__ opacs,
+    const float3* __restrict__ scales,
     float* __restrict__ probs
 ) {
     uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -69,7 +70,8 @@ __global__ void mcmc_compute_relocation_probabilities_kernel(
 
     float opac = sigmoid(opacs[tid]);
 
-    if (opac <= min_opacity || !isfinite(opac))
+    if (opac <= min_opacity || !isfinite(opac) ||
+        SlangDensify::splat_scale_is_dead(scales[tid]))
         opac = 0.0f;
 
     probs[tid] = opac;
@@ -242,6 +244,7 @@ void relocate_splats_mcmc_tensor(
         cur_num_splats,
         min_opacity,
         opacs.data_ptr(),
+        scales.data_ptr(),
         sample_probs
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -476,6 +479,7 @@ void add_splats_mcmc_tensor(
         cur_num_splats,
         min_opacity,
         opacs.data_ptr(),
+        scales.data_ptr(),
         sample_probs
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());

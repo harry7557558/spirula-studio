@@ -10,6 +10,7 @@
 #include <cooperative_groups.h>
 namespace cg = cooperative_groups;
 
+#include "core/AabbQuant.cuh"
 
 
 template<typename SplatPrimitive, CameraModelType camera_model,
@@ -24,7 +25,7 @@ __global__ void projection_fused_fwd_kernel(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed, core/AabbQuant.cuh
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     typename SplatPrimitive::ScreenBuffer splats_screen,
@@ -83,15 +84,13 @@ __global__ void projection_fused_fwd_kernel(
         splat_world.template project<camera_model, distortion, 32>(
             cam, splat_screen, aabb, sorting_depth, radius);
     } else {
-        const int64_t sh_base = (int64_t)3 * (int64_t)num_sh_buffer * gid;
-        const int64_t stride = (sh_bounds_stride > 0)
-            ? sh_bounds_stride
-            : (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+        const ShQuantAddr sha = sh_quant_addr(num_sh_buffer, sh_bounds_stride);
+        const int64_t sh_base = sha.base(gid);
         splat_world.template project<camera_model, distortion, VALUE_BITS>(
             cam, splat_screen, aabb, sorting_depth, radius,
             const_cast<uint8_t*>(sh_value_packed),
             const_cast<float2*>(sh_value_bounds),
-            sh_base, stride);
+            sh_base, sha.bounds_stride, sha.pair_pitch);
     }
 
     // Save results
@@ -101,11 +100,11 @@ __global__ void projection_fused_fwd_kernel(
     aabb.w = fminf(fmaxf(aabb.w, 0.0f), image_height-1.0f);
     if (aabb.z - aabb.x > 1e-3f && aabb.w - aabb.y > 1e-3f) {
         splat_screen.store(splats_screen, idx);
-        aabbs[idx] = aabb;
+        aabbs[idx] = aabb16_encode(aabb, image_width, image_height);
         sorting_depths[idx] = sorting_depth;
         atomicMax(&radii[idx%N], radius);
     } else {
-        aabbs[idx] = {0.0f, 0.0f, 0.0f, 0.0f};
+        aabbs[idx] = make_uint2(0u, 0u);
         sorting_depths[idx] = 0.0f;
     }
 }
@@ -124,7 +123,7 @@ void projection_fused_fwd_kernel_wrapper(
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    float4 *__restrict__ aabbs,         // [C, N, 4]
+    uint2 *__restrict__ aabbs,          // [C, N] packed, core/AabbQuant.cuh
     float *__restrict__ sorting_depths,  // [C, N, 1]
     float *__restrict__ radii,  // [N, 1]
     typename SplatPrimitive::ScreenBuffer splats_screen,

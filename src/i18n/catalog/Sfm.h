@@ -730,6 +730,32 @@ SS_MSG(match_camera_mode_switched,
     TR("Farklı kare boyutu: {0} adet, {1} görüntüde -- bu tek bir kameranın çekimi değil, "
        "bir fotoğraf derlemesi. --camera-mode folder bunu geçersiz kılar."));
 
+SS_MSG(match_camera_size_split,
+    EN("Camera groups split by frame size: {0} -- images of different sizes "
+       "cannot share one camera."),
+    JA("フレームサイズで分割したカメラのまとまり: {0}。サイズの違う画像は1台のカメラを"
+       "共有できません。"),
+    ZH_HANS("按画幅尺寸拆分的相机分组: {0}——尺寸不同的图像无法共用一台相机。"),
+    ZH_HANT("按畫幅尺寸拆分的相機分組: {0}——尺寸不同的影像無法共用一台相機。"),
+    KO("프레임 크기로 나뉜 카메라 묶음: {0} -- 크기가 다른 이미지는 카메라 하나를 "
+       "함께 쓸 수 없습니다."),
+    DE("Nach Bildgröße aufgeteilte Kameragruppen: {0} -- Bilder verschiedener "
+       "Größe können sich keine Kamera teilen."),
+    FR("Groupes de caméras séparés par taille d'image : {0} -- des images de "
+       "tailles différentes ne peuvent pas partager une caméra."),
+    ES("Grupos de cámaras separados por tamaño de fotograma: {0}: imágenes de "
+       "distinto tamaño no pueden compartir una cámara."),
+    PT("Grupos de câmeras separados por tamanho de quadro: {0} -- imagens de "
+       "tamanhos diferentes não podem compartilhar uma câmera."),
+    IT("Gruppi di fotocamere separati per dimensione del fotogramma: {0}: "
+       "immagini di dimensioni diverse non possono condividere una fotocamera."),
+    NL("Cameragroepen gesplitst op beeldformaat: {0} -- afbeeldingen van "
+       "verschillend formaat kunnen geen camera delen."),
+    RU("Групп камер, разделённых по размеру кадра: {0} — изображения разных "
+       "размеров не могут использовать одну камеру."),
+    TR("Kare boyutuna göre ayrılan kamera grubu sayısı: {0} -- farklı boyuttaki "
+       "görüntüler tek bir kamerayı paylaşamaz."));
+
 SS_MSG(match_exif_focals,
     EN("Images carrying an EXIF focal length: {0}/{1}"),
     JA("EXIFに焦点距離がある画像: {0}/{1}"),
@@ -1013,6 +1039,42 @@ SS_MSG(map_global_ba,
     NL("Globale bundelaanpassing (kosten {0}): {1} waarnemingen / {2} punten gefilterd, {3} punten over"),
     RU("Глобальное уравнивание связок (стоимость {0}): отсеяно наблюдений {1} / точек {2}, осталось точек: {3}"),
     TR("Genel demet düzeltmesi (maliyet {0}): {1} gözlem / {2} nokta elendi, {3} nokta kaldı"));
+
+SS_MSG(ba_host_fallback,
+    EN("Bundle adjustment could not finish on the GPU ({0}). Running it on the CPU instead: "
+       "slower, but it finishes. --ba-real cpu --ba-real-coarse cpu starts there next time."),
+    JA("バンドル調整を GPU で完了できませんでした（{0}）。代わりに CPU で実行します。"
+       "遅くなりますが最後まで進みます。次回から --ba-real cpu --ba-real-coarse cpu を渡すと"
+       "最初から CPU で計算します。"),
+    ZH_HANS("光束法平差无法在 GPU 上完成（{0}）。改在 CPU 上运行: 更慢，但能跑完。"
+            "下次加上 --ba-real cpu --ba-real-coarse cpu 就直接从 CPU 开始。"),
+    ZH_HANT("光束法平差無法在 GPU 上完成（{0}）。改在 CPU 上執行: 更慢，但能跑完。"
+            "下次加上 --ba-real cpu --ba-real-coarse cpu 就直接從 CPU 開始。"),
+    KO("번들 조정을 GPU에서 끝내지 못했습니다({0}). 대신 CPU에서 실행합니다. 느리지만 "
+       "끝까지 갑니다. 다음부터는 --ba-real cpu --ba-real-coarse cpu 로 처음부터 CPU에서 "
+       "계산합니다."),
+    DE("Die Bündelausgleichung konnte auf der GPU nicht abgeschlossen werden ({0}). Sie läuft "
+       "stattdessen auf der CPU: langsamer, aber sie kommt zu Ende. Mit --ba-real cpu "
+       "--ba-real-coarse cpu beginnt sie beim nächsten Mal dort."),
+    FR("L'ajustement de faisceaux n'a pas pu se terminer sur le GPU ({0}). Il tourne sur le CPU "
+       "à la place : plus lent, mais il aboutit. --ba-real cpu --ba-real-coarse cpu y commence "
+       "la prochaine fois."),
+    ES("El ajuste de haces no pudo terminar en la GPU ({0}). Se ejecuta en la CPU: más lento, "
+       "pero termina. Con --ba-real cpu --ba-real-coarse cpu empieza allí la próxima vez."),
+    PT("O ajustamento de feixes não conseguiu terminar na GPU ({0}). Está rodando na CPU: mais "
+       "lento, mas termina. Com --ba-real cpu --ba-real-coarse cpu ele começa aí da próxima vez."),
+    IT("Il bundle adjustment non è riuscito a finire sulla GPU ({0}). Ora gira sulla CPU: più "
+       "lento, ma arriva in fondo. Con --ba-real cpu --ba-real-coarse cpu parte da lì la "
+       "prossima volta."),
+    NL("De bundelaanpassing kon niet op de GPU worden afgemaakt ({0}). Hij draait nu op de CPU: "
+       "langzamer, maar hij komt klaar. Met --ba-real cpu --ba-real-coarse cpu begint hij daar "
+       "de volgende keer."),
+    RU("Уравнивание связок не удалось завершить на GPU ({0}). Оно выполняется на CPU: медленнее, "
+       "но доходит до конца. С --ba-real cpu --ba-real-coarse cpu оно сразу начнётся там в "
+       "следующий раз."),
+    TR("Demet düzeltmesi GPU'da tamamlanamadı ({0}). Bunun yerine CPU'da çalışıyor: daha yavaş "
+       "ama bitiyor. --ba-real cpu --ba-real-coarse cpu bir dahaki sefere doğrudan orada "
+       "başlatır."));
 
 SS_MSG(map_registered,
     EN("Registered image {0} (PnP inliers {1}/{2}); images in the model: {3}"),

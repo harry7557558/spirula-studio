@@ -127,10 +127,27 @@ One plan per camera, reused for every frame that shares it.
 
 Two shapes. **Undistort** is one pinhole face at the camera's own intrinsics --
 the cheap path, and the only sensible one for a perspective lens. **Split** is
-several faces covering the field of view: 5 for a fisheye, a 6-face cube map
-for a panorama. `--split auto` picks between them on
+a front face plus a ring of faces reaching the lens's edge, or a 6-face cube
+map for a panorama. `--split auto` picks between them on
 `camhost::pinhole_coverage` at 0.75, and the trainer's
 `--input-depth-is-ray-depth` resolves against the same call (AGENTS.md).
+
+The split is planned from what the lens actually holds
+(`camhost::visible_boundary`, the largest visible angle per azimuth, by the
+same validity test the trainer's warp applies), so it fits a 150-degree lens
+and a 220-degree one alike:
+
+- The front face spans 45 degrees times 1.1, cropped -- still centred -- to
+  the visible box, so a cropped frame does not hand the network a grey band.
+- The ring reaches in to 40 degrees and out to 3 degrees past the boundary.
+  Its faces are **square and upright** (the image's up as close to the
+  camera's as the tilt allows, for the networks' gravity prior), with a half
+  field of view of 30 to 40 degrees as the band needs, and as many of them as
+  that width takes to go round with 15% shared between neighbours: 8 for a
+  180-degree lens, 7 for 220. Each face tilts to its own sector's boundary; a
+  face whose band runs along an image axis is cropped to it, down to 4:3.
+- Every face is sized at the lens's own pixel density where it points and
+  then capped at `--max-size`, so the cost is the capture's pixels, in pieces.
 
 The faces **overlap by design**, which is the part worth reading before
 changing any of it:
@@ -139,18 +156,17 @@ changing any of it:
   re-guesses its depth scale and its horizon every call. Faces abutted edge to
   edge write that disagreement into the output as a line down the middle of the
   frame, which is what a cube map produces.
-- So each face reaches 51.3 degrees instead of the 45 it owns, leaving
-  neighbours a 6.3-degree strip. The extent lives in the LENGTH of each face's
-  two in-plane axes, so the same table drives both the resampling and the
-  cross-fade, and a table of unit axes degrades to no blending at all.
+- So the cross-fade ramps over the outer 20% of every face. The extent lives
+  in the LENGTH of each face's two in-plane axes, so the same table drives both
+  the resampling and the blend.
 - Depth is put on one scale first (`alignFaces`): the median log ratio over
   each pair's strip, then the per-face offsets that best satisfy all of them,
   which is a small graph Laplacian. Cross-fading a scale error only smears it.
+  The faces have different focals, so Metric3D's canonical depth is turned
+  into millimetres per face BEFORE the blend.
 - The blend runs in the log, where the trainer's Pearson-of-log depth loss
   reads it, and a face is weighted out wherever it saw the mid-grey fill
   instead of the frame.
-- The five fisheye faces are a fan tilted 1.27 rad, not a cube: that reaches
-  124 degrees off axis, which is a 220-degree lens with the overlap intact.
 
 Uncovered pixels are written **black** in the normal map and **0** in the
 depth map, which are the two sentinels the loss masks on
@@ -161,9 +177,9 @@ length, and mid-grey decodes to zero.
 
 The faces are private to this warp -- the output is written in the source
 camera's frame, and a training run that splits the same capture does its own
-warp out of `dsparse::warp_axes`. `spirula geometry --check` is what tests all
-of it, by round-tripping an analytic plane and by handing the faces that plane
-at deliberately different scales to see the alignment take them back.
+split (docs/datasets.md, "The split"). `spirula geometry --check` is what
+tests all of it, by round-tripping an analytic plane and by handing the faces
+that plane at deliberately different scales to see the alignment take them back.
 
 ## Speed and memory
 

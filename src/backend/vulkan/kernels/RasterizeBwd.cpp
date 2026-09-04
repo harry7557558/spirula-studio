@@ -18,32 +18,32 @@ namespace {
 
 // Mirrors Raster2dBwdParams in shaders/rasterize_bwd.slang.
 struct Raster2dBwdParams {
-    uint64_t s_xy, s_depth, s_conic, s_opac, s_rgb;
+    uint64_t s_screen;
     uint64_t gaussian_ids, tile_offsets, flatten_ids;
     uint64_t render_Ts, last_ids;
     uint64_t out_rgb, out_depth, dist_rgb, dist_depth, awmap;
     uint64_t v_out_rgb, v_out_depth, v_render_Ts, v_median, v_dist_rgb,
         v_dist_depth;
-    uint64_t v_s_xy, v_s_depth, v_s_conic, v_s_opac, v_s_rgb;
+    uint64_t v_s_screen;
     uint64_t o_accum_weight, o_accum_weight_den;
-    uint32_t I, N, n_isects, width, height, tile_width, tile_height, _pad0;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
-static_assert(sizeof(Raster2dBwdParams) == 28 * 8 + 8 * 4,
+static_assert(sizeof(Raster2dBwdParams) == 20 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors Raster3dgutBwdParams.
 struct Raster3dgutBwdParams {
-    uint64_t means, quats, scales, s_scale, s_opac, s_rgb, gaussian_ids;
+    uint64_t means, quats, scales, s_screen, gaussian_ids;
     uint64_t viewmats, intrins, dist_coeffs, aabb;
     uint64_t tile_offsets, flatten_ids, render_Ts, last_ids;
     uint64_t out_rgb, out_depth, dist_rgb, dist_depth, awmap;
     uint64_t v_out_rgb, v_out_depth, v_render_Ts, v_median, v_dist_rgb,
         v_dist_depth;
-    uint64_t v_means, v_quats, v_scales, v_s_opac, v_s_rgb;
+    uint64_t v_means, v_quats, v_scales, v_s_screen;
     uint64_t o_accum_weight, o_accum_weight_den, v_viewmats;
-    uint32_t I, N, n_isects, width, height, tile_width, tile_height, _pad0;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
-static_assert(sizeof(Raster3dgutBwdParams) == 34 * 8 + 8 * 4,
+static_assert(sizeof(Raster3dgutBwdParams) == 31 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 uint32_t dist_spec_bwd(DistortionType dist_type) {
@@ -74,6 +74,7 @@ std::tuple<
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
     const DeviceTensor3D<float> render_Ts,
     const DeviceTensor3D<int32_t> last_ids,
     RenderOutput::TensorTuple render_outputs_tuple,
@@ -95,6 +96,9 @@ std::tuple<
     const bool md = v_median.data_ptr() != nullptr;
     const bool packed = gaussian_ids.data_ptr() != nullptr;
 
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGS<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);
@@ -118,11 +122,7 @@ std::tuple<
         Vanilla3DGS<0>::ScreenBuffer vsb(v_splats_s.value());
 
         Raster2dBwdParams p{};
-        p.s_xy = (uint64_t)sb.raw_data(0);
-        p.s_depth = (uint64_t)sb.raw_data(1);
-        p.s_conic = (uint64_t)sb.raw_data(2);
-        p.s_opac = (uint64_t)sb.raw_data(3);
-        p.s_rgb = (uint64_t)sb.raw_data(4);
+        p.s_screen = (uint64_t)sb.raw_data();
         p.gaussian_ids = vkk::or_fallback(gaussian_ids.data_ptr());
         p.tile_offsets = (uint64_t)tile_offsets.data_ptr();
         p.flatten_ids = (uint64_t)flatten_ids.data_ptr();
@@ -153,11 +153,7 @@ std::tuple<
             p.v_dist_rgb = vkk::null_fallback();
             p.v_dist_depth = vkk::null_fallback();
         }
-        p.v_s_xy = (uint64_t)vsb.raw_data(0);
-        p.v_s_depth = (uint64_t)vsb.raw_data(1);
-        p.v_s_conic = (uint64_t)vsb.raw_data(2);
-        p.v_s_opac = (uint64_t)vsb.raw_data(3);
-        p.v_s_rgb = (uint64_t)vsb.raw_data(4);
+        p.v_s_screen = (uint64_t)vsb.raw_data();
         p.o_accum_weight = vkk::or_fallback(o_accum_weight.data_ptr());
         p.o_accum_weight_den = vkk::or_fallback(
             accum_mode == DensifyAccumMode::Avg
@@ -169,6 +165,7 @@ std::tuple<
         p.height = image_height;
         p.tile_width = tile_width;
         p.tile_height = tile_height;
+        p.macro_log2 = (uint32_t)macro_log2;
 
         // Spec IDs: cam(0, unused), dist(1), median(2), accum(3),
         // viewmat(4, unused), packed(5).
@@ -176,7 +173,8 @@ std::tuple<
                                    md ? 1u : 0u, (uint32_t)accum_mode,
                                    0u,           packed ? 1u : 0u};
         vkk::dispatch_ring("rasterize_bwd.rasterize_bwd_2d", spec, I,
-                           tile_height * 2, tile_width * 2, &p, sizeof(p));
+                           tile_height << macro_log2,
+                           tile_width << macro_log2, &p, sizeof(p));
     }
 
     return std::make_tuple(v_splats_w.value(), v_splats_s.value(),
@@ -199,11 +197,12 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,
+    DeviceTensor2D<uint2> aabb,
     const uint32_t image_width,
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,
     const DeviceTensor3D<float> render_Ts,
     const DeviceTensor3D<int32_t> last_ids,
     RenderOutput::TensorTuple render_outputs,
@@ -229,6 +228,9 @@ std::tuple<
     const bool md = v_median.data_ptr() != nullptr;
     const bool packed = gaussian_ids.data_ptr() != nullptr;
 
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = Vanilla3DGUT<0>::WorldBuffer::zeros_pool(
             splats_w, PoolSlot::RasterBwdVWorld);
@@ -265,9 +267,7 @@ std::tuple<
         p.means = (uint64_t)wb.raw_data(0);
         p.quats = (uint64_t)wb.raw_data(1);
         p.scales = (uint64_t)wb.raw_data(2);
-        p.s_scale = (uint64_t)sb.raw_data(0);
-        p.s_opac = (uint64_t)sb.raw_data(1);
-        p.s_rgb = (uint64_t)sb.raw_data(2);
+        p.s_screen = (uint64_t)sb.raw_data();
         p.gaussian_ids = vkk::or_fallback(gaussian_ids.data_ptr());
         p.viewmats = std::get<0>(viewmats);
         p.intrins = std::get<0>(intrins);
@@ -305,8 +305,7 @@ std::tuple<
         p.v_means = (uint64_t)vwb.raw_data(0);
         p.v_quats = (uint64_t)vwb.raw_data(1);
         p.v_scales = (uint64_t)vwb.raw_data(2);
-        p.v_s_opac = (uint64_t)vsb.raw_data(1);
-        p.v_s_rgb = (uint64_t)vsb.raw_data(2);
+        p.v_s_screen = (uint64_t)vsb.raw_data();
         p.o_accum_weight = vkk::or_fallback(o_accum_weight.data_ptr());
         p.o_accum_weight_den = vkk::or_fallback(
             accum_mode == DensifyAccumMode::Avg
@@ -319,6 +318,7 @@ std::tuple<
         p.height = image_height;
         p.tile_width = tile_width;
         p.tile_height = tile_height;
+        p.macro_log2 = (uint32_t)macro_log2;
 
         // Spec IDs: cam(0), dist(1), median(2), accum(3), viewmat(4),
         // packed(5), distortion tier(6).
@@ -328,7 +328,8 @@ std::tuple<
             need_viewmat_grad ? 1u : 0u, packed ? 1u : 0u,
             cd.dist};
         vkk::dispatch_ring("rasterize_bwd.rasterize_bwd_3dgut", spec, I,
-                           tile_height * 2, tile_width * 2, &p, sizeof(p));
+                           tile_height << macro_log2,
+                           tile_width << macro_log2, &p, sizeof(p));
     }
 
     return std::make_tuple(v_splats_w.value(), v_splats_s.value(),

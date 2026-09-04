@@ -87,7 +87,7 @@ void gather_rows(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     // Out-of-range ids read row 0 rather than faulting: a corrupt token stream
     // should degrade, not take the process down.
     if (id >= p.vocab) id = 0u;
-    p.out[i] = load_elem(p.table, id * p.cols + c, kInputF16 != 0);
+    store_at(p.out, i, load_at(p.table, id * p.cols + c, kInputF16 != 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -154,9 +154,9 @@ void window_partition(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint wi = win / p.nww;
     uint y = wi * p.ws + wy;
     uint x = wj * p.ws + wx;
-    p.out[i] = (y < p.H && x < p.W)
-                   ? load_elem(p.x, (y * p.W + x) * p.C + c, kInputF16 != 0)
-                   : 0.0f;
+    store_at(p.out, i, (y < p.H && x < p.W)
+                           ? load_at(p.x, (y * p.W + x) * p.C + c, kInputF16 != 0)
+                           : 0.0f);
 }
 
 // [nwh*nww, ws, ws, C] -> [H, W, C]; the padded tail is dropped.
@@ -175,7 +175,7 @@ void window_unpartition(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint wj = x / p.ws, wx = x % p.ws;
     uint win = wi * p.nww + wj;
     uint src = ((win * p.ws + wy) * p.ws + wx) * p.C + c;
-    p.out[i] = load_elem(p.x, src, kInputF16 != 0);
+    store_at(p.out, i, load_at(p.x, src, kInputF16 != 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -213,8 +213,8 @@ void convt_scatter(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint y = yo >> 1, sy = yo & 1u;
     uint x = xo >> 1, sx = xo & 1u;
     uint src = (y * p.Wi + x) * (p.Co * 4u) + co * 4u + sy * 2u + sx;
-    float v = load_elem(p.packed, src, kInputF16 != 0) + asfloat(p.bias[co]);
-    p.out[i] = apply_act(v, kAct);
+    float v = load_at(p.packed, src, kInputF16 != 0) + asfloat(p.bias[co]);
+    store_at(p.out, i, apply_act(v, kAct));
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ void add_tiled(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     uint x = rest % p.W;
     uint y = rest / p.W;
     uint tsrc = ((y % p.th) * p.tw + (x % p.tw)) * p.C + c;
-    p.out[i] = load_elem(p.x, i, kInputF16 != 0) + load_elem(p.tile, tsrc, kInputF16 != 0);
+    store_at(p.out, i, load_at(p.x, i, kInputF16 != 0) + load_at(p.tile, tsrc, kInputF16 != 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ void roi_align(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                                    int(c), max(sy, 0.0f), max(sx, 0.0f));
         }
     }
-    p.out[i] = sum / float(ny * nx);
+    store_at(p.out, i, sum / float(ny * nx));
 }
 
 // ---------------------------------------------------------------------------
@@ -356,8 +356,8 @@ void grid_sample_points(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
         sx = ((gx + 1.0f) * float(p.W) - 1.0f) * 0.5f;
         sy = ((gy + 1.0f) * float(p.H) - 1.0f) * 0.5f;
     }
-    p.out[i] = sample_bilinear_zero(p.x, kInputF16 != 0, int(p.H), int(p.W), int(p.C),
-                                    int(c), sy, sx);
+    store_at(p.out, i, sample_bilinear_zero(p.x, kInputF16 != 0, int(p.H), int(p.W),
+                                           int(p.C), int(c), sy, sx));
 }
 
 // ---------------------------------------------------------------------------

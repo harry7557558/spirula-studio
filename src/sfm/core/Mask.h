@@ -67,6 +67,11 @@ struct Mask {
         return bits[(size_t)my * width + mx] != 0;
     }
 
+    // Swap keep and ignore, for the exporters that paint the region to REMOVE.
+    void invert() {
+        for (uint8_t& b : bits) b = (uint8_t)!b;
+    }
+
     // Fraction of the mask that is "keep". Reported so a run that masks away
     // almost everything (an inverted mask, the classic mistake) is visible.
     double keepFraction() const {

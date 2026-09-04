@@ -26,11 +26,12 @@ void rasterize_to_pixels_eval3d_fwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB
+    const uint2 *__restrict__ aabb,   // [..., N] packed AABB
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, ...]
@@ -53,13 +54,14 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // outputs
     RenderOutput::Tensor renders,
     DeviceTensor3D<float> transmittances,
@@ -77,14 +79,14 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
 
     const float* viewmats_ptr = (const float*)std::get<0>(viewmats);
     const float4* intrins_ptr = (const float4*)std::get<0>(intrins);
-    const float4* aabb_ptr = (const float4*)aabb.data_ptr();
+    const uint2* aabb_ptr = aabb.data_ptr();
 
     #define _LAUNCH_ARGS ( \
             (cudaStream_t)0, I, N, n_isects, \
             (uint32_t*)gaussian_ids.data_ptr(), \
             splats_w, splats_s, \
             viewmats_ptr, intrins_ptr, dist_coeffs, aabb_ptr, \
-            image_width, image_height, tile_width, tile_height, \
+            image_width, image_height, tile_width, tile_height, macro_log2, \
             tile_offsets.data_ptr(), flatten_ids.data_ptr(), \
             renders, transmittances.data_ptr(), last_ids.data_ptr(), \
             dist_any(dist_type) ? distortions.buffer() : RenderOutput::Buffer(), \
@@ -123,13 +125,14 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
-    const DeviceVector<int32_t> flatten_ids     // [n_isects]
+    const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2                              // binning granularity
 ) {
     int64_t batch = tile_offsets.size<0>();
 
@@ -154,6 +157,7 @@ inline std::tuple<
         splats_w, splats_s, gaussian_ids,
         viewmats, intrins, camera_model, distortion, dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         renders, render_Ts, render_last_ids, distortions, render_median
     );
 
@@ -187,13 +191,14 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median
 ) {
@@ -214,7 +219,7 @@ std::tuple<
         splats_w, splats_s, gaussian_ids,
         viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
         image_width, image_height,
-        tile_offsets, flatten_ids
+        tile_offsets, flatten_ids, macro_log2
     );
 }
 

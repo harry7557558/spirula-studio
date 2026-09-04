@@ -33,8 +33,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const int32_t *__restrict__ perm,         // [nnz] -- sorted_pos -> original_pos
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
@@ -63,37 +62,37 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     const float eps_tr,
     const int32_t scalar_step,
     const int32_t* __restrict__ steps
 );
 
 
-// Fill buffer[i] = i for i in [0, n). Used to build the identity permutation
-// that we sort alongside gaussian_ids so the FPBO kernel can map sorted
-// positions back to the original nnz position of aabb / v_splats_screen.
-__global__ static void fpbo_iota_kernel(int64_t n, int32_t* __restrict__ buf) {
-    int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) buf[i] = (int32_t)i;
-}
 
-
+// lower_bound over the sorted list, one thread per OUTPUT slot. Filling the
+// gaps from the input side makes one thread walk every id a sub-batch never
+// saw: 478 ms/call at N=20M, nnz=0.8M against ~2 ms here.
 __global__ void camera_id_bounds_kernel(
     int64_t nnz,
     int64_t N,
     const int32_t* __restrict__ gaussian_ids,  // [nnz]
     int32_t* __restrict__ camera_id_bounds  // [N+1]
 ) {
-    int64_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (gid > nnz)
+    int64_t k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k > N)
         return;
 
-    int32_t cid = (gid == nnz) ? N : gaussian_ids[gid];
-    int32_t cid_0 = (gid == 0) ? 0 : gaussian_ids[gid-1]+1;
-    for (int32_t i = cid_0; i <= cid; ++i) {
-        camera_id_bounds[i] = gid;
+    int32_t lo = 0, hi = (int32_t)nnz;
+    while (lo < hi) {
+        int32_t mid = lo + ((hi - lo) >> 1);
+        if (gaussian_ids[mid] < (int32_t)k) lo = mid + 1;
+        else hi = mid;
     }
+    camera_id_bounds[k] = lo;
 }
 
 
@@ -118,7 +117,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     // fwd outputs
     DeviceVector<int32_t> camera_ids,
     DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     // grad outputs
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
@@ -146,7 +145,10 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     const float eps_tr,
     const int32_t scalar_step,
     const std::optional<TorchTensorView> steps
@@ -160,54 +162,15 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     bool packed = camera_ids.data_ptr() && gaussian_ids.data_ptr();
 
     DeviceVector<int32_t> camera_id_bounds;
-    DeviceVector<int32_t> gaussian_ids_sorted_buf;
-    DeviceVector<int32_t> perm_buf;
-    DeviceVector<int32_t> perm_sorted_buf;
-    const int32_t* sorted_gaussian_ids_ptr = nullptr;
-    const int32_t* sorted_perm_ptr = nullptr;
 
     if (packed) {
         long nnz = camera_ids.size();
-        // Sort by gaussian_id with an identity permutation as the *value*
-        // (NOT camera_ids). The original camera_ids / aabb / v_splats_screen
-        // arrays produced by the forward + raster_bwd are indexed by the
-        // out_idx assigned during ProjectionPackedFwd (the intersection-
-        // mask prefix scan), which is NOT the same as the sorted-by-gid
-        // position. Sorting camera_ids alongside gaussian_ids would keep
-        // (sorted_gid, sorted_cid) paired but `aabb` and `v_splats_screen`
-        // would still live in original order, so indexing them with the
-        // sorted position cid_t reads the wrong intersection. Sorting a
-        // permutation instead lets the kernel recover the original
-        // out_idx = perm[cid_t] for every aabb / screen-grad load.
-        gaussian_ids_sorted_buf.resize(PoolSlot::FusedProjBwdGaussSorted, nnz);
-        perm_buf.resize(PoolSlot::FusedProjBwdPerm, nnz);
-        perm_sorted_buf.resize(PoolSlot::FusedProjBwdPermSorted, nnz);
-
-        fpbo_iota_kernel<<<_LAUNCH_ARGS_1D(nnz, 256)>>>(
-            nnz, perm_buf.data_ptr()
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        cub::DoubleBuffer<int32_t> d_keys(
-            gaussian_ids.data_ptr(), gaussian_ids_sorted_buf.data_ptr()
-        );
-        cub::DoubleBuffer<int32_t> d_values(
-            perm_buf.data_ptr(), perm_sorted_buf.data_ptr()
-        );
-        int n_bits = 0;
-        while ((1U << n_bits) <= N)
-            ++n_bits;
-        CUB_WRAPPER(cub::DeviceRadixSort::SortPairs, d_keys, d_values, nnz, 0, n_bits);
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        sorted_gaussian_ids_ptr = d_keys.selector ? gaussian_ids_sorted_buf.data_ptr() : gaussian_ids.data_ptr();
-        sorted_perm_ptr = d_values.selector ? perm_sorted_buf.data_ptr() : perm_buf.data_ptr();
-
+        // The forward emits the list in (gaussian, camera) order, so
+        // gaussian_ids is already non-decreasing and cid_t is the out_idx --
+        // no sort, no permutation to carry.
         camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
-        camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(nnz+1, 256)>>>(
-            nnz, N,
-            sorted_gaussian_ids_ptr,
-            camera_id_bounds.data_ptr()
+        camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(N+1, 256)>>>(
+            nnz, N, gaussian_ids.data_ptr(), camera_id_bounds.data_ptr()
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
     }
@@ -222,8 +185,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
             image_width, image_height, \
             packed ? camera_id_bounds.data_ptr() : nullptr, \
             packed ? camera_ids.data_ptr() : nullptr, \
-            packed ? sorted_perm_ptr : nullptr, \
-            (float4*)aabb.data_ptr(), \
+            aabb.data_ptr(), \
             v_splats_world, \
             v_splats_screen, \
             g1_splats_world, g2_splats_world, \
@@ -237,7 +199,8 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
             densify_score.data_ptr(), \
             lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc, lr_features_sh, \
             max_gauss_ratio, scale_regularization_weight, \
-            mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight, erank_reg_weight_s3, quat_norm_reg_weight, sh_reg_weight, \
+            mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight, erank_reg_weight_s3, quat_norm_reg_weight, dc_reg_weight, sh_reg_weight, \
+            max_screen_size, max_screen_size_penalty, \
             eps_tr, \
             scalar_step, steps_ptr \
         )
@@ -284,7 +247,7 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
     // fwd outputs
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     // grad outputs
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
@@ -312,7 +275,10 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
     bool color_trust_linear,
     float eps_tr,
@@ -367,7 +333,10 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
         erank_reg_weight, \
         erank_reg_weight_s3, \
         quat_norm_reg_weight, \
+        dc_reg_weight, \
         sh_reg_weight, \
+        max_screen_size, \
+        max_screen_size_penalty, \
         eps_tr, \
         scalar_step, \
         steps_view \
@@ -432,7 +401,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,
@@ -457,7 +426,10 @@ void fused_projection_bwd_optimizer_3dgs(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
     bool color_trust_linear,
     float eps_tr,
@@ -475,7 +447,8 @@ void fused_projection_bwd_optimizer_3dgs(
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,
         erank_reg_weight, erank_reg_weight_s3, quat_norm_reg_weight,
-        sh_reg_weight, use_scale_agnostic_mean,
+        dc_reg_weight, sh_reg_weight,
+        max_screen_size, max_screen_size_penalty, use_scale_agnostic_mean,
         color_trust_linear, eps_tr, step,
         quantization_level);
 }
@@ -494,7 +467,7 @@ void fused_projection_bwd_optimizer_mip(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,
@@ -519,7 +492,10 @@ void fused_projection_bwd_optimizer_mip(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
     bool color_trust_linear,
     float eps_tr,
@@ -537,7 +513,8 @@ void fused_projection_bwd_optimizer_mip(
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,
         erank_reg_weight, erank_reg_weight_s3, quat_norm_reg_weight,
-        sh_reg_weight, use_scale_agnostic_mean,
+        dc_reg_weight, sh_reg_weight,
+        max_screen_size, max_screen_size_penalty, use_scale_agnostic_mean,
         color_trust_linear, eps_tr, step,
         quantization_level);
 }
@@ -556,7 +533,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    DeviceTensorFloatND aabb,
+    DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND> v_splats_world,
     const std::vector<DeviceTensorFloatND> v_splats_screen,
     const std::vector<DeviceTensorFloatND> g1_splats_world,
@@ -581,7 +558,10 @@ void fused_projection_bwd_optimizer_3dgut(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     bool use_scale_agnostic_mean,
     bool color_trust_linear,
     float eps_tr,
@@ -599,7 +579,8 @@ void fused_projection_bwd_optimizer_3dgut(
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,
         erank_reg_weight, erank_reg_weight_s3, quat_norm_reg_weight,
-        sh_reg_weight, use_scale_agnostic_mean,
+        dc_reg_weight, sh_reg_weight,
+        max_screen_size, max_screen_size_penalty, use_scale_agnostic_mean,
         color_trust_linear, eps_tr, step,
         quantization_level);
 }

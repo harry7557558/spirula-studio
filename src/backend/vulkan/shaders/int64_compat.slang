@@ -95,4 +95,32 @@ typedef uint2 u64key_t;
     return (k >> shift) & mask;
 }
 
+// elem_at(base, i) -- base[i], but with the byte offset built explicitly.
+// Drivers fold an OpPtrAccessChain element index into 32 bits, so a plain
+// base[i] past 4 GiB wraps onto the start of the buffer and corrupts it.
+#ifndef SS_EMULATE_INT64
+[ForceInline] int* elem_at(int* b, gindex_t i) {
+    return bit_cast<int*>(bit_cast<uint64_t>(b) + uint64_t(i) * 4);
+}
+[ForceInline] uint* elem_at(uint* b, gindex_t i) {
+    return bit_cast<uint*>(bit_cast<uint64_t>(b) + uint64_t(i) * 4);
+}
+[ForceInline] float* elem_at(float* b, gindex_t i) {
+    return bit_cast<float*>(bit_cast<uint64_t>(b) + uint64_t(i) * 4);
+}
+[ForceInline] int64_t* elem_at(int64_t* b, gindex_t i) {
+    return bit_cast<int64_t*>(bit_cast<uint64_t>(b) + uint64_t(i) * 8);
+}
+[ForceInline] uint64_t* elem_at(uint64_t* b, gindex_t i) {
+    return bit_cast<uint64_t*>(bit_cast<uint64_t>(b) + uint64_t(i) * 8);
+}
+#else
+// gindex_t is 32-bit here, and the host rejects buffers these devices
+// could not address anyway.
+[ForceInline] int* elem_at(int* b, gindex_t i) { return b + i; }
+[ForceInline] uint* elem_at(uint* b, gindex_t i) { return b + i; }
+[ForceInline] float* elem_at(float* b, gindex_t i) { return b + i; }
+[ForceInline] uint2* elem_at(uint2* b, gindex_t i) { return b + i; }
+#endif
+
 #endif  // SS_INT64_COMPAT

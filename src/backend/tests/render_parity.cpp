@@ -27,6 +27,7 @@
 #include <fstream>
 #include <random>
 #include <vector>
+#include "backend/tests/ScreenRows.h"
 
 using backend::MemcpyKind;
 
@@ -71,12 +72,12 @@ int check_error() {
     return 0;
 }
 
-// Local copy of EngineCommon.h vec_to_2d_float4 (the [nnz, 1] AABB view the
-// engine hands the packed 3dgut rasterizer).
-DeviceTensor2D<float4> vec_to_2d_float4(const DeviceVector<float4>& vec) {
-    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(float),
-                       {vec.size(), 1LL, 4LL}};
-    return DeviceTensor2D<float4>(tv);
+// static: the engine library these tools link defines the same helper
+// inline (engine/EngineCommon.h), and MSVC refuses the duplicate.
+static DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
 }
 
 int main(int argc, char** argv) {
@@ -207,9 +208,9 @@ int main(int argc, char** argv) {
         // --- projection ---
         std::vector<DeviceTensorFloatND> splats_s;
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceTensor2D<float4> aabb_2d;       // non-packed (or packed view)
-        DeviceVector<float4> aabb_vec;        // packed
-        DeviceTensorFloatND aabb_nd, depths_nd;
+        DeviceTensor2D<uint2> aabb_2d;       // non-packed (or packed view)
+        DeviceVector<uint2> aabb_vec;        // packed
+        DeviceTensorFloatND depths_nd;
 
         if (cfg.packed) {
             auto fn = cfg.prim == 0   ? projection_3dgs_packed_forward
@@ -225,8 +226,7 @@ int main(int argc, char** argv) {
             aabb_vec = std::get<2>(out);
             auto depths_vec = std::get<3>(out);
             splats_s = std::get<4>(out);
-            aabb_2d = vec_to_2d_float4(aabb_vec);
-            aabb_nd = DeviceTensorFloatND(aabb_vec);
+            aabb_2d = vec_to_2d_aabb(aabb_vec);
             depths_nd = DeviceTensorFloatND(depths_vec);
             acc.push_back((float)cam_ids.size());  // nnz
         } else {
@@ -241,30 +241,21 @@ int main(int argc, char** argv) {
             aabb_2d = std::get<0>(out);
             auto depths_2d = std::get<1>(out);
             splats_s = std::get<2>(out);
-            aabb_nd = DeviceTensorFloatND(aabb_2d);
             depths_nd = DeviceTensorFloatND(depths_2d);
         }
         backend::device_synchronize();
         if (check_error()) return 1;
 
-        // --- tile intersection (ellipse mode; screen layout per primitive,
-        //     see EngineForward.cpp) ---
-        DeviceTensorFloatND *proj_xy = nullptr, *proj_conic = nullptr,
-                            *proj_opac = nullptr;
-        if (cfg.prim == 2) {
-            proj_conic = &splats_s[0];
-            proj_opac = &splats_s[1];
-        } else {
-            proj_xy = &splats_s[0];
-            proj_conic = &splats_s[2];
-            proj_opac = &splats_s[3];
-        }
+        // --- tile intersection (ellipse mode) ---
         DeviceVector<int32_t>* image_ids_ptr =
             cfg.packed && cam_ids.data_ptr() ? &cam_ids : nullptr;
 
+        int macro_log2 = kMacroLog2Default;
+
         auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-            aabb_nd, depths_nd, proj_xy, proj_conic, proj_opac, C,
-            ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr);
+            aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim == 2), C,
+            ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr,
+        macro_log2);
         backend::device_synchronize();
         if (check_error()) return 1;
 
@@ -284,12 +275,13 @@ int main(int argc, char** argv) {
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
-                tile_offsets, flatten_ids, cfg.dt, cfg.median);
+                tile_offsets, flatten_ids, macro_log2, cfg.dt,
+                cfg.median);
         } else {
             auto fn = cfg.prim == 0 ? rasterize_to_pixels_3dgs_fwd
                                     : rasterize_to_pixels_mip_fwd;
             rout = fn(N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
-                      flatten_ids, cfg.dt, cfg.median);
+                      flatten_ids, macro_log2, cfg.dt, cfg.median);
         }
         backend::device_synchronize();
         if (check_error()) return 1;

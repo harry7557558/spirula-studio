@@ -83,7 +83,8 @@ inline void sampleColor(const GrayImage& img, float x, float y, uint8_t out[3]) 
 GrayImage loadGrayImage(const std::string& path, int max_image_size = 3200,
                         bool want_color = false, const std::string& mask_path = "",
                         const std::string& gamut = "",
-                        std::optional<bool> is_linear = std::nullopt);
+                        std::optional<bool> is_linear = std::nullopt,
+                        bool flip_mask = false);
 
 // Read just the pixel dimensions from an image header (no full decode).
 // Returns false if the file is not a decodable image.

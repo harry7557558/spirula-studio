@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Source lints
+        run: |
+          bash tools/check_ss_prefix.sh
+          bash tools/check_i18n.sh
+          bash tools/check_file_macro.sh
+          bash tools/check_comments.sh
+          bash tools/check_private_paths.sh
+          python3 tools/check_font_coverage.py
+
+      - name: Generated files are current
+        run: |
+          python3 tools/codegen/generate_headers.py
+          python3 tools/codegen/generate_kernel_instantiation.py
+          python3 tools/codegen/generate_backend_api.py
+          git diff --exit-code || {
+            echo "::error::src/generated, src/instantiations or src/backend/api is behind tools/codegen"
+            exit 1
+          }
+
+      - name: Comment budget
+        if: github.event_name == 'pull_request'
+        run: |
+          git reset --soft ${{ github.event.pull_request.base.sha }}
+          python3 tools/check_comment_length.py
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libvulkan-dev libgl1-mesa-dev xorg-dev
+          sudo apt install -y libwayland-dev libwayland-bin wayland-protocols libxkbcommon0 libxkbcommon-x11-0 libxkbcommon-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev spirv-tools
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/slang-*
+            build/Vulkan-Headers-*
+          key: fetched-linux-${{ hashFiles('cmake/SsSlang.cmake', 'cmake/SsVulkan.cmake') }}
+
+      - name: Build
+        run: bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
+
+      - name: Smoke
+        run: ./build/spirula train --help
+
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: brew install cmake ninja libomp
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/slang-*
+            build/MoltenVK-*
+          key: fetched-macos-${{ hashFiles('cmake/SsSlang.cmake', 'cmake/SsVulkan.cmake') }}
+
+      - name: Build
+        shell: bash
+        run: |
+          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON 2>&1 | tee configure.log
+
+      - name: OpenMP was found
+        run: grep -q "Found OpenMP" configure.log
+
+      - name: Smoke
+        run: ./build/spirula train --help
+
+      - name: Package
+        run: cmake --build build --target macos_dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spirula-macos-arm64
+          path: build/Spirula Studio.dmg
+          retention-days: 14
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          curl.exe -sSL -o vulkan_sdk.exe https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/vulkan_sdk.exe
+          $p = Start-Process -FilePath .\vulkan_sdk.exe -NoNewWindow -Wait -PassThru `
+               -ArgumentList '--root','C:\VulkanSDK','--accept-licenses','--default-answer','--confirm-command','install'
+          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+          "VULKAN_SDK=C:\VulkanSDK" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: cmd
+        run: build_develop.bat -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
+
+      - name: Smoke
+        shell: cmd
+        run: build\spirula.exe train --help

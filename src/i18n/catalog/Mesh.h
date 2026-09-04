@@ -620,6 +620,56 @@ SS_MSG(no_tetrahedra,
     RU("триангуляция не дала ни одного тетраэдра"),
     TR("üçgenlemeden hiç dörtyüzlü çıkmadı"));
 
+SS_MSG(too_many_gaussians,
+    EN("too many Gaussians to mesh: {0}. The tetrahedralization takes at most "
+       "{1} sample points, which is {2} Gaussians at 7 points each, and RAM "
+       "runs out well before that. Retrain with a lower --cap-max."),
+    JA("メッシュにするにはガウシアンが多すぎます: {0}。四面体分割が扱えるのは"
+       "最大 {1} 個のサンプル点、1 ガウシアンあたり 7 点なので {2} ガウシアン"
+       "までで、それより手前でメモリが尽きます。--cap-max を小さくして"
+       "学習し直してください。"),
+    ZH_HANS("高斯球太多，无法生成网格：{0}。四面体剖分最多接受 {1} "
+            "个采样点，即每个高斯球 7 个点时的 {2} 个高斯球，而内存远在这之前"
+            "就会耗尽。请调小 --cap-max 重新训练。"),
+    ZH_HANT("高斯球太多，無法產生網格：{0}。四面體剖分最多接受 {1} "
+            "個取樣點，即每個高斯球 7 個點時的 {2} 個高斯球，而記憶體遠在這之前"
+            "就會耗盡。請調小 --cap-max 重新訓練。"),
+    KO("메시로 만들기에 가우시안이 너무 많습니다: {0}. 사면체 분할이 받는 "
+       "표본점은 최대 {1}개, 가우시안당 7점이므로 {2}개 가우시안까지이고, "
+       "메모리는 그보다 훨씬 앞에서 바닥납니다. --cap-max 를 낮춰 다시 "
+       "학습하세요."),
+    DE("zu viele Gaußfunktionen für ein Netz: {0}. Die Tetraedrisierung nimmt "
+       "höchstens {1} Abtastpunkte, also {2} Gaußfunktionen bei 7 Punkten je "
+       "Stück, und der Arbeitsspeicher geht schon weit davor aus. Trainiere "
+       "mit kleinerem --cap-max neu."),
+    FR("trop de gaussiennes pour un maillage : {0}. La tétraédrisation accepte "
+       "au plus {1} points d'échantillonnage, soit {2} gaussiennes à 7 points "
+       "chacune, et la mémoire s'épuise bien avant. Réentraînez avec un "
+       "--cap-max plus bas."),
+    ES("demasiadas gaussianas para mallar: {0}. La tetraedrización acepta como "
+       "mucho {1} puntos de muestreo, es decir {2} gaussianas a 7 puntos cada "
+       "una, y la memoria se agota mucho antes. Reentrena con un --cap-max más "
+       "bajo."),
+    PT("gaussianas demais para gerar malha: {0}. A tetraedrização aceita no "
+       "máximo {1} pontos de amostragem, ou seja {2} gaussianas a 7 pontos "
+       "cada, e a memória acaba bem antes disso. Retreine com um --cap-max "
+       "menor."),
+    IT("troppe gaussiane per la mesh: {0}. La tetraedrizzazione accetta al "
+       "massimo {1} punti di campionamento, cioè {2} gaussiane a 7 punti "
+       "ciascuna, e la memoria finisce molto prima. Riaddestra con un "
+       "--cap-max più basso."),
+    NL("te veel gaussianen voor een mesh: {0}. De tetraëdrisatie neemt hoogstens "
+       "{1} steekproefpunten, oftewel {2} gaussianen bij 7 punten per stuk, en "
+       "het geheugen raakt daar ruim voor op. Train opnieuw met een lagere "
+       "--cap-max."),
+    RU("слишком много гауссиан для меша: {0}. Тетраэдризация принимает не "
+       "более {1} точек выборки, то есть {2} гауссиан по 7 точек каждая, а "
+       "память заканчивается намного раньше. Переобучите с меньшим --cap-max."),
+    TR("ağ oluşturmak için çok fazla gaussian var: {0}. Dörtyüzlüleme en fazla "
+       "{1} örnek nokta alır, yani her biri 7 nokta olan {2} gaussian, ve "
+       "bellek bundan çok önce tükenir. Daha düşük bir --cap-max ile yeniden "
+       "eğitin."));
+
 SS_MSG(occupancy_start,
     EN("evaluating the points (total: {0})..."),
     JA("点を評価しています（総数: {0}）..."),

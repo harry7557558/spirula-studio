@@ -19,13 +19,13 @@ namespace {
 // Mirrors RasterMomentsParams in shaders/rasterize_moments.slang.
 struct RasterMomentsParams {
     uint64_t means, quats, scales, gaussian_ids;
-    uint64_t s_scale, s_opac, s_rgb;
+    uint64_t s_screen;
     uint64_t viewmats, intrins, dist_coeffs, aabb;
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_moments, out_rgb;
-    uint32_t I, N, n_isects, width, height, tile_width, tile_height, _pad0;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
-static_assert(sizeof(RasterMomentsParams) == 15 * 8 + 8 * 4,
+static_assert(sizeof(RasterMomentsParams) == 13 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 }  // namespace
@@ -40,11 +40,12 @@ void rasterize_moments_3dgut_fwd(
     const std::string& camera_model,
     const std::string& distortion,
     TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,
+    DeviceTensor2D<uint2> aabb,
     uint32_t image_width,
     uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,
     const DeviceVector<int32_t>& flatten_ids,
+    int macro_log2,
     float3* render_moments,
     float3* render_rgb
 ) {
@@ -65,9 +66,7 @@ void rasterize_moments_3dgut_fwd(
     p.quats = (uint64_t)wb.raw_data(1);
     p.scales = (uint64_t)wb.raw_data(2);
     p.gaussian_ids = vkk::or_fallback(gaussian_ids.data_ptr());
-    p.s_scale = (uint64_t)sb.raw_data(0);
-    p.s_opac = (uint64_t)sb.raw_data(1);
-    p.s_rgb = (uint64_t)sb.raw_data(2);
+    p.s_screen = (uint64_t)sb.raw_data();
     p.viewmats = std::get<0>(viewmats);
     p.intrins = std::get<0>(intrins);
     p.dist_coeffs = vkk::or_fallback(std::get<0>(dist_coeffs));
@@ -85,6 +84,7 @@ void rasterize_moments_3dgut_fwd(
     p.height = image_height;
     p.tile_width = tile_width;
     p.tile_height = tile_height;
+    p.macro_log2 = (uint32_t)macro_log2;
 
     // Spec IDs: 0 = camera model, 1 = kRasterPacked, 2 = kOutputRgb,
     // 3 = distortion tier.
@@ -92,6 +92,6 @@ void rasterize_moments_3dgut_fwd(
                                gaussian_ids.data_ptr() ? 1u : 0u,
                                render_rgb ? 1u : 0u, cd.dist};
     vkk::dispatch_ring("rasterize_moments.rasterize_moments_3dgut", spec, I,
-                       tile_height * MACRO_TILE_SIZE_Y,
-                       tile_width * MACRO_TILE_SIZE_X, &p, sizeof(p));
+                       tile_height << macro_log2,
+                       tile_width << macro_log2, &p, sizeof(p));
 }

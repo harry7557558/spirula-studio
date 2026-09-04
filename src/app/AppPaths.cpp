@@ -1,6 +1,6 @@
 // AppPaths.cpp -- see AppPaths.h.
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -16,7 +16,7 @@
 
 namespace fs = std::filesystem;
 
-namespace gui {
+namespace app {
 
 namespace {
 
@@ -31,10 +31,9 @@ fs::path ensure(fs::path dir) {
     return dir;
 }
 
-// <base>/spirula-studio, except that an existing spirulae-splat/ from before
-// the rename is adopted where it is: nothing is moved, so recents and cached
-// models survive the upgrade untouched. Drop the fallback with the other
-// compatibility shims (cmake/SsOptions.cmake, src/core/Env.h).
+// <base>/spirula-studio, or an existing spirulae-splat/ from before the rename,
+// adopted where it is so recents and cached models survive the upgrade. Drop it
+// with the other compatibility shims (cmake/SsOptions.cmake, src/core/Env.h).
 fs::path app_dir(const fs::path& base) {
     std::error_code ec;
     const fs::path current = base / "spirula-studio";
@@ -124,4 +123,4 @@ void add_desktop_search_paths() {
 #endif
 }
 
-}  // namespace gui
+}  // namespace app

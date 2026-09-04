@@ -96,6 +96,9 @@ src/
 │                             -- READ src/sam/README.md
 ├── aliked/                 ALIKED keypoints + LightGlue, on top of nn/
 │                             -- READ src/aliked/README.md
+├── loma/                   LoMa: DaD keypoints + DeDoDe descriptors + the LoMa
+│                             matcher, on top of nn/. The other learned SfM
+│                             frontend -- READ src/loma/README.md
 ├── metric3d/               Metric3D v2 depth + normals, on top of nn/
 │                             -- READ src/metric3d/README.md
 ├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of
@@ -124,6 +127,9 @@ src/
 │   │                         masks them in the same pass; the GUI masks after)
 │   ├── WriterPool.h        threads that encode/write images while the GPU runs
 │   │                         the next frame; every masking loop uses it
+│   ├── AppPaths.{h,cpp}    the config / cache directories and this exe's own path
+│   ├── CrashLog.{h,cpp}    the stack trace every tool leaves in <config>/crash.log
+│   │                         when it faults -- armed for all of them in Main.cpp
 │   ├── gui/                Dear ImGui desktop app (`spirula` with no arguments)
 │   ├── webviewer/          HTTP server + render worker + viewer.html (the ONE
 │   │                         browser client, embedded into the engine library
@@ -238,8 +244,9 @@ Rules:
 
 ## The Vulkan-only subsystems
 
-`src/sfm/`, `src/nn/`, `src/sam/`, `src/aliked/`, `src/metric3d/`,
-`src/moge/` and `src/video/` are **not** part of the two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
+`src/sfm/`, `src/nn/`, `src/sam/`, `src/aliked/`, `src/loma/`,
+`src/metric3d/`, `src/moge/` and `src/video/` are **not** part of the
+two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
 context, share nothing with the training engine, and are absent from a CUDA
 build by default (`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there).
 Nothing in them goes through `cmake/sources.txt`.
@@ -249,6 +256,7 @@ The layering runs one way and must keep doing so:
 ```
 app/gui, app/cli ──► sam ──────┬──► nn ──► nn/vk
                  ├──► aliked ──┤
+                 ├──► loma ────┤
                  ├──► metric3d ┤
                  ├──► moge ────┤
                  └──► video ───┘
@@ -409,6 +417,11 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `tools/ss_reserved_names.txt`. Read environment variables through
   `spirula::env("SUFFIX")` (`src/core/Env.h`), never `getenv` directly — the
   deprecated `SSPLAT_` spelling is honoured in exactly that one function.
+- **An error message that cites a source line uses `SS_FILE`, never `__FILE__`**
+  (`src/core/SourcePath.h`). `__FILE__` is the absolute path on the machine that
+  built the binary; `SS_FILE` trims it to `src/...` at compile time, the same on
+  every toolchain. `tools/check_file_macro.sh` (run by `build_develop.bash`)
+  refuses the bare macro.
 - C++ code lives in `namespace spirula` where it is namespaced at all.
 - **The GUI never hands ImGui a string literal.** Every text-bearing call goes
   through `ui::` (`src/app/gui/Ui.h`): `ui::Button(msg)` for interface copy,
@@ -474,6 +487,11 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   free of CUDA intrinsics for the same reason.
 - **Quantized gradient codecs must decode code 0 to exactly `0.0`.** Anything
   else and Adam amplifies the pseudo-gradient into visible floaters.
+- **`isfinite` has no spelling that works everywhere a `core/` header goes.**
+  MSVC declares `std::isfinite` as a host function template, so nvcc will not
+  call it from `__device__` code; gcc's `<cmath>` leaves nothing in the global
+  namespace for an unqualified call inside a template to find. `q_finite`
+  (`core/Tensor.h`) is the exponent test that does. Same for `isnan`/`isinf`.
 - **Never name a `thread_local` inside an `omp parallel` region.** The team
   threads are different threads, so each one resolves it to its *own* copy —
   which the calling thread never sized. Keep the storage `thread_local` if you
@@ -514,8 +532,24 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `kernels/bilagrid/BilagridConfig.cuh` for the 3D case) and pass the fold
   factor to the kernel. Related: the bilagrid samplers index cells with
   int32, which `engine_init_bilagrid_*` enforces up front.
+- **Some pool buffers do not own their memory.** A slot listed in
+  `POOL_ALIAS_TABLE` (`core/PoolSlots.h`) is a slice of one arena that every
+  `PoolPhase` reuses, so the arena costs the largest phase rather than the sum
+  (626 MiB on a 15M-splat step). Acquiring one outside its phase throws;
+  `SS_POOL_ALIAS_POISON=1` fills the arena at every phase switch so a read
+  that outlives its phase becomes NaNs a parity test catches, and
+  `SS_POOL_ALIAS=0` turns the whole thing off. Read
+  `docs/notes/vram-splat-x-img.md` before adding a row.
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
-  (H2D / D2H / D2D / memset / device / host), header-only, both backends.
+  (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
+  a per-category VRAM breakdown after any run that trained. What the biggest
+  category costs per element, and what has already been tried against it, is
+  `docs/notes/vram-splat-x-img.md`.
+- **A kernel that fills the gaps between sorted keys is a scaling trap.** One
+  thread per INPUT walking `[ids[i-1]+1, ids[i]]` is fine while the ids are
+  dense and quadratic when they are not: `qgrad_camera_id_bounds` measured
+  478 ms/call at 20M splats with 0.8M visible, 92% of the whole step. One
+  thread per OUTPUT doing a `lower_bound` is the shape that does not care.
 - **The engine is a process-global singleton.** Call `engine_reset()` between
   runs that swap datasets, or the new run inherits the old splats, camera
   table, optimizer moments and color-space matrices. The one exception is

@@ -30,12 +30,19 @@ endif()
 # Reused trainer sources (in-place; carried in the same git repo).
 set(SS_SRC "${CMAKE_SOURCE_DIR}/../src")
 
+# The parsers report through i18n::format, so the module needs its runtime
+# (src/i18n/). Globbed, to stay in step with cmake/SsI18n.cmake.
+file(GLOB I18N_SOURCES CONFIGURE_DEPENDS "${SS_SRC}/i18n/*.cpp")
+
 set(DATASET_SOURCES
   "${CMAKE_SOURCE_DIR}/src/dataset_bridge.cpp"
   "${SS_SRC}/data/parsers/ColmapParser.cpp"
   "${SS_SRC}/data/parsers/NerfstudioParser.cpp"
   "${SS_SRC}/data/parsers/MetashapeParser.cpp"
   "${SS_SRC}/data/parsers/DatasetCommon.cpp"
+  "${SS_SRC}/data/SourceCamera.cpp"
+  "${SS_SRC}/data/DistortionFit.cpp"
+  ${I18N_SOURCES}
   "${SS_SRC}/external/miniz.c"
 )
 
@@ -45,6 +52,11 @@ add_executable(ssv_wasm src/viewer.cpp ${DATASET_SOURCES})
 # data/DatasetParser.h, data/Json.h, data/Xml.h and the parser sources
 # path-qualify their own includes the same way.
 target_include_directories(ssv_wasm PRIVATE "${SS_SRC}")
+
+# The trainer tree's SS_FILE contract (src/core/SourcePath.h): the shared
+# sources must report the same repo-relative paths built from here.
+get_filename_component(SS_ROOT "${SS_SRC}/.." ABSOLUTE)
+target_compile_definitions(ssv_wasm PRIVATE SS_SOURCE_ROOT="${SS_ROOT}")
 
 # Per-source flags: viewer.cpp stays fast/exception-free; the dataset parsers
 # need C++ exceptions (they throw on bad input) and must NOT use -ffast-math

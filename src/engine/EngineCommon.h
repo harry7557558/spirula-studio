@@ -26,12 +26,12 @@ inline DeviceTensorFloatND tv_to_fnd(const TorchTensorView& tv) {
     return DeviceTensorFloatND(TorchTensorView{std::get<0>(tv), std::get<1>(tv), shape});
 }
 
-// --- DeviceTensor2D<float4> view over a DeviceVector<float4> (for packed
-//     projection backward). ---
-inline DeviceTensor2D<float4> vec_to_2d_float4(const DeviceVector<float4>& vec) {
-    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(float),
-                       {vec.size(), 1LL, 4LL}};
-    return DeviceTensor2D<float4>(tv);
+// --- DeviceTensor2D<uint2> view over the packed AABB the packed projection
+//     returns, which the backward takes as a 2D tensor. ---
+inline DeviceTensor2D<uint2> vec_to_2d_aabb(const DeviceVector<uint2>& vec) {
+    TorchTensorView tv{(uint64_t)vec.data_ptr(), (uint32_t)sizeof(unsigned),
+                       {vec.size(), 1LL, 2LL}};
+    return DeviceTensor2D<uint2>(tv);
 }
 
 // --- DeviceVector/DeviceTensor -> TorchTensorView. ---

@@ -401,6 +401,7 @@ export class Renderer {
       gl.bindTexture(gl.TEXTURE_2D, this.hdrTex);
       gl.uniform1i(this.uTone.uHdr, 0);
       gl.uniformMatrix3fv(this.uTone.uGamut, false, opts.gamut);
+      gl.uniform1i(this.uTone.uTransfer, opts.transfer | 0);
       gl.uniform1i(this.uTone.uIsLinear, opts.isLinear ? 1 : 0);
       gl.uniform3fv(this.uTone.uBackground, bg);
       gl.uniform1f(this.uTone.uExposure, opts.exposure ?? 1.0);

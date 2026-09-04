@@ -11,11 +11,13 @@
 // constants (kDistortion declared last -- see dist_spec.slang).
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "shaders/projection_utils.slang"
 #undef CudaDeviceExport
 
 #include "raster_common.slang"
+#include "screen.slang"
 #include "dist_spec.slang"
 
 [SpecializationConstant]
@@ -46,15 +48,12 @@ struct RasterMomentsParams {
     float* quats;   // [N, 4]
     float* scales;  // [N, 3]
     int* gaussian_ids;  // [nnz] packed mode or null (world idx = g % N)
-    // ScreenBuffer (TensorArray<3>) flattened
-    float* s_scale;  // [.., 3] projected 2D conic (culling)
-    float* s_opac;   // [.., 1]
-    float* s_rgb;    // [.., 3]
+    float* s_screen;  // packed ScreenBuffer rows; "scale" slot = 2D conic
     // cameras
     float* viewmats;     // [I, 16] row-major
     float4* intrins;     // [I]
     float* dist_coeffs;  // [I, 8] (never null: zeroed fallback)
-    float4* aabb;        // [..] projected 2D AABB (xmin,ymin,xmax,ymax)
+    uint2* aabb;         // [..] packed 2D AABB, aabb16.slang
     int* tile_offsets;   // [I, tile_height, tile_width]
     int* flatten_ids;    // [n_isects]
     // outputs
@@ -67,7 +66,7 @@ struct RasterMomentsParams {
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
-    uint32_t _pad0;
+    uint32_t macro_log2;
 };
 
 #define _rm_ray(D)                                                    \
@@ -83,8 +82,7 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint image_id = wg.x;
     uint mt_y = wg.y;
     uint mt_x = wg.z;
-    int tile_id = int((mt_y / MACRO_TILE_SIZE_Y) * p.tile_width +
-                      (mt_x / MACRO_TILE_SIZE_X));
+    int tile_id = int(macro_tile_id(mt_y, mt_x, p.tile_width, p.macro_log2));
 
     int* tile_offsets =
         p.tile_offsets + image_id * p.tile_height * p.tile_width;
@@ -152,13 +150,12 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                          : uint(g) % p.N;
-            float opac = p.s_opac[g];
+            float* r = scrg_row(p.s_screen, g);
+            float opac = scrg_opac(r);
             if (opac > ALPHA_THRESHOLD) {
-                float3 conic = float3(p.s_scale[3 * g], p.s_scale[3 * g + 1],
-                                      p.s_scale[3 * g + 2]);
-                float4 bb = p.aabb[g];
-                float ecx = 0.5f * (bb.x + bb.z);
-                float ecy = 0.5f * (bb.y + bb.w);
+                float3 conic = scrg_scale(r);
+                float2 ec = aabb16_center(p.aabb[g], p.width, p.height);
+                float ecx = ec.x, ecy = ec.y;
                 float kk = 0.5f / log(opac / ALPHA_THRESHOLD);
                 float3 inv_cov = conic * kk;
                 hit = ellipse_box_overlap_test(
@@ -175,8 +172,7 @@ void rasterize_moments_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                     float3(p.scales[3 * wi], p.scales[3 * wi + 1],
                            p.scales[3 * wi + 2]));
                 f.opacity = opac;
-                f.rgb = float3(p.s_rgb[3 * g], p.s_rgb[3 * g + 1],
-                               p.s_rgb[3 * g + 2]);
+                f.rgb = scrg_rgb(r);
                 _batch_mom[tid] = f;
             }
         }

@@ -1,29 +1,55 @@
 // Block-wise quantized-state codecs (Vulkan backend) mirroring the CUDA
 // device codecs in core/Tensor.h (QuantizedAdamState, QuantizedTensor) and
-// core/GradQuant.cuh (gradq::Codec<8>). All packed storage is read and
-// written as u32 WORDS (no 8/16-bit storage features; README rules). Cell
-// indices are u32 — launchers validate numel < 2^32.
+// core/GradQuant.cuh (gradq::Codec<8>). Packed storage is read and written
+// as u32 WORDS; cell indices are u32, plus a gindex_t overload on the
+// helpers the SH buffers reach (past 2^32 cells).
 //
-// Word-write cooperation: cells narrower than a word are assembled in
-// groupshared (_oq_pack) and stored as whole words by the lowest thread of
-// each word group. A 256-cell quant block always starts word-aligned, and
-// the up-to-3 tail bytes past the last cell land in the allocation's 4-byte
-// rounding (backend::device_malloc guarantees it). Unlike CUDA — which
-// leaves tail bytes untouched — the tail bytes inside the final word are
-// written as zero; nothing reads them.
+// Sub-word cells are assembled in groupshared (_oq_pack) and stored whole by
+// the lowest thread of each word group; a 256-cell block starts word-aligned
+// and the tail bytes fall in the allocation's 4-byte rounding, written as
+// zero where CUDA leaves them (nothing reads them).
 //
-// log1p/expm1 use the classic compensated forms, tracking CUDA's
-// log1pf/expm1f closely but not bit-exactly; parity tests allow +-1
-// quantization step on packed cells.
+// log1p/expm1 are compensated forms: parity allows +-1 step per cell.
 
 #include "int8_compat.slang"
 
 static const float kAdamEps = 1e-15f;
 
 [ForceInline]
+bool _oq_finite(float v) {
+    return (asuint(v) & 0x7f800000u) != 0x7f800000u;
+}
+
+// SPIR-V leaves FMin/FMax undefined on a NaN operand, so a driver may let one
+// through where CUDA's fminf/fmaxf drop it -- and one NaN in a block bound
+// decodes all 256 of its cells to NaN. Pick the finite side explicitly.
+[ForceInline]
+float _oq_min(float a, float b) {
+    if (!_oq_finite(a)) return b;
+    if (!_oq_finite(b)) return a;
+    return min(a, b);
+}
+[ForceInline]
+float _oq_max(float a, float b) {
+    if (!_oq_finite(a)) return b;
+    if (!_oq_finite(b)) return a;
+    return max(a, b);
+}
+
+// CUDA's fminf(fmaxf(x, 0), qmax) provably sends NaN to 0; SPIR-V's FClamp
+// does not, and OpConvertFToU of a NaN or out-of-range float is undefined --
+// a garbage code corrupts the neighbouring cells sharing its word.
+[ForceInline]
+uint _oq_code(float x, float qmax) {
+    if (!_oq_finite(x)) return 0u;
+    return uint(clamp(x, 0.0f, qmax));
+}
+
+[ForceInline]
 float _oq_log1p(float x) {
     float u = 1.0f + x;
     if (u == 1.0f) return x;
+    if (!_oq_finite(u)) return u;   // log1pf(+inf) = +inf, not inf*(inf/inf)
     return log(u) * (x / (u - 1.0f));
 }
 
@@ -31,6 +57,8 @@ float _oq_log1p(float x) {
 float _oq_expm1(float x) {
     float u = exp(x);
     if (u == 1.0f) return x;
+    if (u == 0.0f) return -1.0f;    // expm1f(-inf) = -1
+    if (!_oq_finite(u)) return u;   // expm1f(+inf) = +inf
     return (u - 1.0f) * (x / log(u));
 }
 
@@ -61,8 +89,8 @@ float4 oq_block_reduce_mm4(float4 v, uint tid) {
         if (tid < st) {
             float4 a = _oq_red4[tid];
             float4 b = _oq_red4[tid + st];
-            _oq_red4[tid] = float4(min(a.x, b.x), max(a.y, b.y),
-                                   min(a.z, b.z), max(a.w, b.w));
+            _oq_red4[tid] = float4(_oq_min(a.x, b.x), _oq_max(a.y, b.y),
+                                   _oq_min(a.z, b.z), _oq_max(a.w, b.w));
         }
         GroupMemoryBarrierWithGroupSync();
     }
@@ -101,18 +129,53 @@ uint2 qadam_read_q<let BITS : int>(uint* packed, uint idx) {
 }
 
 [ForceInline]
-float2 qadam_decode_us<let BITS : int>(uint* packed, uint idx, float4 mm) {
-    uint2 q = qadam_read_q<BITS>(packed, idx);
+uint2 qadam_read_q<let BITS : int>(uint* packed, gindex_t idx) {
+    if (BITS == 16) {
+        uint w = elem_at(packed, idx)[0];
+        return uint2(w & 0xffffu, w >> 16);
+    } else if (BITS == 8) {
+        uint w = elem_at(packed, idx >> 1)[0];
+        uint h = (w >> (16u * (uint(idx) & 1u))) & 0xffffu;
+        return uint2(h & 0xffu, h >> 8);
+    } else {  // BITS == 4
+        uint w = elem_at(packed, idx >> 2)[0];
+        uint b = (w >> (8u * (uint(idx) & 3u))) & 0xffu;
+        return uint2(b & 0xfu, b >> 4);
+    }
+}
+
+[ForceInline]
+float2 _qadam_us_of<let BITS : int>(uint2 q, float4 mm) {
     float inv = 1.0f / qadam_qmax<BITS>();
+    // See core/Tensor.h decode_us: a non-finite bound would decode all 256 of
+    // the block's cells to NaN, and nothing later undoes that.
+    if (!_oq_finite(mm.x) || !_oq_finite(mm.y)) { mm.x = 0.0f; mm.y = 0.0f; }
+    if (!_oq_finite(mm.z) || !_oq_finite(mm.w)) { mm.z = 0.0f; mm.w = 0.0f; }
     return float2(mm.x + (mm.y - mm.x) * (float(q.x) * inv),
                   mm.z + (mm.w - mm.z) * (float(q.y) * inv));
 }
 
 [ForceInline]
-float2 qadam_decode_g1g2<let BITS : int>(uint* packed, uint idx, float4 mm) {
-    float2 prim = qadam_decode_us<BITS>(packed, idx, mm);
+float2 _qadam_g1g2_of(float2 prim) {
     float sqrt_g2 = kAdamEps * _oq_expm1(prim.y);
     return float2(prim.x * (sqrt_g2 + kAdamEps), sqrt_g2 * sqrt_g2);
+}
+
+[ForceInline]
+float2 qadam_decode_us<let BITS : int>(uint* packed, uint idx, float4 mm) {
+    return _qadam_us_of<BITS>(qadam_read_q<BITS>(packed, idx), mm);
+}
+
+[ForceInline]
+float2 qadam_decode_g1g2<let BITS : int>(uint* packed, uint idx, float4 mm) {
+    return _qadam_g1g2_of(qadam_decode_us<BITS>(packed, idx, mm));
+}
+
+[ForceInline]
+float2 qadam_decode_g1g2<let BITS : int>(uint* packed, gindex_t idx,
+                                         float4 mm) {
+    return _qadam_g1g2_of(
+        _qadam_us_of<BITS>(qadam_read_q<BITS>(packed, idx), mm));
 }
 
 // (g1, g2) -> linearly-quantized primitives (u, log_s); the block bounds
@@ -130,10 +193,9 @@ uint2 qadam_quantize_us<let BITS : int>(float u_val, float log_s_val,
     float qmax = qadam_qmax<BITS>();
     float u_range = max(mm.y - mm.x, kAdamEps);
     float s_range = max(mm.w - mm.z, kAdamEps);
-    float u_qf = clamp(_oq_round(qmax * (u_val - mm.x) / u_range), 0.0f, qmax);
-    float s_qf = clamp(_oq_round(qmax * (log_s_val - mm.z) / s_range), 0.0f,
-                       qmax);
-    return uint2(uint(u_qf), uint(s_qf));
+    return uint2(_oq_code(_oq_round(qmax * (u_val - mm.x) / u_range), qmax),
+                 _oq_code(_oq_round(qmax * (log_s_val - mm.z) / s_range),
+                          qmax));
 }
 
 // Cooperative packed store of one cell's (u_q, s_q). Call from ALL 256
@@ -181,10 +243,22 @@ float qtensor_decode_v<let BITS : int>(uint* packed, uint idx, float2 mm) {
 }
 
 [ForceInline]
+float qtensor_decode_v<let BITS : int>(uint* packed, gindex_t idx, float2 mm) {
+    float q;
+    if (BITS == 16) {
+        uint w = elem_at(packed, idx >> 1)[0];
+        q = float((w >> (16u * (uint(idx) & 1u))) & 0xffffu);
+    } else {  // BITS == 8
+        q = float(u8_load(packed, idx));
+    }
+    return mm.x + (mm.y - mm.x) * (q / float((1 << BITS) - 1));
+}
+
+[ForceInline]
 uint qtensor_quantize_v<let BITS : int>(float v, float2 mm) {
     float qmax = float((1 << BITS) - 1);
     float range = max(mm.y - mm.x, 1e-30f);
-    return uint(clamp(_oq_round(qmax * (v - mm.x) / range), 0.0f, qmax));
+    return _oq_code(_oq_round(qmax * (v - mm.x) / range), qmax);
 }
 
 // Cooperative packed store of one cell's value code. Call from ALL 256
@@ -246,7 +320,7 @@ float qtlog_decode_v<let BITS : int>(uint* packed, uint idx, float2 mm) {
 uint qtlog_quantize_log<let BITS : int>(float log_v, float2 mm) {
     float qmax = float((1 << BITS) - 1);
     float range = max(mm.y - mm.x, kAdamEps);
-    return uint(clamp(_oq_round(qmax * (log_v - mm.x) / range), 0.0f, qmax));
+    return _oq_code(_oq_round(qmax * (log_v - mm.x) / range), qmax);
 }
 
 // Cooperative packed store of one cell's log-code. Call from ALL 256 threads
@@ -294,6 +368,19 @@ void vkq_store_u16(uint* packed, uint idx, uint h) {  // idx in halfwords
 
 [ForceInline]
 void vkq_store_u8(uint* packed, uint idx, uint b) {  // idx in bytes
+    u8_store(packed, idx, b);
+}
+
+[ForceInline]
+void vkq_store_u16(uint* packed, gindex_t idx, uint h) {
+    uint shift = 16u * (uint(idx) & 1u);
+    uint* w = elem_at(packed, idx >> 1);
+    InterlockedAnd(w[0], ~(0xffffu << shift));
+    InterlockedOr(w[0], (h & 0xffffu) << shift);
+}
+
+[ForceInline]
+void vkq_store_u8(uint* packed, gindex_t idx, uint b) {
     u8_store(packed, idx, b);
 }
 

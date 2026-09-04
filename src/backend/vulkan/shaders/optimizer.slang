@@ -67,15 +67,22 @@ void fused_adam_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
          (max(x - p.decay_offset, 0.0f) + min(x + p.decay_offset, 0.0f));
     float g1 = p.exp_avg[idx];
     float g2 = p.exp_avg_sq[idx];
+    // Self-heal: a moment that is already non-finite would otherwise pin this
+    // parameter for the rest of the run.
+    if (!_finitef(g1)) g1 = 0.0f;
+    if (!_finitef(g2)) g2 = 0.0f;
 
     g1 = kBeta1 * g1 + (1.0f - kBeta1) * v;
     g2 = kBeta2 * g2 + (1.0f - kBeta2) * v * v;
 
-    x -= p.lr * ibc1 * g1 / (sqrt(g2 * ibc2) + kAdamEps);
+    float x_new = x - p.lr * ibc1 * g1 / (sqrt(g2 * ibc2) + kAdamEps);
 
-    p.param[idx] = x;
-    p.exp_avg[idx] = g1;
-    p.exp_avg_sq[idx] = g2;
+    // A finite parameter must not become non-finite: for the per-photo
+    // appearance tables (PPISP, bilagrid) one such entry poisons every pixel
+    // of that photo for the rest of the run, and nothing ever restores it.
+    if (_finitef(x_new)) p.param[idx] = x_new;
+    if (_finitef(g1)) p.exp_avg[idx] = g1;
+    if (_finitef(g2)) p.exp_avg_sq[idx] = g2;
 
     if (p.zero_grad != 0) p.grad[idx] = 0.0f;
 }
@@ -101,8 +108,13 @@ void fused_adagrad_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (idx >= p.numel) return;
     float v = p.grad[idx];
     if (!_finitef(v)) v = 0.0f;
-    float a = p.accum[idx] + v * v;
-    p.param[idx] -= p.lr * v / (sqrt(a) + kAdamEps);
+    float a0 = p.accum[idx];
+    if (!_finitef(a0)) a0 = 0.0f;   // self-heal, see fused_adam_fwd
+    float a = a0 + v * v;
+    if (!_finitef(a)) a = a0;
+    // See fused_adam_fwd: a finite parameter must not become non-finite.
+    float x_new = p.param[idx] - p.lr * v / (sqrt(a) + kAdamEps);
+    if (_finitef(x_new)) p.param[idx] = x_new;
     p.accum[idx] = a;
 }
 

@@ -53,6 +53,16 @@ Grid fold_grid(uint32_t groups) {
     return {per_row, (groups + per_row - 1) / per_row, per_row};
 }
 
+// elem_at() in the shaders builds a 64-bit byte offset, but only where
+// gindex_t is 64-bit; the ".noint64" blobs index in 32 bits and so cannot
+// reach past 4 GiB of any one buffer.
+bool span_ok(int64_t num_items, size_t elem_bytes, const char* what) {
+    if (vk::Context::get().caps().shader_int64) return true;
+    if ((uint64_t)num_items * elem_bytes <= 0xffffffffull) return true;
+    vk::set_error(what, VK_SUCCESS);
+    return false;
+}
+
 bool subgroup_ok() {
     const auto& caps = vk::Context::get().caps();
     if (caps.subgroup_size < kMinSubgroup) {
@@ -91,6 +101,11 @@ void sort_pairs_impl(DoubleBuffer<KeyT>& keys, DoubleBuffer<int32_t>& values,
         vk::set_error("sort_pairs: > 2^31 items unsupported", VK_SUCCESS);
         return;
     }
+    if (!span_ok(num_items, sizeof(KeyT),
+                 "sort_pairs: keys over 4 GiB need shaderInt64") ||
+        !span_ok(num_items, sizeof(int32_t),
+                 "sort_pairs: values over 4 GiB need shaderInt64"))
+        return;
     if (!subgroup_ok()) return;
     begin_bit = std::max(begin_bit, 0);
     end_bit = std::min(end_bit, (int)sizeof(KeyT) * 8);
@@ -170,6 +185,9 @@ void scan_impl(const void* in, void* out, int64_t num_items, bool inclusive,
         vk::set_error("scan: > 2^31 items unsupported", VK_SUCCESS);
         return;
     }
+    if (!span_ok(num_items, elem_bytes,
+                 "scan: buffer over 4 GiB needs shaderInt64"))
+        return;
     uint32_t n = (uint32_t)num_items;
     uint32_t blocks = (n + kScanBlock - 1) / kScanBlock;
     Grid grid = fold_grid(blocks);
@@ -265,6 +283,9 @@ int64_t select_flagged(const T* in, const uint8_t* flags, T* out,
         vk::set_error("select_flagged: > 2^31 items unsupported", VK_SUCCESS);
         return 0;
     }
+    if (!span_ok(num_items, sizeof(T),
+                 "select_flagged: buffer over 4 GiB needs shaderInt64"))
+        return 0;
     uint32_t n = (uint32_t)num_items;
     uint32_t blocks = (n + kScanBlock - 1) / kScanBlock;
     Grid grid = fold_grid(blocks);

@@ -5,12 +5,17 @@
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include "core/Env.h"
+
+#include <algorithm>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
 
 extern void _engine_background_forward();
 extern void _engine_color_space_forward();
+extern void _engine_ppisp_forward_current();
 
 
 void engine_release_screen_buffers() {
@@ -19,6 +24,115 @@ void engine_release_screen_buffers() {
     engine().fwd.splats_s.clear();
     DevicePool::global().free_dynamic_prefix(
         std::string(slot_name(PoolSlot::ProjScreen)) + ".");
+}
+
+void engine_set_bin_tile_size(int pixels) {
+    if (pixels != 0 && macro_log2_from_pixels(pixels) < 0)
+        throw std::runtime_error(
+            "bin tile size " + std::to_string(pixels) +
+            " is not a power of two in [" +
+            std::to_string(bin_tile_x(kMacroLog2Min)) + ", " +
+            std::to_string(bin_tile_x(kMacroLog2Max)) + "]");
+    engine().bin_tile_request = pixels;
+    engine().bin_tile_auto.clear();
+}
+
+namespace {
+using BinTileChoice = EngineState::BinTileChoice;
+
+BinTileChoice& bin_choice() {
+    return engine().bin_tile_auto[((uint64_t)engine().camera.width << 32) |
+                                  (uint32_t)engine().camera.height];
+}
+}  // namespace
+
+// Window and margin come from the noise floor: repeated runs vary ~4% where
+// the binning matters and ~28% on a scene too small for it to, so 6% over a
+// 4-step mean adopts on the former and stays put on the latter.
+namespace {
+constexpr int    kBinTileWindow = 4;    // observations averaged per decision
+constexpr int    kBinTileWarmup = 2;    // discarded after a granularity change
+constexpr double kBinTileMargin = 0.06;
+constexpr int    kBinTileRetry  = 40;   // windows before re-probing after a
+                                        // rejection -- splat size drifts, so
+                                        // a rejected direction is retried
+constexpr int    kBinTileNext   = 1;    // ... but an accepted one right away
+
+bool bin_tile_log() {
+    static const bool on = [] {
+        const char* v = spirula::env("BIN_TILE_LOG");
+        return v && v[0] && v[0] != '0';
+    }();
+    return on;
+}
+}  // namespace
+
+void engine_bin_tile_observe(double step_seconds) {
+    if (engine().bin_tile_request != 0) return;
+    BinTileChoice& c = bin_choice();
+    if (c.warmup > 0) { --c.warmup; return; }
+    c.sum += step_seconds;
+    if (++c.have < kBinTileWindow) return;
+    const double cost = c.sum / c.have;
+    c.sum = 0.0;
+    c.have = 0;
+
+    // A/B/A: splat size moves fast enough early on that one window drifts
+    // ~16% from the next, more than the margin. Bracketing the trial and
+    // comparing against the mean of the two cancels drift linear over it.
+    switch (c.probing) {
+    case 0: {  // baseline before
+        c.base = cost;
+        c.from = c.macro_log2;
+        if (--c.wait > 0) return;
+        const int next = c.macro_log2 + c.dir;
+        if (next < std::max(c.floor, kMacroLog2Min) || next > kMacroLog2Max) {
+            c.dir = -c.dir;
+            c.wait = kBinTileRetry;
+            return;
+        }
+        c.macro_log2 = next;
+        c.probing = 1;
+        c.warmup = kBinTileWarmup;
+        return;
+    }
+    case 1:  // the trial
+        c.trial = cost;
+        c.macro_log2 = c.from;
+        c.probing = 2;
+        c.warmup = kBinTileWarmup;
+        return;
+    default: {  // baseline after -> decide
+        const int probed = c.from + c.dir;
+        const double base = 0.5 * (c.base + cost);
+        const bool better = c.trial < base * (1.0 - kBinTileMargin);
+        if (bin_tile_log())
+            std::fprintf(stderr,
+                         "[bin-tile] %d px %.1f ms vs %d px %.1f ms -- %s\n",
+                         bin_tile_x(probed), 1e3 * c.trial,
+                         bin_tile_x(c.from), 1e3 * base,
+                         better ? "keep" : "revert");
+        c.probing = 0;
+        c.base = cost;
+        if (better) {
+            c.macro_log2 = probed;
+            c.wait = kBinTileNext;
+            c.warmup = kBinTileWarmup;
+        } else {
+            c.dir = -c.dir;
+            c.wait = kBinTileRetry;
+        }
+        return;
+    }
+    }
+}
+
+int engine_bin_macro_log2() {
+    const auto& bin = bin_choice();
+    return engine().bin_tile_request != 0
+               ? std::max(macro_log2_from_pixels(engine().bin_tile_request),
+                          bin.floor)
+               : bin.macro_log2;
 }
 
 void forward_3dgs(
@@ -32,6 +146,15 @@ void forward_3dgs(
     engine().primitive = primitive;
     engine().sh_degree = sh_degree;
     engine().packed = packed;
+    // Read-and-clear up front so a throw below cannot leave it armed for the
+    // next render, which has no reason to want the transform.
+    const bool ppisp_in_forward = engine().ppisp.forward_pending;
+    engine().ppisp.forward_pending = false;
+
+    // The stashed screen gradients live in the arena the intersect below
+    // reuses, so this view is already dead. Dropping it turns a stale
+    // fused-optim read into that step's "v_splats_s not stashed" error.
+    engine().fwd.v_splats_s.clear();
 
     // Build splats as DeviceTensorFloatND from typed device buffers.
     // For DeviceVector<float> (opacities), build a [N, 1] shape FND manually.
@@ -51,7 +174,8 @@ void forward_3dgs(
     };
     engine().fwd.splats_w = in_splats;
 
-    DeviceTensorFloatND aabb_nd, depths_nd;
+    DeviceTensor2D<uint2> aabb_q;
+    DeviceTensorFloatND depths_nd;
 
     // Allocate and zero radii buffer before projection (kernel uses atomicMax).
     // In sub-batched mode, projection runs once per sub-batch; the optim step's
@@ -77,11 +201,8 @@ void forward_3dgs(
     std::optional<TorchTensorView> sh_value_bounds_opt = std::nullopt;
     const int sh_value_bits = engine().world.sh_value_bits;
     const uint32_t num_sh_buffer = (uint32_t)engine().num_sh;
-    // sh_bounds_stride: cells per value-quant bound. FPBO layout packs 256
-    // splats per block × 3*num_sh_buffer cells per splat; non-FPBO (cell-
-    // block) packs 256 consecutive cells per block. The projection kernel
-    // reads bounds[cell_idx / stride], so the stride must match the layout
-    // used at allocation time.
+    // sh_bounds_stride selects the packed-SH layout the kernels address with:
+    // 256 = per-cell-block AoS, 0 = FPBO (docs/notes/sh-quant-layout.md).
     int64_t sh_bounds_stride = 0;
     if (sh_value_bits == 8) {
         auto pick = [&](auto& vq) {
@@ -93,7 +214,7 @@ void forward_3dgs(
         };
         if (engine().world.features_sh_quant8_fpbo.initialized()) {
             pick(engine().world.features_sh_quant8_fpbo);
-            sh_bounds_stride = (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+            sh_bounds_stride = 0;  // FPBO layout
         } else {
             pick(engine().world.features_sh_quant8);
             sh_bounds_stride = 256;
@@ -108,7 +229,7 @@ void forward_3dgs(
         };
         if (engine().world.features_sh_quant16_fpbo.initialized()) {
             pick(engine().world.features_sh_quant16_fpbo);
-            sh_bounds_stride = (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+            sh_bounds_stride = 0;  // FPBO layout
         } else {
             pick(engine().world.features_sh_quant16);
             sh_bounds_stride = 256;
@@ -118,7 +239,7 @@ void forward_3dgs(
     // --- Projection ---
     if (packed) {
         DeviceVector<int32_t> cam_ids, gauss_ids;
-        DeviceVector<float4> aabb_vec;
+        DeviceVector<uint2> aabb_vec;
         DeviceVector<float> depths_vec;
 
         if (primitive == "3dgs") {
@@ -160,11 +281,11 @@ void forward_3dgs(
 
         engine().fwd.camera_ids = cam_ids;
         engine().fwd.gaussian_ids = gauss_ids;
-        engine().fwd.aabb = vec_to_2d_float4(aabb_vec);  // [nnz, 1] view for backward
-        aabb_nd = DeviceTensorFloatND(aabb_vec);          // [nnz, 4] for intersect
+        engine().fwd.aabb = vec_to_2d_aabb(aabb_vec);  // [nnz, 1] view for backward
+        aabb_q = engine().fwd.aabb;
         depths_nd = DeviceTensorFloatND(depths_vec);      // [nnz]   for intersect
     } else {
-        DeviceTensor2D<float4> aabb_2d;
+        DeviceTensor2D<uint2> aabb_2d;
         DeviceTensor2D<float> depths_2d;  // [C, N] — sorting depths per camera
 
         if (primitive == "3dgs") {
@@ -207,7 +328,7 @@ void forward_3dgs(
         engine().fwd.camera_ids = DeviceVector<int32_t>();
         engine().fwd.gaussian_ids = DeviceVector<int32_t>();
         engine().fwd.aabb = aabb_2d;                           // [C, N] for backward
-        aabb_nd = DeviceTensorFloatND(aabb_2d);                // [C, N, 4] for intersect
+        aabb_q = aabb_2d;
         depths_nd = DeviceTensorFloatND(depths_2d);            // [C, N] -> numel=C*N for intersect
     }
 
@@ -216,36 +337,43 @@ void forward_3dgs(
     if (packed && engine().fwd.camera_ids.data_ptr() != nullptr)
         image_ids_ptr = &engine().fwd.camera_ids;
 
-    // Hand the projected 2D conic / opacity (and center, when stored) to the
-    // intersector so it does the tighter ellipse-vs-tile test instead of a
-    // conservative AABB test. Screen-buffer layout differs per primitive:
-    //   3dgs / mip : [xy, depth, conic, opac, rgb]
-    //   3dgut      : [conic (aka "scale"), opacity, colors]; center := AABB
-    //                center, so proj_xy is left null.
-    DeviceTensorFloatND* proj_xy = nullptr;
-    DeviceTensorFloatND* proj_conic = nullptr;
-    DeviceTensorFloatND* proj_opac = nullptr;
-    if (primitive == "3dgut") {
-        proj_conic = &engine().fwd.splats_s[0];
-        proj_opac  = &engine().fwd.splats_s[1];
-    } else {  // 3dgs / mip
-        proj_xy    = &engine().fwd.splats_s[0];
-        proj_conic = &engine().fwd.splats_s[2];
-        proj_opac  = &engine().fwd.splats_s[3];
-    }
+    // Handing the projected conic to the intersector buys the tighter
+    // ellipse-vs-tile test instead of the conservative AABB one.
+    ProjEllipseView ellipse = proj_ellipse_view(
+        engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
+
+    auto& bin = bin_choice();
+    engine().fwd.macro_log2 = engine_bin_macro_log2();
+    const int macro_before = engine().fwd.macro_log2;
 
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd,
-        proj_xy, proj_conic, proj_opac,
+        aabb_q, depths_nd, ellipse,
         (uint32_t)engine().camera.num,
         _dv_tv(engine().camera.intrins),
         (uint32_t)engine().camera.width,
         (uint32_t)engine().camera.height,
-        image_ids_ptr
+        image_ids_ptr,
+        engine().fwd.tile_active.data_ptr(),
+        engine().fwd.macro_log2
     );
+
+    if (engine().fwd.macro_log2 > macro_before) {
+        // The intersect had to coarsen. That size is now a floor, and any
+        // search state below it measured a setting this run cannot use.
+        bin.floor = engine().fwd.macro_log2;
+        bin.macro_log2 = std::max(bin.macro_log2, bin.floor);
+        bin.from = bin.macro_log2;
+        bin.probing = 0;
+        bin.have = 0;
+        bin.sum = 0.0;
+        bin.warmup = kBinTileWarmup;
+    }
 
     engine().fwd.tile_offsets = tile_offsets;
     engine().fwd.flatten_ids = flatten_ids;
+    // One shot: whoever wants tiles skipped sets the map immediately before
+    // the forward, so a later preview or viewer render cannot inherit it.
+    engine().fwd.tile_active = DeviceVector<int32_t>();
 
     // --- Rasterization forward ---
     RenderOutput::TensorTuple renders;
@@ -259,14 +387,16 @@ void forward_3dgs(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "mip") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_mip_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "3dgut") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
@@ -277,7 +407,8 @@ void forward_3dgs(
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),
             engine().fwd.aabb,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
-            tile_offsets, flatten_ids, dist_type, output_median);
+            tile_offsets, flatten_ids, engine().fwd.macro_log2,
+            dist_type, output_median);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     }
 
@@ -298,9 +429,14 @@ void forward_3dgs(
         _engine_background_forward();
     }
 
+    // PPISP ahead of the display encode, when the step asked for it: this is
+    // the only place between the blend and the conversion, and the arming
+    // flag is what keeps eval / viewer renders out of it.
+    if (ppisp_in_forward) _engine_ppisp_forward_current();
+
     // Linear / wide-gamut -> sRGB. Done AFTER the background blend so the
-    // blend operates in the splat working color space (matches Python
-    // forward order: render -> bg -> rgb_to_srgb -> bilagrid -> PPISP -> loss).
+    // blend operates in the splat working color space:
+    // render -> bg -> [PPISP] -> display encode -> bilagrid -> [PPISP] -> loss.
     _engine_color_space_forward();
 
     // Results stay in pool — use engine_copy_render_to_host to fetch

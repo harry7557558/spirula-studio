@@ -188,7 +188,7 @@ void engine_save_checkpoint(
     std::vector<float3> h_features_sh;            // fp32 path only
     std::vector<uint8_t> h_value_packed;          // quant path only
     std::vector<float2>  h_value_bounds;          // quant path only
-    int64_t  bounds_stride = 256;                 // quant path: cell-block vs fpbo
+    ShQuantAddr sh_addr{256, 0, 3 * (int64_t)K};  // quant path: cell-block vs fpbo
     if (K > 0 && !quant_sh_value) {
         h_features_sh = _ckpt_d2h<float3>(s.world.features_sh.data_ptr(), (size_t)(N * K));
     } else if (quant_sh_value) {
@@ -224,20 +224,18 @@ void engine_save_checkpoint(
         if (dev_packed != nullptr && dev_bounds != nullptr) {
             // Copy only the bytes needed for the first N splats (skip the
             // tail of the over-allocated max_N buffer).
-            const int64_t cells_needed = (int64_t)N * 3 * K;
+            const int64_t cells_needed =
+                fpbo_layout ? sh_fpbo_cells(N, (uint32_t)K) : (int64_t)N * 3 * K;
             const int bytes_per_cell = (sh_value_bits == 8) ? 1 : 2;
             h_value_packed.resize((size_t)(cells_needed * bytes_per_cell));
             backend::memcpy_sync(h_value_packed.data(), dev_packed,
                        (size_t)(cells_needed * bytes_per_cell),
                        backend::MemcpyKind::DeviceToHost);
-            // Bounds layout: cell-block bounds_stride = 256;
-            //                fpbo (per-splat-block) bounds_stride = 256 * 3 * K.
+            sh_addr = sh_quant_addr((uint32_t)K, fpbo_layout ? 0 : 256);
             int64_t n_bounds_needed;
             if (fpbo_layout) {
-                bounds_stride = (int64_t)256 * 3 * (int64_t)K;
                 n_bounds_needed = (N + 255) / 256;
             } else {
-                bounds_stride = 256;
                 n_bounds_needed = (cells_needed + 255) / 256;
             }
             // Don't run off the allocated bounds array.
@@ -253,8 +251,8 @@ void engine_save_checkpoint(
     // below; safe no-op (returns 0) if quant buffers weren't populated.
     auto decode_sh = [&](int64_t splat_i, int j, int ch) -> float {
         if (h_value_packed.empty() || h_value_bounds.empty()) return 0.0f;
-        const int64_t cell = splat_i * (int64_t)3 * (int64_t)K + (int64_t)3 * j + (int64_t)ch;
-        const int64_t b_idx = cell / bounds_stride;
+        const int64_t cell = sh_addr.cell(sh_addr.base(splat_i), 3 * j + ch);
+        const int64_t b_idx = cell / sh_addr.bounds_stride;
         if (b_idx >= (int64_t)h_value_bounds.size()) return 0.0f;
         const float2 mm = h_value_bounds[(size_t)b_idx];
         if (sh_value_bits == 8) {
@@ -267,14 +265,16 @@ void engine_save_checkpoint(
         }
     };
 
-    // --- Filter mask: NaN/Inf + low-opacity (logit < logit(1/255) ~= -5.5373) ---
+    // --- Filter mask: NaN/Inf + low-opacity (logit < logit(1/255) ~= -5.5373)
+    // + dead scale (densify recycles those, but it stops before the run ends)
     const float OPA_MIN = -5.5373f;
+    const float SCALE_MIN = -40.0f;  // == kDeadLogScale, shaders/densify.slang
     auto fin1 = [](float v) { return std::isfinite(v); };
     auto fin3 = [&](const float3& v) { return fin1(v.x) && fin1(v.y) && fin1(v.z); };
     auto fin4 = [&](const float4& v) { return fin1(v.x) && fin1(v.y) && fin1(v.z) && fin1(v.w); };
 
     std::vector<char> keep((size_t)N, 1);
-    int64_t kept = 0, nan_dropped = 0, lowopa_dropped = 0;
+    int64_t kept = 0, nan_dropped = 0, lowopa_dropped = 0, deadscale_dropped = 0;
     for (int64_t i = 0; i < N; i++) {
         bool ok = fin3(h_means[i]) && fin4(h_quats[i]) && fin3(h_scales[i])
                   && fin1(h_opacities[i]) && fin3(h_features_dc[i]);
@@ -288,6 +288,10 @@ void engine_save_checkpoint(
         }
         if (!ok) { keep[i] = 0; nan_dropped++; continue; }
         if (h_opacities[i] < OPA_MIN) { keep[i] = 0; lowopa_dropped++; continue; }
+        const float3& sc = h_scales[i];
+        if (std::max(std::max(sc.x, sc.y), sc.z) <= SCALE_MIN) {
+            keep[i] = 0; deadscale_dropped++; continue;
+        }
         kept++;
     }
 

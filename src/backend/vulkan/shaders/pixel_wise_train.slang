@@ -15,10 +15,12 @@
 #include "atomic_float.slang"
 #include "dist_spec.slang"
 
-// Shared boolean variant flag (noise blend: is_linear; srgb:
-// is_input_linear), same convention as pixel_wise_render.slang.
+// colorspace::Transfer and the working space's linearity, same convention as
+// pixel_wise_render.slang.
 [SpecializationConstant]
-const int kFlagLinear = 0;
+const int kTransfer = 0;
+[SpecializationConstant]
+const int kIsLinear = 0;
 
 [ForceInline]
 bool _pwt_finitef(float v) {
@@ -29,14 +31,15 @@ bool _pwt_finitef(float v) {
 // blend_background_backward
 // ---------------------------------------------------------------------------
 
-struct BlendBgBwdParams {  // 64 bytes: pushed directly
-    float* rgb;            // [B,H,W,3]
+struct BlendBgBwdParams {  // 68 bytes: pushed directly
+    float* rgb;            // [B,H,W,3] PRE-blend
     float* transmittance;  // [B,H,W,1]
     float* background;     // [B,H,W,3]
     float* v_out_rgb;      // [B,H,W,3]
     float* v_rgb;          // [B,H,W,3]
     float* v_transmittance;// [B,H,W,1]
     float* v_background;   // [B,H,W,3]
+    float overexposure_scale;
     uint32_t total;        // B*H*W
     uint32_t wgs_per_row;
 };
@@ -57,7 +60,8 @@ void blend_bg_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 v_rgb;
     float v_T;
     float3 v_bg;
-    blend_background_bwd(rgb, T, bg, v_out, v_rgb, v_T, v_bg);
+    blend_background_bwd(rgb, T, bg, v_out, p.overexposure_scale, v_rgb, v_T,
+                         v_bg);
     p.v_rgb[3 * idx] = v_rgb.x;
     p.v_rgb[3 * idx + 1] = v_rgb.y;
     p.v_rgb[3 * idx + 2] = v_rgb.z;
@@ -120,17 +124,20 @@ float3 _bg_sample(uint blocky, uint seed, uint gid, uint bid, uint W) {
                       (h & 2u) != 0u ? 1.0f : -1.0f,
                       (h & 4u) != 0u ? 1.0f : -1.0f);
     }
-    return float3(float(_pwt_hash_uint3(seed + 0, gid, bid)) * exp2(-32.0f),
-                  float(_pwt_hash_uint3(seed + 1, gid, bid)) * exp2(-32.0f),
-                  float(_pwt_hash_uint3(seed + 2, gid, bid)) * exp2(-32.0f));
+    // 2u-1: without it the plain path lands in [0.5, 0.5+w/2) instead of
+    // straddling 0.5, so every channel sits in the same bright half.
+    return float3(float(_pwt_hash_uint3(seed + 0, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(_pwt_hash_uint3(seed + 1, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(_pwt_hash_uint3(seed + 2, gid, bid)) * exp2(-31.0f) - 1.0f);
 }
 
 struct BlendBgNoiseBwdParams {  // 72 bytes: pushed directly
-    float* rgb;
+    float* rgb;            // PRE-blend
     float* transmittance;
     float* v_out_rgb;
     float* v_rgb;
     float* v_transmittance;
+    float overexposure_scale;
     float randomize_weight;
     uint32_t seed;
     uint32_t HW;
@@ -155,18 +162,15 @@ void blend_bg_noise_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float3 background = _bg_sample(p.blocky, p.seed, gid, bid, p.W);
     background = 0.5f + 0.5f * p.randomize_weight * background;
-    if (kFlagLinear != 0) {
-        background.x = srgb_to_linear_rgb(background.x);
-        background.y = srgb_to_linear_rgb(background.y);
-        background.z = srgb_to_linear_rgb(background.z);
-    }
+    background = display_to_working3(background, kTransfer, kIsLinear != 0);
 
     float3 v_out = float3(p.v_out_rgb[3 * idx], p.v_out_rgb[3 * idx + 1],
                           p.v_out_rgb[3 * idx + 2]);
     float3 v_rgb;
     float v_T;
     float3 v_bg;
-    blend_background_bwd(rgb, T, background, v_out, v_rgb, v_T, v_bg);
+    blend_background_bwd(rgb, T, background, v_out, p.overexposure_scale,
+                         v_rgb, v_T, v_bg);
     p.v_rgb[3 * idx] = v_rgb.x;
     p.v_rgb[3 * idx + 1] = v_rgb.y;
     p.v_rgb[3 * idx + 2] = v_rgb.z;
@@ -174,7 +178,7 @@ void blend_bg_noise_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
-// rgb_to_srgb_backward (kFlagLinear = is_input_linear)
+// working_to_display_backward (kTransfer / kIsLinear = the source encoding)
 // ---------------------------------------------------------------------------
 
 struct RgbToSrgbBwdParams {  // 40 bytes: pushed directly
@@ -188,8 +192,8 @@ struct RgbToSrgbBwdParams {  // 40 bytes: pushed directly
 
 [shader("compute")]
 [numthreads(128, 1, 1)]
-void srgb_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-              uniform RgbToSrgbBwdParams p) {
+void working_to_display_bwd_k(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                              uniform RgbToSrgbBwdParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.total) return;
     float3 rgb = float3(p.rgb[3 * idx], p.rgb[3 * idx + 1],
@@ -201,8 +205,8 @@ void srgb_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                        p.color_matrix[3 * r + 2]);
     float3 v_out = float3(p.v_out_rgb[3 * idx], p.v_out_rgb[3 * idx + 1],
                           p.v_out_rgb[3 * idx + 2]);
-    float3 v_rgb = kFlagLinear != 0 ? linear_rgb_to_srgb_bwd(rgb, cm, v_out)
-                                    : rgb_to_srgb_bwd(rgb, cm, v_out);
+    float3 v_rgb = working_to_display_bwd(rgb, cm, kTransfer, kIsLinear != 0,
+                                          v_out);
     p.v_rgb[3 * idx] = v_rgb.x;
     p.v_rgb[3 * idx + 1] = v_rgb.y;
     p.v_rgb[3 * idx + 2] = v_rgb.z;
@@ -226,12 +230,11 @@ void overexposure_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                       uniform OverexposureParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
     if (idx >= p.total) return;
-    [ForceUnroll]
-    for (int c = 0; c < 3; c++) {
-        float x = p.rgb[3 * idx + c];
-        float g = (x < 0.0f) ? x : (x > 1.0f) ? (x - 1.0f) : 0.0f;
-        p.v_rgb[3 * idx + c] += p.scale * g;
-    }
+    float3 c = float3(p.rgb[3 * idx], p.rgb[3 * idx + 1], p.rgb[3 * idx + 2]);
+    float3 g = overexposure_grad(c, p.scale);
+    p.v_rgb[3 * idx] += g.x;
+    p.v_rgb[3 * idx + 1] += g.y;
+    p.v_rgb[3 * idx + 2] += g.z;
 }
 
 // ---------------------------------------------------------------------------

@@ -29,29 +29,59 @@ void rendered_depth_to_expected_depth_bwd(
     v_transmittance = p_transmittance.d;
 }
 
+// Hand-written: the Vulkan half's slangc autodiffs `transmittance` to zero
+// through the splat in the multiply below, so the SH skybox and the alpha
+// gradient would silently vanish. Exact -- the blend is affine.
+void blend_background_bwd_impl(
+    inout DifferentialPair<float3> dp_rgb,
+    inout DifferentialPair<float> dp_transmittance,
+    inout DifferentialPair<float3> dp_background,
+    float3 v_out
+) {
+    float t = dp_transmittance.p;
+    float3 bg = dp_background.p;
+    dp_rgb = diffPair(dp_rgb.p, v_out);
+    dp_transmittance = diffPair(t, dot(bg, v_out));
+    dp_background = diffPair(bg, t * v_out);
+}
+
+// The composite is deliberately unclamped: clamping to [0,1] here costs the
+// photometric loss every gradient in a region that saturates in both render
+// and GT, which lets the pre-blend colour drift with nothing to pull it back.
+[BackwardDerivative(blend_background_bwd_impl)]
 [Differentiable]
 [CudaDeviceExport]
 float3 blend_background(float3 rgb, float transmittance, float3 background) {
-    // Explicit splat: slangc 2026.12 (SPIR-V) constant-folds the SCALAR's
-    // derivative of `scalar * vector` to zero under bwd_diff, silently
-    // zeroing v_transmittance. float3(t, t, t) * vector keeps the gradient
-    // on both compilers (identical primal math).
-    return clamp(rgb + float3(transmittance, transmittance, transmittance)
-                           * background, 0.0, 1.0);
+    return rgb + transmittance * background;
+}
+
+// dL/dc of L = weight * mean(max(-c, c-1, 0)^2); scale is 2 * weight / N.
+[CudaDeviceExport]
+float3 overexposure_grad(float3 c, float scale) {
+    return scale * (min(c, float3(0.0f)) + max(c - float3(1.0f), float3(0.0f)));
 }
 
 [CudaDeviceExport]
-// Straight through the forward's clamp: the derivative of rgb + T*background,
-// as if it had not clamped. The clamp's own derivative is a ratchet -- zero
-// exactly where a pixel overshot, so nothing tells it to come back.
 void blend_background_bwd(
     float3 rgb, float transmittance, float3 background,
-    float3 v_out_rgb,
+    float3 v_out_rgb, float overexposure_scale,
     out float3 v_rgb, out float v_transmittance, out float3 v_background
 ) {
-    v_rgb = v_out_rgb;
-    v_transmittance = dot(v_out_rgb, background);
-    v_background = float3(transmittance, transmittance, transmittance) * v_out_rgb;
+    // `rgb` MUST be the pre-blend render, not the blend output.
+    // Branch, not a multiply by zero: an infinite composite would make 0*inf.
+    if (overexposure_scale != 0.0f)
+        v_out_rgb += overexposure_grad(rgb + transmittance * background,
+                                       overexposure_scale);
+    var p_rgb = diffPair(rgb);
+    var p_transmittance = diffPair(transmittance);
+    var p_background = diffPair(background);
+    bwd_diff(blend_background)(
+        p_rgb, p_transmittance, p_background,
+        v_out_rgb
+    );
+    v_rgb = p_rgb.d;
+    v_transmittance = p_transmittance.d;
+    v_background = p_background.d;
 }
 
 [ForceInline]
@@ -93,73 +123,164 @@ float srgb_to_linear_rgb_grad(float x) {
 [CudaDeviceExport]
 float splat_dc_encode(float dc) {
     const float kSh0 = 0.28209479177387814f;
+#if 1
     const float a = 1.0f / 255.0f;            // sqrt of the black floor
     float s = sqrt(0.5f + a * a);
     float u = kSh0 * dc + 0.5f;
     float w = u >= 0.0f ? 2.0f * sqrt(u + a * a) : 2.0f * a + u / a;
     return (w - 2.0f * s) * s / kSh0;
+#else
+    return linear_rgb_to_srgb(0.5f + kSh0 * dc) * (1.0f / kSh0) - 0.5f;
+#endif
 }
 
 [ForceInline]
 [CudaDeviceExport]
 float splat_dc_decode(float x) {
     const float kSh0 = 0.28209479177387814f;
+#if 1
     const float a = 1.0f / 255.0f;
     float s = sqrt(0.5f + a * a);
     float w = x * kSh0 / s + 2.0f * s;
     float u = w >= 2.0f * a ? 0.25f * w * w - a * a : (w - 2.0f * a) * a;
     return (u - 0.5f) / kSh0;
+#else
+    return max(srgb_to_linear_rgb(0.5f + kSh0 * x), 0.0f) * (1.0f / kSh0) - 0.5f;
+#endif
+}
+
+// ================
+// Output transfer: linear light -> display code values
+// ================
+// Orthogonal to whether the buffer is stored linear (the `is_linear` argument
+// below). Mirrored on the host in core/ColorSpace.h; the two must agree.
+static const int kXferSrgb        = 0;
+static const int kXferSrgbClamped = 1;
+static const int kXferAces        = 2;
+static const int kXferFilmic      = 3;
+static const int kXferUncharted2  = 4;
+
+// Scene value that decodes from display white. ACES reaches 1.0 at 7.24 on its
+// own; Hejl only reaches it at infinity, so it borrows Hable's 11.2.
+static const float kXferWhite = 11.2f;
+
+// Straight-through: the forward value is clipped, the gradient is not. A true
+// clip strands any splat that overshoots white where the target is below it.
+void xfer_pass_grad(inout DifferentialPair<float> dp, float v_out) {
+    dp = diffPair(dp.p, v_out);
+}
+
+// [BackwardDerivative(xfer_pass_grad)]
+[Differentiable]
+float xfer_clamp01(float x) { return clamp(x, 0.0f, 1.0f); }
+
+// [BackwardDerivative(xfer_pass_grad)]
+[Differentiable]
+float xfer_max0(float x) { return max(x, 0.0f); }
+
+// Narkowicz ACES fit. Denominator has no real roots, so it is safe below zero.
+[Differentiable]
+float xfer_aces(float x) {
+    return (x * (2.51f * x + 0.03f)) / (x * (2.43f * x + 0.59f) + 0.14f);
+}
+
+float xfer_aces_inv(float y) {
+    float a = 2.51f - 2.43f * y, b = 0.03f - 0.59f * y, c = -0.14f * y;
+    return (-b + sqrt(max(b * b - 4.0f * a * c, 0.0f))) / (2.0f * a);
+}
+
+// Hable's Uncharted 2 curve, normalized so kXferWhite maps to 1.0.
+static const float kU2A = 0.15f, kU2B = 0.50f, kU2C = 0.10f;
+static const float kU2D = 0.20f, kU2E = 0.02f, kU2F = 0.30f;
+
+[Differentiable]
+float xfer_hable(float x) {
+    return (x * (kU2A * x + kU2C * kU2B) + kU2D * kU2E)
+         / (x * (kU2A * x + kU2B) + kU2D * kU2F) - kU2E / kU2F;
 }
 
 [Differentiable]
-[CudaDeviceExport]
-float3 linear_rgb_to_srgb(float3 rgb, no_diff float3x3 color_matrix) {
-    rgb = mul(color_matrix, rgb);
-    return float3(
-        linear_rgb_to_srgb(rgb.x),
-        linear_rgb_to_srgb(rgb.y),
-        linear_rgb_to_srgb(rgb.z)
-    );
+float xfer_uncharted2(float x) {
+    return xfer_hable(xfer_max0(x)) / xfer_hable(kXferWhite);
 }
 
-[CudaDeviceExport]
-float3 linear_rgb_to_srgb_bwd(
-    float3 rgb, float3x3 color_matrix, float3 v_out_rgb
-) {
-    var p_rgb = diffPair(rgb);
-    bwd_diff(linear_rgb_to_srgb)(
-        p_rgb, color_matrix,
-        v_out_rgb
-    );
-    return p_rgb.d;
+float xfer_uncharted2_inv(float y) {
+    float r = y * xfer_hable(kXferWhite) + kU2E / kU2F;
+    float a = kU2A * (1.0f - r);
+    float b = kU2B * (kU2C - r);
+    float c = kU2D * (kU2E - r * kU2F);
+    return (-b + sqrt(max(b * b - 4.0f * a * c, 0.0f))) / (2.0f * a);
+}
+
+// Hejl / Burgess-Dawson: the display encode is baked in, so no OETF follows.
+[Differentiable]
+float xfer_filmic(float x) {
+    float t = xfer_max0(x - 0.004f);
+    return (t * (6.2f * t + 0.5f)) / (t * (6.2f * t + 1.7f) + 0.06f);
+}
+
+float xfer_filmic_inv(float y) {
+    y = min(y, xfer_filmic(kXferWhite));
+    float a = 6.2f * (1.0f - y), b = 0.5f - 1.7f * y, c = -0.06f * y;
+    return (-b + sqrt(max(b * b - 4.0f * a * c, 0.0f))) / (2.0f * a) + 0.004f;
 }
 
 [Differentiable]
+float tone_encode(float x, no_diff int transfer) {
+    if (transfer == kXferFilmic)
+        return xfer_filmic(x);
+    if (transfer == kXferAces)
+        return linear_rgb_to_srgb(xfer_clamp01(xfer_aces(xfer_max0(x))));
+    if (transfer == kXferUncharted2)
+        return linear_rgb_to_srgb(xfer_clamp01(xfer_uncharted2(x)));
+    if (transfer == kXferSrgbClamped)
+        return linear_rgb_to_srgb(xfer_clamp01(x));
+    return linear_rgb_to_srgb(x);
+}
+
+float tone_decode(float d, int transfer) {
+    if (transfer == kXferFilmic)      return xfer_filmic_inv(d);
+    if (transfer == kXferAces)        return xfer_aces_inv(srgb_to_linear_rgb(d));
+    if (transfer == kXferUncharted2)  return xfer_uncharted2_inv(srgb_to_linear_rgb(d));
+    return srgb_to_linear_rgb(d);
+}
+
+// A working-space colour -> the display code values the loss is measured on.
+// `is_linear` says whether the working space stores linear light; `transfer`
+// is the curve out of it. The two are independent.
+[Differentiable]
 [CudaDeviceExport]
-float3 rgb_to_srgb(float3 rgb, no_diff float3x3 color_matrix) {
-    rgb = float3(
-        srgb_to_linear_rgb(rgb.x),
-        srgb_to_linear_rgb(rgb.y),
-        srgb_to_linear_rgb(rgb.z)
-    );
+float3 working_to_display(float3 rgb, no_diff float3x3 color_matrix,
+                          no_diff int transfer, no_diff bool is_linear) {
+    if (!is_linear)
+        rgb = float3(srgb_to_linear_rgb(rgb.x), srgb_to_linear_rgb(rgb.y),
+                     srgb_to_linear_rgb(rgb.z));
     rgb = mul(color_matrix, rgb);
-    return float3(
-        linear_rgb_to_srgb(rgb.x),
-        linear_rgb_to_srgb(rgb.y),
-        linear_rgb_to_srgb(rgb.z)
-    );
+    return float3(tone_encode(rgb.x, transfer), tone_encode(rgb.y, transfer),
+                  tone_encode(rgb.z, transfer));
 }
 
 [CudaDeviceExport]
-float3 rgb_to_srgb_bwd(
-    float3 rgb, float3x3 color_matrix, float3 v_out_rgb
+float3 working_to_display_bwd(
+    float3 rgb, float3x3 color_matrix, int transfer, bool is_linear,
+    float3 v_out_rgb
 ) {
     var p_rgb = diffPair(rgb);
-    bwd_diff(rgb_to_srgb)(
-        p_rgb, color_matrix,
-        v_out_rgb
-    );
+    bwd_diff(working_to_display)(p_rgb, color_matrix, transfer, is_linear,
+                                 v_out_rgb);
     return p_rgb.d;
+}
+
+// The inverse, per channel, with no gamut matrix: what a splat must hold to
+// display as `rgb`. Seeds and the noise background are both stated that way.
+[CudaDeviceExport]
+float3 display_to_working3(float3 rgb, int transfer, bool is_linear) {
+    float3 lin = float3(tone_decode(rgb.x, transfer),
+                        tone_decode(rgb.y, transfer),
+                        tone_decode(rgb.z, transfer));
+    if (is_linear) return lin;
+    return float3(linear_rgb_to_srgb(lin.x), linear_rgb_to_srgb(lin.y),
+                  linear_rgb_to_srgb(lin.z));
 }
 
 // Unproject an undistorted, normalized image point to a ray direction.

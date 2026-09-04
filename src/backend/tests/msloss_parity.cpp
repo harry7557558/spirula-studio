@@ -422,11 +422,15 @@ int main(int argc, char** argv) {
     std::vector<float> lref(nl);
     f.read((char*)lref.data(), nl * 4);
 
+    // Paired with a relative-RMS gate: the NMS / quantile / clip modes make
+    // discrete per-pixel choices that flip where an architecture's rounding
+    // differs, so a few large outliers are expected (docs/testing.md).
     auto cmp_f = [](const std::vector<float>& got,
                     const std::vector<float>& want, int64_t& viol,
-                    double& max_abs) {
+                    double& max_abs, double& rel_rms) {
         viol = 0;
         max_abs = 0;
+        double se = 0, sr = 0;
         for (size_t i = 0; i < got.size(); i++) {
             bool gfin = std::isfinite(got[i]), wfin = std::isfinite(want[i]);
             if (!gfin || !wfin) {
@@ -437,21 +441,25 @@ int main(int argc, char** argv) {
             double tol = 5e-3 + 1e-3 * std::fabs((double)want[i]);
             max_abs = std::max(max_abs, d);
             if (d > tol) viol++;
+            se += d * d;
+            sr += (double)want[i] * (double)want[i];
         }
+        rel_rms = sr > 0 ? std::sqrt(se / sr) : 0.0;
     };
     int64_t fviol = 0, lviol = 0;
-    double fmax = 0, lmax = 0;
-    cmp_f(g_tight, ref, fviol, fmax);
-    cmp_f(g_loose, lref, lviol, lmax);
+    double fmax = 0, lmax = 0, frms = 0, lrms = 0;
+    cmp_f(g_tight, ref, fviol, fmax, frms);
+    cmp_f(g_loose, lref, lviol, lmax, lrms);
     double ffrac = nf ? (double)fviol / (double)nf : 0.0;
     double lfrac = nl ? (double)lviol / (double)nl : 0.0;
     std::printf(
         "msloss_parity: %lld tight floats (max_abs %.3g, violations %lld = "
-        "%.5f%%), %lld loose floats (max_abs %.3g, violations %lld = "
-        "%.5f%%)\n",
-        (long long)nf, fmax, (long long)fviol, 100.0 * ffrac, (long long)nl,
-        lmax, (long long)lviol, 100.0 * lfrac);
-    bool pass = ffrac <= 2e-3 && lfrac <= 2e-2;
+        "%.5f%%, rel_rms %.3g), %lld loose floats (max_abs %.3g, violations "
+        "%lld = %.5f%%, rel_rms %.3g)\n",
+        (long long)nf, fmax, (long long)fviol, 100.0 * ffrac, frms,
+        (long long)nl, lmax, (long long)lviol, 100.0 * lfrac, lrms);
+    bool pass = ffrac <= 5e-3 && frms <= 5e-3 &&
+                lfrac <= 2e-2 && lrms <= 5e-2;
     std::printf(pass ? "msloss_parity: PASSED\n" : "msloss_parity: FAILED\n");
     return pass ? 0 : 1;
 }

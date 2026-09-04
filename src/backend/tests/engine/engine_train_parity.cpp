@@ -79,8 +79,8 @@ static void push_losses(const std::map<std::string, float>& m) {
     for (const auto& kv : m) g_loose.push_back(kv.second);
 }
 
-// [K, 3, 3] face axes (see warp_parity.cpp).
-static std::vector<float> make_axes(int K, float s) {
+// [K, 3, 3] unit face frames (see warp_parity.cpp).
+static std::vector<float> make_axes(int K) {
     struct V3 { float x, y, z; };
     auto norm3 = [](V3 a) {
         float l = std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
@@ -98,8 +98,7 @@ static std::vector<float> make_axes(int K, float s) {
         V3 up = std::fabs(z.y) > 0.9f ? V3{0, 0, 1} : V3{0, 1, 0};
         V3 x = norm3(cross3(up, z));
         V3 y = cross3(z, x);
-        float row[9] = {s * x.x, s * x.y, s * x.z, s * y.x, s * y.y,
-                        s * y.z, z.x,     z.y,     z.z};
+        float row[9] = {x.x, x.y, x.z, y.x, y.y, y.z, z.x, z.y, z.z};
         axes.insert(axes.end(), row, row + 9);
     }
     return axes;
@@ -112,6 +111,10 @@ int main(int argc, char** argv) {
         return 2;
     }
     const bool dumping = std::strcmp(argv[1], "dump") == 0;
+
+    // Kernel parity, not binning policy: pin the granularity so a reference
+    // stays comparable across runs that would otherwise adapt it.
+    engine_set_bin_tile_size(bin_tile_x(kMacroLog2Default));
 
     Rng r(20260718u);
 
@@ -208,13 +211,11 @@ int main(int argc, char** argv) {
     }
 
     // --- warped steps (fisheye wide + equirectangular) ---------------------
-    const int K = 2, out_W = 32, out_H = 32;
-    std::vector<float> axes = make_axes(K, 0.7f);
-    float* d_axes = (float*)backend::device_malloc(axes.size() * 4);
-    backend::memcpy_sync(d_axes, axes.data(), axes.size() * 4,
-                         MemcpyKind::HostToDevice);
+    const int K = 2, out_W = 64, out_H = 64;
+    std::vector<float> axes = make_axes(K);
 
-    // Post-split pinhole cameras: face fov matches the axes scale.
+    // Post-split pinhole cameras: the warp samples each face through this
+    // very table, so an off-centre crop here is an off-centre crop there.
     const int B_post = K;  // B_in = 1
     std::vector<float> post_vm = {
         1, 0, 0, 0,   0, 1, 0, 0,   0, 0, 1, 3.0f,  0, 0, 0, 1,
@@ -224,8 +225,8 @@ int main(int argc, char** argv) {
     for (int k = 0; k < B_post; k++) {
         post_intr.push_back(0.5f * out_W / 0.7f);
         post_intr.push_back(0.5f * out_H / 0.7f);
-        post_intr.push_back(0.5f * out_W);
-        post_intr.push_back(0.5f * out_H);
+        post_intr.push_back(0.5f * out_W + 4.0f * k);
+        post_intr.push_back(0.5f * out_H - 3.0f * k);
     }
     // engine_train_step_warped always sets the post-split table to
     // PINHOLE / NONE.
@@ -251,10 +252,22 @@ int main(int argc, char** argv) {
         auto gt_rgb = r.bytes((int64_t)wc.in_H * wc.in_W * 3);
         auto gt_alpha = r.bytes((int64_t)wc.in_H * wc.in_W);
         for (auto& v : gt_alpha) v = v < 220 ? 1 : 0;
+        // A solid dead band, not just speckle: whole tiles have to die for the
+        // skip path to differ from rendering everything.
+        for (int y = 0; y < wc.in_H; y++)
+            for (int x = 0; x < wc.in_W / 2; x++) gt_alpha[(int64_t)y * wc.in_W + x] = 0;
         auto gt_depth = r.words((int64_t)wc.in_H * wc.in_W, 12);
         auto gt_normal = r.bytes((int64_t)wc.in_H * wc.in_W * 3);
 
-        for (int s = 0; s < 2; s++, step++) {
+        // Steps 2-3 drop alpha supervision, which is what lets the engine
+        // leave fully-masked tiles unrendered; SS_NO_TILE_SKIP=1 renders them
+        // and must land in the same place.
+        for (int s = 0; s < 4; s++, step++) {
+            EngineStepConfig cfg_s = cfg;
+            if (s >= 2) {
+                cfg_s.loss.weights[(int)LossWeightIndex::AlphaSup] = 0.0f;
+                cfg_s.loss.weights[(int)LossWeightIndex::AlphaSupUnder] = 0.0f;
+            }
             auto losses = engine_train_step_warped(
                 step, max_steps, "3dgs", 3, /*packed=*/false, out_W, out_H,
                 ttv(post_vm.data(), 4, {B_post, 4, 4}),
@@ -271,7 +284,8 @@ int main(int argc, char** argv) {
                 ttv(gt_depth.data(), 2, {1, wc.in_H, wc.in_W, 1}),
                 wc.in_H, wc.in_W,
                 ttv(gt_normal.data(), 1, {1, wc.in_H, wc.in_W, 3}),
-                wc.in_H, wc.in_W, (uint64_t)d_axes, ttv_null(), cfg);
+                wc.in_H, wc.in_W, ttv(axes.data(), 4, {K, 3, 3}),
+                /*face_passes=*/{}, ttv_null(), cfg_s);
             push_losses(losses);
         }
     }
@@ -347,26 +361,37 @@ int main(int argc, char** argv) {
     refl.resize(nl);
     f.read((char*)refl.data(), nl * 4);
 
+    // Two gates: the element one absorbs the trajectory drift a 12-step run
+    // accumulates on any architecture, the relative-RMS one is what still
+    // catches a real break. Measured numbers: docs/testing.md.
     auto check = [](const char* name, const std::vector<float>& got,
-                    const std::vector<float>& ref, double allow) {
-        int64_t viol = 0;
-        double max_abs = 0;
+                    const std::vector<float>& ref, double allow,
+                    double allow_rms) {
+        int64_t viol = 0, n_fin = 0;
+        double max_abs = 0, se = 0, sr = 0;
         for (size_t i = 0; i < got.size(); i++) {
-            double d = std::fabs((double)got[i] - (double)ref[i]);
-            double tol = 5e-3 + 1e-3 * std::fabs((double)ref[i]);
+            double g = (double)got[i], r = (double)ref[i];
+            if (!std::isfinite(g) || !std::isfinite(r)) continue;
+            double d = std::fabs(g - r);
+            double tol = 5e-3 + 1e-3 * std::fabs(r);
             max_abs = std::max(max_abs, d);
             if (d > tol) viol++;
+            se += d * d;
+            sr += r * r;
+            n_fin++;
         }
         double frac =
             got.empty() ? 0.0 : (double)viol / (double)got.size();
+        double rms = sr > 0 ? std::sqrt(se / sr) : 0.0;
         std::printf("engine_train_parity: %s %zu floats (max_abs %.3g, "
-                    "violations %lld = %.5f%%)\n",
+                    "violations %lld = %.5f%%, rel_rms %.3g)\n",
                     name, got.size(), max_abs, (long long)viol,
-                    100.0 * frac);
-        return frac <= allow;
+                    100.0 * frac, rms);
+        (void)n_fin;
+        return frac <= allow && rms <= allow_rms;
     };
-    bool pass = check("tight", g_tight, reft, 2e-3);
-    pass = check("loose", g_loose, refl, 2e-2) && pass;
+    bool pass = check("tight", g_tight, reft, 2e-3, 1e-3);
+    pass = check("loose", g_loose, refl, 8e-2, 2e-3) && pass;
     std::printf(pass ? "engine_train_parity: PASSED\n"
                      : "engine_train_parity: FAILED\n");
     return pass ? 0 : 1;

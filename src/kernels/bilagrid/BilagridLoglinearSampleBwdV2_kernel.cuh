@@ -29,6 +29,17 @@ __global__ void bilagrid_loglinear_uniform_sample_backward_v2_kernel(
     float sr = rgb_in[g_off + 0], sg = rgb_in[g_off + 1], sb = rgb_in[g_off + 2];
     float dr = v_rgb_out[g_off + 0], dg = v_rgb_out[g_off + 1], db = v_rgb_out[g_off + 2];
 
+    // Both gradients are linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- contributes nothing anywhere.
+    if (dr == 0.0f && dg == 0.0f && db == 0.0f) {
+        if (v_rgb_in != nullptr) {
+            v_rgb_in[g_off + 0] = 0.0f;
+            v_rgb_in[g_off + 1] = 0.0f;
+            v_rgb_in[g_off + 2] = 0.0f;
+        }
+        return;
+    }
+
     float x = (float)wi / (float)(w - 1) * (float)(W - 1);
     float y = (float)hi / (float)(h - 1) * (float)(H - 1);
     float gz_raw = kC2G_r * sr + kC2G_g * sg + kC2G_b * sb;

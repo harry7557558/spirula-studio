@@ -3,7 +3,7 @@
 #include "app/gui/GeometryRunner.h"
 
 #include "app/FrameMask.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Dataset.h"
@@ -202,7 +202,7 @@ std::string geometry_availability() {
 #ifndef SS_TOOL_GEOMETRY
     return lmsg::err_no_geometry_module.get();
 #else
-    if (exe_path().empty()) return lmsg::err_no_exe_path.get();
+    if (app::exe_path().empty()) return lmsg::err_no_exe_path.get();
     return "";
 #endif
 }
@@ -221,8 +221,9 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
     auto log = [&](const std::string& s, bool detail) { prog.note(s, detail); };
 
     std::vector<std::string> argv = {
-        exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
+        app::exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
         "geometry", dataset,
+        "--image-dir", images.empty() ? std::string("images") : images,
         "--model", job.model,
         "--max-size", std::to_string(job.max_size),
         "--num-tokens", std::to_string(job.num_tokens),

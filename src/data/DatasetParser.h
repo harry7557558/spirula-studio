@@ -1,32 +1,15 @@
 #pragma once
 
 // DatasetParser -- dataset readers + camera bakes. No external deps: JSON via
-// app/Json.h, PLY reader in NerfstudioParser.cpp, images via stb in the
+// data/Json.h, PLY reader in NerfstudioParser.cpp, images via stb in the
 // engine's DataManager.
 //
-// Three formats:
-//   parse_colmap_dataset      cameras / images / points3D, .bin or .txt
-//                             (ColmapParser.cpp)
-//   parse_nerfstudio_dataset  transforms.json + PLY point cloud
-//                             (NerfstudioParser.cpp)
-//   parse_metashape_dataset   Metashape camera-export .xml + .ply (+ optional
-//                             .psx project for filename disambiguation)
-//                             (MetashapeParser.cpp; XML via app/Xml.h, zips
-//                             via external/miniz)
-//   parse_dataset             auto-detect: identifies the format from its
-//                             marker files (transforms.json, a COLMAP model,
-//                             a Metashape camera-export .xml), probed in that
-//                             order, then runs that one parser so its error
-//                             is the one the user sees
-//
-// Both produce a ParsedDataset of PER-INPUT cameras in the raw
-// train_frame="points" frame (poses/points as stored; the normalized-frame
-// similarity is computed only for the train_frame_scale scalar).
-//
-// bake_post_split() then expands to the POST-split arrays
-// engine_setup_data_manager consumes -- identity (K=1) pass-through, or the
-// fisheye/equisolid 5-face / equirectangular 6-face cubemap split when
-// warp-to-pinhole is enabled.
+// parse_colmap_dataset / parse_nerfstudio_dataset / parse_metashape_dataset
+// read one format each; parse_dataset identifies the format from its marker
+// files. All produce a ParsedDataset of PER-INPUT cameras in the raw
+// train_frame="points" frame. bake_post_split() (PostSplit.cpp) then expands
+// that to the POST-split arrays engine_setup_data_manager consumes: identity
+// at K=1, or the pinhole faces camhost::plan_split_faces cuts a wide camera into.
 
 #include <array>
 #include <cstdint>
@@ -157,10 +140,14 @@ struct DatasetParserConfig {
     // the geometric median of all camera positions. inf = off (default).
     float outlier_threshold = std::numeric_limits<float>::infinity();
 
-    // Divide stored intrinsics by this factor (Mip-NeRF 360 images_2/_4
-    // style). 0 = off. TODO: an auto-detect mode that probes the first
-    // image's actual resolution.
-    float       rescale_camera_to_fit = 0.0f;
+    // Pixel size of an image file (data/ImageProbe.h). Set: every camera trains
+    // at its own image's resolution. Null: a caller with no decoders -- the
+    // WebAssembly viewer, given a dataset's cameras but never its pixels.
+    bool (*probe_image_size)(const char* path, int* w, int* h) = nullptr;
+
+    // Divide the training resolution by this factor, on top of that fit. 0 or
+    // 1 trains at the images' own size.
+    float       train_resolution_divisor = 0.0f;
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
     // Metashape inputs (parse_metashape_dataset). Relative paths resolve
@@ -257,19 +244,19 @@ ParsedDataset parse_dataset(const std::string& dataset_dir,
 // POST-split camera bake
 // ===========================================================================
 
-// Per-input split factor K:
-//   FISHEYE / EQUISOLID -> 5 cubemap faces when warp_to_pinhole
-//   EQUIRECTANGULAR     -> 6 faces when warp_spherical_to_pinhole,
-//                          else K=1 direct-equirect pass-through
-//   everything else     -> 1
-// K>1 sub-cameras are canonical PINHOLE at out_shape = ceil(sqrt(H*W/K)),
-// fx=fy=cx=cy=out_shape/2, zero distortion, cubemap-face rotations matching
-// DataManager.cpp's kAxesFisheye5 / kAxesEquirect6 tables.
+// Per-input split factor K: the faces camhost::plan_split_faces returns for a
+// FISHEYE / EQUISOLID camera when warp_to_pinhole, and for an EQUIRECTANGULAR
+// one when warp_spherical_to_pinhole (else K=1 direct-equirect); 1 otherwise.
+
+// One size for every face (one render pass), or each face cropped to its own
+// lens (one pass per size, for VRAM). data/CameraMath.h, FaceFit.
+enum class WarpFaceFit { Uniform = 0, PerFace };
+
 struct PostSplitCameras {
     int64_t n_post = 0;
     bool any_warp        = false;   // any K > 1
-    bool any_fisheye_warp = false;  // fisheye/equisolid split present
-                                    // (DataManager synthesizes FOV masks)
+    bool any_fov_mask    = false;   // a split face reaches past what its lens
+                                    // holds (DataManager synthesizes FOV masks)
     bool direct_equirect = false;   // un-split equirect present
 
     std::vector<int32_t> K_per_camera;   // [N]  (empty vectors passed to the
@@ -289,22 +276,30 @@ struct PostSplitCameras {
     std::vector<int32_t> post_heights;   // [N_post]
     std::vector<int32_t> post_models;    // [N_post] CameraModelType (faces = PINHOLE)
 
+    // Each post camera's frame in its INPUT camera's coordinates, rows (ax,
+    // ay, az); identity at K == 1. The GT warp samples `az + u*ax + v*ay`.
+    std::vector<float>   face_axes;      // [N_post, 3, 3]
+    // Which entry of camhost::fisheye_face_axes / equirect_face_axes that
+    // frame is, -1 at K == 1; the GUI's unfolded-cube layout reads it.
+    std::vector<int32_t> post_faces;     // [N_post]
+
     // Per-INPUT copies for the wide-warp kernel; empty when !any_warp.
     std::vector<float>   input_intrins;      // [N, 4]
     std::vector<float>   input_dist_coeffs;  // [N, 8]
     std::vector<int32_t> input_distortions;  // [N] CameraDistortionType
 
-    // Flattened ParsedDataset::redistort, per INPUT camera. Empty when no
-    // camera needs resampling; -1 in `redistort_models` marks one that does
-    // not. A dataset with any of these sets any_warp, because the re-distort
-    // shares the warp path's staging even at K == 1.
+    // Flattened ParsedDataset::redistort, per INPUT camera; empty when none
+    // needs resampling, -1 marks one that does not. Any of these sets
+    // any_warp: the re-distort shares the warp path's staging even at K == 1.
     std::vector<int32_t> redistort_models;   // [N]
     std::vector<float>   redistort_params;   // [N, 16]
 };
 
 PostSplitCameras bake_post_split(const ParsedDataset& ds,
                                  bool warp_to_pinhole,
-                                 bool warp_spherical_to_pinhole);
+                                 bool warp_spherical_to_pinhole,
+                                 WarpFaceFit fit = WarpFaceFit::Uniform,
+                                 bool back_face = false);
 
 
 // ===========================================================================
@@ -340,16 +335,18 @@ void assign_val_split(ParsedDataset& ds, float validation_fraction);
 std::string find_aux_file(const std::string& aux_dir, const std::string& rel_name,
                           const char* suffix_tag);
 
-// The face orientations a wide camera is split into: 5 for a fisheye, 6 (a
-// cube map) for an equirectangular one. [K][3][3] row-major, rows (x, y, z) of
-// each face's frame in camera coordinates; null for any other K. Exposed
-// because `spirula geometry` has to resample into the SAME faces the trainer
-// will later render, and two tables would drift.
-const double* warp_axes(int K);
-
 // Outlier-frame mask via geometric median of camera positions. Returns
 // keep-flags, all-true when threshold is inf. positions = [N, 3].
 std::vector<char> outlier_keep_mask(const std::vector<double>& positions,
                                     int64_t n, float threshold);
+
+// The resolution one camera trains at: its image file's size when cfg probes
+// for one, divided by train_resolution_divisor. W/H and the intrinsics come in
+// as the reconstruction's and leave scaled to that; `src` (may be null) too.
+void fit_camera_resolution(const DatasetParserConfig& cfg,
+                           const std::string& image_path,
+                           double& W, double& H,
+                           double& fx, double& fy, double& cx, double& cy,
+                           RedistortSource* src);
 
 }  // namespace dsparse

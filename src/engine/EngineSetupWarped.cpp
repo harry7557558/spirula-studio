@@ -4,12 +4,10 @@
 // FISHEYE / EQUISOLID (with warp_to_pinhole) or EQUIRECTANGULAR (always
 // split). The byte-staged GT image is warped DIRECTLY into a float
 // post-split output buffer; no intermediate full-resolution float image
-// is ever materialized.
-//
-// Depth and normal GT go through the same warp: depth comes out as per-face
-// ray depth, normals rotated into each face's camera frame. PPISP runs
-// render-side on the post-split pinhole sub-cameras, so N_grids must be sized
-// to the post-split camera count (one parameter slot per sub-camera).
+// is ever materialized. Each face samples through the intrinsics
+// set_camera_params installed for it, so the face that is rendered is the
+// face that was warped. Depth comes out as per-face ray depth, normals
+// rotated into each face's camera frame.
 
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
@@ -110,20 +108,13 @@ void set_training_data_warped(
     TorchTensorView input_intrins,
     TorchTensorView input_dist_coeffs,
     // Per-INPUT source camera, for the cameras whose lens model no tier
-    // represents: [B_in] COLMAP model id and [B_in, 16] its own parameters.
-    // Null unless the dataset carries one. With K > 1 the wide warp projects
-    // straight through this instead of the fitted camera, so the two passes
-    // fuse and no intermediate image is allocated; with K == 1 it selects the
-    // re-distort kernels below.
+    // represents. Null unless the dataset carries one; with K > 1 the wide
+    // warp projects straight through it, with K == 1 it selects re-distort.
     TorchTensorView input_source_models,
     TorchTensorView input_source_params,
-    // Device pointer to the [K, 3, 3] cubemap axes table (lifetime managed
-    // by DataManager).
-    uint64_t axes_dev)
+    // [B_in*K, 3, 3] frame of each post camera in its input camera's frame.
+    TorchTensorView face_axes)
 {
-    // PPISP runs render-side on the POST-split pinhole sub-cameras (same
-    // shape as the bilagrid RGB path), so it works unchanged here -- no
-    // refusal needed.
     // Depth / normal are warped below; clear stale buffers first so a step
     // that supplies neither leaves the loss kernels seeing "no GT".
     engine().gt.depth  = DeviceTensor3D<float>();
@@ -172,6 +163,17 @@ void set_training_data_warped(
     }
     const bool redistort_only = (K == 1 && d_src_models != nullptr);
 
+    // The faces: the camera table set_camera_params just installed, plus
+    // each face's frame.
+    const float* d_post_intrins = (const float*)engine().camera.intrins.data_ptr();
+    const float* d_axes = redistort_only ? nullptr : _h2d_stage_floats(
+        face_axes, (size_t)B_post * 9, PoolSlot::WarpFaceAxes);
+    if (!redistort_only && (!d_axes || !d_post_intrins ||
+                            engine().camera.intrins.size() < (int64_t)B_post))
+        throw std::runtime_error(
+            "set_training_data_warped: the warp path needs a camera table and "
+            "a face frame per post camera, which this batch did not carry");
+
     CameraModelType cm = cmt(input_model_name);
     if (!d_intrins && cm != CameraModelType::EQUIRECTANGULAR)
         throw std::runtime_error(
@@ -185,18 +187,15 @@ void set_training_data_warped(
     } else if (cm == CameraModelType::EQUIRECTANGULAR) {
         launch_warp_byte_to_float_equi(
             d_rgb_byte, rgb_u16, B_in, in_H, in_W, 3,
-            d_rgb_float, K, out_H, out_W,
-            (const float*)axes_dev);
+            d_rgb_float, K, out_H, out_W, d_post_intrins, d_axes);
     } else {
         // FISHEYE / EQUISOLID / PINHOLE -- the wide warp kernel does the
-        // projection dispatch internally on `cm`. (PINHOLE doesn't normally
-        // hit this path -- K==1 there -- but the kernel handles it anyway.)
+        // projection dispatch internally on `cm`.
         launch_warp_byte_to_float_wide(
             input_model_name, input_distortion, d_intrins, d_dist,
             d_src_models, d_src_params,
             d_rgb_byte, rgb_u16, B_in, in_H, in_W, 3,
-            d_rgb_float, K, out_H, out_W,
-            (const float*)axes_dev);
+            d_rgb_float, K, out_H, out_W, d_post_intrins, d_axes);
     }
 
     // Wrap as DeviceTensor3D<float3> [B_post, out_H, out_W, 1] (one float3
@@ -228,13 +227,13 @@ void set_training_data_warped(
         } else if (cm == CameraModelType::EQUIRECTANGULAR) {
             launch_warp_mask_equi(
                 (const uint8_t*)d_mask_in, B_in, mask_in_H, mask_in_W,
-                d_mask_out, K, out_H, out_W, (const float*)axes_dev);
+                d_mask_out, K, out_H, out_W, d_post_intrins, d_axes);
         } else {
             launch_warp_mask_wide(
                 input_model_name, input_distortion, d_intrins, d_dist,
                 d_src_models, d_src_params,
                 (const uint8_t*)d_mask_in, B_in, mask_in_H, mask_in_W,
-                d_mask_out, K, out_H, out_W, (const float*)axes_dev);
+                d_mask_out, K, out_H, out_W, d_post_intrins, d_axes);
         }
         TorchTensorView dv((uint64_t)d_mask_out, 1,
                            {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 1LL});
@@ -272,14 +271,14 @@ void set_training_data_warped(
             launch_warp_depth_equi(
                 d_depth_in, d_elem, B_in, depth_in_H, depth_in_W,
                 d_depth_out, K, out_H, out_W,
-                (const float*)axes_dev, input_depth_is_ray_depth);
+                d_post_intrins, d_axes, input_depth_is_ray_depth);
         } else {
             launch_warp_depth_wide(
                 input_model_name, input_distortion, d_intrins, d_dist,
                 d_src_models, d_src_params,
                 d_depth_in, d_elem, B_in, depth_in_H, depth_in_W,
                 in_H, in_W, d_depth_out, K, out_H, out_W,
-                (const float*)axes_dev, input_depth_is_ray_depth);
+                d_post_intrins, d_axes, input_depth_is_ray_depth);
         }
         TorchTensorView dv((uint64_t)d_depth_out, 4,
                            {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 1LL});
@@ -324,14 +323,14 @@ void set_training_data_warped(
         } else if (cm == CameraModelType::EQUIRECTANGULAR) {
             launch_warp_normal_equi(
                 d_normal_in, n_elem, B_in, normal_in_H, normal_in_W,
-                d_normal_out, K, out_H, out_W, (const float*)axes_dev);
+                d_normal_out, K, out_H, out_W, d_post_intrins, d_axes);
         } else {
             launch_warp_normal_wide(
                 input_model_name, input_distortion, d_intrins, d_dist,
                 d_src_models, d_src_params,
                 d_normal_in, n_elem, B_in, normal_in_H, normal_in_W,
                 in_H, in_W, d_normal_out, K, out_H, out_W,
-                (const float*)axes_dev);
+                d_post_intrins, d_axes);
         }
         TorchTensorView dv((uint64_t)d_normal_out, 4,
                            {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 3LL});

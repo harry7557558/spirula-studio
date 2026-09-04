@@ -9,6 +9,7 @@ namespace SlangProjectionUtils {
 #endif
 
 #include "primitives/Primitive.cuh"
+#include "shaders/screen_layout.h"
 
 
 template<int _sh_degree>
@@ -167,61 +168,56 @@ struct _BasePrimitive3DGS {
         }
 
         __device__ __forceinline__ void store(ScreenBuffer &buffer, int64_t i) const {
-            if (&buffer.xy(0)) buffer.xy(i) = xy;
-            if (&buffer.depth(0)) buffer.depth(i) = depth;
-            if (&buffer.conic(0)) buffer.conic(i) = conic;
-            if (&buffer.opac(0)) buffer.opac(i) = opac;
-            if (&buffer.rgb(0)) buffer.rgb(i) = rgb;
+            if (!buffer.allocated()) return;
+            buffer.xy(i) = xy;
+            buffer.depth(i) = depth;
+            buffer.conic(i) = conic;
+            buffer.opac(i) = opac;
+            buffer.rgb(i) = rgb;
         }
 
         __device__ __forceinline__ void atomicStore(ScreenBuffer &buffer, int64_t i) const {
-            if (&buffer.xy(0)) atomicAddFVec(&buffer.xy(i), xy);
-            if (&buffer.depth(0)) atomicAddFVec(&buffer.depth(i), depth);
-            if (&buffer.conic(0)) atomicAddFVec(&buffer.conic(i), conic);
-            if (&buffer.opac(0)) atomicAddFVec(&buffer.opac(i), opac);
-            if (&buffer.rgb(0)) atomicAddFVec(&buffer.rgb(i), rgb);
+            if (!buffer.allocated()) return;
+            atomicAddFVec(&buffer.xy(i), xy);
+            atomicAddFVec(&buffer.depth(i), depth);
+            atomicAddFVec(&buffer.conic(i), conic);
+            atomicAddFVec(&buffer.opac(i), opac);
+            atomicAddFVec(&buffer.rgb(i), rgb);
         }
     };
     #endif
 
-    class ScreenBuffer : public TensorArray<5> {
+    class ScreenBuffer : public PackedTensorArray<SCR2_STRIDE> {
     public:
-        using TensorArray<5>::TensorArray;
+        using PackedTensorArray<SCR2_STRIDE>::PackedTensorArray;
+        static constexpr int kXy = SCR2_XY, kConic = SCR2_CONIC,
+                             kOpac = SCR2_OPAC, kDepth = SCR2_DEPTH,
+                             kRgb = SCR2_RGB;
     #ifdef __CUDACC__
+        static_assert(SCR2_STRIDE * sizeof(float) % alignof(float2) == 0,
+                      "odd rows would land misaligned for xy()");
         __forceinline__ __device__ float2& xy(int64_t i)
-            { return *reinterpret_cast<float2*>(&_data[0][2*i]); }
+            { return *reinterpret_cast<float2*>(row(i) + kXy); }
         __forceinline__ __device__ float& depth(int64_t i)
-            { return *reinterpret_cast<float*>(&_data[1][i]); }
+            { return row(i)[kDepth]; }
         __forceinline__ __device__ float3& conic(int64_t i)
-            { return *reinterpret_cast<float3*>(&_data[2][3*i]); }
+            { return *reinterpret_cast<float3*>(row(i) + kConic); }
         __forceinline__ __device__ float& opac(int64_t i)
-            { return *reinterpret_cast<float*>(&_data[3][i]); }
+            { return row(i)[kOpac]; }
         __forceinline__ __device__ float3& rgb(int64_t i)
-            { return *reinterpret_cast<float3*>(&_data[4][3*i]); }
-    
+            { return *reinterpret_cast<float3*>(row(i) + kRgb); }
+
         __forceinline__ __device__ float2 xy(int64_t i) const
-            { return *reinterpret_cast<float2*>(&_data[0][2*i]); }
+            { return *reinterpret_cast<const float2*>(row(i) + kXy); }
         __forceinline__ __device__ float depth(int64_t i) const
-            { return *reinterpret_cast<float*>(&_data[1][i]); }
-        __forceinline__ __device__ float3 conic(int64_t i) const    
-            { return *reinterpret_cast<float3*>(&_data[2][3*i]); }
+            { return row(i)[kDepth]; }
+        __forceinline__ __device__ float3 conic(int64_t i) const
+            { return *reinterpret_cast<const float3*>(row(i) + kConic); }
         __forceinline__ __device__ float opac(int64_t i) const
-            { return *reinterpret_cast<float*>(&_data[3][i]); }
+            { return row(i)[kOpac]; }
         __forceinline__ __device__ float3 rgb(int64_t i) const
-            { return *reinterpret_cast<float3*>(&_data[4][3*i]); }
-
+            { return *reinterpret_cast<const float3*>(row(i) + kRgb); }
     #endif  // #ifdef __CUDACC__
-
-        static std::vector<DeviceTensorFloatND> empty_pool(int64_t size, PoolSlot key_prefix) {
-            return TensorArray<5>::empty_pool(size, {2, 1, 3, 1, 3}, key_prefix);
-        }
-        static std::vector<DeviceTensorFloatND> zeros_pool(int64_t size, PoolSlot key_prefix) {
-            return TensorArray<5>::zeros_pool(size, {2, 1, 3, 1, 3}, key_prefix);
-        }
-        static std::vector<DeviceTensorFloatND> zeros_pool(
-            const std::vector<DeviceTensorFloatND>& tmpl, PoolSlot key_prefix) {
-            return TensorArray<5>::zeros_pool(tmpl, key_prefix);
-        }
     };
 
     #ifdef __CUDACC__
@@ -292,49 +288,41 @@ struct _BasePrimitive3DGUT : _BasePrimitive3DGS<_sh_degree> {
         }
 
         __device__ __forceinline__ void store(ScreenBuffer &buffer, int64_t i) const {
-            if (&buffer.scales(0)) buffer.scales(i) = scale;
-            if (&buffer.opacities(0)) buffer.opacities(i) = opacity;
-            if (&buffer.colors(0)) buffer.colors(i) = rgb;
+            if (!buffer.allocated()) return;
+            buffer.scales(i) = scale;
+            buffer.opacities(i) = opacity;
+            buffer.colors(i) = rgb;
         }
 
         __device__ __forceinline__ void atomicStore(ScreenBuffer &buffer, int64_t i) const {
-            if (&buffer.scales(0)) atomicAddFVec(&buffer.scales(i), scale);
-            if (&buffer.opacities(0)) atomicAddFVec(&buffer.opacities(i), opacity);
-            if (&buffer.colors(0)) atomicAddFVec(&buffer.colors(i), rgb);
+            if (!buffer.allocated()) return;
+            atomicAddFVec(&buffer.scales(i), scale);
+            atomicAddFVec(&buffer.opacities(i), opacity);
+            atomicAddFVec(&buffer.colors(i), rgb);
         }
     };
     #endif
 
-    class ScreenBuffer : public TensorArray<3> {
+    class ScreenBuffer : public PackedTensorArray<SCRG_STRIDE> {
     public:
-        using TensorArray<3>::TensorArray;
+        using PackedTensorArray<SCRG_STRIDE>::PackedTensorArray;
+        static constexpr int kScales = SCRG_SCALE, kOpac = SCRG_OPAC,
+                             kRgb = SCRG_RGB;
     #ifdef __CUDACC__
         __forceinline__ __device__ float3& scales(int64_t i)
-            { return *reinterpret_cast<float3*>(&_data[0][3*i]); }
+            { return *reinterpret_cast<float3*>(row(i) + kScales); }
         __forceinline__ __device__ float& opacities(int64_t i)
-            { return *reinterpret_cast<float*>(&_data[1][i]); }
+            { return row(i)[kOpac]; }
         __forceinline__ __device__ float3& colors(int64_t i)
-            { return *reinterpret_cast<float3*>(&_data[2][3*i]); }
-    
+            { return *reinterpret_cast<float3*>(row(i) + kRgb); }
+
         __forceinline__ __device__ float3 scales(int64_t i) const
-            { return *reinterpret_cast<float3*>(&_data[0][3*i]); }
+            { return *reinterpret_cast<const float3*>(row(i) + kScales); }
         __forceinline__ __device__ float opacities(int64_t i) const
-            { return *reinterpret_cast<float*>(&_data[1][i]); }
+            { return row(i)[kOpac]; }
         __forceinline__ __device__ float3 colors(int64_t i) const
-            { return *reinterpret_cast<float3*>(&_data[2][3*i]); }
-
+            { return *reinterpret_cast<const float3*>(row(i) + kRgb); }
     #endif  // #ifdef __CUDACC__
-
-        static std::vector<DeviceTensorFloatND> empty_pool(int64_t size, PoolSlot key_prefix) {
-            return TensorArray<3>::empty_pool(size, {3, 1, 3}, key_prefix);
-        }
-        static std::vector<DeviceTensorFloatND> zeros_pool(int64_t size, PoolSlot key_prefix) {
-            return TensorArray<3>::zeros_pool(size, {-1, 1, 3}, key_prefix);
-        }
-        static std::vector<DeviceTensorFloatND> zeros_pool(
-            const std::vector<DeviceTensorFloatND>& tmpl, PoolSlot key_prefix) {
-            return TensorArray<3>::zeros_pool(tmpl, key_prefix);
-        }
     };
 
 };

@@ -15,6 +15,7 @@
 // the session it renders from is destroyed.
 
 #include "app/webviewer/RenderWorker.h"
+#include "core/ColorSpace.h"
 #include "app/gui/NavCamera.h"
 #include "app/gui/PreviewRenderer.h"
 
@@ -39,6 +40,10 @@ inline constexpr int kNumViewerPrimitives = 3;
 inline const char* kViewerGamuts[] = {"", "DCI-P3", "Rec.2020", "AdobeRGB",
                                       "ACEScg", "ACES2065-1"};
 inline constexpr int kNumViewerGamuts = 6;
+
+// Output transfers, in combo order and in colorspace::Transfer order. Like
+// the gamuts these are the identifiers --*-color-transfer takes.
+inline constexpr int kNumViewerTransfers = colorspace::kNumTransfers;
 
 class ViewportPanel {
 public:
@@ -67,20 +72,14 @@ public:
     // not offered.
     void attach_scene(const ViewerRenderConfig& cfg, const ViewerHooks& hooks,
                       const std::string& key, float radius = 1.0f);
-    // Offer the render-option controls a VIEWER gets (primitive, SH degree,
-    // color space) on top of attach_scene. `sh_degree_max` is what the file
-    // actually carries, and caps the SH slider -- bands that are not there
-    // cannot be drawn -- while `apply_color_space` is called when the gamut or
-    // the linear toggle changes, because that is an engine call and only the
-    // owner knows how to take the engine lock.
-    // `on_primitive_changed` is called after the user picks a different
-    // primitive, so the owner can hand the previous one's screen buffers
-    // back -- the two layouts share pool slots but not shapes, and keeping
-    // both resident is VRAM for nothing.
+    // The render-option controls a VIEWER gets, on top of attach_scene. The
+    // two callbacks are the owner's because both are engine calls; only it
+    // holds the engine lock. `sh_degree_max` caps the SH slider.
     void enable_scene_options(
         const std::string& primitive, int sh_degree_max,
-        const std::string& gamut, bool linear,
-        std::function<void(const char* gamut, bool linear)> apply_color_space,
+        const std::string& gamut, int transfer, bool linear,
+        std::function<void(const char* gamut, int transfer, bool linear)>
+            apply_color_space,
         std::function<void()> on_primitive_changed);
     void detach();
     bool attached() const { return _mode == Mode::Engine; }
@@ -212,11 +211,13 @@ private:
     int _sh_degree = -1;          // < 0 = every band the file carries
     int _sh_degree_max = 0;       // what the file carries (the slider's top)
     int _gamut_idx = 0;           // index into kViewerGamuts
+    int _transfer_idx = 0;        // colorspace::Transfer
     bool _linear_color = false;
-    // Applying a gamut / linear change is an ENGINE call, not a render flag,
+    // Applying a gamut / transfer change is an ENGINE call, not a render flag,
     // so it is done by the owner (SplatViewer, which holds the engine lock)
     // rather than here.
-    std::function<void(const char* gamut, bool linear)> _apply_color_space;
+    std::function<void(const char* gamut, int transfer, bool linear)>
+        _apply_color_space;
     std::function<void()> _on_primitive_changed;
 
     // Mesh display switches (preview mode over a mesh).

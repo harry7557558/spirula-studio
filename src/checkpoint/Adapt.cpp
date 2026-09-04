@@ -545,8 +545,41 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
             const int cpp_new = cls->is_sh ? 3 * K_new : cls->cpp;
             const int64_t n_ck  = max_ck  * cpp_ck;
             const int64_t n_new = max_new * cpp_new;
-            const int64_t bbc_ck  = cls->fpbo ? kBlock * cpp_ck  : kBlock;
-            const int64_t bbc_new = cls->fpbo ? kBlock * cpp_new : kBlock;
+            // The FPBO SH stream is neither splat-major nor exactly n cells
+            // long (docs/notes/sh-quant-layout.md); the reindex below wants
+            // splat-major, so transpose in and back out.
+            const bool sh_fpbo = cls->fpbo && cls->is_sh;
+            const ShQuantAddr a_ck =
+                sh_quant_addr((uint32_t)K_ck, sh_fpbo ? 0 : 256);
+            const ShQuantAddr a_new =
+                sh_quant_addr((uint32_t)K_new, sh_fpbo ? 0 : 256);
+            const int64_t lin_ck = sh_fpbo
+                ? sh_fpbo_cells(max_ck, (uint32_t)K_ck) : n_ck;
+            const int64_t lin_new = sh_fpbo
+                ? sh_fpbo_cells(max_new, (uint32_t)K_new) : n_new;
+            const int64_t bbc_ck = sh_fpbo ? a_ck.bounds_stride
+                                           : (cls->fpbo ? kBlock * cpp_ck : kBlock);
+            const int64_t bbc_new = sh_fpbo ? a_new.bounds_stride
+                                            : (cls->fpbo ? kBlock * cpp_new : kBlock);
+
+            auto to_splat_major = [&](std::vector<float>& v) {
+                if (!sh_fpbo) return;
+                std::vector<float> out((size_t)n_ck, 0.0f);
+                for (int64_t i = 0; i < max_ck; i++)
+                    for (int c = 0; c < cpp_ck; c++)
+                        out[(size_t)(i * cpp_ck + c)] =
+                            v[(size_t)a_ck.cell(a_ck.base(i), c)];
+                v.swap(out);
+            };
+            auto from_splat_major = [&](std::vector<float>& v) {
+                if (!sh_fpbo) return;
+                std::vector<float> out((size_t)lin_new, 0.0f);
+                for (int64_t i = 0; i < max_new; i++)
+                    for (int c = 0; c < cpp_new; c++)
+                        out[(size_t)a_new.cell(a_new.base(i), c)] =
+                            v[(size_t)(i * cpp_new + c)];
+                v.swap(out);
+            };
 
             auto reindex_stream = [&](const std::vector<float>& v) {
                 if (cls->is_sh)
@@ -559,19 +592,25 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
             if (cls->adam) {
                 std::vector<float> g1, g2;
                 decode_adam(cls->bits, parts.q->u8(), parts.qb->f32(),
-                            n_ck, bbc_ck, g1, g2);
+                            lin_ck, bbc_ck, g1, g2);
+                to_splat_major(g1);
+                to_splat_major(g2);
                 std::vector<float> g1n = reindex_stream(g1);
                 std::vector<float> g2n = reindex_stream(g2);
                 if ((int64_t)g1n.size() != n_new)
                     throw std::runtime_error("checkpoint adapt: adam reindex size");
+                from_splat_major(g1n);
+                from_splat_major(g2n);
                 encode_adam(cls->bits, g1n, g2n, bbc_new, pk, bd);
             } else {
                 std::vector<float> v;
                 decode_linear(cls->bits, parts.q->u8(), parts.qb->f32(),
-                              n_ck, bbc_ck, v);
+                              lin_ck, bbc_ck, v);
+                to_splat_major(v);
                 std::vector<float> vn = reindex_stream(v);
                 if ((int64_t)vn.size() != n_new)
                     throw std::runtime_error("checkpoint adapt: linear reindex size");
+                from_splat_major(vn);
                 encode_linear(cls->bits, vn, bbc_new, pk, bd);
             }
             emit[base + ".q"]  = from_bytes(pk);

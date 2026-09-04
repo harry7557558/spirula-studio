@@ -27,11 +27,12 @@ void rasterize_to_pixels_eval3d_bwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB
+    const uint2 *__restrict__ aabb,   // [..., N] packed AABB
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -67,13 +68,14 @@ inline void launch_rasterize_to_pixels_eval3d_bwd_kernel(
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -113,8 +115,8 @@ inline void launch_rasterize_to_pixels_eval3d_bwd_kernel(
             (uint32_t*)gaussian_ids.data_ptr(), \
             splat_wbuffer, splat_sbuffer, \
             (const float*)std::get<0>(viewmats), (const float4*)std::get<0>(intrins), dist_coeffs, \
-            (const float4*)aabb.data_ptr(), \
-            image_width, image_height, tile_width, tile_height, \
+            aabb.data_ptr(), \
+            image_width, image_height, tile_width, tile_height, macro_log2, \
             tile_offsets.data_ptr(), flatten_ids.data_ptr(), \
             render_Ts.data_ptr(), last_ids.data_ptr(), \
             render_outputs, \
@@ -165,13 +167,14 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -188,6 +191,9 @@ inline std::tuple<
     std::optional<std::vector<DeviceTensorFloatND>> v_splats_s,
     bool need_viewmat_grad
 ) {
+    // Opens the raster-backward phase: the screen-gradient buffer below shares
+    // the tile intersector's arena (POOL_ALIAS_TABLE, core/PoolSlots.h).
+    pool_begin_phase(PoolPhase::RasterBwd);
     if (!v_splats_w.has_value())
         v_splats_w = SplatPrimitive::WorldBuffer::zeros_pool(splats_w, PoolSlot::RasterBwdVWorld);
     if (!v_splats_s.has_value())
@@ -224,6 +230,7 @@ inline std::tuple<
         splats_w, splats_s, gaussian_ids,
         viewmats, intrins, camera_model, distortion, dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs,
         distortion_fwd_outputs, loss_map, accum_weight_map,
         v_render_outputs, v_render_Ts,
@@ -257,13 +264,14 @@ inline std::tuple<
     const CameraModelType camera_model,
     const CameraDistortionType distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -286,6 +294,7 @@ inline std::tuple<
         num_splats, splats_w, splats_s, gaussian_ids,
         viewmats, intrins, camera_model, distortion, dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs, distortion_fwd_outputs, loss_map, accum_weight_map,
         v_render_outputs, v_render_Ts, v_median, v_distortion_outputs, v_splats_w, v_splats_s,
         need_viewmat_grad
@@ -314,13 +323,14 @@ std::tuple<
     const std::string camera_model,
     const std::string distortion,
     const TorchTensorView dist_coeffs,
-    DeviceTensor2D<float4> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
+    DeviceTensor2D<uint2> aabb,  // [..., N] projected 2D AABB, for sub-tile culling
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // forward outputs
     const DeviceTensor3D<float> render_Ts,  // [I, image_height, image_width]
     const DeviceTensor3D<int32_t> last_ids, // [I, image_height, image_width]
@@ -362,6 +372,7 @@ std::tuple<
         num_splats, splats_w, splats_s, gaussian_ids,
         viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
+        macro_log2,
         render_Ts, last_ids, render_outputs, distortion_fwd_outputs, loss_map, accum_weight_map,
         v_render_outputs, v_render_Ts, v_median, v_distortion_outputs, v_splats_w, v_splats_s,
         need_viewmat_grad

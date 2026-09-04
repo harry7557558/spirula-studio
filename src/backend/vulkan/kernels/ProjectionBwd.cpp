@@ -21,7 +21,7 @@ struct ProjectionBwd3dgsParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
     uint64_t camera_ids, gaussian_ids, aabb;
-    uint64_t vs_xy, vs_depth, vs_conic, vs_opac, vs_rgb;
+    uint64_t vs_screen;
     uint64_t vw_means, vw_quats, vw_scales, vw_opacities, vw_dc, vw_sh;
     uint64_t v_viewmats;
     uint64_t sh_packed, sh_bounds;
@@ -32,7 +32,7 @@ struct ProjectionBwd3dgsParams {
     uint32_t wgs_per_row;
     uint32_t num_sh_buffer;
 };
-static_assert(sizeof(ProjectionBwd3dgsParams) == 26 * 8 + 8 + 8 * 4,
+static_assert(sizeof(ProjectionBwd3dgsParams) == 22 * 8 + 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors ProjectionBwd3dgutParams in shaders/projection_bwd.slang.
@@ -40,7 +40,7 @@ struct ProjectionBwd3dgutParams {
     uint64_t means, quats, scales, opacities, features_dc, features_sh;
     uint64_t viewmats, intrins, dist_coeffs;
     uint64_t camera_ids, gaussian_ids, aabb;
-    uint64_t vs_scale, vs_opac, vs_rgb;
+    uint64_t vs_screen;
     uint64_t vw_means, vw_quats, vw_scales, vw_opacities, vw_dc, vw_sh;
     uint64_t v_viewmats;
     uint64_t sh_packed, sh_bounds;
@@ -51,7 +51,7 @@ struct ProjectionBwd3dgutParams {
     uint32_t wgs_per_row;
     uint32_t num_sh_buffer;
 };
-static_assert(sizeof(ProjectionBwd3dgutParams) == 24 * 8 + 8 + 8 * 4,
+static_assert(sizeof(ProjectionBwd3dgutParams) == 22 * 8 + 8 + 8 * 4,
               "params layout must match the slang struct");
 
 using vkk::resolve_sh_quant;
@@ -68,7 +68,7 @@ void launch_projection_bwd_vk(
     const TorchTensorView& dist_coeffs,
     const DeviceVector<int32_t>& camera_ids,
     const DeviceVector<int32_t>& gaussian_ids,
-    const DeviceTensor2D<float4>& aabb,
+    const DeviceTensor2D<uint2>& aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     DeviceTensor2D<float>* v_viewmats,
@@ -134,11 +134,7 @@ void launch_projection_bwd_vk(
         p.camera_ids = vkk::or_fallback((uint64_t)camera_ids.data_ptr());
         p.gaussian_ids = vkk::or_fallback((uint64_t)gaussian_ids.data_ptr());
         p.aabb = vkk::or_fallback((uint64_t)aabb.data_ptr());
-        p.vs_xy = (uint64_t)vsb.raw_data(0);
-        p.vs_depth = (uint64_t)vsb.raw_data(1);
-        p.vs_conic = (uint64_t)vsb.raw_data(2);
-        p.vs_opac = (uint64_t)vsb.raw_data(3);
-        p.vs_rgb = (uint64_t)vsb.raw_data(4);
+        p.vs_screen = (uint64_t)vsb.raw_data();
         p.vw_means = (uint64_t)vwb.raw_data(0);
         p.vw_quats = (uint64_t)vwb.raw_data(1);
         p.vw_scales = (uint64_t)vwb.raw_data(2);
@@ -176,9 +172,7 @@ void launch_projection_bwd_vk(
         p.camera_ids = vkk::or_fallback((uint64_t)camera_ids.data_ptr());
         p.gaussian_ids = vkk::or_fallback((uint64_t)gaussian_ids.data_ptr());
         p.aabb = vkk::or_fallback((uint64_t)aabb.data_ptr());
-        p.vs_scale = (uint64_t)vsb.raw_data(0);
-        p.vs_opac = (uint64_t)vsb.raw_data(1);
-        p.vs_rgb = (uint64_t)vsb.raw_data(2);
+        p.vs_screen = (uint64_t)vsb.raw_data();
         p.vw_means = (uint64_t)vwb.raw_data(0);
         p.vw_quats = (uint64_t)vwb.raw_data(1);
         p.vw_scales = (uint64_t)vwb.raw_data(2);
@@ -219,7 +213,7 @@ void projection_3dgs_backward(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     DeviceTensor2D<float>* v_viewmats,
@@ -250,7 +244,7 @@ void projection_mip_backward(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     DeviceTensor2D<float>* v_viewmats,
@@ -281,7 +275,7 @@ void projection_3dgut_backward(
     const TorchTensorView dist_coeffs,
     const DeviceVector<int32_t> camera_ids,
     const DeviceVector<int32_t> gaussian_ids,
-    const DeviceTensor2D<float4> aabb,
+    const DeviceTensor2D<uint2> aabb,
     const std::vector<DeviceTensorFloatND>& v_splats_screen,
     const std::vector<DeviceTensorFloatND>& v_splats_world,
     DeviceTensor2D<float>* v_viewmats,

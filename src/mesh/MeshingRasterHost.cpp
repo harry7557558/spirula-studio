@@ -195,20 +195,21 @@ static void render_one(RenderContext* ctx, int cam_idx,
         std::nullopt, std::nullopt, /*num_sh_buffer=*/0, /*sh_value_bits=*/32,
         /*sh_bounds_stride=*/0);
 
-    // --- tile intersection (ellipse mode: conic = splats_s[0], opac = [1]) ---
-    DeviceTensorFloatND aabb_nd(aabb_2d);
+    // --- tile intersection (ellipse mode; center falls back to the AABB) ---
     DeviceTensorFloatND depths_nd(depths_2d);
-    DeviceTensorFloatND proj_conic = splats_s[0];
-    DeviceTensorFloatND proj_opac  = splats_s[1];
+    ProjEllipseView ellipse =
+        proj_ellipse_view(splats_s[0].data_ptr(), /*eval3d=*/true);
+    int macro_log2 = kMacroLog2Default;
     auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
-        aabb_nd, depths_nd, nullptr, &proj_conic, &proj_opac,
-        /*I=*/1, intrins, W, H, nullptr);
+        aabb_2d, depths_nd, ellipse,
+        /*I=*/1, intrins, W, H, nullptr, /*tile_active=*/nullptr,
+        macro_log2);
 
     // --- moment (+ rgb) rasterization ---
     rasterize_moments_3dgut_fwd(
         (int64_t)ctx->N, in_splats, splats_s, DeviceVector<int32_t>(),
         viewmats, intrins, ctx->model, ctx->distortion, dist,
-        aabb_2d, W, H, tile_offsets, flatten_ids,
+        aabb_2d, W, H, tile_offsets, flatten_ids, macro_log2,
         d_moments, d_rgb);
 }
 

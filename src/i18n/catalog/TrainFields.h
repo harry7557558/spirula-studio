@@ -785,6 +785,59 @@ SS_MSG(apply_loss_for_mask_help,
        "dairesinin dışındaki siyah alan gibi istenmeyenler böyle gizlenir. Açıkken "
        "boş olarak eğitilir; arka plan kalkar ve yalnızca özne kalır."));
 
+SS_MSG(flip_mask,
+    EN("Flip masks"), JA("マスクを反転"),
+    ZH_HANS("反转蒙版"), ZH_HANT("反轉遮罩"),
+    KO("마스크 반전"), DE("Masken umkehren"),
+    FR("Inverser les masques"), ES("Invertir las máscaras"),
+    PT("Inverter as máscaras"),
+    IT("Invertire le maschere"),
+    NL("Maskers omkeren"), RU("Инвертировать маски"),
+    TR("Maskeleri ters çevir"));
+SS_MSG(flip_mask_help,
+    EN("Swap what a mask keeps for what it hides. Masks here are white where the "
+       "image is kept; turn this on for masks that instead paint the region to "
+       "remove. Applied before the mask edge adjustment."),
+    JA("マスクが残す領域と隠す領域を入れ替えます。ここでのマスクは残す部分が白"
+       "です。取り除く領域を塗ったマスクではこれを有効にしてください。マスク境"
+       "界の調整より前に適用されます。"),
+    ZH_HANS("交换蒙版保留与隐藏的区域。这里的蒙版以白色表示保留的部分；若蒙版画"
+            "的是要去掉的区域，请打开此项。它在蒙版边缘调整之前生效。"),
+    ZH_HANT("交換遮罩保留與隱藏的區域。這裡的遮罩以白色表示保留的部分；若遮罩畫"
+            "的是要去掉的區域，請開啟此項。它在遮罩邊緣調整之前生效。"),
+    KO("마스크가 남기는 영역과 가리는 영역을 맞바꿉니다. 여기서 마스크는 남길 "
+       "부분이 흰색입니다. 지울 영역을 칠한 마스크라면 이 항목을 켜십시오. 마스크 "
+       "가장자리 조정보다 먼저 적용됩니다."),
+    DE("Vertauscht, was eine Maske behält, mit dem, was sie verbirgt. Masken sind "
+       "hier weiß, wo das Bild behalten wird; für Masken, die stattdessen den zu "
+       "entfernenden Bereich zeichnen, einschalten. Wirkt vor der "
+       "Maskenrand-Anpassung."),
+    FR("Échange ce qu'un masque garde et ce qu'il cache. Ici les masques sont "
+       "blancs là où l'image est gardée ; activez ceci pour des masques qui "
+       "peignent au contraire la zone à retirer. Appliqué avant l'ajustement du "
+       "bord du masque."),
+    ES("Intercambia lo que una máscara conserva con lo que oculta. Aquí las "
+       "máscaras son blancas donde se conserva la imagen; actívalo para máscaras "
+       "que en cambio pintan la zona a quitar. Se aplica antes del ajuste del "
+       "borde de la máscara."),
+    PT("Troca o que uma máscara mantém pelo que ela esconde. Aqui as máscaras são "
+       "brancas onde a imagem é mantida; ative isto para máscaras que pintam antes "
+       "a área a remover. Aplicado antes do ajuste da borda da máscara."),
+    IT("Scambia ciò che una maschera conserva con ciò che nasconde. Qui le "
+       "maschere sono bianche dove l'immagine viene conservata; attivalo per "
+       "maschere che dipingono invece l'area da togliere. Si applica prima della "
+       "regolazione del bordo della maschera."),
+    NL("Verwisselt wat een masker behoudt met wat het verbergt. Maskers zijn hier "
+       "wit waar het beeld behouden blijft; zet dit aan voor maskers die juist het "
+       "te verwijderen gebied inkleuren. Werkt vóór de aanpassing van de maskerrand."),
+    RU("Меняет местами то, что маска сохраняет, и то, что она скрывает. Здесь "
+       "маски белые там, где изображение сохраняется; включите это для масок, "
+       "которые вместо этого закрашивают удаляемую область. Действует до правки "
+       "края маски."),
+    TR("Bir maskenin koruduğu ile gizlediğini yer değiştirir. Buradaki maskeler "
+       "görüntünün korunduğu yerde beyazdır; bunun yerine kaldırılacak alanı "
+       "boyayan maskeler için açın. Maske kenarı ayarından önce uygulanır."));
+
 SS_MSG(mask_boundary_offset,
     EN("Mask edge adjustment"), JA("マスク境界の調整"),
     ZH_HANS("蒙版边缘调整"), ZH_HANT("遮罩邊緣調整"),
@@ -1174,68 +1227,71 @@ SS_MSG(metashape_psx_help,
     TR("Metashape proje dosyası; projede birden çok görüntü aynı dosya adını "
        "taşıdığında hangisinin kastedildiğini çözmek için kullanılır."));
 
-SS_MSG(rescale_camera_to_fit,
-    EN("Image downscale factor"), JA("画像の縮小率"),
-    ZH_HANS("图像缩小倍数"), ZH_HANT("影像縮小倍數"), KO("이미지 축소 배수"),
-    DE("Verkleinerungsfaktor der Bilder"),
-    FR("Facteur de réduction des images"),
-    ES("Factor de reducción de las imágenes"),
-    PT("Fator de redução das imagens"),
-    IT("Fattore di riduzione delle immagini"),
-    NL("Verkleiningsfactor van de beelden"),
-    RU("Коэффициент уменьшения изображений"), TR("Görüntü küçültme çarpanı"));
-SS_MSG(rescale_camera_to_fit_help,
-    EN("Fix a mismatch between image size and the camera parameters stored in "
-       "the dataset. Set it to the factor the images were shrunk by, such as "
-       "2 when training on images_2, or 0 to leave the cameras alone. Auto-detection "
-       "(-1) is not supported yet."),
-    JA("画像の大きさと、データセットに記録されたカメラパラメータの食い違いを直"
-       "します。画像を縮小した倍率を指定してください（images_2 で学習するなら"
-       " 2 など）。0 ならカメラには手を加えません。自動判定（-1）はまだ対応し"
-       "ていません。"),
-    ZH_HANS("修正图像尺寸与数据集中记录的相机参数之间的不一致。填入图像被缩小"
-            "的倍数，例如用 images_2 训练时填 2；填 0 则不改动相机。自动判断（"
-            "-1）尚未支持。"),
-    ZH_HANT("修正影像尺寸與資料集中記錄的相機參數之間的不一致。填入影像被縮小"
-            "的倍數，例如用 images_2 訓練時填 2；填 0 則不改動相機。自動判斷（"
-            "-1）尚未支援。"),
-    KO("이미지 크기와 데이터셋에 저장된 카메라 파라미터가 어긋난 것을 바로잡습"
-       "니다. 이미지를 줄인 배수를 넣으십시오(images_2로 학습하면 2). 0이면 카"
-       "메라를 그대로 둡니다. 자동 판별(-1)은 아직 지원하지 않습니다."),
-    DE("Eine Diskrepanz zwischen Bildgröße und den im Datensatz gespeicherten "
-       "Kameraparametern beheben. Auf den Faktor setzen, um den die Bilder verkleinert "
-       "wurden, etwa 2 beim Training auf images_2, oder 0, um die Kameras unangetastet "
-       "zu lassen. Automatische Erkennung (-1) wird noch nicht unterstützt."),
-    FR("Corriger un décalage entre la taille des images et les paramètres de "
-       "caméra enregistrés dans le jeu de données. Indiquez le facteur de réduction "
-       "des images, par exemple 2 pour un entraînement sur images_2, ou 0 pour "
-       "ne pas toucher aux caméras. La détection automatique (-1) n'est pas encore "
-       "prise en charge."),
-    ES("Corregir un desajuste entre el tamaño de las imágenes y los parámetros "
-       "de cámara guardados en el conjunto de datos. Indique el factor por el "
-       "que se redujeron las imágenes, por ejemplo 2 al entrenar con images_2, "
-       "o 0 para no tocar las cámaras. La detección automática (-1) todavía no "
-       "está admitida."),
-    PT("Corrigir um descompasso entre o tamanho das imagens e os parâmetros de "
-       "câmera guardados no conjunto de dados. Informe o fator pelo qual as imagens "
-       "foram reduzidas, por exemplo 2 ao treinar com images_2, ou 0 para não "
-       "mexer nas câmeras. A detecção automática (-1) ainda não é suportada."),
-    IT("Correggere una discrepanza tra la dimensione delle immagini e i parametri "
-       "della camera salvati nel set di dati. Indicare il fattore di riduzione "
-       "delle immagini, ad esempio 2 addestrando su images_2, oppure 0 per non "
-       "toccare le camere. Il rilevamento automatico (-1) non è ancora supportato."),
-    NL("Een verschil tussen de beeldgrootte en de in de dataset opgeslagen cameraparameters "
-       "rechtzetten. Geef de factor waarmee de beelden zijn verkleind, bijvoorbeeld "
-       "2 bij trainen op images_2, of 0 om de camera's met rust te laten. Automatische "
-       "detectie (-1) wordt nog niet ondersteund."),
-    RU("Исправить несоответствие между размером изображений и параметрами камер, "
-       "записанными в наборе данных. Укажите коэффициент, во сколько раз уменьшили "
-       "изображения, например 2 при обучении на images_2, или 0, чтобы не трогать "
-       "камеры. Автоопределение (-1) пока не поддерживается."),
-    TR("Görüntü boyutu ile veri kümesinde saklanan kamera parametreleri arasındaki "
-       "uyuşmazlığı giderir. Görüntülerin küçültüldüğü çarpanı girin; örneğin "
-       "images_2 üzerinde eğitirken 2, kameralara dokunmamak için 0. Otomatik "
-       "algılama (-1) henüz desteklenmiyor."));
+SS_MSG(train_resolution_divisor,
+    EN("Training resolution divisor"), JA("学習解像度の分母"),
+    ZH_HANS("训练分辨率缩小倍数"), ZH_HANT("訓練解析度縮小倍數"),
+    KO("학습 해상도 축소 배수"),
+    DE("Teiler der Trainingsauflösung"),
+    FR("Diviseur de la résolution d'entraînement"),
+    ES("Divisor de la resolución de entrenamiento"),
+    PT("Divisor da resolução de treino"),
+    IT("Divisore della risoluzione di addestramento"),
+    NL("Deler van de trainingsresolutie"),
+    RU("Делитель разрешения обучения"),
+    TR("Eğitim çözünürlüğü böleni"));
+SS_MSG(train_resolution_divisor_help,
+    EN("Train on smaller images than the ones on disk: 2 halves each side, 4 "
+       "quarters it. 0 or 1 trains at the images' own resolution. The cameras "
+       "always follow the image files, so a downscaled image folder needs no "
+       "factor here."),
+    JA("ディスク上の画像より小さくして学習します。2 なら各辺が半分、4 なら 4 "
+       "分の 1 です。0 か 1 なら画像そのものの解像度で学習します。カメラは常に"
+       "画像ファイルに合わせるので、縮小済みの画像フォルダにこの値は要りませ"
+       "ん。"),
+    ZH_HANS("以比磁盘上更小的图像训练：2 表示每边减半，4 表示为四分之一。0 或"
+            " 1 表示按图像本身的分辨率训练。相机始终跟随图像文件，因此已缩小的"
+            "图像目录无需在此填写倍数。"),
+    ZH_HANT("以比磁碟上更小的影像訓練：2 表示每邊減半，4 表示為四分之一。0 或"
+            " 1 表示依影像本身的解析度訓練。相機一律跟隨影像檔案，因此已縮小的"
+            "影像目錄無需在此填寫倍數。"),
+    KO("디스크에 있는 이미지보다 작게 학습합니다. 2는 각 변을 절반으로, 4는 4"
+       "분의 1로 줄입니다. 0 또는 1이면 이미지 자체 해상도로 학습합니다. 카메"
+       "라는 항상 이미지 파일을 따르므로, 이미 축소된 이미지 폴더에는 이 값이 "
+       "필요 없습니다."),
+    DE("Mit kleineren Bildern trainieren, als auf der Festplatte liegen: 2 "
+       "halbiert jede Seite, 4 viertelt sie. 0 oder 1 trainiert in der "
+       "Auflösung der Bilder selbst. Die Kameras richten sich immer nach den "
+       "Bilddateien, ein bereits verkleinerter Bildordner braucht hier also "
+       "keinen Faktor."),
+    FR("Entraîner sur des images plus petites que celles du disque : 2 divise "
+       "chaque côté par deux, 4 par quatre. 0 ou 1 entraîne à la résolution "
+       "des images elles-mêmes. Les caméras suivent toujours les fichiers "
+       "image, un dossier d'images déjà réduit n'a donc pas besoin de facteur "
+       "ici."),
+    ES("Entrenar con imágenes más pequeñas que las del disco: 2 reduce cada "
+       "lado a la mitad, 4 a la cuarta parte. 0 o 1 entrena a la resolución "
+       "propia de las imágenes. Las cámaras siguen siempre a los archivos de "
+       "imagen, así que una carpeta ya reducida no necesita factor aquí."),
+    PT("Treinar com imagens menores do que as do disco: 2 reduz cada lado à "
+       "metade, 4 a um quarto. 0 ou 1 treina na resolução das próprias "
+       "imagens. As câmeras seguem sempre os arquivos de imagem, portanto uma "
+       "pasta já reduzida não precisa de fator aqui."),
+    IT("Addestrare su immagini più piccole di quelle su disco: 2 dimezza ogni "
+       "lato, 4 lo riduce a un quarto. 0 o 1 addestra alla risoluzione delle "
+       "immagini stesse. Le camere seguono sempre i file immagine, quindi una "
+       "cartella già ridotta non richiede alcun fattore qui."),
+    NL("Trainen op kleinere beelden dan die op schijf: 2 halveert elke zijde, "
+       "4 brengt ze op een kwart. 0 of 1 traint op de eigen resolutie van de "
+       "beelden. De camera's volgen altijd de beeldbestanden, dus een al "
+       "verkleinde beeldmap heeft hier geen factor nodig."),
+    RU("Обучаться на изображениях меньше тех, что лежат на диске: 2 уменьшает "
+       "каждую сторону вдвое, 4 — вчетверо. 0 или 1 обучает в собственном "
+       "разрешении изображений. Камеры всегда следуют за файлами изображений, "
+       "поэтому уже уменьшенной папке коэффициент здесь не нужен."),
+    TR("Diskteki görüntülerden daha küçüğüyle eğitir: 2 her kenarı yarıya, 4 "
+       "dörtte bire indirir. 0 veya 1, görüntülerin kendi çözünürlüğünde "
+       "eğitir. Kameralar her zaman görüntü dosyalarını izler, bu yüzden "
+       "önceden küçültülmüş bir görüntü klasörü burada çarpan istemez."));
 
 SS_MSG(downscale_rounding_mode,
     EN("Downscale rounding"), JA("縮小時の丸め方"),
@@ -1246,50 +1302,41 @@ SS_MSG(downscale_rounding_mode,
     NL("Afronding bij verkleinen"), RU("Округление при уменьшении"),
     TR("Küçültmede yuvarlama"));
 SS_MSG(downscale_rounding_mode_help,
-    EN("How image size is rounded when divided by rescale_camera_to_fit. Most "
-       "image downscalers round, so switch to `round` if a pre-shrunk dataset "
-       "comes out a pixel off and the render looks slightly shifted."),
-    JA("rescale_camera_to_fit で割ったときの画像サイズの丸め方です。多くの縮小"
-       "ツールは四捨五入するので、あらかじめ縮小したデータセットで 1 画素ずれ"
-       "て描画がわずかにずれる場合は `round` に切り替えてください。"),
-    ZH_HANS("图像尺寸除以 rescale_camera_to_fit 后如何取整。多数缩图工具采用四"
-            "舍五入，所以如果事先缩小过的数据集差了一个像素、渲染看起来略有偏"
-            "移，就改成 `round`。"),
-    ZH_HANT("影像尺寸除以 rescale_camera_to_fit 後如何取整。多數縮圖工具採用四"
-            "捨五入，所以如果事先縮小過的資料集差了一個像素、算圖看起來略有偏"
-            "移，就改成 `round`。"),
-    KO("rescale_camera_to_fit로 나눌 때 이미지 크기를 어떻게 반올림할지입니다"
-       ". 대부분의 축소 도구는 반올림하므로, 미리 줄여 둔 데이터셋이 1픽셀 어"
-       "긋나고 렌더가 살짝 밀려 보이면 `round`로 바꾸십시오."),
-    DE("Wie die Bildgröße gerundet wird, wenn sie durch rescale_camera_to_fit "
-       "geteilt wird. Die meisten Verkleinerer runden kaufmännisch, also auf "
-       "`round` wechseln, wenn ein vorverkleinerter Datensatz um ein Pixel danebenliegt "
-       "und das Rendering leicht verschoben wirkt."),
-    FR("Comment la taille d'image est arrondie après division par rescale_camera_to_fit. "
-       "La plupart des réducteurs arrondissent, donc passez à `round` si un jeu "
-       "de données déjà réduit tombe à un pixel près et que le rendu paraît légèrement "
-       "décalé."),
-    ES("Cómo se redondea el tamaño de imagen al dividirlo por rescale_camera_to_fit. "
-       "La mayoría de los reductores redondean, así que cambie a `round` si un "
-       "conjunto ya reducido queda desviado un píxel y el render se ve algo desplazado."),
-    PT("Como o tamanho da imagem é arredondado ao ser dividido por rescale_camera_to_fit. "
-       "A maioria dos redutores arredonda, então mude para `round` se um conjunto "
-       "já reduzido ficar um pixel fora e a renderização parecer levemente deslocada."),
-    IT("Come viene arrotondata la dimensione dell'immagine quando è divisa per "
-       "rescale_camera_to_fit. La maggior parte dei riduttori arrotonda, quindi "
-       "passare a `round` se un set già ridotto risulta sfalsato di un pixel "
-       "e il render appare leggermente spostato."),
-    NL("Hoe de beeldgrootte wordt afgerond bij deling door rescale_camera_to_fit. "
-       "De meeste verkleiners ronden af, dus schakel over naar `round` als een "
-       "vooraf verkleinde dataset er een pixel naast zit en de rendering iets "
-       "verschoven lijkt."),
-    RU("Как округляется размер изображения при делении на rescale_camera_to_fit. "
-       "Большинство уменьшителей округляют, поэтому переключитесь на `round`, "
-       "если заранее уменьшенный набор промахивается на пиксель и рендер выглядит "
-       "слегка смещённым."),
-    TR("Görüntü boyutunun rescale_camera_to_fit'e bölünürken nasıl yuvarlanacağı. "
-       "Çoğu küçültücü yuvarlar; bu yüzden önceden küçültülmüş bir veri kümesi "
-       "bir piksel kayıyorsa ve çizim hafifçe kaymış görünüyorsa `round` seçin."));
+    EN("How each side is rounded when the size is divided by "
+       "train_resolution_divisor: `floor` never rounds a side up, `round` "
+       "takes the nearest, `ceil` always rounds up."),
+    JA("train_resolution_divisor で割ったとき、各辺をどう丸めるかです。`floor` "
+       "は切り捨て、`round` は四捨五入、`ceil` は切り上げです。"),
+    ZH_HANS("尺寸除以 train_resolution_divisor 后每条边如何取整：`floor` 向下取"
+            "整，`round` 取最接近的整数，`ceil` 向上取整。"),
+    ZH_HANT("尺寸除以 train_resolution_divisor 後每條邊如何取整：`floor` 向下取"
+            "整，`round` 取最接近的整數，`ceil` 向上取整。"),
+    KO("train_resolution_divisor로 나눌 때 각 변을 어떻게 반올림할지입니다. "
+       "`floor`는 내림, `round`는 가장 가까운 값, `ceil`은 올림입니다."),
+    DE("Wie jede Seite gerundet wird, wenn die Größe durch "
+       "train_resolution_divisor geteilt wird: `floor` rundet nie auf, `round` "
+       "nimmt den nächsten Wert, `ceil` rundet immer auf."),
+    FR("Comment chaque côté est arrondi après division par "
+       "train_resolution_divisor : `floor` n'arrondit jamais vers le haut, "
+       "`round` prend le plus proche, `ceil` arrondit toujours vers le haut."),
+    ES("Cómo se redondea cada lado al dividir el tamaño por "
+       "train_resolution_divisor: `floor` nunca redondea hacia arriba, `round` "
+       "toma el más cercano, `ceil` siempre redondea hacia arriba."),
+    PT("Como cada lado é arredondado ao dividir o tamanho por "
+       "train_resolution_divisor: `floor` nunca arredonda para cima, `round` "
+       "usa o mais próximo, `ceil` arredonda sempre para cima."),
+    IT("Come viene arrotondato ogni lato dividendo la dimensione per "
+       "train_resolution_divisor: `floor` non arrotonda mai per eccesso, "
+       "`round` prende il più vicino, `ceil` arrotonda sempre per eccesso."),
+    NL("Hoe elke zijde wordt afgerond bij deling van de grootte door "
+       "train_resolution_divisor: `floor` rondt nooit naar boven af, `round` "
+       "neemt de dichtstbijzijnde, `ceil` rondt altijd naar boven af."),
+    RU("Как округляется каждая сторона при делении размера на "
+       "train_resolution_divisor: `floor` никогда не округляет вверх, `round` "
+       "берёт ближайшее, `ceil` всегда округляет вверх."),
+    TR("Boyut train_resolution_divisor'e bölünürken her kenarın nasıl "
+       "yuvarlanacağı: `floor` asla yukarı yuvarlamaz, `round` en yakını "
+       "alır, `ceil` her zaman yukarı yuvarlar."));
 
 SS_MSG(eval_mode,
     EN("Evaluation split"), JA("評価用の分け方"), ZH_HANS("评估集划分方式"),
@@ -1592,6 +1639,188 @@ SS_MSG(warp_spherical_to_pinhole_help,
     TR("Eğitimden önce her 360 derece panoramayı altı küp yüzüne böler. "
        "Kapatılırsa doğrudan panorama üzerinde eğitilir ve özgün pikseller "
        "korunur."));
+
+SS_MSG(warp_face_fit,
+    EN("Face size when splitting"), JA("分割時の面サイズ"),
+    ZH_HANS("拆分后各面的尺寸"), ZH_HANT("拆分後各面的尺寸"),
+    KO("분할 시 면 크기"), DE("Flächengröße beim Aufteilen"),
+    FR("Taille des faces au découpage"), ES("Tamaño de las caras al dividir"),
+    PT("Tamanho das faces ao dividir"),
+    IT("Dimensione delle facce nella suddivisione"),
+    NL("Vlakgrootte bij het opsplitsen"),
+    RU("Размер граней при разбиении"),
+    TR("Bölmede yüz boyutu"));
+SS_MSG(warp_face_fit_help,
+    EN("Whether the pinhole faces a wide lens is split into all share one "
+       "size. `uniform` renders them in a single pass, which the fused "
+       "optimizer needs, and is the faster choice. `per-face` crops each face "
+       "to the part its lens fills (never under half a frame), drawing 15-40% "
+       "fewer pixels for less VRAM, but costs one pass per size and turns the "
+       "fused optimizer off."),
+    JA("広角レンズを分割したピンホール面をすべて同じサイズにするかどうか。"
+       "`uniform` は 1 回のパスで描画でき、融合オプティマイザはこれを必要とし、"
+       "速度も最も速くなります。`per-face` は各面をレンズが写る範囲（最小でも"
+       "面の半分）に切り詰め、画素数が 15〜40% 減って VRAM を節約しますが、"
+       "サイズごとに 1 パスかかり融合オプティマイザは無効になります。"),
+    ZH_HANS("拆分广角镜头得到的针孔面是否统一为同一尺寸。`uniform` 只需一遍渲"
+            "染，融合优化器需要这样，速度也最快。`per-face` 把每个面裁到镜头实"
+            "际覆盖的部分（不小于半个面），像素少 15-40%，更省显存，但每种尺寸"
+            "要多一遍渲染，且会关闭融合优化器。"),
+    ZH_HANT("拆分廣角鏡頭得到的針孔面是否統一為同一尺寸。`uniform` 只需一遍算"
+            "圖，融合最佳化器需要如此，速度也最快。`per-face` 把每個面裁到鏡頭實"
+            "際涵蓋的部分（不小於半個面），像素少 15-40%，更省顯示記憶體，但每種"
+            "尺寸要多一遍算圖，且會關閉融合最佳化器。"),
+    KO("광각 렌즈를 분할한 핀홀 면을 모두 같은 크기로 둘지 여부입니다. "
+       "`uniform` 은 한 번의 패스로 그리며 통합 옵티마이저가 이를 필요로 하고 "
+       "속도도 가장 빠릅니다. `per-face` 는 각 면을 렌즈가 담기는 부분(최소 면의 "
+       "절반)까지 잘라 픽셀이 15-40% 줄고 VRAM 을 아끼지만, 크기마다 패스가 "
+       "하나씩 늘고 통합 옵티마이저가 꺼집니다."),
+    DE("Ob die Lochkamera-Flächen, in die ein Weitwinkel zerlegt wird, alle "
+       "dieselbe Größe haben. `uniform` rendert sie in einem Durchgang, was "
+       "der fusionierte Optimierer braucht, und ist die schnellere Wahl. "
+       "`per-face` beschneidet jede Fläche auf den vom Objektiv gefüllten Teil "
+       "(nie unter eine halbe Fläche) und zeichnet 15-40% weniger Pixel bei "
+       "weniger VRAM, kostet aber einen Durchgang je Größe und schaltet den "
+       "fusionierten Optimierer ab."),
+    FR("Si les faces sténopé issues du découpage d'un objectif large ont "
+       "toutes la même taille. `uniform` les rend en une seule passe, ce dont "
+       "l'optimiseur fusionné a besoin, et c'est le choix le plus rapide. "
+       "`per-face` recadre chaque face sur la partie que remplit l'objectif "
+       "(jamais moins d'une demi-face), soit 15 à 40% de pixels en moins et "
+       "moins de VRAM, mais coûte une passe par taille et désactive "
+       "l'optimiseur fusionné."),
+    ES("Si las caras estenopeicas en que se divide un objetivo ancho comparten "
+       "un mismo tamaño. `uniform` las renderiza en una sola pasada, que es lo "
+       "que necesita el optimizador fusionado, y es la opción más rápida. "
+       "`per-face` recorta cada cara a la parte que llena su objetivo (nunca "
+       "menos de media cara) y dibuja entre un 15% y un 40% menos de píxeles "
+       "con menos VRAM, pero cuesta una pasada por tamaño y desactiva el "
+       "optimizador fusionado."),
+    PT("Se as faces estenopeicas em que uma lente larga é dividida têm todas o "
+       "mesmo tamanho. `uniform` desenha-as numa única passagem, que é o que o "
+       "otimizador fundido precisa, e é a opção mais rápida. `per-face` recorta "
+       "cada face à parte que a lente preenche (nunca menos de meia face) e "
+       "desenha 15 a 40% menos pixels com menos VRAM, mas custa uma passagem "
+       "por tamanho e desliga o otimizador fundido."),
+    IT("Se le facce stenopeiche in cui viene divisa un'ottica ampia hanno tutte "
+       "la stessa dimensione. `uniform` le disegna in un solo passaggio, ciò "
+       "che serve all'ottimizzatore fuso, ed è la scelta più veloce. `per-face` "
+       "ritaglia ogni faccia alla parte coperta dall'obiettivo (mai meno di "
+       "mezza faccia) e disegna il 15-40% di pixel in meno con meno VRAM, ma "
+       "costa un passaggio per dimensione e disattiva l'ottimizzatore fuso."),
+    NL("Of de pinhole-vlakken waarin een groothoeklens wordt opgesplitst "
+       "allemaal dezelfde grootte hebben. `uniform` rendert ze in één doorgang, "
+       "wat de gefuseerde optimizer nodig heeft, en is de snelste keuze. "
+       "`per-face` snijdt elk vlak bij tot het deel dat de lens vult (nooit "
+       "minder dan een half vlak) en tekent 15-40% minder pixels met minder "
+       "VRAM, maar kost een doorgang per grootte en schakelt de gefuseerde "
+       "optimizer uit."),
+    RU("Должны ли все пинхол-грани, на которые разбивается широкоугольный "
+       "объектив, иметь один размер. `uniform` отрисовывает их за один проход, "
+       "что нужно объединённому оптимизатору, и работает быстрее всего. "
+       "`per-face` обрезает каждую грань до части, которую заполняет объектив "
+       "(не меньше половины грани), рисуя на 15-40% меньше пикселей и экономя "
+       "видеопамять, но требует прохода на каждый размер и отключает "
+       "объединённый оптимизатор."),
+    TR("Geniş bir merceğin bölündüğü iğne deliği yüzlerinin hepsinin aynı "
+       "boyutta olup olmayacağı. `uniform` hepsini tek geçişte çizer; birleşik "
+       "eniyileyici bunu gerektirir ve en hızlı seçenektir. `per-face` her yüzü "
+       "merceğin doldurduğu kısma (en az yarım yüz) kırpar, %15-40 daha az "
+       "piksel çizip VRAM'den tasarruf eder, ancak boyut başına bir geçişe mal "
+       "olur ve birleşik eniyileyiciyi kapatır."));
+
+SS_MSG(warp_back_face,
+    EN("Rear face when splitting"), JA("分割時に後方の面も使う"),
+    ZH_HANS("拆分时使用朝后的面"), ZH_HANT("拆分時使用朝後的面"),
+    KO("분할 시 뒤쪽 면 사용"), DE("Rückseitige Fläche beim Aufteilen"),
+    FR("Face arrière au découpage"), ES("Cara trasera al dividir"),
+    PT("Face traseira ao dividir"),
+    IT("Faccia posteriore nella suddivisione"),
+    NL("Achtervlak bij het opsplitsen"),
+    RU("Задняя грань при разбиении"), TR("Bölmede arka yüz"));
+SS_MSG(warp_back_face_help,
+    EN("Whether a lens seen past 135 degrees also gets a sixth pinhole face "
+       "pointing backwards. On a real fisheye that direction holds little but "
+       "the lens folded over itself, which is usually masked out anyway, and "
+       "the face slows every step down and takes one more appearance slot per "
+       "image (about 20% more bilateral grid memory). Turn it on for a lens "
+       "that genuinely sees behind itself. A panorama always uses all six."),
+    JA("135 度を超えて写るレンズに、後ろ向きのピンホール面をもう 1 枚加えるか"
+       "どうか。実際の魚眼ではその方向に写るのはレンズの折り返し像がほとんど"
+       "で、たいていマスクで除かれます。それでも 1 ステップごとの処理は遅くな"
+       "り、画像ごとの外観スロットを 1 つ余計に使います（バイラテラルグリッド"
+       "のメモリが約 20% 増）。本当に後方まで写るレンズのときだけ有効にしてく"
+       "ださい。パノラマは常に 6 面すべてを使います。"),
+    ZH_HANS("视场超过 135 度的镜头是否再加一张朝后的针孔面。真实鱼眼在这个方向"
+            "上几乎只有镜头折返的像，通常本来就会被遮罩掉，却会拖慢每一步，并"
+            "让每张图像多占一个外观槽（双边网格显存约多 20%）。只有镜头确实能"
+            "看到身后时才打开。全景图始终使用全部六个面。"),
+    ZH_HANT("視場超過 135 度的鏡頭是否再加一張朝後的針孔面。真實魚眼在這個方向"
+            "上幾乎只有鏡頭折返的影像，通常本來就會被遮罩掉，卻會拖慢每一步，"
+            "並讓每張影像多佔一個外觀槽（雙邊網格顯示記憶體約多 20%）。只有鏡"
+            "頭確實能看到身後時才開啟。全景影像一律使用全部六個面。"),
+    KO("135도를 넘겨 보이는 렌즈에 뒤를 향하는 핀홀 면을 하나 더 둘지 여부입니"
+       "다. 실제 어안에서 그 방향에는 렌즈가 접혀 생긴 상뿐이라 보통 마스크로 "
+       "지워지지만, 면이 늘면 스텝마다 느려지고 이미지당 외관 슬롯을 하나 더 "
+       "씁니다(양방향 그리드 메모리 약 20% 증가). 정말로 뒤까지 보는 렌즈에서"
+       "만 켜세요. 파노라마는 항상 여섯 면을 모두 씁니다."),
+    DE("Ob ein über 135 Grad hinaus sehendes Objektiv zusätzlich eine nach "
+       "hinten gerichtete Lochkamera-Fläche bekommt. Bei einem echten Fisheye "
+       "steht dort fast nur das umgeklappte Bild des Objektivs, das ohnehin "
+       "meist maskiert ist; die Fläche bremst jeden Schritt und kostet je Bild "
+       "einen weiteren Erscheinungs-Slot (rund 20% mehr Speicher für das "
+       "bilaterale Gitter). Nur einschalten, wenn das Objektiv wirklich nach "
+       "hinten sieht. Ein Panorama nutzt immer alle sechs."),
+    FR("Si un objectif vu au-delà de 135 degrés reçoit en plus une face "
+       "sténopé tournée vers l'arrière. Sur un vrai fisheye, cette direction "
+       "ne contient guère que l'image repliée de l'objectif, le plus souvent "
+       "masquée ; la face ralentit chaque étape et coûte un emplacement "
+       "d'apparence de plus par image (environ 20% de mémoire en plus pour la "
+       "grille bilatérale). À activer seulement pour un objectif qui voit "
+       "vraiment derrière lui. Un panorama utilise toujours les six."),
+    ES("Si un objetivo que ve más allá de 135 grados recibe además una cara "
+       "estenopeica orientada hacia atrás. En un ojo de pez real esa dirección "
+       "solo contiene la imagen plegada del objetivo, casi siempre enmascarada; "
+       "la cara ralentiza cada paso y ocupa una ranura de apariencia más por "
+       "imagen (alrededor de un 20% más de memoria para la rejilla bilateral). "
+       "Actívala solo con un objetivo que vea de verdad hacia atrás. Una "
+       "panorámica siempre usa las seis."),
+    PT("Se uma lente vista para além de 135 graus recebe também uma face "
+       "estenopeica virada para trás. Numa olho de peixe real essa direção "
+       "contém pouco mais do que a imagem dobrada da lente, quase sempre "
+       "mascarada; a face atrasa cada passo e ocupa mais um espaço de aparência "
+       "por imagem (cerca de 20% mais memória para a grelha bilateral). Ligue "
+       "apenas com uma lente que veja mesmo para trás. Um panorama usa sempre "
+       "as seis."),
+    IT("Se un obiettivo che vede oltre i 135 gradi riceve anche una faccia "
+       "stenopeica rivolta all'indietro. In un fisheye reale quella direzione "
+       "contiene quasi solo l'immagine ripiegata dell'obiettivo, di norma "
+       "mascherata; la faccia rallenta ogni passo e occupa uno slot di aspetto "
+       "in più per immagine (circa il 20% di memoria in più per la griglia "
+       "bilaterale). Attivala solo con un obiettivo che veda davvero dietro di "
+       "sé. Un panorama usa sempre tutte e sei."),
+    NL("Of een lens die verder dan 135 graden kijkt er een naar achteren "
+       "gericht pinhole-vlak bij krijgt. Bij een echte fisheye staat in die "
+       "richting bijna alleen het omgevouwen beeld van de lens, dat meestal "
+       "toch gemaskeerd is; het vlak vertraagt elke stap en kost per beeld een "
+       "extra uiterlijk-slot (ongeveer 20% meer geheugen voor het bilaterale "
+       "raster). Zet dit alleen aan voor een lens die echt achter zich kijkt. "
+       "Een panorama gebruikt altijd alle zes."),
+    RU("Получает ли объектив, видящий дальше 135 градусов, дополнительную "
+       "пинхол-грань, направленную назад. У настоящего фишая в этом "
+       "направлении почти всегда лишь завёрнутое изображение самого объектива, "
+       "которое обычно и так замаскировано; грань замедляет каждый шаг и "
+       "занимает ещё один слот внешнего вида на изображение (примерно на 20% "
+       "больше памяти под билатеральную сетку). Включайте только для "
+       "объектива, который действительно видит назад. Панорама всегда "
+       "использует все шесть."),
+    TR("135 dereceden geniş gören bir merceğe ayrıca arkaya bakan bir iğne "
+       "deliği yüzü eklenip eklenmeyeceği. Gerçek bir balıkgözünde o yönde "
+       "neredeyse yalnızca merceğin katlanmış görüntüsü bulunur ve zaten "
+       "çoğunlukla maskelenir; bu yüz her adımı yavaşlatır ve görüntü başına "
+       "bir görünüm yuvası daha harcar (bilateral ızgara belleğinde yaklaşık "
+       "%20 artış). Yalnızca gerçekten arkasını gören bir mercek için açın. "
+       "Panorama her zaman altı yüzü de kullanır."));
 
 SS_MSG(deblur_training_images,
     EN("Deblur training images"), JA("学習画像のぶれを補正"),
@@ -3925,6 +4154,140 @@ SS_MSG(densify_final_score_power_help,
        "başına biten puanı bu kuvvete yükseltir. 1'in üstünde yeni ayrıntı en "
        "yüksek puanlı splat'larda toplanır; 1'in altında sahneye daha eşit "
        "dağılır. 1 doğrudan puana göre çeker."));
+SS_MSG(densify_oversize_split_fraction,
+    EN("Split share for oversized splats"),
+    JA("大きすぎるスプラットに回す分割の割合"),
+    ZH_HANS("分给过大泼溅的分裂比例"), ZH_HANT("分給過大潑濺的分裂比例"),
+    KO("지나치게 큰 스플랫에 주는 분할 비율"),
+    DE("Teilungsanteil für übergroße Splats"),
+    FR("Part des divisions pour les splats trop grands"),
+    ES("Parte de las divisiones para splats demasiado grandes"),
+    PT("Parte das divisões para splats grandes demais"),
+    IT("Quota di divisioni per gli splat troppo grandi"),
+    NL("Splitsingsaandeel voor te grote splats"),
+    RU("Доля делений для слишком крупных сплатов"),
+    TR("Aşırı büyük splat'lara ayrılan bölme payı"));
+SS_MSG(densify_oversize_split_fraction_help,
+    EN("The share of each round's new splats spent on splats over the "
+       "on-screen size limit rather than on the error score. Splitting an "
+       "oversized splat is what lets it get smaller without leaving a hole. 0 "
+       "spends the whole budget on the error score."),
+    JA("一回の追加でつくるスプラットのうち、誤差の点数ではなく画面サイズの制限"
+       "を超えたスプラットに回す割合です。大きすぎるスプラットは分割してはじめ"
+       "て、穴を残さずに小さくなれます。0 なら全部を誤差の点数に使います。"),
+    ZH_HANS("每一轮新增的泼溅里，有多大比例分给超出屏幕尺寸限制的泼溅，而不是"
+            "按误差分数来分。过大的泼溅只有分裂之后，才能在不留下空洞的情况下"
+            "变小。0 表示全部按误差分数来分。"),
+    ZH_HANT("每一輪新增的潑濺裡，有多大比例分給超出螢幕尺寸限制的潑濺，而不是"
+            "按誤差分數來分。過大的潑濺只有分裂之後，才能在不留下空洞的情況下"
+            "變小。0 表示全部按誤差分數來分。"),
+    KO("한 번에 늘리는 스플랫 가운데, 오차 점수가 아니라 화면 크기 제한을 넘은 "
+       "스플랫에 주는 비율입니다. 지나치게 큰 스플랫은 나눠야 구멍을 남기지 않"
+       "고 작아질 수 있습니다. 0이면 전부 오차 점수에 씁니다."),
+    DE("Der Anteil der neuen Splats jeder Runde, der auf Splats über der "
+       "Bildschirmgrößen-Grenze entfällt statt auf die Fehlerbewertung. Erst "
+       "das Teilen lässt einen übergroßen Splat kleiner werden, ohne ein Loch "
+       "zu hinterlassen. 0 gibt das ganze Budget der Fehlerbewertung."),
+    FR("La part des nouveaux splats de chaque tour consacrée aux splats "
+       "au-delà de la limite de taille à l'écran plutôt qu'à la note d'erreur. "
+       "C'est la division qui permet à un splat trop grand de rétrécir sans "
+       "laisser de trou. 0 donne tout le budget à la note d'erreur."),
+    ES("La parte de los splats nuevos de cada ronda que se dedica a los "
+       "splats por encima del límite de tamaño en pantalla en vez de a la "
+       "puntuación de error. Dividir es lo que permite a un splat demasiado "
+       "grande encogerse sin dejar un hueco. 0 dedica todo el presupuesto a "
+       "la puntuación de error."),
+    PT("A parte dos splats novos de cada rodada dedicada aos splats acima do "
+       "limite de tamanho na tela em vez da pontuação de erro. Dividir é o "
+       "que permite a um splat grande demais encolher sem deixar um buraco. 0 "
+       "dedica todo o orçamento à pontuação de erro."),
+    IT("La quota degli splat nuovi di ogni giro destinata agli splat oltre il "
+       "limite di dimensione a schermo invece che al punteggio di errore. È "
+       "la divisione che permette a uno splat troppo grande di rimpicciolirsi "
+       "senza lasciare un buco. 0 destina tutto il budget al punteggio di "
+       "errore."),
+    NL("Het deel van de nieuwe splats per ronde dat naar splats boven de "
+       "schermgroottelimiet gaat in plaats van naar de foutscore. Splitsen is "
+       "wat een te grote splat laat krimpen zonder een gat achter te laten. 0 "
+       "geeft het hele budget aan de foutscore."),
+    RU("Доля новых сплатов каждого круга, которая уходит на сплаты сверх "
+       "предела размера на экране, а не на оценку ошибки. Именно деление "
+       "позволяет слишком крупному сплату уменьшиться, не оставив дыры. 0 "
+       "отдаёт весь запас оценке ошибки."),
+    TR("Her turda eklenen splat'ların, hata puanı yerine ekran boyutu "
+       "sınırını aşmış splat'lara ayrılan payı. Aşırı büyük bir splat ancak "
+       "bölününce delik bırakmadan küçülebilir. 0 bütün payı hata puanına "
+       "verir."));
+
+SS_MSG(densify_oversize_score_blend,
+    EN("Error weight in the oversized draw"),
+    JA("大きすぎる分の抽選での誤差の重み"),
+    ZH_HANS("过大泼溅抽选里的误差权重"), ZH_HANT("過大潑濺抽選裡的誤差權重"),
+    KO("큰 스플랫 뽑기에서 오차의 비중"),
+    DE("Fehlergewicht in der Ziehung für übergroße Splats"),
+    FR("Poids de l'erreur dans le tirage des splats trop grands"),
+    ES("Peso del error en el sorteo de splats grandes"),
+    PT("Peso do erro no sorteio dos splats grandes"),
+    IT("Peso dell'errore nell'estrazione degli splat troppo grandi"),
+    NL("Foutgewicht in de trekking voor te grote splats"),
+    RU("Вес ошибки в отборе слишком крупных сплатов"),
+    TR("Aşırı büyük splat çekilişinde hatanın ağırlığı"));
+SS_MSG(densify_oversize_score_blend_help,
+    EN("How much the error score still counts when picking which oversized "
+       "splats to split. 0 picks purely by how far over the limit a splat is, "
+       "which spends splats on empty sky; 1 picks exactly like the ordinary "
+       "draw. In between prefers oversized splats that also carry error."),
+    JA("どの大きすぎるスプラットを分割するか選ぶとき、誤差の点数をどれだけ効か"
+       "せるかです。0 は制限をどれだけ超えたかだけで選ぶので、何もない空にスプ"
+       "ラットを使ってしまいます。1 は普通の抽選と同じです。間の値は、誤差もあ"
+       "わせて持つ大きすぎるスプラットを先に選びます。"),
+    ZH_HANS("挑选要分裂哪些过大的泼溅时，误差分数还占多少分量。0 只按超出限制"
+            "的程度来挑，会把泼溅花在没有细节的天空上；1 和普通抽选完全一样。"
+            "取中间值会优先挑同时带着误差的过大泼溅。"),
+    ZH_HANT("挑選要分裂哪些過大的潑濺時，誤差分數還佔多少分量。0 只按超出限制"
+            "的程度來挑，會把潑濺花在沒有細節的天空上；1 和普通抽選完全一樣。"
+            "取中間值會優先挑同時帶著誤差的過大潑濺。"),
+    KO("어떤 큰 스플랫을 나눌지 고를 때 오차 점수를 얼마나 반영할지입니다. 0은 "
+       "제한을 얼마나 넘었는지만 보고 뽑아서 빈 하늘에 스플랫을 씁니다. 1은 보"
+       "통 뽑기와 똑같습니다. 그 사이 값은 오차까지 함께 지닌 큰 스플랫을 먼저 "
+       "고릅니다."),
+    DE("Wie stark die Fehlerbewertung noch zählt, wenn ausgewählt wird, "
+       "welche übergroßen Splats geteilt werden. 0 wählt allein danach, wie "
+       "weit ein Splat über der Grenze liegt, und verbraucht Splats am leeren "
+       "Himmel; 1 wählt genau wie die gewöhnliche Ziehung. Dazwischen kommen "
+       "übergroße Splats zuerst, die auch Fehler tragen."),
+    FR("Combien la note d'erreur compte encore au moment de choisir quels "
+       "splats trop grands diviser. 0 choisit uniquement selon le dépassement "
+       "de la limite, ce qui dépense des splats sur un ciel vide ; 1 choisit "
+       "exactement comme le tirage ordinaire. Entre les deux, les splats trop "
+       "grands qui portent aussi de l'erreur passent d'abord."),
+    ES("Cuánto cuenta todavía la puntuación de error al elegir qué splats "
+       "demasiado grandes dividir. 0 elige solo por cuánto se pasa del límite, "
+       "lo que gasta splats en cielo vacío; 1 elige igual que el sorteo "
+       "normal. En medio prefiere los splats grandes que además cargan "
+       "error."),
+    PT("Quanto a pontuação de erro ainda conta ao escolher quais splats "
+       "grandes demais dividir. 0 escolhe só pelo quanto passa do limite, o "
+       "que gasta splats em céu vazio; 1 escolhe igual ao sorteio comum. No "
+       "meio prefere os splats grandes que também carregam erro."),
+    IT("Quanto conta ancora il punteggio di errore nello scegliere quali "
+       "splat troppo grandi dividere. 0 sceglie solo in base a quanto un "
+       "splat supera il limite, e spende splat sul cielo vuoto; 1 sceglie "
+       "come l'estrazione ordinaria. Nel mezzo vengono prima gli splat troppo "
+       "grandi che portano anche errore."),
+    NL("Hoeveel de foutscore nog meetelt bij het kiezen welke te grote splats "
+       "worden gesplitst. 0 kiest alleen op hoever een splat over de limiet "
+       "zit, wat splats aan lege lucht besteedt; 1 kiest net als de gewone "
+       "trekking. Ertussenin gaan te grote splats voor die ook fout dragen."),
+    RU("Насколько оценка ошибки ещё учитывается при выборе слишком крупных "
+       "сплатов для деления. 0 выбирает только по превышению предела и тратит "
+       "сплаты на пустое небо; 1 выбирает так же, как обычная жеребьёвка. "
+       "Промежуточные значения сначала берут крупные сплаты, несущие и "
+       "ошибку."),
+    TR("Hangi aşırı büyük splat'ların bölüneceği seçilirken hata puanının ne "
+       "kadar sayıldığı. 0 yalnızca sınırın ne kadar aşıldığına bakar ve "
+       "splat'ları boş gökyüzüne harcar; 1 sıradan çekilişin tıpkısıdır. "
+       "Aradaki değerler hata da taşıyan aşırı büyük splat'ları öne alır."));
 
 SS_MSG(use_long_axis_split,
     EN("Split along the long axis"), JA("長い軸で分割する"),
@@ -4122,6 +4485,79 @@ SS_MSG(max_screen_size_clip_hardness_help,
     TR("Ekran boyutu sınırının ne kadar katı uygulandığı; 1'den başlar. Yüksek "
        "değerler aşırı büyük splat'ları kararlıca kırpar; düşük değerler onları "
        "yavaşça küçültür."));
+SS_MSG(max_screen_size_penalty,
+    EN("On-screen size pressure"), JA("画面サイズ制限の効き"),
+    ZH_HANS("屏幕尺寸限制的推力"), ZH_HANT("螢幕尺寸限制的推力"),
+    KO("화면 크기 제한의 압력"), DE("Druck der Bildschirmgrößen-Grenze"),
+    FR("Pression de la limite de taille à l'écran"),
+    ES("Presión del límite de tamaño en pantalla"),
+    PT("Pressão do limite de tamanho na tela"),
+    IT("Pressione del limite di dimensione a schermo"),
+    NL("Druk van de schermgroottelimiet"),
+    RU("Нажим предела размера на экране"),
+    TR("Ekran boyutu sınırının baskısı"));
+SS_MSG(max_screen_size_penalty_help,
+    EN("How hard the optimizer pushes a splat back under the on-screen size "
+       "limit, per doubling past it. This push is weighed against the photo "
+       "error, so a splat that has to be large -- sky, a wide flat wall -- "
+       "can stay large. 0 turns it off and clamps oversized splats on every "
+       "step instead."),
+    JA("画面サイズの制限を超えたスプラットを、制限の 2 倍ごとにどれだけ強く小"
+       "さくするかです。この力は写真との誤差と釣り合うので、空や広い壁のように"
+       "大きいままでよいスプラットは残ります。0 にすると力を切り、毎ステップき"
+       "っぱり抑える動きに戻ります。"),
+    ZH_HANS("超过屏幕尺寸限制的泼溅，每超出一倍要被推回多大的力。这个力和照片"
+            "误差相权衡，所以天空或大片平墙这类本该很大的泼溅可以保持很大。0 "
+            "关掉这个力，改为每一步都夹住过大的泼溅。"),
+    ZH_HANT("超過螢幕尺寸限制的潑濺，每超出一倍要被推回多大的力。這個力和照片"
+            "誤差相權衡，所以天空或大片平牆這類本該很大的潑濺可以保持很大。0 "
+            "關掉這個力，改為每一步都夾住過大的潑濺。"),
+    KO("화면 크기 제한을 넘은 스플랫을 제한의 두 배마다 얼마나 세게 도로 누를"
+       "지입니다. 이 힘은 사진 오차와 견주므로 하늘이나 넓은 벽처럼 커야 하는 "
+       "스플랫은 큰 채로 남습니다. 0은 힘을 끄고 매 단계마다 잘라내는 방식으로 "
+       "돌아갑니다."),
+    DE("Wie stark der Optimierer einen Splat unter die Bildschirmgrößen-Grenz"
+       "e zurückdrückt, je Verdopplung darüber. Dieser Druck wird gegen den "
+       "Bildfehler abgewogen, sodass ein Splat, der groß sein muss -- Himmel, "
+       "eine breite flache Wand -- groß bleiben darf. 0 schaltet ihn ab und "
+       "begrenzt übergroße Splats stattdessen in jedem Schritt."),
+    FR("Avec quelle force l'optimiseur ramène un splat sous la limite de "
+       "taille à l'écran, par doublement au-delà. Cette pression est mise en "
+       "balance avec l'erreur photométrique, si bien qu'un splat qui doit "
+       "être grand -- le ciel, un large mur plat -- peut le rester. 0 la "
+       "coupe et rabat les splats trop grands à chaque pas."),
+    ES("Con cuánta fuerza el optimizador devuelve un splat por debajo del "
+       "límite de tamaño en pantalla, por cada duplicación por encima. Esta "
+       "presión se sopesa contra el error fotométrico, así que un splat que "
+       "debe ser grande -- el cielo, un muro plano y ancho -- puede seguir "
+       "siéndolo. 0 la apaga y recorta los splats demasiado grandes en cada "
+       "paso."),
+    PT("Com quanta força o otimizador puxa um splat de volta para baixo do "
+       "limite de tamanho na tela, por duplicação acima dele. Essa pressão é "
+       "pesada contra o erro fotométrico, então um splat que precisa ser "
+       "grande -- o céu, uma parede plana e larga -- pode continuar grande. 0 "
+       "desliga a pressão e corta os splats grandes demais a cada passo."),
+    IT("Con quanta forza l'ottimizzatore riporta uno splat sotto il limite di "
+       "dimensione a schermo, per ogni raddoppio oltre di esso. Questa "
+       "pressione viene pesata contro l'errore fotometrico, così uno splat "
+       "che deve essere grande -- il cielo, un muro piatto e largo -- può "
+       "restare grande. 0 la spegne e taglia gli splat troppo grandi a ogni "
+       "passo."),
+    NL("Hoe hard de optimalisator een splat terugduwt onder de "
+       "schermgroottelimiet, per verdubbeling erboven. Deze druk wordt "
+       "afgewogen tegen de fotofout, zodat een splat die groot moet zijn -- "
+       "lucht, een brede vlakke muur -- groot mag blijven. 0 zet hem uit en "
+       "kapt te grote splats in plaats daarvan elke stap af."),
+    RU("Насколько сильно оптимизатор возвращает сплат под предел размера на "
+       "экране за каждое удвоение сверх него. Этот нажим уравновешивается "
+       "ошибкой по снимку, поэтому сплат, которому положено быть большим -- "
+       "небо, широкая плоская стена, -- остаётся большим. 0 отключает его и "
+       "вместо этого обрезает слишком крупные сплаты на каждом шаге."),
+    TR("İyileştiricinin bir splat'ı ekran boyutu sınırının altına ne kadar "
+       "sert geri ittiği; sınırın her katına bir kez. Bu baskı fotoğraf "
+       "hatasıyla tartılır, böylece büyük olmak zorunda olan bir splat -- "
+       "gökyüzü, geniş düz bir duvar -- büyük kalabilir. 0 baskıyı kapatır ve "
+       "bunun yerine her adımda aşırı büyük splat'ları kırpar."));
 
 SS_MSG(max_world_size,
     EN("Maximum world size"), JA("ワールド上の最大サイズ"),
@@ -5569,6 +6005,123 @@ SS_MSG(scale_reg_help,
     TR("Splat boyutunu yumuşakça düşürür. Splat'ları derli toplu tutar, böylece "
        "ayrıntı yerel kalır; aşırısı büyük düz alanları eksik doldurur."));
 
+SS_MSG(opacity_reg_decay_power,
+    EN("Opacity penalty decay power"), JA("不透明度ペナルティの減衰指数"),
+    ZH_HANS("不透明度惩罚衰减幂"), ZH_HANT("不透明度懲罰衰減冪"),
+    KO("불투명도 페널티 감쇠 지수"),
+    DE("Abklingexponent der Deckkraftstrafe"),
+    FR("Exposant de décroissance de la pénalité d'opacité"),
+    ES("Exponente de decaimiento de la penalización de opacidad"),
+    PT("Expoente de decaimento da penalidade de opacidade"),
+    IT("Esponente di decadimento della penalità di opacità"),
+    NL("Vervalexponent van de dekkingsstraf"),
+    RU("Показатель затухания штрафа за непрозрачность"),
+    TR("Saydamsızlık cezası sönümleme üssü"));
+SS_MSG(opacity_reg_decay_power_help,
+    EN("Fade the opacity penalty to zero over the run, as (1-t)^p with t the "
+       "fraction of steps done. Its average over the run stays at the value you "
+       "set, so this only moves the pressure earlier. 0 keeps it constant."),
+    JA("不透明度のペナルティを、進捗 t に対して (1-t)^p の形で学習の終わりまで"
+       "にゼロへ下げます。全体の平均は設定した値のままなので、効き目が前半に寄"
+       "るだけです。0 なら一定のままです。"),
+    ZH_HANS("让不透明度惩罚按 (1-t)^p 在训练过程中降到零，t 是已完成步数的比"
+            "例。全程平均值仍等于所设的值，所以这只是把力度提前。0 表示保持不"
+            "变。"),
+    ZH_HANT("讓不透明度懲罰按 (1-t)^p 在訓練過程中降到零，t 是已完成步數的比"
+            "例。全程平均值仍等於所設的值，所以這只是把力度提前。0 表示保持不"
+            "變。"),
+    KO("불투명도 페널티를 진행률 t에 대해 (1-t)^p 형태로 학습이 끝날 때 0까지 "
+       "낮춥니다. 전체 평균은 설정한 값 그대로여서 힘이 앞쪽으로 쏠릴 뿐입니"
+       "다. 0이면 일정하게 유지합니다."),
+    DE("Die Deckkraftstrafe über den Lauf auf null abklingen lassen, nach "
+       "(1-t)^p mit t als Anteil der erledigten Schritte. Ihr Mittel über den "
+       "Lauf bleibt der eingestellte Wert, der Druck rückt also nur nach vorn. "
+       "0 hält sie konstant."),
+    FR("Faire décroître la pénalité d'opacité jusqu'à zéro sur la durée du run, "
+       "en (1-t)^p où t est la fraction des étapes faites. Sa moyenne sur le run "
+       "reste la valeur réglée ; la pression est seulement avancée. 0 la garde "
+       "constante."),
+    ES("Bajar a cero la penalización de opacidad a lo largo del entrenamiento, "
+       "según (1-t)^p con t la fracción de pasos hechos. Su media sobre el "
+       "entrenamiento sigue siendo el valor fijado, así que solo adelanta la "
+       "presión. 0 la mantiene constante."),
+    PT("Fazer a penalidade de opacidade cair a zero ao longo do treino, segundo "
+       "(1-t)^p com t a fração de passos feitos. A média ao longo do treino "
+       "continua a ser o valor definido, por isso só adianta a pressão. 0 "
+       "mantém-na constante."),
+    IT("Far scendere a zero la penalità di opacità lungo l'addestramento, "
+       "secondo (1-t)^p con t la frazione di passi svolti. La sua media "
+       "sull'addestramento resta il valore impostato, quindi la pressione viene "
+       "solo anticipata. 0 la tiene costante."),
+    NL("De dekkingsstraf over de run naar nul laten zakken volgens (1-t)^p, met "
+       "t het deel van de stappen dat af is. Haar gemiddelde over de run blijft "
+       "de ingestelde waarde, dus de druk verschuift alleen naar voren. 0 houdt "
+       "haar constant."),
+    RU("Плавно сводить штраф за непрозрачность к нулю за прогон, по закону "
+       "(1-t)^p, где t — доля пройденных шагов. Среднее за прогон остаётся "
+       "заданным значением, так что нажим лишь смещается к началу. 0 оставляет "
+       "его постоянным."),
+    TR("Saydamsızlık cezasını, t tamamlanan adımların oranı olmak üzere (1-t)^p "
+       "ile eğitim boyunca sıfıra indirir. Eğitim boyunca ortalaması ayarlanan "
+       "değerde kalır, yani baskı yalnızca öne alınır. 0 onu sabit tutar."));
+
+SS_MSG(scale_reg_decay_power,
+    EN("Size penalty decay power"), JA("大きさペナルティの減衰指数"),
+    ZH_HANS("尺寸惩罚衰减幂"), ZH_HANT("尺寸懲罰衰減冪"),
+    KO("크기 페널티 감쇠 지수"), DE("Abklingexponent der Größenstrafe"),
+    FR("Exposant de décroissance de la pénalité de taille"),
+    ES("Exponente de decaimiento de la penalización de tamaño"),
+    PT("Expoente de decaimento da penalidade de tamanho"),
+    IT("Esponente di decadimento della penalità di dimensione"),
+    NL("Vervalexponent van de groottestraf"),
+    RU("Показатель затухания штрафа за размер"),
+    TR("Boyut cezası sönümleme üssü"));
+SS_MSG(scale_reg_decay_power_help,
+    EN("Fade the size penalty to zero over the run, as (1-t)^p with t the "
+       "fraction of steps done. Its average over the run stays at the value you "
+       "set, so this only moves the pressure earlier. 0 keeps it constant."),
+    JA("大きさのペナルティを、進捗 t に対して (1-t)^p の形で学習の終わりまでに"
+       "ゼロへ下げます。全体の平均は設定した値のままなので、効き目が前半に寄る"
+       "だけです。0 なら一定のままです。"),
+    ZH_HANS("让尺寸惩罚按 (1-t)^p 在训练过程中降到零，t 是已完成步数的比例。全"
+            "程平均值仍等于所设的值，所以这只是把力度提前。0 表示保持不变。"),
+    ZH_HANT("讓尺寸懲罰按 (1-t)^p 在訓練過程中降到零，t 是已完成步數的比例。全"
+            "程平均值仍等於所設的值，所以這只是把力度提前。0 表示保持不變。"),
+    KO("크기 페널티를 진행률 t에 대해 (1-t)^p 형태로 학습이 끝날 때 0까지 낮춥"
+       "니다. 전체 평균은 설정한 값 그대로여서 힘이 앞쪽으로 쏠릴 뿐입니다. 0이"
+       "면 일정하게 유지합니다."),
+    DE("Die Größenstrafe über den Lauf auf null abklingen lassen, nach (1-t)^p "
+       "mit t als Anteil der erledigten Schritte. Ihr Mittel über den Lauf "
+       "bleibt der eingestellte Wert, der Druck rückt also nur nach vorn. 0 "
+       "hält sie konstant."),
+    FR("Faire décroître la pénalité de taille jusqu'à zéro sur la durée du run, "
+       "en (1-t)^p où t est la fraction des étapes faites. Sa moyenne sur le run "
+       "reste la valeur réglée ; la pression est seulement avancée. 0 la garde "
+       "constante."),
+    ES("Bajar a cero la penalización de tamaño a lo largo del entrenamiento, "
+       "según (1-t)^p con t la fracción de pasos hechos. Su media sobre el "
+       "entrenamiento sigue siendo el valor fijado, así que solo adelanta la "
+       "presión. 0 la mantiene constante."),
+    PT("Fazer a penalidade de tamanho cair a zero ao longo do treino, segundo "
+       "(1-t)^p com t a fração de passos feitos. A média ao longo do treino "
+       "continua a ser o valor definido, por isso só adianta a pressão. 0 "
+       "mantém-na constante."),
+    IT("Far scendere a zero la penalità di dimensione lungo l'addestramento, "
+       "secondo (1-t)^p con t la frazione di passi svolti. La sua media "
+       "sull'addestramento resta il valore impostato, quindi la pressione viene "
+       "solo anticipata. 0 la tiene costante."),
+    NL("De groottestraf over de run naar nul laten zakken volgens (1-t)^p, met "
+       "t het deel van de stappen dat af is. Haar gemiddelde over de run blijft "
+       "de ingestelde waarde, dus de druk verschuift alleen naar voren. 0 houdt "
+       "haar constant."),
+    RU("Плавно сводить штраф за размер к нулю за прогон, по закону (1-t)^p, где "
+       "t — доля пройденных шагов. Среднее за прогон остаётся заданным "
+       "значением, так что нажим лишь смещается к началу. 0 оставляет его "
+       "постоянным."),
+    TR("Boyut cezasını, t tamamlanan adımların oranı olmak üzere (1-t)^p ile "
+       "eğitim boyunca sıfıra indirir. Eğitim boyunca ortalaması ayarlanan "
+       "değerde kalır, yani baskı yalnızca öne alınır. 0 onu sabit tutar."));
+
 SS_MSG(opacity_decay,
     EN("Opacity decay"), JA("不透明度の減衰"), ZH_HANS("不透明度衰减"),
     ZH_HANT("不透明度衰減"), KO("불투명도 감쇠"),
@@ -5781,6 +6334,66 @@ SS_MSG(max_gauss_ratio_help,
        "Меньше — сплаты вынуждены быть круглее."),
     TR("Sivri splat cezası devreye girmeden önce bir splat'ın ne kadar uzayabileceği. "
        "Düşük değerler daha yuvarlak splat'lar dayatır."));
+
+SS_MSG(dc_reg,
+    EN("Base color range penalty"), JA("基本色の範囲のペナルティ"),
+    ZH_HANS("基础颜色范围的惩罚"), ZH_HANT("基礎顏色範圍的懲罰"),
+    KO("기본 색 범위 페널티"), DE("Strafe für den Bereich der Grundfarbe"),
+    FR("Pénalité de plage de la couleur de base"),
+    ES("Penalización del rango del color base"),
+    PT("Penalidade do intervalo da cor base"),
+    IT("Penalità dell'intervallo del colore base"),
+    NL("Straf voor het bereik van de basiskleur"),
+    RU("Штраф за диапазон базового цвета"), TR("Temel renk aralığı cezası"));
+SS_MSG(dc_reg_help,
+    EN("Hold each splat's own base color -- the part that stays the same from "
+       "every angle -- inside the 0 to 1 range. Higher keeps surfaces clean; "
+       "too high clips the real range between bright and dark, so lower it "
+       "when the scene needs that room."),
+    JA("どの角度から見ても変わらないスプラット自身の基本色を、0 から 1 の範囲"
+       "に収めます。高いほど面がきれいになりますが、上げすぎると本当の明暗の幅"
+       "まで切り落とすので、その幅が要る場面では下げてください。"),
+    ZH_HANS("把泼溅自身的基础颜色约束在 0 到 1 的范围内，也就是从任何角度看都"
+            "不变的那部分。数值越高，表面越干净；过高则会切掉真实的明暗范围，"
+            "场景需要这个范围时请调低。"),
+    ZH_HANT("把潑濺自身的基礎顏色約束在 0 到 1 的範圍內，也就是從任何角度看都"
+            "不變的那部分。數值越高，表面越乾淨；過高則會切掉真實的明暗範圍，"
+            "場景需要這個範圍時請調低。"),
+    KO("어느 각도에서도 달라지지 않는 스플랫 자신의 기본 색을 0 에서 1 사이"
+       "로 붙잡아 둡니다. 값이 크면 면이 깨끗해지지만, 너무 크면 진짜 밝고 어두"
+       "운 폭까지 잘리므로 그 폭이 필요한 장면에서는 낮추세요."),
+    DE("Die eigene Grundfarbe jedes Splats -- den Teil, der aus jedem Winkel "
+       "gleich bleibt -- im Bereich 0 bis 1 halten. Höher hält Flächen sauber; "
+       "zu hoch schneidet den echten Abstand zwischen hell und dunkel ab, also "
+       "senken, wenn die Szene diesen Spielraum braucht."),
+    FR("Maintenir la couleur de base propre à chaque splat -- la part qui ne "
+       "change pas avec l'angle -- dans la plage 0 à 1. Plus haut garde les "
+       "surfaces propres ; trop haut rogne l'écart réel entre clair et sombre, "
+       "donc baissez-le quand la scène a besoin de cette marge."),
+    ES("Mantener el color base propio de cada splat -- la parte que no cambia "
+       "con el ángulo -- dentro del rango de 0 a 1. Más alto mantiene limpias "
+       "las superficies; demasiado recorta el rango real entre claro y oscuro, "
+       "así que bájalo cuando la escena necesite ese margen."),
+    PT("Manter a cor base de cada splat -- a parte que não muda com o ângulo "
+       "-- dentro do intervalo de 0 a 1. Mais alto mantém as superfícies limpas; "
+       "alto demais corta o intervalo real entre claro e escuro, então baixe "
+       "quando a cena precisar dessa margem."),
+    IT("Tenere il colore base proprio di ogni splat -- la parte che non cambia "
+       "con l'angolazione -- nell'intervallo da 0 a 1. Più alto mantiene pulite "
+       "le superfici; troppo alto taglia l'intervallo reale tra chiaro e scuro, "
+       "quindi abbassalo quando la scena ha bisogno di quel margine."),
+    NL("De eigen basiskleur van elke splat -- het deel dat vanuit elke hoek "
+       "gelijk blijft -- binnen het bereik 0 tot 1 houden. Hoger houdt vlakken "
+       "schoon; te hoog snijdt het echte bereik tussen licht en donker af, dus "
+       "verlaag het wanneer de scene die ruimte nodig heeft."),
+    RU("Удерживать собственный базовый цвет сплата -- ту часть, что не меняется "
+       "с углом, -- в пределах от 0 до 1. Больше -- поверхности чище; слишком "
+       "много -- срезается настоящий размах между светлым и тёмным, поэтому "
+       "снижайте, когда сцене нужен этот запас."),
+    TR("Her splat'ın kendi temel rengini -- açıya göre değişmeyen kısmını -- "
+       "0 ile 1 aralığında tutar. Yüksek değerler yüzeyleri temiz tutar; aşırısı "
+       "aydınlık ile karanlık arasındaki gerçek aralığı kırpar, bu yüzden sahne "
+       "o payı gerektirdiğinde düşürün."));
 
 SS_MSG(sh_reg,
     EN("View-dependent color penalty"), JA("視点依存色のペナルティ"),
@@ -6514,52 +7127,124 @@ SS_MSG(ppisp_param_type,
     TR("Modellenen kamera etkileri"));
 SS_MSG(ppisp_param_type_help,
     EN("Which camera effects get modeled. `no_crf` covers exposure, vignetting "
-       "and color, then simply clips the result. `original` adds a tone curve "
-       "on top. `rqs` uses a tone curve that behaves better in dark areas."),
+       "and color; `original` adds a tone curve on top, and `rqs` uses a tone "
+       "curve that behaves better in dark areas. Add `_no_vig` to drop "
+       "vignetting and `_clamp` to clip the result to the 0-1 range."),
     JA("どのカメラ効果をモデル化するかです。`no_crf` は露出・周辺減光・色を扱"
-       "い、結果はそのまま切り詰めます。`original` はさらにトーンカーブを重ね"
-       "ます。`rqs` は暗部での振る舞いがよいトーンカーブを使います。"),
-    ZH_HANS("要建模哪些相机效应。`no_crf` 处理曝光、暗角和颜色，然后直接截断结"
-            "果；`original` 在此基础上再加一条色调曲线；`rqs` 使用在暗部表现更"
-            "好的色调曲线。"),
-    ZH_HANT("要建模哪些相機效應。`no_crf` 處理曝光、暗角和顏色，然後直接截斷結"
-            "果；`original` 在此基礎上再加一條色調曲線；`rqs` 使用在暗部表現更"
-            "好的色調曲線。"),
-    KO("어떤 카메라 효과를 모델링할지입니다. `no_crf`는 노출·비네팅·색을 다루"
-       "고 결과를 그대로 잘라냅니다. `original`은 그 위에 톤 커브를 더합니다. "
-       "`rqs`는 어두운 영역에서 더 잘 동작하는 톤 커브를 씁니다."),
-    DE("Welche Kameraeffekte modelliert werden. `no_crf` deckt Belichtung, Vignettierung "
-       "und Farbe ab und beschneidet das Ergebnis dann einfach. `original` legt "
-       "eine Tonwertkurve darauf. `rqs` nutzt eine Tonwertkurve, die sich in "
-       "dunklen Bereichen besser verhält."),
+       "います。`original` はさらにトーンカーブを重ね、`rqs` は暗部での振る舞"
+       "いがよいトーンカーブを使います。`_no_vig` を付けると周辺減光を外し、"
+       "`_clamp` を付けると結果を 0 から 1 の範囲に切り詰めます。"),
+    ZH_HANS("要建模哪些相机效应。`no_crf` 处理曝光、暗角和颜色；`original` 在"
+            "此基础上再加一条色调曲线；`rqs` 使用在暗部表现更好的色调曲线。加"
+            "上 `_no_vig` 可去掉暗角，加上 `_clamp` 可把结果截断到 0 到 1 之"
+            "间。"),
+    ZH_HANT("要建模哪些相機效應。`no_crf` 處理曝光、暗角和顏色；`original` 在"
+            "此基礎上再加一條色調曲線；`rqs` 使用在暗部表現更好的色調曲線。加"
+            "上 `_no_vig` 可去掉暗角，加上 `_clamp` 可把結果截斷到 0 到 1 之"
+            "間。"),
+    KO("어떤 카메라 효과를 모델링할지입니다. `no_crf`는 노출·비네팅·색을 다룹"
+       "니다. `original`은 그 위에 톤 커브를 더하고, `rqs`는 어두운 영역에서 "
+       "더 잘 동작하는 톤 커브를 씁니다. `_no_vig`를 붙이면 비네팅을 빼고, "
+       "`_clamp`를 붙이면 결과를 0에서 1 사이로 잘라냅니다."),
+    DE("Welche Kameraeffekte modelliert werden. `no_crf` deckt Belichtung, "
+       "Vignettierung und Farbe ab; `original` legt eine Tonwertkurve darauf, "
+       "`rqs` nutzt eine Tonwertkurve, die sich in dunklen Bereichen besser "
+       "verhält. Mit `_no_vig` entfällt die Vignettierung, mit `_clamp` wird "
+       "das Ergebnis auf 0 bis 1 beschnitten."),
     FR("Quels effets caméra sont modélisés. `no_crf` couvre l'exposition, le "
-       "vignetage et la couleur, puis écrête simplement le résultat. `original` "
-       "y ajoute une courbe de tons. `rqs` emploie une courbe de tons qui se "
-       "comporte mieux dans les zones sombres."),
+       "vignetage et la couleur ; `original` y ajoute une courbe de tons, et "
+       "`rqs` emploie une courbe de tons qui se comporte mieux dans les zones "
+       "sombres. Le suffixe `_no_vig` retire le vignetage et `_clamp` écrête "
+       "le résultat entre 0 et 1."),
     ES("Qué efectos de cámara se modelan. `no_crf` cubre exposición, viñeteado "
-       "y color, y luego recorta el resultado sin más. `original` añade encima "
-       "una curva de tonos. `rqs` usa una curva de tonos que se comporta mejor "
-       "en las zonas oscuras."),
-    PT("Que efeitos de câmera são modelados. `no_crf` cobre exposição, vinhetagem "
-       "e cor e depois simplesmente corta o resultado. `original` acrescenta "
-       "por cima uma curva tonal. `rqs` usa uma curva tonal que se comporta melhor "
-       "nas áreas escuras."),
-    IT("Quali effetti della camera vengono modellati. `no_crf` copre esposizione, "
-       "vignettatura e colore, poi taglia semplicemente il risultato. `original` "
-       "vi aggiunge una curva tonale. `rqs` usa una curva tonale che si comporta "
-       "meglio nelle zone scure."),
-    NL("Welke cameraeffecten worden gemodelleerd. `no_crf` dekt belichting, vignettering "
-       "en kleur en kapt het resultaat daarna gewoon af. `original` legt daar "
-       "een tooncurve overheen. `rqs` gebruikt een tooncurve die zich in donkere "
-       "partijen beter gedraagt."),
-    RU("Какие эффекты камеры моделируются. `no_crf` охватывает экспозицию, виньетирование "
-       "и цвет, а затем просто обрезает результат. `original` добавляет сверху "
-       "тоновую кривую. `rqs` использует тоновую кривую, которая лучше ведёт "
-       "себя в тенях."),
+       "y color; `original` añade encima una curva de tonos y `rqs` usa una "
+       "curva de tonos que se comporta mejor en las zonas oscuras. El sufijo "
+       "`_no_vig` quita el viñeteado y `_clamp` recorta el resultado entre 0 "
+       "y 1."),
+    PT("Que efeitos de câmera são modelados. `no_crf` cobre exposição, "
+       "vinhetagem e cor; `original` acrescenta por cima uma curva tonal e "
+       "`rqs` usa uma curva tonal que se comporta melhor nas áreas escuras. O "
+       "sufixo `_no_vig` tira a vinhetagem e `_clamp` corta o resultado entre "
+       "0 e 1."),
+    IT("Quali effetti della camera vengono modellati. `no_crf` copre "
+       "esposizione, vignettatura e colore; `original` vi aggiunge una curva "
+       "tonale e `rqs` usa una curva tonale che si comporta meglio nelle zone "
+       "scure. Il suffisso `_no_vig` toglie la vignettatura e `_clamp` taglia "
+       "il risultato tra 0 e 1."),
+    NL("Welke cameraeffecten worden gemodelleerd. `no_crf` dekt belichting, "
+       "vignettering en kleur; `original` legt daar een tooncurve overheen en "
+       "`rqs` gebruikt een tooncurve die zich in donkere partijen beter "
+       "gedraagt. Met `_no_vig` vervalt de vignettering en met `_clamp` wordt "
+       "het resultaat op 0 tot 1 afgekapt."),
+    RU("Какие эффекты камеры моделируются. `no_crf` охватывает экспозицию, "
+       "виньетирование и цвет; `original` добавляет сверху тоновую кривую, а "
+       "`rqs` использует тоновую кривую, которая лучше ведёт себя в тенях. "
+       "Суффикс `_no_vig` убирает виньетирование, а `_clamp` обрезает "
+       "результат до диапазона от 0 до 1."),
     TR("Hangi kamera etkilerinin modelleneceği. `no_crf` pozlamayı, vinyeti ve "
-       "rengi kapsar, ardından sonucu düpedüz kırpar. `original` bunun üstüne "
-       "bir ton eğrisi ekler. `rqs` ise karanlık bölgelerde daha iyi davranan "
-       "bir ton eğrisi kullanır."));
+       "rengi kapsar; `original` bunun üstüne bir ton eğrisi ekler, `rqs` ise "
+       "karanlık bölgelerde daha iyi davranan bir ton eğrisi kullanır. "
+       "`_no_vig` eki vinyeti çıkarır, `_clamp` eki sonucu 0 ile 1 arasına "
+       "kırpar."));
+
+SS_MSG(ppisp_exposure_from_exif,
+    EN("Exposure init from EXIF"), JA("EXIF による露出の初期化"),
+    ZH_HANS("用 EXIF 初始化曝光"), ZH_HANT("用 EXIF 初始化曝光"),
+    KO("EXIF로 노출 초기화"), DE("Belichtungsstart aus EXIF"),
+    FR("Exposition initiale depuis l'EXIF"), ES("Exposición inicial desde EXIF"),
+    PT("Exposição inicial do EXIF"), IT("Esposizione iniziale da EXIF"),
+    NL("Belichting starten vanuit EXIF"), RU("Начальная экспозиция из EXIF"),
+    TR("EXIF'ten pozlama başlangıcı"));
+SS_MSG(ppisp_exposure_from_exif_help,
+    EN("Seed each photo's exposure correction from the shutter, aperture and "
+       "ISO its EXIF records, relative to the set's average, instead of from "
+       "zero. Photos without those tags start at the average. Helps when "
+       "exposure varies across the capture."),
+    JA("各写真の露出補正を、ゼロからではなく EXIF に記録されたシャッター速度・"
+       "絞り・ISO から、セットの平均を基準に初期化します。タグのない写真は平均"
+       "から始まります。撮影中に露出が変わる場合に有効です。"),
+    ZH_HANS("用 EXIF 记录的快门、光圈和 ISO（相对于整组的平均值）来初始化每张"
+            "照片的曝光校正，而不是从零开始。没有这些标签的照片从平均值开始。"
+            "在拍摄过程中曝光有变化时有帮助。"),
+    ZH_HANT("用 EXIF 記錄的快門、光圈和 ISO（相對於整組的平均值）來初始化每張"
+            "照片的曝光校正，而不是從零開始。沒有這些標籤的照片從平均值開始。"
+            "在拍攝過程中曝光有變化時有幫助。"),
+    KO("각 사진의 노출 보정을 0이 아니라 EXIF에 기록된 셔터·조리개·ISO에서, 전"
+       "체 평균을 기준으로 초기화합니다. 태그가 없는 사진은 평균에서 시작합니"
+       "다. 촬영 중 노출이 달라질 때 도움이 됩니다."),
+    DE("Die Belichtungskorrektur jedes Fotos aus Verschlusszeit, Blende und ISO "
+       "seiner EXIF-Daten starten, relativ zum Durchschnitt des Satzes, statt "
+       "bei null. Fotos ohne diese Tags starten beim Durchschnitt. Hilft, wenn "
+       "die Belichtung über die Aufnahme variiert."),
+    FR("Amorcer la correction d'exposition de chaque photo à partir de la vitesse, "
+       "de l'ouverture et de l'ISO enregistrés dans son EXIF, par rapport à la "
+       "moyenne de l'ensemble, plutôt qu'à zéro. Les photos sans ces balises "
+       "partent de la moyenne. Utile quand l'exposition varie au fil de la prise "
+       "de vue."),
+    ES("Inicializar la corrección de exposición de cada foto a partir del obturador, "
+       "la apertura y el ISO que registra su EXIF, relativos a la media del conjunto, "
+       "en lugar de desde cero. Las fotos sin esas etiquetas parten de la media. "
+       "Ayuda cuando la exposición varía a lo largo de la captura."),
+    PT("Inicializar a correção de exposição de cada foto a partir do obturador, "
+       "da abertura e do ISO registrados no EXIF, relativos à média do conjunto, "
+       "em vez de partir do zero. Fotos sem essas tags partem da média. Ajuda "
+       "quando a exposição varia ao longo da captura."),
+    IT("Inizializzare la correzione di esposizione di ogni foto da otturatore, "
+       "apertura e ISO registrati nel suo EXIF, relativi alla media del set, invece "
+       "che da zero. Le foto senza quei tag partono dalla media. Aiuta quando "
+       "l'esposizione varia durante la ripresa."),
+    NL("De belichtingscorrectie van elke foto starten vanuit de sluitertijd, het "
+       "diafragma en de ISO uit de EXIF, relatief aan het gemiddelde van de set, "
+       "in plaats van vanaf nul. Foto's zonder die tags starten op het gemiddelde. "
+       "Helpt wanneer de belichting tijdens de opname varieert."),
+    RU("Инициализировать коррекцию экспозиции каждого фото по выдержке, диафрагме "
+       "и ISO из его EXIF относительно среднего по набору, а не с нуля. Фото без "
+       "этих тегов начинают со среднего. Помогает, когда экспозиция меняется по "
+       "ходу съёмки."),
+    TR("Her fotoğrafın pozlama düzeltmesini sıfırdan değil, EXIF'inde kayıtlı "
+       "enstantane, diyafram ve ISO'dan, kümenin ortalamasına göre başlatır. Bu "
+       "etiketleri olmayan fotoğraflar ortalamadan başlar. Pozlama çekim boyunca "
+       "değişiyorsa yardımcı olur."));
 
 SS_MSG(apply_ppisp_before_bilagrid,
     EN("Camera correction first"), JA("カメラ補正を先に適用"),
@@ -6606,6 +7291,71 @@ SS_MSG(apply_ppisp_before_bilagrid_help,
     TR("Kamera etkisi modelini fotoğraf başına renk düzeltmesinden sonra değil "
        "önce çalıştırır. Yalnızca ikisi de açıkken önemlidir ve belirli bir renk "
        "farkını hangisinin soğuracağını belirler."));
+
+SS_MSG(apply_ppisp_before_color_space,
+    EN("Camera correction in the splat's own colors"),
+    JA("スプラット自身の色空間でカメラ補正"),
+    ZH_HANS("在高斯自身的色彩空间中做相机校正"),
+    ZH_HANT("在高斯自身的色彩空間中做相機校正"),
+    KO("스플랫 자체 색 공간에서 카메라 보정"),
+    DE("Kamerakorrektur im Farbraum der Splats"),
+    FR("Correction caméra dans les couleurs des splats"),
+    ES("Corrección de cámara en el color propio de los splats"),
+    PT("Correção de câmera nas cores dos próprios splats"),
+    IT("Correzione camera nei colori propri degli splat"),
+    NL("Cameracorrectie in de eigen kleuren van de splats"),
+    RU("Коррекция камеры в собственном цвете сплатов"),
+    TR("Kamera düzeltmesi splat'ların kendi renklerinde"));
+SS_MSG(apply_ppisp_before_color_space_help,
+    EN("Model the camera effects in the color space the splats are trained in, "
+       "before the conversion to display colors, which is where a real camera "
+       "applies them. Takes effect only when the splats use a color space of "
+       "their own, and needs the camera correction to run first."),
+    JA("カメラ効果を、表示用の色への変換より前、スプラットが学習されている色空"
+       "間でモデル化します。実際のカメラが効果を与えるのはその位置です。スプラ"
+       "ットが独自の色空間を使うときだけ効き、カメラ補正を先に適用する設定が必"
+       "要です。"),
+    ZH_HANS("在转换到显示色彩之前、高斯训练所用的色彩空间中建模相机效应，真实"
+            "相机正是在这一处施加它们。只有当高斯使用自己的色彩空间时才生效，"
+            "并且需要先做相机校正。"),
+    ZH_HANT("在轉換到顯示色彩之前、高斯訓練所用的色彩空間中建模相機效應，真實"
+            "相機正是在這一處施加它們。只有當高斯使用自己的色彩空間時才生效，"
+            "並且需要先做相機校正。"),
+    KO("표시용 색으로 변환하기 전, 스플랫이 학습되는 색 공간에서 카메라 효과를 "
+       "모델링합니다. 실제 카메라가 효과를 주는 지점이 바로 그곳입니다. 스플랫"
+       "이 자체 색 공간을 쓸 때만 적용되며, 카메라 보정을 먼저 적용해야 합니다."),
+    DE("Die Kameraeffekte in dem Farbraum modellieren, in dem die Splats "
+       "trainiert werden, also vor der Umrechnung in Anzeigefarben -- dort setzt "
+       "eine echte Kamera sie an. Wirkt nur, wenn die Splats einen eigenen "
+       "Farbraum nutzen, und setzt die Kamerakorrektur zuerst voraus."),
+    FR("Modéliser les effets caméra dans l'espace colorimétrique où les splats "
+       "sont entraînés, avant la conversion vers les couleurs d'affichage : "
+       "c'est là qu'un vrai appareil les applique. N'agit que si les splats ont "
+       "leur propre espace colorimétrique, et exige la correction caméra d'abord."),
+    ES("Modelar los efectos de cámara en el espacio de color en el que se "
+       "entrenan los splats, antes de la conversión a colores de pantalla, que "
+       "es donde los aplica una cámara real. Solo surte efecto si los splats "
+       "usan un espacio propio, y exige la corrección de cámara primero."),
+    PT("Modelar os efeitos de câmera no espaço de cor em que os splats são "
+       "treinados, antes da conversão para as cores de exibição, que é onde uma "
+       "câmera real os aplica. Só faz efeito quando os splats usam um espaço "
+       "próprio e exige a correção de câmera primeiro."),
+    IT("Modellare gli effetti della camera nello spazio colore in cui gli splat "
+       "sono addestrati, prima della conversione ai colori di visualizzazione, "
+       "che è dove li applica una camera vera. Ha effetto solo se gli splat "
+       "usano uno spazio proprio e richiede prima la correzione camera."),
+    NL("De cameraeffecten modelleren in de kleurruimte waarin de splats getraind "
+       "worden, vóór de omzetting naar weergavekleuren -- daar past een echte "
+       "camera ze toe. Werkt alleen als de splats een eigen kleurruimte "
+       "gebruiken, en vereist eerst de cameracorrectie."),
+    RU("Моделировать эффекты камеры в том цветовом пространстве, где обучаются "
+       "сплаты, до пересчёта в цвета экрана -- именно там их накладывает "
+       "настоящая камера. Действует, только когда у сплатов своё пространство, "
+       "и требует, чтобы коррекция камеры шла первой."),
+    TR("Kamera etkilerini, ekran renklerine dönüşümden önce, splat'ların "
+       "eğitildiği renk uzayında modeller; gerçek bir kamera da onları orada "
+       "uygular. Yalnızca splat'lar kendi renk uzayını kullandığında etkilidir "
+       "ve önce kamera düzeltmesini gerektirir."));
 
 SS_MSG(use_adagrad_ppisp_optim,
     EN("Steadier camera correction updates"),
@@ -7616,6 +8366,86 @@ SS_MSG(image_color_is_linear_help,
        "söz budur -- diğer her şeyi ekran için kodlanmış sayar; pikselleri yine de "
        "ekran için kodlanmış bir EXR'de açıkça ayarlayın."));
 
+SS_MSG(image_color_transfer,
+    EN("Input tone curve"), JA("入力のトーンカーブ"),
+    ZH_HANS("输入色调曲线"), ZH_HANT("輸入色調曲線"),
+    KO("입력 톤 커브"), DE("Eingabe-Tonkurve"),
+    FR("Courbe de tonalité d'entrée"), ES("Curva tonal de entrada"),
+    PT("Curva tonal de entrada"), IT("Curva tonale in ingresso"),
+    NL("Toonkromme van de invoer"), RU("Тоновая кривая входа"),
+    TR("Girdi ton eğrisi"));
+SS_MSG(image_color_transfer_help,
+    EN("The curve that turns the input's light values into the picture the loss "
+       "is measured on. `srgb` is the plain sRGB encode and is what an ordinary "
+       "photo wants. `aces`, `filmic` and `uncharted2` roll the highlights off "
+       "instead of clipping them, which is for scene-linear HDR input that goes "
+       "far above 1.0. Independent of whether the input is linear -- that is "
+       "`--image-color-is-linear`."),
+    JA("入力の光の値を、損失を測る絵に変えるカーブです。srgb は素の sRGB 符号化"
+       "で、普通の写真はこれです。aces・filmic・uncharted2 はハイライトを切り"
+       "捨てずになだらかに丸めるので、1.0 をはるかに超えるシーンリニアの HDR 入力"
+       "向けです。入力がリニアかどうかとは独立で、それは "
+       "--image-color-is-linear です。"),
+    ZH_HANS("把输入的光值变成计算损失的那幅图的曲线。srgb 是普通的 sRGB 编码，"
+            "一般照片用它。aces、filmic、uncharted2 会把高光平滑压下来而不是直接"
+            "截断，适合远超 1.0 的场景线性 HDR 输入。这与输入是否线性无关，那由 "
+            "--image-color-is-linear 决定。"),
+    ZH_HANT("把輸入的光值變成計算損失的那幅圖的曲線。srgb 是普通的 sRGB 編碼，"
+            "一般照片用它。aces、filmic、uncharted2 會把高光平滑壓下來而不是直接"
+            "截斷，適合遠超 1.0 的場景線性 HDR 輸入。這與輸入是否線性無關，那由 "
+            "--image-color-is-linear 決定。"),
+    KO("입력의 빛 값을 손실을 재는 그림으로 바꾸는 곡선입니다. srgb는 평범한 "
+       "sRGB 인코딩이고 보통 사진은 이것을 씁니다. aces, filmic, uncharted2는 "
+       "밝은 부분을 잘라내지 않고 완만하게 눌러 주므로 1.0을 크게 넘는 장면 선형 "
+       "HDR 입력에 알맞습니다. 입력이 선형인지와는 무관하며 그것은 "
+       "--image-color-is-linear 입니다."),
+    DE("Die Kurve, die die Lichtwerte der Eingabe in das Bild überführt, an dem "
+       "der Verlust gemessen wird. `srgb` ist die schlichte sRGB-Codierung und "
+       "das, was ein gewöhnliches Foto will. `aces`, `filmic` und `uncharted2` "
+       "rollen die Lichter ab, statt sie abzuschneiden -- für szenenlineare "
+       "HDR-Eingaben weit über 1.0. Unabhängig davon, ob die Eingabe linear ist; "
+       "das ist `--image-color-is-linear`."),
+    FR("La courbe qui transforme les valeurs de lumière de l'entrée en l'image "
+       "sur laquelle la perte est mesurée. « srgb » est l'encodage sRGB simple, "
+       "ce que veut une photo ordinaire. « aces », « filmic » et « uncharted2 » "
+       "adoucissent les hautes lumières au lieu de les écrêter, pour une entrée "
+       "HDR linéaire scène bien au-dessus de 1.0. Indépendant du fait que "
+       "l'entrée soit linéaire : c'est « --image-color-is-linear »."),
+    ES("La curva que convierte los valores de luz de la entrada en la imagen "
+       "sobre la que se mide la pérdida. «srgb» es la codificación sRGB simple, "
+       "lo que quiere una foto normal. «aces», «filmic» y «uncharted2» suavizan "
+       "las altas luces en vez de recortarlas, para entrada HDR lineal de escena "
+       "muy por encima de 1.0. Independiente de si la entrada es lineal: eso es "
+       "«--image-color-is-linear»."),
+    PT("A curva que converte os valores de luz da entrada na imagem sobre a qual "
+       "a perda é medida. «srgb» é a codificação sRGB simples, o que uma foto "
+       "normal quer. «aces», «filmic» e «uncharted2» suavizam as altas luzes em "
+       "vez de as cortar, para entrada HDR linear de cena muito acima de 1.0. "
+       "Independente de a entrada ser linear: isso é «--image-color-is-linear»."),
+    IT("La curva che trasforma i valori di luce dell'ingresso nell'immagine su "
+       "cui si misura la perdita. «srgb» è la semplice codifica sRGB, ciò che "
+       "vuole una foto normale. «aces», «filmic» e «uncharted2» addolciscono le "
+       "alte luci invece di troncarle, per ingressi HDR lineari di scena molto "
+       "sopra 1.0. Indipendente dal fatto che l'ingresso sia lineare: quello è "
+       "«--image-color-is-linear»."),
+    NL("De kromme die de lichtwaarden van de invoer omzet in het beeld waarop "
+       "het verlies wordt gemeten. `srgb` is de gewone sRGB-codering en is wat "
+       "een normale foto wil. `aces`, `filmic` en `uncharted2` laten de hoge "
+       "lichten aflopen in plaats van ze af te kappen, voor scène-lineaire "
+       "HDR-invoer ver boven 1.0. Los van of de invoer lineair is; dat is "
+       "`--image-color-is-linear`."),
+    RU("Кривая, превращающая значения света на входе в картинку, на которой "
+       "меряется потеря. «srgb» -- обычное кодирование sRGB, то, что нужно "
+       "обычной фотографии. «aces», «filmic» и «uncharted2» плавно сводят света "
+       "вместо обрезки, для сценарно-линейного HDR-входа сильно выше 1.0. "
+       "Независимо от того, линеен ли вход: это «--image-color-is-linear»."),
+    TR("Girdinin ışık değerlerini, kaybın ölçüldüğü resme çeviren eğri. `srgb` "
+       "sade sRGB kodlamasıdır ve sıradan bir fotoğrafın istediği budur. `aces`, "
+       "`filmic` ve `uncharted2` parlak bölgeleri kırpmak yerine yumuşatarak "
+       "indirir; 1.0'ın çok üstüne çıkan sahne-doğrusal HDR girdi içindir. "
+       "Girdinin doğrusal olup olmamasından bağımsızdır, o "
+       "`--image-color-is-linear`'dır."));
+
 SS_MSG(image_color_gamut,
     EN("Input color space"), JA("入力の色空間"), ZH_HANS("输入色彩空间"),
     ZH_HANT("輸入色彩空間"), KO("입력 색 공간"), DE("Farbraum der Eingabe"),
@@ -7682,40 +8512,175 @@ SS_MSG(splat_color_is_linear,
     RU("Обучать сплаты в линейном свете"),
     TR("Splat'ları doğrusal ışıkta eğit"));
 SS_MSG(splat_color_is_linear_help,
-    EN("Train splat colors in linear light. Leave unset to follow the input images. "
-       "Linear color holds bright highlights better for HDR work."),
-    JA("スプラットの色をリニア光で学習します。未設定なら入力画像に合わせます。"
-       "リニアの色は明るいハイライトをよく保つので、HDR の作業に向きます。"),
-    ZH_HANS("在线性光下训练泼溅颜色。不设置则跟随输入图像。线性颜色能更好地保"
-            "留高光，适合 HDR 工作流。"),
-    ZH_HANT("在線性光下訓練潑濺顏色。不設定則跟隨輸入影像。線性顏色能更好地保"
-            "留高光，適合 HDR 工作流程。"),
-    KO("스플랫 색을 선형 광에서 학습합니다. 설정하지 않으면 입력 이미지를 따릅"
-       "니다. 선형 색은 밝은 하이라이트를 잘 유지해 HDR 작업에 알맞습니다."),
-    DE("Splatfarben in linearem Licht trainieren. Nicht gesetzt richtet es sich "
-       "nach den Eingabebildern. Lineare Farbe hält helle Lichter besser und "
-       "eignet sich für HDR-Arbeit."),
-    FR("Entraîner les couleurs des splats en lumière linéaire. Non défini, suit "
-       "les images d'entrée. La couleur linéaire retient mieux les hautes lumières, "
-       "ce qui convient au travail HDR."),
-    ES("Entrenar los colores de los splats en luz lineal. Sin definir, sigue "
-       "a las imágenes de entrada. El color lineal conserva mejor las altas luces, "
-       "útil para trabajo HDR."),
-    PT("Treinar as cores dos splats em luz linear. Sem definir, segue as imagens "
-       "de entrada. A cor linear retém melhor as altas luzes, útil para trabalho "
-       "HDR."),
-    IT("Addestrare i colori degli splat in luce lineare. Se non impostato, segue "
-       "le immagini in ingresso. Il colore lineare trattiene meglio le alte luci, "
-       "utile per il lavoro HDR."),
-    NL("Splatkleuren in lineair licht trainen. Niet ingesteld volgt het de invoerbeelden. "
-       "Lineaire kleur houdt heldere highlights beter vast, wat handig is voor "
-       "HDR-werk."),
-    RU("Обучать цвета сплатов в линейном свете. Если не задано, следует за входными "
-       "изображениями. Линейный цвет лучше удерживает яркие света, что нужно "
-       "для HDR."),
-    TR("Splat renklerini doğrusal ışıkta eğitir. Ayarlanmazsa girdi görüntülerini "
-       "izler. Doğrusal renk parlak ışıkları daha iyi tutar; HDR işlerinde işe "
-       "yarar."));
+    EN("Store splat colors as linear light rather than as display values. Leave "
+       "unset to follow the input images. Linear storage is what switches the "
+       "color optimizer to its square-root parameterization and trust region; "
+       "which curve the render leaves through is separate "
+       "(`--splat-color-transfer`)."),
+    JA("スプラットの色を表示値ではなくリニア光として保持します。未設定なら入力"
+       "画像に合わせます。リニアで持つことが、色の最適化を平方根パラメータ化と"
+       "信頼領域に切り替えます。レンダーが出ていくカーブは別で、"
+       "--splat-color-transfer です。"),
+    ZH_HANS("把泼溅颜色按线性光而不是显示值存储。不设置则跟随输入图像。以线性存"
+            "储会把颜色优化切换到平方根参数化和信赖域；渲染输出经过哪条曲线是另"
+            "一件事，由 --splat-color-transfer 决定。"),
+    ZH_HANT("把潑濺顏色依線性光而不是顯示值儲存。不設定則跟隨輸入影像。以線性儲"
+            "存會把顏色最佳化切換到平方根參數化和信賴域；算繪輸出經過哪條曲線是"
+            "另一件事，由 --splat-color-transfer 決定。"),
+    KO("스플랫 색을 디스플레이 값이 아니라 선형 광량으로 저장합니다. 설정하지 "
+       "않으면 입력 이미지를 따릅니다. 선형 저장이 색 최적화를 제곱근 매개변수화"
+       "와 신뢰 영역으로 바꿉니다. 렌더가 나가는 곡선은 별개이며 "
+       "--splat-color-transfer 입니다."),
+    DE("Splatfarben als lineares Licht statt als Anzeigewerte speichern. Nicht "
+       "gesetzt richtet es sich nach den Eingabebildern. Lineare Speicherung "
+       "schaltet die Farboptimierung auf ihre Wurzel-Parametrisierung und "
+       "Vertrauensregion um; welche Kurve das Rendering verlässt, ist davon "
+       "getrennt (`--splat-color-transfer`)."),
+    FR("Stocker les couleurs des splats en lumière linéaire plutôt qu'en valeurs "
+       "d'affichage. Non défini, suit les images d'entrée. Le stockage linéaire "
+       "est ce qui bascule l'optimiseur de couleur sur sa paramétrisation en "
+       "racine carrée et sa région de confiance ; la courbe par laquelle sort le "
+       "rendu est séparée (« --splat-color-transfer »)."),
+    ES("Guardar los colores de los splats como luz lineal en vez de como valores "
+       "de pantalla. Sin definir, sigue a las imágenes de entrada. El "
+       "almacenamiento lineal es lo que cambia el optimizador de color a su "
+       "parametrización en raíz cuadrada y su región de confianza; por qué curva "
+       "sale el render es aparte («--splat-color-transfer»)."),
+    PT("Guardar as cores dos splats como luz linear em vez de valores de "
+       "exibição. Sem definir, segue as imagens de entrada. O armazenamento "
+       "linear é o que muda o otimizador de cor para a sua parametrização em "
+       "raiz quadrada e região de confiança; por que curva o render sai é à "
+       "parte («--splat-color-transfer»)."),
+    IT("Memorizzare i colori degli splat come luce lineare invece che come "
+       "valori di visualizzazione. Se non impostato, segue le immagini in "
+       "ingresso. La memorizzazione lineare è ciò che porta l'ottimizzatore di "
+       "colore alla sua parametrizzazione in radice quadrata e alla regione di "
+       "fiducia; per quale curva esce il render è cosa distinta "
+       "(«--splat-color-transfer»)."),
+    NL("Splatkleuren als lineair licht opslaan in plaats van als weergavewaarden. "
+       "Niet ingesteld volgt het de invoerbeelden. Lineaire opslag is wat de "
+       "kleuroptimalisatie op haar wortelparametrisatie en vertrouwensgebied "
+       "zet; via welke kromme de render eruit gaat, staat daar los van "
+       "(`--splat-color-transfer`)."),
+    RU("Хранить цвета сплатов как линейный свет, а не как экранные значения. Без "
+       "значения следует за входными изображениями. Именно линейное хранение "
+       "переводит оптимизацию цвета на корневую параметризацию и доверительную "
+       "область; через какую кривую выходит рендер -- отдельный вопрос "
+       "(«--splat-color-transfer»)."),
+    TR("Splat renklerini ekran değerleri yerine doğrusal ışık olarak saklar. "
+       "Ayarlanmazsa girdi görüntülerini izler. Doğrusal saklama, renk "
+       "eniyilemesini karekök parametrelemesine ve güven bölgesine geçiren "
+       "şeydir; render'ın hangi eğriden çıktığı ayrıdır "
+       "(`--splat-color-transfer`)."));
+
+SS_MSG(splat_color_transfer,
+    EN("Splat tone curve"), JA("スプラットのトーンカーブ"),
+    ZH_HANS("泼溅色调曲线"), ZH_HANT("潑濺色調曲線"),
+    KO("스플랫 톤 커브"), DE("Splat-Tonkurve"),
+    FR("Courbe de tonalité des splats"), ES("Curva tonal de los splats"),
+    PT("Curva tonal dos splats"), IT("Curva tonale degli splat"),
+    NL("Toonkromme van de splats"), RU("Тоновая кривая сплатов"),
+    TR("Splat ton eğrisi"));
+SS_MSG(splat_color_transfer_help,
+    EN("The curve the render goes through before the loss compares it with the "
+       "photo. `none` uses the input's, which is what keeps the render matching "
+       "the photographs. `aces`, `filmic` and `uncharted2` put a highlight "
+       "roll-off in front of the loss instead, so a photo that is nearly white "
+       "at 0.99 can be explained by a splat many times brighter than 1.0 rather "
+       "than being pinned there -- dynamic range bought back from an almost-"
+       "clipped capture, at the price of having to VIEW the model the same way. "
+       "`overexposure-reg` pulls the other way and should stay at 0."),
+    JA("損失が写真と比べる前に、レンダーが通るカーブです。none は入力のものを使"
+       "い、これがレンダーを写真に一致させます。aces・filmic・uncharted2 は代わ"
+       "りに損失の手前へハイライトのロールオフを置くので、0.99 でほぼ白の写真を "
+       "1.0 の何倍も明るいスプラットで説明でき、そこに張り付きません。白飛び寸前"
+       "の撮影からダイナミックレンジを取り戻せる代わりに、モデルは同じ設定で表示"
+       "する必要があります。overexposure-reg は逆に働くので 0 のままにしてくださ"
+       "い。"),
+    ZH_HANS("在损失把渲染和照片相比之前，渲染要经过的曲线。none 用输入的那条，"
+            "这正是让渲染与照片一致的做法。aces、filmic、uncharted2 则在损失之前"
+            "加一段高光滚降，于是 0.99 这种接近纯白的照片可以由亮度远超 1.0 的泼"
+            "溅来解释，而不是被钉在 1.0——从几乎过曝的素材里换回动态范围，代价是"
+            "模型必须用同样的设置来观看。overexposure-reg 的作用相反，应保持为 0。"),
+    ZH_HANT("在損失把算繪和照片相比之前，算繪要經過的曲線。none 用輸入的那條，"
+            "這正是讓算繪與照片一致的做法。aces、filmic、uncharted2 則在損失之前"
+            "加一段高光滾降，於是 0.99 這種接近純白的照片可以由亮度遠超 1.0 的潑"
+            "濺來解釋，而不是被釘在 1.0——從幾乎過曝的素材裡換回動態範圍，代價是"
+            "模型必須用同樣的設定來觀看。overexposure-reg 的作用相反，應保持為 0。"),
+    KO("손실이 렌더를 사진과 비교하기 전에 렌더가 지나는 곡선입니다. none은 입력"
+       "의 것을 써서 렌더가 사진과 일치하게 합니다. aces, filmic, uncharted2는 "
+       "대신 손실 앞에 하이라이트 롤오프를 두므로 0.99처럼 거의 흰 사진을 1.0보다 "
+       "몇 배 밝은 스플랫으로 설명할 수 있고 그 값에 붙박이지 않습니다. 거의 날아"
+       "간 촬영에서 다이내믹 레인지를 되찾는 대신 모델도 같은 설정으로 봐야 합니"
+       "다. overexposure-reg는 반대로 작용하므로 0으로 두세요."),
+    DE("Die Kurve, die das Rendering durchläuft, bevor der Verlust es mit dem "
+       "Foto vergleicht. `none` nimmt die der Eingabe -- so bleibt das Rendering "
+       "deckungsgleich mit den Fotos. `aces`, `filmic` und `uncharted2` setzen "
+       "stattdessen einen Lichter-Abfall vor den Verlust, sodass ein bei 0.99 "
+       "fast weißes Foto von einem vielfach helleren Splat erklärt werden kann, "
+       "statt dort festzuhängen -- Dynamikumfang aus einer fast abgeschnittenen "
+       "Aufnahme, um den Preis, das Modell ebenso ANSEHEN zu müssen. "
+       "`overexposure-reg` wirkt dagegen und sollte auf 0 bleiben."),
+    FR("La courbe que traverse le rendu avant que la perte ne le compare à la "
+       "photo. « none » reprend celle de l'entrée, ce qui garde le rendu "
+       "conforme aux photographies. « aces », « filmic » et « uncharted2 » "
+       "placent au contraire une atténuation des hautes lumières avant la perte, "
+       "si bien qu'une photo presque blanche à 0.99 peut être expliquée par un "
+       "splat bien plus lumineux que 1.0 au lieu d'y être bloquée -- de la "
+       "dynamique récupérée sur une prise presque écrêtée, au prix de devoir "
+       "VISUALISER le modèle de la même façon. « overexposure-reg » tire en sens "
+       "inverse et devrait rester à 0."),
+    ES("La curva por la que pasa el render antes de que la pérdida lo compare "
+       "con la foto. «none» usa la de la entrada, que es lo que mantiene el "
+       "render igual a las fotografías. «aces», «filmic» y «uncharted2» ponen en "
+       "cambio una caída de altas luces delante de la pérdida, de modo que una "
+       "foto casi blanca en 0.99 puede explicarse con un splat muchas veces más "
+       "brillante que 1.0 en lugar de quedar clavada ahí: rango dinámico "
+       "recuperado de una toma casi recortada, a cambio de tener que VER el "
+       "modelo igual. «overexposure-reg» tira en sentido contrario y conviene "
+       "dejarlo en 0."),
+    PT("A curva por que passa o render antes de a perda o comparar com a foto. "
+       "«none» usa a da entrada, que é o que mantém o render igual às "
+       "fotografias. «aces», «filmic» e «uncharted2» põem em vez disso uma queda "
+       "das altas luzes antes da perda, de modo que uma foto quase branca em "
+       "0.99 pode ser explicada por um splat muitas vezes mais claro do que 1.0 "
+       "em vez de ficar preso ali: gama dinâmica recuperada de uma captura quase "
+       "cortada, ao preço de ter de VER o modelo do mesmo modo. "
+       "«overexposure-reg» puxa ao contrário e deve ficar em 0."),
+    IT("La curva che il render attraversa prima che la perdita lo confronti con "
+       "la foto. «none» usa quella dell'ingresso, ed è ciò che tiene il render "
+       "uguale alle fotografie. «aces», «filmic» e «uncharted2» mettono invece "
+       "uno smorzamento delle alte luci davanti alla perdita, così una foto "
+       "quasi bianca a 0.99 può essere spiegata da uno splat molte volte più "
+       "luminoso di 1.0 invece di restarvi inchiodata: gamma dinamica recuperata "
+       "da una ripresa quasi troncata, al prezzo di dover GUARDARE il modello "
+       "allo stesso modo. «overexposure-reg» tira in senso opposto e conviene "
+       "lasciarlo a 0."),
+    NL("De kromme die de render doorloopt voordat het verlies hem met de foto "
+       "vergelijkt. `none` neemt die van de invoer, en dat houdt de render "
+       "gelijk aan de foto's. `aces`, `filmic` en `uncharted2` zetten in plaats "
+       "daarvan aflopende hoge lichten vóór het verlies, zodat een foto die bij "
+       "0.99 bijna wit is verklaard kan worden door een splat vele malen "
+       "helderder dan 1.0 in plaats van daar vast te zitten -- dynamisch bereik "
+       "terug uit een bijna afgekapte opname, tegen de prijs dat het model ook "
+       "zo BEKEKEN moet worden. `overexposure-reg` trekt de andere kant op en "
+       "kan het beste 0 blijven."),
+    RU("Кривая, через которую проходит рендер, прежде чем потеря сравнит его с "
+       "фотографией. «none» берёт кривую входа -- именно так рендер совпадает с "
+       "фотографиями. «aces», «filmic» и «uncharted2» вместо этого ставят перед "
+       "потерей спад светов, так что почти белую при 0.99 фотографию может "
+       "объяснить сплат во много раз ярче 1.0, а не привязанный к этой границе: "
+       "динамический диапазон, возвращённый из почти пересвеченной съёмки, ценой "
+       "того, что и СМОТРЕТЬ модель надо так же. «overexposure-reg» тянет в "
+       "другую сторону, его лучше оставить на 0."),
+    TR("Kayıp, render'ı fotoğrafla karşılaştırmadan önce render'ın geçtiği eğri. "
+       "`none` girdininkini kullanır; render'ı fotoğraflarla örtüşük tutan "
+       "budur. `aces`, `filmic` ve `uncharted2` ise kaybın önüne bir parlaklık "
+       "yumuşatması koyar; böylece 0.99'da neredeyse beyaz olan bir fotoğraf, "
+       "oraya çakılmak yerine 1.0'ın kat kat üstünde bir splat ile "
+       "açıklanabilir: neredeyse kırpılmış bir çekimden geri kazanılan dinamik "
+       "aralık, karşılığında modelin de aynı şekilde İZLENMESİ gerekir. "
+       "`overexposure-reg` ters yönde çeker, 0'da kalmalıdır."));
 
 SS_MSG(splat_color_gamut,
     EN("Splat color space"), JA("スプラットの色空間"),
@@ -8090,6 +9055,93 @@ SS_MSG(packed_help,
     TR("Yansıtma sonuçlarını sıkışık saklar. Adım başına çok görüntü işlenirken "
        "GPU belleğinden tasarruf ettirir, kimi zaman az miktarda hız kaybıyla."));
 
+SS_MSG(bin_tile_size,
+    EN("Binning tile size"), JA("ビニングタイルのサイズ"),
+    ZH_HANS("分块尺寸"), ZH_HANT("分塊尺寸"), KO("타일 분할 크기"),
+    DE("Größe der Einteilungskachel"),
+    FR("Taille des tuiles de répartition"),
+    ES("Tamaño de la tesela de reparto"),
+    PT("Tamanho do bloco de distribuição"),
+    IT("Dimensione del riquadro di ripartizione"),
+    NL("Grootte van de indelingstegel"), RU("Размер тайла разбиения"),
+    TR("Bölmeleme karosu boyutu"));
+SS_MSG(bin_tile_size_help,
+    EN("Edge in pixels of the tiles splats are sorted into, a power of two from "
+       "8 to 128. Larger tiles produce far fewer splat-tile pairs, so sorting "
+       "gets faster and uses much less memory, but each tile then rasterizes a "
+       "longer list. 0 picks a size from the splat sizes actually measured, and "
+       "coarsens further by itself when a batch's intersections would otherwise "
+       "overflow or not fit."),
+    JA("スプラットを振り分けるタイルの一辺のピクセル数で、8 から 128 までの 2 "
+       "の累乗です。タイルを大きくするとスプラットとタイルの組が大幅に減り、"
+       "並べ替えが速くメモリも大きく節約できますが、各タイルが処理するリスト"
+       "は長くなります。0 なら実測したスプラットの大きさから選び、メモリが尽"
+       "れきらないときは自動でさらに粗くします。"),
+    ZH_HANS("泼溅分块排序所用瓦片的边长像素数，取 8 到 128 之间的 2 的幂。瓦片"
+            "越大，泼溅与瓦片的配对数越少，排序更快、内存占用小得多，但每个瓦"
+            "片要光栅化的列表更长。填 0 则依据实测的泼溅大小自动选择，并在内存"
+            "装不下时自行加粗。"),
+    ZH_HANT("潑濺分塊排序所用磚塊的邊長像素數，取 8 到 128 之間的 2 的冪。磚塊"
+            "越大，潑濺與磚塊的配對數越少，排序更快、記憶體佔用小得多，但每個"
+            "磚塊要光柵化的清單更長。填 0 則依據實測的潑濺大小自動選擇，並在記"
+            "憶體裝不下時自行加粗。"),
+    KO("스플랫을 나눠 담는 타일의 한 변 픽셀 수로, 8에서 128 사이의 2의 거듭제"
+       "곱입니다. 타일이 클수록 스플랫과 타일의 짝이 훨씬 줄어 정렬이 빨라지고"
+       " 메모리도 크게 아끼지만, 타일마다 처리할 목록은 길어집니다. 0이면 실제"
+       " 측정한 스플랫 크기에서 고르고, 한 배치의 교차가 넘치거나 들어가지 않으면"
+       " 스스로 더 거칠게 잡습니다."),
+    DE("Kantenlänge in Pixeln der Kacheln, in die Splats einsortiert werden, "
+       "eine Zweierpotenz von 8 bis 128. Größere Kacheln ergeben weit weniger "
+       "Splat-Kachel-Paare, das Sortieren wird schneller und braucht viel weniger "
+       "Speicher, doch jede Kachel rastert dann eine längere Liste. 0 wählt eine "
+       "Größe aus den tatsächlich gemessenen Splatgrößen und vergröbert von sich "
+       "aus weiter, wenn die Schnittmengen eines Stapels sonst überlaufen oder "
+       "nicht hineinpassen."),
+    FR("Côté en pixels des tuiles dans lesquelles les splats sont répartis, une "
+       "puissance de deux de 8 à 128. De plus grandes tuiles produisent bien "
+       "moins de paires splat-tuile, donc le tri devient plus rapide et occupe "
+       "beaucoup moins de mémoire, mais chaque tuile rastérise alors une liste "
+       "plus longue. 0 choisit une taille d'après les tailles de splats réellement "
+       "mesurées et grossit encore de lui-même quand les intersections d'un lot "
+       "déborderaient ou ne tiendraient pas."),
+    ES("Lado en píxeles de las teselas en las que se reparten los splats, una "
+       "potencia de dos de 8 a 128. Las teselas grandes producen muchos menos "
+       "pares splat-tesela, así que ordenar resulta más rápido y ocupa mucha menos "
+       "memoria, pero cada tesela rasteriza entonces una lista más larga. 0 elige "
+       "un tamaño a partir de los tamaños de splat medidos y se vuelve más grueso "
+       "por su cuenta cuando las intersecciones de un lote se desbordarían o no "
+       "cabrían."),
+    PT("Lado em pixels dos blocos em que os splats são distribuídos, uma potência "
+       "de dois de 8 a 128. Blocos maiores produzem bem menos pares splat-bloco, "
+       "então a ordenação fica mais rápida e usa muito menos memória, mas cada "
+       "bloco passa a rasterizar uma lista mais longa. 0 escolhe um tamanho a "
+       "partir dos tamanhos de splat medidos e engrossa ainda mais por conta "
+       "própria quando as interseções de um lote transbordariam ou não caberiam."),
+    IT("Lato in pixel dei riquadri in cui gli splat vengono ripartiti, una potenza "
+       "di due da 8 a 128. Riquadri più grandi producono molte meno coppie "
+       "splat-riquadro, quindi l'ordinamento è più veloce e occupa molta meno "
+       "memoria, ma ogni riquadro rasterizza poi un elenco più lungo. 0 sceglie "
+       "una dimensione dalle dimensioni degli splat effettivamente misurate e si "
+       "ingrossa ancora da solo quando le intersezioni di un lotto andrebbero in "
+       "overflow o non ci starebbero."),
+    NL("Zijde in pixels van de tegels waarover splats worden verdeeld, een macht "
+       "van twee van 8 tot 128. Grotere tegels leveren veel minder splat-tegelparen "
+       "op, dus sorteren gaat sneller en kost veel minder geheugen, maar elke tegel "
+       "rastert dan een langere lijst. 0 kiest een maat op grond van de werkelijk "
+       "gemeten splatgroottes en wordt uit zichzelf nog grover wanneer de snijdingen "
+       "van een batch anders zouden overlopen of niet zouden passen."),
+    RU("Сторона в пикселях тайлов, по которым распределяются сплаты, степень "
+       "двойки от 8 до 128. Крупные тайлы дают намного меньше пар «сплат — тайл», "
+       "поэтому сортировка идёт быстрее и занимает гораздо меньше памяти, но "
+       "каждый тайл растеризует более длинный список. 0 подбирает размер по "
+       "реально измеренным размерам сплатов и сам укрупняет его дальше, когда "
+       "пересечения пакета иначе переполнились бы или не поместились."),
+    TR("Splatların dağıtıldığı karoların piksel cinsinden kenarı, 8 ile 128 "
+       "arasında ikinin kuvveti. Büyük karolar çok daha az splat-karo çifti "
+       "üretir, böylece sıralama hızlanır ve çok daha az bellek kullanır, ama her "
+       "karo daha uzun bir liste tarar. 0, ölçülen splat boyutlarından bir değer "
+       "seçer ve bir yığının kesişimleri taşacak ya da sığmayacak olduğunda "
+       "kendiliğinden daha da kabalaşır."));
 SS_MSG(quantization_level,
     EN("Color storage precision"), JA("色の保存精度"),
     ZH_HANS("颜色存储精度"), ZH_HANT("顏色儲存精度"), KO("색 저장 정밀도"),
@@ -8964,6 +10016,12 @@ SS_MSG(choice_from_the_file,
     ES("según el archivo"), PT("conforme o arquivo"), IT("dal file"),
     NL("uit het bestand"), RU("из файла"),     TR("dosyadan"));
 
+SS_MSG(choice_srgb_default,
+    EN("plain sRGB"), JA("素の sRGB"), ZH_HANS("普通 sRGB"), ZH_HANT("普通 sRGB"),
+    KO("일반 sRGB"), DE("schlichtes sRGB"), FR("sRGB simple"), ES("sRGB simple"),
+    PT("sRGB simples"), IT("sRGB semplice"), NL("gewoon sRGB"),
+    RU("обычный sRGB"), TR("sade sRGB"));
+
 SS_MSG(choice_same_as_input,
     EN("same as the input"), JA("入力と同じ"),  ZH_HANS("与输入相同"), ZH_HANT("與輸入相同"),
     KO("입력과 동일"),       DE("wie die Eingabe"), FR("comme l'entrée"),
@@ -9019,10 +10077,13 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"cache_images", "gpu",  &choice_gpu},
     {"cache_images", "disk", &choice_disk},
 
-    // `none` is the UNSET value for these two, not a colour space -- Rec.709
-    // is the explicit one. Labelled so the dropdown cannot read as "no gamut".
+    // `none` is the UNSET value for these four, not a colour space -- Rec.709
+    // and `srgb` are the explicit ones. Labelled so the dropdown cannot read
+    // as "no gamut" / "no transfer".
     {"image_color_gamut", "none", &choice_from_the_file},
     {"splat_color_gamut", "none", &choice_same_as_input},
+    {"image_color_transfer", "none", &choice_srgb_default},
+    {"splat_color_transfer", "none", &choice_same_as_input},
 };
 inline constexpr size_t kNumChoiceText =
     sizeof(kChoiceText) / sizeof(kChoiceText[0]);

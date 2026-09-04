@@ -164,16 +164,25 @@ bool unfolded(int model_id, const float* params, double X, double Y, double Z,
 
 }  // namespace
 
-void rescale(int model_id, float* params, double s) {
-    if (!(s > 0.0) || s == 1.0) return;
-    // Everything else is on the normalized plane and scale-free: FOV's omega,
-    // the division models' k, EUCM's alpha/beta, the radial and tangential
-    // coefficients. SIMPLE_DIVISION is the one model with a single focal
-    // length, which shifts its principal point down a slot.
-    int n = 4;
-    if (model_id == kColmapSimpleDivision) n = 3;
-    if (model_id == kSkewed) n = 5;             // ... plus the skew
-    for (int i = 0; i < n; i++) params[i] = (float)(params[i] / s);
+// Everything not touched here is on the normalized plane and scale-free: FOV's
+// omega, the division models' k, EUCM's alpha/beta, the radial and tangential
+// coefficients.
+void rescale(int model_id, float* params, double sx, double sy) {
+    if (!(sx > 0.0) || !(sy > 0.0) || (sx == 1.0 && sy == 1.0)) return;
+    if (model_id == kColmapSimpleDivision) {
+        // One focal length for both axes, so a non-square resize cannot be
+        // represented; sx keeps the horizontal field right. cx/cy shift down a slot.
+        params[0] = (float)(params[0] * sx);
+        params[1] = (float)(params[1] * sx);
+        params[2] = (float)(params[2] * sy);
+        return;
+    }
+    params[0] = (float)(params[0] * sx);   // fx
+    params[1] = (float)(params[1] * sy);   // fy
+    params[2] = (float)(params[2] * sx);   // cx
+    params[3] = (float)(params[3] * sy);   // cy
+    if (model_id == kSkewed)
+        params[4] = (float)(params[4] * sx);   // x-pixels per unit normalized y
 }
 
 bool project(int model_id, const float* params,

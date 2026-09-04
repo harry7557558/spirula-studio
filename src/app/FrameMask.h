@@ -76,10 +76,9 @@ struct BorderDetectOptions {
     float max_residual = 0.02f; // RMS radial fit error, fraction of the radius
 };
 
-// How the border was told from the scene. The two cues answer different
-// captures: a 360 camera writes a hard black border, while a wide lens behind
-// a hood gives a dim, flared ring that is never black but never resolves
-// anything either.
+// How the border was told from the scene. Activity -- where the frame never
+// resolves anything -- leads; a lit flare ring outside the circle is not black.
+// Dark answers the capture too still for it.
 enum class BorderCue { None, Dark, Activity };
 
 struct BorderDetect {
@@ -140,6 +139,13 @@ std::map<std::string, std::vector<std::string>> group_frames_by_camera(
 
 struct FrameStencilRun {
     std::string image_dir, mask_dir;
+    // Masks the stencil is intersected with, mirroring the image tree. "" is
+    // mask_dir itself, which is how a segmentation pass folds its own output
+    // in; naming another folder is how masks that came WITH the photos do.
+    std::string merge_dir;
+    // Those masks mark what to REMOVE, not what to keep. Applied on read, so
+    // what this writes is in the one convention everything else reads.
+    bool flip_merge = false;
     FrameStencil stencil;
     BorderDetectOptions detect;
     bool replace = false;      // ignore masks already in mask_dir

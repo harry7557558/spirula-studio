@@ -192,8 +192,28 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         non_sh.features_dc_bounds = engine().optim.features_dc_quant_state_fpbo.bounds_ptr();
     }
 
-    // Clip large splats
-    if (std::isfinite(cfg.max_screen_size) || std::isfinite(cfg.max_world_size)) {
+    // The oversize split channel only feeds draws, so the accumulator is
+    // allocated for exactly as long as densification runs.
+    const bool use_oversize_channel =
+        densify_ongoing && use_revised && cfg.oversize_split_fraction > 0.0f
+        && std::isfinite(cfg.max_screen_size);
+    auto& dv_oversize = engine().optim.densify_oversize;
+    if (use_oversize_channel) {
+        if (dv_oversize.data_ptr() == nullptr) {
+            dv_oversize.resize(PoolSlot::EngDensifyOversize, max_num_splats);
+            dv_oversize.zero();
+        }
+    } else {
+        dv_oversize = DeviceVector<float>();
+    }
+
+    // Clip large splats. With the soft penalty on, the hard clip is a
+    // backstop the split draw below can pay for in the same step; running it
+    // every step instead leaves the penalty no room to balance against.
+    const bool clip_now = !cfg.clip_screen_size_at_refine
+        || cfg.refine_every <= 0 || (step % cfg.refine_every) == 0;
+    if (clip_now &&
+        (std::isfinite(cfg.max_screen_size) || std::isfinite(cfg.max_world_size))) {
         densify_clip_scale_tensor(
             cur_num_splats,
             dv_radii, dv_scales,
@@ -248,16 +268,20 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             blend_w,
             cfg.score_power,
             dv_accum_buf,
-            cfg.score_mode
+            cfg.score_mode,
+            cfg.max_screen_size,
+            dv_oversize
         );
 
         // Clipping above the q-quantile leaves that quantile where it was, so
         // running it in place every step does not ratchet. A power would, so
         // it lands in the side buffer the draw and the preview then read.
         auto& dv_sample_score = engine().optim.densify_sample_score;
+        // Sized for the whole pool, not cur_num_splats: the oversize draw
+        // adds splats that the second draw then has to rank.
         if (cfg.final_score_power != 1.0f)
             dv_sample_score.resize(PoolSlot::EngDensifySampleScore,
-                                   cur_num_splats);
+                                   max_num_splats);
         else
             dv_sample_score = DeviceVector<float2>();
         densify_clip_score_tensor(cur_num_splats, dv_accum_buf,
@@ -297,20 +321,51 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         int64_t n_target = std::min(max_num_splats, (int64_t)(cfg.growth_factor * cur_num_splats));
         num_added = (int)std::max((int64_t)0, n_target - cur_num_splats);
         if (num_added > 0) {
-            add_splats_with_long_axis_split_tensor(
-                cur_num_splats, num_added, split_opacity_k,
-                dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
-                dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
-                dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
-                dv_accum_buf, engine().optim.densify_sample_score,
-                dv_bias_steps,
-                sh_optim_bits, num_sh,
-                dv_sh_quant_bounds, sh_bounds_per_splat,
-                dv_sh_value_packed, dv_sh_value_bounds,
-                sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-                non_sh,
-                2 * step + 1
-            );
+            // The oversize channel draws first, so its candidate set is the
+            // splats the accumulator actually covers.
+            int n_oversize = 0;
+            if (use_oversize_channel) {
+                n_oversize = (int)std::lround(
+                    cfg.oversize_split_fraction * (float)num_added);
+                n_oversize = std::max(0, std::min(n_oversize, num_added));
+            }
+            auto add_split = [&](int64_t n_cur, int n_new,
+                                 DeviceVector<float2> weights, uint32_t seed) {
+                add_splats_with_long_axis_split_tensor(
+                    n_cur, n_new, split_opacity_k,
+                    dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
+                    dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
+                    dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
+                    dv_accum_buf, weights,
+                    dv_bias_steps,
+                    sh_optim_bits, num_sh,
+                    dv_sh_quant_bounds, sh_bounds_per_splat,
+                    dv_sh_value_packed, dv_sh_value_bounds,
+                    sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
+                    non_sh,
+                    seed
+                );
+            };
+            auto& dv_score = engine().optim.densify_sample_score;
+            if (n_oversize > 0) {
+                DeviceVector<float2> dv_over_w;
+                dv_over_w.resize(PoolSlot::EngDensifyOversizeWeight,
+                                 cur_num_splats);
+                densify_oversize_weight_tensor(
+                    cur_num_splats, cfg.oversize_score_blend, dv_oversize,
+                    dv_score.data_ptr() ? dv_score : dv_accum_buf, dv_over_w);
+                add_split(cur_num_splats, n_oversize, dv_over_w,
+                          2 * step + 1 + 0x5bf03635u);
+                // The split kernel carries accum_buf src -> dst but not the
+                // transformed score, so the second draw would rank the new
+                // splats on whatever those slots held in a past life.
+                if (dv_score.data_ptr())
+                    backend::memset_sync(dv_score.data_ptr() + cur_num_splats,
+                                         0, (size_t)n_oversize * sizeof(float2));
+            }
+            if (num_added - n_oversize > 0)
+                add_split(cur_num_splats + n_oversize,
+                          num_added - n_oversize, dv_score, 2 * step + 1);
         }
     } else if (do_densify) {
         // MCMC relocation
@@ -351,6 +406,10 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     // Reset accum buffer after densification step
     if (do_densify && dv_accum_buf.data_ptr() != nullptr) {
         backend::memset_sync(dv_accum_buf.data_ptr(), 0, dv_accum_buf.size() * sizeof(float2));
+    }
+    if (do_densify && dv_oversize.data_ptr() != nullptr) {
+        backend::memset_sync(dv_oversize.data_ptr(), 0,
+                             dv_oversize.size() * sizeof(float));
     }
 
     // Add MCMC noise

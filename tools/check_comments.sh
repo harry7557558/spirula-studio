@@ -26,17 +26,19 @@ cd "$(dirname "$0")/.." || exit 1
 
 # Python files that live in someone else's repo and are referenced as
 # provenance -- upstream model definitions and the sam3.cpp converters.
-EXTERNAL_PY='^(lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama)\.py$'
+EXTERNAL_PY='^(lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama|dad|dedode|loma)\.py$'
 
 # Include roots owned by a toolchain or a vendored dependency.
 EXTERNAL_DIR='^(cub|vulkan|GLFW|glm|thrust|cooperative_groups|backends|misc|geogram|nets|imgui)/'
 
 EXTS='py|cpp|cu|cuh|slang|md|bash|cmake'
 
-# Trees excluded: vendored, generated, hand-run references, and dated design
-# notes (which record what was true when they were written).
+# Excluded: vendored, generated, hand-run references, dated design notes (which
+# record what was true when written), and the SS_FILE trim test, whose "paths"
+# are synthetic inputs that name no file on purpose.
 paths=(':!src/external/' ':!src/generated/' ':!src/instantiations/'
-       ':!reference/' ':!docs/notes/' ':!tools/check_comments.sh')
+       ':!reference/' ':!docs/notes/' ':!tools/check_comments.sh'
+       ':!src/core/tests/source_path.cpp')
 
 tracked=$(git ls-files)
 fail=0

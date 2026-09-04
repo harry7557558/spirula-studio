@@ -1,9 +1,25 @@
-// ImageColorOps.cu -- background blending (plain + random noise), log map
-// image (linear <-> sRGB), overexposure regularization.
+// ImageColorOps.cu -- background blending (plain + random noise), the working
+// space -> display transfer, overexposure regularization.
 //
 // Part of the PixelWise family -- see PixelWiseCommon.cuh.
 
 #include "kernels/pixelwise/PixelWiseCommon.cuh"
+
+// 2 * weight / N for L = weight * mean(max(-x, x-1, 0)^2) over N = B*H*W*3.
+static inline float _overexposure_scale(long b, long h, long w, float weight) {
+    if (weight == 0.0f) return 0.0f;
+    double n = (double)b * (double)h * (double)w * 3.0;
+    return (float)(2.0 * (double)weight / n);
+}
+
+// Transfer and linearity are compile-time axes so the curve and its decode
+// fold away; the transfer values are colorspace::Transfer (core/ColorSpace.h).
+#define _XFER_PICK1(fn, lin, t)                                               \
+    ((t) == 1 ? fn<1, lin> : (t) == 2 ? fn<2, lin> : (t) == 3 ? fn<3, lin> :  \
+     (t) == 4 ? fn<4, lin> : fn<0, lin>)
+#define _XFER_PICK(fn, t, lin)                                                \
+    ((lin) ? _XFER_PICK1(fn, true, t) : _XFER_PICK1(fn, false, t))
+
 
 // ================
 // Blend Background
@@ -36,6 +52,7 @@ __global__ void blend_background_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
     const TensorView<float, 4> in_background,
+    const float overexposure_scale,
     const TensorView<float, 4> v_out_rgb,
     TensorView<float, 4> v_in_rgb,
     TensorView<float, 4> v_in_transmittance,
@@ -58,7 +75,7 @@ __global__ void blend_background_backward_kernel(
     float3 v_rgb; float v_transmittance; float3 v_background;
     SlangPixelWise::blend_background_bwd(
         rgb, transmittance, background,
-        v_out,
+        v_out, overexposure_scale,
         &v_rgb, &v_transmittance, &v_background
     );
 
@@ -86,9 +103,10 @@ void blend_background_forward(
 
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_backward(
-    DeviceTensor3D<float3> rgb,              // [B, H, W, 3]
+    DeviceTensor3D<float3> rgb,              // [B, H, W, 3] PRE-blend
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
     DeviceTensor3D<float3> background,       // [B, H, W, 3]
+    float overexposure_weight,               // fused image-space reg, 0 = off
     DeviceTensor3D<float3> v_out_rgb,        // [B, H, W, 3]
     DeviceTensor3D<float3> v_rgb,            // [B, H, W, 3]
     DeviceTensor3D<float>  v_transmittance,  // [B, H, W, 1]
@@ -98,6 +116,7 @@ void blend_background_backward(
 
     blend_background_backward_kernel<<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance), _dt3d_to_tv4<float>(background),
+        _overexposure_scale(b, h, w, overexposure_weight),
         _dt3d_to_tv4<float>(v_out_rgb),
         _dt3d_to_tv4<float>(v_rgb), _dt3d_to_tv4<float>(v_transmittance), _dt3d_to_tv4<float>(v_background)
     );
@@ -123,14 +142,15 @@ __device__ __forceinline__ uint32_t _bg_mix(uint32_t x) {
     return x;
 }
 
-// The unit sample the background is built from. `blocky` draws one of the 8 RGB
-// cube corners per tile, the extreme points of the cube, so residual
-// transparency costs the most it can; the plain path keeps its U[0,1).
-template<bool blocky>
-__device__ __forceinline__ float3 _bg_sample(uint32_t seed, unsigned gid,
+// The unit sample the background is built from, in [-1, 1] either way.
+// `blocky` draws one of the 8 RGB cube corners per tile, the extreme points of
+// the cube, so residual transparency costs the most it can; the plain path is
+// U[-1, 1). Runtime, not a template argument: the Vulkan half already carries
+// it as a param field, and the branch is uniform across the whole launch.
+__device__ __forceinline__ float3 _bg_sample(bool blocky, uint32_t seed, unsigned gid,
                                              unsigned bid, unsigned x, unsigned y) {
     float3 u;
-    if constexpr (blocky) {
+    if (blocky) {
         // The whole tile grid shifts each step, so no pixel keeps its colour
         // and the pattern cannot be baked into the splats.
         const unsigned ox = _bg_mix(seed * 2u + 1u) % kBgBlockPx;
@@ -142,33 +162,31 @@ __device__ __forceinline__ float3 _bg_sample(uint32_t seed, unsigned gid,
         u.y = (h & 2u) ? 1.0f : -1.0f;
         u.z = (h & 4u) ? 1.0f : -1.0f;
     } else {
-        u.x = (float)hash_uint3(seed + 0, gid, bid) * exp2f(-32.0f);
-        u.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-32.0f);
-        u.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-32.0f);
+        // 2u-1: without it the plain path lands in [0.5, 0.5+w/2) instead of
+        // straddling 0.5, so every channel sits in the same bright half.
+        u.x = (float)hash_uint3(seed + 0, gid, bid) * exp2f(-31.0f) - 1.0f;
+        u.y = (float)hash_uint3(seed + 1, gid, bid) * exp2f(-31.0f) - 1.0f;
+        u.z = (float)hash_uint3(seed + 2, gid, bid) * exp2f(-31.0f) - 1.0f;
     }
     return u;
 }
 
-template<bool is_linear, bool blocky>
-__device__ __forceinline__ float3 _bg_color(uint32_t seed, unsigned gid,
+template<int Transfer, bool IsLinear>
+__device__ __forceinline__ float3 _bg_color(bool blocky, uint32_t seed, unsigned gid,
                                             unsigned bid, unsigned x, unsigned y,
                                             float randomize_weight) {
-    float3 background = _bg_sample<blocky>(seed, gid, bid, x, y);
+    float3 background = _bg_sample(blocky, seed, gid, bid, x, y);
     background = 0.5 + 0.5*randomize_weight * background;
-    if (is_linear) {
-        background.x = SlangPixelWise::srgb_to_linear_rgb(background.x);
-        background.y = SlangPixelWise::srgb_to_linear_rgb(background.y);
-        background.z = SlangPixelWise::srgb_to_linear_rgb(background.z);
-    }
-    return background;
+    return SlangPixelWise::display_to_working3(background, Transfer, IsLinear);
 }
 
-template<bool is_linear, bool blocky>
+template<int Transfer, bool IsLinear>
 __global__ void blend_background_noise_forward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
     const float randomize_weight,
     const uint32_t seed,
+    const bool blocky,
     TensorView<float, 4> out_rgb
 ) {
     unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -183,19 +201,21 @@ __global__ void blend_background_noise_forward_kernel(
     float transmittance = in_transmittance.load1(bid, y, x);
 
     float3 background =
-        _bg_color<is_linear, blocky>(seed, gid, bid, x, y, randomize_weight);
+        _bg_color<Transfer, IsLinear>(blocky, seed, gid, bid, x, y, randomize_weight);
 
     rgb = SlangPixelWise::blend_background(rgb, transmittance, background);
 
     out_rgb.store3(bid, y, x, rgb);
 }
 
-template<bool is_linear, bool blocky>
+template<int Transfer, bool IsLinear>
 __global__ void blend_background_noise_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const TensorView<float, 4> in_transmittance,
     const float randomize_weight,
     const uint32_t seed,
+    const bool blocky,
+    const float overexposure_scale,
     const TensorView<float, 4> v_out_rgb,
     TensorView<float, 4> v_in_rgb,
     TensorView<float, 4> v_in_transmittance
@@ -212,14 +232,14 @@ __global__ void blend_background_noise_backward_kernel(
     float transmittance = in_transmittance.load1(bid, y, x);
 
     float3 background =
-        _bg_color<is_linear, blocky>(seed, gid, bid, x, y, randomize_weight);
+        _bg_color<Transfer, IsLinear>(blocky, seed, gid, bid, x, y, randomize_weight);
 
     float3 v_out = v_out_rgb.load3(bid, y, x);
 
     float3 v_rgb; float v_transmittance; float3 v_background;
     SlangPixelWise::blend_background_bwd(
         rgb, transmittance, background,
-        v_out,
+        v_out, overexposure_scale,
         &v_rgb, &v_transmittance, &v_background
     );
 
@@ -229,6 +249,7 @@ __global__ void blend_background_noise_backward_kernel(
 
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_forward(
+    int transfer,
     bool is_linear,
     bool blocky,                          // tiled RGB corners instead of U[0,1)
     DeviceTensor3D<float3> rgb,           // [B, H, W, 3]
@@ -239,14 +260,10 @@ void blend_background_noise_forward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    auto k = is_linear
-        ? (blocky ? blend_background_noise_forward_kernel<true, true>
-                  : blend_background_noise_forward_kernel<true, false>)
-        : (blocky ? blend_background_noise_forward_kernel<false, true>
-                  : blend_background_noise_forward_kernel<false, false>);
-    k<<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
+    _XFER_PICK(blend_background_noise_forward_kernel, transfer, is_linear)
+    <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
-        randomize_weight, seed,
+        randomize_weight, seed, blocky,
         _dt3d_to_tv4<float>(out_rgb)
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -254,26 +271,25 @@ void blend_background_noise_forward(
 
 /*[AutoHeaderGeneratorExport]*/
 void blend_background_noise_backward(
+    int transfer,
     bool is_linear,
-    bool blocky,                          // tiled RGB corners instead of U[0,1)
-    DeviceTensor3D<float3> rgb,              // [B, H, W, 3]
+    bool blocky,                             // tiled RGB corners instead of noise
+    DeviceTensor3D<float3> rgb,              // [B, H, W, 3] PRE-blend
     DeviceTensor3D<float>  transmittance,    // [B, H, W, 1]
     float randomize_weight,
     uint32_t seed,
+    float overexposure_weight,               // fused image-space reg, 0 = off
     DeviceTensor3D<float3> v_out_rgb,        // [B, H, W, 3]
     DeviceTensor3D<float3> v_rgb,            // [B, H, W, 3]
     DeviceTensor3D<float>  v_transmittance   // [B, H, W, 1]
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    auto k = is_linear
-        ? (blocky ? blend_background_noise_backward_kernel<true, true>
-                  : blend_background_noise_backward_kernel<true, false>)
-        : (blocky ? blend_background_noise_backward_kernel<false, true>
-                  : blend_background_noise_backward_kernel<false, false>);
-    k<<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
+    _XFER_PICK(blend_background_noise_backward_kernel, transfer, is_linear)
+    <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb), _dt3d_to_tv4<float>(transmittance),
-        randomize_weight, seed,
+        randomize_weight, seed, blocky,
+        _overexposure_scale(b, h, w, overexposure_weight),
         _dt3d_to_tv4<float>(v_out_rgb),
         _dt3d_to_tv4<float>(v_rgb), _dt3d_to_tv4<float>(v_transmittance)
     );
@@ -282,11 +298,11 @@ void blend_background_noise_backward(
 
 
 // ================
-// Log Map Image
+// Working Space -> Display
 // ================
 
-template<bool is_input_linear>
-__global__ void rgb_to_srgb_forward_kernel(
+template<int Transfer, bool IsLinear>
+__global__ void working_to_display_forward_kernel(
     const TensorView<float, 4> in_rgb,
     const float* __restrict__ color_matrix_buffer,
     TensorView<float, 4> out_rgb
@@ -312,16 +328,13 @@ __global__ void rgb_to_srgb_forward_kernel(
     color_matrix[2].y = color_matrix_buffer[7];
     color_matrix[2].z = color_matrix_buffer[8];
 
-    if (is_input_linear)
-        rgb = SlangPixelWise::linear_rgb_to_srgb(rgb, color_matrix);
-    else
-        rgb = SlangPixelWise::rgb_to_srgb(rgb, color_matrix);
+    rgb = SlangPixelWise::working_to_display(rgb, color_matrix, Transfer, IsLinear);
 
     out_rgb.store3(bid, y, x, rgb);
 }
 
-template<bool is_input_linear>
-__global__ void rgb_to_srgb_backward_kernel(
+template<int Transfer, bool IsLinear>
+__global__ void working_to_display_backward_kernel(
     const TensorView<float, 4> in_rgb,
     const float* __restrict__ color_matrix_buffer,
     const TensorView<float, 4> v_out_rgb,
@@ -350,25 +363,23 @@ __global__ void rgb_to_srgb_backward_kernel(
 
     float3 v_out = v_out_rgb.load3(bid, y, x);
 
-    float3 v_rgb;
-    if (is_input_linear)
-        v_rgb = SlangPixelWise::linear_rgb_to_srgb_bwd(rgb, color_matrix, v_out);
-    else
-        v_rgb = SlangPixelWise::rgb_to_srgb_bwd(rgb, color_matrix, v_out);
+    float3 v_rgb = SlangPixelWise::working_to_display_bwd(
+        rgb, color_matrix, Transfer, IsLinear, v_out);
 
     v_in_rgb.store3(bid, y, x, v_rgb);
 }
 
 /*[AutoHeaderGeneratorExport]*/
-void rgb_to_srgb_forward(
-    bool is_input_linear,
+void working_to_display_forward(
+    int transfer,                        // colorspace::Transfer
+    bool is_linear,                      // does the source store linear light
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> out_rgb       // [B, H, W, 3]
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_input_linear ? rgb_to_srgb_forward_kernel<true> : rgb_to_srgb_forward_kernel<false>)
+    _XFER_PICK(working_to_display_forward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb),
         (float*)color_matrix.data_ptr(),
@@ -378,8 +389,9 @@ void rgb_to_srgb_forward(
 }
 
 /*[AutoHeaderGeneratorExport]*/
-void rgb_to_srgb_backward(
-    bool is_input_linear,
+void working_to_display_backward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,          // [B, H, W, 3]
     DeviceTensor2D<float3> color_matrix, // [3, 3] stored as 3 float3
     DeviceTensor3D<float3> v_out_rgb,    // [B, H, W, 3]
@@ -387,7 +399,7 @@ void rgb_to_srgb_backward(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
 
-    (is_input_linear ? rgb_to_srgb_backward_kernel<true> : rgb_to_srgb_backward_kernel<false>)
+    _XFER_PICK(working_to_display_backward_kernel, transfer, is_linear)
     <<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb),
         (float*)color_matrix.data_ptr(),
@@ -402,17 +414,12 @@ void rgb_to_srgb_backward(
 // Overexposure Regularization
 // ================
 
-// Penalizes rgb values outside [0,1] with an L2 loss
-//   L = weight * mean_{b,y,x,c}( max(-x, x-1, 0)^2 )
-// The actual scalar loss is never materialized; this kernel only adds the
-// per-pixel gradient dL/dx into v_rgb in-place. With N = B*H*W*3 the
-// per-channel grad is
-//   x < 0  : 2 * weight * x / N
-//   x > 1  : 2 * weight * (x - 1) / N
-//   else   : 0
+// Gradient of L = weight * mean(max(-x, x-1, 0)^2), added into v_rgb in place;
+// the scalar loss is never materialized. Only for the no-background path: with
+// a blend enabled the same term is fused there, onto the UNCLAMPED composite.
 __global__ void overexposure_grad_add_kernel(
     const TensorView<float, 4> rgb,
-    const float scale,                // 2 * weight / (B * H * W * 3)
+    const float scale,
     TensorView<float, 4> v_rgb
 ) {
     unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -422,18 +429,12 @@ __global__ void overexposure_grad_add_kernel(
     unsigned y = gid / W;
     unsigned x = gid % W;
 
-    float3 c   = rgb.load3(bid, y, x);
-    float3 v   = v_rgb.load3(bid, y, x);
-
-    auto over = [scale](float v_in, float v_pix) -> float {
-        float g = (v_pix < 0.0f) ? v_pix
-                : (v_pix > 1.0f) ? (v_pix - 1.0f)
-                : 0.0f;
-        return v_in + scale * g;
-    };
-    v.x = over(v.x, c.x);
-    v.y = over(v.y, c.y);
-    v.z = over(v.z, c.z);
+    float3 c = rgb.load3(bid, y, x);
+    float3 v = v_rgb.load3(bid, y, x);
+    float3 g = SlangPixelWise::overexposure_grad(c, scale);
+    v.x += g.x;
+    v.y += g.y;
+    v.z += g.z;
 
     v_rgb.store3(bid, y, x, v);
 }
@@ -446,12 +447,10 @@ void overexposure_grad_add(
 ) {
     long b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
     if (b <= 0 || h <= 0 || w <= 0 || weight == 0.0f) return;
-    double N = (double)b * (double)h * (double)w * 3.0;
-    float scale = (float)(2.0 * (double)weight / N);
 
     overexposure_grad_add_kernel<<<_LAUNCH_ARGS_2D(h * w, b, 256, 1)>>>(
         _dt3d_to_tv4<float>(rgb),
-        scale,
+        _overexposure_scale(b, h, w, weight),
         _dt3d_to_tv4<float>(v_rgb)
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());

@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include "core/Env.h"
+#include "core/SourcePath.h"
 
 #include "sfm/core/Log.h"
 #include "i18n/catalog/Sfm.h"
@@ -75,9 +76,29 @@ inline void vkEnablePortability(VkInstanceCreateInfo& ici,
     }
 }
 
-#define VK_CHECK(x) do { VkResult _r = (x); if (_r != VK_SUCCESS) { \
-    fprintf(stderr, "Vulkan error %d %s at %s:%d\n", (int)_r, vkResultName((int)_r), \
-            __FILE__, __LINE__); exit(1); } } while (0)
+// A failed call, thrown rather than exited on: a lost device or a refused
+// allocation ends one bundle adjustment, not the reconstruction, and
+// sfm/map/Bundle.h re-runs the solve on the host.
+struct VkError : std::runtime_error {
+    VkError(int r, const std::string& what) : std::runtime_error(what), result(r) {}
+    int result;
+};
+
+// Losing the device, or being refused memory, says nothing about whether the
+// same work fits on the host; every other code is a bug in the caller.
+inline bool vkErrorIsResourceFailure(int r) {
+    return r == VK_ERROR_DEVICE_LOST || r == VK_ERROR_OUT_OF_DEVICE_MEMORY ||
+           r == VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+inline std::string vkErrorText(int r, const char* file, int line) {
+    char buf[512];
+    snprintf(buf, sizeof buf, "Vulkan error %d %s at %s:%d", r, vkResultName(r), file, line);
+    return buf;
+}
+
+#define VK_CHECK(x) do { VkResult _r = (x); if (_r != VK_SUCCESS) \
+    throw VkError((int)_r, vkErrorText((int)_r, SS_FILE, __LINE__)); } while (0)
 
 // Must match the push constant block in sfm/shaders/ba/ba.slang.
 struct Push {

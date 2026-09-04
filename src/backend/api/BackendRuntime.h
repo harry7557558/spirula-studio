@@ -95,6 +95,8 @@ void  device_free(void* ptr);
 void* host_malloc_pinned(size_t bytes);  // cudaMallocHost / persistently-mapped staging
 void  host_free_pinned(void* ptr);
 
+const char* last_error();
+
 // --- out-of-memory reporting ---
 // device_malloc returns null on failure (cudaMalloc semantics), and most call
 // sites cannot recover -- they need to abort with a message a user can act on
@@ -111,10 +113,13 @@ inline std::string _fmt_bytes(uint64_t bytes) {
 // `what` optionally names the buffer being allocated (for diagnostics).
 [[noreturn]] inline void throw_out_of_memory(size_t bytes,
                                              const char* what = nullptr) {
+    const char* err = last_error();
     MemoryUsage m = memory_usage();
     DeviceInfo d = device_info(device_current());
-    std::string msg = "out of GPU memory: could not allocate " +
-                      _fmt_bytes(bytes);
+    std::string msg = err ? std::string("GPU allocation failed: ") + err +
+                                "; could not allocate " + _fmt_bytes(bytes)
+                          : "out of GPU memory: could not allocate " +
+                                _fmt_bytes(bytes);
     if (what && what[0]) { msg += " for "; msg += what; }
     if (d.name[0]) { msg += " on "; msg += d.name; }
     msg += ".";
@@ -123,7 +128,9 @@ inline std::string _fmt_bytes(uint64_t bytes) {
                _fmt_bytes(m.total_bytes) + ".";
     if (m.has_process)
         msg += " Used by this process: " + _fmt_bytes(m.process_bytes) + ".";
-    msg += " Try a smaller model (fewer splats / SH), a lower "
+    msg += err ? " If the device is out of memory, try"
+               : " Try";
+    msg += " a smaller model (fewer splats / SH), a lower "
            "training image resolution, or a GPU with more memory.";
     throw std::runtime_error(msg);
 }
@@ -147,13 +154,6 @@ void memset_async(void* dst, int value, size_t bytes,
 // be either host or device memory (zero-copy view vs. staging upload).
 // Vulkan: address-range check against the pool's buffer-device-address spans.
 bool is_device_pointer(const void* ptr);
-
-// Returns a human-readable description of the backend's pending sticky error
-// and clears it, or nullptr if none. Like cudaGetLastError, this also surfaces
-// failures from earlier async work (kernel launches) — callers that want
-// graceful degradation (e.g. the viewer worker) check it after critical
-// copies. The returned string has static storage duration.
-const char* last_error();
 
 // --- synchronization ---
 void device_synchronize();

@@ -19,7 +19,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -42,7 +43,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -65,7 +67,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -88,7 +91,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -111,7 +115,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -134,7 +139,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -157,7 +163,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -180,7 +187,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,
@@ -203,7 +211,8 @@ template void projection_packed_mask_kernel_wrapper<
     const uint32_t image_width,
     const uint32_t image_height,
     // outputs
-    bool *__restrict__ intersection_mask,  // [C, N]
+    uint32_t *__restrict__ mask_bits,
+    int32_t *__restrict__ block_counts,
     const uint8_t* __restrict__ sh_value_packed,
     const float2* __restrict__ sh_value_bounds,
     const uint32_t num_sh_buffer,

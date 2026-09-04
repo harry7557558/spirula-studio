@@ -78,6 +78,9 @@ void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor&
         return;
     }
 
+    // Chunking bounds the column buffer and the output slice, but im2col reads
+    // the source at arbitrary positions, so that one has to fit whole.
+    const KernelName entry = span_entry("conv.im2col", {in, w});
     const int64_t positions = Ho * Wo;
     int64_t chunk = std::max<int64_t>(64, kMaxColBytes / (K * 4));
     chunk = std::min(chunk, positions);
@@ -106,7 +109,7 @@ void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor&
         ip.P = (uint32_t)P;
         vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u,
                           (uint32_t)o.pad_replicate};
-        vk::Stream::get().dispatchFlat("conv.im2col", spec, P * K, 256, &ip, sizeof(ip),
+        vk::Stream::get().dispatchFlat(entry, spec, P * K, 256, &ip, sizeof(ip),
                                        &ip.groups_per_row);
 
         LinearOpts lo;
@@ -140,6 +143,7 @@ void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
     // The offset map is read as raw f32 by the kernel; an f16 one would need a
     // second load path for two values per tap and buys nothing at this size.
     NN_CHECK(offset.dtype == DType::F32, "deform_conv2d: offset must be f32");
+    const KernelName entry = span_entry("conv.deform_im2col", {in, offset, w});
 
     const int64_t positions = Ho * Wo;
     int64_t chunk = std::max<int64_t>(64, kMaxColBytes / (K * 4));
@@ -170,8 +174,8 @@ void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
         ip.P = (uint32_t)P;
         ip.max_offset = max_offset;
         vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
-        vk::Stream::get().dispatchFlat("conv.deform_im2col", spec, P * K, 256, &ip,
-                                       sizeof(ip), &ip.groups_per_row);
+        vk::Stream::get().dispatchFlat(entry, spec, P * K, 256, &ip, sizeof(ip),
+                                       &ip.groups_per_row);
 
         LinearOpts lo;
         lo.bias = o.bias;
@@ -192,6 +196,7 @@ void patch_gather(const Tensor& out, const Tensor& in, const Tensor& centers, in
              (long long)out.rows(), (long long)out.cols(), (long long)N,
              (long long)(C * k * k));
     if (N == 0) return;
+    const KernelName entry = span_entry("conv.patch_gather", {out, in, centers});
 
     PatchGatherParams p{};
     p.out = out.ptr;
@@ -203,14 +208,15 @@ void patch_gather(const Tensor& out, const Tensor& in, const Tensor& centers, in
     p.N = (uint32_t)N;
     p.k = (uint32_t)k;
     vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
-    vk::Stream::get().dispatchFlat("conv.patch_gather", spec, N * C * k * k, 256, &p,
-                                   sizeof(p), &p.groups_per_row);
+    vk::Stream::get().dispatchFlat(entry, spec, N * C * k * k, 256, &p, sizeof(p),
+                                   &p.groups_per_row);
 }
 
 void conv2d_depthwise(const Tensor& out, const Tensor& in, const Tensor& w_in, int kh,
                       int kw, const ConvOpts& o) {
     NN_CHECK(out.ndim == 3 && in.ndim == 3, "conv2d_depthwise expects [H, W, C]");
     const Tensor w = w_in.asMatrix();  // [C, kh*kw] from the checkpoint's [C,1,kh,kw]
+    const KernelName entry = span_entry("conv.conv2d_depthwise", {out, in, w});
     DepthwiseParams p{};
     p.out = out.ptr;
     p.x = in.ptr;
@@ -228,8 +234,8 @@ void conv2d_depthwise(const Tensor& out, const Tensor& in, const Tensor& w_in, i
     p.pad_y = (uint32_t)o.pad_y;
     p.pad_x = (uint32_t)o.pad_x;
     vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), (uint32_t)o.act};
-    vk::Stream::get().dispatchFlat("conv.conv2d_depthwise", spec, out.numel(), 256, &p,
-                                   sizeof(p), &p.groups_per_row);
+    vk::Stream::get().dispatchFlat(entry, spec, out.numel(), 256, &p, sizeof(p),
+                                   &p.groups_per_row);
 }
 
 void conv_transpose2x2(vk::Arena& arena, const Tensor& out, const Tensor& in,
@@ -248,6 +254,7 @@ void conv_transpose2x2(vk::Arena& arena, const Tensor& out, const Tensor& in,
     // serves all four taps of a channel.
     linear(packed, in.view(Hi * Wi, Ci), w_packed);
 
+    const KernelName entry = span_entry("misc.convt_scatter", {out, packed});
     ConvTScatterParams p{};
     p.out = out.ptr;
     p.packed = packed.ptr;
@@ -256,12 +263,13 @@ void conv_transpose2x2(vk::Arena& arena, const Tensor& out, const Tensor& in,
     p.Wi = (uint32_t)Wi;
     p.Co = (uint32_t)Co;
     vk::SpecList spec{0u, (uint32_t)act};
-    vk::Stream::get().dispatchFlat("misc.convt_scatter", spec, out.numel(), 256, &p,
-                                   sizeof(p), &p.groups_per_row);
+    vk::Stream::get().dispatchFlat(entry, spec, out.numel(), 256, &p, sizeof(p),
+                                   &p.groups_per_row);
 }
 
 void patchify(const Tensor& out, const Tensor& in, int patch) {
     NN_CHECK(in.ndim == 3, "patchify expects [H, W, C]");
+    const KernelName entry = span_entry("conv.patchify", {out, in});
     PatchifyParams p{};
     p.out = out.ptr;
     p.x = in.ptr;
@@ -270,7 +278,7 @@ void patchify(const Tensor& out, const Tensor& in, int patch) {
     p.Ci = (uint32_t)in.shape[2];
     p.patch = (uint32_t)patch;
     vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
-    vk::Stream::get().dispatchFlat("conv.patchify", spec, out.numel(), 256, &p, sizeof(p),
+    vk::Stream::get().dispatchFlat(entry, spec, out.numel(), 256, &p, sizeof(p),
                                    &p.groups_per_row);
 }
 

@@ -16,18 +16,21 @@ namespace {
 struct BlendBgBwdParams {
     uint64_t rgb, transmittance, background, v_out_rgb, v_rgb,
         v_transmittance, v_background;
+    float overexposure_scale;
     uint32_t total, wgs_per_row;
 };
-static_assert(sizeof(BlendBgBwdParams) == 7 * 8 + 2 * 4, "layout");
+static_assert(sizeof(BlendBgBwdParams) == 7 * 8 + 3 * 4 + 4 /*pad*/,
+              "layout");
 
 // Mirrors BlendBgNoiseBwdParams.
 struct BlendBgNoiseBwdParams {
     uint64_t rgb, transmittance, v_out_rgb, v_rgb, v_transmittance;
-    float randomize_weight;
+    float overexposure_scale, randomize_weight;
     uint32_t seed, HW, total, wgs_per_row, W, blocky;
 };
-static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 7 * 4 + 4 /*pad*/,
-              "layout");
+// 40 + 32 lands on an 8 boundary, so unlike the branch's 7-field version this
+// one needs no tail padding.
+static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 8 * 4, "layout");
 
 // Mirrors RgbToSrgbBwdParams.
 struct RgbToSrgbBwdParams {
@@ -81,6 +84,13 @@ struct ColorShiftUpdateParams {
 };
 static_assert(sizeof(ColorShiftUpdateParams) == 2 * 8 + 2 * 4, "layout");
 
+// 2 * weight / N for L = weight * mean(max(-x, x-1, 0)^2) over N = B*H*W*3.
+float overexposure_scale(int64_t b, int64_t h, int64_t w, float weight) {
+    if (weight == 0.0f) return 0.0f;
+    double n = (double)b * (double)h * (double)w * 3.0;
+    return (float)(2.0 * (double)weight / n);
+}
+
 }  // namespace
 
 /* API definitions matching kernels/pixelwise/PixelWise.cuh (training subset) */
@@ -89,6 +99,7 @@ void blend_background_backward(
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
     DeviceTensor3D<float3> background,
+    float overexposure_weight,
     DeviceTensor3D<float3> v_out_rgb,
     DeviceTensor3D<float3> v_rgb,
     DeviceTensor3D<float> v_transmittance,
@@ -96,6 +107,8 @@ void blend_background_backward(
 ) {
     const int64_t total = rgb.size<0>() * rgb.size<1>() * rgb.size<2>();
     BlendBgBwdParams p{};
+    p.overexposure_scale = overexposure_scale(
+        rgb.size<0>(), rgb.size<1>(), rgb.size<2>(), overexposure_weight);
     p.rgb = (uint64_t)rgb.data_ptr();
     p.transmittance = (uint64_t)transmittance.data_ptr();
     p.background = (uint64_t)background.data_ptr();
@@ -110,12 +123,14 @@ void blend_background_backward(
 }
 
 void blend_background_noise_backward(
+    int transfer,
     bool is_linear,
     bool blocky,
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
     float randomize_weight,
     uint32_t seed,
+    float overexposure_weight,
     DeviceTensor3D<float3> v_out_rgb,
     DeviceTensor3D<float3> v_rgb,
     DeviceTensor3D<float> v_transmittance
@@ -123,6 +138,8 @@ void blend_background_noise_backward(
     const int64_t hw = rgb.size<1>() * rgb.size<2>();
     const int64_t total = rgb.size<0>() * hw;
     BlendBgNoiseBwdParams p{};
+    p.overexposure_scale = overexposure_scale(
+        rgb.size<0>(), rgb.size<1>(), rgb.size<2>(), overexposure_weight);
     p.rgb = (uint64_t)rgb.data_ptr();
     p.transmittance = (uint64_t)transmittance.data_ptr();
     p.v_out_rgb = (uint64_t)v_out_rgb.data_ptr();
@@ -135,12 +152,14 @@ void blend_background_noise_backward(
     p.W = (uint32_t)rgb.size<2>();
     p.blocky = blocky ? 1u : 0u;
     vkk::dispatch_flat("pixel_wise_train.blend_bg_noise_bwd",
-                       backend::vk::SpecList{is_linear ? 1u : 0u}, total, 128,
-                       &p, sizeof(p), &p.wgs_per_row);
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
+                       total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
-void rgb_to_srgb_backward(
-    bool is_input_linear,
+void working_to_display_backward(
+    int transfer,
+    bool is_linear,
     DeviceTensor3D<float3> rgb,
     DeviceTensor2D<float3> color_matrix,
     DeviceTensor3D<float3> v_out_rgb,
@@ -153,8 +172,9 @@ void rgb_to_srgb_backward(
     p.v_out_rgb = (uint64_t)v_out_rgb.data_ptr();
     p.v_rgb = (uint64_t)v_rgb.data_ptr();
     p.total = (uint32_t)total;
-    vkk::dispatch_flat("pixel_wise_train.srgb_bwd",
-                       backend::vk::SpecList{is_input_linear ? 1u : 0u},
+    vkk::dispatch_flat("pixel_wise_train.working_to_display_bwd_k",
+                       backend::vk::SpecList{(uint32_t)transfer,
+                                             is_linear ? 1u : 0u},
                        total, 128, &p, sizeof(p), &p.wgs_per_row);
 }
 
@@ -165,11 +185,10 @@ void overexposure_grad_add(
 ) {
     int64_t b = rgb.size<0>(), h = rgb.size<1>(), w = rgb.size<2>();
     if (b <= 0 || h <= 0 || w <= 0 || weight == 0.0f) return;
-    double N = (double)b * (double)h * (double)w * 3.0;
     OverexposureParams p{};
     p.rgb = (uint64_t)rgb.data_ptr();
     p.v_rgb = (uint64_t)v_rgb.data_ptr();
-    p.scale = (float)(2.0 * (double)weight / N);
+    p.scale = overexposure_scale(b, h, w, weight);
     p.total = (uint32_t)(b * h * w);
     vkk::dispatch_flat("pixel_wise_train.overexposure_add",
                        backend::vk::SpecList{}, b * h * w, 128, &p, sizeof(p),
@@ -203,7 +222,7 @@ void depth_to_normal_backward(
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_train.d2n_bwd",
-                  backend::vk::SpecList{0u, cd.dist}, (W + 15) / 16,
+                  backend::vk::SpecList{0u, 0u, cd.dist}, (W + 15) / 16,
                   (H + 15) / 16, B, &p, sizeof(p));
 }
 
@@ -246,7 +265,7 @@ void linear_depth_to_ray_depth_inplace(
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
     p.camera_model = (int32_t)cd.cam;
     vkk::dispatch("pixel_wise_train.lin_to_ray_depth",
-                  backend::vk::SpecList{0u, cd.dist},
+                  backend::vk::SpecList{0u, 0u, cd.dist},
                   (uint32_t)((w + 127) / 128), (uint32_t)h, (uint32_t)b, &p,
                   sizeof(p));
 }

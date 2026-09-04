@@ -5,7 +5,7 @@
 #include "i18n/Locale.h"
 #include "i18n/catalog/Log.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 #ifdef SS_TOOL_SFM
 // For the stage tags the child prints; a build without the module has no child
@@ -16,6 +16,8 @@
 
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
 #include "aliked/model/Fetch.h"
+#include "loma/Loma.h"
+#include "loma/model/Fetch.h"
 #include "nn/io/Fetch.h"
 #endif
 
@@ -50,20 +52,33 @@ const char* kDataType[] = {"individual", "video", "internet"};
 const char* kCameraMode[] = {"single", "folder", "image"};
 const char* kPairs[] = {"auto", "exhaustive", "sequential", "prefilter"};
 const char* kMapper[] = {"flat", "bottom-up"};
-const char* kFeatures[] = {"sift", "aliked-n16rot", "aliked-n32"};
-const char* kMatcher[] = {"bruteforce", "lightglue"};
+const char* kFeatures[] = {"sift", "aliked-n16rot", "aliked-n32", "loma-b128",
+                           "loma-b"};
 
 template <int N>
 const char* pick(const char* const (&table)[N], int i, int fallback = 0) {
     return table[(i >= 0 && i < N) ? i : fallback];
 }
 
-// Is this line of the child's output worth showing to somebody who is not
-// debugging? Its own [run] block -- what it was asked for and what it got --
-// and anything it flagged. Everything else is the stream behind the bars.
-//
-// Both halves are asked of the same catalog the child printed from, so a
-// `--lang ja` run classifies as well as an English one.
+// The matcher combo is two entries -- brute force, or "the learned matcher for
+// this frontend" -- because a learned matcher only reads the descriptors it
+// was trained on. Which one that is follows --features.
+const char* matcher_for(int features, int matcher) {
+    if (features == 0 || matcher != 1) return "bruteforce";
+    const std::string f = pick(kFeatures, features);
+    return f.rfind("loma", 0) == 0 ? pick(kFeatures, features) : "lightglue";
+}
+
+// A failed Vulkan call is the child's own English diagnostic -- a result name
+// and a source line -- not interface copy, so it is matched as one.
+bool child_line_is_gpu_failure(const std::string& l) {
+    return l.find("VK_ERROR_DEVICE_LOST") != std::string::npos ||
+           l.find("VK_ERROR_OUT_OF_DEVICE_MEMORY") != std::string::npos;
+}
+
+// Worth showing to somebody who is not debugging: the child's own [run] block
+// and anything it flagged. Both halves are asked of the catalog the child
+// printed from, so a `--lang ja` run classifies as well as an English one.
 bool child_line_is_notable(const std::string& l) {
 #ifndef SS_TOOL_SFM
     (void)l;
@@ -111,17 +126,29 @@ bool has_model(const fs::path& sparse) {
 std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     std::vector<PendingDownload> out;
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
-    auto want = [&](const char* id) {
-        const aliked::ModelSource* src = aliked::find_model_source(id);
-        if (!src) return;
-        const std::string dest = nn::cached_path(src->onnx);
-        if (!file_is_cached(dest, src->onnx.bytes))
-            out.push_back({src->onnx.url, dest, src->onnx.bytes});
+    auto take = [&](const nn::FetchFile& f) {
+        const std::string dest = nn::cached_path(f);
+        if (!file_is_cached(dest, f.bytes)) out.push_back({f.url, dest, f.bytes});
     };
-    if (features > 0) want(pick(kFeatures, features));
-    // The matcher combo is only read with a learned frontend, which is what
-    // the command line does too (pick(kMatcher, features == 0 ? 0 : matcher)).
-    if (features > 0 && matcher == 1) want("aliked-lightglue");
+    auto want_aliked = [&](const char* id) {
+        if (const aliked::ModelSource* src = aliked::find_model_source(id)) take(src->onnx);
+    };
+    auto want_loma = [&](const std::string& id) {
+        if (const loma::ModelSource* src = loma::find_model_source(id)) take(src->onnx);
+    };
+    if (features <= 0) return out;
+
+    const std::string f = pick(kFeatures, features);
+    if (f.rfind("loma", 0) == 0) {
+        // Three files, not one: the detector is shared, the descriptor follows
+        // the variant, and the matcher is only wanted if it is selected.
+        want_loma("loma-dad");
+        want_loma(loma::descriptor_for_matcher(f));
+        if (matcher == 1) want_loma(f);
+    } else {
+        want_aliked(f.c_str());
+        if (matcher == 1) want_aliked("aliked-lightglue");
+    }
 #else
     (void)features;
     (void)matcher;
@@ -137,7 +164,7 @@ std::string SfmRunner::availability() {
 #ifndef SS_TOOL_SFM
     return lmsg::err_no_sfm_module.get();
 #else
-    if (exe_path().empty())
+    if (app::exe_path().empty())
         return lmsg::err_no_exe_path.get();
     return "";
 #endif
@@ -200,6 +227,7 @@ void SfmRunner::take_reconstruction(SfmJob& job) {
     job.features = _live.features;
     job.matcher = _live.matcher;
     job.keep_intermediate = _live.keep_intermediate;
+    job.ba_cpu = _live.ba_cpu;
     job.extra_args = _live.extra_args;
     // The lens is a reconstruction setting that happens to be stored on the
     // input it describes. The list itself cannot change while a run is live.
@@ -255,6 +283,8 @@ std::string SfmRunner::image_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _image_dir;
 }
+bool SfmRunner::mask_flipped() const { return _mask_flipped.load(); }
+
 std::string SfmRunner::mask_dir() {
     std::lock_guard<std::mutex> lk(_mu);
     return _mask_dir;
@@ -501,7 +531,7 @@ void SfmRunner::run(SfmJob job) {
                 // The child is this same executable, so it has the same
                 // thirteen languages -- tell it which one, or its output
                 // lands in the log in whatever the machine's locale is.
-                exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
+                app::exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
                 "sfm", "auto", prep.image_dir,
                 "-o", ws.string(),
                 "--progress-dir", (ws / ".progress").string(),
@@ -511,10 +541,9 @@ void SfmRunner::run(SfmJob job) {
                 "--camera-mode", pick(kCameraMode, job.camera_mode, 1),
                 "--mapper", pick(kMapper, job.mapper),
                 "--features", pick(kFeatures, job.features),
-                // LightGlue only exists for the learned descriptors; asking
-                // for it with SIFT selected is a usage error, so do not.
-                "--matcher",
-                pick(kMatcher, job.features == 0 ? 0 : job.matcher),
+                // A learned matcher only exists for the learned descriptors;
+                // asking for one with SIFT selected is a usage error.
+                "--matcher", matcher_for(job.features, job.matcher),
             };
             if (job.pairs > 0) {
                 argv.push_back("--pairs");
@@ -544,14 +573,21 @@ void SfmRunner::run(SfmJob job) {
             if (job.distortion_refine >= 2) argv.push_back("--no-final-extra-params");
             if (job.final_per_image_intrinsics)
                 argv.push_back("--final-per-image-intrinsics");
+            if (job.ba_cpu) {
+                argv.push_back("--ba-real");
+                argv.push_back("cpu");
+                argv.push_back("--ba-real-coarse");
+                argv.push_back("cpu");
+            }
             append_camera_overrides(job, prep, argv);
             if (job.max_features > 0) {
                 // Each frontend has its own count flag, because their budgets
                 // are not comparable -- a learned detector emits a few
                 // thousand better-localized points where SIFT wants tens of
                 // thousands. One spinner, routed to whichever is running.
-                argv.push_back(job.features == 0 ? "--max-features"
-                                                 : "--aliked-max-features");
+                argv.push_back(job.features == 0     ? "--max-features"
+                               : job.features >= 3   ? "--loma-max-features"
+                                                     : "--aliked-max-features");
                 argv.push_back(std::to_string(job.max_features));
             }
             if (job.max_image_size > 0) {
@@ -572,6 +608,9 @@ void SfmRunner::run(SfmJob job) {
             if (!prep.mask_dir.empty()) {
                 argv.push_back("--masks");
                 argv.push_back(prep.mask_dir);
+                // Only masks the run handed on untouched are still the other
+                // way round; anything it wrote is in the usual convention.
+                if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
             } else {
                 // Otherwise `auto` picks up a stale masks/ sitting beside the
                 // images from an earlier run with masking on.
@@ -583,9 +622,18 @@ void SfmRunner::run(SfmJob job) {
             std::string cmd;
             for (const auto& a : argv) cmd += (cmd.empty() ? "$ " : " ") + a;
             log(cmd);
-            const int rc = run_process(argv, "", [this](const std::string& l) {
+            // What to advise on failure depends on which stage lost the
+            // device: a CPU bundle adjustment is no answer to one lost while
+            // matching.
+            bool mapping = false, gpu_failure = false;
+            const int rc = run_process(argv, "", [&](const std::string& l) {
                 log(l, !child_line_is_notable(l));
                 note_progress(l);
+#ifdef SS_TOOL_SFM
+                const std::string map = sfm::slog::prefix(sfm::slog::Tag::Map);
+                if (l.compare(0, map.size(), map) == 0) mapping = true;
+#endif
+                if (mapping && child_line_is_gpu_failure(l)) gpu_failure = true;
             }, _cancel);
             if (rc == kCancelled) return fail(lmsg::err_cancelled.get());
             if (rc == kSpawnFailed)
@@ -599,7 +647,10 @@ void SfmRunner::run(SfmJob job) {
                 _partial = true;
                 log(lmsg::sfm_partial.get());
             } else if (rc != 0) {
-                return fail(lmsg::err_recon_failed.get());
+                return fail(gpu_failure
+                                ? fmt(lmsg::err_recon_gpu,
+                                      {spirula::i18n::msg::dataset::sfm_ba_cpu.get()})
+                                : lmsg::err_recon_failed.get());
             }
         }
 
@@ -635,6 +686,7 @@ void SfmRunner::run(SfmJob job) {
             _dataset_dir = ws.string();
             _image_dir = prep.image_dir_cfg;
             _mask_dir = prep.mask_dir_cfg;
+            _mask_flipped = prep.mask_dir_flipped;
         }
         _state = State::Done;
     } catch (const std::exception& e) {

@@ -4,10 +4,12 @@
 
 #include "app/Tools.h"
 #include "i18n/catalog/Log.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
+#include "app/CrashLog.h"
 #include "app/gui/Fonts.h"
 #include "app/gui/GuiApp.h"
 #include "app/gui/Layout.h"
+#include "app/gui/NavCamera.h"
 #include "i18n/catalog/Brand.h"
 
 #ifdef _WIN32
@@ -113,6 +115,28 @@ void release_own_console() {
 }
 #endif  // _WIN32
 
+// Frame pacing. Every presented frame is a GPU context switch away from a
+// running trainer: left on vsync, a 144 Hz display cost about half the card,
+// and iconifying the window -- which stops the presents -- gave it back.
+constexpr double kFpsBusy = 60.0;
+constexpr double kFpsIdle = 15.0;
+constexpr double kFpsIconified = 10.0;
+constexpr double kBusyHoldSeconds = 0.5;
+
+// Input worth a fast frame rate. The named-key range covers the keyboard and
+// the mouse buttons; analog sticks arrive as no event at all.
+bool ui_busy() {
+    const ImGuiIO& io = ImGui::GetIO();
+    if (io.WantTextInput || io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+        io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
+        ImGui::IsAnyItemActive())
+        return true;
+    for (ImGuiKey k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END;
+         k = (ImGuiKey)(k + 1))
+        if (ImGui::IsKeyDown(k)) return true;
+    return gui::gamepad_deflected();
+}
+
 }  // namespace
 
 int spirula_gui_main(int argc, char** argv) {
@@ -122,7 +146,9 @@ int spirula_gui_main(int argc, char** argv) {
 #endif
     // Before anything spawns a child, including the tools this binary re-runs
     // itself as: a Finder launch starts with almost nothing on PATH.
-    gui::add_desktop_search_paths();
+    app::add_desktop_search_paths();
+    // The one process with no console and nobody reading its stderr.
+    app::set_crash_dialog(true);
     // Checkpoints are fetched by the screen that asked for them, with a
     // progress bar and a button. Inherited by the children, so nothing this
     // window starts runs a curl the user did not press anything for.
@@ -226,8 +252,11 @@ int spirula_gui_main(int argc, char** argv) {
         };
         sync_title();
 
+        double next_frame = 0.0, busy_until = 0.0;
         while (!app.wants_exit()) {
             glfwPollEvents();
+            for (double wait; (wait = next_frame - glfwGetTime()) > 0.0; )
+                glfwWaitEventsTimeout(wait);
             if (glfwWindowShouldClose(window)) {
                 glfwSetWindowShouldClose(window, GLFW_FALSE);
                 app.request_close();
@@ -247,7 +276,16 @@ int spirula_gui_main(int argc, char** argv) {
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
             app.frame();
+            const bool busy = ui_busy();
             ImGui::Render();
+
+            const double now = glfwGetTime();
+            if (busy) busy_until = now + kBusyHoldSeconds;
+            const bool iconified =
+                glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0;
+            next_frame = now + 1.0 / (iconified        ? kFpsIconified
+                                      : now < busy_until ? kFpsBusy
+                                                         : kFpsIdle);
 
             int w = 0, h = 0;
             glfwGetFramebufferSize(window, &w, &h);

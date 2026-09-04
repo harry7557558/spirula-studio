@@ -108,24 +108,35 @@ static V3 cross3(V3 a, V3 b) {
             a.x * b.y - a.y * b.x};
 }
 
-// [K, 3, 3] face-axes table: orthonormal frames with axis_x/axis_y scaled
-// by the half-fov tangent (raydir = axis_z + tx*axis_x + ty*axis_y).
-static std::vector<float> make_axes(int K, float s) {
+// [B*K, 3, 3] face frames (unit rows) and [B*K, 4] face intrinsics, the
+// per-post-camera tables the warps take; face k of every image has half-fov
+// tangent `s` and an off-centre principal point that wanders with k.
+static std::vector<float> make_axes(int B, int K) {
     const V3 zs[4] = {{0, 0, 1},
                       {1, 0, 0},
                       {0.577f, 0.577f, 0.577f},
                       {0, -1, 0}};
     std::vector<float> axes;
-    for (int k = 0; k < K; k++) {
-        V3 z = norm3(zs[k % 4]);
+    for (int p = 0; p < B * K; p++) {
+        V3 z = norm3(zs[p % 4]);
         V3 up = std::fabs(z.y) > 0.9f ? V3{0, 0, 1} : V3{0, 1, 0};
         V3 x = norm3(cross3(up, z));
         V3 y = cross3(z, x);
-        float row[9] = {s * x.x, s * x.y, s * x.z, s * y.x, s * y.y,
-                        s * y.z, z.x,     z.y,     z.z};
+        float row[9] = {x.x, x.y, x.z, y.x, y.y, y.z, z.x, z.y, z.z};
         axes.insert(axes.end(), row, row + 9);
     }
     return axes;
+}
+static std::vector<float> make_face_intrins(int B, int K, int W, int H, float s) {
+    std::vector<float> intr;
+    for (int p = 0; p < B * K; p++) {
+        const float f = 0.5f * (float)W / s;
+        intr.push_back(f);
+        intr.push_back(f * (1.0f + 0.05f * (float)(p % 3)));
+        intr.push_back(0.5f * (float)W + 0.15f * (float)W * (float)(p % K));
+        intr.push_back(0.5f * (float)H - 0.1f * (float)H * (float)(p % 2));
+    }
+    return intr;
 }
 
 int main(int argc, char** argv) {
@@ -166,7 +177,8 @@ int main(int argc, char** argv) {
     {
         const int B = 2, Hin = 48, Win = 64, K = 3, Hout = 24, Wout = 32;
         const int Hd = 36, Wd = 48;  // GT depth/normal at their own res
-        float* d_axes = upload(make_axes(K, 0.7f));
+        float* d_axes = upload(make_axes(B, K));
+        float* d_face = upload(make_face_intrins(B, K, Wout, Hout, 0.7f));
 
         struct Cam {
             const char* model;
@@ -239,7 +251,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out * 3);
                 launch_warp_byte_to_float_wide(
                     cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params, upload(img), false,
-                    B, Hin, Win, 3, out, K, Hout, Wout, d_axes);
+                    B, Hin, Win, 3, out, K, Hout, Wout, d_face, d_axes);
                 readback_f(out, n_out * 3);
             }
             if (cam.model[0] == 'F') {
@@ -247,7 +259,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out * 3);
                 launch_warp_byte_to_float_wide(
                     cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params, upload(img), true,
-                    B, Hin, Win, 3, out, K, Hout, Wout, d_axes);
+                    B, Hin, Win, 3, out, K, Hout, Wout, d_face, d_axes);
                 readback_f(out, n_out * 3);
             }
 
@@ -258,7 +270,7 @@ int main(int argc, char** argv) {
                 uint8_t* out = alloc_out<uint8_t>(n_out);
                 launch_warp_mask_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                       upload(m), B, Hin, Win, out, K, Hout,
-                                      Wout, d_axes);
+                                      Wout, d_face, d_axes);
                 readback_b(out, n_out);
             }
 
@@ -269,7 +281,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out);
                 launch_warp_depth_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                        upload(dep), 2, B, Hd, Wd, Hin, Win,
-                                       out, K, Hout, Wout, d_axes, true);
+                                       out, K, Hout, Wout, d_face, d_axes, true);
                 readback_f(out, n_out);
             }
             {
@@ -278,7 +290,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out);
                 launch_warp_depth_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                        upload(dep), 4, B, Hd, Wd, Hin, Win,
-                                       out, K, Hout, Wout, d_axes, false);
+                                       out, K, Hout, Wout, d_face, d_axes, false);
                 readback_f(out, n_out);
             }
 
@@ -291,7 +303,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out * 3);
                 launch_warp_normal_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                         upload(nrm), 1, B, Hd, Wd, Hin, Win,
-                                        out, K, Hout, Wout, d_axes);
+                                        out, K, Hout, Wout, d_face, d_axes);
                 readback_f(out, n_out * 3);
             }
             if (cam.model[0] == 'F') {
@@ -299,7 +311,7 @@ int main(int argc, char** argv) {
                 float* out = alloc_out<float>(n_out * 3);
                 launch_warp_normal_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                         upload(nrm), 4, B, Hd, Wd, Hin, Win,
-                                        out, K, Hout, Wout, d_axes);
+                                        out, K, Hout, Wout, d_face, d_axes);
                 readback_f(out, n_out * 3);
             }
         }
@@ -420,21 +432,22 @@ int main(int argc, char** argv) {
     // ---- equirectangular warps -------------------------------------------
     {
         const int B = 1, Hin = 32, Win = 64, K = 4, Hout = 16, Wout = 16;
-        float* d_axes = upload(make_axes(K, 0.8f));
+        float* d_axes = upload(make_axes(B, K));
+        float* d_face = upload(make_face_intrins(B, K, Wout, Hout, 0.8f));
         const int64_t n_out = (int64_t)B * K * Hout * Wout;
 
         {
             auto img = r.bytes((int64_t)B * Hin * Win * 3);
             float* out = alloc_out<float>(n_out * 3);
             launch_warp_byte_to_float_equi(upload(img), false, B, Hin, Win,
-                                           3, out, K, Hout, Wout, d_axes);
+                                           3, out, K, Hout, Wout, d_face, d_axes);
             readback_f(out, n_out * 3);
         }
         {
             auto img = r.words((int64_t)B * Hin * Win * 3, 65535);
             float* out = alloc_out<float>(n_out * 3);
             launch_warp_byte_to_float_equi(upload(img), true, B, Hin, Win,
-                                           3, out, K, Hout, Wout, d_axes);
+                                           3, out, K, Hout, Wout, d_face, d_axes);
             readback_f(out, n_out * 3);
         }
         {
@@ -442,7 +455,7 @@ int main(int argc, char** argv) {
             for (auto& v : m) v = v < 180 ? 1 : 0;
             uint8_t* out = alloc_out<uint8_t>(n_out);
             launch_warp_mask_equi(upload(m), B, Hin, Win, out, K, Hout,
-                                  Wout, d_axes);
+                                  Wout, d_face, d_axes);
             readback_b(out, n_out);
         }
         {
@@ -450,7 +463,7 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < dep.size(); i += 53) dep[i] = 0;
             float* out = alloc_out<float>(n_out);
             launch_warp_depth_equi(upload(dep), 2, B, Hin, Win, out, K,
-                                   Hout, Wout, d_axes, true);
+                                   Hout, Wout, d_face, d_axes, true);
             readback_f(out, n_out);
         }
         {
@@ -458,7 +471,7 @@ int main(int argc, char** argv) {
             for (size_t i = 0; i < dep.size(); i += 41) dep[i] = -0.5f;
             float* out = alloc_out<float>(n_out);
             launch_warp_depth_equi(upload(dep), 4, B, Hin, Win, out, K,
-                                   Hout, Wout, d_axes, false);
+                                   Hout, Wout, d_face, d_axes, false);
             readback_f(out, n_out);
         }
         {
@@ -467,14 +480,14 @@ int main(int argc, char** argv) {
                 nrm[i] = nrm[i + 1] = nrm[i + 2] = 0;
             float* out = alloc_out<float>(n_out * 3);
             launch_warp_normal_equi(upload(nrm), 1, B, Hin, Win, out, K,
-                                    Hout, Wout, d_axes);
+                                    Hout, Wout, d_face, d_axes);
             readback_f(out, n_out * 3);
         }
         {
             auto nrm = r.vec((int64_t)B * Hin * Win * 3, -1.0f, 1.0f);
             float* out = alloc_out<float>(n_out * 3);
             launch_warp_normal_equi(upload(nrm), 4, B, Hin, Win, out, K,
-                                    Hout, Wout, d_axes);
+                                    Hout, Wout, d_face, d_axes);
             readback_f(out, n_out * 3);
         }
     }

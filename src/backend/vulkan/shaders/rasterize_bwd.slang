@@ -10,11 +10,13 @@
 // ID order RasterizeBwd.cpp pushes.
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
 #include "shaders/projection_utils.slang"
 #undef CudaDeviceExport
 
 #include "raster_common.slang"
+#include "screen.slang"
 #include "atomic_float.slang"
 #include "dist_spec.slang"
 
@@ -36,7 +38,9 @@ static const uint TILE_SIZE_DX = 8;
 static const uint TILE_SIZE_DY = 8;
 static const uint RB_BLOCK = TILE_SIZE_DX * TILE_SIZE_DY;  // 64 pixels
 static const uint RB_THREADS = 32;                         // = SPLAT_BATCH
-static const int SURV_CAP = 8 * (int)RB_THREADS;
+// Survivors carry the screen data the cull already gathered, so the capacity
+// trades against groupshared; two chunks is enough to keep the sweep fed.
+static const int SURV_CAP = 2 * (int)RB_THREADS;
 
 [ForceInline]
 bool _rb_finitef(float v) {
@@ -63,8 +67,13 @@ groupshared float _rb_medTf[RB_BLOCK];
 groupshared int _rb_bin[RB_BLOCK];       // 2d: last_ids
 groupshared float4 _rb_raybin[RB_BLOCK]; // 3dgut: (ray_d, bin as bits)
 groupshared float3 _rb_vrayd[RB_BLOCK];  // 3dgut viewmat grad per pixel
-groupshared int _rb_surv[SURV_CAP];
+groupshared int _rb_surv[SURV_CAP];      // flatten range index
+groupshared int _rb_ssid[SURV_CAP];      // flatten_ids[surv]
+groupshared float2 _rb_sxy[SURV_CAP];
+groupshared float3 _rb_sconic[SURV_CAP];
+groupshared float _rb_sopac[SURV_CAP];
 groupshared uint _rb_wtot[RB_THREADS];   // per-wave compaction totals
+groupshared uint _rb_binmax;             // 1 + max last_id over the tile's pixels
 groupshared float _rb_red[RB_THREADS];   // viewmat-grad reduction scratch
 
 // Load the per-pixel color/distortion/median state shared by both entries.
@@ -206,11 +215,7 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
 // ---------------------------------------------------------------------------
 
 struct Raster2dBwdParams {  // via params ring
-    float* s_xy;
-    float* s_depth;
-    float* s_conic;
-    float* s_opac;
-    float* s_rgb;
+    float* s_screen;    // [.., SCR2_STRIDE]
     int* gaussian_ids;   // kPacked only (fallback-backed otherwise)
     int* tile_offsets;
     int* flatten_ids;
@@ -227,11 +232,7 @@ struct Raster2dBwdParams {  // via params ring
     float* v_median;     // kOutputMedian
     float* v_dist_rgb;
     float* v_dist_depth;
-    float* v_s_xy;
-    float* v_s_depth;
-    float* v_s_conic;
-    float* v_s_opac;
-    float* v_s_rgb;
+    float* v_s_screen;  // [.., SCR2_STRIDE]
     uint* o_accum_weight;   // kAccumWeight; Max writes float bits, else float
     float* o_accum_weight_den;  // kAccumAvg lane 2
     uint32_t I;
@@ -241,7 +242,7 @@ struct Raster2dBwdParams {  // via params ring
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
-    uint32_t _pad0;
+    uint32_t macro_log2;  // was _pad0; the struct size is unchanged
 };
 
 struct Frag2d_ {
@@ -253,26 +254,21 @@ struct Frag2d_ {
 };
 
 [ForceInline]
-float _rb2_alpha(Frag2d_ s, float px, float py) {
-    float2 delta = float2(s.xy.x - px, s.xy.y - py);
-    float sigma =
+float _rb2_alpha(Frag2d_ s, float2 delta, out float sigma, out float vis) {
+    sigma =
         0.5f * (s.conic.x * delta.x * delta.x +
                 s.conic.z * delta.y * delta.y) +
         s.conic.y * delta.x * delta.y;
-    float vis = exp(-sigma);
+    vis = exp(-sigma);
     float alpha = min(0.999f, s.opac * vis);
     return sigma < 0.f ? 0.f : alpha;
 }
 
+// sigma / vis come from _rb2_alpha: re-deriving them here would cost a second
+// exp() on every contributing pixel.
 [ForceInline]
-void _rb2_alpha_vjp(Frag2d_ s, float px, float py, float v_alpha,
-                    inout Frag2d_ v) {
-    float2 delta = float2(s.xy.x - px, s.xy.y - py);
-    float sigma =
-        0.5f * (s.conic.x * delta.x * delta.x +
-                s.conic.z * delta.y * delta.y) +
-        s.conic.y * delta.x * delta.y;
-    float vis = exp(-sigma);
+void _rb2_alpha_vjp(Frag2d_ s, float2 delta, float sigma, float vis,
+                    float v_alpha, inout Frag2d_ v) {
     if (sigma >= 0.f && s.opac * vis <= 0.999f) {
         float v_sigma = -s.opac * vis * v_alpha;
         v.conic += float3(0.5f * v_sigma * delta.x * delta.x,
@@ -288,17 +284,20 @@ void _rb2_alpha_vjp(Frag2d_ s, float px, float py, float v_alpha,
 // One sweep step for the 2D entry; early-outs are plain returns so the
 // caller's barrier is never skipped.
 [ForceInline]
-void _rb2_step(Raster2dBwdParams p, int pix_id, int splat_idx, bool active,
-               uint wg_y, uint wg_z, Frag2d_ splat, inout Frag2d_ v_splat,
-               inout float accum_weight, inout float accum_weight_den) {
+void _rb2_step(int pix_id, int splat_idx, bool active,
+               uint wg_y, uint wg_z, Frag2d_ splat,
+               inout Frag2d_ v_splat,
+               inout float accum_weight, inout float accum_weight_den,
+               inout bool touched) {
     if (pix_id < 0 || pix_id >= (int)RB_BLOCK || !active) return;
     if (splat_idx > _rb_bin[pix_id]) return;
     int gx = int(wg_z * TILE_SIZE_DX) + pix_id % (int)TILE_SIZE_DX;
     int gy = int(wg_y * TILE_SIZE_DY) + pix_id / (int)TILE_SIZE_DX;
-    float px = float(gx) + 0.5f;
-    float py = float(gy) + 0.5f;
+    float2 delta = float2(splat.xy.x - (float(gx) + 0.5f),
+                          splat.xy.y - (float(gy) + 0.5f));
 
-    float alpha = _rb2_alpha(splat, px, py);
+    float sigma, vis;
+    float alpha = _rb2_alpha(splat, delta, sigma, vis);
     if (alpha <= ALPHA_THRESHOLD) return;
     float4 color = float4(splat.rgb, splat.depth);
 
@@ -306,9 +305,10 @@ void _rb2_step(Raster2dBwdParams p, int pix_id, int splat_idx, bool active,
     float4 v_color;
     _rb_pixel_grad(pix_id, alpha, color, v_alpha, v_color);
 
-    _rb2_alpha_vjp(splat, px, py, v_alpha, v_splat);
+    _rb2_alpha_vjp(splat, delta, sigma, vis, v_alpha, v_splat);
     v_splat.rgb += v_color.xyz;
     v_splat.depth += v_color.w;
+    touched = true;
 
     if (kAccumWeight != 0) {
         float T0 = _rb_Tg[pix_id].x;  // just updated: T0 stored in .x
@@ -330,27 +330,33 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                       uniform Raster2dBwdParams* pp) {
     Raster2dBwdParams p = *pp;
     uint image_id = wg.x;
-    uint tile_id =
-        (wg.y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) *
-            p.tile_width +
-        (wg.z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    uint tile_id = macro_tile_id(wg.y * TILE_SIZE_DY / TILE_SIZE_Y,
+                                 wg.z * TILE_SIZE_DX / TILE_SIZE_X,
+                                 p.tile_width, p.macro_log2);
     uint img_off = image_id * p.height * p.width;
 
     // ---- load pixel state (2 pixels per thread) ----
+    if (tid == 0) _rb_binmax = 0u;
+    GroupMemoryBarrierWithGroupSync();
+    int bin_local = -1;
     for (uint pix0 = 0; pix0 < RB_BLOCK; pix0 += RB_THREADS) {
         uint pix = pix0 + tid;
         int gx = int(wg.z * TILE_SIZE_DX) + int(pix % TILE_SIZE_DX);
         int gy = int(wg.y * TILE_SIZE_DY) + int(pix / TILE_SIZE_DX);
         uint gpix = uint(gy) * p.width + uint(gx);
         bool inside = (gx < int(p.width) && gy < int(p.height));
-        _rb_bin[pix] = inside ? p.last_ids[img_off + gpix] : -1;
+        int bin = inside ? p.last_ids[img_off + gpix] : -1;
+        _rb_bin[pix] = bin;
+        bin_local = max(bin_local, bin);
         _rb_load_pixel_state(
             pix, inside, img_off + gpix, p.render_Ts + img_off,
             p.v_render_Ts + img_off, gpix, p.out_rgb, p.out_depth,
             p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
             p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median);
     }
+    { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
+    int bin_max = int(_rb_binmax) - 1;
 
     int range_start = p.tile_offsets[image_id * p.tile_height * p.tile_width +
                                      tile_id];
@@ -366,48 +372,64 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint wsize = WaveGetLaneCount();
     uint n_waves = RB_THREADS / wsize;
 
-    for (int scan_end = range_end - 1; scan_end >= range_start;) {
+    // Nothing past the tile's deepest surviving fragment can contribute.
+    int count = 0;
+    for (int scan_end = min(range_end - 1, bin_max); scan_end >= range_start || count > 0;) {
         // ---- survivor compaction (back-to-front) ----
-        int count = 0;
         int s = scan_end;
         while (s >= range_start && count <= SURV_CAP - (int)RB_THREADS) {
             int gi = s - int(tid);
             bool ok = false;
+            int c_sid = 0;
+            float c_opac = 0.0f;
+            float3 c_conic = float3(0.0f);
+            float2 c_xy = float2(0.0f);
             if (gi >= range_start) {
-                int sid = p.flatten_ids[gi];
-                float c_opac = p.s_opac[sid];
-                float3 c_conic = float3(p.s_conic[3 * sid],
-                                        p.s_conic[3 * sid + 1],
-                                        p.s_conic[3 * sid + 2]);
-                float c_ex = p.s_xy[2 * sid];
-                float c_ey = p.s_xy[2 * sid + 1];
+                c_sid = p.flatten_ids[gi];
+                float* c_row = scr2_row(p.s_screen, c_sid);
+                c_opac = scr2_opac(c_row);
+                c_conic = scr2_conic(c_row);
+                c_xy = scr2_xy(c_row);
                 if (c_opac > ALPHA_THRESHOLD) {
                     float kk = 0.5f / log(c_opac / ALPHA_THRESHOLD);
-                    float3 inv_cov = c_conic * kk;
                     ok = ellipse_box_overlap_test(
-                        inv_cov, cull_bx0 - c_ex,
-                        cull_bx0 + TILE_SIZE_DX - c_ex, cull_by0 - c_ey,
-                        cull_by0 + TILE_SIZE_DY - c_ey);
+                        c_conic * kk, cull_bx0 - c_xy.x,
+                        cull_bx0 + TILE_SIZE_DX - c_xy.x, cull_by0 - c_xy.y,
+                        cull_by0 + TILE_SIZE_DY - c_xy.y);
                 }
             }
             uint prefix = WavePrefixCountBits(ok);
             uint wtotal = WaveActiveCountBits(ok);
-            GroupMemoryBarrierWithGroupSync();
-            if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
-            GroupMemoryBarrierWithGroupSync();
             uint base = 0;
-            for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
-            uint total = 0;
-            for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
-            if (ok) _rb_surv[count + int(base + prefix)] = gi;
+            uint total = wtotal;
+            if (n_waves > 1) {  // one wave covers the group: no roundtrip
+                GroupMemoryBarrierWithGroupSync();
+                if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
+                GroupMemoryBarrierWithGroupSync();
+                for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
+                total = 0;
+                for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
+            }
+            if (ok) {
+                int pos = count + int(base + prefix);
+                _rb_surv[pos] = gi;
+                _rb_ssid[pos] = c_sid;
+                _rb_sxy[pos] = c_xy;
+                _rb_sconic[pos] = c_conic;
+                _rb_sopac[pos] = c_opac;
+            }
             count += int(total);
             s -= int(RB_THREADS);
         }
         scan_end = s;
         GroupMemoryBarrierWithGroupSync();
 
-        // ---- sweep compacted survivors in batches of 32 ----
-        int num_batches = (count + (int)RB_THREADS - 1) / (int)RB_THREADS;
+        // ---- sweep compacted survivors in batches of RB_THREADS ----
+        // A partial batch costs a whole diagonal sweep, so only the very last
+        // one is allowed to be short; the tail rides into the next round.
+        bool drain = scan_end < range_start;
+        int num_batches = drain ? (count + (int)RB_THREADS - 1) / (int)RB_THREADS
+                                : count / (int)RB_THREADS;
         for (int b = 0; b < num_batches; b++) {
             int surv_pos = b * (int)RB_THREADS + int(tid);
             bool active = surv_pos < count;
@@ -418,44 +440,42 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                              float3(0.0f)};
             uint splat_sid = 0;
             if (active) {
-                splat_sid = uint(p.flatten_ids[splat_idx]);
-                splat.xy = float2(p.s_xy[2 * splat_sid],
-                                  p.s_xy[2 * splat_sid + 1]);
-                splat.depth = p.s_depth[splat_sid];
-                splat.conic = float3(p.s_conic[3 * splat_sid],
-                                     p.s_conic[3 * splat_sid + 1],
-                                     p.s_conic[3 * splat_sid + 2]);
-                splat.opac = p.s_opac[splat_sid];
-                splat.rgb = float3(p.s_rgb[3 * splat_sid],
-                                   p.s_rgb[3 * splat_sid + 1],
-                                   p.s_rgb[3 * splat_sid + 2]);
+                // Position, conic and opacity come from the cull's gather;
+                // only the two channels it had no use for are fetched again.
+                splat_sid = uint(_rb_ssid[surv_pos]);
+                splat.xy = _rb_sxy[surv_pos];
+                splat.conic = _rb_sconic[surv_pos];
+                splat.opac = _rb_sopac[surv_pos];
+                float* s_row = scr2_row(p.s_screen, int(splat_sid));
+                splat.depth = scr2_depth(s_row);
+                splat.rgb = scr2_rgb(s_row);
             }
             Frag2d_ v_splat = {float2(0.0f), 0.0f, float3(0.0f), 0.0f,
                                float3(0.0f)};
             float accum_weight = 0.0f;
             float accum_weight_den = 0.0f;
+            bool touched = false;
 
             for (int t = 0; t < batch_size + (int)RB_BLOCK - 1; t++) {
-                _rb2_step(p, t - int(tid), splat_idx, active, wg.y, wg.z,
-                          splat, v_splat, accum_weight, accum_weight_den);
+                _rb2_step(t - int(tid), splat_idx, active, wg.y, wg.z, splat,
+                          v_splat, accum_weight, accum_weight_den, touched);
                 GroupMemoryBarrierWithGroupSync();
             }
 
-            if (active) {
+            if (active && touched) {
                 uint wid = kPacked != 0 ? uint(p.gaussian_ids[splat_sid])
                                         : splat_sid % p.N;
-                _rb_atomic_add(p.v_s_xy + 2 * splat_sid, v_splat.xy.x);
-                _rb_atomic_add(p.v_s_xy + 2 * splat_sid + 1, v_splat.xy.y);
-                _rb_atomic_add(p.v_s_depth + splat_sid, v_splat.depth);
-                _rb_atomic_add(p.v_s_conic + 3 * splat_sid, v_splat.conic.x);
-                _rb_atomic_add(p.v_s_conic + 3 * splat_sid + 1,
-                               v_splat.conic.y);
-                _rb_atomic_add(p.v_s_conic + 3 * splat_sid + 2,
-                               v_splat.conic.z);
-                _rb_atomic_add(p.v_s_opac + splat_sid, v_splat.opac);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid, v_splat.rgb.x);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid + 1, v_splat.rgb.y);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid + 2, v_splat.rgb.z);
+                float* v_row = scr2_row(p.v_s_screen, int(splat_sid));
+                _rb_atomic_add(v_row + SCR2_XY, v_splat.xy.x);
+                _rb_atomic_add(v_row + SCR2_XY + 1, v_splat.xy.y);
+                _rb_atomic_add(v_row + SCR2_CONIC, v_splat.conic.x);
+                _rb_atomic_add(v_row + SCR2_CONIC + 1, v_splat.conic.y);
+                _rb_atomic_add(v_row + SCR2_CONIC + 2, v_splat.conic.z);
+                _rb_atomic_add(v_row + SCR2_OPAC, v_splat.opac);
+                _rb_atomic_add(v_row + SCR2_DEPTH, v_splat.depth);
+                _rb_atomic_add(v_row + SCR2_RGB, v_splat.rgb.x);
+                _rb_atomic_add(v_row + SCR2_RGB + 1, v_splat.rgb.y);
+                _rb_atomic_add(v_row + SCR2_RGB + 2, v_splat.rgb.z);
                 if (kAccumWeight == kAccumMax)
                     atomic_max_f32_nonneg(p.o_accum_weight + wid, accum_weight);
                 else if (kAccumWeight != 0) {
@@ -467,6 +487,29 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             }
         }
         GroupMemoryBarrierWithGroupSync();  // done reading surv[]
+        int rem = max(0, count - num_batches * (int)RB_THREADS);
+        int t_surv = 0, t_ssid = 0;
+        float2 t_xy = float2(0.0f);
+        float3 t_conic = float3(0.0f);
+        float t_opac = 0.0f;
+        if (int(tid) < rem) {
+            int src = num_batches * (int)RB_THREADS + int(tid);
+            t_surv = _rb_surv[src];
+            t_ssid = _rb_ssid[src];
+            t_xy = _rb_sxy[src];
+            t_conic = _rb_sconic[src];
+            t_opac = _rb_sopac[src];
+        }
+        GroupMemoryBarrierWithGroupSync();
+        if (int(tid) < rem) {
+            _rb_surv[tid] = t_surv;
+            _rb_ssid[tid] = t_ssid;
+            _rb_sxy[tid] = t_xy;
+            _rb_sconic[tid] = t_conic;
+            _rb_sopac[tid] = t_opac;
+        }
+        count = rem;
+        GroupMemoryBarrierWithGroupSync();
     }
 }
 
@@ -478,14 +521,12 @@ struct Raster3dgutBwdParams {  // via params ring
     float* means;
     float* quats;
     float* scales;    // WORLD scales (fragment load)
-    float* s_scale;   // SCREEN "scale" slot = projected 2D conic (culling)
-    float* s_opac;
-    float* s_rgb;
+    float* s_screen;    // [.., SCRG_STRIDE]; "scale" slot = 2D conic
     int* gaussian_ids;
     float* viewmats;     // [I,16]
     float4* intrins;     // [I]
     float* dist_coeffs;  // [I,8] (fallback-backed)
-    float4* aabb;
+    uint2* aabb;         // packed, aabb16.slang
     int* tile_offsets;
     int* flatten_ids;
     float* render_Ts;
@@ -504,8 +545,7 @@ struct Raster3dgutBwdParams {  // via params ring
     float* v_means;
     float* v_quats;
     float* v_scales;
-    float* v_s_opac;
-    float* v_s_rgb;
+    float* v_s_screen;  // [.., SCRG_STRIDE]
     uint* o_accum_weight;  // kAccumWeight; Max writes float bits, else float
     float* o_accum_weight_den;  // kAccumAvg lane 2
     float* v_viewmats;   // [I,16], kViewmatGrad
@@ -516,7 +556,7 @@ struct Raster3dgutBwdParams {  // via params ring
     uint32_t height;
     uint32_t tile_width;
     uint32_t tile_height;
-    uint32_t _pad0;
+    uint32_t macro_log2;  // was _pad0; the struct size is unchanged
 };
 
 struct Frag3dgut_ {
@@ -622,10 +662,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                          uniform Raster3dgutBwdParams* pp) {
     Raster3dgutBwdParams p = *pp;
     uint image_id = wg.x;
-    uint tile_id =
-        (wg.y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) *
-            p.tile_width +
-        (wg.z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    uint tile_id = macro_tile_id(wg.y * TILE_SIZE_DY / TILE_SIZE_Y,
+                                 wg.z * TILE_SIZE_DX / TILE_SIZE_X,
+                                 p.tile_width, p.macro_log2);
     uint img_off = image_id * p.height * p.width;
 
     float* vm = p.viewmats + image_id * 16;
@@ -639,6 +678,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 total_v_ray_o = float3(0.0f);
 
     // ---- load pixel state (2 pixels per thread) ----
+    if (tid == 0) _rb_binmax = 0u;
+    GroupMemoryBarrierWithGroupSync();
+    int bin_local = -1;
     for (uint pix0 = 0; pix0 < RB_BLOCK; pix0 += RB_THREADS) {
         uint pix = pix0 + tid;
         int gx = int(wg.z * TILE_SIZE_DX) + int(pix % TILE_SIZE_DX);
@@ -646,6 +688,7 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint gpix = uint(gy) * p.width + uint(gx);
         bool inside = (gx < int(p.width) && gy < int(p.height));
         int bin_final = inside ? p.last_ids[img_off + gpix] : -1;
+        bin_local = max(bin_local, bin_final);
         float px = float(gx) + 0.5f;
         float py = float(gy) + 0.5f;
         float3 raydir = float3(0.0f);
@@ -661,7 +704,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             p.dist_rgb, p.dist_depth, p.v_out_rgb, p.v_out_depth,
             p.v_dist_rgb, p.v_dist_depth, p.awmap, p.v_median);
     }
+    { uint prev; InterlockedMax(_rb_binmax, uint(bin_local + 1), prev); }
     GroupMemoryBarrierWithGroupSync();
+    int bin_max = int(_rb_binmax) - 1;
 
     int range_start = p.tile_offsets[image_id * p.tile_height * p.tile_width +
                                      tile_id];
@@ -677,23 +722,24 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint wsize = WaveGetLaneCount();
     uint n_waves = RB_THREADS / wsize;
 
-    for (int scan_end = range_end - 1; scan_end >= range_start;) {
-        int count = 0;
+    // Nothing past the tile's deepest surviving fragment can contribute.
+    int count = 0;
+    for (int scan_end = min(range_end - 1, bin_max); scan_end >= range_start || count > 0;) {
         int s = scan_end;
         while (s >= range_start && count <= SURV_CAP - (int)RB_THREADS) {
             int gi = s - int(tid);
             bool ok = false;
+            int c_sid = 0;
             if (gi >= range_start) {
                 int sid = p.flatten_ids[gi];
-                float c_opac = p.s_opac[sid];
+                c_sid = sid;
+                float* c_row = scrg_row(p.s_screen, sid);
+                float c_opac = scrg_opac(c_row);
                 // 3dgut keeps the projected 2D conic in the screen "scale"
                 // slot; ellipse center is the AABB center.
-                float3 c_conic = float3(p.s_scale[3 * sid],
-                                        p.s_scale[3 * sid + 1],
-                                        p.s_scale[3 * sid + 2]);
-                float4 c_bb = p.aabb[sid];
-                float c_ex = 0.5f * (c_bb.x + c_bb.z);
-                float c_ey = 0.5f * (c_bb.y + c_bb.w);
+                float3 c_conic = scrg_scale(c_row);
+                float2 c_ec = aabb16_center(p.aabb[sid], p.width, p.height);
+                float c_ex = c_ec.x, c_ey = c_ec.y;
                 if (c_opac > ALPHA_THRESHOLD) {
                     float kk = 0.5f / log(c_opac / ALPHA_THRESHOLD);
                     float3 inv_cov = c_conic * kk;
@@ -705,21 +751,32 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             }
             uint prefix = WavePrefixCountBits(ok);
             uint wtotal = WaveActiveCountBits(ok);
-            GroupMemoryBarrierWithGroupSync();
-            if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
-            GroupMemoryBarrierWithGroupSync();
             uint base = 0;
-            for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
-            uint total = 0;
-            for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
-            if (ok) _rb_surv[count + int(base + prefix)] = gi;
+            uint total = wtotal;
+            if (n_waves > 1) {  // one wave covers the group: no roundtrip
+                GroupMemoryBarrierWithGroupSync();
+                if (WaveGetLaneIndex() == 0) _rb_wtot[tid / wsize] = wtotal;
+                GroupMemoryBarrierWithGroupSync();
+                for (uint i = 0; i < tid / wsize; i++) base += _rb_wtot[i];
+                total = 0;
+                for (uint i = 0; i < n_waves; i++) total += _rb_wtot[i];
+            }
+            if (ok) {
+                int pos = count + int(base + prefix);
+                _rb_surv[pos] = gi;
+                _rb_ssid[pos] = c_sid;
+            }
             count += int(total);
             s -= int(RB_THREADS);
         }
         scan_end = s;
         GroupMemoryBarrierWithGroupSync();
 
-        int num_batches = (count + (int)RB_THREADS - 1) / (int)RB_THREADS;
+        // A partial batch costs a whole diagonal sweep, so only the very last
+        // one is allowed to be short; the tail rides into the next round.
+        bool drain = scan_end < range_start;
+        int num_batches = drain ? (count + (int)RB_THREADS - 1) / (int)RB_THREADS
+                                : count / (int)RB_THREADS;
         for (int b = 0; b < num_batches; b++) {
             int surv_pos = b * (int)RB_THREADS + int(tid);
             bool active = surv_pos < count;
@@ -737,7 +794,7 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             float4 quat = float4(1, 0, 0, 0);
             float3 wscale = float3(0.0f);
             if (active) {
-                splat_sid = uint(p.flatten_ids[splat_idx]);
+                splat_sid = uint(_rb_ssid[surv_pos]);
                 splat_wid = kPacked != 0 ? uint(p.gaussian_ids[splat_sid])
                                          : splat_sid % p.N;
                 splat.mean = float3(p.means[3 * splat_wid],
@@ -751,10 +808,9 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                 p.scales[3 * splat_wid + 1],
                                 p.scales[3 * splat_wid + 2]);
                 splat.iscl_rot = compute_3dgut_iscl_rot(quat, wscale);
-                splat.opacity = p.s_opac[splat_sid];
-                splat.rgb = float3(p.s_rgb[3 * splat_sid],
-                                   p.s_rgb[3 * splat_sid + 1],
-                                   p.s_rgb[3 * splat_sid + 2]);
+                float* s_row = scrg_row(p.s_screen, int(splat_sid));
+                splat.opacity = scrg_opac(s_row);
+                splat.rgb = scrg_rgb(s_row);
             }
             VFrag3dgut_ v_splat;
             v_splat.mean = float3(0.0f);
@@ -787,10 +843,11 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 _rb_atomic_add(p.v_scales + 3 * splat_wid, v_scale.x);
                 _rb_atomic_add(p.v_scales + 3 * splat_wid + 1, v_scale.y);
                 _rb_atomic_add(p.v_scales + 3 * splat_wid + 2, v_scale.z);
-                _rb_atomic_add(p.v_s_opac + splat_sid, v_splat.opacity);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid, v_splat.rgb.x);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid + 1, v_splat.rgb.y);
-                _rb_atomic_add(p.v_s_rgb + 3 * splat_sid + 2, v_splat.rgb.z);
+                float* v_row = scrg_row(p.v_s_screen, int(splat_sid));
+                _rb_atomic_add(v_row + SCRG_OPAC, v_splat.opacity);
+                _rb_atomic_add(v_row + SCRG_RGB, v_splat.rgb.x);
+                _rb_atomic_add(v_row + SCRG_RGB + 1, v_splat.rgb.y);
+                _rb_atomic_add(v_row + SCRG_RGB + 2, v_splat.rgb.z);
                 if (kAccumWeight == kAccumMax)
                     atomic_max_f32_nonneg(p.o_accum_weight + splat_wid,
                                           accum_weight);
@@ -803,6 +860,21 @@ void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 }
             }
         }
+
+        int rem = max(0, count - num_batches * (int)RB_THREADS);
+        GroupMemoryBarrierWithGroupSync();
+        int t_surv = 0, t_ssid = 0;
+        if (int(tid) < rem) {
+            int src = num_batches * (int)RB_THREADS + int(tid);
+            t_surv = _rb_surv[src];
+            t_ssid = _rb_ssid[src];
+        }
+        GroupMemoryBarrierWithGroupSync();
+        if (int(tid) < rem) {
+            _rb_surv[tid] = t_surv;
+            _rb_ssid[tid] = t_ssid;
+        }
+        count = rem;
         GroupMemoryBarrierWithGroupSync();
     }
 

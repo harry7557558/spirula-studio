@@ -59,7 +59,8 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
-            int64_t  sh_bounds_stride = 256
+            int64_t  sh_bounds_stride = 256,
+            int64_t  sh_pair_pitch = 0
         ) {
             Slang3DGSProj<camera_model, distortion>::fwd_2d(
                 antialiased,
@@ -87,26 +88,26 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
                         (this->mean, cam.R, cam.t, this->features_dc, (float3*)this->features_sh);
                 } else if constexpr (VALUE_BITS == 8) {
                     if constexpr (sh_degree == 0) screen.rgb = SlangHarmonics::sh0_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 1) screen.rgb = SlangHarmonics::sh1_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 2) screen.rgb = SlangHarmonics::sh2_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 3) screen.rgb = SlangHarmonics::sh3_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 4) screen.rgb = SlangHarmonics::sh4_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                 } else if constexpr (VALUE_BITS == 16) {
                     if constexpr (sh_degree == 0) screen.rgb = SlangHarmonics::sh0_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 1) screen.rgb = SlangHarmonics::sh1_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 2) screen.rgb = SlangHarmonics::sh2_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 3) screen.rgb = SlangHarmonics::sh3_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 4) screen.rgb = SlangHarmonics::sh4_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                 }
             }
         }
@@ -125,7 +126,8 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
-            int64_t  sh_bounds_stride = 256
+            int64_t  sh_bounds_stride = 256,
+            int64_t  sh_pair_pitch = 0
         ) {
             Slang3DGSProj<camera_model, distortion>::vjp_2d(
                 antialiased,
@@ -144,12 +146,12 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
                 &v_world.mean, &v_R, &v_t \
             );
             #define _ARGS_Q8 ( \
-                this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, \
+                this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch, \
                 v_screen.rgb, &v_world.features_dc, (float3*)v_world.features_sh, \
                 &v_world.mean, &v_R, &v_t \
             );
             #define _ARGS_Q16 ( \
-                this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, \
+                this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch, \
                 v_screen.rgb, &v_world.features_dc, (float3*)v_world.features_sh, \
                 &v_world.mean, &v_R, &v_t \
             );

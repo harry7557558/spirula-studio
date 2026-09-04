@@ -30,15 +30,15 @@ std::string geometry_model_ids() {
     return moge::model_id_list() + ", " + metric3d::model_id_list();
 }
 
-GeometryRequest face_request(const GeometryWarp& warp, int num_tokens) {
+GeometryRequest face_request(const GeometryWarp& warp, int k, int num_tokens) {
     GeometryRequest r;
     r.num_tokens = num_tokens;
-    r.width = warp.faceWidth();
-    r.height = warp.faceHeight();
-    r.fx = warp.faceFocal();
-    r.fy = warp.faceFocalY();
-    r.cx = warp.faceCx();
-    r.cy = warp.faceCy();
+    r.width = warp.faceWidth(k);
+    r.height = warp.faceHeight(k);
+    r.fx = warp.faceFocal(k);
+    r.fy = warp.faceFocalY(k);
+    r.cx = warp.faceCx(k);
+    r.cy = warp.faceCy(k);
     return r;
 }
 

@@ -28,6 +28,7 @@
 #include <random>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
@@ -1591,8 +1592,11 @@ namespace {
         // expose results
         const vector<index_t>& cell_to_v_store() const { return cell_to_v_store_; }
         const vector<index_t>& cell_to_cell_store() const { return cell_to_cell_store_; }
+        vector<index_t>&& take_cell_to_v_store() { return std::move(cell_to_v_store_); }
+        void set_keep_adjacency(bool b) { keep_adjacency_ = b; }
 
     private:
+        bool keep_adjacency_ = true;
         vector<index_t> cell_to_v_store_;
         vector<index_t> cell_to_cell_store_;
         vector<index_t> cell_next_;
@@ -1786,11 +1790,14 @@ namespace {
             t0->initialize_from(tn);
         }
 
-        // Compress: remove free and virtual tetrahedra.
+        // Compress: remove free and virtual tetrahedra. Dropping the status
+        // array and (adjacency-free callers) the neighbour store here is 0.8 GB
+        // on a 7M-point cloud; cell_next_ stays, tet_is_real() walks it.
+        cell_status_.clear();
+        const bool need_adj = keep_adjacency_ || keep_infinite_;
+        if(!need_adj) vector<index_t>().swap(cell_to_cell_store_);
         vector<index_t>& old2new = cell_next_;
         index_t nb_tets = 0;
-        index_t nb_tets_to_delete = 0;
-        (void)nb_tets_to_delete;
 
         {
             for(index_t t = 0; t < thread0->max_t(); ++t) {
@@ -1802,25 +1809,28 @@ namespace {
                             &cell_to_v_store_[t * 4],
                             4 * sizeof(index_t)
                         );
-                        std::memcpy(
-                            &cell_to_cell_store_[nb_tets * 4],
-                            &cell_to_cell_store_[t * 4],
-                            4 * sizeof(index_t)
-                        );
+                        if(need_adj) {
+                            std::memcpy(
+                                &cell_to_cell_store_[nb_tets * 4],
+                                &cell_to_cell_store_[t * 4],
+                                4 * sizeof(index_t)
+                            );
+                        }
                     }
-                    old2new[t] = nb_tets;
+                    if(need_adj) old2new[t] = nb_tets;
                     ++nb_tets;
                 } else {
-                    old2new[t] = NO_INDEX;
-                    ++nb_tets_to_delete;
+                    if(need_adj) old2new[t] = NO_INDEX;
                 }
             }
             cell_to_v_store_.resize(4 * nb_tets);
-            cell_to_cell_store_.resize(4 * nb_tets);
-            for(index_t i = 0; i < 4 * nb_tets; ++i) {
-                index_t t = cell_to_cell_store_[i];
-                t = old2new[t];
-                cell_to_cell_store_[i] = t;
+            if(need_adj) {
+                cell_to_cell_store_.resize(4 * nb_tets);
+                for(index_t i = 0; i < 4 * nb_tets; ++i) {
+                    index_t t = cell_to_cell_store_[i];
+                    t = old2new[t];
+                    cell_to_cell_store_[i] = t;
+                }
             }
         }
 
@@ -1882,10 +1892,7 @@ namespace delaunay3d {
     ) {
         Delaunay3DResult result;
         result.nb_vertices = nb_points;
-        // 7 tetrahedra per point are preallocated and addressed as 4*t+lv in
-        // 32 bits, so beyond this the cell arrays silently wrap.
-        constexpr int MAX_POINTS = 150000000;
-        if(nb_points < 4 || nb_points > MAX_POINTS) {
+        if(nb_points < 4 || nb_points > kMaxPoints) {
             result.num_threads = 0;
             return result;
         }
@@ -1903,24 +1910,20 @@ namespace delaunay3d {
         result.num_threads = int(nthreads);
 
         ParallelDelaunay3d del;
+        del.set_keep_adjacency(compute_adjacency);
         del.set_vertices(index_t(nb_points), points);
 
         index_t nb_cells = del.nb_cells();
-        const vector<index_t>& cv = del.cell_to_v_store();
-        const vector<index_t>& cc = del.cell_to_cell_store();
-
         result.nb_cells = int(nb_cells);
-        result.cell_vertices.resize(size_t(nb_cells) * 4);
-        for(size_t i = 0; i < size_t(nb_cells) * 4; ++i) {
-            result.cell_vertices[i] = int(int32_t(cv[i]));
-        }
         if(compute_adjacency) {
+            const vector<index_t>& cc = del.cell_to_cell_store();
             result.cell_adjacents.resize(size_t(nb_cells) * 4);
             for(size_t i = 0; i < size_t(nb_cells) * 4; ++i) {
                 index_t a = cc[i];
                 result.cell_adjacents[i] = (a == NO_INDEX) ? -1 : int(a);
             }
         }
+        result.cell_vertices = del.take_cell_to_v_store();
         return result;
     }
 

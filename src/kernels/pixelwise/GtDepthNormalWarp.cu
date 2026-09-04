@@ -1,20 +1,19 @@
 // GtDepthNormalWarp.cu -- ground-truth depth / normal wide -> pinhole warps
 // for split-mode supervision.
 //
-// Part of the PixelWise family -- see PixelWiseCommon.cuh.
+// Part of the PixelWise family -- see PixelWiseCommon.cuh; the face a pixel
+// belongs to is WarpFace.cuh.
 
 #include "kernels/pixelwise/BilinearSample.cuh"
 #include "kernels/pixelwise/RedistortSource.cuh"
+#include "kernels/pixelwise/WarpFace.cuh"
 
 // ================
 // GT depth / normal wide -> pinhole warps (for split-mode supervision)
 // ================
 //
-// These mirror the RGB byte->float warp above, but produce the per-face GT
-// geometry buffers consumed by the per-pixel depth / normal supervision loss.
-// The output layout matches gt.depth / gt.normal: [B*K, out_H, out_W, 1|3]
-// float at the POST-split (render) resolution, so the loss kernel's bilinear
-// sampler collapses to a 1:1 read (same projection as the rendered face).
+// Output matches gt.depth / gt.normal: [B*K, out_H, out_W, 1|3] float at the
+// POST-split (render) resolution, for the per-pixel supervision loss.
 
 // Wide-frame depth -> the per-face RAY depth the rasterizer renders: |P| from
 // the centre, so one value serves every face. Linear (z) divides by cos(theta)
@@ -39,7 +38,8 @@ __global__ void warp_depth_wide_to_pinhole_kernel(
     const float *__restrict__ source_params,
     TensorView<T_in, 4>  wide_depth,                     // [B, Hd, Wd, 1]
     TensorView<float, 5> pinhole_depth,                  // [B, K, H_out, W_out, 1]
-    const float* __restrict__ axes,                      // [K, 3, 3]
+    const float* __restrict__ post_intrins,              // [B*K, 4]
+    const float* __restrict__ axes,                      // [B*K, 3, 3]
     int in_H, int in_W,                                  // intrinsics ref res
     float norm_inv,
     bool input_is_ray_depth
@@ -54,8 +54,6 @@ __global__ void warp_depth_wide_to_pinhole_kernel(
     uint32_t i   = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t j   = blockIdx.y * blockDim.y + threadIdx.y;
     if (bid >= B || i >= Wp || j >= Hp) return;
-    float tx = -1.0f + 2.0f * ((float)i + 0.5f) / (float)Wp;
-    float ty = -1.0f + 2.0f * ((float)j + 0.5f) / (float)Hp;
 
     auto to_pixel = make_ray_to_pixel<distortion, from_source>(
         bid, camera_model, intrins, dist_coeffs_buffer, source_models, source_params);
@@ -64,10 +62,7 @@ __global__ void warp_depth_wide_to_pinhole_kernel(
     float sx = (float)Wd / (float)in_W, sy = (float)Hd / (float)in_H;
 
     for (int ki = 0; ki < K; ++ki) {
-        float3 axis_x = {axes[9*ki + 0], axes[9*ki + 1], axes[9*ki + 2]};
-        float3 axis_y = {axes[9*ki + 3], axes[9*ki + 4], axes[9*ki + 5]};
-        float3 axis_z = {axes[9*ki + 6], axes[9*ki + 7], axes[9*ki + 8]};
-        float3 raydir = axis_z + tx * axis_x + ty * axis_y;
+        float3 raydir = face_pixel_ray(axes, post_intrins, (long)bid * K + ki, i, j);
         float2 uv;
         bool valid = to_pixel(raydir, &uv);
         float out = 0.0f;
@@ -83,7 +78,8 @@ template<typename T_in>
 __global__ void warp_depth_equirectangular_to_pinhole_kernel(
     TensorView<T_in, 4>  wide_depth,                      // [B, Hd, Wd, 1]
     TensorView<float, 5> pinhole_depth,                   // [B, K, H_out, W_out, 1]
-    const float* __restrict__ axes,                       // [K, 3, 3]
+    const float* __restrict__ post_intrins,
+    const float* __restrict__ axes,
     float norm_inv,
     bool input_is_ray_depth
 ) {
@@ -97,21 +93,13 @@ __global__ void warp_depth_equirectangular_to_pinhole_kernel(
     uint32_t i   = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t j   = blockIdx.y * blockDim.y + threadIdx.y;
     if (bid >= B || i >= Wp || j >= Hp) return;
-    float tx = -1.0f + 2.0f * ((float)i + 0.5f) / (float)Wp;
-    float ty = -1.0f + 2.0f * ((float)j + 0.5f) / (float)Hp;
 
-    const float f = (float)w * (0.5f / (float)M_PI);
     for (int ki = 0; ki < K; ++ki) {
-        float3 axis_x = {axes[9*ki + 0], axes[9*ki + 1], axes[9*ki + 2]};
-        float3 axis_y = {axes[9*ki + 3], axes[9*ki + 4], axes[9*ki + 5]};
-        float3 axis_z = {axes[9*ki + 6], axes[9*ki + 7], axes[9*ki + 8]};
-        float3 raydir = axis_z + tx * axis_x + ty * axis_y;
-        float2 uv = {
-            0.5f * (float)w + f * atan2f(raydir.x, raydir.z),
-            0.5f * (float)h + f * atan2f(raydir.y, hypotf(raydir.x, raydir.z))
-        };
+        float3 raydir = face_pixel_ray(axes, post_intrins, (long)bid * K + ki, i, j);
+        float2 uv;
         float d;
         pinhole_depth.at(bid, ki, j, i, 0) =
+            equi_ray_to_uv(raydir, h, w, &uv) &&
             bilinear_depth_valid<T_in>(wide_depth, bid, uv.x, uv.y, norm_inv,
                                        /*wrap_u=*/true, &d)
                 ? _wide_depth_to_face_ray_depth(d, raydir, input_is_ray_depth)
@@ -120,22 +108,21 @@ __global__ void warp_depth_equirectangular_to_pinhole_kernel(
 }
 
 // Sample a wide-frame normal (in the INPUT camera frame) and rotate it into a
-// pinhole face's camera frame. `axis_*` are the face axes expressed in the
-// input frame (unit + orthogonal per the cubemap tables); the face-frame
-// components are the dot products with the normalized axes. Returns the
-// (-1,-1,-1) invalid sentinel when the sample is "no data" or degenerate.
+// pinhole face's camera frame: the face-frame components are the dot products
+// with its unit axes. (-1,-1,-1) is the "no data" / degenerate sentinel.
 template<typename T_in>
 __forceinline__ __device__ float3 _warp_one_normal(
     const TensorView<T_in, 4>& wide_normal, uint32_t bid,
     float x, float y, float norm_inv, float decode_off, bool wrap_u,
-    float3 axis_x, float3 axis_y, float3 axis_z
+    const float* __restrict__ a
 ) {
     float3 n;
     if (!bilinear_normal_valid<T_in>(wide_normal, bid, x, y, norm_inv,
                                      decode_off, wrap_u, &n))
         return make_float3(-1.0f, -1.0f, -1.0f);
-    float3 ax = normalize(axis_x), ay = normalize(axis_y), az = normalize(axis_z);
-    float3 r = make_float3(dot(ax, n), dot(ay, n), dot(az, n));
+    float3 r = make_float3(a[0]*n.x + a[1]*n.y + a[2]*n.z,
+                           a[3]*n.x + a[4]*n.y + a[5]*n.z,
+                           a[6]*n.x + a[7]*n.y + a[8]*n.z);
     float rl = length(r);
     if (rl <= 1e-8f) return make_float3(-1.0f, -1.0f, -1.0f);
     return r / rl;
@@ -150,7 +137,8 @@ __global__ void warp_normal_wide_to_pinhole_kernel(
     const float *__restrict__ source_params,
     TensorView<T_in, 4>  wide_normal,                    // [B, Hn, Wn, 3]
     TensorView<float, 5> pinhole_normal,                 // [B, K, H_out, W_out, 3]
-    const float* __restrict__ axes,                      // [K, 3, 3]
+    const float* __restrict__ post_intrins,              // [B*K, 4]
+    const float* __restrict__ axes,                      // [B*K, 3, 3]
     int in_H, int in_W,
     float norm_inv, float decode_off
 ) {
@@ -164,25 +152,21 @@ __global__ void warp_normal_wide_to_pinhole_kernel(
     uint32_t i   = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t j   = blockIdx.y * blockDim.y + threadIdx.y;
     if (bid >= B || i >= Wp || j >= Hp) return;
-    float tx = -1.0f + 2.0f * ((float)i + 0.5f) / (float)Wp;
-    float ty = -1.0f + 2.0f * ((float)j + 0.5f) / (float)Hp;
 
     auto to_pixel = make_ray_to_pixel<distortion, from_source>(
         bid, camera_model, intrins, dist_coeffs_buffer, source_models, source_params);
     float sx = (float)Wn / (float)in_W, sy = (float)Hn / (float)in_H;
 
     for (int ki = 0; ki < K; ++ki) {
-        float3 axis_x = {axes[9*ki + 0], axes[9*ki + 1], axes[9*ki + 2]};
-        float3 axis_y = {axes[9*ki + 3], axes[9*ki + 4], axes[9*ki + 5]};
-        float3 axis_z = {axes[9*ki + 6], axes[9*ki + 7], axes[9*ki + 8]};
-        float3 raydir = axis_z + tx * axis_x + ty * axis_y;
+        const long p = (long)bid * K + ki;
+        float3 raydir = face_pixel_ray(axes, post_intrins, p, i, j);
         float2 uv;
         bool valid = to_pixel(raydir, &uv);
         float3 nf = make_float3(-1.0f, -1.0f, -1.0f);
         if (valid) {
             nf = _warp_one_normal<T_in>(
                 wide_normal, bid, uv.x * sx, uv.y * sy, norm_inv, decode_off,
-                /*wrap_u=*/false, axis_x, axis_y, axis_z);
+                /*wrap_u=*/false, axes + 9 * p);
         }
         pinhole_normal.at(bid, ki, j, i, 0) = nf.x;
         pinhole_normal.at(bid, ki, j, i, 1) = nf.y;
@@ -194,7 +178,8 @@ template<typename T_in>
 __global__ void warp_normal_equirectangular_to_pinhole_kernel(
     TensorView<T_in, 4>  wide_normal,                     // [B, Hn, Wn, 3]
     TensorView<float, 5> pinhole_normal,                  // [B, K, H_out, W_out, 3]
-    const float* __restrict__ axes,                       // [K, 3, 3]
+    const float* __restrict__ post_intrins,
+    const float* __restrict__ axes,
     float norm_inv, float decode_off
 ) {
     const int B  = wide_normal.shape[0],
@@ -207,22 +192,16 @@ __global__ void warp_normal_equirectangular_to_pinhole_kernel(
     uint32_t i   = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t j   = blockIdx.y * blockDim.y + threadIdx.y;
     if (bid >= B || i >= Wp || j >= Hp) return;
-    float tx = -1.0f + 2.0f * ((float)i + 0.5f) / (float)Wp;
-    float ty = -1.0f + 2.0f * ((float)j + 0.5f) / (float)Hp;
 
-    const float f = (float)w * (0.5f / (float)M_PI);
     for (int ki = 0; ki < K; ++ki) {
-        float3 axis_x = {axes[9*ki + 0], axes[9*ki + 1], axes[9*ki + 2]};
-        float3 axis_y = {axes[9*ki + 3], axes[9*ki + 4], axes[9*ki + 5]};
-        float3 axis_z = {axes[9*ki + 6], axes[9*ki + 7], axes[9*ki + 8]};
-        float3 raydir = axis_z + tx * axis_x + ty * axis_y;
-        float2 uv = {
-            0.5f * (float)w + f * atan2f(raydir.x, raydir.z),
-            0.5f * (float)h + f * atan2f(raydir.y, hypotf(raydir.x, raydir.z))
-        };
-        float3 nf = _warp_one_normal<T_in>(
-            wide_normal, bid, uv.x, uv.y, norm_inv, decode_off,
-            /*wrap_u=*/true, axis_x, axis_y, axis_z);
+        const long p = (long)bid * K + ki;
+        float3 raydir = face_pixel_ray(axes, post_intrins, p, i, j);
+        float2 uv;
+        float3 nf = make_float3(-1.0f, -1.0f, -1.0f);
+        if (equi_ray_to_uv(raydir, h, w, &uv))
+            nf = _warp_one_normal<T_in>(
+                wide_normal, bid, uv.x, uv.y, norm_inv, decode_off,
+                /*wrap_u=*/true, axes + 9 * p);
         pinhole_normal.at(bid, ki, j, i, 0) = nf.x;
         pinhole_normal.at(bid, ki, j, i, 1) = nf.y;
         pinhole_normal.at(bid, ki, j, i, 2) = nf.z;
@@ -265,6 +244,7 @@ void launch_warp_depth_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes, bool input_is_ray_depth)
 {
     CameraModelType cm = cmt(camera_model);
@@ -273,19 +253,21 @@ void launch_warp_depth_wide(
     auto out_v = _make_tv5_out(d_float_out, B, K, Hout, Wout, 1);
     if (elem_size != 2 && elem_size != 4)
         throw std::runtime_error("launch_warp_depth_wide: depth must be uint16 or float32");
-    #define LAUNCH(D, FROM)                                                             \
+    #define LAUNCH(D, FROM)                                                       \
         if (elem_size == 2) {                                                     \
-            warp_depth_wide_to_pinhole_kernel<D, FROM, uint16_t>                        \
+            warp_depth_wide_to_pinhole_kernel<D, FROM, uint16_t>                  \
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
-                    cm, intrins_f4, dcb, d_source_models, d_source_params,                                          \
+                    cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<uint16_t>((const uint16_t*)d_depth, B, Hin, Win, 1), \
-                    out_v, d_axes, in_H, in_W, 1.0f, input_is_ray_depth);         \
+                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f,              \
+                    input_is_ray_depth);                                          \
         } else {                                                                  \
-            warp_depth_wide_to_pinhole_kernel<D, FROM, float>                           \
+            warp_depth_wide_to_pinhole_kernel<D, FROM, float>                     \
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
-                    cm, intrins_f4, dcb, d_source_models, d_source_params,                                          \
+                    cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<float>((const float*)d_depth, B, Hin, Win, 1),   \
-                    out_v, d_axes, in_H, in_W, 1.0f, input_is_ray_depth);         \
+                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f,              \
+                    input_is_ray_depth);                                          \
         }
     _SS_DISPATCH_SOURCE(distortion, d_source_models != nullptr, LAUNCH);
     #undef LAUNCH
@@ -297,6 +279,7 @@ void launch_warp_depth_equi(
     const void* d_depth, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes, bool input_is_ray_depth)
 {
     auto out_v = _make_tv5_out(d_float_out, B, K, Hout, Wout, 1);
@@ -304,12 +287,12 @@ void launch_warp_depth_equi(
         warp_depth_equirectangular_to_pinhole_kernel<uint16_t>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<uint16_t>((const uint16_t*)d_depth, B, Hin, Win, 1),
-                out_v, d_axes, 1.0f, input_is_ray_depth);
+                out_v, d_post_intrins, d_axes, 1.0f, input_is_ray_depth);
     } else if (elem_size == 4) {
         warp_depth_equirectangular_to_pinhole_kernel<float>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<float>((const float*)d_depth, B, Hin, Win, 1),
-                out_v, d_axes, 1.0f, input_is_ray_depth);
+                out_v, d_post_intrins, d_axes, 1.0f, input_is_ray_depth);
     } else {
         throw std::runtime_error("launch_warp_depth_equi: depth must be uint16 or float32");
     }
@@ -328,6 +311,7 @@ void launch_warp_normal_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     CameraModelType cm = cmt(camera_model);
@@ -336,19 +320,20 @@ void launch_warp_normal_wide(
     auto out_v = _make_tv5_out(d_float_out, B, K, Hout, Wout, 3);
     if (elem_size != 1 && elem_size != 4)
         throw std::runtime_error("launch_warp_normal_wide: normal must be uint8 or float32");
-    #define LAUNCH(D, FROM)                                                             \
+    #define LAUNCH(D, FROM)                                                       \
         if (elem_size == 1) {                                                     \
-            warp_normal_wide_to_pinhole_kernel<D, FROM, uint8_t>                        \
+            warp_normal_wide_to_pinhole_kernel<D, FROM, uint8_t>                  \
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
-                    cm, intrins_f4, dcb, d_source_models, d_source_params,                                          \
+                    cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<uint8_t>((const uint8_t*)d_normal, B, Hin, Win, 3), \
-                    out_v, d_axes, in_H, in_W, 1.0f / 127.5f, -1.0f);             \
+                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f / 127.5f,     \
+                    -1.0f);                                                       \
         } else {                                                                  \
-            warp_normal_wide_to_pinhole_kernel<D, FROM, float>                          \
+            warp_normal_wide_to_pinhole_kernel<D, FROM, float>                    \
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
-                    cm, intrins_f4, dcb, d_source_models, d_source_params,                                          \
+                    cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<float>((const float*)d_normal, B, Hin, Win, 3),  \
-                    out_v, d_axes, in_H, in_W, 1.0f, 0.0f);                       \
+                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f, 0.0f);       \
         }
     _SS_DISPATCH_SOURCE(distortion, d_source_models != nullptr, LAUNCH);
     #undef LAUNCH
@@ -360,6 +345,7 @@ void launch_warp_normal_equi(
     const void* d_normal, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    const float* d_post_intrins,
     const float* d_axes)
 {
     auto out_v = _make_tv5_out(d_float_out, B, K, Hout, Wout, 3);
@@ -367,421 +353,14 @@ void launch_warp_normal_equi(
         warp_normal_equirectangular_to_pinhole_kernel<uint8_t>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<uint8_t>((const uint8_t*)d_normal, B, Hin, Win, 3),
-                out_v, d_axes, 1.0f / 127.5f, -1.0f);
+                out_v, d_post_intrins, d_axes, 1.0f / 127.5f, -1.0f);
     } else if (elem_size == 4) {
         warp_normal_equirectangular_to_pinhole_kernel<float>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<float>((const float*)d_normal, B, Hin, Win, 3),
-                out_v, d_axes, 1.0f, 0.0f);
+                out_v, d_post_intrins, d_axes, 1.0f, 0.0f);
     } else {
         throw std::runtime_error("launch_warp_normal_equi: normal must be uint8 or float32");
     }
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
-
-
-enum class WarpImageType {
-    Default,
-    LinearDepth,
-    RayDepth,
-    Points,
-};
-
-__forceinline__ __device__ float3 solve3(float3 col0, float3 col1, float3 col2, float3 vec) {
-    float invdet = 1.0f / dot(cross(col0, col1), col2);
-    float x = dot(cross(vec, col1), col2) * invdet;
-    float y = dot(cross(col0, vec), col2) * invdet;
-    float z = dot(cross(col0, col1), vec) * invdet;
-    return {x, y, z};
-}
-
-template<CameraDistortionType distortion, WarpImageType type>
-__global__ void warp_image_pinhole_to_wide_kernel(
-    CameraModelType camera_model,
-    const float4 *__restrict__ intrins,  // [B, 4]
-    const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    TensorView<float, 4> wide_image,  // [B, H, W, C]
-    TensorView<float, 5> pinhole_images,  // [B, K, H, W, C]
-    const float* __restrict__ axes  // [K, 3, 3]
-) {
-    const int B = wide_image.shape[0],
-        K = pinhole_images.shape[1],
-        Hw = wide_image.shape[1],
-        Ww = wide_image.shape[2],
-        Hp = pinhole_images.shape[2],
-        Wp = pinhole_images.shape[3],
-        C = (type == WarpImageType::LinearDepth ? 1 :
-             type == WarpImageType::Points ? 3 :
-             wide_image.shape[3]);
-
-    uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
-    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t j = blockIdx.y * blockDim.y + threadIdx.y;
-    if (bid >= B || i >= Ww || j >= Hw)
-        return;
-
-    float4 intrin = intrins[bid];
-    float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
-    auto dist_coeffs = dist_coeffs_buffer.load<distortion>(bid);
-
-    float total[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    float total_count = 0;
-
-    float2 uv = { (i+0.5f-cx) / fx, (j+0.5f-cy) / fy };
-    float3 raydir;
-    if (!SlangDistortion<distortion>::unproject_point(
-            uv, (int)camera_model, dist_coeffs, &raydir)) {
-        for (int c = 0; c < C; c++)
-            wide_image.at(bid, j, i, c) = 0.0f;
-        return;
-    }
-
-    for (int ki = 0; ki < K; ++ki) {
-        float3 axis_x = {axes[0], axes[1], axes[2]};
-        float3 axis_y = {axes[3], axes[4], axes[5]};
-        float3 axis_z = {axes[6], axes[7], axes[8]};
-        axes += 9;
-
-        // axis_z + axis_x * tx + axis_y * ty = raydir * t
-        // [axis_x axis_y raydir] [tx ty -t] = -axis_z
-
-        float invdet = 1.0f / dot(cross(axis_x, axis_y), raydir);
-        float tx = dot(cross(raydir, axis_y), axis_z) * invdet;
-        float ty = dot(cross(axis_x, raydir), axis_z) * invdet;
-        float t = dot(cross(axis_x, axis_y), axis_z) * invdet;
-        if (fabsf(tx) >= 1.0f || fabsf(ty) >= 1.0f || t < 0.0f)
-            continue;
-
-        float2 xy = {(0.5f+0.5f*tx)*Wp, (0.5f+0.5f*ty)*Hp};
-
-        float weight = 1.0f;
-        float wx = length(axis_z) / length(axis_x);
-        float wy = length(axis_z) / length(axis_y);
-        if (wx < 1.0f && wy < 1.0f) {
-            float ux = (1.0f - fabsf(tx)) / (1.0f - wx);
-            float uy = (1.0f - fabsf(ty)) / (1.0f - wy);
-            weight = fmaxf(fminf(fminf(ux, uy), 1.0f), 0.0f);
-        }
-
-        if (type == WarpImageType::LinearDepth || type == WarpImageType::RayDepth) {
-            weight = weight*weight*(3.0f-2.0f*weight); // smoothstep
-            // weight = weight*weight*weight*(weight*(6.0f*weight-15.0f)+10.0f);
-            // constexpr float k = 3.0f;
-            // weight = powf(weight, k) / (powf(weight, k) + powf(1.0f-weight, k));
-            // TODO: this assums multi view consistent depth; Handle relative depth?
-            float depth = get_pixel_bilinear(pinhole_images, bid, ki, 0, xy.x, xy.y);
-            float3 point = normalize(raydir) * length(float3{uv.x, uv.y, 1.0f}) * depth;
-            total[0] += weight * (type == WarpImageType::LinearDepth ? point.z : length(point));
-        }
-        else if (type == WarpImageType::Points) {
-            // assums axes are orthogonal
-            float3 ax = normalize(axis_x), ay = normalize(axis_y), az = normalize(axis_z);
-            float3 point = float3{
-                get_pixel_bilinear(pinhole_images, bid, ki, 0, xy.x, xy.y),
-                get_pixel_bilinear(pinhole_images, bid, ki, 1, xy.x, xy.y),
-                get_pixel_bilinear(pinhole_images, bid, ki, 2, xy.x, xy.y)
-            };
-            point = weight * float3{
-                // dot(ax, point), dot(ay, point), dot(az, point)
-                dot(float3{ax.x, ay.x, az.x}, point),
-                dot(float3{ax.y, ay.y, az.y}, point),
-                dot(float3{ax.z, ay.z, az.z}, point)
-            };
-            total[0] += point.x, total[1] += point.y, total[2] += point.z;
-        }
-        else {
-            for (int c = 0; c < C; c++)
-                total[c] += weight * get_pixel_bilinear(pinhole_images, bid, ki, c, xy.x, xy.y);
-        }
-
-        total_count += weight;
-    }
-
-    for (int c = 0; c < C; c++)
-        wide_image.at(bid, j, i, c) = (total_count == 0.0f ? 0.0f : total[c] / total_count);
-}
-
-/*[AutoHeaderGeneratorExport]*/
-void warp_image_pinhole_to_wide_tensor(
-    std::string camera_model,
-    std::string distortion,
-    TorchTensorView intrins,            // [B, 4]
-    TorchTensorView dist_coeffs,        // [B, 8]
-    TorchTensorView pinhole_images,     // [B, K, H, W, C]
-    TorchTensorView axes,               // [K, 3, 3]
-    int out_w, int out_h,
-    TorchTensorView wide_image          // [B, H, W, C]
-) {
-    const auto& ps = std::get<2>(pinhole_images);
-    int b = ps[0];
-    auto make_tv4 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 4> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3];
-        long s3 = s[3], s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = 1;
-        return v;
-    };
-    auto make_tv5 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 5> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3]; v.shape[4] = s[4];
-        long s4 = s[4], s3 = s[3]*s4, s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = s4; v.strides[4] = 1;
-        return v;
-    };
-
-    #define LAUNCH(D) \
-        warp_image_pinhole_to_wide_kernel<D, WarpImageType::Default> \
-            <<<_LAUNCH_ARGS_3D(out_w, out_h, b, 16, 16, 1)>>>( \
-                cmt(camera_model), (float4*)std::get<0>(intrins), dist_coeffs, \
-                make_tv4(wide_image), make_tv5(pinhole_images), \
-                (float*)std::get<0>(axes))
-    _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
-    #undef LAUNCH
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-/*[AutoHeaderGeneratorExport]*/
-void warp_linear_depth_pinhole_to_wide_tensor(
-    std::string camera_model,
-    std::string distortion,
-    TorchTensorView intrins,            // [B, 4]
-    TorchTensorView dist_coeffs,        // [B, 8]
-    TorchTensorView pinhole_images,     // [B, K, H, W, 1]
-    TorchTensorView axes,               // [K, 3, 3]
-    int out_w, int out_h,
-    TorchTensorView wide_image          // [B, H, W, 1]
-) {
-    const auto& ps = std::get<2>(pinhole_images);
-    int b = ps[0];
-    auto make_tv4 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 4> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3];
-        long s3 = s[3], s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = 1;
-        return v;
-    };
-    auto make_tv5 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 5> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3]; v.shape[4] = s[4];
-        long s4 = s[4], s3 = s[3]*s4, s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = s4; v.strides[4] = 1;
-        return v;
-    };
-
-    #define LAUNCH(D) \
-        warp_image_pinhole_to_wide_kernel<D, WarpImageType::LinearDepth> \
-            <<<_LAUNCH_ARGS_3D(out_w, out_h, b, 16, 16, 1)>>>( \
-                cmt(camera_model), (float4*)std::get<0>(intrins), dist_coeffs, \
-                make_tv4(wide_image), make_tv5(pinhole_images), \
-                (float*)std::get<0>(axes))
-    _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
-    #undef LAUNCH
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-/*[AutoHeaderGeneratorExport]*/
-void warp_ray_depth_pinhole_to_wide_tensor(
-    std::string camera_model,
-    std::string distortion,
-    TorchTensorView intrins,            // [B, 4]
-    TorchTensorView dist_coeffs,        // [B, 8]
-    TorchTensorView pinhole_images,     // [B, K, H, W, 1]
-    TorchTensorView axes,               // [K, 3, 3]
-    int out_w, int out_h,
-    TorchTensorView wide_image          // [B, H, W, 1]
-) {
-    const auto& ps = std::get<2>(pinhole_images);
-    int b = ps[0];
-    auto make_tv4 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 4> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3];
-        long s3 = s[3], s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = 1;
-        return v;
-    };
-    auto make_tv5 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 5> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3]; v.shape[4] = s[4];
-        long s4 = s[4], s3 = s[3]*s4, s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = s4; v.strides[4] = 1;
-        return v;
-    };
-
-    #define LAUNCH(D) \
-        warp_image_pinhole_to_wide_kernel<D, WarpImageType::RayDepth> \
-            <<<_LAUNCH_ARGS_3D(out_w, out_h, b, 16, 16, 1)>>>( \
-                cmt(camera_model), (float4*)std::get<0>(intrins), dist_coeffs, \
-                make_tv4(wide_image), make_tv5(pinhole_images), \
-                (float*)std::get<0>(axes))
-    _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
-    #undef LAUNCH
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-/*[AutoHeaderGeneratorExport]*/
-void warp_points_pinhole_to_wide_tensor(
-    std::string camera_model,
-    std::string distortion,
-    TorchTensorView intrins,            // [B, 4]
-    TorchTensorView dist_coeffs,        // [B, 8]
-    TorchTensorView pinhole_images,     // [B, K, H, W, 3]
-    TorchTensorView axes,               // [K, 3, 3]
-    int out_w, int out_h,
-    TorchTensorView wide_image          // [B, H, W, 3]
-) {
-    const auto& ps = std::get<2>(pinhole_images);
-    int b = ps[0];
-    auto make_tv4 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 4> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3];
-        long s3 = s[3], s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = 1;
-        return v;
-    };
-    auto make_tv5 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 5> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3]; v.shape[4] = s[4];
-        long s4 = s[4], s3 = s[3]*s4, s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = s4; v.strides[4] = 1;
-        return v;
-    };
-
-    #define LAUNCH(D) \
-        warp_image_pinhole_to_wide_kernel<D, WarpImageType::Points> \
-            <<<_LAUNCH_ARGS_3D(out_w, out_h, b, 16, 16, 1)>>>( \
-                cmt(camera_model), (float4*)std::get<0>(intrins), dist_coeffs, \
-                make_tv4(wide_image), make_tv5(pinhole_images), \
-                (float*)std::get<0>(axes))
-    _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
-    #undef LAUNCH
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-
-// Resolve scale in relative depth -
-// The eigenvector corresponding to the smallest eigenvalue of this matrix tells how much depth maps need to be scaled
-template<CameraDistortionType distortion>
-__global__ void warp_depth_pinhole_to_wide_scale_matrix_kernel(
-    CameraModelType camera_model,
-    const float4 *__restrict__ intrins,  // [B, 4]
-    const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const int out_w, const int out_h,
-    const TensorView<float, 5> pinhole_images,  // [B, K, H, W, C]
-    const float* __restrict__ axes,  // [K, 3, 3]
-    float* __restrict__ out_matrix  // [B, K, K]
-) {
-    const int B = pinhole_images.shape[0],
-        K = pinhole_images.shape[1],
-        Hw = out_h,
-        Ww = out_w,
-        Hp = pinhole_images.shape[2],
-        Wp = pinhole_images.shape[3];
-
-    uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
-    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t j = blockIdx.y * blockDim.y + threadIdx.y;
-    if (bid >= B || i >= Ww || j >= Hw)
-        return;
-
-    float4 intrin = intrins[bid];
-    float fx = intrin.x, fy = intrin.y, cx = intrin.z, cy = intrin.w;
-    auto dist_coeffs = dist_coeffs_buffer.load<distortion>(bid);
-
-    float2 uv = { (i+0.5f-cx) / fx, (j+0.5f-cy) / fy };
-    float3 raydir;
-    if (!SlangDistortion<distortion>::unproject_point(
-            uv, (int)camera_model, dist_coeffs, &raydir))
-        return;
-
-    constexpr int MAX_K = 12;
-    float depths[MAX_K];
-
-    #pragma unroll MAX_K
-    for (int ki = 0; ki < K; ++ki) {
-        const float* axis_i = axes + 9 * ki;
-        float3 axis_x = {axis_i[0], axis_i[1], axis_i[2]};
-        float3 axis_y = {axis_i[3], axis_i[4], axis_i[5]};
-        float3 axis_z = {axis_i[6], axis_i[7], axis_i[8]};
-
-        // axis_z + axis_x * tx + axis_y * ty = raydir * t
-        // [axis_x axis_y raydir] [tx ty -t] = -axis_z
-        float invdet = 1.0f / dot(cross(axis_x, axis_y), raydir);
-        float tx = dot(cross(raydir, axis_y), axis_z) * invdet;
-        float ty = dot(cross(axis_x, raydir), axis_z) * invdet;
-        float t = dot(cross(axis_x, axis_y), axis_z) * invdet;
-
-        if (fabsf(tx) >= 1.0f || fabsf(ty) >= 1.0f || t < 0.0f) {
-            depths[ki] = 0.0f;
-        } else {
-            float2 xy = {(0.5f+0.5f*tx)*Wp, (0.5f+0.5f*ty)*Hp};
-            float depth = get_pixel_bilinear(pinhole_images, bid, ki, 0, xy.x, xy.y);
-            // depths[ki] = depth;
-            depths[ki] = __logf(fmaxf(depth, 1e-10f));
-        }
-    }
-
-    out_matrix += bid * K*K;
-
-    #pragma unroll MAX_K
-    for (int i = 0; i < K; ++i)
-        #pragma unroll MAX_K
-        for (int j = 0; j < K; ++j) {
-            float zi = depths[i], zj = depths[j];
-            float w = (i == j ? 1.0f : -1.0f) * (zi * zj);
-            atomicAddFVec<WARP_SIZE>(&out_matrix[K*i+j], w / (Ww*Hw));
-        }
-}
-
-/*[AutoHeaderGeneratorExport]*/
-void warp_depth_pinhole_to_wide_scale_matrix_tensor(
-    std::string camera_model,
-    std::string distortion,
-    TorchTensorView intrins,            // [B, 4]
-    TorchTensorView dist_coeffs,        // [B, 8]
-    TorchTensorView pinhole_images,     // [B, K, H, W, 1]
-    TorchTensorView axes,               // [K, 3, 3]
-    int out_w, int out_h,
-    TorchTensorView matrix              // [B, K, K] (must be pre-zeroed)
-) {
-    const auto& ps = std::get<2>(pinhole_images);
-    int b = ps[0];
-    auto make_tv5 = [](const TorchTensorView& tv) {
-        const auto& s = std::get<2>(tv);
-        TensorView<float, 5> v;
-        v.data = (float*)std::get<0>(tv);
-        v.shape[0] = s[0]; v.shape[1] = s[1]; v.shape[2] = s[2]; v.shape[3] = s[3]; v.shape[4] = s[4];
-        long s4 = s[4], s3 = s[3]*s4, s2 = s[2]*s3, s1 = s[1]*s2;
-        v.strides[0] = s1; v.strides[1] = s2; v.strides[2] = s3; v.strides[3] = s4; v.strides[4] = 1;
-        return v;
-    };
-
-    #define LAUNCH(D) \
-        warp_depth_pinhole_to_wide_scale_matrix_kernel<D> \
-            <<<_LAUNCH_ARGS_3D(out_w, out_h, b, 16, 16, 1)>>>( \
-                cmt(camera_model), (float4*)std::get<0>(intrins), dist_coeffs, \
-                out_w, out_h, \
-                make_tv5(pinhole_images), \
-                (float*)std::get<0>(axes), \
-                (float*)std::get<0>(matrix))
-    _SS_DISPATCH_DISTORTION(distortion, LAUNCH);
-    #undef LAUNCH
-    CHECK_DEVICE_ERROR(cudaGetLastError());
-}
-
-

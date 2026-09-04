@@ -168,6 +168,10 @@ __global__ void bilagrid_uniform_sample_backward_v1_kernel_bilagrid(
             float dg = v_output[g_off+1];
             float db = v_output[g_off+2];
 
+            // Every grid gradient this pixel gives is linear in its incoming
+            // one, so a zero one -- a masked pixel, mostly -- gives nothing.
+            if (dr == 0.0f && dg == 0.0f && db == 0.0f) continue;
+
             #pragma unroll
             for (int ci = 0; ci < 12; ci++) {
                 int si = ci % 4;
@@ -286,7 +290,17 @@ __global__ void bilagrid_uniform_sample_backward_v1_kernel_rgb(
     float sb = rgb[g_off+2];
     float dr = v_output[g_off+0];
     float dg = v_output[g_off+1];
-    float db = v_output[g_off+2]; 
+    float db = v_output[g_off+2];
+
+    // The image gradient is linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- is zero out and skips the corner loads.
+    if (dr == 0.0f && dg == 0.0f && db == 0.0f) {
+        v_rgb[g_off+0] = 0.0f;
+        v_rgb[g_off+1] = 0.0f;
+        v_rgb[g_off+2] = 0.0f;
+        return;
+    }
+
     float vr = 0.0, vg = 0.0, vb = 0.0;
 
     // grid coords

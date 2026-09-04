@@ -11,6 +11,32 @@ namespace gui {
 
 namespace {
 
+constexpr float kGamepadDeadzone = 0.1f;
+
+// One pad, triggers rescaled to the browser's [0,1]. GLFW leaves an axis the
+// mapping omits at 0 while a real trigger rests at -1, so rest is tracked per
+// pad: a device with one trigger mapped would otherwise roll the view forever.
+bool read_pad(int jid, GLFWgamepadstate& st, float& lt, float& rt) {
+    static float rest[GLFW_JOYSTICK_LAST + 1][2];
+    static bool seen[GLFW_JOYSTICK_LAST + 1];
+    if (!glfwGetGamepadState(jid, &st)) {
+        seen[jid] = false;
+        return false;
+    }
+    const float l = st.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER];
+    const float r = st.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER];
+    if (!seen[jid]) {
+        rest[jid][0] = l;
+        rest[jid][1] = r;
+        seen[jid] = true;
+    }
+    rest[jid][0] = std::fmin(rest[jid][0], l);
+    rest[jid][1] = std::fmin(rest[jid][1], r);
+    lt = 0.5f * (l - rest[jid][0]);
+    rt = 0.5f * (r - rest[jid][1]);
+    return true;
+}
+
 // ---- v3 (viewer.html) -------------------------------------------------------
 
 void v_add(const float a[3], const float b[3], float o[3]) {
@@ -252,20 +278,17 @@ bool NavCamera::gamepad_tick(float dt) {
     bool moved = false;
     for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; jid++) {
         GLFWgamepadstate st;
-        if (!glfwGetGamepadState(jid, &st)) continue;
+        float lt = 0.0f, rt = 0.0f;
+        if (!read_pad(jid, st, lt, rt)) continue;
         float lx = st.axes[GLFW_GAMEPAD_AXIS_LEFT_X];
         float ly = st.axes[GLFW_GAMEPAD_AXIS_LEFT_Y];
         float rx = st.axes[GLFW_GAMEPAD_AXIS_RIGHT_X];
         float ry = st.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y];
-        // W3C gamepad buttons[6]/[7] = analog triggers in [0,1]; GLFW
-        // exposes them as axes in [-1,1].
-        float lt = 0.5f * (st.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER] + 1.0f);
-        float rt = 0.5f * (st.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER] + 1.0f);
         float roll_input = lt - rt;
-        const float deadzone = 0.1f;
         // Movement (triggers only apply while the left stick is deflected,
         // matching the browser implementation).
-        if (std::fabs(lx) > deadzone || std::fabs(ly) > deadzone) {
+        if (std::fabs(lx) > kGamepadDeadzone ||
+            std::fabs(ly) > kGamepadDeadzone) {
             const float s = speed() * dt * 1.0f;
             float fwd[3], right[3], move[3], step[3];
             axis_forward(fwd);
@@ -281,17 +304,35 @@ bool NavCamera::gamepad_tick(float dt) {
             moved = true;
         }
         // Look
-        if (std::fabs(rx) > deadzone || std::fabs(ry) > deadzone) {
+        if (std::fabs(rx) > kGamepadDeadzone ||
+            std::fabs(ry) > kGamepadDeadzone) {
             look(rx * dt * 400.0f, ry * dt * 400.0f);
             moved = true;
         }
         // Roll
-        if (std::fabs(roll_input) > deadzone) {
+        if (std::fabs(roll_input) > kGamepadDeadzone) {
             roll(roll_input * dt * 1.0f);
             moved = true;
         }
     }
     return moved;
+}
+
+// Stick and trigger input reaches no window event, so the GUI loop cannot
+// pace its frame rate on events alone.
+bool gamepad_deflected() {
+    for (int jid = GLFW_JOYSTICK_1; jid <= GLFW_JOYSTICK_LAST; jid++) {
+        GLFWgamepadstate st;
+        float lt = 0.0f, rt = 0.0f;
+        if (!read_pad(jid, st, lt, rt)) continue;
+        if (std::fabs(st.axes[GLFW_GAMEPAD_AXIS_LEFT_X]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]) > kGamepadDeadzone ||
+            std::fabs(st.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]) > kGamepadDeadzone ||
+            std::fabs(lt - rt) > kGamepadDeadzone)
+            return true;
+    }
+    return false;
 }
 
 void NavCamera::look_at(const float eye[3], const float tgt[3],

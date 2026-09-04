@@ -4,7 +4,7 @@
 #include "i18n/catalog/Log.h"
 
 #include "app/TrainerCore.h"
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/TrainPreset.h"
 #include "backend/api/BackendRuntime.h"
@@ -70,7 +70,7 @@ std::string quote(const std::string& v) {
 }
 
 std::string batch_list_path() {
-    return (fs::path(config_dir()) / "batch.json").string();
+    return (fs::path(app::config_dir()) / "batch.json").string();
 }
 
 // Parse one of the per-row overrides. Returns false only when the text is

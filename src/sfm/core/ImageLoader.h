@@ -65,6 +65,9 @@ struct ImageLoadOptions {
     // order of magnitude -- doing them serially on the consumer thread would
     // hand the GPU stage back the decode cost the pool exists to hide.
     std::vector<std::string> mask_paths;
+    // Swap keep and ignore in every decoded mask (sfm/core/Mask.h). On the pool
+    // rather than the consumer thread, which the mask decode is already on.
+    bool flip_mask = false;
     // Host memory the decoder may use for in-flight images. Half is charged to
     // concurrent decodes, half to the ready window; both are then at least 1,
     // so a single image larger than the budget still loads (it just runs alone).
@@ -174,7 +177,7 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         const std::string& mp = i < opt.mask_paths.size() ? opt.mask_paths[i] : kNoMask;
         try {
             out = loadGrayImage(paths[i], opt.max_image_size, opt.want_color, mp,
-                                opt.gamut, opt.is_linear);
+                                opt.gamut, opt.is_linear, opt.flip_mask);
         } catch (const std::exception& e) {
             err = e.what();
         }
@@ -198,6 +201,7 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
     std::vector<std::string> errors(n);
     std::vector<char> ready(n, 0);
     std::atomic<size_t> next_claim{0};
+    std::atomic<bool> stop{false};
     size_t next_consume = 0;  // guarded by mtx
     std::mutex mtx;
     std::condition_variable cv_ready, cv_window;
@@ -208,11 +212,14 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         workers.emplace_back([&] {
             for (;;) {
                 size_t i = next_claim.fetch_add(1);
-                if (i >= n) return;
+                if (i >= n || stop) return;
                 {   // decode-ahead gate: keep the in-flight set bounded
                     std::unique_lock<std::mutex> lk(mtx);
-                    cv_window.wait(lk, [&] { return i < next_consume + (size_t)plan.window; });
+                    cv_window.wait(lk, [&] {
+                        return stop || i < next_consume + (size_t)plan.window;
+                    });
                 }
+                if (stop) return;
                 GrayImage img;
                 std::string err;
                 decodeOne(i, img, err);
@@ -227,25 +234,42 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         });
     }
 
-    for (size_t i = 0; i < n; i++) {
-        GrayImage img;
-        std::string err;
+    // A throwing consumer must not unwind past `workers`: destroying a joinable
+    // thread calls terminate, which on MSVC exits 0xC0000409 with no message
+    // and no chance for the caller's catch to print the real error.
+    auto join_workers = [&] {
         {
-            std::unique_lock<std::mutex> lk(mtx);
-            cv_ready.wait(lk, [&] { return ready[i] != 0; });
-            img = std::move(slots[i]);
-            slots[i] = GrayImage();  // release the window slot immediately
-            err = std::move(errors[i]);
-            next_consume = i + 1;
+            std::lock_guard<std::mutex> lk(mtx);
+            stop = true;
         }
         cv_window.notify_all();
-        if (!err.empty()) {
-            if (on_error) on_error(i, err);
-            continue;
+        for (std::thread& w : workers) w.join();
+    };
+
+    try {
+        for (size_t i = 0; i < n; i++) {
+            GrayImage img;
+            std::string err;
+            {
+                std::unique_lock<std::mutex> lk(mtx);
+                cv_ready.wait(lk, [&] { return ready[i] != 0; });
+                img = std::move(slots[i]);
+                slots[i] = GrayImage();  // release the window slot immediately
+                err = std::move(errors[i]);
+                next_consume = i + 1;
+            }
+            cv_window.notify_all();
+            if (!err.empty()) {
+                if (on_error) on_error(i, err);
+                continue;
+            }
+            consume(i, img);
         }
-        consume(i, img);
+    } catch (...) {
+        join_workers();
+        throw;
     }
-    for (std::thread& w : workers) w.join();
+    join_workers();
 }
 
 }  // namespace sfm

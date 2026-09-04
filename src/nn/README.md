@@ -200,9 +200,55 @@ These are load-bearing; see `src/nn/vk/README.md` for the device baseline.
 5. Grids cap at 65535 per dimension. Long flat ranges fold across `y`
    (`Stream::fold1D` + `fold_index`); a kernel that keeps out-of-range threads
    alive for a groupshared reduction must gate its block-indexed writes,
-   because the last folded row is padding.
+   because the last folded row is padding. GEMM's row tiles hit the same cap at
+   4.2 M rows — a full-resolution 1x1 conv over a 2048x2048 map — and split
+   into several dispatches on shifted pointers rather than folding.
 6. Reductions use a deterministic groupshared tree, not wave intrinsics, so
    wave32 and wave64 devices agree bit for bit.
+7. A kernel indexes from its params pointers with a 32-bit element index and
+   the driver folds the byte offset to 32 bits, so an access 4 GiB past a
+   pointer wraps back to it — silently, and widening the shader's index to 64
+   bits does not change it. Only 64-bit pointer arithmetic does. A launcher
+   handles this one of three ways:
+
+   - **split**, onto shifted pointers (`span_rows()`): the elementwise and
+     row-wise ops, `strided_copy`, and GEMM's row tiles. Costs nothing.
+   - **widen**, via `span_entry()`, which swaps `misc.foo` for
+     `misc_wide.foo` past the narrow reach. `misc`/`resample`/`conv`/`norm`
+     are each compiled twice, and `NN_WIDE` switches `_common.slang`'s
+     addressing shim. The wide copy is the only thing in this tree that
+     declares `OpCapability Int64`, which is why it is a separate module and
+     why `Context::hasInt64()` gates it — the same containment the
+     cooperative-matrix module uses. The narrow module is byte-for-byte what
+     it was, so nothing below 4 GiB pays for this.
+   - **refuse**, `check_span()`: GEMM's weights and attention's operands,
+     neither of which is a full-resolution map.
+
+   The wide kernel's own `uint` index is the next wall, at 2^32 elements.
+
+### Where each model sits
+
+Measured by instrumenting `check_span` (bytes in the widest tensor a kernel
+cannot split) and scaling. "narrow" is the 4 GiB reach; "wide" is 2^32 f32
+elements, where the `_wide` kernels run:
+
+| module | widest such tensor | narrow | wide |
+|---|---|---|---|
+| ALIKED | 512 B/px — the 128-channel aggregate | 2880² | 5792² |
+| LoMa | 384 B/px — DaD's finest refiner input | 3344² | 6688² |
+| Metric3D | 256 B/px, at the caller's resolution | 4096² | 8192² |
+| MoGe | ~66 KB/token, independent of the image | ~64 650 tokens | ~258 000 |
+| SAM | everything is sized by `img_size`, not the input | not reachable | — |
+
+Past the narrow figure VRAM is the binding constraint, not addressing: ALIKED
+at 5792² wants ~30 GB of arena.
+
+A model whose map is `C` channels at full resolution hits the narrow reach at
+`2^30 / C` pixels — 2880² at C=128, 2048² at C=256, 1448² at C=512 — so the
+ceiling drops as a model gets wider. A dense full-resolution frontend (a
+RoMa-class matcher, a higher-capacity MoGe) belongs on the wide path from the
+start: give its new kernels `load_at`/`store_at` and its launchers
+`span_entry`, and they inherit both.
 
 ## Testing
 

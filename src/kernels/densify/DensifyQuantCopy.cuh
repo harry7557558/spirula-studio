@@ -52,8 +52,12 @@ __device__ __forceinline__ void _copy_quant_sh_value_for_splat(
     int      num_sh_buffer  // buffer stride (model max)
 ) {
     using Codec = QuantizedTensor<BITS, 256>;
-    int64_t src_base = src_splat * 3 * (int64_t)num_sh_buffer;
-    int64_t dst_base = dst_splat * 3 * (int64_t)num_sh_buffer;
+    // BOUNDS_PER_SPLAT is the FPBO layout, whose cells are word-paired and
+    // block-transposed (docs/notes/sh-quant-layout.md).
+    const ShQuantAddr sha =
+        sh_quant_addr((uint32_t)num_sh_buffer, BOUNDS_PER_SPLAT ? 0 : 256);
+    int64_t src_base = sha.base(src_splat);
+    int64_t dst_base = sha.base(dst_splat);
 
     float2 src_mm{0.f, 0.f}, dst_mm{0.f, 0.f};
     if constexpr (BOUNDS_PER_SPLAT) {
@@ -64,8 +68,8 @@ __device__ __forceinline__ void _copy_quant_sh_value_for_splat(
     int64_t cells = (int64_t)3 * num_sh;
     #pragma unroll 1
     for (int64_t c = 0; c < cells; ++c) {
-        int64_t src_cell = src_base + c;
-        int64_t dst_cell = dst_base + c;
+        int64_t src_cell = sha.cell(src_base, (int)c);
+        int64_t dst_cell = sha.cell(dst_base, (int)c);
         if constexpr (!BOUNDS_PER_SPLAT) {
             src_mm = bounds[src_cell / 256];
             dst_mm = bounds[dst_cell / 256];
@@ -247,14 +251,17 @@ __device__ __forceinline__ void _zero_quant_sh_for_splat(
     bool bounds_per_splat
 ) {
     int64_t cells_per_splat = (int64_t)num_sh * 3;
-    int64_t base_cell = splat_idx * cells_per_splat;
+    const ShQuantAddr sha =
+        sh_quant_addr((uint32_t)num_sh, bounds_per_splat ? 0 : 256);
+    int64_t base_cell = sha.base(splat_idx);
     if (bounds_per_splat) {
         float4 mm = bounds[splat_idx / 256];
         uint8_t u_q     = _quant_encode_zero_byte<BITS>(0.0f, mm.x, mm.y);
         uint8_t log_s_q = _quant_encode_zero_byte<BITS>(0.0f, mm.z, mm.w);
         #pragma unroll 1
         for (int64_t c = 0; c < cells_per_splat; ++c) {
-            _zero_quant_sh_store_cell<BITS>(packed, base_cell + c, u_q, log_s_q);
+            _zero_quant_sh_store_cell<BITS>(packed, sha.cell(base_cell, (int)c),
+                                            u_q, log_s_q);
         }
     } else {
         #pragma unroll 1

@@ -58,6 +58,7 @@ inline DistortionType engine_distortion_type(
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -127,11 +128,18 @@ struct CameraTable {
 struct ForwardCache {
     DeviceVector<int32_t>             camera_ids;
     DeviceVector<int32_t>             gaussian_ids;
-    DeviceTensor2D<float4>            aabb;         // [nnz,1] packed or [C,N] non-packed
+    DeviceTensor2D<uint2>             aabb;         // [nnz,1] or [C,N]; core/AabbQuant.cuh
     std::vector<DeviceTensorFloatND>  splats_w;
     std::vector<DeviceTensorFloatND>  splats_s;
     DeviceTensor3D<int32_t>           tile_offsets;
     DeviceVector<int32_t>             flatten_ids;
+    // Binning granularity the forward chose (core/Common.cuh). The backward
+    // must bin the same way, so it reads this rather than assuming a default.
+    int                               macro_log2 = kMacroLog2Default;
+    // [C, tile_h, tile_w] of 0/1: tiles no pixel of the loss reads are left
+    // out of the intersections, so the raster gets an empty range for them.
+    // Empty unless a training step asked for it (engine_set_tile_skip_mask).
+    DeviceVector<int32_t>             tile_active;
     DeviceTensor3D<float>             render_Ts;
     DeviceTensor3D<float>             render_median; // [C,H,W] median depth, empty if not requested
     DeviceTensor3D<int32_t>           last_ids;
@@ -245,6 +253,10 @@ struct SplatOptim {
     // accum_buffer with DensifyConfig::final_score_power applied to lane 0.
     // Empty when that power is 1, which is when accum_buffer IS the score.
     DeviceVector<float2>   densify_sample_score;   // [cur_N], or empty
+    // Summed log2(radii / max_screen_size) over the steps since the last
+    // refine, zeroed with accum_buffer. Empty when the oversize split
+    // channel is off.
+    DeviceVector<float>    densify_oversize;       // [max_N], or empty
 
     // Set per-step from cfg.optim.use_fused_proj_bwd_optim before forward/loss
     // so engine_compute_loss_backward knows to skip projection_*_backward and
@@ -365,7 +377,8 @@ struct EngineBackground {
     bool enabled = false;
 
     // Common config (set at init time)
-    bool splat_color_is_linear = false;  // noise mode: sRGB->linear conversion
+    int  splat_transfer = 0;             // noise mode: display -> working space
+    bool splat_is_linear = false;
 
     // SH mode config
     int  sh_degree       = 0;            // 0..4
@@ -378,10 +391,8 @@ struct EngineBackground {
     DeviceVector<float3> sh_g1, sh_g2;
     bool sh_optim_initialized = false;
 
-    // Per-iter buffers (resized each forward).
-    // - fwd_pre_blend_rgb: saved pre-blend rendered RGB (Sh mode; needed by
-    //   blend backward to compute v_background -> v_sh).
-    // - fwd_background:    skybox image (Sh mode).
+    // Per-iter, resized each forward. fwd_pre_blend_rgb is kept in BOTH modes
+    // (the backward reads it); fwd_background is the skybox image (Sh mode).
     DeviceTensor3D<float3> fwd_pre_blend_rgb;
     DeviceTensor3D<float3> fwd_background;
 
@@ -398,16 +409,18 @@ struct EngineBackground {
 struct ColorSpaceState {
     // Splat (per-frame fwd + bwd)
     bool                   splat_enabled    = false;
+    int                    splat_transfer   = 0;   // colorspace::Transfer
     bool                   splat_is_linear  = false;
     DeviceTensor2D<float3> splat_color_matrix;   // [3, 3], stored as 3 float3 rows
 
     // Image (one-shot at upload)
     bool                   image_enabled    = false;
+    int                    image_transfer   = 0;
     bool                   image_is_linear  = false;
     DeviceTensor2D<float3> image_color_matrix;   // [3, 3], stored as 3 float3 rows
 
     // Per-iter scratch: pre-conversion render kept for the backward vjp
-    // (rgb_to_srgb_backward consumes the linear / wide-gamut input).
+    // (working_to_display_backward consumes the working-space input).
     DeviceTensor3D<float3> fwd_pre;
 };
 
@@ -428,11 +441,15 @@ struct PpispState {
     bool enabled            = false;
     bool optim_initialized  = false;
     bool use_adagrad        = false;
-    // Per-iteration: mirrors PpispStepConfig::run_before_bilagrid for the
-    // current step. The forward path stashes this before launching bilagrid /
-    // PPISP forwards; the backward hooks in EngineLoss.cpp read it back to
-    // invert the order. Reset each step.
+    // Per-iteration mirror of the PpispStepConfig order flags, stashed by the
+    // forward path so the backward hooks in EngineLoss.cpp can invert the
+    // order they picked. Reset each step.
     bool cur_run_before_bilagrid = false;
+    bool cur_run_before_color_space = false;
+    // Armed by the step that wants PPISP inside forward_3dgs (before the
+    // working->display conversion) and cleared there, so an eval or viewer
+    // render never picks the transform up off stale cam indices.
+    bool forward_pending = false;
 };
 
 
@@ -521,6 +538,29 @@ struct EngineState {
     int     num_sh         = 0;
     int     sh_degree      = 0;
     bool    packed         = false;
+    // Binning tile edge in pixels the caller asked for, or 0 to let the
+    // forward choose from the measured splat footprint (engine_set_bin_tile_size).
+    int     bin_tile_request = 0;
+    // Keyed by (width << 32 | height): a viewport render at another
+    // resolution measures another footprint and must not retune training's.
+    // Search: docs/notes/binning-tile-size.md.
+    struct BinTileChoice {
+        int macro_log2 = kMacroLog2Start;
+        int floor      = kMacroLog2Min;  // coarsest the intersect fell back to
+        int from       = kMacroLog2Start;  // setting a running probe came from
+        int probing    = 0;                // 0 base, 1 trial, 2 base again
+        int dir        = -1;               // -1 finer, +1 coarser
+        // Steps discarded before the first baseline: image decode and
+        // first-touch allocation make the opening steps unrepresentative,
+        // and they would otherwise inflate the cost of the starting size.
+        int warmup     = 8;
+        int have       = 0;
+        int wait       = 1;                // windows before the next probe
+        double sum     = 0.0;
+        double base    = 0.0;              // bracketing cost at `from`
+        double trial   = 0.0;              // cost measured at `from + dir`
+    };
+    std::map<uint64_t, BinTileChoice> bin_tile_auto;
     // PoolSlot::EngVLosses (the per-pixel loss cotangent seed) is uploaded
     // once. Not a function-local static: engine_reset() frees the pool, and a
     // flag outliving it leaves the next scene reading the reallocated buffer.

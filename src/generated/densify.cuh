@@ -2,6 +2,11 @@
 
 #include "generated/slang.cuh"
 
+inline __device__ bool splat_scale_is_dead(float3  log_scale_0)
+{
+    return !((F32_max(((F32_max((log_scale_0.x), (log_scale_0.y)))), (log_scale_0.z))) > -40.0f);
+}
+
 inline __device__ float dot_0(float3  x_0, float3  y_0)
 {
     int i_0 = int(0);
@@ -201,11 +206,11 @@ inline __device__ float3  mul_1(Matrix<float, 3, 3>  left_1, float3  right_1)
     return result_8;
 }
 
-inline __device__ void mcmc_add_noise_3dgs(float scaler_0, float3  * mean_0, float3  log_scale_0, float4  quat_0, float logit_opac_0)
+inline __device__ void mcmc_add_noise_3dgs(float scaler_0, float3  * mean_0, float3  log_scale_1, float4  quat_0, float logit_opac_0)
 {
     float opac_0 = 1.0f / (1.0f + (F32_exp((- logit_opac_0))));
     float4  _S1 = normalize_0(quat_0);
-    float3  _S2 = exp_0(log_scale_0);
+    float3  _S2 = exp_0(log_scale_1);
     float x_7 = _S1.y;
     float x2_0 = x_7 * x_7;
     float y2_0 = _S1.z * _S1.z;
@@ -217,7 +222,7 @@ inline __device__ void mcmc_add_noise_3dgs(float scaler_0, float3  * mean_0, flo
     float wy_0 = _S1.x * _S1.z;
     float wz_0 = _S1.x * _S1.w;
     Matrix<float, 3, 3>  M_0 = mul_0(transpose_0(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_0 + z2_0), 2.0f * (xy_0 + wz_0), 2.0f * (xz_0 - wy_0), 2.0f * (xy_0 - wz_0), 1.0f - 2.0f * (x2_0 + z2_0), 2.0f * (yz_0 + wx_0), 2.0f * (xz_0 + wy_0), 2.0f * (yz_0 - wx_0), 1.0f - 2.0f * (x2_0 + y2_0))), makeMatrix<float, 3, 3> (_S2.x, 0.0f, 0.0f, 0.0f, _S2.y, 0.0f, 0.0f, 0.0f, _S2.z));
-    float4  _S3 = make_float4 (dot_0(*mean_0, *mean_0), dot_0(*mean_0, log_scale_0), dot_0(log_scale_0, log_scale_0), dot_1(quat_0, make_float4 (opac_0))) * make_float4 (0.1031000018119812f, 0.10300000011920929f, 0.09730000048875809f, 0.10989999771118164f);
+    float4  _S3 = make_float4 (dot_0(*mean_0, *mean_0), dot_0(*mean_0, log_scale_1), dot_0(log_scale_1, log_scale_1), dot_1(quat_0, make_float4 (opac_0))) * make_float4 (0.1031000018119812f, 0.10300000011920929f, 0.09730000048875809f, 0.10989999771118164f);
     float4  _S4 = _S3 - floor_0(_S3);
     float4  _S5 = _S4 + make_float4 (dot_1(_S4, float4 {_S4.w, _S4.z, _S4.x, _S4.y} + make_float4 (33.3300018310546875f)));
     float4  _S6 = (float4 {_S5.x, _S5.x, _S5.y, _S5.z} + float4 {_S5.y, _S5.z, _S5.z, _S5.w}) * float4 {_S5.z, _S5.y, _S5.w, _S5.x};
@@ -249,7 +254,7 @@ inline __device__ float3  sqrt_0(float3  x_8)
     return result_9;
 }
 
-inline __device__ void revised_add_noise_3dgs(float scaler_1, float radii_0, float3  * mean_1, float3  log_scale_1, float4  quat_1, float logit_opac_1)
+inline __device__ void revised_add_noise_3dgs(float scaler_1, float radii_0, float3  * mean_1, float3  log_scale_2, float4  quat_1, float logit_opac_1)
 {
     if(radii_0 <= 0.0f)
     {
@@ -257,7 +262,7 @@ inline __device__ void revised_add_noise_3dgs(float scaler_1, float radii_0, flo
     }
     float opac_1 = 1.0f / (1.0f + (F32_exp((- logit_opac_1))));
     float4  _S12 = normalize_0(quat_1);
-    float3  _S13 = sqrt_0(exp_0(log_scale_1));
+    float3  _S13 = sqrt_0(exp_0(log_scale_2));
     float x_9 = _S12.y;
     float x2_1 = x_9 * x_9;
     float y2_1 = _S12.z * _S12.z;
@@ -269,7 +274,7 @@ inline __device__ void revised_add_noise_3dgs(float scaler_1, float radii_0, flo
     float wy_1 = _S12.x * _S12.z;
     float wz_1 = _S12.x * _S12.w;
     Matrix<float, 3, 3>  M_1 = mul_0(transpose_0(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_1 + z2_1), 2.0f * (xy_1 + wz_1), 2.0f * (xz_1 - wy_1), 2.0f * (xy_1 - wz_1), 1.0f - 2.0f * (x2_1 + z2_1), 2.0f * (yz_1 + wx_1), 2.0f * (xz_1 + wy_1), 2.0f * (yz_1 - wx_1), 1.0f - 2.0f * (x2_1 + y2_1))), makeMatrix<float, 3, 3> (_S13.x, 0.0f, 0.0f, 0.0f, _S13.y, 0.0f, 0.0f, 0.0f, _S13.z));
-    float4  _S14 = make_float4 (dot_0(*mean_1, *mean_1), dot_0(*mean_1, log_scale_1), dot_0(log_scale_1, log_scale_1), dot_1(quat_1, make_float4 (opac_1))) * make_float4 (0.1031000018119812f, 0.10300000011920929f, 0.09730000048875809f, 0.10989999771118164f);
+    float4  _S14 = make_float4 (dot_0(*mean_1, *mean_1), dot_0(*mean_1, log_scale_2), dot_0(log_scale_2, log_scale_2), dot_1(quat_1, make_float4 (opac_1))) * make_float4 (0.1031000018119812f, 0.10300000011920929f, 0.09730000048875809f, 0.10989999771118164f);
     float4  _S15 = _S14 - floor_0(_S14);
     float4  _S16 = _S15 + make_float4 (dot_1(_S15, float4 {_S15.w, _S15.z, _S15.x, _S15.y} + make_float4 (33.3300018310546875f)));
     float4  _S17 = (float4 {_S16.x, _S16.x, _S16.y, _S16.z} + float4 {_S16.y, _S16.z, _S16.z, _S16.w}) * float4 {_S16.z, _S16.y, _S16.w, _S16.x};
@@ -282,13 +287,13 @@ inline __device__ void revised_add_noise_3dgs(float scaler_1, float radii_0, flo
     return;
 }
 
-inline __device__ void long_axis_split_3dgs(float k_0, float3  log_scale_2, float logit_opacity_0, float4  quat_2, float3  * new_log_scale_0, float * new_logit_opacity_0, float3  * mean_delta_0)
+inline __device__ void long_axis_split_3dgs(float k_0, float3  log_scale_3, float logit_opacity_0, float4  quat_2, float3  * new_log_scale_0, float * new_logit_opacity_0, float3  * mean_delta_0)
 {
-    float _S23 = log_scale_2.x;
-    float _S24 = log_scale_2.y;
-    float _S25 = log_scale_2.z;
+    float _S23 = log_scale_3.x;
+    float _S24 = log_scale_3.y;
+    float _S25 = log_scale_3.z;
     float d_0 = 0.5f * (F32_exp(((F32_max(((F32_max((_S23), (_S24)))), (_S25))))));
-    *new_log_scale_0 = log_scale_2;
+    *new_log_scale_0 = log_scale_3;
     *mean_delta_0 = make_float3 (0.0f, 0.0f, 0.0f);
     float kl_0 = (F32_log((0.5f)));
     float ks_0 = (F32_log((0.85000002384185791f)));

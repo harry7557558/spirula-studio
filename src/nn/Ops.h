@@ -204,6 +204,12 @@ void patchify(const Tensor& out, const Tensor& in, int patch);
 // false (the default here, and what mask upsampling depends on) maps
 // src = (dst + 0.5) * scale - 0.5; true maps src = dst * (Hi-1)/(Ho-1).
 void resize_bilinear(const Tensor& out, const Tensor& in, bool align_corners = false);
+
+// F.interpolate(mode='bicubic', align_corners=False), torch's a = -0.75. Only
+// that mapping: the cubic kernel is where DaD's score pyramid is summed, and
+// align_corners=True has no caller here.
+void resize_bicubic(const Tensor& out, const Tensor& in);
+
 void upsample_nearest2x(const Tensor& out, const Tensor& in);
 void maxpool2x2(const Tensor& out, const Tensor& in);
 

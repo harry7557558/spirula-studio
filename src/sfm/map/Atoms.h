@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <exception>
 #include <map>
 #include <mutex>
 #include <thread>
@@ -239,31 +240,43 @@ inline std::vector<Reconstruction> reconstructAtoms(
     std::atomic<size_t> next{0};
     std::mutex log_mu;
     std::atomic<size_t> done{0};
+    // A worker whose device fails has to report itself: an exception crossing
+    // a thread boundary is std::terminate, and a terminate handler is a worse
+    // way to learn about a lost device than the message the failure carries.
+    std::mutex err_mu;
+    std::exception_ptr first_error;
 
     auto worker = [&] {
-        // One context for every atom this worker builds. Creating a Vulkan
-        // device takes longer than reconstructing an atom, and it cannot be
-        // shared with another thread.
-        VkContext ctx;
-        std::vector<uint32_t> local(db.images.size(), UINT32_MAX);
-        for (size_t i = next++; i < atoms.size(); i = next++) {
-            detail::SubDatabase sub =
-                detail::carveAtom(db, feats, cam_ids, adj, atoms[i], local);
-            Mapper m(sub.db, sub.feats, mo, sub.cam_ids);
-            m.useBaContext(&ctx);
-            uint32_t reg = 0;
-            for (Reconstruction& r : m.run()) {
-                if (r.numRegistered() < 2) continue;
-                detail::toGlobalIds(r, sub.to_global);
-                reg += r.numRegistered();
-                per_atom[i].push_back(std::move(r));
+        try {
+            // One context for every atom this worker builds. Creating a Vulkan
+            // device takes longer than reconstructing an atom, and it cannot be
+            // shared with another thread.
+            VkContext ctx;
+            std::vector<uint32_t> local(db.images.size(), UINT32_MAX);
+            for (size_t i = next++; i < atoms.size(); i = next++) {
+                detail::SubDatabase sub =
+                    detail::carveAtom(db, feats, cam_ids, adj, atoms[i], local);
+                Mapper m(sub.db, sub.feats, mo, sub.cam_ids);
+                m.useBaContext(&ctx);
+                uint32_t reg = 0;
+                for (Reconstruction& r : m.run()) {
+                    if (r.numRegistered() < 2) continue;
+                    detail::toGlobalIds(r, sub.to_global);
+                    reg += r.numRegistered();
+                    per_atom[i].push_back(std::move(r));
+                }
+                if (opt.verbose) {
+                    const size_t n = ++done;
+                    std::lock_guard<std::mutex> lk(log_mu);
+                    fprintf(stderr,
+                            "[bup] atom %zu/%zu: %zu images -> %zu model(s), %u registered\n",
+                            n, atoms.size(), atoms[i].size(), per_atom[i].size(), reg);
+                }
             }
-            if (opt.verbose) {
-                const size_t n = ++done;
-                std::lock_guard<std::mutex> lk(log_mu);
-                fprintf(stderr, "[bup] atom %zu/%zu: %zu images -> %zu model(s), %u registered\n",
-                        n, atoms.size(), atoms[i].size(), per_atom[i].size(), reg);
-            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lk(err_mu);
+            if (!first_error) first_error = std::current_exception();
+            next = atoms.size();  // nothing left for the others to claim
         }
     };
     if (nt == 1) {
@@ -274,6 +287,7 @@ inline std::vector<Reconstruction> reconstructAtoms(
         for (int t = 0; t < nt; t++) pool.emplace_back(worker);
         for (std::thread& t : pool) t.join();
     }
+    if (first_error) std::rethrow_exception(first_error);
 
     std::vector<Reconstruction> models;
     for (std::vector<Reconstruction>& v : per_atom) {

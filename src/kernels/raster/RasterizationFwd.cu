@@ -19,6 +19,7 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
@@ -41,6 +42,7 @@ inline void launch_rasterize_to_pixels_fwd_kernel(
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2,               // binning granularity
     // outputs
     RenderOutput::Tensor renders,
     DeviceTensor3D<float> transmittances,
@@ -66,6 +68,7 @@ inline void launch_rasterize_to_pixels_fwd_kernel(
         image_height,
         tile_width,
         tile_height,
+        macro_log2,
         tile_offsets.data_ptr(),
         flatten_ids.data_ptr(),
         renders,
@@ -96,7 +99,8 @@ inline std::tuple<
     const uint32_t image_height,
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
-    const DeviceVector<int32_t> flatten_ids     // [n_isects]
+    const DeviceVector<int32_t> flatten_ids,    // [n_isects]
+    int macro_log2                              // binning granularity
 ) {
     int64_t batch = tile_offsets.size<0>();
 
@@ -123,6 +127,7 @@ inline std::tuple<
         image_height,
         tile_offsets,
         flatten_ids,
+        macro_log2,
         renders,
         render_Ts,
         render_last_ids,
@@ -162,6 +167,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median
 ) {
@@ -180,7 +186,7 @@ std::tuple<
         num_splats,
         splats_w, splats_s, gaussian_ids,
         image_width, image_height,
-        tile_offsets, flatten_ids
+        tile_offsets, flatten_ids, macro_log2
     );
 }
 
@@ -209,6 +215,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median
 ) {
@@ -227,6 +234,6 @@ std::tuple<
         num_splats,
         splats_w, splats_s, gaussian_ids,
         image_width, image_height,
-        tile_offsets, flatten_ids
+        tile_offsets, flatten_ids, macro_log2
     );
 }

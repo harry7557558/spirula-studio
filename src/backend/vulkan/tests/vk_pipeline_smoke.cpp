@@ -4,6 +4,7 @@
 
 #include "backend/api/BackendRuntime.h"
 #include "backend/vulkan/VulkanPipelines.h"
+#include "core/SourcePath.h"
 
 #include <cstdio>
 #include <cstring>
@@ -14,7 +15,7 @@ static int g_failures = 0;
 #define CHECK(cond)                                                       \
     do {                                                                  \
         if (!(cond)) {                                                    \
-            std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);   \
+            std::printf("FAIL %s:%d: %s\n", SS_FILE, __LINE__, #cond);    \
             g_failures++;                                                 \
         }                                                                 \
     } while (0)

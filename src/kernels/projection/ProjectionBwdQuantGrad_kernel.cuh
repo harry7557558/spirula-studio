@@ -12,6 +12,7 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -63,8 +64,7 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
     // fwd outputs (packed intersection ordering; nulls => non-packed C*N)
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
     const int32_t *__restrict__ camera_ids,         // [nnz] ORIGINAL order
-    const int32_t *__restrict__ perm,               // [nnz] sorted_pos -> original_pos
-    const float4 *__restrict__ aabb,                // [C, N] or [nnz]
+    const uint2 *__restrict__ aabb,                 // [C, N] or [nnz], packed
     // fp32 world grad (means/quats/scales for 3dgut; empty for 3dgs/mip)
     typename SplatPrimitive::WorldBuffer v_splats_world,
     // screen grad from rasterization backward
@@ -106,9 +106,11 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
 
     // ---- camera loop (register accumulation, no atomics) ----
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
-        int idx = packed ? perm[cid_t] : cid_t * (int)N + (int)gid;
+        // Packed: the forward emits (gaussian, camera) order, so cid_t is
+        // the out_idx that indexes aabb / camera_ids / v_splats_screen.
+        int idx = packed ? cid_t : cid_t * (int)N + (int)gid;
         int cid = packed ? camera_ids[idx] : cid_t;
-        if (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)
+        if (aabb16_is_empty(aabb[idx]))
             continue;
 
         float4 intrin = intrins[cid];
@@ -131,15 +133,13 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
             splat_world.template project_vjp<camera_model, distortion, false, 32>(
                 cam, v_screen, v, v_R, v_t);
         } else {
-            const int64_t sh_base_vjp   = (int64_t)3 * (int64_t)num_sh_buffer * (int64_t)gid;
-            const int64_t sh_stride_vjp = (sh_value_bounds_stride > 0)
-                ? sh_value_bounds_stride
-                : (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+            const ShQuantAddr sha =
+                sh_quant_addr(num_sh_buffer, sh_value_bounds_stride);
             splat_world.template project_vjp<camera_model, distortion, false, VALUE_BITS>(
                 cam, v_screen, v, v_R, v_t,
                 const_cast<uint8_t*>(sh_value_packed),
                 const_cast<float2*>(sh_value_bounds),
-                sh_base_vjp, sh_stride_vjp);
+                sha.base(gid), sha.bounds_stride, sha.pair_pitch);
         }
     }
 
@@ -199,11 +199,35 @@ __global__ void __launch_bounds__(BLOCK_SIZE) projection_bwd_quantgrad_kernel(
         }
         sh_mm = gradq::block_reduce_minmax_f2<BLOCK_SIZE>(sh_mm);
         if (threadIdx.x == 0) gq.sh_bounds[blockIdx.x] = sh_mm;
+
+        // Whole-word writeback of this thread's contiguous byte-cell run. The
+        // per-cell stores it replaces make every warp store touch 32 sectors;
+        // here only the up-to-two edge words are shared with a neighbour.
         if (inside) {
-            for (int c = 0; c < total; ++c) {
-                float old = gradq::Codec<8>::decode1(gq.sh_packed, sh_base + c, sh_old);
+            uint32_t* words = reinterpret_cast<uint32_t*>(gq.sh_packed);
+            const int64_t c0 = sh_base, c1 = sh_base + total;
+            uint32_t acc = 0;
+            for (int64_t cell = c0; cell < c1; ++cell) {
+                const int c = (int)(cell - c0);
+                float old = gradq::Codec<8>::decode1(gq.sh_packed, cell, sh_old);
                 float contrib = (c < 3 * num_sh) ? v_sh_coeffs[c] : 0.0f;
-                gradq::Codec<8>::encode1(gq.sh_packed, sh_base + c, old + contrib, sh_mm);
+                const uint32_t code = (uint32_t)(uint8_t)(int8_t)
+                    gradq::Codec<8>::encode1_code(old + contrib, sh_mm);
+                const uint32_t b = (uint32_t)(cell & 3);
+                acc |= code << (8u * b);
+                if (b == 3u || cell + 1 == c1) {
+                    const int64_t w = cell >> 2;
+                    const uint32_t fb = (w == (c0 >> 2)) ? (uint32_t)(c0 & 3) : 0u;
+                    if (fb == 0u && b == 3u) {
+                        words[w] = acc;
+                    } else {
+                        uint32_t mask = 0;
+                        for (uint32_t k = fb; k <= b; ++k) mask |= 0xffu << (8u * k);
+                        atomicAnd(&words[w], ~mask);
+                        atomicOr(&words[w], acc & mask);
+                    }
+                    acc = 0;
+                }
             }
         }
     }
@@ -231,8 +255,7 @@ void projection_bwd_quantgrad_kernel_wrapper(
     const uint32_t image_height,
     const int32_t * camera_id_bounds,
     const int32_t * camera_ids,
-    const int32_t * perm,
-    const float4 * aabb,
+    const uint2 * aabb,
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     GradQuantBuffers gq,
@@ -250,7 +273,7 @@ void projection_bwd_quantgrad_kernel_wrapper(
             <<<grid, BLOCK, 0, stream>>>(                                         \
                 C, N, num_sh_buffer, splats_world, viewmats, intrins,             \
                 dist_coeffs_buffer, image_width, image_height,                    \
-                camera_id_bounds, camera_ids, perm, aabb,                         \
+                camera_id_bounds, camera_ids, aabb,                               \
                 v_splats_world, v_splats_screen, gq,                              \
                 sh_value_packed, sh_value_bounds, sh_value_bounds_stride)
     if      (sh_value_bits == 8)  { _QG_LAUNCH(8); }

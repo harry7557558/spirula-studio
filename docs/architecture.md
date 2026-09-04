@@ -83,15 +83,20 @@ Two properties to keep in mind:
 
 ## Ordering rules worth knowing
 
-Image-space corrections compose in a fixed order:
+Image-space corrections compose in this order:
 
 ```
-render → background blending → bilagrid → PPISP → loss
+render → background blending → [PPISP] → display encode → bilagrid → [PPISP] → loss
 ```
 
-`Engine.h` states this at the declaration sites (`applied BEFORE
-bilagrid/PPISP`, `applied AFTER bilagrid`). Changing the order changes results
-silently, so it is asserted only by parity tests.
+Only one of the two `[PPISP]` slots runs. `--apply-ppisp-before-bilagrid`
+(default on) picks between bilagrid-then-PPISP and PPISP-then-bilagrid;
+`--apply-ppisp-before-color-space` moves it ahead of the working→display
+conversion instead, which needs the first flag on because the bilagrid is
+always applied in sRGB, and does nothing when the splats have no colour space
+of their own. The backward hooks in `EngineLoss.cpp` invert whichever order
+the step picked. Changing the order changes results silently, so it is
+asserted only by parity tests.
 
 ## Primitives
 

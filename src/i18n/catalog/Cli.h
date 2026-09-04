@@ -463,22 +463,23 @@ SS_MSG(viewer_at,
        "порт: ssh -L {1}:localhost:{2} <host>)"),
     TR("Görüntüleyici http://0.0.0.0:{0}/ adresinde (uzak makinelerde bağlantı "
        "noktasını yönlendirin: ssh -L {1}:localhost:{2} <host>)"));
-// {0} and {1} are already padded to a fixed width by the caller, so the
+// {0} and {2} are already padded to a fixed width by the caller, so the
 // numbers stay in a column while the words around them change length.
+// {4}|{5} is elapsed|remaining, in the same words as the GUI status strip.
 SS_MSG(train_step_line,
-    EN("step {0}/{1}  splats {2}  [{3}s]"),
-    JA("ステップ {0}/{1}  スプラット {2}  [{3}秒]"),
-    ZH_HANS("步 {0}/{1}  泼溅 {2}  [{3} 秒]"),
-    ZH_HANT("步 {0}/{1}  潑濺 {2}  [{3} 秒]"),
-    KO("스텝 {0}/{1}  스플랫 {2}  [{3}초]"),
-    DE("Schritt {0}/{1}  Splats {2}  [{3}s]"),
-    FR("étape {0}/{1}  splats {2}  [{3}s]"),
-    ES("paso {0}/{1}  splats {2}  [{3}s]"),
-    PT("passo {0}/{1}  splats {2}  [{3}s]"),
-    IT("passo {0}/{1}  splat {2}  [{3}s]"),
-    NL("stap {0}/{1}  splats {2}  [{3}s]"),
-    RU("шаг {0}/{1}  сплатов {2}  [{3}с]"),
-    TR("adım {0}/{1}  splat {2}  [{3}sn]"));
+    EN("step {0}/{1} ({2}%)  splats {3}  [elapsed {4} | ETA {5}]"),
+    JA("ステップ {0}/{1} ({2}%)  スプラット {3}  [経過 {4} | 残り {5}]"),
+    ZH_HANS("步 {0}/{1} ({2}%)  泼溅 {3}  [已用 {4} | 剩余 {5}]"),
+    ZH_HANT("步 {0}/{1} ({2}%)  潑濺 {3}  [已用 {4} | 剩餘 {5}]"),
+    KO("스텝 {0}/{1} ({2}%)  스플랫 {3}  [경과 {4} | 남은 시간 {5}]"),
+    DE("Schritt {0}/{1} ({2}%)  Splats {3}  [Laufzeit {4} | Restzeit {5}]"),
+    FR("étape {0}/{1} ({2} %)  splats {3}  [écoulé {4} | reste {5}]"),
+    ES("paso {0}/{1} ({2}%)  splats {3}  [lleva {4} | faltan {5}]"),
+    PT("passo {0}/{1} ({2}%)  splats {3}  [decorrido {4} | faltam {5}]"),
+    IT("passo {0}/{1} ({2}%)  splat {3}  [trascorso {4} | mancano {5}]"),
+    NL("stap {0}/{1} ({2}%)  splats {3}  [verstreken {4} | nog {5}]"),
+    RU("шаг {0}/{1} ({2}%)  сплатов {3}  [прошло {4} | осталось {5}]"),
+    TR("adım {0}/{1} (%{2})  splat {3}  [geçen {4} | kalan {5}]"));
 SS_MSG(train_done_viewer,
     EN("Training complete. Viewer still running -- press Ctrl-C to exit."),
     JA("学習が完了しました。ビューアはまだ動いています。終了するには Ctrl-C を"

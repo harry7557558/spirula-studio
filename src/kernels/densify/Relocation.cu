@@ -187,7 +187,8 @@ __global__ void compute_relocation_mask_kernel(
         bool is_finite = isfinite(
             dot(mean, mean) / dot(quat, quat) + dot(scale, feature_dc) * opac
         );
-        bool relocate = is_low_opac || !is_finite;
+        bool relocate = is_low_opac || !is_finite
+            || SlangDensify::splat_scale_is_dead(scale);
 
         masks[idx] = !relocate;
 

@@ -39,10 +39,9 @@ constexpr int kMaxParams = 16;
 bool project(int model_id, const float* params,
              double X, double Y, double Z, double* u, double* v);
 
-// Divide the pixel-valued parameters by `s`, for a parser that downscales the
-// camera it fitted. The re-distort kernels take the source parameters in the
-// same pixel space as the fitted intrinsics, so the two must be scaled
-// together; which entries are pixels differs per model.
-void rescale(int model_id, float* params, double s);
+// Multiply the pixel-valued parameters by the per-axis resolution scale, for a
+// parser that resizes the camera it fitted: the re-distort kernels read these
+// in the same pixel space as the fitted intrinsics.
+void rescale(int model_id, float* params, double sx, double sy);
 
 }  // namespace srccam

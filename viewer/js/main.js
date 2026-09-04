@@ -17,7 +17,7 @@ let dirty = true;
 let model = null;          // { type:'splat'|'mesh', ... meta }
 let lastSortDir = [0,0,0];
 const opts = {
-  primitive: 0, gamut: toColMajor(GAMUTS['Rec.709']), isLinear: false,
+  primitive: 0, gamut: toColMajor(GAMUTS['Rec.709']), transfer: 0, isLinear: false,
   shDegree: 0, exposure: 1.0, opacityScale: 1.0,
   cameraModel: 'perspective', upAxis: 'z', showGrid: true, gridRadius: 1,
   background: hexToRgb('0a0b0e'), shade: true, flatShade: false, meshColor: true,
@@ -883,6 +883,7 @@ function wireControls() {
   bind('primitive','change', e => { opts.primitive = +e.target.value; dirty=true; });
   bind('gamut','change', e => { opts.gamut = toColMajor(GAMUTS[e.target.value]); dirty=true; });
   bind('linear','change', e => { opts.isLinear = e.target.checked; dirty=true; });
+  bind('transfer','change', e => { opts.transfer = +e.target.value; dirty=true; });
   bind('shdeg','input', e => { opts.shDegree = +e.target.value; $('v-shdeg').textContent = e.target.value; dirty=true; });
   bind('exposure','input', e => { opts.exposure = Math.pow(10,+e.target.value); $('v-exposure').textContent = opts.exposure.toFixed(2); dirty=true; });
   bind('shade','change', e => { opts.shade = e.target.checked; dirty=true; });

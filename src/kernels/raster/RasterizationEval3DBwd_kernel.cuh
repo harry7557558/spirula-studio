@@ -28,6 +28,7 @@ namespace SlangProjectionUtils {
 #include "core/CameraDistortion.cuh"
 
 #include <core/Common.cuh>
+#include "core/AabbQuant.cuh"
 
 
 #ifndef IS_EVAL3D
@@ -74,12 +75,13 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -107,8 +109,12 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     auto block = cg::this_thread_block();
     cg::thread_block_tile<WARP_SIZE> warp = cg::tiled_partition<WARP_SIZE>(block);
     uint32_t image_id = block.group_index().x;
-    uint32_t tile_id = (block.group_index().y * TILE_SIZE_DY / (TILE_SIZE_Y * MACRO_TILE_SIZE_Y)) * tile_width +
-        (block.group_index().z * TILE_SIZE_DX / (TILE_SIZE_X * MACRO_TILE_SIZE_X));
+    // floor(floor(a/b)/M) == floor(a/(b*M)) for non-negative ints, so the
+    // macro factor folds out of the divisor into a shift.
+    uint32_t tile_id =
+        ((block.group_index().y * TILE_SIZE_DY / TILE_SIZE_Y) >> macro_log2) *
+            tile_width +
+        ((block.group_index().z * TILE_SIZE_DX / TILE_SIZE_X) >> macro_log2);
     uint32_t thread_id = block.thread_rank();
 
     tile_offsets += image_id * tile_height * tile_width;
@@ -179,6 +185,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     constexpr uint SPLAT_BATCH_SIZE_CONST = dist_any(dist_type) ?
         SPLAT_BATCH_SIZE_WITH_DISTORTION : SPLAT_BATCH_SIZE_NO_DISTORTION;
 
+    int32_t bin_max = -1;
     #pragma unroll
     for (uint pix_id0 = 0; pix_id0 < BLOCK_SIZE; pix_id0 += SPLAT_BATCH_SIZE_CONST) {
         static_assert(BLOCK_SIZE % SPLAT_BATCH_SIZE_CONST == 0);
@@ -277,7 +284,9 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             median_pending_zfar[pix_id_local] = 0.0f;
             median_pending_Tfar[pix_id_local] = 0.0f;
         }
+        bin_max = max(bin_max, bin_final);
     }
+    bin_max = cg::reduce(warp, bin_max, cg::greater<int32_t>());
     block.sync();
 
     // threads fist load splats, then swept through pixels
@@ -295,20 +304,16 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         SPLAT_BATCH_SIZE = min(SPLAT_BATCH_SIZE_CONST, max(SPLAT_BATCH_SIZE, 1u));
     }
     // ---- microtile survivor compaction ------------------------------------
-    // The block owns one TILE_SIZE_DX x TILE_SIZE_DY sub-tile, but the macro-tile
-    // range it reads is >80% gaussians that never touch this sub-tile. The
-    // diagonal sweep length is fixed by the number of gaussians processed, so
-    // per-thread culling alone gives no speedup (culled lanes just idle while the
-    // warp still iterates). Instead we scan the range back-to-front, compact the
-    // survivors (same ellipse-vs-box test as the forward sub-tile mask) into
-    // shared, and only sweep those. surv[] is kept strictly back-to-front so the
-    // per-pixel undo stays a continuous back-to-front walk across batches.
+    // >80% of the macro-tile range never touches this sub-tile, and culled lanes
+    // only idle: compact back-to-front so each pixel's undo stays one walk.
+
     constexpr int SURV_CAP = 8 * (int)WARP_SIZE;
     __shared__ int32_t surv[SURV_CAP];
     const float cull_bx0 = (float)(blockIdx.z * TILE_SIZE_DX);
     const float cull_by0 = (float)(blockIdx.y * TILE_SIZE_DY);
 
-  for (int32_t scan_end = range_end - 1; scan_end >= range_start; ) {
+  // Nothing past the tile's deepest surviving fragment can contribute.
+  for (int32_t scan_end = min(range_end - 1, bin_max); scan_end >= range_start; ) {
 
     // fill surv[] with up to SURV_CAP survivors (back-to-front). The loop bounds
     // (s, count) are warp-uniform, so __ballot_sync stays convergent.
@@ -324,9 +329,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             // the AABB center (matches the tile intersector / forward mask).
             float c_opac = splat_sbuffer.opacities(sid);
             float3 c_conic = splat_sbuffer.scales(sid);
-            float4 c_bb = aabb[sid];
-            float c_ex = 0.5f * (c_bb.x + c_bb.z);
-            float c_ey = 0.5f * (c_bb.y + c_bb.w);
+            float2 c_ec = aabb16_center(aabb[sid], image_width, image_height);
+            float c_ex = c_ec.x, c_ey = c_ec.y;
         #else
             float c_opac = splat_sbuffer.opac(sid);
             float3 c_conic = splat_sbuffer.conic(sid);
@@ -666,12 +670,13 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     const float *__restrict__ viewmats, // [B, C, 4, 4]
     const float4 *__restrict__ intrins,  // [B, C, 4], fx, fy, cx, cy
     const CameraDistortionCoeffsBuffer dist_coeffs_buffer,
-    const float4 *__restrict__ aabb,  // [..., N] projected 2D AABB (xmin,ymin,xmax,ymax)
+    const uint2 *__restrict__ aabb,   // [..., N] packed, core/AabbQuant.cuh
 #endif
     const uint32_t image_width,
     const uint32_t image_height,
     const uint32_t tile_width,
     const uint32_t tile_height,
+    const int macro_log2,
     const int32_t *__restrict__ tile_offsets, // [..., tile_height, tile_width]
     const int32_t *__restrict__ flatten_ids,  // [n_isects]
     // fwd outputs
@@ -701,8 +706,8 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
         1, 1};
     dim3 grid = {
         I,
-        tile_height * (TILE_SIZE_Y * MACRO_TILE_SIZE_Y / TILE_SIZE_DY),
-        tile_width * (TILE_SIZE_X * MACRO_TILE_SIZE_X / TILE_SIZE_DX)
+        (tile_height << macro_log2) * (TILE_SIZE_Y / TILE_SIZE_DY),
+        (tile_width << macro_log2) * (TILE_SIZE_X / TILE_SIZE_DX)
     };
 
 #if IS_EVAL3D
@@ -726,7 +731,7 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     #if IS_EVAL3D
         viewmats, intrins, dist_coeffs_buffer, aabb,
     #endif
-        image_width, image_height, tile_width, tile_height,
+        image_width, image_height, tile_width, tile_height, macro_log2,
         tile_offsets, flatten_ids,
         render_Ts, last_ids,
         render_output_buffer, render_distortion_buffer, loss_map_buffer, accum_weight_map_buffer,

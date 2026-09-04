@@ -22,9 +22,10 @@
 
 [ForceInline]
 float3 _shv_C<let QBITS : int>(float* coeffs, uint* qpacked, float2* qbounds,
-                               gindex_t qbase, gindex_t qstride, int j) {
+                               gindex_t qbase, gindex_t qstride,
+                               gindex_t qpitch, int j) {
     if (QBITS == 8 || QBITS == 16)
-        return _sh_load_qw<QBITS>(qpacked, qbounds, qbase, j, qstride);
+        return _sh_load_qw<QBITS>(qpacked, qbounds, qbase, j, qstride, qpitch);
     return float3(coeffs[3 * j], coeffs[3 * j + 1], coeffs[3 * j + 2]);
 }
 
@@ -351,7 +352,7 @@ void sh_color_vjp<let QBITS : int>(
     float3 coeff_dc,
     float* coeffs,                   // fp32 source [3*K] (QBITS == 0)
     uint* qpacked, float2* qbounds,  // q8/q16 source (QBITS 8/16)
-    gindex_t qbase, gindex_t qstride,
+    gindex_t qbase, gindex_t qstride, gindex_t qpitch,
     float3 v_colors,
     inout float3 v_coeff_dc,
     inout float3 v_coeffs[24],
@@ -361,7 +362,7 @@ void sh_color_vjp<let QBITS : int>(
     float3 C[24];
     for (int j = 0; j < 24; j++)
         C[j] = (j < K)
-            ? _shv_C<QBITS>(coeffs, qpacked, qbounds, qbase, qstride, j)
+            ? _shv_C<QBITS>(coeffs, qpacked, qbounds, qbase, qstride, qpitch, j)
             : float3(0.0f);
 
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);

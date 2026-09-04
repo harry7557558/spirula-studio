@@ -61,8 +61,8 @@ std::vector<PendingDownload> geometry_model_downloads(const std::string& id);
 std::string geometry_availability();
 
 // Run the step over `dataset`, reporting into `prog` and showing what it
-// writes on `reel` (null for no screen). `images` is the folder the maps
-// describe, so the reel can show each beside its photograph.
+// writes on `reel` (null for no screen). `images` is where the frames are,
+// which for photos read in place is outside the dataset.
 bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
                        const std::string& images, RunProgress& prog,
                        FilmReel* reel, const std::atomic<bool>& cancel,

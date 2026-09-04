@@ -102,6 +102,14 @@
         </div>
       </div>
       <div class="row">
+        <div class="label"><span>Tone Curve</span></div>
+        <select autocomplete="off" id="transfer">
+          <option value="0">srgb</option><option value="1">srgb-clamped</option>
+          <option value="2">aces</option><option value="3">filmic</option>
+          <option value="4">uncharted2</option>
+        </select>
+      </div>
+      <div class="row">
         <div class="label"><span>SH Degree</span><span class="val" id="v-shdeg">0</span></div>
         <input autocomplete="off" type="range" id="shdeg" min="0" max="0" step="1" value="0">
       </div>

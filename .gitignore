@@ -43,6 +43,9 @@ MANIFEST
 *.manifest
 *.spec
 
+# Not PyInstaller's: the UTF-8 active-code-page manifest, a committed source.
+!src/app/utf8.manifest
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

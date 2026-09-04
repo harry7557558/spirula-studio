@@ -54,7 +54,8 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
-            int64_t  sh_bounds_stride = 256
+            int64_t  sh_bounds_stride = 256,
+            int64_t  sh_pair_pitch = 0
         ) {
             float2 xy;
             float depth;
@@ -80,26 +81,26 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
                         (this->mean, cam.R, cam.t, this->features_dc, (float3*)this->features_sh);
                 } else if constexpr (VALUE_BITS == 8) {
                     if constexpr (sh_degree == 0) proj.rgb = SlangHarmonics::sh0_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 1) proj.rgb = SlangHarmonics::sh1_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 2) proj.rgb = SlangHarmonics::sh2_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 3) proj.rgb = SlangHarmonics::sh3_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 4) proj.rgb = SlangHarmonics::sh4_to_color_q8
-                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                 } else if constexpr (VALUE_BITS == 16) {
                     if constexpr (sh_degree == 0) proj.rgb = SlangHarmonics::sh0_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 1) proj.rgb = SlangHarmonics::sh1_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 2) proj.rgb = SlangHarmonics::sh2_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 3) proj.rgb = SlangHarmonics::sh3_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                     else if constexpr (sh_degree == 4) proj.rgb = SlangHarmonics::sh4_to_color_q16
-                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride);
+                        (this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch);
                 }
             }
         }
@@ -113,7 +114,8 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
             uint8_t* sh_packed = nullptr,
             float2*  sh_bounds = nullptr,
             int64_t  sh_base   = 0,
-            int64_t  sh_bounds_stride = 256
+            int64_t  sh_bounds_stride = 256,
+            int64_t  sh_pair_pitch = 0
         ) {
             Slang3DGSProj<camera_model, distortion>::vjp_3d(
                 false,
@@ -132,12 +134,12 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
                 &v_world.mean, &v_R, &v_t \
             );
             #define _ARGS_Q8 ( \
-                this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, \
+                this->mean, cam.R, cam.t, this->features_dc, sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch, \
                 v_proj.rgb, &v_world.features_dc, (float3*)v_world.features_sh, \
                 &v_world.mean, &v_R, &v_t \
             );
             #define _ARGS_Q16 ( \
-                this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, \
+                this->mean, cam.R, cam.t, this->features_dc, (uint16_t*)sh_packed, sh_bounds, sh_base, sh_bounds_stride, sh_pair_pitch, \
                 v_proj.rgb, &v_world.features_dc, (float3*)v_world.features_sh, \
                 &v_world.mean, &v_R, &v_t \
             );
@@ -294,8 +296,10 @@ struct Vanilla3DGUT : public _BasePrimitive3DGUT<sh_degree> {
             if (&wbuffer.quats(0)) atomicAddFVec(&wbuffer.quats(wi), v_quat);
             // if (&sbuffer.scales(0)) atomicAddFVec(&sbuffer.scales(si), v_scale);
             if (&wbuffer.scales(0)) atomicAddFVec(&wbuffer.scales(wi), v_scale);
-            if (&sbuffer.opacities(0)) atomicAddFVec(&sbuffer.opacities(si), opacity);
-            if (&sbuffer.colors(0)) atomicAddFVec(&sbuffer.colors(si), rgb);
+            if (sbuffer.allocated()) {
+                atomicAddFVec(&sbuffer.opacities(si), opacity);
+                atomicAddFVec(&sbuffer.colors(si), rgb);
+            }
         }
 
         __device__ __forceinline__ float evaluate_alpha(

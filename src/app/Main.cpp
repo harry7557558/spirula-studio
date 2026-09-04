@@ -13,14 +13,19 @@
 // screen. On a build with no GUI it is an error naming the subcommands, which
 // is the only thing such a build can do.
 
+#include "app/AppPaths.h"
+#include "app/CrashLog.h"
 #include "app/Tools.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #ifdef _WIN32
 #include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>   // NOMINMAX comes from cmake/SsOptions.cmake
 #define isatty _isatty
 #define fileno _fileno
 #else
@@ -33,6 +38,20 @@
 namespace {
 
 namespace cmsg = spirula::i18n::msg::cli;
+
+#ifdef _WIN32
+UINT g_console_cp = 0;
+
+// A console keeps a code page of its own, which src/app/utf8.manifest does not
+// touch: every CJK path this prints into a cp437 window would be mojibake.
+// Restored at exit, because cmd.exe keeps whatever code page it is left with.
+void use_utf8_console() {
+    const UINT prev = GetConsoleOutputCP();
+    if (prev == 0 || prev == CP_UTF8 || !SetConsoleOutputCP(CP_UTF8)) return;
+    g_console_cp = prev;
+    std::atexit([] { SetConsoleOutputCP(g_console_cp); });
+}
+#endif
 
 // The subcommand NAME is an identifier and prints as it is written; the
 // summary is a message, so `spirula --help` follows --lang like everything
@@ -139,6 +158,9 @@ int main(int argc, char** argv) {
         std::setvbuf(stdout, nullptr, _IOLBF, 0);
 #endif
     }
+#ifdef _WIN32
+    use_utf8_console();
+#endif
 
     // --lang is handled here and removed from argv, so no tool's own parser
     // has to know about it. The chain that decides the language is in
@@ -146,6 +168,11 @@ int main(int argc, char** argv) {
     // file, which is a step below --lang and the environment.
     const char* lang = spirula::i18n::take_lang_arg(&argc, argv);
     spirula::i18n::init(lang, nullptr);
+
+    // Every tool, not only the window: the GUI runs reconstruction, masking
+    // and meshing as child processes, and a child that dies of a fault leaves
+    // its parent an exit status and nothing else.
+    app::install_crash_log(app::config_dir());
 
     // An explicit subcommand wins over the argv[0] hint, so a binary that was
     // renamed or symlinked still answers to every tool it holds. No subcommand
@@ -156,6 +183,7 @@ int main(int argc, char** argv) {
             // The tool sees "spirula sfm" as its program name, so its own usage
             // text prints a command line that can be pasted back.
             std::string prog = std::string(argv[0] ? argv[0] : "spirula") + " " + t->name;
+            app::set_crash_note(prog);
             std::vector<char*> sub;
             sub.push_back(prog.data());
             for (int i = 2; i < argc; i++) sub.push_back(argv[i]);
@@ -166,8 +194,10 @@ int main(int argc, char** argv) {
 
     // Named as a tool: hand it everything, --help and --version included, so a
     // spirula-sfm symlink behaves exactly as the separate executable did.
-    if (const Tool* t = tool_from_argv0(argc > 0 ? argv[0] : nullptr))
+    if (const Tool* t = tool_from_argv0(argc > 0 ? argv[0] : nullptr)) {
+        app::set_crash_note(t->name);
         return t->run(argc, argv);
+    }
 
     if (argc > 1) {
         const std::string a = argv[1];

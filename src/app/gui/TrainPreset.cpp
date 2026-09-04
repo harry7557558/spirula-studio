@@ -2,7 +2,7 @@
 
 #include "app/gui/TrainPreset.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "config/TrainConfigJson.h"
 #include "data/Json.h"
 
@@ -63,7 +63,7 @@ void clear_context(TrainConfig& c) {
 
 
 std::string preset_dir() {
-    fs::path d = fs::path(config_dir()) / "presets";
+    fs::path d = fs::path(app::config_dir()) / "presets";
     std::error_code ec;
     fs::create_directories(d, ec);
     return d.string();

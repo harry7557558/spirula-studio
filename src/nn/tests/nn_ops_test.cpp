@@ -5,6 +5,7 @@
 // treat nn::ops as trustworthy: when a mask comes out wrong, the question is
 // which module misread the reference, not whether the matmul is broken.
 
+#include "nn/core/Error.h"
 #include "nn/core/Half.h"
 #include "nn/core/Log.h"
 #include "nn/Ops.h"
@@ -15,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <string>
 #include <string>
 #include <vector>
 
@@ -120,6 +122,124 @@ float act_ref(float x, Act a) {
 }
 
 // ================
+// Pointer span
+// ================
+
+// Each launcher that splits a tall tensor is run twice, once with the span
+// lowered far enough to force several dispatches. The split is on whole rows,
+// so the two runs must agree bit for bit; the math itself is covered above.
+void test_span(vk::Arena& arena) {
+    const int64_t rows = 300, cols = 7;
+    const int64_t row_span = 32 * cols * 4;   // 32 rows of the widest operand
+
+    auto run = [&](const char* name, int64_t span, auto&& body) {
+        vk::ArenaScope scope(arena);
+        std::vector<float> want = body();
+        set_max_span_bytes(span);
+        std::vector<float> got = body();
+        set_max_span_bytes(0);
+        check(name, got, want, 0.0f);
+    };
+    auto note = [&](const char* name, bool ok, const char* why) {
+        ++g_checks;
+        if (ok) std::printf("  ok   %-28s\n", name);
+        else { std::printf("  FAIL %-28s %s\n", name, why); ++g_failures; }
+    };
+
+    set_max_span_bytes(row_span);
+    const bool splits = span_rows("test_span", cols * 4) < rows;
+    set_max_span_bytes(0);
+    note("span forces a split", splits, "the sizes below no longer split");
+
+    const auto x = randn((size_t)rows * cols);
+    const auto y = randn((size_t)rows * cols);
+    const auto v = randn((size_t)cols);
+    const auto w = randn((size_t)cols * cols, 0.1f);
+
+    run("unary split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        unary(to, upload_f32(arena, x, rows, cols), Act::Selu, 0.5f, 0.25f);
+        return readback(to);
+    });
+    run("add split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        add(to, upload_f32(arena, x, rows, cols), upload_f32(arena, y, rows, cols));
+        return readback(to);
+    });
+    run("add per-column split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        add(to, upload_f32(arena, x, rows, cols), upload_f32(arena, v, cols));
+        return readback(to);
+    });
+    run("convert split", row_span, [&] {
+        Tensor half = arena_tensor(arena, DType::F16, rows, cols);
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        copy(half, upload_f32(arena, x, rows, cols));
+        copy(to, half);
+        return readback(to);
+    });
+    // A destination stride wider than the source is ALIKED's aggregation write.
+    run("strided_copy split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols * 2);
+        fill(to, 0.0f);
+        strided_copy(to, upload_f32(arena, x, rows, cols), rows, cols, cols, cols * 2);
+        return readback(to);
+    });
+    run("l2_normalize_rows split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        l2_normalize_rows(to, upload_f32(arena, x, rows, cols));
+        return readback(to);
+    });
+    run("softmax_rows split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        softmax_rows(to, upload_f32(arena, x, rows, cols));
+        return readback(to);
+    });
+    run("layer_norm split", row_span, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        layer_norm(to, upload_f32(arena, x, rows, cols), upload_f32(arena, v, cols),
+                   upload_f32(arena, v, cols), 1e-5f, upload_f32(arena, y, rows, cols));
+        return readback(to);
+    });
+    // The GEMM splits in whole row tiles, so its span is measured in tiles: this
+    // is two 64-row tiles or one 128-row one, three or more calls either way.
+    run("gemm split", 128 * cols * 4, [&] {
+        Tensor to = arena_tensor(arena, DType::F32, rows, cols);
+        linear(to, upload_f32(arena, x, rows, cols), upload_f32(arena, w, cols, cols));
+        return readback(to);
+    });
+
+    {   // An op whose reads are not row-local takes the 64-bit kernel instead,
+        // and says so rather than wrapping when the device cannot run one.
+        vk::ArenaScope scope(arena);
+        const int64_t H = 40, W = 6, C = 3;
+        auto src = randn((size_t)H * W * C);
+        Tensor in = upload_f32(arena, src, H, W, C);
+        Tensor to = arena_tensor(arena, DType::F32, H / 2, W, C);
+
+        set_max_span_bytes(64);
+        set_wide_index(WideIndex::Off);
+        std::string refused;
+        try {
+            resize_bilinear(to, in);
+        } catch (const nn::Error& e) {
+            refused = e.what();
+        }
+        set_wide_index(WideIndex::Auto);
+        set_max_span_bytes(0);
+        note("no wide kernel refuses",
+             refused.find("shaderInt64") != std::string::npos,
+             refused.empty() ? "resize_bilinear wrapped silently" : refused.c_str());
+
+        run("resize_bilinear wide", 64, [&] {
+            Tensor o = arena_tensor(arena, DType::F32, H / 2, W, C);
+            resize_bilinear(o, upload_f32(arena, src, H, W, C));
+            return readback(o);
+        });
+    }
+}
+
+// ================
 // GEMM
 // ================
 
@@ -162,6 +282,32 @@ void test_gemm(vk::Arena& arena) {
         // The erf approximation in the shader is good to ~1.5e-7 absolute; the
         // 1e-4 budget is dominated by fp32 summation order over K.
         check(c.name, readback(to), want, 2e-4f);
+    }
+
+    // Past 65535 row tiles of 64 the dispatch splits; +3 rows leaves a ragged
+    // tail on the far side of the split. A 2048x2048 ALIKED map is this shape.
+    {
+        vk::ArenaScope scope(arena);
+        const int64_t M = 65535ll * 64 + 3;
+        const int N = 2, K = 2;
+        auto x = randn((size_t)M * K);
+        auto w = randn((size_t)N * K, 0.1f);
+        auto b = randn((size_t)N);
+
+        Tensor to = arena_tensor(arena, DType::F32, M, N);
+        LinearOpts o;
+        o.bias = upload_f32(arena, b, N);
+        linear(to, upload_f32(arena, x, M, K), upload_f32(arena, w, N, K), o);
+
+        std::vector<float> want((size_t)M * N);
+        for (int64_t m = 0; m < M; ++m)
+            for (int n = 0; n < N; ++n) {
+                double s = 0;
+                for (int k = 0; k < K; ++k)
+                    s += (double)x[(size_t)m * K + k] * w[(size_t)n * K + k];
+                want[(size_t)m * N + n] = (float)s + b[n];
+            }
+        check("gemm 4.2M rows", readback(to), want, 2e-4f);
     }
 
     // fp16 weights: the normal path for checkpoint tensors.
@@ -959,6 +1105,46 @@ void test_learned_frontend(vk::Arena& arena) {
             check(k == 2 ? "avgpool 2x2" : "avgpool 4x4", readback(to), want, 1e-5f);
         }
     }
+    {   // resize_bicubic vs torch's upsample_bicubic2d(align_corners=False).
+        // Up and down: only the downscale reads clamped taps at both edges.
+        for (int pass = 0; pass < 2; ++pass) {
+            vk::ArenaScope scope(arena);
+            const int Hi = pass ? 17 : 5, Wi = pass ? 13 : 7, C = 3;
+            const int Ho = pass ? 6 : 19, Wo = pass ? 5 : 11;
+            auto x = randn((size_t)Hi * Wi * C);
+            Tensor to = arena_tensor(arena, DType::F32, Ho, Wo, C);
+            resize_bicubic(to, upload_f32(arena, x, Hi, Wi, C));
+
+            const float a = -0.75f;
+            auto w1 = [&](float t) {
+                t = std::fabs(t);
+                if (t <= 1.0f) return ((a + 2.0f) * t - (a + 3.0f)) * t * t + 1.0f;
+                if (t < 2.0f) return ((a * t - 5.0f * a) * t + 8.0f * a) * t - 4.0f * a;
+                return 0.0f;
+            };
+            std::vector<float> want((size_t)Ho * Wo * C);
+            for (int y = 0; y < Ho; ++y)
+                for (int xx = 0; xx < Wo; ++xx) {
+                    // No clamp to zero: torch clamps the tap indices instead.
+                    const float sy = (y + 0.5f) * ((float)Hi / Ho) - 0.5f;
+                    const float sx = (xx + 0.5f) * ((float)Wi / Wo) - 0.5f;
+                    const int y0 = (int)std::floor(sy), x0 = (int)std::floor(sx);
+                    for (int ky = 0; ky < 4; ++ky) {
+                        const int yy = std::min(std::max(y0 - 1 + ky, 0), Hi - 1);
+                        const float wy = w1(sy - (y0 - 1 + ky));
+                        for (int kx = 0; kx < 4; ++kx) {
+                            const int xj = std::min(std::max(x0 - 1 + kx, 0), Wi - 1);
+                            const float ww = wy * w1(sx - (x0 - 1 + kx));
+                            for (int c = 0; c < C; ++c)
+                                want[((size_t)y * Wo + xx) * C + c] +=
+                                    ww * x[((size_t)yy * Wi + xj) * C + c];
+                        }
+                    }
+                }
+            check(pass ? "resize_bicubic down" : "resize_bicubic up", readback(to), want,
+                  1e-4f);
+        }
+    }
     {   // resize_bilinear(align_corners=True): the OTHER coordinate mapping.
         vk::ArenaScope scope(arena);
         const int Hi = 5, Wi = 7, C = 3, Ho = 17, Wo = 11;
@@ -1339,7 +1525,8 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        std::printf("\nGEMM\n");         test_gemm(arena);
+        std::printf("\nPointer span\n"); test_span(arena);
+        std::printf("GEMM\n");         test_gemm(arena);
         std::printf("Normalization\n");  test_norm(arena);
         std::printf("Attention\n");      test_attention(arena);
         std::printf("RoPE\n");           test_rope(arena);
@@ -1347,6 +1534,22 @@ int main(int argc, char** argv) {
         std::printf("Spatial / gather\n"); test_spatial(arena);
         std::printf("Learned frontend\n"); test_learned_frontend(arena);
         std::printf("Monocular geometry\n"); test_geometry(arena);
+
+        // Every kernel that has a 64-bit-addressing twin, re-checked on that
+        // path against the same references. Only the addressing differs, so a
+        // disagreement here is an address the wide shim computes differently.
+        if (vk::Context::get().hasInt64()) {
+            std::printf("\nWide addressing\n");
+            set_wide_index(WideIndex::Force);
+            test_norm(arena);
+            test_conv(arena);
+            test_spatial(arena);
+            test_learned_frontend(arena);
+            test_geometry(arena);
+            set_wide_index(WideIndex::Auto);
+        } else {
+            std::printf("\nWide addressing: SKIP (no shaderInt64)\n");
+        }
 
         std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
     } catch (const std::exception& e) {

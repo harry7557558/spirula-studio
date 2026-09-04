@@ -10,6 +10,7 @@
 // last cell stay in bounds.
 //
 #include "int8_compat.slang"
+#include "sh_addr.slang"
 
 // Include AFTER harmonics.slang (uses mean_viewmat_to_unnormalized_viewdir).
 // BITS is 8 or 16, always a fold-time constant (spec-constant switch in the
@@ -21,7 +22,7 @@ uint _sh_fetch_qw<let BITS : int>(uint* packed, gindex_t cell) {
     if (BITS == 8) {
         return u8_load(packed, cell);
     } else {
-        uint word = packed[cell >> 1];
+        uint word = elem_at(packed, cell >> 1)[0];
         return (word >> uint(16 * uint(cell & 1))) & 0xffffu;
     }
 }
@@ -29,21 +30,23 @@ uint _sh_fetch_qw<let BITS : int>(uint* packed, gindex_t cell) {
 // Mirrors _sh_load_q{8,16}: decode one float3 SH coefficient (basis j).
 [ForceInline]
 float3 _sh_load_qw<let BITS : int>(uint* packed, float2* bounds, gindex_t base,
-                                   int j, gindex_t bounds_stride) {
-    gindex_t cell0 = base + (gindex_t)(3 * j);
-    // Bounds-block division runs in u32 — identical results while the packed
-    // buffer stays under 2^32 cells (4G coefficients); Intel/ANV's compiler
-    // effectively hangs lowering the slang-emitted 64-bit division.
-    uint cell32 = uint(cell0);
-    uint stride32 = uint(bounds_stride);
-    float2 mm0 = bounds[cell32 / stride32];
-    float2 mm1 = bounds[(cell32 + 1) / stride32];
-    float2 mm2 = bounds[(cell32 + 2) / stride32];
+                                   int j, gindex_t bounds_stride,
+                                   gindex_t pair_pitch) {
+    gindex_t cell0 = sh_cell_at_w(base, 3 * j, pair_pitch);
+    gindex_t cell1 = sh_cell_at_w(base, 3 * j + 1, pair_pitch);
+    gindex_t cell2 = sh_cell_at_w(base, 3 * j + 2, pair_pitch);
+    // Both strides are a multiple of 256, so shifting cell and stride down
+    // by 8 leaves the quotient exact and the numerator in u32; a 64-bit
+    // divide is not an option, Intel/ANV hangs lowering the one slang emits.
+    uint sblk = uint(bounds_stride >> 8);
+    float2 mm0 = bounds[uint(cell0 >> 8) / sblk];
+    float2 mm1 = bounds[uint(cell1 >> 8) / sblk];
+    float2 mm2 = bounds[uint(cell2 >> 8) / sblk];
     const float inv = BITS == 8 ? (1.0f / 255.0f) : (1.0f / 65535.0f);
     return float3(
         mm0.x + (mm0.y - mm0.x) * (float(_sh_fetch_qw<BITS>(packed, cell0)) * inv),
-        mm1.x + (mm1.y - mm1.x) * (float(_sh_fetch_qw<BITS>(packed, cell0 + 1)) * inv),
-        mm2.x + (mm2.y - mm2.x) * (float(_sh_fetch_qw<BITS>(packed, cell0 + 2)) * inv)
+        mm1.x + (mm1.y - mm1.x) * (float(_sh_fetch_qw<BITS>(packed, cell1)) * inv),
+        mm2.x + (mm2.y - mm2.x) * (float(_sh_fetch_qw<BITS>(packed, cell2)) * inv)
     );
 }
 
@@ -57,9 +60,10 @@ float3 sh_coeffs_to_color_qw<let BITS : int>(
     uint* packed,
     float2* bounds,
     gindex_t base,
-    gindex_t bounds_stride
+    gindex_t bounds_stride,
+    gindex_t pair_pitch
 ) {
-    #define _C(j) _sh_load_qw<BITS>(packed, bounds, base, j, bounds_stride)
+    #define _C(j) _sh_load_qw<BITS>(packed, bounds, base, j, bounds_stride, pair_pitch)
     float3 colors = 0.2820947917738781f * coeff_dc;
 
     if (degree <= 0)
@@ -159,11 +163,12 @@ float3 sh_to_color_qw<let BITS : int>(
     const int degree,
     const float3 mean, const float3x3 R, const float3 t,
     float3 coeff_dc,
-    uint* packed, float2* bounds, gindex_t base, gindex_t bounds_stride
+    uint* packed, float2* bounds, gindex_t base, gindex_t bounds_stride,
+    gindex_t pair_pitch
 ) {
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
     float3 rgb = sh_coeffs_to_color_qw<BITS>(degree, viewdir, coeff_dc,
                                              packed, bounds, base,
-                                             bounds_stride);
+                                             bounds_stride, pair_pitch);
     return max(rgb + 0.5, 0.0);
 }

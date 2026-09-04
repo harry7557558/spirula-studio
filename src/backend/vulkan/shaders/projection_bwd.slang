@@ -17,7 +17,9 @@
 //   kDistortion   = CameraDistortionType (0..3), declared last
 
 #define CudaDeviceExport ForceInline
+#include "aabb16.slang"
 #include "int64_compat.slang"
+#include "screen.slang"
 #include "shaders/primitive_3dgs.slang"
 #include "shaders/harmonics.slang"
 #undef CudaDeviceExport
@@ -48,13 +50,9 @@ struct ProjectionBwd3dgsParams {
     // packed intersection ids (kPacked; fallback otherwise)
     int* camera_ids;    // [nnz]
     int* gaussian_ids;  // [nnz]
-    float4* aabb;       // [C,N] (non-packed cull; unused when kPacked)
+    uint2* aabb;        // [C,N] packed cull marker; unused when kPacked
     // screen-space gradients (inputs)
-    float* vs_xy;
-    float* vs_depth;
-    float* vs_conic;
-    float* vs_opac;
-    float* vs_rgb;
+    float* vs_screen;  // [.., SCR2_STRIDE]
     // world-space gradients (outputs, CAS accumulate)
     float* vw_means;
     float* vw_quats;
@@ -84,8 +82,7 @@ void _pb_run_3dgs<let cam : CameraModelType, D : ICameraDistortion>(
         cid = uint(p.camera_ids[idx]);
         gid = uint(p.gaussian_ids[idx]);
     } else {
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             return;
         cid = (idx / p.N) % p.C;
         gid = idx % p.N;
@@ -96,27 +93,30 @@ void _pb_run_3dgs<let cam : CameraModelType, D : ICameraDistortion>(
     PbSplat s = pb_load_splat(p.means, p.quats, p.scales, p.opacities,
                               p.features_dc, gid);
 
-    float2 v_xy = float2(p.vs_xy[2 * idx], p.vs_xy[2 * idx + 1]);
-    float v_depth = p.vs_depth[idx];
-    float3 v_conic = float3(p.vs_conic[3 * idx], p.vs_conic[3 * idx + 1],
-                            p.vs_conic[3 * idx + 2]);
-    float v_opac = p.vs_opac[idx];
-    float3 v_rgb = float3(p.vs_rgb[3 * idx], p.vs_rgb[3 * idx + 1],
-                          p.vs_rgb[3 * idx + 2]);
+    float* v_row = scr2_row(p.vs_screen, idx);
+    float2 v_xy = scr2_xy(v_row);
+    float v_depth = scr2_depth(v_row);
+    float3 v_conic = scr2_conic(v_row);
+    float v_opac = scr2_opac(v_row);
+    float3 v_rgb = scr2_rgb(v_row);
 
     PbGrads g = pb_grads_zero();
     pb_vjp_2d<cam, D>(s, c, p.width, p.height, v_xy, v_depth, v_conic, v_opac,
                       g);
-    gindex_t qbase = (gindex_t)3 * (gindex_t)p.num_sh_buffer * (gindex_t)gid;
-    pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src, p.sh_packed,
-                 p.sh_bounds, qbase, i64mem_get(p.sh_bounds_stride), v_rgb, g);
+    ShAddrW a = sh_quant_addr_w(p.num_sh_buffer,
+                                i64mem_get(p.sh_bounds_stride));
+    gindex_t sh_src = (gindex_t)gid * (gindex_t)p.sh_stride_src;
+    gindex_t sh_out = (gindex_t)gid * (gindex_t)p.sh_stride_v;
+    pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src), p.sh_packed,
+                 p.sh_bounds, sh_addr_base(a, gid), a.bounds_stride,
+                 a.pair_pitch, v_rgb, g);
 
     pb_add3(p.vw_means + 3 * gid, g.v_mean);
     pb_add4(p.vw_quats + 4 * gid, g.v_quat);
     pb_add3(p.vw_scales + 3 * gid, g.v_scale);
     pb_add1(p.vw_opacities + gid, g.v_opacity);
     pb_add3(p.vw_dc + 3 * gid, g.v_dc);
-    pb_scatter_sh(p.vw_sh + gid * p.sh_stride_v, g.v_sh, kShDegree);
+    pb_scatter_sh(elem_at(p.vw_sh, sh_out), g.v_sh, kShDegree);
 
     if (kViewmatGrad != 0)
         pb_scatter_viewmat(p.v_viewmats, cid, g.v_R, g.v_t);
@@ -152,11 +152,9 @@ struct ProjectionBwd3dgutParams {
     float* dist_coeffs;
     int* camera_ids;
     int* gaussian_ids;
-    float4* aabb;
+    uint2* aabb;        // packed, aabb16.slang
     // screen grads {scale, opac, rgb}
-    float* vs_scale;
-    float* vs_opac;
-    float* vs_rgb;
+    float* vs_screen;  // [.., SCRG_STRIDE]
     // world grads (outputs)
     float* vw_means;
     float* vw_quats;
@@ -185,8 +183,7 @@ void _pb_run_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
         cid = uint(p.camera_ids[idx]);
         gid = uint(p.gaussian_ids[idx]);
     } else {
-        float4 bb = p.aabb[idx];
-        if (bb.z <= bb.x || bb.w <= bb.y)
+        if (aabb16_is_empty(p.aabb[idx]))
             return;
         cid = (idx / p.N) % p.C;
         gid = idx % p.N;
@@ -197,24 +194,27 @@ void _pb_run_3dgut<let cam : CameraModelType, D : ICameraDistortion>(
     PbSplat s = pb_load_splat(p.means, p.quats, p.scales, p.opacities,
                               p.features_dc, gid);
 
-    float3 v_sscale = float3(p.vs_scale[3 * idx], p.vs_scale[3 * idx + 1],
-                             p.vs_scale[3 * idx + 2]);
-    float v_sopac = p.vs_opac[idx];
-    float3 v_rgb = float3(p.vs_rgb[3 * idx], p.vs_rgb[3 * idx + 1],
-                          p.vs_rgb[3 * idx + 2]);
+    float* v_row = scrg_row(p.vs_screen, idx);
+    float3 v_sscale = scrg_scale(v_row);
+    float v_sopac = scrg_opac(v_row);
+    float3 v_rgb = scrg_rgb(v_row);
 
     PbGrads g = pb_grads_zero();
     pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, v_sscale, v_sopac, g);
-    gindex_t qbase = (gindex_t)3 * (gindex_t)p.num_sh_buffer * (gindex_t)gid;
-    pb_sh_vjp<D>(s, c, p.features_sh + gid * p.sh_stride_src, p.sh_packed,
-                 p.sh_bounds, qbase, i64mem_get(p.sh_bounds_stride), v_rgb, g);
+    ShAddrW a = sh_quant_addr_w(p.num_sh_buffer,
+                                i64mem_get(p.sh_bounds_stride));
+    gindex_t sh_src = (gindex_t)gid * (gindex_t)p.sh_stride_src;
+    gindex_t sh_out = (gindex_t)gid * (gindex_t)p.sh_stride_v;
+    pb_sh_vjp<D>(s, c, elem_at(p.features_sh, sh_src), p.sh_packed,
+                 p.sh_bounds, sh_addr_base(a, gid), a.bounds_stride,
+                 a.pair_pitch, v_rgb, g);
 
     pb_add3(p.vw_means + 3 * gid, g.v_mean);
     pb_add4(p.vw_quats + 4 * gid, g.v_quat);
     pb_add3(p.vw_scales + 3 * gid, g.v_scale);
     pb_add1(p.vw_opacities + gid, g.v_opacity);
     pb_add3(p.vw_dc + 3 * gid, g.v_dc);
-    pb_scatter_sh(p.vw_sh + gid * p.sh_stride_v, g.v_sh, kShDegree);
+    pb_scatter_sh(elem_at(p.vw_sh, sh_out), g.v_sh, kShDegree);
 
     if (kViewmatGrad != 0)
         pb_scatter_viewmat(p.v_viewmats, cid, g.v_R, g.v_t);

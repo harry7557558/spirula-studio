@@ -198,20 +198,20 @@ SS_MSG(frame_mask_no_border,
     RU("{0}: край не найден, поэтому ничего не срезано"),
     TR("{0}: kenar bulunamadı, bu yüzden hiçbiri kesilmedi"));
 
-SS_MSG(stencil_keeps_bundled,
-    EN("{0} brought its own masks; they are left as they are"),
-    JA("{0} には元々マスクが付いています。そのままにします"),
-    ZH_HANS("{0} 自带蒙版，保持原样"),
-    ZH_HANT("{0} 自帶遮罩，保持原樣"),
-    KO("{0} 에는 원래 마스크가 있어 그대로 둡니다"),
-    DE("{0} bringt eigene Masken mit; sie bleiben, wie sie sind"),
-    FR("{0} apporte ses propres masques ; ils restent tels quels"),
-    ES("{0} trae sus propias máscaras; se dejan como están"),
-    PT("{0} traz as próprias máscaras; ficam como estão"),
-    IT("{0} porta le proprie maschere; restano come sono"),
-    NL("{0} brengt eigen maskers mee; die blijven zoals ze zijn"),
-    RU("{0} принёс свои маски; они остаются как есть"),
-    TR("{0} kendi maskelerini getiriyor; oldukları gibi kalıyorlar"));
+SS_MSG(masks_combined_in_place,
+    EN("The masks in {0} are replaced by their combination with the frame mask"),
+    JA("{0} のマスクは、フレームマスクと合成したもので置き換わります"),
+    ZH_HANS("{0} 里的蒙版将被它与画面蒙版合并后的结果替换"),
+    ZH_HANT("{0} 裡的遮罩將被它與畫面遮罩合併後的結果取代"),
+    KO("{0} 의 마스크는 프레임 마스크와 합친 결과로 바뀝니다"),
+    DE("Die Masken in {0} werden durch ihre Verbindung mit der Bildmaske ersetzt"),
+    FR("Les masques de {0} sont remplacés par leur combinaison avec le masque d'image"),
+    ES("Las máscaras de {0} se sustituyen por su combinación con la máscara de imagen"),
+    PT("As máscaras em {0} são substituídas pela combinação com a máscara de imagem"),
+    IT("Le maschere in {0} sono sostituite dalla loro unione con la maschera di inquadratura"),
+    NL("De maskers in {0} worden vervangen door hun combinatie met het beeldmasker"),
+    RU("Маски в {0} заменяются их сочетанием с маской кадра"),
+    TR("{0} içindeki maskeler, kare maskesiyle birleştirilmiş hâlleriyle değiştirilir"));
 
 SS_MSG(stage_masks_python,
     EN("Generating masks (external Python)"),
@@ -769,6 +769,39 @@ SS_MSG(one_camera_per_folder,
     TR("images/ her kamera için bir klasör içeriyor: klasör başına bir kameraya "
        "geçiliyor"));
 
+SS_MSG(colmap_split_frame_sizes,
+    EN("Images of several frame sizes share a camera group, which COLMAP cannot "
+       "do -- extracting one camera per size instead. Camera groups: {0}"),
+    JA("1つのカメラのまとまりに複数の画像サイズが混ざっています。COLMAP はこれを"
+       "扱えないため、サイズごとに1台のカメラとして特徴点を抽出します。"
+       "カメラのまとまり: {0}"),
+    ZH_HANS("同一相机分组里混有多种画幅尺寸，COLMAP 无法处理：改为每种尺寸一台相机"
+            "提取特征。相机分组: {0}"),
+    ZH_HANT("同一相機分組裡混有多種畫幅尺寸，COLMAP 無法處理：改為每種尺寸一台相機"
+            "擷取特徵。相機分組: {0}"),
+    KO("한 카메라 묶음에 여러 이미지 크기가 섞여 있습니다. COLMAP은 이렇게 하지 "
+       "못하므로 크기마다 카메라를 하나씩 두고 특징점을 추출합니다. 카메라 묶음: {0}"),
+    DE("In einer Kameragruppe stecken mehrere Bildgrößen, was COLMAP nicht kann "
+       "-- es wird stattdessen je Größe eine Kamera extrahiert. Kameragruppen: {0}"),
+    FR("Plusieurs tailles d'image se trouvent dans un même groupe de caméras, ce "
+       "que COLMAP ne sait pas faire : extraction avec une caméra par taille. "
+       "Groupes de caméras : {0}"),
+    ES("En un mismo grupo de cámaras hay varios tamaños de imagen, algo que "
+       "COLMAP no admite: se extrae con una cámara por tamaño. "
+       "Grupos de cámaras: {0}"),
+    PT("Um mesmo grupo de câmeras tem vários tamanhos de imagem, o que o COLMAP "
+       "não aceita: a extração usa uma câmera por tamanho. Grupos de câmeras: {0}"),
+    IT("In uno stesso gruppo di fotocamere ci sono più dimensioni di immagine, "
+       "cosa che COLMAP non ammette: l'estrazione usa una fotocamera per "
+       "dimensione. Gruppi di fotocamere: {0}"),
+    NL("Eén cameragroep bevat meerdere beeldformaten, wat COLMAP niet kan -- er "
+       "wordt per formaat één camera uitgelezen. Cameragroepen: {0}"),
+    RU("В одной группе камер оказались изображения разных размеров, чего COLMAP "
+       "не допускает: извлечение идёт по одной камере на размер. Групп камер: {0}"),
+    TR("Aynı kamera grubunda birden çok görüntü boyutu var; COLMAP bunu yapamaz, "
+       "bu yüzden her boyut için ayrı kamera ile çıkarım yapılıyor. "
+       "Kamera grubu sayısı: {0}"));
+
 SS_MSG(sfm_partial,
     EN("Note: only part of the capture reconstructed. It will still train, but "
        "expect gaps."),
@@ -918,6 +951,21 @@ SS_MSG(ray_depth_straight_ahead,
     RU("расстояние прямо вперёд"),
     TR("ileri doğru mesafe"));
 
+SS_MSG(ppisp_exif_exposure,
+    EN("PPISP exposure initialized from EXIF ({0} of {1} photos)"),
+    JA("PPISP の露出を EXIF から初期化しました（{1} 枚中 {0} 枚）"),
+    ZH_HANS("已从 EXIF 初始化 PPISP 曝光（{1} 张照片中的 {0} 张）"),
+    ZH_HANT("已從 EXIF 初始化 PPISP 曝光（{1} 張照片中的 {0} 張）"),
+    KO("EXIF에서 PPISP 노출을 초기화했습니다({1}장 중 {0}장)"),
+    DE("PPISP-Belichtung aus EXIF initialisiert ({0} von {1} Fotos)"),
+    FR("Exposition PPISP initialisée depuis l'EXIF ({0} photos sur {1})"),
+    ES("Exposición PPISP inicializada desde EXIF ({0} de {1} fotos)"),
+    PT("Exposição PPISP inicializada a partir do EXIF ({0} de {1} fotos)"),
+    IT("Esposizione PPISP inizializzata dall'EXIF ({0} foto su {1})"),
+    NL("PPISP-belichting geïnitialiseerd uit EXIF ({0} van {1} foto's)"),
+    RU("Экспозиция PPISP инициализирована из EXIF ({0} из {1} фото)"),
+    TR("PPISP pozlaması EXIF'ten başlatıldı ({1} fotoğraftan {0})"));
+
 // Printed when the input images are EXRs and no colour space was given on the
 // command line; {0} is the gamut read out of the file.
 SS_MSG(exr_color_space,
@@ -1055,6 +1103,24 @@ SS_MSG(checkpoint_saved,
     NL("Controlepunt opgeslagen in: {0}"),
     RU("Контрольная точка сохранена: {0}"),
     TR("Denetim noktası şuraya kaydedildi: {0}"));
+
+// Labelled rather than inflected ("Steps: 3", not "3 steps") -- see
+// src/i18n/README.md. Steps counts what THIS run did, so it pairs with a
+// time that also excludes whatever a resumed checkpoint already had.
+SS_MSG(train_finished,
+    EN("Training complete. Steps: {0}   Time: {1}"),
+    JA("学習が完了しました。ステップ: {0}   所要時間: {1}"),
+    ZH_HANS("训练完成。步数：{0}   用时：{1}"),
+    ZH_HANT("訓練完成。步數：{0}   用時：{1}"),
+    KO("학습이 끝났습니다. 스텝: {0}   소요 시간: {1}"),
+    DE("Training abgeschlossen. Schritte: {0}   Zeit: {1}"),
+    FR("Entraînement terminé. Étapes : {0}   Durée : {1}"),
+    ES("Entrenamiento terminado. Pasos: {0}   Tiempo: {1}"),
+    PT("Treinamento concluído. Passos: {0}   Tempo: {1}"),
+    IT("Addestramento completato. Passi: {0}   Tempo: {1}"),
+    NL("Training klaar. Stappen: {0}   Tijd: {1}"),
+    RU("Обучение завершено. Шагов: {0}   Время: {1}"),
+    TR("Eğitim tamamlandı. Adım: {0}   Süre: {1}"));
 
 SS_MSG(eval_split_empty,
     EN("Eval: the eval split is empty; nothing to score."),
@@ -1194,6 +1260,62 @@ SS_MSG(err_spawn_recon,
     RU("Не удалось запустить реконструкцию ({0})"),
     TR("Yeniden kurulum başlatılamadı ({0})"));
 
+SS_MSG(err_recon_gpu,
+    EN("the GPU could not finish the reconstruction -- the driver reported a "
+       "lost device or ran out of memory (the log has its error). Turn on "
+       "\"{0}\" under Advanced and run it again: that step is slower on the "
+       "CPU, but it does not put the whole model on the GPU at once."),
+    JA("GPU が復元を完了できませんでした。デバイスが失われた、またはメモリが"
+       "足りないとドライバが報告しています（詳しくはログを見てください）。「詳細設定」で「{0}」を"
+       "オンにして、もう一度実行してください。CPU では遅くなりますが、モデル全体を"
+       "一度に GPU へ載せずに済みます。"),
+    ZH_HANS("GPU 无法完成重建: 驱动报告设备丢失或显存不足（错误在日志里）。"
+            "请在「高级」中打开「{0}」后重新运行: 这一步在 CPU 上更慢，"
+            "但不必把整个模型一次性放到 GPU 上。"),
+    ZH_HANT("GPU 無法完成重建: 驅動回報裝置失效或記憶體不足（錯誤在日誌裡）。"
+            "請在「進階」中開啟「{0}」後重新執行: 這一步在 CPU 上較慢，"
+            "但不必把整個模型一次放到 GPU 上。"),
+    KO("GPU가 복원을 끝내지 못했습니다. 드라이버가 장치 손실이나 메모리 부족을 "
+       "알렸습니다(오류는 로그에 있습니다). 「고급」에서 「{0}」을 켜고 다시 "
+       "실행하세요. CPU에서는 느리지만 모델 전체를 한 번에 GPU에 올리지 않습니다."),
+    DE("Die GPU konnte die Rekonstruktion nicht abschließen -- der Treiber "
+       "meldete ein verlorenes Gerät oder zu wenig Speicher (der Fehler steht "
+       "im Protokoll). Schalten Sie unter \"Erweitert\" \"{0}\" ein und "
+       "starten Sie erneut: Auf der CPU ist dieser Schritt langsamer, legt "
+       "aber nicht das ganze Modell auf einmal auf die GPU."),
+    FR("Le GPU n'a pas pu terminer la reconstruction : le pilote a signalé un "
+       "périphérique perdu ou un manque de mémoire (son erreur est dans le "
+       "journal). Activez \"{0}\" sous \"Avancé\" et relancez : cette "
+       "étape est plus lente sur le CPU, mais elle ne met pas tout le modèle "
+       "sur le GPU d'un coup."),
+    ES("La GPU no pudo terminar la reconstrucción: el controlador informó de "
+       "un dispositivo perdido o de falta de memoria (su error está en el "
+       "registro). Active \"{0}\" en \"Avanzado\" y vuelva a ejecutarlo: "
+       "ese paso es más lento en la CPU, pero no pone todo el modelo en la "
+       "GPU de una vez."),
+    PT("A GPU não conseguiu terminar a reconstrução: o driver relatou "
+       "dispositivo perdido ou falta de memória (o erro está no registro). "
+       "Ative \"{0}\" em \"Avançado\" e execute de novo: esse passo é "
+       "mais lento na CPU, mas não coloca o modelo inteiro na GPU de uma vez."),
+    IT("La GPU non è riuscita a terminare la ricostruzione: il driver ha "
+       "segnalato un dispositivo perso o memoria esaurita (l'errore è nel "
+       "registro). Attivi \"{0}\" in \"Avanzate\" e riprovi: sulla CPU "
+       "quel passaggio è più lento, ma non mette tutto il modello sulla GPU "
+       "in una volta."),
+    NL("De GPU kon de reconstructie niet afmaken: het stuurprogramma meldde "
+       "een verloren apparaat of te weinig geheugen (de fout staat in het "
+       "logboek). Zet \"{0}\" aan onder \"Geavanceerd\" en voer het "
+       "opnieuw uit: die stap is trager op de CPU, maar zet niet het hele "
+       "model in één keer op de GPU."),
+    RU("GPU не смог завершить реконструкцию: драйвер сообщил о потере "
+       "устройства или нехватке памяти (его ошибка есть в журнале). Включите "
+       "\"{0}\" в разделе \"Дополнительно\" и запустите снова: на CPU "
+       "этот шаг медленнее, но не требует держать всю модель на GPU сразу."),
+    TR("GPU yeniden kurulumu tamamlayamadı: sürücü aygıt kaybı veya bellek "
+       "yetersizliği bildirdi (hatası günlükte). \"Gelişmiş\" altında "
+       "\"{0}\" seçeneğini açıp yeniden çalıştırın: bu adım CPU'da daha "
+       "yavaştır ama modelin tamamını bir kerede GPU'ya koymaz."));
+
 SS_MSG(err_recon_failed,
     EN("reconstruction failed (see the log). Common causes: too few "
        "overlapping images, not enough overlap between them, or the wrong "
@@ -1308,6 +1430,26 @@ SS_MSG(not_supported_yet,
     NL("{0} wordt nog niet ondersteund"),
     RU("{0} пока не поддерживается"),
     TR("{0} henüz desteklenmiyor"));
+SS_MSG(ppisp_before_color_space_order,
+    EN("{0} needs {1}: the per-photo color correction is always applied in sRGB"),
+    JA("{0} には {1} が必要です。写真ごとの色補正はつねに sRGB で適用されます"),
+    ZH_HANS("{0} 需要同时开启 {1}：逐张照片的颜色校正始终在 sRGB 中进行"),
+    ZH_HANT("{0} 需要同時開啟 {1}：逐張照片的色彩校正始終在 sRGB 中進行"),
+    KO("{0}에는 {1}이(가) 필요합니다. 사진별 색 보정은 항상 sRGB에서 적용됩니다"),
+    DE("{0} setzt {1} voraus: Die Farbkorrektur pro Foto wird immer in sRGB "
+       "angewendet"),
+    FR("{0} requiert {1} : la correction de couleur par photo est toujours "
+       "appliquée en sRGB"),
+    ES("{0} requiere {1}: la corrección de color por foto siempre se aplica en "
+       "sRGB"),
+    PT("{0} exige {1}: a correção de cor por foto é sempre aplicada em sRGB"),
+    IT("{0} richiede {1}: la correzione del colore per foto è sempre applicata "
+       "in sRGB"),
+    NL("{0} vereist {1}: de kleurcorrectie per foto wordt altijd in sRGB "
+       "toegepast"),
+    RU("{0} требует {1}: покадровая коррекция цвета всегда применяется в sRGB"),
+    TR("{0}, {1} gerektirir: fotoğraf başına renk düzeltmesi her zaman sRGB'de "
+       "uygulanır"));
 SS_MSG(bad_quantization_level,
     EN("quantization_level must be 0 or 1"),
     JA("quantization_level は 0 か 1 にしてください"),
@@ -1776,6 +1918,43 @@ SS_MSG(warn_fpbo_incompatible,
        "burada bir yığında birden çok kamera olabiliyor (en fazla {0}) ve "
        "`use_fused_proj_bwd_optim` bunlar arasında gradyan biriktiremiyor. "
        "Kapatıldı, `split_batch` korunuyor."));
+
+SS_MSG(warn_diverged_loss,
+    EN("warning: training diverged at step {0} (`{1}` = {2}). It will not "
+       "recover, and the result will render black. Please report it with the "
+       "run's config.json."),
+    JA("警告: ステップ {0} で学習が発散しました（`{1}` = {2}）。これは元に戻らず、"
+       "結果は真っ黒に描画されます。実行の config.json を添えて報告してください。"),
+    ZH_HANS("警告：训练在第 {0} 步发散（`{1}` = {2}）。它无法恢复，结果会渲染成"
+            "全黑。请附上本次运行的 config.json 报告此问题。"),
+    ZH_HANT("警告：訓練在第 {0} 步發散（`{1}` = {2}）。它無法恢復，結果會算繪成"
+            "全黑。請附上本次執行的 config.json 回報此問題。"),
+    KO("경고: {0}단계에서 학습이 발산했습니다(`{1}` = {2}). 회복되지 않으며 "
+       "결과는 검게 렌더링됩니다. 실행의 config.json과 함께 보고해 주세요."),
+    DE("Warnung: Das Training ist in Schritt {0} divergiert (`{1}` = {2}). Es "
+       "erholt sich nicht, und das Ergebnis wird schwarz gerendert. Bitte mit "
+       "der config.json des Laufs melden."),
+    FR("Avertissement : l'entraînement a divergé à l'étape {0} (`{1}` = {2}). "
+       "Il ne s'en remettra pas et le résultat s'affichera en noir. Merci de "
+       "le signaler avec le config.json de l'exécution."),
+    ES("Aviso: el entrenamiento divergió en el paso {0} (`{1}` = {2}). No se "
+       "recuperará y el resultado se verá negro. Comunícalo junto con el "
+       "config.json de la ejecución."),
+    PT("Aviso: o treino divergiu no passo {0} (`{1}` = {2}). Não se recupera "
+       "e o resultado será renderizado preto. Relate o caso junto com o "
+       "config.json da execução."),
+    IT("Avviso: l'addestramento è divergito al passo {0} (`{1}` = {2}). Non "
+       "si riprende e il risultato verrà reso nero. Segnalalo insieme al "
+       "config.json dell'esecuzione."),
+    NL("Waarschuwing: de training is bij stap {0} gedivergeerd (`{1}` = {2}). "
+       "Het herstelt niet en het resultaat wordt zwart weergegeven. Meld het "
+       "met de config.json van de run."),
+    RU("Предупреждение: на шаге {0} обучение разошлось (`{1}` = {2}). Оно не "
+       "восстановится, а результат отрисуется чёрным. Сообщите об этом, "
+       "приложив config.json запуска."),
+    TR("Uyarı: eğitim {0}. adımda ıraksadı (`{1}` = {2}). Toparlanmaz ve "
+       "sonuç siyah görüntülenir. Lütfen çalışmanın config.json dosyasıyla "
+       "birlikte bildirin."));
 
 
 // ===========================================================================

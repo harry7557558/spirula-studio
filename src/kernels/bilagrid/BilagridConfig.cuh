@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <cuda_runtime.h>
+#include "core/SourcePath.h"
 
 // Function-call-style macro (different from the original statement-style),
 // matching the form used by the rest of core/Common.cuh.
@@ -22,7 +23,7 @@ do {                                                                \
     cudaError_t err = call;                                         \
     if (err != cudaSuccess) {                                       \
         fprintf(stderr, "\033[41mCUDA Error at %s:%d: %s\033[m\n",  \
-                __FILE__, __LINE__, cudaGetErrorString(err));       \
+                SS_FILE, __LINE__, cudaGetErrorString(err));        \
         exit(EXIT_FAILURE);                                         \
     }                                                               \
 } while (0)

@@ -192,7 +192,8 @@ int main(int argc, char** argv) {
                            bool bounds_per_splat, bool non_sh,
                            int64_t num_sh, int64_t num_sh_buffer,
                            int64_t special_lowopac,
-                           int64_t special_nan) -> Model {
+                           int64_t special_nan,
+                           int64_t special_dead_scale) -> Model {
         Model m{};
         m.num_sh = num_sh;
         m.num_sh_buffer = num_sh_buffer;
@@ -213,6 +214,11 @@ int main(int argc, char** argv) {
         if (special_lowopac >= 0) opacs[special_lowopac] = -8.f;
         if (special_nan >= 0)
             means[3 * special_nan] = std::numeric_limits<float>::quiet_NaN();
+        // exp() of this is not a positive normal float: the splat is gone
+        // for good, and relocation has to recycle it.
+        if (special_dead_scale >= 0)
+            for (int k = 0; k < 3; k++)
+                scales[3 * special_dead_scale + k] = -90.f;
         m.means = upload(means);
         m.quats = upload(quats);
         m.scales = upload(scales);
@@ -224,7 +230,11 @@ int main(int argc, char** argv) {
             for (auto& v : sh) v = uf(-0.5f, 0.5f);
             m.sh = upload(sh);
         } else {
-            int64_t cells = 3 * num_sh_buffer * CAP;
+            // The FPBO layout (bounds_per_splat) addresses whole 256-splat
+            // blocks of whole words -- see docs/notes/sh-quant-layout.md.
+            int64_t cells = bounds_per_splat
+                ? sh_fpbo_cells(CAP, (uint32_t)num_sh_buffer)
+                : 3 * num_sh_buffer * CAP;
             m.sh_value_bytes = cells * (sh_value_bits == 16 ? 2 : 1);
             std::vector<uint8_t> pk(m.sh_value_bytes);
             for (auto& v : pk) v = (uint8_t)(rng() & 0xff);
@@ -248,7 +258,9 @@ int main(int argc, char** argv) {
             m.g2_sh = upload(g);
         } else {
             // state stride is 3 * num_sh cells per splat (see FusedAppearanceOptim.cu)
-            int64_t cells = 3 * num_sh * CAP;
+            int64_t cells = bounds_per_splat
+                ? sh_fpbo_cells(CAP, (uint32_t)num_sh)
+                : 3 * num_sh * CAP;
             m.sh_state_bytes = cells * (sh_optim_bits == 8 ? 2 : 1);
             std::vector<uint8_t> pk(m.sh_state_bytes);
             for (auto& v : pk) v = (uint8_t)(rng() & 0xff);
@@ -489,18 +501,33 @@ int main(int argc, char** argv) {
         backend::device_synchronize();
     };
 
+    // A recycled splat must come back alive. Parity cannot see this on its
+    // own: both backends leaving the dead splat where it is compares equal.
+    bool revived_ok = true;
+    auto check_revived = [&](const Model& m, int64_t idx, const char* what) {
+        float sc[3];
+        backend::memcpy_sync(sc, m.scales + 3 * idx, sizeof sc,
+                             MemcpyKind::DeviceToHost);
+        float hi = std::max(std::max(sc[0], sc[1]), sc[2]);
+        if (!(hi > -87.336548f)) {
+            std::printf("densify_parity: %s left splat %lld dead "
+                        "(max log scale %g)\n", what, (long long)idx, hi);
+            revived_ok = false;
+        }
+    };
+
     // relocate (long-axis split): exactly one relocating splat per config
     {
         // fp32, low-opacity trigger
         Model m = build_model(32, 32, false, false, 15, 15, /*lowopac=*/517,
-                              /*nan=*/-1);
+                              /*nan=*/-1, -1);
         call_relocate_las(m, 0.005f, 11u);
         readback_model(m);
     }
     {
         // 8-bit SH state + 16-bit value codec (FPBO layouts) + non-SH
         // quant, non-finite trigger
-        Model m = build_model(8, 16, true, true, 15, 15, -1, /*nan=*/1234);
+        Model m = build_model(8, 16, true, true, 15, 15, -1, /*nan=*/1234, -1);
         call_relocate_las(m, 0.005f, 22u);
         readback_model(m);
     }
@@ -508,24 +535,33 @@ int main(int argc, char** argv) {
         // 4-bit SH state + 8-bit value codec (per-cell layouts), degree
         // warmup (num_sh < num_sh_buffer)
         Model m = build_model(4, 8, false, false, 8, 15, /*lowopac=*/2718,
-                              -1);
+                              -1, -1);
         call_relocate_las(m, 0.005f, 33u);
+        readback_model(m);
+    }
+
+    {
+        // dead-scale trigger: too small for exp() to stay normal
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1,
+                              /*dead_scale=*/1729);
+        call_relocate_las(m, 0.005f, 121u);
+        check_revived(m, 1729, "relocate_las");
         readback_model(m);
     }
 
     // add (long-axis split): many deterministic dst splats
     {
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1);
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
         call_add_las(m, 555, 44u);
         readback_model(m);
     }
     {
-        Model m = build_model(8, 16, true, true, 15, 15, -1, -1);
+        Model m = build_model(8, 16, true, true, 15, 15, -1, -1, -1);
         call_add_las(m, 600, 55u);
         readback_model(m);
     }
     {
-        Model m = build_model(4, 8, false, false, 8, 15, -1, -1);
+        Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
         call_add_las(m, 333, 66u);
         readback_model(m);
     }
@@ -541,26 +577,35 @@ int main(int argc, char** argv) {
                              MemcpyKind::HostToDevice);
     };
     {
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1);
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
         lower_some_opacs(m);
         call_relocate_mcmc(m, 0.005f, 77u);
         readback_model(m);
     }
     {
-        Model m = build_model(8, 16, true, true, 15, 15, -1, -1);
+        Model m = build_model(8, 16, true, true, 15, 15, -1, -1, -1);
         lower_some_opacs(m);
         call_relocate_mcmc(m, 0.005f, 88u);
         readback_model(m);
     }
 
+    {
+        // dead-scale trigger on the MCMC path
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1,
+                              /*dead_scale=*/1729);
+        call_relocate_mcmc(m, 0.005f, 131u);
+        check_revived(m, 1729, "relocate_mcmc");
+        readback_model(m);
+    }
+
     // MCMC add
     {
-        Model m = build_model(32, 32, false, false, 15, 15, -1, -1);
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
         call_add_mcmc(m, 444, 0.005f, 99u);
         readback_model(m);
     }
     {
-        Model m = build_model(4, 8, false, false, 8, 15, -1, -1);
+        Model m = build_model(4, 8, false, false, 8, 15, -1, -1, -1);
         call_add_mcmc(m, 512, 0.005f, 111u);
         readback_model(m);
     }
@@ -578,7 +623,7 @@ int main(int argc, char** argv) {
         std::printf("densify_parity: dumped %lld + %lld floats + %lld codes "
                     "to %s\n",
                     (long long)nf, (long long)nl, (long long)nc, argv[2]);
-        return 0;
+        return revived_ok ? 0 : 1;
     }
 
     // Diagnostics: DENSIFY_DUMP_GOT=<path> writes this run's outputs in the
@@ -663,7 +708,7 @@ int main(int argc, char** argv) {
         (long long)nf, fmax, (long long)fviol, 100.0 * ffrac, (long long)nl,
         lmax, (long long)lviol, 100.0 * lfrac, (long long)nc,
         (long long)max_c, (long long)cviol, 100.0 * cfrac);
-    bool pass = ffrac <= 1e-3 && lfrac <= 2e-2 && cfrac <= 2e-2;
+    bool pass = ffrac <= 1e-3 && lfrac <= 2e-2 && cfrac <= 2e-2 && revived_ok;
     std::printf(pass ? "densify_parity: PASSED\n"
                      : "densify_parity: FAILED\n");
     return pass ? 0 : 1;

@@ -93,6 +93,19 @@ private:
     // By value: callers pass elements of _recents, which this mutates.
     void add_recent(std::string path);
     void add_model_recent(std::string path);
+    // Which remembered directory a pick starts from. Several actions share one
+    // key -- a dataset is a dataset wherever it is picked -- and the mode is
+    // what separates the two things SourceReplace picks.
+    static const char* dir_key(PickAction a, FileDialog::Mode m);
+    // Where the next pick of `key` starts: the PARENT of `path`, since the
+    // next scene or model of a kind is usually its sibling, not inside it.
+    void remember_dir(const std::string& key, const std::string& path);
+    // Arm the dialog for `a`. It opens in `start_dir`, or where a pick of the
+    // same kind last landed when that is empty.
+    void open_pick(PickAction a, const std::string& title,
+                   FileDialog::Mode mode,
+                   const std::vector<std::string>& extensions = {},
+                   const std::string& start_dir = "", bool multi = false);
 
     // ---- actions ----
     // By value: callers pass elements of _recents, which open_dataset
@@ -101,7 +114,8 @@ private:
     // whatever was open before. The reconstruction handoff passes true,
     // because there the log is this dataset's own build log.
     void open_dataset(std::string dir, std::string image_dir = "",
-                      std::string mask_dir = "", bool keep_log = false);
+                      std::string mask_dir = "", bool mask_flipped = false,
+                      bool keep_log = false);
     // Route for user-initiated opens: confirms first when training.
     void request_open_dataset(std::string dir);
 
@@ -312,12 +326,17 @@ private:
     // images go into, and the default workspace.
     void refresh_sources();
     void rescan_found_masks();
+    // Did any input arrive with masks of its own?
+    bool any_found_masks() const;
     // Adopt the EXR colour space when the pictures are EXRs, unless the user
     // has already set one by hand.
     void adopt_exr_color_space();
     void run_pending_if_stopped();
     void append_logs();
     void log(const std::string& s, bool detail = false);
+    // The only way to empty the log: _log_shown indexes into _log, so a
+    // bare _log.clear() leaves the panel dereferencing stale indices.
+    void clear_log();
 
     Screen _screen = Screen::Home;
     bool _quit = false;
@@ -513,12 +532,16 @@ private:
 
     FileDialog _dialog;
     PickAction _pick = PickAction::None;
+    std::string _pick_key;            // dir_key() of the pick in flight
     int _pick_source = -1;            // which input PickAction::SourceReplace edits
     // Which batch row the pending pick edits; -1 appends a new row.
     int _pick_row = -1;
 
     // Settings (persisted).
     std::vector<std::string> _recents;
+    // Where a pick of each kind last landed, so a session opens where the last
+    // one left off rather than at the home directory.
+    std::map<std::string, std::string> _dialog_dirs;
     std::string _colmap_exe = "colmap";
     std::string _ffmpeg_exe = "ffmpeg";
 #ifdef _WIN32
@@ -573,6 +596,9 @@ private:
     // Masks sitting beside the photos are adopted automatically; this is the
     // way out for a folder whose masks/ describes something else.
     bool _use_found_masks = true;
+    // Those masks are white where the image is REMOVED, the other convention
+    // in the wild. Declared once here; the run normalizes what it writes.
+    bool _flip_found_masks = false;
 
     // workspace_state()'s cache: what it was asked about and when.
     WorkspaceState _ws_state;

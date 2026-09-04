@@ -145,19 +145,18 @@ void _engine_bilagrid_backward_hook(
 void _ensure_bilagrid_optim_state();
 void _engine_bilagrid_tv_into(float* tv_buf3_device);
 
-// Background blend: forward (in-place on fwd.renders.rgb; called by
-// forward_3dgs so both training and viewer renders include the blend),
-// backward hook (adds the blend's v_T contribution into v_render_Ts), and
-// per-iter (seed, randomize_weight) setter consumed by the next forward.
+// Background blend: forward runs inside forward_3dgs, out of place, so viewer
+// renders blend too. The backward hook adds v_T, rewrites v_render_rgb, and
+// folds in overexposure_reg -- which needs the blend composite.
 void _engine_background_forward();
 void _engine_background_backward_hook(
     TorchTensorView v_render_rgb,
-    TorchTensorView v_render_Ts);
+    TorchTensorView v_render_Ts,
+    float overexposure_reg_weight);
 
-// Color space (linear / wide-gamut): apply rgb_to_srgb_forward in-place on
-// the rendered RGB (called from forward_3dgs after the background blend);
-// no-op when no color space is configured. Backward: convert v_render_rgb
-// (post-sRGB -> pre-sRGB) through the vjp before raster bwd consumes it.
+// Color space, from forward_3dgs after the background blend: the forward
+// encodes the render for display, the backward turns v_render_rgb back into
+// working-space gradient before raster bwd. No-op when none is configured.
 void _engine_color_space_forward();
 void _engine_color_space_backward_hook(TorchTensorView v_render_rgb);
 // Apply image-side conversion in-place on engine().gt.rgb. Called from
@@ -166,6 +165,8 @@ void _engine_color_space_apply_to_gt();
 
 // PPISP: backward hook + state setup + regularization-loss compute.
 void _engine_ppisp_backward_hook(TorchTensorView v_render_rgb);
+// PPISP forward on whatever cam indices are already installed.
+void _engine_ppisp_forward_current();
 void _ensure_ppisp_optim_state();
 
 // Force-allocate splat optimizer state to a given quant layout (checkpoint

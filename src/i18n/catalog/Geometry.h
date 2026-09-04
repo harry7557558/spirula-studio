@@ -82,6 +82,32 @@ SS_MSG(head_options,
     KO("옵션"), DE("Optionen"), FR("Options"), ES("Opciones"), PT("Opções"),
     IT("Opzioni"), NL("Opties"), RU("Параметры"), TR("Seçenekler"));
 
+SS_MSG(opt_image_dir,
+    EN("The folder holding the images, relative to the dataset or absolute. "
+       "Default: images"),
+    JA("画像が置かれているフォルダ。データセットからの相対パスまたは絶対パス。"
+       "既定: images"),
+    ZH_HANS("存放图像的文件夹，相对于数据集或绝对路径。默认：images"),
+    ZH_HANT("存放影像的資料夾，相對於資料集或絕對路徑。預設：images"),
+    KO("이미지가 있는 폴더. 데이터셋 기준 상대 경로 또는 절대 경로. "
+       "기본값: images"),
+    DE("Der Ordner mit den Bildern, relativ zum Datensatz oder absolut. "
+       "Standard: images"),
+    FR("Le dossier contenant les images, relatif au jeu de données ou absolu. "
+       "Par défaut : images"),
+    ES("La carpeta con las imágenes, relativa al conjunto o absoluta. "
+       "Por defecto: images"),
+    PT("A pasta com as imagens, relativa ao conjunto ou absoluta. "
+       "Predefinição: images"),
+    IT("La cartella con le immagini, relativa all'insieme o assoluta. "
+       "Predefinito: images"),
+    NL("De map met de beelden, relatief aan de dataset of absoluut. "
+       "Standaard: images"),
+    RU("Папка с изображениями, относительно набора или абсолютная. "
+       "По умолчанию: images"),
+    TR("Görüntülerin bulunduğu klasör; veri kümesine göre göreli ya da mutlak. "
+       "Varsayılan: images"));
+
 SS_MSG(opt_model,
     EN("Which checkpoint to run. A known id is fetched and cached; a path to "
        "an .onnx file is used as it is. Larger is slower and only somewhat "
@@ -560,6 +586,34 @@ SS_MSG(err_no_dataset,
        "принимает."),
     TR("Bir veri kümesi klasörü belirtin. `{0} --help` neyi kabul ettiğini "
        "listeler."));
+
+SS_MSG(err_no_images_read,
+    EN("Not one image could be read under '{0}'. Pass --image-dir if the "
+       "dataset's images are somewhere else."),
+    JA("「{0}」の下からは 1 枚も画像を読み取れませんでした。データセットの画像が"
+       "別の場所にあるなら --image-dir で指定してください。"),
+    ZH_HANS("在「{0}」下一张图像也读不到。如果数据集的图像在别处，"
+            "请用 --image-dir 指定。"),
+    ZH_HANT("在「{0}」下一張影像也讀不到。如果資料集的影像在別處，"
+            "請用 --image-dir 指定。"),
+    KO("'{0}' 아래에서 이미지를 한 장도 읽지 못했습니다. 데이터셋의 이미지가 "
+       "다른 곳에 있으면 --image-dir 로 지정하세요."),
+    DE("Unter '{0}' ließ sich kein einziges Bild lesen. Geben Sie --image-dir "
+       "an, wenn die Bilder des Datensatzes woanders liegen."),
+    FR("Aucune image n'a pu être lue sous « {0} ». Indiquez --image-dir si les "
+       "images du jeu de données sont ailleurs."),
+    ES("No se ha podido leer ninguna imagen bajo «{0}». Indica --image-dir si "
+       "las imágenes del conjunto están en otro sitio."),
+    PT("Não foi possível ler nenhuma imagem em \"{0}\". Informe --image-dir se "
+       "as imagens do conjunto estiverem noutro lugar."),
+    IT("Non è stato possibile leggere alcuna immagine sotto \"{0}\". Indica "
+       "--image-dir se le immagini dell'insieme sono altrove."),
+    NL("Onder '{0}' kon geen enkel beeld worden gelezen. Geef --image-dir op "
+       "als de beelden van de dataset elders staan."),
+    RU("В «{0}» не удалось прочитать ни одного изображения. Укажите "
+       "--image-dir, если изображения набора лежат в другом месте."),
+    TR("'{0}' altında hiçbir görüntü okunamadı. Veri kümesinin görüntüleri "
+       "başka yerdeyse --image-dir ile belirtin."));
 
 SS_MSG(log_dataset,
     EN("{0}: {1} images, {2} cameras"),

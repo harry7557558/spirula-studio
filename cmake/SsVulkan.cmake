@@ -65,6 +65,50 @@ function(_ss_fetch_moltenvk lib_var include_var)
     set(${include_var} ${_inc} PARENT_SCOPE)
 endfunction()
 
+# src/video/ compiles against VK_KHR_video_decode_av1, which appeared in header
+# 277; Ubuntu 24.04 ships 275. The extension declares no commands, only structs
+# and enums, so newer headers build fine against an older loader.
+set(SS_VULKAN_HEADERS_MIN 277)
+set(SS_VULKAN_HEADERS_VERSION "1.4.357")
+
+function(_ss_vulkan_header_version inc out_var)
+    set(${out_var} 0 PARENT_SCOPE)
+    if(NOT EXISTS ${inc}/vulkan/vulkan_core.h)
+        return()
+    endif()
+    file(STRINGS ${inc}/vulkan/vulkan_core.h _line
+        REGEX "^#define VK_HEADER_VERSION ")
+    if(_line MATCHES "VK_HEADER_VERSION[ \t]+([0-9]+)")
+        set(${out_var} ${CMAKE_MATCH_1} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# _ss_fetch_vulkan_headers(<include_var>)
+#
+# Unpacks the pinned Vulkan-Headers release into the build tree. Header-only
+# and architecture-independent, so this covers every platform whose loader is
+# current but whose headers are not.
+function(_ss_fetch_vulkan_headers out_var)
+    set(_name "Vulkan-Headers-${SS_VULKAN_HEADERS_VERSION}")
+    set(_inc ${CMAKE_BINARY_DIR}/${_name}/include)
+    if(NOT EXISTS ${_inc}/vulkan/vulkan_core.h)
+        set(_url "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${SS_VULKAN_HEADERS_VERSION}.tar.gz")
+        set(_tar ${CMAKE_BINARY_DIR}/${_name}.tar.gz)
+        message(STATUS "Downloading ${_url}")
+        file(DOWNLOAD ${_url} ${_tar} STATUS _dl)
+        list(GET _dl 0 _dl_code)
+        if(NOT _dl_code EQUAL 0)
+            file(REMOVE ${_tar})
+            message(FATAL_ERROR "Failed to download Vulkan-Headers "
+                "${SS_VULKAN_HEADERS_VERSION}: ${_dl}. Install a Vulkan SDK "
+                "with headers >= ${SS_VULKAN_HEADERS_MIN}.")
+        endif()
+        file(ARCHIVE_EXTRACT INPUT ${_tar} DESTINATION ${CMAKE_BINARY_DIR})
+        file(REMOVE ${_tar})
+    endif()
+    set(${out_var} ${_inc} PARENT_SCOPE)
+endfunction()
+
 # ss_vulkan_lib()
 #
 # Defines the `ss_vulkan` interface target. Idempotent: the three modules that
@@ -95,4 +139,13 @@ function(ss_vulkan_lib)
 
     find_package(Vulkan REQUIRED)
     target_link_libraries(ss_vulkan INTERFACE Vulkan::Vulkan)
+
+    _ss_vulkan_header_version("${Vulkan_INCLUDE_DIR}" _vk_hdr)
+    if(_vk_hdr LESS SS_VULKAN_HEADERS_MIN)
+        message(STATUS "Vulkan headers at ${Vulkan_INCLUDE_DIR} are version "
+            "${_vk_hdr} (need ${SS_VULKAN_HEADERS_MIN}); fetching "
+            "Vulkan-Headers ${SS_VULKAN_HEADERS_VERSION}")
+        _ss_fetch_vulkan_headers(_vk_inc)
+        target_include_directories(ss_vulkan SYSTEM BEFORE INTERFACE ${_vk_inc})
+    endif()
 endfunction()

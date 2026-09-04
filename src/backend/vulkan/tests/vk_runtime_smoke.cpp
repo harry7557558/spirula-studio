@@ -5,6 +5,7 @@
 // error channel. Run on each available device via SS_VK_DEVICE.
 
 #include "backend/api/BackendRuntime.h"
+#include "core/SourcePath.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -16,7 +17,7 @@ static int g_failures = 0;
 #define CHECK(cond)                                                       \
     do {                                                                  \
         if (!(cond)) {                                                    \
-            std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);   \
+            std::printf("FAIL %s:%d: %s\n", SS_FILE, __LINE__, #cond);    \
             g_failures++;                                                 \
         }                                                                 \
     } while (0)
@@ -26,7 +27,7 @@ static int g_failures = 0;
         const char* err_ = backend::last_error();                         \
         if (err_) {                                                       \
             std::printf("FAIL %s:%d: unexpected backend error: %s\n",     \
-                        __FILE__, __LINE__, err_);                        \
+                        SS_FILE, __LINE__, err_);                         \
             g_failures++;                                                 \
         }                                                                 \
     } while (0)

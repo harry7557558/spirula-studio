@@ -350,6 +350,10 @@ void bilagrid_affine_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThrea
 
                 float dcol[3] = {p.v_output[g_off + 0], p.v_output[g_off + 1],
                                  p.v_output[g_off + 2]};
+                // Linear in the incoming gradient: a zero one -- a masked
+                // pixel, mostly -- adds nothing to any channel.
+                if (dcol[0] == 0.0f && dcol[1] == 0.0f && dcol[2] == 0.0f)
+                    continue;
                 float coeff[4] = {sr, sg, sb, 1.0f};
                 [ForceUnroll]
                 for (int ci = 0; ci < 12; ci++)
@@ -409,6 +413,15 @@ void bilagrid_affine_bwd_v1_rgb(uint3 wg: SV_GroupID,
     float sb = p.rgb[q.g_off3 + 2];
     float dcol[3] = {p.v_output[q.g_off3 + 0], p.v_output[q.g_off3 + 1],
                      p.v_output[q.g_off3 + 2]};
+
+    // The image gradient is linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- is zero out and skips the corner loads.
+    if (dcol[0] == 0.0f && dcol[1] == 0.0f && dcol[2] == 0.0f) {
+        p.v_rgb[q.g_off3 + 0] = 0.0f;
+        p.v_rgb[q.g_off3 + 1] = 0.0f;
+        p.v_rgb[q.g_off3 + 2] = 0.0f;
+        return;
+    }
 
     float x = q.gx * float(p.W - 1);
     float y = q.gy * float(p.H - 1);

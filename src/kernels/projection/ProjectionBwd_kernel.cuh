@@ -10,6 +10,7 @@
 #include "core/Common.cuh"
 
 #include <cooperative_groups.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -32,7 +33,7 @@ __global__ void projection_fused_bwd_kernel(
     // fwd outputs
     const int32_t *__restrict__ camera_ids,          // [nnz, 4]
     const int32_t *__restrict__ gaussian_ids,          // [nnz, 4]
-    const float4 *__restrict__ aabb,          // [C, N, 4]
+    const uint2 *__restrict__ aabb,           // [C, N] packed
     // grad outputs
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     // grad inputs
@@ -55,7 +56,7 @@ __global__ void projection_fused_bwd_kernel(
         gid = gaussian_ids[idx];
     } else {
         // parallelize over C * N.
-        if (idx >= C * N || (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)) {
+        if (idx >= C * N || aabb16_is_empty(aabb[idx])) {
             return;
         }
         cid = (idx / N) % C; // camera id
@@ -92,15 +93,13 @@ __global__ void projection_fused_bwd_kernel(
         splat_world.template project_vjp<camera_model, distortion, true, 32>(
             cam, v_splat_screen, v_splat_world, v_R, v_t);
     } else {
-        const int64_t sh_base = (int64_t)3 * (int64_t)num_sh_buffer * gid;
-        const int64_t stride = (sh_bounds_stride > 0)
-            ? sh_bounds_stride
-            : (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+        const ShQuantAddr sha = sh_quant_addr(num_sh_buffer, sh_bounds_stride);
+        const int64_t sh_base = sha.base(gid);
         splat_world.template project_vjp<camera_model, distortion, true, VALUE_BITS>(
             cam, v_splat_screen, v_splat_world, v_R, v_t,
             const_cast<uint8_t*>(sh_value_packed),
             const_cast<float2*>(sh_value_bounds),
-            sh_base, stride);
+            sh_base, sha.bounds_stride, sha.pair_pitch);
     }
 
     // Save results
@@ -148,7 +147,7 @@ void projection_fused_bwd_kernel_wrapper(
     // fwd outputs
     const int32_t * camera_ids,          // [nnz, 4]
     const int32_t * gaussian_ids,          // [nnz, 4]
-    const float4 * aabb,          // [C, N, 4]
+    const uint2 * aabb,           // [C, N] packed
     // grad outputs
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
     // grad inputs

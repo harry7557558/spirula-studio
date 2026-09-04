@@ -12,14 +12,43 @@
 static constexpr int kNumPPISPParams = 36;
 static constexpr int kNumPPISPParamsRQS = 39;
 static constexpr int kNumPPISPParamsNoCRF = 24;
+static constexpr int kNumPPISPParamsNoCRFNoVig = 9;
 
-enum class PPISPParamType : int {
-    Original,
-    RQS,
-    NoCRF,
-};
+template<PpispParamLayout layout>
+static constexpr int kPPISPLayoutParams =
+    (layout == PpispParamLayout::Original) ? kNumPPISPParams :
+    (layout == PpispParamLayout::RQS)      ? kNumPPISPParamsRQS :
+    (layout == PpispParamLayout::NoCRF)    ? kNumPPISPParamsNoCRF :
+                                             kNumPPISPParamsNoCRFNoVig;
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
+static constexpr int kPPISPLayoutRawLosses =
+    (layout == PpispParamLayout::Original) ? (int)RawPPISPRegLossIndex::length :
+    (layout == PpispParamLayout::RQS)      ? (int)RawPPISPRegLossIndexRQS::length :
+    (layout == PpispParamLayout::NoCRF)    ? (int)RawPPISPRegLossIndexNoCRF::length :
+                                             (int)RawPPISPRegLossIndexNoCRFNoVig::length;
+
+// Turns the runtime layout into a compile-time one for the kernel launch, so
+// each launcher below writes its <<<>>> once instead of per layout.
+template<class F>
+static void _with_ppisp_layout(PpispParamLayout layout, F&& f) {
+    switch (layout) {
+        case PpispParamLayout::Original:
+            f(std::integral_constant<PpispParamLayout, PpispParamLayout::Original>{});
+            break;
+        case PpispParamLayout::RQS:
+            f(std::integral_constant<PpispParamLayout, PpispParamLayout::RQS>{});
+            break;
+        case PpispParamLayout::NoCRF:
+            f(std::integral_constant<PpispParamLayout, PpispParamLayout::NoCRF>{});
+            break;
+        case PpispParamLayout::NoCRFNoVig:
+            f(std::integral_constant<PpispParamLayout, PpispParamLayout::NoCRFNoVig>{});
+            break;
+    }
+}
+
+template<PpispParamLayout layout>
 __global__ void ppisp_forward_kernel(
     const TensorView<float, 4> in_image,  // [B, H, W, C]
     const float* __restrict__ ppisp_params,  // [N_cam or B, PPISP_NUM_PARAMS]
@@ -27,6 +56,7 @@ __global__ void ppisp_forward_kernel(
     const float actual_image_width,
     const float actual_image_height,
     const int* __restrict__ cam_indices,  // [B], or nullptr -> identity
+    const bool clamp_output,
     TensorView<float, 4> out_image  // [B, H, W, C]
 ) {
     unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -39,10 +69,7 @@ __global__ void ppisp_forward_kernel(
 
     int p_id = cam_indices ? cam_indices[bid] : (int)bid;
 
-    static constexpr int kNumParams =
-        (param_type == PPISPParamType::Original) ? kNumPPISPParams :
-        (param_type == PPISPParamType::RQS)      ? kNumPPISPParamsRQS :
-                                                   kNumPPISPParamsNoCRF;
+    static constexpr int kNumParams = kPPISPLayoutParams<layout>;
     FixedArray<float, kNumParams> params;
     #pragma unroll
     for (int i = 0; i < kNumParams; i++) {
@@ -50,32 +77,23 @@ __global__ void ppisp_forward_kernel(
     }
 
     float3 pixel = in_image.load3(bid, y, x);
+    const float2 pix_coord = make_float2((float)x, (float)y);
+    const float2 image_center = make_float2(intrins[bid].z, intrins[bid].w);
+    const float2 img_size = make_float2(actual_image_width, actual_image_height);
 
     float3 out_pixel;
-    if (param_type == PPISPParamType::Original)
+    if constexpr (layout == PpispParamLayout::Original)
         out_pixel = SlangPPISP::apply_ppisp(
-            pixel,
-            make_float2((float)x, (float)y),
-            make_float2(intrins[bid].z, intrins[bid].w),
-            make_float2(actual_image_width, actual_image_height),
-            *reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&params)
-        );
-    else if (param_type == PPISPParamType::RQS)
+            pixel, pix_coord, image_center, img_size, params);
+    else if constexpr (layout == PpispParamLayout::RQS)
         out_pixel = SlangPPISP::apply_ppisp_rqs(
-            pixel,
-            make_float2((float)x, (float)y),
-            make_float2(intrins[bid].z, intrins[bid].w),
-            make_float2(actual_image_width, actual_image_height),
-            *reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&params)
-        );
-    else
+            pixel, pix_coord, image_center, img_size, params);
+    else if constexpr (layout == PpispParamLayout::NoCRF)
         out_pixel = SlangPPISP::apply_ppisp_no_crf(
-            pixel,
-            make_float2((float)x, (float)y),
-            make_float2(intrins[bid].z, intrins[bid].w),
-            make_float2(actual_image_width, actual_image_height),
-            *reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&params)
-        );
+            pixel, pix_coord, image_center, img_size, params, clamp_output);
+    else
+        out_pixel = SlangPPISP::apply_ppisp_no_crf_no_vig(
+            pixel, pix_coord, image_center, img_size, params, clamp_output);
 
     out_image.store3(bid, y, x, out_pixel);
 }
@@ -94,46 +112,23 @@ void ppisp_forward(
     long b = in_image.size<0>(), h = in_image.size<1>(), w = in_image.size<2>();
     const int* cam_idx_ptr = (std::get<0>(cam_indices) == 0) ?
         nullptr : (const int*)std::get<0>(cam_indices);
-    if (param_type == "original" || param_type == "") {
-        ppisp_forward_kernel<PPISPParamType::Original><<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
+    const PpispParamSpec spec = ppisp_param_spec(param_type);
+    _with_ppisp_layout(spec.layout, [&](auto L) {
+        ppisp_forward_kernel<L.value><<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
             _dt3d_to_tv4<float>(in_image),
             (float*)std::get<0>(ppisp_params),
             (float4*)std::get<0>(intrins),
             actual_image_width,
             actual_image_height,
             cam_idx_ptr,
+            spec.clamp_output,
             _dt3d_to_tv4<float>(out_image)
         );
-    }
-    else if (param_type == "rqs") {
-        ppisp_forward_kernel<PPISPParamType::RQS><<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
-            _dt3d_to_tv4<float>(in_image),
-            (float*)std::get<0>(ppisp_params),
-            (float4*)std::get<0>(intrins),
-            actual_image_width,
-            actual_image_height,
-            cam_idx_ptr,
-            _dt3d_to_tv4<float>(out_image)
-        );
-    }
-    else if (param_type == "no_crf") {
-        ppisp_forward_kernel<PPISPParamType::NoCRF><<<_LAUNCH_ARGS_2D(h*w, b, 256, 1)>>>(
-            _dt3d_to_tv4<float>(in_image),
-            (float*)std::get<0>(ppisp_params),
-            (float4*)std::get<0>(intrins),
-            actual_image_width,
-            actual_image_height,
-            cam_idx_ptr,
-            _dt3d_to_tv4<float>(out_image)
-        );
-    }
-    else {
-        throw std::runtime_error("invalid PPISP param_type, must be \"original\", \"rqs\", or \"no_crf\"");
-    }
+    });
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
 __global__ void ppisp_backward_kernel(
     const TensorView<float, 4> in_image,  // [B, H, W, C]
     const float* __restrict__ ppisp_params,  // [N_cam or B, PPISP_NUM_PARAMS]
@@ -141,6 +136,7 @@ __global__ void ppisp_backward_kernel(
     const float actual_image_width,
     const float actual_image_height,
     const int* __restrict__ cam_indices,  // [B], or nullptr -> identity
+    const bool clamp_output,
     const TensorView<float, 4> v_out_image,  // [B, H, W, C]
     TensorView<float, 4> v_in_image,  // [B, H, W, C]
     float* __restrict__ v_ppisp_params  // [N_cam or B, PPISP_NUM_PARAMS]
@@ -154,10 +150,7 @@ __global__ void ppisp_backward_kernel(
 
     int p_id = (bid < B) ? (cam_indices ? cam_indices[bid] : (int)bid) : 0;
 
-    static constexpr int kNumParams =
-        (param_type == PPISPParamType::Original) ? kNumPPISPParams :
-        (param_type == PPISPParamType::RQS)      ? kNumPPISPParamsRQS :
-                                                   kNumPPISPParamsNoCRF;
+    static constexpr int kNumParams = kPPISPLayoutParams<layout>;
 #if 0
     FixedArray<float, kNumParams> params;
     #pragma unroll
@@ -187,41 +180,33 @@ __global__ void ppisp_backward_kernel(
         v_params[i] = 0.0f;
 
     if (inside) {
-        float3 pixel = in_image.load3(bid, y, x);
         float3 v_out_pixel = v_out_image.load3(bid, y, x);
-        if (param_type == PPISPParamType::Original)
-            SlangPPISP::apply_ppisp_vjp(
-                pixel,
-                make_float2((float)x, (float)y),
-                make_float2(intrins[bid].z, intrins[bid].w),
-                make_float2(actual_image_width, actual_image_height),
-                *reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&params),
-                v_out_pixel,
-                &v_pixel,
-                reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&v_params)
-            );
-        else if (param_type == PPISPParamType::RQS)
-            SlangPPISP::apply_ppisp_rqs_vjp(
-                pixel,
-                make_float2((float)x, (float)y),
-                make_float2(intrins[bid].z, intrins[bid].w),
-                make_float2(actual_image_width, actual_image_height),
-                *reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&params),
-                v_out_pixel,
-                &v_pixel,
-                reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&v_params)
-            );
-        else
-            SlangPPISP::apply_ppisp_no_crf_vjp(
-                pixel,
-                make_float2((float)x, (float)y),
-                make_float2(intrins[bid].z, intrins[bid].w),
-                make_float2(actual_image_width, actual_image_height),
-                *reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&params),
-                v_out_pixel,
-                &v_pixel,
-                reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&v_params)
-            );
+        // Both gradients are linear in the incoming one, so a zero one -- a
+        // masked pixel, mostly -- has no transform to differentiate.
+        if (v_out_pixel.x != 0.0f || v_out_pixel.y != 0.0f ||
+            v_out_pixel.z != 0.0f) {
+            float3 pixel = in_image.load3(bid, y, x);
+            const float2 pix_coord = make_float2((float)x, (float)y);
+            const float2 image_center = make_float2(intrins[bid].z, intrins[bid].w);
+            const float2 img_size =
+                make_float2(actual_image_width, actual_image_height);
+            if constexpr (layout == PpispParamLayout::Original)
+                SlangPPISP::apply_ppisp_vjp(
+                    pixel, pix_coord, image_center, img_size, params,
+                    v_out_pixel, &v_pixel, &v_params);
+            else if constexpr (layout == PpispParamLayout::RQS)
+                SlangPPISP::apply_ppisp_rqs_vjp(
+                    pixel, pix_coord, image_center, img_size, params,
+                    v_out_pixel, &v_pixel, &v_params);
+            else if constexpr (layout == PpispParamLayout::NoCRF)
+                SlangPPISP::apply_ppisp_no_crf_vjp(
+                    pixel, pix_coord, image_center, img_size, params,
+                    clamp_output, v_out_pixel, &v_pixel, &v_params);
+            else
+                SlangPPISP::apply_ppisp_no_crf_no_vig_vjp(
+                    pixel, pix_coord, image_center, img_size, params,
+                    clamp_output, v_out_pixel, &v_pixel, &v_params);
+        }
 
         v_in_image.store3(bid, y, x, v_pixel);
     }
@@ -253,52 +238,25 @@ void ppisp_backward(
     long b = in_image.size<0>(), h = in_image.size<1>(), w = in_image.size<2>();
     const int* cam_idx_ptr = (std::get<0>(cam_indices) == 0) ?
         nullptr : (const int*)std::get<0>(cam_indices);
-    if (param_type == "original" || param_type == "") {
-        ppisp_backward_kernel<PPISPParamType::Original><<<_LAUNCH_ARGS_2D(h*w, b, 64, 1)>>>(
+    const PpispParamSpec spec = ppisp_param_spec(param_type);
+    _with_ppisp_layout(spec.layout, [&](auto L) {
+        ppisp_backward_kernel<L.value><<<_LAUNCH_ARGS_2D(h*w, b, 64, 1)>>>(
             _dt3d_to_tv4<float>(in_image),
             (float*)std::get<0>(ppisp_params),
             (float4*)std::get<0>(intrins),
             actual_image_width,
             actual_image_height,
             cam_idx_ptr,
+            spec.clamp_output,
             _dt3d_to_tv4<float>(v_out_image),
             _dt3d_to_tv4<float>(v_in_image),
             (float*)std::get<0>(v_ppisp_params)
         );
-    }
-    else if (param_type == "rqs") {
-        ppisp_backward_kernel<PPISPParamType::RQS><<<_LAUNCH_ARGS_2D(h*w, b, 64, 1)>>>(
-            _dt3d_to_tv4<float>(in_image),
-            (float*)std::get<0>(ppisp_params),
-            (float4*)std::get<0>(intrins),
-            actual_image_width,
-            actual_image_height,
-            cam_idx_ptr,
-            _dt3d_to_tv4<float>(v_out_image),
-            _dt3d_to_tv4<float>(v_in_image),
-            (float*)std::get<0>(v_ppisp_params)
-        );
-    }
-    else if (param_type == "no_crf") {
-        ppisp_backward_kernel<PPISPParamType::NoCRF><<<_LAUNCH_ARGS_2D(h*w, b, 64, 1)>>>(
-            _dt3d_to_tv4<float>(in_image),
-            (float*)std::get<0>(ppisp_params),
-            (float4*)std::get<0>(intrins),
-            actual_image_width,
-            actual_image_height,
-            cam_idx_ptr,
-            _dt3d_to_tv4<float>(v_out_image),
-            _dt3d_to_tv4<float>(v_in_image),
-            (float*)std::get<0>(v_ppisp_params)
-        );
-    }
-    else {
-        throw std::runtime_error("invalid PPISP param_type, must be \"original\", \"rqs\", or \"no_crf\"");
-    }
+    });
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
 __global__ void compute_raw_ppisp_regularization_forward_kernel(
     int B,  // number of images
     const float* __restrict__ ppisp_params,  // [B, PPISP_NUM_PARAMS]
@@ -307,14 +265,8 @@ __global__ void compute_raw_ppisp_regularization_forward_kernel(
     unsigned bid = blockIdx.x * blockDim.x + threadIdx.x;
     bool inside = (bid < (unsigned)B);
 
-    static constexpr int kNumParams =
-        (param_type == PPISPParamType::Original) ? kNumPPISPParams :
-        (param_type == PPISPParamType::RQS)      ? kNumPPISPParamsRQS :
-                                                   kNumPPISPParamsNoCRF;
-    static constexpr int kNumRawLosses =
-        (param_type == PPISPParamType::Original) ? (int)RawPPISPRegLossIndex::length :
-        (param_type == PPISPParamType::RQS)      ? (int)RawPPISPRegLossIndexRQS::length :
-                                                   (int)RawPPISPRegLossIndexNoCRF::length;
+    static constexpr int kNumParams = kPPISPLayoutParams<layout>;
+    static constexpr int kNumRawLosses = kPPISPLayoutRawLosses<layout>;
 
     FixedArray<float, kNumRawLosses> losses;
     if (inside) {
@@ -324,21 +276,15 @@ __global__ void compute_raw_ppisp_regularization_forward_kernel(
             params[i] = ppisp_params[bid * kNumParams + i];
         }
 
-        if (param_type == PPISPParamType::Original)
-            SlangPPISP::compute_raw_ppisp_regularization_loss(
-                *reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&params),
-                reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndex::length>*>(&losses)
-            );
-        else if (param_type == PPISPParamType::RQS)
-            SlangPPISP::compute_raw_ppisp_rqs_regularization_loss(
-                *reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&params),
-                reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexRQS::length>*>(&losses)
-            );
+        if constexpr (layout == PpispParamLayout::Original)
+            SlangPPISP::compute_raw_ppisp_regularization_loss(params, &losses);
+        else if constexpr (layout == PpispParamLayout::RQS)
+            SlangPPISP::compute_raw_ppisp_rqs_regularization_loss(params, &losses);
+        else if constexpr (layout == PpispParamLayout::NoCRF)
+            SlangPPISP::compute_raw_ppisp_no_crf_regularization_loss(params, &losses);
         else
-            SlangPPISP::compute_raw_ppisp_no_crf_regularization_loss(
-                *reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&params),
-                reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexNoCRF::length>*>(&losses)
-            );
+            SlangPPISP::compute_raw_ppisp_no_crf_no_vig_regularization_loss(
+                params, &losses);
     }
 
     auto block = cg::this_thread_block();
@@ -354,17 +300,14 @@ __global__ void compute_raw_ppisp_regularization_forward_kernel(
     }
 }
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
 __global__ void compute_ppisp_regularization_forward_kernel(
     int num_train_images,
     const float* __restrict__ raw_losses_buffer,  // [RawPPISPRegLossIndex::length]
     FixedArray<float, (int)PPISPRegLossIndex::length> loss_weights,  // [PPISPRegLossIndex::length]
     float* __restrict__ losses_buffer  // [PPISPRegLossIndex::length]
 ) {
-    static constexpr int kNumRawLosses =
-        (param_type == PPISPParamType::Original) ? (int)RawPPISPRegLossIndex::length :
-        (param_type == PPISPParamType::RQS)      ? (int)RawPPISPRegLossIndexRQS::length :
-                                                   (int)RawPPISPRegLossIndexNoCRF::length;
+    static constexpr int kNumRawLosses = kPPISPLayoutRawLosses<layout>;
 
     FixedArray<float, kNumRawLosses> raw_losses;
     #pragma unroll
@@ -374,21 +317,18 @@ __global__ void compute_ppisp_regularization_forward_kernel(
 
     FixedArray<float, (int)PPISPRegLossIndex::length> losses;
 
-    if (param_type == PPISPParamType::Original)
+    if constexpr (layout == PpispParamLayout::Original)
         SlangPPISP::compute_ppisp_regularization_loss(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndex::length>*>(&raw_losses),
-            num_train_images, loss_weights, &losses
-        );
-    else if (param_type == PPISPParamType::RQS)
+            raw_losses, num_train_images, loss_weights, &losses);
+    else if constexpr (layout == PpispParamLayout::RQS)
         SlangPPISP::compute_ppisp_rqs_regularization_loss(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexRQS::length>*>(&raw_losses),
-            num_train_images, loss_weights, &losses
-        );
-    else
+            raw_losses, num_train_images, loss_weights, &losses);
+    else if constexpr (layout == PpispParamLayout::NoCRF)
         SlangPPISP::compute_ppisp_no_crf_regularization_loss(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexNoCRF::length>*>(&raw_losses),
-            num_train_images, loss_weights, &losses
-        );
+            raw_losses, num_train_images, loss_weights, &losses);
+    else
+        SlangPPISP::compute_ppisp_no_crf_no_vig_regularization_loss(
+            raw_losses, num_train_images, loss_weights, &losses);
 
     #pragma unroll
     for (int i = 0; i < (int)PPISPRegLossIndex::length; i++) {
@@ -408,9 +348,10 @@ void compute_ppsip_regularization_forward(
         *reinterpret_cast<const FixedArray<float, (int)PPISPRegLossIndex::length>*>(loss_weights_0.data());
 
     long B = std::get<2>(ppisp_params)[0];
+    const PpispParamSpec spec = ppisp_param_spec(param_type);
 
-    if (param_type == "original" || param_type == "") {
-        compute_raw_ppisp_regularization_forward_kernel<PPISPParamType::Original>
+    _with_ppisp_layout(spec.layout, [&](auto L) {
+        compute_raw_ppisp_regularization_forward_kernel<L.value>
         <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
             B,
             (float*)std::get<0>(ppisp_params),
@@ -418,57 +359,18 @@ void compute_ppsip_regularization_forward(
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
 
-        compute_ppisp_regularization_forward_kernel<PPISPParamType::Original>
+        compute_ppisp_regularization_forward_kernel<L.value>
         <<<1, 1>>>(
             B,
-            (float*)std::get<0>(raw_losses) + B*(int)RawPPISPRegLossIndex::length,
+            (float*)std::get<0>(raw_losses) + B * spec.num_raw_losses,
             loss_weights,
             (float*)std::get<0>(losses)
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else if (param_type == "rqs") {
-        compute_raw_ppisp_regularization_forward_kernel<PPISPParamType::RQS>
-        <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
-            B,
-            (float*)std::get<0>(ppisp_params),
-            (float*)std::get<0>(raw_losses)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        compute_ppisp_regularization_forward_kernel<PPISPParamType::RQS>
-        <<<1, 1>>>(
-            B,
-            (float*)std::get<0>(raw_losses) + B*(int)RawPPISPRegLossIndexRQS::length,
-            loss_weights,
-            (float*)std::get<0>(losses)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else if (param_type == "no_crf") {
-        compute_raw_ppisp_regularization_forward_kernel<PPISPParamType::NoCRF>
-        <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
-            B,
-            (float*)std::get<0>(ppisp_params),
-            (float*)std::get<0>(raw_losses)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        compute_ppisp_regularization_forward_kernel<PPISPParamType::NoCRF>
-        <<<1, 1>>>(
-            B,
-            (float*)std::get<0>(raw_losses) + B*(int)RawPPISPRegLossIndexNoCRF::length,
-            loss_weights,
-            (float*)std::get<0>(losses)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else {
-        throw std::runtime_error("invalid PPISP param_type, must be \"original\", \"rqs\", or \"no_crf\"");
-    }
+    });
 }
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
 __global__ void compute_raw_ppisp_regularization_backward_kernel(
     int B,  // number of images
     const float* __restrict__ ppisp_params,  // [B, PPISP_NUM_PARAMS]
@@ -479,14 +381,8 @@ __global__ void compute_raw_ppisp_regularization_backward_kernel(
     if (bid >= B)
         return;
 
-    static constexpr int kNumParams =
-        (param_type == PPISPParamType::Original) ? kNumPPISPParams :
-        (param_type == PPISPParamType::RQS)      ? kNumPPISPParamsRQS :
-                                                   kNumPPISPParamsNoCRF;
-    static constexpr int kNumRawLosses =
-        (param_type == PPISPParamType::Original) ? (int)RawPPISPRegLossIndex::length :
-        (param_type == PPISPParamType::RQS)      ? (int)RawPPISPRegLossIndexRQS::length :
-                                                   (int)RawPPISPRegLossIndexNoCRF::length;
+    static constexpr int kNumParams = kPPISPLayoutParams<layout>;
+    static constexpr int kNumRawLosses = kPPISPLayoutRawLosses<layout>;
 
     FixedArray<float, kNumParams> params;
     #pragma unroll
@@ -501,24 +397,18 @@ __global__ void compute_raw_ppisp_regularization_backward_kernel(
     }
 
     FixedArray<float, kNumParams> v_params;
-    if (param_type == PPISPParamType::Original)
+    if constexpr (layout == PpispParamLayout::Original)
         SlangPPISP::compute_raw_ppisp_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&params),
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndex::length>*>(&v_losses),
-            reinterpret_cast<FixedArray<float, kNumPPISPParams>*>(&v_params)
-        );
-    else if (param_type == PPISPParamType::RQS)
+            params, v_losses, &v_params);
+    else if constexpr (layout == PpispParamLayout::RQS)
         SlangPPISP::compute_raw_ppisp_rqs_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&params),
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexRQS::length>*>(&v_losses),
-            reinterpret_cast<FixedArray<float, kNumPPISPParamsRQS>*>(&v_params)
-        );
-    else
+            params, v_losses, &v_params);
+    else if constexpr (layout == PpispParamLayout::NoCRF)
         SlangPPISP::compute_raw_ppisp_no_crf_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&params),
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexNoCRF::length>*>(&v_losses),
-            reinterpret_cast<FixedArray<float, kNumPPISPParamsNoCRF>*>(&v_params)
-        );
+            params, v_losses, &v_params);
+    else
+        SlangPPISP::compute_raw_ppisp_no_crf_no_vig_regularization_loss_vjp(
+            params, v_losses, &v_params);
 
     #pragma unroll
     for (int i = 0; i < kNumParams; i++) {
@@ -527,7 +417,7 @@ __global__ void compute_raw_ppisp_regularization_backward_kernel(
     }
 }
 
-template<PPISPParamType param_type>
+template<PpispParamLayout layout>
 __global__ void compute_ppisp_regularization_backward_kernel(
     int num_train_images,
     const float* __restrict__ raw_losses_buffer,  // [RawPPISPRegLossIndex::length]
@@ -535,10 +425,7 @@ __global__ void compute_ppisp_regularization_backward_kernel(
     const float* __restrict__ v_losses_buffer,  // [PPISPRegLossIndex::length]
     float* __restrict__ v_raw_losses_buffer  // [RawPPISPRegLossIndex::length]
 ) {
-    static constexpr int kNumRawLosses =
-        (param_type == PPISPParamType::Original) ? (int)RawPPISPRegLossIndex::length :
-        (param_type == PPISPParamType::RQS)      ? (int)RawPPISPRegLossIndexRQS::length :
-                                                   (int)RawPPISPRegLossIndexNoCRF::length;
+    static constexpr int kNumRawLosses = kPPISPLayoutRawLosses<layout>;
 
     FixedArray<float, kNumRawLosses> raw_losses;
     #pragma unroll
@@ -553,24 +440,18 @@ __global__ void compute_ppisp_regularization_backward_kernel(
     }
 
     FixedArray<float, kNumRawLosses> v_raw_losses;
-    if (param_type == PPISPParamType::Original)
+    if constexpr (layout == PpispParamLayout::Original)
         SlangPPISP::compute_ppisp_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndex::length>*>(&raw_losses),
-            num_train_images, loss_weights, v_losses,
-            reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndex::length>*>(&v_raw_losses)
-        );
-    else if (param_type == PPISPParamType::RQS)
+            raw_losses, num_train_images, loss_weights, v_losses, &v_raw_losses);
+    else if constexpr (layout == PpispParamLayout::RQS)
         SlangPPISP::compute_ppisp_rqs_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexRQS::length>*>(&raw_losses),
-            num_train_images, loss_weights, v_losses,
-            reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexRQS::length>*>(&v_raw_losses)
-        );
-    else
+            raw_losses, num_train_images, loss_weights, v_losses, &v_raw_losses);
+    else if constexpr (layout == PpispParamLayout::NoCRF)
         SlangPPISP::compute_ppisp_no_crf_regularization_loss_vjp(
-            *reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexNoCRF::length>*>(&raw_losses),
-            num_train_images, loss_weights, v_losses,
-            reinterpret_cast<FixedArray<float, (int)RawPPISPRegLossIndexNoCRF::length>*>(&v_raw_losses)
-        );
+            raw_losses, num_train_images, loss_weights, v_losses, &v_raw_losses);
+    else
+        SlangPPISP::compute_ppisp_no_crf_no_vig_regularization_loss_vjp(
+            raw_losses, num_train_images, loss_weights, v_losses, &v_raw_losses);
 
     #pragma unroll
     for (int i = 0; i < kNumRawLosses; i++) {
@@ -591,24 +472,25 @@ void compute_ppsip_regularization_backward(
         *reinterpret_cast<const FixedArray<float, (int)PPISPRegLossIndex::length>*>(loss_weights_0.data());
 
     long B = std::get<2>(ppisp_params)[0];
+    const PpispParamSpec spec = ppisp_param_spec(param_type);
 
-    if (param_type == "original" || param_type == "") {
-        // v_raw_losses is a small scratch buffer
-        float* v_raw_losses = DevicePool::global().acquire<float>(
-            PoolSlot::PpispVRawLosses, (int)RawPPISPRegLossIndex::length);
-        cudaMemset(v_raw_losses, 0, (int)RawPPISPRegLossIndex::length * sizeof(float));
+    // v_raw_losses is a small scratch buffer
+    float* v_raw_losses = DevicePool::global().acquire<float>(
+        PoolSlot::PpispVRawLosses, spec.num_raw_losses);
+    cudaMemset(v_raw_losses, 0, spec.num_raw_losses * sizeof(float));
 
-        compute_ppisp_regularization_backward_kernel<PPISPParamType::Original>
+    _with_ppisp_layout(spec.layout, [&](auto L) {
+        compute_ppisp_regularization_backward_kernel<L.value>
         <<<1, 1>>>(
             B,
-            (float*)std::get<0>(raw_losses) + B*(uint)RawPPISPRegLossIndex::length,
+            (float*)std::get<0>(raw_losses) + B * spec.num_raw_losses,
             loss_weights,
             (float*)std::get<0>(v_losses),
             v_raw_losses
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
 
-        compute_raw_ppisp_regularization_backward_kernel<PPISPParamType::Original>
+        compute_raw_ppisp_regularization_backward_kernel<L.value>
         <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
             B,
             (float*)std::get<0>(ppisp_params),
@@ -616,56 +498,5 @@ void compute_ppsip_regularization_backward(
             (float*)std::get<0>(v_ppisp_params)
         );
         CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else if (param_type == "rqs") {
-        float* v_raw_losses = DevicePool::global().acquire<float>(
-            PoolSlot::PpispVRawLosses, (int)RawPPISPRegLossIndexRQS::length);
-        cudaMemset(v_raw_losses, 0, (int)RawPPISPRegLossIndexRQS::length * sizeof(float));
-
-        compute_ppisp_regularization_backward_kernel<PPISPParamType::RQS>
-        <<<1, 1>>>(
-            B,
-            (float*)std::get<0>(raw_losses) + B*(uint)RawPPISPRegLossIndexRQS::length,
-            loss_weights,
-            (float*)std::get<0>(v_losses),
-            v_raw_losses
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        compute_raw_ppisp_regularization_backward_kernel<PPISPParamType::RQS>
-        <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
-            B,
-            (float*)std::get<0>(ppisp_params),
-            v_raw_losses,
-            (float*)std::get<0>(v_ppisp_params)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else if (param_type == "no_crf") {
-        float* v_raw_losses = DevicePool::global().acquire<float>(
-            PoolSlot::PpispVRawLosses, (int)RawPPISPRegLossIndexNoCRF::length);
-        cudaMemset(v_raw_losses, 0, (int)RawPPISPRegLossIndexNoCRF::length * sizeof(float));
-
-        compute_ppisp_regularization_backward_kernel<PPISPParamType::NoCRF>
-        <<<1, 1>>>(
-            B,
-            (float*)std::get<0>(raw_losses) + B*(uint)RawPPISPRegLossIndexNoCRF::length,
-            loss_weights,
-            (float*)std::get<0>(v_losses),
-            v_raw_losses
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-
-        compute_raw_ppisp_regularization_backward_kernel<PPISPParamType::NoCRF>
-        <<<_LAUNCH_ARGS_1D(B, WARP_SIZE)>>>(
-            B,
-            (float*)std::get<0>(ppisp_params),
-            v_raw_losses,
-            (float*)std::get<0>(v_ppisp_params)
-        );
-        CHECK_DEVICE_ERROR(cudaGetLastError());
-    }
-    else {
-        throw std::runtime_error("invalid PPISP param_type, must be \"original\", \"rqs\", or \"no_crf\"");
-    }
+    });
 }

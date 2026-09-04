@@ -2,7 +2,7 @@
 
 #include "app/gui/MeshRunner.h"
 
-#include "app/gui/AppPaths.h"
+#include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Log.h"
@@ -247,7 +247,7 @@ void MeshRunner::run(MeshJob job) {
         // The child is this same executable, so it has the same thirteen
         // languages -- tell it which one, or its output lands in the log in
         // whatever the machine's locale is.
-        exe_path(), "--lang",
+        app::exe_path(), "--lang",
         spirula::i18n::code(spirula::i18n::current()),
         "mesh", job.checkpoint,
         "--format", formats,

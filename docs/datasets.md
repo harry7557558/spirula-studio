@@ -111,7 +111,7 @@ Two paths, both gathering per destination pixel:
   so a destination pixel and its source pixel are the SAME ray: depth (linear or
   ray) and camera-frame normals transfer unchanged and only the sampling
   coordinate moves. None of GtDepthNormalWarp.cu's point-space handling applies.
-- **K > 1** (warp_to_pinhole): the cubemap face ray projects STRAIGHT through
+- **K > 1** (warp_to_pinhole): the face ray projects STRAIGHT through
   the source camera, so the fitted camera is never materialized and the two
   passes cost one kernel and no intermediate image. `RayToPixel<D, kFromSource>`
   is the seam; `kFromSource` is a template argument (a specialization constant
@@ -124,10 +124,159 @@ Two paths, both gathering per destination pixel:
    `train_frame="points"` frame — poses and points exactly as stored. The
    normalized-frame similarity is computed only to obtain the
    `train_frame_scale` scalar.
-2. **`bake_post_split`** → the post-split arrays `engine_setup_data_manager`
-   consumes. This is either an identity (K=1) pass-through, or the cubemap
-   split when `warp_to_pinhole` is enabled: **5 faces** for fisheye/equisolid,
-   **6 faces** for equirectangular.
+2. **`bake_post_split`** (`data/PostSplit.cpp`) → the post-split arrays
+   `engine_setup_data_manager` consumes. This is either an identity (K=1)
+   pass-through, or the split `camhost::plan_split_faces` plans for a wide
+   camera when `warp_to_pinhole` is enabled (`warp_spherical_to_pinhole` for a
+   panorama).
+
+## The split
+
+A wide camera is rendered as pinhole faces, one per frame of a fixed table:
+five around the optical axis for a fisheye (front, +x, +y, -x, -y), the six
+cube faces for a panorama. **Never more than one face per frame.** A frame is
+one 90-degree view, and a view is the unit the per-image appearance models are
+sized by -- bilagrid and PPISP hold one slot per post camera -- so cutting a
+frame into tiles would cost a slot per tile and hand each model a piece of a
+view.
+
+Every face has the focal a 90-degree face of `ceil(sqrt(W*H/K))` pixels would
+have -- the density of an uncropped split -- and is **cropped to the rays the
+lens holds**: the planner rasterizes each frame's visibility (a valid
+projection, by the GPU warp's own fold test, that lands inside the image),
+takes the bounding box, rounds it up to 32 px and to no less than half the
+frame -- a side band is at least the 45..90-degree ring, never a sliver --
+and seats the face over it inside the frame. A frame holding under 0.2% of
+the image's rays is dropped, the tolerance `spirula geometry --check` accepts
+as not a hole.
+
+What the crop does NOT buy is rendering time, which is why the faces of one
+camera share a size by default. Masked tiles are skipped (below), so a masked
+pixel costs almost nothing, while every render pass costs 1-2 ms a step --
+a projection of every splat, a sort, the loss -- and the fused
+projection-backward optimizer, which needs a single pass, is worth another
+10%. Measured on an RTX 5070 laptop: going from 2 to 5 passes added 21% to a
+step on a 200-degree capture, and from 3 to 4 added 15% on a cropped one.
+
+### The frame behind the lens
+
+`--warp-back-face` (off by default) admits a sixth face pointing backwards,
+and then only when a quarter of that frame is visible -- which needs a lens
+seen past 135 degrees. On a real fisheye what fills that direction is the lens
+**folded over itself**, and the face is not free: it is another face's worth of
+pixels in every pass, one more appearance slot per image (a 20% larger
+bilateral grid, since bilagrid and PPISP are sized per post camera) and a
+mirrored image for the optimizer to fit splats to. It is usually masked out
+anyway. A panorama always takes all six.
+
+### One face size, or one per lens
+
+`--warp-face-fit` decides whether the faces of one camera share a size.
+
+- **`uniform`** (default): one size for every face, the largest crop per axis,
+  so a batch stays one tensor, renders in one pass, and the fused optimizer
+  applies. A 180-degree or a cropped fisheye draws five full faces whose side
+  faces are about half masked; the rasterizer skips those tiles.
+- **`per-face`** gives each frame's crop its own face and renders **one pass
+  per distinct size**, accumulating gradient across the passes. Every pass is
+  weighted by its face count, so a face carries exactly the weight it would
+  in one batch -- the loss, the gradient and the densification score are the
+  uniform plan's, only the pixels differ. It draws 15-40% fewer pixels, which
+  is the lever for a GPU that cannot hold the uniform batch, at the cost
+  above. Without the fused optimizer the world-gradient buffers come back, so
+  on a lens whose side bands are nearly full it can even use MORE memory.
+
+Measured, 2000 steps on an RTX 5070 laptop, wall time with load and eval:
+
+| capture | fit | faces | passes | time | peak VRAM |
+|---|---|---|---|---|---|
+| 1000x1500 fisheye, 108x162 deg | uniform | 5 x 548x548 | 1 | 27.6 s | 804 MiB |
+| | per-face | 548x548, 2 x 548x320, 2 x 548x274 | 3 | 31.1 s | 692 MiB |
+| 960x960 fisheye, ~200 deg | uniform | 5 x 430x430 | 1 | 32.3 s | 818 MiB |
+| | per-face | 430x430, 4 x 430x352 | 2 | 35.4 s | 858 MiB |
+
+For the record, the tiled plan this replaced -- the front cut in two and four
+half-height bands, six tiles of 548x298 -- ran the first capture in 25.3 s at
+736 MiB: 9% faster and 9% smaller than five full faces, paid for with a sixth
+appearance slot per image and two slots on one view.
+
+With `--split-batch` active on a step of several images the engine renders
+one pass per input image anyway, and `per-face` adds its passes on top: the
+first capture at two images a step runs 54.8 s / 886 MiB uniform against
+57.6 s / 696 MiB per-face. A lens whose visible rays fit one face is not split
+at all.
+
+### Skipping masked tiles
+
+Cropping a face to its lens leaves the corners of the crop masked out anyway --
+a rectangle cannot follow a circle -- and the rasterizer runs over those pixels
+in both directions. So the intersector leaves them out: a tile every pixel of
+which the mask excludes emits no (tile, splat) pair, which shrinks the sort and
+gives the raster an empty range to render, forward and backward.
+
+This is exact because a masked pixel reaches nothing: the per-pixel terms are
+gated by the mask, the fused SSIM's window statistics are conditional on it,
+and the multi-scale pyramid pools over the unmasked children only. Two terms
+would read a masked pixel -- alpha supervision, which is what "cut out
+background" means -- and where either is on, tiles are not skipped. Nothing is
+skipped for a render with no mask, for the eval split, or for the GUI's compare
+view, all of which render every tile. `SS_TILE_SKIP_LOG=1` reports what a run
+skips and `SS_NO_TILE_SKIP=1` renders everything, which is how the saving was
+measured.
+
+A tile is kept when an unmasked pixel is within ONE pixel of it, not only
+inside it: the depth-to-normal stencil reads its neighbour, so a tile flush
+against the boundary still feeds a live one. At zero margin the warped
+`engine_train_parity` case moves; at one it is bit-identical, which is the
+check that keeps this exact.
+
+Measured, 600 steps on an RTX 5070 laptop, `SS_NO_TILE_SKIP=1` against the
+default:
+
+| capture | tiles skipped | raster tiles | + appearance |
+|---|---|---|---|
+| 960x960 fisheye, ~200 deg, 5 faces | 44% | 8.9 s -> 8.0 s | -> 7.7 s |
+| 1000x1500 fisheye, 108x162 deg, 5 faces | 52% | 31.7 s -> 28.0 s (2000 steps) | |
+
+Skipping 44% of the tiles buys 10% of the step, not 44%: projection, the sort,
+the optimizer and the loss are all still paid in full, and the tiles that go
+are the cheap ones -- a masked corner holds few splats.
+
+The appearance backward takes the same pixels a second way. A masked pixel's
+incoming gradient is zero, and every gradient bilagrid and PPISP produce from a
+pixel -- grid, parameter and image alike -- is LINEAR in it, so those pixels are
+skipped outright: `bilagrid_parity`/`ppisp_parity` dumped before the skip and
+compared after are bit-identical (max_abs 0 tight, 9.5e-07 loose from atomic
+order). That is 16% off the bilagrid backward here, 2.63 -> 2.20 ms a step.
+
+It is not the 44% the mask would suggest, and the reason is worth recording:
+the v1 gather runs one thread per (grid cell, luminance slice), only ~10k
+threads in 160 blocks, all resident at once -- so the kernel takes as long as
+its slowest thread, and the slowest thread is a cell whose pixels are all live.
+Skipping frees threads that then idle. The lever there is not the mask but the
+scan itself (every thread re-reads each pixel's RGB to bin it by luminance); the
+per-pixel halves of the backward, which do parallelize, take the full saving.
+
+One statistic is NOT identical, and deliberately so: the densification error
+map is the one consumer that is not mask-gated, so without skipping a splat
+seen only through masked pixels still earns a densify score, and with skipping
+it does not. Gating that map to match costs about 3 dB PSNR here -- densifying
+against the masked neighbourhood evidently helps the pixels that do count --
+so the map stays as it is. Across seven 3000-step runs each the resulting
+difference stayed inside the run-to-run spread (SSIM 0.917 +- 0.010 without
+skipping against 0.905 +- 0.021 with, t = 1.3).
+
+One behaviour follows from this and is worth knowing: the per-pixel
+REGULARIZERS (alpha, normal, distortion) used to apply to masked-out pixels
+while the supervision terms did not. They no longer do -- "ignore" now means
+what the mask option says it means, every per-pixel term and its pixel count
+alike -- which is also what makes an unrendered tile cost nothing. A run
+without a mask is unaffected, bit for bit.
+
+
+`spirula geometry --check` verifies the planner: every visible ray of each
+test camera must land in a face, and the faces must not exceed the uncropped
+pixel count.
 
 That normalized-frame similarity is where `orientation_method` and
 `center_method` act — and only `up` / `poses` is implemented natively;
@@ -154,12 +303,25 @@ the geometric median of all camera positions are rejected (default: off).
 standalone viewer uses this to load camera poses from a dataset shipped
 without pixels.
 
-## Downscaling
+## Resolution
 
-Stored intrinsics can be divided by a fixed factor (the Mip-NeRF 360
-`images_2` / `images_4` convention). Note: the auto-detect mode that probes
-the first image's actual resolution is implemented on the Python side only;
-the native parser currently requires an explicit factor.
+Every camera trains at its own image file's resolution. The parser probes each
+file (`data/ImageProbe.h`, handed in as `DatasetParserConfig::probe_image_size`)
+and takes the per-axis minimum of that and the reconstruction's stored size,
+scaling `fx/fy/cx/cy` to match — so a reconstruction built at full size against
+an `images_2` / `images_4` folder needs no flag, and never renders pixels the
+images cannot supply. It warns once per distinct (image, camera) size pair, and
+separately when the two disagree in *shape* by more than a pixel, which means
+the images do not belong to the reconstruction.
+
+`train_resolution_divisor` then divides that further (`downscale_rounding_mode`
+picks floor/ceil/round per side): 2 halves each side, 0 or 1 trains at the
+images' own size. This is the "train smaller to go faster" knob — the GUI's
+Image resolution combo writes it — and it is relative to the images, not to the
+reconstruction.
+
+A caller with no image decoders leaves `probe_image_size` null and gets the
+reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
 
 ## Preprocessing tools
 

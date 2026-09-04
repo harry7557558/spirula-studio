@@ -102,12 +102,14 @@ foreach(real ${SS_SFM_REALS})
     endforeach()
 endforeach()
 
-# Single-blob stages: <name> is the blob name the host looks up. The trailing
-# field is the shader directory the dependency glob watches (match_nodot is a
-# second build of the matcher, for devices without integer dot product).
+# Single-blob stages: blob name, source, the directory the dependency glob
+# watches, comma-separated defines. The matcher is built four times: with and
+# without the integer dot product, at 128- and 256-byte descriptors.
 foreach(stage sift:sift/sift.slang:sift:none
               match:match/bruteforce.slang:match:none
-              match_nodot:match/bruteforce.slang:match:-DNO_DOT4)
+              match_nodot:match/bruteforce.slang:match:-DNO_DOT4
+              match_d256:match/bruteforce.slang:match:-DDESC_WORDS=64
+              match_nodot_d256:match/bruteforce.slang:match:-DNO_DOT4,-DDESC_WORDS=64)
     string(REPLACE ":" ";" _parts ${stage})
     list(GET _parts 0 _name)
     list(GET _parts 1 _rel)
@@ -115,6 +117,8 @@ foreach(stage sift:sift/sift.slang:sift:none
     list(GET _parts 3 _def)
     if(_def STREQUAL "none")
         set(_def "")
+    else()
+        string(REPLACE "," ";" _def "${_def}")
     endif()
     file(GLOB _deps CONFIGURE_DEPENDS
         ${SS_SFM_SHADERS}/${_dir}/*.slang ${SS_SFM_SHADERS}/common/*.slang)
@@ -169,10 +173,10 @@ target_link_libraries(ss_sfm PUBLIC ss_vulkan Threads::Threads ss_i18n)
 # a machine that only wants SIFT. PUBLIC because sfm/feature/Extractor.h's
 # factory is compiled into whatever links this.
 if(SS_BUILD_SAM)
-    target_link_libraries(ss_sfm PUBLIC ss_aliked)
-    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=1)
+    target_link_libraries(ss_sfm PUBLIC ss_aliked ss_loma)
+    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=1 SS_HAVE_LOMA=1)
 else()
-    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=0)
+    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=0 SS_HAVE_LOMA=0)
 endif()
 target_compile_options(ss_sfm PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>

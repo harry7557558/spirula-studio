@@ -149,6 +149,17 @@ not for the two deliberately ill-conditioned convergence checks in
 part here has an fp64 buffer atomic add, so all of them take the host path
 unless `--ba-real df` says otherwise.
 
+A device that *had* the feature and then failed anyway — `VK_ERROR_DEVICE_LOST`
+(what a Windows TDR reset looks like from here: the watchdog kills a driver
+whose kernel runs past two seconds, and a thousand-image dense factorization
+is one long kernel), or an allocation the driver refused — does not end the
+run. `runGlobalBA` re-runs that solve on the host and sends every later solve
+at least that big straight there, because the mapper's problems only grow;
+`VkContext`'s `VK_CHECK` throws rather than exits so it can. The run says so
+once, and `--ba-real cpu --ba-real-coarse cpu` (Spirula Studio: "Bundle
+adjustment on the CPU", under Advanced) skips the failed GPU attempt next time
+— worth setting on a card that resets once, since it resets again.
+
 Two devices deserve naming:
 
 - **Intel UHD 750 (Gen12, RPL-S desktop)** has *none* of the three: no fp64, no
@@ -182,7 +193,9 @@ core/        types shared by every stage, no Vulkan:
                Mask                   keypoint masking, sampled in uv
                Model                  Reconstruction + COLMAP binary IO
 feature/     Sift (GPU), Matcher (GPU), Pairing, PairSelection (GPU),
-               Verification (host worker pool)
+               Verification (host worker pool), and the two seams the learned
+               frontends plug into: Extractor.h and LearnedMatcher.h, neither
+               of which includes an aliked/ or loma/ header
 geometry/    Essential, Fundamental, Homography, P3P, AbsolutePose,
                Triangulation, TwoView, LinAlg
 optim/       Ransac   LO-RANSAC with MSAC scoring
@@ -316,6 +329,20 @@ Pipeline knobs are fanned out into the stage structs by `SfmConfig::finalize()`
 and nowhere else, so the CLI and the GUI cannot disagree about what
 `--max-error` (one tolerance, two struct fields — D47), `--device`, `--quiet`
 or the camera settings mean.
+
+The brute-force matcher takes 128-**or** 256-byte descriptors -- SIFT's and
+ALIKED's, and DeDoDe-G's. The kernel is built at both widths
+(`-DDESC_WORDS=64` halves the groupshared tile so it stays 8 KiB), and float
+descriptors are L2-normalized on upload, which ALIKED's already were and
+DeDoDe's are not. One matcher cannot mix widths, and says so.
+
+`--features` picks the frontend: `sift`, `aliked-n16rot`, `aliked-n32`,
+`loma-b128` or `loma-b`. The learned ones need the inference layer
+(`SS_BUILD_SAM=ON`) and fetch a checkpoint on first use; `--matcher` then takes
+`lightglue` for the ALIKED ones and `loma-b128` / `loma-b` / `loma-r` /
+`loma-l` / `loma-g` for the LoMa ones. The families do not mix -- a learned
+matcher only reads the descriptors it was trained on, and `auto` says so rather
+than running.
 
 `--quality low|medium|high|extreme` sets the working resolution, the feature cap
 and the pair-selection breadth; `--data-type individual|video|internet` sets the
@@ -544,8 +571,14 @@ port. Ordered by what blocks the most.
 
 **Unstarted**
 
-15. Learned frontend (ALIKED / SuperPoint + LightGlue) behind the existing
-    extractor and matcher interfaces.
+15. ~~Learned frontend~~ -- done twice, behind the existing extractor and
+    matcher interfaces: ALIKED + LightGlue (`src/aliked/`) and LoMa
+    (`src/loma/`, DaD keypoints + DeDoDe descriptors, five matcher variants).
+    `--features loma-b128 --matcher loma-b128` is the compact one and
+    `--features loma-b --matcher loma-b` the accurate one. Both match
+    onnxruntime on the same checkpoints; both are matchers for a SHORTLIST.
+    What is left is a scored comparison of the three frontends on a public
+    dataset -- nothing here says which to reach for.
 16. A **global** (GLOMAP-style) mapper. The **bottom-up** one exists
     (`--mapper bottom-up`, `map/Partition.h` + `map/Bottomup.h`); what it has
     not got is parallel atom reconstruction, which needs a second `rec_` per

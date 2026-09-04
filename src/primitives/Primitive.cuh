@@ -372,6 +372,93 @@ struct ProjCameraT {
 
 
 
+// One row of STRIDE floats per splat instead of one allocation per component.
+// Splats are gathered by index, so the sector a scattered load pulls in for one
+// component carries its neighbours: the tile cull reads one instead of three.
+
+// STRIDE * sizeof(float) must be a multiple of the widest component's
+// alignment, or odd rows land misaligned for float2/float4 accessors.
+template<int STRIDE>
+class PackedTensorArray {
+protected:
+    int64_t _size;
+    float* _data;
+
+    static_assert(STRIDE >= 1);
+
+public:
+    PackedTensorArray() : _size(0), _data(nullptr) {}
+    PackedTensorArray(const PackedTensorArray& other) = default;
+    PackedTensorArray& operator=(const PackedTensorArray& other) = default;
+
+    int64_t size() const { return _size; }
+
+    // Device-callable: Screen::store checks it before writing a row.
+#ifdef __CUDACC__
+    __host__ __device__
+#endif
+    bool allocated() const { return _data != nullptr; }
+
+    // Raw access for backend launchers that flatten the buffer into a
+    // kernel-params struct (backend/vulkan). Host-callable.
+    float* raw_data() const { return _data; }
+    static constexpr int32_t raw_stride() { return STRIDE; }
+
+    // Same one-tensor-vector plumbing as TensorArray, so the pool-owned
+    // storage still round-trips through the engine as DeviceTensorFloatND.
+    PackedTensorArray(std::vector<DeviceTensorFloatND> tensors) {
+        _size = 0;
+        _data = nullptr;
+        if (tensors.size() == 0) return;
+        if (tensors.size() != 1)
+            throw std::runtime_error("PackedTensorArray: expect 1 tensor, got "
+                + std::to_string(tensors.size()));
+        _data = tensors[0].data_ptr();
+        if (_data == nullptr) return;
+        _size = tensors[0].size(0);
+        if (tensors[0].numel() != _size * (int64_t)STRIDE)
+            throw std::runtime_error("PackedTensorArray: row stride mismatch");
+    }
+
+    // Keyed "<slot>.0" like TensorArray's sub-buffers: engine teardown frees
+    // these by the "<slot>." prefix (engine_release_screen_buffers).
+    static std::vector<DeviceTensorFloatND> empty_pool(
+        int64_t size, PoolSlot key_prefix
+    ) {
+        DeviceTensor2D<float> b;
+        b.resize_dynamic(slot_category(key_prefix),
+                         std::string(slot_name(key_prefix)) + ".0",
+                         size, (int64_t)STRIDE, slot_phase(key_prefix));
+        return { DeviceTensorFloatND(b) };
+    }
+
+    static std::vector<DeviceTensorFloatND> zeros_pool(
+        int64_t size, PoolSlot key_prefix
+    ) {
+        auto res = empty_pool(size, key_prefix);
+        if (res[0].data_ptr() != nullptr)
+            backend::memset_sync(res[0].data_ptr(), 0,
+                                 (size_t)res[0].numel() * sizeof(float));
+        return res;
+    }
+
+    static std::vector<DeviceTensorFloatND> zeros_pool(
+        const std::vector<DeviceTensorFloatND>& tmpl_vec, PoolSlot key_prefix
+    ) {
+        return zeros_pool(PackedTensorArray<STRIDE>(tmpl_vec)._size, key_prefix);
+    }
+
+#ifdef __CUDACC__
+    __forceinline__ __device__ float* row(int64_t i) {
+        return _data + (int64_t)STRIDE * i;
+    }
+    __forceinline__ __device__ const float* row(int64_t i) const {
+        return _data + (int64_t)STRIDE * i;
+    }
+#endif
+};
+
+
 template<int N>
 class TensorArray {
 protected:
@@ -450,17 +537,18 @@ public:
         int64_t size, std::array<int32_t, N> strides, PoolSlot key_prefix
     ) {
         const VramCategory cat = slot_category(key_prefix);
+        const PoolPhase    ph  = slot_phase(key_prefix);
         const std::string  base = slot_name(key_prefix);
         std::vector<DeviceTensorFloatND> res;
         for (int i = 0; i < N; ++i) {
             if (strides[i] <= 0) { res.push_back(DeviceTensorFloatND()); continue; }
             std::string key = base + "." + std::to_string(i);
             switch (strides[i]) {
-                case 1: { DeviceVector<float>  b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 2: { DeviceVector<float2> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 3: { DeviceVector<float3> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                case 4: { DeviceVector<float4> b; b.resize_dynamic(cat, key, size); res.push_back(DeviceTensorFloatND(b)); break; }
-                default: { DeviceTensor2D<float> b; b.resize_dynamic(cat, key, size, (int64_t)strides[i]); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 1: { DeviceVector<float>  b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 2: { DeviceVector<float2> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 3: { DeviceVector<float3> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                case 4: { DeviceVector<float4> b; b.resize_dynamic(cat, key, size, ph); res.push_back(DeviceTensorFloatND(b)); break; }
+                default: { DeviceTensor2D<float> b; b.resize_dynamic(cat, key, size, (int64_t)strides[i], ph); res.push_back(DeviceTensorFloatND(b)); break; }
             }
         }
         return res;

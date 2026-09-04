@@ -33,6 +33,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median
 );
@@ -56,6 +57,7 @@ std::tuple<
     // intersections
     const DeviceTensor3D<int32_t> tile_offsets,
     const DeviceVector<int32_t> flatten_ids,
+    int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median
 );

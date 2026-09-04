@@ -232,8 +232,8 @@ bug cannot hide under the rounding; neither is a quality knob.
 
 ## Not done yet
 
-- **Batching the faces.** A split frame runs its 5 or 6 faces through the
-  network one at a time, as `src/metric3d/` does.
+- **Batching the faces.** A split frame runs its faces through the network
+  one at a time, as `src/metric3d/` does.
 - **The panorama path.** MoGe ships an `infer_panorama.py` that splits an
   equirectangular frame into 12 overlapping views and merges in the spherical
   domain. `app/GeometryWarp.h`'s 6-face cube map with a log-median alignment is

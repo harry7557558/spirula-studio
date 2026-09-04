@@ -195,25 +195,40 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
                       (uint32_t)(bias.valid() ? 1 : 0),
                       (uint32_t)(residual.valid() ? 1 : 0)};
 
+    check_span("gemm", {w, bias});
+    const int64_t x_elem = x.dtype == DType::F16 ? 2 : 4;
+
+    // Row tiles take one grid axis (65535 cap: a full-resolution 1x1 conv passes
+    // 4.2 M rows) and each call must also stay inside one pointer span. Rows are
+    // independent and row-contiguous, so a tall GEMM is the same call again.
+    auto by_rows = [&](int64_t tile_m, const auto& run) {
+        // A row tile is the dispatch granularity, so the span is counted in tiles.
+        const int64_t pitch = std::max(N * 4, (int64_t)p.x_row_stride * x_elem);
+        const int64_t tiles = span_rows("gemm", pitch * tile_m);
+        const int64_t per_call = std::min(tiles, (int64_t)65535) * tile_m;
+        for (int64_t m0 = 0; m0 < M; m0 += per_call) {
+            const int64_t rows = std::min(per_call, M - m0);
+            GemmParams q = p;
+            q.M = (uint32_t)rows;
+            q.out = p.out + (uint64_t)m0 * N * 4;
+            q.x = p.x + (uint64_t)m0 * p.x_row_stride * x_elem;
+            if (residual.valid()) q.residual = p.residual + (uint64_t)m0 * N * 4;
+            run(q, rows);
+        }
+    };
+
     // Tensor cores, when the device has them and the shape is big enough to
     // amortize a 128-wide column tile. Everything below this is the fp32 path,
     // unchanged and still the only path on a device without the extension.
     const vk::Context& ctx = vk::Context::get();
-    // N and K multiples of 16: the weight's fragments are read straight out of
-    // the matrix, and a cooperative-matrix load does no bounds checking, so a
-    // 16x16 block must lie either wholly inside W or wholly outside it.
-    //
-    // The alignment test is not paranoia about a case that happens -- every
-    // weight and every arena tensor is 256-byte aligned -- but the fragment
-    // load carries an Aligned 16 decoration, and a buffer that ever stopped
-    // being aligned would be undefined behaviour rather than a wrong answer.
-    // Falling back is always correct, so it costs nothing to check.
+    // N and K multiples of 16: a cooperative-matrix load does no bounds check,
+    // so a 16x16 block of W must lie wholly inside it or wholly outside. The
+    // fragment load's Aligned 16 decoration is why w.ptr is checked as well.
     if (coop_matrix_enabled() && w.dtype == DType::F16 && N % 16 == 0 && K % 16 == 0 &&
         M >= kBigTileLimit && N >= kBigTileLimit && w.ptr % 16 == 0) {
         const int64_t tile_m = coop_tile_m(ctx.preferredSubgroupSize());
-        const uint32_t tm = (uint32_t)((M + tile_m - 1) / tile_m);
         const uint32_t tn = (uint32_t)((N + kCoopTileN - 1) / kCoopTileN);
-        if (tm <= 65535 && tn <= 65535) {
+        if (tn <= 65535) {
             // NOTE: a different constant list from gemm.slang's -- no
             // kWeightF16 (always fp16 here), plus the subgroup-row count.
             vk::SpecList cspec{(uint32_t)(x.dtype == DType::F16),
@@ -221,8 +236,11 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
                                (uint32_t)(bias.valid() ? 1 : 0),
                                (uint32_t)(residual.valid() ? 1 : 0),
                                (uint32_t)(tile_m / 32)};
-            vk::Stream::get().dispatch("gemm_coop.gemm_nt_coop", cspec, tn, tm, 1, &p,
-                                       sizeof(p));
+            by_rows(tile_m, [&](const GemmParams& q, int64_t rows) {
+                vk::Stream::get().dispatch("gemm_coop.gemm_nt_coop", cspec, tn,
+                                           (uint32_t)((rows + tile_m - 1) / tile_m), 1,
+                                           &q, sizeof(q));
+            });
             return;
         }
     }
@@ -230,6 +248,7 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
     if (M <= kThinRowLimit) {
         // One workgroup per output element, so N alone can exceed the 65535
         // grid cap; fold it across x and y and give the row to z.
+        check_span("gemm", {out, x, residual});
         const uint32_t per_row = (uint32_t)std::min<int64_t>(N, 65535);
         const uint32_t rows = (uint32_t)((N + per_row - 1) / per_row);
         p.groups_per_row = per_row;
@@ -241,7 +260,10 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
         // activation) and does not handle one.
         const bool wide =
             M >= kBigTileLimit && N >= kBigTileLimit && w.dtype == DType::F16;
-        dispatch_tile(wide ? tile_kernels().f16 : tile_kernels().any, spec, M, N, p);
+        const TileKernel& k = wide ? tile_kernels().f16 : tile_kernels().any;
+        by_rows(k.tile, [&](const GemmParams& q, int64_t rows) {
+            dispatch_tile(k, spec, rows, N, q);
+        });
     }
 }
 

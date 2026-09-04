@@ -447,6 +447,14 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
                                              z);
                 if (zi != c.z0 && zi != c.z1) continue;
 
+                // Every grid gradient this pixel gives is linear in its
+                // incoming one, so a zero one -- a masked pixel, mostly --
+                // gives nothing and skips the interpolation below.
+                float3 v_out = float3(p.v_output[g_off + 0],
+                                      p.v_output[g_off + 1],
+                                      p.v_output[g_off + 2]);
+                if (all(v_out == float3(0.0f))) continue;
+
                 // Defensive shmem-index clamps (fast-math integer-boundary
                 // rationale — see the CUDA kernel).
                 int sx0 = max(c.x0 - base_xi, 0);
@@ -478,9 +486,6 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
                                   c0 * (1.0f - c.fz) + c1 * c.fz);
                 }
 
-                float3 v_out = float3(p.v_output[g_off + 0],
-                                      p.v_output[g_off + 1],
-                                      p.v_output[g_off + 2]);
                 float3 v_rgb;
                 float v_e;
                 ColorPPISPParams v_cp;
@@ -555,6 +560,15 @@ void bilagrid_ppisp_bwd_v1_rgb(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float sb = p.rgb[g_off3 + 2];
     float3 v_out = float3(p.v_output[g_off3 + 0], p.v_output[g_off3 + 1],
                           p.v_output[g_off3 + 2]);
+
+    // The image gradient is linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- is zero out and skips the corner loads.
+    if (all(v_out == float3(0.0f))) {
+        p.v_rgb[g_off3 + 0] = 0.0f;
+        p.v_rgb[g_off3 + 1] = 0.0f;
+        p.v_rgb[g_off3 + 2] = 0.0f;
+        return;
+    }
 
     float x = gx * float(p.W - 1);
     float y = gy * float(p.H - 1);
@@ -643,6 +657,15 @@ void bilagrid_ppisp_bwd_v2(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float sb = p.rgb[g_off3 + 2];
     float3 v_out = float3(p.v_output[g_off3 + 0], p.v_output[g_off3 + 1],
                           p.v_output[g_off3 + 2]);
+
+    // The image gradient is linear in the incoming one, so a zero one -- a
+    // masked pixel, mostly -- is zero out and skips the corner loads.
+    if (all(v_out == float3(0.0f))) {
+        p.v_rgb[g_off3 + 0] = 0.0f;
+        p.v_rgb[g_off3 + 1] = 0.0f;
+        p.v_rgb[g_off3 + 2] = 0.0f;
+        return;
+    }
 
     float x = float(wi) / float(p.w - 1) * float(p.W - 1);
     float y = float(hi) / float(p.h - 1) * float(p.H - 1);

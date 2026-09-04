@@ -16,7 +16,7 @@
 
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgs_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -37,7 +37,7 @@ std::tuple<
 
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_mip_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,
@@ -58,7 +58,7 @@ std::tuple<
 
 
 std::tuple<
-    DeviceTensor2D<float4>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
+    DeviceTensor2D<uint2>, DeviceTensor2D<float>, std::vector<DeviceTensorFloatND>
 > projection_3dgut_forward(
     const int64_t num_splats, const int max_sh_degree,
     const std::vector<DeviceTensorFloatND> &in_splats,

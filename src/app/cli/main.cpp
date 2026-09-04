@@ -496,17 +496,18 @@ int spirula_train_main(int argc, char** argv) {
         TrainerCallbacks cb;
         cb.on_step = [&](const TrainerProgress& p) {
             if (p.step % 100 == 0 || p.step == p.total_steps - 1) {
-                double dt = session.elapsed_seconds();
-                // The step and the elapsed time are padded/rounded here rather
-                // than by the message, so the numbers keep their column while
-                // the words around them change length per language.
-                char step[16], secs[16];
-                std::snprintf(step, sizeof step, "%6d", p.step);
-                std::snprintf(secs, sizeof secs, "%.1f", dt);
+                // step + 1 is steps completed, as in the GUI. Both numbers
+                // are padded here, not by the message, so they keep their
+                // column while the words around them change length.
+                char step[16], pct[16];
+                std::snprintf(step, sizeof step, "%6d", p.step + 1);
+                std::snprintf(pct, sizeof pct, "%3d",
+                              100 * (p.step + 1) / p.total_steps);
                 std::printf("%s", format(cmsg::train_step_line,
-                                         {step, p.total_steps,
+                                         {step, p.total_steps, pct,
                                           (long long)p.num_splats,
-                                          secs}).c_str());
+                                          format_duration(session.elapsed_seconds()),
+                                          format_duration(session.eta_seconds())}).c_str());
                 for (const char* k : {"rgb_loss", "ssim", "psnr"}) {
                     auto it = p.losses.find(k);
                     if (it != p.losses.end()) std::printf("  %s=%.4g", k, it->second);

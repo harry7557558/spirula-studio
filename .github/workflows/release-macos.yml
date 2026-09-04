@@ -1,0 +1,53 @@
+name: Release (macOS)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: brew install cmake ninja libomp
+
+      - name: Build
+        shell: bash
+        run: |
+          bash build_develop.bash -DSS_BUILD_CLI=ON -DSS_BUILD_GUI=ON -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON 2>&1 | tee configure.log
+
+      - name: OpenMP was found
+        run: grep -q "Found OpenMP" configure.log
+
+      - name: Package
+        run: cmake --build build --target macos_dmg
+
+      - name: Name the asset
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION=${REF_NAME#v}
+          ASSET="spirula-$VERSION-macos-vulkan-arm64.dmg"
+          mv "build/Spirula Studio.dmg" "$ASSET"
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --draft --title "$TAG" --notes ""
+          gh release upload "$TAG" "$ASSET" --clobber

@@ -19,6 +19,10 @@ bash tools/check_ss_prefix.sh >/dev/null || exit 1
 # message. Prints the remaining SS_MSG_EN count, which is the Phase 4 TODO.
 bash tools/check_i18n.sh || exit 1
 
+# An error message must name a path the person reading it can open, so
+# __FILE__ goes through SS_FILE (src/core/SourcePath.h).
+bash tools/check_file_macro.sh >/dev/null || { bash tools/check_file_macro.sh; exit 1; }
+
 # The embedded fonts are subset to the characters the catalogs use, so editing
 # a translation can outgrow them. Cheap: no network, no fontTools.
 if command -v python3 >/dev/null 2>&1; then
@@ -34,6 +38,25 @@ bash tools/check_comments.sh >/dev/null || { bash tools/check_comments.sh; exit 
 # running it here fails before the configure step rather than after it.
 if command -v python3 >/dev/null 2>&1; then
     python3 tools/check_comment_length.py || exit 1
+fi
+
+# Homebrew's libomp is keg-only: nothing points at it, so CMake finds no
+# OpenMP and meshing, UV unwrap and metrics run serial (cmake/SsMacBundle.cmake
+# then has no dylib to make static either).
+if [ "$(uname)" = "Darwin" ]; then
+    case " $* " in
+        *" -DOpenMP_ROOT="*) ;;
+        *)
+            for omp_root in "$(brew --prefix libomp 2>/dev/null)" \
+                            /opt/homebrew/opt/libomp /usr/local/opt/libomp; do
+                [ -n "$omp_root" ] || continue
+                [ -f "$omp_root/lib/libomp.a" ] ||
+                    [ -f "$omp_root/lib/libomp.dylib" ] || continue
+                set -- "$@" "-DOpenMP_ROOT=$omp_root"
+                echo "OpenMP: passing -DOpenMP_ROOT=$omp_root (keg-only formula)"
+                break
+            done ;;
+    esac
 fi
 
 cmake -G Ninja -B build "$@" || exit $?

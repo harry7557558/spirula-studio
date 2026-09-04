@@ -8,6 +8,7 @@
 // at the top of the file (above the auto-generated section). Including it
 // here keeps the kernel-side and dispatcher-side definitions in sync.
 #include "kernels/optim/FusedProjectionBwdOptim.cuh"
+#include "kernels/optim/ScreenSizeHinge.cuh"
 
 #ifndef NO_TORCH
 #define NO_TORCH
@@ -24,6 +25,7 @@ namespace SlangPixelWise {
 }
 
 #include <cooperative_groups.h>
+#include "core/AabbQuant.cuh"
 namespace cg = cooperative_groups;
 
 
@@ -69,6 +71,13 @@ __forceinline__ __device__ float4 sqrtf(float4 v) {
 // shared-mem readers are done before the next call writes.
 template<int BLOCK_SIZE>
 __device__ inline float4 _block_reduce_minmax_f4(float4 mm) {
+    // cg::reduce's comparators keep or drop a NaN depending on which side it
+    // lands; one in a block bound decodes all 256 cells to NaN. Vulkan's
+    // _oq_min/_oq_max (optim_quant.slang) drops it the same way.
+    if (!isfinite(mm.x)) mm.x =  1e30f;
+    if (!isfinite(mm.y)) mm.y = -1e30f;
+    if (!isfinite(mm.z)) mm.z =  1e30f;
+    if (!isfinite(mm.w)) mm.w = -1e30f;
     static_assert(BLOCK_SIZE > 0 && BLOCK_SIZE % WARP_SIZE == 0);
     auto warp = cg::tiled_partition<WARP_SIZE>(cg::this_thread_block());
     mm.x = cg::reduce(warp, mm.x, cg::less<float>());
@@ -183,9 +192,8 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     const uint32_t image_height,
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
-    const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const int32_t *__restrict__ perm,         // [nnz] -- sorted_pos -> original_pos
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4] (original order)
+    const int32_t *__restrict__ camera_ids,   // [nnz]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
@@ -225,7 +233,10 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     const float eps_tr,
     const int32_t scalar_step,
     const int32_t* __restrict__ steps
@@ -257,16 +268,13 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     float3x3 v_R = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     float3 v_t = {0.f, 0.f, 0.f};
 
-    // Loop over intersections.
-    // In packed mode `cid_t` is a SORTED position (sorted by gaussian_id),
-    // but `aabb` and `v_splats_screen` are stored in the ORIGINAL out_idx
-    // order from the forward's intersection-mask scan -- and `camera_ids`
-    // is also the ORIGINAL (unsorted) buffer here. `perm[cid_t]` recovers
-    // the original out_idx so all three reads land on the right entry.
+    // Loop over intersections. In packed mode the forward emits them in
+    // (gaussian, camera) order, so a splat's are contiguous and cid_t is
+    // itself the out_idx that indexes aabb / camera_ids / v_splats_screen.
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
-        int idx = packed ? perm[cid_t] : cid_t * N + gid;
+        int idx = packed ? cid_t : cid_t * N + gid;
         int cid = (packed ? camera_ids[idx] : cid_t);
-        if (aabb[idx].z <= aabb[idx].x || aabb[idx].w <= aabb[idx].y)
+        if (aabb16_is_empty(aabb[idx]))
             continue;
 
         // Load camera
@@ -297,12 +305,11 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         if constexpr (VALUE_BITS == 32) {
             splat_world.template project_vjp<camera_model, distortion, false, 32>(cam, v_splat_screen, v_splat_world, v_R, v_t);
         } else {
-            const int64_t sh_base_vjp = (int64_t)3 * (int64_t)num_sh_buffer * (int64_t)gid;
-            const int64_t sh_bounds_stride_vjp = (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+            const ShQuantAddr sha_vjp = sh_quant_addr(num_sh_buffer, 0);
             splat_world.template project_vjp<camera_model, distortion, false, VALUE_BITS>(
                 cam, v_splat_screen, v_splat_world, v_R, v_t,
                 const_cast<uint8_t*>(sh_value_packed), sh_value_bounds,
-                sh_base_vjp, sh_bounds_stride_vjp);
+                sha_vjp.base(gid), sha_vjp.bounds_stride, sha_vjp.pair_pitch);
         }
 
         // TODO: affects performance, refactor this as a template argument?
@@ -355,10 +362,10 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     v_splat_world.scale += v_scale_t;
     v_splat_world.quat += v_quat_t;
     v_splat_world.opacity += v_opac_t;
-    v_splat_world.features_dc += sh_reg_weight * (
-        fmaxf(splat_world.features_dc - make_float3(0.5f / 0.28209479177387814f), 0.0f) +
-        fminf(splat_world.features_dc + make_float3(0.5f / 0.28209479177387814f), 0.0f)
-    );
+    v_splat_world.features_dc += dc_reg_weight *
+            fmaxf(splat_world.features_dc - make_float3(0.5f / 0.28209479177387814f), 0.0f) +
+        (dc_reg_weight + sh_reg_weight) *
+            fminf(splat_world.features_dc + make_float3(0.5f / 0.28209479177387814f), 0.0f);
 
     // optimizer for mean/quat/scale
 
@@ -402,6 +409,11 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
             g1_scale = g1_splats_world.scales(gid);
             g2_scale = g2_splats_world.scales(gid);
         }
+        if (radii != nullptr)
+            v_splat_world.scale += screen_size_hinge_grad(
+                radii[gid], max_screen_size, max_screen_size_penalty,
+                splat_world.scale,
+                sqrtf(g2_scale * inv_bias_correction2) + eps);
         g1_scale = beta1 * g1_scale + (1.f - beta1) * v_splat_world.scale;
         g2_scale = beta2 * g2_scale + (1.f - beta2) * v_splat_world.scale*v_splat_world.scale;
         float3 new_scale = splat_world.scale - lr_scales * inv_bias_correction1 * g1_scale / (sqrtf(g2_scale * inv_bias_correction2) + eps);
@@ -717,7 +729,8 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         // SplatPrimitive::num_sh(), which during SH warmup is capped at the
         // runtime sh_degree_to_use and is strictly less than num_sh_buffer --
         // using it as the stride would corrupt neighboring splats' bytes.
-        const int64_t sh_base = (int64_t)3 * (int64_t)num_sh_buffer * gid;
+        const ShQuantAddr sha = sh_quant_addr(num_sh_buffer, 0);
+        const int64_t sh_base = sha.base(gid);
         uint8_t* sh_packed_rw = const_cast<uint8_t*>(sh_packed);
         float4 quant_bounds = sh_quant_bounds[blockIdx.x];
         float4 mm = make_float4(1e30f, -1e30f, 1e30f, -1e30f);
@@ -733,22 +746,20 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
             ? sh_value_bounds[blockIdx.x] : float2{0.f, 0.f};
         float2 sh_value_new_mm = (VALUE_BITS != 32)
             ? float2{1e30f, -1e30f} : float2{0.f, 0.f};
-        // Hold per-thread updated SH values until after the value-bounds
-        // block reduction, so we encode against the FRESH bounds (mirrors
-        // optim-state pattern -- mm computed across all 256 splats, then
-        // each thread encodes its 3*K cells).
-        float3 sh_updated_vals[num_sh];
-
-        float3 g1_sh_vals[num_sh];
-        float3 g2_sh_vals[num_sh];
+        // Held until after the block-wide bounds reduce the encode ranges come
+        // from. Kept as the codec's (u, log_s) primitives rather than
+        // (g1, g2) so reduce and encode share one g1g2_to_us per cell.
+        float sh_updated_vals[3 * num_sh];
+        float u_sh_vals[3 * num_sh];
+        float s_sh_vals[3 * num_sh];
 
     if (inside) {
         #pragma unroll
         for (int j = 0; j < num_sh; ++j) {
             // Decode each of the 3 channels via the codec.
-            float2 g1g2_x = SHQState::decode_g1g2(sh_packed, sh_base + 3*j + 0, quant_bounds);
-            float2 g1g2_y = SHQState::decode_g1g2(sh_packed, sh_base + 3*j + 1, quant_bounds);
-            float2 g1g2_z = SHQState::decode_g1g2(sh_packed, sh_base + 3*j + 2, quant_bounds);
+            float2 g1g2_x = SHQState::decode_g1g2(sh_packed, sha.cell(sh_base, 3*j + 0), quant_bounds);
+            float2 g1g2_y = SHQState::decode_g1g2(sh_packed, sha.cell(sh_base, 3*j + 1), quant_bounds);
+            float2 g1g2_z = SHQState::decode_g1g2(sh_packed, sha.cell(sh_base, 3*j + 2), quant_bounds);
             float3 g1_feature_sh = make_float3(g1g2_x.x, g1g2_y.x, g1g2_z.x);
             float3 g2_feature_sh = make_float3(g1g2_x.y, g1g2_y.y, g1g2_z.y);
 
@@ -758,13 +769,13 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
             if constexpr (VALUE_BITS == 32) {
                 sh_coeff = make_float3(sh_ptr[3*j], sh_ptr[3*j+1], sh_ptr[3*j+2]);
             } else if constexpr (VALUE_BITS == 8) {
-                sh_coeff.x = SHValReader8::decode_v(sh_value_packed, sh_base + 3*j + 0, sh_value_old_mm);
-                sh_coeff.y = SHValReader8::decode_v(sh_value_packed, sh_base + 3*j + 1, sh_value_old_mm);
-                sh_coeff.z = SHValReader8::decode_v(sh_value_packed, sh_base + 3*j + 2, sh_value_old_mm);
+                sh_coeff.x = SHValReader8::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 0), sh_value_old_mm);
+                sh_coeff.y = SHValReader8::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 1), sh_value_old_mm);
+                sh_coeff.z = SHValReader8::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 2), sh_value_old_mm);
             } else /* VALUE_BITS == 16 */ {
-                sh_coeff.x = SHValReader16::decode_v(sh_value_packed, sh_base + 3*j + 0, sh_value_old_mm);
-                sh_coeff.y = SHValReader16::decode_v(sh_value_packed, sh_base + 3*j + 1, sh_value_old_mm);
-                sh_coeff.z = SHValReader16::decode_v(sh_value_packed, sh_base + 3*j + 2, sh_value_old_mm);
+                sh_coeff.x = SHValReader16::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 0), sh_value_old_mm);
+                sh_coeff.y = SHValReader16::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 1), sh_value_old_mm);
+                sh_coeff.z = SHValReader16::decode_v(sh_value_packed, sha.cell(sh_base, 3*j + 2), sh_value_old_mm);
             }
             float3 v_sh_coeff = make_float3(
                 v_sh_ptr[3*j] + reg_weight * sh_coeff.x,
@@ -804,20 +815,26 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
                 // below -- the bounds need every thread's contribution before
                 // we know the encode range. Stash the new values and update
                 // this thread's running min/max.
-                sh_updated_vals[j] = sh_updated;
+                sh_updated_vals[3*j] = sh_updated.x;
+                sh_updated_vals[3*j+1] = sh_updated.y;
+                sh_updated_vals[3*j+2] = sh_updated.z;
                 sh_value_new_mm.x = fminf(fminf(fminf(sh_value_new_mm.x,
                     sh_updated.x), sh_updated.y), sh_updated.z);
                 sh_value_new_mm.y = fmaxf(fmaxf(fmaxf(sh_value_new_mm.y,
                     sh_updated.x), sh_updated.y), sh_updated.z);
             }
 
-            g1_sh_vals[j] = g1_updated;
-            g2_sh_vals[j] = g2_updated;
-
-            // Reduce min/max in the (u, sqrt(g2)) basis (codec helper).
+            // (u, sqrt(g2)) basis: what the bounds reduce and the encode
+            // both work in (codec helper).
             float2 us_x = SHQState::g1g2_to_us(g1_updated.x, g2_updated.x);
             float2 us_y = SHQState::g1g2_to_us(g1_updated.y, g2_updated.y);
             float2 us_z = SHQState::g1g2_to_us(g1_updated.z, g2_updated.z);
+            u_sh_vals[3*j] = us_x.x;
+            u_sh_vals[3*j+1] = us_y.x;
+            u_sh_vals[3*j+2] = us_z.x;
+            s_sh_vals[3*j] = us_x.y;
+            s_sh_vals[3*j+1] = us_y.y;
+            s_sh_vals[3*j+2] = us_z.y;
             mm.x = fminf(fminf(fminf(mm.x, us_x.x), us_y.x), us_z.x);
             mm.y = fmaxf(fmaxf(fmaxf(mm.y, us_x.x), us_y.x), us_z.x);
             mm.z = fminf(fminf(fminf(mm.z, us_x.y), us_y.y), us_z.y);
@@ -896,136 +913,50 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
                 sh_value_bounds[blockIdx.x] = sh_value_new_mm;
         }
 
-        if constexpr (VALUE_BITS == 16) {
-            // ---- Staged coalesced writeback (state + value SH buffers) ----
-            // Each thread's cell run [R*gid, R*(gid+1)) is contiguous but
-            // lane-STRIDED, so the direct per-cell u16 encodes make every
-            // warp store instruction touch ~32 memory sectors (~520 us/step
-            // at SH degree 3, ~70% of the kernel). Instead stage rounds of
-            // combined (state | value<<16) cell codes in shared memory, then
-            // store whole u32 words at lane-consecutive addresses to both
-            // buffers. Cell values and byte layout are unchanged (identical
-            // codec rounding via the *_code helpers); an odd total cell
-            // count keeps its pad bytes untouched (tail-bytes convention).
-            // All threads reach the __syncthreads: the round bounds are
-            // block-uniform and `inside` only gates what gets staged --
-            // out-of-range splats' cells lie at/past total_cells and never
-            // store. This subsumes the SH-degree-warmup zero-encode: cells
-            // with j >= num_sh stage the (g1=0, g2=0) / v=0 codes against
-            // the 0-inclusive fresh bounds.
-            constexpr uint32_t STAGE_CELLS = 4096;  // 16 KB shared / round
-            __shared__ uint32_t stage[STAGE_CELLS];
-            const uint32_t R  = 3u * num_sh_buffer;
-            const uint32_t cb = R * (uint32_t)BLOCK_SIZE;  // block cells (even)
-            const uint64_t blk_c0 = (uint64_t)cb * blockIdx.x;
-            const uint64_t total_cells = (uint64_t)N * R;
-            const uint32_t warmup_code =
-                SHQState::encode_g1g2_code(0.0f, 0.0f, mm) |
-                (SHValReader16::encode_v_code(0.0f, sh_value_new_mm) << 16);
-            for (uint32_t win0 = 0; win0 < cb; win0 += STAGE_CELLS) {
-                const uint32_t win1 = min(win0 + STAGE_CELLS, cb);
-                __syncthreads();
-                const uint32_t cs = max(R * threadIdx.x, win0);
-                const uint32_t ce = min(R * threadIdx.x + R, win1);
-                for (uint32_t l = cs; l < ce; l++) {
-                    uint32_t code = inside ? warmup_code : 0u;
-                    const uint32_t local = l - R * threadIdx.x;
-                    const int j = (int)(local / 3u);
-                    if (inside && j < num_sh) {
-                        const int ch = (int)local - 3 * j;
-                        const float g1 = (ch == 0)   ? g1_sh_vals[j].x
-                                         : (ch == 1) ? g1_sh_vals[j].y
-                                                     : g1_sh_vals[j].z;
-                        const float g2 = (ch == 0)   ? g2_sh_vals[j].x
-                                         : (ch == 1) ? g2_sh_vals[j].y
-                                                     : g2_sh_vals[j].z;
-                        const float v = (ch == 0)   ? sh_updated_vals[j].x
-                                        : (ch == 1) ? sh_updated_vals[j].y
-                                                    : sh_updated_vals[j].z;
-                        code = SHQState::encode_g1g2_code(g1, g2, mm) |
-                               (SHValReader16::encode_v_code(
-                                    v, sh_value_new_mm) << 16);
-                    }
-                    stage[l - win0] = code;
-                }
-                __syncthreads();
-                for (uint32_t w = (win0 >> 1) + threadIdx.x; w < (win1 >> 1);
-                     w += (uint32_t)BLOCK_SIZE) {
-                    const uint64_t c_abs = blk_c0 + 2ull * w;  // even cell
-                    if (c_abs >= total_cells) break;
-                    const uint32_t e = stage[2u * w - win0];
-                    const uint32_t o = stage[2u * w + 1u - win0];
-                    if (c_abs + 1 < total_cells) {  // both cells valid
-                        reinterpret_cast<uint32_t*>(
-                            sh_packed_rw)[(blk_c0 >> 1) + w] =
-                            (e & 0xffffu) | ((o & 0xffffu) << 16);
-                        reinterpret_cast<uint32_t*>(
-                            sh_value_packed_rw)[(blk_c0 >> 1) + w] =
-                            (e >> 16) | (o & 0xffff0000u);
-                    } else {  // odd tail: last cell only, pad untouched
-                        reinterpret_cast<uint16_t*>(sh_packed_rw)[c_abs] =
-                            (uint16_t)(e & 0xffffu);
-                        reinterpret_cast<uint16_t*>(
-                            sh_value_packed_rw)[c_abs] =
-                            (uint16_t)(e >> 16);
-                    }
-                }
-            }
-        } else {
-        // VALUE_BITS != 16 (not instantiated by the LEVEL wrappers): the
-        // original direct per-cell encodes.
-        if (!inside)
-            return;
-
-        // Re-encode the new Adam state via the codec.
-        #pragma unroll
-        for (int j = 0; j < num_sh; ++j) {
-            float3 g1_upd = g1_sh_vals[j];
-            float3 g2_upd = g2_sh_vals[j];
-            SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 0, g1_upd.x, g2_upd.x, mm);
-            SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 1, g1_upd.y, g2_upd.y, mm);
-            SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 2, g1_upd.z, g2_upd.z, mm);
-        }
-
-        // Re-encode the new SH VALUES via the linear codec against the fresh
-        // per-splat-block bound. Only the inside-block (gated above) runs.
-        if constexpr (VALUE_BITS == 8) {
+        // Direct whole-word writeback. A splat's cells sit two per u32 word
+        // and the words are transposed across the block, so lane stores for
+        // one word index are contiguous (docs/notes/sh-quant-layout.md).
+        if (inside) {
+            uint32_t* st_w = reinterpret_cast<uint32_t*>(sh_packed_rw);
+            uint32_t* vv_w = reinterpret_cast<uint32_t*>(sh_value_packed_rw);
+            const uint32_t warm_st = SHQState::encode_g1g2_code(0.f, 0.f, mm);
+            const uint32_t warm_vv =
+                SHValReader16::encode_v_code(0.0f, sh_value_new_mm);
+            uint32_t pend_s = 0, pend_v = 0;
+            int64_t w = sh_base >> 1;
             #pragma unroll
             for (int j = 0; j < num_sh; ++j) {
-                float3 v = sh_updated_vals[j];
-                SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 0, v.x, sh_value_new_mm);
-                SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 1, v.y, sh_value_new_mm);
-                SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 2, v.z, sh_value_new_mm);
+                #pragma unroll
+                for (int ch = 0; ch < 3; ++ch) {
+                    const uint32_t st = SHQState::encode_us_code(
+                        u_sh_vals[3 * j + ch], s_sh_vals[3 * j + ch], mm);
+                    const uint32_t vv = SHValReader16::encode_v_code(
+                        sh_updated_vals[3 * j + ch], sh_value_new_mm);
+                    if (((3 * j + ch) & 1) == 0) {
+                        pend_s = st;
+                        pend_v = vv;
+                    } else {
+                        st_w[w] = pend_s | (st << 16);
+                        vv_w[w] = pend_v | (vv << 16);
+                        w += 256;
+                    }
+                }
             }
-        }
-
-        // SH-degree warmup: zero-encode the inactive cells (j in
-        // [num_sh, num_sh_buffer)) so that when the kernel template's
-        // num_sh increases at a later warmup step the newly-active bands
-        // decode to ~0 instead of the old bound's mm.x (which biases the
-        // first few Adam steps after each degree boundary). The bound
-        // expansion above guarantees the (0, 0) point is in range, so
-        // these encodes land near the codec's true zero fixed point.
-        // Runtime-gated -- becomes a no-op once num_sh == num_sh_buffer.
-        if (num_sh_buffer > (uint32_t)num_sh) {
-            // Adam state: encode (g1=0, g2=0).
-            #pragma unroll 1
-            for (int j = num_sh; j < (int)num_sh_buffer; ++j) {
-                SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 0, 0.0f, 0.0f, mm);
-                SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 1, 0.0f, 0.0f, mm);
-                SHQState::encode_g1g2(sh_packed_rw, sh_base + 3*j + 2, 0.0f, 0.0f, mm);
-            }
-            // SH values: encode 0 against the fresh, 0-inclusive bound.
-            if constexpr (VALUE_BITS == 8) {
-                #pragma unroll 1
-                for (int j = num_sh; j < (int)num_sh_buffer; ++j) {
-                    SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 0, 0.0f, sh_value_new_mm);
-                    SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 1, 0.0f, sh_value_new_mm);
-                    SHValReader8::encode_v(sh_value_packed_rw, sh_base + 3*j + 2, 0.0f, sh_value_new_mm);
+            // Inactive warmup bands, and the pad cell an odd cell count
+            // leaves in the last word: both take the zero encode, which
+            // the 0-inclusive fresh bounds make exact.
+            const int R = 3 * (int)num_sh_buffer;
+            for (int c = 3 * num_sh; c < R + (R & 1); ++c) {
+                if ((c & 1) == 0) {
+                    pend_s = warm_st;
+                    pend_v = warm_vv;
+                } else {
+                    st_w[w] = pend_s | (warm_st << 16);
+                    vv_w[w] = pend_v | (warm_vv << 16);
+                    w += 256;
                 }
             }
         }
-        }  // VALUE_BITS != 16
     }
 }
 
@@ -1057,9 +988,8 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     const uint32_t image_height,
     // fwd outputs
     const int32_t *__restrict__ camera_id_bounds,   // [N+1]
-    const int32_t *__restrict__ camera_ids,   // [nnz] -- ORIGINAL (unsorted) order
-    const int32_t *__restrict__ perm,         // [nnz] -- sorted_pos -> original_pos
-    const float4 *__restrict__ aabb,   // [C, N, 4] or [nnz, 4] (original order)
+    const int32_t *__restrict__ camera_ids,   // [nnz]
+    const uint2 *__restrict__ aabb,    // [C, N] or [nnz], packed
     // grad outputs from rasterization
     typename SplatPrimitive::WorldBuffer v_splats_world,
     typename SplatPrimitive::ScreenBuffer v_splats_screen,
@@ -1092,7 +1022,10 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     const float erank_reg_weight,
     const float erank_reg_weight_s3,
     const float quat_norm_reg_weight,
+    const float dc_reg_weight,
     const float sh_reg_weight,
+    const float max_screen_size,
+    const float max_screen_size_penalty,
     const float eps_tr,
     const int32_t scalar_step,
     const int32_t* __restrict__ steps
@@ -1120,7 +1053,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     ><<<_CEIL_DIV(N, BLOCK_SIZE_LAUNCH), BLOCK_SIZE_LAUNCH, 0, stream>>>(
         C, N, num_sh_buffer,
         splats_world, viewmats, intrins, dist_coeffs_buffer, image_width, image_height,
-        camera_id_bounds, camera_ids, perm, aabb,
+        camera_id_bounds, camera_ids, aabb,
         v_splats_world, v_splats_screen,
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,
         sh_value_packed, sh_value_bounds,
@@ -1134,7 +1067,9 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
         erank_reg_weight / (float)N,
         erank_reg_weight_s3 / (float)N,
         quat_norm_reg_weight / (float)N,
+        2.0f * dc_reg_weight / 3.0f,
         2.0f * sh_reg_weight / (float)(3*N),
+        max_screen_size, max_screen_size_penalty,
         eps_tr,
         scalar_step, steps);
 }

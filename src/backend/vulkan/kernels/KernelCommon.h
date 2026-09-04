@@ -197,31 +197,21 @@ inline uint32_t resolve_sh_quant(
         *out_packed = std::get<0>(sh_value_packed.value());
         *out_bounds = std::get<0>(sh_value_bounds.value());
     }
-    *out_stride = sh_bounds_stride > 0
-                      ? sh_bounds_stride
-                      : (int64_t)256 * 3 * (int64_t)num_sh_buffer;
+    // Passed through raw: 0 means the FPBO layout, which the shaders resolve
+    // with sh_quant_addr_w (docs/notes/sh-quant-layout.md).
+    *out_stride = sh_bounds_stride;
     return (uint32_t)sh_value_bits;
 }
 
-// Packed-mode preprocessing shared by the grad-quant and FPBO projection
-// backward launchers: identity permutation sorted by gaussian id (so the
-// splat-parallel kernels can loop each splat's intersections) plus the
-// per-splat [N+1] camera ranges. Mirrors the CUDA launchers' CUB steps; the
-// small kernels live in projection_qgrad.slang. NOTE: like CUB, the radix
-// sort may clobber the input gaussian_ids buffer (ping-pong).
+// Per-splat [N+1] intersection ranges for the grad-quant and FPBO projection
+// backward launchers. No sort: the forward emits the list in
+// (gaussian, camera) order, so gaussian_ids is already non-decreasing.
 struct PackedCameraRanges {
     DeviceVector<int32_t> camera_id_bounds;
-    DeviceVector<int32_t> gauss_sorted, perm, perm_sorted;
-    const int32_t* sorted_perm = nullptr;
 };
 
 inline PackedCameraRanges build_packed_camera_ranges(
     const DeviceVector<int32_t>& gaussian_ids, int64_t N) {
-    struct IotaParams {
-        uint64_t buf;
-        uint32_t n;
-        uint32_t wgs_per_row;
-    };
     struct CamBoundsParams {
         uint64_t gaussian_ids_sorted;
         uint64_t camera_id_bounds;
@@ -233,34 +223,13 @@ inline PackedCameraRanges build_packed_camera_ranges(
 
     PackedCameraRanges out;
     const int64_t nnz = gaussian_ids.size();
-    out.gauss_sorted.resize(PoolSlot::FusedProjBwdGaussSorted, nnz);
-    out.perm.resize(PoolSlot::FusedProjBwdPerm, nnz);
-    out.perm_sorted.resize(PoolSlot::FusedProjBwdPermSorted, nnz);
-
-    IotaParams ip{};
-    ip.buf = (uint64_t)out.perm.data_ptr();
-    ip.n = (uint32_t)nnz;
-    dispatch_flat("projection_qgrad.qgrad_iota", {}, nnz, 256, &ip,
-                  sizeof(ip), &ip.wgs_per_row);
-
-    backend::DoubleBuffer<int32_t> d_keys(
-        const_cast<int32_t*>(gaussian_ids.data_ptr()),
-        out.gauss_sorted.data_ptr());
-    backend::DoubleBuffer<int32_t> d_values(out.perm.data_ptr(),
-                                            out.perm_sorted.data_ptr());
-    int n_bits = 0;
-    while ((1u << n_bits) <= (uint64_t)N)
-        ++n_bits;
-    backend::sort_pairs(d_keys, d_values, nnz, 0, n_bits);
-    out.sorted_perm = d_values.current();
-
     out.camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, N + 1);
     CamBoundsParams bp{};
-    bp.gaussian_ids_sorted = (uint64_t)d_keys.current();
+    bp.gaussian_ids_sorted = (uint64_t)gaussian_ids.data_ptr();
     bp.camera_id_bounds = (uint64_t)out.camera_id_bounds.data_ptr();
     bp.nnz = (uint32_t)nnz;
     bp.N = (uint32_t)N;
-    dispatch_flat("projection_qgrad.qgrad_camera_id_bounds", {}, nnz + 1, 256,
+    dispatch_flat("projection_qgrad.qgrad_camera_id_bounds", {}, N + 1, 256,
                   &bp, sizeof(bp), &bp.wgs_per_row);
     return out;
 }
