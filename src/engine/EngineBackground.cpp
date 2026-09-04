@@ -33,6 +33,14 @@ void engine_init_background_noise(int splat_transfer, bool splat_is_linear) {
     bg.splat_is_linear = splat_is_linear;
 }
 
+void engine_init_background_pseudorandom(int splat_transfer, bool splat_is_linear) {
+    auto& bg = engine().background;
+    bg.mode    = EngineBackground::Mode::Pseudorandom;
+    bg.enabled = true;
+    bg.splat_transfer  = splat_transfer;
+    bg.splat_is_linear = splat_is_linear;
+}
+
 // Allocates the SH parameter table; slot 0 is the DC colour.
 void engine_init_background_sh(int sh_degree, int splat_transfer,
                                bool splat_is_linear) {
@@ -148,9 +156,11 @@ void _engine_background_forward() {
     DeviceTensor3D<float3> post_rgb;
     post_rgb.resize(PoolSlot::EngBgSkyRgbPost, C_batch, H, W);
 
-    if (bg.mode == EngineBackground::Mode::Noise) {
+    if (bg.mode == EngineBackground::Mode::Noise ||
+        bg.mode == EngineBackground::Mode::Pseudorandom) {
         blend_background_noise_forward(
             bg.splat_transfer, bg.splat_is_linear,
+            bg.mode == EngineBackground::Mode::Pseudorandom,
             bg.fwd_pre_blend_rgb, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             post_rgb);
@@ -212,11 +222,16 @@ void _engine_background_backward_hook(
     DeviceTensor3D<float3> v_rgb(v_render_rgb);
     DeviceTensor3D<float>  v_Ts_scratch_dt(v_Ts_scratch_tv);
 
-    if (bg.mode == EngineBackground::Mode::Noise) {
+    if (bg.mode == EngineBackground::Mode::Noise ||
+        bg.mode == EngineBackground::Mode::Pseudorandom) {
+        // Pre-blend, not post: the overexposure term needs the unclamped
+        // composite, which the blend output cannot recover. Passing post-blend
+        // was harmless only while the affine derivative was the sole reader.
         DeviceTensor3D<float>  Ts_in(fwd_Ts_tensor);
         DeviceTensor3D<float3> v_out(v_render_rgb);
         blend_background_noise_backward(
             bg.splat_transfer, bg.splat_is_linear,
+            bg.mode == EngineBackground::Mode::Pseudorandom,
             bg.fwd_pre_blend_rgb, Ts_in,
             bg.cur_randomize_weight, bg.cur_seed,
             overexposure_reg_weight,

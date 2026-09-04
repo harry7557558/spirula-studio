@@ -2351,51 +2351,99 @@ SS_MSG(background_mode,
     KO("배경"), DE("Hintergrund"), FR("Arrière-plan"), ES("Fondo"),
     PT("Fundo"), IT("Sfondo"), NL("Achtergrond"), RU("Фон"), TR("Arka plan"));
 SS_MSG(background_mode_help,
-    EN("What fills pixels no splat covers. `black` is the usual choice, "
-       "`noise` discourages background transparency, and `sh` learns a skybox "
-       "so distant background is represented instead of ignored."),
-    JA("スプラットが覆っていない画素を何で埋めるかです。`black` が通常の選択で"
-       "す。`noise` は背景が透けるのを抑えます。`sh` はスカイボックスを学習し、"
-       "遠景を無視せずに表現します。"),
-    ZH_HANS("没有泼溅覆盖的像素用什么填充。`black` 是常规选择；`noise` 可以抑"
-            "制背景透明；`sh` 会学习一个天空盒，让远景被表示出来而不是被忽略。"),
-    ZH_HANT("沒有潑濺覆蓋的像素用什麼填滿。`black` 是常規選擇；`noise` 可以抑"
-            "制背景透明；`sh` 會學習一個天空盒，讓遠景被表示出來而不是被忽略。"),
-    KO("스플랫이 덮지 않은 픽셀을 무엇으로 채울지입니다. `black`이 보통 선택이"
-       "고, `noise`는 배경이 비치는 것을 억제하며, `sh`는 스카이박스를 학습해 "
-       "먼 배경을 무시하지 않고 표현합니다."),
-    DE("Womit Pixel gefüllt werden, die kein Splat bedeckt. `black` ist die "
-       "übliche Wahl, `noise` hält den Hintergrund davon ab, durchsichtig zu "
-       "werden, und `sh` lernt eine Skybox, sodass ferner Hintergrund "
-       "dargestellt statt ignoriert wird."),
+    EN("What fills pixels no splat covers. `black` is the usual choice. "
+       "`noise` and `pseudorandom` both discourage half-transparent "
+       "surfaces by making a pixel left uncovered land on a colour that "
+       "changes every step; pseudorandom draws vivid tiles rather than "
+       "per-pixel speckle, which the loss cannot average away, so it "
+       "presses harder. `sh` learns a skybox so distant background is "
+       "represented instead of ignored."),
+    JA("スプラットが覆わない画素を何で埋めるかです。`black"
+       "` が通常の選択です。`noise` と `"
+       "pseudorandom` はどちらも、覆われていない画"
+       "素の色が毎ステップ変わるようにして半透明な面を抑えます。"
+       "`pseudorandom` は画素ごとの細かいノイズで"
+       "はなく鮮やかなタイルを使うため、損失に平均化されず効き目"
+       "が強くなります。`sh` は空を学習し、遠くの背景を無視"
+       "せず表現します。"),
+    ZH_HANS("用什么填充没有泼溅覆盖的像素。`black` 是通常的选"
+            "择。`noise` 和 `pseudorandom` 都"
+            "通过让未覆盖像素的颜色每步都变来抑制半透明表面；`"
+            "pseudorandom` 用的是鲜艳的色块而不是逐像素"
+            "的细噪点，损失无法把它平均掉，所以压得更狠。`sh` 会"
+            "学习一个天空盒，让远处背景被表示而不是被忽略。"),
+    ZH_HANT("用什麼填充沒有潑濺覆蓋的像素。`black` 是通常的選"
+            "擇。`noise` 和 `pseudorandom` 都"
+            "透過讓未覆蓋像素的顏色每步都變來抑制半透明表面；`"
+            "pseudorandom` 用的是鮮豔的色塊而不是逐像素"
+            "的細雜訊，損失無法把它平均掉，所以壓得更狠。`sh` 會"
+            "學習一個天空盒，讓遠處背景被表示而不是被忽略。"),
+    KO("스플랫이 덮지 않은 픽셀을 무엇으로 채울지입니다. "
+       "`black`이 보통의 선택입니다. `noise`와"
+       " `pseudorandom`은 덮이지 않은 픽셀의 "
+       "색이 매 스텝 바뀌게 해서 반투명한 표면을 억제합니"
+       "다. `pseudorandom`은 픽셀 단위의 잔 "
+       "노이즈 대신 선명한 타일을 쓰므로 손실이 평균으로 "
+       "지워 버리지 못해 더 세게 누릅니다. `sh`는 스"
+       "카이박스를 학습해 먼 배경을 무시하지 않고 표현합니"
+       "다."),
+    DE("Was Pixel füllt, die kein Splat bedeckt. `black` ist die übliche "
+       "Wahl. `noise` und `pseudorandom` entmutigen beide "
+       "halbdurchsichtige Flächen, indem ein unbedecktes Pixel auf einer "
+       "Farbe landet, die sich jeden Schritt ändert; pseudorandom zeichnet "
+       "kräftige Kacheln statt Sprenkel pro Pixel, die der Verlust nicht "
+       "wegmitteln kann, und drückt deshalb stärker. `sh` lernt eine "
+       "Skybox, damit ferner Hintergrund dargestellt statt ignoriert wird."),
     FR("Ce qui remplit les pixels qu'aucun splat ne couvre. `black` est le "
-       "choix habituel, `noise` décourage la transparence de l'arrière-plan, "
-       "et `sh` apprend un skybox pour que l'arrière-plan lointain soit "
-       "représenté au lieu d'être ignoré."),
-    ES("Con qué se rellenan los píxeles que ningún splat cubre. `black` es la "
-       "opción habitual, `noise` desalienta la transparencia del fondo, y "
-       "`sh` aprende un skybox para que el fondo lejano se represente en vez "
-       "de ignorarse."),
-    PT("Com o que são preenchidos os pixels que nenhum splat cobre. `black` é "
-       "a escolha habitual, `noise` desencoraja a transparência do fundo, e "
-       "`sh` aprende um skybox para que o fundo distante seja representado em "
-       "vez de ignorado."),
-    IT("Con che cosa vengono riempiti i pixel che nessuno splat copre. "
-       "`black` è la scelta abituale, `noise` scoraggia la trasparenza dello "
-       "sfondo, e `sh` impara uno skybox così lo sfondo lontano viene "
-       "rappresentato invece che ignorato."),
-    NL("Waarmee pixels worden gevuld die geen enkele splat bedekt. `black` is "
-       "de gebruikelijke keuze, `noise` ontmoedigt doorzichtigheid van de "
-       "achtergrond, en `sh` leert een skybox zodat verre achtergrond wordt "
-       "weergegeven in plaats van genegeerd."),
-    RU("Чем заполняются пиксели, не покрытые ни одним сплатом. `black` — "
-       "обычный выбор, `noise` не даёт фону становиться прозрачным, а `sh` "
-       "обучает скайбокс, чтобы дальний фон был представлен, а не "
-       "проигнорирован."),
+       "choix habituel. `noise` et `pseudorandom` découragent tous deux "
+       "les surfaces à demi transparentes en faisant tomber un pixel non "
+       "couvert sur une couleur qui change à chaque étape ; pseudorandom "
+       "dessine des tuiles vives plutôt qu'un grain par pixel, que la "
+       "perte ne peut pas moyenner, et appuie donc plus fort. `sh` apprend "
+       "une skybox pour que l'arrière-plan lointain soit représenté au "
+       "lieu d'être ignoré."),
+    ES("Qué rellena los píxeles que ningún splat cubre. `black` es la "
+       "elección habitual. `noise` y `pseudorandom` desincentivan las "
+       "superficies semitransparentes haciendo que un píxel sin cubrir "
+       "caiga sobre un color que cambia en cada paso; pseudorandom dibuja "
+       "baldosas vivas en vez de grano por píxel, que la pérdida no puede "
+       "promediar, así que aprieta más. `sh` aprende un cielo para que el "
+       "fondo lejano quede representado en vez de ignorado."),
+    PT("O que preenche os pixels que nenhum splat cobre. `black` é a "
+       "escolha habitual. `noise` e `pseudorandom` desencorajam "
+       "superfícies semitransparentes fazendo um pixel descoberto cair "
+       "sobre uma cor que muda a cada passo; pseudorandom desenha "
+       "ladrilhos vivos em vez de grão por pixel, que a perda não consegue "
+       "mediar, então aperta mais. `sh` aprende um céu para que o fundo "
+       "distante seja representado em vez de ignorado."),
+    IT("Che cosa riempie i pixel che nessuno splat copre. `black` è la "
+       "scelta abituale. `noise` e `pseudorandom` scoraggiano entrambi le "
+       "superfici semitrasparenti facendo cadere un pixel scoperto su un "
+       "colore che cambia a ogni passo; pseudorandom disegna piastrelle "
+       "vivaci invece di grana per pixel, che la perdita non può mediare, "
+       "e quindi preme di più. `sh` impara un cielo perché lo sfondo "
+       "lontano sia rappresentato invece che ignorato."),
+    NL("Wat pixels vult die geen splat bedekt. `black` is de gebruikelijke "
+       "keuze. `noise` en `pseudorandom` ontmoedigen allebei "
+       "halfdoorzichtige oppervlakken doordat een onbedekte pixel op een "
+       "kleur valt die elke stap verandert; pseudorandom tekent felle "
+       "tegels in plaats van korrel per pixel, die het verlies niet kan "
+       "wegmiddelen, en drukt dus harder. `sh` leert een skybox zodat "
+       "verre achtergrond wordt weergegeven in plaats van genegeerd."),
+    RU("Чем заполняются пиксели, которые не покрыл ни один сплат. `black` "
+       "— обычный выбор. `noise` и `pseudorandom` оба мешают "
+       "полупрозрачным поверхностям: непокрытый пиксель попадает на цвет, "
+       "меняющийся каждый шаг; pseudorandom рисует яркие плитки, а не "
+       "зерно на каждый пиксель, и функция потерь не может их усреднить, "
+       "поэтому давит сильнее. `sh` обучает скайбокс, чтобы дальний фон "
+       "был представлен, а не проигнорирован."),
     TR("Hiçbir splat'ın kaplamadığı pikselleri neyin dolduracağı. `black` "
-       "olağan seçimdir, `noise` arka planın saydamlaşmasını caydırır, `sh` "
-       "ise bir gökyüzü kutusu öğrenerek uzak arka planın yok sayılmak yerine "
-       "temsil edilmesini sağlar."));
+       "alışılmış seçimdir. `noise` ve `pseudorandom` yarı saydam "
+       "yüzeyleri caydırır: kaplanmamış bir piksel her adımda değişen bir "
+       "renge düşer; pseudorandom piksel başına tanecik yerine canlı "
+       "karolar çizer, kayıp bunları ortalamayla silemez, bu yüzden daha "
+       "çok bastırır. `sh` bir gökyüzü öğrenir, böylece uzak arka plan yok "
+       "sayılmak yerine temsil edilir."));
 
 SS_MSG(background_sh_degree,
     EN("Skybox detail"), JA("スカイボックスの細かさ"), ZH_HANS("天空盒细节"),

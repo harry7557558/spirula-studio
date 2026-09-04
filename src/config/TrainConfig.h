@@ -145,7 +145,7 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut")   \
     X(int, sh_degree, 3, "splats", "basic", "")                              \
     X(int, sh_degree_warmup_every, 1000, "splats", "expert", "")             \
-    X(std::string, background_mode, "black", "splats", "basic", "black|noise|sh") \
+    X(std::string, background_mode, "black", "splats", "basic", "black|noise|sh|pseudorandom") \
     X(int, background_sh_degree, 4, "splats", "basic", "")                   \
     X(int, background_noise_warmup, 2000, "splats", "expert", "")            \
     X(float, background_noise_pre_warmup, 0.25f, "splats", "expert", "")     \

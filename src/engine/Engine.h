@@ -253,6 +253,10 @@ void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg);
 //
 // dc_color is the linear-space DC color used at SH init time (set slot 0).
 void engine_init_background_noise(int splat_transfer, bool splat_is_linear);
+// Same blend, but the draw is one of the 8 RGB cube corners per tile instead
+// of per-pixel noise: the extremes cost residual transparency the most, and a
+// tile survives the SSIM window that averages per-pixel noise back to grey.
+void engine_init_background_pseudorandom(int splat_transfer, bool splat_is_linear);
 void engine_init_background_sh(
     int sh_degree, int splat_transfer, bool splat_is_linear);
 

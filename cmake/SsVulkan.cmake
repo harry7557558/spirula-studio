@@ -83,8 +83,6 @@ function(_ss_vulkan_header_version inc out_var)
     endif()
 endfunction()
 
-# _ss_fetch_vulkan_headers(<include_var>)
-#
 # Unpacks the pinned Vulkan-Headers release into the build tree. Header-only
 # and architecture-independent, so this covers every platform whose loader is
 # current but whose headers are not.

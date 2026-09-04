@@ -26,9 +26,11 @@ static_assert(sizeof(BlendBgBwdParams) == 7 * 8 + 3 * 4 + 4 /*pad*/,
 struct BlendBgNoiseBwdParams {
     uint64_t rgb, transmittance, v_out_rgb, v_rgb, v_transmittance;
     float overexposure_scale, randomize_weight;
-    uint32_t seed, HW, total, wgs_per_row;
+    uint32_t seed, HW, total, wgs_per_row, W, blocky;
 };
-static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 6 * 4, "layout");
+// 40 + 32 lands on an 8 boundary, so unlike the branch's 7-field version this
+// one needs no tail padding.
+static_assert(sizeof(BlendBgNoiseBwdParams) == 5 * 8 + 8 * 4, "layout");
 
 // Mirrors RgbToSrgbBwdParams.
 struct RgbToSrgbBwdParams {
@@ -123,6 +125,7 @@ void blend_background_backward(
 void blend_background_noise_backward(
     int transfer,
     bool is_linear,
+    bool blocky,
     DeviceTensor3D<float3> rgb,
     DeviceTensor3D<float> transmittance,
     float randomize_weight,
@@ -146,6 +149,8 @@ void blend_background_noise_backward(
     p.seed = seed;
     p.HW = (uint32_t)hw;
     p.total = (uint32_t)total;
+    p.W = (uint32_t)rgb.size<2>();
+    p.blocky = blocky ? 1u : 0u;
     vkk::dispatch_flat("pixel_wise_train.blend_bg_noise_bwd",
                        backend::vk::SpecList{(uint32_t)transfer,
                                              is_linear ? 1u : 0u},

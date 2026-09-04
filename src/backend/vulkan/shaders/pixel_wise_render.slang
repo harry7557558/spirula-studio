@@ -76,7 +76,45 @@ uint hash_uint3(uint a, uint b, uint c) {
     return hash;
 }
 
-struct BlendBgNoiseParams {  // 44 bytes: pushed directly
+// Side, in pixels, of a `blocky` background tile. Per-pixel noise is averaged
+// back into flat grey by SSIM's 11x11 window and by the multi-scale pyramid,
+// which is where the penalty is supposed to land; a tile survives both.
+static const uint kBgBlockPx = 64u;
+
+// Murmur-style finalizer. The whole background is computed, never stored.
+[ForceInline]
+uint _bg_mix(uint x) {
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+// The unit sample the background is built from. `blocky` draws one of the 8 RGB
+// cube corners per tile -- the extreme points of the cube, so residual
+// transparency costs the most it can. Twin of kernels/pixelwise/ImageColorOps.cu.
+[ForceInline]
+float3 _bg_sample(uint blocky, uint seed, uint gid, uint bid, uint W) {
+    if (blocky != 0u) {
+        // The tile grid shifts every step, so no pixel keeps its colour and
+        // the pattern cannot be baked into the splats.
+        uint ox = _bg_mix(seed * 2u + 1u) % kBgBlockPx;
+        uint oy = _bg_mix(seed * 2u + 7u) % kBgBlockPx;
+        uint h  = _bg_mix((((gid % W) + ox) / kBgBlockPx) * 2654435761u
+                          ^ (((gid / W) + oy) / kBgBlockPx) * 40503u
+                          ^ (seed + bid * 0x9e3779b9u));
+        return float3((h & 1u) != 0u ? 1.0f : -1.0f,
+                      (h & 2u) != 0u ? 1.0f : -1.0f,
+                      (h & 4u) != 0u ? 1.0f : -1.0f);
+    }
+    // 2u-1: without it the plain path lands in [0.5, 0.5+w/2) instead of
+    // straddling 0.5, so every channel sits in the same bright half.
+    return float3(float(hash_uint3(seed + 0, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(hash_uint3(seed + 1, gid, bid)) * exp2(-31.0f) - 1.0f,
+                  float(hash_uint3(seed + 2, gid, bid)) * exp2(-31.0f) - 1.0f);
+}
+
+struct BlendBgNoiseParams {  // 56 bytes: pushed directly
     float* rgb;            // [B,H,W,3]
     float* transmittance;  // [B,H,W,1]
     float* out_rgb;        // [B,H,W,3]
@@ -85,6 +123,8 @@ struct BlendBgNoiseParams {  // 44 bytes: pushed directly
     uint32_t HW;           // H*W (hash uses per-image pixel id + batch id)
     uint32_t total;        // B*H*W
     uint32_t wgs_per_row;
+    uint32_t W;
+    uint32_t blocky;
 };
 
 [shader("compute")]
@@ -101,11 +141,8 @@ void blend_background_noise_fwd(uint3 wg: SV_GroupID,
                         p.rgb[3 * idx + 2]);
     float T = p.transmittance[idx];
 
-    float3 background;
-    background.x = float(hash_uint3(p.seed + 0, gid, bid)) * exp2(-32.0f);
-    background.y = float(hash_uint3(p.seed + 1, gid, bid)) * exp2(-32.0f);
-    background.z = float(hash_uint3(p.seed + 2, gid, bid)) * exp2(-32.0f);
-    background = 0.5f + 0.5f * p.randomize_weight * (2.0f * background - 1.0f);
+    float3 background = _bg_sample(p.blocky, p.seed, gid, bid, p.W);
+    background = 0.5f + 0.5f * p.randomize_weight * background;
     background = display_to_working3(background, kTransfer, kIsLinear != 0);
 
     rgb = blend_background(rgb, T, background);
