@@ -18,6 +18,7 @@
 #include <ctime>
 #include <exception>
 #include <stdexcept>
+#include <thread>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -318,20 +319,23 @@ bool claim() {
 // Handlers
 // ---------------------------------------------------------------------------
 
+void put_exception() {
+    if (!std::current_exception()) return;
+    try {
+        std::rethrow_exception(std::current_exception());
+    } catch (const std::exception& e) {
+        put(" -- ");
+        put(e.what());
+    } catch (...) {
+        put(" -- not derived from std::exception");
+    }
+}
+
 void report_uncaught() {
     if (!claim()) return;
     begin_report();
     put("cause:   uncaught exception");
-    if (std::current_exception()) {
-        try {
-            std::rethrow_exception(std::current_exception());
-        } catch (const std::exception& e) {
-            put(" -- ");
-            put(e.what());
-        } catch (...) {
-            put(" -- not derived from std::exception");
-        }
-    }
+    put_exception();
     put("\nstack:\n");
     put_stack_here();
     end_report();
@@ -385,6 +389,23 @@ LONG WINAPI on_exception(EXCEPTION_POINTERS* info) {
     // Our own dialog has been shown; letting this fall through would put
     // Windows Error Reporting's on top of it.
     return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// The only hook left for a worker thread: std::set_terminate is per-thread in
+// the MSVC CRT, so a std::thread keeps the default handler and dies in a
+// __fastfail the filter above never sees. ucrtbase raises SIGABRT first.
+void on_abort(int) {
+    if (claim()) {
+        begin_report();
+        put("cause:   abort");
+        put_exception();
+        put("\nstack:\n");
+        put_stack_here();
+        end_report();
+    }
+#ifdef _MSC_VER
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
 }
 
 #else
@@ -455,6 +476,7 @@ void install_crash_log(const std::string& dir) {
     SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
     SymInitialize(GetCurrentProcess(), nullptr, TRUE);
     SetUnhandledExceptionFilter(on_exception);
+    std::signal(SIGABRT, on_abort);
 #else
     // backtrace() loads the unwinder on its first call, which allocates; do
     // that now rather than inside the handler.
@@ -482,6 +504,10 @@ void install_crash_log(const std::string& dir) {
     if (!test) return;
     set_crash_note("SS_CRASH_TEST");
     if (test[0] == 't') throw std::runtime_error("SS_CRASH_TEST");
+    if (test[0] == 'w') {
+        std::thread([] { throw std::runtime_error("SS_CRASH_TEST"); }).join();
+        return;
+    }
     *(volatile int*)(uintptr_t)8 = 0;
 }
 

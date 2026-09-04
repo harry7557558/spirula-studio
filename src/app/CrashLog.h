@@ -16,7 +16,7 @@
 namespace app {
 
 // Arm the handlers; `dir` is where crash.log goes. What faults before this
-// call is still lost, so call it early. SS_CRASH_TEST=segv|throw faults here
+// call is still lost, so call it early. SS_CRASH_TEST=segv|throw|worker faults
 // on purpose -- the only way to check the handler on a machine it must work on.
 void install_crash_log(const std::string& dir);
 

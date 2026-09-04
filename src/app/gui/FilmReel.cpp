@@ -171,13 +171,19 @@ void FilmReel::loader_loop() {
         }
         Picture pic;
         std::vector<KeyPoint2D> pts;
-        if (!f.panels.empty()) {
-            load_picture_row(f.panels, target, pic);
-        } else if (load_picture(f.image_path, f.mask_path, target, pic) &&
-                   !f.points_path.empty()) {
-            std::vector<KeyPoint2D> kp;
-            if (read_keypoints_file(f.points_path, pic.src_w, pic.src_h, kp))
-                pts = thin(kp.data(), kp.size(), pic.src_w, pic.src_h);
+        // A decode that throws would be std::terminate off a worker thread.
+        // An empty picture is the path a file that is not there already takes.
+        try {
+            if (!f.panels.empty()) {
+                load_picture_row(f.panels, target, pic);
+            } else if (load_picture(f.image_path, f.mask_path, target, pic) &&
+                       !f.points_path.empty()) {
+                std::vector<KeyPoint2D> kp;
+                if (read_keypoints_file(f.points_path, pic.src_w, pic.src_h, kp))
+                    pts = thin(kp.data(), kp.size(), pic.src_w, pic.src_h);
+            }
+        } catch (...) {
+            pic = Picture();
         }
         std::unique_lock<std::mutex> lk(_mu);
         if (pic.empty()) {

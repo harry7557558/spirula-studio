@@ -8,14 +8,17 @@
 #include "nn/core/Error.h"
 #include "nn/core/Half.h"
 #include "nn/core/Log.h"
+#include "nn/core/Parallel.h"
 #include "nn/Ops.h"
 #include "nn/vk/Context.h"
 #include "nn/vk/Stream.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <string>
 #include <vector>
@@ -1502,9 +1505,44 @@ void bench(vk::Arena& arena) {
 
 }  // namespace
 
+// Host-only, so it runs on a machine with no device. The throwing case is the
+// one worth a test: it used to be std::terminate, from the worker and from the
+// inline chunk both.
+void test_parallel_for() {
+    std::atomic<int64_t> covered{0};
+    parallel_for(1 << 16, [&](int64_t lo, int64_t hi) { covered += hi - lo; });
+    ++g_checks;
+    if (covered.load() != (1 << 16)) {
+        ++g_failures;
+        std::printf("  FAIL %-28s covered %lld of 65536\n", "parallel_for range",
+                    (long long)covered.load());
+    } else {
+        std::printf("  ok   %-28s\n", "parallel_for range");
+    }
+
+    bool rethrown = false;
+    try {
+        parallel_for(1 << 16, [](int64_t, int64_t) {
+            throw std::runtime_error("parallel_for");
+        });
+    } catch (const std::exception&) {
+        rethrown = true;
+    }
+    ++g_checks;
+    if (!rethrown) {
+        ++g_failures;
+        std::printf("  FAIL %-28s no exception reached the caller\n",
+                    "parallel_for rethrow");
+    } else {
+        std::printf("  ok   %-28s\n", "parallel_for rethrow");
+    }
+}
+
 int main(int argc, char** argv) {
     const bool bench_only = argc > 1 && std::string(argv[1]) == "--bench";
     set_log_level(1);
+    std::printf("Host threading\n");
+    test_parallel_for();
     try {
         auto devices = vk::enumerate_devices();
         std::printf("Vulkan devices:\n");

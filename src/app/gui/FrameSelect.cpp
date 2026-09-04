@@ -111,7 +111,11 @@ int select_sharpest_frames(const std::string& cand_dir,
                 for (;;) {
                     size_t i = next.fetch_add(1);
                     if (i >= files.size() || cancel.load()) return;
-                    scores[i] = sharpness_score(files[i].string());
+                    // A decode that throws would be std::terminate off a
+                    // worker thread. An unscored frame just loses its group.
+                    try {
+                        scores[i] = sharpness_score(files[i].string());
+                    } catch (...) {}
                     done.fetch_add(1);
                 }
             });

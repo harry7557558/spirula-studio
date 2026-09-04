@@ -36,6 +36,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -214,11 +215,16 @@ public:
     ImagePrefetch(const ImagePrefetch&) = delete;
     ImagePrefetch& operator=(const ImagePrefetch&) = delete;
 
-    // The next file in the order given; empty when it could not be read.
-    // Called at most once per file, so it cannot outrun the reader.
+    // The next file in the order given; empty when it could not be read or the
+    // reader stopped early. What the reader threw is rethrown here instead,
+    // this being the thread with somewhere to report it.
     nn::Image take() {
         std::unique_lock<std::mutex> lk(_mu);
-        _ready.wait(lk, [this] { return !_queue.empty(); });
+        _ready.wait(lk, [this] { return !_queue.empty() || _done; });
+        if (_queue.empty()) {
+            if (_err) std::rethrow_exception(_err);
+            return nn::Image();
+        }
         nn::Image img = std::move(_queue.front());
         _queue.pop_front();
         _space.notify_one();
@@ -231,15 +237,25 @@ private:
     static constexpr size_t kDepth = 2;
 
     void run() {
-        for (const fs::path& f : _files) {
-            if (_cancel.load()) break;
-            nn::Image img = nn::load_image(f.string(), _gamut, _is_linear);
-            std::unique_lock<std::mutex> lk(_mu);
-            _space.wait(lk, [this] { return _queue.size() < kDepth || _stop; });
-            if (_stop) return;
-            _queue.push_back(std::move(img));
-            _ready.notify_one();
+        try {
+            for (const fs::path& f : _files) {
+                if (_cancel.load()) break;
+                nn::Image img = nn::load_image(f.string(), _gamut, _is_linear);
+                std::unique_lock<std::mutex> lk(_mu);
+                _space.wait(lk, [this] { return _queue.size() < kDepth || _stop; });
+                if (_stop) break;
+                _queue.push_back(std::move(img));
+                _ready.notify_one();
+            }
+        } catch (...) {
+            std::lock_guard<std::mutex> lk(_mu);
+            _err = std::current_exception();
         }
+        {
+            std::lock_guard<std::mutex> lk(_mu);
+            _done = true;
+        }
+        _ready.notify_all();
     }
 
     std::vector<fs::path> _files;
@@ -250,6 +266,10 @@ private:
     std::mutex _mu;
     std::condition_variable _ready, _space;
     bool _stop = false;
+    // The reader is gone. Without it a take() the reader cancelled out from
+    // under waits on a queue nothing will ever fill again.
+    bool _done = false;
+    std::exception_ptr _err;
     std::thread _worker;
 };
 

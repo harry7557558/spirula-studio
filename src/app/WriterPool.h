@@ -21,6 +21,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <exception>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -93,16 +94,27 @@ private:
                 space_.notify_one();
             }
             const double t0 = nn::now_ms();
-            const bool ok =
-                !job.depth.empty()
-                    ? save_depth_png16(job.path, job.depth.data(), job.depth_w,
-                                       job.depth_h)
-                    : (job.image.empty() ? sam::save_mask_png(job.mask, job.path)
-                                         : nn::save_image(job.image, job.path,
-                                                          job.quality));
+            // An encoder that throws here would take the process with it: an
+            // exception off a worker thread is std::terminate.
+            bool ok = false;
+            std::string why;
+            try {
+                ok = !job.depth.empty()
+                         ? save_depth_png16(job.path, job.depth.data(),
+                                            job.depth_w, job.depth_h)
+                         : (job.image.empty()
+                                ? sam::save_mask_png(job.mask, job.path)
+                                : nn::save_image(job.image, job.path,
+                                                 job.quality));
+            } catch (const std::exception& e) {
+                why = e.what();
+            } catch (...) {
+                why = "unknown error";
+            }
             if (!ok) {
                 ++failures_;
-                NN_LOG_ERROR("could not write %s\n", job.path.c_str());
+                NN_LOG_ERROR("could not write %s%s%s\n", job.path.c_str(),
+                             why.empty() ? "" : ": ", why.c_str());
             }
             double expected = busy_ms_.load();
             const double add = nn::now_ms() - t0;

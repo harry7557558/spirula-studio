@@ -11,6 +11,8 @@
 // and would have to be shut down cleanly across the library boundary.
 
 #include <algorithm>
+#include <exception>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -31,15 +33,30 @@ void parallel_for(int64_t n, const F& body, int64_t min_chunk = 1) {
     }
     std::vector<std::thread> pool;
     pool.reserve((size_t)workers - 1);
+
+    // Both ends need this: a throw off a worker is std::terminate, and one out
+    // of the inline chunk would destroy a still-joinable pool, which is too.
+    std::mutex err_mu;
+    std::exception_ptr err;
+    auto run = [&](int64_t lo, int64_t hi) {
+        try {
+            body(lo, hi);
+        } catch (...) {
+            std::lock_guard<std::mutex> lk(err_mu);
+            if (!err) err = std::current_exception();
+        }
+    };
+
     const int64_t chunk = (n + workers - 1) / workers;
     for (int64_t w = 1; w < workers; ++w) {
         const int64_t lo = w * chunk;
         const int64_t hi = std::min(n, lo + chunk);
         if (lo >= hi) break;
-        pool.emplace_back([&body, lo, hi] { body(lo, hi); });
+        pool.emplace_back([&run, lo, hi] { run(lo, hi); });
     }
-    body((int64_t)0, std::min(n, chunk));
+    run((int64_t)0, std::min(n, chunk));
     for (auto& t : pool) t.join();
+    if (err) std::rethrow_exception(err);
 }
 
 }  // namespace nn
