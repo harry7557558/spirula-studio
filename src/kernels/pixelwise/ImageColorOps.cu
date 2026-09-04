@@ -142,11 +142,9 @@ __device__ __forceinline__ uint32_t _bg_mix(uint32_t x) {
     return x;
 }
 
-// The unit sample the background is built from, in [-1, 1] either way.
-// `blocky` draws one of the 8 RGB cube corners per tile, the extreme points of
-// the cube, so residual transparency costs the most it can; the plain path is
-// U[-1, 1). Runtime, not a template argument: the Vulkan half already carries
-// it as a param field, and the branch is uniform across the whole launch.
+// Unit sample for the background, in [-1, 1] either way. `blocky` draws one of
+// the 8 RGB cube corners per tile: the extremes, so residual transparency costs
+// the most it can. Runtime, not a template, to match the Vulkan param field.
 __device__ __forceinline__ float3 _bg_sample(bool blocky, uint32_t seed, unsigned gid,
                                              unsigned bid, unsigned x, unsigned y) {
     float3 u;
