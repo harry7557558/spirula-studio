@@ -15,7 +15,8 @@ cmake -G Ninja -B build -DSS_BUILD_CLI=ON && cmake --build build --target spirul
 ```
 
 - Presets = tyro subcommands: `3dgs` (default), `360-camera`, `in-the-wild`,
-  `linear-color`, `synthetic`, `meshing`, `academic-baseline`.
+  `centered-object`, `linear-color`, `synthetic`, `meshing`,
+  `academic-baseline`.
 - Flag conventions: flattened names (`--sh-degree`, not `--model.sh-degree`);
   `-`/`_` interchangeable; bools take a value (`--warp-to-pinhole 1`);
   `--key=value` works (arity-1 only); `none` clears optionals; tuples take N

@@ -168,6 +168,49 @@ SS_MSG(preset_in_the_wild_help,
        "değişken, maskelenmemiş yabancı nesneler içeren ve/veya uzun odaklı "
        "çekilmiş veri kümeleri için hazır ayar."));
 
+SS_MSG(preset_centered_object,
+    EN("Centered object"),
+    JA("中心の被写体"),
+    ZH_HANS("居中物体"),
+    ZH_HANT("置中物體"),
+    KO("가운데 놓인 물체"),
+    DE("Zentriertes Objekt"),
+    FR("Objet centré"),
+    ES("Objeto centrado"),
+    PT("Objeto centrado"),
+    IT("Oggetto centrato"),
+    NL("Gecentreerd object"),
+    RU("Объект в центре"),
+    TR("Merkezdeki nesne"));
+
+SS_MSG(preset_centered_object_help,
+    EN("Preset for captures that orbit a single masked object, whose "
+       "background is not meant to be reconstructed."),
+    JA("マスクした単一の被写体を取り囲むように撮影したデータのための"
+       "プリセットです。背景は復元の対象にしません。"),
+    ZH_HANS("用于环绕单个已遮罩物体拍摄的数据的预设，"
+            "背景不作为重建对象。"),
+    ZH_HANT("用於環繞單個已遮罩物體拍攝的資料的預設，"
+            "背景不作為重建對象。"),
+    KO("마스크한 하나의 물체를 둘러싸며 촬영한 데이터를 위한 "
+       "프리셋입니다. 배경은 복원 대상이 아닙니다."),
+    DE("Voreinstellung für Aufnahmen, die ein einzelnes maskiertes Objekt "
+       "umkreisen und deren Hintergrund nicht rekonstruiert werden soll."),
+    FR("Préréglage pour des prises de vue tournant autour d'un seul objet "
+       "masqué, dont l'arrière-plan n'a pas vocation à être reconstruit."),
+    ES("Preajuste para capturas que giran alrededor de un único objeto "
+       "enmascarado, cuyo fondo no se pretende reconstruir."),
+    PT("Predefinição para capturas que giram em torno de um único objeto "
+       "mascarado, cujo fundo não se pretende reconstruir."),
+    IT("Preimpostazione per riprese che ruotano attorno a un singolo oggetto "
+       "mascherato, il cui sfondo non va ricostruito."),
+    NL("Voorinstelling voor opnamen die om één gemaskeerd object heen draaien, "
+       "waarvan de achtergrond niet gereconstrueerd hoeft te worden."),
+    RU("Пресет для съёмок, обходящих один замаскированный "
+       "объект, фон которых восстанавливать не требуется."),
+    TR("Maskelenmiş tek bir nesnenin çevresinde dönerek yapılan çekimler "
+       "için hazır ayar; arka planın yeniden oluşturulması amaçlanmaz."));
+
 SS_MSG(preset_linear_color,
     EN("Linear colour space"),
     JA("リニア色空間"),
@@ -340,6 +383,7 @@ inline constexpr PresetText kPresetText[] = {
     {"3dgs",              &preset_3dgs,              &preset_3dgs_help},
     {"360-camera",        &preset_360_camera,        &preset_360_camera_help},
     {"in-the-wild",       &preset_in_the_wild,       &preset_in_the_wild_help},
+    {"centered-object",   &preset_centered_object,   &preset_centered_object_help},
     {"linear-color",      &preset_linear_color,      &preset_linear_color_help},
     {"synthetic",         &preset_synthetic,         &preset_synthetic_help},
     {"meshing",           &preset_meshing,           &preset_meshing_help},

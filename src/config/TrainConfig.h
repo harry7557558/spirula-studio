@@ -281,10 +281,10 @@ inline int train_tier_rank(const char* tier) {
                                                                              \
     /* ==== colorspace -- linear vs display encoding, and which gamut ==== */\
     X(std::optional<bool>, image_color_is_linear, std::nullopt, "colorspace", "basic", "") \
-    X(std::string, image_color_transfer, "", "colorspace", "basic", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
+    X(std::string, image_color_transfer, "", "colorspace", "advanced", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, image_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
     X(std::optional<bool>, splat_color_is_linear, std::nullopt, "colorspace", "basic", "") \
-    X(std::string, splat_color_transfer, "", "colorspace", "basic", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
+    X(std::string, splat_color_transfer, "", "colorspace", "advanced", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, splat_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
     X(std::optional<bool>, convert_initial_point_cloud_color, std::nullopt, "colorspace", "basic", "") \
                                                                              \
@@ -370,6 +370,7 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     {"3dgs"},
     {"360-camera"},
     {"in-the-wild"},
+    {"centered-object"},
     {"linear-color"},
     {"synthetic"},
     {"meshing"},
@@ -404,6 +405,16 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.erank_reg = 0.1f;
         c.means_lr = 5e-05f;
         c.means_lr_final = 1e-07f;
+        return true;
+    }
+    if (name == "centered-object") {
+        c.cap_max = 200000;
+        c.apply_loss_for_mask = true;
+        c.center_method = "focus";
+        c.background_mode = "pseudorandom";
+        c.depth_distortion_reg = 0.01f;
+        c.rgb_distortion_reg = 0.01f;
+        c.erank_reg = 0.05f;
         return true;
     }
     if (name == "linear-color") {
