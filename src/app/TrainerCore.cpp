@@ -4,6 +4,7 @@
 #include "app/EvalMetrics.h"
 #include "checkpoint/Adapt.h"
 #include "checkpoint/Resume.h"
+#include "checkpoint/SplatPly.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
 #include "core/ExrImage.h"
@@ -271,6 +272,126 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
             s.features_dc[i*3 + d] = (col[d] - 0.5f) / 0.28209479177387814f;
     }
     return s;
+}
+
+SeedSplats seed_splats_from_ply(const std::string& path, const TrainConfig& cfg,
+                                const ColorResolution& color) {
+    constexpr float kSHC0 = 0.28209479177387814f;  // band-0 SH, colour <-> DC
+    if (!is_splat_ply(path))
+        throw std::runtime_error(
+            path + ": not a 3D Gaussian Splatting PLY (no opacity / scale / rot "
+            "properties). A plain point cloud is a dataset's seed cloud, not an "
+            "--init-ply.");
+    SplatCloud src = read_splat_ply(path, cfg.sh_degree > 0);
+    if (src.num == 0) throw std::runtime_error(path + ": no splats in file");
+
+    std::vector<int64_t> pick((size_t)src.num);
+    std::iota(pick.begin(), pick.end(), (int64_t)0);
+    if (src.num > cfg.cap_max) {
+        // Faintest out first, as checkpoint adaptation does (checkpoint/Adapt.h).
+        std::partial_sort(pick.begin(), pick.begin() + cfg.cap_max, pick.end(),
+                          [&](int64_t a, int64_t b) {
+                              return src.opacities[(size_t)a] >
+                                     src.opacities[(size_t)b];
+                          });
+        pick.resize((size_t)cfg.cap_max);
+    }
+
+    const int64_t num = (int64_t)pick.size();
+    const int64_t cap = cfg.preallocate_splat_tensors
+        ? std::max<int64_t>(num, cfg.cap_max) : num;
+    const int64_t K = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1) - 1;
+    const int64_t K_src = src.dim_sh() - 1;
+    const int64_t K_copy = std::min(K, K_src);
+
+    SeedSplats s;
+    s.num = num;
+    s.means.assign((size_t)cap * 3, 0.f);
+    s.quats.assign((size_t)cap * 4, 0.f);
+    s.scales.assign((size_t)cap * 3, 0.f);
+    s.opacities.assign((size_t)cap, 0.f);
+    s.features_dc.assign((size_t)cap * 3, 0.f);
+    s.features_sh.assign((size_t)cap * K * 3, 0.f);
+
+    const float rescale = cfg.relative_scale.value_or(1.0f);
+    const float log_rescale = std::log(std::max(rescale, 1e-12f));
+    Mat3f to_splat = invert3x3(gamut_to_rec709(color.splat_gamut));
+
+    for (int64_t i = 0; i < num; i++) {
+        const int64_t j = pick[(size_t)i];
+        for (int d = 0; d < 3; d++) {
+            s.means[i*3 + d]  = src.means[j*3 + d] * rescale;
+            s.scales[i*3 + d] = src.scales[j*3 + d] + log_rescale;
+        }
+        float qn = 0.f;
+        for (int d = 0; d < 4; d++) qn += src.quats[j*4 + d] * src.quats[j*4 + d];
+        qn = std::sqrt(qn);
+        for (int d = 0; d < 4; d++)
+            s.quats[i*4 + d] = src.quats[j*4 + d] / std::max(qn, 1e-12f);
+        s.opacities[i] = src.opacities[j];
+
+        if (color.convert_seed) {
+            float col[3];
+            for (int d = 0; d < 3; d++)
+                col[d] = src.features_dc[j*3 + d] * kSHC0 + 0.5f;
+            for (int d = 0; d < 3; d++) col[d] = colorspace::srgb_to_linear(col[d]);
+            colorspace::apply3x3(to_splat, col);
+            if (!color.splat_linear)
+                for (int d = 0; d < 3; d++) col[d] = colorspace::linear_to_srgb(col[d]);
+            for (int d = 0; d < 3; d++)
+                s.features_dc[i*3 + d] = (col[d] - 0.5f) / kSHC0;
+        } else {
+            for (int d = 0; d < 3; d++)
+                s.features_dc[i*3 + d] = src.features_dc[j*3 + d];
+        }
+
+        // A gamut change is linear and the DC carries it; the view-dependent
+        // terms ride an encoded curve, so they come across as they are and the
+        // first refinements re-fit them.
+        for (int64_t k = 0; k < K_copy; k++)
+            for (int d = 0; d < 3; d++)
+                s.features_sh[(i*K + k)*3 + d] =
+                    src.features_sh[(j*K_src + k)*3 + d];
+    }
+    return s;
+}
+
+void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
+                        const TrainConfig& cfg, const ColorResolution& color) {
+    const int64_t room = (int64_t)cfg.cap_max - s.num;
+    if (room <= 0 || pts.num() == 0) return;
+
+    // seed_splats() budgets against cap_max, so the room left over IS the cap
+    // for this half; compact, because it is copied into `s` row by row.
+    TrainConfig sub = cfg;
+    sub.cap_max = (int)room;
+    sub.preallocate_splat_tensors = false;
+    SeedSplats p = seed_splats(pts, sub, color);
+
+    const int64_t K = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1) - 1;
+    const int64_t at = s.num, total = s.num + p.num;
+    if ((int64_t)s.opacities.size() < total) {
+        s.means.resize((size_t)total * 3, 0.f);
+        s.quats.resize((size_t)total * 4, 0.f);
+        s.scales.resize((size_t)total * 3, 0.f);
+        s.opacities.resize((size_t)total, 0.f);
+        s.features_dc.resize((size_t)total * 3, 0.f);
+        s.features_sh.resize((size_t)total * K * 3, 0.f);
+    }
+    for (int64_t i = 0; i < p.num; i++) {
+        for (int d = 0; d < 3; d++) {
+            s.means[(at + i)*3 + d]        = p.means[i*3 + d];
+            s.scales[(at + i)*3 + d]       = p.scales[i*3 + d];
+            s.features_dc[(at + i)*3 + d]  = p.features_dc[i*3 + d];
+        }
+        for (int d = 0; d < 4; d++)
+            s.quats[(at + i)*4 + d] = p.quats[i*4 + d];
+        s.opacities[at + i] = p.opacities[i];
+        for (int64_t k = 0; k < K; k++)
+            for (int d = 0; d < 3; d++)
+                s.features_sh[((at + i)*K + k)*3 + d] = p.features_sh[(i*K + k)*3 + d];
+    }
+    s.num = total;
 }
 
 
@@ -581,6 +702,10 @@ std::string format_duration(double seconds) {
 void TrainerSession::check_config() {
     if (std::string what = train_config_unsupported(cfg); !what.empty())
         throw std::runtime_error(what);
+    if (!cfg.init_ply.empty() && !cfg.resume.empty())
+        log(lmsg::warn_init_ply_ignored.get());
+    else if (!cfg.init_ply.empty())
+        find_splat_ply(cfg.init_ply);  // before the dataset is parsed, not after
     if (cfg.validation_fraction > 0)
         log(lmsg::warn_validation_unported.get());
     if (cfg.orientation_method != "up" || cfg.center_method != "poses")
@@ -774,7 +899,7 @@ void TrainerSession::setup_engine() {
     engine_reset();
 
     ColorResolution color = resolve_color(cfg);
-    SeedSplats seed = seed_splats(ds.points, cfg, color);
+    SeedSplats seed = seed_world(color);
     int64_t cap = (int64_t)seed.opacities.size();
     int64_t dim_sh = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1);
     auto tv = [](std::vector<float>& v, std::vector<int64_t> shape) -> TorchTensorView {
@@ -934,6 +1059,22 @@ void TrainerSession::setup_engine() {
     // appearance channel the checkpoint carries must already exist as a
     // restore target, which is what everything above establishes.
     if (!cfg.resume.empty()) restore_checkpoint();
+}
+
+// Where the run's first splats come from: the dataset's point cloud, an
+// --init-ply warm start, or both. A resume overwrites them either way.
+SeedSplats TrainerSession::seed_world(const ColorResolution& color) {
+    if (cfg.init_ply.empty() || !cfg.resume.empty())
+        return seed_splats(ds.points, cfg, color);
+
+    // A run or checkpoint directory resolves to its splat.ply, as --resume does.
+    const std::string ply = find_splat_ply(cfg.init_ply).first;
+    SeedSplats s = seed_splats_from_ply(ply, cfg, color);
+    const int64_t from_ply = s.num;
+    if (cfg.init_ply_add_points) append_point_seeds(s, ds.points, cfg, color);
+    log(lfmt(lmsg::seeded_from_ply,
+             {ply, (long long)from_ply, (long long)(s.num - from_ply)}));
+    return s;
 }
 
 // Restore engine state from cfg.resume, adapting the checkpoint's buffers on

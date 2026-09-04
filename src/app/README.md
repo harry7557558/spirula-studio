@@ -324,6 +324,33 @@ in `core/Tensor.h` — those are `__device__` functions, but `__device__` is an
 empty macro in host translation units, so the host path calls the same code
 the kernels do rather than a copy of it.
 
+## Warm start
+
+`--init-ply <file.ply|run_dir|step-*.ckpt>` seeds the run from an
+already-trained 3DGS PLY instead of the dataset's point cloud
+(`seed_splats_from_ply()` in `TrainerCore.cpp`). Everything the file carries —
+means, scales, rotations, opacities, DC and SH — goes straight into
+`set_data_3dgs()`; only the layout is re-fitted to this run. Splats past
+`cap_max` are dropped by lowest opacity, the SH past the DC is truncated or
+zero-padded to `sh_degree`, `relative_scale` scales the means and shifts the
+log-scales, and the DC converts to the splat gamut when
+`convert_initial_point_cloud_color` is on (the view-dependent terms ride an
+encoded curve and cannot follow, so they come across as they are).
+
+`--init-ply-add-points` adds the dataset's point cloud **on top** rather than
+replacing it: the PLY goes in first and `append_point_seeds()` fills what is
+left up to `cap_max` with an ordinary `seed_splats()` over the cloud. It is the
+flag for a dataset that has grown since that model was trained; where the two
+overlap the extra splats are redundant and refinement prunes them.
+
+This is **not** a resume: the step counter starts at 0, the optimizer starts
+empty and the refinement schedule runs from the beginning. The PLY has to be in
+this run's training frame — same dataset, same scene settings
+(`orientation_method`, `center_method`, `auto_scale_poses`, `train_frame`,
+`relative_scale`) — because nothing registers it. When both are given
+`--resume` wins with a warning, since a resumed run's `config.json` carries the
+original `--init-ply` too.
+
 ## Eval
 
 Runs after training when `eval_mode != "all"` and the eval split is non-empty.

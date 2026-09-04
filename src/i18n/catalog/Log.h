@@ -908,6 +908,23 @@ SS_MSG(parsed_dataset,
     TR("Kamera: {0} (bölmeden sonra {1}), başlangıç noktası: {2} "
        "(train_frame_scale={3})"));
 
+// {0} the --init-ply file, {1} its splats after the cap, {2} seeds the
+// dataset's point cloud added on top (0 without --init-ply-add-points).
+SS_MSG(seeded_from_ply,
+    EN("Seeded from {0}: {1} splats from the PLY, {2} from the point cloud"),
+    JA("{0} から初期化しました。PLY のスプラット {1}、点群から {2}"),
+    ZH_HANS("已从 {0} 初始化：来自 PLY 的泼溅 {1} 个，来自点云 {2} 个"),
+    ZH_HANT("已從 {0} 初始化：來自 PLY 的潑濺 {1} 個，來自點雲 {2} 個"),
+    KO("{0}에서 초기화했습니다. PLY의 스플랫 {1}개, 점 구름에서 {2}개"),
+    DE("Initialisiert aus {0}: {1} Splats aus dem PLY, {2} aus der Punktwolke"),
+    FR("Initialisé depuis {0} : {1} splats du PLY, {2} du nuage de points"),
+    ES("Inicializado desde {0}: {1} splats del PLY, {2} de la nube de puntos"),
+    PT("Inicializado a partir de {0}: {1} splats do PLY, {2} da nuvem de pontos"),
+    IT("Inizializzato da {0}: {1} splat dal PLY, {2} dalla nuvola di punti"),
+    NL("Geïnitialiseerd vanuit {0}: {1} splats uit het PLY, {2} uit de puntenwolk"),
+    RU("Инициализировано из {0}: сплатов из PLY {1}, из облака точек {2}"),
+    TR("{0} dosyasından başlatıldı: PLY'den {1} splat, nokta bulutundan {2}"));
+
 // Printed only when --input-depth-is-ray-depth was left unset and there are
 // depth maps to read; {0} is the convention the lens picked.
 SS_MSG(ray_depth_resolved,
@@ -1464,6 +1481,31 @@ SS_MSG(bad_quantization_level,
     NL("quantization_level moet 0 of 1 zijn"),
     RU("quantization_level должен быть 0 или 1"),
     TR("quantization_level 0 ya da 1 olmalı"));
+SS_MSG(warn_init_ply_ignored,
+    EN("warning: --resume restores the checkpoint's own splats, so --init-ply "
+       "is ignored"),
+    JA("警告: --resume はチェックポイント自身のスプラットを復元するため、"
+       "--init-ply は無視されます"),
+    ZH_HANS("警告：--resume 会恢复检查点自己的泼溅，因此 --init-ply 会被忽略"),
+    ZH_HANT("警告：--resume 會恢復檢查點自己的潑濺，因此 --init-ply 會被忽略"),
+    KO("경고: --resume은 체크포인트 자체의 스플랫을 되살리므로 --init-ply는 "
+       "무시됩니다"),
+    DE("Warnung: --resume stellt die Splats des Checkpoints selbst wieder her, "
+       "--init-ply wird ignoriert"),
+    FR("Avertissement : --resume restaure les splats du point de reprise "
+       "lui-même, donc --init-ply est ignoré"),
+    ES("Aviso: --resume restaura los splats del propio punto de control, así "
+       "que --init-ply se ignora"),
+    PT("Aviso: --resume restaura os splats do próprio ponto de verificação, "
+       "então --init-ply é ignorado"),
+    IT("Avviso: --resume ripristina gli splat del checkpoint stesso, quindi "
+       "--init-ply viene ignorato"),
+    NL("Waarschuwing: --resume herstelt de splats van het controlepunt zelf, "
+       "dus --init-ply wordt genegeerd"),
+    RU("Предупреждение: --resume восстанавливает сплаты самой контрольной "
+       "точки, поэтому --init-ply игнорируется"),
+    TR("Uyarı: --resume denetim noktasının kendi splat'larını geri yükler, bu "
+       "yüzden --init-ply yok sayılır"));
 SS_MSG(warn_validation_unported,
     EN("warning: validation images are held out but early stopping / eval is "
        "not ported yet"),

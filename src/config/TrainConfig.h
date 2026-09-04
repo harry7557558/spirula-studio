@@ -149,6 +149,8 @@ inline int train_tier_rank(const char* tier) {
     X(int, background_sh_degree, 4, "splats", "basic", "")                   \
     X(int, background_noise_warmup, 2000, "splats", "expert", "")            \
     X(float, background_noise_pre_warmup, 0.25f, "splats", "expert", "")     \
+    X(std::string, init_ply, "", "splats", "advanced", "none")               \
+    X(bool, init_ply_add_points, false, "splats", "advanced", "")            \
     X(std::optional<float>, scale_init, std::nullopt, "splats", "advanced", "") \
     X(std::optional<float>, opacity_init, std::nullopt, "splats", "advanced", "") \
     X(bool, suppress_initial_scales, false, "splats", "expert", "")          \
