@@ -2,6 +2,8 @@
 
 #include "app/gui/DatasetPrep.h"
 
+#include "app/gui/ReconStamp.h"
+
 #include "i18n/catalog/Log.h"
 
 #include "app/gui/FrameSelect.h"
@@ -640,6 +642,18 @@ bool folder_looks_like_dataset(const std::string& dir) {
     return metashape_export_here(p);
 }
 
+// A folder is the run's leftover only if the run would write it. When images/
+// or masks/ under the output IS an input, it is the capture.
+static bool is_input_folder(const fs::path& dir,
+                            const std::vector<PrepInput>& inputs, bool masks) {
+    std::error_code ec;
+    for (const PrepInput& in : inputs) {
+        const std::string& p = masks ? in.mask_dir : in.path;
+        if (!p.empty() && fs::equivalent(dir, p, ec)) return true;
+    }
+    return false;
+}
+
 WorkspaceState probe_workspace(const std::string& workspace,
                                const std::vector<PrepInput>& inputs) {
     WorkspaceState st;
@@ -647,14 +661,8 @@ WorkspaceState probe_workspace(const std::string& workspace,
     const fs::path ws(workspace);
     if (workspace.empty() || !fs::is_directory(ws, ec)) return st;
 
-    // A folder is the run's leftover only if the run would write it. When
-    // images/ or masks/ under the output IS an input, it is the capture.
     auto is_input = [&](const fs::path& dir, bool masks) {
-        for (const PrepInput& in : inputs) {
-            const std::string& p = masks ? in.mask_dir : in.path;
-            if (!p.empty() && fs::equivalent(dir, p, ec)) return true;
-        }
-        return false;
+        return is_input_folder(dir, inputs, masks);
     };
     auto has_content = [&](const fs::path& p) {
         return fs::is_directory(p, ec) && !fs::is_empty(p, ec);
@@ -671,7 +679,29 @@ WorkspaceState probe_workspace(const std::string& workspace,
                fs::exists(ws / "transforms.json", ec) ||
                metashape_export_here(ws);
     st.geometry = has_content(ws / "normals") || has_content(ws / "depths");
+    st.recon_stamp = fs::exists(ws / kReconStampFile, ec);
     return st;
+}
+
+std::vector<std::string> workspace_artifacts(const std::string& workspace,
+                                             const std::vector<PrepInput>& inputs) {
+    std::vector<std::string> out;
+    std::error_code ec;
+    const fs::path ws(workspace);
+    if (workspace.empty() || !fs::is_directory(ws, ec)) return out;
+
+    auto add = [&](const char* name) {
+        const fs::path p = ws / name;
+        if (fs::is_directory(p, ec) ? !fs::is_empty(p, ec) : fs::exists(p, ec))
+            out.push_back(p.string());
+    };
+    if (!is_input_folder(ws / "images", inputs, false)) add("images");
+    if (!is_input_folder(ws / "masks", inputs, true)) add("masks");
+    for (const char* name : {"features", "sparse", "colmap", "normals", "depths",
+                             ".progress", "matches.bin", "database.db",
+                             kReconStampFile})
+        add(name);
+    return out;
 }
 
 bool is_mask_folder(const std::string& path) {

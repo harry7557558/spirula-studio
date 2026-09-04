@@ -3002,6 +3002,32 @@ SS_MSG(stage_geometry,
     RU("Оценка глубины и нормалей"),
     TR("Derinlik ve normaller kestiriliyor"));
 
+SS_MSG(sfm_settings_changed,
+    EN("the settings have moved since the reconstruction in the output folder "
+       "was built ({0}); building it again"),
+    JA("出力フォルダの再構成結果を作ったときから設定が変わっています（{0}）。"
+       "作り直します"),
+    ZH_HANS("自输出文件夹里的重建结果做好之后，设置已经变了（{0}），将重新重建"),
+    ZH_HANT("自輸出資料夾裡的重建結果做好之後，設定已經變了（{0}），將重新重建"),
+    KO("출력 폴더의 재구성 결과를 만든 뒤로 설정이 바뀌었습니다({0}). 다시 "
+       "만듭니다"),
+    DE("die Einstellungen haben sich geändert, seit die Rekonstruktion im "
+       "Ausgabeordner gebaut wurde ({0}); sie wird neu gebaut"),
+    FR("les réglages ont changé depuis la construction de la reconstruction du "
+       "dossier de sortie ({0}) ; elle est refaite"),
+    ES("los ajustes han cambiado desde que se construyó la reconstrucción de "
+       "la carpeta de salida ({0}); se rehace"),
+    PT("as definições mudaram desde que a reconstrução da pasta de saída foi "
+       "construída ({0}); vai ser refeita"),
+    IT("le impostazioni sono cambiate da quando è stata costruita la "
+       "ricostruzione nella cartella di uscita ({0}); viene rifatta"),
+    NL("de instellingen zijn veranderd sinds de reconstructie in de uitvoermap "
+       "is gebouwd ({0}); die wordt opnieuw gemaakt"),
+    RU("настройки изменились с тех пор, как была построена реконструкция в "
+       "папке вывода ({0}); она строится заново"),
+    TR("çıktı klasöründeki yeniden kurma yapıldığından beri ayarlar değişti "
+       "({0}); yeniden kuruluyor"));
+
 SS_MSG(sfm_reusing_model,
     EN("{0} already holds a reconstruction; keeping it and only adding to it "
        "(tick \"Reconstruct again\" to replace it)"),

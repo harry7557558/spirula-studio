@@ -4,6 +4,8 @@
 
 #include "app/gui/ColmapRunner.h"
 
+#include "app/gui/ReconStamp.h"
+
 #include "i18n/catalog/Log.h"
 #include "app/AppPaths.h"
 #include "app/gui/DatasetPrep.h"
@@ -326,6 +328,47 @@ double ColmapRunner::model_reproj_error(const ColmapJob& job,
     return err;
 }
 
+// What the model is made of, in a stable order, for the stamp left beside it
+// (ReconStamp.h). Not COLMAP's own command line -- this path spends several of
+// them; what matters is that the same panel produces the same list.
+static std::vector<std::string> colmap_recon_args(const ColmapJob& job) {
+    auto num = [](double v) {
+        char b[32];
+        std::snprintf(b, sizeof b, "%g", v);
+        return std::string(b);
+    };
+    auto flag = [](bool v) { return std::string(v ? "1" : "0"); };
+    return {
+        "--camera-model", job.camera_model,
+        "--camera-mode", std::to_string(job.camera_mode),
+        "--camera-params", job.camera_params,
+        "--focal-factor", num(job.init_focal_factor),
+        "--features", job.feature_type == 1 ? "aliked" : "sift",
+        "--lightglue", flag(job.lightglue),
+        "--quality", std::to_string(job.quality),
+        "--matcher", std::to_string(job.matcher),
+        "--loop-closure", flag(job.seq_loop_closure),
+        "--overlap", std::to_string(job.seq_overlap),
+        "--quadratic-overlap", flag(job.seq_quadratic_overlap),
+        "--max-features", std::to_string(job.max_num_features),
+        "--max-image-size", std::to_string(job.max_image_size),
+        "--affine-shape", flag(job.estimate_affine_shape),
+        "--ba-gpu", flag(job.ba_use_gpu),
+        "--extra-params", std::to_string(job.mapper_extra_params),
+        "--min-matches", std::to_string(job.min_num_matches),
+        "--max-ratio", num(job.match_max_ratio),
+        "--min-inliers", std::to_string(job.min_inliers_per_pair),
+        "--abs-pose-inliers", std::to_string(job.abs_pose_min_num_inliers),
+        "--abs-pose-inlier-ratio", num(job.abs_pose_min_inlier_ratio),
+        "--abs-pose-error", num(job.abs_pose_max_error),
+        "--merge-models", flag(job.merge_models),
+        "--final-ba", flag(job.final_bundle_adjust),
+        "--vocab-tree", job.vocab_tree_path,
+        "--masks", flag(job.mask_enable),
+        "--mask-prompt", job.mask_enable ? job.mask_prompt : std::string(),
+    };
+}
+
 void ColmapRunner::run(ColmapJob job) {
     auto fail = [&](const std::string& why) {
         _prog.finish(_cancel.load() ? StageStatus::Skipped : StageStatus::Failed);
@@ -341,7 +384,18 @@ void ColmapRunner::run(ColmapJob job) {
         // insisted on; a model already there is reused whoever made it, and the
         // input's own images are not leftovers (see SfmRunner).
         const WorkspaceState prior = probe_workspace(ws.string(), job.inputs);
-        const bool reuse_model = prior.model && !job.redo_model;
+        // The model, as the settings that make it, against the ones the model
+        // already there was made with. A model with no stamp came from
+        // somewhere else and is reused whatever the panel says.
+        ReconStamp now;
+        now.present = true;
+        now.engine = "colmap";
+        now.args = colmap_recon_args(job);
+        const std::string changed =
+            recon_stamp_change(read_recon_stamp(ws.string()), now);
+        const bool reuse_model = prior.model && !job.redo_model && changed.empty();
+        if (prior.model && !job.redo_model && !changed.empty())
+            log(spirula::i18n::format(lmsg::sfm_settings_changed, {changed}));
         if (prior.resumable() && !job.resume)
             return fail("the workspace already contains an unfinished run "
                         "(database.db / extracted frames / masks); enable "
@@ -465,6 +519,9 @@ void ColmapRunner::run(ColmapJob job) {
 
             // ---- 3. feature extraction -----------------------------------------
             take_reconstruction(job);
+            // Live edits and the per-folder camera fix-up land after the reuse
+            // question was asked; the stamp has to record what actually ran.
+            now.args = colmap_recon_args(job);
             set_stage(Stage::Features,
                       aliked ? lmsg::stage_colmap_features_aliked.get()
                              : lmsg::stage_colmap_features.get());
@@ -683,7 +740,7 @@ void ColmapRunner::run(ColmapJob job) {
             // one is from a FINISHED run -- reuse it. An interrupted mapper
             // leaves nothing and simply reruns.
             std::vector<std::pair<int64_t, fs::path>> models;
-            if (job.resume && !job.redo_model &&
+            if (job.resume && !job.redo_model && changed.empty() &&
                 !(models = enumerate_models()).empty()) {
                 log("Resume: " + std::to_string(models.size()) +
                     " existing model(s) under sparse/; skipping the mapper "
@@ -798,6 +855,8 @@ void ColmapRunner::run(ColmapJob job) {
                 remove_tree(tmp);
             }
         }
+
+        if (!reuse_model) write_recon_stamp(ws.string(), now);
 
         // ---- depth and normals ---------------------------------------------
         take_geometry(job);

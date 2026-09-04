@@ -1167,6 +1167,13 @@ void GuiApp::refresh_sources() {
     }
 }
 
+// Every input carries a concrete lens, so a list holding a 360 camera and a
+// phone cannot end up applying one of them to the other. An Insta360 .insv
+// splits into one folder per fisheye track, which the thin-prism model fits.
+static std::string default_lens(const std::string& path) {
+    return is_dual_fisheye_path(path) ? "thin-prism-fisheye" : "opencv";
+}
+
 // One picked path -> the input it describes, with the defaults its kind wants.
 static PrepInput make_source(const std::string& path,
                              bool use_found_masks) {
@@ -1182,18 +1189,7 @@ static PrepInput make_source(const std::string& path,
         resolve_photo_folder(path, s.path, s.mask_dir);
         if (!use_found_masks) s.mask_dir.clear();
     }
-    // Every input carries a concrete lens, so a list holding a 360 camera and a
-    // phone cannot end up applying one of them to the other.
-    //
-    // 360-camera preset for Insta360 .insv files: the two fisheye tracks land
-    // in one folder per lens (one camera each), the thin-prism fisheye model
-    // fits them, and the known focal length above starts them off.
-    s.camera_model = "opencv";
-    if (is_dual_fisheye_path(path)) {
-        s.camera_model = "thin-prism-fisheye";
-        // Commented - We don't assume every camera is Insta360 X5
-        // s.focal_factor = kInsta360FocalFactor;
-    }
+    s.camera_model = default_lens(path);
     return s;
 }
 
@@ -1271,9 +1267,16 @@ void GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
             log(i18n::format(dmsg::log_masks_orphaned, {masks}));
     }
     if (_sources.empty()) return;
+    apply_source_presets();
+    if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
+    adopt_exr_color_space();
+    refresh_sources();
+}
 
-    // The engine-wide settings follow whatever the list is now. A video is a
-    // capture in order; a folder of photos is not.
+// The engine-wide settings the list itself decides. A video is a capture in
+// order; a folder of photos is not.
+void GuiApp::apply_source_presets() {
+    if (_sources.empty()) return;
     const bool video = _sources[0].is_video;
     const bool fisheye = is_dual_fisheye_path(_sources[0].path);
     _sfm_job.data_type = video ? 1 : 0;
@@ -1297,9 +1300,6 @@ void GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
         _sfm_job.camera_mode = 1;
         _colmap_job.camera_mode = 1;
     }
-    if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
-    adopt_exr_color_space();
-    refresh_sources();
 }
 
 // A folder of EXRs declares its own colour space, and the picker for it is
@@ -1963,6 +1963,7 @@ const WorkspaceState& GuiApp::workspace_state() {
         _ws_state_key = std::move(key);
         _ws_state_at = now;
         _ws_state = probe_workspace(_workspace, _sources);
+        _ws_artifacts = workspace_artifacts(_workspace, _sources);
     }
     return _ws_state;
 }
@@ -2284,10 +2285,21 @@ bool colmap_lens_combo(const char* id, int* idx) {
 void GuiApp::draw_dataset_basics() {
     const bool builtin = effective_engine() == Engine::BuiltIn;
 
+    // A model already in the output folder is reused, so these settings reach
+    // it only through a rebuild -- which a stamp mismatch forces
+    // (ReconStamp.h), and which a model that arrived without one never gets.
+    const WorkspaceState& prior = workspace_state();
+    const bool reusing = !dataset_busy() && prior.model && !_redo_model;
+    const bool inert = reusing && !prior.recon_stamp;
+    if (reusing)
+        ui::TextColoredWrapped(inert ? kWarn : kDim,
+                               inert ? dmsg::recon_reuse_locked
+                                     : dmsg::recon_reuse_rebuild);
+
     // Everything down to the frame-rate control is read by feature extraction
     // and after; the frame settings below it were read the moment the run
     // began. Hence two guards rather than one round the lot.
-    ImGui::BeginDisabled(dataset_locked(Stage::Features));
+    ImGui::BeginDisabled(inert || dataset_locked(Stage::Features));
 
     // Quality means the same thing to both engines even though it moves
     // different knobs, so it is one control.
@@ -2326,13 +2338,13 @@ void GuiApp::draw_dataset_basics() {
     if (!per_input_lens) {
         ImGui::SetNextItemWidth(px(220.0f));
         if (builtin) {
-            std::string& model =
+            const std::string& model =
                 _sources.empty() ? _sfm_job.camera_model : _sources[0].camera_model;
             int idx = 0;
             for (int i = 0; i < kNumSfmCameraModels; i++)
                 if (model == kSfmCameraModels[i]) idx = i;
             if (sfm_lens_combo(ui::detail::label(dmsg::camera_lens), &idx))
-                model = kSfmCameraModels[idx];
+                apply_lens_to_sources(kSfmCameraModels[idx]);
             lens_tooltip(*sfm_camera_model_helps()[idx]);
         } else {
             int idx = 0;
@@ -2408,6 +2420,17 @@ void GuiApp::draw_dataset_basics() {
         ImGui::EndDisabled();
     }
     if (dataset_busy()) ui::help_on_hover_disabled(dmsg::step_locked);
+}
+
+// One lens control for the whole capture has to reach every input:
+// append_camera_overrides emits a --camera-model per input folder, and one
+// still holding the model its file type suggested wins on longest prefix.
+void GuiApp::apply_lens_to_sources(const std::string& model) {
+    _sfm_job.camera_model = model;
+    for (PrepInput& s : _sources) {
+        s.camera_model = model;
+        for (SubCamera& sc : s.subcameras) sc.camera_model.clear();
+    }
 }
 
 // One lens per input, in place of the single "Camera / lens" control, once
@@ -3254,6 +3277,101 @@ void GuiApp::draw_dataset_rerun(const WorkspaceState& prior) {
 }
 
 // ---------------------------------------------------------------------------
+// Starting over
+// ---------------------------------------------------------------------------
+
+void GuiApp::reset_recon_options() {
+    // The photographs' colour space was read off the files, not chosen, so it
+    // is not one of the options this puts back.
+    const std::string gamut = _sfm_job.image_gamut;
+    const std::optional<bool> linear = _sfm_job.image_is_linear;
+    _sfm_job = SfmJob{};
+    _colmap_job = ColmapJob{};
+    _geometry = GeometryJob{};
+    _sfm_job.image_gamut = gamut;
+    _sfm_job.image_is_linear = linear;
+    for (PrepInput& s : _sources) {
+        s.camera_model = default_lens(s.path);
+        s.focal_factor = 0.0f;
+        for (SubCamera& sc : s.subcameras) {
+            sc.camera_model.clear();
+            sc.focal_factor = 0.0f;
+        }
+    }
+    apply_source_presets();
+    _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    _resume = true;
+    log(dmsg::reset_options_done.get());
+}
+
+void GuiApp::draw_dataset_reset() {
+    if (!ui::CollapsingHeader(dmsg::reset_section)) return;
+    ImGui::Indent();
+    ui::TextDisabledWrapped(dmsg::reset_section_help);
+    ImGui::BeginDisabled(dataset_busy());
+    // A transforms.json or a Metashape export is not on the list -- it is the
+    // dataset somebody handed over, not something a run here wrote -- so a
+    // folder can hold a model and still have nothing to delete.
+    ImGui::BeginDisabled(_ws_artifacts.empty());
+    if (ui::Button(dmsg::clear_project)) {
+        _clear_targets = _ws_artifacts;
+        _clear_open = true;
+    }
+    ImGui::EndDisabled();
+    ui::help_on_hover(dmsg::clear_project_help);
+    ImGui::SameLine();
+    if (ui::Button(dmsg::reset_options)) reset_recon_options();
+    ui::help_on_hover(dmsg::reset_options_help);
+    ImGui::EndDisabled();
+    ImGui::NewLine();
+    ImGui::Unindent();
+}
+
+// Deleting is the one thing here that cannot be undone, so the modal lists the
+// paths themselves rather than describing them.
+void GuiApp::draw_clear_project_modal() {
+    if (_clear_open) {
+        ui::OpenPopup(dmsg::clear_project_title);
+        _clear_open = false;
+        _clear_shown = true;
+    }
+    if (!_clear_shown) return;
+    if (!ui::BeginPopupModal(dmsg::clear_project_title, nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+        _clear_shown = false;
+        return;
+    }
+    ImGui::PushTextWrapPos(px(460.0f));
+    ui::Text(dmsg::clear_project_confirm, {_workspace});
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    for (const std::string& path : _clear_targets) ui::TextDisabledRaw(path);
+    ImGui::Spacing();
+
+    if (ui::Button(dmsg::clear_project_button, ImVec2(px(150.0f), 0))) {
+        // The screen is reading several of these; it has to let go first.
+        reset_dataset_preview();
+        for (const std::string& path : _clear_targets) {
+            std::error_code ec;
+            fs::remove_all(path, ec);
+            if (ec) log(i18n::format(dmsg::clear_project_failed,
+                                     {path, ec.message()}));
+        }
+        log(i18n::format(dmsg::clear_project_done, {_workspace}));
+        _clear_targets.clear();
+        _ws_state_at = -1.0;      // the answer changed; do not wait a second
+        _clear_shown = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ui::Button(dmsg::cancel, ImVec2(px(150.0f), 0))) {
+        _clear_shown = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+// ---------------------------------------------------------------------------
 // Advanced: the photographs' colour space
 // ---------------------------------------------------------------------------
 
@@ -3713,7 +3831,10 @@ void GuiApp::draw_dataset_form(float height, bool running) {
                 else                      request_geometry_download();
             }
         }
-        if (ready) draw_dataset_rerun(workspace_state());
+        if (ready) {
+            draw_dataset_rerun(workspace_state());
+            draw_dataset_reset();
+        }
     } else if (ui::Button(dmsg::cancel, ImVec2(px(200.0f), px(34.0f)))) {
         cancel_dataset_job();
     }
@@ -3843,6 +3964,7 @@ void GuiApp::draw_new_dataset() {
         }
     }
     if (_geometry_panel.is_open()) _geometry_panel.draw(_geometry);
+    draw_clear_project_modal();
     draw_license_modal();
 }
 

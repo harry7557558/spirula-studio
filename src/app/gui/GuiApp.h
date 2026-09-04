@@ -256,6 +256,19 @@ private:
     // "Re-run masking only" and friends: what probe_workspace already knows,
     // as the actions it implies.
     void draw_dataset_rerun(const WorkspaceState& prior);
+    // Throwing the whole project away rather than one step of it: the run's
+    // own files, and the options, each on its own button.
+    void draw_dataset_reset();
+    void draw_clear_project_modal();
+    // Every option back to what a freshly picked input would have given it.
+    // The inputs, the output folder and the mask prompt are not options.
+    void reset_recon_options();
+    // The settings an input implies -- what a video wants, what a dual-lens
+    // 360 file wants. Asked when the list changes, and again by the reset.
+    void apply_source_presets();
+    // The single "Camera / lens" control speaks for the whole capture, so it
+    // writes to every input rather than only the first.
+    void apply_lens_to_sources(const std::string& model);
     // What the output folder holds, at 1 Hz rather than per frame: the answer
     // now costs a directory scan (a Metashape export is found by extension).
     const WorkspaceState& workspace_state();
@@ -600,9 +613,15 @@ private:
     // in the wild. Declared once here; the run normalizes what it writes.
     bool _flip_found_masks = false;
 
+    // "Clear this project's data": what the modal is about to delete, listed
+    // when it opens so the user reads the same paths that go.
+    bool _clear_open = false, _clear_shown = false;
+    std::vector<std::string> _clear_targets;
+
     // workspace_state()'s cache: what it was asked about and when.
     WorkspaceState _ws_state;
     std::string _ws_state_key;
+    std::vector<std::string> _ws_artifacts;
     double _ws_state_at = -1.0;
 
     // VRAM readout on the status strip, polled from the backend at ~2 Hz.

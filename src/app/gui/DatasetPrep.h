@@ -306,11 +306,21 @@ struct WorkspaceState {
     // finished. A run pointed at one ADDS to it rather than rebuilding it.
     bool model = false;
     bool geometry = false;  // normals/ or depths/, which a run adds to
+    // Were the flags that built that model written down beside it
+    // (ReconStamp.h)? Without them a run cannot tell whether reusing it still
+    // answers what the panel is asking for, and reuses it regardless.
+    bool recon_stamp = false;
     // Something a resumed run can pick up instead of redoing.
     bool resumable() const { return frames || features || masks; }
 };
 WorkspaceState probe_workspace(const std::string& workspace,
                                const std::vector<PrepInput>& inputs);
+
+// Everything a run WROTE into the output folder, absolute, existing ones only:
+// what "clear this project" deletes. Never an input -- the images and masks the
+// user picked are not leftovers, which is probe_workspace's rule reused.
+std::vector<std::string> workspace_artifacts(const std::string& workspace,
+                                             const std::vector<PrepInput>& inputs);
 
 // Is this the mask half of one of those layouts, rather than an input of its
 // own? By name, which is what makes it a convention: `--mask-dir masks` is the

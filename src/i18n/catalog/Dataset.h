@@ -859,6 +859,246 @@ SS_MSG(rerun_model,
     RU("Реконструкция заново"),
     TR("Yeniden kurma yeniden"));
 
+// ---------------------------------------------------------------------------
+// Starting the project over
+// ---------------------------------------------------------------------------
+
+SS_MSG(reset_section,
+    EN("Start over"),
+    JA("最初からやり直す"), ZH_HANS("从头开始"), ZH_HANT("從頭開始"),
+    KO("처음부터 다시"),   DE("Von vorn anfangen"),
+    FR("Repartir de zéro"), ES("Empezar de nuevo"),
+    PT("Começar do zero"),  IT("Ricominciare da capo"),
+    NL("Opnieuw beginnen"), RU("Начать заново"),
+    TR("Baştan başla"));
+
+SS_MSG(reset_section_help,
+    EN("Throw away what this project has made, or put the options back where "
+       "they started. The photos and videos you picked are never touched."),
+    JA("このプロジェクトが作ったものを捨てるか、設定を最初の状態に戻します。"
+       "選んだ写真や動画には手を触れません。"),
+    ZH_HANS("丢掉这个项目已经生成的东西，或者把设置恢复成最初的样子。"
+            "你选的照片和视频不会被动。"),
+    ZH_HANT("丟掉這個專案已經產生的東西，或者把設定恢復成最初的樣子。"
+            "你選的照片和影片不會被動。"),
+    KO("이 프로젝트가 만든 것을 버리거나, 설정을 처음 상태로 되돌립니다. "
+       "고른 사진과 영상에는 손대지 않습니다."),
+    DE("Werfen Sie weg, was dieses Projekt erzeugt hat, oder setzen Sie die "
+       "Optionen auf den Anfang zurück. Die gewählten Fotos und Videos bleiben "
+       "unangetastet."),
+    FR("Jetez ce que ce projet a produit, ou remettez les réglages à leur "
+       "point de départ. Les photos et vidéos choisies ne sont jamais "
+       "touchées."),
+    ES("Tira lo que este proyecto ha generado, o devuelve las opciones a su "
+       "punto de partida. Las fotos y los vídeos que elegiste no se tocan "
+       "nunca."),
+    PT("Deite fora o que este projeto produziu, ou reponha as opções no ponto "
+       "de partida. As fotos e os vídeos que escolheu nunca são tocados."),
+    IT("Butta via ciò che questo progetto ha prodotto, o riporta le opzioni al "
+       "punto di partenza. Le foto e i video che hai scelto non vengono mai "
+       "toccati."),
+    NL("Gooi weg wat dit project heeft gemaakt, of zet de opties terug op hun "
+       "beginstand. De gekozen foto's en video's worden nooit aangeraakt."),
+    RU("Выбросьте то, что сделал этот проект, или верните настройки к "
+       "исходным. Выбранные фотографии и видео никогда не трогаются."),
+    TR("Bu projenin ürettiğini atın ya da seçenekleri başlangıç durumuna "
+       "döndürün. Seçtiğiniz fotoğraflara ve videolara hiç dokunulmaz."));
+
+SS_MSG(clear_project,
+    EN("Clear this project's data"),
+    JA("このプロジェクトのデータを消す"),
+    ZH_HANS("清除本项目的数据"), ZH_HANT("清除本專案的資料"),
+    KO("이 프로젝트의 데이터 지우기"),
+    DE("Daten dieses Projekts löschen"),
+    FR("Effacer les données de ce projet"),
+    ES("Borrar los datos de este proyecto"),
+    PT("Apagar os dados deste projeto"),
+    IT("Cancella i dati di questo progetto"),
+    NL("Gegevens van dit project wissen"),
+    RU("Удалить данные этого проекта"),
+    TR("Bu projenin verilerini sil"));
+
+SS_MSG(clear_project_help,
+    EN("Deletes everything the runs wrote into the output folder: extracted "
+       "frames, masks, features, the reconstruction, depth and normals. The "
+       "next run starts from nothing."),
+    JA("実行が出力フォルダに書いたものをすべて削除します。書き出したフレーム、"
+       "マスク、特徴点、再構成結果、深度と法線です。次の実行は何もない状態から"
+       "始まります。"),
+    ZH_HANS("删除运行写进输出文件夹的一切：抽出的帧、蒙版、特征、重建结果、"
+            "深度与法线。下一次运行从零开始。"),
+    ZH_HANT("刪除執行寫進輸出資料夾的一切：抽出的格、遮罩、特徵、重建結果、"
+            "深度與法線。下一次執行從零開始。"),
+    KO("실행이 출력 폴더에 쓴 것을 모두 지웁니다. 추출한 프레임, 마스크, "
+       "특징점, 재구성 결과, 깊이와 법선입니다. 다음 실행은 아무것도 없는 "
+       "상태에서 시작합니다."),
+    DE("Löscht alles, was die Läufe in den Ausgabeordner geschrieben haben: "
+       "ausgegebene Bilder, Masken, Merkmale, die Rekonstruktion, Tiefe und "
+       "Normalen. Der nächste Lauf fängt bei nichts an."),
+    FR("Supprime tout ce que les exécutions ont écrit dans le dossier de "
+       "sortie : images extraites, masques, points caractéristiques, "
+       "reconstruction, profondeur et normales. La prochaine exécution repart "
+       "de rien."),
+    ES("Borra todo lo que las ejecuciones escribieron en la carpeta de salida: "
+       "fotogramas extraídos, máscaras, puntos característicos, la "
+       "reconstrucción, profundidad y normales. La siguiente ejecución empieza "
+       "de cero."),
+    PT("Apaga tudo o que as execuções escreveram na pasta de saída: quadros "
+       "extraídos, máscaras, pontos característicos, a reconstrução, "
+       "profundidade e normais. A execução seguinte começa do nada."),
+    IT("Cancella tutto ciò che le esecuzioni hanno scritto nella cartella di "
+       "uscita: fotogrammi estratti, maschere, punti caratteristici, la "
+       "ricostruzione, profondità e normali. L'esecuzione successiva parte da "
+       "zero."),
+    NL("Verwijdert alles wat de runs in de uitvoermap hebben geschreven: "
+       "uitgepakte beelden, maskers, kenmerken, de reconstructie, diepte en "
+       "normalen. De volgende run begint bij niets."),
+    RU("Удаляет всё, что запуски записали в папку вывода: извлечённые кадры, "
+       "маски, признаки, реконструкцию, глубину и нормали. Следующий запуск "
+       "начнётся с нуля."),
+    TR("Çalıştırmaların çıktı klasörüne yazdığı her şeyi siler: çıkarılan "
+       "kareler, maskeler, öznitelikler, yeniden kurma, derinlik ve normaller. "
+       "Sonraki çalıştırma sıfırdan başlar."));
+
+SS_MSG(clear_project_title,
+    EN("Clear the output folder"),
+    JA("出力フォルダを空にする"),
+    ZH_HANS("清空输出文件夹"), ZH_HANT("清空輸出資料夾"),
+    KO("출력 폴더 비우기"),
+    DE("Ausgabeordner leeren"),
+    FR("Vider le dossier de sortie"),
+    ES("Vaciar la carpeta de salida"),
+    PT("Esvaziar a pasta de saída"),
+    IT("Svuota la cartella di uscita"),
+    NL("Uitvoermap leegmaken"),
+    RU("Очистить папку вывода"),
+    TR("Çıktı klasörünü boşalt"));
+
+SS_MSG(clear_project_confirm,
+    EN("These are deleted from {0}. The photos and videos you picked are not "
+       "touched."),
+    JA("{0} から次のものを削除します。選んだ写真や動画には手を触れません。"),
+    ZH_HANS("将从 {0} 中删除下面这些。你选的照片和视频不会被动。"),
+    ZH_HANT("將從 {0} 中刪除下面這些。你選的照片和影片不會被動。"),
+    KO("{0} 에서 다음을 지웁니다. 고른 사진과 영상에는 손대지 않습니다."),
+    DE("Aus {0} wird Folgendes gelöscht. Die gewählten Fotos und Videos "
+       "bleiben unangetastet."),
+    FR("Ceci est supprimé de {0}. Les photos et vidéos choisies ne sont pas "
+       "touchées."),
+    ES("Esto se borra de {0}. Las fotos y los vídeos que elegiste no se "
+       "tocan."),
+    PT("Isto é apagado de {0}. As fotos e os vídeos que escolheu não são "
+       "tocados."),
+    IT("Questo viene cancellato da {0}. Le foto e i video che hai scelto non "
+       "vengono toccati."),
+    NL("Dit wordt verwijderd uit {0}. De gekozen foto's en video's worden niet "
+       "aangeraakt."),
+    RU("Это будет удалено из {0}. Выбранные фотографии и видео не трогаются."),
+    TR("Şunlar {0} içinden silinir. Seçtiğiniz fotoğraflara ve videolara "
+       "dokunulmaz."));
+
+SS_MSG(clear_project_button,
+    EN("Delete"),
+    JA("削除"),            ZH_HANS("删除"),      ZH_HANT("刪除"),
+    KO("삭제"),            DE("Löschen"),
+    FR("Supprimer"),       ES("Borrar"),
+    PT("Apagar"),          IT("Cancella"),
+    NL("Verwijderen"),     RU("Удалить"),
+    TR("Sil"));
+
+SS_MSG(clear_project_done,
+    EN("Cleared the output folder: {0}"),
+    JA("出力フォルダを空にしました: {0}"),
+    ZH_HANS("已清空输出文件夹：{0}"), ZH_HANT("已清空輸出資料夾：{0}"),
+    KO("출력 폴더를 비웠습니다: {0}"),
+    DE("Ausgabeordner geleert: {0}"),
+    FR("Dossier de sortie vidé : {0}"),
+    ES("Carpeta de salida vaciada: {0}"),
+    PT("Pasta de saída esvaziada: {0}"),
+    IT("Cartella di uscita svuotata: {0}"),
+    NL("Uitvoermap leeggemaakt: {0}"),
+    RU("Папка вывода очищена: {0}"),
+    TR("Çıktı klasörü boşaltıldı: {0}"));
+
+SS_MSG(clear_project_failed,
+    EN("Could not delete {0}: {1}"),
+    JA("{0} を削除できませんでした: {1}"),
+    ZH_HANS("无法删除 {0}：{1}"), ZH_HANT("無法刪除 {0}：{1}"),
+    KO("{0} 을 지우지 못했습니다: {1}"),
+    DE("{0} konnte nicht gelöscht werden: {1}"),
+    FR("Impossible de supprimer {0} : {1}"),
+    ES("No se pudo borrar {0}: {1}"),
+    PT("Não foi possível apagar {0}: {1}"),
+    IT("Impossibile cancellare {0}: {1}"),
+    NL("Kon {0} niet verwijderen: {1}"),
+    RU("Не удалось удалить {0}: {1}"),
+    TR("{0} silinemedi: {1}"));
+
+SS_MSG(reset_options,
+    EN("Reset the options"),
+    JA("設定を初期値に戻す"),
+    ZH_HANS("把设置恢复默认"), ZH_HANT("把設定恢復預設"),
+    KO("설정을 기본값으로"),
+    DE("Optionen zurücksetzen"),
+    FR("Réinitialiser les réglages"),
+    ES("Restablecer las opciones"),
+    PT("Repor as opções"),
+    IT("Riporta le opzioni ai valori iniziali"),
+    NL("Opties terugzetten"),
+    RU("Сбросить настройки"),
+    TR("Seçenekleri sıfırla"));
+
+SS_MSG(reset_options_help,
+    EN("Puts the reconstruction and the depth-and-normals options back to what "
+       "a freshly picked input would have given them. The inputs, the output "
+       "folder and the mask prompt stay as they are."),
+    JA("再構成と、深度・法線の設定を、入力を選び直したときの値に戻します。"
+       "入力、出力フォルダ、マスクの指定はそのままです。"),
+    ZH_HANS("把重建以及深度与法线的设置，恢复成刚选好输入时的值。输入、"
+            "输出文件夹和蒙版提示词保持不变。"),
+    ZH_HANT("把重建以及深度與法線的設定，恢復成剛選好輸入時的值。輸入、"
+            "輸出資料夾和遮罩提示詞保持不變。"),
+    KO("재구성과 깊이·법선 설정을 입력을 새로 골랐을 때의 값으로 되돌립니다. "
+       "입력, 출력 폴더, 마스크 문구는 그대로 둡니다."),
+    DE("Setzt die Optionen für Rekonstruktion sowie Tiefe und Normalen auf "
+       "das zurück, was ein frisch gewähltes Eingabematerial ergeben hätte. "
+       "Eingaben, Ausgabeordner und Masken-Text bleiben."),
+    FR("Remet les réglages de reconstruction et de profondeur et normales à ce "
+       "qu'une entrée fraîchement choisie leur aurait donné. Les entrées, le "
+       "dossier de sortie et la description de masque restent."),
+    ES("Devuelve las opciones de reconstrucción y de profundidad y normales a "
+       "lo que les habría dado una entrada recién elegida. Las entradas, la "
+       "carpeta de salida y la descripción de máscara se quedan."),
+    PT("Repõe as opções de reconstrução e de profundidade e normais no que uma "
+       "entrada acabada de escolher lhes teria dado. As entradas, a pasta de "
+       "saída e a descrição de máscara ficam."),
+    IT("Riporta le opzioni di ricostruzione e di profondità e normali a quelle "
+       "che un ingresso appena scelto avrebbe dato. Ingressi, cartella di "
+       "uscita e descrizione di maschera restano."),
+    NL("Zet de opties voor reconstructie en voor diepte en normalen terug op "
+       "wat een net gekozen invoer ze zou hebben gegeven. De invoer, de "
+       "uitvoermap en de maskeromschrijving blijven."),
+    RU("Возвращает настройки реконструкции, глубины и нормалей к тем, что дал "
+       "бы только что выбранный источник. Источники, папка вывода и запрос для "
+       "маски остаются."),
+    TR("Yeniden kurma ile derinlik ve normal seçeneklerini, yeni seçilmiş bir "
+       "girdinin vereceği değerlere döndürür. Girdiler, çıktı klasörü ve maske "
+       "metni kalır."));
+
+SS_MSG(reset_options_done,
+    EN("The options are back to their defaults."),
+    JA("設定を初期値に戻しました。"),
+    ZH_HANS("设置已恢复默认。"), ZH_HANT("設定已恢復預設。"),
+    KO("설정을 기본값으로 되돌렸습니다."),
+    DE("Die Optionen stehen wieder auf ihren Vorgaben."),
+    FR("Les réglages sont revenus à leurs valeurs par défaut."),
+    ES("Las opciones han vuelto a sus valores por defecto."),
+    PT("As opções voltaram aos valores por omissão."),
+    IT("Le opzioni sono tornate ai valori predefiniti."),
+    NL("De opties staan weer op hun standaardwaarden."),
+    RU("Настройки вернулись к значениям по умолчанию."),
+    TR("Seçenekler varsayılan değerlerine döndü."));
+
 SS_MSG(open_in_trainer,
     EN("Open in Trainer"),
     JA("トレーナーで開く"),
@@ -8608,6 +8848,80 @@ SS_MSG(model_will_be_replaced,
     NL("De reconstructie in deze map wordt door een nieuwe vervangen."),
     RU("Реконструкция в этой папке будет заменена новой."),
     TR("Bu klasördeki yeniden kurma yenisiyle değiştirilecek."));
+
+SS_MSG(recon_reuse_rebuild,
+    EN("A reconstruction is already in the output folder. Change any of these "
+       "and the run builds it again; leave them and it is kept."),
+    JA("出力フォルダにはすでに再構成結果があります。ここを変えると作り直し、"
+       "変えなければそのまま残します。"),
+    ZH_HANS("输出文件夹里已经有一份重建结果。改动这里的设置就会重新重建，"
+            "不改就原样保留。"),
+    ZH_HANT("輸出資料夾裡已經有一份重建結果。改動這裡的設定就會重新重建，"
+            "不改就原樣保留。"),
+    KO("출력 폴더에 이미 재구성 결과가 있습니다. 여기를 바꾸면 다시 만들고, "
+       "그대로 두면 남겨 둡니다."),
+    DE("Im Ausgabeordner liegt schon eine Rekonstruktion. Ändern Sie hier "
+       "etwas, wird sie neu gebaut; sonst bleibt sie."),
+    FR("Le dossier de sortie contient déjà une reconstruction. Modifiez un "
+       "réglage ici et elle est refaite ; sinon elle est conservée."),
+    ES("La carpeta de salida ya contiene una reconstrucción. Cambia algo aquí "
+       "y se rehace; si no, se conserva."),
+    PT("A pasta de saída já contém uma reconstrução. Mude algo aqui e ela é "
+       "refeita; caso contrário, fica."),
+    IT("La cartella di uscita contiene già una ricostruzione. Cambia qualcosa "
+       "qui e viene rifatta; altrimenti resta."),
+    NL("In de uitvoermap staat al een reconstructie. Verander hier iets en die "
+       "wordt opnieuw gemaakt; anders blijft hij."),
+    RU("В папке вывода уже есть реконструкция. Измените что-нибудь здесь — её "
+       "построят заново; иначе она останется."),
+    TR("Çıktı klasöründe zaten bir yeniden kurma var. Burada bir şey "
+       "değiştirirseniz yeniden yapılır; değiştirmezseniz kalır."));
+
+SS_MSG(recon_reuse_locked,
+    EN("The reconstruction in the output folder was not made from these "
+       "settings, so it is kept as it is and nothing here reaches it. Tick "
+       "\"Reconstruct again\" beside the output folder to build a new one."),
+    JA("出力フォルダの再構成結果は、ここの設定から作られたものではありません。"
+       "そのまま残るので、ここを変えても届きません。作り直すには出力フォルダの"
+       "横の「再構成をやり直す」を有効にしてください。"),
+    ZH_HANS("输出文件夹里的重建结果不是由这里的设置做出来的，它会原样保留，"
+            "改这里也影响不到它。要重新做一份，请勾选输出文件夹旁边的"
+            "“重新重建”。"),
+    ZH_HANT("輸出資料夾裡的重建結果不是由這裡的設定做出來的，它會原樣保留，"
+            "改這裡也影響不到它。要重新做一份，請勾選輸出資料夾旁邊的"
+            "「重新重建」。"),
+    KO("출력 폴더의 재구성 결과는 여기 설정으로 만든 것이 아니어서 그대로 "
+       "남고, 여기를 바꿔도 닿지 않습니다. 새로 만들려면 출력 폴더 옆의 "
+       "\"다시 재구성\" 을 켜세요."),
+    DE("Die Rekonstruktion im Ausgabeordner stammt nicht aus diesen "
+       "Einstellungen; sie bleibt, wie sie ist, und nichts hier erreicht sie. "
+       "Haken Sie neben dem Ausgabeordner \"Neu rekonstruieren\" an, um eine "
+       "neue zu bauen."),
+    FR("La reconstruction du dossier de sortie ne vient pas de ces réglages : "
+       "elle est conservée telle quelle et rien ici ne l'atteint. Cochez "
+       "« Reconstruire à nouveau » près du dossier de sortie pour en "
+       "construire une."),
+    ES("La reconstrucción de la carpeta de salida no se hizo con estos "
+       "ajustes: se conserva tal cual y nada de aquí la alcanza. Marca "
+       "«Reconstruir de nuevo» junto a la carpeta de salida para construir "
+       "otra."),
+    PT("A reconstrução na pasta de saída não foi feita com estas definições: "
+       "fica como está e nada daqui lhe chega. Marque \"Reconstruir de novo\" "
+       "ao lado da pasta de saída para construir outra."),
+    IT("La ricostruzione nella cartella di uscita non viene da queste "
+       "impostazioni: resta com'è e nulla di qui la raggiunge. Spunta "
+       "«Ricostruisci di nuovo» accanto alla cartella di uscita per "
+       "costruirne una."),
+    NL("De reconstructie in de uitvoermap komt niet uit deze instellingen: hij "
+       "blijft zoals hij is en niets hier bereikt hem. Vink naast de "
+       "uitvoermap \"Opnieuw reconstrueren\" aan om een nieuwe te bouwen."),
+    RU("Реконструкция в папке вывода сделана не по этим настройкам: она "
+       "остаётся как есть, и ничто отсюда до неё не доходит. Отметьте "
+       "«Реконструировать заново» рядом с папкой вывода, чтобы построить "
+       "новую."),
+    TR("Çıktı klasöründeki yeniden kurma bu ayarlardan yapılmadı: olduğu gibi "
+       "kalır ve buradaki hiçbir şey ona ulaşmaz. Yeni bir tane kurmak için "
+       "çıktı klasörünün yanındaki \"Yeniden kur\" kutusunu işaretleyin."));
 
 SS_MSG(reconstruct_again,
     EN("Reconstruct again"),

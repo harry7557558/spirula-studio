@@ -2,6 +2,8 @@
 
 #include "app/gui/SfmRunner.h"
 
+#include "app/gui/ReconStamp.h"
+
 #include "i18n/Locale.h"
 #include "i18n/catalog/Log.h"
 
@@ -461,6 +463,96 @@ void SfmRunner::append_camera_overrides(const SfmJob& job, const PrepResult& pre
     }
 }
 
+// The flags that describe the MODEL rather than where it goes. The command
+// line and the workspace's stamp are both made from this, so they cannot drift.
+std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
+                                               const PrepResult& prep) {
+    std::vector<std::string> argv = {
+        "--quality", pick(kQuality, job.quality, 2),
+        "--data-type", pick(kDataType, job.data_type),
+        "--camera-model", job.camera_model,
+        "--camera-mode", pick(kCameraMode, job.camera_mode, 1),
+        "--mapper", pick(kMapper, job.mapper),
+        "--features", pick(kFeatures, job.features),
+        // A learned matcher only exists for the learned descriptors; asking
+        // for one with SIFT selected is a usage error.
+        "--matcher", matcher_for(job.features, job.matcher),
+    };
+    if (job.pairs > 0) {
+        argv.push_back("--pairs");
+        argv.push_back(pick(kPairs, job.pairs));
+        if (job.pairs == 2) {
+            argv.push_back("--overlap");
+            argv.push_back(std::to_string(job.overlap));
+        }
+    }
+    // Sequential is what `auto` resolves to for video, so this has to be
+    // passed whenever sequential is reachable, not only when it was named. It
+    // is a no-op under the other pair modes.
+    if (!job.loop_closure) argv.push_back("--no-loop-closure");
+    if (job.init_focal_px > 0) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);
+        argv.push_back("--focal");
+        argv.push_back(buf);
+    }
+    if (!job.init_distortion.empty()) {
+        argv.push_back("--distortion");
+        argv.push_back(job.init_distortion);
+    }
+    // Two flags, three states: hold during mapping, and hold in the finishing
+    // pass as well.
+    if (job.distortion_refine >= 1) argv.push_back("--no-refine-extra-params");
+    if (job.distortion_refine >= 2) argv.push_back("--no-final-extra-params");
+    if (job.final_per_image_intrinsics)
+        argv.push_back("--final-per-image-intrinsics");
+    if (job.ba_cpu) {
+        argv.push_back("--ba-real");
+        argv.push_back("cpu");
+        argv.push_back("--ba-real-coarse");
+        argv.push_back("cpu");
+    }
+    append_camera_overrides(job, prep, argv);
+    if (job.max_features > 0) {
+        // Each frontend has its own count flag: the budgets are not comparable,
+        // a learned detector emitting a few thousand better-localized points
+        // where SIFT wants tens of thousands. One spinner, routed to the live one.
+        argv.push_back(job.features == 0     ? "--max-features"
+                       : job.features >= 3   ? "--loma-max-features"
+                                             : "--aliked-max-features");
+        argv.push_back(std::to_string(job.max_features));
+    }
+    if (job.max_image_size > 0) {
+        argv.push_back("--max-image-size");
+        argv.push_back(std::to_string(job.max_image_size));
+    }
+    if (!job.image_gamut.empty()) {
+        argv.push_back("--image-gamut");
+        argv.push_back(job.image_gamut);
+    }
+    if (job.image_is_linear.has_value())
+        argv.push_back(*job.image_is_linear ? "--image-linear"
+                                            : "--no-image-linear");
+    if (job.point_color_in_image_space) {
+        argv.push_back("--point-color");
+        argv.push_back("image");
+    }
+    if (!prep.mask_dir.empty()) {
+        argv.push_back("--masks");
+        argv.push_back(prep.mask_dir);
+        // Only masks the run handed on untouched are still the other way
+        // round; anything it wrote is in the usual convention.
+        if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
+    } else {
+        // Otherwise `auto` picks up a stale masks/ sitting beside the images
+        // from an earlier run with masking on.
+        argv.push_back("--no-masks");
+    }
+    for (const std::string& a : split_args(job.extra_args))
+        argv.push_back(a);
+    return argv;
+}
+
 void SfmRunner::run(SfmJob job) {
     auto fail = [&](const std::string& why) {
         _prog.finish(_cancel.load() ? StageStatus::Skipped : StageStatus::Failed);
@@ -519,14 +611,40 @@ void SfmRunner::run(SfmJob job) {
         }
 
         // ---- 2. reconstruction --------------------------------------------
-        // A model already in the output folder is reused whoever made it, so
-        // a finished dataset can be given masks and geometry instead.
-        const bool reuse_model = prior.model && !job.redo_model;
+        take_reconstruction(job);
+        // The model, as the flags that make it. A copy stays in the workspace
+        // beside it (ReconStamp.h) so that a later run can tell whether the
+        // one already there still answers what the panel is asking for.
+        ReconStamp now;
+        now.present = true;
+        now.engine = "builtin";
+        now.args = recon_args(job, prep);
+        const std::string changed =
+            recon_stamp_change(read_recon_stamp(ws.string()), now);
+
+        // A model already there is reused whoever made it, which is how a
+        // finished dataset gets masks and geometry. Not one this panel would now
+        // build differently; one with no stamp says nothing and is reused still.
+        const bool reuse_model = prior.model && !job.redo_model && changed.empty();
         if (reuse_model) {
             log(fmt(lmsg::sfm_reusing_model, {ws.string()}), /*detail=*/false);
         } else {
+            if (prior.model && !changed.empty())
+                log(fmt(lmsg::sfm_settings_changed, {changed}), /*detail=*/false);
             set_stage(Stage::Features, lmsg::stage_reconstructing_features.get());
-            take_reconstruction(job);
+            // Matching reads every .bin under features/, so one an interrupted
+            // run left for an image this one no longer has would join it as a
+            // phantom view. Nothing here is reused; start from none of it.
+            remove_tree(ws / "features");
+            remove_tree(ws / ".progress");
+            fs::remove(ws / "matches.bin", ec);
+            // From here the intermediates are this run's, however it ends: a
+            // cancelled run leaves the same ones a finished one does, and the
+            // screen goes on reading both until it is done with them.
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _sweep_dir = job.keep_intermediate ? "" : ws.string();
+            }
             std::vector<std::string> argv = {
                 // The child is this same executable, so it has the same
                 // thirteen languages -- tell it which one, or its output
@@ -535,89 +653,8 @@ void SfmRunner::run(SfmJob job) {
                 "sfm", "auto", prep.image_dir,
                 "-o", ws.string(),
                 "--progress-dir", (ws / ".progress").string(),
-                "--quality", pick(kQuality, job.quality, 2),
-                "--data-type", pick(kDataType, job.data_type),
-                "--camera-model", job.camera_model,
-                "--camera-mode", pick(kCameraMode, job.camera_mode, 1),
-                "--mapper", pick(kMapper, job.mapper),
-                "--features", pick(kFeatures, job.features),
-                // A learned matcher only exists for the learned descriptors;
-                // asking for one with SIFT selected is a usage error.
-                "--matcher", matcher_for(job.features, job.matcher),
             };
-            if (job.pairs > 0) {
-                argv.push_back("--pairs");
-                argv.push_back(pick(kPairs, job.pairs));
-                if (job.pairs == 2) {
-                    argv.push_back("--overlap");
-                    argv.push_back(std::to_string(job.overlap));
-                }
-            }
-            // Sequential is what `auto` resolves to for video, so this has to
-            // be passed whenever sequential is reachable, not only when it was
-            // named. It is a no-op under the other pair modes.
-            if (!job.loop_closure) argv.push_back("--no-loop-closure");
-            if (job.init_focal_px > 0) {
-                char buf[32];
-                std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);
-                argv.push_back("--focal");
-                argv.push_back(buf);
-            }
-            if (!job.init_distortion.empty()) {
-                argv.push_back("--distortion");
-                argv.push_back(job.init_distortion);
-            }
-            // Two flags, three states: hold during mapping, and hold in the
-            // finishing pass as well.
-            if (job.distortion_refine >= 1) argv.push_back("--no-refine-extra-params");
-            if (job.distortion_refine >= 2) argv.push_back("--no-final-extra-params");
-            if (job.final_per_image_intrinsics)
-                argv.push_back("--final-per-image-intrinsics");
-            if (job.ba_cpu) {
-                argv.push_back("--ba-real");
-                argv.push_back("cpu");
-                argv.push_back("--ba-real-coarse");
-                argv.push_back("cpu");
-            }
-            append_camera_overrides(job, prep, argv);
-            if (job.max_features > 0) {
-                // Each frontend has its own count flag, because their budgets
-                // are not comparable -- a learned detector emits a few
-                // thousand better-localized points where SIFT wants tens of
-                // thousands. One spinner, routed to whichever is running.
-                argv.push_back(job.features == 0     ? "--max-features"
-                               : job.features >= 3   ? "--loma-max-features"
-                                                     : "--aliked-max-features");
-                argv.push_back(std::to_string(job.max_features));
-            }
-            if (job.max_image_size > 0) {
-                argv.push_back("--max-image-size");
-                argv.push_back(std::to_string(job.max_image_size));
-            }
-            if (!job.image_gamut.empty()) {
-                argv.push_back("--image-gamut");
-                argv.push_back(job.image_gamut);
-            }
-            if (job.image_is_linear.has_value())
-                argv.push_back(*job.image_is_linear ? "--image-linear"
-                                                    : "--no-image-linear");
-            if (job.point_color_in_image_space) {
-                argv.push_back("--point-color");
-                argv.push_back("image");
-            }
-            if (!prep.mask_dir.empty()) {
-                argv.push_back("--masks");
-                argv.push_back(prep.mask_dir);
-                // Only masks the run handed on untouched are still the other
-                // way round; anything it wrote is in the usual convention.
-                if (prep.mask_dir_flipped) argv.push_back("--flip-mask");
-            } else {
-                // Otherwise `auto` picks up a stale masks/ sitting beside the
-                // images from an earlier run with masking on.
-                argv.push_back("--no-masks");
-            }
-            for (const std::string& a : split_args(job.extra_args))
-                argv.push_back(a);
+            argv.insert(argv.end(), now.args.begin(), now.args.end());
 
             std::string cmd;
             for (const auto& a : argv) cmd += (cmd.empty() ? "$ " : " ") + a;
@@ -658,6 +695,7 @@ void SfmRunner::run(SfmJob job) {
         // transforms.json or a Metashape export, which has no sparse/ at all.
         if (!reuse_model && !has_model(ws / "sparse"))
             return fail(lmsg::err_no_reconstruction.get());
+        if (!reuse_model) write_recon_stamp(ws.string(), now);
 
         // ---- 3. depth and normals -------------------------------------------
         take_geometry(job);

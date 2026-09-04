@@ -230,6 +230,9 @@ private:
     // the frames that now exist.
     void append_camera_overrides(const SfmJob& job, const PrepResult& prep,
                                  std::vector<std::string>& argv);
+    // Everything the child is told about the model, as against where to put
+    // it. Both the command line and the workspace's stamp are made from this.
+    std::vector<std::string> recon_args(const SfmJob& job, const PrepResult& prep);
 
     std::thread _worker;
     std::atomic<State> _state{State::Idle};
