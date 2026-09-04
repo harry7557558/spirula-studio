@@ -24,7 +24,11 @@
 #define SORT_ELEMS 16       // keys per thread
 #define SORT_PART 2048      // SORT_WG * SORT_ELEMS
 #define RADIX 256
-#define MAX_NSG 16          // SORT_WG / min supported subgroup size (8)
+
+// SORT_WG / the smallest supported subgroup (8). Sizing it to the device's
+// real subgroup is a LOSS -- the 16 KB pads occupancy down to 5 workgroups
+// per SM, which the scatter wants: 4/8/16/32 -> 7.89/6.97/6.66/10.54 ms.
+#define MAX_NSG 16
 
 #define SCAN_WG 256         // threads per scan workgroup
 #define SCAN_ELEMS 8        // elements per thread
@@ -205,7 +209,11 @@ struct DownsweepParams {
 // Ranking scratch. Iterations process SORT_WG contiguous keys; stability
 // needs rank = (prior iterations) + (prior subgroups this iteration) +
 // (rank within subgroup), all in memory order.
-groupshared uint _ds_sg_hist[RADIX * MAX_NSG];  // [digit][subgroup]
+
+// Subgroup-major: the fold walks it with the digit in the lane, so a
+// digit-major row stride of MAX_NSG would put 32 lanes on 2 banks.
+groupshared uint _ds_sg_hist[MAX_NSG * RADIX];
+
 // Write cursor per digit: the partition's global base, advanced by each
 // iteration's counts. Holding the two global bases here keeps them out of the
 // inner loop, which read part_offsets once per key on a num_parts stride.
@@ -239,12 +247,12 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
         uint4 match = match_digit(d, valid);                               \
         uint rank_sg = popcount4(match & lt);                              \
         bool leader = valid && (lsb4(match) == lane);                      \
-        if (leader) _ds_sg_hist[d * MAX_NSG + sg] = popcount4(match);      \
+        if (leader) _ds_sg_hist[sg * RADIX + d] = popcount4(match);        \
         GroupMemoryBarrierWithGroupSync();                                 \
         if (valid) {                                                       \
             uint prior_sg = 0;                                             \
             for (uint s = 0; s < sg; s++)                                  \
-                prior_sg += _ds_sg_hist[d * MAX_NSG + s];                  \
+                prior_sg += _ds_sg_hist[s * RADIX + d];                    \
             gindex_t pos = gindex_t(_ds_cursor[d] + prior_sg + rank_sg);   \
             elem_at(keys_out, pos)[0] = key;                               \
             elem_at(p.vals_out, pos)[0] = elem_at(p.vals_in, idx)[0];      \
@@ -255,8 +263,8 @@ void NAME(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,                \
         for (uint dd = tid; dd < RADIX; dd += SORT_WG) {                   \
             uint total = 0;                                                \
             for (uint s = 0; s < nsg; s++) {                               \
-                total += _ds_sg_hist[dd * MAX_NSG + s];                    \
-                _ds_sg_hist[dd * MAX_NSG + s] = 0;                         \
+                total += _ds_sg_hist[s * RADIX + dd];                      \
+                _ds_sg_hist[s * RADIX + dd] = 0;                           \
             }                                                              \
             _ds_cursor[dd] += total;                                       \
         }                                                                  \

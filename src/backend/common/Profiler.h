@@ -66,6 +66,12 @@ inline State g_state;
 
 inline bool enabled() { return g_state.on; }
 
+// Per-kernel GPU timing, set by the backend that owns it (CUDA:
+// backend/cuda/KernelProfilerCuda.cu; Vulkan reports from runtime_shutdown()).
+// resolve() must run at a device drain: at process exit the context is gone.
+inline void (*g_kernel_report)() = nullptr;
+inline void (*g_kernel_resolve)() = nullptr;
+
 inline void set_exit_note(std::string text) { g_state.note = std::move(text); }
 
 inline void add(Cat c, uint64_t ns, uint64_t bytes) {
@@ -113,6 +119,7 @@ inline const char* cat_name(Cat c) {
 
 inline State::~State() {
     if (!on) return;
+    if (g_kernel_report) g_kernel_report();
     double wall_ms =
         std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
             std::chrono::steady_clock::now() - t0)

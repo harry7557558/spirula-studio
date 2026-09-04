@@ -14,8 +14,14 @@
 #include "int8_compat.slang"
 #include "atomic_float.slang"
 
-static const int BX = 16;
-static const int BY = 16;
+// The double halo makes the tile edge expensive: 16 loads 36x36 per 256
+// pixels, 24 (the CUDA block) 44x44 per 576. 24 needs 47712 B of groupshared,
+// so the 32 KB floor keeps llvmpipe at 16 -- PerPixelLoss.cpp picks.
+[SpecializationConstant]
+const int kSsimTile = 16;
+
+static const int BX = kSsimTile;
+static const int BY = kSsimTile;
 static const int HALO = 5;
 static const int SX = BX + 2 * HALO;    // 26
 static const int SY = BY + 2 * HALO;    // 26
@@ -157,14 +163,9 @@ groupshared float _fs_ssim[BY * BX];                // per-pixel map, then reduc
 [numthreads(256, 1, 1)]
 void ssim_bwd_inplace(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                       uniform SsimParams p) {
-    int tx = int(tid % 16u);
-    int ty = int(tid / 16u);
     const int bIdx = int(wg.z);
     const int startY = int(wg.y) * BY;
     const int startX = int(wg.x) * BX;
-    const int pix_y = startY + ty;
-    const int pix_x = startX + tx;
-    const int pix_id = pix_y * p.W + pix_x;
     const int num_pix = p.H * p.W;
 
     const bool lm_active = p.mode != 0 && (p.flags & kSsimHasLossMap) != 0;
@@ -330,38 +331,37 @@ void ssim_bwd_inplace(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         GroupMemoryBarrierWithGroupSync();
 
         // (4) Horizontal pass over the derivative maps.
-        {
-            int ly = ty;
-            int lx = tx + HALO;
-            for (int pass = 0; pass < 2; pass++) {
-                int yy = ly + pass * BY;
-                if (yy < CY) {
-                    float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f;
-                    [ForceUnroll]
-                    for (int d = 1; d <= HALO; d++) {
-                        float w = kGauss[HALO - d];
-                        a0 += (sData(0, yy, lx - d) + sData(0, yy, lx + d)) * w;
-                        a1 += (sData(1, yy, lx - d) + sData(1, yy, lx + d)) * w;
-                        a2 += (sData(2, yy, lx - d) + sData(2, yy, lx + d)) * w;
-                    }
-                    {
-                        float wc = kGauss[HALO];
-                        a0 += sData(0, yy, lx) * wc;
-                        a1 += sData(1, yy, lx) * wc;
-                        a2 += sData(2, yy, lx) * wc;
-                    }
-                    sScratch(yy, tx, 0) = a0;
-                    sScratch(yy, tx, 1) = a1;
-                    sScratch(yy, tx, 2) = a2;
-                }
+        for (int l = int(tid); l < CY * BX; l += 256) {
+            int yy = l / BX;
+            int cx = l % BX;
+            int lx = cx + HALO;
+            float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f;
+            [ForceUnroll]
+            for (int d = 1; d <= HALO; d++) {
+                float w = kGauss[HALO - d];
+                a0 += (sData(0, yy, lx - d) + sData(0, yy, lx + d)) * w;
+                a1 += (sData(1, yy, lx - d) + sData(1, yy, lx + d)) * w;
+                a2 += (sData(2, yy, lx - d) + sData(2, yy, lx + d)) * w;
             }
+            {
+                float wc = kGauss[HALO];
+                a0 += sData(0, yy, lx) * wc;
+                a1 += sData(1, yy, lx) * wc;
+                a2 += sData(2, yy, lx) * wc;
+            }
+            sScratch(yy, cx, 0) = a0;
+            sScratch(yy, cx, 1) = a1;
+            sScratch(yy, cx, 2) = a2;
         }
         GroupMemoryBarrierWithGroupSync();
 
         // (5) Vertical pass -> dL/d(img1).
-        if (pix_x < p.W && pix_y < p.H) {
-            int ly = ty + HALO;
-            int lx = tx;
+        for (int l = int(tid); l < BY * BX; l += 256) {
+            int lx = l % BX;
+            int ly = l / BX + HALO;
+            int pix_x = startX + lx;
+            int pix_y = startY + l / BX;
+            if (pix_x >= p.W || pix_y >= p.H) continue;
             float sum0 = 0.0f, sum1 = 0.0f, sum2 = 0.0f;
             [ForceUnroll]
             for (int d = 1; d <= HALO; d++) {
@@ -386,16 +386,21 @@ void ssim_bwd_inplace(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             if (!mask) dL_dpix = 0.0f;
 
             if ((p.flags & kSsimWriteGrad) != 0) {
-                int out_idx = bIdx * num_pix + pix_id;
+                int out_idx = bIdx * num_pix + pix_y * p.W + pix_x;
                 p.dL_dimg1[out_idx * 3 + ci] += dL_dpix;
             }
         }
     }  // ci
 
-    if (lm_active && pix_x < p.W && pix_y < p.H) {
-        float ssim_v = _fs_ssim[ty * BX + tx] / 3.0f;
-        int out_idx = bIdx * num_pix + pix_id;
-        p.loss_map[out_idx] += p.map_weight * (1.0f - ssim_v);
+    if (lm_active) {
+        for (int l = int(tid); l < BY * BX; l += 256) {
+            int pix_x = startX + l % BX;
+            int pix_y = startY + l / BX;
+            if (pix_x >= p.W || pix_y >= p.H) continue;
+            float ssim_v = _fs_ssim[l] / 3.0f;
+            int out_idx = bIdx * num_pix + pix_y * p.W + pix_x;
+            p.loss_map[out_idx] += p.map_weight * (1.0f - ssim_v);
+        }
     }
 
     if (has_val) {

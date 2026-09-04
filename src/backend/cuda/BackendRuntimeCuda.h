@@ -200,16 +200,16 @@ inline void memset_async(void* dst, int value, size_t bytes, Stream stream) {
 // --- synchronization ---
 inline void device_synchronize() {
     if (prof::enabled()) {
-        prof::Scope s(prof::DEVSYNC);
-        cudaDeviceSynchronize();
+        { prof::Scope s(prof::DEVSYNC); cudaDeviceSynchronize(); }
+        if (prof::g_kernel_resolve) prof::g_kernel_resolve();
         return;
     }
     cudaDeviceSynchronize();
 }
 inline void stream_synchronize(Stream stream) {
     if (prof::enabled()) {
-        prof::Scope s(prof::DEVSYNC);
-        cudaStreamSynchronize(_to_cuda(stream));
+        { prof::Scope s(prof::DEVSYNC); cudaStreamSynchronize(_to_cuda(stream)); }
+        if (prof::g_kernel_resolve) prof::g_kernel_resolve();
         return;
     }
     cudaStreamSynchronize(_to_cuda(stream));

@@ -377,6 +377,10 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         typename SplatPrimitive::FragmentBwd v_splat = SplatPrimitive::FragmentBwd::zero(splat);
         [[maybe_unused]] float accum_weight = 0.0f;
         [[maybe_unused]] float accum_weight_den = 0.0f;
+        // A survivor overlaps the sub-tile but often clears no pixel's alpha
+        // threshold; its gradient is then all zeros and the ~12 atomics that
+        // write it are pure cost.
+        bool touched = false;
 
         // at t=0, thread 0 (back-most survivor) undoes pixel 0; at t=1 it undoes
         // pixel 1 while thread 1 undoes pixel 0; etc. -> each pixel sees survivors
@@ -419,6 +423,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         #else
             RenderOutput color = splat.evaluate_color(px, py);
         #endif
+            touched = true;
 
             // printf("t=%d, thread %u, splat %d (%u), pix_id %d, pix %d %d\n", t, thread_id, splat_idx-range_start, splat_gid, pix_id, pix_global_x, pix_global_y);
 
@@ -567,7 +572,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         }
 
         // accumulate gradient (only survivors reach here)
-        if (active) {
+        if (active && touched) {
             v_splat.atomicStore(v_splat_wbuffer, v_splat_sbuffer, splat_wid, splat_sid);
             if constexpr (output_accum_weight) {
                 if constexpr (accum_mode == DensifyAccumMode::Max) {

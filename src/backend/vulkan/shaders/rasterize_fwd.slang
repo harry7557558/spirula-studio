@@ -88,8 +88,7 @@ struct RasterFwd2dParams {
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                      uniform RasterFwd2dParams* pp) {
-    RasterFwd2dParams p = *pp;
+                      uniform RasterFwd2dParams p) {
     uint image_id = wg.x;
     // one workgroup per micro-tile; recover its macro tile for binning
     uint mt_y = wg.y;

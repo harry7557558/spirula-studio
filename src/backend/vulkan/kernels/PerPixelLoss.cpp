@@ -224,6 +224,23 @@ void dispatch_tiles(const char* entry, int64_t W, int64_t H, int64_t B,
     vkk::dispatch(entry, {}, gx, gy, (uint32_t)B, params, size);
 }
 
+// kSsimTile (fused_ssim.slang): 24 where the groupshared it needs fits, else
+// the portable 16. See the constant's comment for what the tile edge costs.
+uint32_t ssim_tile() {
+    return backend::vk::Context::get().caps().max_shared_memory >= 47712u ? 24u
+                                                                         : 16u;
+}
+
+void dispatch_ssim(const char* entry, int64_t W, int64_t H, int64_t B,
+                   const void* params, uint32_t size) {
+    if (W <= 0 || H <= 0 || B <= 0) return;
+    const uint32_t t = ssim_tile();
+    uint32_t gx = (uint32_t)((W + t - 1) / t), gy = (uint32_t)((H + t - 1) / t);
+    if (gx > 65535 || gy > 65535 || B > 65535)
+        throw std::runtime_error("ssim: tile grid dimension exceeds 65535");
+    vkk::dispatch(entry, {t}, gx, gy, (uint32_t)B, params, size);
+}
+
 // ---------------------------------------------------------------------------
 // Per-pixel loss fwd/bwd (mirrors _compute_per_pixel_losses_forward/backward)
 // ---------------------------------------------------------------------------
@@ -353,7 +370,7 @@ void launch_fused_ssim_inplace(
     if (_has(dL_dimg1)) p.flags |= kSsimWriteGrad;
     if (_has(ssim_loss_map)) p.flags |= kSsimHasLossMap;
 
-    dispatch_tiles("fused_ssim.ssim_bwd_inplace", W, H, B, &p, sizeof(p));
+    dispatch_ssim("fused_ssim.ssim_bwd_inplace", W, H, B, &p, sizeof(p));
 }
 
 float fused_ssim_inplace_vk(

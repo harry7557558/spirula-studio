@@ -79,14 +79,26 @@ RasterOutputs alloc_raster_outputs(int64_t batch, uint32_t image_height,
     return o;
 }
 
+// One workgroup per micro tile: the macro-tile grid scaled up by the
+// 1 << macro_log2 micro tiles a macro tile spans on each axis.
 void dispatch_raster(const char* entry, const backend::vk::SpecList& spec,
                      uint32_t I, uint32_t tile_width, uint32_t tile_height,
                      int macro_log2, const void* params,
                      uint32_t params_size) {
-    // One workgroup per micro tile: the macro-tile grid scaled up by the
-    // 1 << macro_log2 micro tiles a macro tile spans on each axis.
     vkk::dispatch_ring(entry, spec, I, tile_height << macro_log2,
                        tile_width << macro_log2, params, params_size);
+}
+
+// The ring costs ~17 registers: its params loads are `strong`, so they cannot
+// sink to their uses and the whole struct stays live from entry. Push
+// constants land in constant memory and cost none.
+void dispatch_raster_push(const char* entry,
+                          const backend::vk::SpecList& spec, uint32_t I,
+                          uint32_t tile_width, uint32_t tile_height,
+                          int macro_log2, const void* params,
+                          uint32_t params_size) {
+    vkk::dispatch(entry, spec, I, tile_height << macro_log2,
+                  tile_width << macro_log2, params, params_size);
 }
 
 // Shared implementation of the 2D forward (Vanilla3DGS + MipSplatting: the
@@ -131,8 +143,11 @@ launch_raster_2d_fwd(
 
     backend::vk::SpecList spec{0u, dist_spec(dist_type),
                                output_median ? 1u : 0u};
-    dispatch_raster("rasterize_fwd.rasterize_fwd_2d", spec, (uint32_t)batch,
-                    tile_width, tile_height, macro_log2, &p, sizeof(p));
+    static_assert(sizeof(RasterFwd2dParams) <= 128,
+                  "must stay under the push-constant floor");
+    dispatch_raster_push("rasterize_fwd.rasterize_fwd_2d", spec,
+                         (uint32_t)batch, tile_width, tile_height, macro_log2,
+                         &p, sizeof(p));
 
     return std::make_tuple(o.renders, o.render_Ts, o.last_ids, o.distortions,
                            o.render_median);

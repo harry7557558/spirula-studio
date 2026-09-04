@@ -193,6 +193,28 @@ expectation, one executable. Neither exists yet.
 backends — the right first tool when a backend is unexpectedly slow rather
 than wrong.
 
+Above that table both backends print **GPU time by kernel**, so the two are
+directly comparable without a profiler. Vulkan brackets each dispatch with
+timestamp queries; CUDA does the same with a CUDA event pair, injected by
+`-Wl,--wrap=cudaLaunchKernel` (`backend/cuda/KernelProfilerCuda.cu`) so no
+launch site is instrumented by hand and CUB's kernels are covered too. Rows
+aggregate over template arguments / specialization constants, which is what
+makes a CUDA row and a Vulkan row the same thing.
+
+Two caveats on reading those numbers against each other. The intervals
+include the gap before each kernel starts, so their sum runs a little over
+the device-wait total. And a training run is **not** reproducible: atomic
+order moves the trajectory, and the rasterization and sort kernels then see a
+different scene — `rasterize_fwd` has been seen to move 70% between two runs
+of the same binary. The image-sized kernels (losses, bilagrid, PPISP, FPBO)
+hold to ~1%, so they can be A/B'd from a training run directly; for the rest
+use the benchmark tools, which fix the workload:
+
+```bash
+./build/raster_bench [num_splats] [iters] [macro_log2]   # raster fwd/bwd, binning
+./build/fpbo_bench   [num_splats] [iters]                # fused projection bwd + optimizer
+```
+
 A run that trains also prints a VRAM breakdown after the timing table: pool
 capacity per `VramCategory` (`src/core/PoolSlots.h`), the scratch buffer, the
 driver's process figure, and the twelve largest buffers. The pool never

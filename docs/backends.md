@@ -103,4 +103,45 @@ change design decisions:
 - Vulkan driver choice matters (`amdvlk` vs RADV differ by an order of
   magnitude on some kernels). When comparing, state the driver.
 
-Use `SS_PROFILE=1` for the per-stage breakdown before optimizing anything.
+Four things cost a Slang port time that the CUDA source gets for free, and
+all four have turned up more than once (measured on an RTX 5070 Laptop,
+driver 580, against the CUDA build of the same kernel):
+
+- **`groupshared` is allocated per pipeline, not per branch.** CUDA sizes a
+  `__shared__` array with `constexpr ? N : 1` and the unused feature costs
+  nothing; the Slang equivalent allocates it anyway. Size those arrays with
+  the specialization constant that gates them — SPIR-V takes a spec-constant
+  array length. `rasterize_bwd_2d` went 8.6 KB -> 4.2 KB that way, which is
+  11 -> 24 workgroups per SM and 19% off the kernel.
+- **A params struct in the ring costs ~17 registers.** CUDA kernel arguments
+  live in constant memory and are free; a ring struct is read through a
+  device address, and the driver's loads are `strong`, so they cannot sink to
+  their uses and the whole struct stays live from entry. Push the struct
+  directly whenever it fits under the 128-byte floor (`rasterize_fwd_2d`:
+  55 -> 45 registers, 7% off).
+- **Check groupshared bank conflicts on any `[a][b]` scratch** whose *minor*
+  axis is uniform across the lanes and whose major axis varies. The radix
+  downsweep's `[digit][subgroup]` ranking scratch put 32 lanes on 2 banks;
+  transposing it to `[subgroup][digit]` was 12% of the whole binning stage.
+- **A groupshared tree reduction costs a barrier per level.** Use
+  `WaveActiveSum` and one barrier, which is what `cg::reduce` compiles to on
+  the CUDA side. `ppl_fwd` reduces once per raw loss and was paying ~200
+  workgroup barriers a launch; the wave version is 42% faster and now beats
+  CUDA.
+
+Two differences that are NOT worth chasing, so nobody re-derives them:
+
+- Loads through a buffer device address always compile to `ldg.e.strong.sm`
+  on NVIDIA, never to the read-only `ldg.e.constant` that `const __restrict__`
+  gets in CUDA. `RestrictPointer` on the pointer and the Vulkan memory model
+  both leave it unchanged; only a descriptor-bound read-only buffer gets
+  `.constant`, which is not a trade this backend is making.
+- The remaining rasterize-backward gap is codegen, not structure: with the
+  same occupancy, the same shared-memory layout and the same instruction
+  mix, the driver emits ~17% more instructions for the sweep loop (extra
+  MOV / LOP3 / VOTE around the inlined early-outs).
+
+Use `SS_PROFILE=1` for the per-stage and per-kernel breakdown before
+optimizing anything, and the benchmark tools (`raster_bench`, `fpbo_bench`)
+rather than a training run for anything whose cost depends on the scene —
+see [testing.md](testing.md#profiling).

@@ -38,8 +38,8 @@ static const uint TILE_SIZE_DX = 8;
 static const uint TILE_SIZE_DY = 8;
 static const uint RB_BLOCK = TILE_SIZE_DX * TILE_SIZE_DY;  // 64 pixels
 static const uint RB_THREADS = 32;                         // = SPLAT_BATCH
-// Survivors carry the screen data the cull already gathered, so the capacity
-// trades against groupshared; two chunks is enough to keep the sweep fed.
+// Two chunks, measured against four and eight (2.20 / 2.29 / 2.26 ms on
+// raster_bench): a deeper buffer only defers the same sweep.
 static const int SURV_CAP = 2 * (int)RB_THREADS;
 
 [ForceInline]
@@ -52,26 +52,31 @@ void _rb_atomic_add(float* addr, float v) {
     if (_rb_finitef(v)) atomic_add_f32(addr, v);
 }
 
+// Spec-constant array bounds: a pipeline allocates only the groupshared its
+// variant reads. The 2d entry drops 8.6 KB -> 4.2 KB, which takes it from 11
+// workgroups per SM to the hardware cap of 24, and 19% off the kernel.
+static const int RB_DIST_N = kDistType != 0 ? (int)RB_BLOCK : 1;
+static const int RB_MED_N = kOutputMedian != 0 ? (int)RB_BLOCK : 1;
+static const int RB_AW_N = kAccumWeight != 0 ? (int)RB_BLOCK : 1;
+static const int RB_VMG_N = kViewmatGrad != 0 ? (int)RB_BLOCK : 1;
+
 // ---- shared pixel state (indexed by local pixel id 0..63) ----------------
 groupshared float2 _rb_Tg[RB_BLOCK];     // (T, v_T), evolves during sweep
 groupshared float4 _rb_vpix[RB_BLOCK];   // v_render color (rgb, depth-pre)
-groupshared float4 _rb_C[RB_BLOCK];      // distortion totals C
-groupshared float4 _rb_S[RB_BLOCK];      // distortion second moments S
-groupshared float4 _rb_vdist[RB_BLOCK];  // v of distortion image
-groupshared float _rb_W[RB_BLOCK];       // 1 - T_final
-groupshared float _rb_awmap[RB_BLOCK];
-groupshared float _rb_medv[RB_BLOCK];
-groupshared float _rb_medzg[RB_BLOCK];
-groupshared float _rb_medzf[RB_BLOCK];
-groupshared float _rb_medTf[RB_BLOCK];
+groupshared float4 _rb_C[RB_DIST_N];     // distortion totals C
+groupshared float4 _rb_S[RB_DIST_N];     // distortion second moments S
+groupshared float4 _rb_vdist[RB_DIST_N]; // v of distortion image
+groupshared float _rb_W[RB_DIST_N];      // 1 - T_final
+groupshared float _rb_awmap[RB_AW_N];
+groupshared float _rb_medv[RB_MED_N];
+groupshared float _rb_medzg[RB_MED_N];
+groupshared float _rb_medzf[RB_MED_N];
+groupshared float _rb_medTf[RB_MED_N];
 groupshared int _rb_bin[RB_BLOCK];       // 2d: last_ids
 groupshared float4 _rb_raybin[RB_BLOCK]; // 3dgut: (ray_d, bin as bits)
-groupshared float3 _rb_vrayd[RB_BLOCK];  // 3dgut viewmat grad per pixel
+groupshared float3 _rb_vrayd[RB_VMG_N];  // 3dgut viewmat grad per pixel
 groupshared int _rb_surv[SURV_CAP];      // flatten range index
 groupshared int _rb_ssid[SURV_CAP];      // flatten_ids[surv]
-groupshared float2 _rb_sxy[SURV_CAP];
-groupshared float3 _rb_sconic[SURV_CAP];
-groupshared float _rb_sopac[SURV_CAP];
 groupshared uint _rb_wtot[RB_THREADS];   // per-wave compaction totals
 groupshared uint _rb_binmax;             // 1 + max last_id over the tile's pixels
 groupshared float _rb_red[RB_THREADS];   // viewmat-grad reduction scratch
@@ -414,9 +419,6 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                 int pos = count + int(base + prefix);
                 _rb_surv[pos] = gi;
                 _rb_ssid[pos] = c_sid;
-                _rb_sxy[pos] = c_xy;
-                _rb_sconic[pos] = c_conic;
-                _rb_sopac[pos] = c_opac;
             }
             count += int(total);
             s -= int(RB_THREADS);
@@ -440,13 +442,14 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                              float3(0.0f)};
             uint splat_sid = 0;
             if (active) {
-                // Position, conic and opacity come from the cull's gather;
-                // only the two channels it had no use for are fetched again.
+                // Re-read the whole row rather than carry the cull's gather in
+                // groupshared: it is one 40-byte row, and the depth/rgb read
+                // below pulls the same lines in regardless.
                 splat_sid = uint(_rb_ssid[surv_pos]);
-                splat.xy = _rb_sxy[surv_pos];
-                splat.conic = _rb_sconic[surv_pos];
-                splat.opac = _rb_sopac[surv_pos];
                 float* s_row = scr2_row(p.s_screen, int(splat_sid));
+                splat.xy = scr2_xy(s_row);
+                splat.conic = scr2_conic(s_row);
+                splat.opac = scr2_opac(s_row);
                 splat.depth = scr2_depth(s_row);
                 splat.rgb = scr2_rgb(s_row);
             }
@@ -489,24 +492,15 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         GroupMemoryBarrierWithGroupSync();  // done reading surv[]
         int rem = max(0, count - num_batches * (int)RB_THREADS);
         int t_surv = 0, t_ssid = 0;
-        float2 t_xy = float2(0.0f);
-        float3 t_conic = float3(0.0f);
-        float t_opac = 0.0f;
         if (int(tid) < rem) {
             int src = num_batches * (int)RB_THREADS + int(tid);
             t_surv = _rb_surv[src];
             t_ssid = _rb_ssid[src];
-            t_xy = _rb_sxy[src];
-            t_conic = _rb_sconic[src];
-            t_opac = _rb_sopac[src];
         }
         GroupMemoryBarrierWithGroupSync();
         if (int(tid) < rem) {
             _rb_surv[tid] = t_surv;
             _rb_ssid[tid] = t_ssid;
-            _rb_sxy[tid] = t_xy;
-            _rb_sconic[tid] = t_conic;
-            _rb_sopac[tid] = t_opac;
         }
         count = rem;
         GroupMemoryBarrierWithGroupSync();

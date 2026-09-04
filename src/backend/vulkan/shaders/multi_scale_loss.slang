@@ -326,6 +326,24 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
 
 groupshared float _ms_red[256];
 
+// Workgroup sum of `v`, valid on thread 0. Two barriers, against the
+// groupshared tree's one per level -- ppl_fwd reduces once per raw loss, so
+// the tree cost ~200 workgroup barriers a launch and this costs 40.
+float _ms_block_sum(float v, uint tid) {
+    uint wsize = WaveGetLaneCount();
+    float wsum = WaveActiveSum(v);
+    GroupMemoryBarrierWithGroupSync();  // previous call done reading _ms_red
+    if (WaveIsFirstLane()) _ms_red[tid / wsize] = wsum;
+    GroupMemoryBarrierWithGroupSync();
+    float total = 0.0f;
+    if (tid < wsize) {  // wave 0, whole-wave uniform
+        float part = 0.0f;
+        for (uint k = tid; k < 256 / wsize; k += wsize) part += _ms_red[k];
+        total = WaveActiveSum(part);
+    }
+    return total;
+}
+
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
@@ -386,14 +404,8 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     for (int i = 0; i < kNRaw; i++) {
         float loss = inside ? losses[i] : 0.0f;
         loss = _ms_finite(loss) ? loss : 0.0f;
-        _ms_red[tid] = loss;
-        GroupMemoryBarrierWithGroupSync();
-        for (uint s = 128; s > 0; s >>= 1) {
-            if (tid < s) _ms_red[tid] += _ms_red[tid + s];
-            GroupMemoryBarrierWithGroupSync();
-        }
+        float sum = _ms_block_sum(loss, tid);
         if (tid == 0) {
-            float sum = _ms_red[0];
             if (sum != 0.0f && _ms_finite(sum)) {
                 int which = _ms_add_which(i);
                 if (which == 0 || which == 2)
@@ -403,7 +415,6 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                                    sum);
             }
         }
-        GroupMemoryBarrierWithGroupSync();
     }
 }
 

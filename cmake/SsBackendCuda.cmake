@@ -148,6 +148,15 @@ target_compile_options(csrc PRIVATE
 set_property(TARGET csrc PROPERTY CXX_STANDARD 17)
 set_property(TARGET csrc PROPERTY CUDA_STANDARD 17)
 
+# backend/cuda/KernelProfilerCuda.cu interposes cudaLaunchKernel here. Without
+# --wrap its object is never pulled out of the archive and the SS_PROFILE
+# per-kernel table is absent; nothing else changes.
+include(CheckLinkerFlag)
+check_linker_flag(CXX "LINKER:--wrap=cudaLaunchKernel" SS_HAS_LINKER_WRAP)
+if(SS_HAS_LINKER_WRAP)
+    target_link_options(csrc INTERFACE "LINKER:--wrap=cudaLaunchKernel")
+endif()
+
 set(SS_APP_LIBS csrc CUDA::cudart)
 
 # ---------------------------------------------------------------------------
