@@ -411,7 +411,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.cap_max = 200000;
         c.apply_loss_for_mask = true;
         c.center_method = "focus";
-        c.background_mode = "pseudorandom";
+        c.background_mode = "sh";
         c.depth_distortion_reg = 0.01f;
         c.rgb_distortion_reg = 0.01f;
         c.erank_reg = 0.05f;
