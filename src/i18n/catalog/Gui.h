@@ -2017,45 +2017,45 @@ SS_MSG(keep_training_help,
     TR("Bunu kapatır ve çalışmanın duraklatıldığı yerden devam eder."));
 
 SS_MSG(data_error_title,
-    EN("Dataset file unreadable"),
-    JA("データセットのファイルを読めません"),
-    ZH_HANS("无法读取数据集文件"),
-    ZH_HANT("無法讀取資料集檔案"),
-    KO("데이터셋 파일을 읽을 수 없음"),
-    DE("Datensatzdatei nicht lesbar"),
-    FR("Fichier du jeu de données illisible"),
-    ES("Archivo del conjunto de datos ilegible"),
-    PT("Ficheiro do conjunto de dados ilegível"),
-    IT("File del set di dati illeggibile"),
-    NL("Datasetbestand onleesbaar"),
-    RU("Файл набора данных не читается"),
-    TR("Veri kümesi dosyası okunamıyor"));
+    EN("Training paused"),
+    JA("学習を一時停止しました"),
+    ZH_HANS("训练已暂停"),
+    ZH_HANT("訓練已暫停"),
+    KO("학습이 일시정지됨"),
+    DE("Training pausiert"),
+    FR("Entraînement en pause"),
+    ES("Entrenamiento en pausa"),
+    PT("Treinamento pausado"),
+    IT("Addestramento in pausa"),
+    NL("Training gepauzeerd"),
+    RU("Обучение приостановлено"),
+    TR("Eğitim duraklatıldı"));
 
 SS_MSG(data_error_intro,
-    EN("Training is paused here and nothing is lost. Put the file back, then "
-       "retry."),
-    JA("ここで学習は一時停止していて、失われたものはありません。ファイルを"
-       "戻してから、やり直してください。"),
-    ZH_HANS("训练已在此暂停，没有任何损失。把文件放回去，然后重试。"),
-    ZH_HANT("訓練已在此暫停，沒有任何損失。把檔案放回去，然後重試。"),
-    KO("여기서 학습이 멈춰 있고 잃은 것은 없습니다. 파일을 되돌려 놓고 다시 "
+    EN("Training is paused here and nothing is lost. Clear the problem above, "
+       "then retry."),
+    JA("ここで学習は一時停止していて、失われたものはありません。上の問題を"
+       "解消してから、やり直してください。"),
+    ZH_HANS("训练已在此暂停，没有任何损失。解决上面的问题，然后重试。"),
+    ZH_HANT("訓練已在此暫停，沒有任何損失。解決上面的問題，然後重試。"),
+    KO("여기서 학습이 멈춰 있고 잃은 것은 없습니다. 위의 문제를 해결한 뒤 다시 "
        "시도하세요."),
-    DE("Das Training pausiert hier, nichts geht verloren. Legen Sie die Datei "
-       "zurück und versuchen Sie es erneut."),
-    FR("L'entraînement est en pause ici et rien n'est perdu. Remettez le "
-       "fichier en place, puis réessayez."),
-    ES("El entrenamiento está en pausa aquí y no se pierde nada. Vuelve a "
-       "poner el archivo y reinténtalo."),
-    PT("O treinamento está pausado aqui e nada se perde. Coloque o ficheiro de "
-       "volta e tente novamente."),
-    IT("L'addestramento è in pausa qui e non si perde nulla. Rimetti a posto "
-       "il file, poi riprova."),
-    NL("De training staat hier stil en er gaat niets verloren. Zet het bestand "
-       "terug en probeer het opnieuw."),
-    RU("Обучение приостановлено здесь, ничего не потеряно. Верните файл на "
-       "место и повторите."),
-    TR("Eğitim burada duraklatıldı ve hiçbir şey kaybolmadı. Dosyayı geri "
-       "koyup yeniden deneyin."));
+    DE("Das Training pausiert hier, nichts geht verloren. Beheben Sie das "
+       "Problem oben und versuchen Sie es erneut."),
+    FR("L'entraînement est en pause ici et rien n'est perdu. Corrigez le "
+       "problème ci-dessus, puis réessayez."),
+    ES("El entrenamiento está en pausa aquí y no se pierde nada. Resuelve el "
+       "problema de arriba y reinténtalo."),
+    PT("O treinamento está pausado aqui e nada se perde. Resolva o problema "
+       "acima e tente novamente."),
+    IT("L'addestramento è in pausa qui e non si perde nulla. Risolvi il "
+       "problema qui sopra, poi riprova."),
+    NL("De training staat hier stil en er gaat niets verloren. Los het "
+       "probleem hierboven op en probeer het opnieuw."),
+    RU("Обучение приостановлено здесь, ничего не потеряно. Устраните проблему "
+       "выше и повторите."),
+    TR("Eğitim burada duraklatıldı ve hiçbir şey kaybolmadı. Yukarıdaki "
+       "sorunu giderip yeniden deneyin."));
 
 SS_MSG(data_error_retry,
     EN("Retry"), JA("やり直す"), ZH_HANS("重试"), ZH_HANT("重試"),
@@ -2207,6 +2207,12 @@ SS_MSG(viewport_grid,
     KO("격자"),           DE("Raster"),       FR("grille"),       ES("rejilla"),
     PT("grade"),         IT("griglia"),      NL("raster"),       RU("сетка"),
     TR("ızgara"));
+
+SS_MSG(viewport_scale,
+    EN("resolution"),    JA("解像度"),       ZH_HANS("分辨率"),   ZH_HANT("解析度"),
+    KO("해상도"),        DE("Auflösung"),   FR("résolution"),  ES("resolución"),
+    PT("resolução"),     IT("risoluzione"),  NL("resolutie"),    RU("разрешение"),
+    TR("çözünürlük"));
 
 SS_MSG(viewport_scale_auto,
     EN("Auto"),         JA("自動"),          ZH_HANS("自动"),    ZH_HANT("自動"),

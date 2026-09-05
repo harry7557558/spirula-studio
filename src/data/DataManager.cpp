@@ -926,6 +926,8 @@ private:
     // Run `decode`, parking the thread on a throw until the front end answers
     // resolve_data_error(). False means abandon the job and exit the worker.
     bool decode_or_park(const std::function<void()>& decode);
+    // decode_or_park, with bad_alloc restated as something a reader can act on.
+    bool stage_or_park(const std::function<void()>& stage);
     void enqueue_batch(IndexGroup& group, int batch_size,
                        BoundedQueue<std::shared_ptr<DecodedBatch>>& ready_q);
     // Disk-mode: allocate + enqueue decode jobs for a whole training step
@@ -1930,22 +1932,42 @@ void DataManagerImpl::worker_loop_normal() {
 }
 
 
+// bad_alloc::what() is "bad allocation", and this string is shown to a person.
+bool DataManagerImpl::stage_or_park(const std::function<void()>& stage) {
+    return decode_or_park([&] {
+        try {
+            stage();
+        } catch (const std::bad_alloc&) {
+            throw std::runtime_error(dmsg::batch_out_of_memory.get());
+        }
+    });
+}
+
 // Scheduler: produces decoded-batch shells, hands jobs to per-modality
 // queues, and routes the finished batch to the right ready queue.
 void DataManagerImpl::scheduler_loop() {
+    // Staging a step is the largest allocation the pipeline makes, and an
+    // exception leaving a thread entry point calls terminate() instead of
+    // reaching anyone -- so park on it, as the decode workers do.
     while (!_stop.load()) {
         // Alternate fill order: prefer training to validation, refill val
         // when ready_val is near-empty. (Simple heuristic.)
         if (!_train_groups.empty()) {
-            StepSpec spec = next_train_step_spec();   // locks _sampling_mu
-            enqueue_step(spec, *_q_ready_train);
+            if (!stage_or_park([&] {
+                    StepSpec spec = next_train_step_spec();  // locks _sampling_mu
+                    enqueue_step(spec, *_q_ready_train);
+                }))
+                return;
         }
         if (!_val_groups.empty()) {
-            std::unique_lock<std::mutex> lk(_sampling_mu);
-            size_t gi = _val_sampler(_rng);
-            auto& g = _val_groups[gi];
-            lk.unlock();
-            enqueue_batch(g, _cfg.val_batch_size, *_q_ready_val);
+            if (!stage_or_park([&] {
+                    std::unique_lock<std::mutex> lk(_sampling_mu);
+                    size_t gi = _val_sampler(_rng);
+                    auto& g = _val_groups[gi];
+                    lk.unlock();
+                    enqueue_batch(g, _cfg.val_batch_size, *_q_ready_val);
+                }))
+                return;
         }
     }
 }

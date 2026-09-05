@@ -28,6 +28,44 @@ namespace data {
 // The two words that qualify a line
 // ===========================================================================
 
+SS_MSG(batch_out_of_memory,
+    EN("Out of memory while staging a training batch. Close other programs to "
+       "free memory, then retry -- or stop, and train at a lower resolution."),
+    JA("学習バッチの準備中にメモリが不足しました。ほかのプログラムを閉じて"
+       "メモリを空けてからやり直すか、停止して解像度を下げて学習してください。"),
+    ZH_HANS("准备训练批次时内存不足。关闭其他程序腾出内存后重试，"
+            "或者停止训练并改用更低的分辨率。"),
+    ZH_HANT("準備訓練批次時記憶體不足。關閉其他程式騰出記憶體後重試，"
+            "或者停止訓練並改用更低的解析度。"),
+    KO("학습 배치를 준비하는 중 메모리가 부족했습니다. 다른 프로그램을 닫아 "
+       "메모리를 확보한 뒤 다시 시도하거나, 중지하고 더 낮은 해상도로 "
+       "학습하세요."),
+    DE("Zu wenig Speicher beim Bereitstellen eines Trainings-Batches. Schließen "
+       "Sie andere Programme, um Speicher freizugeben, und versuchen Sie es "
+       "erneut -- oder halten Sie an und trainieren Sie mit geringerer "
+       "Auflösung."),
+    FR("Mémoire insuffisante lors de la préparation d'un lot d'entraînement. "
+       "Fermez d'autres programmes pour libérer de la mémoire, puis réessayez "
+       "-- ou arrêtez et entraînez à une résolution plus basse."),
+    ES("Sin memoria al preparar un lote de entrenamiento. Cierra otros "
+       "programas para liberar memoria y reinténtalo, o detén el "
+       "entrenamiento y usa una resolución más baja."),
+    PT("Sem memória ao preparar um lote de treinamento. Feche outros programas "
+       "para liberar memória e tente novamente, ou pare e treine com uma "
+       "resolução menor."),
+    IT("Memoria esaurita durante la preparazione di un lotto di addestramento. "
+       "Chiudi altri programmi per liberare memoria e riprova, oppure fermati "
+       "e addestra a una risoluzione più bassa."),
+    NL("Onvoldoende geheugen bij het klaarzetten van een trainingsbatch. Sluit "
+       "andere programma's om geheugen vrij te maken en probeer het opnieuw, "
+       "of stop en train op een lagere resolutie."),
+    RU("Не хватило памяти при подготовке обучающей партии. Закройте другие "
+       "программы, чтобы освободить память, и повторите — или остановитесь и "
+       "обучайте в более низком разрешении."),
+    TR("Bir eğitim yığını hazırlanırken bellek yetersiz kaldı. Bellek açmak "
+       "için diğer programları kapatıp yeniden deneyin ya da durdurup daha "
+       "düşük çözünürlükte eğitin."));
+
 SS_MSG(word_warning,
     EN("WARNING:"),
     JA("警告:"),

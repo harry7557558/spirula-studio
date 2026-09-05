@@ -160,7 +160,23 @@ inline void TextColoredWrappedRaw(const ImVec4& c, const std::string& s) {
 inline void help_on_hover_raw(const char* text,
                               ImGuiHoveredFlags extra = 0) {
     if (!text || !*text) return;
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | extra) &&
+    // A control that has been used needs no caption, and the help would sit on
+    // top of whatever the control is changing -- so mute it from the first
+    // click until the pointer leaves. Only one item is ever hovered at a time.
+    static thread_local ImGuiID muted = 0;
+    const ImGuiID id = ImGui::GetItemID();
+    if (id != 0) {   // 0 is a Text and the like: nothing to click, never muted
+        if (ImGui::IsItemActive() || ImGui::IsItemActivated()) muted = id;
+        else if (muted == id &&
+                 !ImGui::IsItemHovered(
+                     ImGuiHoveredFlags_AllowWhenDisabled |
+                     ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+            muted = 0;
+        if (muted == id) return;
+    }
+    // NoSharedDelay: walking a toolbar should not pop one tooltip per item.
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                             ImGuiHoveredFlags_NoSharedDelay | extra) &&
         ImGui::BeginTooltip()) {
         ImGui::PushTextWrapPos(gui::px(420.0f));
         ImGui::TextUnformatted(text);
@@ -420,9 +436,80 @@ inline void ProgressBar(float frac, const ImVec2& size, const Msg& m,
 inline void ProgressBarRaw(float frac, const ImVec2& size, const char* overlay) {
     ImGui::ProgressBar(frac, size, overlay);
 }
-inline void PlotLinesRaw(const char* id, const float* values, int count,
-                         const char* overlay, const ImVec2& size) {
-    ImGui::PlotLines(id, values, count, 0, overlay, FLT_MAX, FLT_MAX, size);
+// ImGui's PlotLines tooltips BOTH ends of the hovered segment and offers no way
+// to change that, and it spaces points by index. `xs` carries the x of each
+// sample -- the training step -- so the axis means elapsed training, not order.
+inline void PlotLinesRaw(const float* xs, const float* ys, int count,
+                         const ImVec2& size) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    ImVec2 frame = size;
+    if (frame.x <= 0.0f) frame.x = ImGui::GetContentRegionAvail().x + frame.x;
+    if (frame.y <= 0.0f) frame.y = ImGui::GetFrameHeight() + frame.y;
+    if (frame.x < 1.0f) frame.x = 1.0f;
+    if (frame.y < 1.0f) frame.y = 1.0f;
+
+    const ImVec2 lo = ImGui::GetCursorScreenPos();
+    const ImVec2 hi(lo.x + frame.x, lo.y + frame.y);
+    ImGui::Dummy(frame);
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(lo, hi, ImGui::GetColorU32(ImGuiCol_FrameBg),
+                      st.FrameRounding);
+    if (st.FrameBorderSize > 0.0f)
+        dl->AddRect(lo, hi, ImGui::GetColorU32(ImGuiCol_Border),
+                    st.FrameRounding, 0, st.FrameBorderSize);
+    if (count < 2) return;
+
+    float y_lo = FLT_MAX, y_hi = -FLT_MAX;
+    for (int i = 0; i < count; i++) {
+        if (ys[i] != ys[i]) continue;   // NaN, as PlotEx does
+        if (ys[i] < y_lo) y_lo = ys[i];
+        if (ys[i] > y_hi) y_hi = ys[i];
+    }
+    if (y_lo > y_hi) return;
+    // A run that has not moved off its first step yet has no x extent to
+    // spread over; index spacing is the only thing left to draw it by.
+    const float x_lo = xs[0], x_hi = xs[count - 1];
+    const bool by_x = x_hi > x_lo;
+
+    const ImVec2 in_lo(lo.x + st.FramePadding.x, lo.y + st.FramePadding.y);
+    const ImVec2 in_hi(hi.x - st.FramePadding.x, hi.y - st.FramePadding.y);
+    if (in_hi.x <= in_lo.x || in_hi.y <= in_lo.y) return;
+    const float inv_y = (y_hi > y_lo) ? 1.0f / (y_hi - y_lo) : 0.0f;
+    const float inv_x = by_x ? 1.0f / (x_hi - x_lo) : 0.0f;
+    auto point_at = [&](int i) {
+        const float v = (ys[i] == ys[i]) ? ys[i] : y_lo;
+        const float tx = by_x ? (xs[i] - x_lo) * inv_x
+                              : (float)i / (float)(count - 1);
+        const float ty = 1.0f - (v - y_lo) * inv_y;
+        return ImVec2(in_lo.x + tx * (in_hi.x - in_lo.x),
+                      in_lo.y + ty * (in_hi.y - in_lo.y));
+    };
+
+    static thread_local std::vector<ImVec2> pts;
+    pts.clear();
+    pts.reserve((size_t)count);
+    for (int i = 0; i < count; i++) pts.push_back(point_at(i));
+    const ImU32 col = ImGui::GetColorU32(ImGuiCol_PlotLines);
+    const float th = gui::px(1.5f);
+    dl->AddPolyline(pts.data(), count, col, ImDrawFlags_None, th);
+    // AddPolyline butts its segments together, which notches every corner the
+    // curve turns; a dot on each interior vertex is the round join it lacks.
+    for (int i = 1; i + 1 < count; i++)
+        dl->AddCircleFilled(pts[(size_t)i], th * 0.5f, col);
+
+    if (!ImGui::IsItemHovered()) return;
+    const float mx = ImGui::GetIO().MousePos.x;
+    if (mx < in_lo.x || mx > in_hi.x) return;
+    int hit = 0;
+    float best = FLT_MAX;
+    for (int i = 0; i < count; i++) {
+        const float d = pts[(size_t)i].x - mx;
+        if (d * d < best) { best = d * d; hit = i; }
+    }
+    dl->AddCircleFilled(pts[(size_t)hit], th * 1.4f,
+                        ImGui::GetColorU32(ImGuiCol_PlotLinesHovered));
+    ImGui::SetTooltip("%d: %.4g", (int)xs[hit], (double)ys[hit]);
 }
 
 }  // namespace ui

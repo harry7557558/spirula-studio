@@ -5345,17 +5345,24 @@ void GuiApp::draw_metrics() {
     ui::SeparatorText(msg::section_metrics);
     // Downsample to <= 240 plot points.
     int stride = std::max<size_t>(1, pts.size() / 240);
-    static std::vector<float> psnr, splats;
+    static std::vector<float> steps, psnr, splats;
+    steps.clear();
     psnr.clear();
     splats.clear();
-    for (size_t i = 0; i < pts.size(); i += stride) {
+    auto take = [&](size_t i) {
+        steps.push_back((float)pts[i].step);
         psnr.push_back(pts[i].psnr);
         splats.push_back(pts[i].num_splats);
-    }
+    };
+    size_t last_i = 0;
+    for (size_t i = 0; i < pts.size(); i += stride) { take(i); last_i = i; }
+    // The stride can stop short of the newest point, which on a step axis
+    // leaves the curve ending before the score printed beside it.
+    if (last_i != pts.size() - 1) take(pts.size() - 1);
     const auto& last = pts.back();
     // PSNR / SSIM / loss are the metric names the literature and the logs use;
     // they are not translated, only the numbers change.
-    ui::PlotLinesRaw("##psnr", psnr.data(), (int)psnr.size(), nullptr,
+    ui::PlotLinesRaw(steps.data(), psnr.data(), (int)psnr.size(),
                      ImVec2(-8, px(64.0f)));
     // The score, placed in the plot's own rectangle rather than handed to
     // PlotLines as its overlay: that one is drawn against the TOP of the

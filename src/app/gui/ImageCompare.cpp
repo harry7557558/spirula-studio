@@ -1050,12 +1050,18 @@ void ImageCompare::handle_keys() {
     if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
         !ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
         return;
-    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))  select(_index - 1);
-    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) select(_index + 1);
-    if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true))     select(_index - 10);
-    if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true))   select(_index + 10);
-    if (ImGui::IsKeyPressed(ImGuiKey_Home, false))      select(0);
-    if (ImGui::IsKeyPressed(ImGuiKey_End, false))
+    // Shortcut() rather than IsKeyPressed(): it claims the key. An unclaimed
+    // arrow is ALSO read by imgui's nav, which walks the focus along the
+    // toolbar. Routed from the root window so hovering is enough, as before.
+    const ImGuiInputFlags route = ImGuiInputFlags_RouteFocused |
+                                  ImGuiInputFlags_RouteFromRootWindow;
+    const ImGuiInputFlags rep = route | ImGuiInputFlags_Repeat;
+    if (ImGui::Shortcut(ImGuiKey_LeftArrow, rep))  select(_index - 1);
+    if (ImGui::Shortcut(ImGuiKey_RightArrow, rep)) select(_index + 1);
+    if (ImGui::Shortcut(ImGuiKey_PageUp, rep))     select(_index - 10);
+    if (ImGui::Shortcut(ImGuiKey_PageDown, rep))   select(_index + 10);
+    if (ImGui::Shortcut(ImGuiKey_Home, route))     select(0);
+    if (ImGui::Shortcut(ImGuiKey_End, route))
         select((int)_session->ds.num_cameras - 1);
 }
 

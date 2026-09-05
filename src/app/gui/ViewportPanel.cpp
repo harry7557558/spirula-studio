@@ -476,6 +476,14 @@ void ViewportPanel::handle_input(float /*item_h*/) {
         k.d = ImGui::IsKeyDown(ImGuiKey_D);
         k.e = ImGui::IsKeyDown(ImGuiKey_E);
         k.q = ImGui::IsKeyDown(ImGuiKey_Q);
+        // The claim is what the Shortcut() calls are for: an unclaimed arrow is
+        // ALSO read by imgui's nav, which walks the focus along the toolbar.
+        // IsKeyDown still reads it -- ownership only filters the owner-aware.
+        const ImGuiInputFlags route = ImGuiInputFlags_RouteFocused |
+                                      ImGuiInputFlags_RouteFromRootWindow;
+        const ImGuiKey arrows[] = {ImGuiKey_UpArrow, ImGuiKey_DownArrow,
+                                   ImGuiKey_LeftArrow, ImGuiKey_RightArrow};
+        for (ImGuiKey key : arrows) ImGui::Shortcut(key, route);
         k.up = ImGui::IsKeyDown(ImGuiKey_UpArrow);
         k.down = ImGui::IsKeyDown(ImGuiKey_DownArrow);
         k.left = ImGui::IsKeyDown(ImGuiKey_LeftArrow);
@@ -575,13 +583,16 @@ void ViewportPanel::draw_controls(bool engine) {
     if (ui::Checkbox(msg::viewport_grid, &_show_grid)) _dirty = true;
     ui::help_on_hover(msg::viewport_cameras_help);
     if (engine) {
-        place(px(66.0f));
+        place(px(66.0f) + st.ItemInnerSpacing.x +
+              text_w(msg::viewport_scale.get()));
         ImGui::SetNextItemWidth(px(66.0f));
         // Only the first entry is a word; the rest are numbers, and a
         // percentage is a percentage in every language.
         const char* scales[] = {msg::viewport_scale_auto.get(),
                                 "50%", "75%", "100%"};
-        if (ui::ComboRaw("##scale", &_scale_idx, scales, 4)) _dirty = true;
+        if (ui::ComboRaw(ui::detail::label(msg::viewport_scale), &_scale_idx,
+                         scales, 4))
+            _dirty = true;
         ui::help_on_hover(msg::viewport_scale_help);
         // "Live" is about keeping up with training; a file does not move.
         if (_has_cameras) {
