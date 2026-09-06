@@ -742,6 +742,36 @@ int cmdMetricSelftest(int, char**) {
               "T7: and not the first fix");
     }
 
+    // ---- T11: the conditioning floor is pinned from both sides -------------
+    // A line with a chosen transverse spread. 0.045 and 0.055 straddle the
+    // constant, so moving it outside +/-10 % turns one of these red.
+    {
+        Sim3 T;
+        T.scale = 2.5;
+        T.R = rotFromAxisAngle({0.2, 0.5, 0.84}, 0.7);
+        T.t = {3.0, -1.0, 8.0};
+        // lambda1 = (n^2-1)/12 along x, lambda2 = a^2, so perp_frac is
+        // sqrt(a^2/(lambda1+a^2)); the + - - + sign pattern makes the cross
+        // covariance with x exactly zero, so those are the true eigenvalues.
+        auto line = [](double a) {
+            std::vector<Vec3> c(60);
+            for (int i = 0; i < 60; i++) {
+                const int j = i % 4;
+                c[i] = {(double)i, (j == 0 || j == 3) ? a : -a, 0.0};
+            }
+            return c;
+        };
+        MetricFit below = fitMetricGauge(makeRef(line(0.780105), T), 0.5);
+        MetricFit above = fitMetricGauge(makeRef(line(0.953940), T), 0.5);
+        printf("  T11: perp frac %.6f (below the floor) / %.6f (above)\n",
+               below.perp_frac, above.perp_frac);
+        check(std::fabs(below.perp_frac - 0.045) < 1e-6, "T11: the low fixture really is 0.045");
+        check(std::fabs(above.perp_frac - 0.055) < 1e-6, "T11: the high fixture really is 0.055");
+        check(!below.ok && below.reason == MetricFail::Collinear,
+              "T11: 0.045 is refused, so the floor is not below it");
+        check(above.ok, "T11: 0.055 is accepted, so the floor is not above it");
+    }
+
     printf("%s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

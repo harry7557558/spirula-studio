@@ -58,8 +58,8 @@ struct MetricFit {
 };
 
 // Orientation error grows as 1/perp_frac against scale error, so 0.05 refuses
-// a reference whose shape amplifies it more than 20x. Two real flight segments
-// measure 1.4x and 1.9x; a straight leg and a near-straight one, 80x and 33x.
+// a reference amplifying it beyond 20x -- a starting heuristic, not a bound:
+// the derivation gives the shape, not 20 rather than 10 (D74, one flight).
 inline constexpr double kMetricMinPerpFraction = 0.05;
 
 namespace detail {
