@@ -4,7 +4,10 @@
 // Prints PASS/FAIL and returns 0/1. See docs/testing.md.
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "sfm/core/Camera.h"
@@ -421,6 +424,94 @@ int cmdMetricSelftest(int, char**) {
         const bool bimodal = std::fabs(a.T.scale / A.scale - 1.0) < 1e-9 ||
                              std::fabs(a.T.scale / B.scale - 1.0) < 1e-9;
         check(bimodal, "T10: the fixture really has two answers to choose between");
+    }
+
+    // ---- T5: pairing a positions file to image names ----------------------
+    // Two files share a basename in different folders, one entry has no
+    // extension, one names an image the model does not have.
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "sfm_metric_t5";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const fs::path pf = dir / "positions.txt";
+        {
+            std::ofstream f(pf.string());
+            f << "# a comment, and the blank line below\n\n";
+            f << "cam1/a.jpg 1 2 3\n";
+            f << "cam2/a.jpg 4 5 6\n";
+            f << "b 7 8 9\n";              // stem match against b.png
+            f << "zzz.jpg 10 11 12\n";     // not in the model
+            f << "e.jpg 20 21 22\n";       // in the model, but unregistered
+            f << "v1 99 99 99\n";          // a dot in a FOLDER is not an extension
+        }
+        std::map<std::string, Vec3> pos;
+        std::string err;
+        check(readMetricPositions(pf.string(), pos, err), "T5: the file parses");
+        check(pos.size() == 6, "T5: six entries read");
+
+        Reconstruction rec;
+        const char* names[6] = {"cam1/a.jpg", "cam2/a.jpg", "b.png", "d.jpg", "e.jpg",
+                                "v1.0/frame"};
+        for (int i = 0; i < 6; i++) {
+            Image im;
+            im.id = (uint32_t)(i + 1);
+            im.name = names[i];
+            im.registered = i != 4;  // e.jpg is in the model but not solved
+            im.pose = {mat3Identity(), {(double)-i, 0, 0}};
+            rec.images[im.id] = im;
+        }
+        MetricRef ref;
+        MetricPairCounts pc = pairMetricRef(rec, pos, ref);
+        printf("  T5: matched %d, file-only %d, model-only %d\n",
+               pc.matched, pc.unmatched_file, pc.unmatched_model);
+        check(pc.matched == 3 && (int)ref.targets.size() == 3, "T5: three matched");
+        check(pc.unmatched_file == 3, "T5: an unregistered image leaves its entry unused");
+        check(pc.unmatched_model == 2, "T5: a dotted folder is not an extension");
+        std::map<uint32_t, Vec3> got;
+        for (size_t i = 0; i < ref.image_ids.size(); i++) got[ref.image_ids[i]] = ref.targets[i];
+        check(got.count(1) && got.count(2) && got.count(3), "T5: the expected three images");
+        check(got.count(1) && got[1].x == 1 && got[1].y == 2 && got[1].z == 3 &&
+              got.count(2) && got[2].x == 4 && got[2].y == 5 && got[2].z == 6,
+              "T5: same basename in two folders stays two cameras");
+        check(got.count(3) && got[3].x == 7, "T5: an extensionless entry matches by stem");
+
+        {   // a malformed line is refused, and the message names its number
+            const fs::path bad = dir / "bad.txt";
+            std::ofstream f(bad.string());
+            f << "ok.jpg 1 2 3\n\nbroken.jpg 1 2\n";
+            f.close();
+            std::map<std::string, Vec3> p2;
+            std::string e2;
+            check(!readMetricPositions(bad.string(), p2, e2), "T5: a short line is refused");
+            check(e2.find("3") != std::string::npos, "T5: the error names line 3");
+        }
+        {   // a fourth number is not a comment: refuse rather than ignore it
+            const fs::path junk = dir / "junk.txt";
+            std::ofstream f(junk.string());
+            f << "ok.jpg 1 2 3 4\n";
+            f.close();
+            std::map<std::string, Vec3> pj;
+            std::string ej;
+            check(!readMetricPositions(junk.string(), pj, ej),
+                  "T5: a trailing field is refused");
+        }
+        {   // the same image twice is a mistake, not a last-one-wins
+            const fs::path dup = dir / "dup.txt";
+            std::ofstream f(dup.string());
+            f << "a.jpg 1 2 3\na.jpg 4 5 6\n";
+            f.close();
+            std::map<std::string, Vec3> p3;
+            std::string e3;
+            check(!readMetricPositions(dup.string(), p3, e3), "T5: a repeated name is refused");
+        }
+        {   // a path that is not there reports so rather than reading nothing
+            std::map<std::string, Vec3> p4;
+            std::string e4;
+            check(!readMetricPositions((dir / "nope.txt").string(), p4, e4),
+                  "T5: a missing file is refused");
+        }
+        fs::remove_all(dir);
     }
 
     printf("%s\n", fails ? "FAIL" : "PASS");

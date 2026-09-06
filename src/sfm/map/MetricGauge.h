@@ -12,9 +12,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <fstream>
 #include <limits>
+#include <map>
+#include <sstream>
+#include <string>
 #include <vector>
 
+#include "sfm/core/Model.h"
 #include "sfm/core/Pose.h"
 #include "sfm/geometry/LinAlg.h"
 #include "sfm/optim/Ransac.h"
@@ -175,6 +180,81 @@ inline MetricFit fitMetricGauge(const MetricRef& ref, double max_error) {
     out.ok = true;
     out.reason = MetricFail::None;
     return out;
+}
+
+// What pairing found, so a run can say why it has fewer cameras than either
+// side offered.
+struct MetricPairCounts {
+    int matched = 0;
+    int unmatched_file = 0;    // positions naming no registered image
+    int unmatched_model = 0;   // registered images with no position
+};
+
+// COLMAP's model_aligner --ref_images_path format: `image_name X Y Z` per
+// line, metres, '#' comments, blank lines skipped. `err` names the line.
+inline bool readMetricPositions(const std::string& path, std::map<std::string, Vec3>& out,
+                                std::string& err) {
+    std::ifstream f(path);
+    if (!f) {
+        err = "cannot open " + path;
+        return false;
+    }
+    out.clear();
+    std::string line;
+    for (int lineno = 1; std::getline(f, line); lineno++) {
+        const size_t hash = line.find('#');
+        if (hash != std::string::npos) line.resize(hash);
+        std::istringstream is(line);
+        std::string name;
+        if (!(is >> name)) continue;
+        double x, y, z;
+        std::string extra;
+        if (!(is >> x >> y >> z) || (is >> extra)) {
+            err = "line " + std::to_string(lineno) + ": expected `image_name X Y Z`";
+            return false;
+        }
+        if (!out.emplace(name, Vec3{x, y, z}).second) {
+            err = "line " + std::to_string(lineno) + ": " + name + " appears twice";
+            return false;
+        }
+    }
+    if (out.empty()) {
+        err = "no positions in " + path;
+        return false;
+    }
+    return true;
+}
+
+// Pair registered images to positions on the name the model carries, then on
+// that name without its extension. Never on the basename: two folders holding
+// one file name is a rig capture, not a duplicate.
+inline MetricPairCounts pairMetricRef(const Reconstruction& rec,
+                                      const std::map<std::string, Vec3>& positions,
+                                      MetricRef& ref) {
+    MetricPairCounts c;
+    std::vector<char> used(positions.size(), 0);
+    for (const auto& kv : rec.images) {
+        if (!kv.second.registered) continue;
+        auto it = positions.find(kv.second.name);
+        if (it == positions.end()) {
+            const size_t dot = kv.second.name.find_last_of('.');
+            const size_t slash = kv.second.name.find_last_of('/');
+            if (dot != std::string::npos && (slash == std::string::npos || dot > slash))
+                it = positions.find(kv.second.name.substr(0, dot));
+        }
+        if (it == positions.end()) {
+            c.unmatched_model++;
+            continue;
+        }
+        used[(size_t)std::distance(positions.begin(), it)] = 1;
+        ref.centres.push_back(cameraCenter(kv.second.pose));
+        ref.targets.push_back(it->second);
+        ref.image_ids.push_back(kv.first);
+        c.matched++;
+    }
+    for (char u : used)
+        if (!u) c.unmatched_file++;
+    return c;
 }
 
 }  // namespace sfm
