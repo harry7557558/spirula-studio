@@ -476,12 +476,11 @@ static std::string metricReason(const MetricFit& f) {
             return spirula::i18n::format(M::metric_fail_inliers,
                                 {L::num(f.max_error, 3), (long long)f.inliers,
                                  (long long)f.n});
-        case MetricFail::Scale:
-            return spirula::i18n::format(M::metric_fail_scale,
-                                {L::num(f.scale_unc, 3), L::num(kMetricMaxScaleUncPct, 1)});
-        case MetricFail::Rotation:
-            return spirula::i18n::format(M::metric_fail_rotation,
-                                {L::num(f.rot_unc_deg, 2), L::num(kMetricMaxRotUncDeg, 1)});
+        case MetricFail::Collinear:
+            return spirula::i18n::format(
+                M::metric_fail_collinear,
+                {L::num(100.0 * f.perp_frac, 2), L::num(100.0 * kMetricMinPerpFraction, 1),
+                 L::num(f.perp_frac > 0 ? 1.0 / f.perp_frac : 0.0, 0)});
         case MetricFail::None: break;
     }
     return {};

@@ -5,9 +5,10 @@
 // unit-sized -- this fixes it from an outside measurement, so the written
 // model is in metres and every consumer inherits that for free (D74).
 //
-// The reported uncertainty assumes independent isotropic noise on the
-// reference positions. Correlated error (GPS drift, SfM drift) is not in it,
-// so it is a LOWER BOUND on the real uncertainty, not an estimate of it.
+// The scale and orientation uncertainties are REPORTED, never gated on: they
+// assume uncorrelated noise, and measured against a reference whose error is
+// correlated they under-state it by 3.9-4.5x (D74). What gates is geometry --
+// how far the reference positions spread, and how close to a line they lie.
 #pragma once
 
 #include <cmath>
@@ -39,7 +40,7 @@ struct MetricRef {
     std::vector<uint32_t> image_ids;
 };
 
-enum class MetricFail { None, Pairs, Spread, Inliers, Scale, Rotation };
+enum class MetricFail { None, Pairs, Spread, Inliers, Collinear };
 
 struct MetricFit {
     bool ok = false;
@@ -49,14 +50,17 @@ struct MetricFit {
     int inliers = 0;
     double max_error = 0;       // metres
     double rms = 0;             // metres, over the inliers
-    double scale_unc = 0;       // per cent, std(ds/s)
-    double rot_unc_deg = 0;     // worst principal axis
+    double scale_unc = 0;       // per cent, std(ds/s) -- advisory
+    double rot_unc_deg = 0;     // worst principal axis -- advisory
     double spread = 0;          // metres, RMS radius of the reference positions
+    double perp_frac = 0;       // RMS spread across the long axis, over the whole
     std::vector<char> inlier_mask;
 };
 
-inline constexpr double kMetricMaxScaleUncPct = 2.0;
-inline constexpr double kMetricMaxRotUncDeg = 5.0;
+// Orientation error grows as 1/perp_frac against scale error, so 0.05 refuses
+// a reference whose shape amplifies it more than 20x. Two real flight segments
+// measure 1.4x and 1.9x; a straight leg and a near-straight one, 80x and 33x.
+inline constexpr double kMetricMinPerpFraction = 0.05;
 
 namespace detail {
 
@@ -164,20 +168,18 @@ inline MetricFit fitMetricGauge(const MetricRef& ref, double max_error) {
     // Rotation about principal axis k is resisted only by the spread
     // perpendicular to it; where there is none the angle is unidentifiable
     // whatever the residual says.
-    double worst = 0;
+    double worst = 0, perp_min = 0;
     for (int k = 0; k < 3; k++) {
         const double perp = tr - lam[k];
         worst = std::max(worst, perp > 0.0 ? sigma / std::sqrt((double)m * perp)
                                            : std::numeric_limits<double>::infinity());
+        if (k == 0 || perp < perp_min) perp_min = perp;
     }
     out.rot_unc_deg = worst * 180.0 / M_PI;
+    out.perp_frac = tr > 0.0 ? std::sqrt(std::max(perp_min, 0.0) / tr) : 0.0;
 
-    if (!(out.scale_unc <= kMetricMaxScaleUncPct)) {
-        out.reason = MetricFail::Scale;
-        return out;
-    }
-    if (!(out.rot_unc_deg <= kMetricMaxRotUncDeg)) {
-        out.reason = MetricFail::Rotation;
+    if (!(out.perp_frac >= kMetricMinPerpFraction)) {
+        out.reason = MetricFail::Collinear;
         return out;
     }
     out.ok = true;

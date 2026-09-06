@@ -258,7 +258,7 @@ int cmdMetricSelftest(int, char**) {
                 ref.targets.push_back({1.6 * i, 0, 0});
             }
             MetricFit fit = fitMetricGauge(ref, 0.5);
-            check(!fit.ok && fit.reason == MetricFail::Rotation, "T4: collinear -> Rotation");
+            check(!fit.ok && fit.reason == MetricFail::Collinear, "T4: collinear -> Collinear");
         }
         {   // every reference position wrong by far more than max_error
             MetricRef ref = makeRef(arcCentres(20), T);
@@ -368,9 +368,9 @@ int cmdMetricSelftest(int, char**) {
         check(worst_px <= 1e-6, "T8: reprojection unchanged");
     }
 
-    // ---- T9: G4 is wired to the reported rotation uncertainty ------------
-    // One long thin arc at two noise levels. The geometry is identical; only
-    // sigma moves, so a gate that fires on anything else fails this.
+    // ---- T9: the collinearity gate does not read the noise ----------------
+    // Same thin arc at two noise levels 160x apart. A gate on the reported
+    // orientation uncertainty passes the quiet one; this one refuses both.
     {
         Sim3 T;
         T.scale = 1.7;
@@ -380,19 +380,29 @@ int cmdMetricSelftest(int, char**) {
         for (int i = 0; i < 60; i++)
             thin[i] = {0.5 * i, 0.0009 * i * (i % 2 ? 1 : -1), 0.0007 * ((i / 3) % 5)};
         std::mt19937 rng(17);
-        auto run = [&](double sigma) {
+        auto run = [&](const std::vector<Vec3>& c, double sigma) {
             std::normal_distribution<double> nz(0.0, sigma);
-            MetricRef ref = makeRef(thin, T);
+            MetricRef ref = makeRef(c, T);
             for (Vec3& p : ref.targets) p = p + Vec3{nz(rng), nz(rng), nz(rng)};
             return fitMetricGauge(ref, 10.0);
         };
-        MetricFit loud = run(0.08);
-        MetricFit quiet = run(0.0005);
-        printf("  T9: thin arc rot unc %.3f deg (loud) vs %.4f deg (quiet)\n",
-               loud.rot_unc_deg, quiet.rot_unc_deg);
-        check(!loud.ok && loud.reason == MetricFail::Rotation, "T9: noisy thin arc -> Rotation");
-        check(loud.rot_unc_deg > 5.0, "T9: reported rotation uncertainty above the gate");
-        check(quiet.ok, "T9: the same arc, 100x quieter, passes");
+        MetricFit loud = run(thin, 0.08);
+        MetricFit quiet = run(thin, 0.0005);
+        printf("  T9: thin arc perp frac %.5f (loud) / %.5f (quiet); rot unc %.3f / %.4f deg\n",
+               loud.perp_frac, quiet.perp_frac, loud.rot_unc_deg, quiet.rot_unc_deg);
+        check(!loud.ok && loud.reason == MetricFail::Collinear, "T9: thin arc -> Collinear");
+        check(!quiet.ok && quiet.reason == MetricFail::Collinear,
+              "T9: and 160x quieter is still Collinear -- geometry, not noise");
+        check(quiet.rot_unc_deg < 5.0 && loud.rot_unc_deg > 5.0,
+              "T9: the reported uncertainty WOULD have split them, which is why it cannot gate");
+        check(loud.perp_frac < 0.05 && quiet.perp_frac < 0.05, "T9: both below the floor");
+        // The same 60 cameras spread across the long axis instead: passes.
+        std::vector<Vec3> fat(60);
+        for (int i = 0; i < 60; i++)
+            fat[i] = {0.5 * i, 4.0 * std::sin(0.3 * i), 3.0 * std::cos(0.21 * i)};
+        MetricFit ok = run(fat, 0.08);
+        printf("  T9: spread arc perp frac %.4f\n", ok.perp_frac);
+        check(ok.ok, "T9: the same cameras spread off the axis pass");
     }
 
     // ---- T10: same inputs twice, bit for bit ----------------------------
@@ -411,15 +421,20 @@ int cmdMetricSelftest(int, char**) {
         ref.centres = centres;
         for (int i = 0; i < 60; i++)
             ref.targets.push_back(transformPoint(i < 30 ? A : B, centres[i]));
+        // Eight fits, not two: which set wins is a coin flip per seed, so a pair
+        // that happens to agree proves nothing about a varying one.
         MetricFit a = fitMetricGauge(ref, 0.1);
-        MetricFit b = fitMetricGauge(ref, 0.1);
-        bool same = a.ok == b.ok && a.reason == b.reason && a.T.scale == b.T.scale &&
-                    a.T.t.x == b.T.t.x && a.T.t.y == b.T.t.y && a.T.t.z == b.T.t.z &&
-                    a.inliers == b.inliers && a.inlier_mask == b.inlier_mask &&
-                    a.rms == b.rms && a.scale_unc == b.scale_unc;
-        for (int i = 0; i < 9; i++) same = same && a.T.R[i] == b.T.R[i];
+        bool same = true;
+        for (int rep = 0; rep < 7; rep++) {
+            MetricFit b = fitMetricGauge(ref, 0.1);
+            same = same && a.ok == b.ok && a.reason == b.reason && a.T.scale == b.T.scale &&
+                   a.T.t.x == b.T.t.x && a.T.t.y == b.T.t.y && a.T.t.z == b.T.t.z &&
+                   a.inliers == b.inliers && a.inlier_mask == b.inlier_mask &&
+                   a.rms == b.rms && a.scale_unc == b.scale_unc && a.perp_frac == b.perp_frac;
+            for (int i = 0; i < 9; i++) same = same && a.T.R[i] == b.T.R[i];
+        }
         printf("  T10: locked onto scale %.4f with %d/%d inliers\n", a.T.scale, a.inliers, a.n);
-        check(same, "T10: two runs agree bit for bit");
+        check(same, "T10: eight runs agree bit for bit");
         check(a.inliers == 30, "T10: exactly one of the two consensus sets is found");
         const bool bimodal = std::fabs(a.T.scale / A.scale - 1.0) < 1e-9 ||
                              std::fabs(a.T.scale / B.scale - 1.0) < 1e-9;

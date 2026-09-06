@@ -2403,32 +2403,40 @@ SS_MSG(metric_source_positions,
 
 SS_MSG(metric_done,
     EN("Model {0}: metric frame from {1} -- scale {2}, cameras within {3} m: {4}/{5}, "
-       "RMS {6} m, scale uncertainty {7}%, orientation uncertainty {8} deg"),
+       "RMS {6} m; assuming uncorrelated reference error, which is a lower bound, "
+       "scale uncertainty {7}% and orientation uncertainty {8} deg"),
     JA("モデル {0}: {1} によるメートル座標系 -- 縮尺 {2}、{3} m 以内のカメラ: {4}/{5}、"
-       "RMS {6} m、縮尺の不確かさ {7}%、向きの不確かさ {8} 度"),
+       "RMS {6} m。基準の誤差が無相関という下限の仮定で、縮尺の不確かさ {7}%、向きの不確かさ {8} 度"),
     ZH_HANS("模型 {0}: 由{1}确定的米制坐标系 -- 缩放 {2}，{3} m 以内的相机: {4}/{5}，"
-            "RMS {6} m，缩放不确定度 {7}%，朝向不确定度 {8} 度"),
+            "RMS {6} m; 按参考误差互不相关这一下限假设，缩放不确定度 {7}%、朝向不确定度 {8} 度"),
     ZH_HANT("模型 {0}: 由{1}確定的公尺座標系 -- 縮放 {2}，{3} m 以內的相機: {4}/{5}，"
-            "RMS {6} m，縮放不確定度 {7}%，朝向不確定度 {8} 度"),
+            "RMS {6} m; 按參考誤差互不相關這一下限假設，縮放不確定度 {7}%、朝向不確定度 {8} 度"),
     KO("모델 {0}: {1} 기준 미터 좌표계 -- 배율 {2}, {3} m 이내 카메라: {4}/{5}, "
-       "RMS {6} m, 배율 불확실도 {7}%, 방향 불확실도 {8} 도"),
+       "RMS {6} m; 기준 오차가 무상관이라는 하한 가정에서 배율 불확실도 {7}%, 방향 불확실도 {8} 도"),
     DE("Modell {0}: metrischer Rahmen aus {1} -- Maßstab {2}, Kameras innerhalb {3} m: "
-       "{4}/{5}, RMS {6} m, Maßstabsunsicherheit {7}%, Orientierungsunsicherheit {8} Grad"),
+       "{4}/{5}, RMS {6} m; unter der Untergrenzannahme unkorrelierter Referenzfehler "
+       "Maßstabsunsicherheit {7}% und Orientierungsunsicherheit {8} Grad"),
     FR("Modèle {0} : repère métrique d'après {1} -- échelle {2}, caméras à moins de {3} m : "
-       "{4}/{5}, RMS {6} m, incertitude d'échelle {7}%, incertitude d'orientation {8} degrés"),
+       "{4}/{5}, RMS {6} m ; en supposant une erreur de référence non corrélée, ce qui est "
+       "une borne inférieure, incertitude d'échelle {7}% et d'orientation {8} degrés"),
     ES("Modelo {0}: marco métrico a partir de {1} -- escala {2}, cámaras dentro de {3} m: "
-       "{4}/{5}, RMS {6} m, incertidumbre de escala {7}%, incertidumbre de orientación {8} grados"),
+       "{4}/{5}, RMS {6} m; suponiendo error de referencia no correlacionado, que es una cota "
+       "inferior, incertidumbre de escala {7}% y de orientación {8} grados"),
     PT("Modelo {0}: referencial métrico a partir de {1} -- escala {2}, câmeras dentro de {3} m: "
-       "{4}/{5}, RMS {6} m, incerteza de escala {7}%, incerteza de orientação {8} graus"),
+       "{4}/{5}, RMS {6} m; supondo erro de referência não correlacionado, que é um limite "
+       "inferior, incerteza de escala {7}% e de orientação {8} graus"),
     IT("Modello {0}: sistema metrico da {1} -- scala {2}, camere entro {3} m: {4}/{5}, "
-       "RMS {6} m, incertezza di scala {7}%, incertezza di orientamento {8} gradi"),
+       "RMS {6} m; assumendo errore di riferimento non correlato, che è un limite inferiore, "
+       "incertezza di scala {7}% e di orientamento {8} gradi"),
     NL("Model {0}: metrisch stelsel uit {1} -- schaal {2}, camera's binnen {3} m: {4}/{5}, "
-       "RMS {6} m, schaalonzekerheid {7}%, oriëntatieonzekerheid {8} graden"),
+       "RMS {6} m; uitgaande van ongecorreleerde referentiefout, wat een ondergrens is, "
+       "schaalonzekerheid {7}% en oriëntatieonzekerheid {8} graden"),
     RU("Модель {0}: метрическая система по источнику {1} -- масштаб {2}, камер в пределах "
-       "{3} м: {4}/{5}, СКО {6} м, неопределённость масштаба {7}%, неопределённость "
-       "ориентации {8} градусов"),
+       "{3} м: {4}/{5}, СКО {6} м; в предположении некоррелированной ошибки эталона, что даёт "
+       "нижнюю границу, неопределённость масштаба {7}% и ориентации {8} градусов"),
     TR("Model {0}: {1} kaynaklı metrik çerçeve -- ölçek {2}, {3} m içindeki kameralar: "
-       "{4}/{5}, RMS {6} m, ölçek belirsizliği {7}%, yönelim belirsizliği {8} derece"));
+       "{4}/{5}, RMS {6} m; ilişkisiz referans hatası varsayımıyla, ki bu bir alt sınırdır, "
+       "ölçek belirsizliği {7}% ve yönelim belirsizliği {8} derece"));
 
 SS_MSG(metric_failed,
     EN("Model {0}: metric frame NOT applied, written in the normalized frame instead -- {1}"),
@@ -2495,44 +2503,36 @@ SS_MSG(metric_fail_inliers,
     RU("камер в пределах {0} м от подгонки: {1}/{2}, нужна половина"),
     TR("uyuma {0} m içinde olan kamera: {1}/{2}, yarısı gerekli"));
 
-SS_MSG(metric_fail_scale,
-    EN("scale uncertainty {0}% is above {1}%: the positions are too noisy for a capture "
-       "this size"),
-    JA("縮尺の不確かさ {0}% が {1}% を超えています。この規模の撮影には位置の誤差が大きすぎます"),
-    ZH_HANS("缩放不确定度 {0}% 超过 {1}%: 对这个尺度的采集来说位置噪声太大"),
-    ZH_HANT("縮放不確定度 {0}% 超過 {1}%: 對這個尺度的拍攝來說位置雜訊太大"),
-    KO("배율 불확실도 {0}% 가 {1}% 를 넘습니다. 이 규모의 촬영에는 위치 오차가 너무 큽니다"),
-    DE("Maßstabsunsicherheit {0}% liegt über {1}%: die Positionen sind für eine Aufnahme "
-       "dieser Größe zu verrauscht"),
-    FR("l'incertitude d'échelle {0}% dépasse {1}% : les positions sont trop bruitées pour "
-       "une prise de cette taille"),
-    ES("la incertidumbre de escala {0}% supera {1}%: las posiciones tienen demasiado ruido "
-       "para una toma de este tamaño"),
-    PT("a incerteza de escala {0}% ultrapassa {1}%: as posições têm demasiado ruído para "
-       "uma captura deste tamanho"),
-    IT("l'incertezza di scala {0}% supera {1}%: le posizioni sono troppo rumorose per una "
-       "ripresa di queste dimensioni"),
-    NL("schaalonzekerheid {0}% ligt boven {1}%: de posities zijn te ruizig voor een opname "
-       "van deze omvang"),
-    RU("неопределённость масштаба {0}% выше {1}%: позиции слишком шумные для съёмки "
-       "такого размера"),
-    TR("ölçek belirsizliği {0}%, {1}% üzerinde: konumlar bu boyuttaki bir çekim için "
-       "fazla gürültülü"));
-
-SS_MSG(metric_fail_rotation,
-    EN("orientation uncertainty {0} deg is above {1}: the cameras lie along a line"),
-    JA("向きの不確かさ {0} 度が {1} を超えています。カメラが一直線上に並んでいます"),
-    ZH_HANS("朝向不确定度 {0} 度超过 {1}: 相机排成了一条直线"),
-    ZH_HANT("朝向不確定度 {0} 度超過 {1}: 相機排成了一條直線"),
-    KO("방향 불확실도 {0} 도가 {1} 을 넘습니다. 카메라가 일직선에 놓여 있습니다"),
-    DE("Orientierungsunsicherheit {0} Grad liegt über {1}: die Kameras liegen auf einer Linie"),
-    FR("l'incertitude d'orientation {0} degrés dépasse {1} : les caméras sont alignées"),
-    ES("la incertidumbre de orientación {0} grados supera {1}: las cámaras están alineadas"),
-    PT("a incerteza de orientação {0} graus ultrapassa {1}: as câmeras estão alinhadas"),
-    IT("l'incertezza di orientamento {0} gradi supera {1}: le camere sono allineate"),
-    NL("oriëntatieonzekerheid {0} graden ligt boven {1}: de camera's liggen op één lijn"),
-    RU("неопределённость ориентации {0} градусов выше {1}: камеры лежат на одной прямой"),
-    TR("yönelim belirsizliği {0} derece, {1} üzerinde: kameralar tek bir doğru üzerinde"));
+SS_MSG(metric_fail_collinear,
+    EN("the cameras lie too close to a line: the spread across it is {0}% of the whole "
+       "and {1}% is the minimum, so this reference amplifies orientation error {2}x"),
+    JA("カメラがほぼ一直線に並んでいます。直線を横切る広がりは全体の {0}% で、最小は {1}% です。"
+       "この基準では向きの誤差が {2} 倍に拡大します"),
+    ZH_HANS("相机太接近一条直线: 横向展开只占整体的 {0}%，最小需要 {1}%，这样的参考会把朝向误差"
+            "放大 {2} 倍"),
+    ZH_HANT("相機太接近一條直線: 橫向展開只占整體的 {0}%，最小需要 {1}%，這樣的參考會把朝向誤差"
+            "放大 {2} 倍"),
+    KO("카메라가 거의 일직선에 놓여 있습니다. 직선을 가로지르는 퍼짐이 전체의 {0}% 이고 최소는 "
+       "{1}% 입니다. 이런 기준은 방향 오차를 {2} 배로 키웁니다"),
+    DE("die Kameras liegen zu nah an einer Linie: die Streuung quer dazu ist {0}% des Ganzen, "
+       "das Minimum ist {1}%, also verstärkt diese Referenz den Orientierungsfehler um das "
+       "{2}-fache"),
+    FR("les caméras sont trop proches d'une ligne : l'étalement en travers vaut {0}% du total "
+       "et le minimum est {1}%, donc cette référence amplifie l'erreur d'orientation {2} fois"),
+    ES("las cámaras están demasiado cerca de una línea: la dispersión transversal es el {0}% "
+       "del total y el mínimo es {1}%, así que esta referencia amplifica el error de "
+       "orientación {2} veces"),
+    PT("as câmeras estão demasiado perto de uma linha: a dispersão transversal é {0}% do total "
+       "e o mínimo é {1}%, portanto esta referência amplifica o erro de orientação {2} vezes"),
+    IT("le camere sono troppo vicine a una linea: la dispersione trasversale è il {0}% del "
+       "totale e il minimo è {1}%, quindi questo riferimento amplifica l'errore di "
+       "orientamento {2} volte"),
+    NL("de camera's liggen te dicht bij een lijn: de spreiding dwars erop is {0}% van het "
+       "geheel en {1}% is het minimum, dus deze referentie versterkt de oriëntatiefout {2} keer"),
+    RU("камеры лежат слишком близко к прямой: разброс поперёк неё составляет {0}% от общего "
+       "при минимуме {1}%, поэтому такой эталон усиливает ошибку ориентации в {2} раз"),
+    TR("kameralar bir doğruya fazla yakın: enine yayılım bütünün {0}% kadarı ve en az {1}% "
+       "olmalı, yani bu referans yönelim hatasını {2} kat büyütür"));
 
 SS_MSG(metric_matched,
     EN("Positions file: matched {0}/{1} cameras (names not in the model: {2})"),

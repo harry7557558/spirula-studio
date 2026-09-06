@@ -398,15 +398,21 @@ fitted from the camera centres with LO-RANSAC over the same `estimateSim3` that
 model merging uses, and `--metric-max-error` is its inlier radius in metres (0
 picks 5 for GPS, 0.5 for a positions file).
 
-The fit is refused rather than approximated. Fewer than three positioned
-cameras, reference positions that do not spread wider than the inlier radius,
-under half the cameras inlying, a scale uncertainty over 2 % or an orientation
-uncertainty over 5° each report their own reason with the numbers behind it;
+The fit is refused rather than approximated, and **what refuses it is geometry,
+not a noise model**. Fewer than three positioned cameras, reference positions
+that do not spread wider than the inlier radius, under half the cameras inlying,
+or cameras lying so close to a line that the reference amplifies orientation
+error more than 20x — each reports its own reason with the numbers behind it;
 the model is then still written, in the ordinary orient gauge, and the exit
-status is 4. The uncertainties come from the inlier residuals assuming
-independent isotropic noise, so they are a lower bound: correlated error — GPS
-drift, or the reconstruction's own — is not in them. `map/MetricGauge.h` has
-the algebra (D74).
+status is 4.
+
+The scale and orientation uncertainties are **reported and never gated on**.
+They come from the inlier residuals assuming uncorrelated noise, and measured
+against a reference whose error is correlated — GPS drift — they under-state
+the real error by 3.9-4.5x: on one flight a 2 % gate on them passed a 3.6 %
+scale error. A gate that passes what it exists to catch is worse than no gate,
+so they are printed as the lower bounds they are. `map/MetricGauge.h` has the
+algebra (D74).
 
 ### The finishing passes
 
