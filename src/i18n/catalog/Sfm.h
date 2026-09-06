@@ -2566,28 +2566,28 @@ SS_MSG(metric_gps_read,
     TR("EXIF GPS: {0}/{1} kamerada konum var ({2} tanesi yükseklik olmadan)"));
 
 SS_MSG(metric_axes,
-    EN("Residual RMS east/north/up: {0}/{1}/{2} m; fitted up axis vs the cameras' "
-       "mean up: {3} deg"),
-    JA("残差 RMS 東/北/上: {0}/{1}/{2} m。当てはめた上方向とカメラの平均上方向の差: {3} 度"),
-    ZH_HANS("残差 RMS 东/北/上: {0}/{1}/{2} m; 拟合的上方向与相机平均上方向相差 {3} 度"),
-    ZH_HANT("殘差 RMS 東/北/上: {0}/{1}/{2} m; 擬合的上方向與相機平均上方向相差 {3} 度"),
-    KO("잔차 RMS 동/북/상: {0}/{1}/{2} m; 맞춘 상 방향과 카메라 평균 상 방향 차이: {3} 도"),
-    DE("Residuen-RMS Ost/Nord/Oben: {0}/{1}/{2} m; angepasste Hochachse gegen die mittlere "
-       "Hochachse der Kameras: {3} Grad"),
-    FR("RMS des résidus est/nord/haut : {0}/{1}/{2} m ; axe vertical ajusté contre le haut "
-       "moyen des caméras : {3} degrés"),
-    ES("RMS de residuos este/norte/arriba: {0}/{1}/{2} m; eje vertical ajustado frente al "
-       "arriba medio de las cámaras: {3} grados"),
-    PT("RMS dos resíduos este/norte/cima: {0}/{1}/{2} m; eixo vertical ajustado contra o "
-       "cima médio das câmeras: {3} graus"),
-    IT("RMS dei residui est/nord/alto: {0}/{1}/{2} m; asse verticale stimato rispetto "
-       "all'alto medio delle camere: {3} gradi"),
-    NL("Residu-RMS oost/noord/omhoog: {0}/{1}/{2} m; gefitte omhoog-as tegen de gemiddelde "
-       "omhoog van de camera's: {3} graden"),
-    RU("СКО остатков восток/север/верх: {0}/{1}/{2} м; подогнанная вертикаль против средней "
-       "вертикали камер: {3} градусов"),
-    TR("Artık RMS doğu/kuzey/yukarı: {0}/{1}/{2} m; oturtulan yukarı ekseni kameraların "
-       "ortalama yukarısına karşı: {3} derece"));
+    EN("Residual RMS per reference axis: {0}/{1}/{2} m; fitted up axis vs the "
+       "cameras' mean up: {3} deg"),
+    JA("基準軸ごとの残差 RMS: {0}/{1}/{2} m。当てはめた上方向とカメラの平均上方向の差: {3} 度"),
+    ZH_HANS("按参考轴的残差 RMS: {0}/{1}/{2} m; 拟合的上方向与相机平均上方向相差 {3} 度"),
+    ZH_HANT("按參考軸的殘差 RMS: {0}/{1}/{2} m; 擬合的上方向與相機平均上方向相差 {3} 度"),
+    KO("기준 축별 잔차 RMS: {0}/{1}/{2} m; 맞춘 상 방향과 카메라 평균 상 방향 차이: {3} 도"),
+    DE("Residuen-RMS je Referenzachse: {0}/{1}/{2} m; angepasste Hochachse gegen die "
+       "mittlere Hochachse der Kameras: {3} Grad"),
+    FR("RMS des résidus par axe de référence : {0}/{1}/{2} m ; axe vertical ajusté "
+       "contre le haut moyen des caméras : {3} degrés"),
+    ES("RMS de residuos por eje de referencia: {0}/{1}/{2} m; eje vertical ajustado "
+       "frente al arriba medio de las cámaras: {3} grados"),
+    PT("RMS dos resíduos por eixo de referência: {0}/{1}/{2} m; eixo vertical ajustado "
+       "contra o cima médio das câmeras: {3} graus"),
+    IT("RMS dei residui per asse di riferimento: {0}/{1}/{2} m; asse verticale stimato "
+       "rispetto all'alto medio delle camere: {3} gradi"),
+    NL("Residu-RMS per referentie-as: {0}/{1}/{2} m; gefitte omhoog-as tegen de "
+       "gemiddelde omhoog van de camera's: {3} graden"),
+    RU("СКО остатков по каждой оси эталона: {0}/{1}/{2} м; подогнанная вертикаль против "
+       "средней вертикали камер: {3} градусов"),
+    TR("Referans ekseni başına artık RMS: {0}/{1}/{2} m; oturtulan yukarı ekseni "
+       "kameraların ortalama yukarısına karşı: {3} derece"));
 
 SS_MSG(metric_positions_bad,
     EN("Positions file {0} cannot be read: {1}"),
