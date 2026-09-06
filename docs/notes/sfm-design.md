@@ -88,3 +88,4 @@ be re-derived or re-attempted: D25, D26, D27, D11, D16, D47, D50, D45, D46.
 | D71 | The audit's repair is off: guessing a pose from evidence weaker than registration demands cost a 5356-image capture 28 points of AUC and the largest bill of any finishing pass |
 | D72 | Distortion coefficients can be held through mapping and recovered in the finishing pass, like the principal point -- and holding them holds the principal point too, because the free intrinsics are a prefix |
 | D73 | Per-image intrinsics as a finishing pass: reconstruct with the cameras shared, then split them one per image for a last bundle adjustment, with no clamp back to the group |
+| D74 | The metric gauge is fixed where the model is written, from paired camera positions; a fit that fails its uncertainty gates is reported and refused, never approximated |

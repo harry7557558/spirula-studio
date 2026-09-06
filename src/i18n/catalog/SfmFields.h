@@ -3200,6 +3200,102 @@ SS_MSG(quiet_help,
     RU("Печатать только строки результата, без прогресса по стадиям"),
     TR("Yalnızca sonuç satırlarını yazdır, aşama aşama ilerlemeyi değil"));
 
+SS_MSG(metric_positions_help,
+    EN("Write the model in the metric frame of these camera positions (one "
+       "`image_name X Y Z` per line, metres); a failed fit is reported and the model is "
+       "written un-scaled"),
+    JA("この camera 位置ファイル (1 行につき `image_name X Y Z`、メートル) のメートル座標系で"
+       "モデルを書き出します。当てはめに失敗した場合は報告し、縮尺なしで書き出します"),
+    ZH_HANS("按这些相机位置 (每行 `image_name X Y Z`，单位米) 的米制坐标系写出模型; 拟合失败会"
+            "报告，并按未缩放写出"),
+    ZH_HANT("按這些相機位置 (每行 `image_name X Y Z`，單位公尺) 的公尺座標系寫出模型; 擬合失敗"
+            "會回報，並按未縮放寫出"),
+    KO("이 카메라 위치 (한 줄에 `image_name X Y Z`, 미터) 의 미터 좌표계로 모델을 씁니다. "
+       "맞춤에 실패하면 보고하고 배율 없이 씁니다"),
+    DE("Das Modell im metrischen Rahmen dieser Kamerapositionen schreiben (je Zeile "
+       "`image_name X Y Z`, Meter); eine gescheiterte Anpassung wird gemeldet und das "
+       "Modell unskaliert geschrieben"),
+    FR("Écrire le modèle dans le repère métrique de ces positions de caméra (une ligne "
+       "`image_name X Y Z`, en mètres) ; un ajustement raté est signalé et le modèle est "
+       "écrit sans mise à l'échelle"),
+    ES("Escribir el modelo en el marco métrico de estas posiciones de cámara (una línea "
+       "`image_name X Y Z`, en metros); un ajuste fallido se informa y el modelo se "
+       "escribe sin escalar"),
+    PT("Escrever o modelo no referencial métrico destas posições de câmera (uma linha "
+       "`image_name X Y Z`, em metros); um ajuste falhado é relatado e o modelo é escrito "
+       "sem escala"),
+    IT("Scrivere il modello nel sistema metrico di queste posizioni di camera (una riga "
+       "`image_name X Y Z`, in metri); una stima fallita viene segnalata e il modello "
+       "scritto senza scala"),
+    NL("Het model schrijven in het metrische stelsel van deze cameraposities (per regel "
+       "`image_name X Y Z`, meters); een mislukte fit wordt gemeld en het model ongeschaald "
+       "geschreven"),
+    RU("Записать модель в метрической системе этих позиций камер (по строке "
+       "`image_name X Y Z`, метры); неудачная подгонка сообщается, и модель пишется "
+       "без масштабирования"),
+    TR("Modeli bu kamera konumlarının metrik çerçevesinde yaz (satır başına "
+       "`image_name X Y Z`, metre); başarısız uyum bildirilir ve model ölçeklenmeden yazılır"));
+
+SS_MSG(metric_gps_help,
+    EN("Write the model in a local east-north-up metre frame fitted to the images' EXIF "
+       "GPS; accuracy is a few metres, so the capture must be tens of metres across"),
+    JA("画像の EXIF GPS に合わせたローカルな東北上メートル座標系でモデルを書き出します。"
+       "精度は数メートルなので、撮影範囲は数十メートル必要です"),
+    ZH_HANS("按图像 EXIF GPS 拟合的本地东北天米制坐标系写出模型; 精度只有几米，所以采集范围要有"
+            "几十米"),
+    ZH_HANT("按影像 EXIF GPS 擬合的本地東北天公尺座標系寫出模型; 精度只有幾公尺，所以拍攝範圍要"
+            "有數十公尺"),
+    KO("이미지의 EXIF GPS 에 맞춘 지역 동북상 미터 좌표계로 모델을 씁니다. 정확도가 수 미터라 "
+       "촬영 범위가 수십 미터는 되어야 합니다"),
+    DE("Das Modell in einem lokalen Ost-Nord-Oben-Meterrahmen schreiben, der an das EXIF-GPS "
+       "der Bilder angepasst wird; die Genauigkeit liegt bei einigen Metern, die Aufnahme "
+       "muss also zehner Meter groß sein"),
+    FR("Écrire le modèle dans un repère local est-nord-haut en mètres ajusté au GPS EXIF des "
+       "images ; la précision est de quelques mètres, la prise doit donc faire des dizaines "
+       "de mètres"),
+    ES("Escribir el modelo en un marco local este-norte-arriba en metros ajustado al GPS "
+       "EXIF de las imágenes; la precisión es de unos metros, así que la toma debe medir "
+       "decenas de metros"),
+    PT("Escrever o modelo num referencial local este-norte-cima em metros ajustado ao GPS "
+       "EXIF das imagens; a precisão é de alguns metros, por isso a captura tem de ter "
+       "dezenas de metros"),
+    IT("Scrivere il modello in un sistema locale est-nord-alto in metri stimato dal GPS EXIF "
+       "delle immagini; la precisione è di alcuni metri, quindi la ripresa deve misurare "
+       "decine di metri"),
+    NL("Het model schrijven in een lokaal oost-noord-omhoog meterstelsel dat op de EXIF-GPS "
+       "van de beelden is gefit; de nauwkeurigheid is enkele meters, dus de opname moet "
+       "tientallen meters groot zijn"),
+    RU("Записать модель в локальной метровой системе восток-север-верх, подогнанной к GPS из "
+       "EXIF снимков; точность в несколько метров, поэтому съёмка должна быть десятки метров"),
+    TR("Modeli, görüntülerin EXIF GPS'ine oturtulmuş yerel bir doğu-kuzey-yukarı metre "
+       "çerçevesinde yaz; doğruluk birkaç metre olduğundan çekim onlarca metre olmalı"));
+
+SS_MSG(metric_max_error_help,
+    EN("Cameras farther than this many metres from the fitted position are outliers; 0 "
+       "chooses 5 for GPS and 0.5 for a positions file"),
+    JA("当てはめ位置からこのメートル数より離れたカメラを外れ値とします。0 なら GPS で 5、"
+       "位置ファイルで 0.5 を選びます"),
+    ZH_HANS("离拟合位置超过这么多米的相机算作外点; 0 表示 GPS 取 5、位置文件取 0.5"),
+    ZH_HANT("離擬合位置超過這麼多公尺的相機算作外點; 0 表示 GPS 取 5、位置檔取 0.5"),
+    KO("맞춘 위치에서 이 미터 수보다 먼 카메라는 이상치로 봅니다. 0 이면 GPS 는 5, 위치 파일은 "
+       "0.5 를 씁니다"),
+    DE("Kameras weiter als so viele Meter von der angepassten Position sind Ausreißer; 0 "
+       "wählt 5 für GPS und 0,5 für eine Positionsdatei"),
+    FR("Les caméras à plus de tant de mètres de la position ajustée sont aberrantes ; 0 "
+       "choisit 5 pour le GPS et 0,5 pour un fichier de positions"),
+    ES("Las cámaras a más de tantos metros de la posición ajustada son atípicas; 0 elige 5 "
+       "para GPS y 0,5 para un archivo de posiciones"),
+    PT("Câmeras a mais do que estes metros da posição ajustada são atípicas; 0 escolhe 5 "
+       "para GPS e 0,5 para um ficheiro de posições"),
+    IT("Le camere oltre questi metri dalla posizione stimata sono anomale; 0 sceglie 5 per "
+       "il GPS e 0,5 per un file di posizioni"),
+    NL("Camera's verder dan zoveel meter van de gefitte positie zijn uitschieters; 0 kiest 5 "
+       "voor GPS en 0,5 voor een positiebestand"),
+    RU("Камеры дальше такого числа метров от подогнанной позиции считаются выбросами; 0 "
+       "выбирает 5 для GPS и 0,5 для файла позиций"),
+    TR("Oturtulan konumdan bu kadar metreden uzak kameralar aykırıdır; 0, GPS için 5 ve "
+       "konum dosyası için 0,5 seçer"));
+
 }  // namespace sfmfield
 }  // namespace msg
 }  // namespace i18n

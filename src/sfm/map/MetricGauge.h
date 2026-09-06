@@ -23,6 +23,7 @@
 #include "sfm/core/Exif.h"
 #include "sfm/core/Model.h"
 #include "sfm/core/Pose.h"
+#include "sfm/map/Orient.h"
 #include "sfm/geometry/LinAlg.h"
 #include "sfm/optim/Ransac.h"
 #include "sfm/map/Merge.h"
@@ -349,6 +350,15 @@ inline MetricGpsCounts metricRefFromGps(const Reconstruction& rec, const std::st
         ref.image_ids.push_back(ids[i]);
     }
     return c;
+}
+
+
+// Angle between the reference frame's +Z and where the cameras themselves say
+// up is. A few degrees on a hand-held or gimballed capture; tens of degrees
+// means a tilted reference or a tilted capture, and says which to look at.
+inline double metricUpDisagreementDeg(const Reconstruction& rec) {
+    const Sim3 up = uprightTransform(rec);
+    return std::acos(std::max(-1.0, std::min(1.0, up.R[8]))) * 180.0 / M_PI;
 }
 
 }  // namespace sfm

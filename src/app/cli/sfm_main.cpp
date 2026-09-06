@@ -56,6 +56,7 @@
 #include "sfm/geometry/TwoView.h"
 #include "sfm/map/Assemble.h"
 #include "sfm/map/Mapper.h"
+#include "sfm/map/MetricGauge.h"
 #include "sfm/map/Orient.h"
 #include "sfm/map/Merge.h"
 
@@ -233,6 +234,7 @@ static void printCommandHelp(const CommandInfo& c) {
         std::fprintf(out, "  1  %s\n", H::exit_1.get());
         std::fprintf(out, "  2  %s\n", H::exit_2.get());
         std::fprintf(out, "  3  %s\n", H::exit_3.get());
+        std::fprintf(out, "  4  %s\n", H::exit_4.get());
     }
 }
 
@@ -460,6 +462,97 @@ static void orientModels(std::vector<Reconstruction>& models, bool enabled, bool
         if (verbose)
             L::err(Tag::Orient, M::orient_done, {(long long)i, L::num(T.scale, 4)});
     }
+}
+
+// Why a metric fit was refused, with the numbers, so one line is a complete
+// bug report.
+static std::string metricReason(const MetricFit& f) {
+    switch (f.reason) {
+        case MetricFail::Pairs:
+            return spirula::i18n::format(M::metric_fail_pairs, {(long long)f.n});
+        case MetricFail::Spread:
+            return spirula::i18n::format(M::metric_fail_spread, {L::num(f.spread, 3)});
+        case MetricFail::Inliers:
+            return spirula::i18n::format(M::metric_fail_inliers,
+                                {L::num(f.max_error, 3), (long long)f.inliers,
+                                 (long long)f.n});
+        case MetricFail::Scale:
+            return spirula::i18n::format(M::metric_fail_scale,
+                                {L::num(f.scale_unc, 3), L::num(kMetricMaxScaleUncPct, 1)});
+        case MetricFail::Rotation:
+            return spirula::i18n::format(M::metric_fail_rotation,
+                                {L::num(f.rot_unc_deg, 2), L::num(kMetricMaxRotUncDeg, 1)});
+        case MetricFail::None: break;
+    }
+    return {};
+}
+
+// The gauge every finished model is written in: metric when a reference in
+// metres was given and the fit can carry it, the ordinary orient frame
+// otherwise. False when a metric frame was asked for and not delivered.
+static bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
+                     const std::string& imagedir, bool verbose) {
+    const bool gps = cfg.metric_gps;
+    const bool file = !cfg.metric_positions.empty();
+    if (!gps && !file) {
+        orientModels(models, cfg.orient, verbose);
+        return true;
+    }
+    std::map<std::string, Vec3> positions;
+    if (file) {
+        std::string err;
+        if (!readMetricPositions(cfg.metric_positions, positions, err)) {
+            L::fail(Tag::Orient, M::metric_positions_bad, {cfg.metric_positions, err});
+            orientModels(models, cfg.orient, verbose);
+            return false;
+        }
+    }
+    bool all = true;
+    for (size_t i = 0; i < models.size(); i++) {
+        MetricRef ref;
+        if (file) {
+            const MetricPairCounts pc = pairMetricRef(models[i], positions, ref);
+            L::out(Tag::Orient, M::metric_matched,
+                   {(long long)pc.matched, (long long)(pc.matched + pc.unmatched_model),
+                    (long long)pc.unmatched_file});
+        } else {
+            const MetricGpsCounts gc = metricRefFromGps(models[i], imagedir, ref);
+            L::out(Tag::Orient, M::metric_gps_read,
+                   {(long long)gc.matched, (long long)(gc.matched + gc.no_gps),
+                    (long long)gc.no_alt});
+        }
+        const MetricFit fit = fitMetricGauge(ref, cfg.metric_max_error);
+        if (!fit.ok) {
+            all = false;
+            if (cfg.orient) orientModel(models[i]);
+            L::fail(Tag::Orient, M::metric_failed, {(long long)i, metricReason(fit)});
+            continue;
+        }
+        applySim3(models[i], fit.T);
+        L::out(Tag::Orient, M::metric_done,
+               {(long long)i,
+                spirula::i18n::format(gps ? M::metric_source_gps : M::metric_source_positions, {}),
+                L::num(fit.T.scale, 6), L::num(fit.max_error, 3), (long long)fit.inliers,
+                (long long)fit.n, L::num(fit.rms, 4), L::num(fit.scale_unc, 3),
+                L::num(fit.rot_unc_deg, 3)});
+        if (!verbose) continue;
+        // A drifting altitude offset is absorbed by the rotation as a tilt and
+        // leaves the RMS looking fine; these two numbers are what show it.
+        double e = 0, n = 0, u = 0;
+        for (size_t k = 0; k < ref.centres.size(); k++) {
+            if (!fit.inlier_mask[k]) continue;
+            const Vec3 r = ref.targets[k] - transformPoint(fit.T, ref.centres[k]);
+            e += r.x * r.x;
+            n += r.y * r.y;
+            u += r.z * r.z;
+        }
+        const double m = std::max(fit.inliers, 1);
+        L::err(Tag::Orient, M::metric_axes,
+               {L::num(std::sqrt(e / m), 4), L::num(std::sqrt(n / m), 4),
+                L::num(std::sqrt(u / m), 4),
+                L::num(metricUpDisagreementDeg(models[i]), 2)});
+    }
+    return all;
 }
 
 // An EXR carries its own colour space. Reading it needs no declaration -- the
@@ -1839,11 +1932,11 @@ static int cmdMap(int argc, char** argv) {
                 (long long)db.images.size()});
         printExtraModels(models, feats);
     }
-    orientModels(models, cfg.orient, opt.verbose);
+    const bool map_metric = fixGauge(models, cfg, cfg.image_dir, opt.verbose);
     recolorPoints(models, cfg);
     splitCamerasBySize(models, feats);
     if (!output.empty()) writeModels(models, output, opt.verbose);
-    return 0;
+    return map_metric ? 0 : 4;
 }
 
 // -----------------------------------------------------------------------
@@ -1932,7 +2025,7 @@ static int cmdMerge(int argc, char** argv) {
         L::out(Tag::Merge, M::merge_survived,
                {(long long)covered_after, (long long)covered_before});
 
-    orientModels(models, cfg.orient, mo.verbose);
+    const bool merge_metric = fixGauge(models, cfg, cfg.image_dir, mo.verbose);
     recolorPoints(models, cfg);
     writeModels(models, fs::path(output), mo.verbose);
     // In place, the models that were absorbed must not stay behind as stale
@@ -1949,7 +2042,7 @@ static int cmdMerge(int argc, char** argv) {
                 L::out(Tag::Merge, M::merge_removed_absorbed, {d.string()});
             }
         }
-    return 0;
+    return merge_metric ? 0 : 4;
 }
 
 // -----------------------------------------------------------------------
@@ -2148,7 +2241,7 @@ static int cmdAuto(int argc, char** argv) {
     }
 
     resolveImageNames(models, imagedir);
-    orientModels(models, cfg.orient, verbose);
+    const bool auto_metric = fixGauge(models, cfg, imagedir, verbose);
     recolorPoints(models, cfg);
     // Before the split: the summary reports what was estimated, and the file's
     // one camera per frame size is not that.
@@ -2211,6 +2304,12 @@ static int cmdAuto(int argc, char** argv) {
     if (frac < 0.5 || mean > 2.0) {
         L::out(Tag::Run, M::result_partial, {L::num(100 * frac, 0), L::num(mean, 2)});
         return 3;
+    }
+    // A sound model in the wrong gauge is still a sound model, so the metric
+    // verdict comes after the ones about the reconstruction itself.
+    if (!auto_metric) {
+        L::out(Tag::Run, M::result_not_metric);
+        return 4;
     }
     L::out(Tag::Run, M::result_ok, {L::num(100 * frac, 0), L::num(mean, 2)});
     return 0;

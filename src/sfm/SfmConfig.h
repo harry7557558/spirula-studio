@@ -133,6 +133,11 @@ struct SfmConfig {
     // Write the finished model in an upright, centred, unit-sized frame rather
     // than in whatever gauge the seed pair left it in (map/Orient.h).
     bool orient = true;
+    // Instead: fix the gauge from an outside measurement in metres, so the
+    // model is written metric (map/MetricGauge.h, D74).
+    std::string metric_positions;       // one `image_name X Y Z` per line
+    bool metric_gps = false;            // each image's own EXIF GPS
+    double metric_max_error = 0;        // metres; 0 resolves per source
     bool merge_ba = true;               // merge: bundle-adjust across the seams
     bool in_place = false;              // merge: write back over the input
 
@@ -342,6 +347,12 @@ struct SfmConfig {
       Tier::Advanced, "mapper", 0, 0, "", final_per_image_intrinsics)                              \
     F(orient, "orient", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0, "",        \
       orient)                                                                                      \
+    F(metric_positions, "metric-positions", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
+      "mapper", 0, 0, "", metric_positions)                                                        \
+    F(metric_gps, "metric-gps", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0,    \
+      "", metric_gps)                                                                              \
+    F(metric_max_error, "metric-max-error", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
+      "mapper", 0, 1000000, "", metric_max_error)                                                  \
     F(mapper.min_tri_angle_deg, "min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
       90, "", min_tri_angle)                                                                       \
     F(mapper.init_min_tri_angle_deg, "init-min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced,     \
@@ -470,7 +481,7 @@ struct SfmConfig {
     F(merge_ba, "ba", CMD_MERGE, Tier::Advanced, "merge", 0, 0, "", ba)                            \
     F(in_place, "in-place", CMD_MERGE, Tier::Advanced, "merge", 0, 0, "", in_place)                \
     /* ---- inputs ---- */                                                                         \
-    F(image_dir, "images", CMD_MAP, Tier::Advanced, "input", 0, 0, "", images)                     \
+    F(image_dir, "images", CMD_MAP | CMD_MERGE, Tier::Advanced, "input", 0, 0, "", images)         \
     F(feature_dir, "features", CMD_MAP, Tier::Advanced, "input", 0, 0, "", feature_dir)            \
     F(resume, "resume", CMD_MAP, Tier::Advanced, "input", 0, 0, "", resume)                        \
     F(check, "check", CMD_MAP, Tier::Advanced, "input", 0, 0, "", check)                           \

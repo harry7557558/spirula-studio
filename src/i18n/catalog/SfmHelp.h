@@ -1242,6 +1242,21 @@ SS_MSG(exit_3,
 // `spirula sfm ba` -- the solver benchmark
 // ===========================================================================
 
+SS_MSG(exit_4,
+    EN("the model was written, but not in the metric frame that was asked for"),
+    JA("モデルは書き出されましたが、要求されたメートル座標系ではありません"),
+    ZH_HANS("模型已写出，但不是所要求的米制坐标系"),
+    ZH_HANT("模型已寫出，但不是所要求的公尺座標系"),
+    KO("모델은 썼지만 요청한 미터 좌표계는 아닙니다"),
+    DE("das Modell wurde geschrieben, aber nicht im verlangten metrischen Rahmen"),
+    FR("le modèle a été écrit, mais pas dans le repère métrique demandé"),
+    ES("el modelo se escribió, pero no en el marco métrico solicitado"),
+    PT("o modelo foi escrito, mas não no referencial métrico pedido"),
+    IT("il modello è stato scritto, ma non nel sistema metrico richiesto"),
+    NL("het model is geschreven, maar niet in het gevraagde metrische stelsel"),
+    RU("модель записана, но не в запрошенной метрической системе"),
+    TR("model yazıldı, ancak istenen metrik çerçevede değil"));
+
 SS_MSG(ba_desc_1,
     EN("Runs the GPU bundle adjuster directly on a problem in Bundle Adjustment "
        "in the Large format, and reports cost, iterations, time and VRAM. This "
