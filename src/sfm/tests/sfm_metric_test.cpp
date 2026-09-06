@@ -514,6 +514,219 @@ int cmdMetricSelftest(int, char**) {
         fs::remove_all(dir);
     }
 
+    // ---- T6: the GPS IFD, hand-built, both byte orders ---------------------
+    // IFD0 carries decoy tags 1..6, which are exactly the GPS IFD's own tag
+    // numbers: one switch for both reads latitude out of them.
+    struct Tiff {
+        std::vector<uint8_t> b;
+        bool le;
+        void u8(uint8_t v) { b.push_back(v); }
+        void u16(uint16_t v) {
+            if (le) { u8((uint8_t)v); u8((uint8_t)(v >> 8)); }
+            else { u8((uint8_t)(v >> 8)); u8((uint8_t)v); }
+        }
+        void u32(uint32_t v) {
+            if (le) { u16((uint16_t)v); u16((uint16_t)(v >> 16)); }
+            else { u16((uint16_t)(v >> 16)); u16((uint16_t)v); }
+        }
+        void ent(uint16_t tag, uint16_t type, uint32_t count, uint32_t val) {
+            u16(tag); u16(type); u32(count); u32(val);
+        }
+        // A value of 4 bytes or fewer sits in the entry, left-aligned.
+        void entIn(uint16_t tag, uint16_t type, uint32_t count,
+                   const std::vector<uint8_t>& raw) {
+            u16(tag); u16(type); u32(count);
+            for (int i = 0; i < 4; i++) u8(i < (int)raw.size() ? raw[i] : 0);
+        }
+    };
+    auto build = [](bool le, char latref, char lonref, uint8_t altref, bool with_gps,
+                    uint32_t sec100 = 355, uint32_t lonsec100 = 1786,
+                    bool with_alt = true) {
+        Tiff t;
+        t.le = le;
+        t.u8(le ? 'I' : 'M'); t.u8(le ? 'I' : 'M');
+        t.u16(42);
+        t.u32(8);
+        const uint16_t n0 = with_gps ? 7 : 6;
+        t.u16(n0);
+        for (uint16_t tag = 1; tag <= 6; tag++) t.ent(tag, 3, 1, 0xDEAD);
+        const uint32_t gps = 8 + 2 + (uint32_t)n0 * 12 + 4;
+        if (with_gps) t.ent(0x8825, 4, 1, gps);
+        t.u32(0);
+        if (!with_gps) return t.b;
+        const uint32_t nv = with_alt ? 6 : 5;
+        t.u16((uint16_t)nv);
+        const uint32_t vals = gps + 2 + nv * 12 + 4;
+        t.entIn(1, 2, 2, {(uint8_t)latref, 0});
+        t.ent(2, 5, 3, vals);
+        t.entIn(3, 2, 2, {(uint8_t)lonref, 0});
+        t.ent(4, 5, 3, vals + 24);
+        t.entIn(5, 1, 1, {altref});
+        if (with_alt) t.ent(6, 5, 1, vals + 48);
+        t.u32(0);
+        const uint32_t r[] = {42, 1, 12, 1, sec100, 100,
+                              83, 1, 40, 1, lonsec100, 100,
+                              25366, 100};
+        for (uint32_t v : r) t.u32(v);
+        return t.b;
+    };
+    {
+        const double lat = 42.0 + 12.0 / 60.0 + 3.55 / 3600.0;
+        const double lon = 83.0 + 40.0 / 60.0 + 17.86 / 3600.0;
+        for (bool le : {true, false}) {
+            std::vector<uint8_t> blk = build(le, 'N', 'E', 0, true);
+            ExifData e = parseExifTiff(blk.data(), blk.size());
+            const char* w = le ? "T6 LE" : "T6 BE";
+            check(e.valid && e.has_gps, w);
+            check(std::fabs(e.lat_deg - lat) <= 1e-9, "T6: latitude, both byte orders");
+            check(std::fabs(e.lon_deg - lon) <= 1e-9, "T6: longitude, both byte orders");
+            check(e.has_alt && std::fabs(e.alt_m - 253.66) <= 1e-9, "T6: altitude");
+        }
+        {
+            std::vector<uint8_t> blk = build(true, 'S', 'W', 0, true);
+            ExifData e = parseExifTiff(blk.data(), blk.size());
+            check(std::fabs(e.lat_deg + lat) <= 1e-9, "T6: S is negative");
+            check(std::fabs(e.lon_deg + lon) <= 1e-9, "T6: W is negative");
+        }
+        {   // GPSAltitudeRef 1 means below sea level
+            std::vector<uint8_t> blk = build(true, 'N', 'E', 1, true);
+            ExifData e = parseExifTiff(blk.data(), blk.size());
+            check(std::fabs(e.alt_m + 253.66) <= 1e-9, "T6: altitude ref 1 is below sea level");
+        }
+        {
+            std::vector<uint8_t> blk = build(true, 'N', 'E', 0, false);
+            ExifData e = parseExifTiff(blk.data(), blk.size());
+            check(e.valid && !e.has_gps, "T6: an IFD0 of decoys is not a GPS fix");
+            check(e.lat_deg == 0 && e.lon_deg == 0, "T6: and leaves no position behind");
+        }
+    }
+
+    // ---- T6b: GPS straight off files, through readExif's JPEG walk ---------
+    // Three minimal JPEGs, one with no EXIF at all, so the "no GPS" count is
+    // measured rather than assumed.
+    {
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() / "sfm_metric_t6b";
+        fs::remove_all(dir);
+        fs::create_directories(dir / "sub");
+        auto write_jpeg = [&](const fs::path& path, const std::vector<uint8_t>& tiff) {
+            std::vector<uint8_t> j = {0xFF, 0xD8};
+            if (!tiff.empty()) {
+                const uint16_t seg = (uint16_t)(tiff.size() + 8);
+                j.push_back(0xFF);
+                j.push_back(0xE1);
+                j.push_back((uint8_t)(seg >> 8));
+                j.push_back((uint8_t)seg);
+                for (const char* p2 = "Exif"; *p2; p2++) j.push_back((uint8_t)*p2);
+                j.push_back(0);
+                j.push_back(0);
+                j.insert(j.end(), tiff.begin(), tiff.end());
+            }
+            j.push_back(0xFF);
+            j.push_back(0xD9);
+            std::ofstream f(path.string(), std::ios::binary);
+            f.write((const char*)j.data(), (std::streamsize)j.size());
+        };
+        write_jpeg(dir / "a.jpg", build(true, 'N', 'W', 0, true, 355, 1786));
+        write_jpeg(dir / "sub" / "b.jpg", build(true, 'N', 'W', 0, true, 1055, 1786));
+        write_jpeg(dir / "c.jpg", {});
+        write_jpeg(dir / "d.jpg", build(true, 'N', 'W', 0, true, 705, 1786, false));
+        write_jpeg(dir / "e.jpg", build(true, 'N', 'W', 0, true, 355, 1786));
+        Reconstruction rec;
+        const char* names[5] = {"a.jpg", "sub/b.jpg", "c.jpg", "d.jpg", "e.jpg"};
+        for (int i = 0; i < 5; i++) {
+            Image im;
+            im.id = (uint32_t)(i + 1);
+            im.name = names[i];
+            im.registered = i != 4;   // e.jpg has a fix but was never solved
+            im.pose = {mat3Identity(), {(double)-i, 0, 0}};
+            rec.images[im.id] = im;
+        }
+        MetricRef ref;
+        MetricGpsCounts gc = metricRefFromGps(rec, dir.string(), ref);
+        printf("  T6b: gps %d, no-gps %d, no-alt %d\n", gc.matched, gc.no_gps, gc.no_alt);
+        check(gc.matched == 3 && gc.no_gps == 1,
+              "T6b: three fixes, one file without EXIF, one unregistered");
+        check(gc.no_alt == 1, "T6b: the fix with no altitude tag is counted");
+        check(ref.targets.size() == 3 && ref.image_ids.size() == 3,
+              "T6b: the unpositioned and unregistered images are left out");
+        // b.jpg is 7.00 arcseconds of latitude north of a.jpg and nothing
+        // else. 215.99 m by the meridional radius; a sphere of radius a gives
+        // 216.43, so 0.05 m of tolerance is what refuses a flat-earth ENU.
+        const Vec3 d = ref.targets[1] - ref.targets[0];
+        printf("  T6b: b - a = (%.4f, %.4f, %.4f) m\n", d.x, d.y, d.z);
+        check(std::fabs(d.y - 215.99) < 0.05 && std::fabs(d.x) < 0.01,
+              "T6b: 216 m due north, by the meridional radius not by a");
+        fs::remove_all(dir);
+    }
+
+    // ---- T7: WGS-84, against vectors computed outside this program ---------
+    // (0,0,0) and (90,0,0) are the semi-axes and exact by inspection; float
+    // ECEF cannot reach 1e-6 m on any of the four.
+    {
+        struct Case { double lat, lon, h, X, Y, Z; };
+        const Case cs[4] = {
+            {0, 0, 0, 6378137.000000, 0.0, 0.0},
+            {90, 0, 0, 0.0, 0.0, 6356752.314245},
+            {45, 0, 0, 4517590.878849, 0.0, 4487348.408866},
+            {42.216, -83.664, 253.66, 522118.504341, -4702200.844425, 4263573.714297},
+        };
+        double worst = 0;
+        for (const Case& c : cs) {
+            const Vec3 p = ecefFromGeodetic(c.lat, c.lon, c.h);
+            worst = std::max(worst, std::max(std::fabs(p.x - c.X),
+                                             std::max(std::fabs(p.y - c.Y),
+                                                      std::fabs(p.z - c.Z))));
+        }
+        printf("  T7: worst ECEF error %.3e m\n", worst);
+        check(worst <= 1e-6, "T7: the four pinned ECEF vectors");
+
+        const double lat0 = 42.216, lon0 = -83.664, h0 = 253.66;
+        std::vector<Geodetic> g = {{lat0, lon0, h0},
+                                   {lat0 + 0.001, lon0, h0},
+                                   {lat0, lon0 + 0.001, h0},
+                                   {lat0, lon0, h0 + 10.0}};
+        std::vector<Vec3> enu = enuFromGeodetic(g, Geodetic{lat0, lon0, h0});
+        const Vec3 o = enu[0];
+        const double want[3][3] = {{-0.000000, 111.081917, -0.000969},
+                                   {82.573260, 0.000484, -0.000534},
+                                   {0.0, 0.0, 10.000000}};
+        double we = 0;
+        for (int i = 0; i < 3; i++) {
+            const Vec3 d = enu[i + 1] - o;
+            we = std::max(we, std::max(std::fabs(d.x - want[i][0]),
+                                       std::max(std::fabs(d.y - want[i][1]),
+                                                std::fabs(d.z - want[i][2]))));
+        }
+        printf("  T7: worst ENU displacement error %.3e m\n", we);
+        check(we <= 1e-6, "T7: the three pinned ENU displacements");
+        // A permuted or mirrored axis set leaves every fit RMS unchanged --
+        // the Sim3 absorbs it -- so only the named axes can catch one.
+        const Vec3 north = enu[1] - o, east = enu[2] - o, up = enu[3] - o;
+        check(north.y > 100.0 && std::fabs(north.x) < 1.0, "T7: +latitude is +N");
+        check(east.x > 80.0 && std::fabs(east.y) < 1.0, "T7: +longitude is +E");
+        check(up.z > 9.9, "T7: +height is +U");
+        check(east.normalized().cross(north.normalized()).dot(up.normalized()) > 0.999,
+              "T7: E x N = U, from the fitted axes");
+        // The origin --metric-gps uses is the arithmetic mean of the fixes.
+        // It is not the ECEF centroid -- that leaves 3e-4 m of offset here,
+        // which the Sim3's translation absorbs.
+        Geodetic mo;
+        for (const Geodetic& q : g) {
+            mo.lat_deg += q.lat_deg / g.size();
+            mo.lon_deg += q.lon_deg / g.size();
+            mo.alt_m += q.alt_m / g.size();
+        }
+        std::vector<Vec3> by_mean = enuFromGeodetic(g);
+        std::vector<Vec3> by_hand = enuFromGeodetic(g, mo);
+        double dm = 0;
+        for (size_t i = 0; i < g.size(); i++) dm = std::max(dm, (by_mean[i] - by_hand[i]).norm());
+        check(dm == 0.0, "T7: the default origin is the mean of the fixes");
+        check((by_mean[0] - by_hand[0]).norm() == 0.0 &&
+                  (by_mean[0] - enuFromGeodetic(g, g[0])[0]).norm() > 1e-3,
+              "T7: and not the first fix");
+    }
+
     printf("%s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

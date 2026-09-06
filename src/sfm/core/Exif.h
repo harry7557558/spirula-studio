@@ -50,6 +50,12 @@ struct ExifData {
     double shutter_apex  = std::numeric_limits<double>::quiet_NaN();  // Exif:ShutterSpeedValue
     double aperture_apex = std::numeric_limits<double>::quiet_NaN();  // Exif:ApertureValue
 
+    // GPS, from the separate IFD tag 0x8825 points at. Degrees, signed by the
+    // hemisphere ref; altitude negated when GPSAltitudeRef says below sea level.
+    bool has_gps = false;
+    bool has_alt = false;
+    double lat_deg = 0, lon_deg = 0, alt_m = 0;
+
     bool hasFocal() const { return focal_35mm > 0 || focal_mm > 0; }
 };
 
@@ -114,6 +120,19 @@ inline bool tiffValue(const TiffReader& r, size_t entry, double& out) {
     }
 }
 
+// The first `n` components of a RATIONAL entry. tiffValue reads one, which is
+// all the lens tags need; a DMS coordinate is three.
+inline bool tiffRationals(const TiffReader& r, size_t entry, int n, double* out) {
+    if (r.u16(entry + 2) != 5 || (int)r.u32(entry + 4) < n) return false;
+    const size_t vo = (8u * (unsigned)n <= 4) ? entry + 8 : r.u32(entry + 8);
+    for (int i = 0; i < n; i++) {
+        const uint32_t num = r.u32(vo + 8 * (size_t)i), den = r.u32(vo + 8 * (size_t)i + 4);
+        if (den == 0) return false;
+        out[i] = (double)num / den;
+    }
+    return true;
+}
+
 inline std::string tiffString(const TiffReader& r, size_t entry) {
     uint32_t count = r.u32(entry + 4);
     if (count == 0) return {};
@@ -125,6 +144,38 @@ inline std::string tiffString(const TiffReader& r, size_t entry) {
     // Trailing spaces are common ("NIKON CORPORATION   ").
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
     return s;
+}
+
+// The GPS IFD, which numbers its own tags 1..31 -- the same numbers IFD0 uses
+// for width, height and compression. It gets its own switch for that reason.
+inline void parseGpsIfd(const TiffReader& r, size_t off, ExifData& out) {
+    if (off + 2 > r.n) return;
+    uint16_t count = r.u16(off);
+    if ((size_t)count * 12 + off + 2 > r.n) count = (uint16_t)((r.n - off - 2) / 12);
+    double lat[3] = {0, 0, 0}, lon[3] = {0, 0, 0}, alt = 0, v = 0;
+    bool has_lat = false, has_lon = false, has_alt = false;
+    char lat_ref = 0, lon_ref = 0;
+    int alt_ref = 0;
+    for (uint16_t i = 0; i < count; i++) {
+        const size_t e = off + 2 + (size_t)i * 12;
+        switch (r.u16(e)) {
+            case 0x0001: { std::string s = tiffString(r, e); if (!s.empty()) lat_ref = s[0]; } break;
+            case 0x0002: has_lat = tiffRationals(r, e, 3, lat); break;
+            case 0x0003: { std::string s = tiffString(r, e); if (!s.empty()) lon_ref = s[0]; } break;
+            case 0x0004: has_lon = tiffRationals(r, e, 3, lon); break;
+            case 0x0005: if (tiffValue(r, e, v)) alt_ref = (int)v; break;
+            case 0x0006: has_alt = tiffRationals(r, e, 1, &alt); break;
+            default: break;
+        }
+    }
+    if (!has_lat || !has_lon || !lat_ref || !lon_ref) return;
+    out.lat_deg = lat[0] + lat[1] / 60.0 + lat[2] / 3600.0;
+    out.lon_deg = lon[0] + lon[1] / 60.0 + lon[2] / 3600.0;
+    if (lat_ref == 'S' || lat_ref == 's') out.lat_deg = -out.lat_deg;
+    if (lon_ref == 'W' || lon_ref == 'w') out.lon_deg = -out.lon_deg;
+    out.has_alt = has_alt;
+    out.alt_m = alt_ref == 1 ? -alt : alt;
+    out.has_gps = true;
 }
 
 // Walk one IFD, filling `out`. `depth` guards against a file whose Exif-IFD
@@ -142,6 +193,9 @@ inline void parseIfd(const TiffReader& r, size_t off, ExifData& out, int depth) 
             case 0x0110: out.model = tiffString(r, e); break;
             case 0x8769:  // Exif sub-IFD, where the lens tags live
                 if (tiffValue(r, e, v) && v > 0) parseIfd(r, (size_t)v, out, depth + 1);
+                break;
+            case 0x8825:  // GPS IFD; a separate walk, not this switch
+                if (tiffValue(r, e, v) && v > 0) parseGpsIfd(r, (size_t)v, out);
                 break;
             case 0x829A: if (tiffValue(r, e, v) && v > 0) out.exposure_time = v; break;
             case 0x829D: if (tiffValue(r, e, v) && v > 0) out.f_number = v; break;
