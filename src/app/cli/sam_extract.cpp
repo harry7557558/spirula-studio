@@ -100,6 +100,7 @@ void usage() {
     help_row("    --max-size <n>", H::xh_max_size);
     help_row("    --threshold <f>", H::xh_threshold);
     help_row("    --nms <f>", H::xh_nms);
+    help_row("    --dilate-ratio <f>", H::mask_dilate);
     help_row("    --overlay", H::xh_overlay);
 
     std::fprintf(stderr, "\n%s --device <index|name>  --profile  --validate\n",
@@ -123,6 +124,7 @@ struct Options {
     bool   keep_subject = false;
     int    detect_every = 1, memory_frames = 0, max_size = 1600;
     float  threshold = 0.5f, nms = 0.1f;
+    float  dilate_ratio = 0.05f;   // sam::MaskOptions, same default
     bool   overlay = false, profile = false, validate = false;
 };
 
@@ -173,6 +175,8 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--max-size") o.max_size = std::atoi(next("--max-size"));
         else if (a == "--threshold") o.threshold = std::strtof(next("--threshold"), nullptr);
         else if (a == "--nms") o.nms = std::strtof(next("--nms"), nullptr);
+        else if (a == "--dilate-ratio")
+            o.dilate_ratio = std::strtof(next("--dilate-ratio"), nullptr);
         else if (a == "--overlay") o.overlay = true;
         else if (a == "--device") o.device = next("--device");
         else if (a == "--profile") o.profile = true;
@@ -268,6 +272,7 @@ int sam_cli_extract(int argc, char** argv) {
         job.mask.keep_prompted = o.keep_subject;
         job.mask.threshold = o.threshold;
         job.mask.nms = o.nms;
+        job.mask.dilate_ratio = o.dilate_ratio;
         job.mask.detect_every = o.detect_every;
         job.mask.memory_frames = o.memory_frames;
         job.mask.max_size = o.max_size;
