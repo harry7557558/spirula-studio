@@ -932,12 +932,11 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
 #ifdef SS_HAVE_VIDEO
     if (!job.force_external_decode && backends().builtin_video) {
         std::string err;
-        const int tracks = app::video_track_count(in.path, err);
-        video::VideoReader r;
-        if (tracks > 0 && r.open(in.path))
-            return expected_frames(job, r.info().fps > 1.0 ? r.info().fps : 30.0,
-                                   r.info().frame_count,
-                                   per_frame > 0 ? per_frame : tracks);
+        video::VideoProbe probe;
+        if (video::probe_video(in.path, probe, err) && probe.tracks > 0)
+            return expected_frames(job, probe.fps > 1.0 ? probe.fps : 30.0,
+                                   probe.frame_count,
+                                   per_frame > 0 ? per_frame : probe.tracks);
     }
 #endif
     VideoFacts facts;
@@ -1244,11 +1243,9 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
     return ok;
 }
 
-// Extraction writes frames and nothing else. Masking used to ride along on the
-// decode, which was cheaper by one JPEG decode per frame and cost the user the
-// ability to see the frames before deciding what to mask, to re-mask without
-// re-extracting, and to have photos and video take the same path. The decode it
-// saved is hidden behind the model anyway (generate_masks_builtin reads ahead).
+// Extraction writes frames and nothing else: masking is a separate pass
+// (generate_masks_builtin), so frames are visible before the user chooses
+// masks and re-masking costs no re-extraction.
 bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
                                         const std::string& images,
                                         PrepResult& out, std::string& error) {
@@ -1263,8 +1260,8 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
     // fps -> "one frame every N source frames". The source rate is what the
     // container states; a variable-rate file is close enough for this.
     std::string probe_err;
-    const int tracks = app::video_track_count(in.path, probe_err);
-    if (tracks <= 0) {
+    video::VideoProbe probe;
+    if (!video::probe_video(in.path, probe, probe_err) || probe.tracks <= 0) {
         error = probe_err.empty() ? "no video track" : probe_err;
         return false;
     }
@@ -1272,13 +1269,9 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
         in.eac360.valid() ? app::pano360_views(in.eac360, job.pano)
                           : std::vector<app::Pano360View>();
     if (!views.empty()) out.per_folder_cameras = views.size() > 1;
-    else if (tracks > 1) out.per_folder_cameras = true;
+    else if (probe.tracks > 1) out.per_folder_cameras = true;
 
-    double src_fps = 30.0;
-    {
-        video::VideoReader r;
-        if (r.open(in.path) && r.info().fps > 1.0) src_fps = r.info().fps;
-    }
+    const double src_fps = probe.fps > 1.0 ? probe.fps : 30.0;
     const int window = std::max(job.sharp_window, 1);
     const int skip = frame_skip(job, src_fps);
 

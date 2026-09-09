@@ -8,10 +8,27 @@
 
 #include "nn/core/Log.h"
 #include "video/Common.h"
+#include "video/Demuxer.h"
 #include "video/Video.h"
 #include "video/VideoPipeline.h"
 
 namespace video {
+
+bool probe_video(const std::string& path, VideoProbe& out, std::string& error) {
+    // Both demuxers refuse a file with no supported video track, so a
+    // successful open always names at least one track.
+    std::unique_ptr<Demuxer> demux = open_demuxer(path, error);
+    if (!demux) return false;
+    const std::vector<TrackInfo>& tracks = demux->tracks();
+    const TrackInfo& t = tracks[0];
+    out.tracks = (int)tracks.size();
+    out.width = t.width;
+    out.height = t.height;
+    out.frame_count = t.frame_count;
+    out.fps = t.fps;
+    out.codec = codec_name(t.codec);
+    return true;
+}
 
 struct VideoReader::Impl {
     video::VideoPipeline pipe;
