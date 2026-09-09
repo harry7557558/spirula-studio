@@ -262,6 +262,7 @@ void SfmRunner::take_masking(PrepJob& prep) {
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_keep_subject = _live.prep.mask_keep_subject;
     prep.mask_max_image_size = _live.prep.mask_max_image_size;
+    prep.mask_dilate_ratio = _live.prep.mask_dilate_ratio;
     prep.mask_threshold = _live.prep.mask_threshold;
     prep.mask_nms = _live.prep.mask_nms;
     prep.mask_memory = _live.prep.mask_memory;

@@ -2078,6 +2078,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.mask_negative_prompt = _mask.negative_prompt;
     prep.mask_keep_subject = _mask.keep_subject;
     prep.mask_max_image_size = _mask.max_image_size;
+    prep.mask_dilate_ratio = _mask.dilate_ratio;
     prep.mask_threshold = _mask.threshold;
     prep.mask_nms = _mask.nms;
     prep.mask_memory = _mask_memory;
@@ -2108,6 +2109,7 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.mask_negative_prompt = prep.mask_negative_prompt;
     _colmap_job.mask_keep_subject = prep.mask_keep_subject;
     _colmap_job.mask_max_image_size = prep.mask_max_image_size;
+    _colmap_job.mask_dilate_ratio = prep.mask_dilate_ratio;
     _colmap_job.mask_threshold = prep.mask_threshold;
     _colmap_job.mask_nms = prep.mask_nms;
     _colmap_job.mask_memory = prep.mask_memory;
@@ -2958,6 +2960,13 @@ void GuiApp::draw_masking_options() {
         if (ui::InputInt(dmsg::mask_max_size, &_mask.max_image_size))
             _mask.max_image_size = std::max(0, _mask.max_image_size);
         ui::help_on_hover(dmsg::mask_max_size_help);
+        ImGui::SetNextItemWidth(px(220.0f));
+        float margin_pct = _mask.dilate_ratio * 100.0f;
+        if (ui::SliderFloat(keep_subject ? dmsg::mask_dilate_keep
+                                         : dmsg::mask_dilate_remove,
+                            &margin_pct, 0.0f, 50.0f, "%.0f%%"))
+            _mask.dilate_ratio = margin_pct / 100.0f;
+        ui::help_on_hover(dmsg::mask_dilate_help);
 
         // The rest is the memory bank, which photos never get.
         bool any_video = false;

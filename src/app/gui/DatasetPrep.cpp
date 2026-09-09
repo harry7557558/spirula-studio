@@ -1938,6 +1938,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     mo.neg_text = job.mask_negative_prompt;
     mo.keep_prompted = job.mask_keep_subject;
     mo.max_size = job.mask_max_image_size;
+    mo.dilate_ratio = job.mask_dilate_ratio;
     mo.threshold = job.mask_threshold;
     mo.nms = job.mask_nms;
     mo.detect_every = job.mask_detect_every;

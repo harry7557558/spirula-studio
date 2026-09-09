@@ -187,6 +187,7 @@ void ColmapRunner::take_masking(PrepJob& prep) {
     prep.mask_negative_prompt = _live.mask_negative_prompt;
     prep.mask_keep_subject = _live.mask_keep_subject;
     prep.mask_max_image_size = _live.mask_max_image_size;
+    prep.mask_dilate_ratio = _live.mask_dilate_ratio;
     prep.mask_threshold = _live.mask_threshold;
     prep.mask_nms = _live.mask_nms;
     prep.mask_memory = _live.mask_memory;
@@ -431,6 +432,7 @@ void ColmapRunner::run(ColmapJob job) {
             pj.mask_negative_prompt = job.mask_negative_prompt;
             pj.mask_keep_subject = job.mask_keep_subject;
             pj.mask_max_image_size = job.mask_max_image_size;
+            pj.mask_dilate_ratio = job.mask_dilate_ratio;
             pj.mask_threshold = job.mask_threshold;
             pj.mask_nms = job.mask_nms;
             pj.mask_memory = job.mask_memory;

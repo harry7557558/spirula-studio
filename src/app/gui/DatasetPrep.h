@@ -206,6 +206,9 @@ struct PrepJob {
     std::string mask_prompt;         // "people; cars; ..."
     std::string mask_negative_prompt;
     bool mask_keep_subject = false;  // prompt names what to KEEP, not remove
+    // Share of its own size every matched object grows by before the mask is
+    // written, so the PNGs on disk carry the margin. sam::MaskOptions.
+    float mask_dilate_ratio = 0.15f;
     int  mask_max_image_size = 1600;
     float mask_threshold = 0.5f;     // detection score a match must reach
     // Box IoU above which the weaker of two detections of one phrase is
