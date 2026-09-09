@@ -90,6 +90,17 @@ void test_radius_formula() {
           "an inverted box does not produce a huge or negative radius");
 }
 
+void test_default() {
+    std::printf("\nDefault\n");
+    // Pinned because the value is duplicated into three GUI structs that cannot
+    // include this header, and because the help text quotes these two numbers.
+    const sam::MaskOptions o;
+    check(o.dilate_ratio == 0.05f, "the library default margin is 5 percent");
+    check(o.dilate_ratio > 0.0f, "and it is on, not opt-in");
+    check(sam::dilate_radius_px({0, 0, 400, 400}, o.dilate_ratio) == 10,
+          "so a 400 px object grows 10 px on each side, 20 across");
+}
+
 void test_scale_awareness() {
     std::printf("\nScale awareness\n");
     // The whole point of a per-detection ratio: two objects in one frame, and
@@ -260,6 +271,7 @@ void test_compose_matches_the_old_union() {
 
 int main() {
     test_radius_formula();
+    test_default();
     test_scale_awareness();
     test_resolution_invariance();
     test_disc_geometry();

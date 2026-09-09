@@ -55,7 +55,7 @@ struct MaskOptions {
     // Grow every detection by this share of its own bounding-box mean side
     // before the union: SAM's outlines hug the object and leave a halo of its
     // colour behind. It grows the detected region, either side of keep_prompted.
-    float dilate_ratio = 0.15f;
+    float dilate_ratio = 0.05f;
     float threshold = 0.5f, nms = 0.1f;
     int   detect_every = 1;
     int   memory_frames = 0;
