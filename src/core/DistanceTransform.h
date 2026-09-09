@@ -85,7 +85,7 @@ inline void dt_row_squared(const uint8_t* m, int w, uint8_t src_value, float* d)
 // Columns are transformed a block at a time rather than one at a time: 16
 // floats is one cache line, and the naive per-column walk strides the whole
 // image twice per column, which measured 64% of the transform at 3840^2.
-constexpr int kColBlock = 16;
+inline constexpr int kColBlock = 16;
 
 // 2D squared-Euclidean DT via separable 1D passes (row, then col).
 // `src_value` selects which mask value (0 or 1) acts as the source set.
