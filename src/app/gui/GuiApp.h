@@ -30,6 +30,7 @@
 #include "app/gui/ViewportPanel.h"
 
 #include <deque>
+#include <fstream>
 #include <map>
 #include <string>
 #include <utility>
@@ -361,6 +362,9 @@ private:
     void run_pending_if_stopped();
     void append_logs();
     void log(const std::string& s, bool detail = false);
+    // The full panel snapshot, written at the top of each run's log file
+    // before the separator that the timestamped log lines follow.
+    void write_run_settings(std::ofstream& f);
     // The only way to empty the log: _log_shown indexes into _log, so a
     // bare _log.clear() leaves the panel dereferencing stale indices.
     void clear_log();
@@ -603,6 +607,9 @@ private:
     // so neither can move the panel directly.
     bool _log_scroll_end = false;
     bool _show_log = true;
+    // One file per run, opened at its start and named then:
+    // <dataset>/logs/train_...log and <dataset>/logs/prep_...log.
+    std::ofstream _train_log, _prep_log;
 
     // ---- interface size and panel extents ----
     // The extents are UNSCALED: multiplied by ui_scale() where they are used,

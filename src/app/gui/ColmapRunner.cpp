@@ -6,6 +6,8 @@
 
 #include "app/gui/ReconStamp.h"
 
+#include "core/Env.h"
+
 #include "i18n/catalog/Log.h"
 #include "app/AppPaths.h"
 #include "app/gui/DatasetPrep.h"
@@ -22,6 +24,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -121,6 +124,84 @@ int64_t model_num_images(const fs::path& dir) {
     size_t got = std::fread(&n, sizeof n, 1, f);
     std::fclose(f);
     return got == 1 ? (int64_t)n : 0;
+}
+
+// Registered image names of every model under sparse/: the union is what the
+// reconstruction covers.
+std::set<std::string> registered_names(const fs::path& ws) {
+    std::set<std::string> names;
+    std::error_code ec;
+    for (fs::directory_iterator it(ws / "sparse", ec), end; !ec && it != end;
+         it.increment(ec)) {
+        if (!it->is_directory()) continue;
+        if (it->path().filename().string().rfind(".", 0) == 0) continue;
+        FILE* f = std::fopen((it->path() / "images.bin").string().c_str(), "rb");
+        if (!f) continue;
+        uint64_t n = 0;
+        if (std::fread(&n, sizeof n, 1, f) != 1) { std::fclose(f); continue; }
+        for (uint64_t i = 0; i < n; i++) {
+            int32_t id, cam;
+            double q[4], t[3];
+            if (std::fread(&id, sizeof id, 1, f) != 1 ||
+                std::fread(q, sizeof(double), 4, f) != 4 ||
+                std::fread(t, sizeof(double), 3, f) != 3 ||
+                std::fread(&cam, sizeof cam, 1, f) != 1)
+                break;
+            std::string name;
+            for (char c; std::fread(&c, 1, 1, f) == 1 && c != '\0';)
+                name.push_back(c);
+            uint64_t np = 0;
+            if (std::fread(&np, sizeof np, 1, f) != 1) break;
+            std::fseek(f, long(np * (2 * sizeof(double) + sizeof(uint64_t))),
+                       SEEK_CUR);
+            names.insert(std::move(name));
+        }
+        std::fclose(f);
+    }
+    return names;
+}
+
+// The unregistered-images data file when SS_UNREG_LOG names one: every image
+// no sparse model took, grouped per folder; same format as the engine's own
+// (sfm/Pipeline.cpp). Full coverage writes nothing.
+void write_unregistered_list(const fs::path& ws, const std::string& images_dir) {
+    const char* path = spirula::env("UNREG_LOG");
+    if (!path || !*path || images_dir.empty()) return;
+    const std::set<std::string> reg = registered_names(ws);
+    std::map<std::string, std::vector<std::string>> missing;
+    size_t total = 0;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(images_dir, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file()) continue;
+        std::string ext = it->path().extension().string();
+        for (char& c : ext) c = char(std::tolower((unsigned char)c));
+        static const char* const exts[] = {".jpg", ".jpeg", ".png",  ".bmp",
+                                           ".tif", ".tiff", ".webp"};
+        bool image = false;
+        for (const char* e : exts) image = image || ext == e;
+        if (!image) continue;
+        const std::string rel =
+            fs::relative(it->path(), images_dir, ec).generic_string();
+        if (ec) continue;
+        total++;
+        if (reg.count(rel)) continue;
+        const size_t slash = rel.find('/');
+        missing[slash == std::string::npos
+                    ? std::string("(root)")
+                    : rel.substr(0, slash)]
+            .push_back(rel);
+    }
+    if (total == 0 || missing.empty()) return;
+    std::ofstream f(path, std::ios::trunc);
+    if (!f) return;
+    size_t unreg = 0;
+    for (const auto& kv : missing) unreg += kv.second.size();
+    f << "unregistered " << unreg << '/' << total << "\n";
+    for (const auto& kv : missing) {
+        f << '\n' << '[' << kv.first << "] " << kv.second.size() << '\n';
+        for (const std::string& n : kv.second) f << n << '\n';
+    }
 }
 
 }  // namespace
@@ -857,6 +938,8 @@ void ColmapRunner::run(ColmapJob job) {
                 remove_tree(tmp);
             }
         }
+
+        write_unregistered_list(ws, images);
 
         if (!reuse_model) write_recon_stamp(ws.string(), now);
 

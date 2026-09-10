@@ -32,11 +32,13 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
@@ -44,6 +46,7 @@ namespace msg = spirula::i18n::msg::gui;
 namespace fld = spirula::i18n::msg::field;
 namespace dmsg = spirula::i18n::msg::dataset;
 namespace gmsg = spirula::i18n::msg::geometry;
+namespace tmsg = spirula::i18n::msg::train;
 using spirula::i18n::Msg;
 using spirula::format_duration;
 
@@ -290,13 +293,125 @@ void GuiApp::add_model_recent(std::string path) {
     if (_model_recents.size() > 10) _model_recents.resize(10);
 }
 
-// One entry per SCREEN line: the panel clips with a list clipper and
-// compensates its scroll for trimmed lines, and both want a uniform height.
-void GuiApp::log(const std::string& s, bool detail) {
+// Local wall-clock stamp for log lines: [yyyy-MM-dd HH:mm:ss.fff].
+static std::string log_stamp() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t t = std::chrono::system_clock::to_time_t(now);
+    const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(
+                           now.time_since_epoch()).count() % 1000);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
+                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                  tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
+    return buf;
+}
+
+// Run-start stamp for log file names: yyyyMMddHHmmss.
+static std::string run_log_stamp() {
+    const std::time_t t =
+        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%04d%02d%02d%02d%02d%02d",
+                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                  tm.tm_hour, tm.tm_min, tm.tm_sec);
+    return buf;
+}
+
+// Open this run's log file: <dir>/logs/<kind>_<stamp>.log, where dir is the
+// folder the images folder lives in. A run that cannot name that folder keeps
+// its log on the panel only. Returns the file's path, empty when none.
+static fs::path open_run_log(std::ofstream& f, const std::string& dataset_dir,
+                             const char* kind, const std::string& stamp) {
+    if (f.is_open()) f.close();
+    f.clear();
+    if (dataset_dir.empty()) return {};
+    std::error_code ec;
+    const fs::path dir = fs::path(dataset_dir) / "logs";
+    fs::create_directories(dir, ec);
+    if (ec) return {};
+    const fs::path file = dir / (std::string(kind) + "_" + stamp + ".log");
+    f.open(file, std::ios::out | std::ios::app);
+    return file;
+}
+
+// Hand a value to the reconstruction engines through the process environment
+// (the SS_* namespace core/Env.h owns); the SfM subprocess inherits it too.
+// Empty clears.
+static void set_ss_env(const char* suffix, const std::string& value) {
+    const std::string name = std::string("SS_") + suffix;
+#ifdef _WIN32
+    _putenv_s(name.c_str(), value.c_str());
+#else
+    setenv(name.c_str(), value.c_str(), 1);
+#endif
+}
+
+// Mirror a log() message into the run's file, stamped the same way.
+static void file_log_line(std::ofstream& f, const std::string& s) {
+    if (!f.is_open()) return;
     size_t at = 0;
     do {
         const size_t nl = s.find('\n', at);
-        _log.push_back({s.substr(at, nl == std::string::npos ? nl : nl - at),
+        f << log_stamp()
+          << s.substr(at, nl == std::string::npos ? nl : nl - at) << '\n';
+        at = nl == std::string::npos ? nl : nl + 1;
+    } while (at != std::string::npos);
+    f.flush();
+}
+
+// Value formatting for the settings snapshot.
+static std::string cfg_str(const std::string& v) { return v; }
+static std::string cfg_str(bool v) { return v ? "true" : "false"; }
+static std::string cfg_str(int v) { return std::to_string(v); }
+static std::string cfg_str(float v) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.7g", double(v));
+    return buf;
+}
+template <typename T>
+static std::string cfg_str(const std::optional<T>& v) {
+    return v ? cfg_str(*v) : std::string("none");
+}
+template <typename T, size_t N>
+static std::string cfg_str(const std::array<T, N>& v) {
+    std::string s;
+    for (size_t i = 0; i < N; i++) {
+        if (i) s += ',';
+        s += cfg_str(v[i]);
+    }
+    return s;
+}
+
+static const char* photo_import_name(PhotoImport m) {
+    switch (m) {
+        case PhotoImport::ConvertJpeg: return "convert-jpeg";
+        case PhotoImport::Copy:        return "copy";
+        case PhotoImport::Move:        return "move";
+        case PhotoImport::InPlace:     return "in-place";
+    }
+    return "?";
+}
+
+// One entry per SCREEN line: the panel clips with a list clipper and
+// compensates its scroll for trimmed lines, and both want a uniform height.
+void GuiApp::log(const std::string& s, bool detail) {
+    const std::string stamp = log_stamp();
+    size_t at = 0;
+    do {
+        const size_t nl = s.find('\n', at);
+        _log.push_back({stamp + s.substr(at, nl == std::string::npos ? nl : nl - at),
                         detail});
         at = nl == std::string::npos ? nl : nl + 1;
     } while (at != std::string::npos);
@@ -314,10 +429,110 @@ void GuiApp::clear_log() {
     _log_shown_dirty = true;
 }
 
+// The panel snapshot at the top of every run log: plain key=value lines in
+// sections, no timestamps -- the timestamps start below the separator.
+void GuiApp::write_run_settings(std::ofstream& f) {
+    if (!f.is_open()) return;
+    std::string out;
+    auto section = [&out](const std::string& name) { out += "[" + name + "]\n"; };
+    auto line = [&out](const std::string& k, const std::string& v) {
+        out += "  " + k + " = " + v + "\n";
+    };
+
+    section("运行");
+    line("run_started", run_log_stamp());
+    line("engine", effective_engine() == Engine::BuiltIn ? "builtin" : "colmap");
+    line("preset", _preset);
+    if (!_preset_file.empty()) line("preset_file", _preset_file);
+
+    section("数据集准备");
+    line("workspace", _workspace);
+    line("photo_import", photo_import_name(_photo_import));
+    for (const PrepInput& s : _sources)
+        line(s.is_video ? "video_source" : "photo_source", s.path);
+    line("use_found_masks", cfg_str(_use_found_masks));
+    line("flip_found_masks", cfg_str(_flip_found_masks));
+    line("masking_enabled", cfg_str(_mask_enable));
+    line("mask_detect_every", std::to_string(_mask_detect_every));
+
+    section("重建(SfM)");
+    const SfmJob& j = _sfm_job;
+    line("quality", std::to_string(j.quality));
+    line("data_type", std::to_string(j.data_type));
+    line("camera_model", j.camera_model);
+    line("camera_mode", std::to_string(j.camera_mode));
+    line("pairs", std::to_string(j.pairs));
+    line("overlap", std::to_string(j.overlap));
+    line("loop_closure", cfg_str(j.loop_closure));
+    line("features", std::to_string(j.features));
+    line("matcher", std::to_string(j.matcher));
+    line("mapper", std::to_string(j.mapper));
+    line("init_focal_px", cfg_str(j.init_focal_px));
+    if (!j.init_distortion.empty()) line("init_distortion", j.init_distortion);
+    line("distortion_refine", std::to_string(j.distortion_refine));
+    line("final_per_image_intrinsics", cfg_str(j.final_per_image_intrinsics));
+    line("max_features", std::to_string(j.max_features));
+    line("max_image_size", std::to_string(j.max_image_size));
+    line("metric_gps", std::to_string(j.metric_gps));
+    line("sensor_gauge", std::to_string(j.sensor_gauge));
+    line("keep_intermediate", cfg_str(j.keep_intermediate));
+    line("ba_cpu", cfg_str(j.ba_cpu));
+    line("subprocess", cfg_str(j.subprocess));
+    line("force_external_decode", cfg_str(j.prep.force_external_decode));
+    line("force_external_masking", cfg_str(j.prep.force_external_masking));
+    line("video_fps", cfg_str(j.prep.video_fps));
+    line("sharp_window", std::to_string(j.prep.sharp_window));
+    line("max_frames", std::to_string(j.prep.max_frames));
+    if (!j.extra_args.empty()) line("extra_args", j.extra_args);
+
+    if (effective_engine() == Engine::Colmap) {
+        section("重建(COLMAP)");
+        line("colmap_exe", _colmap_job.colmap_exe);
+        line("camera_model", _colmap_job.camera_model);
+        line("camera_mode", std::to_string(_colmap_job.camera_mode));
+    }
+
+    section("几何(深度与法线)");
+    line("enabled", cfg_str(_geometry.enable));
+    line("model", _geometry.model);
+    line("want_depth", cfg_str(_geometry.want_depth));
+    line("want_normal", cfg_str(_geometry.want_normal));
+    line("max_size", std::to_string(_geometry.max_size));
+
+    // The training config, grouped the way the options editor groups it.
+    for (int si = 0; si < kTrainNumSections; si++) {
+        const TrainConfig& c = _cfg;
+        std::string body;
+#define SS_SNAP_FIELD(type, member, default_, s, tier, choices)              \
+        if (!std::strcmp(s, kTrainSections[si]))                             \
+            body += std::string("  ") + #member + " = " +                    \
+                    cfg_str(c.member) + "\n";
+        SS_CONFIG_FIELDS(SS_SNAP_FIELD)
+#undef SS_SNAP_FIELD
+        if (!body.empty()) {
+            out += "[训练:" + std::string(kTrainSections[si]) + "]\n";
+            out += body;
+        }
+    }
+
+    out += "=============================== 设置结束 ===============================\n\n";
+    f << out;
+    f.flush();
+}
+
 void GuiApp::append_logs() {
-    for (auto& s : _runner.drain_log()) log(s);
-    for (auto& l : _colmap.steps().drain()) log(l.text, l.detail);
-    for (auto& l : _sfm.steps().drain()) log(l.text, l.detail);
+    for (auto& s : _runner.drain_log()) {
+        file_log_line(_train_log, s);
+        log(s);
+    }
+    for (auto& l : _colmap.steps().drain()) {
+        file_log_line(_prep_log, l.text);
+        log(l.text, l.detail);
+    }
+    for (auto& l : _sfm.steps().drain()) {
+        file_log_line(_prep_log, l.text);
+        log(l.text, l.detail);
+    }
     for (auto& s : _compare.drain_log()) log(s);
     for (auto& s : _mesh.drain_log()) log(s);
     for (auto& s : _download.drain_log()) log(s);
@@ -562,6 +777,14 @@ void GuiApp::launch_training(const TrainConfig& cfg, const std::string& preset) 
     // Engine setup initializes the backend on the selected device; from
     // here on the device combo is display-only (one device per process).
     _device_locked = true;
+    std::string data_dir = cfg.data;
+    if (fs::path(data_dir).filename() == "images")
+        data_dir = fs::path(data_dir).parent_path().string();
+    open_run_log(_train_log, data_dir, "train", run_log_stamp());
+    // A stale unregistered-list target from an earlier prep run must not be
+    // written by anything this run spawns.
+    set_ss_env("UNREG_LOG", "");
+    write_run_settings(_train_log);
     _runner.start_training(cfg, preset);
 }
 
@@ -2150,6 +2373,19 @@ void GuiApp::update_dataset_job() {
 void GuiApp::start_dataset_job() {
     app::set_crash_note("building dataset " + _workspace);
     sync_dataset_jobs();
+    const std::string stamp = run_log_stamp();
+    const fs::path prep_log_file =
+        open_run_log(_prep_log,
+                     fs::path(planned_image_dir(_sources, _workspace,
+                                                _photo_import)).parent_path().string(),
+                     "prep", stamp);
+    // The unregistered-images list, beside this log with the same stamp,
+    // written by whichever engine runs (sfm/Pipeline.cpp or ColmapRunner).
+    set_ss_env("UNREG_LOG", prep_log_file.empty()
+                                ? std::string()
+                                : (prep_log_file.parent_path() /
+                                   ("unreg_" + stamp + ".log")).string());
+    write_run_settings(_prep_log);
     // The preview holds a multi-gigabyte backbone; the run about to start
     // wants that VRAM for reconstruction.
     _segment.close();

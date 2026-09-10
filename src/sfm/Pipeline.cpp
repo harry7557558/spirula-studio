@@ -665,6 +665,58 @@ void printFolderCoverage(const std::vector<Reconstruction>& models,
         if (kv.second.first == 0) L::warn(Tag::Run, M::sum_folder_empty, {kv.first});
 }
 
+// Feature stems carry no extension; map every file under the images folder
+// from "<relative path without extension>" to its real name.
+static std::map<std::string, std::string> imageStemMap(const std::string& imagedir) {
+    std::map<std::string, std::string> stem2name;
+    if (imagedir.empty()) return stem2name;
+    for (const auto& e : fs::recursive_directory_iterator(imagedir))
+        if (e.is_regular_file() && !isSidecar(e.path())) {
+            fs::path rel = relativeTo(e.path(), imagedir);
+            fs::path stem = rel;
+            stem.replace_extension();
+            stem2name[stem.generic_string()] = rel.generic_string();
+        }
+    return stem2name;
+}
+
+// The unregistered list as a data file, when SS_UNREG_LOG names one: per
+// folder, every image no model took. Data only -- names need no translation;
+// full coverage writes nothing.
+static void writeUnregisteredList(const std::vector<Reconstruction>& models,
+                                  const MatchesDatabase& db,
+                                  const std::string& imagedir) {
+    const char* path = spirula::env("UNREG_LOG");
+    if (!path || !*path) return;
+    std::set<uint32_t> ids;
+    for (const Reconstruction& m : models)
+        for (const auto& kv : m.images)
+            if (kv.second.registered) ids.insert(kv.first);
+    const std::map<std::string, std::string> stem2name = imageStemMap(imagedir);
+    std::map<std::string, std::vector<std::string>> missing;
+    for (size_t i = 0; i < db.images.size(); i++) {
+        if (ids.count(uint32_t(i))) continue;
+        std::string name = db.images[i].name;
+        const auto stem = stem2name.find(name);
+        if (stem != stem2name.end()) name = stem->second;
+        const size_t slash = name.find('/');
+        missing[slash == std::string::npos ? std::string(".")
+                                           : name.substr(0, slash)]
+            .push_back(name);
+    }
+    if (missing.empty()) return;
+    std::ofstream f(path, std::ios::trunc);
+    if (!f) return;
+    size_t unreg = 0;
+    for (const auto& kv : missing) unreg += kv.second.size();
+    f << "unregistered " << unreg << '/' << db.images.size() << "\n";
+    for (const auto& kv : missing) {
+        f << '\n' << '[' << (kv.first == "." ? "(root)" : kv.first.c_str())
+          << "] " << kv.second.size() << '\n';
+        for (const std::string& n : kv.second) f << n << '\n';
+    }
+}
+
 
 // What became of the mapper's models: one line, because a capture that comes
 // back in several pieces is the case a user has to be able to reason about, and
@@ -747,14 +799,7 @@ std::vector<Reconstruction> finishModels(Mapper& mapper,
 // capture can produce dozens (D41).
 void resolveImageNames(std::vector<Reconstruction>& models, const std::string& imagedir) {
     if (imagedir.empty()) return;
-    std::map<std::string, std::string> stem2name;
-    for (const auto& e : fs::recursive_directory_iterator(imagedir))
-        if (e.is_regular_file() && !isSidecar(e.path())) {
-            fs::path rel = relativeTo(e.path(), imagedir);
-            fs::path stem = rel;
-            stem.replace_extension();
-            stem2name[stem.generic_string()] = rel.generic_string();
-        }
+    const std::map<std::string, std::string> stem2name = imageStemMap(imagedir);
     for (Reconstruction& rec : models)
         for (auto& kv : rec.images) {
             auto it = stem2name.find(kv.second.name);
@@ -1458,6 +1503,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
             (long long)rec.points3D.size(), (long long)n_cameras});
     printAssembly(ast, models.size(), Tag::Run);
     printFolderCoverage(models, db);
+    writeUnregisteredList(models, db, _imagedir);
     L::out(Tag::Run, M::sum_total, {L::num(t_extract + t_match + t_map, 2)});
     L::out(Tag::Run, M::sum_model_error,
            {L::num(mean, 3), L::num(median, 3), (long long)nobs});
