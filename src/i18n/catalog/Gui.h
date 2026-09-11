@@ -1863,6 +1863,20 @@ SS_MSG(vram_help,
     TR("GPU belleği (GiB): bu sürecin kullandığı / sistem genelinde kullanılan "
        "/ aygıtın kapasitesi. “?”, arka ucun o değeri sorgulayamadığı "
        "anlamına gelir."));
+SS_MSG(vram_budget,
+    EN("tracked {0} / allowance {1} / minimum {2}"),
+    JA("追跡 {0} / 上限 {1} / 最小 {2}"),
+    ZH_HANS("已跟踪 {0} / 限额 {1} / 最低 {2}"),
+    ZH_HANT("已追蹤 {0} / 限額 {1} / 最低 {2}"),
+    KO("추적 {0} / 허용량 {1} / 최소 {2}"),
+    DE("erfasst {0} / Kontingent {1} / Minimum {2}"),
+    FR("suivi {0} / quota {1} / minimum {2}"),
+    ES("registrado {0} / límite {1} / mínimo {2}"),
+    PT("rastreado {0} / cota {1} / mínimo {2}"),
+    IT("monitorato {0} / quota {1} / minimo {2}"),
+    NL("gevolgd {0} / limiet {1} / minimum {2}"),
+    RU("учтено {0} / лимит {1} / минимум {2}"),
+    TR("izlenen {0} / kota {1} / minimum {2}"));
 
 // ===========================================================================
 // Log panel

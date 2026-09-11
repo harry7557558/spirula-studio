@@ -954,7 +954,10 @@ void GuiApp::advance_batch() {
             // driver fault. Recorded on the row and left behind -- the point
             // of a queue is that the next dataset still gets its turn.
             j.status = BatchJob::Status::Failed;
-            j.message = _runner.error();
+            if (auto failure = _runner.memory_failure())
+                j.message = spirula::budget_failure_message(*failure);
+            else
+                j.message = _runner.error();
             log(i18n::format(msg::batch_log_job_failed, {n, j.message}));
         }
         _batch_launched = false;
@@ -1808,6 +1811,10 @@ void GuiApp::frame() {
     // measure half the window against one scale and half against the other.
     _scale.update(ImGui::GetIO().DisplaySize);
 
+    if (_runner.phase() == TrainRunner::Phase::TrainError) {
+        detach_session_views();
+        _runner.cleanup_failed_engine();
+    }
     append_logs();
     run_pending_if_stopped();
     // vit-giant2 is two files, and so is ALIKED with LightGlue: both fetches
@@ -5900,8 +5907,13 @@ void GuiApp::draw_train_controls() {
         case TrainRunner::Phase::LoadError:
         case TrainRunner::Phase::Done:
         case TrainRunner::Phase::TrainError: {
-            if (ph == TrainRunner::Phase::TrainError)
-                ui::TextColoredWrappedRaw(kErr, _runner.error());
+            if (ph == TrainRunner::Phase::TrainError) {
+                if (auto failure = _runner.memory_failure())
+                    ui::TextColoredWrappedRaw(
+                        kErr, spirula::budget_failure_message(*failure));
+                else
+                    ui::TextColoredWrappedRaw(kErr, _runner.error());
+            }
             if (ph == TrainRunner::Phase::Done) {
                 const bool saved = _runner.saved_on_stop();
                 ui::TextColored(saved ? kOk : kWarn,
@@ -6056,6 +6068,8 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     double now = ImGui::GetTime();
     if (_vram_polled_at < 0.0 || now - _vram_polled_at > 0.5) {
         _vram = backend::memory_usage();
+        _budget = backend::training_budget_active()
+            ? backend::budget_snapshot() : backend::BudgetSnapshot{};
         _vram_polled_at = now;
     }
     const backend::MemoryUsage& m = _vram;
@@ -6132,6 +6146,20 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     }
     ui::TextColoredRaw(sized ? kDim : color, label);
     ui::help_on_hover(msg::vram_help);
+    if (auto status = _runner.memory_status()) {
+        uint64_t tracked_bytes = _budget.process_bytes;
+        if (UINT64_MAX - tracked_bytes < _budget.reserved_bytes)
+            tracked_bytes = UINT64_MAX;
+        else
+            tracked_bytes += _budget.reserved_bytes;
+        std::string tracked =
+            _budget.status == backend::BudgetStatus::Available
+                ? backend::_fmt_bytes(tracked_bytes) : "?";
+        ui::TextDisabled(
+            msg::vram_budget,
+            {tracked, backend::_fmt_bytes(status->allowance),
+             backend::_fmt_bytes(status->estimate.known_minimum_bytes)});
+    }
 }
 
 // ---------------------------------------------------------------------------

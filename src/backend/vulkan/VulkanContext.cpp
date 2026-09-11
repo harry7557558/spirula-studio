@@ -36,6 +36,7 @@ void set_error(const char* what, VkResult result) {
     }
 }
 
+
 namespace {
 
 const char* device_type_name(VkPhysicalDeviceType t) {
@@ -359,11 +360,20 @@ void Context::init() {
     }
 
     uint32_t n = 0;
-    vkEnumeratePhysicalDevices(_instance, &n, nullptr);
-    std::vector<VkPhysicalDevice> devices(n);
-    vkEnumeratePhysicalDevices(_instance, &n, devices.data());
+    r = vkEnumeratePhysicalDevices(_instance, &n, nullptr);
+    if (r != VK_SUCCESS) {
+        set_error("vkEnumeratePhysicalDevices failed", r);
+        return;
+    }
     if (n == 0) {
+        _init_status = BudgetStatus::Unavailable;
         set_error("no Vulkan devices found", VK_SUCCESS);
+        return;
+    }
+    std::vector<VkPhysicalDevice> devices(n);
+    r = vkEnumeratePhysicalDevices(_instance, &n, devices.data());
+    if (r != VK_SUCCESS) {
+        set_error("vkEnumeratePhysicalDevices failed", r);
         return;
     }
 
@@ -371,6 +381,7 @@ void Context::init() {
     if (best < 0 || best >= (int)n) {
         set_error("no viable Vulkan device (need Vulkan 1.2 + "
                   "bufferDeviceAddress + timelineSemaphore)", VK_SUCCESS);
+        _init_status = BudgetStatus::Unavailable;
         return;
     }
 
@@ -559,6 +570,7 @@ void Context::init() {
 
     g_context_device.store(best);
     g_context_created.store(true);
+    _init_status = BudgetStatus::Available;
 
     if (spirula::env("VK_VERBOSE")) {
         // The pinned size is what the shaders actually run at; printing the
@@ -663,6 +675,57 @@ uint32_t Context::find_memory_type(uint32_t type_bits,
     return UINT32_MAX;
 }
 
+uint32_t Context::memory_type_heap(uint32_t type_index) const {
+    if (type_index < _mem_props.memoryTypeCount)
+        return _mem_props.memoryTypes[type_index].heapIndex;
+    return UINT32_MAX;
+}
+
+bool Context::is_heap_device_local(uint32_t heap_index) const {
+    if (heap_index < _mem_props.memoryHeapCount)
+        return (_mem_props.memoryHeaps[heap_index].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+    return false;
+}
+
+int Context::default_device_local_heap() const {
+    int best = -1;
+    for (uint32_t i = 0; i < _mem_props.memoryHeapCount; i++) {
+        if (_mem_props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+            if (best < 0 || _mem_props.memoryHeaps[i].size > _mem_props.memoryHeaps[best].size)
+                best = (int)i;
+        }
+    }
+    return best;
+}
+
+HeapBudget Context::query_heap_budget(uint32_t heap_index) const {
+    HeapBudget out{};
+    if (!ok() || _physical == VK_NULL_HANDLE || !_caps.memory_budget) {
+        out.status = BudgetStatus::Unavailable;
+        return out;
+    }
+    if (heap_index >= _mem_props.memoryHeapCount) {
+        out.status = BudgetStatus::Unavailable;
+        return out;
+    }
+
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+    VkPhysicalDeviceMemoryProperties2 mp2{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+    mp2.pNext = &budget;
+    vkGetPhysicalDeviceMemoryProperties2(_physical, &mp2);
+
+    out.status = BudgetStatus::Available;
+    out.budget_bytes = budget.heapBudget[heap_index];
+    out.usage_bytes = budget.heapUsage[heap_index];
+    out.total_bytes = _mem_props.memoryHeaps[heap_index].size;
+    out.available_bytes = (out.budget_bytes > out.usage_bytes)
+                              ? (out.budget_bytes - out.usage_bytes)
+                              : 0;
+    return out;
+}
+
 }  // namespace vk
 
 // --- backend::device_* (BackendRuntime.h) ---
@@ -694,10 +757,16 @@ bool device_select(int index) {
     return true;
 }
 
+bool vk::context_created() {
+    return vk::g_context_created.load();
+}
+
 int device_current() {
     if (vk::g_context_created.load()) return vk::g_context_device.load();
     return vk::resolve_device_index();
 }
+
+bool device_prepare() { return vk::Context::get().ok(); }
 
 MemoryUsage memory_usage() {
     MemoryUsage m;

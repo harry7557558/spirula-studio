@@ -661,6 +661,7 @@ private:
 
     // VRAM readout on the status strip, polled from the backend at ~2 Hz.
     backend::MemoryUsage _vram;
+    backend::BudgetSnapshot _budget;
     double _vram_polled_at = -1.0;
 };
 

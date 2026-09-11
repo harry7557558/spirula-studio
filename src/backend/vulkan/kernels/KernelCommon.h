@@ -113,10 +113,7 @@ inline void dispatch_ring(const char* entry,
 inline uint64_t null_fallback() {
     static const uint64_t addr = [] {
         constexpr size_t kBytes = 4096;
-        void* p = backend::device_malloc(kBytes);
-        if (!p)
-            throw std::runtime_error(
-                "Vulkan backend: null-fallback allocation failed");
+        void* p = backend::device_malloc_checked(kBytes, "null fallback");
         backend::memset_sync(p, 0, kBytes);
         return (uint64_t)p;
     }();

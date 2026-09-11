@@ -82,6 +82,11 @@ struct DataManagerConfig {
     // Hard upper bound on RAM consumed by ready / partially-ready batches.
     int prefetch_batches = 4;
 
+    // Most faces one render pass may hold, when positive: a run of same-size
+    // faces is split into chunks of at most this many, which bounds a warped
+    // batch's staging buffers. 0 merges every compatible face (historic).
+    int max_faces_per_pass = 0;
+
     // Swap keep and ignore in every mask, before mask_boundary_offset. For
     // masks that mark what to EXCLUDE, the other convention in the wild.
     bool flip_mask = false;
@@ -110,6 +115,14 @@ struct DataManagerConfig {
 struct WarpFacePass {
     int32_t k0 = 0, k1 = 0, width = 0, height = 0;
 };
+
+// The one face-pass planner: the runs of equal-size faces for one camera's K
+// faces, in order. A size change starts a run; a positive `max_faces_per_pass`
+// caps run length (0 = unlimited, historic). DataManager and the preflight share it.
+std::vector<WarpFacePass> build_face_passes(const int32_t* widths,
+                                            const int32_t* heights,
+                                            int32_t        K,
+                                            int32_t        max_faces_per_pass = 0);
 
 
 // Element-type tag, matching the engine's set_training_data inputs.

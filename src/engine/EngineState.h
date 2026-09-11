@@ -280,6 +280,7 @@ struct SplatOptim {
     // skip_grad_zero, engine_optim_step reads grad_scale + zero_grad.
     bool   skip_grad_zero = false;     // _alloc_grad_buffers skips zeroing
     float  grad_scale     = 1.0f;      // multiplied into v_* inside optim
+    float  loss_grad_scale = 1.0f;     // scales loss cotangents for sub-batches
     bool   zero_grad_in_optim = false; // optim zeroes v_* after consuming
 };
 
@@ -291,6 +292,7 @@ struct SplatOptim {
 struct BilagridRGB {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     // Adam state
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
@@ -336,6 +338,7 @@ struct ColorShiftRegState {
 struct BilagridDepth {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
     DeviceTensor5D<float>      accum_f;
@@ -354,6 +357,7 @@ struct BilagridDepth {
 struct BilagridNormal {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
     DeviceTensor5D<float>      accum_f;
@@ -569,6 +573,7 @@ struct EngineState {
     // once. Not a function-local static: engine_reset() frees the pool, and a
     // flag outliving it leaves the next scene reading the reallocated buffer.
     bool    v_losses_uploaded = false;
+    float   v_losses_scale = 0.0f;
 
     WorldSplats    world;
     CameraTable    camera;
@@ -583,6 +588,9 @@ struct EngineState {
     // Per-image-in-batch camera indices for the current step (shared by
     // background, bilagrid, and PPISP). Empty -> kernels fall back to identity.
     DeviceVector<int32_t> bilagrid_cur_cam_indices;
+    DeviceVector<int32_t> bilagrid_split_cam_indices;
+    bool bilagrid_split_grad_active = false;
+    bool bilagrid_split_has_cam_indices = false;
 
     EngineBackground background;
     PpispState       ppisp;

@@ -103,6 +103,7 @@ inline int train_tier_rank(const char* tier) {
     X(int, viewer_port, 7007, "run", "advanced", "")                         \
     X(bool, disable_viewer, false, "run", "advanced", "")                    \
     X(bool, keep_viewer_alive, true, "run", "advanced", "")                  \
+    X(std::optional<float>, memory_limit_gib, std::nullopt, "run", "advanced", "") \
                                                                              \
     /* ==== dataset -- which files are read, and which images are held out ==== */ \
     X(std::string, data_format, "", "dataset", "basic", "colmap|nerfstudio|metashape|none") \

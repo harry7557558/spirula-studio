@@ -521,6 +521,12 @@ int spirula_train_main(int argc, char** argv) {
             for (;;) std::this_thread::sleep_for(std::chrono::seconds(3600));
         }
 
+    } catch (const backend::BudgetError& e) {
+        std::fprintf(
+            stderr, "%s\n",
+            format(cmsg::error_line,
+                   {budget_failure_message(e.failure)}).c_str());
+        return 1;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "%s\n", format(cmsg::error_line, {e.what()}).c_str());
         return 1;

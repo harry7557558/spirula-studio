@@ -303,6 +303,77 @@ void _set_cur_cam_indices(TorchTensorView tv) {
     }
 }
 
+static DeviceTensor5D<float> _bilagrid_grad_slice(
+    DeviceTensor5D<float>& full, int offset, int count
+) {
+    const int64_t L = full.size<1>();
+    const int64_t H = full.size<2>();
+    const int64_t W = full.size<3>();
+    const int64_t C = full.size<4>();
+    const int64_t stride = L * H * W * C;
+    return DeviceTensor5D<float>(TorchTensorView(
+        (uint64_t)(full.data_ptr() + (int64_t)offset * stride), 4,
+        {(int64_t)count, L, H, W, C}));
+}
+
+void _engine_bilagrid_split_grad_begin(int total_cameras) {
+    auto& e = engine();
+    e.bilagrid_split_grad_active = true;
+    e.bilagrid_split_has_cam_indices = false;
+    e.bilagrid_split_cam_indices.resize(
+        PoolSlot::EngBgSplitCamIndices, total_cameras);
+    auto begin = [total_cameras](auto& bg, PoolSlot slot) {
+        if (!bg.enabled) return;
+        bg.split_image_grad.resize(
+            slot, total_cameras, bg.grids.template size<1>(),
+            bg.grids.template size<2>(), bg.grids.template size<3>(),
+            bg.grids.template size<4>());
+        bg.split_image_grad.zero();
+    };
+    begin(e.bilagrid_rgb, PoolSlot::EngBgRgbImageGrad);
+    begin(e.bilagrid_depth, PoolSlot::EngBgDepthImageGrad);
+    begin(e.bilagrid_normal, PoolSlot::EngBgNormalImageGrad);
+}
+
+void _engine_bilagrid_split_grad_slice(int offset, int count) {
+    auto& e = engine();
+    if (!e.bilagrid_split_grad_active) return;
+    auto slice = [offset, count](auto& bg) {
+        if (bg.enabled)
+            bg.image_grad = _bilagrid_grad_slice(
+                bg.split_image_grad, offset, count);
+    };
+    slice(e.bilagrid_rgb);
+    slice(e.bilagrid_depth);
+    slice(e.bilagrid_normal);
+
+    const int* src = e.bilagrid_cur_cam_indices.data_ptr();
+    if (src) {
+        e.bilagrid_split_has_cam_indices = true;
+        backend::memcpy_async(
+            e.bilagrid_split_cam_indices.data_ptr() + offset, src,
+            (size_t)count * sizeof(int32_t),
+            backend::MemcpyKind::DeviceToDevice, kBilagridStream);
+    }
+}
+
+void _engine_bilagrid_split_grad_end() {
+    auto& e = engine();
+    if (!e.bilagrid_split_grad_active) return;
+    auto use_full = [](auto& bg) {
+        if (bg.enabled) bg.image_grad = bg.split_image_grad;
+    };
+    use_full(e.bilagrid_rgb);
+    use_full(e.bilagrid_depth);
+    use_full(e.bilagrid_normal);
+    e.bilagrid_cur_cam_indices = e.bilagrid_split_has_cam_indices
+        ? e.bilagrid_split_cam_indices : DeviceVector<int32_t>();
+}
+
+void _engine_bilagrid_split_grad_finish() {
+    engine().bilagrid_split_grad_active = false;
+}
+
 // Apply bilagrid forward in-place for each enabled type for the current batch.
 // Saves a pre-bilagrid copy used by the backward pass.
 //
@@ -454,8 +525,10 @@ static void _ensure_bilagrid_batch_grad(
     int H = (int)grids.size<2>();
     int W = (int)grids.size<3>();
     int C = (int)grids.size<4>();
-    grad.resize(key, C_batch, L, H, W, C);
-    grad.zero();
+    if (!engine().bilagrid_split_grad_active) {
+        grad.resize(key, C_batch, L, H, W, C);
+        grad.zero();
+    }
 }
 
 void _engine_bilagrid_backward_hook(
@@ -780,7 +853,6 @@ void _ensure_bilagrid_optim_state() {
 void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
     _ensure_bilagrid_optim_state();
     int32_t adam_step = step + 1;
-    int C_batch = (int)engine().camera.num;
     const int* cam_idx_dev = engine().bilagrid_cur_cam_indices.data_ptr();
 
     // Single fused pass per bilagrid type: reads the sparse per-batch
@@ -817,7 +889,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
                 quantize_optim ? adagrad_quant.bounds_ptr() : nullptr,
                 image_grad.data_ptr(),
                 cam_idx_dev,
-                N, C_batch, C, L, H, W,
+                N, (int)image_grad.size<0>(), C, L, H, W,
                 lr, tv_weight,
                 quantize_optim, optim_bits, value_quantize, kBilagridStream);
         } else {
@@ -829,7 +901,7 @@ void engine_bilagrid_optim_step(int step, const BilagridStepConfig& cfg) {
                 quantize_optim ? quant_state.bounds_ptr() : nullptr,
                 image_grad.data_ptr(),
                 cam_idx_dev,
-                N, C_batch, C, L, H, W,
+                N, (int)image_grad.size<0>(), C, L, H, W,
                 lr, tv_weight, adam_step,
                 quantize_optim, optim_bits, value_quantize, kBilagridStream);
         }

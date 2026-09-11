@@ -660,6 +660,7 @@ LossValues compute_multi_scale_per_pixel_losses(
     bool has_mask,
     const std::array<float, (int)LossWeightIndex::length> loss_weights_0,
     const float w_ssim,
+    const float ssim_grad_scale,
     const float saturation_threshold,
     TorchTensorView v_losses,
     std::vector<bool> needs_input_grad,
@@ -933,12 +934,13 @@ LossValues compute_multi_scale_per_pixel_losses(
         if (scale == 0) {
             ssim = fused_ssim_inplace_async_vk(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim, scale_grads.v_render_rgb, loss_map_scale, w_ssim,
+                -w_ssim * ssim_grad_scale, scale_grads.v_render_rgb,
+                loss_map_scale, w_ssim,
                 _ssim_mode, saturation_threshold, ssim_readout);
         } else {
             ssim = fused_ssim_inplace_vk(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim, scale_grads.v_render_rgb, /*return_ssim_val=*/false,
+                -w_ssim * ssim_grad_scale, scale_grads.v_render_rgb, /*return_ssim_val=*/false,
                 loss_map_scale, w_ssim, _ssim_mode, saturation_threshold);
         }
 

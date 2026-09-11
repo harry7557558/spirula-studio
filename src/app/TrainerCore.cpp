@@ -2,6 +2,7 @@
 
 #include "app/TrainerCore.h"
 #include "data/SceneTransform.h"
+#include "backend/api/BackendRuntime.h"
 #include "app/EvalMetrics.h"
 #include "checkpoint/Adapt.h"
 #include "checkpoint/Resume.h"
@@ -11,6 +12,7 @@
 #include "i18n/catalog/Log.h"
 #include "data/CameraMath.h"
 #include "data/ImageProbe.h"
+#include "data/DataManager.h"
 #include "data/Knn.h"
 #include "sfm/core/Exif.h"
 
@@ -30,6 +32,7 @@
 #include <deque>
 #include <numeric>
 #include <random>
+#include <limits>
 #include <stdexcept>
 #include <thread>
 
@@ -580,6 +583,9 @@ std::string train_config_unsupported(const TrainConfig& c) {
 void TrainerSession::check_config() {
     if (std::string what = train_config_unsupported(cfg); !what.empty())
         throw std::runtime_error(what);
+    if (cfg.memory_limit_gib.has_value() &&
+        (!std::isfinite(*cfg.memory_limit_gib) || *cfg.memory_limit_gib <= 0.0f))
+        throw std::runtime_error(lmsg::bad_memory_limit.get());
     if (cfg.validation_fraction > 0)
         log(lmsg::warn_validation_unported.get());
     if (cfg.orientation_method != "up" || cfg.center_method != "poses")
@@ -667,6 +673,255 @@ void TrainerSession::load_dataset() {
              {(long long)ds.num_cameras, (long long)post.n_post,
               (long long)ds.points.num(), scale}));
 }
+
+namespace {
+
+uint64_t sat_add(uint64_t a, uint64_t b) {
+    return b > UINT64_MAX - a ? UINT64_MAX : a + b;
+}
+
+uint64_t sat_mul(uint64_t a, uint64_t b) {
+    return a != 0 && b > UINT64_MAX / a ? UINT64_MAX : a * b;
+}
+
+uint64_t image_bytes(const std::string& path, int channels, int bytes_per_channel) {
+    if (path.empty()) return 0;
+    int w = 0, h = 0;
+    if (!probe_image_size(path.c_str(), &w, &h))
+        throw std::runtime_error("Failed to probe training image '" + path + "'");
+    return sat_mul(sat_mul((uint64_t)w, (uint64_t)h),
+                   (uint64_t)(channels * bytes_per_channel));
+}
+
+struct MemoryGroup {
+    int count = 0;
+    uint64_t rgb_input = 0;
+    uint64_t mask_input = 0;
+    uint64_t depth_input = 0;
+    uint64_t normal_input = 0;
+    uint64_t face_pixels = 0;
+};
+
+}  // namespace
+
+TrainingBatchPlan resolve_training_batch_plan(int64_t num_train,
+                                              int64_t num_val,
+                                              int max_batch_per_epoch) {
+    TrainingBatchPlan out;
+    double batch = std::max(
+        (double)num_train / std::max(max_batch_per_epoch, 1), 1.0);
+    out.train_batch_size = std::max(1, (int)(batch + 0.5));
+    if (num_val > 0 && num_train > 0)
+        out.val_batch_size = std::max(
+            1, (int)std::ceil(batch * (double)num_val / (double)num_train));
+    return out;
+}
+
+TrainingMemoryEstimate estimate_training_memory(
+    const ParsedDataset& ds, const PostSplitCameras& post,
+    const TrainConfig& cfg, bool has_mask, bool has_depth, bool has_normal,
+    int64_t target_splats, int max_faces_per_pass) {
+    std::map<std::vector<int32_t>, MemoryGroup> groups;
+    std::vector<int32_t> train = ds.train_indices;
+    if (train.empty()) {
+        train.resize((size_t)ds.num_cameras);
+        std::iota(train.begin(), train.end(), 0);
+    }
+
+    for (int32_t i : train) {
+        int32_t K = post.K_per_camera.empty() ? 1 : post.K_per_camera[i];
+        int32_t offset =
+            post.post_offsets.empty() ? i : post.post_offsets[i];
+        std::vector<int32_t> key{
+            ds.widths[i], ds.heights[i], ds.camera_models[i],
+            ds.camera_distortions[i], K};
+        for (int k = 0; k < K; ++k) {
+            int32_t p = offset + k;
+            key.push_back(post.post_widths.empty() ? ds.widths[i]
+                                                   : post.post_widths[p]);
+            key.push_back(post.post_heights.empty() ? ds.heights[i]
+                                                    : post.post_heights[p]);
+        }
+
+        MemoryGroup& g = groups[key];
+        ++g.count;
+        uint64_t input_pixels =
+            sat_mul((uint64_t)ds.widths[i], (uint64_t)ds.heights[i]);
+        g.rgb_input = std::max(g.rgb_input, sat_mul(input_pixels, 3));
+        if (has_mask || post.any_fov_mask) {
+            uint64_t bytes = ds.mask_filenames.empty()
+                ? input_pixels
+                : image_bytes(ds.mask_filenames[i], 1, 1);
+            g.mask_input = std::max(g.mask_input, bytes);
+        }
+        if (has_depth)
+            g.depth_input = std::max(
+                g.depth_input, image_bytes(ds.depth_filenames[i], 1, 2));
+        if (has_normal)
+            g.normal_input = std::max(
+                g.normal_input, image_bytes(ds.normal_filenames[i], 3, 1));
+
+        std::vector<int32_t> widths((size_t)K), heights((size_t)K);
+        for (int k = 0; k < K; ++k) {
+            int32_t p = offset + k;
+            widths[k] = post.post_widths.empty() ? ds.widths[i]
+                                                  : post.post_widths[p];
+            heights[k] = post.post_heights.empty() ? ds.heights[i]
+                                                    : post.post_heights[p];
+        }
+        uint64_t max_pass = 0;
+        for (const WarpFacePass& pass :
+             build_face_passes(widths.data(), heights.data(), K,
+                               max_faces_per_pass)) {
+            uint64_t pixels = 0;
+            for (int k = pass.k0; k < pass.k1; ++k)
+                pixels = sat_add(
+                    pixels, sat_mul((uint64_t)widths[k],
+                                    (uint64_t)heights[k]));
+            max_pass = std::max(max_pass, pixels);
+        }
+        g.face_pixels = std::max(g.face_pixels, max_pass);
+    }
+
+    int64_t num_val = (int64_t)ds.val_indices.size();
+    TrainingBatchPlan batch = resolve_training_batch_plan(
+        (int64_t)train.size(), num_val, cfg.max_batch_per_epoch);
+    uint64_t peak_images = 0;
+    for (const auto& [key, g] : groups) {
+        (void)key;
+        uint64_t B = (uint64_t)std::min(g.count, batch.train_batch_size);
+        uint64_t staging = sat_add(
+            sat_add(g.rgb_input, g.mask_input),
+            sat_add(g.depth_input, g.normal_input));
+        staging = sat_mul(staging, B);
+
+        uint64_t retained_per_pixel = 152;
+        if (cfg.num_loss_scales != 1)
+            retained_per_pixel = sat_add(retained_per_pixel, 32);
+        if (cfg.use_ppisp) retained_per_pixel =
+            sat_add(retained_per_pixel, 12);
+        uint64_t retained = sat_mul(
+            sat_mul(g.face_pixels, B), retained_per_pixel);
+        peak_images = std::max(peak_images, sat_add(staging, retained));
+    }
+
+    int64_t sh_dim = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1);
+    uint64_t parameter_floats =
+        (uint64_t)(14 + std::max<int64_t>(0, sh_dim - 1) * 3);
+    uint64_t splat_bytes = sat_mul(
+        (uint64_t)std::max<int64_t>(target_splats, 0),
+        sat_add(sat_mul(parameter_floats, 12), 16));
+
+    auto grid_bytes = [&](const TrainVec3i& shape, uint64_t channels) {
+        uint64_t cells = sat_mul(
+            sat_mul((uint64_t)shape[0], (uint64_t)shape[1]),
+            (uint64_t)shape[2]);
+        return sat_mul(sat_mul(cells, channels),
+                       sat_mul((uint64_t)post.n_post, 2));
+    };
+    uint64_t correction = 0;
+    if (cfg.use_bilateral_grid)
+        correction = sat_add(correction,
+                             grid_bytes(cfg.bilagrid_shape, 12));
+    if (cfg.use_bilateral_grid_for_geometry && has_depth)
+        correction = sat_add(
+            correction, grid_bytes(cfg.bilagrid_shape_geometry, 1));
+    if (cfg.use_bilateral_grid_for_geometry && has_normal)
+        correction = sat_add(
+            correction, grid_bytes(cfg.bilagrid_shape_geometry, 3));
+    if (cfg.use_ppisp)
+        correction = sat_add(
+            correction, sat_mul((uint64_t)post.n_post, 256));
+
+    TrainingMemoryEstimate out;
+    out.known_minimum_bytes =
+        sat_add(peak_images, sat_add(splat_bytes, correction));
+    return out;
+}
+
+namespace {
+
+uint64_t effective_memory_allowance(const backend::BudgetSnapshot& budget,
+                                    uint64_t app_limit, uint64_t reserve) {
+    if (budget.status != backend::BudgetStatus::Available) return 0;
+    uint64_t driver = budget.available_bytes > reserve
+        ? budget.available_bytes - reserve : 0;
+    if (app_limit == 0) return driver;
+    uint64_t used = sat_add(budget.process_bytes, budget.reserved_bytes);
+    uint64_t app = app_limit > used ? app_limit - used : 0;
+    return std::min(driver, app);
+}
+
+}  // namespace
+
+std::optional<backend::BudgetFailure> training_memory_refusal(
+    const backend::BudgetSnapshot& budget,
+    const TrainingMemoryEstimate& estimate, uint64_t app_limit,
+    uint64_t reserve) {
+    backend::BudgetFailure f{};
+    f.requested_bytes = estimate.known_minimum_bytes;
+    f.device_index = budget.device_index;
+    f.heap_index = budget.heap_index;
+    if (budget.status != backend::BudgetStatus::Available) {
+        f.kind = budget.status == backend::BudgetStatus::Unavailable
+            ? backend::BudgetFailureKind::TelemetryUnavailable
+            : backend::BudgetFailureKind::TelemetryError;
+        return f;
+    }
+
+    uint64_t available =
+        effective_memory_allowance(budget, app_limit, reserve);
+    if (estimate.known_minimum_bytes <= available) return std::nullopt;
+    uint64_t driver = budget.available_bytes > reserve
+        ? budget.available_bytes - reserve : 0;
+    uint64_t app = UINT64_MAX;
+    if (app_limit > 0) {
+        uint64_t used = sat_add(budget.process_bytes, budget.reserved_bytes);
+        app = app_limit > used ? app_limit - used : 0;
+    }
+    f.kind = app <= driver
+        ? backend::BudgetFailureKind::ApplicationLimit
+        : backend::BudgetFailureKind::DriverHeadroom;
+    f.available_bytes = available;
+    return f;
+}
+
+std::string budget_failure_message(const backend::BudgetFailure& failure) {
+    switch (failure.kind) {
+        case backend::BudgetFailureKind::DriverHeadroom:
+            return lfmt(lmsg::driver_memory_refusal,
+                        {backend::_fmt_bytes(failure.requested_bytes),
+                         backend::_fmt_bytes(failure.available_bytes)});
+        case backend::BudgetFailureKind::ApplicationLimit:
+            return lfmt(lmsg::app_memory_refusal,
+                        {backend::_fmt_bytes(failure.requested_bytes),
+                         backend::_fmt_bytes(failure.available_bytes)});
+        case backend::BudgetFailureKind::TelemetryUnavailable:
+            return lmsg::memory_telemetry_unavailable.get();
+        case backend::BudgetFailureKind::TelemetryError:
+            return lmsg::memory_telemetry_error.get();
+    }
+    return lmsg::memory_telemetry_error.get();
+}
+
+namespace {
+
+uint64_t configured_memory_limit(const TrainConfig& cfg) {
+    if (!cfg.memory_limit_gib.has_value()) return 0;
+    double bytes = (double)*cfg.memory_limit_gib * (double)(1ull << 30);
+    return bytes >= (double)UINT64_MAX
+        ? UINT64_MAX : (uint64_t)std::max(1.0, bytes);
+}
+
+void enforce_preflight(const backend::BudgetSnapshot& budget,
+                       const TrainingMemoryEstimate& estimate,
+                       uint64_t app_limit) {
+    if (auto failure = training_memory_refusal(
+            budget, estimate, app_limit, kTrainingMemoryReserveBytes))
+        throw backend::BudgetError(*failure);
+}
+
+}  // namespace
 
 // Pre-flight GPU check. A binary compiled by a newer CUDA toolkit than the
 // installed driver supports links and loads fine, but every kernel launch then
@@ -759,8 +1014,34 @@ void TrainerSession::setup_engine() {
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
 #endif
+    if (!backend::device_prepare()) {
+        backend::BudgetFailure failure{};
+        failure.kind = backend::BudgetFailureKind::TelemetryError;
+        failure.device_index = backend::device_current();
+        throw backend::BudgetError(failure);
+    }
 
-    // ---- Output dir ----------------------------------------------------
+    uint64_t app_limit = configured_memory_limit(cfg);
+    int max_faces_per_pass = cfg.split_batch ? 1 : 0;
+    memory_budget = backend::budget_snapshot();
+    memory_allowance = effective_memory_allowance(
+        memory_budget, app_limit, kTrainingMemoryReserveBytes);
+    memory_estimate = estimate_training_memory(
+        ds, post, cfg, has_mask, has_depth, has_normal, cfg.cap_max,
+        max_faces_per_pass);
+    enforce_preflight(memory_budget, memory_estimate, app_limit);
+
+    ColorResolution color = resolve_color(cfg);
+    SeedSplats seed = seed_splats(ds.points, cfg, color);
+    int64_t cap = (int64_t)seed.opacities.size();
+    memory_budget = backend::budget_snapshot();
+    memory_allowance = effective_memory_allowance(
+        memory_budget, app_limit, kTrainingMemoryReserveBytes);
+    memory_estimate = estimate_training_memory(
+        ds, post, cfg, has_mask, has_depth, has_normal, cap,
+        max_faces_per_pass);
+    enforce_preflight(memory_budget, memory_estimate, app_limit);
+
     if (!out_dir_override.empty()) {
         out_dir = fs::path(out_dir_override);
     } else if (!cfg.output_dir_name.empty()) {
@@ -779,12 +1060,13 @@ void TrainerSession::setup_engine() {
     }
     log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
 
-    // ---- Engine setup -------------------------------------------------
+    backend::training_budget_begin(kTrainingMemoryReserveBytes, app_limit);
+    _budget_active = true;
+    memory_budget = backend::budget_snapshot();
+    try {
     engine_reset();
+    _engine_initialized = true;
 
-    ColorResolution color = resolve_color(cfg);
-    SeedSplats seed = seed_splats(ds.points, cfg, color);
-    int64_t cap = (int64_t)seed.opacities.size();
     int64_t dim_sh = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1);
     auto tv = [](std::vector<float>& v, std::vector<int64_t> shape) -> TorchTensorView {
         return {(uint64_t)(uintptr_t)v.data(), (uint32_t)sizeof(float), std::move(shape)};
@@ -835,12 +1117,8 @@ void TrainerSession::setup_engine() {
     const int64_t N = ds.num_cameras;
     int64_t num_val = (int64_t)ds.val_indices.size();
     int64_t num_train = N - num_val;
-    // Batch-size policy.
-    double n_batch = std::max((double)num_train / std::max(cfg.max_batch_per_epoch, 1), 1.0);
-    int train_bs = std::max(1, (int)(n_batch + 0.5));
-    int val_bs = 1;
-    if (num_val > 0)
-        val_bs = std::max(1, (int)std::ceil(n_batch * (double)num_val / (double)num_train));
+    TrainingBatchPlan batch = resolve_training_batch_plan(
+        num_train, num_val, cfg.max_batch_per_epoch);
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
@@ -850,8 +1128,9 @@ void TrainerSession::setup_engine() {
     dm.load_masks  = has_mask || post.any_fov_mask;
     dm.load_depths      = has_depth;
     dm.load_normals     = has_normal;
-    dm.train_batch_size = train_bs;
-    dm.val_batch_size   = val_bs;
+    dm.train_batch_size = batch.train_batch_size;
+    dm.val_batch_size   = batch.val_batch_size;
+    dm.max_faces_per_pass = max_faces_per_pass;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = ds.exif_quarter_turns;
@@ -947,6 +1226,33 @@ void TrainerSession::setup_engine() {
     // appearance channel the checkpoint carries must already exist as a
     // restore target, which is what everything above establishes.
     if (!cfg.resume.empty()) restore_checkpoint();
+    } catch (...) {
+        engine_reset();
+        _engine_initialized = false;
+        backend::training_budget_end();
+        _budget_active = false;
+        throw;
+    }
+}
+
+void TrainerSession::reset_engine() {
+    std::lock_guard<std::mutex> lock(engine_mutex);
+    if (_engine_initialized) {
+        engine_reset();
+        _engine_initialized = false;
+    }
+    if (_budget_active) {
+        backend::training_budget_end();
+        _budget_active = false;
+    }
+}
+
+void TrainerSession::release_engine_budget() {
+    std::lock_guard<std::mutex> lock(engine_mutex);
+    if (_budget_active) {
+        backend::training_budget_end();
+        _budget_active = false;
+    }
 }
 
 // Restore engine state from cfg.resume, adapting the checkpoint's buffers on

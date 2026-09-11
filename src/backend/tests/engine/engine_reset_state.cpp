@@ -120,9 +120,26 @@ static std::vector<float> run_once() {
 
 int main() {
     std::vector<float> first = run_once();
+    backend::BudgetSnapshot live = backend::budget_snapshot();
+    if (live.status != backend::BudgetStatus::Available) {
+        std::fprintf(stderr, "engine_reset_state: memory telemetry unavailable\n");
+        return 1;
+    }
+    backend::training_budget_begin(0, live.process_bytes);
+    bool refused = false;
+    try {
+        backend::device_malloc_checked(1ull << 20, "forced_after_setup");
+    } catch (const backend::BudgetError& e) {
+        refused =
+            e.failure.kind == backend::BudgetFailureKind::ApplicationLimit;
+    }
+    backend::training_budget_end();
+    if (!refused) {
+        std::fprintf(stderr, "engine_reset_state: low budget was not refused\n");
+        return 1;
+    }
     engine_reset();
     std::vector<float> second = run_once();
-
     if (const char* err = backend::last_error()) {
         std::fprintf(stderr, "backend error: %s\n", err);
         return 1;
