@@ -56,6 +56,7 @@
 #include "sfm/map/SensorGauge.h"
 #include "sfm/map/Merge.h"
 
+#include "i18n/TimeFormat.h"
 #include "i18n/catalog/Sfm.h"
 
 namespace fs = std::filesystem;
@@ -65,6 +66,7 @@ namespace sfm {
 namespace L = sfm::slog;
 namespace M = spirula::i18n::msg::sfm;
 using sfm::slog::Tag;
+using spirula::i18n::format_duration;
 
 bool isImageExt(const std::string& e) {
     std::string s;
@@ -754,15 +756,16 @@ void printAssembly(const AssembleStats& ast, size_t models, Tag tag) {
     if (!ast.models_in) return;
     const ManagerStats& f = ast.finish;
     L::out(tag, M::map_assembled,
-           {L::num(ast.t_merge + ast.t_ba + ast.t_grow + ast.finishSecs(), 2),
+           {format_duration(ast.t_merge + ast.t_ba + ast.t_grow + ast.finishSecs()),
             (long long)ast.models_in,
             (long long)models, (long long)ast.rounds, (long long)ast.merges,
             (long long)ast.merges_refused, (long long)ast.grown_images,
             (long long)f.covered_before, (long long)f.covered_after});
     L::out(tag, M::map_finishing,
-           {L::num(ast.finishSecs(), 1), (long long)f.splits, (long long)f.duplicate_splits,
-            (long long)f.reseeded_models, (long long)f.dropped_redundant,
-            (long long)f.audited_repaired, (long long)f.audited_out});
+           {format_duration(ast.finishSecs()), (long long)f.splits,
+            (long long)f.duplicate_splits, (long long)f.reseeded_models,
+            (long long)f.dropped_redundant, (long long)f.audited_repaired,
+            (long long)f.audited_out});
 }
 
 // Flat or bottom-up, per --mapper; flat is the default and what the
@@ -1554,7 +1557,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     const uint32_t reg = rec.numRegistered();
     L::out(Tag::Run, M::sum_header);
     L::out(Tag::Run, M::sum_extract,
-           {L::num(t_extract, 2), (long long)est.images, (long long)est.features});
+           {format_duration(t_extract), (long long)est.images,
+            (long long)est.features});
     if (est.masked_images) {
         const uint64_t before = est.features + est.masked_out;
         L::out(Tag::Run, M::sum_masks,
@@ -1563,15 +1567,17 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
                 L::num(before ? 100.0 * est.masked_out / before : 0.0, 1)});
     }
     L::out(Tag::Run, M::sum_match,
-           {L::num(t_match, 2), (long long)mstats.kept, (long long)mstats.pairs,
-            (long long)mstats.inliers, (long long)mstats.putative});
+           {format_duration(t_match), (long long)mstats.kept,
+            (long long)mstats.pairs, (long long)mstats.inliers,
+            (long long)mstats.putative});
     L::out(Tag::Run, M::sum_map,
-           {L::num(t_map, 2), (long long)reg, (long long)est.images,
+           {format_duration(t_map), (long long)reg, (long long)est.images,
             (long long)rec.points3D.size(), (long long)n_cameras});
     printAssembly(ast, models.size(), Tag::Run);
     printFolderCoverage(models, db);
     writeUnregisteredList(models, db, _imagedir);
-    L::out(Tag::Run, M::sum_total, {L::num(t_extract + t_match + t_map, 2)});
+    L::out(Tag::Run, M::sum_total,
+           {format_duration(t_extract + t_match + t_map)});
     L::out(Tag::Run, M::sum_model_error,
            {L::num(mean, 3), L::num(median, 3), (long long)nobs});
     if (models.size() > 1) {

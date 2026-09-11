@@ -42,6 +42,7 @@
 #include "sfm/map/Merge.h"
 #include "sfm/core/Log.h"
 #include "sfm/map/ModelOps.h"
+#include "i18n/TimeFormat.h"
 #include "i18n/catalog/Sfm.h"
 
 namespace sfm {
@@ -493,8 +494,9 @@ inline void mergeUpwards(Mapper& mapper, std::vector<Reconstruction>& models,
     if (opt.verbose) {
         const ManagerStats& f = st.finish;
         slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_assembled,
-                 {slog::num(st.t_merge + st.t_grow + st.t_ba, 2), (long long)st.models_in,
-                  (long long)models.size(), (long long)st.rounds, (long long)st.merges,
+                 {spirula::i18n::format_duration(st.t_merge + st.t_grow + st.t_ba),
+                  (long long)st.models_in, (long long)models.size(),
+                  (long long)st.rounds, (long long)st.merges,
                   (long long)st.merges_refused, (long long)st.grown_images,
                   (long long)f.covered_before, (long long)coveredImages(models).size()});
         // The seam test's own numbers stay English: they are a diagnostic for
@@ -692,7 +694,8 @@ inline std::vector<Reconstruction> finishModels(Mapper& mapper,
     st.finish.covered_after = coveredImages(models).size();
     if (opt.verbose)
         slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_finishing,
-                 {slog::num(st.finishSecs(), 1), (long long)st.finish.splits,
+                 {spirula::i18n::format_duration(st.finishSecs()),
+                  (long long)st.finish.splits,
                   (long long)st.finish.duplicate_splits,
                   (long long)st.finish.reseeded_models,
                   (long long)st.finish.dropped_redundant,

@@ -23,6 +23,7 @@
 #include "data/DatasetParser.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
+#include "i18n/TimeFormat.h"
 
 #include <array>
 #include <atomic>
@@ -141,8 +142,10 @@ std::string train_config_unsupported(const TrainConfig& c);
 // TrainerSession
 // ===========================================================================
 
-// "m:ss", or "h:mm:ss" past an hour; negative (not known yet) is "--:--".
-std::string format_duration(double seconds);
+// The one duration format: i18n/TimeFormat.h, which the SfM summary uses too.
+inline std::string format_duration(double seconds) {
+    return i18n::format_duration(seconds);
+}
 
 struct TrainerProgress {
     int step = 0;              // 0-based step that just finished

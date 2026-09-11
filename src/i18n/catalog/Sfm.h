@@ -1410,59 +1410,59 @@ SS_MSG(map_init_failed,
        "birbirine fazla benziyor olabilir."));
 
 SS_MSG(map_assembled,
-    EN("Assembly: {0} s   Models: {1} -> {2} over {3} level(s)   Merged: {4}   Refused: {5}   "
+    EN("Assembly: {0}   Models: {1} -> {2} over {3} level(s)   Merged: {4}   Refused: {5}   "
        "Grown: {6} image(s)   Coverage: {7} -> {8} images"),
-    JA("組み立て: {0} 秒   モデル: {1} -> {2}（{3} 段階）   統合: {4}   却下: {5}   "
+    JA("組み立て: {0}   モデル: {1} -> {2}（{3} 段階）   統合: {4}   却下: {5}   "
        "追加登録: {6} 枚   カバー: {7} -> {8} 枚"),
-    ZH_HANS("装配: {0} 秒   模型: {1} -> {2}（{3} 层）   合并: {4}   拒绝: {5}   "
+    ZH_HANS("装配: {0}   模型: {1} -> {2}（{3} 层）   合并: {4}   拒绝: {5}   "
             "补充注册: {6} 张   覆盖: {7} -> {8} 张"),
-    ZH_HANT("組裝: {0} 秒   模型: {1} -> {2}（{3} 層）   合併: {4}   拒絕: {5}   "
+    ZH_HANT("組裝: {0}   模型: {1} -> {2}（{3} 層）   合併: {4}   拒絕: {5}   "
             "補充註冊: {6} 張   涵蓋: {7} -> {8} 張"),
-    KO("조립: {0} 초   모델: {1} -> {2}({3} 단계)   병합: {4}   거부: {5}   "
+    KO("조립: {0}   모델: {1} -> {2}({3} 단계)   병합: {4}   거부: {5}   "
        "추가 등록: {6} 장   포함: {7} -> {8} 장"),
-    DE("Zusammenbau: {0} s   Modelle: {1} -> {2} über {3} Ebene(n)   Verschmolzen: {4}   "
+    DE("Zusammenbau: {0}   Modelle: {1} -> {2} über {3} Ebene(n)   Verschmolzen: {4}   "
        "Abgelehnt: {5}   Zugewachsen: {6} Bild(er)   Abdeckung: {7} -> {8} Bilder"),
-    FR("Assemblage : {0} s   Modèles : {1} -> {2} sur {3} niveau(x)   Fusionnés : {4}   "
+    FR("Assemblage : {0}   Modèles : {1} -> {2} sur {3} niveau(x)   Fusionnés : {4}   "
        "Refusés : {5}   Ajoutés : {6} image(s)   Couverture : {7} -> {8} images"),
-    ES("Ensamblaje: {0} s   Modelos: {1} -> {2} en {3} nivel(es)   Fusionados: {4}   "
+    ES("Ensamblaje: {0}   Modelos: {1} -> {2} en {3} nivel(es)   Fusionados: {4}   "
        "Rechazados: {5}   Añadidas: {6} imagen(es)   Cobertura: {7} -> {8} imágenes"),
-    PT("Montagem: {0} s   Modelos: {1} -> {2} em {3} nível(is)   Fundidos: {4}   "
+    PT("Montagem: {0}   Modelos: {1} -> {2} em {3} nível(is)   Fundidos: {4}   "
        "Recusados: {5}   Acrescentadas: {6} imagem(ns)   Cobertura: {7} -> {8} imagens"),
-    IT("Assemblaggio: {0} s   Modelli: {1} -> {2} su {3} livello/i   Fusi: {4}   "
+    IT("Assemblaggio: {0}   Modelli: {1} -> {2} su {3} livello/i   Fusi: {4}   "
        "Rifiutati: {5}   Aggiunte: {6} immagine/i   Copertura: {7} -> {8} immagini"),
-    NL("Assemblage: {0} s   Modellen: {1} -> {2} over {3} niveau(s)   Samengevoegd: {4}   "
+    NL("Assemblage: {0}   Modellen: {1} -> {2} over {3} niveau(s)   Samengevoegd: {4}   "
        "Geweigerd: {5}   Aangegroeid: {6} afbeelding(en)   Dekking: {7} -> {8} afbeeldingen"),
-    RU("Сборка: {0} с   Моделей: {1} -> {2} за уровней: {3}   Объединено: {4}   Отклонено: {5}   "
+    RU("Сборка: {0}   Моделей: {1} -> {2} за уровней: {3}   Объединено: {4}   Отклонено: {5}   "
        "Добавлено изображений: {6}   Охват: {7} -> {8} изображений"),
-    TR("Birleştirme: {0} s   Model: {1} -> {2}, {3} düzeyde   Kaynaşan: {4}   Reddedilen: {5}   "
+    TR("Birleştirme: {0}   Model: {1} -> {2}, {3} düzeyde   Kaynaşan: {4}   Reddedilen: {5}   "
        "Eklenen: {6} görüntü   Kapsama: {7} -> {8} görüntü"));
 
 SS_MSG(map_finishing,
-    EN("Finishing passes ({0} s): split {1}, folds cut {2}, reseeded {3}, dropped {4}, "
+    EN("Finishing passes ({0}): split {1}, folds cut {2}, reseeded {3}, dropped {4}, "
        "repaired by the audit {5}, dropped by the audit {6}"),
-    JA("仕上げ処理（{0} 秒）: 分割 {1}、折り返しの切断 {2}、再シード {3}、除外 {4}、"
+    JA("仕上げ処理（{0}）: 分割 {1}、折り返しの切断 {2}、再シード {3}、除外 {4}、"
        "監査で修復 {5}、監査で除外 {6}"),
-    ZH_HANS("收尾处理（{0} 秒）: 拆分 {1}，切开折叠 {2}，重新播种 {3}，丢弃 {4}，"
+    ZH_HANS("收尾处理（{0}）: 拆分 {1}，切开折叠 {2}，重新播种 {3}，丢弃 {4}，"
             "审查修复 {5}，审查丢弃 {6}"),
-    ZH_HANT("收尾處理（{0} 秒）: 拆分 {1}，切開折疊 {2}，重新播種 {3}，丟棄 {4}，"
+    ZH_HANT("收尾處理（{0}）: 拆分 {1}，切開折疊 {2}，重新播種 {3}，丟棄 {4}，"
             "稽核修復 {5}，稽核丟棄 {6}"),
-    KO("마무리 단계({0} 초): 분할 {1}, 접힘 절단 {2}, 재시드 {3}, 제외 {4}, "
+    KO("마무리 단계({0}): 분할 {1}, 접힘 절단 {2}, 재시드 {3}, 제외 {4}, "
        "감사로 복구 {5}, 감사로 제외 {6}"),
-    DE("Abschlussdurchgänge ({0} s): geteilt {1}, Faltungen getrennt {2}, neu gesät {3}, "
+    DE("Abschlussdurchgänge ({0}): geteilt {1}, Faltungen getrennt {2}, neu gesät {3}, "
        "verworfen {4}, von der Prüfung repariert {5}, von der Prüfung verworfen {6}"),
-    FR("Passes finales ({0} s) : scindés {1}, plis coupés {2}, réamorcés {3}, écartés {4}, "
+    FR("Passes finales ({0}) : scindés {1}, plis coupés {2}, réamorcés {3}, écartés {4}, "
        "réparés par l'audit {5}, écartés par l'audit {6}"),
-    ES("Pasadas finales ({0} s): divididos {1}, pliegues cortados {2}, resembrados {3}, "
+    ES("Pasadas finales ({0}): divididos {1}, pliegues cortados {2}, resembrados {3}, "
        "descartados {4}, reparados por la auditoría {5}, descartados por la auditoría {6}"),
-    PT("Passagens finais ({0} s): divididos {1}, dobras cortadas {2}, ressemeados {3}, "
+    PT("Passagens finais ({0}): divididos {1}, dobras cortadas {2}, ressemeados {3}, "
        "descartados {4}, reparados pela auditoria {5}, descartados pela auditoria {6}"),
-    IT("Passate finali ({0} s): divisi {1}, pieghe tagliate {2}, riseminati {3}, scartati {4}, "
+    IT("Passate finali ({0}): divisi {1}, pieghe tagliate {2}, riseminati {3}, scartati {4}, "
        "riparati dall'audit {5}, scartati dall'audit {6}"),
-    NL("Afrondende rondes ({0} s): gesplitst {1}, vouwen doorgesneden {2}, opnieuw gezaaid {3}, "
+    NL("Afrondende rondes ({0}): gesplitst {1}, vouwen doorgesneden {2}, opnieuw gezaaid {3}, "
        "afgevallen {4}, hersteld door de controle {5}, afgevallen door de controle {6}"),
-    RU("Завершающие проходы ({0} с): разделено {1}, складок разрезано {2}, пересеяно {3}, "
+    RU("Завершающие проходы ({0}): разделено {1}, складок разрезано {2}, пересеяно {3}, "
        "отброшено {4}, исправлено проверкой {5}, отброшено проверкой {6}"),
-    TR("Bitirme geçişleri ({0} s): bölünen {1}, kesilen katlanma {2}, yeniden tohumlanan {3}, "
+    TR("Bitirme geçişleri ({0}): bölünen {1}, kesilen katlanma {2}, yeniden tohumlanan {3}, "
        "elenen {4}, denetimle onarılan {5}, denetimle elenen {6}"));
 
 
@@ -1492,19 +1492,19 @@ SS_MSG(sum_header,
     TR("Özet"));
 
 SS_MSG(sum_extract,
-    EN("Extraction: {0} s   Images: {1}   Features: {2}"),
-    JA("抽出: {0} 秒   画像: {1}   特徴点: {2}"),
-    ZH_HANS("提取: {0} 秒   图像: {1}   特征点: {2}"),
-    ZH_HANT("擷取: {0} 秒   影像: {1}   特徵點: {2}"),
-    KO("추출: {0} 초   이미지: {1}   특징점: {2}"),
-    DE("Extraktion: {0} s   Bilder: {1}   Merkmale: {2}"),
-    FR("Extraction : {0} s   Images : {1}   Points : {2}"),
-    ES("Extracción: {0} s   Imágenes: {1}   Puntos: {2}"),
-    PT("Extração: {0} s   Imagens: {1}   Pontos: {2}"),
-    IT("Estrazione: {0} s   Immagini: {1}   Punti: {2}"),
-    NL("Extractie: {0} s   Afbeeldingen: {1}   Kenmerken: {2}"),
-    RU("Извлечение: {0} с   Изображений: {1}   Точек: {2}"),
-    TR("Çıkarım: {0} s   Görüntü: {1}   Öznitelik: {2}"));
+    EN("Extraction: {0}   Images: {1}   Features: {2}"),
+    JA("抽出: {0}   画像: {1}   特徴点: {2}"),
+    ZH_HANS("提取: {0}   图像: {1}   特征点: {2}"),
+    ZH_HANT("擷取: {0}   影像: {1}   特徵點: {2}"),
+    KO("추출: {0}   이미지: {1}   특징점: {2}"),
+    DE("Extraktion: {0}   Bilder: {1}   Merkmale: {2}"),
+    FR("Extraction : {0}   Images : {1}   Points : {2}"),
+    ES("Extracción: {0}   Imágenes: {1}   Puntos: {2}"),
+    PT("Extração: {0}   Imagens: {1}   Pontos: {2}"),
+    IT("Estrazione: {0}   Immagini: {1}   Punti: {2}"),
+    NL("Extractie: {0}   Afbeeldingen: {1}   Kenmerken: {2}"),
+    RU("Извлечение: {0}   Изображений: {1}   Точек: {2}"),
+    TR("Çıkarım: {0}   Görüntü: {1}   Öznitelik: {2}"));
 
 SS_MSG(sum_masks,
     EN("Masks: {0}/{1} images   Keypoints dropped: {2} ({3}%)"),
@@ -1522,49 +1522,49 @@ SS_MSG(sum_masks,
     TR("Maske: {0}/{1} görüntü   Elenen anahtar nokta: {2} (%{3})"));
 
 SS_MSG(sum_match,
-    EN("Matching: {0} s   Pairs kept: {1}/{2}   Inliers: {3}/{4}"),
-    JA("照合: {0} 秒   残ったペア: {1}/{2}   インライア: {3}/{4}"),
-    ZH_HANS("匹配: {0} 秒   保留的图像对: {1}/{2}   内点: {3}/{4}"),
-    ZH_HANT("匹配: {0} 秒   保留的影像對: {1}/{2}   內點: {3}/{4}"),
-    KO("정합: {0} 초   남은 쌍: {1}/{2}   인라이어: {3}/{4}"),
-    DE("Abgleich: {0} s   Behaltene Paare: {1}/{2}   Inlier: {3}/{4}"),
-    FR("Appariement : {0} s   Paires conservées : {1}/{2}   Inliers : {3}/{4}"),
-    ES("Emparejamiento: {0} s   Pares conservados: {1}/{2}   Inliers: {3}/{4}"),
-    PT("Pareamento: {0} s   Pares mantidos: {1}/{2}   Inliers: {3}/{4}"),
-    IT("Accoppiamento: {0} s   Coppie tenute: {1}/{2}   Inlier: {3}/{4}"),
-    NL("Koppelen: {0} s   Behouden paren: {1}/{2}   Inliers: {3}/{4}"),
-    RU("Сопоставление: {0} с   Оставлено пар: {1}/{2}   Инлаеров: {3}/{4}"),
-    TR("Eşleme: {0} s   Tutulan çift: {1}/{2}   İçeri: {3}/{4}"));
+    EN("Matching: {0}   Pairs kept: {1}/{2}   Inliers: {3}/{4}"),
+    JA("照合: {0}   残ったペア: {1}/{2}   インライア: {3}/{4}"),
+    ZH_HANS("匹配: {0}   保留的图像对: {1}/{2}   内点: {3}/{4}"),
+    ZH_HANT("匹配: {0}   保留的影像對: {1}/{2}   內點: {3}/{4}"),
+    KO("정합: {0}   남은 쌍: {1}/{2}   인라이어: {3}/{4}"),
+    DE("Abgleich: {0}   Behaltene Paare: {1}/{2}   Inlier: {3}/{4}"),
+    FR("Appariement : {0}   Paires conservées : {1}/{2}   Inliers : {3}/{4}"),
+    ES("Emparejamiento: {0}   Pares conservados: {1}/{2}   Inliers: {3}/{4}"),
+    PT("Pareamento: {0}   Pares mantidos: {1}/{2}   Inliers: {3}/{4}"),
+    IT("Accoppiamento: {0}   Coppie tenute: {1}/{2}   Inlier: {3}/{4}"),
+    NL("Koppelen: {0}   Behouden paren: {1}/{2}   Inliers: {3}/{4}"),
+    RU("Сопоставление: {0}   Оставлено пар: {1}/{2}   Инлаеров: {3}/{4}"),
+    TR("Eşleme: {0}   Tutulan çift: {1}/{2}   İçeri: {3}/{4}"));
 
 SS_MSG(sum_map,
-    EN("Mapping: {0} s   Registered: {1}/{2} images   Points: {3}   Cameras: {4}"),
-    JA("復元: {0} 秒   登録: 画像 {1}/{2}   点: {3}   カメラ: {4}"),
-    ZH_HANS("重建: {0} 秒   已配准: 图像 {1}/{2}   点: {3}   相机: {4}"),
-    ZH_HANT("重建: {0} 秒   已註冊: 影像 {1}/{2}   點: {3}   相機: {4}"),
-    KO("복원: {0} 초   등록: 이미지 {1}/{2}   점: {3}   카메라: {4}"),
-    DE("Kartierung: {0} s   Registriert: {1}/{2} Bilder   Punkte: {3}   Kameras: {4}"),
-    FR("Cartographie : {0} s   Enregistrées : {1}/{2} images   Points : {3}   Caméras : {4}"),
-    ES("Mapeo: {0} s   Registradas: {1}/{2} imágenes   Puntos: {3}   Cámaras: {4}"),
-    PT("Mapeamento: {0} s   Registradas: {1}/{2} imagens   Pontos: {3}   Câmeras: {4}"),
-    IT("Mappatura: {0} s   Registrate: {1}/{2} immagini   Punti: {3}   Fotocamere: {4}"),
-    NL("Kartering: {0} s   Geregistreerd: {1}/{2} afbeeldingen   Punten: {3}   Camera's: {4}"),
-    RU("Построение: {0} с   Зарегистрировано: {1}/{2} изображений   Точек: {3}   Камер: {4}"),
-    TR("Haritalama: {0} s   Kaydedilen: {1}/{2} görüntü   Nokta: {3}   Kamera: {4}"));
+    EN("Mapping: {0}   Registered: {1}/{2} images   Points: {3}   Cameras: {4}"),
+    JA("復元: {0}   登録: 画像 {1}/{2}   点: {3}   カメラ: {4}"),
+    ZH_HANS("重建: {0}   已配准: 图像 {1}/{2}   点: {3}   相机: {4}"),
+    ZH_HANT("重建: {0}   已註冊: 影像 {1}/{2}   點: {3}   相機: {4}"),
+    KO("복원: {0}   등록: 이미지 {1}/{2}   점: {3}   카메라: {4}"),
+    DE("Kartierung: {0}   Registriert: {1}/{2} Bilder   Punkte: {3}   Kameras: {4}"),
+    FR("Cartographie : {0}   Enregistrées : {1}/{2} images   Points : {3}   Caméras : {4}"),
+    ES("Mapeo: {0}   Registradas: {1}/{2} imágenes   Puntos: {3}   Cámaras: {4}"),
+    PT("Mapeamento: {0}   Registradas: {1}/{2} imagens   Pontos: {3}   Câmeras: {4}"),
+    IT("Mappatura: {0}   Registrate: {1}/{2} immagini   Punti: {3}   Fotocamere: {4}"),
+    NL("Kartering: {0}   Geregistreerd: {1}/{2} afbeeldingen   Punten: {3}   Camera's: {4}"),
+    RU("Построение: {0}   Зарегистрировано: {1}/{2} изображений   Точек: {3}   Камер: {4}"),
+    TR("Haritalama: {0}   Kaydedilen: {1}/{2} görüntü   Nokta: {3}   Kamera: {4}"));
 
 SS_MSG(sum_total,
-    EN("Total: {0} s"),
-    JA("合計: {0} 秒"),
-    ZH_HANS("合计: {0} 秒"),
-    ZH_HANT("合計: {0} 秒"),
-    KO("합계: {0} 초"),
-    DE("Gesamt: {0} s"),
-    FR("Total : {0} s"),
-    ES("Total: {0} s"),
-    PT("Total: {0} s"),
-    IT("Totale: {0} s"),
-    NL("Totaal: {0} s"),
-    RU("Всего: {0} с"),
-    TR("Toplam: {0} s"));
+    EN("Total: {0}"),
+    JA("合計: {0}"),
+    ZH_HANS("合计: {0}"),
+    ZH_HANT("合計: {0}"),
+    KO("합계: {0}"),
+    DE("Gesamt: {0}"),
+    FR("Total : {0}"),
+    ES("Total: {0}"),
+    PT("Total: {0}"),
+    IT("Totale: {0}"),
+    NL("Totaal: {0}"),
+    RU("Всего: {0}"),
+    TR("Toplam: {0}"));
 
 SS_MSG(sum_model_error,
     EN("Reprojection error: mean {0} px, median {1} px, over {2} observations"),
