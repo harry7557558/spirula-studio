@@ -121,6 +121,7 @@ inline void applySim3(Reconstruction& rec, const Sim3& T) {
     for (auto& kv : rec.images)
         if (kv.second.registered) kv.second.pose = transformPose(T, kv.second.pose);
     for (auto& kv : rec.points3D) kv.second.xyz = transformPoint(T, kv.second.xyz);
+    transformRigs(rec.rigs, T.scale);
 }
 
 // Returns the transform that was applied, so the caller can report it (and so

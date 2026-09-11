@@ -154,6 +154,15 @@ struct SfmConfig {
     std::string telemetry;
     std::string sensor_gauge = "auto";
     std::vector<TelemetryInput> telemetry_inputs;   // manifest entries + --telemetry
+    // Cameras farther from the metric fit than this fraction of the reference
+    // positions' RMS radius are outliers too, so a kilometre-long flight is
+    // not judged by a threshold made for a walk (map/MetricGauge.h).
+    double metric_max_error_frac = 0.03;
+    // Rigs (sfm/core/Rig.h): --rig and the manifest, resolved against the image
+    // names once they are known. `final_free_rig` runs one last bundle
+    // adjustment with every image on its own pose.
+    std::vector<RigDef> rigs;
+    bool final_free_rig = false;
     bool merge_ba = true;               // merge: bundle-adjust across the seams
     bool in_place = false;              // merge: write back over the input
 
@@ -369,6 +378,8 @@ struct SfmConfig {
       "none|horizontal|full", metric_gps)                                                          \
     F(metric_max_error, "metric-max-error", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
       "mapper", 0, 1000000, "", metric_max_error)                                                  \
+    F(metric_max_error_frac, "metric-max-error-frac", CMD_AUTO | CMD_MAP | CMD_MERGE,              \
+      Tier::Advanced, "mapper", 0, 1, "", metric_max_error_frac)                                   \
     F(telemetry, "telemetry", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0, "",  \
       telemetry)                                                                                   \
     F(sensor_gauge, "sensor-gauge", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0,   \
@@ -453,6 +464,18 @@ struct SfmConfig {
       "mapper", 0, 1, "", strong_pnp_max_rival)                                                    \
     F(mapper.audit_min_evidence, "audit-evidence", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",   \
       0, 1000000, "", audit_evidence)                                                              \
+    /* ---- rigs ---- */                                                                           \
+    F(mapper.use_rigs, "rigs", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig", 0, 0, "", rigs)          \
+    F(mapper.refine_rigs, "refine-rigs", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig", 0, 0, "",      \
+      refine_rigs)                                                                                 \
+    F(mapper.rig_complete_blind, "rig-blind", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig", 0, 0,     \
+      "", rig_blind)                                                                               \
+    F(mapper.rig_calib.min_frames, "rig-min-frames", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig",    \
+      2, 1000000, "", rig_min_frames)                                                              \
+    F(mapper.rig_calib.max_spread_deg, "rig-max-spread", CMD_AUTO | CMD_MAP, Tier::Advanced,       \
+      "rig", 0, 180, "", rig_max_spread)                                                           \
+    F(final_free_rig, "final-free-rig", CMD_AUTO | CMD_MAP, Tier::Advanced, "rig", 0, 0, "",       \
+      final_free_rig)                                                                              \
     /* ---- assembling the models ---- */                                                          \
     F(assemble.max_rounds, "rounds", CMD_AUTO | CMD_MAP, Tier::Alias, "manage", 1, 1000, "",       \
       rounds)                                                                                      \

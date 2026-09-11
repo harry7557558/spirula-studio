@@ -88,6 +88,16 @@ struct BundleOptions {
     VkContext* shared_ctx = nullptr;
     // Host worker threads, for the `cpu` scalar; 0 = hardware_concurrency.
     int threads = 0;
+    // Rigs (sfm/core/Rig.h): with a table, every frame whose members have an
+    // established calibration is one pose block and the member extrinsics are
+    // refined; `use_rigs` off treats every image as its own frame.
+    const RigTable* rigs = nullptr;
+    bool use_rigs = true;
+    bool refine_rigs = true;
+    // Frames holding a member together with another member of its rig before
+    // its extrinsic is refined rather than held; below that, the two would
+    // trade off against each other.
+    int rig_min_frames = 3;
 };
 
 // The problem built from a reconstruction, plus what writing the solution back
@@ -99,7 +109,42 @@ struct BundleLayout {
     std::vector<Image*> imgOf;      // by BA image index
     std::vector<Point3D*> ptOf;     // by BA point index
     std::vector<uint32_t> camIds;   // by group
+    std::vector<std::pair<uint32_t, uint32_t>> memberOf;  // by BA member: (rig, member)
 };
+
+namespace bundle_detail {
+
+// The frame a registered image's pose block belongs to: (rig, frame) for a rig
+// image whose member is calibrated, (kNoRig, image id) otherwise.
+struct FrameKey {
+    uint32_t rig, frame;
+    bool operator<(const FrameKey& o) const {
+        return rig != o.rig ? rig < o.rig : frame < o.frame;
+    }
+    bool operator==(const FrameKey& o) const { return rig == o.rig && frame == o.frame; }
+};
+
+inline FrameKey frameKeyOf(const Reconstruction& rec, const RigTable* rigs, bool use,
+                           uint32_t image_id) {
+    if (rigs && use && !rec.rig_detached.count(image_id)) {
+        const RigSlot sl = rigs->slot(image_id);
+        if (sl.valid() && sl.rig < rec.rigs.size() && rec.rigs[sl.rig].usable(sl.member))
+            return {sl.rig, sl.frame};
+    }
+    return {kNoRig, image_id};
+}
+
+inline void packPose(const Pose& p, double* out) {
+    const Vec3 aa = rotationToAngleAxis(p.R);
+    out[0] = aa.x; out[1] = aa.y; out[2] = aa.z;
+    out[3] = p.t.x; out[4] = p.t.y; out[5] = p.t.z;
+}
+
+inline Pose unpackPose(const double* v) {
+    return {angleAxisToRotation({v[0], v[1], v[2]}), {v[3], v[4], v[5]}};
+}
+
+}  // namespace bundle_detail
 
 // Pack `rec` into a BAProblem. Empty layout (num_images < 2) if there is
 // nothing to optimize.
@@ -116,12 +161,22 @@ inline BundleLayout buildBundle(Reconstruction& rec, const BundleOptions& bopt) 
     uint32_t max_img_id = 0;
     for (auto& kv : rec.images) max_img_id = std::max(max_img_id, kv.first);
     std::vector<uint32_t> imgBA(max_img_id + 1, UINT32_MAX);
+    // Images ordered by frame, so a rig frame's images are one contiguous pose
+    // block (the host solver relies on it; sfm/ba/Problem.h).
+    using bundle_detail::FrameKey;
+    const RigTable* rigs = bopt.use_rigs ? bopt.rigs : nullptr;
+    std::vector<std::pair<FrameKey, uint32_t>> order;
     for (auto& kv : rec.images)
-        if (kv.second.registered) {
-            imgBA[kv.first] = (uint32_t)imgIds.size();
-            imgIds.push_back(kv.first);
-            imgOf.push_back(&kv.second);
-        }
+        if (kv.second.registered)
+            order.push_back({bundle_detail::frameKeyOf(rec, rigs, true, kv.first), kv.first});
+    std::stable_sort(order.begin(), order.end(),
+                     [](const std::pair<FrameKey, uint32_t>& a,
+                        const std::pair<FrameKey, uint32_t>& b) { return a.first < b.first; });
+    for (const auto& o : order) {
+        imgBA[o.second] = (uint32_t)imgIds.size();
+        imgIds.push_back(o.second);
+        imgOf.push_back(&rec.images.at(o.second));
+    }
     std::vector<uint64_t> ptIds;
     std::vector<Point3D*>& ptOf = L.ptOf;  // by BA index
     for (auto& kv : rec.points3D) {
@@ -177,14 +232,61 @@ inline BundleLayout buildBundle(Reconstruction& rec, const BundleOptions& bopt) 
         P.obs_xy[2 * i + 1] = obs[i].y;
     }
 
-    // Poses (angle-axis + t).
-    P.poses.resize(6 * P.num_images);
+    // Frames and members. A rig frame's pose is taken from the image with the
+    // most observations (its rig-mates are snapped to the calibration; the
+    // solve reconciles them); a plain image is its own frame.
+    P.image_frame.assign(P.num_images, 0);
+    P.image_member.assign(P.num_images, kNoMember);
+    std::map<std::pair<uint32_t, uint32_t>, uint32_t> memberBA;  // (rig, member) -> index
+    std::vector<uint32_t> memberCo;  // per BA member, frames shared with another member
+    std::vector<std::vector<uint32_t>> frameImgs;  // per BA frame, its BA images
     for (uint32_t i = 0; i < P.num_images; i++) {
-        const Image& im = *imgOf[i];
-        Vec3 aa = rotationToAngleAxis(im.pose.R);
-        P.poses[6 * i + 0] = aa.x; P.poses[6 * i + 1] = aa.y; P.poses[6 * i + 2] = aa.z;
-        P.poses[6 * i + 3] = im.pose.t.x; P.poses[6 * i + 4] = im.pose.t.y;
-        P.poses[6 * i + 5] = im.pose.t.z;
+        const FrameKey key = order[i].first;
+        if (i == 0 || !(order[i - 1].first == key)) frameImgs.emplace_back();
+        P.image_frame[i] = (uint32_t)frameImgs.size() - 1;
+        frameImgs.back().push_back(i);
+        if (key.rig == kNoRig) continue;
+        const RigSlot sl = rigs->slot(imgIds[i]);
+        auto it = memberBA.find({sl.rig, sl.member});
+        if (it == memberBA.end()) {
+            it = memberBA.emplace(std::make_pair(sl.rig, sl.member), (uint32_t)L.memberOf.size()).first;
+            L.memberOf.push_back({sl.rig, sl.member});
+            memberCo.push_back(0);
+        }
+        P.image_member[i] = it->second;
+    }
+    P.num_frames = (uint32_t)frameImgs.size();
+    for (const std::vector<uint32_t>& fi : frameImgs)
+        if (fi.size() > 1)
+            for (uint32_t i : fi) memberCo[P.image_member[i]]++;
+
+    P.poses.resize(6 * P.num_frames);
+    for (uint32_t f = 0; f < P.num_frames; f++) {
+        uint32_t best = frameImgs[f][0];
+        for (uint32_t i : frameImgs[f])
+            if (imgOf[i]->numPoint3D() > imgOf[best]->numPoint3D()) best = i;
+        const Image& im = *imgOf[best];
+        Pose fp = im.pose;
+        if (P.image_member[best] != kNoMember) {
+            const auto& rm = L.memberOf[P.image_member[best]];
+            fp = rec.rigs[rm.first].rigFromWorld(rm.second, im.pose);
+        }
+        bundle_detail::packPose(fp, &P.poses[6 * f]);
+    }
+    // Members: cam_from_rig from the calibration, refined when asked and when
+    // enough frames tie the member to the rest of its rig.
+    P.members.resize(L.memberOf.size());
+    P.exts.resize(6 * L.memberOf.size());
+    P.ext_dim = 0;
+    for (uint32_t m = 0; m < L.memberOf.size(); m++) {
+        const RigCalib& c = rec.rigs[L.memberOf[m].first];
+        const uint32_t member = L.memberOf[m].second;
+        bundle_detail::packPose(c.cam_from_rig[member], &P.exts[6 * m]);
+        const bool held = !bopt.refine_rigs || (int)member == c.ref ||
+                          (member < c.fixed.size() && c.fixed[member]) ||
+                          (int)memberCo[m] < bopt.rig_min_frames;
+        P.members[m] = {6 * m, P.ext_dim, held ? 0u : 6u};
+        if (!held) P.ext_dim += 6;
     }
 
     // Intrinsics groups. Model + parameter count are per group (each camera may
@@ -229,10 +331,11 @@ inline BundleLayout buildBundle(Reconstruction& rec, const BundleOptions& bopt) 
         P.points[3 * i] = X.x; P.points[3 * i + 1] = X.y; P.points[3 * i + 2] = X.z;
     }
 
-    P.pose_dim = 6 * P.num_images;
+    P.pose_dim = 6 * P.num_frames;
     P.total_intr = (uint32_t)P.intr.size();
-    P.n_dim = P.pose_dim + P.free_intr;
-    for (auto& g : P.groups) g.intr_col += P.pose_dim;
+    P.n_dim = P.pose_dim + P.ext_dim + P.free_intr;
+    for (auto& m : P.members) m.ext_col += P.pose_dim;
+    for (auto& g : P.groups) g.intr_col += P.pose_dim + P.ext_dim;
     finalizeTables(P);
     return L;
 }
@@ -259,10 +362,16 @@ inline SolverOptions bundleSolverOptions(const BundleOptions& bopt) {
 // `P` is the layout's own problem unless the caller moved it out to hand to a
 // solver, which `spirula-sfm ba` does.
 inline void writeBundle(Reconstruction& rec, const BundleLayout& L, const BAProblem& P) {
+    for (uint32_t m = 0; m < P.members.size(); m++) {
+        const auto& rm = L.memberOf[m];
+        rec.rigs[rm.first].cam_from_rig[rm.second] = bundle_detail::unpackPose(&P.exts[6 * m]);
+    }
     for (uint32_t i = 0; i < P.num_images; i++) {
         Image& im = *L.imgOf[i];
-        im.pose.R = angleAxisToRotation({P.poses[6 * i], P.poses[6 * i + 1], P.poses[6 * i + 2]});
-        im.pose.t = {P.poses[6 * i + 3], P.poses[6 * i + 4], P.poses[6 * i + 5]};
+        const Pose fp = bundle_detail::unpackPose(&P.poses[6 * P.image_frame[i]]);
+        const uint32_t m = P.image_member[i];
+        im.pose = m == kNoMember ? fp
+                                 : rec.rigs[L.memberOf[m].first].camFromWorld(L.memberOf[m].second, fp);
     }
     for (size_t g = 0; g < L.camIds.size(); g++) {
         Camera& c = rec.cameras[L.camIds[g]];
@@ -384,8 +493,18 @@ inline double runJointBA(std::vector<Reconstruction*> models, const BundleOption
         for (const auto& kv : m->points3D) pt_stride = std::max(pt_stride, kv.first + 1);
     }
     if (img_stride == 0 || pt_stride == 0) return 0;
+    // A rig frame names images a component may not hold; the stride has to
+    // clear every id the table can produce, not only the ones present.
+    if (bopt.rigs && bopt.use_rigs)
+        img_stride = std::max(img_stride, (uint32_t)bopt.rigs->of_image.size());
 
     Reconstruction all;
+    // Rigs: each component keeps its own calibration (its own scale), so the
+    // stacked problem gets one copy of the table per component, image ids
+    // shifted with the component, and one calibration set per copy.
+    RigTable joint_rigs;
+    const bool rigs = bopt.rigs && bopt.use_rigs && !bopt.rigs->empty();
+    std::vector<uint32_t> rig_base(models.size(), 0);
     // Cameras: shared by id, taken from the component with the most images.
     std::map<uint32_t, double> cam_weight;
     for (const Reconstruction* m : models) {
@@ -406,6 +525,22 @@ inline double runJointBA(std::vector<Reconstruction*> models, const BundleOption
         if (m.numRegistered() < 2) continue;
         const uint32_t io = (uint32_t)mi * img_stride;
         const uint64_t po = (uint64_t)mi * pt_stride;
+        if (rigs) {
+            rig_base[mi] = (uint32_t)joint_rigs.rigs.size();
+            for (const RigSpec& r : bopt.rigs->rigs) {
+                RigSpec c = r;
+                for (auto& fr : c.frames)
+                    for (uint32_t& img : fr) {
+                        if (img == kNoImage) continue;
+                        auto it = m.images.find(img);
+                        img = it != m.images.end() && it->second.registered ? img + io : kNoImage;
+                    }
+                joint_rigs.rigs.push_back(std::move(c));
+            }
+            std::vector<RigCalib> calib = m.rigs;
+            calib.resize(bopt.rigs->rigs.size());
+            all.rigs.insert(all.rigs.end(), calib.begin(), calib.end());
+        }
         for (const auto& kv : m.images) {
             if (!kv.second.registered) continue;
             Image im = kv.second;
@@ -422,7 +557,12 @@ inline double runJointBA(std::vector<Reconstruction*> models, const BundleOption
     }
     if (all.images.size() < 2 || all.points3D.empty()) return 0;
 
-    double cost = runGlobalBA(all, bopt);
+    BundleOptions jopt = bopt;
+    if (rigs) {
+        joint_rigs.index((size_t)models.size() * img_stride);
+        jopt.rigs = &joint_rigs;
+    }
+    double cost = runGlobalBA(all, jopt);
 
     // Scatter back. Intrinsics land in every component, which is the point.
     for (size_t mi = 0; mi < models.size(); mi++) {
@@ -449,6 +589,9 @@ inline double runJointBA(std::vector<Reconstruction*> models, const BundleOption
             auto it = all.cameras.find(kv.first);
             if (it != all.cameras.end()) kv.second = it->second;
         }
+        if (rigs)
+            for (size_t r = 0; r < bopt.rigs->rigs.size() && r < m.rigs.size(); r++)
+                m.rigs[r] = all.rigs[rig_base[mi] + r];
     }
     return cost;
 }

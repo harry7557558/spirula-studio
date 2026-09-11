@@ -81,6 +81,7 @@ void usage() {
     help_row("-r, --rotate <deg>", H::xh_rotate);
     help_row("    --scale <f>", H::xh_scale);
     help_row("    --track <i>", H::xh_track);
+    help_row("    --sync", H::xh_sync);
     help_row("    --threads <n>", H::xh_threads);
 
     std::fprintf(stderr, "\n%s\n", H::xh_360_section.get());
@@ -100,6 +101,7 @@ void usage() {
     help_row("    --max-size <n>", H::xh_max_size);
     help_row("    --threshold <f>", H::xh_threshold);
     help_row("    --nms <f>", H::xh_nms);
+    help_row("    --dilate-ratio <f>", H::mask_dilate);
     help_row("    --overlay", H::xh_overlay);
 
     std::fprintf(stderr, "\n%s --device <index|name>  --profile  --validate\n",
@@ -113,6 +115,7 @@ struct Options {
     int    quality = 95, rotate = 0;
     float  scale = 1.0f;
     int    track = -1;
+    bool   sync = false;
     int    threads = 0;
 
     std::string pano_mode = "faces";
@@ -123,6 +126,7 @@ struct Options {
     bool   keep_subject = false;
     int    detect_every = 1, memory_frames = 0, max_size = 1600;
     float  threshold = 0.5f, nms = 0.1f;
+    float  dilate_ratio = 0.05f;   // sam::MaskOptions, same default
     bool   overlay = false, profile = false, validate = false;
 };
 
@@ -148,6 +152,7 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "-r" || a == "--rotate") o.rotate = std::atoi(next("--rotate"));
         else if (a == "--scale") o.scale = std::strtof(next("--scale"), nullptr);
         else if (a == "--track") o.track = std::atoi(next("--track"));
+        else if (a == "--sync") o.sync = true;
         else if (a == "--threads") o.threads = std::atoi(next("--threads"));
         else if (a == "--360") o.pano_mode = next("--360");
         else if (a == "--360-size") o.pano.size = std::atoi(next("--360-size"));
@@ -173,6 +178,8 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--max-size") o.max_size = std::atoi(next("--max-size"));
         else if (a == "--threshold") o.threshold = std::strtof(next("--threshold"), nullptr);
         else if (a == "--nms") o.nms = std::strtof(next("--nms"), nullptr);
+        else if (a == "--dilate-ratio")
+            o.dilate_ratio = std::strtof(next("--dilate-ratio"), nullptr);
         else if (a == "--overlay") o.overlay = true;
         else if (a == "--device") o.device = next("--device");
         else if (a == "--profile") o.profile = true;
@@ -239,6 +246,7 @@ int sam_cli_extract(int argc, char** argv) {
     job.rotate = o.rotate;
     job.scale = o.scale;
     job.track = o.track;
+    job.sync_tracks = o.sync;
     job.threads = o.threads;
     job.write_overlay = o.overlay;
     // A 360 file is recognised by its packing, not by its name, and only then
@@ -268,6 +276,7 @@ int sam_cli_extract(int argc, char** argv) {
         job.mask.keep_prompted = o.keep_subject;
         job.mask.threshold = o.threshold;
         job.mask.nms = o.nms;
+        job.mask.dilate_ratio = o.dilate_ratio;
         job.mask.detect_every = o.detect_every;
         job.mask.memory_frames = o.memory_frames;
         job.mask.max_size = o.max_size;

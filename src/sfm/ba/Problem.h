@@ -1,7 +1,8 @@
-// BAL problem loading and preprocessing into the generalized layout:
-// per-image 6-DOF poses + per-group intrinsics (camera groups), observations
-// sorted by point, per-camera-model observation lists, and the column layout
-// of the reduced camera system.
+// The bundle adjustment problem: a 6-DOF pose per FRAME, a 6-DOF extrinsic
+// per rig member (cam_from_rig, shared by every frame of the rig), and
+// intrinsics per camera group; observations sorted by point, per-kernel
+// observation lists, and the column layout of the reduced camera system.
+// An image is its own frame with no member unless a rig says otherwise.
 #pragma once
 
 #include <algorithm>
@@ -41,10 +42,26 @@ static const ModelDesc kModels[] = {
     {"equirect", 2, "cost_equirect", "jac_equirect"},                    // COLMAP EQUIRECTANGULAR (D49)
 };
 static const int kNumModels = sizeof(kModels) / sizeof(kModels[0]);
-static const uint32_t kMaxCamDof = 18;  // 6 pose + up to 12 intrinsics; must match ba.slang
+// 6 frame + 6 member extrinsic + up to 12 intrinsics; must match ba.slang. A
+// problem without rigs never exceeds kMaxPlainDof and pays for nothing wider.
+static const uint32_t kMaxCamDof = 24;
+static const uint32_t kMaxPlainDof = 18;
+static const uint32_t kNoMember = 0xFFFFFFFFu;
 
 struct BAProblem {
     uint32_t num_images = 0, num_points = 0, num_obs = 0;
+    // Pose blocks. Without rigs num_frames == num_images and image_frame is
+    // the identity; with them, images must be ordered by frame (finalizeTables
+    // checks), which is what lets the host solver own a frame's rows per task.
+    uint32_t num_frames = 0;
+    std::vector<uint32_t> image_frame;    // per image
+    std::vector<uint32_t> image_member;   // per image; kNoMember = no extrinsic
+    struct Member {
+        uint32_t ext_offset;  // into `exts` (6 entries)
+        uint32_t ext_col;     // column base; unused when n_free == 0
+        uint32_t n_free;      // 0 (held) or 6 (refined)
+    };
+    std::vector<Member> members;
 
     // observations, sorted by (point, image)
     std::vector<uint32_t> obs_image, obs_point;
@@ -66,12 +83,13 @@ struct BAProblem {
     std::vector<Group> groups;
 
     // parameters (host copy, double)
-    std::vector<double> poses;   // 6 per image
+    std::vector<double> poses;   // 6 per frame
+    std::vector<double> exts;    // 6 per member (cam_from_rig)
     std::vector<double> intr;    // flat
     std::vector<double> points;  // 3 per point
 
-    // per-model observation lists (concatenated) for specialized dispatches
-    struct ModelRange { uint32_t model, offset, count; };
+    // per-(model, rig) observation lists (concatenated) for specialized dispatches
+    struct ModelRange { uint32_t model, offset, count; bool rig; };
     std::vector<uint32_t> model_obs;
     std::vector<ModelRange> model_ranges;
 
@@ -110,63 +128,64 @@ struct BAProblem {
     uint32_t num_prec_blocks = 0;
     bool prec_exclusive = true;
 
-    uint32_t pose_dim = 0;   // 6 * num_images
+    // Column layout: [frame poses | free member extrinsics | free intrinsics].
+    uint32_t pose_dim = 0;   // 6 * num_frames
+    uint32_t ext_dim = 0;    // 6 * free members
     uint32_t total_intr = 0;  // intr.size(): parameters stored (free ones first)
-    uint32_t free_intr = 0;   // of those, the ones with columns; n_dim - pose_dim
+    uint32_t free_intr = 0;   // of those, the ones with columns
     uint32_t n_dim = 0;      // camera-side system dimension
+
+    bool hasRigs() const { return num_frames != num_images || ext_dim != 0; }
+    uint32_t memberFree(uint32_t img) const {
+        const uint32_t m = image_member[img];
+        return m == kNoMember ? 0 : members[m].n_free;
+    }
+    // A problem built without rigs: every image its own frame.
+    void identityFrames() {
+        num_frames = num_images;
+        image_frame.resize(num_images);
+        for (uint32_t i = 0; i < num_images; i++) image_frame[i] = i;
+        image_member.assign(num_images, kNoMember);
+        members.clear();
+        exts.clear();
+        ext_dim = 0;
+    }
 };
 
-// True if no *column* of the reduced system is owned by more than one image:
-// every intrinsics group that owns columns at all is referenced by at most one
-// image. The pair-Schur kernel needs this (each element of S must belong to
-// exactly one image pair); the CG path only prefers it (its preconditioner
-// blocks get coarser without it -- see buildPrecBlocks).
-//
-// A group with no free parameters is not shared in any sense that matters: it
-// contributes no columns, so any number of images may point at it. That is the
-// whole of an EQUIRECTANGULAR problem and of every run with the intrinsics
-// held fixed, which is why the test is on n_intr and not on the group alone.
+// No column of the reduced system owned by more than one image, which the
+// pair-Schur kernel requires. A group with no free parameters owns no column;
+// a refined member or a multi-image frame is shared (README.md, "Rigs").
 inline bool exclusiveGroups(const BAProblem& P) {
+    if (P.hasRigs()) return false;
     std::vector<uint32_t> guse(P.groups.size(), 0);
     for (uint32_t g : P.image_group)
         if (++guse[g] > 1 && P.groups[g].n_intr) return false;
     return true;
 }
 
-// Partition the camera columns into preconditioner blocks (see
-// BAProblem::prec_blocks).
-//
-// With exclusive groups each image owns its intrinsics outright, so one block
-// per image over [pose | intrinsics] is a genuine partition and keeps the
-// pose/intrinsics coupling -- which is strong (focal against forward
-// translation) and worth preconditioning away.
-//
-// When a group is shared, that block structure is not a partition any more: the
-// same intrinsics columns would sit in every sharing image's block. The
-// partition then splits at the seam -- one 6x6 block per image pose, one block
-// per group -- and the pose/intrinsics coupling is simply dropped from the
-// preconditioner. That costs some CG iterations and nothing else: a
-// preconditioner only has to be symmetric positive definite, and each block is
-// still a genuine (approximate, for the shared groups) diagonal block of S.
+// Preconditioner partition (README.md "Implicit-Schur PCG"): exclusive = one
+// block per image over [pose | intrinsics]; shared = one 6x6 per frame, one per
+// member (index num_frames + m), one per group (num_frames + members + g).
 inline void buildPrecBlocks(BAProblem& P, bool exclusive) {
     P.prec_exclusive = exclusive;
     P.prec_blocks.clear();
-    P.prec_blocks.reserve(4 * (P.num_images + (exclusive ? 0 : P.groups.size())));
+    P.prec_blocks.reserve(4 * (P.num_frames + P.members.size() + P.groups.size()));
     auto push = [&](uint32_t c0, uint32_t l0, uint32_t c1, uint32_t l1) {
         P.prec_blocks.push_back(c0);
         P.prec_blocks.push_back(l0);
         P.prec_blocks.push_back(c1);
         P.prec_blocks.push_back(l1);
     };
-    for (uint32_t i = 0; i < P.num_images; i++) {
-        const BAProblem::Group& g = P.groups[P.image_group[i]];
-        if (exclusive) push(6 * i, 6, g.intr_col, g.n_intr);
-        else push(6 * i, 6, 0, 0);
-    }
-    // Group blocks keep their group's index (so a kernel can go from an image
-    // straight to its block without another table), including the empty ones.
-    if (!exclusive)
+    if (exclusive) {
+        for (uint32_t i = 0; i < P.num_images; i++) {
+            const BAProblem::Group& g = P.groups[P.image_group[i]];
+            push(6 * i, 6, g.intr_col, g.n_intr);
+        }
+    } else {
+        for (uint32_t f = 0; f < P.num_frames; f++) push(6 * f, 6, 0, 0);
+        for (const BAProblem::Member& m : P.members) push(m.ext_col, m.n_free, 0, 0);
         for (const BAProblem::Group& g : P.groups) push(g.intr_col, g.n_intr, 0, 0);
+    }
     P.num_prec_blocks = (uint32_t)(P.prec_blocks.size() / 4);
 }
 
@@ -203,38 +222,58 @@ inline void buildCamTables(BAProblem& P) {
     P.num_cam_chunks = (uint32_t)(P.cam_chunks.size() / 3);
 }
 
+// The columns one image's observations touch, in Jacobian order:
+// [frame 6 | member extrinsic n_free | group intrinsics n_intr].
+inline uint32_t imageColumns(const BAProblem& P, uint32_t img, uint32_t* cols) {
+    uint32_t k = 0;
+    const uint32_t f = P.image_frame[img];
+    for (uint32_t i = 0; i < 6; i++) cols[k++] = 6 * f + i;
+    const uint32_t m = P.image_member[img];
+    if (m != kNoMember)
+        for (uint32_t i = 0; i < P.members[m].n_free; i++) cols[k++] = P.members[m].ext_col + i;
+    const BAProblem::Group& g = P.groups[P.image_group[img]];
+    for (uint32_t i = 0; i < g.n_intr; i++) cols[k++] = g.intr_col + i;
+    return k;
+}
+
 // Build per-model obs lists and A_cp offsets from obs/image/group tables.
 inline void finalizeTables(BAProblem& P) {
-    // Per-image model and dof, so the two passes below index an array instead
-    // of chasing image -> group -> model for every one of a few million
-    // observations (and, for model_obs, doing it once per camera model).
-    std::vector<uint8_t> img_model(P.num_images);
+    if (P.image_frame.size() != P.num_images) P.identityFrames();
+    if (P.image_member.size() != P.num_images) P.image_member.assign(P.num_images, kNoMember);
+    for (uint32_t i = 1; i < P.num_images; i++)
+        if (P.image_frame[i] < P.image_frame[i - 1])
+            throw std::runtime_error("BA images must be ordered by frame");
+    // Per-image bucket and dof, so the passes below index an array rather than
+    // chase image -> group -> model per observation. Buckets are (model, rig):
+    // a rigged observation runs the kernel that composes the member extrinsic.
+    std::vector<uint8_t> img_bucket(P.num_images);
     std::vector<uint8_t> img_dof(P.num_images);
+    const int nb = 2 * kNumModels;
     for (uint32_t i = 0; i < P.num_images; i++) {
         const BAProblem::Group& g = P.groups[P.image_group[i]];
         if (g.model >= (uint32_t)kNumModels)
             throw std::runtime_error("camera model index outside the registry");
-        img_model[i] = (uint8_t)g.model;
-        uint32_t dof = 6 + g.n_intr;
+        const bool rig = P.image_member[i] != kNoMember;
+        img_bucket[i] = (uint8_t)(g.model + (rig ? kNumModels : 0));
+        uint32_t dof = 6 + P.memberFree(i) + g.n_intr;
         if (dof > kMaxCamDof) throw std::runtime_error("camera dof exceeds kMaxCamDof");
         img_dof[i] = (uint8_t)dof;
     }
 
-    // Bucket the observations by model in one counting pass. Same output as
-    // the old model-major rescan: indices ascending within each model, models
-    // in registry order, empty ones omitted.
-    uint32_t cnt[kNumModels] = {0};
-    for (uint32_t o = 0; o < P.num_obs; o++) cnt[img_model[P.obs_image[o]]]++;
-    uint32_t off[kNumModels] = {0};
+    // Bucket the observations in one counting pass: indices ascending within
+    // each bucket, buckets in registry order, empty ones omitted.
+    std::vector<uint32_t> cnt(nb, 0), off(nb, 0);
+    for (uint32_t o = 0; o < P.num_obs; o++) cnt[img_bucket[P.obs_image[o]]]++;
     P.model_ranges.clear();
     uint32_t run = 0;
-    for (int m = 0; m < kNumModels; m++) {
-        off[m] = run;
-        if (cnt[m]) P.model_ranges.push_back({(uint32_t)m, run, cnt[m]});
-        run += cnt[m];
+    for (int b = 0; b < nb; b++) {
+        off[b] = run;
+        if (cnt[b])
+            P.model_ranges.push_back({(uint32_t)(b % kNumModels), run, cnt[b], b >= kNumModels});
+        run += cnt[b];
     }
     P.model_obs.resize(P.num_obs);
-    for (uint32_t o = 0; o < P.num_obs; o++) P.model_obs[off[img_model[P.obs_image[o]]]++] = o;
+    for (uint32_t o = 0; o < P.num_obs; o++) P.model_obs[off[img_bucket[P.obs_image[o]]]++] = o;
 
     P.jc_off.resize(P.num_obs);
     uint64_t acc = 0;
@@ -395,6 +434,7 @@ inline BAProblem loadBAL(const std::string& path, int model_id, bool shared_intr
             P.groups[c] = {ni * c, 0 /*fixed below*/, ni, (uint32_t)model_id};
         }
     }
+    P.identityFrames();
     P.pose_dim = 6 * nc;
     P.total_intr = (uint32_t)P.intr.size();
     P.free_intr = P.total_intr;  // the BAL models refine everything they read

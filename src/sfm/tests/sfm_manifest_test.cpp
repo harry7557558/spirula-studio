@@ -3,6 +3,7 @@
 // Two things have to hold for a file people edit by hand: what YAML says is
 // what the config gets, and the same capture written as JSON says the same
 // thing -- so a Python script and a text editor are interchangeable.
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +12,7 @@
 
 #include "data/Yaml.h"
 #include "sfm/core/Manifest.h"
+#include "sfm/core/Rig.h"
 #include "sfm/tests/TestMain.h"
 
 using namespace sfm;
@@ -101,8 +103,29 @@ static int cmdManifestTest(int, char**) {
                "captures:\n"
                "  - prefix: cam0\n"
                "    telemetry: clip.insv\n"
-               "    fps: 24\n");
+               "    fps: 24\n"
+               "rigs:\n"
+               "  - name: dual\n"
+               "    captures: [clip1, clip2]\n"
+               "    members:\n"
+               "      - prefix: cam0\n"
+               "        rotation: [1, 0, 0, 0]\n"
+               "        translation: [0, 0, 0]\n"
+               "      - prefix: cam1\n"
+               "        rotation: [0, 0, 1, 0]\n"
+               "        translation: [0.03, 0, 0]\n"
+               "        fixed: false\n"
+               "  - members: [left, right]\n");
     Manifest m = manifest_read(yml);
+    check(m.rigs.size() == 2 && m.rigs[0].name == "dual" && m.rigs[0].captures.size() == 2,
+          "a rig with its captures");
+    check(m.rigs[0].members.size() == 2 && m.rigs[0].members[0].has_ext &&
+              m.rigs[0].members[1].has_ext && !m.rigs[0].members[1].ext_fixed &&
+              std::fabs(m.rigs[0].members[1].ext.t.x - 0.03) < 1e-12 &&
+              std::fabs(m.rigs[0].members[1].ext.R[0] + 1.0) < 1e-12,
+          "a member's known extrinsic");
+    check(m.rigs[1].members.size() == 2 && m.rigs[1].members[1].prefix == "right",
+          "a rig of bare prefixes");
     check(m.captures.size() == 1 && m.captures[0].prefix == "cam0" && m.captures[0].fps == 24,
           "a capture's telemetry and frame rate");
     check(m.image_dir == "pics", "image_dir is kept as the file spells it");
@@ -136,6 +159,33 @@ static int cmdManifestTest(int, char**) {
     check(cfg.telemetry_inputs.size() == 1 &&
               cfg.telemetry_inputs[0].path == (std::filesystem::path(dir) / "clip.insv").string(),
           "a capture's telemetry resolves against the manifest");
+    check(cfg.rigs.size() == 2 && cfg.rigs[0].captures[1] == "clip2", "the rigs reach the config");
+    {
+        // The definitions against a tree: captures key frames apart, the bare
+        // rig pairs by name, and a conflict is refused.
+        std::vector<std::string> names = {"clip1/cam0/00001.jpg", "clip1/cam1/00001.jpg",
+                                          "clip2/cam0/00001.jpg", "clip2/cam1/00001.jpg",
+                                          "clip2/cam1/00002.jpg", "left/a.jpg", "right/a.jpg"};
+        RigTable t = buildRigTable(names, cfg.rigs);
+        check(t.rigs.size() == 2 && t.rigs[0].frames.size() == 3 && t.rigs[1].frames.size() == 1,
+              "frames keyed by capture and name");
+        check(t.slot(0).valid() && t.slot(1).valid() && t.slot(0).frame == t.slot(1).frame &&
+                  t.slot(2).frame != t.slot(0).frame,
+              "one stem in two captures is two frames");
+        check(t.slot(4).valid() && t.rigs[0].frames[t.slot(4).frame][0] == kNoImage,
+              "a frame missing a lens keeps the slot empty");
+        std::vector<RigDef> clash = cfg.rigs;
+        RigDef again;
+        again.members = {RigMemberDef{"left"}, RigMemberDef{"clip1/cam0"}};
+        clash.push_back(again);
+        bool refused = false;
+        try {
+            buildRigTable(names, clash);
+        } catch (const std::exception&) {
+            refused = true;
+        }
+        check(refused, "an image claimed by two rigs is refused");
+    }
 
     SfmConfig cfg2;
     cfg2.camera_model = "radial";

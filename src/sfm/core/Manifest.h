@@ -11,6 +11,7 @@
 // Read as YAML or JSON (data/Yaml.h takes both); written as either.
 
 #include "sfm/SfmConfig.h"
+#include "sfm/core/Rig.h"
 
 #include <set>
 #include <string>
@@ -52,6 +53,10 @@ struct Manifest {
     std::string camera_mode;         // "single" | "folder" | "image"; empty = default
     std::vector<ManifestCamera> cameras;
     std::vector<ManifestCapture> captures;
+    // Rigs: members are path prefixes like the cameras', frames are the
+    // images sharing a path under them; a member may carry its cam_from_rig
+    // (quaternion w,x,y,z and a translation) when it is known.
+    std::vector<RigDef> rigs;
 
     std::string image_gamut;         // empty = leave the run's own
     int image_linear = -1;           // -1 unset, 0 no, 1 yes

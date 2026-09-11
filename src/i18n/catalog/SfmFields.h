@@ -64,6 +64,10 @@ SS_MSG(group_mapper,
     PT("cartógrafo"), IT("cartografo"), NL("kaartmaker"),
     RU("построитель"), TR("haritalayıcı"));
 
+SS_MSG(group_rig,
+    EN("Rigs"), JA("リグ"), ZH_HANS("装置"), ZH_HANT("裝置"), KO("리그"), DE("Rigs"),
+    FR("Rigs"), ES("Rigs"), PT("Rigs"), IT("Rig"), NL("Rigs"), RU("Риги"), TR("Rigler"));
+
 SS_MSG(group_manage,
     EN("manage"), JA("モデル管理"), ZH_HANS("模型管理"), ZH_HANT("模型管理"),
     KO("모델 관리"), DE("Verwaltung"), FR("gestion"), ES("gestión"),
@@ -3282,6 +3286,194 @@ SS_MSG(metric_gps_help,
        "`horizontal` enlem ve boylamı okur, eğimi kameraların kendi yukarı eksenine bırakır; "
        "`full` yüksekliği de okur; doğruluk birkaç metre olduğundan çekim onlarca metre "
        "olmalı"));
+
+SS_MSG(metric_max_error_frac_help,
+    EN("... or this fraction of the reference positions' RMS radius, whichever is larger, so "
+       "a long flight is not judged by a threshold made for a walk"),
+    JA("... または基準位置の RMS 半径のこの割合のうち大きいほう。長い飛行を徒歩用の閾値で"
+       "判定しないためです"),
+    ZH_HANS("……或参考位置 RMS 半径的这一比例，取较大者，这样长距离飞行不会按步行的阈值来判定"),
+    ZH_HANT("……或參考位置 RMS 半徑的這一比例，取較大者，這樣長距離飛行不會按步行的閾值來判定"),
+    KO("... 또는 기준 위치 RMS 반경의 이 비율 중 큰 쪽. 긴 비행을 도보용 문턱으로 판정하지 "
+       "않기 위해서입니다"),
+    DE("... oder dieser Anteil des RMS-Radius der Referenzpositionen, je nachdem, was größer "
+       "ist, damit ein langer Flug nicht nach einer Schwelle für einen Spaziergang beurteilt wird"),
+    FR("... ou cette fraction du rayon RMS des positions de référence, la plus grande des deux, "
+       "pour qu'un long vol ne soit pas jugé avec un seuil fait pour une marche"),
+    ES("... o esta fracción del radio RMS de las posiciones de referencia, la que sea mayor, para "
+       "que un vuelo largo no se juzgue con un umbral hecho para un paseo"),
+    PT("... ou esta fração do raio RMS das posições de referência, o que for maior, para que um "
+       "voo longo não seja julgado por um limiar feito para uma caminhada"),
+    IT("... o questa frazione del raggio RMS delle posizioni di riferimento, la maggiore delle "
+       "due, così un volo lungo non è giudicato con una soglia fatta per una passeggiata"),
+    NL("... of dit deel van de RMS-straal van de referentieposities, wat het grootst is, zodat "
+       "een lange vlucht niet met een drempel voor een wandeling wordt beoordeeld"),
+    RU("... или эта доля RMS-радиуса опорных позиций, что больше, чтобы длинный полёт не "
+       "судили по порогу для прогулки"),
+    TR("... ya da referans konumların RMS yarıçapının bu oranı, hangisi büyükse; uzun bir uçuş "
+       "yürüyüş için yapılmış bir eşikle yargılanmasın diye"));
+
+SS_MSG(rigs_help,
+    EN("Use the rigs --rig and the manifest define: one pose per frame, member extrinsics shared "
+       "across frames, lenses placed by their rig-mates"),
+    JA("--rig とマニフェストで定義したリグを使います。フレームごとに 1 姿勢、メンバーの外部"
+       "パラメータはフレーム間で共有、レンズはリグ仲間から配置されます"),
+    ZH_HANS("使用 --rig 和清单定义的装置: 每帧一个位姿，成员外参跨帧共享，镜头由装置同伴定位"),
+    ZH_HANT("使用 --rig 和清單定義的裝置: 每幀一個姿態，成員外參跨幀共享，鏡頭由裝置同伴定位"),
+    KO("--rig 와 매니페스트로 정의한 리그를 씁니다. 프레임마다 자세 하나, 멤버 외부 파라미터는 "
+       "프레임 간 공유, 렌즈는 리그 동료가 배치합니다"),
+    DE("Die mit --rig und dem Manifest definierten Rigs verwenden: eine Pose je Frame, "
+       "Mitglieds-Extrinsik über alle Frames geteilt, Objektive von ihren Rig-Partnern platziert"),
+    FR("Utiliser les rigs définis par --rig et le manifeste : une pose par image, extrinsèques "
+       "des membres partagés entre les images, objectifs placés par leurs pairs du rig"),
+    ES("Usar los rigs definidos por --rig y el manifiesto: una pose por cuadro, extrínsecos de "
+       "miembro compartidos entre cuadros, lentes colocadas por sus compañeras de rig"),
+    PT("Usar os rigs definidos por --rig e pelo manifesto: uma pose por quadro, extrínsecos dos "
+       "membros partilhados entre quadros, lentes posicionadas pelas companheiras de rig"),
+    IT("Usare i rig definiti da --rig e dal manifesto: una posa per fotogramma, estrinseci dei "
+       "membri condivisi tra i fotogrammi, obiettivi posizionati dai compagni di rig"),
+    NL("De rigs uit --rig en het manifest gebruiken: één pose per frame, lidextrinsieken gedeeld "
+       "over frames, lenzen geplaatst door hun rigmaten"),
+    RU("Использовать риги из --rig и манифеста: одна поза на кадр, экстринсики элементов общие "
+       "для кадров, объективы размещаются по соседям в риге"),
+    TR("--rig ve bildirimde tanımlanan rigleri kullan: kare başına bir duruş, üye dış parametreleri "
+       "kareler arasında paylaşılır, lensler rig arkadaşlarınca yerleştirilir"));
+
+SS_MSG(refine_rigs_help,
+    EN("Let bundle adjustment refine the member extrinsics; off holds them at the estimated or "
+       "given values"),
+    JA("バンドル調整でメンバーの外部パラメータを精密化します。オフなら推定値または指定値に"
+       "固定します"),
+    ZH_HANS("让光束法平差精调成员外参; 关闭则固定在估计值或给定值"),
+    ZH_HANT("讓光束法平差精調成員外參; 關閉則固定在估計值或給定值"),
+    KO("번들 조정이 멤버 외부 파라미터를 다듬게 합니다. 끄면 추정값이나 지정값에 고정합니다"),
+    DE("Die Bündelausgleichung die Mitglieds-Extrinsik verfeinern lassen; aus hält sie auf den "
+       "geschätzten oder vorgegebenen Werten"),
+    FR("Laisser l'ajustement de faisceaux affiner les extrinsèques des membres ; désactivé, ils "
+       "restent aux valeurs estimées ou fournies"),
+    ES("Dejar que el ajuste de haces refine los extrínsecos de los miembros; apagado los mantiene "
+       "en los valores estimados o dados"),
+    PT("Deixar o ajuste de feixes refinar os extrínsecos dos membros; desligado mantém-nos nos "
+       "valores estimados ou dados"),
+    IT("Lasciare che il bundle adjustment affini gli estrinseci dei membri; spento li tiene ai "
+       "valori stimati o dati"),
+    NL("De bundelvereffening de lidextrinsieken laten verfijnen; uit houdt ze op de geschatte of "
+       "opgegeven waarden"),
+    RU("Позволить уравниванию связок уточнять экстринсики элементов; выкл. держит их на "
+       "оценённых или заданных значениях"),
+    TR("Demet ayarının üye dış parametrelerini iyileştirmesine izin ver; kapalıysa kestirilen ya "
+       "da verilen değerlerde tutar"));
+
+SS_MSG(rig_blind_help,
+    EN("Register a lens with too few correspondences to be judged at the pose its rig implies, "
+       "so a lens on the sky still gets its pose"),
+    JA("対応点が少なすぎて判定できないレンズを、リグが示す姿勢で登録します。空を向いたレンズ"
+       "にも姿勢が付きます"),
+    ZH_HANS("对应点太少无法判定的镜头，按装置推出的位姿配准，这样朝天的镜头也有位姿"),
+    ZH_HANT("對應點太少無法判定的鏡頭，按裝置推出的姿態註冊，這樣朝天的鏡頭也有姿態"),
+    KO("대응점이 너무 적어 판정할 수 없는 렌즈를 리그가 암시하는 자세로 등록합니다. 하늘을 향한 "
+       "렌즈도 자세를 얻습니다"),
+    DE("Ein Objektiv mit zu wenigen Korrespondenzen für ein Urteil an der Pose registrieren, die "
+       "sein Rig vorgibt, damit auch ein Objektiv zum Himmel seine Pose bekommt"),
+    FR("Enregistrer un objectif ayant trop peu de correspondances pour être jugé à la pose que "
+       "son rig implique, pour qu'un objectif vers le ciel ait quand même sa pose"),
+    ES("Registrar una lente con muy pocas correspondencias para juzgarla en la pose que implica "
+       "su rig, para que una lente hacia el cielo también tenga pose"),
+    PT("Registar uma lente com poucas correspondências para ser julgada na pose que o seu rig "
+       "implica, para que uma lente virada ao céu também tenha pose"),
+    IT("Registrare un obiettivo con troppe poche corrispondenze per essere giudicato alla posa "
+       "implicata dal suo rig, così un obiettivo verso il cielo ha comunque la sua posa"),
+    NL("Een lens met te weinig overeenkomsten om te beoordelen registreren op de pose die zijn rig "
+       "impliceert, zodat ook een lens naar de lucht een pose krijgt"),
+    RU("Регистрировать объектив, у которого слишком мало соответствий для проверки, в позе, "
+       "которую задаёт его риг, чтобы объектив, смотрящий в небо, тоже получил позу"),
+    TR("Yargılanamayacak kadar az eşleşmesi olan bir lensi riginin ima ettiği duruşta kaydet; "
+       "böylece gökyüzüne bakan lens de duruşunu alır"));
+
+SS_MSG(rig_min_frames_help,
+    EN("Frames in which a member and its rig's reference lens both registered before the "
+       "member's extrinsic is trusted and refined"),
+    JA("メンバーの外部パラメータを信頼して精密化する前に、そのメンバーとリグの基準レンズが"
+       "両方登録されているフレーム数"),
+    ZH_HANS("成员与其装置的参考镜头同时配准的帧数，达到后才信任并精调该成员的外参"),
+    ZH_HANT("成員與其裝置的參考鏡頭同時註冊的幀數，達到後才信任並精調該成員的外參"),
+    KO("멤버와 그 리그의 기준 렌즈가 함께 등록된 프레임 수. 이만큼 되어야 멤버 외부 파라미터를 "
+       "믿고 다듬습니다"),
+    DE("Frames, in denen ein Mitglied und das Referenzobjektiv seines Rigs beide registriert "
+       "sind, bevor die Extrinsik des Mitglieds vertraut und verfeinert wird"),
+    FR("Images où un membre et l'objectif de référence de son rig sont tous deux enregistrés "
+       "avant que l'extrinsèque du membre soit tenu pour fiable et affiné"),
+    ES("Cuadros en los que un miembro y la lente de referencia de su rig están ambos registrados "
+       "antes de confiar en el extrínseco del miembro y refinarlo"),
+    PT("Quadros em que um membro e a lente de referência do seu rig estão ambos registados antes "
+       "de confiar no extrínseco do membro e o refinar"),
+    IT("Fotogrammi in cui un membro e l'obiettivo di riferimento del suo rig sono entrambi "
+       "registrati prima di fidarsi dell'estrinseco del membro e affinarlo"),
+    NL("Frames waarin een lid en de referentielens van zijn rig beide geregistreerd zijn voordat "
+       "de extrinsiek van het lid vertrouwd en verfijnd wordt"),
+    RU("Кадры, где элемент и опорный объектив его рига оба зарегистрированы, прежде чем "
+       "экстринсике элемента доверять и уточнять её"),
+    TR("Bir üyenin dış parametresine güvenilip iyileştirilmeden önce üyenin ve riginin referans "
+       "lensinin birlikte kaydedildiği kare sayısı"));
+
+SS_MSG(rig_max_spread_help,
+    EN("Degrees a frame's relative pose may differ from the rig's average before it counts as "
+       "an outlier; a rig whose median deviation exceeds this is not synchronized and is not "
+       "enforced"),
+    JA("フレームの相対姿勢がリグの平均からこの角度（度）以上ずれると外れ値になります。中央値の"
+       "ずれがこれを超えるリグは同期していないとみなし、拘束しません"),
+    ZH_HANS("帧的相对位姿与装置平均相差超过此度数即算外点; 中位偏差超过此值的装置视为未同步，"
+            "不施加约束"),
+    ZH_HANT("幀的相對姿態與裝置平均相差超過此度數即算外點; 中位偏差超過此值的裝置視為未同步，"
+            "不施加約束"),
+    KO("프레임의 상대 자세가 리그 평균에서 이 각도(도) 이상 벗어나면 이상치입니다. 중앙값 편차가 "
+       "이를 넘는 리그는 동기화되지 않은 것으로 보아 강제하지 않습니다"),
+    DE("Grad, um die die relative Pose eines Frames vom Rig-Mittel abweichen darf, bevor sie als "
+       "Ausreißer zählt; ein Rig, dessen Median-Abweichung dies übersteigt, ist nicht synchron "
+       "und wird nicht erzwungen"),
+    FR("Degrés d'écart admis entre la pose relative d'une image et la moyenne du rig avant de la "
+       "compter aberrante ; un rig dont l'écart médian dépasse cela n'est pas synchronisé et "
+       "n'est pas imposé"),
+    ES("Grados que la pose relativa de un cuadro puede diferir del promedio del rig antes de "
+       "contar como atípica; un rig cuya desviación mediana supera esto no está sincronizado y "
+       "no se impone"),
+    PT("Graus que a pose relativa de um quadro pode diferir da média do rig antes de contar como "
+       "atípica; um rig cujo desvio mediano excede isto não está sincronizado e não é imposto"),
+    IT("Gradi di cui la posa relativa di un fotogramma può differire dalla media del rig prima di "
+       "contare come anomala; un rig la cui deviazione mediana supera questo non è sincronizzato "
+       "e non viene imposto"),
+    NL("Graden die de relatieve pose van een frame van het riggemiddelde mag afwijken voor hij als "
+       "uitschieter telt; een rig waarvan de mediane afwijking dit overschrijdt loopt niet "
+       "synchroon en wordt niet afgedwongen"),
+    RU("На сколько градусов относительная поза кадра может отличаться от среднего по ригу, "
+       "прежде чем считаться выбросом; риг, чьё медианное отклонение больше, не синхронизирован "
+       "и не навязывается"),
+    TR("Bir karenin göreli duruşunun aykırı sayılmadan önce rig ortalamasından sapabileceği derece; "
+       "medyan sapması bunu aşan rig eşzamanlı değildir ve dayatılmaz"));
+
+SS_MSG(final_free_rig_help,
+    EN("After everything else, one bundle adjustment with the rig set aside so every image "
+       "settles on its own pose"),
+    JA("すべての後に、リグ拘束を外したバンドル調整を 1 回行い、各画像を単独の姿勢に落ち着かせます"),
+    ZH_HANS("在其他步骤之后，再做一次不带装置约束的光束法平差，让每张图像落到各自的位姿"),
+    ZH_HANT("在其他步驟之後，再做一次不帶裝置約束的光束法平差，讓每張影像落到各自的姿態"),
+    KO("모든 단계 뒤에 리그 제약을 푼 번들 조정을 한 번 더 해 각 이미지가 제 자세에 안착하게 합니다"),
+    DE("Nach allem anderen eine Bündelausgleichung ohne Rig-Bindung, damit jedes Bild auf seiner "
+       "eigenen Pose zur Ruhe kommt"),
+    FR("Après tout le reste, un ajustement de faisceaux sans la contrainte du rig pour que chaque "
+       "image se pose sur sa propre pose"),
+    ES("Después de todo lo demás, un ajuste de haces con el rig apartado para que cada imagen se "
+       "asiente en su propia pose"),
+    PT("Depois de tudo o resto, um ajuste de feixes com o rig posto de lado para que cada imagem "
+       "assente na sua própria pose"),
+    IT("Dopo tutto il resto, un bundle adjustment con il rig messo da parte, così ogni immagine "
+       "si assesta sulla propria posa"),
+    NL("Na al het andere één bundelvereffening met het rig terzijde, zodat elk beeld op zijn eigen "
+       "pose tot rust komt"),
+    RU("После всего остального одно уравнивание связок без рига, чтобы каждое изображение "
+       "устоялось на собственной позе"),
+    TR("Diğer her şeyden sonra, her görüntünün kendi duruşuna oturması için rig bir kenara "
+       "konularak bir demet ayarı"));
 
 SS_MSG(metric_max_error_help,
     EN("Cameras farther than this many metres from the fitted position are outliers; 0 "

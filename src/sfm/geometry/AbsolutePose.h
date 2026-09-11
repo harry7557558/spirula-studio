@@ -107,55 +107,36 @@ struct PnPResult {
     bool success = false;
 };
 
-// Nonlinear refinement of an absolute pose over the masked correspondences:
-// LM on (angle-axis delta, translation) minimizing the same residual RANSAC
-// scored, so the refined pose is optimal for exactly the inlier set that
-// selected it. COLMAP refines every PnP pose before accepting a registration;
-// without this the DLT/P3P-grade pose noise lands directly under the next
-// round of triangulations. The Jacobian is central-difference: the residual
-// already handles forward and wide-angle bearings, and 12 extra residual
-// evaluations per point per iteration are noise next to RANSAC itself.
-// When `focal_scale` is non-null the focal length is refined jointly (7th
-// parameter): the observed bearings are reinterpreted at focal f0*s, i.e.
-// their z=1 projections shrink by 1/s. COLMAP refines focal at every
-// registration of a camera without a prior -- a coarse focal-sweep hypothesis
-// that is 20% off still passes RANSAC but locks bad intrinsics into the
-// model, which bundle adjustment then papers over with runaway distortion.
-// Joint refinement only makes sense for forward bearings (b.z > 0.1); wide-
-// angle observations keep their fixed direction.
-inline bool refinePose(const std::vector<Vec3>& X, const std::vector<Vec3>& b,
-                       const std::vector<char>& mask, Pose& pose, double* focal_scale = nullptr,
-                       int max_iters = 30) {
-    std::vector<int> idx;
-    for (size_t i = 0; i < X.size(); i++)
-        if (mask.empty() || mask[i]) idx.push_back((int)i);
-    if (idx.size() < 4) return false;
-    const int NP = focal_scale ? 7 : 6;
+namespace pose_detail {
 
-    // Residual pair for one correspondence under parameters (pose p, scale s).
-    // Cheirality failures get a large constant (no gradient), so a point that
-    // flips behind the camera mid-iteration cannot steer the step; it just
-    // inflates the cost and the step is rejected.
-    auto resid = [&](const Pose& p, double s, int i, double* r) {
-        Vec3 pc = mul(p.R, X[i]) + p.t;
-        const Vec3& bi = b[i];
-        if (bi.z > 0.1) {
-            if (pc.z < 1e-8) { r[0] = r[1] = 1e3; return; }
-            r[0] = pc.x / pc.z - bi.x / (bi.z * s);
-            r[1] = pc.y / pc.z - bi.y / (bi.z * s);
-            return;
-        }
-        if (pc.dot(bi) <= 0) { r[0] = r[1] = 1e3; return; }
-        // tangent-plane components of the direction error (matches sin^2 form)
-        Vec3 e1 = (std::fabs(bi.x) < 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0}).cross(bi).normalized();
-        Vec3 e2 = bi.cross(e1);
-        Vec3 ph = pc.normalized();
-        r[0] = ph.dot(e1);
-        r[1] = ph.dot(e2);
-    };
+// The two residual components of one correspondence under pose `p`, the
+// bearing reinterpreted at focal scale `s`. A cheirality failure is a large
+// constant with no gradient: it cannot steer a step, only get it rejected.
+inline void residualPair(const Pose& p, const Vec3& X, const Vec3& bi, double s, double* r) {
+    Vec3 pc = mul(p.R, X) + p.t;
+    if (bi.z > 0.1) {
+        if (pc.z < 1e-8) { r[0] = r[1] = 1e3; return; }
+        r[0] = pc.x / pc.z - bi.x / (bi.z * s);
+        r[1] = pc.y / pc.z - bi.y / (bi.z * s);
+        return;
+    }
+    if (pc.dot(bi) <= 0) { r[0] = r[1] = 1e3; return; }
+    // tangent-plane components of the direction error (matches sin^2 form)
+    Vec3 e1 = (std::fabs(bi.x) < 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0}).cross(bi).normalized();
+    Vec3 e2 = bi.cross(e1);
+    Vec3 ph = pc.normalized();
+    r[0] = ph.dot(e1);
+    r[1] = ph.dot(e2);
+}
+
+// LM over (angle-axis delta, translation[, log focal scale]) with a
+// central-difference Jacobian: `resid(pose, s, j, r)` fills the two residual
+// components of correspondence j of n, 1e3 marking a cheirality failure.
+template <class Resid>
+bool lmRefine(int n, const Resid& resid, int NP, Pose& pose, double& s0, int max_iters) {
     auto cost = [&](const Pose& p, double s) {
         double c = 0, r[2];
-        for (int i : idx) { resid(p, s, i, r); c += r[0] * r[0] + r[1] * r[1]; }
+        for (int i = 0; i < n; i++) { resid(p, s, i, r); c += r[0] * r[0] + r[1] * r[1]; }
         return c;
     };
     // Compose a step onto a base state: R <- exp(w) R0, t <- t0 + dt,
@@ -166,15 +147,14 @@ inline bool refinePose(const std::vector<Vec3>& X, const std::vector<Vec3>& b,
         p.t = {p0.t.x + d[3], p0.t.y + d[4], p0.t.z + d[5]};
         return p;
     };
-    auto stepS = [&](double s0, const double* d) { return NP == 7 ? s0 * std::exp(d[6]) : s0; };
+    auto stepS = [&](double s, const double* d) { return NP == 7 ? s * std::exp(d[6]) : s; };
 
-    double s0 = focal_scale ? *focal_scale : 1.0;
     double lambda = 1e-4, c0 = cost(pose, s0);
     for (int it = 0; it < max_iters; it++) {
         // J^T J and J^T r accumulated point by point (numeric Jacobian).
         double JtJ[49] = {0}, Jtr[7] = {0};
         const double h = 1e-6;
-        for (int i : idx) {
+        for (int i = 0; i < n; i++) {
             double J[2][7], rp[2], rm[2], r0[2];
             resid(pose, s0, i, r0);
             if (r0[0] >= 1e3) continue;
@@ -222,9 +202,9 @@ inline bool refinePose(const std::vector<Vec3>& X, const std::vector<Vec3>& b,
         }
         if (!solved) break;
         for (int a = NP - 1; a >= 0; a--) {
-            double s = g[a];
-            for (int c = a + 1; c < NP; c++) s -= A[NP * a + c] * d[c];
-            d[a] = s / A[NP * a + a];
+            double sum = g[a];
+            for (int c = a + 1; c < NP; c++) sum -= A[NP * a + c] * d[c];
+            d[a] = sum / A[NP * a + a];
         }
         Pose trialP = stepP(pose, d);
         double trialS = stepS(s0, d);
@@ -243,8 +223,57 @@ inline bool refinePose(const std::vector<Vec3>& X, const std::vector<Vec3>& b,
             if (lambda > 1e8) break;
         }
     }
-    if (focal_scale) *focal_scale = s0;
     return true;
+}
+
+}  // namespace pose_detail
+
+// LM refinement of a pose over the masked correspondences, on the residual
+// RANSAC scored (COLMAP refines every PnP pose). `focal_scale` adds a 7th
+// parameter, the bearings reinterpreted at f0*s; wide-angle rays stay fixed.
+inline bool refinePose(const std::vector<Vec3>& X, const std::vector<Vec3>& b,
+                       const std::vector<char>& mask, Pose& pose, double* focal_scale = nullptr,
+                       int max_iters = 30) {
+    std::vector<int> idx;
+    for (size_t i = 0; i < X.size(); i++)
+        if (mask.empty() || mask[i]) idx.push_back((int)i);
+    if (idx.size() < 4) return false;
+    auto resid = [&](const Pose& p, double s, int j, double* r) {
+        pose_detail::residualPair(p, X[idx[j]], b[idx[j]], s, r);
+    };
+    double s0 = focal_scale ? *focal_scale : 1.0;
+    const bool ok = pose_detail::lmRefine((int)idx.size(), resid, focal_scale ? 7 : 6, pose, s0,
+                                          max_iters);
+    if (focal_scale) *focal_scale = s0;
+    return ok;
+}
+
+// One member of a rig frame: its correspondences, which of them count, and
+// where it sits on the rig.
+struct FrameMember {
+    const std::vector<Vec3>* X;
+    const std::vector<Vec3>* b;
+    const std::vector<char>* mask;
+    Pose cam_from_rig;
+};
+
+// The same refinement over a whole frame: one pose (rig_from_world) explains
+// every member's inliers through its extrinsic, so lenses that share no
+// view still constrain the frame together.
+inline bool refineFramePose(const std::vector<FrameMember>& members, Pose& rig_from_world,
+                            int max_iters = 30) {
+    std::vector<std::pair<int, int>> idx;
+    for (size_t m = 0; m < members.size(); m++)
+        for (size_t i = 0; i < members[m].X->size(); i++)
+            if (members[m].mask->empty() || (*members[m].mask)[i]) idx.emplace_back((int)m, (int)i);
+    if (idx.size() < 4) return false;
+    auto resid = [&](const Pose& F, double s, int j, double* r) {
+        const FrameMember& m = members[idx[j].first];
+        const int i = idx[j].second;
+        pose_detail::residualPair(composePose(m.cam_from_rig, F), (*m.X)[i], (*m.b)[i], s, r);
+    };
+    double s0 = 1.0;
+    return pose_detail::lmRefine((int)idx.size(), resid, 6, rig_from_world, s0, max_iters);
 }
 
 // LO-RANSAC PnP over 2D-3D correspondences given as world points `X` and unit

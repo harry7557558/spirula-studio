@@ -79,16 +79,45 @@ breakdown from timestamp queries, printed after the solve),
 
 ### Parameterization & camera groups
 
-Each image has a 6-DOF pose (angle-axis + translation). Intrinsics live in
+Each *frame* has a 6-DOF pose (angle-axis + translation); an image is a frame
+unless a rig says several images share one (below). Intrinsics live in
 *groups*: any number of images can share one intrinsics block, and each group
 chooses its own camera model (models may have different parameter counts).
-The camera-side unknown vector is `[poses (6/image) | all group intrinsics]`;
+The camera-side unknown vector is `[frame poses (6 each) | free member
+extrinsics (6 each) | all free group intrinsics]`;
 the Schur-reduced normal matrix over that vector is assembled directly into a
 packed dense lower triangle via per-observation global column maps
 (`sfm/ba/Problem.h` builds them). Only the cost/Jacobian kernels are specialized per
 model; Schur assembly, the dense solver, and all updates are model-agnostic
 (dynamic block widths, bounded by `kMaxCamDof`). `--shared-intrinsics` (all
 images in one group) exercises the pose/intrinsics cross-coupling path.
+
+### Rigs
+
+A rig member is a `cam_from_rig` shared by every frame of the rig, so an
+image's pose is `member ∘ frame` and its Jacobian block is `[frame 6 | member
+6 (when refined) | intrinsics]` -- up to 24 wide, one more dof tier (`_x`)
+that only a rigged problem selects; the CG kernels gain the same two tiers
+(`_w` = every problem without a refined member, `_x`) so a rig-free problem
+runs the same code it always did. Observations are bucketed by (model, rig)
+and the rigged bucket runs a `*_rig` entry point that composes the member
+before projecting; the plain bucket's kernels are unchanged.
+
+Two things follow for the linear solvers. A multi-image frame or a refined
+member is a shared column set, so a rigged problem is never *exclusive* and
+takes the atomic Schur kernel or CG, as every shared-intrinsics capture already
+does. The CG preconditioner's shared partition is one 6x6 block per frame, one
+per member and one per group; `cg_bmul` stores a frame's rows only when the
+frame has one image and accumulates otherwise. The host solver's tasks own
+whole frames (a split inside one would race on the frame's rows), the member
+columns join the shared-row buffer beside the shared intrinsics, and two
+images of one frame fold both orderings of their cross term onto the diagonal
+frame block. `sfm_ba_cpu_test` checks all of it against the written-out normal
+equations; `sfm_rig_test` checks the device against the host.
+
+The fp64 kernels and the host agree on the assembled `S` and `g` to about
+1e-7 relative, not to rounding, on rig-free problems as much as rigged ones
+(measured before rigs existed); final costs agree to seven digits.
 
 ### What the Jacobian pass stores (and what it does not)
 

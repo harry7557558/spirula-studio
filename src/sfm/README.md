@@ -491,6 +491,85 @@ each came from. Plain text, and read by the viewer: a model that says
 grid legend is in metres. Nothing else depends on the file, so a reconstruction
 COLMAP wrote is simply one that says nothing.
 
+## Rigs
+
+A rig is a set of lenses with a fixed relative pose -- the two sides of a
+dual-fisheye camera, the ten faces a `.360` unwraps into, two cameras on one
+mount -- and the reconstruction can be told so (`src/sfm/core/Rig.h`,
+docs/notes/sfm-rig-constraints.md). A definition names its **members** as path
+prefixes; the images under them with the same path form a **frame**:
+
+```bash
+spirula sfm auto IMAGES/ -o ws/ --rig cam0,cam1            # cam0/x.jpg + cam1/x.jpg
+spirula sfm auto IMAGES/ -o ws/ --rig 'clip1,clip2:cam0,cam1'   # one rig behind two videos
+spirula sfm auto IMAGES/ -o ws/ --rig '*:cam0,cam1'        # ... behind every top-level folder
+spirula sfm auto IMAGES/ -o ws/ --rig cam0,cam1 --rig cam2,cam3   # two rigs
+```
+
+The form with captures keeps frames apart per capture (a stem repeats across
+clips) while the calibration is one. The manifest's `rigs:` list spells the same
+thing, and may carry a member's known `cam_from_rig` (quaternion and
+translation; a zero translation is honoured as such, a nonzero one is used for
+its rotation until the model has a scale). `spirula sfm map` takes `--rig` too.
+An image claimed by two rigs, or a member no image matches, is an error.
+
+What the run does with it, in the order it happens:
+
+- **Calibration** (`Mapper::calibrateRigs`). Frames whose lenses registered on
+  their own give the relative pose of each member to the rig's reference lens
+  (the member registered alongside another most often); a robust average over
+  at least `--rig-min-frames` (3) frames establishes it, and the median angular
+  deviation is reported. A member is declined with a line saying so when its
+  median deviation exceeds `--rig-max-spread` (1 deg) or fewer than 90% of its
+  frames agree within three times that -- the two `.insv` tracks extracted
+  frame by frame do this, since each track kept its own sharpest frame, and
+  agree on only 55-80% of frames -- and its images register as they always did.
+- **Frames register as one thing** (`Mapper::registerFrame`). Once a member
+  is calibrated, a candidate whose frame has no lens placed yet brings the
+  whole frame: every calibrated member offers its 2D-3D correspondences, each
+  member with enough of them proposes the frame's pose from its own P3P, the
+  proposal most correspondences of *all* members agree with wins, one
+  refinement over all of them settles it (`refineFramePose`), and the inlier
+  and ratio gates judge the frame's total. Every member is then placed, a
+  lens with nothing of its own to offer on the rig's word alone (`--no-rig-blind`
+  turns that off), which is how ten lenses that barely overlap -- each too
+  weak to register alone -- or a lens on the sky get a pose at all. The
+  ranking that picks the next candidate counts a frame's correspondences
+  together for the same reason.
+- **Frames stay whole.** A frame with a lens already placed places the
+  others, always: the rig's pose is refined on the image's own correspondences
+  when it has enough and the refinement stays within the calibration's spread
+  (floor 1 deg), and stands as predicted otherwise. The summary line counts
+  the images placed with no inlier of their own. Every de-registration pass
+  judges a frame by its members' points together and drops it whole, and
+  every refinement ends by placing the mates of whatever is registered, so no
+  lens of a placed frame is ever left out.
+- **Bundle adjustment** (`map/Bundle.h`, `ba/README.md` "Rigs"). A frame is one
+  6-DOF block and each member one shared `cam_from_rig`, refined unless
+  `--no-refine-rigs` or the definition fixed it. A refined member costs every
+  one of its observations six more Jacobian columns (measured 1.7x on the
+  Schur assembly), so the growth refines hold the extrinsics and let them move
+  each time the model has doubled; a final pass refines them in its first round. With
+  the extrinsics held a rigged frame has half the pose columns of its images,
+  which is where a rigged run gains its time. Images with no observations ride
+  along on their frame. The joint solve over several models keeps one
+  calibration per model, since each is in its own scale.
+- **Merging.** Two models holding different lenses of the same frames align
+  through the calibration exactly as if they shared those images, so a 360
+  capture that reconstructs as one component per direction is merged rather
+  than written as pieces (`map/Merge.h` `poseCorrespondences`).
+
+`--final-free-rig` (off) runs one last bundle adjustment with the rig set
+aside, for a mount that flexed or lenses that did not fire together. With no
+`--rig` and no `rigs:` nothing above runs and the mapper is byte-for-byte the
+one before rigs existed.
+
+Extraction is where a video's lenses become a rig or not. `spirula sam extract
+--sync` (Spirula Studio: "Synchronize lenses") decodes a multi-track file in
+lockstep under one sharpness window, so every frame is a rig frame; without it
+each track keeps its own sharpest frame and only the coincidences are. A
+`.360` is always extracted in lockstep, and its ten views share a stem.
+
 ### The finishing passes
 
 Reconstruction ends with up to two more global bundle adjustments, on models
@@ -561,6 +640,8 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 |---|---|---|
 | `sfm_sift_test` | GPU SIFT, matcher, batch decode, camera-model and format round trips | yes |
 | `sfm_map_test` | synthetic reconstruction end to end, incl. assembly/audit/split | yes |
+| `sfm_rig_test` | rig bundle adjustment, GPU against host; a synthetic two-lens rig through the mapper and the merger | yes |
+| `sfm_ba_cpu_test` | host bundle adjustment against the written-out normal equations, rigs included | no |
 | `sfm_cholesky_test` | dense GPU Cholesky vs a CPU reference | yes |
 | `sfm_geometry_test` | F, H, E, P3P, triangulation, RANSAC, SVD/eigen kernels | no |
 | `sfm_merge_test` | Sim(3) algebra, model alignment, track splicing, fold detection | no |
@@ -692,8 +773,7 @@ port. Ordered by what blocks the most.
     worker and one shared `VkContext`.
 17. Parity benchmarking on ETH3D / IMC.
 
-**Deliberately out of scope**, so they are not silently skipped: rig
-constraints in the mapper (a rig is used as a ground-truth-free *diagnostic*,
-not a constraint -- `docs/notes/sfm-rig-constraints.md` surveys what changing
-that would cost, and what a 360 capture would get for it), GPS / geo-registration, MVS / dense reconstruction,
-incremental database updates, and relating two models that share no images.
+**Deliberately out of scope**, so they are not silently skipped: GPS /
+geo-registration beyond the metric gauge, MVS / dense reconstruction,
+incremental database updates, and relating two models that share neither an
+image nor a rig frame.

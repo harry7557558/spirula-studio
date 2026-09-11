@@ -232,6 +232,7 @@ void SfmRunner::take_reconstruction(SfmJob& job) {
     job.init_distortion = _live.init_distortion;
     job.distortion_refine = _live.distortion_refine;
     job.final_per_image_intrinsics = _live.final_per_image_intrinsics;
+    job.final_free_rig = _live.final_free_rig;
     job.max_features = _live.max_features;
     job.max_image_size = _live.max_image_size;
     job.mapper = _live.mapper;
@@ -264,6 +265,7 @@ void SfmRunner::take_masking(PrepJob& prep) {
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_keep_subject = _live.prep.mask_keep_subject;
     prep.mask_max_image_size = _live.prep.mask_max_image_size;
+    prep.mask_dilate_ratio = _live.prep.mask_dilate_ratio;
     prep.mask_threshold = _live.prep.mask_threshold;
     prep.mask_nms = _live.prep.mask_nms;
     prep.mask_memory = _live.prep.mask_memory;
@@ -447,7 +449,88 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
         c.fps = pc.fps;
         man.captures.push_back(std::move(c));
     }
+    man.rigs = build_rigs(job.prep);
     return man;
+}
+
+// The rows' rig choices as definitions (sfm/core/Rig.h): "this input's
+// lenses" is a rig per input; a shared letter joins rows across inputs, as
+// captures of one rig when every input contributes the same lens folders.
+std::vector<sfm::RigDef> SfmRunner::build_rigs(const PrepJob& prep) {
+    std::vector<sfm::RigDef> out;
+    auto join = [](const std::string& a, const std::string& b) {
+        return a.empty() ? b : b.empty() ? a : a + "/" + b;
+    };
+    // Per input, the lens folders under its subdir: the sub-camera rows, or a
+    // video's tracks / views.
+    std::vector<std::vector<std::string>> lenses(prep.inputs.size());
+    for (size_t i = 0; i < prep.inputs.size(); i++) {
+        const PrepInput& in = prep.inputs[i];
+        if (!in.subcameras.empty()) continue;
+        lenses[i] = lens_dirs(prep, in);
+    }
+    // "This input's lenses": one rig per input.
+    for (size_t i = 0; i < prep.inputs.size(); i++) {
+        const PrepInput& in = prep.inputs[i];
+        std::vector<std::string> members;
+        if (in.subcameras.empty()) {
+            if (in.rig == kRigOwn) members = lenses[i];
+        } else {
+            for (const SubCamera& sc : in.subcameras)
+                if (sc.rig == kRigOwn) members.push_back(sc.rel);
+        }
+        if (members.size() < 2) continue;
+        sfm::RigDef d;
+        d.name = in.subdir.empty() ? std::string("rig") : in.subdir;
+        for (const std::string& m : members) {
+            sfm::RigMemberDef md;
+            md.prefix = join(in.subdir, m);
+            d.members.push_back(md);
+        }
+        out.push_back(std::move(d));
+    }
+    // The shared letters.
+    for (int letter = 0; letter < kRigShared; letter++) {
+        const int id = kRigFirstShared + letter;
+        // input -> the lens folders it contributes under this letter
+        std::vector<std::pair<size_t, std::vector<std::string>>> parts;
+        for (size_t i = 0; i < prep.inputs.size(); i++) {
+            const PrepInput& in = prep.inputs[i];
+            std::vector<std::string> mine;
+            if (in.subcameras.empty()) {
+                if (in.rig == id) mine = lenses[i].empty() ? std::vector<std::string>{""} : lenses[i];
+            } else {
+                for (const SubCamera& sc : in.subcameras)
+                    if (sc.rig == id) mine.push_back(sc.rel);
+            }
+            if (!mine.empty()) parts.push_back({i, std::move(mine)});
+        }
+        if (parts.empty()) continue;
+        sfm::RigDef d;
+        d.name = std::string(1, (char)('A' + letter));
+        bool same = parts.size() > 1 && parts[0].second.size() > 1;
+        for (const auto& p : parts) same = same && p.second == parts[0].second;
+        if (same) {
+            // One rig behind several inputs: captures, and members relative
+            // to each.
+            for (const auto& p : parts) d.captures.push_back(prep.inputs[p.first].subdir);
+            for (const std::string& m : parts[0].second) {
+                sfm::RigMemberDef md;
+                md.prefix = m;
+                d.members.push_back(md);
+            }
+        } else {
+            for (const auto& p : parts)
+                for (const std::string& m : p.second) {
+                    sfm::RigMemberDef md;
+                    md.prefix = join(prep.inputs[p.first].subdir, m);
+                    d.members.push_back(md);
+                }
+        }
+        if (d.members.size() < 2) continue;
+        out.push_back(std::move(d));
+    }
+    return out;
 }
 
 // The flags that describe the MODEL rather than where it goes. The command
@@ -493,6 +576,7 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
     if (job.distortion_refine >= 2) argv.push_back("--no-final-extra-params");
     if (job.final_per_image_intrinsics)
         argv.push_back("--final-per-image-intrinsics");
+    if (job.final_free_rig) argv.push_back("--final-free-rig");
     if (job.ba_cpu) {
         argv.push_back("--ba-real");
         argv.push_back("cpu");

@@ -101,6 +101,63 @@ Manifest manifest_read(const std::string& path) {
             m.cameras.push_back(std::move(mc));
         }
     }
+    if (const JsonValue* rigs = root.find("rigs")) {
+        if (!rigs->is_array()) bad(path, "rigs: expected a list");
+        for (const JsonValue& r : rigs->arr) {
+            if (!r.is_object()) bad(path, "rigs: each entry is a mapping");
+            RigDef d;
+            if (const JsonValue* v = r.find("name")) d.name = str_of(*v, path, "name");
+            if (const JsonValue* v = r.find("captures")) {
+                if (!v->is_array()) bad(path, "rigs: captures: expected a list of prefixes");
+                for (const JsonValue& c : v->arr) d.captures.push_back(str_of(c, path, "captures"));
+            }
+            const JsonValue* mem = r.find("members");
+            if (!mem || !mem->is_array()) bad(path, "rigs: each entry lists its members");
+            for (const JsonValue& m : mem->arr) {
+                RigMemberDef md;
+                if (m.type == JsonValue::Type::String) {
+                    md.prefix = m.str;
+                } else if (m.is_object()) {
+                    if (const JsonValue* v = m.find("prefix")) md.prefix = str_of(*v, path, "prefix");
+                    auto numbers = [&](const JsonValue& v, size_t n, const char* key,
+                                       double* out) {
+                        if (!v.is_array() || v.arr.size() != n)
+                            bad(path, std::string("rigs: ") + key + ": expected " +
+                                          std::to_string(n) + " numbers");
+                        for (size_t k = 0; k < n; k++) {
+                            if (v.arr[k].type != JsonValue::Type::Number)
+                                bad(path, std::string("rigs: ") + key + ": expected numbers");
+                            out[k] = v.arr[k].num;
+                        }
+                    };
+                    if (const JsonValue* v = m.find("rotation")) {
+                        double q[4];
+                        numbers(*v, 4, "rotation", q);
+                        md.ext.R = quaternionToRotation({q[0], q[1], q[2], q[3]});
+                        md.has_ext = true;
+                    }
+                    if (const JsonValue* v = m.find("translation")) {
+                        double t[3];
+                        numbers(*v, 3, "translation", t);
+                        md.ext.t = {t[0], t[1], t[2]};
+                        md.has_ext = true;
+                    }
+                    if (const JsonValue* v = m.find("fixed")) {
+                        if (v->type != JsonValue::Type::Bool) bad(path, "rigs: fixed: expected true or false");
+                        md.ext_fixed = v->b;
+                    }
+                } else {
+                    bad(path, "rigs: a member is a prefix or a mapping");
+                }
+                while (!md.prefix.empty() && (md.prefix.back() == '/' || md.prefix.back() == '\\'))
+                    md.prefix.pop_back();
+                if (md.prefix.empty()) bad(path, "rigs: a member needs a prefix");
+                d.members.push_back(std::move(md));
+            }
+            if (d.members.size() < 2) bad(path, "rigs: a rig needs at least two members");
+            m.rigs.push_back(std::move(d));
+        }
+    }
     if (const JsonValue* caps = root.find("captures")) {
         if (!caps->is_array()) bad(path, "captures: expected a list");
         for (const JsonValue& c : caps->arr) {
@@ -170,6 +227,44 @@ std::string manifest_write(const Manifest& m, bool json) {
         }
         root.obj.emplace_back("cameras", std::move(cams));
     }
+    if (!m.rigs.empty()) {
+        JsonValue rigs;
+        rigs.type = JsonValue::Type::Array;
+        for (const RigDef& d : m.rigs) {
+            JsonValue e;
+            e.type = JsonValue::Type::Object;
+            if (!d.name.empty()) e.obj.emplace_back("name", text(d.name));
+            if (!d.captures.empty()) {
+                JsonValue caps;
+                caps.type = JsonValue::Type::Array;
+                for (const std::string& c : d.captures) caps.arr.push_back(text(c));
+                e.obj.emplace_back("captures", std::move(caps));
+            }
+            JsonValue mem;
+            mem.type = JsonValue::Type::Array;
+            for (const RigMemberDef& md : d.members) {
+                if (!md.has_ext) {
+                    mem.arr.push_back(text(md.prefix));
+                    continue;
+                }
+                JsonValue o;
+                o.type = JsonValue::Type::Object;
+                o.obj.emplace_back("prefix", text(md.prefix));
+                const Quat q = rotationToQuaternion(md.ext.R);
+                JsonValue rot, tr;
+                rot.type = tr.type = JsonValue::Type::Array;
+                for (double v : q) rot.arr.push_back(number(v));
+                for (double v : {md.ext.t.x, md.ext.t.y, md.ext.t.z}) tr.arr.push_back(number(v));
+                o.obj.emplace_back("rotation", std::move(rot));
+                o.obj.emplace_back("translation", std::move(tr));
+                if (!md.ext_fixed) o.obj.emplace_back("fixed", boolean(false));
+                mem.arr.push_back(std::move(o));
+            }
+            e.obj.emplace_back("members", std::move(mem));
+            rigs.arr.push_back(std::move(e));
+        }
+        root.obj.emplace_back("rigs", std::move(rigs));
+    }
     if (!m.captures.empty()) {
         JsonValue caps;
         caps.type = JsonValue::Type::Array;
@@ -237,6 +332,7 @@ std::string manifest_apply(const Manifest& m, SfmConfig& cfg,
     }
     for (const ManifestCapture& c : m.captures)
         cfg.telemetry_inputs.push_back({c.prefix, resolve(c.telemetry, base), c.fps, c.time_offset});
+    for (const RigDef& r : m.rigs) cfg.rigs.push_back(r);
     return {};
 }
 

@@ -107,21 +107,6 @@ struct Masker::Impl {
     std::vector<SeedPrompt> pending;
     std::map<int, int> instance_of;
 
-    // Row-parallel like the resamplers above: at 1080p each of these passes is
-    // a couple of milliseconds on one thread and the GPU is idle behind them,
-    // and a masking prompt runs several per frame (one per phrase, plus the
-    // negatives, plus the composition).
-    void accumulate(const sam::Result& r, std::vector<uint8_t>& hit, size_t n) {
-        for (const auto& d : r.detections) {
-            if (d.mask.data.size() != n) continue;
-            const uint8_t* src = d.mask.data.data();
-            uint8_t* dst = hit.data();
-            nn::parallel_for((int64_t)n, [src, dst](int64_t lo, int64_t hi) {
-                for (int64_t i = lo; i < hi; ++i)
-                    if (src[i] > 127) dst[i] = 1;
-            }, /*min_chunk=*/65536);
-        }
-    }
     static void append(sam::Result& all, const sam::Result& r) {
         all.detections.insert(all.detections.end(), r.detections.begin(),
                               r.detections.end());
@@ -239,7 +224,6 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
     if (s.opts.video) {
         for (auto& t : s.trackers) {
             sam::Result r = t->trackEncoded();
-            s.accumulate(r, hit, n);
             Impl::append(all, r);
         }
         if (s.visual) {
@@ -247,7 +231,6 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
             // frame the tracker has just finished, and on an empty tracker this
             // is a no-op anyway.
             sam::Result r = s.visual->trackEncoded();
-            s.accumulate(r, hit, n);
             Impl::append(all, r);
 
             // Everything drawn at or before this frame that has not been used
@@ -277,7 +260,6 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
                 seeded.detections.back().instance_id = m.instance_id;
                 seeded.detections.back().score = m.iou_score;
                 seeded.detections.back().box = Impl::bounding_box(m);
-                s.accumulate(seeded, hit, n);
                 Impl::append(all, seeded);
             }
         }
@@ -288,7 +270,6 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
             cp.score_threshold = s.opts.threshold;
             cp.nms_threshold = s.opts.nms;
             sam::Result r = s.session.segmentConcept(cp);
-            s.accumulate(r, hit, n);
             Impl::append(all, r);
         }
         // Without a memory bank a click means nothing on any frame but its own,
@@ -307,29 +288,25 @@ bool Masker::run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_ou
         }
         for (const auto& kv : per_object) {
             sam::Result r = s.session.segmentVisual(kv.second);
-            s.accumulate(r, hit, n);
             Impl::append(all, r);
         }
     }
 
     // Negative phrases carve back out of what the positives found. The features
     // are already on the device, so this is a decoder pass only.
+    sam::Result neg;
     for (const std::string& phrase : s.neg) {
         sam::ConceptPrompt cp;
         cp.text = phrase;
         cp.score_threshold = s.opts.threshold;
         cp.nms_threshold = s.opts.nms;
-        sam::Result r = s.session.segmentConcept(cp);
-        for (const auto& d : r.detections) {
-            if (d.mask.data.size() != n) continue;
-            const uint8_t* src = d.mask.data.data();
-            uint8_t* dst = hit.data();
-            nn::parallel_for((int64_t)n, [src, dst](int64_t lo, int64_t hi) {
-                for (int64_t i = lo; i < hi; ++i)
-                    if (src[i] > 127) dst[i] = 0;
-            }, /*min_chunk=*/65536);
-        }
+        Impl::append(neg, s.session.segmentConcept(cp));
     }
+
+    // Every positive detection reached `all` as it was found, so the union and
+    // the margin happen once here. The boxes it measures the margin from are
+    // still in `scaled` pixels; the overlay below is what converts them.
+    compose_hit(all, neg, s.opts.dilate_ratio, hit);
 
     std::vector<uint8_t> mask(n);
     {

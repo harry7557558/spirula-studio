@@ -41,6 +41,10 @@ struct FrameExtractJob {
     float scale = 1.0f;
     int   track = -1;              // -1 = every track
     int   threads = 0;             // encoder threads; 0 = cores - 1
+    // A multi-track file decoded in lockstep, every track keeping the same
+    // instants (one sharpness window over all of them), so the frames of one
+    // stem are a rig. Off picks each track's sharpest frame on its own.
+    bool  sync_tracks = false;
 
     // A 360 capture: both tracks are decoded together, stitched into the EAC
     // canvas and resampled into `views` (app/Pano360.h) instead of being split

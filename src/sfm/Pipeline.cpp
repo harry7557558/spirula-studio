@@ -359,6 +359,7 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
         opt.mode = cfg.sensor_gauge == "up" ? SensorMode::Up : SensorMode::Auto;
         opt.gps_full = cfg.metric_gps == "full";
         opt.gps_max_error = gps ? cfg.metric_max_error : 5.0;
+        opt.gps_max_error_frac = cfg.metric_max_error_frac;
         opt.verbose = verbose;
         for (size_t i = 0; i < models.size(); i++) {
             const SensorGaugeResult r = fitSensorGauge(models[i], caps, opt);
@@ -410,7 +411,8 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
         for (Vec3& c : ref.centres) c = transformPoint(pre, c);
         const MetricFit fit =
             fitMetricGauge(ref, cfg.metric_max_error,
-                           flat ? MetricAxes::Horizontal : MetricAxes::Full);
+                           flat ? MetricAxes::Horizontal : MetricAxes::Full,
+                           cfg.metric_max_error_frac);
         // A refused fit leaves the model in the frame it came in with -- the
         // sensors', or the normalized one the fallback below writes. Applying
         // the identity it returns would still claim the metre.
@@ -581,16 +583,43 @@ void writeGauge(const fs::path& dir, const ModelGauge& g) {
     if (g.scale_sigma > 0) f << "scale_sigma " << g.scale_sigma << "\n";
 }
 
+// rigs.txt beside a model that used one: each member's cam_from_rig as the
+// run settled it, in the model's own units -- what a later run could be
+// handed back as a manifest's `rotation` / `translation`.
+void writeRigs(const fs::path& dir, const Reconstruction& m, const RigTable* rigs) {
+    if (!rigs || m.rigs.empty()) return;
+    std::ofstream f(dir / "rigs.txt", std::ios::trunc);
+    if (!f) return;
+    f << "# Rig calibration from spirula sfm, cam_from_rig per member as\n"
+         "# rig member reference qw qx qy qz tx ty tz frames spread_deg, in this model's units.\n";
+    f.precision(12);
+    for (size_t r = 0; r < rigs->rigs.size() && r < m.rigs.size(); r++) {
+        const RigSpec& spec = rigs->rigs[r];
+        const RigCalib& c = m.rigs[r];
+        if (c.ref < 0) continue;
+        for (size_t k = 0; k < spec.members.size() && k < c.cam_from_rig.size(); k++) {
+            if (!c.established[k]) continue;
+            const Quat q = rotationToQuaternion(c.cam_from_rig[k].R);
+            const Vec3& t = c.cam_from_rig[k].t;
+            f << spec.name << ' ' << spec.members[k].prefix << ' '
+              << spec.members[(size_t)c.ref].prefix << ' ' << q[0] << ' ' << q[1] << ' ' << q[2]
+              << ' ' << q[3] << ' ' << t.x << ' ' << t.y << ' ' << t.z << ' ' << c.support[k]
+              << ' ' << c.spread_deg[k] << "\n";
+        }
+    }
+}
+
 // Every reconstruction as <dir>/0, <dir>/1, ... (D41) -- COLMAP's layout for a
 // view graph that is not connected. `sparse/0` has the most 3D points, so a
 // single-model dataset still writes exactly `sparse/0`.
 void writeModels(const std::vector<Reconstruction>& models, const fs::path& dir,
-                 bool verbose, const std::vector<ModelGauge>& gauge) {
+                 bool verbose, const std::vector<ModelGauge>& gauge, const RigTable* rigs) {
     for (size_t i = 0; i < models.size(); i++) {
         fs::path p = dir / std::to_string(i);
         fs::create_directories(p);
         models[i].writeBinary(p.string());
         if (i < gauge.size()) writeGauge(p, gauge[i]);
+        writeRigs(p, models[i], rigs);
         if (verbose)
             L::err(Tag::Map, M::map_wrote_model,
                    {(long long)i, (long long)models[i].numRegistered(),
@@ -739,6 +768,29 @@ void printAssembly(const AssembleStats& ast, size_t models, Tag tag) {
 // Flat or bottom-up, per --mapper; flat is the default and what the
 // measurements are on. Either way the same schedule assembles the models (D63,
 // sfm/map/Assemble.h) -- there is no separate manage stage.
+RigTable buildRigs(const MatchesDatabase& db, const SfmConfig& cfg, bool verbose) {
+    std::vector<std::string> names;
+    names.reserve(db.images.size());
+    for (const ImageEntry& im : db.images) names.push_back(im.name);
+    RigTable rigs = buildRigTable(names, cfg.rigs);
+    if (!verbose) return rigs;
+    for (const RigSpec& r : rigs.rigs) {
+        size_t full = 0;
+        for (const auto& fr : r.frames) {
+            bool all = true;
+            for (uint32_t img : fr) all = all && img != kNoImage;
+            full += all ? 1 : 0;
+        }
+        std::string members;
+        for (const RigMemberDef& m : r.members)
+            members += (members.empty() ? "" : ", ") + m.prefix;
+        L::out(Tag::Map, M::rig_table,
+               {r.name, members, (long long)r.frames.size(), (long long)full,
+                r.anyKnownExt() ? M::rig_ext_given.get() : M::rig_ext_estimated.get()});
+    }
+    return rigs;
+}
+
 std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
                                       const std::vector<FeatureSet>& feats, SfmConfig& cfg,
                                       AssembleStats& ast) {
@@ -788,6 +840,13 @@ std::vector<Reconstruction> finishModels(Mapper& mapper,
             m = mapper.perImageIntrinsics(m, cfg.final_extra_params);
         if (verbose)
             L::err(Tag::Map, M::map_per_image_done,
+                   {(long long)models.size(), L::num(now() - t1, 1)});
+    }
+    if (cfg.final_free_rig && mapper.rigs()) {
+        const double t1 = now();
+        for (Reconstruction& m : models) m = mapper.releaseRigs(m);
+        if (verbose)
+            L::err(Tag::Map, M::map_free_rig_done,
                    {(long long)models.size(), L::num(now() - t1, 1)});
     }
     secs = now() - t0;
@@ -1448,7 +1507,15 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     t0 = now();
     events::stage_begin(Stage::Map, (int64_t)db.images.size());
     events::map_begin(db.images.size());
-    Mapper mapper(db, feats, mapopt, cs.ids);
+    RigTable rigs;
+    try {
+        rigs = buildRigs(db, cfg, verbose);
+    } catch (const std::runtime_error& e) {
+        L::fail(Tag::Map, M::rig_bad, {e.what()});
+        r.exit_code = 2;
+        return r;
+    }
+    Mapper mapper(db, feats, mapopt, cs.ids, &rigs);
     AssembleStats ast;
     std::vector<Reconstruction> models = runMapper(mapper, db, feats, cfg, ast);
     double t_map = now() - t0;
@@ -1473,7 +1540,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // one camera per frame size is not that.
     const size_t n_cameras = models.empty() ? 0 : models.front().cameras.size();
     splitCamerasBySize(models, feats);
-    writeModels(models, sparsedir, verbose, gauge);
+    writeModels(models, sparsedir, verbose, gauge, &rigs);
 
     // The mapper reports its own breakdown when `run()` returns; the passes
     // that assemble its models accumulate into the same counters.
@@ -1656,6 +1723,13 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
         if (a == "--manifest") {
             if (i + 1 >= argc) return "--manifest: missing value";
             manifest_path = args[(size_t)++i];
+            continue;
+        }
+        if (a == "--rig") {
+            if (i + 1 >= argc) return "--rig: missing value";
+            RigDef d;
+            if (std::string err = parseRigArg(args[(size_t)++i], d); !err.empty()) return err;
+            cfg.rigs.push_back(std::move(d));
             continue;
         }
         if (a == "--progress-dir") {

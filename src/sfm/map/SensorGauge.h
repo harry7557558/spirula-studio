@@ -42,7 +42,8 @@ enum class SensorMode { Auto, Up, None };
 struct SensorGaugeOptions {
     SensorMode mode = SensorMode::Auto;
     bool gps_full = false;          // fit altitude too (D75 says not to)
-    double gps_max_error = 5.0;     // metres, the RANSAC radius
+    double gps_max_error = 5.0;     // metres, the RANSAC radius ...
+    double gps_max_error_frac = 0;  // ... or this fraction of the fixes' RMS radius
     bool refine = true;             // the joint solve after the closed forms
     bool verbose = false;
 };
@@ -602,7 +603,8 @@ private:
         }
         out.gps_frames = (int)ref.centres.size();
         out.gps = fitMetricGauge(ref, _opt.gps_max_error,
-                                 _opt.gps_full ? MetricAxes::Full : MetricAxes::Horizontal);
+                                 _opt.gps_full ? MetricAxes::Full : MetricAxes::Horizontal,
+                                 _opt.gps_max_error_frac);
         if (!out.gps.ok) return;
         for (size_t i = 0; i < owner.size(); i++)
             if (!out.gps.inlier_mask[i]) _gps_ok[(size_t)owner[i]] = 0;

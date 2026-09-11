@@ -11,6 +11,7 @@
 #include "sfm/SfmConfig.h"
 #include "sfm/ba/Problem.h"
 #include "sfm/ba/Solver.h"
+#include "sfm/core/Rig.h"
 #include "sfm/map/Bundle.h"
 #include "core/Env.h"
 #include "i18n/catalog/SfmHelp.h"
@@ -62,6 +63,7 @@ void printBaHelp(FILE* out) {
         {"--loss-param X", "1", &H::ba_opt_loss_param},
         {"--model {snavely|snavely_f}", "snavely", &H::ba_opt_model},
         {"--shared-intrinsics", "", &H::ba_opt_shared_intrinsics},
+        {"--rig PREFIX,PREFIX,...", "", &H::opt_rig},
         {"--solver {auto|dense|cg}", "auto", &H::ba_opt_solver},
         {"--max-iters N", "", &H::ba_opt_max_iters},
         {"--damping X", "", &H::ba_opt_damping},
@@ -94,10 +96,59 @@ void printBaHelp(FILE* out) {
         std::fprintf(out, "%s\n", line.c_str());
 }
 
+// The rig table over a written model's image names, with each member's
+// extrinsic averaged from the poses -- what the mapper's calibration would
+// have found, so the benchmark builds the same rigged problem it builds.
+static sfm::RigTable rigTableForModel(sfm::Reconstruction& rec,
+                                      const std::vector<sfm::RigDef>& defs) {
+    uint32_t n = 0;
+    for (const auto& kv : rec.images) n = std::max(n, kv.first + 1);
+    std::vector<std::string> names(n);
+    for (const auto& kv : rec.images) names[kv.first] = kv.second.name;
+    sfm::RigTable rigs = sfm::buildRigTable(names, defs);
+    rec.rigs.assign(rigs.rigs.size(), sfm::RigCalib{});
+    const sfm::RigCalibOptions copt;
+    for (size_t r = 0; r < rigs.rigs.size(); r++) {
+        const sfm::RigSpec& spec = rigs.rigs[r];
+        sfm::RigCalib& c = rec.rigs[r];
+        c.resize(spec.members.size());
+        c.ref = 0;
+        c.established[0] = 1;
+        auto regd = [&](uint32_t img) {
+            auto it = img == sfm::kNoImage ? rec.images.end() : rec.images.find(img);
+            return it != rec.images.end() && it->second.registered;
+        };
+        for (uint32_t m = 1; m < spec.members.size(); m++) {
+            std::vector<sfm::Pose> rel;
+            for (const auto& fr : spec.frames)
+                if (regd(fr[0]) && regd(fr[m]))
+                    rel.push_back(sfm::relativePose(rec.images.at(fr[0]).pose,
+                                                    rec.images.at(fr[m]).pose));
+            if ((int)rel.size() < copt.min_frames) continue;
+            sfm::Pose avg;
+            double spread = 0;
+            const int inl = sfm::averageRelativePoses(rel, copt, avg, spread, nullptr);
+            if (inl < copt.min_frames) continue;
+            c.cam_from_rig[m] = avg;
+            c.established[m] = 1;
+            c.support[m] = (uint32_t)inl;
+            c.spread_deg[m] = spread;
+        }
+    }
+    return rigs;
+}
+
+static size_t calibratedMembers(const sfm::Reconstruction& rec) {
+    size_t n = 0;
+    for (const sfm::RigCalib& c : rec.rigs) n += c.numEstablished();
+    return n;
+}
+
 int cmdBa(int argc, char** argv) {
     std::string file, ply_prefix, out_dir, loss = "trivial", model = "snavely";
     SolverOptions opt;
     bool shared_intr = false, loss_given = false;
+    std::vector<sfm::RigDef> rig_defs;
 
     for (int i = 0; i < argc; i++) {
         std::string a = argv[i];
@@ -110,6 +161,15 @@ int cmdBa(int argc, char** argv) {
         else if (a == "-o" || a == "--output") out_dir = next();
         else if (a == "--model") model = next();
         else if (a == "--shared-intrinsics") shared_intr = true;
+        else if (a == "--rig") {
+            sfm::RigDef d;
+            const std::string err = sfm::parseRigArg(next(), d);
+            if (!err.empty()) {
+                fprintf(stderr, "spirula-sfm ba: error: %s\n", err.c_str());
+                return 1;
+            }
+            rig_defs.push_back(std::move(d));
+        }
         else if (a == "--max-iters") opt.max_iters = std::stoi(next());
         else if (a == "--damping") opt.init_damping = std::stod(next());
         else if (a == "--rtol") opt.rtol = std::stod(next());
@@ -174,6 +234,7 @@ int cmdBa(int argc, char** argv) {
     auto t0 = std::chrono::high_resolution_clock::now();
     sfm::Reconstruction rec;
     sfm::BundleLayout layout;
+    sfm::RigTable rigs;
     if (is_model) {
         sfm::BundleOptions bopt;
         if (!loss_given) { loss = bopt.loss; opt.loss_param = bopt.loss_param; }
@@ -181,6 +242,17 @@ int cmdBa(int argc, char** argv) {
         bopt.real = opt.real;
         bopt.verbose = opt.verbose;
         bopt.device = opt.device;
+        if (!rig_defs.empty()) {
+            try {
+                rigs = rigTableForModel(rec, rig_defs);
+            } catch (const std::exception& e) {
+                fprintf(stderr, "spirula-sfm ba: error: %s\n", e.what());
+                return 1;
+            }
+            bopt.rigs = &rigs;
+            fprintf(stderr, "[model] %zu rig(s), %zu member(s) calibrated from the poses\n",
+                    rigs.rigs.size(), (size_t)calibratedMembers(rec));
+        }
         layout = sfm::buildBundle(rec, bopt);
         if (layout.P.num_images < 2) {
             fprintf(stderr, "spirula-sfm ba: error: %s holds no registered model\n", file.c_str());

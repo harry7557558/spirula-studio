@@ -221,7 +221,8 @@ const char* groupLabel(const char* group) {
         {"pipeline", &F::group_pipeline}, {"colour", &F::group_colour},
         {"camera", &F::group_camera},
         {"features", &F::group_features}, {"matching", &F::group_matching},
-        {"mapper", &F::group_mapper},     {"manage", &F::group_manage},
+        {"mapper", &F::group_mapper},     {"rig", &F::group_rig},
+        {"manage", &F::group_manage},
         {"merge", &F::group_merge},       {"input", &F::group_input},
         {"runtime", &F::group_runtime},
     };

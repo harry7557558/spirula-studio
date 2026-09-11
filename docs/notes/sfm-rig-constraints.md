@@ -1,10 +1,13 @@
 # Rig constraints in the mapper and BA — a survey
 
 Written 2026-09-08 while adding GoPro `.360` support (`docs/datasets.md`, "360
-cameras"). **Nothing here is implemented.** The question it answers is: what
-would it take to tell the reconstruction that a set of images has a fixed —
-possibly optimizable — relative pose, and would that be a better answer than
-the current one for a 360 capture?
+cameras"). **Implemented 2026-09-10 as item 4 below, with items 1 and 2 on top
+of it**: `src/sfm/core/Rig.h` is the definition, `src/sfm/README.md` "Rigs"
+what the run does with it, `src/sfm/ba/README.md` "Rigs" the solver layout.
+The survey is kept as written; the question it answered was what it would take
+to tell the reconstruction that a set of images has a fixed — possibly
+optimizable — relative pose, and whether that would be a better answer than the
+current one for a 360 capture.
 
 `src/sfm/README.md` lists rig constraints as deliberately out of scope, and
 `docs/notes/sfm-in-process-plan.md` §4 already says where they would arrive

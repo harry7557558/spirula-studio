@@ -117,6 +117,7 @@ void usage() {
     help_row("--max-frames <n>", H::trk_max_frames);
     help_row("--out <dir>", H::trk_out);
     help_row("--keep-prompted", H::trk_keep_prompted);
+    help_row("--dilate-ratio <f>", H::mask_dilate);
     help_row("--overlay", H::trk_overlay);
     std::fprintf(stderr, "\n");
 
@@ -192,6 +193,7 @@ struct Options {
     bool multimask = false, show_vram = false, profile = false, validate = false;
     bool overlay = false, keep_prompted = false;
     float threshold = 0.5f, nms = 0.1f;
+    float dilate_ratio = 0.05f;   // sam::MaskOptions, same default
     int max_frames = 0;
     int img_size = 0;
     int detect_every = 1, memory_frames = 0, max_size = 1600;
@@ -250,6 +252,8 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--device") o.device = next("--device");
         else if (a == "--threshold") o.threshold = std::strtof(next("--threshold"), nullptr);
         else if (a == "--nms") o.nms = std::strtof(next("--nms"), nullptr);
+        else if (a == "--dilate-ratio")
+            o.dilate_ratio = std::strtof(next("--dilate-ratio"), nullptr);
         else if (a == "--max-frames") o.max_frames = std::atoi(next("--max-frames"));
         else if (a == "--img-size") o.img_size = std::atoi(next("--img-size"));
         else if (a == "--shape") o.shape_spec = next("--shape");
@@ -464,6 +468,7 @@ int cmd_track(const Options& o) {
     mo.keep_prompted = o.keep_prompted;
     mo.threshold = o.threshold;
     mo.nms = o.nms;
+    mo.dilate_ratio = o.dilate_ratio;
     mo.detect_every = o.detect_every;
     mo.memory_frames = o.memory_frames;
     mo.max_size = o.max_size;

@@ -726,6 +726,7 @@ inline std::vector<Reconstruction> assembleModels(Mapper& mapper,
     MergeOptions merge_opt = mopt.merge;
     merge_opt.duplicate = mopt.duplicate;
     merge_opt.validate = seamValidator(mapper, mopt, &st.finish);
+    merge_opt.rigs = mapper.rigs();
 
     // A component that fitted its own focal to its own noise cannot align with
     // anything, and on a rig every component is looking at the same physical

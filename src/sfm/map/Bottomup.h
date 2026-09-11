@@ -161,7 +161,7 @@ inline std::vector<Reconstruction> bottomUpReconstruct(Mapper& mapper, const Mat
     ao.verbose = opt.verbose;
     std::vector<Reconstruction> models =
         reconstructAtoms(db, feats, mapper.options(), mapper.cameraIds(),
-                         mapper.startingCameras(), atoms, ao, as);
+                         mapper.startingCameras(), atoms, ao, as, mapper.rigs());
     st.t_atoms = as.secs;
     st.models_from_atoms = models.size();
     st.atom_threads = as.threads;

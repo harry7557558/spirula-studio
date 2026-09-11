@@ -305,11 +305,10 @@ static std::string log_stamp() {
 #else
     localtime_r(&t, &tm);
 #endif
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
-                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                  tm.tm_hour, tm.tm_min, tm.tm_sec, ms);
-    return buf;
+    char date[32], frac[16];
+    std::strftime(date, sizeof(date), "[%Y-%m-%d %H:%M:%S", &tm);
+    std::snprintf(frac, sizeof(frac), ".%03d] ", ms);
+    return std::string(date) + frac;
 }
 
 // Run-start stamp for log file names: yyyyMMddHHmmss.
@@ -323,9 +322,7 @@ static std::string run_log_stamp() {
     localtime_r(&t, &tm);
 #endif
     char buf[24];
-    std::snprintf(buf, sizeof(buf), "%04d%02d%02d%02d%02d%02d",
-                  tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                  tm.tm_hour, tm.tm_min, tm.tm_sec);
+    std::strftime(buf, sizeof(buf), "%Y%m%d%H%M%S", &tm);
     return buf;
 }
 
@@ -439,13 +436,13 @@ void GuiApp::write_run_settings(std::ofstream& f) {
         out += "  " + k + " = " + v + "\n";
     };
 
-    section("运行");
+    section(msg::runlog_section_run.get());
     line("run_started", run_log_stamp());
     line("engine", effective_engine() == Engine::BuiltIn ? "builtin" : "colmap");
     line("preset", _preset);
     if (!_preset_file.empty()) line("preset_file", _preset_file);
 
-    section("数据集准备");
+    section(msg::runlog_section_prep.get());
     line("workspace", _workspace);
     line("photo_import", photo_import_name(_photo_import));
     for (const PrepInput& s : _sources)
@@ -455,7 +452,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("masking_enabled", cfg_str(_mask_enable));
     line("mask_detect_every", std::to_string(_mask_detect_every));
 
-    section("重建(SfM)");
+    section(i18n::format(msg::runlog_section_recon, {"SfM"}));
     const SfmJob& j = _sfm_job;
     line("quality", std::to_string(j.quality));
     line("data_type", std::to_string(j.data_type));
@@ -471,6 +468,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     if (!j.init_distortion.empty()) line("init_distortion", j.init_distortion);
     line("distortion_refine", std::to_string(j.distortion_refine));
     line("final_per_image_intrinsics", cfg_str(j.final_per_image_intrinsics));
+    line("final_free_rig", cfg_str(j.final_free_rig));
     line("max_features", std::to_string(j.max_features));
     line("max_image_size", std::to_string(j.max_image_size));
     line("metric_gps", std::to_string(j.metric_gps));
@@ -482,17 +480,18 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("force_external_masking", cfg_str(j.prep.force_external_masking));
     line("video_fps", cfg_str(j.prep.video_fps));
     line("sharp_window", std::to_string(j.prep.sharp_window));
+    line("sync_tracks", cfg_str(j.prep.sync_tracks));
     line("max_frames", std::to_string(j.prep.max_frames));
     if (!j.extra_args.empty()) line("extra_args", j.extra_args);
 
     if (effective_engine() == Engine::Colmap) {
-        section("重建(COLMAP)");
+        section(i18n::format(msg::runlog_section_recon, {"COLMAP"}));
         line("colmap_exe", _colmap_job.colmap_exe);
         line("camera_model", _colmap_job.camera_model);
         line("camera_mode", std::to_string(_colmap_job.camera_mode));
     }
 
-    section("几何(深度与法线)");
+    section(msg::runlog_section_geometry.get());
     line("enabled", cfg_str(_geometry.enable));
     line("model", _geometry.model);
     line("want_depth", cfg_str(_geometry.want_depth));
@@ -510,12 +509,20 @@ void GuiApp::write_run_settings(std::ofstream& f) {
         SS_CONFIG_FIELDS(SS_SNAP_FIELD)
 #undef SS_SNAP_FIELD
         if (!body.empty()) {
-            out += "[训练:" + std::string(kTrainSections[si]) + "]\n";
+            const Msg* label = tmsg::section_label(kTrainSections[si]);
+            section(i18n::format(
+                msg::runlog_section_train,
+                {label ? label->get() : kTrainSections[si]}));
             out += body;
         }
     }
 
-    out += "=============================== 设置结束 ===============================\n\n";
+    // A fixed-width rule, so the separator still reads as one whatever the
+    // translated label measures.
+    const std::string end = msg::runlog_settings_end.get();
+    const int fill = std::max(72 - i18n::display_width(end) - 2, 6);
+    out += std::string(fill / 2, '=') + " " + end + " " +
+           std::string(fill - fill / 2, '=') + "\n\n";
     f << out;
     f.flush();
 }
@@ -1494,6 +1501,14 @@ void GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
         static const std::atomic<bool> never{false};
         s.eac360 = probe_eac360(_ffmpeg_exe, s.path, never);
     }
+    // A file with several lenses starts as a rig of its own; the row can
+    // still say otherwise.
+    for (PrepInput& s : _sources) {
+        if (!s.is_video || s.video_tracks > 0) continue;
+        static const std::atomic<bool> never{false};
+        s.video_tracks = std::max(1, probe_video_tracks(_ffmpeg_exe, s.path, never));
+        if (s.eac360.valid() || s.video_tracks >= 2) s.rig = kRigOwn;
+    }
     for (const std::string& masks : mask_folders) {
         if (attach_mask_folder(_sources, masks))
             log(i18n::format(dmsg::log_masks_attached, {masks}));
@@ -2292,6 +2307,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.pano = _sfm_job.prep.pano;
     prep.max_frames = _sfm_job.prep.max_frames;
     prep.force_external_decode = _sfm_job.prep.force_external_decode;
+    prep.sync_tracks = _sfm_job.prep.sync_tracks;
     prep.ffmpeg_exe = _ffmpeg_exe;
     prep.python_exe = _python_exe;
     prep.mask_enable = _mask_enable;
@@ -2301,6 +2317,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.mask_negative_prompt = _mask.negative_prompt;
     prep.mask_keep_subject = _mask.keep_subject;
     prep.mask_max_image_size = _mask.max_image_size;
+    prep.mask_dilate_ratio = _mask.dilate_ratio;
     prep.mask_threshold = _mask.threshold;
     prep.mask_nms = _mask.nms;
     prep.mask_memory = _mask_memory;
@@ -2331,6 +2348,7 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.mask_negative_prompt = prep.mask_negative_prompt;
     _colmap_job.mask_keep_subject = prep.mask_keep_subject;
     _colmap_job.mask_max_image_size = prep.mask_max_image_size;
+    _colmap_job.mask_dilate_ratio = prep.mask_dilate_ratio;
     _colmap_job.mask_threshold = prep.mask_threshold;
     _colmap_job.mask_nms = prep.mask_nms;
     _colmap_job.mask_memory = prep.mask_memory;
@@ -2805,6 +2823,13 @@ void GuiApp::draw_dataset_basics() {
         ImGui::SetNextItemWidth(px(220.0f));
         ui::SliderInt(dmsg::sharpness_window, &_sfm_job.prep.sharp_window, 1, 8);
         ui::help_on_hover(dmsg::sharpness_window_help);
+        bool any_multi = false;
+        for (const PrepInput& s : _sources)
+            any_multi = any_multi || (s.is_video && !s.eac360.valid() && s.video_tracks >= 2);
+        if (any_multi) {
+            ui::Checkbox(dmsg::sync_lenses, &_sfm_job.prep.sync_tracks);
+            ui::help_on_hover(dmsg::sync_lenses_help);
+        }
         if (any_pano360()) draw_pano360_options();
         if (!backends().builtin_video) {
             // What the note says is a build-configuration diagnostic and
@@ -2963,6 +2988,23 @@ void GuiApp::draw_source_cameras() {
         ui::InputFloat(dmsg::focal_x_width, &group_focal(_sources, g), 0, 0,
                        "%.4g");
         ui::help_on_hover(dmsg::focal_x_width_help);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(px(150.0f));
+        {
+            // "This input's lenses" only means something for an input with
+            // several: a lone photo folder or a one-lens video has none to rig.
+            const bool multi = g.sub >= 0 || !lens_dirs(_sfm_job.prep, in).empty();
+            const char* const items[] = {ui::detail::label(dmsg::rig_none),
+                                         ui::detail::label(dmsg::rig_own), "A", "B", "C", "D"};
+            int& rig = group_rig(_sources, g);
+            if (!multi && rig == kRigOwn) rig = kRigNone;
+            const int first = multi ? 0 : 1;
+            int idx = rig - first;
+            if (idx < 0) idx = 0;
+            if (ui::ComboRaw("##rig", &idx, items + first, kRigFirstShared + kRigShared - first))
+                rig = idx + first;
+            ui::help_on_hover(dmsg::rig_help);
+        }
         draw_lens_warning(dir, in.is_video, models[i], /*builtin=*/true);
         ImGui::PopID();
     }
@@ -3226,6 +3268,13 @@ void GuiApp::draw_masking_options() {
         if (ui::InputInt(dmsg::mask_max_size, &_mask.max_image_size))
             _mask.max_image_size = std::max(0, _mask.max_image_size);
         ui::help_on_hover(dmsg::mask_max_size_help);
+        ImGui::SetNextItemWidth(px(220.0f));
+        float margin_pct = _mask.dilate_ratio * 100.0f;
+        if (ui::SliderFloat(keep_subject ? dmsg::mask_dilate_keep
+                                         : dmsg::mask_dilate_remove,
+                            &margin_pct, 0.0f, 50.0f, "%.0f%%"))
+            _mask.dilate_ratio = margin_pct / 100.0f;
+        ui::help_on_hover(dmsg::mask_dilate_help);
 
         // The rest is the memory bank, which photos never get.
         bool any_video = false;
@@ -4026,6 +4075,8 @@ void GuiApp::draw_sfm_advanced() {
                  &_sfm_job.final_per_image_intrinsics);
     ImGui::EndDisabled();
     ui::help_on_hover(dmsg::sfm_per_image_intrinsics_help);
+    ui::Checkbox(dmsg::sfm_final_free_rig, &_sfm_job.final_free_rig);
+    ui::help_on_hover(dmsg::sfm_final_free_rig_help);
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::InputInt(dmsg::max_features_auto, &_sfm_job.max_features);

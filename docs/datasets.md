@@ -376,6 +376,11 @@ reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
 
 ## 360 cameras (GoPro MAX `.360`)
 
+The ten views of a frame share one file stem under `cam0/` .. `cam9/`, so
+`--rig cam0,cam1,...,cam9` (Spirula Studio: the input's rig row, on by
+default for a `.360`) reconstructs them as one pose per frame with the
+inter-view poses calibrated from the capture -- `src/sfm/README.md` "Rigs".
+
 `src/app/Pano360.h` is the one implementation: it recognises the packing,
 plans the views, and resamples them. Both decode paths go through it -- ffmpeg
 is asked only to decode and to cut the strips out, never to warp, because its

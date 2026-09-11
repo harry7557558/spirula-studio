@@ -106,10 +106,11 @@ inline bool estimateSim3Yaw(const std::vector<Vec3>& src, const std::vector<Vec3
 }
 
 // The similarity taking `ref.centres` onto `ref.targets`, refused with a named
-// reason when the data cannot support one. `max_error` is the RANSAC inlier
-// radius in metres, measured in the components `axes` reads.
+// reason when the data cannot support one. The inlier radius is `max_error`
+// metres or `max_error_frac` of the reference's RMS radius, whichever is larger.
 inline MetricFit fitMetricGauge(const MetricRef& ref, double max_error,
-                                MetricAxes axes = MetricAxes::Full) {
+                                MetricAxes axes = MetricAxes::Full,
+                                double max_error_frac = 0.0) {
     MetricFit out;
     out.max_error = max_error;
     const bool flat = axes == MetricAxes::Horizontal;
@@ -133,6 +134,10 @@ inline MetricFit fitMetricGauge(const MetricRef& ref, double max_error,
         out.reason = MetricFail::Spread;
         return out;
     }
+    // A capture's own error grows with its extent -- GPS drift, and the
+    // model's own -- so the radius scales with the spread past the floor.
+    max_error = std::max(max_error, max_error_frac * out.spread);
+    out.max_error = max_error;
 
     auto fit_fn = [&](const std::vector<int>& idx) {
         std::vector<Sim3> models;

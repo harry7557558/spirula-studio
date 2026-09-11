@@ -453,6 +453,10 @@ struct MergeOptions {
     std::function<std::string(Reconstruction& merged, const Reconstruction& src,
                               const Sim3& transform, const MergeCounts& counts)> validate;
     bool verbose = true;
+    // Rigs (sfm/core/Rig.h): two models holding different lenses of one frame
+    // share a pose correspondence through the calibration, so they align and
+    // count as overlapping without sharing an image.
+    const RigTable* rigs = nullptr;
 };
 
 // ---- least-squares similarity (Umeyama 1991) ----------------------------
@@ -642,7 +646,121 @@ struct AlignmentResult {
     // aligned this way while sharing no camera at all.
     size_t structure_pairs = 0;
     bool from_structure = false;
+    size_t rig_views = 0;   // ... of common_images, the ones a rig supplied
 };
+
+// ---- rigs ----------------------------------------------------------------
+
+// A key that is the image id for a plain image and one value per rig frame
+// for a rig image, so two lenses of one frame hash to the same overlap.
+inline uint64_t overlapKey(const RigTable* rigs, uint32_t img) {
+    if (!rigs) return img;
+    const RigSlot sl = rigs->slot(img);
+    if (!sl.valid()) return img;
+    uint64_t k = 1ull << 40;
+    for (uint32_t r = 0; r < sl.rig; r++) k += rigs->rigs[r].frames.size();
+    return k + sl.frame;
+}
+
+// The pose `dst_image` would have in `src`'s gauge, from a registered
+// rig-mate `src` holds and has calibrated. False without one.
+inline bool rigPoseInSrc(const Reconstruction& src, const RigTable& rigs, uint32_t dst_image,
+                         Pose& out) {
+    const RigSlot sl = rigs.slot(dst_image);
+    if (!sl.valid() || sl.rig >= src.rigs.size()) return false;
+    if (src.rig_detached.count(dst_image)) return false;
+    const RigCalib& c = src.rigs[sl.rig];
+    if (!c.usable(sl.member)) return false;
+    const std::vector<uint32_t>& fr = rigs.frameOf(sl);
+    int best = -1;
+    uint32_t best_pts = 0;
+    for (uint32_t m = 0; m < fr.size(); m++) {
+        if (m == sl.member || fr[m] == kNoImage || !c.usable(m)) continue;
+        if (src.rig_detached.count(fr[m])) continue;
+        auto it = src.images.find(fr[m]);
+        if (it == src.images.end() || !it->second.registered) continue;
+        const uint32_t n = it->second.numPoint3D();
+        if (best < 0 || n > best_pts) { best = (int)m; best_pts = n; }
+    }
+    if (best < 0) return false;
+    out = c.predict((uint32_t)best, sl.member, src.images.at(fr[best]).pose);
+    return true;
+}
+
+// An image the rig places from a rig-mate that carries structure of its own:
+// hollow by its observations, sound by construction.
+inline bool rigCovered(const Reconstruction& m, const RigTable* rigs, uint32_t img, int min_pts) {
+    if (!rigs || m.rig_detached.count(img)) return false;
+    const RigSlot sl = rigs->slot(img);
+    if (!sl.valid() || sl.rig >= m.rigs.size() || !m.rigs[sl.rig].usable(sl.member)) return false;
+    const std::vector<uint32_t>& fr = rigs->frameOf(sl);
+    for (uint32_t k = 0; k < fr.size(); k++) {
+        if (k == sl.member || fr[k] == kNoImage || !m.rigs[sl.rig].usable(k)) continue;
+        auto it = m.images.find(fr[k]);
+        if (it != m.images.end() && it->second.registered &&
+            (int)it->second.numPoint3D() >= min_pts)
+            return true;
+    }
+    return false;
+}
+
+// The calibration a merged model keeps: its own where it has one, the
+// incoming model's (rescaled into the anchor's gauge) where it has not.
+inline void mergeRigCalibs(std::vector<RigCalib>& dst, const std::vector<RigCalib>& src,
+                           double scale) {
+    if (dst.size() < src.size()) dst.resize(src.size());
+    for (size_t r = 0; r < src.size(); r++) {
+        const RigCalib& s = src[r];
+        RigCalib& d = dst[r];
+        if (s.ref < 0) continue;
+        if (d.ref < 0) {
+            d = s;
+            for (Pose& p : d.cam_from_rig) p.t = p.t * scale;
+            continue;
+        }
+        if (d.ref != s.ref) continue;  // two frames of reference: a solve reconciles them
+        for (size_t m = 0; m < s.cam_from_rig.size() && m < d.cam_from_rig.size(); m++) {
+            if (d.established[m] || !s.established[m]) continue;
+            d.cam_from_rig[m] = s.cam_from_rig[m];
+            d.cam_from_rig[m].t = d.cam_from_rig[m].t * scale;
+            d.established[m] = 1;
+            d.fixed[m] = s.fixed[m];
+            d.support[m] = s.support[m];
+            d.spread_deg[m] = s.spread_deg[m];
+        }
+    }
+}
+
+// A pose correspondence between two models: where `src` puts `dst_image`.
+struct PoseCorr {
+    Pose src_pose;
+    uint32_t dst_image = 0;
+    bool by_rig = false;
+};
+
+// Every correspondence the two models offer: the images both registered, and
+// the rig frames where each holds a different lens (src's calibration, which
+// is the gauge the transform starts in).
+inline std::vector<PoseCorr> poseCorrespondences(const Reconstruction& src,
+                                                 const Reconstruction& dst,
+                                                 const RigTable* rigs) {
+    std::vector<PoseCorr> out;
+    std::set<uint32_t> covered;
+    for (const auto& kv : src.images) {
+        if (!kv.second.registered) continue;
+        auto it = dst.images.find(kv.first);
+        if (it == dst.images.end() || !it->second.registered) continue;
+        out.push_back({kv.second.pose, kv.first, false});
+        covered.insert(kv.first);
+    }
+    if (!rigs) return out;
+    for (const auto& kv : dst.images) {
+        if (!kv.second.registered || covered.count(kv.first)) continue;
+        Pose p;
+        if (rigPoseInSrc(src, *rigs, kv.first, p)) out.push_back({p, kv.first, true});
+    }
+    return out;
+}
 
 // Images both models registered, in `src`-id order. Ids are the identity here:
 // merging needs `point2D_idx` to mean the same keypoint in both models, which
@@ -693,7 +811,7 @@ inline AlignmentResult alignReconstructions(const Reconstruction& src, const Rec
         return r;
     }
 
-    // Per shared image: the two centers, and the destination model's points
+    // Per correspondence: the two poses, and the destination model's points
     // seen there (sampled, so the residual stays cheap on long tracks).
     struct View {
         Pose src_pose, dst_pose;
@@ -702,14 +820,16 @@ inline AlignmentResult alignReconstructions(const Reconstruction& src, const Rec
         std::vector<Vec2> obs;
     };
     std::vector<View> views;
-    views.reserve(shared.size());
-    for (uint32_t id : shared) {
-        const Image& si = src.images.at(id);
+    const std::vector<PoseCorr> corr = poseCorrespondences(src, dst, opt.rigs);
+    views.reserve(corr.size());
+    for (const PoseCorr& pc : corr) {
+        const uint32_t id = pc.dst_image;
         const Image& di = dst.images.at(id);
         auto cam = dst.cameras.find(di.camera_id);
         if (cam == dst.cameras.end()) continue;
+        if (pc.by_rig) r.rig_views++;
         View v;
-        v.src_pose = si.pose;
+        v.src_pose = pc.src_pose;
         v.dst_pose = di.pose;
         v.cam = &cam->second;
         std::vector<uint32_t> feats;
@@ -830,6 +950,8 @@ inline MergeCounts mergeInto(Reconstruction& dst, const Reconstruction& src, con
     // adjustment after a merge is for.
     for (const auto& kv : src.cameras)
         if (!dst.cameras.count(kv.first)) dst.cameras[kv.first] = kv.second;
+    mergeRigCalibs(dst.rigs, src.rigs, T.scale);
+    dst.rig_detached.insert(src.rig_detached.begin(), src.rig_detached.end());
 
     std::vector<uint32_t> added;
     for (const auto& kv : src.images) {
@@ -916,7 +1038,9 @@ inline MergeCounts mergeInto(Reconstruction& dst, const Reconstruction& src, con
     filterModel(dst, opt.filter_reproj_error, opt.min_tri_angle_deg, c.obs_filtered,
                 c.points_filtered);
     for (uint32_t id : added)
-        if ((int)dst.images.at(id).numPoint3D() < opt.min_image_points) c.hollow_images++;
+        if ((int)dst.images.at(id).numPoint3D() < opt.min_image_points &&
+            !rigCovered(dst, opt.rigs, id, opt.min_image_points))
+            c.hollow_images++;
     return c;
 }
 
@@ -968,7 +1092,18 @@ public:
 
     size_t commonImages(size_t a, size_t b) const {
         if (!alive(a) || !alive(b) || a == b) return 0;
-        return sharedImages(models_[a], models_[b]).size();
+        if (!opt_.rigs) return sharedImages(models_[a], models_[b]).size();
+        std::set<uint64_t> keys;
+        for (const auto& kv : models_[a].images)
+            if (kv.second.registered) keys.insert(overlapKey(opt_.rigs, kv.first));
+        size_t n = 0;
+        std::set<uint64_t> seen;
+        for (const auto& kv : models_[b].images)
+            if (kv.second.registered) {
+                const uint64_t k = overlapKey(opt_.rigs, kv.first);
+                if (keys.count(k) && seen.insert(k).second) n++;
+            }
+        return n;
     }
 
     // Every pair that could be merged, best first. "Best" is the most shared
@@ -976,15 +1111,17 @@ public:
     // most likely to be caught), then the largest anchor: the bigger model
     // keeps its gauge and its intrinsics, and the smaller one moves.
     std::vector<MergeCandidate> candidates() const {
-        // Counted through an image -> models index rather than by intersecting
-        // every pair of models. A bottom-up run holds hundreds of models and
-        // recomputes this after every merge; the quadratic form spends all of
-        // it on pairs that share nothing.
-        std::unordered_map<uint32_t, std::vector<uint32_t>> holders;
+        // Counted through an overlap-key -> models index rather than by
+        // intersecting every pair of models (quadratic, and a bottom-up run
+        // holds hundreds). The key is the rig frame where there is one.
+        std::unordered_map<uint64_t, std::vector<uint32_t>> holders;
         for (size_t i = 0; i < models_.size(); i++) {
             if (!alive_[i]) continue;
-            for (const auto& kv : models_[i].images)
-                if (kv.second.registered) holders[kv.first].push_back((uint32_t)i);
+            for (const auto& kv : models_[i].images) {
+                if (!kv.second.registered) continue;
+                std::vector<uint32_t>& h = holders[overlapKey(opt_.rigs, kv.first)];
+                if (h.empty() || h.back() != (uint32_t)i) h.push_back((uint32_t)i);
+            }
         }
         std::unordered_map<uint64_t, size_t> shared;  // (lo << 32 | hi) -> images
         for (const auto& kv : holders) {
@@ -1055,7 +1192,7 @@ private:
             a.alignment = *full;
         } else if (alignment) {
             a.alignment.transform = *alignment;
-            a.alignment.common_images = sharedImages(models_[src], models_[dst]).size();
+            a.alignment.common_images = commonImages(dst, src);
             a.alignment.success = true;
         } else {
             a.alignment = alignReconstructions(models_[src], models_[dst], opt_);
@@ -1143,13 +1280,15 @@ private:
         a.merged = true;
         if (opt_.verbose)
             slog::diag(slog::Tag::Merge,
-                       "[merge] model %zu <- model %zu: %zu %s (%zu inliers, %.2f px), "
+                       "[merge] model %zu <- model %zu: %zu %s (%zu inliers, %.2f px%s), "
                        "+%zu images, %u -> %u, +%zu points, %zu spliced (%zu disagreed)",
                        dst, src,
                        a.alignment.from_structure ? a.alignment.structure_pairs
                        : a.alignment.common_images,
                        a.alignment.from_structure ? "shared points" : "shared images",
-                       a.alignment.inliers, a.alignment.mean_error, c.images_added, anchor_imgs,
+                       a.alignment.inliers, a.alignment.mean_error,
+                       a.alignment.rig_views ? ", some through the rig" : "",
+                       c.images_added, anchor_imgs,
                        models_[dst].numRegistered(), c.points_added, c.points_spliced,
                        c.splice_conflicts);
         log_.push_back(a);

@@ -968,53 +968,108 @@ SS_MSG(opt_auto_output,
     TR("Yazılacak çalışma alanı: features/, matches.bin ve sparse/0.. buraya "
        "iner."));
 
+SS_MSG(opt_rig,
+    EN("Images under these path prefixes with the same name are one rig frame "
+       "and keep a fixed relative pose (cam0,cam1 pairs cam0/x.jpg with "
+       "cam1/x.jpg). Repeat for several rigs; the manifest's `rigs:` can also "
+       "carry known extrinsics."),
+    JA("これらのパス接頭辞の下で同名の画像を 1 つのリグフレームとして、相対姿勢を固定します"
+       "（cam0,cam1 なら cam0/x.jpg と cam1/x.jpg が組になります）。複数のリグには繰り返し"
+       "指定します。マニフェストの `rigs:` では既知の外部パラメータも渡せます。"),
+    ZH_HANS("这些路径前缀下同名的图像构成一个装置帧，保持固定的相对位姿（cam0,cam1 把 "
+            "cam0/x.jpg 和 cam1/x.jpg 配对）。多个装置可重复指定；清单的 `rigs:` 还能"
+            "给出已知外参。"),
+    ZH_HANT("這些路徑前綴下同名的影像構成一個裝置幀，保持固定的相對姿態（cam0,cam1 把 "
+            "cam0/x.jpg 和 cam1/x.jpg 配對）。多個裝置可重複指定；清單的 `rigs:` 還能"
+            "給出已知外參。"),
+    KO("이 경로 접두사 아래 이름이 같은 이미지는 하나의 리그 프레임이 되어 상대 자세가 고정됩니다"
+       "(cam0,cam1 은 cam0/x.jpg 와 cam1/x.jpg 를 짝지음). 리그가 여럿이면 반복하세요. "
+       "매니페스트의 `rigs:` 로 알려진 외부 파라미터도 줄 수 있습니다."),
+    DE("Bilder mit gleichem Namen unter diesen Pfadpräfixen bilden einen Rig-Frame "
+       "mit fester relativer Pose (cam0,cam1 paart cam0/x.jpg mit cam1/x.jpg). "
+       "Für mehrere Rigs wiederholen; `rigs:` im Manifest kann auch bekannte "
+       "Extrinsik tragen."),
+    FR("Les images de même nom sous ces préfixes de chemin forment une image de "
+       "rig à pose relative fixe (cam0,cam1 apparie cam0/x.jpg à cam1/x.jpg). "
+       "Répéter pour plusieurs rigs ; `rigs:` dans le manifeste peut aussi porter "
+       "des extrinsèques connus."),
+    ES("Las imágenes con el mismo nombre bajo estos prefijos de ruta forman un "
+       "cuadro de rig con pose relativa fija (cam0,cam1 empareja cam0/x.jpg con "
+       "cam1/x.jpg). Repetir para varios rigs; `rigs:` en el manifiesto puede "
+       "llevar también extrínsecos conocidos."),
+    PT("Imagens com o mesmo nome sob estes prefixos de caminho formam um quadro "
+       "de rig com pose relativa fixa (cam0,cam1 emparelha cam0/x.jpg com "
+       "cam1/x.jpg). Repita para vários rigs; `rigs:` no manifesto também pode "
+       "trazer extrínsecos conhecidos."),
+    IT("Le immagini con lo stesso nome sotto questi prefissi di percorso formano "
+       "un fotogramma di rig a posa relativa fissa (cam0,cam1 accoppia cam0/x.jpg "
+       "con cam1/x.jpg). Ripetere per più rig; `rigs:` nel manifesto può anche "
+       "portare estrinseci noti."),
+    NL("Beelden met dezelfde naam onder deze padvoorvoegsels vormen één rigframe "
+       "met vaste relatieve pose (cam0,cam1 koppelt cam0/x.jpg aan cam1/x.jpg). "
+       "Herhaal voor meerdere rigs; `rigs:` in het manifest kan ook bekende "
+       "extrinsieken bevatten."),
+    RU("Изображения с одинаковым именем под этими префиксами пути образуют один "
+       "кадр рига с фиксированной относительной позой (cam0,cam1 объединяет "
+       "cam0/x.jpg и cam1/x.jpg). Повторите для нескольких ригов; `rigs:` в "
+       "манифесте может также нести известные экстринсики."),
+    TR("Bu yol öneklerinin altındaki aynı adlı görüntüler sabit göreli duruşlu tek "
+       "bir rig karesi olur (cam0,cam1, cam0/x.jpg ile cam1/x.jpg'yi eşler). Birden "
+       "çok rig için yineleyin; bildirimdeki `rigs:` bilinen dış parametreleri de "
+       "taşıyabilir."));
+
 SS_MSG(opt_manifest,
     EN("Read the capture's description from FILE (YAML or JSON): where the "
        "images and masks are, how the cameras are grouped, each group's "
-       "lens and focal length, and the videos whose IMU and GPS cover them. "
+       "lens and focal length, the rigs the lenses form, and the videos "
+       "whose IMU and GPS cover them. "
        "A flag on the command line beats the file."),
     JA("撮影内容の説明を FILE (YAML または JSON) から読みます。画像とマスクの場所、"
-       "カメラの分け方、各グループのレンズと焦点距離、そして IMU と GPS を記録した動画です。"
+       "カメラの分け方、各グループのレンズと焦点距離、レンズが組むリグ、そして IMU と GPS を記録した動画です。"
        "コマンドラインの指定のほうが優先されます。"),
     ZH_HANS("从 FILE (YAML 或 JSON) 读取这次拍摄的描述: 图像和掩码的位置、相机的分组、"
-            "每组的镜头和焦距，以及记录了 IMU 和 GPS 的视频。命令行上的选项优先于文件。"),
+            "每组的镜头和焦距、镜头组成的相机组，以及记录了 IMU 和 GPS 的视频。命令行上的选项优先于文件。"),
     ZH_HANT("從 FILE (YAML 或 JSON) 讀取這次拍攝的描述: 影像和遮罩的位置、相機的分組、"
-            "每組的鏡頭和焦距，以及記錄了 IMU 和 GPS 的影片。命令列上的選項優先於檔案。"),
+            "每組的鏡頭和焦距、鏡頭組成的相機組，以及記錄了 IMU 和 GPS 的影片。命令列上的選項優先於檔案。"),
     KO("촬영 내용을 FILE (YAML 또는 JSON) 에서 읽습니다. 이미지와 마스크의 위치, "
-       "카메라를 나누는 방법, 그룹마다의 렌즈와 초점 거리, 그리고 IMU 와 GPS 를 담은 영상입니다. "
+       "카메라를 나누는 방법, 그룹마다의 렌즈와 초점 거리, 렌즈들이 이루는 리그, 그리고 IMU 와 GPS 를 담은 영상입니다. "
        "명령줄에서 준 값이 파일보다 우선합니다."),
     DE("Die Beschreibung der Aufnahme aus FILE lesen (YAML oder JSON): wo die "
        "Bilder und Masken liegen, wie die Kameras gruppiert sind, welches "
-       "Objektiv und welche Brennweite jede Gruppe hat, und welche Videos IMU "
-       "und GPS dazu tragen. Ein Flag auf der Kommandozeile schlägt die Datei."),
+       "Objektiv und welche Brennweite jede Gruppe hat, welche Rigs die "
+       "Objektive bilden, und welche Videos IMU und GPS dazu tragen. Ein Flag auf der Kommandozeile schlägt die Datei."),
     FR("Lire la description de la prise depuis FILE (YAML ou JSON) : où sont "
        "les images et les masques, comment les caméras sont groupées, "
-       "l'objectif et la focale de chaque groupe, et les vidéos dont l'IMU et "
-       "le GPS les couvrent. Une option en ligne de commande l'emporte sur le "
+       "l'objectif et la focale de chaque groupe, les rigs que forment les "
+       "objectifs, et les vidéos dont l'IMU et le GPS les couvrent. Une option en ligne de commande l'emporte sur le "
        "fichier."),
     ES("Leer la descripción de la captura desde FILE (YAML o JSON): dónde están "
        "las imágenes y las máscaras, cómo se agrupan las cámaras, el objetivo "
-       "y la focal de cada grupo, y los vídeos cuya IMU y GPS las cubren. Una "
+       "y la focal de cada grupo, los rigs que forman los objetivos, y los "
+       "vídeos cuya IMU y GPS las cubren. Una "
        "opción en la línea de órdenes gana al fichero."),
     PT("Ler a descrição da captura de FILE (YAML ou JSON): onde estão as "
        "imagens e as máscaras, como as câmaras são agrupadas, a objetiva e a "
-       "distância focal de cada grupo, e os vídeos cuja IMU e GPS as cobrem. "
+       "distância focal de cada grupo, os rigs que as objetivas formam, e os "
+       "vídeos cuja IMU e GPS as cobrem. "
        "Uma opção na linha de comandos ganha ao ficheiro."),
     IT("Leggere la descrizione della ripresa da FILE (YAML o JSON): dove sono "
        "le immagini e le maschere, come sono raggruppate le fotocamere, "
-       "l'obiettivo e la focale di ogni gruppo, e i video la cui IMU e GPS le "
-       "coprono. Un'opzione da riga di comando vince sul file."),
+       "l'obiettivo e la focale di ogni gruppo, i rig che formano gli "
+       "obiettivi, e i video la cui IMU e GPS le coprono. Un'opzione da riga di comando vince sul file."),
     NL("De beschrijving van de opname uit FILE lezen (YAML of JSON): waar de "
        "beelden en maskers staan, hoe de camera's gegroepeerd zijn, de lens "
-       "en brandpuntsafstand van elke groep, en de video's waarvan IMU en GPS "
-       "ze dekken. Een optie op de opdrachtregel wint van het bestand."),
+       "en brandpuntsafstand van elke groep, de rigs die de lenzen vormen, en "
+       "de video's waarvan IMU en GPS ze dekken. Een optie op de opdrachtregel wint van het bestand."),
     RU("Прочитать описание съёмки из FILE (YAML или JSON): где лежат снимки и "
        "маски, как сгруппированы камеры, какой у каждой группы объектив и "
-       "фокусное расстояние, и какие видео несут IMU и GPS к ним. Параметр в "
+       "фокусное расстояние, какие риги образуют объективы, и какие видео "
+       "несут IMU и GPS к ним. Параметр в "
        "командной строке важнее файла."),
     TR("Çekimin tanımını FILE dosyasından okur (YAML ya da JSON): görüntülerin "
        "ve maskelerin yeri, kameraların nasıl gruplandığı, her grubun objektifi "
-       "ve odak uzaklığı, ve IMU ile GPS'i bunları kapsayan videolar. Komut "
+       "ve odak uzaklığı, objektiflerin oluşturduğu rigler, ve IMU ile GPS'i "
+       "bunları kapsayan videolar. Komut "
        "satırındaki seçenek dosyayı yener."));
 
 SS_MSG(opt_progress_dir,

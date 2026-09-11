@@ -469,6 +469,43 @@ SS_MSG(trk_keep_prompted,
        "kalan her şey beyazdır; \"insanları maskele\" denince bir yeniden "
        "oluşturma hattının istediği budur"));
 
+SS_MSG(mask_dilate,
+    EN("grow every detection by this share of its own size before it joins the "
+       "mask, covering the rim of colour a tight outline leaves behind. 0 turns "
+       "the margin off"),
+    JA("マスクに加える前に、検出ごとに自身の大きさのこの割合だけ膨らませます。"
+       "輪郭がきつすぎて残る色の縁を覆うためです。0 で余白なし"),
+    ZH_HANS("在并入蒙版之前，把每个检测按自身尺寸的这个比例向外扩张，"
+            "用来盖住紧贴轮廓留下的一圈残色。填 0 关闭"),
+    ZH_HANT("在併入遮罩之前，把每個偵測按自身尺寸的這個比例向外擴張，"
+            "用來蓋住緊貼輪廓留下的一圈殘色。填 0 關閉"),
+    KO("마스크에 합치기 전에 각 검출을 자기 크기의 이 비율만큼 넓힙니다. 윤곽선이 "
+       "너무 딱 맞아 남는 테두리 색을 덮기 위해서입니다. 0이면 여백 없음"),
+    DE("jede Erkennung vor dem Zusammenfassen um diesen Anteil ihrer eigenen "
+       "Größe wachsen lassen, was den Farbsaum abdeckt, den eine zu enge Kontur "
+       "zurücklässt. 0 schaltet den Rand ab"),
+    FR("élargir chaque détection de cette fraction de sa propre taille avant de "
+       "la fondre dans le masque, ce qui couvre le liseré que laisse un contour "
+       "trop serré. 0 supprime la marge"),
+    ES("agrandar cada detección en esta fracción de su propio tamaño antes de "
+       "unirla a la máscara, lo que tapa el borde que deja un contorno "
+       "demasiado ceñido. 0 quita el margen"),
+    PT("aumentar cada detecção nesta fração do seu próprio tamanho antes de a "
+       "juntar à máscara, o que tapa a orla que um contorno demasiado justo "
+       "deixa. 0 desliga a margem"),
+    IT("ingrandire ogni rilevamento di questa frazione della propria dimensione "
+       "prima di unirlo alla maschera, il che copre il bordo che un contorno "
+       "troppo aderente lascia. 0 toglie il margine"),
+    NL("elke detectie met dit deel van haar eigen grootte laten groeien voordat "
+       "ze in het masker opgaat, wat de kleurrand dekt die een te strakke "
+       "omtrek achterlaat. 0 zet de marge uit"),
+    RU("увеличить каждое обнаружение на эту долю его собственного размера перед "
+       "объединением в маску: это закрывает кайму, которую оставляет слишком "
+       "плотный контур. 0 отключает поле"),
+    TR("her algılamayı maskeye katılmadan önce kendi boyutunun bu oranı kadar "
+       "büyütür; böylece fazla dar bir sınırın bıraktığı renk kenarı kapanır. "
+       "0 payı kapatır"));
+
 SS_MSG(trk_overlay,
     EN("write a colour overlay instead"),
     JA("代わりにカラーのオーバーレイを書き出します"),
@@ -849,6 +886,38 @@ SS_MSG(xh_scale,
     NL("schaalfactor, hoogstens 1"),
     RU("коэффициент масштабирования, не больше 1"),
     TR("yeniden boyutlandırma katsayısı, en çok 1"));
+
+SS_MSG(xh_sync,
+    EN("decode a multi-track file in lockstep so every track keeps the same instants "
+       "(one sharpness window over all of them); the frames of one stem are then a rig"),
+    JA("複数トラックのファイルを同期して読み、全トラックで同じ瞬間を残します（シャープさの判定窓は"
+       "全トラック共通）。同じステムのフレームがリグになります"),
+    ZH_HANS("多轨道文件同步解码，让每条轨道保留相同时刻（清晰度窗口对所有轨道共用）；同一文件名的帧"
+            "就构成装置"),
+    ZH_HANT("多軌道檔案同步解碼，讓每條軌道保留相同時刻（清晰度視窗對所有軌道共用）；同一檔名的幀"
+            "就構成裝置"),
+    KO("다중 트랙 파일을 맞물려 디코딩해 모든 트랙이 같은 순간을 남기게 합니다(선명도 창은 전체 "
+       "트랙에 하나). 같은 이름의 프레임이 리그가 됩니다"),
+    DE("eine Mehrspur-Datei im Gleichschritt lesen, sodass jede Spur dieselben Augenblicke "
+       "behält (ein Schärfefenster über alle); die Bilder eines Stamms sind dann ein Rig"),
+    FR("décoder un fichier multipiste en synchronisme pour que chaque piste garde les mêmes "
+       "instants (une fenêtre de netteté sur toutes) ; les images d'un même nom forment "
+       "alors un rig"),
+    ES("decodificar un archivo multipista al unísono para que cada pista conserve los mismos "
+       "instantes (una ventana de nitidez sobre todas); los fotogramas de un mismo nombre "
+       "forman entonces un rig"),
+    PT("decodificar um ficheiro multipista em sincronia para que cada pista guarde os mesmos "
+       "instantes (uma janela de nitidez sobre todas); os quadros de um mesmo nome formam "
+       "então um rig"),
+    IT("decodificare un file multitraccia in sincronia perché ogni traccia tenga gli stessi "
+       "istanti (una finestra di nitidezza su tutte); i fotogrammi di uno stesso nome sono "
+       "allora un rig"),
+    NL("een meersporenbestand gelijkop decoderen zodat elk spoor dezelfde momenten houdt (één "
+       "scherptevenster over alle); de beelden van één naam vormen dan een rig"),
+    RU("декодировать многодорожечный файл синхронно, чтобы каждая дорожка сохраняла те же "
+       "мгновения (одно окно резкости на все); кадры с одним именем тогда образуют риг"),
+    TR("çok izli bir dosyayı adım adım birlikte çözerek her izin aynı anları tutmasını sağla "
+       "(tüm izler için tek keskinlik penceresi); aynı adlı kareler böylece bir rig olur"));
 
 SS_MSG(xh_track,
     EN("video track to read; default is every track, written to <out>/cam0, "

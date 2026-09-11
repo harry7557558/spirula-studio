@@ -7181,6 +7181,95 @@ SS_MSG(crash_report_saved,
     TR("Spirula Studio beklenmedik biçimde kapandı. Aşağıdaki dosyaya bir "
        "rapor kaydedildi; hata bildirimine ekleyin."));
 
+// ===========================================================================
+// Run log -- the settings snapshot at the top of <dataset>/logs/*.log
+// ===========================================================================
+// Headings only. The key=value lines under them are config field names and
+// their values, which stay themselves in every language.
+
+SS_MSG(runlog_section_run,
+    EN("Run"),           JA("実行"),          ZH_HANS("运行"),     ZH_HANT("執行"),
+    KO("실행"),           DE("Lauf"),         FR("Exécution"),    ES("Ejecución"),
+    PT("Execução"),      IT("Esecuzione"),   NL("Run"),          RU("Запуск"),
+    TR("Çalıştırma"));
+
+SS_MSG(runlog_section_prep,
+    EN("Dataset preparation"),
+    JA("データセットの準備"),
+    ZH_HANS("数据集准备"),
+    ZH_HANT("資料集準備"),
+    KO("데이터셋 준비"),
+    DE("Datensatzvorbereitung"),
+    FR("Préparation du jeu de données"),
+    ES("Preparación del conjunto de datos"),
+    PT("Preparação do conjunto de dados"),
+    IT("Preparazione del set di dati"),
+    NL("Datasetvoorbereiding"),
+    RU("Подготовка набора данных"),
+    TR("Veri kümesi hazırlığı"));
+
+// {0} is the engine's own name (SfM, COLMAP), which is not translated.
+SS_MSG(runlog_section_recon,
+    EN("Reconstruction ({0})"),
+    JA("再構成（{0}）"),
+    ZH_HANS("重建（{0}）"),
+    ZH_HANT("重建（{0}）"),
+    KO("재구성({0})"),
+    DE("Rekonstruktion ({0})"),
+    FR("Reconstruction ({0})"),
+    ES("Reconstrucción ({0})"),
+    PT("Reconstrução ({0})"),
+    IT("Ricostruzione ({0})"),
+    NL("Reconstructie ({0})"),
+    RU("Реконструкция ({0})"),
+    TR("Yeniden oluşturma ({0})"));
+
+SS_MSG(runlog_section_geometry,
+    EN("Geometry (depth and normals)"),
+    JA("ジオメトリ（深度と法線）"),
+    ZH_HANS("几何（深度与法线）"),
+    ZH_HANT("幾何（深度與法線）"),
+    KO("지오메트리(깊이와 법선)"),
+    DE("Geometrie (Tiefe und Normalen)"),
+    FR("Géométrie (profondeur et normales)"),
+    ES("Geometría (profundidad y normales)"),
+    PT("Geometria (profundidade e normais)"),
+    IT("Geometria (profondità e normali)"),
+    NL("Geometrie (diepte en normalen)"),
+    RU("Геометрия (глубина и нормали)"),
+    TR("Geometri (derinlik ve normaller)"));
+
+// {0} is a training section heading -- msg::train::section_label().
+SS_MSG(runlog_section_train,
+    EN("Training: {0}"),
+    JA("学習: {0}"),
+    ZH_HANS("训练：{0}"),
+    ZH_HANT("訓練：{0}"),
+    KO("학습: {0}"),
+    DE("Training: {0}"),
+    FR("Entraînement : {0}"),
+    ES("Entrenamiento: {0}"),
+    PT("Treinamento: {0}"),
+    IT("Addestramento: {0}"),
+    NL("Training: {0}"),
+    RU("Обучение: {0}"),
+    TR("Eğitim: {0}"));
+
+SS_MSG(runlog_settings_end,
+    EN("End of settings"),
+    JA("設定ここまで"),
+    ZH_HANS("设置结束"),
+    ZH_HANT("設定結束"),
+    KO("설정 끝"),
+    DE("Ende der Einstellungen"),
+    FR("Fin des réglages"),
+    ES("Fin de la configuración"),
+    PT("Fim das configurações"),
+    IT("Fine delle impostazioni"),
+    NL("Einde van de instellingen"),
+    RU("Конец настроек"),
+    TR("Ayarların sonu"));
+
 }  // namespace gui
 }  // namespace msg
 }  // namespace i18n

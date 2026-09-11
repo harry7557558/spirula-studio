@@ -817,6 +817,31 @@ SS_MSG(warn_unreadable_skipped,
 
 // ---- the built-in reconstruction's notes ----------------------------------
 
+SS_MSG(sync_needs_builtin,
+    EN("note: synchronized lenses need the built-in decoder; ffmpeg picks each "
+       "track's frames on its own"),
+    JA("注記: レンズの同期には内蔵デコーダが必要です。ffmpeg は各トラックのフレームを"
+       "個別に選びます"),
+    ZH_HANS("注意：同步镜头需要内置解码器；ffmpeg 会各自挑选每条轨道的帧"),
+    ZH_HANT("注意：同步鏡頭需要內建解碼器；ffmpeg 會各自挑選每條軌道的幀"),
+    KO("참고: 렌즈 동기화에는 내장 디코더가 필요합니다. ffmpeg 는 트랙마다 프레임을 따로 고릅니다"),
+    DE("Hinweis: synchronisierte Objektive brauchen den eingebauten Decoder; ffmpeg "
+       "wählt die Bilder jeder Spur für sich"),
+    FR("note : la synchronisation des objectifs demande le décodeur intégré ; ffmpeg "
+       "choisit les images de chaque piste séparément"),
+    ES("nota: sincronizar las lentes requiere el decodificador integrado; ffmpeg "
+       "elige los fotogramas de cada pista por separado"),
+    PT("nota: sincronizar as lentes exige o descodificador integrado; o ffmpeg "
+       "escolhe os quadros de cada pista separadamente"),
+    IT("nota: sincronizzare gli obiettivi richiede il decoder integrato; ffmpeg "
+       "sceglie i fotogrammi di ogni traccia per conto suo"),
+    NL("opmerking: gesynchroniseerde lenzen hebben de ingebouwde decoder nodig; "
+       "ffmpeg kiest de frames van elk spoor apart"),
+    RU("примечание: синхронизация объективов требует встроенного декодера; ffmpeg "
+       "выбирает кадры каждой дорожки по отдельности"),
+    TR("not: eşzamanlı lensler yerleşik çözücüyü gerektirir; ffmpeg her izin karelerini "
+       "kendi başına seçer"));
+
 SS_MSG(sfm_focal_unreadable,
     EN("warning: could not read an image in {0}; leaving its focal length to "
        "be guessed"),

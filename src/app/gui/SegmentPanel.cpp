@@ -381,7 +381,8 @@ void SegmentPanel::start_job(const MaskSettings& s, const app::FrameMask& stenci
                               std::to_string((int)settings.keep_subject) + "|" +
                               std::to_string(settings.max_image_size) + "|" +
                               std::to_string(settings.threshold) + "|" +
-                              std::to_string(settings.nms);
+                              std::to_string(settings.nms) + "|" +
+                              std::to_string(settings.dilate_ratio);
             for (const MaskClick& c : clicks)
                 sig += "|" + std::to_string(c.object) + ":" + std::to_string(c.x) +
                        "," + std::to_string(c.y) + (c.positive ? "+" : "-");
@@ -396,6 +397,7 @@ void SegmentPanel::start_job(const MaskSettings& s, const app::FrameMask& stenci
                 mo.max_size = settings.max_image_size;
                 mo.threshold = settings.threshold;
                 mo.nms = settings.nms;
+                mo.dilate_ratio = settings.dilate_ratio;
                 mo.video = false;      // one still frame, no memory bank
                 for (const MaskClick& c : clicks) {
                     sam::SeedPrompt seed;
@@ -977,6 +979,19 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
         ui::TextDisabled(dmsg::mask_english_only);
     edited |= draw_subject_palette(settings.prompt, settings.negative_prompt,
                                    keep);
+
+    // Under the prompts because it is a property of what they matched, and it
+    // moves the red on the picture: the outlines come back tight against the
+    // object and leave a rim of its colour that would be reconstructed.
+    ImGui::Spacing();
+    ui::Text(keep ? dmsg::mask_dilate_keep : dmsg::mask_dilate_remove);
+    float margin_pct = settings.dilate_ratio * 100.0f;
+    ImGui::SetNextItemWidth(-1);
+    if (ui::SliderFloatRaw("##dilate", &margin_pct, 0.0f, 50.0f, "%.0f%%")) {
+        settings.dilate_ratio = margin_pct / 100.0f;
+        edited = true;
+    }
+    ui::help_on_hover(dmsg::mask_dilate_help);
 
     ImGui::Spacing();
     ImGui::Separator();

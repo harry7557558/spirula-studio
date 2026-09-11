@@ -83,7 +83,8 @@ inline const VkDeviceCaps& cachedDeviceCaps(int deviceIndex) {
 
 class BundleSolver {
     enum class LinSolve { DenseObs, DensePair, CG };
-    static constexpr uint32_t kCamBlk = kMaxCamDof * (kMaxCamDof + 1) / 2;  // matches cg.slang
+    // Preconditioner block stride; matches kCamBlk in cg.slang.
+    static constexpr uint32_t kCamBlk = kMaxPlainDof * (kMaxPlainDof + 1) / 2;
 
 public:
     // With `shared` the solver runs on a caller-owned persistent context:
@@ -167,9 +168,11 @@ public:
         bObs_ = mkReal(2 * (uint64_t)P_.num_obs);
         bObsImage_ = mkUint(P_.num_obs);
         bObsPoint_ = mkUint(P_.num_obs);
-        bImageGroup_ = mkUint(P_.num_images);
+        bImageInfo_ = ctx_.createBuffer(std::max<size_t>(P_.num_images, 1) * 16);
         bGroupInfo_ = ctx_.createBuffer(std::max<size_t>(P_.groups.size(), 1) * 16);
+        bMemberInfo_ = ctx_.createBuffer(std::max<size_t>(P_.members.size(), 1) * 16);
         bPoses_ = mkReal(P_.pose_dim);
+        bExts_ = mkReal(P_.exts.size());
         bIntr_ = mkReal(P_.total_intr);
         bPoints_ = mkReal(3 * (uint64_t)P_.num_points);
         bObsRanges_ = mkUint(P_.num_points + 1);
@@ -182,6 +185,7 @@ public:
         bBp_ = mkReal(3 * (uint64_t)P_.num_points);
         bCost_ = mkReal(4);
         bPosesBak_ = mkReal(P_.pose_dim);
+        bExtsBak_ = mkReal(P_.exts.size());
         bIntrBak_ = mkReal(P_.total_intr);
         bPointsBak_ = mkReal(3 * (uint64_t)P_.num_points);
         bPairEntries_ = mkUint(std::max<size_t>(P_.pair_entries.size(), 2));
@@ -204,7 +208,7 @@ public:
         bCgP_ = mkReal(cgAllocated_ ? P_.n_dim : 1);
         bCgSp_ = mkReal(cgAllocated_ ? P_.n_dim : 1);
         bCgV_ = mkReal(cgAllocated_ ? 3 * (uint64_t)P_.num_points : 1);
-        bCgB_ = mkReal(cgAllocated_ ? (uint64_t)kCamBlk * P_.num_images : 1);
+        bCgB_ = mkReal(cgAllocated_ ? (uint64_t)bBlk_ * P_.num_images : 1);
         bCgM_ = mkReal(cgAllocated_ ? (uint64_t)kCamBlk * P_.num_prec_blocks : 1);
         bCgScal_ = mkReal(8);
         bCgPart_ = mkReal(cgAllocated_ ? 2 * (uint64_t)npart : 1);
@@ -213,7 +217,7 @@ public:
         // binding order must match sfm/shaders/ba/ba.slang + cg.slang; atomic views
         // alias the same VkBuffer at the odd bindings
         std::vector<VkBuffer> binds = {
-            bObs_.buf, bObsImage_.buf, bObsPoint_.buf, bImageGroup_.buf, bGroupInfo_.buf,
+            bObs_.buf, bObsImage_.buf, bObsPoint_.buf, bImageInfo_.buf, bGroupInfo_.buf,
             bPoses_.buf, bIntr_.buf, bPoints_.buf, bObsRanges_.buf, bModelObs_.buf, bJcOff_.buf,
             bJp_.buf,
             bS_.buf, bS_.buf, bG_.buf, bG_.buf, bApp_.buf, bApp_.buf, bBp_.buf, bBp_.buf,
@@ -223,8 +227,10 @@ public:
             bCamRanges_.buf, bCamObs_.buf, bCgR_.buf, bCgZ_.buf, bCgP_.buf, bCgSp_.buf,
             bCgV_.buf, bCgB_.buf, bCgM_.buf, bCgScal_.buf, bCgPart_.buf,
             bCgSp_.buf, bCgB_.buf, bCgM_.buf, bCamChunks_.buf, bPrecBlocks_.buf,
+            bMemberInfo_.buf, bExts_.buf,
         };
-        ownBufs_ = {&bObs_, &bObsImage_, &bObsPoint_, &bImageGroup_, &bGroupInfo_,
+        ownBufs_ = {&bObs_, &bObsImage_, &bObsPoint_, &bImageInfo_, &bGroupInfo_,
+                    &bMemberInfo_, &bExts_, &bExtsBak_,
                     &bPoses_, &bIntr_, &bPoints_, &bObsRanges_, &bModelObs_, &bJcOff_,
                     &bJp_, &bS_, &bG_, &bApp_, &bBp_, &bCost_,
                     &bPosesBak_, &bIntrBak_, &bPointsBak_,
@@ -247,29 +253,20 @@ public:
             ctx_.submit(cb);
         }
 
-        // Pick the Schur-kernel dof tier from the problem's largest camera dof:
-        // compact (<=12) is byte-identical to the pre-OpenCV kernels, mid (<=14)
-        // fits OpenCV/fisheye, wide (<=18) fits FullOpenCV/ThinPrismFisheye. A
-        // problem pays only for the widest camera it uses (must match
-        // kDofCompact/kDofMid/kDofWide in ba.slang).
-        uint32_t maxDof = 0;
-        for (const BAProblem::Group& g : P_.groups) maxDof = std::max(maxDof, 6 + g.n_intr);
-        schurSuffix_ = maxDof <= 12 ? "_c" : maxDof <= 14 ? "_m" : "_w";
-
         // Only the entry points this problem dispatches: a cold driver cache
-        // spends ~90 ms compiling each, and the module has thirty-odd, most of
-        // them camera models the problem does not use and dof tiers it does not
-        // need. loadPipelines skips what a shared context already built, so the
-        // mapper's later solves add at most the kernels a new path wants.
+        // spends ~90 ms compiling each of the module's seventy-odd, and
+        // loadPipelines skips what a shared context already built.
         std::vector<std::string> entries = {
             "point_prep", "point_update", "cam_update", "intr_update",
             std::string("dp_accum") + schurSuffix_,
         };
+        if (!P_.members.empty()) entries.push_back("ext_update");
         if (useCG_) {
-            const char* cg[] = {"cg_cam_diag", "cg_prec_fact", "cg_prec_apply", "cg_init",
-                                "cg_copy", "cg_gather", "cg_bmul", "cg_scatter", "cg_red2",
-                                "cg_fin", "cg_axpy", "cg_updp"};
+            const char* cg[] = {"cg_prec_fact", "cg_prec_apply", "cg_init", "cg_copy",
+                                "cg_red2", "cg_fin", "cg_axpy", "cg_updp"};
             entries.insert(entries.end(), std::begin(cg), std::end(cg));
+            for (const char* k : {"cg_cam_diag", "cg_gather", "cg_bmul", "cg_scatter"})
+                entries.push_back(std::string(k) + cgSuffix_);
         }
         if (!useCG_ || haveFallback_) {
             const char* ch[] = {"chol_diag", "chol_panel", "chol_update", "tri_fwd", "tri_bwd"};
@@ -282,8 +279,8 @@ public:
             }
         }
         for (const BAProblem::ModelRange& mr : P_.model_ranges) {
-            entries.push_back(kModels[mr.model].cost_entry);
-            entries.push_back(kModels[mr.model].jac_entry);
+            entries.push_back(costEntry(mr));
+            entries.push_back(jacEntry(mr));
         }
         // A shared context keeps its pipelines across solver instances; the
         // caller owning it must keep (real, loss) fixed, since the module is
@@ -312,9 +309,10 @@ public:
         // Upload static data + initial parameters, in one submit. Seventeen
         // fenced copies were most of a small solve's cost once several solvers
         // share a device (see VkContext::uploadMany).
-        std::vector<uint8_t> obs, poses, intr, points;
+        std::vector<uint8_t> obs, poses, exts, intr, points;
         packReals(obs, P_.obs_xy.data(), P_.obs_xy.size(), opt_.real);
         packReals(poses, P_.poses.data(), P_.poses.size(), opt_.real);
+        packReals(exts, P_.exts.data(), P_.exts.size(), opt_.real);
         packReals(intr, P_.intr.data(), P_.intr.size(), opt_.real);
         packReals(points, P_.points.data(), P_.points.size(), opt_.real);
         std::vector<uint32_t> gi;
@@ -324,11 +322,30 @@ public:
             gi.push_back(g.n_intr);
             gi.push_back(g.model);
         }
+        // Per image: frame, member, group, and whether the frame is shared
+        // (which decides store vs. accumulate in cg_bmul).
+        std::vector<uint32_t> frame_images(P_.num_frames, 0);
+        for (uint32_t i = 0; i < P_.num_images; i++) frame_images[P_.image_frame[i]]++;
+        std::vector<uint32_t> ii;
+        ii.reserve(4 * P_.num_images);
+        for (uint32_t i = 0; i < P_.num_images; i++) {
+            ii.push_back(P_.image_frame[i]);
+            ii.push_back(P_.image_member[i]);
+            ii.push_back(P_.image_group[i]);
+            ii.push_back(frame_images[P_.image_frame[i]] > 1 ? 1u : 0u);
+        }
+        std::vector<uint32_t> mi;
+        for (auto& m : P_.members) {
+            mi.push_back(m.ext_offset);
+            mi.push_back(m.ext_col);
+            mi.push_back(m.n_free);
+            mi.push_back(0);
+        }
         std::vector<VkContext::UploadItem> up = {
             {&bObs_, obs.data(), obs.size()},
             {&bObsImage_, P_.obs_image.data(), P_.obs_image.size() * 4},
             {&bObsPoint_, P_.obs_point.data(), P_.obs_point.size() * 4},
-            {&bImageGroup_, P_.image_group.data(), P_.image_group.size() * 4},
+            {&bImageInfo_, ii.data(), ii.size() * 4},
             {&bGroupInfo_, gi.data(), gi.size() * 4},
             {&bObsRanges_, P_.obs_ranges.data(), P_.obs_ranges.size() * 4},
             {&bModelObs_, P_.model_obs.data(), P_.model_obs.size() * 4},
@@ -337,6 +354,10 @@ public:
             {&bIntr_, intr.data(), intr.size()},
             {&bPoints_, points.data(), points.size()},
         };
+        if (!P_.members.empty()) {
+            up.push_back({&bMemberInfo_, mi.data(), mi.size() * 4});
+            up.push_back({&bExts_, exts.data(), exts.size()});
+        }
         if (P_.use_pair_schur) {
             up.push_back({&bPairEntries_, P_.pair_entries.data(), P_.pair_entries.size() * 4});
             up.push_back({&bPairChunks_, P_.pair_chunks.data(), P_.pair_chunks.size() * 4});
@@ -366,27 +387,33 @@ public:
     // and download are the identity there.
     void uploadParams() {
         if (cpu_) return;
-        std::vector<uint8_t> poses, intr, points;
+        std::vector<uint8_t> poses, exts, intr, points;
         packReals(poses, P_.poses.data(), P_.poses.size(), opt_.real);
+        packReals(exts, P_.exts.data(), P_.exts.size(), opt_.real);
         packReals(intr, P_.intr.data(), P_.intr.size(), opt_.real);
         packReals(points, P_.points.data(), P_.points.size(), opt_.real);
-        const VkContext::UploadItem up[] = {
+        std::vector<VkContext::UploadItem> up = {
             {&bPoses_, poses.data(), poses.size()},
             {&bIntr_, intr.data(), intr.size()},
             {&bPoints_, points.data(), points.size()},
         };
-        ctx_.uploadMany(up, 3);
+        if (!P_.exts.empty()) up.push_back({&bExts_, exts.data(), exts.size()});
+        ctx_.uploadMany(up.data(), up.size());
     }
 
     void downloadParams() {
         if (cpu_) return;
-        std::vector<uint8_t> tmp(std::max({bPoses_.size, bIntr_.size, bPoints_.size}));
+        std::vector<uint8_t> tmp(std::max({bPoses_.size, bIntr_.size, bPoints_.size, bExts_.size}));
         ctx_.download(bPoses_, tmp.data(), P_.poses.size() * realSize(opt_.real));
         unpackReals(P_.poses, tmp.data(), P_.poses.size(), opt_.real);
         ctx_.download(bIntr_, tmp.data(), P_.intr.size() * realSize(opt_.real));
         unpackReals(P_.intr, tmp.data(), P_.intr.size(), opt_.real);
         ctx_.download(bPoints_, tmp.data(), P_.points.size() * realSize(opt_.real));
         unpackReals(P_.points, tmp.data(), P_.points.size(), opt_.real);
+        if (!P_.exts.empty()) {
+            ctx_.download(bExts_, tmp.data(), P_.exts.size() * realSize(opt_.real));
+            unpackReals(P_.exts, tmp.data(), P_.exts.size(), opt_.real);
+        }
     }
 
     double computeCost() {
@@ -608,9 +635,30 @@ public:
     }
 
 private:
+    // The dof tiers the kernels are built at (ba.slang): the Schur kernels at
+    // four, the CG ones at two. A problem pays only for the widest camera it
+    // uses, and only a refined member extrinsic reaches the rig tier.
+    void pickTiers() {
+        uint32_t maxDof = 0;
+        for (uint32_t i = 0; i < P_.num_images; i++)
+            maxDof = std::max(maxDof, 6 + P_.memberFree(i) + P_.groups[P_.image_group[i]].n_intr);
+        schurSuffix_ = maxDof <= 12 ? "_c" : maxDof <= 14 ? "_m" : maxDof <= 18 ? "_w" : "_x";
+        cgSuffix_ = maxDof <= 18 ? "_w" : "_x";
+        const uint32_t tier = maxDof <= 18 ? 18 : 24;
+        bBlk_ = tier * (tier + 1) / 2;
+    }
+
+    static std::string costEntry(const BAProblem::ModelRange& mr) {
+        return std::string(kModels[mr.model].cost_entry) + (mr.rig ? "_rig" : "");
+    }
+    static std::string jacEntry(const BAProblem::ModelRange& mr) {
+        return std::string(kModels[mr.model].jac_entry) + (mr.rig ? "_rig" : "");
+    }
+
     // Choose the linear solver path from the problem shape, the options and
     // the VRAM budget, and build the host-side tables the choice needs.
     void decidePaths() {
+        pickTiers();
         const bool exclusive = exclusiveGroups(P_);
         const uint64_t packed = (uint64_t)P_.n_dim * (P_.n_dim + 1) / 2;
         const bool denseOk = packed <= 0x7FFFFFFFull;  // 32-bit packed indexing
@@ -701,8 +749,8 @@ private:
         const double packed = n * (n + 1) / 2;
         double b = 0;
         b += no * (2 * rs + 12) + 4 * (double)P_.model_obs.size();  // obs + index tables
-        b += 4 * ni + 16 * (double)P_.groups.size();
-        b += 2 * (6 * ni + P_.total_intr) * rs;                    // poses/intr + backups
+        b += 16 * ni + 16 * (double)(P_.groups.size() + P_.members.size());
+        b += 2 * (P_.pose_dim + P_.exts.size() + P_.total_intr) * rs;  // params + backups
         b += 3 * np * rs * 3;                                      // points, backup, Bp0
         b += 4 * (np + 1);
         b += ((double)P_.jc_total + 8 * no) * rs;                  // Jc, Jp, res
@@ -714,7 +762,8 @@ private:
                 b += 8.0 * pairEntries * 1.01 + 6 * no * rs;       // pair entries + Y
         }
         if (withCG)
-            b += (4 * n + 3 * np + (2.0 * ni + (double)P_.groups.size()) * kCamBlk) * rs +
+            b += (4 * n + 3 * np + ni * (double)bBlk_ +
+                  (ni + (double)P_.members.size() + (double)P_.groups.size()) * kCamBlk) * rs +
                  4 * (ni + 1) + 4 * no + 12 * (no / 1024 + ni) +
                  16 * (ni + (double)P_.groups.size());  // chunk + prec-block tables
         return b / (1024.0 * 1024.0);
@@ -728,7 +777,7 @@ private:
             p.u0 = mr.count;
             p.u1 = mr.offset;
             p.f0 = opt_.loss_param;
-            ctx_.dispatch(cb, kModels[mr.model].cost_entry, (mr.count + 255) / 256, p);
+            ctx_.dispatch(cb, costEntry(mr), (mr.count + 255) / 256, p);
         }
         ctx_.barrier(cb);
     }
@@ -752,6 +801,7 @@ private:
             ctx_.copy(cb, bPoses_, bPosesBak_, bPoses_.size);
             ctx_.copy(cb, bIntr_, bIntrBak_, bIntr_.size);
             ctx_.copy(cb, bPoints_, bPointsBak_, bPoints_.size);
+            if (!P_.exts.empty()) ctx_.copy(cb, bExts_, bExtsBak_, bExts_.size);
 
             if (dense) {
                 ctx_.fillZero(cb, bS_);
@@ -766,7 +816,7 @@ private:
                 p.u0 = mr.count;
                 p.u1 = mr.offset;
                 p.f0 = opt_.loss_param;
-                ctx_.dispatch(cb, kModels[mr.model].jac_entry, (mr.count + 127) / 128, p);
+                ctx_.dispatch(cb, jacEntry(mr), (mr.count + 127) / 128, p);
             }
             ctx_.barrier(cb);
 
@@ -802,8 +852,9 @@ private:
             } else {
                 p.u0 = P_.num_cam_chunks;
                 p.u1 = P_.prec_exclusive ? 1 : 0;
-                p.u2 = P_.num_images;  // group blocks follow the per-image ones
-                ctx_.dispatch(cb, "cg_cam_diag", P_.num_cam_chunks, p);
+                p.u2 = P_.num_frames;  // member blocks follow the frame ones, then groups
+                p.u3 = P_.num_frames + (uint32_t)P_.members.size();
+                ctx_.dispatch(cb, std::string("cg_cam_diag") + cgSuffix_, P_.num_cam_chunks, p);
                 ctx_.barrier(cb);
                 p.u0 = P_.num_prec_blocks;
                 ctx_.dispatch(cb, "cg_prec_fact", (P_.num_prec_blocks + 255) / 256, p);
@@ -819,10 +870,13 @@ private:
         const uint32_t ng = (n + 255) / 256;
         const uint32_t npart = ng;
         const uint32_t nib = (P_.num_prec_blocks + 255) / 256;
-        // shared intrinsics groups: cg_bmul accumulates into the intrinsics
-        // slice of Sp instead of storing it, so that slice must start at zero
-        const VkDeviceSize intrOff = (VkDeviceSize)P_.pose_dim * realSize(opt_.real);
-        const VkDeviceSize intrSize = (VkDeviceSize)(n - P_.pose_dim) * realSize(opt_.real);
+        // Shared columns: cg_bmul accumulates into them instead of storing, so
+        // they must start at zero -- the tail past the poses (members and
+        // groups), or the whole vector when rig frames are shared too.
+        const bool rigs = P_.hasRigs();
+        const VkDeviceSize intrOff = rigs ? 0 : (VkDeviceSize)P_.pose_dim * realSize(opt_.real);
+        const VkDeviceSize intrSize =
+            (VkDeviceSize)(rigs ? n : n - P_.pose_dim) * realSize(opt_.real);
         const bool zeroIntr = !P_.prec_exclusive && intrSize > 0;
         Push pn;
         pn.u0 = n;
@@ -854,7 +908,7 @@ private:
         for (uint32_t it = 0; it < maxit; it++) {
             Push pg;
             pg.u0 = P_.num_points;
-            ctx_.dispatch(cb, "cg_gather", (P_.num_points + 255) / 256, pg);
+            ctx_.dispatch(cb, std::string("cg_gather") + cgSuffix_, (P_.num_points + 255) / 256, pg);
             ctx_.barrier(cb);
             Push ps;
             ps.u0 = P_.num_images;
@@ -863,10 +917,10 @@ private:
                 ctx_.fillZero(cb, bCgSp_, intrOff, intrSize);
                 ctx_.barrier(cb);
             }
-            ctx_.dispatch(cb, "cg_bmul", P_.num_images, ps);
+            ctx_.dispatch(cb, std::string("cg_bmul") + cgSuffix_, P_.num_images, ps);
             ctx_.barrier(cb);
             ps.u0 = P_.num_cam_chunks;
-            ctx_.dispatch(cb, "cg_scatter", P_.num_cam_chunks, ps);
+            ctx_.dispatch(cb, std::string("cg_scatter") + cgSuffix_, P_.num_cam_chunks, ps);
             ctx_.barrier(cb);
             pr.u1 = 0;
             ctx_.dispatch(cb, "cg_red2", ng, pr);
@@ -900,6 +954,7 @@ private:
         ctx_.copy(cb, bPosesBak_, bPoses_, bPoses_.size);
         ctx_.copy(cb, bIntrBak_, bIntr_, bIntr_.size);
         ctx_.copy(cb, bPointsBak_, bPoints_, bPoints_.size);
+        if (!P_.exts.empty()) ctx_.copy(cb, bExtsBak_, bExts_, bExts_.size);
         ctx_.barrier(cb);
     }
 
@@ -939,6 +994,11 @@ private:
             Push q;
             q.u0 = P_.pose_dim;
             ctx_.dispatch(cb, "cam_update", (P_.pose_dim + 255) / 256, q);
+            if (!P_.members.empty()) {
+                Push e;
+                e.u0 = (uint32_t)P_.members.size();
+                ctx_.dispatch(cb, "ext_update", ((uint32_t)P_.members.size() + 63) / 64, e);
+            }
             if (!P_.groups.empty()) {
                 Push r;
                 r.u0 = (uint32_t)P_.groups.size();
@@ -989,7 +1049,9 @@ private:
     BAProblem& P_;
     SolverOptions opt_;
     std::unique_ptr<bacpu::Solver> cpu_;  // non-null when running on the host
-    const char* schurSuffix_ = "_c";  // "_c"/"_w" dof tier for the Schur kernels
+    const char* schurSuffix_ = "_c";  // dof tier of the Schur kernels (pickTiers)
+    const char* cgSuffix_ = "_w";     // ... and of the CG ones
+    uint32_t bBlk_ = kCamBlk;         // per-image B block stride at that tier
     SolverStats stats_;
     std::unique_ptr<VkContext> owned_;      // null when running on a shared context
     VkContext& ctx_;
@@ -1001,10 +1063,10 @@ private:
     bool haveFallback_ = false;
     uint32_t cgMaxit_ = 100;
 
-    GpuBuffer bObs_, bObsImage_, bObsPoint_, bImageGroup_, bGroupInfo_;
-    GpuBuffer bPoses_, bIntr_, bPoints_, bObsRanges_, bModelObs_, bJcOff_;
+    GpuBuffer bObs_, bObsImage_, bObsPoint_, bImageInfo_, bGroupInfo_, bMemberInfo_;
+    GpuBuffer bPoses_, bExts_, bIntr_, bPoints_, bObsRanges_, bModelObs_, bJcOff_;
     GpuBuffer bJp_, bS_, bG_, bApp_, bBp_, bCost_;
-    GpuBuffer bPosesBak_, bIntrBak_, bPointsBak_;
+    GpuBuffer bPosesBak_, bExtsBak_, bIntrBak_, bPointsBak_;
     bool restore_pending_ = false;  // a rejected step's parameters are still live
     GpuBuffer bBp0_, bJc_, bRes_;
     GpuBuffer bPairEntries_, bPairChunks_, bW_, bYp_, bY_;

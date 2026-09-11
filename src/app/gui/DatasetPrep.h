@@ -71,7 +71,12 @@ struct SubCamera {
     std::string rel;                 // "cam0", relative to the input's images
     std::string camera_model;        // empty = the input's own
     float focal_factor = 0.0f;       // 0 = no focal prior
+    int rig = 0;                     // see PrepInput::rig
 };
+
+// A row's rig choice: nothing, the lenses of its own input, or one of the
+// shared letters that join rows across inputs (SfmRunner::build_rigs).
+inline constexpr int kRigNone = 0, kRigOwn = 1, kRigFirstShared = 2, kRigShared = 4;
 
 // One thing the user picked: a video file, or a folder of photos. A job holds
 // a list of them, because a capture is often shot as several clips, or on a rig
@@ -99,6 +104,10 @@ struct PrepInput {
     // job's dataset-wide one; a factor of 0 means no focal prior.
     std::string camera_model;
     float focal_factor = 0.0f;       // fx = fy = factor * image width
+    // Which rig this input's lenses belong to (kRig*). A multi-lens video
+    // starts on its own; folders sharing a letter form one rig by file name.
+    int rig = kRigNone;
+    int video_tracks = 0;            // 0 = not probed yet
     // The camera folders found under this input, when it arrived with more
     // than one. Empty means the lens above describes all of it.
     std::vector<SubCamera> subcameras;
@@ -124,6 +133,13 @@ struct CameraGroup {
 
 // The rows, in the order they are drawn and applied.
 std::vector<CameraGroup> camera_groups(const std::vector<PrepInput>& inputs);
+
+inline int& group_rig(std::vector<PrepInput>& in, const CameraGroup& g) {
+    return g.sub < 0 ? in[g.input].rig : in[g.input].subcameras[(size_t)g.sub].rig;
+}
+inline int group_rig(const std::vector<PrepInput>& in, const CameraGroup& g) {
+    return g.sub < 0 ? in[g.input].rig : in[g.input].subcameras[(size_t)g.sub].rig;
+}
 
 // Where a row's settings are stored.
 inline std::string& group_model(std::vector<PrepInput>& in, const CameraGroup& g) {
@@ -192,6 +208,9 @@ struct PrepJob {
 
     float video_fps = 2.0f;          // kept frames per second
     int   sharp_window = 3;          // keep the sharpest of N (1 = off)
+    // Every track of a multi-lens file keeps the same instants (one sharpness
+    // window over all of them), so every frame is a rig frame. Built-in decoder only.
+    bool  sync_tracks = true;
     int   max_frames = 100000;
     bool  force_external_decode = false;
     std::string ffmpeg_exe = "ffmpeg";
@@ -206,6 +225,9 @@ struct PrepJob {
     std::string mask_prompt;         // "people; cars; ..."
     std::string mask_negative_prompt;
     bool mask_keep_subject = false;  // prompt names what to KEEP, not remove
+    // Share of its own size every matched object grows by before the mask is
+    // written, so the PNGs on disk carry the margin. sam::MaskOptions.
+    float mask_dilate_ratio = 0.05f;
     int  mask_max_image_size = 1600;
     float mask_threshold = 0.5f;     // detection score a match must reach
     // Box IoU above which the weaker of two detections of one phrase is
@@ -344,6 +366,14 @@ bool ffmpeg_extract_frame(const std::string& ffmpeg_exe, const std::string& vide
 app::Eac360Layout probe_eac360(const std::string& ffmpeg_exe,
                                const std::string& path,
                                const std::atomic<bool>& cancel);
+
+// How many video tracks a file carries (0 when it cannot be read).
+int probe_video_tracks(const std::string& ffmpeg_exe, const std::string& path,
+                       const std::atomic<bool>& cancel);
+
+// The folders under images/<input> a video's frames go to: one per lens of a
+// dual-fisheye file or per view of a 360 plan, none for a single lens.
+std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in);
 
 // What a picked folder of photos actually means, by the layout conventions the
 // rest of the project already uses -- `spirula sfm auto`'s own probing and the

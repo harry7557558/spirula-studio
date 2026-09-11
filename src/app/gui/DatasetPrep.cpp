@@ -584,6 +584,34 @@ bool ffmpeg_extract_frame(const std::string& ffmpeg_exe, const std::string& vide
     return fs::exists(out_path, ec) && fs::file_size(out_path, ec) > 0;
 }
 
+int probe_video_tracks(const std::string& ffmpeg_exe, const std::string& path,
+                       const std::atomic<bool>& cancel) {
+#ifdef SS_HAVE_VIDEO
+    {
+        std::string err;
+        const std::vector<std::pair<int, int>> tracks = app::video_track_sizes(path, err);
+        if (!tracks.empty()) return (int)tracks.size();
+    }
+#endif
+    VideoFacts facts;
+    if (ffmpeg_probe_video(ffmpeg_exe, path, facts, cancel)) return (int)facts.tracks.size();
+    return 0;
+}
+
+std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in) {
+    std::vector<std::string> out;
+    if (!in.is_video) return out;
+    if (in.eac360.valid()) {
+        for (const app::Pano360View& v : app::pano360_views(in.eac360, job.pano))
+            if (!v.dir.empty()) out.push_back(v.dir);
+        if (out.size() < 2) out.clear();
+        return out;
+    }
+    for (int t = 0; in.video_tracks >= 2 && t < in.video_tracks; t++)
+        out.push_back("cam" + std::to_string(t));
+    return out;
+}
+
 app::Eac360Layout probe_eac360(const std::string& ffmpeg_exe,
                                const std::string& path,
                                const std::atomic<bool>& cancel) {
@@ -1281,6 +1309,7 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
     fx.skip = skip;
     fx.keep = window > 1 ? window : 0;
     fx.max_frames = job.max_frames;
+    fx.sync_tracks = job.sync_tracks;
     fx.quality = 95;
     if (!views.empty()) {
         fx.eac = in.eac360;
@@ -1326,6 +1355,7 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
 bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                                        const std::string& images,
                                        PrepResult& out, std::string& error) {
+    if (job.sync_tracks) log(lmsg::sync_needs_builtin.get(), /*detail=*/false);
     const fs::path ws = job.workspace;
     if (!command_exists(job.ffmpeg_exe)) {
         error = fmt(lmsg::err_ffmpeg_missing, {job.ffmpeg_exe});
@@ -1938,6 +1968,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     mo.neg_text = job.mask_negative_prompt;
     mo.keep_prompted = job.mask_keep_subject;
     mo.max_size = job.mask_max_image_size;
+    mo.dilate_ratio = job.mask_dilate_ratio;
     mo.threshold = job.mask_threshold;
     mo.nms = job.mask_nms;
     mo.detect_every = job.mask_detect_every;

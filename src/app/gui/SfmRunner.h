@@ -105,6 +105,8 @@ struct SfmJob {
     // One more bundle adjustment at the very end with every image on its own
     // intrinsics, whatever the camera sharing above says.
     bool final_per_image_intrinsics = false;
+    // ... and one with the rigs released, every image on its own pose.
+    bool final_free_rig = false;
     int max_features = 0;             // 0 = the quality preset's
     int max_image_size = 0;           // 0 = the quality preset's
     // 0 flat, 1 bottom-up. Flat for every capture, whatever its size: there is
@@ -240,6 +242,7 @@ private:
     void apply_status(const RunStatus& st);
     // The panel's per-input lens and focal rows, as the file the run reads.
     sfm::Manifest build_manifest(const SfmJob& job, const PrepResult& prep);
+    static std::vector<sfm::RigDef> build_rigs(const PrepJob& prep);
     // Everything the child is told about the model, as against where to put
     // it. Both the command line and the workspace's stamp are made from this.
     std::vector<std::string> recon_args(const SfmJob& job, const PrepResult& prep);

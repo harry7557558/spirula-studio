@@ -46,6 +46,9 @@ struct MaskSettings {
     std::string prompt;              // "people; cars"
     std::string negative_prompt;
     bool keep_subject = false;       // prompt names what to KEEP
+    // Share of its own size every matched object grows by before the mask is
+    // written -- see sam::MaskOptions::dilate_ratio. Shown as a percentage.
+    float dilate_ratio = 0.05f;
     int  max_image_size = 1600;
     float threshold = 0.5f;
     float nms = 0.1f;

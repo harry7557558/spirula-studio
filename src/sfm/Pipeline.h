@@ -92,6 +92,10 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
                                       const std::vector<FeatureSet>& feats, SfmConfig& cfg,
                                       AssembleStats& ast);
 
+// The run's rigs over `db`'s image names (sfm/core/Rig.h), reported when
+// verbose. Throws std::runtime_error on a definition that does not resolve.
+RigTable buildRigs(const MatchesDatabase& db, const SfmConfig& cfg, bool verbose);
+
 // The passes that run after the mapper: merge, audit, grow, prune, reseed.
 std::vector<Reconstruction> finishModels(Mapper& mapper,
                                          std::vector<Reconstruction> models,
@@ -120,7 +124,7 @@ void splitCamerasBySize(std::vector<Reconstruction>& models,
                         const std::vector<FeatureSet>& feats);
 void writeModels(const std::vector<Reconstruction>& models,
                  const std::filesystem::path& dir, bool verbose,
-                 const std::vector<ModelGauge>& gauge = {});
+                 const std::vector<ModelGauge>& gauge = {}, const RigTable* rigs = nullptr);
 
 // ---------------------------------------------------------------------------
 // Reporting helpers the summary is built from
