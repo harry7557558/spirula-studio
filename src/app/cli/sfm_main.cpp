@@ -69,6 +69,7 @@
 #include "i18n/catalog/Sfm.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/SfmHelp.h"
+#include "i18n/TimeFormat.h"
 
 // `spirula-sfm ba`, in sfm_ba.cpp. It prints its own help.
 int cmdBa(int argc, char** argv);
@@ -89,6 +90,7 @@ struct MergeSummary {
     double seconds = 0, ba_seconds = 0;
 };
 using namespace sfm;
+using spirula::i18n::format_duration;
 
 // Every line this tool prints goes out tagged and translated; see
 // sfm/core/Log.h for the mechanism and for what stays English.
@@ -1088,10 +1090,11 @@ static int cmdMerge(int argc, char** argv) {
         models = mergeModels(std::move(models), mo, cfg.merge_ba, cfg.device, sum);
 
         L::out(Tag::Merge, M::merge_summary,
-               {(long long)sum.before, (long long)sum.after, L::num(sum.seconds, 2),
-                (long long)sum.merges, (long long)sum.refused});
+               {(long long)sum.before, (long long)sum.after,
+                format_duration(sum.seconds), (long long)sum.merges,
+                (long long)sum.refused});
         if (sum.ba_seconds > 0)
-            L::out(Tag::Merge, M::merge_ba_seconds, {L::num(sum.ba_seconds, 2)});
+            L::out(Tag::Merge, M::merge_ba_seconds, {format_duration(sum.ba_seconds)});
         for (size_t i = 0; i < models.size(); i++) {
             double mean = 0, median = 0;
             size_t nobs = 0;

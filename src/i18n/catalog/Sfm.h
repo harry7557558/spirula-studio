@@ -1210,19 +1210,19 @@ SS_MSG(rig_bad,
     TR("Rig tanımı uygulanamıyor: {0}"));
 
 SS_MSG(map_free_rig_done,
-    EN("Final bundle adjustment with the rig released over {0} model(s): {1} s"),
-    JA("リグ拘束を外した最終バンドル調整、モデル {0} 個: {1} 秒"),
-    ZH_HANS("解除装置约束的最终光束法平差，{0} 个模型: {1} 秒"),
-    ZH_HANT("解除裝置約束的最終光束法平差，{0} 個模型: {1} 秒"),
-    KO("리그 제약을 푼 최종 번들 조정, 모델 {0}개: {1}초"),
-    DE("Letzte Bündelausgleichung ohne Rig-Bindung über {0} Modell(e): {1} s"),
-    FR("Ajustement de faisceaux final sans la contrainte du rig sur {0} modèle(s) : {1} s"),
-    ES("Ajuste de haces final con el rig liberado sobre {0} modelo(s): {1} s"),
-    PT("Ajuste de feixes final com o rig liberado sobre {0} modelo(s): {1} s"),
-    IT("Bundle adjustment finale con il rig rilasciato su {0} modello/i: {1} s"),
-    NL("Laatste bundelvereffening met het rig losgelaten over {0} model(len): {1} s"),
-    RU("Финальное уравнивание связок без привязки рига по {0} модел(ям): {1} с"),
-    TR("Rig serbest bırakılmış son demet ayarı, {0} model: {1} s"));
+    EN("Final bundle adjustment with the rig released over {0} model(s): {1}"),
+    JA("リグ拘束を外した最終バンドル調整、モデル {0} 個: {1}"),
+    ZH_HANS("解除装置约束的最终光束法平差，{0} 个模型: {1}"),
+    ZH_HANT("解除裝置約束的最終光束法平差，{0} 個模型: {1}"),
+    KO("리그 제약을 푼 최종 번들 조정, 모델 {0}개: {1}"),
+    DE("Letzte Bündelausgleichung ohne Rig-Bindung über {0} Modell(e): {1}"),
+    FR("Ajustement de faisceaux final sans la contrainte du rig sur {0} modèle(s) : {1}"),
+    ES("Ajuste de haces final con el rig liberado sobre {0} modelo(s): {1}"),
+    PT("Ajuste de feixes final com o rig liberado sobre {0} modelo(s): {1}"),
+    IT("Bundle adjustment finale con il rig rilasciato su {0} modello/i: {1}"),
+    NL("Laatste bundelvereffening met het rig losgelaten over {0} model(len): {1}"),
+    RU("Финальное уравнивание связок без привязки рига по {0} модел(ям): {1}"),
+    TR("Rig serbest bırakılmış son demet ayarı, {0} model: {1}"));
 
 SS_MSG(map_rig_calibrated,
     EN("Rig {0}: member {1} calibrated against {2} from {3}/{4} frames (spread {5} deg)"),
@@ -1418,34 +1418,34 @@ SS_MSG(map_pp_skipped,
     TR("Kamera grubu: {0} -- son ana nokta geçişi atlanıyor; grupları birbirinden uzaklaştırırdı"));
 
 SS_MSG(map_final_intrinsics,
-    EN("Final intrinsics refinement over {0} model(s): {1} s"),
-    JA("{0} 個のモデルに対する最後の内部パラメータ調整: {1} 秒"),
-    ZH_HANS("对 {0} 个模型做最后的内参优化: {1} 秒"),
-    ZH_HANT("對 {0} 個模型做最後的內參最佳化: {1} 秒"),
-    KO("모델 {0} 개에 대한 마지막 내부 파라미터 보정: {1} 초"),
-    DE("Abschließende Verfeinerung der inneren Orientierung über {0} Modell(e): {1} s"),
-    FR("Affinage final des paramètres internes sur {0} modèle(s) : {1} s"),
-    ES("Refinamiento final de los parámetros internos sobre {0} modelo(s): {1} s"),
-    PT("Refinamento final dos parâmetros internos em {0} modelo(s): {1} s"),
-    IT("Affinamento finale dei parametri interni su {0} modello/i: {1} s"),
-    NL("Laatste verfijning van de interne parameters over {0} model(len): {1} s"),
-    RU("Финальное уточнение внутренних параметров по {0} моделям: {1} с"),
-    TR("{0} model üzerinde son iç parametre iyileştirmesi: {1} s"));
+    EN("Final intrinsics refinement over {0} model(s): {1}"),
+    JA("{0} 個のモデルに対する最後の内部パラメータ調整: {1}"),
+    ZH_HANS("对 {0} 个模型做最后的内参优化: {1}"),
+    ZH_HANT("對 {0} 個模型做最後的內參最佳化: {1}"),
+    KO("모델 {0} 개에 대한 마지막 내부 파라미터 보정: {1}"),
+    DE("Abschließende Verfeinerung der inneren Orientierung über {0} Modell(e): {1}"),
+    FR("Affinage final des paramètres internes sur {0} modèle(s) : {1}"),
+    ES("Refinamiento final de los parámetros internos sobre {0} modelo(s): {1}"),
+    PT("Refinamento final dos parâmetros internos em {0} modelo(s): {1}"),
+    IT("Affinamento finale dei parametri interni su {0} modello/i: {1}"),
+    NL("Laatste verfijning van de interne parameters over {0} model(len): {1}"),
+    RU("Финальное уточнение внутренних параметров по {0} моделям: {1}"),
+    TR("{0} model üzerinde son iç parametre iyileştirmesi: {1}"));
 
 SS_MSG(map_per_image_done,
-    EN("Per-image intrinsics refinement over {0} model(s): {1} s"),
-    JA("{0} 個のモデルに対する画像ごとの内部パラメータ調整: {1} 秒"),
-    ZH_HANS("对 {0} 个模型做逐图像内参优化: {1} 秒"),
-    ZH_HANT("對 {0} 個模型做逐影像內參最佳化: {1} 秒"),
-    KO("모델 {0} 개에 대한 이미지별 내부 파라미터 보정: {1} 초"),
-    DE("Verfeinerung der inneren Orientierung je Bild über {0} Modell(e): {1} s"),
-    FR("Affinage des paramètres internes par image sur {0} modèle(s) : {1} s"),
-    ES("Refinamiento de los parámetros internos por imagen sobre {0} modelo(s): {1} s"),
-    PT("Refinamento dos parâmetros internos por imagem em {0} modelo(s): {1} s"),
-    IT("Affinamento dei parametri interni per immagine su {0} modello/i: {1} s"),
-    NL("Verfijning van de interne parameters per beeld over {0} model(len): {1} s"),
-    RU("Уточнение внутренних параметров по кадрам, по {0} моделям: {1} с"),
-    TR("{0} model üzerinde görüntü başına iç parametre iyileştirmesi: {1} s"));
+    EN("Per-image intrinsics refinement over {0} model(s): {1}"),
+    JA("{0} 個のモデルに対する画像ごとの内部パラメータ調整: {1}"),
+    ZH_HANS("对 {0} 个模型做逐图像内参优化: {1}"),
+    ZH_HANT("對 {0} 個模型做逐影像內參最佳化: {1}"),
+    KO("모델 {0} 개에 대한 이미지별 내부 파라미터 보정: {1}"),
+    DE("Verfeinerung der inneren Orientierung je Bild über {0} Modell(e): {1}"),
+    FR("Affinage des paramètres internes par image sur {0} modèle(s) : {1}"),
+    ES("Refinamiento de los parámetros internos por imagen sobre {0} modelo(s): {1}"),
+    PT("Refinamento dos parâmetros internos por imagem em {0} modelo(s): {1}"),
+    IT("Affinamento dei parametri interni per immagine su {0} modello/i: {1}"),
+    NL("Verfijning van de interne parameters per beeld over {0} model(len): {1}"),
+    RU("Уточнение внутренних параметров по кадрам, по {0} моделям: {1}"),
+    TR("{0} model üzerinde görüntü başına iç parametre iyileştirmesi: {1}"));
 
 SS_MSG(map_init_failed,
     EN("Initialization failed: {0} candidate pair(s) tried, best median triangulation "
@@ -1987,55 +1987,55 @@ SS_MSG(match_pairs_scored,
     TR("puanlanan çift: {0}/{1}"));
 
 SS_MSG(match_prefilter_kept,
-    EN("pair selection kept: {0}/{1}; top features: {2}, neighbours: {3} ({4} s)"),
-    JA("ペア選択で残した数: {0}/{1}、上位特徴点: {2}、近傍: {3}（{4} 秒）"),
-    ZH_HANS("像对筛选保留：{0}/{1}；取前 {2} 个特征，近邻 {3}（{4} 秒）"),
-    ZH_HANT("影像對篩選保留：{0}/{1}；取前 {2} 個特徵，近鄰 {3}（{4} 秒）"),
-    KO("쌍 선택으로 남긴 수: {0}/{1}; 상위 특징점: {2}, 이웃: {3}({4}초)"),
-    DE("Paarauswahl behielt: {0}/{1}; beste Merkmale: {2}, Nachbarn: {3} ({4} s)"),
+    EN("pair selection kept: {0}/{1}; top features: {2}, neighbours: {3} ({4})"),
+    JA("ペア選択で残した数: {0}/{1}、上位特徴点: {2}、近傍: {3}（{4}）"),
+    ZH_HANS("像对筛选保留：{0}/{1}；取前 {2} 个特征，近邻 {3}（{4}）"),
+    ZH_HANT("影像對篩選保留：{0}/{1}；取前 {2} 個特徵，近鄰 {3}（{4}）"),
+    KO("쌍 선택으로 남긴 수: {0}/{1}; 상위 특징점: {2}, 이웃: {3}({4})"),
+    DE("Paarauswahl behielt: {0}/{1}; beste Merkmale: {2}, Nachbarn: {3} ({4})"),
     FR("la sélection de paires a gardé : {0}/{1} ; meilleurs points : {2}, "
-       "voisins : {3} ({4} s)"),
+       "voisins : {3} ({4})"),
     ES("la selección de pares conservó: {0}/{1}; mejores rasgos: {2}, "
-       "vecinos: {3} ({4} s)"),
+       "vecinos: {3} ({4})"),
     PT("a seleção de pares manteve: {0}/{1}; melhores traços: {2}, "
-       "vizinhos: {3} ({4} s)"),
+       "vizinhos: {3} ({4})"),
     IT("la selezione delle coppie ha tenuto: {0}/{1}; migliori punti: {2}, "
-       "vicini: {3} ({4} s)"),
-    NL("paarselectie hield: {0}/{1}; beste kenmerken: {2}, buren: {3} ({4} s)"),
-    RU("отбор пар оставил: {0}/{1}; лучших признаков: {2}, соседей: {3} ({4} с)"),
-    TR("çift seçimi tuttu: {0}/{1}; en iyi öznitelik: {2}, komşu: {3} ({4} sn)"));
+       "vicini: {3} ({4})"),
+    NL("paarselectie hield: {0}/{1}; beste kenmerken: {2}, buren: {3} ({4})"),
+    RU("отбор пар оставил: {0}/{1}; лучших признаков: {2}, соседей: {3} ({4})"),
+    TR("çift seçimi tuttu: {0}/{1}; en iyi öznitelik: {2}, komşu: {3} ({4})"));
 
 SS_MSG(match_loop_closure_added,
     EN("loop closure added pairs: {0}, on top of sequential pairs: {1} "
-       "(selected: {2}, {3} s). --no-loop-closure turns this off."),
-    JA("ループ閉じ込みで追加したペア: {0}、逐次ペア: {1}（選択: {2}、{3} 秒）。"
+       "(selected: {2}, {3}). --no-loop-closure turns this off."),
+    JA("ループ閉じ込みで追加したペア: {0}、逐次ペア: {1}（選択: {2}、{3}）。"
        "--no-loop-closure で無効にできます。"),
-    ZH_HANS("回环闭合新增的像对：{0}，此外还有顺序像对：{1}（选出：{2}，{3} 秒）。"
+    ZH_HANS("回环闭合新增的像对：{0}，此外还有顺序像对：{1}（选出：{2}，{3}）。"
             "用 --no-loop-closure 可关闭。"),
-    ZH_HANT("迴環閉合新增的影像對：{0}，此外還有順序影像對：{1}（選出：{2}，{3} 秒）。"
+    ZH_HANT("迴環閉合新增的影像對：{0}，此外還有順序影像對：{1}（選出：{2}，{3}）。"
             "用 --no-loop-closure 可關閉。"),
-    KO("루프 클로저로 더한 쌍: {0}, 순차 쌍: {1}(선택: {2}, {3}초). "
+    KO("루프 클로저로 더한 쌍: {0}, 순차 쌍: {1}(선택: {2}, {3}). "
        "--no-loop-closure 로 끌 수 있습니다."),
     DE("Schleifenschluss ergänzte Paare: {0}, zu sequenziellen Paaren: {1} "
-       "(ausgewählt: {2}, {3} s). --no-loop-closure schaltet das ab."),
+       "(ausgewählt: {2}, {3}). --no-loop-closure schaltet das ab."),
     FR("la fermeture de boucle a ajouté des paires : {0}, en plus des paires "
-       "séquentielles : {1} (sélectionnées : {2}, {3} s). --no-loop-closure "
+       "séquentielles : {1} (sélectionnées : {2}, {3}). --no-loop-closure "
        "désactive cela."),
     ES("el cierre de bucle añadió pares: {0}, además de los pares "
-       "secuenciales: {1} (seleccionados: {2}, {3} s). --no-loop-closure lo "
+       "secuenciales: {1} (seleccionados: {2}, {3}). --no-loop-closure lo "
        "desactiva."),
     PT("o fechamento de laço acrescentou pares: {0}, além dos pares "
-       "sequenciais: {1} (selecionados: {2}, {3} s). --no-loop-closure desliga "
+       "sequenciais: {1} (selecionados: {2}, {3}). --no-loop-closure desliga "
        "isso."),
     IT("la chiusura d'anello ha aggiunto coppie: {0}, oltre alle coppie "
-       "sequenziali: {1} (selezionate: {2}, {3} s). --no-loop-closure lo "
+       "sequenziali: {1} (selezionate: {2}, {3}). --no-loop-closure lo "
        "disattiva."),
     NL("lussluiting voegde paren toe: {0}, boven op sequentiële paren: {1} "
-       "(geselecteerd: {2}, {3} s). --no-loop-closure zet dit uit."),
+       "(geselecteerd: {2}, {3}). --no-loop-closure zet dit uit."),
     RU("замыкание петли добавило пар: {0}, к последовательным парам: {1} "
-       "(отобрано: {2}, {3} с). --no-loop-closure это отключает."),
+       "(отобрано: {2}, {3}). --no-loop-closure это отключает."),
     TR("döngü kapatma eklenen çift: {0}, sıralı çiftlere ek olarak: {1} "
-       "(seçilen: {2}, {3} sn). --no-loop-closure bunu kapatır."));
+       "(seçilen: {2}, {3}). --no-loop-closure bunu kapatır."));
 
 SS_MSG(match_prefilter_params,
     EN("pair selection -- top features: {0}, neighbours: {1}"),
@@ -2069,41 +2069,41 @@ SS_MSG(match_matcher_name,
     TR("eşleştirici: {0}"));
 
 SS_MSG(focal_epipolar_search,
-    EN("epipolar focal search: {0} s"),
-    JA("エピポーラによる焦点距離探索: {0} 秒"),
-    ZH_HANS("对极几何焦距搜索：{0} 秒"),
-    ZH_HANT("對極幾何焦距搜尋：{0} 秒"),
-    KO("에피폴라 초점 거리 탐색: {0}초"),
-    DE("epipolare Brennweitensuche: {0} s"),
-    FR("recherche épipolaire de focale : {0} s"),
-    ES("búsqueda epipolar de la focal: {0} s"),
-    PT("busca epipolar da focal: {0} s"),
-    IT("ricerca epipolare della focale: {0} s"),
-    NL("epipolaire brandpuntszoektocht: {0} s"),
-    RU("эпиполярный поиск фокуса: {0} с"),
-    TR("epipolar odak arayışı: {0} sn"));
+    EN("epipolar focal search: {0}"),
+    JA("エピポーラによる焦点距離探索: {0}"),
+    ZH_HANS("对极几何焦距搜索：{0}"),
+    ZH_HANT("對極幾何焦距搜尋：{0}"),
+    KO("에피폴라 초점 거리 탐색: {0}"),
+    DE("epipolare Brennweitensuche: {0}"),
+    FR("recherche épipolaire de focale : {0}"),
+    ES("búsqueda epipolar de la focal: {0}"),
+    PT("busca epipolar da focal: {0}"),
+    IT("ricerca epipolare della focale: {0}"),
+    NL("epipolaire brandpuntszoektocht: {0}"),
+    RU("эпиполярный поиск фокуса: {0}"),
+    TR("epipolar odak arayışı: {0}"));
 
 // {2} is a list the caller built ("cam 0: 520.4, cam 1: 519.8"): identifiers
 // and numbers, so it is passed through as it is.
 SS_MSG(match_bearings,
-    EN("calibrated verification on bearings ({0} s, {1} MB); focal lengths: {2}"),
-    JA("方位ベクトルでの校正済み検証（{0} 秒、{1} MB）、焦点距離: {2}"),
-    ZH_HANS("在方向向量上做标定后验证（{0} 秒，{1} MB）；焦距：{2}"),
-    ZH_HANT("在方向向量上做標定後驗證（{0} 秒，{1} MB）；焦距：{2}"),
-    KO("방향 벡터에서 보정된 검증({0}초, {1} MB); 초점 거리: {2}"),
-    DE("kalibrierte Prüfung auf Richtungsvektoren ({0} s, {1} MB); "
+    EN("calibrated verification on bearings ({0}, {1} MB); focal lengths: {2}"),
+    JA("方位ベクトルでの校正済み検証（{0}、{1} MB）、焦点距離: {2}"),
+    ZH_HANS("在方向向量上做标定后验证（{0}，{1} MB）；焦距：{2}"),
+    ZH_HANT("在方向向量上做標定後驗證（{0}，{1} MB）；焦距：{2}"),
+    KO("방향 벡터에서 보정된 검증({0}, {1} MB); 초점 거리: {2}"),
+    DE("kalibrierte Prüfung auf Richtungsvektoren ({0}, {1} MB); "
        "Brennweiten: {2}"),
-    FR("vérification calibrée sur les directions ({0} s, {1} Mo) ; "
+    FR("vérification calibrée sur les directions ({0}, {1} Mo) ; "
        "focales : {2}"),
-    ES("verificación calibrada sobre las direcciones ({0} s, {1} MB); "
+    ES("verificación calibrada sobre las direcciones ({0}, {1} MB); "
        "focales: {2}"),
-    PT("verificação calibrada sobre as direções ({0} s, {1} MB); focais: {2}"),
-    IT("verifica calibrata sulle direzioni ({0} s, {1} MB); focali: {2}"),
-    NL("gekalibreerde verificatie op richtingen ({0} s, {1} MB); "
+    PT("verificação calibrada sobre as direções ({0}, {1} MB); focais: {2}"),
+    IT("verifica calibrata sulle direzioni ({0}, {1} MB); focali: {2}"),
+    NL("gekalibreerde verificatie op richtingen ({0}, {1} MB); "
        "brandpuntsafstanden: {2}"),
-    RU("калиброванная проверка по направлениям ({0} с, {1} МБ); "
+    RU("калиброванная проверка по направлениям ({0}, {1} МБ); "
        "фокусные расстояния: {2}"),
-    TR("yön vektörlerinde kalibre doğrulama ({0} sn, {1} MB); odak "
+    TR("yön vektörlerinde kalibre doğrulama ({0}, {1} MB); odak "
        "uzaklıkları: {2}"));
 
 SS_MSG(match_no_mask_for,
@@ -2403,38 +2403,38 @@ SS_MSG(merge_metric_only,
     TR("tek model: birleştirilecek bir şey yok, yalnızca metrik çerçeve belirlenir"));
 
 SS_MSG(merge_summary,
-    EN("merged {0} models into {1} in {2} s (merges: {3}, refused: {4})"),
-    JA("{0} 個のモデルを {1} 個に統合しました（{2} 秒、統合: {3}、拒否: {4}）"),
-    ZH_HANS("已把 {0} 个模型合并为 {1} 个（{2} 秒，合并：{3}，拒绝：{4}）"),
-    ZH_HANT("已把 {0} 個模型合併為 {1} 個（{2} 秒，合併：{3}，拒絕：{4}）"),
-    KO("모델 {0}개를 {1}개로 병합했습니다({2}초, 병합: {3}, 거절: {4})"),
-    DE("{0} Modelle in {1} zusammengeführt, in {2} s (Zusammenführungen: {3}, "
+    EN("merged {0} models into {1} in {2} (merges: {3}, refused: {4})"),
+    JA("{0} 個のモデルを {1} 個に統合しました（{2}、統合: {3}、拒否: {4}）"),
+    ZH_HANS("已把 {0} 个模型合并为 {1} 个（{2}，合并：{3}，拒绝：{4}）"),
+    ZH_HANT("已把 {0} 個模型合併為 {1} 個（{2}，合併：{3}，拒絕：{4}）"),
+    KO("모델 {0}개를 {1}개로 병합했습니다({2}, 병합: {3}, 거절: {4})"),
+    DE("{0} Modelle in {1} zusammengeführt, in {2} (Zusammenführungen: {3}, "
        "abgelehnt: {4})"),
-    FR("{0} modèles fusionnés en {1} en {2} s (fusions : {3}, refus : {4})"),
-    ES("se fusionaron {0} modelos en {1} en {2} s (fusiones: {3}, "
+    FR("{0} modèles fusionnés en {1} en {2} (fusions : {3}, refus : {4})"),
+    ES("se fusionaron {0} modelos en {1} en {2} (fusiones: {3}, "
        "rechazadas: {4})"),
-    PT("{0} modelos fundidos em {1} em {2} s (fusões: {3}, recusadas: {4})"),
-    IT("{0} modelli fusi in {1} in {2} s (fusioni: {3}, rifiutate: {4})"),
-    NL("{0} modellen samengevoegd tot {1} in {2} s (samenvoegingen: {3}, "
+    PT("{0} modelos fundidos em {1} em {2} (fusões: {3}, recusadas: {4})"),
+    IT("{0} modelli fusi in {1} in {2} (fusioni: {3}, rifiutate: {4})"),
+    NL("{0} modellen samengevoegd tot {1} in {2} (samenvoegingen: {3}, "
        "geweigerd: {4})"),
-    RU("{0} моделей слито в {1} за {2} с (слияний: {3}, отклонено: {4})"),
-    TR("{0} model {1} tanesine birleştirildi, {2} sn (birleştirme: {3}, "
+    RU("{0} моделей слито в {1} за {2} (слияний: {3}, отклонено: {4})"),
+    TR("{0} model {1} tanesine birleştirildi, {2} (birleştirme: {3}, "
        "reddedilen: {4})"));
 
 SS_MSG(merge_ba_seconds,
-    EN("bundle adjustment: {0} s"),
-    JA("バンドル調整: {0} 秒"),
-    ZH_HANS("光束法平差：{0} 秒"),
-    ZH_HANT("光束法平差：{0} 秒"),
-    KO("번들 조정: {0}초"),
-    DE("Bündelausgleich: {0} s"),
-    FR("ajustement de faisceaux : {0} s"),
-    ES("ajuste de haces: {0} s"),
-    PT("ajuste de feixes: {0} s"),
-    IT("bundle adjustment: {0} s"),
-    NL("bundelaanpassing: {0} s"),
-    RU("уравнивание блока: {0} с"),
-    TR("demet dengelemesi: {0} sn"));
+    EN("bundle adjustment: {0}"),
+    JA("バンドル調整: {0}"),
+    ZH_HANS("光束法平差：{0}"),
+    ZH_HANT("光束法平差：{0}"),
+    KO("번들 조정: {0}"),
+    DE("Bündelausgleich: {0}"),
+    FR("ajustement de faisceaux : {0}"),
+    ES("ajuste de haces: {0}"),
+    PT("ajuste de feixes: {0}"),
+    IT("bundle adjustment: {0}"),
+    NL("bundelaanpassing: {0}"),
+    RU("уравнивание блока: {0}"),
+    TR("demet dengelemesi: {0}"));
 
 SS_MSG(merge_model_line,
     EN("model {0} -- images: {1}, points: {2}, mean error: {3} px (median {4}, "
