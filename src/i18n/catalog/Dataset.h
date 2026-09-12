@@ -7869,6 +7869,88 @@ SS_MSG(photo_import_inplace_help,
        "gerekir. Böyle yalnızca tek bir fotoğraf klasörü okunabilir; girdisi "
        "bundan çok olan bir çalıştırma onları yine de kopyalar."));
 
+SS_MSG(drop_intermediate_title,
+    EN("Delete the intermediate files after each run?"),
+    JA("実行のたびに中間ファイルを削除しますか？"),
+    ZH_HANS("每次运行后都删除中间文件吗？"),
+    ZH_HANT("每次執行後都刪除中間檔案嗎？"),
+    KO("실행이 끝날 때마다 중간 파일을 지울까요?"),
+    DE("Die Zwischendateien nach jedem Lauf löschen?"),
+    FR("Supprimer les fichiers intermédiaires après chaque exécution ?"),
+    ES("¿Borrar los archivos intermedios después de cada ejecución?"),
+    PT("Apagar os arquivos intermediários depois de cada execução?"),
+    IT("Cancellare i file intermedi dopo ogni esecuzione?"),
+    NL("De tussenbestanden na elke run verwijderen?"),
+    RU("Удалять промежуточные файлы после каждого запуска?"),
+    TR("Her çalıştırmadan sonra ara dosyalar silinsin mi?"));
+
+SS_MSG(drop_intermediate_confirm,
+    EN("The features and the verified image pairs are what lets a "
+       "reconstruction that was stopped or that failed carry on from where it "
+       "got to. Without them the next run starts again from the first image, "
+       "which on a large capture is hours. They are large, and deleting them "
+       "costs nothing else."),
+    JA("特徴点と検証済みの画像ペアは、止めた／失敗した再構成を途中から続けるために使われます。"
+       "これがないと次の実行は1枚目からやり直しになり、大きな撮影では何時間もかかります。"
+       "サイズは大きく、削除してもほかに失うものはありません。"),
+    ZH_HANS("特征点和已验证的图像对，是让中断或失败的重建从断点接着做的依据。"
+            "没有它们，下次运行就要从第一张图重来，大型拍摄要花好几个小时。"
+            "它们体积很大，删掉之外并无其他损失。"),
+    ZH_HANT("特徵點和已驗證的影像對，是讓中斷或失敗的重建從斷點接著做的依據。"
+            "沒有它們，下次執行就要從第一張影像重來，大型拍攝要花好幾個小時。"
+            "它們體積很大，刪掉之外並無其他損失。"),
+    KO("특징점과 검증된 이미지 쌍은 멈추거나 실패한 복원을 하던 데서 이어서 하게 해 줍니다. "
+       "이것이 없으면 다음 실행은 첫 장부터 다시 하며, 큰 촬영에서는 몇 시간이 걸립니다. "
+       "크기가 크고, 지운다고 해서 달리 잃는 것은 없습니다."),
+    DE("Die Merkmale und die geprüften Bildpaare sind es, womit eine "
+       "abgebrochene oder fehlgeschlagene Rekonstruktion dort weitermacht, wo "
+       "sie war. Ohne sie beginnt der nächste Lauf wieder beim ersten Bild, was "
+       "bei einer großen Aufnahme Stunden sind. Sie sind groß, und sonst kostet "
+       "das Löschen nichts."),
+    FR("Les points caractéristiques et les paires d'images vérifiées sont ce "
+       "qui permet à une reconstruction arrêtée ou échouée de repartir d'où "
+       "elle en était. Sans eux, la prochaine exécution recommence à la "
+       "première image, soit des heures sur une grande prise de vue. Ils sont "
+       "volumineux, et les supprimer ne coûte rien d'autre."),
+    ES("Los rasgos y los pares de imágenes verificados son lo que permite que "
+       "una reconstrucción detenida o fallida siga desde donde llegó. Sin "
+       "ellos, la próxima ejecución empieza otra vez por la primera imagen, lo "
+       "que en una captura grande son horas. Ocupan mucho, y borrarlos no "
+       "cuesta nada más."),
+    PT("Os pontos característicos e os pares de imagens verificados são o que "
+       "permite a uma reconstrução interrompida ou falhada seguir de onde "
+       "parou. Sem eles, a próxima execução recomeça pela primeira imagem, o "
+       "que numa captura grande são horas. Ocupam muito, e apagá-los não custa "
+       "mais nada."),
+    IT("I punti caratteristici e le coppie di immagini verificate sono ciò che "
+       "permette a una ricostruzione interrotta o fallita di riprendere da dove "
+       "era arrivata. Senza di essi la prossima esecuzione riparte dalla prima "
+       "immagine, il che su una ripresa grande sono ore. Occupano molto, e "
+       "cancellarli non costa altro."),
+    NL("De kenmerken en de geverifieerde beeldparen zijn wat een gestopte of "
+       "mislukte reconstructie laat doorgaan waar ze gebleven was. Zonder die "
+       "begint de volgende run weer bij het eerste beeld, bij een grote opname "
+       "uren werk. Ze zijn groot, en verder kost verwijderen niets."),
+    RU("Признаки и проверенные пары снимков — это то, что позволяет "
+       "остановленной или неудавшейся реконструкции продолжиться с места "
+       "остановки. Без них следующий запуск начнётся с первого снимка, а на "
+       "большой съёмке это часы. Они занимают много места, и ничего другого "
+       "их удаление не стоит."),
+    TR("Öznitelikler ve doğrulanmış görüntü çiftleri, durdurulan ya da "
+       "başarısız olan bir kurulumun kaldığı yerden sürmesini sağlayan şeydir. "
+       "Onlarsız bir sonraki çalıştırma ilk görüntüden başlar; büyük bir "
+       "çekimde bu saatler demektir. Yer kaplarlar, silmenin başka bir "
+       "bedeli yoktur."));
+
+SS_MSG(drop_intermediate_button,
+    EN("Delete them"),
+    JA("削除する"),        ZH_HANS("删除"),      ZH_HANT("刪除"),
+    KO("지우기"),          DE("Sie löschen"),
+    FR("Les supprimer"),   ES("Borrarlos"),
+    PT("Apagá-los"),       IT("Cancellarli"),
+    NL("Verwijderen"),     RU("Удалять"),
+    TR("Sil"));
+
 SS_MSG(keep_intermediate,
     EN("Keep intermediate files"),
     JA("中間ファイルを残す"),
@@ -7885,42 +7967,48 @@ SS_MSG(keep_intermediate,
     TR("Ara dosyaları sakla"));
 
 SS_MSG(keep_intermediate_help,
-    EN("Keep features/ and matches.bin in the output folder after a "
-       "successful run. They are large, and only useful for re-running the "
-       "mapper by hand with `spirula sfm`."),
-    JA("実行が成功したあとも、出力フォルダに features/ と matches.bin を"
-       "残します。サイズが大きく、`spirula sfm` で手動でマッパーを再実行する"
-       "とき以外は使いません。"),
-    ZH_HANS("运行成功后仍在输出文件夹里保留 features/ 和 matches.bin。它们体积很大，"
-            "只有在用 `spirula sfm` 手动重跑建图时才有用。"),
-    ZH_HANT("執行成功後仍在輸出資料夾裡保留 features/ 和 matches.bin。它們體積很大，"
-            "只有在用 `spirula sfm` 手動重跑建圖時才有用。"),
-    KO("실행이 성공한 뒤에도 출력 폴더에 features/와 matches.bin을 남깁니다. "
-       "크기가 크고, `spirula sfm`으로 매퍼를 손수 다시 돌릴 때만 쓸모가 있습니다."),
-    DE("features/ und matches.bin nach einem erfolgreichen Lauf im "
-       "Ausgabeordner behalten. Sie sind groß und nur nützlich, um den Mapper "
-       "von Hand mit `spirula sfm` erneut laufen zu lassen."),
-    FR("Conserver features/ et matches.bin dans le dossier de sortie après une "
-       "exécution réussie. Ils sont volumineux et ne servent qu'à relancer le "
-       "mapper à la main avec `spirula sfm`."),
-    ES("Conservar features/ y matches.bin en la carpeta de salida tras una "
-       "ejecución correcta. Son grandes y solo sirven para volver a lanzar el "
-       "mapeador a mano con `spirula sfm`."),
-    PT("Manter features/ e matches.bin na pasta de saída após uma execução "
-       "bem-sucedida. São grandes e só servem para rodar o mapeador à mão com "
-       "o `spirula sfm`."),
-    IT("Conservare features/ e matches.bin nella cartella di destinazione dopo "
-       "un'esecuzione riuscita. Sono grandi e servono solo per rilanciare a "
-       "mano il mapper con `spirula sfm`."),
-    NL("features/ en matches.bin na een geslaagde run in de uitvoermap "
-       "bewaren. Ze zijn groot en alleen nuttig om de mapper met de hand "
-       "opnieuw te draaien met `spirula sfm`."),
-    RU("Оставлять features/ и matches.bin в папке результатов после успешного "
-       "запуска. Они большие и нужны, только чтобы вручную перезапустить "
-       "маппер через `spirula sfm`."),
-    TR("Başarılı bir çalıştırmadan sonra features/ ve matches.bin dosyalarını "
-       "çıktı klasöründe tutar. Büyüktürler ve yalnızca haritalayıcıyı "
-       "`spirula sfm` ile elle yeniden çalıştırmak için işe yararlar."));
+    EN("Keep features/, matches.bin and .resume/ in the output folder after a "
+       "successful run. They are large, and they are what lets an interrupted "
+       "or failed reconstruction carry on rather than start over."),
+    JA("実行が成功したあとも、出力フォルダに features/、matches.bin、.resume/ を"
+       "残します。サイズは大きいものの、中断や失敗した再構成を最初からではなく"
+       "途中から続けられるのはこれらのおかげです。"),
+    ZH_HANS("运行成功后仍在输出文件夹里保留 features/、matches.bin 和 .resume/。"
+            "它们体积很大，但正是它们让中断或失败的重建能接着做而不是从头再来。"),
+    ZH_HANT("執行成功後仍在輸出資料夾裡保留 features/、matches.bin 和 .resume/。"
+            "它們體積很大，但正是它們讓中斷或失敗的重建能接著做而不是從頭再來。"),
+    KO("실행이 성공한 뒤에도 출력 폴더에 features/, matches.bin, .resume/ 을 남깁니다. "
+       "크기는 크지만, 중단되거나 실패한 복원을 처음부터가 아니라 하던 데서 "
+       "이어서 할 수 있게 해 주는 것이 이것들입니다."),
+    DE("features/, matches.bin und .resume/ nach einem erfolgreichen Lauf im "
+       "Ausgabeordner behalten. Sie sind groß, und sie sind es, womit eine "
+       "abgebrochene oder fehlgeschlagene Rekonstruktion weitermacht, statt "
+       "neu zu beginnen."),
+    FR("Conserver features/, matches.bin et .resume/ dans le dossier de sortie "
+       "après une exécution réussie. Ils sont volumineux, et ce sont eux qui "
+       "permettent à une reconstruction interrompue ou échouée de continuer au "
+       "lieu de tout recommencer."),
+    ES("Conservar features/, matches.bin y .resume/ en la carpeta de salida "
+       "tras una ejecución correcta. Son grandes, y son lo que permite que una "
+       "reconstrucción interrumpida o fallida continúe en vez de empezar de "
+       "cero."),
+    PT("Manter features/, matches.bin e .resume/ na pasta de saída após uma "
+       "execução bem-sucedida. São grandes, e são eles que permitem a uma "
+       "reconstrução interrompida ou falhada continuar em vez de recomeçar."),
+    IT("Conservare features/, matches.bin e .resume/ nella cartella di "
+       "destinazione dopo un'esecuzione riuscita. Sono grandi, e sono ciò che "
+       "permette a una ricostruzione interrotta o fallita di continuare invece "
+       "di ricominciare."),
+    NL("features/, matches.bin en .resume/ na een geslaagde run in de "
+       "uitvoermap bewaren. Ze zijn groot, en ze zijn wat een afgebroken of "
+       "mislukte reconstructie laat doorgaan in plaats van opnieuw beginnen."),
+    RU("Оставлять features/, matches.bin и .resume/ в папке результатов после "
+       "успешного запуска. Они большие, и именно они позволяют прерванной или "
+       "неудавшейся реконструкции продолжиться, а не начаться заново."),
+    TR("Başarılı bir çalıştırmadan sonra features/, matches.bin ve .resume/ "
+       "dosyalarını çıktı klasöründe tutar. Büyüktürler, ama yarıda kalan ya "
+       "da başarısız olan bir kurulumun baştan başlamak yerine sürmesini "
+       "sağlayan şey onlardır."));
 
 SS_MSG(extra_sfm_flags_hint,
     EN("extra `spirula sfm` flags, e.g. --max-error 2"),

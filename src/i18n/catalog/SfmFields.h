@@ -3068,6 +3068,30 @@ SS_MSG(resume_help,
     RU("Взять модели из этого каталога вместо построения с нуля (D44)"),
     TR("Sıfırdan haritalamak yerine bu dizindeki modelleri devral (D44)"));
 
+SS_MSG(auto_resume_help,
+    EN("Pick up the features, pair list and verified pairs an interrupted run of "
+       "the same settings left in the output folder"),
+    JA("同じ設定で中断された実行が出力フォルダに残した特徴点・ペア一覧・検証済みペアを引き継ぎます"),
+    ZH_HANS("沿用同样设置下被中断的运行留在输出文件夹里的特征、像对列表和已验证的像对"),
+    ZH_HANT("沿用同樣設定下被中斷的執行留在輸出資料夾裡的特徵、影像對清單和已驗證的影像對"),
+    KO("같은 설정으로 중단된 실행이 출력 폴더에 남긴 특징점, 쌍 목록, 검증된 쌍을 이어받습니다"),
+    DE("Merkmale, Paarliste und geprüfte Paare übernehmen, die ein abgebrochener "
+       "Lauf mit denselben Einstellungen im Ausgabeordner hinterlassen hat"),
+    FR("Reprendre les points, la liste de paires et les paires vérifiées qu'une "
+       "exécution interrompue aux mêmes réglages a laissés dans le dossier de sortie"),
+    ES("Retomar los rasgos, la lista de pares y los pares verificados que dejó en "
+       "la carpeta de salida una ejecución interrumpida con los mismos ajustes"),
+    PT("Retomar os pontos, a lista de pares e os pares verificados que uma execução "
+       "interrompida com os mesmos ajustes deixou na pasta de saída"),
+    IT("Riprendere punti, elenco di coppie e coppie verificate che un'esecuzione "
+       "interrotta con le stesse impostazioni ha lasciato nella cartella di uscita"),
+    NL("De kenmerken, paarlijst en geverifieerde paren overnemen die een afgebroken "
+       "run met dezelfde instellingen in de uitvoermap achterliet"),
+    RU("Использовать признаки, список пар и проверенные пары, оставшиеся в папке "
+       "вывода от прерванного запуска с теми же настройками"),
+    TR("Aynı ayarlarla yarıda kalan bir çalıştırmanın çıktı klasöründe bıraktığı "
+       "öznitelikleri, çift listesini ve doğrulanmış çiftleri devral"));
+
 SS_MSG(check_help,
     EN("With --resume: report how far each model agrees with the two-view "
        "geometries it was built from, then exit without writing anything"),

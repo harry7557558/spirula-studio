@@ -595,6 +595,21 @@ SS_MSG(extract_mask_empty,
     TR("{0} maskesi {1} içinde tek bir anahtar nokta bırakmadı. Maskeler beyaz pikselleri "
        "tutar, siyahları yok sayar; ters çevrilmiş bir maske tüm görüntüyü eler."));
 
+SS_MSG(extract_reusing,
+    EN("Features an earlier run already wrote: {0}/{1} images -- keeping them."),
+    JA("前回の実行が書き出した特徴点: {0}/{1} 枚。そのまま使います。"),
+    ZH_HANS("上次运行已写出的特征：{0}/{1} 张图像，直接沿用。"),
+    ZH_HANT("上次執行已寫出的特徵：{0}/{1} 張影像，直接沿用。"),
+    KO("이전 실행이 이미 써 둔 특징점: {0}/{1} 장. 그대로 씁니다."),
+    DE("Von einem früheren Lauf geschriebene Merkmale: {0}/{1} Bilder -- sie werden behalten."),
+    FR("Points déjà écrits par une exécution précédente : {0}/{1} images -- conservés."),
+    ES("Rasgos ya escritos por una ejecución anterior: {0}/{1} imágenes; se conservan."),
+    PT("Pontos já escritos por uma execução anterior: {0}/{1} imagens -- mantidos."),
+    IT("Punti già scritti da un'esecuzione precedente: {0}/{1} immagini -- si conservano."),
+    NL("Kenmerken die een eerdere run al schreef: {0}/{1} afbeeldingen -- die blijven."),
+    RU("Признаков, записанных прошлым запуском: {0}/{1} изображений — используем их."),
+    TR("Önceki çalıştırmanın yazdığı öznitelik: {0}/{1} görüntü -- korunuyor."));
+
 SS_MSG(extract_masks_look_inverted,
     EN("Masks dropped {0}% of all keypoints. Unless this capture is a single object "
        "on a masked-out background, the masks are probably inverted -- this pipeline "
@@ -830,6 +845,66 @@ SS_MSG(match_progress,
     NL("{0}/{1} paren gekoppeld"),
     RU("Сопоставлено пар: {0}/{1}"),
     TR("{0}/{1} çift eşleştirildi"));
+
+SS_MSG(match_reusing_pairs,
+    EN("Image pairs chosen by an earlier run: {0} -- keeping them."),
+    JA("前回の実行が選んだ画像ペア: {0} 件。そのまま使います。"),
+    ZH_HANS("上次运行已选出的图像对：{0} 组，直接沿用。"),
+    ZH_HANT("上次執行已選出的影像對：{0} 組，直接沿用。"),
+    KO("이전 실행이 고른 이미지 쌍: {0} 개. 그대로 씁니다."),
+    DE("Von einem früheren Lauf gewählte Bildpaare: {0} -- sie werden behalten."),
+    FR("Paires d'images choisies par une exécution précédente : {0} -- conservées."),
+    ES("Pares de imágenes elegidos por una ejecución anterior: {0}; se conservan."),
+    PT("Pares de imagens escolhidos por uma execução anterior: {0} -- mantidos."),
+    IT("Coppie di immagini scelte da un'esecuzione precedente: {0} -- si conservano."),
+    NL("Beeldparen uit een eerdere run: {0} -- die blijven behouden."),
+    RU("Пар изображений, отобранных прошлым запуском: {0} — используем их."),
+    TR("Önceki çalıştırmanın seçtiği görüntü çifti: {0} -- korunuyor."));
+
+SS_MSG(match_resuming,
+    EN("Pairs an earlier run already verified: {0}/{1} -- continuing from there."),
+    JA("前回の実行が検証済みのペア: {0}/{1}。その続きから進めます。"),
+    ZH_HANS("上次运行已验证的像对：{0}/{1}，从这里接着做。"),
+    ZH_HANT("上次執行已驗證的影像對：{0}/{1}，從這裡接著做。"),
+    KO("이전 실행이 이미 검증한 쌍: {0}/{1}. 그다음부터 이어서 합니다."),
+    DE("Von einem früheren Lauf bereits geprüfte Paare: {0}/{1} -- es geht dort weiter."),
+    FR("Paires déjà vérifiées par une exécution précédente : {0}/{1} -- reprise à cet endroit."),
+    ES("Pares ya verificados por una ejecución anterior: {0}/{1}; se continúa desde ahí."),
+    PT("Pares já verificados por uma execução anterior: {0}/{1} -- seguindo daí."),
+    IT("Coppie già verificate da un'esecuzione precedente: {0}/{1} -- si riprende da lì."),
+    NL("Paren die een eerdere run al verifieerde: {0}/{1} -- daar gaat het verder."),
+    RU("Пар, уже проверенных прошлым запуском: {0}/{1} — продолжаем с этого места."),
+    TR("Önceki çalıştırmanın doğruladığı çift: {0}/{1} -- oradan devam ediliyor."));
+
+SS_MSG(match_reusing_matches,
+    EN("Matching is already done: pairs kept: {0}, from {1}"),
+    JA("照合は完了済みです。残っているペア: {0}（{1} から）"),
+    ZH_HANS("匹配已经完成：保留的像对 {0} 组（来自 {1}）"),
+    ZH_HANT("匹配已經完成：保留的影像對 {0} 組（來自 {1}）"),
+    KO("정합은 이미 끝나 있습니다. 남은 쌍: {0}（{1} 에서）"),
+    DE("Die Paarbildung ist bereits erledigt: behaltene Paare: {0}, aus {1}"),
+    FR("L'appariement est déjà fait : paires conservées : {0}, depuis {1}"),
+    ES("El emparejamiento ya está hecho: pares conservados: {0}, desde {1}"),
+    PT("O pareamento já está pronto: pares mantidos: {0}, de {1}"),
+    IT("L'accoppiamento è già fatto: coppie conservate: {0}, da {1}"),
+    NL("Koppelen is al gedaan: behouden paren: {0}, uit {1}"),
+    RU("Сопоставление уже выполнено: оставлено пар: {0}, из {1}"),
+    TR("Eşleme zaten tamam: tutulan çift: {0}, {1} içinden"));
+
+SS_MSG(match_reuse_failed,
+    EN("The matches an earlier run left could not be read ({0}); matching again."),
+    JA("前回の実行が残した照合結果を読めませんでした（{0}）。もう一度照合します。"),
+    ZH_HANS("读不出上次运行留下的匹配结果（{0}），重新匹配。"),
+    ZH_HANT("讀不出上次執行留下的匹配結果（{0}），重新匹配。"),
+    KO("이전 실행이 남긴 정합 결과를 읽지 못했습니다（{0}）. 다시 정합합니다."),
+    DE("Die Paare eines früheren Laufs waren nicht lesbar ({0}); es wird erneut gepaart."),
+    FR("Les appariements d'une exécution précédente sont illisibles ({0}) ; on recommence."),
+    ES("No se pudieron leer los emparejamientos de una ejecución anterior ({0}); se repiten."),
+    PT("Não foi possível ler os pareamentos de uma execução anterior ({0}); pareando de novo."),
+    IT("Non è stato possibile leggere gli abbinamenti precedenti ({0}); si riparte."),
+    NL("De koppelingen van een eerdere run waren onleesbaar ({0}); opnieuw koppelen."),
+    RU("Не удалось прочитать сопоставления прошлого запуска ({0}); сопоставляем заново."),
+    TR("Önceki çalıştırmanın eşlemeleri okunamadı ({0}); yeniden eşleniyor."));
 
 SS_MSG(match_need_two,
     EN("At least 2 feature files are needed in {0}."),
@@ -1535,6 +1610,25 @@ SS_MSG(sum_match,
     NL("Koppelen: {0} s   Behouden paren: {1}/{2}   Inliers: {3}/{4}"),
     RU("Сопоставление: {0} с   Оставлено пар: {1}/{2}   Инлаеров: {3}/{4}"),
     TR("Eşleme: {0} s   Tutulan çift: {1}/{2}   İçeri: {3}/{4}"));
+
+SS_MSG(sum_match_reused,
+    EN("Matching: reused an earlier run's   Pairs kept: {0}   Inliers: {1}"),
+    JA("照合: 前回の実行の結果を再利用   残ったペア: {0}   インライア: {1}"),
+    ZH_HANS("匹配: 沿用上次运行的结果   保留的图像对: {0}   内点: {1}"),
+    ZH_HANT("匹配: 沿用上次執行的結果   保留的影像對: {0}   內點: {1}"),
+    KO("정합: 이전 실행의 결과를 재사용   남은 쌍: {0}   인라이어: {1}"),
+    DE("Abgleich: aus einem früheren Lauf   Behaltene Paare: {0}   Inlier: {1}"),
+    FR("Appariement : repris d'une exécution précédente   Paires conservées : {0}   "
+       "Inliers : {1}"),
+    ES("Emparejamiento: reutilizado de una ejecución anterior   Pares conservados: {0}   "
+       "Inliers: {1}"),
+    PT("Pareamento: reaproveitado de uma execução anterior   Pares mantidos: {0}   "
+       "Inliers: {1}"),
+    IT("Accoppiamento: ripreso da un'esecuzione precedente   Coppie tenute: {0}   "
+       "Inlier: {1}"),
+    NL("Koppelen: hergebruikt uit een eerdere run   Behouden paren: {0}   Inliers: {1}"),
+    RU("Сопоставление: взято из прошлого запуска   Оставлено пар: {0}   Инлаеров: {1}"),
+    TR("Eşleme: önceki çalıştırmadan alındı   Tutulan çift: {0}   İçeri: {1}"));
 
 SS_MSG(sum_map,
     EN("Mapping: {0} s   Registered: {1}/{2} images   Points: {3}   Cameras: {4}"),
