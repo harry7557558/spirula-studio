@@ -85,6 +85,12 @@ bool read_status(const std::string& dir, int64_t& mtime, RunStatus& out) {
     return true;
 }
 
+float mapping_fraction(int64_t done, int64_t total) {
+    if (total <= 0) return -1.0f;
+    const double x = std::min(1.0, (double)done / (double)total);
+    return (float)(kMappingBarFull * x * std::sqrt(x));
+}
+
 bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out) {
     const std::string b = slurp_if_newer(fs::path(dir) / "model.bin", mtime);
     if (b.size() < 24 || std::memcmp(b.data(), "VKPM", 4) != 0) return false;

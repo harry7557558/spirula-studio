@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -139,8 +140,13 @@ inline void scaleKeypoints(FeatureSet& fs, int w, int h) {
 // file reads back with every response 0, which is what those files carried:
 // SIFT never persisted it and nothing read it.
 
+// Written to a sibling and renamed over the destination, so a run killed mid
+// stage leaves a file that is either whole or absent -- which is what lets the
+// next run reuse it without reading the descriptor block back to check (D76).
 inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
-    std::ofstream f(path, std::ios::binary);
+    const std::string tmp = path + ".part";
+    {
+    std::ofstream f(tmp, std::ios::binary);
     if (!f) throw std::runtime_error("cannot write " + path);
     uint32_t version = 5, count = fs.count(), dtype = (uint32_t)fs.dtype;
     f.write("VKFT", 4);
@@ -168,6 +174,40 @@ inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
     f.write((const char*)&has_scores, 1);
     if (has_scores)
         for (const Keypoint& k : fs.keypoints) f.write((const char*)&k.response, 4);
+    if (!f) throw std::runtime_error("cannot write " + path);
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::filesystem::remove(tmp, ec);
+        throw std::runtime_error("cannot write " + path);
+    }
+}
+
+// Is there a whole feature file at `path`, and how many keypoints does it hold?
+// The keypoints and descriptors are all but the whole file, so the size against
+// the header catches a truncated one without reading a gigabyte to find out.
+inline bool peekFeatures(const std::string& path, uint32_t& count) {
+    std::error_code ec;
+    const uint64_t bytes = (uint64_t)std::filesystem::file_size(path, ec);
+    if (ec) return false;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    char magic[4];
+    uint32_t version = 0, n = 0, dim = 0, dtype = 0;
+    int w = 0, h = 0;
+    f.read(magic, 4);
+    f.read((char*)&version, 4);
+    f.read((char*)&w, 4);
+    f.read((char*)&h, 4);
+    f.read((char*)&n, 4);
+    f.read((char*)&dim, 4);
+    f.read((char*)&dtype, 4);
+    if (!f || std::memcmp(magic, "VKFT", 4) != 0 || dtype > 1) return false;
+    const uint64_t need = 28 + (uint64_t)n * 16 + (uint64_t)n * dim * dtypeSize((DType)dtype);
+    if (bytes < need) return false;
+    count = n;
+    return true;
 }
 
 // `with_descriptors == false` seeks past the descriptor block instead of

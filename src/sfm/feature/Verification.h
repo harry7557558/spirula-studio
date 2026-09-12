@@ -37,6 +37,7 @@
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
 #include "sfm/core/Log.h"
+#include "sfm/core/Resume.h"
 #include "sfm/geometry/TwoView.h"
 #include "i18n/catalog/Sfm.h"
 
@@ -538,6 +539,13 @@ struct VerificationOptions {
     // Pairs requested from the matcher per call. Must match the matcher's own
     // batch size to get the benefit; see MatchOptions::batch_pairs.
     int match_batch_pairs = 64;
+    // Where every finished pair is recorded so an interrupted run need not
+    // verify it again (sfm/core/Resume.h). Null writes nothing.
+    resume::MatchJournal* journal = nullptr;
+    // Where this call sits in a larger list: a resumed run is handed only the
+    // pairs its journal has not got, and the bar still counts the whole stage.
+    size_t progress_done_base = 0;
+    size_t progress_total = 0;   // 0 = pairs.size()
 };
 
 inline int verificationThreadCount(const VerificationOptions& opt) {
@@ -632,6 +640,15 @@ inline std::vector<TwoViewMatches> verifyPairs(
             progress::live_pair(i, j, results[p].config,
                                 &kept[0].idx1, &kept[0].idx2,
                                 sizeof(FeatureMatch), (uint32_t)kept.size());
+            if (opt.journal)
+                opt.journal->record(i, j, results[p].config, (uint32_t)m.size(),
+                                    &kept[0].idx1, &kept[0].idx2,
+                                    sizeof(FeatureMatch), (uint32_t)kept.size());
+        } else if (opt.journal) {
+            // A pair that failed is recorded too: without it a resumed run
+            // cannot tell one nothing reached from one already answered, and
+            // the pairs that fail are the expensive half.
+            opt.journal->record(i, j, 0, (uint32_t)m.size(), nullptr, nullptr, 4, 0);
         }
         Event e;
         e.kind = Event::Kind::PairVerified;
@@ -651,9 +668,11 @@ inline std::vector<TwoViewMatches> verifyPairs(
     // Per pair it is a global lock the workers are already contending for, and
     // a screen cannot show 700k of anything.
     const size_t step = std::max<size_t>(1, pairs.size() / 400);
+    const size_t ptotal = opt.progress_total ? opt.progress_total : pairs.size();
     auto tick = [&](size_t p) {
         if ((p + 1) % step == 0 || p + 1 == pairs.size())
-            events::progress(Stage::Match, (int64_t)p + 1, (int64_t)pairs.size());
+            events::progress(Stage::Match, (int64_t)(opt.progress_done_base + p + 1),
+                             (int64_t)ptotal);
     };
 
     if (nthreads <= 1) {

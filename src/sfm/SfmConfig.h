@@ -172,6 +172,11 @@ struct SfmConfig {
     std::string resume;
     bool check = false;
 
+    // `auto`: pick up what an interrupted run of the same settings left in the
+    // workspace -- the feature files it wrote, the pair list it chose, the pairs
+    // verification finished (sfm/core/Resume.h). Off starts every stage over.
+    bool reuse = true;
+
     // Runtime.
     int threads = 0;           // host worker pools; 0 = hardware_concurrency
     int decode_threads = 0;    // image decode pool; 0 = hardware_concurrency
@@ -527,6 +532,7 @@ struct SfmConfig {
     F(image_dir, "images", CMD_MAP | CMD_MERGE, Tier::Advanced, "input", 0, 0, "", images)         \
     F(feature_dir, "features", CMD_MAP, Tier::Advanced, "input", 0, 0, "", feature_dir)            \
     F(resume, "resume", CMD_MAP, Tier::Advanced, "input", 0, 0, "", resume)                        \
+    F(reuse, "resume", CMD_AUTO, Tier::Basic, "input", 0, 0, "", auto_resume)                      \
     F(check, "check", CMD_MAP, Tier::Advanced, "input", 0, 0, "", check)                           \
     /* ---- runtime ---- */                                                                        \
     F(threads, "threads", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "runtime", 0, 4096, "",  \
@@ -572,5 +578,10 @@ void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults);
 // note after it, empty for a switch.
 void printOptionLine(FILE* out, const std::string& flag, const std::string& value,
                      const std::string& help);
+
+// Everything a stage's output depends on, as text: the table's rows for `cmd`
+// minus the ones that cannot change a byte of it, plus the camera overrides.
+// An interrupted run's leftovers are reusable exactly when this still matches.
+std::string stageSignature(const SfmConfig& cfg, uint32_t cmd);
 
 }  // namespace sfm

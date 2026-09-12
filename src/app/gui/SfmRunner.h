@@ -128,7 +128,10 @@ struct SfmJob {
     // The video's own IMU and GPS track: 0 off, 1 orientation only, 2 (the
     // default) orientation and whatever metric scale passes its own checks.
     int sensor_gauge = 2;
-    bool keep_intermediate = false;   // keep features/ and matches.bin
+    // Keep features/, matches.bin and .resume/ after a finished run. On by
+    // default and remembered between sessions: they are what makes a cancelled
+    // or failed reconstruction resumable (sfm/core/Resume.h).
+    bool keep_intermediate = true;
     // Bundle adjustment on the host from the start. The escape hatch for a
     // driver that resets under a long solve: a run falls back by itself when
     // the device fails, but only after paying for the failure.

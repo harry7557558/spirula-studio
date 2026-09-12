@@ -229,6 +229,9 @@ void GuiApp::load_settings() {
         else if (k == "preview_h") _preview_h = (float)atof(v.c_str());
         else if (k == "show_settings") _show_settings = v != "0";
         else if (k == "native_dialogs") _dialog.use_native(v != "0");
+        // Absent -- an upgrade from a build that did not write it -- leaves the
+        // default, which is ON: the files are what makes a run resumable.
+        else if (k == "keep_intermediate") _sfm_job.keep_intermediate = v != "0";
         else if (k.rfind(kDirPrefix, 0) == 0 && !v.empty())
             _dialog_dirs[k.substr(sizeof kDirPrefix - 1)] = v;
     }
@@ -271,6 +274,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "preview_h=%.1f\n", _preview_h);
     std::fprintf(f, "show_settings=%d\n", _show_settings ? 1 : 0);
     std::fprintf(f, "native_dialogs=%d\n", _dialog.native_enabled() ? 1 : 0);
+    std::fprintf(f, "keep_intermediate=%d\n", _sfm_job.keep_intermediate ? 1 : 0);
     for (const auto& [key, dir] : _dialog_dirs)
         std::fprintf(f, "%s%s=%s\n", kDirPrefix, key.c_str(), dir.c_str());
     for (const auto& l : _accepted_licenses)
@@ -3819,14 +3823,17 @@ void GuiApp::draw_dataset_rerun(const WorkspaceState& prior) {
 
 void GuiApp::reset_recon_options() {
     // The photographs' colour space was read off the files, not chosen, so it
-    // is not one of the options this puts back.
+    // is not one of the options this puts back -- and keeping the intermediate
+    // files is a setting of the program's rather than of this project's.
     const std::string gamut = _sfm_job.image_gamut;
     const std::optional<bool> linear = _sfm_job.image_is_linear;
+    const bool keep = _sfm_job.keep_intermediate;
     _sfm_job = SfmJob{};
     _colmap_job = ColmapJob{};
     _geometry = GeometryJob{};
     _sfm_job.image_gamut = gamut;
     _sfm_job.image_is_linear = linear;
+    _sfm_job.keep_intermediate = keep;
     for (PrepInput& s : _sources) {
         s.camera_model = default_lens(s.path);
         s.focal_factor = 0.0f;
@@ -3904,6 +3911,40 @@ void GuiApp::draw_clear_project_modal() {
     ImGui::SameLine();
     if (ui::Button(dmsg::cancel, ImVec2(px(150.0f), 0))) {
         _clear_shown = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void GuiApp::draw_drop_intermediate_modal() {
+    if (_drop_intermediate_open) {
+        ui::OpenPopup(dmsg::drop_intermediate_title);
+        _drop_intermediate_open = false;
+        _drop_intermediate_shown = true;
+    }
+    if (!_drop_intermediate_shown) return;
+    // Closed by the window's own means rather than by a button: the setting
+    // stays as it was, which is the safe half of the question.
+    if (!ui::BeginPopupModal(dmsg::drop_intermediate_title, nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+        _drop_intermediate_shown = false;
+        _sfm_job.keep_intermediate = true;
+        return;
+    }
+    ImGui::PushTextWrapPos(px(460.0f));
+    ui::Text(dmsg::drop_intermediate_confirm);
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    if (ui::Button(dmsg::drop_intermediate_button, ImVec2(px(150.0f), 0))) {
+        _sfm_job.keep_intermediate = false;
+        save_settings();
+        _drop_intermediate_shown = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ui::Button(dmsg::cancel, ImVec2(px(150.0f), 0))) {
+        _sfm_job.keep_intermediate = true;
+        _drop_intermediate_shown = false;
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -4103,7 +4144,12 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::sfm_metric_gps_help);
     ImGui::Spacing();
 
-    ui::Checkbox(dmsg::keep_intermediate, &_sfm_job.keep_intermediate);
+    // Unticking it is what throws the resumable state away, so it asks first
+    // and the answer is remembered; ticking it back needs no ceremony.
+    if (ui::Checkbox(dmsg::keep_intermediate, &_sfm_job.keep_intermediate)) {
+        if (_sfm_job.keep_intermediate) save_settings();
+        else _drop_intermediate_open = true;
+    }
     ui::help_on_hover(dmsg::keep_intermediate_help);
 
     ImGui::SetNextItemWidth(-1);
@@ -4527,6 +4573,7 @@ void GuiApp::draw_new_dataset() {
     }
     if (_geometry_panel.is_open()) _geometry_panel.draw(_geometry);
     draw_clear_project_modal();
+    draw_drop_intermediate_modal();
     draw_license_modal();
 }
 
