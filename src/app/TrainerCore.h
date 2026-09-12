@@ -99,7 +99,13 @@ struct SeedSplats {
 };
 
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color);
+                       const ColorResolution& color,
+                       int64_t capacity);
+
+
+// Includes resumed live rows up to the cap, not only fresh sparse seeds.
+int64_t resolve_training_splat_capacity(int64_t source_count,
+                                        const TrainConfig& cfg);
 
 
 // ===========================================================================
@@ -148,9 +154,25 @@ TrainingBatchPlan resolve_training_batch_plan(int64_t num_train,
                                               int64_t num_val,
                                               int max_batch_per_epoch);
 
+// Soft scorer concurrency limit; decoded inputs and allocator overhead are excluded.
+int resolve_eval_worker_count(int64_t view_pixels, unsigned hardware_threads,
+                              bool save_images);
+
 struct TrainingMemoryEstimate {
-    uint64_t known_minimum_bytes = 0;
+    // Sum of per-allocation retained maxima across training and evaluation.
+    uint64_t accounted_bytes = 0;
+    // Deterministic grow-before-free and startup conversion overlap.
+    uint64_t conservative_allowance_bytes = 0;
+    // Geometry-dependent scratch and driver overhead are not bounded here.
     bool dynamic_unknown = true;
+    // Resolved before the first step for checkpoint adaptation.
+    bool fused_proj_bwd_optim = false;
+
+    uint64_t estimated_bytes() const {
+        return conservative_allowance_bytes > UINT64_MAX - accounted_bytes
+            ? UINT64_MAX
+            : accounted_bytes + conservative_allowance_bytes;
+    }
 };
 
 inline constexpr uint64_t kTrainingMemoryReserveBytes = 256ull << 20;

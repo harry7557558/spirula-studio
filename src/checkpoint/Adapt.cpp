@@ -295,6 +295,18 @@ std::optional<SlotClass> classify(const std::string& name) {
     return std::nullopt;
 }
 
+std::string sh_quant_slot_name(const std::string& base, bool fpbo) {
+    if (starts_with(base, "eng.world.sh_vq")) {
+        std::string stem = ends_with(base, "_fpbo")
+            ? base.substr(0, base.size() - 5) : base;
+        return fpbo ? stem + "_fpbo" : stem;
+    }
+    if (base == "eng.sh_quant" || base == "eng.sh_quant_fpbo")
+        return fpbo ? "eng.sh_quant_fpbo" : "eng.sh_quant";
+    return base;
+}
+
+
 
 // ===========================================================================
 // Transforms
@@ -435,6 +447,27 @@ const std::optional<std::array<int, 3>>& target_grid(const TargetLayout& t,
     return t.bilagrid_normal;
 }
 
+// Preserve unknown manifest fields while replacing known scalars.
+void rewrite_json_int(std::string& st, const char* key, int64_t v) {
+    std::string pat = std::string("\"") + key + "\":";
+    size_t k = st.find(pat);
+    if (k == std::string::npos) {
+        size_t open = st.find('{');
+        if (open == std::string::npos)
+            throw std::runtime_error(
+                std::string("checkpoint adapt: state.json has no object for '")
+                + key + "'");
+        std::string ins = "\n  \"" + std::string(key) + "\": " +
+                          std::to_string(v) + ",";
+        st.insert(open + 1, ins);
+        return;
+    }
+    size_t b = st.find_first_not_of(" \t", k + pat.size());
+    size_t e = st.find_first_of(",\n}", b);
+    st.replace(b, e - b, std::to_string(v));
+}
+
+
 [[noreturn]] void image_count_error(const char* what, int64_t ck, int64_t tgt) {
     throw std::runtime_error(
         std::string("resume: ") + what + " image count changed (" +
@@ -457,6 +490,9 @@ bool needs_adapt(const JsonValue& state, const TargetLayout& t) {
         return true;
     if ((int)state.get_double("num_sh", 0) != t.num_sh) return true;
     if ((int64_t)state.get_double("cur_num_splats", 0) > t.max_num_splats)
+        return true;
+    if ((state.get_double("use_fused_proj_bwd_optim", 0) != 0) !=
+        t.fused_proj_bwd_optim)
         return true;
     for (const char* which : {"rgb", "depth", "normal"}) {
         BilagridState b = bilagrid_state(state, which);
@@ -488,6 +524,7 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
     const int64_t max_ck = (int64_t)state.get_double("max_num_splats", 0);
     const int64_t cur_ck = (int64_t)state.get_double("cur_num_splats", 0);
     const int     K_ck   = (int)state.get_double("num_sh", 0);
+    const bool fused_ck = state.get_double("use_fused_proj_bwd_optim", 0) != 0;
     const int64_t max_new = t.max_num_splats;
     const int     K_new   = t.num_sh;
     const int64_t n_img   = t.num_images;
@@ -540,40 +577,64 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
         }
 
         if (cls && cls->quant) {                        // quantized per-splat
+            // A checkpoint may retain inactive pool slots from another layout.
+            if (cls->is_sh && cls->fpbo != fused_ck) continue;
+            // Empty SH can leave a pooled bounds slot without a value payload.
+            if (cls->is_sh && (K_ck == 0 || K_new == 0)) continue;
+            // Missing SH payloads must not become freshly zeroed target storage.
+            if (cls->is_sh && (!parts.q || !parts.qb))
+                throw std::runtime_error(
+                    "checkpoint adapt: incomplete SH quant slot " + base +
+                    " (need both .q and .qb)");
             if (!parts.q || !parts.qb) continue;
-            const int cpp_ck  = cls->is_sh ? 3 * K_ck  : cls->cpp;
-            const int cpp_new = cls->is_sh ? 3 * K_new : cls->cpp;
-            const int64_t n_ck  = max_ck  * cpp_ck;
-            const int64_t n_new = max_new * cpp_new;
-            // The FPBO SH stream is neither splat-major nor exactly n cells
-            // long (docs/notes/sh-quant-layout.md); the reindex below wants
-            // splat-major, so transpose in and back out.
-            const bool sh_fpbo = cls->fpbo && cls->is_sh;
-            const ShQuantAddr a_ck =
-                sh_quant_addr((uint32_t)K_ck, sh_fpbo ? 0 : 256);
-            const ShQuantAddr a_new =
-                sh_quant_addr((uint32_t)K_new, sh_fpbo ? 0 : 256);
-            const int64_t lin_ck = sh_fpbo
-                ? sh_fpbo_cells(max_ck, (uint32_t)K_ck) : n_ck;
-            const int64_t lin_new = sh_fpbo
-                ? sh_fpbo_cells(max_new, (uint32_t)K_new) : n_new;
-            const int64_t bbc_ck = sh_fpbo ? a_ck.bounds_stride
-                                           : (cls->fpbo ? kBlock * cpp_ck : kBlock);
-            const int64_t bbc_new = sh_fpbo ? a_new.bounds_stride
-                                            : (cls->fpbo ? kBlock * cpp_new : kBlock);
+            const bool is_sh    = cls->is_sh;
+            const int  cpp_ck   = is_sh ? 3 * K_ck  : cls->cpp;
+            const int  cpp_new  = is_sh ? 3 * K_new : cls->cpp;
+            const bool src_fpbo = cls->fpbo && is_sh;   // transposed SH stream
+            const bool dst_fpbo = is_sh && t.fused_proj_bwd_optim;
+            const ShQuantAddr a_ck  = sh_quant_addr((uint32_t)K_ck,  src_fpbo ? 0 : 256);
+            const ShQuantAddr a_new = sh_quant_addr((uint32_t)K_new, dst_fpbo ? 0 : 256);
+            const int64_t bbc_ck  = is_sh ? (src_fpbo ? a_ck.bounds_stride : kBlock)
+                                          : (cls->fpbo ? kBlock * cpp_ck : kBlock);
+            const int64_t bbc_new = is_sh ? (dst_fpbo ? a_new.bounds_stride : kBlock)
+                                          : (cls->fpbo ? kBlock * cpp_new : kBlock);
+            const int64_t bpc = (cls->bits / 8) * (cls->adam ? 2 : 1);
+            const int64_t src_capacity = src_fpbo
+                ? sh_fpbo_cells(max_ck, (uint32_t)K_ck) : max_ck * cpp_ck;
+            const int64_t src_lin = src_fpbo
+                ? sh_fpbo_cells(cur_ck, (uint32_t)K_ck) : cur_ck * cpp_ck;
+            const int64_t dst_lin = dst_fpbo
+                ? sh_fpbo_cells(max_new, (uint32_t)K_new) : max_new * cpp_new;
 
+            // state.tar saves full logical slots, even when only cur_ck rows are live.
+            if ((int64_t)parts.q->bytes.size() < src_capacity * bpc)
+                throw std::runtime_error(
+                    "checkpoint adapt: short " + base + ".q payload (" +
+                    std::to_string((int64_t)parts.q->bytes.size()) + " < " +
+                    std::to_string(src_capacity * bpc) + " bytes)");
+
+            const int64_t have_bounds = (int64_t)parts.qb->bytes.size() /
+                (int64_t)(cls->adam ? sizeof(float4) : sizeof(float2));
+            const int64_t need_bounds = num_blocks(src_capacity, bbc_ck);
+            if (have_bounds < need_bounds)
+                throw std::runtime_error(
+                    "checkpoint adapt: short " + base + ".qb bounds (" +
+                    std::to_string(have_bounds) + " < " +
+                    std::to_string(need_bounds) + ")");
+
+            // Reindex in splat-major order; transpose only at the codec boundary.
             auto to_splat_major = [&](std::vector<float>& v) {
-                if (!sh_fpbo) return;
-                std::vector<float> out((size_t)n_ck, 0.0f);
-                for (int64_t i = 0; i < max_ck; i++)
+                if (!src_fpbo) return;
+                std::vector<float> out((size_t)(cur_ck * cpp_ck), 0.0f);
+                for (int64_t i = 0; i < cur_ck; i++)
                     for (int c = 0; c < cpp_ck; c++)
                         out[(size_t)(i * cpp_ck + c)] =
                             v[(size_t)a_ck.cell(a_ck.base(i), c)];
                 v.swap(out);
             };
             auto from_splat_major = [&](std::vector<float>& v) {
-                if (!sh_fpbo) return;
-                std::vector<float> out((size_t)lin_new, 0.0f);
+                if (!dst_fpbo) return;
+                std::vector<float> out((size_t)dst_lin, 0.0f);
                 for (int64_t i = 0; i < max_new; i++)
                     for (int c = 0; c < cpp_new; c++)
                         out[(size_t)a_new.cell(a_new.base(i), c)] =
@@ -582,7 +643,7 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
             };
 
             auto reindex_stream = [&](const std::vector<float>& v) {
-                if (cls->is_sh)
+                if (is_sh)
                     return resample_sh(v.data(), K_ck, keep, K_new, max_new);
                 return gather_rows(v.data(), cpp_ck, keep, max_new);
             };
@@ -592,12 +653,13 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
             if (cls->adam) {
                 std::vector<float> g1, g2;
                 decode_adam(cls->bits, parts.q->u8(), parts.qb->f32(),
-                            lin_ck, bbc_ck, g1, g2);
+                            src_lin, bbc_ck, g1, g2);
                 to_splat_major(g1);
                 to_splat_major(g2);
                 std::vector<float> g1n = reindex_stream(g1);
                 std::vector<float> g2n = reindex_stream(g2);
-                if ((int64_t)g1n.size() != n_new)
+                if ((int64_t)g1n.size() != max_new * cpp_new ||
+                    (int64_t)g2n.size() != max_new * cpp_new)
                     throw std::runtime_error("checkpoint adapt: adam reindex size");
                 from_splat_major(g1n);
                 from_splat_major(g2n);
@@ -605,16 +667,17 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
             } else {
                 std::vector<float> v;
                 decode_linear(cls->bits, parts.q->u8(), parts.qb->f32(),
-                              lin_ck, bbc_ck, v);
+                              src_lin, bbc_ck, v);
                 to_splat_major(v);
                 std::vector<float> vn = reindex_stream(v);
-                if ((int64_t)vn.size() != n_new)
+                if ((int64_t)vn.size() != max_new * cpp_new)
                     throw std::runtime_error("checkpoint adapt: linear reindex size");
                 from_splat_major(vn);
                 encode_linear(cls->bits, vn, bbc_new, pk, bd);
             }
-            emit[base + ".q"]  = from_bytes(pk);
-            emit[base + ".qb"] = from_floats(bd);
+            const std::string slot = sh_quant_slot_name(base, t.fused_proj_bwd_optim);
+            emit[slot + ".q"]  = from_bytes(pk);
+            emit[slot + ".qb"] = from_floats(bd);
             continue;
         }
 
@@ -704,21 +767,13 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
         }
     }
 
-    // state.json with the three counts retargeted. Rewriting the three numbers
-    // in place keeps every other field (quant widths, FPBO flags, camera block)
-    // exactly as the writer emitted it.
     std::string st = state_text;
-    auto set_int = [&st](const char* key, int64_t v) {
-        std::string pat = std::string("\"") + key + "\":";
-        size_t k = st.find(pat);
-        if (k == std::string::npos) return;
-        size_t b = st.find_first_not_of(" \t", k + pat.size());
-        size_t e = st.find_first_of(",\n}", b);
-        st.replace(b, e - b, std::to_string(v));
-    };
-    set_int("cur_num_splats", target_cur);
-    set_int("max_num_splats", max_new);
-    set_int("num_sh", K_new);
+    rewrite_json_int(st, "cur_num_splats", target_cur);
+    rewrite_json_int(st, "max_num_splats", max_new);
+    rewrite_json_int(st, "num_sh", K_new);
+    // The loader installs this saved flag before _ensure_optim_state builds
+    // the slots, so it must name the layout the payloads were just renamed to.
+    rewrite_json_int(st, "use_fused_proj_bwd_optim", t.fused_proj_bwd_optim ? 1 : 0);
 
     fs::create_directories(out_dir);
     std::ofstream out((out_dir / "state.tar").string(), std::ios::binary);

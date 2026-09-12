@@ -15,6 +15,8 @@
 #include "data/DataManager.h"
 #include "data/Knn.h"
 #include "sfm/core/Exif.h"
+#include "engine/EngineState.h"
+#include "external/stb_image.h"
 
 #ifndef _WIN32
 #include <ftw.h>
@@ -179,8 +181,46 @@ float scheduled_lr(int step, int max_steps, float lr,
 // Splat seeding (3dgs branch)
 // ===========================================================================
 
+namespace {
+
+struct SeedRows {
+    int64_t min_init = 0;
+    int64_t live = 0;
+};
+
+SeedRows resolve_seed_rows(int64_t source_count, const TrainConfig& cfg) {
+    if (source_count <= 0)
+        throw std::runtime_error("seed_splats: empty point cloud");
+    const int64_t cap_max = std::max<int64_t>(cfg.cap_max, 1);
+    int64_t min_init = std::max<int64_t>(
+        (int64_t)(std::min(cfg.min_init_fraction, 1.0f) * (double)cap_max), 1);
+    min_init = std::min<int64_t>(min_init, cap_max);
+    SeedRows rows;
+    rows.min_init = min_init;
+    rows.live = source_count > cap_max
+        ? cap_max : std::max<int64_t>(source_count, min_init);
+    return rows;
+}
+
+}  // namespace
+
+int64_t resolve_training_splat_capacity(int64_t source_count,
+                                        const TrainConfig& cfg) {
+    const SeedRows rows = resolve_seed_rows(source_count, cfg);
+    const int64_t cap_max = std::max<int64_t>(cfg.cap_max, 1);
+    if (cfg.preallocate_splat_tensors) return cap_max;
+    int64_t capacity = rows.live;
+    if (!cfg.resume.empty()) {
+        const ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
+        const JsonValue state = ckpt::read_state_json(r.ckpt_dir);
+        const int64_t cur = (int64_t)state.get_double("cur_num_splats", 0);
+        capacity = std::max(capacity, std::min(cur, cap_max));
+    }
+    return capacity;
+}
+
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color) {
+                       const ColorResolution& color, int64_t capacity) {
     std::mt19937 rng(42);
     std::normal_distribution<float> gauss(0.f, 1.f);
     std::uniform_real_distribution<float> uni(0.f, 1.f);
@@ -188,30 +228,28 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
     float scale_init   = cfg.scale_init.value_or(0.5f);
     float opacity_init = cfg.opacity_init.value_or(0.1f);
 
-    // Resolve seed count into [min_init, cap_max].
-    int64_t n_src = pts.num();
-    if (n_src == 0) throw std::runtime_error("seed_splats: empty point cloud");
-    int64_t min_init = std::max<int64_t>(
-        (int64_t)(std::min(cfg.min_init_fraction, 1.0f) * cfg.cap_max), 1);
-    min_init = std::min<int64_t>(min_init, cfg.cap_max);
+    const int64_t n_src = pts.num();
+    const int64_t cap_max = std::max<int64_t>(cfg.cap_max, 1);
+    const SeedRows rows = resolve_seed_rows(n_src, cfg);
+    if (capacity < rows.live)
+        throw std::invalid_argument("seed capacity is below the live point count");
+    const int64_t min_init = rows.min_init;
 
     std::vector<int64_t> pick;
-    if (n_src > cfg.cap_max) {
-        pick.resize(n_src);
+    if (n_src > cap_max) {
+        pick.resize((size_t)n_src);
         std::iota(pick.begin(), pick.end(), 0);
         std::shuffle(pick.begin(), pick.end(), rng);
-        pick.resize(cfg.cap_max);
+        pick.resize((size_t)cap_max);
     } else {
         // Repeat modulo when under min_init; the repeats are jittered apart
         // below, and pick[0 .. n_src) stay one per source point.
-        int64_t n = std::max(n_src, min_init);
-        pick.resize(n);
-        for (int64_t i = 0; i < n; i++) pick[i] = i % n_src;
+        pick.resize((size_t)rows.live);
+        for (int64_t i = 0; i < rows.live; i++) pick[i] = i % n_src;
     }
     const int64_t n_distinct = std::min<int64_t>((int64_t)pick.size(), n_src);
     const int64_t num = (int64_t)pick.size();
-    const int64_t cap = cfg.preallocate_splat_tensors
-        ? std::max<int64_t>(num, cfg.cap_max) : num;
+    const int64_t cap = capacity;
     const int64_t dim_sh = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1);
 
     SeedSplats s;
@@ -593,26 +631,51 @@ void TrainerSession::check_config() {
                  {cfg.orientation_method, cfg.center_method}));
 }
 
-void TrainerSession::load_dataset() {
+namespace {
+
+DatasetParserConfig parser_config(const TrainConfig& cfg, bool eval) {
     DatasetParserConfig pcfg;
-    pcfg.recon_dir            = cfg.colmap_recon_dir;
-    pcfg.image_dir            = cfg.image_dir;
-    pcfg.mask_dir             = cfg.mask_dir;
-    pcfg.depth_dir            = cfg.depth_dir;
-    pcfg.normal_dir           = cfg.normal_dir;
-    pcfg.validation_fraction  = cfg.validation_fraction;
-    pcfg.eval_mode            = cfg.eval_mode;
-    pcfg.eval_interval        = cfg.eval_interval;
+    pcfg.recon_dir = cfg.colmap_recon_dir;
+    pcfg.image_dir = cfg.image_dir;
+    pcfg.mask_dir = cfg.mask_dir;
+    pcfg.depth_dir = cfg.depth_dir;
+    pcfg.normal_dir = cfg.normal_dir;
+    pcfg.validation_fraction = eval ? 0.0f : cfg.validation_fraction;
+    pcfg.eval_mode = cfg.eval_mode;
+    pcfg.eval_interval = cfg.eval_interval;
     pcfg.train_split_fraction = cfg.train_split_fraction;
-    pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.center_mode          = cfg.scene_center;
-    pcfg.exif_orientation     = cfg.exif_orientation;
-    pcfg.probe_image_size        = probe_image_size;
+    pcfg.outlier_threshold = cfg.outlier_threshold;
+    pcfg.center_mode = cfg.scene_center;
+    pcfg.exif_orientation = cfg.exif_orientation;
+    pcfg.probe_image_size = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
-    pcfg.metashape_xml           = cfg.metashape_xml;
-    pcfg.metashape_ply           = cfg.metashape_ply;
-    pcfg.metashape_psx           = cfg.metashape_psx;
+    pcfg.metashape_xml = cfg.metashape_xml;
+    pcfg.metashape_ply = cfg.metashape_ply;
+    pcfg.metashape_psx = cfg.metashape_psx;
+    if (eval) pcfg.split = "eval";
+    return pcfg;
+}
+
+RunState resolve_appearance_state(const TrainConfig& cfg, bool depth, bool normal) {
+    RunState state;
+    state.bilagrid_rgb_init = cfg.use_bilateral_grid &&
+        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_lr : cfg.bilagrid_lr) > 0;
+    state.bilagrid_depth_init = cfg.use_bilateral_grid_for_geometry && depth &&
+        cfg.depth_supervision_weight > 0 &&
+        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_depth_lr : cfg.bilagrid_depth_lr) > 0;
+    state.bilagrid_normal_init = cfg.use_bilateral_grid_for_geometry && normal &&
+        cfg.normal_supervision_weight > 0 &&
+        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr : cfg.bilagrid_normal_lr) > 0;
+    state.ppisp_init = cfg.use_ppisp &&
+        (cfg.use_adagrad_ppisp_optim ? cfg.ppisp_adagrad_lr : cfg.ppisp_lr) > 0;
+    return state;
+}
+
+}  // namespace
+
+void TrainerSession::load_dataset() {
+    const DatasetParserConfig pcfg = parser_config(cfg, false);
     ds = parse_dataset(cfg.data, pcfg, cfg.data_format);
     if (ds.center_mode != "none") {
         char xyz[96];
@@ -684,23 +747,268 @@ uint64_t sat_mul(uint64_t a, uint64_t b) {
     return a != 0 && b > UINT64_MAX / a ? UINT64_MAX : a * b;
 }
 
-uint64_t image_bytes(const std::string& path, int channels, int bytes_per_channel) {
-    if (path.empty()) return 0;
+uint64_t ceil_div(uint64_t n, uint64_t d) {
+    return n / d + (n % d != 0);
+}
+
+struct MemoryAllocations {
+    std::map<std::string, uint64_t> retained;
+    uint64_t transient = 0;
+
+    void add(const std::string& key, uint64_t bytes) {
+        auto& current = retained[key];
+        current = std::max(current, bytes);
+    }
+    void add(PoolSlot slot, uint64_t bytes) { add(slot_name(slot), bytes); }
+    void quant(PoolSlot slot, uint64_t cells, uint64_t bytes_per_cell,
+               uint64_t bounds, uint64_t bytes_per_bound) {
+        const std::string name = slot_name(slot);
+        add(name + ".q", sat_mul(cells, bytes_per_cell));
+        add(name + ".qb", sat_mul(bounds, bytes_per_bound));
+    }
+    TrainingMemoryEstimate result(bool fused) const {
+        TrainingMemoryEstimate out;
+        for (const auto& [key, bytes] : retained) {
+            out.accounted_bytes = sat_add(out.accounted_bytes, bytes);
+            out.conservative_allowance_bytes =
+                std::max(out.conservative_allowance_bytes, bytes);
+        }
+        out.conservative_allowance_bytes =
+            std::max(out.conservative_allowance_bytes, transient);
+        out.fused_proj_bwd_optim = fused;
+        return out;
+    }
+};
+
+struct MemoryExtent {
+    int64_t w = 0, h = 0;
+    uint64_t pixels() const { return sat_mul((uint64_t)w, (uint64_t)h); }
+    void merge(MemoryExtent other) {
+        if (other.pixels() > pixels()) *this = other;
+    }
+    MemoryExtent half() const {
+        return {std::max<int64_t>(w / 2, 1), std::max<int64_t>(h / 2, 1)};
+    }
+};
+
+MemoryExtent modality_extent(const std::vector<std::string>& files, size_t i) {
+    if (files.empty() || files[i].empty()) return {};
     int w = 0, h = 0;
-    if (!probe_image_size(path.c_str(), &w, &h))
-        throw std::runtime_error("Failed to probe training image '" + path + "'");
-    return sat_mul(sat_mul((uint64_t)w, (uint64_t)h),
-                   (uint64_t)(channels * bytes_per_channel));
+    if (!probe_image_size(files[i].c_str(), &w, &h))
+        throw std::runtime_error("Failed to probe training image '" + files[i] + "'");
+    return {w, h};
 }
 
 struct MemoryGroup {
-    int count = 0;
-    uint64_t rgb_input = 0;
-    uint64_t mask_input = 0;
-    uint64_t depth_input = 0;
-    uint64_t normal_input = 0;
-    uint64_t face_pixels = 0;
+    int64_t count = 0, faces = 1;
+    MemoryExtent rgb, mask, depth, normal;
+    bool rgb_u8 = false, rgb_u16 = false, warped = false, redistort = false;
+    std::vector<WarpFacePass> passes;
 };
+
+std::map<std::vector<int32_t>, MemoryGroup> memory_groups(
+    const ParsedDataset& ds, const PostSplitCameras& post,
+    const std::vector<int32_t>& indices, int face_cap,
+    bool mask, bool depth, bool normal) {
+    std::map<std::vector<int32_t>, MemoryGroup> groups;
+    for (int32_t i : indices) {
+        const int K = post.K_per_camera.empty() ? 1 : post.K_per_camera[i];
+        const int offset = post.post_offsets.empty() ? i : post.post_offsets[i];
+        const bool redistort = !post.redistort_models.empty() && post.redistort_models[i] >= 0;
+        std::vector<int32_t> widths(K), heights(K);
+        std::vector<int32_t> key{
+            ds.widths[i], ds.heights[i], ds.camera_models[i],
+            ds.camera_distortions[i], (int)redistort, K};
+        for (int k = 0; k < K; ++k) {
+            widths[k] = K > 1 ? post.post_widths[offset + k] : ds.widths[i];
+            heights[k] = K > 1 ? post.post_heights[offset + k] : ds.heights[i];
+            key.push_back(widths[k]);
+            key.push_back(heights[k]);
+        }
+        auto& group = groups[key];
+        if (group.count++ == 0) {
+            group.rgb = {ds.widths[i], ds.heights[i]};
+            group.faces = K;
+            group.redistort = redistort;
+            group.warped = K > 1 || redistort;
+            group.passes = build_face_passes(widths.data(), heights.data(), K, face_cap);
+        }
+        const std::string path = ds.image_filenames.empty() ? std::string() : ds.image_filenames[i];
+        if (!exr::is_exr(path)) {
+            if (!path.empty() && stbi_is_16_bit(path.c_str())) group.rgb_u16 = true;
+            else group.rgb_u8 = true;
+        }
+        if (mask) {
+            auto extent = modality_extent(ds.mask_filenames, i);
+            if (extent.pixels() == 0) extent = group.rgb;
+            if (extent.pixels() > 1) group.mask.merge(extent);
+        }
+        if (depth) group.depth.merge(modality_extent(ds.depth_filenames, i));
+        if (normal) group.normal.merge(modality_extent(ds.normal_filenames, i));
+    }
+    for (auto& [key, group] : groups) {
+        if (mask && group.mask.pixels() == 0) group.mask = {1, 1};
+        else if (mask && group.faces > 1) group.mask = group.rgb;
+    }
+    return groups;
+}
+
+MemoryExtent warped_normal(MemoryExtent face, MemoryExtent normal, MemoryExtent input) {
+    if (normal.pixels() == 0) return {};
+    return {
+        std::max<int64_t>(1, (face.w * normal.w + input.w / 2) / input.w),
+        std::max<int64_t>(1, (face.h * normal.h + input.h / 2) / input.h)};
+}
+
+void count_image_pass(MemoryAllocations& a, const MemoryGroup& group,
+                      const WarpFacePass& pass, uint64_t inputs, bool training,
+                      const TrainConfig& cfg, const RunState& state,
+                      const EngineStepConfig& step, const ColorResolution& color) {
+    const uint64_t cameras = sat_mul(inputs, (uint64_t)(pass.k1 - pass.k0));
+    const MemoryExtent face{pass.width, pass.height};
+    const MemoryExtent normal = training ? (group.warped ?
+        warped_normal(face, group.normal, group.rgb) : group.normal) : MemoryExtent{};
+    const MemoryExtent depth = training && group.depth.pixels() != 0 ?
+        (group.warped ? face : group.depth) : MemoryExtent{};
+    const MemoryExtent mask = group.mask.pixels() != 0 ?
+        (group.warped ? face : group.mask) : MemoryExtent{};
+    const auto bytes = [cameras](MemoryExtent size, uint64_t per_pixel) {
+        return sat_mul(sat_mul(cameras, size.pixels()), per_pixel);
+    };
+    if (group.rgb_u8) a.add(PoolSlot::GtStagingU8, sat_mul(inputs, sat_mul(group.rgb.pixels(), 3)));
+    if (group.rgb_u16) a.add(PoolSlot::GtStagingU16, sat_mul(inputs, sat_mul(group.rgb.pixels(), 6)));
+    if (group.warped) {
+        a.add(PoolSlot::GtStagingU8, sat_mul(inputs, group.mask.pixels()));
+        a.add(PoolSlot::WarpInputIntrins, sat_mul(inputs, 16));
+        a.add(PoolSlot::WarpInputDistCoeffs, sat_mul(inputs, 4 * kCameraDistortionParams));
+        if (group.redistort) {
+            a.add(PoolSlot::WarpSourceModels, sat_mul(inputs, 4));
+            a.add(PoolSlot::WarpSourceParams, sat_mul(inputs, 64));
+        }
+        if (group.faces > 1) a.add(PoolSlot::WarpFaceAxes, sat_mul(cameras, 36));
+    }
+    if (training) {
+        a.add(PoolSlot::GtStagingU8, sat_mul(inputs, sat_mul(group.normal.pixels(), 3)));
+        a.add(PoolSlot::GtStagingU16, sat_mul(inputs, sat_mul(group.depth.pixels(), 2)));
+    }
+    a.add(PoolSlot::CamViewmats, sat_mul(cameras, 64));
+    a.add(PoolSlot::CamIntrins, sat_mul(cameras, 16));
+    a.add(PoolSlot::CamDistCoeffs, sat_mul(cameras, 4 * kCameraDistortionParams));
+    a.add("renders.rgb", bytes(face, 12));
+    a.add("renders.depth", bytes(face, 4));
+    a.add(PoolSlot::RenderTs, bytes(face, 4));
+    a.add(PoolSlot::RenderLastIds, bytes(face, 4));
+    a.add(PoolSlot::GtRgb, bytes(face, 12));
+    a.add(PoolSlot::GtAlpha, bytes(mask, 1));
+    if (color.splat_on()) a.add(PoolSlot::ColorSpaceFwdPost, bytes(face, 12));
+    const bool background = cfg.background_mode != "black";
+    if (background) a.add(PoolSlot::EngBgSkyRgbPost, bytes(face, 12));
+    if (cfg.background_mode == "sh") a.add(PoolSlot::EngBgSkyImage, bytes(face, 12));
+    if (!training) return;
+
+    a.add(PoolSlot::GtDepth, bytes(depth, 4));
+    a.add(PoolSlot::GtNormal, bytes(normal, 12));
+    a.add(PoolSlot::EngVRgb, bytes(face, 12));
+    a.add(PoolSlot::EngVDepth, bytes(face, 4));
+    a.add(PoolSlot::EngVTs, bytes(face, 4));
+    const bool derived_normal = normal.pixels() != 0 ||
+        step.loss.weights[(int)LossWeightIndex::MedianDepthNormalReg] > 0;
+    if (derived_normal) {
+        a.add(PoolSlot::EngDepthNormal, bytes(face, 12));
+        a.add(PoolSlot::EngVDepthNormal, bytes(face, 12));
+    }
+    if (state.bilagrid_rgb_init) a.add(PoolSlot::EngBgRgbPost, bytes(face, 12));
+    if (state.ppisp_init) a.add(PoolSlot::EngPpispRgbPost, bytes(face, 12));
+    if (state.bilagrid_depth_init) {
+        a.add(PoolSlot::EngVRefDepth, bytes(depth, 4));
+        a.add(PoolSlot::EngBgDepthPost, bytes(depth, 4));
+        a.add(PoolSlot::EngBgDepthTmpScalars, sat_mul(cameras, 4));
+        a.add(PoolSlot::BilagridQuantileTemp, sat_mul(cameras, 261 * 4));
+    }
+    if (state.bilagrid_normal_init) {
+        a.add(PoolSlot::EngVRefNormal, bytes(normal, 12));
+        a.add(PoolSlot::EngBgNormalPost, bytes(normal, 12));
+    }
+    if (background) a.add(PoolSlot::EngBgSkyVTsScratch, bytes(face, 4));
+    if (cfg.background_mode == "sh") a.add(PoolSlot::EngBgSkyVBg, bytes(face, 12));
+    const DistortionType distortion = engine_distortion_type(
+        engine_primitive_pixel_type(cfg.primitive),
+        step.loss.weights[(int)LossWeightIndex::RgbDistReg],
+        step.loss.weights[(int)LossWeightIndex::DepthDistReg],
+        step.loss.weights[(int)LossWeightIndex::NormalDistReg]);
+    if (dist_has_rgb(distortion)) {
+        a.add("distortions.rgb", bytes(face, 12));
+        a.add(PoolSlot::EngVRgbDist, bytes(face, 12));
+    }
+    if (dist_has_depth(distortion)) {
+        a.add("distortions.depth", bytes(face, 4));
+        a.add(PoolSlot::EngVDepthDist, bytes(face, 4));
+    }
+    if (step.loss.compute_loss_map) {
+        a.add(PoolSlot::EngLossMap, bytes(face, 4));
+        a.add(PoolSlot::PplLossMapScale, bytes(face, 4));
+        if (step.loss.loss_map_normalize || step.loss.loss_map_clip_quantile < 1 ||
+            step.loss.loss_map_power != 1) {
+            a.add(PoolSlot::DensifyMapNorm, sat_mul(cameras, 8));
+            a.add(PoolSlot::DensifyQuantileTemp, sat_mul(cameras, 4096));
+        }
+        if (step.loss.loss_map_mode == (int)DensifyLossMapMode::RobustEdgeAware) {
+            a.add(PoolSlot::DensifyRobustResid, bytes(face, 4));
+            a.add(PoolSlot::DensifyTukeyC, sat_mul(cameras, 4));
+            a.add(PoolSlot::DensifyQuantileTemp, sat_mul(cameras, 4096));
+        }
+    }
+    if (mask.pixels() || step.loss.saturation_threshold > 0) {
+        a.add(PoolSlot::SsimMaskWeight, bytes(face, 4));
+        a.add(PoolSlot::SsimMaskWeightTmp, bytes(face, 4));
+    }
+    for (PoolSlot slot : {PoolSlot::EngVLosses, PoolSlot::PplLosses, PoolSlot::PplTotalLosses})
+        a.add(slot, sizeof(float) * (int)LossIndex::length);
+    for (PoolSlot slot : {PoolSlot::PplRawLosses, PoolSlot::PplVRawLosses})
+        a.add(slot, sat_mul(sat_add(cameras, 1), sizeof(float) * (int)RawLossIndex::length));
+    a.add(PoolSlot::SsimScalar, sizeof(float));
+
+    const int scales = resolve_loss_scales(step.loss.num_loss_scales,
+        step.loss.loss_scale_min_pixels, face.w, face.h);
+    if (scales < 1 || scales > 4)
+        throw std::runtime_error("training memory estimate: loss scale count must be in [1, 4]");
+    struct Pyramid {
+        const char* input;
+        const char* grad;
+        MemoryExtent extent;
+        uint64_t channels;
+    };
+    Pyramid pyramids[] = {
+        {"rrgb", "vrgb", face, 3}, {"frgb", nullptr, face, 3},
+        {"rd", "vrd", face, 1}, {"rT", "vrT", face, 1},
+        {"dn", "vdn", derived_normal ? face : MemoryExtent{}, 3},
+        {"fn", state.bilagrid_normal_init ? "vfn" : nullptr, normal, 3},
+        {"fd", state.bilagrid_depth_init ? "vfd" : nullptr, depth, 1},
+        {"rgbd", "vrgbd", dist_has_rgb(distortion) ? face : MemoryExtent{}, 3},
+        {"dd", "vdd", dist_has_depth(distortion) ? face : MemoryExtent{}, 1},
+    };
+    MemoryExtent mask_level = mask, face_level = face;
+    for (int scale = 0; scale < scales; ++scale) {
+        const std::string suffix = std::to_string(scale);
+        if (scale > 0) {
+            for (auto& pyramid : pyramids) {
+                if (pyramid.extent.pixels() == 0) continue;
+                pyramid.extent = pyramid.extent.half();
+                const uint64_t n = bytes(pyramid.extent, 4 * pyramid.channels);
+                a.add("ppl.s" + suffix + "." + pyramid.input, n);
+                if (pyramid.grad) a.add("ppl.g." + std::string(pyramid.grad) + ".s" + suffix, n);
+            }
+            if (mask_level.pixels()) {
+                mask_level = mask_level.half();
+                a.add("ppl.s" + suffix + ".ra", sat_mul(ceil_div(bytes(mask_level, 1), 4), 4));
+            }
+            face_level = face_level.half();
+        }
+        if (step.loss.compute_loss_map && cfg.densify_loss_map_mode.find("_nms") != std::string::npos &&
+            step.loss.nms_falloff < 1)
+            a.add("ppl.nms.s" + suffix, sat_mul(ceil_div(bytes(face_level, 1), 4), 4));
+    }
+}
 
 }  // namespace
 
@@ -721,122 +1029,234 @@ TrainingMemoryEstimate estimate_training_memory(
     const ParsedDataset& ds, const PostSplitCameras& post,
     const TrainConfig& cfg, bool has_mask, bool has_depth, bool has_normal,
     int64_t target_splats, int max_faces_per_pass) {
-    std::map<std::vector<int32_t>, MemoryGroup> groups;
     std::vector<int32_t> train = ds.train_indices;
     if (train.empty()) {
         train.resize((size_t)ds.num_cameras);
         std::iota(train.begin(), train.end(), 0);
     }
-
-    for (int32_t i : train) {
-        int32_t K = post.K_per_camera.empty() ? 1 : post.K_per_camera[i];
-        int32_t offset =
-            post.post_offsets.empty() ? i : post.post_offsets[i];
-        std::vector<int32_t> key{
-            ds.widths[i], ds.heights[i], ds.camera_models[i],
-            ds.camera_distortions[i], K};
-        for (int k = 0; k < K; ++k) {
-            int32_t p = offset + k;
-            key.push_back(post.post_widths.empty() ? ds.widths[i]
-                                                   : post.post_widths[p]);
-            key.push_back(post.post_heights.empty() ? ds.heights[i]
-                                                    : post.post_heights[p]);
-        }
-
-        MemoryGroup& g = groups[key];
-        ++g.count;
-        uint64_t input_pixels =
-            sat_mul((uint64_t)ds.widths[i], (uint64_t)ds.heights[i]);
-        g.rgb_input = std::max(g.rgb_input, sat_mul(input_pixels, 3));
-        if (has_mask || post.any_fov_mask) {
-            uint64_t bytes = ds.mask_filenames.empty()
-                ? input_pixels
-                : image_bytes(ds.mask_filenames[i], 1, 1);
-            g.mask_input = std::max(g.mask_input, bytes);
-        }
-        if (has_depth)
-            g.depth_input = std::max(
-                g.depth_input, image_bytes(ds.depth_filenames[i], 1, 2));
-        if (has_normal)
-            g.normal_input = std::max(
-                g.normal_input, image_bytes(ds.normal_filenames[i], 3, 1));
-
-        std::vector<int32_t> widths((size_t)K), heights((size_t)K);
-        for (int k = 0; k < K; ++k) {
-            int32_t p = offset + k;
-            widths[k] = post.post_widths.empty() ? ds.widths[i]
-                                                  : post.post_widths[p];
-            heights[k] = post.post_heights.empty() ? ds.heights[i]
-                                                    : post.post_heights[p];
-        }
-        uint64_t max_pass = 0;
-        for (const WarpFacePass& pass :
-             build_face_passes(widths.data(), heights.data(), K,
-                               max_faces_per_pass)) {
-            uint64_t pixels = 0;
-            for (int k = pass.k0; k < pass.k1; ++k)
-                pixels = sat_add(
-                    pixels, sat_mul((uint64_t)widths[k],
-                                    (uint64_t)heights[k]));
-            max_pass = std::max(max_pass, pixels);
-        }
-        g.face_pixels = std::max(g.face_pixels, max_pass);
+    const TrainingBatchPlan batch = resolve_training_batch_plan(
+        (int64_t)train.size(), (int64_t)ds.val_indices.size(), cfg.max_batch_per_epoch);
+    const auto groups = memory_groups(ds, post, train, max_faces_per_pass,
+        has_mask || post.any_fov_mask, has_depth, has_normal);
+    const auto val_groups = memory_groups(ds, post, ds.val_indices, max_faces_per_pass,
+        has_mask || post.any_fov_mask, has_depth, has_normal);
+    int max_passes = 1;
+    for (const auto* side : {&groups, &val_groups})
+        for (const auto& [key, group] : *side)
+            max_passes = std::max(max_passes, (int)group.passes.size());
+    const int64_t max_input_batch = std::min<int64_t>(batch.train_batch_size, train.size());
+    const bool fused = resolve_fused_proj_bwd_optim(
+        cfg.use_fused_proj_bwd_optim, cfg.split_batch, max_input_batch, max_passes);
+    const ColorResolution color = resolve_color(cfg);
+    const RunState state = resolve_appearance_state(cfg, has_depth, has_normal);
+    const EngineStepConfig step = build_step_config(cfg, state, std::max(cfg.num_iterations, 1));
+    MemoryAllocations a;
+    uint64_t max_step_cameras = 0, nonwarp_inputs = 0;
+    bool split = false;
+    for (const auto& [key, group] : groups) {
+        const uint64_t B = (uint64_t)std::min<int64_t>(group.count, batch.train_batch_size);
+        max_step_cameras = std::max(max_step_cameras, sat_mul(B, group.faces));
+        if (!group.warped) nonwarp_inputs = sat_add(nonwarp_inputs, group.count);
+        const bool split_group = (cfg.split_batch && !fused) || group.passes.size() > 1;
+        split = split || (split_group && sat_mul(B, group.passes.size()) > 1);
+        for (const auto& pass : group.passes)
+            count_image_pass(a, group, pass, split_group ? 1 : B,
+                             true, cfg, state, step, color);
+    }
+    max_step_cameras = std::max(max_step_cameras,
+        std::min<uint64_t>(nonwarp_inputs, (uint64_t)batch.train_batch_size));
+    split = split || (groups.size() > 1 && nonwarp_inputs > 1 && max_input_batch > 1);
+    if (cfg.eval_mode != "all") {
+        const ParsedDataset eval = parse_dataset(cfg.data, parser_config(cfg, true), cfg.data_format);
+        const PostSplitCameras eval_post = bake_post_split(eval, cfg.warp_to_pinhole,
+            cfg.warp_spherical_to_pinhole, WarpFaceFit::Uniform, cfg.warp_back_face);
+        std::vector<int32_t> indices((size_t)eval.num_cameras);
+        std::iota(indices.begin(), indices.end(), 0);
+        const auto eval_groups = memory_groups(eval, eval_post, indices, 1,
+            (!eval.mask_filenames.empty() && cfg.load_masks) || eval_post.any_fov_mask, false, false);
+        for (const auto& [key, group] : eval_groups)
+            for (const auto& pass : group.passes)
+                count_image_pass(a, group, pass, 1, false, cfg, state, step, color);
     }
 
-    int64_t num_val = (int64_t)ds.val_indices.size();
-    TrainingBatchPlan batch = resolve_training_batch_plan(
-        (int64_t)train.size(), num_val, cfg.max_batch_per_epoch);
-    uint64_t peak_images = 0;
-    for (const auto& [key, g] : groups) {
-        (void)key;
-        uint64_t B = (uint64_t)std::min(g.count, batch.train_batch_size);
-        uint64_t staging = sat_add(
-            sat_add(g.rgb_input, g.mask_input),
-            sat_add(g.depth_input, g.normal_input));
-        staging = sat_mul(staging, B);
-
-        uint64_t retained_per_pixel = 152;
-        if (cfg.num_loss_scales != 1)
-            retained_per_pixel = sat_add(retained_per_pixel, 32);
-        if (cfg.use_ppisp) retained_per_pixel =
-            sat_add(retained_per_pixel, 12);
-        uint64_t retained = sat_mul(
-            sat_mul(g.face_pixels, B), retained_per_pixel);
-        peak_images = std::max(peak_images, sat_add(staging, retained));
+    const uint64_t N = (uint64_t)std::max<int64_t>(target_splats, 0);
+    const uint64_t K = (uint64_t)std::max<int64_t>(0,
+        ((int64_t)cfg.sh_degree + 1) * ((int64_t)cfg.sh_degree + 1) - 1);
+    const uint64_t cells = sat_mul(N, sat_mul(K, 3));
+    const uint64_t splat_bounds = ceil_div(N, 256);
+    uint64_t sh_cells = cells;
+    if (fused && K != 0) {
+        const uint64_t padded = sat_mul(sat_mul(splat_bounds, 256),
+            sat_mul(ceil_div(sat_mul(K, 3), 2), 2));
+        sh_cells = padded <= INT64_MAX ? (uint64_t)sh_fpbo_cells((int64_t)N, (uint32_t)K) : UINT64_MAX;
     }
-
-    int64_t sh_dim = (int64_t)(cfg.sh_degree + 1) * (cfg.sh_degree + 1);
-    uint64_t parameter_floats =
-        (uint64_t)(14 + std::max<int64_t>(0, sh_dim - 1) * 3);
-    uint64_t splat_bytes = sat_mul(
-        (uint64_t)std::max<int64_t>(target_splats, 0),
-        sat_add(sat_mul(parameter_floats, 12), 16));
-
-    auto grid_bytes = [&](const TrainVec3i& shape, uint64_t channels) {
-        uint64_t cells = sat_mul(
-            sat_mul((uint64_t)shape[0], (uint64_t)shape[1]),
-            (uint64_t)shape[2]);
-        return sat_mul(sat_mul(cells, channels),
-                       sat_mul((uint64_t)post.n_post, 2));
+    const bool quant = step.optim.sh_value_bits != 32;
+    const uint64_t startup_fp32_sh_bytes = quant ? sat_mul(cells, sizeof(float)) : 0;
+    const bool gut = cfg.primitive == "3dgut";
+    struct Attribute {
+        PoolSlot world, g1, g2, adam, grad, grad_q;
+        uint64_t channels;
     };
-    uint64_t correction = 0;
-    if (cfg.use_bilateral_grid)
-        correction = sat_add(correction,
-                             grid_bytes(cfg.bilagrid_shape, 12));
-    if (cfg.use_bilateral_grid_for_geometry && has_depth)
-        correction = sat_add(
-            correction, grid_bytes(cfg.bilagrid_shape_geometry, 1));
-    if (cfg.use_bilateral_grid_for_geometry && has_normal)
-        correction = sat_add(
-            correction, grid_bytes(cfg.bilagrid_shape_geometry, 3));
-    if (cfg.use_ppisp)
-        correction = sat_add(
-            correction, sat_mul((uint64_t)post.n_post, 256));
+    const Attribute attrs[] = {
+        {PoolSlot::WorldMeans, PoolSlot::EngG1Means, PoolSlot::EngG2Means,
+         PoolSlot::EngMeansQfpbo, PoolSlot::EngVMeans, PoolSlot::EngVMeansQ, 3},
+        {PoolSlot::WorldQuats, PoolSlot::EngG1Quats, PoolSlot::EngG2Quats,
+         PoolSlot::EngQuatsQfpbo, PoolSlot::EngVQuats, PoolSlot::EngVQuatsQ, 4},
+        {PoolSlot::WorldScales, PoolSlot::EngG1Scales, PoolSlot::EngG2Scales,
+         PoolSlot::EngScalesQfpbo, PoolSlot::EngVScales, PoolSlot::EngVScalesQ, 3},
+        {PoolSlot::WorldOpacities, PoolSlot::EngG1Opacities, PoolSlot::EngG2Opacities,
+         PoolSlot::EngOpacitiesQfpbo, PoolSlot::EngVOpacities, PoolSlot::EngVOpacitiesQ, 1},
+        {PoolSlot::WorldFeaturesDc, PoolSlot::EngG1FeaturesDc, PoolSlot::EngG2FeaturesDc,
+         PoolSlot::EngFeaturesDcQfpbo, PoolSlot::EngVFeaturesDc, PoolSlot::EngVFeaturesDcQ, 3}
+    };
+    for (size_t i = 0; i < std::size(attrs); ++i) {
+        const auto& attr = attrs[i];
+        const uint64_t n = sat_mul(N, attr.channels);
+        a.add(attr.world, sat_mul(n, sizeof(float)));
+        if (quant)
+            a.quant(attr.adam, n, QuantizedAdamState<16, 256>::kBytesPerCell, splat_bounds, sizeof(float4));
+        else {
+            a.add(attr.g1, sat_mul(n, sizeof(float)));
+            a.add(attr.g2, sat_mul(n, sizeof(float)));
+        }
+        if (gut && i < 3) a.add(attr.grad, sat_mul(n, sizeof(float)));
+        else if (!fused) {
+            if (quant)
+                a.quant(attr.grad_q, n, QuantizedTensor<16, 256>::kBytesPerCell, splat_bounds, sizeof(float2));
+            else a.add(attr.grad, sat_mul(n, sizeof(float)));
+        }
+    }
+    if (quant) {
+        const uint64_t bounds = fused ? splat_bounds : ceil_div(cells, 256);
+        a.quant(fused ? PoolSlot::EngWorldShVq16Fpbo : PoolSlot::EngWorldShVq16,
+                sh_cells, QuantizedTensor<16, 256>::kBytesPerCell, bounds, sizeof(float2));
+        a.quant(fused ? PoolSlot::EngShQuantFpbo : PoolSlot::EngShQuant,
+                sh_cells, QuantizedAdamState<8, 256>::kBytesPerCell, bounds, sizeof(float4));
+        if (!fused)
+            a.quant(PoolSlot::EngVFeaturesShQ, cells, QuantizedTensor<8, 256>::kBytesPerCell,
+                    splat_bounds, sizeof(float2));
+    } else {
+        for (PoolSlot slot : {PoolSlot::WorldFeaturesSh, PoolSlot::EngG1FeaturesSh, PoolSlot::EngG2FeaturesSh})
+            a.add(slot, sat_mul(cells, sizeof(float)));
+        if (!fused) a.add(PoolSlot::EngVFeaturesSh, sat_mul(cells, sizeof(float)));
+    }
+    a.add(PoolSlot::EngRadii, sat_mul(N, 4));
+    a.add(PoolSlot::EngAccumBuffer, sat_mul(N, 8));
+    if (step.optim.use_per_splat_bias_correction) a.add(PoolSlot::EngBiasCorrectionSteps, sat_mul(N, 4));
+    if (step.optim.write_densify_world_grad_score) a.add(PoolSlot::EngDensifyWorldGradScore, sat_mul(N, 4));
+    if (step.loss.compute_loss_map) {
+        const uint64_t lanes = accum_lanes((DensifyAccumMode)step.loss.loss_map_accum_mode);
+        a.add(PoolSlot::RasterBwdAccumWeight, sat_mul(N, 4 * lanes));
+        if (split) a.add(PoolSlot::EngSubbatchAccumWeightSum, sat_mul(N, 4 * lanes));
+    } else if (split) {
+        a.add(PoolSlot::EngSubbatchAccumWeightSum, sat_mul(N, 4));
+    }
+    if (cfg.packed && (fused || quant))
+        a.add(PoolSlot::FusedProjBwdCamBounds, sat_mul(sat_add(N, 1), 4));
+    if (cfg.use_revised_densification && cfg.refine_start_iter < cfg.num_iterations) {
+        const uint64_t n4 = sat_mul(N, 4);
+        a.add(PoolSlot::DensifyRelocMask, N);
+        a.add(PoolSlot::DensifyRelocCount, 4);
+        for (PoolSlot slot : {
+                 PoolSlot::DensifyRelocDstIndices,
+                 PoolSlot::DensifyWswrSortingValues,
+                 PoolSlot::DensifyWswrOutIdx,
+                 PoolSlot::DensifyWswrKeysOut,
+                 PoolSlot::DensifyWswrIndicesIn,
+                 PoolSlot::DensifyWswrIndicesOut})
+            a.add(slot, n4);
+        if (cfg.densify_score_clip_quantile > 0 &&
+            cfg.densify_score_clip_quantile < 1) {
+            a.add(PoolSlot::DensifyScoreGather, n4);
+            a.add(PoolSlot::DensifyScoreClip, 4);
+            a.add(PoolSlot::DensifyQuantileTemp, 4096);
+        }
+        if (cfg.densify_oversize_split_fraction > 0 && std::isfinite(cfg.max_screen_size)) {
+            a.add(PoolSlot::EngDensifyOversize, n4);
+            a.add(PoolSlot::EngDensifyOversizeWeight, sat_mul(N, 8));
+        }
+        if (cfg.densify_final_score_power != 1)
+            a.add(PoolSlot::EngDensifySampleScore, sat_mul(N, 8));
+    }
 
-    TrainingMemoryEstimate out;
-    out.known_minimum_bytes =
-        sat_add(peak_images, sat_add(splat_bytes, correction));
-    return out;
+    const uint64_t images = (uint64_t)std::max<int64_t>(post.n_post, 0);
+    struct Grid {
+        bool enabled;
+        const TrainVec3i& shape;
+        uint64_t channels;
+        PoolSlot values, packed, adagrad, accum, adam, g1, g2, image_grad;
+    };
+    const Grid grids[] = {
+        {state.bilagrid_rgb_init, cfg.bilagrid_shape, cfg.bilagrid_type == "affine" ? 12u : 9u,
+         PoolSlot::EngBgRgbGrids, PoolSlot::EngBgRgbGridsQ, PoolSlot::EngBgRgbBgAg, PoolSlot::EngBgRgbAccum,
+         PoolSlot::EngBgRgbBgQuant, PoolSlot::EngBgRgbG1, PoolSlot::EngBgRgbG2, PoolSlot::EngBgRgbImageGrad},
+        {state.bilagrid_depth_init, cfg.bilagrid_shape_geometry, 2,
+         PoolSlot::EngBgDepthGrids, PoolSlot::EngBgDepthGridsQ, PoolSlot::EngBgDepthBgAg, PoolSlot::EngBgDepthAccum,
+         PoolSlot::EngBgDepthBgQuant, PoolSlot::EngBgDepthG1, PoolSlot::EngBgDepthG2, PoolSlot::EngBgDepthImageGrad},
+        {state.bilagrid_normal_init, cfg.bilagrid_shape_geometry, 3,
+         PoolSlot::EngBgNormalGrids, PoolSlot::EngBgNormalGridsQ, PoolSlot::EngBgNormalBgAg, PoolSlot::EngBgNormalAccum,
+         PoolSlot::EngBgNormalBgQuant, PoolSlot::EngBgNormalG1, PoolSlot::EngBgNormalG2, PoolSlot::EngBgNormalImageGrad}
+    };
+    for (const auto& grid : grids) {
+        if (!grid.enabled) continue;
+        uint64_t per_image = grid.channels;
+        for (int dim : grid.shape) per_image = sat_mul(per_image, (uint64_t)std::max(dim, 0));
+        const uint64_t n = sat_mul(images, per_image), bounds = ceil_div(n, 256);
+        if (quant) {
+            a.quant(grid.packed, n, QuantizedTensor<16, 256>::kBytesPerCell, bounds, sizeof(float2));
+            a.transient = std::max(a.transient, sat_mul(n, 4));
+            if (cfg.use_adagrad_bilagrid_optim)
+                a.quant(grid.adagrad, n, QuantizedTensorLog<8, 256>::packed_bytes_for(1), bounds, sizeof(float2));
+            else a.quant(grid.adam, n, QuantizedAdamState<8, 256>::kBytesPerCell, bounds, sizeof(float4));
+        } else {
+            a.add(grid.values, sat_mul(n, 4));
+            if (cfg.use_adagrad_bilagrid_optim) a.add(grid.accum, sat_mul(n, 4));
+            else {
+                a.add(grid.g1, sat_mul(n, 4));
+                a.add(grid.g2, sat_mul(n, 4));
+            }
+        }
+        a.add(grid.image_grad, sat_mul(sat_mul(max_step_cameras, per_image), 4));
+    }
+    if (state.bilagrid_rgb_init || state.bilagrid_depth_init || state.bilagrid_normal_init) {
+        a.add(PoolSlot::EngBgTvReadout, 12);
+        if (split) a.add(PoolSlot::EngBgSplitCamIndices, sat_mul(max_step_cameras, 4));
+    }
+    if (state.bilagrid_depth_init) a.add(PoolSlot::EngBgDepthScalars, sat_mul(images, 4));
+    if (state.ppisp_init) {
+        const auto spec = ppisp_param_spec(cfg.ppisp_param_type);
+        const uint64_t params = sat_mul(sat_mul(images, spec.num_params), 4);
+        a.add(PoolSlot::EngPpispParams, params);
+        a.add(PoolSlot::EngPpispGrads, params);
+        if (cfg.use_adagrad_ppisp_optim) a.add(PoolSlot::EngPpispAccum, params);
+        else {
+            a.add(PoolSlot::EngPpispG1, params);
+            a.add(PoolSlot::EngPpispG2, params);
+        }
+        if (std::any_of(step.ppisp.reg_weights.begin(), step.ppisp.reg_weights.end(),
+                        [](float weight) { return weight > 0; })) {
+            a.add(PoolSlot::EngPpispVRegParams, params);
+            a.add(PoolSlot::EngPpispRegRawLosses, sat_mul(sat_add(images, 1), 4 * spec.num_raw_losses));
+            a.add(PoolSlot::EngPpispRegLosses, 4 * (int)PPISPRegLossIndex::length);
+            a.add(PoolSlot::EngPpispVRegLosses, 4 * (int)PPISPRegLossIndex::length);
+            a.add(PoolSlot::PpispVRawLosses, 4 * spec.num_raw_losses);
+        }
+    }
+    if (step.loss.color_shift_reg_weight > 0) {
+        a.add(PoolSlot::EngColorShiftRegEma, 12);
+        a.add(PoolSlot::EngColorShiftRegBatchSum, 12);
+    }
+    if (color.splat_on()) a.add(PoolSlot::ColorSpaceSplatMatrix, 36);
+    if (color.image_on()) a.add(PoolSlot::ColorSpaceImageMatrix, 36);
+    if (cfg.background_mode == "sh") {
+        const uint64_t n = sat_mul((uint64_t)cfg.background_sh_degree + 1,
+                                  (uint64_t)cfg.background_sh_degree + 1);
+        for (PoolSlot slot : {PoolSlot::EngBgSkyShCoeffs, PoolSlot::EngBgSkyG1,
+                              PoolSlot::EngBgSkyG2, PoolSlot::EngBgSkyVSh})
+            a.add(slot, sat_mul(n, 12));
+    }
+    a.transient = sat_add(a.transient, startup_fp32_sh_bytes);
+    return a.result(fused);
 }
 
 namespace {
@@ -854,12 +1274,29 @@ uint64_t effective_memory_allowance(const backend::BudgetSnapshot& budget,
 
 }  // namespace
 
+int resolve_eval_worker_count(int64_t view_pixels, unsigned hardware_threads,
+                              bool save_images) {
+    constexpr uint64_t budget = 4ull << 30;
+    constexpr uint64_t active_worker = 139;
+    constexpr uint64_t queued_pair = 24;
+    constexpr uint64_t producer_pair = 24;
+    constexpr uint64_t png_allowance = 24;
+    const uint64_t per_pixel = budget / (uint64_t)std::max<int64_t>(view_pixels, 1);
+    // A full queue still leaves one just-read pair owned by the producer.
+    const uint64_t available = per_pixel > producer_pair ? per_pixel - producer_pair : 0;
+    const uint64_t memory_workers = available /
+        (active_worker + queued_pair + (save_images ? png_allowance : 0));
+    const uint64_t hardware_workers = std::max(1u, hardware_threads / 4u);
+    return (int)std::max<uint64_t>(1, std::min<uint64_t>(
+        8, std::min(memory_workers, hardware_workers)));
+}
+
 std::optional<backend::BudgetFailure> training_memory_refusal(
     const backend::BudgetSnapshot& budget,
     const TrainingMemoryEstimate& estimate, uint64_t app_limit,
     uint64_t reserve) {
     backend::BudgetFailure f{};
-    f.requested_bytes = estimate.known_minimum_bytes;
+    f.requested_bytes = estimate.estimated_bytes();
     f.device_index = budget.device_index;
     f.heap_index = budget.heap_index;
     if (budget.status != backend::BudgetStatus::Available) {
@@ -871,7 +1308,7 @@ std::optional<backend::BudgetFailure> training_memory_refusal(
 
     uint64_t available =
         effective_memory_allowance(budget, app_limit, reserve);
-    if (estimate.known_minimum_bytes <= available) return std::nullopt;
+    if (estimate.estimated_bytes() <= available) return std::nullopt;
     uint64_t driver = budget.available_bytes > reserve
         ? budget.available_bytes - reserve : 0;
     uint64_t app = UINT64_MAX;
@@ -1023,23 +1460,21 @@ void TrainerSession::setup_engine() {
 
     uint64_t app_limit = configured_memory_limit(cfg);
     int max_faces_per_pass = cfg.split_batch ? 1 : 0;
-    memory_budget = backend::budget_snapshot();
-    memory_allowance = effective_memory_allowance(
-        memory_budget, app_limit, kTrainingMemoryReserveBytes);
-    memory_estimate = estimate_training_memory(
-        ds, post, cfg, has_mask, has_depth, has_normal, cfg.cap_max,
-        max_faces_per_pass);
-    enforce_preflight(memory_budget, memory_estimate, app_limit);
+    const int64_t cap = resolve_training_splat_capacity(ds.points.num(), cfg);
 
-    ColorResolution color = resolve_color(cfg);
-    SeedSplats seed = seed_splats(ds.points, cfg, color);
-    int64_t cap = (int64_t)seed.opacities.size();
     memory_budget = backend::budget_snapshot();
     memory_allowance = effective_memory_allowance(
         memory_budget, app_limit, kTrainingMemoryReserveBytes);
     memory_estimate = estimate_training_memory(
         ds, post, cfg, has_mask, has_depth, has_normal, cap,
         max_faces_per_pass);
+    enforce_preflight(memory_budget, memory_estimate, app_limit);
+
+    ColorResolution color = resolve_color(cfg);
+    SeedSplats seed = seed_splats(ds.points, cfg, color, cap);
+    memory_budget = backend::budget_snapshot();
+    memory_allowance = effective_memory_allowance(
+        memory_budget, app_limit, kTrainingMemoryReserveBytes);
     enforce_preflight(memory_budget, memory_estimate, app_limit);
 
     if (!out_dir_override.empty()) {
@@ -1154,7 +1589,7 @@ void TrainerSession::setup_engine() {
     // ---- Bilagrid / PPISP init -----------------------------------------
     // Enablement conditions are static here (dataset modalities known up
     // front), so the init happens once at setup rather than per step.
-    st = RunState{};
+    st = resolve_appearance_state(cfg, has_depth, has_normal);
     st.train_frame_scale = ds.train_frame_scale;
     st.splat_linear      = color.splat_linear;
     st.input_depth_is_ray_depth = resolve_ray_depth(cfg, ds);
@@ -1170,43 +1605,31 @@ void TrainerSession::setup_engine() {
     // TV-loss normalization depends on it.
     int n_grids = (int)post.n_post;
 
-    if (cfg.use_bilateral_grid &&
-        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_lr
-                                        : cfg.bilagrid_lr) > 0.0f) {
+    if (st.bilagrid_rgb_init) {
         // bilagrid_shape is (X, Y, W) -> engine (L=W, H=Y, W=X).
         engine_init_bilagrid_rgb(n_grids, cfg.bilagrid_type,
                                  cfg.bilagrid_shape[2], cfg.bilagrid_shape[1],
                                  cfg.bilagrid_shape[0],
                                  optim_bits, value_bits,
                                  cfg.use_adagrad_bilagrid_optim);
-        st.bilagrid_rgb_init = true;
     }
-    if (cfg.use_bilateral_grid_for_geometry && has_depth &&
-        cfg.depth_supervision_weight > 0.0f &&
-        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_depth_lr
-                                        : cfg.bilagrid_depth_lr) > 0.0f) {
+    if (st.bilagrid_depth_init) {
         engine_init_bilagrid_depth(n_grids,
                                    cfg.bilagrid_shape_geometry[2],
                                    cfg.bilagrid_shape_geometry[1],
                                    cfg.bilagrid_shape_geometry[0],
                                    optim_bits, value_bits,
                                    cfg.use_adagrad_bilagrid_optim);
-        st.bilagrid_depth_init = true;
     }
-    if (cfg.use_bilateral_grid_for_geometry && has_normal &&
-        cfg.normal_supervision_weight > 0.0f &&
-        (cfg.use_adagrad_bilagrid_optim ? cfg.bilagrid_adagrad_normal_lr
-                                        : cfg.bilagrid_normal_lr) > 0.0f) {
+    if (st.bilagrid_normal_init) {
         engine_init_bilagrid_normal(n_grids,
                                     cfg.bilagrid_shape_geometry[2],
                                     cfg.bilagrid_shape_geometry[1],
                                     cfg.bilagrid_shape_geometry[0],
                                     optim_bits, value_bits,
                                     cfg.use_adagrad_bilagrid_optim);
-        st.bilagrid_normal_init = true;
     }
-    if (cfg.use_ppisp &&
-        (cfg.use_adagrad_ppisp_optim ? cfg.ppisp_adagrad_lr : cfg.ppisp_lr) > 0.0f) {
+    if (st.ppisp_init) {
         std::vector<float> exif_ev;
         if (cfg.ppisp_exposure_from_exif) {
             int n_exif = 0;
@@ -1217,7 +1640,6 @@ void TrainerSession::setup_engine() {
         }
         engine_init_ppisp(n_grids, cfg.ppisp_param_type,
                           cfg.use_adagrad_ppisp_optim, exif_ev);
-        st.ppisp_init = true;
     }
 
     // ---- Resume --------------------------------------------------------
@@ -1262,13 +1684,13 @@ void TrainerSession::restore_checkpoint() {
     ckpt::ResolvedCheckpoint r = ckpt::resolve_checkpoint(cfg.resume);
     ckpt::check_resumable(r.ckpt_dir);
 
-    // The target is what the engine ACTUALLY holds, not what the config asks
-    // for: a depth/normal grid also needs the dataset to carry those maps,
-    // which setup_engine() resolved into `st`.
+    // Channel presence is resolved during setup, not from config flags alone.
     ckpt::TargetLayout target;
     target.max_num_splats = engine_get_max_num_splats();
-    target.num_sh         = (cfg.sh_degree + 1) * (cfg.sh_degree + 1);
+    target.num_sh         = (cfg.sh_degree + 1) * (cfg.sh_degree + 1) - 1;
     target.num_images     = (int)post.n_post;
+    // The live engine flag is unset until a step; restore must use the resolved layout.
+    target.fused_proj_bwd_optim = memory_estimate.fused_proj_bwd_optim;
     auto lhw = [](const std::array<int, 3>& xyw) {
         return std::array<int, 3>{xyw[2], xyw[1], xyw[0]};   // (X,Y,W)->(L,H,W)
     };
@@ -1584,26 +2006,7 @@ void TrainerSession::eval() {
 
     // Re-parse for the eval side of the split. The parser computes the split
     // over all frames, so this is the exact complement of what training saw.
-    DatasetParserConfig pcfg;
-    pcfg.recon_dir            = cfg.colmap_recon_dir;
-    pcfg.image_dir            = cfg.image_dir;
-    pcfg.mask_dir             = cfg.mask_dir;
-    pcfg.depth_dir            = cfg.depth_dir;
-    pcfg.normal_dir           = cfg.normal_dir;
-    pcfg.validation_fraction  = 0.0f;      // no early-stop holdout inside eval
-    pcfg.eval_mode            = cfg.eval_mode;
-    pcfg.eval_interval        = cfg.eval_interval;
-    pcfg.train_split_fraction = cfg.train_split_fraction;
-    pcfg.outlier_threshold    = cfg.outlier_threshold;
-    pcfg.center_mode          = cfg.scene_center;
-    pcfg.exif_orientation     = cfg.exif_orientation;
-    pcfg.probe_image_size        = probe_image_size;
-    pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
-    pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
-    pcfg.metashape_xml           = cfg.metashape_xml;
-    pcfg.metashape_ply           = cfg.metashape_ply;
-    pcfg.metashape_psx           = cfg.metashape_psx;
-    pcfg.split                   = "eval";
+    const DatasetParserConfig pcfg = parser_config(cfg, true);
 
     ParsedDataset eds = parse_dataset(cfg.data, pcfg, cfg.data_format);
     if (eds.num_cameras == 0) {
@@ -1617,14 +2020,11 @@ void TrainerSession::eval() {
         for (int64_t i = 0; i < eds.num_cameras; i++)
             for (int r = 0; r < 3; r++) eds.c2w[i*12 + r*4 + 3] *= rs;
     }
-    // Uniform whatever the run trains with: eval renders one pass per image,
-    // and its metrics stay comparable between the two fits.
+    // Uniform faces keep metrics comparable across training fits.
     PostSplitCameras epost = bake_post_split(
         eds, cfg.warp_to_pinhole, cfg.warp_spherical_to_pinhole,
         WarpFaceFit::Uniform, cfg.warp_back_face);
 
-    // One image per step: metrics are per-image, and the batch scheduler would
-    // otherwise pack several resolutions into one step.
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
     const bool eval_masks = !eds.mask_filenames.empty() && cfg.load_masks;
@@ -1633,6 +2033,7 @@ void TrainerSession::eval() {
     dm.load_normals = false;
     dm.train_batch_size = 1;
     dm.val_batch_size   = 1;
+    dm.max_faces_per_pass = 1;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;
@@ -1659,11 +2060,7 @@ void TrainerSession::eval() {
 
     log(lfmt(lmsg::eval_views, {(long long)epost.n_post}));
 
-    // Rendering is serial (one process-global engine), but scoring a view --
-    // colour correction, the metrics, and the PNG encode -- is pure host work
-    // that depends on nothing else, so it runs on a pool while the GPU gets on
-    // with the next view. Results are written into a slot indexed by view, so
-    // the per-image lists in metrics.json do not depend on who finished first.
+    // Only host scoring is concurrent; every forward uses the singleton engine.
     struct ViewJob {
         int64_t index = 0;
         int H = 0, W = 0, C = 0;
@@ -1674,19 +2071,13 @@ void TrainerSession::eval() {
         float l1 = 0, psnr = 0, ssim = 0, cc_l1 = 0, cc_psnr = 0, cc_ssim = 0;
     };
 
-    // Per worker: a GT + a render + the colour-corrected copy (3 x H*W*C
-    // floats) plus SSIM's eleven H*W double buffers. ~725 MB at 4K, so the
-    // pool is capped by a memory budget as well as by cores -- an eval run
-    // must not be the thing that OOMs the machine.
-    const int64_t view_pixels = eds.widths.empty()
-        ? (int64_t)1 << 20
-        : (int64_t)eds.widths[0] * eds.heights[0];
-    const int64_t bytes_per_view = view_pixels * (3 * 3 * 4 + 11 * 8);
-    const int64_t kBudget = (int64_t)4 << 30;
-    int n_workers = (int)std::max(1u, std::thread::hardware_concurrency() / 4u);
-    n_workers = (int)std::min<int64_t>(n_workers,
-                                       std::max<int64_t>(1, kBudget / std::max<int64_t>(bytes_per_view, 1)));
-    n_workers = std::min<int>(n_workers, 8);
+    const auto& eval_widths = epost.post_widths.empty() ? eds.widths : epost.post_widths;
+    const auto& eval_heights = epost.post_heights.empty() ? eds.heights : epost.post_heights;
+    int64_t view_pixels = eval_widths.empty() ? (int64_t)1 << 20 : 0;
+    for (size_t i = 0; i < eval_widths.size(); ++i)
+        view_pixels = std::max(view_pixels, (int64_t)eval_widths[i] * eval_heights[i]);
+    const int n_workers = resolve_eval_worker_count(
+        view_pixels, std::thread::hardware_concurrency(), cfg.save_eval_images);
 
     std::deque<ViewJob> queue;
     std::vector<ViewScore> scores;
@@ -1719,8 +2110,10 @@ void TrainerSession::eval() {
                 std::snprintf(nm, sizeof nm, "eval-%s-%05d.png", kind,
                               (int)j.index);
                 std::vector<uint8_t> bytes = to_png_bytes(img);
-                stbi_write_png((out_dir / nm).string().c_str(), j.W, j.H, j.C,
-                               bytes.data(), j.W * j.C);
+                const std::string path = (out_dir / nm).string();
+                if (!stbi_write_png(path.c_str(), j.W, j.H, j.C,
+                                    bytes.data(), j.W * j.C))
+                    throw std::runtime_error("cannot write eval image: " + path);
             };
             // Both sides, because the LPIPS tool needs the pair -- and the
             // 8-bit clip here is what it will score, so its numbers are
@@ -1731,76 +2124,88 @@ void TrainerSession::eval() {
     };
 
     std::vector<std::thread> workers;
-    for (int t = 0; t < n_workers; t++) {
-        workers.emplace_back([&] {
-            // Threads inside the metrics would oversubscribe against the pool;
-            // the per-view work is already the coarser and cheaper split.
+    std::exception_ptr producer_error;
+    auto worker_failed = [&] {
+        std::lock_guard<std::mutex> lk(qmu);
+        return worker_error != nullptr;
+    };
+
+    try {
+        for (int t = 0; t < n_workers; t++) {
+            workers.emplace_back([&] {
+                // Threads inside the metrics would oversubscribe against the pool;
+                // the per-view work is already the coarser and cheaper split.
 #ifdef _OPENMP
-            omp_set_num_threads(std::max(1, (int)std::thread::hardware_concurrency() / n_workers));
+                omp_set_num_threads(std::max(1, (int)std::thread::hardware_concurrency() / n_workers));
 #endif
-            for (;;) {
-                ViewJob job;
-                {
-                    std::unique_lock<std::mutex> lk(qmu);
-                    qcv.wait(lk, [&] { return !queue.empty() || !producing; });
-                    if (queue.empty()) return;
-                    job = std::move(queue.front());
-                    queue.pop_front();
+                for (;;) {
+                    ViewJob job;
+                    {
+                        std::unique_lock<std::mutex> lk(qmu);
+                        qcv.wait(lk, [&] { return worker_error || !queue.empty() || !producing; });
+                        if (worker_error || queue.empty()) return;
+                        job = std::move(queue.front());
+                        queue.pop_front();
+                    }
+                    spacecv.notify_one();
+                    try {
+                        score_view(job);
+                    } catch (...) {
+                        {
+                            std::lock_guard<std::mutex> lk(qmu);
+                            if (!worker_error) worker_error = std::current_exception();
+                        }
+                        spacecv.notify_all();
+                        qcv.notify_all();
+                        return;
+                    }
                 }
-                spacecv.notify_one();
-                try {
-                    score_view(job);
-                } catch (...) {
-                    std::lock_guard<std::mutex> lk(smu);
-                    if (!worker_error) worker_error = std::current_exception();
-                    return;
-                }
-            }
-        });
-    }
-
-    const int sh_deg = cfg.sh_degree;
-    int64_t next_slot = 0;
-
-    for (int64_t i = 0; i < eds.num_cameras; i++) {
-        int64_t H = 0, W = 0, B = 0, Cc = 0;
-        std::vector<float> gt, render;
-        {
-            std::lock_guard<std::mutex> lk(engine_mutex);
-            int n_view = engine_eval_forward(cfg.primitive, sh_deg, cfg.packed);
-            if (n_view == 0) break;
-            auto shape = engine_get_render_rgb_shape();
-            B = std::get<0>(shape); H = std::get<1>(shape);
-            W = std::get<2>(shape); Cc = std::get<3>(shape);
-            const int64_t npx = B * H * W * Cc;
-            render.resize((size_t)npx);
-            gt.resize((size_t)npx);
-            engine_copy_render_to_host(
-                TorchTensorView{(uint64_t)(uintptr_t)render.data(), 4, {B, H, W, Cc}},
-                TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}},
-                TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}});
-            engine_copy_gt_rgb_to_host(
-                TorchTensorView{(uint64_t)(uintptr_t)gt.data(), 4, {B, H, W, Cc}});
+            });
         }
 
-        // Per POST-split view inside the batch (K faces of one input image).
-        const int64_t view_px = H * W * Cc;
-        for (int64_t v = 0; v < B; v++) {
+        const int sh_deg = cfg.sh_degree;
+        int64_t next_slot = 0;
+
+        while (!worker_failed()) {
             ViewJob job;
-            job.index = next_slot++;
-            job.H = (int)H; job.W = (int)W; job.C = (int)Cc;
-            job.gt.assign(gt.begin() + (size_t)(v * view_px),
-                          gt.begin() + (size_t)((v + 1) * view_px));
-            job.pred.assign(render.begin() + (size_t)(v * view_px),
-                            render.begin() + (size_t)((v + 1) * view_px));
+            job.index = next_slot;
+            {
+                std::lock_guard<std::mutex> lk(engine_mutex);
+                const int n_view = engine_eval_forward(cfg.primitive, sh_deg, cfg.packed);
+                if (n_view == 0) break;
+                const auto [B, H, W, C] = engine_get_render_rgb_shape();
+                if (n_view != 1 || B != 1 || next_slot >= epost.n_post)
+                    throw std::runtime_error("TrainerSession::eval: unexpected face count");
+                job.H = (int)H; job.W = (int)W; job.C = (int)C;
+                const int64_t npx = H * W * C;
+                job.pred.resize((size_t)npx);
+                job.gt.resize((size_t)npx);
+                engine_copy_render_to_host(
+                    TorchTensorView{(uint64_t)(uintptr_t)job.pred.data(), 4, {B, H, W, C}},
+                    TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}},
+                    TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}});
+                engine_copy_gt_rgb_to_host(
+                    TorchTensorView{(uint64_t)(uintptr_t)job.gt.data(), 4, {B, H, W, C}});
+            }
             for (float& x : job.pred) x = std::min(std::max(x, 0.0f), 1.0f);
             {
                 std::unique_lock<std::mutex> lk(qmu);
-                spacecv.wait(lk, [&] { return (int)queue.size() < n_workers; });
+                spacecv.wait(lk, [&] {
+                    return worker_error || (int)queue.size() < n_workers;
+                });
+                if (worker_error) break;
                 queue.push_back(std::move(job));
+                ++next_slot;
             }
             qcv.notify_one();
         }
+
+        if (next_slot != (int64_t)epost.n_post && !worker_failed())
+            throw std::runtime_error(
+                "TrainerSession::eval: rendered " + std::to_string(next_slot) +
+                " of " + std::to_string(epost.n_post) + " eval views");
+    } catch (...) {
+        producer_error = std::current_exception();
     }
 
     {
@@ -1809,6 +2214,7 @@ void TrainerSession::eval() {
     }
     qcv.notify_all();
     for (auto& t : workers) t.join();
+    if (producer_error) std::rethrow_exception(producer_error);
     if (worker_error) std::rethrow_exception(worker_error);
 
     std::map<std::string, std::vector<float>> per_image;

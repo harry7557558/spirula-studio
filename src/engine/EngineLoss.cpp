@@ -471,22 +471,9 @@ static std::map<std::string, float> _engine_loss(
     int64_t H = engine().camera.height;
     int64_t W = engine().camera.width;
 
-    // Resolution-adaptive multi-scale loss: when loss_scale_min_pixels > 0 it
-    // overrides num_loss_scales based on this step's render resolution, so that
-    // the smallest image dimension is halved down toward (but not below) the
-    // requested pixel count. e.g. loss_scale_min_pixels=2000 -> min dim 1999
-    // gives 1 scale, 2000 gives 2, 4000 gives 3, 8000 gives 4. Adapts per step,
-    // so mixed-resolution datasets pick the right count per image automatically.
-    if (loss_scale_min_pixels > 0) {
-        int64_t min_dim = std::min(H, W);
-        int auto_scales = 1;
-        if (min_dim >= (int64_t)loss_scale_min_pixels)
-            auto_scales = (int)std::floor(
-                std::log2((double)min_dim / (double)loss_scale_min_pixels)) + 2;
-        // Clamp to the kernel's MAX_SCALES (see PerPixelLoss.cu) so extreme
-        // resolutions saturate the scale count rather than throwing.
-        num_loss_scales = std::min(auto_scales, 4);
-    }
+    // Full-face resolution drives the count; low-res normal GT never does.
+    num_loss_scales =
+        resolve_loss_scales(num_loss_scales, loss_scale_min_pixels, W, H);
 
     // Pool-allocate intermediates for loss computation
     TorchTensorView loss_map_buf = compute_loss_map ?

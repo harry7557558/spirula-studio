@@ -64,10 +64,8 @@ inline DistortionType engine_distortion_type(
 #include <vector>
 
 
-// Forward declaration so EngineState can hold a unique_ptr<DataManager>
-// without dragging the (thread- / queue- / stb_image-heavy) DataManager.h
-// into the dozens of TUs that include EngineState.h.
 class DataManager;
+struct DecodedBatch;
 
 
 // World splat parameters (allocated once at init; persistent on device).
@@ -600,20 +598,20 @@ struct EngineState {
     // Viewer (BVH + thumbnail cache + dataset camera arrays).
     EngineViewerState viewer;
 
-    // Host-side dataset orchestrator (RGB / mask / depth / normal decode +
-    // batching). Set by engine_setup_data_manager(); when present, the new
-    // engine_train_step_managed() entrypoint pulls per-step inputs from it.
+    // Owns the decode workers used by managed training and evaluation.
     std::unique_ptr<DataManager> dm;
+
+    // The decoded input outlives all its face passes.
+    std::unique_ptr<DecodedBatch> eval_batch;
+    int64_t                       eval_next_input = 0;
+    int                           eval_next_pass  = 0;
 
     // Mean sRGB luma per input camera, filled lazily by the photometric weight
     // normalization (EngineDataManager.cpp) and NaN until measured. An image's
     // pixels do not change between epochs, so one measurement stands for a run.
     std::vector<float> gt_mean_luma;
 
-    // Out-of-line ctor/dtor (defined in EngineState.cpp) so the
-    // std::unique_ptr<DataManager> deleter only needs the complete type at
-    // one site. Move ops are defaulted so engine_reset() can assign a fresh
-    // EngineState{} (rvalue); copy ops are deleted by the unique_ptr member.
+    // The out-of-line definitions see the complete DataManager and DecodedBatch.
     EngineState();
     ~EngineState();
     EngineState(EngineState&&) noexcept;

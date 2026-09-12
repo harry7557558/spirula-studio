@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -95,6 +96,11 @@ bool lookup(const std::map<uint64_t, Allocation>& m, uint64_t addr,
     return true;
 }
 
+bool memory_trace() {
+    static const bool on = spirula::env_on("MEMORY_TRACE");
+    return on;
+}
+
 // Creates buffer + dedicated memory. `host_visible` selects the pinned pool
 // path (persistently mapped, no device address).
 bool create_allocation(VkDeviceSize bytes, bool host_visible,
@@ -166,9 +172,32 @@ bool create_allocation(VkDeviceSize bytes, bool host_visible,
     bool is_dev_local = ctx.is_heap_device_local(heap);
     VkDeviceSize accounting_bytes = is_dev_local ? req.size : 0;
 
+    const bool trace = memory_trace();
     bool reserved_budget = false;
     if (backend::training_budget_active() && is_dev_local) {
         HeapBudget hb = ctx.query_heap_budget(heap);
+        if (trace) {
+            if (hb.status == BudgetStatus::Available)
+                std::fprintf(stderr,
+                             "[spirula-memory] event=heap_budget device=%d "
+                             "heap=%u heap_device_local=%d "
+                             "budget_status=available budget_bytes=%llu "
+                             "usage_bytes=%llu available_bytes=%llu "
+                             "total_bytes=%llu\n",
+                             device_current(), heap, (int)is_dev_local,
+                             (unsigned long long)hb.budget_bytes,
+                             (unsigned long long)hb.usage_bytes,
+                             (unsigned long long)hb.available_bytes,
+                             (unsigned long long)hb.total_bytes);
+            else
+                std::fprintf(stderr,
+                             "[spirula-memory] event=heap_budget device=%d "
+                             "heap=%u heap_device_local=%d "
+                             "budget_status=%s\n",
+                             device_current(), heap, (int)is_dev_local,
+                             hb.status == BudgetStatus::Unavailable
+                                 ? "unavailable" : "query_error");
+        }
         if (hb.status != BudgetStatus::Available) {
             BudgetFailure f{};
             f.kind = hb.status == BudgetStatus::Unavailable
@@ -233,6 +262,24 @@ bool create_allocation(VkDeviceSize bytes, bool host_visible,
             set_pending_failure(failure);
             vkDestroyBuffer(ctx.device(), a.buffer, nullptr);
             return false;
+        }
+        if (trace) {
+            std::fprintf(stderr,
+                         "[spirula-memory] event=reserve device=%d heap=%u "
+                         "requested_bytes=%llu accounting_bytes=%llu "
+                         "committed_bytes=%llu reserved_bytes=%llu "
+                         "reserve_bytes=%llu app_limit_bytes=%llu\n",
+                         device_current(), heap,
+                         (unsigned long long)bytes,
+                         (unsigned long long)accounting_bytes,
+                         (unsigned long long)g_device_bytes.load(
+                             std::memory_order_relaxed),
+                         (unsigned long long)g_budget_reserved_bytes.load(
+                             std::memory_order_relaxed),
+                         (unsigned long long)g_budget_reserve_bytes.load(
+                             std::memory_order_relaxed),
+                         (unsigned long long)g_budget_app_limit_bytes.load(
+                             std::memory_order_relaxed));
         }
     }
 
@@ -309,6 +356,22 @@ bool create_allocation(VkDeviceSize bytes, bool host_visible,
         a.base = (uint64_t)a.mapped;
     } else {
         a.base = a.device_addr;
+    }
+    if (trace) {
+        std::fprintf(stderr,
+                     "[spirula-memory] event=commit device=%d heap=%u "
+                     "heap_device_local=%d host_visible=%d "
+                     "requested_bytes=%llu accounting_bytes=%llu "
+                     "allocation_bytes=%llu committed_bytes=%llu "
+                     "reserved_bytes=%llu\n",
+                     device_current(), heap, (int)is_dev_local,
+                     (int)host_visible, (unsigned long long)bytes,
+                     (unsigned long long)accounting_bytes,
+                     (unsigned long long)req.size,
+                     (unsigned long long)g_device_bytes.load(
+                         std::memory_order_relaxed),
+                     (unsigned long long)g_budget_reserved_bytes.load(
+                         std::memory_order_relaxed));
     }
     if (out_accounting_bytes) *out_accounting_bytes = accounting_bytes;
     *out = a;
@@ -610,25 +673,55 @@ BudgetSnapshot budget_snapshot() {
             vk::g_device_bytes.load(std::memory_order_relaxed);
     }
 
+    auto trace_status = [&s](BudgetStatus status, const vk::HeapBudget* hb) {
+        if (!vk::memory_trace()) return;
+        if (status == BudgetStatus::Available && hb)
+            std::fprintf(stderr,
+                         "[spirula-memory] event=budget_snapshot device=%d "
+                         "heap=%d budget_status=available budget_bytes=%llu "
+                         "usage_bytes=%llu available_bytes=%llu "
+                         "total_bytes=%llu committed_bytes=%llu "
+                         "reserved_bytes=%llu\n",
+                         s.device_index, s.heap_index,
+                         (unsigned long long)hb->budget_bytes,
+                         (unsigned long long)hb->usage_bytes,
+                         (unsigned long long)hb->available_bytes,
+                         (unsigned long long)hb->total_bytes,
+                         (unsigned long long)s.process_bytes,
+                         (unsigned long long)s.reserved_bytes);
+        else
+            std::fprintf(stderr,
+                         "[spirula-memory] event=budget_snapshot device=%d "
+                         "heap=%d budget_status=%s committed_bytes=%llu\n",
+                         s.device_index, s.heap_index,
+                         status == BudgetStatus::QueryError ? "query_error"
+                                                            : "unavailable",
+                         (unsigned long long)s.process_bytes);
+    };
+
     if (!vk::context_created()) {
         s.device_index = device_current();
         s.status = BudgetStatus::Unavailable;
+        trace_status(s.status, nullptr);
         return s;
     }
     vk::Context& ctx = vk::Context::get();
     s.device_index = device_current();
     if (!ctx.ok()) {
         s.status = ctx.init_status();
+        trace_status(s.status, nullptr);
         return s;
     }
     if (!ctx.caps().memory_budget) {
         s.status = BudgetStatus::Unavailable;
+        trace_status(s.status, nullptr);
         return s;
     }
 
     int heap = ctx.default_device_local_heap();
     if (heap < 0) {
         s.status = BudgetStatus::Unavailable;
+        trace_status(s.status, nullptr);
         return s;
     }
     s.heap_index = heap;
@@ -639,6 +732,7 @@ BudgetSnapshot budget_snapshot() {
         s.total_bytes = hb.total_bytes;
         s.available_bytes = hb.available_bytes;
     }
+    trace_status(s.status, &hb);
     return s;
 }
 

@@ -54,9 +54,11 @@ void engine_setup_data_manager(
     std::vector<int32_t>      train_indices,
     std::vector<int32_t>      val_indices)
 {
-    // Drop the existing manager first so its scheduler / worker threads are
-    // joined before we begin spinning up new ones.
+    // Join the old decode workers before starting their replacement.
     engine().dm.reset();
+    engine().eval_batch.reset();
+    engine().eval_next_input = 0;
+    engine().eval_next_pass  = 0;
     engine().gt_mean_luma.clear();
 
     engine().dm = std::make_unique<DataManager>(
@@ -75,52 +77,18 @@ void engine_setup_data_manager(
 }
 
 
-// Resolve the `split_batch` + `use_fused_proj_bwd_optim` conflict. Both
-// turned on at once is an inconsistency: split_batch loops over single
-// cameras and accumulates atomicAdd into world-grad buffers, whereas FPBO
-// folds projection-bwd into the optim kernel and never materializes those
-// buffers. If we know (from the DataManager) that the post-split batch
-// size will always be 1, split_batch is a no-op and FPBO is the correct
-// choice. Otherwise the user wants the memory win of split_batch and we
-// must turn FPBO off. Prints a one-shot warning describing the choice.
 static EngineStepConfig _resolve_split_vs_fpbo(const EngineStepConfig& cfg,
                                                int64_t max_batch_known,
                                                int max_face_passes) {
-    // Faces of unequal size are rendered one pass per size, which accumulates
-    // grad across passes -- the very thing FPBO cannot do.
-    if (max_face_passes > 1) {
-        EngineStepConfig out = cfg;
-        out.optim.use_fused_proj_bwd_optim = false;
-        return out;
-    }
-    if (!cfg.optim.split_batch || !cfg.optim.use_fused_proj_bwd_optim)
+    const bool fused = resolve_fused_proj_bwd_optim(
+        cfg.optim.use_fused_proj_bwd_optim, cfg.optim.split_batch,
+        max_batch_known, max_face_passes);
+    if (fused == cfg.optim.use_fused_proj_bwd_optim &&
+        !(fused && cfg.optim.split_batch))
         return cfg;
     EngineStepConfig out = cfg;
-    static bool warned = false;
-    // max_batch_known == -1 -> caller couldn't determine ahead of time;
-    // treat as "may exceed 1" so the user gets the memory-safe path.
-    bool batch_le_one = (max_batch_known > 0 && max_batch_known <= 1);
-    if (batch_le_one) {
-        out.optim.split_batch = false;
-        if (!warned) {
-            #if 0
-            fprintf(stderr, "[spirula] %s\n",
-                    spirula::i18n::msg::log::warn_split_batch_noop.get());
-            #endif
-            warned = true;
-        }
-    } else {
-        out.optim.use_fused_proj_bwd_optim = false;
-        if (!warned) {
-            #if 0
-            fprintf(stderr, "[spirula] %s\n",
-                    spirula::i18n::format(
-                        spirula::i18n::msg::log::warn_fpbo_incompatible,
-                        {(long long)max_batch_known}).c_str());
-            #endif
-            warned = true;
-        }
-    }
+    out.optim.use_fused_proj_bwd_optim = fused;
+    if (fused) out.optim.split_batch = false;
     return out;
 }
 
@@ -434,24 +402,35 @@ static int _install_and_forward(const DecodedBatch& b, std::string primitive,
 }
 
 int engine_eval_forward(std::string primitive, int sh_degree, bool packed) {
-    if (!engine().dm)
+    EngineState& st = engine();
+    if (!st.dm)
         throw std::runtime_error(
             "engine_eval_forward: DataManager not configured — call "
             "engine_setup_data_manager(...) with the eval split first.");
 
-    const TrainStep& stp = engine().dm->next_train_step();
-    if (stp.subs.empty()) return 0;
-    if (stp.subs.size() != 1)
-        throw std::runtime_error(
-            "engine_eval_forward: expected one sub-batch per eval step "
-            "(set train_batch_size = 1)");
+    const int64_t num_inputs = st.dm->num_train();
+    if (st.eval_next_input >= num_inputs) {
+        st.eval_batch.reset();
+        return 0;
+    }
 
-    const DecodedBatch& b = *stp.subs[0];
-    if (b.face_passes.size() > 1)
-        throw std::runtime_error(
-            "engine_eval_forward: the eval split must be baked with uniform "
-            "faces, which is what TrainerCore does");
-    return _install_and_forward(b, std::move(primitive), sh_degree, packed);
+    // Evaluation follows dataset order, not the randomized training schedule.
+    if (st.eval_next_pass == 0) {
+        if (!st.eval_batch) st.eval_batch = std::make_unique<DecodedBatch>();
+        st.dm->fetch_one((int32_t)st.eval_next_input, *st.eval_batch);
+    }
+    DecodedBatch& b = *st.eval_batch;
+
+    const int passes = std::max<int>(1, (int)b.face_passes.size());
+    const int views = _install_and_forward(b, std::move(primitive), sh_degree, packed,
+                                           /*with_geometry=*/false,
+                                           /*input_depth_is_ray_depth=*/true,
+                                           /*dist_type=*/0, st.eval_next_pass);
+    if (++st.eval_next_pass >= passes) {
+        st.eval_next_pass = 0;
+        st.eval_next_input++;
+    }
+    return views;
 }
 
 int engine_preview_forward(int index, std::string primitive, int sh_degree,

@@ -1864,19 +1864,47 @@ SS_MSG(vram_help,
        "/ aygıtın kapasitesi. “?”, arka ucun o değeri sorgulayamadığı "
        "anlamına gelir."));
 SS_MSG(vram_budget,
-    EN("tracked {0} / allowance {1} / minimum {2}"),
-    JA("追跡 {0} / 上限 {1} / 最小 {2}"),
-    ZH_HANS("已跟踪 {0} / 限额 {1} / 最低 {2}"),
-    ZH_HANT("已追蹤 {0} / 限額 {1} / 最低 {2}"),
-    KO("추적 {0} / 허용량 {1} / 최소 {2}"),
-    DE("erfasst {0} / Kontingent {1} / Minimum {2}"),
-    FR("suivi {0} / quota {1} / minimum {2}"),
-    ES("registrado {0} / límite {1} / mínimo {2}"),
-    PT("rastreado {0} / cota {1} / mínimo {2}"),
-    IT("monitorato {0} / quota {1} / minimo {2}"),
-    NL("gevolgd {0} / limiet {1} / minimum {2}"),
-    RU("учтено {0} / лимит {1} / минимум {2}"),
-    TR("izlenen {0} / kota {1} / minimum {2}"));
+    EN("tracked {0} / allowance {1} / estimate {2}"),
+    JA("追跡 {0} / 上限 {1} / 推定 {2}"),
+    ZH_HANS("已跟踪 {0} / 限额 {1} / 估算 {2}"),
+    ZH_HANT("已追蹤 {0} / 限額 {1} / 估算 {2}"),
+    KO("추적 {0} / 허용량 {1} / 추정 {2}"),
+    DE("erfasst {0} / Kontingent {1} / Schätzung {2}"),
+    FR("suivi {0} / quota {1} / estimation {2}"),
+    ES("registrado {0} / límite {1} / estimación {2}"),
+    PT("rastreado {0} / cota {1} / estimativa {2}"),
+    IT("monitorato {0} / quota {1} / stima {2}"),
+    NL("gevolgd {0} / limiet {1} / schatting {2}"),
+    RU("учтено {0} / лимит {1} / оценка {2}"),
+    TR("izlenen {0} / kota {1} / tahmin {2}"));
+SS_MSG(vram_budget_help,
+    EN("Planned allocations: {0}; resize-overlap allowance: {1}. Dynamic workspace "
+       "and driver overhead are not included."),
+    JA("計画された割り当て: {0}、サイズ変更時の重複割り当ての余裕: {1}。"
+       "動的な作業領域とドライバーの追加使用量は含まれません。"),
+    ZH_HANS("计划分配：{0}；扩容重叠预留：{1}。不含动态工作空间和驱动程序开销。"),
+    ZH_HANT("計畫配置：{0}；擴容重疊預留：{1}。不含動態工作空間和驅動程式額外用量。"),
+    KO("계획된 할당: {0}; 크기 변경 시 중복 할당 여유: {1}. 동적 작업 공간과 "
+       "드라이버의 추가 사용량은 포함되지 않습니다."),
+    DE("Geplante Belegung: {0}; Überlappungsreserve beim Vergrößern: {1}. "
+       "Dynamischer Arbeitsbereich und Treiber-Overhead sind nicht enthalten."),
+    FR("Allocations prévues : {0} ; réserve de chevauchement au redimensionnement : "
+       "{1}. L’espace de travail dynamique et le surcoût du pilote ne sont pas "
+       "inclus."),
+    ES("Asignaciones previstas: {0}; reserva por solapamiento al redimensionar: "
+       "{1}. No se incluyen el espacio de trabajo dinámico ni la sobrecarga del "
+       "controlador."),
+    PT("Alocações previstas: {0}; reserva de sobreposição ao redimensionar: {1}. O "
+       "espaço de trabalho dinâmico e a sobrecarga do driver não estão incluídos."),
+    IT("Allocazioni previste: {0}; riserva per la sovrapposizione durante il "
+       "ridimensionamento: {1}. Lo spazio di lavoro dinamico e il sovraccarico del "
+       "driver non sono inclusi."),
+    NL("Geplande allocaties: {0}; overlapreserve bij vergroten: {1}. Dynamische "
+       "werkruimte en driveroverhead zijn niet inbegrepen."),
+    RU("Планируемые выделения: {0}; резерв перекрытия при изменении размера: {1}. "
+       "Динамическая рабочая память и накладные расходы драйвера не включены."),
+    TR("Planlanan ayırmalar: {0}; yeniden boyutlandırma çakışma payı: {1}. Dinamik "
+       "çalışma alanı ve sürücü ek yükü dahil değildir."));
 
 // ===========================================================================
 // Log panel

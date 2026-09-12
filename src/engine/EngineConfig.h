@@ -10,6 +10,30 @@
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
 
 #include <array>
+#include <cstdint>
+
+
+// Fixed-scale requests retain the kernel's validation semantics.
+inline int resolve_loss_scales(int requested_count, int min_pixels,
+                               int64_t width, int64_t height) {
+    if (min_pixels <= 0) return requested_count;
+    const int64_t min_dim = width < height ? width : height;
+    int64_t threshold = (int64_t)min_pixels;
+    int count = 1;
+    while (count < 4 && min_dim >= threshold) {
+        ++count;
+        threshold *= 2;
+    }
+    return count;
+}
+
+// FPBO cannot accumulate gradients across face passes or split input batches.
+inline bool resolve_fused_proj_bwd_optim(bool requested, bool split_batch,
+                                         int64_t max_input_batch,
+                                         int max_face_passes) {
+    return requested && max_face_passes <= 1 &&
+           (!split_batch || max_input_batch == 1);
+}
 
 
 // Bundles the scalars engine_compute_loss_backward takes, for the call path
@@ -18,14 +42,7 @@ struct LossConfig {
     std::array<float, (int)LossWeightIndex::length> weights{};
     float w_ssim          = 0.0f;
     int   num_loss_scales = 1;
-    // When positive, overrides num_loss_scales per train step based on the
-    // render resolution: the number of scales is chosen so that the smallest
-    // image dimension is downscaled toward (but not below) this pixel count.
-    // Concretely num_loss_scales = floor(log2(min(H,W) / loss_scale_min_pixels))
-    // + 1 for min(H,W) >= loss_scale_min_pixels, else the single-scale default.
-    // This adapts automatically to datasets with mixed image resolutions, since
-    // each step's own resolution drives its scale count. Zero (default) leaves
-    // num_loss_scales untouched.
+    // Positive: choose scales from the full-face render size.
     int   loss_scale_min_pixels = 0;
     bool  compute_loss_map = false;
     // DensifyLossMapMode (PerPixelLoss.cuh) as an int. Affects loss_map
@@ -119,19 +136,11 @@ struct OptimConfig {
     // fp32 g1/g2). 4 or 8 = QuantizedAdamState<BITS, 256> with one float4 per
     // 256-cell block of (u, sqrt_g2) bounds. Other values are rejected.
     int   sh_optim_bits                   = 32;
-    // SH PARAMETER (value) quantization bit depth. 32 = no quantization (full
-    // fp32 features_sh). 8 or 16 = QuantizedTensor<BITS, 256> with one float2
-    // per 256-cell block of (min, max) bounds; canonical storage is the packed
-    // buffer, and every consumer kernel dequantizes on load via the codec.
-    // Other values are rejected. INCOMPLETE: storage is allocated and the
-    // flag exposed, but the read/write paths through Slang harmonics + FPBO
-    // + densify are not plumbed, so != 32 throws at optimizer state init.
+    // SH parameter quantization bit depth. 32 = fp32 features_sh; 8 or 16 =
+    // QuantizedTensor<BITS, 256> with float2 (min, max) bounds per block.
     int   sh_value_bits                   = 8;
-    // Non-SH Adam-state quantization bit depth (means, quats, scales, opacities,
-    // features_dc). 32 = no quantization (full fp32 g1/g2). 16 =
-    // QuantizedAdamState<16, 256> -- joint (u, log_s) at 16-bit per primitive
-    // (4 B / cell). FPBO-only; the non-FPBO Adam kernel throws when this is
-    // non-32. quantization_level 1 sets it to 16.
+    // Non-SH Adam-state depth. 32 = fp32 g1/g2; 16 =
+    // QuantizedAdamState<16, 256>. quantization_level 1 selects 16.
     int   non_sh_optim_bits               = 32;
     // Single SH quantization level. Collapses the FPBO dispatch's
     // (sh_optim_bits, sh_value_bits) axes down to 2 instantiations:
@@ -159,20 +168,7 @@ struct OptimConfig {
     // false no buffer is allocated and the kernels skip the store entirely.
     bool  write_densify_world_grad_score  = false;
 
-    // When true, split the camera batch into one-camera sub-batches inside
-    // engine_train_step. Forward + bilagrid/PPISP fwd + loss + raster/proj
-    // bwd run once per sub-batch and atomicAdd into the per-splat grad
-    // accumulators; a single optimizer + bilagrid/PPISP optim + densify pass
-    // runs at the end. Inside the splat Adam kernels, the accumulated data
-    // gradient is scaled by `1/B` (B = full batch size) before adding the
-    // per-splat regularization terms, so per-image grad magnitude vs reg
-    // weight is batch-size invariant. Frees the per-sub-batch screen-space
-    // buffers (splats_s, aabb, depths, isect/flatten ids, render_Ts, raster
-    // bwd v_splats_s) between sub-batches -- peak VRAM scales by ~1/B.
-    //
-    // Not compatible with use_fused_proj_bwd_optim or use_color_trust_region;
-    // the engine throws when either is also set. The warped training_step
-    // path also throws (would need per-input-image splitting).
+    // FPBO and color trust-region state cannot accumulate across sub-batches.
     bool  split_batch      = false;
 
     // Trust-region color-space Adam, for a linear or wide-gamut splat color
