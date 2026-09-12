@@ -9,6 +9,11 @@
 #undef CudaDeviceExport
 #endif
 
+// sigma-along-the-ray / depth is the EWA linearization's expansion parameter;
+// under this many sigmas the Gaussian straddles the projection singularity and
+// cov2d folds. Scale-free; 3DGUT culls the same splats through its sigma points.
+static const float EWA_NEAR_SIGMAS = 3.0f;
+
 struct SigmaPoints {
     float3 p[7];
     float w_mean[7];
@@ -89,8 +94,8 @@ bool persp_proj_3dgs<D : ICameraDistortion, let assume_valid : bool>(
     float rz = 1.f / mean3d.z;
     float max_Jxz = -(-lim_x_neg - cx) * rz;
     float min_Jxz = -(lim_x_pos - cx) * rz;
-    float max_Jyz = -(-lim_x_neg - cy) * rz;
-    float min_Jyz = -(lim_x_pos - cy) * rz;
+    float max_Jyz = -(-lim_y_neg - cy) * rz;
+    float min_Jyz = -(lim_y_pos - cy) * rz;
     J[0][2] = clamp(J[0][2], min_Jxz, max_Jxz);
     J[1][2] = clamp(J[1][2], min_Jyz, max_Jyz);
 
@@ -485,6 +490,14 @@ void projection_3dgs<
         }
         float3x3 covar_c;
         covarW2C(R, covar, covar_c);
+
+        if (!assume_valid && camera_model == CameraModelType::PINHOLE) {
+            float sigma_r2 = covar_c[2][2];  // or dot(mean_c, mul(covar_c, mean_c)) / dot(mean_c, mean_c) for fisheye
+            if (cull_z * cull_z <= (EWA_NEAR_SIGMAS * EWA_NEAR_SIGMAS) * sigma_r2) {
+                aabb_xyxy = float4(0.0f);
+                return;
+            }
+        }
 
         if (camera_model == CameraModelType::PINHOLE)
             is_valid &= persp_proj_3dgs<D, assume_valid>(
