@@ -1845,9 +1845,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
                {(long long)mstats.kept, (long long)mstats.inliers});
     else
         L::out(Tag::Run, M::sum_match,
-               {format_duration(t_match), (long long)mstats.kept,
-                (long long)mstats.pairs, (long long)mstats.inliers,
-                (long long)mstats.putative});
+               {format_duration(t_match), (long long)mstats.kept, (long long)mstats.pairs,
+                (long long)mstats.inliers, (long long)mstats.putative});
     L::out(Tag::Run, M::sum_map,
            {format_duration(t_map), (long long)reg, (long long)est.images,
             (long long)rec.points3D.size(), (long long)n_cameras});
