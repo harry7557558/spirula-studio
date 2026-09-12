@@ -68,6 +68,8 @@ struct ImageLoadOptions {
     // Swap keep and ignore in every decoded mask (sfm/core/Mask.h). On the pool
     // rather than the consumer thread, which the mask decode is already on.
     bool flip_mask = false;
+    // Turn every image by its EXIF Orientation (sfm/core/Image.h).
+    bool apply_exif_orientation = false;
     // Host memory the decoder may use for in-flight images. Half is charged to
     // concurrent decodes, half to the ready window; both are then at least 1,
     // so a single image larger than the budget still loads (it just runs alone).
@@ -177,7 +179,8 @@ inline void loadImagesInOrder(const std::vector<std::string>& paths, const Image
         const std::string& mp = i < opt.mask_paths.size() ? opt.mask_paths[i] : kNoMask;
         try {
             out = loadGrayImage(paths[i], opt.max_image_size, opt.want_color, mp,
-                                opt.gamut, opt.is_linear, opt.flip_mask);
+                                opt.gamut, opt.is_linear, opt.flip_mask,
+                                opt.apply_exif_orientation);
         } catch (const std::exception& e) {
             err = e.what();
         }

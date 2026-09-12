@@ -13,6 +13,8 @@
 #include "app_generated/mask_py.h"   // kMaskPy[], from reference/scripts/mask.py
 
 #include "core/ExrImage.h"
+#include "core/ImageOrient.h"
+#include "sfm/core/Exif.h"
 #include "external/stb_image.h"      // stbi_info (image size probe), stbi_load
 #include "external/stb_image_write.h"  // stbi_write_jpg (the photo re-encode)
 
@@ -1311,6 +1313,7 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
     fx.keep = window > 1 ? window : 0;
     fx.max_frames = job.max_frames;
     fx.sync_tracks = job.sync_tracks;
+    fx.auto_rotate = job.auto_rotate;
     fx.quality = 95;
     if (!views.empty()) {
         fx.eac = in.eac360;
@@ -1414,9 +1417,13 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         fs::create_directories(cand, ec);
         char vf[64];
         std::snprintf(vf, sizeof vf, "fps=%g", (double)job.video_fps * window);
-        int rc = exec({job.ffmpeg_exe, "-nostdin", "-y", "-i", track_path,
-                       "-vf", vf, "-qscale:v", "2",
-                       (cand / "c_%06d.jpg").string()});
+        // ffmpeg turns the picture by the container's matrix unless told not
+        // to, which is what the built-in decoder's auto_rotate matches.
+        std::vector<std::string> argv{job.ffmpeg_exe, "-nostdin", "-y"};
+        if (!job.auto_rotate) argv.push_back("-noautorotate");
+        argv.insert(argv.end(), {"-i", track_path, "-vf", vf, "-qscale:v", "2",
+                                 (cand / "c_%06d.jpg").string()});
+        int rc = exec(argv);
         if (rc == kCancelled) { error = lmsg::err_cancelled.get(); return false; }
         if (rc != 0) {
             error = lmsg::err_ffmpeg_extract_failed.get();
@@ -1538,7 +1545,9 @@ bool DatasetPrep::extract_360_ffmpeg(const PrepJob& job, const PrepInput& in,
     char pre[64];
     std::snprintf(pre, sizeof pre, "fps=%g", (double)job.video_fps * window);
     const std::string graph = app::pano360_graph(in.eac360, pre);
-    int rc = exec({job.ffmpeg_exe, "-nostdin", "-y", "-i", in.path,
+    // A 360 capture's geometry is the EAC layout, not the display matrix: the
+    // built-in path leaves it alone and so must this one.
+    int rc = exec({job.ffmpeg_exe, "-nostdin", "-y", "-noautorotate", "-i", in.path,
                    "-filter_complex", graph,
                    "-map", std::string("[") + app::pano360_canvas_pad() + "]",
                    "-qscale:v", "2", (cand / "c_%06d.jpg").string()});
@@ -1585,19 +1594,61 @@ bool DatasetPrep::extract_360_ffmpeg(const PrepJob& job, const PrepInput& in,
 
 namespace {
 
-// Extensions worth handing to the re-encoder. JPEG is already JPEG, EXR is HDR,
-// and the two stb cannot decode (TIFF, WebP) would only reach the fallback.
+// Extensions worth handing to the re-encoder. EXR is HDR, and the two stb
+// cannot decode (TIFF, WebP) would only reach the fallback. A JPEG is already
+// JPEG and is re-encoded only to bake in an orientation (photo_exif_turn).
 bool jpeg_candidate_ext(const fs::path& f) {
     std::string e = f.extension().string();
     for (auto& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".png" || e == ".bmp";
 }
 
-// Decode, then JPEG. Alpha is a cut-out, not decoration, so it becomes
-// `mask_to` gated at 128 (opaque = keep). The mask is written FIRST: a resumed
-// run reads the photo's existence as proof the pair is complete.
+bool is_jpeg_ext(const fs::path& f) {
+    std::string e = f.extension().string();
+    for (auto& c : e) c = (char)std::tolower((unsigned char)c);
+    return e == ".jpg" || e == ".jpeg";
+}
+
+// A photo whose EXIF asks to be turned before it is shown. Baking that in is
+// what keeps the dataset readable by everything downstream: the trainer, the
+// viewer and COLMAP all take the stored pixels at face value.
+int photo_exif_turn(const fs::path& f) {
+    return is_jpeg_ext(f) ? sfm::exifOrientation(f.string()) : 1;
+}
+
+// JPEG bytes plus the source's own EXIF, with the orientation flattened out of
+// it. stb writes no metadata, so the segment is spliced in behind the SOI --
+// without it a re-encode would drop the focal-length prior and the GPS.
+bool write_jpeg_with_exif(const fs::path& to, int w, int h, int channels,
+                          const stbi_uc* px, std::vector<uint8_t> exif) {
+    std::vector<uint8_t> jpeg;
+    auto sink = [](void* ctx, void* data, int size) {
+        auto* out = (std::vector<uint8_t>*)ctx;
+        out->insert(out->end(), (uint8_t*)data, (uint8_t*)data + size);
+    };
+    if (!stbi_write_jpg_to_func(sink, &jpeg, w, h, channels, px, kPhotoJpegQuality))
+        return false;
+    if (jpeg.size() < 2) return false;
+    // 65533 is all a segment's 16-bit length can address; a maker note that
+    // long is dropped rather than written back malformed.
+    if (exif.size() > 6 && exif.size() + 2 <= 65535) {
+        sfm::exifFlattenOrientation(exif.data() + 6, exif.size() - 6, w, h);
+        const size_t len = exif.size() + 2;
+        const uint8_t head[4] = {0xFF, 0xE1, (uint8_t)(len >> 8), (uint8_t)len};
+        jpeg.insert(jpeg.begin() + 2, exif.begin(), exif.end());
+        jpeg.insert(jpeg.begin() + 2, head, head + 4);
+    }
+    std::ofstream f(to, std::ios::binary | std::ios::trunc);
+    if (!f) return false;
+    f.write((const char*)jpeg.data(), (std::streamsize)jpeg.size());
+    return (bool)f;
+}
+
+// Decode, turn by `orientation`, then JPEG. Alpha is a cut-out, not decoration,
+// so it becomes `mask_to` gated at 128 (opaque = keep). The mask is written
+// FIRST: a resumed run reads the photo's existence as proof the pair is complete.
 bool convert_to_jpeg(const fs::path& from, const fs::path& to,
-                     const fs::path& mask_to, bool& wrote_mask) {
+                     const fs::path& mask_to, int orientation, bool& wrote_mask) {
     wrote_mask = false;
     const std::string src = from.string();
     int w = 0, h = 0, ch = 0;
@@ -1622,12 +1673,35 @@ bool convert_to_jpeg(const fs::path& from, const fs::path& to,
                 opaque[i * (size_t)color + (size_t)c] = px[i * (size_t)ch + (size_t)c];
             mask[i] = px[i * (size_t)ch + (size_t)color] >= 128 ? 255 : 0;
         }
+    }
+    const stbi_uc* rgb = alpha ? opaque.data() : px;
+
+    // The mirror is applied here as freely as the turn: these are pixels, and
+    // the reconstruction is fitted to what this writes.
+    const sfm::ExifTransform xf = sfm::exifTransform(orientation);
+    std::vector<stbi_uc> turned_rgb, turned_mask;
+    int dw = w, dh = h;
+    if (!xf.identity()) {
+        spirula::oriented_size(xf.turns_cw, dw, dh);
+        turned_rgb.resize(n * (size_t)color);
+        spirula::orient_pixels(rgb, w, h, color, xf.turns_cw, xf.mirror,
+                               turned_rgb.data());
+        rgb = turned_rgb.data();
+        if (alpha) {
+            turned_mask.resize(n);
+            spirula::orient_pixels(mask.data(), w, h, 1, xf.turns_cw, xf.mirror,
+                                   turned_mask.data());
+            mask.swap(turned_mask);
+        }
+    }
+
+    if (alpha) {
         fs::create_directories(mask_to.parent_path(), ec);
-        ok = stbi_write_png(mask_to.string().c_str(), w, h, 1, mask.data(), w) != 0;
+        ok = stbi_write_png(mask_to.string().c_str(), dw, dh, 1, mask.data(), dw) != 0;
     }
     if (ok)
-        ok = stbi_write_jpg(to.string().c_str(), w, h, color,
-                            alpha ? opaque.data() : px, kPhotoJpegQuality) != 0;
+        ok = write_jpeg_with_exif(to, dw, dh, color, rgb,
+                                  sfm::readExifSegment(src));
     stbi_image_free(px);
     // A half-written pair is worse than none: the next run would keep it.
     if (!ok) {
@@ -1645,6 +1719,7 @@ bool convert_to_jpeg(const fs::path& from, const fs::path& to,
 struct PhotoMove {
     fs::path from, to, fallback, mask_to;
     bool convert = false;
+    int orientation = 1;   // EXIF, baked into the pixels by the re-encode
 };
 
 // A re-encoded photo takes the .jpg its bytes now are; the parsers match a
@@ -1670,8 +1745,14 @@ std::vector<PhotoMove> plan_photo_moves(const std::vector<fs::path>& files,
                 m.to = cand;
                 m.convert = true;
             }
+        } else if (convert) {
+            // A JPEG keeps its name, so nothing has to be claimed: it is
+            // re-encoded only when its EXIF asks for the picture to be turned.
+            m.orientation = photo_exif_turn(f);
+            m.convert = m.orientation != 1;
         }
-        if (m.convert && !mask_root.empty()) {
+        // Only a format that can carry alpha needs a name held for its mask.
+        if (m.convert && !mask_root.empty() && !is_jpeg_ext(f)) {
             const fs::path cand =
                 mask_root / rel.parent_path() / (rel.stem().string() + ".png");
             if (mask_taken.insert(cand).second) m.mask_to = cand;
@@ -1785,7 +1866,8 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
             }
             if (m.convert) {
                 bool wrote_mask = false;
-                if (convert_to_jpeg(m.from, m.to, m.mask_to, wrote_mask)) {
+                if (convert_to_jpeg(m.from, m.to, m.mask_to, m.orientation,
+                                    wrote_mask)) {
                     tally.converted++;
                     if (wrote_mask) tally.masked++;
                     return true;

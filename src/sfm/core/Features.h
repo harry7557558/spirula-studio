@@ -54,6 +54,10 @@ struct FeatureSet {
     // stage that sees the image file; matching and mapping only see features.
     double exif_focal = 0;
     std::string exif_camera;
+    // The Orientation tag, 1..8, of the pixels as the mapper will see them --
+    // so 1 once `--exif-orientation apply` has turned them (sfm/core/Exif.h).
+    // The gauge fix reads it: a portrait capture's up is not the image's.
+    uint8_t exif_orientation = 1;
     uint32_t dim = 128;
     DType dtype = DType::U8;
     std::vector<Keypoint> keypoints;
@@ -116,29 +120,8 @@ inline void scaleKeypoints(FeatureSet& fs, int w, int h) {
 }
 
 // ---- features.bin -------------------------------------------------------
-// Header (little-endian):
-//   char[4] magic  = "VKFT"
-//   u32     version = 3
-//   i32     width, height
-//   u32     count, dim, dtype
-// Then `count` keypoints, each { f32 x, y, scale, orientation }, then the
-// descriptor blob (count*dim*dtypeSize bytes).
-//
-// v2 appends a color section after the descriptors: u8 has_colors, then (if 1)
-// count*3 bytes of per-keypoint RGB. v1 files have no such trailing bytes and
-// read back with empty colors; the reader accepts all three.
-//
-// v3 appends an EXIF section after the colors: f64 exif_focal, u32 name length,
-// then that many bytes of exif_camera. A v1/v2 file reads back with no EXIF,
-// i.e. exactly the behaviour that predates it.
-//
-// v4 appends i32 extract_width, extract_height after that. Older files read
-// back with 0, i.e. pixelScale() == 1, i.e. thresholds in source pixels --
-// which is what those files were produced under.
-//
-// v5 appends u8 has_scores, then (if 1) count f32 detection scores. A v1-v4
-// file reads back with every response 0, which is what those files carried:
-// SIFT never persisted it and nothing read it.
+// The layout and every version's appended section: src/sfm/README.md. Each one
+// is read back as its own absence, so a stale cache is reused, not rejected.
 
 // Written to a sibling and renamed over the destination, so a run killed mid
 // stage leaves a file that is either whole or absent -- which is what lets the
@@ -148,7 +131,7 @@ inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
     {
     std::ofstream f(tmp, std::ios::binary);
     if (!f) throw std::runtime_error("cannot write " + path);
-    uint32_t version = 5, count = fs.count(), dtype = (uint32_t)fs.dtype;
+    uint32_t version = 6, count = fs.count(), dtype = (uint32_t)fs.dtype;
     f.write("VKFT", 4);
     f.write((const char*)&version, 4);
     f.write((const char*)&fs.width, 4);
@@ -174,6 +157,7 @@ inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
     f.write((const char*)&has_scores, 1);
     if (has_scores)
         for (const Keypoint& k : fs.keypoints) f.write((const char*)&k.response, 4);
+    f.write((const char*)&fs.exif_orientation, 1);
     if (!f) throw std::runtime_error("cannot write " + path);
     }
     std::error_code ec;
@@ -291,6 +275,11 @@ inline FeatureSet readFeatures(const std::string& path, bool with_descriptors = 
             f.read((char*)raw.data(), (std::streamsize)(raw.size() * sizeof(float)));
             for (uint32_t i = 0; i < count; i++) fs.keypoints[i].response = raw[i];
         }
+    }
+    if (version >= 6) {
+        uint8_t o = 0;
+        f.read((char*)&o, 1);
+        if (f.gcount() == 1 && o >= 1 && o <= 8) fs.exif_orientation = o;
     }
     return fs;
 }

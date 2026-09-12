@@ -44,6 +44,10 @@ struct Image {
     std::string name;
     Pose pose;                 // world -> camera
     bool registered = false;
+    // The file's EXIF Orientation (sfm/core/Exif.h), 1 when it has none or the
+    // pixels already carry it. Only the gauge fix reads it, and only a model
+    // built from features has it -- one read back from disk does not.
+    uint8_t exif_orientation = 1;
     std::vector<Vec2> points2D;              // keypoint coords (all features)
     std::vector<uint64_t> point3D_ids;       // parallel; kInvalidPoint3D if none
 

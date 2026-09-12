@@ -5,6 +5,7 @@
 #include "data/DatasetParser.h"
 #include "data/SourceCamera.h"
 #include "i18n/catalog/Data.h"
+#include "sfm/core/Exif.h"
 
 #include <algorithm>
 #include <array>
@@ -21,13 +22,41 @@ constexpr double kPi = 3.14159265358979323846;   // MSVC has no M_PI by default
 
 namespace dsparse {
 
+// Each image's EXIF Orientation, or an empty vector when nothing asks for a
+// turn. Only JPEG carries the tag, so anything else is skipped without opening
+// it -- a dataset of PNGs costs nothing.
+std::vector<uint8_t> read_exif_orientations(const std::string& mode,
+                                            const std::vector<std::string>& paths) {
+    std::vector<uint8_t> out;
+    if (mode.empty() || mode == "none") return out;
+    out.assign(paths.size(), 1);
+    bool any = false;
+    for (size_t i = 0; i < paths.size(); i++) {
+        std::string ext = fs::path(paths[i]).extension().string();
+        for (char& c : ext) c = (char)std::tolower((unsigned char)c);
+        if (ext != ".jpg" && ext != ".jpeg") continue;
+        out[i] = (uint8_t)sfm::exifOrientation(paths[i]);
+        any = any || out[i] != 1;
+    }
+    if (!any) out.clear();
+    return out;
+}
+
+// The up each image is levelled by, in the c2w (OpenGL) convention: x right,
+// y UP, so the CV vector sfm::exifUpInCamera gives has its y negated.
+static void exif_up_gl(uint8_t orientation, double up[3]) {
+    sfm::exifUpInCamera(orientation, up);
+    up[1] = -up[1];
+}
+
 // ---------------------------------------------------------------------------
 // up = normalize(mean c2w Y column), R_align: up -> +Z, center = mean camera
 // position, scale = 1 / max |R_align (pos - center)|. The up/poses pair only;
 // the rest is reference/python/camera_utils.py and check_config() warns.
 // ---------------------------------------------------------------------------
 double compute_normalized_transform(const double* c2w, int64_t n,
-                                     double T_out[16], double R_out[9]) {
+                                     double T_out[16], double R_out[9],
+                                     const uint8_t* exif_orientation) {
     std::fill(T_out, T_out + 16, 0.0);
     T_out[0] = T_out[5] = T_out[10] = T_out[15] = 1.0;
     if (R_out) {
@@ -37,8 +66,10 @@ double compute_normalized_transform(const double* c2w, int64_t n,
     if (n <= 0) return 1.0;
     double up[3] = {0, 0, 0}, center[3] = {0, 0, 0};
     for (int64_t i = 0; i < n; i++) {
+        double u[3] = {0, 1, 0};
+        if (exif_orientation) exif_up_gl(exif_orientation[i], u);
         for (int r = 0; r < 3; r++) {
-            up[r]     += c2w[i*12 + r*4 + 1];
+            for (int k = 0; k < 3; k++) up[r] += c2w[i*12 + r*4 + k] * u[k];
             center[r] += c2w[i*12 + r*4 + 3];
         }
     }
@@ -516,20 +547,28 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
                            const std::string& image_path,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
-                           RedistortSource* src)
+                           RedistortSource* src, int turns_cw)
 {
     if (!(W > 0.0) || !(H > 0.0)) return;
     double tw = W, th = H;
     int iw = 0, ih = 0;
     if (cfg.probe_image_size && !image_path.empty() &&
         cfg.probe_image_size(image_path.c_str(), &iw, &ih) && iw > 0 && ih > 0) {
+        // The camera describes the image as it will be LOADED, which a quarter
+        // turn transposes.
+        if (turns_cw & 1) std::swap(iw, ih);
         tw = std::min(tw, (double)iw);
         th = std::min(th, (double)ih);
         // The height the width ratio implies, against the height on disk: one
         // pixel of slack for the rounding an honest downscaler does.
         if (std::fabs(H * ((double)iw / W) - (double)ih) > 1.0 &&
             first_time(0, iw, ih, W, H))
-            warn(spirula::i18n::msg::data::camera_image_aspect,
+            // A transposed pair is the EXIF-orientation mismatch, not a
+            // stranger's images, and says so rather than sending the reader
+            // looking for the wrong thing.
+            warn(iw == (int)H && ih == (int)W
+                     ? spirula::i18n::msg::data::camera_image_transposed
+                     : spirula::i18n::msg::data::camera_image_aspect,
                  {image_path, size_str(iw, ih), size_str(W, H)});
     }
 

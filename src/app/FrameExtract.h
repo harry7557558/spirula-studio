@@ -38,6 +38,10 @@ struct FrameExtractJob {
     int   max_frames = 0;          // 0 = no cap
     int   quality = 95;            // JPEG quality; outside 0..100 writes PNG
     int   rotate = 0;              // 0/90/180/270 clockwise
+    // Also turn every frame by the display transform the container carries, so
+    // a portrait clip lands upright and the files need no metadata to be read
+    // correctly. Composes with `rotate`.
+    bool  auto_rotate = true;
     float scale = 1.0f;
     int   track = -1;              // -1 = every track
     int   threads = 0;             // encoder threads; 0 = cores - 1
@@ -93,6 +97,14 @@ int video_track_count(const std::string& path, std::string& error);
 // Each of those tracks' pixel size, in the same order.
 std::vector<std::pair<int, int>> video_track_sizes(const std::string& path,
                                                    std::string& error);
+
+// Each track's container display transform, in the same order (video::TrackInfo).
+struct VideoTrackOrientation {
+    int  rotate = 0;      // degrees clockwise
+    bool mirror = false;  // ... then mirrored horizontally
+};
+std::vector<VideoTrackOrientation> video_track_orientations(const std::string& path,
+                                                            std::string& error);
 
 // Runs the whole thing. False with `error` set on failure; a cancellation
 // returns false with error == "cancelled".

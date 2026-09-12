@@ -1865,6 +1865,90 @@ SS_MSG(deblur_training_images_help,
 // Scene Placement
 // ===========================================================================
 
+SS_MSG(exif_orientation,
+    EN("EXIF orientation"), JA("EXIF の回転情報"), ZH_HANS("EXIF 方向"),
+    ZH_HANT("EXIF 方向"), KO("EXIF 방향"), DE("EXIF-Ausrichtung"),
+    FR("Orientation EXIF"), ES("Orientación EXIF"),
+    PT("Orientação EXIF"), IT("Orientamento EXIF"),
+    NL("EXIF-oriëntatie"), RU("Ориентация EXIF"),
+    TR("EXIF yönlendirmesi"));
+SS_MSG(exif_orientation_help,
+    EN("What a photo's EXIF orientation is worth. A phone held upright writes a "
+       "sideways file and a tag saying so. `orient` reads only the tag, to stand "
+       "the scene up, and leaves the pixels alone -- which keeps the images and "
+       "the reconstruction matched for every other tool. `apply` also turns the "
+       "images as they are loaded, and expects a reconstruction that was made "
+       "the same way. `none` ignores the tag."),
+    JA("写真の EXIF 回転情報をどう扱うかです。縦に構えた端末は横向きのファイルと"
+       "その旨のタグを書きます。`orient` はタグだけを読んでシーンを立たせ、画素は"
+       "そのままにします。これなら画像と復元結果の対応が他のツールでも保たれます。"
+       "`apply` は読み込み時に画像も回転させ、同じ設定で作られた復元結果を前提と"
+       "します。`none` はタグを無視します。"),
+    ZH_HANS("如何对待照片的 EXIF 方向。竖持的手机写出的是横向文件加一个说明方向的"
+            "标签。`orient` 只读标签来把场景摆正，不动像素——这样图像与重建结果在"
+            "其他工具里也依然对应。`apply` 还会在加载时旋转图像，并要求重建结果是"
+            "用同样方式做出来的。`none` 忽略该标签。"),
+    ZH_HANT("如何對待照片的 EXIF 方向。直握的手機寫出的是橫向檔案加一個說明方向的"
+            "標籤。`orient` 只讀標籤來把場景擺正，不動像素——這樣影像與重建結果在"
+            "其他工具裡也依然對應。`apply` 還會在載入時旋轉影像，並要求重建結果是"
+            "用同樣方式做出來的。`none` 忽略該標籤。"),
+    KO("사진의 EXIF 방향을 어떻게 쓸지입니다. 세로로 든 휴대폰은 가로 파일과 그것을 "
+       "알리는 태그를 씁니다. `orient` 는 태그만 읽어 장면을 바로 세우고 화소는 "
+       "그대로 둡니다. 그래야 이미지와 복원 결과가 다른 도구에서도 맞습니다. "
+       "`apply` 는 불러올 때 이미지도 돌리며, 같은 방식으로 만든 복원 결과를 "
+       "전제합니다. `none` 은 태그를 무시합니다."),
+    DE("Was die EXIF-Ausrichtung eines Fotos wert ist. Ein hochkant gehaltenes "
+       "Telefon schreibt eine querformatige Datei und ein Etikett, das das sagt. "
+       "`orient` liest nur das Etikett, um die Szene aufzurichten, und lässt die "
+       "Pixel unberührt -- so bleiben Bilder und Rekonstruktion auch für jedes "
+       "andere Werkzeug zueinander passend. `apply` dreht zusätzlich die Bilder "
+       "beim Laden und erwartet eine ebenso erstellte Rekonstruktion. `none` "
+       "ignoriert das Etikett."),
+    FR("Ce que vaut l'orientation EXIF d'une photo. Un téléphone tenu debout "
+       "écrit un fichier couché et une étiquette qui le dit. `orient` ne lit que "
+       "l'étiquette, pour redresser la scène, et laisse les pixels tels quels : "
+       "images et reconstruction restent ainsi accordées pour tout autre outil. "
+       "`apply` tourne en plus les images au chargement et attend une "
+       "reconstruction faite de même. `none` ignore l'étiquette."),
+    ES("Qué valor tiene la orientación EXIF de una foto. Un teléfono en vertical "
+       "escribe un archivo apaisado y una etiqueta que lo indica. `orient` lee "
+       "solo la etiqueta, para enderezar la escena, y deja los píxeles como "
+       "están: así las imágenes y la reconstrucción siguen encajando en "
+       "cualquier otra herramienta. `apply` además gira las imágenes al "
+       "cargarlas y espera una reconstrucción hecha igual. `none` ignora la "
+       "etiqueta."),
+    PT("Quanto vale a orientação EXIF de uma foto. Um telemóvel na vertical grava "
+       "um ficheiro deitado e uma etiqueta que o diz. `orient` lê apenas a "
+       "etiqueta, para endireitar a cena, e deixa os píxeis como estão: assim as "
+       "imagens e a reconstrução continuam a condizer em qualquer outra "
+       "ferramenta. `apply` gira também as imagens ao carregá-las e espera uma "
+       "reconstrução feita do mesmo modo. `none` ignora a etiqueta."),
+    IT("Quanto vale l'orientamento EXIF di una foto. Un telefono tenuto in piedi "
+       "scrive un file coricato e un'etichetta che lo dice. `orient` legge solo "
+       "l'etichetta, per raddrizzare la scena, e lascia stare i pixel: così "
+       "immagini e ricostruzione restano coerenti anche per ogni altro "
+       "strumento. `apply` ruota anche le immagini al caricamento e si aspetta "
+       "una ricostruzione fatta allo stesso modo. `none` ignora l'etichetta."),
+    NL("Wat de EXIF-oriëntatie van een foto waard is. Een rechtop gehouden "
+       "telefoon schrijft een liggend bestand en een label dat dat zegt. "
+       "`orient` leest alleen het label, om de scène recht te zetten, en laat de "
+       "pixels met rust: zo blijven beelden en reconstructie ook voor elk ander "
+       "programma bij elkaar passen. `apply` draait bovendien de beelden bij het "
+       "laden en verwacht een even zo gemaakte reconstructie. `none` negeert het "
+       "label."),
+    RU("Как учитывать ориентацию EXIF у снимка. Телефон в вертикальном положении "
+       "записывает горизонтальный файл и метку об этом. `orient` читает только "
+       "метку, чтобы выпрямить сцену, и не трогает пиксели — так изображения и "
+       "реконструкция остаются согласованными и для любой другой программы. "
+       "`apply` вдобавок поворачивает изображения при загрузке и ожидает "
+       "реконструкцию, сделанную так же. `none` игнорирует метку."),
+    TR("Bir fotoğrafın EXIF yönlendirmesi ne işe yarar. Dik tutulan bir telefon "
+       "yatay bir dosya ve bunu söyleyen bir etiket yazar. `orient` yalnızca "
+       "etiketi okuyup sahneyi dikleştirir ve pikselleri olduğu gibi bırakır; "
+       "böylece görüntülerle yeniden oluşturma başka her araçta da birbirine "
+       "uyar. `apply` ayrıca görüntüleri yüklerken döndürür ve aynı şekilde "
+       "yapılmış bir yeniden oluşturma bekler. `none` etiketi yok sayar."));
+
 SS_MSG(orientation_method,
     EN("Upright method"), JA("上向きの決め方"), ZH_HANS("摆正方式"),
     ZH_HANT("擺正方式"), KO("수직 정렬 방식"), DE("Aufrichtungsverfahren"),

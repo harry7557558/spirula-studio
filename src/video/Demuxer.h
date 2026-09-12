@@ -33,6 +33,11 @@ struct TrackInfo {
     // Length in bytes of the size prefix on each NAL unit; 0 means the frame
     // data is already Annex-B (start codes) or, for AV1, a stream of OBUs.
     int      nal_length_size = 4;
+    // The container's display transform: turn the decoded picture this many
+    // degrees clockwise, then mirror it. A phone records a portrait clip as
+    // landscape pixels plus this matrix, and nothing else says so.
+    int      rotate = 0;             // 0, 90, 180 or 270
+    bool     mirror = false;
 };
 
 struct Packet {

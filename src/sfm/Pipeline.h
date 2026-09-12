@@ -50,6 +50,7 @@ struct ExtractStats {
     uint64_t masked_out = 0;      // keypoints dropped by masks
     std::string first_unmasked;   // an example, for the warning
     bool warned_empty = false;    // "this mask masked out everything", warned once
+    bool warned_exif_mirror = false;   // "the tag also asked for a mirror", ditto
 };
 
 struct MatchStats {

@@ -659,6 +659,52 @@ SS_MSG(exif_focal_tol_help,
        "1 mm'lik nicemlemesini aşmalı ve gerçek bir yakınlaştırma adımının "
        "altında kalmalı"));
 
+SS_MSG(exif_orientation_help,
+    EN("What each photo's EXIF orientation is worth: `none` ignores it, "
+       "`orient` leaves the pixels alone and takes the scene's up direction "
+       "from it, `apply` turns the pixels and fits cameras to the turned frame"),
+    JA("各写真の EXIF 回転情報の扱い。`none` は無視、`orient` は画素をそのままに"
+       "シーンの上方向だけをそこから取り、`apply` は画素を回転してその向きに"
+       "カメラを合わせます"),
+    ZH_HANS("如何对待每张照片的 EXIF 方向：`none` 忽略，`orient` 不动像素、只据此"
+            "确定场景的上方向，`apply` 旋转像素并按旋转后的画幅标定相机"),
+    ZH_HANT("如何對待每張照片的 EXIF 方向：`none` 忽略，`orient` 不動像素、只據此"
+            "決定場景的上方向，`apply` 旋轉像素並按旋轉後的畫幅標定相機"),
+    KO("각 사진의 EXIF 방향을 어떻게 쓸지. `none` 은 무시, `orient` 는 화소는 "
+       "그대로 두고 장면의 위쪽 방향만 거기서 가져오며, `apply` 는 화소를 돌리고 "
+       "돌린 화면에 맞춰 카메라를 맞춥니다"),
+    DE("Was die EXIF-Ausrichtung jedes Fotos wert ist: `none` ignoriert sie, "
+       "`orient` lässt die Pixel unberührt und nimmt nur die Oben-Richtung der "
+       "Szene daher, `apply` dreht die Pixel und passt die Kameras an das "
+       "gedrehte Bild an"),
+    FR("Ce que vaut l'orientation EXIF de chaque photo : `none` l'ignore, "
+       "`orient` laisse les pixels tels quels et en tire la direction du haut "
+       "de la scène, `apply` tourne les pixels et cale les caméras sur l'image "
+       "tournée"),
+    ES("Qué valor tiene la orientación EXIF de cada foto: `none` la ignora, "
+       "`orient` deja los píxeles como están y toma de ella la dirección "
+       "hacia arriba de la escena, `apply` gira los píxeles y ajusta las "
+       "cámaras al encuadre girado"),
+    PT("Quanto vale a orientação EXIF de cada foto: `none` ignora-a, `orient` "
+       "deixa os píxeis como estão e tira dela a direção para cima da cena, "
+       "`apply` gira os píxeis e ajusta as câmaras ao enquadramento girado"),
+    IT("Quanto vale l'orientamento EXIF di ogni foto: `none` lo ignora, "
+       "`orient` lascia stare i pixel e ne ricava la direzione verso l'alto "
+       "della scena, `apply` ruota i pixel e adatta le camere all'inquadratura "
+       "ruotata"),
+    NL("Wat de EXIF-oriëntatie van elke foto waard is: `none` negeert hem, "
+       "`orient` laat de pixels met rust en haalt er de omhoogrichting van de "
+       "scène uit, `apply` draait de pixels en past de camera's aan het "
+       "gedraaide beeld aan"),
+    RU("Как учитывать ориентацию EXIF каждого снимка: `none` — не учитывать, "
+       "`orient` — не трогать пиксели и взять оттуда только направление вверх "
+       "для сцены, `apply` — повернуть пиксели и подогнать камеры под "
+       "повёрнутый кадр"),
+    TR("Her fotoğrafın EXIF yönlendirmesi ne işe yarar: `none` yok sayar, "
+       "`orient` pikselleri olduğu gibi bırakıp sahnenin yukarı yönünü oradan "
+       "alır, `apply` pikselleri döndürüp kameraları döndürülmüş kareye "
+       "oturtur"));
+
 // ===========================================================================
 // features
 // ===========================================================================

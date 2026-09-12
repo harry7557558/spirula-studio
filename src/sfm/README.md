@@ -225,6 +225,24 @@ tests/       one executable per file
 `core/Camera.h` are different types with different jobs; the paths keep them
 apart.
 
+### `features.bin`
+
+Little-endian throughout. The header is `char[4] "VKFT"`, `u32 version`,
+`i32 width, height`, `u32 count, dim, dtype`; then `count` keypoints of
+`{ f32 x, y, scale, orientation }`, then the descriptor blob
+(`count * dim * dtypeSize` bytes).
+
+Every version since appends a section at the end, and the reader takes all of
+them — a stale cache is reused, never rejected:
+
+| version | appends | an older file reads back as |
+|---|---|---|
+| v2 | `u8 has_colors`, then `count*3` bytes of per-keypoint RGB | no colors |
+| v3 | `f64 exif_focal`, `u32 len`, `len` bytes of `exif_camera` | no EXIF |
+| v4 | `i32 extract_width, extract_height` | 0, so `pixelScale() == 1` — thresholds in source pixels, which is what those files were produced under |
+| v5 | `u8 has_scores`, then (if 1) `count` f32 detection scores | every response 0, which is what SIFT persisted |
+| v6 | `u8 exif_orientation` | 1, the orientation of a file carrying no tag |
+
 ## Building
 
 ```bash
@@ -393,6 +411,14 @@ model is written, so the trainer's own normalization comes out as the identity
 `splat.ply`, a mesh, a bare model in a viewer — is upright too rather than
 tilted with no way left to recover the transform. `map/Orient.h` has the
 algebra and the caveats; `--no-orient` keeps the mapper's raw gauge.
+
+Which up that is, is `--exif-orientation`'s business. A phone held upright
+writes a landscape file plus a tag saying to turn it, so the frame's own up
+is 90 degrees from the photographer's; `orient` (the default) reads the tag
+for the gauge and leaves the pixels alone, `apply` turns the pixels instead
+and fits cameras to the turned frame, `none` ignores it. A training run over
+the model must be given the SAME value — `docs/datasets.md`, "EXIF
+orientation", has the table and the mirrored-tag compromise.
 
 `--metric-positions FILE` and `--metric-gps` fix that same gauge from an
 outside measurement instead, so the model is written **in metres**. The first

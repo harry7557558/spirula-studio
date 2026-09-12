@@ -192,6 +192,7 @@ inline FeatureSet compactFeatureSet(FeatureSet input,
     out.extract_height = input.extract_height;
     out.exif_focal = input.exif_focal;
     out.exif_camera = input.exif_camera;
+    out.exif_orientation = input.exif_orientation;
     out.dim = input.dim;
     out.dtype = input.dtype;
     out.keypoints.reserve(compact_count);

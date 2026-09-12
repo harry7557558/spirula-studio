@@ -36,21 +36,30 @@
 #pragma once
 
 #include <cmath>
+#include <string>
 #include <vector>
 
+#include "sfm/core/Exif.h"
 #include "sfm/core/Model.h"
 #include "sfm/core/Pose.h"
 
 namespace sfm {
 
-// The cameras' mean up axis in world coordinates, unnormalized. Camera-to-
-// world is [R^T | -R^T t]; its columns are the camera axes in the CV
-// convention (x right, y DOWN, z forward), so up is minus the second ROW of R.
-inline Vec3 meanCameraUp(const Reconstruction& rec) {
+// The cameras' mean up axis in world coordinates, unnormalized: up is minus the
+// second ROW of R (world -> camera, x right, y DOWN, z forward). `use_exif`
+// takes each image's up from its Orientation tag -- a portrait file's is 90 off.
+inline Vec3 meanCameraUp(const Reconstruction& rec, bool use_exif = false) {
     Vec3 up{0, 0, 0};
-    for (const auto& kv : rec.images)
-        if (kv.second.registered)
-            up = up + Vec3{-kv.second.pose.R[3], -kv.second.pose.R[4], -kv.second.pose.R[5]};
+    for (const auto& kv : rec.images) {
+        const Image& im = kv.second;
+        if (!im.registered) continue;
+        double u[3] = {0, -1, 0};
+        if (use_exif) exifUpInCamera(im.exif_orientation, u);
+        // R^T u: the camera-frame up written in world coordinates.
+        for (int c = 0; c < 3; c++)
+            up = up + Vec3{im.pose.R[3 * c] * u[c], im.pose.R[3 * c + 1] * u[c],
+                           im.pose.R[3 * c + 2] * u[c]};
+    }
     return up;
 }
 
@@ -108,9 +117,29 @@ inline Sim3 normalizingTransform(const Reconstruction& rec, Vec3 up) {
     return T;
 }
 
+// Orientation tags for models that did not come from this run's features --
+// `merge` and a resumed `map` read theirs off disk, which records no tag. One
+// image already carrying a turn stops it: the features are the authority.
+inline int fillExifOrientations(std::vector<Reconstruction>& models,
+                                const std::string& imagedir) {
+    if (imagedir.empty()) return 0;
+    for (const Reconstruction& m : models)
+        for (const auto& kv : m.images)
+            if (kv.second.exif_orientation != 1) return 0;
+    int read = 0;
+    for (Reconstruction& m : models)
+        for (auto& kv : m.images)
+            if (kv.second.registered) {
+                kv.second.exif_orientation =
+                    (uint8_t)exifOrientation(imagedir + "/" + kv.second.name);
+                read++;
+            }
+    return read;
+}
+
 // The same, with up taken from the cameras themselves.
-inline Sim3 uprightTransform(const Reconstruction& rec) {
-    return normalizingTransform(rec, meanCameraUp(rec));
+inline Sim3 uprightTransform(const Reconstruction& rec, bool use_exif = false) {
+    return normalizingTransform(rec, meanCameraUp(rec, use_exif));
 }
 
 // Apply it. Poses and 3D points are the only things in a Reconstruction with
@@ -126,8 +155,8 @@ inline void applySim3(Reconstruction& rec, const Sim3& T) {
 
 // Returns the transform that was applied, so the caller can report it (and so
 // a caller that needs to map something else into the new frame still can).
-inline Sim3 orientModel(Reconstruction& rec) {
-    const Sim3 T = uprightTransform(rec);
+inline Sim3 orientModel(Reconstruction& rec, bool use_exif = false) {
+    const Sim3 T = uprightTransform(rec, use_exif);
     applySim3(rec, T);
     return T;
 }

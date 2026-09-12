@@ -19,6 +19,7 @@ static FeatureSet features(uint32_t count, float tag) {
     set.extract_height = 540;
     set.exif_focal = 733.25 + tag;
     set.exif_camera = "camera-" + std::to_string((int)tag);
+    set.exif_orientation = 6;
     set.dim = 4;
     set.dtype = DType::U8;
     set.keypoints.resize(count);
@@ -130,7 +131,8 @@ static int cmdFeatureCompactionTest(int, char**) {
     check(db.images.size() == original_db.images.size() &&
               db.images[2].name == "cam0/unused" && compact[2].count() == 0 &&
               db.images[2].num_features == 0 && compact[2].width == 1920 &&
-              compact[2].height == 1080 && compact[2].exif_camera == "camera-30",
+              compact[2].height == 1080 && compact[2].exif_camera == "camera-30" &&
+              compact[2].exif_orientation == 6,
           "zero-active image and metadata", fails);
     check(db.pairs.size() == original_db.pairs.size(), "pair count", fails);
     for (size_t p = 0; p < db.pairs.size(); p++) {

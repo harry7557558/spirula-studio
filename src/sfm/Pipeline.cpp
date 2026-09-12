@@ -162,6 +162,7 @@ void finishFeatures(FeatureSet& fs, const GrayImage& img) {
     scaleKeypoints(fs, img.orig_width, img.orig_height);
     fs.exif_focal = exifFocalPx(img.exif, fs.width, fs.height);
     fs.exif_camera = exifCameraKey(img.exif, fs.width, fs.height);
+    fs.exif_orientation = (uint8_t)img.exif.orientation;
 }
 
 // Why a metric fit was refused, with the numbers, so one line is a complete
@@ -344,6 +345,10 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
     const bool gps = cfg.metric_gps != "none";
     const bool flat = cfg.metric_gps == "horizontal";
     const bool file = !cfg.metric_positions.empty();
+    // A portrait capture's up is 90 degrees off its images'; `apply` already
+    // turned the pixels, so only `orient` corrects anything. The tags arrive on
+    // the models; a caller that read them off disk calls fillExifOrientations.
+    const bool exif_up = cfg.exif_orientation == "orient";
 
     // `gauge[i]` is the state, not just the record: `oriented` and `metric` say
     // what a source has already settled, and every source below reads them
@@ -407,7 +412,8 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
         // Horizontal mode takes the tilt from the caller's up axis, so its fit
         // -- scale, heading and place -- runs in an upright frame. Where a
         // sensor already levelled the model, that frame is the one it is in.
-        const Sim3 pre = flat && !gauge[i].oriented ? uprightTransform(models[i]) : Sim3{};
+        const Sim3 pre =
+            flat && !gauge[i].oriented ? uprightTransform(models[i], exif_up) : Sim3{};
         for (Vec3& c : ref.centres) c = transformPoint(pre, c);
         const MetricFit fit =
             fitMetricGauge(ref, cfg.metric_max_error,
@@ -466,8 +472,8 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
     if (cfg.orient)
         for (size_t i = 0; i < models.size(); i++) {
             if (gauge[i].oriented || gauge[i].metric) continue;
-            const Sim3 T = orientModel(models[i]);
-            gauge[i].up = "cameras";
+            const Sim3 T = orientModel(models[i], exif_up);
+            gauge[i].up = exif_up ? "cameras+exif" : "cameras";
             if (verbose) L::err(Tag::Orient, M::orient_done, {(long long)i, L::num(T.scale, 4)});
         }
     return true;
@@ -1054,6 +1060,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     lopt.gamut = cfg.image_gamut;
     lopt.is_linear = cfg.image_is_linear;
     lopt.flip_mask = cfg.flip_mask;
+    lopt.apply_exif_orientation = cfg.exif_orientation == "apply";
     if (cfg.decode_budget_mb > 0)
         lopt.memory_budget_bytes = (size_t)cfg.decode_budget_mb << 20;
 
@@ -1161,6 +1168,11 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
         paths, plan, lopt,
         [&](size_t k, GrayImage& img) {
             cancel::check();
+            if (img.exif_mirror_dropped && !stats.warned_exif_mirror) {
+                stats.warned_exif_mirror = true;
+                L::warn(Tag::Extract, M::extract_exif_mirror_dropped,
+                        {fs::path(paths[k]).filename().string()});
+            }
             FeatureSet f = ext->extract(img);
             sampleFeatureColors(f, img);
             uint32_t dropped = 0;
@@ -1171,7 +1183,9 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                             {lopt.mask_paths[k],
                              fs::path(paths[k]).filename().string()});
                 } else {
-                    checkMaskShape(lopt.mask_paths[k], img.mask, sorted_dims[k]);
+                    // img's own size, not the probed one: `apply` turned both.
+                    checkMaskShape(lopt.mask_paths[k], img.mask,
+                                   {img.orig_width, img.orig_height});
                     const uint32_t before = f.count();
                     dropped = applyMask(f, img.mask);
                     stats.masked_out += dropped;
@@ -1201,8 +1215,8 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
             ev.done = stats.images;
             ev.total = (int64_t)n_all;
             ev.name = fs::path(paths[k]).filename().string();
-            ev.width = sorted_dims[k].first;
-            ev.height = sorted_dims[k].second;
+            ev.width = img.orig_width;
+            ev.height = img.orig_height;
             ev.features = f.count();
             ev.masked = dropped;
             events::emit(ev);

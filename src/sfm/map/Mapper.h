@@ -2273,6 +2273,7 @@ private:
             im.id = i;
             im.camera_id = cam_ids_[i];
             im.name = db_.images[i].name;  // feature stem; CLI resolves the real filename
+            im.exif_orientation = feats_[i].exif_orientation;
             im.points2D.resize(feats_[i].count());
             im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
             for (uint32_t f = 0; f < feats_[i].count(); f++) im.points2D[f] = kp(i, f);

@@ -86,6 +86,11 @@ struct DataManagerConfig {
     // masks that mark what to EXCLUDE, the other convention in the wild.
     bool flip_mask = false;
 
+    // Quarter turns clockwise to load each image with, one per input camera
+    // (ParsedDataset::exif_quarter_turns). Mask, depth and normal come from the
+    // same frame and turn with it. Empty when no image asks for one.
+    std::vector<uint8_t> exif_quarter_turns;
+
     // Signed boundary offset applied to binarized masks at decode time,
     // expressed as a fraction of sqrt(W*H) of the decoded mask. Positive ->
     // dilate (grow) foreground; negative -> erode (shrink) foreground; zero

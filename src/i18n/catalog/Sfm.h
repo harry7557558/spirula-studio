@@ -566,6 +566,44 @@ SS_MSG(extract_mask_aspect,
        "içeriğin üzerine gerileceği anlamına gelir. Bu boyut çifti için sonraki uyarılar "
        "gösterilmez."));
 
+// {0} is an image file name.
+SS_MSG(extract_exif_mirror_dropped,
+    EN("{0} and others ask to be mirrored as well as turned. Only the turn is "
+       "applied: no camera pose fits a mirrored picture, so the reconstruction "
+       "would be the mirror image of the real one."),
+    JA("{0} などは回転に加えて左右反転も指定しています。適用するのは回転だけです。"
+       "反転した画像に合うカメラ姿勢は存在せず、復元結果が実物の鏡像になってしまいます。"),
+    ZH_HANS("{0} 等图像除了旋转还要求左右镜像。这里只做旋转：镜像后的画面没有与之相符的"
+            "相机位姿，重建结果会变成真实场景的镜像。"),
+    ZH_HANT("{0} 等影像除了旋轉還要求左右鏡像。這裡只做旋轉：鏡像後的畫面沒有與之相符的"
+            "相機姿態，重建結果會變成真實場景的鏡像。"),
+    KO("{0} 등은 회전뿐 아니라 좌우 반전도 요구합니다. 회전만 적용합니다. 반전된 그림에 "
+       "맞는 카메라 자세는 없어서, 복원 결과가 실제의 거울상이 되어 버립니다."),
+    DE("{0} und weitere verlangen neben der Drehung auch eine Spiegelung. Nur die "
+       "Drehung wird angewandt: zu einem gespiegelten Bild passt keine Kamerapose, "
+       "die Rekonstruktion wäre das Spiegelbild der Wirklichkeit."),
+    FR("{0} et d'autres demandent un miroir en plus de la rotation. Seule la rotation "
+       "est appliquée : aucune pose de caméra ne correspond à une image miroir, et la "
+       "reconstruction serait l'image inversée de la réalité."),
+    ES("{0} y otras piden un espejado además del giro. Solo se aplica el giro: ninguna "
+       "pose de cámara encaja con una imagen espejada, y la reconstrucción saldría "
+       "como el reflejo de la realidad."),
+    PT("{0} e outras pedem espelhamento além da rotação. Só a rotação é aplicada: "
+       "nenhuma pose de câmara corresponde a uma imagem espelhada, e a reconstrução "
+       "sairia como o reflexo da realidade."),
+    IT("{0} e altre chiedono una specchiatura oltre alla rotazione. Si applica solo la "
+       "rotazione: nessuna posa di camera corrisponde a un'immagine specchiata, e la "
+       "ricostruzione verrebbe come il riflesso della realtà."),
+    NL("{0} en andere vragen naast de draaiing ook om spiegeling. Alleen de draaiing "
+       "wordt toegepast: bij een gespiegeld beeld past geen camerapositie, en de "
+       "reconstructie zou het spiegelbeeld van de werkelijkheid zijn."),
+    RU("{0} и другие требуют не только поворота, но и зеркального отражения. "
+       "Применяется только поворот: зеркальному изображению не соответствует ни одна "
+       "поза камеры, и реконструкция вышла бы зеркальной."),
+    TR("{0} ve diğerleri döndürmenin yanı sıra aynalanmayı da istiyor. Yalnızca "
+       "döndürme uygulanıyor: aynalanmış bir görüntüye uyan kamera duruşu yoktur, "
+       "yeniden oluşturma gerçeğin ayna görüntüsü olurdu."));
+
 SS_MSG(extract_mask_empty,
     EN("The mask {0} left no keypoints at all in {1}. Masks keep the white pixels "
        "and ignore the black ones, so an inverted mask masks out the whole image."),

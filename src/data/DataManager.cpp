@@ -1,8 +1,10 @@
 // DataManager — see DataManager.h for the public contract.
 
 #include "data/DataManager.h"
+
 #include "core/DistanceTransform.h"
 #include "core/ExrImage.h"
+#include "core/ImageOrient.h"
 #include "data/ImageProbe.h"
 #include "i18n/catalog/Data.h"
 
@@ -347,12 +349,43 @@ static void _warn_rgb_dim_mismatch_once(
     }
 }
 
+// Turn a just-decoded buffer into `scratch`, so the size the caller then
+// compares against the camera's is the one it will train on. `px` ends up
+// pointing at the turned pixels (core/ImageOrient.h).
+template <typename T>
+void turn_decoded(const T*& px, int& w, int& h, int channels, int turns_cw,
+                  std::vector<T>& scratch) {
+    if ((turns_cw & 3) == 0) return;
+    scratch.resize((size_t)w * h * (size_t)channels);
+    spirula::orient_pixels(px, w, h, channels, turns_cw, false, scratch.data());
+    spirula::oriented_size(turns_cw, w, h);
+    px = scratch.data();
+}
+
+// A normal lives in the camera frame the turn rotates, so its x and y move with
+// the pixels: CW by one quarter takes (nx, ny) to (-ny, nx), and the uint8
+// encoding (x/127.5 - 1) negates as 255 - v.
+void turn_normal_vectors(uint8_t* px, size_t n, int turns_cw) {
+    if ((turns_cw & 3) == 0) return;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t* p = px + i * 3;
+        const uint8_t x = p[0], y = p[1];
+        switch (turns_cw & 3) {
+            case 1: p[0] = (uint8_t)(255 - y); p[1] = x; break;
+            case 2: p[0] = (uint8_t)(255 - x); p[1] = (uint8_t)(255 - y); break;
+            case 3: p[0] = y; p[1] = (uint8_t)(255 - x); break;
+            default: break;
+        }
+    }
+}
+
 // `decode_threads` is what an EXR may use: 1 on the worker pool, which is
 // already 16 wide, and every core for a lone image the viewer asked for.
 void decode_rgb_into(const std::string& path,
                      int expected_h, int expected_w,
                      PixelDType dtype,
                      uint8_t* dst,
+                     int turns_cw = 0,
                      int decode_threads = 1)
 {
     int w, h, ch;
@@ -364,31 +397,41 @@ void decode_rgb_into(const std::string& path,
         const std::string err = exr::decode(path, opt, info, px);
         if (!err.empty())
             throw std::runtime_error(decode_failure(path) + " (" + err + ")");
-        if (info.width == expected_w && info.height == expected_h) {
-            std::memcpy(dst, px.data(), px.size() * sizeof(float));
+        const float* src = px.data();
+        std::vector<float> turned;
+        w = info.width;
+        h = info.height;
+        turn_decoded(src, w, h, 3, turns_cw, turned);
+        if (w == expected_w && h == expected_h) {
+            std::memcpy(dst, src, (size_t)w * h * 3 * sizeof(float));
         } else {
-            _warn_rgb_dim_mismatch_once(path, info.width, info.height, expected_w, expected_h);
-            cpu_resize<float, 3>(px.data(), info.height, info.width,
-                                 (float*)dst, expected_h, expected_w);
+            _warn_rgb_dim_mismatch_once(path, w, h, expected_w, expected_h);
+            cpu_resize<float, 3>(src, h, w, (float*)dst, expected_h, expected_w);
         }
     } else if (dtype == PixelDType::UINT16) {
         stbi_us* img = stbi_load_16(path.c_str(), &w, &h, &ch, 3);
         if (!img) throw std::runtime_error(decode_failure(path));
+        const stbi_us* src = img;
+        std::vector<stbi_us> turned;
+        turn_decoded(src, w, h, 3, turns_cw, turned);
         if (w == expected_w && h == expected_h) {
-            std::memcpy(dst, img, (size_t)w * h * 3 * sizeof(stbi_us));
+            std::memcpy(dst, src, (size_t)w * h * 3 * sizeof(stbi_us));
         } else {
             _warn_rgb_dim_mismatch_once(path, w, h, expected_w, expected_h);
-            cpu_resize<stbi_us, 3>(img, h, w, (stbi_us*)dst, expected_h, expected_w);
+            cpu_resize<stbi_us, 3>(src, h, w, (stbi_us*)dst, expected_h, expected_w);
         }
         stbi_image_free(img);
     } else if (dtype == PixelDType::UINT8) {
         stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 3);
         if (!img) throw std::runtime_error(decode_failure(path));
+        const stbi_uc* src = img;
+        std::vector<stbi_uc> turned;
+        turn_decoded(src, w, h, 3, turns_cw, turned);
         if (w == expected_w && h == expected_h) {
-            std::memcpy(dst, img, (size_t)w * h * 3);
+            std::memcpy(dst, src, (size_t)w * h * 3);
         } else {
             _warn_rgb_dim_mismatch_once(path, w, h, expected_w, expected_h);
-            cpu_resize<stbi_uc, 3>(img, h, w, dst, expected_h, expected_w);
+            cpu_resize<stbi_uc, 3>(src, h, w, dst, expected_h, expected_w);
         }
         stbi_image_free(img);
     } else {
@@ -400,7 +443,8 @@ void decode_mask_into(const std::string& path,
                       int dst_h, int dst_w,
                       bool flip,
                       float boundary_offset_frac,
-                      uint8_t* dst)
+                      uint8_t* dst,
+                      int turns_cw = 0)
 {
     int w, h, ch;
     stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 1);
@@ -411,10 +455,13 @@ void decode_mask_into(const std::string& path,
     for (size_t i = 0; i < (size_t)w * h; ++i)
         img[i] = (uint8_t)(img[i] != 0);
 
+    const stbi_uc* src = img;
+    std::vector<stbi_uc> turned;
+    turn_decoded(src, w, h, 1, turns_cw, turned);
     if (w == dst_w && h == dst_h) {
-        std::memcpy(dst, img, (size_t)w * h);
+        std::memcpy(dst, src, (size_t)w * h);
     } else {
-        cpu_nearest_resize_u8(img, h, w, dst, dst_h, dst_w);
+        cpu_nearest_resize_u8(src, h, w, dst, dst_h, dst_w);
     }
     stbi_image_free(img);
 
@@ -434,34 +481,43 @@ void decode_mask_into(const std::string& path,
 void decode_depth_into(const std::string& path,
                        int dst_h, int dst_w,
                        PixelDType dtype,
-                       uint8_t* dst)
+                       uint8_t* dst,
+                       int turns_cw = 0)
 {
     int w, h, ch;
     if (dtype != PixelDType::UINT16)
         throw std::runtime_error("DataManager: only 16-bit depth PNGs are supported in stb_image path");
     stbi_us* img = stbi_load_16(path.c_str(), &w, &h, &ch, 1);
     if (!img) throw std::runtime_error(decode_failure(path));
+    const stbi_us* src = img;
+    std::vector<stbi_us> turned;
+    turn_decoded(src, w, h, 1, turns_cw, turned);
     if (w == dst_w && h == dst_h) {
-        std::memcpy(dst, img, (size_t)w * h * sizeof(stbi_us));
+        std::memcpy(dst, src, (size_t)w * h * sizeof(stbi_us));
     } else {
-        cpu_bilinear_resize<stbi_us, 1>(img, h, w, (stbi_us*)dst, dst_h, dst_w);
+        cpu_bilinear_resize<stbi_us, 1>(src, h, w, (stbi_us*)dst, dst_h, dst_w);
     }
     stbi_image_free(img);
 }
 
 void decode_normal_into(const std::string& path,
                         int dst_h, int dst_w,
-                        uint8_t* dst)
+                        uint8_t* dst,
+                        int turns_cw = 0)
 {
     int w, h, ch;
     stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 3);
     if (!img) throw std::runtime_error(decode_failure(path));
+    const stbi_uc* src = img;
+    std::vector<stbi_uc> turned;
+    turn_decoded(src, w, h, 3, turns_cw, turned);
     if (w == dst_w && h == dst_h) {
-        std::memcpy(dst, img, (size_t)w * h * 3);
+        std::memcpy(dst, src, (size_t)w * h * 3);
     } else {
-        cpu_bilinear_resize<stbi_uc, 3>(img, h, w, dst, dst_h, dst_w);
+        cpu_bilinear_resize<stbi_uc, 3>(src, h, w, dst, dst_h, dst_w);
     }
     stbi_image_free(img);
+    turn_normal_vectors(dst, (size_t)dst_h * dst_w, turns_cw);
 }
 
 bool probe_image_shape(const std::string& path, int& w, int& h) {
@@ -675,6 +731,12 @@ private:
     std::vector<int32_t> _mask_h_per,   _mask_w_per;
     std::vector<int32_t> _depth_h_per,  _depth_w_per;
     std::vector<int32_t> _normal_h_per, _normal_w_per;
+
+    // Quarter turns image `i` is loaded with (DataManagerConfig).
+    int turns_of(int64_t i) const {
+        return i >= 0 && (size_t)i < _cfg.exif_quarter_turns.size()
+                   ? (int)_cfg.exif_quarter_turns[(size_t)i] : 0;
+    }
 
     // ---- CPU mode preloaded buffers --------------------------------------
     //
@@ -1018,6 +1080,8 @@ void DataManagerImpl::probe_dtypes() {
             if (!probe_image_shape(fns[i], wi, hi))
                 throw std::runtime_error(std::string("DataManager: failed to probe ")
                     + name + " '" + fns[i] + "'");
+            // The shape these are decoded AT, which a turn transposes.
+            spirula::oriented_size(turns_of(i), wi, hi);
             out_h[i] = (int32_t)hi;
             out_w[i] = (int32_t)wi;
         }
@@ -1230,7 +1294,8 @@ void DataManagerImpl::preload_cpu_cache() {
                     PixelDType dt = _rgb_dtype[i];
                     size_t bytes = (size_t)W * H * 3 * pixel_dtype_size(dt);
                     _rgb_cache[i].assign(bytes, 0);
-                    decode_rgb_into(_image_filenames[i], H, W, dt, _rgb_cache[i].data());
+                    decode_rgb_into(_image_filenames[i], H, W, dt,
+                                    _rgb_cache[i].data(), turns_of(i));
                 }
                 // Per-image modality shape (may differ across images; group
                 // uniformity was enforced at construction). Mask 1x1 stays
@@ -1240,7 +1305,7 @@ void DataManagerImpl::preload_cpu_cache() {
                     _mask_cache[i].assign((size_t)mw * mh, 0);
                     decode_mask_into(_mask_filenames[i], mh, mw,
                                      _cfg.flip_mask, _cfg.mask_boundary_offset,
-                                     _mask_cache[i].data());
+                                     _mask_cache[i].data(), turns_of(i));
                 } else if (has_masks() && _synth_white_mask[(size_t)i]) {
                     // Full-size all-ones mask matching the input image shape
                     // (see constructor note: 1x1 broadcast breaks the warp
@@ -1258,13 +1323,13 @@ void DataManagerImpl::preload_cpu_cache() {
                     size_t bytes = (size_t)dw * dh * pixel_dtype_size(dt);
                     _depth_cache[i].assign(bytes, 0);
                     decode_depth_into(_depth_filenames[i], dh, dw,
-                                      dt, _depth_cache[i].data());
+                                      dt, _depth_cache[i].data(), turns_of(i));
                 }
                 if (has_normals() && !_normal_filenames[i].empty()) {
                     int32_t nh = _normal_h_per[i], nw = _normal_w_per[i];
                     _normal_cache[i].assign((size_t)nw * nh * 3, 0);
                     decode_normal_into(_normal_filenames[i], nh, nw,
-                                       _normal_cache[i].data());
+                                       _normal_cache[i].data(), turns_of(i));
                 }
 
                 int64_t d = done_count.fetch_add(1) + 1;
@@ -1744,7 +1809,7 @@ void DataManagerImpl::worker_loop_rgb() {
         uint8_t* dst = b.rgb_buffer.data() + (size_t)job.slot * row;
         if (!decode_or_park([&]{
                 decode_rgb_into(_image_filenames[job.ds_index], H, W,
-                                b.rgb_dtype, dst); }))
+                                b.rgb_dtype, dst, turns_of(job.ds_index)); }))
             return;
         publish_if_done(job);
     }
@@ -1763,7 +1828,7 @@ void DataManagerImpl::worker_loop_mask() {
             if (!decode_or_park([&]{
                     decode_mask_into(_mask_filenames[job.ds_index], H, W,
                                      _cfg.flip_mask, _cfg.mask_boundary_offset,
-                                     dst); }))
+                                     dst, turns_of(job.ds_index)); }))
                 return;
         } else {
             // Synthesized all-white: skip disk read, fill the slot directly.
@@ -1783,7 +1848,7 @@ void DataManagerImpl::worker_loop_depth() {
         uint8_t* dst = b.depth_buffer.data() + (size_t)job.slot * row;
         if (!decode_or_park([&]{
                 decode_depth_into(_depth_filenames[job.ds_index], H, W,
-                                  b.depth_dtype, dst); }))
+                                  b.depth_dtype, dst, turns_of(job.ds_index)); }))
             return;
         publish_if_done(job);
     }
@@ -1798,7 +1863,8 @@ void DataManagerImpl::worker_loop_normal() {
         size_t row = (size_t)H * W * 3;
         uint8_t* dst = b.normal_buffer.data() + (size_t)job.slot * row;
         if (!decode_or_park([&]{
-                decode_normal_into(_normal_filenames[job.ds_index], H, W, dst); }))
+                decode_normal_into(_normal_filenames[job.ds_index], H, W, dst,
+                                   turns_of(job.ds_index)); }))
             return;
         publish_if_done(job);
     }
@@ -2095,7 +2161,7 @@ void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
     } else {
         decode_rgb_into(_image_filenames[index], out.input_height,
                         out.input_width, out.rgb_dtype, out.rgb_buffer.data(),
-                        /*decode_threads=*/0);
+                        turns_of(index), /*decode_threads=*/0);
         if (!out.mask_buffer.empty()) {
             bool synth = !_synth_white_mask.empty() &&
                          _synth_white_mask[(size_t)index];
@@ -2106,7 +2172,7 @@ void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
                 decode_mask_into(_mask_filenames[index], out.mask_height,
                                  out.mask_width, _cfg.flip_mask,
                                  _cfg.mask_boundary_offset,
-                                 out.mask_buffer.data());
+                                 out.mask_buffer.data(), turns_of(index));
             }
             // Neither: the row stays zero, which is what the training path
             // leaves for an image with no mask of its own.
@@ -2114,10 +2180,11 @@ void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
         if (!out.depth_buffer.empty() && !_depth_filenames[index].empty())
             decode_depth_into(_depth_filenames[index], out.depth_height,
                               out.depth_width, out.depth_dtype,
-                              out.depth_buffer.data());
+                              out.depth_buffer.data(), turns_of(index));
         if (!out.normal_buffer.empty() && !_normal_filenames[index].empty())
             decode_normal_into(_normal_filenames[index], out.normal_height,
-                               out.normal_width, out.normal_buffer.data());
+                               out.normal_width, out.normal_buffer.data(),
+                               turns_of(index));
     }
     out.build_views();
 }

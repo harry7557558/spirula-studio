@@ -8,6 +8,7 @@
 
 #include "app/WriterPool.h"
 #include "i18n/catalog/Data.h"
+#include "i18n/catalog/Log.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
 #include "sam/Sam.h"
@@ -461,6 +462,16 @@ std::vector<std::pair<int, int>> video_track_sizes(const std::string& path,
     return out;
 }
 
+std::vector<VideoTrackOrientation> video_track_orientations(const std::string& path,
+                                                            std::string& error) {
+    std::vector<VideoTrackOrientation> out;
+    auto demux = video::open_demuxer(path, error);
+    if (!demux) return out;
+    for (const video::TrackInfo& t : demux->tracks())
+        out.push_back({t.rotate, t.mirror});
+    return out;
+}
+
 bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sinks,
                     FrameExtractStats& stats, std::string& error) {
     FrameExtractJob job = job_in;
@@ -509,6 +520,32 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
         for (int i = 0; i < n; ++i) tracks.push_back(i);
     }
     stats.tracks = (int)tracks.size();
+
+    // The container's own display transform, so a portrait clip lands upright
+    // and the written files carry no orientation metadata to disagree with.
+    if (job.auto_rotate && !pano) {
+        namespace lmsg = spirula::i18n::msg::log;
+        std::string probe_error;
+        const std::vector<VideoTrackOrientation> orient =
+            video_track_orientations(job.input, probe_error);
+        int turn = -1;
+        bool mirror = false, mixed = false;
+        for (int ti : tracks) {
+            if (ti < 0 || ti >= (int)orient.size()) continue;
+            if (turn < 0) turn = orient[(size_t)ti].rotate;
+            else if (orient[(size_t)ti].rotate != turn) mixed = true;
+            mirror = mirror || orient[(size_t)ti].mirror;
+        }
+        if (turn > 0) {
+            job.rotate = (job.rotate + turn) % 360;
+            log_line(sinks, spirula::i18n::format(lmsg::video_autorotate,
+                                                  {(long long)turn}));
+            if (mixed) log_line(sinks, lmsg::video_autorotate_mixed.get());
+        }
+        // A mirrored capture cannot be reconstructed from mirrored pixels: the
+        // pose that fits them is the mirror image of the real one.
+        if (mirror) log_line(sinks, lmsg::video_autorotate_mirror.get());
+    }
 
     std::unique_ptr<sam::Masker> masker;
     if (!job.mask.model.empty()) {

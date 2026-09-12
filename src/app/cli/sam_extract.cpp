@@ -79,6 +79,7 @@ void usage() {
     help_row("-n, --max-frames <n>", H::xh_max_frames);
     help_row("-q, --quality <0..100>", H::xh_quality);
     help_row("-r, --rotate <deg>", H::xh_rotate);
+    help_row("    --no-autorotate", H::xh_no_autorotate);
     help_row("    --scale <f>", H::xh_scale);
     help_row("    --track <i>", H::xh_track);
     help_row("    --sync", H::xh_sync);
@@ -113,6 +114,7 @@ struct Options {
     std::string out_dir, mask_dir;
     int    skip = 1, keep = -1, max_frames = 0;
     int    quality = 95, rotate = 0;
+    bool   auto_rotate = true;
     float  scale = 1.0f;
     int    track = -1;
     bool   sync = false;
@@ -150,6 +152,8 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "-n" || a == "--max-frames") o.max_frames = std::atoi(next("--max-frames"));
         else if (a == "-q" || a == "--quality") o.quality = std::atoi(next("--quality"));
         else if (a == "-r" || a == "--rotate") o.rotate = std::atoi(next("--rotate"));
+        else if (a == "--no-autorotate") o.auto_rotate = false;
+        else if (a == "--autorotate") o.auto_rotate = true;
         else if (a == "--scale") o.scale = std::strtof(next("--scale"), nullptr);
         else if (a == "--track") o.track = std::atoi(next("--track"));
         else if (a == "--sync") o.sync = true;
@@ -244,6 +248,7 @@ int sam_cli_extract(int argc, char** argv) {
     job.max_frames = o.max_frames;
     job.quality = o.quality;
     job.rotate = o.rotate;
+    job.auto_rotate = o.auto_rotate;
     job.scale = o.scale;
     job.track = o.track;
     job.sync_tracks = o.sync;

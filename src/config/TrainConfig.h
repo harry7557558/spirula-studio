@@ -134,6 +134,7 @@ inline int train_tier_rank(const char* tier) {
     X(bool, deblur_training_images, false, "dataset", "stub", "")            \
                                                                              \
     /* ==== scene -- how the capture is placed, oriented and scaled ==== */  \
+    X(std::string, exif_orientation, "orient", "scene", "advanced", "none|orient|apply") \
     X(std::string, orientation_method, "up", "scene", "expert", "pca|up|vertical|none|gsplat") \
     X(std::string, center_method, "poses", "scene", "expert", "poses|focus|none|gsplat") \
     X(bool, auto_scale_poses, true, "scene", "expert", "")                   \
@@ -347,7 +348,7 @@ struct TrainConfig {
     X(data) X(data_format) X(colmap_recon_dir) X(image_dir) X(mask_dir) \
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
     X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
-    X(orientation_method) X(center_method) X(auto_scale_poses) \
+    X(exif_orientation) X(orientation_method) X(center_method) X(auto_scale_poses) \
     X(outlier_threshold) X(scene_center) X(train_frame) X(eval_mode) X(train_split_fraction) \
     X(eval_interval) X(depth_unit_scale_factor) X(validation_fraction) \
     X(warp_to_pinhole) X(warp_spherical_to_pinhole) X(warp_face_fit) \

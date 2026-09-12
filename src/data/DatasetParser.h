@@ -165,6 +165,11 @@ struct DatasetParserConfig {
     std::string metashape_ply;
     std::string metashape_psx;
 
+    // What each image's EXIF Orientation is worth: "none", "orient" (the scene
+    // is levelled by it, pixels untouched) or "apply" (images are loaded turned
+    // and the reconstruction already describes that frame). docs/datasets.md.
+    std::string exif_orientation = "none";
+
     // Which <component> group to use when a Metashape export contains several.
     // -1 (default) keeps the historical behavior: train on the largest group.
     // >= 0 selects that component-group index (document order); the viewer uses
@@ -235,6 +240,10 @@ struct ParsedDataset {
     // viewer can undo just that and leave any axis convention the file came
     // with (applied_transform) alone. Identity when none was applied.
     std::array<float, 9>     normalized_rotation{1,0,0, 0,1,0, 0,0,1};
+
+    // Quarter turns clockwise each image is loaded with, under
+    // exif_orientation="apply". Empty when no image asks for one.
+    std::vector<uint8_t>     exif_quarter_turns;
 
     // What the model's own frame is worth, from the gauge.txt a reconstruction
     // leaves beside it (sfm/Pipeline.h ModelGauge). Both false when there is no
@@ -336,7 +345,16 @@ namespace dsparse {
 // over c2w [N,3,4], orient="up" / center="poses"; returns scale_factor. The
 // viewer remap is inv(that @ applied); `R_out` is R_align alone.
 double compute_normalized_transform(const double* c2w, int64_t n,
-                                    double T_out[16], double R_out[9] = nullptr);
+                                    double T_out[16], double R_out[9] = nullptr,
+                                    // [N]: level by the up each image's EXIF
+                                    // names, not by the image's own.
+                                    const uint8_t* exif_orientation = nullptr);
+
+// Each image's EXIF Orientation, 1 where the file carries none. Empty when
+// `mode` is "none" or nothing in the set asks for a turn, which is the test
+// every caller makes.
+std::vector<uint8_t> read_exif_orientations(const std::string& mode,
+                                            const std::vector<std::string>& paths);
 
 // inv([A|b; 0 1]) for a general invertible 3x3 A (row-major 4x4 in/out).
 void invert_affine4x4(const double in[16], double out[16]);
@@ -369,6 +387,6 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
                            const std::string& image_path,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
-                           RedistortSource* src);
+                           RedistortSource* src, int turns_cw = 0);
 
 }  // namespace dsparse

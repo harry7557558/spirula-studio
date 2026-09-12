@@ -3,6 +3,7 @@
 #include "nn/core/Log.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace video {
@@ -69,6 +70,24 @@ bool find_box(const uint8_t* data, size_t size, uint32_t type, Box& out) {
         off += b.total_size;
     }
     return false;
+}
+
+// The tkhd display matrix maps stored coordinates to display ones as
+// (x', y') = (a x + c y, b x + d y), so the turn is atan2(b, a) and a negative
+// determinant is a mirror -- the two numbers av_display_rotation_get reads.
+void parse_display_matrix(const uint8_t* p, TrackInfo& info) {
+    // 16.16 fixed point; only the four in-plane entries matter.
+    auto fp = [p](int i) { return (double)(int32_t)rd32(p + 4 * i) / 65536.0; };
+    const double a = fp(0), b = fp(1), c = fp(3), d = fp(4);
+    const double sa = std::hypot(a, b);
+    if (sa < 1e-9) return;
+    int deg = (int)std::lround(std::atan2(b, a) * 180.0 / 3.14159265358979323846);
+    deg = ((deg % 360) + 360) % 360;
+    // Anything that is not a quarter turn is a shear or a scale we cannot
+    // express, and guessing at one would rotate the capture by the wrong angle.
+    if (deg % 90 != 0) return;
+    info.rotate = deg;
+    info.mirror = a * d - b * c < 0;
 }
 
 }  // namespace
@@ -164,6 +183,16 @@ bool Mp4Demuxer::parseTrak(const uint8_t* data, size_t size) {
     }
 
     Track tk;
+    {
+        // tkhd: version/flags (4) + times and ids (20 at v0, 32 at v1) +
+        // reserved/layer/group/volume (16), then the 3x3 matrix.
+        Box tkhd;
+        if (find_box(data, size, fourcc("tkhd"), tkhd) && tkhd.payload_size >= 4) {
+            const size_t off = 4 + (tkhd.payload[0] == 1 ? 32 : 20) + 16;
+            if (tkhd.payload_size >= off + 36)
+                parse_display_matrix(tkhd.payload + off, tk.info);
+        }
+    }
     {
         Box mdhd;
         if (find_box(mdia.payload, mdia.payload_size, fourcc("mdhd"), mdhd) &&

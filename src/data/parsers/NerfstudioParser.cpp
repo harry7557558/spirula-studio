@@ -10,6 +10,7 @@
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
 #include "data/DistortionFit.h"
 #include "data/SourceCamera.h"
+#include "sfm/core/Exif.h"
 
 #include <algorithm>
 #include <cmath>
@@ -572,9 +573,18 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     // ---- train_frame_scale + normalized-frame similarity (all post-outlier
     // frames, pre-split), in the transforms.json frame so the levelling
     // rotation stays relative to the file's own axes. -----------------------
+    std::vector<std::string> all_paths(n_all);
+    for (int64_t i = 0; i < n_all; i++) all_paths[i] = frames[i].abs;
+    const std::vector<uint8_t> exif_o =
+        dsparse::read_exif_orientations(cfg.exif_orientation, all_paths);
+    // `apply` turns the pixels, so the levelling has nothing left to correct.
+    const bool exif_level = cfg.exif_orientation == "orient" && !exif_o.empty();
+    const bool exif_turn = cfg.exif_orientation == "apply" && !exif_o.empty();
+
     double T_n_from_camera[16], R_align[9];
     double scale_factor = dsparse::compute_normalized_transform(
-        c2w_all.data(), n_all, T_n_from_camera, R_align);
+        c2w_all.data(), n_all, T_n_from_camera, R_align,
+        exif_level ? exif_o.data() : nullptr);
     // train_to_normalized = inv(T_n_from_camera @ [A | 0])
     double T_n_from_train[16];
     for (int r = 0; r < 4; r++)
@@ -722,9 +732,15 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         ds.camera_distortions.push_back(
             (int32_t)camera_distortion_demote(tier, dst, dst));
 
+        const int turns =
+            exif_turn ? sfm::exifTransform(exif_o[subset[j]]).turns_cw : 0;
+        if (exif_turn) {
+            if (ds.exif_quarter_turns.empty()) ds.exif_quarter_turns.assign(N, 0);
+            ds.exif_quarter_turns[j] = (uint8_t)turns;
+        }
         dsparse::fit_camera_resolution(
             cfg, F.abs, W, H, fx, fy, cx, cy,
-            ds.redistort.empty() ? nullptr : &ds.redistort[j]);
+            ds.redistort.empty() ? nullptr : &ds.redistort[j], turns);
 
         // Equirectangular: canonical panorama intrinsics.
         if ((int)model == EQUIRECT_V) {

@@ -212,6 +212,10 @@ struct PrepJob {
     // window over all of them), so every frame is a rig frame. Built-in decoder only.
     bool  sync_tracks = true;
     int   max_frames = 100000;
+    // Turn every extracted frame by the rotation the capture asks for, so a
+    // portrait clip lands upright and the written files need no metadata read
+    // to be shown the right way up.
+    bool  auto_rotate = true;
     bool  force_external_decode = false;
     std::string ffmpeg_exe = "ffmpeg";
 

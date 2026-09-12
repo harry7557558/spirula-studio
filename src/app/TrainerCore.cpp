@@ -612,6 +612,7 @@ void TrainerSession::load_dataset() {
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
     pcfg.center_mode          = cfg.scene_center;
+    pcfg.exif_orientation     = cfg.exif_orientation;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
@@ -865,6 +866,7 @@ void TrainerSession::setup_engine() {
     dm.val_batch_size   = val_bs;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
+    dm.exif_quarter_turns = ds.exif_quarter_turns;
     engine_setup_data_manager(
         dm, ds.camera_models, ds.camera_distortions,
         ds.image_filenames,
@@ -1300,6 +1302,7 @@ void TrainerSession::eval() {
     pcfg.train_split_fraction = cfg.train_split_fraction;
     pcfg.outlier_threshold    = cfg.outlier_threshold;
     pcfg.center_mode          = cfg.scene_center;
+    pcfg.exif_orientation     = cfg.exif_orientation;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
@@ -1338,6 +1341,7 @@ void TrainerSession::eval() {
     dm.val_batch_size   = 1;
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
+    dm.exif_quarter_turns = eds.exif_quarter_turns;
     std::vector<int32_t> all_idx((size_t)eds.num_cameras);
     std::iota(all_idx.begin(), all_idx.end(), 0);
 

@@ -629,6 +629,49 @@ SS_MSG(camera_fit_to_image,
     TR("'{0}' {1}, ama kamerası {2} diyor. Eğitim {3} çözünürlüğünde "
        "yapılacak. Bu ikili için sonraki iletiler bastırılıyor."));
 
+SS_MSG(camera_image_transposed,
+    EN("'{0}' is {1} and its camera {2} -- each is the other turned a quarter. "
+       "A reconstruction and the run that reads it must take the photos' EXIF "
+       "orientation the same way; see `--exif-orientation`."),
+    JA("'{0}' は {1}、カメラは {2} で、互いに 90 度回した関係です。復元結果と"
+       "それを読む実行は、写真の EXIF 回転情報を同じように扱う必要があります。"
+       "`--exif-orientation` を確認してください。"),
+    ZH_HANS("'{0}' 是 {1}，其相机是 {2}：二者正好相差 90 度。重建结果与读取它的"
+            "这次运行必须以同样的方式对待照片的 EXIF 方向，参见 "
+            "`--exif-orientation`。"),
+    ZH_HANT("'{0}' 是 {1}，其相機是 {2}：兩者正好相差 90 度。重建結果與讀取它的"
+            "這次執行必須以同樣的方式對待照片的 EXIF 方向，參見 "
+            "`--exif-orientation`。"),
+    KO("'{0}' 은(는) {1}, 카메라는 {2} 로 서로 90도 돌아간 관계입니다. 복원 결과와 "
+       "그것을 읽는 실행은 사진의 EXIF 방향을 같은 방식으로 다뤄야 합니다. "
+       "`--exif-orientation` 을 확인하세요."),
+    DE("'{0}' ist {1}, seine Kamera {2} -- das eine ist das andere um eine "
+       "Vierteldrehung gedreht. Eine Rekonstruktion und der Lauf, der sie "
+       "liest, müssen die EXIF-Ausrichtung der Fotos gleich behandeln; siehe "
+       "`--exif-orientation`."),
+    FR("'{0}' est {1} et sa caméra {2} : l'un est l'autre tourné d'un quart de "
+       "tour. Une reconstruction et le run qui la lit doivent traiter de la "
+       "même façon l'orientation EXIF des photos ; voir `--exif-orientation`."),
+    ES("'{0}' es {1} y su cámara {2}: cada uno es el otro girado un cuarto de "
+       "vuelta. Una reconstrucción y la ejecución que la lee deben tratar igual "
+       "la orientación EXIF de las fotos; vea `--exif-orientation`."),
+    PT("'{0}' é {1} e a sua câmara {2}: um é o outro rodado um quarto de volta. "
+       "Uma reconstrução e a execução que a lê têm de tratar da mesma forma a "
+       "orientação EXIF das fotos; veja `--exif-orientation`."),
+    IT("'{0}' è {1} e la sua camera {2}: l'uno è l'altro ruotato di un quarto. "
+       "Una ricostruzione e l'esecuzione che la legge devono trattare allo "
+       "stesso modo l'orientamento EXIF delle foto; vedi `--exif-orientation`."),
+    NL("'{0}' is {1} en zijn camera {2} -- de een is de ander een kwartslag "
+       "gedraaid. Een reconstructie en de run die hem leest moeten de "
+       "EXIF-oriëntatie van de foto's op dezelfde manier opvatten; zie "
+       "`--exif-orientation`."),
+    RU("'{0}' имеет размер {1}, а его камера {2}: одно есть другое, повёрнутое "
+       "на четверть оборота. Реконструкция и запуск, который её читает, должны "
+       "одинаково понимать ориентацию EXIF снимков; см. `--exif-orientation`."),
+    TR("'{0}' {1}, kamerası {2}: biri diğerinin çeyrek tur döndürülmüş hâli. "
+       "Bir yeniden oluşturma ile onu okuyan çalıştırma, fotoğrafların EXIF "
+       "yönlendirmesini aynı şekilde ele almalı; bkz. `--exif-orientation`."));
+
 SS_MSG(camera_image_aspect,
     EN("'{0}' is {1} and its camera {2} -- a different shape, not just a "
        "different size. Check that the images belong to this reconstruction."),

@@ -337,6 +337,58 @@ pivot and nothing else. `src/data/SceneCenter.h` is the one implementation;
 the table of centres travels to a viewer on `ViewerRenderConfig::centers`,
 and the training viewer's browser client fetches it from `/scene`.
 
+## EXIF orientation
+
+A phone held upright records a **landscape file plus a tag** that says to turn
+it. Nothing in a reconstruction pipeline reads that tag by default -- COLMAP
+does not, and neither did this one -- so a portrait capture arrives as a scene
+lying on its side, and the images look wrong in any viewer that does read it.
+
+Three things now deal with it, at three different points:
+
+1. **Frames pulled out of a video** are written already turned by the
+   container's display matrix (`app/FrameExtract.h`, `auto_rotate`, on by
+   default; `spirula sam extract --no-autorotate` declines). ffmpeg does the
+   same for the fallback path, so both decoders write the same pixels. The
+   files carry no orientation metadata afterwards, so nothing downstream has
+   to agree about anything.
+2. **Photos copied into a dataset** with "Copy, re-encoded as JPEG" are
+   re-encoded when their tag asks for a turn, with the turn baked into the
+   pixels and the tag reset to 1. The rest of the EXIF block is carried over
+   unchanged -- the focal-length prior and the GPS are what the reconstruction
+   would otherwise lose.
+3. **Photos read as they are** keep their tag, and `--exif-orientation` says
+   what it is worth. It is a flag of `spirula sfm` and of `spirula train`, and
+   **the two must be given the same value**: it decides what frame the model
+   and the images share.
+
+| `--exif-orientation` | the pixels | the model | reads correctly in |
+|---|---|---|---|
+| `none` | untouched | levelled by the image's own up | -- (the scene is on its side) |
+| `orient` (default) | untouched | levelled by the tag's up | software that ignores EXIF, and software that reads it |
+| `apply` | turned on load | levelled by the image's own up, which is now the tag's | software that reads EXIF |
+
+`orient` is the default because it is the only one that leaves the pair usable
+either way: the files on disk are untouched, so a reader that ignores EXIF
+still sees images that match the cameras, while the scene itself stands up.
+`apply` is for a pipeline whose every consumer applies the tag; a model built
+with it describes the TURNED frame, so a training run over it needs `apply`
+too, and a run that forgets is told so by name (the warning that the image is
+its camera transposed).
+
+**A mirrored tag (2, 4, 5, 7) is a compromise in `apply`.** Mirroring an image
+cannot be undone by moving the camera -- the pose that fits mirrored pixels is
+the mirror image of the real one -- so only the rotation is applied and the run
+warns. `orient` needs no compromise: a mirror does not move which way is up.
+
+Two things this does not reach. `spirula geometry` reads images as stored, so
+depth and normal maps come out in the stored frame -- which is right, because
+the trainer turns them along with the RGB, but it means the intrinsics it uses
+for a model built with `apply` are transposed. And `spirula sfm merge` has no
+features to read the tag from, so it reads it back off the image files
+(`sfm/map/Orient.h`, `fillExifOrientations`); without `--image-dir` it falls
+back to the image's own up.
+
 ## Train/eval split
 
 `eval_mode` selects the strategy:

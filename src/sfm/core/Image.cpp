@@ -8,6 +8,7 @@
 
 #include "core/ColorSpace.h"
 #include "core/ExrImage.h"
+#include "core/ImageOrient.h"
 
 #include <algorithm>
 
@@ -81,10 +82,46 @@ static void resizeGrayFromRgb(const unsigned char* rgb, int w, int h, int dw, in
     }
 }
 
+namespace {
+
+// Turn a decoded image, its colour and its mask by the EXIF Orientation. Done
+// on the DOWNSCALED buffers: a quarter turn commutes with the resample, and
+// turning the full-resolution RGB would double what a concurrent decode holds.
+void applyExifOrientation(GrayImage& img) {
+    const ExifTransform xf = exifTransform(img.exif.orientation);
+    if (xf.turns_cw != 0) {
+        std::vector<float> gray((size_t)img.width * img.height);
+        spirula::orient_pixels(img.data.data(), img.width, img.height, 1,
+                               xf.turns_cw, false, gray.data());
+        img.data.swap(gray);
+        if (img.hasColor()) {
+            std::vector<uint8_t> rgb(img.rgb.size());
+            spirula::orient_pixels(img.rgb.data(), img.width, img.height, 3,
+                                   xf.turns_cw, false, rgb.data());
+            img.rgb.swap(rgb);
+        }
+        if (!img.mask.empty()) {
+            std::vector<uint8_t> bits(img.mask.bits.size());
+            spirula::orient_pixels(img.mask.bits.data(), img.mask.width,
+                                   img.mask.height, 1, xf.turns_cw, false,
+                                   bits.data());
+            img.mask.bits.swap(bits);
+            std::swap(img.mask.width, img.mask.height);
+        }
+        std::swap(img.width, img.height);
+        std::swap(img.orig_width, img.orig_height);
+        std::swap(img.exif.pixel_width, img.exif.pixel_height);
+    }
+    img.exif_mirror_dropped = xf.mirror;
+    img.exif.orientation = 1;
+}
+
+}  // namespace
+
 GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_color,
                         const std::string& mask_path,
                         const std::string& gamut, std::optional<bool> is_linear,
-                        bool flip_mask) {
+                        bool flip_mask, bool apply_exif_orientation) {
     int w = 0, h = 0, chan = 0;
     // Force 3 channels; we do our own luma so behavior is decoder-independent.
     // An EXR decodes on this thread: the pool above already owns every core.
@@ -144,6 +181,7 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size, bool want_c
         if (flip_mask) img.mask.invert();
     }
     img.exif = readExif(path);  // header bytes only; see sfm/core/Exif.h
+    if (apply_exif_orientation) applyExifOrientation(img);
     return img;
 }
 

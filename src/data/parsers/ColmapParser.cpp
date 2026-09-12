@@ -9,6 +9,7 @@
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
 #include "data/DistortionFit.h"
 #include "data/SourceCamera.h"
+#include "sfm/core/Exif.h"
 
 #include <algorithm>
 #include <cctype>
@@ -817,9 +818,21 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     // frames (train + eval, matching the Python dataparser, which splits
     // after normalization). No applied_transform on the COLMAP path, so
     // train_to_normalized = inv(T_n_from_camera). -----------------------------
+    fs::path image_dir = fs::path(dataset_dir) / cfg.image_dir;
+
+    // Read before the split, like everything else the whole set decides.
+    std::vector<std::string> all_paths(n_all);
+    for (int64_t i = 0; i < n_all; i++)
+        all_paths[i] = (image_dir / frames[i]->name).string();
+    const std::vector<uint8_t> exif_o =
+        dsparse::read_exif_orientations(cfg.exif_orientation, all_paths);
+    // `apply` turns the pixels, so the levelling has nothing left to correct.
+    const bool exif_level = cfg.exif_orientation == "orient" && !exif_o.empty();
+    const bool exif_turn = cfg.exif_orientation == "apply" && !exif_o.empty();
+
     double T_n[16], T_inv[16], R_align[9];
-    double scale_factor =
-        dsparse::compute_normalized_transform(c2w_all.data(), n_all, T_n, R_align);
+    double scale_factor = dsparse::compute_normalized_transform(
+        c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr);
     dsparse::invert_affine4x4(T_n, T_inv);
     float train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
 
@@ -827,8 +840,6 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     std::vector<std::string> names(n_all);
     for (int64_t i = 0; i < n_all; i++) names[i] = frames[i]->name;
     std::vector<int64_t> subset = dsparse::train_subset(n_all, names, cfg);
-
-    fs::path image_dir = fs::path(dataset_dir) / cfg.image_dir;
 
     ParsedDataset ds;
     const int64_t N = (int64_t)subset.size();
@@ -848,6 +859,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     ds.c2w.resize(N * 12);
     ds.intrins.resize(N * 4);
     ds.dist_coeffs.resize(N * kCameraDistortionParams);
+    if (exif_turn) ds.exif_quarter_turns.assign(N, 0);
 
     // One bake per COLMAP camera record, not per frame: a record is one
     // physical camera, and a fitted one costs a least-squares solve.
@@ -885,11 +897,15 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                      " does not exist (set --image-dir if needed)");
         ds.image_filenames.push_back(img_path.string());
 
+        const int turns =
+            exif_turn ? sfm::exifTransform(exif_o[i]).turns_cw : 0;
+        if (exif_turn) ds.exif_quarter_turns[j] = (uint8_t)turns;
+
         BakedIntrins bi = baked.at(im.camera_id);
         double W = (double)cam.width, H = (double)cam.height;
         double fx = bi.fx, fy = bi.fy, cx = bi.cx, cy = bi.cy;
         dsparse::fit_camera_resolution(cfg, ds.image_filenames.back(),
-                                       W, H, fx, fy, cx, cy, &bi.source);
+                                       W, H, fx, fy, cx, cy, &bi.source, turns);
         ds.widths.push_back((int32_t)W);
         ds.heights.push_back((int32_t)H);
         ds.intrins[j*4 + 0] = (float)fx;

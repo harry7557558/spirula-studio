@@ -52,6 +52,7 @@
 #include "sfm/core/Features.h"
 #include "sfm/core/Image.h"
 #include "sfm/core/ImageLoader.h"
+#include "sfm/map/Orient.h"
 #include "sfm/core/Mask.h"
 #include "sfm/core/Matches.h"
 #include "sfm/feature/Matcher.h"
@@ -1108,6 +1109,8 @@ static int cmdMerge(int argc, char** argv) {
     }
 
     std::vector<sfm::ModelGauge> merge_gauge;
+    // These models came off disk, which records no Orientation tag.
+    if (cfg.exif_orientation == "orient") fillExifOrientations(models, cfg.image_dir);
     const bool merge_metric = fixGauge(models, cfg, cfg.image_dir, mo.verbose, merge_gauge);
     recolorPoints(models, cfg);
     writeModels(models, fs::path(output), mo.verbose, merge_gauge);

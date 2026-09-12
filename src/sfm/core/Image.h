@@ -48,6 +48,8 @@ struct GrayImage {
     // the batch decode pool absorbs the cost, and because this is the last
     // stage that touches the image file at all.
     ExifData exif;
+    // The turn was applied but the tag also asked for a mirror, which was not.
+    bool exif_mirror_dropped = false;
 
     float at(int x, int y) const { return data[(size_t)y * width + x]; }
     size_t pixels() const { return (size_t)width * height; }
@@ -84,7 +86,10 @@ GrayImage loadGrayImage(const std::string& path, int max_image_size = 3200,
                         bool want_color = false, const std::string& mask_path = "",
                         const std::string& gamut = "",
                         std::optional<bool> is_linear = std::nullopt,
-                        bool flip_mask = false);
+                        bool flip_mask = false,
+                        // Turns the pixels and the mask, leaving exif.orientation
+                        // at 1; a tag's MIRROR half is dropped (docs/datasets.md).
+                        bool apply_exif_orientation = false);
 
 // Read just the pixel dimensions from an image header (no full decode).
 // Returns false if the file is not a decodable image.

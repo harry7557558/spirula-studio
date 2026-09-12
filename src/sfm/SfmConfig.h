@@ -141,6 +141,10 @@ struct SfmConfig {
     // Write the finished model in an upright, centred, unit-sized frame rather
     // than in whatever gauge the seed pair left it in (map/Orient.h).
     bool orient = true;
+    // What each image's EXIF Orientation is worth: "none", "orient" (the up
+    // direction only, pixels untouched) or "apply" (turn the pixels).
+    // docs/datasets.md, "EXIF orientation".
+    std::string exif_orientation = "orient";
     // Instead: fix the gauge from an outside measurement in metres, so the
     // model is written metric (map/MetricGauge.h, D74).
     std::string metric_positions;       // one `image_name X Y Z` per line
@@ -298,6 +302,8 @@ struct SfmConfig {
       0, 0, "", exif_groups)                                                                       \
     F(camera.exif_focal_tol, "exif-focal-tol", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced,     \
       "camera", 0.001, 1.0, "", exif_focal_tol)                                                    \
+    F(exif_orientation, "exif-orientation", CMD_AUTO | CMD_EXTRACT | CMD_MAP | CMD_MERGE,          \
+      Tier::Advanced, "camera", 0, 0, "none|orient|apply", exif_orientation)                       \
     /* ---- features ---- */                                                                       \
     F(features, "features", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "features", 0, 0,                 \
       "sift|aliked-n16rot|aliked-n32|loma-b128|loma-b", features)                                  \
