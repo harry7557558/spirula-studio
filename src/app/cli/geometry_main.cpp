@@ -16,6 +16,7 @@
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
 #include "i18n/Locale.h"
+#include "i18n/TimeFormat.h"
 #include "i18n/catalog/Geometry.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
@@ -35,6 +36,7 @@ namespace fs = std::filesystem;
 namespace G = spirula::i18n::msg::geometry;
 
 using spirula::i18n::format;
+using spirula::i18n::format_duration;
 
 namespace {
 
@@ -137,14 +139,6 @@ float depth_scale(const std::vector<float>& depth) {
     const size_t at = (size_t)((double)(v.size() - 1) * 0.999);
     std::nth_element(v.begin(), v.begin() + (long)at, v.end());
     return std::fmax(v[at], 1e-6f);
-}
-
-std::string human_time(double ms) {
-    char buf[64];
-    if (ms < 60000) std::snprintf(buf, sizeof buf, "%.0fs", ms / 1000.0);
-    else if (ms < 3600000) std::snprintf(buf, sizeof buf, "%.0fm", ms / 60000.0);
-    else std::snprintf(buf, sizeof buf, "%.1fh", ms / 3600000.0);
-    return buf;
 }
 
 // ---------------------------------------------------------------------------
@@ -761,15 +755,16 @@ int spirula_geometry_main(int argc, char** argv) {
                             format(G::log_progress,
                                    {(long long)(written + skipped), (long long)N,
                                     (long long)std::lround(each),
-                                    human_time(each * (double)(N - i - 1))})
+                                    format_duration(each * (double)(N - i - 1) / 1000.0)})
                                 .c_str());
                 std::fflush(stdout);
             }
         }
         writers.finish();
         std::printf("\r%s\n",
-                    format(G::log_done, {(long long)written, (long long)skipped,
-                                         human_time(nn::now_ms() - t_start)})
+                    format(G::log_done,
+                           {(long long)written, (long long)skipped,
+                            format_duration((nn::now_ms() - t_start) / 1000.0)})
                         .c_str());
         // Nothing readable means the wrong image_dir, not an empty dataset:
         // exiting 0 reports a reconstruction that wrote an empty normals/ as
