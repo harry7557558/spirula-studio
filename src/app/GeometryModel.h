@@ -8,6 +8,8 @@
 // which input sizes round-trip, what a depth means in metres, whether a mask
 // comes back -- is resolved here so the caller only sees depth and normals.
 
+#include "sfm/core/Exif.h"   // ExifTransform
+
 #include <string>
 #include <vector>
 
@@ -38,6 +40,10 @@ class GeometryWarp;
 // Face k of a planned warp: its size and the pinhole it is. Wanting both maps
 // by default -- the caller turns off what it is not writing.
 GeometryRequest face_request(const GeometryWarp& warp, int k, int num_tokens);
+
+// The same pinhole face after `t` has been applied to its pixels: on an odd
+// quarter turn the axes swap, and the principal point travels with them.
+GeometryRequest turn_request(const GeometryRequest& r, const sfm::ExifTransform& t);
 
 // One loaded checkpoint. Not thread-safe; both backends share the process-wide
 // inference device.

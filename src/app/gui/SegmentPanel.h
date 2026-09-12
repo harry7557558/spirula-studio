@@ -65,16 +65,10 @@ public:
     SegmentPanel();
     ~SegmentPanel();
 
-    // `input` is a folder of images or a video file. Cheap: the frame list is
-    // gathered here, nothing is decoded or loaded until the panel draws (a
-    // video is asked how long it is, which is one probe either way).
-    //
-    // `ffmpeg_exe` and `force_ffmpeg` are the same two settings the dataset run
-    // takes: a machine whose driver cannot decode video reads the preview frame
-    // with an external ffmpeg, exactly as preparation would.
-    void open(const std::string& input, bool is_video,
-              const std::string& model_path, const std::string& ffmpeg_exe,
-              bool force_ffmpeg);
+    // `src` carries the decoder and the FrameLook the run will use, so the
+    // picture here is the file it writes. Cheap: nothing is decoded until the
+    // panel draws (a video is asked how long it is, one probe either way).
+    void open(const PreviewSource& src, const std::string& model_path);
     bool is_open() const { return _open; }
     void close();
 
@@ -109,9 +103,16 @@ private:
     // the run keys them (DatasetPrep's StencilRaster). "" for a video.
     std::string camera_of(const std::string& file) const;
 
+    // The folder the shown frame lands in under the input's images: a 360
+    // view, one lens of a multi-lens file, or the photo's own subfolder.
+    std::string shown_camera() const;
+
     bool _open = false;
     std::string _model_path;
     PreviewSource _src;
+    // What the run splits this input into; one empty name for one camera.
+    std::vector<std::string> _folders;
+    int  _folder_idx = 0;
     std::vector<PreviewFrame> _frames;
     // Every image of a photo input; the border fit reads the ones sharing the
     // shown frame's camera folder. The slider offers a dozen, a fit two dozen.

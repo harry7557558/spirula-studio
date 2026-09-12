@@ -21,6 +21,7 @@
 #include "app/Tools.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/SamHelp.h"
+#include "app/FrameLook.h"
 #include "app/FrameMask.h"
 #include "app/WriterPool.h"
 #include "nn/core/Log.h"
@@ -488,11 +489,19 @@ int cmd_track(const Options& o) {
     // Neither reading the next frame nor writing the last mask needs the GPU,
     // and together they are about a third of a frame -- see app/WriterPool.h.
     app::WriterPool writers;
-    std::future<nn::Image> ahead;
+    // The way up the model was trained on, with the turn kept so the mask goes
+    // back in the frame the file stores -- see app/FrameLook.h.
+    struct Loaded {
+        nn::Image img;
+        sfm::ExifTransform turn;
+    };
+    std::future<Loaded> ahead;
     auto load_at = [&](size_t i) {
         return std::async(std::launch::async,
                           [p = files[i], g = o.image_gamut, l = o.image_is_linear] {
-                              return nn::load_image(p, g, l);
+                              Loaded out;
+                              out.img = app::load_upright(p, g, l, out.turn);
+                              return out;
                           });
     };
     if (!files.empty()) ahead = load_at(0);
@@ -501,7 +510,8 @@ int cmd_track(const Options& o) {
     const double t_all = nn::now_ms();
     for (size_t f = 0; f < files.size(); ++f) {
         double t0 = nn::now_ms();
-        nn::Image frame = ahead.get();
+        Loaded loaded = ahead.get();
+        nn::Image frame = std::move(loaded.img);
         if (f + 1 < files.size()) ahead = load_at(f + 1);
         t_load += nn::now_ms() - t0;
         if (frame.empty()) continue;
@@ -538,6 +548,8 @@ int cmd_track(const Options& o) {
             if (o.overlay) {
                 sam::save_overlay_png(frame, r, path);
             } else {
+                app::turn_pixels(app::inverse_turn(loaded.turn), 1, mask.data,
+                                 mask.width, mask.height);
                 app::WriteJob wj;
                 wj.mask = std::move(mask);
                 wj.path = path;

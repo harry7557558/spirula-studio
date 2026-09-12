@@ -381,13 +381,29 @@ cannot be undone by moving the camera -- the pose that fits mirrored pixels is
 the mirror image of the real one -- so only the rotation is applied and the run
 warns. `orient` needs no compromise: a mirror does not move which way is up.
 
-Two things this does not reach. `spirula geometry` reads images as stored, so
-depth and normal maps come out in the stored frame -- which is right, because
-the trainer turns them along with the RGB, but it means the intrinsics it uses
-for a model built with `apply` are transposed. And `spirula sfm merge` has no
-features to read the tag from, so it reads it back off the image files
-(`sfm/map/Orient.h`, `fillExifOrientations`); without `--image-dir` it falls
-back to the image's own up.
+**Every model sees the picture upright; every map it produces is written in
+the stored frame.** SAM and the geometry networks were trained on pictures the
+way up they are meant to be shown, and a photo case 3 left alone is not that
+way up. So masking and `spirula geometry` turn what goes IN by the tag
+(`app::load_upright`) and turn the mask, the depth and the normals back out by
+its inverse (`app::inverse_turn`) -- a normal map's vectors along with its
+pixels, x and y being image axes. The files beside an image are then in the
+image's own frame, which is the pair `orient` and `none` need; `apply` turns
+both together on load, so it needs the same pair.
+
+**The GUI's previews are the same pictures.** "Try the mask" goes through
+`gui/PreviewFrames.h`, which applies the input's `app::FrameLook` -- the turn
+above, the downscale, a 360 file's unwrap into views -- and for a video
+decodes through `app::extract_frames_at`, the entry point extraction itself
+uses. So the frame on screen is the one the masker sees, and a click on it
+names a pixel the run will read. The geometry preview reads its frames STORED,
+because those come with a camera that describes the stored pixels, and turns
+the warped FACE instead -- exactly as `spirula geometry` does.
+
+One thing this does not reach: `spirula sfm merge` has no features to read the
+tag from, so it reads it back off the image files (`sfm/map/Orient.h`,
+`fillExifOrientations`); without `--image-dir` it falls back to the image's
+own up.
 
 ## Train/eval split
 
@@ -534,8 +550,6 @@ high`) -- about 4.4 px per degree, against 16.7 for a 1504 px face.
   than to three sliders nobody can visualise. `src/sfm/core/Telemetry.h` reads
   them and `viewer/telemetry.html` plots them, but nothing consumes them yet;
   `docs/notes/imu-gps-for-sfm.md` is the plan for what will.
-- **Click prompts for masking.** Clicks are recorded on the camera's own
-  frame, which the unwrap reshapes. Prompt a 360 capture with text.
 - **The operator.** Whoever is holding it is in the downward and rearward views
   of every frame of most captures, and wants masking out.
 

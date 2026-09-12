@@ -2487,43 +2487,6 @@ SS_MSG(frames_per_second_help,
        "için 1-3 uygundur; daha fazlası yalnızca kamera hızlı hareket ettiyse "
        "işe yarar. Listedeki bütün videolara uygulanır."));
 
-SS_MSG(pano360_clicks_warning,
-    EN("Clicks are drawn on the camera's own frame, which the 360 unwrap "
-       "reshapes: on a 360 capture they land somewhere else. Prompt it with "
-       "text instead."),
-    JA("クリックはカメラ本来のフレーム上に打たれますが、360 の展開はその形を変えます。"
-       "360 撮影ではクリック位置がずれるので、テキストで指示してください。"),
-    ZH_HANS("点击是打在相机原始帧上的，而 360 展开会改变画面形状：在 360 素材上点击"
-            "会落到别处。请改用文字提示。"),
-    ZH_HANT("點擊是打在相機原始影格上的，而 360 展開會改變畫面形狀：在 360 素材上點擊"
-            "會落到別處。請改用文字提示。"),
-    KO("클릭은 카메라 원본 프레임에 찍히지만 360 펼치기가 그 모양을 바꿉니다. 360 "
-       "촬영에서는 클릭이 엉뚱한 곳에 놓이니 텍스트로 지시하세요."),
-    DE("Klicks werden auf dem Originalbild der Kamera gesetzt, das die "
-       "360-Entfaltung umformt: Bei einer 360-Aufnahme landen sie woanders. "
-       "Nimm stattdessen einen Textprompt."),
-    FR("Les clics sont posés sur l'image d'origine de la caméra, que le "
-       "dépliage 360 remodèle : sur une prise 360 ils tombent ailleurs. "
-       "Utilisez plutôt une invite textuelle."),
-    ES("Los clics se ponen sobre el fotograma propio de la cámara, que el "
-       "desplegado 360 reconfigura: en una toma 360 caen en otro sitio. Usa "
-       "mejor una indicación de texto."),
-    PT("Os cliques são dados no quadro original da câmera, que o desdobramento "
-       "360 remodela: numa captura 360 eles caem em outro lugar. Use antes uma "
-       "instrução de texto."),
-    IT("I clic vengono posti sul fotogramma originale della fotocamera, che lo "
-       "sviluppo 360 rimodella: su una ripresa 360 finiscono altrove. Usa "
-       "piuttosto un prompt testuale."),
-    NL("Kliks worden op het eigen beeld van de camera gezet, dat het "
-       "360-uitvouwen hervormt: bij een 360-opname komen ze ergens anders "
-       "terecht. Gebruik in plaats daarvan een tekstprompt."),
-    RU("Клики ставятся на собственный кадр камеры, который развёртка 360 "
-       "перекраивает: на съёмке 360 они попадут не туда. Задайте подсказку "
-       "текстом."),
-    TR("Tıklamalar kameranın kendi karesine konur, ama 360 açımı o kareyi "
-       "yeniden biçimlendirir: bir 360 çekiminde başka yere düşerler. Bunun "
-       "yerine metinle yönlendirin."));
-
 SS_MSG(pano360_output,
     EN("Unwrap into (360 video)"),
     JA("展開先（360 動画）"),
@@ -5837,6 +5800,56 @@ SS_MSG(preview_frame_help,
        "birden çok karede sınayın -- videoda ise yolun ortasında bir nesneyi "
        "düzeltmek için buraya tıklayın: çizdikleriniz bu kareden itibaren "
        "geçerlidir."));
+
+SS_MSG(preview_camera,
+    EN("Which camera"),  JA("どのカメラ"),    ZH_HANS("哪台相机"),  ZH_HANT("哪台相機"),
+    KO("어느 카메라"),     DE("Welche Kamera"), FR("Quelle caméra"), ES("Qué cámara"),
+    PT("Qual câmera"),   IT("Quale camera"),  NL("Welke camera"),  RU("Какая камера"),
+    TR("Hangi kamera"));
+
+SS_MSG(preview_camera_help,
+    EN("This capture becomes several folders of images -- the lenses of the "
+       "camera, or the views a 360 file is unwrapped into. Each is its own "
+       "picture, so a prompt drawn on one says nothing about the others."),
+    JA("この撮影は複数の画像フォルダーになります。カメラの各レンズ、または 360 "
+       "ファイルを展開した各ビューです。それぞれ別の画像なので、片方に描いた指示は"
+       "もう片方には効きません。"),
+    ZH_HANS("这段素材会变成好几个图像文件夹——相机的各个镜头，或者 360 文件展开后的"
+            "各个视角。每个都是独立的画面，在一个上面画的提示对其他的不起作用。"),
+    ZH_HANT("這段素材會變成好幾個影像資料夾——相機的各個鏡頭，或者 360 檔案展開後的"
+            "各個視角。每個都是獨立的畫面，在一個上面畫的提示對其他的不起作用。"),
+    KO("이 촬영은 여러 개의 이미지 폴더가 됩니다. 카메라의 각 렌즈이거나, 360 "
+       "파일을 펼친 각 시점입니다. 서로 다른 그림이므로 한쪽에 표시한 지시는 "
+       "다른 쪽에는 적용되지 않습니다."),
+    DE("Diese Aufnahme wird zu mehreren Bildordnern -- den Objektiven der "
+       "Kamera oder den Ansichten, in die eine 360-Datei entfaltet wird. Jede "
+       "ist ein eigenes Bild, eine Eingabe auf der einen gilt der anderen "
+       "nicht."),
+    FR("Cette prise devient plusieurs dossiers d'images : les objectifs de la "
+       "caméra, ou les vues issues du dépliage d'un fichier 360. Chacune est "
+       "une image à part, et une invite tracée sur l'une ne dit rien des "
+       "autres."),
+    ES("Esta toma se convierte en varias carpetas de imágenes: los objetivos "
+       "de la cámara, o las vistas en que se despliega un archivo 360. Cada "
+       "una es su propia imagen, así que una indicación marcada en una no dice "
+       "nada de las demás."),
+    PT("Esta captura vira várias pastas de imagens: as lentes da câmera, ou as "
+       "vistas em que um arquivo 360 é desdobrado. Cada uma é uma imagem "
+       "própria, então um comando marcado numa não vale para as outras."),
+    IT("Questa ripresa diventa più cartelle di immagini: gli obiettivi della "
+       "camera, oppure le viste in cui un file 360 viene aperto. Ognuna è "
+       "un'immagine a sé, quindi un testo tracciato su una non dice nulla "
+       "delle altre."),
+    NL("Deze opname wordt meerdere beeldmappen -- de lenzen van de camera, of "
+       "de aanzichten waarin een 360-bestand wordt uitgevouwen. Elk is een "
+       "eigen beeld, dus een prompt op de ene zegt niets over de andere."),
+    RU("Эта съёмка становится несколькими папками снимков -- объективами "
+       "камеры или видами, на которые разворачивается файл 360. Каждый из них "
+       "-- отдельный снимок, и запрос, отмеченный на одном, ничего не говорит "
+       "об остальных."),
+    TR("Bu çekim birkaç görüntü klasörüne dönüşür: kameranın objektifleri ya "
+       "da bir 360 dosyasının açıldığı görünümler. Her biri ayrı bir resimdir, "
+       "birine çizilen istem ötekiler için bir şey söylemez."));
 
 SS_MSG(preview_try_it,
     EN("Try it"),        JA("試す"),          ZH_HANS("试一下"),   ZH_HANT("試一下"),

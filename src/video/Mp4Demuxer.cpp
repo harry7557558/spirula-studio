@@ -380,6 +380,36 @@ bool Mp4Demuxer::selectTrack(int index, std::string& error) {
     }
     selected_ = index;
     next_sample_ = 0;
+    buildPresentationOrder(tracks_[(size_t)index]);
+    return true;
+}
+
+void Mp4Demuxer::buildPresentationOrder(Track& tk) {
+    if (!tk.by_pts.empty() || tk.samples.empty()) return;
+    tk.by_pts.resize(tk.samples.size());
+    for (uint32_t i = 0; i < (uint32_t)tk.samples.size(); i++) tk.by_pts[i] = i;
+    std::stable_sort(tk.by_pts.begin(), tk.by_pts.end(),
+                     [&tk](uint32_t a, uint32_t b) {
+                         return tk.samples[a].pts < tk.samples[b].pts;
+                     });
+    tk.pts_rank.resize(tk.samples.size());
+    for (uint32_t r = 0; r < (uint32_t)tk.by_pts.size(); r++)
+        tk.pts_rank[tk.by_pts[r]] = r;
+}
+
+bool Mp4Demuxer::seekSync(int64_t index, int64_t& landed, std::string& error) {
+    if (selected_ < 0) {
+        error = "no track selected";
+        return false;
+    }
+    Track& tk = tracks_[(size_t)selected_];
+    if (tk.samples.empty()) return false;
+    buildPresentationOrder(tk);
+    int64_t r = std::min(index, (int64_t)tk.by_pts.size() - 1);
+    while (r > 0 && !tk.samples[tk.by_pts[(size_t)r]].is_sync) --r;
+    if (!tk.samples[tk.by_pts[(size_t)r]].is_sync) return false;
+    next_sample_ = tk.by_pts[(size_t)r];
+    landed = r;
     return true;
 }
 
@@ -398,6 +428,9 @@ bool Mp4Demuxer::next(Packet& out, std::string& error) {
     }
     const double ts = tk.timescale ? (double)tk.timescale : 1.0;
     out.index = (int64_t)next_sample_;
+    out.display_index = next_sample_ < tk.pts_rank.size()
+                            ? (int64_t)tk.pts_rank[next_sample_]
+                            : (int64_t)next_sample_;
     out.dts = (double)s.dts / ts;
     out.pts = (double)s.pts / ts;
     out.is_sync = s.is_sync;

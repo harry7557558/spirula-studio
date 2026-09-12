@@ -403,6 +403,9 @@ bool MkvDemuxer::next(Packet& out, std::string& error) {
             return false;
         }
         out.index = packet_index_++;
+        // Matroska blocks are read in storage order and this demuxer parses no
+        // composition offsets, so the two orders are the same here.
+        out.display_index = out.index;
         out.pts = (double)(cluster_ts_ + rel_ts) * timestamp_scale_;
         out.dts = out.pts;
         // SimpleBlock states keyframe-ness in bit 7; a Block inside a BlockGroup

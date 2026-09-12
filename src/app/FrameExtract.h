@@ -17,7 +17,8 @@
 // Only compiled when SS_ENABLE_PATENTED is ON; every caller has an ffmpeg
 // fallback for when it is not.
 
-#include "app/Pano360.h"
+#include "app/FrameLook.h"
+#include "nn/io/Image.h"
 #include "sam/Masking.h"
 
 #include <atomic>
@@ -27,7 +28,9 @@
 
 namespace app {
 
-struct FrameExtractJob {
+// What every frame goes through is the base class, so a preview can be handed
+// it whole (app/FrameLook.h); this adds which frames are kept and where.
+struct FrameExtractJob : FrameLook {
     std::string input;             // video file
     std::string image_dir;         // written here (cam0/, cam1/ ... if multi-track)
     std::string mask_dir;          // only when masking is on
@@ -37,24 +40,12 @@ struct FrameExtractJob {
     int   keep = -1;               // sharpest of the last n; -1 = round(skip/2)
     int   max_frames = 0;          // 0 = no cap
     int   quality = 95;            // JPEG quality; outside 0..100 writes PNG
-    int   rotate = 0;              // 0/90/180/270 clockwise
-    // Also turn every frame by the display transform the container carries, so
-    // a portrait clip lands upright and the files need no metadata to be read
-    // correctly. Composes with `rotate`.
-    bool  auto_rotate = true;
-    float scale = 1.0f;
     int   track = -1;              // -1 = every track
     int   threads = 0;             // encoder threads; 0 = cores - 1
     // A multi-track file decoded in lockstep, every track keeping the same
     // instants (one sharpness window over all of them), so the frames of one
     // stem are a rig. Off picks each track's sharpest frame on its own.
     bool  sync_tracks = false;
-
-    // A 360 capture: both tracks are decoded together, stitched into the EAC
-    // canvas and resampled into `views` (app/Pano360.h) instead of being split
-    // one folder per track. `track`, `scale` and `rotate` do not apply.
-    Eac360Layout eac;
-    std::vector<Pano360View> views;
 
     // Masking. Empty model = no masks.
     sam::MaskOptions mask;
@@ -99,17 +90,33 @@ std::vector<std::pair<int, int>> video_track_sizes(const std::string& path,
                                                    std::string& error);
 
 // Each track's container display transform, in the same order (video::TrackInfo).
-struct VideoTrackOrientation {
-    int  rotate = 0;      // degrees clockwise
-    bool mirror = false;  // ... then mirrored horizontally
-};
-std::vector<VideoTrackOrientation> video_track_orientations(const std::string& path,
-                                                            std::string& error);
+std::vector<sfm::ExifTransform> video_track_turns(const std::string& path,
+                                                  std::string& error);
+
+// The display transform `auto_rotate` folds into `look.rotate` for these
+// tracks (empty = all of them). The mirror is reported and NOT applied: the
+// pose that fits mirrored pixels is the mirror image of the real one.
+sfm::ExifTransform fold_auto_rotate(const std::string& path,
+                                    const std::vector<int>& tracks,
+                                    FrameLook& look, bool& mixed);
 
 // Runs the whole thing. False with `error` set on failure; a cancellation
 // returns false with error == "cancelled".
 bool extract_frames(const FrameExtractJob& job, const FrameExtractSinks& sinks,
                     FrameExtractStats& stats, std::string& error);
+
+// The frames at `indices`, as extract_frames() would write them, served by
+// ONE forward pass -- the decoder cannot seek, so asking one at a time
+// re-reads the file each time. `folder` indexes frame_folders().
+using FrameAtSink = std::function<void(nn::Image& img, int64_t index)>;
+bool extract_frames_at(const std::string& input, const FrameLook& look,
+                       const std::vector<int64_t>& indices, int folder,
+                       const FrameAtSink& on_frame,
+                       const std::atomic<bool>* cancel, std::string& error);
+
+bool extract_one_frame(const std::string& input, const FrameLook& look,
+                       int64_t index, int folder, nn::Image& out,
+                       const std::atomic<bool>* cancel, std::string& error);
 
 // The timing table `spirula-sam extract` prints, so the CLI and the GUI log
 // agree on what the numbers mean.

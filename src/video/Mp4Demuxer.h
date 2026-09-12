@@ -19,6 +19,7 @@ public:
     const std::vector<TrackInfo>& tracks() const override { return infos_; }
     bool selectTrack(int index, std::string& error) override;
     bool next(Packet& out, std::string& error) override;
+    bool seekSync(int64_t index, int64_t& landed, std::string& error) override;
 
 private:
     struct Sample {
@@ -33,8 +34,12 @@ private:
         uint32_t  timescale = 0;
         uint64_t  duration = 0;
         std::vector<Sample> samples;
+        // Each sample's rank in composition-time order; a stream with
+        // B-frames decodes them out of that order.
+        std::vector<uint32_t> by_pts, pts_rank;
     };
 
+    void buildPresentationOrder(Track& tk);
     bool parseMoov(const uint8_t* data, size_t size, std::string& error);
     bool parseTrak(const uint8_t* data, size_t size);
 

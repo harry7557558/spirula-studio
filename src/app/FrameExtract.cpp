@@ -462,14 +462,26 @@ std::vector<std::pair<int, int>> video_track_sizes(const std::string& path,
     return out;
 }
 
-std::vector<VideoTrackOrientation> video_track_orientations(const std::string& path,
-                                                            std::string& error) {
-    std::vector<VideoTrackOrientation> out;
+std::vector<sfm::ExifTransform> video_track_turns(const std::string& path,
+                                                  std::string& error) {
+    std::vector<sfm::ExifTransform> out;
     auto demux = video::open_demuxer(path, error);
     if (!demux) return out;
     for (const video::TrackInfo& t : demux->tracks())
-        out.push_back({t.rotate, t.mirror});
+        out.push_back({((t.rotate % 360) + 360) % 360 / 90, t.mirror});
     return out;
+}
+
+sfm::ExifTransform fold_auto_rotate(const std::string& path,
+                                    const std::vector<int>& tracks,
+                                    FrameLook& look, bool& mixed) {
+    mixed = false;
+    if (!look.auto_rotate || look.pano()) return {};
+    std::string probe_error;
+    const sfm::ExifTransform t =
+        merge_turns(video_track_turns(path, probe_error), tracks, mixed);
+    look.rotate = (look.rotate + 90 * t.turns_cw) % 360;
+    return t;
 }
 
 bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sinks,
@@ -521,30 +533,18 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
     }
     stats.tracks = (int)tracks.size();
 
-    // The container's own display transform, so a portrait clip lands upright
-    // and the written files carry no orientation metadata to disagree with.
-    if (job.auto_rotate && !pano) {
+    {
         namespace lmsg = spirula::i18n::msg::log;
-        std::string probe_error;
-        const std::vector<VideoTrackOrientation> orient =
-            video_track_orientations(job.input, probe_error);
-        int turn = -1;
-        bool mirror = false, mixed = false;
-        for (int ti : tracks) {
-            if (ti < 0 || ti >= (int)orient.size()) continue;
-            if (turn < 0) turn = orient[(size_t)ti].rotate;
-            else if (orient[(size_t)ti].rotate != turn) mixed = true;
-            mirror = mirror || orient[(size_t)ti].mirror;
-        }
-        if (turn > 0) {
-            job.rotate = (job.rotate + turn) % 360;
-            log_line(sinks, spirula::i18n::format(lmsg::video_autorotate,
-                                                  {(long long)turn}));
+        bool mixed = false;
+        const sfm::ExifTransform turn =
+            fold_auto_rotate(job.input, tracks, job, mixed);
+        if (turn.turns_cw > 0) {
+            log_line(sinks, spirula::i18n::format(
+                                lmsg::video_autorotate,
+                                {(long long)(90 * turn.turns_cw)}));
             if (mixed) log_line(sinks, lmsg::video_autorotate_mixed.get());
         }
-        // A mirrored capture cannot be reconstructed from mirrored pixels: the
-        // pose that fits them is the mirror image of the real one.
-        if (mirror) log_line(sinks, lmsg::video_autorotate_mirror.get());
+        if (turn.mirror) log_line(sinks, lmsg::video_autorotate_mirror.get());
     }
 
     std::unique_ptr<sam::Masker> masker;
@@ -592,6 +592,171 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
     stats.encode_cpu = pool.busyMs();
     stats.write_failures = pool.failures();
     return ok;
+}
+
+bool extract_frames_at(const std::string& input, const FrameLook& look_in,
+                       const std::vector<int64_t>& indices, int folder,
+                       const FrameAtSink& on_frame,
+                       const std::atomic<bool>* cancel, std::string& error) {
+    error = video_decode_availability();
+    if (!error.empty()) return false;
+
+    const int n = video_track_count(input, error);
+    if (n <= 0) {
+        if (error.empty()) error = "no video track in " + input;
+        return false;
+    }
+    std::vector<int64_t> want;
+    for (int64_t i : indices) want.push_back(std::max<int64_t>(i, 0));
+    std::sort(want.begin(), want.end());
+    want.erase(std::unique(want.begin(), want.end()), want.end());
+    if (want.empty()) return true;
+
+    std::vector<int> tracks;
+    for (int i = 0; i < n; i++) tracks.push_back(i);
+    FrameLook look = look_in;
+    bool mixed = false;
+    fold_auto_rotate(input, tracks, look, mixed);
+    if (look.rotate % 90 != 0) {
+        error = "rotation must be a multiple of 90 degrees";
+        return false;
+    }
+    const bool pano = look.pano();
+    if (pano && n < 2) {
+        error = "a 360 capture needs two video tracks";
+        return false;
+    }
+
+    video::ConvertOpts conv;
+    if (!pano) {
+        conv.scale = look.scale;
+        conv.rotate = look.rotate;
+    }
+    const size_t np = pano ? 2 : 1;
+    std::vector<std::unique_ptr<video::VideoPipeline>> pipe(np);
+    for (size_t k = 0; k < np; k++) {
+        pipe[k] = std::make_unique<video::VideoPipeline>();
+        const int t = pano ? (int)k : std::min(std::max(folder, 0), n - 1);
+        // Two: the frame being looked at, and the one after it, so the last
+        // picture decoded is still held when the stream ends.
+        if (!pipe[k]->open(input, t, 2, error)) return false;
+    }
+
+    Pano360Remap map;
+    std::vector<uint8_t> canvas;
+    if (pano) {
+        const size_t view =
+            std::min((size_t)std::max(folder, 0), look.views.size() - 1);
+        pano360_remap(look.eac, look.views[view], map);
+        canvas.resize((size_t)look.eac.canvasW() * look.eac.canvasH() * 3);
+    }
+
+    // Straight to the keyframe that covers the first index wanted. Without it
+    // the last frame of a fifteen-minute capture is a fifteen-minute decode,
+    // and twice that for the two tracks of a 360 file.
+    int64_t floor_index = 0;
+    for (size_t k = 0; k < np; k++) {
+        int64_t landed = 0;
+        std::string seek_error;
+        if (pipe[k]->seek(want.front(), landed, seek_error))
+            floor_index = std::max(floor_index, landed);
+    }
+
+    std::vector<video::FrameHandle> held(np);
+    auto release = [&](std::vector<video::FrameHandle>& h) {
+        for (size_t k = 0; k < np; k++)
+            if (h[k].valid()) pipe[k]->release(h[k]);
+    };
+    auto emit = [&](int64_t index) {
+        std::vector<nn::Image> img(np);
+        for (size_t k = 0; k < np; k++)
+            if (!pipe[k]->toImage(held[k], conv, img[k], error)) return false;
+        if (!pano) {
+            on_frame(img[0], index);
+            return true;
+        }
+        for (size_t k = 0; k < 2; k++)
+            if (img[k].width != look.eac.track_w ||
+                img[k].height != look.eac.track_h) {
+                error = "track " + std::to_string(k) + " is not the size the"
+                        " 360 layout was detected at";
+                return false;
+            }
+        pano360_canvas(look.eac, img[0].data.data(), img[1].data.data(),
+                       canvas.data());
+        nn::Image out;
+        out.width = map.width;
+        out.height = map.height;
+        out.channels = 3;
+        out.data.resize((size_t)map.width * map.height * 3);
+        pano360_apply(map, canvas.data(), look.eac.canvasW(),
+                      look.eac.canvasH(), 0, out.data.data());
+        on_frame(out, index);
+        return true;
+    };
+
+    size_t next = 0;
+    bool ended = false;
+    while (next < want.size() && !ended) {
+        if (cancel && cancel->load()) {
+            release(held);
+            error = "cancelled";
+            return false;
+        }
+        // Every track brought up to `floor_index` -- and no further, or a
+        // track that landed on a later keyframe than another could never be
+        // caught up with. A frame already there is left where it is.
+        for (size_t k = 0; k < np && !ended; k++) {
+            while (!held[k].valid() || held[k].index < floor_index) {
+                video::FrameHandle h;
+                if (!pipe[k]->next(h, error)) {
+                    ended = true;
+                    break;
+                }
+                if (held[k].valid()) pipe[k]->release(held[k]);
+                held[k] = h;
+            }
+        }
+        if (ended) break;
+        // Presentation order from the decoder, which is what extraction names
+        // its files after -- not a count of how many have gone by.
+        int64_t index = held[0].index;
+        bool aligned = true;
+        for (size_t k = 1; k < np; k++) {
+            index = std::max(index, held[k].index);
+            aligned = aligned && held[k].index == held[0].index;
+        }
+        floor_index = index;
+        if (!aligned) continue;   // a track is behind; pull it up next round
+        ++floor_index;
+        while (next < want.size() && want[next] < index) ++next;
+        if (next < want.size() && want[next] == index) {
+            if (!emit(index)) {
+                release(held);
+                return false;
+            }
+            ++next;
+        }
+    }
+    bool ok = error.empty();
+    if (ok && next < want.size() && held[0].valid()) ok = emit(want[next]);
+    release(held);
+    return ok;
+}
+
+bool extract_one_frame(const std::string& input, const FrameLook& look,
+                       int64_t index, int folder, nn::Image& out,
+                       const std::atomic<bool>* cancel, std::string& error) {
+    bool got = false;
+    const bool ok = extract_frames_at(
+        input, look, {index}, folder,
+        [&](nn::Image& img, int64_t) {
+            out = std::move(img);
+            got = true;
+        },
+        cancel, error);
+    if (ok && !got && error.empty()) error = "no frame could be decoded";
+    return ok && got;
 }
 
 std::string format_extract_stats(const FrameExtractStats& s,

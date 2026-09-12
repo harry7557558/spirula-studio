@@ -168,24 +168,28 @@ bool frame_ids_from_stems(const std::vector<fs::path>& files,
 }
 
 #ifdef SS_BUILD_SAM
-// Preview clicks -> the seeds the masker takes. Clicks of one object made on
-// one frame become ONE prompt (several positive points describe one thing);
-// clicks of the same object on another frame become a second prompt, which the
-// masker applies as a correction when it gets there.
-//
-// `exact` says the click's own frame number means the same thing to the run
-// that is about to happen; otherwise only the fraction through the capture
-// survives and the frame is looked up in `ids` -- see MaskClick.
+// Preview clicks -> the masker's seeds, against the list it will walk
+// (`cameras` per file, `ids` its frame number). A click resolves within its
+// OWN camera: the same fraction through a 360 plan lands in another view.
 std::vector<sam::SeedPrompt> seeds_from_clicks(const std::vector<MaskClick>& clicks,
+                                               const std::vector<std::string>& cameras,
                                                const std::vector<int64_t>& ids,
                                                bool exact) {
     std::vector<sam::SeedPrompt> seeds;
     for (const MaskClick& c : clicks) {
+        std::vector<size_t> mine;
+        for (size_t i = 0; i < ids.size(); i++)
+            if (i >= cameras.size() || cameras[i] == c.camera) mine.push_back(i);
+        // A capture the run split differently from what the panel offered:
+        // the whole list beats dropping the prompt on the floor.
+        if (mine.empty())
+            for (size_t i = 0; i < ids.size(); i++) mine.push_back(i);
+
         int64_t frame = c.frame;
-        if (!exact && !ids.empty()) {
+        if (!exact && !mine.empty()) {
             const double at = std::min(1.0, std::max(0.0, (double)c.position)) *
-                              (double)(ids.size() - 1);
-            frame = ids[(size_t)std::llround(at)];
+                              (double)(mine.size() - 1);
+            frame = ids[mine[(size_t)std::llround(at)]];
         }
         sam::SeedPrompt* seed = nullptr;
         for (sam::SeedPrompt& s : seeds)
@@ -222,20 +226,21 @@ public:
     ImagePrefetch(const ImagePrefetch&) = delete;
     ImagePrefetch& operator=(const ImagePrefetch&) = delete;
 
-    // The next file in the order given; empty when it could not be read or the
-    // reader stopped early. What the reader threw is rethrown here instead,
-    // this being the thread with somewhere to report it.
-    nn::Image take() {
+    // The next file, the way up the model wants it, `turn` saying what to
+    // undo on the mask. Empty when it could not be read or the reader stopped.
+    // What the reader threw is rethrown here, the thread that can report it.
+    nn::Image take(sfm::ExifTransform& turn) {
         std::unique_lock<std::mutex> lk(_mu);
         _ready.wait(lk, [this] { return !_queue.empty() || _done; });
         if (_queue.empty()) {
             if (_err) std::rethrow_exception(_err);
             return nn::Image();
         }
-        nn::Image img = std::move(_queue.front());
+        Item item = std::move(_queue.front());
         _queue.pop_front();
         _space.notify_one();
-        return img;
+        turn = item.turn;
+        return std::move(item.img);
     }
 
 private:
@@ -243,15 +248,22 @@ private:
     // depth buys nothing beyond covering one decode.
     static constexpr size_t kDepth = 2;
 
+    struct Item {
+        nn::Image img;
+        sfm::ExifTransform turn;
+    };
+
     void run() {
         try {
             for (const fs::path& f : _files) {
                 if (_cancel.load()) break;
-                nn::Image img = nn::load_image(f.string(), _gamut, _is_linear);
+                Item item;
+                item.img = app::load_upright(f.string(), _gamut, _is_linear,
+                                             item.turn);
                 std::unique_lock<std::mutex> lk(_mu);
                 _space.wait(lk, [this] { return _queue.size() < kDepth || _stop; });
                 if (_stop) break;
-                _queue.push_back(std::move(img));
+                _queue.push_back(std::move(item));
                 _ready.notify_one();
             }
         } catch (...) {
@@ -269,7 +281,7 @@ private:
     const std::atomic<bool>& _cancel;
     std::string _gamut;
     std::optional<bool> _is_linear;
-    std::deque<nn::Image> _queue;
+    std::deque<Item> _queue;
     std::mutex _mu;
     std::condition_variable _ready, _space;
     bool _stop = false;
@@ -568,7 +580,8 @@ bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
 
 bool ffmpeg_extract_frame(const std::string& ffmpeg_exe, const std::string& video,
                           double seconds, const std::string& out_path,
-                          const std::atomic<bool>& cancel) {
+                          const std::atomic<bool>& cancel,
+                          const FfmpegStillOpts& opts) {
     if (!command_exists(ffmpeg_exe)) return false;
     std::error_code ec;
     fs::remove(out_path, ec);
@@ -577,9 +590,18 @@ bool ffmpeg_extract_frame(const std::string& ffmpeg_exe, const std::string& vide
     // -ss before -i: seek first, decode one frame, stop. The other order
     // decodes the whole file up to that point, which on a ten-minute capture
     // is the difference between a preview and a coffee break.
-    const int rc = run_process({ffmpeg_exe, "-nostdin", "-y", "-ss", ts, "-i",
-                                video, "-frames:v", "1", "-q:v", "2", out_path},
-                               "", [](const std::string&) {}, cancel);
+    std::vector<std::string> argv{ffmpeg_exe, "-nostdin", "-y"};
+    // A 360 capture's geometry is the EAC layout, not the display matrix.
+    if (!opts.auto_rotate || opts.eac.valid()) argv.push_back("-noautorotate");
+    argv.insert(argv.end(), {"-ss", ts, "-i", video});
+    if (opts.eac.valid())
+        argv.insert(argv.end(), {"-filter_complex",
+                                 app::pano360_graph(opts.eac, ""), "-map",
+                                 std::string("[") + app::pano360_canvas_pad() + "]"});
+    else if (opts.track > 0)
+        argv.insert(argv.end(), {"-map", "0:v:" + std::to_string(opts.track)});
+    argv.insert(argv.end(), {"-frames:v", "1", "-q:v", "2", out_path});
+    const int rc = run_process(argv, "", [](const std::string&) {}, cancel);
     if (rc != 0) {
         fs::remove(out_path, ec);
         return false;
@@ -891,7 +913,9 @@ int DatasetPrep::count_images(const std::string& dir, const std::string& skip) {
     return (int)walk_images(dir, skip).size();
 }
 
-// Pixel size from the header alone, no decode.
+// Pixel size from the header alone, no decode. STORED, not displayed: an
+// import that does not re-encode leaves the EXIF turn on the file, and the
+// focal prior this feeds describes the pixels every reader then sees.
 static bool probe_dims(const fs::path& f, int& W, int& H) {
     if (exr::is_exr(f.string())) {
         exr::Info info;
@@ -2044,6 +2068,11 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         ids.resize(files.size());
         for (size_t i = 0; i < ids.size(); i++) ids[i] = (int64_t)i;
     }
+    // Which camera folder each file belongs to, keyed as the preview keyed a
+    // click (SegmentPanel::shown_camera).
+    std::vector<std::string> cameras;
+    for (const fs::path& f : files)
+        cameras.push_back(under_root(f, image_root).parent_path().generic_string());
 
     sam::MaskOptions mo;
     mo.model = job.mask_model_path;
@@ -2065,7 +2094,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     // A click's own frame number survives whenever the numbering it was
     // recorded against did; ffmpeg resampled the video, so there only the
     // fraction through the capture is meaningful.
-    mo.seeds = seeds_from_clicks(clicks, ids, /*exact=*/!in.is_video || by_stem);
+    mo.seeds = seeds_from_clicks(clicks, cameras, ids,
+                                 /*exact=*/!in.is_video || by_stem);
 
     // The stencil goes in here rather than in a pass of its own: it is one AND
     // over a mask that is already in memory, against a decode and a re-encode
@@ -2124,7 +2154,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                                  _masks_tally);
     for (size_t k = 0; k < todo.size(); k++) {
         if (_cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
-        nn::Image img = reader.take();
+        sfm::ExifTransform turn;
+        nn::Image img = reader.take(turn);
         if (img.empty()) {
             log(fmt(lmsg::warn_unreadable_skipped, {todo_files[k].string()}), false);
             continue;
@@ -2135,7 +2166,15 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         {todo_files[k].filename().string(), masker.lastError()});
             return false;
         }
+        // Still the way up the model saw it, which is the frame the stencil's
+        // shapes were drawn in.
         if (!stencil.apply(todo_files[k], image_root, mask, error)) return false;
+        // And back into the frame the file stores, which is the one the
+        // trainer reads it against (docs/datasets.md, "EXIF orientation") and
+        // the one the reel re-reads a frame nobody watched go by in.
+        const sfm::ExifTransform back = app::inverse_turn(turn);
+        app::turn_pixels(back, 1, mask.data, mask.width, mask.height);
+        app::turn_pixels(back, img.channels, img.data, img.width, img.height);
         if (_films.masks) {
             FilmFrame f;
             f.name = under_root(todo_files[k], image_root).generic_string();

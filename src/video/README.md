@@ -123,6 +123,23 @@ The pool is sized `max_reorder + lookahead + max_dpb_slots + 4` pictures. At 4K
 that is a few hundred megabytes, which is the price of holding a blur-selection
 window in decoded form rather than re-decoding it.
 
+## Frame numbers, and seeking by them
+
+`FrameHandle::index` is the frame's place in the container's **presentation**
+order, taken from the sample table (`Packet::display_index`) rather than
+counted as pictures come out. Counting drifts: on a file the decoder loses a
+picture in, every later frame would be renamed, and after a seek the count
+would restart. Naming them from the container leaves a gap instead.
+
+`VideoPipeline::seek()` jumps to the sync sample at or before a frame — the
+reorder queue, the DPB pins and the codec's reference state all go, and
+decoding resumes from the keyframe. It is what makes the GUI's frame slider
+usable on a long capture: the last frame of a fifteen-minute GoPro clip is
+35 s of decoding without it and 0.09 s with, and the frames it hands back are
+bit-identical (154 probes over the local corpus, one keyframe interval apart
+either side of the boundaries). Matroska has no seek here — no cue parsing —
+and `seekSync()` returning false just means reading from the start.
+
 ## Colour
 
 `color_matrix()` folds bit depth, studio/full range and the BT.601/709/2020

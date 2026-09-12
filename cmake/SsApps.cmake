@@ -64,6 +64,7 @@ set(SS_TOOL_LIBS "")
 # including the ones the GUI spawns.
 list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/FrameMask.cpp
+     ${SS_SRC}/app/FrameLook.cpp
      ${SS_SRC}/app/Pano360.cpp
      ${SS_SRC}/app/AppPaths.cpp
      ${SS_SRC}/app/CrashLog.cpp)
@@ -308,7 +309,7 @@ if(SS_SEPARATE_TOOLS)
     endif()
     if(SS_BUILD_SAM)
         set(_sam_src ${SS_SRC}/app/cli/sam_main.cpp ${SS_SRC}/app/FrameMask.cpp
-                     ${SS_SRC}/app/Pano360.cpp)
+                     ${SS_SRC}/app/FrameLook.cpp ${SS_SRC}/app/Pano360.cpp)
         set(_sam_lib ss_sam)
         if(SS_ENABLE_PATENTED)
             list(APPEND _sam_src ${SS_SRC}/app/cli/sam_extract.cpp

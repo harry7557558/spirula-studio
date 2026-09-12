@@ -290,6 +290,9 @@ private:
     // What the output folder holds, at 1 Hz rather than per frame: the answer
     // now costs a directory scan (a Metashape export is found by extension).
     const WorkspaceState& workspace_state();
+    // How a panel must read one input's frames: the decoder the run will use,
+    // and the FrameLook it will write them with.
+    PreviewSource preview_source(size_t input) const;
     // Opens "Try the mask" on the input the combo points at, which is also the
     // input whose clicks and stencil it edits.
     void open_mask_preview();

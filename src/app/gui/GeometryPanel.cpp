@@ -165,11 +165,9 @@ GeometryPanel::~GeometryPanel() {
     if (_worker.joinable()) _worker.join();
 }
 
-void GeometryPanel::open(const std::string& input, bool is_video,
-                         const std::string& dataset,
+void GeometryPanel::open(const PreviewSource& src, const std::string& dataset,
                          const std::string& image_dir, const std::string& lens,
-                         float focal_factor, const std::string& ffmpeg_exe,
-                         bool force_ffmpeg) {
+                         float focal_factor) {
     // A job still running belongs to the old input; only the weights survive.
     _cancel = true;
     if (_worker.joinable()) _worker.join();
@@ -183,11 +181,11 @@ void GeometryPanel::open(const std::string& input, bool is_video,
         _job->dataset_images = 0;
 #endif
     }
-    _src = PreviewSource{};
-    _src.input = input;
-    _src.is_video = is_video;
-    _src.ffmpeg_exe = ffmpeg_exe.empty() ? "ffmpeg" : ffmpeg_exe;
-    _src.builtin_decode = !force_ffmpeg && backends().builtin_video;
+    _src = src;
+    if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
+    // Every frame here is warped through a camera, and the camera describes
+    // the stored pixels; the EXIF turn is applied to the FACE instead.
+    _src.photos_as_stored = true;
     _dataset = dataset;
     _image_dir = image_dir;
     _lens = lens;
@@ -361,8 +359,8 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                 PreviewSource load_src = j.src;
                 // A dataset frame is a file on disk whatever the input was.
                 if (!frame.path.empty()) load_src.is_video = false;
-                if (!load_preview_frame(load_src, frame, img.w, img.h, img.px, err,
-                                        _cancel)) {
+                if (!load_preview_frame(load_src, frame, /*folder=*/0, img.w,
+                                        img.h, img.px, err, _cancel)) {
                     if (_cancel.load()) return;
                     return set_error(err);
                 }
@@ -427,15 +425,27 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                 j.pred.predict(face_rgb.data(), warm);
                 if (_cancel.load()) return;
             }
+            // Exactly what the run does with a photo stored sideways: turned
+            // for the forward pass, turned back before the blend.
+            const sfm::ExifTransform turn = app::photo_turn(frame.path);
+            const sfm::ExifTransform back = app::inverse_turn(turn);
             const double t0 = nn::now_ms();
             for (int k = 0; k < warp.faces(); k++) {
                 if (_cancel.load()) return;
                 warp.sampleFace(k, rgb.data(), face_rgb);
-                // Both, whatever the checkboxes say: they decide what the
+                app::GeometryRequest rq = face_request(warp, k, settings.num_tokens);
+                int fw = rq.width, fh = rq.height;
+                app::turn_pixels(turn, 3, face_rgb, fw, fh);
+                // Both maps, whatever the checkboxes say: they decide what the
                 // RUN writes, and a pane that appears without another forward
                 // pass is worth the decoder head.
-                app::GeometryPrediction p = j.pred.predict(
-                    face_rgb.data(), face_request(warp, k, settings.num_tokens));
+                app::GeometryPrediction p =
+                    j.pred.predict(face_rgb.data(), app::turn_request(rq, turn));
+                int dw = p.width, dh = p.height;
+                app::turn_pixels(back, 1, p.depth, dw, dh);
+                dw = p.width;
+                dh = p.height;
+                app::turn_normals(back, p.normal, dw, dh);
                 // One unit across faces before they are blended: Metric3D's
                 // depth is canonical to the face's focal.
                 const float mm = (float)j.pred.depthToMillimetres(warp.faceFocal(k));

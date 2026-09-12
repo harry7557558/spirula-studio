@@ -34,13 +34,12 @@ public:
     GeometryPanel();
     ~GeometryPanel();
 
-    // `dataset` is preferred over `input` once it holds a reconstruction: its
+    // `dataset` is preferred over `src` once it holds a reconstruction: its
     // CAMERAS are the only way a preview can be exact. `image_dir` is where
     // its images are -- not under it, for photos read where they lie.
-    void open(const std::string& input, bool is_video, const std::string& dataset,
+    void open(const PreviewSource& src, const std::string& dataset,
               const std::string& image_dir, const std::string& lens,
-              float focal_factor, const std::string& ffmpeg_exe,
-              bool force_ffmpeg);
+              float focal_factor);
     bool is_open() const { return _open; }
     void close();
 

@@ -2,6 +2,7 @@
 
 #include "app/FrameMask.h"
 
+#include "app/FrameLook.h"
 #include "core/ExrImage.h"
 
 #include "external/stb_image.h"
@@ -17,6 +18,7 @@
 #include <cstring>
 #include <filesystem>
 #include <mutex>
+#include <tuple>
 #include <utility>
 
 namespace app {
@@ -71,6 +73,9 @@ Gray load_gray(const std::string& path) {
     if (!d) return Gray{};
     g.px.assign(d, d + (size_t)g.w * g.h);
     stbi_image_free(d);
+    // Displayed, not stored: a stencil's shapes were drawn on the picture the
+    // way up it is shown, and the border fit has to agree with them.
+    turn_pixels(photo_turn(path), 1, g.px, g.w, g.h);
     return g;
 }
 
@@ -664,21 +669,29 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
         }
 
         // Every frame of one camera gets the same stencil, so it is rasterized
-        // once per distinct frame size.
+        // once per distinct frame size -- and per distinct turn, the shapes
+        // being drawn in the displayed frame and written in the stored one.
         struct Sized {
             std::vector<uint8_t> px;
             std::string first;
         };
-        std::map<std::pair<int, int>, Sized> cache;
-        struct Item { std::string dst, src; int w, h; };
+        std::map<std::tuple<int, int, int>, Sized> cache;
+        struct Item { std::string dst, src; int w, h; int key_turn; };
         std::vector<Item> items;
         items.reserve(files.size());
         for (const std::string& f : files) {
             if (sinks.cancel && sinks.cancel->load()) return written;
             int w = 0, h = 0;
             if (!image_size(f, w, h)) continue;
-            Sized& s = cache[{w, h}];
-            if (s.px.empty() && !rasterize_frame_mask(fm, w, h, s.px, error)) return -1;
+            const sfm::ExifTransform t = photo_turn(f);
+            const int key_turn = t.turns_cw | (t.mirror ? 4 : 0);
+            Sized& s = cache[{w, h, key_turn}];
+            if (s.px.empty()) {
+                int dw = w, dh = h;
+                spirula::oriented_size(t.turns_cw, dw, dh);
+                if (!rasterize_frame_mask(fm, dw, dh, s.px, error)) return -1;
+                turn_pixels(inverse_turn(t), 1, s.px, dw, dh);
+            }
             const std::string name = fs::path(f).stem().string() + ".png";
             const fs::path dst = mask_root / rel / name;
             fs::create_directories(dst.parent_path(), ec);
@@ -686,7 +699,7 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
             const bool have_src = (merge_root.empty() ? !run.replace : true) &&
                                   fs::exists(src, ec);
             items.push_back({dst.string(), have_src ? src.string() : std::string(),
-                             w, h});
+                             w, h, key_turn});
         }
 
         // A frame with a mask to fold in cannot share the stencil image: it
@@ -704,7 +717,7 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
                 if (failed.load() ||
                     (sinks.cancel && sinks.cancel->load())) return;
                 const Item& it = items[merges[(size_t)k]];
-                std::vector<uint8_t> px = cache.at({it.w, it.h}).px;
+                std::vector<uint8_t> px = cache.at({it.w, it.h, it.key_turn}).px;
                 intersect_with_file(px, it.w, it.h, it.src, run.flip_merge);
                 // Masks gathered next to the images are HARD LINKS to the ones
                 // the photos came with; writing over one would edit the user's
@@ -737,7 +750,7 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
             if (!it.src.empty()) continue;
             if (sinks.cancel && sinks.cancel->load()) return written;
             if (sinks.progress) sinks.progress(++seen, total);
-            Sized& s = cache.at({it.w, it.h});
+            Sized& s = cache.at({it.w, it.h, it.key_turn});
             fs::remove(it.dst, ec);
             if (!s.first.empty()) {
                 fs::copy_file(s.first, it.dst, fs::copy_options::overwrite_existing, ec);

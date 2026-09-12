@@ -59,6 +59,11 @@ public:
     bool next(FrameHandle& out, std::string& error);
     void release(FrameHandle& h);
 
+    // To the sync sample at or before `index`, reporting the frame the next
+    // next() hands back; false where the container carries no index, leaving
+    // the pipeline as it was. Release every FrameHandle first.
+    bool seek(int64_t index, int64_t& landed, std::string& error);
+
     // Records the sharpness reduction for a live frame. Values become readable
     // after flushSharpness(), which costs one queue sync for the whole batch.
     void  queueSharpness(const FrameHandle& h);

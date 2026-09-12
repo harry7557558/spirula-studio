@@ -230,6 +230,7 @@ struct Picture {
     int64_t  poc = 0;
     double   pts = 0.0;
     int64_t  decode_index = 0;
+    int64_t  display_index = 0;
     bool     metric_queued = false;
 };
 
@@ -283,7 +284,6 @@ struct VideoPipeline::Impl {
     std::vector<int>     dpb_pin;      // DPB slot -> pool index, or -1
 
     std::vector<int> ready;            // pool indices awaiting output
-    int64_t out_index = 0;
     int64_t decoded = 0;
     bool    eos = false;
 
@@ -1142,6 +1142,7 @@ bool VideoPipeline::Impl::decodeNext(std::string& error) {
         if (src >= 0) {
             ++pool[(size_t)src].refs;
             pool[(size_t)src].pts = pkt.pts;
+            pool[(size_t)src].display_index = pkt.display_index;
             ready.push_back(src);
         }
         codec->commitFrame();
@@ -1164,6 +1165,7 @@ bool VideoPipeline::Impl::decodeNext(std::string& error) {
     p.poc = pi.poc;
     p.pts = pkt.pts;
     p.decode_index = pkt.index;
+    p.display_index = pkt.display_index;
 
     // Pin the pool image while a DPB slot still refers to it (AV1 replays
     // pictures with show_existing_frame; H.264/H.265 never do).
@@ -1209,13 +1211,33 @@ bool VideoPipeline::next(FrameHandle& out, std::string& error) {
             const int idx = s.ready[best];
             s.ready.erase(s.ready.begin() + (ptrdiff_t)best);
             out.slot = idx;
-            out.index = s.out_index++;
+            out.index = s.pool[(size_t)idx].display_index;
             out.pts = s.pool[(size_t)idx].pts;
             return true;
         }
         if (s.eos) return false;
         if (!s.decodeNext(error)) return false;
     }
+}
+
+bool VideoPipeline::seek(int64_t index, int64_t& landed, std::string& error) {
+    Impl& s = *impl_;
+    error.clear();
+    // Asked before anything is torn down, so a container that cannot seek
+    // leaves the pipeline exactly where it was.
+    if (!s.demux->seekSync(index, landed, error)) return false;
+    // The reorder queue and the DPB hold pictures of the GOP being left, and
+    // the codec's reference state describes it; all three go.
+    for (int idx : s.ready) s.releasePool(idx);
+    s.ready.clear();
+    for (int& pin : s.dpb_pin) {
+        if (pin >= 0) s.releasePool(pin);
+        pin = -1;
+    }
+    s.codec->flush();
+    s.more_in_packet = false;
+    s.eos = false;
+    return true;
 }
 
 void VideoPipeline::release(FrameHandle& h) {

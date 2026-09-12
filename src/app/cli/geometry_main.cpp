@@ -9,6 +9,7 @@
 #include "app/Tools.h"
 
 #include "app/DepthPng.h"
+#include "app/FrameLook.h"
 #include "app/GeometryModel.h"
 #include "app/GeometryWarp.h"
 #include "app/WriterPool.h"
@@ -680,6 +681,13 @@ int spirula_geometry_main(int argc, char** argv) {
                                  img.channels, warp.sampleWidth(),
                                  warp.sampleHeight());
 
+            // The network was trained upright, and a face cut from a photo
+            // stored sideways is sideways. Turned for the forward pass and
+            // back before the blend, so the maps stay in the stored frame.
+            const sfm::ExifTransform turn =
+                app::photo_turn(ds.image_filenames[(size_t)i]);
+            const sfm::ExifTransform back = app::inverse_turn(turn);
+
             const double t0 = nn::now_ms();
             std::vector<std::vector<float>> face_depth, face_normal;
             std::vector<float> face_rgb;
@@ -688,10 +696,20 @@ int spirula_geometry_main(int argc, char** argv) {
                 app::GeometryRequest rq = app::face_request(warp, k, o.num_tokens);
                 rq.want_depth = need_depth;
                 rq.want_normal = need_normal;
+                int fw = rq.width, fh = rq.height;
+                app::turn_pixels(turn, 3, face_rgb, fw, fh);
+                rq = app::turn_request(rq, turn);
                 app::GeometryPrediction p = pred.predict(face_rgb.data(), rq);
-                NN_CHECK(p.width == warp.faceWidth(k) && p.height == warp.faceHeight(k),
+                NN_CHECK(p.width == rq.width && p.height == rq.height,
                          "the network returned %dx%d for a %dx%d face", p.width,
-                         p.height, warp.faceWidth(k), warp.faceHeight(k));
+                         p.height, rq.width, rq.height);
+                int dw = p.width, dh = p.height;
+                app::turn_pixels(back, 1, p.depth, dw, dh);
+                dw = p.width;
+                dh = p.height;
+                app::turn_normals(back, p.normal, dw, dh);
+                p.width = warp.faceWidth(k);
+                p.height = warp.faceHeight(k);
                 // Millimetres on every face before they are blended: Metric3D's
                 // depth is canonical to the face's own focal.
                 const float mm = (float)pred.depthToMillimetres(warp.faceFocal(k));

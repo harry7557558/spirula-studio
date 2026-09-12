@@ -8,6 +8,8 @@
 #include "nn/core/Error.h"
 #include "nn/io/Onnx.h"
 
+#include <algorithm>
+
 namespace app {
 namespace {
 
@@ -40,6 +42,32 @@ GeometryRequest face_request(const GeometryWarp& warp, int k, int num_tokens) {
     r.cx = warp.faceCx(k);
     r.cy = warp.faceCy(k);
     return r;
+}
+
+GeometryRequest turn_request(const GeometryRequest& r, const sfm::ExifTransform& t) {
+    GeometryRequest out = r;
+    if (t.identity()) return out;
+    double w = r.width, h = r.height, fx = r.fx, fy = r.fy, cx = r.cx, cy = r.cy;
+    const bool centred = cx >= 0.0 && cy >= 0.0;
+    for (int q = 0; q < (t.turns_cw & 3); q++) {
+        // One clockwise quarter turn, matching core/ImageOrient.h's mapping of
+        // the pixel grid: (x, y) -> (h - 1 - y, x).
+        const double ncx = (h - 1.0) - cy;
+        cy = cx;
+        cx = ncx;
+        std::swap(fx, fy);
+        std::swap(w, h);
+    }
+    if (t.mirror) cx = (w - 1.0) - cx;
+    out.width = (int)w;
+    out.height = (int)h;
+    out.fx = fx;
+    out.fy = fy;
+    if (centred) {
+        out.cx = cx;
+        out.cy = cy;
+    }
+    return out;
 }
 
 struct GeometryModel::Impl {

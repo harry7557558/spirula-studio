@@ -3077,18 +3077,35 @@ void GuiApp::draw_lens_warning(const std::string& path, bool is_video,
 // Masking
 // ---------------------------------------------------------------------------
 
+PreviewSource GuiApp::preview_source(size_t input) const {
+    PreviewSource src;
+    if (input >= _sources.size()) return src;
+    const PrepInput& in = _sources[input];
+    src.input = in.path;
+    src.is_video = in.is_video;
+    src.ffmpeg_exe = _ffmpeg_exe;
+    // In process where the driver can, ffmpeg where it cannot or where the job
+    // said to -- the choice preparation itself makes.
+    src.builtin_decode =
+        !_sfm_job.prep.force_external_decode && backends().builtin_video;
+    src.tracks = std::max(in.video_tracks, 1);
+    src.look.auto_rotate = _sfm_job.prep.auto_rotate;
+    if (in.eac360.valid() && _sfm_job.prep.pano.mode != app::Pano360Mode::Off) {
+        src.look.eac = in.eac360;
+        src.look.views = app::pano360_views(in.eac360, _sfm_job.prep.pano);
+    }
+    return src;
+}
+
 void GuiApp::open_mask_preview() {
     if (_sources.empty()) {
         log(dmsg::mask_pick_input_first.get());
         return;
     }
-    const PrepInput& s = _sources[(size_t)_mask_preview_input];
     // One backbone on the device at a time; see open_geometry_preview.
     _geometry_panel.close();
-    // The preview reads the video the same way preparation will: in process
-    // where the driver can, ffmpeg where it cannot or where the job said to.
-    _segment.open(s.path, s.is_video, _mask_enable ? selected_model_path() : "",
-                  _ffmpeg_exe, _sfm_job.prep.force_external_decode);
+    _segment.open(preview_source((size_t)_mask_preview_input),
+                  _mask_enable ? selected_model_path() : "");
 }
 
 void GuiApp::draw_masking_options() {
@@ -3168,8 +3185,6 @@ void GuiApp::draw_masking_options() {
             ui::TextColoredWrappedRaw(kErr, _download.status());
         if (entry && !entry->text_prompts && _mask.clicks.empty())
             ui::TextColored(kWarn, dmsg::mask_no_text_prompts);
-        if (any_pano360())
-            ui::TextColoredWrapped(kWarn, dmsg::pano360_clicks_warning);
         if (!_mask.clicks.empty()) {
             int objects = 0;
             for (const MaskClick& c : _mask.clicks)
@@ -3334,15 +3349,12 @@ void GuiApp::open_geometry_preview() {
         _sources.empty() ? 0
                          : std::min((size_t)_mask_preview_input,
                                     _sources.size() - 1);
-    const PrepInput* in = _sources.empty() ? nullptr : &_sources[idx];
     std::string lens = _sfm_job.camera_model;
     float focal = 0.0f;
-    if (in) source_lens(idx, lens, focal);
-    _geometry_panel.open(in ? in->path : std::string(), in && in->is_video,
-                         _workspace,
+    if (!_sources.empty()) source_lens(idx, lens, focal);
+    _geometry_panel.open(preview_source(idx), _workspace,
                          planned_image_dir(_sources, _workspace, _photo_import),
-                         lens, focal, _ffmpeg_exe,
-                         _sfm_job.prep.force_external_decode);
+                         lens, focal);
 }
 
 void GuiApp::draw_geometry_options() {

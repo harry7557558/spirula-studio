@@ -8,6 +8,7 @@
 #include "i18n/catalog/Dataset.h"
 
 #ifdef SS_HAVE_VIDEO
+#include "app/FrameExtract.h"
 #include "video/Video.h"
 #endif
 
@@ -38,7 +39,53 @@ fs::path temp_still(const char* tag) {
             ".jpg");
 }
 
+// A photo the way up the masker will see it, which is the way up it was meant
+// to be shown -- see app::load_upright.
+bool load_photo(const std::string& path, bool as_stored, int& w, int& h,
+                std::vector<uint8_t>& rgb) {
+    if (!app::load_rgb(path, w, h, rgb)) return false;
+    if (!as_stored) app::turn_pixels(app::photo_turn(path), 3, rgb, w, h);
+    return true;
+}
+
+// One still through the external ffmpeg, processed the way the run's own
+// ffmpeg path leaves it: `-noautorotate` where extraction passes it, and the
+// EAC canvas warped here because ffmpeg's own sampler insets every face.
+bool load_ffmpeg_frame(const PreviewSource& src, double at, int folder, int& w,
+                       int& h, std::vector<uint8_t>& rgb,
+                       const std::atomic<bool>& cancel) {
+    FfmpegStillOpts opts;
+    opts.track = folder;
+    opts.auto_rotate = src.look.auto_rotate;
+    if (src.look.pano()) opts.eac = src.look.eac;
+    const fs::path tmp = temp_still("preview");
+    const bool ok =
+        ffmpeg_extract_frame(src.ffmpeg_exe, src.input, at, tmp.string(), cancel,
+                             opts);
+    if (ok && !cancel.load()) app::load_rgb(tmp.string(), w, h, rgb);
+    std::error_code rm;
+    fs::remove(tmp, rm);
+    if (rgb.empty()) return false;
+    if (!src.look.pano()) return true;
+
+    const size_t view =
+        std::min((size_t)std::max(folder, 0), src.look.views.size() - 1);
+    app::Pano360Remap map;
+    app::pano360_remap(src.look.eac, src.look.views[view], map);
+    std::vector<uint8_t> out((size_t)map.width * map.height * 3);
+    app::pano360_apply(map, rgb.data(), w, h, 0, out.data());
+    rgb.swap(out);
+    w = map.width;
+    h = map.height;
+    return true;
+}
+
 }  // namespace
+
+std::vector<std::string> preview_folders(const PreviewSource& src) {
+    if (!src.is_video) return {std::string()};
+    return app::frame_folders(src.look, src.tracks);
+}
 
 void collect_preview_frames(PreviewSource& src, int offers,
                             std::vector<PreviewFrame>& frames,
@@ -75,9 +122,12 @@ void collect_preview_frames(PreviewSource& src, int offers,
             if (ffmpeg_probe_video(src.ffmpeg_exe, src.input, facts, cancel)) {
                 src.video_seconds = facts.duration;
                 total = facts.frames;
+                if (src.tracks < (int)facts.tracks.size())
+                    src.tracks = (int)facts.tracks.size();
             }
         }
         total = std::max(total, (long long)offers);
+        src.video_frames = total;
         for (int i = 0; i < offers; i++) {
             PreviewFrame f;
             f.index = std::min(total - 1, (long long)i * (total / offers));
@@ -113,12 +163,13 @@ void collect_preview_frames(PreviewSource& src, int offers,
 }
 
 bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
-                        int& w, int& h, std::vector<uint8_t>& rgb,
+                        int folder, int& w, int& h, std::vector<uint8_t>& rgb,
                         std::string& error, const std::atomic<bool>& cancel) {
     w = h = 0;
     rgb.clear();
     if (!src.is_video) {
-        if (frame.path.empty() || !app::load_rgb(frame.path, w, h, rgb)) {
+        if (frame.path.empty() ||
+            !load_photo(frame.path, src.photos_as_stored, w, h, rgb)) {
             error = dmsg::preview_frame_unreadable.get();
             return false;
         }
@@ -127,18 +178,15 @@ bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
 
 #ifdef SS_HAVE_VIDEO
     if (src.builtin_decode) {
-        // No seek: read forward to the frame this offer names.
-        video::VideoReader r;
-        if (r.open(src.input)) {
-            for (long long i = 0; i <= frame.index; i++) {
-                if (cancel.load()) return false;
-                nn::Image f = r.readFrame();
-                if (f.empty()) break;
-                w = f.width;
-                h = f.height;
-                rgb = std::move(f.data);
-            }
+        nn::Image img;
+        std::string err;
+        if (app::extract_one_frame(src.input, src.look, frame.index, folder, img,
+                                   &cancel, err)) {
+            w = img.width;
+            h = img.height;
+            rgb = std::move(img.data);
         }
+        if (cancel.load()) return false;
     }
 #endif
     // The same fallback the dataset run takes when the driver cannot decode
@@ -154,19 +202,75 @@ bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
         // frame often enough to be worth backing away from.
         const double at = std::min((double)frame.position * src.video_seconds,
                                    std::max(0.0, src.video_seconds - 0.1));
-        const fs::path tmp = temp_still("preview");
-        const bool ok =
-            ffmpeg_extract_frame(src.ffmpeg_exe, src.input, at, tmp.string(), cancel);
+        load_ffmpeg_frame(src, at, folder, w, h, rgb, cancel);
         if (cancel.load()) return false;
-        if (ok) app::load_rgb(tmp.string(), w, h, rgb);
-        std::error_code rm;
-        fs::remove(tmp, rm);
     }
     if (rgb.empty()) {
         error = dmsg::preview_frame_unreadable.get();
         return false;
     }
     return true;
+}
+
+std::vector<PreviewFrame> spread_preview_frames(
+    const PreviewSource& src, const std::vector<PreviewFrame>& offers,
+    const std::vector<std::string>& files, int samples) {
+    std::vector<PreviewFrame> out;
+    samples = std::max(2, samples);
+    if (!src.is_video) {
+        const size_t n = files.size();
+        const size_t want = std::min<size_t>(n, (size_t)samples);
+        for (size_t i = 0; i < want; i++) {
+            PreviewFrame f;
+            f.index = want > 1 ? (long long)(i * (n - 1) / (want - 1)) : 0;
+            f.path = files[(size_t)f.index];
+            out.push_back(f);
+        }
+        return out;
+    }
+    if (!src.builtin_decode) return offers;
+    // 720 is about half a minute, and the fit wants a moving camera rather
+    // than a long one: reading further costs a decode per frame for nothing.
+    const long long total = std::max(1LL, src.video_frames);
+    const long long span = std::min(total, 720LL);
+    const long long stride = std::max(1LL, span / samples);
+    for (long long i = 0; i < span; i += stride) {
+        PreviewFrame f;
+        f.index = i;
+        f.position = (float)((double)i / (double)std::max(1LL, total - 1));
+        out.push_back(f);
+    }
+    return out;
+}
+
+void scan_preview_frames(const PreviewSource& src,
+                         const std::vector<PreviewFrame>& frames, int folder,
+                         const std::function<void(const uint8_t*, int, int)>& on_frame,
+                         const std::atomic<bool>& cancel) {
+#ifdef SS_HAVE_VIDEO
+    if (src.is_video && src.builtin_decode && !frames.empty()) {
+        std::vector<int64_t> indices;
+        for (const PreviewFrame& f : frames) indices.push_back(f.index);
+        std::string err;
+        bool any = false;
+        app::extract_frames_at(src.input, src.look, indices, folder,
+                               [&](nn::Image& img, int64_t) {
+                                   any = true;
+                                   on_frame(img.data.data(), img.width,
+                                            img.height);
+                               },
+                               &cancel, err);
+        if (any || cancel.load()) return;
+    }
+#endif
+    for (const PreviewFrame& f : frames) {
+        if (cancel.load()) return;
+        int w = 0, h = 0;
+        std::vector<uint8_t> rgb;
+        std::string err;
+        if (load_preview_frame(src, f, folder, w, h, rgb, err, cancel))
+            on_frame(rgb.data(), w, h);
+    }
 }
 
 }  // namespace gui
