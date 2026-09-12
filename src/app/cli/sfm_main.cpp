@@ -385,8 +385,10 @@ static void printEvent(const sfm::Event& e) {
     if (trace) {
         static const char* kKind[] = {"stage-begin", "stage-end", "progress",
                                       "image", "pair", "model", "result"};
-        static const char* kStage[] = {"extract", "match", "map",
-                                       "merge", "orient", "finish"};
+        static const char* kStage[] = {"extract", "match", "map",  "merge",
+                                       "orient",  "finish", "load", "select",
+                                       "seed",    "refine"};
+        static_assert(sizeof kStage / sizeof *kStage == sfm::kNumStages, "");
         L::diag(Tag::Run, "[ev] %-11s %-7s done=%lld/%lld reg=%lld pts=%lld %s",
                 kKind[(int)e.kind], kStage[(int)e.stage], (long long)e.done,
                 (long long)e.total, (long long)e.registered, (long long)e.points,

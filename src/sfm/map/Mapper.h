@@ -2474,6 +2474,21 @@ private:
         if (opt_.focal_trials <= 0) return;
         std::vector<uint32_t> cams = guessedFocalCameras();
         if (cams.empty()) return;
+        // The trials are thrown away, but the bar counts the capture: a probe
+        // registering `focal_model_size` images jumped it to 30% of a 70-image
+        // capture and froze. A fifth of the stage there, hence a stage to name.
+        struct SeedPhase {
+            bool& report;
+            const bool was;
+            explicit SeedPhase(bool& f) : report(f), was(f) {
+                if (was) events::stage_begin(Stage::Seed);
+                f = false;
+            }
+            ~SeedPhase() {
+                report = was;
+                if (was) events::stage_end(Stage::Seed);
+            }
+        } phase(opt_.report_progress);
         // One camera group only. With several, a single scalar hypothesis would
         // be applied to lenses that need different answers, and the score
         // cannot say which one was wrong -- exactly the reason bootstrapFocal
@@ -2858,10 +2873,6 @@ private:
         rec_.images[a].registered = true;
         rec_.images[b].pose = g.pose;
         rec_.images[b].registered = true;
-        if (opt_.report_progress) {
-            events::map_placed(a);   // the seed never reaches registerImage
-            events::map_placed(b);
-        }
 
         std::vector<double> angles;
         int created = 0;
@@ -2889,6 +2900,13 @@ private:
             // BA; do not let a later focal search overwrite that.
             focal_known_.insert(rec_.images[a].camera_id);
             focal_known_.insert(rec_.images[b].camera_id);
+            // Only now: a rolled-back candidate is not progress, and the scan
+            // tries dozens. Counting each one that merely had a pose put 120 of
+            // a 120-image capture on the bar before the model existed.
+            if (opt_.report_progress) {
+                events::map_placed(a);
+                events::map_placed(b);
+            }
             seed_pair_ = &pm;
             seed_forward_ = fwd;
             completeFrameOf(a);

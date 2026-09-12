@@ -40,7 +40,9 @@ namespace sfm {
 
 struct ExtractStats {
     size_t images = 0, failed = 0, unreadable = 0;
+    size_t reused = 0;            // features an earlier run had already written
     uint64_t features = 0;
+    uint64_t features_new = 0;    // ... of which this run extracted
     // Masking (D39), all zero when no mask directory was given.
     size_t masked_images = 0;     // images that found a mask file
     size_t unmasked_images = 0;   // images that did not
@@ -79,14 +81,29 @@ struct VerifyCalibration {
 // ---------------------------------------------------------------------------
 
 // Features for every image under `imagedir`, written to `outdir` mirroring the
-// image tree. Non-zero on a failure that stops the stage.
+// image tree. `reuse` keeps what an earlier run left there when it is whole and
+// newer than what it describes; a file no image maps to is removed either way.
 int extractDirectory(const std::string& imagedir, const std::filesystem::path& outdir,
-                     const SfmConfig& cfg, ExtractStats& stats);
+                     const SfmConfig& cfg, ExtractStats& stats, bool reuse = false);
+
+// Where an interrupted run's matching left its work, and what those files must
+// carry to be this run's (sfm/core/Resume.h). Null is a run that starts over.
+struct MatchResume {
+    std::filesystem::path dir;
+    std::string signature;
+};
+
+// Every features.bin under `featdir`, in the sorted order that fixes the image
+// indices everything downstream uses. Fills `db.images` alongside. Non-zero on
+// a failure that stops the stage.
+int loadFeatureDir(const std::string& featdir, const SfmConfig& cfg, bool with_descriptors,
+                   std::vector<FeatureSet>& feats, MatchesDatabase& db);
 
 // Pairing, matching and two-view verification over a feature directory.
 int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode mode,
                     bool verify, std::vector<FeatureSet>& feats, MatchesDatabase& db,
-                    MatchStats& stats, VerifyCalibration* calib = nullptr);
+                    MatchStats& stats, VerifyCalibration* calib = nullptr,
+                    const MatchResume* res = nullptr);
 
 std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
                                       const std::vector<FeatureSet>& feats, SfmConfig& cfg,

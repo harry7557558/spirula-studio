@@ -54,7 +54,8 @@ struct PairMatrix {
 // the dataset screen used to recover by parsing the child's translated stdout
 // and its exit code, which could report only one of "partial" and "not metric".
 struct RunStatus {
-    // sfm::Stage: 0 extract, 1 match, 2 map, 3 merge, 4 orient, 5 finish.
+    // sfm::Stage: 0 extract, 1 match, 2 map, 3 merge, 4 orient, 5 finish,
+    // 6 load, 7 select, 8 seed, 9 refine.
     uint32_t stage = 0;
     bool finished = false;
     bool partial = false;
@@ -69,6 +70,16 @@ struct RunStatus {
 };
 
 bool read_status(const std::string& dir, int64_t& mtime, RunStatus& out);
+
+// Where the mapping bar stops with every image placed: the finishing solves
+// come after the last one, and a phase that places none holds it here or at
+// zero and moves its label instead.
+inline constexpr float kMappingBarFull = 0.94f;
+
+// The mapping bar at `done` of `total` images placed. Not the ratio: an image
+// costs what the model it joins costs to solve, so the count runs ahead of the
+// clock (docs/notes/sfm-design.md D77).
+float mapping_fraction(int64_t done, int64_t total);
 
 // `dir` is the --progress-dir the child was given. All return false when the
 // file is absent, unfinished or not newer than `mtime` -- which the caller

@@ -269,6 +269,9 @@ private:
     // own files, and the options, each on its own button.
     void draw_dataset_reset();
     void draw_clear_project_modal();
+    // Turning "keep intermediate files" OFF is the one option here that
+    // destroys work: it is what makes a cancelled run resumable.
+    void draw_drop_intermediate_modal();
     // Every option back to what a freshly picked input would have given it.
     // The inputs, the output folder and the mask prompt are not options.
     void reset_recon_options();
@@ -645,6 +648,7 @@ private:
     // when it opens so the user reads the same paths that go.
     bool _clear_open = false, _clear_shown = false;
     std::vector<std::string> _clear_targets;
+    bool _drop_intermediate_open = false, _drop_intermediate_shown = false;
 
     // workspace_state()'s cache: what it was asked about and when.
     WorkspaceState _ws_state;

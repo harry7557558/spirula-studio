@@ -5,6 +5,7 @@
 #include "app/gui/SfmInProcess.h"
 
 #include "sfm/core/Manifest.h"
+#include "sfm/core/Resume.h"
 
 #include <fstream>
 
@@ -351,6 +352,7 @@ void SfmRunner::sweep_intermediates() {
     // camera folders puts them in features/cam0/... and a single-level sweep
     // removed nothing and left the directory.
     remove_tree(dir / "features");
+    remove_tree(dir / sfm::resume::kDir);
     std::error_code ec;
     fs::remove(dir / "matches.bin", ec);
 }
@@ -385,11 +387,29 @@ void SfmRunner::apply_status(const RunStatus& st) {
     switch (st.stage) {
         case 0: set_stage_if_new(Stage::Features, lmsg::stage_finding_features.get());
                 _prog.count(Stage::Features, st.done, st.total); break;
+        // Reading the feature files and choosing which pairs to match are both
+        // matching, and both used to leave the screen on a full features bar
+        // with nothing moving -- minutes of it with a learned frontend.
+        case 6: set_stage_if_new(Stage::Matching, lmsg::stage_reading_features.get());
+                _prog.count(Stage::Matching, st.done, st.total); break;
+        case 7: set_stage_if_new(Stage::Matching, lmsg::stage_selecting_pairs.get());
+                _prog.count(Stage::Matching, st.done, st.total); break;
         case 1: set_stage_if_new(Stage::Matching, lmsg::stage_matching_images.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 2: case 3: case 4:
                 set_stage_if_new(Stage::Mapping, lmsg::stage_reconstructing.get());
-                _prog.count(Stage::Mapping, st.done, st.total); break;
+                _prog.count(Stage::Mapping, st.done, st.total);
+                _prog.fraction(Stage::Mapping, mapping_fraction(st.done, st.total));
+                break;
+        // Two stretches of the mapping step place no image, so the bar has
+        // nothing to say and the label has to: choosing a focal and a seed
+        // before the first, and the finishing solves after the last.
+        case 8: set_stage_if_new(Stage::Mapping, lmsg::stage_seeding.get());
+                _prog.fraction(Stage::Mapping, 0.0f);
+                break;
+        case 9: set_stage_if_new(Stage::Mapping, lmsg::stage_refining.get());
+                _prog.fraction(Stage::Mapping, kMappingBarFull);
+                break;
         default: break;
     }
     if (st.finished) {
@@ -720,12 +740,10 @@ void SfmRunner::run(SfmJob job) {
             if (prior.model && !changed.empty())
                 log(fmt(lmsg::sfm_settings_changed, {changed}), /*detail=*/false);
             set_stage(Stage::Features, lmsg::stage_reconstructing_features.get());
-            // Matching reads every .bin under features/, so one an interrupted
-            // run left for an image this one no longer has would join it as a
-            // phantom view. Nothing here is reused; start from none of it.
-            remove_tree(ws / "features");
+            // What features/ and matches.bin are still worth is the run's own
+            // decision, per stage and per file (sfm/core/Resume.h). The
+            // snapshots are not: they describe the run that wrote them.
             remove_tree(ws / ".progress");
-            fs::remove(ws / "matches.bin", ec);
             // From here the intermediates are this run's, however it ends: a
             // cancelled run leaves the same ones a finished one does, and the
             // screen goes on reading both until it is done with them.

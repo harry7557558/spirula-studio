@@ -530,4 +530,42 @@ void printOptionLine(FILE* out, const std::string& flag, const std::string& valu
     printOption(out, flag, "", value, help, "");
 }
 
+// ---------------------------------------------------------------------------
+// stageSignature
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Flags of a stage that cannot change what it writes: how fast it goes, on
+// which device, how much it says about it.
+bool signatureRelevant(const char* name) {
+    for (const char* n : {"threads", "decode-threads", "decode-budget", "device",
+                          "quiet", "profile", "spv-path"})
+        if (std::strcmp(name, n) == 0) return false;
+    return true;
+}
+
+}  // namespace
+
+std::string stageSignature(const SfmConfig& cfg, uint32_t cmd) {
+    std::string out;
+#define SFM_SIG_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)   \
+    if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name)) \
+        out += std::string(name) + "=" + valueString(cfg.member) + "\n";
+    SFM_CONFIG_FIELDS(SFM_SIG_FIELD)
+#undef SFM_SIG_FIELD
+    // Per-group lenses reach the camera setup, and so verification, without
+    // being table rows: `--camera-model cam0=opencv-fisheye` and the manifest
+    // both land here.
+    if (cmd & (CMD_MATCH | CMD_MAP))
+        for (const CameraOverride& o : cfg.camera.overrides) {
+            out += "override " + o.prefix + "=";
+            if (o.has_model) out += camInfo(o.model).cli_name;
+            if (o.has_focal) out += "," + valueString(o.focal);
+            for (double e : o.extra) out += "," + valueString(e);
+            out += "\n";
+        }
+    return out;
+}
+
 }  // namespace sfm

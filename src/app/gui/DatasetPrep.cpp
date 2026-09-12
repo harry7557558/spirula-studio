@@ -3,6 +3,7 @@
 #include "app/gui/DatasetPrep.h"
 
 #include "app/gui/ReconStamp.h"
+#include "sfm/core/Resume.h"
 
 #include "i18n/catalog/Log.h"
 
@@ -811,8 +812,8 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
     if (!is_input_folder(ws / "images", inputs, false)) add("images");
     if (!is_input_folder(ws / "masks", inputs, true)) add("masks");
     for (const char* name : {"features", "sparse", "colmap", "normals", "depths",
-                             ".progress", "matches.bin", "database.db",
-                             kReconStampFile})
+                             ".progress", sfm::resume::kDir, "matches.bin",
+                             "database.db", kReconStampFile})
         add(name);
     return out;
 }
