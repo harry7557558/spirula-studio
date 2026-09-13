@@ -1643,7 +1643,9 @@ bool generate_mesh(
     // pages back before the solver claims ~260 bytes per point.
     pts.clear(); pts.shrink_to_fit();
     auto tri = delaunay3d::compute_delaunay_3d(pts_d.data(), P, cfg.num_threads, false);
-    pts.assign(pts_d.begin(), pts_d.end());
+    pts.resize(pts_d.size());
+    std::transform(pts_d.begin(), pts_d.end(), pts.begin(),
+                   [](double v) { return static_cast<float>(v); });
     pts_d.clear(); pts_d.shrink_to_fit();
     const int M = tri.nb_cells;
     if (cfg.verbose)

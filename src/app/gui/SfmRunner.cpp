@@ -4,7 +4,6 @@
 
 #include "app/gui/SfmInProcess.h"
 
-#include "sfm/core/Manifest.h"
 #include "sfm/core/Resume.h"
 
 #include <fstream>
@@ -17,9 +16,10 @@
 #include "app/AppPaths.h"
 #include "app/gui/Subprocess.h"
 #ifdef SS_TOOL_SFM
-// For the stage tags the child prints; a build without the module has no child
-// to read (see availability()).
+// The stage tags the child prints and the manifest it reads; a build without the
+// module has no child to run (see availability()).
 #include "sfm/core/Log.h"
+#include "sfm/core/Manifest.h"
 #include "i18n/catalog/Sfm.h"
 #endif
 
@@ -419,6 +419,7 @@ void SfmRunner::apply_status(const RunStatus& st) {
     }
 }
 
+#ifdef SS_TOOL_SFM
 // The panel's per-input rows become the manifest's camera groups, keyed on the
 // sub-folder each input's frames went into. The focal is a fraction of the
 // width up to here: the width is not known until the frames exist.
@@ -552,6 +553,7 @@ std::vector<sfm::RigDef> SfmRunner::build_rigs(const PrepJob& prep) {
     }
     return out;
 }
+#endif  // SS_TOOL_SFM
 
 // The flags that describe the MODEL rather than where it goes. The command
 // line and the workspace's stamp are both made from this, so they cannot drift.

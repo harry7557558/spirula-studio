@@ -22,17 +22,14 @@ set(SS_SFM_SHADERS ${SS_SFM_SRC}/shaders)
 # ---------------------------------------------------------------------------
 # Shader variant matrix
 # ---------------------------------------------------------------------------
-# The BA kernels are compiled as whole modules (all entry points in one blob,
-# hence -fvk-use-entrypoint-name), once per (Real, Loss) configuration. SIFT and
-# matching are single float-only blobs with no matrix, so a trimmed
-# -DSS_SFM_REALS=df build still includes them.
-#
-# Trim the matrix while iterating:
-#   cmake -DSS_SFM_REALS=df -DSS_SFM_LOSSES=trivial
-# Both are cached, so a trimmed value sticks until you pass the full list again
-# or wipe the build tree. The CLI errors out at runtime with "variant not built
-# into this binary" for a combination that was trimmed away.
-set(SS_SFM_REALS "float;double;df" CACHE STRING
+# One BA blob per cached (Real, Loss) pair (src/sfm/README.md). slangc aborts
+# on every ba_df_* variant under Windows (docs/build.md), so no df default there.
+if(WIN32)
+    set(_sfm_reals_default "float;double")
+else()
+    set(_sfm_reals_default "float;double;df")
+endif()
+set(SS_SFM_REALS "${_sfm_reals_default}" CACHE STRING
     "SfM bundle-adjustment scalar configurations to compile")
 set(SS_SFM_LOSSES "trivial;huber;cauchy" CACHE STRING
     "SfM bundle-adjustment robust losses to compile")

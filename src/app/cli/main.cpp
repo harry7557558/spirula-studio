@@ -325,16 +325,15 @@ void print_help(const char* argv0, const TrainConfig& c, int max_tier) {
 }
 
 
-// Debug dump for numeric verification against the Python dataparser /
-// trainer camera algebra (SS_DUMP_CAMERAS=<path> env). Full precision.
+// Debug dump of the parsed and post-split camera algebra (SS_DUMP_CAMERAS=<path>).
 void dump_cameras_json(const char* path, const ParsedDataset& ds,
                        const PostSplitCameras& post) {
     FILE* f = std::fopen(path, "w");
     if (!f) throw std::runtime_error(std::string("cannot write ") + path);
-    auto arr_f = [&](const char* k, const std::vector<float>& v) {
+    auto arr_f = [&](const char* k, const auto& v) {
         std::fprintf(f, "\"%s\": [", k);
         for (size_t i = 0; i < v.size(); i++)
-            std::fprintf(f, "%s%.9g", i ? "," : "", v[i]);
+            std::fprintf(f, "%s%.9g", i ? "," : "", (double)v[i]);
         std::fprintf(f, "]");
     };
     auto arr_i = [&](const char* k, const std::vector<int32_t>& v) {
@@ -362,9 +361,8 @@ void dump_cameras_json(const char* path, const ParsedDataset& ds,
     arr_f("dist_coeffs", post.dist_coeffs);     std::fprintf(f, ",\n");
     arr_f("input_intrins", post.input_intrins); std::fprintf(f, ",\n");
     arr_f("input_dist_coeffs", post.input_dist_coeffs); std::fprintf(f, ",\n");
-    std::vector<float> t2n(ds.train_to_normalized.begin(), ds.train_to_normalized.end());
-    arr_f("train_to_normalized", t2n);          std::fprintf(f, ",\n");
-    std::vector<float> pts_head(ds.points.xyz.begin(),
+    arr_f("train_to_normalized", ds.train_to_normalized); std::fprintf(f, ",\n");
+    std::vector<double> pts_head(ds.points.xyz.begin(),
         ds.points.xyz.begin() + std::min<size_t>(ds.points.xyz.size(), 30));
     arr_f("points_head", pts_head);
     std::fprintf(f, "\n}\n");

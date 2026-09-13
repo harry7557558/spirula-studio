@@ -76,7 +76,7 @@ New options in `cmake/SsOptions.cmake`:
 | Option | Default | Meaning |
 |---|---|---|
 | `SS_BUILD_SFM` | `ON` for `SS_BACKEND=vulkan`, `OFF` for `cuda` | build the SfM library, CLI and GUI integration |
-| `SS_SFM_REALS` | `float;double;df` | BA scalar configurations to compile |
+| `SS_SFM_REALS` | `float;double;df` (`float;double` on Windows) | BA scalar configurations to compile |
 | `SS_SFM_LOSSES` | `trivial;huber;cauchy` | BA robust losses to compile |
 
 Resulting targets:

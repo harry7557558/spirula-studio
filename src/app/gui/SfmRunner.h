@@ -19,7 +19,10 @@
 #include "app/gui/DatasetPrep.h"
 #include "core/Env.h"
 #include "app/gui/SfmProgress.h"
+#ifdef SS_TOOL_SFM
+// Reaches the Vulkan headers, which a build without the module may not have.
 #include "sfm/core/Manifest.h"
+#endif
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryRunner.h"
 #include "app/gui/PrepProgress.h"
@@ -243,9 +246,11 @@ private:
     // by the in-process run. apply_status is what both feed.
     void poll_status();
     void apply_status(const RunStatus& st);
+#ifdef SS_TOOL_SFM
     // The panel's per-input lens and focal rows, as the file the run reads.
     sfm::Manifest build_manifest(const SfmJob& job, const PrepResult& prep);
     static std::vector<sfm::RigDef> build_rigs(const PrepJob& prep);
+#endif
     // Everything the child is told about the model, as against where to put
     // it. Both the command line and the workspace's stamp are made from this.
     std::vector<std::string> recon_args(const SfmJob& job, const PrepResult& prep);

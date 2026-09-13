@@ -73,10 +73,17 @@ inline sfm::ExifTransform inverse_turn(const sfm::ExifTransform& t) {
 void turn_normals(const sfm::ExifTransform& t, std::vector<float>& xyz,
                   int& w, int& h);
 
-// A dataset image as a model should see it -- the stored pixels turned by the
-// file's own EXIF, which is the way up everything was trained on. `turn` comes
-// back for putting the per-pixel output back beside the image.
-nn::Image load_upright(const std::string& file, const std::string& gamut,
-                       std::optional<bool> is_linear, sfm::ExifTransform& turn);
+// A dataset image turned upright by its own EXIF, as models were trained; `turn`
+// puts per-pixel output back beside the image. Inline: every app target compiles
+// this header, and only SS_BUILD_SAM ones link ss_nn.
+inline nn::Image load_upright(const std::string& file, const std::string& gamut,
+                              std::optional<bool> is_linear,
+                              sfm::ExifTransform& turn) {
+    turn = photo_turn(file);
+    nn::Image img = nn::load_image(file, gamut, is_linear);
+    if (!img.empty())
+        turn_pixels(turn, img.channels, img.data, img.width, img.height);
+    return img;
+}
 
 }  // namespace app

@@ -171,15 +171,10 @@ that stage is out of process. Masking, decoding and training are in-process.
 slangc 2026.12.0.1 hits an internal error on all three `ba_df_*` variants under
 Windows (`error[E99998]: Slang compilation aborted due to internal error`),
 deterministically; `float` and `double` are fine, and all three build on Linux.
-The double-float real is not the default (`--ba-real` defaults to `double`), so
-the workaround costs nothing on that platform:
-
-```bat
-build_develop.bat "-DSS_SFM_REALS=float;double"
-```
-
-`spirula sfm` then reports "variant not built into this binary" if something
-asks for `df`. Not yet reduced to a minimal repro or filed upstream.
+So `SS_SFM_REALS` defaults to `float;double` on Windows. The double-float real
+is not the default (`--ba-real` defaults to `double`), so this costs nothing
+unless someone asks for `--ba-real df`, which then reports "variant not built
+into this binary". Not yet reduced to a minimal repro or filed upstream.
 
 ### Known: `sfm_mask_test` fails on Windows
 

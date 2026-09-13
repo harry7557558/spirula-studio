@@ -14,6 +14,7 @@ namespace SlangProjectionUtils {
 #include <cooperative_groups.h>
 
 #include <cub/cub.cuh>
+#include <thrust/iterator/transform_iterator.h>
 
 
 namespace cg = cooperative_groups;
@@ -119,8 +120,9 @@ inline __device__ int count_ellipse_grid_overlaps(
 }
 
 
-// cub::Sum takes one accumulator type, so widen the int32 counts on the way
-// in rather than summing them in the type that overflows.
+// DeviceReduce::Sum accumulates in the input type, so widen the int32 counts on
+// the way in. thrust's iterator, not cub::TransformInputIterator: CCCL 3
+// (CUDA 13) removed it.
 struct WidenToI64 {
     __host__ __device__ int64_t operator()(int32_t v) const {
         return (int64_t)v;
@@ -492,7 +494,7 @@ std::tuple<
         if (total_count > 0) {
             DeviceVector<int64_t> isect_total;
             isect_total.resize(PoolSlot::IsectTotal, 1);
-            cub::TransformInputIterator<int64_t, WidenToI64, const int32_t*>
+            thrust::transform_iterator<WidenToI64, const int32_t*, int64_t>
                 widened(tiles_per_splat.data_ptr(), WidenToI64{});
             CUB_WRAPPER(cub::DeviceReduce::Sum, widened, isect_total.data_ptr(),
                         (int)total_count);
