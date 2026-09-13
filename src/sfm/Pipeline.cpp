@@ -56,6 +56,7 @@
 #include "sfm/map/SensorGauge.h"
 #include "sfm/map/Merge.h"
 
+#include "i18n/TimeFormat.h"
 #include "i18n/catalog/Sfm.h"
 
 namespace fs = std::filesystem;
@@ -65,6 +66,7 @@ namespace sfm {
 namespace L = sfm::slog;
 namespace M = spirula::i18n::msg::sfm;
 using sfm::slog::Tag;
+using spirula::i18n::format_duration;
 
 bool isImageExt(const std::string& e) {
     std::string s;
@@ -760,15 +762,16 @@ void printAssembly(const AssembleStats& ast, size_t models, Tag tag) {
     if (!ast.models_in) return;
     const ManagerStats& f = ast.finish;
     L::out(tag, M::map_assembled,
-           {L::num(ast.t_merge + ast.t_ba + ast.t_grow + ast.finishSecs(), 2),
+           {format_duration(ast.t_merge + ast.t_ba + ast.t_grow + ast.finishSecs()),
             (long long)ast.models_in,
             (long long)models, (long long)ast.rounds, (long long)ast.merges,
             (long long)ast.merges_refused, (long long)ast.grown_images,
             (long long)f.covered_before, (long long)f.covered_after});
     L::out(tag, M::map_finishing,
-           {L::num(ast.finishSecs(), 1), (long long)f.splits, (long long)f.duplicate_splits,
-            (long long)f.reseeded_models, (long long)f.dropped_redundant,
-            (long long)f.audited_repaired, (long long)f.audited_out});
+           {format_duration(ast.finishSecs()), (long long)f.splits,
+            (long long)f.duplicate_splits, (long long)f.reseeded_models,
+            (long long)f.dropped_redundant, (long long)f.audited_repaired,
+            (long long)f.audited_out});
 }
 
 // Flat or bottom-up, per --mapper; flat is the default and what the
@@ -838,7 +841,7 @@ std::vector<Reconstruction> finishModels(Mapper& mapper,
                 m = mapper.polish(m, cfg.final_principal_point, cfg.final_extra_params);
         if (verbose)
             L::err(Tag::Map, M::map_final_intrinsics,
-                   {(long long)models.size(), L::num(now() - t0, 1)});
+                   {(long long)models.size(), format_duration(now() - t0)});
     }
     if (cfg.final_per_image_intrinsics) {
         const double t1 = now();
@@ -846,14 +849,14 @@ std::vector<Reconstruction> finishModels(Mapper& mapper,
             m = mapper.perImageIntrinsics(m, cfg.final_extra_params);
         if (verbose)
             L::err(Tag::Map, M::map_per_image_done,
-                   {(long long)models.size(), L::num(now() - t1, 1)});
+                   {(long long)models.size(), format_duration(now() - t1)});
     }
     if (cfg.final_free_rig && mapper.rigs()) {
         const double t1 = now();
         for (Reconstruction& m : models) m = mapper.releaseRigs(m);
         if (verbose)
             L::err(Tag::Map, M::map_free_rig_done,
-                   {(long long)models.size(), L::num(now() - t1, 1)});
+                   {(long long)models.size(), format_duration(now() - t1)});
     }
     secs = now() - t0;
     return models;
@@ -1345,7 +1348,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             L::err(Tag::Match, M::match_prefilter_kept,
                    {(long long)pairs.size(), (long long)stats.scored,
                     popt.num_features, popt.num_neighbors,
-                    L::num(stats.select_seconds, 1)});
+                    format_duration(stats.select_seconds)});
     } else {
         pairs = generatePairs((uint32_t)n_images, mode, cfg.overlap);
         // Loop closure. A sequential chain has no link between the start and
@@ -1369,7 +1372,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 L::err(Tag::Match, M::match_loop_closure_added,
                        {(long long)(pairs.size() - seq), (long long)seq,
                         (long long)extra.size(),
-                        L::num(stats.select_seconds, 1)});
+                        format_duration(stats.select_seconds)});
         }
     }
     if (res && !reused_pairs) resume::writePairs(res->dir / "pairs.bin", res->signature, pairs);
@@ -1461,7 +1464,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                                            cfg.threads, verbose);
                 if (verbose && !cs.focal_measured.empty())
                     L::err(Tag::Match, M::focal_epipolar_search,
-                           {L::num(now() - t_f, 1)});
+                           {format_duration(now() - t_f)});
             }
             if (cs.anyWide()) {
                 bootstrapGroupFocals(feats, cs.ids, sample, sm, cs.cameras, cs.focal_given,
@@ -1488,7 +1491,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                                   L::num(kv.second.focal(), 1);
                     }
                     L::err(Tag::Match, M::match_bearings,
-                           {L::num(now() - t_b, 1),
+                           {format_duration(now() - t_b),
                             L::num(bc.bytes() / 1048576.0, 0), focals});
                 }
             }
@@ -1840,7 +1843,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     const uint32_t reg = rec.numRegistered();
     L::out(Tag::Run, M::sum_header);
     L::out(Tag::Run, M::sum_extract,
-           {L::num(t_extract, 2), (long long)est.images, (long long)est.features});
+           {format_duration(t_extract), (long long)est.images,
+            (long long)est.features});
     if (est.masked_images) {
         // Over what this run extracted, like the warning above: a reused
         // feature file does not say what a mask took out of it.
@@ -1855,15 +1859,16 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
                {(long long)mstats.kept, (long long)mstats.inliers});
     else
         L::out(Tag::Run, M::sum_match,
-               {L::num(t_match, 2), (long long)mstats.kept, (long long)mstats.pairs,
+               {format_duration(t_match), (long long)mstats.kept, (long long)mstats.pairs,
                 (long long)mstats.inliers, (long long)mstats.putative});
     L::out(Tag::Run, M::sum_map,
-           {L::num(t_map, 2), (long long)reg, (long long)est.images,
+           {format_duration(t_map), (long long)reg, (long long)est.images,
             (long long)rec.points3D.size(), (long long)n_cameras});
     printAssembly(ast, models.size(), Tag::Run);
     printFolderCoverage(models, db);
     writeUnregisteredList(models, db, _imagedir);
-    L::out(Tag::Run, M::sum_total, {L::num(t_extract + t_match + t_map, 2)});
+    L::out(Tag::Run, M::sum_total,
+           {format_duration(t_extract + t_match + t_map)});
     L::out(Tag::Run, M::sum_model_error,
            {L::num(mean, 3), L::num(median, 3), (long long)nobs});
     if (models.size() > 1) {

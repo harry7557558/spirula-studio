@@ -576,18 +576,6 @@ std::string train_config_unsupported(const TrainConfig& c) {
     return {};
 }
 
-std::string format_duration(double seconds) {
-    if (seconds < 0) return "--:--";
-    int t = (int)(seconds + 0.5);
-    char buf[32];
-    if (t >= 3600)
-        std::snprintf(buf, sizeof buf, "%d:%02d:%02d", t / 3600, (t / 60) % 60,
-                      t % 60);
-    else
-        std::snprintf(buf, sizeof buf, "%d:%02d", t / 60, t % 60);
-    return buf;
-}
-
 // Unported-feature guards: fail early rather than ignore a flag.
 void TrainerSession::check_config() {
     if (std::string what = train_config_unsupported(cfg); !what.empty())
