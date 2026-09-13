@@ -28,6 +28,16 @@ std::string TrainRunner::error() {
     return _error;
 }
 
+std::optional<backend::BudgetFailure> TrainRunner::memory_failure() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return _memory_failure;
+}
+
+std::optional<TrainRunner::MemoryStatus> TrainRunner::memory_status() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return _memory_status;
+}
+
 spirula::TrainerProgress TrainRunner::latest_progress() {
     std::lock_guard<std::mutex> lk(_mu);
     return _latest;
@@ -83,16 +93,51 @@ void TrainRunner::request_stop(bool save) {
 
 void TrainRunner::shutdown() {
     request_stop();
-    join_worker();
+    // Stop the web viewer before joining the worker: its render thread takes
+    // engine_mutex, which the training loop needs to finish the step in flight
+    // and write the final checkpoint. Joining first would deadlock the stop.
     if (_web_viewer) { _web_viewer->stop(); _web_viewer.reset(); }
+    join_worker();
+}
+
+void TrainRunner::note_engine_taken() {
+    TrainerSession* session;
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        session = _session.get();
+        _engine_ready = false;
+    }
+    if (session) session->release_engine_budget();
+}
+
+void TrainRunner::cleanup_failed_engine() {
+    // Joining a live worker would hang; only TrainError owes cleanup.
+    // The exchange below makes repeated cleanup harmless.
+    if (_phase.load() != Phase::TrainError) return;
+    if (!_engine_dirty.exchange(false)) return;
+
+    // Outside _mu, and without engine_mutex: ViewerServer::stop() joins the
+    // render worker, and join_worker() waits on the training thread -- the
+    // failing worker is unwinding out of its lock_guard, so it holds nothing.
+    if (_web_viewer) { _web_viewer->stop(); _web_viewer.reset(); }
+    join_worker();
+
+    // The engine is a process-global singleton; the failed session left its
+    // state in it. This resets the engine only -- the checkpoints on disk are
+    // the run's result and are never touched.
+    if (_session) _session->reset_engine();
+    _engine_ready = false;
 }
 
 void TrainRunner::load_dataset(const TrainConfig& cfg, const std::string& preset) {
     shutdown();
     _engine_ready = false;
+    _engine_dirty = false;
     {
         std::lock_guard<std::mutex> lk(_mu);
         _error.clear();
+        _memory_failure.reset();
+        _memory_status.reset();
     }
     _session.reset(new TrainerSession());
     _session->cfg = cfg;
@@ -116,9 +161,12 @@ void TrainRunner::load_dataset(const TrainConfig& cfg, const std::string& preset
 void TrainRunner::start_training(const TrainConfig& cfg, const std::string& preset) {
     shutdown();
     _engine_ready = false;
+    _engine_dirty = false;
     {
         std::lock_guard<std::mutex> lk(_mu);
         _error.clear();
+        _memory_failure.reset();
+        _memory_status.reset();
         _latest = {};
         _latencies.clear();
         _metrics.clear();
@@ -133,7 +181,15 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
         try {
             s->check_config();
             s->load_dataset();
+            // From here on the engine may hold this session's state, so a
+            // failure owes cleanup_failed_engine() a call.
+            _engine_dirty = true;
             s->setup_engine();
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _memory_status = MemoryStatus{
+                    s->memory_estimate, s->memory_allowance};
+            }
             s->viewer_base_camera_size = viewer_upload_cameras(s->post);
             viewer_upload_grid(s->post);
             _engine_ready = true;
@@ -172,10 +228,22 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
                 _metrics.push_back(m);
             };
             s->train(cb);
+            _engine_dirty = false;   // the engine belongs to a live session
             _phase = Phase::Done;
+        } catch (const backend::BudgetError& e) {
+            // Preserve structured refusal fields for localization; error()
+            // remains the fallback. The GUI resets after renderers detach.
+            std::lock_guard<std::mutex> lk(_mu);
+            _error = e.what();
+            _memory_failure = e.failure;
+            _memory_status = MemoryStatus{
+                s->memory_estimate, s->memory_allowance};
+            _engine_ready = false;
+            _phase = Phase::TrainError;
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> lk(_mu);
             _error = e.what();
+            _engine_ready = false;
             _phase = Phase::TrainError;
         }
     });

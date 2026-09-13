@@ -228,7 +228,7 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
                 ? std::make_tuple((uint64_t)ref_alpha, (uint32_t)1,
                                   std::vector<int64_t>{c.B, Ha, Wa, 1})
                 : ttv_null(),
-            /*has_mask=*/c.with_alpha, weights, w_ssim, c.sat,
+            /*has_mask=*/c.with_alpha, weights, w_ssim, 1.0f, c.sat,
             ttv(v_losses, {(int)LossIndex::length}), needs, num_train,
             cams ? ttv(cams, {c.B}) : ttv_null(),
             ttv(loss_map_out, {c.B, c.H, c.W, 1}), c.loss_map_mode,

@@ -457,18 +457,9 @@ std::map<std::string, float> engine_train_step_managed(
 // the worker is parked on, false abandons the pipeline. See DataManager.h.
 void engine_resolve_data_error(bool retry);
 
-// Pull the next batch from the DataManager, install it as GT + camera params,
-// and run the forward pass only -- no loss, no backward, no optimizer, no
-// densification. What an eval pass needs: it reuses the same decode, mask and
-// fisheye/equirect warp path training does, so eval GT is the warped GT and
-// not a host-side reconstruction of it.
-//
-// Afterwards `engine_copy_gt_rgb_to_host` and `engine_copy_render_to_host`
-// read the pair back. Returns the POST-split view count in the batch (K per
-// input image), or 0 when the stream is exhausted.
-//
-// Call `engine_setup_data_manager` with the eval split first; that replaces
-// the training DataManager, so this belongs after the training loop.
+// One forward-only face pass per call; returns its view count, then 0 at exhaustion.
+// Configure the eval-only dataset with all input indices as train_indices first.
+// Read GT/render before the next call; serialize calls with the engine mutex.
 int engine_eval_forward(std::string primitive, int sh_degree, bool packed);
 
 // Same, for ONE image by dataset index (the GUI's compare view), rendering one

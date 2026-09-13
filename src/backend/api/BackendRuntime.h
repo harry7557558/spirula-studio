@@ -68,6 +68,8 @@ bool device_select(int index);
 // it would pick (explicit selection, then backend env override, then
 // auto-score). -1 if no usable device.
 int device_current();
+// Initializes the selected device. Call only when device selection is final.
+bool device_prepare();
 
 // --- device memory usage (best-effort, for status/telemetry UIs) ---
 // Snapshot of VRAM usage on the current device. Each field is independently
@@ -134,11 +136,95 @@ inline std::string _fmt_bytes(uint64_t bytes) {
            "training image resolution, or a GPU with more memory.";
     throw std::runtime_error(msg);
 }
+// --- budget management & failure reporting ---
+enum class BudgetStatus {
+    Available,
+    Unavailable,
+    QueryError,
+};
+
+enum class BudgetFailureKind {
+    DriverHeadroom,
+    ApplicationLimit,
+    TelemetryUnavailable,
+    TelemetryError,
+};
+
+struct BudgetSnapshot {
+    BudgetStatus status = BudgetStatus::Unavailable;
+    uint64_t available_bytes = 0;
+    uint64_t total_bytes = 0;
+    uint64_t process_bytes = 0;
+    uint64_t reserved_bytes = 0;
+    uint64_t app_limit_bytes = 0;
+    uint64_t reserve_bytes = 0;
+    int device_index = -1;
+    int heap_index = -1;
+};
+
+struct BudgetFailure {
+    BudgetFailureKind kind = BudgetFailureKind::DriverHeadroom;
+    uint64_t requested_bytes = 0;
+    uint64_t available_bytes = 0;
+    int device_index = -1;
+    int heap_index = -1;
+};
+
+inline std::string _format_budget_failure(const BudgetFailure& f) {
+    std::string msg = "GPU memory budget exceeded: ";
+    switch (f.kind) {
+        case BudgetFailureKind::DriverHeadroom:
+            msg += "insufficient driver headroom (requested " + _fmt_bytes(f.requested_bytes) +
+                   ", available " + _fmt_bytes(f.available_bytes) + ")";
+            break;
+        case BudgetFailureKind::ApplicationLimit:
+            msg += "application memory limit reached (requested " + _fmt_bytes(f.requested_bytes) +
+                   ", available " + _fmt_bytes(f.available_bytes) + ")";
+            break;
+        case BudgetFailureKind::TelemetryUnavailable:
+            msg += "GPU memory budget telemetry unavailable";
+            break;
+        case BudgetFailureKind::TelemetryError:
+            msg += "GPU memory budget telemetry query error";
+            break;
+    }
+    return msg;
+}
+
+// BudgetError carries structured failure data for programmatic handling and localization.
+// The English what() string is diagnostic fallback only; frontends localize from structured fields.
+class BudgetError : public std::runtime_error {
+public:
+    BudgetFailure failure;
+
+    explicit BudgetError(const BudgetFailure& f, const std::string& msg = "")
+        : std::runtime_error(msg.empty() ? _format_budget_failure(f) : msg),
+          failure(f) {}
+    explicit BudgetError(const BudgetFailure& f, const char* msg)
+        : std::runtime_error((msg && msg[0]) ? std::string(msg) : _format_budget_failure(f)),
+          failure(f) {}
+};
+
+BudgetSnapshot budget_snapshot();
+void training_budget_begin(uint64_t reserve_bytes, uint64_t app_limit_bytes = 0);
+void training_budget_end();
+bool training_budget_active();
+bool consume_budget_failure(BudgetFailure& failure);
+
 // device_malloc that throws the friendly OOM error above instead of returning
 // null. A zero-byte request still returns null (a valid no-op allocation).
 inline void* device_malloc_checked(size_t bytes, const char* what = nullptr) {
     void* ptr = device_malloc(bytes);
-    if (!ptr && bytes > 0) throw_out_of_memory(bytes, what);
+    if (!ptr && bytes > 0) {
+        BudgetFailure failure{};
+        if (consume_budget_failure(failure)) {
+            if (what && what[0]) {
+                throw BudgetError(failure, _format_budget_failure(failure) + " for " + what);
+            }
+            throw BudgetError(failure);
+        }
+        throw_out_of_memory(bytes, what);
+    }
     return ptr;
 }
 

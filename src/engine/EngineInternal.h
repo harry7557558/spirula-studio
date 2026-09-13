@@ -144,6 +144,11 @@ void _engine_bilagrid_backward_hook(
     TorchTensorView v_ref_normal);
 void _ensure_bilagrid_optim_state();
 void _engine_bilagrid_tv_into(float* tv_buf3_device);
+void _engine_bilagrid_split_grad_begin(int total_cameras);
+void _engine_bilagrid_split_grad_slice(int offset, int count);
+void _engine_bilagrid_split_grad_end();
+void _engine_bilagrid_split_grad_finish();
+void _engine_test_fail_split_after_pass(int passes);
 
 // Background blend: forward runs inside forward_3dgs, out of place, so viewer
 // renders blend too. The backward hook adds v_T, rewrites v_render_rgb, and

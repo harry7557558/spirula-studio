@@ -44,6 +44,11 @@ BinTileChoice& bin_choice() {
     return engine().bin_tile_auto[((uint64_t)engine().camera.width << 32) |
                                   (uint32_t)engine().camera.height];
 }
+
+bool memory_trace() {
+    static const bool on = spirula::env_on("MEMORY_TRACE");
+    return on;
+}
 }  // namespace
 
 // Window and margin come from the noise floor: repeated runs vary ~4% where
@@ -438,6 +443,27 @@ void forward_3dgs(
     // blend operates in the splat working color space:
     // render -> bg -> [PPISP] -> display encode -> bilagrid -> [PPISP] -> loss.
     _engine_color_space_forward();
+
+    if (memory_trace()) {
+        const int64_t visible_pairs = packed
+            ? (int64_t)engine().fwd.camera_ids.size() : -1;
+        const int64_t intersections = (int64_t)engine().fwd.flatten_ids.size();
+        std::fprintf(stderr,
+                     "[spirula-memory] event=forward device=%d "
+                     "active_faces=%d extent_width=%d extent_height=%d "
+                     "live_splats=%lld visible_pairs=%lld "
+                     "visible_pairs_available=%d intersection_count=%lld "
+                     "bin_macro_log2_request=%d bin_macro_log2=%d "
+                     "bin_tile_px=%d packed=%d\n",
+                     backend::device_current(), (int)engine().camera.num,
+                     (int)engine().camera.width, (int)engine().camera.height,
+                     (long long)engine().cur_num_splats,
+                     (long long)visible_pairs, (int)packed,
+                     (long long)intersections,
+                     macro_before, engine().fwd.macro_log2,
+                     bin_tile_x(engine().fwd.macro_log2),
+                     (int)packed);
+    }
 
     // Results stay in pool — use engine_copy_render_to_host to fetch
 }

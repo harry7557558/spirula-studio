@@ -254,12 +254,13 @@ void _engine_background_backward_hook(
             rgb_pre, Ts_in, bg_image, overexposure_reg_weight,
             v_out, v_rgb, v_Ts_scratch_dt, v_bg);
 
-        // v_sh_coeffs: zero per-iter, persists past hook for the optim step.
+        // Split passes accumulate into one optimizer update.
         int64_t sh_n = bg.sh_coeffs.size();
         float* v_sh_dev = DevicePool::global().acquire<float>(
             PoolSlot::EngBgSkyVSh, (size_t)sh_n * 3);
-        backend::memset_async(v_sh_dev, 0, sh_n * 3 * sizeof(float),
-                              backend::kDefaultStream);
+        if (!engine().optim.skip_grad_zero)
+            backend::memset_async(v_sh_dev, 0, sh_n * 3 * sizeof(float),
+                                  backend::kDefaultStream);
         TorchTensorView v_sh_tv((uint64_t)v_sh_dev, 4, {sh_n, 3LL});
 
         TorchTensorView bg_image_tv = _dt3d_tv(bg.fwd_background);

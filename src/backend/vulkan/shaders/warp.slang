@@ -198,10 +198,10 @@ void _wp_axes(float* axes, int p, out float3 ax, out float3 ay,
 // face_pixel_ray mirror: pixel (i, j) of post camera p through the face's own
 // pinhole intrinsics, then its frame.
 [ForceInline]
-float3 _wp_face_ray(float* axes, float* post_intrins, int p, int i, int j) {
+float3 _wp_face_ray(float* axes, float* post_intrins, int p, float i, float j) {
     float4 k = _wp_intrin(post_intrins, p);
-    float u = (float(i) + 0.5f - k.z) / k.x;
-    float v = (float(j) + 0.5f - k.w) / k.y;
+    float u = (i + 0.5f - k.z) / k.x;
+    float v = (j + 0.5f - k.w) / k.y;
     float3 ax, ay, az;
     _wp_axes(axes, p, ax, ay, az);
     return az + u * ax + v * ay;
@@ -320,11 +320,45 @@ struct WarpParams {
     int _pad0;
 };
 
+struct NormalWarpParams {
+    float* intrins;
+    float* dist_coeffs;
+    int* source_models;
+    float* source_params;
+    uint* src;
+    float* dst;
+    float* axes;
+    float* post_intrins;
+    int B;
+    int Hin;
+    int Win;
+    int K;
+    int Hout;
+    int Wout;
+    int elem_kind;
+    int camera_model;
+    int ref_H;
+    int ref_W;
+    int face_ref_H;
+    int face_ref_W;
+    float norm_inv;
+    float decode_off;
+};
+
 // 16x16 logical tile decode: flat 256-wide workgroups (the pinned 32-wide
 // subgroup divides 256), grid = (ceil(Wout/16), ceil(Hout/16), B).
 [ForceInline]
 bool _wp_tile(WarpParams p, uint3 wg, uint tid, out int i, out int j,
               out int bid) {
+    i = int(wg.x) * 16 + int(tid % 16u);
+    j = int(wg.y) * 16 + int(tid / 16u);
+    bid = int(wg.z);
+    return i < p.Wout && j < p.Hout;
+}
+
+[ForceInline]
+bool _nwp_tile(NormalWarpParams p, uint3 wg, uint tid, out int i, out int j,
+               out int bid) {
     i = int(wg.x) * 16 + int(tid % 16u);
     j = int(wg.y) * 16 + int(tid / 16u);
     bid = int(wg.z);
@@ -442,14 +476,19 @@ void warp_depth_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
 }
 
 [ForceInline]
-void _wp_normal_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
+void _wp_normal_wide<D : ICameraDistortion>(NormalWarpParams p, int i, int j,
                                             int bid) {
     float4 intrin = _wp_intrin(p.intrins, bid);
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
     float sx = float(p.Win) / float(p.ref_W), sy = float(p.Hin) / float(p.ref_H);
+    float face_sx = float(p.face_ref_W) / float(p.Wout);
+    float face_sy = float(p.face_ref_H) / float(p.Hout);
     for (int ki = 0; ki < p.K; ki++) {
         int pc = bid * p.K + ki;
-        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc, i, j);
+        float face_i = (float(i) + 0.5f) * face_sx - 0.5f;
+        float face_j = (float(j) + 0.5f) * face_sy - 0.5f;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc,
+                                     face_i, face_j);
         float2 uv;
         bool valid = _wp_to_pixel<D>(p.camera_model, raydir, intrin,
                                      p.dist_coeffs, p.source_models,
@@ -470,24 +509,29 @@ void _wp_normal_wide<D : ICameraDistortion>(WarpParams p, int i, int j,
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
-void warp_normal_wide(uniform WarpParams p, uint3 wg: SV_GroupID,
+void warp_normal_wide(uniform NormalWarpParams p, uint3 wg: SV_GroupID,
                       uint tid: SV_GroupIndex) {
     int i, j, bid;
-    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
+    if (!_nwp_tile(p, wg, tid, i, j, bid)) return;
     SS_DISPATCH_DIST(_wp_normal_call)
 }
 #undef _wp_normal_call
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
-void warp_normal_equi(uniform WarpParams p, uint3 wg: SV_GroupID,
+void warp_normal_equi(uniform NormalWarpParams p, uint3 wg: SV_GroupID,
                       uint tid: SV_GroupIndex) {
     int i, j, bid;
-    if (!_wp_tile(p, wg, tid, i, j, bid)) return;
+    if (!_nwp_tile(p, wg, tid, i, j, bid)) return;
     gindex_t plane = gindex_t(bid) * p.Hin * p.Win;
+    float face_sx = float(p.face_ref_W) / float(p.Wout);
+    float face_sy = float(p.face_ref_H) / float(p.Hout);
     for (int ki = 0; ki < p.K; ki++) {
         int pc = bid * p.K + ki;
-        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc, i, j);
+        float face_i = (float(i) + 0.5f) * face_sx - 0.5f;
+        float face_j = (float(j) + 0.5f) * face_sy - 0.5f;
+        float3 raydir = _wp_face_ray(p.axes, p.post_intrins, pc,
+                                     face_i, face_j);
         float2 uv;
         float3 nf = float3(-1.0f);
         if (_wp_equi_uv(raydir, p.Hin, p.Win, uv))

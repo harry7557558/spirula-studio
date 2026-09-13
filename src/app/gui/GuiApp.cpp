@@ -954,7 +954,10 @@ void GuiApp::advance_batch() {
             // driver fault. Recorded on the row and left behind -- the point
             // of a queue is that the next dataset still gets its turn.
             j.status = BatchJob::Status::Failed;
-            j.message = _runner.error();
+            if (auto failure = _runner.memory_failure())
+                j.message = spirula::budget_failure_message(*failure);
+            else
+                j.message = _runner.error();
             log(i18n::format(msg::batch_log_job_failed, {n, j.message}));
         }
         _batch_launched = false;
@@ -1808,6 +1811,10 @@ void GuiApp::frame() {
     // measure half the window against one scale and half against the other.
     _scale.update(ImGui::GetIO().DisplaySize);
 
+    if (_runner.phase() == TrainRunner::Phase::TrainError) {
+        detach_session_views();
+        _runner.cleanup_failed_engine();
+    }
     append_logs();
     run_pending_if_stopped();
     // vit-giant2 is two files, and so is ALIKED with LightGlue: both fetches
@@ -5900,8 +5907,13 @@ void GuiApp::draw_train_controls() {
         case TrainRunner::Phase::LoadError:
         case TrainRunner::Phase::Done:
         case TrainRunner::Phase::TrainError: {
-            if (ph == TrainRunner::Phase::TrainError)
-                ui::TextColoredWrappedRaw(kErr, _runner.error());
+            if (ph == TrainRunner::Phase::TrainError) {
+                if (auto failure = _runner.memory_failure())
+                    ui::TextColoredWrappedRaw(
+                        kErr, spirula::budget_failure_message(*failure));
+                else
+                    ui::TextColoredWrappedRaw(kErr, _runner.error());
+            }
             if (ph == TrainRunner::Phase::Done) {
                 const bool saved = _runner.saved_on_stop();
                 ui::TextColored(saved ? kOk : kWarn,
@@ -6056,6 +6068,8 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     double now = ImGui::GetTime();
     if (_vram_polled_at < 0.0 || now - _vram_polled_at > 0.5) {
         _vram = backend::memory_usage();
+        _budget = backend::training_budget_active()
+            ? backend::budget_snapshot() : backend::BudgetSnapshot{};
         _vram_polled_at = now;
     }
     const backend::MemoryUsage& m = _vram;
@@ -6068,9 +6082,6 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
         return has ? format_gib(bytes) : std::string("?");
     };
 
-    // A bar, because what matters here is a proportion: how close the device
-    // is to full, and how much of that is this program rather than everything
-    // else on the card. Three numbers in a row said neither without arithmetic.
     const bool sized = m.has_total && m.total_bytes > 0;
     const double total = sized ? (double)m.total_bytes : 0.0;
     const double used = m.has_used ? (double)m.used_bytes : (double)m.process_bytes;
@@ -6084,9 +6095,7 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     if (sized && m.has_used)
         color = used_f >= 0.9f ? kErr : used_f >= 0.7f ? kWarn : kOk;
 
-    // The same three numbers vram_help names, in that order: what this run
-    // costs is the one a user is deciding on, and it is not recoverable from
-    // the other two.
+    // Field order must match vram_help.
     const std::string label =
         sized ? part(m.has_process, m.process_bytes) + " / " +
                     part(m.has_used, m.used_bytes) + " / " +
@@ -6096,9 +6105,7 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     const ImGuiStyle& st = ImGui::GetStyle();
     const float text_w = ImGui::CalcTextSize(label.c_str()).x;
     ImGui::SameLine();
-    // The bar is the first thing to give when the row is short -- the numbers
-    // beside it say everything it does. Without this the readout ran off the
-    // right edge of a narrow panel, or of any panel at a large interface size.
+    // Keep the numeric readout when a large UI scale leaves no room for the bar.
     float bar_w = sized ? px(120.0f) : 0.0f;
     float gap = sized ? st.ItemInnerSpacing.x : 0.0f;
     float target = x0 + avail - bar_w - gap - text_w - px(8.0f);
@@ -6115,7 +6122,6 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
         const float r = st.FrameRounding;
         dl->AddRectFilled(p, ImVec2(p.x + bar_w, p.y + h),
                           ImGui::GetColorU32(ImGuiCol_FrameBg), r);
-        // Everything in use, dim; this process's share of it, solid on top.
         ImVec4 rest = color;
         rest.w = 0.35f;
         if (used_f > 0.0f)
@@ -6132,6 +6138,24 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     }
     ui::TextColoredRaw(sized ? kDim : color, label);
     ui::help_on_hover(msg::vram_help);
+    if (auto status = _runner.memory_status()) {
+        uint64_t tracked_bytes = _budget.process_bytes;
+        if (UINT64_MAX - tracked_bytes < _budget.reserved_bytes)
+            tracked_bytes = UINT64_MAX;
+        else
+            tracked_bytes += _budget.reserved_bytes;
+        std::string tracked =
+            _budget.status == backend::BudgetStatus::Available
+                ? backend::_fmt_bytes(tracked_bytes) : "?";
+        ui::TextDisabled(
+            msg::vram_budget,
+            {tracked, backend::_fmt_bytes(status->allowance),
+             backend::_fmt_bytes(status->estimate.estimated_bytes())});
+        ui::help_on_hover(
+            msg::vram_budget_help,
+            {backend::_fmt_bytes(status->estimate.accounted_bytes),
+             backend::_fmt_bytes(status->estimate.conservative_allowance_bytes)});
+    }
 }
 
 // ---------------------------------------------------------------------------

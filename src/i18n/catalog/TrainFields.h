@@ -578,6 +578,82 @@ SS_MSG(keep_viewer_alive_help,
     TR("Eğitim bitince programı kapatmaz; sonuç görüntüleyicide açık kalır. Çıkmak "
        "için Ctrl-C'ye basın. Görüntüleyici kapalıyken etkisi yoktur."));
 
+SS_MSG(memory_limit_gib,
+    EN("GPU memory limit"), JA("GPU メモリの上限"),
+    ZH_HANS("GPU 内存上限"), ZH_HANT("GPU 記憶體上限"),
+    KO("GPU 메모리 상한"), DE("GPU-Speichergrenze"),
+    FR("Limite de mémoire GPU"), ES("Límite de memoria de la GPU"),
+    PT("Limite de memória da GPU"), IT("Limite di memoria GPU"),
+    NL("Limiet voor GPU-geheugen"), RU("Предел памяти GPU"),
+    TR("GPU bellek sınırı"));
+SS_MSG(memory_limit_gib_help,
+    EN("Cap on the GPU memory Spirula may use for training, in GiB. Leave unset "
+       "to use whatever the device has free. The cap only lowers the ceiling: "
+       "the live headroom of the device still applies, so a limit above the free "
+       "memory changes nothing, and training is refused up front when the "
+       "estimated need does not fit."),
+    JA("学習で Spirula が使ってよい GPU メモリの上限を GiB で指定します。未設定"
+       "ならデバイスの空きメモリをそのまま使います。この上限は天井を下げるだけ"
+       "で、デバイスの実際の空き容量も引き続き適用されます。空きメモリより大き"
+       "い値を指定しても何も変わりません。推定必要量が収まらない場合は、学習を"
+       "始める前に拒否されます。"),
+    ZH_HANS("Spirula 训练时可用的 GPU 内存上限，以 GiB 计。不设置则使用设备的全"
+            "部可用内存。该上限只是把天花板压低：设备的实时余量仍然生效，所以设"
+            "得比可用内存还大不会有任何变化；若预估需求放不下，训练会在开始前就"
+            "被拒绝。"),
+    ZH_HANT("Spirula 訓練時可用的 GPU 記憶體上限，以 GiB 計。不設定則使用裝置的"
+            "全部可用記憶體。此上限只是把天花板壓低：裝置的即時餘量仍然生效，"
+            "所以設得比可用記憶體還大不會有任何變化；若預估需求放不下，訓練會在"
+            "開始前就被拒絕。"),
+    KO("학습에 Spirula가 쓸 수 있는 GPU 메모리 상한을 GiB로 지정합니다. 설정하지 "
+       "않으면 장치의 남은 메모리를 그대로 씁니다. 이 상한은 천장을 낮출 뿐이며, "
+       "장치의 실시간 여유분도 계속 적용됩니다. 남은 메모리보다 큰 값을 넣어도 "
+       "아무것도 달라지지 않고, 예상 필요량이 들어가지 않으면 학습은 시작 전에 "
+       "거부됩니다."),
+    DE("Obergrenze für den GPU-Speicher, den Spirula zum Trainieren nutzen darf, "
+       "in GiB. Nicht gesetzt wird der freie Speicher des Geräts genutzt. Die "
+       "Grenze senkt nur die Decke: Der aktuelle freie Platz des Geräts gilt "
+       "weiterhin, ein Wert über dem freien Speicher ändert also nichts, und das "
+       "Training wird vorab abgelehnt, wenn der geschätzte Bedarf nicht hineinpasst."),
+    FR("Plafond de mémoire GPU que Spirula peut utiliser pour l'entraînement, en "
+       "GiB. Non défini, la mémoire libre du périphérique est utilisée. Ce plafond "
+       "ne fait que baisser la limite haute : la marge libre réelle du périphérique "
+       "s'applique toujours, donc une valeur supérieure à la mémoire libre ne "
+       "change rien, et l'entraînement est refusé d'emblée si le besoin estimé "
+       "ne rentre pas."),
+    ES("Límite de memoria de la GPU que Spirula puede usar para entrenar, en GiB. "
+       "Sin definir, se usa la memoria libre del dispositivo. El límite solo baja "
+       "el techo: el margen libre real del dispositivo sigue aplicándose, así que "
+       "un valor por encima de la memoria libre no cambia nada, y el entrenamiento "
+       "se rechaza de antemano si la necesidad estimada no cabe."),
+    PT("Limite de memória da GPU que o Spirula pode usar para treinar, em GiB. "
+       "Sem definir, usa-se a memória livre do dispositivo. O limite apenas baixa "
+       "o teto: a folga livre real do dispositivo continua a aplicar-se, por isso "
+       "um valor acima da memória livre não muda nada, e o treinamento é recusado "
+       "logo à partida quando a necessidade estimada não cabe."),
+    IT("Limite di memoria GPU che Spirula può usare per l'addestramento, in GiB. "
+       "Se non impostato, si usa la memoria libera del dispositivo. Il limite "
+       "abbassa solo il tetto: il margine libero reale del dispositivo vale "
+       "comunque, quindi un valore sopra la memoria libera non cambia nulla, e "
+       "l'addestramento viene rifiutato in partenza se il fabbisogno stimato non "
+       "ci sta."),
+    NL("Limiet op het GPU-geheugen dat Spirula voor de training mag gebruiken, in "
+       "GiB. Niet ingesteld wordt de vrije ruimte van het apparaat gebruikt. De "
+       "limiet verlaagt alleen het plafond: de actuele vrije ruimte van het "
+       "apparaat blijft gelden, dus een waarde boven het vrije geheugen verandert "
+       "niets, en de training wordt vooraf geweigerd als de geschatte behoefte "
+       "er niet in past."),
+    RU("Предел памяти GPU, которую Spirula может занять под обучение, в ГиБ. "
+       "Если не задан, используется свободная память устройства. Предел лишь "
+       "опускает потолок: фактический запас устройства по-прежнему действует, "
+       "поэтому значение больше свободной памяти ничего не меняет, а обучение "
+       "отклоняется заранее, если расчётная потребность не помещается."),
+    TR("Spirula'nın eğitim için kullanabileceği GPU belleğinin GiB cinsinden "
+       "üst sınırı. Ayarlanmazsa aygıtın boş belleği kullanılır. Bu sınır yalnızca "
+       "tavanı indirir: aygıtın anlık boş payı yine geçerlidir; boş bellekten "
+       "büyük bir değer hiçbir şeyi değiştirmez ve tahmini ihtiyaç sığmıyorsa "
+       "eğitim daha başlamadan reddedilir."));
+
 
 // ===========================================================================
 // Dataset

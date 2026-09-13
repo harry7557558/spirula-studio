@@ -139,7 +139,7 @@ __global__ void warp_normal_wide_to_pinhole_kernel(
     TensorView<float, 5> pinhole_normal,                 // [B, K, H_out, W_out, 3]
     const float* __restrict__ post_intrins,              // [B*K, 4]
     const float* __restrict__ axes,                      // [B*K, 3, 3]
-    int in_H, int in_W,
+    int in_H, int in_W, int face_ref_H, int face_ref_W,
     float norm_inv, float decode_off
 ) {
     const int B  = wide_normal.shape[0],
@@ -157,9 +157,13 @@ __global__ void warp_normal_wide_to_pinhole_kernel(
         bid, camera_model, intrins, dist_coeffs_buffer, source_models, source_params);
     float sx = (float)Wn / (float)in_W, sy = (float)Hn / (float)in_H;
 
+    float face_sx = (float)face_ref_W / (float)Wp;
+    float face_sy = (float)face_ref_H / (float)Hp;
     for (int ki = 0; ki < K; ++ki) {
         const long p = (long)bid * K + ki;
-        float3 raydir = face_pixel_ray(axes, post_intrins, p, i, j);
+        float face_i = ((float)i + 0.5f) * face_sx - 0.5f;
+        float face_j = ((float)j + 0.5f) * face_sy - 0.5f;
+        float3 raydir = face_pixel_ray(axes, post_intrins, p, face_i, face_j);
         float2 uv;
         bool valid = to_pixel(raydir, &uv);
         float3 nf = make_float3(-1.0f, -1.0f, -1.0f);
@@ -180,6 +184,7 @@ __global__ void warp_normal_equirectangular_to_pinhole_kernel(
     TensorView<float, 5> pinhole_normal,                  // [B, K, H_out, W_out, 3]
     const float* __restrict__ post_intrins,
     const float* __restrict__ axes,
+    int face_ref_H, int face_ref_W,
     float norm_inv, float decode_off
 ) {
     const int B  = wide_normal.shape[0],
@@ -193,9 +198,13 @@ __global__ void warp_normal_equirectangular_to_pinhole_kernel(
     uint32_t j   = blockIdx.y * blockDim.y + threadIdx.y;
     if (bid >= B || i >= Wp || j >= Hp) return;
 
+    float face_sx = (float)face_ref_W / (float)Wp;
+    float face_sy = (float)face_ref_H / (float)Hp;
     for (int ki = 0; ki < K; ++ki) {
         const long p = (long)bid * K + ki;
-        float3 raydir = face_pixel_ray(axes, post_intrins, p, i, j);
+        float face_i = ((float)i + 0.5f) * face_sx - 0.5f;
+        float face_j = ((float)j + 0.5f) * face_sy - 0.5f;
+        float3 raydir = face_pixel_ray(axes, post_intrins, p, face_i, face_j);
         float2 uv;
         float3 nf = make_float3(-1.0f, -1.0f, -1.0f);
         if (equi_ray_to_uv(raydir, h, w, &uv))
@@ -311,6 +320,7 @@ void launch_warp_normal_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes)
 {
@@ -326,14 +336,15 @@ void launch_warp_normal_wide(
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
                     cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<uint8_t>((const uint8_t*)d_normal, B, Hin, Win, 3), \
-                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f / 127.5f,     \
-                    -1.0f);                                                       \
+                    out_v, d_post_intrins, d_axes, in_H, in_W,                 \
+                    face_ref_H, face_ref_W, 1.0f / 127.5f, -1.0f);             \
         } else {                                                                  \
             warp_normal_wide_to_pinhole_kernel<D, FROM, float>                    \
                 <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(                  \
                     cm, intrins_f4, dcb, d_source_models, d_source_params,        \
                     _make_tv4_in<float>((const float*)d_normal, B, Hin, Win, 3),  \
-                    out_v, d_post_intrins, d_axes, in_H, in_W, 1.0f, 0.0f);       \
+                    out_v, d_post_intrins, d_axes, in_H, in_W,                 \
+                    face_ref_H, face_ref_W, 1.0f, 0.0f);                       \
         }
     _SS_DISPATCH_SOURCE(distortion, d_source_models != nullptr, LAUNCH);
     #undef LAUNCH
@@ -345,6 +356,7 @@ void launch_warp_normal_equi(
     const void* d_normal, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes)
 {
@@ -353,12 +365,14 @@ void launch_warp_normal_equi(
         warp_normal_equirectangular_to_pinhole_kernel<uint8_t>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<uint8_t>((const uint8_t*)d_normal, B, Hin, Win, 3),
-                out_v, d_post_intrins, d_axes, 1.0f / 127.5f, -1.0f);
+                out_v, d_post_intrins, d_axes, face_ref_H, face_ref_W,
+                1.0f / 127.5f, -1.0f);
     } else if (elem_size == 4) {
         warp_normal_equirectangular_to_pinhole_kernel<float>
             <<<_LAUNCH_ARGS_3D(Wout, Hout, B, 16, 16, 1)>>>(
                 _make_tv4_in<float>((const float*)d_normal, B, Hin, Win, 3),
-                out_v, d_post_intrins, d_axes, 1.0f, 0.0f);
+                out_v, d_post_intrins, d_axes, face_ref_H, face_ref_W,
+                1.0f, 0.0f);
     } else {
         throw std::runtime_error("launch_warp_normal_equi: normal must be uint8 or float32");
     }

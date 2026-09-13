@@ -64,10 +64,8 @@ inline DistortionType engine_distortion_type(
 #include <vector>
 
 
-// Forward declaration so EngineState can hold a unique_ptr<DataManager>
-// without dragging the (thread- / queue- / stb_image-heavy) DataManager.h
-// into the dozens of TUs that include EngineState.h.
 class DataManager;
+struct DecodedBatch;
 
 
 // World splat parameters (allocated once at init; persistent on device).
@@ -280,6 +278,7 @@ struct SplatOptim {
     // skip_grad_zero, engine_optim_step reads grad_scale + zero_grad.
     bool   skip_grad_zero = false;     // _alloc_grad_buffers skips zeroing
     float  grad_scale     = 1.0f;      // multiplied into v_* inside optim
+    float  loss_grad_scale = 1.0f;     // scales loss cotangents for sub-batches
     bool   zero_grad_in_optim = false; // optim zeroes v_* after consuming
 };
 
@@ -291,6 +290,7 @@ struct SplatOptim {
 struct BilagridRGB {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     // Adam state
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
@@ -336,6 +336,7 @@ struct ColorShiftRegState {
 struct BilagridDepth {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
     DeviceTensor5D<float>      accum_f;
@@ -354,6 +355,7 @@ struct BilagridDepth {
 struct BilagridNormal {
     DeviceTensor5D<float>      grids;
     DeviceTensor5D<float>      image_grad;
+    DeviceTensor5D<float>      split_image_grad;
     DeviceTensor5D<float>      g1, g2;
     QuantizedAdamState<8, 256> quant_state;
     DeviceTensor5D<float>      accum_f;
@@ -569,6 +571,7 @@ struct EngineState {
     // once. Not a function-local static: engine_reset() frees the pool, and a
     // flag outliving it leaves the next scene reading the reallocated buffer.
     bool    v_losses_uploaded = false;
+    float   v_losses_scale = 0.0f;
 
     WorldSplats    world;
     CameraTable    camera;
@@ -583,6 +586,9 @@ struct EngineState {
     // Per-image-in-batch camera indices for the current step (shared by
     // background, bilagrid, and PPISP). Empty -> kernels fall back to identity.
     DeviceVector<int32_t> bilagrid_cur_cam_indices;
+    DeviceVector<int32_t> bilagrid_split_cam_indices;
+    bool bilagrid_split_grad_active = false;
+    bool bilagrid_split_has_cam_indices = false;
 
     EngineBackground background;
     PpispState       ppisp;
@@ -592,20 +598,20 @@ struct EngineState {
     // Viewer (BVH + thumbnail cache + dataset camera arrays).
     EngineViewerState viewer;
 
-    // Host-side dataset orchestrator (RGB / mask / depth / normal decode +
-    // batching). Set by engine_setup_data_manager(); when present, the new
-    // engine_train_step_managed() entrypoint pulls per-step inputs from it.
+    // Owns the decode workers used by managed training and evaluation.
     std::unique_ptr<DataManager> dm;
+
+    // The decoded input outlives all its face passes.
+    std::unique_ptr<DecodedBatch> eval_batch;
+    int64_t                       eval_next_input = 0;
+    int                           eval_next_pass  = 0;
 
     // Mean sRGB luma per input camera, filled lazily by the photometric weight
     // normalization (EngineDataManager.cpp) and NaN until measured. An image's
     // pixels do not change between epochs, so one measurement stands for a run.
     std::vector<float> gt_mean_luma;
 
-    // Out-of-line ctor/dtor (defined in EngineState.cpp) so the
-    // std::unique_ptr<DataManager> deleter only needs the complete type at
-    // one site. Move ops are defaulted so engine_reset() can assign a fresh
-    // EngineState{} (rvalue); copy ops are deleted by the unique_ptr member.
+    // The out-of-line definitions see the complete DataManager and DecodedBatch.
     EngineState();
     ~EngineState();
     EngineState(EngineState&&) noexcept;
