@@ -43,6 +43,8 @@ Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video 
 
 ## News
 
+- **September 10, 2026: Metric scale** &ndash; The dataset creation module now uses telemetry metadata in common video and image formats to recover metric scale and orientation, addressing the popular report that reconstruction results are too large/small or tilted.
+
 - **September 3, 2026: LoMa feature support** &ndash; The SfM module now supports [LoMa](https://github.com/davnords/LoMa) for feature detection and matching on difficult datasets.
 
 - **August 14, 2026: macOS support** &ndash; Support for training on macOS/Apple Silicon has been validated. The app can now be downloaded from [Releases page](https://github.com/harry7557558/spirula-studio/releases/).
@@ -52,8 +54,6 @@ Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video 
 - **August 8, 2026: End-to-end workflow** &ndash; The Vulkan backend now has components to extract frames from video, AI masking, native SfM, meshing, and batch training, accessible from both GUI and CLI.
 
 - **July 22, 2026: Cross-vendor support** &ndash; A Vulkan backend has been added, which works on NVIDIA, AMD, and Intel GPUs.
-
-- **July 12, 2026: GUI** &ndash; A training GUI has been implemented. CLI training will remain accessible.
 
 
 ## Download
