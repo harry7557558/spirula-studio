@@ -471,37 +471,25 @@ static std::map<std::string, float> _engine_loss(
     int64_t H = engine().camera.height;
     int64_t W = engine().camera.width;
 
-    // Resolution-adaptive multi-scale loss: when loss_scale_min_pixels > 0 it
-    // overrides num_loss_scales based on this step's render resolution, so that
-    // the smallest image dimension is halved down toward (but not below) the
-    // requested pixel count. e.g. loss_scale_min_pixels=2000 -> min dim 1999
-    // gives 1 scale, 2000 gives 2, 4000 gives 3, 8000 gives 4. Adapts per step,
-    // so mixed-resolution datasets pick the right count per image automatically.
-    if (loss_scale_min_pixels > 0) {
-        int64_t min_dim = std::min(H, W);
-        int auto_scales = 1;
-        if (min_dim >= (int64_t)loss_scale_min_pixels)
-            auto_scales = (int)std::floor(
-                std::log2((double)min_dim / (double)loss_scale_min_pixels)) + 2;
-        // Clamp to the kernel's MAX_SCALES (see PerPixelLoss.cu) so extreme
-        // resolutions saturate the scale count rather than throwing.
-        num_loss_scales = std::min(auto_scales, 4);
-    }
+    // Full-face resolution drives the count; low-res normal GT never does.
+    num_loss_scales =
+        resolve_loss_scales(num_loss_scales, loss_scale_min_pixels, W, H);
 
     // Pool-allocate intermediates for loss computation
     TorchTensorView loss_map_buf = compute_loss_map ?
         _pool_tv_zero(PoolSlot::EngLossMap, C, H, W, 1) : _tv_null();
 
-    // v_losses: constant vector [1, 0, 1, 1, ...] (1 for all, 0 for psnr slot).
-    // Uploaded once per engine lifetime; the flag lives in EngineState so
-    // engine_reset() clears it along with the buffer it describes.
+    // The output losses stay unscaled; only their cotangent is normalized
+    // across sub-batches.
     TorchTensorView v_losses_buf = _pool_tv_1d(PoolSlot::EngVLosses, (int)LossIndex::length);
-    if (!engine().v_losses_uploaded) {
+    const float grad_scale = engine().optim.loss_grad_scale;
+    if (!engine().v_losses_uploaded || engine().v_losses_scale != grad_scale) {
         float h_v[(int)LossIndex::length];
-        for (int i = 0; i < (int)LossIndex::length; i++) h_v[i] = 1.0f;
+        for (int i = 0; i < (int)LossIndex::length; i++) h_v[i] = grad_scale;
         h_v[(int)LossIndex::RgbPSNR] = 0.0f;
         backend::memcpy_sync((void*)std::get<0>(v_losses_buf), h_v, sizeof(h_v), backend::MemcpyKind::HostToDevice);
         engine().v_losses_uploaded = true;
+        engine().v_losses_scale = grad_scale;
     }
 
     // Render outputs from forward pass (pool-backed, already populated)
@@ -662,6 +650,7 @@ static std::map<std::string, float> _engine_loss(
         engine().gt.has_mask,
         loss_weights,
         w_ssim,
+        grad_scale,
         saturation_threshold,
         v_losses_buf,
         needs_input_grad,

@@ -539,6 +539,28 @@ PixelDType probe_pixel_dtype(const std::string& path,
 
 
 // ===========================================================================
+// Face-pass planning (see DataManager.h)
+// ===========================================================================
+std::vector<WarpFacePass> build_face_passes(const int32_t* widths,
+                                            const int32_t* heights,
+                                            int32_t        K,
+                                            int32_t        max_faces_per_pass) {
+    std::vector<WarpFacePass> passes;
+    if (K <= 0) return passes;
+    const int32_t cap = max_faces_per_pass > 0 ? max_faces_per_pass : K;
+    for (int32_t k = 0; k < K; ) {
+        const int32_t w = widths[k], h = heights[k];
+        int32_t k1 = k + 1;
+        while (k1 < K && k1 - k < cap && widths[k1] == w && heights[k1] == h)
+            ++k1;
+        passes.push_back(WarpFacePass{k, k1, w, h});
+        k = k1;
+    }
+    return passes;
+}
+
+
+// ===========================================================================
 // DecodedBatch::build_views
 // ===========================================================================
 void DecodedBatch::build_views() {
@@ -1158,16 +1180,11 @@ std::vector<IndexGroup> DataManagerImpl::build_index_groups_member(
             g.K      = K_i;
             g.out_w  = out_w;
             g.out_h  = out_h;
-            for (int32_t k = 0; k < K_i; ++k) {
-                const int64_t o = _post_offsets[i] + k;
-                const int32_t w = K_i > 1 ? _post_widths[o]  : out_w;
-                const int32_t h = K_i > 1 ? _post_heights[o] : out_h;
-                if (!g.passes.empty() && g.passes.back().width == w &&
-                    g.passes.back().height == h)
-                    g.passes.back().k1 = k + 1;
-                else
-                    g.passes.push_back(WarpFacePass{k, k + 1, w, h});
-            }
+            g.passes = K_i > 1
+                ? build_face_passes(_post_widths.data()  + _post_offsets[i],
+                                    _post_heights.data() + _post_offsets[i],
+                                    K_i, _cfg.max_faces_per_pass)
+                : build_face_passes(&out_w, &out_h, 1, _cfg.max_faces_per_pass);
         }
 
         // Take the max-area shape across the group. We compare by area so

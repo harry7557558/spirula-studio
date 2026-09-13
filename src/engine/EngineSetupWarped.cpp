@@ -312,28 +312,36 @@ void set_training_data_warped(
                 throw std::runtime_error(
                     "set_training_data_warped: normal must be uint8 or float32");
         }
+        int normal_out_H = std::max(
+            1, (int)(((int64_t)out_H * normal_in_H + in_H / 2) / in_H));
+        int normal_out_W = std::max(
+            1, (int)(((int64_t)out_W * normal_in_W + in_W / 2) / in_W));
         float* d_normal_out = DevicePool::global().acquire<float>(
-            PoolSlot::GtNormal, (size_t)B_post * out_H * out_W * 3);
+            PoolSlot::GtNormal,
+            (size_t)B_post * normal_out_H * normal_out_W * 3);
         if (redistort_only) {
             launch_redistort_normal(
                 input_model_name, input_distortion, d_intrins, d_dist,
                 d_src_models, d_src_params, d_normal_in, n_elem == 4,
                 B_in, normal_in_H, normal_in_W,
-                d_normal_out, out_H, out_W, in_H, in_W);
+                d_normal_out, normal_out_H, normal_out_W, in_H, in_W);
         } else if (cm == CameraModelType::EQUIRECTANGULAR) {
             launch_warp_normal_equi(
                 d_normal_in, n_elem, B_in, normal_in_H, normal_in_W,
-                d_normal_out, K, out_H, out_W, d_post_intrins, d_axes);
+                d_normal_out, K, normal_out_H, normal_out_W, out_H, out_W,
+                d_post_intrins, d_axes);
         } else {
             launch_warp_normal_wide(
                 input_model_name, input_distortion, d_intrins, d_dist,
                 d_src_models, d_src_params,
                 d_normal_in, n_elem, B_in, normal_in_H, normal_in_W,
-                in_H, in_W, d_normal_out, K, out_H, out_W,
-                d_post_intrins, d_axes);
+                in_H, in_W, d_normal_out, K, normal_out_H, normal_out_W,
+                out_H, out_W, d_post_intrins, d_axes);
         }
-        TorchTensorView dv((uint64_t)d_normal_out, 4,
-                           {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 3LL});
+        TorchTensorView dv(
+            (uint64_t)d_normal_out, 4,
+            {(int64_t)B_post, (int64_t)normal_out_H,
+             (int64_t)normal_out_W, 3LL});
         engine().gt.normal = DeviceTensor3D<float3>(dv);
     }
 

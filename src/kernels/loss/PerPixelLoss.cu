@@ -972,6 +972,7 @@ LossValues compute_multi_scale_per_pixel_losses(
     bool has_mask,
     const std::array<float, (int)LossWeightIndex::length> loss_weights_0,
     const float w_ssim,
+    const float ssim_grad_scale,
     // Positive: a pixel whose render and reference are both above it in every
     // channel leaves the loss entirely -- value, map and gradient. Both are
     // clipped there, so no colour error at that pixel is recoverable.
@@ -1228,7 +1229,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         if (scale == 0) {
             ssim = fused_ssim_inplace_async(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim,
+                -w_ssim * ssim_grad_scale,
                 scale_grads.v_render_rgb,
                 loss_map_scale,
                 w_ssim,
@@ -1239,7 +1240,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         } else {
             ssim = fused_ssim_inplace(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim,
+                -w_ssim * ssim_grad_scale,
                 scale_grads.v_render_rgb,
                 /*return_ssim_val=*/false,
                 loss_map_scale,

@@ -90,21 +90,23 @@ class AsyncReadout {
 public:
     explicit AsyncReadout(int n_elems, int n_slots = 2)
         : _n_elems(n_elems), _n_slots(n_slots),
-          _h(n_slots, nullptr), _evt(n_slots),
+          _h(n_slots, nullptr), _evt(n_slots, nullptr),
           _valid(n_slots, false), _next_write(0)
     {
-        for (int i = 0; i < _n_slots; ++i) {
-            _h[i] = (T*)backend::host_malloc_pinned((size_t)_n_elems * sizeof(T));
-            _evt[i] = backend::event_create(false);
+        try {
+            for (int i = 0; i < _n_slots; ++i) {
+                _h[i] = (T*)backend::host_malloc_pinned((size_t)_n_elems * sizeof(T));
+                if (!_h[i]) throw std::runtime_error("AsyncReadout: pinned allocation failed");
+                _evt[i] = backend::event_create(false);
+                if (!_evt[i]) throw std::runtime_error("AsyncReadout: event creation failed");
+            }
+        } catch (...) {
+            release();
+            throw;
         }
     }
 
-    ~AsyncReadout() {
-        for (int i = 0; i < _n_slots; ++i) {
-            if (_h[i]) backend::host_free_pinned(_h[i]);
-            backend::event_destroy(_evt[i]);
-        }
-    }
+    ~AsyncReadout() { release(); }
 
     AsyncReadout(const AsyncReadout&) = delete;
     AsyncReadout& operator=(const AsyncReadout&) = delete;
@@ -129,7 +131,16 @@ public:
 
     int n_elems() const { return _n_elems; }
 
+
 private:
+    void release() noexcept {
+        for (int i = 0; i < _n_slots; ++i) {
+            if (_evt[i]) backend::event_destroy(_evt[i]);
+            if (_h[i]) backend::host_free_pinned(_h[i]);
+            _evt[i] = nullptr;
+            _h[i] = nullptr;
+        }
+    }
     int _n_elems;
     int _n_slots;
     std::vector<T*> _h;

@@ -24,6 +24,7 @@
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
 #include "i18n/TimeFormat.h"
+#include "backend/api/BackendRuntime.h"
 
 #include <array>
 #include <atomic>
@@ -98,7 +99,13 @@ struct SeedSplats {
 };
 
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color);
+                       const ColorResolution& color,
+                       int64_t capacity);
+
+
+// Includes resumed live rows up to the cap, not only fresh sparse seeds.
+int64_t resolve_training_splat_capacity(int64_t source_count,
+                                        const TrainConfig& cfg);
 
 
 // ===========================================================================
@@ -138,6 +145,49 @@ void save_scene_transform_json(const ParsedDataset& ds, const TrainConfig& c,
 std::string train_config_unsupported(const TrainConfig& c);
 
 
+struct TrainingBatchPlan {
+    int train_batch_size = 1;
+    int val_batch_size = 1;
+};
+
+TrainingBatchPlan resolve_training_batch_plan(int64_t num_train,
+                                              int64_t num_val,
+                                              int max_batch_per_epoch);
+
+// Soft scorer concurrency limit; decoded inputs and allocator overhead are excluded.
+int resolve_eval_worker_count(int64_t view_pixels, unsigned hardware_threads,
+                              bool save_images);
+
+struct TrainingMemoryEstimate {
+    // Sum of per-allocation retained maxima across training and evaluation.
+    uint64_t accounted_bytes = 0;
+    // Deterministic grow-before-free and startup conversion overlap.
+    uint64_t conservative_allowance_bytes = 0;
+    // Geometry-dependent scratch and driver overhead are not bounded here.
+    bool dynamic_unknown = true;
+    // Resolved before the first step for checkpoint adaptation.
+    bool fused_proj_bwd_optim = false;
+
+    uint64_t estimated_bytes() const {
+        return conservative_allowance_bytes > UINT64_MAX - accounted_bytes
+            ? UINT64_MAX
+            : accounted_bytes + conservative_allowance_bytes;
+    }
+};
+
+inline constexpr uint64_t kTrainingMemoryReserveBytes = 256ull << 20;
+
+TrainingMemoryEstimate estimate_training_memory(
+    const ParsedDataset& ds, const PostSplitCameras& post,
+    const TrainConfig& cfg, bool has_mask, bool has_depth, bool has_normal,
+    int64_t target_splats, int max_faces_per_pass = 0);
+std::optional<backend::BudgetFailure> training_memory_refusal(
+    const backend::BudgetSnapshot& budget,
+    const TrainingMemoryEstimate& estimate, uint64_t app_limit_bytes,
+    uint64_t reserve_bytes = kTrainingMemoryReserveBytes);
+std::string budget_failure_message(const backend::BudgetFailure& failure);
+
+
 // ===========================================================================
 // TrainerSession
 // ===========================================================================
@@ -170,6 +220,7 @@ struct TrainerCallbacks {
 class TrainerSession {
 public:
     TrainerSession() = default;
+    ~TrainerSession() { reset_engine(); }
     TrainerSession(const TrainerSession&) = delete;
     TrainerSession& operator=(const TrainerSession&) = delete;
 
@@ -205,6 +256,9 @@ public:
     // copied into ViewerRenderConfig::base_camera_size for the live
     // frustum-size control.
     float viewer_base_camera_size = 0.0f;
+    TrainingMemoryEstimate memory_estimate;
+    backend::BudgetSnapshot memory_budget;
+    uint64_t memory_allowance = 0;
 
     // Coordination between the train loop, viewer render workers, and
     // front-end controls.
@@ -227,6 +281,10 @@ public:
     // Create the output dir, dump config.json, reset + seed the engine,
     // set up the DataManager and bilagrid/PPISP. Requires load_dataset().
     void setup_engine();
+
+    // Call only after render consumers have detached.
+    void reset_engine();
+    void release_engine_budget();
 
     // The training loop. Returns when all steps ran or stop_requested was
     // set (a final checkpoint is saved either way unless steps_per_save==0
@@ -291,6 +349,8 @@ private:
     mutable std::mutex _progress_mutex;    // guards the latency window
     std::deque<double> _step_latencies;    // last 100, seconds
     bool _diverged_loss_reported = false;
+    bool _budget_active = false;
+    bool _engine_initialized = false;
 };
 
 }  // namespace spirula

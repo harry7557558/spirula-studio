@@ -532,6 +532,7 @@ void launch_warp_normal_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes);
 
@@ -540,6 +541,7 @@ void launch_warp_normal_equi(
     const void* d_normal, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes);
 

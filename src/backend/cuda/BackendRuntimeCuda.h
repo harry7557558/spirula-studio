@@ -34,6 +34,60 @@ inline std::atomic<uint64_t>& device_bytes() {
     static std::atomic<uint64_t> v{0};
     return v;
 }
+inline std::mutex& budget_mutex() {
+    static std::mutex m;
+    return m;
+}
+inline std::mutex& budget_transaction_mutex() {
+    static std::mutex m;
+    return m;
+}
+inline std::atomic<bool>& budget_active() {
+    static std::atomic<bool> a{false};
+    return a;
+}
+inline std::atomic<uint64_t>& budget_reserve_bytes() {
+    static std::atomic<uint64_t> r{0};
+    return r;
+}
+inline std::atomic<uint64_t>& budget_app_limit_bytes() {
+    static std::atomic<uint64_t> l{0};
+    return l;
+}
+inline std::atomic<uint64_t>& budget_reserved_bytes() {
+    static std::atomic<uint64_t> rb{0};
+    return rb;
+}
+
+struct ThreadPendingFailure {
+    bool has_failure = false;
+    BudgetFailure failure{};
+};
+
+inline ThreadPendingFailure& thread_pending_failure() {
+    thread_local ThreadPendingFailure f;
+    return f;
+}
+
+inline void set_pending_failure(const BudgetFailure& f) {
+    auto& state = thread_pending_failure();
+    state.has_failure = true;
+    state.failure = f;
+}
+
+inline void clear_pending_failure() {
+    thread_pending_failure().has_failure = false;
+}
+
+inline bool consume_pending_failure(BudgetFailure& out) {
+    auto& state = thread_pending_failure();
+    if (state.has_failure) {
+        out = state.failure;
+        state.has_failure = false;
+        return true;
+    }
+    return false;
+}
 }  // namespace detail
 
 // --- device enumeration / selection ---
@@ -75,6 +129,7 @@ inline int device_current() {
     }
     return d;
 }
+inline bool device_prepare() { return device_current() >= 0; }
 inline MemoryUsage memory_usage() {
     MemoryUsage m;
     size_t free_bytes = 0, total_bytes = 0;
@@ -90,6 +145,85 @@ inline MemoryUsage memory_usage() {
     m.process_bytes = detail::device_bytes().load(std::memory_order_relaxed);
     m.has_process = true;
     return m;
+}
+
+inline BudgetSnapshot budget_snapshot() {
+    std::lock_guard<std::mutex> transaction(detail::budget_transaction_mutex());
+    BudgetSnapshot s{};
+    s.heap_index = -1;
+    {
+        std::lock_guard<std::mutex> lock(detail::budget_mutex());
+        s.reserve_bytes =
+            detail::budget_reserve_bytes().load(std::memory_order_relaxed);
+        s.app_limit_bytes =
+            detail::budget_app_limit_bytes().load(std::memory_order_relaxed);
+        s.reserved_bytes =
+            detail::budget_reserved_bytes().load(std::memory_order_relaxed);
+        s.process_bytes = detail::device_bytes().load(std::memory_order_relaxed);
+    }
+
+    int count = 0;
+    cudaError_t err = cudaGetDeviceCount(&count);
+    if (err != cudaSuccess) {
+        s.status = err == cudaErrorNoDevice ? BudgetStatus::Unavailable
+                                            : BudgetStatus::QueryError;
+        return s;
+    }
+    if (count <= 0) {
+        s.status = BudgetStatus::Unavailable;
+        return s;
+    }
+
+    int dev = -1;
+    err = cudaGetDevice(&dev);
+    if (err != cudaSuccess) {
+        s.status = BudgetStatus::QueryError;
+        return s;
+    }
+    if (dev < 0) {
+        s.status = BudgetStatus::Unavailable;
+        return s;
+    }
+    s.device_index = dev;
+
+    size_t free_bytes = 0, total_bytes = 0;
+    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+        s.status = BudgetStatus::QueryError;
+        return s;
+    }
+
+    s.status = BudgetStatus::Available;
+    s.total_bytes = (uint64_t)total_bytes;
+    s.available_bytes = (uint64_t)free_bytes;
+    return s;
+}
+
+inline void training_budget_begin(uint64_t reserve_bytes,
+                                  uint64_t app_limit_bytes) {
+    std::lock_guard<std::mutex> transaction(detail::budget_transaction_mutex());
+    std::lock_guard<std::mutex> lock(detail::budget_mutex());
+    detail::budget_reserve_bytes().store(reserve_bytes, std::memory_order_relaxed);
+    detail::budget_app_limit_bytes().store(app_limit_bytes,
+                                           std::memory_order_relaxed);
+    detail::budget_reserved_bytes().store(0, std::memory_order_relaxed);
+    detail::budget_active().store(true, std::memory_order_release);
+}
+
+inline void training_budget_end() {
+    std::lock_guard<std::mutex> transaction(detail::budget_transaction_mutex());
+    std::lock_guard<std::mutex> lock(detail::budget_mutex());
+    detail::budget_active().store(false, std::memory_order_release);
+    detail::budget_reserve_bytes().store(0, std::memory_order_relaxed);
+    detail::budget_app_limit_bytes().store(0, std::memory_order_relaxed);
+    detail::budget_reserved_bytes().store(0, std::memory_order_relaxed);
+}
+
+inline bool training_budget_active() {
+    return detail::budget_active().load(std::memory_order_acquire);
+}
+
+inline bool consume_budget_failure(BudgetFailure& failure) {
+    return detail::consume_pending_failure(failure);
 }
 
 inline cudaMemcpyKind _to_cuda(MemcpyKind kind) {
@@ -124,26 +258,121 @@ inline bool is_device_pointer(const void* ptr) {
 
 // --- memory ---
 inline void* device_malloc(size_t bytes) {
-    void* ptr = nullptr;
-    cudaMalloc(&ptr, bytes);
-    if (ptr) {
-        std::lock_guard<std::mutex> lock(detail::alloc_mutex());
-        detail::alloc_sizes()[ptr] = bytes;
-        detail::device_bytes().fetch_add(bytes, std::memory_order_relaxed);
+    detail::clear_pending_failure();
+    if (bytes == 0) return nullptr;
+
+    std::lock_guard<std::mutex> transaction(
+        detail::budget_transaction_mutex());
+    if (!training_budget_active()) {
+        void* ptr = nullptr;
+        cudaError_t alloc_err = cudaMalloc(&ptr, bytes);
+        if (ptr && alloc_err == cudaSuccess) {
+            std::lock_guard<std::mutex> lock(detail::alloc_mutex());
+            detail::alloc_sizes()[ptr] = bytes;
+            detail::device_bytes().fetch_add(bytes, std::memory_order_relaxed);
+        }
+        return ptr;
     }
-    return ptr;
-}
-inline void device_free(void* ptr) {
-    if (ptr) {
-        std::lock_guard<std::mutex> lock(detail::alloc_mutex());
-        auto& sizes = detail::alloc_sizes();
-        auto it = sizes.find(ptr);
-        if (it != sizes.end()) {
-            detail::device_bytes().fetch_sub(it->second, std::memory_order_relaxed);
-            sizes.erase(it);
+
+    auto refuse = [&](BudgetFailureKind kind, uint64_t available,
+                      int device = -1) -> void* {
+        BudgetFailure f{};
+        f.kind = kind;
+        f.requested_bytes = bytes;
+        f.available_bytes = available;
+        f.device_index = device;
+        f.heap_index = -1;
+        detail::set_pending_failure(f);
+        return nullptr;
+    };
+
+    int count = 0;
+    cudaError_t err = cudaGetDeviceCount(&count);
+    if (err != cudaSuccess)
+        return refuse(err == cudaErrorNoDevice
+                          ? BudgetFailureKind::TelemetryUnavailable
+                          : BudgetFailureKind::TelemetryError,
+                      0);
+    if (count <= 0)
+        return refuse(BudgetFailureKind::TelemetryUnavailable, 0);
+
+    int dev = -1;
+    err = cudaGetDevice(&dev);
+    if (err != cudaSuccess)
+        return refuse(BudgetFailureKind::TelemetryError, 0);
+    if (dev < 0)
+        return refuse(BudgetFailureKind::TelemetryUnavailable, 0);
+
+    size_t free_bytes = 0, total_bytes = 0;
+    if (cudaMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess)
+        return refuse(BudgetFailureKind::TelemetryError, 0, dev);
+
+    {
+        std::lock_guard<std::mutex> lock(detail::budget_mutex());
+        uint64_t headroom = (uint64_t)free_bytes;
+        uint64_t reserve =
+            detail::budget_reserve_bytes().load(std::memory_order_relaxed);
+        uint64_t reserved =
+            detail::budget_reserved_bytes().load(std::memory_order_relaxed);
+        headroom = headroom > reserve ? headroom - reserve : 0;
+        headroom = headroom > reserved ? headroom - reserved : 0;
+
+        uint64_t app_limit =
+            detail::budget_app_limit_bytes().load(std::memory_order_relaxed);
+        uint64_t app_headroom = UINT64_MAX;
+        if (app_limit > 0) {
+            uint64_t process =
+                detail::device_bytes().load(std::memory_order_relaxed);
+            app_headroom = app_limit > process ? app_limit - process : 0;
+            app_headroom =
+                app_headroom > reserved ? app_headroom - reserved : 0;
+        }
+
+        if (app_limit > 0 && bytes > app_headroom &&
+            app_headroom <= headroom)
+            return refuse(BudgetFailureKind::ApplicationLimit, app_headroom,
+                          dev);
+        if (bytes > headroom)
+            return refuse(BudgetFailureKind::DriverHeadroom, headroom, dev);
+        if (app_limit > 0 && bytes > app_headroom)
+            return refuse(BudgetFailureKind::ApplicationLimit, app_headroom,
+                          dev);
+        detail::budget_reserved_bytes().fetch_add(bytes,
+                                                   std::memory_order_relaxed);
+    }
+
+    void* ptr = nullptr;
+    cudaError_t alloc_err = cudaMalloc(&ptr, bytes);
+    {
+        std::lock_guard<std::mutex> budget_lock(detail::budget_mutex());
+        detail::budget_reserved_bytes().fetch_sub(bytes,
+                                                   std::memory_order_relaxed);
+        if (ptr != nullptr && alloc_err == cudaSuccess) {
+            std::lock_guard<std::mutex> alloc_lock(detail::alloc_mutex());
+            detail::alloc_sizes()[ptr] = bytes;
+            detail::device_bytes().fetch_add(bytes, std::memory_order_relaxed);
+            return ptr;
         }
     }
-    cudaFree(ptr);
+    return nullptr;
+}
+
+inline void device_free(void* ptr) {
+    if (!ptr) return;
+    std::lock_guard<std::mutex> transaction(
+        detail::budget_transaction_mutex());
+    size_t bytes = 0;
+    {
+        std::lock_guard<std::mutex> lock(detail::alloc_mutex());
+        auto it = detail::alloc_sizes().find(ptr);
+        if (it != detail::alloc_sizes().end()) bytes = it->second;
+    }
+    if (cudaFree(ptr) != cudaSuccess || bytes == 0) return;
+    {
+        std::lock_guard<std::mutex> lock(detail::alloc_mutex());
+        detail::alloc_sizes().erase(ptr);
+    }
+    detail::device_bytes().fetch_sub(bytes, std::memory_order_relaxed);
 }
 inline void* host_malloc_pinned(size_t bytes) {
     void* ptr = nullptr;

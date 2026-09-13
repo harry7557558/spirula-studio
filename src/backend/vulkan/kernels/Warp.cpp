@@ -38,6 +38,19 @@ struct WarpParams {
 static_assert(sizeof(WarpParams) == 8 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
+struct NormalWarpParams {
+    uint64_t intrins, dist_coeffs, source_models, source_params;
+    uint64_t src, dst, axes, post_intrins;
+    int32_t B, Hin, Win;
+    int32_t K, Hout, Wout;
+    int32_t elem_kind, camera_model;
+    int32_t ref_H, ref_W;
+    int32_t face_ref_H, face_ref_W;
+    float norm_inv, decode_off;
+};
+static_assert(sizeof(NormalWarpParams) == 8 * 8 + 14 * 4,
+              "params layout must match the slang struct");
+
 // Mirrors WarpMaskParams in shaders/warp.slang.
 struct WarpMaskParams {
     uint64_t intrins, dist_coeffs, source_models, source_params;
@@ -102,6 +115,40 @@ WarpParams make_warp_params(const float* d_intrins, const float* d_dist,
     p.norm_inv = norm_inv;
     p.decode_off = decode_off;
     return p;
+}
+
+NormalWarpParams make_normal_warp_params(
+    const float* d_intrins, const float* d_dist, SourceCam src_cam,
+    const void* d_src, float* d_dst, Faces faces, int B, int Hin, int Win,
+    int K, int Hout, int Wout, int elem_kind, CameraModelType cm,
+    int ref_H, int ref_W, int face_ref_H, int face_ref_W,
+    float norm_inv, float decode_off) {
+    NormalWarpParams p{};
+    p.intrins = vkk::or_fallback(d_intrins);
+    p.dist_coeffs = vkk::or_fallback(d_dist);
+    p.source_models = vkk::or_fallback(src_cam.models);
+    p.source_params = vkk::or_fallback(src_cam.params);
+    p.src = vkk::or_fallback(d_src);
+    p.dst = (uint64_t)d_dst;
+    p.axes = vkk::or_fallback(faces.axes);
+    p.post_intrins = vkk::or_fallback(faces.post_intrins);
+    p.B = B; p.Hin = Hin; p.Win = Win;
+    p.K = K; p.Hout = Hout; p.Wout = Wout;
+    p.elem_kind = elem_kind; p.camera_model = (int)cm;
+    p.ref_H = ref_H; p.ref_W = ref_W;
+    p.face_ref_H = face_ref_H; p.face_ref_W = face_ref_W;
+    p.norm_inv = norm_inv; p.decode_off = decode_off;
+    return p;
+}
+
+void dispatch_normal_warp(const char* entry, const NormalWarpParams& p,
+                          const backend::vk::SpecList& spec) {
+    if ((int64_t)p.B * p.K * p.Hout * p.Wout <= 0) return;
+    if (p.B > 65535)
+        throw std::runtime_error("warp: batch exceeds grid limit");
+    vkk::dispatch(entry, spec, (uint32_t)((p.Wout + 15) / 16),
+                  (uint32_t)((p.Hout + 15) / 16), (uint32_t)p.B, &p,
+                  sizeof(p));
 }
 
 // (ceil(Wout/16), ceil(Hout/16), B) grid of flat-256 workgroups (16x16
@@ -360,6 +407,7 @@ void launch_warp_normal_wide(
     int B, int Hin, int Win,
     int in_H, int in_W,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes)
 {
@@ -368,22 +416,23 @@ void launch_warp_normal_wide(
             "launch_warp_normal_wide: normal must be uint8 or float32");
     bool u8 = elem_size == 1;
     const vkk::CamDistSpec cd = vkk::cam_dist_spec(camera_model, distortion);
-    dispatch_warp("warp.warp_normal_wide",
-                  make_warp_params(
-                      d_intrins, d_dist_coeffs,
-                      {d_source_models, d_source_params},
-                      d_normal, d_float_out, {d_post_intrins, d_axes},
-                      B, Hin, Win, 3, K, Hout, Wout,
-                      u8 ? kElemU8 : kElemF32, (CameraModelType)cd.cam, in_H,
-                      in_W, false, u8 ? 1.0f / 127.5f : 1.0f,
-                      u8 ? -1.0f : 0.0f),
-                  {cd.dist, from_source_spec(d_source_models)});
+    dispatch_normal_warp(
+        "warp.warp_normal_wide",
+        make_normal_warp_params(
+            d_intrins, d_dist_coeffs, {d_source_models, d_source_params},
+            d_normal, d_float_out, {d_post_intrins, d_axes},
+            B, Hin, Win, K, Hout, Wout,
+            u8 ? kElemU8 : kElemF32, (CameraModelType)cd.cam,
+            in_H, in_W, face_ref_H, face_ref_W,
+            u8 ? 1.0f / 127.5f : 1.0f, u8 ? -1.0f : 0.0f),
+        {cd.dist, from_source_spec(d_source_models)});
 }
 
 void launch_warp_normal_equi(
     const void* d_normal, uint32_t elem_size,
     int B, int Hin, int Win,
     float* d_float_out, int K, int Hout, int Wout,
+    int face_ref_H, int face_ref_W,
     const float* d_post_intrins,
     const float* d_axes)
 {
@@ -391,15 +440,16 @@ void launch_warp_normal_equi(
         throw std::runtime_error(
             "launch_warp_normal_equi: normal must be uint8 or float32");
     bool u8 = elem_size == 1;
-    dispatch_warp("warp.warp_normal_equi",
-                  make_warp_params(
-                      nullptr, nullptr, {}, d_normal, d_float_out,
-                      {d_post_intrins, d_axes},
-                      B, Hin, Win, 3, K, Hout, Wout,
-                      u8 ? kElemU8 : kElemF32,
-                      CameraModelType::EQUIRECTANGULAR, Hin, Win, false,
-                      u8 ? 1.0f / 127.5f : 1.0f, u8 ? -1.0f : 0.0f),
-                  {});
+    dispatch_normal_warp(
+        "warp.warp_normal_equi",
+        make_normal_warp_params(
+            nullptr, nullptr, {}, d_normal, d_float_out,
+            {d_post_intrins, d_axes}, B, Hin, Win, K, Hout, Wout,
+            u8 ? kElemU8 : kElemF32,
+            CameraModelType::EQUIRECTANGULAR, Hin, Win,
+            face_ref_H, face_ref_W,
+            u8 ? 1.0f / 127.5f : 1.0f, u8 ? -1.0f : 0.0f),
+        {});
 }
 
 

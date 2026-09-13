@@ -300,19 +300,27 @@ int main(int argc, char** argv) {
                 auto nrm = r.bytes((int64_t)B * Hd * Wd * 3);
                 for (size_t i = 0; i + 2 < nrm.size(); i += 87)
                     nrm[i] = nrm[i + 1] = nrm[i + 2] = 0;
-                float* out = alloc_out<float>(n_out * 3);
+                const int Hn = (Hout * Hd + Hin / 2) / Hin;
+                const int Wn = (Wout * Wd + Win / 2) / Win;
+                const int64_t n_normal = (int64_t)B * K * Hn * Wn;
+                float* out = alloc_out<float>(n_normal * 3);
                 launch_warp_normal_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                         upload(nrm), 1, B, Hd, Wd, Hin, Win,
-                                        out, K, Hout, Wout, d_face, d_axes);
-                readback_f(out, n_out * 3);
+                                        out, K, Hn, Wn, Hout, Wout,
+                                        d_face, d_axes);
+                readback_f(out, n_normal * 3);
             }
             if (cam.model[0] == 'F') {
                 auto nrm = r.vec((int64_t)B * Hd * Wd * 3, -1.0f, 1.0f);
-                float* out = alloc_out<float>(n_out * 3);
+                const int Hn = (Hout * Hd + Hin / 2) / Hin;
+                const int Wn = (Wout * Wd + Win / 2) / Win;
+                const int64_t n_normal = (int64_t)B * K * Hn * Wn;
+                float* out = alloc_out<float>(n_normal * 3);
                 launch_warp_normal_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                         upload(nrm), 4, B, Hd, Wd, Hin, Win,
-                                        out, K, Hout, Wout, d_face, d_axes);
-                readback_f(out, n_out * 3);
+                                        out, K, Hn, Wn, Hout, Wout,
+                                        d_face, d_axes);
+                readback_f(out, n_normal * 3);
             }
         }
     }
@@ -501,21 +509,24 @@ int main(int argc, char** argv) {
                                    Hout, Wout, d_face, d_axes, false);
             readback_f(out, n_out);
         }
+        const int Hn = Hin / 2, Wn = Win / 2;
+        const int Hno = Hout / 2, Wno = Wout / 2;
+        const int64_t n_normal = (int64_t)B * K * Hno * Wno;
         {
-            auto nrm = r.bytes((int64_t)B * Hin * Win * 3);
+            auto nrm = r.bytes((int64_t)B * Hn * Wn * 3);
             for (size_t i = 0; i + 2 < nrm.size(); i += 87)
                 nrm[i] = nrm[i + 1] = nrm[i + 2] = 0;
-            float* out = alloc_out<float>(n_out * 3);
-            launch_warp_normal_equi(upload(nrm), 1, B, Hin, Win, out, K,
-                                    Hout, Wout, d_face, d_axes);
-            readback_f(out, n_out * 3);
+            float* out = alloc_out<float>(n_normal * 3);
+            launch_warp_normal_equi(upload(nrm), 1, B, Hn, Wn, out, K,
+                                    Hno, Wno, Hout, Wout, d_face, d_axes);
+            readback_f(out, n_normal * 3);
         }
         {
-            auto nrm = r.vec((int64_t)B * Hin * Win * 3, -1.0f, 1.0f);
-            float* out = alloc_out<float>(n_out * 3);
-            launch_warp_normal_equi(upload(nrm), 4, B, Hin, Win, out, K,
-                                    Hout, Wout, d_face, d_axes);
-            readback_f(out, n_out * 3);
+            auto nrm = r.vec((int64_t)B * Hn * Wn * 3, -1.0f, 1.0f);
+            float* out = alloc_out<float>(n_normal * 3);
+            launch_warp_normal_equi(upload(nrm), 4, B, Hn, Wn, out, K,
+                                    Hno, Wno, Hout, Wout, d_face, d_axes);
+            readback_f(out, n_normal * 3);
         }
     }
 

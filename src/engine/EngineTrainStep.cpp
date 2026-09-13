@@ -4,6 +4,7 @@
 #include "engine/Engine.h"
 
 #include <chrono>
+#include <exception>
 #include "engine/EngineInternal.h"
 #include "core/Env.h"
 #include "engine/EngineCommon.h"
@@ -13,6 +14,12 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+
+static thread_local int g_test_fail_split_after_pass = -1;
+
+void _engine_test_fail_split_after_pass(int passes) {
+    g_test_fail_split_after_pass = passes;
+}
 
 
 // Per-camera batch slice of a TorchTensorView. Returns a view at the k-th
@@ -51,6 +58,26 @@ static TorchTensorView _slice_tv_range_first_dim(const TorchTensorView& tv,
     new_shape[0] = k_count;
     return TorchTensorView(base + offset_bytes, esize, std::move(new_shape));
 }
+struct SplitStepState {
+    bool skip_grad_zero = engine().optim.skip_grad_zero;
+    bool zero_grad_in_optim = engine().optim.zero_grad_in_optim;
+    float grad_scale = engine().optim.grad_scale;
+    float loss_grad_scale = engine().optim.loss_grad_scale;
+    int uncaught = std::uncaught_exceptions();
+
+    ~SplitStepState() {
+        _engine_bilagrid_split_grad_end();
+        _engine_bilagrid_split_grad_finish();
+        if (std::uncaught_exceptions() > uncaught && engine().ppisp.enabled &&
+            engine().ppisp.optim_initialized)
+            engine().ppisp.grads.zero();
+        engine().optim.skip_grad_zero = skip_grad_zero;
+        engine().optim.zero_grad_in_optim = zero_grad_in_optim;
+        engine().optim.grad_scale = grad_scale;
+        engine().optim.loss_grad_scale = loss_grad_scale;
+    }
+};
+
 
 
 // Forward + bilagrid/PPISP forward + loss + raster/proj backward only.
@@ -365,6 +392,8 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
     if (beta_orig > 0.0f && beta_orig < 1.0f) {
         cfg_sub.loss.color_shift_reg_beta = powf(beta_orig, 1.0f / (float)B);
     }
+    cfg_sub.loss.overexposure_reg_weight /= (float)B;
+    cfg_sub.loss.color_shift_reg_weight /= (float)B;
 
     // The raster_bwd pool buffer ("raster_bwd.accum_weight") is zeroed and
     // overwritten on every call, so engine().fwd.accum_weight would otherwise
@@ -381,6 +410,9 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
     engine().fwd.accum_weight = DeviceVector<float>();
     engine().fwd.accum_mode = DensifyAccumMode::None;
 
+    SplitStepState split_state;
+    engine().optim.loss_grad_scale = 1.0f / (float)B;
+    _engine_bilagrid_split_grad_begin((int)B);
     std::map<std::string, float> agg;
 
     for (int64_t k = 0; k < B; ++k) {
@@ -407,6 +439,7 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
         // capturing once over all cams in the batch).
         _set_cur_cam_indices(bgi_k);
         engine_viewer_capture_thumbnails(bgi_k);
+        _engine_bilagrid_split_grad_slice((int)k, 1);
 
         auto ld = _engine_step_fwd_bwd_only(
             step, primitive, sh_degree, packed, bgi_k, cfg_sub);
@@ -435,21 +468,18 @@ static std::map<std::string, float> _engine_train_step_split_one_per_camera(
     // Reduced across sub-batches the way the unsplit raster_bwd reduces the
     // cameras of one launch: atomicMax, not a sum.
     engine().fwd.accum_weight = accum_weight_sum;
+    _engine_bilagrid_split_grad_end();
 
-    // Single end-of-step optim + densify pass. The splat Adam kernels read
-    // grad_scale from engine state and divide the data gradient by B before
-    // adding regularization terms; the fused zero_grad side effect leaves
-    // the per-splat grad buffers at 0 for the next train step.
+    // Single end-of-step optim + densify pass. Loss cotangents were normalized
+    // before backward, so every parameter family sees the same mean gradient.
     engine().optim.skip_grad_zero      = false;
-    engine().optim.grad_scale          = 1.0f / (float)B;
+    engine().optim.grad_scale          = 1.0f;
     engine().optim.zero_grad_in_optim  = true;
 
     _engine_step_optim_and_densify(step, max_steps, cfg, agg);
 
-    // Reset back to single-batch defaults so any non-split train step that
-    // follows behaves exactly as before. (engine_optim_step reads these
-    // each call, so a stale 1/B here would silently corrupt a follow-up
-    // single-batch step.)
+    _engine_bilagrid_split_grad_finish();
+    engine().optim.loss_grad_scale    = 1.0f;
     engine().optim.grad_scale         = 1.0f;
     engine().optim.zero_grad_in_optim = false;
 
@@ -507,6 +537,8 @@ std::map<std::string, float> engine_train_step_hetero(
     }
 
     int64_t N_splats = engine().cur_num_splats;
+    cfg_sub.loss.overexposure_reg_weight /= (float)total_cams;
+    cfg_sub.loss.color_shift_reg_weight /= (float)total_cams;
     DeviceVector<float> accum_weight_sum;
     accum_weight_sum.resize(PoolSlot::EngSubbatchAccumWeightSum,
                             N_splats * accum_lanes(_step_accum_mode(cfg)));
@@ -516,6 +548,9 @@ std::map<std::string, float> engine_train_step_hetero(
     engine().fwd.accum_mode = DensifyAccumMode::None;
 
     std::map<std::string, float> agg;
+    SplitStepState split_state;
+    engine().optim.loss_grad_scale = 1.0f / (float)total_cams;
+    _engine_bilagrid_split_grad_begin((int)total_cams);
     int64_t kcam = 0;   // global camera index across the whole step
 
     for (const auto& s : subs) {
@@ -542,6 +577,7 @@ std::map<std::string, float> engine_train_step_hetero(
 
             _set_cur_cam_indices(bgi_c);
             engine_viewer_capture_thumbnails(bgi_c);
+            _engine_bilagrid_split_grad_slice((int)kcam, 1);
 
             auto ld = _engine_step_fwd_bwd_only(
                 step, primitive, sh_degree, packed, bgi_c, cfg_sub);
@@ -566,14 +602,16 @@ std::map<std::string, float> engine_train_step_hetero(
 
     // Densify sees the per-splat score maxed across every camera of the step.
     engine().fwd.accum_weight = accum_weight_sum;
+    _engine_bilagrid_split_grad_end();
 
     engine().optim.skip_grad_zero      = false;
-    engine().optim.grad_scale          = 1.0f / (float)total_cams;
+    engine().optim.grad_scale          = 1.0f;
     engine().optim.zero_grad_in_optim  = true;
 
     _engine_step_optim_and_densify(step, max_steps, cfg, agg);
 
-    // Restore single-batch defaults for any follow-up non-split step.
+    _engine_bilagrid_split_grad_finish();
+    engine().optim.loss_grad_scale    = 1.0f;
     engine().optim.grad_scale         = 1.0f;
     engine().optim.zero_grad_in_optim = false;
 
@@ -694,6 +732,8 @@ static std::map<std::string, float> _engine_train_step_split_warped(
     if (beta_orig > 0.0f && beta_orig < 1.0f) {
         cfg_sub.loss.color_shift_reg_beta = powf(beta_orig, 1.0f / (float)P);
     }
+    cfg_sub.loss.overexposure_reg_weight /= (float)P;
+    cfg_sub.loss.color_shift_reg_weight /= (float)P;
 
     int64_t N_splats = engine().cur_num_splats;
     DeviceVector<float> accum_weight_sum;
@@ -705,6 +745,9 @@ static std::map<std::string, float> _engine_train_step_split_warped(
     engine().fwd.accum_mode = DensifyAccumMode::None;
 
     std::map<std::string, float> agg;
+    SplitStepState split_state;
+    engine().optim.loss_grad_scale = 1.0f / (float)P;
+    _engine_bilagrid_split_grad_begin(B_in * K);
 
     for (int64_t j = 0; j < B_in; ++j) {
         // Per-input-image slices (B_in axis).
@@ -736,6 +779,8 @@ static std::map<std::string, float> _engine_train_step_split_warped(
             if (C > 1) {
                 for (float& x : cfg_pass.loss.weights) x *= w;
                 cfg_pass.loss.w_ssim *= w;
+                cfg_pass.loss.overexposure_reg_weight *= w;
+                cfg_pass.loss.color_shift_reg_weight *= w;
             }
 
             TorchTensorView p_vmt_k = _slice_tv_range_first_dim(post_viewmats,    row, Kc);
@@ -759,11 +804,17 @@ static std::map<std::string, float> _engine_train_step_split_warped(
 
             _set_cur_cam_indices(bgi_k);
             engine_viewer_capture_thumbnails(bgi_k);
+            _engine_bilagrid_split_grad_slice((int)row, Kc);
 
             // Reported as they come: the pass weights average to 1, so the
             // mean below is the weighted total the loss actually is.
             auto ld = _engine_step_fwd_bwd_only(
                 step, primitive, sh_degree, packed, bgi_k, cfg_pass);
+            if (g_test_fail_split_after_pass > 0 &&
+                --g_test_fail_split_after_pass == 0) {
+                g_test_fail_split_after_pass = -1;
+                throw std::runtime_error("injected split-pass failure");
+            }
 
             if (engine().fwd.accum_weight.data_ptr() != nullptr) {
                 _fold_accum_weight(accum_weight_sum, N_splats);
@@ -783,16 +834,17 @@ static std::map<std::string, float> _engine_train_step_split_warped(
     for (auto& [key, val] : agg) val /= (float)P;
 
     engine().fwd.accum_weight = accum_weight_sum;
+    _engine_bilagrid_split_grad_end();
 
-    // grad_scale = 1/passes, NOT 1/B_post: each pass's loss kernel already
-    // normalizes by 1/(cameras*H*W), so summing them over-counts by exactly
-    // the pass count relative to the unsplit batch.
+    // Loss cotangents were normalized by the pass count before backward.
     engine().optim.skip_grad_zero      = false;
-    engine().optim.grad_scale          = 1.0f / (float)P;
+    engine().optim.grad_scale          = 1.0f;
     engine().optim.zero_grad_in_optim  = true;
 
     _engine_step_optim_and_densify(step, max_steps, cfg, agg);
 
+    _engine_bilagrid_split_grad_finish();
+    engine().optim.loss_grad_scale    = 1.0f;
     engine().optim.grad_scale         = 1.0f;
     engine().optim.zero_grad_in_optim = false;
 

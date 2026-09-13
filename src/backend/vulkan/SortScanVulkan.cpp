@@ -30,8 +30,10 @@ struct GrowBuffer {
     void* acquire(size_t bytes) {
         if (bytes > cap) {
             if (ptr) device_free(ptr);  // syncs in-flight work per contract
-            ptr = device_malloc(bytes);
-            cap = ptr ? bytes : 0;
+            ptr = nullptr;
+            cap = 0;
+            ptr = device_malloc_checked(bytes, "sort/scan scratch");
+            cap = bytes;
         }
         return ptr;
     }
@@ -126,7 +128,6 @@ void sort_pairs_impl(DoubleBuffer<KeyT>& keys, DoubleBuffer<int32_t>& values,
         (uint64_t)g_part_hist.acquire((size_t)num_parts * kRadix * 4);
     uint64_t digit_total = (uint64_t)g_digit_total.acquire(kRadix * 4);
     uint64_t global_base = (uint64_t)g_global_base.acquire(kRadix * 4);
-    if (!part_hist || !digit_total || !global_base) return;
 
     for (int b = begin_bit; b < end_bit; b += 8) {
         uint32_t width = (uint32_t)std::min(8, end_bit - b);
@@ -194,7 +195,6 @@ void scan_impl(const void* in, void* out, int64_t num_items, bool inclusive,
 
     std::lock_guard<std::mutex> lock(g_scratch_mutex);
     uint64_t sums = (uint64_t)g_block_sums.acquire(blocks * elem_bytes);
-    if (!sums) return;
 
     SpecList spec{inclusive ? 1u : 0u};
     ScanParams sp{(uint64_t)in, (uint64_t)out, sums, n, grid.per_row};
@@ -295,7 +295,6 @@ int64_t select_flagged(const T* in, const uint8_t* flags, T* out,
         std::lock_guard<std::mutex> lock(g_scratch_mutex);
         scan_buf = g_select_scan.acquire((size_t)n * 4);
     }
-    if (!scan_buf) return 0;
 
     // Exclusive scan of the flags into scan_buf (int32).
     scan_impl(flags, scan_buf, num_items, /*inclusive=*/false,

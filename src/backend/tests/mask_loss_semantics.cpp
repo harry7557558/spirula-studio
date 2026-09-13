@@ -99,7 +99,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
             d_mask ? std::make_tuple((uint64_t)d_mask, (uint32_t)1,
                                      std::vector<int64_t>{B, Hm, Wm, 1})
                    : ttv_null(),
-            /*has_mask=*/d_mask != nullptr, weights, w_ssim, sat,
+            /*has_mask=*/d_mask != nullptr, weights, w_ssim, 1.0f, sat,
             ttv(d_v_losses, {(int64_t)LossIndex::length}), needs, B,
             ttv_null(), ttv_null(), (int)DensifyLossMapMode::None, 0.75f,
             0.0f, grads);

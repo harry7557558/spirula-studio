@@ -5,6 +5,7 @@
 // reported through ok() + backend::last_error(), never by throwing across
 // the backend API surface.
 
+#include "backend/api/BackendRuntime.h"
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
@@ -39,6 +40,14 @@ struct Capabilities {
     uint32_t max_shared_memory = 0;
     VkDeviceSize non_coherent_atom_size = 64;
 };
+struct HeapBudget {
+    BudgetStatus status = BudgetStatus::Unavailable;
+    uint64_t total_bytes = 0;
+    uint64_t available_bytes = 0;
+    uint64_t budget_bytes = 0;
+    uint64_t usage_bytes = 0;
+};
+bool context_created();
 
 class Context {
 public:
@@ -48,6 +57,7 @@ public:
     static Context& get();
 
     bool ok() const { return _device != VK_NULL_HANDLE; }
+    BudgetStatus init_status() const { return _init_status; }
 
     VkInstance instance() const { return _instance; }
     VkPhysicalDevice physical() const { return _physical; }
@@ -75,6 +85,13 @@ public:
     // or UINT32_MAX.
     uint32_t find_memory_type(uint32_t type_bits,
                               VkMemoryPropertyFlags required) const;
+    // Memory-type index to heap index mapping, and heap property helpers.
+    uint32_t memory_type_heap(uint32_t type_index) const;
+    bool is_heap_device_local(uint32_t heap_index) const;
+    int default_device_local_heap() const;
+
+    // Queries one heap's EXT memory budget.
+    HeapBudget query_heap_budget(uint32_t heap_index) const;
 
     // Called by the runtime layer so its device children (command pools,
     // staging buffer, query pool, leaked allocations) are destroyed inside
@@ -104,6 +121,7 @@ private:
     Capabilities _caps;
     std::string _device_name;
     VkPhysicalDeviceMemoryProperties _mem_props{};
+    BudgetStatus _init_status = BudgetStatus::QueryError;
     void (*_shutdown_hook)() = nullptr;
 };
 

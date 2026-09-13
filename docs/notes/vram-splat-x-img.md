@@ -236,3 +236,30 @@ center, since 3DGUT stores none of its own).
    `n_isects` per launch rather than per image, which is the only lever that
    helps the 4K case without touching precision. It does not help the
    `nnz`-sized buffers at all, which is why it is below the one above.
+
+## Native-resolution image safeguards
+
+Training now opens a backend memory budget only for the engine setup and step
+loop. The preflight reports a known minimum, keeps projection, sort, pool growth,
+and densification explicit as unknown dynamic terms, and refuses when either
+live driver headroom minus 256 MiB or `--memory-limit-gib` is smaller. Raw CUDA
+and Vulkan allocations reserve atomically against the same limits; failed
+reservations roll back, and frees receive credit only after reclamation.
+
+Warped training with `split_batch` processes one same-size cube face per pass.
+The existing split step accumulates every pass before its single optimizer and
+densification update, so six uniform panorama faces no longer set the retained
+image-buffer capacity together. Reference normals are warped onto a face grid
+scaled from their source resolution; RGB, masks, rendered normals, and derived
+depth normals remain at render resolution.
+
+The CPU-only 15,520 x 7,760 / six 4,482 x 4,482 sizing check records a
+23.01 GiB unsplit minimum and a 4.68 GiB one-face minimum, then refuses the
+16 GiB synthetic snapshot before any allocation. Vulkan checks cover
+exact-boundary refusal, competing reservations, rollback, delayed-free credit,
+a forced allocator refusal while engine state is live followed by a reset and
+clean engine run, six-face split/unsplit updates, and mixed-resolution
+wide/equirectangular normal warps. The renderer-detach ordering is covered by
+the GUI state transition but was not exercised by desktop automation. CUDA uses
+the same tests, but no CUDA result was recorded on the Windows verification host
+because its toolkit and `nvcc` were unavailable.

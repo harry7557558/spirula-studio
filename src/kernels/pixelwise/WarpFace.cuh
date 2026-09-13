@@ -11,11 +11,11 @@
 
 __forceinline__ __device__ float3 face_pixel_ray(
     const float* __restrict__ axes, const float* __restrict__ post_intrins,
-    long p, int i, int j
+    long p, float i, float j
 ) {
     const float4 k = ((const float4*)post_intrins)[p];
-    const float u = ((float)i + 0.5f - k.z) / k.x;
-    const float v = ((float)j + 0.5f - k.w) / k.y;
+    const float u = (i + 0.5f - k.z) / k.x;
+    const float v = (j + 0.5f - k.w) / k.y;
     const float* a = axes + 9 * p;
     return make_float3(a[6] + u * a[0] + v * a[3],
                        a[7] + u * a[1] + v * a[4],
