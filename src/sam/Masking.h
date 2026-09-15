@@ -44,7 +44,11 @@ struct SeedPrompt {
 };
 
 struct MaskOptions {
-    std::string model, device;
+    std::string model;
+    // The device request, in the spelling core/VulkanDeviceSelection.h parses:
+    // "auto", an ordinal, a name substring, or "uuid:<32 hex>". Empty leaves
+    // SS_VK_DEVICE and then Auto in charge; a bad value fails the run.
+    std::string device;
     std::string text, neg_text;
     // Clicks seeding tracked instances. The only way to prompt a SAM 2
     // checkpoint, and usable alongside text on a SAM 3 one.

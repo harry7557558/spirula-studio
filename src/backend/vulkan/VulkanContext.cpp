@@ -12,8 +12,12 @@
 #include <thread>
 #include <vector>
 #include "core/Env.h"
+#include "core/VulkanDeviceSelection.h"
 
 namespace backend {
+
+namespace sel = spirula::vkselect;
+
 namespace vk {
 
 // --- sticky error (definition of backend::last_error lives in
@@ -38,25 +42,7 @@ void set_error(const char* what, VkResult result) {
 
 namespace {
 
-const char* device_type_name(VkPhysicalDeviceType t) {
-    switch (t) {
-        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "discrete";
-        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "integrated";
-        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "virtual";
-        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "cpu";
-        default: return "other";
-    }
-}
-
-int device_type_score(VkPhysicalDeviceType t) {
-    switch (t) {
-        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return 3;
-        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return 2;
-        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return 1;
-        case VK_PHYSICAL_DEVICE_TYPE_CPU: return 0;
-        default: return 0;
-    }
-}
+using sel::deviceTypeName;
 
 VkDeviceSize device_local_vram(VkPhysicalDevice pd) {
     VkPhysicalDeviceMemoryProperties mp;
@@ -225,22 +211,28 @@ void enable_mvk_settings(VkInstanceCreateInfo& ici,
 }
 
 // --- device enumeration / selection (backs the backend::device_* API) ---
-// Physical devices are addressed by their vkEnumeratePhysicalDevices index;
-// enumeration uses a throwaway instance so listing devices never initializes
-// the Context singleton (or its VkDevice). The index is assumed stable
-// across instances of the same loader — standard practice (VkSplat does the
-// same).
+// Listing uses a throwaway instance, so it never initializes the Context
+// singleton; selection resolves through the shared UUID-carrying helper.
 
-struct EnumeratedDevice {
-    std::string name;
-    VkPhysicalDeviceType type = VK_PHYSICAL_DEVICE_TYPE_OTHER;
-    uint64_t vram = 0;
-    bool usable = false;
-};
+using EnumeratedDevice = sel::DeviceRecord;
 
-std::atomic<int> g_requested_device{-1};  // backend::device_select
+// Identity from device_select/device_select_identity, so an explicit choice is
+// not an ordinal that a later enumeration can reinterpret.
+std::atomic<bool> g_requested_uuid_set{false};
+uint8_t g_requested_uuid[VK_UUID_SIZE] = {};
 std::atomic<bool> g_context_created{false};
-std::atomic<int> g_context_device{-1};
+std::atomic<bool> g_context_uuid_set{false};
+uint8_t g_context_uuid[VK_UUID_SIZE] = {};
+std::mutex g_selection_error_mutex;
+std::string g_selection_error;
+void set_selection_error(const std::string& error) {
+    std::lock_guard<std::mutex> lock(g_selection_error_mutex);
+    g_selection_error = error;
+}
+std::string selection_error() {
+    std::lock_guard<std::mutex> lock(g_selection_error_mutex);
+    return g_selection_error;
+}
 
 const std::vector<EnumeratedDevice>& enumerate_devices() {
     static const std::vector<EnumeratedDevice> list = [] {
@@ -263,10 +255,13 @@ const std::vector<EnumeratedDevice>& enumerate_devices() {
         for (uint32_t i = 0; i < n; i++) {
             DeviceProbe p = probe_device(devices[i]);
             EnumeratedDevice d;
-            d.name = p.props.deviceName;
-            d.type = p.props.deviceType;
-            d.vram = (uint64_t)device_local_vram(devices[i]);
+            d.index = (int)i;
+            sel::probeIdentity(devices[i], &d);
+            d.vram_bytes = (uint64_t)device_local_vram(devices[i]);
             d.usable = p.required_ok;
+            if (!p.required_ok)
+                d.unusable_reason =
+                    "needs Vulkan 1.2 + bufferDeviceAddress + timelineSemaphore";
             out.push_back(std::move(d));
         }
         vkDestroyInstance(inst, nullptr);
@@ -275,49 +270,44 @@ const std::vector<EnumeratedDevice>& enumerate_devices() {
     return list;
 }
 
-// Selection precedence: backend::device_select > SS_VK_DEVICE env
-// (index or name substring) > auto-score (discrete > integrated > others,
-// VRAM tie-break). -1 if nothing usable matches.
+// Selection precedence: backend::device_select (ordinal or identity) >
+// SS_VK_DEVICE > Auto. -1 if nothing usable matches.
 int resolve_device_index() {
     const std::vector<EnumeratedDevice>& list = enumerate_devices();
-    int req = g_requested_device.load();
-    if (req >= 0)
-        return (req < (int)list.size() && list[req].usable) ? req : -1;
-    if (const char* want = spirula::env("VK_DEVICE");
-        want && want[0]) {
-        char* end = nullptr;
-        long idx = std::strtol(want, &end, 10);
-        bool numeric = end && *end == '\0';
-        for (int i = 0; i < (int)list.size(); i++) {
-            bool matches = numeric
-                ? (idx == (long)i)
-                : (list[i].name.find(want) != std::string::npos);
-            if (!matches) continue;
-            if (!list[i].usable) {
-                std::fprintf(stderr, "[spirula-vk] %s\n",
-                    spirula::i18n::format(
-                        spirula::i18n::msg::data::vk_device_lacks_features,
-                        {list[i].name}).c_str());
-                continue;
-            }
-            return i;
-        }
+
+    if (g_requested_uuid_set.load()) {
+        sel::Request r = sel::parseRequest(sel::uuidSelector(g_requested_uuid));
+        r.explicit_request = true;
+        sel::Resolution res = sel::resolveRequest(r, list);
+        return res.ok() ? res.device.index : -1;
+    }
+
+    // Auto and SS_VK_DEVICE both come from the shared resolver. An unusable
+    // match is reported with the runtime's own wording before it fails.
+    const char* env = spirula::env("VK_DEVICE");
+    const bool from_env = env && env[0];
+    sel::Resolution res = sel::resolveRequest(sel::requestFrom("", false), list);
+    if (res.status == sel::ResolveStatus::Unusable && from_env) {
+        std::fprintf(stderr, "[spirula-vk] %s\n",
+            spirula::i18n::format(
+                spirula::i18n::msg::data::vk_device_lacks_features,
+                {res.device.name}).c_str());
         return -1;
     }
-    int best = -1;
-    long best_score = -1;
-    for (int i = 0; i < (int)list.size(); i++) {
-        if (!list[i].usable) continue;
-        long score = device_type_score(list[i].type) * 1000000 +
-                     (long)(list[i].vram >> 30);
-        if (score > best_score) {
-            best_score = score;
-            best = i;
-        }
+    if (!res.ok()) {
+        if (res.status != sel::ResolveStatus::NoDevice)
+            std::fprintf(stderr, "[spirula-vk] %s\n", res.error.c_str());
+        return -1;
     }
-    return best;
+    return res.device.index;
 }
 
+// Public index for the live UUID; context and list enumerations may differ.
+int context_device_index() {
+    if (!g_context_uuid_set.load()) return -1;
+    const int index = sel::findByUuid(enumerate_devices(), g_context_uuid);
+    return index >= 0 ? index : -1;
+}
 }  // namespace
 
 Context& Context::get() {
@@ -367,16 +357,36 @@ void Context::init() {
         return;
     }
 
-    const int best = resolve_device_index();
-    if (best < 0 || best >= (int)n) {
-        set_error("no viable Vulkan device (need Vulkan 1.2 + "
-                  "bufferDeviceAddress + timelineSemaphore)", VK_SUCCESS);
+    // Resolve against records built from THIS instance: an ordinal from the
+    // throwaway enumeration must never index these devices, only the UUID.
+    std::vector<EnumeratedDevice> here;
+    here.reserve(n);
+    for (uint32_t i = 0; i < n; i++) {
+        DeviceProbe pr = probe_device(devices[i]);
+        EnumeratedDevice d;
+        d.index = (int)i;
+        sel::probeIdentity(devices[i], &d);
+        d.vram_bytes = (uint64_t)device_local_vram(devices[i]);
+        d.usable = pr.required_ok;
+        if (!pr.required_ok)
+            d.unusable_reason =
+                "needs Vulkan 1.2 + bufferDeviceAddress + timelineSemaphore";
+        here.push_back(std::move(d));
+    }
+    // Precedence: an explicit identity request, else SS_VK_DEVICE, else Auto.
+    sel::Request req = g_requested_uuid_set.load()
+                           ? sel::parseRequest(sel::uuidSelector(g_requested_uuid))
+                           : sel::requestFrom("", false);
+    req.explicit_request = req.explicit_request || g_requested_uuid_set.load();
+    const sel::Resolution chosen = sel::resolveRequest(req, here);
+    if (!chosen.ok()) {
+        set_error(chosen.error.c_str(), VK_SUCCESS);
         return;
     }
 
-    _physical = devices[best];
+    _physical = devices[chosen.device.index];
     const DeviceProbe probe = probe_device(_physical);
-    if (!probe.required_ok) {  // paranoia: index drifted across instances
+    if (!probe.required_ok) {
         set_error("selected Vulkan device lost required features", VK_SUCCESS);
         return;
     }
@@ -557,7 +567,9 @@ void Context::init() {
     if (const char* env = spirula::env("VK_POLL_WAIT"); env && env[0])
         _poll_waits = env[0] != '0';
 
-    g_context_device.store(best);
+    for (int i = 0; i < VK_UUID_SIZE; i++)
+        g_context_uuid[i] = chosen.device.uuid[i];
+    g_context_uuid_set.store(true);
     g_context_created.store(true);
 
     if (spirula::env("VK_VERBOSE")) {
@@ -577,7 +589,7 @@ void Context::init() {
         std::fprintf(stderr,
             "[spirula-vk] using %s (%s), subgroup %s, push %uB, "
             "float-atomic-add %s, int64 %s, int8 %s, timestamps %s\n",
-            _device_name.c_str(), device_type_name(probe.props.deviceType),
+            _device_name.c_str(), deviceTypeName(probe.props.deviceType),
             subgroup, _caps.max_push_constants,
             _caps.float32_atomic_add ? "native" : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",
@@ -676,26 +688,94 @@ DeviceInfo device_info(int index) {
     if (index < 0 || index >= (int)list.size()) return info;
     const auto& d = list[index];
     std::snprintf(info.name, sizeof(info.name), "%s", d.name.c_str());
-    info.type = vk::device_type_name(d.type);
-    info.vram_bytes = d.vram;
+    info.type = vk::deviceTypeName(d.props.deviceType);
+    info.uuid = sel::selectorFor(d);
+    info.vram_bytes = d.vram_bytes;
     info.usable = d.usable;
     return info;
 }
 
 bool device_select(int index) {
-    const auto& list = vk::enumerate_devices();
-    if (index < 0 || index >= (int)list.size() || !list[index].usable)
+    if (index < 0) {
+        vk::set_selection_error("device index must be nonnegative");
         return false;
-    // After the context exists the device cannot change; selecting the one
-    // already in use is a no-op success.
-    if (vk::g_context_created.load())
-        return vk::g_context_device.load() == index;
-    vk::g_requested_device.store(index);
+    }
+    return device_select_identity(std::to_string(index).c_str());
+}
+
+bool device_select_identity(const char* selector) {
+    if (!selector || !selector[0]) {
+        vk::set_selection_error("device selector is empty");
+        return false;
+    }
+    const auto& list = vk::enumerate_devices();
+    const spirula::vkselect::Resolution res =
+        spirula::vkselect::resolveSelector(selector, list);
+    if (!res.ok()) {
+        vk::set_selection_error(res.error);
+        return false;
+    }
+    // A live context is compared by identity, never by ordinal: the whole
+    // point of the selector is that enumeration order is not identity.
+    if (vk::g_context_created.load()) {
+        if (!vk::g_context_uuid_set.load()) {
+            vk::set_selection_error("the live Vulkan context has no device identity");
+            return false;
+        }
+        const std::string live = sel::uuidSelector(vk::g_context_uuid);
+        if (res.selector != live) {
+            vk::set_selection_error(
+                "the Vulkan backend is already initialized on " + live +
+                "; restart is required to select another device");
+            return false;
+        }
+        vk::set_selection_error({});
+        return true;
+    }
+    for (int i = 0; i < VK_UUID_SIZE; i++)
+        vk::g_requested_uuid[i] = res.device.uuid[i];
+    vk::g_requested_uuid_set.store(true);
+    vk::set_selection_error({});
     return true;
 }
 
+std::string device_selection_error() {
+    return vk::selection_error();
+}
+
+std::string device_selector(int index) {
+    const auto& list = vk::enumerate_devices();
+    if (index < 0 || index >= (int)list.size()) return std::string();
+    return sel::selectorFor(list[index]);
+}
+
+std::string device_current_selector() {
+    const auto& list = vk::enumerate_devices();
+    if (vk::g_context_created.load()) {
+        if (!vk::g_context_uuid_set.load()) return std::string();
+        return sel::uuidSelector(vk::g_context_uuid);
+    }
+    const int idx = device_current();
+    if (idx < 0 || idx >= (int)list.size()) return std::string();
+    return sel::selectorFor(list[idx]);
+}
+
+bool device_identity_matches_current(const char* selector) {
+    if (!selector || !selector[0]) return false;
+    const auto& list = vk::enumerate_devices();
+    const spirula::vkselect::Resolution res =
+        spirula::vkselect::resolveSelector(selector, list);
+    if (!res.ok()) return false;
+    if (!vk::g_context_created.load()) return false;
+    // By identity, not by ordinal: the request and the live context must be
+    // the same physical device even if this enumeration ordered them
+    // differently.
+    return vk::g_context_uuid_set.load() &&
+           res.selector == sel::uuidSelector(vk::g_context_uuid);
+}
+
 int device_current() {
-    if (vk::g_context_created.load()) return vk::g_context_device.load();
+    if (vk::g_context_created.load()) return vk::context_device_index();
     return vk::resolve_device_index();
 }
 
@@ -703,8 +783,8 @@ MemoryUsage memory_usage() {
     MemoryUsage m;
     const int idx = device_current();
     const auto& list = vk::enumerate_devices();
-    if (idx >= 0 && idx < (int)list.size() && list[idx].vram > 0) {
-        m.total_bytes = list[idx].vram;
+    if (idx >= 0 && idx < (int)list.size() && list[idx].vram_bytes > 0) {
+        m.total_bytes = list[idx].vram_bytes;
         m.has_total = true;
     }
     m.process_bytes = vk::g_device_bytes.load(std::memory_order_relaxed);

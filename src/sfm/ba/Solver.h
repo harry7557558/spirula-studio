@@ -68,16 +68,14 @@ inline RealCfg pickRealForDevice(RealCfg want, const VkDeviceCaps& caps) {
     return RealCfg::CPU;
 }
 
-// Probing means an instance + an enumeration, and the mapper's scoped solves
-// would pay it per BA. Device features do not change under us, so probe once
-// per device index.
-inline const VkDeviceCaps& cachedDeviceCaps(int deviceIndex) {
+// Cache capabilities by canonical UUID; ordinals may change between enumerations.
+inline const VkDeviceCaps& cachedDeviceCaps(const std::string& selector) {
     static std::mutex m;
-    static std::map<int, VkDeviceCaps> cache;  // node-based: references stay valid
+    static std::map<std::string, VkDeviceCaps> cache;  // node-based: references stay valid
     std::lock_guard<std::mutex> g(m);
-    auto it = cache.find(deviceIndex);
+    auto it = cache.find(selector);
     if (it == cache.end())
-        it = cache.emplace(deviceIndex, VkContext::probeCaps(deviceIndex)).first;
+        it = cache.emplace(selector, VkContext::probeCaps(deviceOnlyOpt(-1, selector))).first;
     return it->second;
 }
 
@@ -112,14 +110,34 @@ public:
             prof_t0 = t1;
             return dt;
         };
-        // Fall back rather than fail: an unsupported request used to surface as
-        // VK_ERROR_FEATURE_NOT_PRESENT from vkCreateDevice, which killed the
-        // run at its first bundle adjustment. No AMD part has an fp64 buffer
-        // atomic add, so this is the ordinary path, not a corner.
+        // An explicit request resolves even against a live context and never
+        // falls back to CPU or capability; only an implicit one may.
+        const bool explicit_req =
+            !opt_.device_selector.empty() || opt_.device >= 0;
+        const bool validate_request =
+            explicit_req || (opt_.real != RealCfg::CPU && !ctx_.initialized());
+        if (validate_request) {
+            const spirula::vkselect::Resolution& res =
+                VkContext::cachedResolution(
+                    deviceOnlyOpt(opt_.device, opt_.device_selector));
+            if (res.ok())
+                selector_ = res.selector;
+            else if (explicit_req ||
+                     res.status != spirula::vkselect::ResolveStatus::NoDevice)
+                throw std::runtime_error(res.error);
+        }
+        // The identity is what a shared context is; an ordinal says nothing
+        // across instances. Refuse before any capability choice or allocation.
+        if (ctx_.initialized() && !selector_.empty() &&
+            selector_ != ctx_.selector())
+            throw std::runtime_error("requested device " + selector_ +
+                                     " is not the live device " + ctx_.selector());
         if (opt_.real != RealCfg::CPU) {
-            const VkDeviceCaps& caps = ctx_.initialized()
-                                           ? ctx_.caps()
-                                           : cachedDeviceCaps(opt_.device);
+            static const VkDeviceCaps kNoDevice{};
+            const VkDeviceCaps& caps =
+                ctx_.initialized() ? ctx_.caps()
+                : selector_.empty() ? kNoDevice
+                                    : cachedDeviceCaps(selector_);
             RealCfg real = pickRealForDevice(opt_.real, caps);
             if (real != opt_.real) {
                 // Once per (asked, got) pair: the mapper builds a solver per
@@ -149,7 +167,8 @@ public:
         vopt.needFloat64 = opt_.real == RealCfg::F64;
         vopt.needFloatAtomics = opt_.real != RealCfg::DF64;
         vopt.needInt64Atomics = opt_.real == RealCfg::DF64;
-        vopt.deviceIndex = opt_.device;
+        vopt.selector = selector_;      // canonical identity; empty = the shared precedence
+        vopt.deviceIndex = opt_.device; // legacy ordinal, only when no UUID was resolved
         vopt.validate = opt_.validate;
         vopt.profile = opt_.profile;
         if (!ctx_.initialized()) ctx_.init(vopt);
@@ -1048,6 +1067,10 @@ private:
 
     BAProblem& P_;
     SolverOptions opt_;
+    // Canonical uuid:<hex> this solve resolved to, empty before init() and when
+    // no device at all was usable (the host path). What the capability cache is
+    // keyed by, so two solves on one device share one probe.
+    std::string selector_;
     std::unique_ptr<bacpu::Solver> cpu_;  // non-null when running on the host
     const char* schurSuffix_ = "_c";  // dof tier of the Schur kernels (pickTiers)
     const char* cgSuffix_ = "_w";     // ... and of the CG ones

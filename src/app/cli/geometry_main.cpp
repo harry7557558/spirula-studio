@@ -16,13 +16,14 @@
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
+#include "core/VulkanDeviceSelection.h"
 #include "i18n/Locale.h"
 #include "i18n/TimeFormat.h"
 #include "i18n/catalog/Geometry.h"
+#include "nn/Device.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
-#include "nn/vk/Context.h"
 
 #include <algorithm>
 #include <cmath>
@@ -109,7 +110,7 @@ void usage() {
     // prints is a table of numerical errors, read by whoever changed the warp.
     std::fprintf(stderr, "    --check                   "
                          "run the camera round-trip self-test and exit\n");
-    std::fprintf(stderr, "\n%s --device <index|name>  --lang <code>\n",
+    std::fprintf(stderr, "\n%s --device <index|name|uuid>  --lang <code>\n",
                  G::label_common.get());
     std::fprintf(stderr, "%s SS_NN_LOG=0..3  SS_VK_DEVICE  SS_PROFILE=1\n",
                  G::label_environment.get());
@@ -469,6 +470,9 @@ int spirula_geometry_main(int argc, char** argv) {
     app::set_program_name(argc > 0 ? argv[0] : nullptr, "spirula geometry");
     Options o;
     std::string device;
+    // An explicit --device, including an empty one: `--device ""` is the
+    // caller's Auto, which must beat SS_VK_DEVICE the way a chosen index does.
+    bool device_set = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -496,7 +500,7 @@ int spirula_geometry_main(int argc, char** argv) {
         else if (a == "--image-gamut") o.image_gamut = next();
         else if (a == "--image-linear") o.image_is_linear = true;
         else if (a == "--no-image-linear") o.image_is_linear = false;
-        else if (a == "--device") device = next();
+        else if (a == "--device") { device = next(); device_set = true; }
         else if (!a.empty() && a[0] == '-') {
             std::fprintf(stderr, "unknown option '%s'\n\n", a.c_str());
             usage();
@@ -510,16 +514,19 @@ int spirula_geometry_main(int argc, char** argv) {
         return 2;
     }
     if (!o.want_depth && !o.want_normal) return 0;
-    if (!device.empty()) {
-        // Creating the context here fixes the device for the process; the
-        // model's own Context::get() then returns this one.
-        nn::vk::ContextOptions vo;
-        char* end = nullptr;
-        const long idx = std::strtol(device.c_str(), &end, 10);
-        if (end && *end == '\0') vo.device_index = (int)idx;
-        else vo.device_match = device;
-        nn::vk::Context::get(vo);
+    // Resolve once before weights load; all later stages inherit the UUID.
+    // Explicit --device beats SS_VK_DEVICE, then Auto.
+    const spirula::vkselect::Request req =
+        spirula::vkselect::requestFrom(device, device_set);
+    try {
+        nn::configure_device(req.text);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "\nerror: %s\n", e.what());
+        return 1;
     }
+    // The canonical identity, which is what the predictor and every later
+    // context of the process inherits; no ordinal survives this line.
+    const std::string selector = nn::configured_device_selector();
 
     try {
         // ---- the dataset --------------------------------------------------
@@ -557,7 +564,7 @@ int spirula_geometry_main(int argc, char** argv) {
         // Before the warps: which input sizes round-trip is the network's, and
         // Metric3D's decoder crops where MoGe resamples its own output.
         app::GeometryModel pred;
-        pred.load(o.model);
+        pred.load(o.model, selector);
 
         // ---- one warp plan per camera --------------------------------------
         const int patch = pred.sizeGranularity();

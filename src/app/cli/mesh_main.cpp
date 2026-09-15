@@ -15,6 +15,7 @@
 
 #include "app/Tools.h"
 
+#include "backend/api/BackendRuntime.h"
 #include "checkpoint/SplatPly.h"
 #include "mesh/Meshing.h"
 #include "core/Camera.h"
@@ -143,6 +144,8 @@ struct Options {
     std::string format = "ply";
     std::string color = "vertex";       // none | vertex | texture
     std::string data_format;            // "" = config/auto
+    // Canonical selector passed by GUI children; empty uses shared precedence.
+    std::string device;
     std::optional<float> iso;           // default depends on cameras
     meshing::MeshingConfig m;           // remaining knobs live here
 };
@@ -184,11 +187,16 @@ void print_help(const char* argv0) {
     Options d;
     std::printf("%s\n\n", format(mmsg::help_usage, {argv0}).c_str());
     std::printf("%s\n\n", mmsg::help_intro.get());
-
     help_row("--data <dir>", mmsg::help_data);
     help_row("--no-data", mmsg::help_no_data);
     help_row("--data-format <fmt>", mmsg::help_data_format);
     help_row("--output <path>", mmsg::help_output);
+
+#ifdef SS_BACKEND_VULKAN
+    help_row("--device <sel>", mmsg::help_device);
+#else
+    help_row("--device <index>", mmsg::help_device_cuda);
+#endif
     help_row("--format <list>", mmsg::help_format, {d.format});
     help_row("--color <mode>", mmsg::help_color, {d.color});
     help_row("--texture-size <n>", mmsg::help_texture_size, {d.m.texture_size});
@@ -258,6 +266,7 @@ Options parse_args(int argc, char** argv) {
         if      (key == "data")            o.data = next();
         else if (key == "no_data")         o.no_data = true;
         else if (key == "data_format")     o.data_format = next();
+        else if (key == "device")          o.device = next();
         else if (key == "output")          o.output = next();
         else if (key == "format")          o.format = next();
         else if (key == "color")           o.color = next();
@@ -294,6 +303,26 @@ Options parse_args(int argc, char** argv) {
 int spirula_mesh_main(int argc, char** argv) {
     try {
         Options o = parse_args(argc, argv);
+
+        // The identity API is Vulkan-only; a CUDA child receives its ordinal.
+#ifdef SS_BACKEND_VULKAN
+        const std::string resolved =
+            o.device.empty() ? backend::device_current_selector() : o.device;
+        if (!resolved.empty() &&
+            !backend::device_select_identity(resolved.c_str())) {
+            std::string detail = backend::device_selection_error();
+            if (detail.empty()) detail = "device selection failed";
+            throw std::runtime_error("--device " + resolved + ": " + detail);
+        }
+#else
+        if (!o.device.empty()) {
+            const int index = parse_i("device", o.device.c_str());
+            if (!backend::device_select(index))
+                throw std::runtime_error(
+                    "--device " + o.device +
+                    ": no usable CUDA device matches (see --help)");
+        }
+#endif
 
         // ---- resolve color mode + formats, and validate BEFORE any work ----
         meshing::MeshColorMode mode;

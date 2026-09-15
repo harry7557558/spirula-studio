@@ -26,6 +26,16 @@
 namespace sam {
 
 // ---------------------------------------------------------------------------
+// Device request
+// ---------------------------------------------------------------------------
+
+// Records the physical identity for `device`, resolved through the shared
+// precedence: the caller's value, else SS_VK_DEVICE, else Auto. False with
+// `error` on a bad selection, which the caller reports, never falls back.
+bool freeze_device(const std::string& device, std::string& error,
+                   bool validation = false, bool profile = false);
+
+// ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
 
@@ -71,8 +81,10 @@ struct Result {
 
 struct ModelParams {
     std::string model_path;
-    int         device_index = -1;   // -1 = auto (discrete first)
-    std::string device_match;        // or a case-insensitive name substring
+    // "auto", a Vulkan ordinal, a unique name substring, or "uuid:<32 hex>",
+    // resolved by core/VulkanDeviceSelection.h. Empty leaves SS_VK_DEVICE and
+    // then Auto in charge; a bad value fails the load.
+    std::string device;
     int         img_size = 0;        // 0 = the checkpoint's native resolution
     bool        validation = false;  // enable the Vulkan validation layers
     // Collect per-kernel GPU timestamps, for Session::printProfile(). Has to be

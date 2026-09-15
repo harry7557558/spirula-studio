@@ -3,7 +3,6 @@
 // pipelines from one SPIR-V module, and command recording helpers.
 #pragma once
 
-#include <atomic>
 
 #include <chrono>
 #include <vulkan/vulkan.h>
@@ -14,14 +13,20 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include "core/Env.h"
 #include "core/SourcePath.h"
+#include "core/VulkanDeviceSelection.h"
 
 #include "sfm/core/Log.h"
 #include "i18n/catalog/Sfm.h"
+
+// One shared device record: the SfM context stores the resolved identity so a
+// BA capability probe can be keyed by UUID instead of an ordinal.
+using VkDeviceRecord = spirula::vkselect::DeviceRecord;
 
 // The result codes worth naming: the ones a user can act on. Everything else
 // prints its number. Out-of-memory in particular used to surface as a bare
@@ -122,7 +127,11 @@ struct VkContextOptions {
     bool needFloatAtomics = false;   // VK_EXT_shader_atomic_float (f32 add, and f64 add if needFloat64)
     bool needInt64Atomics = false;   // buffer int64 atomics (emulated-double CAS)
     bool needIntDotProduct = false;  // VK_KHR_shader_integer_dot_product (packed uint8x4, matcher)
-    int deviceIndex = -1;            // -1 = prefer discrete GPU
+    // External/test input only, and only when `selector` is empty; -1 = auto.
+    int deviceIndex = -1;
+    // Resolved identity (core/VulkanDeviceSelection.h), re-resolved in each
+    // context's own instance -- what makes a uuid request survive reordering.
+    std::string selector;
     bool validate = false;
     bool profile = false;            // per-dispatch GPU timestamps, aggregated by pipeline name
 };
@@ -145,6 +154,23 @@ struct VkDeviceCaps {
     // 43 ms per 8192x8192 pair on an M2), so this is what picks the blob.
     bool intDotProductFast = false;
 };
+
+// The resolver's reason for the last refused device request in this thread.
+// Kept beside the context rather than in it: the failure happens before any
+// context exists, and the caller (or the test) needs the wording.
+inline std::string& lastVkSelectError() {
+    static thread_local std::string e;
+    return e;
+}
+
+// Options carrying only the device request, for a capability probe. Callers
+// that need features add them to the copy that actually creates a context.
+inline VkContextOptions deviceOnlyOpt(int deviceIndex, const std::string& selector) {
+    VkContextOptions o;
+    o.deviceIndex = deviceIndex;
+    o.selector = selector;
+    return o;
+}
 
 class VkContext {
 public:
@@ -187,11 +213,85 @@ public:
     // The device this context runs on, as probed at init(). Zeroed before then.
     const VkDeviceCaps& caps() const { return caps_; }
 
-    // Same features, without owning a context: creates a throwaway instance,
-    // picks the device `deviceIndex` would pick and asks it what it has. For
-    // callers that must choose a code path (a BA scalar type, say) before any
-    // context exists. Returns all-false if there is no usable device.
+    // Identity of the device this context resolved to: the canonical selector
+    // (what a cache key and a log line want) and the driver's reported name.
+    // Empty before init().
+    const std::string& selector() const { return selector_; }
+    const std::string& deviceName() const { return deviceName_; }
+
+    // Same features without owning a context, for callers that must choose a
+    // code path (a BA scalar type, say) before one exists. All-false when the
+    // request names no usable device.
+    static VkDeviceCaps probeCaps(const VkContextOptions& opt) {
+        return probe(opt).caps;
+    }
     static VkDeviceCaps probeCaps(int deviceIndex) {
+        return probeCaps(deviceOnlyOpt(deviceIndex, std::string()));
+    }
+
+    // Side-effect-free enumeration used by pickers and entry-point resolution;
+    // no logical device or allocation.
+    static std::vector<VkDeviceRecord> listDevices() {
+        std::vector<VkDeviceRecord> out;
+        VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+        app.pApplicationName = "vk_ba";
+        app.apiVersion = VK_API_VERSION_1_2;
+        VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+        ici.pApplicationInfo = &app;
+        std::vector<const char*> instExts;
+        vkEnablePortability(ici, instExts);
+        VkInstance inst = VK_NULL_HANDLE;
+        if (vkCreateInstance(&ici, nullptr, &inst) != VK_SUCCESS) return out;
+        out = enumerateRecords(inst);
+        vkDestroyInstance(inst, nullptr);
+        return out;
+    }
+
+    // Resolve to canonical UUID; failures return an error without creating hardware.
+    static spirula::vkselect::Resolution resolveSelector(
+        const spirula::vkselect::Request& req) {
+        return spirula::vkselect::resolveRequest(req, listDevices());
+    }
+
+    // The same, memoized on the request's spelling. Enumeration means an
+    // instance plus a device walk, and the mapper's scoped solves would pay it
+    // per bundle adjustment; the machine's device set does not change under us.
+    static const spirula::vkselect::Resolution& cachedSelector(
+        const spirula::vkselect::Request& req) {
+        static std::mutex m;
+        static std::map<std::string, spirula::vkselect::Resolution> cache;
+        const std::string key = std::to_string((int)req.kind) + "|" + req.text;
+        std::lock_guard<std::mutex> g(m);
+        auto it = cache.find(key);
+        if (it == cache.end()) it = cache.emplace(key, resolveSelector(req)).first;
+        return it->second;
+    }
+
+    // The same, for a caller that already has an options object (an int
+    // boundary or a resolved selector), memoized like cachedSelector.
+    static const spirula::vkselect::Resolution& cachedResolution(const VkContextOptions& opt) {
+        spirula::vkselect::Request req;
+        if (!opt.selector.empty()) {
+            req = spirula::vkselect::parseRequest(opt.selector);
+        } else if (opt.deviceIndex >= 0) {
+            req = spirula::vkselect::parseRequest(std::to_string(opt.deviceIndex));
+            req.explicit_request = true;
+        } else {
+            req = spirula::vkselect::requestFrom("", false);
+        }
+        return cachedSelector(req);
+    }
+
+    // Same probe, keeping the identity it resolved to: `resolved` is false when
+    // the request names no device this instance can see, which is a selection
+    // error rather than a featureless device.
+    struct Probe {
+        VkDeviceCaps caps;
+        VkDeviceRecord device;
+        bool resolved = false;
+    };
+    static Probe probe(const VkContextOptions& opt) {
+        Probe out;
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
         app.pApplicationName = "vk_ba_probe";
         app.apiVersion = VK_API_VERSION_1_2;
@@ -200,11 +300,14 @@ public:
         std::vector<const char*> instExts;
         vkEnablePortability(ici, instExts);
         VkInstance inst = VK_NULL_HANDLE;
-        if (vkCreateInstance(&ici, nullptr, &inst) != VK_SUCCESS) return {};
-        VkPhysicalDevice phys = choosePhysical(inst, deviceIndex);
-        VkDeviceCaps c = phys == VK_NULL_HANDLE ? VkDeviceCaps{} : queryCaps(phys);
+        if (vkCreateInstance(&ici, nullptr, &inst) != VK_SUCCESS) return out;
+        const VkPhysicalDevice phys = choosePhysical(inst, opt, &out.device);
+        if (phys != VK_NULL_HANDLE) {
+            out.caps = queryCaps(phys);
+            out.resolved = true;
+        }
         vkDestroyInstance(inst, nullptr);
-        return c;
+        return out;
     }
 
     void init(const VkContextOptions& opt) {
@@ -224,18 +327,23 @@ public:
         VK_CHECK(vkCreateInstance(&ici, nullptr, &instance_));
 
         // ---- physical device ----
-        phys_ = choosePhysical(instance_, opt.deviceIndex);
-        if (phys_ == VK_NULL_HANDLE) throw std::runtime_error("no Vulkan devices");
+        VkDeviceRecord record;
+        phys_ = choosePhysical(instance_, opt, &record);
+        if (phys_ == VK_NULL_HANDLE) {
+            // A refused request is a selection error, not a missing device: the
+            // resolver already said which value failed and why.
+            const std::string& why = lastVkSelectError();
+            throw std::runtime_error(why.empty() ? "no Vulkan devices" : why);
+        }
+        std::copy(record.uuid, record.uuid + VK_UUID_SIZE, deviceUUID_);
+        deviceName_ = record.name;
+        selector_ = spirula::vkselect::uuidSelector(deviceUUID_);
         caps_ = queryCaps(phys_);
-        VkPhysicalDeviceProperties props;
+        VkPhysicalDeviceProperties props{};
         vkGetPhysicalDeviceProperties(phys_, &props);
-        // Once per process. The atom workers of a bottom-up run create a
-        // context each, and eight identical banner lines in the middle of a
-        // reconstruction say nothing the first one did not.
-        static std::atomic<bool> announced{false};
-        if (!announced.exchange(true))
-            sfm::slog::out(sfm::slog::Tag::Device,
-                           spirula::i18n::msg::sfm::device_using, {props.deviceName});
+        sfm::slog::out(
+            sfm::slog::Tag::Device, spirula::i18n::msg::sfm::device_using,
+            {deviceName_ + " [" + selector_ + "]"});
 
         // ---- queue family ----
         uint32_t qn = 0;
@@ -707,24 +815,82 @@ public:
 private:
     static constexpr VkDeviceSize kStagingSize = 64ull << 20;
 
-    // `deviceIndex` < 0 prefers the first discrete GPU, else device 0.
-    static VkPhysicalDevice choosePhysical(VkInstance inst, int deviceIndex) {
+    // Enumeration uses the same usability probe as choosePhysical.
+    static std::vector<VkDeviceRecord> enumerateRecords(
+        VkInstance inst, std::vector<VkPhysicalDevice>* handles = nullptr) {
         uint32_t n = 0;
         vkEnumeratePhysicalDevices(inst, &n, nullptr);
-        if (n == 0) return VK_NULL_HANDLE;
         std::vector<VkPhysicalDevice> devs(n);
-        vkEnumeratePhysicalDevices(inst, &n, devs.data());
-        int pick = deviceIndex;
-        if (pick < 0) {
-            pick = 0;
-            for (uint32_t i = 0; i < n; i++) {
-                VkPhysicalDeviceProperties p;
-                vkGetPhysicalDeviceProperties(devs[i], &p);
-                if (p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) { pick = (int)i; break; }
-            }
+        if (n) vkEnumeratePhysicalDevices(inst, &n, devs.data());
+        if (handles) *handles = devs;
+
+        std::vector<spirula::vkselect::DeviceRecord> list;
+        list.reserve(n);
+        for (uint32_t i = 0; i < n; i++) {
+            spirula::vkselect::DeviceRecord r;
+            r.index = (int)i;
+            spirula::vkselect::probeIdentity(devs[i], &r);
+            VkPhysicalDeviceMemoryProperties mp{};
+            vkGetPhysicalDeviceMemoryProperties(devs[i], &mp);
+            for (uint32_t h = 0; h < mp.memoryHeapCount; ++h)
+                if (mp.memoryHeaps[h].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+                    r.vram_bytes += mp.memoryHeaps[h].size;
+            // The same baseline the other runtimes require, so an unusable
+            // device is rejected here rather than at vkCreateDevice.
+            VkPhysicalDeviceVulkan12Features f12{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+            VkPhysicalDeviceFeatures2 f2{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            f2.pNext = &f12;
+            vkGetPhysicalDeviceFeatures2(devs[i], &f2);
+            uint32_t qn = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(devs[i], &qn, nullptr);
+            std::vector<VkQueueFamilyProperties> qf(qn);
+            if (qn) vkGetPhysicalDeviceQueueFamilyProperties(devs[i], &qn, qf.data());
+            bool compute = false;
+            for (uint32_t q = 0; q < qn; q++)
+                if (qf[q].queueFlags & VK_QUEUE_COMPUTE_BIT) compute = true;
+            if (r.props.apiVersion < VK_API_VERSION_1_2)
+                r.unusable_reason = "driver reports Vulkan < 1.2";
+            else if (!f12.bufferDeviceAddress)
+                r.unusable_reason = "no bufferDeviceAddress";
+            else if (!f12.timelineSemaphore)
+                r.unusable_reason = "no timelineSemaphore";
+            else if (!compute)
+                r.unusable_reason = "no compute queue";
+            else
+                r.usable = true;
+            list.push_back(std::move(r));
         }
-        if (pick >= (int)n) return VK_NULL_HANDLE;
-        return devs[pick];
+
+        return list;
+    }
+
+    static VkPhysicalDevice choosePhysical(VkInstance inst, const VkContextOptions& opt,
+                                           VkDeviceRecord* record = nullptr) {
+        std::vector<VkPhysicalDevice> devs;
+        const std::vector<VkDeviceRecord> list = enumerateRecords(inst, &devs);
+        const spirula::vkselect::Resolution res =
+            spirula::vkselect::resolveRequest(deviceRequest(opt), list);
+        if (!res.ok()) {
+            lastVkSelectError() = res.error;
+            return VK_NULL_HANDLE;
+        }
+        if (record) *record = res.device;
+        return devs[(size_t)res.device.index];
+    }
+
+    // What the options ask for: the resolved identity first, then the legacy
+    // ordinal (a caller that still hands one in), then the shared precedence.
+    static spirula::vkselect::Request deviceRequest(const VkContextOptions& opt) {
+        if (!opt.selector.empty()) return spirula::vkselect::parseRequest(opt.selector);
+        if (opt.deviceIndex >= 0) {
+            spirula::vkselect::Request r =
+                spirula::vkselect::parseRequest(std::to_string(opt.deviceIndex));
+            r.explicit_request = true;
+            return r;
+        }
+        return spirula::vkselect::requestFrom("", false);
     }
 
     static VkDeviceCaps queryCaps(VkPhysicalDevice phys) {
@@ -817,6 +983,9 @@ private:
     VkInstance instance_ = VK_NULL_HANDLE;
     VkPhysicalDevice phys_ = VK_NULL_HANDLE;
     VkDeviceCaps caps_{};
+    std::string selector_;   // canonical uuid:<hex> of phys_, empty before init
+    std::string deviceName_;
+    uint8_t deviceUUID_[VK_UUID_SIZE] = {};
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     uint32_t queueFamily_ = 0;

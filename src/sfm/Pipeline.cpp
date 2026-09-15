@@ -2074,6 +2074,7 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
         if (!man.mask_dir.empty()) maskdir_explicit = true;
     }
     if (std::string err = cfg.finalize(CMD_AUTO); !err.empty()) return err;
+    if (std::string err = cfg.resolveDevice(); !err.empty()) return err;
 
     out.in.image_dir = imagedir;
     out.in.workspace = workspace;

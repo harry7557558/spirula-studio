@@ -35,6 +35,11 @@ struct FrameExtractJob : FrameLook {
     std::string image_dir;         // written here (cam0/, cam1/ ... if multi-track)
     std::string mask_dir;          // only when masking is on
 
+    // The device request for this job, in the spelling
+    // core/VulkanDeviceSelection.h parses. Frozen before the decode probe and
+    // any Masker::init; a bad value fails the job.
+    std::string device;
+
     // Selection
     int   skip = 1;                // write one frame every n source frames
     int   keep = -1;               // sharpest of the last n; -1 = round(skip/2)
@@ -78,7 +83,8 @@ struct FrameExtractSinks {
 };
 
 // "" when in-process decoding is available on this device, otherwise the
-// reason it is not (missing extension, unsupported codec, no driver support).
+// reason it is not. CREATES the inference context, so freeze the device first;
+// backends() keeps the build-level answer for a UI that must not probe yet.
 std::string video_decode_availability();
 
 // Number of video tracks in the file, or 0 with `error` set. Cheap: the
@@ -112,11 +118,13 @@ using FrameAtSink = std::function<void(nn::Image& img, int64_t index)>;
 bool extract_frames_at(const std::string& input, const FrameLook& look,
                        const std::vector<int64_t>& indices, int folder,
                        const FrameAtSink& on_frame,
-                       const std::atomic<bool>* cancel, std::string& error);
+                       const std::atomic<bool>* cancel, std::string& error,
+                       const std::string& device = {});
 
 bool extract_one_frame(const std::string& input, const FrameLook& look,
                        int64_t index, int folder, nn::Image& out,
-                       const std::atomic<bool>* cancel, std::string& error);
+                       const std::atomic<bool>* cancel, std::string& error,
+                       const std::string& device = {});
 
 // The timing table `spirula-sam extract` prints, so the CLI and the GUI log
 // agree on what the numbers mean.

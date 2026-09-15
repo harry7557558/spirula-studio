@@ -7,12 +7,12 @@ detector, a matcher or a depth model is added later it builds on this
 unchanged. Do not put model-specific constants here.
 
 Vulkan-only, like `src/sfm/`: built by default for `SS_BACKEND=vulkan`
-(`SS_BUILD_SAM`) and absent from a CUDA build. It carries its own device;
-converging the repository's three Vulkan contexts onto one is
-`docs/notes/sfm-port-plan.md` phase 6.
+(`SS_BUILD_SAM`) and absent from a CUDA build. It keeps its own Vulkan context
+and resolves the same native selector identity as the other built-in Vulkan
+workflows; physical or logical device handles are never shared.
 
-Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE`, `SS_PROFILE=1`,
-`SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`, `SS_NN_COOPMAT=0`.
+Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name|auto|uuid:hex>`,
+`SS_PROFILE=1`, `SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`, `SS_NN_COOPMAT=0`.
 
 ## The op layer
 

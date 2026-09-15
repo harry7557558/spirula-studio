@@ -191,7 +191,7 @@ session.encodeImage(nn::load_image("street.jpg"));   // once per frame
 sam::Result r = session.segmentConcept({.text = "yellow school bus"});
 ```
 
-Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name>`,
+Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name|auto|uuid:hex>`,
 `SS_PROFILE=1`, `SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`.
 
 ## Checkpoints

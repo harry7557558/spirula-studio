@@ -22,6 +22,8 @@ namespace gui {
 
 struct GeometryJob {
     bool enable = false;
+    // Canonical UUID from the frozen GUI choice; children must not re-rank.
+    std::string device_uuid;
     // A model id (geometry_models()) or a path to an .onnx file.
     std::string model = "moge2-vitb";
     int  max_size = 1064;         // longest side of one face the network runs

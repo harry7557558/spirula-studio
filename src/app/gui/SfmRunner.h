@@ -144,6 +144,10 @@ struct SfmJob {
     // session with it on.
     bool subprocess = sfm_subprocess_default();
 
+    // Canonical UUID passed to in-process and child runs; empty uses shared
+    // precedence.
+    std::string device_selector;
+
     // What colour space the photographs are in. Everything that reads pixels --
     // SfM, AI masking, depth and normals -- converts to sRGB first, which is
     // what those detectors and models were trained on. Empty = Rec.709/sRGB.
@@ -251,9 +255,11 @@ private:
     sfm::Manifest build_manifest(const SfmJob& job, const PrepResult& prep);
     static std::vector<sfm::RigDef> build_rigs(const PrepJob& prep);
 #endif
-    // Everything the child is told about the model, as against where to put
-    // it. Both the command line and the workspace's stamp are made from this.
-    std::vector<std::string> recon_args(const SfmJob& job, const PrepResult& prep);
+    std::vector<std::string> recon_args(const SfmJob& job,
+                                        const PrepResult& prep);
+    // Model flags shared by the workspace stamp and both launch paths. The
+    // frozen execution selector is appended only when launching, so changing
+    // GPUs does not invalidate a completed model.
 
     std::thread _worker;
     std::atomic<State> _state{State::Idle};

@@ -175,7 +175,9 @@ bool Masker::init(const MaskOptions& o, std::string& error) {
 
     sam::ModelParams mp;
     mp.model_path = o.model;
-    mp.device_match = o.device;
+    // One spelling, parsed by the shared resolver: an ordinal is an ordinal,
+    // a name is a name, "uuid:<hex>" is an identity -- never a name substring.
+    mp.device = o.device;
     mp.validation = o.validate;
     mp.profile = o.profile;
     mp.img_size = o.img_size;

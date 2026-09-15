@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 static int g_failures = 0;
@@ -34,6 +35,16 @@ static int g_failures = 0;
 
 int main() {
     using namespace backend;
+    CHECK(!device_select_identity("9999"));
+    const std::string detail = device_selection_error();
+    CHECK(!detail.empty());
+    CHECK(detail.find("9999") != std::string::npos);
+    CHECK(detail.find("does not exist") != std::string::npos ||
+          detail.find("range") != std::string::npos);
+    const std::string selector = device_current_selector();
+    CHECK(!selector.empty());
+    CHECK(device_select_identity(selector.c_str()));
+    CHECK(device_selection_error().empty());
 
     // --- allocation + classification ---
     const size_t N = 1 << 20;  // 1M floats = 4MB

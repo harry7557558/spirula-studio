@@ -185,8 +185,15 @@ struct SfmConfig {
     int threads = 0;           // host worker pools; 0 = hardware_concurrency
     int decode_threads = 0;    // image decode pool; 0 = hardware_concurrency
     int decode_budget_mb = 0;  // 0 = ImageLoadOptions default
+    // Input spelling; downstream options carry the canonical UUID below.
     int device = -1;
+    // Canonical UUID resolved at entry and fanned into each stage; empty means no
+    // usable native device.
+    std::string device_selector;
     bool quiet = false;
+    // Raw --device spelling; request_set preserves an explicit empty value.
+    std::string device_request;
+    bool device_request_set = false;
 
     // Which frontend runs. "sift" is the GPU one; aliked-* and loma-* are the
     // learned ones and need the inference layer. Two flags and not one because
@@ -228,6 +235,16 @@ struct SfmConfig {
     // table's ranges cannot. Returns an empty string, or the error to print.
     // Call once, after parsing and after the presets.
     std::string finalize(uint32_t cmd);
+
+    // Resolve the request into one canonical UUID and fan it into every stage.
+    // Selection errors fail before hardware creation; empty means no usable
+    // Vulkan device.
+    std::string resolveDevice();
+
+    // Resolve a --device value for direct BA without mutating this config.
+    // `request_set` preserves an explicit Auto when the value is empty.
+    static std::string selectorForDevice(const std::string& request,
+                                         bool request_set, std::string& error);
 
     // What --pairs names, with "auto" resolving to exhaustive. `auto` alone
     // additionally switches to pair selection above 100 images, which it can
@@ -547,7 +564,7 @@ struct SfmConfig {
       4096, "", decode_threads)                                                                    \
     F(decode_budget_mb, "decode-budget", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "runtime", 0,     \
       1048576, "", decode_budget)                                                                  \
-    F(device, "device", CMD_ALL, Tier::Advanced, "runtime", -1, 64, "", device)                    \
+    F(device_request, "device", CMD_ALL, Tier::Advanced, "runtime", 0, 0, "", device)              \
     F(quiet, "quiet", CMD_ALL, Tier::Advanced, "runtime", 0, 0, "", quiet)
 
 // ---------------------------------------------------------------------------

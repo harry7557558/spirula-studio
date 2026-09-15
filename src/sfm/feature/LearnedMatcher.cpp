@@ -13,9 +13,21 @@
 #if SS_HAVE_LOMA
 #include "loma/Loma.h"
 #endif
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+#include "nn/Device.h"
+#endif
 
 namespace sfm {
 namespace {
+
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+// LightGlue and LoMa run on the inference layer's process-wide device, so
+// their `device` field alone selects nothing; the run's resolved identity is
+// committed before either loads a checkpoint (see Extractor.cpp).
+inline void configureLearnedDevice(const std::string& selector) {
+    if (!selector.empty()) nn::configure_device(selector);
+}
+#endif
 
 #if SS_HAVE_ALIKED
 
@@ -23,6 +35,7 @@ class LightGlueMatcher : public IFeatureMatcher {
 public:
     explicit LightGlueMatcher(const MatchOptions& match, const LightGlueOptions& opt)
         : match_(match), opt_(opt) {
+        configureLearnedDevice(opt.device_selector);
         lg_.load(opt.model);
         mopt_.min_score = (float)opt.min_score;
     }
@@ -106,6 +119,7 @@ public:
     LomaFeatureMatcher(const MatchOptions& match, const std::string& model,
                        const LomaMatchOptions& opt)
         : match_(match) {
+        configureLearnedDevice(opt.device_selector);
         m_.load(model);
         mopt_.min_score = (float)opt.min_score;
     }

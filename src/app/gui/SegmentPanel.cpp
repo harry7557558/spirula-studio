@@ -73,6 +73,13 @@ SegmentPanel::~SegmentPanel() {
 }
 
 void SegmentPanel::open(const PreviewSource& src, const std::string& model_path) {
+    _cancel = true;
+    if (_worker.joinable()) _worker.join();
+    _cancel = false;
+    if (_job) {
+        _job->frame_key.clear();
+        _job->frame = Rgb{};
+    }
     _src = src;
     if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
     _model_path = model_path;
@@ -80,7 +87,6 @@ void SegmentPanel::open(const PreviewSource& src, const std::string& model_path)
     _frame_idx = 0;
     _frame_dirty = true;
     _needs_run = true;
-    _kept_fraction = -1.0f;
     _border = app::BorderDetect{};
     _border_camera.clear();
     _detect_asked = false;
@@ -89,20 +95,79 @@ void SegmentPanel::open(const PreviewSource& src, const std::string& model_path)
     _stencil_key.clear();
     {
         std::lock_guard<std::mutex> lk(_mu);
-        _status.clear();
+        _kept_fraction = -1.0f;
+        _frames.clear();
+        _all_files.clear();
+        _folders.clear();
+        _frames_pending.clear();
+        _all_files_pending.clear();
+        _folders_pending.clear();
+        _frames_ready = false;
+        _listed_src = PreviewSource{};
+        _border_ready = false;
+        _border_pending = app::BorderDetect{};
+        _preview.clear();
+        _preview_w = _preview_h = 0;
+        _preview_dirty = false;
+        _status = dmsg::preview_working.get();
         _error.clear();
     }
-    // A dozen spread through the capture is enough to judge a prompt.
-    collect_preview_frames(_src, _src.is_video ? 8 : 12, _frames, _all_files,
-                           _cancel);
-    _folders = preview_folders(_src);
+    _tex_w = _tex_h = 0;
+    _listing = true;
     _open = true;
+    const PreviewSource requested = _src;
+    _worker = std::thread([this, requested] {
+        struct ListingGuard {
+            std::atomic<bool>& flag;
+            ~ListingGuard() { flag = false; }
+        } listing_guard{_listing};
+        try {
+            PreviewSource listed = requested;
+            std::vector<PreviewFrame> frames;
+            std::vector<std::string> all_files;
+            collect_preview_frames(listed, listed.is_video ? 8 : 12, frames,
+                                   all_files, _cancel);
+            if (_cancel.load()) return;
+            std::vector<std::string> folders = preview_folders(listed);
+            std::lock_guard<std::mutex> lk(_mu);
+            _listed_src = std::move(listed);
+            _frames_pending = std::move(frames);
+            _all_files_pending = std::move(all_files);
+            _folders_pending = std::move(folders);
+            _frames_ready = true;
+            _status.clear();
+        } catch (const std::exception& e) {
+            if (!_cancel.load()) {
+                std::lock_guard<std::mutex> lk(_mu);
+                _error = e.what();
+                _status.clear();
+            }
+        }
+    });
 }
 
 void SegmentPanel::close() {
     _cancel = true;
     if (_worker.joinable()) _worker.join();
     _cancel = false;
+    _listing = false;
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        _frames.clear();
+        _all_files.clear();
+        _folders.clear();
+        _frames_pending.clear();
+        _all_files_pending.clear();
+        _folders_pending.clear();
+        _frames_ready = false;
+        _listed_src = PreviewSource{};
+        _border_ready = false;
+        _border_pending = app::BorderDetect{};
+        _preview.clear();
+        _preview_w = _preview_h = 0;
+        _preview_dirty = false;
+    }
+    _tex_w = _tex_h = 0;
     // Drop the model: the reconstruction that usually follows wants the VRAM,
     // and ~Masker -> Session::unload() hands the weights back for real rather
     // than leaving them in the inference layer's process-wide pool. The device
@@ -158,7 +223,7 @@ std::string SegmentPanel::shown_camera() const {
 }
 
 void SegmentPanel::start_detect() {
-    if (_busy.load() || _detecting.load()) return;
+    if (_busy.load() || _detecting.load() || _listing.load()) return;
     if (_worker.joinable()) _worker.join();
     _detect_asked = true;
     _detecting = true;
@@ -207,8 +272,9 @@ void SegmentPanel::start_detect() {
 // The worker
 // ---------------------------------------------------------------------------
 
-void SegmentPanel::start_job(const MaskSettings& s, const app::FrameMask& stencil) {
-    if (_busy.load() || _detecting.load()) return;
+void SegmentPanel::start_job(const MaskSettings& s,
+                             const app::FrameMask& stencil) {
+    if (_busy.load() || _detecting.load() || _listing.load()) return;
     if (_worker.joinable()) _worker.join();
 
     const int idx = _frame_idx;
@@ -353,6 +419,7 @@ void SegmentPanel::start_job(const MaskSettings& s, const app::FrameMask& stenci
                                                    : dmsg::preview_loading_model);
                 sam::MaskOptions mo;
                 mo.model = model;
+                mo.device = src.device;
                 mo.text = settings.prompt;
                 mo.neg_text = settings.negative_prompt;
                 mo.keep_prompted = settings.keep_subject;
@@ -644,8 +711,9 @@ void SegmentPanel::draw_image(MaskSettings& settings, app::FrameStencil& stencil
 
     // Clicks land in source-image pixels, which is what the model wants.
     const bool canvas_free = hovered && !on_shape && _drag_handle == -1;
-    if (canvas_free && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
-                        ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+    if (!_listing.load() && !_frames.empty() && canvas_free &&
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+         ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
         MaskClick c;
         c.x = mu * (float)_tex_w;
         c.y = mv * (float)_tex_h;
@@ -712,7 +780,7 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
     if (s.detect_border) {
         // Lazily, here rather than off the checkbox: the option is on already
         // when the panel opens on an input that was set up before.
-        if (!_detect_asked) start_detect();
+        if (!_listing.load() && !_detect_asked) start_detect();
         // The slider walks into other camera folders, whose circle is not this
         // one's; refit rather than draw the wrong ellipse over the frame.
         else if (!_detecting.load() && !_frames.empty() &&
@@ -732,7 +800,8 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
         else if (_detect_asked && !_border.found)
             ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f),
                                    dmsg::stencil_border_none);
-        if (!_detecting.load() && ui::SmallButton(dmsg::stencil_look_again))
+        if (!_detecting.load() && !_listing.load() &&
+            ui::SmallButton(dmsg::stencil_look_again))
             start_detect();
         ImGui::Unindent();
     }
@@ -865,6 +934,16 @@ void SegmentPanel::draw_objects(MaskSettings& settings, bool& edited) {
 void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     if (!_open) return;
 
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        if (_frames_ready) {
+            _src = std::move(_listed_src);
+            _frames = std::move(_frames_pending);
+            _all_files = std::move(_all_files_pending);
+            _folders = std::move(_folders_pending);
+            _frames_ready = false;
+        }
+    }
     upload_preview();
     {
         std::lock_guard<std::mutex> lk(_mu);
@@ -1010,13 +1089,14 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     // Rerun once the user stops typing, so every keystroke does not queue a
     // forward pass.
     if (edited) _needs_run = true;
-    if (_needs_run && !_busy.load() && !_detecting.load() && _drag_handle == -1 &&
-        !ImGui::IsAnyItemActive()) {
+    if (!_listing.load() && _needs_run && !_busy.load() && !_detecting.load() &&
+        _drag_handle == -1 && !ImGui::IsAnyItemActive()) {
         _needs_run = false;
         start_job(settings, resolved(stencil));
     }
 
     ImGui::Spacing();
+    float kept_fraction = -1.0f;
     {
         std::lock_guard<std::mutex> lk(_mu);
         // Segmentation errors and progress come from the inference layer.
@@ -1024,12 +1104,13 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _error);
         else if (!_status.empty())
             ui::TextDisabledRaw(_status);
+        kept_fraction = _kept_fraction;
     }
-    if (_kept_fraction >= 0.0f) {
+    if (kept_fraction >= 0.0f) {
         char pct[16];
-        std::snprintf(pct, sizeof pct, "%.0f", 100.0f * _kept_fraction);
+        std::snprintf(pct, sizeof pct, "%.0f", 100.0f * kept_fraction);
         ui::Text(dmsg::preview_kept_fraction, {pct});
-        if (_kept_fraction < 0.05f)
+        if (kept_fraction < 0.05f)
             ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f),
                                    settings.keep_subject
                                        ? dmsg::preview_almost_nothing_kept

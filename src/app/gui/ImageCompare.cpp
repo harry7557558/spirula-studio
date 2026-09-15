@@ -2,6 +2,7 @@
 
 #include "app/gui/ImageCompare.h"
 
+#include "backend/api/BackendRuntime.h"
 #include "app/DepthColor.h"
 #include "app/TrainerCore.h"
 #include "app/gui/Layout.h"
@@ -243,6 +244,12 @@ void ImageCompare::worker_loop() {
         s.job = j;
         const auto t0 = std::chrono::steady_clock::now();
         try {
+#ifndef SS_BACKEND_VULKAN
+            // CUDA current-device state is per thread; bind before the first engine call.
+            if (!backend::device_bind())
+                throw std::runtime_error(
+                    "compare: the selected GPU is not usable on this thread");
+#endif
             run_job(j, s);
         } catch (const std::exception& e) {
             s.error = e.what();

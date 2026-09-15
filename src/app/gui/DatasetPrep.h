@@ -205,6 +205,11 @@ struct PrepJob {
     // written into the dataset whatever this says.
     PhotoImport photo_import = PhotoImport::ConvertJpeg;
 
+    // The device request for built-in decoding and masking: "auto", an ordinal,
+    // a name substring or "uuid:<32 hex>". Frozen at the top of run(); a bad
+    // value fails the run. External Python masking does not read this.
+    std::string device;
+
     // ---- video extraction ----
     // What a 360 capture (PrepInput::eac360) becomes. Dataset-wide: mixing
     // panoramas and pinhole faces in one image tree describes no camera rig.
@@ -314,6 +319,9 @@ struct PrepResult {
 // shown on the screen, which should tell a user what will happen rather than
 // which CMake flag was off when the binary was made.
 struct Backends {
+    // Build-level answers only. The runtime answers (can THIS device decode?)
+    // are not here: probing them creates the inference context, which must wait
+    // until the device is frozen.
     bool builtin_video = false;
     std::string video_reason;
     std::string video_note;
@@ -321,8 +329,8 @@ struct Backends {
     std::string masking_reason;
     std::string masking_note;
 };
-// Probes the Vulkan device on first call for the video answer, so call it off
-// the UI thread the first time if that matters.
+// What this binary was built with. Creates no device, so it is safe on the UI
+// thread and before a GPU choice exists.
 const Backends& backends();
 
 // Video container extensions the GUI offers, in the file dialog and for
@@ -582,7 +590,8 @@ private:
     bool apply_stencil(const PrepJob& job, const PrepInput& in,
                        const std::string& images, const std::string& masks,
                        const std::string& merge_from, std::string& error);
-    int exec(const std::vector<std::string>& argv);
+    int exec(const std::vector<std::string>& argv,
+             const std::function<void(const std::string&)>& on_line = {});
     // What this input is expected to put in images/, for the step's bar: the
     // container's frame count at the run's sampling rate for a video, the file
     // count for photos, and what is already there for an input a resumed run

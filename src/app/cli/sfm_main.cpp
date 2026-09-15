@@ -479,6 +479,7 @@ static void modelReprojStats(const Reconstruction& rec, double& mean, double& me
 
 static std::vector<Reconstruction> mergeModels(std::vector<Reconstruction> models,
                                                const MergeOptions& mo, bool refine, int device,
+                                               const std::string& device_selector,
                                                MergeSummary& sum) {
     sum.before = sum.after = models.size();
     if (models.size() < 2) return models;
@@ -494,6 +495,7 @@ static std::vector<Reconstruction> mergeModels(std::vector<Reconstruction> model
             Reconstruction& m = session.modelMut(i);
             BundleOptions bo;
             bo.device = device;
+            bo.device_selector = device_selector;
             bo.verbose = false;
             bo.shared_ctx = &ctx;
             double cost = runGlobalBA(m, bo);
@@ -599,6 +601,8 @@ static int cmdExtract(int argc, char** argv) {
     }
     if (std::string err = cfg.finalize(CMD_EXTRACT); !err.empty())
         return usageError("extract", err);
+    if (std::string err = cfg.resolveDevice(); !err.empty())
+        return usageError("extract", err);
     installEventPrinter(cfg);
     if (image.empty())
         return usageError("extract", "an image or a directory of images is required");
@@ -699,6 +703,8 @@ static int cmdMatch(int argc, char** argv) {
     }
     if (std::string err = cfg.finalize(CMD_MATCH); !err.empty())
         return usageError("match", err);
+    if (std::string err = cfg.resolveDevice(); !err.empty())
+        return usageError("match", err);
     installEventPrinter(cfg);
     if (featdir.empty()) return usageError("match", "a feature directory is required");
 
@@ -781,6 +787,7 @@ static int cmdMap(int argc, char** argv) {
         else return usageError("map", "unexpected argument '" + a + "'");
     }
     if (std::string err = cfg.finalize(CMD_MAP); !err.empty()) return usageError("map", err);
+    if (std::string err = cfg.resolveDevice(); !err.empty()) return usageError("map", err);
     if (matchesPath.empty() || cfg.feature_dir.empty())
         return usageError("map", "a match database and a feature directory are required");
 
@@ -1041,6 +1048,7 @@ static int cmdMerge(int argc, char** argv) {
         inputs.push_back(a);
     }
     if (std::string err = cfg.finalize(CMD_MERGE); !err.empty()) return usageError("merge", err);
+    if (std::string err = cfg.resolveDevice(); !err.empty()) return usageError("merge", err);
     if (inputs.empty()) return usageError("merge", "at least one model directory is required");
     if (output.empty() && !cfg.in_place)
         return usageError("merge", "--output is required (or --in-place)");
@@ -1088,7 +1096,8 @@ static int cmdMerge(int argc, char** argv) {
         const size_t covered_before = distinctRegistered(models);
 
         MergeSummary sum;
-        models = mergeModels(std::move(models), mo, cfg.merge_ba, cfg.device, sum);
+        models = mergeModels(std::move(models), mo, cfg.merge_ba, cfg.device,
+                             cfg.device_selector, sum);
 
         L::out(Tag::Merge, M::merge_summary,
                {(long long)sum.before, (long long)sum.after,

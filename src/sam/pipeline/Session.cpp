@@ -7,7 +7,9 @@
 
 #include "sam/pipeline/Session.h"
 
+#include "core/VulkanDeviceSelection.h"
 #include "sam/Common.h"
+#include "nn/Device.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 #include "sam/pipeline/PostProcess.h"
@@ -48,12 +50,11 @@ uint64_t arena_reserve_for(const SamModel& m) {
     return std::max(kArenaReserve, need);
 }
 
-// Whether a load request would produce the model already on the device. Every
-// field that changes what gets uploaded is here; `validation` is not one of
-// them (it is a Context property, and the context outlives the model).
+// Whether a load request would produce the model already on the device. The
+// device is not compared here: it is an identity, checked by loadModel against
+// the live context. `validation` is a Context property, not a model one.
 bool same_model(const ModelParams& a, const ModelParams& b) {
-    return a.model_path == b.model_path && a.device_index == b.device_index &&
-           a.device_match == b.device_match && a.img_size == b.img_size;
+    return a.model_path == b.model_path && a.img_size == b.img_size;
 }
 
 }  // namespace
@@ -68,6 +69,7 @@ Session::~Session() { unload(); }
 void Session::unload() {
     const bool was_loaded = impl_->loaded;
     impl_->loaded = false;
+    impl_->device_selector.clear();
     impl_->text_cache_valid = false;
     impl_->text_cache_ids.clear();
     // Nothing to give back, or the device is already gone (nn::shutdown() ran
@@ -108,25 +110,53 @@ bool Session::supportsTextPrompts() const {
 bool Session::imageEncoded() const { return impl_->feats.valid(); }
 const std::string& Session::lastError() const { return impl_->error; }
 
+bool freeze_device(const std::string& device, std::string& error, bool validation,
+                   bool profile) {
+    try {
+        // Empty defaults inherit the live or configured identity.
+        if (device.empty() && !nn::current_device_selector().empty()) {
+            error.clear();
+            return true;
+        }
+        const std::string recorded = nn::configured_device_selector();
+        const std::string request = device.empty() ? recorded : device;
+        const spirula::vkselect::Request req =
+            spirula::vkselect::requestFrom(request, !request.empty());
+        // Registers the resolved physical identity without creating a logical
+        // device; a malformed, missing, ambiguous or unusable value throws the
+        // resolver's own sentence here, before anything is allocated.
+        nn::configure_device(req.text, validation, profile);
+        error.clear();
+        return true;
+    } catch (const std::exception& e) {
+        error = e.what();
+        NN_LOG_ERROR("device selection: %s\n", e.what());
+        return false;
+    }
+}
+
 bool Session::loadModel(const ModelParams& params) {
     NN_ENSURE_EMBEDDED_MODULES(sam);
-    if (impl_->loaded && same_model(impl_->loaded_params, params)) {
+    // Validate the request before reuse; loaded weights cannot satisfy another GPU.
+    if (!freeze_device(params.device, impl_->error, params.validation,
+                       params.profile))
+        return false;
+    // Reuse only when the loaded model is the one asked for and the live device
+    // is the same canonical UUID.
+    if (impl_->loaded && same_model(impl_->loaded_params, params) &&
+        impl_->device_selector == nn::current_device_selector()) {
         impl_->error.clear();
         return true;
     }
     try {
-        vk::ContextOptions opts;
-        opts.device_index = params.device_index;
-        opts.device_match = params.device_match;
-        opts.validation = params.validation;
-        opts.profile = params.profile;
-        vk::Context::get(opts);
-
         impl_->model.load(params.model_path, params.img_size);
         impl_->arena.reserve(arena_reserve_for(impl_->model));
         impl_->text_cache_valid = false;
         impl_->loaded = true;
         impl_->loaded_params = params;
+        // What the weights actually landed on -- the live context is the only
+        // thing that can say, and it is what a later reuse compares against.
+        impl_->device_selector = nn::current_device_selector();
         impl_->error.clear();
         return true;
     } catch (const std::exception& e) {

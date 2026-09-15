@@ -298,6 +298,17 @@ void MeshRunner::run(MeshJob job) {
     }
     if (!job.cull_unseen) argv.push_back("--no-cull-unseen");
     for (const std::string& a : split_args(job.extra_args)) argv.push_back(a);
+#ifdef SS_BACKEND_VULKAN
+    if (!job.device_uuid.empty()) {
+        argv.push_back("--device");
+        argv.push_back(job.device_uuid);
+    }
+#else
+    if (job.cuda_device >= 0) {
+        argv.push_back("--device");
+        argv.push_back(std::to_string(job.cuda_device));
+    }
+#endif
 
     std::string cmd;
     for (const auto& a : argv) cmd += (cmd.empty() ? "$ " : " ") + a;

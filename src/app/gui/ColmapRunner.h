@@ -79,6 +79,11 @@ struct ColmapJob {
                                          // frames, masks and features
     PhotoImport photo_import = PhotoImport::ConvertJpeg;  // see PrepJob
 
+    // Canonical native selector for frame extraction and masking; external
+    // COLMAP does not read it, so its routing remains a separate compatibility
+    // tail.
+    std::string device;
+
     // Cameras
     std::string camera_model = "OPENCV"; // ImageReader.camera_model
     int camera_mode = 0;                 // 0 = one shared camera,

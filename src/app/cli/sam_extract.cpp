@@ -105,7 +105,8 @@ void usage() {
     help_row("    --dilate-ratio <f>", H::mask_dilate);
     help_row("    --overlay", H::xh_overlay);
 
-    std::fprintf(stderr, "\n%s --device <index|name>  --profile  --validate\n",
+    std::fprintf(stderr, "\n%s --device <index|name|auto|-1|uuid:hex>  --profile  "
+                         "--validate\n",
                  H::label_common.get());
 }
 
@@ -227,12 +228,11 @@ int sam_cli_extract(int argc, char** argv) {
         usage();
         return 2;
     }
-    // The decoder and the masker each reach vk::Context::get() on their own,
-    // so the device and the diagnostic switches are handed over the way the
-    // context reads them rather than plumbed through two option structs.
+    // The device is NOT set here: a native selection is explicit in the job
+    // below, which freezes it before the first decode or model load. Writing
+    // SS_VK_DEVICE would leak the choice into unrelated children.
     if (o.validate) set_env("SS_VK_VALIDATION", "1");
     if (o.profile) set_env("SS_PROFILE", "1");
-    if (!o.device.empty()) set_env("SS_VK_DEVICE", o.device.c_str());
 
     const fs::path input(o.input);
     const fs::path base = o.out_dir.empty()
@@ -243,6 +243,9 @@ int sam_cli_extract(int argc, char** argv) {
     job.input = o.input;
     job.image_dir = base.string();
     job.mask_dir = o.mask_dir;
+    // The one device request, from the one flag: the job freezes it before the
+    // decoder probe, so the decoder, the masker and the trackers agree.
+    job.device = o.device;
     job.skip = o.skip;
     job.keep = o.keep;
     job.max_frames = o.max_frames;

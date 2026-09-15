@@ -27,6 +27,9 @@ struct LightGlueOptions {
     // COLMAP's LightGlueONNXMatchingOptions default.
     double min_score = 0.1;
     int    device = -1;
+    // Canonical uuid:<hex>; committed to the shared NN before LightGlue's
+    // weights load. "" leaves NN's own precedence in charge.
+    std::string device_selector;
     bool   verbose = true;
 };
 
@@ -40,6 +43,8 @@ struct LomaMatchOptions {
     // COLMAP's LomaMatchingOptions default, and LoMa's own filter threshold.
     double min_score = 0.1;
     int    device = -1;
+    // Canonical uuid:<hex>; see LightGlueOptions::device_selector.
+    std::string device_selector;
     bool   verbose = true;
 };
 

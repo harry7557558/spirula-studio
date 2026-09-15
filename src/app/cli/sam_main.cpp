@@ -151,8 +151,8 @@ void usage() {
         std::fprintf(stderr, "        %s\n", l.c_str());
     std::fprintf(stderr, "\n");
 
-    std::fprintf(stderr, "%s --device <index|name>  --vram  --profile  "
-                         "--validate  --img-size <n>\n",
+    std::fprintf(stderr, "%s --device <index|name|auto|uuid:hex>  --vram  "
+                         "--profile  --validate  --img-size <n>\n",
                  H::label_common.get());
     help_row("--max-size <n>", H::common_max_size);
     help_row("--image-gamut <name>", H::common_image_gamut);
@@ -319,20 +319,23 @@ int cmd_devices() {
     const int w_name = std::max(42, display_width(cmsg::sam_col_name.get()));
     const int w_type = std::max(11, display_width(cmsg::sam_col_type.get()));
     const int w_vram = std::max(8, display_width(cmsg::sam_col_vram.get()));
-    std::printf("%s %s %s %s  %s\n",
+    const int w_uuid = std::max(37, display_width(cmsg::device_uuid.get()));
+    std::printf("%s %s %s %s %s  %s\n",
                 pad_to(cmsg::sam_col_index.get(), w_idx).c_str(),
                 pad_to(cmsg::sam_col_name.get(), w_name).c_str(),
                 pad_to(cmsg::sam_col_type.get(), w_type).c_str(),
                 pad_to(cmsg::sam_col_vram.get(), w_vram).c_str(),
+                pad_to(cmsg::device_uuid.get(), w_uuid).c_str(),
                 cmsg::sam_col_status.get());
     for (const auto& d : devices) {
         char vram[32];
         std::snprintf(vram, sizeof vram, "%6.1f G", d.vram_bytes / 1073741824.0);
-        std::printf("%s %s %s %s  %s\n",
+        std::printf("%s %s %s %s %s  %s\n",
                     pad_to(std::to_string(d.index), w_idx).c_str(),
                     pad_to(d.name, w_name).c_str(),
                     pad_to(d.type, w_type).c_str(),
                     pad_to(vram, w_vram).c_str(),
+                    pad_to(d.uuid, w_uuid).c_str(),
                     d.usable ? cmsg::sam_status_ok.get()
                              : d.unusable_reason.c_str());
     }
@@ -374,12 +377,10 @@ bool load_session(const Options& o, sam::Session& session) {
     mp.validation = o.validate;
     mp.profile = o.profile;
     mp.img_size = o.img_size;
-    if (!o.device.empty()) {
-        char* end = nullptr;
-        long idx = std::strtol(o.device.c_str(), &end, 10);
-        if (end && *end == '\0') mp.device_index = (int)idx;
-        else mp.device_match = o.device;
-    }
+    // One spelling, resolved by the shared parser inside loadModel: "auto" or
+    // -1, an ordinal, a unique name substring, or "uuid:<32 hex>". An ordinal
+    // is an index here, never a substring of a GPU name.
+    mp.device = o.device;
     if (!session.loadModel(mp)) {
         std::fprintf(stderr, "%s\n",
                      format(cmsg::error_line, {session.lastError()}).c_str());
@@ -697,6 +698,14 @@ int cmd_video(const Options& o) {
     std::fprintf(stderr, "%s\n", cmsg::sam_no_video_decoder.get());
     return 1;
 #else
+    // The decoder creates the inference context, so the request is frozen
+    // first: `sam video` honours --device like every other native entry point.
+    std::string dev_error;
+    if (!sam::freeze_device(o.device, dev_error, o.validate, o.profile)) {
+        std::fprintf(stderr, "%s\n",
+                     format(cmsg::error_line, {dev_error}).c_str());
+        return 1;
+    }
     const std::string why = video::VideoReader::availability();
     if (why.empty())
         std::fprintf(stderr, "%s\n", cmsg::sam_video_decode.get());
@@ -760,6 +769,12 @@ int sam_cli_extract(int argc, char** argv);
 
 int spirula_sam_main(int argc, char** argv) {
     app::set_program_name(argc > 0 ? argv[0] : nullptr, "spirula sam");
+    if (argc >= 2 &&
+        (std::strcmp(argv[1], "--help") == 0 ||
+         std::strcmp(argv[1], "-h") == 0)) {
+        usage();
+        return 0;
+    }
     if (argc >= 2 && std::strcmp(argv[1], "extract") == 0) {
 #ifdef SS_HAVE_VIDEO
         int rc = sam_cli_extract(argc - 1, argv + 1);

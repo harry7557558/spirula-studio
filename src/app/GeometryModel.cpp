@@ -5,6 +5,7 @@
 #include "metric3d/model/Fetch.h"
 #include "moge/Moge.h"
 #include "moge/model/Fetch.h"
+#include "nn/Device.h"
 #include "nn/core/Error.h"
 #include "nn/io/Onnx.h"
 
@@ -79,7 +80,10 @@ struct GeometryModel::Impl {
 GeometryModel::GeometryModel() : impl_(new Impl) {}
 GeometryModel::~GeometryModel() { delete impl_; }
 
-void GeometryModel::load(const std::string& id_or_path) {
+void GeometryModel::load(const std::string& id_or_path, const std::string& selector) {
+    // Freeze before model allocation; empty uses SS_VK_DEVICE then Auto.
+    if (!selector.empty()) nn::configure_device(selector);
+
     if (moge::find_model_source(id_or_path)) impl_->is_moge = true;
     else if (metric3d::find_model_source(id_or_path)) impl_->is_moge = false;
     else impl_->is_moge = file_is_moge(id_or_path);

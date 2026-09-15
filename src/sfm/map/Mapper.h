@@ -326,6 +326,9 @@ struct MapperOptions {
     // 87.1. Not just noisier -- worse on average, by 2.7 and 1.4 points.
     std::string ba_real_coarse = "double";
     int device = -1;
+    // Canonical uuid:<hex>; every BA this mapper runs carries it. "" = shared
+    // precedence.
+    std::string device_selector;
     // Host worker threads for the passes that fan out over points
     // (filterPoints) and for a bundle adjustment that runs on the host.
     // 0 = hardware_concurrency.
@@ -1296,6 +1299,7 @@ public:
         BundleOptions bo;
         bo.real = baReal(coarse);
         bo.device = opt_.device;
+        bo.device_selector = opt_.device_selector;
         bo.threads = opt_.threads;
         bo.verbose = false;
         bo.loss = opt_.ba_loss;
@@ -3761,6 +3765,7 @@ private:
             BundleOptions bo;
             bo.real = realCfgFromName(opt_.ba_real);
             bo.device = opt_.device;
+            bo.device_selector = opt_.device_selector;
             bo.threads = opt_.threads;
             bo.verbose = false;
             bo.loss = opt_.ba_loss;

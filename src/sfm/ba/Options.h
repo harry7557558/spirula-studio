@@ -95,6 +95,9 @@ struct SolverOptions {
     // (a hand-compiled shader, for iteration without relinking).
     std::string loss = "trivial";
     std::string spv_path;
+    // Canonical uuid:<hex> of the device to run on, "" for the shared
+    // precedence (explicit --device, then VK_DEVICE, then Auto).
+    std::string device_selector;
     int device = -1;
     // Host worker threads for the CPU path; 0 = every core. Caps the tasks one
     // solve splits into, not the shared pool's width (bacpu::Pool).

@@ -19,6 +19,7 @@
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
 #include "app/GeometryModel.h"
+#include "nn/Device.h"
 #include "nn/core/Log.h"
 #endif
 
@@ -151,6 +152,9 @@ struct GeometryPanel::Job {
 #ifdef SS_TOOL_GEOMETRY
     app::GeometryModel pred;
     std::string loaded_model;
+    // The identity the predictor above was loaded for. A device change forces a
+    // reload, and GeometryModel::load then rejects it until a restart anyway.
+    std::string loaded_device;
     // The dataset's own cameras, when the output folder holds one. Parallel to
     // the frame list the panel offers.
     std::vector<app::GeometryCamera> cams;
@@ -274,6 +278,9 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
         set_error(lmsg::err_no_geometry_module.get());
 #else
         try {
+            // Freeze before video decode or model load; empty uses shared precedence.
+            if (!settings.device_uuid.empty())
+                nn::configure_device(settings.device_uuid);
             if (!_job) _job = std::make_unique<Job>();
             Job& j = *_job;
 
@@ -380,14 +387,17 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
             // ---- the model ----
             // Before the warp: which input sizes round-trip is a property of
             // the network, and the run loads it in the same order.
-            const bool just_loaded = j.loaded_model != settings.model;
+            const bool just_loaded = j.loaded_model != settings.model ||
+                                     j.loaded_device != settings.device_uuid;
             if (just_loaded && !geometry_model_cached(settings.model))
                 return set_error(lmsg::err_geometry_model_not_downloaded.get());
             if (just_loaded) {
                 set_status(dmsg::preview_loading_model);
                 j.loaded_model.clear();
-                j.pred.load(settings.model);
+                // Carry the frozen UUID through the load; do not re-rank here.
+                j.pred.load(settings.model, settings.device_uuid);
                 j.loaded_model = settings.model;
+                j.loaded_device = settings.device_uuid;
             }
             if (_cancel.load()) return;
 

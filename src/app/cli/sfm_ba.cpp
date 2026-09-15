@@ -75,7 +75,7 @@ void printBaHelp(FILE* out) {
         {"--vram-budget MB", "", &H::ba_opt_vram_budget},
         {"--ply PREFIX", "", &H::ba_opt_ply},
         {"-o, --output DIR", "", &H::ba_opt_output},
-        {"--device N", "", &H::ba_opt_device},
+        {"--device <index|name|auto|-1|uuid:hex>", "", &H::ba_opt_device},
         {"--validate", "", &H::ba_opt_validate},
         {"--profile", "", &H::ba_opt_profile},
         {"--quiet", "", &H::ba_opt_quiet},
@@ -189,7 +189,23 @@ int cmdBa(int argc, char** argv) {
                             : s == "off" ? CgFallback::Off
                                          : CgFallback::Auto;
         }
-        else if (a == "--device") opt.device = std::stoi(next());
+        else if (a == "--device") {
+            const std::string v = next();
+            const std::string request = v.empty() ? "auto" : v;
+            // Retain the integer spelling at the input boundary; the canonical
+            // UUID is what the solver carries.
+            const spirula::vkselect::Request req = spirula::vkselect::parseRequest(request);
+            if (req.kind == spirula::vkselect::Request::Kind::Malformed) {
+                fprintf(stderr, "spirula-sfm ba: error: --device %s: %s\n", request.c_str(),
+                        req.error.c_str());
+                return 1;
+            }
+            if (req.kind == spirula::vkselect::Request::Kind::Ordinal) opt.device = req.ordinal;
+            // Keep the spelling for every non-ordinal request, Auto included:
+            // an explicit `auto` must resolve as Auto rather than fall through
+            // to the environment.
+            else opt.device_selector = request;
+        }
         else if (a == "--validate") opt.validate = true;
         else if (a == "--profile") opt.profile = true;
         else if (a == "--quiet") opt.verbose = false;
@@ -214,6 +230,25 @@ int cmdBa(int argc, char** argv) {
     if (model_id < 0) {
         fprintf(stderr, "spirula-sfm ba: error: unknown --model %s\n", model.c_str());
         return 1;
+    }
+
+    // Resolve the request once, before the solve builds anything: a device this
+    // machine cannot honour is a usage error here, not the CPU fallback below
+    // (which exists for a device that genuinely lacks the arithmetic).
+    {
+        const std::string text = !opt.device_selector.empty()
+                                     ? opt.device_selector
+                                     : (opt.device >= 0 ? std::to_string(opt.device) : "");
+        if (!text.empty()) {
+            const spirula::vkselect::Resolution res = VkContext::resolveSelector(
+                spirula::vkselect::parseRequest(text));
+            if (!res.ok()) {
+                fprintf(stderr, "spirula-sfm ba: error: --device %s: %s\n", text.c_str(),
+                        res.error.c_str());
+                return 1;
+            }
+            opt.device_selector = res.selector;
+        }
     }
 
     // both debug hooks pin the solver selection they need
@@ -242,6 +277,7 @@ int cmdBa(int argc, char** argv) {
         bopt.real = opt.real;
         bopt.verbose = opt.verbose;
         bopt.device = opt.device;
+        bopt.device_selector = opt.device_selector;
         if (!rig_defs.empty()) {
             try {
                 rigs = rigTableForModel(rec, rig_defs);

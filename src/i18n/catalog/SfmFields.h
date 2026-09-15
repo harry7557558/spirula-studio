@@ -3245,19 +3245,32 @@ SS_MSG(decode_budget_help,
     TR("Çözme havuzunun aynı anda tutabileceği bellek, MB cinsinden"));
 
 SS_MSG(device_help,
-    EN("Vulkan device index; -1 picks the first suitable one"),
-    JA("Vulkan デバイスの番号。-1 なら最初に適したものを選びます"),
-    ZH_HANS("Vulkan 设备序号；-1 表示选取第一个合适的设备"),
-    ZH_HANT("Vulkan 裝置序號；-1 表示選取第一個合適的裝置"),
-    KO("Vulkan 장치 번호. -1 이면 처음으로 적합한 것을 고릅니다"),
-    DE("Index des Vulkan-Geräts; -1 wählt das erste geeignete"),
-    FR("Indice du périphérique Vulkan ; -1 prend le premier qui convient"),
-    ES("Índice del dispositivo Vulkan; -1 toma el primero que sirva"),
-    PT("Índice do dispositivo Vulkan; -1 toma o primeiro que sirva"),
-    IT("Indice del dispositivo Vulkan; -1 prende il primo adatto"),
-    NL("Index van het Vulkan-apparaat; -1 kiest het eerste geschikte"),
-    RU("Номер устройства Vulkan; -1 выбирает первое подходящее"),
-    TR("Vulkan aygıt sırası; -1 uygun olan ilkini seçer"));
+    EN("Vulkan device: an index, part of a name, `auto`, or uuid:<32 hex "
+       "digits>; auto picks the first suitable one"),
+    JA("Vulkan デバイス: 番号、名前の一部、`auto`、または uuid:<32 桁の 16 進数>。"
+       "auto は最初に適したものを選びます"),
+    ZH_HANS("Vulkan 设备：序号、名称的一部分、`auto`，或 uuid:<32 位十六进制>；"
+            "auto 选取第一个合适的设备"),
+    ZH_HANT("Vulkan 裝置：序號、名稱的一部分、`auto`，或 uuid:<32 位十六進位>；"
+            "auto 選取第一個合適的裝置"),
+    KO("Vulkan 장치: 번호, 이름의 일부, `auto`, 또는 uuid:<32자리 16진수>. "
+       "auto 는 처음으로 적합한 것을 고릅니다"),
+    DE("Vulkan-Gerät: ein Index, ein Teil des Namens, `auto` oder "
+       "uuid:<32 Hexziffern>; auto wählt das erste geeignete"),
+    FR("Périphérique Vulkan : un indice, une partie d'un nom, `auto` ou "
+       "uuid:<32 chiffres hexadécimaux> ; auto prend le premier qui convient"),
+    ES("Dispositivo Vulkan: un índice, parte de un nombre, `auto` o "
+       "uuid:<32 dígitos hexadecimales>; auto toma el primero que sirva"),
+    PT("Dispositivo Vulkan: um índice, parte de um nome, `auto` ou "
+       "uuid:<32 dígitos hexadecimais>; auto pega o primeiro que sirva"),
+    IT("Dispositivo Vulkan: un indice, parte di un nome, `auto` o "
+       "uuid:<32 cifre esadecimali>; auto prende il primo adatto"),
+    NL("Vulkan-apparaat: een index, deel van een naam, `auto` of "
+       "uuid:<32 hexcijfers>; auto kiest het eerste geschikte"),
+    RU("Устройство Vulkan: номер, часть имени, `auto` или uuid:<32 "
+       "шестнадцатеричные цифры>; auto выбирает первое подходящее"),
+    TR("Vulkan aygıtı: bir sıra, adın bir parçası, `auto` veya "
+       "uuid:<32 onaltılık basamak>; auto uygun olan ilkini seçer"));
 
 SS_MSG(quiet_help,
     EN("Print only the result lines, not per-stage progress"),

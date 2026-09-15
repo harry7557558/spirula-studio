@@ -502,6 +502,10 @@ void ColmapRunner::run(ColmapJob job) {
             pj.redo_frames = job.redo_frames;
             pj.redo_masks = job.redo_masks;
             pj.photo_import = job.photo_import;
+            // The one frozen GUI choice, so this run's built-in frame
+            // extraction and masking use the same GPU as everything else.
+            // COLMAP's own device routing is untouched.
+            pj.device = job.device;
             pj.video_fps = job.video_fps;
             pj.sharp_window = job.sharp_window;
             pj.pano = job.pano;

@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -42,7 +43,18 @@ struct PreviewSource {
     long long video_frames = 0;
     // Filled by the caller from the dataset job, never guessed here.
     app::FrameLook look;
+    // The run's device request (PrepJob::device), so the preview decodes and
+    // segments on the GPU the run will use.
+    std::string device;
+    // Set when that request could not be honoured. A failed selection is not a
+    // decode fallback: the preview reports it instead of reading the frame some
+    // other way.
+    std::string device_error;
     int tracks = 1;         // video tracks in the file
+    // The same input color metadata passed to dataset masking.
+    std::string image_gamut;
+    std::optional<bool> image_is_linear;
+
     // Photos read as the file STORES them rather than as it asks to be shown.
     // For a panel whose frames come with a camera: the camera describes the
     // stored pixels, and turning them would leave the two disagreeing.

@@ -54,9 +54,9 @@ public:
     GeometryModel(const GeometryModel&) = delete;
     GeometryModel& operator=(const GeometryModel&) = delete;
 
-    // `id_or_path` picks the family: a known id by name, a file by what its
-    // graph holds.
-    void load(const std::string& id_or_path);
+    // `selector` is the canonical UUID for the process-wide inference device.
+    // Empty lets the caller's SS_VK_DEVICE/Auto precedence apply.
+    void load(const std::string& id_or_path, const std::string& selector = {});
 
     // The multiple an input side must land on for the prediction to come back
     // at the size that went in: 28 for Metric3D's decoder, 1 for MoGe, which

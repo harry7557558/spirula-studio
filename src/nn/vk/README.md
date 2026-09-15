@@ -104,4 +104,4 @@ That is why the launchers always pass a module's full `SpecList`.
 | `SS_NN_DEBUG_SYNC=1` | print entry + grid before each dispatch, sync and report after — bisects a device-lost failure to one kernel |
 | `SS_PROFILE=1` | timestamp queries; `Session::printProfile()` prints per-entry GPU time. Note it adds a query pair per dispatch, which at SAM 3's dispatch counts inflates wall time by ~35% — use it for *relative* attribution, and `ssam-cli track`'s own ms/frame line for absolute numbers |
 | `test_ops --bench` | GEMM and attention at the exact shapes SAM 3 runs them at, in TFLOP/s — the loop for tuning a kernel without a 30-second end-to-end run |
-| `SS_VK_DEVICE=<i\|name>` | device selection |
+| `SS_VK_DEVICE=<i\|name\|auto\|uuid:hex>` | native device selection; an explicit `--device` wins |

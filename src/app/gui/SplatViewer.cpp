@@ -2,6 +2,7 @@
 
 #include "app/gui/SplatViewer.h"
 
+#include "backend/api/BackendRuntime.h"
 #include "checkpoint/Resume.h"
 #include "checkpoint/SplatPly.h"
 #include "config/TrainConfig.h"
@@ -365,6 +366,13 @@ void SplatViewer::run(std::string path) {
         }
 
         {
+#ifndef SS_BACKEND_VULKAN
+            // CUDA current-device state is per thread; bind before the upload.
+            if (!backend::device_bind())
+                throw std::runtime_error(
+                    "could not make the selected GPU current on the viewer "
+                    "thread; restart the application or choose another GPU");
+#endif
             std::lock_guard<std::mutex> lk(*_engine_mutex);
             const int64_t K = c.dim_sh() - 1;
             // Claimed before the upload, not after: an upload that throws part

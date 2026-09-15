@@ -3,6 +3,8 @@
 // table in SfmConfig.h, so a new knob is one row and never a fourth edit.
 #include "sfm/SfmConfig.h"
 
+#include "sfm/core/Log.h"
+#include "sfm/vk/VkContext.h"
 #include "i18n/catalog/SfmFields.h"
 
 #include <algorithm>
@@ -264,7 +266,11 @@ FieldResult setConfigField(SfmConfig& cfg, uint32_t cmd, const std::string& arg,
     if ((uint32_t)(cmds) & cmd) {                                                                  \
         FieldResult r = trySetField(cfg.member, key, name, argc, argv, i, (double)(lo),            \
                                     (double)(hi), choices, seen, error);                           \
-        if (r != FieldResult::Unknown) return r;                                                   \
+        if (r != FieldResult::Unknown) {                                                           \
+            if (r == FieldResult::Ok && key == "device")                                           \
+                cfg.device_request_set = true;                                                     \
+            return r;                                                                               \
+        }                                                                                           \
     }
     SFM_CONFIG_FIELDS(SFM_TRY_SET)
 #undef SFM_TRY_SET
@@ -475,6 +481,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
 
     sift.device = match.device = prefilter.device = mapper.device = device;
     aliked.device = device;
+    // UUID crosses stage and worker boundaries; the int remains legacy input spelling.
     mapper.threads = threads;
     const bool v = !quiet;
     sift.verbose = mapper.verbose = manager.verbose = merge.verbose = aliked.verbose = v;
@@ -503,6 +510,55 @@ PairMode SfmConfig::pairMode() const {
     if (pairs == "sequential") return PairMode::Sequential;
     if (pairs == "prefilter") return PairMode::Prefilter;
     return PairMode::Exhaustive;  // "exhaustive", and "auto" until counted
+}
+
+// ---------------------------------------------------------------------------
+// Device resolution
+// ---------------------------------------------------------------------------
+
+std::string SfmConfig::selectorForDevice(const std::string& request, bool request_set,
+                                          std::string& error) {
+    error.clear();
+    // The request's own spelling wins; an unset one uses environment, then Auto.
+    const bool supplied = request_set || !request.empty();
+    const spirula::vkselect::Request req =
+        spirula::vkselect::requestFrom(request, supplied);
+    const spirula::vkselect::Resolution& res = VkContext::cachedSelector(req);
+    if (res.ok()) return res.selector;
+    // Only the effective default Auto may use the CPU path when no device exists.
+    if (!supplied &&
+        res.status == spirula::vkselect::ResolveStatus::NoDevice &&
+        req.kind == spirula::vkselect::Request::Kind::Auto)
+        return std::string();
+    error = res.error;
+    return std::string();
+}
+
+std::string SfmConfig::resolveDevice() {
+    // Resolve the request once before stages inspect it.
+    const bool request_set = device_request_set || !device_request.empty() ||
+                             !device_selector.empty() || device >= 0;
+    const bool request_text = device_request_set || !device_request.empty();
+    const std::string request =
+        request_text ? device_request
+        : !device_selector.empty() ? device_selector
+        : device >= 0 ? std::to_string(device) : std::string();
+    std::string error;
+    device_selector = selectorForDevice(request, request_set, error);
+    if (!error.empty()) return error;
+    // An ordinal request still sets the legacy int, so a caller that has not
+    // migrated keeps working; the UUID is what fans out.
+    if (request_text) {
+        const spirula::vkselect::Request req = spirula::vkselect::parseRequest(request);
+        if (req.kind == spirula::vkselect::Request::Kind::Ordinal) device = req.ordinal;
+    }
+    sift.device_selector = match.device_selector = prefilter.device_selector =
+        mapper.device_selector = aliked.device_selector = lightglue.device_selector =
+            loma.device_selector = loma_match.device_selector = device_selector;
+    if (!device_selector.empty())
+        sfm::slog::diag(sfm::slog::Tag::Device, "[gpu] running on %s",
+                        device_selector.c_str());
+    return "";
 }
 
 // ---------------------------------------------------------------------------

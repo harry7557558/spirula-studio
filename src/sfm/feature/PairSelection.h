@@ -69,6 +69,7 @@ struct PairSelectionOptions {
     // pairs per submit than the full matcher does.
     int batch_pairs = 256;
     int device = -1;
+    std::string device_selector;   // canonical uuid:<hex>; "" = shared precedence
 };
 
 // Gather f's K best-ranked features (K = 0 or >= count keeps everything, but
@@ -118,6 +119,7 @@ inline std::vector<uint32_t> scoreOrderedPairs(
     const std::function<void(size_t, size_t)>& progress) {
     MatchOptions mo;
     mo.device = opt.device;
+    mo.device_selector = opt.device_selector;
     mo.batch_pairs = opt.batch_pairs;
     mo.max_num_matches = 0;
     mo.max_ratio = opt.ratio;

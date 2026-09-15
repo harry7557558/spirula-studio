@@ -2,6 +2,7 @@
 
 #include "app/gui/TrainRunner.h"
 
+#include "backend/api/BackendRuntime.h"
 #include "i18n/catalog/Log.h"
 
 #include <algorithm>
@@ -131,6 +132,15 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
     TrainerSession* s = _session.get();
     _worker = std::thread([this, s] {
         try {
+#ifndef SS_BACKEND_VULKAN
+            // The CUDA runtime's current device is per thread; this worker
+            // does all the engine work, so it re-applies the process-wide
+            // selection before the first driver call.
+            if (!backend::device_bind())
+                throw std::runtime_error(
+                    "could not make the selected GPU current on the training "
+                    "thread; restart the application or choose another GPU");
+#endif
             s->check_config();
             s->load_dataset();
             s->setup_engine();

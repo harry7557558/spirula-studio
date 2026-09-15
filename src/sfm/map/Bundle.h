@@ -30,6 +30,9 @@ struct BundleOptions {
     RealCfg real = RealCfg::F64;
     int max_iters = 25;
     bool verbose = false;
+    // Canonical uuid:<hex> of the device this solve runs on; "" = the shared
+    // precedence. The int below is the CLI/API input boundary only.
+    std::string device_selector;
     int device = -1;
     // Robust loss for mapping-time BA (D36). COLMAP's global BA is trivial
     // because local BA cleans each registration first; without local BA, a
@@ -346,6 +349,7 @@ inline SolverOptions bundleSolverOptions(const BundleOptions& bopt) {
     sopt.real = bopt.real;
     sopt.max_iters = bopt.max_iters;
     sopt.verbose = bopt.verbose;
+    sopt.device_selector = bopt.device_selector;
     sopt.device = bopt.device;
     sopt.loss = bopt.loss;
     sopt.loss_param = bopt.loss_param;

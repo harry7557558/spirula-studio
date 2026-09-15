@@ -266,6 +266,15 @@ SS_MSG(devices_header,
     NL("Apparaten:"),
     RU("Устройства:"),
     TR("Aygıtlar:"));
+SS_MSG(device_uuid,
+    EN("uuid"), JA("UUID"), ZH_HANS("UUID"), ZH_HANT("UUID"), KO("UUID"),
+    DE("UUID"), FR("UUID"), ES("UUID"), PT("UUID"), IT("UUID"), NL("UUID"),
+    RU("UUID"), TR("UUID"));
+SS_MSG(device_uuid_line,
+    EN("UUID: {0}"), JA("UUID: {0}"), ZH_HANS("UUID：{0}"), ZH_HANT("UUID：{0}"),
+    KO("UUID: {0}"), DE("UUID: {0}"), FR("UUID : {0}"), ES("UUID: {0}"),
+    PT("UUID: {0}"), IT("UUID: {0}"), NL("UUID: {0}"), RU("UUID: {0}"),
+    TR("UUID: {0}"));
 SS_MSG(device_unusable,
     EN("[missing required features]"),
     JA("[必要な機能がありません]"),
@@ -331,30 +340,75 @@ SS_MSG(train_app_flags_header,
     RU("флаги приложения:"),
     TR("uygulama seçenekleri:"));
 SS_MSG(train_device_help,
-    EN("Compute device to train on (default: auto). The device list prints at "
-       "startup."),
-    JA("学習に使う計算デバイスです（既定は自動）。デバイスの一覧は起動時に"
-       "表示されます。"),
-    ZH_HANS("用于训练的计算设备（默认自动选择）。设备列表会在启动时打印。"),
-    ZH_HANT("用於訓練的計算裝置（預設自動選擇）。裝置清單會在啟動時列出。"),
-    KO("학습에 쓸 연산 장치입니다(기본값은 자동). 장치 목록은 시작할 때 "
-       "출력됩니다."),
-    DE("Rechengerät für das Training (Standard: automatisch). Die Geräteliste "
-       "wird beim Start ausgegeben."),
-    FR("Périphérique de calcul pour l'entraînement (par défaut : automatique). "
-       "La liste des périphériques s'affiche au démarrage."),
-    ES("Dispositivo de cálculo con el que entrenar (por defecto: automático). "
-       "La lista de dispositivos se imprime al arrancar."),
-    PT("Dispositivo de cálculo para treinar (padrão: automático). A lista de "
+    EN("Compute device to train on (default: auto): an index, part of a name, "
+       "`auto`, or uuid:<32 hex digits>. The device list prints at startup."),
+    JA("学習に使う計算デバイス（既定は自動）: 番号、名前の一部、`auto`、または "
+       "uuid:<32 桁の 16 進数>。デバイスの一覧は起動時に表示されます。"),
+    ZH_HANS("用于训练的计算设备（默认自动）：序号、名称的一部分、`auto`，"
+            "或 uuid:<32 位十六进制>。设备列表会在启动时打印。"),
+    ZH_HANT("用於訓練的計算裝置（預設自動）：序號、名稱的一部分、`auto`，"
+            "或 uuid:<32 位十六進位>。裝置清單會在啟動時列出。"),
+    KO("학습에 쓸 연산 장치(기본값은 자동): 번호, 이름의 일부, `auto`, 또는 "
+       "uuid:<32자리 16진수>. 장치 목록은 시작할 때 출력됩니다."),
+    DE("Rechengerät für das Training (Standard: automatisch): ein Index, ein "
+       "Teil des Namens, `auto` oder uuid:<32 Hexziffern>. Die Geräteliste wird "
+       "beim Start ausgegeben."),
+    FR("Périphérique de calcul pour l'entraînement (par défaut : automatique) : "
+       "un indice, une partie d'un nom, `auto` ou uuid:<32 chiffres "
+       "hexadécimaux>. La liste des périphériques s'affiche au démarrage."),
+    ES("Dispositivo de cálculo con el que entrenar (por defecto: automático): un "
+       "índice, parte de un nombre, `auto` o uuid:<32 dígitos hexadecimales>. La "
+       "lista de dispositivos se imprime al arrancar."),
+    PT("Dispositivo de cálculo para treinar (padrão: automático): um índice, "
+       "parte de um nome, `auto` ou uuid:<32 dígitos hexadecimais>. A lista de "
        "dispositivos é impressa na inicialização."),
-    IT("Dispositivo di calcolo su cui addestrare (predefinito: automatico). "
-       "L'elenco dei dispositivi viene stampato all'avvio."),
-    NL("Rekenapparaat om op te trainen (standaard: automatisch). De "
-       "apparatenlijst wordt bij het starten afgedrukt."),
-    RU("Вычислительное устройство для обучения (по умолчанию автоматически). "
+    IT("Dispositivo di calcolo su cui addestrare (predefinito: automatico): un "
+       "indice, parte di un nome, `auto` o uuid:<32 cifre esadecimali>. L'elenco "
+       "dei dispositivi viene stampato all'avvio."),
+    NL("Rekenapparaat om op te trainen (standaard: automatisch): een index, deel "
+       "van een naam, `auto` of uuid:<32 hexcijfers>. De apparatenlijst wordt "
+       "bij het starten afgedrukt."),
+    RU("Вычислительное устройство для обучения (по умолчанию автоматически): "
+       "номер, часть имени, `auto` или uuid:<32 шестнадцатеричные цифры>. "
        "Список устройств печатается при запуске."),
-    TR("Eğitimin yapılacağı işlem aygıtı (varsayılan: otomatik). Aygıt listesi "
+    TR("Eğitimin yapılacağı işlem aygıtı (varsayılan: otomatik): bir sıra, adın "
+       "bir parçası, `auto` veya uuid:<32 onaltılık basamak>. Aygıt listesi "
        "başlangıçta yazdırılır."));
+// The CUDA backend has no device identity to carry, so its selector is an
+// ordinal and nothing else.
+SS_MSG(train_device_help_cuda,
+    EN("Compute device to train on: a CUDA device index. If omitted, the "
+       "current CUDA device is used. The device list prints at startup."),
+    JA("学習に使う計算デバイス: CUDA デバイス番号。省略時は現在の CUDA デバイスを"
+       "使います。デバイスの一覧は起動時に表示されます。"),
+    ZH_HANS("用于训练的计算设备：CUDA 设备序号。省略时使用当前 CUDA 设备。设备列"
+            "表会在启动时打印。"),
+    ZH_HANT("用於訓練的計算裝置：CUDA 裝置序號。省略時使用目前的 CUDA 裝置。裝置"
+            "清單會在啟動時列出。"),
+    KO("학습에 쓸 연산 장치: CUDA 장치 번호입니다. 생략하면 현재 CUDA 장치를 사용"
+       "합니다. 장치 목록은 시작할 때 출력됩니다."),
+    DE("Rechengerät für das Training: ein CUDA-Geräteindex. Ohne Angabe wird das "
+       "aktuelle CUDA-Gerät verwendet. Die Geräteliste wird beim Start ausgegeben."),
+    FR("Périphérique de calcul pour l'entraînement : un indice CUDA. Sans "
+       "indication, le périphérique CUDA courant est utilisé. La liste des "
+       "périphériques s'affiche au démarrage."),
+    ES("Dispositivo de cálculo con el que entrenar: un índice de dispositivo CUDA. "
+       "Si se omite, se usa el dispositivo CUDA actual. La lista de dispositivos "
+       "se imprime al arrancar."),
+    PT("Dispositivo de cálculo para treinar: um índice de dispositivo CUDA. Se "
+       "omitido, o dispositivo CUDA atual é usado. A lista de dispositivos é "
+       "impressa na inicialização."),
+    IT("Dispositivo di calcolo su cui addestrare: un indice del dispositivo CUDA. "
+       "Se omesso, viene usato il dispositivo CUDA corrente. L'elenco dei "
+       "dispositivi viene stampato all'avvio."),
+    NL("Rekenapparaat om op te trainen: een CUDA-apparaatindex. Als deze wordt "
+       "weggelaten, wordt het huidige CUDA-apparaat gebruikt. De apparatenlijst "
+       "wordt bij het starten afgedrukt."),
+    RU("Вычислительное устройство для обучения: индекс устройства CUDA. Если он "
+       "не указан, используется текущее устройство CUDA. Список устройств "
+       "печатается при запуске."),
+    TR("Eğitimin yapılacağı işlem aygıtı: CUDA aygıt dizini. Belirtilmezse mevcut "
+       "CUDA aygıtı kullanılır. Aygıt listesi başlangıçta yazdırılır."));
 SS_MSG(train_flags_header,
     EN("flags ('-' and '_' interchangeable; bools take 0/1; 'none' clears "
        "optional values; defaults shown for the selected preset):"),

@@ -800,29 +800,349 @@ SS_MSG(device_unsupported,
     NL(" [niet ondersteund]"), RU(" [не поддерживается]"),
     TR(" [desteklenmiyor]"));
 
-SS_MSG(device_locked,
-    EN("Device is fixed once training starts; restart the app to change it."),
-    JA("学習を始めるとデバイスは固定されます。変更するにはアプリを再起動して"
-       "ください。"),
-    ZH_HANS("训练开始后设备就固定了；要更换请重新启动程序。"),
-    ZH_HANT("訓練開始後裝置就固定了；要更換請重新啟動程式。"),
-    KO("학습이 시작되면 장치가 고정됩니다. 바꾸려면 앱을 다시 시작하세요."),
-    DE("Das Gerät steht fest, sobald das Training beginnt; zum Wechseln die "
-       "Anwendung neu starten."),
-    FR("Le périphérique est figé une fois l'entraînement lancé ; redémarrez "
-       "l'application pour en changer."),
-    ES("El dispositivo queda fijado en cuanto empieza el entrenamiento; "
-       "reinicie la aplicación para cambiarlo."),
-    PT("O dispositivo fica fixo assim que o treinamento começa; reinicie o "
-       "aplicativo para trocá-lo."),
-    IT("Il dispositivo è fissato una volta avviato l'addestramento; riavvii "
-       "l'applicazione per cambiarlo."),
-    NL("Het apparaat ligt vast zodra de training begint; herstart de "
-       "toepassing om het te wijzigen."),
-    RU("После начала обучения устройство менять нельзя; чтобы выбрать другое, "
-       "перезапустите программу."),
-    TR("Eğitim başladıktan sonra aygıt sabitlenir; değiştirmek için "
-       "uygulamayı yeniden başlatın."));
+SS_MSG(device_auto,
+    EN("Auto"),          JA("自動"),          ZH_HANS("自动"),     ZH_HANT("自動"),
+    KO("자동"),           DE("Automatisch"),  FR("Automatique"),  ES("Automático"),
+    PT("Automático"),    IT("Automatico"),   NL("Automatisch"),  RU("Автоматически"),
+    TR("Otomatik"));
+
+SS_MSG(menu_device,
+    EN("Device"),        JA("デバイス"),       ZH_HANS("设备"),     ZH_HANT("裝置"),
+    KO("장치"),           DE("Gerät"),        FR("Périphérique"), ES("Dispositivo"),
+    PT("Dispositivo"),   IT("Dispositivo"),  NL("Apparaat"),     RU("Устройство"),
+    TR("Aygıt"));
+
+SS_MSG(device_help,
+    EN("The GPU for built-in Vulkan jobs. Chosen once per session at the first "
+       "native GPU operation; changing it needs a restart. Auto picks the "
+       "fastest usable device. CUDA training and external tools use separate "
+       "settings."),
+    JA("組み込み Vulkan 処理が使う GPU です。セッションごとに最初のネイティブ "
+       "GPU 処理で一度だけ決まり、変更には再起動が必要です。自動は使用可能な"
+       "最も速いデバイスを選びます。CUDA 学習と外部ツールは別の設定を使います。"),
+    ZH_HANS("内置 Vulkan 任务使用的 GPU。每个会话在第一次原生 GPU 操作时只确定一"
+            "次，更改需要重新启动。自动会选择最快的可用设备。CUDA 训练和外部工"
+            "具使用独立设置。"),
+    ZH_HANT("內建 Vulkan 工作使用的 GPU。每個工作階段在第一次原生 GPU 操作時只"
+            "確定一次，變更需要重新啟動。自動會選擇最快的可用裝置。CUDA 訓練和"
+            "外部工具使用獨立設定。"),
+    KO("내장 Vulkan 작업에 사용할 GPU입니다. 세션마다 첫 네이티브 GPU 작업에서 한 "
+       "번만 정해지며, 바꾸려면 다시 시작해야 합니다. 자동은 사용 가능한 가장 빠른 "
+       "장치를 고릅니다. CUDA 학습과 외부 도구는 별도 설정을 사용합니다."),
+    DE("Die GPU für integrierte Vulkan-Aufträge. Sie wird pro Sitzung beim ersten "
+       "nativen GPU-Vorgang gewählt; zum Wechseln ist ein Neustart nötig. "
+       "Automatisch wird das schnellste nutzbare Gerät gewählt. CUDA-Training und "
+       "externe Werkzeuge verwenden eigene Einstellungen."),
+    FR("Le GPU des tâches Vulkan intégrées. Il est choisi une fois par session, "
+       "lors de la première opération GPU native ; le changer demande un "
+       "redémarrage. Automatique choisit le périphérique utilisable le plus "
+       "rapide. L'entraînement CUDA et les outils externes ont leurs propres "
+       "réglages."),
+    ES("La GPU de las tareas Vulkan integradas. Se elige una vez por sesión, en la "
+       "primera operación de GPU nativa; cambiarla requiere reiniciar. Automático "
+       "elige el dispositivo utilizable más rápido. El entrenamiento CUDA y las "
+       "herramientas externas usan ajustes separados."),
+    PT("A GPU das tarefas Vulkan integradas. É escolhida uma vez por sessão, na "
+       "primeira operação de GPU nativa; trocá-la exige reiniciar. Automático "
+       "escolhe o dispositivo utilizável mais rápido. O treinamento CUDA e as "
+       "ferramentas externas usam configurações separadas."),
+    IT("La GPU per le attività Vulkan integrate. Viene scelta una volta per "
+       "sessione, alla prima operazione GPU nativa; cambiarla richiede un "
+       "riavvio. Automatico sceglie il dispositivo utilizzabile più veloce. "
+       "L'addestramento CUDA e gli strumenti esterni usano impostazioni separate."),
+    NL("De GPU voor ingebouwde Vulkan-taken. Per sessie wordt deze bij de eerste "
+       "native GPU-bewerking gekozen; wijzigen vereist een herstart. Automatisch "
+       "kiest het snelste bruikbare apparaat. CUDA-training en externe "
+       "hulpmiddelen gebruiken aparte instellingen."),
+    RU("Графический процессор для встроенных задач Vulkan. Он выбирается один раз "
+       "за сеанс, при первой операции со встроенным GPU; для смены нужен "
+       "перезапуск. Автоматически выбирается самое быстрое доступное устройство. "
+       "Обучение CUDA и внешние инструменты используют отдельные настройки."),
+    TR("Yerleşik Vulkan işlerinin GPU'su. Oturum başına ilk yerel GPU işleminde bir "
+       "kez seçilir; değiştirmek için yeniden başlatma gerekir. Otomatik, "
+       "kullanılabilir en hızlı aygıtı seçer. CUDA eğitimi ve harici araçlar ayrı "
+       "ayarlar kullanır."));
+
+SS_MSG(device_auto_help,
+    EN("Let the application rank the devices and pick the best usable one."),
+    JA("アプリにデバイスを評価させ、使用可能な最良のものを選ばせます。"),
+    ZH_HANS("让程序对设备排序并选择最合适的可用设备。"),
+    ZH_HANT("讓程式對裝置排序並選擇最合適的可用裝置。"),
+    KO("앱이 장치를 평가해 사용 가능한 가장 좋은 것을 고르게 합니다."),
+    DE("Die Anwendung die Geräte bewerten und das beste nutzbare wählen lassen."),
+    FR("Laisser l'application classer les périphériques et prendre le meilleur "
+       "utilisable."),
+    ES("Dejar que la aplicación ordene los dispositivos y elija el mejor "
+       "utilizable."),
+    PT("Deixar o aplicativo classificar os dispositivos e escolher o melhor "
+       "utilizável."),
+    IT("Lasciare che l'applicazione ordini i dispositivi e scelga il migliore "
+       "utilizzabile."),
+    NL("De toepassing de apparaten laten rangschikken en het beste bruikbare "
+       "laten kiezen."),
+    RU("Позволить программе оценить устройства и выбрать лучшее доступное."),
+    TR("Uygulamanın aygıtları sıralayıp kullanılabilir en iyisini seçmesine izin "
+       "ver."));
+
+// {0} device name
+SS_MSG(device_frozen_at,
+    EN("GPU fixed for this session: {0}"),
+    JA("このセッションの GPU: {0}"),
+    ZH_HANS("本会话使用的 GPU：{0}"),
+    ZH_HANT("本工作階段使用的 GPU：{0}"),
+    KO("이 세션의 GPU: {0}"),
+    DE("GPU für diese Sitzung festgelegt: {0}"),
+    FR("GPU figé pour cette session : {0}"),
+    ES("GPU fijada para esta sesión: {0}"),
+    PT("GPU fixa para esta sessão: {0}"),
+    IT("GPU fissata per questa sessione: {0}"),
+    NL("GPU vastgelegd voor deze sessie: {0}"),
+    RU("Графический процессор закреплён на этот сеанс: {0}"),
+    TR("Bu oturum için GPU sabitlendi: {0}"));
+
+SS_MSG(device_restart_required,
+    EN("Changing the native Vulkan GPU needs restarting the application. Built-in "
+       "Vulkan jobs stay on this device; CUDA training and external tools use "
+       "separate settings."),
+    JA("組み込み Vulkan GPU を変更するにはアプリを再起動してください。組み込み "
+       "Vulkan 処理はこのデバイスで続き、CUDA 学習と外部ツールは別の設定を使います。"),
+    ZH_HANS("更换内置 Vulkan GPU 需要重新启动程序。内置 Vulkan 任务继续使用此设备；"
+            "CUDA 训练和外部工具使用独立设置。"),
+    ZH_HANT("更換內建 Vulkan GPU 需要重新啟動程式。內建 Vulkan 工作會繼續使用此"
+            "裝置；CUDA 訓練和外部工具使用獨立設定。"),
+    KO("내장 Vulkan GPU를 바꾸려면 앱을 다시 시작해야 합니다. 내장 Vulkan 작업은 이 "
+       "장치를 계속 사용하며, CUDA 학습과 외부 도구는 별도 설정을 사용합니다."),
+    DE("Das Ändern der integrierten Vulkan-GPU erfordert einen Neustart der "
+       "Anwendung. Integrierte Vulkan-Aufträge bleiben auf diesem Gerät; "
+       "CUDA-Training und externe Werkzeuge verwenden eigene Einstellungen."),
+    FR("Changer le GPU Vulkan intégré demande de redémarrer l'application. Les "
+       "tâches Vulkan intégrées restent sur ce périphérique ; l'entraînement CUDA "
+       "et les outils externes ont leurs propres réglages."),
+    ES("Cambiar la GPU Vulkan integrada requiere reiniciar la aplicación. Las "
+       "tareas Vulkan integradas siguen en este dispositivo; el entrenamiento "
+       "CUDA y las herramientas externas usan ajustes separados."),
+    PT("Trocar a GPU Vulkan integrada exige reiniciar o aplicativo. As tarefas "
+       "Vulkan integradas permanecem neste dispositivo; o treinamento CUDA e as "
+       "ferramentas externas usam configurações separadas."),
+    IT("Cambiare la GPU Vulkan integrata richiede di riavviare l'applicazione. "
+       "Le attività Vulkan integrate restano su questo dispositivo; "
+       "l'addestramento CUDA e gli strumenti esterni usano impostazioni separate."),
+    NL("De ingebouwde Vulkan-GPU wijzigen vereist een herstart van de toepassing. "
+       "Ingebouwde Vulkan-taken blijven op dit apparaat; CUDA-training en externe "
+       "hulpmiddelen gebruiken aparte instellingen."),
+    RU("Для смены встроенного GPU Vulkan требуется перезапустить программу. "
+       "Встроенные задачи Vulkan остаются на этом устройстве; обучение CUDA и "
+       "внешние инструменты используют отдельные настройки."),
+    TR("Yerleşik Vulkan GPU'sunu değiştirmek için uygulamayı yeniden başlatmak "
+       "gerekir. Yerleşik Vulkan işleri bu aygıtta kalır; CUDA eğitimi ve harici "
+       "araçlar ayrı ayarlar kullanır."));
+
+// {0} the requested value, {1} the frozen one
+SS_MSG(device_conflict,
+    EN("This session already runs on {1}, so {0} cannot be used. Restart the "
+       "application to choose another GPU."),
+    JA("このセッションはすでに {1} で動作しているため {0} は使えません。"
+       "別の GPU を選ぶにはアプリを再起動してください。"),
+    ZH_HANS("本会话已在 {1} 上运行，无法使用 {0}。请重新启动程序以选择其他 GPU。"),
+    ZH_HANT("本工作階段已在 {1} 上執行，無法使用 {0}。請重新啟動程式以選擇其他 GPU。"),
+    KO("이 세션은 이미 {1} 에서 실행 중이므로 {0} 을(를) 쓸 수 없습니다. 다른 "
+       "GPU 를 고르려면 앱을 다시 시작하세요."),
+    DE("Diese Sitzung läuft bereits auf {1}, daher kann {0} nicht verwendet "
+       "werden. Starten Sie die Anwendung neu, um eine andere GPU zu wählen."),
+    FR("Cette session tourne déjà sur {1} ; {0} ne peut donc pas être utilisé. "
+       "Redémarrez l'application pour choisir un autre GPU."),
+    ES("Esta sesión ya se ejecuta en {1}, así que no se puede usar {0}. "
+       "Reinicie la aplicación para elegir otra GPU."),
+    PT("Esta sessão já roda em {1}, então {0} não pode ser usado. Reinicie o "
+       "aplicativo para escolher outra GPU."),
+    IT("Questa sessione gira già su {1}, quindi {0} non può essere usato. "
+       "Riavvia l'applicazione per scegliere un'altra GPU."),
+    NL("Deze sessie draait al op {1}, dus {0} kan niet worden gebruikt. Herstart "
+       "de toepassing om een andere GPU te kiezen."),
+    RU("Этот сеанс уже выполняется на {1}, поэтому {0} использовать нельзя. "
+       "Перезапустите программу, чтобы выбрать другой GPU."),
+    TR("Bu oturum zaten {1} üzerinde çalışıyor, bu yüzden {0} kullanılamaz. "
+       "Başka bir GPU seçmek için uygulamayı yeniden başlatın."));
+
+// {0} the requested value, {1} why it was rejected
+SS_MSG(device_error,
+    EN("Cannot use GPU \"{0}\": {1}"),
+    JA("GPU「{0}」は使えません: {1}"),
+    ZH_HANS("无法使用 GPU“{0}”：{1}"),
+    ZH_HANT("無法使用 GPU「{0}」：{1}"),
+    KO("GPU \"{0}\" 을(를) 쓸 수 없습니다: {1}"),
+    DE("GPU „{0}“ kann nicht verwendet werden: {1}"),
+    FR("Impossible d'utiliser le GPU « {0} » : {1}"),
+    ES("No se puede usar la GPU «{0}»: {1}"),
+    PT("Não é possível usar a GPU \"{0}\": {1}"),
+    IT("Impossibile usare la GPU \"{0}\": {1}"),
+    NL("GPU \"{0}\" kan niet worden gebruikt: {1}"),
+    RU("Не удаётся использовать GPU «{0}»: {1}"),
+    TR("\"{0}\" GPU'su kullanılamıyor: {1}"));
+
+SS_MSG(device_detail_malformed,
+    EN("the request is not a valid device selector"),
+    JA("要求が有効なデバイス指定ではありません"),
+    ZH_HANS("该请求不是有效的设备选择器"),
+    ZH_HANT("該要求不是有效的裝置選擇器"),
+    KO("요청이 올바른 장치 선택자가 아닙니다"),
+    DE("die Angabe ist kein gültiger Geräteauswahlwert"),
+    FR("la demande n'est pas un sélecteur de périphérique valide"),
+    ES("la solicitud no es un selector de dispositivo válido"),
+    PT("a solicitação não é um seletor de dispositivo válido"),
+    IT("la richiesta non è un selettore di dispositivo valido"),
+    NL("de aanvraag is geen geldige apparaatkiezer"),
+    RU("запрос не является допустимым селектором устройства"),
+    TR("istek geçerli bir aygıt seçici değil"));
+
+SS_MSG(device_detail_out_of_range,
+    EN("no device has this index"),
+    JA("この番号のデバイスはありません"),
+    ZH_HANS("没有此索引的设备"),
+    ZH_HANT("沒有此索引的裝置"),
+    KO("이 번호의 장치가 없습니다"),
+    DE("kein Gerät hat diesen Index"),
+    FR("aucun périphérique n'a cet indice"),
+    ES("ningún dispositivo tiene este índice"),
+    PT("nenhum dispositivo tem este índice"),
+    IT("nessun dispositivo ha questo indice"),
+    NL("geen apparaat heeft deze index"),
+    RU("устройства с таким индексом нет"),
+    TR("bu dizinde bir aygıt yok"));
+
+SS_MSG(device_detail_missing,
+    EN("no device matches this request"),
+    JA("この指定に一致するデバイスがありません"),
+    ZH_HANS("没有与此请求匹配的设备"),
+    ZH_HANT("沒有與此要求相符的裝置"),
+    KO("이 요청과 일치하는 장치가 없습니다"),
+    DE("kein Gerät passt zu dieser Angabe"),
+    FR("aucun périphérique ne correspond à cette demande"),
+    ES("ningún dispositivo coincide con esta solicitud"),
+    PT("nenhum dispositivo corresponde a esta solicitação"),
+    IT("nessun dispositivo corrisponde a questa richiesta"),
+    NL("geen apparaat komt overeen met deze aanvraag"),
+    RU("ни одно устройство не соответствует этому запросу"),
+    TR("bu istekle eşleşen aygıt yok"));
+
+SS_MSG(device_detail_ambiguous,
+    EN("more than one device matches this request, so it is not specific enough"),
+    JA("複数のデバイスが一致するため、指定が不十分です"),
+    ZH_HANS("有多个设备匹配，该请求不够具体"),
+    ZH_HANT("有多個裝置相符，該要求不夠明確"),
+    KO("여러 장치가 일치하므로 요청이 충분히 구체적이지 않습니다"),
+    DE("mehrere Geräte passen, die Angabe ist nicht eindeutig genug"),
+    FR("plusieurs périphériques correspondent ; la demande n'est pas assez précise"),
+    ES("varios dispositivos coinciden; la solicitud no es lo bastante concreta"),
+    PT("vários dispositivos correspondem; a solicitação não é específica o bastante"),
+    IT("più dispositivi corrispondono; la richiesta non è abbastanza specifica"),
+    NL("meerdere apparaten komen overeen; de aanvraag is niet specifiek genoeg"),
+    RU("совпадает несколько устройств; запрос недостаточно конкретен"),
+    TR("birden fazla aygıt eşleşiyor; istek yeterince belirgin değil"));
+
+SS_MSG(device_detail_no_device,
+    EN("no usable Vulkan device was found"),
+    JA("使用可能な Vulkan デバイスが見つかりませんでした"),
+    ZH_HANS("未找到可用的 Vulkan 设备"),
+    ZH_HANT("找不到可用的 Vulkan 裝置"),
+    KO("사용 가능한 Vulkan 장치를 찾지 못했습니다"),
+    DE("es wurde kein nutzbares Vulkan-Gerät gefunden"),
+    FR("aucun périphérique Vulkan utilisable n'a été trouvé"),
+    ES("no se encontró ningún dispositivo Vulkan utilizable"),
+    PT("nenhum dispositivo Vulkan utilizável foi encontrado"),
+    IT("non è stato trovato alcun dispositivo Vulkan utilizzabile"),
+    NL("er is geen bruikbaar Vulkan-apparaat gevonden"),
+    RU("используемое устройство Vulkan не найдено"),
+    TR("kullanılabilir bir Vulkan aygıtı bulunamadı"));
+
+// {0} the environment's selector
+SS_MSG(device_inherited_env,
+    EN("Inherited from SS_VK_DEVICE: {0}"),
+    JA("SS_VK_DEVICE から継承: {0}"),
+    ZH_HANS("从 SS_VK_DEVICE 继承：{0}"),
+    ZH_HANT("繼承自 SS_VK_DEVICE：{0}"),
+    KO("SS_VK_DEVICE 에서 상속: {0}"),
+    DE("Von SS_VK_DEVICE übernommen: {0}"),
+    FR("Hérité de SS_VK_DEVICE : {0}"),
+    ES("Heredado de SS_VK_DEVICE: {0}"),
+    PT("Herdado de SS_VK_DEVICE: {0}"),
+    IT("Ereditato da SS_VK_DEVICE: {0}"),
+    NL("Overgenomen van SS_VK_DEVICE: {0}"),
+    RU("Унаследовано из SS_VK_DEVICE: {0}"),
+    TR("SS_VK_DEVICE'den devralındı: {0}"));
+
+SS_MSG(device_none_native,
+    EN("No usable Vulkan device was found, so nothing native can run."),
+    JA("使用可能な Vulkan デバイスが見つからないため、ネイティブ処理は実行"
+       "できません。"),
+    ZH_HANS("未找到可用的 Vulkan 设备，因此无法运行任何原生任务。"),
+    ZH_HANT("找不到可用的 Vulkan 裝置，因此無法執行任何原生工作。"),
+    KO("사용 가능한 Vulkan 장치를 찾지 못해 네이티브 작업을 실행할 수 없습니다."),
+    DE("Es wurde kein nutzbares Vulkan-Gerät gefunden, daher kann nichts Natives "
+       "laufen."),
+    FR("Aucun périphérique Vulkan utilisable n'a été trouvé ; rien de natif ne "
+       "peut donc tourner."),
+    ES("No se encontró ningún dispositivo Vulkan utilizable, así que nada nativo "
+       "puede ejecutarse."),
+    PT("Nenhum dispositivo Vulkan utilizável foi encontrado, então nada nativo "
+       "pode rodar."),
+    IT("Non è stato trovato alcun dispositivo Vulkan utilizzabile, quindi nulla "
+       "di nativo può girare."),
+    NL("Er is geen bruikbaar Vulkan-apparaat gevonden, dus niets natives kan "
+       "draaien."),
+    RU("Используемого устройства Vulkan не найдено, поэтому встроенные задачи "
+       "запустить нельзя."),
+    TR("Kullanılabilir bir Vulkan aygıtı bulunamadı, bu yüzden yerel hiçbir şey "
+       "çalışamaz."));
+
+SS_MSG(device_unusable_native,
+    EN("the device exists but does not meet the requirements of this workflow"),
+    JA("デバイスは存在しますが、この処理の必要条件を満たしていません"),
+    ZH_HANS("该设备存在，但不满足此任务的要求"),
+    ZH_HANT("該裝置存在，但不符合此工作的要求"),
+    KO("장치는 있지만 이 작업의 요구 사항을 충족하지 않습니다"),
+    DE("Das Gerät ist vorhanden, erfüllt aber nicht die Anforderungen dieses "
+       "Ablaufs"),
+    FR("Le périphérique existe mais ne répond pas aux exigences de ce flux"),
+    ES("El dispositivo existe pero no cumple los requisitos de este flujo"),
+    PT("O dispositivo existe mas não atende aos requisitos deste fluxo"),
+    IT("Il dispositivo esiste ma non soddisfa i requisiti di questo flusso"),
+    NL("Het apparaat bestaat maar voldoet niet aan de eisen van deze "
+       "werkstroom"),
+    RU("Устройство есть, но оно не отвечает требованиям этого процесса"),
+    TR("Aygıt var ama bu iş akışının gereksinimlerini karşılamıyor"));
+
+SS_MSG(device_cuda_locked,
+    EN("The CUDA device is fixed at the first engine operation; restart the app "
+       "to change it. Native Vulkan work uses its own selection."),
+    JA("CUDA デバイスは最初のエンジン処理で固定されます。変更するにはアプリを再起動"
+       "してください。ネイティブ Vulkan 処理は独自の選択を使います。"),
+    ZH_HANS("CUDA 设备在第一次引擎操作时固定；要更换请重新启动程序。原生 Vulkan "
+            "任务使用自己的选择。"),
+    ZH_HANT("CUDA 裝置會在第一次引擎操作時固定；要更換請重新啟動程式。原生 Vulkan "
+            "工作使用自己的選擇。"),
+    KO("CUDA 장치는 첫 엔진 작업에서 고정됩니다. 바꾸려면 앱을 다시 시작하세요. "
+       "네이티브 Vulkan 작업은 자체 선택을 사용합니다."),
+    DE("Das CUDA-Gerät wird beim ersten Engine-Vorgang festgelegt; zum Wechseln "
+       "die Anwendung neu starten. Native Vulkan-Arbeit nutzt eine eigene Auswahl."),
+    FR("Le périphérique CUDA est fixé lors de la première opération du moteur ; "
+       "redémarrez l'application pour en changer. Le travail Vulkan natif utilise "
+       "sa propre sélection."),
+    ES("El dispositivo CUDA queda fijado en la primera operación del motor; "
+       "reinicie la aplicación para cambiarlo. El trabajo Vulkan nativo usa su "
+       "propia selección."),
+    PT("O dispositivo CUDA fica fixo na primeira operação do mecanismo; reinicie "
+       "o aplicativo para trocá-lo. O trabalho Vulkan nativo usa sua própria seleção."),
+    IT("Il dispositivo CUDA viene fissato alla prima operazione del motore; "
+       "riavvia l'applicazione per cambiarlo. Il lavoro Vulkan nativo usa una "
+       "selezione propria."),
+    NL("Het CUDA-apparaat ligt vast bij de eerste enginebewerking; herstart de "
+       "toepassing om het te wijzigen. Native Vulkan-werk gebruikt een eigen keuze."),
+    RU("Устройство CUDA фиксируется при первой операции движка; чтобы сменить его, "
+       "перезапустите программу. Встроенные задачи Vulkan используют собственный "
+       "выбор."),
+    TR("CUDA aygıtı ilk motor işleminde sabitlenir; değiştirmek için uygulamayı "
+       "yeniden başlatın. Yerel Vulkan işi kendi seçimini kullanır."));
 
 // ---- basic options ----
 SS_MSG(opt_output_folder,

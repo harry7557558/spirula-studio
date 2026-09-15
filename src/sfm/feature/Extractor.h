@@ -36,6 +36,10 @@ struct AlikedOptions {
     double min_score = 0.2;
     bool  verbose = true;
     int   device = -1;
+    // Canonical uuid:<hex>; the learned frontend configures the shared NN with
+    // this before it loads a model, so the int above never selects a device by
+    // itself.
+    std::string device_selector;
 };
 
 // LoMa's knobs. Deliberately not loma::ExtractOptions, for the same reason as
@@ -52,6 +56,8 @@ struct LomaOptions {
     double min_score = 0.0;           // DaD's density has no useful floor
     bool   verbose = true;
     int    device = -1;
+    // Canonical uuid:<hex>; see AlikedOptions::device_selector.
+    std::string device_selector;
 };
 
 struct IFeatureExtractor {

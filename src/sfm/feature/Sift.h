@@ -37,6 +37,9 @@ struct SiftOptions {
     double peak_threshold = 0.02 / 3.0;
     double edge_threshold = 10.0;
     int device = -1;
+    // Canonical uuid:<hex> (core/VulkanDeviceSelection.h). Wins over the
+    // ordinal above; "" leaves the shared precedence in charge.
+    std::string device_selector;
     bool profile = false;
     bool verbose = true;
     std::string spv_path;             // override embedded "sift" blob
@@ -59,6 +62,7 @@ public:
 
     explicit SiftExtractor(const SiftOptions& opt) : opt_(opt) {
         VkContextOptions vo;
+        vo.selector = opt.device_selector;
         vo.deviceIndex = opt.device;
         vo.profile = opt.profile;
         ctx_.init(vo);

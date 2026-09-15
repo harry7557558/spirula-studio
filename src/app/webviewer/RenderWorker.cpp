@@ -2,6 +2,7 @@
 
 #include "app/webviewer/RenderWorker.h"
 
+#include "backend/api/BackendRuntime.h"
 #include "engine/Engine.h"    // engine render + viewer entry points
 #include "core/Camera.h"    // camera_model_from_name
 #include "app/DepthColor.h"  // error_scale -- shared with the error pane
@@ -128,6 +129,12 @@ struct RenderWorker::Impl {
             res.H = p.q.H;
             const auto t0 = std::chrono::steady_clock::now();
             try {
+#ifndef SS_BACKEND_VULKAN
+                // CUDA current-device state is per thread; bind before device work.
+                if (!backend::device_bind())
+                    throw std::runtime_error(
+                        "viewer: the selected GPU is not usable on this thread");
+#endif
                 res.rgb8 = render_once(p.q, res);
             } catch (const std::exception& e) {
                 std::fprintf(stderr, "[viewer] render error: %s\n", e.what());

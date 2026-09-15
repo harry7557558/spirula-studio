@@ -1353,6 +1353,48 @@ SS_MSG(help_data_format,
     RU("colmap|nerfstudio|metashape (по умолчанию: определить самому)"),
     TR("colmap|nerfstudio|metashape (varsayılan: kendi bulsun)"));
 
+SS_MSG(help_device,
+    EN("GPU to run on: an index, part of a name, `auto`, or\n"
+       "uuid:<32 hex digits> (default: the environment, then auto)"),
+    JA("使用する GPU: 番号、名前の一部、`auto`、\n"
+       "または uuid:<32 桁の 16 進数>（既定: 環境変数、次に自動）"),
+    ZH_HANS("要使用的 GPU：序号、名称的一部分、`auto`，\n"
+            "或 uuid:<32 位十六进制>（默认：环境变量，然后自动）"),
+    ZH_HANT("要使用的 GPU：序號、名稱的一部分、`auto`，\n"
+            "或 uuid:<32 位十六進位>（預設：環境變數，然後自動）"),
+    KO("사용할 GPU: 번호, 이름의 일부, `auto`, 또는\n"
+       "uuid:<32자리 16진수> (기본값: 환경 변수, 그다음 자동)"),
+    DE("GPU, auf der gerechnet wird: ein Index, ein Teil des Namens, `auto` "
+       "oder\nuuid:<32 Hexziffern> (Vorgabe: die Umgebung, dann automatisch)"),
+    FR("GPU à utiliser : un indice, une partie d'un nom, `auto`, ou\n"
+       "uuid:<32 chiffres hexadécimaux> (défaut : l'environnement, puis auto)"),
+    ES("GPU que se usará: un índice, parte de un nombre, `auto`, o\n"
+       "uuid:<32 dígitos hexadecimales> (por defecto: el entorno, luego auto)"),
+    PT("GPU a usar: um índice, parte de um nome, `auto`, ou\n"
+       "uuid:<32 dígitos hexadecimais> (padrão: o ambiente, depois auto)"),
+    IT("GPU da usare: un indice, parte di un nome, `auto`, o\n"
+       "uuid:<32 cifre esadecimali> (predefinito: l'ambiente, poi automatico)"),
+    NL("GPU om op te rekenen: een index, deel van een naam, `auto`, of\n"
+       "uuid:<32 hexcijfers> (standaard: de omgeving, dan automatisch)"),
+    RU("GPU для работы: номер, часть имени, `auto` или\n"
+       "uuid:<32 шестнадцатеричные цифры> (по умолчанию: окружение, затем авто)"),
+    TR("Üzerinde çalışılacak GPU: bir sıra, adın bir parçası, `auto` veya\n"
+       "uuid:<32 onaltılık basamak> (varsayılan: ortam, sonra otomatik)"));
+SS_MSG(help_device_cuda,
+    EN("CUDA device index to run on (default: the current CUDA device)"),
+    JA("使用する CUDA デバイス番号（既定: 現在の CUDA デバイス）"),
+    ZH_HANS("要使用的 CUDA 设备序号（默认：当前 CUDA 设备）"),
+    ZH_HANT("要使用的 CUDA 裝置序號（預設：目前 CUDA 裝置）"),
+    KO("사용할 CUDA 장치 번호(기본값: 현재 CUDA 장치)"),
+    DE("CUDA-Geräteindex für die Ausführung (Vorgabe: aktuelles CUDA-Gerät)"),
+    FR("indice du périphérique CUDA à utiliser (défaut : périphérique CUDA courant)"),
+    ES("índice del dispositivo CUDA que se usará (por defecto: dispositivo CUDA actual)"),
+    PT("índice do dispositivo CUDA a usar (padrão: dispositivo CUDA atual)"),
+    IT("indice del dispositivo CUDA da usare (predefinito: dispositivo CUDA corrente)"),
+    NL("CUDA-apparaatindex om op te draaien (standaard: huidige CUDA-apparaat)"),
+    RU("индекс CUDA-устройства (по умолчанию: текущее CUDA-устройство)"),
+    TR("çalıştırılacak CUDA aygıtı dizini (varsayılan: geçerli CUDA aygıtı)"));
+
 SS_MSG(help_output,
     EN("output base path (default: <checkpoint>/mesh);\n"
        "a known extension is stripped"),

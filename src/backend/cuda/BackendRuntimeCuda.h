@@ -34,6 +34,13 @@ inline std::atomic<uint64_t>& device_bytes() {
     static std::atomic<uint64_t> v{0};
     return v;
 }
+// The ordinal a successful device_select picked, for device_bind to re-apply
+// on another thread. -1 until then: no selection means no rebinding, so an
+// app that never selects keeps the runtime's default device. One per program.
+inline std::atomic<int>& selected_ordinal() {
+    static std::atomic<int> v{-1};
+    return v;
+}
 }  // namespace detail
 
 // --- device enumeration / selection ---
@@ -61,6 +68,16 @@ inline DeviceInfo device_info(int index) {
 }
 inline bool device_select(int index) {
     if (index < 0 || index >= device_count()) return false;
+    if (cudaSetDevice(index) != cudaSuccess) {
+        cudaGetLastError();
+        return false;
+    }
+    detail::selected_ordinal().store(index, std::memory_order_relaxed);
+    return true;
+}
+inline bool device_bind() {
+    const int index = detail::selected_ordinal().load(std::memory_order_relaxed);
+    if (index < 0) return true;  // nothing selected: default device stands
     if (cudaSetDevice(index) != cudaSuccess) {
         cudaGetLastError();
         return false;

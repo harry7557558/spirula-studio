@@ -38,6 +38,8 @@ struct MatchOptions {
     bool cross_check = true;    // keep only mutual nearest neighbours
     uint32_t max_num_matches = 32768;  // cap per pair (0 = unlimited)
     int device = -1;
+    // Canonical uuid:<hex>; wins over the ordinal, "" = shared precedence.
+    std::string device_selector;
     // Pairs per GPU submission. One command buffer holds every dispatch in a
     // batch, so the fence round trip is paid once per batch instead of per
     // pair; the batch's results are downloaded in one copy (D22).
@@ -79,12 +81,14 @@ public:
         // DP4A where the device has the instruction, the unpacked equivalent
         // where it lacks it (Intel Gen11/Gen12) or only emulates it (Apple).
         // Same integer result either way -- see bruteforce.slang.
-        dot4_ = VkContext::probeCaps(opt.device).intDotProductFast;
+        dot4_ = VkContext::probeCaps(deviceOnlyOpt(opt.device, opt.device_selector))
+                    .intDotProductFast;
         // SS_SFM_NO_DOT4=1 forces the fallback on a device that has DP4A,
         // which is how "same integer result" gets checked without the hardware
         // that lacks it.
         if (spirula::env_on("SFM_NO_DOT4")) dot4_ = false;
         VkContextOptions vo;
+        vo.selector = opt.device_selector;
         vo.deviceIndex = opt.device;
         vo.needIntDotProduct = dot4_;
         ctx_.init(vo);

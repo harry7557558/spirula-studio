@@ -13,9 +13,20 @@
 #if SS_HAVE_LOMA
 #include "loma/Loma.h"
 #endif
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+#include "nn/Device.h"
+#endif
 
 namespace sfm {
 namespace {
+
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+// Commit the resolved UUID to NN before learned model allocation; empty keeps
+// NN's own precedence.
+inline void configureLearnedDevice(const std::string& selector) {
+    if (!selector.empty()) nn::configure_device(selector);
+}
+#endif
 
 class SiftFrontend : public IFeatureExtractor {
 public:
@@ -45,6 +56,7 @@ private:
 class AlikedFrontend : public IFeatureExtractor {
 public:
     explicit AlikedFrontend(const AlikedOptions& opt) : opt_(opt) {
+        configureLearnedDevice(opt.device_selector);
         ext_.load(opt.model);
         aopts_.max_num_features = opt.max_num_features;
         aopts_.min_score = (float)opt.min_score;
@@ -113,6 +125,7 @@ private:
 class LomaFrontend : public IFeatureExtractor {
 public:
     explicit LomaFrontend(const LomaOptions& opt) : opt_(opt) {
+        configureLearnedDevice(opt.device_selector);
         ext_.load(opt.detector_model.empty() ? "loma-dad" : opt.detector_model,
                   opt.descriptor_model);
         lopts_.max_num_features = opt.max_num_features;

@@ -7,9 +7,14 @@
 #include "app/gui/Subprocess.h"
 #include "i18n/catalog/Dataset.h"
 
+#include "core/ColorSpace.h"
+#include "core/ExrImage.h"
 #ifdef SS_HAVE_VIDEO
 #include "app/FrameExtract.h"
 #include "video/Video.h"
+#endif
+#ifdef SS_BUILD_SAM
+#include "sam/Sam.h"   // sam::freeze_device
 #endif
 
 #include <algorithm>
@@ -28,7 +33,7 @@ bool is_image_file(const fs::path& p) {
     std::string e = p.extension().string();
     for (auto& c : e) c = (char)std::tolower((unsigned char)c);
     return e == ".jpg" || e == ".jpeg" || e == ".png" || e == ".webp" ||
-           e == ".tif" || e == ".tiff" || e == ".bmp";
+           e == ".tif" || e == ".tiff" || e == ".bmp" || e == ".exr";
 }
 
 fs::path temp_still(const char* tag) {
@@ -39,12 +44,27 @@ fs::path temp_still(const char* tag) {
             ".jpg");
 }
 
-// A photo the way up the masker will see it, which is the way up it was meant
-// to be shown -- see app::load_upright.
-bool load_photo(const std::string& path, bool as_stored, int& w, int& h,
-                std::vector<uint8_t>& rgb) {
-    if (!app::load_rgb(path, w, h, rgb)) return false;
-    if (!as_stored) app::turn_pixels(app::photo_turn(path), 3, rgb, w, h);
+void convert_to_srgb(const PreviewSource& src, std::vector<uint8_t>& rgb) {
+    colorspace::to_srgb_inplace(rgb.data(), rgb.size() / 3,
+                                src.image_gamut,
+                                src.image_is_linear.value_or(false));
+}
+
+bool load_photo(const PreviewSource& src, const std::string& path,
+                int& w, int& h, std::vector<uint8_t>& rgb) {
+    if (exr::is_exr(path)) {
+        exr::Info info;
+        if (!exr::decode_srgb8(path, exr::Options(), info, rgb,
+                               src.image_gamut, src.image_is_linear).empty())
+            return false;
+        w = info.width;
+        h = info.height;
+    } else {
+        if (!app::load_rgb(path, w, h, rgb)) return false;
+        convert_to_srgb(src, rgb);
+    }
+    if (!src.photos_as_stored)
+        app::turn_pixels(app::photo_turn(path), 3, rgb, w, h);
     return true;
 }
 
@@ -62,7 +82,8 @@ bool load_ffmpeg_frame(const PreviewSource& src, double at, int folder, int& w,
     const bool ok =
         ffmpeg_extract_frame(src.ffmpeg_exe, src.input, at, tmp.string(), cancel,
                              opts);
-    if (ok && !cancel.load()) app::load_rgb(tmp.string(), w, h, rgb);
+    if (ok && !cancel.load() && app::load_rgb(tmp.string(), w, h, rgb))
+        convert_to_srgb(src, rgb);
     std::error_code rm;
     fs::remove(tmp, rm);
     if (rgb.empty()) return false;
@@ -103,17 +124,18 @@ void collect_preview_frames(PreviewSource& src, int offers,
         // means "the Nth frame we sample while reading forward".
         long long total = 0;
 #ifdef SS_HAVE_VIDEO
-        if (src.builtin_decode) {
-            video::VideoReader r;
-            if (r.open(src.input)) {
-                total = r.info().frame_count;
-                // Free here, and the only thing a later fallback would be
-                // missing: ffmpeg seeks by time, not by frame.
-                if (r.info().fps > 0.0)
-                    src.video_seconds = (double)total / r.info().fps;
+        if (!cancel.load() && src.builtin_decode) {
+            video::VideoProbe probe;
+            std::string error;
+            if (video::probe_video(src.input, probe, error)) {
+                total = probe.frame_count;
+                if (probe.fps > 0.0)
+                    src.video_seconds = (double)total / probe.fps;
+                if (src.tracks < probe.tracks) src.tracks = probe.tracks;
             }
         }
 #endif
+        if (cancel.load()) return;
         if (total <= 0) {
             // No in-process decoding on this machine, or it could not open the
             // file: ffmpeg is what will read this video, in the preview and in
@@ -130,7 +152,9 @@ void collect_preview_frames(PreviewSource& src, int offers,
         src.video_frames = total;
         for (int i = 0; i < offers; i++) {
             PreviewFrame f;
-            f.index = std::min(total - 1, (long long)i * (total / offers));
+            f.index = offers > 1
+                ? (long long)i * (total - 1) / (offers - 1)
+                : 0;
             f.position = (float)((double)f.index / (double)std::max(1LL, total - 1));
             frames.push_back(f);
         }
@@ -143,9 +167,10 @@ void collect_preview_frames(PreviewSource& src, int offers,
     for (fs::recursive_directory_iterator it(
              src.input, fs::directory_options::skip_permission_denied |
                             fs::directory_options::follow_directory_symlink, ec), end;
-         !ec && it != end; it.increment(ec))
+         !cancel.load() && !ec && it != end; it.increment(ec))
         if (it->is_regular_file(ec) && is_image_file(it->path()))
             all_files.push_back(it->path().string());
+    if (cancel.load()) return;
     std::sort(all_files.begin(), all_files.end());
 
     // A spread through the capture is enough to judge a setting, and keeps the
@@ -167,21 +192,34 @@ bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
                         std::string& error, const std::atomic<bool>& cancel) {
     w = h = 0;
     rgb.clear();
+    if (src.is_video && !src.device_error.empty()) {
+        error = src.device_error;
+        return false;
+    }
     if (!src.is_video) {
         if (frame.path.empty() ||
-            !load_photo(frame.path, src.photos_as_stored, w, h, rgb)) {
+            !load_photo(src, frame.path, w, h, rgb)) {
             error = dmsg::preview_frame_unreadable.get();
             return false;
         }
         return true;
     }
 
+#ifdef SS_BUILD_SAM
+    if (src.builtin_decode) {
+        std::string select_error;
+        if (!sam::freeze_device(src.device, select_error)) {
+            error = select_error;
+            return false;
+        }
+    }
+#endif
 #ifdef SS_HAVE_VIDEO
     if (src.builtin_decode) {
         nn::Image img;
         std::string err;
         if (app::extract_one_frame(src.input, src.look, frame.index, folder, img,
-                                   &cancel, err)) {
+                                   &cancel, err, src.device)) {
             w = img.width;
             h = img.height;
             rgb = std::move(img.data);
@@ -189,6 +227,7 @@ bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
         if (cancel.load()) return false;
     }
 #endif
+    if (!rgb.empty()) convert_to_srgb(src, rgb);
     // The same fallback the dataset run takes when the driver cannot decode
     // (DatasetPrep::extract_video). A whole subprocess for one still, which is
     // why it is not the first choice.
@@ -247,6 +286,17 @@ void scan_preview_frames(const PreviewSource& src,
                          const std::vector<PreviewFrame>& frames, int folder,
                          const std::function<void(const uint8_t*, int, int)>& on_frame,
                          const std::atomic<bool>& cancel) {
+    if (src.is_video && !src.device_error.empty()) return;
+    // Border fitting reads stored pixels; color overrides apply to models and display.
+    PreviewSource stored = src;
+    stored.image_gamut.clear();
+    stored.image_is_linear.reset();
+#ifdef SS_BUILD_SAM
+    if (src.is_video && src.builtin_decode) {
+        std::string select_error;
+        if (!sam::freeze_device(src.device, select_error)) return;
+    }
+#endif
 #ifdef SS_HAVE_VIDEO
     if (src.is_video && src.builtin_decode && !frames.empty()) {
         std::vector<int64_t> indices;
@@ -259,7 +309,7 @@ void scan_preview_frames(const PreviewSource& src,
                                    on_frame(img.data.data(), img.width,
                                             img.height);
                                },
-                               &cancel, err);
+                               &cancel, err, src.device);
         if (any || cancel.load()) return;
     }
 #endif
@@ -268,7 +318,7 @@ void scan_preview_frames(const PreviewSource& src,
         int w = 0, h = 0;
         std::vector<uint8_t> rgb;
         std::string err;
-        if (load_preview_frame(src, f, folder, w, h, rgb, err, cancel))
+        if (load_preview_frame(stored, f, folder, w, h, rgb, err, cancel))
             on_frame(rgb.data(), w, h);
     }
 }

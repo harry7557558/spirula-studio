@@ -27,6 +27,10 @@ struct Session::Impl {
     // word typed -- and re-reading a 700 MB checkpoint for each of those is a
     // three-second stall in a panel whose whole point is to be immediate.
     ModelParams          loaded_params;
+    // The physical identity the loaded model sits on, canonical uuid:<hex>.
+    // Session::loadModel compares this against the live device, so a second
+    // request spelled differently but naming the same GPU reuses the weights.
+    std::string          device_selector;
 
     // Text + exemplar tokens, the padding bias every prompt-facing attention
     // applies, and the pooling weights DotProductScoring needs. Returns the

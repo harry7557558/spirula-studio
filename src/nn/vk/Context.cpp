@@ -1,5 +1,6 @@
 #include "nn/vk/Context.h"
 
+#include "core/VulkanDeviceSelection.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 
@@ -7,11 +8,14 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include "core/Env.h"
 
 namespace nn {
 namespace vk {
+
+namespace sel = spirula::vkselect;
 
 // ================
 // Result names
@@ -63,24 +67,6 @@ const char* Context::resultName(VkResult r) {
 
 namespace {
 
-const char* deviceTypeName(VkPhysicalDeviceType t) {
-    switch (t) {
-        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:   return "discrete";
-        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "integrated";
-        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:    return "virtual";
-        case VK_PHYSICAL_DEVICE_TYPE_CPU:            return "cpu";
-        default:                                     return "other";
-    }
-}
-
-int typeScore(const char* type) {
-    if (std::strcmp(type, "discrete") == 0)   return 4;
-    if (std::strcmp(type, "integrated") == 0) return 3;
-    if (std::strcmp(type, "virtual") == 0)    return 2;
-    if (std::strcmp(type, "cpu") == 0)        return 1;
-    return 0;
-}
-
 uint64_t deviceLocalHeap(VkPhysicalDevice pd) {
     VkPhysicalDeviceMemoryProperties mp{};
     vkGetPhysicalDeviceMemoryProperties(pd, &mp);
@@ -91,17 +77,18 @@ uint64_t deviceLocalHeap(VkPhysicalDevice pd) {
     return best;
 }
 
-// Fills `usable` / `unusable_reason` against the Vulkan 1.2 baseline.
-void probeBaseline(VkPhysicalDevice pd, DeviceInfo& out) {
-    VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(pd, &props);
-    out.name = props.deviceName;
-    out.type = deviceTypeName(props.deviceType);
+// Fills a shared record and adds this runtime's baseline verdict: `usable`
+// means the Vulkan 1.2 + bufferDeviceAddress + timelineSemaphore baseline, not
+// that a given model fits or that video decoding is available.
+sel::DeviceRecord probeRecord(VkPhysicalDevice pd, int index) {
+    sel::DeviceRecord out;
+    out.index = index;
+    sel::probeIdentity(pd, &out);
     out.vram_bytes = deviceLocalHeap(pd);
 
-    if (props.apiVersion < VK_API_VERSION_1_2) {
+    if (out.props.apiVersion < VK_API_VERSION_1_2) {
         out.unusable_reason = "driver reports Vulkan < 1.2";
-        return;
+        return out;
     }
 
     VkPhysicalDeviceVulkan12Features f12{
@@ -112,25 +99,36 @@ void probeBaseline(VkPhysicalDevice pd, DeviceInfo& out) {
 
     if (!f12.bufferDeviceAddress) {
         out.unusable_reason = "no bufferDeviceAddress";
-        return;
+        return out;
     }
     if (!f12.timelineSemaphore) {
         out.unusable_reason = "no timelineSemaphore";
-        return;
+        return out;
     }
 
     uint32_t nq = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(pd, &nq, nullptr);
     std::vector<VkQueueFamilyProperties> qf(nq);
     vkGetPhysicalDeviceQueueFamilyProperties(pd, &nq, qf.data());
-    bool compute = false;
     for (auto& q : qf)
-        if (q.queueFlags & VK_QUEUE_COMPUTE_BIT) compute = true;
-    if (!compute) {
-        out.unusable_reason = "no compute queue";
-        return;
-    }
-    out.usable = true;
+        if (q.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            out.usable = true;
+            return out;
+        }
+    out.unusable_reason = "no compute queue";
+    return out;
+}
+
+DeviceInfo toDeviceInfo(const sel::DeviceRecord& r) {
+    DeviceInfo di;
+    di.index = r.index;
+    di.name = r.name;
+    di.type = sel::deviceTypeName(r.props.deviceType);
+    di.vram_bytes = r.vram_bytes;
+    di.usable = r.usable;
+    di.unusable_reason = r.unusable_reason;
+    di.uuid = sel::selectorFor(r);
+    return di;
 }
 
 VkInstance createInstance(bool validation, VkDebugUtilsMessengerEXT* messenger);
@@ -258,11 +256,6 @@ bool hasCoopMatShape(VkInstance inst, VkPhysicalDevice pd) {
 }
 #endif
 
-std::string lower(std::string s) {
-    for (auto& c : s) c = (char)std::tolower((unsigned char)c);
-    return s;
-}
-
 }  // namespace
 
 std::vector<DeviceInfo> enumerate_devices() {
@@ -272,13 +265,29 @@ std::vector<DeviceInfo> enumerate_devices() {
     vkEnumeratePhysicalDevices(inst, &n, nullptr);
     std::vector<VkPhysicalDevice> devs(n);
     if (n) vkEnumeratePhysicalDevices(inst, &n, devs.data());
-    for (uint32_t i = 0; i < n; ++i) {
-        DeviceInfo di;
-        di.index = (int)i;
-        probeBaseline(devs[i], di);
-        out.push_back(std::move(di));
-    }
+    for (uint32_t i = 0; i < n; ++i)
+        out.push_back(toDeviceInfo(probeRecord(devs[i], (int)i)));
     vkDestroyInstance(inst, nullptr);
+    return out;
+}
+
+// Enumerates into shared records, using the caller's instance so ordinals
+// index the same list the caller sees.
+std::vector<sel::DeviceRecord> enumerate_records(VkInstance inst = VK_NULL_HANDLE) {
+    VkInstance own = VK_NULL_HANDLE;
+    if (inst == VK_NULL_HANDLE) {
+        own = createInstance(false, nullptr);
+        inst = own;
+    }
+    uint32_t n = 0;
+    vkEnumeratePhysicalDevices(inst, &n, nullptr);
+    std::vector<VkPhysicalDevice> devs(n);
+    if (n) vkEnumeratePhysicalDevices(inst, &n, devs.data());
+    std::vector<sel::DeviceRecord> out;
+    out.reserve(n);
+    for (uint32_t i = 0; i < n; ++i)
+        out.push_back(probeRecord(devs[i], (int)i));
+    if (own != VK_NULL_HANDLE) vkDestroyInstance(own, nullptr);
     return out;
 }
 
@@ -287,8 +296,19 @@ std::vector<DeviceInfo> enumerate_devices() {
 // ================
 
 namespace {
+// The configured request, held outside the Context: teardown frees GPU
+// resources, not the application's frozen selection, so every generation
+// (the GUI's second job after nn::shutdown) inherits the same device.
+struct Configured {
+    bool        set = false;
+    std::string selector;      // canonical uuid:<hex>, always resolved
+    bool        validation = false;
+    bool        profile = false;
+    bool        want_video = false;
+};
+Configured            g_configured;
 Context*              g_ctx = nullptr;
-std::mutex            g_ctx_mu;
+std::mutex            g_state_mu;  // g_ctx + g_configured
 std::atomic<uint64_t> g_generation{0};
 }  // namespace
 
@@ -296,20 +316,132 @@ bool Context::initialized() { return g_ctx != nullptr; }
 
 uint64_t Context::generation() { return g_generation.load(std::memory_order_acquire); }
 
+// One request, in precedence order: an explicit option, else SS_VK_DEVICE,
+// else Auto. An explicit Auto wins over the environment.
+sel::Request selectionRequest(const ContextOptions& opts) {
+    if (opts.selector_set)
+        return sel::parseRequest(opts.device_selector.empty()
+                                     ? std::string("auto")
+                                     : opts.device_selector);
+    if (!opts.device_match.empty() || opts.device_index >= 0) {
+        // Legacy fields, still the spelling several call sites use.
+        sel::Request r = opts.device_index >= 0
+                             ? sel::parseRequest(std::to_string(opts.device_index))
+                             : sel::parseRequest(opts.device_match);
+        r.explicit_request = true;
+        return r;
+    }
+    return sel::requestFrom("", false);
+}
+
+// Resolve against this runtime's records without creating a logical device.
+sel::Resolution Context::resolveSelector(const sel::Request& req) {
+    return sel::resolveRequest(req, enumerate_records());
+}
+
+namespace {
+// Enumerates (throwaway instance, no logical device) and resolves; throws the
+// resolver's own reason, which distinguishes a malformed or ambiguous request
+// from a device that exists but cannot run this baseline.
+sel::Resolution resolveNow(const ContextOptions& opts) {
+    const sel::Resolution res = Context::resolveSelector(selectionRequest(opts));
+    NN_CHECK(res.ok(), "%s", res.error.c_str());
+    return res;
+}
+}  // namespace
+
+void Context::configure(const ContextOptions& opts) {
+    const sel::Resolution res = resolveNow(opts);
+    std::lock_guard<std::mutex> lock(g_state_mu);
+    if (g_ctx) {
+        // Re-configuring the device already live is a no-op; anything else is
+        // the caller trying to move a device out from under live resources.
+        NN_CHECK(res.selector == g_ctx->info().uuid,
+                 "the inference device is already initialized on %s; selecting "
+                 "another GPU needs a restart",
+                 g_ctx->info().uuid.c_str());
+        g_configured.validation = g_configured.validation || opts.validation;
+        g_configured.profile = g_configured.profile || opts.profile;
+        g_configured.want_video = g_configured.want_video || opts.want_video;
+        return;
+    }
+    if (g_configured.set)
+        NN_CHECK(g_configured.selector == res.selector,
+                 "conflicting device request: %s is already configured",
+                 g_configured.selector.c_str());
+    g_configured.set = true;
+    g_configured.selector = res.selector;
+    g_configured.validation = g_configured.validation || opts.validation;
+    g_configured.profile = g_configured.profile || opts.profile;
+    g_configured.want_video = g_configured.want_video || opts.want_video;
+}
+
+std::string Context::configured_selector() {
+    std::lock_guard<std::mutex> lock(g_state_mu);
+    return g_configured.set ? g_configured.selector : std::string();
+}
+
+std::string Context::current_selector() {
+    std::lock_guard<std::mutex> lock(g_state_mu);
+    return g_ctx ? g_ctx->info().uuid : std::string();
+}
+
 Context& Context::get(const ContextOptions& opts) {
-    std::lock_guard<std::mutex> lock(g_ctx_mu);
+    std::lock_guard<std::mutex> lock(g_state_mu);
+
+    // Whatever is already live (or configured) is the device this process has;
+    // an explicit request naming another one must fail rather than be silently
+    // replaced by it. A default call carries no request and simply inherits.
+    const bool explicit_device =
+        opts.selector_set || !opts.device_match.empty() || opts.device_index >= 0;
+    const std::string live =
+        g_ctx ? g_ctx->info().uuid
+              : (g_configured.set ? g_configured.selector : std::string());
+    if (explicit_device && !live.empty()) {
+        const sel::Resolution asked = resolveNow(opts);
+        NN_CHECK(asked.selector == live,
+                 "the inference device is already set to %s; %s needs a restart",
+                 live.c_str(), asked.selector.c_str());
+    }
+
     if (!g_ctx) {
         // Bumped before init() so that anything resolving entry points from
         // inside device creation caches them against the right generation.
         g_generation.fetch_add(1, std::memory_order_release);
-        g_ctx = new Context();
-        g_ctx->init(opts);
+
+        // The configured request is the frozen one; this call's own options
+        // still decide validation, profiling and the video queue (which is
+        // why the video option has to survive the seam).
+        ContextOptions applied = opts;
+        if (g_configured.set) {
+            applied.selector_set = true;
+            applied.device_selector = g_configured.selector;
+            applied.device_index = -1;
+            applied.device_match.clear();
+        }
+        applied.validation = applied.validation || g_configured.validation;
+        applied.profile = applied.profile || g_configured.profile;
+        applied.want_video = applied.want_video || g_configured.want_video;
+
+        // Constructed locally and published only on success: an initialization
+        // failure must not leave a half-built singleton behind, and the next
+        // call must be free to try again.
+        std::unique_ptr<Context, Context::Deleter> ctx(new Context());
+        ctx->init(applied);
+        if (!g_configured.set) {
+            g_configured.set = true;
+            g_configured.selector = ctx->info().uuid;
+            g_configured.validation = opts.validation;
+            g_configured.profile = opts.profile;
+            g_configured.want_video = opts.want_video;
+        }
+        g_ctx = ctx.release();
     }
     return *g_ctx;
 }
 
 void Context::shutdown() {
-    std::lock_guard<std::mutex> lock(g_ctx_mu);
+    std::lock_guard<std::mutex> lock(g_state_mu);
     delete g_ctx;
     g_ctx = nullptr;
 }
@@ -335,8 +467,9 @@ void Context::init(const ContextOptions& opts) {
     pickPhysicalDevice(opts);
     createDevice(opts);
 
-    NN_LOG_INFO("[vk] device: %s (%s, %.1f GiB)\n", info_.name.c_str(), info_.type,
-                  info_.vram_bytes / (1024.0 * 1024.0 * 1024.0));
+    NN_LOG_INFO("[vk] device: %s [%s] (%s, %.1f GiB)\n",
+                info_.name.c_str(), info_.uuid.c_str(), info_.type,
+                info_.vram_bytes / (1024.0 * 1024.0 * 1024.0));
 }
 
 void Context::pickPhysicalDevice(const ContextOptions& opts) {
@@ -346,60 +479,19 @@ void Context::pickPhysicalDevice(const ContextOptions& opts) {
     std::vector<VkPhysicalDevice> devs(n);
     vkEnumeratePhysicalDevices(instance_, &n, devs.data());
 
-    std::vector<DeviceInfo> infos(n);
-    for (uint32_t i = 0; i < n; ++i) {
-        infos[i].index = (int)i;
-        probeBaseline(devs[i], infos[i]);
-    }
+    std::vector<sel::DeviceRecord> infos;
+    infos.reserve(n);
+    for (uint32_t i = 0; i < n; ++i)
+        infos.push_back(probeRecord(devs[i], (int)i));
 
-    // Explicit selection: option, then $SS_VK_DEVICE (index or name substring).
-    int chosen = -1;
-    std::string match = opts.device_match;
-    int want_index = opts.device_index;
-    if (const char* env = spirula::env("VK_DEVICE")) {
-        char* end = nullptr;
-        long v = std::strtol(env, &end, 10);
-        if (end && *end == '\0') want_index = (int)v;
-        else match = env;
-    }
-    if (want_index >= 0) {
-        NN_CHECK(want_index < (int)n, "SS_VK_DEVICE index %d out of range (%u devices)",
-                   want_index, n);
-        chosen = want_index;
-    } else if (!match.empty()) {
-        std::string needle = lower(match);
-        for (uint32_t i = 0; i < n; ++i)
-            if (lower(infos[i].name).find(needle) != std::string::npos) {
-                chosen = (int)i;
-                break;
-            }
-        NN_CHECK(chosen >= 0, "no Vulkan device name contains '%s'", match.c_str());
-    } else {
-        int best_score = -1;
-        uint64_t best_vram = 0;
-        for (uint32_t i = 0; i < n; ++i) {
-            if (!infos[i].usable) continue;
-            int s = typeScore(infos[i].type);
-            if (s > best_score || (s == best_score && infos[i].vram_bytes > best_vram)) {
-                best_score = s;
-                best_vram = infos[i].vram_bytes;
-                chosen = (int)i;
-            }
-        }
-        NN_CHECK(chosen >= 0,
-                   "no Vulkan device meets the baseline (1.2 + bufferDeviceAddress "
-                   "+ timelineSemaphore); first device said: %s",
-                   infos[0].unusable_reason.c_str());
-    }
-
-    NN_CHECK(infos[chosen].usable, "device %d (%s) is unusable: %s", chosen,
-               infos[chosen].name.c_str(), infos[chosen].unusable_reason.c_str());
+    const sel::Resolution res =
+        sel::resolveRequest(selectionRequest(opts), infos);
+    NN_CHECK(res.ok(), "%s", res.error.c_str());
+    const int chosen = res.device.index;
 
     physical_ = devs[chosen];
-    info_ = infos[chosen];
-    VkPhysicalDeviceProperties props{};
-    vkGetPhysicalDeviceProperties(physical_, &props);
-    limits_ = props.limits;
+    info_ = toDeviceInfo(infos[chosen]);
+    limits_ = infos[chosen].props.limits;
     vkGetPhysicalDeviceMemoryProperties(physical_, &mem_props_);
 }
 

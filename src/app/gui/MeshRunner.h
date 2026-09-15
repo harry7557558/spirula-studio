@@ -49,6 +49,12 @@ struct MeshJob {
     int max_cameras = 0;               // 0 = every camera
     int texture_size = 0;              // 0 = auto (texture mode only)
 
+    // Canonical UUID for native children; empty uses shared precedence and prevents
+    // inherited environment or ordinal re-ranking once populated.
+    std::string device_uuid;
+    // CUDA children receive the separately frozen ordinal; never a Vulkan UUID.
+    int cuda_device = -1;
+
     // ---- advanced ----
     float iso = 0.0f;                  // 0 = the child's default for the path
     int bisection_iters = 3;

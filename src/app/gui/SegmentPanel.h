@@ -66,8 +66,8 @@ public:
     ~SegmentPanel();
 
     // `src` carries the decoder and the FrameLook the run will use, so the
-    // picture here is the file it writes. Cheap: nothing is decoded until the
-    // panel draws (a video is asked how long it is, one probe either way).
+    // picture here is the file it writes. Video listing and probing run on the
+    // panel worker; frame decoding follows there after the list is ready.
     void open(const PreviewSource& src, const std::string& model_path);
     bool is_open() const { return _open; }
     void close();
@@ -117,9 +117,15 @@ private:
     // Every image of a photo input; the border fit reads the ones sharing the
     // shown frame's camera folder. The slider offers a dozen, a fit two dozen.
     std::vector<std::string> _all_files;
+    bool _frames_ready = false;         // guarded by _mu
+    PreviewSource _listed_src;          // guarded by _mu
+    std::vector<PreviewFrame> _frames_pending;
+    std::vector<std::string> _all_files_pending;
+    std::vector<std::string> _folders_pending;
     int  _frame_idx = 0;
     bool _frame_dirty = true;           // the chosen frame changed
     bool _needs_run = false;            // prompt edited; rerun on release
+    std::atomic<bool> _listing{false};
 
     // ---- the stencil ----
 
@@ -148,7 +154,7 @@ private:
     int _preview_w = 0, _preview_h = 0;
     bool _preview_dirty = false;
     std::string _status, _error;
-    float _kept_fraction = -1.0f;
+    float _kept_fraction = -1.0f; // guarded by _mu
 
     GLuint _tex = 0;
     int _tex_w = 0, _tex_h = 0;
