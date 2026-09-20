@@ -55,6 +55,11 @@ enum class CacheMode {
     DISK    // async per-modality prefetch pool, nothing pre-decoded
 };
 
+struct TrainingSourceStage {
+    int start_step = 0;
+    std::vector<double> weights;
+};
+
 struct DataManagerConfig {
     CacheMode cache_mode = CacheMode::CPU;
 
@@ -65,6 +70,9 @@ struct DataManagerConfig {
     // Train batch size. Picked per-group at next_train_batch() time — groups
     // with fewer than batch_size images yield a smaller batch.
     int  train_batch_size = 1;
+
+    std::vector<int32_t> source_group_ids;  // per INPUT image
+    std::vector<TrainingSourceStage> source_stages;
 
     // Eval batch size. Ignored when val_indices is empty.
     int  val_batch_size   = 1;
@@ -334,6 +342,9 @@ public:
     // The returned reference — and the DecodedBatch host buffers it points
     // into — stay valid only until the next call to `next_train_step()`.
     const TrainStep& next_train_step();
+
+    // Switch before fetching the step, discarding prefetched data from the old stage.
+    void set_train_step(int step);
 
     // Block until the next training batch is ready and return a reference to
     // it. The returned reference is valid only until the next call to

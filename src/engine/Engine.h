@@ -674,6 +674,10 @@ std::string engine_vram_report();
 void engine_profile_capture_vram();
 
 // --- Checkpoint save ---
+namespace spirula { struct SceneTransform; }
+// Caller holds the engine lock; transforms only the exported copy.
+void engine_export_ply(const std::string& path,
+                       const spirula::SceneTransform* transform = nullptr);
 //
 // Writes into `output_dir`:
 //   splat.ply  : cur_num_splats only, NaN+low-opacity-filtered (inference).

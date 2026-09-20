@@ -906,6 +906,9 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                      std::to_string(im.camera_id));
         const ColmapCamera& cam = cam_it->second;
 
+        ds.source_camera_ids.push_back(im.camera_id);
+        ds.source_cameras.emplace(im.camera_id, cam);
+
         fs::path img_path = image_dir / name;
         if (cfg.require_image_files && !fs::exists(img_path))
             throw std::runtime_error("ColmapParser: " + img_path.string() +

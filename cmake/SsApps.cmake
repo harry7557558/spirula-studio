@@ -264,6 +264,9 @@ if(WIN32)
 endif()
 
 add_executable(spirula ${SS_SRC}/app/Main.cpp ${SS_TOOL_SOURCES})
+if(SS_DEFAULT_SNAPSHOT_SUPERSPLAT)
+    target_compile_definitions(spirula PRIVATE SS_DEFAULT_SNAPSHOT_SUPERSPLAT=1)
+endif()
 ss_configure_app(spirula)
 target_link_libraries(spirula PRIVATE ${SS_TOOL_LIBS})
 target_compile_definitions(spirula PRIVATE

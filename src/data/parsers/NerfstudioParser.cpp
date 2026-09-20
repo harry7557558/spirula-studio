@@ -613,6 +613,16 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     const int EQUIRECT_V = (int)camera_model_from_name("EQUIRECTANGULAR");
     const int PINHOLE_V  = (int)camera_model_from_name("PINHOLE");
     LensFitCache lens_fits;
+    std::map<std::pair<std::string, std::vector<double>>, int32_t> intrinsic_ids;
+    int64_t next_camera_id = 1;
+    for (const auto& frame : frames) {
+        if (const auto* id = frame.j->find("camera_id")) {
+            if (id->type != JsonValue::Type::Number || !std::isfinite(id->num) ||
+                id->num < 0 || id->num > INT32_MAX || std::floor(id->num) != id->num)
+                throw std::runtime_error("NerfstudioParser: invalid camera_id");
+            next_camera_id = std::max(next_camera_id, (int64_t)id->num + 1);
+        }
+    }
 
     for (int64_t j = 0; j < N; j++) {
         const Frame& F = frames[subset[j]];
@@ -643,6 +653,41 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         rd.p1 = get("p1"); rd.p2 = get("p2");
         rd.sx1 = get("sx1"); rd.sy1 = get("sy1");
         rd.b1 = get("b1"); rd.b2 = get("b2");
+
+        std::string source_model = model_name;
+        if (const auto* hint = fr.find("camera_distortion")) source_model += ":" + hint->as_string();
+        else if (const auto* hint = meta.find("camera_distortion")) source_model += ":" + hint->as_string();
+        std::vector<double> source_params = {fx, fy, cx, cy, W, H,
+            rd.k1, rd.k2, rd.k3, rd.k4, rd.k5, rd.k6,
+            rd.p1, rd.p2, rd.sx1, rd.sy1, rd.b1, rd.b2};
+        for (double value : source_params)
+            if (!std::isfinite(value))
+                throw std::runtime_error("NerfstudioParser: non-finite camera intrinsics");
+        if (W < 1 || H < 1 || W > INT32_MAX || H > INT32_MAX)
+            throw std::runtime_error("NerfstudioParser: invalid image dimensions");
+        int32_t source_id;
+        if (const auto* id = fr.find("camera_id")) source_id = (int32_t)id->num;
+        else {
+            auto key = std::make_pair(source_model, source_params);
+            auto it = intrinsic_ids.find(key);
+            if (it == intrinsic_ids.end()) {
+                if (next_camera_id > INT32_MAX)
+                    throw std::runtime_error("NerfstudioParser: too many camera groups");
+                it = intrinsic_ids.emplace(std::move(key), (int32_t)next_camera_id++).first;
+            }
+            source_id = it->second;
+        }
+        ColmapCamera source;
+        source.camera_id = source_id;
+        source.model = source_model;
+        source.width = (uint64_t)std::max(1.0, W);
+        source.height = (uint64_t)std::max(1.0, H);
+        source.params = std::move(source_params);
+        auto inserted = ds.source_cameras.emplace(source_id, source);
+        if (!inserted.second && (inserted.first->second.model != source.model ||
+                                 inserted.first->second.params != source.params))
+            throw std::runtime_error("NerfstudioParser: camera_id has inconsistent intrinsics");
+        ds.source_camera_ids.push_back(source_id);
 
         // b1/b2 arrive already converted, NOT as Metashape writes them:
         // metashape_utils.py (and MetashapeParser, which mirrors it) divides

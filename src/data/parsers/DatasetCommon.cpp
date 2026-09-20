@@ -572,15 +572,24 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
                  {image_path, size_str(iw, ih), size_str(W, H)});
     }
 
-    const double s = (double)cfg.train_resolution_divisor;
+    const int max_dim = cfg.train_max_image_dimension;
+    const double s = max_dim > 0
+        ? std::max(tw, th) / (double)max_dim
+        : (double)cfg.train_resolution_divisor;
     if (s > 1.0) {
+        const double longest = std::max(tw, th);
         auto round_dim = [&](double v) {
+            if (max_dim > 0 && v == longest) return (double)max_dim;
             if (cfg.downscale_rounding_mode == "ceil")  return std::ceil(v / s);
             if (cfg.downscale_rounding_mode == "round") return std::round(v / s);
             return std::floor(v / s);
         };
         tw = std::max(1.0, round_dim(tw));
         th = std::max(1.0, round_dim(th));
+        if (max_dim > 0) {
+            tw = std::min(tw, (double)max_dim);
+            th = std::min(th, (double)max_dim);
+        }
     }
     if (tw == W && th == H) return;
 

@@ -15,6 +15,8 @@
 
 #include "app/TrainerCore.h"
 #include "app/webviewer/Viewer.h"
+#include "data/SceneTransform.h"
+#include "app/gui/Snapshot.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -79,8 +81,12 @@ public:
     // file in the viewer, the mesh preview) has just reset it -- which takes
     // this session's engine state with it. Nothing may attach a renderer to
     // the session after that, so engine_ready() goes back to false.
-    void note_engine_taken() { _engine_ready = false; }
+    void note_engine_taken();
     std::string error();
+
+    void export_snapshot(const SnapshotExport& snapshot);
+    bool snapshot_busy() const { return _snapshot_busy.load(); }
+    std::string snapshot_message();
 
     // Valid between load_dataset()/start_training() calls; see lifetime
     // rules above.
@@ -117,6 +123,8 @@ private:
     std::unique_ptr<spirula::TrainerSession> _session;
     std::unique_ptr<ViewerServer> _web_viewer;
     std::thread _worker;
+    std::thread _snapshot_worker;
+    std::atomic<bool> _snapshot_busy{false};
     std::atomic<Phase> _phase{Phase::Idle};
     std::atomic<bool> _engine_ready{false};
 
@@ -127,6 +135,7 @@ private:
 
     mutable std::mutex _mu;       // guards everything below
     std::string _error;
+    std::string _snapshot_message;
     spirula::TrainerProgress _latest;
     std::deque<double> _latencies;
     std::vector<MetricPoint> _metrics;

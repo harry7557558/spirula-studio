@@ -520,6 +520,7 @@ ParsedDataset parse_metashape_dataset(const std::string& dataset_dir,
             vc.component_id = *comp;
         vc.frame = jobj();
         jset(vc.frame, "file_path", jstr(matches[0]));
+        jset(vc.frame, "camera_id", jnum(std::stod(*sensor_id)));
         for (const auto& [k, v] : sit->second.obj)
             vc.frame.obj.emplace_back(k, v);
 

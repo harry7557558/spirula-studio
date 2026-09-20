@@ -73,6 +73,7 @@ from one checkout and neither reconfigures the other.
 |---|---|---|
 | `SS_BACKEND` | `cuda` | `cuda` \| `vulkan`. `vulkan` builds the portable engine layer + `backend/vulkan/` **without the CUDA toolkit**. |
 | `SS_BUILD_GUI` | `ON` | the graphical application (`spirula` with no arguments); FetchContent's GLFW 3.4 + Dear ImGui v1.92.8 (needs network once). `OFF` builds only the command-line tools, which need neither a display nor GL and fetch nothing. |
+| `SS_DEFAULT_SNAPSHOT_SUPERSPLAT` | `OFF` | Start the training viewport and snapshot selector in SuperSplat (Y-up) mode for a custom build. Normal builds start in Y-up mode; the selector remains editable. |
 | `SS_SEPARATE_TOOLS` | `OFF` | *also* build `spirula-sfm` and `spirula-sam` standalone — same code, but neither links the engine (24 MB vs the combined 61 MB) |
 | `SS_BUILD_BACKEND_TESTS` | `OFF` | build `backend/tests/*` (CUDA branch; Vulkan always builds them) |
 | `SS_DEBUG_SYMBOLS` | `OFF` | host `-g`, CUDA cubin lineinfo, `slangc -g2`. Bloats binaries substantially — profiling/debugging only. |

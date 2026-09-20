@@ -771,6 +771,7 @@ void TrainerSession::load_dataset() {
     pcfg.exif_orientation     = cfg.exif_orientation;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
+    pcfg.train_max_image_dimension = cfg.train_max_image_dimension;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;
@@ -813,6 +814,7 @@ void TrainerSession::load_dataset() {
     if (!cfg.auto_scale_poses) ds.train_frame_scale = 1.0f;
 
     seed_at_random();
+    source_groups = source_weights::group_images(cfg.data, ds);
 
     // POST-split camera bake (identity when no warp flag applies).
     post = bake_post_split(
@@ -945,6 +947,12 @@ static std::vector<float> exif_exposure_evs(const ParsedDataset& ds,
 }
 
 void TrainerSession::setup_engine() {
+    source_weights::Schedule source_schedule;
+    if (cfg.use_source_weights) {
+        source_schedule = source_weights::resolve(cfg.source_weights, source_groups);
+        source_weights::validate(source_schedule, source_groups);
+        cfg.source_weights = source_weights::serialize(source_schedule);
+    }
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
 #endif
@@ -1052,6 +1060,18 @@ void TrainerSession::setup_engine() {
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = ds.exif_quarter_turns;
+    if (cfg.use_source_weights) {
+        dm.source_group_ids = source_groups.image_group;
+        int start_percent = 0;
+        for (const auto& stage : source_schedule) {
+            TrainingSourceStage resolved;
+            resolved.start_step = (int)((int64_t)cfg.num_iterations * start_percent / 100);
+            for (const auto& source : source_groups.sources)
+                resolved.weights.push_back(stage.weight(source.key));
+            dm.source_stages.push_back(std::move(resolved));
+            start_percent = stage.until;
+        }
+    }
     engine_setup_data_manager(
         dm, ds.camera_models, ds.camera_distortions,
         ds.image_filenames,
@@ -1202,6 +1222,7 @@ void TrainerSession::restore_checkpoint() {
 
     try {
         start_step = engine_load_checkpoint(load_from.string());
+        cur_step = start_step;
     } catch (const std::exception& e) {
         if (adapted) remove_tree(tmp);
         throw std::runtime_error(
@@ -1331,7 +1352,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         // is time this step took. Timing only the work below reported 6 ms on
         // a step the run was actually spending 24 ms on.
         auto step_start = std::chrono::steady_clock::now();
-        while (render_pending.load())
+        while (render_pending.load() || snapshot_pending.load())
             std::this_thread::sleep_for(std::chrono::microseconds(500));
 
         std::map<std::string, float> losses;
@@ -1342,6 +1363,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
                 save_checkpoint(step);
             try {
                 losses = train_step(step);
+                cur_step = step + 1;
             } catch (const DataDecodeError& e) {
                 data_error = e.what();
             }
@@ -1362,7 +1384,6 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             --step;                      // this step never ran
             continue;
         }
-        cur_step = step + 1;
         double latency = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - step_start).count();
         {
@@ -1509,6 +1530,7 @@ void TrainerSession::eval() {
     pcfg.exif_orientation     = cfg.exif_orientation;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
+    pcfg.train_max_image_dimension = cfg.train_max_image_dimension;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
     pcfg.metashape_xml           = cfg.metashape_xml;
     pcfg.metashape_ply           = cfg.metashape_ply;

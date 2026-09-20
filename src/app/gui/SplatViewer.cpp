@@ -6,6 +6,7 @@
 #include "checkpoint/Resume.h"
 #include "checkpoint/SplatPly.h"
 #include "config/TrainConfig.h"
+#include "config/TrainConfigJson.h"
 #include "data/DatasetParser.h"
 #include "engine/Engine.h"
 #include "i18n/catalog/Gui.h"
@@ -306,10 +307,7 @@ void SplatViewer::run(std::string path) {
         spirula::SplatCloud c = spirula::read_splat_ply(ply);
         if (c.num <= 0) return fail(msg::viewer_no_splats.get());
 
-        // The run this file came out of, when it is still next to it: what
-        // primitive its splats are, and how they are rasterized. A PLY says
-        // nothing about either, and rendering a Mip or 3DGUT model as vanilla
-        // 3DGS is wrong in a way that looks like a bad reconstruction.
+        // A PLY alone cannot identify its primitive or color space.
         TrainConfig cfg;
         const fs::path cfg_path = fs::path(run_dir) / "config.json";
         std::error_code ec;
@@ -317,6 +315,24 @@ void SplatViewer::run(std::string path) {
             try {
                 cfg = ckpt::config_from_json(cfg_path);
                 log(format(msg::viewer_using_run_config, {cfg_path.string()}));
+            } catch (const std::exception& e) {
+                log(format(msg::viewer_run_config_unreadable, {e.what()}));
+            }
+        }
+        fs::path metadata_path = fs::u8path(ply);
+        metadata_path.replace_extension(".transform.json");
+        if (fs::is_regular_file(metadata_path, ec)) {
+            try {
+                const auto metadata = json_parse_file(metadata_path.u8string());
+                const auto* kind = metadata.find("format");
+                const auto* config = metadata.find("config");
+                if (kind && kind->as_string() == "spirula-snapshot-transform" &&
+                    config && config->is_object()) {
+                    TrainConfig snapshot_cfg;
+                    train_config_from_json(*config, snapshot_cfg);
+                    cfg = std::move(snapshot_cfg);
+                    log(format(msg::viewer_using_run_config, {metadata_path.u8string()}));
+                }
             } catch (const std::exception& e) {
                 log(format(msg::viewer_run_config_unreadable, {e.what()}));
             }

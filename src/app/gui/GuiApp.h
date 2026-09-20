@@ -459,6 +459,7 @@ private:
     void draw_preset_save_modal();
     void draw_preset_delete_modal();
     void draw_basic_options();
+    void draw_source_weights();
     void draw_train_controls();
     void draw_metrics();
     void draw_status_strip();

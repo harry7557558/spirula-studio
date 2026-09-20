@@ -124,6 +124,9 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, init_ply, "", "dataset", "basic", "none")                 \
     X(bool, init_ply_add_points, false, "dataset", "advanced", "")           \
     X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
+    X(int, train_max_image_dimension, 0, "dataset", "basic", "")            \
+    X(bool, use_source_weights, false, "dataset", "basic", "")             \
+    X(std::string, source_weights, "", "dataset", "expert", "")             \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
     X(std::string, eval_mode, "all", "dataset", "advanced", "fraction|filename|interval|all") \
     X(int, eval_interval, 8, "dataset", "advanced", "")                      \
@@ -358,7 +361,8 @@ struct TrainConfig {
 #define SS_DATASET_PARSE_FIELDS(X) \
     X(data) X(data_format) X(colmap_recon_dir) X(image_dir) X(mask_dir) \
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
-    X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
+    X(metashape_psx) X(train_resolution_divisor) X(train_max_image_dimension) \
+    X(downscale_rounding_mode) \
     X(exif_orientation) X(orientation_method) X(center_method) X(auto_scale_poses) \
     X(outlier_threshold) X(scene_center) X(train_frame) X(eval_mode) X(train_split_fraction) \
     X(eval_interval) X(depth_unit_scale_factor) X(validation_fraction) \

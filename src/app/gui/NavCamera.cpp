@@ -1,11 +1,11 @@
-// NavCamera.cpp -- see NavCamera.h. Line-for-line port of viewer.html's
-// v3 / quat helpers, `cam`, and `Nav`.
+// Native viewport camera math; OpenGL camera axes, selectable world up.
 
 #include "app/gui/NavCamera.h"
 
 #include <GLFW/glfw3.h>
 
 #include <cmath>
+#include <algorithm>
 
 namespace gui {
 
@@ -124,8 +124,6 @@ void mat3_to_quat(const float m[9], float o[4]) {
     }
 }
 
-const float kWorldUp[3] = {0, 0, 1};
-
 }  // namespace
 
 
@@ -154,10 +152,41 @@ void NavCamera::axis_forward(float v[3]) const {
 
 void NavCamera::orbit(float dx, float dy) {
     const float sensitivity = 0.005f;
+    if (mode == Turntable) {
+        float offset[3], up[3] = {};
+        up[up_axis] = 1;
+        v_sub(pos, target, offset);
+        const float distance = v_len(offset);
+        if (distance < 1e-12f) return;
+        float horizontal[3] = {offset[0], offset[1], offset[2]};
+        horizontal[up_axis] = 0;
+        const float horizontal_length = v_len(horizontal);
+        if (horizontal_length < distance * 1e-6f) {
+            float right[3];
+            axis_right(right);
+            v_cross(right, up, horizontal);
+            if (v_len(horizontal) < 1e-6f) {
+                horizontal[0] = horizontal[1] = horizontal[2] = 0;
+                horizontal[(up_axis + 1) % 3] = 1;
+            }
+        }
+        v_norm(horizontal, horizontal);
+        float yaw[4];
+        q_from_axis_angle(up, -dx * sensitivity, yaw);
+        q_rot_vec(yaw, horizontal, horizontal);
+        constexpr float pitch_limit = 1.55334303f;  // 89 degrees, away from the poles.
+        const float pitch = std::clamp(std::atan2(offset[up_axis], horizontal_length) +
+                                       dy * sensitivity, -pitch_limit, pitch_limit);
+        float eye[3];
+        for (int i = 0; i < 3; ++i)
+            eye[i] = target[i] + distance * (horizontal[i]*std::cos(pitch) + up[i]*std::sin(pitch));
+        look_at(eye, target, up);
+        return;
+    }
     float right[3], up[3];
     axis_right(right);
     if (mode == Trackball) axis_up(up);
-    else { up[0] = kWorldUp[0]; up[1] = kWorldUp[1]; up[2] = kWorldUp[2]; }
+    else { up[0] = up[1] = up[2] = 0; up[up_axis] = 1; }
     float qa[4], qb[4], qab[4];
     q_from_axis_angle(up, -dx * sensitivity, qa);
     q_from_axis_angle(right, -dy * sensitivity, qb);
@@ -237,6 +266,23 @@ void NavCamera::roll(float delta) {
     q_norm(rot);
 }
 
+void NavCamera::rotate_world(const float R[9]) {
+    auto rotate_point = [&](float p[3]) {
+        float old[3] = {p[0], p[1], p[2]};
+        for (int r = 0; r < 3; ++r)
+            p[r] = R[r*3+0]*old[0] + R[r*3+1]*old[1] + R[r*3+2]*old[2];
+    };
+    rotate_point(pos);
+    rotate_point(target);
+    float m[9], q[4];
+    for (int r = 0; r < 3; ++r)
+        for (int col = 0; col < 3; ++col)
+            m[col*3+r] = R[r*3+col];
+    mat3_to_quat(m, q);
+    q_mul(q, rot, rot);
+    q_norm(rot);
+}
+
 bool NavCamera::keyboard_tick(float dt, const Keys& k) {
     const float s = speed() * dt * 1.0f;   // translate speed
     const float sr = dt * 1.0f;            // rotate speed
@@ -244,7 +290,7 @@ bool NavCamera::keyboard_tick(float dt, const Keys& k) {
     axis_forward(fwd);
     axis_right(right);
     if (mode == Turntable || mode == Fps) {
-        up[0] = kWorldUp[0]; up[1] = kWorldUp[1]; up[2] = kWorldUp[2];
+        up[0] = up[1] = up[2] = 0; up[up_axis] = 1;
     } else {
         axis_up(up);
     }
@@ -296,8 +342,10 @@ bool NavCamera::gamepad_tick(float dt) {
             v_scale(right, lx * s, move);
             v_scale(fwd, -ly * s, step);
             v_add(move, step, move);
+            float world_up[3] = {0, 0, 0};
+            world_up[up_axis] = 1.0f;
             float up_step[3];
-            v_scale(kWorldUp, (rt - lt) * s, up_step);
+            v_scale(world_up, (rt - lt) * s, up_step);
             v_add(move, up_step, move);
             v_add(pos, move, pos);
             v_add(target, move, target);

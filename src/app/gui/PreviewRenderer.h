@@ -1,20 +1,9 @@
 #pragma once
 
-// PreviewRenderer -- pure-OpenGL preview of geometry the engine is not
-// rendering, into an offscreen FBO texture:
-//
-//   * the SfM sparse point cloud (vertex-colored) + training-camera frusta,
-//     shown by the viewport between "dataset loaded" and "training started",
-//     when the engine has nothing to render yet;
-//   * an extracted triangle mesh (vertex colors, or a baked texture atlas),
-//     which is what the mesh viewer and the meshing preview show.
-//
-// All of it is built in the same Z-up normalized frame the viewport
-// navigates, and the vertex shader implements the same camera models as the
-// engine viewer (pinhole / fisheye-equidistant / fisheye-equisolid /
-// equirectangular), so switching between a preview and an engine render is
-// seamless -- and a splat render and a mesh render of the same scene, shown
-// side by side, are the same view.
+// PreviewRenderer draws sparse points, camera frusta, and mesh previews in an
+// offscreen OpenGL framebuffer. Geometry stays in the dataset's normalized
+// frame; ViewportPanel selects the navigation up axis. Its projection shader
+// matches the engine viewer's pinhole and fisheye models.
 
 #include "data/DatasetParser.h"
 #include "mesh/MeshExport.h"   // meshing::MeshData

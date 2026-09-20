@@ -17,8 +17,10 @@
 #include "app/webviewer/RenderWorker.h"
 #include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
+#include "data/SceneTransform.h"
 #include "app/gui/NavCamera.h"
 #include "app/gui/PreviewRenderer.h"
+#include "app/gui/Snapshot.h"
 
 #include <cstdint>
 #include <functional>
@@ -98,6 +100,8 @@ public:
     // (row-major 3x4 similarity, scale*R | t; identity by default). Applied to
     // the CAMERA, not the geometry, so moving a model costs nothing.
     void set_model_transform(const float a[12]);
+    void set_snapshot_exporter(std::function<void(const SnapshotExport&)> exporter,
+                               bool busy, const std::string& status);
 
     // What the dataset says about its own frame, so the panel can offer to
     // skip the parsers' up->+Z guess (DatasetParser.h). `first` picks the
@@ -130,8 +134,7 @@ private:
     enum class Mode { None, Preview, Engine };
 
     void compute_framing(const spirula::TrainerSession& session);
-    // The client-frame default pose (web viewer cam.reset() + orbit(0,-250)),
-    // about the chosen centre.
+    // Default pose about the chosen centre, upright in the selected frame.
     void reset_pose(float radius);
     // The centering choices, in the model frame. `has_cameras` says whether
     // the camera statistics are real or fell back to the point ones.
@@ -214,6 +217,18 @@ private:
     float _m2s_scale = 1.0f;
     bool _m2s_identity = true;
     void rebuild_m2s();
+    void set_coordinates(SnapshotCoordinates coordinates);
+    void coordinate_basis(float out[9]) const;
+    void attach_training_transform(const spirula::TrainerSession& session, bool first);
+    spirula::SceneTransform snapshot_transform() const;
+    bool _training_transform = false;
+    float _rotation_degrees[3] = {};
+    SnapshotCoordinates _coordinates = snapshot_default_coordinates();
+    float _snapshot_translation_scale = 1.0f;
+    double _normalized_from_training[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    std::function<void(const SnapshotExport&)> _snapshot_exporter;
+    bool _snapshot_busy = false;
+    std::string _snapshot_status;
 
     // The parsers rotate every dataset so the mean camera up axis becomes +Z,
     // a guess, and a bad one on a tilted 360 capture. `_align` is that
@@ -223,7 +238,7 @@ private:
     bool _level_cameras = true;
     bool _gauge_metric = false;
     // What the view orbits about and Reset view frames (dsparse::CenterMode),
-    // a point per mode in the model frame. Moves only the camera.
+    // a point per mode in the model frame.
     int _center_mode = (int)dsparse::CenterMode::CameraMedian;
     dsparse::CenterTable _centers{};
     bool _centers_known = false;

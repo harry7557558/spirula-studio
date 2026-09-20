@@ -21,6 +21,7 @@
 #include "engine/Engine.h"
 #include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
+#include "data/SourceWeights.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
 #include "i18n/TimeFormat.h"
@@ -197,6 +198,7 @@ public:
 
     // Filled by load_dataset().
     ParsedDataset ds;
+    source_weights::Groups source_groups;
     PostSplitCameras post;
     bool has_mask = false;
     bool has_depth = false;
@@ -229,6 +231,7 @@ public:
     // checkpoint: whatever the last periodic save left on disk is the result.
     std::atomic<bool> save_on_stop{true};
     std::atomic<bool> render_pending{false};
+    std::atomic<bool> snapshot_pending{false};
     std::atomic<int>  cur_step{0};
 
     // Throws std::runtime_error for features the managed C++ path does not

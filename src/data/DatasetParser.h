@@ -156,6 +156,7 @@ struct DatasetParserConfig {
     // Divide the training resolution by this factor, on top of that fit. 0 or
     // 1 trains at the images' own size.
     float       train_resolution_divisor = 0.0f;
+    int         train_max_image_dimension = 0;     // > 0 replaces the divisor
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
     // Metashape inputs (parse_metashape_dataset). Relative paths resolve
@@ -182,6 +183,10 @@ struct DatasetParserConfig {
 // filename.
 struct ParsedDataset {
     int64_t num_cameras = 0;
+
+    // Original calibration groups, before resizing, distortion fitting or face splitting.
+    std::vector<int32_t>     source_camera_ids;
+    std::map<int32_t, ColmapCamera> source_cameras;
 
     // CameraModelType / CameraDistortionType as int, per input camera. The
     // distortion tier is the cheapest one that represents the source camera
@@ -382,9 +387,8 @@ std::string find_aux_file(const std::string& aux_dir, const std::string& rel_nam
 std::vector<char> outlier_keep_mask(const std::vector<double>& positions,
                                     int64_t n, float threshold);
 
-// The resolution one camera trains at: its image file's size when cfg probes
-// for one, divided by train_resolution_divisor. W/H and the intrinsics come in
-// as the reconstruction's and leave scaled to that; `src` (may be null) too.
+// Fit to the image file, then apply the longest-side cap or resolution divisor.
+// W/H, intrinsics and optional source camera parameters are scaled together.
 void fit_camera_resolution(const DatasetParserConfig& cfg,
                            const std::string& image_path,
                            double& W, double& H,

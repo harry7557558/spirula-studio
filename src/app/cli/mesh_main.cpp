@@ -84,6 +84,9 @@ MeshCameras load_cameras(const JsonValue& run_cfg, const std::string& data_dir,
         const JsonValue* v = run_cfg.find("train_resolution_divisor");
         if (v && v->type == JsonValue::Type::Number)
             pcfg.train_resolution_divisor = (float)v->as_double(0.0);
+        const JsonValue* max_dim = run_cfg.find("train_max_image_dimension");
+        if (max_dim && max_dim->type == JsonValue::Type::Number)
+            pcfg.train_max_image_dimension = max_dim->as_int(0);
         const JsonValue* fmt = run_cfg.find("data_format");
         if (data_format.empty() && fmt && !fmt->is_null()) data_format = fmt->as_string();
     }

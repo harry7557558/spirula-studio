@@ -60,6 +60,7 @@ namespace fld = spirula::i18n::msg::field;
 namespace dmsg = spirula::i18n::msg::dataset;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
+namespace source_weights = spirula::source_weights;
 using spirula::i18n::Msg;
 using spirula::format_duration;
 
@@ -6013,6 +6014,10 @@ void GuiApp::draw_train() {
     const bool stepping = _runner.phase() == TrainRunner::Phase::Training;
     // The step both previews pace their refresh by while nobody is steering.
     const int step = stepping ? _runner.latest_progress().step : -1;
+    std::function<void(const SnapshotExport&)> snapshot;
+    if (_runner.engine_ready())
+        snapshot = [this](const SnapshotExport& value) { _runner.export_snapshot(value); };
+    _viewport.set_snapshot_exporter(std::move(snapshot), _runner.snapshot_busy(), _runner.snapshot_message());
     if (_preview_images) _images.draw(stepping, step);
     else                 _viewport.draw(stepping, step);
     ImGui::EndChild();
@@ -7442,6 +7447,9 @@ void GuiApp::draw_train_settings() {
         draw_basic_options();
 
         ImGui::Spacing();
+        draw_source_weights();
+
+        ImGui::Spacing();
         if (ui::CollapsingHeader(msg::section_all_options))
             draw_config_editor(_cfg, _defaults, _cfg_ui);
         ImGui::EndDisabled();
@@ -7934,20 +7942,32 @@ void GuiApp::draw_basic_options() {
             ui::TextColoredWrapped(kWarn, msg::opt_primitive_3dgut_warn);
     }
 
-    int ds_idx = _cfg.train_resolution_divisor == 2.0f ? 1
+    int ds_idx = _cfg.train_max_image_dimension > 0 ? 4
+               : _cfg.train_resolution_divisor == 2.0f ? 1
                : _cfg.train_resolution_divisor == 4.0f ? 2
                : _cfg.train_resolution_divisor == 8.0f ? 3 : 0;
     {
-        // "1/2" is a fraction, not a word; only "native" is translated.
-        const char* items[] = {msg::opt_resolution_native.get(), "1/2", "1/4", "1/8"};
+        const char* items[] = {msg::opt_resolution_native.get(), "1/2", "1/4", "1/8",
+                              msg::opt_resolution_limit.get()};
         ImGui::SetNextItemWidth(w);
-        if (ui::ComboRaw(ui::detail::label(msg::opt_resolution), &ds_idx, items, 4)) {
-            const float vals[] = {0.0f, 2.0f, 4.0f, 8.0f};
+        if (ui::ComboRaw(ui::detail::label(msg::opt_resolution), &ds_idx, items, 5)) {
+            const float vals[] = {0.0f, 2.0f, 4.0f, 8.0f, 0.0f};
             _cfg.train_resolution_divisor = vals[ds_idx];
+            _cfg.train_max_image_dimension = ds_idx == 4 ? 3840 : 0;
             _cfg_ui.touched.insert("train_resolution_divisor");
+            _cfg_ui.touched.insert("train_max_image_dimension");
         }
     }
-    ui::help_on_hover(msg::opt_resolution_help);
+    ui::help_on_hover(ds_idx == 4 ? fld::train_max_image_dimension_help
+                                : msg::opt_resolution_help);
+    if (ds_idx == 4) {
+        ImGui::SetNextItemWidth(w);
+        if (ui::InputInt(fld::train_max_image_dimension, &_cfg.train_max_image_dimension)) {
+            _cfg.train_max_image_dimension = std::max(1, _cfg.train_max_image_dimension);
+            _cfg_ui.touched.insert("train_max_image_dimension");
+        }
+        ui::help_on_hover(fld::train_max_image_dimension_help);
+    }
 
     {
         // Unset, the mode is whatever the parsed dataset resolved it to --
@@ -8002,6 +8022,117 @@ void GuiApp::draw_basic_options() {
                  {"off", "mild", "strong"});
     if (_cfg.distraction_robustness != "off")
         ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
+}
+
+void GuiApp::draw_source_weights() {
+    if (!ui::CollapsingHeader(msg::source_constraints)) return;
+    if (ui::Checkbox(fld::use_source_weights, &_cfg.use_source_weights))
+        _cfg_ui.touched.insert("use_source_weights");
+    ui::help_on_hover(fld::use_source_weights_help);
+    if (!_cfg.use_source_weights) return;
+    const auto phase = _runner.phase();
+    if (phase == TrainRunner::Phase::Loading || phase == TrainRunner::Phase::Preparing ||
+        phase == TrainRunner::Phase::LoadError)
+        return;
+    const auto* session = _runner.session();
+    if (!session || session->source_groups.sources.empty()) {
+        ui::TextDisabled(msg::no_dataset_loaded);
+        return;
+    }
+    source_weights::Schedule stages;
+    try {
+        stages = source_weights::resolve(_cfg.source_weights, session->source_groups);
+    } catch (const std::exception& e) {
+        ui::TextColoredWrappedRaw(kErr, e.what());
+        if (ui::Button(msg::source_reset)) {
+            _cfg.source_weights.clear();
+            _cfg_ui.touched.insert("source_weights");
+        }
+        ui::help_on_hover(msg::source_reset);
+        return;
+    }
+    bool changed = false;
+    int remove = -1;
+    for (size_t si = 0; si < stages.size(); ++si) {
+        auto& stage = stages[si];
+        const int begin = si ? stages[si - 1].until : 0;
+        ImGui::PushID((int)si);
+        ImGui::Spacing();
+        ui::Text(msg::source_stage, {(int)si + 1, begin, stage.until});
+        ImGui::SetNextItemWidth(px(100));
+        ImGui::BeginDisabled(si + 1 == stages.size());
+        if (ui::InputInt(msg::source_until, &stage.until)) {
+            const int next = si + 1 < stages.size() ? stages[si + 1].until : 101;
+            stage.until = std::clamp(stage.until, begin + 1, next - 1);
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(stages.size() == 1);
+        if (ui::ButtonRaw("-##remove_stage", ImVec2(px(26), 0))) remove = (int)si;
+        ui::help_on_hover(msg::source_remove_stage);
+        ImGui::EndDisabled();
+
+        if (ImGui::BeginTable("source_weights", 3,
+                             ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+            ui::TableSetupColumn(msg::source_camera, ImGuiTableColumnFlags_WidthStretch);
+            ui::TableSetupColumn(msg::source_images, ImGuiTableColumnFlags_WidthFixed, px(60));
+            ui::TableSetupColumn(msg::source_strength, ImGuiTableColumnFlags_WidthFixed, px(78));
+            ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+            ImGui::TableNextColumn();
+            ui::TextWrapped(msg::source_camera);
+            ImGui::TableNextColumn();
+            ui::TextWrapped(msg::source_images);
+            ImGui::TableNextColumn();
+            ui::TextWrapped(msg::source_strength);
+            for (const auto& source : session->source_groups.sources) {
+                ImGui::PushID(source.key.c_str());
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ui::TextWrapped(msg::source_camera_label, {source.camera_id, source.model,
+                    (long long)source.width, (long long)source.height});
+                ImGui::TableNextColumn();
+                ui::TextRaw(std::to_string(source.train_count));
+                ImGui::TableNextColumn();
+                ImGui::BeginDisabled(source.train_count == 0);
+                float weight = stage.weight(source.key);
+                ImGui::SetNextItemWidth(-1);
+                if (ui::InputFloatRaw("##strength", &weight, "%.3g")) {
+                    stage.weights[source.key] = std::isfinite(weight)
+                        ? std::max(0.0f, weight) : 1.0f;
+                    changed = true;
+                }
+                ui::help_on_hover(fld::use_source_weights_help);
+                ImGui::EndDisabled();
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+    }
+    if (remove >= 0) {
+        stages.erase(stages.begin() + remove);
+        stages.back().until = 100;
+        changed = true;
+    }
+    const int last_begin = stages.size() > 1 ? stages[stages.size() - 2].until : 0;
+    ImGui::BeginDisabled(last_begin >= 99);
+    if (ui::ButtonRaw("+##add_stage", ImVec2(px(26), 0))) {
+        auto next = stages.back();
+        stages.back().until = (last_begin + 100) / 2;
+        stages.push_back(std::move(next));
+        changed = true;
+    }
+    ui::help_on_hover(msg::source_add_stage);
+    ImGui::EndDisabled();
+    if (changed) {
+        _cfg.source_weights = source_weights::serialize(stages);
+        _cfg_ui.touched.insert("source_weights");
+    }
+    try {
+        source_weights::validate(stages, session->source_groups);
+    } catch (const std::exception&) {
+        ui::TextColoredWrapped(kErr, msg::source_need_weight);
+    }
 }
 
 void GuiApp::draw_train_controls() {

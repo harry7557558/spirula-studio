@@ -1,18 +1,8 @@
 #pragma once
 
-// NavCamera -- 1:1 C++ port of the web viewer's camera state + Nav object
-// (viewer.html: `cam`, `quat`, `Nav`). Same quaternion camera (OpenGL
-// convention c2w, -Z forward), same four navigation modes (Turntable /
-// Trackball / First Person / Free Fly), and the same sensitivities, so the
-// native viewport feels identical to the browser client:
-//   orbit  0.005 rad/px      look   0.003 rad/px
-//   pan    speed * 0.002 world-units/px
-//   dolly  exp(delta * 0.004 * speed * 0.2) (orbit modes) / forward move
-//   keyboard  speed * 1.0 units/s   gamepad look  0.4 rad/s per stick unit
-// speed = 10^speed_exp (the browser's Move Speed slider).
-//
-// Keep edits in sync with viewer.html's Nav -- including its quirks (e.g.
-// gamepad triggers only translate while the left stick is deflected).
+// OpenGL camera (-Z forward, xyzw quaternion) with the web viewer's input
+// sensitivities. Turntable navigation keeps the selected world up upright;
+// Trackball and Free Fly permit roll.
 
 namespace gui {
 
@@ -22,6 +12,7 @@ struct NavCamera {
     float pos[3] = {0, 0, 1};
     float rot[4] = {0, 0, 0, 1};   // (x,y,z,w), camera-to-world rotation
     float target[3] = {0, 0, 0};   // orbit / turntable pivot
+    int up_axis = 2;
     Mode mode = Turntable;
     float speed_exp = 0.0f;        // Move Speed slider; speed = 10^exp
 
@@ -39,6 +30,7 @@ struct NavCamera {
     void pan(float dx, float dy);
     void dolly(float delta);               // browser wheel deltaY units
     void roll(float delta);                // radians
+    void rotate_world(const float R[9]);   // row-major world-basis rotation
 
     struct Keys {
         bool w = false, a = false, s = false, d = false;

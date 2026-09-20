@@ -13,6 +13,7 @@
 #include "engine/EngineState.h"
 
 #include "core/CheckpointIO.h"
+#include "checkpoint/SplatTransform.h"
 #include "external/npy.hpp"
 #include <cmath>
 #include <cstdint>
@@ -155,20 +156,15 @@ static std::string _json_str(const std::string& s, const std::string& key) {
 } // anon namespace
 
 
-void engine_save_checkpoint(
-    std::string output_dir,
-    bool full_dump,
-    int step
-) {
+void engine_export_ply(const std::string& path, const spirula::SceneTransform* transform) {
     EngineState& s = engine();
-
-    fs::path out_root(output_dir);
-    _ckpt_mkdir(out_root);
 
     backend::device_synchronize();
 
     const int64_t N = s.cur_num_splats;
     const int K = s.num_sh;
+    const spirula::SplatTransform row_transform(
+        transform ? *transform : spirula::SceneTransform{}, K);
 
     // --- D->H copy world splat tensors at s.cur_num_splats ---
     auto h_means        = _ckpt_d2h<float3>(s.world.means.data_ptr(),        (size_t)N);
@@ -297,10 +293,11 @@ void engine_save_checkpoint(
 
     // --- PLY (binary little-endian) ---
     const int vertex_floats = 3 + 3 + 3 + 3 * K + 1 + 3 + 4;  // pos + normal + dc + sh + opa + scale + rot
-    fs::path ply_path = out_root / "splat.ply";
+    fs::path ply_path = fs::u8path(path);
     {
         std::ofstream ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
+        ply.exceptions(std::ios::failbit | std::ios::badbit);
         ply << "ply\n";
         ply << "format binary_little_endian 1.0\n";
         ply << "element vertex " << kept << "\n";
@@ -319,6 +316,9 @@ void engine_save_checkpoint(
         int rows_in_buf = 0;
         auto flush = [&]() {
             if (rows_in_buf == 0) return;
+            if (transform)
+                for (int j = 0; j < rows_in_buf; ++j)
+                    row_transform.apply(buf.data() + (size_t)j * vertex_floats);
             ply.write(reinterpret_cast<const char*>(buf.data()),
                       (std::streamsize)rows_in_buf * vertex_floats * sizeof(float));
             rows_in_buf = 0;
@@ -349,7 +349,15 @@ void engine_save_checkpoint(
             if (rows_in_buf == ROWS_PER_FLUSH) flush();
         }
         flush();
+        ply.close();
     }
+}
+
+void engine_save_checkpoint(std::string output_dir, bool full_dump, int step) {
+    EngineState& s = engine();
+    fs::path out_root(output_dir);
+    _ckpt_mkdir(out_root);
+    engine_export_ply((out_root / "splat.ply").u8string());
 
     // --- state.tar: metadata-driven resume payload (see file header) ---------
     // Which buffers to serialize: Always (base) or Always+Resume (full resume).

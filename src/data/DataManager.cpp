@@ -695,6 +695,7 @@ public:
     ~DataManagerImpl();
 
     const TrainStep&    next_train_step();
+    void                set_train_step(int step);
     const DecodedBatch& next_train_batch();
     const DecodedBatch* next_val_batch();
     void                fetch_one(int32_t index, DecodedBatch& out);
@@ -821,6 +822,10 @@ private:
     std::vector<StepSpec>     _train_schedule;
     size_t                    _train_sched_cursor = 0;
 
+    std::vector<size_t>       _source_counts;
+    std::discrete_distribution<size_t> _source_sampler;
+    size_t                    _source_stage = 0;
+
     // The currently-returned-to-caller data. We hold one slot per kind so the
     // reference returned by next_*_batch()/next_train_step() stays valid until
     // the next call to that same getter.
@@ -923,6 +928,8 @@ private:
     // (non-warp groups only) across resolutions into <=B-image steps. Caller
     // must hold _sampling_mu.
     void build_train_schedule_locked();
+    void build_source_groups();
+    void update_source_sampler();
     // Return the next scheduled step, rebuilding the schedule at epoch
     // boundaries. Thread-safe (locks _sampling_mu).
     StepSpec next_train_step_spec();
@@ -1106,16 +1113,15 @@ DataManagerImpl::DataManagerImpl(
 
     _train_groups = build_index_groups_member(_train_indices);
     _val_groups   = build_index_groups_member(_val_indices);
+    if (!_cfg.source_stages.empty()) build_source_groups();
     for (auto& g : _train_groups) g.rewind(_rng, /*eval=*/false);
     for (auto& g : _val_groups)   g.rewind(_rng, /*eval=*/true);
     _val_sampler   = GroupSampler(_val_groups);
 
-    // Build the first epoch's deterministic training schedule (once-per-epoch
-    // traversal + cross-group remainder packing). The DISK scheduler thread
-    // started below draws from it, so build before spinning threads up.
     {
         std::lock_guard<std::mutex> lk(_sampling_mu);
-        build_train_schedule_locked();
+        if (_cfg.source_stages.empty()) build_train_schedule_locked();
+        else update_source_sampler();
     }
 
     if (_cfg.cache_mode == CacheMode::CPU) {
@@ -1711,18 +1717,85 @@ DecodedBatch& DataManagerImpl::next_batch_cpu(
 
 
 // ===========================================================================
-// Deterministic epoch schedule (training)
+// Training source weights and epoch schedule
 // ===========================================================================
+void DataManagerImpl::build_source_groups() {
+    const size_t count = _cfg.source_stages.front().weights.size();
+    if (!count || _cfg.source_group_ids.size() != _image_filenames.size())
+        throw std::runtime_error("DataManager: invalid source group table");
+    _source_counts.assign(count, 0);
+    for (int32_t id : _cfg.source_group_ids)
+        if (id < 0 || (size_t)id >= count)
+            throw std::runtime_error("DataManager: source group index out of range");
+    for (int32_t i : _train_indices) ++_source_counts[_cfg.source_group_ids[i]];
+    int previous = 0;
+    for (const auto& stage : _cfg.source_stages) {
+        if (stage.start_step < previous || stage.weights.size() != count)
+            throw std::runtime_error("DataManager: invalid source stage");
+        previous = stage.start_step;
+        double total = 0.0;
+        for (size_t i = 0; i < count; ++i) {
+            if (!std::isfinite(stage.weights[i]) || stage.weights[i] < 0.0)
+                throw std::runtime_error("DataManager: invalid source weight");
+            if (_source_counts[i]) total += stage.weights[i];
+        }
+        if (!(total > 0.0) || !std::isfinite(total))
+            throw std::runtime_error("DataManager: source stage has no active training images");
+    }
+    std::vector<IndexGroup> groups;
+    for (auto& group : _train_groups) {
+        std::map<int32_t, std::vector<int32_t>> sources;
+        for (int32_t i : group.indices) sources[_cfg.source_group_ids[i]].push_back(i);
+        group.indices.clear();
+        for (auto& entry : sources) {
+            IndexGroup part = group;
+            part.indices = std::move(entry.second);
+            groups.push_back(std::move(part));
+        }
+    }
+    _train_groups = std::move(groups);
+}
+
+void DataManagerImpl::update_source_sampler() {
+    std::vector<double> weights;
+    for (const auto& group : _train_groups) {
+        const int32_t source = _cfg.source_group_ids[group.indices.front()];
+        // Image count and fisheye face count must not amplify the source weight.
+        weights.push_back(_cfg.source_stages[_source_stage].weights[source] *
+                          ((double)group.indices.size() / _source_counts[source]));
+    }
+    _source_sampler = std::discrete_distribution<size_t>(weights.begin(), weights.end());
+}
+
+void DataManagerImpl::set_train_step(int step) {
+    if (_cfg.source_stages.empty()) return;
+    size_t stage = 0;
+    while (stage + 1 < _cfg.source_stages.size() &&
+           step >= _cfg.source_stages[stage + 1].start_step) ++stage;
+    if (stage == _source_stage) return;
+    const bool restart = _disk_started;
+    if (restart) stop_disk_pipeline();
+    {
+        std::lock_guard<std::mutex> lk(_sampling_mu);
+        _source_stage = stage;
+        update_source_sampler();
+    }
+    if (restart) {
+        {
+            std::lock_guard<std::mutex> lk(_fault_mu);
+            _fault_parked = false;
+            _fault_msg.clear();
+        }
+        _stop.store(false);
+        start_disk_pipeline();
+    }
+}
+
 void DataManagerImpl::build_train_schedule_locked() {
     _train_schedule.clear();
     _train_sched_cursor = 0;
     if (_train_groups.empty()) return;
 
-    // Target images per optimizer step. Derived (on the Python side) from
-    // max_batch_per_epoch as round(N / max_batch_per_epoch), so a full pass
-    // over the schedule is ~max_batch_per_epoch steps regardless of how the
-    // images are distributed across resolution groups. B == 1 => one image
-    // per step (no packing, no grad accumulator; FPBO path).
     const int B = std::max(1, _cfg.train_batch_size);
 
     // Fresh shuffle of every group for this epoch.
@@ -1797,6 +1870,19 @@ StepSpec DataManagerImpl::next_train_step_spec() {
     std::lock_guard<std::mutex> lk(_sampling_mu);
     if (_train_groups.empty())
         throw std::runtime_error("DataManager: no training indices configured");
+    if (!_cfg.source_stages.empty()) {
+        const size_t gi = _source_sampler(_rng);
+        auto& group = _train_groups[gi];
+        if (group.cursor >= group.indices.size()) group.rewind(_rng, false);
+        const size_t count = std::min((size_t)std::max(1, _cfg.train_batch_size),
+                                      group.indices.size() - group.cursor);
+        SubBatchSpec spec;
+        spec.group = (int32_t)gi;
+        spec.picks.reserve(count);
+        for (size_t i = 0; i < count; ++i)
+            spec.picks.push_back(group.indices[group.cursor++]);
+        return {std::move(spec)};
+    }
     if (_train_sched_cursor >= _train_schedule.size())
         build_train_schedule_locked();   // next epoch
     return _train_schedule[_train_sched_cursor++];
@@ -1874,6 +1960,7 @@ void DataManagerImpl::stop_disk_pipeline() {
     if (_scheduler.joinable()) _scheduler.join();
     for (auto& th : _workers) if (th.joinable()) th.join();
     _workers.clear();
+    _disk_started = false;
 }
 
 
@@ -2335,6 +2422,7 @@ DataManager::DataManager(
 DataManager::~DataManager() = default;
 
 const TrainStep&    DataManager::next_train_step()         { return _impl->next_train_step(); }
+void               DataManager::set_train_step(int step)  { _impl->set_train_step(step); }
 const DecodedBatch& DataManager::next_train_batch()        { return _impl->next_train_batch(); }
 const DecodedBatch* DataManager::next_val_batch()          { return _impl->next_val_batch(); }
 void      DataManager::fetch_one(int32_t i, DecodedBatch& o) { _impl->fetch_one(i, o); }

@@ -299,6 +299,7 @@ std::map<std::string, float> engine_train_step_managed(
         cfg_in, engine().dm->max_input_batch_size(),
         engine().dm->max_face_passes());
 
+    engine().dm->set_train_step(step);
     const TrainStep& stp = engine().dm->next_train_step();
     if (stp.subs.empty())
         throw std::runtime_error("engine_train_step_managed: empty training step");
