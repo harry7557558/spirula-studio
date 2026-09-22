@@ -167,6 +167,8 @@ If it builds successfully, you get `build_cuda/spirula` binary.
 
 You can find some professional-quality splats trained by Spirula Studio from [Megascapes Library](https://library.getmegascapes.com/) and their [SuperSplat page](https://superspl.at/user/megascapes).
 
+Collection of splats created by the users of Spirula Studio can also be found on [SuperSplat page](https://superspl.at/explore/software/spirula-studio).
+
 Some splats created by the author of Spirula Studio can also be found on my [SuperSplat page](https://superspl.at/user?id=harry7557558).
 
 <!-- ![](https://s3-eu-west-1.amazonaws.com/images.playcanvas.com/splat/643dadb5/v1/m.webp)&nbsp;
