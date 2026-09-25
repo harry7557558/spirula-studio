@@ -39,7 +39,7 @@ Spirula Studio trains 3D Gaussian Splatting models &ndash; from raw photo/video 
 
 - Built-in **lightning-fast SfM**, **AI masking**, frame extraction from videos &ndash; No need to wait for COLMAP or run separate scripts
 
-- **E57 laser scans** as datasets &ndash; The scanner's registered photos, poses and point cloud go straight into training, no SfM
+- **E57 laser scans** as datasets &ndash; The scanner's registered photos, poses and point cloud go straight into training, no SfM (tested with Leica BLK360, XGRIDS Lixel and Matterport Pro3 scans)
 
 - Depth/normal, meshing, skybox, linear color... And more.
 

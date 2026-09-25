@@ -850,6 +850,10 @@ child's pictures are read off its output folder (`OutputWatch`, as the geometry
 step's are) on a thread of their own, since a scanner's photo can be tens of
 megapixels to decode; the masks are handed over by `DatasetPrep`.
 
+Tested so far with scans from a Leica BLK360 tripod scanner and an XGRIDS
+Lixel handheld scanner on macOS -- the two the camera conventions below were
+measured on -- and from a Matterport Pro3 on Windows.
+
 | file | from the scan |
 |---|---|
 | `images/` | each usable image's JPEG or PNG, copied byte for byte (PNG preferred when both are there) |
