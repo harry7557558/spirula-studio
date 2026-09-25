@@ -21,6 +21,7 @@
 #include "app/gui/PairPreview.h"
 #include "app/gui/SfmProgress.h"
 #include "app/gui/Layout.h"
+#include "app/gui/E57Runner.h"
 #include "app/gui/MeshRunner.h"
 #include "app/gui/ModelCache.h"
 #include "app/gui/SegmentPanel.h"
@@ -33,11 +34,14 @@
 #include "app/gui/TrainRunner.h"
 #include "app/gui/ViewportPanel.h"
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -101,7 +105,7 @@ public:
     void set_dpi_scale(float s) { _scale.set_dpi(s); }
 
 private:
-    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh };
+    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh, E57Dataset };
     enum class PickAction {
         None, OpenDataset, SourceImages, SourceVideo, SourceDataset,
         SourceReplace, Workspace,
@@ -111,7 +115,7 @@ private:
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
         MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
         EditSaveFile, EditSaveFolder, RenderProjectSave, RenderProjectOpen,
-        RenderOutput, RenderAddModel, StencilFile
+        RenderOutput, RenderAddModel, StencilFile, E57Source, E57Output
     };
     // Which reconstruction back end the New Dataset screen runs.
     enum class Engine { BuiltIn, Colmap };
@@ -305,6 +309,10 @@ private:
     // Fetch it (with consent), and whether a run would need it and not find it.
     void request_model_download(const std::string& id);
     bool mask_model_missing() const;
+    bool mask_model_missing(bool enable, const std::vector<PrepInput>& inputs) const;
+    // What is missing and the button that fetches it, or its download's bar.
+    void draw_model_fetch(FileDownload& dl, const spirula::i18n::Msg& missing,
+                          const spirula::i18n::Msg& get, const std::function<void()>& request);
     bool license_accepted(const std::string& family) const;
 
     // ---- screens ----
@@ -328,7 +336,24 @@ private:
     // path (an image header, or one `ffmpeg -i`) and remembered.
     bool input_pixel_size(const std::string& path, bool is_video,
                           int& w, int& h);
-    void draw_masking_options();
+    // What the masking options edit: the dataset screen's inputs and switches,
+    // or the E57 screen's. One panel, so the two cannot drift apart.
+    struct MaskingPanel {
+        std::vector<PrepInput>* inputs = nullptr;
+        bool* enable = nullptr;
+        bool* border = nullptr;
+        bool* features = nullptr;       // null: no reconstruction to keep them from
+        int* preview_input = nullptr;
+        std::string* frame_shapes = nullptr;
+        bool fit_lens_border = true;    // ticking the stencil fits a fisheye rim
+        bool preview_ready = true;      // frames to try the mask on
+        const spirula::i18n::Msg* preview_wait = nullptr;   // why not, when not
+        std::function<void()> open_preview;
+    };
+    MaskingPanel dataset_masking_panel();
+    void draw_masking_options(const MaskingPanel& p);
+    // The job's mask_* fields from the shared settings; `mask_enable` excepted.
+    void fill_masking(PrepJob& prep) const;
     void draw_geometry_options();
     // Opens the geometry preview on the output folder when it already holds a
     // reconstruction -- the only case where the real cameras are known -- and
@@ -414,6 +439,21 @@ private:
     // the picker, the drop handler and the "mesh this run" shortcut.
     void set_mesh_source(const std::string& path);
     void start_meshing();
+    void draw_e57_dataset();
+    void draw_e57_form(bool running);
+    void set_e57_source(const std::string& path);
+    void start_e57_preview(const std::string& path);
+    void release_e57_preview();
+    MaskingPanel e57_masking_panel();
+    void open_e57_mask_preview();
+    void start_e57_job();
+    // The run's steps over the reels it feeds, beside the scan's own view.
+    void draw_e57_run_view(float height);
+    // Gives up the run's pictures, unless a run is still adding to them.
+    void clear_e57_run_view();
+    static std::string e57_frames_dir();
+    // The 360-camera preset's subjects, when nothing is typed yet.
+    void seed_e57_prompt();
     // Would the run about to start actually get cameras? Resolves the dataset
     // the way the child does -- the folder typed here, else the `data` entry
     // in the run's config.json -- so the screen can warn BEFORE the run that
@@ -663,6 +703,41 @@ private:
     std::string _mesh_data_probe_key;
     bool _mesh_data_probe_found = false;
 
+    // ---- a dataset from an E57 scan (a child process, E57Runner) ----
+    // Declared before the runner, which feeds them until it is destroyed.
+    FilmReel _e57_film_frames, _e57_film_geometry, _e57_film_masks;
+    int _e57_view_tab = -1;     // the view picked, pinned; -1 follows the run
+    int _e57_last_view = -1;    // the view the running step implies
+    E57Runner _e57;
+    E57Job _e57_job;
+    // Read from the file's XML section when it is picked: what it holds, the
+    // images that would become cameras, or why it could not be read.
+    std::string _e57_summary, _e57_read_error;
+    int64_t _e57_usable_pinhole = 0, _e57_usable_spherical = 0;
+    // The file's cameras and a draw of its points, read on a worker (a point
+    // pass over a big scan takes seconds) and attached on this thread.
+    ViewportPanel _e57_view;
+    std::thread _e57_preview_worker;
+    std::atomic<bool> _e57_preview_cancel{false};
+    std::atomic<bool> _e57_preview_ready{false};
+    LiveModel _e57_preview;
+    std::string _e57_preview_key;
+    bool _e57_view_attached = false;
+    float _e57_panel_w = kDefaultDsPanelW;
+    // Masking, with the dataset screen's settings (_mask, _model_id) and its
+    // own switches. The one input is the frames "Try the mask" shows: the
+    // images the run will write, extracted into the cache on first use.
+    bool _e57_mask_enable = false, _e57_border_enable = false;
+    bool _e57_mask_was_enabled = false;   // to seed the prompt as it is ticked
+    int _e57_mask_preview_input = 0;
+    std::string _e57_frame_shapes;
+    std::vector<PrepInput> _e57_inputs;
+    std::thread _e57_frames_worker;
+    std::atomic<bool> _e57_frames_ready{false}, _e57_frames_cancel{false};
+    std::string _e57_frames_key;         // file and selection they were made from
+    bool _e57_open_when_ready = false;
+    bool _e57_segment = false;           // _segment was opened from this screen
+
     // Dataset creation. Both runners exist; only one runs, chosen by _engine
     // (and forced when only one is available).
     Engine _engine = Engine::BuiltIn;
@@ -759,7 +834,8 @@ private:
     // once the panel edits what it drew, since the name no longer says what is.
     std::string _frame_shapes;
     std::vector<StencilPreset> _frame_shapes_list;   // read when the picker opens
-    void apply_frame_shapes(size_t first_input = 0);
+    void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
+                            size_t first_input = 0);
     void save_run_stencils();
     MaskSettings _mask;
     SegmentPanel _segment;

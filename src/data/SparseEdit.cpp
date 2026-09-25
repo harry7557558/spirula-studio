@@ -664,7 +664,7 @@ SparseStats read_sparse_stats(const std::string& dataset_dir) {
 
 void write_ply_points(const std::string& path, const double* xyz,
                       const uint8_t* rgb, int64_t n, const uint8_t* keep,
-                      const Sim3* moved) {
+                      const Sim3* moved, bool double_xyz) {
     int64_t kept = n;
     if (keep) {
         kept = 0;
@@ -676,15 +676,20 @@ void write_ply_points(const std::string& path, const double* xyz,
     if (!f) throw std::runtime_error("cannot write " + path);
     f << "ply\nformat binary_little_endian 1.0\n";
     f << "element vertex " << kept << "\n";
-    f << "property float x\nproperty float y\nproperty float z\n";
+    const char* type = double_xyz ? "double" : "float";
+    f << "property " << type << " x\nproperty " << type << " y\nproperty " << type << " z\n";
     f << "property uchar red\nproperty uchar green\nproperty uchar blue\n";
     f << "end_header\n";
     for (int64_t i = 0; i < n; i++) {
         if (keep && !keep[i]) continue;
         double q[3] = {xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]};
         if (moved) moved->apply(&xyz[i * 3], q);
-        const float p[3] = {(float)q[0], (float)q[1], (float)q[2]};
-        f.write(reinterpret_cast<const char*>(p), sizeof p);
+        if (double_xyz) {
+            f.write(reinterpret_cast<const char*>(q), sizeof q);
+        } else {
+            const float p[3] = {(float)q[0], (float)q[1], (float)q[2]};
+            f.write(reinterpret_cast<const char*>(p), sizeof p);
+        }
         const uint8_t c[3] = {rgb ? rgb[i * 3] : (uint8_t)200,
                               rgb ? rgb[i * 3 + 1] : (uint8_t)200,
                               rgb ? rgb[i * 3 + 2] : (uint8_t)200};

@@ -82,7 +82,8 @@ src/
 │   ├── optim/  densify/  loss/  background/  visualize/
 ├── engine/                 Engine*.cpp/.h — the training engine
 │                             (process-global singleton)
-├── data/                   DataManager (image cache / prefetch / warp) and
+├── data/                   DataManager (image cache / prefetch / warp),
+│   │                         E57Reader (laser scans: points + registered images)
 │   └── parsers/              COLMAP / Nerfstudio / Metashape readers
 ├── mesh/                   meshing pipeline: Delaunay3D, UV, export/import, and
 │                             MeshingDevice.h -- the DEVICE SEAM the portable
@@ -131,6 +132,11 @@ src/
 │   │                         geometry_main.cpp (depth + normals)
 │   ├── FrameExtract.{h,cpp}  video -> sharp frames (`spirula sam extract` also
 │   │                         masks them in the same pass; the GUI masks after)
+│   ├── E57Dataset.{h,cpp}  an E57 scan written out as a Nerfstudio dataset
+│   │                         (`spirula e57`; the GUI's "Create Dataset from
+│   │                         E57" runs it as a child) -- docs/datasets.md
+│   ├── ScanDepth.{h,cpp}   depth and normal maps of a camera, rendered from
+│   │                         a scan's points
 │   ├── Pano360.{h,cpp}     a 360 camera's own frame layout (the GoPro MAX
 │   │                         .360 EAC packing) and the views a dataset wants
 │   │                         out of it -- one implementation, both decode paths

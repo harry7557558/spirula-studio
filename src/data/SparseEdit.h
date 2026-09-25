@@ -84,8 +84,9 @@ struct SparseStats {
 SparseStats read_sparse_stats(const std::string& dataset_dir);
 
 // A plain point cloud, for anything that has no reconstruction behind it.
+// `double_xyz` keeps a cloud far from its origin to the millimetre.
 void write_ply_points(const std::string& path, const double* xyz,
                       const uint8_t* rgb, int64_t n, const uint8_t* keep,
-                      const Sim3* moved = nullptr);
+                      const Sim3* moved = nullptr, bool double_xyz = false);
 
 }  // namespace spirula

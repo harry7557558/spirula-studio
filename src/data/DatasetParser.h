@@ -390,6 +390,10 @@ std::vector<int64_t> train_subset(int64_t n, const std::vector<std::string>& nam
 // validation_fraction partition of 0..N-1 into ds.train_indices/val_indices.
 void assign_val_split(ParsedDataset& ds, float validation_fraction);
 
+// gauge.txt in `dir` (sfm/Pipeline.h writes one, and so does an E57 import):
+// what the frame is worth. Absent, both flags stay false.
+void read_gauge(const std::string& dir, ParsedDataset& ds);
+
 // Auxiliary mask/depth/normal discovery by filename convention. "" when
 // `rel_name` is empty or would leave `aux_dir`.
 std::string find_aux_file(const std::string& aux_dir, const std::string& rel_name,
