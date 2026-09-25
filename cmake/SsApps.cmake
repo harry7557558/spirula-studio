@@ -93,6 +93,14 @@ list(APPEND SS_TOOL_DEFS SS_TOOL_TRAIN=1)
 list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_MESH=1)
 
+# ---- a dataset from an E57 laser scan: host only, both backends ----
+list(APPEND SS_TOOL_SOURCES
+     ${SS_SRC}/app/cli/e57_main.cpp
+     ${SS_SRC}/app/E57Dataset.cpp
+     ${SS_SRC}/app/ScanDepth.cpp
+     ${SS_SRC}/app/DepthPng.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
+
 if(SS_BUILD_SFM)
     # ---- structure from motion ----
     # The SfM module carries its own Vulkan context and SPIR-V and shares
@@ -358,6 +366,19 @@ add_executable(packed_lens_test
     ${SS_SRC}/app/tests/packed_lens_test.cpp
     ${SS_SRC}/app/Pano360.cpp)
 ss_configure_app(packed_lens_test)
+
+# A scan written out as a dataset, then read back by the trainer's parser.
+add_executable(e57_dataset_test
+    ${SS_SRC}/app/tests/e57_dataset_test.cpp
+    ${SS_SRC}/app/E57Dataset.cpp
+    ${SS_SRC}/app/ScanDepth.cpp
+    ${SS_SRC}/app/DepthPng.cpp)
+ss_configure_app(e57_dataset_test)
+
+add_executable(scan_depth_test
+    ${SS_SRC}/app/tests/scan_depth_test.cpp
+    ${SS_SRC}/app/ScanDepth.cpp)
+ss_configure_app(scan_depth_test)
 
 # The stencil shapes, spelling and fill, with no GUI: FrameMask.cpp is compiled
 # into the CLI too, so this must link without imgui.

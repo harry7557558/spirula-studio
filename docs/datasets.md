@@ -17,6 +17,9 @@ implementation, shared by the CLI trainer, the GUI and the WASM viewer.
 The point cloud is optional in every format: a dataset without one, or with an
 empty one, parses to poses alone and the trainer seeds it at random (below).
 
+An E57 laser scan is not read in place: it is written out once as a Nerfstudio
+dataset (below, "E57 laser scans"), which then opens like any other.
+
 Default subdirectory names: `images/`, `masks/`, `depths/`, `normals/`.
 The COLMAP reconstruction directory is auto-detected over
 `{sparse/0, colmap/sparse/0, sparse, colmap, .}` unless `recon_dir` is set.
@@ -830,6 +833,194 @@ capture as it is measured and, under it, the rate the plan settled on. Every row
 is on ONE scale, because a clip that moves twice as much as its neighbour is
 exactly why it took the frames off it. A folder of photographs is a row that
 says it has no motion rather than a gap in the list.
+
+## E57 laser scans
+
+`spirula e57 <scan.e57> [<folder>]` -- or **File > Create Dataset from E57** in
+the GUI, where dropping an `.e57` on the window opens the same screen -- turns a
+laser scan into a Nerfstudio dataset. No reconstruction runs: the scanner has
+already registered every image it took. The screen previews the file's cameras
+and a million of its points in the viewport the dataset screen uses
+(`ViewportPanel` in preview mode, no engine), read on a worker as soon as the
+file is picked. While a run writes the dataset, that column is the dataset
+screen's run view: its row of steps (Frames, Scans, Depth, Seed points, Masks,
+as far as the run takes them) with the running one's bar, and reels of the
+images, the photo / normal / depth rows and the masks as they are written. The
+child's pictures are read off its output folder (`OutputWatch`, as the geometry
+step's are) on a thread of their own, since a scanner's photo can be tens of
+megapixels to decode; the masks are handed over by `DatasetPrep`.
+
+| file | from the scan |
+|---|---|
+| `images/` | each usable image's JPEG or PNG, copied byte for byte (PNG preferred when both are there) |
+| `masks/` | an image's `imageMask`, when it has one: any non-zero pixel is kept |
+| `transforms.json` | per-frame intrinsics and OpenGL camera-to-world, in full double precision |
+| `sparse_pc.ply` | the point clouds of every scan, posed into one frame and thinned (or all of them, `--points all`); `double` coordinates, since a geo-referenced scan sits millions of metres from its origin |
+| `depths/`, `normals/` | what the laser measured behind every pixel (below); `--no-depth` leaves them out |
+| `gauge.txt` | `oriented 1`, `metric 1` (below) |
+
+`data/E57Reader.h` is the reader, with no libE57Format and no Xerces behind
+it. The XML section goes through `data/Xml.h`; the binary sections are read
+through the 1020-of-1024-byte pages (the page checksums are not verified), and
+the point records through the bit-packed bytestreams of the compressed vectors.
+`bitPackCodec` is the only codec the standard defines, and a file naming any
+other is refused. A value runs on from one data packet into the next, so each
+field's chunks are concatenated rather than decoded packet by packet. Points
+flagged invalid (`cartesianInvalidState` / `sphericalInvalidState` non-zero),
+and points at exactly the scanner's origin, which writers use for empty cells,
+are dropped. Colour is normalised by the scan's `colorLimits`, or failing that
+by the field's own range; a scan with no colour is seeded grey from its
+intensity.
+
+### Which images become cameras
+
+| representation | camera |
+|---|---|
+| `pinholeRepresentation` | `PINHOLE`, `fx = focalLength / pixelWidth`, `fy = focalLength / pixelHeight`, `cx = principalPointX + 0.5` |
+| `sphericalRepresentation` | `EQUIRECTANGULAR`, when it covers the whole sphere (360 x 180 degrees, within 1%) |
+| `cylindricalRepresentation` | skipped: the engine has no cylindrical camera |
+| `visualReferenceRepresentation` | skipped: it carries no calibration |
+
+An image without a pose, or without a JPEG or PNG, is skipped too, and the run
+says which and why. `--no-pinhole` / `--no-panoramas` (two checkboxes in the
+GUI) leave a kind out.
+
+### The camera conventions, measured
+
+The standard does not pin down the axes of an image's own frame, so they were
+measured on real scans from two devices: a Leica BLK360 tripod scanner (pinhole
+cube faces) and an XGRIDS Lixel handheld scanner (panoramas). Each file's
+coloured points were projected into its images under all 48 signed axis
+permutations, and the permutation whose colours matched the image was kept:
+
+- **Pinhole**: the image frame is OpenGL's -- x right, y up, looking down -z,
+  well clear of every other permutation on every image tested.
+- **Spherical**: the centre column looks along +x, +z is up, and columns run
+  clockwise seen from above. The margin is narrower, because the points come
+  from one merged SLAM cloud, so the ones hidden from a panorama are projected
+  into it too.
+- **Principal point**: pixel centres on integers. Shifting the sample by half a
+  pixel either way raises the error, so `+0.5` gives the engine's convention.
+
+`e57_dataset_test` holds the parser and the engine's camera math to these:
+through `transforms.json` and back, every camera puts a world point on the
+pixel the E57 file has it at, to 0.002 px.
+
+### The alignment check
+
+Every conversion repeats that measurement on the file at hand, since another
+exporter could read the standard differently. For each kind of image, six are
+compared with the scan: the front-most points are rendered into a 320 px map of
+each and the Pearson correlation of their colour with the photo's is taken --
+exposure-blind -- under the assumed camera orientation and the 23 other turns
+of its axes. Another orientation replaces the assumed one only when it
+correlates 0.1 better and at 0.25 or more; the run then says so, and so does
+the screen. On both devices' scans the assumed orientation won by a wide
+margin, and `e57_dataset_test` feeds it a photo stored with OpenCV's axes and
+expects it turned back. A scan without colour cannot be checked, and the run
+says that too.
+
+### Depth and normal maps
+
+`app/ScanDepth.h` renders each image's depth from a draw of up to 40M points,
+bucketed into 2 m cells so a pinhole face projects only the cells in front of
+it. A point covers the pixels its share of the surface does -- the cell's
+spacing, `edge / sqrt(count)`, at its range, at most 3 px either side -- so a
+sparse surface still hides the one behind it; then a pixel much further than
+its window's nearest is dropped and the small holes a sparse surface leaves are
+filled from four or more neighbours on one surface (a straight edge has three,
+so a silhouette does not creep into the sky). Normals are taken from that depth
+with the engine's own stencil (`points_to_normal`), in the camera's OpenCV
+frame, facing it.
+
+The maps are 1600 px on the long side, so every face of one camera shares a
+size and batches without the trainer resampling across the holes. Depth is
+16-bit millimetres, 0 where the scan says nothing (the sky, and anything past
+65.5 m); a normal is `127.5 + 127.5 n`, black where there is none -- the two
+"no ground truth" sentinels `spirula geometry` writes. Pinhole maps hold depth
+along the optical axis and panoramas depth along the ray, and a dataset that
+mixes them follows the trainer's own majority vote (`resolve_ray_depth`). The
+normals are used by default (`normal_supervision_weight` 0.01); depth needs
+`--depth-supervision-weight`, and the loss is scale-and-shift invariant, so
+the laser's metres constrain shape rather than distance. `scan_depth_test`
+checks a plane, a sparse patch in front of it and a sphere around a panorama.
+
+On a tripod scan they improved the structure of held-out faces (SSIM) a
+little and left PSNR where it was: those faces are limited by how few
+viewpoints the stations give, not by the geometry.
+
+A face has depth only where the scan has the surface: a cropped export, or a
+face looking past the scan's reach, leaves the rest at 0.
+
+### The frame
+
+E57 is in metres by definition, and scanners level their frame: on both
+devices' scans the floor and ceiling are flat in z to the centimetre, where a
+frame tilted a few degrees spreads them over many. So `gauge.txt` says
+`oriented 1` and `metric 1`, and the viewer takes +Z as up rather than guessing
+up from the cameras -- which would be wrong here: a handheld scanner's panorama
+camera leans by several degrees, and a tripod station can too.
+
+### Seed points
+
+A scan holds tens of millions of points, bunched around each station. They are
+thinned to about `--points` (default 500,000, half the trainer's default
+`cap_max`, so the densifier has room to add detail), one per occupied voxel.
+`--points all` ("Use every point") keeps them all, 27 bytes each on disk; the
+trainer still keeps at most `cap_max` of them, drawn at random.
+Each voxel keeps the mean of its points, and the voxel edge is found by
+bisection so the count lands within 2% under the target. What is thinned is a
+uniform draw of eight times the target (at least 8M points, at most 40M), which
+bounds the memory.
+
+Voxels rather than a random draw, because a random draw keeps the density
+bias: most of a terrestrial scan's points are within a few metres of a station.
+
+### Masks
+
+The E57 screen masks with the dataset screen's code, on its own page: the
+same options panel (`draw_masking_options`, given the screen's one input and
+its own switches through `MaskingPanel`), the same settings and checkpoint
+(`_mask`, `_model_id`, the licence and download), the same "Try the mask"
+panel and the same `DatasetPrep` masking step, which `E57Runner` runs in this
+process right after `spirula e57` has written the dataset -- an existing
+dataset read in place, as the dataset screen masks one. The result offers the
+correction editor, and its edits in `mask_edits/` are re-applied by every run.
+The prompt starts as the 360-camera preset's (people, hands, backpacks and
+their shadows: whoever carries a handheld scanner, or walks past a tripod),
+and Create waits for a prompt or a click rather than failing after the
+conversion. Masking that fails or is cancelled takes the masks it made with
+it, since the trainer reads `masks/` unasked: the dataset is left unmasked
+rather than masked in part, and says so.
+
+"Try the mask" needs frames before the dataset exists, so the images are
+extracted into the cache (`extract_e57_images`) under the names the dataset
+will give them, and a click on one is re-pointed at the same image of the run.
+They are deleted when the screen lets go of them. "Hide masked areas from the
+reconstruction" is not offered: nothing reconstructs a scan. And the stencil's
+fisheye-border fit is not switched on by ticking fixed areas, since cube faces
+and panoramas have no lens circle.
+
+Re-creating a dataset replaces what the last run derived from the images --
+masks, depth and normal maps, frames of images now left out -- so masking
+starts from the images alone. An E57 `imageMask` is written to `masks/` and,
+like any mask an input brings, stops SAM from masking that image again.
+
+### What a scan does not give you
+
+- **The tripod.** The downward face of a tripod station can be a black disc where
+  the scanner painted out itself and the tripod, and nothing in the masking
+  stack targets a fixed region in some images only. The correction editor's
+  propagate can copy one hand-drawn disc to each downward face.
+- **The sky.** An upward face is sky with no points behind it. With the default
+  black background the trainer paints it with bright splats close to the
+  station, which then hang in front of every other face of that station;
+  `background_mode sh` (a learned skybox) is the setting for outdoor scans, and
+  by far the larger gain on held-out faces.
+- **Viewpoints.** A station is one centre of projection for all of its faces,
+  so a tripod scan has as many viewpoints as stations -- far fewer than a
+  walk-around video gives -- and a held-out face is a view nothing near it was
+  trained on.
 
 ## Preprocessing tools
 

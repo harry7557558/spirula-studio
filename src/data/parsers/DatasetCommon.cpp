@@ -12,7 +12,9 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -594,6 +596,21 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
     if (src && src->source_model >= 0)
         srccam::rescale(src->source_model, src->params, sx, sy);
     W = tw; H = th;
+}
+
+void read_gauge(const std::string& dir, ParsedDataset& ds) {
+    std::ifstream f(dir + "/gauge.txt");
+    if (!f) return;
+    // Line at a time, so a comment with an odd number of words cannot shift
+    // every key onto the wrong value.
+    std::string line;
+    while (std::getline(f, line)) {
+        std::istringstream in(line);
+        std::string key, value;
+        if (!(in >> key >> value) || key[0] == '#') continue;
+        if (key == "oriented") ds.gauge_oriented = value == "1";
+        else if (key == "metric") ds.gauge_metric = value == "1";
+    }
 }
 
 }  // namespace dsparse

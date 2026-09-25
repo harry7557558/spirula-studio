@@ -413,6 +413,7 @@ ParsedDataset parse_nerfstudio_dataset(const std::string& dataset_dir,
                                  " does not exist");
     JsonValue meta = json_parse_file(transforms_path.string());
     ParsedDataset ds = parse_nerfstudio_meta(meta, dataset_dir, cfg);
+    dsparse::read_gauge(dataset_dir, ds);
     std::error_code ec;
     ds.edited_in_place = fs::exists(transforms_path.string() + ".orig", ec);
     return ds;

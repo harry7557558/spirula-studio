@@ -103,23 +103,6 @@ int colmap_model_id(const std::string& name) {
 }  // namespace
 
 
-// gauge.txt beside the model (sfm/Pipeline.h): what the frame is worth. Absent
-// for every reconstruction not made here, and then the answer is "nothing".
-void read_gauge(const std::string& recon_dir, ParsedDataset& ds) {
-    std::ifstream f(recon_dir + "/gauge.txt");
-    if (!f) return;
-    // Line at a time, so a comment with an odd number of words cannot shift
-    // every key onto the wrong value.
-    std::string line;
-    while (std::getline(f, line)) {
-        std::istringstream in(line);
-        std::string key, value;
-        if (!(in >> key >> value) || key[0] == '#') continue;
-        if (key == "oriented") ds.gauge_oriented = value == "1";
-        else if (key == "metric") ds.gauge_metric = value == "1";
-    }
-}
-
 // Whether an editor save has replaced any of the model's files.
 static bool has_edit_originals(const std::string& recon_dir) {
     std::error_code ec;
@@ -874,7 +857,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     ds.center = center;
     ds.center_mode = dsparse::kCenterModeNames[(int)center_mode];
     ds.points = std::move(points);
-    read_gauge(recon_dir, ds);
+    dsparse::read_gauge(recon_dir, ds);
     ds.edited_in_place = has_edit_originals(recon_dir);
     ds.camera_models.reserve(N);
     ds.camera_distortions.reserve(N);
