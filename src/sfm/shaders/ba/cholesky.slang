@@ -12,6 +12,15 @@
 // Included at the end of ba.slang; shares its bindings and push constants.
 
 static const uint kBs = 32;
+
+// Pivot from trailing diagonal x (NaN included): at least 1e-30; with u3 set, one
+// under f0 of the row's original diagonal (in u_y) becomes that diagonal, which
+// bounds the factor however indefinite rounding made it (cg.slang's coarse one).
+Real pivot(Real x, uint row) {
+    if (u3 == 0) return sqrt(x > Real(1e-30) ? x : Real(1e-30));
+    Real d = u_y[row];
+    return sqrt(x > Real(f0) * d ? x : max(d, Real(1e-30)));
+}
 static const uint kPitch = 33;           // padded shared row pitch (bank-conflict-free)
 static const uint kShV = kSh2 + 32 * 33; // RHS vector slot in the shared pool
 
@@ -30,7 +39,7 @@ void chol_diag(uint3 t : SV_DispatchThreadID) {
     for (uint j = 0; j < m; j++) {
         GroupMemoryBarrierWithGroupSync();
         if (r == j)
-            g_chol[j * kPitch + j] = sqrt(max(g_chol[j * kPitch + j], Real(1e-30)));
+            g_chol[j * kPitch + j] = pivot(g_chol[j * kPitch + j], base + j);
         GroupMemoryBarrierWithGroupSync();
         if (r > j && r < m)
             g_chol[r * kPitch + j] = g_chol[r * kPitch + j] / g_chol[j * kPitch + j];
@@ -128,7 +137,7 @@ void chol_update(uint3 wg : SV_GroupID, uint3 lt : SV_GroupThreadID) {
     for (uint j = 0; j < m2; j++) {
         GroupMemoryBarrierWithGroupSync();
         if (r == j && c == j)
-            g_chol[j * kPitch + j] = sqrt(max(g_chol[j * kPitch + j], Real(1e-30)));
+            g_chol[j * kPitch + j] = pivot(g_chol[j * kPitch + j], bi + j);
         GroupMemoryBarrierWithGroupSync();
         if (c == j && r > j && r < m2)
             g_chol[r * kPitch + j] = g_chol[r * kPitch + j] / g_chol[j * kPitch + j];

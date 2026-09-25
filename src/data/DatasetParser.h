@@ -394,9 +394,13 @@ void assign_val_split(ParsedDataset& ds, float validation_fraction);
 // what the frame is worth. Absent, both flags stay false.
 void read_gauge(const std::string& dir, ParsedDataset& ds);
 
-// Auxiliary mask/depth/normal discovery by filename convention.
+// Auxiliary mask/depth/normal discovery by filename convention. "" when
+// `rel_name` is empty or would leave `aux_dir`.
 std::string find_aux_file(const std::string& aux_dir, const std::string& rel_name,
                           const char* suffix_tag);
+
+// `path` relative to `dir`, both folded lexically; "" when it is not under `dir`.
+std::string relative_under(const std::string& path, const std::string& dir);
 
 // Outlier-frame mask via geometric median of camera positions. Returns
 // keep-flags, all-true when threshold is inf. positions = [N, 3].

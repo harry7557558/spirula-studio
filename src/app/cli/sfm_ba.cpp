@@ -259,6 +259,7 @@ int cmdBa(int argc, char** argv) {
     if (cmp_step) {
         opt.solver = SolverSel::CG;
         opt.cg_fallback = CgFallback::On;
+        opt.cg_model_tol = 0;  // --cg-tol alone sets how exact the step is
     }
 
     // A directory is a COLMAP sparse model: build the problem the mapper's

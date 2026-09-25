@@ -44,14 +44,14 @@ inline Vec3 triangulateDLT(const Mat34& P1, const Mat34& P2, const Vec3& b1, con
     double A[4][4];
     dltRows(A[0], A[1], b1, P1);
     dltRows(A[2], A[3], b2, P2);
-    std::vector<double> AtA(16, 0.0);
+    // On the stack: retriangulation calls this millions of times a pass.
+    double AtA[16], w[4], V[16];
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 4; j++) {
             double s = 0;
             for (int r = 0; r < 4; r++) s += A[r][i] * A[r][j];
             AtA[i * 4 + j] = s;
         }
-    std::vector<double> w, V;
     jacobiEigenSymmetric(AtA, 4, w, V);
     int mi = 0;
     for (int i = 1; i < 4; i++)

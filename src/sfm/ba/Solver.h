@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <set>
@@ -189,7 +190,8 @@ public:
         bModelObs_ = mkUint(P_.model_obs.size());
         bJcOff_ = mkUint(P_.num_obs);
         bJp_ = mkReal(6 * (uint64_t)P_.num_obs);
-        bS_ = mkReal(needS ? packed : 1);
+        const uint64_t packedTc = (uint64_t)tcN_ * (tcN_ + 1) / 2;
+        bS_ = mkReal(std::max<uint64_t>(needS ? packed : 1, packedTc + 42 * (uint64_t)P_.num_frames));
         bG_ = mkReal(P_.n_dim);
         bApp_ = mkReal(9 * (uint64_t)P_.num_points);
         bBp_ = mkReal(3 * (uint64_t)P_.num_points);
@@ -198,8 +200,8 @@ public:
         bExtsBak_ = mkReal(P_.exts.size());
         bIntrBak_ = mkReal(P_.total_intr);
         bPointsBak_ = mkReal(3 * (uint64_t)P_.num_points);
-        bPairEntries_ = mkUint(std::max<size_t>(P_.pair_entries.size(), 2));
-        bPairChunks_ = mkUint(std::max<size_t>(P_.pair_chunks.size(), 2));
+        bPairEntries_ = mkUint(std::max<size_t>(P_.pair_entries.size() + tcEnt_.size(), 2));
+        bPairChunks_ = mkUint(std::max<size_t>(P_.pair_chunks.size() + tcChk_.size(), 2));
         // S/g are rebuilt from the per-observation Jacobians on every path, so
         // a rejected step needs no snapshot of them -- only Bp, which the
         // point back-substitution overwrites in place.
@@ -208,7 +210,7 @@ public:
         bRes_ = mkReal(2 * (uint64_t)P_.num_obs);
         bW_ = mkReal(9 * (uint64_t)P_.num_points);
         bYp_ = mkReal(needS && P_.use_pair_schur ? 6 * (uint64_t)P_.num_obs : 1);
-        bY_ = mkReal(P_.n_dim);
+        bY_ = mkReal(std::max<uint64_t>(P_.n_dim, 34 * (uint64_t)tcN_));
         // CG path buffers (1-element dummies when unused)
         bCamRanges_ = mkUint(cgAllocated_ ? P_.num_images + 1 : 1);
         bCamObs_ = mkUint(cgAllocated_ ? P_.num_obs : 1);
@@ -220,7 +222,7 @@ public:
         bCgV_ = mkReal(cgAllocated_ ? 3 * (uint64_t)P_.num_points : 1);
         bCgB_ = mkReal(cgAllocated_ ? (uint64_t)bBlk_ * P_.num_images : 1);
         bCgM_ = mkReal(cgAllocated_ ? (uint64_t)kCamBlk * P_.num_prec_blocks : 1);
-        bCgScal_ = mkReal(8);
+        bCgScal_ = mkReal(16);
         bCgPart_ = mkReal(cgAllocated_ ? 2 * (uint64_t)npart : 1);
         bPrecBlocks_ = mkUint(cgAllocated_ ? P_.prec_blocks.size() : 4);
 
@@ -277,6 +279,13 @@ public:
             entries.insert(entries.end(), std::begin(cg), std::end(cg));
             for (const char* k : {"cg_cam_diag", "cg_gather", "cg_bmul", "cg_scatter"})
                 entries.push_back(std::string(k) + cgSuffix_);
+        }
+        if (tcN_) {
+            const char* tc[] = {"tc_basis", "tc_schur", "tc_reg", "tc_dinv", "tc_inv_row",
+                                "tc_inv_copy", "tc_restrict", "tc_lmul", "tc_ltmul",
+                                "tc_prolong", "chol_diag", "chol_panel", "chol_update"};
+            entries.insert(entries.end(), std::begin(tc), std::end(tc));
+            entries.push_back(std::string("tc_bpart") + cgSuffix_);
         }
         if (!useCG_ || haveFallback_) {
             const char* ch[] = {"chol_diag", "chol_panel", "chol_update", "tri_fwd", "tri_bwd"};
@@ -368,10 +377,17 @@ public:
             up.push_back({&bMemberInfo_, mi.data(), mi.size() * 4});
             up.push_back({&bExts_, exts.data(), exts.size()});
         }
-        if (P_.use_pair_schur) {
-            up.push_back({&bPairEntries_, P_.pair_entries.data(), P_.pair_entries.size() * 4});
-            up.push_back({&bPairChunks_, P_.pair_chunks.data(), P_.pair_chunks.size() * 4});
+        if (P_.use_pair_schur || tcN_) {
+            tcEnt_.insert(tcEnt_.begin(), P_.pair_entries.begin(), P_.pair_entries.end());
+            tcChk_.insert(tcChk_.begin(), P_.pair_chunks.begin(), P_.pair_chunks.end());
+            up.push_back({&bPairEntries_, tcEnt_.data(), tcEnt_.size() * 4});
+            up.push_back({&bPairChunks_, tcChk_.data(), tcChk_.size() * 4});
         }
+        struct Release {
+            std::vector<uint32_t>& a;
+            std::vector<uint32_t>& b;
+            ~Release() { a = {}; b = {}; }
+        } release{tcEnt_, tcChk_};
         if (cgAllocated_) {
             up.push_back({&bCamRanges_, P_.cam_obs_ranges.data(), P_.cam_obs_ranges.size() * 4});
             up.push_back({&bCamObs_, P_.cam_obs.data(), P_.cam_obs.size() * 4});
@@ -457,6 +473,20 @@ public:
                            reuse ? " (reuse)" : "");
 
             LinSolve path = useCG_ ? LinSolve::CG : densePath_;
+            // A few CG iterations do not repay building A_c, and a stale one
+            // only costs iterations: it is rebuilt every third solve, or once
+            // the damping has moved tenfold.
+            tcUse_ = tcN_ && !tcOff_ && lastCg_ > kTcMinIters;
+            const bool tcBuild = tcUse_ && (!tcHave_ || tcAge_ >= 2 ||
+                                            std::fabs(std::log(damping / tcLambda_)) > std::log(10.0));
+            tcBuild_ = tcBuild;
+            if (tcBuild) {
+                tcHave_ = true;
+                tcAge_ = 0;
+                tcLambda_ = damping;
+            } else if (tcUse_) {
+                tcAge_++;
+            }
             beginSeg();
             recordIteration((float)damping, reuse, path);
             endSeg();
@@ -467,8 +497,27 @@ public:
                 bool conv;
                 double cg_iters;
                 readCgStatus(conv, cg_iters);
+                // CG stopped before its first step (r.z or p.Sp not positive):
+                // retried without A_c, then a failed step that raises the damping
+                // -- S went indefinite by rounding below ~1e-9 on Gram blocks of 1e23.
+                if (cg_iters == 0 && !conv && tcUse_) {
+                    tcUse_ = tcBuild_ = false;
+                    restore_pending_ = true;
+                    beginSeg();
+                    recordIteration((float)damping, true, path);
+                    endSeg();
+                    newCost = readCost();
+                    readCgStatus(conv, cg_iters);
+                    if (cg_iters > 0 || conv) {
+                        tcOff_ = true;
+                        sfm::slog::diag(sfm::slog::Tag::Map,
+                                        "[vk] coarse correction broke down; continuing without it");
+                    }
+                }
+                if (cg_iters == 0 && !conv) newCost = std::numeric_limits<double>::infinity();
                 stats_.cg_solves++;
                 stats_.cg_iters_total += cg_iters;
+                lastCg_ = conv ? cg_iters : 1e9;
                 if (conv) {
                     consec_fallbacks = 0;
                     // adapt the recorded iteration cap to the observed count
@@ -495,6 +544,7 @@ public:
                         recordIteration((float)damping, true, densePath_);
                         endSeg();
                         newCost = readCost();
+                        tcHave_ = false;  // the dense solve reused u_S
                         stats_.cg_fallbacks++;
                         if (++consec_fallbacks >= 3) {
                             useCG_ = false;  // CG is not paying off; stay dense
@@ -516,7 +566,7 @@ public:
                     if (++noimprov >= opt_.patience) { cost = newCost; break; }
                 } else {
                     noimprov = 0;
-                    damping *= 1.0 / 3.0;
+                    damping = std::max(damping / 3.0, kMinDamping);
                 }
                 cost = newCost;
                 stats_.accepted++;
@@ -638,6 +688,13 @@ private:
         const uint32_t tier = maxDof <= 18 ? 18 : 24;
         bBlk_ = tier * (tier + 1) / 2;
         wide_ = std::max(maxDof, 6u) / 24.0;
+        double t1 = 0, t2 = 0;
+        for (uint32_t p = 0; p < P_.num_points; p++) {
+            const double t = P_.obs_ranges[p + 1] - P_.obs_ranges[p];
+            t1 += t;
+            t2 += t * t;
+        }
+        if (t1 > 0) meanTrackT_ = t2 / t1;
     }
 
     static std::string costEntry(const BAProblem::ModelRange& mr) {
@@ -668,8 +725,8 @@ private:
         const bool pairOk = exclusive && P_.num_obs > 0 && pairEntries <= kMaxPairEntries &&
                             densePairMB <= budget;
         const double denseMB = pairOk ? densePairMB : denseObsMB;
-        const double cgMB = estimateMB(false, true, false, 0);
-        const double bothMB = estimateMB(true, true, pairOk, pairEntries);
+        double cgMB = estimateMB(false, true, false, 0);
+        double bothMB = estimateMB(true, true, pairOk, pairEntries);
 
         const uint32_t kDenseMaxDim = 8192;
 
@@ -690,10 +747,16 @@ private:
                 }
                 break;
             case SolverSel::Auto:
-                useCG_ = cgOk && (P_.n_dim > kDenseMaxDim || !denseOk || denseMB > budget);
+                useCG_ = cgOk && (P_.n_dim > kDenseMaxDim || !denseOk || denseMB > budget ||
+                                  cgWork() < 0.5 * denseWork(pairOk, pairEntries));
                 if (!useCG_ && !denseOk)
                     throw std::runtime_error("reduced system too large for the dense solver");
                 break;
+        }
+
+        if (useCG_ && ::planCoarse(P_, kTcMaxDim, tcK_, tcN_, tcEntries_)) {
+            cgMB = estimateMB(false, true, false, 0);
+            bothMB = estimateMB(true, true, pairOk, pairEntries);
         }
 
         haveFallback_ = false;
@@ -732,7 +795,39 @@ private:
             buildPrecBlocks(P_, exclusive);
         }
         cgMaxit_ = (uint32_t)opt_.cg_max_iters;
+        if (tcN_) {
+            // Chunks of at most 128 entries of one cluster pair, their offsets
+            // past the pair-Schur entries they follow on the device.
+            std::vector<uint32_t> key;
+            buildCoarseEntries(P_, tcK_, tcEnt_, key);
+            const uint32_t base = (uint32_t)(P_.pair_entries.size() / 2);
+            tcChk_.clear();
+            for (size_t kk = 0; kk + 1 < key.size(); kk++)
+                for (uint32_t o = key[kk]; o < key[kk + 1]; o += 128) {
+                    tcChk_.push_back(base + o);
+                    tcChk_.push_back(std::min(128u, key[kk + 1] - o));
+                }
+            tcChunks_ = (uint32_t)(tcChk_.size() / 2);
+        }
     }
+
+    static constexpr uint32_t kTcMaxDim = 4096;
+
+    // One LM iteration of each path in the budget's units. The dense assembly
+    // is quadratic in track length: a 1068-image capture whose tracks average
+    // 70 observations spent 3.7 s an iteration there, against 0.4 s on CG.
+    double denseWork(bool pair, uint64_t pairEntries) const {
+        const double n = P_.n_dim;
+        const double schur = pair ? kWPairEntry * wide_ * wide_ * (double)pairEntries
+                                  : kWSchurObs * wide_ * wide_ * meanTrackT_ / kSchurObsT *
+                                        P_.num_obs;
+        return schur + kWFlop * 2 * n * n * n / 3 + kWJac * wide_ * P_.num_obs;
+    }
+    double cgWork() const {
+        return kWJac * wide_ * P_.num_obs + kWCamDiag * wide_ * wide_ * P_.num_obs +
+               kCgItersGuess * (kWGather + kWScatter) * wide_ * P_.num_obs;
+    }
+    static constexpr double kCgItersGuess = 40;
 
     // device-buffer footprint of a path combination, in MB (mirrors init())
     double estimateMB(bool withDense, bool withCG, bool pairTables, uint64_t pairEntries) const {
@@ -753,6 +848,11 @@ private:
             if (pairTables)
                 b += 8.0 * pairEntries * 1.01 + 6 * no * rs;       // pair entries + Y
         }
+        if (withCG && tcN_) {
+            const double tn = tcN_, tc = tn * (tn + 1) / 2 + 42.0 * P_.num_frames;
+            b += (std::max(withDense ? packed : 0.0, tc) - (withDense ? packed : 0.0)) * rs;
+            b += std::max(0.0, 34.0 * tn - n) * rs + 8.0 * tcEntries_ * 1.01;
+        }
         if (withCG)
             b += (4 * n + 3 * np + ni * (double)bBlk_ +
                   (ni + (double)P_.members.size() + (double)P_.groups.size()) * kCamBlk) * rs +
@@ -769,7 +869,10 @@ private:
     static constexpr double kWLaunch = 2000, kWPoint = 0.25, kWVec = 1, kWImage = 5;
     static constexpr double kWCost = 1.5, kWJac = 5.5, kWDp = 0.6, kWYPrep = 0.3;
     static constexpr double kWCamDiag = 12.7, kWGather = 0.65, kWScatter = 1.2;
-    static constexpr double kWSchurObs = 40, kWPairEntry = 3, kWFlop = 2.6e-3;
+    static constexpr double kWSchurObs = 40, kWPairEntry = 3, kWFlop = 2.6e-3, kWTcSchur = 6;
+    // schur_obs walks the track per observation: kWSchurObs is at the 5.8
+    // observations of that capture's sum t^2 / sum t.
+    static constexpr double kSchurObsT = 5.8;
     // Until a submit has been timed, a device is taken to be 64x slower.
     static constexpr double kPriorRate = 1e9 / 64;
 
@@ -929,22 +1032,9 @@ private:
     void recordCholesky() {
         const uint32_t n = P_.n_dim, bs = 32;
         const uint32_t nb = (n + bs - 1) / bs;
-        const double tile = 2.0 * bs * bs * bs * kWFlop;
+        recordFactor(n);
         Push p;
         p.u0 = n;
-        p.u1 = 0;
-        room(kWLaunch + tile);
-        ctx_.dispatch(cb_, "chol_diag", 1, p);
-        ctx_.barrier(cb_);
-        for (uint32_t k = 0; k + 1 < nb; k++) {
-            p.u1 = k;
-            uint32_t below = nb - 1 - k;
-            launch("chol_panel", below, 1, tile, p, atBase);
-            ctx_.barrier(cb_);
-            p.u2 = below * (below + 1) / 2;
-            launch("chol_update", p.u2, 1, tile, p, atBase);
-            ctx_.barrier(cb_);
-        }
         for (uint32_t k = 0; k < nb; k++) {
             p.u1 = k;
             p.u2 = (k + 1) * bs < n ? n - (k + 1) * bs : 0;
@@ -959,6 +1049,95 @@ private:
             ctx_.dispatch(cb_, "tri_bwd", std::max(1u, (p.u2 + 255) / 256), p);
             ctx_.barrier(cb_);
         }
+    }
+
+    // Factor the leading n x n packed triangle of u_S in place; `rel` > 0
+    // replaces a pivot under that fraction of the diagonal tc_reg saved with it.
+    void recordFactor(uint32_t n, float rel = 0) {
+        const uint32_t bs = 32;
+        const uint32_t nb = (n + bs - 1) / bs;
+        const double tile = 2.0 * bs * bs * bs * kWFlop;
+        Push p;
+        p.u0 = n;
+        p.u1 = 0;
+        p.u3 = rel > 0 ? 1 : 0;
+        p.f0 = rel;
+        room(kWLaunch + tile);
+        ctx_.dispatch(cb_, "chol_diag", 1, p);
+        ctx_.barrier(cb_);
+        for (uint32_t k = 0; k + 1 < nb; k++) {
+            p.u1 = k;
+            uint32_t below = nb - 1 - k;
+            launch("chol_panel", below, 1, tile, p, atBase);
+            ctx_.barrier(cb_);
+            p.u2 = below * (below + 1) / 2;
+            launch("chol_update", p.u2, 1, tile, p, atBase);
+            ctx_.barrier(cb_);
+        }
+    }
+
+    // A_c = P^T S P from this iteration's B and W; its Cholesky factor is then
+    // inverted in place, so an application is two matrix-vector products.
+    void recordCoarse() {
+        const uint32_t packedTc = tcN_ * (tcN_ + 1) / 2;
+        Push p;
+        p.u0 = P_.num_frames;
+        p.u2 = tcK_;
+        p.u3 = packedTc;
+        room(2 * kWLaunch + (P_.num_frames + P_.num_images) * kWImage);
+        ctx_.dispatch(cb_, "tc_basis", (P_.num_frames + 63) / 64, p);
+        ctx_.fillZero(cb_, bS_, 0, (VkDeviceSize)packedTc * realSize(opt_.real));
+        ctx_.barrier(cb_);
+        p.u0 = P_.num_images;
+        ctx_.dispatch(cb_, std::string("tc_bpart") + cgSuffix_, (P_.num_images + 63) / 64, p);
+        p.u0 = tcChunks_;
+        p.u1 = P_.num_pair_chunks;
+        launch("tc_schur", tcChunks_, 1,
+               kWTcSchur * (double)tcEntries_ / std::max(1u, tcChunks_), p, atBase);
+        ctx_.barrier(cb_);
+        Push q;
+        q.u0 = tcN_;
+        q.f0 = opt_.real == RealCfg::F32 ? 1e-4f : 1e-8f;
+        room(kWLaunch + tcN_ * kWVec);
+        ctx_.dispatch(cb_, "tc_reg", (tcN_ + 255) / 256, q);
+        ctx_.barrier(cb_);
+        recordFactor(tcN_, opt_.real == RealCfg::F32 ? 1e-3f : 1e-6f);
+
+        const uint32_t bs = 32, nb = (tcN_ + bs - 1) / bs;
+        const double tile = 2.0 * bs * bs * bs * kWFlop;
+        Push d;
+        d.u0 = tcN_;
+        room(kWLaunch + nb * tile);
+        ctx_.dispatch(cb_, "tc_dinv", nb, d);
+        ctx_.barrier(cb_);
+        d.u2 = 2 * tcN_;  // scratch rows follow the two vectors in u_y
+        for (uint32_t i = 1; i < nb; i++) {
+            d.u1 = i;
+            room(2 * kWLaunch + i * (i + 1) / 2.0 * tile);
+            ctx_.dispatch(cb_, "tc_inv_row", i, d);
+            ctx_.barrier(cb_);
+            ctx_.dispatch(cb_, "tc_inv_copy", (bs * bs * i + 255) / 256, d);
+            ctx_.barrier(cb_);
+        }
+    }
+
+    // z += P A_c^-1 P^T r, after the block-Jacobi part of the preconditioner.
+    void recordCoarseApply() {
+        Push p;
+        p.u0 = tcN_;
+        p.u1 = P_.num_frames;
+        p.u2 = tcK_;
+        p.u3 = tcN_ * (tcN_ + 1) / 2;
+        room(4 * kWLaunch + (6.0 * P_.num_frames + (double)tcN_ * tcN_) * kWVec);
+        ctx_.dispatch(cb_, "tc_restrict", (tcN_ + 255) / 256, p);
+        ctx_.barrier(cb_);
+        ctx_.dispatch(cb_, "tc_lmul", (tcN_ + 7) / 8, p);
+        ctx_.barrier(cb_);
+        ctx_.dispatch(cb_, "tc_ltmul", (tcN_ + 31) / 32, p);
+        ctx_.barrier(cb_);
+        p.u0 = P_.pose_dim;
+        ctx_.dispatch(cb_, "tc_prolong", (P_.pose_dim + 255) / 256, p);
+        ctx_.barrier(cb_);
     }
 
     void recordCost() {
@@ -1041,7 +1220,7 @@ private:
             } else if (path == LinSolve::DenseObs) {
                 p.u0 = P_.num_obs;
                 launch(std::string("schur_obs") + schurSuffix_, P_.num_obs, 128,
-                       kWSchurObs * wide_ * wide_, p, atBase);
+                       kWSchurObs * wide_ * wide_ * meanTrackT_ / kSchurObsT, p, atBase);
             } else {
                 p.u0 = P_.num_cam_chunks;
                 p.u1 = P_.prec_exclusive ? 1 : 0;
@@ -1054,6 +1233,7 @@ private:
                 p.u0 = P_.num_prec_blocks;
                 room(kWLaunch + P_.num_prec_blocks * kWImage);
                 ctx_.dispatch(cb_, "cg_prec_fact", (P_.num_prec_blocks + 255) / 256, p);
+                if (tcBuild_) recordCoarse();
             }
         }
         ctx_.barrier(cb_);
@@ -1086,6 +1266,7 @@ private:
         pc.u1 = 0;  // flag was just cleared
         ctx_.dispatch(cb_, "cg_prec_apply", nib, pc);
         ctx_.barrier(cb_);
+        if (tcUse_) recordCoarseApply();
         Push pr;
         pr.u0 = n;
         pr.u1 = 1;
@@ -1098,6 +1279,7 @@ private:
         pf.u1 = 0;
         pf.u2 = npart;
         pf.f0 = (float)opt_.cg_tol;
+        pf.f1 = (float)opt_.cg_model_tol;
         ctx_.dispatch(cb_, "cg_fin", 1, pf);
         ctx_.barrier(cb_);
         ctx_.dispatch(cb_, "cg_copy", ng, pn);
@@ -1138,6 +1320,7 @@ private:
             ctx_.barrier(cb_);
             ctx_.dispatch(cb_, "cg_prec_apply", nib, pc);
             ctx_.barrier(cb_);
+            if (tcUse_) recordCoarseApply();
             pr.u1 = 1;
             ctx_.dispatch(cb_, "cg_red2", ng, pr);
             ctx_.barrier(cb_);
@@ -1266,6 +1449,7 @@ private:
     const char* cgSuffix_ = "_w";     // ... and of the CG ones
     uint32_t bBlk_ = kCamBlk;         // per-image B block stride at that tier
     double wide_ = 1;                 // widest camera block over the rig tier's 24
+    double meanTrackT_ = kSchurObsT;  // sum t^2 / sum t over the tracks
     SolverStats stats_;
     std::unique_ptr<VkContext> owned_;      // null when running on a shared context
     VkContext& ctx_;
@@ -1276,6 +1460,21 @@ private:
     bool cgAllocated_ = false; // CG buffers/tables exist
     bool haveFallback_ = false;
     uint32_t cgMaxit_ = 100;
+    // Coarse correction: frames per cluster and the coarse dimension (0: off),
+    // and whether this iteration's solve uses it.
+    uint32_t tcK_ = 0, tcN_ = 0;
+    uint64_t tcEntries_ = 0;
+    uint32_t tcChunks_ = 0;
+    std::vector<uint32_t> tcEnt_, tcChk_;  // follow the pair-Schur tables on the device
+    bool tcUse_ = false, tcBuild_ = false, tcHave_ = false, tcOff_ = false;
+    int tcAge_ = 0;
+    double tcLambda_ = 0;
+    double lastCg_ = 0;  // iterations the last CG solve took
+    static constexpr double kTcMinIters = 12;
+    // Below ~1e-9 rounding outweighs the damping on a badly scaled camera (Gram
+    // entries of 1e23, from a point at depth 2e-9 in a 22042-image model) and S
+    // goes indefinite; 1e-8 is still Gauss-Newton to eight digits.
+    static constexpr double kMinDamping = 1e-8;
 
     GpuBuffer bObs_, bObsImage_, bObsPoint_, bImageInfo_, bGroupInfo_, bMemberInfo_;
     GpuBuffer bPoses_, bExts_, bIntr_, bPoints_, bObsRanges_, bModelObs_, bJcOff_;

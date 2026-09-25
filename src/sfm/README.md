@@ -699,6 +699,11 @@ What the run does with it, in the order it happens:
   through the calibration exactly as if they shared those images, so a 360
   capture that reconstructs as one component per direction is merged rather
   than written as pieces (`map/Merge.h` `poseCorrespondences`).
+- **Splitting.** The consistency split (`splitInconsistent`) groups images by
+  the verified pairs a model still agrees with, and counts a calibrated rig
+  frame as joining its images too. Back-to-back fisheyes share no matches, so
+  without that a 4000-image dual-fisheye model with every pair agreeing split
+  into its two lenses and spent five minutes merging them back.
 
 `--final-free-rig` (off) runs one last bundle adjustment with the rig set
 aside, for a mount that flexed or lenses that did not fire together. With no
@@ -803,6 +808,39 @@ say; what would decide it is evidence the mapper does not use yet -- the
 adjacent pairs' own two-view geometry, or the video's IMU. `SS_SFM_SEQ_DUMP=1`
 prints one line per registration attempt (near and whole-pool inliers, and
 the rival's) to read such a spot from the log.
+
+### Retriangulation
+
+Every global refinement round after the first starts by completing tracks and
+retriangulating the whole model (`completeAndRetriangulate`, COLMAP's
+CompleteTracks + Retriangulate): each point's correspondences are tested
+against it, and each registered image's free features against their
+registered partners. Both were serial whole-model passes, so on a long video
+they were the stretch between two bundle adjustments where the GPU idles and
+one core works -- 34 s of a 3000-frame capture's 332 s of mapping, as much as
+the seed search and registration together.
+
+Each half now collects its per-item result on every core against the state
+the pass starts from, and commits in the old serial order. A claim only ever
+takes a free feature, so an item's collected result can be wrong only if an
+earlier commit took one of the features it claims; that item is redone
+serially at its turn. The output is the serial pass's exactly -- checked by
+running both on the same state, 0 differences over 373 passes and every
+growth-time triangulation of a 638-image capture. Growth-time triangulation
+after each registration goes the same way, feature by feature.
+
+Most of what the pass then does is futile: on a 4000-image dual-fisheye video
+it tried 166M candidate pairs a pass for 13M free features and made no point
+from any of them in steady state -- neighbouring frames 1/30 s apart are all
+far under the 1.5 degree triangulation angle. Two rays can only reach that
+angle if the angle between them is within both reprojection tolerances of it
+(each bounded as twice the tolerance over the focal), so a candidate further
+off is dropped before triangulation, on world-frame rays cached per pass in
+float (`worldRays`; the fisheye bearing behind each is an iterative inversion,
+and computing it per candidate was the actual cost). That is 94% of the
+candidates there; results are identical with the filter on and off on all
+three stress captures. A pass over the 4000-image model went from 27.3 s to
+4.9 s, over a 3000-frame DJI walk from 8.1 s to 0.6 s.
 
 ### The finishing passes
 

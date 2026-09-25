@@ -97,6 +97,10 @@ struct SolverOptions {
     bool over_budget_throws = false;
     int cg_max_iters = 100;       // CG iteration cap per LM step
     double cg_tol = 0.1;          // relative residual tolerance eta
+    // ... and CG also stops once a step improves the quadratic model by under
+    // this fraction of the total so far (Nash-Sofer; 0 = off). It settles for a
+    // residual near sqrt of it, so a caller that wants the exact step turns it off.
+    double cg_model_tol = 0.1;
     CgFallback cg_fallback = CgFallback::Auto;
     // The kernels are compiled per (real, loss); `loss` selects the embedded
     // blob "ba_<real>_<loss>". spv_path overrides it with a module from disk

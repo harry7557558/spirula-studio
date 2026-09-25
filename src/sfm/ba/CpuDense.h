@@ -60,8 +60,13 @@ public:
         factor(pool, nthreads);
         solveInPlace(g, pool, nthreads);
     }
+    void solve(double* g, Pool& pool, int nthreads) { solveInPlace(g, pool, nthreads); }
 
-    void factor(Pool& pool, int nthreads) {
+    // With `diag`, a pivot under `rel` of its row's diag entry is replaced by
+    // that entry (cholesky.slang's pivot(), for the coarse matrix).
+    void factor(Pool& pool, int nthreads, const double* diag = nullptr, double rel = 0) {
+        diag_in_ = diag;
+        rel_ = rel;
         const uint32_t nb = (n_ + kBlock - 1) / kBlock;
         for (uint32_t k = 0; k < nb; k++) {
             const uint32_t base = k * kBlock;
@@ -120,7 +125,12 @@ private:
     void factorDiag(uint32_t base, uint32_t m) {
         for (uint32_t j = 0; j < m; j++) {
             double* Rj = row(base + j) + base;
-            double d = std::sqrt(std::max(Rj[j], 1e-30));
+            double d;
+            if (!diag_in_)
+                d = std::sqrt(Rj[j] > 1e-30 ? Rj[j] : 1e-30);
+            else
+                d = std::sqrt(Rj[j] > rel_ * diag_in_[base + j] ? Rj[j]
+                                                                 : std::max(diag_in_[base + j], 1e-30));
             Rj[j] = d;
             const double inv = 1.0 / d;
             for (uint32_t r = j + 1; r < m; r++) {
@@ -254,6 +264,8 @@ private:
     }
 
     std::vector<double> a_, panel_, panelT_, diag_;
+    const double* diag_in_ = nullptr;
+    double rel_ = 0;
     uint32_t n_ = 0;
 };
 

@@ -89,11 +89,10 @@ inline Mat3 inverse3(const Mat3& A, bool* ok = nullptr) {
 
 // Cyclic Jacobi eigen-decomposition of a symmetric n x n matrix (row-major in
 // `A`, destroyed). Eigenvalues -> w[n], eigenvectors -> columns of V[n*n].
-// Not sorted.
-inline void jacobiEigenSymmetric(std::vector<double>& A, int n, std::vector<double>& w,
-                                 std::vector<double>& V) {
-    w.assign(n, 0);
-    V.assign((size_t)n * n, 0);
+// Not sorted. This form allocates nothing, for callers in a hot loop.
+inline void jacobiEigenSymmetric(double* A, int n, double* w, double* V) {
+    for (int i = 0; i < n; i++) w[i] = 0;
+    for (size_t i = 0; i < (size_t)n * n; i++) V[i] = 0;
     for (int i = 0; i < n; i++) V[(size_t)i * n + i] = 1.0;
 
     // Convergence is measured against the matrix's own scale. The old test was
@@ -147,6 +146,13 @@ inline void jacobiEigenSymmetric(std::vector<double>& A, int n, std::vector<doub
             }
     }
     for (int i = 0; i < n; i++) w[i] = A[(size_t)i * n + i];
+}
+
+inline void jacobiEigenSymmetric(std::vector<double>& A, int n, std::vector<double>& w,
+                                 std::vector<double>& V) {
+    w.assign(n, 0);
+    V.assign((size_t)n * n, 0);
+    jacobiEigenSymmetric(A.data(), n, w.data(), V.data());
 }
 
 // Exact null space of an m x 9 matrix with m < 9, by Householder QR of A^T.

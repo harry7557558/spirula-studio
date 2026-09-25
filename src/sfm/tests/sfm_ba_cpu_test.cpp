@@ -433,6 +433,7 @@ void testAgainstReference(uint32_t model, uint32_t groups, const char* loss, boo
     opt.verbose = false;
     opt.solver = cg ? SolverSel::CG : SolverSel::Dense;
     opt.cg_tol = 1e-12;
+    opt.cg_model_tol = 0;
     opt.cg_max_iters = 4000;
     opt.cg_fallback = CgFallback::Off;
 
@@ -512,6 +513,7 @@ void testFullSolve(uint32_t model, uint32_t groups, uint32_t rig = 0) {
         opt.verbose = false;
         opt.solver = k ? SolverSel::CG : SolverSel::Dense;
         opt.cg_tol = 1e-10;
+        opt.cg_model_tol = 0;
         opt.cg_max_iters = 2000;
         opt.cg_fallback = CgFallback::Off;
         bacpu::Solver s(P, opt);

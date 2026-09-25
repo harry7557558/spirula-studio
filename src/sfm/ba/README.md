@@ -288,16 +288,103 @@ state (rho, alpha, beta, tolerance) lives in a small device buffer, dot
 products are two-stage reductions, and every kernel no-ops once the
 convergence flag is set, so a fixed iteration cap is recorded (adapted each
 LM iteration from the previous count) and the LM loop keeps its single
-cost readback. Stopping rule: relative residual `--cg-tol` (default 0.1,
-inexact-Newton style -- LM's accept/reject guards the step quality) with a
-`--cg-iters` cap (default 100).
+cost readback.
+
+Stopping rule: relative residual `--cg-tol` (default 0.1, inexact-Newton
+style -- LM's accept/reject guards the step quality), or, whichever comes
+first, the last step lowering the quadratic model `Q = x^T S x / 2 - g^T x` by
+less than `SolverOptions::cg_model_tol` (default 0.1) of the average step so
+far -- Nash and Sofer's truncated-Newton test, `i (Q_i - Q_i-1) / Q_i`, which
+is how Ceres stops its CG under LM. `Q` costs nothing to track: a CG step
+lowers it by `alpha rho / 2`. The residual test alone keeps iterating after
+the steps have stopped mattering: on the 4102-image capture below the model
+test takes 40% fewer iterations (2376 against 3954 over a 50-iteration solve,
+34 s against 55 s) to the same final cost, 1.879209721e6 to all ten digits
+printed. It settles for a residual near the square root of its tolerance,
+though, so a caller that wants the exact step (the tests, `SS_SFM_CMP_STEP`)
+sets it to 0. `--cg-iters` caps both (default 100).
+
+### Coarse correction (two-level preconditioner)
+
+Block Jacobi sees one camera at a time, and the slow modes of a long capture
+are not local: a stretch of the trajectory bending, twisting or drifting in
+scale *as a whole*, which every camera block finds nearly free. On a
+4102-image dataset, CG hit its 100-iteration cap from the
+fourth LM iteration on, and the truncated steps fell behind the dense
+solver's: 1.879283e6 after 10 LM iterations against its 1.879271e6. Holding
+the intrinsics fixed changed nothing, so it is not the dropped pose/intrinsics
+coupling.
+
+So the preconditioner has a second level: `M^-1 = M_J^-1 + P A_c^-1 P^T` with
+`A_c = P^T S P`. `P` gives every cluster of `k` consecutive frames 7 dofs, a
+similarity motion of the world (rotation `w`, translation `tau`, scale `s`),
+mapped onto each frame's pose parameters exactly: `d(angle-axis) = -Jr^-1 w`,
+`dt = s t - R tau` (`tc_basis`, in fp32 -- the basis only has to span the slow
+modes). A constant pose delta per cluster instead was measured and is clearly
+worse (66 and 100 CG iterations where the similarity basis takes 35 and 50):
+it cannot move a cluster rigidly unless every frame in it faces the same way.
+
+`A_c` comes from the same per-observation Jacobians as everything else: the
+`B` part per image from `cg_cam_diag`'s Gram blocks (`tc_bpart`), the Schur
+part per pair of *runs* -- a track's observations inside one cluster, which
+are contiguous since tracks are sorted by image -- grouped by cluster pair on
+the host so that one warp sums a coarse block and writes it once
+(`tc_schur`; issuing its sums as atomics per point was 145 ms a build against
+80). It is factored by the dense kernels in the packed-`S` buffer the CG path
+otherwise leaves empty, and the factor is then inverted in place (`tc_dinv`,
+`tc_inv_row`), so applying it is two triangular matrix-vector products
+(`tc_lmul`, `tc_ltmul`, ~0.17 ms at 3591 dofs) rather than 2 n / 32 dependent
+solve dispatches (~4 ms, more than half a CG iteration).
+
+Size and cost: `k` is the smallest cluster that keeps `A_c` under 4096 dofs
+and the run-pair table under two entries per observation (long tracks span
+many small clusters) -- 8 frames on the 4102-image capture, 38 on a
+22042-image one. The extra VRAM is the table and the frame basis; `A_c`
+itself (67 MB at most) reuses packed `S`. A build is the size of a dense
+factor, so it happens only when the last CG solve took more than 12
+iterations, and is reused for up to three solves unless the damping has moved
+tenfold -- a stale `A_c` only costs iterations.
+
+One global BA each (`spirula sfm ba`, defaults, RTX 5070), before and after
+this correction and the stopping rule above:
+
+| capture | solver | CG its/solve | solve | final cost |
+|---|---|---|---|---|
+| 4102-image (well-conditioned) | cg | 89.8 -> 50.4 | 29.1 s -> 31.6 s (30 -> 49 LM its) | 1.879241e6 -> 1.879210e6 |
+| 6946-image (dual-fisheye rig) | cg | 81.0 -> 41.8 | 97.6 s -> 51.2 s | 4.659347e6 -> 4.659219e6 |
+| 22042-image ([campus](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/datasets/)) | cg | 47.5 -> 73.7 | 120.2 s -> 193.4 s (47 -> 50 LM its) | 1.046347e7 -> 1.044832e7 |
+| 1068-image (linear trajectory) | dense -> cg | -- -> 8.1 | 56.7 s -> 3.6 s | 1.822009e6 both |
+
+Where a run got longer it is because it no longer stalls: the old 4102-image
+solve stopped on tie-zone patience, and the campus one sat at 1.0483e7 from
+iteration 12 to 20 where the new one passes its final cost at iteration 14
+(about 55 s) and goes on improving.
+
+On the 4102-image dataset the coarse-corrected CG tracks the dense solver's cost to
+seven digits iteration for iteration (1.879220953e6 against 1.879220943e6 at
+iteration 29), which the plain one never does; it then keeps improving where
+the plain one stops on its tie-zone patience. `SS_SFM_BA_COARSE=0` turns it
+off; the host solver has the same correction (`coarseBuild`).
+
+The global similarity is a gauge freedom, so `A_c` is singular up to the
+damping. Its diagonal is scaled by `1 + 1e-8`, and a pivot under 1e-6 of its
+row's original diagonal is replaced by that diagonal (`pivot()` in
+`cholesky.slang`), which keeps the factor bounded however far rounding has
+made the matrix indefinite. If a CG solve still stops before its first step,
+the iteration is redone without `A_c`, and it stays off for the solve when
+that was the difference.
 
 The CG path allocates no packed S, no Y, and no pair-entry lists, so VRAM
 stays linear in observations. Preprocessing also skips the pair-table sort (3.6 s -> 1.2 s
 there). Solver selection and the dense fallback are VRAM-aware: the budget
 is `--vram-budget` (default 90% of the device-local heap); `auto` picks
-dense for small problems, CG when the dense estimate exceeds the budget or
-`n_dim > 8192`. With `--cg-fallback on` (or `auto`, which enables it only
+dense for small problems, CG when the dense estimate exceeds the budget,
+`n_dim > 8192`, or CG's estimated iteration costs under half the dense one's.
+That last test is about track length: the dense assembly is quadratic in it
+(`schur_obs` walks the track per observation), CG linear. A 1068-image
+capture of a robot drifting slowly through one module, 70 observations per
+track by `sum t^2 / sum t`, spent 3.7 s an iteration in `schur_obs` alone and
+59 s a solve; on CG it is 6.3 s, to the same final cost. With `--cg-fallback on` (or `auto`, which enables it only
 when dense+CG together fit in half the budget) the dense machinery is kept
 allocated; a truncated-CG step is kept if it still lowered the cost, and
 only a cost-raising capped solve is re-solved densely from the reused
@@ -309,6 +396,14 @@ inexact steps on its own, at zero extra memory.
 `SS_SFM_CMP_STEP=1` (env) solves one assembly with both paths and prints the
 step difference: with `--cg-tol 1e-8` the CG step matches the dense step to
 ~1e-8 at fp64.
+
+Two guards keep a badly scaled problem from breaking CG. A 22042-image model
+with a point 2e-9 from a camera centre has camera Gram entries of 1e23, and
+below damping ~1e-9 rounding makes `S` indefinite there: the LM damping is
+floored at 1e-8, which is still Gauss-Newton to eight digits, and a CG solve
+that stops before its first step counts as a failed step (damping up) rather
+than a zero one. The block-Jacobi factor floors a pivot under 1e-10 of its
+block's largest diagonal and decouples it, where it used to cascade to NaN.
 
 ### Host fallback (`--real cpu`)
 
@@ -484,14 +579,12 @@ peak (the largest single BA being 6372 images / 12.7 M observations).
   400M-entry cap it falls back to the atomic per-observation Schur kernel),
   and packed indexing is 32-bit: `n(n+1)/2 < 2^31` (n ≲ 65k camera DOF).
   Neither limit applies to the CG path.
-- CG iteration counts are conditioning-dependent: on well-behaved covis
-  graphs (1936) ~9 iters/solve; on the outlier-heavy 871 ~56, which is why
-  auto keeps problems below `n_dim = 8192` on the dense path. A stronger
-  preconditioner (visibility clustering / power series) is the known next
-  step for ill-conditioned sets -- and the more so now that sharing is
-  allowed, since a shared group costs the preconditioner its pose/intrinsics
-  coupling: the 4194-image capture above converges in 10 iterations/solve, but
-  the 6281-image one sits at the 100 cap for its final refinement pass.
+- CG iteration counts are conditioning-dependent. The coarse correction
+  takes care of the long-wavelength modes of a long capture, but its clusters
+  are consecutive frames, so it assumes image order follows the trajectory
+  (true of video and of most photo walks); a shuffled collection gets a
+  valid but weaker coarse space. At damping ~1e-7 the 4102-image dataset still
+  needs 80-100 iterations per solve.
 - fp32 CG inherits the documented fp32 normal-equation stall (block-Jacobi
   is nearly exact at high damping, so it still descends, but final cost is
   looser than fp64/df -- same as fp32 dense, slightly amplified).

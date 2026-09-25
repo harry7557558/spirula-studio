@@ -1244,6 +1244,21 @@ public:
             size_t ra = find(a->second), rb = find(b->second);
             if (ra != rb) parent[ra] = rb;
         }
+        // A calibrated rig holds a frame's images at one relative pose, which ties
+        // them as surely as an agreeing pair: back-to-back fisheyes share no
+        // matches, and a 4000-image capture split into its lenses and merged back.
+        if (rigs_) {
+            std::map<std::pair<uint32_t, uint32_t>, size_t> frame_of;
+            for (size_t i = 0; i < ids.size(); i++) {
+                const RigSlot sl = rigs_->slot(ids[i]);
+                if (!sl.valid() || m.rig_detached.count(ids[i]) || sl.rig >= m.rigs.size() ||
+                    !m.rigs[sl.rig].usable(sl.member))
+                    continue;
+                auto it = frame_of.emplace(std::make_pair(sl.rig, sl.frame), i).first;
+                size_t ra = find(i), rb = find(it->second);
+                if (ra != rb) parent[ra] = rb;
+            }
+        }
 
         std::sort(st.fractions.begin(), st.fractions.end());
         std::map<size_t, std::vector<uint32_t>> groups;
@@ -1763,6 +1778,7 @@ private:
                        missing);
     }
 
+
     // Sort, report and return. Split out only because run() has two exits.
     std::vector<Reconstruction> finishRun(std::vector<Reconstruction>& models,
                                           std::chrono::steady_clock::time_point prof_start) {
@@ -2222,11 +2238,19 @@ private:
 
     // reprojErr() against the index. Same arithmetic, same cheirality rules.
     double reprojErrAt(const ModelIndex& mi, uint32_t img, uint32_t f, const Vec3& X) const {
+        const Camera& cam = *mi.cam[img];
+        return reprojErrAt(mi, img, f, X, cam.wideFov() ? cam.bearing(kp(img, f)) : Vec3{});
+    }
+    // ... given the feature's bearing, which only a wide lens's cheirality reads.
+    // A fisheye bearing is an iterative inversion, and retriangulating an
+    // every-frame video asked for the same ones millions of times a pass.
+    double reprojErrAt(const ModelIndex& mi, uint32_t img, uint32_t f, const Vec3& X,
+                       const Vec3& bearing) const {
         const Pose& p = mi.img[img]->pose;
         const Camera& cam = *mi.cam[img];
         Vec3 pc = mul(p.R, X) + p.t;
         if (cam.wideFov()) {
-            if (pc.dot(cam.bearing(kp(img, f))) <= 0) return 1e30;
+            if (pc.dot(bearing) <= 0) return 1e30;
         } else if (pc.z < 1e-8) {
             return 1e30;
         }
@@ -2238,11 +2262,16 @@ private:
     // triangulatePair() against the index.
     bool triangulatePairAt(const ModelIndex& mi, uint32_t a, uint32_t fa, uint32_t b, uint32_t fb,
                            Vec3& X, double err_scale = 1.0) const {
+        return triangulatePairAt(mi, a, fa, mi.cam[a]->bearing(kp(a, fa)), b, fb,
+                                 mi.cam[b]->bearing(kp(b, fb)), X, err_scale);
+    }
+    bool triangulatePairAt(const ModelIndex& mi, uint32_t a, uint32_t fa, const Vec3& ba,
+                           uint32_t b, uint32_t fb, const Vec3& bb, Vec3& X,
+                           double err_scale = 1.0) const {
         const Pose& pa_ = mi.img[a]->pose;
         const Pose& pb_ = mi.img[b]->pose;
         const Camera& ca = *mi.cam[a];
         const Camera& cb = *mi.cam[b];
-        Vec3 ba = ca.bearing(kp(a, fa)), bb = cb.bearing(kp(b, fb));
         Mat34 Pa{pa_.R[0], pa_.R[1], pa_.R[2], pa_.t.x, pa_.R[3], pa_.R[4], pa_.R[5], pa_.t.y,
                  pa_.R[6], pa_.R[7], pa_.R[8], pa_.t.z};
         Mat34 Pb{pb_.R[0], pb_.R[1], pb_.R[2], pb_.t.x, pb_.R[3], pb_.R[4], pb_.R[5], pb_.t.y,
@@ -2253,9 +2282,9 @@ private:
         if (!inFront(ca, pa, ba, 1e-6) || !inFront(cb, pb, bb, 1e-6)) return false;
         double ang = triangulationAngle(X, cameraCenter(pa_), cameraCenter(pb_));
         if (ang * 180.0 / M_PI < opt_.min_tri_angle_deg) return false;
-        if (reprojErrAt(mi, a, fa, X) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]))
+        if (reprojErrAt(mi, a, fa, X, ba) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[a]))
             return false;
-        if (reprojErrAt(mi, b, fb, X) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]))
+        if (reprojErrAt(mi, b, fb, X, bb) > err_scale * (opt_.max_reproj_error * mi.pixel_scale[b]))
             return false;
         return true;
     }
@@ -2977,12 +3006,16 @@ private:
         return false;
     }
 
+    // Candidates are tried on a reset model (resetModel precedes initialize) and
+    // touch only their two images: sweeping every image cost a 3000-frame video,
+    // which rejects every neighbour pair, 80 MB of stores per candidate.
     void rollbackInit(uint32_t a, uint32_t b) {
         rec_.points3D.clear();
         rec_.next_point3D_id = 1;
-        for (auto& kv : rec_.images) {
-            kv.second.registered = false;
-            std::fill(kv.second.point3D_ids.begin(), kv.second.point3D_ids.end(), kInvalidPoint3D);
+        for (uint32_t i : {a, b}) {
+            Image& im = rec_.images[i];
+            im.registered = false;
+            std::fill(im.point3D_ids.begin(), im.point3D_ids.end(), kInvalidPoint3D);
         }
     }
 
@@ -3969,65 +4002,178 @@ private:
         triangulateForImageAt(mi, img, err_scale);
     }
 
+    using WorldRays = std::vector<std::vector<float>>;  // by image id, 3 per feature
+
+    struct NewTrack {
+        Vec3 X;
+        uint32_t f = 0;  // the feature of the image it was made for
+        std::vector<TrackElement> track;
+    };
+
     // The index is a whole-model scan, so a caller that runs this over every
     // registered image (completeAndRetriangulate) builds it once.
     void triangulateForImageAt(const ModelIndex& mi, uint32_t img, double err_scale) {
-        Image& me = *mi.img[img];
-        std::vector<Correspondence> obs;   // reused across features
-        std::vector<TrackElement> track;
-        for (uint32_t f = 0; f < feats_[img].count(); f++) {
-            if (me.point3D_ids[f] != kInvalidPoint3D) continue;
-            // candidate observations: registered, feature not yet on a 3D point
-            obs.clear();
-            for (const Correspondence& c : graph_.at(img, f))
-                if (mi.img[c.image_id]->registered &&
-                    mi.img[c.image_id]->point3D_ids[c.feature_idx] == kInvalidPoint3D)
-                    obs.push_back(c);
-            if (obs.empty()) continue;
-
-            // Triangulate with the correspondence of maximum parallax.
-            Vec3 bestX;
-            double bestAng = -1;
-            const Correspondence* bestC = nullptr;
-            for (const Correspondence& c : obs) {
-                Vec3 X;
-                if (!triangulatePairAt(mi, img, f, c.image_id, c.feature_idx, X, err_scale))
-                    continue;
-                double ang = triangulationAngle(X, cameraCenter(me.pose),
-                                                cameraCenter(mi.img[c.image_id]->pose));
-                if (ang > bestAng) { bestAng = ang; bestX = X; bestC = &c; }
-            }
-            if (!bestC) continue;
-
-            // Build the track: this obs + every candidate that reprojects well.
-            track.clear();
-            track.push_back({img, f});
-            for (const Correspondence& c : obs) {
-                if (mi.img[c.image_id]->point3D_ids[c.feature_idx] != kInvalidPoint3D) continue;
-                if (reprojErrAt(mi, c.image_id, c.feature_idx, bestX) <=
-                    err_scale * (opt_.max_reproj_error * mi.pixel_scale[c.image_id]))
-                    track.push_back({c.image_id, c.feature_idx});
-            }
-            if (track.size() < 2) continue;
-            // Guard against two features from the same image on one track.
-            std::sort(track.begin(), track.end(),
-                      [](const TrackElement& a, const TrackElement& b) {
-                          return a.image_id < b.image_id;
-                      });
-            track.erase(std::unique(track.begin(), track.end(),
-                                    [](const TrackElement& a, const TrackElement& b) {
-                                        return a.image_id == b.image_id;
-                                    }),
-                        track.end());
-            if (track.size() < 2) continue;
-            rec_.addPoint3D(bestX, track);
-            // Every track element is a registered image's feature joining a
-            // point. (Also reached from completeAndRetriangulate, where the
-            // counts drift against its direct track edits -- harmless, no
-            // ranking happens before the post-refine rebuildScores().)
-            for (const TrackElement& e : track) attachObservation(e.image_id, e.point2D_idx);
-        }
+        const uint32_t n = feats_[img].count();
+        const size_t kBlock = 256;
+        std::vector<std::vector<NewTrack>> made((n + kBlock - 1) / kBlock);
+        parallelFor(n, kBlock, [&](size_t lo, size_t hi, std::vector<uint8_t>&) {
+            std::vector<Correspondence> obs;
+            NewTrack t;
+            for (size_t f = lo; f < hi; f++)
+                if (featureTrack(mi, img, (uint32_t)f, err_scale, obs, t))
+                    made[lo / kBlock].push_back(t);
+        });
+        commitCollected(mi, img, made, err_scale);
     }
+
+    // Commit tracks featureTrack collected against an earlier state, in order;
+    // one whose elements a commit since has taken is made again from now.
+    void commitCollected(const ModelIndex& mi, uint32_t img,
+                         const std::vector<std::vector<NewTrack>>& made, double err_scale) {
+        std::vector<Correspondence> obs;
+        NewTrack again;
+        for (const std::vector<NewTrack>& block : made)
+            for (const NewTrack& t : block) {
+                bool clash = false;
+                for (const TrackElement& e : t.track)
+                    clash = clash || mi.img[e.image_id]->point3D_ids[e.point2D_idx] != kInvalidPoint3D;
+                if (!clash) commitNewTrack(t);
+                else if (featureTrack(mi, img, t.f, err_scale, obs, again)) commitNewTrack(again);
+            }
+    }
+
+    // The point triangulateForImageAt makes for feature f of img, if any. Read
+    // only: a later claim changes the answer only by taking one of `out`'s
+    // elements (the best pair's is among them), so a snapshot's answer checks.
+    bool featureTrack(const ModelIndex& mi, uint32_t img, uint32_t f, double err_scale,
+                      std::vector<Correspondence>& obs, NewTrack& out,
+                      const WorldRays* rays = nullptr) const {
+        const Image& me = *mi.img[img];
+        if (me.point3D_ids[f] != kInvalidPoint3D) return false;
+        // candidate observations: registered, feature not yet on a 3D point
+        obs.clear();
+        for (const Correspondence& c : graph_.at(img, f))
+            if (mi.img[c.image_id]->registered &&
+                mi.img[c.image_id]->point3D_ids[c.feature_idx] == kInvalidPoint3D)
+                obs.push_back(c);
+        if (obs.empty()) return false;
+        const Vec3 bf = mi.cam[img]->bearing(kp(img, f));
+        std::vector<Vec3>& bo = obs_bearing_scratch();
+        bo.assign(obs.size(), Vec3{0, 0, 0});
+        auto bearingOf = [&](size_t k) -> const Vec3& {
+            if (bo[k].x == 0 && bo[k].y == 0 && bo[k].z == 0)
+                bo[k] = mi.cam[obs[k].image_id]->bearing(kp(obs[k].image_id, obs[k].feature_idx));
+            return bo[k];
+        };
+
+        // Triangulate with the correspondence of maximum parallax. Rays closer
+        // than the minimum angle less both reprojection tolerances cannot:
+        // 94% of a dual-fisheye video's candidates, frames 1/30 s apart.
+        Vec3 ra = mul(transpose(me.pose.R), bf);
+        ra = ra * (1.0 / ra.norm());
+        const double tol_a = rayTolerance(mi, img, err_scale);
+        Vec3 bestX;
+        double bestAng = -1;
+        const Correspondence* bestC = nullptr;
+        for (size_t k = 0; k < obs.size(); k++) {
+            const Correspondence& c = obs[k];
+            const double lim = opt_.min_tri_angle_deg * M_PI / 180.0 - tol_a -
+                               rayTolerance(mi, c.image_id, err_scale);
+            if (lim > 0) {
+                Vec3 rb;
+                if (rays) {
+                    const float* r = &(*rays)[c.image_id][3 * (size_t)c.feature_idx];
+                    rb = {r[0], r[1], r[2]};
+                } else {
+                    rb = mul(transpose(mi.img[c.image_id]->pose.R), bearingOf(k));
+                    rb = rb * (1.0 / rb.norm());
+                }
+                if (ra.dot(rb) > std::cos(lim)) continue;
+            }
+            Vec3 X;
+            if (!triangulatePairAt(mi, img, f, bf, c.image_id, c.feature_idx, bearingOf(k), X,
+                                   err_scale))
+                continue;
+            double ang = triangulationAngle(X, cameraCenter(me.pose),
+                                            cameraCenter(mi.img[c.image_id]->pose));
+            if (ang > bestAng) { bestAng = ang; bestX = X; bestC = &c; }
+        }
+        if (!bestC) return false;
+
+        // Build the track: this obs + every candidate that reprojects well.
+        std::vector<TrackElement>& track = out.track;
+        track.clear();
+        track.push_back({img, f});
+        for (size_t k = 0; k < obs.size(); k++) {
+            const Correspondence& c = obs[k];
+            if (reprojErrAt(mi, c.image_id, c.feature_idx, bestX, bearingOf(k)) <=
+                err_scale * (opt_.max_reproj_error * mi.pixel_scale[c.image_id]))
+                track.push_back({c.image_id, c.feature_idx});
+        }
+        if (track.size() < 2) return false;
+        // Guard against two features from the same image on one track.
+        std::sort(track.begin(), track.end(),
+                  [](const TrackElement& a, const TrackElement& b) {
+                      return a.image_id < b.image_id;
+                  });
+        track.erase(std::unique(track.begin(), track.end(),
+                                [](const TrackElement& a, const TrackElement& b) {
+                                    return a.image_id == b.image_id;
+                                }),
+                    track.end());
+        if (track.size() < 2) return false;
+        out.X = bestX;
+        out.f = f;
+        return true;
+    }
+
+    // Registered images' feature rays, world frame, unit, float: a fisheye bearing
+    // is an iterative inversion and the filter wanted 166M a pass. Float error is
+    // far inside rayTolerance's slack; what passes is decided on exact bearings.
+    WorldRays worldRays(const ModelIndex& mi) {
+        WorldRays out(db_.images.size());
+        std::vector<uint32_t> imgs;
+        for (uint32_t i = 0; i < db_.images.size(); i++)
+            if (mi.img[i] && mi.img[i]->registered) imgs.push_back(i);
+        parallelFor(imgs.size(), 4, [&](size_t lo, size_t hi, std::vector<uint8_t>&) {
+            for (size_t j = lo; j < hi; j++) {
+                const uint32_t i = imgs[j];
+                const Mat3 Rt = transpose(mi.img[i]->pose.R);
+                const uint32_t n = feats_[i].count();
+                std::vector<float>& r = out[i];
+                r.resize(3 * (size_t)n);
+                for (uint32_t f = 0; f < n; f++) {
+                    Vec3 w = mul(Rt, mi.cam[i]->bearing(kp(i, f)));
+                    w = w * (1.0 / w.norm());
+                    r[3 * (size_t)f] = (float)w.x;
+                    r[3 * (size_t)f + 1] = (float)w.y;
+                    r[3 * (size_t)f + 2] = (float)w.z;
+                }
+            }
+        });
+        return out;
+    }
+
+    // The angle a reprojection tolerance can move a ray by: twice the tolerance
+    // over the focal, for a lens whose rim compresses the pixel scale.
+    double rayTolerance(const ModelIndex& mi, uint32_t img, double err_scale) const {
+        const Camera& c = *mi.cam[img];
+        return 2.0 * err_scale * opt_.max_reproj_error * mi.pixel_scale[img] / std::min(c.fx, c.fy);
+    }
+
+    // featureTrack's candidate bearings; each worker thread sizes and uses its own.
+    static std::vector<Vec3>& obs_bearing_scratch() {
+        static thread_local std::vector<Vec3> v;
+        return v;
+    }
+
+    void commitNewTrack(const NewTrack& t) {
+        rec_.addPoint3D(t.X, t.track);
+        // Each element joins a point. Completion's direct track edits leave these
+        // counts behind -- harmless: nothing ranks before rebuildScores().
+        for (const TrackElement& e : t.track) attachObservation(e.image_id, e.point2D_idx);
+    }
+
 
     // ---- global refinement: BA + filtering + image de-registration ----
     //
@@ -4284,37 +4430,99 @@ private:
     void completeAndRetriangulate() {
         const double err = opt_.retri_scale * opt_.max_reproj_error;  // x pixel_scale below
         ModelIndex mi = indexModel();
-        // "Is this image already on the track" as a dense flag rather than a
-        // std::set rebuilt (and heap-allocated) per point: there are hundreds
-        // of thousands of points and the sets were short-lived and tiny.
-        // Cleared by unsetting only what was set, so it stays O(track).
+        std::vector<std::pair<uint64_t, Point3D*>> pts;
+        pts.reserve(rec_.points3D.size());
+        for (auto& kv : rec_.points3D) pts.emplace_back(kv.first, &kv.second);
+        std::vector<uint32_t> imgs;
+        for (const auto& kv : rec_.images)
+            if (kv.second.registered) imgs.push_back(kv.first);
+
+        // Collected in parallel against the pass's starting state, committed in
+        // the serial order; an item whose claims an earlier commit took is redone
+        // then, so the result is the serial pass's (src/sfm/README.md, "Retriangulation").
+        std::vector<std::vector<TrackElement>> added(pts.size());
+        parallelFor(pts.size(), 256, [&](size_t lo, size_t hi, std::vector<uint8_t>& on_track) {
+            for (size_t i = lo; i < hi; i++) collectCompletion(mi, *pts[i].second, err, on_track,
+                                                                added[i]);
+        });
         std::vector<uint8_t> on_track(db_.images.size(), 0);
-        for (auto& kv : rec_.points3D) {
-            Point3D& pt = kv.second;
-            for (const TrackElement& e : pt.track) on_track[e.image_id] = 1;
-            for (size_t ti = 0; ti < pt.track.size(); ti++) {
-                const TrackElement e = pt.track[ti];  // copy: track grows below
-                for (const Correspondence& c : graph_.at(e.image_id, e.point2D_idx)) {
-                    Image& oi = *mi.img[c.image_id];
-                    if (!oi.registered || on_track[c.image_id] ||
-                        oi.point3D_ids[c.feature_idx] != kInvalidPoint3D)
-                        continue;
-                    if (reprojErrAt(mi, c.image_id, c.feature_idx, pt.xyz) <=
-                        err * mi.pixel_scale[c.image_id]) {
-                        pt.track.push_back({c.image_id, c.feature_idx});
-                        on_track[c.image_id] = 1;
-                        oi.point3D_ids[c.feature_idx] = kv.first;
-                    }
-                }
+        std::vector<TrackElement> redo;
+        for (size_t i = 0; i < pts.size(); i++) {
+            Point3D& pt = *pts[i].second;
+            bool clash = false;
+            for (const TrackElement& e : added[i])
+                clash = clash || mi.img[e.image_id]->point3D_ids[e.point2D_idx] != kInvalidPoint3D;
+            if (clash) collectCompletion(mi, pt, err, on_track, redo);
+            for (const TrackElement& e : clash ? redo : added[i]) {
+                pt.track.push_back(e);
+                mi.img[e.image_id]->point3D_ids[e.point2D_idx] = pts[i].first;
             }
-            for (const TrackElement& e : pt.track) on_track[e.image_id] = 0;
         }
-        for (auto& kv : rec_.images)
-            if (kv.second.registered) triangulateForImageAt(mi, kv.first, opt_.retri_scale);
+
+        std::vector<std::vector<std::vector<NewTrack>>> made(imgs.size());
+        {
+            const WorldRays rays = worldRays(mi);
+            parallelFor(imgs.size(), 4, [&](size_t lo, size_t hi, std::vector<uint8_t>&) {
+                std::vector<Correspondence> obs;
+                NewTrack t;
+                for (size_t i = lo; i < hi; i++) {
+                    made[i].resize(1);
+                    for (uint32_t f = 0; f < feats_[imgs[i]].count(); f++)
+                        if (featureTrack(mi, imgs[i], f, opt_.retri_scale, obs, t, &rays))
+                            made[i][0].push_back(t);
+                }
+            });
+        }
+        for (size_t i = 0; i < imgs.size(); i++)
+            commitCollected(mi, imgs[i], made[i], opt_.retri_scale);
         if (opt_.merge_tracks) {
             ProfTimer pt(g_map_prof.merge);
             g_map_prof.n_merged += mergeTracks(mi, opt_.retri_scale);
         }
+    }
+
+    // The observations track completion adds to `pt`: every correspondence of
+    // an element, transitively, that is free, on an image the track lacks, and
+    // reprojects within `err`. `on_track` is all zero on entry and on return.
+    void collectCompletion(const ModelIndex& mi, const Point3D& pt, double err,
+                           std::vector<uint8_t>& on_track, std::vector<TrackElement>& add) const {
+        add.clear();
+        for (const TrackElement& e : pt.track) on_track[e.image_id] = 1;
+        const size_t n0 = pt.track.size();
+        for (size_t ti = 0; ti < n0 + add.size(); ti++) {
+            const TrackElement e = ti < n0 ? pt.track[ti] : add[ti - n0];
+            for (const Correspondence& c : graph_.at(e.image_id, e.point2D_idx)) {
+                const Image& oi = *mi.img[c.image_id];
+                if (!oi.registered || on_track[c.image_id] ||
+                    oi.point3D_ids[c.feature_idx] != kInvalidPoint3D)
+                    continue;
+                if (reprojErrAt(mi, c.image_id, c.feature_idx, pt.xyz) <=
+                    err * mi.pixel_scale[c.image_id]) {
+                    add.push_back({c.image_id, c.feature_idx});
+                    on_track[c.image_id] = 1;
+                }
+            }
+        }
+        for (const TrackElement& e : pt.track) on_track[e.image_id] = 0;
+        for (const TrackElement& e : add) on_track[e.image_id] = 0;
+    }
+
+    // fn(lo, hi, scratch) over [0, n) in blocks, on the mapper's threads; each
+    // worker gets a zeroed flag buffer the size of the image table.
+    template <class F>
+    void parallelFor(size_t n, size_t block, F&& fn) {
+        const unsigned hc = std::thread::hardware_concurrency();
+        int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
+        nt = std::max(1, std::min<int>(nt, (int)((n + block - 1) / block)));
+        std::atomic<size_t> next{0};
+        auto worker = [&] {
+            std::vector<uint8_t> scratch(db_.images.size(), 0);
+            for (size_t b; (b = next.fetch_add(block)) < n;) fn(b, std::min(b + block, n), scratch);
+        };
+        if (nt == 1) return worker();
+        std::vector<std::thread> pool;
+        for (int t = 0; t < nt; t++) pool.emplace_back(worker);
+        for (std::thread& t : pool) t.join();
     }
 
     size_t countObservations() const {

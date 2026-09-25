@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "core/Env.h"
 #include "sfm/core/Log.h"
 
 // Camera model registry; must match the entry points in sfm/shaders/ba/ba.slang.
@@ -210,6 +211,70 @@ inline uint64_t pairEntryCount(const BAProblem& P) {
 }
 
 static const uint64_t kMaxPairEntries = 400ull << 20;  // 3.2 GB of entry data
+
+// Coarse-correction tables (cg.slang). A run is a track's observations in one
+// cluster of k frames (contiguous: tracks are sorted by image); each pair of a
+// point's runs u >= v is one entry, (first obs of u, first obs of v).
+template <class F>
+inline void forCoarseRunPairs(const BAProblem& P, uint32_t k, F&& fn) {
+    auto cl = [&](uint32_t o) { return P.image_frame[P.obs_image[o]] / k; };
+    std::vector<uint32_t> runs;
+    for (uint32_t p = 0; p < P.num_points; p++) {
+        runs.clear();
+        for (uint32_t o = P.obs_ranges[p]; o < P.obs_ranges[p + 1]; o++)
+            if (o == P.obs_ranges[p] || cl(o) != cl(o - 1)) runs.push_back(o);
+        for (size_t u = 0; u < runs.size(); u++)
+            for (size_t v = 0; v <= u; v++) {
+                const uint64_t cu = cl(runs[u]), cv = cl(runs[v]);
+                fn(cu * (cu + 1) / 2 + cv, runs[u], runs[v]);
+            }
+    }
+}
+
+inline uint64_t coarseEntryCount(const BAProblem& P, uint32_t k) {
+    uint64_t n = 0;
+    forCoarseRunPairs(P, k, [&](uint64_t, uint32_t, uint32_t) { n++; });
+    return n;
+}
+
+// Entries grouped by cluster pair: `key` holds each pair's range, indexed
+// cu (cu + 1) / 2 + cv.
+inline void buildCoarseEntries(const BAProblem& P, uint32_t k, std::vector<uint32_t>& ent,
+                               std::vector<uint32_t>& key) {
+    const uint64_t nc = (P.num_frames + k - 1) / k, nkeys = nc * (nc + 1) / 2;
+    key.assign(nkeys + 1, 0);
+    forCoarseRunPairs(P, k, [&](uint64_t kk, uint32_t, uint32_t) { key[kk + 1]++; });
+    for (uint64_t i = 0; i < nkeys; i++) key[i + 1] += key[i];
+    std::vector<uint32_t> fill(key.begin(), key.end() - 1);
+    ent.resize(2 * (size_t)key[nkeys]);
+    forCoarseRunPairs(P, k, [&](uint64_t kk, uint32_t a, uint32_t b) {
+        const uint32_t e = fill[kk]++;
+        ent[2 * (size_t)e] = a;
+        ent[2 * (size_t)e + 1] = b;
+    });
+}
+
+// Clusters as small as a coarse matrix of `max_dim` allows (7 dofs each), and
+// as large as keeps the entries under two an observation (long tracks span many
+// small clusters). False: fewer than 4 clusters, or SS_SFM_BA_COARSE=0.
+inline bool planCoarse(const BAProblem& P, uint32_t max_dim, uint32_t& k, uint32_t& dim,
+                       uint64_t& entries) {
+    k = dim = 0;
+    entries = 0;
+    const char* e = spirula::env("SFM_BA_COARSE");
+    if (e && std::atoi(e) == 0) return false;
+    const uint32_t nf = P.num_frames;
+    for (uint32_t kk = std::max<uint32_t>(2, (7 * nf + max_dim - 1) / max_dim);
+         (nf + kk - 1) / kk >= 4; kk *= 2) {
+        const uint64_t n = coarseEntryCount(P, kk);
+        if (n > 2 * (uint64_t)P.num_obs) continue;
+        k = kk;
+        dim = 7 * ((nf + kk - 1) / kk);
+        entries = n;
+        return true;
+    }
+    return false;
+}
 
 // Group observations by image (CSR) for the CG path's per-camera kernels.
 inline void buildCamTables(BAProblem& P) {

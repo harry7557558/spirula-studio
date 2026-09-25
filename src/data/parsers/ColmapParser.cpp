@@ -757,19 +757,33 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                             .c_str());
     }
 
-    // ---- Assemble frames sorted by image filename ----------------------
-    std::vector<const ColmapImage*> frames;
+    // ---- Frames sorted by image path. Names are relative to image_dir, or to
+    // the dataset ("images/x.png") where the file is; folded lexically, so an
+    // "x/../" through a missing directory still resolves. -------------------
+    const std::string image_dir =
+        (fs::path(dataset_dir) / cfg.image_dir).lexically_normal().string();
+    struct Frame { const ColmapImage* im; std::string path, sort_key, aux_name; };
+    std::vector<Frame> frames;
     frames.reserve(images.size());
-    for (const auto& [id, im] : images) frames.push_back(&im);
+    for (const auto& [id, im] : images) {
+        std::error_code ec;
+        fs::path path = (fs::path(image_dir) / im.name).lexically_normal();
+        const fs::path in_dataset = (fs::path(dataset_dir) / im.name).lexically_normal();
+        if (!fs::exists(path, ec) && fs::exists(in_dataset, ec)) path = in_dataset;
+        std::string aux_name = dsparse::relative_under(path.string(), image_dir);
+        if (aux_name.empty())
+            aux_name = dsparse::relative_under(path.string(), dataset_dir);
+        frames.push_back({&im, path.string(), path.generic_string(), std::move(aux_name)});
+    }
     std::sort(frames.begin(), frames.end(),
-              [](const ColmapImage* a, const ColmapImage* b) { return a->name < b->name; });
+              [](const Frame& a, const Frame& b) { return a.sort_key < b.sort_key; });
 
     // ---- All-frame c2w (needed for outlier filter + train_frame_scale) ----
     int64_t n_all = (int64_t)frames.size();
     std::vector<double> c2w_all(n_all * 12);
     std::vector<double> positions(n_all * 3);
     for (int64_t i = 0; i < n_all; i++) {
-        colmap_to_c2w(*frames[i], &c2w_all[i*12]);
+        colmap_to_c2w(*frames[i].im, &c2w_all[i*12]);
         for (int r = 0; r < 3; r++) positions[i*3 + r] = c2w_all[i*12 + r*4 + 3];
     }
 
@@ -777,7 +791,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     {
         std::vector<char> keep = dsparse::outlier_keep_mask(
             positions, n_all, cfg.outlier_threshold);
-        std::vector<const ColmapImage*> kept;
+        std::vector<Frame> kept;
         std::vector<double> kept_c2w;
         for (int64_t i = 0; i < n_all; i++) {
             if (!keep[i]) continue;
@@ -811,28 +825,9 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     // frames (train + eval, matching the Python dataparser, which splits
     // after normalization). No applied_transform on the COLMAP path, so
     // train_to_normalized = inv(T_n_from_camera). -----------------------------
-    fs::path image_dir = fs::path(dataset_dir) / cfg.image_dir;
-
-    // Relative to image_dir, the way COLMAP writes it. Some exporters write it
-    // relative to the dataset instead ("images/x.png"), which is honoured when
-    // that is where the file is.
-    std::vector<std::string> rel_names(n_all);
-    for (int64_t i = 0; i < n_all; i++) {
-        rel_names[i] = frames[i]->name;
-        std::error_code ec;
-        const fs::path in_dataset = fs::path(dataset_dir) / frames[i]->name;
-        if (fs::exists(image_dir / frames[i]->name, ec) ||
-            !fs::exists(in_dataset, ec))
-            continue;
-        const fs::path rel = in_dataset.lexically_normal().lexically_relative(
-            image_dir.lexically_normal());
-        if (!rel.empty() && *rel.begin() != "..") rel_names[i] = rel.generic_string();
-    }
-
     // Read before the split, like everything else the whole set decides.
     std::vector<std::string> all_paths(n_all);
-    for (int64_t i = 0; i < n_all; i++)
-        all_paths[i] = (image_dir / rel_names[i]).string();
+    for (int64_t i = 0; i < n_all; i++) all_paths[i] = frames[i].path;
     const std::vector<uint8_t> exif_o =
         dsparse::read_exif_orientations(cfg.exif_orientation, all_paths);
     // `apply` turns the pixels, so the levelling has nothing left to correct.
@@ -846,7 +841,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     float train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
 
     // ---- eval_mode train subset --------------------------------------------
-    std::vector<int64_t> subset = dsparse::train_subset(n_all, rel_names, cfg);
+    std::vector<int64_t> subset = dsparse::train_subset(n_all, all_paths, cfg);
 
     ParsedDataset ds;
     const int64_t N = (int64_t)subset.size();
@@ -891,20 +886,19 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
 
     for (int64_t j = 0; j < N; j++) {
         const int64_t i = subset[j];
-        const ColmapImage& im = *frames[i];
-        const std::string& name = rel_names[i];
+        const ColmapImage& im = *frames[i].im;
+        const std::string& name = frames[i].aux_name;
         auto cam_it = cameras.find(im.camera_id);
         if (cam_it == cameras.end())
-            throw std::runtime_error("ColmapParser: image " + name +
+            throw std::runtime_error("ColmapParser: image " + im.name +
                                      " references missing camera id " +
                                      std::to_string(im.camera_id));
         const ColmapCamera& cam = cam_it->second;
 
-        fs::path img_path = image_dir / name;
-        if (cfg.require_image_files && !fs::exists(img_path))
-            throw std::runtime_error("ColmapParser: " + img_path.string() +
+        if (cfg.require_image_files && !fs::exists(frames[i].path))
+            throw std::runtime_error("ColmapParser: " + frames[i].path +
                                      " does not exist (set --image-dir if needed)");
-        ds.image_filenames.push_back(img_path.string());
+        ds.image_filenames.push_back(frames[i].path);
 
         const int turns =
             exif_turn ? sfm::exifTransform(exif_o[i]).turns_cw : 0;

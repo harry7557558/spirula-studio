@@ -234,13 +234,14 @@ void assign_val_split(ParsedDataset& ds, float validation_fraction) {
 std::string find_aux_file(const std::string& aux_dir_s, const std::string& rel_name,
                           const char* suffix_tag) {
     fs::path aux_dir(aux_dir_s);
+    const fs::path rel = fs::path(rel_name).lexically_normal();
+    if (rel.empty() || rel.is_absolute() || *rel.begin() == "..") return "";
     if (!fs::is_directory(aux_dir)) return "";
-    fs::path rel(rel_name);
     std::string stem_rel = (rel.parent_path() / rel.stem()).string();
     const std::string exts[] = {".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG"};
     std::vector<std::string> candidates;
     for (const auto& e : exts) {
-        candidates.push_back(rel_name + e);   // image.jpg.png
+        candidates.push_back(rel.string() + e);   // image.jpg.png
         candidates.push_back(stem_rel + e);   // image.png
     }
     candidates.push_back(stem_rel + "_" + suffix_tag + ".png");   // image_mask.png
@@ -249,6 +250,14 @@ std::string find_aux_file(const std::string& aux_dir_s, const std::string& rel_n
         if (fs::exists(p)) return p.string();
     }
     return "";
+}
+
+
+std::string relative_under(const std::string& path, const std::string& dir) {
+    const fs::path rel = fs::path(path).lexically_normal().lexically_relative(
+        fs::path(dir).lexically_normal());
+    if (rel.empty() || *rel.begin() == "..") return "";
+    return rel.generic_string();
 }
 
 

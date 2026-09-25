@@ -493,9 +493,13 @@ inline double runGlobalBA(Reconstruction& rec, const BundleOptions& bopt) {
     if (MapProf::enabled())
         slog::diag(slog::Tag::Map,
                    "[prof] BA #%ld: %u img %u pt %u obs | build %.3f init %.3f solve %.3f "
-                   "write %.3f s | %d LM iters",
+                   "write %.3f s | %d LM iters, %s%s",
                    (long)g_map_prof.n_ba, P.num_images, P.num_points, P.num_obs, t_build, t_init,
-                   t_solve, t_write, stats.iterations);
+                   t_solve, t_write, stats.iterations, stats.solver,
+                   stats.cg_solves ? (" " + std::to_string((int)std::lround(
+                                                 stats.cg_iters_total / stats.cg_solves)) +
+                                      " its/solve").c_str()
+                                   : "");
     return stats.final_cost;
 }
 

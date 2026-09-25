@@ -52,6 +52,7 @@ SolverOptions baseOptions(RealCfg real, int device, bool cg) {
     o.verbose = false;
     o.solver = cg ? SolverSel::CG : SolverSel::Dense;
     o.cg_tol = 1e-10;
+    o.cg_model_tol = 0;
     o.cg_max_iters = 3000;
     o.cg_fallback = CgFallback::Off;
     return o;

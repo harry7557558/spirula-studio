@@ -393,15 +393,6 @@ void invert3x3d(const double m[3][3], double out[3][3]) {
     out[2][0] = (d*i - e*h)*inv; out[2][1] = (b*h - a*i)*inv; out[2][2] = (a*e - b*d)*inv;
 }
 
-// Path of `file_path` relative to the configured image dir (for aux-buffer
-// probing); falls back to the full relative path when not under image_dir.
-std::string rel_to_image_dir(const std::string& file_path, const std::string& image_dir) {
-    std::string prefix = image_dir;
-    if (!prefix.empty() && prefix.back() != '/') prefix += '/';
-    if (file_path.rfind(prefix, 0) == 0) return file_path.substr(prefix.size());
-    return file_path;
-}
-
 }  // namespace
 
 
@@ -431,7 +422,7 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         throw std::runtime_error("NerfstudioParser: no frames in transforms.json");
 
     // ---- Collect frames; skip .webp / missing files ---------------------
-    struct Frame { const JsonValue* j; std::string file_path; std::string abs; };
+    struct Frame { const JsonValue* j; std::string file_path, abs, sort_key; };
     std::vector<Frame> frames;
     for (const JsonValue& fr : jframes->arr) {
         const JsonValue* fp = fr.find("file_path");
@@ -443,19 +434,19 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
                                                {file_path}).c_str());
             continue;
         }
-        fs::path abs = root / file_path;
+        const fs::path abs = (root / file_path).lexically_normal();
         if (cfg.require_image_files && !fs::exists(abs)) {
             std::fprintf(stderr, "%s %s\n", dmsg::word_warning.get(),
                          spirula::i18n::format(dmsg::image_missing,
                                                {file_path}).c_str());
             continue;
         }
-        frames.push_back({&fr, file_path, abs.string()});
+        frames.push_back({&fr, file_path, abs.string(), abs.generic_string()});
     }
     if (frames.empty())
         throw std::runtime_error("NerfstudioParser: no usable frames");
     std::sort(frames.begin(), frames.end(),
-              [](const Frame& a, const Frame& b) { return a.abs < b.abs; });
+              [](const Frame& a, const Frame& b) { return a.sort_key < b.sort_key; });
 
     // ---- All-frame c2w -------------------------------------------------------
     auto read_c2w = [](const JsonValue& fr, double* out12) {
@@ -758,19 +749,20 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         // probing as fallback (_add_auxiliary_buffers). Unlike the Python
         // parser (which requires all-or-none), per-image absence is allowed
         // -- the C++ DataManager's convention ("" = none for this image).
-        std::string rel = rel_to_image_dir(F.file_path, cfg.image_dir);
+        std::string rel = dsparse::relative_under(F.abs, (root / cfg.image_dir).string());
+        if (rel.empty()) rel = dsparse::relative_under(F.abs, root.string());
         if (const JsonValue* v = fr.find("mask_path"))
-            mask_files[j] = (root / v->as_string()).string();
+            mask_files[j] = (root / v->as_string()).lexically_normal().string();
         else
             mask_files[j] = dsparse::find_aux_file(
                 (root / cfg.mask_dir).string(), rel, "mask");
         if (const JsonValue* v = fr.find("depth_file_path"))
-            depth_files[j] = (root / v->as_string()).string();
+            depth_files[j] = (root / v->as_string()).lexically_normal().string();
         else
             depth_files[j] = dsparse::find_aux_file(
                 (root / cfg.depth_dir).string(), rel, "depth");
         if (const JsonValue* v = fr.find("normal_file_path"))
-            normal_files[j] = (root / v->as_string()).string();
+            normal_files[j] = (root / v->as_string()).lexically_normal().string();
         else
             normal_files[j] = dsparse::find_aux_file(
                 (root / cfg.normal_dir).string(), rel, "normal");
