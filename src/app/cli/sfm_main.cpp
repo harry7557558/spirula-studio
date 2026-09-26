@@ -712,6 +712,8 @@ static int cmdMatch(int argc, char** argv) {
 
     VerifyCalibration calib;
     calib.setup = cfg.camera;
+    const SensorCaptures sensors = loadSensorCaptures(cfg, !cfg.quiet);
+    calib.sensors = &sensors;
     std::vector<FeatureSet> feats;
     MatchesDatabase db;
     MatchStats stats;
@@ -900,7 +902,14 @@ static int cmdMap(int argc, char** argv) {
         L::fail(Tag::Map, M::rig_bad, {e.what()});
         return 1;
     }
-    Mapper mapper(db, feats, opt, cs.ids, &rigs, &seqs);
+    // The sensors, calibrated against the gyro on the verified pairs.
+    const SensorCaptures sensors = loadSensorCaptures(cfg, opt.verbose);
+    std::unique_ptr<TelemetryPriors> priors =
+        cfg.sensor_map ? makeSensorPriors(cfg, sensors, db, cs.ids) : nullptr;
+    if (priors)
+        calibrateSensorPriorsFromDatabase(*priors, db, feats, perImageCameras(cs, feats.size()),
+                                          cfg.twoview, cfg.threads, opt.verbose);
+    Mapper mapper(db, feats, opt, cs.ids, &rigs, &seqs, priors.get());
     std::vector<Reconstruction> models;
     AssembleStats ast;
     if (cfg.resume.empty()) {
@@ -1029,7 +1038,7 @@ static int cmdMap(int argc, char** argv) {
         printExtraModels(models, feats);
     }
     std::vector<sfm::ModelGauge> map_gauge;
-    const bool map_metric = fixGauge(models, cfg, cfg.image_dir, opt.verbose, map_gauge);
+    const bool map_metric = fixGauge(models, cfg, cfg.image_dir, opt.verbose, map_gauge, &sensors);
     recolorPoints(models, cfg);
     splitCamerasBySize(models, feats);
     if (!output.empty()) writeModels(models, output, opt.verbose, map_gauge, &rigs);

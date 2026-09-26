@@ -67,7 +67,7 @@ static const uint kNoMember = 0xFFFFFFFFu;
                                                             // [2*a+row], offset u_jc_off
 [[vk::binding(28)]] RWStructuredBuffer<Real> u_res;         // weighted residual (2 per obs)
 
-// ---- rigs (bindings 29..44 are cg.slang's) ----
+// ---- rigs (bindings 29..44 are cg.slang's, 47..51 prior.slang's) ----
 [[vk::binding(45)]] StructuredBuffer<uint4> u_member_info;  // (per member) x=ext offset, y=ext column base, z=n_free, w=free-parameter mask
 [[vk::binding(46)]] RWStructuredBuffer<Real> u_exts;        // (6 per member) cam_from_rig
 
@@ -763,3 +763,4 @@ void jac_thin_prism_fisheye_rig(uint3 t : SV_DispatchThreadID) { jac_impl<ThinPr
 
 #include "cholesky.slang"
 #include "cg.slang"
+#include "prior.slang"

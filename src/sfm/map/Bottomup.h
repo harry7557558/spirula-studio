@@ -137,14 +137,14 @@ inline std::vector<Reconstruction> bottomUpReconstruct(Mapper& mapper, const Mat
     st.atoms = atoms.size();
     for (const std::vector<uint32_t>& a : atoms) st.atom_images += a.size();
     if (opt.verbose) {
-        size_t small = SIZE_MAX, big = 0;
+        size_t smallest = SIZE_MAX, biggest = 0;
         for (const std::vector<uint32_t>& a : atoms) {
-            small = std::min(small, a.size());
-            big = std::max(big, a.size());
+            smallest = std::min(smallest, a.size());
+            biggest = std::max(biggest, a.size());
         }
         slog::diag(slog::Tag::Map,
                    "[bup] %zu image(s) -> %zu atom(s) of %zu..%zu images (%.2fx cover)",
-                   db.images.size(), atoms.size(), atoms.empty() ? 0 : small, big,
+                   db.images.size(), atoms.size(), atoms.empty() ? 0 : smallest, biggest,
                    db.images.empty() ? 0.0 : (double)st.atom_images / (double)db.images.size());
     }
 
@@ -162,7 +162,7 @@ inline std::vector<Reconstruction> bottomUpReconstruct(Mapper& mapper, const Mat
     std::vector<Reconstruction> models =
         reconstructAtoms(db, feats, mapper.options(), mapper.cameraIds(),
                          mapper.startingCameras(), atoms, ao, as, mapper.rigs(),
-                         mapper.sequences());
+                         mapper.sequences(), mapper.priors());
     st.t_atoms = as.secs;
     st.models_from_atoms = models.size();
     st.atom_threads = as.threads;

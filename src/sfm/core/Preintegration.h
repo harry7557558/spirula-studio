@@ -25,27 +25,6 @@ struct ImuNoise {
     double accel = 2e-2;   // m/s^2/sqrt(Hz)
 };
 
-inline Mat3 so3Exp(const Vec3& phi) { return angleAxisToRotation(phi); }
-inline Vec3 so3Log(const Mat3& R) { return rotationToAngleAxis(R); }
-
-// Right Jacobian of SO(3): Exp(phi + d) ~ Exp(phi) Exp(Jr(phi) d).
-inline Mat3 so3RightJacobian(const Vec3& phi) {
-    const double th = phi.norm();
-    const Mat3 K = crossMatrix(phi);
-    const Mat3 K2 = mul(K, K);
-    double a, b;
-    if (th < 1e-5) {
-        a = 0.5;
-        b = 1.0 / 6.0;
-    } else {
-        a = (1.0 - std::cos(th)) / (th * th);
-        b = (th - std::sin(th)) / (th * th * th);
-    }
-    Mat3 J = mat3Identity();
-    for (int i = 0; i < 9; i++) J[i] += -a * K[i] + b * K2[i];
-    return J;
-}
-
 inline Mat3 mat3Add(const Mat3& A, const Mat3& B) {
     Mat3 C;
     for (int i = 0; i < 9; i++) C[i] = A[i] + B[i];

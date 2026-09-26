@@ -177,6 +177,14 @@ struct SfmConfig {
     std::string telemetry;
     std::string sensor_gauge = "auto";
     std::vector<TelemetryInput> telemetry_inputs;   // manifest entries + --telemetry
+    // The same sensors inside the reconstruction (sfm/map/SensorPriors.h):
+    // verification with the gyro's rotation fixed, registrations and solves
+    // held to the sensors, pairs within `sensor_pair_radius` metres of GPS.
+    bool sensor_verify = true;
+    bool sensor_map = true;
+    bool sensor_pairs = true;
+    double sensor_pair_radius = 20.0;
+    double sensor_max_dt = 3.0;   // seconds a gyro rotation prior may span
     // Cameras farther from the metric fit than this fraction of the reference
     // positions' RMS radius are outliers too, so a kilometre-long flight is
     // not judged by a threshold made for a walk (map/MetricGauge.h).
@@ -446,10 +454,20 @@ struct SfmConfig {
       "mapper", 0, 1000000, "", metric_max_error)                                                  \
     F(metric_max_error_frac, "metric-max-error-frac", CMD_AUTO | CMD_MAP | CMD_MERGE,              \
       Tier::Advanced, "mapper", 0, 1, "", metric_max_error_frac)                                   \
-    F(telemetry, "telemetry", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0, "",  \
-      telemetry)                                                                                   \
+    F(telemetry, "telemetry", CMD_AUTO | CMD_MATCH | CMD_MAP | CMD_MERGE, Tier::Advanced,           \
+      "mapper", 0, 0, "", telemetry)                                                               \
     F(sensor_gauge, "sensor-gauge", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0,   \
       0, "auto|up|none", sensor_gauge)                                                             \
+    F(sensor_verify, "sensor-verify", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper", 0, 0, "",    \
+      sensor_verify)                                                                               \
+    F(sensor_map, "sensor-map", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "",            \
+      sensor_map)                                                                                  \
+    F(sensor_pairs, "sensor-pairs", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper", 0, 0, "",      \
+      sensor_pairs)                                                                                \
+    F(sensor_pair_radius, "sensor-pair-radius", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper",    \
+      0, 100000, "", sensor_pair_radius)                                                           \
+    F(sensor_max_dt, "sensor-max-dt", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "mapper",    \
+      0.01, 1000, "", sensor_max_dt)                                                               \
     F(mapper.min_tri_angle_deg, "min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,  \
       90, "", min_tri_angle)                                                                       \
     F(mapper.init_min_tri_angle_deg, "init-min-tri-angle", CMD_AUTO | CMD_MAP, Tier::Advanced,     \

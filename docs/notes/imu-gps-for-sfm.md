@@ -557,10 +557,12 @@ each photo folder says how many of its files have an EXIF position, and a
 **Sensors** block under Advanced holds both controls: `--sensor-gauge` for the
 video track and `--metric-gps` for the photographs.
 
-## 6. Improving the reconstruction itself (not in scope, recorded for later)
+## 6. Improving the reconstruction itself
 
-Using the sensors to change what the mapper does rather than how the result
-is written. Each is a known technique; the cost is in the solver.
+**Implemented 2026-09-25** as `docs/notes/sensor-priors.md`: the first,
+second, fourth and fifth items below, plus the accelerometer's scale as a
+bundle-adjustment factor. The list is kept as the plan it was; the third item
+(full visual-inertial BA with velocity states) and the sixth are still open.
 
 - **Gyro-predicted relative rotation for pair verification and seeding.**
   Two frames a second apart have a relative rotation the gyro knows to a

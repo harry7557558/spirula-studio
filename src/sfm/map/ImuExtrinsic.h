@@ -136,15 +136,34 @@ inline Mat3 solveNullSpace(const std::vector<Constraint>& cs, double& lam0, doub
 
 }  // namespace extrinsic_detail
 
-// `frames` is one group, time-sorted, with up votes filled in. `mean_up_w`
-// is the cameras' own mean up axis in world coordinates, which settles the
-// sign the constraints leave open.
-inline ExtrinsicFit calibrateImuExtrinsic(const std::vector<SensorFrame>& frames,
-                                          const SensorTimeline& tl, const Vec3& mean_up_w) {
+// A relative camera rotation between two instants: A = R(t0) R(t1)^T over
+// world -> camera rotations, from a model's poses or from a verified pair.
+struct RotationPairObs {
+    double t0 = 0, t1 = 0;
+    Mat3 A;
+};
+
+inline std::vector<RotationPairObs> consecutiveRotationPairs(const std::vector<SensorFrame>& frames) {
+    std::vector<RotationPairObs> out;
+    for (size_t k = 1; k < frames.size(); k++) {
+        const SensorFrame& fj = frames[k - 1];
+        const SensorFrame& fk = frames[k];
+        if (fj.group != fk.group || fj.capture != fk.capture) continue;
+        out.push_back({fj.t, fk.t, mul(fj.R, transpose(fk.R))});
+    }
+    return out;
+}
+
+// The hand-eye problem over `rot`, plus gravity pairs from the `frames` that
+// carry up votes and poses (empty before mapping, when only two-view
+// rotations exist). `mean_up_w` settles the sign the constraints leave open.
+inline ExtrinsicFit calibrateImuExtrinsicFrom(const std::vector<RotationPairObs>& rot,
+                                              const std::vector<SensorFrame>& frames,
+                                              const SensorTimeline& tl, const Vec3& mean_up_w) {
     using namespace extrinsic_detail;
     ExtrinsicFit best;
     best.frames = (int)frames.size();
-    if (frames.size() < 3) {
+    if (rot.size() + frames.size() < 3) {
         best.reason = ExtrinsicFail::Frames;
         return best;
     }
@@ -155,15 +174,13 @@ inline ExtrinsicFit calibrateImuExtrinsic(const std::vector<SensorFrame>& frames
         if (sign < 0 && attitude_only) break;
         std::vector<Constraint> cs;
         int rot_pairs = 0, grav_pairs = 0;
-        for (size_t k = 1; k < frames.size(); k++) {
-            const SensorFrame& fj = frames[k - 1];
-            const SensorFrame& fk = frames[k];
-            const double dt = fk.t - fj.t;
+        for (const RotationPairObs& rp : rot) {
+            const double dt = rp.t1 - rp.t0;
             if (dt < 0.02 || dt > 3.0) continue;
             Mat3 B;
-            if (!tl.rotationBetween(fj.t, fk.t, B, sign)) continue;
+            if (!tl.rotationBetween(rp.t0, rp.t1, B, sign)) continue;
             Constraint c;
-            c.A = mul(fj.R, transpose(fk.R));
+            c.A = rp.A;
             c.B = B;
             rowsAXminusXB(c.A, c.B, c.rows);
             c.nrows = 9;
@@ -252,6 +269,8 @@ inline ExtrinsicFit calibrateImuExtrinsic(const std::vector<SensorFrame>& frames
         f.gap = lam1 / std::max(lam0, 1e-12 * trace);
         f.degenerate = f.gap < 3.0;
         // The sign: votes through X must agree with the cameras' mean up.
+        // Rotation pairs alone cannot tell X from -X; that is left for a
+        // caller with poses (SensorPriors.h settles it per model).
         double agree = 0;
         for (const SensorFrame& fr : frames)
             if (fr.up.ok) agree += mul(transpose(fr.R), mul(X, fr.up.up)).dot(mean_up_w);
@@ -289,9 +308,21 @@ inline ExtrinsicFit calibrateImuExtrinsic(const std::vector<SensorFrame>& frames
     return best;
 }
 
+// `frames` is one group, time-sorted, with up votes filled in.
+inline ExtrinsicFit calibrateImuExtrinsic(const std::vector<SensorFrame>& frames,
+                                          const SensorTimeline& tl, const Vec3& mean_up_w) {
+    if (frames.size() < 3) {
+        ExtrinsicFit f;
+        f.frames = (int)frames.size();
+        f.reason = ExtrinsicFail::Frames;
+        return f;
+    }
+    return calibrateImuExtrinsicFrom(consecutiveRotationPairs(frames), frames, tl, mean_up_w);
+}
+
 // The IMU clock offset against the video, by matching the rotation ANGLE
-// between consecutive frames -- invariant to the extrinsic, so it runs
-// before the calibration. 0 with `found` false when the data has no minimum.
+// between two instants -- invariant to the extrinsic, so it runs before the
+// calibration. 0 with `found` false when the data has no minimum.
 struct TimeOffsetFit {
     bool found = false;
     double offset = 0;      // seconds to add to video times
@@ -299,23 +330,20 @@ struct TimeOffsetFit {
     int pairs = 0;
 };
 
-inline TimeOffsetFit estimateTimeOffset(const std::vector<SensorFrame>& frames,
-                                        const SensorTimeline& tl, double range = 0.2) {
+inline TimeOffsetFit estimateTimeOffsetFrom(const std::vector<RotationPairObs>& rot,
+                                            const SensorTimeline& tl, double range = 0.2) {
     using namespace extrinsic_detail;
     TimeOffsetFit fit;
     struct Pair { double t0, t1, vis; };
     // 25 pairs of a fragmented ride gave -111 ms and 39 ms on the same file.
     constexpr size_t kMinPairs = 30;
     std::vector<Pair> pairs;
-    for (size_t k = 1; k < frames.size(); k++) {
-        const SensorFrame& a = frames[k - 1];
-        const SensorFrame& b = frames[k];
-        if (a.group != b.group || a.capture != b.capture) continue;
-        const double dt = b.t - a.t;
+    for (const RotationPairObs& rp : rot) {
+        const double dt = rp.t1 - rp.t0;
         if (dt < 0.02 || dt > 3.0) continue;
-        const double vis = rotAngleDeg(mul(a.R, transpose(b.R)));
+        const double vis = rotAngleDeg(rp.A);
         if (vis < 2.0) continue;
-        pairs.push_back({a.t, b.t, vis});
+        pairs.push_back({rp.t0, rp.t1, vis});
     }
     fit.pairs = (int)pairs.size();
     if (pairs.size() < kMinPairs) return fit;
@@ -355,6 +383,11 @@ inline TimeOffsetFit estimateTimeOffset(const std::vector<SensorFrame>& frames,
     fit.found = fit.gain > 0.2;
     fit.offset = fit.found ? best_d : 0.0;
     return fit;
+}
+
+inline TimeOffsetFit estimateTimeOffset(const std::vector<SensorFrame>& frames,
+                                        const SensorTimeline& tl, double range = 0.2) {
+    return estimateTimeOffsetFrom(consecutiveRotationPairs(frames), tl, range);
 }
 
 // The world up every frame votes for, robustly averaged.
