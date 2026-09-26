@@ -1405,13 +1405,19 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             }
     }
     // The step's bar covers the stencil pass as well as segmentation, so both
-    // are planned before either runs.
+    // are planned before either runs. A stencil the built-in masker folds in
+    // is not a pass: planned and dropped afterwards, it doubled the total.
+    const bool folds = job.mask_enable && !job.force_external_masking &&
+                       backends().builtin_masking;
     std::vector<int64_t> stencil_planned(job.inputs.size(), 0);
-    for (size_t i = 0; i < job.inputs.size(); i++)
+    for (size_t i = 0; i < job.inputs.size(); i++) {
+        if (folds && !per[i].have_masks && !job.inputs[i].stencil.empty())
+            continue;
         if (!job.inputs[i].stencil.empty() || !per[i].merge_from.empty()) {
             stencil_planned[i] = count_images(per[i].images, per[i].masks);
             _masks_tally.plan(stencil_planned[i]);
         }
+    }
 
     if (job.mask_enable) {
         for (size_t i = 0; i < job.inputs.size(); i++) {
