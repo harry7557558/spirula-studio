@@ -701,6 +701,9 @@ std::string train_config_unsupported(const TrainConfig& c) {
 
 // Unported-feature guards: fail early rather than ignore a flag.
 void TrainerSession::check_config() {
+    // Here rather than in the front ends: this is the copy the run uses, and
+    // the one phase every front end goes through before anything else.
+    train_apply_steps_scaler(cfg);
     if (std::string what = train_config_unsupported(cfg); !what.empty())
         throw std::runtime_error(what);
     if (!cfg.init_ply.empty() && !cfg.resume.empty())
