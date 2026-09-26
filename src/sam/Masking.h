@@ -1,22 +1,14 @@
 #pragma once
-// Prompt-to-mask policy, shared by ssam-cli and ssam-extract.
-//
-// This is the semantic layer reference/scripts/mask.py implements in
-// Python, kept in one place so the two tools cannot drift:
-//
-//   * several positive phrases, semicolon separated, unioned;
-//   * negative phrases carved back out -- a region matching one is KEPT even
-//     when it also matches a positive phrase;
-//   * the output mask says what to KEEP, so by default the prompted objects
-//     come out black and everything else white. `keep_prompted` flips that,
-//     for the case where the prompt names the subject rather than a distractor;
-//   * a longest-side cap on what the model sees, with the mask returned at the
-//     source resolution.
-//
-// It also covers the visual path, where there is no text at all and instances
-// are seeded from clicks -- see SeedPrompt.
+// Prompt-to-mask policy, shared by the CLI, the GUI's preview and its run:
+// positive phrases unioned; negative ones carved back out (a region matching
+// one is KEPT); the mask says what to keep, so prompted objects come out black
+// unless `keep_prompted`; a longest-side cap on what the model sees. Also the
+// visual path (clicks, SeedPrompt) and the two non-SAM models, BiRefNet's
+// subject and Grounding DINO's boxes (MaskOptions). src/sam/README.md.
 
 #include "sam/Sam.h"
+
+#include <cstdint>
 
 #include <memory>
 #include <string>
@@ -44,7 +36,14 @@ struct SeedPrompt {
 };
 
 struct MaskOptions {
+    // A SAM checkpoint, or a BiRefNet one (id or path): BiRefNet masks the
+    // image's main subject and reads no prompt -- text and clicks are ignored.
     std::string model;
+    // Grounding DINO (id or path). Set, it finds the text prompts' boxes and
+    // `model` segments them -- lang-segment-anything, which gives a SAM 2
+    // checkpoint words. Every frame is detected on its own; clicks still track.
+    std::string detector;
+    float detector_threshold = 0.3f;   // a box's best token probability
     // The device request, in the spelling core/VulkanDeviceSelection.h parses:
     // "auto", an ordinal, a name substring, or "uuid:<32 hex>". Empty leaves
     // SS_VK_DEVICE and then Auto in charge; a bad value fails the run.
@@ -94,6 +93,10 @@ void accumulate_dilated(const Mask& mask, int radius, std::vector<uint8_t>& hit)
 void compose_hit(const Result& positive, const Result& negative,
                  float dilate_ratio, std::vector<uint8_t>& hit);
 
+// Whether `model` (id or path) is a BiRefNet checkpoint: the mask is the
+// subject, so a job needs neither prompt nor clicks.
+bool is_subject_model(const std::string& model);
+
 class Masker {
 public:
     Masker();
@@ -118,6 +121,10 @@ public:
 
     const std::string& lastError() const;
     sam::Session& session();
+    // Whether init() chose BiRefNet: the mask is the subject, no prompt used.
+    bool subjectMode() const;
+    // Returns every model's weights to the device; init() loads them again.
+    void unload();
 
 private:
     struct Impl;

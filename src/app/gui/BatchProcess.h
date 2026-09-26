@@ -167,9 +167,12 @@ struct BatchCapabilities {
     bool colmap = false;
     bool masking = false;         // segmentation is compiled in and usable
     bool geometry = false;        // `spirula geometry` is available
-    // Is that checkpoint already on disk? A batch cannot stop to accept a
-    // licence or wait on a 2 GB download, so a missing one is found here.
-    std::function<bool(const std::string&)> mask_model_ready;
+    // Is that checkpoint (and its text detector) already on disk? A batch cannot
+    // stop to accept a licence or wait on a 2 GB download, so a missing one is
+    // found here.
+    std::function<bool(const std::string&, const std::string&)> mask_model_ready;
+    // Does it read the text prompt? BiRefNet needs none, and runs without one.
+    std::function<bool(const std::string&)> mask_model_prompted;
     std::function<bool(const std::string&)> geometry_model_ready;
 };
 

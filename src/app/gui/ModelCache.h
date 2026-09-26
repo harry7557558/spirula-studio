@@ -30,6 +30,19 @@
 
 namespace gui {
 
+// What a masking run segments with. Grounded is a SAM checkpoint with no text
+// tower paired with a TextDetector, which turns the prompt into boxes
+// (lang-segment-anything); Subject is BiRefNet, which reads no prompt.
+enum class MaskModelKind { Sam, Grounded, Subject };
+
+// One file of a TextDetector.
+struct ExtraFile {
+    const char* file;     // basename in the cache directory
+    const char* url;
+    const char* mirror;
+    uint64_t    bytes;
+};
+
 // A checkpoint the GUI can offer to fetch.
 struct ModelEntry {
     const char* id;          // stable key used in the settings file
@@ -46,12 +59,29 @@ struct ModelEntry {
     // fallback path uses it -- the built-in masker is handed a file -- but it
     // has to name the SAME model the user picked, or a run that falls back
     // quietly changes which network produced the masks.
-    const char* legacy_name;
+    const char* legacy_name;   // "" where the Python fallback has no equivalent
+    MaskModelKind kind = MaskModelKind::Sam;
+    const char* url = nullptr;       // null: sam3.cpp's repository + `file`
+    const char* mirror = nullptr;    // null: the project's mirror, under `file`
 };
 
-// Ordered best-default-first; index 0 is what a fresh install preselects.
+// The order the combo lists them in; the default is GuiApp's, not index 0.
 const std::vector<ModelEntry>& model_catalog();
 const ModelEntry* find_model(const std::string& id);
+
+// Words for a checkpoint that has none: the detector finds boxes, the SAM
+// model cuts them out. Picked in a second combo; its licence family is "gdino".
+struct TextDetector {
+    const char* id;          // "gdino-tiny", what gdino::resolve_model takes
+    const ::spirula::i18n::Msg* label;
+    const ::spirula::i18n::Msg* blurb;
+    const ExtraFile* weights;
+    const ExtraFile* vocab;
+};
+const std::vector<TextDetector>& text_detectors();
+const TextDetector* find_detector(const std::string& id);
+// Clicks work but words do not: the entries a TextDetector is offered for.
+bool takes_detector(const ModelEntry& e);
 
 // Licence terms for a family, for the consent dialog.
 struct LicenseInfo {
@@ -65,7 +95,24 @@ const LicenseInfo& license_for(const std::string& family);
 
 // Where a model would live, whether or not it is there yet.
 std::string model_path(const ModelEntry& e);
+std::string detector_path(const TextDetector& d);
 bool model_is_cached(const ModelEntry& e);
+bool detector_is_cached(const TextDetector& d);
+
+// The detector `detector_id` names when `e` takes one, else null.
+const TextDetector* detector_for(const ModelEntry& e, const std::string& detector_id);
+// What is still to fetch for the pair, for the consent prompt.
+uint64_t missing_download_bytes(const ModelEntry& e, const TextDetector* d);
+
+// What a masking run is handed for a pick: empty paths until every file of it
+// is cached. `text` says whether the pick reads a text prompt at all.
+struct MaskModelFiles {
+    MaskModelKind kind = MaskModelKind::Sam;
+    bool          text = true;
+    std::string   model, detector;
+    bool empty() const { return model.empty(); }
+};
+MaskModelFiles cached_mask_model(const std::string& id, const std::string& detector_id);
 
 // Is `path` a checkpoint of about `bytes` and not a half-finished download?
 // A truncated file that escaped the ".part" rename would fail deep inside a
@@ -88,7 +135,9 @@ public:
     // real length. 0 means unknown. `mirror`, if set, is tried when `url` fails.
     void start(const std::string& url, const std::string& dest,
                uint64_t expected_bytes, const std::string& mirror = "");
-    void start(const ModelEntry& e);
+    // The first file of the pair that is not on disk yet, false if none is;
+    // the caller starts the next one when this is Done.
+    bool start(const ModelEntry& e, const TextDetector* d = nullptr);
     void cancel();
 
     State state() const { return _state.load(); }

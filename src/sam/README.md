@@ -121,7 +121,13 @@ user sees in the preview is what gets written.
   where the prompt names the subject rather than a distractor;
 - a longest-side cap on what the model sees, with the mask returned at the
   source resolution;
-- **clicked objects** (`MaskOptions::seeds`), described below.
+- **clicked objects** (`MaskOptions::seeds`), described below;
+- **two models that are not SAM**: `MaskOptions::detector` pairs a SAM
+  checkpoint with Grounding DINO (`src/gdino/`), which finds every phrase's
+  boxes in one pass for SAM to cut out -- text on SAM 2, lang-segment-anything
+  style, re-detected on every frame; and a BiRefNet checkpoint as
+  `MaskOptions::model` (`src/birefnet/`) masks the main subject with no prompt
+  at all. Both reach the same union, margin and polarity as SAM 3's matches.
 
 The text half matches `reference/scripts/mask.py`, defaults included, so a dataset masked
 either way is the same dataset. Clicks have no counterpart there —
@@ -174,6 +180,11 @@ spirula sam segment --model sam3-q4_0.ggml --image street.jpg --text "school bus
 spirula sam segment --model sam3-q4_0.ggml --image cat.jpg --point 315,250 --out out/
 spirula sam track   --model sam3-q4_0.ggml --frames frames/ --out masks/ --text "person; car"
 spirula sam extract clip.mp4 --skip 30 --model sam3-q4_0.ggml --text "person"
+
+# Text on SAM 2 through Grounding DINO, and the main subject with no prompt.
+spirula sam track --model sam2.1_hiera_small_f16.ggml --detector gdino-tiny \
+    --frames frames/ --out masks/ --text "person; car"
+spirula sam track --model birefnet --frames frames/ --out masks/
 
 # Two clicked objects, the first corrected at frame 90. Works on a SAM 2
 # checkpoint, which has no text tower and no other way to be prompted.

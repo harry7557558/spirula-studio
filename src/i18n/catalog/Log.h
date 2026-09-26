@@ -3795,6 +3795,36 @@ SS_MSG(err_geometry_failed,
     TR("derinlik ve normal kestirimi başarısız oldu (günlüğe bakın). Yeniden "
        "kurmanın kendisi tamamlandı ve olduğu gibi eğitilebilir."));
 
+SS_MSG(err_subject_needs_builtin,
+    EN("BiRefNet runs only in the built-in masker; the external Python masker cannot "
+       "load it. Turn off \"external masking\", or pick a SAM model."),
+    JA("BiRefNet は内蔵のマスカーでしか動きません。外部の Python マスカーでは読み込め"
+       "ません。「外部マスク」をオフにするか、SAM のモデルを選んでください。"),
+    ZH_HANS("BiRefNet 只能在内置的蒙版程序中运行，外部 Python 蒙版程序无法加载它。"
+            "请关闭“外部蒙版”，或选择一个 SAM 模型。"),
+    ZH_HANT("BiRefNet 只能在內建的遮罩程式中執行，外部 Python 遮罩程式無法載入它。"
+            "請關閉「外部遮罩」，或選擇一個 SAM 模型。"),
+    KO("BiRefNet 은 내장 마스커에서만 돌아갑니다. 외부 Python 마스커는 이것을 불러오지 "
+       "못합니다. [외부 마스크]를 끄거나 SAM 모델을 고르세요."),
+    DE("BiRefNet läuft nur im eingebauten Maskierer; der externe Python-Maskierer kann "
+       "es nicht laden. „Externe Maskierung“ ausschalten oder ein SAM-Modell wählen."),
+    FR("BiRefNet ne fonctionne que dans le masqueur intégré ; le masqueur Python externe "
+       "ne sait pas le charger. Désactivez « masquage externe » ou choisissez un modèle "
+       "SAM."),
+    ES("BiRefNet solo funciona en el enmascarador integrado; el enmascarador externo de "
+       "Python no puede cargarlo. Desactive «enmascarado externo» o elija un modelo SAM."),
+    PT("O BiRefNet só roda no mascarador integrado; o mascarador Python externo não "
+       "consegue carregá-lo. Desative “mascaramento externo” ou escolha um modelo SAM."),
+    IT("BiRefNet funziona solo nel mascheratore integrato; quello Python esterno non "
+       "riesce a caricarlo. Disattivate «mascheratura esterna» o scegliete un modello "
+       "SAM."),
+    NL("BiRefNet draait alleen in de ingebouwde maskeerder; de externe Python-maskeerder "
+       "kan het niet laden. Zet \"externe maskering\" uit of kies een SAM-model."),
+    RU("BiRefNet работает только во встроенном маскировщике; внешний на Python не может "
+       "его загрузить. Отключите «внешнее маскирование» или выберите модель SAM."),
+    TR("BiRefNet yalnızca yerleşik maskeleyicide çalışır; dış Python maskeleyici onu "
+       "yükleyemez. \"Dış maskeleme\"yi kapatın ya da bir SAM modeli seçin."));
+
 }  // namespace log
 }  // namespace msg
 }  // namespace i18n

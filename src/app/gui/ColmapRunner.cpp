@@ -283,6 +283,8 @@ void ColmapRunner::take_masking(PrepJob& prep) {
     prep.image_gamut = _live.image_gamut;
     prep.image_is_linear = _live.image_is_linear;
     prep.mask_model_path = _live.mask_model_path;
+    prep.mask_detector_path = _live.mask_detector_path;
+    prep.mask_detector_threshold = _live.mask_detector_threshold;
     prep.mask_model_name = _live.mask_model;
     prep.force_external_masking = _live.force_external_masking;
     prep.python_exe = _live.python_exe;
@@ -540,6 +542,8 @@ void ColmapRunner::run(ColmapJob job) {
             pj.mask_memory_frames = job.mask_memory_frames;
             pj.mask_clicks = job.mask_clicks;
             pj.mask_model_path = job.mask_model_path;
+            pj.mask_detector_path = job.mask_detector_path;
+            pj.mask_detector_threshold = job.mask_detector_threshold;
             pj.mask_model_name = job.mask_model;
             pj.force_external_masking = job.force_external_masking;
             pj.python_exe = job.python_exe;

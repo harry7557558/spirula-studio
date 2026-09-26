@@ -300,10 +300,11 @@ private:
     void update_dataset_job();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
-    // Path of the selected checkpoint, or "" when it is not downloaded yet.
-    std::string selected_model_path() const;
-    // Fetch it (with consent), and whether a run would need it and not find it.
-    void request_model_download(const std::string& id);
+    // The selected checkpoint and detector; empty paths until both are here.
+    MaskModelFiles selected_mask_model() const;
+    // Fetch them (with consent), and whether a run would need them and not
+    // find them. `detector_id` is ignored for an entry that takes none.
+    void request_model_download(const std::string& id, const std::string& detector_id);
     bool mask_model_missing() const;
     bool license_accepted(const std::string& family) const;
 
@@ -787,9 +788,13 @@ private:
     // The dataset run's checkpoint and the mask editor's (clicks, so the fast
     // one). Not persisted, like every masking setting: a fresh session never
     // runs a model the last one happened to pick.
-    std::string _model_id = "sam3-q4_0";
+    std::string _model_id = "sam2.1-base-plus";
+    std::string _mask_detector_id = "gdino-tiny";   // its words (TextDetector)
     std::string _mask_editor_model_id = "sam2.1-base-plus";
     ModelDownload _download;
+    // The pick _download is fetching: with a detector it is three files,
+    // started one after another as each lands.
+    std::string _download_model_id, _download_detector_id;
 
     // Interface language and the glyphs to draw it with. The font download is
     // separate from _download so that fetching a face cannot cancel a
@@ -800,7 +805,8 @@ private:
     // Families whose licence the user has accepted, persisted in the settings.
     std::vector<std::string> _accepted_licenses;
     std::string _license_prompt;      // family whose modal is open
-    std::string _license_model_id;    // the checkpoint it downloads
+    std::string _license_model_id;    // the pick it downloads
+    std::string _license_detector_id;
     bool _license_tick = false;
 
     // Batch processing. The queue is data; the driver is advance_batch(), so a

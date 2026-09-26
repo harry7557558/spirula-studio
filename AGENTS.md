@@ -96,8 +96,14 @@ src/
 │                             runtime (nn/vk/), tensor + ops + Slang kernels,
 │                             host image I/O. Knows nothing about any model.
 │                             -- READ src/nn/README.md
-├── sam/                    SAM 2 / SAM 3 segmentation, on top of nn/
-│                             -- READ src/sam/README.md
+├── sam/                    SAM 2 / SAM 3 segmentation, on top of nn/, and
+│                             Masking.h, the ONE mask policy every model goes
+│                             through -- READ src/sam/README.md
+├── swin/                   the Swin backbone gdino/ and birefnet/ share
+├── gdino/                  Grounding DINO: text -> boxes, which gives SAM 2
+│                             words (lang-segment-anything) -- src/gdino/README.md
+├── birefnet/               BiRefNet: the main subject's mask, no prompt
+│                             -- src/birefnet/README.md
 ├── aliked/                 ALIKED keypoints + LightGlue, on top of nn/
 │                             -- READ src/aliked/README.md
 ├── loma/                   LoMa: DaD keypoints + DeDoDe descriptors + the LoMa
@@ -268,9 +274,9 @@ Rules:
 
 ## The Vulkan-only subsystems
 
-`src/sfm/`, `src/nn/`, `src/sam/`, `src/aliked/`, `src/loma/`,
-`src/metric3d/`, `src/moge/` and `src/video/` are **not** part of the
-two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
+`src/sfm/`, `src/nn/`, `src/sam/`, `src/swin/`, `src/gdino/`, `src/birefnet/`,
+`src/aliked/`, `src/loma/`, `src/metric3d/`, `src/moge/` and `src/video/` are
+**not** part of the two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
 context, share nothing with the training engine, and are absent from a CUDA
 build by default (`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there).
 Nothing in them goes through `cmake/sources.txt`.
@@ -279,6 +285,7 @@ The layering runs one way and must keep doing so:
 
 ```
 app/gui, app/cli ──► sam ──────┬──► nn ──► nn/vk
+                 │    └► gdino, birefnet ──► swin ──► nn
                  ├──► aliked ──┤
                  ├──► loma ────┤
                  ├──► metric3d ┤
@@ -614,8 +621,9 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   metric scale and a sky mask. `app/GeometryModel.h` is the one seam between
   them and `--model` is what picks; a caller that reaches past it into
   `metric3d::` or `moge::` has hard-coded a family.
-- **Segmentation weights are never committed or bundled.** They are Meta's,
-  under Meta's licences, and SAM 3's is not GPLv3-compatible. They are fetched
+- **Segmentation weights are never committed or bundled.** SAM's are Meta's,
+  under Meta's licences, and SAM 3's is not GPLv3-compatible; Grounding DINO
+  (Apache-2.0) and BiRefNet (MIT) are fetched the same way for consistency. They are fetched
   at run time after the user has seen the terms -- `src/app/gui/ModelCache.cpp`
   is where that policy lives, and it is the only place that should grow one.
 - **The inference layer's VRAM pool is process-wide and grow-only**, so

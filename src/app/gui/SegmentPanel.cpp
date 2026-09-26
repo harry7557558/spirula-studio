@@ -63,7 +63,7 @@ SegmentPanel::~SegmentPanel() {
     if (_worker.joinable()) _worker.join();
 }
 
-void SegmentPanel::open(const PreviewSource& src, const std::string& model_path) {
+void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     _cancel = true;
     if (_worker.joinable()) _worker.join();
     _cancel = false;
@@ -73,7 +73,7 @@ void SegmentPanel::open(const PreviewSource& src, const std::string& model_path)
     }
     _src = src;
     if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
-    _model_path = model_path;
+    _model = model;
     _folder_idx = 0;
     _frame_idx = 0;
     _frame_dirty = true;
@@ -333,7 +333,7 @@ void SegmentPanel::start_job(const MaskSettings& s,
     const PreviewSource src = _src;
     const int folder = _folder_idx;
     const std::string camera = shown_camera();
-    const std::string model = _model_path;
+    const MaskModelFiles model = _model;
     // Only what was drawn on THIS frame: the preview segments one still, with
     // no memory bank, so a click made on another frame has nothing to say
     // about this one. The run is where they all come together.
@@ -435,7 +435,10 @@ void SegmentPanel::start_job(const MaskSettings& s,
                 }
             };
 
-            const bool wants_model = !settings.prompt.empty() || !clicks.empty();
+            const bool subject = model.kind == MaskModelKind::Subject;
+            const std::string prompt = model.text ? settings.prompt : "";
+            const std::string negative = model.text ? settings.negative_prompt : "";
+            const bool wants_model = subject || !prompt.empty() || !clicks.empty();
 #ifndef SS_BUILD_SAM
             stencil_only();
             if (wants_model)
@@ -455,23 +458,27 @@ void SegmentPanel::start_job(const MaskSettings& s,
             // Every field below changes what the masker computes, so the
             // signature is what decides whether it can be reused. The weights
             // are the expensive part and only the model path moves them.
-            std::string sig = settings.prompt + "|" + settings.negative_prompt + "|" +
+            std::string sig = prompt + "|" + negative + "|" +
                               std::to_string((int)settings.keep_subject) + "|" +
                               std::to_string(settings.max_image_size) + "|" +
                               std::to_string(settings.threshold) + "|" +
                               std::to_string(settings.nms) + "|" +
+                              std::to_string(settings.box_threshold) + "|" +
                               std::to_string(settings.boundary_ratio());
+            const std::string model_key = model.model + "|" + model.detector;
             for (const MaskClick& c : clicks)
                 sig += "|" + std::to_string(c.object) + ":" + std::to_string(c.x) +
                        "," + std::to_string(c.y) + (c.positive ? "+" : "-");
-            if (j.loaded_model != model || j.loaded_signature != sig) {
-                set_status(j.loaded_model == model ? dmsg::preview_preparing
-                                                   : dmsg::preview_loading_model);
+            if (j.loaded_model != model_key || j.loaded_signature != sig) {
+                set_status(j.loaded_model == model_key ? dmsg::preview_preparing
+                                                       : dmsg::preview_loading_model);
                 sam::MaskOptions mo;
-                mo.model = model;
+                mo.model = model.model;
+                mo.detector = model.detector;
+                mo.detector_threshold = settings.box_threshold;
                 mo.device = src.device;
-                mo.text = settings.prompt;
-                mo.neg_text = settings.negative_prompt;
+                mo.text = prompt;
+                mo.neg_text = negative;
                 mo.keep_prompted = settings.keep_subject;
                 mo.max_size = settings.max_image_size;
                 mo.threshold = settings.threshold;
@@ -493,7 +500,7 @@ void SegmentPanel::start_job(const MaskSettings& s,
                     j.loaded_model.clear();
                     return set_error(err);
                 }
-                j.loaded_model = model;
+                j.loaded_model = model_key;
                 j.loaded_signature = sig;
             }
             if (_cancel.load()) return;
@@ -534,8 +541,8 @@ void SegmentPanel::start_job(const MaskSettings& s,
                 _preview_dirty = true;
                 _kept_fraction = n ? (float)((double)kept / (double)n) : -1.0f;
                 _status.clear();
-                if (detections.detections.empty() && !settings.prompt.empty() &&
-                    clicks.empty())
+                if (detections.detections.empty() && !prompt.empty() &&
+                    clicks.empty() && !subject)
                     _error =
                         spirula::i18n::msg::log::err_prompt_matched_nothing.get();
                 else if (detections.detections.empty() && !clicks.empty())
@@ -807,7 +814,8 @@ void SegmentPanel::draw_image(MaskSettings& settings, app::FrameStencil& stencil
     // Clicks land in source-image pixels, which is what the model wants. Only
     // with no drawing tool: every other one owns the left button.
     const bool canvas_free = hovered && !on_shape && _drag_handle == -1 &&
-                             _draw == DrawTool::Select && !tool_consumed;
+                             _draw == DrawTool::Select && !tool_consumed &&
+                             _model.kind != MaskModelKind::Subject;
     if (!_listing.load() && !_frames.empty() && canvas_free &&
         (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
          ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
@@ -1226,16 +1234,41 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     // radio, and a label that does not follow the switch reads as a bug.
     // Stacked, not side by side: at this panel width the second label clips.
     int polarity = settings.keep_subject ? 1 : 0;
-    if (ui::RadioButton(dmsg::mask_remove_named, polarity == 0)) polarity = 0;
-    if (ui::RadioButton(dmsg::mask_keep_named, polarity == 1)) polarity = 1;
+    const bool subject = _model.kind == MaskModelKind::Subject;
+    if (subject) {
+        if (ui::RadioButton(dmsg::mask_subject_keep, polarity == 1)) polarity = 1;
+        if (ui::RadioButton(dmsg::mask_subject_remove, polarity == 0)) polarity = 0;
+    } else {
+        if (ui::RadioButton(dmsg::mask_remove_named, polarity == 0)) polarity = 0;
+        if (ui::RadioButton(dmsg::mask_keep_named, polarity == 1)) polarity = 1;
+    }
     if ((polarity == 1) != settings.keep_subject) {
         settings.keep_subject = polarity == 1;
         edited = true;
     }
-    ui::help_on_hover(dmsg::preview_polarity_help);
+    ui::help_on_hover(subject ? dmsg::mask_subject_polarity_help : dmsg::preview_polarity_help);
     const bool keep = settings.keep_subject;
 
-    // English, whatever the interface language is -- see MaskPrompt.h.
+    // BiRefNet reads no prompt and takes no click: what is left of this half
+    // of the panel is the margin.
+    if (subject) {
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ui::TextDisabled(dmsg::mask_subject_note);
+        ImGui::PopTextWrapPos();
+        ImGui::Spacing();
+        edited |= draw_margin_slider(settings.dilate_ratio, settings.shrink_ratio, keep, -1.0f,
+                                     /*inline_label=*/false);
+    } else {
+
+    // English, whatever the interface language is -- see MaskPrompt.h. A pick
+    // that reads no words gets the clicks alone.
+    if (!_model.text) {
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ui::TextDisabled(dmsg::preview_clicks_only);
+        ImGui::PopTextWrapPos();
+    } else {
     ImGui::Spacing();
     ui::Text(keep ? dmsg::preview_what_kept : dmsg::preview_what_removed);
     ImGui::SetNextItemWidth(-1);
@@ -1263,6 +1296,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
         ui::TextDisabled(dmsg::mask_english_only);
     edited |= draw_subject_palette(settings.prompt, settings.negative_prompt,
                                    keep);
+    }
 
     // Under the prompts because it is a property of what they matched, and it
     // moves the red on the picture: the outlines come back tight against the
@@ -1274,6 +1308,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     ImGui::Spacing();
     ImGui::Separator();
     draw_objects(settings, edited);
+    }
 #endif
 
     ImGui::Spacing();

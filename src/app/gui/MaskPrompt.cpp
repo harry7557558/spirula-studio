@@ -269,8 +269,19 @@ void draw_mask_objects(MaskSettings& settings, long long frame, const std::strin
     }
 }
 
-void draw_mask_model_picker(std::string& model_id, FileDownload& download,
+void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
+                            FileDownload& download,
                             const std::function<void()>& request_download) {
+    // "(download)" after whatever is not on disk yet, the blurb on hover.
+    auto item = [](const ::spirula::i18n::Msg& label, const ::spirula::i18n::Msg& blurb,
+                   bool cached, bool selected) {
+        const std::string text =
+            cached ? std::string(label.get())
+                   : spirula::i18n::format(dmsg::mask_model_needs_download, {label.get()});
+        const bool picked = ui::SelectableRaw(text, selected);
+        if (ImGui::IsItemHovered()) ui::SetTooltipWrapped(blurb);
+        return picked;
+    };
     int model_idx = 0;
     const auto& catalog = model_catalog();
     for (size_t i = 0; i < catalog.size(); i++)
@@ -278,20 +289,40 @@ void draw_mask_model_picker(std::string& model_id, FileDownload& download,
     ImGui::SetNextItemWidth(px(260.0f));
     if (ui::BeginCombo(dmsg::mask_model, catalog[model_idx].label->get())) {
         for (size_t i = 0; i < catalog.size(); i++) {
-            const bool cached = model_is_cached(catalog[i]);
-            const std::string label =
-                cached ? std::string(catalog[i].label->get())
-                       : spirula::i18n::format(dmsg::mask_model_needs_download,
-                                               {catalog[i].label->get()});
-            if (ui::SelectableRaw(label, (int)i == model_idx)) model_id = catalog[i].id;
-            if (ImGui::IsItemHovered()) ui::SetTooltip(*catalog[i].blurb);
+            if (!detector_id && catalog[i].kind != MaskModelKind::Sam) continue;
+            if (item(*catalog[i].label, *catalog[i].blurb, model_is_cached(catalog[i]),
+                     (int)i == model_idx))
+                model_id = catalog[i].id;
         }
         ImGui::EndCombo();
     }
     const ModelEntry* entry = find_model(model_id);
-    if (entry) ui::TextDisabled(*entry->blurb);
+    if (entry) {
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + px(560.0f));
+        ui::TextDisabled(*entry->blurb);
+        ImGui::PopTextWrapPos();
+    }
+    const TextDetector* detector = nullptr;
+    if (entry && detector_id && takes_detector(*entry)) {
+        detector = find_detector(*detector_id);
+        if (!detector) {
+            detector = &text_detectors().front();
+            *detector_id = detector->id;
+        }
+        ImGui::SetNextItemWidth(px(260.0f));
+        if (ui::BeginCombo(dmsg::mask_text_detector, detector->label->get())) {
+            for (const TextDetector& d : text_detectors())
+                if (item(*d.label, *d.blurb, detector_is_cached(d), &d == detector))
+                    *detector_id = d.id;
+            ImGui::EndCombo();
+        }
+        ui::help_on_hover(dmsg::mask_text_detector_help);
+        detector = find_detector(*detector_id);
+    }
+    const bool cached = entry && model_is_cached(*entry) &&
+                        (!detector || detector_is_cached(*detector));
     const bool downloading = download.state() == FileDownload::State::Running;
-    switch (mask_picker_row(entry != nullptr, entry && model_is_cached(*entry), downloading)) {
+    switch (mask_picker_row(entry != nullptr, cached, downloading)) {
         case PickerRow::GetModel:
             if (ui::Button(dmsg::mask_get_model)) request_download();
             ImGui::SameLine();

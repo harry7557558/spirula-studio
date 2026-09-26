@@ -211,7 +211,7 @@ inline int train_tier_rank(const char* tier) {
     X(float, l2_weight_v, 0.0f, "loss", "advanced", "")                      \
     X(int, loss_scale_min_pixels, 1920, "loss", "advanced", "")              \
     X(int, num_loss_scales, 0, "loss", "advanced", "")                       \
-    X(float, alpha_loss_weight, 0.1f, "loss", "basic", "")                   \
+    X(float, alpha_loss_weight, 0.5f, "loss", "basic", "")                   \
     X(float, alpha_loss_weight_under, 0.0f, "loss", "basic", "")             \
     X(float, loss_saturation_threshold, -1.0f, "loss", "advanced", "")       \
     X(float, loss_luminance_normalization, 0.0f, "loss", "advanced", "")     \

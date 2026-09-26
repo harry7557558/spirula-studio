@@ -1545,6 +1545,135 @@ SS_MSG(mh_replace,
     TR("çıktı klasöründeki maskeleri üzerine yaz; bu olmadan kesişimleri "
        "alınır, bu da modelin maskelerinin üstüne böyle biner"));
 
+// ---- the non-SAM models ----
+
+SS_MSG(model_kinds,
+    EN("--model also takes birefnet or birefnet-lite (or a BiRefNet .safetensors "
+       "file), which masks the main subject of each image by itself: it reads no "
+       "prompt, and the subject is what is kept."),
+    JA("--model には birefnet または birefnet-lite（あるいは BiRefNet の "
+       ".safetensors ファイル）も指定できます。これは各画像の主な被写体を自動で"
+       "マスクします。プロンプトは読まず、残るのは被写体です。"),
+    ZH_HANS("--model 也接受 birefnet 或 birefnet-lite（或 BiRefNet 的 .safetensors "
+            "文件），它会自动遮出每张图像的主体：不读取提示词，保留的是主体。"),
+    ZH_HANT("--model 也接受 birefnet 或 birefnet-lite（或 BiRefNet 的 .safetensors "
+            "檔案），它會自動遮出每張影像的主體：不讀取提示詞，保留的是主體。"),
+    KO("--model 에는 birefnet 이나 birefnet-lite(또는 BiRefNet 의 .safetensors "
+       "파일)도 줄 수 있습니다. 각 이미지의 주 피사체를 스스로 마스크하며, "
+       "프롬프트는 읽지 않고 남기는 쪽이 피사체입니다."),
+    DE("--model nimmt auch birefnet oder birefnet-lite (oder eine "
+       "BiRefNet-.safetensors-Datei); das maskiert das Hauptmotiv jedes Bildes von "
+       "selbst: es liest keinen Prompt, und behalten wird das Motiv."),
+    FR("--model accepte aussi birefnet ou birefnet-lite (ou un fichier .safetensors "
+       "de BiRefNet), qui masque seul le sujet principal de chaque image : il ne lit "
+       "aucune consigne, et c'est le sujet qui est conservé."),
+    ES("--model también admite birefnet o birefnet-lite (o un archivo .safetensors "
+       "de BiRefNet), que enmascara por sí solo el sujeto principal de cada imagen: "
+       "no lee ninguna indicación y lo que se conserva es el sujeto."),
+    PT("--model também aceita birefnet ou birefnet-lite (ou um arquivo .safetensors "
+       "do BiRefNet), que mascara sozinho o objeto principal de cada imagem: não lê "
+       "nenhum comando, e o que se mantém é o objeto."),
+    IT("--model accetta anche birefnet o birefnet-lite (o un file .safetensors di "
+       "BiRefNet), che maschera da solo il soggetto principale di ogni immagine: non "
+       "legge alcun prompt e ciò che resta è il soggetto."),
+    NL("--model neemt ook birefnet of birefnet-lite (of een "
+       "BiRefNet-.safetensors-bestand), dat uit zichzelf het hoofdonderwerp van elk "
+       "beeld maskeert: het leest geen prompt, en het onderwerp blijft behouden."),
+    RU("--model принимает также birefnet или birefnet-lite (или файл .safetensors "
+       "BiRefNet): он сам выделяет главный объект каждого изображения, запрос не "
+       "читает, и сохраняется именно объект."),
+    TR("--model ayrıca birefnet ya da birefnet-lite (veya bir BiRefNet .safetensors "
+       "dosyası) alır; bu, her görüntünün ana öznesini kendiliğinden maskeler: istem "
+       "okumaz ve korunan özne olur."));
+
+SS_MSG(opt_detector,
+    EN("Grounding DINO for the text prompts: gdino-tiny, gdino-base or a "
+       ".safetensors file. It finds the boxes and the SAM model segments them, which "
+       "lets a SAM 2 checkpoint take words"),
+    JA("テキストプロンプトに使う Grounding DINO：gdino-tiny、gdino-base、または "
+       ".safetensors ファイル。矩形を見つけ、それを SAM モデルが分割するので、"
+       "SAM 2 のチェックポイントでも言葉で指定できます"),
+    ZH_HANS("用于文本提示的 Grounding DINO：gdino-tiny、gdino-base 或一个 "
+            ".safetensors 文件。它找出框，再由 SAM 模型分割，从而让 SAM 2 "
+            "检查点也能接受文字"),
+    ZH_HANT("用於文字提示的 Grounding DINO：gdino-tiny、gdino-base 或一個 "
+            ".safetensors 檔案。它找出框，再由 SAM 模型分割，從而讓 SAM 2 "
+            "檢查點也能接受文字"),
+    KO("텍스트 프롬프트에 쓰는 Grounding DINO: gdino-tiny, gdino-base 또는 "
+       ".safetensors 파일. 상자를 찾으면 SAM 모델이 그것을 분할하므로 SAM 2 "
+       "체크포인트도 말로 지정할 수 있습니다"),
+    DE("Grounding DINO für die Textprompts: gdino-tiny, gdino-base oder eine "
+       ".safetensors-Datei. Es findet die Kästen, und das SAM-Modell segmentiert sie; "
+       "so versteht auch ein SAM-2-Prüfpunkt Wörter"),
+    FR("Grounding DINO pour les consignes textuelles : gdino-tiny, gdino-base ou un "
+       "fichier .safetensors. Il trouve les boîtes et le modèle SAM les segmente, ce "
+       "qui permet à un point de contrôle SAM 2 de comprendre des mots"),
+    ES("Grounding DINO para las indicaciones de texto: gdino-tiny, gdino-base o un "
+       "archivo .safetensors. Encuentra las cajas y el modelo SAM las segmenta, lo que "
+       "permite a un punto de control de SAM 2 entender palabras"),
+    PT("Grounding DINO para os comandos de texto: gdino-tiny, gdino-base ou um "
+       "arquivo .safetensors. Ele encontra as caixas e o modelo SAM as segmenta, o que "
+       "permite que um ponto de verificação do SAM 2 entenda palavras"),
+    IT("Grounding DINO per i prompt testuali: gdino-tiny, gdino-base o un file "
+       ".safetensors. Trova i riquadri e il modello SAM li segmenta, così anche un "
+       "checkpoint SAM 2 capisce le parole"),
+    NL("Grounding DINO voor de tekstprompts: gdino-tiny, gdino-base of een "
+       ".safetensors-bestand. Het vindt de kaders en het SAM-model segmenteert ze, "
+       "zodat ook een SAM 2-controlepunt woorden begrijpt"),
+    RU("Grounding DINO для текстовых запросов: gdino-tiny, gdino-base или файл "
+       ".safetensors. Он находит рамки, а модель SAM их сегментирует, так что и "
+       "контрольная точка SAM 2 понимает слова"),
+    TR("Metin istemleri için Grounding DINO: gdino-tiny, gdino-base ya da bir "
+       ".safetensors dosyası. Kutuları bulur, SAM modeli de onları bölütler; böylece "
+       "bir SAM 2 denetim noktası da sözcükleri anlar"));
+
+SS_MSG(opt_detector_threshold,
+    EN("how sure Grounding DINO must be of a box, 0..1 (default 0.3)"),
+    JA("Grounding DINO が矩形を採用する確信度、0..1（既定 0.3）"),
+    ZH_HANS("Grounding DINO 采纳一个框所需的把握，0..1（默认 0.3）"),
+    ZH_HANT("Grounding DINO 採納一個框所需的把握，0..1（預設 0.3）"),
+    KO("Grounding DINO 가 상자를 받아들이는 확신도, 0..1(기본값 0.3)"),
+    DE("wie sicher sich Grounding DINO eines Kastens sein muss, 0..1 (Standard 0.3)"),
+    FR("certitude qu'il faut à Grounding DINO pour garder une boîte, 0..1 (0.3 par "
+       "défaut)"),
+    ES("cuánta seguridad necesita Grounding DINO para aceptar una caja, 0..1 (0.3 por "
+       "defecto)"),
+    PT("quanta certeza o Grounding DINO precisa ter de uma caixa, 0..1 (padrão 0.3)"),
+    IT("quanto Grounding DINO deve essere sicuro di un riquadro, 0..1 (predefinito "
+       "0.3)"),
+    NL("hoe zeker Grounding DINO van een kader moet zijn, 0..1 (standaard 0.3)"),
+    RU("насколько Grounding DINO должен быть уверен в рамке, 0..1 (по умолчанию 0.3)"),
+    TR("Grounding DINO'nun bir kutudan ne kadar emin olması gerektiği, 0..1 "
+       "(varsayılan 0.3)"));
+
+SS_MSG(trk_remove_prompted,
+    EN("black = the prompted objects: the default, except with BiRefNet, whose "
+       "subject is kept unless this is given"),
+    JA("黒 = プロンプトで指した対象。これが既定ですが、BiRefNet だけはこの指定が"
+       "ない限り被写体を残します"),
+    ZH_HANS("黑色 = 提示指定的对象。这是默认值，只有 BiRefNet 例外：除非给出此项，"
+            "它保留主体"),
+    ZH_HANT("黑色 = 提示指定的對象。這是預設值，只有 BiRefNet 例外：除非給出此項，"
+            "它保留主體"),
+    KO("검은색 = 프롬프트가 가리킨 대상. 기본값이지만 BiRefNet 만은 이것을 주지 "
+       "않는 한 피사체를 남깁니다"),
+    DE("schwarz = die geprompteten Objekte: Standard, außer bei BiRefNet, das sein "
+       "Motiv behält, solange dies nicht angegeben ist"),
+    FR("noir = les objets désignés : le défaut, sauf avec BiRefNet, qui conserve son "
+       "sujet sauf si cette option est donnée"),
+    ES("negro = los objetos indicados: el valor por defecto, salvo con BiRefNet, que "
+       "conserva su sujeto a menos que se dé esta opción"),
+    PT("preto = os objetos indicados: o padrão, exceto com o BiRefNet, que mantém o "
+       "objeto a menos que esta opção seja dada"),
+    IT("nero = gli oggetti indicati: il predefinito, tranne con BiRefNet, che tiene il "
+       "soggetto a meno che non si dia questa opzione"),
+    NL("zwart = de geprompte objecten: de standaard, behalve bij BiRefNet, dat zijn "
+       "onderwerp behoudt tenzij dit gegeven is"),
+    RU("чёрный = объекты из запроса: так по умолчанию, кроме BiRefNet, который "
+       "сохраняет свой объект, если этот флаг не задан"),
+    TR("siyah = istemin gösterdiği nesneler: varsayılan budur; yalnızca BiRefNet, bu "
+       "verilmedikçe öznesini korur"));
+
 }  // namespace samhelp
 }  // namespace msg
 }  // namespace i18n

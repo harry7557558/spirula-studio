@@ -1373,13 +1373,19 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 
     std::vector<int64_t> mask_planned(job.inputs.size(), 0);
     if (job.mask_enable) {
-        if (job.mask_prompt.empty() && job.mask_clicks.empty()) {
+        // A subject model (BiRefNet) finds what to mask by itself.
+        bool subject = false;
+#ifdef SS_BUILD_SAM
+        subject = !job.force_external_masking && backends().builtin_masking &&
+                  sam::is_subject_model(job.mask_model_path);
+#endif
+        if (!subject && job.mask_prompt.empty() && job.mask_clicks.empty()) {
             error = lmsg::err_mask_no_target.get();
             return false;
         }
         // Half-masking reads as a masking run that worked, so refuse instead:
         // without a text prompt, every input needs clicks of its own.
-        if (job.mask_prompt.empty()) {
+        if (!subject && job.mask_prompt.empty()) {
             std::string unprompted;
             for (size_t i = 0; i < job.inputs.size(); i++) {
                 if (per[i].have_masks || !clicks_for(job, job.inputs[i]).empty())
@@ -2584,6 +2590,10 @@ bool DatasetPrep::generate_masks(const PrepJob& job, const PrepInput& in,
         }
         return generate_masks_builtin(job, in, images, masks, folded, error);
     }
+    if (job.mask_model_name.empty()) {
+        error = lmsg::err_subject_needs_builtin.get();
+        return false;
+    }
     if (!job.mask_clicks.empty()) {
         // The Python fallback is lang-segment-anything: text in, masks out. It
         // has no way to take a click, so saying so beats writing masks that
@@ -2634,6 +2644,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
 
     sam::MaskOptions mo;
     mo.model = job.mask_model_path;
+    mo.detector = job.mask_detector_path;
+    mo.detector_threshold = job.mask_detector_threshold;
     mo.device = job.device;
     mo.text = job.mask_prompt;
     mo.neg_text = job.mask_negative_prompt;

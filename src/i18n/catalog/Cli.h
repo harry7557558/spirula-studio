@@ -1143,6 +1143,27 @@ SS_MSG(sfm_merge_output_is_input,
     TR("--output {0} zaten girdi modellerinin bulunduğu yer; istediğiniz buysa "
        "--in-place verin"));
 
+SS_MSG(sam_subject_no_prompt,
+    EN("{0} masks the main subject by itself; the text prompts and clicks are ignored"),
+    JA("{0} は主な被写体を自動でマスクします。テキストプロンプトとクリックは無視されます"),
+    ZH_HANS("{0} 会自动遮出主体；文本提示与点击都会被忽略"),
+    ZH_HANT("{0} 會自動遮出主體；文字提示與點選都會被忽略"),
+    KO("{0} 는 주 피사체를 스스로 마스크합니다. 텍스트 프롬프트와 클릭은 무시됩니다"),
+    DE("{0} maskiert das Hauptmotiv von selbst; Textprompts und Klicks werden ignoriert"),
+    FR("{0} masque seul le sujet principal ; les consignes textuelles et les clics sont "
+       "ignorés"),
+    ES("{0} enmascara por sí solo el sujeto principal; se ignoran las indicaciones de "
+       "texto y los clics"),
+    PT("{0} mascara sozinho o objeto principal; os comandos de texto e os cliques são "
+       "ignorados"),
+    IT("{0} maschera da solo il soggetto principale; prompt testuali e clic vengono "
+       "ignorati"),
+    NL("{0} maskeert uit zichzelf het hoofdonderwerp; tekstprompts en klikken worden "
+       "genegeerd"),
+    RU("{0} сам выделяет главный объект; текстовые запросы и щелчки не учитываются"),
+    TR("{0} ana özneyi kendiliğinden maskeler; metin istemleri ve tıklamalar yok "
+       "sayılır"));
+
 }  // namespace cli
 }  // namespace msg
 }  // namespace i18n

@@ -10,7 +10,7 @@ namespace nn {
 namespace {
 
 struct AttnParams {
-    uint64_t out, q, k, v, bias, part_ml;
+    uint64_t out, q, k, v, bias, part_ml, labels;
     uint32_t nq, nk, n_heads;
     float    scale;
     uint32_t q_stride, k_stride, v_stride, out_stride;
@@ -74,6 +74,7 @@ void attention_one(const Tensor& out, const Tensor& q, const Tensor& k, const Te
     p.v = v.ptr;
     p.bias = vk::or_fallback(o.bias.ptr);
     p.part_ml = vk::or_fallback(0);
+    p.labels = vk::or_fallback(o.labels.ptr);
     p.nq = (uint32_t)nq;
     p.nk = (uint32_t)nk;
     p.n_heads = (uint32_t)o.n_heads;
@@ -90,6 +91,11 @@ void attention_one(const Tensor& out, const Tensor& q, const Tensor& k, const Te
                    "attention: PerKey bias needs %lld entries", (long long)nk);
     if (o.bias_mode == AttnBias::Full)
         NN_CHECK(o.bias.valid(), "attention: Full bias mode needs a bias tensor");
+    if (o.bias_mode == AttnBias::Window)
+        NN_CHECK(o.bias.valid() && o.labels.valid() && nq == nk &&
+                     o.labels.numel() >= (int64_t)o.batch * nq,
+                 "attention: Window mode needs a bias, and labels for %d x %lld tokens",
+                 o.batch, (long long)nq);
 
     const uint32_t gx = (uint32_t)((nq + kQueriesPerBlock - 1) / kQueriesPerBlock);
     NN_CHECK(gx <= 65535, "attention: %lld queries exceed the dispatch grid cap",
@@ -187,12 +193,16 @@ void attention(const Tensor& out, const Tensor& q, const Tensor& k, const Tensor
         const int64_t vs = o.v_stride > 0 ? o.v_stride : dim;
         for (int64_t b0 = 0; b0 < o.batch; b0 += per) {
             so.batch = (int)std::min<int64_t>(per, o.batch - b0);
+            if (o.bias_mode == AttnBias::Window) so.labels = o.labels.offsetElems(b0 * nq);
             attention_one(out.offsetElems(b0 * nq * os), q.offsetElems(b0 * nq * qs),
                           k.offsetElems(b0 * nk * ks), v.offsetElems(b0 * nk * vs), nq, nk,
                           so);
         }
         return;
     }
+    // A window's labels are indexed by absolute query and key, so a lone window
+    // is not sliced; one is ws^2 tokens and nowhere near the budget.
+    if (o.bias_mode == AttnBias::Window) return attention_one(out, q, k, v, nq, nk, o);
     const int64_t per =
         std::max<int64_t>(1, (int64_t)(cap / (work / nq)) / kQueriesPerBlock) *
         kQueriesPerBlock;

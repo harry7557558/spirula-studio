@@ -401,14 +401,16 @@ void check_dataset_stage(const BatchRow& row, const BatchCapabilities& caps,
         // A batch has no clicks -- they belong to the frames they were drawn
         // on and a preset cannot carry them -- so the text prompt is the only
         // prompt there is.
-        if (s.mask.prompt.empty())
+        const bool prompted = !caps.mask_model_prompted || caps.mask_model_prompted(s.mask_model_id);
+        if (prompted && s.mask.prompt.empty())
             out.push_back(issue_of(msg::chk_mask_no_prompt, kSt, true));
         if (s.sfm.prep.force_external_masking) {
             // mask.py resolves its own model by name; nothing here can say
             // whether it is there.
         } else if (!caps.masking) {
             out.push_back(issue_of(msg::chk_masking_unavailable, kSt, true));
-        } else if (caps.mask_model_ready && !caps.mask_model_ready(s.mask_model_id)) {
+        } else if (caps.mask_model_ready &&
+                   !caps.mask_model_ready(s.mask_model_id, s.mask_detector_id)) {
             out.push_back(issue_of(msg::chk_mask_model_missing, kSt, true,
                                    s.mask_model_id));
         }

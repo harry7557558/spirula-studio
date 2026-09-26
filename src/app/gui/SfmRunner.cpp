@@ -299,6 +299,8 @@ void SfmRunner::take_masking(PrepJob& prep) {
     prep.mask_memory_frames = _live.prep.mask_memory_frames;
     prep.mask_clicks = _live.prep.mask_clicks;
     prep.mask_model_path = _live.prep.mask_model_path;
+    prep.mask_detector_path = _live.prep.mask_detector_path;
+    prep.mask_detector_threshold = _live.prep.mask_detector_threshold;
     prep.mask_model_name = _live.prep.mask_model_name;
     prep.force_external_masking = _live.prep.force_external_masking;
     prep.image_gamut = _live.prep.image_gamut;

@@ -42,7 +42,24 @@ struct StridedCopyParams {
 
 struct WindowParams {
     uint64_t out, x;
-    uint32_t H, W, C, ws, nwh, nww, groups_per_row, _pad0;
+    uint32_t H, W, C, ws, nwh, nww, groups_per_row, shift, accumulate, _pad0;
+};
+
+struct PatchMergeParams {
+    uint64_t out, x;
+    uint32_t H, W, C, groups_per_row;
+};
+
+struct BlocksParams {
+    uint64_t out, x;
+    uint32_t H, W, C, gh, gw, groups_per_row, column_major, _pad0;
+};
+
+struct MsDeformParams {
+    uint64_t out, value, offsets, attn, refs;
+    uint32_t nq, n_heads, head_dim, n_levels, n_points, ref_dims;
+    uint32_t hw[4], st[4];
+    uint32_t groups_per_row, _pad0;
 };
 
 struct TiledAddParams {
@@ -130,13 +147,15 @@ void copy(const Tensor& dst, const Tensor& src) {
     }
 }
 
+// `bcast` < 0 infers the mode from b's shape: matching element count is
+// elementwise, a single row is per-column, a single element is scalar. Per-row
+// (3) is never inferred -- a square tensor would make it ambiguous.
 static void binary_op(const Tensor& out, const Tensor& a, const Tensor& b, uint32_t op,
-                      float alpha, float beta, Act act) {
-    // Broadcast mode is inferred from the shape, which is unambiguous here:
-    // matching element count is elementwise, a single row is per-column, a
-    // single element is scalar.
+                      float alpha, float beta, Act act, int force_bcast = -1) {
     uint32_t bcast = 0;
-    if (b.valid()) {
+    if (force_bcast >= 0) {
+        bcast = (uint32_t)force_bcast;
+    } else if (b.valid()) {
         if (b.numel() == out.numel())      bcast = 0;
         else if (b.numel() == out.cols())  bcast = 1;
         else if (b.numel() == 1)           bcast = 2;
@@ -150,11 +169,11 @@ static void binary_op(const Tensor& out, const Tensor& a, const Tensor& b, uint3
                       (uint32_t)(a.dtype == DType::F16)};
     if (bcast == 1) check_span("binary op", {b});
 
-    // A per-column `b` is indexed by `i % cols`, so those chunks carry whole
-    // rows; the other modes chunk on any element.
+    // A per-column or per-row `b` is indexed through `cols`, so those chunks
+    // carry whole rows; the other modes chunk on any element.
     const int64_t oe = dtype_size(out.dtype), ae = dtype_size(a.dtype);
     const int64_t be = b.valid() ? dtype_size(b.dtype) : 0;
-    const int64_t width = (bcast == 1) ? std::max<int64_t>(out.cols(), 1) : 1;
+    const int64_t width = (bcast == 1 || bcast == 3) ? std::max<int64_t>(out.cols(), 1) : 1;
     const int64_t pitch = width * std::max(oe, std::max(ae, bcast == 0 ? be : 0));
     const int64_t per = span_rows_even("binary op", pitch) * width;
     for (int64_t i0 = 0; i0 < out.numel(); i0 += per) {
@@ -162,7 +181,9 @@ static void binary_op(const Tensor& out, const Tensor& a, const Tensor& b, uint3
         BinaryParams p{};
         p.out = out.ptr + (uint64_t)i0 * oe;
         p.a = a.ptr + (uint64_t)i0 * ae;
-        p.b = vk::or_fallback(bcast == 0 ? b.ptr + (uint64_t)i0 * be : b.ptr);
+        p.b = vk::or_fallback(bcast == 0   ? b.ptr + (uint64_t)i0 * be
+                              : bcast == 3 ? b.ptr + (uint64_t)(i0 / width) * be
+                                           : b.ptr);
         p.n = (uint32_t)n;
         p.cols = (uint32_t)out.cols();
         p.alpha = alpha;
@@ -179,6 +200,13 @@ void add(const Tensor& out, const Tensor& a, const Tensor& b, float alpha, float
 
 void mul(const Tensor& out, const Tensor& a, const Tensor& b, Act act) {
     binary_op(out, a, b, 1, 1.0f, 1.0f, act);
+}
+
+void mul_rows(const Tensor& out, const Tensor& a, const Tensor& b, Act act) {
+    NN_CHECK(b.valid() && b.numel() == out.rows(),
+             "mul_rows: b has %lld elements for %lld rows", (long long)b.numel(),
+             (long long)out.rows());
+    binary_op(out, a, b, 1, 1.0f, 1.0f, act, 3);
 }
 
 void unary(const Tensor& out, const Tensor& x, Act act, float pre_scale, float pre_bias,
@@ -239,7 +267,8 @@ void strided_copy(const Tensor& out, const Tensor& in, int64_t rows, int64_t col
 }
 
 static void window_op(const char* entry, const Tensor& out, const Tensor& in, int H,
-                      int W, int C, int ws, int64_t total) {
+                      int W, int C, int ws, int64_t total, int shift, bool accumulate) {
+    NN_CHECK(shift >= 0 && shift < ws, "window op: shift %d outside [0, %d)", shift, ws);
     const KernelName e = span_entry(entry, {out, in});
     WindowParams p{};
     p.out = out.ptr;
@@ -250,20 +279,105 @@ static void window_op(const char* entry, const Tensor& out, const Tensor& in, in
     p.ws = (uint32_t)ws;
     p.nwh = (uint32_t)((H + ws - 1) / ws);
     p.nww = (uint32_t)((W + ws - 1) / ws);
+    p.shift = (uint32_t)shift;
+    p.accumulate = accumulate ? 1u : 0u;
     vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
     vk::Stream::get().dispatchFlat(e, spec, total, 256, &p, sizeof(p),
                                    &p.groups_per_row);
 }
 
-void window_partition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws) {
+void window_partition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws,
+                      int shift) {
     const int64_t nwh = (H + ws - 1) / ws, nww = (W + ws - 1) / ws;
     window_op("misc.window_partition", out, in, H, W, C, ws,
-              nwh * nww * ws * ws * (int64_t)C);
+              nwh * nww * ws * ws * (int64_t)C, shift, false);
 }
 
 void window_unpartition(const Tensor& out, const Tensor& in, int H, int W, int C,
-                        int ws) {
-    window_op("misc.window_unpartition", out, in, H, W, C, ws, (int64_t)H * W * C);
+                        int ws, int shift, bool accumulate) {
+    window_op("misc.window_unpartition", out, in, H, W, C, ws, (int64_t)H * W * C, shift,
+              accumulate);
+}
+
+void patch_merge(const Tensor& out, const Tensor& in, int H, int W, int C) {
+    const int64_t total = (int64_t)((H + 1) / 2) * ((W + 1) / 2) * 4 * C;
+    NN_CHECK(out.numel() == total, "patch_merge: out has %lld elements, not %lld",
+             (long long)out.numel(), (long long)total);
+    const KernelName e = span_entry("misc.patch_merge", {out, in});
+    PatchMergeParams p{};
+    p.out = out.ptr;
+    p.x = in.ptr;
+    p.H = (uint32_t)H;
+    p.W = (uint32_t)W;
+    p.C = (uint32_t)C;
+    vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
+    vk::Stream::get().dispatchFlat(e, spec, total, 256, &p, sizeof(p), &p.groups_per_row);
+}
+
+void blocks_to_channels(const Tensor& out, const Tensor& in, int H, int W, int C, int gh,
+                        int gw, BlockOrder order) {
+    NN_CHECK(gh > 0 && gw > 0 && H % gh == 0 && W % gw == 0,
+             "blocks_to_channels: %dx%d does not divide into a %dx%d grid", H, W, gh, gw);
+    NN_CHECK(out.numel() == (int64_t)H * W * C,
+             "blocks_to_channels: out has %lld elements, not %lld", (long long)out.numel(),
+             (long long)H * W * C);
+    const KernelName e = span_entry("misc.blocks_to_channels", {out, in});
+    BlocksParams p{};
+    p.out = out.ptr;
+    p.x = in.ptr;
+    p.H = (uint32_t)H;
+    p.W = (uint32_t)W;
+    p.C = (uint32_t)C;
+    p.gh = (uint32_t)gh;
+    p.gw = (uint32_t)gw;
+    p.column_major = order == BlockOrder::ColumnsThenRows ? 1u : 0u;
+    vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
+    vk::Stream::get().dispatchFlat(e, spec, (int64_t)H * W * C, 256, &p, sizeof(p),
+                                   &p.groups_per_row);
+}
+
+void ms_deform_attn(const Tensor& out, const Tensor& value, const Tensor& offsets,
+                    const Tensor& attn, const Tensor& refs, const MsDeformLevels& lv,
+                    int n_heads, int n_points) {
+    NN_CHECK(lv.n >= 1 && lv.n <= 4, "ms_deform_attn: %d levels; 1..4 are supported", lv.n);
+    const int64_t nq = out.rows();
+    const int64_t C = out.cols();
+    NN_CHECK(C % n_heads == 0, "ms_deform_attn: %lld channels over %d heads", (long long)C,
+             n_heads);
+    NN_CHECK(value.cols() == C && value.dtype == DType::F32,
+             "ms_deform_attn: value must be f32 [len, %lld]", (long long)C);
+    const int64_t lp = (int64_t)lv.n * n_points;
+    NN_CHECK(offsets.numel() == nq * n_heads * lp * 2 && attn.numel() == nq * n_heads * lp,
+             "ms_deform_attn: offsets/attn sized for %lld queries x %d heads x %lld samples",
+             (long long)nq, n_heads, (long long)lp);
+    NN_CHECK(refs.rows() == nq && (refs.cols() == 2 || refs.cols() == 4),
+             "ms_deform_attn: refs must be [%lld, 2|4]", (long long)nq);
+    int64_t len = 0;
+    MsDeformParams p{};
+    for (int l = 0; l < lv.n; ++l) {
+        NN_CHECK(lv.h[l] > 0 && lv.w[l] > 0 && lv.h[l] < 65536 && lv.w[l] < 65536,
+                 "ms_deform_attn: level %d is %dx%d", l, lv.h[l], lv.w[l]);
+        p.hw[l] = ((uint32_t)lv.h[l] << 16) | (uint32_t)lv.w[l];
+        p.st[l] = (uint32_t)len;
+        len += (int64_t)lv.h[l] * lv.w[l];
+    }
+    NN_CHECK(value.rows() == len, "ms_deform_attn: value has %lld rows, levels hold %lld",
+             (long long)value.rows(), (long long)len);
+    check_span("ms_deform_attn", {out, value, offsets, attn, refs});
+    p.out = out.ptr;
+    p.value = value.ptr;
+    p.offsets = offsets.ptr;
+    p.attn = attn.ptr;
+    p.refs = refs.ptr;
+    p.nq = (uint32_t)nq;
+    p.n_heads = (uint32_t)n_heads;
+    p.head_dim = (uint32_t)(C / n_heads);
+    p.n_levels = (uint32_t)lv.n;
+    p.n_points = (uint32_t)n_points;
+    p.ref_dims = (uint32_t)refs.cols();
+    vk::SpecList spec{0u, 0u};
+    vk::Stream::get().dispatchFlat("misc.ms_deform_attn", spec, nq * C, 256, &p, sizeof(p),
+                                   &p.groups_per_row);
 }
 
 void add_tiled(const Tensor& out, const Tensor& in, const Tensor& tile, int H, int W,
