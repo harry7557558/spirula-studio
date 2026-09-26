@@ -13,7 +13,6 @@
 //   next_train_batch().
 
 #include "core/Camera.h"         // camera_model_to_string
-#include "core/ColorSpace.h"
 #include "data/DataManager.h"
 #include "engine/Engine.h"
 #include "engine/EngineInternal.h"
@@ -132,8 +131,6 @@ static float _sampled_mean_luma(uint64_t base, int64_t n_px, int64_t width,
     // Coprime with the row length, or the walk samples one column of pixels.
     while (std::gcd(stride, width) != 1) stride++;
 
-    const auto& cs = engine().color_space;
-    const auto transfer = (colorspace::Transfer)cs.image_transfer;
     const uint64_t pitch = 3 * (uint64_t)elem;
 
     double sum = 0.0;
@@ -151,14 +148,7 @@ static float _sampled_mean_luma(uint64_t base, int64_t n_px, int64_t width,
             const float* q = (const float*)p;
             for (int k = 0; k < 3; k++) c[k] = q[k];
         }
-        // What _engine_color_space_apply_to_gt does to the same pixels on the
-        // GPU (working_to_display in shaders/pixel_wise.slang).
-        if (cs.image_enabled) {
-            if (!cs.image_is_linear)
-                for (int k = 0; k < 3; k++) c[k] = colorspace::srgb_to_linear(c[k]);
-            colorspace::apply3x3(cs.image_color_matrix_host, c);
-            for (int k = 0; k < 3; k++) c[k] = colorspace::tone_encode(c[k], transfer);
-        }
+        _engine_color_space_gt_pixel(c);
         sum += 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     }
     return (float)(sum / (double)n);

@@ -65,6 +65,7 @@ static void test_dataset_preset() {
     s.sfm.prep.max_frames = 1234;
     s.sfm.prep.auto_rotate = false;
     s.sfm.prep.force_external_decode = true;
+    s.sfm.prep.frame_bits = 16;
     s.sfm.prep.pano.mode = app::Pano360Mode::Equirect;
     s.sfm.prep.pano.size = 2048;
     s.sfm.prep.pano.yaw = 10.0f;
@@ -180,6 +181,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.prep.max_frames, s.sfm.prep.max_frames);
     CHECK_EQ(b.sfm.prep.auto_rotate, s.sfm.prep.auto_rotate);
     CHECK_EQ(b.sfm.prep.force_external_decode, s.sfm.prep.force_external_decode);
+    CHECK_EQ(b.sfm.prep.frame_bits, s.sfm.prep.frame_bits);
     CHECK(b.sfm.prep.pano.mode == s.sfm.prep.pano.mode);
     CHECK_EQ(b.sfm.prep.pano.size, s.sfm.prep.pano.size);
     CHECK_EQ(b.sfm.prep.pano.yaw, s.sfm.prep.pano.yaw);
@@ -333,6 +335,7 @@ static void test_sanitize() {
     s.sfm.features = 0;
     s.sfm.matcher = 1;          // LightGlue without a learned frontend
     s.sfm.prep.sharp_window = -3;
+    s.sfm.prep.frame_bits = 12;
     s.sfm.prep.adaptive_range = 0.1f;
     s.mask.threshold = 4.0f;
     s.colmap.matcher = 0;
@@ -342,6 +345,7 @@ static void test_sanitize() {
     CHECK_EQ(s.sfm.camera_model, std::string("opencv"));
     CHECK_EQ(s.sfm.matcher, 0);
     CHECK(s.sfm.prep.sharp_window >= 1);
+    CHECK_EQ(s.sfm.prep.frame_bits, 0);
     CHECK(s.sfm.prep.adaptive_range >= 1.0f);
     CHECK(s.mask.threshold <= 1.0f);
     CHECK(s.colmap.matcher >= 1);

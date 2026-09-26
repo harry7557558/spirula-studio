@@ -306,6 +306,11 @@ void engine_init_color_space(
     std::vector<float> image_color_matrix     // [9], row-major
 );
 
+// A log curve (colorspace::InputCurve) decoded off the GT before the image-side
+// conversion, which it hands linear Rec.2020: call after engine_init_color_space
+// with the image side enabled, linear, and a Rec.2020 matrix. 0 turns it off.
+void engine_init_image_decode(int curve);
+
 // --- Densification step ---
 
 // Returns: number of splats added (0 if no densification this step)

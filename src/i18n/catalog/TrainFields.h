@@ -9603,6 +9603,336 @@ SS_MSG(image_color_gamut_help,
        "derse desin sRGB ana renklerini sabitler. Hiçbir ton eşlemesi "
        "uygulanmaz."));
 
+SS_MSG(image_color_log,
+    EN("Input log curve"), JA("入力のログカーブ"),
+    ZH_HANS("输入对数曲线"), ZH_HANT("輸入對數曲線"),
+    KO("입력 로그 커브"), DE("Log-Kurve der Eingabe"),
+    FR("Courbe log d'entrée"), ES("Curva logarítmica de entrada"),
+    PT("Curva log de entrada"), IT("Curva log in ingresso"),
+    NL("Log-kromme van de invoer"), RU("Логарифмическая кривая входа"),
+    TR("Girdi log eğrisi"));
+SS_MSG(image_color_log_help,
+    EN("The log curve the input was shot in, decoded before anything else. "
+       "`dlogm-osmo360` is DJI D-Log M from an Osmo 360; it decodes to linear "
+       "Rec.2020, so the input is then linear and Rec.2020, and setting either "
+       "to anything else is an error. Only the training images are decoded: "
+       "masking, SfM and depth still see the flat log frames."
+       " `auto`, the default, takes it from what dataset preparation read off "
+       "each input's metadata: `dlogm-osmo360` when every input is D-Log M, no "
+       "curve when none is. It refuses a dataset mixing D-Log M with anything "
+       "else (Normal, another profile, an unknown input or photos), and one shot"
+       " in a DJI log profile this build cannot decode. An input whose profile "
+       "cannot be read gets no curve and a line asking for this flag. `none` "
+       "says the input is not log."
+       " `dlogm-avata360` is the same for an Avata 360, from our own fit to "
+       "DJI Studio's D-Log M export, since DJI publishes no Avata LUT. `auto` "
+       "picks it when every input is Avata 360 D-Log M, and refuses a dataset "
+       "mixing Osmo 360 and Avata 360 D-Log M."),
+    JA("入力を撮影したログカーブで、ほかの何よりも先にデコードされます。"
+       "dlogm-osmo360 は Osmo 360 の DJI D-Log M で、リニアな Rec.2020 に"
+       "デコードされます。そのため入力はリニアかつ Rec.2020 となり、どちらかを"
+       "別の値にするとエラーになります。デコードされるのは学習画像だけで、"
+       "マスク・SfM・深度は平坦なログのフレームのまま見ます。"
+       "既定の auto は、データセット準備時に各入力のメタデータから読み取っ"
+       "た内容で決めます。すべての入力が D-Log M なら dlogm-os"
+       "mo360、どれもそうでなければカーブなしです。D-Log M とそれ以"
+       "外（Normal、別のプロファイル、不明な入力、写真）が混在するデータセ"
+       "ットと、このビルドでデコードできない DJI ログプロファイルで撮影した"
+       "データセットは拒否します。プロファイルを読み取れない入力はカーブなしとな"
+       "り、このフラグの設定を求める行が出ます。none は入力がログではないこ"
+       "とを示します。"
+       "dlogm-avata360 は Avata 360 用の同じもので"
+       "、DJI が Avata の LUT を公開していないため、DJI "
+       "Studio の D-Log M 書き出しへの独自のフィットです。a"
+       "uto はすべての入力が Avata 360 の D-Log M な"
+       "らこれを選び、Osmo 360 と Avata 360 の D-Lo"
+       "g M が混在するデータセットは拒否します。"),
+    ZH_HANS("拍摄输入时所用的对数曲线，在其他一切之前解码。dlogm-osmo360 是 "
+            "Osmo 360 的 DJI D-Log M，解码为线性 Rec.2020，因此输入随之成为线性"
+            "且为 Rec.2020，把其中任一项设为别的值都会报错。只有训练图像会被"
+            "解码：蒙版、SfM 和深度看到的仍是平淡的对数帧。"
+            "默认的 auto 取自数据集准备时从各输入元数据中读取的内容：所有输入都"
+            "是 D-Log M 时为 dlogm-osmo360，都不是时不用曲线。"
+            "混合 D-Log M 与其他内容（Normal、其他配置、未知输入或照片"
+            "）的数据集，以及用此版本无法解码的 DJI 对数配置拍摄的数据集会被拒绝"
+            "。无法读取配置的输入不用曲线，并会输出一行要求设置此标志。none 表示"
+            "输入不是对数。"
+            "dlogm-avata360 是 Avata 360 的对应曲线；D"
+            "JI 未公开 Avata 的 LUT，它来自我们对 DJI Stud"
+            "io D-Log M 导出的拟合。所有输入都是 Avata 360 "
+            "的 D-Log M 时 auto 选择它，混合 Osmo 360 与"
+            " Avata 360 D-Log M 的数据集会被拒绝。"),
+    ZH_HANT("拍攝輸入時所用的對數曲線，在其他一切之前解碼。dlogm-osmo360 是 "
+            "Osmo 360 的 DJI D-Log M，解碼為線性 Rec.2020，因此輸入隨之成為線性"
+            "且為 Rec.2020，把其中任一項設為別的值都會報錯。只有訓練影像會被"
+            "解碼：遮罩、SfM 和深度看到的仍是平淡的對數影格。"
+            "預設的 auto 取自資料集準備時從各輸入中繼資料中讀取的內容：所有輸入"
+            "都是 D-Log M 時為 dlogm-osmo360，都不是時不用曲線"
+            "。混合 D-Log M 與其他內容（Normal、其他設定、未知輸入或照"
+            "片）的資料集，以及用此版本無法解碼的 DJI 對數設定拍攝的資料集會被拒"
+            "絕。無法讀取設定的輸入不用曲線，並會輸出一行要求設定此旗標。none 表"
+            "示輸入不是對數。"
+            "dlogm-avata360 是 Avata 360 的對應曲線；D"
+            "JI 未公開 Avata 的 LUT，它來自我們對 DJI Stud"
+            "io D-Log M 匯出的擬合。所有輸入都是 Avata 360 "
+            "的 D-Log M 時 auto 選擇它，混合 Osmo 360 與"
+            " Avata 360 D-Log M 的資料集會被拒絕。"),
+    KO("입력을 촬영한 로그 커브로, 다른 무엇보다 먼저 디코딩됩니다. "
+       "dlogm-osmo360은 Osmo 360의 DJI D-Log M이며 선형 Rec.2020으로 "
+       "디코딩되므로, 입력은 선형이자 Rec.2020이 되고 둘 중 하나를 다른 값으로 "
+       "설정하면 오류입니다. 디코딩되는 것은 학습 이미지뿐이며 마스크, SfM, "
+       "깊이는 여전히 밋밋한 로그 프레임을 봅니다."
+       " 기본값 auto는 데이터셋 준비 때 각 입력의 메타데이터에서 읽은 내용으로 정합니다. 모든 입력이 D-Log M이면 dlogm-"
+       "osmo360, 하나도 아니면 커브 없음입니다. D-Log M과 그 밖의 것(Normal, 다른 프로필, 알 수 없는 입력, "
+       "사진)이 섞인 데이터셋과, 이 빌드가 디코딩할 수 없는 DJI 로그 프로필로 촬영한 데이터셋은 거부합니다. 프로필을 읽을 수 없는"
+       " 입력은 커브 없이 처리되고 이 플래그를 설정하라는 줄이 출력됩니다. none은 입력이 로그가 아니라는 뜻입니다."
+       " dlogm-avata360은 Avata 360용 같은 커브로, DJI가 Avata LUT를 공개하지 않아 DJI Studio의 "
+       "D-Log M 내보내기에 직접 맞춘 것입니다. 모든 입력이 Avata 360 D-Log M이면 auto가 이것을 고르고, "
+       "Osmo 360과 Avata 360 D-Log M이 섞인 데이터셋은 거부합니다."),
+    DE("Die Log-Kurve, mit der die Eingabe aufgenommen wurde; sie wird vor "
+       "allem anderen decodiert. `dlogm-osmo360` ist DJI D-Log M einer Osmo 360 "
+       "und decodiert nach linearem Rec.2020, daher ist die Eingabe danach linear "
+       "und Rec.2020, und beides anders zu setzen ist ein Fehler. Decodiert "
+       "werden nur die Trainingsbilder: Maskierung, SfM und Tiefe sehen weiter "
+       "die flachen Log-Bilder."
+       " Der Standard `auto` entnimmt es dem, was die Datensatzvorbereitung aus "
+       "den Metadaten jeder Eingabe gelesen hat: `dlogm-osmo360`, wenn jede "
+       "Eingabe D-Log M ist, keine Kurve, wenn keine es ist. Abgelehnt wird ein "
+       "Datensatz, der D-Log M mit etwas anderem mischt (Normal, ein anderes "
+       "Profil, eine unbekannte Eingabe oder Fotos), sowie einer in einem DJI-"
+       "Log-Profil, das dieser Build nicht decodieren kann. Eine Eingabe, deren "
+       "Profil sich nicht lesen lässt, bekommt keine Kurve und eine Zeile, die "
+       "nach diesem Flag fragt. `none` sagt, dass die Eingabe kein Log ist."
+       " `dlogm-avata360` ist dasselbe für eine Avata 360, aus unserer eigenen "
+       "Anpassung an den D-Log-M-Export von DJI Studio, da DJI keine Avata-LUT "
+       "veröffentlicht. `auto` wählt es, wenn jede Eingabe Avata-360-D-Log-M "
+       "ist, und lehnt einen Datensatz ab, der D-Log M von Osmo 360 und Avata "
+       "360 mischt."),
+    FR("La courbe log dans laquelle l'entrée a été filmée, décodée avant tout le "
+       "reste. « dlogm-osmo360 » est le D-Log M de DJI d'une Osmo 360 ; il se "
+       "décode en Rec.2020 linéaire, l'entrée est donc ensuite linéaire et en "
+       "Rec.2020, et régler l'un ou l'autre autrement est une erreur. Seules les "
+       "images d'entraînement sont décodées : le masquage, la SfM et la "
+       "profondeur voient toujours les images log plates."
+       " « auto », la valeur par défaut, la déduit de ce que la préparation du "
+       "jeu de données a lu dans les métadonnées de chaque entrée : « dlogm-"
+       "osmo360 » quand chaque entrée est en D-Log M, aucune courbe quand aucune"
+       " ne l'est. Elle refuse un jeu de données qui mélange le D-Log M avec "
+       "autre chose (Normal, un autre profil, une entrée inconnue ou des "
+       "photos), ainsi qu'un jeu filmé dans un profil log DJI que cette version "
+       "ne sait pas décoder. Une entrée dont le profil est illisible n'a pas de "
+       "courbe et une ligne demande ce paramètre. « none » indique que l'entrée "
+       "n'est pas en log."
+       " « dlogm-avata360 » est l'équivalent pour une Avata 360, issu de notre "
+       "propre ajustement à l'export D-Log M de DJI Studio, car DJI ne publie "
+       "pas de LUT Avata. « auto » le choisit quand chaque entrée est en D-Log "
+       "M d'Avata 360, et refuse un jeu de données qui mélange le D-Log M "
+       "d'Osmo 360 et d'Avata 360."),
+    ES("La curva logarítmica con la que se grabó la entrada, decodificada antes "
+       "que nada. «dlogm-osmo360» es el D-Log M de DJI de una Osmo 360; se "
+       "decodifica a Rec.2020 lineal, así que la entrada pasa a ser lineal y "
+       "Rec.2020, y fijar cualquiera de las dos en otro valor es un error. Solo "
+       "se decodifican las imágenes de entrenamiento: el enmascarado, la SfM y "
+       "la profundidad siguen viendo los fotogramas log planos."
+       " «auto», el valor por defecto, la toma de lo que la preparación del "
+       "conjunto de datos leyó en los metadatos de cada entrada: «dlogm-osmo360»"
+       " cuando todas las entradas son D-Log M, ninguna curva cuando ninguna lo "
+       "es. Rechaza un conjunto que mezcla D-Log M con otra cosa (Normal, otro "
+       "perfil, una entrada desconocida o fotos), y uno grabado en un perfil log"
+       " de DJI que esta versión no sabe decodificar. Una entrada cuyo perfil no"
+       " se puede leer queda sin curva y una línea pide este parámetro. «none» "
+       "indica que la entrada no es log."
+       " «dlogm-avata360» es lo mismo para una Avata 360, a partir de nuestro "
+       "propio ajuste a la exportación D-Log M de DJI Studio, ya que DJI no "
+       "publica una LUT para la Avata. «auto» lo elige cuando todas las entradas "
+       "son D-Log M de Avata 360, y rechaza un conjunto que mezcla D-Log M "
+       "de Osmo 360 y de Avata 360."),
+    PT("A curva log em que a entrada foi gravada, decodificada antes de tudo. "
+       "«dlogm-osmo360» é o D-Log M da DJI de uma Osmo 360; ele é decodificado "
+       "para Rec.2020 linear, então a entrada passa a ser linear e Rec.2020, e "
+       "definir qualquer um dos dois com outro valor é um erro. Só as imagens "
+       "de treinamento são decodificadas: o mascaramento, o SfM e a "
+       "profundidade continuam vendo os quadros log lavados."
+       " «auto», o padrão, a obtém do que a preparação do conjunto de dados leu "
+       "nos metadados de cada entrada: «dlogm-osmo360» quando todas as entradas "
+       "são D-Log M, nenhuma curva quando nenhuma é. Recusa um conjunto que "
+       "mistura D-Log M com outra coisa (Normal, outro perfil, uma entrada "
+       "desconhecida ou fotos), e um gravado em um perfil log da DJI que esta "
+       "versão não consegue decodificar. Uma entrada cujo perfil não pode ser "
+       "lido fica sem curva e uma linha pede este parâmetro. «none» diz que a "
+       "entrada não é log."
+       " «dlogm-avata360» é o mesmo para uma Avata 360, a partir do nosso "
+       "próprio ajuste à exportação D-Log M do DJI Studio, já que a DJI não "
+       "publica uma LUT para a Avata. «auto» o escolhe quando todas as entradas "
+       "são D-Log M da Avata 360, e recusa um conjunto que mistura D-Log M "
+       "da Osmo 360 e da Avata 360."),
+    IT("La curva log con cui è stato girato l'ingresso, decodificata prima di "
+       "ogni altra cosa. «dlogm-osmo360» è il D-Log M di DJI di una Osmo 360; "
+       "si decodifica in Rec.2020 lineare, quindi l'ingresso diventa lineare e "
+       "Rec.2020, e impostare uno dei due diversamente è un errore. Vengono "
+       "decodificate solo le immagini di addestramento: mascheratura, SfM e "
+       "profondità vedono ancora i fotogrammi log piatti."
+       " «auto», il valore predefinito, la ricava da ciò che la preparazione del"
+       " dataset ha letto nei metadati di ogni ingresso: «dlogm-osmo360» quando "
+       "ogni ingresso è D-Log M, nessuna curva quando nessuno lo è. Rifiuta un "
+       "dataset che mescola D-Log M con altro (Normal, un altro profilo, un "
+       "ingresso sconosciuto o foto), e uno girato in un profilo log DJI che "
+       "questa versione non sa decodificare. Un ingresso il cui profilo non si "
+       "legge resta senza curva e una riga chiede questo parametro. «none» "
+       "indica che l'ingresso non è log."
+       " «dlogm-avata360» è lo stesso per una Avata 360, dal nostro adattamento "
+       "all'esportazione D-Log M di DJI Studio, poiché DJI non pubblica una "
+       "LUT per la Avata. «auto» lo sceglie quando ogni ingresso è D-Log M "
+       "di Avata 360, e rifiuta un dataset che mescola D-Log M di Osmo 360 "
+       "e di Avata 360."),
+    NL("De log-kromme waarmee de invoer is opgenomen, gedecodeerd vóór al het "
+       "andere. `dlogm-osmo360` is DJI D-Log M van een Osmo 360; die decodeert "
+       "naar lineair Rec.2020, dus de invoer is daarna lineair en Rec.2020, en "
+       "een van beide anders instellen is een fout. Alleen de trainingsbeelden "
+       "worden gedecodeerd: maskeren, SfM en diepte zien nog de vlakke "
+       "log-beelden."
+       " `auto`, de standaard, haalt hem uit wat de datasetvoorbereiding in de "
+       "metadata van elke invoer las: `dlogm-osmo360` als alle invoer D-Log M "
+       "is, geen kromme als geen enkele dat is. Een dataset die D-Log M mengt "
+       "met iets anders (Normal, een ander profiel, onbekende invoer of foto's) "
+       "wordt geweigerd, net als een die is opgenomen in een DJI-logprofiel dat "
+       "deze versie niet kan decoderen. Invoer waarvan het profiel niet te lezen"
+       " is krijgt geen kromme en een regel die om deze vlag vraagt. `none` zegt"
+       " dat de invoer geen log is."
+       " `dlogm-avata360` is hetzelfde voor een Avata 360, uit onze eigen "
+       "fit op de D-Log M-export van DJI Studio, omdat DJI geen Avata-LUT "
+       "publiceert. `auto` kiest hem als alle invoer Avata 360 D-Log M is, "
+       "en weigert een dataset die D-Log M van Osmo 360 en Avata 360 mengt."),
+    RU("Логарифмическая кривая, в которой снят вход; она декодируется раньше "
+       "всего остального. «dlogm-osmo360» -- DJI D-Log M с Osmo 360; он "
+       "декодируется в линейный Rec.2020, поэтому вход становится линейным и "
+       "в Rec.2020, и задать одно из них иначе -- ошибка. Декодируются только "
+       "обучающие изображения: маскирование, SfM и глубина по-прежнему видят "
+       "плоские логарифмические кадры."
+       " «auto», значение по умолчанию, берёт её из того, что подготовка набора "
+       "данных прочитала в метаданных каждого входа: «dlogm-osmo360», если все "
+       "входы в D-Log M, и без кривой, если ни один. Отклоняется набор, где "
+       "D-Log M смешан с чем-то другим (Normal, другой профиль, неизвестный вход"
+       " или фотографии), а также снятый в логарифмическом профиле DJI, который "
+       "эта сборка не умеет декодировать. Вход, профиль которого не читается, "
+       "остаётся без кривой, и выводится строка с просьбой задать этот флаг. "
+       "«none» означает, что вход не логарифмический."
+       " «dlogm-avata360» -- то же для Avata 360, по нашей собственной подгонке "
+       "к экспорту D-Log M из DJI Studio, так как DJI не публикует LUT для "
+       "Avata. «auto» выбирает его, если все входы в D-Log M с Avata 360, "
+       "и отклоняет набор, где смешаны D-Log M с Osmo 360 и с Avata 360."),
+    TR("Girdinin çekildiği log eğrisi; her şeyden önce çözülür. "
+       "`dlogm-osmo360`, bir Osmo 360'ın DJI D-Log M'sidir ve doğrusal "
+       "Rec.2020'ye çözülür; bu yüzden girdi bundan sonra doğrusal ve Rec.2020 "
+       "olur, ikisinden birini başka bir değere ayarlamak hatadır. Yalnızca "
+       "eğitim görüntüleri çözülür: maskeleme, SfM ve derinlik hâlâ düz log "
+       "karelerini görür."
+       " Varsayılan `auto`, bunu veri kümesi hazırlığının her girdinin meta "
+       "verisinden okuduklarından alır: her girdi D-Log M ise `dlogm-osmo360`, "
+       "hiçbiri değilse eğri yok. D-Log M'yi başka bir şeyle (Normal, başka bir "
+       "profil, bilinmeyen bir girdi ya da fotoğraflar) karıştıran bir veri "
+       "kümesini ve bu sürümün çözemediği bir DJI log profiliyle çekilmiş olanı "
+       "reddeder. Profili okunamayan bir girdi eğrisiz kalır ve bu bayrağı "
+       "isteyen bir satır yazılır. `none`, girdinin log olmadığını söyler."
+       " `dlogm-avata360`, bir Avata 360 için aynısıdır; DJI Avata için LUT "
+       "yayımlamadığından DJI Studio'nun D-Log M dışa aktarımına kendi uydurmamızdan "
+       "gelir. Her girdi Avata 360 D-Log M ise `auto` bunu seçer ve Osmo 360 "
+       "ile Avata 360 D-Log M'yi karıştıran bir veri kümesini reddeder."));
+
+SS_MSG(image_color_log_exposure,
+    EN("Exposure after the log decode (stops)"), JA("ログデコード後の露出（段）"),
+    ZH_HANS("对数解码后的曝光（档）"), ZH_HANT("對數解碼後的曝光（檔）"),
+    KO("로그 디코딩 후 노출(스톱)"), DE("Belichtung nach der Log-Dekodierung (Blenden)"),
+    FR("Exposition après le décodage log (IL)"),
+    ES("Exposición tras la decodificación log (pasos)"),
+    PT("Exposição após a decodificação log (stops)"),
+    IT("Esposizione dopo la decodifica log (stop)"),
+    NL("Belichting na het log-decoderen (stops)"),
+    RU("Экспозиция после лог-декодирования (ступени)"),
+    TR("Log çözme sonrası pozlama (stop)"));
+SS_MSG(image_color_log_exposure_help,
+    EN("An exposure offset in stops, applied to linear light right after the "
+       "D-Log M decode, to the training images and the seed points alike: +1 "
+       "doubles them. 0, the default, keeps the decode scene-linear. DJI "
+       "Studio's D-Log M to Rec.709 LUT is brighter because it bakes in a "
+       "display exposure; +0.45 approximately matches its brightness, as "
+       "measured on clip 0129. Without a log curve it does nothing."),
+    JA("D-Log M のデコード直後にリニアな光へ掛ける露出オフセット（段）で、"
+       "学習画像にもシード点にも同じように掛かります。+1 で 2 倍になります。"
+       "既定の 0 ではデコードはシーンリニアのままです。DJI Studio の D-Log M "
+       "から Rec.709 への LUT は表示用の露出を含むため明るくなります。+0.45 "
+       "でその明るさにほぼ合います（クリップ 0129 で測定）。ログカーブが"
+       "ないときは何もしません。"),
+    ZH_HANS("以档为单位的曝光偏移，在 D-Log M 解码之后立即作用于线性光，"
+            "训练图像和种子点都一样：+1 使其加倍。默认的 0 让解码保持场景线性。"
+            "DJI Studio 的 D-Log M 到 Rec.709 LUT 包含了显示用的曝光，所以更亮；"
+            "+0.45 大致与其亮度一致（在片段 0129 上测得）。没有对数曲线时不起作用。"),
+    ZH_HANT("以檔為單位的曝光偏移，在 D-Log M 解碼之後立即作用於線性光，"
+            "訓練影像和種子點都一樣：+1 使其加倍。預設的 0 讓解碼保持場景線性。"
+            "DJI Studio 的 D-Log M 到 Rec.709 LUT 包含了顯示用的曝光，所以更亮；"
+            "+0.45 大致與其亮度一致（在片段 0129 上測得）。沒有對數曲線時不起作用。"),
+    KO("D-Log M 디코딩 직후 선형 광에 적용하는 노출 오프셋(스톱)이며, 학습 "
+       "이미지와 시드 점에 똑같이 적용됩니다. +1은 두 배로 만듭니다. 기본값 0은 "
+       "디코딩 결과를 장면 선형으로 둡니다. DJI Studio의 D-Log M→Rec.709 LUT는 "
+       "표시용 노출을 포함해 더 밝습니다. +0.45가 그 밝기에 거의 맞습니다(클립 "
+       "0129에서 측정). 로그 커브가 없으면 아무 일도 하지 않습니다."),
+    DE("Ein Belichtungsversatz in Blendenstufen, direkt nach der D-Log-M-"
+       "Dekodierung auf lineares Licht angewendet, auf die Trainingsbilder und "
+       "die Startpunkte gleichermaßen: +1 verdoppelt sie. 0, der Standard, "
+       "lässt die Dekodierung szenenlinear. DJI Studios LUT von D-Log M nach "
+       "Rec.709 ist heller, weil sie eine Anzeigebelichtung enthält; +0.45 "
+       "trifft ihre Helligkeit ungefähr, gemessen an Clip 0129. Ohne Log-Kurve "
+       "bewirkt es nichts."),
+    FR("Un décalage d'exposition en IL, appliqué à la lumière linéaire juste "
+       "après le décodage D-Log M, aux images d'entraînement comme aux points "
+       "de départ : +1 les double. 0, la valeur par défaut, laisse le décodage "
+       "linéaire en scène. La LUT D-Log M vers Rec.709 de DJI Studio est plus "
+       "claire parce qu'elle intègre une exposition d'affichage ; +0.45 "
+       "correspond à peu près à sa luminosité, mesurée sur le clip 0129. Sans "
+       "courbe log, il n'a aucun effet."),
+    ES("Un desplazamiento de exposición en pasos, aplicado a la luz lineal "
+       "justo después de la decodificación D-Log M, igual a las imágenes de "
+       "entrenamiento que a los puntos semilla: +1 los duplica. 0, el valor "
+       "por defecto, deja la decodificación lineal de escena. La LUT de D-Log M"
+       " a Rec.709 de DJI Studio es más clara porque incluye una exposición de "
+       "visualización; +0.45 se ajusta aproximadamente a su brillo, medido en "
+       "el clip 0129. Sin curva log no hace nada."),
+    PT("Um ajuste de exposição em stops, aplicado à luz linear logo após a "
+       "decodificação D-Log M, tanto nas imagens de treinamento quanto nos "
+       "pontos iniciais: +1 os dobra. 0, o padrão, mantém a decodificação "
+       "linear de cena. A LUT de D-Log M para Rec.709 do DJI Studio é mais "
+       "clara porque embute uma exposição de exibição; +0.45 corresponde "
+       "aproximadamente ao brilho dela, medido no clipe 0129. Sem curva log, "
+       "não faz nada."),
+    IT("Uno scostamento di esposizione in stop, applicato alla luce lineare "
+       "subito dopo la decodifica D-Log M, alle immagini di addestramento come "
+       "ai punti iniziali: +1 li raddoppia. 0, il predefinito, lascia la "
+       "decodifica lineare di scena. La LUT da D-Log M a Rec.709 di DJI Studio "
+       "è più chiara perché incorpora un'esposizione di visualizzazione; +0.45 "
+       "ne eguaglia all'incirca la luminosità, misurata sulla clip 0129. Senza "
+       "curva log non fa nulla."),
+    NL("Een belichtingsverschuiving in stops, direct na het D-Log M-decoderen "
+       "op lineair licht toegepast, op de trainingsbeelden en de startpunten "
+       "gelijk: +1 verdubbelt ze. 0, de standaard, laat het decoderen "
+       "scène-lineair. De LUT van D-Log M naar Rec.709 van DJI Studio is "
+       "lichter omdat die een weergavebelichting bevat; +0.45 komt ongeveer "
+       "overeen met de helderheid ervan, gemeten op clip 0129. Zonder "
+       "log-kromme doet het niets."),
+    RU("Сдвиг экспозиции в ступенях, применяемый к линейному свету сразу "
+       "после декодирования D-Log M, одинаково к обучающим изображениям и к "
+       "начальным точкам: +1 удваивает их. 0, значение по умолчанию, оставляет "
+       "декодирование линейным по сцене. LUT DJI Studio из D-Log M в Rec.709 "
+       "светлее, потому что включает экспозицию для отображения; +0.45 "
+       "примерно совпадает с его яркостью, по измерению на клипе 0129. Без "
+       "логарифмической кривой ничего не делает."),
+    TR("Stop cinsinden bir pozlama kaydırması; D-Log M çözmesinin hemen "
+       "ardından doğrusal ışığa, eğitim görüntülerine ve başlangıç noktalarına "
+       "aynı şekilde uygulanır: +1 onları iki katına çıkarır. Varsayılan 0, "
+       "çözmeyi sahne-doğrusal bırakır. DJI Studio'nun D-Log M'den Rec.709'a "
+       "LUT'u bir görüntüleme pozlaması içerdiği için daha parlaktır; +0.45 "
+       "onun parlaklığına yaklaşık olarak uyar, 0129 klibinde ölçüldüğü gibi. "
+       "Log eğrisi yoksa hiçbir şey yapmaz."));
+
 SS_MSG(splat_color_is_linear,
     EN("Train splats in linear light"), JA("スプラットをリニアで学習"),
     ZH_HANS("在线性光下训练泼溅"), ZH_HANT("在線性光下訓練潑濺"),
@@ -10013,6 +10343,77 @@ SS_MSG(point_color_gamut_help,
        "görüntülerini izler. Sade sRGB'de kalmış bir bulut için, örneğin nokta "
        "renklerini yerleşik SfM'in sRGB olarak yazdığı bir bulut için Rec.709 "
        "seçin."));
+
+SS_MSG(point_color_log,
+    EN("Seed point log curve"), JA("初期点群のログカーブ"),
+    ZH_HANS("初始点云对数曲线"), ZH_HANT("初始點雲對數曲線"),
+    KO("초기 포인트 로그 커브"), DE("Log-Kurve der Startpunkte"),
+    FR("Courbe log des points initiaux"),
+    ES("Curva logarítmica de los puntos iniciales"),
+    PT("Curva log dos pontos iniciais"),
+    IT("Curva log dei punti iniziali"),
+    NL("Log-kromme van de startpunten"),
+    RU("Логарифмическая кривая начальных точек"),
+    TR("Başlangıç noktası log eğrisi"));
+SS_MSG(point_color_log_help,
+    EN("The log curve the seed point cloud's colors are in. `none` follows the "
+       "input, which is right for a cloud SfM sampled from those log frames. "
+       "`off` says the colors are ordinary sRGB, as for a cloud made from other "
+       "footage: they are read exactly as they would be without any log flag."),
+    JA("初期点群の色が使っているログカーブです。none は入力に合わせ、そのログ"
+       "フレームから SfM が色を取った点群ならこれが正解です。off は色が普通の "
+       "sRGB であることを示し、ほかの映像から作った点群に使います。ログの指定が"
+       "ないときとまったく同じに読まれます。"),
+    ZH_HANS("初始点云颜色所用的对数曲线。none 跟随输入，适用于 SfM 从这些对数帧"
+            "中采样颜色的点云。off 表示颜色是普通的 sRGB，用于由其他素材生成的"
+            "点云：读取方式与完全不设对数曲线时相同。"),
+    ZH_HANT("初始點雲顏色所用的對數曲線。none 跟隨輸入，適用於 SfM 從這些對數影"
+            "格中取樣顏色的點雲。off 表示顏色是普通的 sRGB，用於由其他素材產生的"
+            "點雲：讀取方式與完全不設對數曲線時相同。"),
+    KO("초기 포인트 클라우드 색이 쓰는 로그 커브입니다. none은 입력을 따르며, "
+       "SfM이 그 로그 프레임에서 색을 가져온 포인트 클라우드라면 이것이 맞습니다. "
+       "off는 색이 일반 sRGB라는 뜻으로, 다른 영상에서 만든 포인트 클라우드에 "
+       "씁니다. 로그 설정이 없을 때와 똑같이 읽힙니다."),
+    DE("Die Log-Kurve, in der die Farben der Startpunktwolke vorliegen. `none` "
+       "folgt der Eingabe; das stimmt für eine Wolke, deren Farben das SfM aus "
+       "diesen Log-Bildern entnommen hat. `off` sagt, dass die Farben gewöhnliches "
+       "sRGB sind, etwa bei einer Wolke aus anderem Material: Sie werden genau so "
+       "gelesen wie ohne jede Log-Angabe."),
+    FR("La courbe log des couleurs du nuage de points initial. « none » suit "
+       "l'entrée, ce qui convient à un nuage dont la SfM a prélevé les couleurs "
+       "dans ces images log. « off » indique que les couleurs sont du sRGB "
+       "ordinaire, comme pour un nuage issu d'autres images : elles sont lues "
+       "exactement comme sans aucune option log."),
+    ES("La curva logarítmica en la que están los colores de la nube de puntos "
+       "inicial. «none» sigue a la entrada, lo correcto para una nube cuyos "
+       "colores tomó la SfM de esos fotogramas log. «off» indica que los colores "
+       "son sRGB normal, como en una nube hecha con otras imágenes: se leen "
+       "exactamente igual que sin ninguna opción log."),
+    PT("A curva log em que estão as cores da nuvem de pontos inicial. «none» "
+       "segue a entrada, o certo para uma nuvem cujas cores o SfM tirou desses "
+       "quadros log. «off» indica que as cores são sRGB comum, como numa nuvem "
+       "feita com outras imagens: elas são lidas exatamente como sem nenhuma "
+       "opção log."),
+    IT("La curva log in cui sono i colori della nuvola di punti iniziale. "
+       "«none» segue l'ingresso, il che è corretto per una nuvola i cui colori "
+       "la SfM ha preso da quei fotogrammi log. «off» indica che i colori sono "
+       "sRGB normale, come per una nuvola fatta da altre riprese: vengono letti "
+       "esattamente come senza alcuna opzione log."),
+    NL("De log-kromme waarin de kleuren van de startpuntenwolk staan. `none` "
+       "volgt de invoer, wat klopt voor een wolk waarvan de SfM de kleuren uit "
+       "die log-beelden nam. `off` zegt dat de kleuren gewoon sRGB zijn, zoals "
+       "bij een wolk uit ander beeldmateriaal: ze worden precies zo gelezen als "
+       "zonder enige log-instelling."),
+    RU("Логарифмическая кривая, в которой заданы цвета исходного облака точек. "
+       "«none» следует за входом -- это верно для облака, чьи цвета SfM взял из "
+       "этих логарифмических кадров. «off» говорит, что цвета -- обычный sRGB, "
+       "как у облака из другой съёмки: они читаются точно так же, как без "
+       "всякого логарифмического флага."),
+    TR("Başlangıç nokta bulutu renklerinin log eğrisi. `none` girdiyi izler; "
+       "renklerini SfM'in o log karelerinden aldığı bir bulut için doğrusu "
+       "budur. `off`, renklerin sıradan sRGB olduğunu söyler; başka "
+       "görüntülerden üretilmiş bir bulut içindir ve renkler hiçbir log ayarı "
+       "yokmuş gibi okunur."));
 
 
 // ===========================================================================
@@ -11302,6 +11703,19 @@ SS_MSG(choice_same_as_input,
     ES("igual que la entrada"), PT("igual à entrada"), IT("come l'ingresso"),
     NL("zoals de invoer"),  RU("как у входа"),  TR("girdiyle aynı"));
 
+SS_MSG(choice_not_log,
+    EN("not log"), JA("ログではない"), ZH_HANS("非对数"), ZH_HANT("非對數"),
+    KO("로그 아님"), DE("kein Log"), FR("pas en log"), ES("sin log"),
+    PT("sem log"), IT("non log"), NL("geen log"), RU("не логарифм"),
+    TR("log değil"));
+
+SS_MSG(choice_from_the_dataset,
+    EN("from the dataset"), JA("データセットから"), ZH_HANS("取自数据集"),
+    ZH_HANT("取自資料集"), KO("데이터셋에서"), DE("aus dem Datensatz"),
+    FR("d'après le jeu de données"), ES("según el conjunto de datos"),
+    PT("conforme o conjunto de dados"), IT("dal dataset"), NL("uit de dataset"),
+    RU("из набора данных"), TR("veri kümesinden"));
+
 SS_MSG(choice_never,
     EN("never"),
     JA("しない"),
@@ -11478,15 +11892,19 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"cache_images", "gpu",  &choice_gpu},
     {"cache_images", "disk", &choice_disk},
 
-    // `none` is the UNSET value for these six, not a colour space -- Rec.709
-    // and `srgb` are the explicit ones. Labelled so the dropdown cannot read
-    // as "no gamut" / "no transfer".
+    // `none` is the UNSET value for these, not a colour space -- Rec.709,
+    // `srgb` and `off` are the explicit ones. Labelled so the dropdown cannot
+    // read as "no gamut" / "no transfer".
     {"image_color_gamut", "none", &choice_from_the_file},
     {"splat_color_gamut", "none", &choice_same_as_input},
     {"image_color_transfer", "none", &choice_srgb_default},
     {"splat_color_transfer", "none", &choice_same_as_input},
     {"point_color_gamut", "none", &choice_same_as_input},
     {"point_color_transfer", "none", &choice_same_as_input},
+    {"image_color_log", "auto", &choice_from_the_dataset},
+    {"image_color_log", "none", &choice_not_log},
+    {"point_color_log", "none", &choice_same_as_input},
+    {"point_color_log", "off", &choice_not_log},
 
     {"random_init", "never",  &choice_never},
     {"random_init", "auto",   &choice_without_points},

@@ -298,12 +298,15 @@ inline int train_tier_rank(const char* tier) {
     X(std::optional<bool>, image_color_is_linear, std::nullopt, "colorspace", "basic", "") \
     X(std::string, image_color_transfer, "", "colorspace", "advanced", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, image_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
+    X(std::string, image_color_log, "auto", "colorspace", "basic", "auto|dlogm-osmo360|dlogm-avata360|none") \
+    X(float, image_color_log_exposure, 0.0f, "colorspace", "advanced", "")   \
     X(std::optional<bool>, splat_color_is_linear, std::nullopt, "colorspace", "basic", "") \
     X(std::string, splat_color_transfer, "", "colorspace", "advanced", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, splat_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
     X(std::optional<bool>, point_color_is_linear, std::nullopt, "colorspace", "basic", "") \
     X(std::string, point_color_transfer, "", "colorspace", "advanced", "srgb|srgb-clamped|aces|filmic|uncharted2|none") \
     X(std::string, point_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
+    X(std::string, point_color_log, "", "colorspace", "advanced", "dlogm-osmo360|dlogm-avata360|off|none") \
                                                                              \
     /* ==== perf -- speed and memory; none of these change the result ==== */\
     X(std::string, cache_images, "disk", "perf", "basic", "cpu|gpu|disk")    \
@@ -343,6 +346,9 @@ struct TrainConfig {
     type member = default_;
     SS_CONFIG_FIELDS(SS_DECLARE_FIELD)
 #undef SS_DECLARE_FIELD
+    // Not a flag: the curve `image_color_log auto` settled on for this run's
+    // dataset. Written to config.json beside the flag; only a resume reads it.
+    std::string image_color_log_resolved;
 };
 
 // Fields whose default ({}) is not a usable value. Checked after flag

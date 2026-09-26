@@ -741,6 +741,66 @@ SS_MSG(kept_frames,
     RU("Оставлено кадров: {0} -> {1}"),
     TR("{0} kare tutuldu -> {1}"));
 
+SS_MSG(frames_16bit_auto,
+    EN("{0} was shot in D-Log M: its frames are written as 16-bit PNG"),
+    JA("{0} は D-Log M で撮影されています。フレームを 16 ビット PNG で書き出します"),
+    ZH_HANS("{0} 以 D-Log M 拍摄：其帧写为 16 位 PNG"),
+    ZH_HANT("{0} 以 D-Log M 拍攝：其影格寫為 16 位元 PNG"),
+    KO("{0} 은(는) D-Log M 으로 촬영되었습니다. 프레임을 16비트 PNG 로 씁니다"),
+    DE("{0} wurde in D-Log M aufgenommen: die Einzelbilder werden als 16-Bit-PNG geschrieben"),
+    FR("{0} a été filmé en D-Log M : ses images sont écrites en PNG 16 bits"),
+    ES("{0} se grabó en D-Log M: sus fotogramas se escriben como PNG de 16 bits"),
+    PT("{0} foi gravado em D-Log M: os quadros são gravados como PNG de 16 bits"),
+    IT("{0} è stato girato in D-Log M: i fotogrammi vengono scritti come PNG a 16 bit"),
+    NL("{0} is in D-Log M opgenomen: de beelden worden als 16-bit PNG geschreven"),
+    RU("{0} снят в D-Log M: кадры записываются как 16-битные PNG"),
+    TR("{0} D-Log M ile çekilmiş: kareleri 16 bit PNG olarak yazılıyor"));
+
+SS_MSG(frames_16bit_ffmpeg,
+    EN("16-bit frames are extracted with ffmpeg; the built-in decoder writes 8 bits"),
+    JA("16 ビットのフレームは ffmpeg で取り出します。内蔵デコーダは 8 ビットで書き出します"),
+    ZH_HANS("16 位帧用 ffmpeg 提取；内置解码器只写 8 位"),
+    ZH_HANT("16 位元影格以 ffmpeg 擷取；內建解碼器只寫 8 位元"),
+    KO("16비트 프레임은 ffmpeg 로 추출합니다. 내장 디코더는 8비트로 씁니다"),
+    DE("16-Bit-Einzelbilder werden mit ffmpeg extrahiert; der eingebaute Decoder schreibt 8 Bit"),
+    FR("les images 16 bits sont extraites avec ffmpeg ; le décodeur intégré écrit 8 bits"),
+    ES("los fotogramas de 16 bits se extraen con ffmpeg; el decodificador integrado escribe 8 bits"),
+    PT("os quadros de 16 bits são extraídos com o ffmpeg; o decodificador integrado grava 8 bits"),
+    IT("i fotogrammi a 16 bit si estraggono con ffmpeg; il decoder integrato scrive 8 bit"),
+    NL("16-bit beelden worden met ffmpeg uitgepakt; de ingebouwde decoder schrijft 8 bits"),
+    RU("16-битные кадры извлекаются через ffmpeg; встроенный декодер пишет 8 бит"),
+    TR("16 bit kareler ffmpeg ile çıkarılır; yerleşik kod çözücü 8 bit yazar"));
+
+SS_MSG(frames_16bit_estimate,
+    EN("16-bit frames need about {0} GB of disk (frames: {1})"),
+    JA("16 ビットのフレームにはディスクが約 {0} GB 必要です（フレーム数: {1}）"),
+    ZH_HANS("16 位帧约需 {0} GB 磁盘空间（帧数：{1}）"),
+    ZH_HANT("16 位元影格約需 {0} GB 磁碟空間（影格數：{1}）"),
+    KO("16비트 프레임에 디스크가 약 {0} GB 필요합니다 (프레임 수: {1})"),
+    DE("16-Bit-Einzelbilder brauchen etwa {0} GB Speicherplatz (Bilder: {1})"),
+    FR("les images 16 bits occupent environ {0} Go de disque (images : {1})"),
+    ES("los fotogramas de 16 bits ocupan unos {0} GB de disco (fotogramas: {1})"),
+    PT("os quadros de 16 bits ocupam cerca de {0} GB de disco (quadros: {1})"),
+    IT("i fotogrammi a 16 bit occupano circa {0} GB di disco (fotogrammi: {1})"),
+    NL("16-bit beelden nemen ongeveer {0} GB schijfruimte in (beelden: {1})"),
+    RU("16-битные кадры займут около {0} ГБ на диске (кадров: {1})"),
+    TR("16 bit kareler yaklaşık {0} GB disk alanı kaplar (kare: {1})"));
+
+SS_MSG(frames_16bit_disk_tight,
+    EN("warning: the 16-bit frames (about {0} GB) take more than 80% of the {1} GB free on {2}"),
+    JA("警告: 16 ビットのフレーム（約 {0} GB）が {2} の空き容量 {1} GB の 80% を超えます"),
+    ZH_HANS("警告：16 位帧（约 {0} GB）将占用 {2} 上 {1} GB 可用空间的 80% 以上"),
+    ZH_HANT("警告：16 位元影格（約 {0} GB）將佔用 {2} 上 {1} GB 可用空間的 80% 以上"),
+    KO("경고: 16비트 프레임(약 {0} GB)이 {2} 의 여유 공간 {1} GB 의 80% 를 넘습니다"),
+    DE("Warnung: die 16-Bit-Einzelbilder (etwa {0} GB) belegen mehr als 80% der {1} GB, die auf {2} frei sind"),
+    FR("attention : les images 16 bits (environ {0} Go) occupent plus de 80 % des {1} Go libres sur {2}"),
+    ES("aviso: los fotogramas de 16 bits (unos {0} GB) ocupan más del 80% de los {1} GB libres en {2}"),
+    PT("aviso: os quadros de 16 bits (cerca de {0} GB) ocupam mais de 80% dos {1} GB livres em {2}"),
+    IT("attenzione: i fotogrammi a 16 bit (circa {0} GB) occupano più dell'80% dei {1} GB liberi su {2}"),
+    NL("waarschuwing: de 16-bit beelden (ongeveer {0} GB) nemen meer dan 80% van de {1} GB vrije ruimte op {2} in"),
+    RU("предупреждение: 16-битные кадры (около {0} ГБ) займут больше 80% из {1} ГБ, свободных на {2}"),
+    TR("uyarı: 16 bit kareler (yaklaşık {0} GB), {2} üzerindeki {1} GB boş alanın %80'inden fazlasını kaplar"));
+
 SS_MSG(stage_warp_360,
     EN("Warping 360 frames into views"),
     JA("360 フレームを各ビューに変換しています"),
@@ -2053,6 +2113,556 @@ SS_MSG(ppisp_before_color_space_order,
     RU("{0} требует {1}: покадровая коррекция цвета всегда применяется в sRGB"),
     TR("{0}, {1} gerektirir: fotoğraf başına renk düzeltmesi her zaman sRGB'de "
        "uygulanır"));
+SS_MSG(log_curve_needs_linear,
+    EN("{0} decodes to linear light, so {1} cannot be off"),
+    JA("{0} はリニアな光にデコードするため、{1} をオフにはできません"),
+    ZH_HANS("{0} 解码为线性光，因此不能关闭 {1}"),
+    ZH_HANT("{0} 解碼為線性光，因此不能關閉 {1}"),
+    KO("{0}은(는) 선형 빛으로 디코딩하므로 {1}을(를) 끌 수 없습니다"),
+    DE("{0} decodiert in lineares Licht, daher kann {1} nicht aus sein"),
+    FR("{0} décode en lumière linéaire, donc {1} ne peut pas être désactivé"),
+    ES("{0} decodifica a luz lineal, así que {1} no puede estar desactivado"),
+    PT("{0} decodifica para luz linear, então {1} não pode estar desligado"),
+    IT("{0} decodifica in luce lineare, quindi {1} non può essere disattivato"),
+    NL("{0} decodeert naar lineair licht, dus {1} kan niet uit staan"),
+    RU("{0} декодирует в линейный свет, поэтому {1} нельзя выключать"),
+    TR("{0} doğrusal ışığa çözer, bu yüzden {1} kapalı olamaz"));
+// What a dataset's record of its clips' picture profiles adds up to
+// (data/DatasetColor.h). D-Log M is DJI's name for it in every language.
+SS_MSG(color_profile_dlogm,
+    EN("D-Log M"), JA("D-Log M"), ZH_HANS("D-Log M"), ZH_HANT("D-Log M"),
+    KO("D-Log M"), DE("D-Log M"), FR("D-Log M"), ES("D-Log M"), PT("D-Log M"),
+    IT("D-Log M"), NL("D-Log M"), RU("D-Log M"), TR("D-Log M"));
+SS_MSG(color_profile_not_log,
+    EN("not log"), JA("ログではない"), ZH_HANS("非对数"), ZH_HANT("非對數"),
+    KO("로그 아님"), DE("kein Log"), FR("pas en log"), ES("sin log"),
+    PT("sem log"), IT("non log"), NL("geen log"), RU("не логарифмический"),
+    TR("log değil"));
+SS_MSG(color_profile_unknown,
+    EN("unknown"), JA("不明"), ZH_HANS("未知"), ZH_HANT("未知"),
+    KO("알 수 없음"), DE("unbekannt"), FR("inconnu"), ES("desconocido"),
+    PT("desconhecido"), IT("sconosciuto"), NL("onbekend"), RU("неизвестен"),
+    TR("bilinmiyor"));
+SS_MSG(color_profile_mixed,
+    EN("mixed"), JA("混在"), ZH_HANS("混合"), ZH_HANT("混合"),
+    KO("혼합"), DE("gemischt"), FR("mélangé"), ES("mixto"), PT("misto"),
+    IT("misto"), NL("gemengd"), RU("смешанный"), TR("karışık"));
+SS_MSG(dataset_color_dlogm,
+    EN("Colour profile from the inputs' metadata: D-Log M (inputs: {0}); reading"
+       " the input with --image-color-log {1}"),
+    JA("入力のメタデータによる色プロファイル: D-Log M（入力数: {0}"
+       "）。入力を --image-color-log {1} で読み込みます"),
+    ZH_HANS("输入元数据中的色彩配置：D-Log M（输入数：{0}）；按 --ima"
+            "ge-color-log {1} 读取输入"),
+    ZH_HANT("輸入中繼資料中的色彩設定：D-Log M（輸入數：{0}）；依 --im"
+            "age-color-log {1} 讀取輸入"),
+    KO("입력 메타데이터의 색 프로필: D-Log M(입력 수: {0}). 입력을 --image-color-log {1}"
+       "(으)로 읽습니다"),
+    DE("Farbprofil laut Metadaten der Eingaben: D-Log M (Eingaben: {0}); die "
+       "Eingabe wird mit --image-color-log {1} gelesen"),
+    FR("Profil colorimétrique d'après les métadonnées des entrées : D-Log M "
+       "(entrées : {0}) ; l'entrée est lue avec --image-color-log {1}"),
+    ES("Perfil de color según los metadatos de las entradas: D-Log M (entradas: "
+       "{0}); la entrada se lee con --image-color-log {1}"),
+    PT("Perfil de cor segundo os metadados das entradas: D-Log M (entradas: "
+       "{0}); a entrada é lida com --image-color-log {1}"),
+    IT("Profilo colore dai metadati degli ingressi: D-Log M (ingressi: {0}); "
+       "l'ingresso viene letto con --image-color-log {1}"),
+    NL("Kleurprofiel volgens de metadata van de invoer: D-Log M "
+       "(invoerbestanden: {0}); de invoer wordt gelezen met --image-color-log "
+       "{1}"),
+    RU("Цветовой профиль по метаданным входов: D-Log M (входов: {0}); вход "
+       "читается с --image-color-log {1}"),
+    TR("Girdilerin meta verisine göre renk profili: D-Log M (girdi sayısı: {0});"
+       " girdi --image-color-log {1} ile okunuyor"));
+SS_MSG(dataset_color_dlogm_cameras,
+    EN("The dataset mixes D-Log M inputs from an Osmo 360 (inputs: {0}) and an "
+       "Avata 360 (inputs: {1}), and each camera has its own curve. Prepare a "
+       "dataset from one camera's inputs, or set the input log curve "
+       "(--image-color-log) only if every input really was shot on that camera"),
+    JA("このデータセットには Osmo 360 の D-Log M 入力（{0} 件）と Avata 360 の"
+       " D-Log M 入力（{1} 件）が混在しており、カメラごとにカーブが異なります。"
+       "1 台のカメラの入力だけでデータセットを作成するか、すべての入力が本当に"
+       "そのカメラで撮影された場合に限り入力のログカーブ（--image-color-log）"
+       "を設定してください"),
+    ZH_HANS("数据集混合了 Osmo 360 的 D-Log M 输入（{0} 个）和 Avata 360 的 D-Log M "
+            "输入（{1} 个），而每台相机有各自的曲线。请只用一台相机的输入准备数据集，"
+            "或仅在所有输入确实都由该相机拍摄时设置输入对数曲线（--image-color-log）"),
+    ZH_HANT("資料集混合了 Osmo 360 的 D-Log M 輸入（{0} 個）和 Avata 360 的 D-Log M "
+            "輸入（{1} 個），而每台相機有各自的曲線。請只用一台相機的輸入準備資料集，"
+            "或僅在所有輸入確實都由該相機拍攝時設定輸入對數曲線（--image-color-log）"),
+    KO("데이터셋에 Osmo 360의 D-Log M 입력({0}개)과 Avata 360의 D-Log M 입력({1}개)이 "
+       "섞여 있으며, 카메라마다 커브가 다릅니다. 한 카메라의 입력만으로 데이터셋을 "
+       "준비하거나, 모든 입력이 정말 그 카메라로 촬영된 경우에만 입력 로그 커브"
+       "(--image-color-log)를 설정하세요"),
+    DE("Der Datensatz mischt D-Log-M-Eingaben einer Osmo 360 (Eingaben: {0}) und "
+       "einer Avata 360 (Eingaben: {1}), und jede Kamera hat ihre eigene Kurve. "
+       "Bereiten Sie einen Datensatz aus den Eingaben einer Kamera vor, oder "
+       "setzen Sie die Log-Kurve der Eingabe (--image-color-log) nur, wenn "
+       "wirklich jede Eingabe mit dieser Kamera aufgenommen wurde"),
+    FR("Le jeu de données mélange des entrées D-Log M d'une Osmo 360 (entrées : "
+       "{0}) et d'une Avata 360 (entrées : {1}), et chaque caméra a sa propre "
+       "courbe. Préparez un jeu de données à partir des entrées d'une seule "
+       "caméra, ou réglez la courbe log d'entrée (--image-color-log) seulement si"
+       " chaque entrée a vraiment été filmée avec cette caméra"),
+    ES("El conjunto de datos mezcla entradas D-Log M de una Osmo 360 (entradas: "
+       "{0}) y de una Avata 360 (entradas: {1}), y cada cámara tiene su propia "
+       "curva. Prepare un conjunto con las entradas de una sola cámara, o fije "
+       "la curva logarítmica de entrada (--image-color-log) solo si todas las "
+       "entradas se grabaron de verdad con esa cámara"),
+    PT("O conjunto de dados mistura entradas D-Log M de uma Osmo 360 (entradas: "
+       "{0}) e de uma Avata 360 (entradas: {1}), e cada câmera tem sua própria "
+       "curva. Prepare um conjunto com as entradas de uma só câmera, ou defina a"
+       " curva log de entrada (--image-color-log) só se todas as entradas foram "
+       "mesmo gravadas com essa câmera"),
+    IT("Il dataset mescola ingressi D-Log M di una Osmo 360 (ingressi: {0}) e di"
+       " una Avata 360 (ingressi: {1}), e ogni fotocamera ha la sua curva. "
+       "Prepara un dataset con gli ingressi di una sola fotocamera, oppure "
+       "imposta la curva log in ingresso (--image-color-log) solo se ogni "
+       "ingresso è stato davvero girato con quella fotocamera"),
+    NL("De dataset mengt D-Log M-invoer van een Osmo 360 (invoerbestanden: {0})"
+       " en van een Avata 360 (invoerbestanden: {1}), en elke camera heeft zijn "
+       "eigen kromme. Bereid een dataset voor uit de invoer van één camera, of "
+       "stel de log-kromme van de invoer (--image-color-log) alleen in als alle "
+       "invoer echt met die camera is opgenomen"),
+    RU("Набор смешивает входы D-Log M с Osmo 360 (входов: {0}) и с Avata 360 "
+       "(входов: {1}), а у каждой камеры своя кривая. Подготовьте набор из "
+       "входов одной камеры или задайте логарифмическую кривую входа "
+       "(--image-color-log), только если все входы действительно сняты этой "
+       "камерой"),
+    TR("Veri kümesi bir Osmo 360'ın D-Log M girdilerini (girdi sayısı: {0}) ve "
+       "bir Avata 360'ın D-Log M girdilerini (girdi sayısı: {1}) karıştırıyor ve "
+       "her kameranın kendi eğrisi var. Tek bir kameranın girdilerinden bir veri"
+       " kümesi hazırlayın ya da girdi log eğrisini (--image-color-log) yalnızca"
+       " her girdi gerçekten o kamerayla çekildiyse ayarlayın"));
+SS_MSG(dataset_color_not_log,
+    EN("Colour profile from the inputs' metadata: not log (inputs: {0}); the "
+       "input is not decoded (--image-color-log)"),
+    JA("入力のメタデータによる色プロファイル: ログではない（入力数: {0}）"
+       "。入力はデコードしません（--image-color-log）"),
+    ZH_HANS("输入元数据中的色彩配置：非对数（输入数：{0}）；不解码输入（--ima"
+            "ge-color-log）"),
+    ZH_HANT("輸入中繼資料中的色彩設定：非對數（輸入數：{0}）；不解碼輸入（--im"
+            "age-color-log）"),
+    KO("입력 메타데이터의 색 프로필: 로그 아님(입력 수: {0}). 입력을 디코딩하지 않습니다(--image-color-log)"),
+    DE("Farbprofil laut Metadaten der Eingaben: kein Log (Eingaben: {0}); die "
+       "Eingabe wird nicht decodiert (--image-color-log)"),
+    FR("Profil colorimétrique d'après les métadonnées des entrées : pas en log "
+       "(entrées : {0}) ; l'entrée n'est pas décodée (--image-color-log)"),
+    ES("Perfil de color según los metadatos de las entradas: sin log (entradas: "
+       "{0}); la entrada no se decodifica (--image-color-log)"),
+    PT("Perfil de cor segundo os metadados das entradas: sem log (entradas: "
+       "{0}); a entrada não é decodificada (--image-color-log)"),
+    IT("Profilo colore dai metadati degli ingressi: non log (ingressi: {0}); "
+       "l'ingresso non viene decodificato (--image-color-log)"),
+    NL("Kleurprofiel volgens de metadata van de invoer: geen log "
+       "(invoerbestanden: {0}); de invoer wordt niet gedecodeerd (--image-color-"
+       "log)"),
+    RU("Цветовой профиль по метаданным входов: не логарифмический (входов: {0});"
+       " вход не декодируется (--image-color-log)"),
+    TR("Girdilerin meta verisine göre renk profili: log değil (girdi sayısı: "
+       "{0}); girdi çözülmüyor (--image-color-log)"));
+SS_MSG(dataset_color_unknown,
+    EN("Colour profile unknown: {0} carries DJI metadata this build cannot read "
+       "the profile from. If it was shot in D-Log M, set --image-color-log"),
+    JA("色プロファイルは不明です: {0} の DJI メタデータからは、このビルドでは"
+       "プロファイルを読み取れません。D-Log M で撮影した場合は --image-color-log "
+       "を設定してください"),
+    ZH_HANS("色彩配置未知：{0} 带有此版本无法从中读取配置的 DJI 元数据。如果是用 "
+            "D-Log M 拍摄的，请设置 --image-color-log"),
+    ZH_HANT("色彩設定未知：{0} 帶有此版本無法從中讀取設定的 DJI 中繼資料。如果是用 "
+            "D-Log M 拍攝的，請設定 --image-color-log"),
+    KO("색 프로필을 알 수 없습니다: {0}의 DJI 메타데이터에서 이 빌드는 프로필을 "
+       "읽을 수 없습니다. D-Log M으로 촬영했다면 --image-color-log를 설정하세요"),
+    DE("Farbprofil unbekannt: {0} trägt DJI-Metadaten, aus denen dieser Build das "
+       "Profil nicht lesen kann. Wurde in D-Log M gefilmt, --image-color-log setzen"),
+    FR("Profil colorimétrique inconnu : {0} porte des métadonnées DJI dont cette "
+       "version ne sait pas lire le profil. S'il a été filmé en D-Log M, "
+       "définissez --image-color-log"),
+    ES("Perfil de color desconocido: {0} lleva metadatos DJI de los que esta "
+       "versión no sabe leer el perfil. Si se grabó en D-Log M, defina "
+       "--image-color-log"),
+    PT("Perfil de cor desconhecido: {0} traz metadados DJI dos quais esta versão "
+       "não consegue ler o perfil. Se foi gravado em D-Log M, defina "
+       "--image-color-log"),
+    IT("Profilo colore sconosciuto: {0} contiene metadati DJI da cui questa "
+       "versione non sa leggere il profilo. Se è stato girato in D-Log M, "
+       "impostare --image-color-log"),
+    NL("Kleurprofiel onbekend: {0} bevat DJI-metadata waaruit deze versie het "
+       "profiel niet kan lezen. Is er in D-Log M gefilmd, stel dan "
+       "--image-color-log in"),
+    RU("Цветовой профиль неизвестен: в {0} есть метаданные DJI, из которых эта "
+       "сборка не умеет читать профиль. Если снято в D-Log M, задайте "
+       "--image-color-log"),
+    TR("Renk profili bilinmiyor: {0}, bu sürümün profili okuyamadığı DJI meta "
+       "verisi taşıyor. D-Log M ile çekildiyse --image-color-log ayarlayın"));
+SS_MSG(dataset_color_mixed,
+    EN("The dataset mixes inputs shot in D-Log M (inputs: {0}) with inputs that "
+       "are not, or whose profile is unknown (inputs: {1}), and one setting "
+       "decodes every input the same way. Prepare a dataset from the D-Log M "
+       "inputs alone, or set the input log curve (--image-color-log) only if "
+       "every input really is D-Log M"),
+    JA("このデータセットには D-Log M で撮影した入力（{0} 件）と、そ"
+       "うでないかプロファイルが不明な入力（{1} 件）が混在しており、1 つの"
+       "設定ではすべての入力が同じようにデコードされます。D-Log M の入力"
+       "だけでデータセットを作成するか、すべての入力が本当に D-Log M の"
+       "場合に限り入力のログカーブ（--image-color-log）を設定し"
+       "てください"),
+    ZH_HANS("数据集混合了用 D-Log M 拍摄的输入（{0} 个）和不是或配置未知"
+            "的输入（{1} 个），而同一设置会以相同方式解码所有输入。请只用 D-L"
+            "og M 输入准备数据集，或仅在所有输入确实都是 D-Log M 时设置"
+            "输入对数曲线（--image-color-log）"),
+    ZH_HANT("資料集混合了用 D-Log M 拍攝的輸入（{0} 個）和不是或設定未知"
+            "的輸入（{1} 個），而同一設定會以相同方式解碼所有輸入。請只用 D-L"
+            "og M 輸入準備資料集，或僅在所有輸入確實都是 D-Log M 時設定"
+            "輸入對數曲線（--image-color-log）"),
+    KO("데이터셋에 D-Log M으로 촬영한 입력({0}개)과 그렇지 않거나 프로필을 알 수 없는 입력({1}개)이 섞여 있으며, 하나의 "
+       "설정은 모든 입력을 같은 방식으로 디코딩합니다. D-Log M 입력만으로 데이터셋을 준비하거나, 모든 입력이 실제로 D-Log "
+       "M인 경우에만 입력 로그 커브(--image-color-log)를 설정하세요"),
+    DE("Der Datensatz mischt Eingaben in D-Log M (Eingaben: {0}) mit Eingaben, "
+       "die es nicht sind oder deren Profil unbekannt ist (Eingaben: {1}), und "
+       "eine Einstellung decodiert alle Eingaben gleich. Einen Datensatz nur aus"
+       " den D-Log-M-Eingaben vorbereiten oder die Log-Kurve der Eingabe "
+       "(--image-color-log) nur setzen, wenn wirklich jede Eingabe D-Log M ist"),
+    FR("Le jeu de données mélange des entrées filmées en D-Log M (entrées : {0})"
+       " et des entrées qui ne le sont pas ou dont le profil est inconnu "
+       "(entrées : {1}), et un seul réglage décode toutes les entrées de la même"
+       " façon. Préparez un jeu de données avec les seules entrées D-Log M, ou "
+       "ne définissez la courbe log d'entrée (--image-color-log) que si chaque "
+       "entrée est vraiment en D-Log M"),
+    ES("El conjunto de datos mezcla entradas grabadas en D-Log M (entradas: {0})"
+       " con entradas que no lo están o cuyo perfil se desconoce (entradas: "
+       "{1}), y un solo ajuste decodifica todas las entradas igual. Prepare un "
+       "conjunto de datos solo con las entradas D-Log M, o defina la curva "
+       "logarítmica de entrada (--image-color-log) solo si todas las entradas "
+       "son realmente D-Log M"),
+    PT("O conjunto de dados mistura entradas gravadas em D-Log M (entradas: {0})"
+       " com entradas que não estão ou cujo perfil é desconhecido (entradas: "
+       "{1}), e uma única configuração decodifica todas as entradas do mesmo "
+       "jeito. Prepare um conjunto de dados só com as entradas D-Log M, ou "
+       "defina a curva log de entrada (--image-color-log) somente se todas as "
+       "entradas forem mesmo D-Log M"),
+    IT("Il dataset mescola ingressi girati in D-Log M (ingressi: {0}) con "
+       "ingressi che non lo sono o il cui profilo è sconosciuto (ingressi: {1}),"
+       " e una sola impostazione decodifica tutti gli ingressi allo stesso modo."
+       " Preparare un dataset con i soli ingressi D-Log M, o impostare la curva "
+       "log in ingresso (--image-color-log) solo se ogni ingresso è davvero "
+       "D-Log M"),
+    NL("De dataset mengt invoer in D-Log M (invoerbestanden: {0}) met invoer die"
+       " dat niet is of waarvan het profiel onbekend is (invoerbestanden: {1}), "
+       "en één instelling decodeert alle invoer op dezelfde manier. Bereid een "
+       "dataset voor met alleen de D-Log M-invoer, of stel de log-kromme van de "
+       "invoer (--image-color-log) alleen in als echt alle invoer D-Log M is"),
+    RU("В наборе данных смешаны входы, снятые в D-Log M (входов: {0}), и входы, "
+       "снятые иначе или с неизвестным профилем (входов: {1}), а одна настройка "
+       "декодирует все входы одинаково. Подготовьте набор только из входов D-Log"
+       " M или задайте логарифмическую кривую входа (--image-color-log), только "
+       "если все входы действительно в D-Log M"),
+    TR("Veri kümesi D-Log M ile çekilmiş girdileri (girdi sayısı: {0}) öyle "
+       "olmayan ya da profili bilinmeyen girdilerle (girdi sayısı: {1}) "
+       "karıştırıyor ve tek bir ayar tüm girdileri aynı şekilde çözer. Yalnızca "
+       "D-Log M girdilerinden bir veri kümesi hazırlayın ya da girdi log "
+       "eğrisini (--image-color-log) yalnızca tüm girdiler gerçekten D-Log M ise"
+       " ayarlayın"));
+SS_MSG(color_profile_unsupported_log,
+    EN("log, unsupported"),
+    JA("ログ（非対応）"),
+    ZH_HANS("对数（不支持）"),
+    ZH_HANT("對數（不支援）"),
+    KO("로그(지원 안 됨)"),
+    DE("Log, nicht unterstützt"),
+    FR("log, non pris en charge"),
+    ES("log, no compatible"),
+    PT("log, sem suporte"),
+    IT("log, non supportato"),
+    NL("log, niet ondersteund"),
+    RU("логарифмический, не поддерживается"),
+    TR("log, desteklenmiyor"));
+SS_MSG(dataset_color_unsupported_log,
+    EN("{0} was shot in a DJI profile this build cannot decode (colour mode "
+       "{1}), such as D-Log or D-Log2. Prepare the dataset without it, or set "
+       "the input log curve to none (--image-color-log none) to train it "
+       "undecoded"),
+    JA("{0} はこのビルドでデコードできない DJI プロファイル（カラーモー"
+       "ド {1}、D-Log や D-Log2 など）で撮影されています。これ"
+       "を除いてデータセットを準備するか、デコードせずに学習するには入力のログカ"
+       "ーブを none（--image-color-log none）にしてく"
+       "ださい"),
+    ZH_HANS("{0} 是用此版本无法解码的 DJI 配置拍摄的（色彩模式 {1}，例如"
+            " D-Log 或 D-Log2）。请不含它准备数据集，或将输入对数曲线设"
+            "为 none（--image-color-log none）以不解码训练"),
+    ZH_HANT("{0} 是用此版本無法解碼的 DJI 設定拍攝的（色彩模式 {1}，例如"
+            " D-Log 或 D-Log2）。請不含它準備資料集，或將輸入對數曲線設"
+            "為 none（--image-color-log none）以不解碼訓練"),
+    KO("{0}은(는) 이 빌드가 디코딩할 수 없는 DJI 프로필(색 모드 {1}, 예: D-Log 또는 D-Log2)로 촬영되었습니다. "
+       "이것을 빼고 데이터셋을 준비하거나, 디코딩 없이 학습하려면 입력 로그 커브를 none(--image-color-log "
+       "none)으로 설정하세요"),
+    DE("{0} wurde in einem DJI-Profil aufgenommen, das dieser Build nicht "
+       "decodieren kann (Farbmodus {1}), etwa D-Log oder D-Log2. Den Datensatz "
+       "ohne diese Eingabe vorbereiten oder die Log-Kurve der Eingabe auf none "
+       "setzen (--image-color-log none), um sie undecodiert zu trainieren"),
+    FR("{0} a été filmé dans un profil DJI que cette version ne sait pas décoder"
+       " (mode couleur {1}), comme D-Log ou D-Log2. Préparez le jeu de données "
+       "sans lui, ou réglez la courbe log d'entrée sur none (--image-color-log "
+       "none) pour l'entraîner sans décodage"),
+    ES("{0} se grabó en un perfil DJI que esta versión no sabe decodificar (modo"
+       " de color {1}), como D-Log o D-Log2. Prepare el conjunto de datos sin "
+       "él, o ponga la curva logarítmica de entrada en none (--image-color-log "
+       "none) para entrenarlo sin decodificar"),
+    PT("{0} foi gravado em um perfil DJI que esta versão não consegue "
+       "decodificar (modo de cor {1}), como D-Log ou D-Log2. Prepare o conjunto "
+       "de dados sem ele, ou defina a curva log de entrada como none (--image-"
+       "color-log none) para treiná-lo sem decodificar"),
+    IT("{0} è stato girato in un profilo DJI che questa versione non sa "
+       "decodificare (modalità colore {1}), come D-Log o D-Log2. Preparare il "
+       "dataset senza di esso, o impostare la curva log in ingresso su none "
+       "(--image-color-log none) per addestrarlo senza decodifica"),
+    NL("{0} is opgenomen in een DJI-profiel dat deze versie niet kan decoderen "
+       "(kleurmodus {1}), zoals D-Log of D-Log2. Bereid de dataset zonder deze "
+       "invoer voor, of zet de log-kromme van de invoer op none (--image-color-"
+       "log none) om hem ongedecodeerd te trainen"),
+    RU("{0} снят в профиле DJI, который эта сборка не умеет декодировать "
+       "(цветовой режим {1}), например D-Log или D-Log2. Подготовьте набор без "
+       "него или задайте логарифмическую кривую входа none (--image-color-log "
+       "none), чтобы обучать без декодирования"),
+    TR("{0}, bu sürümün çözemediği bir DJI profiliyle çekilmiş (renk modu {1}), "
+       "örneğin D-Log ya da D-Log2. Veri kümesini onsuz hazırlayın ya da "
+       "çözmeden eğitmek için girdi log eğrisini none yapın (--image-color-log "
+       "none)"));
+SS_MSG(dataset_color_resumed,
+    EN("Input log curve from the resumed run: {0}"),
+    JA("再開した実行の入力ログカーブ: {0}"),
+    ZH_HANS("取自恢复运行的输入对数曲线：{0}"),
+    ZH_HANT("取自恢復執行的輸入對數曲線：{0}"),
+    KO("재개한 실행의 입력 로그 커브: {0}"),
+    DE("Log-Kurve der Eingabe aus dem fortgesetzten Lauf: {0}"),
+    FR("Courbe log d'entrée de l'exécution reprise : {0}"),
+    ES("Curva logarítmica de entrada de la ejecución reanudada: {0}"),
+    PT("Curva log de entrada da execução retomada: {0}"),
+    IT("Curva log in ingresso dell'esecuzione ripresa: {0}"),
+    NL("Log-kromme van de invoer uit de hervatte run: {0}"),
+    RU("Логарифмическая кривая входа из продолженного запуска: {0}"),
+    TR("Sürdürülen çalıştırmanın girdi log eğrisi: {0}"));
+SS_MSG(color_record_failed,
+    EN("Could not write the colour record {0} ({1}); the old one was removed, so"
+       " training will not decode a log profile on its own. Set --image-color-"
+       "log if the inputs were shot in D-Log M"),
+    JA("色の記録 {0} を書き込めませんでした（{1}）。古い記録は削除したた"
+       "め、学習はログプロファイルを自動ではデコードしません。入力が D-Log"
+       " M で撮影されている場合は --image-color-log を設定"
+       "してください"),
+    ZH_HANS("无法写入色彩记录 {0}（{1}）；旧记录已删除，因此训练不会自动解码对"
+            "数配置。如果输入是用 D-Log M 拍摄的，请设置 --image-c"
+            "olor-log"),
+    ZH_HANT("無法寫入色彩記錄 {0}（{1}）；舊記錄已刪除，因此訓練不會自動解碼對"
+            "數設定。如果輸入是用 D-Log M 拍攝的，請設定 --image-c"
+            "olor-log"),
+    KO("색 기록 {0}을(를) 쓸 수 없습니다({1}). 이전 기록은 삭제했으므로 학습은 로그 프로필을 자동으로 디코딩하지 않습니다. "
+       "입력을 D-Log M으로 촬영했다면 --image-color-log를 설정하세요"),
+    DE("Der Farbeintrag {0} konnte nicht geschrieben werden ({1}); der alte "
+       "wurde entfernt, daher decodiert das Training kein Log-Profil von selbst."
+       " --image-color-log setzen, wenn die Eingaben in D-Log M aufgenommen "
+       "wurden"),
+    FR("Impossible d'écrire l'enregistrement de couleur {0} ({1}) ; l'ancien a "
+       "été supprimé, donc l'entraînement ne décodera aucun profil log de lui-"
+       "même. Définissez --image-color-log si les entrées ont été filmées en "
+       "D-Log M"),
+    ES("No se pudo escribir el registro de color {0} ({1}); se eliminó el "
+       "anterior, así que el entrenamiento no decodificará un perfil log por sí "
+       "solo. Defina --image-color-log si las entradas se grabaron en D-Log M"),
+    PT("Não foi possível gravar o registro de cor {0} ({1}); o anterior foi "
+       "removido, então o treinamento não decodificará um perfil log sozinho. "
+       "Defina --image-color-log se as entradas foram gravadas em D-Log M"),
+    IT("Impossibile scrivere il registro colore {0} ({1}); il precedente è stato"
+       " rimosso, quindi l'addestramento non decodificherà da solo un profilo "
+       "log. Impostare --image-color-log se gli ingressi sono stati girati in "
+       "D-Log M"),
+    NL("Kon het kleurregister {0} niet schrijven ({1}); het oude is verwijderd, "
+       "dus de training decodeert niet vanzelf een log-profiel. Stel --image-"
+       "color-log in als de invoer in D-Log M is opgenomen"),
+    RU("Не удалось записать запись о цвете {0} ({1}); старая запись удалена, "
+       "поэтому обучение само не декодирует логарифмический профиль. Задайте "
+       "--image-color-log, если входы сняты в D-Log M"),
+    TR("Renk kaydı {0} yazılamadı ({1}); eskisi kaldırıldı, bu yüzden eğitim bir"
+       " log profilini kendiliğinden çözmeyecek. Girdiler D-Log M ile çekildiyse"
+       " --image-color-log ayarlayın"));
+SS_MSG(color_record_stale,
+    EN("Could not write the colour record {0} ({1}), and the old one could not "
+       "be removed. Training would read a stale colour profile, so the dataset "
+       "was not prepared. Remove {0} and run again"),
+    JA("色の記録 {0} を書き込めず（{1}）、古い記録も削除できませんでした"
+       "。学習が古い色プロファイルを読んでしまうため、データセットは準備されてい"
+       "ません。{0} を削除してから再実行してください"),
+    ZH_HANS("无法写入色彩记录 {0}（{1}），旧记录也无法删除。训练会读到过时的色"
+            "彩配置，因此未准备数据集。请删除 {0} 后重新运行"),
+    ZH_HANT("無法寫入色彩記錄 {0}（{1}），舊記錄也無法刪除。訓練會讀到過時的色"
+            "彩設定，因此未準備資料集。請刪除 {0} 後重新執行"),
+    KO("색 기록 {0}을(를) 쓸 수 없고({1}) 이전 기록도 삭제할 수 없습니다. 학습이 오래된 색 프로필을 읽게 되므로 데이터셋을 "
+       "준비하지 않았습니다. {0}을(를) 삭제하고 다시 실행하세요"),
+    DE("Der Farbeintrag {0} konnte nicht geschrieben werden ({1}), und der alte "
+       "ließ sich nicht entfernen. Das Training würde ein veraltetes Farbprofil "
+       "lesen, daher wurde der Datensatz nicht vorbereitet. {0} entfernen und "
+       "erneut ausführen"),
+    FR("Impossible d'écrire l'enregistrement de couleur {0} ({1}), et l'ancien "
+       "n'a pas pu être supprimé. L'entraînement lirait un profil de couleur "
+       "périmé, donc le jeu de données n'a pas été préparé. Supprimez {0} et "
+       "relancez"),
+    ES("No se pudo escribir el registro de color {0} ({1}) ni eliminar el "
+       "anterior. El entrenamiento leería un perfil de color obsoleto, así que "
+       "el conjunto de datos no se preparó. Elimine {0} y vuelva a ejecutar"),
+    PT("Não foi possível gravar o registro de cor {0} ({1}) nem remover o "
+       "anterior. O treinamento leria um perfil de cor desatualizado, então o "
+       "conjunto de dados não foi preparado. Remova {0} e rode de novo"),
+    IT("Impossibile scrivere il registro colore {0} ({1}) e rimuovere il "
+       "precedente. L'addestramento leggerebbe un profilo colore obsoleto, "
+       "quindi il dataset non è stato preparato. Rimuovere {0} ed eseguire di "
+       "nuovo"),
+    NL("Kon het kleurregister {0} niet schrijven ({1}) en het oude niet "
+       "verwijderen. De training zou een verouderd kleurprofiel lezen, dus de "
+       "dataset is niet voorbereid. Verwijder {0} en voer opnieuw uit"),
+    RU("Не удалось записать запись о цвете {0} ({1}) и удалить старую. Обучение "
+       "прочитало бы устаревший цветовой профиль, поэтому набор данных не "
+       "подготовлен. Удалите {0} и запустите снова"),
+    TR("Renk kaydı {0} yazılamadı ({1}) ve eskisi kaldırılamadı. Eğitim eskimiş "
+       "bir renk profili okuyacağı için veri kümesi hazırlanmadı. {0} dosyasını "
+       "kaldırıp yeniden çalıştırın"));
+SS_MSG(clip_color_unreadable,
+    EN("{0}: the colour mode could not be read from its DJI metadata ({1}); it "
+       "is recorded as unknown"),
+    JA("{0}: DJI メタデータ（{1}）からカラーモードを読み取れなかった"
+       "ため、不明として記録します"),
+    ZH_HANS("{0}：无法从其 DJI 元数据（{1}）读取色彩模式，已记录为未知"),
+    ZH_HANT("{0}：無法從其 DJI 中繼資料（{1}）讀取色彩模式，已記錄為未知"),
+    KO("{0}: DJI 메타데이터({1})에서 색 모드를 읽을 수 없어 알 수 없음으로 기록합니다"),
+    DE("{0}: Der Farbmodus ließ sich aus den DJI-Metadaten ({1}) nicht lesen; er"
+       " wird als unbekannt vermerkt"),
+    FR("{0} : le mode couleur n'a pas pu être lu dans ses métadonnées DJI ({1}) "
+       "; il est enregistré comme inconnu"),
+    ES("{0}: no se pudo leer el modo de color de sus metadatos DJI ({1}); se "
+       "registra como desconocido"),
+    PT("{0}: não foi possível ler o modo de cor dos metadados DJI ({1}); ele é "
+       "registrado como desconhecido"),
+    IT("{0}: impossibile leggere la modalità colore dai metadati DJI ({1}); "
+       "viene registrata come sconosciuta"),
+    NL("{0}: de kleurmodus kon niet uit de DJI-metadata ({1}) worden gelezen; "
+       "hij wordt als onbekend vastgelegd"),
+    RU("{0}: не удалось прочитать цветовой режим из метаданных DJI ({1}); он "
+       "записан как неизвестный"),
+    TR("{0}: renk modu DJI meta verisinden ({1}) okunamadı; bilinmiyor olarak "
+       "kaydedildi"));
+SS_MSG(frames_removed_inputs,
+    EN("Frames of inputs no longer in this dataset were removed from images/: "
+       "{0}"),
+    JA("このデータセットから外れた入力のフレームを images/ から削除しま"
+       "した: {0}"),
+    ZH_HANS("已从 images/ 中删除不再属于此数据集的输入的帧：{0}"),
+    ZH_HANT("已從 images/ 中刪除不再屬於此資料集的輸入的影格：{0}"),
+    KO("이 데이터셋에서 빠진 입력의 프레임을 images/에서 삭제했습니다: {0}"),
+    DE("Frames von Eingaben, die nicht mehr zu diesem Datensatz gehören, wurden "
+       "aus images/ entfernt: {0}"),
+    FR("Les images d'entrées qui ne font plus partie de ce jeu de données ont "
+       "été retirées de images/ : {0}"),
+    ES("Se quitaron de images/ los fotogramas de entradas que ya no están en "
+       "este conjunto de datos: {0}"),
+    PT("Os quadros de entradas que não estão mais neste conjunto de dados foram "
+       "removidos de images/: {0}"),
+    IT("I fotogrammi degli ingressi non più in questo dataset sono stati rimossi"
+       " da images/: {0}"),
+    NL("Beelden van invoer die niet meer bij deze dataset hoort, zijn uit "
+       "images/ verwijderd: {0}"),
+    RU("Кадры входов, которых больше нет в этом наборе данных, удалены из "
+       "images/: {0}"),
+    TR("Artık bu veri kümesinde olmayan girdilerin kareleri images/ klasöründen "
+       "kaldırıldı: {0}"));
+SS_MSG(frames_link_removed,
+    EN("Removed the link {0} from images/; it pointed to {1}, which is left as "
+       "it is"),
+    JA("images/ からリンク {0} を削除しました。リンク先の {1} "
+       "はそのまま残しています"),
+    ZH_HANS("已从 images/ 中删除链接 {0}；它指向的 {1} 保持不变"),
+    ZH_HANT("已從 images/ 中刪除連結 {0}；它指向的 {1} 保持不變"),
+    KO("images/에서 링크 {0}을(를) 삭제했습니다. 링크가 가리키던 {1}은(는) 그대로 둡니다"),
+    DE("Der Link {0} wurde aus images/ entfernt; sein Ziel {1} bleibt "
+       "unverändert"),
+    FR("Le lien {0} a été retiré de images/ ; sa cible {1} est laissée telle "
+       "quelle"),
+    ES("Se quitó el enlace {0} de images/; su destino {1} se deja como está"),
+    PT("O link {0} foi removido de images/; o destino {1} fica como está"),
+    IT("Il collegamento {0} è stato rimosso da images/; la sua destinazione {1} "
+       "resta com'è"),
+    NL("De koppeling {0} is uit images/ verwijderd; het doel {1} blijft zoals "
+       "het is"),
+    RU("Ссылка {0} удалена из images/; то, на что она указывала ({1}), не "
+       "тронуто"),
+    TR("{0} bağlantısı images/ klasöründen kaldırıldı; gösterdiği {1} olduğu "
+       "gibi bırakıldı"));
+SS_MSG(frames_not_removed,
+    EN("Could not remove {0} from images/; its frames are still in the dataset"),
+    JA("images/ から {0} を削除できませんでした。そのフレームはデー"
+       "タセットに残っています"),
+    ZH_HANS("无法从 images/ 中删除 {0}；其帧仍在数据集中"),
+    ZH_HANT("無法從 images/ 中刪除 {0}；其影格仍在資料集中"),
+    KO("images/에서 {0}을(를) 삭제할 수 없습니다. 그 프레임은 아직 데이터셋에 있습니다"),
+    DE("{0} konnte nicht aus images/ entfernt werden; seine Frames sind noch im "
+       "Datensatz"),
+    FR("Impossible de retirer {0} de images/ ; ses images sont toujours dans le "
+       "jeu de données"),
+    ES("No se pudo quitar {0} de images/; sus fotogramas siguen en el conjunto "
+       "de datos"),
+    PT("Não foi possível remover {0} de images/; os quadros continuam no "
+       "conjunto de dados"),
+    IT("Impossibile rimuovere {0} da images/; i suoi fotogrammi sono ancora nel "
+       "dataset"),
+    NL("Kon {0} niet uit images/ verwijderen; de beelden staan nog in de dataset"),
+    RU("Не удалось удалить {0} из images/; его кадры по-прежнему в наборе данных"),
+    TR("{0} images/ klasöründen kaldırılamadı; kareleri hâlâ veri kümesinde"));
+SS_MSG(dataset_color_as_set,
+    EN("Colour profile from the clips' metadata: {0}; --image-color-log {1} as set"),
+    JA("クリップのメタデータによる色プロファイル: {0}。--image-color-log は指定"
+       "どおり {1} です"),
+    ZH_HANS("片段元数据中的色彩配置：{0}；--image-color-log 按设置为 {1}"),
+    ZH_HANT("片段中繼資料中的色彩設定：{0}；--image-color-log 依設定為 {1}"),
+    KO("클립 메타데이터의 색 프로필: {0}. --image-color-log는 설정대로 {1}입니다"),
+    DE("Farbprofil laut Metadaten der Clips: {0}; --image-color-log {1} wie "
+       "gesetzt"),
+    FR("Profil colorimétrique d'après les métadonnées des clips : {0} ; "
+       "--image-color-log {1} tel que défini"),
+    ES("Perfil de color según los metadatos de los clips: {0}; --image-color-log "
+       "{1} según lo definido"),
+    PT("Perfil de cor segundo os metadados dos clipes: {0}; --image-color-log {1} "
+       "conforme definido"),
+    IT("Profilo colore dai metadati delle clip: {0}; --image-color-log {1} come "
+       "impostato"),
+    NL("Kleurprofiel volgens de metadata van de clips: {0}; --image-color-log {1} "
+       "zoals ingesteld"),
+    RU("Цветовой профиль по метаданным клипов: {0}; --image-color-log {1}, как "
+       "задано"),
+    TR("Kliplerin meta verisine göre renk profili: {0}; --image-color-log {1}, "
+       "ayarlandığı gibi"));
+SS_MSG(log_curve_needs_rec2020,
+    EN("{0} decodes to Rec.2020, so {1} must be Rec.2020 or unset, not {2}"),
+    JA("{0} は Rec.2020 にデコードするため、{1} は Rec.2020 か未設定にして"
+       "ください（{2} ではなく）"),
+    ZH_HANS("{0} 解码为 Rec.2020，因此 {1} 必须是 Rec.2020 或不设置，而不是 {2}"),
+    ZH_HANT("{0} 解碼為 Rec.2020，因此 {1} 必須是 Rec.2020 或不設定，而不是 {2}"),
+    KO("{0}은(는) Rec.2020으로 디코딩하므로 {1}은(는) {2}이(가) 아니라 "
+       "Rec.2020이거나 설정하지 않아야 합니다"),
+    DE("{0} decodiert nach Rec.2020, daher muss {1} Rec.2020 oder nicht gesetzt "
+       "sein, nicht {2}"),
+    FR("{0} décode en Rec.2020, donc {1} doit valoir Rec.2020 ou rester non "
+       "défini, pas {2}"),
+    ES("{0} decodifica a Rec.2020, así que {1} debe ser Rec.2020 o quedar sin "
+       "definir, no {2}"),
+    PT("{0} decodifica para Rec.2020, então {1} precisa ser Rec.2020 ou ficar "
+       "sem definir, não {2}"),
+    IT("{0} decodifica in Rec.2020, quindi {1} deve essere Rec.2020 o non "
+       "impostato, non {2}"),
+    NL("{0} decodeert naar Rec.2020, dus {1} moet Rec.2020 of niet ingesteld "
+       "zijn, niet {2}"),
+    RU("{0} декодирует в Rec.2020, поэтому {1} должен быть Rec.2020 или не "
+       "задан, а не {2}"),
+    TR("{0} Rec.2020'ye çözer, bu yüzden {1} {2} değil, Rec.2020 olmalı ya da "
+       "ayarlanmamalı"));
 SS_MSG(bad_quantization_level,
     EN("quantization_level must be 0 or 1"),
     JA("quantization_level は 0 か 1 にしてください"),
@@ -3067,6 +3677,66 @@ SS_MSG(err_ffmpeg_extract_failed,
     NL("ffmpeg kon de beelden niet uitpakken (zie het logboek)."),
     RU("ffmpeg не смог извлечь кадры (см. журнал)."),
     TR("ffmpeg kareleri çıkaramadı (günlüğe bakın)."));
+
+SS_MSG(err_frames_16bit_count,
+    EN("ffmpeg did not write the 16-bit frames selected from {0} (written: {1}, selected: {2})."),
+    JA("ffmpeg が {0} から選んだ 16 ビットのフレームを書き出しませんでした（書き出し: {1}、選択: {2}）。"),
+    ZH_HANS("ffmpeg 没有写出从 {0} 选中的 16 位帧（已写：{1}，已选：{2}）。"),
+    ZH_HANT("ffmpeg 沒有寫出從 {0} 選中的 16 位元影格（已寫：{1}，已選：{2}）。"),
+    KO("ffmpeg 이 {0} 에서 고른 16비트 프레임을 쓰지 않았습니다 (쓴 수: {1}, 고른 수: {2})."),
+    DE("ffmpeg hat die aus {0} gewählten 16-Bit-Einzelbilder nicht geschrieben (geschrieben: {1}, gewählt: {2})."),
+    FR("ffmpeg n'a pas écrit les images 16 bits choisies dans {0} (écrites : {1}, choisies : {2})."),
+    ES("ffmpeg no escribió los fotogramas de 16 bits elegidos de {0} (escritos: {1}, elegidos: {2})."),
+    PT("O ffmpeg não gravou os quadros de 16 bits escolhidos de {0} (gravados: {1}, escolhidos: {2})."),
+    IT("ffmpeg non ha scritto i fotogrammi a 16 bit scelti da {0} (scritti: {1}, scelti: {2})."),
+    NL("ffmpeg heeft de uit {0} gekozen 16-bit beelden niet geschreven (geschreven: {1}, gekozen: {2})."),
+    RU("ffmpeg не записал 16-битные кадры, выбранные из {0} (записано: {1}, выбрано: {2})."),
+    TR("ffmpeg {0} içinden seçilen 16 bit kareleri yazmadı (yazılan: {1}, seçilen: {2})."));
+
+SS_MSG(err_frames_16bit_mixed,
+    EN("{0} already holds JPEG frames; clear the project's frames and run again."),
+    JA("{0} にはすでに JPEG のフレームがあります。プロジェクトのフレームを消去してもう一度実行してください。"),
+    ZH_HANS("{0} 中已有 JPEG 帧；请清除项目的帧后重新运行。"),
+    ZH_HANT("{0} 中已有 JPEG 影格；請清除專案的影格後重新執行。"),
+    KO("{0} 에 이미 JPEG 프레임이 있습니다. 프로젝트의 프레임을 지우고 다시 실행하세요."),
+    DE("{0} enthält bereits JPEG-Einzelbilder; die Bilder des Projekts löschen und erneut ausführen."),
+    FR("{0} contient déjà des images JPEG ; effacez les images du projet et relancez."),
+    ES("{0} ya contiene fotogramas JPEG; borra los fotogramas del proyecto y vuelve a ejecutar."),
+    PT("{0} já contém quadros JPEG; apague os quadros do projeto e execute de novo."),
+    IT("{0} contiene già fotogrammi JPEG; cancelli i fotogrammi del progetto ed esegua di nuovo."),
+    NL("{0} bevat al JPEG-beelden; wis de beelden van het project en voer opnieuw uit."),
+    RU("В {0} уже есть кадры JPEG; удалите кадры проекта и запустите снова."),
+    TR("{0} zaten JPEG kareler içeriyor; projenin karelerini silip yeniden çalıştırın."));
+
+SS_MSG(err_frames_16bit_disk,
+    EN("The 16-bit frames need about {0} GB, and only {1} GB is free on {2}. Free some space, lower the rate, or extract 8-bit frames."),
+    JA("16 ビットのフレームには約 {0} GB 必要ですが、{2} の空きは {1} GB しかありません。空き容量を増やすか、レートを下げるか、8 ビットのフレームを取り出してください。"),
+    ZH_HANS("16 位帧约需 {0} GB，而 {2} 上只有 {1} GB 可用。请释放空间、降低帧率，或提取 8 位帧。"),
+    ZH_HANT("16 位元影格約需 {0} GB，而 {2} 上只有 {1} GB 可用。請釋出空間、降低影格率，或擷取 8 位元影格。"),
+    KO("16비트 프레임에 약 {0} GB 가 필요하지만 {2} 에는 {1} GB 만 비어 있습니다. 공간을 확보하거나 속도를 낮추거나 8비트 프레임을 추출하세요."),
+    DE("Die 16-Bit-Einzelbilder brauchen etwa {0} GB, auf {2} sind nur {1} GB frei. Speicher freigeben, die Rate senken oder 8-Bit-Bilder extrahieren."),
+    FR("Les images 16 bits demandent environ {0} Go, et seuls {1} Go sont libres sur {2}. Libérez de l'espace, baissez la cadence ou extrayez des images 8 bits."),
+    ES("Los fotogramas de 16 bits necesitan unos {0} GB y solo hay {1} GB libres en {2}. Libera espacio, baja la frecuencia o extrae fotogramas de 8 bits."),
+    PT("Os quadros de 16 bits precisam de cerca de {0} GB, e só há {1} GB livres em {2}. Libere espaço, diminua a taxa ou extraia quadros de 8 bits."),
+    IT("I fotogrammi a 16 bit richiedono circa {0} GB e su {2} ne sono liberi solo {1}. Liberi spazio, abbassi la frequenza o estragga fotogrammi a 8 bit."),
+    NL("De 16-bit beelden hebben ongeveer {0} GB nodig en op {2} is maar {1} GB vrij. Maak ruimte vrij, verlaag de snelheid of haal 8-bit beelden uit."),
+    RU("16-битным кадрам нужно около {0} ГБ, а на {2} свободно только {1} ГБ. Освободите место, уменьшите частоту или извлеките 8-битные кадры."),
+    TR("16 bit kareler yaklaşık {0} GB gerektiriyor ve {2} üzerinde yalnızca {1} GB boş. Yer açın, hızı düşürün ya da 8 bit kare çıkarın."));
+
+SS_MSG(err_frames_16bit_argv,
+    EN("{0} frames are more than one ffmpeg command line can select on this system (at most about {1}). Lower the rate or split the clip."),
+    JA("{0} フレームは、このシステムで 1 つの ffmpeg コマンドラインが選べる数（最大約 {1}）を超えています。レートを下げるかクリップを分割してください。"),
+    ZH_HANS("{0} 帧超出了此系统上一条 ffmpeg 命令行能选择的数量（最多约 {1}）。请降低帧率或拆分片段。"),
+    ZH_HANT("{0} 個影格超出了此系統上一條 ffmpeg 命令列能選擇的數量（最多約 {1}）。請降低影格率或分割片段。"),
+    KO("프레임 {0}개는 이 시스템에서 ffmpeg 명령줄 하나로 고를 수 있는 수(최대 약 {1})를 넘습니다. 속도를 낮추거나 클립을 나누세요."),
+    DE("{0} Einzelbilder sind mehr, als eine ffmpeg-Befehlszeile auf diesem System auswählen kann (höchstens etwa {1}). Die Rate senken oder den Clip teilen."),
+    FR("{0} images, c'est plus qu'une ligne de commande ffmpeg ne peut en choisir sur ce système (environ {1} au plus). Baissez la cadence ou coupez le clip."),
+    ES("{0} fotogramas son más de los que una línea de comandos de ffmpeg puede elegir en este sistema (unos {1} como máximo). Baja la frecuencia o divide el clip."),
+    PT("{0} quadros são mais do que uma linha de comando do ffmpeg consegue selecionar neste sistema (no máximo cerca de {1}). Diminua a taxa ou divida o clipe."),
+    IT("{0} fotogrammi sono più di quanti una riga di comando di ffmpeg possa sceglierne su questo sistema (al massimo circa {1}). Abbassi la frequenza o divida la clip."),
+    NL("{0} beelden zijn meer dan één ffmpeg-opdrachtregel op dit systeem kan kiezen (hoogstens ongeveer {1}). Verlaag de snelheid of splits de clip."),
+    RU("{0} кадров больше, чем одна командная строка ffmpeg может выбрать в этой системе (не более примерно {1}). Уменьшите частоту или разделите клип."),
+    TR("{0} kare, bu sistemde tek bir ffmpeg komut satırının seçebileceğinden fazla (en çok yaklaşık {1}). Hızı düşürün ya da klibi bölün."));
 
 SS_MSG(err_not_a_folder,
     EN("Not a folder: {0}"),

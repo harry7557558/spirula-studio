@@ -9,6 +9,7 @@ splits again, into two flags that do different jobs:
 |---|---|
 | `--image-color-is-linear`, `--splat-color-is-linear` | does the buffer *store* linear light? |
 | `--image-color-transfer`, `--splat-color-transfer` | which curve turns that light into a display value? |
+| `--image-color-log`, `--point-color-log` | was the file log-encoded, and decoded to light before any of the above? |
 
 Keeping them apart is what lets a run train in linear light and still land
 exactly on its photographs (`is-linear` on, transfer `srgb`), or train in
@@ -119,9 +120,20 @@ the only place the curves are not exact inverses of each other.
   hide a mid-grey background. The draw's 0 and 1 are fixed points, so the
   `pseudorandom` corners are unaffected once the warm-up is over.
 
+## A log input is decoded first
+
+`--image-color-log dlogm-osmo360` (DJI D-Log M, Osmo 360) decodes the training
+images to linear Rec.2020 on the device before the expression above runs, and
+so pins `is-linear` on and the gamut to Rec.2020. It is an input decode, not a
+transfer: `Transfer` is the curve *out* of linear light and its numbering is
+shared with the viewer. The seed cloud has `--point-color-log`. See
+`docs/notes/dlog-m.md`.
+
 ## `none` is unset, everywhere
 
 Both front ends spell an unset string field `none`, and the GUI writes it
 literally when a preset gave the field a value. `resolve_color` treats `""`
-and `"none"` alike for all four colour fields; `colorspace::transfer_or` takes
-the fallback the caller wants for that case.
+and `"none"` alike for every colour field; `colorspace::transfer_or` takes
+the fallback the caller wants for that case. The one exception is
+`--image-color-log`, whose unset value is `auto` (follow the dataset's record,
+`docs/notes/dlog-m.md`), so that `none` can be an explicit "not log".

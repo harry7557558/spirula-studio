@@ -6906,6 +6906,47 @@ SS_MSG(preview_mode_images,
     PT("Imagens"),       IT("Immagini"),     NL("Beelden"),      RU("Изображения"),
     TR("Görüntüler"));
 
+SS_MSG(dataset_color_profile,
+    EN("Colour profile: {0}"), JA("色プロファイル: {0}"), ZH_HANS("色彩配置：{0}"),
+    ZH_HANT("色彩設定：{0}"), KO("색 프로필: {0}"), DE("Farbprofil: {0}"),
+    FR("Profil colorimétrique : {0}"), ES("Perfil de color: {0}"),
+    PT("Perfil de cor: {0}"), IT("Profilo colore: {0}"), NL("Kleurprofiel: {0}"),
+    RU("Цветовой профиль: {0}"), TR("Renk profili: {0}"));
+SS_MSG(dataset_color_profile_help,
+    EN("Read from the clips' metadata when the dataset was prepared. While the "
+       "input log curve is left on auto, training reads the images this way."),
+    JA("データセットを準備したときにクリップのメタデータから読み取ったものです。"
+       "入力のログカーブが auto のままなら、学習はこれに従って画像を読みます。"),
+    ZH_HANS("准备数据集时从片段元数据中读取。输入对数曲线保持为 auto 时，训练按此"
+            "读取图像。"),
+    ZH_HANT("準備資料集時從片段中繼資料中讀取。輸入對數曲線保持為 auto 時，訓練依此"
+            "讀取影像。"),
+    KO("데이터셋을 준비할 때 클립 메타데이터에서 읽었습니다. 입력 로그 커브가 "
+       "auto로 남아 있으면 학습은 이대로 이미지를 읽습니다."),
+    DE("Beim Vorbereiten des Datensatzes aus den Metadaten der Clips gelesen. "
+       "Solange die Log-Kurve der Eingabe auf auto steht, liest das Training die "
+       "Bilder so."),
+    FR("Lu dans les métadonnées des clips lors de la préparation du jeu de "
+       "données. Tant que la courbe log d'entrée reste sur auto, l'entraînement "
+       "lit les images ainsi."),
+    ES("Leído de los metadatos de los clips al preparar el conjunto de datos. "
+       "Mientras la curva logarítmica de entrada siga en auto, el entrenamiento "
+       "lee las imágenes así."),
+    PT("Lido dos metadados dos clipes quando o conjunto de dados foi preparado. "
+       "Enquanto a curva log de entrada ficar em auto, o treinamento lê as "
+       "imagens assim."),
+    IT("Letto dai metadati delle clip quando il dataset è stato preparato. "
+       "Finché la curva log in ingresso resta su auto, l'addestramento legge le "
+       "immagini così."),
+    NL("Gelezen uit de metadata van de clips toen de dataset werd voorbereid. "
+       "Zolang de log-kromme van de invoer op auto staat, leest de training de "
+       "beelden zo."),
+    RU("Прочитан из метаданных клипов при подготовке набора данных. Пока "
+       "логарифмическая кривая входа оставлена на auto, обучение читает "
+       "изображения так."),
+    TR("Veri kümesi hazırlanırken kliplerin meta verisinden okundu. Girdi log "
+       "eğrisi auto kaldıkça eğitim görüntüleri böyle okur."));
+
 SS_MSG(preview_mode_help,
     EN("What the preview shows: the scene in 3D, or one training photograph "
        "beside the render of the same camera."),

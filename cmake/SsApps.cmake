@@ -359,6 +359,21 @@ add_executable(packed_lens_test
     ${SS_SRC}/app/Pano360.cpp)
 ss_configure_app(packed_lens_test)
 
+# resolve_color() and the seed colours; both live in the engine library.
+add_executable(color_resolution_test
+    ${SS_SRC}/app/tests/color_resolution_test.cpp)
+ss_configure_app(color_resolution_test)
+
+# The same flag through TrainerSession's own setup and one real step.
+add_executable(dlogm_session_test
+    ${SS_SRC}/app/tests/dlogm_session_test.cpp)
+ss_configure_app(dlogm_session_test)
+
+# `--image-color-log auto` against a dataset's record of its clips.
+add_executable(dataset_color_test
+    ${SS_SRC}/app/tests/dataset_color_test.cpp)
+ss_configure_app(dataset_color_test)
+
 # The stencil shapes, spelling and fill, with no GUI: FrameMask.cpp is compiled
 # into the CLI too, so this must link without imgui.
 add_executable(frame_mask_test
@@ -422,6 +437,14 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/AppPaths.cpp)
     ss_configure_app(preset_roundtrip_test)
 
+    # A run's config.json read back as a preset keeps `--image-color-log auto`.
+    add_executable(run_config_preset_test
+        ${SS_SRC}/app/gui/tests/run_config_preset_test.cpp
+        ${SS_SRC}/app/gui/TrainPreset.cpp
+        ${SS_SRC}/app/gui/PresetFile.cpp
+        ${SS_SRC}/app/AppPaths.cpp)
+    ss_configure_app(run_config_preset_test)
+
     add_executable(stencil_edit_test
         ${SS_SRC}/app/gui/tests/stencil_edit_test.cpp
         ${SS_SRC}/app/gui/StencilEdit.cpp
@@ -470,4 +493,20 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMotion.cpp
         ${SS_SRC}/app/Pano360.cpp)
     ss_configure_app(dataset_prep_test)
+
+    # 16-bit frames through a real ffmpeg on a generated fixture; SKIP without one.
+    add_executable(frame_bits_test
+        ${SS_SRC}/app/gui/tests/frame_bits_test.cpp
+        ${SS_SRC}/app/gui/DatasetPrep.cpp
+        ${SS_SRC}/app/gui/FrameSelect.cpp
+        ${SS_SRC}/app/gui/PrepProgress.cpp
+        ${SS_SRC}/app/gui/ReconStamp.cpp
+        ${SS_SRC}/app/gui/Subprocess.cpp
+        ${SS_SRC}/app/gui/mask/MaskLayer.cpp
+        ${SS_SRC}/app/FrameMask.cpp
+        ${SS_SRC}/app/FrameMaskSvg.cpp
+        ${SS_SRC}/app/FrameLook.cpp
+        ${SS_SRC}/app/FrameMotion.cpp
+        ${SS_SRC}/app/Pano360.cpp)
+    ss_configure_app(frame_bits_test)
 endif()

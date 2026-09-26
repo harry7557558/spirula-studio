@@ -447,6 +447,8 @@ struct ColorSpaceState {
     // The same matrix on the host: the mean-luma weight scale
     // (EngineDataManager.cpp) converts reference pixels on the CPU.
     std::array<float, 9>   image_color_matrix_host{};
+    // colorspace::InputCurve decoded off the GT ahead of the conversion above.
+    int                    image_curve      = 0;
 
     // Per-iter scratch: pre-conversion render kept for the backward vjp
     // (working_to_display_backward consumes the working-space input).

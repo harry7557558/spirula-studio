@@ -8,6 +8,7 @@
 #include "checkpoint/SplatPly.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
+#include "core/DlogM.h"
 #include "core/ExrImage.h"
 #include "i18n/catalog/Log.h"
 #include "data/CameraMath.h"
@@ -89,11 +90,41 @@ static std::string resolved_gamut(const std::string& name) {
     return name == "Rec.709" ? std::string() : name;
 }
 
+// A log curve decodes to linear Rec.2020, which fixes the other two halves of
+// its side. Plain sRGB (a preset's "not linear, Rec.709") gives way to it; any
+// other explicit claim contradicts it and is refused.
+static void apply_log_curve(colorspace::InputCurve curve, const char* side,
+                            const std::optional<bool>& is_linear,
+                            const std::string& gamut, bool& linear_out,
+                            std::string& gamut_out) {
+    if (curve == colorspace::InputCurve::None) return;
+    const std::string flag =
+        std::string("--") + side + "-color-log " + colorspace::input_curve_name(curve);
+    const bool srgb_gamut = unset(gamut) || gamut == "Rec.709";
+    const bool plain_srgb = srgb_gamut && !is_linear.value_or(false);
+    if (!plain_srgb) {
+        if (!unset(gamut) && gamut != "Rec.2020")
+            throw std::runtime_error(lfmt(lmsg::log_curve_needs_rec2020,
+                {flag, std::string("--") + side + "-color-gamut", gamut}));
+        if (is_linear.has_value() && !*is_linear)
+            throw std::runtime_error(lfmt(lmsg::log_curve_needs_linear,
+                {flag, std::string("--") + side + "-color-is-linear"}));
+    }
+    linear_out = true;
+    gamut_out = "Rec.2020";
+}
+
 ColorResolution resolve_color(const TrainConfig& c) {
     ColorResolution r;
     r.image_gamut    = unset(c.image_color_gamut)
                            ? std::string() : resolved_gamut(c.image_color_gamut);
     r.image_linear   = c.image_color_is_linear.value_or(false);
+    // `auto` is answered per dataset, in the field beside the flag.
+    const std::string& log = c.image_color_log == "auto" ? c.image_color_log_resolved
+                                                         : c.image_color_log;
+    r.image_curve    = colorspace::input_curve_or(log, colorspace::InputCurve::None);
+    apply_log_curve(r.image_curve, "image", c.image_color_is_linear,
+                    c.image_color_gamut, r.image_linear, r.image_gamut);
     r.image_transfer = colorspace::transfer_or(c.image_color_transfer,
                                                colorspace::Transfer::Srgb);
 
@@ -105,11 +136,86 @@ ColorResolution resolve_color(const TrainConfig& c) {
     r.splat_linear = c.splat_color_is_linear.value_or(r.image_linear);
     r.splat_transfer = colorspace::transfer_or(c.splat_color_transfer, r.image_transfer);
 
-    r.point_gamut = unset(c.point_color_gamut) ? r.image_gamut
+    // `off` says the cloud is ordinary sRGB, so it stops inheriting the image
+    // side, which a log curve has made linear Rec.2020.
+    const bool point_plain = c.point_color_log == "off";
+    const std::string point_gamut_default = point_plain ? std::string() : r.image_gamut;
+    r.point_gamut = unset(c.point_color_gamut) ? point_gamut_default
                                                : resolved_gamut(c.point_color_gamut);
-    r.point_linear = c.point_color_is_linear.value_or(r.image_linear);
+    r.point_linear = c.point_color_is_linear.value_or(!point_plain && r.image_linear);
     r.point_transfer = colorspace::transfer_or(c.point_color_transfer, r.image_transfer);
+    r.point_curve = colorspace::input_curve_or(c.point_color_log, r.image_curve);
+    apply_log_curve(r.point_curve, "point", c.point_color_is_linear,
+                    c.point_color_gamut, r.point_linear, r.point_gamut);
+    const float gain = std::exp2(c.image_color_log_exposure);
+    if (r.image_curve != colorspace::InputCurve::None) r.image_gain = gain;
+    if (r.point_curve != colorspace::InputCurve::None) r.point_gain = gain;
     return r;
+}
+
+std::string dataset_color_label(const DatasetColorSummary& s) {
+    switch (s.verdict) {
+        case DatasetColorVerdict::DlogM:          return lmsg::color_profile_dlogm.get();
+        case DatasetColorVerdict::NotLog:         return lmsg::color_profile_not_log.get();
+        case DatasetColorVerdict::UnsupportedLog: return lmsg::color_profile_unsupported_log.get();
+        case DatasetColorVerdict::Unknown:        return lmsg::color_profile_unknown.get();
+        case DatasetColorVerdict::Mixed:          return lmsg::color_profile_mixed.get();
+        default:                                  return {};
+    }
+}
+
+std::string adopt_dataset_color(TrainConfig& c, const DatasetColor& d) {
+    // The flag keeps what was asked for; only the resolved field is settled.
+    if (c.image_color_log != "auto") {
+        c.image_color_log_resolved = unset(c.image_color_log) ? "none" : c.image_color_log;
+        const DatasetColorSummary s = summarize_dataset_color(d);
+        if (s.verdict == DatasetColorVerdict::None) return {};
+        return lfmt(lmsg::dataset_color_as_set,
+                    {dataset_color_label(s), c.image_color_log_resolved});
+    }
+    // A resumed run continues with the curve it was trained with.
+    if (!c.resume.empty() && !c.image_color_log_resolved.empty())
+        return lfmt(lmsg::dataset_color_resumed, {c.image_color_log_resolved});
+    c.image_color_log_resolved = "none";
+    const DatasetColorSummary s = summarize_dataset_color(d);
+    switch (s.verdict) {
+        case DatasetColorVerdict::None:
+            return {};
+        case DatasetColorVerdict::DlogM:
+            if (s.dlogm_avata > 0 && s.dlogm_avata < s.dlogm)
+                throw std::runtime_error(lfmt(lmsg::dataset_color_dlogm_cameras,
+                    {(long long)(s.dlogm - s.dlogm_avata), (long long)s.dlogm_avata}));
+            c.image_color_log_resolved = colorspace::input_curve_name(
+                s.dlogm_avata > 0 ? colorspace::InputCurve::DlogMAvata360
+                                  : colorspace::InputCurve::DlogMOsmo360);
+            return lfmt(lmsg::dataset_color_dlogm,
+                        {(long long)s.dlogm, c.image_color_log_resolved});
+        case DatasetColorVerdict::NotLog:
+            return lfmt(lmsg::dataset_color_not_log, {(long long)s.not_log});
+        case DatasetColorVerdict::Unknown:
+            return lfmt(lmsg::dataset_color_unknown, {s.first_unknown});
+        case DatasetColorVerdict::UnsupportedLog:
+            throw std::runtime_error(lfmt(lmsg::dataset_color_unsupported_log,
+                {s.first_other_log, (long long)s.first_other_code}));
+        default:
+            throw std::runtime_error(lfmt(lmsg::dataset_color_mixed,
+                {(long long)s.dlogm,
+                 (long long)(s.not_log + s.other_log + s.unknown + s.unrecorded)}));
+    }
+}
+
+void source_pixel_for_compare(const ColorResolution& c, bool raw, float v[3]) {
+    if (c.image_curve == colorspace::InputCurve::None) return;
+    colorspace::input_curve_to_rec2020(c.image_curve, v);
+    for (int d = 0; d < 3; d++) v[d] *= c.image_gain;
+    colorspace::apply3x3(gamut_to_rec709("Rec.2020"), v);
+    if (!raw) {
+        for (int d = 0; d < 3; d++) v[d] = colorspace::tone_encode(v[d], c.image_transfer);
+        return;
+    }
+    colorspace::apply3x3(invert3x3(gamut_to_rec709(c.splat_gamut)), v);
+    for (int d = 0; d < 3; d++)
+        if (!c.splat_linear) v[d] = colorspace::linear_to_srgb(v[d]);
 }
 
 static WarpFaceFit resolve_face_fit(const TrainConfig& c) {
@@ -176,6 +282,11 @@ public:
 
     void operator()(float col[3]) const {
         if (identity_) return;
+        // A log seed is linear once decoded (resolve_color forces point_linear).
+        if (c_.point_curve != colorspace::InputCurve::None) {
+            colorspace::input_curve_to_rec2020(c_.point_curve, col);
+            for (int d = 0; d < 3; d++) col[d] *= c_.point_gain;
+        }
         for (int d = 0; d < 3; d++)
             if (!c_.point_linear) col[d] = colorspace::srgb_to_linear(col[d]);
         colorspace::apply3x3(to_709_, col);
@@ -660,6 +771,10 @@ void save_config_json(const TrainConfig& c, const fs::path& out_dir,
     std::fprintf(f, "{\n    \"preset\": \"%s\"", preset.c_str());
     for (const auto& [key, value] : train_config_json_pairs(c))
         std::fprintf(f, ",\n    \"%s\": %s", key, value.c_str());
+    // Not a flag, so presets and batches never read it back (TrainConfig.h).
+    if (!c.image_color_log_resolved.empty())
+        std::fprintf(f, ",\n    \"image_color_log_resolved\": %s",
+                     json_field::emit(c.image_color_log_resolved).c_str());
     std::fprintf(f, "\n}\n");
     std::fclose(f);
 }
@@ -775,6 +890,9 @@ void TrainerSession::load_dataset() {
     pcfg.metashape_ply           = cfg.metashape_ply;
     pcfg.metashape_psx           = cfg.metashape_psx;
     ds = parse_dataset(cfg.data, pcfg, cfg.data_format);
+    if (std::string line = adopt_dataset_color(cfg, read_dataset_color(cfg.data));
+        !line.empty())
+        log(line);
     if (ds.center_mode != "none") {
         char xyz[96];
         std::snprintf(xyz, sizeof xyz, "%.12g, %.12g, %.12g",
@@ -1018,12 +1136,20 @@ void TrainerSession::setup_engine() {
                                       {"--apply-ppisp-before-color-space",
                                        "--apply-ppisp-before-bilagrid"}));
     {
-        auto vec = [](const Mat3f& m) { return std::vector<float>(m.begin(), m.end()); };
+        auto vec = [](const Mat3f& m, float gain) {
+            std::vector<float> v(m.begin(), m.end());
+            for (float& x : v) x *= gain;
+            return v;
+        };
+        // The GT matrix is the first linear step after the decode, so the
+        // exposure gain rides on it; both backends and the host mirror read it.
         engine_init_color_space(
             splat_cs_on, (int)color.splat_transfer, color.splat_linear,
-            splat_cs_on ? vec(gamut_to_rec709(color.splat_gamut)) : std::vector<float>{},
+            splat_cs_on ? vec(gamut_to_rec709(color.splat_gamut), 1.0f) : std::vector<float>{},
             image_cs_on, (int)color.image_transfer, color.image_linear,
-            image_cs_on ? vec(gamut_to_rec709(color.image_gamut)) : std::vector<float>{});
+            image_cs_on ? vec(gamut_to_rec709(color.image_gamut), color.image_gain)
+                        : std::vector<float>{});
+        engine_init_image_decode((int)color.image_curve);
     }
 
     // ---- DataManager ---------------------------------------------------

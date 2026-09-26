@@ -20,6 +20,7 @@
 
 #include "engine/Engine.h"
 #include "core/ColorSpace.h"
+#include "data/DatasetColor.h"
 #include "data/DatasetParser.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
@@ -61,6 +62,13 @@ struct ColorResolution {
     colorspace::Transfer splat_transfer = colorspace::Transfer::Srgb;
     colorspace::Transfer image_transfer = colorspace::Transfer::Srgb;
     colorspace::Transfer point_transfer = colorspace::Transfer::Srgb;
+    // A log curve decoded off the file before everything above; it forces
+    // the side it is on to linear Rec.2020 (core/DlogM.h).
+    colorspace::InputCurve image_curve = colorspace::InputCurve::None;
+    colorspace::InputCurve point_curve = colorspace::InputCurve::None;
+    // Linear gain right after that decode, 2^--image-color-log-exposure; 1 without one.
+    float image_gain = 1.0f;
+    float point_gain = 1.0f;
 
     // Whether the render needs the conversion pass at all.
     bool splat_on() const {
@@ -69,15 +77,30 @@ struct ColorResolution {
     }
     bool image_on() const {
         return image_linear || image_transfer != colorspace::Transfer::Srgb ||
-               !image_gamut.empty();
+               !image_gamut.empty() || image_curve != colorspace::InputCurve::None;
     }
+    // Splats never hold log values, so a log seed is never already there.
     bool point_is_splat() const {
         return point_linear == splat_linear && point_transfer == splat_transfer &&
-               point_gamut == splat_gamut;
+               point_gamut == splat_gamut &&
+               point_curve == colorspace::InputCurve::None;
     }
 };
 
 ColorResolution resolve_color(const TrainConfig& c);
+
+// `--image-color-log auto` settled from the dataset's record of its inputs
+// (data/DatasetColor.h) into image_color_log_resolved; the flag is left as asked.
+// Returns the line to log, "" for none; throws where `auto` must not guess.
+std::string adopt_dataset_color(TrainConfig& c, const DatasetColor& d);
+
+// The profile a dataset's record adds up to, as the GUI and the log name it.
+std::string dataset_color_label(const DatasetColorSummary& s);
+
+// One pixel of an image file, taken into the space the image-compare panel's
+// render pane shows: the splat working space when `raw`, display values
+// otherwise. Only a log curve changes it; without one the file is the answer.
+void source_pixel_for_compare(const ColorResolution& c, bool raw, float v[3]);
 
 
 // ===========================================================================

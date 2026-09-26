@@ -1,8 +1,7 @@
 // PixelWise render-path kernels (Vulkan backend): background blends, color
-// space conversion, depth->normal. Mirrors the corresponding kernels in
-// kernels/pixelwise/ImageColorOps.cu via the same pixel_wise.slang device functions
-// (blend_background, working_to_display, generate_ray_d2n, points_to_normal).
-// Training backwards land with the training phase.
+// space conversion, the GT log decode, depth->normal. Mirrors the kernels in
+// kernels/pixelwise/ImageColorOps.cu through the pixel_wise.slang device
+// functions they share. Training backwards land with the training phase.
 //
 // All buffers are contiguous [B, H, W, C] pool tensors, so the element-wise
 // kernels run flat over B*H*W with the usual wgs_per_row grid fold. The
@@ -219,6 +218,34 @@ void working_to_display_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         cm[r] = float3(p.color_matrix[3 * r], p.color_matrix[3 * r + 1],
                        p.color_matrix[3 * r + 2]);
     rgb = working_to_display(rgb, cm, kTransfer, kIsLinear != 0);
+    p.out_rgb[3 * idx] = rgb.x;
+    p.out_rgb[3 * idx + 1] = rgb.y;
+    p.out_rgb[3 * idx + 2] = rgb.z;
+}
+
+// ---------------------------------------------------------------------------
+// input_curve_decode_forward: log GT codes -> linear Rec.2020, ahead of
+// working_to_display_fwd. curve is colorspace::InputCurve.
+// ---------------------------------------------------------------------------
+
+struct InputCurveDecodeParams {  // 32 bytes: pushed directly
+    float* rgb;           // [B,H,W,3]
+    float* out_rgb;       // [B,H,W,3]
+    uint32_t total;       // B*H*W
+    uint32_t wgs_per_row;
+    int32_t curve;
+    uint32_t _pad0;
+};
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void input_curve_decode_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                            uniform InputCurveDecodeParams p) {
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 128 + tid;
+    if (idx >= p.total) return;
+    float3 rgb = float3(p.rgb[3 * idx], p.rgb[3 * idx + 1],
+                        p.rgb[3 * idx + 2]);
+    rgb = input_curve_to_rec2020(p.curve, rgb);
     p.out_rgb[3 * idx] = rgb.x;
     p.out_rgb[3 * idx + 1] = rgb.y;
     p.out_rgb[3 * idx + 2] = rgb.z;

@@ -73,6 +73,12 @@ if [ -d "$BUILD_DIR/fonts" ]; then
     echo "    bundled $(ls "$BUILD_DIR/fonts" | wc -l | tr -d ' ') font file(s)"
 fi
 
+# ---- licences ------------------------------------------------------------
+# GPLv3 for the program, Apache-2.0 and OpenOSV's NOTICE excerpt for the code
+# ported under it; both licences want their text to travel with a binary.
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE"
+cp -R "$ROOT/LICENSES" "$APP/Contents/Resources/LICENSES"
+
 # ---- icon ----------------------------------------------------------------
 # sips and iconutil are in the base system, so this needs no Xcode.
 ICONSET=$(mktemp -d)/AppIcon.iconset

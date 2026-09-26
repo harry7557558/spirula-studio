@@ -15,11 +15,10 @@
 #include "app_generated/mask_py.h"   // kMaskPy[], from reference/scripts/mask.py
 
 #include "core/ExrImage.h"
+#include "data/DatasetColor.h"
 #include "core/ImageOrient.h"
 #include "sfm/core/Exif.h"
-#ifdef SS_TOOL_SFM
 #include "sfm/core/Telemetry.h"
-#endif
 #include "external/stb_image.h"      // stbi_info (image size probe), stbi_load
 #include "external/stb_image_write.h"  // stbi_write_jpg (the photo re-encode)
 
@@ -108,11 +107,39 @@ int candidate_group(const PrepJob& job, const PrepInput& in) {
 }
 
 // How ffmpeg is told to write every decoded frame exactly once: the image2
-// muxer is constant-rate by default, and pads or drops a variable-rate file to
-// fit. -vsync rather than -fps_mode, which ffmpeg before 5.1 rejects.
-void append_every_frame_args(std::vector<std::string>& argv, int max_frames) {
-    argv.insert(argv.end(), {"-vsync", "passthrough"});
+// muxer is constant-rate by default, and pads or drops a variable-rate file to fit.
+void append_every_frame_args(std::vector<std::string>& argv,
+                             const std::string& ffmpeg_exe, int max_frames) {
+    const std::vector<std::string> pass = passthrough_args(ffmpeg_exe);
+    argv.insert(argv.end(), pass.begin(), pass.end());
     if (max_frames > 0) argv.insert(argv.end(), {"-frames:v", std::to_string(max_frames)});
+}
+
+// The count on one of ffmpeg's `frame=  123 fps=...` progress lines; -1 otherwise.
+long long progress_frame(const std::string& line) {
+    const size_t at = line.find_first_not_of(" \t");
+    if (at == std::string::npos || line.compare(at, 6, "frame=") != 0) return -1;
+    const char* first = line.c_str() + at + 6;
+    char* end = nullptr;
+    const long long frame = std::strtoll(first, &end, 10);
+    return end == first ? -1 : frame;
+}
+
+// One argument's ceiling: ~17 bytes a keeper, so about 60k keepers on macOS.
+#if defined(_WIN32)
+constexpr size_t kMaxArgBytes = 30000;    // CreateProcess: 32767 for the whole line
+#elif defined(__APPLE__)
+constexpr size_t kMaxArgBytes = 900000;   // ARG_MAX 1 MiB, shared with the environment
+#else
+constexpr size_t kMaxArgBytes = 130000;   // MAX_ARG_STRLEN: 128 KiB for one argument
+#endif
+
+// `select` true on frames keep[lo, hi), as a balanced sum: ffmpeg's expression
+// parser fails ("Cannot allocate memory") on a flat sum of more than 100 terms.
+std::string select_expr(const std::vector<long long>& keep, size_t lo, size_t hi) {
+    if (hi - lo == 1) return "eq(n\\," + std::to_string(keep[lo]) + ")";
+    const size_t mid = lo + (hi - lo) / 2;
+    return "(" + select_expr(keep, lo, mid) + "+" + select_expr(keep, mid, hi) + ")";
 }
 
 // Throw away what a previous run generated, for a step being re-done. Only
@@ -169,6 +196,65 @@ fs::path under_root(const fs::path& file, const fs::path& root) {
 bool inside(const fs::path& p, const fs::path& root) {
     const fs::path rel = p.lexically_relative(root);
     return !rel.empty() && *rel.begin() != "..";
+}
+
+// Frames an input the job no longer names left in the dataset's images/: they
+// would be trained on beside the new ones, and the colour record says nothing
+// of them. Never a folder an input is read from.
+struct Pruned {
+    std::vector<std::string> removed, stuck;
+    std::vector<std::pair<std::string, std::string>> links;   // name, target
+};
+
+// `own_frames_kept`: the frames are not being re-extracted, so a lone input's
+// own root frames and camera folders stay; only other folders go.
+Pruned prune_removed_inputs(const fs::path& images, const fs::path& ws,
+                            const std::vector<PrepInput>& inputs, bool own_frames_kept) {
+    Pruned out;
+    std::set<std::string> kept;
+    const PrepInput* lone = nullptr;
+    std::error_code ec;
+    for (const PrepInput& in : inputs) {
+        const fs::path src = fs::absolute(in.path, ec).lexically_normal();
+        if (inside(src, images) || inside(images, src)) return out;
+        // A lone input owns images/ itself.
+        if (in.subdir.empty()) lone = &in;
+        else kept.insert(fs::path(in.subdir).begin()->string());
+    }
+    if (lone && own_frames_kept && !lone->is_video)
+        for (const std::string& cam : camera_subfolders(lone->path))
+            kept.insert(fs::path(cam).begin()->string());
+    auto camera_dir = [](const std::string& n) {
+        return n.size() > 3 && n.compare(0, 3, "cam") == 0 &&
+               n.find_first_not_of("0123456789", 3) == std::string::npos;
+    };
+    std::vector<fs::path> gone;
+    for (fs::directory_iterator it(images, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (kept.count(name)) continue;
+        if (lone && own_frames_kept) {
+            const fs::file_status st = it->symlink_status(ec);
+            if (!fs::is_directory(st) && !fs::is_symlink(st)) continue;
+            if (lone->is_video && camera_dir(name)) continue;
+        }
+        gone.push_back(it->path());
+    }
+    for (const fs::path& p : gone) {
+        const std::string name = p.filename().string();
+        if (fs::is_symlink(fs::symlink_status(p, ec))) {
+            // The link, never what it points at.
+            const std::string target = fs::read_symlink(p, ec).string();
+            fs::remove(p, ec);
+            if (!fs::exists(fs::symlink_status(p, ec))) out.links.push_back({name, target});
+            else out.stuck.push_back(name);
+            continue;
+        }
+        if (fs::is_directory(p, ec)) clear_generated(p, ws);
+        else fs::remove(p, ec);
+        if (!fs::exists(fs::symlink_status(p, ec))) out.removed.push_back(name);
+        else out.stuck.push_back(name);
+    }
+    return out;
 }
 
 // The frame number the masker should be given for each file, taken from the
@@ -694,6 +780,38 @@ bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
     return out.duration > 0.0;
 }
 
+std::vector<std::string> passthrough_args_for(const std::string& version_line) {
+    int major = -1, minor = 0;
+    const size_t at = version_line.find("version ");
+    if (at != std::string::npos) {
+        const char* p = version_line.c_str() + at + 8;
+        if (*p == 'n') p++;   // a release tag, "n7.0"; "N-1234-g..." is a git build
+        if (std::sscanf(p, "%d.%d", &major, &minor) < 1) major = -1;
+    }
+    const bool old = major >= 0 && (major < 5 || (major == 5 && minor < 1));
+    return {old ? "-vsync" : "-fps_mode", "passthrough"};
+}
+
+std::vector<std::string> passthrough_args(const std::string& ffmpeg_exe) {
+    static std::mutex m;
+    static std::map<std::string, std::vector<std::string>> known;
+    {
+        std::lock_guard<std::mutex> lock(m);
+        const auto it = known.find(ffmpeg_exe);
+        if (it != known.end()) return it->second;
+    }
+    std::string first;
+    const std::atomic<bool> never{false};
+    run_process({ffmpeg_exe, "-hide_banner", "-version"}, "",
+                [&first](const std::string& line) {
+                    if (first.empty()) first = line;
+                }, never);
+    std::vector<std::string> args = passthrough_args_for(first);
+    std::lock_guard<std::mutex> lock(m);
+    known[ffmpeg_exe] = args;
+    return args;
+}
+
 bool ffmpeg_extract_frame(const std::string& ffmpeg_exe, const std::string& video,
                           double seconds, const std::string& out_path,
                           const std::atomic<bool>& cancel,
@@ -965,6 +1083,44 @@ WorkspaceState probe_workspace(const std::string& workspace,
     return st;
 }
 
+int resolved_frame_bits(const PrepJob& job, const PrepInput& in, VideoColorRead read) {
+    if (!read) read = job.read_color;
+#ifdef SS_TOOL_SFM
+    if (!read) read = sfm::video_color;
+#endif
+    const bool asks = in.is_video && job.frame_bits == 0 && read;
+    return frame_bits_for(job, in, asks ? read(in.path).mode : sfm::VideoColorMode::NotRecorded);
+}
+
+spirula::DatasetColor clip_colors(const std::vector<PrepInput>& inputs,
+                                  std::vector<std::string>* notes, VideoColorRead read) {
+#ifdef SS_TOOL_SFM
+    if (!read) read = sfm::video_color;
+#endif
+    spirula::DatasetColor d;
+    for (const PrepInput& in : inputs) {
+        spirula::ClipColorEntry e;
+        e.source = leaf_name(fs::path(in.path));
+        if (in.is_video && read) {
+            const sfm::VideoColor c = read(in.path);
+            e.code = c.code;
+            e.proto = c.proto;
+            switch (c.mode) {
+                case sfm::VideoColorMode::Normal:   e.mode = spirula::ClipColor::Normal; break;
+                case sfm::VideoColorMode::DlogM:    e.mode = spirula::ClipColor::DlogM; break;
+                case sfm::VideoColorMode::OtherLog: e.mode = spirula::ClipColor::OtherLog; break;
+                case sfm::VideoColorMode::Unknown:  e.mode = spirula::ClipColor::Unknown; break;
+                default: break;
+            }
+            if (notes && e.mode == spirula::ClipColor::Unknown)
+                notes->push_back(fmt(lmsg::clip_color_unreadable,
+                                     {e.source, e.proto.empty() ? std::string("djmd") : e.proto}));
+        }
+        d.clips.push_back(e);
+    }
+    return d;
+}
+
 std::vector<std::string> workspace_artifacts(const std::string& workspace,
                                              const std::vector<PrepInput>& inputs) {
     std::vector<std::string> out;
@@ -981,7 +1137,8 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
     if (!is_input_folder(ws / "masks", inputs, true)) add("masks");
     for (const char* name : {"features", "sparse", "colmap", "normals", "depths",
                              ".progress", sfm::resume::kDir, "matches.bin",
-                             "database.db", kReconStampFile})
+                             "database.db", kReconStampFile,
+                             spirula::kDatasetColorFile})
         add(name);
     return out;
 }
@@ -1145,7 +1302,7 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
             ? (int)app::pano360_views(in.pano360, job.pano).size()
             : std::max(in.packed_lenses, 0);
 #ifdef SS_HAVE_VIDEO
-    if (!job.force_external_decode && native_decode_reason().empty()) {
+    if (builtin_decode(job, in)) {
         std::string err;
         video::VideoProbe probe;
         if (video::probe_video(in.path, probe, err) && probe.tracks > 0)
@@ -1202,13 +1359,26 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         return false;
 #endif
 
+    _bits.assign(job.inputs.size(), 8);
+    for (size_t i = 0; i < job.inputs.size(); i++) {
+        _bits[i] = resolved_frame_bits(job, job.inputs[i]);
+        if (_bits[i] == 16 && job.frame_bits == 0)
+            log(fmt(lmsg::frames_16bit_auto, {leaf_name(job.inputs[i].path)}),
+                /*detail=*/false);
+    }
+
     // Frames already there were extracted with settings the workspace records;
     // a run asking for others has to go back to the video (ReconStamp.h).
-    const ReconStamp frames_now = frames_stamp(job);
+    const ReconStamp frames_now = frames_stamp(job, _bits);
+    // No stamp over frames that are there: an earlier run stopped before
+    // writing it, so what the frames came from is unknown (see the prune below).
+    bool frames_unstamped = false;
     {
-        const std::string moved =
-            recon_stamp_change(read_recon_stamp(ws.string(), kFramesStampFile),
-                               frames_now);
+        const ReconStamp prior = read_recon_stamp(ws.string(), kFramesStampFile);
+        std::error_code ec;
+        frames_unstamped = !prior.present && fs::is_directory(ws / "images", ec) &&
+                           !fs::is_empty(ws / "images", ec);
+        const std::string moved = recon_stamp_change(prior, frames_now);
         if (!moved.empty()) {
             _frames_stale = true;
             out.frames_rebuilt = true;
@@ -1286,6 +1456,23 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     } else {
         out.image_dir = (ws / "images").string();
         out.image_dir_cfg = "images";
+        // Unstamped frames are pruned without being called stale, so a resume
+        // still keeps the inputs an interrupted run finished.
+        if (frames_stale(job) || frames_unstamped) {
+            const Pruned pr = prune_removed_inputs(fs::path(out.image_dir), ws, job.inputs,
+                                                   /*own_frames_kept=*/!frames_stale(job));
+            auto join = [](const std::vector<std::string>& v) {
+                std::string j;
+                for (const std::string& x : v) j += (j.empty() ? "" : ", ") + x;
+                return j;
+            };
+            if (!pr.removed.empty())
+                log(fmt(lmsg::frames_removed_inputs, {join(pr.removed)}), /*detail=*/false);
+            for (const auto& [name, target] : pr.links)
+                log(fmt(lmsg::frames_link_removed, {name, target}), /*detail=*/false);
+            if (!pr.stuck.empty())
+                log(fmt(lmsg::frames_not_removed, {join(pr.stuck)}), /*detail=*/false);
+        }
         // Every input is measured before any of them is extracted, so the bar
         // covers the whole step from the first frame rather than restarting on
         // each input (StageTally).
@@ -1329,8 +1516,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             if (in.is_video) {
                 const bool keeping =
                     job.resume && !frames_stale(job) && count_images(p.images) > 0;
-                if (!keeping && !job.force_external_decode &&
-                    native_decode_reason().empty() && !plan_group(job, i, error))
+                if (!keeping && builtin_decode(job, in) && !plan_group(job, i, error))
                     return false;
                 if (!extract_video(job, in, p.images, p.masks, out, p.have_masks,
                                    error))
@@ -1358,6 +1544,20 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // Written once the images are there, so an interrupted extraction is not
     // recorded as having produced what it was asked for.
     write_recon_stamp(ws.string(), frames_now, kFramesStampFile);
+    {
+        std::vector<std::string> notes;
+        const spirula::DatasetColor colors = clip_colors(job.inputs, &notes, job.read_color);
+        for (const std::string& n : notes) log(n, /*detail=*/false);
+        const spirula::ColorRecordResult rec = spirula::write_dataset_color(ws.string(), colors);
+        const std::string rec_path = (ws / spirula::kDatasetColorFile).string();
+        // A record left stale would decode every frame the wrong way, silently.
+        if (rec.status == spirula::ColorRecordWrite::FailedStale) {
+            error = fmt(lmsg::color_record_stale, {rec_path, rec.error});
+            return false;
+        }
+        if (rec.status == spirula::ColorRecordWrite::Failed)
+            log(fmt(lmsg::color_record_failed, {rec_path, rec.error}), /*detail=*/false);
+    }
 
     out.n_images = count_images(out.image_dir, skip_dir);
     log(fmt(lmsg::found_images, {(long long)out.n_images, out.image_dir}),
@@ -1471,10 +1671,21 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 // Whether one stem's frames were taken at one instant: a 360 packing's views
 // are cut from one decoded canvas; separate tracks only under `sync_tracks`,
 // which only the built-in decoder does.
-static bool lockstep_extraction(const PrepJob& job, const PrepInput& in, bool builtin) {
+static bool lockstep_extraction(const PrepJob& job, const PrepInput& in, bool builtin,
+                                bool bits16) {
     if (in.pano360.valid()) return job.pano.mode != app::Pano360Mode::Off;
     if (in.packed_lenses >= 2) return true;
-    return builtin && job.sync_tracks;
+    return bits16 || (builtin && job.sync_tracks);
+}
+
+int DatasetPrep::bits_of(const PrepJob& job, const PrepInput& in) const {
+    const size_t row = input_index(job, in);
+    return row < _bits.size() ? _bits[row] : 8;
+}
+
+bool DatasetPrep::builtin_decode(const PrepJob& job, const PrepInput& in) const {
+    return !job.force_external_decode && bits_of(job, in) != 16 &&
+           native_decode_reason().empty();
 }
 
 bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
@@ -1497,8 +1708,8 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
             // downstream by the gyro-against-poses check, not misused.
             out.captures.push_back(
                 {in.subdir, in.path, 0.0,
-                 lockstep_extraction(job, in, !job.force_external_decode &&
-                                                  native_decode_reason().empty())});
+                 lockstep_extraction(job, in, builtin_decode(job, in),
+                                     bits_of(job, in) == 16 && !every_frame(job, in))});
             if (!split_packed_frames(in, images, out, error)) return false;
             // Masks a previous run left. Not when this one is re-doing them:
             // `masked` is what makes run() skip the masking pass entirely.
@@ -1513,11 +1724,13 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
         }
     }
 
-    const bool want_builtin =
-        !job.force_external_decode && native_decode_reason().empty();
-    if (want_builtin) {
+    const bool bits16 = bits_of(job, in) == 16;
+    if (bits16 && !job.force_external_decode && native_decode_reason().empty())
+        log(lmsg::frames_16bit_ffmpeg.get(), /*detail=*/false);
+    if (builtin_decode(job, in)) {
         if (extract_video_builtin(job, in, images, out, error)) {
-            out.captures.push_back({in.subdir, in.path, 0.0, lockstep_extraction(job, in, true)});
+            out.captures.push_back(
+                {in.subdir, in.path, 0.0, lockstep_extraction(job, in, true, false)});
             return split_packed_frames(in, images, out, error);
         }
         if (_cancel.load()) return false;
@@ -1534,7 +1747,8 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
     if (ok)
         out.captures.push_back({in.subdir, in.path,
                                 (double)input_fps(job, in) * candidate_group(job, in),
-                                lockstep_extraction(job, in, false)});
+                                lockstep_extraction(job, in, false,
+                                                    bits16 && !every_frame(job, in))});
     return ok && split_packed_frames(in, images, out, error);
 }
 
@@ -1729,7 +1943,8 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
 bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                                        const std::string& images,
                                        PrepResult& out, std::string& error) {
-    if (job.sync_tracks) log(lmsg::sync_needs_builtin.get(), /*detail=*/false);
+    const bool bits16 = bits_of(job, in) == 16;
+    if (job.sync_tracks && !bits16) log(lmsg::sync_needs_builtin.get(), /*detail=*/false);
     const fs::path ws = job.workspace;
     if (!command_exists(job.ffmpeg_exe)) {
         error = fmt(lmsg::err_ffmpeg_missing, {job.ffmpeg_exe});
@@ -1752,6 +1967,9 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     const int group = candidate_group(job, in);
     const bool fisheye = streams > 1 && !facts.tracks.empty() &&
                          facts.tracks[0].first == facts.tracks[0].second;
+    if (bits16)
+        return extract_video_ffmpeg16(job, in, images, streams, fisheye, facts.width,
+                                      facts.height, facts.frames, error);
     for (size_t tr = 0; tr < streams; tr++) {
         std::string track_path = in.path;
         const fs::path out_dir = streams > 1
@@ -1793,18 +2011,13 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         std::vector<std::string> argv{job.ffmpeg_exe, "-nostdin", "-y"};
         if (!job.auto_rotate) argv.push_back("-noautorotate");
         argv.insert(argv.end(), {"-i", track_path});
-        if (every) append_every_frame_args(argv, job.max_frames);
+        if (every) append_every_frame_args(argv, job.ffmpeg_exe, job.max_frames);
         else argv.insert(argv.end(), {"-vf", vf});
         argv.insert(argv.end(), {"-qscale:v", "2", (cand / "c_%06d.jpg").string()});
         const int max_frames = job.max_frames;
         int rc = exec(argv, [&progress, window, max_frames](const std::string& line) {
-            const size_t at = line.find_first_not_of(" \t");
-            if (at == std::string::npos || line.compare(at, 6, "frame=") != 0)
-                return;
-            const char* first = line.c_str() + at + 6;
-            char* end = nullptr;
-            const long long frame = std::strtoll(first, &end, 10);
-            if (end == first || frame < 0) return;
+            const long long frame = progress_frame(line);
+            if (frame < 0) return;
             int64_t projected = (frame + window - 1) / window;
             if (max_frames > 0) projected = std::min<int64_t>(projected, max_frames);
             progress.update(projected);
@@ -1851,6 +2064,219 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         log(fmt(lmsg::kept_frames, {(long long)kept, out_dir.string()}),
             /*detail=*/false);
     }
+    return true;
+}
+
+bool DatasetPrep::extract_video_ffmpeg16(const PrepJob& job, const PrepInput& in,
+                                         const std::string& images, size_t streams,
+                                         bool fisheye, int width, int height,
+                                         long long frames, std::string& error) {
+    const fs::path ws = job.workspace;
+    const bool every = every_frame(job, in);
+    const int window = every ? 1 : std::max(job.sharp_window, 1);
+    const int group = candidate_group(job, in);
+    const fs::path cand = ws / "frames_tmp", kept = ws / "kept_tmp",
+                   stage = ws / "frames16_tmp";
+    std::error_code ec;
+    std::vector<fs::path> tracks;
+    auto clean = [&] {
+        remove_tree(cand);
+        remove_tree(kept);
+        remove_tree(stage);
+        if (streams > 1)
+            for (const fs::path& t : tracks) fs::remove(t, ec);
+    };
+    auto failed = [&](const std::string& why) {
+        clean();
+        error = why;
+        return false;
+    };
+    auto run = [&](const std::vector<std::string>& argv,
+                   const std::function<void(const std::string&)>& on_line) {
+        const int rc = exec(argv, on_line);
+        if (rc == kCancelled) return failed(lmsg::err_cancelled.get());
+        return rc == 0 || failed(lmsg::err_ffmpeg_extract_failed.get());
+    };
+    auto head = [&](const fs::path& track) {
+        std::vector<std::string> argv{job.ffmpeg_exe, "-nostdin", "-y"};
+        if (!job.auto_rotate) argv.push_back("-noautorotate");
+        argv.insert(argv.end(), {"-i", track.string()});
+        return argv;
+    };
+    clean();
+
+    for (size_t tr = 0; tr < streams; tr++) {
+        if (streams == 1) {
+            tracks.push_back(in.path);
+            break;
+        }
+        enter(Stage::Frames, fmt(lmsg::stage_split_track, {(long long)tr}));
+        tracks.push_back(ws / ("track_cam" + std::to_string(tr) + ".mp4"));
+        const int rc = exec({job.ffmpeg_exe, "-nostdin", "-y", "-i", in.path, "-map",
+                             "0:v:" + std::to_string(tr), "-c", "copy", tracks.back().string()});
+        if (rc == kCancelled) return failed(lmsg::err_cancelled.get());
+        if (rc != 0) return failed(lmsg::err_ffmpeg_split_failed.get());
+    }
+
+    char rate[64];
+    std::snprintf(rate, sizeof rate, "fps=%g", (double)input_fps(job, in) * group);
+    RateLimitedProgress progress(_prog, Stage::Frames, lmsg::noun_frames_written,
+                                 _frames_tally);
+    progress.update(0, /*force=*/true);
+
+    // The candidates' 0-based numbers, which are the stems FrameSelect would give.
+    std::vector<long long> keep;
+    if (!every) {
+        enter(Stage::Frames, window > 1 ? lmsg::stage_extract_candidates.get()
+                                        : lmsg::stage_extract_ffmpeg.get());
+        fs::create_directories(cand, ec);
+        std::vector<std::string> argv = head(tracks[0]);
+        argv.insert(argv.end(), {"-vf", rate, "-qscale:v", "2",
+                                 (cand / "c_%06d.jpg").string()});
+        const int max_frames = job.max_frames;
+        if (!run(argv, [&progress, window, max_frames](const std::string& line) {
+                const long long frame = progress_frame(line);
+                if (frame < 0) return;
+                int64_t projected = (frame + window - 1) / window;
+                if (max_frames > 0) projected = std::min<int64_t>(projected, max_frames);
+                progress.update(projected);
+            }))
+            return false;
+
+        if (window > 1) enter(Stage::Frames, lmsg::stage_select_sharpest.get());
+        FrameSelectOptions so;
+        so.group = group;
+        so.max_frames = job.max_frames;
+        so.adaptive = job.adaptive_fps;
+        so.range = job.adaptive_range;
+        so.window = window;
+        if (fisheye) so.view = app::MotionView::Fisheye;
+        so.out_fov = fisheye ? 3.4034f : 1.5708f;
+        ScanProgress scan(_prog, 0);
+        scan.begin(leaf_name(in.path));
+        const size_t row = input_index(job, in);
+        _prog->scan_open(row);
+        so.scanning = [&](int64_t done, int64_t total) { scan.update(done, total); };
+        so.measured = [this, row](int64_t at, int64_t of, float c) {
+            _prog->scan_step(row, at, of, c);
+        };
+        so.planned = [this, row](const std::vector<int64_t>& plan, int64_t frames) {
+            _prog->scan_kept(row, spacing_bars(plan, frames), (int64_t)plan.size());
+        };
+        const int n = select_sharpest_frames(
+            cand.string(), kept.string(), "", so,
+            [this](const std::string& l) { log(l); }, _cancel);
+        if (n < 0) return failed(_cancel.load() ? "cancelled" : "frame selection failed");
+        for (const auto& e : fs::directory_iterator(kept, ec))
+            keep.push_back(std::atoll(e.path().stem().string().c_str()));
+        std::sort(keep.begin(), keep.end());
+        remove_tree(cand);
+        remove_tree(kept);
+        if (keep.empty()) return failed(lmsg::err_no_frames_extracted.get());
+    }
+
+    long long per_track = (long long)keep.size();
+    if (every) per_track = job.max_frames > 0 ? std::min<long long>(frames, job.max_frames) : frames;
+    // 40 MB per 3840² PNG16: the mean over 374 frames of a 187 s D-Log M clip.
+    const double need = 40.0e6 * (double)std::max<long long>(per_track, 1) * (double)streams *
+                        ((double)width * height / (3840.0 * 3840.0));
+    auto gb = [](double bytes) {
+        char s[32];
+        std::snprintf(s, sizeof s, "%.1f", bytes / 1e9);
+        return std::string(s);
+    };
+    log(fmt(lmsg::frames_16bit_estimate, {gb(need), per_track * (long long)streams}),
+        /*detail=*/false);
+    std::error_code sec;
+    const double free = job.free_space ? (double)job.free_space(ws.string())
+                                       : (double)fs::space(ws, sec).available;
+    if (!sec) {
+        const DiskVerdict v = disk_verdict(need, free);
+        if (v == DiskVerdict::TooBig)
+            return failed(fmt(lmsg::err_frames_16bit_disk, {gb(need), gb(free), ws.string()}));
+        if (v == DiskVerdict::Tight)
+            log(fmt(lmsg::frames_16bit_disk_tight, {gb(need), gb(free), ws.string()}),
+                /*detail=*/false);
+    }
+
+    // Full range at 12 bits before the RGB conversion: swscale's own 10-bit to
+    // rgb48 misses BT.709 by up to 8.2% of full scale on saturated chroma and
+    // lands Y=940 on 65283 (docs/notes/dlog-m.md, "Bit depth").
+    std::string vf = "colorspace=iall=bt709:irange=tv:all=bt709:range=pc:format=yuv444p12";
+    if (!every) {
+        vf = std::string(rate) + "," + vf + ",select='" + select_expr(keep, 0, keep.size()) + "'";
+        if (vf.size() > kMaxArgBytes)
+            return failed(fmt(lmsg::err_frames_16bit_argv,
+                              {(long long)keep.size(),
+                               (long long)(keep.size() * kMaxArgBytes / vf.size())}));
+    }
+    const std::vector<std::string> pass = passthrough_args(job.ffmpeg_exe);
+    enter(Stage::Frames, lmsg::stage_extract_ffmpeg.get());
+    int64_t written = 0;
+    for (size_t tr = 0; tr < streams; tr++) {
+        const fs::path dir = streams > 1 ? stage / ("cam" + std::to_string(tr)) : stage;
+        fs::create_directories(dir, ec);
+        std::vector<std::string> argv = head(tracks[tr]);
+        argv.insert(argv.end(), {"-vf", vf});
+        argv.insert(argv.end(), pass.begin(), pass.end());
+        if (every) {
+            if (job.max_frames > 0)
+                argv.insert(argv.end(), {"-frames:v", std::to_string(job.max_frames)});
+            fs::create_directories(cand, ec);
+        } else {
+            argv.insert(argv.end(), {"-frame_pts", "1"});
+        }
+        argv.insert(argv.end(), {"-pix_fmt", "rgb48be", "-f", "image2",
+                                 (every ? cand / "c_%06d.png" : dir / "%05d.png").string()});
+        const int64_t base = written;
+        if (!run(argv, [&progress, base](const std::string& line) {
+                const long long frame = progress_frame(line);
+                if (frame >= 0) progress.update(base + frame);
+            }))
+            return false;
+        // Renamed by their place in the file, dropping the repeats of a frame
+        // exactly as the 8-bit path does.
+        if (every) {
+            FrameSelectOptions so;
+            so.window = 1;
+            if (select_sharpest_frames(cand.string(), dir.string(), "", so,
+                                       [this](const std::string& l) { log(l); }, _cancel) < 0)
+                return failed(_cancel.load() ? "cancelled" : "frame selection failed");
+            remove_tree(cand);
+        }
+
+        std::vector<long long> got;
+        for (const auto& e : fs::directory_iterator(dir, ec))
+            if (e.is_regular_file(ec))
+                got.push_back(std::atoll(e.path().stem().string().c_str()));
+        std::sort(got.begin(), got.end());
+        if (got.empty() || (!every && got != keep))
+            return failed(fmt(lmsg::err_frames_16bit_count,
+                              {in.path, (long long)got.size(),
+                               (long long)(every ? got.size() : keep.size())}));
+        written += (int64_t)got.size();
+        progress.update(written, /*force=*/true);
+    }
+
+    // Moved in one batch, so a folder with frames in it is a finished input
+    // (extract_video's resume rule).
+    for (size_t tr = 0; tr < streams; tr++) {
+        const fs::path from = streams > 1 ? stage / ("cam" + std::to_string(tr)) : stage;
+        const fs::path to = streams > 1 ? fs::path(images) / ("cam" + std::to_string(tr))
+                                        : fs::path(images);
+        fs::create_directories(to, ec);
+        for (const auto& e : fs::directory_iterator(to, ec))
+            if (e.path().extension() == ".jpg")
+                return failed(fmt(lmsg::err_frames_16bit_mixed, {to.string()}));
+        std::vector<fs::path> files;
+        for (const auto& e : fs::directory_iterator(from, ec)) files.push_back(e.path());
+        for (const fs::path& f : files) {
+            fs::rename(f, to / f.filename(), ec);
+            if (ec) return failed(ec.message());
+        }
+        log(fmt(lmsg::kept_frames, {(long long)files.size(), to.string()}), /*detail=*/false);
+    }
+    clean();
     return true;
 }
 
@@ -1960,7 +2386,7 @@ bool DatasetPrep::extract_360_ffmpeg(const PrepJob& job, const PrepInput& in,
     std::vector<std::string> argv{job.ffmpeg_exe, "-nostdin", "-y", "-noautorotate",
                                   "-i", in.path, "-filter_complex", graph, "-map",
                                   std::string("[") + app::pano360_canvas_pad() + "]"};
-    if (every) append_every_frame_args(argv, job.max_frames);
+    if (every) append_every_frame_args(argv, job.ffmpeg_exe, job.max_frames);
     argv.insert(argv.end(), {"-qscale:v", "2", (cand / "c_%06d.jpg").string()});
     int rc = exec(argv);
     if (rc == kCancelled) { error = lmsg::err_cancelled.get(); return false; }
@@ -2619,8 +3045,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     // they were chosen from; ffmpeg's were renumbered by frame selection, and a
     // photo folder's clicks were recorded against its own sorted order.
     std::vector<int64_t> ids;
-    const bool by_stem = in.is_video && !job.force_external_decode &&
-                         native_decode_reason().empty() &&
+    const bool by_stem = in.is_video && builtin_decode(job, in) &&
                          frame_ids_from_stems(files, ids);
     if (!by_stem) {
         ids.resize(files.size());

@@ -30,6 +30,7 @@ namespace {
     X("max_frames",                 sfm.prep.max_frames)                      \
     X("auto_rotate",                sfm.prep.auto_rotate)                     \
     X("force_external_decode",      sfm.prep.force_external_decode)           \
+    X("frame_bits",                 sfm.prep.frame_bits)                      \
     X("pano_mode",                  sfm.prep.pano.mode)                       \
     X("pano_size",                  sfm.prep.pano.size)                       \
     X("pano_yaw",                   sfm.prep.pano.yaw)                        \
@@ -206,6 +207,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     p.adaptive_range = std::clamp(p.adaptive_range, 1.0f, 64.0f);
     clamp_to(p.sharp_window, 1, 1000);
     clamp_to(p.max_frames, 1, 1000000);
+    if (p.frame_bits != 8 && p.frame_bits != 16) p.frame_bits = 0;
     clamp_to(p.mask_detect_every, 1, 1000);
     clamp_to(p.mask_memory_frames, 0, 64);
 

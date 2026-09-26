@@ -979,6 +979,49 @@ SS_MSG(sam_decoded,
     RU("декодировано кадров: {0} за {1} мс ({2} в секунду)"),
     TR("çözülen kare: {0}, {1} ms (saniyede {2})"));
 
+SS_MSG(sam_extract_no_color_record,
+    EN("{0} records a colour profile ({1}), but sam extract writes no colour "
+       "record, so training will not decode it on its own. Set --image-color-log"
+       " when training if it was shot in D-Log M"),
+    JA("{0} には色プロファイル（{1}）が記録されていますが、sam ext"
+       "ract は色の記録を書き込まないため、学習はこれを自動ではデコードしま"
+       "せん。D-Log M で撮影した場合は学習時に --image-colo"
+       "r-log を設定してください"),
+    ZH_HANS("{0} 记录了色彩配置（{1}），但 sam extract 不写入色彩"
+            "记录，因此训练不会自动解码。如果是用 D-Log M 拍摄的，请在训练时"
+            "设置 --image-color-log"),
+    ZH_HANT("{0} 記錄了色彩設定（{1}），但 sam extract 不寫入色彩"
+            "記錄，因此訓練不會自動解碼。如果是用 D-Log M 拍攝的，請在訓練時"
+            "設定 --image-color-log"),
+    KO("{0}에는 색 프로필({1})이 기록되어 있지만 sam extract는 색 기록을 쓰지 않으므로 학습이 자동으로 디코딩하지 "
+       "않습니다. D-Log M으로 촬영했다면 학습할 때 --image-color-log를 설정하세요"),
+    DE("{0} vermerkt ein Farbprofil ({1}), aber sam extract schreibt keinen "
+       "Farbeintrag, daher decodiert das Training es nicht von selbst. Beim "
+       "Training --image-color-log setzen, wenn in D-Log M aufgenommen wurde"),
+    FR("{0} indique un profil colorimétrique ({1}), mais sam extract n'écrit "
+       "aucun enregistrement de couleur, donc l'entraînement ne le décodera pas "
+       "de lui-même. Définissez --image-color-log à l'entraînement s'il a été "
+       "filmé en D-Log M"),
+    ES("{0} registra un perfil de color ({1}), pero sam extract no escribe "
+       "registro de color, así que el entrenamiento no lo decodificará por sí "
+       "solo. Defina --image-color-log al entrenar si se grabó en D-Log M"),
+    PT("{0} registra um perfil de cor ({1}), mas sam extract não grava registro "
+       "de cor, então o treinamento não o decodificará sozinho. Defina --image-"
+       "color-log ao treinar se foi gravado em D-Log M"),
+    IT("{0} riporta un profilo colore ({1}), ma sam extract non scrive alcun "
+       "registro colore, quindi l'addestramento non lo decodificherà da solo. "
+       "Impostare --image-color-log in addestramento se è stato girato in D-Log "
+       "M"),
+    NL("{0} vermeldt een kleurprofiel ({1}), maar sam extract schrijft geen "
+       "kleurregister, dus de training decodeert het niet vanzelf. Stel bij het "
+       "trainen --image-color-log in als er in D-Log M is gefilmd"),
+    RU("{0} содержит цветовой профиль ({1}), но sam extract не пишет запись о "
+       "цвете, поэтому обучение само его не декодирует. Задайте --image-color-"
+       "log при обучении, если снято в D-Log M"),
+    TR("{0} bir renk profili kaydediyor ({1}), ancak sam extract renk kaydı "
+       "yazmıyor, bu yüzden eğitim bunu kendiliğinden çözmeyecek. D-Log M ile "
+       "çekildiyse eğitirken --image-color-log ayarlayın"));
+
 SS_MSG(sam_rotate_multiple_of_90,
     EN("--rotate must be a multiple of 90"),
     JA("--rotate は 90 の倍数でなければなりません"),

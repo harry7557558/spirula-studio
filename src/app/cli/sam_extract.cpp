@@ -25,6 +25,7 @@
 #include "app/Tools.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/Data.h"
+#include "i18n/catalog/Log.h"
 #include "i18n/catalog/SamHelp.h"
 #include "nn/core/Log.h"
 #include "sam/Masking.h"
@@ -293,6 +294,22 @@ int sam_cli_extract(int argc, char** argv) {
             job.eac = app::Pano360Layout{};
         }
     }
+#ifdef SS_TOOL_SFM
+    // The trainer reads a clip's profile from the dataset's colour record,
+    // which only dataset preparation writes (data/DatasetColor.h).
+    // A Normal clip needs no decode, so it has nothing to warn about.
+    if (const sfm::VideoColor vc = sfm::video_color(o.input);
+        vc.mode != sfm::VideoColorMode::NotRecorded && vc.mode != sfm::VideoColorMode::Normal) {
+        namespace lm = spirula::i18n::msg::log;
+        const spirula::i18n::Msg& label =
+            vc.mode == sfm::VideoColorMode::DlogM      ? lm::color_profile_dlogm
+            : vc.mode == sfm::VideoColorMode::OtherLog ? lm::color_profile_unsupported_log
+                                                       : lm::color_profile_unknown;
+        std::fprintf(stderr, "%s %s\n", spirula::i18n::msg::data::word_warning.get(),
+                     spirula::i18n::format(spirula::i18n::msg::cli::sam_extract_no_color_record,
+                                           {o.input, std::string(label.get())}).c_str());
+    }
+#endif
     if (!o.model.empty()) {
         job.mask.model = o.model;
         job.mask.device = o.device;

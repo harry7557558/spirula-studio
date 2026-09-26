@@ -668,6 +668,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("ba_cpu", cfg_str(j.ba_cpu));
     line("subprocess", cfg_str(j.subprocess));
     line("force_external_decode", cfg_str(j.prep.force_external_decode));
+    line("frame_bits", std::to_string(j.prep.frame_bits));
     line("force_external_masking", cfg_str(j.prep.force_external_masking));
     line("video_fps", cfg_str(j.prep.video_fps));
     line("adaptive_fps", cfg_str(j.prep.adaptive_fps));
@@ -3326,6 +3327,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.pano = _sfm_job.prep.pano;
     prep.max_frames = _sfm_job.prep.max_frames;
     prep.force_external_decode = _sfm_job.prep.force_external_decode;
+    prep.frame_bits = _sfm_job.prep.frame_bits;
     prep.sync_tracks = _sfm_job.prep.sync_tracks;
     prep.ffmpeg_exe = _ffmpeg_exe;
     prep.python_exe = _python_exe;
@@ -3366,6 +3368,7 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.pano = prep.pano;
     _colmap_job.max_frames = prep.max_frames;
     _colmap_job.force_external_decode = prep.force_external_decode;
+    _colmap_job.frame_bits = prep.frame_bits;
     _colmap_job.photo_import = prep.photo_import;
     _colmap_job.force_external_masking = prep.force_external_masking;
     _colmap_job.colmap_exe = _colmap_exe;
@@ -5980,6 +5983,15 @@ void GuiApp::draw_sfm_advanced() {
     ImGui::EndDisabled();
     ui::help_on_hover(backends().builtin_video ? dmsg::use_ffmpeg_help
                                                : dmsg::use_ffmpeg_always);
+    {
+        int& bits = _sfm_job.prep.frame_bits;
+        int pick = bits == 8 ? 1 : bits == 16 ? 2 : 0;
+        ImGui::SetNextItemWidth(px(260.0f));
+        if (ui::Combo(dmsg::frame_bits, &pick,
+                      {&dmsg::frame_bits_auto, &dmsg::frame_bits_8, &dmsg::frame_bits_16}))
+            bits = pick == 1 ? 8 : pick == 2 ? 16 : 0;
+        ui::help_on_hover(dmsg::frame_bits_help);
+    }
     ImGui::BeginDisabled(!backends().builtin_masking);
     ui::Checkbox(dmsg::use_python_masking, &_sfm_job.prep.force_external_masking);
     ImGui::EndDisabled();
@@ -6531,6 +6543,13 @@ void GuiApp::draw_train() {
             _train_masks_key = key;
             _train_masks_at = now;
             _train_has_masks = !_cfg.data.empty() && fs::is_directory(md, ec) && !fs::is_empty(md, ec);
+            _train_color = spirula::dataset_color_label(
+                spirula::summarize_dataset_color(spirula::read_dataset_color(_cfg.data)));
+        }
+        if (!_train_color.empty()) {
+            ImGui::SameLine();
+            ui::TextDisabledRaw(i18n::format(msg::dataset_color_profile, {_train_color}));
+            ui::help_on_hover(msg::dataset_color_profile_help);
         }
         if (_train_has_masks) {
             ImGui::SameLine();

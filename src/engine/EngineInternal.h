@@ -125,6 +125,10 @@ void bilagrid_scatter_floats(
 
 // --- Cross-section helpers within the Engine split. ---
 
+// One GT pixel through the image-side conversion on the host, exactly as
+// _engine_color_space_apply_to_gt runs it on the device (EngineColorSpace.cpp).
+void _engine_color_space_gt_pixel(float c[3]);
+
 // Stash cam_indices for the current step (used by both bilagrid and PPISP).
 void _set_cur_cam_indices(TorchTensorView tv);
 

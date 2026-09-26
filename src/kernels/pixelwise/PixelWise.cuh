@@ -254,6 +254,13 @@ void blend_background_color_backward(
 );
 
 
+void input_curve_decode_forward(
+    int curve,                           // colorspace::InputCurve: 1 Osmo, 2 Avata
+    DeviceTensor3D<float3> rgb,          // [B, H, W, 3] code values
+    DeviceTensor3D<float3> out_rgb       // [B, H, W, 3]
+);
+
+
 void working_to_display_forward(
     int transfer,                        // colorspace::Transfer
     bool is_linear,                      // does the source store linear light

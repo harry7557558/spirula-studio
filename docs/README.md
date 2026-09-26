@@ -17,6 +17,7 @@ the detail.
 | [notes/compare-view.md](notes/compare-view.md) | showing several models at once: engine scene slots, the shared navigation frame |
 | [notes/vram-splat-x-img.md](notes/vram-splat-x-img.md) | what the largest scratch category costs per element, the bitmask compaction, and the measured dead ends |
 | [notes/color-transfer.md](notes/color-transfer.md) | linear storage vs the output tone curve, the dynamic range a curve buys, and why its clip is straight-through |
+| [notes/dlog-m.md](notes/dlog-m.md) | decoding DJI D-Log M input: what the flag pins, where the decode runs, what 8-bit frames cost, and the OpenOSV attribution |
 | [notes/gui-editing-plan.md](notes/gui-editing-plan.md) | editing in the GUI: the selection seam every tool shares, transforms, mask editing, trajectories, and the order to build them in |
 | [notes/gui-automation.md](notes/gui-automation.md) | driving the GUI from a script: the imgui item hooks, the loopback control surface, `tools/guictl.py` and the MCP server |
 | [notes/sfm-in-process-plan.md](notes/sfm-in-process-plan.md) | running SfM inside the GUI: the library seam, the input manifest, and what manual ties need |

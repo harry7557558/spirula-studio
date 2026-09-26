@@ -282,8 +282,8 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     gt.clear(); render.clear(); render_raw.clear(); alpha.clear();
     _wgt_depth.clear(); _wr_depth.clear();
     _wgt_normal.clear(); _wr_normal.clear(); _werr.clear();
-    // The source file is shown undecoded, so pair it with the render before
-    // the working-space -> sRGB conversion rather than after.
+    // The source file is shown as stored (a log file decoded, nothing else),
+    // so pair it with the render before the working-space -> sRGB conversion.
     const auto color = spirula::resolve_color(s.cfg);
     const bool want_raw = j.source_gt && color.splat_on();
     int64_t C = 3;
@@ -536,6 +536,17 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
             }
         } else if (stbi_uc* img = stbi_load(src.c_str(), &w, &h, &ch, 3)) {
             out.src.assign(img, img + (size_t)w * h * 3);
+            // A log file shown as stored is flat; decode it into the render
+            // pane's space so the pair compares light with light.
+            if (color.image_curve != colorspace::InputCurve::None)
+                for (size_t i = 0; i < out.src.size(); i += 3) {
+                    float v[3] = {out.src[i] / 255.0f, out.src[i + 1] / 255.0f,
+                                  out.src[i + 2] / 255.0f};
+                    spirula::source_pixel_for_compare(color, want_raw, v);
+                    for (int c = 0; c < 3; c++)
+                        out.src[i + c] = (uint8_t)std::lround(
+                            std::min(std::max(v[c], 0.0f), 1.0f) * 255.0f);
+                }
             out.src_w = w;
             out.src_h = h;
             stbi_image_free(img);

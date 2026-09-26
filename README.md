@@ -129,6 +129,8 @@ macOS has only the one backend, so it builds into `build/` rather than into a pe
 
 `-DSS_ENABLE_PATENTED=ON` enables decoding video on the GPU instead of shelling out to ffmpeg (about 15x faster frame extraction, and without need to install ffmpeg). However, AVC/HEVC bitstream parsers carry third-party patent exposure. If you turn this on, you are responsible for ensuring compliance with local patent laws regarding AVC/HEVC playback.
 
+The D-Log M decode (`--image-color-log dlogm-osmo360`) uses a curve and a colour matrix from [OpenOSV](https://github.com/Kemerd/OpenOSV), under Apache-2.0 (`LICENSES/Apache-2.0.txt`, with OpenOSV's NOTICE excerpt in `LICENSES/NOTICE-OpenOSV.txt`; see `docs/notes/dlog-m.md`). The macOS app bundle carries `LICENSE` and `LICENSES/` in `Contents/Resources`.
+
 Masking needs a SAM checkpoint, which the GUI downloads on first use and caches. The checkpoints are Meta's models under Meta's licenses &ndash; SAM 2.1 is Apache-2.0, SAM 3 is under Meta's own, non-standard license. They are never bundled, and the GUI shows the terms before fetching anything. On the command line, point `--model` at a file you downloaded yourself.
 
 </details>

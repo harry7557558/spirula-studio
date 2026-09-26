@@ -770,6 +770,7 @@ private:
     std::string _train_masks_key;
     double _train_masks_at = -1.0;
     bool _train_has_masks = false;
+    std::string _train_color;   // the dataset's colour profile; empty without a record
     // Which input "Try the mask" runs on: which input a new clicked object
     // prompts (MaskClick::source) and which one's stencil the panel edits.
     int _mask_preview_input = 0;

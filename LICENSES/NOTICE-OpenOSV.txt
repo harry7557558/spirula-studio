@@ -1,0 +1,45 @@
+Spirula Studio uses two sets of fitted constants from OpenOSV
+(https://github.com/Kemerd/OpenOSV, commit 3a39776272efb5dfdc1d29711ae746e855383084):
+the Osmo 360 D-Log M curve and the Osmo 360 native primaries matrix, in
+src/core/DlogM.h and src/shaders/dlogm.slang, under the Apache License 2.0
+(LICENSES/Apache-2.0.txt). The parts of OpenOSV's NOTICE that pertain to
+them follow, verbatim. Paths inside it are OpenOSV's. The first bullet
+describes a curve this program does not use; it is kept because the second
+bullet's "of the same form" refers to it.
+
+--------------------------------------------------------------------------------
+OpenOSV
+Copyright 2026 The OpenOSV Contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+OpenOSV is an independent project.  It is not affiliated with, endorsed by or
+sponsored by SZ DJI Technology Co., Ltd. ("DJI") or Adobe Inc.  DJI, Osmo and
+Osmo 360 are trademarks of DJI; Adobe, Premiere Pro and After Effects are
+trademarks of Adobe; NVIDIA and CUDA are trademarks of NVIDIA Corporation.
+They are used only to say what OpenOSV is compatible with.  See docs/LEGAL.md.
+
+* The "DJI-matched" D-Log M decoding curve (kDlogMDjiRefit, `--fit dji`) is an
+  analytic 7-parameter fit produced by scripts/fit_dlogm.py from 64
+  neutral-axis measurements of DJI's publicly distributed D-Log M to HLG
+  rendering (the FT_StyleGeneralDlogm2HLG style LUT bundled with DJI Studio).
+  What is shipped is the fitted constants (include/osv/color/DlogM.h) and the
+  64-value measurement table, recorded as the fit's provenance
+  (scripts/fit_dlogm.py) and as the tests' reference
+  (tests/unit/test_color.cpp); no DJI LUT data beyond those 64 values is
+  included.
+* The "Osmo 360" D-Log M decoding curve (kDlogMOsmo360, the default) is an
+  analytic 7-parameter fit of the same form, produced by
+  `scripts/fit_dlogm.py --from-cube DJI_Osmo360_DLogM_to_Rec709.cube` from the
+  33 neutral-axis (R == G == B) samples of DJI's publicly distributed Osmo 360
+  D-Log M to Rec.709 LUT (as bundled with DJI Studio).  Measuring a transfer
+  function is what was done, not copying a table: what is shipped is the
+  seven fitted constants (include/osv/color/DlogM.h) and the 33 measured
+  diagonal values, recorded as the tests' reference
+  (tests/unit/DjiReference.h).  The fit scripts read the LUT from a local
+  copy (DJI Studio installs one) and print only fitted constants.
+* The Osmo 360 native primaries matrix (kNativeToRec2020_Osmo360, the
+  default) is OpenOSV's least-squares fit, produced by
+  `scripts/fit_primaries.py --from-cube DJI_Osmo360_DLogM_to_Rec709.cube`
+  from measurements of all 35937 entries of the same LUT.  Only the nine
+  fitted constants are shipped (include/osv/color/Matrices.h).
