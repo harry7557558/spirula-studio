@@ -168,6 +168,9 @@ int spirula_gui_main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#if !defined(_WIN32) && !defined(__APPLE__)
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "spirula-studio");
+#endif
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 #endif
