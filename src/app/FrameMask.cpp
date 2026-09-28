@@ -517,15 +517,14 @@ float valid_outside(const std::vector<uint8_t>& valid, int w, int h, const Circl
 }
 
 MaskShape to_shape(const Circle& c, float shrink, int w, int h) {
-    const float r = c.r * (1.0f - std::clamp(shrink, -0.5f, 0.9f));
     MaskShape s;
     s.kind = MaskShape::Kind::Ellipse;
     s.remove = false;
     s.cx = (c.cx + 0.5f) / (float)w;
     s.cy = (c.cy + 0.5f) / (float)h;
-    s.rx = r / (float)w;
-    s.ry = r / (float)h;
-    return s;
+    s.rx = c.r / (float)w;
+    s.ry = c.r / (float)h;
+    return shrink_border(s, shrink);
 }
 
 float kept_fraction(const MaskShape& s, int w, int h) {
@@ -568,6 +567,21 @@ void fill_stroke(const MaskShape& s, int W, int H, uint8_t* out) {
 }
 
 }  // namespace
+
+MaskShape shrink_border(MaskShape shape, float shrink) {
+    const float scale = 1.0f - std::clamp(shrink, -0.5f, 0.9f);
+    shape.rx *= scale;
+    shape.ry *= scale;
+    return shape;
+}
+
+bool edit_detected_border(FrameStencil& stencil, const BorderDetect& border) {
+    if (!stencil.detect_border || !border.found) return false;
+    stencil.mask.shapes.insert(stencil.mask.shapes.begin(),
+                              shrink_border(border.shape, stencil.shrink));
+    stencil.detect_border = false;
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // Shapes

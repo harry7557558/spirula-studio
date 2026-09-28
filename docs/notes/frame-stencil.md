@@ -29,9 +29,18 @@ panel's red overlay all call it.
 A stroke's half-width is stored per axis so a brush that is round in pixels
 stays round on a non-square frame: `rx = R / width`, `ry = R / height`.
 
-The fitted fisheye circle is *not* a shape in this list. `SegmentPanel::resolved`
-adds it at draw and run time, so saving the drawn shapes never saves a circle
-fitted to one particular lens.
+The automatic fisheye circle is separate from this list. `SegmentPanel::resolved`
+adds it at draw and run time. Its shrink slider ranges from -10% to 30% of the
+detected radius; Ctrl+click allows numeric entry within that range. Preview and
+batch processing both apply `app::shrink_border`.
+
+**Edit border ellipse** converts the current adjusted circle into the first
+keep-shape, turns off automatic detection, and starts a new shape edit history.
+The mask is unchanged by conversion; Select can then move its centre and resize
+its two axes. This fixed ellipse is saved with the other shapes and applies to
+the whole input, so use separate inputs for cameras with different borders.
+Automatic detection must receive `shrink=0` before conversion; the stencil's
+shrink is applied once when the ellipse is inserted.
 
 ## Tools
 

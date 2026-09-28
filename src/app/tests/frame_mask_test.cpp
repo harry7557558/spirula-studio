@@ -491,6 +491,64 @@ void test_svg_hand_made() {
     check(!app::read_mask_svg("hello", out, title, err), "not an SVG is refused");
 }
 
+void test_border_adjustment() {
+    constexpr int W = 160, H = 200;
+    app::BorderAccumulator acc;
+    std::vector<uint8_t> pixels(W * H, 0);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            if (std::hypot(float(x - 76), float(y - 105)) < 68.0f)
+                pixels[y * W + x] = 180;
+    acc.add(pixels.data(), W, H, 1);
+    acc.add(pixels.data(), W, H, 1);
+    app::BorderDetectOptions options;
+    options.shrink = 0.0f;
+    const auto raw = acc.finish(options);
+    check(raw.found, "border: offset circle detected in a portrait frame");
+    if (!raw.found) return;
+
+    for (float amount : {-0.1f, 0.0f, 0.12f, 0.3f, 0.6f}) {
+        options.shrink = amount;
+        const auto batch = acc.finish(options);
+        const auto preview = app::shrink_border(raw.shape, amount);
+        check(batch.found && raster({batch.shape}, W, H) == raster({preview}, W, H),
+              "border: preview and batch agree at " + std::to_string(amount));
+    }
+    const auto small_shrink = raster({app::shrink_border(raw.shape, 0.12f)}, W, H);
+    const auto large_shrink = raster({app::shrink_border(raw.shape, 0.3f)}, W, H);
+    check(small_shrink[105 * W + 132] == 255 && large_shrink[105 * W + 132] == 0 &&
+              large_shrink[105 * W + 76] == 255,
+          "border: extended shrink removes the remaining rim while keeping the centre");
+
+    app::FrameStencil stencil;
+    stencil.detect_border = true;
+    stencil.shrink = 0.3f;
+    app::MaskShape remove;
+    remove.kind = app::MaskShape::Kind::Rect;
+    remove.remove = true;
+    remove.cx = 0.4f; remove.cy = 0.4f;
+    remove.rx = 0.6f; remove.ry = 0.6f;
+    stencil.mask.shapes.push_back(remove);
+    stencil.mask.image = "stencil.png";
+    const auto before = raster({app::shrink_border(raw.shape, stencil.shrink), remove}, W, H);
+    check(!app::edit_detected_border(stencil, app::BorderDetect{}),
+          "border: failed detection cannot become an editable ellipse");
+    check(app::edit_detected_border(stencil, raw) && !stencil.detect_border &&
+              stencil.mask.image == "stencil.png" && stencil.mask.shapes.size() == 2 &&
+              raster(stencil.mask.shapes, W, H) == before,
+          "border: conversion preserves the mask, image stencil and shape order");
+    check(!app::edit_detected_border(stencil, raw) && stencil.mask.shapes.size() == 2,
+          "border: conversion cannot insert the border twice");
+    auto& ellipse = stencil.mask.shapes.front();
+    ellipse.cx += 0.05f;
+    ellipse.ry *= 0.9f;
+    std::vector<app::MaskShape> restored;
+    std::string error;
+    check(app::parse_mask_shapes(app::format_mask_shapes(stencil.mask.shapes), restored, error) &&
+              raster(restored, W, H) == raster(stencil.mask.shapes, W, H),
+          "border: manually adjusted ellipse survives serialization");
+}
+
 }  // namespace
 
 int main() {
@@ -503,6 +561,7 @@ int main() {
     test_stroke_fill();
     test_svg_round_trip();
     test_svg_hand_made();
+    test_border_adjustment();
     std::printf("%s: %d failure(s)\n", SS_FILE, g_failures);
     return g_failures;
 }

@@ -96,6 +96,8 @@ struct BorderDetect {
     int       width = 0, height = 0;
 };
 
+MaskShape shrink_border(MaskShape shape, float shrink);
+
 // Reads `samples` frames spread across `files` and fits the boundary of the
 // image circle. `files` is one camera's frames, in capture order.
 BorderDetect detect_fisheye_border(const std::vector<std::string>& files,
@@ -134,6 +136,9 @@ struct FrameStencil {
     float shrink = 0.01f;      // overrides BorderDetectOptions::shrink
     bool empty() const { return mask.empty() && !detect_border; }
 };
+
+// The detection must have shrink=0; the stencil supplies the adjustment.
+bool edit_detected_border(FrameStencil& stencil, const BorderDetect& border);
 
 // Image files under `dir`, grouped by the folder holding them -- a folder is a
 // camera, which is what a multi-track extraction writes (cam0/, cam1/). Keys

@@ -209,12 +209,7 @@ void SegmentPanel::destroy_gl() {
 app::FrameMask SegmentPanel::resolved(const app::FrameStencil& s) const {
     app::FrameMask fm = s.mask;
     if (s.detect_border && _border.found) {
-        app::MaskShape e = _border.shape;
-        const float k = 1.0f - std::clamp(s.shrink, -0.5f, 0.5f);
-        e.rx *= k;
-        e.ry *= k;
-        // First: it is what the drawn shapes are applied to, in order.
-        fm.shapes.insert(fm.shapes.begin(), e);
+        fm.shapes.insert(fm.shapes.begin(), app::shrink_border(_border.shape, s.shrink));
     }
     return fm;
 }
@@ -1092,7 +1087,8 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
         ImGui::Indent();
         float pct = s.shrink * 100.0f;
         ImGui::SetNextItemWidth(-1);
-        if (ui::SliderFloatRaw("##shrink", &pct, -10.0f, 12.0f, "%.1f%%")) {
+        if (ui::SliderFloatRaw("##shrink", &pct, -10.0f, 30.0f, "%.1f%%",
+                               ImGuiSliderFlags_AlwaysClamp)) {
             s.shrink = pct / 100.0f;
             _stencil_key.clear();
             edited = true;
@@ -1106,6 +1102,22 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
         if (!_detecting.load() && !_listing.load() &&
             ui::SmallButton(dmsg::stencil_look_again))
             start_detect();
+        if (!_busy.load() && !_detecting.load() && !_listing.load() &&
+            _border.found && shown_camera() == _border_camera) {
+            if (ui::SmallButton(dmsg::stencil_edit_border) &&
+                app::edit_detected_border(s, _border)) {
+                _history.clear();
+                _stencil_key.clear();
+                _shapes_edited = true;
+                edited = true;
+                _shape_sel = 0;
+                _drag_handle = -1;
+                _draw = DrawTool::Select;
+                _tool.cancel();
+                _path.cancel();
+            }
+            ui::help_on_hover(dmsg::stencil_edit_border_help);
+        }
         ImGui::Unindent();
     }
 

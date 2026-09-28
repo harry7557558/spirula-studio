@@ -5922,30 +5922,43 @@ SS_MSG(stencil_shrink,
     TR("Daralt"));
 
 SS_MSG(stencil_shrink_help,
-    EN("Pulls the circle in a little. The outermost ring of a lens circle is "
-       "dark and smeared, and it costs nothing to lose."),
-    JA("円を少しだけ内側に寄せます。レンズ円のいちばん外側は暗くにじんでおり、"
-       "捨てても損はありません。"),
-    ZH_HANS("把圆稍微往里收一点。镜头圆最外的一圈又暗又糊，丢掉不可惜。"),
-    ZH_HANT("把圓稍微往裡收一點。鏡頭圓最外的一圈又暗又糊，丟掉不可惜。"),
-    KO("원을 조금 안쪽으로 당깁니다. 렌즈 원의 가장 바깥 테는 어둡고 번져 있어 "
-       "버려도 아깝지 않습니다."),
-    DE("Zieht den Kreis ein Stück nach innen. Der äußerste Ring eines "
-       "Objektivkreises ist dunkel und verschmiert und kostet nichts."),
-    FR("Resserre un peu le cercle. L'anneau le plus extérieur d'un "
-       "cercle-image est sombre et étalé : le perdre ne coûte rien."),
-    ES("Mete un poco el círculo. El anillo más externo del círculo del "
-       "objetivo es oscuro y borroso, y perderlo no cuesta nada."),
-    PT("Puxa o círculo um pouco para dentro. O anel mais externo do círculo da "
-       "lente é escuro e borrado, e perdê-lo não custa nada."),
-    IT("Stringe un poco il cerchio. L'anello più esterno del cerchio "
-       "dell'obiettivo è scuro e sbavato, e perderlo non costa nulla."),
-    NL("Haalt de cirkel een stukje naar binnen. De buitenste ring van een "
-       "lenscirkel is donker en uitgesmeerd, en kost niets om kwijt te raken."),
-    RU("Немного поджимает круг. Самое внешнее кольцо круга изображения тусклое "
-       "и смазанное, потерять его не жалко."),
-    TR("Daireyi biraz içeri çeker. Mercek dairesinin en dış halkası sönük ve "
-       "bulaşıktır, gitmesi bir şey kaybettirmez."));
+    EN("Shrinks the detected radius by this percentage. Ctrl+click to enter a value. For an offset or uneven border, edit the border ellipse."),
+    JA("検出した半径をこの割合だけ縮めます。Ctrl+クリックで数値を入力できます。境界がずれている場合は楕円を編集してください。"),
+    ZH_HANS("按此百分比缩小检测出的半径。Ctrl+单击可输入数值。边界偏心或不均匀时，可编辑边界椭圆。"),
+    ZH_HANT("按此百分比縮小偵測出的半徑。Ctrl+點擊可輸入數值。邊界偏心或不均勻時，可編輯邊界橢圓。"),
+    KO("감지된 반지름을 이 비율만큼 줄입니다. Ctrl+클릭으로 값을 입력합니다. 경계가 치우치거나 고르지 않으면 경계 타원을 편집하세요."),
+    DE("Verkleinert den erkannten Radius um diesen Prozentsatz. Strg+Klick zur Werteingabe. Bei versetztem oder ungleichmäßigem Rand die Randellipse bearbeiten."),
+    FR("Réduit le rayon détecté de ce pourcentage. Ctrl+clic pour saisir une valeur. Si le bord est décentré ou irrégulier, modifiez son ellipse."),
+    ES("Reduce el radio detectado en este porcentaje. Ctrl+clic para introducir un valor. Si el borde está desplazado o es irregular, edita su elipse."),
+    PT("Reduz o raio detectado nesta porcentagem. Ctrl+clique para inserir um valor. Se a borda estiver deslocada ou irregular, edite sua elipse."),
+    IT("Riduce il raggio rilevato di questa percentuale. Ctrl+clic per inserire un valore. Se il bordo è decentrato o irregolare, modifica la sua ellisse."),
+    NL("Verkleint de gedetecteerde straal met dit percentage. Ctrl+klik om een waarde in te voeren. Bewerk de randellips bij een verschoven of onregelmatige rand."),
+    RU("Уменьшает найденный радиус на указанный процент. Ctrl+щелчок для ввода значения. Если граница смещена или неровная, измените её эллипс."),
+    TR("Algılanan yarıçapı bu yüzde kadar küçültür. Değer girmek için Ctrl+tıklayın. Sınır kaymış veya düzensizse sınır elipsini düzenleyin."));
+
+SS_MSG(stencil_edit_border,
+    EN("Edit border ellipse"), JA("境界の楕円を編集"),
+    ZH_HANS("编辑边界椭圆"), ZH_HANT("編輯邊界橢圓"),
+    KO("경계 타원 편집"), DE("Randellipse bearbeiten"),
+    FR("Modifier l'ellipse du bord"), ES("Editar elipse del borde"),
+    PT("Editar elipse da borda"), IT("Modifica ellisse del bordo"),
+    NL("Randellips bewerken"), RU("Изменить эллипс границы"),
+    TR("Sınır elipsini düzenle"));
+
+SS_MSG(stencil_edit_border_help,
+    EN("Use the current border as a fixed editable ellipse for this input. Turns off automatic detection and starts a new shape edit history."),
+    JA("現在の境界をこの入力用の固定された編集可能な楕円にします。自動検出を無効にし、図形の編集履歴をリセットします。"),
+    ZH_HANS("将当前边界转为此输入的固定可编辑椭圆。关闭自动检测，并重置形状编辑历史。"),
+    ZH_HANT("將目前邊界轉為此輸入的固定可編輯橢圓。關閉自動偵測，並重設形狀編輯歷史。"),
+    KO("현재 경계를 이 입력의 고정된 편집 가능한 타원으로 사용합니다. 자동 감지를 끄고 도형 편집 기록을 초기화합니다."),
+    DE("Verwendet den aktuellen Rand als feste, bearbeitbare Ellipse für diese Eingabe. Deaktiviert die automatische Erkennung und setzt den Formverlauf zurück."),
+    FR("Utilise le bord actuel comme ellipse fixe modifiable pour cette entrée. Désactive la détection automatique et réinitialise l'historique des formes."),
+    ES("Usa el borde actual como elipse fija editable para esta entrada. Desactiva la detección automática y reinicia el historial de formas."),
+    PT("Usa a borda atual como elipse fixa editável para esta entrada. Desativa a detecção automática e reinicia o histórico de formas."),
+    IT("Usa il bordo attuale come ellisse fissa modificabile per questo ingresso. Disattiva il rilevamento automatico e azzera la cronologia delle forme."),
+    NL("Gebruikt de huidige rand als vaste, bewerkbare ellips voor deze invoer. Schakelt automatische detectie uit en wist de vormgeschiedenis."),
+    RU("Использует текущую границу как фиксированный редактируемый эллипс для этого входа. Отключает автоопределение и сбрасывает историю фигур."),
+    TR("Geçerli sınırı bu girdi için sabit, düzenlenebilir bir elips olarak kullanır. Otomatik algılamayı kapatır ve şekil düzenleme geçmişini sıfırlar."));
 
 SS_MSG(stencil_looking,
     EN("Looking for the border..."),
