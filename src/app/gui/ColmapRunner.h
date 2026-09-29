@@ -70,6 +70,7 @@ struct ColmapJob {
     std::string ffmpeg_exe = "ffmpeg";
     std::string python_exe = "python3";  // for the masking script
     bool force_external_decode = false;  // ffmpeg even when we could decode
+    int frame_bits = 0;                  // see PrepJob
     bool force_external_masking = false; // mask.py even when we could segment
 
     // Steps a re-run redoes rather than reuses; see PrepJob.

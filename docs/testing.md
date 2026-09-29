@@ -190,8 +190,22 @@ expectation, one executable. Neither exists yet.
 | a mesh format, or which colors it carries | `mesh_format_roundtrip` — writes every format and reads it back through the other implementation |
 | a preset field, or a batch row's shape | `preset_roundtrip_test` |
 | what a typed-in command line becomes, or what a message may carry into it | `command_argv_test` — the message stays one argument and stays JSON-safe |
+| video frame extraction through ffmpeg, or `frame_bits` | `frame_bits_test` (needs ffmpeg on PATH; `SKIP` is a miss, not a pass) and `dataset_prep_test`; for a D-Log M change, the real-clip steps below |
 | a per-cell optimizer launcher (Vulkan) | `SS_OPTIM_SLICE_CELLS=2048` on `optim_parity` / `optimgeo_parity`, which forces the multi-slice path only an SH buffer past ~24M splats would otherwise take ([SH layouts](notes/sh-quant-layout.md)) |
 | anything | one short training run per backend on a public scene |
+
+### D-Log M frames on real footage
+
+Copies of the clips only; never the capture folder itself.
+
+1. Prepare a 9 s D-Log M `.OSV` at `frame_bits` auto, 2 fps, window 3: the log
+   says the clip is D-Log M, `images/cam0` and `cam1` hold the same stems, all
+   16-bit PNG, and `.spirula-color` reads `dlogm 19 dvtm_oq101.proto <file>`.
+2. A frame row has more than 256 distinct green codes through `stbi_load_16`.
+3. Reconstruct it and `spirula train --data <ws> --num-iterations 200`: the log
+   resolves `dlogm-osmo360`.
+4. A Normal clip at auto writes JPEG; at `frame_bits` 16 it writes PNG16.
+5. A long clip at 1 fps: record bytes and wall time against the estimate line.
 
 ## Profiling
 

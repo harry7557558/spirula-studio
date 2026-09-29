@@ -3,14 +3,17 @@
 // When the splat (model) works in a non-sRGB color space, the rendered RGB
 // is converted to display code values before any downstream stage (bilagrid /
 // PPISP / loss). GT imagery in a non-sRGB space is converted once at upload
-// time and kept that way. The 3x3 matrix maps the source gamut to Rec.709;
-// the transfer is colorspace::Transfer. See docs/notes/color-transfer.md.
+// time and kept that way, after decoding a log curve off it when one is set.
+// The 3x3 matrix maps the source gamut to Rec.709; the transfer is
+// colorspace::Transfer. See docs/notes/color-transfer.md and dlog-m.md.
 
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include "core/ColorSpace.h"
+#include "core/DlogM.h"
 #include "kernels/pixelwise/PixelWise.cuh"
 
 #include <algorithm>
@@ -64,6 +67,30 @@ void engine_init_color_space(
 }
 
 
+/*[AutoHeaderGeneratorExport]*/
+void engine_init_image_decode(int curve) {
+    auto& cs = engine().color_space;
+    // The decode's output is linear Rec.2020; anything else would be read
+    // through the sRGB EOTF or the wrong primaries without an error.
+    if (curve != 0 && !(cs.image_enabled && cs.image_is_linear))
+        throw std::runtime_error("engine_init_image_decode: the image side must be "
+                                 "enabled and linear (engine_init_color_space first)");
+    cs.image_curve = curve;
+}
+
+
+void _engine_color_space_gt_pixel(float c[3]) {
+    const auto& cs = engine().color_space;
+    if (!cs.image_enabled) return;
+    colorspace::input_curve_to_rec2020((colorspace::InputCurve)cs.image_curve, c);
+    if (!cs.image_is_linear)
+        for (int k = 0; k < 3; k++) c[k] = colorspace::srgb_to_linear(c[k]);
+    colorspace::apply3x3(cs.image_color_matrix_host, c);
+    const auto transfer = (colorspace::Transfer)cs.image_transfer;
+    for (int k = 0; k < 3; k++) c[k] = colorspace::tone_encode(c[k], transfer);
+}
+
+
 void _engine_color_space_forward() {
     auto& cs = engine().color_space;
     if (!cs.splat_enabled) return;
@@ -111,6 +138,8 @@ void _engine_color_space_apply_to_gt() {
     DeviceTensor3D<float3> rgb = engine().gt.rgb;
     if (rgb.data_ptr() == nullptr) return;
 
+    // Before the conversion, which expects the linear light the decode yields.
+    if (cs.image_curve != 0) input_curve_decode_forward(cs.image_curve, rgb, rgb);
     working_to_display_forward(cs.image_transfer, cs.image_is_linear, rgb,
                                cs.image_color_matrix, rgb);
 }

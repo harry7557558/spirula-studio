@@ -1,8 +1,8 @@
 // Vulkan implementations of the PixelWise launch APIs needed by the RENDER
-// path (kernels/pixelwise/PixelWise.cuh): background blends, the display encode,
-// depth->normal. Device work: shaders/pixel_wise_render.slang. The
-// training-time PixelWise kernels (losses, backwards, warps) are not here —
-// they land with the training phase.
+// path (kernels/pixelwise/PixelWise.cuh): background blends, the GT log decode,
+// the display encode, depth->normal. Device work:
+// shaders/pixel_wise_render.slang. The training-time PixelWise kernels
+// (losses, backwards, warps) are not here — they land with the training phase.
 
 #include <kernels/pixelwise/PixelWise.cuh>
 #include <core/Common.cuh>
@@ -41,6 +41,15 @@ struct RgbToSrgbParams {
     uint32_t total, wgs_per_row;
 };
 static_assert(sizeof(RgbToSrgbParams) == 3 * 8 + 2 * 4, "layout");
+
+// Mirrors InputCurveDecodeParams.
+struct InputCurveDecodeParams {
+    uint64_t rgb, out_rgb;
+    uint32_t total, wgs_per_row;
+    int32_t curve;
+    uint32_t _pad0;
+};
+static_assert(sizeof(InputCurveDecodeParams) == 2 * 8 + 4 * 4, "layout");
 
 // Mirrors DepthToNormalParams.
 struct DepthToNormalParams {
@@ -145,6 +154,25 @@ void working_to_display_forward(
                        backend::vk::SpecList{(uint32_t)transfer,
                                              is_linear ? 1u : 0u},
                        total, 128, &p, sizeof(p), &p.wgs_per_row);
+}
+
+void input_curve_decode_forward(
+    int curve,
+    DeviceTensor3D<float3> rgb,
+    DeviceTensor3D<float3> out_rgb
+) {
+    if (curve != 1 && curve != 2)
+        throw std::runtime_error("input_curve_decode_forward: unknown curve " +
+                                 std::to_string(curve));
+    const int64_t total = rgb.size<0>() * rgb.size<1>() * rgb.size<2>();
+    InputCurveDecodeParams p{};
+    p.curve = curve;
+    p.rgb = (uint64_t)rgb.data_ptr();
+    p.out_rgb = (uint64_t)out_rgb.data_ptr();
+    p.total = (uint32_t)total;
+    vkk::dispatch_flat("pixel_wise_render.input_curve_decode_fwd",
+                       backend::vk::SpecList{}, total, 128, &p, sizeof(p),
+                       &p.wgs_per_row);
 }
 
 void depth_to_normal_forward(

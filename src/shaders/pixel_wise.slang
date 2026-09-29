@@ -153,6 +153,8 @@ float splat_dc_decode(float x) {
 #endif
 }
 
+#include "dlogm.slang"
+
 // ================
 // Output transfer: linear light -> display code values
 // ================

@@ -96,6 +96,28 @@ bool telemetry_read(uint64_t size, const TelemetryRead& read, Telemetry& out, st
 // container's own boxes carry it. Empty when the file names none.
 VideoProjection video_projection(const std::string& path);
 
+// A DJI clip's picture profile: DJI's ColorModeType, 19 = D-Log M, 0 = Normal.
+// Read on the Osmo 360 (dvtm_oq101, field 2.4.1) and the Avata 360
+// (dvtm_AVATA360, field 2.2.4.1); other DJI layouts are Unknown.
+enum class VideoColorMode { NotRecorded, Normal, DlogM, OtherLog, Unknown };
+// Why a DJI clip is Unknown.
+enum class VideoColorIssue {
+    None, UnknownLayout, NoColorField, MalformedColorField, UnverifiedColorCode, NoClipHeader
+};
+struct VideoColor {
+    VideoColorMode mode = VideoColorMode::NotRecorded;
+    VideoColorIssue issue = VideoColorIssue::None;
+    int code = -1;        // ColorModeType as read; -1 when none was
+    std::string proto;    // the clip header's proto name
+};
+
+// One djmd sample. NotRecorded when it carries no clip header.
+VideoColor djmd_color(const uint8_t* sample, size_t n);
+// The first djmd sample that carries a clip header; Unknown when a djmd track
+// has none that reads, NotRecorded when there is no djmd track.
+VideoColor video_color(const std::string& path);
+VideoColor video_color(const uint8_t* data, size_t size);
+
 // Whether the readings look like a working sensor, not whether they are
 // precise: units, coverage of the video, sample-rate regularity, a gravity
 // norm, a GPS that moves rather than repeating one stale fix.

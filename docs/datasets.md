@@ -714,6 +714,11 @@ clips at "2 fps" the one that walks briskly gets the denser frames and the one
 shot from a bench gets fewer. Each still keeps its own rate bounds. Rows
 measured by different models are NOT one budget -- see below.
 
+A D-Log M clip's frames are 16-bit PNG, not JPEG, unless the job says 8
+(`frame_bits`; see [notes/dlog-m.md](notes/dlog-m.md#16-bit-frames)). They go
+through ffmpeg, keep the same instants on both lenses of a 360 file, and take
+about 60 times the disk.
+
 A workspace records what its frames were extracted with (`.spirula-frames`,
 `gui/ReconStamp.h`). A re-run whose answer differs -- a different rate, a
 different unwrap, another clip in the list -- goes back to the video instead of

@@ -99,7 +99,11 @@ void check_resumable(const fs::path& ckpt_dir) {
 
 TrainConfig config_from_json(const fs::path& config_json) {
     TrainConfig c;
-    train_config_from_json(json_parse_file(config_json.string()), c);
+    const JsonValue root = json_parse_file(config_json.string());
+    train_config_from_json(root, c);
+    // What `--image-color-log auto` settled on, so a resume never re-detects.
+    if (const JsonValue* v = root.find("image_color_log_resolved"))
+        json_field::assign(c.image_color_log_resolved, *v);
     return c;
 }
 

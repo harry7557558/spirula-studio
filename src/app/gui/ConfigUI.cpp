@@ -15,6 +15,7 @@
 #include "imgui.h"
 #include "imgui_stdlib.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -182,7 +183,9 @@ bool draw_value(const char* key, std::string& v, const char* choices,
         return ui::InputTextRaw("##v", &v);
     }
     std::vector<std::string> opts = split_choices(choices);
-    std::string cur = (blank_none && v.empty()) ? "none" : v;
+    // An empty value read from a file is still "none", whichever the default.
+    const bool has_none = std::find(opts.begin(), opts.end(), "none") != opts.end();
+    std::string cur = ((blank_none || has_none) && v.empty()) ? "none" : v;
     bool changed = false;
     ImGui::SetNextItemWidth(kFieldWidth);
     if (ui::BeginComboRaw("##v", choice_display(key, cur).c_str())) {
