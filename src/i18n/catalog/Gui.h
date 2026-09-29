@@ -222,6 +222,21 @@ SS_MSG(menu_new_dataset,
     RU("Создать набор данных…"),
     TR("Yeni veri kümesi…"));
 
+SS_MSG(menu_new_dataset_e57,
+    EN("Create Dataset from E57..."),
+    JA("E57 からデータセットを作成…"),
+    ZH_HANS("从 E57 创建数据集…"),
+    ZH_HANT("從 E57 建立資料集…"),
+    KO("E57로 데이터셋 만들기…"),
+    DE("Datensatz aus E57 erstellen …"),
+    FR("Créer un jeu de données à partir d'un E57…"),
+    ES("Crear un conjunto de datos a partir de un E57…"),
+    PT("Criar um conjunto de dados a partir de um E57…"),
+    IT("Crea un set di dati da un E57…"),
+    NL("Dataset maken uit E57…"),
+    RU("Создать набор данных из E57…"),
+    TR("E57'den veri kümesi oluştur…"));
+
 // ===========================================================================
 // File dialog titles
 // ===========================================================================
@@ -574,6 +589,48 @@ SS_MSG(home_new_dataset_help,
        "veya ikisi birden aynı çekimde. Her girdi kendi kamerasını alır, "
        "kamera konumları sizin için hesaplanır ve sonuç doğrudan eğiticide "
        "açılır."));
+
+SS_MSG(home_new_dataset_e57,
+    EN("Create Dataset from an E57 Scan..."),
+    JA("E57 スキャンからデータセットを作成…"),
+    ZH_HANS("从 E57 扫描创建数据集…"),
+    ZH_HANT("從 E57 掃描建立資料集…"),
+    KO("E57 스캔으로 데이터셋 만들기…"),
+    DE("Datensatz aus einem E57-Scan erstellen …"),
+    FR("Créer un jeu de données à partir d'un scan E57…"),
+    ES("Crear un conjunto de datos a partir de un escaneo E57…"),
+    PT("Criar um conjunto de dados a partir de uma varredura E57…"),
+    IT("Crea un set di dati da una scansione E57…"),
+    NL("Dataset maken uit een E57-scan…"),
+    RU("Создать набор данных из скана E57…"),
+    TR("Bir E57 taramasından veri kümesi oluştur…"));
+
+SS_MSG(home_new_dataset_e57_help,
+    EN("A laser scan with photos registered to it. The scanner's poses and "
+       "point cloud are used as they are, so no reconstruction runs."),
+    JA("写真が位置合わせされたレーザースキャンです。スキャナーの姿勢と点群を"
+       "そのまま使うので、再構成は行いません。"),
+    ZH_HANS("带有已配准照片的激光扫描。直接使用扫描仪的位姿和点云，不进行重建。"),
+    ZH_HANT("帶有已配準相片的雷射掃描。直接使用掃描儀的位姿和點雲，不進行重建。"),
+    KO("사진이 정합된 레이저 스캔입니다. 스캐너의 자세와 포인트 클라우드를 그대로 "
+       "쓰므로 재구성을 하지 않습니다."),
+    DE("Ein Laserscan mit darauf registrierten Fotos. Posen und Punktwolke des "
+       "Scanners werden unverändert übernommen, es läuft keine Rekonstruktion."),
+    FR("Un scan laser avec des photos recalées dessus. Les poses et le nuage de "
+       "points du scanner sont repris tels quels : aucune reconstruction."),
+    ES("Un escaneo láser con fotos registradas en él. Se usan tal cual las poses "
+       "y la nube de puntos del escáner, sin reconstrucción."),
+    PT("Uma varredura a laser com fotos registradas nela. As poses e a nuvem de "
+       "pontos do scanner são usadas como estão, sem reconstrução."),
+    IT("Una scansione laser con foto registrate. Pose e nuvola di punti dello "
+       "scanner vengono usate così come sono, senza ricostruzione."),
+    NL("Een laserscan met daarop geregistreerde foto's. De poses en puntenwolk "
+       "van de scanner worden gebruikt zoals ze zijn; er loopt geen "
+       "reconstructie."),
+    RU("Лазерный скан с привязанными к нему фотографиями. Позы и облако точек "
+       "сканера используются как есть, без реконструкции."),
+    TR("Fotoğrafları kaydedilmiş bir lazer taraması. Tarayıcının pozları ve "
+       "nokta bulutu olduğu gibi kullanılır; yeniden oluşturma yapılmaz."));
 
 SS_MSG(home_drop_hint,
     EN("...or drop a dataset folder, photo folders, video files, a model or "

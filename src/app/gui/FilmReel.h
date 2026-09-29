@@ -19,7 +19,10 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <filesystem>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -141,6 +144,35 @@ private:
     // caller cannot forget to rate-limit itself.
     mutable std::chrono::steady_clock::time_point _last{};
     mutable bool _ticked = false;
+};
+
+// The pictures a child process writes, onto a reel as they appear. The child
+// says nothing about them, so the folder is what is watched.
+class OutputWatch {
+public:
+    // A row is a file of `dir` with its photograph under `images` and its depth
+    // map under `depths`, either path empty for none. `fresh_only` holds back
+    // what `dir` has now until it is written again: an earlier run's output.
+    OutputWatch(FilmReel* reel, std::filesystem::path dir,
+                std::filesystem::path images, std::filesystem::path depths,
+                bool fresh_only = false);
+
+    // One scan of lag before a file is shown: what appeared this tick may
+    // still be half written, and a truncated PNG reads as a failure rather
+    // than as a race. `flush` gives that up, for the end of the run.
+    void poll(bool flush = false);
+
+private:
+    std::vector<std::string> listing() const;
+    void publish(const std::vector<std::string>& batch);
+    std::vector<PicturePanel> row_for(const std::string& map) const;
+
+    FilmReel* _reel;
+    std::filesystem::path _dir, _images, _depths;
+    std::set<std::string> _seen;
+    std::map<std::string, std::filesystem::file_time_type> _before;
+    std::vector<std::string> _ripe;
+    std::chrono::steady_clock::time_point _last{};
 };
 
 }  // namespace gui

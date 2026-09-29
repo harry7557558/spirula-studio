@@ -1,12 +1,6 @@
-// The one entry point -- see app/Tools.h for why there is only one.
-//
-//   spirula                    the window
-//   spirula <file-or-folder>   the window, opening what was named
-//   spirula sfm auto ...       structure from motion
-//   spirula train ...          the trainer
-//   spirula sam segment ...    segmentation
-//   spirula geometry ...       depth and normals for a dataset
-//   spirula mesh ...           mesh extraction
+// The one entry point -- see app/Tools.h for why there is only one. The
+// subcommands are the tools() table below; `spirula` alone is the window, and
+// `spirula <file-or-folder>` is the window opening what was named.
 //
 // A first argument that is not a subcommand goes to the GUI untouched, so
 // "Open with" from a file manager and a shell alias both land on the right
@@ -83,6 +77,9 @@ const std::vector<Tool>& tools() {
 #endif
 #ifdef SS_TOOL_MESH
         {app::kToolMesh, &cmsg::tool_mesh, spirula_mesh_main},
+#endif
+#ifdef SS_TOOL_E57
+        {app::kToolE57, &cmsg::tool_e57, spirula_e57_main},
 #endif
 #ifdef SS_TOOL_ENCODE
         {app::kToolEncode, &cmsg::tool_encode, spirula_encode_main},

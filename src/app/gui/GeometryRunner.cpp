@@ -19,10 +19,8 @@
 #endif
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <filesystem>
-#include <set>
 
 namespace fs = std::filesystem;
 namespace dmsg = spirula::i18n::msg::dataset;
@@ -51,101 +49,6 @@ std::string trim_right(const std::string& s) {
     while (n && (s[n - 1] == ' ' || s[n - 1] == '\t')) n--;
     return s.substr(0, n);
 }
-
-// The maps the child has written, onto the reel as they appear. The child
-// says nothing about them, so the folder is what is watched.
-class OutputWatch {
-public:
-    OutputWatch(FilmReel* reel, fs::path dir, fs::path images, fs::path depths)
-        : _reel(reel), _dir(std::move(dir)), _images(std::move(images)),
-          _depths(std::move(depths)) {}
-
-    // One scan of lag before a file is shown: what appeared this tick may
-    // still be half written, and a truncated PNG reads as a failure rather
-    // than as a race. `flush` gives that up, for the end of the run.
-    void poll(bool flush = false) {
-        if (!_reel) return;
-        const auto now = std::chrono::steady_clock::now();
-        if (!flush && now - _last < std::chrono::seconds(1)) return;
-        _last = now;
-
-        publish(_ripe);
-        _ripe.clear();
-
-        std::vector<std::string> found;
-        std::error_code ec;
-        for (fs::recursive_directory_iterator
-                 it(_dir, fs::directory_options::skip_permission_denied, ec), end;
-             !ec && it != end; it.increment(ec))
-            if (it->is_regular_file(ec) && !_seen.count(it->path().string()))
-                found.push_back(it->path().string());
-        std::sort(found.begin(), found.end());
-
-        if (!flush) {
-            _ripe = std::move(found);
-            return;
-        }
-        publish(found);
-    }
-
-private:
-    // The reel follows the newest picture it HOLDS, not the newest frame
-    // registered (FilmReel::draw), so the last of a batch is read here or the
-    // slider never leaves the first one it managed to load.
-    void publish(const std::vector<std::string>& batch) {
-        const bool want_pixels = !batch.empty() && _reel->wants();
-        for (size_t i = 0; i < batch.size(); i++) {
-            _seen.insert(batch[i]);
-            FilmFrame f;
-            f.name = fs::path(batch[i]).filename().string();
-            f.panels = row_for(batch[i]);
-            if (want_pixels && i + 1 == batch.size()) _reel->add_loaded(f);
-            else                                      _reel->add(f);
-        }
-    }
-
-    // The photograph, the normal map and the depth map of one frame. The map
-    // is what was found; the other two are derived from its path, since the
-    // three trees mirror each other (spirula geometry writes them that way).
-    std::vector<PicturePanel> row_for(const std::string& map) const {
-        std::error_code ec;
-        fs::path rel = fs::relative(map, _dir, ec);
-        if (ec || rel.empty()) rel = fs::path(map).filename();
-        std::vector<PicturePanel> out;
-        if (!_images.empty()) {
-            // The extension is the capture's, not the map's.
-            for (const char* ext : {".jpg", ".jpeg", ".png", ".webp", ".tif",
-                                    ".tiff", ".bmp", ".exr", ".JPG", ".PNG"}) {
-                fs::path p = _images / rel;
-                p.replace_extension(ext);
-                if (!fs::is_regular_file(p, ec)) {
-                    p = _images / rel.filename();
-                    p.replace_extension(ext);
-                }
-                if (fs::is_regular_file(p, ec)) {
-                    out.push_back({p.string(), false});
-                    break;
-                }
-            }
-        }
-        const bool map_is_depth = _dir.filename() == "depths";
-        out.push_back({map, map_is_depth});
-        if (!map_is_depth && !_depths.empty()) {
-            // Not probed: the writer pool may not have reached it yet, and a
-            // panel that fails to load is skipped when the row is read.
-            fs::path d = _depths / rel;
-            d.replace_extension(".png");
-            out.push_back({d.string(), true});
-        }
-        return out;
-    }
-
-    FilmReel* _reel;
-    fs::path _dir, _images, _depths;
-    std::set<std::string> _seen;
-    std::vector<std::string> _ripe;
-    std::chrono::steady_clock::time_point _last{};
-};
 
 }  // namespace
 
