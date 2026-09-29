@@ -1393,6 +1393,238 @@ void test_geometry(vk::Arena& arena) {
 }
 
 // ================
+// Swin, Deformable DETR and BiRefNet (src/swin/, src/gdino/, src/birefnet/)
+// ================
+
+void test_segmentation_ops(vk::Arena& arena) {
+    {   // Shifted windows: partition then unpartition-accumulate is x + x, and
+        // the partition itself is torch.roll(-s) of the zero-padded map.
+        vk::ArenaScope scope(arena);
+        const int H = 11, W = 13, C = 3, ws = 4, sh = 2;
+        const int nwh = (H + ws - 1) / ws, nww = (W + ws - 1) / ws;
+        const int Hp = nwh * ws, Wp = nww * ws;
+        auto x = randn((size_t)H * W * C);
+        Tensor tx = upload_f32(arena, x, H, W, C);
+        Tensor tw = arena_tensor(arena, DType::F32, nwh * nww, ws * ws, C);
+        window_partition(tw, tx, H, W, C, ws, sh);
+        std::vector<float> want((size_t)nwh * nww * ws * ws * C);
+        for (int wi = 0; wi < nwh; ++wi)
+            for (int wj = 0; wj < nww; ++wj)
+                for (int wy = 0; wy < ws; ++wy)
+                    for (int wx = 0; wx < ws; ++wx)
+                        for (int c = 0; c < C; ++c) {
+                            const int y = (wi * ws + wy + sh) % Hp;
+                            const int xx = (wj * ws + wx + sh) % Wp;
+                            want[((((size_t)wi * nww + wj) * ws + wy) * ws + wx) * C + c] =
+                                (y < H && xx < W) ? x[((size_t)y * W + xx) * C + c] : 0.0f;
+                        }
+        check("window partition shifted", readback(tw), want, 1e-6f);
+        Tensor tb = upload_f32(arena, x, H, W, C);
+        window_unpartition(tb, tw, H, W, C, ws, sh, /*accumulate=*/true);
+        std::vector<float> twice(x);
+        for (float& v : twice) v *= 2.0f;
+        check("window unpartition shifted +=", readback(tb), twice, 1e-6f);
+    }
+    {   // Window attention: the relative-position bias plus Swin's -100 mask.
+        vk::ArenaScope scope(arena);
+        const int B = 3, N = 16, H = 2, HD = 32, dim = H * HD;
+        auto q = randn((size_t)B * N * dim), k = randn((size_t)B * N * dim),
+             v = randn((size_t)B * N * dim);
+        auto bias = randn((size_t)H * N * N);
+        std::vector<int32_t> lab((size_t)B * N);
+        for (int b = 0; b < B; ++b)
+            for (int i = 0; i < N; ++i) lab[(size_t)b * N + i] = b == 0 ? 0 : (i * (b + 1)) % 3;
+        Tensor tl = arena_tensor(arena, DType::I32, B, N);
+        vk::Stream::get().upload(tl.ptr, lab.data(), lab.size() * 4);
+        Tensor to = arena_tensor(arena, DType::F32, B, N, dim);
+        AttnOpts o;
+        o.n_heads = H;
+        o.head_dim = HD;
+        o.batch = B;
+        o.bias_mode = AttnBias::Window;
+        o.bias = upload_f32(arena, bias, (int64_t)H * N * N);
+        o.labels = tl;
+        Tensor tq = upload_f32(arena, q, B, N, dim), tk = upload_f32(arena, k, B, N, dim),
+               tv = upload_f32(arena, v, B, N, dim);
+        auto reference = [&](bool f16) {
+            std::vector<float> want((size_t)B * N * dim);
+            for (int b = 0; b < B; ++b) {
+                std::vector<float> full((size_t)H * N * N);
+                for (int h = 0; h < H; ++h)
+                    for (int i = 0; i < N; ++i)
+                        for (int j = 0; j < N; ++j)
+                            full[((size_t)h * N + i) * N + j] =
+                                bias[((size_t)h * N + i) * N + j] +
+                                (lab[(size_t)b * N + i] != lab[(size_t)b * N + j] ? -100.0f
+                                                                                  : 0.0f);
+                auto sl = [&](const std::vector<float>& a) {
+                    std::vector<float> r(a.begin() + (size_t)b * N * dim,
+                                         a.begin() + (size_t)(b + 1) * N * dim);
+                    return f16 ? round_f16(r) : r;
+                };
+                std::vector<float> ob;
+                attn_reference(sl(q), sl(k), std::vector<float>(v.begin() + (size_t)b * N * dim,
+                                                               v.begin() + (size_t)(b + 1) * N * dim),
+                               N, N, H, HD, 1.0f / std::sqrt((float)HD), &full, AttnBias::Full,
+                               ob);
+                std::copy(ob.begin(), ob.end(), want.begin() + (size_t)b * N * dim);
+            }
+            return want;
+        };
+        set_coop_matrix_enabled(false);
+        attention(to, tq, tk, tv, N, N, o);
+        check("attn window bias + mask", readback(to), reference(false), 3e-4f);
+        set_coop_matrix_enabled(true);
+        if (coop_attn(HD)) {
+            attention(to, tq, tk, tv, N, N, o);
+            check("attn window bias + mask [coop]", readback(to), reference(true), 3e-4f);
+        }
+    }
+    {   // patch_merge, odd edges included.
+        vk::ArenaScope scope(arena);
+        const int H = 5, W = 7, C = 3, H2 = 3, W2 = 4;
+        auto x = randn((size_t)H * W * C);
+        Tensor tx = upload_f32(arena, x, H, W, C);
+        Tensor to = arena_tensor(arena, DType::F32, H2 * W2, 4 * C);
+        patch_merge(to, tx, H, W, C);
+        std::vector<float> want((size_t)H2 * W2 * 4 * C);
+        const int dy[4] = {0, 1, 0, 1}, dx[4] = {0, 0, 1, 1};
+        for (int i = 0; i < H2; ++i)
+            for (int j = 0; j < W2; ++j)
+                for (int qd = 0; qd < 4; ++qd)
+                    for (int c = 0; c < C; ++c) {
+                        const int y = 2 * i + dy[qd], xx = 2 * j + dx[qd];
+                        want[((size_t)i * W2 + j) * 4 * C + qd * C + c] =
+                            (y < H && xx < W) ? x[((size_t)y * W + xx) * C + c] : 0.0f;
+                    }
+        check("patch_merge", readback(to), want, 1e-6f);
+    }
+    for (BlockOrder order : {BlockOrder::ChannelMajor, BlockOrder::ColumnsThenRows}) {
+        vk::ArenaScope scope(arena);
+        const int H = 6, W = 8, C = 3, gh = 3, gw = 2, ph = H / gh, pw = W / gw;
+        auto x = randn((size_t)H * W * C);
+        Tensor tx = upload_f32(arena, x, H, W, C);
+        Tensor to = arena_tensor(arena, DType::F32, ph, pw, C * gh * gw);
+        blocks_to_channels(to, tx, H, W, C, gh, gw, order);
+        std::vector<float> want((size_t)H * W * C);
+        for (int y = 0; y < ph; ++y)
+            for (int xx = 0; xx < pw; ++xx)
+                for (int c = 0; c < C; ++c)
+                    for (int gy = 0; gy < gh; ++gy)
+                        for (int gx = 0; gx < gw; ++gx) {
+                            const int k = order == BlockOrder::ChannelMajor
+                                              ? (c * gh + gy) * gw + gx
+                                              : (gx * gh + gy) * C + c;
+                            want[((size_t)y * pw + xx) * C * gh * gw + k] =
+                                x[((size_t)(gy * ph + y) * W + gx * pw + xx) * C + c];
+                        }
+        check(order == BlockOrder::ChannelMajor ? "blocks_to_channels (c gh gw)"
+                                                : "blocks_to_channels (gw gh c)",
+              readback(to), want, 1e-6f);
+    }
+    {   // mul_rows: a per-pixel gate over a channel-last map.
+        vk::ArenaScope scope(arena);
+        const int R = 37, C = 5;
+        auto a = randn((size_t)R * C), g = randn((size_t)R);
+        Tensor to = arena_tensor(arena, DType::F32, R, C);
+        mul_rows(to, upload_f32(arena, a, R, C), upload_f32(arena, g, R, 1), Act::None);
+        std::vector<float> want(a.size());
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c) want[(size_t)r * C + c] = a[(size_t)r * C + c] * g[r];
+        check("mul_rows", readback(to), want, 1e-6f);
+    }
+    {   // Modulated deformable convolution (DCNv2): the ALIKED reference with a
+        // per-tap scale.
+        vk::ArenaScope scope(arena);
+        const int Hi = 8, Wi = 10, Ci = 5, Co = 6, k = 3, pad = 1, Ho = Hi, Wo = Wi;
+        auto x = randn((size_t)Hi * Wi * Ci);
+        auto w = randn((size_t)Co * Ci * k * k, 0.3f);
+        auto off = randn((size_t)Ho * Wo * 2 * k * k, 2.0f);
+        auto msk = randn((size_t)Ho * Wo * k * k);
+        Tensor to = arena_tensor(arena, DType::F32, Ho, Wo, Co);
+        ConvOpts o;
+        o.pad_y = o.pad_x = pad;
+        o.act = Act::Relu;
+        modulated_deform_conv2d(arena, to, upload_f32(arena, x, Hi, Wi, Ci),
+                                upload_f32(arena, off, Ho, Wo, 2 * k * k),
+                                upload_f32(arena, msk, Ho, Wo, k * k),
+                                upload_f32(arena, w, Co, Ci * k * k), k, k, o);
+        std::vector<float> want((size_t)Ho * Wo * Co);
+        for (int yo = 0; yo < Ho; ++yo)
+            for (int xo = 0; xo < Wo; ++xo)
+                for (int co = 0; co < Co; ++co) {
+                    double acc = 0.0;
+                    for (int ci = 0; ci < Ci; ++ci)
+                        for (int tap = 0; tap < k * k; ++tap) {
+                            const size_t ob = ((size_t)yo * Wo + xo) * 2 * k * k + 2 * tap;
+                            const float sy = (float)(yo + tap / k - pad) + off[ob];
+                            const float sx = (float)(xo + tap % k - pad) + off[ob + 1];
+                            acc += (double)w[((size_t)co * Ci + ci) * k * k + tap] *
+                                   msk[((size_t)yo * Wo + xo) * k * k + tap] *
+                                   sample_zero(x, Hi, Wi, Ci, ci, sy, sx);
+                        }
+                    want[((size_t)yo * Wo + xo) * Co + co] = (float)std::max(acc, 0.0);
+                }
+        check("modulated deform_conv2d", readback(to), want, 2e-4f);
+    }
+    for (int rd : {2, 4}) {
+        // ms_deform_attn vs grid_sample(align_corners=False) per level, weighted
+        // by a softmax over the level x point samples.
+        vk::ArenaScope scope(arena);
+        const int nq = 23, heads = 2, hd = 8, C = heads * hd, L = 3, P = 4;
+        MsDeformLevels lv;
+        lv.n = L;
+        const int hs[3] = {9, 5, 3}, wsz[3] = {12, 6, 2};
+        int len = 0;
+        for (int l = 0; l < L; ++l) { lv.h[l] = hs[l]; lv.w[l] = wsz[l]; len += hs[l] * wsz[l]; }
+        auto value = randn((size_t)len * C);
+        auto offs = randn((size_t)nq * heads * L * P * 2, rd == 2 ? 2.0f : 1.5f);
+        auto logits = randn((size_t)nq * heads * L * P);
+        std::vector<float> refs((size_t)nq * rd);
+        std::uniform_real_distribution<float> u01(0.0f, 1.0f);
+        for (float& r : refs) r = u01(g_rng);
+        Tensor to = arena_tensor(arena, DType::F32, nq, C);
+        ms_deform_attn(to, upload_f32(arena, value, len, C),
+                       upload_f32(arena, offs, (int64_t)offs.size()),
+                       upload_f32(arena, logits, (int64_t)logits.size()),
+                       upload_f32(arena, refs, nq, rd), lv, heads, P);
+        std::vector<float> want((size_t)nq * C, 0.0f);
+        for (int q = 0; q < nq; ++q)
+            for (int h = 0; h < heads; ++h) {
+                const float* lg = &logits[((size_t)q * heads + h) * L * P];
+                double m = -1e30, sum = 0.0;
+                for (int j = 0; j < L * P; ++j) m = std::max(m, (double)lg[j]);
+                for (int j = 0; j < L * P; ++j) sum += std::exp(lg[j] - m);
+                int start = 0;
+                for (int l = 0; l < L; ++l) {
+                    std::vector<float> lvl(value.begin() + (size_t)start * C,
+                                           value.begin() + (size_t)(start + hs[l] * wsz[l]) * C);
+                    for (int pt = 0; pt < P; ++pt) {
+                        const size_t ob = ((((size_t)q * heads + h) * L + l) * P + pt) * 2;
+                        const float* r = &refs[(size_t)q * rd];
+                        float lx, ly;
+                        if (rd == 4) {
+                            lx = r[0] + offs[ob] / P * r[2] * 0.5f;
+                            ly = r[1] + offs[ob + 1] / P * r[3] * 0.5f;
+                        } else {
+                            lx = r[0] + offs[ob] / wsz[l];
+                            ly = r[1] + offs[ob + 1] / hs[l];
+                        }
+                        const double wgt = std::exp(lg[l * P + pt] - m) / sum;
+                        for (int d = 0; d < hd; ++d)
+                            want[(size_t)q * C + h * hd + d] +=
+                                (float)(wgt * sample_zero(lvl, hs[l], wsz[l], C, h * hd + d,
+                                                          ly * hs[l] - 0.5f, lx * wsz[l] - 0.5f));
+                    }
+                    start += hs[l] * wsz[l];
+                }
+            }
+        check(rd == 2 ? "ms_deform_attn 2-d refs" : "ms_deform_attn 4-d refs", readback(to),
+              want, 2e-4f);
+    }
+}
+
+// ================
 // Benchmark (test_ops --bench)
 // ================
 //
@@ -1572,6 +1804,7 @@ int main(int argc, char** argv) {
         std::printf("Spatial / gather\n"); test_spatial(arena);
         std::printf("Learned frontend\n"); test_learned_frontend(arena);
         std::printf("Monocular geometry\n"); test_geometry(arena);
+        std::printf("Swin / DETR / BiRefNet\n"); test_segmentation_ops(arena);
 
         // Every kernel that has a 64-bit-addressing twin, re-checked on that
         // path against the same references. Only the addressing differs, so a
@@ -1584,6 +1817,7 @@ int main(int argc, char** argv) {
             test_spatial(arena);
             test_learned_frontend(arena);
             test_geometry(arena);
+            test_segmentation_ops(arena);
             set_wide_index(WideIndex::Auto);
         } else {
             std::printf("\nWide addressing: SKIP (no shaderInt64)\n");

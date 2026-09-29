@@ -34,8 +34,10 @@
 #include "sfm/core/Progress.h"
 #include "sfm/core/Features.h"
 #include "sfm/core/Model.h"
+#include "sfm/core/PriorSource.h"
 #include "sfm/core/Sequence.h"
 #include "sfm/geometry/AbsolutePose.h"
+#include "sfm/geometry/KnownRotation.h"
 #include "sfm/geometry/Triangulation.h"
 #include "sfm/geometry/TwoView.h"
 #include "sfm/core/Cancel.h"
@@ -352,6 +354,11 @@ struct MapperOptions {
     // apart along one are neighbours, and a neighbour's correspondences are
     // trusted before the rest of the model's. The matcher's `--overlap`.
     int sequence_window = 2;
+    // Sensor priors (sfm/core/PriorSource.h): a registration turned more than
+    // this (or three sigma of the prior) off what a placed neighbour and the
+    // gyro predict is re-solved with the rotation fixed, or refused.
+    bool use_priors = true;
+    double prior_rot_tol_deg = 2.0;
 };
 
 class Mapper {
@@ -361,13 +368,30 @@ public:
     // are optional, must outlive the mapper, and number images as this database does.
     Mapper(const MatchesDatabase& db, const std::vector<FeatureSet>& feats, MapperOptions opt,
            std::vector<uint32_t> camera_ids = {}, const RigTable* rigs = nullptr,
-           const SequenceTable* seqs = nullptr)
+           const SequenceTable* seqs = nullptr, PriorSource* priors = nullptr)
         : db_(db), feats_(feats), opt_(opt), cam_ids_(std::move(camera_ids)),
           rigs_(rigs && !rigs->empty() && opt.use_rigs ? rigs : nullptr),
-          seq_(seqs && !seqs->empty() ? seqs : nullptr) {}
+          seq_(seqs && !seqs->empty() ? seqs : nullptr),
+          priors_(priors && opt.use_priors ? priors : nullptr) {}
 
     const RigTable* rigs() const { return rigs_; }
     const SequenceTable* sequences() const { return seq_; }
+    PriorSource* priors() const { return priors_; }
+
+    // What the sensors did over the run, for the summary line.
+    struct PriorStats {
+        uint32_t corrected = 0;   // registrations re-solved with the gyro's rotation
+        uint32_t refused = 0;     // ... refused because that found nothing
+        uint32_t vouched = 0;     // audits the neighbours' rotation settled
+        uint32_t seeds = 0;       // seed pairs posed with the gyro's rotation
+        size_t rotations = 0, ups = 0, centres = 0;   // factors in the last solve
+    };
+    PriorStats priorStats() const {
+        PriorStats st = prior_stats_;
+        st.vouched = prior_vouched_.load();
+        st.seeds = prior_seeds_.load();
+        return st;
+    }
 
     // All reconstructions the dataset supports, largest first (by 3D point
     // count -- COLMAP's ReconstructionManager::Write ordering, so models[0] is
@@ -1340,6 +1364,13 @@ public:
         bo.rigs = rigs_;
         bo.refine_rigs = opt_.refine_rigs;
         for (Reconstruction& m : models) calibrateRigs(m);
+        std::vector<PosePriors> pfs(models.size());
+        std::vector<const PosePriors*> pp(models.size(), nullptr);
+        if (priors_)
+            for (size_t i = 0; i < models.size(); i++) {
+                pfs[i] = priorFactors(models[i]);
+                pp[i] = &pfs[i];
+            }
         // One problem if it fits, and the device decides whether it does. A
         // capture cut into hundreds of atoms puts every atom's images in the
         // solve at once -- 5356 images arrive as 11564 image-instances at 2.2x
@@ -1354,7 +1385,7 @@ public:
         // below.
         for (int batches = 1;; ) {
             try {
-                jointRefineBatched(models, bo, batches);
+                jointRefineBatched(models, bo, batches, pp);
                 break;
             } catch (const BAOverBudget& e) {
                 const int want =
@@ -1390,9 +1421,9 @@ private:
     // intrinsics seeded from it and differ from it by far less than the
     // tolerances downstream.
     void jointRefineBatched(std::vector<Reconstruction>& models, const BundleOptions& bo,
-                            int batches) {
+                            int batches, const std::vector<const PosePriors*>& pp) {
         if (batches <= 1) {
-            runJointBA(models, bo);
+            runJointBA(models, bo, &pp);
             return;
         }
         std::vector<size_t> order(models.size());
@@ -1401,8 +1432,11 @@ private:
             return models[a].numRegistered() > models[b].numRegistered();
         });
         std::vector<std::vector<Reconstruction*>> group((size_t)batches);
-        for (size_t k = 0; k < order.size(); k++)
+        std::vector<std::vector<const PosePriors*>> gpp((size_t)batches);
+        for (size_t k = 0; k < order.size(); k++) {
             group[k % (size_t)batches].push_back(&models[order[k]]);
+            gpp[k % (size_t)batches].push_back(pp[order[k]]);
+        }
         std::map<uint32_t, Camera> shared;
         for (size_t b = 0; b < group.size(); b++) {
             if (group[b].size() < 2) continue;
@@ -1414,7 +1448,7 @@ private:
                         auto it = shared.find(kv.first);
                         if (it != shared.end()) kv.second = it->second;
                     }
-            runJointBA(group[b], bo);
+            runJointBA(group[b], bo, &gpp[b]);
             if (!b)
                 for (const Reconstruction* m : group[b])
                     for (const auto& kv : m->cameras) shared.emplace(kv.first, kv.second);
@@ -1557,6 +1591,11 @@ public:
             // The sequence neighbours vouch for the pose in place: what a
             // duplicate elsewhere explains does not unseat what they see (D79).
             if (contradicted && seq_ && nearVouches(img, im.pose, r.pose)) contradicted = false;
+            // So does the gyro: a pose that turns as the sensor says it did.
+            if (contradicted && priors_ && priorVouches(img, im.pose, r.pose)) {
+                contradicted = false;
+                prior_vouched_++;
+            }
             if (contradicted) alternative = r.pose;
         }
         if (audit_dump_)
@@ -1589,6 +1628,105 @@ public:
                 break;
             }
         return n_cur >= opt_.min_num_pnp_inliers && n_cur > n_alt;
+    }
+
+    // ---- sensor priors (sfm/core/PriorSource.h) ---------------------------
+
+    std::vector<PosedImage> posedImages(const Reconstruction& rec) const {
+        std::vector<PosedImage> out;
+        for (const auto& kv : rec.images) {
+            if (!kv.second.registered) continue;
+            PosedImage p;
+            p.image = kv.first;
+            p.camera = kv.first < cam_ids_.size() ? cam_ids_[kv.first] : kv.second.camera_id;
+            p.pose = kv.second.pose;
+            out.push_back(p);
+        }
+        return out;
+    }
+
+    // The factors a solve over `rec` takes, in rec's own gauge.
+    PosePriors priorFactors(const Reconstruction& rec) {
+        if (!priors_) return PosePriors{};
+        PosePriors pf = priors_->factors(posedImages(rec));
+        prior_stats_.rotations = pf.rotations.size();
+        prior_stats_.ups = pf.ups.size();
+        prior_stats_.centres = pf.centres.size();
+        return pf;
+    }
+
+    // The camera rotation a placed neighbour and the gyro predict for `img`,
+    // from the neighbour whose prior is tightest. False without one.
+    bool priorRotation(uint32_t img, Mat3& R, double& sigma_deg) const {
+        if (!priors_) return false;
+        bool have = false;
+        for (uint32_t j : priors_->neighbours(img)) {
+            auto it = rec_.images.find(j);
+            if (it == rec_.images.end() || !it->second.registered) continue;
+            Mat3 Rji;
+            double sig;
+            if (!priors_->relativeRotation(j, img, Rji, sig)) continue;
+            const double deg = sig * 180.0 / M_PI;
+            if (have && deg >= sigma_deg) continue;
+            R = mul(Rji, it->second.pose.R);
+            sigma_deg = deg;
+            have = true;
+        }
+        return have;
+    }
+
+    double priorTolDeg(double sigma_deg) const {
+        return std::max(opt_.prior_rot_tol_deg, 3.0 * sigma_deg);
+    }
+
+    // Whether `cur` turns as the gyro says and `alt` does not.
+    bool priorVouches(uint32_t img, const Pose& cur, const Pose& alt) const {
+        Mat3 Rp;
+        double sig;
+        if (!priorRotation(img, Rp, sig)) return false;
+        const double tol = priorTolDeg(sig);
+        return rotationAngleDeg(mul(cur.R, transpose(Rp))) <= tol &&
+               rotationAngleDeg(mul(alt.R, transpose(Rp))) > tol;
+    }
+
+    // Hold a PnP pose to the gyro's rotation: one that turned the wrong way is
+    // re-solved with the rotation fixed (replacing `r`), and the registration
+    // refused (false) when that finds too little.
+    bool priorCheckPose(uint32_t img, const std::vector<Vec3>& X, const std::vector<Vec3>& br,
+                        PnPResult& r, bool& constrained) {
+        constrained = false;
+        Mat3 Rp;
+        double sig;
+        if (!priorRotation(img, Rp, sig)) return true;
+        const double tol = priorTolDeg(sig);
+        if (rotationAngleDeg(mul(r.pose.R, transpose(Rp))) <= tol) return true;
+        // The prediction is good to a degree, not a pixel: the translation
+        // under a radius widened by the tolerance, a free refinement from
+        // there kept within it, and the image's own radius to judge.
+        const Camera& cam = camOf(img);
+        const double loose_px = std::max(errPx(img), tol * M_PI / 180.0 * cam.focal());
+        PnPResult k = ransacPnPKnownRotation(X, br, Rp, cam.focal(), loose_px);
+        if (k.success && k.num_inliers >= opt_.min_num_pnp_inliers) {
+            Pose refined = k.pose;
+            if (refinePose(X, br, k.inlier_mask, refined) &&
+                rotationAngleDeg(mul(refined.R, transpose(Rp))) <= tol)
+                k.pose = refined;
+            classify(img, X, br, k);
+        }
+        if (prior_dump_)
+            slog::diag(slog::Tag::Map,
+                       "[prior] %s: PnP rotation %.1f deg off the gyro's (tol %.1f); held pose "
+                       "%d/%zu inliers against %d", db_.images[img].name.c_str(),
+                       rotationAngleDeg(mul(r.pose.R, transpose(Rp))), tol,
+                       k.success ? k.num_inliers : 0, X.size(), r.num_inliers);
+        if (!k.success || k.num_inliers < opt_.min_num_pnp_inliers) {
+            prior_stats_.refused++;
+            return false;
+        }
+        r = k;
+        constrained = true;
+        prior_stats_.corrected++;
+        return true;
     }
 
     // A length to measure pose differences against, since a reconstruction has
@@ -1813,6 +1951,11 @@ private:
             if (seq_)
                 slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_sequence_summary,
                          {(long long)reg_near_won_, (long long)reg_vouched_});
+            if (priors_)
+                slog::out(slog::Tag::Map, spirula::i18n::msg::sfm::map_prior_summary,
+                         {(long long)prior_stats_.corrected, (long long)prior_stats_.refused,
+                          (long long)prior_stats_.rotations, (long long)prior_stats_.ups,
+                          (long long)prior_stats_.centres});
             if (covered.size() < db_.images.size())
                 slog::diag(slog::Tag::Map,
                            "[map] registration attempts that failed: %u too few candidates, "
@@ -2844,6 +2987,38 @@ private:
         tvo.estimate_homography = opt_.seed_homography;
         const Camera& ca = camOf(a);
         const Camera& cb = camOf(b);
+        Mat3 Rp;
+        double sig;
+        if (priors_ && priors_->relativeRotation(a, b, Rp, sig)) {
+            // The gyro's rotation, with the translation from the two-point
+            // fit, when it explains what the free estimate did: a seed whose
+            // rotation is measured rather than fitted.
+            std::vector<Vec3> b1(pm.matches.size()), b2(pm.matches.size());
+            for (size_t k = 0; k < pm.matches.size(); k++) {
+                b1[k] = ca.bearing(kp(a, pm.matches[k].idx1));
+                b2[k] = cb.bearing(kp(b, pm.matches[k].idx2));
+            }
+            tvo.ransac.max_error =
+                0.5 * (ca.errRad(tvo.ransac.max_error) + cb.errRad(tvo.ransac.max_error));
+            TwoViewGeometry g = estimateTwoViewBearing(b1, b2, tvo);
+            KnownRotationOptions ko;
+            ko.ransac = tvo.ransac;
+            ko.min_num_inliers = tvo.min_num_inliers;
+            ko.max_rotation_only_ratio = tvo.max_H_inlier_ratio;
+            ko.rot_sigma = sig;
+            ko.start = g.has_pose ? &g.pose : nullptr;
+            const KnownRotationGeometry k = estimateTwoViewKnownRotation(b1, b2, Rp, ko);
+            const int free_inl = g.config == TwoViewConfig::Uncalibrated ? g.num_inliers : 0;
+            if (k.ok && !k.panoramic && k.num_inliers >= 0.7 * (double)std::max(free_inl, 1)) {
+                prior_seeds_++;
+                g.config = TwoViewConfig::Uncalibrated;
+                g.inlier_mask = k.inlier_mask;
+                g.num_inliers = k.num_inliers;
+                g.pose = k.pose;
+                g.has_pose = true;
+            }
+            return g;
+        }
         if (ca.wideFov() || cb.wideFov()) {
             // Same reason verification works on bearings (D45): a pinhole seed
             // throws away every wide correspondence, and the seed is what the
@@ -3409,6 +3584,8 @@ private:
             reg_fail_.few_inliers++;
             return false;
         }
+        bool prior_held = false;
+        if (priors_ && !priorCheckPose(img, X, br, r, prior_held)) return false;
         if (!ratioOkRival(img, X, br, r, rival, false) && !strongUnambiguous(img, X, br, r)) {
             reg_fail_.low_ratio++;
             seqDump(img, X, nearf, r, rival, "refused (ratio)");
@@ -3440,7 +3617,15 @@ private:
                           slog::num(camOf(img).focal(), 0),
                           (long long)r.num_inliers});
         } else {
+            const Pose held = r.pose;
             refinePose(X, br, r.inlier_mask, r.pose);
+            // The free refinement may walk off the gyro's rotation again; the
+            // constrained pose then stands.
+            Mat3 Rp;
+            double sig;
+            if (prior_held && priorRotation(img, Rp, sig) &&
+                rotationAngleDeg(mul(r.pose.R, transpose(Rp))) > priorTolDeg(sig))
+                r.pose = held;
         }
         // Re-classify against the refined pose; the gates apply to the final
         // consensus, not the RANSAC one.
@@ -3697,6 +3882,63 @@ private:
             }
         }
         if (!have) return false;
+        // The gyro's word on the frame: predicted through any placed
+        // neighbour of any lens, checked on the lens with the tightest prior.
+        if (priors_) {
+            Mat3 Rp;
+            double sig = 0;
+            bool got = false;
+            for (const Member& e : ms) {
+                Mat3 Rc;
+                double s2;
+                if (!priorRotation(e.img, Rc, s2)) continue;
+                if (got && s2 >= sig) continue;
+                Rp = mul(transpose(c.cam_from_rig[e.m].R), Rc);
+                sig = s2;
+                got = true;
+            }
+            if (got && rotationAngleDeg(mul(best.R, transpose(Rp))) > priorTolDeg(sig)) {
+                // As priorCheckPose: a loose radius for the held rotation, a
+                // free refinement from there kept within the tolerance, and
+                // the strict consensus below to judge it.
+                const double tol = priorTolDeg(sig);
+                std::vector<RigPnPMember> gl = gm;
+                for (RigPnPMember& e : gl) e.max_error += tol * M_PI / 180.0;
+                RigPnPResult k = ransacRigPnPKnownRotation(gl, Rp);
+                int strict = 0;
+                if (k.success && k.num_inliers >= opt_.min_num_pnp_inliers) {
+                    for (Member& e : ms) {
+                        const Pose p = c.camFromWorld(e.m, k.rig_from_world);
+                        const double t = camOf(e.img).errRad(opt_.max_reproj_error) + tol * M_PI / 180.0;
+                        for (size_t q = 0; q < e.X.size(); q++)
+                            e.inl[q] = pnpResidualSq(p, e.X[q], e.br[q]) < t * t;
+                    }
+                    std::vector<FrameMember> fm;
+                    for (Member& e : ms)
+                        fm.push_back({&e.X, &e.br, &e.inl, c.cam_from_rig[e.m],
+                                      1.0 / camOf(e.img).errRad(opt_.max_reproj_error)});
+                    Pose refined = k.rig_from_world;
+                    if (refineFramePose(fm, refined) &&
+                        rotationAngleDeg(mul(refined.R, transpose(Rp))) <= tol)
+                        k.rig_from_world = refined;
+                    strict = consensus(k.rig_from_world);
+                }
+                if (prior_dump_)
+                    slog::diag(slog::Tag::Map,
+                               "[prior] frame of %s: rig PnP rotation %.1f deg off the gyro's "
+                               "(tol %.1f); held frame %d/%zu inliers against %d",
+                               db_.images[img].name.c_str(),
+                               rotationAngleDeg(mul(best.R, transpose(Rp))), tol, strict, total,
+                               r.num_inliers);
+                if (strict < opt_.min_num_pnp_inliers) {
+                    prior_stats_.refused++;
+                    return false;
+                }
+                best = k.rig_from_world;
+                rival.clear();
+                prior_stats_.corrected++;
+            }
+        }
         const int n = consensus(best);
         size_t pool = 0, excluded = 0;
         int near_pool = 0, near_inl = 0, rival_inl = 0;
@@ -4241,6 +4483,11 @@ private:
             bo.use_rigs = !final_.no_rig;
             bo.refine_rigs = opt_.refine_rigs && rigRefineDue(tight && i == 0);
             if (rigs_ && !final_.no_rig) calibrateRigs(rec_);
+            PosePriors pf;
+            if (priors_) {
+                pf = priorFactors(rec_);
+                bo.priors = &pf;
+            }
             double cost = runGlobalBA(rec_, bo);
             if (rigs_ && !final_.no_rig) snapRigFrames();
             ProfTimer pt(g_map_prof.filter);
@@ -4905,6 +5152,13 @@ private:
     } reg_fail_;
     const RigTable* rigs_ = nullptr;  // null = no rigs, or --no-use-rigs
     const SequenceTable* seq_ = nullptr;  // null = no sequences
+    PriorSource* priors_ = nullptr;   // null = no sensor priors, or --no-sensor-map
+    PriorStats prior_stats_;
+    // Counted from const passes that fan out over threads (the audit, the
+    // seed prefetch).
+    mutable std::atomic<uint32_t> prior_vouched_{0}, prior_seeds_{0};
+    // SS_SFM_PRIOR_DUMP=1 prints every registration the gyro overruled.
+    const bool prior_dump_ = spirula::env("SFM_PRIOR_DUMP") != nullptr;
     std::vector<std::vector<uint16_t>> near_support_;  // support_ over sequence neighbours only
     std::vector<int> near_score_;                      // per image, features with near support
     uint32_t reg_vouched_ = 0;   // registrations the neighbours carried past the pool's ratio

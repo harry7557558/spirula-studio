@@ -157,12 +157,12 @@ static_assert(sizeof(CopyQshMapParams) == 3 * 8 + 6 * 4,
 
 // Mirrors McmcProbsParams.
 struct McmcProbsParams {
-    uint64_t opacs, scales, probs;
+    uint64_t opacs, scales, probs, weight;
     float min_opacity;
-    uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t num_splats, wgs_per_row, use_weight;
+    uint32_t _pad0, _pad1;
 };
-static_assert(sizeof(McmcProbsParams) == 3 * 8 + 4 * 4,
+static_assert(sizeof(McmcProbsParams) == 4 * 8 + 6 * 4,
               "params layout must match the slang struct");
 
 // Mirrors McmcRelocIndexMapParams.
@@ -421,7 +421,8 @@ void launch_copy_qsh_map(int64_t num_splats, const int32_t* index_map,
 // MCMC sampling-probability + cumsum stage shared by relocate/add.
 void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
                        const DeviceVector<float>& opacs,
-                       const DeviceVector<float3>& scales, PoolSlot probs_slot,
+                       const DeviceVector<float3>& scales,
+                       const DeviceVector<float>& draw_weight, PoolSlot probs_slot,
                        PoolSlot cumsum_slot, DeviceVector<float>& probs,
                        DeviceVector<float>& cumsum) {
     probs.resize(probs_slot, cur_num_splats);
@@ -430,6 +431,8 @@ void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
     p.opacs = (uint64_t)opacs.data_ptr();
     p.scales = (uint64_t)scales.data_ptr();
     p.probs = (uint64_t)probs.data_ptr();
+    p.weight = vkk::or_fallback(draw_weight.data_ptr());
+    p.use_weight = draw_weight.data_ptr() ? 1u : 0u;
     p.min_opacity = min_opacity;
     p.num_splats = (uint32_t)cur_num_splats;
     vkk::dispatch_flat("densify.densify_mcmc_probs", {}, cur_num_splats, 256,
@@ -755,12 +758,13 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight
 ) {
     if (cur_num_splats <= 0) return;
 
     DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,
+    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
                       PoolSlot::DensifyMcmcSampleProbs,
                       PoolSlot::DensifyMcmcSampleProbsCumsum, probs, cumsum);
 
@@ -842,12 +846,13 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight
 ) {
     if (num_add == 0 || cur_num_splats <= 0) return;
 
     DeviceVector<float> probs, cumsum;
-    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales,
+    mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
                       PoolSlot::DensifyMcmcAddSampleProbs,
                       PoolSlot::DensifyMcmcAddSampleProbsCumsum, probs,
                       cumsum);

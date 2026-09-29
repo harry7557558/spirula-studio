@@ -47,6 +47,29 @@ void set_data_3dgs(
 }
 
 
+void engine_set_region(TorchTensorView program, TorchTensorView field_bvh,
+                       TorchTensorView field_seeds, TorchTensorView camera_bvh,
+                       TorchTensorView camera_seeds, float outside_weight,
+                       float outside_opacity_decay) {
+    auto& r = engine().region;
+    r = EngineState::Region{};
+    if (std::get<0>(program) == 0) return;
+    // [n, 6, 4] floats arrive as float4 rows.
+    auto as_float4 = [](TorchTensorView tv) {
+        if (std::get<0>(tv) == 0) return tv;
+        int64_t n = 1;
+        for (int64_t d : std::get<2>(tv)) n *= d;
+        return TorchTensorView(std::get<0>(tv), 4, {n / 4, 4});
+    };
+    r.program = _hv_to_dv<float4>(PoolSlot::EngRegionProgram, as_float4(program));
+    r.field_bvh = _hv_to_dv<float4>(PoolSlot::EngRegionFieldBvh, as_float4(field_bvh));
+    r.field_seeds = _hv_to_dv<float4>(PoolSlot::EngRegionFieldSeeds, as_float4(field_seeds));
+    r.camera_bvh = _hv_to_dv<float4>(PoolSlot::EngRegionCameraBvh, as_float4(camera_bvh));
+    r.camera_seeds = _hv_to_dv<float4>(PoolSlot::EngRegionCameraSeeds, as_float4(camera_seeds));
+    r.outside = outside_weight;
+    r.opacity_decay = outside_opacity_decay;
+}
+
 void set_camera_params(
     int width,
     int height,

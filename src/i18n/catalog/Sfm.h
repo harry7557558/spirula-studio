@@ -3683,6 +3683,137 @@ SS_MSG(sequence_table,
     RU("Последовательность {0}: элементы {1}; изображений {2} на {3} позициях; соседи в пределах {4}"),
     TR("Dizi {0}: üyeler {1}; {3} konumda {2} görüntü; {4} içindeki komşular"));
 
+SS_MSG(map_prior_summary,
+    EN("Sensor priors: {0} registrations re-solved with the gyro's rotation, {1} refused; "
+       "the last solve held {2} rotation, {3} gravity and {4} position factors"),
+    JA("センサー事前情報: ジャイロの回転で解き直した登録 {0}、拒否 {1}。"
+       "最後の解は回転 {2}、重力 {3}、位置 {4} 個の因子を保持"),
+    ZH_HANS("传感器先验: 用陀螺仪旋转重解的注册 {0} 个，拒绝 {1} 个; 最后一次求解含旋转 {2}、重力 {3}、位置 {4} 个因子"),
+    ZH_HANT("感測器先驗: 用陀螺儀旋轉重解的註冊 {0} 個，拒絕 {1} 個; 最後一次求解含旋轉 {2}、重力 {3}、位置 {4} 個因子"),
+    KO("센서 사전 정보: 자이로 회전으로 다시 푼 등록 {0}, 거부 {1}. 마지막 풀이는 회전 {2}, 중력 {3}, 위치 {4} 개 인자를 유지"),
+    DE("Sensorpriors: {0} Registrierungen mit der Gyroskop-Drehung neu gelöst, {1} abgelehnt; "
+       "der letzte Ausgleich hielt {2} Dreh-, {3} Schwerkraft- und {4} Positionsfaktoren"),
+    FR("A priori des capteurs : {0} enregistrements résolus à nouveau avec la rotation du "
+       "gyroscope, {1} refusés ; le dernier ajustement tenait {2} facteurs de rotation, {3} de "
+       "gravité et {4} de position"),
+    ES("Previos de sensores: {0} registros resueltos de nuevo con la rotación del giroscopio, {1} "
+       "rechazados; el último ajuste sujetó {2} factores de rotación, {3} de gravedad y {4} de "
+       "posición"),
+    PT("Priors dos sensores: {0} registos resolvidos de novo com a rotação do giroscópio, {1} "
+       "recusados; o último ajuste prendeu {2} fatores de rotação, {3} de gravidade e {4} de "
+       "posição"),
+    IT("Prior dei sensori: {0} registrazioni risolte di nuovo con la rotazione del giroscopio, {1} "
+       "rifiutate; l'ultimo aggiustamento teneva {2} fattori di rotazione, {3} di gravità e {4} "
+       "di posizione"),
+    NL("Sensorpriors: {0} registraties opnieuw opgelost met de gyroscooprotatie, {1} geweigerd; "
+       "de laatste oplossing hield {2} rotatie-, {3} zwaartekracht- en {4} positiefactoren"),
+    RU("Априорные данные датчиков: {0} регистраций пересчитано с поворотом гироскопа, {1} "
+       "отклонено; последнее уравнивание держало факторов: поворота {2}, силы тяжести {3}, "
+       "положения {4}"),
+    TR("Sensör önselleri: {0} kayıt jiroskop dönüşüyle yeniden çözüldü, {1} reddedildi; son "
+       "çözüm {2} dönüş, {3} yerçekimi ve {4} konum çarpanı tuttu"));
+
+SS_MSG(sensor_prior_calib,
+    EN("Sensor priors: {0} calibrated against the gyro from {1} pairs; rotations agree to {2} deg"),
+    JA("センサー事前情報: {0} を {1} ペアからジャイロに較正。回転の一致 {2} 度"),
+    ZH_HANS("传感器先验: {0} 已由 {1} 个像对对陀螺仪标定; 旋转一致到 {2} 度"),
+    ZH_HANT("感測器先驗: {0} 已由 {1} 個影像對對陀螺儀標定; 旋轉一致到 {2} 度"),
+    KO("센서 사전 정보: {0} 을 {1} 쌍으로 자이로에 보정했습니다. 회전 일치 {2} 도"),
+    DE("Sensorpriors: {0} aus {1} Paaren gegen das Gyroskop kalibriert; Drehungen stimmen auf {2} "
+       "Grad überein"),
+    FR("A priori des capteurs : {0} calibré sur le gyroscope à partir de {1} paires ; rotations "
+       "cohérentes à {2} degrés"),
+    ES("Previos de sensores: {0} calibrado contra el giroscopio con {1} pares; las rotaciones "
+       "coinciden hasta {2} grados"),
+    PT("Priors dos sensores: {0} calibrado contra o giroscópio com {1} pares; as rotações "
+       "coincidem até {2} graus"),
+    IT("Prior dei sensori: {0} calibrato sul giroscopio da {1} coppie; le rotazioni concordano a "
+       "{2} gradi"),
+    NL("Sensorpriors: {0} gekalibreerd tegen de gyroscoop uit {1} paren; rotaties komen tot {2} "
+       "graden overeen"),
+    RU("Априорные данные датчиков: {0} откалибровано по гироскопу на {1} парах; повороты "
+       "сходятся до {2} град."),
+    TR("Sensör önselleri: {0} {1} çiftten jiroskopa göre kalibre edildi; dönüşler {2} dereceye "
+       "kadar uyuşuyor"));
+
+SS_MSG(sensor_prior_calib_failed,
+    EN("Sensor priors: {0} not calibrated ({1} pairs): {2}"),
+    JA("センサー事前情報: {0} は較正できません ({1} ペア): {2}"),
+    ZH_HANS("传感器先验: {0} 未能标定 ({1} 个像对): {2}"),
+    ZH_HANT("感測器先驗: {0} 未能標定 ({1} 個影像對): {2}"),
+    KO("센서 사전 정보: {0} 을 보정하지 못했습니다 ({1} 쌍): {2}"),
+    DE("Sensorpriors: {0} nicht kalibriert ({1} Paare): {2}"),
+    FR("A priori des capteurs : {0} non calibré ({1} paires) : {2}"),
+    ES("Previos de sensores: {0} sin calibrar ({1} pares): {2}"),
+    PT("Priors dos sensores: {0} não calibrado ({1} pares): {2}"),
+    IT("Prior dei sensori: {0} non calibrato ({1} coppie): {2}"),
+    NL("Sensorpriors: {0} niet gekalibreerd ({1} paren): {2}"),
+    RU("Априорные данные датчиков: {0} не откалибровано ({1} пар): {2}"),
+    TR("Sensör önselleri: {0} kalibre edilmedi ({1} çift): {2}"));
+
+SS_MSG(sensor_verify_summary,
+    EN("Verified {0} pairs with the gyro's rotation held: {1} kept its inliers ({2} matches it "
+       "rejected, {3} pairs only it could verify), {4} disagreed with it, {5} dropped for turning "
+       "the wrong way"),
+    JA("ジャイロの回転を固定して {0} ペアを検証: {1} ペアがそのインライアを採用 ({2} マッチを"
+       "除外、{3} ペアはそれでのみ検証可能)、{4} ペアは不一致、{5} ペアは回転方向が違うため除外"),
+    ZH_HANS("固定陀螺仪旋转验证了 {0} 个像对: {1} 个采用其内点 (剔除 {2} 个匹配，{3} 个像对只有它能验证)，"
+            "{4} 个与之不符，{5} 个因转向不符而丢弃"),
+    ZH_HANT("固定陀螺儀旋轉驗證了 {0} 個影像對: {1} 個採用其內點 (剔除 {2} 個匹配，{3} 個影像對只有它能驗證)，"
+            "{4} 個與之不符，{5} 個因轉向不符而丟棄"),
+    KO("자이로 회전을 고정해 {0} 쌍을 검증: {1} 쌍이 그 인라이어를 채택 ({2} 매칭 제외, {3} 쌍은 "
+       "그것으로만 검증 가능), {4} 쌍은 불일치, {5} 쌍은 회전 방향이 달라 제외"),
+    DE("{0} Paare mit festgehaltener Gyroskop-Drehung geprüft: {1} behielten deren Inlier ({2} "
+       "Zuordnungen verworfen, {3} Paare nur so prüfbar), {4} widersprachen ihr, {5} wegen "
+       "falscher Drehrichtung verworfen"),
+    FR("{0} paires vérifiées avec la rotation du gyroscope fixée : {1} ont gardé ses inliers ({2} "
+       "correspondances rejetées, {3} paires vérifiables par elle seule), {4} en désaccord, {5} "
+       "écartées pour avoir tourné dans le mauvais sens"),
+    ES("{0} pares verificados con la rotación del giroscopio fija: {1} conservaron sus inliers "
+       "({2} correspondencias rechazadas, {3} pares que solo ella verificó), {4} en desacuerdo, "
+       "{5} descartados por girar en sentido erróneo"),
+    PT("{0} pares verificados com a rotação do giroscópio fixa: {1} mantiveram os seus inliers "
+       "({2} correspondências rejeitadas, {3} pares que só ela verificou), {4} em desacordo, {5} "
+       "descartados por rodar no sentido errado"),
+    IT("{0} coppie verificate con la rotazione del giroscopio fissa: {1} ne hanno tenuto gli "
+       "inlier ({2} corrispondenze rifiutate, {3} coppie verificabili solo da essa), {4} in "
+       "disaccordo, {5} scartate per aver girato nel verso sbagliato"),
+    NL("{0} paren geverifieerd met de gyroscooprotatie vast: {1} hielden zijn inliers ({2} "
+       "matches verworpen, {3} paren alleen zo verifieerbaar), {4} weken ervan af, {5} verworpen "
+       "om de verkeerde kant op te draaien"),
+    RU("Проверено {0} пар с зафиксированным поворотом гироскопа: {1} взяли его инлайеры "
+       "(отброшено соответствий {2}, только им проверено пар {3}), {4} с ним разошлись, {5} "
+       "отброшено за поворот не в ту сторону"),
+    TR("{0} çift jiroskop dönüşü sabit tutularak doğrulandı: {1} onun iç noktalarını tuttu ({2} "
+       "eşleşme reddedildi, {3} çifti yalnızca o doğrulayabildi), {4} onunla uyuşmadı, {5} yanlış "
+       "yöne döndüğü için atıldı"));
+
+SS_MSG(sensor_gps_pairs_added,
+    EN("GPS added {0} pairs of images within {1} m of each other ({2} images positioned). "
+       "--no-sensor-pairs turns this off."),
+    JA("GPS で互いに {1} m 以内の画像ペアを {0} 組追加 (位置付きの画像 {2} 枚)。"
+       "--no-sensor-pairs で無効にできます。"),
+    ZH_HANS("GPS 新增了 {0} 个相距 {1} m 以内的像对 (有位置的图像 {2} 幅)。用 --no-sensor-pairs 可关闭。"),
+    ZH_HANT("GPS 新增了 {0} 個相距 {1} m 以內的影像對 (有位置的影像 {2} 幅)。用 --no-sensor-pairs 可關閉。"),
+    KO("GPS 로 서로 {1} m 이내인 이미지 쌍 {0} 개를 더했습니다 (위치가 있는 이미지 {2} 장). "
+       "--no-sensor-pairs 로 끌 수 있습니다."),
+    DE("GPS ergänzte {0} Paare von Bildern innerhalb von {1} m zueinander ({2} Bilder "
+       "positioniert). --no-sensor-pairs schaltet das ab."),
+    FR("Le GPS a ajouté {0} paires d'images à moins de {1} m l'une de l'autre ({2} images "
+       "positionnées). --no-sensor-pairs désactive cela."),
+    ES("El GPS añadió {0} pares de imágenes a menos de {1} m entre sí ({2} imágenes "
+       "posicionadas). --no-sensor-pairs lo desactiva."),
+    PT("O GPS acrescentou {0} pares de imagens a menos de {1} m uma da outra ({2} imagens "
+       "posicionadas). --no-sensor-pairs desliga isso."),
+    IT("Il GPS ha aggiunto {0} coppie di immagini entro {1} m l'una dall'altra ({2} immagini "
+       "posizionate). --no-sensor-pairs lo disattiva."),
+    NL("GPS voegde {0} paren beelden binnen {1} m van elkaar toe ({2} beelden gepositioneerd). "
+       "--no-sensor-pairs zet dit uit."),
+    RU("GPS добавил {0} пар снимков ближе {1} м друг к другу (с позицией: {2} снимков). "
+       "--no-sensor-pairs это отключает."),
+    TR("GPS birbirine {1} m içinde {0} görüntü çifti ekledi ({2} görüntü konumlandı). "
+       "--no-sensor-pairs bunu kapatır."));
+
 SS_MSG(map_sequence_summary,
     EN("Poses the sequence neighbours settled against the rest of the model: {0}; "
        "registrations they carried past the inlier ratio: {1}"),

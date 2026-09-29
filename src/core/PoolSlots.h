@@ -129,6 +129,12 @@ enum class SaveClass : uint8_t {
   X(EngDensifySampleScore          , "eng.densify.sample_score",          Splat    , Never) \
   X(EngDensifyOversize             , "eng.densify.oversize",              Splat    , Never) \
   X(EngDensifyOversizeWeight       , "eng.densify.oversize_weight",       Splat    , Never) \
+  X(EngRegionWeight                , "eng.region.weight",                 Splat    , Never) \
+  X(EngRegionProgram               , "eng.region.program",                Other    , Never) \
+  X(EngRegionFieldBvh              , "eng.region.field_bvh",              Other    , Never) \
+  X(EngRegionFieldSeeds            , "eng.region.field_seeds",            Other    , Never) \
+  X(EngRegionCameraBvh             , "eng.region.camera_bvh",             Other    , Never) \
+  X(EngRegionCameraSeeds           , "eng.region.camera_seeds",           Other    , Never) \
   /* ---- sub-batch scratch ---- */ \
   X(EngSubbatchAccumWeightSum      , "eng.subbatch.accum_weight_sum",     Splat    , Never) \
   /* ---- gradients ---- */ \

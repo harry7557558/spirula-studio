@@ -3333,6 +3333,59 @@ SS_MSG(mask_model,
     PT("Modelo"),        IT("Modello"),      NL("Model"),        RU("Модель"),
     TR("Model"));
 
+// The second combo under a SAM 2.1 pick: the model that reads its words.
+SS_MSG(mask_text_detector,
+    EN("Text detector"),
+    JA("テキスト検出器"),
+    ZH_HANS("文字检测器"),
+    ZH_HANT("文字偵測器"),
+    KO("텍스트 검출기"),
+    DE("Textdetektor"),
+    FR("Détecteur de texte"),
+    ES("Detector de texto"),
+    PT("Detector de texto"),
+    IT("Rilevatore di testo"),
+    NL("Tekstdetector"),
+    RU("Текстовый детектор"),
+    TR("Metin algılayıcı"));
+
+SS_MSG(mask_text_detector_help,
+    EN("SAM 2.1 cannot read words, so a second model finds what the text prompt "
+       "names and SAM 2.1 cuts it out. Clicks still go straight to SAM 2.1."),
+    JA("SAM 2.1 は単語を読めないため、別のモデルがテキストのプロンプトの指す"
+       "ものを見つけ、SAM 2.1 がそれを切り抜きます。クリックはこれまでどおり"
+       " SAM 2.1 に直接渡ります。"),
+    ZH_HANS("SAM 2.1 读不懂文字，所以由另一个模型找出文字提示所指的目标，再由 S"
+            "AM 2.1 把它分割出来。点击仍然直接交给 SAM 2.1。"),
+    ZH_HANT("SAM 2.1 讀不懂文字，所以由另一個模型找出文字提示所指的目標，再由 S"
+            "AM 2.1 把它分割出來。點擊仍然直接交給 SAM 2.1。"),
+    KO("SAM 2.1은 단어를 읽지 못하므로, 다른 모델이 텍스트 프롬프트가 가리키는 것을 찾고 SAM 2.1이 그것을 잘라 냅니다. "
+       "클릭은 여전히 SAM 2.1로 바로 갑니다."),
+    DE("SAM 2.1 kann keine Wörter lesen. Deshalb findet ein zweites Modell, was "
+       "die Texteingabe nennt, und SAM 2.1 schneidet es aus. Klicks gehen "
+       "weiterhin direkt an SAM 2.1."),
+    FR("SAM 2.1 ne lit pas les mots : un second modèle trouve ce que nomme "
+       "l'invite textuelle, et SAM 2.1 le découpe. Les clics vont toujours "
+       "directement à SAM 2.1."),
+    ES("SAM 2.1 no sabe leer palabras, así que un segundo modelo encuentra lo "
+       "que nombra la indicación de texto y SAM 2.1 lo recorta. Los clics siguen "
+       "yendo directamente a SAM 2.1."),
+    PT("O SAM 2.1 não lê palavras, então um segundo modelo encontra o que o "
+       "comando de texto nomeia e o SAM 2.1 o recorta. Os cliques continuam indo "
+       "direto para o SAM 2.1."),
+    IT("SAM 2.1 non sa leggere le parole: un secondo modello trova ciò che il "
+       "testo nomina e SAM 2.1 lo ritaglia. I clic vanno sempre direttamente a "
+       "SAM 2.1."),
+    NL("SAM 2.1 kan geen woorden lezen, dus een tweede model vindt wat de "
+       "tekstprompt noemt en SAM 2.1 knipt het uit. Klikken gaan nog steeds "
+       "rechtstreeks naar SAM 2.1."),
+    RU("SAM 2.1 не читает слова, поэтому вторая модель находит то, что названо в "
+       "текстовом запросе, а SAM 2.1 вырезает это. Щелчки по-прежнему идут прямо "
+       "в SAM 2.1."),
+    TR("SAM 2.1 kelime okuyamaz; bu yüzden ikinci bir model metin isteminin "
+       "adını verdiği şeyi bulur, SAM 2.1 de onu keser. Tıklamalar yine doğrudan "
+       "SAM 2.1'e gider."));
+
 SS_MSG(mask_model_needs_download,
     EN("{0}  (download)"),
     JA("{0}（ダウンロード）"),
@@ -5401,6 +5454,33 @@ SS_MSG(preview_what_kept,
     NL("Wat moet blijven?"),
     RU("Что оставить?"),
     TR("Ne tutulsun?"));
+
+// Try the mask, for a pick with no text prompt: the clicks are all there is.
+SS_MSG(preview_clicks_only,
+    EN("This model reads no text. Click the image to pick objects: left click on "
+       "the object, right click on what is not it."),
+    JA("このモデルはテキストを読みません。画像をクリックして物体を選んでください。対"
+       "象は左クリック、対象でないところは右クリックです。"),
+    ZH_HANS("这个模型不读文字。请在图像上点击来选物体：左键点目标，右键点不属于它的地方。"),
+    ZH_HANT("這個模型不讀文字。請在影像上點擊來選物件：左鍵點目標，右鍵點不屬於它的地方。"),
+    KO("이 모델은 텍스트를 읽지 않습니다. 이미지를 클릭해 물체를 고르세요. 물체는 왼쪽 클릭, 그 물체가 아닌 곳은 오른쪽 클릭입니다."),
+    DE("Dieses Modell liest keinen Text. Objekte durch Klicken ins Bild wählen: "
+       "Linksklick auf das Objekt, Rechtsklick auf das, was nicht dazugehört."),
+    FR("Ce modèle ne lit pas de texte. Cliquez sur l'image pour choisir des "
+       "objets : clic gauche sur l'objet, clic droit sur ce qui n'en fait pas "
+       "partie."),
+    ES("Este modelo no lee texto. Haga clic en la imagen para elegir objetos: "
+       "clic izquierdo sobre el objeto, clic derecho sobre lo que no lo es."),
+    PT("Este modelo não lê texto. Clique na imagem para escolher objetos: clique "
+       "esquerdo no objeto, clique direito no que não faz parte dele."),
+    IT("Questo modello non legge testo. Clicchi sull'immagine per scegliere gli "
+       "oggetti: clic sinistro sull'oggetto, clic destro su ciò che non lo è."),
+    NL("Dit model leest geen tekst. Klik in het beeld om objecten te kiezen: "
+       "linksklik op het object, rechtsklik op wat er niet bij hoort."),
+    RU("Эта модель не читает текст. Выбирайте объекты щелчками по изображению: "
+       "левой кнопкой по объекту, правой — по тому, что к нему не относится."),
+    TR("Bu model metin okumaz. Nesne seçmek için görüntüye tıklayın: nesneye sol "
+       "tık, ona ait olmayana sağ tık."));
 
 SS_MSG(preview_what_removed,
     EN("What should be removed?"),
@@ -11236,58 +11316,75 @@ SS_MSG(python_executable_help,
 // ===========================================================================
 // The segmentation checkpoints (src/app/gui/ModelCache.cpp)
 //
-// The blurbs all quote the same measurement -- one instance, 1080p frames,
-// laptop GPU -- so that they can actually be compared. Keep that parallel
-// structure when translating; it is the only thing that makes the choice
-// makeable.
+// Blurbs compare speeds rather than quote one machine's milliseconds; keep
+// the ratios intact when translating.
 // ===========================================================================
 
 SS_MSG(model_sam3_label,
-    EN("SAM 3 (recommended)"),
-    JA("SAM 3（推奨）"),  ZH_HANS("SAM 3（推荐）"), ZH_HANT("SAM 3（建議）"),
-    KO("SAM 3(권장)"),   DE("SAM 3 (empfohlen)"), FR("SAM 3 (recommandé)"),
-    ES("SAM 3 (recomendado)"), PT("SAM 3 (recomendado)"), IT("SAM 3 (consigliato)"),
-    NL("SAM 3 (aanbevolen)"), RU("SAM 3 (рекомендуется)"), TR("SAM 3 (önerilen)"));
+    EN("SAM 3 (most accurate for text prompts)"),
+    JA("SAM 3（テキスト指定で最も正確）"),
+    ZH_HANS("SAM 3（文字提示最准确）"),
+    ZH_HANT("SAM 3（文字提示最準確）"),
+    KO("SAM 3(텍스트 프롬프트에 가장 정확)"),
+    DE("SAM 3 (am genauesten bei Texteingaben)"),
+    FR("SAM 3 (le plus précis pour les invites textuelles)"),
+    ES("SAM 3 (el más preciso con indicaciones de texto)"),
+    PT("SAM 3 (o mais preciso com comandos de texto)"),
+    IT("SAM 3 (il più preciso con il testo)"),
+    NL("SAM 3 (nauwkeurigst voor tekstprompts)"),
+    RU("SAM 3 (точнее всех по текстовым запросам)"),
+    TR("SAM 3 (metin istemlerinde en doğru)"));
 
 SS_MSG(model_sam3_blurb,
-    EN("Understands text prompts -- type what to mask out. 707 MB, ~2 GB "
-       "VRAM, about 1 s per frame on a laptop GPU -- 3x slower than any "
-       "SAM 2.1 below."),
-    JA("テキストのプロンプトを理解します。消したいものを入力してください。"
-       "707 MB、VRAM 約 2 GB、ノート PC の GPU で 1 フレームおよそ 1 秒。"
-       "下の SAM 2.1 のどれよりも 3 倍遅くなります。"),
-    ZH_HANS("能理解文字提示——直接输入要遮掉什么。707 MB，约 2 GB 显存，"
-            "笔记本 GPU 上每帧约 1 秒——比下面任何一个 SAM 2.1 都慢 3 倍。"),
-    ZH_HANT("能理解文字提示——直接輸入要遮掉什麼。707 MB，約 2 GB 顯示記憶體，"
-            "筆電 GPU 上每格約 1 秒——比下面任何一個 SAM 2.1 都慢 3 倍。"),
-    KO("텍스트 프롬프트를 이해합니다. 가릴 것을 입력하세요. 707 MB, VRAM 약 "
-       "2 GB, 노트북 GPU에서 프레임당 약 1초 — 아래 어떤 SAM 2.1보다도 3배 "
-       "느립니다."),
-    DE("Versteht Texteingaben -- schreiben Sie hinein, was maskiert werden "
-       "soll. 707 MB, etwa 2 GB VRAM, rund 1 s je Bild auf einer Laptop-GPU "
-       "-- dreimal langsamer als jedes SAM 2.1 darunter."),
-    FR("Comprend les invites textuelles -- écrivez ce qu'il faut masquer. "
-       "707 Mo, environ 2 Go de VRAM, à peu près 1 s par image sur un GPU "
-       "d'ordinateur portable -- 3 fois plus lent que n'importe quel SAM 2.1 "
-       "ci-dessous."),
-    ES("Entiende indicaciones de texto: escriba qué enmascarar. 707 MB, unos "
-       "2 GB de VRAM, alrededor de 1 s por fotograma en una GPU de portátil: "
-       "3 veces más lento que cualquier SAM 2.1 de abajo."),
-    PT("Entende comandos de texto -- escreva o que mascarar. 707 MB, cerca de "
-       "2 GB de VRAM, aproximadamente 1 s por quadro numa GPU de notebook -- "
-       "3 vezes mais lento que qualquer SAM 2.1 abaixo."),
-    IT("Capisce il testo: scriva che cosa mascherare. 707 MB, circa 2 GB di "
-       "VRAM, all'incirca 1 s per fotogramma su una GPU da portatile: 3 volte "
-       "più lento di qualsiasi SAM 2.1 qui sotto."),
-    NL("Begrijpt tekstprompts -- typ wat gemaskeerd moet worden. 707 MB, "
-       "ongeveer 2 GB VRAM, zo'n 1 s per beeld op een laptop-GPU -- 3 keer "
-       "trager dan elke SAM 2.1 hieronder."),
-    RU("Понимает текстовые запросы — напишите, что замаскировать. 707 МБ, "
-       "около 2 ГБ видеопамяти, примерно 1 с на кадр на ноутбучной "
-       "видеокарте — втрое медленнее любой SAM 2.1 ниже."),
-    TR("Metin istemlerini anlar -- neyin maskeleneceğini yazın. 707 MB, ~2 GB "
-       "VRAM, dizüstü GPU'da kare başına yaklaşık 1 sn -- aşağıdaki her "
-       "SAM 2.1'den 3 kat yavaş."));
+    EN("Understands text prompts on its own and finds the most of what they "
+       "name. 707 MB, ~2 GB VRAM. The slowest: about 3x the time of SAM 2.1 with "
+       "Grounding DINO for one prompt, and about as much again for each further "
+       "thing named."),
+    JA("テキストのプロンプトを単独で理解し、指定したものをいちばん多く見つけます。7"
+       "07 MB、VRAM 約 2 GB。いちばん遅く、プロンプト 1 つで SA"
+       "M 2.1 と Grounding DINO の組み合わせのおよそ 3 倍の"
+       "時間がかかり、指定するものが 1 つ増えるごとにほぼ同じだけ増えます。"),
+    ZH_HANS("自己就能理解文字提示，找到的目标最多。707 MB，约 2 GB 显存。速度"
+            "最慢：一个提示词约为 SAM 2.1 加 Grounding DINO 的 "
+            "3 倍时间，每多指定一样东西，时间大约再增加同样多。"),
+    ZH_HANT("自己就能理解文字提示，找到的目標最多。707 MB，約 2 GB 顯示記憶體"
+            "。速度最慢：一個提示詞約為 SAM 2.1 加 Grounding DINO"
+            " 的 3 倍時間，每多指定一樣東西，時間大約再增加同樣多。"),
+    KO("텍스트 프롬프트를 스스로 이해하며, 지정한 것을 가장 많이 찾아냅니다. 707 MB, VRAM 약 2 GB. 가장 느립니다. "
+       "프롬프트 하나에 SAM 2.1 + Grounding DINO의 약 3배 시간이 걸리고, 지정하는 대상이 하나 늘 때마다 거의 "
+       "그만큼 더 걸립니다."),
+    DE("Versteht Texteingaben selbst und findet am meisten von dem, was sie "
+       "nennen. 707 MB, etwa 2 GB VRAM. Das langsamste: bei einer Eingabe etwa "
+       "die dreifache Zeit von SAM 2.1 mit Grounding DINO, und für jedes weitere "
+       "genannte Ding etwa noch einmal so viel."),
+    FR("Comprend seul les invites textuelles et trouve le plus de ce qu'elles "
+       "nomment. 707 Mo, environ 2 Go de VRAM. Le plus lent : environ 3 fois le "
+       "temps de SAM 2.1 avec Grounding DINO pour une invite, et à peu près "
+       "autant en plus pour chaque chose nommée en plus."),
+    ES("Entiende por sí solo las indicaciones de texto y encuentra la mayor "
+       "parte de lo que nombran. 707 MB, unos 2 GB de VRAM. El más lento: unas 3 "
+       "veces el tiempo de SAM 2.1 con Grounding DINO para una indicación, y "
+       "casi otro tanto por cada cosa más que se nombre."),
+    PT("Entende sozinho comandos de texto e encontra a maior parte do que eles "
+       "nomeiam. 707 MB, cerca de 2 GB de VRAM. O mais lento: cerca de 3 vezes o "
+       "tempo do SAM 2.1 com Grounding DINO para um comando, e quase outro tanto "
+       "para cada coisa a mais nomeada."),
+    IT("Capisce da solo il testo e trova la maggior parte di ciò che nomina. 707 "
+       "MB, circa 2 GB di VRAM. Il più lento: circa 3 volte il tempo di SAM 2.1 "
+       "con Grounding DINO per una richiesta, e quasi altrettanto per ogni cosa "
+       "in più nominata."),
+    NL("Begrijpt tekstprompts zelf en vindt het meeste van wat ze noemen. 707 "
+       "MB, ongeveer 2 GB VRAM. Het traagst: ongeveer 3 keer de tijd van SAM 2.1 "
+       "met Grounding DINO voor één prompt, en ongeveer evenveel extra voor elk "
+       "volgend genoemd ding."),
+    RU("Сама понимает текстовые запросы и находит больше всего из названного. "
+       "707 МБ, около 2 ГБ видеопамяти. Самая медленная: на один запрос примерно "
+       "втрое дольше SAM 2.1 с Grounding DINO, и примерно столько же сверху за "
+       "каждый следующий названный предмет."),
+    TR("Metin istemlerini kendi başına anlar ve adı geçenlerin en çoğunu bulur. "
+       "707 MB, ~2 GB VRAM. En yavaşı: tek istemde SAM 2.1 ile Grounding "
+       "DINO'nun yaklaşık 3 katı süre, adı geçen her ek şey için de yaklaşık bir "
+       "o kadar daha."));
 
 SS_MSG(model_sam3_f16_label,
     EN("SAM 3, full precision"),
@@ -11332,48 +11429,40 @@ SS_MSG(model_sam21_large_label,
     TR("SAM 2.1 Large"));
 
 SS_MSG(model_sam21_large_blurb,
-    EN("Click or draw a box to select an object; no text prompts. The most "
-       "accurate of the four and the one to pick for thin structure -- "
-       "railings, wires and cables, foliage. ~470 ms per frame. Apache-2.0."),
-    JA("クリックまたは矩形で対象を選びます。テキストのプロンプトはありません。"
-       "4つの中でいちばん正確で、手すり、電線やケーブル、葉のような細い構造には"
-       "これを選んでください。1 フレームおよそ 470 ms。Apache-2.0。"),
-    ZH_HANS("用点击或拉框来选对象；不支持文字提示。四者中最准确，栏杆、电线电缆、"
-            "枝叶这类细结构就选它。每帧约 470 毫秒。Apache-2.0。"),
-    ZH_HANT("用點擊或拉框來選物件；不支援文字提示。四者中最準確，欄杆、電線電纜、"
-            "枝葉這類細結構就選它。每格約 470 毫秒。Apache-2.0。"),
-    KO("클릭하거나 상자를 그려 물체를 고릅니다. 텍스트 프롬프트는 없습니다. "
-       "넷 중 가장 정확하며 난간, 전선과 케이블, 잎사귀 같은 가느다란 구조에는 "
-       "이것을 고르세요. 프레임당 약 470 ms. Apache-2.0."),
-    DE("Zum Auswählen anklicken oder einen Rahmen ziehen; keine Texteingaben. "
-       "Das genaueste der vier und die Wahl für feine Strukturen -- Geländer, "
-       "Drähte und Kabel, Laub. Etwa 470 ms je Bild. Apache-2.0."),
-    FR("Cliquez ou tracez un cadre pour sélectionner un objet ; pas d'invite "
-       "textuelle. Le plus précis des quatre et celui à prendre pour les "
-       "structures fines -- garde-corps, fils et câbles, feuillage. Environ "
-       "470 ms par image. Apache-2.0."),
-    ES("Haga clic o dibuje un recuadro para elegir un objeto; sin "
-       "indicaciones de texto. El más preciso de los cuatro y el indicado "
-       "para estructuras finas: barandillas, cables y tendidos, follaje. Unos "
-       "470 ms por fotograma. Apache-2.0."),
-    PT("Clique ou desenhe uma caixa para escolher um objeto; sem comandos de "
-       "texto. O mais preciso dos quatro e o indicado para estruturas finas: "
-       "corrimãos, fios e cabos, folhagem. Cerca de 470 ms por quadro. "
+    EN("The most accurate SAM 2.1, and the one to pick for thin structure -- "
+       "railings, wires and cables, foliage. About 1.8x the time of Small. "
        "Apache-2.0."),
-    IT("Clicchi o tracci un rettangolo per scegliere un oggetto; niente "
-       "testo. Il più preciso dei quattro e quello da prendere per le "
-       "strutture sottili: ringhiere, fili e cavi, fogliame. Circa 470 ms per "
-       "fotogramma. Apache-2.0."),
-    NL("Klik of trek een kader om een object te kiezen; geen tekstprompts. Het "
-       "nauwkeurigste van de vier en de keuze voor fijne structuur -- "
-       "leuningen, draden en kabels, gebladerte. Ongeveer 470 ms per beeld. "
+    JA("SAM 2.1 の中でいちばん正確で、手すり、電線やケーブル、葉のような細い"
+       "構造にはこれを選んでください。Small のおよそ 1.8 倍の時間がかかり"
+       "ます。Apache-2.0。"),
+    ZH_HANS("SAM 2.1 中最准确的，栏杆、电线电缆、枝叶这类细结构就选它。耗时约为 "
+            "Small 的 1.8 倍。Apache-2.0。"),
+    ZH_HANT("SAM 2.1 中最準確的，欄杆、電線電纜、枝葉這類細結構就選它。耗時約為 "
+            "Small 的 1.8 倍。Apache-2.0。"),
+    KO("SAM 2.1 중 가장 정확하며 난간, 전선과 케이블, 잎사귀 같은 가느다란 구조에는 이것을 고르세요. Small의 약 1.8배 "
+       "시간이 걸립니다. Apache-2.0."),
+    DE("Das genaueste SAM 2.1 und die Wahl für feine Strukturen -- Geländer, "
+       "Drähte und Kabel, Laub. Braucht etwa 1,8-mal so lange wie Small. "
        "Apache-2.0."),
-    RU("Щелчок или рамка выбирают объект; текстовых запросов нет. Самая точная "
-       "из четырёх и та, что нужна для тонких структур — перил, проводов и "
-       "кабелей, листвы. Около 470 мс на кадр. Apache-2.0."),
-    TR("Nesne seçmek için tıklayın veya kutu çizin; metin istemi yok. Dördü "
-       "arasında en doğru olanı ve ince yapılar için seçilecek olanı -- "
-       "korkuluk, tel ve kablo, yaprak. Kare başına ~470 ms. Apache-2.0."));
+    FR("Le plus précis des SAM 2.1 et celui à prendre pour les structures fines "
+       "-- garde-corps, fils et câbles, feuillage. Environ 1,8 fois le temps de "
+       "Small. Apache-2.0."),
+    ES("El SAM 2.1 más preciso y el indicado para estructuras finas: "
+       "barandillas, cables y tendidos, follaje. Unas 1,8 veces el tiempo de "
+       "Small. Apache-2.0."),
+    PT("O SAM 2.1 mais preciso e o indicado para estruturas finas: corrimãos, "
+       "fios e cabos, folhagem. Cerca de 1,8 vez o tempo do Small. Apache-2.0."),
+    IT("Il SAM 2.1 più preciso e quello da prendere per le strutture sottili: "
+       "ringhiere, fili e cavi, fogliame. Circa 1,8 volte il tempo di Small. "
+       "Apache-2.0."),
+    NL("De nauwkeurigste SAM 2.1 en de keuze voor fijne structuur -- leuningen, "
+       "draden en kabels, gebladerte. Ongeveer 1,8 keer de tijd van Small. "
+       "Apache-2.0."),
+    RU("Самая точная из SAM 2.1 и та, что нужна для тонких структур — перил, "
+       "проводов и кабелей, листвы. Примерно в 1,8 раза дольше Small. "
+       "Apache-2.0."),
+    TR("En doğru SAM 2.1 ve ince yapılar için seçilecek olanı -- korkuluk, tel "
+       "ve kablo, yaprak. Small'ın yaklaşık 1,8 katı süre. Apache-2.0."));
 
 SS_MSG(model_sam21_baseplus_label,
     EN("SAM 2.1 Base+"),  JA("SAM 2.1 Base+"), ZH_HANS("SAM 2.1 Base+"),
@@ -11383,32 +11472,27 @@ SS_MSG(model_sam21_baseplus_label,
     TR("SAM 2.1 Base+"));
 
 SS_MSG(model_sam21_baseplus_blurb,
-    EN("Clicks and boxes only. Close to Large on most subjects at two thirds "
-       "the time, ~320 ms per frame. Apache-2.0."),
-    JA("クリックと矩形のみです。ほとんどの被写体で Large に近い結果を3分の2の"
-       "時間で出します。1 フレームおよそ 320 ms。Apache-2.0。"),
-    ZH_HANS("只支持点击和拉框。在多数对象上接近 Large，耗时只有三分之二，"
-            "每帧约 320 毫秒。Apache-2.0。"),
-    ZH_HANT("只支援點擊和拉框。在多數物件上接近 Large，耗時只有三分之二，"
-            "每格約 320 毫秒。Apache-2.0。"),
-    KO("클릭과 상자만 됩니다. 대부분의 피사체에서 Large에 가까운 결과를 3분의 2 "
-       "시간에 냅니다. 프레임당 약 320 ms. Apache-2.0."),
-    DE("Nur Klicks und Rahmen. Bei den meisten Motiven nah an Large, in zwei "
-       "Dritteln der Zeit, etwa 320 ms je Bild. Apache-2.0."),
-    FR("Clics et cadres seulement. Proche de Large sur la plupart des sujets "
-       "en deux tiers du temps, environ 320 ms par image. Apache-2.0."),
-    ES("Solo clics y recuadros. Cerca de Large en la mayoría de sujetos en dos "
-       "tercios del tiempo, unos 320 ms por fotograma. Apache-2.0."),
-    PT("Só cliques e caixas. Perto do Large na maioria dos sujeitos em dois "
-       "terços do tempo, cerca de 320 ms por quadro. Apache-2.0."),
-    IT("Solo clic e rettangoli. Vicino a Large su quasi tutti i soggetti in "
-       "due terzi del tempo, circa 320 ms per fotogramma. Apache-2.0."),
-    NL("Alleen klikken en kaders. Dicht bij Large op de meeste onderwerpen in "
-       "twee derde van de tijd, ongeveer 320 ms per beeld. Apache-2.0."),
-    RU("Только щелчки и рамки. На большинстве объектов близко к Large за две "
-       "трети времени, около 320 мс на кадр. Apache-2.0."),
-    TR("Yalnızca tıklama ve kutu. Çoğu öznede Large'a yakın, sürenin üçte "
-       "ikisinde, kare başına ~320 ms. Apache-2.0."));
+    EN("Close to Large on most subjects in two thirds of its time. Apache-2.0."),
+    JA("ほとんどの被写体で Large に近い結果を、その 3 分の 2 の時間で出"
+       "します。Apache-2.0。"),
+    ZH_HANS("在多数对象上接近 Large，耗时只有它的三分之二。Apache-2.0。"),
+    ZH_HANT("在多數物件上接近 Large，耗時只有它的三分之二。Apache-2.0。"),
+    KO("대부분의 피사체에서 Large에 가까운 결과를 그 3분의 2 시간에 냅니다. Apache-2.0."),
+    DE("Bei den meisten Motiven nah an Large, in zwei Dritteln seiner Zeit. "
+       "Apache-2.0."),
+    FR("Proche de Large sur la plupart des sujets, en deux tiers de son temps. "
+       "Apache-2.0."),
+    ES("Cerca de Large en la mayoría de sujetos, en dos tercios de su tiempo. "
+       "Apache-2.0."),
+    PT("Perto do Large na maioria dos sujeitos, em dois terços do tempo dele. "
+       "Apache-2.0."),
+    IT("Vicino a Large su quasi tutti i soggetti, in due terzi del suo tempo. "
+       "Apache-2.0."),
+    NL("Dicht bij Large op de meeste onderwerpen, in twee derde van de tijd. "
+       "Apache-2.0."),
+    RU("На большинстве объектов близко к Large за две трети его времени. "
+       "Apache-2.0."),
+    TR("Çoğu öznede Large'a yakın, onun süresinin üçte ikisinde. Apache-2.0."));
 
 SS_MSG(model_sam21_small_label,
     EN("SAM 2.1 Small"),  JA("SAM 2.1 Small"), ZH_HANS("SAM 2.1 Small"),
@@ -11418,103 +11502,91 @@ SS_MSG(model_sam21_small_label,
     TR("SAM 2.1 Small"));
 
 SS_MSG(model_sam21_small_blurb,
-    EN("Clicks and boxes only, ~255 ms per frame. The best speed-for-quality "
-       "of the four: below Large the frame is mostly tracking, which does not "
-       "care how big the backbone is. Apache-2.0."),
-    JA("クリックと矩形のみ、1 フレームおよそ 255 ms。4つの中で速度対品質が"
-       "いちばん良い選択です。Large 未満ではフレームの処理はほとんど追跡で、"
-       "バックボーンの大きさはあまり効きません。Apache-2.0。"),
-    ZH_HANS("只支持点击和拉框，每帧约 255 毫秒。四者中速度与质量的平衡最好："
-            "在 Large 以下，每帧的工作主要是跟踪，而跟踪并不在乎主干有多大。"
-            "Apache-2.0。"),
-    ZH_HANT("只支援點擊和拉框，每格約 255 毫秒。四者中速度與品質的平衡最好："
-            "在 Large 以下，每格的工作主要是追蹤，而追蹤並不在乎骨幹有多大。"
-            "Apache-2.0。"),
-    KO("클릭과 상자만 되며 프레임당 약 255 ms. 넷 중 속도 대비 품질이 가장 "
-       "좋습니다. Large 아래에서는 프레임 처리의 대부분이 추적이고, 추적은 "
-       "백본 크기에 크게 좌우되지 않습니다. Apache-2.0."),
-    DE("Nur Klicks und Rahmen, etwa 255 ms je Bild. Das beste Verhältnis von "
-       "Tempo zu Qualität der vier: unterhalb von Large ist ein Bild vor allem "
-       "Nachverfolgung, und der ist die Größe des Rückgrats fast egal. "
-       "Apache-2.0."),
-    FR("Clics et cadres seulement, environ 255 ms par image. Le meilleur "
-       "rapport vitesse/qualité des quatre : en dessous de Large, le travail "
-       "par image est surtout du suivi, qui se moque de la taille du réseau. "
-       "Apache-2.0."),
-    ES("Solo clics y recuadros, unos 255 ms por fotograma. La mejor relación "
-       "velocidad-calidad de los cuatro: por debajo de Large, el trabajo por "
-       "fotograma es sobre todo seguimiento, al que le da igual el tamaño de "
-       "la red. Apache-2.0."),
-    PT("Só cliques e caixas, cerca de 255 ms por quadro. A melhor relação "
-       "velocidade/qualidade dos quatro: abaixo do Large, o trabalho por "
-       "quadro é sobretudo rastreamento, que não liga para o tamanho da rede. "
-       "Apache-2.0."),
-    IT("Solo clic e rettangoli, circa 255 ms per fotogramma. Il miglior "
-       "rapporto velocità/qualità dei quattro: sotto Large il lavoro per "
-       "fotogramma è soprattutto inseguimento, a cui la dimensione della rete "
-       "importa poco. Apache-2.0."),
-    NL("Alleen klikken en kaders, ongeveer 255 ms per beeld. De beste "
-       "verhouding snelheid/kwaliteit van de vier: onder Large is het werk per "
-       "beeld vooral volgen, en dat maalt niet om de grootte van het netwerk. "
-       "Apache-2.0."),
-    RU("Только щелчки и рамки, около 255 мс на кадр. Лучшее соотношение "
-       "скорости и качества из четырёх: ниже Large работа над кадром — это в "
-       "основном отслеживание, которому размер сети почти безразличен. "
-       "Apache-2.0."),
-    TR("Yalnızca tıklama ve kutu, kare başına ~255 ms. Dördü arasında hız/"
-       "kalite dengesi en iyi olanı: Large'ın altında kare başına iş çoğunlukla "
-       "izlemedir ve izleme omurganın büyüklüğüne pek aldırmaz. Apache-2.0."));
+    EN("The best speed-for-quality of the four: below Large a frame is mostly "
+       "tracking, which does not care how big the backbone is. Apache-2.0."),
+    JA("4つの中で速度対品質がいちばん良い選択です。Large 未満ではフレームの処"
+       "理はほとんど追跡で、バックボーンの大きさはあまり効きません。Apache-2"
+       ".0。"),
+    ZH_HANS("四者中速度与质量的平衡最好：在 Large 以下，每帧的工作主要是跟踪，而跟"
+            "踪并不在乎主干有多大。Apache-2.0。"),
+    ZH_HANT("四者中速度與品質的平衡最好：在 Large 以下，每格的工作主要是追蹤，而追"
+            "蹤並不在乎骨幹有多大。Apache-2.0。"),
+    KO("넷 중 속도 대비 품질이 가장 좋습니다. Large 아래에서는 프레임 처리의 대부분이 추적이고, 추적은 백본 크기에 크게 좌우되지 "
+       "않습니다. Apache-2.0."),
+    DE("Das beste Verhältnis von Tempo zu Qualität der vier: unterhalb von Large "
+       "ist ein Bild vor allem Nachverfolgung, und der ist die Größe des "
+       "Rückgrats fast egal. Apache-2.0."),
+    FR("Le meilleur rapport vitesse/qualité des quatre : en dessous de Large, le "
+       "travail par image est surtout du suivi, qui se moque de la taille du "
+       "réseau. Apache-2.0."),
+    ES("La mejor relación velocidad-calidad de los cuatro: por debajo de Large, "
+       "el trabajo por fotograma es sobre todo seguimiento, al que le da igual "
+       "el tamaño de la red. Apache-2.0."),
+    PT("A melhor relação velocidade/qualidade dos quatro: abaixo do Large, o "
+       "trabalho por quadro é sobretudo rastreamento, que não liga para o "
+       "tamanho da rede. Apache-2.0."),
+    IT("Il miglior rapporto velocità/qualità dei quattro: sotto Large il lavoro "
+       "per fotogramma è soprattutto inseguimento, a cui la dimensione della "
+       "rete importa poco. Apache-2.0."),
+    NL("De beste verhouding snelheid/kwaliteit van de vier: onder Large is het "
+       "werk per beeld vooral volgen, en dat maalt niet om de grootte van het "
+       "netwerk. Apache-2.0."),
+    RU("Лучшее соотношение скорости и качества из четырёх: ниже Large работа над "
+       "кадром — это в основном отслеживание, которому размер сети почти "
+       "безразличен. Apache-2.0."),
+    TR("Dördü arasında hız/kalite dengesi en iyi olanı: Large'ın altında kare "
+       "başına iş çoğunlukla izlemedir ve izleme omurganın büyüklüğüne pek "
+       "aldırmaz. Apache-2.0."));
 
 SS_MSG(model_sam21_tiny_label,
-    EN("SAM 2.1 Tiny (fastest)"),
-    JA("SAM 2.1 Tiny（最速）"), ZH_HANS("SAM 2.1 Tiny（最快）"),
-    ZH_HANT("SAM 2.1 Tiny（最快）"), KO("SAM 2.1 Tiny(가장 빠름)"),
-    DE("SAM 2.1 Tiny (am schnellsten)"), FR("SAM 2.1 Tiny (le plus rapide)"),
-    ES("SAM 2.1 Tiny (el más rápido)"), PT("SAM 2.1 Tiny (o mais rápido)"),
-    IT("SAM 2.1 Tiny (il più veloce)"), NL("SAM 2.1 Tiny (snelste)"),
-    RU("SAM 2.1 Tiny (самая быстрая)"), TR("SAM 2.1 Tiny (en hızlı)"));
+    EN("SAM 2.1 Tiny"),
+    JA("SAM 2.1 Tiny"),
+    ZH_HANS("SAM 2.1 Tiny"),
+    ZH_HANT("SAM 2.1 Tiny"),
+    KO("SAM 2.1 Tiny"),
+    DE("SAM 2.1 Tiny"),
+    FR("SAM 2.1 Tiny"),
+    ES("SAM 2.1 Tiny"),
+    PT("SAM 2.1 Tiny"),
+    IT("SAM 2.1 Tiny"),
+    NL("SAM 2.1 Tiny"),
+    RU("SAM 2.1 Tiny"),
+    TR("SAM 2.1 Tiny"));
 
 SS_MSG(model_sam21_tiny_blurb,
-    EN("Clicks and boxes only, 76 MB. Only 4% quicker than Small at ~245 ms "
-       "per frame, and it loses thin structure first -- take it for the "
-       "download size, not the speed. Apache-2.0."),
-    JA("クリックと矩形のみ、76 MB。1 フレームおよそ 245 ms で Small より 4% "
-       "速いだけですし、細い構造から先に失われます。速度ではなく"
-       "ダウンロードサイズのために選んでください。Apache-2.0。"),
-    ZH_HANS("只支持点击和拉框，76 MB。每帧约 245 毫秒，只比 Small 快 4%，"
-            "而且最先丢失细结构——选它是为了下载体积，不是速度。Apache-2.0。"),
-    ZH_HANT("只支援點擊和拉框，76 MB。每格約 245 毫秒，只比 Small 快 4%，"
-            "而且最先丟失細結構——選它是為了下載體積，不是速度。Apache-2.0。"),
-    KO("클릭과 상자만 되며 76 MB. 프레임당 약 245 ms로 Small보다 4% 빠를 뿐이고 "
-       "가느다란 구조를 가장 먼저 잃습니다. 속도가 아니라 내려받기 크기 때문에 "
+    EN("76 MB. Only about 4% quicker than Small, and it loses thin structure "
+       "first -- take it for the download size, not the speed. Apache-2.0."),
+    JA("76 MB。Small より 4% ほど速いだけですし、細い構造から先に失わ"
+       "れます。速度ではなくダウンロードサイズのために選んでください。Apache-"
+       "2.0。"),
+    ZH_HANS("76 MB。只比 Small 快 4% 左右，而且最先丢失细结构——选它是为"
+            "了下载体积，不是速度。Apache-2.0。"),
+    ZH_HANT("76 MB。只比 Small 快 4% 左右，而且最先丟失細結構——選它是為"
+            "了下載體積，不是速度。Apache-2.0。"),
+    KO("76 MB. Small보다 4% 정도 빠를 뿐이고 가느다란 구조를 가장 먼저 잃습니다. 속도가 아니라 내려받기 크기 때문에 "
        "고르세요. Apache-2.0."),
-    DE("Nur Klicks und Rahmen, 76 MB. Mit etwa 245 ms je Bild nur 4 % "
-       "schneller als Small, und feine Strukturen gehen zuerst verloren -- "
-       "wegen der Downloadgröße nehmen, nicht wegen des Tempos. Apache-2.0."),
-    FR("Clics et cadres seulement, 76 Mo. À environ 245 ms par image, à peine "
-       "4 % plus rapide que Small, et c'est lui qui perd les structures fines "
-       "en premier -- à prendre pour la taille du téléchargement, pas pour la "
-       "vitesse. Apache-2.0."),
-    ES("Solo clics y recuadros, 76 MB. Con unos 245 ms por fotograma, apenas "
-       "un 4 % más rápido que Small, y es el primero en perder las "
+    DE("76 MB. Nur etwa 4 % schneller als Small, und feine Strukturen gehen "
+       "zuerst verloren -- wegen der Downloadgröße nehmen, nicht wegen des "
+       "Tempos. Apache-2.0."),
+    FR("76 Mo. À peine 4 % plus rapide que Small, et c'est lui qui perd les "
+       "structures fines en premier -- à prendre pour la taille du "
+       "téléchargement, pas pour la vitesse. Apache-2.0."),
+    ES("76 MB. Apenas un 4 % más rápido que Small, y es el primero en perder las "
        "estructuras finas: tómelo por el tamaño de descarga, no por la "
        "velocidad. Apache-2.0."),
-    PT("Só cliques e caixas, 76 MB. Com cerca de 245 ms por quadro, apenas 4% "
-       "mais rápido que o Small, e é o primeiro a perder estruturas finas -- "
-       "escolha pelo tamanho do download, não pela velocidade. Apache-2.0."),
-    IT("Solo clic e rettangoli, 76 MB. A circa 245 ms per fotogramma è appena "
-       "il 4% più veloce di Small, ed è il primo a perdere le strutture "
-       "sottili: lo prenda per la dimensione del download, non per la "
+    PT("76 MB. Apenas 4% mais rápido que o Small, e é o primeiro a perder "
+       "estruturas finas -- escolha pelo tamanho do download, não pela "
+       "velocidade. Apache-2.0."),
+    IT("76 MB. Appena il 4% più veloce di Small, ed è il primo a perdere le "
+       "strutture sottili: lo prenda per la dimensione del download, non per la "
        "velocità. Apache-2.0."),
-    NL("Alleen klikken en kaders, 76 MB. Met ongeveer 245 ms per beeld maar "
-       "4% sneller dan Small, en het verliest fijne structuur het eerst -- "
-       "neem het om de downloadgrootte, niet om de snelheid. Apache-2.0."),
-    RU("Только щелчки и рамки, 76 МБ. При примерно 245 мс на кадр она быстрее "
-       "Small всего на 4 % и первой теряет тонкие структуры — берите её ради "
-       "размера загрузки, а не скорости. Apache-2.0."),
-    TR("Yalnızca tıklama ve kutu, 76 MB. Kare başına ~245 ms ile Small'dan "
-       "yalnızca %4 hızlı ve ince yapıyı ilk kaybeden o -- indirme boyutu "
-       "için alın, hız için değil. Apache-2.0."));
+    NL("76 MB. Maar 4% sneller dan Small, en het verliest fijne structuur het "
+       "eerst -- neem het om de downloadgrootte, niet om de snelheid. "
+       "Apache-2.0."),
+    RU("76 МБ. Быстрее Small всего на 4 % и первой теряет тонкие структуры — "
+       "берите её ради размера загрузки, а не скорости. Apache-2.0."),
+    TR("76 MB. Small'dan yalnızca %4 hızlı ve ince yapıyı ilk kaybeden o -- "
+       "indirme boyutu için alın, hız için değil. Apache-2.0."));
 
 // LEGAL -- human review in every language, see the block below.
 SS_MSG(license_sam3_title,
@@ -13162,6 +13234,411 @@ SS_MSG(use_sequence_help,
        "Yinelenen bir yapının -- bir döner merdivenin bir turu, iki yandan görülen "
        "simetrik bir kapı -- ikizinin üzerine katlanmasını önleyen budur. Kapalıyken "
        "yalnızca görüntü içeriğinden yeniden oluşturur."));
+
+// ---- Grounding DINO (a TextDetector for SAM 2.1), and BiRefNet ----
+
+SS_MSG(model_gdino_tiny_label,
+    EN("Grounding DINO Tiny"),
+    JA("Grounding DINO Tiny"),
+    ZH_HANS("Grounding DINO Tiny"),
+    ZH_HANT("Grounding DINO Tiny"),
+    KO("Grounding DINO Tiny"),
+    DE("Grounding DINO Tiny"),
+    FR("Grounding DINO Tiny"),
+    ES("Grounding DINO Tiny"),
+    PT("Grounding DINO Tiny"),
+    IT("Grounding DINO Tiny"),
+    NL("Grounding DINO Tiny"),
+    RU("Grounding DINO Tiny"),
+    TR("Grounding DINO Tiny"));
+
+SS_MSG(model_gdino_tiny_blurb,
+    EN("Finds what the text prompt names and hands the boxes to SAM 2.1, the way "
+       "lang-segment-anything does; each frame is searched on its own. With SAM "
+       "2.1 Base+, about a third of SAM 3's time. 690 MB, Apache-2.0."),
+    JA("テキストのプロンプトが指すものを見つけ、その矩形を SAM 2.1 に渡しま"
+       "す（lang-segment-anything と同じやり方）。フレームごと"
+       "に個別に探します。SAM 2.1 Base+ と組み合わせて、SAM 3 の"
+       "およそ 3 分の 1 の時間です。690 MB、Apache-2.0。"),
+    ZH_HANS("找出文字提示所指的目标，把框交给 SAM 2.1 分割，做法与 lang-s"
+            "egment-anything 相同；每帧单独搜索。配 SAM 2.1 Ba"
+            "se+ 时，耗时约为 SAM 3 的三分之一。690 MB，Apache-2"
+            ".0。"),
+    ZH_HANT("找出文字提示所指的目標，把框交給 SAM 2.1 分割，做法與 lang-s"
+            "egment-anything 相同；每格單獨搜尋。配 SAM 2.1 Ba"
+            "se+ 時，耗時約為 SAM 3 的三分之一。690 MB，Apache-2"
+            ".0。"),
+    KO("텍스트 프롬프트가 가리키는 것을 찾아 그 상자를 SAM 2.1에 넘깁니다(lang-segment-anything과 같은 방식). "
+       "프레임마다 따로 찾습니다. SAM 2.1 Base+와 함께 쓰면 SAM 3의 약 3분의 1 시간입니다. 690 MB, "
+       "Apache-2.0."),
+    DE("Findet, was die Texteingabe nennt, und gibt die Rahmen an SAM 2.1 "
+       "weiter, wie lang-segment-anything es macht; jedes Bild wird für sich "
+       "durchsucht. Mit SAM 2.1 Base+ etwa ein Drittel der Zeit von SAM 3. 690 "
+       "MB, Apache-2.0."),
+    FR("Trouve ce que nomme l'invite textuelle et passe les cadres à SAM 2.1, "
+       "comme le fait lang-segment-anything ; chaque image est cherchée "
+       "séparément. Avec SAM 2.1 Base+, environ un tiers du temps de SAM 3. 690 "
+       "Mo, Apache-2.0."),
+    ES("Encuentra lo que nombra la indicación de texto y pasa los recuadros a "
+       "SAM 2.1, como hace lang-segment-anything; cada fotograma se busca por "
+       "separado. Con SAM 2.1 Base+, alrededor de un tercio del tiempo de SAM 3. "
+       "690 MB, Apache-2.0."),
+    PT("Encontra o que o comando de texto nomeia e passa as caixas ao SAM 2.1, "
+       "como faz o lang-segment-anything; cada quadro é buscado separadamente. "
+       "Com o SAM 2.1 Base+, cerca de um terço do tempo do SAM 3. 690 MB, "
+       "Apache-2.0."),
+    IT("Trova ciò che il testo nomina e passa i rettangoli a SAM 2.1, come fa "
+       "lang-segment-anything; ogni fotogramma è cercato a sé. Con SAM 2.1 "
+       "Base+, circa un terzo del tempo di SAM 3. 690 MB, Apache-2.0."),
+    NL("Vindt wat de tekstprompt noemt en geeft de kaders door aan SAM 2.1, "
+       "zoals lang-segment-anything dat doet; elk beeld wordt apart doorzocht. "
+       "Met SAM 2.1 Base+ ongeveer een derde van de tijd van SAM 3. 690 MB, "
+       "Apache-2.0."),
+    RU("Находит то, что названо в текстовом запросе, и передаёт рамки SAM 2.1 — "
+       "так же, как lang-segment-anything; каждый кадр ищется отдельно. С SAM "
+       "2.1 Base+ — примерно треть времени SAM 3. 690 МБ, Apache-2.0."),
+    TR("Metin isteminin adını verdiği şeyi bulur ve kutuları SAM 2.1'e verir, "
+       "lang-segment-anything'in yaptığı gibi; her kare ayrı aranır. SAM 2.1 "
+       "Base+ ile SAM 3'ün süresinin yaklaşık üçte biri. 690 MB, Apache-2.0."));
+
+SS_MSG(model_gdino_base_label,
+    EN("Grounding DINO Base"),
+    JA("Grounding DINO Base"),
+    ZH_HANS("Grounding DINO Base"),
+    ZH_HANT("Grounding DINO Base"),
+    KO("Grounding DINO Base"),
+    DE("Grounding DINO Base"),
+    FR("Grounding DINO Base"),
+    ES("Grounding DINO Base"),
+    PT("Grounding DINO Base"),
+    IT("Grounding DINO Base"),
+    NL("Grounding DINO Base"),
+    RU("Grounding DINO Base"),
+    TR("Grounding DINO Base"));
+
+SS_MSG(model_gdino_base_blurb,
+    EN("The larger detector, and lang-segment-anything's default: finds more, "
+       "and small things more reliably, for a little more time than Tiny. 933 "
+       "MB, Apache-2.0."),
+    JA("大きい方の検出器で、lang-segment-anything の既定です。"
+       "Tiny より少し時間がかかりますが、より多くを、小さなものもより確実に見つ"
+       "けます。933 MB、Apache-2.0。"),
+    ZH_HANS("较大的检测器，也是 lang-segment-anything 的默认选择："
+            "比 Tiny 稍慢一点，但找到的更多，小物体也更可靠。933 MB，Apac"
+            "he-2.0。"),
+    ZH_HANT("較大的偵測器，也是 lang-segment-anything 的預設選擇："
+            "比 Tiny 稍慢一點，但找到的更多，小物體也更可靠。933 MB，Apac"
+            "he-2.0。"),
+    KO("더 큰 검출기이며 lang-segment-anything의 기본값입니다. Tiny보다 조금 더 걸리지만 더 많이, 작은 것도 더 "
+       "확실하게 찾습니다. 933 MB, Apache-2.0."),
+    DE("Der größere Detektor und die Voreinstellung von lang-segment-anything: "
+       "findet mehr, auch Kleines zuverlässiger, bei etwas mehr Zeit als Tiny. "
+       "933 MB, Apache-2.0."),
+    FR("Le détecteur plus grand, celui de lang-segment-anything par défaut : "
+       "trouve davantage, et les petites choses plus sûrement, pour un peu plus "
+       "de temps que Tiny. 933 Mo, Apache-2.0."),
+    ES("El detector más grande, el predeterminado de lang-segment-anything: "
+       "encuentra más, y las cosas pequeñas con más fiabilidad, a cambio de algo "
+       "más de tiempo que Tiny. 933 MB, Apache-2.0."),
+    PT("O detector maior, o padrão do lang-segment-anything: encontra mais, e "
+       "coisas pequenas com mais confiança, por um pouco mais de tempo que o "
+       "Tiny. 933 MB, Apache-2.0."),
+    IT("Il rilevatore più grande, quello predefinito di lang-segment-anything: "
+       "trova di più, e le cose piccole in modo più affidabile, per un po' più "
+       "di tempo di Tiny. 933 MB, Apache-2.0."),
+    NL("De grotere detector, en de standaard van lang-segment-anything: vindt "
+       "meer, en kleine dingen betrouwbaarder, voor iets meer tijd dan Tiny. 933 "
+       "MB, Apache-2.0."),
+    RU("Более крупный детектор, выбор lang-segment-anything по умолчанию: "
+       "находит больше, а мелкое — надёжнее, ценой чуть большего времени, чем "
+       "Tiny. 933 МБ, Apache-2.0."),
+    TR("Daha büyük algılayıcı ve lang-segment-anything'in varsayılanı: Tiny'den "
+       "biraz daha uzun sürer ama daha çoğunu, küçük şeyleri de daha güvenilir "
+       "bulur. 933 MB, Apache-2.0."));
+
+SS_MSG(model_birefnet_label,
+    EN("BiRefNet (most accurate for main subject)"),
+    JA("BiRefNet（主な被写体で最も正確）"),
+    ZH_HANS("BiRefNet（主体分割最准确）"),
+    ZH_HANT("BiRefNet（主體分割最準確）"),
+    KO("BiRefNet(주 피사체에 가장 정확)"),
+    DE("BiRefNet (am genauesten für das Hauptmotiv)"),
+    FR("BiRefNet (le plus précis pour le sujet principal)"),
+    ES("BiRefNet (el más preciso para el sujeto principal)"),
+    PT("BiRefNet (o mais preciso para o objeto principal)"),
+    IT("BiRefNet (il più preciso per il soggetto principale)"),
+    NL("BiRefNet (nauwkeurigst voor het hoofdonderwerp)"),
+    RU("BiRefNet (точнее всех для главного объекта)"),
+    TR("BiRefNet (ana özne için en doğru)"));
+
+SS_MSG(model_birefnet_blurb,
+    EN("Finds the main subject of every frame by itself -- for object captures "
+       "on a turntable or held in hand. No text and no clicks; about twice the "
+       "time of BiRefNet Lite. 444 MB, MIT."),
+    JA("各フレームの主な被写体を自動で見つけます。ターンテーブルに載せたり手に持った"
+       "りして撮る物体向けです。テキストもクリックも不要、BiRefNet Lite"
+       " のおよそ 2 倍の時間がかかります。444 MB、MIT。"),
+    ZH_HANS("自动找出每一帧的主体——适合放在转台上或拿在手里拍摄的物体。不需要文字，也不"
+            "需要点击；耗时约为 BiRefNet Lite 的两倍。444 MB，MIT"
+            "。"),
+    ZH_HANT("自動找出每一格的主體——適合放在轉台上或拿在手裡拍攝的物體。不需要文字，也不"
+            "需要點擊；耗時約為 BiRefNet Lite 的兩倍。444 MB，MIT"
+            "。"),
+    KO("모든 프레임의 주 피사체를 스스로 찾습니다. 턴테이블에 올리거나 손에 들고 찍는 물체용입니다. 텍스트도 클릭도 필요 없고 "
+       "BiRefNet Lite의 약 두 배 시간이 걸립니다. 444 MB, MIT."),
+    DE("Findet das Hauptmotiv jedes Bildes von selbst -- für Objekte auf dem "
+       "Drehteller oder in der Hand. Kein Text, keine Klicks; etwa doppelt so "
+       "lange wie BiRefNet Lite. 444 MB, MIT."),
+    FR("Trouve seul le sujet principal de chaque image -- pour les objets filmés "
+       "sur un plateau tournant ou tenus en main. Ni texte ni clics ; environ "
+       "deux fois le temps de BiRefNet Lite. 444 Mo, MIT."),
+    ES("Encuentra por sí solo el sujeto principal de cada fotograma: para "
+       "objetos sobre una plataforma giratoria o sostenidos en la mano. Sin "
+       "texto ni clics; alrededor del doble de tiempo que BiRefNet Lite. 444 MB, "
+       "MIT."),
+    PT("Encontra sozinho o objeto principal de cada quadro -- para objetos numa "
+       "base giratória ou segurados na mão. Sem texto e sem cliques; cerca do "
+       "dobro do tempo do BiRefNet Lite. 444 MB, MIT."),
+    IT("Trova da solo il soggetto principale di ogni fotogramma: per oggetti su "
+       "un piatto girevole o tenuti in mano. Niente testo né clic; circa il "
+       "doppio del tempo di BiRefNet Lite. 444 MB, MIT."),
+    NL("Vindt uit zichzelf het hoofdonderwerp van elk beeld -- voor objecten op "
+       "een draaitafel of in de hand. Geen tekst en geen klikken; ongeveer twee "
+       "keer de tijd van BiRefNet Lite. 444 MB, MIT."),
+    RU("Сам находит главный объект каждого кадра — для предметов на поворотном "
+       "столе или в руке. Без текста и щелчков; примерно вдвое дольше BiRefNet "
+       "Lite. 444 МБ, MIT."),
+    TR("Her karenin ana öznesini kendiliğinden bulur: döner tablada ya da elde "
+       "çekilen nesneler için. Metin de tıklama da gerekmez; BiRefNet Lite'ın "
+       "yaklaşık iki katı süre. 444 MB, MIT."));
+
+SS_MSG(model_birefnet_lite_label,
+    EN("BiRefNet Lite (main subject, no prompt)"),
+    JA("BiRefNet Lite（主な被写体、プロンプト不要）"),
+    ZH_HANS("BiRefNet Lite（主体，无需提示）"),
+    ZH_HANT("BiRefNet Lite（主體，無需提示）"),
+    KO("BiRefNet Lite(주 피사체, 프롬프트 불필요)"),
+    DE("BiRefNet Lite (Hauptmotiv, ohne Prompt)"),
+    FR("BiRefNet Lite (sujet principal, sans consigne)"),
+    ES("BiRefNet Lite (sujeto principal, sin indicación)"),
+    PT("BiRefNet Lite (objeto principal, sem comando)"),
+    IT("BiRefNet Lite (soggetto principale, senza prompt)"),
+    NL("BiRefNet Lite (hoofdonderwerp, zonder prompt)"),
+    RU("BiRefNet Lite (главный объект, без запроса)"),
+    TR("BiRefNet Lite (ana özne, istem yok)"));
+
+SS_MSG(model_birefnet_lite_blurb,
+    EN("The smaller BiRefNet: twice as fast, with slightly less certain edges. "
+       "178 MB, MIT."),
+    JA("小さい BiRefNet。2 倍速く、輪郭はやや曖昧です。178 MB、MI"
+       "T。"),
+    ZH_HANS("较小的 BiRefNet：快一倍，边缘稍欠准确。178 MB，MIT。"),
+    ZH_HANT("較小的 BiRefNet：快一倍，邊緣稍欠準確。178 MB，MIT。"),
+    KO("작은 BiRefNet: 두 배 빠르고 윤곽은 조금 덜 확실합니다. 178 MB, MIT."),
+    DE("Das kleinere BiRefNet: doppelt so schnell, mit etwas unsichereren "
+       "Kanten. 178 MB, MIT."),
+    FR("Le BiRefNet plus petit : deux fois plus rapide, avec des bords un peu "
+       "moins sûrs. 178 Mo, MIT."),
+    ES("El BiRefNet pequeño: el doble de rápido, con bordes algo menos seguros. "
+       "178 MB, MIT."),
+    PT("O BiRefNet menor: duas vezes mais rápido, com bordas um pouco menos "
+       "precisas. 178 MB, MIT."),
+    IT("Il BiRefNet più piccolo: veloce il doppio, con bordi un po' meno sicuri. "
+       "178 MB, MIT."),
+    NL("De kleinere BiRefNet: twee keer zo snel, met iets minder zekere randen. "
+       "178 MB, MIT."),
+    RU("Меньший BiRefNet: вдвое быстрее, края чуть менее уверенные. 178 МБ, MIT."),
+    TR("Küçük BiRefNet: iki kat hızlı, kenarları biraz daha az kesin. 178 MB, "
+       "MIT."));
+
+SS_MSG(license_gdino_title,
+    EN("Grounding DINO licence (Apache-2.0)"),
+    JA("Grounding DINO のライセンス（Apache-2.0）"),
+    ZH_HANS("Grounding DINO 许可协议（Apache-2.0）"),
+    ZH_HANT("Grounding DINO 授權條款（Apache-2.0）"),
+    KO("Grounding DINO 라이선스(Apache-2.0)"),
+    DE("Lizenz von Grounding DINO (Apache-2.0)"),
+    FR("Licence de Grounding DINO (Apache-2.0)"),
+    ES("Licencia de Grounding DINO (Apache-2.0)"),
+    PT("Licença do Grounding DINO (Apache-2.0)"),
+    IT("Licenza di Grounding DINO (Apache-2.0)"),
+    NL("Licentie van Grounding DINO (Apache-2.0)"),
+    RU("Лицензия Grounding DINO (Apache-2.0)"),
+    TR("Grounding DINO lisansı (Apache-2.0)"));
+
+SS_MSG(license_gdino_summary,
+    EN("Grounding DINO (IDEA Research) is released under the Apache 2.0 licence. "
+       "Nothing unusual to agree to; it is downloaded rather than bundled only "
+       "to keep the app small."),
+    JA("Grounding DINO（IDEA Research）は Apache "
+       "2.0 ライセンスで公開されています。特別に同意が必要なことはありません。同"
+       "梱せずダウンロードにしているのは、アプリを小さく保つためだけです。"),
+    ZH_HANS("Grounding DINO（IDEA Research）以 Apache "
+            "2.0 许可协议发布。没有什么特别需要同意的；之所以下载而不是打包，只是为了"
+            "让应用保持小巧。"),
+    ZH_HANT("Grounding DINO（IDEA Research）以 Apache "
+            "2.0 授權條款發布。沒有什麼特別需要同意的；之所以下載而不是打包，只是為了"
+            "讓應用保持小巧。"),
+    KO("Grounding DINO(IDEA Research)는 Apache 2.0 라이선스로 공개되어 있습니다. 특별히 동의할 것은 "
+       "없습니다. 함께 담지 않고 내려받게 한 것은 앱을 작게 유지하기 위해서일 뿐입니다."),
+    DE("Grounding DINO (IDEA Research) steht unter der Apache-2.0-Lizenz. Es ist "
+       "nichts Ungewöhnliches zuzustimmen; heruntergeladen statt mitgeliefert "
+       "wird es nur, damit die Anwendung klein bleibt."),
+    FR("Grounding DINO (IDEA Research) est publié sous licence Apache 2.0. Rien "
+       "d'inhabituel à accepter ; il est téléchargé plutôt qu'intégré uniquement "
+       "pour garder l'application légère."),
+    ES("Grounding DINO (IDEA Research) se publica con licencia Apache 2.0. No "
+       "hay nada inusual que aceptar; se descarga en lugar de incluirse solo "
+       "para que la aplicación siga siendo pequeña."),
+    PT("O Grounding DINO (IDEA Research) é publicado sob a licença Apache 2.0. "
+       "Nada de incomum a aceitar; é baixado em vez de incluído só para manter o "
+       "aplicativo pequeno."),
+    IT("Grounding DINO (IDEA Research) è pubblicato con licenza Apache 2.0. "
+       "Niente di insolito da accettare; viene scaricato invece che incluso solo "
+       "per tenere piccola l'applicazione."),
+    NL("Grounding DINO (IDEA Research) is uitgebracht onder de Apache "
+       "2.0-licentie. Niets ongewoons om mee in te stemmen; het wordt gedownload "
+       "in plaats van meegeleverd, alleen om de app klein te houden."),
+    RU("Grounding DINO (IDEA Research) выпущен под лицензией Apache 2.0. Ничего "
+       "необычного соглашаться не нужно; он скачивается, а не входит в комплект, "
+       "только чтобы приложение оставалось небольшим."),
+    TR("Grounding DINO (IDEA Research) Apache 2.0 lisansıyla yayımlanır. "
+       "Onaylanacak olağandışı bir şey yok; uygulama küçük kalsın diye birlikte "
+       "gelmez, indirilir."));
+
+SS_MSG(license_birefnet_title,
+    EN("BiRefNet License (MIT)"),
+    JA("BiRefNet ライセンス（MIT）"),
+    ZH_HANS("BiRefNet 许可协议（MIT）"),
+    ZH_HANT("BiRefNet 授權條款（MIT）"),
+    KO("BiRefNet 라이선스(MIT)"),
+    DE("BiRefNet-Lizenz (MIT)"),
+    FR("Licence BiRefNet (MIT)"),
+    ES("Licencia de BiRefNet (MIT)"),
+    PT("Licença do BiRefNet (MIT)"),
+    IT("Licenza BiRefNet (MIT)"),
+    NL("BiRefNet-licentie (MIT)"),
+    RU("Лицензия BiRefNet (MIT)"),
+    TR("BiRefNet Lisansı (MIT)"));
+
+SS_MSG(license_birefnet_summary,
+    EN("BiRefNet (Peng Zheng et al.) is released under the MIT licence. Nothing "
+       "unusual to agree to; it is downloaded rather than bundled only to keep the app "
+       "small."),
+    JA("BiRefNet（Peng Zheng ほか）は MIT ライセンスで公開されています。特別に同意が"
+       "必要なことはありません。同梱せずダウンロードにしているのは、アプリを小さく"
+       "保つためだけです。"),
+    ZH_HANS("BiRefNet（Peng Zheng 等）以 MIT 许可协议发布。没有什么特别需要同意的；"
+            "之所以下载而不是打包，只是为了让应用保持小巧。"),
+    ZH_HANT("BiRefNet（Peng Zheng 等）以 MIT 授權條款發布。沒有什麼特別需要同意的；"
+            "之所以下載而不是打包，只是為了讓應用保持小巧。"),
+    KO("BiRefNet(Peng Zheng 외)은 MIT 라이선스로 공개되어 있습니다. 특별히 동의할 "
+       "것은 없습니다. 함께 담지 않고 내려받게 한 것은 앱을 작게 유지하기 위해서일 "
+       "뿐입니다."),
+    DE("BiRefNet (Peng Zheng u. a.) steht unter der MIT-Lizenz. Es ist nichts "
+       "Ungewöhnliches zuzustimmen; heruntergeladen statt mitgeliefert wird es nur, "
+       "damit die Anwendung klein bleibt."),
+    FR("BiRefNet (Peng Zheng et al.) est publié sous licence MIT. Rien d'inhabituel à "
+       "accepter ; il est téléchargé plutôt qu'intégré uniquement pour garder "
+       "l'application légère."),
+    ES("BiRefNet (Peng Zheng et al.) se publica con licencia MIT. No hay nada inusual "
+       "que aceptar; se descarga en lugar de incluirse solo para que la aplicación siga "
+       "siendo pequeña."),
+    PT("O BiRefNet (Peng Zheng et al.) é publicado sob a licença MIT. Nada de incomum a "
+       "aceitar; é baixado em vez de incluído só para manter o aplicativo pequeno."),
+    IT("BiRefNet (Peng Zheng et al.) è pubblicato con licenza MIT. Niente di insolito "
+       "da accettare; viene scaricato invece che incluso solo per tenere piccola "
+       "l'applicazione."),
+    NL("BiRefNet (Peng Zheng e.a.) is uitgebracht onder de MIT-licentie. Niets ongewoons "
+       "om mee in te stemmen; het wordt gedownload in plaats van meegeleverd, alleen om "
+       "de app klein te houden."),
+    RU("BiRefNet (Peng Zheng и др.) выпущен под лицензией MIT. Ничего необычного "
+       "соглашаться не нужно; он скачивается, а не входит в комплект, только чтобы "
+       "приложение оставалось небольшим."),
+    TR("BiRefNet (Peng Zheng ve ark.) MIT lisansıyla yayımlanır. Onaylanacak olağandışı "
+       "bir şey yok; uygulama küçük kalsın diye birlikte gelmez, indirilir."));
+
+SS_MSG(mask_subject_note,
+    EN("This model finds the main subject of each frame by itself: no prompt and no "
+       "clicks are needed."),
+    JA("このモデルは各フレームの主な被写体を自動で見つけます。プロンプトもクリックも"
+       "不要です。"),
+    ZH_HANS("这个模型会自动找出每一帧的主体：不需要提示词，也不需要点击。"),
+    ZH_HANT("這個模型會自動找出每一格的主體：不需要提示詞，也不需要點擊。"),
+    KO("이 모델은 각 프레임의 주 피사체를 스스로 찾습니다. 프롬프트도 클릭도 필요 "
+       "없습니다."),
+    DE("Dieses Modell findet das Hauptmotiv jedes Bildes von selbst: kein Prompt und "
+       "keine Klicks nötig."),
+    FR("Ce modèle trouve seul le sujet principal de chaque image : ni consigne ni clic "
+       "ne sont nécessaires."),
+    ES("Este modelo encuentra por sí solo el sujeto principal de cada fotograma: no "
+       "hacen falta indicaciones ni clics."),
+    PT("Este modelo encontra sozinho o objeto principal de cada quadro: não precisa de "
+       "comando nem de cliques."),
+    IT("Questo modello trova da solo il soggetto principale di ogni fotogramma: non "
+       "servono prompt né clic."),
+    NL("Dit model vindt uit zichzelf het hoofdonderwerp van elk beeld: geen prompt en "
+       "geen klikken nodig."),
+    RU("Эта модель сама находит главный объект каждого кадра: ни запрос, ни щелчки не "
+       "нужны."),
+    TR("Bu model her karenin ana öznesini kendiliğinden bulur: istem de tıklama da "
+       "gerekmez."));
+
+SS_MSG(mask_subject_keep,
+    EN("Keep the subject"),
+    JA("被写体を残す"),
+    ZH_HANS("保留主体"),
+    ZH_HANT("保留主體"),
+    KO("피사체 남기기"),
+    DE("Motiv behalten"),
+    FR("Garder le sujet"),
+    ES("Conservar el sujeto"),
+    PT("Manter o objeto"),
+    IT("Tenere il soggetto"),
+    NL("Onderwerp behouden"),
+    RU("Оставить объект"),
+    TR("Özneyi koru"));
+
+SS_MSG(mask_subject_remove,
+    EN("Remove the subject"),
+    JA("被写体を取り除く"),
+    ZH_HANS("移除主体"),
+    ZH_HANT("移除主體"),
+    KO("피사체 제거"),
+    DE("Motiv entfernen"),
+    FR("Retirer le sujet"),
+    ES("Quitar el sujeto"),
+    PT("Remover o objeto"),
+    IT("Togliere il soggetto"),
+    NL("Onderwerp verwijderen"),
+    RU("Убрать объект"),
+    TR("Özneyi kaldır"));
+
+SS_MSG(mask_subject_polarity_help,
+    EN("Keep the subject for an object capture: everything around it is ignored. "
+       "Remove it when it is the thing in the way."),
+    JA("物体の撮影では被写体を残します。周りはすべて無視されます。被写体が邪魔物の"
+       "ときは取り除きます。"),
+    ZH_HANS("拍摄物体时保留主体：周围的一切都会被忽略。主体本身碍事时就把它移除。"),
+    ZH_HANT("拍攝物體時保留主體：周圍的一切都會被忽略。主體本身礙事時就把它移除。"),
+    KO("물체 촬영에서는 피사체를 남깁니다. 주변은 모두 무시됩니다. 피사체가 방해물일 "
+       "때는 제거합니다."),
+    DE("Für eine Objektaufnahme das Motiv behalten: alles darum herum wird ignoriert. "
+       "Entfernen, wenn es selbst im Weg ist."),
+    FR("Gardez le sujet pour la capture d'un objet : tout ce qui l'entoure est ignoré. "
+       "Retirez-le quand c'est lui qui gêne."),
+    ES("Conserve el sujeto al capturar un objeto: todo lo que lo rodea se ignora. "
+       "Quítelo cuando sea él lo que estorba."),
+    PT("Mantenha o objeto ao capturar um objeto: tudo ao redor é ignorado. Remova-o "
+       "quando ele é o que atrapalha."),
+    IT("Tenete il soggetto per la ripresa di un oggetto: tutto ciò che lo circonda "
+       "viene ignorato. Toglietelo quando è lui a dare fastidio."),
+    NL("Behoud het onderwerp bij een objectopname: alles eromheen wordt genegeerd. "
+       "Verwijder het als het zelf in de weg zit."),
+    RU("Оставьте объект при съёмке предмета: всё вокруг будет проигнорировано. "
+       "Уберите его, когда мешает он сам."),
+    TR("Nesne çekiminde özneyi koruyun: çevresindeki her şey yok sayılır. Engel olan "
+       "özneyse onu kaldırın."));
 
 }  // namespace dataset
 }  // namespace msg

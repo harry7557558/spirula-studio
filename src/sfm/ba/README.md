@@ -80,6 +80,16 @@ breakdown from timestamp queries, printed after the solve),
 
 ## Design notes
 
+### Pose priors
+
+A sensor's factors on the poses (`sfm/ba/Priors.h`, `docs/notes/sensor-priors.md`)
+reach both solvers as a CSR of 6x6 frame blocks and a gradient, assembled on
+the host every LM iteration at the accepted parameters: `prior_add_s` /
+`prior_add_g` on the dense path, `prior_add_m` (preconditioner) and
+`prior_matvec` (the product) on CG, the same three on the host. The cost adds
+the priors at the trial poses the iteration reads back. `BAProblem::priors`
+null leaves everything as it was.
+
 ### Parameterization & camera groups
 
 Each *frame* has a 6-DOF pose (angle-axis + translation); an image is a frame

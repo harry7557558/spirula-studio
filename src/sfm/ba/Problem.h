@@ -55,8 +55,13 @@ inline uint32_t extFreeCount(uint32_t mask) {
     return n;
 }
 
+namespace sfm { struct PosePriors; }
+
 struct BAProblem {
     uint32_t num_images = 0, num_points = 0, num_obs = 0;
+    // Camera-side priors on the poses (sfm/ba/Priors.h), on BA image indices;
+    // null or empty leaves both solvers exactly as they were.
+    const sfm::PosePriors* priors = nullptr;
     // Pose blocks. Without rigs num_frames == num_images and image_frame is
     // the identity; with them, images must be ordered by frame (finalizeTables
     // checks), which is what lets the host solver own a frame's rows per task.

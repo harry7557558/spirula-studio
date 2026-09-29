@@ -21,6 +21,7 @@
 #include "engine/Engine.h"
 #include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
+#include "data/Region.h"
 #include "app/webviewer/RenderWorker.h"
 #include "config/TrainConfig.h"
 #include "i18n/TimeFormat.h"
@@ -34,6 +35,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -243,6 +245,17 @@ public:
 
     // Parse the dataset + bake POST-split cameras. No GPU work.
     void load_dataset();
+    // --partition / --partition-part: keeps one part's frames and points of a
+    // freshly parsed dataset. A no-op without the flag.
+    void apply_partition_config(ParsedDataset& d);
+    // The region the run may grow in (data/Region.h): the partition's part,
+    // or --roi-region. Null for all of space.
+    std::shared_ptr<const Region> roi;
+    // The whole seed cloud (parsed frame) and which of it the part owns, kept
+    // from before the partition cut it down: what the region masks project.
+    std::vector<double> roi_cloud;
+    std::vector<uint8_t> roi_cloud_inside;
+    void setup_region();
 
     // Create the output dir, dump config.json, reset + seed the engine,
     // set up the DataManager and bilagrid/PPISP. Requires load_dataset().

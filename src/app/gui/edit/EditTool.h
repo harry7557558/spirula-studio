@@ -79,10 +79,6 @@ struct ToolRow {
     ToolId id;
     const char* key;        // what the button prints in its corner
     int imgui_key;          // ImGuiKey, as an int so this header needs no imgui
-    // Whether that key is also one of NavCamera's fly keys (WASDQE). While
-    // the Navigate tool is the active one those belong to the camera, so this
-    // is the row the key handler skips.
-    bool fly_key;
 };
 const ToolRow* tool_table();
 const spirula::i18n::Msg& tool_label(ToolId t);

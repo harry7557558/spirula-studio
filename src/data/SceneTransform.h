@@ -38,4 +38,7 @@ std::string scene_transform_json(const SceneTransform& train_from_world,
                                  const std::string& center_mode,
                                  const double center_world[3]);
 
+// The file back: false when it is missing or not one of these.
+bool read_scene_transform_json(const std::string& path, SceneTransform& train_from_world);
+
 }  // namespace spirula

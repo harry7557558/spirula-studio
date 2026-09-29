@@ -52,6 +52,7 @@ static void test_dataset_preset() {
     s.use_found_masks = false;
     s.border_enable = true;
     s.mask_model_id = "sam2.1_hiera_large";
+    s.mask_detector_id = "gdino-base";
     s.frame_shapes = "selfie stick";
 
     s.sfm.prep.resume = false;
@@ -85,6 +86,7 @@ static void test_dataset_preset() {
     s.mask.max_image_size = 1024;
     s.mask.threshold = 0.75f;
     s.mask.nms = 0.4f;
+    s.mask.box_threshold = 0.45f;
     s.sfm.prep.mask_memory = true;
     s.sfm.prep.mask_detect_every = 4;
     s.sfm.prep.mask_memory_frames = 5;
@@ -167,6 +169,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.use_found_masks, s.use_found_masks);
     CHECK_EQ(b.border_enable, s.border_enable);
     CHECK_EQ(b.mask_model_id, s.mask_model_id);
+    CHECK_EQ(b.mask_detector_id, s.mask_detector_id);
     CHECK_EQ(b.frame_shapes, s.frame_shapes);
 
     CHECK_EQ(b.sfm.prep.resume, s.sfm.prep.resume);
@@ -200,6 +203,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.mask.max_image_size, s.mask.max_image_size);
     CHECK_EQ(b.mask.threshold, s.mask.threshold);
     CHECK_EQ(b.mask.nms, s.mask.nms);
+    CHECK_EQ(b.mask.box_threshold, s.mask.box_threshold);
     CHECK_EQ(b.sfm.prep.mask_memory, s.sfm.prep.mask_memory);
     CHECK_EQ(b.sfm.prep.mask_detect_every, s.sfm.prep.mask_detect_every);
     CHECK_EQ(b.sfm.prep.mask_memory_frames, s.sfm.prep.mask_memory_frames);
@@ -335,6 +339,7 @@ static void test_sanitize() {
     s.sfm.prep.sharp_window = -3;
     s.sfm.prep.adaptive_range = 0.1f;
     s.mask.threshold = 4.0f;
+    s.mask.box_threshold = -2.0f;
     s.colmap.matcher = 0;
     s.colmap.camera_model = "NONSENSE";
     gui::sanitize_dataset_settings(s);
@@ -344,6 +349,7 @@ static void test_sanitize() {
     CHECK(s.sfm.prep.sharp_window >= 1);
     CHECK(s.sfm.prep.adaptive_range >= 1.0f);
     CHECK(s.mask.threshold <= 1.0f);
+    CHECK(s.mask.box_threshold >= 0.0f);
     CHECK(s.colmap.matcher >= 1);
     CHECK_EQ(s.colmap.camera_model, std::string("OPENCV"));
 

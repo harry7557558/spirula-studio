@@ -26,6 +26,8 @@
 #include <vector>
 
 // Static per-run info the render path needs (subset of model config).
+namespace spirula { struct RegionOverlay; }
+
 struct ViewerRenderConfig {
     std::string primitive = "3dgs";
     bool  packed = false;
@@ -93,6 +95,9 @@ struct ViewRequest {
     // Frustum-size multiplier applied to cfg.base_camera_size when
     // show_cams is on (user-facing "camera size" slider).
     float cam_size_scale = 1.0f;
+    // The region of interest's outline (RenderWorker::set_region_overlay),
+    // pinhole views only.
+    bool show_roi = false;
     // Double-click pick: when >= 0, also return the 3D point under this
     // pixel (render resolution), read from the ray-depth channel the render
     // already downloads -- no extra VRAM or render pass.
@@ -157,6 +162,9 @@ public:
     bool take_result(uint64_t id, ViewResult& out, double timeout_s);
 
     const ViewerRenderConfig& config() const;
+    // Drawn over frames that ask for it (ViewRequest::show_roi), in the
+    // training frame; null for none.
+    void set_region_overlay(std::shared_ptr<const spirula::RegionOverlay> ov);
 
     // Viewable buffer keys for this config (the Python /buffers set; the
     // distortion buffers appear only when a distortion regularizer is

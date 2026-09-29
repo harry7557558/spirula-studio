@@ -66,18 +66,24 @@ double compute_normalized_transform(const double* c2w, int64_t n,
         R_out[0] = R_out[4] = R_out[8] = 1.0;
     }
     if (n <= 0) return 1.0;
+    std::vector<double> pos(n * 3);
+    for (int64_t i = 0; i < n; i++)
+        for (int r = 0; r < 3; r++) pos[i*3 + r] = c2w[i*12 + r*4 + 3];
+    const std::vector<char> inlier = outlier_keep_mask(pos, n, kStrayCameraThreshold);
     double up[3] = {0, 0, 0}, center[3] = {0, 0, 0};
+    int64_t n_inlier = 0;
     for (int64_t i = 0; i < n; i++) {
         double u[3] = {0, 1, 0};
         if (exif_orientation) exif_up_gl(exif_orientation[i], u);
-        for (int r = 0; r < 3; r++) {
+        for (int r = 0; r < 3; r++)
             for (int k = 0; k < 3; k++) up[r] += c2w[i*12 + r*4 + k] * u[k];
-            center[r] += c2w[i*12 + r*4 + 3];
-        }
+        if (!inlier[i]) continue;
+        n_inlier++;
+        for (int r = 0; r < 3; r++) center[r] += pos[i*3 + r];
     }
     double un = std::sqrt(up[0]*up[0] + up[1]*up[1] + up[2]*up[2]);
     for (auto& u : up) u /= std::max(un, 1e-12);
-    for (auto& c : center) c /= (double)n;
+    for (auto& c : center) c /= (double)n_inlier;
 
     double axis[3] = {up[1], -up[0], 0.0};              // up x z
     double s = std::sqrt(axis[0]*axis[0] + axis[1]*axis[1]);
@@ -100,6 +106,7 @@ double compute_normalized_transform(const double* c2w, int64_t n,
 
     double max_abs = 0.0;
     for (int64_t i = 0; i < n; i++) {
+        if (!inlier[i]) continue;
         double d[3];
         for (int r = 0; r < 3; r++) d[r] = c2w[i*12 + r*4 + 3] - center[r];
         for (int r = 0; r < 3; r++)
@@ -139,6 +146,12 @@ void invert_affine4x4(const double in[16], double out[16]) {
     }
     out[12] = out[13] = out[14] = 0.0;
     out[15] = 1.0;
+}
+
+void train_to_normalized_inverse(const ParsedDataset& ds, double out[16]) {
+    double T[16];
+    for (int i = 0; i < 16; i++) T[i] = ds.train_to_normalized[i];
+    invert_affine4x4(T, out);
 }
 
 
@@ -503,12 +516,8 @@ CenterTable scene_centers(const double* c2w, int64_t n, const double* points,
 CenterTable scene_centers(const ParsedDataset& ds) {
     const int64_t n = std::min<int64_t>(ds.num_cameras, (int64_t)ds.c2w.size() / 12);
     std::vector<double> c2w(ds.c2w.begin(), ds.c2w.begin() + n * 12);
-    double A[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    if (ds.train_frame_scale != 1.0f) {
-        double T[16];
-        for (int i = 0; i < 16; i++) T[i] = ds.train_to_normalized[i];
-        invert_affine4x4(T, A);
-    }
+    double A[16];
+    train_to_normalized_inverse(ds, A);
     return scene_centers_t(c2w.data(), n, ds.points.xyz.data(), ds.points.num(), 3, A);
 }
 
@@ -523,7 +532,9 @@ std::vector<char> outlier_keep_mask(const std::vector<double>& pos,
         double dx = pos[i*3] - y[0], dy = pos[i*3+1] - y[1], dz = pos[i*3+2] - y[2];
         dist[i] = std::sqrt(dx*dx + dy*dy + dz*dz);
     }
-    double mad = median_of(dist);
+    std::vector<double> sorted = dist;   // median_of reorders its argument
+    double mad = median_of(sorted);
+    if (!(mad > 0.0)) return keep;   // most cameras at one spot: no spread to judge by
     for (int64_t i = 0; i < n; i++)
         keep[i] = dist[i] <= (double)threshold * mad;
     return keep;

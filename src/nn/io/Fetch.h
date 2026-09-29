@@ -24,7 +24,13 @@ struct FetchFile {
     const char* url = nullptr;
     const char* sha256 = nullptr;
     uint64_t    bytes = 0;         // approximate, for the "downloading N MB" line
+    // A second host that already carries the same bytes; null for the
+    // project's own mirror (core/ModelMirror.h), which re-hosts under `file`.
+    const char* mirror = nullptr;
 };
+
+// Where `f` is fetched from when `url` fails.
+std::string mirror_url(const FetchFile& f);
 
 // <cache>/spirula-studio/models. Mirrors src/app/AppPaths.cpp's
 // cache_dir(); duplicated rather than shared because src/nn/ sits below

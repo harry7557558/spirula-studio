@@ -70,6 +70,43 @@ inline Mat3 angleAxisToRotation(const Vec3& aa) {
             k.z * k.x * v - k.y * s, k.z * k.y * v + k.x * s, c + k.z * k.z * v};
 }
 
+// SO(3) exponential map and its Jacobians (Barfoot, "State Estimation for
+// Robotics", 7.1). Left: Exp(a + d) ~ Exp(Jl(a) d) Exp(a); right: ~ Exp(a)
+// Exp(Jr(a) d), Jr(a) = Jl(-a).
+inline Mat3 so3Exp(const Vec3& phi) { return angleAxisToRotation(phi); }
+inline Vec3 so3Log(const Mat3& R) { return rotationToAngleAxis(R); }
+
+inline Mat3 so3RightJacobian(const Vec3& phi) {
+    const double th = phi.norm();
+    const Mat3 K = crossMatrix(phi);
+    const Mat3 K2 = mul(K, K);
+    double a, b;
+    if (th < 1e-5) {
+        a = 0.5;
+        b = 1.0 / 6.0;
+    } else {
+        a = (1.0 - std::cos(th)) / (th * th);
+        b = (th - std::sin(th)) / (th * th * th);
+    }
+    Mat3 J = mat3Identity();
+    for (int i = 0; i < 9; i++) J[i] += -a * K[i] + b * K2[i];
+    return J;
+}
+inline Mat3 so3LeftJacobian(const Vec3& phi) { return so3RightJacobian(phi * -1.0); }
+
+// Jl^-1(phi) = I - K/2 + (1/th^2 - (1 + cos th) / (2 th sin th)) K^2.
+inline Mat3 so3LeftJacobianInv(const Vec3& phi) {
+    const double th = phi.norm();
+    const Mat3 K = crossMatrix(phi);
+    const Mat3 K2 = mul(K, K);
+    const double c = th < 1e-5 ? 1.0 / 12.0
+                               : 1.0 / (th * th) - (1.0 + std::cos(th)) / (2.0 * th * std::sin(th));
+    Mat3 J = mat3Identity();
+    for (int i = 0; i < 9; i++) J[i] += -0.5 * K[i] + c * K2[i];
+    return J;
+}
+inline Mat3 so3RightJacobianInv(const Vec3& phi) { return so3LeftJacobianInv(phi * -1.0); }
+
 // Camera center in world coordinates: c = -R^T t.
 inline Vec3 cameraCenter(const Pose& p) {
     Mat3 Rt = transpose(p.R);

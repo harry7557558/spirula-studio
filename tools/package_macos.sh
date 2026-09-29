@@ -145,11 +145,20 @@ echo "    signed ($IDENTITY) and verified"
 if [ "$MAKE_DMG" = 1 ]; then
     DMG="$OUT_DIR/Spirula Studio.dmg"
     STAGE=$(mktemp -d)
+    trap "rm -rf '$STAGE'" EXIT
+
     cp -R "$APP" "$STAGE/"
     ln -s /Applications "$STAGE/Applications"
     rm -f "$DMG"
-    hdiutil create -quiet -volname "Spirula Studio" -srcfolder "$STAGE" \
-                   -ov -format UDZO "$DMG"
+
+    if ! hdiutil create -volname "Spirula Studio" -srcfolder "$STAGE" \
+                       -ov -format UDZO "$DMG"; then
+        echo "package_macos.sh: hdiutil create failed" >&2
+        echo "  Check disk space: $(df -h "$OUT_DIR" | tail -1)" >&2
+        echo "  Staging dir: $(du -sh "$STAGE")" >&2
+        exit 1
+    fi
+
     rm -rf "$STAGE"
     echo "==> $DMG  ($(du -h "$DMG" | cut -f1 | tr -d ' '))"
 fi

@@ -310,9 +310,12 @@ struct PrepJob {
     // its own, and run() refuses the job rather than half-mask the capture.
     std::vector<MaskClick> mask_clicks;
 
-    // Built-in: a checkpoint file (ModelCache resolves it). External: the
-    // model name reference/scripts/mask.py understands.
+    // Built-in: checkpoint files (ModelCache resolves them), with the text
+    // detector when one is paired. External: the name reference/scripts/mask.py understands,
+    // "" when it has none (BiRefNet).
     std::string mask_model_path;
+    std::string mask_detector_path;
+    float mask_detector_threshold = 0.3f;   // sam::MaskOptions::detector_threshold
     std::string mask_model_name = "sam2.1_hiera_large";
     bool  force_external_masking = false;
     std::string python_exe = "python3";

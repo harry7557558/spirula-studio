@@ -289,6 +289,28 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                                   cfg.final_score_power, dv_sample_score);
     }
 
+    // The region test, on the refine cadence only: a weight per splat that
+    // scales its draw in both relocation paths.
+    auto& region = engine().region;
+    if (do_densify && region.active()) {
+        region.weight.resize(PoolSlot::EngRegionWeight, max_num_splats);
+        region_weight_tensor(cur_num_splats, dv_means, dv_quats, dv_scales, region.camera_bvh,
+                             region.camera_seeds, region.program, region.field_bvh,
+                             region.field_seeds, region.inside, region.outside, region.weight);
+        // Before the relocation below, so what fades past dead moves inside.
+        region_decay_opacity_tensor(cur_num_splats, region.weight, dv_opacs, region.opacity_decay);
+        if (use_revised) {
+            auto& score = engine().optim.densify_sample_score;
+            if (score.data_ptr() == nullptr) {
+                score.resize(PoolSlot::EngDensifySampleScore, max_num_splats);
+                densify_clip_score_tensor(cur_num_splats, dv_accum_buf, 1.0f, 1.0f, score);
+            }
+            densify_scale_score_tensor(cur_num_splats, region.weight, score);
+        }
+    } else if (!region.active()) {
+        region.weight = DeviceVector<float>();
+    }
+
     int num_added = 0;
 
     // Long-axis-split opacity split factor `k`, linearly scheduled over the
@@ -381,7 +403,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
             non_sh,
             2 * step + 0
-        );
+        , engine().region.weight);
 
         // MCMC sample add
         int64_t n_target = std::min(max_num_splats, (int64_t)(cfg.growth_factor * cur_num_splats));
@@ -399,7 +421,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                 sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
                 non_sh,
                 2 * step + 1
-            );
+            , engine().region.weight);
         }
     }
 

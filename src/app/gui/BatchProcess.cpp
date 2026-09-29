@@ -174,6 +174,8 @@ bool same_run(const BatchRun& a, const BatchRun& b) {
 
 bool same_train_work(const BatchRow& a, const BatchRow& b) {
     if (a.dataset != b.dataset || a.dataset.empty()) return false;
+    if (a.does(BatchStage::Merge) != b.does(BatchStage::Merge)) return false;
+    if (a.partition != b.partition || a.partition_part != b.partition_part) return false;
     if (a.runs.size() != b.runs.size()) return false;
     for (size_t i = 0; i < a.runs.size(); i++)
         if (!same_run(a.runs[i], b.runs[i])) return false;
@@ -279,6 +281,7 @@ std::vector<BatchTask> batch_plan(const std::vector<BatchRow>& rows) {
                         out.push_back({i, BatchStage::Mesh, k});
             }
         }
+        if (r.does(BatchStage::Merge)) out.push_back({i, BatchStage::Merge, 0});
     }
     return out;
 }
@@ -290,8 +293,8 @@ BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
     p.total = (int)tasks.size();
     // What a finished task of each stage took, which is the only honest thing
     // to estimate an unstarted one of the same stage with.
-    double stage_sum[kNumBatchStages] = {0, 0, 0}, all_sum = 0;
-    int stage_n[kNumBatchStages] = {0, 0, 0}, all_n = 0;
+    double stage_sum[kNumBatchStages] = {}, all_sum = 0;
+    int stage_n[kNumBatchStages] = {}, all_n = 0;
     for (const BatchTask& t : tasks) {
         if (t.status == BatchStatus::Running) p.running++;
         if (t.status != BatchStatus::Pending &&
@@ -401,14 +404,16 @@ void check_dataset_stage(const BatchRow& row, const BatchCapabilities& caps,
         // A batch has no clicks -- they belong to the frames they were drawn
         // on and a preset cannot carry them -- so the text prompt is the only
         // prompt there is.
-        if (s.mask.prompt.empty())
+        const bool prompted = !caps.mask_model_prompted || caps.mask_model_prompted(s.mask_model_id);
+        if (prompted && s.mask.prompt.empty())
             out.push_back(issue_of(msg::chk_mask_no_prompt, kSt, true));
         if (s.sfm.prep.force_external_masking) {
             // mask.py resolves its own model by name; nothing here can say
             // whether it is there.
         } else if (!caps.masking) {
             out.push_back(issue_of(msg::chk_masking_unavailable, kSt, true));
-        } else if (caps.mask_model_ready && !caps.mask_model_ready(s.mask_model_id)) {
+        } else if (caps.mask_model_ready &&
+                   !caps.mask_model_ready(s.mask_model_id, s.mask_detector_id)) {
             out.push_back(issue_of(msg::chk_mask_model_missing, kSt, true,
                                    s.mask_model_id));
         }
@@ -468,6 +473,8 @@ void check_train_stage(const BatchRow& row, const BatchCapabilities& caps,
         else if (!folder_looks_like_dataset(row.dataset))
             out.push_back(issue_of(msg::chk_dataset_unreadable, kSt, true, row.dataset));
     }
+    if (!row.partition.empty() && !fs::is_regular_file(row.partition, ec))
+        out.push_back(issue_of(msg::chk_partition_missing, kSt, true, row.partition));
 
     const spirula::i18n::Msg* bad[] = {&msg::chk_bad_max_splats,
                                        &msg::chk_bad_sh_degree,
@@ -579,7 +586,8 @@ std::vector<BatchIssue> batch_check_row(const BatchRow& row,
     if (!row.enabled) return out;
 
     const bool anything = row.does(BatchStage::Dataset) ||
-                          row.does(BatchStage::Train) || row.does(BatchStage::Mesh);
+                          row.does(BatchStage::Train) || row.does(BatchStage::Mesh) ||
+                          row.does(BatchStage::Merge);
     if (!anything) {
         out.push_back(issue_of(msg::chk_nothing_to_do, BatchStage::Dataset, false));
         return out;
@@ -589,6 +597,10 @@ std::vector<BatchIssue> batch_check_row(const BatchRow& row,
     if (row.does(BatchStage::Train))
         check_train_stage(row, caps, row.does(BatchStage::Dataset), out);
     if (row.does(BatchStage::Mesh)) check_mesh_stage(row, out);
+    std::error_code ec;
+    if (row.does(BatchStage::Merge) &&
+        (row.partition.empty() || !fs::is_regular_file(row.partition, ec)))
+        out.push_back(issue_of(msg::chk_partition_missing, BatchStage::Merge, true, row.partition));
 
     // ---- what the LIST says, rather than the row ----
     const std::string ws = row.does(BatchStage::Dataset)
@@ -723,6 +735,10 @@ bool batch_build_train_config(const BatchRow& row, int variant,
     if (!image_dir.empty()) cfg.image_dir = image_dir;
     if (!mask_dir.empty()) cfg.mask_dir = mask_dir;
     if (!mask_dir.empty()) cfg.flip_mask = mask_flipped;
+    if (!row.partition.empty()) {
+        cfg.partition = row.partition;
+        cfg.partition_part = row.partition_part;
+    }
     cfg.output_dir_prefix = row.output_dir.empty()
                                 ? (fs::path(dataset) / "outputs").string()
                                 : row.output_dir;
@@ -804,8 +820,13 @@ BatchRow read_row(const JsonValue& j) {
         for (const JsonValue& e : v->arr)
             if (!e.as_string().empty()) r.sources.push_back(e.as_string());
     if (const JsonValue* v = j.find("dataset")) r.dataset = v->as_string();
+    if (const JsonValue* v = j.find("image_dir")) r.image_dir = v->as_string();
+    if (const JsonValue* v = j.find("mask_dir")) r.mask_dir = v->as_string();
+    if (const JsonValue* v = j.find("mask_flipped")) r.mask_flipped = v->as_bool(false);
     if (const JsonValue* v = j.find("model")) r.model = v->as_string();
     if (const JsonValue* v = j.find("output_dir")) r.output_dir = v->as_string();
+    if (const JsonValue* v = j.find("partition")) r.partition = v->as_string();
+    if (const JsonValue* v = j.find("partition_part")) r.partition_part = (int)v->as_int(-1);
     r.dataset_preset = read_preset(j.find("dataset_preset"));
     if (r.dataset_preset.path.empty() && r.dataset_preset.name.empty())
         r.dataset_preset.name = "general";
@@ -843,6 +864,7 @@ BatchRow read_row(const JsonValue& j) {
         for (int i = 0; i < kNumBatchStages && i < (int)v->arr.size(); i++)
             r.stages[i] = v->arr[(size_t)i].as_bool();
     if (const JsonValue* v = j.find("enabled")) r.enabled = v->as_bool(true);
+    if (const JsonValue* v = j.find("done")) r.done = v->as_bool(false) && !r.enabled;
     return r;
 }
 
@@ -894,8 +916,17 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
         for (const std::string& s : r.sources) w.value(s);
         w.end();
         w.field("dataset", r.dataset);
+        if (!r.image_dir.empty()) w.field("image_dir", r.image_dir);
+        if (!r.mask_dir.empty()) {
+            w.field("mask_dir", r.mask_dir);
+            w.field("mask_flipped", r.mask_flipped);
+        }
         w.field("model", r.model);
         w.field("output_dir", r.output_dir);
+        if (!r.partition.empty()) {
+            w.field("partition", r.partition);
+            w.field("partition_part", r.partition_part);
+        }
         write_preset(w, "dataset_preset", r.dataset_preset);
         w.key("mesh").object();
         write_preset(w, "preset", r.mesh.preset);
@@ -918,6 +949,7 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
         for (int i = 0; i < kNumBatchStages; i++) w.value(r.stages[i]);
         w.end();
         w.field("enabled", r.enabled);
+        if (r.done) w.field("done", true);
         w.end();
     }
     w.end();

@@ -39,6 +39,8 @@ enum class AttnBias : uint32_t {
     PerKey = 1,   // bias[nk], broadcast over queries and heads (token padding)
     Full = 2,     // bias[n_heads][nq][nk]                      (DETR box RPB)
     Causal = 3,   // key j visible to query i iff j <= i        (text encoder)
+    Window = 4,   // bias[n_heads][nq][nk] + -100 where AttnOpts::labels differ
+                  // between query and key (Swin's shifted-window mask)
 };
 
 // ================
@@ -117,6 +119,10 @@ struct AttnOpts {
     // the partial softmaxes are merged in a second pass. Leaving this null just
     // runs the single-pass kernel.
     vk::Arena* arena = nullptr;
+    // AttnBias::Window: [batch, nq] region ids (i32), nq == nk. Swin's shifted
+    // windows mask a pair whose tokens came from different regions of the
+    // un-rolled map; nothing else is masked.
+    Tensor labels;
 };
 
 // out[batch, nq, n_heads*head_dim] = softmax(scale * q k^T + bias) v
@@ -142,6 +148,9 @@ void copy(const Tensor& dst, const Tensor& src);  // dtype conversion allowed
 void add(const Tensor& out, const Tensor& a, const Tensor& b, float alpha = 1.0f,
          float beta = 1.0f, Act act = Act::None);
 void mul(const Tensor& out, const Tensor& a, const Tensor& b, Act act = Act::None);
+// out[r, c] = act(a[r, c] * b[r]): one scalar per row, e.g. a [H*W, 1] gate
+// over a channel-last map.
+void mul_rows(const Tensor& out, const Tensor& a, const Tensor& b, Act act = Act::None);
 
 // out = act(x * pre_scale + pre_bias) * post_scale + post_bias
 void unary(const Tensor& out, const Tensor& x, Act act = Act::None, float pre_scale = 1.0f,
@@ -183,6 +192,12 @@ void conv2d_depthwise(const Tensor& out, const Tensor& in, const Tensor& w, int 
 void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
                    const Tensor& offset, const Tensor& w, int kh, int kw,
                    float max_offset = 0.0f, const ConvOpts& opts = {});
+
+// The same with torchvision's `mask` (DCNv2): `mask` is [Ho, Wo, kh*kw] and
+// scales each tap's sample before the GEMM.
+void modulated_deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
+                             const Tensor& offset, const Tensor& mask, const Tensor& w,
+                             int kh, int kw, const ConvOpts& opts = {});
 
 // out[N, C*k*k] = the k x k patch of `in` centred on each of N integer
 // (x, y) centres, in the column order conv2d's weight expects. Out-of-range
@@ -254,8 +269,40 @@ void gather_rows(const Tensor& out, const Tensor& table, const Tensor& ids);
 void strided_copy(const Tensor& out, const Tensor& in, int64_t rows, int64_t cols,
                   int64_t in_stride, int64_t out_stride);
 
-void window_partition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws);
-void window_unpartition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws);
+// `shift` is Swin's cyclic shift: the map is zero-padded to whole windows and
+// rolled by -shift before partitioning, and by +shift on the way back.
+// `accumulate` adds into `out` instead of overwriting it (the residual).
+void window_partition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws,
+                      int shift = 0);
+void window_unpartition(const Tensor& out, const Tensor& in, int H, int W, int C, int ws,
+                        int shift = 0, bool accumulate = false);
+
+// Swin's PatchMerging gather: [H, W, C] -> [ceil(H/2) * ceil(W/2), 4*C] in the
+// order x[0::2,0::2], x[1::2,0::2], x[0::2,1::2], x[1::2,1::2]; odd edges pad 0.
+void patch_merge(const Tensor& out, const Tensor& in, int H, int W, int C);
+
+// [H, W, C] cut into a gh x gw grid of blocks, stacked as channels:
+// out[h][w][k] = in[gy*H/gh + h][gx*W/gw + w][c], where k is
+enum class BlockOrder {
+    ChannelMajor,      // (c*gh + gy)*gw + gx: einops '(c gh gw)'
+    ColumnsThenRows,   // (gx*gh + gy)*C + c: torch.split over columns, then rows
+};
+void blocks_to_channels(const Tensor& out, const Tensor& in, int H, int W, int C, int gh,
+                        int gw, BlockOrder order = BlockOrder::ChannelMajor);
+
+// The level table of a multi-scale deformable attention: `value` stacks the
+// levels' [h, w] maps row-major, level 0 first.
+struct MsDeformLevels {
+    int n = 0;
+    int h[4] = {}, w[4] = {};
+};
+
+// Deformable DETR's MultiScaleDeformableAttention, softmax included. offsets
+// are [nq, heads, levels, points, 2], logits [nq, heads, levels * points], and
+// `refs` normalized [nq, 2] points or [nq, 4] cx,cy,w,h boxes.
+void ms_deform_attn(const Tensor& out, const Tensor& value, const Tensor& offsets,
+                    const Tensor& attn, const Tensor& refs, const MsDeformLevels& levels,
+                    int n_heads, int n_points);
 
 // out[y][x][c] = in[y][x][c] + tile[y % th][x % tw][c]
 void add_tiled(const Tensor& out, const Tensor& in, const Tensor& tile, int H, int W,

@@ -451,7 +451,8 @@ inline void packColmap(const Camera& c, double* d) {
                                       d[0] = c.fx; d[1] = c.fy; d[2] = c.cx; d[3] = c.cy;
                                       d[4] = c.k1; d[5] = c.k2; d[6] = c.p1; d[7] = c.p2;
                                       d[8] = c.k3; d[9] = c.k4; d[10] = c.sx1; d[11] = c.sy1; break;
-        case CamModel::Equirect:      d[0] = 2.0 * M_PI * c.fx; d[1] = M_PI * c.fy; break;
+        // Not 2*pi*fx: that round trip misses the integer width by an ulp.
+        case CamModel::Equirect:      d[0] = c.width; d[1] = c.height; break;
     }
 }
 // COLMAP layout -> fields.

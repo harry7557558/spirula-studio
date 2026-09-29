@@ -31,6 +31,11 @@ Image load_image(const std::string& path, const std::string& gamut = "",
 // the same convention as reference/scripts/extract_frames.py.
 bool save_image(const Image& image, const std::string& path, int quality);
 
+// PIL's Image.resize(..., BILINEAR): the triangle filter widens with the
+// downscale factor, so shrinking averages instead of aliasing. torchvision's
+// Resize on a PIL image, i.e. what most reference pipelines feed a network.
+Image resize_image(const Image& src, int width, int height);
+
 // Writes a single-channel 8-bit PNG (masks, sharpness maps).
 bool save_gray_png(const uint8_t* data, int width, int height,
                    const std::string& path);

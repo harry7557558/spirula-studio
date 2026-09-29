@@ -3,6 +3,7 @@
 
 #include "app/gui/edit/EditSession.h"
 
+#include "app/gui/NavCamera.h"
 #include "app/gui/Ui.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditAttributes.h"
@@ -39,34 +40,31 @@ struct ActRow {
     const char* key;
     ImGuiKey imgui_key;
     bool shift, ctrl, alt;
-    // Whether the key is also one of NavCamera's fly keys (WASDQE): while
-    // Navigate is the active tool those belong to the camera.
-    bool fly;
 };
 
 const ActRow kActs[] = {
-    {Act::All,       "A",      ImGuiKey_A,     false, false, false, true},
-    {Act::None,      "Alt+A",  ImGuiKey_A,     false, false, true,  true},
-    {Act::Invert,    "I",      ImGuiKey_I,     false, false, false, false},
-    {Act::Grow,      "+",      ImGuiKey_Equal, false, false, false, false},
-    {Act::Shrink,    "-",      ImGuiKey_Minus, false, false, false, false},
-    {Act::Floaters,  "Shift+F",ImGuiKey_F,     true,  false, false, false},
-    {Act::Delete,    "X",      ImGuiKey_X,     false, false, false, false},
-    {Act::Isolate,   "Shift+X",ImGuiKey_X,     true,  false, false, false},
-    {Act::Restore,   "Alt+X",  ImGuiKey_X,     false, false, true,  false},
-    {Act::Undo,      "Ctrl+Z", ImGuiKey_Z,     false, true,  false, false},
-    {Act::Redo,      "Ctrl+Y", ImGuiKey_Y,     false, true,  false, false},
-    {Act::Replace,   "1",      ImGuiKey_1,     false, false, false, false},
-    {Act::Add,       "2",      ImGuiKey_2,     false, false, false, false},
-    {Act::Subtract,  "3",      ImGuiKey_3,     false, false, false, false},
-    {Act::Intersect, "4",      ImGuiKey_4,     false, false, false, false},
+    {Act::All,       "A",      ImGuiKey_A,     false, false, false},
+    {Act::None,      "Alt+A",  ImGuiKey_A,     false, false, true},
+    {Act::Invert,    "I",      ImGuiKey_I,     false, false, false},
+    {Act::Grow,      "+",      ImGuiKey_Equal, false, false, false},
+    {Act::Shrink,    "-",      ImGuiKey_Minus, false, false, false},
+    {Act::Floaters,  "Shift+F",ImGuiKey_F,     true,  false, false},
+    {Act::Delete,    "X",      ImGuiKey_X,     false, false, false},
+    {Act::Isolate,   "Shift+X",ImGuiKey_X,     true,  false, false},
+    {Act::Restore,   "Alt+X",  ImGuiKey_X,     false, false, true},
+    {Act::Undo,      "Ctrl+Z", ImGuiKey_Z,     false, true,  false},
+    {Act::Redo,      "Ctrl+Y", ImGuiKey_Y,     false, true,  false},
+    {Act::Replace,   "1",      ImGuiKey_1,     false, false, false},
+    {Act::Add,       "2",      ImGuiKey_2,     false, false, false},
+    {Act::Subtract,  "3",      ImGuiKey_3,     false, false, false},
+    {Act::Intersect, "4",      ImGuiKey_4,     false, false, false},
     // Aliases: what someone arriving from another editor reaches for. Later
     // than the primaries, so the key printed on a button is still the first.
-    {Act::All,       "Ctrl+A", ImGuiKey_A,     false, true,  false, false},
-    {Act::None,      "Ctrl+D", ImGuiKey_D,     false, true,  false, false},
-    {Act::Invert,    "Ctrl+I", ImGuiKey_I,     false, true,  false, false},
-    {Act::Delete,    "Del",    ImGuiKey_Delete,false, false, false, false},
-    {Act::Redo,      "Ctrl+Shift+Z", ImGuiKey_Z, true, true, false, false},
+    {Act::All,       "Ctrl+A", ImGuiKey_A,     false, true,  false},
+    {Act::None,      "Ctrl+D", ImGuiKey_D,     false, true,  false},
+    {Act::Invert,    "Ctrl+I", ImGuiKey_I,     false, true,  false},
+    {Act::Delete,    "Del",    ImGuiKey_Delete,false, false, false},
+    {Act::Redo,      "Ctrl+Shift+Z", ImGuiKey_Z, true, true, false},
 };
 constexpr int kNumActs = (int)(sizeof kActs / sizeof kActs[0]);
 
@@ -78,7 +76,9 @@ const ActRow& act_row(Act a) {
 
 // Down-and-up this frame, with exactly the modifiers the row asks for.
 bool act_pressed(const ActRow& r, bool fly_keys_taken) {
-    if (r.fly && fly_keys_taken) return false;
+    // The camera never flies with Ctrl down, so Ctrl+Z is not a collision on
+    // AZERTY, where Z is forward.
+    if (fly_keys_taken && !r.ctrl && is_fly_key(r.imgui_key)) return false;
     const ImGuiIO& io = ImGui::GetIO();
     if (io.KeyShift != r.shift || io.KeyCtrl != r.ctrl || io.KeyAlt != r.alt)
         return false;
@@ -210,7 +210,7 @@ void EditSession::handle_keys() {
     const bool plain = !io.KeyCtrl && !io.KeyAlt && !io.KeyShift;
     for (int i = 0; i < kNumTools; i++) {
         const ToolRow& row = tool_table()[i];
-        if (row.fly_key && fly) continue;
+        if (fly && is_fly_key(row.imgui_key)) continue;
         if (plain && ImGui::IsKeyPressed((ImGuiKey)row.imgui_key, false)) {
             if (row.id == ToolId::Transform) {
                 enter_transform();
@@ -221,18 +221,18 @@ void EditSession::handle_keys() {
             }
             // The key is still down this frame; the camera must not also read
             // it on the way into Navigate.
-            if (row.fly_key) _fly_block_key = row.imgui_key;
+            if (is_fly_key(row.imgui_key)) _fly_block_key = row.imgui_key;
         }
     }
-    // G / R / S, from any tool -- except S under Navigate, where it is the
-    // camera's "back" and has been since before there was an editor.
+    // G / R / S, from any tool -- except a fly key under Navigate, as S is on
+    // QWERTY: the camera's "back" since before there was an editor.
     if (plain) {
-        const struct { ImGuiKey key; XformKind kind; bool fly; } ops[] = {
-            {ImGuiKey_G, XformKind::Move, false},
-            {ImGuiKey_R, XformKind::Rotate, false},
-            {ImGuiKey_S, XformKind::Scale, true}};
+        const struct { ImGuiKey key; XformKind kind; } ops[] = {
+            {ImGuiKey_G, XformKind::Move},
+            {ImGuiKey_R, XformKind::Rotate},
+            {ImGuiKey_S, XformKind::Scale}};
         for (const auto& op : ops) {
-            if ((op.fly && fly) || !ImGui::IsKeyPressed(op.key, false)) continue;
+            if ((fly && is_fly_key(op.key)) || !ImGui::IsKeyPressed(op.key, false)) continue;
             enter_transform();
             begin_xform(op.kind);
             return;

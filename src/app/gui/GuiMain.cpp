@@ -8,6 +8,7 @@
 #include "core/Env.h"
 #include "app/CrashLog.h"
 #include "app/gui/Automation.h"
+#include "app/gui/DesktopEntry.h"
 #include "app/gui/Fonts.h"
 #include "app/gui/GuiApp.h"
 #include "app/gui/Layout.h"
@@ -155,6 +156,8 @@ int spirula_gui_main(int argc, char** argv) {
     // progress bar and a button. Inherited by the children, so nothing this
     // window starts runs a curl the user did not press anything for.
     set_no_auto_fetch();
+    // Before the window maps: that is when the shell looks up its entry.
+    gui::register_desktop_entry();
 
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) {
@@ -168,6 +171,11 @@ int spirula_gui_main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#if !defined(_WIN32) && !defined(__APPLE__)
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, gui::kDesktopAppId);
+    glfwWindowHintString(GLFW_X11_CLASS_NAME, gui::kDesktopAppId);
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, gui::kDesktopAppId);
+#endif
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 #endif

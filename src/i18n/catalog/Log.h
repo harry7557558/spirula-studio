@@ -1725,6 +1725,81 @@ SS_MSG(train_finished,
     RU("Обучение завершено. Шагов: {0}   Время: {1}"),
     TR("Eğitim tamamlandı. Adım: {0}   Süre: {1}"));
 
+SS_MSG(partition_applied,
+    EN("Partition part {0}: cameras {1} (core {2}, ring {3}), seed points {4}"),
+    JA("分割パート {0}: カメラ {1}（コア {2}、リング {3}）、初期点 {4}"),
+    ZH_HANS("分区 {0}：相机 {1}（核心 {2}，外环 {3}），种子点 {4}"),
+    ZH_HANT("分區 {0}：相機 {1}（核心 {2}，外環 {3}），種子點 {4}"),
+    KO("분할 파트 {0}: 카메라 {1}(핵심 {2}, 고리 {3}), 시드 점 {4}"),
+    DE("Partitionsteil {0}: Kameras {1} (Kern {2}, Ring {3}), Startpunkte {4}"),
+    FR("Partie {0} de la partition : caméras {1} (cœur {2}, anneau {3}), points d'amorce {4}"),
+    ES("Parte {0} de la partición: cámaras {1} (núcleo {2}, anillo {3}), puntos semilla {4}"),
+    PT("Parte {0} da partição: câmaras {1} (núcleo {2}, anel {3}), pontos semente {4}"),
+    IT("Parte {0} della partizione: fotocamere {1} (nucleo {2}, anello {3}), punti seme {4}"),
+    NL("Partitiedeel {0}: camera's {1} (kern {2}, ring {3}), zaadpunten {4}"),
+    RU("Часть разбиения {0}: камер {1} (ядро {2}, кольцо {3}), начальных точек {4}"),
+    TR("Bölümleme parçası {0}: kamera {1} (çekirdek {2}, halka {3}), tohum noktası {4}"));
+
+SS_MSG(partition_missing_frames,
+    EN("Partition: frames of this part not found in the dataset: {0}"),
+    JA("分割: このパートのフレームのうちデータセットに見つからないもの: {0}"),
+    ZH_HANS("分区：该分区的帧中有 {0} 个不在数据集中"),
+    ZH_HANT("分區：該分區的幀中有 {0} 個不在資料集中"),
+    KO("분할: 이 파트의 프레임 중 데이터셋에 없는 것: {0}"),
+    DE("Partition: Bilder dieses Teils, die im Datensatz fehlen: {0}"),
+    FR("Partition : images de cette partie absentes du jeu de données : {0}"),
+    ES("Partición: imágenes de esta parte que no están en el conjunto de datos: {0}"),
+    PT("Partição: imagens desta parte que não estão no conjunto de dados: {0}"),
+    IT("Partizione: immagini di questa parte assenti dal set di dati: {0}"),
+    NL("Partitie: beelden van dit deel die niet in de dataset staan: {0}"),
+    RU("Разбиение: кадров этой части нет в наборе данных: {0}"),
+    TR("Bölümleme: bu parçanın veri kümesinde bulunmayan kareleri: {0}"));
+
+SS_MSG(region_applied,
+    EN("Region of interest: program nodes {0}; splats outside draw with weight {1}"),
+    JA("関心領域: プログラムノード {0}、領域外のスプラットは重み {1} で抽選"),
+    ZH_HANS("感兴趣区域：程序节点 {0}；区域外的泼溅以权重 {1} 参与抽样"),
+    ZH_HANT("感興趣區域：程式節點 {0}；區域外的潑濺以權重 {1} 參與抽樣"),
+    KO("관심 영역: 프로그램 노드 {0}, 영역 밖 스플랫은 가중치 {1}로 추첨"),
+    DE("Interessenbereich: Programmknoten {0}; Splats außerhalb ziehen mit Gewicht {1}"),
+    FR("Région d'intérêt : nœuds du programme {0} ; les splats extérieurs tirent avec le poids {1}"),
+    ES("Región de interés: nodos del programa {0}; los splats de fuera sortean con peso {1}"),
+    PT("Região de interesse: nós do programa {0}; os splats de fora sorteiam com peso {1}"),
+    IT("Regione di interesse: nodi del programma {0}; gli splat esterni estraggono con peso {1}"),
+    NL("Interessegebied: programmaknopen {0}; splats erbuiten loten met gewicht {1}"),
+    RU("Область интереса: узлов программы {0}; сплаты снаружи участвуют в выборке с весом {1}"),
+    TR("İlgi bölgesi: program düğümü {0}; dışarıdaki splatlar {1} ağırlığıyla çekilir"));
+
+SS_MSG(region_masks,
+    EN("Region of interest: {0} images masked to what they show of it; {1}% of pixels left out"),
+    JA("関心領域: {0} 枚の画像を領域が写る部分に絞りました。画素の {1}% を除外"),
+    ZH_HANS("感兴趣区域：{0} 张图像只保留拍到区域的部分；排除了 {1}% 的像素"),
+    ZH_HANT("感興趣區域：{0} 張影像只保留拍到區域的部分；排除了 {1}% 的像素"),
+    KO("관심 영역: 이미지 {0}장을 영역이 보이는 부분으로 제한했습니다. 픽셀의 {1}%를 제외"),
+    DE("Interessenbereich: {0} Bilder auf das maskiert, was sie davon zeigen; {1}% der Pixel ausgelassen"),
+    FR("Région d'intérêt : {0} images masquées à ce qu'elles en montrent ; {1} % des pixels écartés"),
+    ES("Región de interés: {0} imágenes enmascaradas a lo que muestran de ella; {1}% de píxeles fuera"),
+    PT("Região de interesse: {0} imagens mascaradas ao que mostram dela; {1}% dos píxeis de fora"),
+    IT("Regione di interesse: {0} immagini mascherate su ciò che ne mostrano; {1}% dei pixel esclusi"),
+    NL("Interessegebied: {0} beelden gemaskeerd tot wat ze ervan tonen; {1}% van de pixels weggelaten"),
+    RU("Область интереса: {0} изображений ограничены тем, что они из неё показывают; исключено {1}% пикселей"),
+    TR("İlgi bölgesi: {0} görüntü bölgeden gösterdikleriyle maskelendi; piksellerin %{1}'i dışarıda"));
+
+SS_MSG(err_partition_part,
+    EN("--partition needs --partition-part between 0 and {0}"),
+    JA("--partition には 0 から {0} までの --partition-part が必要です"),
+    ZH_HANS("--partition 需要 0 到 {0} 之间的 --partition-part"),
+    ZH_HANT("--partition 需要 0 到 {0} 之間的 --partition-part"),
+    KO("--partition에는 0에서 {0} 사이의 --partition-part가 필요합니다"),
+    DE("--partition braucht --partition-part zwischen 0 und {0}"),
+    FR("--partition exige --partition-part entre 0 et {0}"),
+    ES("--partition necesita --partition-part entre 0 y {0}"),
+    PT("--partition precisa de --partition-part entre 0 e {0}"),
+    IT("--partition richiede --partition-part tra 0 e {0}"),
+    NL("--partition vereist --partition-part tussen 0 en {0}"),
+    RU("--partition требует --partition-part от 0 до {0}"),
+    TR("--partition için 0 ile {0} arasında --partition-part gerekir"));
+
 SS_MSG(eval_split_empty,
     EN("Eval: the eval split is empty; nothing to score."),
     JA("評価: 評価用の分割が空です。採点するものがありません。"),
@@ -3794,6 +3869,36 @@ SS_MSG(err_geometry_failed,
        "завершена, и на ней можно обучать как есть."),
     TR("derinlik ve normal kestirimi başarısız oldu (günlüğe bakın). Yeniden "
        "kurmanın kendisi tamamlandı ve olduğu gibi eğitilebilir."));
+
+SS_MSG(err_subject_needs_builtin,
+    EN("BiRefNet runs only in the built-in masker; the external Python masker cannot "
+       "load it. Turn off \"external masking\", or pick a SAM model."),
+    JA("BiRefNet は内蔵のマスカーでしか動きません。外部の Python マスカーでは読み込め"
+       "ません。「外部マスク」をオフにするか、SAM のモデルを選んでください。"),
+    ZH_HANS("BiRefNet 只能在内置的蒙版程序中运行，外部 Python 蒙版程序无法加载它。"
+            "请关闭“外部蒙版”，或选择一个 SAM 模型。"),
+    ZH_HANT("BiRefNet 只能在內建的遮罩程式中執行，外部 Python 遮罩程式無法載入它。"
+            "請關閉「外部遮罩」，或選擇一個 SAM 模型。"),
+    KO("BiRefNet 은 내장 마스커에서만 돌아갑니다. 외부 Python 마스커는 이것을 불러오지 "
+       "못합니다. [외부 마스크]를 끄거나 SAM 모델을 고르세요."),
+    DE("BiRefNet läuft nur im eingebauten Maskierer; der externe Python-Maskierer kann "
+       "es nicht laden. „Externe Maskierung“ ausschalten oder ein SAM-Modell wählen."),
+    FR("BiRefNet ne fonctionne que dans le masqueur intégré ; le masqueur Python externe "
+       "ne sait pas le charger. Désactivez « masquage externe » ou choisissez un modèle "
+       "SAM."),
+    ES("BiRefNet solo funciona en el enmascarador integrado; el enmascarador externo de "
+       "Python no puede cargarlo. Desactive «enmascarado externo» o elija un modelo SAM."),
+    PT("O BiRefNet só roda no mascarador integrado; o mascarador Python externo não "
+       "consegue carregá-lo. Desative “mascaramento externo” ou escolha um modelo SAM."),
+    IT("BiRefNet funziona solo nel mascheratore integrato; quello Python esterno non "
+       "riesce a caricarlo. Disattivate «mascheratura esterna» o scegliete un modello "
+       "SAM."),
+    NL("BiRefNet draait alleen in de ingebouwde maskeerder; de externe Python-maskeerder "
+       "kan het niet laden. Zet \"externe maskering\" uit of kies een SAM-model."),
+    RU("BiRefNet работает только во встроенном маскировщике; внешний на Python не может "
+       "его загрузить. Отключите «внешнее маскирование» или выберите модель SAM."),
+    TR("BiRefNet yalnızca yerleşik maskeleyicide çalışır; dış Python maskeleyici onu "
+       "yükleyemez. \"Dış maskeleme\"yi kapatın ya da bir SAM modeli seçin."));
 
 }  // namespace log
 }  // namespace msg

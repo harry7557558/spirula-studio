@@ -196,8 +196,10 @@ core/        types shared by every stage, no Vulkan:
                Attitude               the gimbal yaw / pitch / roll a drone writes
                                         into each photo's XMP
                Telemetry              the IMU / GPS a video carries (GPMF, Insta360,
-                                        DJI, CAMM), read by content; unconsumed --
+                                        DJI, CAMM), read by content --
                                         docs/notes/imu-gps-for-sfm.md
+               PriorSource            what a sensor tells the mapper, the verifier
+                                        and the pair list -- docs/notes/sensor-priors.md
                Features / Matches     the on-disk feature and match formats
                Mask                   keypoint masking, sampled in uv
                Model                  Reconstruction + COLMAP binary IO
@@ -210,8 +212,11 @@ geometry/    Essential, Fundamental, Homography, P3P, AbsolutePose,
 optim/       Ransac   LO-RANSAC with MSAC scoring
 ba/          Problem (model registry + problem layout), Solver (LM, dense
                Cholesky / implicit-Schur PCG), SolverCpu (the same two on the
-               host, for devices that run neither fp64 nor df), README.md
+               host, for devices that run neither fp64 nor df), Priors (the
+               camera-side sensor factors both take), README.md
 map/         Mapper, Bundle, CorrespondenceGraph, Merge, Profile,
+               SensorPriors (the IMU / GPS as a PriorSource), ImuExtrinsic,
+               ImuScale, SensorGauge (the gauge of a finished model),
                ModelOps (the passes over a *set* of models: merge validator,
                  audit, split, fold cut, prune -- shared, owned by neither)
                Assemble (the schedule both mappers run once they have models:
@@ -560,6 +565,47 @@ the sensors. On the X5 walk the whole fit
 takes 0.3 s; a metric reference the user passes still outranks an upright-only
 sensor frame. `docs/notes/imu-gps-for-sfm.md` records what the files carry
 and what was measured.
+
+**The same sensors inside the reconstruction.** Everything above fixes the
+gauge of a finished model. With telemetry present the run also uses it while
+the model is built (`docs/notes/sensor-priors.md`), through one seam a
+future sensor implements the same way (`core/PriorSource.h`;
+`map/SensorPriors.h` is the IMU/GPS one):
+
+- **Verification** (`--sensor-verify`, on): a pair whose rotation the gyro
+  knows is also verified with that rotation fixed -- a two-point RANSAC over
+  the translation (`geometry/KnownRotation.h`) -- and keeps that inlier set
+  when it explains 70% of what the free estimate did. Matches to equipment
+  moving with the camera, or to a copy of the scene the camera did not turn
+  towards, cannot pass it however many there are. The IMU-to-lens rotation
+  it needs is calibrated first from a sample of time-adjacent pairs' own
+  two-view rotations (the hand-eye fit of `map/ImuExtrinsic.h`, with the
+  clock offset searched on the rotation angles), and the stage reports per
+  camera group what it got and how many pairs it overruled or disagreed with.
+- **Registration** (`--sensor-map`, on): a PnP pose that turns more than
+  `max(2 deg, 3 sigma)` off what a placed neighbour and the gyro predict is
+  re-solved with the rotation fixed (`ransacPnPKnownRotation`, and the rig
+  form for a whole frame) and refused when that finds fewer than the
+  registration's own inlier floor; the seed pair takes the gyro's rotation
+  when it agrees; the audit does not unseat a pose the gyro vouches for.
+- **Bundle adjustment** (`--sensor-map`): every solve, growth and joint alike,
+  takes camera-side factors evaluated on the host and added to whichever
+  linear system the solver builds (`ba/Priors.h`, `ba/README.md`): the gyro's
+  relative rotation between consecutive frames of each lens, gravity in each
+  frame against a world up refitted per solve, the accelerometer's metric
+  scale as one velocity-free triple constraint per three consecutive frames,
+  and GPS positions through a similarity refitted per solve. Every gauge
+  quantity is re-estimated from the poses before each solve and frozen inside
+  the factors, so the solver carries no global parameter and the model stays
+  in its own gauge; the finishing gauge fit above then runs as before.
+- **Pairing** (`--sensor-pairs`, on): images the GPS puts within
+  `--sensor-pair-radius` metres (20) of each other are matched whatever the
+  shortlist thought.
+
+`--sensor-max-dt` (3 s) bounds the gap a gyro rotation may span. The mapper
+ends with how many registrations the gyro re-solved or refused and how many
+factors the last solve held; `SS_SFM_PRIOR_DUMP=1` prints each one. With no
+telemetry none of it runs and the pipeline is the one before it existed.
 
 The sources run in order -- the video's sensors, the recorded attitude, a
 metric reference, the fallback -- and read each other: `gauge.txt`'s two bits
@@ -921,6 +967,8 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_mask_test` | mask uv sampling, decode, file discovery | no |
 | `sfm_telemetry_test` | the four telemetry carriers on synthetic files, and the sanity checks; `sfm_telemetry_test FILE` prints what a video carries | no |
 | `sfm_sequence_test` | the sequence table and its window pairs (`--no-gpu` stops there); a synthetic walk past a duplicated room through the mapper | yes |
+| `sfm_prior_test` | pose priors in bundle adjustment: Jacobians against central differences, device against host, a gauge recovered from priors alone (`--no-gpu` keeps to the host) | yes |
+| `sfm_sensor_prior_test` | the fixed-rotation two-view and PnP estimators on scenes with equipment and outliers; the telemetry source's calibration, rotations and factors on the synthetic walk | no |
 
 End to end, the check that matters is a reconstruction on a public dataset
 scored against the reference that ships with it: `tools/sfm/eval_poses.py` reads

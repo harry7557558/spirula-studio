@@ -66,6 +66,10 @@ std::string cached_path(const FetchFile& f) {
     return (cache_root() / "models" / f.file).string();
 }
 
+std::string mirror_url(const FetchFile& f) {
+    return f.mirror ? std::string(f.mirror) : spirula::model_mirror_url(f.file);
+}
+
 std::string sha256_file(const std::string& path) {
     return spirula::sha256_file(path);
 }
@@ -88,7 +92,7 @@ std::string ensure_file(const FetchFile& f, const char* tag) {
              "%s is not in the model cache, and this process may not download "
              "it.\n  Get it from the application's own download button, or "
              "fetch\n    %s\n  or\n    %s\n  to\n    %s\n  by hand.",
-             f.file, f.url, spirula::model_mirror_url(f.file).c_str(), dst.string().c_str());
+             f.file, f.url, mirror_url(f).c_str(), dst.string().c_str());
 
     fs::create_directories(dst.parent_path(), ec);
     NN_CHECK(!ec, "cannot create %s: %s", dst.parent_path().string().c_str(),
@@ -102,7 +106,7 @@ std::string ensure_file(const FetchFile& f, const char* tag) {
     fs::path part = dst;
     part += ".part";
 
-    const std::string urls[] = {f.url, spirula::model_mirror_url(f.file)};
+    const std::string urls[] = {f.url, mirror_url(f)};
     std::string why;
     for (const std::string& url : urls) {
         if (!why.empty())

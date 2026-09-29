@@ -2,6 +2,8 @@
 
 #include "data/SceneTransform.h"
 
+#include "data/Json.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -289,6 +291,29 @@ std::string scene_transform_json(const SceneTransform& train_from_world,
     s += "  }\n";
     s += "}\n";
     return s;
+}
+
+bool read_scene_transform_json(const std::string& path, SceneTransform& out) {
+    JsonValue root;
+    try {
+        root = json_parse_file(path);
+    } catch (const std::exception&) {
+        return false;
+    }
+    const JsonValue* T = root.find("train_from_world");
+    if (!T || !T->is_object()) return false;
+    const JsonValue* rot = T->find("rotation");
+    const JsonValue* R = rot ? rot->find("matrix_3x3_flat_row_major") : nullptr;
+    const JsonValue* t = T->find("translation");
+    if (!R || !R->is_array() || R->arr.size() != 9 || !t || !t->is_array() || t->arr.size() != 3)
+        return false;
+    SceneTransform s;
+    s.scale = T->get_double("scale", 1.0);
+    for (int i = 0; i < 9; i++) s.R[i] = R->arr[(size_t)i].as_double();
+    for (int i = 0; i < 3; i++) s.t[i] = t->arr[(size_t)i].as_double();
+    if (!(s.scale > 0)) return false;
+    out = s;
+    return true;
 }
 
 }  // namespace spirula

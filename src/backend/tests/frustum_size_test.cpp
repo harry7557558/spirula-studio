@@ -1,6 +1,6 @@
 // Host-only check of camhost::frustum_display_size: the ball average against
 // quadrature, the ~1% screen budget it promises, 1/sqrt(N) scaling, unit
-// invariance, bracket merging and the degenerate fallbacks.
+// invariance, bracket merging, stray cameras and the degenerate fallbacks.
 // No GPU. Exit code 0 = every check passed.
 
 #include "data/FrustumSize.h"
@@ -163,6 +163,21 @@ void test_fallbacks() {
     CHECK(nan_cam.size() == s_clean, "a NaN position changed the size");
 }
 
+// The Stategallery RealityScan export: 649 cameras within ~16 units and a
+// handful registered 1000-13800 units out.
+void test_strays() {
+    Cloud c = fibonacci_sphere(600, 10.0);
+    const double s_clean = c.size();
+    for (double d : {1157.0, 2056.0, 2443.0, 7487.0, 13781.0}) c.add(d, 0.3 * d, 0);
+    CHECK(std::fabs(c.size() - s_clean) < 1e-9 * s_clean,
+          "stray cameras moved the size %.4f -> %.4f", s_clean, c.size());
+    Cloud walk;
+    for (int i = 0; i < 100; i++) walk.add(i, 0, 0);
+    const double s_walk = walk.size();
+    walk.add(150, 0, 0);
+    CHECK(walk.size() != s_walk, "a camera 1.5 walk-lengths on was dropped as a stray");
+}
+
 }  // namespace
 
 int main() {
@@ -171,6 +186,7 @@ int main() {
     test_scaling();
     test_bracket_merge();
     test_fallbacks();
+    test_strays();
     if (g_fail) {
         std::fprintf(stderr, "frustum_size_test: %d check(s) failed\n", g_fail);
         return 1;

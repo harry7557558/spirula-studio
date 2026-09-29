@@ -28,6 +28,10 @@ constexpr double kShellInner = 0.5, kShellOuter = 2.0;
 constexpr double kMergeTolerance = 0.01;
 constexpr double kMaxSizeOverRadius = 0.15;  // a handful of cameras must not become billboards
 constexpr double kFallbackSize = 0.2;        // no spread to measure: one distinct position
+// A camera further than this many median distances out is a failed
+// registration; kept, it sizes every frustum to itself. Must match
+// dsparse::kStrayCameraThreshold (data/DatasetParser.h).
+constexpr double kStrayOverMedian = 20.0;
 
 // Mean of 1/|c - e|^2 over eyes e uniform in a ball of radius rho, for a
 // camera c at distance r from the ball's centre. Finite everywhere.
@@ -56,6 +60,26 @@ inline P3 centroid(const std::vector<P3>& p) {
     for (const P3& q : p) for (int k = 0; k < 3; k++) c[k] += q[k];
     for (double& v : c) v /= (double)p.size();
     return c;
+}
+
+inline std::vector<P3> drop_strays(std::vector<P3> p) {
+    if (p.size() < 3) return p;
+    P3 m;
+    std::vector<double> v(p.size());
+    for (int k = 0; k < 3; k++) {
+        for (size_t i = 0; i < p.size(); i++) v[i] = p[i][k];
+        std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+        m[k] = v[v.size() / 2];
+    }
+    for (size_t i = 0; i < p.size(); i++) v[i] = dist2(p[i], m);
+    std::vector<double> d = v;
+    std::nth_element(d.begin(), d.begin() + d.size() / 2, d.end());
+    const double lim = kStrayOverMedian * kStrayOverMedian * d[d.size() / 2];
+    if (!(lim > 0.0)) return p;
+    std::vector<P3> kept;
+    for (size_t i = 0; i < p.size(); i++)
+        if (v[i] <= lim) kept.push_back(p[i]);
+    return kept;
 }
 
 inline double max_radius(const std::vector<P3>& p, const P3& c) {
@@ -105,6 +129,7 @@ inline double frustum_display_size(const float* c2w, int64_t n) {
         P3 q{c2w[i * 12 + 3], c2w[i * 12 + 7], c2w[i * 12 + 11]};
         if (std::isfinite(q[0]) && std::isfinite(q[1]) && std::isfinite(q[2])) pos.push_back(q);
     }
+    pos = drop_strays(std::move(pos));
     if (pos.empty()) return kFallbackSize;
     double radius = max_radius(pos, centroid(pos));
     if (!(radius > 0.0)) return kFallbackSize;

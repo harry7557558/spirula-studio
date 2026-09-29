@@ -123,6 +123,12 @@ inline int train_tier_rank(const char* tier) {
     X(std::string, metashape_psx, "", "dataset", "advanced", "none")         \
     X(std::string, init_ply, "", "dataset", "basic", "none")                 \
     X(bool, init_ply_add_points, false, "dataset", "advanced", "")           \
+    X(std::string, partition, "", "dataset", "advanced", "none")             \
+    X(int, partition_part, -1, "dataset", "advanced", "")                    \
+    X(std::string, roi_region, "", "dataset", "advanced", "none")            \
+    X(float, roi_outside_weight, 1e-4f, "dataset", "advanced", "")           \
+    X(float, roi_outside_opacity_decay, 1.0f, "dataset", "advanced", "")     \
+    X(bool, roi_mask_pixels, true, "dataset", "advanced", "")                \
     X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
     X(std::string, eval_mode, "all", "dataset", "advanced", "fraction|filename|interval|all") \
@@ -211,7 +217,7 @@ inline int train_tier_rank(const char* tier) {
     X(float, l2_weight_v, 0.0f, "loss", "advanced", "")                      \
     X(int, loss_scale_min_pixels, 1920, "loss", "advanced", "")              \
     X(int, num_loss_scales, 0, "loss", "advanced", "")                       \
-    X(float, alpha_loss_weight, 0.1f, "loss", "basic", "")                   \
+    X(float, alpha_loss_weight, 0.5f, "loss", "basic", "")                   \
     X(float, alpha_loss_weight_under, 0.0f, "loss", "basic", "")             \
     X(float, loss_saturation_threshold, -1.0f, "loss", "advanced", "")       \
     X(float, loss_luminance_normalization, 0.0f, "loss", "advanced", "")     \

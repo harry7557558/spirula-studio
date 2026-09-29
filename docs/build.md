@@ -243,7 +243,8 @@ suppress).
 Only macOS has a packaging step, because only macOS has a form the binary is
 not already in. A Linux or Windows build is one file that runs where it lands;
 a Mac wants an `.app`, or the Dock shows a Terminal icon and Finder has no way
-to launch it.
+to launch it. The Linux dock's equivalent is a desktop entry, which the GUI
+writes for itself when it starts (`src/app/gui/DesktopEntry.h`).
 
 ```bash
 cmake --build build --target macos_app   # build/Spirula Studio.app

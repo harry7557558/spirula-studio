@@ -22,6 +22,7 @@
 
 #include "core/SubmitBudget.h"
 #include "sfm/ba/Options.h"
+#include "sfm/ba/Priors.h"
 #include "sfm/ba/Problem.h"
 #include "sfm/ba/SolverCpu.h"
 #include "sfm/vk/EmbeddedSpirv.h"
@@ -167,6 +168,13 @@ public:
         double t_ctx = prof_lap();
 
         decidePaths();
+        hasPriors_ = P_.priors && !P_.priors->empty();
+        if (hasPriors_) {
+            prior_.init(P_);
+            hasPriors_ = !prior_.empty();
+        }
+        hostPoses_ = P_.poses;
+        hostExts_ = P_.exts;
 
         const size_t rs = realSize(opt_.real);
         const uint64_t packed = (uint64_t)P_.n_dim * (P_.n_dim + 1) / 2;
@@ -225,6 +233,17 @@ public:
         bCgScal_ = mkReal(16);
         bCgPart_ = mkReal(cgAllocated_ ? 2 * (uint64_t)npart : 1);
         bPrecBlocks_ = mkUint(cgAllocated_ ? P_.prec_blocks.size() : 4);
+        // Prior tables (prior.slang), one element each when there are none: a
+        // shared context binds the same count for every solve.
+        const uint32_t npe = hasPriors_ ? prior_.numEntries() : 0;
+        bPriorRows_ = mkUint(hasPriors_ ? P_.num_frames + 1 : 1);
+        bPriorCols_ = mkUint(npe);
+        bPriorErow_ = mkUint(npe);
+        bPriorBlk_ = mkReal(36 * (uint64_t)npe);
+        bPriorG_ = mkReal(hasPriors_ ? P_.pose_dim : 1);
+        if (hasPriors_ &&
+            kDlPoses + (P_.pose_dim + P_.exts.size()) * rs > VkContext::stagingCapacity())
+            throw std::runtime_error("pose priors: the parameter readback exceeds the staging buffer");
 
         // binding order must match sfm/shaders/ba/ba.slang + cg.slang; atomic views
         // alias the same VkBuffer at the odd bindings
@@ -240,6 +259,7 @@ public:
             bCgV_.buf, bCgB_.buf, bCgM_.buf, bCgScal_.buf, bCgPart_.buf,
             bCgSp_.buf, bCgB_.buf, bCgM_.buf, bCamChunks_.buf, bPrecBlocks_.buf,
             bMemberInfo_.buf, bExts_.buf,
+            bPriorRows_.buf, bPriorCols_.buf, bPriorErow_.buf, bPriorBlk_.buf, bPriorG_.buf,
         };
         ownBufs_ = {&bObs_, &bObsImage_, &bObsPoint_, &bImageInfo_, &bGroupInfo_,
                     &bMemberInfo_, &bExts_, &bExtsBak_,
@@ -249,7 +269,8 @@ public:
                     &bBp0_, &bJc_, &bRes_,
                     &bPairEntries_, &bPairChunks_, &bW_, &bYp_, &bY_,
                     &bCamRanges_, &bCamObs_, &bCamChunks_, &bCgR_, &bCgZ_, &bCgP_, &bCgSp_,
-                    &bCgV_, &bCgB_, &bCgM_, &bCgScal_, &bCgPart_, &bPrecBlocks_};
+                    &bCgV_, &bCgB_, &bCgM_, &bCgScal_, &bCgPart_, &bPrecBlocks_,
+                    &bPriorRows_, &bPriorCols_, &bPriorErow_, &bPriorBlk_, &bPriorG_};
         double t_buf = prof_lap();
         ctx_.createDescriptors(binds);
         // Fresh-from-the-driver allocations happen to arrive zeroed; memory
@@ -273,6 +294,14 @@ public:
             std::string("dp_accum") + schurSuffix_,
         };
         if (!P_.members.empty()) entries.push_back("ext_update");
+        if (hasPriors_) {
+            entries.push_back("prior_add_g");
+            if (!useCG_ || haveFallback_) entries.push_back("prior_add_s");
+            if (useCG_) {
+                entries.push_back("prior_add_m");
+                entries.push_back("prior_matvec");
+            }
+        }
         if (useCG_) {
             const char* cg[] = {"cg_prec_fact", "cg_prec_apply", "cg_init", "cg_copy",
                                 "cg_red2", "cg_fin", "cg_axpy", "cg_updp"};
@@ -388,6 +417,11 @@ public:
             std::vector<uint32_t>& b;
             ~Release() { a = {}; b = {}; }
         } release{tcEnt_, tcChk_};
+        if (hasPriors_) {
+            up.push_back({&bPriorRows_, prior_.rows().data(), prior_.rows().size() * 4});
+            up.push_back({&bPriorCols_, prior_.cols().data(), prior_.cols().size() * 4});
+            up.push_back({&bPriorErow_, prior_.entryRow().data(), prior_.entryRow().size() * 4});
+        }
         if (cgAllocated_) {
             up.push_back({&bCamRanges_, P_.cam_obs_ranges.data(), P_.cam_obs_ranges.size() * 4});
             up.push_back({&bCamObs_, P_.cam_obs.data(), P_.cam_obs.size() * 4});
@@ -449,7 +483,44 @@ public:
         ctx_.barrier(cb_);
         ctx_.recordDownload(cb_, bCost_, realSize(opt_.real), 0, kDlCost);
         endSeg();
-        return readCost();
+        return readCost() + priorCost(hostPoses_, hostExts_);
+    }
+
+    // ---- priors (sfm/ba/Priors.h) ----
+    // Evaluated on the host against a mirror of the device's poses: assembled
+    // at the accepted parameters, costed at the trial ones an iteration reads back.
+
+    double priorCost(const std::vector<double>& poses, const std::vector<double>& exts) const {
+        return hasPriors_ ? prior_.cost(P_, poses.data(), exts.data()) : 0.0;
+    }
+
+    void uploadPriors(double damping) {
+        if (!hasPriors_) return;
+        prior_.assemble(P_, hostPoses_.data(), hostExts_.data(), damping);
+        std::vector<uint8_t> blk, g;
+        packReals(blk, prior_.blocks().data(), prior_.blocks().size(), opt_.real);
+        packReals(g, prior_.gradient().data(), prior_.gradient().size(), opt_.real);
+        VkContext::UploadItem up[2] = {{&bPriorBlk_, blk.data(), blk.size()},
+                                       {&bPriorG_, g.data(), g.size()}};
+        ctx_.uploadMany(up, 2);
+    }
+
+    // The iteration's cost readback, plus the priors at the parameters the
+    // same command buffer read back into the staging buffer.
+    double readTotalCost() {
+        double c = readCost();
+        if (!hasPriors_) return c;
+        const uint8_t* st = (const uint8_t*)ctx_.stagingDownloadPtr() + kDlPoses;
+        unpackReals(trialPoses_, st, P_.poses.size(), opt_.real);
+        unpackReals(trialExts_, st + P_.poses.size() * realSize(opt_.real), P_.exts.size(),
+                    opt_.real);
+        return c + priorCost(trialPoses_, trialExts_);
+    }
+
+    void acceptTrialParams() {
+        if (!hasPriors_) return;
+        hostPoses_.swap(trialPoses_);
+        hostExts_.swap(trialExts_);
     }
 
     void solve() {
@@ -487,10 +558,11 @@ public:
             } else if (tcUse_) {
                 tcAge_++;
             }
+            uploadPriors(damping);
             beginSeg();
             recordIteration((float)damping, reuse, path);
             endSeg();
-            double newCost = readCost();
+            double newCost = readTotalCost();
             stats_.iterations = it + 1;
 
             if (path == LinSolve::CG) {
@@ -506,7 +578,7 @@ public:
                     beginSeg();
                     recordIteration((float)damping, true, path);
                     endSeg();
-                    newCost = readCost();
+                    newCost = readTotalCost();
                     readCgStatus(conv, cg_iters);
                     if (cg_iters > 0 || conv) {
                         tcOff_ = true;
@@ -543,7 +615,7 @@ public:
                         beginSeg();
                         recordIteration((float)damping, true, densePath_);
                         endSeg();
-                        newCost = readCost();
+                        newCost = readTotalCost();
                         tcHave_ = false;  // the dense solve reused u_S
                         stats_.cg_fallbacks++;
                         if (++consec_fallbacks >= 3) {
@@ -570,6 +642,7 @@ public:
                 }
                 cost = newCost;
                 stats_.accepted++;
+                acceptTrialParams();
                 reuse = false;
                 reject_mult = 2.0;
                 // 5 s of progress costs one parameter download (~20 ms for
@@ -617,6 +690,7 @@ public:
     // debug: run one full assembly (no factor/solve) so S and g can be dumped
     void debugAssemble(float damping) {
         if (cpu_) return cpu_->assembleOnly(damping);
+        uploadPriors(damping);
         beginSeg();
         recordAssembly(damping, false, densePath_);
         endSeg();
@@ -1140,6 +1214,19 @@ private:
         ctx_.barrier(cb_);
     }
 
+    // The prior blocks into S (dense) or the preconditioner (CG), and the
+    // prior gradient into g; recorded after a barrier on the kernels that
+    // built those, since these add with plain read-modify-writes.
+    void recordPriorAdd(const char* blocks_kernel) {
+        Push pe;
+        pe.u0 = prior_.numEntries();
+        room(2 * kWLaunch + (prior_.numEntries() + P_.pose_dim) * kWVec);
+        ctx_.dispatch(cb_, blocks_kernel, (prior_.numEntries() + 255) / 256, pe);
+        Push pg;
+        pg.u0 = P_.pose_dim;
+        ctx_.dispatch(cb_, "prior_add_g", (P_.pose_dim + 255) / 256, pg);
+    }
+
     void recordCost() {
         ctx_.fillZero(cb_, bCost_);
         ctx_.barrier(cb_);
@@ -1221,7 +1308,12 @@ private:
                 p.u0 = P_.num_obs;
                 launch(std::string("schur_obs") + schurSuffix_, P_.num_obs, 128,
                        kWSchurObs * wide_ * wide_ * meanTrackT_ / kSchurObsT, p, atBase);
-            } else {
+            }
+            if (dense && hasPriors_) {
+                ctx_.barrier(cb_);
+                recordPriorAdd("prior_add_s");
+            }
+            if (!dense) {
                 p.u0 = P_.num_cam_chunks;
                 p.u1 = P_.prec_exclusive ? 1 : 0;
                 p.u2 = P_.num_frames;  // member blocks follow the frame ones, then groups
@@ -1230,6 +1322,10 @@ private:
                        kWCamDiag * wide_ * wide_ * P_.num_obs / std::max(1u, P_.num_cam_chunks),
                        p, atBase);
                 ctx_.barrier(cb_);
+                if (hasPriors_) {
+                    recordPriorAdd("prior_add_m");
+                    ctx_.barrier(cb_);
+                }
                 p.u0 = P_.num_prec_blocks;
                 room(kWLaunch + P_.num_prec_blocks * kWImage);
                 ctx_.dispatch(cb_, "cg_prec_fact", (P_.num_prec_blocks + 255) / 256, p);
@@ -1310,6 +1406,13 @@ private:
             launch(std::string("cg_scatter") + cgSuffix_, P_.num_cam_chunks, 1,
                    kWScatter * wide_ * wChunk, ps, atBase);
             ctx_.barrier(cb_);
+            if (hasPriors_) {
+                Push pp;
+                pp.u0 = P_.num_frames;
+                room(kWLaunch + P_.num_frames * kWImage);
+                ctx_.dispatch(cb_, "prior_matvec", (P_.num_frames + 255) / 256, pp);
+                ctx_.barrier(cb_);
+            }
             pr.u1 = 0;
             ctx_.dispatch(cb_, "cg_red2", ng, pr);
             ctx_.barrier(cb_);
@@ -1410,10 +1513,18 @@ private:
         ctx_.recordDownload(cb_, bCost_, realSize(opt_.real), 0, kDlCost);
         if (path == LinSolve::CG)
             ctx_.recordDownload(cb_, bCgScal_, 8 * realSize(opt_.real), 0, kDlCgScal);
+        if (hasPriors_) {
+            const VkDeviceSize pb = P_.poses.size() * realSize(opt_.real);
+            ctx_.recordDownload(cb_, bPoses_, pb, 0, kDlPoses);
+            if (!P_.exts.empty())
+                ctx_.recordDownload(cb_, bExts_, P_.exts.size() * realSize(opt_.real), 0,
+                                    kDlPoses + pb);
+        }
     }
 
-    // Offsets into the download staging buffer for the folded readbacks above.
-    static constexpr VkDeviceSize kDlCost = 0, kDlCgScal = 64;
+    // Offsets into the download staging buffer for the folded readbacks above;
+    // the trial poses (and extrinsics) follow when priors are on.
+    static constexpr VkDeviceSize kDlCost = 0, kDlCgScal = 64, kDlPoses = 128;
 
     double readCost() {
         std::vector<double> v;
@@ -1492,4 +1603,10 @@ private:
     GpuBuffer bPairEntries_, bPairChunks_, bW_, bYp_, bY_;
     GpuBuffer bCamRanges_, bCamObs_, bCamChunks_, bCgR_, bCgZ_, bCgP_, bCgSp_;
     GpuBuffer bCgV_, bCgB_, bCgM_, bCgScal_, bCgPart_, bPrecBlocks_;
+    // Priors: the assembler, its tables on the device, and the host mirror of
+    // the parameters it is evaluated at (accepted, and the iteration's trial).
+    sfm::PriorAssembler prior_;
+    bool hasPriors_ = false;
+    GpuBuffer bPriorRows_, bPriorCols_, bPriorErow_, bPriorBlk_, bPriorG_;
+    std::vector<double> hostPoses_, hostExts_, trialPoses_, trialExts_;
 };

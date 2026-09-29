@@ -463,7 +463,7 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed);
+            seed, DeviceVector<float>());
         backend::device_synchronize();
     };
 
@@ -497,7 +497,7 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed);
+            seed, DeviceVector<float>());
         backend::device_synchronize();
     };
 

@@ -203,6 +203,14 @@ inline void SetTooltip(const Msg& m, std::initializer_list<Arg> a) {
     ImGui::SetTooltip("%s", format(m, a).c_str());
 }
 inline void SetTooltipRaw(const char* s) { ImGui::SetTooltip("%s", s); }
+// SetTooltip for a sentence or more: wrapped at help_on_hover's width.
+inline void SetTooltipWrapped(const Msg& m) {
+    if (!ImGui::BeginTooltip()) return;
+    ImGui::PushTextWrapPos(gui::px(420.0f));
+    ImGui::TextUnformatted(m.get());
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
 inline void SetTooltipRaw(const std::string& s) { ImGui::SetTooltip("%s", s.c_str()); }
 
 // ---------------------------------------------------------------------------

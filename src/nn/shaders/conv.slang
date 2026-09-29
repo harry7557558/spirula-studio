@@ -84,6 +84,7 @@ struct DeformIm2ColParams {
     float* out;      // [P, Ci*kh*kw]
     uint*  x;        // [Hi, Wi, Ci]
     uint*  offset;   // [Ho, Wo, 2*kh*kw] -- (dy, dx) per tap, channel-last
+    uint*  mask;     // [Ho, Wo, kh*kw] modulation; read only when has_mask
     uint   Hi;
     uint   Wi;
     uint   Ci;
@@ -99,27 +100,12 @@ struct DeformIm2ColParams {
     uint   P;
     float  max_offset;   // offsets are clamped to +-this; <= 0 disables
     uint   groups_per_row;
+    uint   has_mask;
 };
 
-// The same column layout im2col produces, so the GEMM and the checkpoint
-// weight are shared verbatim between the two -- only where a tap reads
-// changes.
-//
-// This is torchvision's `deform_conv2d` with mask = None, which is the form
-// ALIKED's checkpoints carry (their offset convs have 2*k*k output channels,
-// not 3*k*k; AlikedWeights::load refuses anything else). Two details are
-// load-bearing and neither is guessable from the name:
-//
-//   * The sampling position is p0 + tap + offset, where the offset for tap
-//     (ky, kx) lives at offset channels 2*(ky*kw + kx) and +1, in that order,
-//     (dy, dx). Swapping them produces a network that trains fine and
-//     matches badly.
-//   * Sampling reads ZERO outside the input, not the edge pixel. See
-//     sample_bilinear_zero.
-//
-// One bilinear fetch per (position, tap, channel): the four corner loads are
-// what a plain im2col would do anyway, and only the weights are recomputed
-// per channel.
+// torchvision's deform_conv2d in im2col's column layout, so the GEMM and the
+// weight are conv2d's. Offsets are (dy, dx) per tap at channel 2*tap (swapped,
+// it trains fine and matches badly); taps outside the input read zero.
 [shader("compute")]
 [numthreads(WG, 1, 1)]
 void deform_im2col(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
@@ -149,8 +135,11 @@ void deform_im2col(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
 
     float y = float(int(yo * p.stride_y + ky) - int(p.pad_y)) + dy;
     float x = float(int(xo * p.stride_x + kx) - int(p.pad_x)) + dx;
-    store_at(p.out, i, sample_bilinear_zero(p.x, kInputF16 != 0, int(p.Hi), int(p.Wi),
-                                            int(p.Ci), int(ci), y, x));
+    float v = sample_bilinear_zero(p.x, kInputF16 != 0, int(p.Hi), int(p.Wi), int(p.Ci),
+                                   int(ci), y, x);
+    if (p.has_mask != 0u)
+        v *= asfloat(load_u32_at(p.mask, (yo * p.Wo + xo) * (p.kh * p.kw) + tap));
+    store_at(p.out, i, v);
 }
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ namespace {
     X("mask_border",                border_enable)                            \
     X("mask_frame_shapes",          frame_shapes)                             \
     X("mask_model",                 mask_model_id)                            \
+    X("mask_text_detector",         mask_detector_id)                         \
     X("mask_prompt",                mask.prompt)                              \
     X("mask_negative_prompt",       mask.negative_prompt)                     \
     X("mask_keep_subject",          mask.keep_subject)                        \
@@ -53,6 +54,7 @@ namespace {
     X("mask_max_image_size",        mask.max_image_size)                      \
     X("mask_threshold",             mask.threshold)                           \
     X("mask_nms",                   mask.nms)                                 \
+    X("mask_box_threshold",         mask.box_threshold)                       \
     X("mask_memory",                sfm.prep.mask_memory)                     \
     X("mask_detect_every",          sfm.prep.mask_detect_every)               \
     X("mask_memory_frames",         sfm.prep.mask_memory_frames)              \
@@ -215,6 +217,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     m.shrink_ratio = std::clamp(m.shrink_ratio, 0.0f, 1.0f);
     m.threshold = std::clamp(m.threshold, 0.0f, 1.0f);
     m.nms = std::clamp(m.nms, 0.0f, 1.0f);
+    m.box_threshold = std::clamp(m.box_threshold, 0.0f, 1.0f);
 
     GeometryJob& g = s.sfm.geometry;
     clamp_to(g.max_size, 64, 8192);

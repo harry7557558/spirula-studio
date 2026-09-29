@@ -44,12 +44,8 @@ PointsDoc::PointsDoc(ParsedDataset ds, PostSplitCameras post,
 
     // The preview draws in the normalized frame, so the selection has to
     // project there too: train_to_normalized is stored the other way round.
-    double A[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    if (_ds.train_frame_scale != 1.0f) {
-        double T[16];
-        for (int i = 0; i < 16; i++) T[i] = _ds.train_to_normalized[i];
-        dsparse::invert_affine4x4(T, A);
-    }
+    double A[16];
+    dsparse::train_to_normalized_inverse(_ds, A);
     auto map = [&A](const double* p, float* out) {
         for (int r = 0; r < 3; r++)
             out[r] = (float)(A[r*4+0]*p[0] + A[r*4+1]*p[1] + A[r*4+2]*p[2] +
@@ -182,12 +178,8 @@ bool PointsDoc::live_centers(dsparse::CenterTable& out) const {
         }
     }
     if (pts.empty() && c2w.empty()) return false;
-    double A[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    if (_ds.train_frame_scale != 1.0f) {
-        double T[16];
-        for (int i = 0; i < 16; i++) T[i] = _ds.train_to_normalized[i];
-        dsparse::invert_affine4x4(T, A);
-    }
+    double A[16];
+    dsparse::train_to_normalized_inverse(_ds, A);
     out = dsparse::scene_centers(c2w.empty() ? nullptr : c2w.data(),
                                  (int64_t)c2w.size() / 12,
                                  pts.empty() ? nullptr : pts.data(),
@@ -198,12 +190,8 @@ bool PointsDoc::live_centers(dsparse::CenterTable& out) const {
 // RAW file coordinates -> the normalized frame: the parser's centring shift,
 // then the inverse of train_to_normalized.
 spirula::Sim3 PointsDoc::view_frame() const {
-    double A[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-    if (_ds.train_frame_scale != 1.0f) {
-        double T[16];
-        for (int i = 0; i < 16; i++) T[i] = _ds.train_to_normalized[i];
-        dsparse::invert_affine4x4(T, A);
-    }
+    double A[16];
+    dsparse::train_to_normalized_inverse(_ds, A);
     spirula::Sim3 shift;
     for (int i = 0; i < 3; i++) shift.t[i] = -_ds.center[(size_t)i];
     return spirula::Sim3::from_3x4(A) * shift;

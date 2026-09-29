@@ -57,11 +57,14 @@ inline __device__ void mcmc_relocation(float& opacity, float3& scale, int n_idx)
 }
 
 
+// `weight` (null = 1) scales a live splat's draw; a dead one stays at 0,
+// which is the flag the index map reads, so the weight must never be 0.
 __global__ void mcmc_compute_relocation_probabilities_kernel(
     uint32_t num_splats,
     float min_opacity,
     const float* __restrict__ opacs,
     const float3* __restrict__ scales,
+    const float* __restrict__ weight,
     float* __restrict__ probs
 ) {
     uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -73,6 +76,8 @@ __global__ void mcmc_compute_relocation_probabilities_kernel(
     if (opac <= min_opacity || !isfinite(opac) ||
         SlangDensify::splat_scale_is_dead(scales[tid]))
         opac = 0.0f;
+    else if (weight != nullptr)
+        opac *= fmaxf(weight[tid], 1e-30f);
 
     probs[tid] = opac;
 }
@@ -235,7 +240,8 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 ) {
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
     float* sample_probs = DevicePool::global().acquire<float>(
@@ -245,6 +251,7 @@ void relocate_splats_mcmc_tensor(
         min_opacity,
         opacs.data_ptr(),
         scales.data_ptr(),
+        draw_weight.data_ptr(),
         sample_probs
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
@@ -467,7 +474,8 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 ) {
     if (num_add == 0)
         return;
@@ -480,6 +488,7 @@ void add_splats_mcmc_tensor(
         min_opacity,
         opacs.data_ptr(),
         scales.data_ptr(),
+        draw_weight.data_ptr(),
         sample_probs
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());

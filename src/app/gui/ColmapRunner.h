@@ -161,6 +161,8 @@ struct ColmapJob {
     std::string mask_negative_prompt;
     bool mask_keep_subject = false;      // prompt names what to KEEP
     std::string mask_model_path;
+    std::string mask_detector_path;      // Grounding DINO, when one is paired
+    float mask_detector_threshold = 0.3f;
     std::string mask_model = "sam2.1_hiera_large";
     int mask_max_image_size = 1600;
     float mask_dilate_ratio = 0.05f;

@@ -132,6 +132,23 @@ target_compile_options(ss_nn PRIVATE
 set_property(TARGET ss_nn PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
+# ss_swin -- the Swin Transformer backbone BiRefNet and Grounding DINO share;
+# ss_birefnet -- subject masks; ss_gdino -- text-prompted boxes. No shaders of
+# their own: every op they needed was general and went into nn/.
+# ---------------------------------------------------------------------------
+foreach(_lib swin birefnet gdino)
+    file(GLOB_RECURSE _srcs CONFIGURE_DEPENDS ${SS_SRC}/${_lib}/*.cpp)
+    list(FILTER _srcs EXCLUDE REGEX "/tests/")
+    add_library(ss_${_lib} STATIC ${_srcs})
+    target_compile_options(ss_${_lib} PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+    set_property(TARGET ss_${_lib} PROPERTY CXX_STANDARD 17)
+endforeach()
+target_link_libraries(ss_swin PUBLIC ss_nn)
+target_link_libraries(ss_birefnet PUBLIC ss_swin)
+target_link_libraries(ss_gdino PUBLIC ss_swin)
+
+# ---------------------------------------------------------------------------
 # ss_sam -- SAM 2 / SAM 3
 # ---------------------------------------------------------------------------
 ss_nn_shaders(sam ${SS_SRC}/sam/shaders SS_SAM_EMBED)
@@ -140,7 +157,9 @@ file(GLOB_RECURSE SS_SAM_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/sam/*.cpp)
 list(FILTER SS_SAM_SOURCES EXCLUDE REGEX "/tests/")
 
 add_library(ss_sam STATIC ${SS_SAM_SOURCES} ${SS_SAM_EMBED})
-target_link_libraries(ss_sam PUBLIC ss_nn)
+# Masking.cpp is the one mask policy, and Grounding DINO and BiRefNet are two
+# of the models it drives.
+target_link_libraries(ss_sam PUBLIC ss_nn ss_gdino ss_birefnet)
 target_compile_options(ss_sam PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 set_property(TARGET ss_sam PROPERTY CXX_STANDARD 17)
@@ -246,7 +265,8 @@ file(GLOB SS_NN_TESTS CONFIGURE_DEPENDS
      ${SS_SRC}/nn/tests/*.cpp ${SS_SRC}/sam/tests/*.cpp
      ${SS_SRC}/aliked/tests/*.cpp ${SS_SRC}/loma/tests/*.cpp
      ${SS_SRC}/metric3d/tests/*.cpp
-     ${SS_SRC}/moge/tests/*.cpp)
+     ${SS_SRC}/moge/tests/*.cpp ${SS_SRC}/birefnet/tests/*.cpp
+     ${SS_SRC}/gdino/tests/*.cpp)
 foreach(test_src ${SS_NN_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})

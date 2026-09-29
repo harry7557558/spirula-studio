@@ -122,6 +122,20 @@ SS_MSG(tool_e57,
     NL("een trainingsdataset maken uit een E57-laserscan"),
     RU("создать набор данных для обучения из лазерного скана E57"),
     TR("bir E57 lazer taramasından eğitim veri kümesi oluştur"));
+SS_MSG(tool_partition,
+    EN("split a reconstruction into parts to train separately, and merge them"),
+    JA("再構成を別々に学習するパートに分割し、あとで結合する"),
+    ZH_HANS("把重建拆成可分别训练的分区，再合并"),
+    ZH_HANT("把重建拆成可分別訓練的分區，再合併"),
+    KO("재구성을 따로 학습할 파트로 나누고 다시 병합"),
+    DE("eine Rekonstruktion in getrennt trainierbare Teile zerlegen und zusammenführen"),
+    FR("découper une reconstruction en parties à entraîner séparément, puis les fusionner"),
+    ES("dividir una reconstrucción en partes para entrenar por separado y fusionarlas"),
+    PT("dividir uma reconstrução em partes para treinar em separado e fundi-las"),
+    IT("dividere una ricostruzione in parti da addestrare separatamente e unirle"),
+    NL("een reconstructie splitsen in apart te trainen delen en ze samenvoegen"),
+    RU("разбить реконструкцию на части для раздельного обучения и объединить их"),
+    TR("bir yeniden oluşturmayı ayrı eğitilecek parçalara böl ve birleştir"));
 SS_MSG(tool_encode,
     EN("encode raw RGB frames into a video on the GPU"),
     JA("生のRGBフレームをGPUで動画にエンコードする"),
@@ -1156,6 +1170,27 @@ SS_MSG(sfm_merge_output_is_input,
        "--in-place, если так и задумано"),
     TR("--output {0} zaten girdi modellerinin bulunduğu yer; istediğiniz buysa "
        "--in-place verin"));
+
+SS_MSG(sam_subject_no_prompt,
+    EN("{0} masks the main subject by itself; the text prompts and clicks are ignored"),
+    JA("{0} は主な被写体を自動でマスクします。テキストプロンプトとクリックは無視されます"),
+    ZH_HANS("{0} 会自动遮出主体；文本提示与点击都会被忽略"),
+    ZH_HANT("{0} 會自動遮出主體；文字提示與點選都會被忽略"),
+    KO("{0} 는 주 피사체를 스스로 마스크합니다. 텍스트 프롬프트와 클릭은 무시됩니다"),
+    DE("{0} maskiert das Hauptmotiv von selbst; Textprompts und Klicks werden ignoriert"),
+    FR("{0} masque seul le sujet principal ; les consignes textuelles et les clics sont "
+       "ignorés"),
+    ES("{0} enmascara por sí solo el sujeto principal; se ignoran las indicaciones de "
+       "texto y los clics"),
+    PT("{0} mascara sozinho o objeto principal; os comandos de texto e os cliques são "
+       "ignorados"),
+    IT("{0} maschera da solo il soggetto principale; prompt testuali e clic vengono "
+       "ignorati"),
+    NL("{0} maskeert uit zichzelf het hoofdonderwerp; tekstprompts en klikken worden "
+       "genegeerd"),
+    RU("{0} сам выделяет главный объект; текстовые запросы и щелчки не учитываются"),
+    TR("{0} ana özneyi kendiliğinden maskeler; metin istemleri ve tıklamalar yok "
+       "sayılır"));
 
 }  // namespace cli
 }  // namespace msg

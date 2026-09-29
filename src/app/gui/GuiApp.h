@@ -16,6 +16,7 @@
 #include "app/gui/FeatureWatcher.h"
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryPanel.h"
+#include "app/gui/PartitionPanel.h"
 #include "app/gui/ImageCompare.h"
 #include "app/gui/MatchMatrix.h"
 #include "app/gui/PairPreview.h"
@@ -39,6 +40,7 @@
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <map>
 #include <string>
 #include <thread>
@@ -304,10 +306,11 @@ private:
     void update_dataset_job();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
-    // Path of the selected checkpoint, or "" when it is not downloaded yet.
-    std::string selected_model_path() const;
-    // Fetch it (with consent), and whether a run would need it and not find it.
-    void request_model_download(const std::string& id);
+    // The selected checkpoint and detector; empty paths until both are here.
+    MaskModelFiles selected_mask_model() const;
+    // Fetch them (with consent), and whether a run would need them and not
+    // find them. `detector_id` is ignored for an entry that takes none.
+    void request_model_download(const std::string& id, const std::string& detector_id);
     bool mask_model_missing() const;
     bool mask_model_missing(bool enable, const std::vector<PrepInput>& inputs) const;
     // What is missing and the button that fetches it, or its download's bar.
@@ -855,6 +858,52 @@ private:
     // that tries it on one frame, and the checkpoint fetch.
     GeometryJob _geometry;
     GeometryPanel _geometry_panel;
+    PartitionPanel _partition_panel;
+    void open_partition_panel(const DatasetFolders& f);
+    // Queueing a partition's parts: the modal with the run's settings, the
+    // "clear what is still pending?" question, and the rows it finally adds.
+    struct PartitionQueue {
+        bool open = false, shown = false, ask_clear = false;
+        std::string partition;
+        int num_parts = 0;
+        DatasetFolders folders;
+        BatchRun run;
+        bool merge = true;
+    };
+    PartitionQueue _pq;
+    // One training row per part of a saved partition, with `_pq.run`'s
+    // settings; returns how many.
+    int add_batch_partition_rows(const DatasetFolders& f, const std::string& partition,
+                                 int num_parts);
+    void open_partition_queue(const DatasetFolders& f, const std::string& partition,
+                              int num_parts);
+    void draw_partition_queue_modal();
+    int queue_partition_rows(bool clear_pending);
+    // A Merge task runs on its own thread: the parts' models found beside
+    // the dataset, joined and written next to them.
+    std::thread _merge_thread;
+    std::atomic<bool> _merge_busy{false};
+    std::string _merge_result, _merge_error;
+    bool launch_batch_merge(BatchTask& task, const BatchRow& row);
+    // A merge that ends the queue opens in the viewer once the queue is over.
+    std::string _open_after_batch;
+    // The training session's region of interest as overlays for the trainer
+    // view, built off the GUI thread; keyed by the region it was built from.
+    struct RoiOverlays {
+        std::shared_ptr<const spirula::RegionOverlay> engine, preview;
+        std::shared_ptr<const std::vector<uint8_t>> points_inside;
+    };
+    const void* _roi_key = nullptr;
+    std::future<RoiOverlays> _roi_job;
+    void update_roi_overlay();
+    void draw_batch_row_merge(BatchRow& row, int index);
+    // Every task of the row ran and finished well.
+    bool batch_row_done(int index) const;
+    // "Clear list" and "Clear done rows" both ask first.
+    enum class BatchConfirm { None, ClearList, ClearDone, ClearUnchecked };
+    BatchConfirm _batch_confirm = BatchConfirm::None;
+    bool _batch_confirm_shown = false;
+    void draw_batch_confirm_modal();
     DownloadQueue _geom_download;
     // input_pixel_size()'s cache, keyed by input path. A zero pair is a
     // remembered "could not tell", so nothing is probed twice.
@@ -863,9 +912,13 @@ private:
     // The dataset run's checkpoint and the mask editor's (clicks, so the fast
     // one). Not persisted, like every masking setting: a fresh session never
     // runs a model the last one happened to pick.
-    std::string _model_id = "sam3-q4_0";
+    std::string _model_id = "sam2.1-base-plus";
+    std::string _mask_detector_id = "gdino-tiny";   // its words (TextDetector)
     std::string _mask_editor_model_id = "sam2.1-base-plus";
     ModelDownload _download;
+    // The pick _download is fetching: with a detector it is three files,
+    // started one after another as each lands.
+    std::string _download_model_id, _download_detector_id;
 
     // Interface language and the glyphs to draw it with. The font download is
     // separate from _download so that fetching a face cannot cancel a
@@ -876,7 +929,8 @@ private:
     // Families whose licence the user has accepted, persisted in the settings.
     std::vector<std::string> _accepted_licenses;
     std::string _license_prompt;      // family whose modal is open
-    std::string _license_model_id;    // the checkpoint it downloads
+    std::string _license_model_id;    // the pick it downloads
+    std::string _license_detector_id;
     bool _license_tick = false;
 
     // Batch processing. The queue is data; the driver is advance_batch(), so a

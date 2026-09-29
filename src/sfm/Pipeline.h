@@ -23,6 +23,7 @@
 #include "sfm/feature/Pairing.h"
 #include "sfm/map/Assemble.h"
 #include "sfm/map/Mapper.h"
+#include "sfm/map/SensorPriors.h"
 #include "sfm/map/MetricGauge.h"
 
 #include <atomic>
@@ -59,22 +60,61 @@ struct MatchStats {
     double select_seconds = 0;
 };
 
-// Calibrated verification (D45). A fisheye pair verified on raw pixels asks a
-// pinhole fundamental matrix to explain rays 100 deg off axis, which it cannot
-// represent at all; the correspondences that carry the wide field of view are
-// thrown away as outliers. With a camera model in hand we verify on unit
-// bearings instead, where the epipolar constraint is exact at any FOV.
-//
-// The model needs a focal length before it can produce bearings, and the
-// geometric default (diag/pi) is off by ~1.7x on a 200 deg lens, which is
-// enough to warp the bearings and lose most of the benefit -- so unless one is
-// given we search for it on a sample of pairs first (`bootstrapFocal`).
+// A telemetry file read once per run, with the queries the sensor priors and
+// the gauge fit make of it.
+struct LoadedCapture {
+    SensorCapture cap;
+    SensorTimeline timeline;
+};
+
+struct SensorCaptures {
+    std::vector<std::unique_ptr<LoadedCapture>> loaded;
+    bool empty() const { return loaded.empty(); }
+    std::vector<SensorCapture> caps() const {
+        std::vector<SensorCapture> out;
+        for (const auto& lc : loaded) out.push_back(lc->cap);
+        return out;
+    }
+};
+
+// Every telemetry file the config names, or none when `--sensor-gauge none`.
+SensorCaptures loadSensorCaptures(const SfmConfig& cfg, bool verbose);
+
+// The sensors as a prior source over `db`'s images (sfm/map/SensorPriors.h),
+// uncalibrated; null without telemetry or with every use of it switched off.
+std::unique_ptr<TelemetryPriors> makeSensorPriors(const SfmConfig& cfg,
+                                                  const SensorCaptures& sensors,
+                                                  const MatchesDatabase& db,
+                                                  const std::vector<uint32_t>& cam_ids);
+
+// Calibrate `priors` against the gyro from pairs and their matches (a
+// sample's putative ones, or the database's verified ones), reporting per group.
+void calibrateSensorPriors(TelemetryPriors& priors, const std::vector<FeatureSet>& feats,
+                           const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
+                           const std::vector<std::vector<FeatureMatch>>& matches,
+                           const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
+                           int threads, bool verbose);
+void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDatabase& db,
+                                       const std::vector<FeatureSet>& feats,
+                                       const std::vector<Camera>& cams,
+                                       const TwoViewOptions& tvopt, int threads, bool verbose);
+
+// One camera per image, from a setup.
+std::vector<Camera> perImageCameras(const CameraSetup& cs, size_t num_images);
+
+// Calibrated verification (D45): a fisheye pair is verified on unit bearings,
+// which needs a focal, so one is searched on a sample of pairs first unless
+// given (sfm/feature/Verification.h, `bootstrapFocal`).
 struct VerifyCalibration {
     CameraSetupOptions setup;
     size_t sample_pairs = 150;  // pairs per group used by the focal search
+    // The run's telemetry, for the sensor priors; null skips them.
+    const SensorCaptures* sensors = nullptr;
     // outputs
     CameraSetup cameras;        // what the grouping decided, for the caller to reuse
     bool used_bearings = false;
+    // The sensors over this database, calibrated where the pairs allowed.
+    std::unique_ptr<TelemetryPriors> priors;
 };
 
 // ---------------------------------------------------------------------------
@@ -137,7 +177,7 @@ struct ModelGauge {
 // Levelling, centring and the metric gauge. False when no metric frame fitted.
 bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
               const std::string& imagedir, bool verbose,
-              std::vector<ModelGauge>& gauge);
+              std::vector<ModelGauge>& gauge, const SensorCaptures* sensors = nullptr);
 
 void resolveImageNames(std::vector<Reconstruction>& models, const std::string& imagedir);
 void recolorPoints(std::vector<Reconstruction>& models, const SfmConfig& cfg);

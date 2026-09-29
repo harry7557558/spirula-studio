@@ -84,6 +84,9 @@ const std::vector<Tool>& tools() {
 #ifdef SS_TOOL_ENCODE
         {app::kToolEncode, &cmsg::tool_encode, spirula_encode_main},
 #endif
+#ifdef SS_TOOL_PARTITION
+        {app::kToolPartition, &cmsg::tool_partition, spirula_partition_main},
+#endif
     };
     return kTools;
 }

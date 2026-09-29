@@ -19,12 +19,12 @@ struct Im2ColParams {
 };
 
 struct DeformIm2ColParams {
-    uint64_t out, x, offset;
+    uint64_t out, x, offset, mask;
     uint32_t Hi, Wi, Ci, Ho, Wo, kh, kw;
     uint32_t stride_y, stride_x, pad_y, pad_x;
     uint32_t p0, P;
     float    max_offset;
-    uint32_t groups_per_row;
+    uint32_t groups_per_row, has_mask;
 };
 
 struct PatchGatherParams {
@@ -120,9 +120,11 @@ void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor&
     }
 }
 
-void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
-                   const Tensor& offset, const Tensor& w_in, int kh, int kw,
-                   float max_offset, const ConvOpts& o) {
+namespace {
+
+void deform_conv2d_impl(vk::Arena& arena, const Tensor& out, const Tensor& in,
+                        const Tensor& offset, const Tensor& mask, const Tensor& w_in,
+                        int kh, int kw, float max_offset, const ConvOpts& o) {
     NN_CHECK(out.ndim == 3 && in.ndim == 3 && offset.ndim == 3,
              "deform_conv2d expects [H, W, C] tensors");
     const Tensor w = w_in.asMatrix();
@@ -143,7 +145,11 @@ void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
     // The offset map is read as raw f32 by the kernel; an f16 one would need a
     // second load path for two values per tap and buys nothing at this size.
     NN_CHECK(offset.dtype == DType::F32, "deform_conv2d: offset must be f32");
-    const KernelName entry = span_entry("conv.deform_im2col", {in, offset, w});
+    if (mask.valid())
+        NN_CHECK(mask.dtype == DType::F32 && mask.numel() == Ho * Wo * kh * kw,
+                 "deform_conv2d: mask must be f32 [%lld, %lld, %lld]", (long long)Ho,
+                 (long long)Wo, (long long)(kh * kw));
+    const KernelName entry = span_entry("conv.deform_im2col", {in, offset, mask, w});
 
     const int64_t positions = Ho * Wo;
     int64_t chunk = std::max<int64_t>(64, kMaxColBytes / (K * 4));
@@ -159,6 +165,8 @@ void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
         ip.out = cols.ptr;
         ip.x = in.ptr;
         ip.offset = offset.ptr;
+        ip.mask = vk::or_fallback(mask.ptr);
+        ip.has_mask = mask.valid() ? 1u : 0u;
         ip.Hi = (uint32_t)Hi;
         ip.Wi = (uint32_t)Wi;
         ip.Ci = (uint32_t)Ci;
@@ -183,6 +191,21 @@ void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
         Tensor out_chunk(out.ptr + (uint64_t)(p0 * Co) * 4, DType::F32, P, Co);
         linear(out_chunk, cols.view(P, K), w, lo);
     }
+}
+
+}  // namespace
+
+void deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
+                   const Tensor& offset, const Tensor& w, int kh, int kw,
+                   float max_offset, const ConvOpts& o) {
+    deform_conv2d_impl(arena, out, in, offset, Tensor{}, w, kh, kw, max_offset, o);
+}
+
+void modulated_deform_conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in,
+                             const Tensor& offset, const Tensor& mask, const Tensor& w,
+                             int kh, int kw, const ConvOpts& o) {
+    NN_CHECK(mask.valid(), "modulated_deform_conv2d: no mask");
+    deform_conv2d_impl(arena, out, in, offset, mask, w, kh, kw, 0.0f, o);
 }
 
 void patch_gather(const Tensor& out, const Tensor& in, const Tensor& centers, int k) {

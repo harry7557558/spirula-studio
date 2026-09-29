@@ -735,10 +735,11 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                      std::to_string(id) + " has " +
                                      std::to_string(cam.params.size()) +
                                      " params, expected 2 (w, h)");
-        // COLMAP stores (w, h) as *metadata* params, so they are the camera's
-        // own dimensions by construction. A mismatch means a corrupt or
-        // hand-edited model, and the two would disagree about the projection.
-        if (cam.params[0] != (double)cam.width || cam.params[1] != (double)cam.height)
+        // COLMAP stores (w, h) as *metadata* params, so a mismatch means a
+        // corrupt or hand-edited model. Half a pixel of slack: v2026.9.24's
+        // SfM wrote 2*pi*(w/2pi), which is off by an ulp.
+        if (std::abs(cam.params[0] - (double)cam.width) > 0.5 ||
+            std::abs(cam.params[1] - (double)cam.height) > 0.5)
             throw std::runtime_error(
                 "ColmapParser: EQUIRECTANGULAR camera " + std::to_string(id) +
                 " params (" + std::to_string((int64_t)cam.params[0]) + ", " +
@@ -765,16 +766,32 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     struct Frame { const ColmapImage* im; std::string path, sort_key, aux_name; };
     std::vector<Frame> frames;
     frames.reserve(images.size());
+    std::vector<std::string> missing;
     for (const auto& [id, im] : images) {
         std::error_code ec;
         fs::path path = (fs::path(image_dir) / im.name).lexically_normal();
         const fs::path in_dataset = (fs::path(dataset_dir) / im.name).lexically_normal();
         if (!fs::exists(path, ec) && fs::exists(in_dataset, ec)) path = in_dataset;
+        if (cfg.require_image_files && !fs::exists(path, ec)) {
+            missing.push_back(path.string());
+            continue;
+        }
         std::string aux_name = dsparse::relative_under(path.string(), image_dir);
         if (aux_name.empty())
             aux_name = dsparse::relative_under(path.string(), dataset_dir);
         frames.push_back({&im, path.string(), path.generic_string(), std::move(aux_name)});
     }
+    // Exporters list images they did not write (RealityScan leaves the ones
+    // it failed to align, with NaN observations), so skip those. None found
+    // is a wrong image dir, not a partial export.
+    if (frames.empty() && !missing.empty())
+        throw std::runtime_error("ColmapParser: " + missing.front() +
+                                 " does not exist (set --image-dir if needed)");
+    std::sort(missing.begin(), missing.end());
+    for (const std::string& m : missing)
+        std::printf("%s %s\n", spirula::i18n::msg::data::word_warning.get(),
+                    spirula::i18n::format(spirula::i18n::msg::data::image_missing,
+                                          {m}).c_str());
     std::sort(frames.begin(), frames.end(),
               [](const Frame& a, const Frame& b) { return a.sort_key < b.sort_key; });
 
@@ -895,9 +912,6 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                      std::to_string(im.camera_id));
         const ColmapCamera& cam = cam_it->second;
 
-        if (cfg.require_image_files && !fs::exists(frames[i].path))
-            throw std::runtime_error("ColmapParser: " + frames[i].path +
-                                     " does not exist (set --image-dir if needed)");
         ds.image_filenames.push_back(frames[i].path);
 
         const int turns =

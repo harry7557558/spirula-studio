@@ -5,7 +5,11 @@
 
 #include <GLFW/glfw3.h>
 
+#include "imgui.h"
+
+#include <cctype>
 #include <cmath>
+#include <cstring>
 
 namespace gui {
 
@@ -366,6 +370,31 @@ bool gamepad_deflected() {
             std::fabs(lt - rt) > kGamepadDeadzone)
             return true;
     }
+    return false;
+}
+
+// GLFW keys are US positions; this is the letter imgui_impl_glfw re-translates
+// that position to, with its fallbacks, so the two cannot disagree.
+int fly_key(char us_letter) {
+    const int untranslated = ImGuiKey_A + (us_letter - 'a');
+    const char* name = glfwGetKeyName(GLFW_KEY_A + (us_letter - 'a'), 0);
+    if (!name || !name[0] || name[1]) return untranslated;
+    const char c = (char)std::tolower((unsigned char)name[0]);
+    if (c >= 'a' && c <= 'z') return ImGuiKey_A + (c - 'a');
+    if (c >= '0' && c <= '9') return ImGuiKey_0 + (c - '0');
+    static const char punct[] = "`-=[]\\,;'./";
+    static const ImGuiKey punct_keys[] = {
+        ImGuiKey_GraveAccent, ImGuiKey_Minus,        ImGuiKey_Equal,
+        ImGuiKey_LeftBracket, ImGuiKey_RightBracket, ImGuiKey_Backslash,
+        ImGuiKey_Comma,       ImGuiKey_Semicolon,    ImGuiKey_Apostrophe,
+        ImGuiKey_Period,      ImGuiKey_Slash};
+    if (const char* p = std::strchr(punct, c)) return punct_keys[p - punct];
+    return untranslated;
+}
+
+bool is_fly_key(int imgui_key) {
+    for (const char* c = "wasdqe"; *c; c++)
+        if (fly_key(*c) == imgui_key) return true;
     return false;
 }
 

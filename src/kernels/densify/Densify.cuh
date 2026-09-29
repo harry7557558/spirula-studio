@@ -208,7 +208,8 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 );
 
 
@@ -230,7 +231,8 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 );
 
 
@@ -292,4 +294,35 @@ void robust_canny_residual_tensor(
     bool* mask_in_ptr,               // optional [B*H*W] mask; nullptr for none
     float quantile,                  // Tukey cutoff = per-image q-quantile of |r|
     DeviceTensor3D<float> img_out    // [B, H, W, 1] -- written (not added)
+);
+
+
+void region_weight_tensor(
+    int64_t num_splats,
+    DeviceVector<float3> means,
+    DeviceVector<float4> quats,          // optional with scales + cameras: orients the test
+    DeviceVector<float3> scales,
+    DeviceVector<float4> camera_bvh,     // a label field over the cameras, index as label
+    DeviceVector<float4> camera_seeds,
+    DeviceVector<float4> program,        // [num_prog * 6]
+    DeviceVector<float4> field_bvh,      // the program's label field, or empty
+    DeviceVector<float4> field_seeds,
+    float inside,
+    float outside,
+    DeviceVector<float> weight           // [N] out
+);
+
+
+void densify_scale_score_tensor(
+    int64_t num_splats,
+    DeviceVector<float> weight,   // [N]
+    DeviceVector<float2> score    // [N, 2]; lane 0 is multiplied in place
+);
+
+
+void region_decay_opacity_tensor(
+    int64_t num_splats,
+    DeviceVector<float> weight,      // [N]; below 1 is outside the region
+    DeviceVector<float> opacities,   // [N] logits, scaled in place outside
+    float factor                     // in (0, 1]
 );

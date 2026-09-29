@@ -87,6 +87,11 @@ endif()
 list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/main.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_TRAIN=1)
 
+# ---- scene partitioning: split a dataset for training in parts, merge back ----
+# Host-only over the parsers and the splat PLY reader, so every build has it.
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/partition_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_PARTITION=1)
+
 # ---- mesh extraction ----
 # Both backends: the host side is portable (mesh/OccupancyEvaluator.cpp) and
 # each has kernels (mesh/Meshing.cu, backend/vulkan/kernels/Meshing.cpp).
@@ -216,8 +221,9 @@ if(SS_BUILD_GUI)
         UiFont)
     ss_cjk_faces()
 
-    # The window icon X11 wants handed to it (GuiMain.cpp). Windows gets its
-    # from app.rc below and macOS from the bundle, so this is the small one.
+    # The window icon X11 wants handed to it (GuiMain.cpp) and the one the
+    # desktop entry points at (DesktopEntry.cpp). Windows gets its from app.rc
+    # below and macOS from the bundle, so this is the small one.
     ss_embed_file(
         ${SS_ROOT}/assets/icon_128.png
         ${CMAKE_BINARY_DIR}/app_generated/app_icon.h

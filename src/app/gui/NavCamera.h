@@ -69,4 +69,10 @@ struct NavCamera {
 // Any connected gamepad deflected past gamepad_tick's deadzone.
 bool gamepad_deflected();
 
+// The ImGuiKey (as an int) of the fly key where `us_letter` (one of wasdqe)
+// sits on a US board. imgui names a key by what the layout prints on it, and
+// the fly keys are places, not letters: on AZERTY, forward is the Z key.
+int fly_key(char us_letter);
+bool is_fly_key(int imgui_key);
+
 }  // namespace gui

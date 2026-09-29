@@ -49,7 +49,7 @@
 // Spec ids 0..4, module-wide declaration order. OpAttention.cpp always passes
 // all five.
 [SpecializationConstant] const int kHeadDim  = 64;
-[SpecializationConstant] const int kBiasMode = 0;  // 0 none, 1 per-key, 2 full, 3 causal
+[SpecializationConstant] const int kBiasMode = 0;  // 0 none, 1 per-key, 2 full, 3 causal, 4 window
 [SpecializationConstant] const int kQF16     = 0;
 [SpecializationConstant] const int kKVF16    = 0;
 // Flash-decoding: each workgroup takes a slice of the key range and writes an
@@ -61,6 +61,9 @@ static const int BIAS_NONE   = 0;
 static const int BIAS_PERKEY = 1;  // bias[nk], broadcast over queries and heads
 static const int BIAS_FULL   = 2;  // bias[n_heads][nq][nk]
 static const int BIAS_CAUSAL = 3;  // key j attends only if j <= i
+// Swin's shifted windows: bias[n_heads][nq][nk] (the relative position table,
+// shared by every window) plus -100 where labels[batch][q] != labels[batch][k].
+static const int BIAS_WINDOW = 4;
 
 static const int WG = 256;
 static const int TX = 16;         // threads along the key / dim axis
@@ -104,6 +107,7 @@ struct AttnParams {
     uint*  v;      // [B, nk, v_stride]
     uint*  bias;   // f32; never null (launchers substitute a zeroed block)
     float* part_ml;  // kSplitK only: [n_splits, n_heads, nq, 2] = (max, sum)
+    uint*  labels;   // BIAS_WINDOW only: [batch, nq] region ids; never null
     uint   nq;
     uint   nk;
     uint   n_heads;
@@ -229,6 +233,11 @@ void flash_attn(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                         p.bias[head * p.bias_stride_h + gq * p.bias_stride_q + gk]);
                 } else if (kBiasMode == BIAS_CAUSAL) {
                     if (gk > gq) v = -1e30f;
+                } else if (kBiasMode == BIAS_WINDOW) {
+                    v += asfloat(
+                        p.bias[head * p.bias_stride_h + gq * p.bias_stride_q + gk]);
+                    if (p.labels[batch * p.nq + gq] != p.labels[batch * p.nq + gk])
+                        v -= 100.0f;
                 }
                 sP[(qrow + uint(i)) * uint(BC + 1) + kcol + uint(j)] = v;
             }

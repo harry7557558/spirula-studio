@@ -25,8 +25,8 @@
 namespace gui {
 
 // The three things a row can do, in the order they happen.
-enum class BatchStage { Dataset, Train, Mesh };
-inline constexpr int kNumBatchStages = 3;
+enum class BatchStage { Dataset, Train, Mesh, Merge };
+inline constexpr int kNumBatchStages = 4;
 
 enum class BatchStatus { Pending, Running, Done, Failed, Skipped, Stopped };
 
@@ -88,11 +88,22 @@ struct BatchRow {
     // filled in as that stage finishes.
     std::string dataset;
 
+    // Where the dataset's photographs and masks are when not under it. A
+    // Dataset stage of this batch fills them in itself; these are for a row
+    // pointed at a finished folder whose images lie elsewhere.
+    std::string image_dir, mask_dir;
+    bool mask_flipped = false;
+
     // ---- training ----
     // One run each; empty means one run on the built-in default, so a row that
     // just says "train this" needs nothing filled in.
     std::vector<BatchRun> runs;
     std::string output_dir;             // "" = <dataset>/outputs
+    // One part of a scene partition (data/ScenePartition.h), trained with
+    // --partition / --partition-part; a Merge row names the partition with no
+    // part and joins the parts' models found under `output_dir`.
+    std::string partition;
+    int partition_part = -1;
 
     // ---- meshing ----
     // The model to mesh. Empty means the runs this row trained, which is what
@@ -100,8 +111,10 @@ struct BatchRow {
     std::string model;
     BatchMeshOptions mesh;
 
-    bool stages[kNumBatchStages] = {false, true, false};
+    bool stages[kNumBatchStages] = {false, true, false, false};
     bool enabled = true;      // kept on the list, left out of this run
+    // Ran through in a finished batch; ticking the row again clears it.
+    bool done = false;
 
     // From the last batch_check_row(); empty until one has run.
     std::vector<BatchIssue> issues;
@@ -167,9 +180,12 @@ struct BatchCapabilities {
     bool colmap = false;
     bool masking = false;         // segmentation is compiled in and usable
     bool geometry = false;        // `spirula geometry` is available
-    // Is that checkpoint already on disk? A batch cannot stop to accept a
-    // licence or wait on a 2 GB download, so a missing one is found here.
-    std::function<bool(const std::string&)> mask_model_ready;
+    // Is that checkpoint (and its text detector) already on disk? A batch cannot
+    // stop to accept a licence or wait on a 2 GB download, so a missing one is
+    // found here.
+    std::function<bool(const std::string&, const std::string&)> mask_model_ready;
+    // Does it read the text prompt? BiRefNet needs none, and runs without one.
+    std::function<bool(const std::string&)> mask_model_prompted;
     std::function<bool(const std::string&)> geometry_model_ready;
 };
 

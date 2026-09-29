@@ -3927,6 +3927,106 @@ SS_MSG(exif_attitude_help,
        "DJI dronunun gimbal açıları): `auto` ikisini de, `up` yalnızca eğimi alır, `none` yok "
        "sayar"));
 
+SS_MSG(sensor_verify_help,
+    EN("Verify a pair whose rotation the video's gyro knows with that rotation held, keeping "
+       "only the matches it explains"),
+    JA("動画のジャイロが回転を知っているペアは、その回転を固定して検証し、説明できるマッチだけを残します"),
+    ZH_HANS("对视频陀螺仪已知旋转的像对，固定该旋转进行验证，只保留它能解释的匹配"),
+    ZH_HANT("對影片陀螺儀已知旋轉的影像對，固定該旋轉進行驗證，只保留它能解釋的匹配"),
+    KO("영상의 자이로가 회전을 아는 쌍은 그 회전을 고정한 채 검증하고, 그것이 설명하는 매칭만 남깁니다"),
+    DE("Ein Paar, dessen Drehung das Gyroskop des Videos kennt, mit dieser Drehung festgehalten "
+       "prüfen und nur die Zuordnungen behalten, die sie erklärt"),
+    FR("Vérifier une paire dont le gyroscope de la vidéo connaît la rotation en la fixant, ne "
+       "gardant que les correspondances qu'elle explique"),
+    ES("Verificar un par cuya rotación conoce el giroscopio del vídeo con esa rotación fija, "
+       "conservando solo las correspondencias que explica"),
+    PT("Verificar um par cuja rotação o giroscópio do vídeo conhece com essa rotação fixa, "
+       "mantendo só as correspondências que ela explica"),
+    IT("Verificare una coppia la cui rotazione il giroscopio del video conosce tenendola fissa, "
+       "conservando solo le corrispondenze che spiega"),
+    NL("Een paar waarvan de gyroscoop van de video de rotatie kent met die rotatie vast "
+       "verifiëren, en alleen de matches houden die zij verklaart"),
+    RU("Проверять пару, поворот которой известен гироскопу видео, с этим поворотом "
+       "зафиксированным, оставляя только объяснённые им соответствия"),
+    TR("Videonun jiroskopunun dönüşünü bildiği bir çifti o dönüş sabit tutularak doğrula, yalnızca "
+       "onun açıkladığı eşleşmeleri tut"));
+
+SS_MSG(sensor_map_help,
+    EN("Hold registrations and bundle adjustments to the sensors: the gyro's rotations, gravity, "
+       "the accelerometer's scale and the GPS"),
+    JA("登録とバンドル調整をセンサーに合わせます: ジャイロの回転、重力、加速度計の縮尺、GPS"),
+    ZH_HANS("让注册和光束法平差遵从传感器: 陀螺仪的旋转、重力、加速度计的缩放和 GPS"),
+    ZH_HANT("讓註冊和光束法平差遵從感測器: 陀螺儀的旋轉、重力、加速度計的縮放和 GPS"),
+    KO("등록과 번들 조정을 센서에 맞춥니다: 자이로의 회전, 중력, 가속도계의 축척, GPS"),
+    DE("Registrierungen und Bündelausgleiche an die Sensoren binden: die Drehungen des Gyroskops, "
+       "die Schwerkraft, den Maßstab des Beschleunigungsmessers und das GPS"),
+    FR("Tenir les enregistrements et les ajustements de faisceaux aux capteurs : les rotations du "
+       "gyroscope, la gravité, l'échelle de l'accéléromètre et le GPS"),
+    ES("Sujetar los registros y los ajustes de haces a los sensores: las rotaciones del "
+       "giroscopio, la gravedad, la escala del acelerómetro y el GPS"),
+    PT("Prender os registos e os ajustes de feixes aos sensores: as rotações do giroscópio, a "
+       "gravidade, a escala do acelerómetro e o GPS"),
+    IT("Vincolare registrazioni e bundle adjustment ai sensori: le rotazioni del giroscopio, la "
+       "gravità, la scala dell'accelerometro e il GPS"),
+    NL("Registraties en bundle adjustments aan de sensoren binden: de rotaties van de gyroscoop, "
+       "de zwaartekracht, de schaal van de versnellingsmeter en de GPS"),
+    RU("Привязывать регистрации и уравнивание связок к датчикам: поворотам гироскопа, "
+       "силе тяжести, масштабу акселерометра и GPS"),
+    TR("Kayıtları ve demet ayarlamalarını sensörlere bağla: jiroskopun dönüşleri, yerçekimi, "
+       "ivmeölçerin ölçeği ve GPS"));
+
+SS_MSG(sensor_pairs_help,
+    EN("Match images the GPS puts within --sensor-pair-radius metres of each other"),
+    JA("GPS 上で互いに --sensor-pair-radius メートル以内にある画像同士をマッチします"),
+    ZH_HANS("匹配 GPS 位置彼此相距 --sensor-pair-radius 米以内的图像"),
+    ZH_HANT("匹配 GPS 位置彼此相距 --sensor-pair-radius 公尺以內的影像"),
+    KO("GPS 상 서로 --sensor-pair-radius 미터 이내에 있는 이미지끼리 매칭합니다"),
+    DE("Bilder zuordnen, die das GPS auf --sensor-pair-radius Meter zueinander setzt"),
+    FR("Apparier les images que le GPS place à moins de --sensor-pair-radius mètres l'une de "
+       "l'autre"),
+    ES("Emparejar las imágenes que el GPS sitúa a menos de --sensor-pair-radius metros entre sí"),
+    PT("Emparelhar as imagens que o GPS coloca a menos de --sensor-pair-radius metros uma da outra"),
+    IT("Abbinare le immagini che il GPS pone entro --sensor-pair-radius metri l'una dall'altra"),
+    NL("Beelden matchen die de GPS binnen --sensor-pair-radius meter van elkaar plaatst"),
+    RU("Сопоставлять снимки, которые GPS ставит ближе --sensor-pair-radius метров друг к другу"),
+    TR("GPS'in birbirine --sensor-pair-radius metre içinde koyduğu görüntüleri eşleştir"));
+
+SS_MSG(sensor_pair_radius_help,
+    EN("Metres between two GPS positions for --sensor-pairs to match their images"),
+    JA("--sensor-pairs が画像をマッチする GPS 位置間の距離、メートル単位"),
+    ZH_HANS("--sensor-pairs 匹配图像时两个 GPS 位置之间的距离，米"),
+    ZH_HANT("--sensor-pairs 匹配影像時兩個 GPS 位置之間的距離，公尺"),
+    KO("--sensor-pairs 가 이미지를 매칭할 두 GPS 위치 사이의 거리, 미터"),
+    DE("Meter zwischen zwei GPS-Positionen, bei denen --sensor-pairs ihre Bilder zuordnet"),
+    FR("Mètres entre deux positions GPS pour que --sensor-pairs apparie leurs images"),
+    ES("Metros entre dos posiciones GPS para que --sensor-pairs empareje sus imágenes"),
+    PT("Metros entre duas posições GPS para --sensor-pairs emparelhar as suas imagens"),
+    IT("Metri tra due posizioni GPS perché --sensor-pairs abbini le loro immagini"),
+    NL("Meters tussen twee GPS-posities waarbij --sensor-pairs hun beelden matcht"),
+    RU("Метры между двумя позициями GPS, при которых --sensor-pairs сопоставляет их снимки"),
+    TR("--sensor-pairs'in görüntülerini eşleştirmesi için iki GPS konumu arasındaki metre"));
+
+SS_MSG(sensor_max_dt_help,
+    EN("Longest gap in seconds a gyro rotation prior may span between two images"),
+    JA("ジャイロの回転事前情報が 2 枚の画像の間で跨げる最長の間隔、秒"),
+    ZH_HANS("陀螺仪旋转先验在两幅图像之间可跨越的最长间隔，秒"),
+    ZH_HANT("陀螺儀旋轉先驗在兩幅影像之間可跨越的最長間隔，秒"),
+    KO("자이로 회전 사전 정보가 두 이미지 사이에서 걸칠 수 있는 최대 간격, 초"),
+    DE("Längste Lücke in Sekunden, die ein Gyroskop-Drehungsprior zwischen zwei Bildern überspannt"),
+    FR("Plus long intervalle en secondes qu'un a priori de rotation du gyroscope peut couvrir "
+       "entre deux images"),
+    ES("Mayor intervalo en segundos que un previo de rotación del giroscopio puede abarcar entre "
+       "dos imágenes"),
+    PT("Maior intervalo em segundos que um prior de rotação do giroscópio pode cobrir entre duas "
+       "imagens"),
+    IT("Intervallo massimo in secondi che un prior di rotazione del giroscopio può coprire tra "
+       "due immagini"),
+    NL("Langste tussenpoos in seconden die een gyroscoop-rotatieprior tussen twee beelden mag "
+       "overspannen"),
+    RU("Наибольший промежуток в секундах, который может охватить априорный поворот гироскопа "
+       "между двумя снимками"),
+    TR("Bir jiroskop dönüş önseli iki görüntü arasında en fazla kaç saniyeyi kapsayabilir"));
+
 SS_MSG(sensor_gauge_help,
     EN("What the telemetry fixes: `auto` takes up, scale and place from whatever passes its checks, "
        "`up` the orientation alone, `none` ignores the sensors"),

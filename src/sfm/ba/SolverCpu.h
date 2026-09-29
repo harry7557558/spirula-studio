@@ -20,6 +20,7 @@
 #include "sfm/ba/CpuDense.h"
 #include "sfm/ba/CpuParallel.h"
 #include "sfm/ba/Options.h"
+#include "sfm/ba/Priors.h"
 #include "sfm/ba/Problem.h"
 #include "core/Env.h"
 #include "sfm/core/HostMemory.h"
@@ -50,6 +51,11 @@ public:
         buildImageTables();
         decidePaths();
         allocate();
+        hasPriors_ = P_.priors && !P_.priors->empty();
+        if (hasPriors_) {
+            prior_.init(P_);
+            hasPriors_ = !prior_.empty();
+        }
 
         stats_.vram_mb = allocatedMB();
         stats_.solver = useCG_ ? (haveFallback_ ? "cg+fallback" : "cg") : "dense";
@@ -89,6 +95,7 @@ public:
             });
         });
         for (double v : part_) total += v;
+        if (hasPriors_) total += prior_.cost(P_, P_.poses.data(), P_.exts.data());
         return total;
     }
 
@@ -211,8 +218,10 @@ public:
 
     void assembleOnly(double damping) {
         jacobianPass();
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
         pointPrep(damping);
         schurAssemble(damping);
+        if (hasPriors_) addPriorDense();
     }
     std::vector<double> packedS() const { return S_.data(); }
     std::vector<double> gradient() const { return g_; }
@@ -221,12 +230,15 @@ public:
         if (!useCG_ || !haveFallback_)
             throw std::runtime_error("step comparison needs --solver cg + fallback on");
         jacobianPass();
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
         pointPrep(damping);
         cgCamDiag(damping);
+        if (hasPriors_) addPriorCg();
         cgPrecFactor();
         cgIters_ = runPCG((uint32_t)opt_.cg_max_iters);
         std::vector<double> xcg = g_;
         schurAssemble(damping);
+        if (hasPriors_) addPriorDense();
         S_.factorSolve(g_.data(), *pool_, nthreads_);
         double dmax = 0, xmax = 0;
         for (uint32_t i = 0; i < n_; i++) {
@@ -538,11 +550,13 @@ private:
             jacobianPass();
             Bp0_ = Bp_;
         }
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
         prof_.jac += lap();
         pointPrep(damping);
         prof_.prep += lap();
         if (cg) {
             cgCamDiag(damping);
+            if (hasPriors_) addPriorCg();
             cgPrecFactor();
             if (tcBuild_) coarseBuild();
             prof_.schur += lap();
@@ -550,6 +564,7 @@ private:
         } else {
             schurAssemble(damping);
             prof_.schur += lap();
+            if (hasPriors_) addPriorDense();
             S_.factorSolve(g_.data(), *pool_, nthreads_);
         }
         prof_.lin += lap();
@@ -815,6 +830,67 @@ private:
             for (int q = 0; q < nt; q++) s += sgbuf_[(size_t)q * m_ + k];
             g_[sharedCol_[k]] += s;
         }
+    }
+
+    // ================
+    // priors (sfm/ba/Priors.h): the assembled frame blocks into whichever
+    // system this iteration builds
+    // ================
+
+    void addPriorDense() {
+        const std::vector<uint32_t>& cols = prior_.cols();
+        const std::vector<uint32_t>& erow = prior_.entryRow();
+        const std::vector<double>& blk = prior_.blocks();
+        for (uint32_t e = 0; e < cols.size(); e++) {
+            const uint32_t r = erow[e], c = cols[e];
+            if (r < c) continue;
+            for (uint32_t a = 0; a < 6; a++)
+                for (uint32_t b = 0; b < 6; b++) {
+                    if (r == c && b > a) continue;
+                    S_.row(6 * r + a)[6 * c + b] += blk[36 * (size_t)e + 6 * a + b];
+                }
+        }
+        const std::vector<double>& g = prior_.gradient();
+        for (uint32_t i = 0; i < poseDim_; i++) g_[i] += g[i];
+    }
+
+    // Diagonal blocks into the preconditioner (frame f's block is block f on
+    // either partition, pose rows first) and the gradient.
+    void addPriorCg() {
+        const std::vector<uint32_t>& cols = prior_.cols();
+        const std::vector<uint32_t>& erow = prior_.entryRow();
+        const std::vector<double>& blk = prior_.blocks();
+        for (uint32_t e = 0; e < cols.size(); e++) {
+            const uint32_t r = erow[e];
+            if (cols[e] != r) continue;
+            double* M = &cgM_[(size_t)kCamBlk * r];
+            for (uint32_t a = 0; a < 6; a++)
+                for (uint32_t b = 0; b <= a; b++) M[pidx(a, b)] += blk[36 * (size_t)e + 6 * a + b];
+        }
+        const std::vector<double>& g = prior_.gradient();
+        for (uint32_t i = 0; i < poseDim_; i++) g_[i] += g[i];
+    }
+
+    void priorMatvec() {
+        const std::vector<uint32_t>& rows = prior_.rows();
+        const std::vector<uint32_t>& cols = prior_.cols();
+        const std::vector<double>& blk = prior_.blocks();
+        const uint32_t nf = P_.num_frames;
+        const int nt = taskCount(nf, 256, nthreads_);
+        pool_->run(nt, nthreads_, [&](int t, int) {
+            int64_t lo, hi;
+            taskRange(nf, nt, t, lo, hi);
+            for (int64_t f = lo; f < hi; f++) {
+                double acc[6] = {0, 0, 0, 0, 0, 0};
+                for (uint32_t e = rows[f]; e < rows[f + 1]; e++) {
+                    const double* B = &blk[36 * (size_t)e];
+                    const double* x = &cgP_[6 * (size_t)cols[e]];
+                    for (int a = 0; a < 6; a++)
+                        for (int b = 0; b < 6; b++) acc[a] += B[6 * a + b] * x[b];
+                }
+                for (int a = 0; a < 6; a++) cgSp_[6 * (size_t)f + a] += acc[a];
+            }
+        });
     }
 
     // ================
@@ -1213,6 +1289,7 @@ private:
                 }
             }
         });
+        if (hasPriors_) priorMatvec();
         if (exclusive_) return;
         for (uint32_t i = 0; i < tail_; i++) {
             double s = 0;
@@ -1389,6 +1466,8 @@ private:
     static constexpr uint32_t kTcMaxDim = 4096;
     static constexpr double kTcMinIters = 12;
     std::vector<uint32_t> asmSplit_, cgSplit_;
+    sfm::PriorAssembler prior_;
+    bool hasPriors_ = false;
     DenseSpd S_;
     struct { double jac = 0, prep = 0, schur = 0, lin = 0, back = 0, cost = 0; } prof_;
 };

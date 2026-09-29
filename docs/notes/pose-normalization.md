@@ -18,7 +18,10 @@ is, so the port does not have to be reverse-engineered from a diff.
 similarity to the model before writing it (`src/sfm/map/Orient.h`,
 `--no-orient` to decline), so for a dataset this repository reconstructed, the
 "raw SfM frame" below already *is* the normalized frame: `train_frame_scale`
-comes out 1 and `train_to_normalized` the identity. Everything in this note
+comes out 1 and, when the model was levelled on the cameras' up,
+`train_to_normalized` the identity. A model levelled on the ground
+(`gauge.txt` `up ground`) keeps a rotation in it with the scale still 1, so
+nothing may treat a unit scale as an identity transform. Everything in this note
 still describes what the trainer does — it is simply being handed a scene that
 has nothing left to normalize. Datasets from COLMAP, Metashape or nerfstudio
 are unchanged and still arrive in whatever gauge their producer chose.

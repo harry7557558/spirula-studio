@@ -130,7 +130,8 @@ HEADER_SOURCES = dict([
          "DensifyScoring.cu",      # covariance scale init, param update
          "Relocation.cu",
          "McmcRelocation.cu",      # MCMC relocation + noise
-         "DensifySplitFilter.cu"), # long-axis split, image edge filters
+         "DensifySplitFilter.cu",  # long-axis split, image edge filters
+         "RegionWeight.cu"),       # the region test that gates the draw
 ])
 
 # Image-space per-pixel operations, split by function. PixelWise.cuh is the one

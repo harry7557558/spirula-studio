@@ -23,6 +23,7 @@ shaders=(
     "shaders/densify.slang:${out_dir}/densify.cu"
     "shaders/primitive_3dgs.slang:${out_dir}/primitive_3dgs.cu"
     "shaders/harmonics.slang:${out_dir}/harmonics.cu"
+    "shaders/region.slang:${out_dir}/region.cu"
 )
 
 # Files to rename from .cu -> .cuh after postprocessing
@@ -37,6 +38,7 @@ mv_targets=(
     "${out_dir}/densify.cu"
     "${out_dir}/primitive_3dgs.cu"
     "${out_dir}/harmonics.cu"
+    "${out_dir}/region.cu"
 )
 
 declare -a pids=()

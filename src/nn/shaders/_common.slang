@@ -83,6 +83,7 @@ float load_at(uint* base, uint i, bool is_f16) {
 }
 uint load_u32_at(uint* base, uint i) { return wide_u(base, i)[0]; }
 void store_at(float* base, uint i, float v) { wide_f(base, i)[0] = v; }
+float load_f_at(float* base, uint i) { return wide_f(base, i)[0]; }
 void store_u32_at(uint* base, uint i, uint v) { wide_u(base, i)[0] = v; }
 
 #else
@@ -90,6 +91,7 @@ void store_u32_at(uint* base, uint i, uint v) { wide_u(base, i)[0] = v; }
 float load_at(uint* base, uint i, bool is_f16) { return load_elem(base, i, is_f16); }
 uint load_u32_at(uint* base, uint i) { return base[i]; }
 void store_at(float* base, uint i, float v) { base[i] = v; }
+float load_f_at(float* base, uint i) { return base[i]; }
 void store_u32_at(uint* base, uint i, uint v) { base[i] = v; }
 
 #endif

@@ -27,6 +27,7 @@
 #include "i18n/catalog/Data.h"
 #include "i18n/catalog/SamHelp.h"
 #include "nn/core/Log.h"
+#include "birefnet/BiRefNet.h"
 #include "sam/Masking.h"
 #ifdef SS_TOOL_SFM
 #include "sfm/core/Telemetry.h"
@@ -36,6 +37,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -96,7 +98,11 @@ void usage() {
     help_row("    --360-orient <y,p,r>", H::xh_360_orient);
 
     std::fprintf(stderr, "\n%s\n", H::xh_masking.get());
+    for (const std::string& l : spirula::i18n::wrap(H::model_kinds.get(), 76))
+        std::fprintf(stderr, "  %s\n", l.c_str());
     help_row("    --model <file>", H::xh_model);
+    help_row("    --detector <id>", H::opt_detector);
+    help_row("    --detector-threshold <f>", H::opt_detector_threshold);
     help_row("    --text <phrases>", H::xh_text);
     help_row("    --neg-text <ph>", H::xh_neg_text);
     help_row("    --mask-mode <m>", H::xh_mask_mode);
@@ -131,9 +137,10 @@ struct Options {
     std::string pano_mode = "faces";
     app::Pano360Options pano;
 
-    std::string model, text, neg_text, device;
+    std::string model, text, neg_text, device, detector;
+    float  detector_threshold = 0.3f;   // sam::MaskOptions, same default
     std::string mask_mode = "video";
-    bool   keep_subject = false;
+    std::optional<bool> keep_subject;   // unset: BiRefNet keeps, SAM removes
     int    detect_every = 1, memory_frames = 0, max_size = 1600;
     float  threshold = 0.5f, nms = 0.1f;
     float  dilate_ratio = 0.05f;   // sam::MaskOptions, same default
@@ -187,6 +194,9 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--neg-text") o.neg_text = next("--neg-text");
         else if (a == "--mask-mode") o.mask_mode = next("--mask-mode");
         else if (a == "--mask-keep") o.keep_subject = std::strcmp(next("--mask-keep"), "subject") == 0;
+        else if (a == "--detector") o.detector = next("--detector");
+        else if (a == "--detector-threshold")
+            o.detector_threshold = std::strtof(next("--detector-threshold"), nullptr);
         else if (a == "--mask-out") o.mask_dir = next("--mask-out");
         else if (a == "--detect-every") o.detect_every = std::atoi(next("--detect-every"));
         else if (a == "--memory-frames") o.memory_frames = std::atoi(next("--memory-frames"));
@@ -299,7 +309,10 @@ int sam_cli_extract(int argc, char** argv) {
         job.mask.text = o.text;
         job.mask.neg_text = o.neg_text;
         job.mask.video = o.mask_mode != "image";
-        job.mask.keep_prompted = o.keep_subject;
+        job.mask.keep_prompted = o.keep_subject.value_or(
+            birefnet::find_model_source(o.model) || birefnet::is_checkpoint(o.model));
+        job.mask.detector = o.detector;
+        job.mask.detector_threshold = o.detector_threshold;
         job.mask.threshold = o.threshold;
         job.mask.nms = o.nms;
         job.mask.dilate_ratio = o.dilate_ratio;

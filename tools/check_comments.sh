@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 # Python files that live in someone else's repo and are referenced as
 # provenance -- upstream model definitions and the sam3.cpp converters.
-EXTERNAL_PY='^(lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama|dad|dedode|loma)\.py$'
+EXTERNAL_PY='^(lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama|dad|dedode|loma|birefnet|modeling_grounding_dino|modeling_swin|swin_transformer)\.py$'
 
 # Include roots owned by a toolchain or a vendored dependency.
 EXTERNAL_DIR='^(cub|vulkan|GLFW|glm|thrust|cooperative_groups|backends|misc|geogram|nets|imgui)/'

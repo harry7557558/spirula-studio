@@ -21,6 +21,7 @@
 #include "sfm/core/SensorTimeline.h"
 #include "sfm/geometry/LinAlg.h"
 #include "sfm/map/ImuExtrinsic.h"
+#include "sfm/map/ImuScale.h"
 #include "sfm/map/MetricGauge.h"
 #include "sfm/map/Orient.h"
 
@@ -108,46 +109,9 @@ inline bool underPrefix(const std::string& name, const std::string& prefix) {
     return name[prefix.size()] == '/';
 }
 
-struct PairMeas {
-    int j = 0, k = 0;    // frame indices
-    Preintegration P;
-    Mat3 B;              // attitude-only captures: R_i(j) <- i(k)
-    bool has_preint = false;
-};
-
-struct Triple {
-    int j = 0, k = 0, l = 0;
-    int p1 = 0, p2 = 0;      // pair indices
-};
-
 inline double huberW(double r, double sigma) {
     const double x = std::fabs(r) / sigma;
     return x <= 1.345 ? 1.0 : 1.345 / x;
-}
-
-// The velocity-free position constraint over two consecutive intervals
-// (Mur-Artal and Tardos 2017, sec. IV): scale * L = Q in the model frame,
-// with the frames' up already known. `X` maps IMU to camera per group.
-struct TripleTerms {
-    Vec3 L;      // multiplies the scale
-    double Gs = 0;   // multiplies the gravity vector
-    Vec3 Q;      // the pre-integrated part at the given biases
-    Mat3 Ja, Jg; // d Q / d accel bias, d Q / d gyro bias
-};
-
-// x = pseudo-inverse solve of the normal equations N x = b (n <= 16).
-inline std::vector<double> solveNormal(std::vector<double> N, const std::vector<double>& b, int n) {
-    std::vector<double> ev, V, x((size_t)n, 0.0);
-    jacobiEigenSymmetric(N, n, ev, V);
-    double emax = 0;
-    for (double e : ev) emax = std::max(emax, e);
-    for (int i = 0; i < n; i++) {
-        if (!(ev[(size_t)i] > 1e-12 * emax)) continue;
-        double d = 0;
-        for (int r = 0; r < n; r++) d += V[(size_t)r * n + i] * b[(size_t)r];
-        for (int r = 0; r < n; r++) x[(size_t)r] += V[(size_t)r * n + i] * d / ev[(size_t)i];
-    }
-    return x;
 }
 
 }  // namespace sensor_detail
@@ -203,8 +167,8 @@ private:
     std::vector<Mat3> _X;                        // per group, camera <- IMU
     std::vector<bool> _group_ok;
     std::vector<double> _gyro_sign;
-    std::vector<std::vector<sensor_detail::PairMeas>> _pairs;   // per group
-    std::vector<std::vector<sensor_detail::Triple>> _triples;
+    std::vector<std::vector<ImuPair>> _pairs;   // per group
+    std::vector<std::vector<ImuTriple>> _triples;
     Vec3 _mean_up_w;
     Vec3 _up_w{0, 0, 1};
     bool _up_ok = false;
@@ -354,7 +318,7 @@ private:
                 const SensorFrame& b = _frames[(size_t)fi[k]];
                 const double dt = b.t - a.t;
                 if (dt < 0.02 || dt > 1.5) continue;
-                PairMeas pm;
+                ImuPair pm;
                 pm.j = fi[k - 1];
                 pm.k = fi[k];
                 if (tl->canPreintegrate()) {
@@ -368,135 +332,12 @@ private:
         }
     }
 
-    struct ScaleFit {
-        double s = 0, sigma = 0;   // sigma absolute
-        int triples = 0, inliers = 0;
-        Vec3 ba, bg;
-        double g_norm = 0, g_angle_deg = 0;
-    };
-
-    // Solved for the INVERSE scale with the centres as the response: noise in
-    // a regressor attenuates a slope (a 360 rig's views scatter 5 cm about
-    // their frame and came out 10-50% low), in the response it only widens it.
-    ScaleFit solveScale(const std::vector<size_t>& groups) const {
-        using namespace sensor_detail;
-        ScaleFit fit;
-        std::vector<std::pair<size_t, size_t>> ids;   // (group, triple)
+    ImuScaleFit solveScale(const std::vector<size_t>& groups) const {
+        std::vector<ImuGroupView> views;
         for (size_t g : groups)
-            for (size_t i = 0; i < _triples[g].size(); i++) ids.push_back({g, i});
-        fit.triples = (int)ids.size();
-        if (ids.size() < 5) return fit;
-
-        // Gyro bias from the rotation pairs alone.
-        Vec3 bg{0, 0, 0};
-        {
-            std::vector<double> N(9, 0.0), rhs(3, 0.0);
-            for (int c = 0; c < 3; c++) N[(size_t)c * 4] += 1.0 / (0.02 * 0.02);
-            for (size_t g : groups)
-                for (const PairMeas& pm : _pairs[g]) {
-                    if (!pm.has_preint) continue;
-                    const SensorFrame& fj = _frames[(size_t)pm.j];
-                    const SensorFrame& fk = _frames[(size_t)pm.k];
-                    const Mat3 A = mul(fj.R, transpose(fk.R));
-                    const Vec3 e = so3Log(mul(transpose(pm.P.dR), mul(transpose(_X[g]), mul(A, _X[g]))));
-                    const double sr = 0.5 * M_PI / 180.0;
-                    for (int r = 0; r < 3; r++) {
-                        const double* row = &pm.P.dR_dbg[(size_t)r * 3];
-                        for (int a = 0; a < 3; a++) {
-                            rhs[(size_t)a] += row[a] * (&e.x)[r] / (sr * sr);
-                            for (int c = 0; c < 3; c++) N[(size_t)a * 3 + c] += row[a] * row[c] / (sr * sr);
-                        }
-                    }
-                }
-            const std::vector<double> x = solveNormal(N, rhs, 3);
-            bg = {x[0], x[1], x[2]};
-        }
-
-        std::vector<double> w(ids.size(), 1.0);
-        double k = 1.0, var_k = 0;
-        Vec3 bak{0, 0, 0};   // accel bias times k
-        auto solve = [&](bool with_g, Vec3& g_out) {
-            const int n = with_g ? 7 : 4;
-            std::vector<double> N((size_t)n * n, 0.0), rhs((size_t)n, 0.0);
-            auto add_row = [&](const double* row, double b, double wi) {
-                for (int a = 0; a < n; a++) {
-                    rhs[(size_t)a] += wi * row[a] * b;
-                    for (int c = 0; c < n; c++) N[(size_t)a * n + c] += wi * row[a] * row[c];
-                }
-            };
-            double noise_n00 = 0;
-            for (size_t i = 0; i < ids.size(); i++) {
-                const Triple& tr = _triples[ids[i].first][ids[i].second];
-                const TripleTerms T = tripleTerms(ids[i].first, tr, _X[ids[i].first], bg, {0, 0, 0}, {0, 0, 0});
-                const Vec3 pred = T.Q + _up_w * (T.Gs * -9.81);
-                for (int r = 0; r < 3; r++) {
-                    double row[7] = {0, 0, 0, 0, 0, 0, 0};
-                    row[0] = with_g ? (&T.Q.x)[r] : (&pred.x)[r];
-                    for (int c = 0; c < 3; c++) row[1 + c] = T.Ja[3 * r + c];
-                    if (with_g) row[4 + r] = T.Gs;
-                    add_row(row, (&T.L.x)[r], w[i]);
-                }
-                noise_n00 += w[i] * 3.0 * tripleNoise(ids[i].first, tr);
-            }
-            // The pre-integrated regressor carries the accelerometer's own
-            // noise, which attenuates k -- 10% on the DJI's 30 Hz stream over
-            // 1 s pairs. Corrected least squares takes that variance back out.
-            N[0] = std::max(N[0] - noise_n00, 0.5 * N[0]);
-            const double prior = 0.2 * std::max(k, 0.05);   // 0.2 m/s^2 on the bias itself
-            for (int c = 0; c < 3; c++) {
-                double row[7] = {0, 0, 0, 0, 0, 0, 0};
-                row[1 + c] = 1;
-                add_row(row, 0.0, 1.0 / (prior * prior));
-            }
-            const std::vector<double> x = solveNormal(N, rhs, n);
-            k = x[0];
-            bak = {x[1], x[2], x[3]};
-            if (with_g) g_out = {x[4], x[5], x[6]};
-            std::vector<double> Ncopy = N, ev, V;
-            jacobiEigenSymmetric(Ncopy, n, ev, V);
-            double var = 0;
-            for (int i = 0; i < n; i++)
-                if (ev[(size_t)i] > 1e-12) var += V[(size_t)i] * V[(size_t)i] / ev[(size_t)i];
-            return var;
-        };
-        Vec3 g_unused;
-        double var_r = 1;
-        for (int round = 0; round < 6; round++) {
-            var_k = solve(false, g_unused);
-            std::vector<double> res;
-            for (size_t i = 0; i < ids.size(); i++) {
-                const Triple& tr = _triples[ids[i].first][ids[i].second];
-                const TripleTerms T = tripleTerms(ids[i].first, tr, _X[ids[i].first], bg, {0, 0, 0}, {0, 0, 0});
-                const Vec3 pred = (T.Q + _up_w * (T.Gs * -9.81)) * k + mul(T.Ja, bak);
-                res.push_back((T.L - pred).norm());
-            }
-            const double scale_r = std::max(extrinsic_detail::medianOf(res), 1e-9);
-            double ss = 0, sw = 0;
-            fit.inliers = 0;
-            for (size_t i = 0; i < ids.size(); i++) {
-                w[i] = huberW(res[i], scale_r);
-                if (res[i] < 3 * scale_r) fit.inliers++;
-                ss += w[i] * res[i] * res[i];
-                sw += w[i];
-            }
-            var_r = sw > 3 ? ss / (3 * sw - 4) : 1.0;
-        }
-        if (!(k > 0) && !(k < 0)) return fit;
-        fit.s = 1.0 / k;
-        fit.sigma = std::sqrt(var_k * var_r) / (k * k);
-        fit.ba = bak * (1.0 / k);
-        fit.bg = bg;
-        // Gravity check: the same solve with the gravity vector free.
-        Vec3 gk;
-        const double k_fixed = k;
-        const Vec3 bak_fixed = bak;
-        solve(true, gk);
-        const Vec3 gv = gk * (1.0 / k);
-        fit.g_norm = gv.norm();
-        fit.g_angle_deg = gv.norm() > 0 ? extrinsic_detail::angleDeg(gv, _up_w * -1.0) : 0;
-        k = k_fixed;
-        bak = bak_fixed;
-        return fit;
+            views.push_back({&_frames, &_pairs[g], &_triples[g], _X[g],
+                             _caps[(size_t)_group_capture[g]].timeline->noise.accel});
+        return solveImuScale(views, _up_w);
     }
 
     // Per group: the triples and a scale of its own, which settles the sign
@@ -509,23 +350,13 @@ private:
             _triples[g].clear();
             if (!_group_ok[g]) continue;
             const SensorTimeline* tl = _caps[(size_t)rep.capture].timeline;
-            const std::vector<PairMeas>& pairs = _pairs[g];
+            const std::vector<ImuPair>& pairs = _pairs[g];
             if (!tl->canPreintegrate() || !_up_ok || rep.fit.degenerate) continue;
-            std::vector<Triple>& tr = _triples[g];
-            for (size_t p = 1; p < pairs.size(); p++) {
-                if (pairs[p - 1].k != pairs[p].j) continue;
-                if (!pairs[p - 1].has_preint || !pairs[p].has_preint) continue;
-                Triple t;
-                t.j = pairs[p - 1].j;
-                t.k = pairs[p].j;
-                t.l = pairs[p].k;
-                t.p1 = (int)p - 1;
-                t.p2 = (int)p;
-                tr.push_back(t);
-            }
+            std::vector<ImuTriple>& tr = _triples[g];
+            tr = imuTriples(pairs);
             rep.triples = (int)tr.size();
             if (tr.size() < 5) continue;
-            const ScaleFit f = solveScale({g});
+            const ImuScaleFit f = solveScale({g});
             rep.scale = f.s;
             rep.scale_sigma = f.s != 0 ? std::fabs(f.sigma / f.s) : 1e9;
             rep.triple_inliers = f.inliers;
@@ -547,7 +378,7 @@ private:
                 if (_group_capture[g] == (int)c && !_triples[g].empty() && !out.groups[g].flipped)
                     groups.push_back(g);
             if (groups.empty()) continue;
-            const ScaleFit f = solveScale(groups);
+            const ImuScaleFit f = solveScale(groups);
             if (f.triples < 5) continue;
             const double rel = std::fabs(f.sigma / f.s);
             if (f.s > 0 && rel < 0.5 && f.g_angle_deg < 20) {
@@ -614,42 +445,6 @@ private:
         out.scale_gps_sigma = 4.0 * out.gps.scale_unc / 100.0;
         out.scale_from_gps = true;
         out.place_from_gps = true;
-    }
-
-    sensor_detail::TripleTerms tripleTerms(size_t g, const sensor_detail::Triple& t, const Mat3& X,
-                                           const Vec3& bg, const Vec3& ba, const Vec3& lever) const {
-        using namespace sensor_detail;
-        const std::vector<PairMeas>& pairs = _pairs[g];
-        const Preintegration& P1 = pairs[(size_t)t.p1].P;
-        const Preintegration& P2 = pairs[(size_t)t.p2].P;
-        const SensorFrame& fj = _frames[(size_t)t.j];
-        const SensorFrame& fk = _frames[(size_t)t.k];
-        const SensorFrame& fl = _frames[(size_t)t.l];
-        const double d1 = P1.dt, d2 = P2.dt;
-        TripleTerms T;
-        T.L = (fl.c - fk.c) * d1 - (fk.c - fj.c) * d2;
-        T.Gs = 0.5 * d1 * d2 * (d1 + d2);
-        const Mat3 Rj = mul(transpose(fj.R), X), Rk = mul(transpose(fk.R), X);
-        T.Q = mul(Rj, P1.velocity(bg, ba) * (d1 * d2) - P1.position(bg, ba) * d2) +
-              mul(Rk, P2.position(bg, ba) * d1);
-        T.Ja = mat3Add(mul(Rj, mat3Add(mat3Scale(P1.dv_dba, d1 * d2), mat3Scale(P1.dp_dba, -d2))),
-                       mul(Rk, mat3Scale(P2.dp_dba, d1)));
-        T.Jg = mat3Add(mul(Rj, mat3Add(mat3Scale(P1.dv_dbg, d1 * d2), mat3Scale(P1.dp_dbg, -d2))),
-                       mul(Rk, mat3Scale(P2.dp_dbg, d1)));
-        // The IMU sits `lever` from the lens (camera frame, metres).
-        const Vec3 arm = (mul(transpose(fl.R), lever) - mul(transpose(fk.R), lever)) * d1 -
-                         (mul(transpose(fk.R), lever) - mul(transpose(fj.R), lever)) * d2;
-        T.Q = T.Q - arm;
-        return T;
-    }
-
-    // Variance of one component of a triple's pre-integrated position, for
-    // white accelerometer noise of density q: (q/3) d1^2 d2^2 (d1 + d2), the
-    // velocity-free combination of two random walks.
-    double tripleNoise(size_t g, const sensor_detail::Triple& t) const {
-        const double q = _caps[(size_t)_group_capture[g]].timeline->noise.accel;
-        const double d1 = _pairs[g][(size_t)t.p1].P.dt, d2 = _pairs[g][(size_t)t.p2].P.dt;
-        return q * q * d1 * d1 * d2 * d2 * (d1 + d2) / 3.0;
     }
 
     // ---- the joint solve --------------------------------------------------
@@ -784,7 +579,7 @@ private:
         for (size_t g = 0; g < _group_name.size(); g++) {
             if (!_group_ok[g]) continue;
             const int cap = _group_capture[g];
-            for (const PairMeas& pm : _pairs[g]) {
+            for (const ImuPair& pm : _pairs[g]) {
                 const SensorFrame& fj = _frames[(size_t)pm.j];
                 const SensorFrame& fk = _frames[(size_t)pm.k];
                 const Mat3 B = pm.has_preint ? pm.P.rotation(p.bg[(size_t)cap]) : pm.B;
@@ -795,8 +590,9 @@ private:
                 r.push_back(e.z / _sig_rot);
             }
             if (!_use_imu) continue;
-            for (const Triple& tr : _triples[g]) {
-                const TripleTerms T = tripleTerms(g, tr, X[g], p.bg[(size_t)cap], p.ba[(size_t)cap], p.lever[g]);
+            for (const ImuTriple& tr : _triples[g]) {
+                const ImuTripleTerms T = imuTripleTerms(_frames, _pairs[g], tr, X[g], p.bg[(size_t)cap],
+                                                        p.ba[(size_t)cap], p.lever[g]);
                 // Centres as the response (see solveScale), in the target frame.
                 const Vec3 e = mul(R, T.L) - (mul(R, T.Q) + mul(R, _up_w) * (T.Gs * -9.81)) * (1.0 / s);
                 r.push_back(e.x / _sig_trip);
@@ -804,7 +600,8 @@ private:
                 r.push_back(e.z / _sig_trip);
                 if (noise) {
                     noise->resize(r.size() - 3, 0.0);
-                    noise->resize(r.size(), tripleNoise(g, tr));
+                    noise->resize(r.size(), imuTripleNoise(_caps[(size_t)cap].timeline->noise.accel,
+                                                           _pairs[g], tr));
                 }
             }
         }

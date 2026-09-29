@@ -744,14 +744,11 @@ void densify_copy_qsh_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // MCMC relocation / add
 // ---------------------------------------------------------------------------
 
-struct McmcProbsParams {  // 40 bytes: pushed directly
-    float* opacs;   // [N] logit-space
-    float* scales;  // [N, 3] log-space
-    float* probs;   // [N] out
-    float min_opacity;
-    uint num_splats;
-    uint wgs_per_row;
-    uint _pad0;
+struct McmcProbsParams {  // 56 bytes: pushed directly
+    float* opacs; float* scales; float* probs;
+    float* weight;   // [N] (use_weight gates): scales a live splat's draw
+    float min_opacity; uint num_splats; uint wgs_per_row; uint use_weight;
+    uint _pad0, _pad1;
 };
 
 [shader("compute")]
@@ -766,6 +763,8 @@ void densify_mcmc_probs(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (opac <= p.min_opacity || !_dn_finitef(opac) ||
         splat_scale_is_dead(scale))
         opac = 0.0f;
+    else if (p.use_weight != 0)
+        opac *= max(p.weight[idx], 1e-30f);
     p.probs[idx] = opac;
 }
 

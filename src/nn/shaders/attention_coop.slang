@@ -27,7 +27,7 @@ using namespace linalg;
 // attention.slang; kSgCount is new and is the number of subgroups in a
 // 256-thread workgroup at the width the context pinned.
 [SpecializationConstant] const int kHeadDim  = 64;
-[SpecializationConstant] const int kBiasMode = 0;  // 0 none, 1 per-key, 2 full, 3 causal
+[SpecializationConstant] const int kBiasMode = 0;  // 0 none, 1 per-key, 2 full, 3 causal, 4 window
 [SpecializationConstant] const int kQF16     = 0;
 [SpecializationConstant] const int kKVF16    = 0;
 [SpecializationConstant] const int kSplitK   = 0;
@@ -37,6 +37,7 @@ static const int BIAS_NONE   = 0;
 static const int BIAS_PERKEY = 1;
 static const int BIAS_FULL   = 2;
 static const int BIAS_CAUSAL = 3;
+static const int BIAS_WINDOW = 4;
 
 static const int WG = 256;
 static const int TX = 16;
@@ -79,6 +80,7 @@ struct AttnParams {
     uint*  v;
     uint*  bias;
     float* part_ml;
+    uint*  labels;
     uint   nq;
     uint   nk;
     uint   n_heads;
@@ -213,6 +215,11 @@ void flash_attn_coop(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                         p.bias[head * p.bias_stride_h + gq * p.bias_stride_q + gk]);
                 } else if (kBiasMode == BIAS_CAUSAL) {
                     if (gk > gq) v = -1e30f;
+                } else if (kBiasMode == BIAS_WINDOW) {
+                    v += asfloat(
+                        p.bias[head * p.bias_stride_h + gq * p.bias_stride_q + gk]);
+                    if (p.labels[batch * p.nq + gq] != p.labels[batch * p.nq + gk])
+                        v -= 100.0f;
                 }
                 sP[o] = v;
                 m = max(m, v);

@@ -14,6 +14,7 @@
 #include "app/FrameMask.h"
 #include "app/gui/GlLoader.h"
 #include "app/gui/MaskSettings.h"
+#include "app/gui/ModelCache.h"
 #include "app/gui/PreviewFrames.h"
 #include "app/gui/StencilEdit.h"
 #include "app/gui/StencilPreset.h"
@@ -40,7 +41,7 @@ public:
     // `src` carries the decoder and the FrameLook the run will use, so the
     // picture here is the file it writes. Video listing and probing run on the
     // panel worker; frame decoding follows there after the list is ready.
-    void open(const PreviewSource& src, const std::string& model_path);
+    void open(const PreviewSource& src, const MaskModelFiles& model);
     bool is_open() const { return _open; }
     void close();
 
@@ -99,7 +100,7 @@ private:
     std::string shown_camera() const;
 
     bool _open = false;
-    std::string _model_path;
+    MaskModelFiles _model;
     PreviewSource _src;
     // What the run splits this input into; one empty name for one camera.
     std::vector<std::string> _folders;

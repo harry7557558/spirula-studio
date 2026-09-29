@@ -62,6 +62,8 @@ Binaries for Windows, Linux, and macOS can be downloaded from [Releases page](ht
 
 If you are training on remote/cloud GPUs, you may use the CLI &ndash; Run `spirula --help` for details. By default, `spirula train` command will serve a viewer on an HTTP port, one you can forward over ssh and view training progress in your web browser.
 
+A reconstruction too large for one training run can be split into parts that train one at a time and merge back into one model: the **Partition** button on the dataset screen, or `spirula partition split <dataset>` / `spirula partition merge <partition.json>` on the command line (see `docs/notes/scene-partition.md`).
+
 
 ## Build from source
 

@@ -26,6 +26,31 @@ namespace {
 // checkpoint misbehaves.
 const char* kBaseUrl = "https://huggingface.co/PABannier/sam3.cpp/resolve/main/";
 
+// The same bytes and cache names gdino::resolve_model and birefnet::resolve_model
+// use, so a file this screen downloads is one they verify and load.
+// The mirrors are ModelScope repositories carrying identical files.
+const ExtraFile kGdinoTiny{
+    "grounding-dino-tiny.safetensors",
+    "https://huggingface.co/IDEA-Research/grounding-dino-tiny/resolve/main/model.safetensors",
+    "https://modelscope.cn/models/IDEA-Research/grounding-dino-tiny/resolve/master/"
+    "model.safetensors",
+    689359096ull};
+const ExtraFile kGdinoBase{
+    "grounding-dino-base.safetensors",
+    "https://huggingface.co/IDEA-Research/grounding-dino-base/resolve/main/model.safetensors",
+    "https://modelscope.cn/models/IDEA-Research/grounding-dino-base/resolve/master/"
+    "model.safetensors",
+    933400872ull};
+const ExtraFile kBertVocab{
+    "bert-base-uncased-vocab.txt",
+    "https://huggingface.co/IDEA-Research/grounding-dino-tiny/resolve/main/vocab.txt",
+    "https://modelscope.cn/models/IDEA-Research/grounding-dino-tiny/resolve/master/vocab.txt",
+    231508ull};
+
+std::string cache_file(const char* name) {
+    return (fs::path(app::cache_dir()) / "models" / name).string();
+}
+
 }  // namespace
 
 std::string human_bytes(uint64_t b) {
@@ -36,16 +61,9 @@ std::string human_bytes(uint64_t b) {
 }
 
 const std::vector<ModelEntry>& model_catalog() {
-    // Quantized SAM 3 first: it is the only family that understands "mask out
-    // the people", it is a third the size of the f16 weights, and the
-    // quantization is of the *file* -- everything is dequantized to fp16 on
-    // upload, so the accuracy difference is small and the download is not.
-    //
-    // The four SAM 2.1 sizes are all here because the choice is a real one and
-    // nobody can make it from a name: they differ by ~2.5x in speed and the two
-    // in the middle are where most captures want to be. The blurbs quote the
-    // same measurement for each (one instance, 1080p frames, laptop GPU) so
-    // they can actually be compared -- see src/sam/README.md for the table.
+    // SAM 3 reads words itself, SAM 2.1 through a TextDetector, BiRefNet not at
+    // all. Blurbs give speed ratios, not milliseconds, which are one machine's;
+    // src/sam/README.md has the table.
     static const std::vector<ModelEntry> kCatalog = {
         {"sam3-q4_0", "sam3-q4_0.ggml",
          &dmsg::model_sam3_label, &dmsg::model_sam3_blurb,
@@ -65,6 +83,20 @@ const std::vector<ModelEntry>& model_catalog() {
         {"sam2.1-tiny", "sam2.1_hiera_tiny_f16.ggml",
          &dmsg::model_sam21_tiny_label, &dmsg::model_sam21_tiny_blurb,
          "sam2", 76ull << 20, false, "sam2.1_hiera_tiny"},
+#ifdef SS_BUILD_SAM
+        // No prompt at all, so nothing the Python fallback can run.
+        {"birefnet", "birefnet-general.safetensors",
+         &dmsg::model_birefnet_label, &dmsg::model_birefnet_blurb,
+         "birefnet", 444473596ull, false, "", MaskModelKind::Subject,
+         "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/model.safetensors",
+         "https://modelscope.cn/models/modelscope/BiRefNet/resolve/master/model.safetensors"},
+        {"birefnet-lite", "birefnet-lite.safetensors",
+         &dmsg::model_birefnet_lite_label, &dmsg::model_birefnet_lite_blurb,
+         "birefnet", 177634392ull, false, "", MaskModelKind::Subject,
+         "https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/model.safetensors",
+         "https://modelscope.cn/models/1038lab/BiRefNet/resolve/master/"
+         "BiRefNet_lite.safetensors"},
+#endif
     };
     return kCatalog;
 }
@@ -85,6 +117,14 @@ const LicenseInfo& license_for(const std::string& family) {
     static const LicenseInfo kSam2{
         "sam2", &dmsg::license_sam2_title, &dmsg::license_sam2_summary,
         "https://github.com/facebookresearch/sam2/blob/main/LICENSE", false};
+    static const LicenseInfo kGdino{
+        "gdino", &dmsg::license_gdino_title, &dmsg::license_gdino_summary,
+        "https://github.com/IDEA-Research/GroundingDINO/blob/main/LICENSE", false};
+    static const LicenseInfo kBirefnet{
+        "birefnet", &dmsg::license_birefnet_title, &dmsg::license_birefnet_summary,
+        "https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE", false};
+    if (family == "gdino") return kGdino;
+    if (family == "birefnet") return kBirefnet;
     return family == "sam2" ? kSam2 : kSam3;
 }
 
@@ -92,8 +132,54 @@ std::string model_path(const ModelEntry& e) {
     return (fs::path(app::cache_dir()) / "models" / e.file).string();
 }
 
-bool model_is_cached(const ModelEntry& e) {
-    return file_is_cached(model_path(e), e.bytes);
+std::string detector_path(const TextDetector& d) { return cache_file(d.weights->file); }
+
+bool model_is_cached(const ModelEntry& e) { return file_is_cached(model_path(e), e.bytes); }
+
+bool detector_is_cached(const TextDetector& d) {
+    return file_is_cached(detector_path(d), d.weights->bytes) &&
+           file_is_cached(cache_file(d.vocab->file), d.vocab->bytes);
+}
+
+const std::vector<TextDetector>& text_detectors() {
+    static const std::vector<TextDetector> kDetectors = {
+        {"gdino-tiny", &dmsg::model_gdino_tiny_label, &dmsg::model_gdino_tiny_blurb,
+         &kGdinoTiny, &kBertVocab},
+        {"gdino-base", &dmsg::model_gdino_base_label, &dmsg::model_gdino_base_blurb,
+         &kGdinoBase, &kBertVocab},
+    };
+    return kDetectors;
+}
+
+const TextDetector* find_detector(const std::string& id) {
+    for (const auto& d : text_detectors())
+        if (id == d.id) return &d;
+    return nullptr;
+}
+
+bool takes_detector(const ModelEntry& e) { return e.kind == MaskModelKind::Sam && !e.text_prompts; }
+
+const TextDetector* detector_for(const ModelEntry& e, const std::string& detector_id) {
+    return takes_detector(e) ? find_detector(detector_id) : nullptr;
+}
+
+uint64_t missing_download_bytes(const ModelEntry& e, const TextDetector* d) {
+    uint64_t n = model_is_cached(e) ? 0 : e.bytes;
+    if (d && !detector_is_cached(*d)) n += d->weights->bytes + d->vocab->bytes;
+    return n;
+}
+
+MaskModelFiles cached_mask_model(const std::string& id, const std::string& detector_id) {
+    MaskModelFiles m;
+    const ModelEntry* e = find_model(id);
+    if (!e) return m;
+    const TextDetector* d = detector_for(*e, detector_id);
+    m.kind = d ? MaskModelKind::Grounded : e->kind;
+    m.text = d || (e->kind == MaskModelKind::Sam && e->text_prompts);
+    if (!model_is_cached(*e) || (d && !detector_is_cached(*d))) return m;
+    m.model = model_path(*e);
+    if (d) m.detector = detector_path(*d);
+    return m;
 }
 
 bool file_is_cached(const std::string& path, uint64_t bytes) {
@@ -131,9 +217,19 @@ void FileDownload::start(const std::string& url, const std::string& dest,
     });
 }
 
-void FileDownload::start(const ModelEntry& e) {
-    start(std::string(kBaseUrl) + e.file, model_path(e), e.bytes,
-          spirula::model_mirror_url(e.file));
+bool FileDownload::start(const ModelEntry& e, const TextDetector* d) {
+    if (!model_is_cached(e)) {
+        start(e.url ? std::string(e.url) : std::string(kBaseUrl) + e.file, model_path(e),
+              e.bytes, e.mirror ? std::string(e.mirror) : spirula::model_mirror_url(e.file));
+        return true;
+    }
+    if (d)
+        for (const ExtraFile* x : {d->weights, d->vocab})
+            if (!file_is_cached(cache_file(x->file), x->bytes)) {
+                start(x->url, cache_file(x->file), x->bytes, x->mirror);
+                return true;
+            }
+    return false;
 }
 
 void FileDownload::cancel() { _cancel = true; }

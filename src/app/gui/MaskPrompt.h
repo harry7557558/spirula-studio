@@ -83,9 +83,11 @@ inline PickerRow mask_picker_row(bool has_entry, bool cached, bool downloading) 
     return has_entry ? PickerRow::Ready : PickerRow::None;
 }
 
-// The checkpoint picker both the dataset screen and the mask editor draw, over
-// the SAME model id and download. `request_download` asks consent first.
-void draw_mask_model_picker(std::string& model_id, FileDownload& download,
+// The checkpoint picker of the dataset screen and the mask editor, over the SAME
+// download; `request_download` asks consent first. A null `detector_id` (the
+// editor) drops the TextDetector combo and the non-SAM entries.
+void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
+                            FileDownload& download,
                             const std::function<void()>& request_download);
 
 }  // namespace gui
