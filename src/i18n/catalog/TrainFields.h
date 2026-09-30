@@ -1292,6 +1292,110 @@ SS_MSG(train_resolution_divisor,
     NL("Deler van de trainingsresolutie"),
     RU("Делитель разрешения обучения"),
     TR("Eğitim çözünürlüğü böleni"));
+SS_MSG(use_source_weights,
+    EN("Enable camera group weights"),
+    JA("カメラグループ重みを有効化"),
+    ZH_HANS("启用相机分组权重"),
+    ZH_HANT("啟用相機分組權重"),
+    KO("카메라 그룹 가중치 사용"),
+    DE("Kameragruppengewichte aktivieren"),
+    FR("Activer les poids par groupe de caméras"),
+    ES("Activar pesos por grupo de cámaras"),
+    PT("Ativar pesos por grupo de câmeras"),
+    IT("Abilita pesi per gruppo di fotocamere"),
+    NL("Cameragroepgewichten inschakelen"),
+    RU("Включить веса групп камер"),
+    TR("Kamera grubu ağırlıklarını etkinleştir"));
+SS_MSG(use_source_weights_help,
+    EN("Group by original intrinsics (COLMAP camera_id), with original lens model and resolution. Higher weights select a group more often, independently of image count, strengthening color and texture supervision. 0 skips it. Disabled uses original sampling."),
+    JA("元の内部パラメータ（COLMAP camera_id）で分類し、元のレンズモデルと解像度を表示します。重みが大きいほど画像枚数に関係なく選択頻度が増え、色や質感の学習を強めます。0 は除外、無効時は元の抽出方法です。"),
+    ZH_HANS("按原始相机内参分组（COLMAP camera_id），显示原始镜头模型和分辨率。权重越高，该组被用于训练的频率越高，不受该组图片数量影响，从而加强颜色和纹理约束。0 表示该阶段跳过此组；关闭时使用原有采样。"),
+    ZH_HANT("按原始相機內參分組（COLMAP camera_id），顯示原始鏡頭模型和解析度。權重越高，該組用於訓練的頻率越高，不受該組圖片數量影響，從而加強色彩和紋理約束。0 表示該階段略過此組；關閉時使用原有取樣。"),
+    KO("원본 내부 파라미터(COLMAP camera_id)로 그룹화하고 원본 렌즈 모델과 해상도를 표시합니다. 높은 가중치는 이미지 수와 무관하게 선택 빈도를 높여 색상과 질감 학습을 강화합니다. 0은 제외, 비활성화 시 기존 샘플링을 사용합니다."),
+    DE("Gruppierung nach ursprünglichen Intrinsiken (COLMAP camera_id), mit Objektivmodell und Originalauflösung. Höhere Gewichte wählen die Gruppe unabhängig von ihrer Bildanzahl häufiger für Farb- und Texturtraining. 0 überspringt sie; deaktiviert gilt die ursprüngliche Auswahl."),
+    FR("Groupes selon les paramètres intrinsèques d'origine (COLMAP camera_id), avec modèle et résolution d'origine. Un poids élevé augmente la fréquence de sélection, indépendamment du nombre d'images, pour renforcer couleurs et textures. 0 exclut le groupe ; désactivé conserve la sélection initiale."),
+    ES("Agrupa por intrínsecos originales (COLMAP camera_id), mostrando modelo y resolución originales. Un peso mayor selecciona el grupo más a menudo, sin depender del número de imágenes, reforzando color y textura. 0 omite el grupo; desactivado usa el muestreo original."),
+    PT("Agrupa por parâmetros intrínsecos originais (COLMAP camera_id), mostrando modelo e resolução originais. Pesos maiores selecionam o grupo com mais frequência, independentemente da quantidade de imagens, reforçando cor e textura. 0 ignora o grupo; desativado usa a amostragem original."),
+    IT("Raggruppa per intrinseci originali (COLMAP camera_id), mostrando modello e risoluzione originali. Un peso maggiore seleziona il gruppo più spesso, indipendentemente dal numero di immagini, rafforzando colore e texture. 0 esclude il gruppo; disattivato usa il campionamento originale."),
+    NL("Groepeer op oorspronkelijke intrinsieken (COLMAP camera_id), met lensmodel en originele resolutie. Hogere gewichten kiezen de groep vaker, onafhankelijk van het aantal beelden, voor meer kleur- en textuurtraining. 0 slaat de groep over; uitgeschakeld gebruikt de oorspronkelijke selectie."),
+    RU("Группировка по исходным внутренним параметрам (COLMAP camera_id), с исходной моделью объектива и разрешением. Больший вес повышает частоту выбора группы независимо от числа изображений, усиливая обучение цвета и текстуры. 0 исключает группу; отключение возвращает исходную выборку."),
+    TR("Özgün iç parametrelere (COLMAP camera_id) göre gruplar; özgün lens modeli ve çözünürlüğü gösterir. Yüksek ağırlık, görüntü sayısından bağımsız olarak grubu daha sık seçerek renk ve doku eğitimini güçlendirir. 0 grubu atlar; kapalıyken özgün örnekleme kullanılır."));
+SS_MSG(source_weights,
+    EN("Camera group weight stages"),
+    JA("カメラグループ重みの段階"),
+    ZH_HANS("相机分组权重阶段"),
+    ZH_HANT("相機分組權重階段"),
+    KO("카메라 그룹 가중치 단계"),
+    DE("Phasen der Kameragruppengewichte"),
+    FR("Phases des poids par groupe de caméras"),
+    ES("Etapas de pesos por grupo de cámaras"),
+    PT("Fases de pesos por grupo de câmeras"),
+    IT("Fasi dei pesi per gruppo di fotocamere"),
+    NL("Fasen voor cameragroepgewichten"),
+    RU("Этапы весов групп камер"),
+    TR("Kamera grubu ağırlığı aşamaları"));
+SS_MSG(source_weights_help,
+    EN("JSON stages: until is the end percentage; weights maps keys such as camera:1 to weights. Last stage: 100; omitted groups: 1. Empty: 0-70% and 70-100%, all weights 1."),
+    JA("JSON 段階配列：until は終了割合、weights は camera:1 などのキーと重みです。最後は 100、省略したグループは 1。空なら 0-70%、70-100% の全重みが 1 です。"),
+    ZH_HANS("JSON 阶段数组：until 为结束百分比，weights 将 camera:1 等相机键对应到权重。最后阶段结束于 100，未指定组默认为 1。留空时使用 0-70%、70-100% 两阶段，权重均为 1。"),
+    ZH_HANT("JSON 階段陣列：until 為結束百分比，weights 將 camera:1 等相機鍵對應到權重。最後階段結束於 100，未指定組預設為 1。留空時使用 0-70%、70-100% 兩階段，權重均為 1。"),
+    KO("JSON 단계: until은 종료 백분율, weights는 camera:1 같은 키의 가중치입니다. 마지막은 100, 생략한 그룹은 1입니다. 비우면 0-70%, 70-100% 두 단계의 모든 가중치가 1입니다."),
+    DE("JSON-Phasen: until ist der Endprozentsatz; weights ordnet Schlüsseln wie camera:1 Gewichte zu. Letzte Phase: 100; fehlende Gruppen: 1. Leer: 0-70% und 70-100%, alle Gewichte 1."),
+    FR("Phases JSON : until est le pourcentage final ; weights associe des poids aux clés telles que camera:1. Dernière phase : 100 ; groupes omis : 1. Vide : 0-70% et 70-100%, poids 1."),
+    ES("Etapas JSON: until es el porcentaje final; weights asigna pesos a claves como camera:1. Última etapa: 100; grupos omitidos: 1. Vacío: 0-70% y 70-100%, pesos 1."),
+    PT("Fases JSON: until é a porcentagem final; weights atribui pesos a chaves como camera:1. Última fase: 100; grupos omitidos: 1. Vazio: 0-70% e 70-100%, pesos 1."),
+    IT("Fasi JSON: until è la percentuale finale; weights associa pesi a chiavi come camera:1. Ultima fase: 100; gruppi omessi: 1. Vuoto: 0-70% e 70-100%, pesi 1."),
+    NL("JSON-fasen: until is het eindpercentage; weights koppelt sleutels zoals camera:1 aan gewichten. Laatste fase: 100; ontbrekende groepen: 1. Leeg: 0-70% en 70-100%, gewichten 1."),
+    RU("JSON-этапы: until — конечный процент, weights — веса ключей вроде camera:1. Последний этап: 100; пропущенные группы: 1. Пусто: 0-70% и 70-100%, все веса 1."),
+    TR("JSON aşamaları: until bitiş yüzdesi; weights, camera:1 gibi anahtarların ağırlıklarıdır. Son aşama: 100; atlanan gruplar: 1. Boşsa 0-70% ve 70-100%, tüm ağırlıklar 1."));
+SS_MSG(train_max_image_dimension,
+    EN("Maximum image side"), JA("画像の長辺上限"), ZH_HANS("图像最长边上限"),
+    ZH_HANT("影像最長邊上限"), KO("이미지 긴 변 제한"), DE("Maximale Bildseite"),
+    FR("Côté maximal de l'image"), ES("Lado máximo de la imagen"),
+    PT("Lado máximo da imagem"), IT("Lato massimo dell'immagine"),
+    NL("Maximale beeldzijde"), RU("Максимальная сторона изображения"),
+    TR("Maksimum görüntü kenarı"));
+SS_MSG(train_max_image_dimension_help,
+    EN("If set, shrink each image only when its longer side exceeds this many "
+       "pixels. The aspect ratio and camera intrinsics are scaled together; "
+       "images already below the limit stay at their own resolution. This "
+       "takes precedence over the 1/2, 1/4 and 1/8 divisor."),
+    JA("設定すると、長辺がこの画素数を超える画像だけを縮小します。アスペクト比と"
+       "カメラ内部パラメータも一緒に縮尺され、上限以下の画像は元の解像度のままです。"
+       "1/2、1/4、1/8 の縮小率より優先されます。"),
+    ZH_HANS("设置后，只有最长边超过该像素数的图像才会缩小。宽高比和相机内参会同步"
+            "缩放，已经低于上限的图像保持原分辨率。它优先于 1/2、1/4、1/8 缩小倍数。"),
+    ZH_HANT("設定後，只有最長邊超過該像素數的影像才會縮小。寬高比與相機內參會同步"
+            "縮放，已低於上限的影像維持原解析度。它優先於 1/2、1/4、1/8 縮小倍數。"),
+    KO("설정하면 긴 변이 이 픽셀 수를 넘는 이미지만 축소합니다. 가로세로 비율과 카메라 "
+       "내부 파라미터도 함께 조정되며, 제한 이하 이미지는 원래 해상도로 유지됩니다. "
+       "1/2, 1/4, 1/8 배율보다 우선합니다."),
+    DE("Wenn gesetzt, wird ein Bild nur verkleinert, wenn seine längere Seite diese "
+       "Pixelzahl überschreitet. Seitenverhältnis und Kameraintrinsics werden gemeinsam "
+       "skaliert; kleinere Bilder behalten ihre Auflösung. Dies hat Vorrang vor 1/2, 1/4 "
+       "und 1/8."),
+    FR("Si cette valeur est définie, une image n'est réduite que si son côté le plus long "
+       "dépasse ce nombre de pixels. Le rapport et les paramètres internes de la caméra "
+       "sont redimensionnés ensemble ; les images plus petites gardent leur résolution. "
+       "Ce réglage prime sur 1/2, 1/4 et 1/8."),
+    ES("Si se define, una imagen solo se reduce cuando su lado más largo supera estos "
+       "píxeles. La proporción y los parámetros internos de la cámara se escalan juntos; "
+       "las imágenes menores conservan su resolución. Tiene prioridad sobre 1/2, 1/4 y 1/8."),
+    PT("Quando definido, uma imagem só é reduzida se o lado maior exceder estes pixels. "
+       "A proporção e os parâmetros internos da câmara são redimensionados juntos; imagens "
+       "menores mantêm a resolução. Tem prioridade sobre 1/2, 1/4 e 1/8."),
+    IT("Se impostato, un'immagine viene ridotta solo quando il lato più lungo supera questi "
+       "pixel. Proporzioni e parametri interni della fotocamera vengono scalati insieme; "
+       "le immagini più piccole mantengono la risoluzione. Ha priorità su 1/2, 1/4 e 1/8."),
+    NL("Indien ingesteld wordt een beeld alleen verkleind als de langste zijde dit aantal "
+       "pixels overschrijdt. De beeldverhouding en camera-intrinsics worden samen geschaald; "
+       "kleinere beelden behouden hun resolutie. Dit heeft voorrang op 1/2, 1/4 en 1/8."),
+    RU("Если задано, изображение уменьшается только когда его длинная сторона превышает "
+       "это число пикселей. Соотношение сторон и параметры камеры масштабируются вместе; "
+       "меньшие изображения сохраняют разрешение. Настройка имеет приоритет над 1/2, 1/4 и 1/8."),
+    TR("Ayarlanırsa bir görüntü yalnızca uzun kenarı bu piksel sayısını aştığında küçültülür. "
+       "En-boy oranı ve kamera iç parametreleri birlikte ölçeklenir; daha küçük görüntüler "
+       "çözünürlüğünü korur. 1/2, 1/4 ve 1/8 bölücülerine önceliklidir."));
 SS_MSG(train_resolution_divisor_help,
     EN("Train on smaller images than the ones on disk: 2 halves each side, 4 "
        "quarters it. 0 or 1 trains at the images' own resolution. The cameras "

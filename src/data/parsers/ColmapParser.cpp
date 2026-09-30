@@ -929,6 +929,9 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
                                      std::to_string(im.camera_id));
         const ColmapCamera& cam = cam_it->second;
 
+        ds.source_camera_ids.push_back(im.camera_id);
+        ds.source_cameras.emplace(im.camera_id, cam);
+
         ds.image_filenames.push_back(frames[i].path);
 
         const int turns =

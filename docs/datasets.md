@@ -530,8 +530,124 @@ images' own size. This is the "train smaller to go faster" knob — the GUI's
 Image resolution combo writes it — and it is relative to the images, not to the
 reconstruction.
 
+Alternatively, set `train_max_image_dimension` to a positive pixel count. Each
+image is reduced only when its longest side exceeds that limit. For example,
+3840 changes 7680x5120 to 3840x2560 and leaves 3840x3840 and 1920x1080 alone.
+Portrait images use their height as the longest side. The aspect ratio is
+preserved up to whole-pixel rounding; the longest side is exactly the limit.
+Camera intrinsics and fitted source-camera parameters follow the final size.
+This cap takes precedence over `train_resolution_divisor`; zero disables it.
+The GUI exposes it as **Image resolution > Maximum side**, initially 3840.
+Changing it reloads the dataset metadata. Training, evaluation and later mesh
+texture projection use the saved setting. Original image files are unchanged.
+
 A caller with no image decoders leaves `probe_image_size` null and gets the
-reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
+reconstruction's resolution as the starting size; the WebAssembly viewer does
+exactly that and leaves both scaling settings off.
+
+## Staged camera group weights
+
+**Training sources > Enable camera group weights** groups images by their
+original COLMAP `camera_id`, regardless of image folders. Each row shows
+**Camera ID | original lens model | original width x height**, the training
+image count, and a weight per stage. Resolution is the calibration resolution,
+before the longest-side cap, distortion fitting, or internal face splitting.
+Metashape uses sensor IDs; transforms.json uses explicit camera IDs when present,
+otherwise identical original intrinsics share a group.
+
+Stages cover consecutive percentages of total training steps. The final stage
+ends at 100. The `+` button splits the final stage and copies its weights;
+`-` removes a stage. Defaults are 0-70% and 70-100%, with all weights 1.
+Weighting is off by default.
+
+Weights control how often a whole camera group supplies training supervision,
+independently of its image count. Two fisheye groups weighted 1 each and a photo
+group weighted 5 give the photo group 5/7 of step selections. Multiplying all
+weights by a common constant changes nothing. Zero excludes a group for that
+stage; at least one group containing training images must remain positive.
+Evaluation keeps its normal split.
+
+The sampler chooses a source proportionally to its weight, then a homogeneous
+camera/shape group proportionally to its image count within that source.
+Images shuffle within each group. A step can be smaller than the configured
+batch size. RGB, SSIM and other enabled image supervision all follow this
+selection; no second loss multiplier is applied. Internally generated fisheye
+faces do not multiply a source's weight. Lens models and the `360-camera`
+preset are independent of weighting.
+
+Stages switch at `floor(total_steps * previous_end_percent / 100)`, including
+on resume. Disk prefetch restarts at each switch. Resuming restores the stage,
+not the exact random sampling order. Visible detail still depends on alignment,
+sharpness, resolution, model capacity and remaining training time.
+
+Weights use `camera:<id>` keys. Unspecified groups default to 1; keys absent
+from the dataset are ignored. The schedule is a JSON **string** in presets and
+the run's `config.json`, enabled by `use_source_weights`. For example:
+
+```json
+[
+  {"until": 60, "weights": {"camera:1": 1, "camera:2": 1, "camera:3": 1}},
+  {"until": 80, "weights": {"camera:1": 1, "camera:2": 1, "camera:3": 3}},
+  {"until": 100, "weights": {"camera:1": 1, "camera:2": 1, "camera:3": 5}}
+]
+```
+
+The CLI accepts the same schedule through `--use-source-weights true
+--source-weights '<JSON array>'`. Old folder-key schedules migrate when each
+camera's contributing folders agree on the weight. Conflicting folder weights
+require resetting the schedule. A folder containing several camera groups
+gives each group its old weight, so review the new rows before starting.
+
+## Transformed training snapshots
+
+The training viewport's center selector and X/Y/Z degree fields define a new
+coordinate frame. Rotation applies around fixed X, then Y, then Z axes, after
+the camera-leveling setting. The coordinate selector defaults to Y-up, and also
+offers Spirula's Z-up frame or a SuperSplat PLY with its import rotation
+compensated. The selected dataset camera or sparse-point
+center becomes the origin; it is not recomputed from evolving splat bounds.
+Navigation and Reset view do not change the export transform.
+
+The native viewport changes both the live and reset camera poses when switching
+between Z-up and Y-up. Turntable navigation orbits about the selected world up,
+keeps the horizon level, and limits pitch to 89 degrees. Trackball allows roll.
+The XYZ model rotations use the selected frame's fixed axes and do not rotate
+the navigation up axis.
+
+**Generate snapshot** exports the current model during training, while paused,
+or after completion. It takes the engine lock at a step boundary and writes
+`<dataset-name>_YYYYMMDD_HHMMSS.ply` directly in the dataset root. The date and
+time are local to the computer, captured when the button is clicked. Repeated
+names receive `_1`, `_2`, etc. without replacing earlier snapshots.
+The matching `.transform.json` records the training-to-snapshot rotation,
+translation, selected coordinate system and training configuration.
+Preview and export use the same orientation and
+center; export preserves training-frame size. Gaussian orientations and
+directional SH colors rotate with positions.
+
+Snapshots leave live parameters and checkpoints unchanged and contain no
+optimizer state; resume training from an original checkpoint. A partial PLY
+is renamed only after export finishes. Keep the matching `.transform.json`
+beside the PLY so Spirula's model viewer can recover its primitive and color
+configuration even when the snapshot is moved away from the training output.
+
+## Iterations, image count and splat capacity
+
+`num_iterations` counts optimizer updates, not epochs. The default batch size
+is approximately `round(training_images / max_batch_per_epoch)`, at least 1;
+`max_batch_per_epoch` defaults to 800. Actual steps can contain fewer images
+because camera shapes and warps constrain batches. The `academic-baseline` preset uses a
+large epoch limit, effectively one image per step. Source weighting replaces
+strict epoch traversal with its staged distribution.
+
+`cap_max` limits allocated splat capacity. At each refinement, growth targets
+`min(cap_max, floor(growth_factor * current_count))`. Reaching capacity stops
+growth, not parameter optimization or eligible relocation. Refinement runs
+after `refine_start_iter`, every `refine_every` steps, while
+`step < max(refine_stop_iter, total_steps - refine_stop_num_iter)`.
+With defaults and 30,000 steps the cutoff is 27,500, not 14,000.
+The final exported count can be smaller because dead or invalid splats are
+filtered. More steps and more capacity address different limits.
 
 ## 360 cameras (GoPro MAX and MAX 2 `.360`)
 

@@ -99,6 +99,7 @@ endif()
 # command-line tools are always in it; SS_BUILD_GUI adds the window.
 # ---------------------------------------------------------------------------
 option(SS_BUILD_GUI "Build the graphical application into spirula (fetches GLFW + Dear ImGui)" ON)
+option(SS_DEFAULT_SNAPSHOT_SUPERSPLAT "Default the training viewport and snapshot export to SuperSplat (Y-up)" OFF)
 option(SS_BUILD_BACKEND_TESTS "Build backend parity test tools" OFF)
 
 # SS_BUILD_CLI is gone. Warn rather than let CMake's unused-variable notice

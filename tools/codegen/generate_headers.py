@@ -41,10 +41,10 @@ def extract_function_declarations(code):
 def write_if_changed(path, new_text):
     old = None
     if os.path.exists(path):
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             old = f.read()
     if old != new_text:
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(new_text)
         return True
     return False
@@ -63,11 +63,13 @@ def generate_header(filename, sources):
                 f"{filename}.cuh lists a missing source: {source_filename}. "
                 "Update HEADER_SOURCES in generate_headers.py."
             )
-        code += open(full).read()
+        with open(full, encoding="utf-8") as f:
+            code += f.read()
     decls = extract_function_declarations(strip_if_zero_blocks(code))
 
     splitter = "/* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */\n"
-    include = open(path + f"{filename}.cuh").read()
+    with open(path + f"{filename}.cuh", encoding="utf-8") as f:
+        include = f.read()
     include = include.split(splitter)[0].strip()
 
     header = '\n\n\n'.join([include, splitter]+decls) + "\n"

@@ -18,16 +18,19 @@
 namespace spirula {
 
 struct SplatCloud;
+struct SceneTransform;
 
 class SplatTransform {
 public:
     SplatTransform(const Sim3& T, int sh_degree);
+    SplatTransform(const SceneTransform& T, int sh_coefficients);
 
     bool is_identity() const { return _identity; }
     // One Gaussian in place, in the raw layout checkpoint/SplatPly.h stores:
     // log scales, a (w,x,y,z) quaternion, `rest` as [coeffs, 3].
     void apply(float mean[3], float quat[4], float log_scale[3], float* rest,
                int coeffs) const;
+    void apply(float* ply_row) const;
 
 private:
     Sim3 _T;
@@ -35,6 +38,7 @@ private:
     float _log_s;
     bool _identity;
     ShRotation _sh;
+    int _row_coeffs = 0;
 };
 
 // Every Gaussian of `c`, in place.

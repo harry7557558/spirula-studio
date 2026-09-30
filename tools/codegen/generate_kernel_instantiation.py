@@ -48,7 +48,8 @@ kPrimitives = [
 
 def extract_kernel_definition(header_src: Path, kernel_name: str):
     header_src = SRC_DIR / header_src
-    src = open(header_src, "r").read()
+    with open(header_src, "r", encoding="utf-8") as f:
+        src = f.read()
 
     pattern = re.compile(
         f"""(void\\s+{kernel_name}(.*?)\\)\\s*;)""",
@@ -70,10 +71,10 @@ _emitted: set = set()
 def write_if_changed(path, new_text):
     old = None
     if os.path.exists(path):
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             old = f.read()
     if old != new_text:
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(new_text)
         return True
     return False
