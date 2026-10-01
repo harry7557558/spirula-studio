@@ -514,6 +514,12 @@ void engine_read_view_stats(std::vector<float>& cam_sum, std::vector<uint32_t>& 
 int64_t engine_get_cur_num_splats();
 int64_t engine_get_max_num_splats();
 int engine_get_num_sh();   // non-DC SH coefficients per channel
+void engine_begin_splat_contribution();
+// Add the current forward pass's exact per-pixel alpha * transmittance values
+// into the post-training analysis buffer.  Call engine_begin_splat_contribution
+// once before replaying a sequence of views.
+void engine_accumulate_splat_contribution(TorchTensorView unit_weight_map);
+void engine_copy_splat_contribution_to_host(TorchTensorView dst);
 
 // `out_rgb_raw` is the pre-color-space-conversion render (linear / wide-gamut)
 // stashed by the color-space forward hook. Null OK; when the engine has no

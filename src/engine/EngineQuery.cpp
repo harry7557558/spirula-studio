@@ -40,6 +40,23 @@ int engine_get_num_sh() {
 }
 
 
+void engine_begin_splat_contribution() {
+    auto& contribution = engine().fwd.splat_contribution;
+    contribution.resize(PoolSlot::SplatAnalysisContribution,
+                        engine().cur_num_splats);
+    contribution.zero();
+}
+
+
+void engine_copy_splat_contribution_to_host(TorchTensorView dst) {
+    const auto& src = engine().fwd.splat_contribution;
+    if (src.data_ptr() == nullptr || std::get<0>(dst) == 0) return;
+    int64_t n = std::min(std::get<2>(dst)[0], src.size());
+    backend::memcpy_sync((void*)std::get<0>(dst), src.data_ptr(),
+                         n * sizeof(float), backend::MemcpyKind::DeviceToHost);
+}
+
+
 void engine_copy_render_to_host(
     TorchTensorView out_rgb,
     TorchTensorView out_depth,

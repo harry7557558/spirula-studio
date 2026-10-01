@@ -386,6 +386,7 @@ void forward_3dgs(
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgs_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
+            engine().fwd.splat_contribution,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
             dist_type, output_median);
@@ -394,6 +395,7 @@ void forward_3dgs(
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_mip_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
+            engine().fwd.splat_contribution,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
             dist_type, output_median);
@@ -402,6 +404,7 @@ void forward_3dgs(
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
             engine().cur_num_splats,
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
+            engine().fwd.splat_contribution,
             _dt2d_tv(engine().camera.viewmats), _dv_tv(engine().camera.intrins),
             engine().camera.model_str,
         engine().camera.distortion_str, _dt2d_tv(engine().camera.dist_coeffs),

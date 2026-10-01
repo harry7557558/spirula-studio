@@ -33,8 +33,8 @@ inline std::unordered_map<void*, size_t>& alloc_sizes() {
     return *m;
 }
 inline std::atomic<uint64_t>& device_bytes() {
-    static std::atomic<uint64_t> v{0};
-    return v;
+    static auto* v = new std::atomic<uint64_t>{0};
+    return *v;
 }
 // The ordinal a successful device_select picked, for device_bind to re-apply
 // on another thread. -1 until then: no selection means no rebinding, so an

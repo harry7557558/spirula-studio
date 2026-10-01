@@ -435,6 +435,53 @@ void engine_backward_from_render_grad(
 }
 
 
+// Reuse raster backward's exact alpha * T0 reduction with zero output grads.
+// The forced fused path stops before parameter-gradient projection.
+void engine_accumulate_splat_contribution(TorchTensorView unit_weight_map) {
+    if (engine().fwd.splat_contribution.data_ptr() == nullptr)
+        throw std::runtime_error(
+            "engine_accumulate_splat_contribution: call engine_begin_splat_contribution first");
+    if (std::get<0>(engine().fwd.renders).data_ptr() == nullptr)
+        throw std::runtime_error(
+            "engine_accumulate_splat_contribution: forward_3dgs must be called first");
+
+    const int64_t C = engine().camera.num;
+    const int64_t H = engine().camera.height;
+    const int64_t W = engine().camera.width;
+    const auto& map_shape = std::get<2>(unit_weight_map);
+    if (std::get<0>(unit_weight_map) == 0 || map_shape.size() < 3 ||
+        map_shape[0] != C || map_shape[1] != H || map_shape[2] != W)
+        throw std::runtime_error(
+            "engine_accumulate_splat_contribution: unit_weight_map shape must match [C,H,W]");
+    DeviceTensor3D<float> weight_map =
+        _hv_to_dt3d<float>(PoolSlot::SplatAnalysisWeightMap, unit_weight_map);
+    TorchTensorView v_rgb   = _pool_tv(PoolSlot::EngVRgb,   C, H, W, 3);
+    TorchTensorView v_depth = _pool_tv(PoolSlot::EngVDepth, C, H, W, 1);
+    TorchTensorView v_Ts    = _pool_tv(PoolSlot::EngVTs,    C, H, W, 1);
+    backend::memset_sync((void*)std::get<0>(v_rgb),   0, (size_t)C * H * W * 3 * sizeof(float));
+    backend::memset_sync((void*)std::get<0>(v_depth), 0, (size_t)C * H * W * sizeof(float));
+    backend::memset_sync((void*)std::get<0>(v_Ts),    0, (size_t)C * H * W * sizeof(float));
+
+    // The fused path intentionally stops after raster backward.  That avoids
+    // allocating or transforming persistent parameter gradients for analysis.
+    const bool fused_before = engine().optim.use_fused_proj_bwd_optim;
+    engine().optim.use_fused_proj_bwd_optim = true;
+    engine().grad.quantize_grad = false;
+    _alloc_grad_buffers();
+    _engine_raster_proj_backward(v_rgb, v_depth, v_Ts, weight_map,
+                                 DensifyAccumMode::Sum);
+    engine().optim.use_fused_proj_bwd_optim = fused_before;
+
+    const auto& score = engine().fwd.accum_weight;
+    if (score.data_ptr() == nullptr)
+        throw std::runtime_error(
+            "engine_accumulate_splat_contribution: raster backward produced no score");
+    float_add_into(engine().fwd.splat_contribution, score, engine().cur_num_splats);
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
+}
+
+
 // loss_scale_min_pixels > 0 overrides num_loss_scales so the smallest image
 // dimension halves down toward (not below) that count -- 2000 makes min dim
 // 1999 one scale, 2000 two, 8000 four. Per step, so mixed resolutions adapt.

@@ -156,6 +156,7 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         ttv(d_intr, {(int64_t)C, 4}), W, H, img_ids, /*tile_active=*/nullptr,
         macro_log2);
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
+                                             DeviceVector<float>(),
                                              W, H, tile_offsets, flatten_ids,
                                              macro_log2,
                                              DistortionType::None, false);
