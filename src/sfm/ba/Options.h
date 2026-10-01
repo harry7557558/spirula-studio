@@ -2,6 +2,7 @@
 // the host fallback (sfm/ba/SolverCpu.h).
 #pragma once
 
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
