@@ -16,6 +16,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -48,6 +49,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -80,6 +82,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -112,6 +115,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -144,6 +148,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -176,6 +181,7 @@ template void rasterize_to_pixels_eval3d_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGUT<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGUT<0>::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]

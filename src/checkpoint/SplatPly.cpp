@@ -329,8 +329,14 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
 std::pair<std::string, std::string> find_splat_ply(const std::string& path) {
     const fs::path p(path);
     std::error_code ec;
-    if (fs::is_regular_file(p, ec) && p.extension() == ".ply")
+    if (fs::is_regular_file(p, ec) && p.extension() == ".ply") {
+        for (fs::path run = p.parent_path(); !run.empty(); run = run.parent_path()) {
+            if (fs::is_regular_file(run / "config.json", ec))
+                return {p.string(), run.string()};
+            if (run == run.parent_path()) break;
+        }
         return {p.string(), p.parent_path().parent_path().string()};
+    }
     if (fs::is_regular_file(p / "splat.ply", ec))
         return {(p / "splat.ply").string(), p.parent_path().string()};
     if (fs::is_directory(p, ec)) {

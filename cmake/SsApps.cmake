@@ -99,6 +99,9 @@ list(APPEND SS_TOOL_DEFS SS_TOOL_PARTITION=1)
 list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/mesh_main.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_MESH=1)
 
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/splat_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_SPLAT=1)
+
 if(SS_BUILD_SFM)
     # ---- structure from motion ----
     # The SfM module carries its own Vulkan context and SPIR-V and shares

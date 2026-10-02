@@ -14,6 +14,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -40,6 +41,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -66,6 +68,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -92,6 +95,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -118,6 +122,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -144,6 +149,7 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
     const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,

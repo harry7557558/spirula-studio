@@ -84,6 +84,9 @@ const std::vector<Tool>& tools() {
 #ifdef SS_TOOL_MESH
         {app::kToolMesh, &cmsg::tool_mesh, spirula_mesh_main},
 #endif
+#ifdef SS_TOOL_SPLAT
+        {app::kToolSplat, &cmsg::tool_splat, spirula_splat_main},
+#endif
 #ifdef SS_TOOL_ENCODE
         {app::kToolEncode, &cmsg::tool_encode, spirula_encode_main},
 #endif

@@ -250,7 +250,7 @@ int main(int argc, char** argv) {
             rout;
         if (cfg.prim == 2) {
             rout = rasterize_to_pixels_3dgut_fwd(
-                N, in_splats, splats_s, gauss_ids,
+                N, in_splats, splats_s, gauss_ids, DeviceVector<float>(),
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
@@ -258,7 +258,7 @@ int main(int argc, char** argv) {
                 cfg.median);
         } else {
             rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s,
-                                                gauss_ids, W, H, tile_offsets,
+                                                gauss_ids, DeviceVector<float>(), W, H, tile_offsets,
                                                 flatten_ids,
                                                 macro_log2, cfg.dt,
                                                 cfg.median);

@@ -196,6 +196,8 @@ enum class SaveClass : uint8_t {
   /* render/distortion channel tuples: sub-buffers ".rgb"/".depth"/".normal" */ \
   X(Renders                        , "renders",                           Image    , Never) \
   X(Distortions                    , "distortions",                       Image    , Never) \
+  X(SplatAnalysisContribution      , "splat_analysis.contribution",       Splat    , Never) \
+  X(SplatAnalysisWeightMap         , "splat_analysis.weight_map",         Image    , Never) \
   /* ---- raster backward scratch ---- */ \
   X(RasterBwdAccumWeight           , "raster_bwd.accum_weight",           Splat    , Never) \
   X(RasterBwdVViewmats             , "raster_bwd.v_viewmats",             Other    , Never) \

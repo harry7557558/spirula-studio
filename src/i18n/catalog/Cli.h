@@ -151,6 +151,20 @@ SS_MSG(tool_mesh,
     NL("een mesh uit een getraind model halen"),
     RU("извлечь меш из обученной модели"),
     TR("eğitilmiş bir modelden ağ çıkarmak"));
+SS_MSG(tool_splat,
+    EN("inspect and optimize a trained splat model"),
+    JA("学習済みスプラットモデルを調べて最適化する"),
+    ZH_HANS("检查和优化训练好的泼溅模型"),
+    ZH_HANT("檢查和最佳化訓練好的潑濺模型"),
+    KO("학습된 스플랫 모델 검사 및 최적화"),
+    DE("ein trainiertes Splat-Modell prüfen und optimieren"),
+    FR("inspecter et optimiser un modèle de splats entraîné"),
+    ES("inspeccionar y optimizar un modelo de splats entrenado"),
+    PT("inspecionar e otimizar um modelo de splats treinado"),
+    IT("ispezionare e ottimizzare un modello di splat addestrato"),
+    NL("een getraind splat-model controleren en optimaliseren"),
+    RU("проверить и оптимизировать обученную сплат-модель"),
+    TR("eğitilmiş bir splat modelini incelemek ve optimize etmek"));
 
 // ===========================================================================
 // `spirula --help` -- the usage block itself
@@ -907,6 +921,48 @@ SS_MSG(sam_no_video_decoder,
        "-DSS_ENABLE_PATENTED=ON ile derlenir (bkz. cmake/SsOptions.cmake). Bir "
        "dosyayı incelemek ya da kare çıkarmak için ffmpeg kullanın."));
 
+SS_MSG(sam_extract_needs_decoder,
+    EN("`extract` needs the in-process video decoder, which is compiled only "
+       "with -DSS_ENABLE_PATENTED=ON (see cmake/SsOptions.cmake). Extract "
+       "frames with ffmpeg and mask them with `{0} track` instead."),
+    JA("`extract` にはプロセス内の動画デコーダーが必要ですが、これは "
+       "-DSS_ENABLE_PATENTED=ON でのみ組み込まれます（cmake/SsOptions.cmake 参照）。"
+       "ffmpeg でフレームを取り出し、`{0} track` でマスクしてください。"),
+    ZH_HANS("`extract` 需要进程内视频解码器，而它只在 -DSS_ENABLE_PATENTED=ON 时编译"
+            "（见 cmake/SsOptions.cmake）。请用 ffmpeg 提取帧，再用 `{0} track` 遮罩。"),
+    ZH_HANT("`extract` 需要行程內視訊解碼器，而它只在 -DSS_ENABLE_PATENTED=ON 時編譯"
+            "（見 cmake/SsOptions.cmake）。請用 ffmpeg 擷取影格，再用 `{0} track` 遮罩。"),
+    KO("`extract` 에는 프로세스 내 비디오 디코더가 필요한데, 이는 "
+       "-DSS_ENABLE_PATENTED=ON 일 때만 컴파일됩니다(cmake/SsOptions.cmake 참고). "
+       "ffmpeg 으로 프레임을 뽑고 `{0} track` 으로 마스크하세요."),
+    DE("`extract` braucht den prozessinternen Videodekoder, der nur mit "
+       "-DSS_ENABLE_PATENTED=ON übersetzt wird (siehe cmake/SsOptions.cmake). "
+       "Entnehmen Sie die Einzelbilder mit ffmpeg und maskieren Sie sie mit "
+       "`{0} track`."),
+    FR("`extract` a besoin du décodeur vidéo intégré, qui n'est compilé qu'avec "
+       "-DSS_ENABLE_PATENTED=ON (voir cmake/SsOptions.cmake). Extrayez les "
+       "images avec ffmpeg et masquez-les avec `{0} track`."),
+    ES("`extract` necesita el descodificador de vídeo del propio proceso, que "
+       "solo se compila con -DSS_ENABLE_PATENTED=ON (mira "
+       "cmake/SsOptions.cmake). Extrae los fotogramas con ffmpeg y enmascáralos "
+       "con `{0} track`."),
+    PT("`extract` precisa do decodificador de vídeo no próprio processo, que só "
+       "é compilado com -DSS_ENABLE_PATENTED=ON (veja cmake/SsOptions.cmake). "
+       "Extraia os quadros com o ffmpeg e mascare-os com `{0} track`."),
+    IT("`extract` richiede il decodificatore video nel processo, compilato solo "
+       "con -DSS_ENABLE_PATENTED=ON (veda cmake/SsOptions.cmake). Estragga i "
+       "fotogrammi con ffmpeg e li mascheri con `{0} track`."),
+    NL("`extract` heeft de videodecoder in het proces zelf nodig, die alleen "
+       "met -DSS_ENABLE_PATENTED=ON gecompileerd wordt (zie "
+       "cmake/SsOptions.cmake). Haal de beelden eruit met ffmpeg en maskeer ze "
+       "met `{0} track`."),
+    RU("`extract` требует внутрипроцессного видеодекодера, который собирается "
+       "только с -DSS_ENABLE_PATENTED=ON (см. cmake/SsOptions.cmake). Извлеките "
+       "кадры через ffmpeg и замаскируйте их через `{0} track`."),
+    TR("`extract`, süreç içi video çözücüyü ister; o da yalnızca "
+       "-DSS_ENABLE_PATENTED=ON ile derlenir (bkz. cmake/SsOptions.cmake). "
+       "Kareleri ffmpeg ile çıkarıp `{0} track` ile maskeleyin."));
+
 SS_MSG(sam_video_decode,
     EN("Vulkan video decode: available"),
     JA("Vulkan の動画デコード: 使えます"),
@@ -1131,6 +1187,66 @@ SS_MSG(sfm_merge_output_is_input,
     TR("--output {0} zaten girdi modellerinin bulunduğu yer; istediğiniz buysa "
        "--in-place verin"));
 
+SS_MSG(splat_evaluated_camera,
+    EN("Evaluated {0} camera: {1}/{2}"),
+    JA("{0} カメラを評価しました: {1}/{2}"),
+    ZH_HANS("已评测 {0} 相机：{1}/{2}"),
+    ZH_HANT("已評測 {0} 相機：{1}/{2}"),
+    KO("{0} 카메라 평가: {1}/{2}"),
+    DE("{0}-Kamera ausgewertet: {1}/{2}"),
+    FR("Caméra {0} évaluée : {1}/{2}"),
+    ES("Cámara {0} evaluada: {1}/{2}"),
+    PT("Câmera de {0} avaliada: {1}/{2}"),
+    IT("Fotocamera {0} valutata: {1}/{2}"),
+    NL("{0}-camera geëvalueerd: {1}/{2}"),
+    RU("Оценена камера из набора {0}: {1}/{2}"),
+    TR("{0} kamerası değerlendirildi: {1}/{2}"));
+
+SS_MSG(splat_ground_truth_metrics,
+    EN("Ground-truth evaluation: views={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    JA("正解画像での評価: ビュー={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    ZH_HANS("相对真实图像的评测：视图={0}，L1={1}，PSNR={2} dB，SSIM={3}"),
+    ZH_HANT("相對真實影像的評測：視圖={0}，L1={1}，PSNR={2} dB，SSIM={3}"),
+    KO("정답 이미지 평가: 뷰={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    DE("Auswertung gegen Referenzbilder: Ansichten={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    FR("Évaluation sur images de référence : vues={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    ES("Evaluación frente a imágenes de referencia: vistas={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    PT("Avaliação contra imagens de referência: vistas={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    IT("Valutazione rispetto alle immagini di riferimento: viste={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    NL("Evaluatie tegen referentiebeelden: weergaven={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    RU("Оценка по эталонным изображениям: видов={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    TR("Referans görüntülere karşı değerlendirme: görünümler={0}, L1={1}, PSNR={2} dB, SSIM={3}"));
+
+SS_MSG(splat_ground_truth_metrics_corrected,
+    EN("Ground-truth evaluation, colour-corrected: views={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    JA("色補正後の正解画像評価: ビュー={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    ZH_HANS("相对真实图像的评测（色彩校正后）：视图={0}，L1={1}，PSNR={2} dB，SSIM={3}"),
+    ZH_HANT("相對真實影像的評測（色彩校正後）：視圖={0}，L1={1}，PSNR={2} dB，SSIM={3}"),
+    KO("색 보정 후 정답 이미지 평가: 뷰={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    DE("Auswertung gegen Referenzbilder, farbkorrigiert: Ansichten={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    FR("Évaluation sur images de référence, corrigée en couleur : vues={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    ES("Evaluación frente a imágenes de referencia, con corrección de color: vistas={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    PT("Avaliação contra imagens de referência, com cor corrigida: vistas={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    IT("Valutazione rispetto alle immagini di riferimento, corretta nel colore: viste={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    NL("Evaluatie tegen referentiebeelden, kleurgecorrigeerd: weergaven={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    RU("Оценка по эталонным изображениям с коррекцией цвета: видов={0}, L1={1}, PSNR={2} dB, SSIM={3}"),
+    TR("Referans görüntülere karşı renk düzeltmeli değerlendirme: görünümler={0}, L1={1}, PSNR={2} dB, SSIM={3}"));
+
+SS_MSG(splat_selected_split_empty,
+    EN("evaluate: selected split is empty"),
+    JA("evaluate: 選択した分割は空です"),
+    ZH_HANS("evaluate：所选数据划分为空"),
+    ZH_HANT("evaluate：所選資料劃分為空"),
+    KO("evaluate: 선택한 분할이 비어 있습니다"),
+    DE("evaluate: die gewählte Aufteilung ist leer"),
+    FR("evaluate : la partition sélectionnée est vide"),
+    ES("evaluate: la partición seleccionada está vacía"),
+    PT("evaluate: a divisão selecionada está vazia"),
+    IT("evaluate: la partizione selezionata è vuota"),
+    NL("evaluate: de gekozen splitsing is leeg"),
+    RU("evaluate: выбранное разбиение пусто"),
+    TR("evaluate: seçilen bölüm boş"));
+
 SS_MSG(sam_subject_no_prompt,
     EN("{0} masks the main subject by itself; the text prompts and clicks are ignored"),
     JA("{0} は主な被写体を自動でマスクします。テキストプロンプトとクリックは無視されます"),
@@ -1138,19 +1254,13 @@ SS_MSG(sam_subject_no_prompt,
     ZH_HANT("{0} 會自動遮出主體；文字提示與點選都會被忽略"),
     KO("{0} 는 주 피사체를 스스로 마스크합니다. 텍스트 프롬프트와 클릭은 무시됩니다"),
     DE("{0} maskiert das Hauptmotiv von selbst; Textprompts und Klicks werden ignoriert"),
-    FR("{0} masque seul le sujet principal ; les consignes textuelles et les clics sont "
-       "ignorés"),
-    ES("{0} enmascara por sí solo el sujeto principal; se ignoran las indicaciones de "
-       "texto y los clics"),
-    PT("{0} mascara sozinho o objeto principal; os comandos de texto e os cliques são "
-       "ignorados"),
-    IT("{0} maschera da solo il soggetto principale; prompt testuali e clic vengono "
-       "ignorati"),
-    NL("{0} maskeert uit zichzelf het hoofdonderwerp; tekstprompts en klikken worden "
-       "genegeerd"),
+    FR("{0} masque seul le sujet principal ; les consignes textuelles et les clics sont ignorés"),
+    ES("{0} enmascara por sí solo el sujeto principal; se ignoran las indicaciones de texto y los clics"),
+    PT("{0} mascara sozinho o objeto principal; os comandos de texto e os cliques são ignorados"),
+    IT("{0} maschera da solo il soggetto principale; prompt testuali e clic vengono ignorati"),
+    NL("{0} maskeert uit zichzelf het hoofdonderwerp; tekstprompts en klikken worden genegeerd"),
     RU("{0} сам выделяет главный объект; текстовые запросы и щелчки не учитываются"),
-    TR("{0} ana özneyi kendiliğinden maskeler; metin istemleri ve tıklamalar yok "
-       "sayılır"));
+    TR("{0} ana özneyi kendiliğinden maskeler; metin istemleri ve tıklamalar yok sayılır"));
 
 }  // namespace cli
 }  // namespace msg

@@ -168,7 +168,8 @@ int main(int argc, char** argv) {
     const DensifyAccumMode aw = DensifyAccumMode::Avg;
 
     auto fwd = [&] {
-        return rasterize_to_pixels_3dgs_fwd(N, splats, splats_s, gauss_ids, W,
+        return rasterize_to_pixels_3dgs_fwd(N, splats, splats_s, gauss_ids,
+                                            DeviceVector<float>(), W,
                                             H, tile_offsets, flatten_ids,
                                             macro_log2, dt, false);
     };

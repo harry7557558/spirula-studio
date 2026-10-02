@@ -21,6 +21,7 @@ void rasterize_to_pixels_eval3d_fwd_kernel_wrapper(
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const typename SplatPrimitive::WorldBuffer splat_wbuffer,
     const typename SplatPrimitive::ScreenBuffer splat_sbuffer,
     const float *__restrict__ viewmats, // [B, C, 4, 4]
@@ -49,6 +50,7 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     typename SplatPrimitive::WorldBuffer splats_w,
     typename SplatPrimitive::ScreenBuffer splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     TorchTensorView viewmats,  // [..., C, 4, 4]
     TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
     const CameraModelType camera_model,
@@ -84,6 +86,7 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     #define _LAUNCH_ARGS ( \
             (cudaStream_t)0, I, N, n_isects, \
             (uint32_t*)gaussian_ids.data_ptr(), \
+            splat_contribution.data_ptr(), \
             splats_w, splats_s, \
             viewmats_ptr, intrins_ptr, dist_coeffs, aabb_ptr, \
             image_width, image_height, tile_width, tile_height, macro_log2, \
@@ -120,6 +123,7 @@ inline std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     TorchTensorView viewmats,  // [..., C, 4, 4]
     TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
     const CameraModelType camera_model,
@@ -155,6 +159,7 @@ inline std::tuple<
     launch_rasterize_to_pixels_eval3d_fwd_kernel<SplatPrimitive, dist_type, output_median>(
         num_splats,
         splats_w, splats_s, gaussian_ids,
+        splat_contribution,
         viewmats, intrins, camera_model, distortion, dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
         macro_log2,
@@ -186,6 +191,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     TorchTensorView viewmats,  // [..., C, 4, 4]
     TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
     const std::string camera_model,
@@ -216,7 +222,7 @@ std::tuple<
 #undef _DISPATCH_FWD
     return dispatch(
         num_splats,
-        splats_w, splats_s, gaussian_ids,
+        splats_w, splats_s, gaussian_ids, splat_contribution,
         viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
         image_width, image_height,
         tile_offsets, flatten_ids, macro_log2

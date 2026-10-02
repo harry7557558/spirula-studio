@@ -26,6 +26,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     TorchTensorView viewmats,  // [..., C, 4, 4]
     TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
     const std::string camera_model,
