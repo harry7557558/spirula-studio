@@ -261,6 +261,9 @@ protected:
     void add_layer(const spirula::i18n::Msg& name, int64_t n,
                    std::vector<float> positions, std::vector<float> radius = {});
     void set_source(std::string s) { _source = std::move(s); }
+    void set_position(int layer, int64_t i, const float p[3]) {
+        for (int k = 0; k < 3; k++) at(layer).pos[(size_t)i * 3 + k] = p[k];
+    }
     // The concrete document's half of publish(): `geometry` says the live set
     // changed, otherwise only the selection did.
     virtual void publish_impl(bool geometry) = 0;

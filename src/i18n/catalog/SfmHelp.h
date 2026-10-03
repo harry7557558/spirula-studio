@@ -2041,6 +2041,242 @@ SS_MSG(opt_sequence,
        "bu yüzden bir rigin lensleri tek bir dizidir (cam0,cam1). Birden çok dizi "
        "için yineleyin; `.` görüntü dizininin kendisidir."));
 
+SS_MSG(sum_repair,
+    EN("fix wrong or missing cameras in a finished model"),
+    JA("完成したモデルの誤ったカメラや欠けたカメラを修正します"),
+    ZH_HANS("修正已完成模型中错误或缺失的相机"),
+    ZH_HANT("修正已完成模型中錯誤或缺少的相機"),
+    KO("완성된 모델에서 잘못되었거나 빠진 카메라를 고칩니다"),
+    DE("falsche oder fehlende Kameras in einem fertigen Modell korrigieren"),
+    FR("corriger les caméras fausses ou manquantes d'un modèle terminé"),
+    ES("corregir cámaras erróneas o ausentes en un modelo terminado"),
+    PT("corrigir câmeras erradas ou ausentes em um modelo pronto"),
+    IT("correggere le camere errate o mancanti di un modello finito"),
+    NL("verkeerde of ontbrekende camera's in een af model herstellen"),
+    RU("исправить неверные или недостающие камеры готовой модели"),
+    TR("bitmiş bir modeldeki yanlış ya da eksik kameraları düzelt"));
+
+SS_MSG(desc_repair_1,
+    EN("Works on one model in the workspace a run left behind (features/ and "
+       "matches.bin). Cameras named with --replace are taken out and placed again "
+       "from the rest of the model; cameras given a pose in --hints are snapped "
+       "from there; images named with --add, or every missing one with "
+       "--add-missing, are registered. Nothing else is re-run."),
+    JA("実行が残したワークスペース（features/ と matches.bin）の 1 つのモデルを対象にします。"
+       "--replace で指定したカメラはいったん外し、モデルの残りから置き直します。--hints で"
+       "姿勢を与えたカメラはそこから合わせ込みます。--add で指定した画像、または "
+       "--add-missing ですべての欠けた画像を登録します。それ以外は再実行しません。"),
+    ZH_HANS("作用于一次运行留下的工作区（features/ 和 matches.bin）中的一个模型。"
+            "用 --replace 指定的相机会被取出，再依据模型其余部分重新放置；在 --hints 中"
+            "给出位姿的相机从该位姿吸附到位；用 --add 指定的图像，或用 --add-missing "
+            "指定的全部缺失图像会被注册。其余部分不会重新运行。"),
+    ZH_HANT("作用於一次執行留下的工作區（features/ 和 matches.bin）中的一個模型。"
+            "用 --replace 指定的相機會被取出，再依據模型其餘部分重新放置；在 --hints 中"
+            "給出位姿的相機從該位姿吸附到位；用 --add 指定的影像，或用 --add-missing "
+            "指定的全部缺少影像會被註冊。其餘部分不會重新執行。"),
+    KO("실행이 남긴 작업 공간(features/와 matches.bin)의 모델 하나를 다룹니다. "
+       "--replace로 지정한 카메라는 빼낸 뒤 모델의 나머지로부터 다시 배치하고, --hints에서 "
+       "자세를 준 카메라는 그 자리에서 맞춰 넣으며, --add로 지정한 이미지나 --add-missing의 "
+       "빠진 이미지 전부를 등록합니다. 그 밖에는 다시 실행하지 않습니다."),
+    DE("Arbeitet auf einem Modell im Arbeitsbereich, den ein Lauf hinterlassen hat "
+       "(features/ und matches.bin). Mit --replace genannte Kameras werden "
+       "herausgenommen und aus dem übrigen Modell neu platziert; Kameras mit einer Pose "
+       "in --hints werden von dort eingerastet; mit --add genannte Bilder, oder mit "
+       "--add-missing alle fehlenden, werden registriert. Sonst wird nichts neu gerechnet."),
+    FR("Agit sur un modèle de l'espace de travail laissé par une exécution (features/ "
+       "et matches.bin). Les caméras nommées par --replace sont retirées puis replacées "
+       "à partir du reste du modèle ; celles qui ont une pose dans --hints sont "
+       "recalées depuis celle-ci ; les images nommées par --add, ou toutes les "
+       "manquantes avec --add-missing, sont enregistrées. Rien d'autre n'est relancé."),
+    ES("Trabaja sobre un modelo del espacio de trabajo que dejó una ejecución "
+       "(features/ y matches.bin). Las cámaras indicadas con --replace se retiran y se "
+       "vuelven a colocar a partir del resto del modelo; las que tienen una pose en "
+       "--hints se ajustan desde ella; las imágenes indicadas con --add, o todas las que "
+       "faltan con --add-missing, se registran. No se vuelve a ejecutar nada más."),
+    PT("Atua sobre um modelo do espaço de trabalho deixado por uma execução (features/ "
+       "e matches.bin). As câmeras indicadas com --replace são retiradas e recolocadas a "
+       "partir do resto do modelo; as que têm uma pose em --hints são ajustadas a partir "
+       "dela; as imagens indicadas com --add, ou todas as ausentes com --add-missing, "
+       "são registradas. Nada mais é reexecutado."),
+    IT("Opera su un modello dello spazio di lavoro lasciato da un'esecuzione (features/ "
+       "e matches.bin). Le camere indicate con --replace vengono tolte e ricollocate dal "
+       "resto del modello; quelle con una posa in --hints vengono agganciate a partire da "
+       "essa; le immagini indicate con --add, o tutte quelle mancanti con --add-missing, "
+       "vengono registrate. Nient'altro viene rieseguito."),
+    NL("Werkt op één model in de werkmap die een run achterliet (features/ en "
+       "matches.bin). Met --replace genoemde camera's worden eruit gehaald en vanuit de "
+       "rest van het model opnieuw geplaatst; camera's met een pose in --hints worden "
+       "vanaf daar vastgeklikt; met --add genoemde beelden, of met --add-missing alle "
+       "ontbrekende, worden geregistreerd. Verder wordt niets opnieuw gedraaid."),
+    RU("Работает с одной моделью в рабочей папке, оставленной запуском (features/ и "
+       "matches.bin). Камеры из --replace изымаются и заново размещаются по остальной "
+       "модели; камеры с позой в --hints доводятся от неё; изображения из --add, или все "
+       "недостающие при --add-missing, регистрируются. Больше ничего не пересчитывается."),
+    TR("Bir çalışmanın bıraktığı çalışma alanındaki (features/ ve matches.bin) tek bir "
+       "model üzerinde çalışır. --replace ile adı verilen kameralar çıkarılıp modelin geri "
+       "kalanından yeniden yerleştirilir; --hints içinde pozu verilen kameralar oradan "
+       "oturtulur; --add ile adı verilen görüntüler ya da --add-missing ile tüm eksikler "
+       "kaydedilir. Başka hiçbir şey yeniden çalıştırılmaz."));
+
+SS_MSG(desc_repair_2,
+    EN("The targets are matched against the model first and the new pairs are added "
+       "to matches.bin (kept once as matches.bin.orig). The result stays in the input's "
+       "coordinate frame and repair.txt lists what happened to each target."),
+    JA("対象はまずモデルと照合され、新しいペアは matches.bin に追加されます（元の内容は "
+       "matches.bin.orig として一度だけ保存）。結果は入力の座標系のままで、repair.txt に"
+       "各対象の結果が記録されます。"),
+    ZH_HANS("目标图像先与模型匹配，新的图像对会加入 matches.bin（原文件保留一份为 "
+            "matches.bin.orig）。结果保持在输入的坐标系中，repair.txt 列出每个目标的结果。"),
+    ZH_HANT("目標影像先與模型比對，新的影像對會加入 matches.bin（原檔保留一份為 "
+            "matches.bin.orig）。結果保持在輸入的座標系中，repair.txt 列出每個目標的結果。"),
+    KO("대상은 먼저 모델과 매칭되고 새 쌍은 matches.bin에 추가됩니다(원본은 "
+       "matches.bin.orig로 한 번 보관). 결과는 입력의 좌표계에 그대로 있고, repair.txt에 "
+       "대상마다 어떻게 되었는지 기록됩니다."),
+    DE("Die Ziele werden zuerst gegen das Modell gematcht, und die neuen Paare kommen in "
+       "matches.bin (einmal als matches.bin.orig gesichert). Das Ergebnis bleibt im "
+       "Koordinatensystem der Eingabe, und repair.txt nennt, was mit jedem Ziel geschah."),
+    FR("Les cibles sont d'abord appariées au modèle et les nouvelles paires sont "
+       "ajoutées à matches.bin (conservé une fois sous matches.bin.orig). Le résultat "
+       "reste dans le repère de l'entrée et repair.txt indique le sort de chaque cible."),
+    ES("Primero se emparejan los objetivos con el modelo y los pares nuevos se añaden a "
+       "matches.bin (guardado una vez como matches.bin.orig). El resultado queda en el "
+       "sistema de coordenadas de la entrada y repair.txt indica qué pasó con cada objetivo."),
+    PT("Os alvos são primeiro correspondidos ao modelo e os novos pares são adicionados "
+       "a matches.bin (guardado uma vez como matches.bin.orig). O resultado fica no "
+       "sistema de coordenadas da entrada e repair.txt diz o que aconteceu com cada alvo."),
+    IT("Gli obiettivi vengono prima abbinati al modello e le nuove coppie si aggiungono a "
+       "matches.bin (conservato una volta come matches.bin.orig). Il risultato resta nel "
+       "sistema di riferimento dell'ingresso e repair.txt elenca l'esito di ogni obiettivo."),
+    NL("De doelen worden eerst tegen het model gematcht en nieuwe paren komen in "
+       "matches.bin (eenmaal bewaard als matches.bin.orig). Het resultaat blijft in het "
+       "coördinatenstelsel van de invoer en repair.txt vermeldt wat er met elk doel gebeurde."),
+    RU("Сначала цели сопоставляются с моделью, и новые пары добавляются в matches.bin "
+       "(исходный файл однажды сохраняется как matches.bin.orig). Результат остаётся в "
+       "системе координат входа, а repair.txt перечисляет, что стало с каждой целью."),
+    TR("Hedefler önce modelle eşleştirilir ve yeni çiftler matches.bin dosyasına eklenir "
+       "(bir kez matches.bin.orig olarak saklanır). Sonuç girdinin koordinat sisteminde "
+       "kalır ve repair.txt her hedefe ne olduğunu listeler."));
+
+SS_MSG(opt_repair_model,
+    EN("The model to repair (holds cameras.bin, images.bin, points3D.bin)."),
+    JA("修復するモデル（cameras.bin、images.bin、points3D.bin を含む）。"),
+    ZH_HANS("要修复的模型（包含 cameras.bin、images.bin、points3D.bin）。"),
+    ZH_HANT("要修復的模型（包含 cameras.bin、images.bin、points3D.bin）。"),
+    KO("복구할 모델(cameras.bin, images.bin, points3D.bin 포함)."),
+    DE("Das zu reparierende Modell (enthält cameras.bin, images.bin, points3D.bin)."),
+    FR("Le modèle à réparer (contient cameras.bin, images.bin, points3D.bin)."),
+    ES("El modelo a reparar (contiene cameras.bin, images.bin, points3D.bin)."),
+    PT("O modelo a reparar (contém cameras.bin, images.bin, points3D.bin)."),
+    IT("Il modello da riparare (contiene cameras.bin, images.bin, points3D.bin)."),
+    NL("Het te herstellen model (bevat cameras.bin, images.bin, points3D.bin)."),
+    RU("Модель для исправления (содержит cameras.bin, images.bin, points3D.bin)."),
+    TR("Onarılacak model (cameras.bin, images.bin, points3D.bin içerir)."));
+
+SS_MSG(opt_repair_output,
+    EN("Directory to write the repaired model into; may be the model itself."),
+    JA("修復したモデルを書き出すディレクトリ。モデル自身でも構いません。"),
+    ZH_HANS("写出修复后模型的目录；可以就是模型本身。"),
+    ZH_HANT("寫出修復後模型的目錄；可以就是模型本身。"),
+    KO("복구한 모델을 쓸 디렉터리. 모델 자신이어도 됩니다."),
+    DE("Verzeichnis für das reparierte Modell; darf das Modell selbst sein."),
+    FR("Dossier où écrire le modèle réparé ; peut être le modèle lui-même."),
+    ES("Carpeta donde escribir el modelo reparado; puede ser el propio modelo."),
+    PT("Pasta onde escrever o modelo reparado; pode ser o próprio modelo."),
+    IT("Cartella in cui scrivere il modello riparato; può essere il modello stesso."),
+    NL("Map voor het herstelde model; mag het model zelf zijn."),
+    RU("Папка для исправленной модели; может совпадать с самой моделью."),
+    TR("Onarılmış modelin yazılacağı klasör; modelin kendisi olabilir."));
+
+SS_MSG(opt_repair_replace,
+    EN("Comma-separated images whose pose is wrong."),
+    JA("姿勢が誤っている画像（カンマ区切り）。"),
+    ZH_HANS("位姿错误的图像，以逗号分隔。"),
+    ZH_HANT("位姿錯誤的影像，以逗號分隔。"),
+    KO("자세가 잘못된 이미지(쉼표로 구분)."),
+    DE("Kommagetrennte Bilder, deren Pose falsch ist."),
+    FR("Images dont la pose est fausse, séparées par des virgules."),
+    ES("Imágenes con la pose errónea, separadas por comas."),
+    PT("Imagens com a pose errada, separadas por vírgulas."),
+    IT("Immagini con la posa errata, separate da virgole."),
+    NL("Kommagescheiden beelden waarvan de pose verkeerd is."),
+    RU("Изображения с неверной позой, через запятую."),
+    TR("Pozu yanlış olan görüntüler, virgülle ayrılmış."));
+
+SS_MSG(opt_repair_add,
+    EN("Comma-separated images to register into the model."),
+    JA("モデルに登録する画像（カンマ区切り）。"),
+    ZH_HANS("要注册进模型的图像，以逗号分隔。"),
+    ZH_HANT("要註冊進模型的影像，以逗號分隔。"),
+    KO("모델에 등록할 이미지(쉼표로 구분)."),
+    DE("Kommagetrennte Bilder, die ins Modell registriert werden sollen."),
+    FR("Images à enregistrer dans le modèle, séparées par des virgules."),
+    ES("Imágenes a registrar en el modelo, separadas por comas."),
+    PT("Imagens a registrar no modelo, separadas por vírgulas."),
+    IT("Immagini da registrare nel modello, separate da virgole."),
+    NL("Kommagescheiden beelden om in het model te registreren."),
+    RU("Изображения для регистрации в модели, через запятую."),
+    TR("Modele kaydedilecek görüntüler, virgülle ayrılmış."));
+
+SS_MSG(opt_repair_add_missing,
+    EN("Register every image in matches.bin that the model lacks."),
+    JA("matches.bin にあってモデルにない画像をすべて登録します。"),
+    ZH_HANS("注册 matches.bin 中模型缺少的所有图像。"),
+    ZH_HANT("註冊 matches.bin 中模型缺少的所有影像。"),
+    KO("matches.bin에 있지만 모델에 없는 이미지를 모두 등록합니다."),
+    DE("Jedes Bild aus matches.bin registrieren, das dem Modell fehlt."),
+    FR("Enregistrer toutes les images de matches.bin absentes du modèle."),
+    ES("Registrar todas las imágenes de matches.bin que faltan en el modelo."),
+    PT("Registrar todas as imagens de matches.bin que faltam no modelo."),
+    IT("Registrare ogni immagine di matches.bin che manca al modello."),
+    NL("Elk beeld uit matches.bin registreren dat in het model ontbreekt."),
+    RU("Зарегистрировать все изображения из matches.bin, которых нет в модели."),
+    TR("matches.bin içinde olup modelde bulunmayan tüm görüntüleri kaydet."));
+
+SS_MSG(opt_repair_hints,
+    EN("File of rough poses to start from: `qw qx qy qz tx ty tz name` per line."),
+    JA("出発点となるおおよその姿勢のファイル: 1 行に `qw qx qy qz tx ty tz name`。"),
+    ZH_HANS("作为起点的大致位姿文件：每行 `qw qx qy qz tx ty tz name`。"),
+    ZH_HANT("作為起點的大致位姿檔：每行 `qw qx qy qz tx ty tz name`。"),
+    KO("출발점이 될 대략적인 자세 파일: 줄마다 `qw qx qy qz tx ty tz name`."),
+    DE("Datei mit groben Ausgangsposen: `qw qx qy qz tx ty tz name` pro Zeile."),
+    FR("Fichier de poses approximatives de départ : `qw qx qy qz tx ty tz name` par ligne."),
+    ES("Archivo de poses aproximadas de partida: `qw qx qy qz tx ty tz name` por línea."),
+    PT("Arquivo de poses aproximadas de partida: `qw qx qy qz tx ty tz name` por linha."),
+    IT("File di pose approssimative di partenza: `qw qx qy qz tx ty tz name` per riga."),
+    NL("Bestand met ruwe beginposes: `qw qx qy qz tx ty tz name` per regel."),
+    RU("Файл с приблизительными начальными позами: `qw qx qy qz tx ty tz name` в строке."),
+    TR("Başlangıç için kaba pozlar dosyası: satır başına `qw qx qy qz tx ty tz name`."));
+
+SS_MSG(opt_repair_audit,
+    EN("Also check every other camera and move the ones the model contradicts."),
+    JA("ほかのすべてのカメラも調べ、モデルと矛盾するものを移動します。"),
+    ZH_HANS("同时检查其余每台相机，并移动与模型矛盾的相机。"),
+    ZH_HANT("同時檢查其餘每台相機，並移動與模型矛盾的相機。"),
+    KO("나머지 카메라도 모두 검사하고 모델과 모순되는 것을 옮깁니다."),
+    DE("Auch jede andere Kamera prüfen und die verschieben, denen das Modell widerspricht."),
+    FR("Vérifier aussi toutes les autres caméras et déplacer celles que le modèle contredit."),
+    ES("Comprobar también las demás cámaras y mover las que el modelo contradice."),
+    PT("Verificar também as demais câmeras e mover as que o modelo contradiz."),
+    IT("Controllare anche ogni altra camera e spostare quelle che il modello contraddice."),
+    NL("Ook elke andere camera controleren en de camera's verplaatsen die het model tegenspreekt."),
+    RU("Проверить и все остальные камеры и переместить те, что противоречат модели."),
+    TR("Diğer tüm kameraları da denetle ve modelin çeliştiklerini taşı."));
+
+SS_MSG(opt_repair_no_match,
+    EN("Use only the pairs already in matches.bin."),
+    JA("matches.bin にすでにあるペアだけを使います。"),
+    ZH_HANS("只使用 matches.bin 中已有的图像对。"),
+    ZH_HANT("只使用 matches.bin 中已有的影像對。"),
+    KO("matches.bin에 이미 있는 쌍만 사용합니다."),
+    DE("Nur die Paare verwenden, die schon in matches.bin stehen."),
+    FR("N'utiliser que les paires déjà présentes dans matches.bin."),
+    ES("Usar solo los pares que ya están en matches.bin."),
+    PT("Usar só os pares que já estão em matches.bin."),
+    IT("Usare solo le coppie già presenti in matches.bin."),
+    NL("Alleen de paren gebruiken die al in matches.bin staan."),
+    RU("Использовать только пары, уже записанные в matches.bin."),
+    TR("Yalnızca matches.bin içinde zaten bulunan çiftleri kullan."));
+
 }  // namespace sfmhelp
 }  // namespace msg
 }  // namespace i18n

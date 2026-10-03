@@ -10,6 +10,7 @@
 // beat the table's `--audit` / `--no-audit` switch.
 #include "app/Tools.h"
 #include "sfm/Pipeline.h"
+#include "sfm/Repair.h"
 
 #include <algorithm>
 #include <array>
@@ -180,6 +181,18 @@ static void ownOptionsMerge(FILE* out) {
     helpLine(out, "-h, --help", "", H::opt_help.get());
 }
 
+static void ownOptionsRepair(FILE* out) {
+    helpLine(out, "--model DIR", H::word_required.get(), H::opt_repair_model.get());
+    helpLine(out, "-o, --output DIR", "", H::opt_repair_output.get());
+    helpLine(out, "--replace NAME[,NAME...]", "", H::opt_repair_replace.get());
+    helpLine(out, "--add NAME[,NAME...]", "", H::opt_repair_add.get());
+    helpLine(out, "--add-missing", "", H::opt_repair_add_missing.get());
+    helpLine(out, "--hints FILE", "", H::opt_repair_hints.get());
+    helpLine(out, "--audit", "", H::opt_repair_audit.get());
+    helpLine(out, "--no-match", "", H::opt_repair_no_match.get());
+    helpLine(out, "-h, --help", "", H::opt_help.get());
+}
+
 static const CommandInfo kCommands[] = {
     {"auto", CMD_AUTO, &H::sum_auto,
      "[IMAGE_DIR|DATASET_DIR] -o WORKSPACE [options]",
@@ -229,6 +242,16 @@ static const CommandInfo kCommands[] = {
      "  spirula-sfm merge sparse/ --in-place\n"
      "  spirula-sfm merge runA/sparse/0 runB/sparse/0 -o merged/ --min-common 5\n"
      "  spirula-sfm merge ws/sparse --in-place --metric-gps horizontal --images ws/images",
+     false},
+
+    {"repair", CMD_MAP | CMD_MATCH, &H::sum_repair,
+     "<WORKSPACE> --model SPARSE/N [-o DIR] [options]",
+     {&H::desc_repair_1, &H::desc_repair_2, nullptr},
+     ownOptionsRepair,
+     "  spirula-sfm repair ws/ --model ws/sparse/0 --replace IMG_0012.jpg,IMG_0013.jpg\n"
+     "  spirula-sfm repair ws/ --model ws/sparse/0 --add-missing --images ws/images\n"
+     "  spirula-sfm repair ws/ --model ws/sparse/0 --hints hints.txt -o ws/sparse/0\n"
+     "  spirula-sfm repair ws/ --model ws/sparse/0 --audit --no-match",
      false},
 };
 
@@ -1074,6 +1097,73 @@ static int cmdMap(int argc, char** argv) {
 }
 
 // -----------------------------------------------------------------------
+// repair: re-place, snap or add named cameras of one finished model
+// -----------------------------------------------------------------------
+
+static std::vector<std::string> splitNames(const std::string& v) {
+    std::vector<std::string> out;
+    size_t b = 0;
+    while (b <= v.size()) {
+        const size_t e = std::min(v.find(',', b), v.size());
+        if (e > b) out.push_back(v.substr(b, e - b));
+        b = e + 1;
+    }
+    return out;
+}
+
+static int cmdRepair(int argc, char** argv) {
+    RepairJob job;
+    SfmConfig& cfg = job.cfg;
+    std::set<std::string> seen;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--help" || a == "-h") { printCommandHelp(*findCommand("repair")); return 0; }
+        auto value = [&](std::string& dst) {
+            if (i + 1 >= argc) return usageError("repair", a + ": missing value") == 0;
+            dst = argv[++i];
+            return true;
+        };
+        std::string v;
+        if (a == "--model") { if (!value(job.model_dir)) return 1; continue; }
+        if (a == "--output" || a == "-o") { if (!value(job.output_dir)) return 1; continue; }
+        if (a == "--replace" || a == "--add") {
+            if (!value(v)) return 1;
+            for (std::string& n : splitNames(v))
+                (a == "--add" ? job.add : job.replace).push_back(std::move(n));
+            continue;
+        }
+        if (a == "--hints") {
+            if (!value(v)) return 1;
+            std::string err;
+            if (!readRepairHints(v, job.hints, err)) return usageError("repair", err);
+            continue;
+        }
+        if (a == "--add-missing") { job.add_missing = true; continue; }
+        if (a == "--audit") { job.audit_all = true; continue; }
+        if (a == "--no-match") { job.match = false; continue; }
+        if (a == "--progress-dir") {
+            if (!value(v)) return 1;
+            sfm::progress::set_dir(v);
+            continue;
+        }
+        int r = tableFlag(cfg, CMD_MAP | CMD_MATCH, "repair", a, argc, argv, i, seen);
+        if (r < 0) return 1;
+        if (r > 0) continue;
+        if (a[0] == '-') return usageError("repair", "unknown option " + a);
+        if (job.workspace.empty()) job.workspace = a;
+        else return usageError("repair", "unexpected argument '" + a + "'");
+    }
+    if (job.workspace.empty() || job.model_dir.empty())
+        return usageError("repair", "a workspace and --model are required");
+    if (job.output_dir.empty()) job.output_dir = job.model_dir;
+    if (job.replace.empty() && job.add.empty() && job.hints.empty() && !job.add_missing &&
+        !job.audit_all)
+        return usageError("repair",
+                          "nothing to do: give --replace, --add, --add-missing, --hints or --audit");
+    return runRepair(std::move(job));
+}
+
+// -----------------------------------------------------------------------
 // merge: fold the models of a fragmented capture back together (D43)
 // -----------------------------------------------------------------------
 
@@ -1276,6 +1366,7 @@ int spirula_sfm_main(int argc, char** argv) {
         if (cmd == "match") return cmdMatch(argc - 2, argv + 2);
         if (cmd == "map") return cmdMap(argc - 2, argv + 2);
         if (cmd == "merge") return cmdMerge(argc - 2, argv + 2);
+        if (cmd == "repair") return cmdRepair(argc - 2, argv + 2);
         if (cmd == "ba") return cmdBa(argc - 2, argv + 2);
     } catch (const sfm::Cancelled&) {
         L::err(Tag::Run, M::run_cancelled);
