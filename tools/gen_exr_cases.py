@@ -176,13 +176,50 @@ def add_luminance_chroma(corpus, name, w, h):
     corpus.finish(name, path, np.stack([R, G, B], -1))
 
 
+def add_dwa(c):
+    """DWA's channel classifier decides how each channel is coded: R/G/B as one
+    colour-converted DCT triple, Y alone, A by RLE, anything else stored."""
+    for name in ("dwaa", "dwab"):
+        comp = COMP[name]
+        for level in (5.0, 300.0):
+            c.add(f"{name}_level{int(level)}", {"compression": comp,
+                                                "dwaCompressionLevel": level},
+                  rgb(77, 129, seed=2))
+        c.add(f"{name}_tall", {"compression": comp}, rgb(530, 71, seed=5))
+        c.add(f"{name}_float", {"compression": comp}, rgb(45, 61, "float32"))
+        d = rgb(40, 50)
+        d["A"] = np.linspace(0, 1, 40 * 50).reshape(40, 50).astype("float16")
+        c.add(f"{name}_rgba", {"compression": comp}, d)
+        c.add(f"{name}_uint", {"compression": comp},
+              {k: (v * 1000).astype(np.uint32) for k, v in rgb(31, 29, "float32").items()})
+        lum = img(40, 50)[0]
+        c.add(f"{name}_y_only", {"compression": comp}, {"Y": lum.astype("float16")})
+        c.add(f"{name}_depth", {"compression": comp}, {"Z": lum.astype("float32")})
+        d = rgb(40, 50)
+        d["Z"] = lum.astype("float32")
+        c.add(f"{name}_rgb_depth", {"compression": comp}, d)
+        c.add(f"{name}_layer", {"compression": comp},
+              {f"diffuse.{k}": v for k, v in rgb(29, 31).items()})
+        c.add(f"{name}_tiny", {"compression": comp}, rgb(3, 5))
+        c.add(f"{name}_datawindow", {
+            "compression": comp,
+            "dataWindow": (np.array([3, 2], "int32"), np.array([52, 41], "int32")),
+            "displayWindow": (np.array([0, 0], "int32"), np.array([59, 49], "int32")),
+        }, rgb(40, 50))
+        t = OpenEXR.TileDescription()
+        t.xSize, t.ySize, t.mode = 32, 16, C.ONE_LEVEL
+        c.add(f"{name}_tiled", {"compression": comp, "type": OpenEXR.tiledimage,
+                                "tiles": t}, rgb(70, 90))
+
+
 def build(out):
     c = Corpus(out)
 
     for name, comp in COMP.items():
-        bad = "err_" if name.startswith("dwa") else ""
         for tag, (h, w) in (("small", (23, 37)), ("big", (77, 129))):
-            c.add(f"{bad}half_{name}_{tag}", {"compression": comp}, rgb(h, w))
+            c.add(f"half_{name}_{tag}", {"compression": comp}, rgb(h, w))
+
+    add_dwa(c)
 
     for name in ("none", "zip", "piz", "pxr24", "b44"):
         c.add(f"float_{name}", {"compression": COMP[name]}, rgb(45, 61, "float32"))
