@@ -3506,6 +3506,54 @@ SS_MSG(auto_resume_help,
     TR("Aynı ayarlarla yarıda kalan bir çalıştırmanın çıktı klasöründe bıraktığı "
        "öznitelikleri, çift listesini ve doğrulanmış çiftleri devral"));
 
+SS_MSG(poses_help,
+    EN("A COLMAP model (cameras.bin, images.bin) to keep exactly as it is: features "
+       "are matched as usual, then points are only triangulated for its poses. "
+       "Nothing is bundle-adjusted, levelled or rescaled, and the written cameras "
+       "and poses are checked byte for byte against it"),
+    JA("そのまま保持する COLMAP モデル（cameras.bin、images.bin）。特徴点は通常どおり"
+       "対応付け、その姿勢だけを使って点を三角測量します。バンドル調整・水平化・"
+       "スケール変更は行わず、書き出したカメラと姿勢が入力とバイト単位で一致することを確認します"),
+    ZH_HANS("原样保留的 COLMAP 模型（cameras.bin、images.bin）：特征照常匹配，然后只依据"
+            "其位姿三角化出点。不做平差、不调平、不缩放，并逐字节核对写出的相机和位姿与输入一致"),
+    ZH_HANT("原樣保留的 COLMAP 模型（cameras.bin、images.bin）：特徵照常匹配，然後只依據"
+            "其位姿三角化出點。不做平差、不調平、不縮放，並逐位元組核對寫出的相機和位姿與輸入一致"),
+    KO("그대로 유지할 COLMAP 모델(cameras.bin, images.bin): 특징점은 평소처럼 매칭하고, "
+       "그 자세만으로 점을 삼각측량합니다. 번들 조정, 수평 맞춤, 스케일 변경은 하지 않으며, "
+       "기록한 카메라와 자세가 입력과 바이트 단위로 같은지 확인합니다"),
+    DE("Ein COLMAP-Modell (cameras.bin, images.bin), das unverändert bleibt: Merkmale "
+       "werden wie üblich zugeordnet, dann werden nur für seine Posen Punkte "
+       "trianguliert. Kein Bündelausgleich, kein Ausrichten oder Skalieren; die "
+       "geschriebenen Kameras und Posen werden Byte für Byte mit ihm verglichen"),
+    FR("Un modèle COLMAP (cameras.bin, images.bin) à garder tel quel : les points "
+       "d'intérêt sont appariés comme d'habitude, puis des points sont seulement "
+       "triangulés pour ses poses. Ni ajustement, ni mise à niveau, ni changement "
+       "d'échelle ; les caméras et poses écrites sont comparées octet par octet au modèle"),
+    ES("Un modelo COLMAP (cameras.bin, images.bin) que se conserva tal cual: los rasgos "
+       "se emparejan como siempre y luego solo se triangulan puntos para sus poses. "
+       "Sin ajuste, nivelado ni cambio de escala; las cámaras y poses escritas se "
+       "comparan byte a byte con él"),
+    PT("Um modelo COLMAP (cameras.bin, images.bin) mantido tal como está: as "
+       "correspondências são feitas como de costume e depois só se triangulam pontos "
+       "para as suas poses. Sem ajuste, nivelamento ou mudança de escala; as câmeras e "
+       "poses escritas são comparadas byte a byte com ele"),
+    IT("Un modello COLMAP (cameras.bin, images.bin) da mantenere così com'è: le "
+       "corrispondenze si cercano come al solito, poi si triangolano punti solo per le "
+       "sue pose. Niente bundle adjustment, livellamento o cambio di scala; fotocamere "
+       "e pose scritte vengono confrontate byte per byte con il modello"),
+    NL("Een COLMAP-model (cameras.bin, images.bin) dat ongewijzigd blijft: kenmerken "
+       "worden zoals gewoonlijk gekoppeld, daarna worden alleen punten getrianguleerd "
+       "voor zijn poses. Geen bundelaanpassing, nivellering of schaalwijziging; de "
+       "geschreven camera's en poses worden byte voor byte met het model vergeleken"),
+    RU("Модель COLMAP (cameras.bin, images.bin), которая сохраняется как есть: признаки "
+       "сопоставляются как обычно, затем по её позам только триангулируются точки. "
+       "Без уравнивания, выравнивания и смены масштаба; записанные камеры и позы "
+       "побайтно сверяются с моделью"),
+    TR("Olduğu gibi korunacak bir COLMAP modeli (cameras.bin, images.bin): öznitelikler "
+       "her zamanki gibi eşleştirilir, ardından yalnızca onun pozları için noktalar "
+       "üçgenlenir. Demet dengelemesi, düzleme ya da ölçek değişikliği yapılmaz; yazılan "
+       "kameralar ve pozlar modelle bayt bayt karşılaştırılır"));
+
 SS_MSG(check_help,
     EN("With --resume: report how far each model agrees with the two-view "
        "geometries it was built from, then exit without writing anything"),
