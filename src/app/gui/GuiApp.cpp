@@ -4305,7 +4305,7 @@ void GuiApp::draw_dataset_source() {
     // A finished dataset in the output folder is reused unless its settings
     // differ, so a capture somebody else reconstructed can be given masks,
     // depth and normals. draw_dataset_plan lists what a run will do with it.
-    if ((builtin && _sfm_job.keep_cameras) ? prior.dense_model : prior.model) {
+    if ((builtin && _keep_cameras && prior.keepable) ? prior.dense_model : prior.model) {
         ui::Checkbox(dmsg::reconstruct_again, &_redo_model);
         ui::help_on_hover(dmsg::reconstruct_again_help);
     }
@@ -4390,7 +4390,7 @@ void GuiApp::draw_dataset_basics() {
     // with forces (DatasetPlan.h). One with no record is kept regardless.
     const WorkspaceState& prior = workspace_state();
     // Kept cameras are the imported model's: no lens or sharing to choose.
-    const bool keep = builtin && _sfm_job.keep_cameras;
+    const bool keep = builtin && _keep_cameras && prior.keepable;
     const bool reusing =
         !dataset_busy() && (keep ? prior.dense_model : prior.model) && !_redo_model;
     const bool inert = reusing && !_ws_record.step(Step::Model).present;
@@ -6717,7 +6717,7 @@ void GuiApp::draw_sfm_advanced() {
     if (!ui::CollapsingHeader(dmsg::section_advanced)) return;
     // What only the mapper, bundle adjustment or the gauge fix reads, none of
     // which a run keeping the imported cameras has.
-    const bool keep = _sfm_job.keep_cameras;
+    const bool keep = _keep_cameras && workspace_state().keepable;
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::capture_type, &_sfm_job.data_type,
