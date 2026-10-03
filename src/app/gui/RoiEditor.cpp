@@ -2,6 +2,7 @@
 
 #include "app/gui/RoiEditor.h"
 
+#include "app/gui/DatasetPrep.h"
 #include "app/gui/Layout.h"
 #include "app/gui/Ui.h"
 #include "app/webviewer/RegionOverlay.h"
@@ -477,6 +478,8 @@ void RoiEditor::open(const std::string& dataset_dir, Hooks hooks, const std::str
 void RoiEditor::run_load() {
     DatasetParserConfig dcfg;
     dcfg.require_image_files = false;
+    // The cloud the trainer reads, so a region is drawn around the points it trains from.
+    if (dense_model_current(_dataset)) dcfg.recon_dir = kDenseModelDir;
     ParsedDataset ds = parse_dataset(_dataset, dcfg, "");
     PostSplitCameras post = bake_post_split(ds, false, false);
     std::vector<double> pts(ds.points.xyz.size()), cams((size_t)ds.num_cameras * 3);

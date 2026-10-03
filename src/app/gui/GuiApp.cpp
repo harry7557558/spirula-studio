@@ -1112,24 +1112,13 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
 // re-exported solve must not train on points made for the last one.
 void GuiApp::pick_dense_model(const std::string& dir) {
     if (!_cfg.colmap_recon_dir.empty() && _cfg.colmap_recon_dir != kDenseModelDir) return;
-    std::string pick;
-    std::error_code ec;
     fs::path dense = fs::path(dir) / kDenseModelDir;
     dense.make_preferred();
-    if (fs::exists(dense / "images.bin", ec)) {
-        const std::string src = find_colmap_poses(dir);
-        fs::file_time_type newest{};
-        for (const char* f : {"cameras.bin", "images.bin"})
-            if (!src.empty())
-                newest = std::max(newest, fs::last_write_time(fs::path(src) / f, ec));
-        if (fs::last_write_time(dense / "images.bin", ec) >= newest) {
-            pick = kDenseModelDir;
-            log(i18n::format(dmsg::dense_model_used, {dense.string()}));
-        } else {
-            log(i18n::format(dmsg::dense_model_stale, {dense.string()}));
-        }
-    }
-    _cfg.colmap_recon_dir = _defaults.colmap_recon_dir = pick;
+    bool stale = false;
+    const bool current = dense_model_current(dir, &stale);
+    if (current) log(i18n::format(dmsg::dense_model_used, {dense.string()}));
+    if (stale) log(i18n::format(dmsg::dense_model_stale, {dense.string()}));
+    _cfg.colmap_recon_dir = _defaults.colmap_recon_dir = current ? kDenseModelDir : "";
 }
 
 void GuiApp::open_edited_dataset() {
