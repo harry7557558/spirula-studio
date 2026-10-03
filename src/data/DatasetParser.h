@@ -286,6 +286,10 @@ std::string find_colmap_model(const std::string& dataset_dir,
                               const std::string& recon_dir_hint,
                               bool* points_text = nullptr);
 
+// The same search with no hint, for a model with or without points3D: the
+// cameras and poses the parser would read.
+std::string find_colmap_poses(const std::string& dataset_dir);
+
 // Auto-detect (format = "") or dispatch ("colmap" / "nerfstudio" /
 // "metashape").
 ParsedDataset parse_dataset(const std::string& dataset_dir,

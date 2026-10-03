@@ -44,6 +44,9 @@ struct PlanJob {
     StepFields model;
     bool mask_features = true;
     GeometryJob geometry;
+    // The model step makes kDenseModelDir and leaves the dataset's own model,
+    // and so every map's camera, as it was.
+    bool keep_cameras = false;
 };
 PlanJob plan_job(const SfmJob& job);
 PlanJob plan_job(const ColmapJob& job, const PrepJob& prep);

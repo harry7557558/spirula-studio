@@ -74,6 +74,7 @@ namespace {
     X("geometry_face_res",          sfm.geometry.face_res)                    \
     X("geometry_overwrite",         sfm.geometry.overwrite)                   \
     /* ---- the built-in reconstruction ---- */                               \
+    X("sfm_keep_cameras",           sfm.keep_cameras)                         \
     X("sfm_quality",                sfm.quality)                              \
     X("sfm_data_type",              sfm.data_type)                            \
     X("sfm_camera_model",           sfm.camera_model)                         \

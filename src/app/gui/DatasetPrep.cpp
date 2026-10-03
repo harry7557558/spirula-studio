@@ -3,6 +3,7 @@
 #include "app/gui/DatasetPrep.h"
 
 #include "app/gui/DatasetRecord.h"
+#include "data/DatasetParser.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "sfm/core/Resume.h"
 
@@ -939,6 +940,12 @@ WorkspaceState probe_workspace(const std::string& workspace,
     st.model = has_content(ws / "sparse") || has_content(ws / "colmap") ||
                fs::exists(ws / "transforms.json", ec) ||
                colmap_model_here(ws) || metashape_export_here(ws);
+    st.dense_model = colmap_model_here(ws / kDenseModelDir);
+    if (st.model) {
+        const std::string m = find_colmap_poses(workspace);
+        st.keepable = !m.empty() && fs::exists(fs::path(m) / "cameras.bin", ec) &&
+                      fs::exists(fs::path(m) / "images.bin", ec);
+    }
     st.geometry = has_content(ws / "normals") || has_content(ws / "depths");
     st.record = fs::exists(ws / kDatasetRecordFile, ec);
     return st;
@@ -959,7 +966,7 @@ std::vector<std::string> workspace_artifacts(const std::string& workspace,
     if (!is_input_folder(ws / "images", inputs, false)) add("images");
     if (!is_input_folder(ws / "masks", inputs, true)) add("masks");
     for (const char* name : {kFeatureMaskDirName, "features", "sparse", "colmap",
-                             "normals", "depths",
+                             kDenseDirName, "normals", "depths",
                              ".progress", sfm::resume::kDir, "matches.bin",
                              "database.db", kDatasetRecordFile,
                              ".spirula-recon", ".spirula-frames"})

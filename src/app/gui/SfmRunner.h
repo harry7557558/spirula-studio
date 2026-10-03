@@ -120,6 +120,9 @@ struct SfmJob {
     // Off still writes the masks -- worth it where what they cover holds still
     // and carries the finer detail the cameras converge on.
     bool mask_features = true;
+    // Keep the cameras and poses of the COLMAP model the output folder already
+    // holds, byte for byte, and only add points (`--poses`). Fixed for a run.
+    bool keep_cameras = false;
     int quality = 2;                  // 0 low, 1 medium, 2 high, 3 extreme
     int data_type = 0;                // 0 individual photos, 1 video, 2 internet
     std::string camera_model = "opencv";
@@ -307,8 +310,9 @@ private:
     static std::vector<sfm::RigDef> build_rigs(const PrepJob& prep,
                                                const PrepResult* res = nullptr);
 #endif
-    std::vector<std::string> recon_args(const SfmJob& job,
-                                        const PrepResult& prep);
+    // `poses` non-empty: the flags of a run that keeps that model's cameras.
+    std::vector<std::string> recon_args(const SfmJob& job, const PrepResult& prep,
+                                        const std::string& poses = {});
 
     std::thread _worker;
     std::atomic<State> _state{State::Idle};

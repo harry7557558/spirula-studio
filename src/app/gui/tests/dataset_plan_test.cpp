@@ -390,6 +390,42 @@ int main() {
                "a row set to every frame opens a group of its own");
     }
 
+    // ---- keeping the imported cameras (docs/notes/fixed-poses.md) -------------
+    build(ws, made);
+    {
+        SfmJob k = made;
+        k.keep_cameras = true;
+        bool camera_keys = false;
+        for (const StepField& f : model_fields(k))
+            camera_keys = camera_keys || f.key == "lens" || f.key == "mapper";
+        expect(!camera_keys, "kept cameras record no lens and no mapper");
+        DatasetPlan p = plan(k);
+        expect(p[Step::Model].act == Act::Run && !p.ask(),
+               "kept cameras make dense/ beside the model already there, unasked");
+        touch(ws / kDenseModelDir / "cameras.bin");
+        touch(ws / kDenseModelDir / "images.bin");
+        StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
+        rec.begin(Step::Model, model_fields(k));
+        rec.finish(Step::Model);
+        expect(plan(k)[Step::Model].act == Act::Reuse, "... and reuse it on the same settings");
+        SfmJob m = k;
+        m.mapper = 1;
+        m.metric_gps = 0;
+        m.camera_model = "opencv";
+        m.prep.inputs[0].camera_model = "opencv";
+        expect(plan(m)[Step::Model].act == Act::Reuse,
+               "... whatever the lens, the mapper or the gauge say");
+        m = k;
+        m.quality = 3;
+        p = plan(m);
+        expect(p[Step::Model].act == Act::Redo && p.ask(),
+               "... but a new quality redoes it, and asks first");
+        p = plan(made);
+        expect(p[Step::Model].act == Act::Reuse && p[Step::Model].why == Why::Unrecorded &&
+                   !p.ask(),
+               "turned off, the record of dense/ does not rebuild the dataset's own model");
+    }
+
     fs::remove_all(ws);
     std::printf(g_failures ? "\nFAILED: %d\n" : "\nall passed\n", g_failures);
     return g_failures ? 1 : 0;

@@ -12541,6 +12541,136 @@ SS_MSG(reconstruct_again_help,
        "Nerfstudio ya da Metashape'in yaptığı biri dahil -- yalnızca maske, "
        "derinlik ve normaller eklenir."));
 
+SS_MSG(keep_cameras,
+    EN("Keep the imported cameras (add points only)"),
+    JA("取り込んだカメラを保持（点だけを追加）"),
+    ZH_HANS("保留导入的相机（只添加点）"),
+    ZH_HANT("保留匯入的相機（只新增點）"),
+    KO("가져온 카메라 유지(점만 추가)"),
+    DE("Importierte Kameras beibehalten (nur Punkte hinzufügen)"),
+    FR("Garder les caméras importées (ajouter seulement des points)"),
+    ES("Conservar las cámaras importadas (solo añadir puntos)"),
+    PT("Manter as câmaras importadas (só acrescentar pontos)"),
+    IT("Mantieni le fotocamere importate (aggiungi solo punti)"),
+    NL("Geïmporteerde camera's behouden (alleen punten toevoegen)"),
+    RU("Сохранить импортированные камеры (только добавить точки)"),
+    TR("İçe aktarılan kameraları koru (yalnızca nokta ekle)"));
+
+SS_MSG(keep_cameras_help,
+    EN("For cameras solved elsewhere, such as a SynthEyes matchmove exported as "
+       "COLMAP. Features are matched as usual, then points are triangulated for "
+       "the cameras and poses of this folder's model, which stay exactly as they "
+       "are: no bundle adjustment, levelling or rescaling. The result goes to "
+       "dense/ in this folder and is what the trainer opens; the imported model is "
+       "not written to."),
+    JA("SynthEyes のマッチムーブを COLMAP 形式で書き出したものなど、別のソフトで求めた"
+       "カメラ用です。特徴点は通常どおり対応付け、このフォルダのモデルのカメラと姿勢に"
+       "対して点を三角測量します。カメラと姿勢はそのまま変えず、バンドル調整・水平化・"
+       "スケール変更は行いません。結果はこのフォルダの dense/ に書き出され、学習では"
+       "それを開きます。取り込んだモデルには書き込みません。"),
+    ZH_HANS("用于在别处求解的相机，例如从 SynthEyes 以 COLMAP 格式导出的跟踪结果。特征"
+            "照常匹配，然后依据此文件夹中模型的相机和位姿三角化出点，相机和位姿保持原样："
+            "不做平差、不调平、不缩放。结果写入此文件夹的 dense/，训练时打开的就是它；"
+            "导入的模型不会被写入。"),
+    ZH_HANT("用於在別處求解的相機，例如從 SynthEyes 以 COLMAP 格式匯出的追蹤結果。特徵"
+            "照常匹配，然後依據此資料夾中模型的相機和位姿三角化出點，相機和位姿保持原樣："
+            "不做平差、不調平、不縮放。結果寫入此資料夾的 dense/，訓練時開啟的就是它；"
+            "匯入的模型不會被寫入。"),
+    KO("SynthEyes 에서 COLMAP 형식으로 내보낸 매치무브처럼 다른 곳에서 구한 카메라용"
+       "입니다. 특징점은 평소처럼 매칭하고, 이 폴더 모델의 카메라와 자세에 대해 점을 "
+       "삼각측량합니다. 카메라와 자세는 그대로 두며 번들 조정, 수평 맞춤, 스케일 변경은 "
+       "하지 않습니다. 결과는 이 폴더의 dense/ 에 기록되고 학습은 그것을 엽니다. "
+       "가져온 모델에는 쓰지 않습니다."),
+    DE("Für anderswo gelöste Kameras, etwa ein Matchmove aus SynthEyes im "
+       "COLMAP-Format. Merkmale werden wie üblich zugeordnet, dann werden Punkte für "
+       "die Kameras und Posen des Modells in diesem Ordner trianguliert, die "
+       "unverändert bleiben: kein Bündelausgleich, kein Ausrichten, kein Skalieren. "
+       "Das Ergebnis landet in dense/ in diesem Ordner und wird vom Training "
+       "geöffnet; in das importierte Modell wird nicht geschrieben."),
+    FR("Pour des caméras résolues ailleurs, comme un matchmove SynthEyes exporté en "
+       "COLMAP. Les points d'intérêt sont appariés comme d'habitude, puis des points "
+       "sont triangulés pour les caméras et les poses du modèle de ce dossier, qui "
+       "restent telles quelles : ni ajustement, ni mise à niveau, ni changement "
+       "d'échelle. Le résultat va dans dense/ de ce dossier et c'est lui que "
+       "l'entraînement ouvre ; le modèle importé n'est pas modifié."),
+    ES("Para cámaras resueltas en otro programa, como un matchmove de SynthEyes "
+       "exportado como COLMAP. Los rasgos se emparejan como siempre y luego se "
+       "triangulan puntos para las cámaras y poses del modelo de esta carpeta, que "
+       "quedan tal cual: sin ajuste, nivelado ni cambio de escala. El resultado va a "
+       "dense/ en esta carpeta y es lo que abre el entrenamiento; el modelo importado "
+       "no se modifica."),
+    PT("Para câmaras resolvidas noutro programa, como um matchmove do SynthEyes "
+       "exportado como COLMAP. As correspondências são feitas como de costume e "
+       "depois triangulam-se pontos para as câmaras e poses do modelo desta pasta, "
+       "que ficam tal como estão: sem ajuste, nivelamento ou mudança de escala. O "
+       "resultado vai para dense/ nesta pasta e é o que o treino abre; o modelo "
+       "importado não é alterado."),
+    IT("Per fotocamere risolte altrove, come un matchmove di SynthEyes esportato in "
+       "COLMAP. Le corrispondenze si cercano come al solito, poi si triangolano punti "
+       "per le fotocamere e le pose del modello in questa cartella, che restano come "
+       "sono: niente bundle adjustment, livellamento o cambio di scala. Il risultato "
+       "va in dense/ in questa cartella ed è ciò che apre l'addestramento; il modello "
+       "importato non viene modificato."),
+    NL("Voor elders opgeloste camera's, zoals een matchmove uit SynthEyes die als "
+       "COLMAP is geëxporteerd. Kenmerken worden zoals gewoonlijk gekoppeld, daarna "
+       "worden punten getrianguleerd voor de camera's en poses van het model in deze "
+       "map, die blijven zoals ze zijn: geen bundelaanpassing, nivellering of "
+       "schaalwijziging. Het resultaat komt in dense/ in deze map en wordt door de "
+       "training geopend; het geïmporteerde model wordt niet gewijzigd."),
+    RU("Для камер, найденных в другой программе, например матчмува из SynthEyes, "
+       "экспортированного в COLMAP. Признаки сопоставляются как обычно, затем точки "
+       "триангулируются по камерам и позам модели в этой папке, которые остаются как "
+       "есть: без уравнивания, выравнивания и смены масштаба. Результат записывается "
+       "в dense/ этой папки, и обучение открывает именно его; импортированная модель "
+       "не изменяется."),
+    TR("Başka bir yerde çözülmüş kameralar için, örneğin COLMAP olarak dışa "
+       "aktarılmış bir SynthEyes matchmove'u. Öznitelikler her zamanki gibi "
+       "eşleştirilir, ardından bu klasördeki modelin kameraları ve pozları için "
+       "noktalar üçgenlenir; kameralar ve pozlar olduğu gibi kalır: demet "
+       "dengelemesi, düzleme ya da ölçek değişikliği yapılmaz. Sonuç bu klasördeki "
+       "dense/ içine yazılır ve eğitim onu açar; içe aktarılan modele yazılmaz."));
+
+SS_MSG(dense_model_used,
+    EN("Training on {0}: the points made for the imported cameras."),
+    JA("{0} で学習します（取り込んだカメラに合わせて作った点）。"),
+    ZH_HANS("使用 {0} 训练：为导入的相机生成的点。"),
+    ZH_HANT("使用 {0} 訓練：為匯入的相機產生的點。"),
+    KO("{0} 로 학습합니다: 가져온 카메라에 맞춰 만든 점입니다."),
+    DE("Training mit {0}: den Punkten, die für die importierten Kameras erzeugt wurden."),
+    FR("Entraînement sur {0} : les points créés pour les caméras importées."),
+    ES("Entrenando con {0}: los puntos creados para las cámaras importadas."),
+    PT("A treinar com {0}: os pontos criados para as câmaras importadas."),
+    IT("Addestramento su {0}: i punti creati per le fotocamere importate."),
+    NL("Trainen op {0}: de punten die voor de geïmporteerde camera's zijn gemaakt."),
+    RU("Обучение на {0}: точки, построенные для импортированных камер."),
+    TR("{0} ile eğitiliyor: içe aktarılan kameralar için üretilen noktalar."));
+
+SS_MSG(dense_model_stale,
+    EN("{0} is older than the model it was made from, so it is not used. Make it "
+       "again on the dataset screen."),
+    JA("{0} は元のモデルより古いため使用しません。データセット画面でもう一度作成して"
+       "ください。"),
+    ZH_HANS("{0} 比生成它的模型更旧，因此不使用。请在数据集界面重新生成。"),
+    ZH_HANT("{0} 比產生它的模型更舊，因此不使用。請在資料集畫面重新產生。"),
+    KO("{0} 은(는) 원본 모델보다 오래되어 사용하지 않습니다. 데이터셋 화면에서 다시 "
+       "만드세요."),
+    DE("{0} ist älter als das Modell, aus dem es entstand, und wird daher nicht "
+       "verwendet. Erzeugen Sie es im Datensatz-Bildschirm neu."),
+    FR("{0} est plus ancien que le modèle dont il provient ; il n'est donc pas "
+       "utilisé. Recréez-le dans l'écran du jeu de données."),
+    ES("{0} es más antiguo que el modelo del que salió, así que no se usa. Vuelva a "
+       "crearlo en la pantalla del conjunto de datos."),
+    PT("{0} é mais antigo que o modelo de onde saiu, por isso não é usado. Crie-o de "
+       "novo no ecrã do conjunto de dados."),
+    IT("{0} è più vecchio del modello da cui è nato, quindi non viene usato. Ricrealo "
+       "nella schermata del set di dati."),
+    NL("{0} is ouder dan het model waaruit het is gemaakt en wordt daarom niet "
+       "gebruikt. Maak het opnieuw in het datasetscherm."),
+    RU("{0} старше модели, из которой построен, поэтому не используется. Постройте "
+       "его заново на экране набора данных."),
+    TR("{0}, üretildiği modelden daha eski olduğu için kullanılmıyor. Veri kümesi "
+       "ekranında yeniden oluşturun."));
+
 SS_MSG(update_dataset,
     EN("Update Dataset"),
     JA("データセットを更新"), ZH_HANS("更新数据集"), ZH_HANT("更新資料集"),

@@ -530,37 +530,50 @@ StepFields masks_fields(const PrepJob& job) {
 
 StepFields model_fields(const SfmJob& job) {
     const PrepJob& p = job.prep;
+    // Kept cameras are the imported model's: no lens, mapper, gauge or rig
+    // setting reaches that run, so none of them can call for a redo of it.
+    const bool keep = job.keep_cameras;
     StepFields f;
     add(f, "engine", "", "builtin");
     add(f, "image_dir", "", image_dir_field(p));
-    add_lenses(f, p, job.camera_model);
-    add(f, "camera_mode", "",
-        sfm_pick(kSfmCameraMode, effective_camera_mode(p, job.camera_mode), 1));
+    if (keep) {
+        add(f, "keep_cameras", "", "on");
+    } else {
+        add_lenses(f, p, job.camera_model);
+        add(f, "camera_mode", "",
+            sfm_pick(kSfmCameraMode, effective_camera_mode(p, job.camera_mode), 1));
+        add(f, "mapper", "", sfm_pick(kSfmMapper, job.mapper));
+    }
     add(f, "quality", "", sfm_pick(kSfmQuality, job.quality, 2));
     add(f, "data_type", "", sfm_pick(kSfmDataType, job.data_type));
-    add(f, "mapper", "", sfm_pick(kSfmMapper, job.mapper));
     add(f, "features", "", sfm_pick(kSfmFeatures, job.features));
     add(f, "matcher", "", sfm_matcher_for(job.features, job.matcher));
     add(f, "pairs", "", sfm_pick(kSfmPairs, job.pairs));
     if (sequential_window_applies(job)) add(f, "overlap", "", num(job.overlap));
     add(f, "loop_closure", "", onoff(job.loop_closure));
     add(f, "prefilter_sequential", "", onoff(job.prefilter_sequential));
-    if (job.init_focal_px > 0) add(f, "focal_px", "", num(job.init_focal_px));
-    if (!job.init_distortion.empty()) add(f, "distortion", "", job.init_distortion);
-    add(f, "distortion_refine", "", num(job.distortion_refine));
-    add(f, "final_per_image_intrinsics", "", onoff(job.final_per_image_intrinsics));
-    add(f, "final_free_rig", "", onoff(job.final_free_rig));
+    if (!keep) {
+        if (job.init_focal_px > 0) add(f, "focal_px", "", num(job.init_focal_px));
+        if (!job.init_distortion.empty()) add(f, "distortion", "", job.init_distortion);
+        add(f, "distortion_refine", "", num(job.distortion_refine));
+        add(f, "final_per_image_intrinsics", "", onoff(job.final_per_image_intrinsics));
+        add(f, "final_free_rig", "", onoff(job.final_free_rig));
+    }
     if (job.max_features > 0) add(f, "max_features", "", num(job.max_features));
     if (job.max_image_size > 0) add(f, "max_image_size", "", num(job.max_image_size));
-    add(f, "metric_gps", "", sfm_pick(kSfmMetricGps, job.metric_gps));
-    add(f, "sensor_gauge", "", sfm_pick(kSfmSensorGauge, job.sensor_gauge, 2));
-    add(f, "exif_attitude", "", sfm_pick(kSfmExifAttitude, job.exif_attitude, 2));
+    if (!keep) {
+        add(f, "metric_gps", "", sfm_pick(kSfmMetricGps, job.metric_gps));
+        add(f, "sensor_gauge", "", sfm_pick(kSfmSensorGauge, job.sensor_gauge, 2));
+        add(f, "exif_attitude", "", sfm_pick(kSfmExifAttitude, job.exif_attitude, 2));
+    }
     if (!job.image_gamut.empty()) add(f, "image_gamut", "", job.image_gamut);
     if (job.image_is_linear) add(f, "image_linear", "", onoff(*job.image_is_linear));
     add(f, "point_color", "", job.point_color_in_image_space ? "image" : "srgb");
     if (!job.extra_args.empty()) add(f, "extra_args", "", job.extra_args);
-    add_rigs(f, p);
-    add_sequences(f, p, job.use_sequence);
+    if (!keep) {
+        add_rigs(f, p);
+        add_sequences(f, p, job.use_sequence);
+    }
     add(f, "masks_for_features", "", onoff(masks_reach_features(p, job.mask_features)));
     add(f, "feature_only_masks", "",
         onoff(p.mask_enable && !p.mask_feature_prompt.empty()));
@@ -635,6 +648,7 @@ PlanJob plan_job(const SfmJob& job) {
     p.model = model_fields(job);
     p.mask_features = job.mask_features;
     p.geometry = job.geometry;
+    p.keep_cameras = job.keep_cameras;
     return p;
 }
 
@@ -725,9 +739,16 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
 
     StepPlan& md = p[Step::Model];
     const bool masks_feed = masks_reach_features(job.prep, job.mask_features);
+    // Kept cameras make kDenseModelDir, and a record of that run describes it
+    // and not the dataset's own model: neither speaks for the other.
+    bool kept_record = false;
+    for (const StepField& f : rr.fields)
+        kept_record = kept_record || (f.key == "keep_cameras" && f.value == "on");
+    const bool have_model = job.keep_cameras ? ws.dense_model : ws.model;
+    const bool recorded = rr.present && kept_record == job.keep_cameras;
     if (fixed(Step::Model)) {
         md = (*done)[Step::Model];
-    } else if (!ws.model) {
+    } else if (!have_model) {
         set(md, Act::Run);
     } else if (req.redo_model) {
         set(md, Act::Redo, Why::Requested);
@@ -736,7 +757,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
         // with this; frames made where there were none never were.
         set(md, Act::Redo, Why::Frames);
         md.ask = fr.ask || (fr.act == Act::Run && !req.redo_frames);
-    } else if (!rr.present) {
+    } else if (!recorded) {
         set(md, Act::Reuse, Why::Unrecorded);
         md.masks_changed = masks_feed && makes(mk.act);
     } else {
@@ -774,7 +795,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
         g.kinds.clear();
     } else if (makes(fr.act) && ws.geometry) {
         set(g, Act::Redo, Why::Frames);
-    } else if (makes(md.act) && ws.geometry) {
+    } else if (makes(md.act) && ws.geometry && !job.keep_cameras) {
         set(g, Act::Redo, Why::Model);
     } else if (!ws.geometry) {
         set(g, Act::Run);
@@ -783,7 +804,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     } else if (!rg.present) {
         // Whatever is missing; the maps already there are kept.
         set(g, Act::Run, Why::Unrecorded);
-    } else if (rg.frames_id != rf.id || rg.model_id != rr.id) {
+    } else if (rg.frames_id != rf.id || (rg.model_id != rr.id && !job.keep_cameras)) {
         set(g, Act::Redo, Why::Stale);
     } else {
         compare(g, rg, diff(rg.fields, geometry_fields(job.geometry)));

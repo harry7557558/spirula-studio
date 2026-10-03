@@ -4152,6 +4152,38 @@ SS_MSG(err_geometry_failed,
     TR("derinlik ve normal kestirimi başarısız oldu (günlüğe bakın). Yeniden "
        "kurmanın kendisi tamamlandı ve olduğu gibi eğitilebilir."));
 
+// ===========================================================================
+// Keeping imported cameras (docs/notes/fixed-poses.md)
+// ===========================================================================
+
+SS_MSG(err_no_model_to_keep,
+    EN("Keeping the imported cameras needs a COLMAP model (cameras.bin and "
+       "images.bin) in {0}, and there is none."),
+    JA("取り込んだカメラを保持するには {0} に COLMAP モデル（cameras.bin と "
+       "images.bin）が必要ですが、見つかりません。"),
+    ZH_HANS("保留导入的相机需要 {0} 中有 COLMAP 模型（cameras.bin 和 images.bin），"
+            "但没有找到。"),
+    ZH_HANT("保留匯入的相機需要 {0} 中有 COLMAP 模型（cameras.bin 和 images.bin），"
+            "但沒有找到。"),
+    KO("가져온 카메라를 유지하려면 {0} 에 COLMAP 모델(cameras.bin 과 images.bin)이 "
+       "있어야 하지만 없습니다."),
+    DE("Zum Beibehalten der importierten Kameras braucht es in {0} ein COLMAP-Modell "
+       "(cameras.bin und images.bin), und es gibt keines."),
+    FR("Garder les caméras importées demande un modèle COLMAP (cameras.bin et "
+       "images.bin) dans {0}, et il n'y en a pas."),
+    ES("Conservar las cámaras importadas requiere un modelo COLMAP (cameras.bin e "
+       "images.bin) en {0}, y no hay ninguno."),
+    PT("Manter as câmeras importadas requer um modelo COLMAP (cameras.bin e "
+       "images.bin) em {0}, e não há nenhum."),
+    IT("Mantenere le fotocamere importate richiede un modello COLMAP (cameras.bin e "
+       "images.bin) in {0}, e non ce n'è."),
+    NL("Om de geïmporteerde camera's te behouden is een COLMAP-model (cameras.bin en "
+       "images.bin) in {0} nodig, en dat is er niet."),
+    RU("Чтобы сохранить импортированные камеры, в {0} нужна модель COLMAP "
+       "(cameras.bin и images.bin), а её нет."),
+    TR("İçe aktarılan kameraları korumak için {0} içinde bir COLMAP modeli "
+       "(cameras.bin ve images.bin) gerekir, ama yok."));
+
 }  // namespace log
 }  // namespace msg
 }  // namespace i18n

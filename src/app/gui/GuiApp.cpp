@@ -907,6 +907,7 @@ DatasetSettings GuiApp::capture_dataset_settings() const {
     s.sfm.prep.mask_detect_every = _mask_detect_every;
     s.sfm.prep.mask_memory_frames = _mask_memory_frames;
     s.sfm.mask_features = _mask_features;
+    s.sfm.keep_cameras = _keep_cameras;
     s.sfm.geometry = _geometry;
     return s;
 }
@@ -940,6 +941,7 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
     _mask_detect_every = s.sfm.prep.mask_detect_every;
     _mask_memory_frames = s.sfm.prep.mask_memory_frames;
     _mask_features = s.sfm.mask_features;
+    _keep_cameras = s.sfm.keep_cameras;
     _geometry = s.sfm.geometry;
     // A colour space the preset spelled out is a decision, so the EXR probe
     // must not overwrite it later.
@@ -1092,6 +1094,7 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     _defaults.image_dir = _cfg.image_dir;
     _defaults.mask_dir = _cfg.mask_dir;
     _defaults.output_dir_prefix = _cfg.output_dir_prefix;
+    pick_dense_model(dir);
     // However it was opened -- picked, dropped, from the recents list -- this
     // is where the picker starts next time.
     remember_dir("dataset", dir);
@@ -1102,6 +1105,31 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     reset_dataset_preview();
     _runner.load_dataset(_cfg, _preset);
     _screen = Screen::Train;
+}
+
+// The model "Keep the imported cameras" made is what a dataset trains on while
+// it is newer than the model it came from, unless one was chosen by hand: a
+// re-exported solve must not train on points made for the last one.
+void GuiApp::pick_dense_model(const std::string& dir) {
+    if (!_cfg.colmap_recon_dir.empty() && _cfg.colmap_recon_dir != kDenseModelDir) return;
+    std::string pick;
+    std::error_code ec;
+    fs::path dense = fs::path(dir) / kDenseModelDir;
+    dense.make_preferred();
+    if (fs::exists(dense / "images.bin", ec)) {
+        const std::string src = find_colmap_poses(dir);
+        fs::file_time_type newest{};
+        for (const char* f : {"cameras.bin", "images.bin"})
+            if (!src.empty())
+                newest = std::max(newest, fs::last_write_time(fs::path(src) / f, ec));
+        if (fs::last_write_time(dense / "images.bin", ec) >= newest) {
+            pick = kDenseModelDir;
+            log(i18n::format(dmsg::dense_model_used, {dense.string()}));
+        } else {
+            log(i18n::format(dmsg::dense_model_stale, {dense.string()}));
+        }
+    }
+    _cfg.colmap_recon_dir = _defaults.colmap_recon_dir = pick;
 }
 
 void GuiApp::open_edited_dataset() {
@@ -3831,6 +3859,7 @@ void GuiApp::sync_dataset_jobs() {
     req.keep_built = _keep_built && _keep_built_for == _workspace;
     _sfm_job.request = _colmap_job.request = req;
     _sfm_job.mask_features = _colmap_job.mask_features = _mask_features;
+    _sfm_job.keep_cameras = _keep_cameras && workspace_state().keepable;
     // The same step either way: `spirula geometry` over the finished dataset.
     _sfm_job.geometry = _colmap_job.geometry = _geometry;
     // The frozen choice survives the copy above, so a later panel edit cannot
@@ -4266,10 +4295,17 @@ void GuiApp::draw_dataset_source() {
             ui::TextDisabled(dmsg::unfinished_run_detected);
         }
     }
+    // A model solved elsewhere can keep its cameras and only gain points
+    // (docs/notes/fixed-poses.md); COLMAP's engine has no such run.
+    const bool builtin = effective_engine() == Engine::BuiltIn;
+    if (prior.keepable && builtin) {
+        ui::Checkbox(dmsg::keep_cameras, &_keep_cameras);
+        ui::help_on_hover(dmsg::keep_cameras_help);
+    }
     // A finished dataset in the output folder is reused unless its settings
     // differ, so a capture somebody else reconstructed can be given masks,
     // depth and normals. draw_dataset_plan lists what a run will do with it.
-    if (prior.model) {
+    if ((builtin && _sfm_job.keep_cameras) ? prior.dense_model : prior.model) {
         ui::Checkbox(dmsg::reconstruct_again, &_redo_model);
         ui::help_on_hover(dmsg::reconstruct_again_help);
     }
@@ -4353,7 +4389,10 @@ void GuiApp::draw_dataset_basics() {
     // through a rebuild -- which a difference from the record it was built
     // with forces (DatasetPlan.h). One with no record is kept regardless.
     const WorkspaceState& prior = workspace_state();
-    const bool reusing = !dataset_busy() && prior.model && !_redo_model;
+    // Kept cameras are the imported model's: no lens or sharing to choose.
+    const bool keep = builtin && _sfm_job.keep_cameras;
+    const bool reusing =
+        !dataset_busy() && (keep ? prior.dense_model : prior.model) && !_redo_model;
     const bool inert = reusing && !_ws_record.step(Step::Model).present;
     if (reusing)
         ui::TextColoredWrapped(inert ? kWarn : kDim,
@@ -4399,7 +4438,7 @@ void GuiApp::draw_dataset_basics() {
     const bool per_folder = _sfm_job.camera_mode == 1;
     const bool per_input_lens =
         builtin && per_folder && (_sources.size() > 1 || any_subcameras);
-    if (!per_input_lens) {
+    if (!keep && !per_input_lens) {
         ImGui::SetNextItemWidth(px(220.0f));
         if (builtin) {
             // Kept equal to the first row's by normalize_source_lenses, so
@@ -4426,16 +4465,18 @@ void GuiApp::draw_dataset_basics() {
                               builtin);
         if (!builtin && _sources.size() > 1)
             ui::TextColoredWrapped(kWarn, dmsg::colmap_one_lens_warning);
-    } else {
+    } else if (!keep) {
         draw_source_cameras();
     }
 
-    ImGui::SetNextItemWidth(px(220.0f));
-    ui::Combo(dmsg::camera_sharing,
-              builtin ? &_sfm_job.camera_mode : &_colmap_job.camera_mode,
-              {&dmsg::camera_sharing_one, &dmsg::camera_sharing_folder,
-               &dmsg::camera_sharing_image});
-    ui::help_on_hover(dmsg::camera_sharing_help);
+    if (!keep) {
+        ImGui::SetNextItemWidth(px(220.0f));
+        ui::Combo(dmsg::camera_sharing,
+                  builtin ? &_sfm_job.camera_mode : &_colmap_job.camera_mode,
+                  {&dmsg::camera_sharing_one, &dmsg::camera_sharing_folder,
+                   &dmsg::camera_sharing_image});
+        ui::help_on_hover(dmsg::camera_sharing_help);
+    }
 
     if (builtin) {
         ImGui::SetNextItemWidth(px(220.0f));
@@ -6232,6 +6273,7 @@ void GuiApp::reset_recon_options() {
     normalize_source_lenses(_sources, _sfm_job.camera_model);
     _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
     _keep_built = false;
+    _keep_cameras = false;
     _resume = true;
     log(dmsg::reset_options_done.get());
 }
@@ -6673,6 +6715,9 @@ void GuiApp::draw_feature_download() {
 
 void GuiApp::draw_sfm_advanced() {
     if (!ui::CollapsingHeader(dmsg::section_advanced)) return;
+    // What only the mapper, bundle adjustment or the gauge fix reads, none of
+    // which a run keeping the imported cameras has.
+    const bool keep = _sfm_job.keep_cameras;
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::capture_type, &_sfm_job.data_type,
@@ -6708,10 +6753,12 @@ void GuiApp::draw_sfm_advanced() {
         if (learned) draw_feature_download();
     }
 
+    ImGui::BeginDisabled(keep);
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::mapper_schedule, &_sfm_job.mapper,
               {&dmsg::mapper_flat, &dmsg::mapper_bottom_up});
     ui::help_on_hover(dmsg::mapper_schedule_help);
+    ImGui::EndDisabled();
 
     // "Automatic" resolves to sequential for a short video and to pair
     // selection at 100 images, so each is offered whenever it can be what runs.
@@ -6723,14 +6770,17 @@ void GuiApp::draw_sfm_advanced() {
         ui::Checkbox(dmsg::prefilter_sequential, &_sfm_job.prefilter_sequential);
         ui::help_on_hover(dmsg::prefilter_sequential_help);
     }
+    ImGui::BeginDisabled(keep);
     ui::Checkbox(dmsg::use_sequence, &_sfm_job.use_sequence);
     ui::help_on_hover(dmsg::use_sequence_help);
+    ImGui::EndDisabled();
     if (sequential_window_applies(_sfm_job)) {
         ImGui::SetNextItemWidth(px(260.0f));
         ui::InputInt(dmsg::sequential_overlap, &_sfm_job.overlap);
         ui::help_on_hover(dmsg::sequential_overlap_help);
     }
 
+    ImGui::BeginDisabled(keep);
     ImGui::SetNextItemWidth(px(260.0f));
     ui::InputFloat(dmsg::initial_focal_px, &_sfm_job.init_focal_px, 0, 0, "%.4g");
     ui::help_on_hover(dmsg::initial_focal_px_help);
@@ -6755,6 +6805,7 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::sfm_per_image_intrinsics_help);
     ui::Checkbox(dmsg::sfm_final_free_rig, &_sfm_job.final_free_rig);
     ui::help_on_hover(dmsg::sfm_final_free_rig_help);
+    ImGui::EndDisabled();
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::InputInt(dmsg::max_features_auto, &_sfm_job.max_features);
@@ -6768,6 +6819,7 @@ void GuiApp::draw_sfm_advanced() {
     // and a drone's recorded attitude. Any one can be all an input has.
     ImGui::Spacing();
     ui::SeparatorText(dmsg::section_sensors);
+    ImGui::BeginDisabled(keep);
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_sensor_gauge, &_sfm_job.sensor_gauge,
               {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
@@ -6785,6 +6837,7 @@ void GuiApp::draw_sfm_advanced() {
               {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
                &dmsg::sfm_exif_attitude_auto});
     ui::help_on_hover(dmsg::sfm_exif_attitude_help);
+    ImGui::EndDisabled();
     ImGui::Spacing();
 
     // Unticking it is what throws the resumable state away, so it asks first
@@ -6809,8 +6862,10 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(backends().builtin_video ? dmsg::use_ffmpeg_help
                                                : dmsg::use_ffmpeg_always);
 
+    ImGui::BeginDisabled(keep);
     ui::Checkbox(dmsg::sfm_ba_cpu, &_sfm_job.ba_cpu);
     ui::help_on_hover(dmsg::sfm_ba_cpu_help);
+    ImGui::EndDisabled();
 
     ui::Checkbox(dmsg::sfm_subprocess, &_sfm_job.subprocess);
     ui::help_on_hover(dmsg::sfm_subprocess_help);

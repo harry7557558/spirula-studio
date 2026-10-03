@@ -161,6 +161,7 @@ private:
     void open_dataset(std::string dir, std::string image_dir = "",
                       std::string mask_dir = "", bool mask_flipped = false,
                       bool keep_log = false);
+    void pick_dense_model(const std::string& dir);
     // Route for user-initiated opens: confirms first when training.
     void request_open_dataset(std::string dir);
 
@@ -772,6 +773,9 @@ private:
     // Hide what the masks cover from feature detection too, not only from
     // training (SfmJob::mask_features).
     bool _mask_features = true;
+    // SfmJob::keep_cameras as asked for; a run gets it only while the output
+    // folder holds a model to keep (WorkspaceState::keepable).
+    bool _keep_cameras = false;
     // PrepJob::mask_memory. Off by default: a prompt that matches a crowd pays
     // one model pass per object per frame for it. The two below only apply
     // with it on, and are kept here rather than in MaskSettings because the

@@ -78,6 +78,26 @@ Run errors, exit 1:
 Images in the folder that the model does not pose are extracted and matched
 but get no pose and no points; the run says how many.
 
+## In the GUI
+
+The New Dataset screen shows "Keep the imported cameras (add points only)"
+beside "Reconstruct again" when the output folder holds a binary COLMAP model
+where the trainer would look for one (`find_colmap_poses`). Ticked, the
+reconstruction step runs `--poses` on that model with `dense/` inside the
+folder as its workspace -- features, matches and `dense/sparse/0` -- and the
+imported model is never written to. The lens, camera sharing, mapper, sensor
+and bundle adjustment settings are greyed out, since nothing reads them, and
+the record (`DatasetPlan.h`) compares only the settings that run does read.
+Depth and normal maps are not redone for it: the cameras did not move.
+
+Opening the folder for training, from that screen or from the home screen,
+reads `dense/sparse/0` (`colmap_recon_dir`) as long as it is newer than the
+model it was made from and no other model was chosen by hand; the log says
+which. A solve exported again afterwards is newer, so it is read instead,
+with a line saying `dense/` is out of date -- training on points made for the
+previous solve is the failure this rule exists to prevent. `spirula train`
+has no such rule; pass it `--colmap-recon-dir dense/sparse/0`.
+
 ## Not done
 
 - Pairing and verification that use the known poses (an epipolar test from
