@@ -1523,6 +1523,21 @@ SS_MSG(ray_depth_straight_ahead,
     RU("расстояние прямо вперёд"),
     TR("ileri doğru mesafe"));
 
+SS_MSG(focus_weights_found,
+    EN("Focus weights from {0}/ ({1} of {2} images)"),
+    JA("{0}/ の合焦重みを使います（{2} 枚中 {1} 枚）"),
+    ZH_HANS("使用 {0}/ 中的实焦权重（{2} 张图像中的 {1} 张）"),
+    ZH_HANT("使用 {0}/ 中的實焦權重（{2} 張影像中的 {1} 張）"),
+    KO("{0}/ 의 초점 가중치를 사용합니다({2}장 중 {1}장)"),
+    DE("Fokusgewichte aus {0}/ ({1} von {2} Bildern)"),
+    FR("Poids de netteté de {0}/ ({1} images sur {2})"),
+    ES("Pesos de enfoque de {0}/ ({1} de {2} imágenes)"),
+    PT("Pesos de foco de {0}/ ({1} de {2} imagens)"),
+    IT("Pesi di fuoco da {0}/ ({1} immagini su {2})"),
+    NL("Focusgewichten uit {0}/ ({1} van {2} beelden)"),
+    RU("Веса резкости из {0}/ ({1} из {2} изображений)"),
+    TR("{0}/ içinden odak ağırlıkları ({2} görüntüden {1})"));
+
 SS_MSG(alpha_masks_found,
     EN("Alpha channel used as the mask ({0} of {1} images)"),
     JA("アルファチャンネルをマスクとして使います（{1} 枚中 {0} 枚）"),

@@ -85,6 +85,9 @@ const std::vector<Tool>& tools() {
 #ifdef SS_TOOL_DENSE
         {app::kToolDense, &spirula::i18n::msg::dense::title, spirula_dense_main},
 #endif
+#ifdef SS_TOOL_FOCUS
+        {app::kToolFocus, &cmsg::tool_focus, spirula_focus_main},
+#endif
 #ifdef SS_TOOL_MESH
         {app::kToolMesh, &cmsg::tool_mesh, spirula_mesh_main},
 #endif

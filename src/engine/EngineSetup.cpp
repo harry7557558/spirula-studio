@@ -126,6 +126,18 @@ static TorchTensorView _upload_gt_rgb(const TorchTensorView& src) {
     return TorchTensorView((uint64_t)dst, 1, std::get<2>(src));
 }
 
+void split_gt_mask_weight() {
+    auto& gt = engine().gt;
+    if (!gt.mask_weighted || !gt.has_mask || gt.alpha.data_ptr() == nullptr) return;
+    const int64_t B = gt.alpha.size<0>(), H = gt.alpha.size<1>(), W = gt.alpha.size<2>();
+    gt.mask_weight = gt.alpha;
+    uint8_t* bin = DevicePool::global().acquire<uint8_t>(PoolSlot::GtAlphaBinary, (size_t)(B * H * W));
+    TorchTensorView bv((uint64_t)bin, 1, {B, H, W, 1LL});
+    split_mask_weight(_dt3d_tv(gt.mask_weight), bv);
+    gt.alpha = DeviceTensor3D<bool>(bv);
+}
+
+
 void set_training_data(
     TorchTensorView gt_rgb,
     TorchTensorView gt_depth,
@@ -141,6 +153,7 @@ void set_training_data(
     engine().gt.alpha  = _hv_to_dt3d<bool>(PoolSlot::GtAlpha, gt_alpha);
     engine().gt.has_gt    = (std::get<0>(gt_rgb) != 0);
     engine().gt.has_mask  = (std::get<0>(gt_alpha) != 0);
+    split_gt_mask_weight();
 
     // Linear (z) depth -> ray depth, in place on the GPU buffer, before the
     // depth bilateral grid / loss consume it. The rasterizer renders ray

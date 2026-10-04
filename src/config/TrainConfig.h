@@ -128,7 +128,7 @@ inline bool train_choices_free_form(const char* choices) {
     X(std::string, output_dir_name, "", "run", "basic", "none")              \
     X(int, num_iterations, 30000, "run", "basic", "")                        \
     X(int, steps_per_save, 2000, "run", "advanced", "")                      \
-    X(bool, save_only_latest_checkpoint, true, "run", "advanced", "")        \
+    X(bool, save_only_latest_checkpoint, true, "run", "advanced", "")            X(bool, export_y_up, false, "run", "basic", "")                          \
     X(bool, save_full_checkpoint, false, "run", "advanced", "")              \
     X(bool, save_eval_images, false, "run", "advanced", "")                  \
     X(bool, log_performance, false, "run", "advanced", "")                   \
@@ -139,7 +139,7 @@ inline bool train_choices_free_form(const char* choices) {
     /* ==== dataset -- which files are read, and which images are held out ==== */ \
     X(std::string, data_format, "", "dataset", "basic", "colmap|nerfstudio|metashape|none") \
     X(std::string, image_dir, "images", "dataset", "basic", "<data>/<folder>") \
-    X(std::string, mask_dir, "masks", "dataset", "basic", "<data>/<folder>") \
+    X(std::string, mask_dir, "masks", "dataset", "basic", "<data>/<folder>")     X(std::string, focus_dir, "focus", "dataset", "advanced", "<data>/<folder>") \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
     X(std::optional<bool>, apply_loss_for_mask, std::nullopt, "dataset", "basic", "") \
     X(bool, flip_mask, false, "dataset", "basic", "")                        \

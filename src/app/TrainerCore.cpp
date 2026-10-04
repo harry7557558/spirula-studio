@@ -11,6 +11,7 @@
 #include "data/ResolutionSchedule.h"
 #include "core/HostMemory.h"
 #include "checkpoint/SplatPly.h"
+#include "checkpoint/SplatTransform.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
@@ -973,6 +974,25 @@ void TrainerSession::load_dataset() {
                                            : lmsg::alpha_masks_with_files,
                  {n, (long long)ds.num_cameras}));
     }
+    focus_files.clear();
+    if (!cfg.focus_dir.empty()) {
+        const fs::path image_root = fs::path(cfg.data) / cfg.image_dir;
+        const std::string focus_root = (fs::path(cfg.data) / cfg.focus_dir).string();
+        focus_files.assign((size_t)ds.num_cameras, std::string());
+        long long found = 0;
+        for (int64_t i = 0; i < ds.num_cameras; ++i) {
+            const std::string rel =
+                dsparse::relative_under(ds.image_filenames[(size_t)i], image_root.string());
+            if (rel.empty()) continue;
+            focus_files[(size_t)i] = dsparse::find_aux_file(focus_root, rel, "focus");
+            found += !focus_files[(size_t)i].empty();
+        }
+        if (found == 0) focus_files.clear();
+        else {
+            log(lfmt(lmsg::focus_weights_found, {cfg.focus_dir, found, (long long)ds.num_cameras}));
+            has_mask = true;
+        }
+    }
     // Dense seeds and alpha cut-outs treat excluded pixels as empty space.
     if (!cfg.apply_loss_for_mask.has_value()) {
         cfg.apply_loss_for_mask = spirula::dense::is_dense_seed(cfg.data, cfg.seed_pointcloud) ||
@@ -1296,6 +1316,7 @@ void TrainerSession::setup_engine() {
     dm.flip_mask = cfg.flip_mask;
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
+    dm.focus_filenames = focus_files;
     dm.exif_quarter_turns = ds.exif_quarter_turns;
     dm.deficit_sampling  = cfg.view_sampling == "deficit";
     dm.deficit_power     = cfg.view_deficit_power;
@@ -1496,12 +1517,31 @@ void TrainerSession::restore_checkpoint() {
     log(lfmt(lmsg::resumed_from, {r.ckpt_dir.string(), (long long)start_step}));
 }
 
+// Z-up (the normalized frame) to +Y up, then SuperSplat's Transform.PLY (180
+// degrees about Z, @playcanvas/splat-transform) undone: (x, y, z) -> (-x, -z, -y).
+void TrainerSession::write_y_up_ply(const fs::path& ckpt) const {
+    const fs::path src = ckpt / "splat.ply";
+    if (!fs::exists(src)) return;
+    SplatCloud c = read_splat_ply(src.string(), true);
+    static const double M[9] = {-1, 0, 0, 0, 0, -1, 0, -1, 0};
+    Sim3 T;
+    for (int r = 0; r < 3; ++r)
+        for (int k = 0; k < 3; ++k) {
+            double v = 0;
+            for (int j = 0; j < 3; ++j) v += M[r * 3 + j] * ds.normalized_rotation[(size_t)(j * 3 + k)];
+            T.R[r * 3 + k] = v;
+        }
+    const SplatTransform move(T, c.sh_degree);
+    write_splat_ply(c, (ckpt / "splat_y_up.ply").string(), nullptr, &move);
+}
+
 void TrainerSession::save_checkpoint(int step, bool full) {
     char name[32];
     std::snprintf(name, sizeof name, "step-%09d.ckpt", step);
     fs::path ckpt = out_dir / name;
     fs::create_directories(ckpt);
     engine_save_checkpoint(ckpt.string(), full, step);
+    if (cfg.export_y_up) write_y_up_ply(ckpt);
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {

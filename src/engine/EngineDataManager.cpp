@@ -58,6 +58,7 @@ void engine_setup_data_manager(
     // Drop the existing manager first so its scheduler / worker threads are
     // joined before we begin spinning up new ones.
     engine().dm.reset();
+    engine().gt.mask_weighted = !cfg.focus_filenames.empty();
     engine().gt_mean_luma.clear();
     engine().visit.num_post = (int32_t)(viewmats.size() / 16);
     engine().visit.cam_sum = DeviceVector<float>();

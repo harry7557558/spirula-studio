@@ -47,6 +47,20 @@ struct RgbToSrgbBwdParams {
 };
 static_assert(sizeof(RgbToSrgbBwdParams) == 4 * 8 + 2 * 4, "layout");
 
+// Mirrors SplitMaskWeightParams.
+struct SplitMaskWeightParams {
+    uint64_t weight, mask;
+    uint32_t n, words, wgs_per_row, _pad;
+};
+static_assert(sizeof(SplitMaskWeightParams) == 2 * 8 + 4 * 4, "layout");
+
+// Mirrors ScaleByMaskWeightParams.
+struct ScaleByMaskWeightParams {
+    uint64_t data, weight;
+    uint32_t H, W, C, Hm, Wm, total, wgs_per_row, _pad;
+};
+static_assert(sizeof(ScaleByMaskWeightParams) == 2 * 8 + 8 * 4, "layout");
+
 // Mirrors OverexposureParams.
 struct OverexposureParams {
     uint64_t rgb, v_rgb;
@@ -217,6 +231,37 @@ void working_to_display_backward(
                        backend::vk::SpecList{(uint32_t)transfer,
                                              is_linear ? 1u : 0u},
                        total, 128, &p, sizeof(p), &p.wgs_per_row);
+}
+
+void split_mask_weight(TorchTensorView weight, TorchTensorView mask) {
+    const auto& s = std::get<2>(weight);
+    const int64_t n = s[0] * s[1] * s[2];
+    if (n <= 0) return;
+    SplitMaskWeightParams p{};
+    p.weight = (uint64_t)std::get<0>(weight);
+    p.mask = (uint64_t)std::get<0>(mask);
+    p.n = (uint32_t)n;
+    p.words = (uint32_t)((n + 3) / 4);
+    vkk::dispatch_flat("pixel_wise_train.split_mask_weight", backend::vk::SpecList{},
+                       p.words, 256, &p, sizeof(p), &p.wgs_per_row);
+}
+
+void scale_by_mask_weight(TorchTensorView data, TorchTensorView weight) {
+    const auto& s = std::get<2>(data);
+    const auto& m = std::get<2>(weight);
+    const int64_t B = s[0], H = s[1], W = s[2];
+    if (B <= 0 || H <= 0 || W <= 0) return;
+    ScaleByMaskWeightParams p{};
+    p.data = (uint64_t)std::get<0>(data);
+    p.weight = (uint64_t)std::get<0>(weight);
+    p.H = (uint32_t)H;
+    p.W = (uint32_t)W;
+    p.C = s.size() > 3 ? (uint32_t)s[3] : 1u;
+    p.Hm = (uint32_t)m[1];
+    p.Wm = (uint32_t)m[2];
+    p.total = (uint32_t)(B * H * W);
+    vkk::dispatch_flat("pixel_wise_train.scale_by_mask_weight", backend::vk::SpecList{},
+                       p.total, 256, &p, sizeof(p), &p.wgs_per_row);
 }
 
 void overexposure_grad_add(

@@ -218,6 +218,8 @@ public:
     bool random_seeded = false;
     // probe_alpha_masks over `ds`: [N] flags, empty when no image is a cut-out.
     std::vector<uint8_t> alpha_images;
+    // [N] focus/ weight per image (docs/notes/focus-weights.md); empty when none.
+    std::vector<std::string> focus_files;
 
     // Filled by setup_engine().
     std::filesystem::path out_dir;
@@ -285,6 +287,7 @@ public:
     std::map<std::string, float> train_step(int step);
 
     void save_checkpoint(int step, bool full);
+    void write_y_up_ply(const std::filesystem::path& ckpt) const;
 
     // Held-out eval: render every frame of the eval split, score it, and write
     // metrics.json. No-op when eval_mode is "all" (nothing is held out) or the

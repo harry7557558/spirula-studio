@@ -294,7 +294,7 @@ enum class SaveClass : uint8_t {
   X(GtRgb                          , "gt.rgb",                            Image    , Never) \
   X(GtDepth                        , "gt.depth",                          Image    , Never) \
   X(GtNormal                       , "gt.normal",                         Image    , Never) \
-  X(GtAlpha                        , "gt.alpha",                          Image    , Never) \
+  X(GtAlpha                        , "gt.alpha",                          Image    , Never)   X(GtAlphaBinary                  , "gt.alpha_binary",                   Image    , Never) \
   X(GtStagingU8                    , "gt.staging_u8",                     Image    , Never) \
   X(GtStagingU16                   , "gt.staging_u16",                    Image    , Never) \
   /* ---- camera table ---- */ \

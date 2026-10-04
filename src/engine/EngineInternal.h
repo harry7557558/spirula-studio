@@ -135,6 +135,9 @@ void _set_cur_cam_indices(TorchTensorView tv);
 // has populated engine().gt.rgb; downsamples each post-camera slot's GT
 // into the device-side thumbnail cache and marks the host seen-mask bit.
 void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv);
+// With weighted masks, keep the uploaded bytes as gt.mask_weight and point
+// gt.alpha at their strict 0/1 split, which every other consumer expects.
+void split_gt_mask_weight();
 
 // Bilagrid: backward hook + state setup + TV readout. The hook overwrites
 // v_render_rgb (post->pre bilagrid) when RGB bilagrid is enabled, and
