@@ -22,7 +22,7 @@
 #include "app/gui/PairPreview.h"
 #include "app/gui/SfmProgress.h"
 #include "app/gui/Layout.h"
-#include "app/gui/E57Runner.h"
+#include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
 #include "app/gui/ModelCache.h"
 #include "app/gui/SegmentPanel.h"
@@ -107,7 +107,7 @@ public:
     void set_dpi_scale(float s) { _scale.set_dpi(s); }
 
 private:
-    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh, E57Dataset };
+    enum class Screen { Home, NewDataset, Train, Viewer, Batch, Mesh };
     enum class PickAction {
         None, OpenDataset, SourceImages, SourceVideo, SourceDataset,
         SourceReplace, Workspace,
@@ -117,7 +117,7 @@ private:
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
         MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
         EditSaveFile, EditSaveFolder, RenderProjectSave, RenderProjectOpen,
-        RenderOutput, RenderAddModel, StencilFile, E57Source, E57Output
+        RenderOutput, RenderAddModel, StencilFile, LidarSource
     };
     // Which reconstruction back end the New Dataset screen runs.
     enum class Engine { BuiltIn, Colmap };
@@ -339,8 +339,7 @@ private:
     // path (an image header, or one `ffmpeg -i`) and remembered.
     bool input_pixel_size(const std::string& path, bool is_video,
                           int& w, int& h);
-    // What the masking options edit: the dataset screen's inputs and switches,
-    // or the E57 screen's. One panel, so the two cannot drift apart.
+    // What the masking options edit: the inputs and switches it is handed.
     struct MaskingPanel {
         std::vector<PrepInput>* inputs = nullptr;
         bool* enable = nullptr;
@@ -413,6 +412,7 @@ private:
     // folder itself the output, so the run adds to it instead of building a
     // copy beside it.
     void add_existing_dataset(const std::string& dir);
+    void add_dataset_folder(const std::string& dir);
     // Every option back to what a freshly picked input would have given it.
     // The inputs, the output folder and the mask prompt are not options.
     void reset_recon_options();
@@ -442,21 +442,14 @@ private:
     // the picker, the drop handler and the "mesh this run" shortcut.
     void set_mesh_source(const std::string& path);
     void start_meshing();
-    void draw_e57_dataset();
-    void draw_e57_form(bool running);
-    void set_e57_source(const std::string& path);
-    void start_e57_preview(const std::string& path);
-    void release_e57_preview();
-    MaskingPanel e57_masking_panel();
-    void open_e57_mask_preview();
-    void start_e57_job();
-    // The run's steps over the reels it feeds, beside the scan's own view.
-    void draw_e57_run_view(float height);
-    // Gives up the run's pictures, unless a run is still adding to them.
-    void clear_e57_run_view();
-    static std::string e57_frames_dir();
-    // The 360-camera preset's subjects, when nothing is typed yet.
-    void seed_e57_prompt();
+    // LiDAR scans on the dataset screen (LidarSources.cpp).
+    void draw_lidar_sources();
+    void add_lidar_sources(const std::vector<std::string>& paths);
+    // An XGRIDS export picked as a dataset: its fisheye model, its LAS, its
+    // masks the other way round. False when `dir` is no such export.
+    bool add_xgrids_export(const std::string& dir);
+    static bool is_lidar_drop(const std::string& path);
+    LidarJob lidar_job() const;
     // Would the run about to start actually get cameras? Resolves the dataset
     // the way the child does -- the folder typed here, else the `data` entry
     // in the run's config.json -- so the screen can warn BEFORE the run that
@@ -706,40 +699,15 @@ private:
     std::string _mesh_data_probe_key;
     bool _mesh_data_probe_found = false;
 
-    // ---- a dataset from an E57 scan (a child process, E57Runner) ----
-    // Declared before the runner, which feeds them until it is destroyed.
-    FilmReel _e57_film_frames, _e57_film_geometry, _e57_film_masks;
-    int _e57_view_tab = -1;     // the view picked, pinned; -1 follows the run
-    int _e57_last_view = -1;    // the view the running step implies
-    E57Runner _e57;
-    E57Job _e57_job;
-    // Read from the file's XML section when it is picked: what it holds, the
-    // images that would become cameras, or why it could not be read.
-    std::string _e57_summary, _e57_read_error;
-    int64_t _e57_usable_pinhole = 0, _e57_usable_spherical = 0;
-    // The file's cameras and a draw of its points, read on a worker (a point
-    // pass over a big scan takes seconds) and attached on this thread.
-    ViewportPanel _e57_view;
-    std::thread _e57_preview_worker;
-    std::atomic<bool> _e57_preview_cancel{false};
-    std::atomic<bool> _e57_preview_ready{false};
-    LiveModel _e57_preview;
-    std::string _e57_preview_key;
-    bool _e57_view_attached = false;
-    float _e57_panel_w = kDefaultDsPanelW;
-    // Masking, with the dataset screen's settings (_mask, _model_id) and its
-    // own switches. The one input is the frames "Try the mask" shows: the
-    // images the run will write, extracted into the cache on first use.
-    bool _e57_mask_enable = false, _e57_border_enable = false;
-    bool _e57_mask_was_enabled = false;   // to seed the prompt as it is ticked
-    int _e57_mask_preview_input = 0;
-    std::string _e57_frame_shapes;
-    std::vector<PrepInput> _e57_inputs;
-    std::thread _e57_frames_worker;
-    std::atomic<bool> _e57_frames_ready{false}, _e57_frames_cancel{false};
-    std::string _e57_frames_key;         // file and selection they were made from
-    bool _e57_open_when_ready = false;
-    bool _e57_segment = false;           // _segment was opened from this screen
+    // ---- laser scans the dataset is aligned with (LidarSources.cpp) ----
+    struct LidarInput {
+        std::string path;
+        std::string summary;          // read from the header when it was added
+        int64_t photos = 0;           // images an E57 carries with poses
+    };
+    std::vector<LidarInput> _lidar;
+    bool _lidar_photos = true;        // the scans' photographs join the reconstruction
+    bool _lidar_in_frame = false;     // the model is already in the scans' frame
 
     // Dataset creation. Both runners exist; only one runs, chosen by _engine
     // (and forced when only one is available).

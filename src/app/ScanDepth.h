@@ -31,9 +31,12 @@ ScanCloud build_scan_cloud(const std::vector<double>& xyz, const std::vector<uin
                            double cell_edge);
 
 // A camera at the map's own resolution: OpenCV-axis camera-to-world, row-major
-// 3x4, pixel centres at +0.5, `model` a CameraModelType without distortion.
+// 3x4, pixel centres at +0.5, `model` a CameraModelType and `tier` the
+// CameraDistortionType `dist` is in.
 struct MapCamera {
     int model = 0;
+    int tier = 0;
+    float dist[8] = {};
     double c2w[12] = {};
     double fx = 0, fy = 0, cx = 0, cy = 0;
     int width = 0, height = 0;
@@ -44,6 +47,11 @@ struct MapCamera {
 // cover their share of the surface, so a sparse one still hides what is behind.
 void render_front(const ScanCloud& cloud, const MapCamera& cam, bool ray_depth,
                   std::vector<uint32_t>& index, std::vector<float>& depth);
+
+// What the scan looks like from `cam`: its colours, front-most first, with the
+// gaps a sparse surface leaves filled from neighbours on that surface; black
+// where it has nothing.
+void render_color(const ScanCloud& cloud, const MapCamera& cam, std::vector<uint8_t>& rgb);
 
 // Metres, 0 where the scan says nothing; unit normals in the camera's frame,
 // facing it, all zero where none.

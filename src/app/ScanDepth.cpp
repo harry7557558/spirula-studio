@@ -12,7 +12,6 @@ namespace app {
 namespace {
 
 constexpr float kNone = std::numeric_limits<float>::infinity();
-const float kNoDistortion[kCameraDistortionParams] = {};
 
 // A far point seen through a gap in a nearer surface is further than its
 // window's nearest by more than this; a floor at grazing incidence 30 m out
@@ -30,6 +29,8 @@ constexpr float kNormalSpread = 0.1f;
 // A point's footprint, in pixels either side, is at most this: past it a
 // silhouette grows into the background by more than it hides.
 constexpr int kMaxFootprint = 3;
+// Pixels between a cell's neighbouring points below which it is thinned.
+constexpr double kLodSpacing = 0.7;
 
 }  // namespace
 
@@ -110,29 +111,37 @@ void render_front(const ScanCloud& cloud, const MapCamera& cam, bool ray_depth,
 
     const bool pinhole = cam.model == (int)CameraModelType::PINHOLE;
     const bool wraps = cam.model == (int)CameraModelType::EQUIRECTANGULAR;
-    const double tx = std::max(cam.cx, W - cam.cx) / cam.fx;
-    const double ty = std::max(cam.cy, H - cam.cy) / cam.fy;
+    // Barrel distortion shows more than the undistorted frame does.
+    const double widen = cam.tier ? 1.5 : 1.0;
+    const double tx = widen * std::max(cam.cx, W - cam.cx) / cam.fx;
+    const double ty = widen * std::max(cam.cy, H - cam.cy) / cam.fy;
     const double sx = std::sqrt(1 + tx * tx), sy = std::sqrt(1 + ty * ty);
     for (const ScanCloud::Cell& cell : cloud.cells) {
+        const float* q = cell.center;
+        double c[3];
+        for (int r = 0; r < 3; r++)
+            c[r] = R[r * 3] * q[0] + R[r * 3 + 1] * q[1] + R[r * 3 + 2] * q[2] + b[r];
+        const double rad = cell.radius;
         if (pinhole) {
-            const float* q = cell.center;
-            double c[3];
-            for (int r = 0; r < 3; r++)
-                c[r] = R[r * 3] * q[0] + R[r * 3 + 1] * q[1] + R[r * 3 + 2] * q[2] + b[r];
-            const double rad = cell.radius;
             if (c[2] < -rad) continue;
             if (c[0] - tx * c[2] > rad * sx || -c[0] - tx * c[2] > rad * sx) continue;
             if (c[1] - ty * c[2] > rad * sy || -c[1] - ty * c[2] > rad * sy) continue;
         }
-        for (uint32_t i = cell.begin; i < cell.end; i++) {
+        // A cell far enough away that its points are several to a pixel is
+        // drawn from every k-th of them: the front-most per pixel barely moves,
+        // and the 2138-image XGRIDS set spent most of its time there.
+        const double nearest = std::max(0.05, std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]) - rad);
+        const double px_spacing = cam.fx * cell.spacing / nearest;
+        const uint32_t stride = px_spacing >= kLodSpacing ? 1u
+            : (uint32_t)std::min(64.0, std::floor(kLodSpacing * kLodSpacing / (px_spacing * px_spacing)));
+        for (uint32_t i = cell.begin; i < cell.end; i += stride) {
             const float* q = &cloud.xyz[(size_t)i * 3];
             double p[3];
             for (int r = 0; r < 3; r++)
                 p[r] = R[r * 3] * q[0] + R[r * 3 + 1] * q[1] + R[r * 3 + 2] * q[2] + b[r];
             if (pinhole && p[2] < 0.01) continue;
             double uv[2];
-            if (!camhost::project_ray(p, cam.model, (int)CameraDistortionType::None,
-                                      kNoDistortion, uv))
+            if (!camhost::project_ray(p, cam.model, cam.tier, cam.dist, uv))
                 continue;
             const double px = cam.fx * uv[0] + cam.cx, py = cam.fy * uv[1] + cam.cy;
             if (!(px >= 0 && py >= 0 && px < W && py < H)) continue;
@@ -156,6 +165,68 @@ void render_front(const ScanCloud& cloud, const MapCamera& cam, bool ray_depth,
     }
     depth.resize(best.size());
     for (size_t k = 0; k < best.size(); k++) depth[k] = best[k] == kNone ? 0.0f : best[k];
+}
+
+void render_color(const ScanCloud& cloud, const MapCamera& cam, std::vector<uint8_t>& rgb) {
+    std::vector<uint32_t> index;
+    std::vector<float> depth;
+    render_front(cloud, cam, false, index, depth);
+    const int W = cam.width, H = cam.height;
+    rgb.assign((size_t)W * H * 3, 0);
+    // A far point seen through a gap in a nearer surface is not what a camera
+    // there would see.
+    std::vector<float> rows((size_t)W * H);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float m = kNone;
+            for (int k = std::max(0, x - 2); k <= std::min(W - 1, x + 2); k++) {
+                const float v = depth[(size_t)y * W + k];
+                if (v > 0) m = std::min(m, v);
+            }
+            rows[(size_t)y * W + x] = m;
+        }
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            float m = kNone;
+            for (int k = std::max(0, y - 2); k <= std::min(H - 1, y + 2); k++)
+                m = std::min(m, rows[(size_t)k * W + x]);
+            const size_t j = (size_t)y * W + x;
+            if (depth[j] > m * kBleedRatio + kBleedSlack) {
+                depth[j] = 0;
+                index[j] = UINT32_MAX;
+            }
+        }
+    std::vector<float> col((size_t)W * H * 3, 0.0f);
+    for (size_t k = 0; k < index.size(); k++)
+        if (index[k] != UINT32_MAX)
+            for (int c = 0; c < 3; c++) col[k * 3 + c] = cloud.rgb[(size_t)index[k] * 3 + c];
+    for (int pass = 0; pass < kFillPasses; pass++) {
+        std::vector<float> d2 = depth, c2 = col;
+        for (int y = 1; y < H - 1; y++)
+            for (int x = 1; x < W - 1; x++) {
+                const size_t k = (size_t)y * W + x;
+                if (depth[k] > 0) continue;
+                float lo = kNone, hi = 0, sum = 0, cs[3] = {0, 0, 0};
+                int n = 0;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++) {
+                        const size_t j = (size_t)(y + dy) * W + (x + dx);
+                        if (!(depth[j] > 0)) continue;
+                        lo = std::min(lo, depth[j]);
+                        hi = std::max(hi, depth[j]);
+                        sum += depth[j];
+                        for (int c = 0; c < 3; c++) cs[c] += col[j * 3 + c];
+                        n++;
+                    }
+                if (n >= kFillNeighbours && hi <= lo * kFillSpread) {
+                    d2[k] = sum / n;
+                    for (int c = 0; c < 3; c++) c2[k * 3 + c] = cs[c] / n;
+                }
+            }
+        depth.swap(d2);
+        col.swap(c2);
+    }
+    for (size_t k = 0; k < col.size(); k++) rgb[k] = (uint8_t)std::lround(col[k]);
 }
 
 void render_depth_normal(const ScanCloud& cloud, const MapCamera& cam, bool ray_depth,
@@ -218,7 +289,7 @@ void render_depth_normal(const ScanCloud& cloud, const MapCamera& cam, bool ray_
         for (int x = 0; x < W; x++) {
             double ray[3] = {0, 0, 0};
             camhost::generate_ray((x + 0.5 - cam.cx) / cam.fx, (y + 0.5 - cam.cy) / cam.fy,
-                                  cam.model, (int)CameraDistortionType::None, kNoDistortion, ray);
+                                  cam.model, cam.tier, cam.dist, ray);
             // Planar depth scales the ray to z = 1.
             const double s = ray_depth ? 1.0 : (ray[2] > 1e-6 ? 1.0 / ray[2] : 0.0);
             for (int a = 0; a < 3; a++) rays[((size_t)y * W + x) * 3 + a] = (float)(ray[a] * s);

@@ -108,6 +108,29 @@ SS_MSG(tool_geometry,
     NL("diepte en oppervlaktenormalen van een dataset schatten"),
     RU("оценить глубину и нормали поверхности набора данных"),
     TR("bir veri kümesinin derinliğini ve yüzey normallerini kestir"));
+SS_MSG(tool_lidar,
+    EN("align a reconstruction with a laser scan (E57, LAS, PLY) and add its geometry"),
+    JA("再構成をレーザースキャン（E57、LAS、PLY）に位置合わせし、その形状を加える"),
+    ZH_HANS("把重建与激光扫描（E57、LAS、PLY）对齐，并加入其几何信息"),
+    ZH_HANT("把重建與雷射掃描（E57、LAS、PLY）對齊，並加入其幾何資訊"),
+    KO("재구성을 레이저 스캔(E57, LAS, PLY)에 정렬하고 그 형상을 추가"),
+    DE("eine Rekonstruktion an einem Laserscan (E57, LAS, PLY) ausrichten und seine "
+       "Geometrie hinzufügen"),
+    FR("aligner une reconstruction sur un scan laser (E57, LAS, PLY) et y ajouter sa "
+       "géométrie"),
+    ES("alinear una reconstrucción con un escaneo láser (E57, LAS, PLY) y añadir su "
+       "geometría"),
+    PT("alinhar uma reconstrução a uma varredura a laser (E57, LAS, PLY) e acrescentar "
+       "sua geometria"),
+    IT("allineare una ricostruzione a una scansione laser (E57, LAS, PLY) e aggiungerne "
+       "la geometria"),
+    NL("een reconstructie uitlijnen op een laserscan (E57, LAS, PLY) en de geometrie "
+       "ervan toevoegen"),
+    RU("совместить реконструкцию с лазерным сканом (E57, LAS, PLY) и добавить его "
+       "геометрию"),
+    TR("bir yeniden oluşturmayı lazer taramasıyla (E57, LAS, PLY) hizala ve "
+       "geometrisini ekle"));
+
 SS_MSG(tool_e57,
     EN("make a training dataset from an E57 laser scan"),
     JA("E57 レーザースキャンから学習用データセットを作る"),

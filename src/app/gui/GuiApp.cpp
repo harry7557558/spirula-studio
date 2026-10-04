@@ -13,7 +13,6 @@
 #include "data/Json.h"
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
-#include "app/E57Dataset.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/Subprocess.h"
@@ -23,7 +22,7 @@
 #include "i18n/Locale.h"
 #include "i18n/catalog/Brand.h"
 #include "i18n/catalog/Dataset.h"
-#include "i18n/catalog/E57.h"
+#include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Geometry.h"
 #include "data/SparseEdit.h"
 #include "i18n/catalog/Edit.h"
@@ -76,7 +75,6 @@ namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
-namespace e57msg = spirula::i18n::msg::e57;
 using spirula::i18n::Msg;
 using spirula::format_duration;
 
@@ -301,10 +299,6 @@ void GuiApp::shutdown() {
     _viewport.destroy_gl();
     _images.destroy_gl();
     _mesh.cancel();
-    _e57.cancel();
-    release_e57_preview();
-    for (FilmReel* f : {&_e57_film_frames, &_e57_film_geometry, &_e57_film_masks})
-        f->destroy_gl();
     // destroy_gl while the context is still current; close() then stops the
     // render workers before the engine goes back.
     _compare.destroy_gl();
@@ -755,8 +749,6 @@ void GuiApp::append_logs() {
     }
     for (auto& s : _compare.drain_log()) log(s);
     for (auto& s : _mesh.drain_log()) log(s);
-    for (auto& s : _e57.drain_log()) log(s);
-    for (auto& l : _e57.steps().drain()) log(l.text, l.detail);
     poll_batch_command();
     for (auto& s : _download.drain_log()) log(s);
     for (auto& s : _font_download.drain_log()) log(s);
@@ -1928,21 +1920,23 @@ static bool looks_like_model(const fs::path& p) {
 
 void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     std::error_code ec;
-    // A scan has one screen that reads it, whichever screen it lands on; the
-    // command line's `spirula scan.e57` arrives here too.
-    if (paths.size() == 1 && fs::is_regular_file(paths[0], ec)) {
-        std::string ext = fs::path(paths[0]).extension().string();
-        for (char& c : ext) c = (char)std::tolower((unsigned char)c);
-        if (ext == ".e57") {
-            if (native_work_busy()) {
-                if (training_busy()) log(dmsg::log_drop_while_training.get());
-                return;
-            }
-            close_splat();
-            set_e57_source(paths[0]);
-            _screen = Screen::E57Dataset;
+    // A laser scan is an input of the dataset screen, whichever screen it
+    // lands on (the command line's `spirula scan.e57` too); dropped with
+    // videos or photos, they are the rest of that dataset.
+    std::vector<std::string> scans, rest;
+    for (const std::string& p : paths)
+        (fs::is_regular_file(p, ec) && is_lidar_drop(p) ? scans : rest).push_back(p);
+    if (!scans.empty()) {
+        if (native_work_busy()) {
+            if (training_busy()) log(dmsg::log_drop_while_training.get());
             return;
         }
+        close_splat();
+        _screen = Screen::NewDataset;
+        add_lidar_sources(scans);
+        if (rest.empty()) return;
+        add_sources(rest, /*replace=*/false);
+        return;
     }
     // The mesh screen is asking two specific questions -- which model, and
     // which photos -- so a drop there ANSWERS one of them instead of
@@ -2072,6 +2066,13 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
         // Checked before the dataset test: a run directory sits INSIDE the
         // dataset it was trained from often enough that both would match.
         request_open_splat(paths[0]);
+        return;
+    }
+    // An XGRIDS export: its dataset and its LiDAR map, on the dataset screen.
+    if (paths.size() == 1 && fs::is_directory(paths[0], ec) && !native_work_busy() &&
+        add_xgrids_export(paths[0])) {
+        close_splat();
+        _screen = Screen::NewDataset;
         return;
     }
     // A reconstruction that is not a trainable dataset -- a bare `sparse/`,
@@ -2389,7 +2390,11 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
 }
 
 void GuiApp::add_existing_dataset(const std::string& dir) {
-    if (dir.empty()) return;
+    if (dir.empty() || add_xgrids_export(dir)) return;
+    add_dataset_folder(dir);
+}
+
+void GuiApp::add_dataset_folder(const std::string& dir) {
     // The ordinary route already lands on the right pair for the usual
     // layout: resolve_photo_folder picks images/ out of the folder and
     // refresh_sources makes its parent -- this folder -- the output.
@@ -2475,15 +2480,14 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::RenderAddModel:
         case PickAction::MeshSource:        return "model";
         case PickAction::StencilFile:       return "stencil";
-        case PickAction::E57Source:         return "e57";
+        case PickAction::LidarSource:       return "lidar";
         case PickAction::RenderProjectSave:
         case PickAction::RenderProjectOpen: return "render_project";
         case PickAction::RenderOutput:      return "render_output";
         case PickAction::Workspace:
         case PickAction::OutputPrefix:
         case PickAction::BatchOutput:
-        case PickAction::MeshOutput:
-        case PickAction::E57Output:         return "output";
+        case PickAction::MeshOutput:        return "output";
         case PickAction::VocabTree:         return "vocab";
         case PickAction::PresetFile:
         case PickAction::DatasetPresetFile:
@@ -2579,19 +2583,14 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             set_mesh_source(path);
             break;
         case PickAction::StencilFile:
-            if (_segment.is_open() && _e57_segment && !_e57_inputs.empty())
-                _segment.load_file(_e57_inputs[0].stencil, path);
-            else if (_segment.is_open() && _mask_preview_input < (int)_sources.size())
+            if (_segment.is_open() && _mask_preview_input < (int)_sources.size())
                 _segment.load_file(_sources[(size_t)_mask_preview_input].stencil, path);
             break;
         case PickAction::MeshPhotos:
             _mesh_job.data_dir = path;
             break;
-        case PickAction::E57Source:
-            set_e57_source(path);
-            break;
-        case PickAction::E57Output:
-            if (!path.empty()) _e57_job.output = path;
+        case PickAction::LidarSource:
+            add_lidar_sources(paths);
             break;
         case PickAction::MeshOutput:
             // Only the folder is picked; the file name keeps whatever
@@ -2752,7 +2751,7 @@ std::string GuiApp::state_json() {
     };
     // Index order is the declaration order of Screen and TrainRunner::Phase.
     static const char* kScreens[] = {"home", "new_dataset", "train", "viewer",
-                                     "batch", "mesh", "e57_dataset"};
+                                     "batch", "mesh"};
     static const char* kPhases[] = {"idle", "loading", "ready", "load_error",
                                     "preparing", "training", "done",
                                     "train_error"};
@@ -2942,15 +2941,7 @@ void GuiApp::frame() {
         case Screen::Viewer: draw_viewer(); break;
         case Screen::Batch:  draw_batch();  break;
         case Screen::Mesh:   draw_mesh();   break;
-        case Screen::E57Dataset: draw_e57_dataset(); break;
     }
-    // The E57 preview holds GL buffers and maybe a reading thread; nothing
-    // else marks leaving a screen.
-    if (_screen != Screen::E57Dataset &&
-        (_e57_view_attached || _e57_preview_worker.joinable() ||
-         _e57_frames_worker.joinable() || (_e57_segment && _segment.is_open())))
-        release_e57_preview();
-    if (_screen != Screen::E57Dataset) clear_e57_run_view();
 
     // A job cancelled by the editor's close finishes its stage off this thread.
     _mask_editor.sam_poll_retiring();
@@ -3003,10 +2994,6 @@ void GuiApp::draw_menu_bar() {
         if (ui::MenuItem(msg::menu_new_dataset) && !native_work_busy()) {
             close_splat();
             _screen = Screen::NewDataset;
-        }
-        if (ui::MenuItem(msg::menu_new_dataset_e57) && !native_work_busy()) {
-            close_splat();
-            _screen = Screen::E57Dataset;
         }
         if (ui::MenuItem(msg::menu_open_splat)) {
             open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
@@ -3273,15 +3260,6 @@ void GuiApp::draw_home() {
     ImGui::EndDisabled();
     ui::help_on_hover(msg::home_new_dataset_help);
 
-    ImGui::BeginDisabled(native_work_busy());
-    if (ui::Button(msg::home_new_dataset_e57, ImVec2(-1, bh)) &&
-        !native_work_busy()) {
-        close_splat();
-        _screen = Screen::E57Dataset;
-    }
-    ImGui::EndDisabled();
-    ui::help_on_hover(msg::home_new_dataset_e57_help);
-
     if (ui::Button(msg::home_open_splat, ImVec2(-1, bh))) {
         open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
                   FileDialog::Mode::FileOrFolder, kOpenableExtensions);
@@ -3352,7 +3330,7 @@ bool GuiApp::dataset_busy() const {
 }
 bool GuiApp::native_work_busy() const {
     const TrainRunner::Phase phase = _runner.phase();
-    return _mesh.busy() || _e57.busy() || dataset_busy() ||
+    return _mesh.busy() || dataset_busy() ||
            phase == TrainRunner::Phase::Loading ||
            phase == TrainRunner::Phase::Preparing ||
            phase == TrainRunner::Phase::Training;
@@ -3503,8 +3481,11 @@ void GuiApp::sync_dataset_jobs() {
     prep.mask_enable = _mask_enable;
     prep.flip_found_masks = _use_found_masks && _flip_found_masks;
     prep.photo_import = _photo_import;
+    if (!_lidar.empty() && !_lidar_in_frame && prep.photo_import == PhotoImport::InPlace)
+        prep.photo_import = PhotoImport::ConvertJpeg;
     fill_masking(prep);
     _sfm_job.prep = prep;
+    _sfm_job.lidar = lidar_job();
 
     _colmap_job.inputs = prep.inputs;
     _colmap_job.workspace = prep.workspace;
@@ -3911,7 +3892,7 @@ void GuiApp::draw_dataset_source() {
                   FileDialog::Mode::Folder);
     }
     ui::help_on_hover(dmsg::add_photos_help);
-    if (_sources.empty()) {
+    if (_sources.empty() && _lidar.empty()) {
         ImGui::SameLine();
         ui::TextDisabled(dmsg::no_input_yet);
     }
@@ -3922,6 +3903,8 @@ void GuiApp::draw_dataset_source() {
                   FileDialog::Mode::Folder);
     }
     ui::help_on_hover(dmsg::add_dataset_help);
+    ImGui::SameLine();
+    draw_lidar_sources();
 
     // Masks that came WITH the photos are adopted automatically, which is
     // right for a prepared capture and wrong for a folder whose masks/ happens
@@ -3942,7 +3925,10 @@ void GuiApp::draw_dataset_source() {
             ui::help_on_hover(dmsg::flip_found_masks_help);
             ImGui::Unindent();
         }
-        photo_import_combo(&_photo_import, _sources.size() > 1);
+        // A scan's photographs or views join the images, so they cannot be
+        // read where they are.
+        photo_import_combo(&_photo_import,
+                           _sources.size() > 1 || (!_lidar.empty() && !_lidar_in_frame));
     }
 
     ImGui::SetNextItemWidth(px(-220.0f));
@@ -4818,7 +4804,6 @@ void GuiApp::open_mask_preview() {
     if (!freeze_native_device()) return;
     _segment.open(preview_source((size_t)_mask_preview_input),
                   _mask_enable ? selected_mask_model() : MaskModelFiles{});
-    _e57_segment = false;
 }
 
 GuiApp::MaskingPanel GuiApp::dataset_masking_panel() {
@@ -5287,6 +5272,7 @@ const Msg& step_name(Stage s) {
         case Stage::Features:  return dmsg::step_features;
         case Stage::Matching:  return dmsg::step_matching;
         case Stage::Mapping:   return dmsg::step_mapping;
+        case Stage::Align:     return spirula::i18n::msg::lidar::step_align;
         case Stage::Geometry:  return dmsg::step_geometry;
         case Stage::Finishing: return dmsg::step_finishing;
     }
@@ -5369,7 +5355,13 @@ int draw_view_tabs(const Msg* const* names, const bool* avail, int n, int implie
 
 void GuiApp::draw_dataset_steps() {
     std::vector<RunStep> all;
-    for (int i = 0; i < kNumStages; i++) all.push_back({(Stage)i, &step_name((Stage)i)});
+    for (int i = 0; i < kNumStages; i++) {
+        // Only a run with a laser scan has the step at all.
+        if ((Stage)i == Stage::Align && _lidar.empty() &&
+            dataset_steps()->stage(Stage::Align).status == StageStatus::Pending)
+            continue;
+        all.push_back({(Stage)i, &step_name((Stage)i)});
+    }
     draw_run_steps(*dataset_steps(), all);
 }
 
@@ -5455,6 +5447,7 @@ int GuiApp::preview_for_stage() {
         case Stage::Masks:     return 1;
         case Stage::Features:  return 2;
         case Stage::Matching:  return 3;
+        case Stage::Align:
         case Stage::Geometry:  return 5;
         case Stage::Mapping:
         case Stage::Finishing: return 4;
@@ -6493,7 +6486,8 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     ImGui::EndDisabled();
     ImGui::Spacing();
 
-    ImGui::BeginDisabled(dataset_locked(Stage::Geometry));
+    // A laser scan gives the run its depth and normals.
+    ImGui::BeginDisabled(dataset_locked(Stage::Geometry) || !_lidar.empty());
     draw_geometry_options();
     ImGui::EndDisabled();
     ImGui::Spacing();
@@ -6513,7 +6507,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     // ---- run / status ----
     const float action_y0 = ImGui::GetCursorPosY();
     ImGui::Spacing();
-    bool input_missing = _sources.empty() || _workspace.empty();
+    bool input_missing = (_sources.empty() && _lidar.empty()) || _workspace.empty();
     for (const PrepInput& s : _sources)
         input_missing = input_missing || s.path.empty();
     const bool ready = !running && !input_missing && _source_probes_ready;
@@ -6683,7 +6677,7 @@ void GuiApp::draw_new_dataset() {
 
     draw_log_panel(log_h);
 
-    if (_segment.is_open() && !_e57_segment) {
+    if (_segment.is_open()) {
         // It edits one input's stencil and shows one input's frames, so it
         // cannot outlive the list it was opened against.
         if (_sources.empty()) {
@@ -7315,500 +7309,6 @@ void GuiApp::draw_mesh() {
     draw_log_panel(log_h);
 }
 
-
-// ===========================================================================
-// Dataset from an E57 scan
-// ===========================================================================
-
-namespace {
-
-// Every usable image of the file as a camera, and about this many points.
-constexpr int64_t kE57PreviewPoints = 1000000;
-
-// The shape ViewportPanel previews, centred on the cameras in double (a
-// geo-referenced scan sits millions of metres out) and scaled to fit, as the
-// live SfM model is (SfmProgress.cpp read_live_model).
-LiveModel e57_preview_model(const app::E57Preview& p) {
-    LiveModel m;
-    ParsedDataset& ds = m.ds;
-    const size_t n = p.cameras.size(), np = p.xyz.size() / 3;
-    double centre[3] = {0, 0, 0};
-    for (const app::E57Camera& c : p.cameras)
-        for (int k = 0; k < 3; k++) centre[k] += c.c2w[k * 4 + 3] / (double)n;
-    if (n == 0)
-        for (size_t i = 0; i < np; i++)
-            for (int k = 0; k < 3; k++) centre[k] += p.xyz[i * 3 + k] / (double)np;
-    ds.num_cameras = (int64_t)n;
-    ds.c2w.resize(n * 12);
-    ds.intrins.resize(n * 4);
-    ds.camera_distortions.assign(n, (int32_t)CameraDistortionType::None);
-    ds.dist_coeffs.assign(n * kCameraDistortionParams, 0.0f);
-    float radius = 0.0f;
-    for (size_t i = 0; i < n; i++) {
-        const app::E57Camera& c = p.cameras[i];
-        float d2 = 0.0f;
-        for (int r = 0; r < 3; r++) {
-            for (int k = 0; k < 3; k++) ds.c2w[i * 12 + r * 4 + k] = (float)c.c2w[r * 4 + k];
-            const float t = (float)(c.c2w[r * 4 + 3] - centre[r]);
-            ds.c2w[i * 12 + r * 4 + 3] = t;
-            d2 += t * t;
-        }
-        radius = std::max(radius, std::sqrt(d2));
-        const float k4[4] = {(float)c.fx, (float)c.fy, (float)c.cx, (float)c.cy};
-        std::copy(k4, k4 + 4, &ds.intrins[i * 4]);
-        ds.widths.push_back((int32_t)c.width);
-        ds.heights.push_back((int32_t)c.height);
-        ds.camera_models.push_back((int32_t)(std::strcmp(c.model, "PINHOLE") == 0
-                                                 ? CameraModelType::PINHOLE
-                                                 : CameraModelType::EQUIRECTANGULAR));
-    }
-    ds.points.xyz.resize(np * 3);
-    ds.points.rgb = p.rgb;
-    float reach = 0.0f;
-    for (size_t i = 0; i < np; i++) {
-        float d2 = 0.0f;
-        for (int k = 0; k < 3; k++) {
-            const double v = p.xyz[i * 3 + k] - centre[k];
-            ds.points.xyz[i * 3 + k] = v;
-            d2 += (float)(v * v);
-        }
-        reach = std::max(reach, d2);
-    }
-    // One station has no spread to frame by; the points reach far past it.
-    if (radius <= 1e-6f) radius = 0.25f * std::sqrt(reach);
-    if (!(radius > 1e-6f)) radius = 1.0f;
-    ds.train_frame_scale = radius;
-    ds.train_to_normalized = {radius, 0, 0, 0, 0, radius, 0, 0, 0, 0, radius, 0, 0, 0, 0, 1};
-    ds.gauge_oriented = ds.gauge_metric = true;
-    m.post.n_post = ds.num_cameras;
-    m.post.c2w_flip = ds.c2w;
-    m.n_images = m.n_registered = (uint32_t)n;
-    m.n_points = np;
-    return m;
-}
-
-// The dataset screen's names for the steps, where the E57 run's are the same.
-const Msg& e57_step_name(Stage s) {
-    switch (s) {
-        case Stage::Mapping:   return e57msg::step_scans;
-        case Stage::Finishing: return e57msg::points;
-        default:               return step_name(s);
-    }
-}
-
-}  // namespace
-
-// Only the XML section is read, which is milliseconds even for a scan of
-// gigabytes, so the screen can say what the file holds as soon as it is picked.
-void GuiApp::set_e57_source(const std::string& path) {
-    _e57_job.input = path;
-    _e57_job.output = path.empty() ? std::string() : app::default_e57_dataset_dir(path);
-    _e57_summary.clear();
-    _e57_read_error.clear();
-    _e57_usable_pinhole = _e57_usable_spherical = 0;
-    release_e57_preview();
-    _e57.reset();
-    clear_e57_run_view();
-    // A new capture: its own input, stencil and frames, as a new row would be.
-    PrepInput frames;
-    frames.path = e57_frames_dir();
-    _e57_inputs = {frames};
-    _e57_mask_preview_input = 0;
-    if (path.empty()) return;
-    seed_e57_prompt();
-    try {
-        const spirula::e57::Reader reader(path);
-        int64_t pinhole = 0, spherical = 0;
-        for (const spirula::e57::Image& im : reader.images()) {
-            const bool is_pinhole = im.projection == spirula::e57::Projection::Pinhole;
-            pinhole += is_pinhole;
-            spherical += im.projection == spirula::e57::Projection::Spherical;
-            app::E57Camera cam;
-            if (app::e57_camera(im, cam) != app::E57Skip::None) continue;
-            (is_pinhole ? _e57_usable_pinhole : _e57_usable_spherical)++;
-        }
-        const long long n = (long long)reader.images().size();
-        _e57_summary = i18n::format(e57msg::summary, {(long long)reader.scans().size(),
-                                                      (long long)reader.total_points(), n}) +
-                       "\n" +
-                       i18n::format(e57msg::summary_images,
-                                    {(long long)pinhole, (long long)spherical,
-                                     n - pinhole - spherical});
-    } catch (const std::exception& e) {
-        _e57_read_error = e.what();
-    }
-    _e57_job.pinhole = _e57_usable_pinhole > 0;
-    _e57_job.spherical = _e57_usable_spherical > 0;
-    if (_e57_read_error.empty()) start_e57_preview(path);
-}
-
-void GuiApp::start_e57_preview(const std::string& path) {
-    release_e57_preview();
-    _e57_preview_key = "e57:" + path;
-    _e57_preview_cancel = false;
-    _e57_preview_ready = false;
-    _e57_preview_worker = std::thread([this, path] {
-        try {
-            const app::E57Preview p =
-                app::read_e57_preview(path, kE57PreviewPoints, &_e57_preview_cancel);
-            if (_e57_preview_cancel.load()) return;
-            _e57_preview = e57_preview_model(p);
-            _e57_preview_ready = true;
-        } catch (const std::exception&) {
-            // The header already read; a failure deeper in shows when converting.
-        }
-    });
-}
-
-void GuiApp::release_e57_preview() {
-    _e57_frames_cancel = true;
-    if (_e57_frames_worker.joinable()) _e57_frames_worker.join();
-    if (!_e57_frames_key.empty()) {
-        // A scan's photos can be gigabytes; they are only for the preview.
-        std::error_code ec;
-        fs::remove_all(fs::path(e57_frames_dir()).parent_path(), ec);
-    }
-    _e57_frames_ready = false;
-    _e57_frames_key.clear();
-    _e57_open_when_ready = false;
-    if (_e57_segment && _segment.is_open()) _segment.close();
-    _e57_segment = false;
-    _e57_preview_cancel = true;
-    if (_e57_preview_worker.joinable()) _e57_preview_worker.join();
-    _e57_preview_ready = false;
-    _e57_preview = LiveModel{};
-    if (_e57_view_attached) {
-        _e57_view.detach();
-        _e57_view.destroy_gl();
-        _e57_view_attached = false;
-    }
-}
-
-std::string GuiApp::e57_frames_dir() {
-    return (fs::path(app::cache_dir()) / "e57-frames" / "images").string();
-}
-
-// Whoever carries a handheld scanner is in its panoramas, and whoever walks
-// past a tripod is in its photos: the dataset screen's 360-camera preset names
-// both, and is the one place those words are written.
-void GuiApp::seed_e57_prompt() {
-    if (!_mask.prompt.empty() || !selected_mask_model().text) return;
-    DatasetSettings usual;
-    dataset_apply_preset(usual, "360-camera");
-    _mask.prompt = usual.mask.prompt;
-}
-
-GuiApp::MaskingPanel GuiApp::e57_masking_panel() {
-    MaskingPanel p;
-    p.inputs = &_e57_inputs;
-    p.enable = &_e57_mask_enable;
-    p.border = &_e57_border_enable;
-    p.preview_input = &_e57_mask_preview_input;
-    p.frame_shapes = &_e57_frame_shapes;
-    // Cube faces and panoramas have no lens circle to fit.
-    p.fit_lens_border = false;
-    p.preview_ready = !_e57_job.input.empty() && _e57_read_error.empty();
-    p.preview_wait = &e57msg::no_source;
-    p.open_preview = [this] { open_e57_mask_preview(); };
-    return p;
-}
-
-// The frames are the images the dataset will hold, under its own names: a
-// click on one is a click on that image of the run (E57Job::frames).
-void GuiApp::open_e57_mask_preview() {
-    if (native_work_busy() || _e57_job.input.empty()) return;
-    const std::string key = _e57_job.input + (_e57_job.pinhole ? ":p" : ":-") +
-                            (_e57_job.spherical ? "s" : "-");
-    if (!_e57_frames_ready.load() || _e57_frames_key != key) {
-        _e57_open_when_ready = true;
-        if (_e57_frames_worker.joinable() && _e57_frames_key == key) return;
-        _e57_frames_cancel = true;
-        if (_e57_frames_worker.joinable()) _e57_frames_worker.join();
-        _e57_frames_cancel = false;
-        _e57_frames_ready = false;
-        _e57_frames_key = key;
-        const E57Job job = _e57_job;
-        _e57_frames_worker = std::thread([this, job] {
-            try {
-                if (app::extract_e57_images(job.input, e57_frames_dir(), job.pinhole,
-                                            job.spherical, &_e57_frames_cancel))
-                    _e57_frames_ready = true;
-            } catch (const std::exception&) {
-                // The same read fails the run itself, which says why.
-            }
-        });
-        return;
-    }
-    // As on the dataset screen: a preview segments on the GPU the run will use.
-    stop_inference_users();
-    close_splat();
-    if (!freeze_native_device()) return;
-    PreviewSource src;
-    src.input = _e57_inputs[0].path;
-    src.device = _native_device_uuid;
-    _segment.open(src, _e57_mask_enable ? selected_mask_model() : MaskModelFiles{});
-    _e57_segment = true;
-}
-
-void GuiApp::start_e57_job() {
-    if (native_work_busy()) return;
-    E57Job job = _e57_job;
-    job.masks = _e57_mask_enable || _e57_border_enable;
-    if (job.masks) {
-        // What launch_dataset_job does before its masking step.
-        stop_inference_users();
-        close_splat();
-        if (!freeze_native_device()) return;
-        fill_masking(job.prep);
-        job.prep.mask_enable = _e57_mask_enable;
-        if (_e57_border_enable && !_e57_inputs.empty()) job.stencil = _e57_inputs[0].stencil;
-        job.frames = _e57_inputs.empty() ? std::string() : _e57_inputs[0].path;
-        app::set_crash_note("building dataset " + job.output);
-    }
-    clear_e57_run_view();
-    _e57.start(job, RunFilms{&_e57_film_frames, &_e57_film_masks, &_e57_film_geometry});
-}
-
-void GuiApp::clear_e57_run_view() {
-    if (_e57.busy()) return;
-    for (FilmReel* f : {&_e57_film_frames, &_e57_film_geometry, &_e57_film_masks}) {
-        if (!f->has_frames()) continue;
-        f->clear();
-        f->destroy_gl();
-    }
-    _e57_view_tab = _e57_last_view = -1;
-}
-
-// The dataset screen's step row and views, over the scan's own: the run
-// writes pictures a counter cannot describe, and the scan is what it reads.
-void GuiApp::draw_e57_run_view(float height) {
-    const float top = ImGui::GetCursorPosY();
-    if (_e57.state() != E57Runner::State::Idle) {
-        std::vector<RunStep> steps;
-        for (Stage st : _e57.steps_taken()) steps.push_back({st, &e57_step_name(st)});
-        draw_run_steps(_e57.steps(), steps);
-    }
-    if (_e57.busy()) {
-        switch (_e57.steps().current()) {
-            case Stage::Frames:   _e57_last_view = 1; break;
-            case Stage::Geometry: _e57_last_view = 2; break;
-            case Stage::Masks:    _e57_last_view = 3; break;
-            default:              _e57_last_view = 0; break;
-        }
-    }
-    FilmReel* reels[4] = {nullptr, &_e57_film_frames, &_e57_film_geometry,
-                          &_e57_film_masks};
-    const bool avail[4] = {_e57_view_attached || _e57_preview_worker.joinable(),
-                           _e57_film_frames.has_frames(), _e57_film_geometry.has_frames(),
-                           _e57_film_masks.has_frames()};
-    const Msg* names[4] = {&dmsg::view_model, &dmsg::view_frames, &dmsg::view_geometry,
-                           &dmsg::view_masks};
-    // One view needs no choice, which is the screen before any run.
-    int tab = -1;
-    if (std::count(avail, avail + 4, true) > 1)
-        tab = draw_view_tabs(names, avail, 4, _e57_last_view, _e57_view_tab);
-    else
-        for (int i = 0; i < 4 && tab < 0; i++)
-            if (avail[i]) tab = i;
-    if (tab < 0) return;
-    const float h = std::max(px(60.0f), height - (ImGui::GetCursorPosY() - top));
-    if (reels[tab]) {
-        reels[tab]->draw(h - px(8.0f));
-        return;
-    }
-    ImGui::BeginChild("##e57view", ImVec2(0, h));
-    if (_e57_view_attached) _e57_view.draw(/*training=*/false);
-    else ui::TextDisabled(e57msg::preview_loading);
-    ImGui::EndChild();
-}
-
-void GuiApp::draw_e57_form(bool running) {
-    ui::TextDisabledWrapped(e57msg::intro);
-    ImGui::Spacing();
-
-    ImGui::BeginDisabled(running);
-    ui::SeparatorText(e57msg::source);
-    std::string typed = _e57_job.input;
-    ImGui::SetNextItemWidth(px(-70.0f));
-    ui::InputTextRaw("##e57src", &typed);
-    if (ImGui::IsItemDeactivatedAfterEdit()) set_e57_source(typed);
-    ImGui::SameLine();
-    if (ui::ButtonRaw("...##e57srcpick", ImVec2(60, 0)))
-        open_pick(PickAction::E57Source, e57msg::pick_source.get(),
-                  FileDialog::Mode::File, {".e57"});
-    if (!_e57_read_error.empty())
-        ui::TextColoredWrapped(kErr, e57msg::read_failed, {_e57_read_error});
-    else if (!_e57_summary.empty())
-        ui::TextDisabledRaw(_e57_summary);
-
-    ui::SeparatorText(e57msg::output);
-    ImGui::SetNextItemWidth(px(-70.0f));
-    ui::InputTextRaw("##e57out", &_e57_job.output);
-    ImGui::SameLine();
-    if (ui::ButtonRaw("...##e57outpick", ImVec2(60, 0)))
-        open_pick(PickAction::E57Output, e57msg::pick_output.get(),
-                  FileDialog::Mode::Folder);
-    // Not about the folder a run is writing, or has just written.
-    const bool ours = _e57.state() != E57Runner::State::Idle &&
-                      _e57.output() == _e57_job.output;
-    std::error_code ec;
-    if (!ours && !_e57_job.output.empty() && fs::is_directory(_e57_job.output, ec) &&
-        !fs::is_empty(_e57_job.output, ec))
-        ui::TextColoredWrapped(kWarn, e57msg::output_not_empty);
-
-    ImGui::Spacing();
-    ImGui::BeginDisabled(_e57_usable_pinhole == 0);
-    ui::Checkbox(e57msg::use_pinhole, &_e57_job.pinhole);
-    ImGui::EndDisabled();
-    ui::help_on_hover(e57msg::use_pinhole_help);
-    ImGui::SameLine();
-    ImGui::BeginDisabled(_e57_usable_spherical == 0);
-    ui::Checkbox(e57msg::use_panoramas, &_e57_job.spherical);
-    ImGui::EndDisabled();
-    ui::help_on_hover(e57msg::use_panoramas_help);
-    ui::Checkbox(e57msg::depth_maps, &_e57_job.depth_maps);
-    ui::help_on_hover(e57msg::depth_maps_help);
-    ImGui::BeginDisabled(_e57_job.all_points);
-    ImGui::SetNextItemWidth(px(160.0f));
-    ui::InputInt(e57msg::points, &_e57_job.seed_points, 100000, 1000000);
-    _e57_job.seed_points = std::max(0, _e57_job.seed_points);
-    ImGui::EndDisabled();
-    ui::help_on_hover(e57msg::points_help);
-    ImGui::SameLine();
-    ui::Checkbox(e57msg::use_all_points, &_e57_job.all_points);
-    ui::help_on_hover(e57msg::use_all_points_help);
-
-    // The dataset screen's masking, over this screen's one input.
-    ui::SeparatorText(dmsg::step_masks);
-    draw_masking_options(e57_masking_panel());
-    if (_e57_mask_enable && !_e57_mask_was_enabled) seed_e57_prompt();
-    _e57_mask_was_enabled = _e57_mask_enable;
-    if (_e57_open_when_ready && _e57_frames_worker.joinable())
-        ui::TextDisabled(e57msg::preview_frames);
-    ImGui::EndDisabled();
-
-    ImGui::Spacing();
-    if (running) {
-        if (ui::Button(dmsg::cancel, ImVec2(px(200.0f), px(34.0f)))) _e57.cancel();
-        return;
-    }
-    const bool usable = (_e57_job.pinhole && _e57_usable_pinhole > 0) ||
-                        (_e57_job.spherical && _e57_usable_spherical > 0);
-    const bool need_mask_model = mask_model_missing(_e57_mask_enable, _e57_inputs);
-    // DatasetPrep's own refusal, said before the conversion rather than after.
-    const MaskModelFiles mask_model = selected_mask_model();
-    const bool no_target = _e57_mask_enable && mask_model.kind != MaskModelKind::Subject &&
-                           (_mask.prompt.empty() || !mask_model.text) &&
-                           !inputs_without_clicks(_e57_inputs, _mask.clicks).empty();
-    ImGui::BeginDisabled(!usable || _e57_job.output.empty() || native_work_busy() ||
-                         need_mask_model || no_target);
-    if (ui::Button(dmsg::create_dataset, ImVec2(220, 34))) start_e57_job();
-    ImGui::EndDisabled();
-    if (_e57_job.input.empty()) {
-        ImGui::SameLine();
-        ui::TextColored(kDim, e57msg::no_source);
-    } else if (_e57_read_error.empty() &&
-               _e57_usable_pinhole + _e57_usable_spherical == 0) {
-        ui::TextColoredWrapped(kWarn, e57msg::err_no_images);
-    } else if (need_mask_model) {
-        draw_model_fetch(_download, dmsg::mask_model_first, dmsg::mask_get_model,
-                         [this] { request_model_download(_model_id, _mask_detector_id); });
-    } else if (no_target) {
-        ui::TextColoredWrapped(kWarn, spirula::i18n::msg::log::err_mask_no_target);
-    }
-    switch (_e57.state()) {
-        case E57Runner::State::Done: {
-            ImGui::Spacing();
-            ui::TextColored(kOk, e57msg::finished, {_e57.output()});
-            const std::string warn = _e57.check_warning();
-            if (!warn.empty()) ui::TextColoredWrappedRaw(kWarn, warn);
-            draw_dataset_open_buttons(
-                DatasetFolders{_e57.output(), "", _e57.mask_dir(), false}, true);
-            break;
-        }
-        case E57Runner::State::Failed:
-        case E57Runner::State::Cancelled:
-            if (_e57.converted()) {
-                // Masking is what stopped; the dataset is there and trains.
-                ui::TextColoredWrapped(kWarn, e57msg::not_masked, {_e57.output()});
-                if (_e57.state() == E57Runner::State::Cancelled)
-                    ui::TextColored(kDim, dmsg::cancelled);
-                else
-                    ui::TextColoredWrappedRaw(kDim, _e57.error());
-                draw_dataset_open_buttons(DatasetFolders{_e57.output(), "", "", false}, true);
-            } else if (_e57.state() == E57Runner::State::Cancelled) {
-                ui::TextColored(kDim, dmsg::cancelled);
-            } else {
-                ui::TextColored(kErr, e57msg::failed);
-                ui::TextColoredWrappedRaw(kDim, _e57.error());
-            }
-            break;
-        default:
-            break;
-    }
-}
-
-void GuiApp::draw_e57_dataset() {
-    if (_e57_open_when_ready && _e57_frames_ready.load()) {
-        if (_e57_frames_worker.joinable()) _e57_frames_worker.join();
-        _e57_open_when_ready = false;
-        open_e57_mask_preview();
-    }
-    if (_e57_preview_ready.load() && !_e57_view_attached) {
-        if (_e57_preview_worker.joinable()) _e57_preview_worker.join();
-        _e57_view.attach_preview_data(_e57_preview.ds, _e57_preview.post, _e57_preview_key,
-                                      1.0f, _e57_preview.ds.num_cameras > 0);
-        _e57_view_attached = true;
-    }
-    // Back on the screen: the scan is still picked, its preview was let go.
-    if (!_e57_job.input.empty() && _e57_read_error.empty() && !_e57_view_attached &&
-        !_e57_preview_worker.joinable())
-        start_e57_preview(_e57_job.input);
-    if (ui::Button(msg::back_home)) request_go_home();
-    ImGui::SameLine();
-    ui::Text(e57msg::title);
-
-    const bool running = _e57.busy();
-    const bool preview = _e57_view_attached || _e57_preview_worker.joinable() ||
-                         _e57.state() != E57Runner::State::Idle;
-    const float log_h = log_height(ImGui::GetContentRegionAvail().y);
-    ImGui::BeginChild("##e57body", ImVec2(0, body_height(log_h)));
-    if (preview && ImGui::GetContentRegionAvail().x >= px(1000.0f)) {
-        const float w = std::clamp(_e57_panel_w * ui_scale(), px(320.0f),
-                                   std::max(px(320.0f),
-                                            ImGui::GetContentRegionAvail().x * 0.6f));
-        const float col_h = ImGui::GetContentRegionAvail().y;
-        ImGui::BeginChild("##e57left", ImVec2(w, col_h));
-        draw_e57_form(running);
-        ImGui::EndChild();
-        float dragged = w;
-        if (splitter_v("##e57split", &dragged, px(320.0f), ImGui::GetWindowWidth() * 0.75f,
-                       col_h)) {
-            _e57_panel_w = dragged / ui_scale();
-            _layout_dirty = true;
-        }
-        ImGui::BeginGroup();
-        draw_e57_run_view(col_h);
-        ImGui::EndGroup();
-    } else {
-        draw_e57_form(running);
-        if (preview) {
-            ImGui::Spacing();
-            draw_e57_run_view(std::max(px(300.0f), ImGui::GetContentRegionAvail().y));
-        }
-    }
-    ImGui::EndChild();
-    draw_log_panel(log_h);
-
-    if (_segment.is_open() && _e57_segment && !_e57_inputs.empty()) {
-        _segment.set_workspace(_e57_job.output);
-        _segment.draw(_mask, _e57_inputs[0].stencil);
-        if (_segment.take_shapes_edited()) _e57_frame_shapes.clear();
-        if (_segment.take_browse_request())
-            open_pick(PickAction::StencilFile, dmsg::stencil_pick_file.get(),
-                      FileDialog::Mode::File, {".svg"});
-    }
-}
 
 // ===========================================================================
 // Batch screen

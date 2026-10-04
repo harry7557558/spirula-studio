@@ -101,7 +101,10 @@ list(APPEND SS_TOOL_DEFS SS_TOOL_MESH=1)
 # ---- a dataset from an E57 laser scan: host only, both backends ----
 list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/cli/e57_main.cpp
+     ${SS_SRC}/app/cli/lidar_main.cpp
      ${SS_SRC}/app/E57Dataset.cpp
+     ${SS_SRC}/app/LidarAlign.cpp
+     ${SS_SRC}/app/LidarDataset.cpp
      ${SS_SRC}/app/ScanDepth.cpp
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
@@ -385,6 +388,14 @@ add_executable(scan_depth_test
     ${SS_SRC}/app/tests/scan_depth_test.cpp
     ${SS_SRC}/app/ScanDepth.cpp)
 ss_configure_app(scan_depth_test)
+
+add_executable(lidar_align_test
+    ${SS_SRC}/app/tests/lidar_align_test.cpp
+    ${SS_SRC}/app/LidarAlign.cpp
+    ${SS_SRC}/app/E57Dataset.cpp
+    ${SS_SRC}/app/ScanDepth.cpp
+    ${SS_SRC}/app/DepthPng.cpp)
+ss_configure_app(lidar_align_test)
 
 # The stencil shapes, spelling and fill, with no GUI: FrameMask.cpp is compiled
 # into the CLI too, so this must link without imgui.

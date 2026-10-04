@@ -836,19 +836,18 @@ says it has no motion rather than a gap in the list.
 
 ## E57 laser scans
 
-`spirula e57 <scan.e57> [<folder>]` -- or **File > Create Dataset from E57** in
-the GUI, where dropping an `.e57` on the window opens the same screen -- turns a
-laser scan into a Nerfstudio dataset. No reconstruction runs: the scanner has
-already registered every image it took. The screen previews the file's cameras
-and a million of its points in the viewport the dataset screen uses
-(`ViewportPanel` in preview mode, no engine), read on a worker as soon as the
-file is picked. While a run writes the dataset, that column is the dataset
-screen's run view: its row of steps (Frames, Scans, Depth, Seed points, Masks,
-as far as the run takes them) with the running one's bar, and reels of the
-images, the photo / normal / depth rows and the masks as they are written. The
-child's pictures are read off its output folder (`OutputWatch`, as the geometry
-step's are) on a thread of their own, since a scanner's photo can be tens of
-megapixels to decode; the masks are handed over by `DatasetPrep`.
+Two ways in. On the GUI's dataset screen a laser scan (E57, LAS or PLY) is an
+input like photos and videos -- **Add LiDAR scan...**, or drop the file: the
+reconstruction runs, then is aligned with the scan (rotation, translation and
+scale) and written as a COLMAP model whose seed points are the scan's, with
+tracks; an E57 that carries photographs can be the only input.
+[notes/lidar-alignment.md](notes/lidar-alignment.md) is that path.
+
+`spirula e57 <scan.e57> [<folder>]` is the other: no reconstruction at all,
+the scanner's registered images, poses and point cloud written straight out
+as a Nerfstudio dataset. It is what the rest of this section describes, and
+the scanner-pose half of it is what the dataset screen falls back to for
+photographs its reconstruction cannot place (a tripod's cube faces).
 
 Tested so far with scans from a Leica BLK360 tripod scanner and an XGRIDS
 Lixel handheld scanner on macOS -- the two the camera conventions below were
@@ -982,33 +981,9 @@ bias: most of a terrestrial scan's points are within a few metres of a station.
 
 ### Masks
 
-The E57 screen masks with the dataset screen's code, on its own page: the
-same options panel (`draw_masking_options`, given the screen's one input and
-its own switches through `MaskingPanel`), the same settings and checkpoint
-(`_mask`, `_model_id`, the licence and download), the same "Try the mask"
-panel and the same `DatasetPrep` masking step, which `E57Runner` runs in this
-process right after `spirula e57` has written the dataset -- an existing
-dataset read in place, as the dataset screen masks one. The result offers the
-correction editor, and its edits in `mask_edits/` are re-applied by every run.
-The prompt starts as the 360-camera preset's (people, hands, backpacks and
-their shadows: whoever carries a handheld scanner, or walks past a tripod),
-and Create waits for a prompt or a click rather than failing after the
-conversion. Masking that fails or is cancelled takes the masks it made with
-it, since the trainer reads `masks/` unasked: the dataset is left unmasked
-rather than masked in part, and says so.
-
-"Try the mask" needs frames before the dataset exists, so the images are
-extracted into the cache (`extract_e57_images`) under the names the dataset
-will give them, and a click on one is re-pointed at the same image of the run.
-They are deleted when the screen lets go of them. "Hide masked areas from the
-reconstruction" is not offered: nothing reconstructs a scan. And the stencil's
-fisheye-border fit is not switched on by ticking fixed areas, since cube faces
-and panoramas have no lens circle.
-
-Re-creating a dataset replaces what the last run derived from the images --
-masks, depth and normal maps, frames of images now left out -- so masking
-starts from the images alone. An E57 `imageMask` is written to `masks/` and,
-like any mask an input brings, stops SAM from masking that image again.
+`spirula e57` writes an image's `imageMask`, when it has one, to `masks/`.
+On the dataset screen the scan's photographs are inputs of their own, masked
+like any other photo folder.
 
 ### What a scan does not give you
 

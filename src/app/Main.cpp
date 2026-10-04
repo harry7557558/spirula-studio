@@ -80,6 +80,7 @@ const std::vector<Tool>& tools() {
 #endif
 #ifdef SS_TOOL_E57
         {app::kToolE57, &cmsg::tool_e57, spirula_e57_main},
+        {app::kToolLidar, &cmsg::tool_lidar, spirula_lidar_main},
 #endif
 #ifdef SS_TOOL_ENCODE
         {app::kToolEncode, &cmsg::tool_encode, spirula_encode_main},

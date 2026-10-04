@@ -85,7 +85,8 @@ src/
 ├── engine/                 Engine*.cpp/.h — the training engine
 │                             (process-global singleton)
 ├── data/                   DataManager (image cache / prefetch / warp),
-│   │                         E57Reader (laser scans: points + registered images)
+│   │                         E57Reader (laser scans: points + registered images),
+│   │                         PointCloudFile (E57 / LAS / PLY points, streamed)
 │   │                         Region.h / LabelField.h / RegionProgram.h (regions
 │   │                         of space with an inside test on host and device,
 │   │                         and the labelled seed field that gives every point
@@ -148,10 +149,15 @@ src/
 │   ├── FrameExtract.{h,cpp}  video -> sharp frames (`spirula sam extract` also
 │   │                         masks them in the same pass; the GUI masks after)
 │   ├── E57Dataset.{h,cpp}  an E57 scan written out as a Nerfstudio dataset
-│   │                         (`spirula e57`; the GUI's "Create Dataset from
-│   │                         E57" runs it as a child) -- docs/datasets.md
-│   ├── ScanDepth.{h,cpp}   depth and normal maps of a camera, rendered from
-│   │                         a scan's points
+│   │                         with no SfM (`spirula e57`) -- docs/datasets.md
+│   ├── LidarAlign.{h,cpp}  a reconstruction fitted onto a laser scan (Sim3:
+│   │                         anchors, then point-to-plane ICP)
+│   ├── LidarDataset.{h,cpp} the dataset that makes (`spirula lidar`, the
+│   │                         dataset screen's Align step): one COLMAP model in
+│   │                         the scan frame, scan seeds with tracks, depth +
+│   │                         normals -- docs/notes/lidar-alignment.md
+│   ├── ScanDepth.{h,cpp}   depth, normal and colour maps of a camera,
+│   │                         rendered from a scan's points
 │   ├── Pano360.{h,cpp}     a 360 camera's own frame layout (the GoPro MAX
 │   │                         .360 EAC packing) and the views a dataset wants
 │   │                         out of it -- one implementation, both decode paths

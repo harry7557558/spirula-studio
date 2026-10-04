@@ -25,6 +25,7 @@
 #endif
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryRunner.h"
+#include "app/gui/LidarStep.h"
 #include "app/gui/PrepProgress.h"
 #include "i18n/catalog/Dataset.h"
 
@@ -83,6 +84,8 @@ struct SfmJob {
     // ... and so is this: the depth and normal maps are written after the
     // reconstruction, from the dataset it produced, whichever engine made it.
     GeometryJob geometry;
+    // Laser scans the model is aligned with; they replace the geometry step.
+    LidarJob lidar;
 
     // ---- reconstruction ----
     // Replace the model in the output folder. A run left to itself REUSES one,
