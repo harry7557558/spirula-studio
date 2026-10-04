@@ -17,6 +17,7 @@
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryPanel.h"
 #include "app/gui/PartitionPanel.h"
+#include "app/gui/RecomputePanel.h"
 #include "app/gui/RoiEditor.h"
 #include "app/gui/ImageCompare.h"
 #include "app/gui/MatchMatrix.h"
@@ -816,6 +817,10 @@ private:
     void draw_roi_row(bool busy);
     std::vector<std::string> _roi_files;
     std::string _roi_files_for;
+    // "Recompute Sparse Pointcloud", between Change... and the region row.
+    RecomputePanel _recompute;
+    void draw_recompute_row(bool busy);
+    void take_recomputed();
     // Queueing a partition's parts: the modal with the run's settings, the
     // "clear what is still pending?" question, and the rows it finally adds.
     struct PartitionQueue {

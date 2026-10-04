@@ -1033,6 +1033,11 @@ std::string find_colmap_model(const std::string& dataset_dir,
     return dir;
 }
 
+std::string find_colmap_poses(const std::string& dataset_dir) {
+    ColmapModelFmt fmt;
+    return find_colmap_recon(dataset_dir, DatasetParserConfig{}, &fmt, false);
+}
+
 
 ParsedDataset parse_dataset(const std::string& dataset_dir,
                             const DatasetParserConfig& cfg,

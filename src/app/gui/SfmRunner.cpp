@@ -122,6 +122,9 @@ bool has_model(const fs::path& sparse) {
 
 }  // namespace
 
+bool sfm_child_line_is_notable(const std::string& l) { return child_line_is_notable(l); }
+void sfm_sweep_intermediates(const std::string& ws) { sweep_sfm_intermediates(ws); }
+
 std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     std::vector<PendingDownload> out;
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED

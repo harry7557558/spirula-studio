@@ -99,6 +99,11 @@ inline const char* sfm_matcher_for(int features, int matcher) {
     return f.rfind("loma", 0) == 0 ? sfm_pick(kSfmFeatures, features) : "lightglue";
 }
 
+// For another launcher of `spirula sfm auto`: which of the child's lines the
+// default log view shows, and removing what a finished run no longer needs.
+bool sfm_child_line_is_notable(const std::string& l);
+void sfm_sweep_intermediates(const std::string& ws);
+
 // SS_SFM_SUBPROCESS=1 starts a session with the escape hatch below on.
 inline bool sfm_subprocess_default() {
     const char* v = spirula::env("SFM_SUBPROCESS");

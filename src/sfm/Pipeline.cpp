@@ -38,6 +38,7 @@
 #include "sfm/core/Progress.h"
 #include "sfm/core/CameraSetup.h"
 #include "sfm/core/FeatureCompaction.h"
+#include "sfm/core/FixedPoses.h"
 #include "sfm/core/Log.h"
 #include "sfm/core/Features.h"
 #include "sfm/core/Image.h"
@@ -2288,6 +2289,153 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
 // `auto`
 // ---------------------------------------------------------------------------
 
+// The summary's lines about extraction and matching, however the run mapped.
+static void printInputSummary(const ExtractStats& est, const MatchStats& mstats,
+                              bool reused_matches, double t_extract, double t_match) {
+    L::out(Tag::Run, M::sum_header);
+    L::out(Tag::Run, M::sum_extract,
+           {format_duration(t_extract), (long long)est.images,
+            (long long)est.features});
+    if (est.masked_images) {
+        // Over what this run extracted, like the warning above: a reused
+        // feature file does not say what a mask took out of it.
+        const uint64_t before = est.features_new + est.masked_out;
+        L::out(Tag::Run, M::sum_masks,
+               {(long long)est.masked_images, (long long)est.images,
+                (long long)est.masked_out,
+                L::num(before ? 100.0 * est.masked_out / before : 0.0, 1)});
+    }
+    if (reused_matches)
+        L::out(Tag::Run, M::sum_match_reused,
+               {(long long)mstats.kept, (long long)mstats.inliers});
+    else
+        L::out(Tag::Run, M::sum_match,
+               {format_duration(t_match), (long long)mstats.kept, (long long)mstats.pairs,
+                (long long)mstats.inliers, (long long)mstats.putative});
+}
+
+// Everything the exit code says, said as data. A front end reads this
+// instead of the status: 3 and 4 cannot both be reported, and this can.
+static void emitResultEvent(const AutoResult& r) {
+    Event ev;
+    ev.kind = Event::Kind::Result;
+    ev.stage = Stage::Finish;
+    ev.registered = r.registered;
+    ev.images = r.images;
+    ev.points = r.points;
+    ev.models = r.models;
+    ev.mean_reproj = r.mean_reproj;
+    ev.partial = r.partial;
+    ev.metric = r.metric;
+    events::emit(ev);
+}
+
+// Everything after matching in a --poses run: the model's poses stand where
+// the mapper's would, and are checked on disk before the run calls itself done.
+static AutoResult finishFixedRun(const SfmConfig& cfg, const FixedPoses& fixed,
+                                 const MatchesDatabase& db, const std::vector<FeatureSet>& feats,
+                                 const ExtractStats& est, const MatchStats& mstats,
+                                 bool reused_matches, double t_extract, double t_match,
+                                 const std::string& imagedir, const fs::path& sparsedir) {
+    AutoResult r;
+    r.exit_code = 1;
+    const std::vector<int64_t> db_index = matchFixedImages(fixed, db);
+    std::vector<size_t> missing;
+    for (size_t k = 0; k < db_index.size(); k++)
+        if (db_index[k] < 0) missing.push_back(k);
+    if (!missing.empty()) {
+        L::fail(Tag::Run, M::poses_missing,
+                {cfg.poses, imagedir, (long long)missing.size(), fixed.images[missing[0]].name});
+        return r;
+    }
+    for (size_t k = 0; k < db_index.size(); k++) {
+        const FeatureSet& f = feats[(size_t)db_index[k]];
+        const Camera& c = fixed.cameras.at(fixed.images[k].camera_id);
+        if (f.width == c.width && f.height == c.height) continue;
+        L::fail(Tag::Run, M::poses_size,
+                {fixed.images[k].name, (long long)f.width, (long long)f.height, cfg.poses,
+                 (long long)c.width, (long long)c.height});
+        return r;
+    }
+    if (db.images.size() > fixed.images.size()) {
+        const std::set<int64_t> posed(db_index.begin(), db_index.end());
+        size_t example = 0;
+        while (posed.count((int64_t)example)) example++;
+        L::warn(Tag::Run, M::poses_unposed,
+                {cfg.poses, (long long)(db.images.size() - fixed.images.size()),
+                 db.images[example].name});
+    }
+
+    double t0 = now();
+    events::stage_begin(Stage::Map, (int64_t)db.images.size());
+    events::map_begin(db.images.size());
+    const FixedSetup setup = fixedSetup(fixed, db_index, feats);
+    MapperOptions mopt = cfg.mapper;
+    mopt.initial_cameras = setup.model.cameras;
+    Mapper mapper(db, feats, mopt, setup.camera_ids);
+    std::vector<Reconstruction> models = {mapper.triangulateFixed(setup.model)};
+    for (int64_t i : db_index) events::map_placed((uint32_t)i);
+    events::stage_end(Stage::Map);
+    const double t_map = now() - t0;
+    Reconstruction& rec = models.front();
+    size_t tracked = 0;
+    for (const auto& kv : rec.points3D) tracked += kv.second.track.size();
+    L::out(Tag::Map, M::poses_triangulated,
+           {format_duration(t_map), (long long)rec.points3D.size(), (long long)tracked});
+    recolorPoints(models, cfg);
+    progress::model(rec, /*force=*/true);
+
+    const fs::path out = sparsedir / "0";
+    std::string diff;
+    try {
+        writeFixedModel(out.string(), fixed, db_index, rec);
+        // Against the file as it is now, not the copy this run has carried.
+        diff = checkFixedModel(out.string(), readFixedPoses(cfg.poses));
+    } catch (const std::exception& e) {
+        diff = e.what();
+    }
+    if (!diff.empty()) {
+        std::error_code ec;
+        for (const char* f : {"cameras.bin", "images.bin", "points3D.bin"}) fs::remove(out / f, ec);
+        L::fail(Tag::Run, M::poses_changed, {diff, cfg.poses});
+        r.exit_code = 2;
+        return r;
+    }
+    L::out(Tag::Run, M::poses_verified, {cfg.poses, (long long)fixed.images.size()});
+
+    double mean = 0, median = 0;
+    size_t nobs = 0;
+    reprojStats(rec, feats, mean, median, nobs);
+    const uint32_t reg = rec.numRegistered();
+    printInputSummary(est, mstats, reused_matches, t_extract, t_match);
+    L::out(Tag::Run, M::sum_map,
+           {format_duration(t_map), (long long)reg, (long long)db.images.size(),
+            (long long)rec.points3D.size(), (long long)fixed.cameras.size()});
+    printFolderCoverage(models, db);
+    writeUnregisteredList(models, db, imagedir);
+    L::out(Tag::Run, M::sum_total, {format_duration(t_extract + t_match + t_map)});
+    L::out(Tag::Run, M::sum_model_error, {L::num(mean, 3), L::num(median, 3), (long long)nobs});
+    L::out(Tag::Run, M::sum_written, {out.string()});
+
+    r.registered = reg;
+    r.images = (int64_t)db.images.size();
+    r.points = (int64_t)rec.points3D.size();
+    r.models = 1;
+    r.mean_reproj = mean;
+    r.median_reproj = median;
+    r.sparse_dir = sparsedir;
+    emitResultEvent(r);
+    if (rec.points3D.empty()) {
+        L::out(Tag::Run, M::result_failed);
+        r.exit_code = 2;
+        return r;
+    }
+    L::out(Tag::Run, M::result_ok,
+           {L::num(100.0 * reg / (double)db.images.size(), 0), L::num(mean, 2)});
+    r.exit_code = 0;
+    return r;
+}
+
 AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     AutoResult r;
     std::string _imagedir = in.image_dir;
@@ -2341,6 +2489,29 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // output rather than from reading the preset table.
     for (const PresetChange& p : in.preset_changes)
         L::out(Tag::Run, M::run_preset_moved, {"--" + p.flag, p.to, p.from});
+    // Read before extraction, so a model that cannot be used costs nothing.
+    std::optional<FixedPoses> fixed;
+    if (!cfg.poses.empty()) {
+        try {
+            fixed = readFixedPoses(cfg.poses);
+        } catch (const std::exception& e) {
+            L::fail(Tag::Run, M::map_cannot_read, {cfg.poses, e.what()});
+            r.exit_code = 1;
+            return r;
+        }
+        L::out(Tag::Run, M::poses_header,
+               {cfg.poses, (long long)fixed->images.size(), (long long)fixed->cameras.size()});
+        const std::map<std::string, std::string> stems = imageStemMap(_imagedir);
+        long long missing = 0;
+        std::string example;
+        for (const FixedImage& im : fixed->images)
+            if (!stems.count(fixedImageStem(im.name)) && !missing++) example = im.name;
+        if (missing) {
+            L::fail(Tag::Run, M::poses_missing, {cfg.poses, _imagedir, missing, example});
+            r.exit_code = 1;
+            return r;
+        }
+    }
 
     // ---- what an interrupted run left, and whether it is still ours ----
     // The signature is stored BEFORE the stage rather than after it, so that a
@@ -2407,7 +2578,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     calib.setup = cfg.camera;
     calib.image_dir = _imagedir;
     const SensorCaptures sensors = loadSensorCaptures(cfg, verbose);
-    applyMetricGpsAuto(cfg, sensors, _imagedir);
+    if (!fixed) applyMetricGpsAuto(cfg, sensors, _imagedir);
     calib.sensors = &sensors;
     // What this stage's output depends on: its own settings, the extraction
     // that produced its input, and the feature files themselves -- the pair
@@ -2484,6 +2655,9 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         remapMatches(db, plan, feats);
         if (verbose) reportFeatureCompaction(plan.stats);
     }
+    if (fixed)
+        return finishFixedRun(cfg, *fixed, db, feats, est, mstats, reused_matches, t_extract,
+                              t_match, _imagedir, sparsedir);
 
     // ---- 3. incremental mapping ----
     // The grouping and the focals the two-view stage settled on carry straight
@@ -2559,26 +2733,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     size_t nobs = 0;
     reprojStats(rec, feats, mean, median, nobs);
     const uint32_t reg = rec.numRegistered();
-    L::out(Tag::Run, M::sum_header);
-    L::out(Tag::Run, M::sum_extract,
-           {format_duration(t_extract), (long long)est.images,
-            (long long)est.features});
-    if (est.masked_images) {
-        // Over what this run extracted, like the warning above: a reused
-        // feature file does not say what a mask took out of it.
-        const uint64_t before = est.features_new + est.masked_out;
-        L::out(Tag::Run, M::sum_masks,
-               {(long long)est.masked_images, (long long)est.images,
-                (long long)est.masked_out,
-                L::num(before ? 100.0 * est.masked_out / before : 0.0, 1)});
-    }
-    if (reused_matches)
-        L::out(Tag::Run, M::sum_match_reused,
-               {(long long)mstats.kept, (long long)mstats.inliers});
-    else
-        L::out(Tag::Run, M::sum_match,
-               {format_duration(t_match), (long long)mstats.kept, (long long)mstats.pairs,
-                (long long)mstats.inliers, (long long)mstats.putative});
+    printInputSummary(est, mstats, reused_matches, t_extract, t_match);
     L::out(Tag::Run, M::sum_map,
            {format_duration(t_map), (long long)reg, (long long)est.images,
             (long long)rec.points3D.size(), (long long)n_cameras});
@@ -2606,8 +2761,6 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // Thresholds are deliberately loose -- this flags "obviously broken", not
     // "not as good as COLMAP".
     const double frac = est.images ? (double)reg / est.images : 0.0;
-    // Everything the exit code says, said as data. A front end reads this
-    // instead of the status: 3 and 4 cannot both be reported, and this can.
     auto emitResult = [&](bool part) {
         r.registered = reg;
         r.images = est.images;
@@ -2618,17 +2771,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         r.partial = part;
         r.metric = auto_metric;
         r.sparse_dir = sparsedir;
-        Event ev;
-        ev.kind = Event::Kind::Result;
-        ev.stage = Stage::Finish;
-        ev.registered = reg;
-        ev.images = est.images;
-        ev.points = (int64_t)rec.points3D.size();
-        ev.models = (int64_t)models.size();
-        ev.mean_reproj = mean;
-        ev.partial = part;
-        ev.metric = auto_metric;
-        events::emit(ev);
+        emitResultEvent(r);
     };
     if (reg < 2 || rec.points3D.empty()) {
         L::out(Tag::Run, M::result_failed);
@@ -2711,6 +2854,28 @@ bool cameraOverrideName(const std::string& a, OverrideKind& kind) {
     else if (a == "--distortion") kind = OverrideKind::Distortion;
     else return false;
     return true;
+}
+
+// What --poses refuses: a setting that would change a camera, or that only the
+// mapper or the gauge fix reads, which a --poses run never runs.
+std::string fixedPosesConflict(const SfmConfig& cfg, const std::set<std::string>& seen,
+                               const std::string& workspace) {
+    for (const char* f : {"camera-model", "focal", "distortion", "mapper", "metric-gps",
+                          "metric-positions", "level", "orient", "sensor-gauge",
+                          "exif-attitude", "telemetry"})
+        if (seen.count(f))
+            return std::string("--poses keeps the cameras as they are, so --") + f +
+                   " cannot be used with it";
+    if (!cfg.camera.overrides.empty())
+        return "--poses keeps the cameras as they are, so a per-folder --camera-model, "
+               "--focal or --distortion cannot be used with it";
+    if (!cfg.rigs.empty())
+        return "--poses keeps every pose as it is, so rigs cannot be used with it";
+    std::error_code ec, ec2;
+    const fs::path out = fs::weakly_canonical(fs::path(workspace) / "sparse" / "0", ec);
+    if (!ec && out == fs::weakly_canonical(cfg.poses, ec2))
+        return "--output " + workspace + " would write its model over --poses " + cfg.poses;
+    return {};
 }
 
 }  // namespace
@@ -2808,6 +2973,8 @@ std::string parse_auto_args(const std::vector<std::string>& args, AutoRequest& o
         if (!man.mask_dir.empty()) maskdir_explicit = true;
     }
     if (std::string err = cfg.finalize(CMD_AUTO); !err.empty()) return err;
+    if (!cfg.poses.empty())
+        if (std::string err = fixedPosesConflict(cfg, seen, workspace); !err.empty()) return err;
     if (std::string err = cfg.resolveDevice(); !err.empty()) return err;
 
     out.in.image_dir = imagedir;

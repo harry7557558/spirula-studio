@@ -55,6 +55,11 @@ images/ ──► extract ──► features/ ─┐
 
 `spirula sfm auto` runs all of it from two knobs, `--quality` and `--data-type`.
 
+`--poses MODEL` replaces the `map` box with triangulation against an existing
+COLMAP model's cameras and poses, which come out byte for byte: the matchmove
+case, where the solve is authoritative and only points are wanted
+(docs/notes/fixed-poses.md).
+
 `--progress-dir DIR` adds a second, optional output: `model.bin` (the poses and
 a subsample of the points as they stand, coloured) and `pairs.bin` (per binned
 image pair: the inliers, how many pairs were candidates and how many have been

@@ -4235,6 +4235,120 @@ SS_MSG(match_sequence_added,
     RU("окна последовательностей добавили пар: {0}, к выбранным парам: {1} (пар в окнах: {2})"),
     TR("dizi pencereleri çift ekledi: {0}, seçilmiş çiftlere ek olarak: {1} (pencere çifti: {2})"));
 
+// ===========================================================================
+// Fixed poses (--poses)
+// ===========================================================================
+
+SS_MSG(poses_header,
+    EN("Poses kept from {0}   Images: {1}   Cameras: {2}"),
+    JA("{0} の姿勢をそのまま使用   画像: {1}   カメラ: {2}"),
+    ZH_HANS("沿用 {0} 的位姿   图像: {1}   相机: {2}"),
+    ZH_HANT("沿用 {0} 的位姿   影像: {1}   相機: {2}"),
+    KO("{0} 의 자세를 그대로 사용   이미지: {1}   카메라: {2}"),
+    DE("Posen unverändert aus {0}   Bilder: {1}   Kameras: {2}"),
+    FR("Poses conservées de {0}   Images : {1}   Caméras : {2}"),
+    ES("Poses conservadas de {0}   Imágenes: {1}   Cámaras: {2}"),
+    PT("Poses mantidas de {0}   Imagens: {1}   Câmeras: {2}"),
+    IT("Pose mantenute da {0}   Immagini: {1}   Fotocamere: {2}"),
+    NL("Poses ongewijzigd uit {0}   Afbeeldingen: {1}   Camera's: {2}"),
+    RU("Позы сохраняются из {0}   Изображений: {1}   Камер: {2}"),
+    TR("Pozlar {0} modelinden aynen alındı   Görüntü: {1}   Kamera: {2}"));
+
+SS_MSG(poses_missing,
+    EN("{0} poses images that are not in {1}   Missing: {2}   For example: {3}"),
+    JA("{0} には {1} にない画像の姿勢があります   不足: {2}   例: {3}"),
+    ZH_HANS("{0} 中有位姿的图像不在 {1} 中   缺少: {2}   例如: {3}"),
+    ZH_HANT("{0} 中有位姿的影像不在 {1} 中   缺少: {2}   例如: {3}"),
+    KO("{0} 에 자세가 있는 이미지가 {1} 에 없습니다   없음: {2}   예: {3}"),
+    DE("{0} enthält Posen für Bilder, die in {1} fehlen   Fehlend: {2}   Zum Beispiel: {3}"),
+    FR("{0} contient des poses d'images absentes de {1}   Manquantes : {2}   Par exemple : {3}"),
+    ES("{0} tiene poses de imágenes que no están en {1}   Faltan: {2}   Por ejemplo: {3}"),
+    PT("{0} tem poses de imagens que não estão em {1}   Em falta: {2}   Por exemplo: {3}"),
+    IT("{0} contiene pose di immagini assenti in {1}   Mancanti: {2}   Per esempio: {3}"),
+    NL("{0} bevat poses van afbeeldingen die niet in {1} staan   Ontbrekend: {2}   "
+       "Bijvoorbeeld: {3}"),
+    RU("В {0} есть позы изображений, которых нет в {1}   Отсутствует: {2}   Например: {3}"),
+    TR("{0} içinde {1} klasöründe olmayan görüntülerin pozları var   Eksik: {2}   "
+       "Örneğin: {3}"));
+
+SS_MSG(poses_unposed,
+    EN("Images without a pose in {0} are left out   Images: {1}   For example: {2}"),
+    JA("{0} に姿勢のない画像は除外します   画像: {1}   例: {2}"),
+    ZH_HANS("{0} 中没有位姿的图像将被略过   图像: {1}   例如: {2}"),
+    ZH_HANT("{0} 中沒有位姿的影像將被略過   影像: {1}   例如: {2}"),
+    KO("{0} 에 자세가 없는 이미지는 제외합니다   이미지: {1}   예: {2}"),
+    DE("Bilder ohne Pose in {0} bleiben außen vor   Bilder: {1}   Zum Beispiel: {2}"),
+    FR("Les images sans pose dans {0} sont laissées de côté   Images : {1}   "
+       "Par exemple : {2}"),
+    ES("Las imágenes sin pose en {0} se dejan fuera   Imágenes: {1}   Por ejemplo: {2}"),
+    PT("As imagens sem pose em {0} ficam de fora   Imagens: {1}   Por exemplo: {2}"),
+    IT("Le immagini senza posa in {0} vengono escluse   Immagini: {1}   Per esempio: {2}"),
+    NL("Afbeeldingen zonder pose in {0} worden overgeslagen   Afbeeldingen: {1}   "
+       "Bijvoorbeeld: {2}"),
+    RU("Изображения без позы в {0} пропускаются   Изображений: {1}   Например: {2}"),
+    TR("{0} içinde pozu olmayan görüntüler dışarıda bırakılır   Görüntü: {1}   "
+       "Örneğin: {2}"));
+
+SS_MSG(poses_size,
+    EN("{0} is {1}x{2} pixels, but its camera in {3} is {4}x{5}"),
+    JA("{0} は {1}x{2} ピクセルですが、{3} のカメラは {4}x{5} です"),
+    ZH_HANS("{0} 为 {1}x{2} 像素，但它在 {3} 中的相机为 {4}x{5}"),
+    ZH_HANT("{0} 為 {1}x{2} 像素，但它在 {3} 中的相機為 {4}x{5}"),
+    KO("{0} 은(는) {1}x{2} 픽셀이지만 {3} 의 카메라는 {4}x{5} 입니다"),
+    DE("{0} hat {1}x{2} Pixel, seine Kamera in {3} aber {4}x{5}"),
+    FR("{0} fait {1}x{2} pixels, mais sa caméra dans {3} fait {4}x{5}"),
+    ES("{0} mide {1}x{2} píxeles, pero su cámara en {3} mide {4}x{5}"),
+    PT("{0} tem {1}x{2} pixels, mas a sua câmera em {3} tem {4}x{5}"),
+    IT("{0} è di {1}x{2} pixel, ma la sua fotocamera in {3} è di {4}x{5}"),
+    NL("{0} is {1}x{2} pixels, maar zijn camera in {3} is {4}x{5}"),
+    RU("{0} имеет размер {1}x{2} пикселей, а его камера в {3} — {4}x{5}"),
+    TR("{0} {1}x{2} piksel, ama {3} içindeki kamerası {4}x{5}"));
+
+SS_MSG(poses_triangulated,
+    EN("Triangulated for the fixed poses: {0}   Points: {1}   Observations: {2}"),
+    JA("固定した姿勢で三角測量: {0}   点: {1}   観測: {2}"),
+    ZH_HANS("按固定位姿三角化: {0}   点: {1}   观测: {2}"),
+    ZH_HANT("按固定位姿三角化: {0}   點: {1}   觀測: {2}"),
+    KO("고정된 자세로 삼각측량: {0}   점: {1}   관측: {2}"),
+    DE("Für die festen Posen trianguliert: {0}   Punkte: {1}   Beobachtungen: {2}"),
+    FR("Triangulé pour les poses fixes : {0}   Points : {1}   Observations : {2}"),
+    ES("Triangulado para las poses fijas: {0}   Puntos: {1}   Observaciones: {2}"),
+    PT("Triangulado para as poses fixas: {0}   Pontos: {1}   Observações: {2}"),
+    IT("Triangolato per le pose fisse: {0}   Punti: {1}   Osservazioni: {2}"),
+    NL("Getrianguleerd voor de vaste poses: {0}   Punten: {1}   Waarnemingen: {2}"),
+    RU("Триангуляция по фиксированным позам: {0}   Точек: {1}   Наблюдений: {2}"),
+    TR("Sabit pozlar için üçgenlendi: {0}   Nokta: {1}   Gözlem: {2}"));
+
+SS_MSG(poses_verified,
+    EN("Cameras and poses written byte for byte as in {0}   Images: {1}"),
+    JA("カメラと姿勢を {0} とバイト単位で同一に書き出しました   画像: {1}"),
+    ZH_HANS("相机和位姿已按 {0} 逐字节原样写出   图像: {1}"),
+    ZH_HANT("相機和位姿已按 {0} 逐位元組原樣寫出   影像: {1}"),
+    KO("카메라와 자세를 {0} 와 바이트 단위로 같게 기록했습니다   이미지: {1}"),
+    DE("Kameras und Posen Byte für Byte wie in {0} geschrieben   Bilder: {1}"),
+    FR("Caméras et poses écrites octet par octet comme dans {0}   Images : {1}"),
+    ES("Cámaras y poses escritas byte a byte como en {0}   Imágenes: {1}"),
+    PT("Câmeras e poses escritas byte a byte como em {0}   Imagens: {1}"),
+    IT("Fotocamere e pose scritte byte per byte come in {0}   Immagini: {1}"),
+    NL("Camera's en poses byte voor byte geschreven zoals in {0}   Afbeeldingen: {1}"),
+    RU("Камеры и позы записаны побайтно как в {0}   Изображений: {1}"),
+    TR("Kameralar ve pozlar {0} ile bayt bayt aynı yazıldı   Görüntü: {1}"));
+
+SS_MSG(poses_changed,
+    EN("The written {0} differs from {1}, so the model was removed"),
+    JA("書き出した {0} が {1} と異なるため、モデルを削除しました"),
+    ZH_HANS("写出的 {0} 与 {1} 不一致，已删除该模型"),
+    ZH_HANT("寫出的 {0} 與 {1} 不一致，已刪除該模型"),
+    KO("기록한 {0} 이(가) {1} 와 달라 모델을 삭제했습니다"),
+    DE("Das geschriebene {0} weicht von {1} ab, daher wurde das Modell entfernt"),
+    FR("Le {0} écrit diffère de {1} ; le modèle a donc été supprimé"),
+    ES("El {0} escrito difiere de {1}, así que se eliminó el modelo"),
+    PT("O {0} escrito difere de {1}, por isso o modelo foi removido"),
+    IT("Il {0} scritto differisce da {1}, quindi il modello è stato rimosso"),
+    NL("Het geschreven {0} wijkt af van {1}, dus het model is verwijderd"),
+    RU("Записанный {0} отличается от {1}, поэтому модель удалена"),
+    TR("Yazılan {0}, {1} modelinden farklı olduğu için model silindi"));
+
 }  // namespace sfm
 }  // namespace msg
 }  // namespace i18n

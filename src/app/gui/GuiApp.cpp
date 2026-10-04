@@ -32,6 +32,7 @@
 #include "i18n/catalog/MaskEdit.h"
 #include "i18n/catalog/Partition.h"
 #include "i18n/catalog/Render.h"
+#include "i18n/catalog/Recompute.h"
 #include "i18n/catalog/Roi.h"
 #include "i18n/catalog/Train.h"
 #include "i18n/catalog/TrainFields.h"
@@ -78,6 +79,7 @@ namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
+namespace rcmsg = spirula::i18n::msg::recompute;
 using spirula::i18n::Msg;
 using spirula::format_duration;
 
@@ -740,6 +742,8 @@ void GuiApp::append_logs() {
     }
     for (auto& s : _compare.drain_log()) log(s);
     for (auto& s : _mesh.drain_log()) log(s);
+    for (auto& [s, detail] : _recompute.drain_log()) log(s, detail);
+    take_recomputed();
     poll_batch_command();
     for (auto& s : _download.drain_log()) log(s);
     for (auto& s : _font_download.drain_log()) log(s);
@@ -3657,7 +3661,7 @@ bool GuiApp::dataset_busy() const {
 }
 bool GuiApp::native_work_busy() const {
     const TrainRunner::Phase phase = _runner.phase();
-    return _mesh.busy() || dataset_busy() ||
+    return _mesh.busy() || dataset_busy() || _recompute.running() ||
            phase == TrainRunner::Phase::Loading ||
            phase == TrainRunner::Phase::Preparing ||
            phase == TrainRunner::Phase::Training;
@@ -6163,6 +6167,27 @@ void GuiApp::draw_roi_row(bool busy) {
     if (ui::Button(roimsg::train_edit_region))
         open_roi_editor(_cfg.data, !now.off && !now.path.empty() ? now.path : std::string());
     ImGui::EndDisabled();
+}
+
+void GuiApp::draw_recompute_row(bool busy) {
+    if (_cfg.data.empty()) return;
+    const RecomputePanel::Source src{_cfg.data, _cfg.image_dir, _cfg.mask_dir, _cfg.flip_mask};
+    _recompute.draw(src, busy, [this](std::string& device) {
+        if (native_work_busy() || !freeze_native_device()) return false;
+        device = _native_device_uuid;
+        return true;
+    });
+}
+
+// The dataset's model has new points (or its old ones back): the preview and
+// the region editor read them from here on.
+void GuiApp::take_recomputed() {
+    if (!_recompute.take_changed()) return;
+    _roi_files_for.clear();
+    const TrainRunner::Phase ph = _runner.phase();
+    if (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::LoadError ||
+        ph == TrainRunner::Phase::Idle)
+        _parse_dirty = true;
 }
 
 int GuiApp::add_batch_partition_rows(const DatasetFolders& f, const std::string& partition,
@@ -9220,7 +9245,7 @@ void GuiApp::draw_train_settings() {
     TrainRunner::Phase ph = _runner.phase();
     bool busy = ph == TrainRunner::Phase::Loading ||
                 ph == TrainRunner::Phase::Preparing ||
-                ph == TrainRunner::Phase::Training;
+                ph == TrainRunner::Phase::Training || _recompute.running();
 
     // ---- dataset ----
     ui::SeparatorText(msg::section_dataset);
@@ -9254,7 +9279,10 @@ void GuiApp::draw_train_settings() {
                   FileDialog::Mode::Folder);
     }
     ImGui::EndDisabled();
-    if (!_batch_active) draw_roi_row(busy);
+    if (!_batch_active) {
+        draw_recompute_row(busy);
+        draw_roi_row(busy);
+    }
 
     // Vulkan builds share the native picker with every built-in workflow.
 #ifdef SS_BACKEND_VULKAN
@@ -9955,7 +9983,7 @@ void GuiApp::draw_train_controls() {
             }
             // A batch owns the runner between its tasks, so the queue's own
             // next row is what starts -- never a click here.
-            bool can_start = !_batch_active &&
+            bool can_start = !_batch_active && !_recompute.running() &&
                              (ph == TrainRunner::Phase::Ready ||
                               ph == TrainRunner::Phase::Done ||
                               ph == TrainRunner::Phase::TrainError);

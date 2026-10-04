@@ -496,4 +496,10 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMotion.cpp
         ${SS_SRC}/app/Pano360.cpp)
     ss_configure_app(dataset_plan_test)
+
+    # The model files "Recompute Sparse Point Cloud" swaps, in a scratch folder.
+    add_executable(recompute_files_test
+        ${SS_SRC}/app/gui/tests/recompute_files_test.cpp
+        ${SS_SRC}/app/gui/RecomputeFiles.cpp)
+    ss_configure_app(recompute_files_test)
 endif()
