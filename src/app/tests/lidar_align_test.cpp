@@ -1,10 +1,12 @@
 // lidar_align_test -- app/LidarAlign.h and data/PointCloudFile.h against a
 // synthetic room whose similarity to the "reconstruction" is known: the anchor
 // fit recovers it exactly (also from anchors on one line, where centres alone
-// cannot), ICP recovers it from a few degrees and percent off, and LAS / PLY
-// files written here read back with their colours and scanner stations.
+// cannot), scans in frames of their own are told apart and placed through
+// their images, ICP recovers it from a few degrees and percent off, and LAS /
+// PLY files written here read back with their colours and scanner stations.
 
 #include "app/LidarAlign.h"
+#include "app/ScanDepth.h"
 #include "data/PointCloudFile.h"
 
 #include <cmath>
@@ -12,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -118,6 +121,123 @@ int main() {
         const app::lidar::AnchorFit f = app::lidar::fit_anchors(g, anchors);
         check(f.ok && !f.scale_known && rot_deg(f.T.R, T.R) < 1e-6,
               "anchor fit: one station gives the turn, not the scale");
+    }
+    // One station's views, which the reconstruction placed a little apart:
+    // pairs of them must not make a scale of their 0 m over a few mm.
+    {
+        app::lidar::ModelGeometry g;
+        std::vector<app::lidar::Anchor> anchors;
+        views_on({{4, 4, 1.5}, {4, 4, 1.5}, {4, 4, 1.5}, {4, 4, 1.5}}, g, anchors);
+        for (size_t i = 0; i < g.views.size(); i++)
+            g.views[i].centre = g.views[i].centre + Vec3{0.001 * (double)i, -0.002 * (double)i, 0};
+        const app::lidar::AnchorFit f = app::lidar::fit_anchors(g, anchors);
+        check(f.ok && !f.scale_known && f.T.scale == 1.0,
+              "anchor fit: one station with jitter leaves the scale open, not 0");
+
+        // The scan's depth then gives it: the room seen from the station.
+        std::vector<double> xyz;
+        std::vector<uint8_t> rgb;
+        for (const Vec3& p : scan) {
+            xyz.insert(xyz.end(), {p.x, p.y, p.z});
+            rgb.insert(rgb.end(), {128, 128, 128});
+        }
+        const app::ScanCloud sc = app::build_scan_cloud(xyz, rgb, 2.0);
+        for (size_t i = 0; i < scan.size(); i += 5) {
+            if (scan[i].z > 0.01 && scan[i].z < 2.99 && scan[i].x > 0.01 && scan[i].x < 9.99 &&
+                scan[i].y > 0.01 && scan[i].y < 7.99)
+                continue;   // the boxes: some of them are hidden from the station
+            g.views[0].seen.push_back((int)g.points.size());
+            g.points.push_back(sfm::transformPoint(inv, scan[i]));
+            g.track.push_back(3);
+        }
+        int64_t n = 0;
+        const double s = app::lidar::scale_from_depth(g, anchors, f, sc, &n);
+        std::printf("     depth scale %.5f (true %.5f) from %lld points\n", s, T.scale, (long long)n);
+        check(std::fabs(s / T.scale - 1) < 0.01, "depth scale: the size the station alone cannot give");
+    }
+
+    {
+        app::lidar::ModelGeometry g;
+        std::vector<app::lidar::Anchor> anchors;
+        views_on({{2, 3, 1.5}, {5, 6, 1.4}, {8, 2, 1.6}}, g, anchors);
+        const app::lidar::AnchorFit f = app::lidar::fit_anchors(g, anchors, T.scale);
+        check(f.ok && f.scale_known && f.T.scale == T.scale && rot_deg(f.T.R, T.R) < 1e-6 &&
+                  (f.T.t - T.t).norm() < 1e-6 && f.used.size() == 3,
+              "anchor fit: the scale held, rotation and translation recovered");
+    }
+
+    // ---- scans in frames of their own ----
+    // Scans 0 and 1 in the frame the model is fitted to; scan 2 in its own,
+    // which G2 takes there; scan 3 has no image in the model.
+    sfm::Sim3 G2;
+    G2.R = axis_angle({0, 0, 1}, 30);
+    G2.t = {12, -5, 0.3};
+    auto scans_model = [&](bool own, app::lidar::ModelGeometry& g,
+                           std::vector<app::lidar::Anchor>& anchors, std::vector<int>& scan_of) {
+        const sfm::Sim3 G2inv = sfm::invertSim3(G2);
+        const std::vector<std::pair<Vec3, int>> where = {
+            {{1, 1, 1.5}, 0}, {{3, 2, 1.5}, 0}, {{5, 1, 1.6}, 1}, {{6, 3, 1.5}, 1},
+            {{8, 6, 1.5}, 2}, {{9, 7, 1.4}, 2}, {{7, 7, 1.5}, 2}};
+        for (const auto& [c, scan] : where) {
+            app::lidar::Anchor a;
+            a.name = "s" + std::to_string(anchors.size()) + ".jpg";
+            a.R = axis_angle({0.2, 1, 0.1}, 17.0 * (double)anchors.size());
+            a.centre = c;
+            app::lidar::ModelGeometry::View v;
+            v.name = a.name;
+            v.R = sfm::mul(inv.R, a.R);
+            v.centre = sfm::transformPoint(inv, a.centre);
+            g.views.push_back(v);
+            if (own && scan == 2) {
+                a.R = sfm::mul(G2inv.R, a.R);
+                a.centre = sfm::transformPoint(G2inv, a.centre);
+            }
+            anchors.push_back(a);
+            scan_of.push_back(scan);
+        }
+    };
+    {
+        app::lidar::ModelGeometry g;
+        std::vector<app::lidar::Anchor> anchors;
+        std::vector<int> scan_of;
+        scans_model(true, g, anchors, scan_of);
+        const app::lidar::ScanFrames fr = app::lidar::group_scan_frames({g}, anchors, scan_of, 4);
+        check(fr.count == 2 && fr.frame == std::vector<int>({0, 0, 1, -1}),
+              "frames: the scan of its own told apart; the unseen one in neither");
+        const std::vector<std::optional<sfm::Sim3>> fits = {T};
+        const std::vector<app::lidar::FramePlacement> placed =
+            app::lidar::place_frames({g}, fits, anchors, scan_of, fr);
+        check(placed.size() == 2 && placed[0].placed && placed[1].placed &&
+                  placed[1].anchors == 3 && placed[1].T.scale == 1.0 &&
+                  rot_deg(placed[1].T.R, G2.R) < 1e-6 && (placed[1].T.t - G2.t).norm() < 1e-6,
+              "frames: placed rigidly through its images, at the model's scale");
+        const std::vector<std::optional<sfm::Sim3>> none = {std::nullopt};
+        check(!app::lidar::place_frames({g}, none, anchors, scan_of, fr)[1].placed,
+              "frames: not placed without a model fitted to the first");
+    }
+    {
+        app::lidar::ModelGeometry g;
+        std::vector<app::lidar::Anchor> anchors;
+        std::vector<int> scan_of;
+        scans_model(false, g, anchors, scan_of);
+        const app::lidar::ScanFrames fr = app::lidar::group_scan_frames({g}, anchors, scan_of, 4);
+        check(fr.count == 1 && fr.frame == std::vector<int>({0, 0, 0, 0}),
+              "frames: scans whose images agree share one, and the unseen one joins it");
+    }
+    {
+        auto at = [](double x, double y, double z) {
+            spirula::cloud::Station s;
+            s.origin[0] = x; s.origin[1] = y; s.origin[2] = z;
+            return std::vector<spirula::cloud::Station>{s};
+        };
+        const std::vector<spirula::cloud::Station> bare;
+        check(app::lidar::scans_share_frame({bare}) &&
+                  app::lidar::scans_share_frame({at(1, 2, 0), at(10, 2, 0), bare}) &&
+                  !app::lidar::scans_share_frame({bare, bare}) &&
+                  !app::lidar::scans_share_frame({at(4, 4, 0), at(4, 4, 0.005)}) &&
+                  !app::lidar::scans_share_frame({bare, at(0, 0, 0)}),
+              "frames: files share one when their stations stand apart, and one at most "
+              "has none");
     }
 
     // ---- ICP ----

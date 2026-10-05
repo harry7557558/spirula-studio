@@ -122,6 +122,7 @@ sharing an id.
 | `/ui/key` | `keys=Ctrl+Shift+A` |
 | `/ui/text` | focus, select all, type `value=`, `enter=0` to leave it open |
 | `/ui/wait` | `frames=` |
+| `/ui/drop` | `paths=`, one per line: what dropping them on the window does |
 | `/ui/screenshot` | `width=` to downscale (area average), `format=jpg`, `quality=`, `path=` to write it server-side |
 
 Display coordinates are not framebuffer pixels on a HiDPI screen; `/ui/state`

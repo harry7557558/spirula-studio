@@ -77,6 +77,7 @@ namespace msg = spirula::i18n::msg::gui;
 namespace emsg = spirula::i18n::msg::edit;
 namespace fld = spirula::i18n::msg::field;
 namespace dmsg = spirula::i18n::msg::dataset;
+namespace ldmsg = spirula::i18n::msg::lidar;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace rmsg = spirula::i18n::msg::render;
@@ -1652,6 +1653,7 @@ bool GuiApp::launch_batch_dataset(BatchTask& task, const BatchRow& row) {
     // A reconstruction brings up a Vulkan device of its own and wants the
     // VRAM the last training run is still holding.
     _runner.release_engine();
+    clear_lidar_sources();
     _sources = sources;
     _workspace = _workspace_auto = workspace;
     apply_dataset_settings(settings);
@@ -1945,24 +1947,55 @@ static std::vector<std::string> recent_models(const RecentList& r) {
     return out;
 }
 
+// Videos and folders of photos out of a drop; the rest is logged.
+std::vector<std::string> GuiApp::raw_inputs(const std::vector<std::string>& paths) {
+    std::error_code ec;
+    std::vector<std::string> sources;
+    for (const std::string& path : paths) {
+        const fs::path p(path);
+        if (fs::is_directory(p, ec)) {
+            if (folder_has_images(path)) sources.push_back(path);
+            else log(i18n::format(dmsg::log_drop_no_images, {path}));
+        } else if (fs::is_regular_file(p, ec)) {
+            if (is_video_path(path)) sources.push_back(path);
+            else log(i18n::format(dmsg::log_drop_unsupported, {path}));
+        }
+    }
+    return sources;
+}
+
 void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     std::error_code ec;
-    // A laser scan is an input of the dataset screen, whichever screen it
-    // lands on (the command line's `spirula scan.e57` too); dropped with
-    // videos or photos, they are the rest of that dataset.
-    std::vector<std::string> scans, rest;
-    for (const std::string& p : paths)
-        (fs::is_regular_file(p, ec) && is_lidar_drop(p) ? scans : rest).push_back(p);
+    // A laser scan is an input of the dataset screen wherever it lands, and so
+    // is a point-cloud PLY there or dropped with photos, videos or scans; a
+    // lone one elsewhere is to be looked at.
+    std::vector<std::string> scans, clouds, rest;
+    for (const std::string& p : paths) {
+        const bool file = fs::is_regular_file(p, ec);
+        if (file && is_lidar_drop(p)) scans.push_back(p);
+        else if (file && ply_is_point_cloud(p)) clouds.push_back(p);
+        else rest.push_back(p);
+    }
+    const bool raw_beside = std::any_of(rest.begin(), rest.end(), [&](const std::string& p) {
+        return fs::is_directory(p, ec) ? folder_has_images(p) : is_video_path(p);
+    });
+    if (_screen == Screen::NewDataset || raw_beside || !scans.empty())
+        scans.insert(scans.end(), clouds.begin(), clouds.end());
     if (!scans.empty()) {
         if (native_work_busy()) {
             if (training_busy()) log(dmsg::log_drop_while_training.get());
             return;
         }
+        close_native_previews();
         close_splat();
-        _screen = Screen::NewDataset;
+        if (_screen != Screen::NewDataset) {
+            clear_sources();
+            clear_lidar_sources();
+            _screen = Screen::NewDataset;
+        }
+        const std::vector<std::string> sources = raw_inputs(rest);
+        if (!sources.empty()) add_sources(sources, /*replace=*/false);
         add_lidar_sources(scans);
-        if (rest.empty()) return;
-        add_sources(rest, /*replace=*/false);
         return;
     }
     // The mesh screen is asking two specific questions -- which model, and
@@ -2153,17 +2186,7 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     }
 
     // Everything else is raw input: videos, and folders of photos.
-    std::vector<std::string> sources;
-    for (const std::string& path : paths) {
-        const fs::path p(path);
-        if (fs::is_directory(p, ec)) {
-            if (folder_has_images(path)) sources.push_back(path);
-            else log(i18n::format(dmsg::log_drop_no_images, {path}));
-        } else if (fs::is_regular_file(p, ec)) {
-            if (is_video_path(path)) sources.push_back(path);
-            else log(i18n::format(dmsg::log_drop_unsupported, {path}));
-        }
-    }
+    const std::vector<std::string> sources = raw_inputs(paths);
     if (sources.empty()) return;
     if (native_work_busy()) {
         if (training_busy()) log(dmsg::log_drop_while_training.get());
@@ -2239,7 +2262,10 @@ void GuiApp::refresh_sources() {
     // and stays put while the inputs still name it: a run filling it does not
     // make it somebody else's, and a fresh _2 would mean starting over.
     if (_workspace.empty() || _workspace == _workspace_auto) {
-        if (!workspace_named_by(_sources, _workspace))
+        // A scan alone is a dataset of its photographs, written beside it.
+        if (_sources.empty() && !_lidar.empty())
+            _workspace = fs::path(_lidar[0].path).replace_extension("").string() + "_dataset";
+        else if (!workspace_named_by(_sources, _workspace))
             _workspace = default_workspace(_sources);
         _workspace_auto = _workspace;
     }
@@ -2375,19 +2401,9 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
     close_native_previews();
     close_splat();
     if (replace && !inputs.empty()) {
-        _sources.clear();
-        _source_path_edits.clear();
-        _mask_preview_input = 0;
-        // A capture dropped again is restored from again (restore_from_record).
-        _restored_ws.clear();
-        // A different capture is a different job, and the geometry options
-        // are remembered nowhere: a run must never quietly cost an hour of
-        // inference nobody asked for. (Not mid-run: that would disable it.)
-        if (!dataset_busy()) _geometry = GeometryJob{};
-        // ... and a different capture is a different colour space.
-        _sfm_job.image_gamut.clear();
-        _sfm_job.image_is_linear.reset();
-        _color_space_touched = false;
+        clear_sources();
+        // Started from elsewhere, it is a new dataset, scans and all.
+        if (_screen != Screen::NewDataset) clear_lidar_sources();
     }
     const size_t first_new = _sources.size();
     for (const std::string& path : inputs) {
@@ -2417,6 +2433,22 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
     adopt_file_color_space();
     refresh_sources();
     return true;
+}
+
+void GuiApp::clear_sources() {
+    _sources.clear();
+    _source_path_edits.clear();
+    _mask_preview_input = 0;
+    // A capture dropped again is restored from again (restore_from_record).
+    _restored_ws.clear();
+    // A different capture is a different job, and the geometry options
+    // are remembered nowhere: a run must never quietly cost an hour of
+    // inference nobody asked for. (Not mid-run: that would disable it.)
+    if (!dataset_busy()) _geometry = GeometryJob{};
+    // ... and a different capture is a different colour space.
+    _sfm_job.image_gamut.clear();
+    _sfm_job.image_is_linear.reset();
+    _color_space_touched = false;
 }
 
 void GuiApp::add_existing_dataset(const std::string& dir) {
@@ -2646,7 +2678,9 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             _mesh_job.data_dir = path;
             break;
         case PickAction::LidarSource:
-            add_lidar_sources(paths);
+            if (_pick_lidar < 0) add_lidar_sources(paths);
+            else if (!path.empty()) replace_lidar_source((size_t)_pick_lidar, path);
+            _pick_lidar = -1;
             break;
         case PickAction::MeshOutput:
             // Only the folder is picked; the file name keeps whatever
@@ -3636,6 +3670,7 @@ void GuiApp::open_reconstruction(const std::string& workspace) {
     for (const PrepInput& in : decode_record_inputs(read_dataset_record(workspace).inputs).rows)
         if (!in.path.empty() && fs::exists(fs::u8path(in.path), ec)) inputs.push_back(in.path);
     _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    clear_lidar_sources();
     if (!inputs.empty()) {
         add_sources(inputs, /*replace=*/true);
         _workspace = workspace;
@@ -3645,9 +3680,7 @@ void GuiApp::open_reconstruction(const std::string& workspace) {
     } else {
         close_native_previews();
         close_splat();
-        _sources.clear();
-        _source_path_edits.clear();
-        _mask_preview_input = 0;
+        clear_sources();
         refresh_sources();
         _workspace = workspace;
     }
@@ -4251,32 +4284,46 @@ void GuiApp::draw_dataset_source() {
         edited = true;
     }
     if (edited) refresh_sources();
+    draw_lidar_rows(path_w, one_line);
 
+    // The ways in, on one line while they fit: four labels run off a narrow
+    // panel in several languages.
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    auto same_line_if_fits = [&](const Msg& next, bool button) {
+        const ImGuiStyle& st = ImGui::GetStyle();
+        const float w = ImGui::CalcTextSize(next.get()).x + (button ? st.FramePadding.x * 2 : 0);
+        if (ImGui::GetItemRectMax().x + st.ItemSpacing.x + w <= right) ImGui::SameLine();
+    };
     if (ui::Button(dmsg::add_video)) {
         open_pick(PickAction::SourceVideo, msg::pick_videos.get(),
                   FileDialog::Mode::File, video_dialog_filters(), "",
                   /*multi_select=*/true);
     }
     ui::help_on_hover(dmsg::add_video_help);
-    ImGui::SameLine();
+    same_line_if_fits(dmsg::add_photos, true);
     if (ui::Button(dmsg::add_photos)) {
         open_pick(PickAction::SourceImages, msg::pick_photo_folder.get(),
                   FileDialog::Mode::Folder);
     }
     ui::help_on_hover(dmsg::add_photos_help);
-    if (_sources.empty() && _lidar.empty()) {
-        ImGui::SameLine();
-        ui::TextDisabled(dmsg::no_input_yet);
-    }
-    // A row of its own: a finished dataset is not raw input, and three button
-    // labels in a row run off the edge of a narrow panel in several languages.
+    same_line_if_fits(dmsg::add_dataset, true);
     if (ui::Button(dmsg::add_dataset)) {
         open_pick(PickAction::SourceDataset, msg::pick_existing_dataset.get(),
                   FileDialog::Mode::Folder);
     }
     ui::help_on_hover(dmsg::add_dataset_help);
-    ImGui::SameLine();
-    draw_lidar_sources();
+    same_line_if_fits(ldmsg::add_scan, true);
+    if (ui::Button(ldmsg::add_scan)) {
+        _pick_lidar = -1;
+        open_pick(PickAction::LidarSource, ldmsg::pick_scan.get(), FileDialog::Mode::File,
+                  {".e57", ".las", ".ply"}, "", /*multi_select=*/true);
+    }
+    ui::help_on_hover(ldmsg::add_scan_help);
+    if (_sources.empty() && _lidar.empty()) {
+        same_line_if_fits(dmsg::no_input_yet, false);
+        ui::TextDisabled(dmsg::no_input_yet);
+    }
+    draw_lidar_options();
 
     // Masks that came WITH the photos are adopted automatically, which is
     // right for a prepared capture and wrong for a folder whose masks/ happens

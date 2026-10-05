@@ -141,6 +141,15 @@ int main() {
         expect(p[Step::Geometry].act == Act::None, "geometry off is not a step");
     }
     {
+        SfmJob scans = made;
+        scans.lidar.clouds = {"/scan.e57"};
+        scans.lidar.scanner_only = true;
+        scans.geometry.enable = true;
+        const DatasetPlan p = plan(scans);
+        expect(p[Step::Model].act == Act::None && p[Step::Geometry].act == Act::None,
+               "a scan's photographs at its poses: no reconstruction, no geometry step");
+    }
+    {
         SfmJob j = made;
         j.geometry.enable = true;
         const DatasetPlan p = plan(j);

@@ -868,6 +868,14 @@ void SfmRunner::run(SfmJob job) {
         // A reconstruction that fails is not the end of a run whose scans
         // carry photographs: those keep the scanner's poses.
         const bool scanner_stands_in = job.lidar.enabled() && lidar.photos > 0;
+        // ... and when they are all the images there are, none is run: a
+        // scanner's cube faces mostly will not reconstruct (Matterport: 26 of
+        // 630), and its poses are what its points are in.
+        const bool scanner_only = job.lidar.scanner_only && lidar.photos > 0;
+        if (scanner_only) {
+            log(spirula::i18n::msg::lidar::scanner_poses_used.get(), false);
+            job.lidar.scanner_poses_only = true;
+        }
 
         // ---- 2. reconstruction --------------------------------------------
         take_reconstruction(job);
@@ -880,8 +888,8 @@ void SfmRunner::run(SfmJob job) {
             planned.model.push_back({"scan_views", "", views});
         }
         plan = plan_dataset(planned, prior, rec, req, &plan, Step::Model);
-        say(Step::Model);
-        const bool reuse_model = !makes(plan[Step::Model].act);
+        if (!scanner_only) say(Step::Model);
+        const bool reuse_model = scanner_only || !makes(plan[Step::Model].act);
         if (!reuse_model) {
             std::vector<std::string> now = recon_args(job, prep);
             now.insert(now.end(), lidar.sfm_args.begin(), lidar.sfm_args.end());
@@ -1001,6 +1009,7 @@ void SfmRunner::run(SfmJob job) {
             // Masks folded into masks/ are already the right way round; ones
             // read where they lie keep their own convention.
             job.lidar.flip_masks = prep.mask_dir_flipped;
+            job.lidar.mask_dir = prep.mask_dir;
             std::string err;
             if (!run_lidar_step(job.lidar, ws.string(), prep.image_dir, _prog,
                                 _films.geometry, _cancel, err))

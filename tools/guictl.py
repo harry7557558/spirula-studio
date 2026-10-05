@@ -184,6 +184,11 @@ def cmd_text(args):
     print(json.dumps(call("/ui/text", p)))
 
 
+def cmd_drop(args):
+    paths = "\n".join(os.path.abspath(p) for p in args.paths)
+    print(json.dumps(call("/ui/drop", {"paths": paths})))
+
+
 def cmd_wait(args):
     print(json.dumps(call("/ui/wait", {"frames": args.frames})))
 
@@ -279,6 +284,10 @@ def build_parser():
     p.add_argument("value")
     p.add_argument("--no-enter", action="store_true")
     p.set_defaults(func=cmd_text)
+
+    p = sub.add_parser("drop", help="drop files or folders on the window")
+    p.add_argument("paths", nargs="+")
+    p.set_defaults(func=cmd_drop)
 
     p = sub.add_parser("wait", help="let N frames pass")
     p.add_argument("--frames", type=int, default=4)

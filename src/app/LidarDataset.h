@@ -23,10 +23,16 @@ enum class AlignMode {
     Refine,    // close to it already: ICP from where it is
 };
 
+// Whether the clouds share one frame: by their files' word
+// (scans_share_frame), or as the caller knows.
+enum class ScanFrameMode { Auto, Shared, Separate };
+
 struct DatasetOptions {
     std::string dataset;                 // the reconstruction, and where maps go
     std::string image_dir = "images";    // relative to `dataset`, or absolute
-    std::vector<std::string> clouds;     // .e57 / .las / .ply, one frame
+    std::string mask_dir = "masks";      // the same; the maps are blank where they mask
+    std::vector<std::string> clouds;     // .e57 / .las / .ply
+    ScanFrameMode frames = ScanFrameMode::Auto;
     std::string anchors;                 // "" = <dataset>/lidar/anchors.json, if there
     AlignMode mode = AlignMode::Auto;
     int64_t seed_points = 500000;        // 0 keeps the model's own points only
@@ -66,12 +72,16 @@ ExtractedPhotos extract_e57_anchors(const std::string& e57_path, const std::stri
                                     const std::string& subdir, const std::string& anchors_path);
 
 // Views rendered from where the scanner stood (E57 scan poses, a PLY `camera`,
-// a `<name>.trajectory.las` beside the file) and recorded as anchors, for a
-// scan without photographs. Returns how many.
-int64_t render_anchor_views(const std::vector<std::string>& clouds, const std::string& images_dir,
-                            const std::string& subdir, const std::string& anchors_path,
+// a `<name>.trajectory.las` beside it), recorded as anchors; `each_scan` renders
+// each cloud alone, in its own frame. Returns how many.
+int64_t render_anchor_views(const std::vector<std::string>& clouds, bool each_scan,
+                            const std::string& images_dir, const std::string& subdir,
+                            const std::string& anchors_path,
                             const std::function<void(const std::string&)>& log,
                             const std::atomic<bool>* cancel = nullptr);
+
+// scans_share_frame() of the files' own stations.
+bool scans_share_frame(const std::vector<std::string>& clouds);
 
 std::vector<Anchor> read_anchors(const std::string& path);
 void write_anchors(const std::string& path, const std::vector<Anchor>& anchors);

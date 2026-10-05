@@ -58,6 +58,8 @@ void usage() {
     help_row("--no-gap-points", L::opt_no_gaps.get());
     help_row("--anchors <file>", L::opt_anchors.get());
     help_row("--image-dir <dir>", L::opt_image_dir.get());
+    help_row("--mask-dir <dir>", L::opt_mask_dir.get());
+    help_row("--scan-frames <auto|shared|separate>", L::opt_scan_frames.get());
     help_row("--flip-masks", L::opt_flip_masks.get());
     help_row("--overwrite", L::opt_overwrite.get());
     help_row("--scanner-poses", L::opt_scanner_poses.get());
@@ -117,7 +119,8 @@ int spirula_lidar_main(int argc, char** argv) {
                     else ds = v;
                 }
                 const int64_t n = app::lidar::render_anchor_views(
-                    clouds, (std::filesystem::path(ds) / "images").string(), "scan_views",
+                    clouds, !app::lidar::scans_share_frame(clouds),
+                    (std::filesystem::path(ds) / "images").string(), "scan_views",
                     (std::filesystem::path(ds) / "lidar" / "anchors.json").string(), say);
                 say(format(L::rendered_views, {(long long)n}));
                 return n > 0 ? 0 : 1;
@@ -125,6 +128,14 @@ int spirula_lidar_main(int argc, char** argv) {
             if (a == "--cloud" && has_value) opt.clouds.push_back(argv[++i]);
             else if (a == "--anchors" && has_value) opt.anchors = argv[++i];
             else if (a == "--image-dir" && has_value) opt.image_dir = argv[++i];
+            else if (a == "--mask-dir" && has_value) opt.mask_dir = argv[++i];
+            else if (a == "--scan-frames" && has_value) {
+                const std::string v = argv[++i];
+                if (v == "auto") opt.frames = app::lidar::ScanFrameMode::Auto;
+                else if (v == "shared") opt.frames = app::lidar::ScanFrameMode::Shared;
+                else if (v == "separate") opt.frames = app::lidar::ScanFrameMode::Separate;
+                else return bad(a, v);
+            }
             else if (a == "--no-depth") opt.depth_maps = false;
             else if (a == "--no-gap-points") opt.sfm_points_in_gaps = false;
             else if (a == "--flip-masks") opt.flip_masks = true;

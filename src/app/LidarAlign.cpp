@@ -1,12 +1,15 @@
 #include "app/LidarAlign.h"
 
 #include "app/E57Dataset.h"
+#include "app/ScanDepth.h"
+#include "core/CameraModel.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <map>
 #include <numeric>
 
 namespace app::lidar {
@@ -175,14 +178,16 @@ int find_view(const ModelGeometry& m, const std::string& name) {
     return -1;
 }
 
-AnchorFit fit_anchors(const ModelGeometry& m, const std::vector<Anchor>& anchors) {
+AnchorFit fit_anchors(const ModelGeometry& m, const std::vector<Anchor>& anchors,
+                      double scale) {
     AnchorFit fit;
-    struct Pair { Mat3 Rm, Rs; Vec3 cm, cs; };
+    struct Pair { Mat3 Rm, Rs; Vec3 cm, cs; size_t anchor; };
     std::vector<Pair> pairs;
     for (const Anchor& a : anchors) {
         const int v = find_view(m, a.name);
         if (v < 0) continue;
         Pair p;
+        p.anchor = (size_t)(&a - anchors.data());
         p.Rm = m.views[(size_t)v].R;
         p.cm = m.views[(size_t)v].centre;
         p.Rs = a.R;
@@ -227,43 +232,51 @@ AnchorFit fit_anchors(const ModelGeometry& m, const std::vector<Anchor>& anchors
         }
         return in;
     };
-    double s = 0;
+    double s = scale;
     Vec3 t;
     std::vector<size_t> in;
-    for (size_t ia = 0; ia < rot_in.size(); ia++)
-        for (size_t ib = ia + 1; ib < rot_in.size(); ib++) {
-            const Pair& A = pairs[rot_in[ia]];
-            const Pair& B = pairs[rot_in[ib]];
-            const double dm = (A.cm - B.cm).norm(), ds = (A.cs - B.cs).norm();
-            if (ds < 0.25 * spread || dm <= 0) continue;
-            const double sc = ds / dm;
-            const Vec3 tc = A.cs - sfm::mul(R, A.cm) * sc;
-            std::vector<size_t> cand = inliers_of(sc, tc);
-            if (cand.size() > in.size()) { in = cand; s = sc; t = tc; }
+    if (scale > 0) {
+        for (size_t k : rot_in) {
+            std::vector<size_t> cand = inliers_of(s, pairs[k].cs - sfm::mul(R, pairs[k].cm) * s);
+            if (cand.size() > in.size()) in = cand;
         }
-    fit.scale_known = in.size() >= 2;
-    if (!fit.scale_known) {
-        // Every anchor at one place (a single station's faces): the turn and
-        // the place are known, the size is not.
-        in = rot_in;
-        s = 1.0;
-        Vec3 mm, ms;
-        for (size_t k : in) { mm = mm + pairs[k].cm; ms = ms + pairs[k].cs; }
-        mm = mm * (1.0 / in.size());
-        ms = ms * (1.0 / in.size());
-        t = ms - sfm::mul(R, mm);
+        Vec3 sum;
+        for (size_t k : in) sum = sum + (pairs[k].cs - sfm::mul(R, pairs[k].cm) * s);
+        t = sum * (1.0 / (double)in.size());
+        fit.scale_known = true;
     } else {
+        for (size_t ia = 0; ia < rot_in.size(); ia++)
+            for (size_t ib = ia + 1; ib < rot_in.size(); ib++) {
+                const Pair& A = pairs[rot_in[ia]];
+                const Pair& B = pairs[rot_in[ib]];
+                const double dm = (A.cm - B.cm).norm(), ds = (A.cs - B.cs).norm();
+                // Two anchors closer than the tolerance say nothing of the
+                // size (one station's faces would make it 0).
+                if (ds < std::max(0.25 * spread, tol) || dm <= 0) continue;
+                const double sc = ds / dm;
+                const Vec3 tc = A.cs - sfm::mul(R, A.cm) * sc;
+                std::vector<size_t> cand = inliers_of(sc, tc);
+                if (cand.size() > in.size()) { in = cand; s = sc; t = tc; }
+            }
+        fit.scale_known = in.size() >= 2 && s > 0;
         Vec3 mm, ms;
+        if (!fit.scale_known) in = rot_in;
         for (size_t k : in) { mm = mm + pairs[k].cm; ms = ms + pairs[k].cs; }
         mm = mm * (1.0 / in.size());
         ms = ms * (1.0 / in.size());
-        double num = 0, den = 0;
-        for (size_t k : in) {
-            const Vec3 a = sfm::mul(R, pairs[k].cm - mm), b = pairs[k].cs - ms;
-            num += a.dot(b);
-            den += a.dot(a);
+        if (!fit.scale_known) {
+            // Every anchor at one place (a single station's faces): the turn and
+            // the place are known, the size is not.
+            s = 1.0;
+        } else {
+            double num = 0, den = 0;
+            for (size_t k : in) {
+                const Vec3 a = sfm::mul(R, pairs[k].cm - mm), b = pairs[k].cs - ms;
+                num += a.dot(b);
+                den += a.dot(a);
+            }
+            if (den > 0 && num > 0) s = num / den;
         }
-        if (den > 0) s = num / den;
         t = ms - sfm::mul(R, mm) * s;
     }
     fit.T.scale = s;
@@ -277,8 +290,59 @@ AnchorFit fit_anchors(const ModelGeometry& m, const std::vector<Anchor>& anchors
     }
     fit.rot_err_deg = median(re);
     fit.centre_err_m = median(ce);
+    for (size_t k : in) fit.used.push_back(pairs[k].anchor);
     fit.ok = fit.inliers >= 1;
     return fit;
+}
+
+double scale_from_depth(const ModelGeometry& m, const std::vector<Anchor>& anchors,
+                        const AnchorFit& fit, const ScanCloud& scan, int64_t* points) {
+    // A cube of 90-degree faces around each anchor covers every ray it sees.
+    constexpr int kSide = 256, kMaxAnchors = 8, kMinRatios = 20;
+    const Vec3 kForward[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    std::vector<double> ratio;
+    int used = 0;
+    for (size_t ai : fit.used) {
+        if (used == kMaxAnchors) break;
+        const int vi = find_view(m, anchors[ai].name);
+        if (vi < 0 || m.views[(size_t)vi].seen.empty()) continue;
+        used++;
+        const ModelGeometry::View& v = m.views[(size_t)vi];
+        const Vec3 c = anchors[ai].centre;
+        for (const Vec3& fw : kForward) {
+            const Vec3 up = std::fabs(fw.z) > 0.5 ? Vec3{0, 1, 0} : Vec3{0, 0, 1};
+            const Vec3 right = fw.cross(up).normalized();
+            const Vec3 down = fw.cross(right);
+            MapCamera cam;
+            cam.model = (int)CameraModelType::PINHOLE;
+            cam.width = cam.height = kSide;
+            cam.fx = cam.fy = cam.cx = cam.cy = kSide / 2.0;
+            const Vec3 axes[3] = {right, down, fw};
+            for (int r = 0; r < 3; r++) {
+                for (int k = 0; k < 3; k++) {
+                    const Vec3& a = axes[k];
+                    cam.c2w[r * 4 + k] = r == 0 ? a.x : r == 1 ? a.y : a.z;
+                }
+                cam.c2w[r * 4 + 3] = r == 0 ? c.x : r == 1 ? c.y : c.z;
+            }
+            std::vector<float> depth, normal;
+            render_depth_normal(scan, cam, /*ray_depth=*/true, depth, normal);
+            for (int p : v.seen) {
+                const Vec3 d = sfm::mul(fit.T.R, m.points[(size_t)p] - v.centre);
+                const double len = d.norm(), z = d.dot(fw);
+                if (!(len > 0) || z <= 0) continue;
+                const double u = d.dot(right) / z, w = d.dot(down) / z;
+                if (std::fabs(u) > 1 || std::fabs(w) > 1) continue;
+                const int x = std::min(kSide - 1, (int)(cam.fx * u + cam.cx));
+                const int y = std::min(kSide - 1, (int)(cam.fy * w + cam.cy));
+                const float ds = depth[(size_t)y * kSide + x];
+                if (ds > 0) ratio.push_back(ds / len);
+            }
+        }
+    }
+    if (points) *points = (int64_t)ratio.size();
+    if ((int)ratio.size() < kMinRatios) return 0;
+    return median(ratio);
 }
 
 sfm::Sim3 refine_icp(const ModelGeometry& m, const AlignCloud& cloud,
@@ -402,6 +466,137 @@ std::string describe(const sfm::Sim3& T) {
     std::snprintf(b, sizeof b, "scale %.6g, rotation %.2f deg, translation (%.3f, %.3f, %.3f)",
                   T.scale, ang * 180.0 / kPi, T.t.x, T.t.y, T.t.z);
     return b;
+}
+
+ScanFrames group_scan_frames(const std::vector<ModelGeometry>& models,
+                             const std::vector<Anchor>& anchors,
+                             const std::vector<int>& scan_of, int scans) {
+    std::vector<int> parent((size_t)scans);
+    std::iota(parent.begin(), parent.end(), 0);
+    auto root = [&](int k) {
+        while (parent[(size_t)k] != k) k = parent[(size_t)k] = parent[(size_t)parent[(size_t)k]];
+        return k;
+    };
+    std::vector<int64_t> support((size_t)scans, 0);
+    for (const ModelGeometry& m : models) {
+        std::vector<Anchor> left;
+        std::vector<int> left_scan;
+        for (size_t i = 0; i < anchors.size(); i++) {
+            if (scan_of[i] < 0 || find_view(m, anchors[i].name) < 0) continue;
+            left.push_back(anchors[i]);
+            left_scan.push_back(scan_of[i]);
+            support[(size_t)scan_of[i]]++;
+        }
+        // The scans most of whose anchors one fit holds are one frame; the
+        // rest are fitted again, until none are left.
+        while (!left.empty()) {
+            const AnchorFit fit = fit_anchors(m, left);
+            if (!fit.ok) break;
+            std::map<int, std::pair<int, int>> held;   // scan -> (inliers, anchors)
+            for (int sc : left_scan) held[sc].second++;
+            for (size_t k : fit.used) held[left_scan[k]].first++;
+            std::vector<int> joined;
+            int most = -1;
+            for (const auto& [sc, n] : held) {
+                if (n.first > 0 && 2 * n.first >= n.second) joined.push_back(sc);
+                if (most < 0 || n.first > held[most].first) most = sc;
+            }
+            if (joined.empty()) joined.push_back(most);
+            for (int sc : joined) parent[(size_t)root(sc)] = root(joined[0]);
+            std::vector<Anchor> rest;
+            std::vector<int> rest_scan;
+            for (size_t k = 0; k < left.size(); k++) {
+                if (std::find(joined.begin(), joined.end(), left_scan[k]) != joined.end()) continue;
+                rest.push_back(left[k]);
+                rest_scan.push_back(left_scan[k]);
+            }
+            left.swap(rest);
+            left_scan.swap(rest_scan);
+        }
+    }
+    std::map<int, int64_t> by_root;
+    for (int k = 0; k < scans; k++)
+        if (support[(size_t)k] > 0) by_root[root(k)] += support[(size_t)k];
+    std::vector<std::pair<int64_t, int>> order;
+    for (const auto& [r, n] : by_root) order.push_back({-n, r});
+    std::sort(order.begin(), order.end());
+    ScanFrames out;
+    out.frame.assign((size_t)scans, -1);
+    if (order.size() <= 1) {
+        out.frame.assign((size_t)scans, 0);
+        out.count = 1;
+        return out;
+    }
+    for (int k = 0; k < scans; k++) {
+        if (support[(size_t)k] == 0) continue;
+        for (size_t f = 0; f < order.size(); f++)
+            if (order[f].second == root(k)) out.frame[(size_t)k] = (int)f;
+    }
+    out.count = (int)order.size();
+    return out;
+}
+
+bool scans_share_frame(const std::vector<std::vector<spirula::cloud::Station>>& stations) {
+    if (stations.size() <= 1) return true;
+    // A file without a station of its own stands for one at its origin.
+    std::vector<std::vector<Vec3>> at;
+    int bare = 0;
+    for (const auto& file : stations) {
+        at.emplace_back();
+        for (const spirula::cloud::Station& st : file)
+            at.back().push_back({st.origin[0], st.origin[1], st.origin[2]});
+        if (file.empty()) {
+            bare++;
+            at.back().push_back({0, 0, 0});
+        }
+    }
+    if (bare > 1) return false;
+    constexpr double kSamePlace = 0.01;   // metres
+    for (size_t i = 0; i < at.size(); i++)
+        for (size_t j = i + 1; j < at.size(); j++)
+            for (const Vec3& a : at[i])
+                for (const Vec3& b : at[j])
+                    if ((a - b).norm() < kSamePlace) return false;
+    return true;
+}
+
+std::vector<FramePlacement> place_frames(const std::vector<ModelGeometry>& models,
+                                         const std::vector<std::optional<sfm::Sim3>>& fits,
+                                         const std::vector<Anchor>& anchors,
+                                         const std::vector<int>& scan_of,
+                                         const ScanFrames& frames) {
+    std::vector<FramePlacement> out((size_t)frames.count);
+    if (out.empty()) return out;
+    out[0].placed = true;
+    auto frame_of = [&](size_t i) {
+        return scan_of[i] < 0 ? -1 : frames.frame[(size_t)scan_of[i]];
+    };
+    for (int f = 1; f < frames.count; f++) {
+        std::vector<Anchor> best;
+        int best_m = -1;
+        for (size_t m = 0; m < models.size(); m++) {
+            if (!fits[m]) continue;
+            std::vector<Anchor> mine;
+            for (size_t i = 0; i < anchors.size(); i++)
+                if (frame_of(i) == f && find_view(models[m], anchors[i].name) >= 0)
+                    mine.push_back(anchors[i]);
+            if (mine.size() > best.size()) {
+                best.swap(mine);
+                best_m = (int)m;
+            }
+        }
+        if (best_m < 0) continue;
+        const sfm::Sim3& T0 = *fits[(size_t)best_m];
+        const AnchorFit fit = fit_anchors(models[(size_t)best_m], best, T0.scale);
+        if (!fit.ok) continue;
+        FramePlacement& p = out[(size_t)f];
+        p.placed = true;
+        p.T = sfm::composeSim3(T0, sfm::invertSim3(fit.T));
+        p.T.scale = 1.0;
+        p.model = best_m;
+        p.anchors = fit.inliers;
+    }
+    return out;
 }
 
 }  // namespace app::lidar

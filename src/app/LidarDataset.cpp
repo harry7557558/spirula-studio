@@ -26,6 +26,7 @@
 #include <limits>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <stdexcept>
 
@@ -40,6 +41,9 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr const char* kAlignedMarker = "lidar_alignment.json";
+// Part of the signature: raised with a fix that changes the result, so a
+// dataset aligned before it is done again rather than reused.
+constexpr int kAlignVersion = 2;
 constexpr const char* kUnalignedDir = "sparse_unaligned";
 
 // The one draw of the scan everything else is taken from: the depth maps'
@@ -53,6 +57,12 @@ constexpr int kMapSide = 1600;
 // holds there, to this much.
 constexpr double kSeenRatio = 0.03;
 constexpr double kSeenSlack = 0.05;   // metres
+// ... and an image's own points lie on it, looser for triangulated ones. With
+// under half of them on it, an image is misplaced: on the NavVis HGE session,
+// 206 of the 253 a broken model put metres off, none of its 280 placed right.
+constexpr double kOnRatio = 0.05;
+constexpr double kOnSlack = 0.2;      // metres
+constexpr int64_t kOnMinPoints = 20;
 // The surface fit is refused when it leaves the anchors further than this,
 // in the scene's own size (the anchors' spread).
 constexpr double kAnchorDrift = 0.05;
@@ -258,17 +268,23 @@ void R_to_quat(const Mat3& R, double q[4]) {
 
 ModelGeometry geometry_of(const ColModel& m) {
     ModelGeometry g;
+    std::map<uint64_t, int> index;
+    for (const auto& [id, p] : m.points) {
+        index[id] = (int)g.points.size();
+        g.points.push_back({p.xyz[0], p.xyz[1], p.xyz[2]});
+        g.track.push_back((int)(p.track.size() / 2));
+    }
     for (const auto& [id, im] : m.images) {
         ModelGeometry::View v;
         v.name = im.name;
         const Mat3 Rw2c = quat_to_R(im.q);
         v.R = sfm::transpose(Rw2c);
         v.centre = sfm::mul(v.R, Vec3{im.t[0], im.t[1], im.t[2]}) * -1.0;
+        for (uint64_t pid : im.point) {
+            const auto it = pid == ~0ull ? index.end() : index.find(pid);
+            if (it != index.end()) v.seen.push_back(it->second);
+        }
         g.views.push_back(v);
-    }
-    for (const auto& [id, p] : m.points) {
-        g.points.push_back({p.xyz[0], p.xyz[1], p.xyz[2]});
-        g.track.push_back((int)(p.track.size() / 2));
     }
     return g;
 }
@@ -416,7 +432,7 @@ std::string hex(uint64_t v) {
 // Everything the result depends on but the reconstruction: the clouds as
 // files, the anchors, the options.
 std::string signature(const DatasetOptions& opt, const std::string& anchors_path) {
-    std::string s;
+    std::string s = "v" + std::to_string(kAlignVersion) + ";";
     std::error_code ec;
     for (const std::string& c : opt.clouds) {
         s += c + ":" + std::to_string(fs::file_size(c, ec)) + ":" +
@@ -427,6 +443,7 @@ std::string signature(const DatasetOptions& opt, const std::string& anchors_path
          (opt.all_points ? "all" : "") + ";depth:" + std::to_string(opt.depth_maps) +
          ";cap:" + std::to_string(opt.track_cap) + ";gaps:" + std::to_string(opt.sfm_points_in_gaps) +
          ";flip:" + std::to_string(opt.flip_masks) + ";images:" + opt.image_dir +
+         ";masks:" + opt.mask_dir + ";frames:" + std::to_string((int)opt.frames) +
          ";scanner:" + std::to_string(opt.scanner_poses_only);
     return hex(fnv1a(s));
 }
@@ -466,6 +483,7 @@ std::vector<Anchor> read_anchors(const std::string& path) {
         }
         an.R = sfm::nearestRotation(an.R);
         an.centre = {t[0], t[1], t[2]};
+        if (const JsonValue* sc = a.find("scan")) an.scan = sc->as_string();
         if (const JsonValue* r = a.find("rendered")) an.rendered = r->as_bool();
         if (const JsonValue* c = a.find("camera")) {
             an.camera_model = (int)c->get_double("model", -1);
@@ -496,6 +514,7 @@ void write_anchors(const std::string& path, const std::vector<Anchor>& anchors) 
             m += "]";
         }
         w.field_raw("c2w", m + "]");
+        if (!a.scan.empty()) w.field("scan", a.scan);
         if (a.rendered) w.field("rendered", true);
         if (a.camera_model >= 0) {
             w.key("camera").object();
@@ -563,6 +582,7 @@ ExtractedPhotos extract_e57_anchors(const std::string& e57_path, const std::stri
         }
         Anchor a;
         a.name = rel;
+        a.scan = e57_path;
         // transforms.json's OpenGL axes -> OpenCV's.
         for (int r = 0; r < 3; r++) {
             a.R[r * 3] = c.c2w[r * 4];
@@ -623,12 +643,13 @@ std::vector<Vec3> view_positions(const std::vector<std::string>& clouds, bool& t
     return out;
 }
 
-}  // namespace
-
-int64_t render_anchor_views(const std::vector<std::string>& clouds, const std::string& images_dir,
-                            const std::string& subdir, const std::string& anchors_path,
-                            const std::function<void(const std::string&)>& log,
-                            const std::atomic<bool>* cancel) {
+// The views of `clouds` together, named `<subdir>/<prefix><station>_<pitch>_<yaw>`
+// and, when they are one cloud's, saying so; -1 when cancelled.
+int64_t render_views_of(const std::vector<std::string>& clouds,
+                        const std::string& prefix, const std::string& images_dir,
+                        const std::string& subdir, std::vector<Anchor>& anchors,
+                        const std::function<void(const std::string&)>& log,
+                        const std::atomic<bool>* cancel) {
     bool tripod = false;
     const std::vector<Vec3> where = view_positions(clouds, tripod);
     if (where.empty()) return 0;
@@ -648,21 +669,12 @@ int64_t render_anchor_views(const std::vector<std::string>& clouds, const std::s
                     rgb.insert(rgb.end(), p[i].rgb, p[i].rgb + 3);
                 }
             }, cancel))
-            return 0;
+            return -1;
     }
     const ScanCloud cloud = build_scan_cloud(xyz, rgb, 2.0);
     std::vector<double>().swap(xyz);
     std::vector<uint8_t>().swap(rgb);
 
-    std::vector<Anchor> anchors;
-    std::error_code ec;
-    if (fs::exists(anchors_path, ec)) anchors = read_anchors(anchors_path);
-    const std::string prefix = subdir + "/";
-    anchors.erase(std::remove_if(anchors.begin(), anchors.end(),
-                                 [&](const Anchor& a) { return a.name.rfind(prefix, 0) == 0; }),
-                  anchors.end());
-    fs::remove_all(fs::path(images_dir) / subdir, ec);
-    fs::create_directories(fs::path(images_dir) / subdir, ec);
     // Level views all round, and a ring tilted up for the facades above a
     // tripod; a walk's positions are many, so each gets fewer.
     const int yaws = tripod ? 8 : 4;
@@ -681,9 +693,9 @@ int64_t render_anchor_views(const std::vector<std::string>& clouds, const std::s
                 v.c = where[si];
                 v.R = {right.x, down.x, fw.x, right.y, down.y, fw.y, right.z, down.z, fw.z};
                 char name[64];
-                std::snprintf(name, sizeof name, "%s/%04zu_%02d_%03d.jpg", subdir.c_str(), si,
-                              (int)pitch, yi * 360 / yaws);
-                v.name = name;
+                std::snprintf(name, sizeof name, "%04zu_%02d_%03d.jpg", si, (int)pitch,
+                              yi * 360 / yaws);
+                v.name = subdir + "/" + prefix + name;
                 views.push_back(v);
             }
     constexpr int kSide = 1024;
@@ -714,16 +726,139 @@ int64_t render_anchor_views(const std::vector<std::string>& clouds, const std::s
         a.name = v.name;
         a.R = v.R;
         a.centre = v.c;
+        a.scan = clouds.size() == 1 ? clouds[0] : "";
         a.rendered = true;
         std::lock_guard<std::mutex> lk(mu);
         anchors.push_back(a);
         written++;
+    }
+    return written;
+}
+
+}  // namespace
+
+int64_t render_anchor_views(const std::vector<std::string>& clouds, bool each_scan,
+                            const std::string& images_dir, const std::string& subdir,
+                            const std::string& anchors_path,
+                            const std::function<void(const std::string&)>& log,
+                            const std::atomic<bool>* cancel) {
+    std::vector<Anchor> anchors;
+    std::error_code ec;
+    if (fs::exists(anchors_path, ec)) anchors = read_anchors(anchors_path);
+    const std::string prefix = subdir + "/";
+    anchors.erase(std::remove_if(anchors.begin(), anchors.end(),
+                                 [&](const Anchor& a) { return a.name.rfind(prefix, 0) == 0; }),
+                  anchors.end());
+    fs::remove_all(fs::path(images_dir) / subdir, ec);
+    fs::create_directories(fs::path(images_dir) / subdir, ec);
+    int64_t written = 0;
+    if (each_scan) {
+        for (size_t k = 0; k < clouds.size(); k++) {
+            char head[32];
+            std::snprintf(head, sizeof head, "%02zu_", k);
+            const int64_t n = render_views_of({clouds[k]}, head, images_dir, subdir, anchors,
+                                              log, cancel);
+            if (n < 0) return 0;
+            written += n;
+        }
+    } else {
+        written = render_views_of(clouds, "", images_dir, subdir, anchors, log, cancel);
+        if (written < 0) return 0;
     }
     std::sort(anchors.begin(), anchors.end(),
               [](const Anchor& a, const Anchor& b) { return a.name < b.name; });
     write_anchors(anchors_path, anchors);
     return written;
 }
+
+bool scans_share_frame(const std::vector<std::string>& clouds) {
+    std::vector<std::vector<spirula::cloud::Station>> stations;
+    for (const std::string& c : clouds) stations.push_back(spirula::cloud::Reader(c).info().stations);
+    return scans_share_frame(stations);
+}
+
+namespace {
+
+struct ModelFit {
+    bool ok = false;
+    sfm::Sim3 T;                      // model -> scan frame
+    AnchorFit anchors;                // when `mode` used them
+    IcpStats icp;
+};
+
+// One model into the anchors' frame: by the anchors, then the surface (Auto);
+// the surface alone from where it is (Refine); or as it is (Keep). `probe` is
+// the scan the size comes from when the anchors stand in one place.
+ModelFit fit_model(const ModelGeometry& g, const std::vector<Anchor>& anchors,
+                   const AlignCloud& cloud, const ScanCloud& probe, AlignMode mode,
+                   int64_t index, const std::function<void(const std::string&)>& log) {
+    ModelFit f;
+    if (mode == AlignMode::Refine) {
+        f.T = refine_icp(g, cloud, f.T, &f.icp);
+        if (f.icp.iterations > 0)
+            log(format(lmsg::model_icp, {fixed(f.icp.median_m, 3),
+                                         fixed(100.0 * f.icp.inlier_frac, 1)}));
+        f.ok = true;
+        return f;
+    }
+    if (mode == AlignMode::Keep) {
+        const std::vector<float> d = scan_distances(g, cloud, f.T, 1.0);
+        std::vector<float> v;
+        for (float x : d) if (x == x) v.push_back(x);
+        std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+        log(format(lmsg::model_kept, {(long long)index, fixed(v.empty() ? 0.0 : v[v.size() / 2], 3)}));
+        f.ok = true;
+        return f;
+    }
+    f.anchors = fit_anchors(g, anchors);
+    if (!f.anchors.ok) {
+        log(format(lmsg::model_dropped, {(long long)index}));
+        return f;
+    }
+    // ICP from a guessed size of 1 lands anywhere, and nothing could tell.
+    if (!f.anchors.scale_known) {
+        int64_t n = 0;
+        const double s = scale_from_depth(g, anchors, f.anchors, probe, &n);
+        if (s > 0) {
+            f.anchors = fit_anchors(g, anchors, s);
+            log(format(lmsg::scale_from_depth, {fixed(s, 6), (long long)n}));
+        }
+    }
+    log(format(lmsg::model_anchors, {(long long)f.anchors.registered, (long long)f.anchors.inliers,
+                                     fixed(f.anchors.rot_err_deg, 2),
+                                     fixed(f.anchors.centre_err_m, 3)}));
+    f.T = f.anchors.T;
+    f.ok = true;
+    if (mode != AlignMode::Auto) return f;
+    const sfm::Sim3 Ti = refine_icp(g, cloud, f.T, &f.icp);
+    // The fit to the surface should keep the anchors where they were.
+    double spread = 0, drift = 0;
+    int n = 0;
+    for (const Anchor& a : anchors) {
+        const int v = find_view(g, a.name);
+        if (v < 0) continue;
+        const Vec3 c0 = sfm::transformPoint(f.T, g.views[(size_t)v].centre);
+        const Vec3 c1 = sfm::transformPoint(Ti, g.views[(size_t)v].centre);
+        drift += (c1 - c0).norm();
+        n++;
+        for (const Anchor& b : anchors) spread = std::max(spread, (a.centre - b.centre).norm());
+    }
+    drift = n ? drift / n : 0;
+    if (f.icp.iterations == 0) {
+        // Too few points to fit a surface to: the anchors' fit stands.
+    } else if (!(Ti.scale > 0) ||
+               (f.anchors.scale_known && drift > std::max(0.1, kAnchorDrift * spread) &&
+                drift > 5 * std::max(f.anchors.centre_err_m, 0.02))) {
+        log(format(lmsg::model_icp_rejected, {fixed(drift, 3)}));
+    } else {
+        f.T = Ti;
+        log(format(lmsg::model_icp, {fixed(f.icp.median_m, 3),
+                                     fixed(100.0 * f.icp.inlier_frac, 1)}));
+    }
+    return f;
+}
+
+}  // namespace
 
 // ================
 // The dataset
@@ -787,52 +922,175 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     if (models.empty() && !placeable)
         throw std::runtime_error(format(lmsg::err_no_model, {ds.string()}));
     res.models = (int)models.size();
+    std::vector<ModelGeometry> geoms;
+    for (const ColModel& m : models) geoms.push_back(geometry_of(m));
+
+    // ---- which frame each cloud is in ----
+    // An anchor that names no cloud of this run leaves no way to tell, and
+    // keeps them all in one.
+    const size_t n_clouds = opt.clouds.size();
+    std::vector<int> scan_of(anchors.size(), -1);
+    {
+        std::vector<fs::path> canon;
+        for (const std::string& c : opt.clouds) canon.push_back(fs::weakly_canonical(c, ec));
+        for (size_t i = 0; i < anchors.size(); i++) {
+            if (anchors[i].scan.empty()) continue;
+            const fs::path a = fs::weakly_canonical(anchors[i].scan, ec);
+            for (size_t k = 0; k < n_clouds && scan_of[i] < 0; k++)
+                if (a == canon[k]) scan_of[i] = (int)k;
+        }
+    }
+    bool one_frame = n_clouds <= 1 || opt.frames == ScanFrameMode::Shared ||
+                     opt.mode == AlignMode::Keep || opt.mode == AlignMode::Refine ||
+                     std::find(scan_of.begin(), scan_of.end(), -1) != scan_of.end();
+    if (!one_frame && opt.frames == ScanFrameMode::Auto) one_frame = scans_share_frame(opt.clouds);
+    ScanFrames groups;
+    groups.frame.assign(n_clouds, 0);
+    groups.count = 1;
+    std::vector<std::optional<sfm::Sim3>> scan_placement(n_clouds, sfm::Sim3{});
+    if (!one_frame) {
+        groups = group_scan_frames(geoms, anchors, scan_of, (int)n_clouds);
+        if (groups.count == 1) log(lmsg::frames_agree.get());
+    }
 
     // ---- one pass over the clouds ----
     int64_t total = 0;
     bool any_color = false;
     std::vector<std::unique_ptr<spirula::cloud::Reader>> readers;
-    for (const std::string& c : opt.clouds) {
-        readers.push_back(std::make_unique<spirula::cloud::Reader>(c));
+    for (size_t k = 0; k < n_clouds; k++) {
+        readers.push_back(groups.frame[k] < 0
+                              ? nullptr
+                              : std::make_unique<spirula::cloud::Reader>(opt.clouds[k]));
+        if (!readers.back()) continue;
         total += readers.back()->info().points;
         any_color = any_color || readers.back()->info().has_color;
     }
     const uint64_t draw_below = draw_threshold(kDrawCap, total);
     std::vector<double> draw_xyz, all_xyz;
     std::vector<uint8_t> draw_rgb, all_rgb;
+    // Where each cloud's points end in the draw (and in all_xyz).
+    std::vector<size_t> draw_end(n_clouds, 0), all_end(n_clouds, 0);
     uint64_t serial = 0;
     for (size_t k = 0; k < readers.size(); k++) {
-        log(format(lmsg::reading_cloud, {opt.clouds[k]}));
-        const bool whole = readers[k]->read([&](const spirula::e57::Point* p, size_t n) {
-            for (size_t i = 0; i < n; i++) {
-                if (opt.all_points) {
-                    all_xyz.insert(all_xyz.end(), p[i].xyz, p[i].xyz + 3);
-                    all_rgb.insert(all_rgb.end(), p[i].rgb, p[i].rgb + 3);
+        if (readers[k]) {
+            log(format(lmsg::reading_cloud, {opt.clouds[k]}));
+            const bool whole = readers[k]->read([&](const spirula::e57::Point* p, size_t n) {
+                for (size_t i = 0; i < n; i++) {
+                    if (opt.all_points) {
+                        all_xyz.insert(all_xyz.end(), p[i].xyz, p[i].xyz + 3);
+                        all_rgb.insert(all_rgb.end(), p[i].rgb, p[i].rgb + 3);
+                    }
+                    if (splitmix64(serial++) > draw_below) continue;
+                    draw_xyz.insert(draw_xyz.end(), p[i].xyz, p[i].xyz + 3);
+                    draw_rgb.insert(draw_rgb.end(), p[i].rgb, p[i].rgb + 3);
                 }
-                if (splitmix64(serial++) > draw_below) continue;
-                draw_xyz.insert(draw_xyz.end(), p[i].xyz, p[i].xyz + 3);
-                draw_rgb.insert(draw_rgb.end(), p[i].rgb, p[i].rgb + 3);
-            }
-        }, cancel);
-        if (!whole) { res.cancelled = true; return res; }
+            }, cancel);
+            if (!whole) { res.cancelled = true; return res; }
+        }
+        draw_end[k] = draw_xyz.size() / 3;
+        all_end[k] = all_xyz.size() / 3;
     }
     readers.clear();
-    const size_t n_draw = draw_xyz.size() / 3;
-    if (n_draw == 0) throw std::runtime_error(lmsg::err_no_points.get());
 
-    // Random subsets of the draw: every k-th by a hash, so they are repeatable.
+    // Random subsets of the draw (of the clouds `only` marks): every k-th by
+    // a hash, so they are repeatable.
     auto subset = [&](int64_t want, std::vector<double>& xyz, std::vector<uint8_t>& rgb,
-                      uint64_t salt) {
-        const uint64_t below = draw_threshold(want, (int64_t)n_draw);
-        for (size_t i = 0; i < n_draw; i++) {
-            if (splitmix64(i ^ salt) > below) continue;
-            xyz.insert(xyz.end(), &draw_xyz[i * 3], &draw_xyz[i * 3] + 3);
-            rgb.insert(rgb.end(), &draw_rgb[i * 3], &draw_rgb[i * 3] + 3);
+                      uint64_t salt, const std::vector<char>* only = nullptr) {
+        int64_t n = 0;
+        for (size_t k = 0, begin = 0; k < n_clouds; begin = draw_end[k++])
+            if (!only || (*only)[k]) n += (int64_t)(draw_end[k] - begin);
+        const uint64_t below = draw_threshold(want, n);
+        for (size_t k = 0, begin = 0; k < n_clouds; begin = draw_end[k++]) {
+            if (only && !(*only)[k]) continue;
+            for (size_t i = begin; i < draw_end[k]; i++) {
+                if (splitmix64(i ^ salt) > below) continue;
+                xyz.insert(xyz.end(), &draw_xyz[i * 3], &draw_xyz[i * 3] + 3);
+                rgb.insert(rgb.end(), &draw_rgb[i * 3], &draw_rgb[i * 3] + 3);
+            }
         }
     };
+
+    // ---- every frame moved into the first's ----
+    // The models fitted to frame 0 alone place each other frame, rigidly,
+    // through its anchors in them; a frame none of them sees is left out.
+    if (groups.count > 1) {
+        std::vector<char> first(n_clouds, 0);
+        for (size_t k = 0; k < n_clouds; k++) first[k] = groups.frame[k] == 0;
+        std::vector<double> f_xyz;
+        std::vector<uint8_t> f_rgb;
+        subset(kAlignDraw, f_xyz, f_rgb, 0x51ED270B, &first);
+        const ScanCloud probe0 = build_scan_cloud(f_xyz, f_rgb, 2.0);
+        const AlignCloud cloud0 = make_align_cloud(f_xyz, f_rgb, kAlignTarget);
+        std::vector<Anchor> anchors0;
+        for (size_t i = 0; i < anchors.size(); i++)
+            if (groups.frame[(size_t)scan_of[i]] == 0) anchors0.push_back(anchors[i]);
+        std::vector<std::optional<sfm::Sim3>> fits(models.size());
+        const auto quiet = [](const std::string&) {};
+        for (size_t mi = 0; mi < models.size(); mi++) {
+            if (cancelled()) { res.cancelled = true; return res; }
+            const ModelFit f =
+                fit_model(geoms[mi], anchors0, cloud0, probe0, opt.mode, (int64_t)mi, quiet);
+            if (f.ok) fits[mi] = f.T;
+        }
+        const std::vector<FramePlacement> placed =
+            place_frames(geoms, fits, anchors, scan_of, groups);
+        auto kept = [&](int f) { return f >= 0 && placed[(size_t)f].placed; };
+        for (size_t k = 0; k < n_clouds; k++) {
+            const int f = groups.frame[k];
+            const std::string name = fs::path(opt.clouds[k]).filename().string();
+            if (f == 0) {
+                log(format(lmsg::frame_reference, {name}));
+            } else if (!kept(f)) {
+                log(format(lmsg::frame_left_out, {name}));
+            } else {
+                const sfm::Sim3& T = placed[(size_t)f].T;
+                const double ang = std::acos(std::clamp((T.R[0] + T.R[4] + T.R[8] - 1.0) / 2.0, -1.0, 1.0));
+                log(format(lmsg::frame_placed, {name, (long long)placed[(size_t)f].anchors,
+                                                fixed(ang * 180.0 / kPi, 2), fixed(T.t.norm(), 3)}));
+            }
+        }
+        // In place: a cloud's points only ever move down the arrays.
+        auto move = [&](std::vector<double>& xyz, std::vector<uint8_t>& rgb,
+                        std::vector<size_t>& end) {
+            size_t w = 0;
+            for (size_t k = 0, begin = 0; k < n_clouds; k++) {
+                const int f = groups.frame[k];
+                const size_t stop = end[k];
+                for (size_t i = begin; i < stop && kept(f); i++, w++) {
+                    const Vec3 x = sfm::transformPoint(placed[(size_t)f].T,
+                                                       {xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2]});
+                    xyz[w * 3] = x.x; xyz[w * 3 + 1] = x.y; xyz[w * 3 + 2] = x.z;
+                    for (int c = 0; c < 3; c++) rgb[w * 3 + c] = rgb[i * 3 + c];
+                }
+                begin = stop;
+                end[k] = w;
+            }
+            xyz.resize(w * 3);
+            rgb.resize(w * 3);
+        };
+        move(draw_xyz, draw_rgb, draw_end);
+        if (opt.all_points) move(all_xyz, all_rgb, all_end);
+        std::vector<Anchor> moved;
+        for (size_t i = 0; i < anchors.size(); i++) {
+            const int f = groups.frame[(size_t)scan_of[i]];
+            if (!kept(f)) continue;
+            Anchor a = anchors[i];
+            const sfm::Sim3& T = placed[(size_t)f].T;
+            a.R = sfm::mul(T.R, a.R);
+            a.centre = sfm::transformPoint(T, a.centre);
+            moved.push_back(a);
+        }
+        anchors.swap(moved);
+        scan_placement.assign(n_clouds, std::nullopt);
+        for (size_t k = 0; k < n_clouds; k++)
+            if (kept(groups.frame[k])) scan_placement[k] = placed[(size_t)groups.frame[k]].T;
+    }
+    if (draw_xyz.empty()) throw std::runtime_error(lmsg::err_no_points.get());
+
     std::vector<double> a_xyz;
     std::vector<uint8_t> a_rgb;
     subset(kAlignDraw, a_xyz, a_rgb, 0x51ED270B);
+    const ScanCloud probe = build_scan_cloud(a_xyz, a_rgb, 2.0);
     const AlignCloud cloud = make_align_cloud(a_xyz, a_rgb, kAlignTarget);
     log(format(lmsg::cloud_read, {(long long)serial, (long long)cloud.size(),
                                   fixed(cloud.voxel, 3)}));
@@ -845,72 +1103,28 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     size_t largest = 0;
     for (size_t mi = 0; mi < models.size(); mi++) {
         if (cancelled()) { res.cancelled = true; return res; }
-        const ModelGeometry g = geometry_of(models[mi]);
+        const ModelGeometry& g = geoms[mi];
         if (g.views.empty()) continue;
         log(format(lmsg::model_head, {(long long)mi, (long long)g.views.size(),
                                       (long long)g.points.size()}));
-        sfm::Sim3 T;
-        IcpStats st;
-        if (opt.mode == AlignMode::Refine) {
-            T = refine_icp(g, cloud, T, &st);
-            if (st.iterations > 0)
-                log(format(lmsg::model_icp, {fixed(st.median_m, 3),
-                                             fixed(100.0 * st.inlier_frac, 1)}));
-        } else if (opt.mode == AlignMode::Keep) {
-            const std::vector<float> d = scan_distances(g, cloud, T, 1.0);
-            std::vector<float> v;
-            for (float x : d) if (x == x) v.push_back(x);
-            std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
-            log(format(lmsg::model_kept, {(long long)mi, fixed(v.empty() ? 0.0 : v[v.size() / 2], 3)}));
-        } else {
-            const AnchorFit fit = fit_anchors(g, anchors);
-            if (!fit.ok) {
-                log(format(lmsg::model_dropped, {(long long)mi}));
-                continue;
-            }
-            log(format(lmsg::model_anchors, {(long long)fit.registered, (long long)fit.inliers,
-                                             fixed(fit.rot_err_deg, 2),
-                                             fixed(fit.centre_err_m, 3)}));
-            worst_centre = std::max(worst_centre, fit.centre_err_m);
-            worst_rot = std::max(worst_rot, fit.rot_err_deg);
-            T = fit.T;
-            if (opt.mode == AlignMode::Auto) {
-                const sfm::Sim3 Ti = refine_icp(g, cloud, T, &st);
-                // The fit to the surface should keep the anchors where they were.
-                double spread = 0, drift = 0;
-                int n = 0;
-                for (const Anchor& a : anchors) {
-                    const int v = find_view(g, a.name);
-                    if (v < 0) continue;
-                    const Vec3 c0 = sfm::transformPoint(T, g.views[(size_t)v].centre);
-                    const Vec3 c1 = sfm::transformPoint(Ti, g.views[(size_t)v].centre);
-                    drift += (c1 - c0).norm();
-                    n++;
-                    for (const Anchor& b : anchors) spread = std::max(spread, (a.centre - b.centre).norm());
-                }
-                drift = n ? drift / n : 0;
-                if (st.iterations == 0) {
-                    // Too few points to fit a surface to: the anchors' fit stands.
-                } else if (fit.scale_known && drift > std::max(0.1, kAnchorDrift * spread) &&
-                           drift > 5 * std::max(fit.centre_err_m, 0.02)) {
-                    log(format(lmsg::model_icp_rejected, {fixed(drift, 3)}));
-                } else {
-                    T = Ti;
-                    log(format(lmsg::model_icp, {fixed(st.median_m, 3),
-                                                 fixed(100.0 * st.inlier_frac, 1)}));
-                }
-            }
+        const ModelFit f = fit_model(g, anchors, cloud, probe, opt.mode, (int64_t)mi, log);
+        if (!f.ok) continue;
+        if (f.anchors.ok) {
+            worst_centre = std::max(worst_centre, f.anchors.centre_err_m);
+            worst_rot = std::max(worst_rot, f.anchors.rot_err_deg);
         }
+        const sfm::Sim3& T = f.T;
         const double ang = std::acos(std::clamp((T.R[0] + T.R[4] + T.R[8] - 1.0) / 2.0, -1.0, 1.0));
         log(format(lmsg::model_transform, {fixed(T.scale, 6), fixed(ang * 180.0 / kPi, 3),
                                            fixed(T.t.x, 3), fixed(T.t.y, 3), fixed(T.t.z, 3)}));
         transforms[mi] = T;
         if (aligned.empty() || g.views.size() > models[largest].images.size()) {
             largest = mi;
-            best_residual = st.median_m;
+            best_residual = f.icp.median_m;
         }
         aligned.push_back((int)mi);
     }
+    geoms.clear();
     res.aligned = (int)aligned.size();
     if (aligned.empty() && !placeable) throw std::runtime_error(lmsg::err_none_aligned.get());
 
@@ -1018,6 +1232,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     DatasetParserConfig pc;
     pc.recon_dir = "sparse.lidar_tmp/0";
     pc.image_dir = opt.image_dir;
+    pc.mask_dir = opt.mask_dir;
     pc.probe_image_size = probe_image_size;
     const ParsedDataset pd = parse_colmap_dataset(ds.string(), pc);
     const fs::path image_canon = fs::weakly_canonical(image_root, ec);
@@ -1072,6 +1287,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     constexpr size_t kStripes = 4096;
     std::vector<std::mutex> stripes(kStripes);
     std::map<uint64_t, std::pair<int, int>> gap_votes;   // point -> (no scan, scan)
+    std::set<uint32_t> off_scan;                          // images their points disown
     std::mutex mu;
     std::exception_ptr failure;
     int64_t done = 0;
@@ -1113,6 +1329,64 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
             }
             std::vector<float> depth, normal;
             render_depth_normal(depth_cloud, m, ray, depth, normal);
+            // What the mask takes out (a passer-by in front of a wall) the scan
+            // cannot speak for: blank in the maps and seen by nothing, to the
+            // edge of every map pixel it touches.
+            std::vector<uint8_t> keep, hidden;
+            int mw = 0, mh = 0;
+            if (!pd.mask_filenames.empty() && !pd.mask_filenames[pi].empty()) {
+                int mc = 0;
+                if (unsigned char* mk = stbi_load(pd.mask_filenames[pi].c_str(), &mw, &mh, &mc, 1)) {
+                    keep.resize((size_t)mw * mh);
+                    for (size_t j = 0; j < keep.size(); j++) keep[j] = (mk[j] >= 128) != opt.flip_masks;
+                    stbi_image_free(mk);
+                }
+            }
+            if (!keep.empty()) {
+                hidden.assign(depth.size(), 0);
+                const double kx = (double)m.width / mw, ky = (double)m.height / mh;
+                for (int y = 0; y < mh; y++)
+                    for (int x = 0; x < mw; x++) {
+                        if (keep[(size_t)y * mw + x]) continue;
+                        const int x1 = std::min(m.width, std::max((int)(x * kx) + 1, (int)std::ceil((x + 1) * kx)));
+                        const int y1 = std::min(m.height, std::max((int)(y * ky) + 1, (int)std::ceil((y + 1) * ky)));
+                        for (int v = (int)(y * ky); v < y1; v++)
+                            for (int u = (int)(x * kx); u < x1; u++) hidden[(size_t)v * m.width + u] = 1;
+                    }
+                for (size_t j = 0; j < hidden.size(); j++) {
+                    if (!hidden[j]) continue;
+                    depth[j] = 0;
+                    normal[j * 3] = normal[j * 3 + 1] = normal[j * 3 + 2] = 0;
+                }
+            }
+            auto depth_at = [&](double px, double py) {
+                const int x = (int)px, y = (int)py;
+                if (x < 0 || y < 0 || x >= m.width || y >= m.height) return -1.0f;
+                const size_t j = (size_t)y * m.width + x;
+                return !hidden.empty() && hidden[j] ? -1.0f : depth[j];
+            };
+            // The model's points this image sees: does the scan have a surface
+            // there, and are they on it? Mostly off it, the image is not where
+            // the model put it, and it gives the dataset nothing.
+            std::vector<std::pair<uint64_t, bool>> votes;
+            int64_t measured = 0, on = 0;
+            for (size_t k = 0; k < im.point.size(); k++) {
+                if (im.point[k] == ~0ull) continue;
+                const float d = depth_at(im.xy[k * 2] * sx, im.xy[k * 2 + 1] * sy);
+                if (d < 0) continue;
+                votes.push_back({im.point[k], d > 0});
+                if (!(d > 0)) continue;
+                const double* x = out.points.at(im.point[k]).xyz;
+                const Vec3 p = sfm::mul(Rw2c, Vec3{x[0], x[1], x[2]} - C);
+                measured++;
+                on += std::fabs((ray ? p.norm() : p.z) - d) <= kOnRatio * d + kOnSlack;
+            }
+            if (measured >= kOnMinPoints && 2 * on < measured) {
+                std::lock_guard<std::mutex> lk(mu);
+                off_scan.insert(f.image);
+                log(format(lmsg::progress_maps, {(long long)++done, (long long)nf}));
+                continue;
+            }
             const std::string stem = stem_of(f.rel);
             if (opt.depth_maps) {
                 std::vector<uint16_t> mm(depth.size(), 0);
@@ -1129,31 +1403,10 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                     throw std::runtime_error("cannot write " + dp.string());
                 write_normal_png(np, normal, m.width, m.height);
             }
-            auto depth_at = [&](double px, double py) {
-                const int x = (int)px, y = (int)py;
-                if (x < 0 || y < 0 || x >= m.width || y >= m.height) return -1.0f;
-                return depth[(size_t)y * m.width + x];
-            };
-            // The model's points this image sees: does the scan have a surface there?
-            std::vector<std::pair<uint64_t, bool>> votes;
-            for (size_t k = 0; k < im.point.size(); k++) {
-                if (im.point[k] == ~0ull) continue;
-                const float d = depth_at(im.xy[k * 2] * sx, im.xy[k * 2 + 1] * sy);
-                if (d >= 0) votes.push_back({im.point[k], d > 0});
-            }
             // The scan points this image sees.
             unsigned char* rgb = nullptr;
             int iw = 0, ih = 0, ic = 0;
-            std::vector<uint8_t> keep;
-            if (!any_color && n_seed) {
-                rgb = stbi_load(pd.image_filenames[pi].c_str(), &iw, &ih, &ic, 3);
-                if (!pd.mask_filenames.empty() && !pd.mask_filenames[pi].empty()) {
-                    int mw = 0, mh = 0, mc = 0;
-                    unsigned char* mk = stbi_load(pd.mask_filenames[pi].c_str(), &mw, &mh, &mc, 1);
-                    if (mk && mw == iw && mh == ih) keep.assign(mk, mk + (size_t)mw * mh);
-                    if (mk) stbi_image_free(mk);
-                }
-            }
+            if (!any_color && n_seed) rgb = stbi_load(pd.image_filenames[pi].c_str(), &iw, &ih, &ic, 3);
             const Vec3 o{depth_cloud.origin[0], depth_cloud.origin[1], depth_cloud.origin[2]};
             for (size_t s = 0; s < n_seed; s++) {
                 const Vec3 X{seed_xyz[s * 3], seed_xyz[s * 3 + 1], seed_xyz[s * 3 + 2]};
@@ -1180,7 +1433,8 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
                 if (h < slot[worst].hash) slot[worst] = Seen{h, f.image, ox, oy};
                 if (rgb) {
                     const int x = std::clamp((int)ox, 0, iw - 1), y = std::clamp((int)oy, 0, ih - 1);
-                    if (keep.empty() || (keep[(size_t)y * iw + x] >= 128) != opt.flip_masks) {
+                    if (keep.empty() || keep[(size_t)std::min(mh - 1, y * mh / ih) * mw +
+                                             std::min(mw - 1, x * mw / iw)]) {
                         const unsigned char* c = rgb + ((size_t)y * iw + x) * 3;
                         uint32_t* acc = &color_sum[s * 4];
                         acc[0] += c[0]; acc[1] += c[1]; acc[2] += c[2]; acc[3]++;
@@ -1200,6 +1454,13 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
     }
     if (failure) std::rethrow_exception(failure);
     if (cancelled()) { res.cancelled = true; return res; }
+    if (!off_scan.empty()) {
+        std::set<std::string> stems;
+        for (uint32_t id : off_scan) stems.insert(stem_of(out.images.at(id).name));
+        remove_images(out, stems);
+        res.images = (int64_t)out.images.size();
+        log(format(lmsg::images_off_scan, {(long long)off_scan.size()}));
+    }
 
     // ---- the final model: the reconstruction's points where the scan has
     // none, then the scan's points with their tracks ----
@@ -1231,7 +1492,7 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
         const uint64_t id = next_pt++;
         const Seen* slot = &seen[s * (size_t)cap];
         for (int k = 0; k < cap; k++) {
-            if (slot[k].hash == UINT32_MAX) continue;
+            if (slot[k].hash == UINT32_MAX || off_scan.count(slot[k].image)) continue;
             ColImage& im = out.images[slot[k].image];
             p.track.push_back(slot[k].image);
             p.track.push_back((uint32_t)im.point.size());
@@ -1264,6 +1525,22 @@ DatasetResult write_lidar_dataset(const DatasetOptions& opt,
         w.field("mode", opt.mode == AlignMode::Keep ? "keep"
                         : opt.mode == AlignMode::Refine ? "refine"
                         : opt.mode == AlignMode::Anchors ? "anchors" : "auto");
+        w.key("scans").array();
+        for (size_t k = 0; k < n_clouds; k++) {
+            w.object();
+            w.field("cloud", opt.clouds[k]);
+            w.field("placed", scan_placement[k].has_value());
+            if (const std::optional<sfm::Sim3>& T = scan_placement[k]) {
+                std::string r = "[";
+                for (int j = 0; j < 9; j++) r += (j ? ", " : "") + json_number_exact(T->R[j]);
+                w.field_raw("rotation", r + "]");
+                w.field_raw("translation", "[" + json_number_exact(T->t.x) + ", " +
+                                               json_number_exact(T->t.y) + ", " +
+                                               json_number_exact(T->t.z) + "]");
+            }
+            w.end();
+        }
+        w.end();
         w.key("models").array();
         for (int mi : aligned) {
             const sfm::Sim3& T = transforms[(size_t)mi];

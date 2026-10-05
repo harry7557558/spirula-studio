@@ -294,6 +294,7 @@ int spirula_gui_main(int argc, char** argv) {
             // After the backend's own mouse update, so an injected position
             // is the later event and wins for this frame.
             const bool scripted = gui::automation::begin_frame();
+            if (const auto d = gui::automation::take_drop(); !d.empty()) app.handle_drop(d);
             ImGui::NewFrame();
             app.frame();
             const bool busy = ui_busy() || scripted || app.animating();

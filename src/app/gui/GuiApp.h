@@ -36,6 +36,7 @@
 #include "app/gui/TrainPreset.h"
 #include "app/gui/TrainRunner.h"
 #include "app/gui/ViewportPanel.h"
+#include "data/PointCloudFile.h"
 
 #include <atomic>
 #include <cstdint>
@@ -466,14 +467,27 @@ private:
     // the picker, the drop handler and the "mesh this run" shortcut.
     void set_mesh_source(const std::string& path);
     void start_meshing();
-    // LiDAR scans on the dataset screen (LidarSources.cpp).
-    void draw_lidar_sources();
+    // LiDAR scans on the dataset screen (LidarSources.cpp): rows laid out as
+    // the inputs' above them, and the switches a run with them has.
+    void draw_lidar_rows(float path_w, bool one_line);
+    void draw_lidar_options();
     void add_lidar_sources(const std::vector<std::string>& paths);
+    void replace_lidar_source(size_t i, const std::string& path);
+    void clear_lidar_sources();
     // An XGRIDS export picked as a dataset: its fisheye model, its LAS, its
     // masks the other way round. False when `dir` is no such export.
     bool add_xgrids_export(const std::string& dir);
+    // E57 / LAS / LAZ by name; a PLY says in its header, and is a scan where
+    // a dataset is being put together and something to look at elsewhere.
     static bool is_lidar_drop(const std::string& path);
+    std::vector<std::string> raw_inputs(const std::vector<std::string>& paths);
+    static bool ply_is_point_cloud(const std::string& path);
+    // The scans' photographs are the only images and could keep their poses.
+    bool scanner_poses_offered() const;
     LidarJob lidar_job() const;
+    // The input list emptied for a different capture, with what was decided
+    // about it; the scans stay.
+    void clear_sources();
     // Would the run about to start actually get cameras? Resolves the dataset
     // the way the child does -- the folder typed here, else the `data` entry
     // in the run's config.json -- so the screen can warn BEFORE the run that
@@ -724,12 +738,17 @@ private:
     // ---- laser scans the dataset is aligned with (LidarSources.cpp) ----
     struct LidarInput {
         std::string path;
-        std::string summary;          // read from the header when it was added
+        std::string edit;             // the path box, until it is committed
+        int64_t points = 0;           // as the header declares
         int64_t photos = 0;           // images an E57 carries with poses
+        std::vector<spirula::cloud::Station> stations;
     };
+    bool read_lidar_input(const std::string& path, LidarInput& in);
     std::vector<LidarInput> _lidar;
+    int _pick_lidar = -1;             // the row a Browse... replaces; -1 adds
     bool _lidar_photos = true;        // the scans' photographs join the reconstruction
     bool _lidar_in_frame = false;     // the model is already in the scans' frame
+    bool _lidar_keep_poses = true;    // ... or are all there is: no reconstruction
 
     // Dataset creation. Both runners exist; only one runs, chosen by _engine
     // (and forced when only one is available).

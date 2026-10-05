@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace gui {
 namespace automation {
@@ -30,6 +31,10 @@ void set_state_source(std::function<std::string()> f);
 // queued input. True while anything is still queued, which is what keeps the
 // frame loop at its busy rate for the length of a script.
 bool begin_frame();
+
+// A drop the client asked for (/ui/drop), taken once after begin_frame() and
+// handed on as GLFW hands a real one; empty when none came.
+std::vector<std::string> take_drop();
 
 // After the draw data has been rendered, with the GL context current:
 // publishes the frame's item table and fills a pending screenshot request.

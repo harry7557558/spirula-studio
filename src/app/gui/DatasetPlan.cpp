@@ -637,9 +637,12 @@ std::vector<std::string> geometry_kinds(const GeometryJob& g) {
 PlanJob plan_job(const SfmJob& job) {
     PlanJob p;
     p.prep = job.prep;
+    p.reconstruct = !job.lidar.scanner_only;
     p.model = model_fields(job);
     p.mask_features = job.mask_features;
     p.geometry = job.geometry;
+    // The scans give the run its depth and normals.
+    if (job.lidar.enabled()) p.geometry.enable = false;
     return p;
 }
 
@@ -732,6 +735,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     const bool masks_feed = masks_reach_features(job.prep, job.mask_features);
     if (fixed(Step::Model)) {
         md = (*done)[Step::Model];
+    } else if (!job.reconstruct) {
     } else if (!ws.model) {
         set(md, Act::Run);
     } else if (req.redo_model) {

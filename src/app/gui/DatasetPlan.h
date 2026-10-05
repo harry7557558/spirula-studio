@@ -41,6 +41,7 @@ bool masks_in_dataset(const PrepJob& job);
 // One shape for both engines.
 struct PlanJob {
     PrepJob prep;
+    bool reconstruct = true;   // false: the laser scans' poses place the images
     StepFields model;
     bool mask_features = true;
     GeometryJob geometry;

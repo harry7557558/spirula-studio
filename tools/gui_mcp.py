@@ -149,6 +149,16 @@ TOOLS = [
         },
     },
     {
+        "name": "gui_drop",
+        "description": "Drop files or folders on the window, as a drag from a "
+                       "file manager would.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"paths": {"type": "array", "items": {"type": "string"}}},
+            "required": ["paths"],
+        },
+    },
+    {
         "name": "gui_screenshot",
         "description": "The current framebuffer, as an image.",
         "inputSchema": {
@@ -234,6 +244,7 @@ def run_tool(name, a):
             point_args(a), value=a["value"],
             enter="1" if a.get("enter", True) else "0")),
         "gui_wait": ("/ui/wait", lambda a: {"frames": a.get("frames", 4)}),
+        "gui_drop": ("/ui/drop", lambda a: {"paths": "\n".join(a["paths"])}),
     }
     if name not in routes:
         return [{"type": "text", "text": "unknown tool: " + name}], True

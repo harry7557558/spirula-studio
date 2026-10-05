@@ -348,6 +348,86 @@ SS_MSG(opt_image_dir,
        "абсолютный путь"),
     TR("Görüntülerin yeri: veri kümesine göre göreli (varsayılan images) ya da mutlak"));
 
+SS_MSG(opt_mask_dir,
+    EN("Where the masks are: relative to the dataset (default masks) or absolute. Depth "
+       "and normals are left blank where they take the image out"),
+    JA("マスクの場所。データセットからの相対パス（既定 masks）か絶対パス。マスクが"
+       "画像を除く部分では、深度と法線を空のままにします"),
+    ZH_HANS("蒙版所在位置：相对于数据集的路径（默认 masks）或绝对路径。蒙版去除图像的"
+            "地方，深度和法线留空"),
+    ZH_HANT("遮罩所在位置：相對於資料集的路徑（預設 masks）或絕對路徑。遮罩去除影像的"
+            "地方，深度和法線留空"),
+    KO("마스크 위치: 데이터셋 기준 상대 경로(기본값 masks) 또는 절대 경로. 마스크가 "
+       "이미지를 빼는 곳은 깊이와 법선을 비워 둡니다"),
+    DE("Wo die Masken liegen: relativ zum Datensatz (Standard masks) oder absolut. Wo "
+       "sie das Bild ausblenden, bleiben Tiefe und Normalen leer"),
+    FR("Emplacement des masques : relatif au jeu de données (par défaut masks) ou "
+       "absolu. Là où ils retirent l'image, la profondeur et les normales restent vides"),
+    ES("Dónde están las máscaras: relativo al conjunto de datos (por defecto masks) o "
+       "absoluto. Donde quitan la imagen, la profundidad y las normales quedan vacías"),
+    PT("Onde estão as máscaras: relativo ao conjunto de dados (padrão masks) ou "
+       "absoluto. Onde elas retiram a imagem, a profundidade e as normais ficam vazias"),
+    IT("Dove sono le maschere: relativo al set di dati (predefinito masks) o assoluto. "
+       "Dove tolgono l'immagine, profondità e normali restano vuote"),
+    NL("Waar de maskers staan: relatief aan de dataset (standaard masks) of absoluut. "
+       "Waar ze het beeld weglaten, blijven diepte en normalen leeg"),
+    RU("Где лежат маски: относительно набора данных (по умолчанию masks) или "
+       "абсолютный путь. Там, где маска убирает изображение, глубина и нормали остаются "
+       "пустыми"),
+    TR("Maskelerin yeri: veri kümesine göre göreli (varsayılan masks) ya da mutlak. "
+       "Maskenin görüntüyü çıkardığı yerlerde derinlik ve normaller boş kalır"));
+
+SS_MSG(opt_scan_frames,
+    EN("Whether the clouds share one frame: `shared` (one registration wrote them), "
+       "`separate` (each has its own, and is placed through its images in the "
+       "reconstruction), or `auto`, the default: shared when no two files put their "
+       "scanner in one place"),
+    JA("点群が 1 つの座標系を共有するかどうか。`shared`（1 回のレジストレーションで"
+       "書き出されたもの）、`separate`（それぞれ独自の座標系を持ち、再構成内の画像を"
+       "通して配置する）、または既定の `auto`（スキャナーの位置が同じになるファイルの"
+       "組がなければ共有とみなす）"),
+    ZH_HANS("这些点云是否共享一个坐标系：`shared`（由同一次配准写出）、`separate`"
+            "（各有自己的坐标系，通过它在重建中的图像来放置），或默认的 `auto`："
+            "没有两个文件把扫描仪放在同一处时视为共享"),
+    ZH_HANT("這些點雲是否共享一個座標系：`shared`（由同一次對位寫出）、`separate`"
+            "（各有自己的座標系，透過它在重建中的影像來放置），或預設的 `auto`："
+            "沒有兩個檔案把掃描儀放在同一處時視為共享"),
+    KO("포인트 클라우드들이 하나의 좌표계를 공유하는지: `shared`(한 번의 정합으로 "
+       "내보낸 것), `separate`(각자 좌표계가 있고 재구성 안의 이미지를 통해 배치), "
+       "또는 기본값 `auto`: 스캐너를 같은 곳에 두는 두 파일이 없으면 공유로 봄"),
+    DE("Ob die Punktwolken ein Bezugssystem teilen: `shared` (eine Registrierung hat "
+       "sie geschrieben), `separate` (jede hat ihr eigenes und wird über ihre Bilder in "
+       "der Rekonstruktion platziert) oder `auto`, der Standard: geteilt, wenn keine zwei "
+       "Dateien ihren Scanner an dieselbe Stelle setzen"),
+    FR("Si les nuages partagent un repère : `shared` (une seule consolidation les a "
+       "écrits), `separate` (chacun a le sien et est placé par ses images dans la "
+       "reconstruction), ou `auto`, par défaut : partagé quand deux fichiers ne placent "
+       "jamais leur scanner au même endroit"),
+    ES("Si las nubes comparten un sistema de referencia: `shared` (las escribió un solo "
+       "registro), `separate` (cada una tiene el suyo y se sitúa mediante sus imágenes "
+       "en la reconstrucción) o `auto`, por defecto: compartido cuando no hay dos "
+       "archivos que pongan su escáner en el mismo sitio"),
+    PT("Se as nuvens compartilham um referencial: `shared` (um único registro as "
+       "gravou), `separate` (cada uma tem o seu e é posicionada pelas suas imagens na "
+       "reconstrução) ou `auto`, o padrão: compartilhado quando não há dois arquivos que "
+       "ponham o scanner no mesmo lugar"),
+    IT("Se le nuvole condividono un sistema di riferimento: `shared` (le ha scritte "
+       "un'unica registrazione), `separate` (ognuna ha il proprio e viene posizionata "
+       "tramite le sue immagini nella ricostruzione) o `auto`, il predefinito: condiviso "
+       "quando nessuna coppia di file mette lo scanner nello stesso punto"),
+    NL("Of de puntenwolken één assenstelsel delen: `shared` (één registratie schreef ze), "
+       "`separate` (elk heeft een eigen en wordt geplaatst via zijn beelden in de "
+       "reconstructie) of `auto`, de standaard: gedeeld als geen twee bestanden hun "
+       "scanner op dezelfde plek zetten"),
+    RU("Общая ли у облаков система координат: `shared` (их записала одна регистрация), "
+       "`separate` (у каждого своя, и оно размещается по своим изображениям в "
+       "реконструкции) или `auto`, по умолчанию: общая, если никакие два файла не ставят "
+       "сканер в одно место"),
+    TR("Bulutların tek bir koordinat sistemini paylaşıp paylaşmadığı: `shared` (tek bir "
+       "kayıt yazdı), `separate` (her birinin kendi sistemi var ve yeniden oluşturmadaki "
+       "görüntüleriyle yerleştirilir) ya da varsayılan `auto`: hiçbir iki dosya "
+       "tarayıcıyı aynı yere koymuyorsa paylaşılır"));
+
 SS_MSG(opt_flip_masks,
     EN("The dataset's masks are white where an image is NOT kept"),
     JA("データセットのマスクは、画像を残さない部分が白です"),
@@ -726,6 +806,31 @@ SS_MSG(model_icp,
     TR("Taramanın yüzeyine uyduruldu: ondan {0} m uzakta (medyan), noktaların %{1} "
        "kadarı üzerinde"));
 
+SS_MSG(scale_from_depth,
+    EN("The anchors stand in one place, so the scale comes from the scan's depth: {0}   "
+       "Points: {1}"),
+    JA("アンカー画像が 1 か所に集まっているため、スケールはスキャンの深度から求めます: "
+       "{0}   点: {1}"),
+    ZH_HANS("锚定图像都在同一处，因此尺度取自扫描的深度：{0}   点：{1}"),
+    ZH_HANT("錨定影像都在同一處，因此尺度取自掃描的深度：{0}   點：{1}"),
+    KO("앵커 이미지가 한곳에 모여 있어 스케일은 스캔의 깊이에서 구합니다: {0}   점: {1}"),
+    DE("Die Ankerbilder stehen an einer Stelle, daher kommt der Maßstab aus der Tiefe "
+       "des Scans: {0}   Punkte: {1}"),
+    FR("Les images d'ancrage sont toutes au même endroit, l'échelle vient donc de la "
+       "profondeur du scan : {0}   Points : {1}"),
+    ES("Las imágenes de anclaje están en un mismo sitio, así que la escala sale de la "
+       "profundidad del escaneo: {0}   Puntos: {1}"),
+    PT("As imagens de ancoragem estão num mesmo lugar, então a escala vem da "
+       "profundidade da varredura: {0}   Pontos: {1}"),
+    IT("Le immagini di ancoraggio sono tutte nello stesso punto, quindi la scala viene "
+       "dalla profondità della scansione: {0}   Punti: {1}"),
+    NL("De ankerbeelden staan op één plek, dus de schaal komt uit de diepte van de "
+       "scan: {0}   Punten: {1}"),
+    RU("Опорные изображения стоят в одном месте, поэтому масштаб берётся из глубины "
+       "скана: {0}   Точек: {1}"),
+    TR("Çapa görüntüleri tek bir yerde duruyor, bu yüzden ölçek taramanın "
+       "derinliğinden gelir: {0}   Nokta: {1}"));
+
 SS_MSG(model_icp_rejected,
     EN("The surface fit moved the model away from its anchors ({0} m); keeping the anchors' fit"),
     JA("表面への当てはめでモデルがアンカー画像から離れたため（{0} m）、アンカー画像"
@@ -807,6 +912,96 @@ SS_MSG(model_dropped,
     TR("Model {0}, taramada pozu bilinen hiçbir görüntü içermediği için dışarıda "
        "bırakıldı"));
 
+SS_MSG(frames_agree,
+    EN("The scans' files do not put them in one frame, but their images in the "
+       "reconstruction do"),
+    JA("スキャンのファイルからは 1 つの座標系にあると言えませんが、再構成内の画像は"
+       "同じ座標系にあることを示しています"),
+    ZH_HANS("扫描文件本身没有表明它们处于同一坐标系，但它们在重建中的图像表明是"),
+    ZH_HANT("掃描檔案本身沒有表明它們處於同一座標系，但它們在重建中的影像表明是"),
+    KO("스캔 파일만으로는 같은 좌표계에 있다고 할 수 없지만, 재구성 안의 이미지는 "
+       "같은 좌표계에 있음을 보여 줍니다"),
+    DE("Die Dateien der Scans legen sie nicht in ein Bezugssystem, ihre Bilder in der "
+       "Rekonstruktion aber schon"),
+    FR("Les fichiers des scans ne les placent pas dans un même repère, mais leurs "
+       "images dans la reconstruction, si"),
+    ES("Los archivos de los escaneos no los ponen en un mismo sistema de referencia, "
+       "pero sus imágenes en la reconstrucción sí"),
+    PT("Os arquivos das varreduras não as colocam num mesmo referencial, mas as suas "
+       "imagens na reconstrução, sim"),
+    IT("I file delle scansioni non le mettono in un unico sistema di riferimento, ma "
+       "le loro immagini nella ricostruzione sì"),
+    NL("De bestanden van de scans zetten ze niet in één assenstelsel, hun beelden in de "
+       "reconstructie wel"),
+    RU("Файлы сканов не помещают их в одну систему координат, но их изображения в "
+       "реконструкции помещают"),
+    TR("Taramaların dosyaları onları tek bir koordinat sistemine koymuyor, ama "
+       "yeniden oluşturmadaki görüntüleri koyuyor"));
+
+SS_MSG(frame_reference,
+    EN("{0}: the frame the other scans are placed in"),
+    JA("{0}: ほかのスキャンを配置する基準の座標系"),
+    ZH_HANS("{0}：其他扫描放置到的基准坐标系"),
+    ZH_HANT("{0}：其他掃描放置到的基準座標系"),
+    KO("{0}: 다른 스캔을 배치하는 기준 좌표계"),
+    DE("{0}: das Bezugssystem, in das die anderen Scans gesetzt werden"),
+    FR("{0} : le repère dans lequel les autres scans sont placés"),
+    ES("{0}: el sistema de referencia en el que se sitúan los demás escaneos"),
+    PT("{0}: o referencial em que as outras varreduras são posicionadas"),
+    IT("{0}: il sistema di riferimento in cui vengono posizionate le altre scansioni"),
+    NL("{0}: het assenstelsel waarin de andere scans worden geplaatst"),
+    RU("{0}: система координат, в которую помещаются остальные сканы"),
+    TR("{0}: diğer taramaların yerleştirildiği koordinat sistemi"));
+
+SS_MSG(frame_placed,
+    EN("{0}: placed through its images in the reconstruction   Images: {1}   "
+       "Turned: {2} deg   Moved: {3} m"),
+    JA("{0}: 再構成内の画像を通して配置   画像: {1}   回転: {2} 度   移動: {3} m"),
+    ZH_HANS("{0}：通过它在重建中的图像放置   图像：{1}   旋转：{2} 度   移动：{3} m"),
+    ZH_HANT("{0}：透過它在重建中的影像放置   影像：{1}   旋轉：{2} 度   移動：{3} m"),
+    KO("{0}: 재구성 안의 이미지를 통해 배치   이미지: {1}   회전: {2}도   이동: {3} m"),
+    DE("{0}: über seine Bilder in der Rekonstruktion platziert   Bilder: {1}   "
+       "Gedreht: {2} Grad   Verschoben: {3} m"),
+    FR("{0} : placé par ses images dans la reconstruction   Images : {1}   "
+       "Rotation : {2} deg   Déplacement : {3} m"),
+    ES("{0}: situado mediante sus imágenes en la reconstrucción   Imágenes: {1}   "
+       "Giro: {2} grados   Desplazamiento: {3} m"),
+    PT("{0}: posicionada pelas suas imagens na reconstrução   Imagens: {1}   "
+       "Rotação: {2} graus   Deslocamento: {3} m"),
+    IT("{0}: posizionata tramite le sue immagini nella ricostruzione   Immagini: {1}   "
+       "Rotazione: {2} gradi   Spostamento: {3} m"),
+    NL("{0}: geplaatst via zijn beelden in de reconstructie   Beelden: {1}   "
+       "Gedraaid: {2} graden   Verschoven: {3} m"),
+    RU("{0}: размещён по своим изображениям в реконструкции   Изображений: {1}   "
+       "Поворот: {2} град.   Сдвиг: {3} м"),
+    TR("{0}: yeniden oluşturmadaki görüntüleriyle yerleştirildi   Görüntü: {1}   "
+       "Dönme: {2} derece   Kayma: {3} m"));
+
+SS_MSG(frame_left_out,
+    EN("{0}: in a frame of its own, and the reconstruction placed none of its images; "
+       "left out"),
+    JA("{0}: 独自の座標系にあり、再構成はその画像を 1 枚も配置できなかったため、除外"
+       "します"),
+    ZH_HANS("{0}：处于自己的坐标系中，而重建未能放置它的任何图像，已排除"),
+    ZH_HANT("{0}：處於自己的座標系中，而重建未能放置它的任何影像，已排除"),
+    KO("{0}: 자체 좌표계에 있고 재구성이 그 이미지를 하나도 배치하지 못해 제외합니다"),
+    DE("{0}: in einem eigenen Bezugssystem, und die Rekonstruktion hat keines seiner "
+       "Bilder platziert; weggelassen"),
+    FR("{0} : dans un repère à lui, et la reconstruction n'a placé aucune de ses "
+       "images ; écarté"),
+    ES("{0}: en un sistema de referencia propio, y la reconstrucción no situó ninguna "
+       "de sus imágenes; se deja fuera"),
+    PT("{0}: num referencial próprio, e a reconstrução não posicionou nenhuma das suas "
+       "imagens; deixada de fora"),
+    IT("{0}: in un sistema di riferimento proprio, e la ricostruzione non ha "
+       "posizionato nessuna delle sue immagini; esclusa"),
+    NL("{0}: in een eigen assenstelsel, en de reconstructie plaatste geen van zijn "
+       "beelden; weggelaten"),
+    RU("{0}: в собственной системе координат, а реконструкция не разместила ни одного "
+       "его изображения; исключён"),
+    TR("{0}: kendi koordinat sisteminde ve yeniden oluşturma görüntülerinden hiçbirini "
+       "yerleştiremedi; dışarıda bırakıldı"));
+
 SS_MSG(placed_by_scanner,
     EN("Images the reconstruction did not place, put where the scanner recorded them: {0}"),
     JA("再構成で配置できず、スキャナーが記録した位置に置いた画像: {0}"),
@@ -859,6 +1054,32 @@ SS_MSG(not_placed,
        "изображения расходятся с подгонкой на {1} м, позы сканера с ней не совпадут"),
     TR("Yeniden oluşturmanın yerleştiremediği görüntüler dışarıda bırakıldı: {0}. Çapa "
        "görüntüleri uyumdan {1} m sapıyor, tarayıcının pozları ona oturmaz"));
+
+SS_MSG(images_off_scan,
+    EN("Images whose own points mostly miss the scan's surface, left out as misplaced by the "
+       "reconstruction: {0}"),
+    JA("自身の点の大半がスキャンの表面から外れており、再構成が誤った位置に置いたとして"
+       "除外した画像: {0}"),
+    ZH_HANS("自身的点大多偏离扫描表面、被视为重建放错位置而排除的图像：{0}"),
+    ZH_HANT("自身的點大多偏離掃描表面、被視為重建放錯位置而排除的影像：{0}"),
+    KO("자신의 점 대부분이 스캔 표면에서 벗어나 재구성이 잘못 배치한 것으로 보고 "
+       "제외한 이미지: {0}"),
+    DE("Bilder, deren eigene Punkte meist neben der Oberfläche des Scans liegen, als von "
+       "der Rekonstruktion falsch platziert weggelassen: {0}"),
+    FR("Images dont les propres points tombent surtout hors de la surface du scan, "
+       "écartées comme mal placées par la reconstruction : {0}"),
+    ES("Imágenes cuyos propios puntos quedan casi todos fuera de la superficie del "
+       "escaneo, omitidas por estar mal situadas por la reconstrucción: {0}"),
+    PT("Imagens cujos próprios pontos ficam quase todos fora da superfície da varredura, "
+       "deixadas de fora como mal posicionadas pela reconstrução: {0}"),
+    IT("Immagini i cui punti cadono per lo più fuori dalla superficie della scansione, "
+       "escluse perché mal posizionate dalla ricostruzione: {0}"),
+    NL("Beelden waarvan de eigen punten grotendeels naast het oppervlak van de scan "
+       "liggen, weggelaten als door de reconstructie verkeerd geplaatst: {0}"),
+    RU("Изображений, чьи собственные точки в основном мимо поверхности скана, исключено "
+       "как неверно размещённых реконструкцией: {0}"),
+    TR("Kendi noktalarının çoğu taramanın yüzeyine düşmeyen, yeniden oluşturmanın yanlış "
+       "yere koyduğu için dışarıda bırakılan görüntü: {0}"));
 
 SS_MSG(aligned_summary,
     EN("Aligned models: {0} of {1}   Images: {2}"),
@@ -1126,19 +1347,19 @@ SS_MSG(pick_scan,
     NL("Kies laserscans"), RU("Выберите лазерные сканы"), TR("Lazer taramalarını seç"));
 
 SS_MSG(scan_row,
-    EN("{0}   Points: {1}   Photographs: {2}"),
-    JA("{0}   点: {1}   写真: {2}"),
-    ZH_HANS("{0}   点：{1}   照片：{2}"),
-    ZH_HANT("{0}   點：{1}   照片：{2}"),
-    KO("{0}   점: {1}   사진: {2}"),
-    DE("{0}   Punkte: {1}   Fotos: {2}"),
-    FR("{0}   Points : {1}   Photos : {2}"),
-    ES("{0}   Puntos: {1}   Fotografías: {2}"),
-    PT("{0}   Pontos: {1}   Fotografias: {2}"),
-    IT("{0}   Punti: {1}   Fotografie: {2}"),
-    NL("{0}   Punten: {1}   Foto's: {2}"),
-    RU("{0}   Точек: {1}   Фотографий: {2}"),
-    TR("{0}   Nokta: {1}   Fotoğraf: {2}"));
+    EN("Points: {0}   Photographs: {1}"),
+    JA("点: {0}   写真: {1}"),
+    ZH_HANS("点：{0}   照片：{1}"),
+    ZH_HANT("點：{0}   照片：{1}"),
+    KO("점: {0}   사진: {1}"),
+    DE("Punkte: {0}   Fotos: {1}"),
+    FR("Points : {0}   Photos : {1}"),
+    ES("Puntos: {0}   Fotografías: {1}"),
+    PT("Pontos: {0}   Fotografias: {1}"),
+    IT("Punti: {0}   Fotografie: {1}"),
+    NL("Punten: {0}   Foto's: {1}"),
+    RU("Точек: {0}   Фотографий: {1}"),
+    TR("Nokta: {0}   Fotoğraf: {1}"));
 
 SS_MSG(scan_unreadable,
     EN("{0}: {1}"), JA("{0}: {1}"), ZH_HANS("{0}：{1}"), ZH_HANT("{0}：{1}"),
@@ -1209,6 +1430,94 @@ SS_MSG(use_scan_photos_help,
        "Kapalıysa ya da fotoğrafsız bir taramada, bunu tarayıcının durduğu yerden "
        "işlenen görünümler yapar. Yeniden oluşturmanın yerleştiremediği fotoğraflar "
        "tarayıcının pozunu korur."));
+
+SS_MSG(keep_scanner_poses,
+    EN("Use the scanner's camera poses as they are"),
+    JA("スキャナーのカメラ姿勢をそのまま使う"),
+    ZH_HANS("直接使用扫描仪记录的相机位姿"),
+    ZH_HANT("直接使用掃描儀記錄的相機位姿"),
+    KO("스캐너의 카메라 자세를 그대로 사용"),
+    DE("Die Kameraposen des Scanners unverändert verwenden"),
+    FR("Utiliser telles quelles les poses de caméra du scanner"),
+    ES("Usar tal cual las poses de cámara del escáner"),
+    PT("Usar as poses de câmera do scanner como estão"),
+    IT("Usare così come sono le pose della fotocamera dello scanner"),
+    NL("De cameraposes van de scanner gebruiken zoals ze zijn"),
+    RU("Использовать позы камер сканера как есть"),
+    TR("Tarayıcının kamera pozlarını olduğu gibi kullan"));
+
+SS_MSG(keep_scanner_poses_help,
+    EN("The scans' photographs are the only images, so they are placed where the scanner "
+       "recorded them and no reconstruction runs. Untick to reconstruct them instead: for "
+       "a scanner whose camera poses are less accurate than a reconstruction would be."),
+    JA("画像はスキャンの写真だけなので、スキャナーが記録した位置に置き、再構成は"
+       "行いません。オフにすると代わりに再構成します。スキャナーのカメラ姿勢が再構成"
+       "より不正確な場合に使います。"),
+    ZH_HANS("图像只有扫描中的照片，因此直接放在扫描仪记录的位置，不运行重建。取消"
+            "勾选则改为重建它们：适用于相机位姿不如重建准确的扫描仪。"),
+    ZH_HANT("影像只有掃描中的照片，因此直接放在掃描儀記錄的位置，不執行重建。取消"
+            "勾選則改為重建它們：適用於相機位姿不如重建準確的掃描儀。"),
+    KO("이미지가 스캔의 사진뿐이므로 스캐너가 기록한 위치에 두고 재구성은 하지 "
+       "않습니다. 끄면 대신 재구성합니다. 카메라 자세가 재구성보다 부정확한 스캐너에 "
+       "씁니다."),
+    DE("Die Fotos der Scans sind die einzigen Bilder, also werden sie dort platziert, "
+       "wo der Scanner sie aufgezeichnet hat, und keine Rekonstruktion läuft. "
+       "Abschalten, um sie stattdessen zu rekonstruieren: für einen Scanner, dessen "
+       "Kameraposen ungenauer sind, als eine Rekonstruktion es wäre."),
+    FR("Les photos des scans sont les seules images : elles sont placées là où le "
+       "scanner les a enregistrées et aucune reconstruction n'a lieu. Décocher pour les "
+       "reconstruire à la place : pour un scanner dont les poses de caméra sont moins "
+       "précises que ne le serait une reconstruction."),
+    ES("Las fotografías de los escaneos son las únicas imágenes, así que se colocan "
+       "donde las registró el escáner y no se ejecuta ninguna reconstrucción. "
+       "Desmárcalo para reconstruirlas en su lugar: para un escáner cuyas poses de "
+       "cámara son menos precisas de lo que sería una reconstrucción."),
+    PT("As fotografias das varreduras são as únicas imagens, então são colocadas onde "
+       "o scanner as registrou e nenhuma reconstrução é executada. Desmarque para "
+       "reconstruí-las em vez disso: para um scanner cujas poses de câmera são menos "
+       "precisas do que seria uma reconstrução."),
+    IT("Le fotografie delle scansioni sono le uniche immagini, quindi vengono messe "
+       "dove le ha registrate lo scanner e non si esegue alcuna ricostruzione. "
+       "Deseleziona per ricostruirle invece: per uno scanner le cui pose della "
+       "fotocamera sono meno precise di quanto sarebbe una ricostruzione."),
+    NL("De foto's van de scans zijn de enige beelden, dus ze worden neergezet waar de "
+       "scanner ze vastlegde en er draait geen reconstructie. Uitvinken om ze in "
+       "plaats daarvan te reconstrueren: voor een scanner waarvan de cameraposes minder "
+       "nauwkeurig zijn dan een reconstructie zou zijn."),
+    RU("Фотографии сканов -- единственные изображения, поэтому они ставятся туда, где "
+       "их записал сканер, и реконструкция не запускается. Снимите флажок, чтобы вместо "
+       "этого реконструировать их: для сканера, чьи позы камер менее точны, чем была бы "
+       "реконструкция."),
+    TR("Tek görüntüler taramaların fotoğrafları olduğundan, tarayıcının kaydettiği "
+       "yere konur ve yeniden oluşturma çalışmaz. Bunun yerine onları yeniden "
+       "oluşturmak için işareti kaldırın: kamera pozları bir yeniden oluşturmadan daha "
+       "az doğru olan bir tarayıcı için."));
+
+SS_MSG(scanner_poses_used,
+    EN("The scans' photographs are the only images: they keep the poses the scanner "
+       "recorded, and no reconstruction runs"),
+    JA("画像はスキャンの写真だけです。スキャナーが記録した姿勢のまま使い、再構成は"
+       "行いません"),
+    ZH_HANS("图像只有扫描中的照片：保留扫描仪记录的位姿，不运行重建"),
+    ZH_HANT("影像只有掃描中的照片：保留掃描儀記錄的位姿，不執行重建"),
+    KO("이미지가 스캔의 사진뿐입니다. 스캐너가 기록한 자세를 유지하고 재구성은 하지 "
+       "않습니다"),
+    DE("Die Fotos der Scans sind die einzigen Bilder: Sie behalten die vom Scanner "
+       "aufgezeichneten Posen, und keine Rekonstruktion läuft"),
+    FR("Les photos des scans sont les seules images : elles gardent les poses "
+       "enregistrées par le scanner, et aucune reconstruction n'a lieu"),
+    ES("Las fotografías de los escaneos son las únicas imágenes: conservan las poses "
+       "que registró el escáner y no se ejecuta ninguna reconstrucción"),
+    PT("As fotografias das varreduras são as únicas imagens: mantêm as poses "
+       "registradas pelo scanner, e nenhuma reconstrução é executada"),
+    IT("Le fotografie delle scansioni sono le uniche immagini: mantengono le pose "
+       "registrate dallo scanner e non si esegue alcuna ricostruzione"),
+    NL("De foto's van de scans zijn de enige beelden: ze houden de poses die de scanner "
+       "vastlegde, en er draait geen reconstructie"),
+    RU("Фотографии сканов -- единственные изображения: они сохраняют позы, записанные "
+       "сканером, и реконструкция не запускается"),
+    TR("Tek görüntüler taramaların fotoğrafları: tarayıcının kaydettiği pozları "
+       "korurlar ve yeniden oluşturma çalışmaz"));
 
 SS_MSG(scan_in_frame,
     EN("The dataset is already in the scan's frame"),

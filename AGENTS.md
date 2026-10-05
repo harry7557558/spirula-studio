@@ -155,7 +155,8 @@ src/
 │   ├── E57Dataset.{h,cpp}  an E57 scan written out as a Nerfstudio dataset
 │   │                         with no SfM (`spirula e57`) -- docs/datasets.md
 │   ├── LidarAlign.{h,cpp}  a reconstruction fitted onto a laser scan (Sim3:
-│   │                         anchors, then point-to-plane ICP)
+│   │                         anchors, then point-to-plane ICP), and scans in
+│   │                         frames of their own placed through it
 │   ├── LidarDataset.{h,cpp} the dataset that makes (`spirula lidar`, the
 │   │                         dataset screen's Align step): one COLMAP model in
 │   │                         the scan frame, scan seeds with tracks, depth +

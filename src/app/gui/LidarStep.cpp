@@ -8,6 +8,7 @@
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -74,6 +75,7 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
             if (x.pinhole) add(x.split ? sub + "/pinhole" : sub, true);
             if (x.panorama) add(x.split ? sub + "/panorama" : sub, false);
             out.photos += x.pinhole + x.panorama;
+            if (x.pinhole + x.panorama > 0) out.photographed.push_back(c);
         }
     } catch (const std::exception& e) {
         error = e.what();
@@ -91,11 +93,18 @@ bool render_scan_views(const LidarJob& job, const std::string& workspace,
     if (rel.empty() || *rel.begin() == "..") return true;
     // Views of an earlier run would otherwise be reconstructed as photographs.
     fs::remove_all(fs::path(image_dir) / kViewsDir, ec);
-    if (!job.enabled() || job.in_frame || out.photos > 0) return true;
+    if (!job.enabled() || job.in_frame) return true;
     auto log = [&](const std::string& s) { prog.note(s, false); };
     try {
+        const bool shared = app::lidar::scans_share_frame(job.clouds);
+        std::vector<std::string> clouds;
+        for (const std::string& c : job.clouds)
+            if (std::find(out.photographed.begin(), out.photographed.end(), c) ==
+                out.photographed.end())
+                clouds.push_back(c);
+        if (clouds.empty() || (shared && out.photos > 0)) return true;
         const fs::path anchors = fs::path(workspace) / "lidar" / "anchors.json";
-        out.views = app::lidar::render_anchor_views(job.clouds, image_dir, kViewsDir,
+        out.views = app::lidar::render_anchor_views(clouds, !shared, image_dir, kViewsDir,
                                                     anchors.string(), log, &cancel);
     } catch (const std::exception& e) {
         error = e.what();
@@ -126,6 +135,7 @@ bool run_lidar_step(const LidarJob& job, const std::string& dataset,
         argv.push_back("--cloud");
         argv.push_back(c);
     }
+    if (!job.mask_dir.empty()) argv.insert(argv.end(), {"--mask-dir", job.mask_dir});
     if (job.in_frame) argv.insert(argv.end(), {"--mode", "keep"});
     if (job.flip_masks) argv.push_back("--flip-masks");
     if (job.scanner_poses_only) argv.push_back("--scanner-poses");

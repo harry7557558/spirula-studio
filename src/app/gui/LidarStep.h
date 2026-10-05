@@ -17,11 +17,13 @@
 namespace gui {
 
 struct LidarJob {
-    std::vector<std::string> clouds;   // .e57 / .las / .ply, one frame
+    std::vector<std::string> clouds;   // .e57 / .las / .ply
     bool scan_photos = true;           // an E57's photographs join the reconstruction
     bool in_frame = false;             // the model is already in the scans' frame
+    bool scanner_only = false;         // its photographs are all the images: no reconstruction
+    std::string mask_dir;              // the dataset's masks, "" for none
     bool flip_masks = false;           // the dataset's masks paint what to remove
-    bool scanner_poses_only = false;   // the reconstruction failed: use none of it
+    bool scanner_poses_only = false;   // no reconstruction, or one that failed: use none of it
     bool enabled() const { return !clouds.empty(); }
 };
 
@@ -29,6 +31,7 @@ struct LidarPrep {
     std::vector<std::string> sfm_args;   // the rendered views' lens, for `spirula sfm`
     int64_t photos = 0;                  // scanner photographs with known poses
     int64_t views = 0;                   // views rendered from the scans
+    std::vector<std::string> photographed;   // the clouds those photographs came from
 };
 
 // Before the frames: each scan's photographs, extracted under
@@ -37,9 +40,9 @@ struct LidarPrep {
 bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
                            std::vector<PrepInput>& inputs, LidarPrep& out, std::string& error);
 
-// After the frames, for scans without photographs: views of them rendered
-// into `image_dir`/scan_views as anchors -- only when that folder is inside
-// `workspace`, since a folder of photos read in place is the user's.
+// After the frames: views of the scans without photographs rendered into
+// `image_dir`/scan_views as anchors, unless one sharing their frame has them,
+// and only when that folder is inside `workspace` (else it is the user's).
 bool render_scan_views(const LidarJob& job, const std::string& workspace,
                        const std::string& image_dir, RunProgress& prog,
                        const std::atomic<bool>& cancel, LidarPrep& out, std::string& error);
