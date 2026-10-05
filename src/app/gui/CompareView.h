@@ -224,6 +224,9 @@ private:
     uint64_t _alive_rev = 0;
     std::shared_ptr<const std::vector<uint8_t>> _alive;
     bool _edit_when_ready = false;
+    // A kept repair rewrote the model under the editor: close, reload, reopen.
+    int _edit_replaced = -1;
+    int _edit_reopen = -1;
     std::function<void()> _discard_then;
     bool _ask_discard = false;
     std::thread _edit_worker;

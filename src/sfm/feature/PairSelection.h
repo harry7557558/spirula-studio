@@ -274,4 +274,71 @@ inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
     return detail::topPartners(n, cand, edge_score, opt.num_neighbors, opt.min_score);
 }
 
+// Each target's `opt.num_neighbors` best partners from `partners`, scored the
+// way prefilterPairs scores (max of both directions), without the n^2 pass: a
+// handful of targets against a finished model.
+inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairsFor(
+    const std::vector<FeatureSet>& feats, const PairSelectionOptions& opt,
+    const std::vector<uint32_t>& targets, const std::vector<uint32_t>& partners,
+    const std::function<void(size_t, size_t)>& progress = nullptr) {
+    const uint32_t n = (uint32_t)feats.size();
+    std::vector<std::pair<uint32_t, uint32_t>> cand;
+    for (uint32_t t : targets)
+        for (uint32_t p : partners)
+            if (t != p && t < n && p < n) cand.emplace_back(std::min(t, p), std::max(t, p));
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    if (cand.empty()) return {};
+    // The matcher sizes itself over every set, so the unused ones point at an empty one.
+    const FeatureSet none;
+    std::vector<FeatureSet> owned(2 * (size_t)n);
+    std::vector<const FeatureSet*> sets(2 * (size_t)n, &none);
+    auto side = [&](uint32_t i) {
+        if (sets[i] != &none) return;
+        owned[i] = topScaleSubset(feats[i], opt.num_features);
+        sets[i] = &owned[i];
+        if (opt.train_features == 0) {
+            sets[(size_t)n + i] = &feats[i];
+        } else {
+            owned[(size_t)n + i] = topScaleSubset(feats[i], opt.train_features);
+            sets[(size_t)n + i] = &owned[(size_t)n + i];
+        }
+    };
+    std::vector<std::pair<uint32_t, uint32_t>> ordered;
+    for (const auto& c : cand) {
+        side(c.first);
+        side(c.second);
+        ordered.emplace_back(c.first, n + c.second);
+        ordered.emplace_back(c.second, n + c.first);
+    }
+    std::vector<uint32_t> s = detail::scoreOrderedPairs(sets, ordered, opt, 0, ordered.size(),
+                                                        progress);
+    std::vector<uint32_t> edge(cand.size(), 0);
+    for (size_t e = 0; e < cand.size(); e++) edge[e] = std::max(s[2 * e], s[2 * e + 1]);
+    // topPartners keeps the union over both ends; a partner's own top-k is not the ask.
+    std::vector<char> is_target(n, 0);
+    for (uint32_t t : targets)
+        if (t < n) is_target[t] = 1;
+    std::vector<std::vector<std::pair<uint32_t, uint32_t>>> adj(n);  // (score, edge)
+    for (size_t e = 0; e < cand.size(); e++) {
+        if (edge[e] < opt.min_score) continue;
+        if (is_target[cand[e].first]) adj[cand[e].first].push_back({edge[e], (uint32_t)e});
+        if (is_target[cand[e].second]) adj[cand[e].second].push_back({edge[e], (uint32_t)e});
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> sel;
+    for (auto& a : adj) {
+        const size_t take = std::min<size_t>(opt.num_neighbors, a.size());
+        std::partial_sort(a.begin(), a.begin() + take, a.end(),
+                          [](const std::pair<uint32_t, uint32_t>& x,
+                             const std::pair<uint32_t, uint32_t>& y) {
+                              if (x.first != y.first) return x.first > y.first;
+                              return x.second < y.second;
+                          });
+        for (size_t k = 0; k < take; k++) sel.push_back(cand[a[k].second]);
+    }
+    std::sort(sel.begin(), sel.end());
+    sel.erase(std::unique(sel.begin(), sel.end()), sel.end());
+    return sel;
+}
+
 }  // namespace sfm

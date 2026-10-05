@@ -1342,67 +1342,19 @@ public:
         model_count_.clear();
         rebuildScores();
         AuditStats st;
-        std::vector<std::pair<uint32_t, Pose>> repairs;
-        // One RANSAC per registered image at audit_ransac_trials trials is what
-        // a manage round spends its time on, and the test is read-only --
-        // poseContradicted() only looks at the finished model -- so it fans
-        // out. Verdicts are collected by index and applied in image order, so
-        // `repairs` is what the serial loop produced. The dump path stays
-        // serial to keep its per-image lines in order.
         std::vector<uint32_t> ids;
         for (const auto& kv : rec_.images)
             if (kv.second.registered) ids.push_back(kv.first);
         st.checked = (uint32_t)ids.size();
-        auto audit_t0 = std::chrono::steady_clock::now();
-        modelScale();  // warm the lazy cache before any worker reads it
-        std::vector<char> hit(ids.size(), 0);
-        std::vector<Pose> alts(ids.size());
-        const unsigned hc = std::thread::hardware_concurrency();
-        int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
-        if (audit_dump_) nt = 1;
-        nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(ids.size(), 1)));
-        std::atomic<size_t> next{0};
-        auto worker = [&] {
-            for (size_t i = next++; i < ids.size(); i = next++)
-                hit[i] = poseContradicted(ids[i], alts[i]) ? 1 : 0;
-        };
-        if (nt == 1) {
-            worker();
-        } else {
-            std::vector<std::thread> pool;
-            pool.reserve(nt);
-            for (int t = 0; t < nt; t++) pool.emplace_back(worker);
-            for (std::thread& t : pool) t.join();
-        }
-        for (size_t i = 0; i < ids.size(); i++)
-            if (hit[i]) repairs.emplace_back(ids[i], alts[i]);
+        const std::vector<std::pair<uint32_t, Pose>> repairs = auditPoses(ids);
         st.unsupported = (uint32_t)repairs.size();
-        auto audit_t1 = std::chrono::steady_clock::now();
-        g_map_prof.audit_check += std::chrono::duration<double>(audit_t1 - audit_t0).count();
         ProfTimer audit_pt(g_map_prof.audit_fix);
         if (!repairs.empty()) {
             if (opt_.verbose)
                 slog::diag(slog::Tag::Map,
                            "[map] audit: %u/%u image(s) sit where the rest of the model "
                            "contradicts them; moving", st.unsupported, st.checked);
-            // Detach first, all of them: their old observations are evidence
-            // for the old pose and must not survive it.
-            for (const auto& r : repairs) deregisterImage(r.first);
-            for (const auto& r : repairs) {
-                Image& im = rec_.images[r.first];
-                im.pose = r.second;
-                im.registered = true;
-            }
-            rebuildScores();
-            // Attach to what the new pose can see, then triangulate what
-            // nothing sees yet -- registration's two steps, for a pose that
-            // came from outside instead of from PnP. Without the first, a
-            // repaired image owns no observations at all (everything it looks
-            // at is already triangulated, so there is nothing to *create*) and
-            // the next filtering pass de-registers it as hollow.
-            for (const auto& r : repairs) attachExisting(r.first);
-            for (const auto& r : repairs) triangulateForImage(r.first);
-            rebuildScores();
+            movePoses(repairs);
             // Images that could not register before may be able to now, both
             // because the model changed and because their trial budget is
             // reset; that is a bonus, not a side effect to design around.
@@ -1414,6 +1366,171 @@ public:
             if (rec_.images.at(r.first).registered) st.reregistered++;
         st.deregistered = st.unsupported - st.reregistered;
         if (out) *out = st;
+        return snapshotModel();
+    }
+
+    // ---- repairing a nearly-right model on request -------------------------
+
+    enum class RepairOutcome : uint8_t {
+        Moved,    // placed somewhere else, and the final refinement kept it
+        Kept,     // the evidence puts it back where it was
+        Added,    // was missing, now registered
+        Failed,   // could not be placed; a re-placed or hinted image keeps its old pose
+        Dropped,  // flagged as wrong, no other pose holds, and it was taken out
+    };
+    struct RepairItem {
+        uint32_t image = 0;
+        RepairOutcome outcome = RepairOutcome::Failed;
+        double rot_deg = 0;
+        double shift = 0;  // centre displacement over modelScale()
+    };
+    struct RepairRequest {
+        std::vector<uint32_t> replace;                 // poses the user says are wrong
+        std::vector<std::pair<uint32_t, Pose>> hints;  // world-to-camera, the model's own frame
+        std::vector<uint32_t> add;                     // unregistered images to bring in
+        bool audit_all = false;
+        uint32_t max_reg = 0;
+    };
+    struct RepairStats {
+        AuditStats audit;
+        std::vector<RepairItem> items;  // one per target, plus each image the audit moved
+        uint32_t grown = 0;             // registrations by the growth pass, frames included
+    };
+
+    // Unlike audit(), the targets are named, so a flagged image is not left at
+    // its pose for want of a decisive alternative, and growth is restricted to
+    // the images asked for: a repair must not turn into a reconstruction.
+    Reconstruction repair(const Reconstruction& m, const RepairRequest& rq,
+                          RepairStats* out = nullptr) {
+        ensureSetup();
+        resetModel();
+        adopt(m);
+        fitGpsFrame();
+        model_count_.clear();
+        rebuildScores();
+        RepairStats st;
+        const uint32_t n_img = (uint32_t)db_.images.size();
+        std::map<uint32_t, Pose> before;
+        for (const auto& kv : rec_.images)
+            if (kv.second.registered) before[kv.first] = kv.second.pose;
+
+        std::map<uint32_t, Pose> hints;
+        for (const auto& h : rq.hints)
+            if (h.first < n_img) hints[h.first] = h.second;
+        std::vector<uint32_t> replace, add;
+        for (uint32_t i : rq.replace)
+            if (i < n_img && before.count(i) && !hints.count(i)) replace.push_back(i);
+        for (uint32_t i : rq.add)
+            if (i < n_img && !before.count(i) && !hints.count(i)) add.push_back(i);
+        auto dedupe = [](std::vector<uint32_t>& v) {
+            std::sort(v.begin(), v.end());
+            v.erase(std::unique(v.begin(), v.end()), v.end());
+        };
+        dedupe(replace);
+        dedupe(add);
+
+        std::vector<std::pair<uint32_t, Pose>> audited;
+        if (rq.audit_all) {
+            std::vector<uint32_t> ids;
+            for (const auto& kv : before)
+                if (!hints.count(kv.first) &&
+                    !std::binary_search(replace.begin(), replace.end(), kv.first))
+                    ids.push_back(kv.first);
+            st.audit.checked = (uint32_t)ids.size();
+            audited = auditPoses(ids);
+            st.audit.unsupported = (uint32_t)audited.size();
+        }
+
+        // Taken while the flagged image's own tracks still hold the points up.
+        std::map<uint32_t, Pose> fallback;
+        for (uint32_t i : replace) {
+            Pose p;
+            if (bestOutsidePose(i, p) && !samePlace(p, before.at(i))) fallback[i] = p;
+        }
+        for (uint32_t i : replace) deregisterImage(i);
+        for (const auto& h : hints)
+            if (rec_.images.at(h.first).registered) deregisterImage(h.first);
+        if (!audited.empty()) movePoses(audited);
+        rebuildScores();
+
+        std::map<uint32_t, RepairOutcome> verdict;
+        std::vector<uint32_t> placed;
+        auto restore = [&](uint32_t i) {
+            movePoses({{i, before.at(i)}});
+            verdict[i] = RepairOutcome::Failed;
+        };
+        for (uint32_t i : replace) {
+            if (registerImage(i)) {
+                verdict[i] = samePlace(rec_.images.at(i).pose, before.at(i)) ? RepairOutcome::Kept
+                                                                             : RepairOutcome::Moved;
+                placed.push_back(i);
+            } else if (fallback.count(i)) {
+                movePoses({{i, fallback.at(i)}});
+                verdict[i] = RepairOutcome::Moved;
+                placed.push_back(i);
+            } else {
+                verdict[i] = RepairOutcome::Dropped;
+            }
+        }
+        // A hinted camera may stand on points only another one makes, so the
+        // hints go round until none lands; a new image left over is grown.
+        std::map<uint32_t, Pose> waiting = hints;
+        for (bool progress = true; progress && !waiting.empty();) {
+            progress = false;
+            for (auto it = waiting.begin(); it != waiting.end();) {
+                if (!registerFromHint(it->first, it->second)) {
+                    ++it;
+                    continue;
+                }
+                verdict[it->first] = before.count(it->first) ? RepairOutcome::Moved : RepairOutcome::Added;
+                placed.push_back(it->first);
+                triangulateForImage(it->first);
+                progress = true;
+                it = waiting.erase(it);
+            }
+        }
+        for (const auto& h : waiting) {
+            if (before.count(h.first)) restore(h.first);
+            else add.push_back(h.first);
+        }
+        for (uint32_t i : placed) triangulateForImage(i);
+        for (uint32_t i : placed) completeFrameOf(i);
+        rebuildScores();
+
+        if (!add.empty()) {
+            std::vector<uint32_t> allow = add;
+            for (const auto& kv : rec_.images)
+                if (kv.second.registered) allow.push_back(kv.first);
+            for (uint32_t i : add) reg_trials_[i] = 0;
+            restrictTo(allow);
+            st.grown = growLoop(rq.max_reg);
+            restrictTo({});
+        }
+        checkedRefine(true);
+
+        auto item = [&](uint32_t i, RepairOutcome o) {
+            RepairItem it;
+            it.image = i;
+            const Image& im = rec_.images.at(i);
+            if (!im.registered && o != RepairOutcome::Failed) o = RepairOutcome::Dropped;
+            if (im.registered && before.count(i)) {
+                const Pose& b = before.at(i);
+                it.rot_deg = rotationAngleDeg(mul(im.pose.R, transpose(b.R)));
+                it.shift = (cameraCenter(im.pose) - cameraCenter(b)).norm() / modelScale();
+            }
+            it.outcome = o;
+            st.items.push_back(it);
+        };
+        for (const auto& kv : verdict) item(kv.first, kv.second);
+        for (const auto& a : audited)
+            if (!verdict.count(a.first)) item(a.first, RepairOutcome::Moved);
+        for (uint32_t i : add)
+            if (!verdict.count(i))
+                item(i, rec_.images.at(i).registered ? RepairOutcome::Added : RepairOutcome::Failed);
+        for (const auto& a : audited)
+            if (rec_.images.at(a.first).registered) st.audit.reregistered++;
+        st.audit.deregistered = st.audit.unsupported - st.audit.reregistered;
+        if (out) *out = std::move(st);
         return snapshotModel();
     }
 
@@ -1906,30 +2023,8 @@ public:
         return cam_consensus_;
     }
 
-    // Does the rest of the model support a *different* pose for this image
-    // than the one it has?
-    //
-    // Asking whether the current pose is "supported" does not work, and the
-    // measurement says why: only the features that carry no 3D point of their
-    // own are evidence (an image that was moved wrongly kept its own tracks,
-    // which reproject perfectly wherever it went), and that pool is mostly
-    // junk -- one-hop graph approximations and matches an earlier filter
-    // already rejected.
-    //
-    // Posing it as a competition does separate. Run the ordinary PnP RANSAC on
-    // exactly that pool: if the outside structure has a pose for this image
-    // that clears the registration gates and is somewhere else entirely, the
-    // image is in the wrong place, and no amount of bundle adjustment will
-    // walk it back. If the pool is noise, RANSAC finds nothing and the image
-    // is left alone -- which is the common case and costs one failed RANSAC.
-    //
-    // On a hit, `alternative` is the pose that won, and the caller moves the
-    // image there rather than throwing it away: this evidence is by
-    // construction weaker than registration demands, but it is decisively
-    // better than the pose in place, and the refinement that follows filters
-    // the result honestly.
-    bool poseContradicted(uint32_t img, Pose& alternative) const {
-        std::vector<Vec3> X, br;
+    // 2D-3D pairs for `img` through the features that carry no point of its own.
+    void outsidePool(uint32_t img, std::vector<Vec3>& X, std::vector<Vec3>& br) const {
         const Image& im = rec_.images.at(img);
         for (uint32_t f = 0; f < feats_[img].count(); f++) {
             if (im.point3D_ids[f] != kInvalidPoint3D) continue;  // evidence it brought itself
@@ -1946,6 +2041,15 @@ public:
                 break;
             }
         }
+    }
+
+    // Whether the structure `img` did not bring itself supports a pose
+    // elsewhere decisively better than the one in place (D44); its own tracks
+    // reproject perfectly wherever it went. On a hit `alternative` is the winner.
+    bool poseContradicted(uint32_t img, Pose& alternative) const {
+        std::vector<Vec3> X, br;
+        const Image& im = rec_.images.at(img);
+        outsidePool(img, X, br);
         const int n = (int)X.size();
         if (n < opt_.audit_min_evidence) return false;  // nothing to contradict it with
 
@@ -5030,6 +5134,117 @@ private:
         }
     }
 
+    // poseContradicted over `ids`, verdicts in `ids` order. The test is
+    // read-only, so it fans out; the dump path stays serial to keep its lines in order.
+    std::vector<std::pair<uint32_t, Pose>> auditPoses(const std::vector<uint32_t>& ids) {
+        auto t0 = std::chrono::steady_clock::now();
+        modelScale();  // warm the lazy cache before any worker reads it
+        std::vector<char> hit(ids.size(), 0);
+        std::vector<Pose> alts(ids.size());
+        const unsigned hc = std::thread::hardware_concurrency();
+        int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
+        if (audit_dump_) nt = 1;
+        nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(ids.size(), 1)));
+        std::atomic<size_t> next{0};
+        auto worker = [&] {
+            for (size_t i = next++; i < ids.size(); i = next++)
+                hit[i] = poseContradicted(ids[i], alts[i]) ? 1 : 0;
+        };
+        if (nt == 1) {
+            worker();
+        } else {
+            std::vector<std::thread> pool;
+            pool.reserve(nt);
+            for (int t = 0; t < nt; t++) pool.emplace_back(worker);
+            for (std::thread& t : pool) t.join();
+        }
+        std::vector<std::pair<uint32_t, Pose>> out;
+        for (size_t i = 0; i < ids.size(); i++)
+            if (hit[i]) out.emplace_back(ids[i], alts[i]);
+        g_map_prof.audit_check +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        return out;
+    }
+
+    // Put images at poses that came from outside PnP. All are detached first:
+    // old observations are evidence for the old pose. Without attachExisting a
+    // moved image owns nothing and the next filter drops it as hollow.
+    void movePoses(const std::vector<std::pair<uint32_t, Pose>>& moves) {
+        for (const auto& r : moves) deregisterImage(r.first);
+        for (const auto& r : moves) {
+            Image& im = rec_.images[r.first];
+            im.pose = r.second;
+            im.registered = true;
+        }
+        rebuildScores();
+        for (const auto& r : moves) attachExisting(r.first);
+        for (const auto& r : moves) triangulateForImage(r.first);
+        rebuildScores();
+    }
+
+    // The pose the structure `img` did not bring supports best, with no
+    // dominance test against the pose in place: the caller already knows it is wrong.
+    bool bestOutsidePose(uint32_t img, Pose& pose) const {
+        std::vector<Vec3> X, br;
+        outsidePool(img, X, br);
+        if ((int)X.size() < opt_.audit_min_evidence) return false;
+        PnPResult r = ransacPnP(X, br, camOf(img).focal(), errPx(img), 0, opt_.audit_ransac_trials);
+        if (!r.success || r.num_inliers < opt_.audit_min_alternative) return false;
+        pose = r.pose;
+        return true;
+    }
+
+    bool samePlace(const Pose& a, const Pose& b) const {
+        return rotationAngleDeg(mul(a.R, transpose(b.R))) <= opt_.audit_min_rotation_deg &&
+               (cameraCenter(a) - cameraCenter(b)).norm() / modelScale() <= opt_.audit_min_shift_frac;
+    }
+
+    // Register from a hand-placed pose. A hint is tens of degrees out, where a
+    // reprojection gate finds nothing, so the inlier gate starts wide and
+    // narrows as the pose refines. Angles, not pixels: an equirect needs no case.
+    bool registerFromHint(uint32_t img, const Pose& hint) {
+        std::vector<Vec3> X, br;
+        std::vector<uint32_t> feat;
+        std::vector<uint64_t> pid;
+        gatherCorrespondences(img, X, br, feat, pid);
+        if ((int)X.size() < opt_.min_num_pnp_inliers) return false;
+        auto gate = [&](PnPResult& r, double thr) {
+            const double thr2 = thr * thr;
+            r.inlier_mask.assign(X.size(), 0);
+            r.num_inliers = 0;
+            for (size_t k = 0; k < X.size(); k++) {
+                r.inlier_mask[k] = pnpResidualSq(r.pose, X[k], br[k]) < thr2;
+                r.num_inliers += r.inlier_mask[k] ? 1 : 0;
+            }
+        };
+        PnPResult r;
+        r.pose = hint;
+        r.success = true;
+        for (double deg : kHintGatesDeg) {
+            gate(r, std::sin(deg * M_PI / 180.0));
+            if (r.num_inliers < opt_.min_num_pnp_inliers) break;
+            refinePose(X, br, r.inlier_mask, r.pose);
+        }
+        classify(img, X, br, r);
+        // PnP may find the same place with more support; a pose elsewhere is
+        // what the user overruled by placing the hint.
+        PnPResult p = ransacPnP(X, br, camOf(img).focal(), errPx(img));
+        if (p.success) {
+            classify(img, X, br, p);
+            if (p.num_inliers > r.num_inliers &&
+                rotationAngleDeg(mul(p.pose.R, transpose(hint.R))) <= kHintAgreeDeg &&
+                (cameraCenter(p.pose) - cameraCenter(hint)).norm() / modelScale() <= kHintAgreeShift)
+                r = p;
+        }
+        if (r.num_inliers < opt_.min_num_pnp_inliers) return false;
+        refinePose(X, br, r.inlier_mask, r.pose);
+        classify(img, X, br, r);
+        if (r.num_inliers < opt_.min_num_pnp_inliers) return false;
+        if (!levelCheck(img, r.pose) || !gpsCheck(img, r.pose)) return false;
+        commitPose(img, r.pose, feat, pid, r.inlier_mask, r.num_inliers, X.size());
+        return true;
+    }
+
     // Join this image's features to 3D points the model already has, wherever
     // its pose explains them: registerImage's track-continuation step, split
     // out so a pose set from outside (the audit's repair) can use it too.
@@ -6034,6 +6249,11 @@ private:
     // Level captures refused 1-3 of ~1800 images; an honest tail refuses 0.2%.
     static constexpr double kLevelLatchFrac = 0.05;
     static constexpr size_t kLevelLatchMinImages = 20;
+    // A hand-placed camera is rarely better than ~20 deg; the gates narrow to
+    // where max_reproj_error takes over. Unmeasured: a starting ladder.
+    static constexpr double kHintGatesDeg[] = {20.0, 10.0, 5.0, 2.0};
+    static constexpr double kHintAgreeDeg = 30.0;
+    static constexpr double kHintAgreeShift = 0.25;  // over modelScale()
     bool level_latched_ = false;       // the level prior is off for the run
     std::unordered_set<uint32_t> level_checked_imgs_, level_refused_imgs_;
     uint32_t gps_out_run_ = 0;         // consecutive registrations beyond its radius

@@ -287,6 +287,7 @@ spirula sfm match   feats/ -o matches.bin
 spirula sfm map     matches.bin feats/ -o sparse/ --images IMAGES/
 spirula sfm map     matches.bin feats/ -o sparse/ --no-compact-unused-features
 spirula sfm merge   sparse/ -o merged/
+spirula sfm repair  ws/ --model ws/sparse/0 --replace IMG_12.jpg --add-missing
 spirula sfm ba      sparse/0 refined/0          # the mapper's global BA on a model
 spirula sfm ba      sparse/0 sparse/0 --real cpu  # ... in place, on the host
 ```
@@ -354,6 +355,24 @@ indexes the compacted features, so `--resume` and `--audit` refuse a model whose
 keypoint counts disagree with the current run -- which is the one thing to know
 about the default change: a model written before it was on has to be resumed
 with `--no-compact-unused-features`.
+
+### Repairing a finished model
+
+`spirula sfm repair WORKSPACE --model MODEL` (`Repair.h`, `Mapper::repair`)
+fixes named cameras of one model rather than reconstructing again: `--replace`
+takes cameras out and places them from the rest of the model, `--hints FILE`
+snaps hand-placed poses, `--add` / `--add-missing` register images the model
+lacks, `--audit` also moves every camera the rest contradicts. The targets are
+matched against the model first (pair-selection score, file order, GPS, and the
+cameras round a hint) and the new pairs are appended to `matches.bin`, whose
+original is kept once as `matches.bin.orig`. Growth is restricted to the
+targets. The result is fitted back onto the input's untouched cameras, so the
+frame -- and anything aligned with it -- stays put; `repair.txt` lists each
+target's outcome. Every step is on bearings, so equirect cameras need no case
+of their own. A model's rows are matched to feature rows by keypoint position,
+so a model written before `matches.bin` grew still loads. The GUI's editor
+drives the same code from its Repair tab; how to use it is in
+[`docs/notes/camera-repair.md`](../../docs/notes/camera-repair.md).
 
 ## Options
 
@@ -1076,6 +1095,7 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_telemetry_test` | the four telemetry carriers on synthetic files, and the sanity checks; `sfm_telemetry_test FILE` prints what a video carries | no |
 | `sfm_sequence_test` | the sequence table and its window pairs (`--no-gpu` stops there); a synthetic walk past a duplicated room through the mapper | yes |
 | `sfm_seam_weld_test` | the open-seam detector and weld on a two-front track, with and without capped GPS solves; what it leaves alone (duplicates too far apart, rig mates) and a weld it undoes (a perturbed copy) | yes |
+| `sfm_repair_test` | `Mapper::repair` on pinhole and equirect scenes: named, hinted and audited cameras return to their poses, missing images register and growth stays on them | yes |
 | `sfm_block_scale_test` | the block scale statistic on synthetic tracks: a hover, a loop, a stalled receiver, a rig, two fronts, the seam-jump mask over a model-space discontinuity, the noise gate | no |
 | `sfm_gps_scale_test` | the block scale check during growth (`--gps-scale-band`) on a corridor with a hover and a loop, true scale and with its GPS tail stretched | yes |
 | `sfm_prior_test` | pose priors in bundle adjustment: Jacobians against central differences, device against host, a gauge recovered from priors alone (`--no-gpu` keeps to the host) | yes |

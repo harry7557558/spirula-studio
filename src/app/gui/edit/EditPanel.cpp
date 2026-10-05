@@ -233,7 +233,13 @@ void EditSession::handle_keys() {
             {ImGuiKey_S, XformKind::Scale}};
         for (const auto& op : ops) {
             if ((fly && is_fly_key(op.key)) || !ImGui::IsKeyPressed(op.key, false)) continue;
-            enter_transform();
+            // On the Repair tab the keys move the selected cameras, not the model.
+            if (camera_mode()) {
+                if (_tool.id() != ToolId::Transform) _xform_return = _tool.id();
+                _tool.set_id(ToolId::Transform);
+            } else {
+                enter_transform();
+            }
             begin_xform(op.kind);
             return;
         }
@@ -524,6 +530,15 @@ void EditSession::draw_panel() {
                              force && _tab == 1 ? ImGuiTabItemFlags_SetSelected : 0)) {
             if (_tab != 1 && !force) enter_transform();
             draw_transform_tab(full);
+            ImGui::EndTabItem();
+        }
+        if (d.kind() == EditDoc::Kind::Points && d.layer_count() > 1 &&
+            ui::BeginTabItem(msg::tab_repair,
+                             force && _tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            // Most of what the tab does is aimed at cameras.
+            if (_tab != 2 && !force) set_layer(1);
+            _tab = 2;
+            draw_repair_tab(full);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

@@ -104,9 +104,9 @@ bool EditSession::pointer_in_view(float& x, float& y) const {
 
 // The pivot in the positions() frame. Medians are not free over a million
 // elements, so they are taken when the live set or the selection changes.
-void EditSession::pivot_model(double out[3]) {
+void EditSession::pivot_model(double out[3], bool selection) {
     out[0] = out[1] = out[2] = 0.0;
-    const Pivot want = (Pivot)_pivot;
+    const Pivot want = selection ? Pivot::Selection : (Pivot)_pivot;
     if (want == Pivot::Origin) {
         // The point whose SAVED coordinate is the origin: saved = N^-1 E p,
         // so p = E^-1 N 0.
@@ -171,7 +171,8 @@ bool EditSession::xform_frame(XformFrame& f) {
     // While the operator runs the pivot stays where it was when it began.
     const Sim3& placed = _xform.active() ? _xform_from : _doc->placement();
     double pm[3], q[3];
-    pivot_model(pm);
+    // Cameras moved by hand turn about themselves, wherever the model's pivot is.
+    pivot_model(pm, _xform.active() ? _cam_xform : camera_mode());
     placed.apply(pm, q);
     base.apply(q, f.pivot);
 
@@ -258,6 +259,7 @@ void EditSession::begin_xform(XformKind kind) {
     // pointer somewhere else the key still picks which handles are shown.
     if (!xform_frame(f) || !pointer_in_view(mx, my)) return;
     _xform_from = _doc->placement();
+    begin_camera_move();
     _xform.begin(kind, f, mx, my, /*drag=*/false);
 }
 

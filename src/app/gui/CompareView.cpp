@@ -342,6 +342,17 @@ void CompareView::poll() {
         if (!m->attached && m->src.ready()) attach(*m);
     ensure_viewer_overlay();
     update_placements();
+    if (_edit_replaced >= 0) {
+        _edit_reopen = _edit_replaced;
+        _edit_replaced = -1;
+        end_edit(true);
+    }
+    if (_edit_reopen >= 0 && _edit_index < 0 && _edit_reopen < count() &&
+        _models[(size_t)_edit_reopen]->attached) {
+        const int i = _edit_reopen;
+        _edit_reopen = -1;
+        begin_edit(i);
+    }
     if (_edit_when_ready && _edit_index < 0 && !_edit_loading.load() &&
         !_models.empty() && _models[0]->attached) {
         _edit_when_ready = false;
@@ -450,6 +461,7 @@ void CompareView::begin_edit(int index) {
     else
         _edit.set_to_render(nullptr);
     // A model saved moved takes its camera projects with it.
+    _edit.set_on_model_replaced([this] { _edit_replaced = _edit_index; });
     _edit.set_on_saved([this](const std::string& source, const std::string& saved,
                               const spirula::Sim3& placement) {
         std::string dir;
@@ -470,9 +482,9 @@ void CompareView::begin_edit(int index) {
                            std::move(ds), std::move(post), src, dir,
                            [panel, key](const ParsedDataset& d,
                                         const PostSplitCameras& p,
-                                        const uint8_t* cam_sel) {
+                                        const uint8_t* cam_sel, const float* cam_rgb) {
                                panel->attach_preview_data(d, p, key, 1.0f,
-                                                          p.n_post > 0, cam_sel);
+                                                          p.n_post > 0, cam_sel, cam_rgb);
                            }),
                        panel);
             break;

@@ -4235,6 +4235,101 @@ SS_MSG(match_sequence_added,
     RU("окна последовательностей добавили пар: {0}, к выбранным парам: {1} (пар в окнах: {2})"),
     TR("dizi pencereleri çift ekledi: {0}, seçilmiş çiftlere ek olarak: {1} (pencere çifti: {2})"));
 
+// ===========================================================================
+// repair -- fixing named cameras of a finished model (src/sfm/Repair.h)
+// ===========================================================================
+
+SS_MSG(repair_needs_workspace,
+    EN("repair needs the features/ folder and matches.bin of the run that made the model, in {0}"),
+    JA("修復には、モデルを作った実行の features/ フォルダーと matches.bin が {0} に必要です"),
+    ZH_HANS("修复需要生成该模型那次运行的 features/ 文件夹和 matches.bin，位于 {0}"),
+    ZH_HANT("修復需要產生該模型那次執行的 features/ 資料夾和 matches.bin，位於 {0}"),
+    KO("복구하려면 모델을 만든 실행의 features/ 폴더와 matches.bin이 {0}에 있어야 합니다"),
+    DE("die Reparatur braucht den Ordner features/ und matches.bin des Laufs, der das Modell "
+       "erzeugt hat, in {0}"),
+    FR("la réparation a besoin du dossier features/ et de matches.bin de l'exécution qui a "
+       "produit le modèle, dans {0}"),
+    ES("la reparación necesita la carpeta features/ y matches.bin de la ejecución que creó "
+       "el modelo, en {0}"),
+    PT("o reparo precisa da pasta features/ e do matches.bin da execução que criou o modelo, "
+       "em {0}"),
+    IT("la riparazione richiede la cartella features/ e matches.bin dell'esecuzione che ha "
+       "creato il modello, in {0}"),
+    NL("herstel heeft de map features/ en matches.bin nodig van de run die het model maakte, "
+       "in {0}"),
+    RU("для исправления нужны папка features/ и matches.bin того запуска, который построил "
+       "модель, в {0}"),
+    TR("onarım, modeli oluşturan çalışmanın features/ klasörüne ve matches.bin dosyasına "
+       "ihtiyaç duyar: {0}"));
+
+SS_MSG(repair_unknown_image,
+    EN("not in the match database, skipped: {0}"),
+    JA("マッチデータベースにないためスキップ: {0}"),
+    ZH_HANS("不在匹配数据库中，已跳过：{0}"),
+    ZH_HANT("不在匹配資料庫中，已略過：{0}"),
+    KO("매칭 데이터베이스에 없어 건너뜀: {0}"),
+    DE("nicht in der Match-Datenbank, übersprungen: {0}"),
+    FR("absent de la base de correspondances, ignoré : {0}"),
+    ES("no está en la base de coincidencias, omitido: {0}"),
+    PT("não está no banco de correspondências, ignorado: {0}"),
+    IT("non presente nel database delle corrispondenze, saltato: {0}"),
+    NL("niet in de matchdatabase, overgeslagen: {0}"),
+    RU("нет в базе сопоставлений, пропущено: {0}"),
+    TR("eşleşme veritabanında yok, atlandı: {0}"));
+
+SS_MSG(repair_keypoints_differ,
+    EN("model image {0} does not index this workspace's features (keypoints: {1}, features: {2})"),
+    JA("モデル画像 {0} はこのワークスペースの特徴点を参照していません (キーポイント: {1}、特徴点: {2})"),
+    ZH_HANS("模型图像 {0} 与此工作区的特征不对应（关键点：{1}，特征：{2}）"),
+    ZH_HANT("模型影像 {0} 與此工作區的特徵不對應（關鍵點：{1}，特徵：{2}）"),
+    KO("모델 이미지 {0}이(가) 이 작업 공간의 특징점과 맞지 않습니다 (키포인트: {1}, 특징점: {2})"),
+    DE("Modellbild {0} verweist nicht auf die Merkmale dieses Arbeitsbereichs (Keypoints: {1}, "
+       "Merkmale: {2})"),
+    FR("l'image {0} du modèle ne référence pas les caractéristiques de cet espace de travail "
+       "(points clés : {1}, caractéristiques : {2})"),
+    ES("la imagen {0} del modelo no indexa las características de este espacio de trabajo "
+       "(puntos clave: {1}, características: {2})"),
+    PT("a imagem {0} do modelo não indexa as características deste espaço de trabalho "
+       "(pontos-chave: {1}, características: {2})"),
+    IT("l'immagine {0} del modello non indicizza le feature di questo spazio di lavoro "
+       "(punti chiave: {1}, feature: {2})"),
+    NL("modelbeeld {0} verwijst niet naar de kenmerken van deze werkmap (sleutelpunten: {1}, "
+       "kenmerken: {2})"),
+    RU("изображение модели {0} не соответствует признакам этой рабочей папки (ключевых точек: "
+       "{1}, признаков: {2})"),
+    TR("model görüntüsü {0} bu çalışma alanının özniteliklerine karşılık gelmiyor (anahtar "
+       "nokta: {1}, öznitelik: {2})"));
+
+SS_MSG(repair_matched,
+    EN("target images: {0}, pairs tried: {1}, new verified pairs: {2}"),
+    JA("対象画像: {0}、試したペア: {1}、新たに検証されたペア: {2}"),
+    ZH_HANS("目标图像：{0}，尝试的图像对：{1}，新通过验证的图像对：{2}"),
+    ZH_HANT("目標影像：{0}，嘗試的影像對：{1}，新通過驗證的影像對：{2}"),
+    KO("대상 이미지: {0}, 시도한 쌍: {1}, 새로 검증된 쌍: {2}"),
+    DE("Zielbilder: {0}, versuchte Paare: {1}, neu verifizierte Paare: {2}"),
+    FR("images cibles : {0}, paires essayées : {1}, nouvelles paires vérifiées : {2}"),
+    ES("imágenes objetivo: {0}, pares probados: {1}, pares verificados nuevos: {2}"),
+    PT("imagens-alvo: {0}, pares tentados: {1}, novos pares verificados: {2}"),
+    IT("immagini obiettivo: {0}, coppie provate: {1}, nuove coppie verificate: {2}"),
+    NL("doelbeelden: {0}, geprobeerde paren: {1}, nieuw geverifieerde paren: {2}"),
+    RU("целевых изображений: {0}, проверено пар: {1}, новых подтверждённых пар: {2}"),
+    TR("hedef görüntü: {0}, denenen çift: {1}, yeni doğrulanan çift: {2}"));
+
+SS_MSG(repair_summary,
+    EN("moved: {0}, added: {1}, kept: {2}, failed: {3}, removed: {4}"),
+    JA("移動: {0}、追加: {1}、維持: {2}、失敗: {3}、除外: {4}"),
+    ZH_HANS("已移动：{0}，已添加：{1}，保持：{2}，失败：{3}，已移除：{4}"),
+    ZH_HANT("已移動：{0}，已新增：{1}，保持：{2}，失敗：{3}，已移除：{4}"),
+    KO("이동: {0}, 추가: {1}, 유지: {2}, 실패: {3}, 제거: {4}"),
+    DE("verschoben: {0}, hinzugefügt: {1}, beibehalten: {2}, fehlgeschlagen: {3}, entfernt: {4}"),
+    FR("déplacées : {0}, ajoutées : {1}, conservées : {2}, échecs : {3}, retirées : {4}"),
+    ES("movidas: {0}, añadidas: {1}, conservadas: {2}, fallidas: {3}, quitadas: {4}"),
+    PT("movidas: {0}, adicionadas: {1}, mantidas: {2}, falhas: {3}, removidas: {4}"),
+    IT("spostate: {0}, aggiunte: {1}, mantenute: {2}, fallite: {3}, rimosse: {4}"),
+    NL("verplaatst: {0}, toegevoegd: {1}, behouden: {2}, mislukt: {3}, verwijderd: {4}"),
+    RU("перемещено: {0}, добавлено: {1}, оставлено: {2}, не удалось: {3}, удалено: {4}"),
+    TR("taşınan: {0}, eklenen: {1}, korunan: {2}, başarısız: {3}, çıkarılan: {4}"));
+
 }  // namespace sfm
 }  // namespace msg
 }  // namespace i18n
