@@ -14,9 +14,12 @@ namespace gui {
 namespace mask {
 
 inline constexpr int kMaxWindowTex = 4096;
+// Below 1 the picture no longer fills the pane, leaving room to start a shape outside it.
+inline constexpr float kMinZoom = 0.25f;
+inline constexpr float kMaxZoom = 64.0f;
 
 struct View {
-    float zoom = 1.0f;            // 1 = the whole mask fits the pane; up to 64
+    float zoom = 1.0f;            // 1 = the whole mask fits the pane
     float cx = 0.0f, cy = 0.0f;   // centre, displayed mask pixels
 };
 

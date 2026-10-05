@@ -3,14 +3,16 @@ name: CI
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   lint:
@@ -69,6 +71,24 @@ jobs:
       - name: Smoke
         run: ./build_vulkan/spirula train --help
 
+      - name: Package
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) VERSION=${REF_NAME#v} ;;
+            *) VERSION=$(git rev-parse --short=7 HEAD) ;;
+          esac
+          ASSET=spirula-$VERSION-ubuntu-vulkan-x86_64.zip
+          zip -j "$ASSET" build_vulkan/spirula
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.ASSET }}
+          archive: false
+          retention-days: 14
+
   macos:
     runs-on: macos-15
     steps:
@@ -96,12 +116,22 @@ jobs:
         run: ./build/spirula train --help
 
       - name: Package
-        run: cmake --build build --target macos_dmg
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          cmake --build build --target macos_dmg
+          case "$GITHUB_REF" in
+            refs/tags/v*) VERSION=${REF_NAME#v} ;;
+            *) VERSION=$(git rev-parse --short=7 HEAD) ;;
+          esac
+          ASSET=spirula-$VERSION-macos-vulkan-arm64.dmg
+          mv "build/Spirula Studio.dmg" "$ASSET"
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: spirula-macos-arm64
-          path: build/Spirula Studio.dmg
+          path: ${{ env.ASSET }}
+          archive: false
           retention-days: 14
 
   windows:
@@ -125,3 +155,45 @@ jobs:
       - name: Smoke
         shell: cmd
         run: build_vulkan\spirula.exe train --help
+
+      - name: Package
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:REF_NAME.Substring(1) } else { git rev-parse --short=7 HEAD }
+          $asset = "spirula-$version-windows-vulkan-x86_64.zip"
+          Compress-Archive -Path build_vulkan\spirula.exe -DestinationPath $asset
+          "ASSET=$asset" >> $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.ASSET }}
+          archive: false
+          retention-days: 14
+
+  # Runs after a partial failure too, so "Re-run failed jobs" finishes the set.
+  release:
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: spirula-*
+          path: assets
+          merge-multiple: true
+          skip-decompress: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l assets
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --draft --title "$TAG" --notes ""
+          gh release upload "$TAG" assets/* --clobber

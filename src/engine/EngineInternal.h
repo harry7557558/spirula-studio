@@ -185,3 +185,13 @@ void engine_ensure_optim_state(int sh_optim_bits, int sh_value_bits,
 float* _engine_ppisp_reg_loss_into(
     const std::array<float, (int)PPISPRegLossIndex::length>& loss_weights,
     bool compute_grad);
+
+// Brackets one of a step's splat stages while engine_step_timing_arm() is in
+// force. Defined in EngineStepTiming.cpp.
+struct SplatStageTimer {
+    SplatStageTimer();
+    ~SplatStageTimer();
+    SplatStageTimer(const SplatStageTimer&) = delete;
+    SplatStageTimer& operator=(const SplatStageTimer&) = delete;
+    int _pair = -1;
+};

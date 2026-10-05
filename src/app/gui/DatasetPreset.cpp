@@ -38,6 +38,7 @@ namespace {
     /* ---- colour space ---- */                                              \
     X("image_gamut",                sfm.image_gamut)                          \
     X("image_is_linear",            sfm.image_is_linear)                      \
+    X("image_exposure",             sfm.image_exposure)                       \
     X("point_color_in_image_space", sfm.point_color_in_image_space)           \
     /* ---- masking ---- */                                                   \
     X("mask_enable",                sfm.prep.mask_enable)                     \
@@ -48,6 +49,7 @@ namespace {
     X("mask_text_detector",         mask_detector_id)                         \
     X("mask_prompt",                mask.prompt)                              \
     X("mask_negative_prompt",       mask.negative_prompt)                     \
+    X("mask_feature_prompt",        mask.feature_prompt)                      \
     X("mask_keep_subject",          mask.keep_subject)                        \
     X("mask_dilate_ratio",          mask.dilate_ratio)                        \
     X("mask_shrink_ratio",          mask.shrink_ratio)                        \
@@ -58,7 +60,6 @@ namespace {
     X("mask_memory",                sfm.prep.mask_memory)                     \
     X("mask_detect_every",          sfm.prep.mask_detect_every)               \
     X("mask_memory_frames",         sfm.prep.mask_memory_frames)              \
-    X("force_external_masking",     sfm.prep.force_external_masking)          \
     /* ---- depth and normals ---- */                                         \
     X("geometry_enable",            sfm.geometry.enable)                      \
     X("geometry_model",             sfm.geometry.model)                       \
@@ -71,6 +72,7 @@ namespace {
     X("geometry_depth_mm",          sfm.geometry.depth_mm)                    \
     X("geometry_ray_depth",         sfm.geometry.ray_depth)                   \
     X("geometry_split",             sfm.geometry.split)                       \
+    X("geometry_face_res",          sfm.geometry.face_res)                    \
     X("geometry_overwrite",         sfm.geometry.overwrite)                   \
     /* ---- the built-in reconstruction ---- */                               \
     X("sfm_quality",                sfm.quality)                              \
@@ -171,6 +173,9 @@ bool dataset_apply_preset(DatasetSettings& s, const std::string& name) {
         // whatever they carry and their shadow.
         s.sfm.prep.mask_enable = true;
         s.mask.prompt = "person; hand; backpack; shadow of person";
+        // Outdoors half of every frame is sky, and a clear one yields no
+        // feature points while a cloudy one yields points that drift.
+        s.mask.feature_prompt = "sky; cloud";
         s.sfm.mask_features = true;
         s.border_enable = true;
         return true;
@@ -225,6 +230,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_to(g.jpeg_quality, 1, 100);
     clamp_to(g.ray_depth, 0, 2);
     clamp_to(g.split, 0, 2);
+    clamp_to(g.face_res, 0, 1);
 
     SfmJob& j = s.sfm;
     clamp_to(j.quality, 0, 3);
@@ -236,7 +242,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_to(j.mapper, 0, 1);
     clamp_to(j.features, 0, 2);
     clamp_to(j.matcher, 0, 1);
-    clamp_to(j.metric_gps, 0, 2);
+    clamp_to(j.metric_gps, 0, 3);
     clamp_to(j.sensor_gauge, 0, 2);
     clamp_to(j.exif_attitude, 0, 2);
     clamp_to(j.max_features, 0, 1000000);
@@ -266,6 +272,25 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     c.abs_pose_max_error = std::max(0.0f, c.abs_pose_max_error);
 }
 
+
+std::string dataset_settings_json(const DatasetSettings& s) {
+    JsonWriter w;
+    w.object();
+#define SS_DS_EMIT(key, member) w.field_raw(key, json_field::emit(s.member));
+    SS_DATASET_PRESET_FIELDS(SS_DS_EMIT)
+#undef SS_DS_EMIT
+    w.end();
+    return w.str();
+}
+
+void read_dataset_settings_json(const JsonValue& fields, DatasetSettings& s) {
+    if (!fields.is_object()) return;
+#define SS_DS_LOAD(key, member)                                               \
+    if (const JsonValue* v = fields.find(key)) json_field::assign(s.member, *v);
+    SS_DATASET_PRESET_FIELDS(SS_DS_LOAD)
+#undef SS_DS_LOAD
+    sanitize_dataset_settings(s);
+}
 
 void save_dataset_preset(const DatasetPreset& p, const std::string& path) {
     PresetHeader head{p.name, p.description, path};

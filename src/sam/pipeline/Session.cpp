@@ -70,8 +70,8 @@ void Session::unload() {
     const bool was_loaded = impl_->loaded;
     impl_->loaded = false;
     impl_->device_selector.clear();
-    impl_->text_cache_valid = false;
     impl_->text_cache_ids.clear();
+    impl_->text_cache_next = 0;
     // Nothing to give back, or the device is already gone (nn::shutdown() ran
     // first, which frees all of this wholesale).
     if (!was_loaded || !vk::Context::initialized()) return;
@@ -151,7 +151,8 @@ bool Session::loadModel(const ModelParams& params) {
     try {
         impl_->model.load(params.model_path, params.img_size);
         impl_->arena.reserve(arena_reserve_for(impl_->model));
-        impl_->text_cache_valid = false;
+        impl_->text_cache_ids.clear();
+        impl_->text_cache_next = 0;
         impl_->loaded = true;
         impl_->loaded_params = params;
         // What the weights actually landed on -- the live context is the only
@@ -248,17 +249,27 @@ int64_t Session::Impl::buildPrompt(const ConceptPrompt& prompt, nn::Tensor& out_
     {
         const nn::Tensor rows = out_prompt.slice0(0, L);
         const uint64_t bytes = (uint64_t)L * D * sizeof(float);
-        if (text_cache_valid && text_cache_ids == ids) {
+        const auto hit = std::find(text_cache_ids.begin(), text_cache_ids.end(), ids);
+        if (hit != text_cache_ids.end()) {
+            const uint32_t sub = (uint32_t)(hit - text_cache_ids.begin());
             vk::Stream::get().copy(rows.ptr,
-                                   vk::VramPool::get().lookup(vk::PoolSlot::TextFeat, 0),
+                                   vk::VramPool::get().lookup(vk::PoolSlot::TextFeat, sub),
                                    bytes);
         } else {
             model::encode_text(model, arena, ids, rows);
+            // 32 KiB an entry; a prompt holding more phrases than this is not
+            // one anybody types.
+            constexpr size_t kMaxCached = 32;
+            size_t sub = text_cache_ids.size();
+            if (sub < kMaxCached) {
+                text_cache_ids.push_back(ids);
+            } else {
+                sub = text_cache_next++ % kMaxCached;
+                text_cache_ids[sub] = ids;
+            }
             nn::Tensor cached =
-                nn::pool_tensor(vk::PoolSlot::TextFeat, 0, nn::DType::F32, L, D);
+                nn::pool_tensor(vk::PoolSlot::TextFeat, (uint32_t)sub, nn::DType::F32, L, D);
             vk::Stream::get().copy(cached.ptr, rows.ptr, bytes);
-            text_cache_ids = ids;
-            text_cache_valid = true;
         }
     }
 

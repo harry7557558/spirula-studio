@@ -22,6 +22,7 @@
 
 #include "core/SubmitBudget.h"
 #include "sfm/ba/Options.h"
+#include "sfm/ba/GradientNorm.h"
 #include "sfm/ba/Priors.h"
 #include "sfm/ba/Problem.h"
 #include "sfm/ba/SolverCpu.h"
@@ -173,6 +174,9 @@ public:
             prior_.init(P_);
             hasPriors_ = !prior_.empty();
         }
+        absCentres_ = hasPriors_ && prior_.hasAbsoluteCentres();
+        gradOn_ = opt_.gradient_tol > 0;
+        mirror_ = hasPriors_ || gradOn_;
         hostPoses_ = P_.poses;
         hostExts_ = P_.exts;
 
@@ -241,9 +245,13 @@ public:
         bPriorErow_ = mkUint(npe);
         bPriorBlk_ = mkReal(36 * (uint64_t)npe);
         bPriorG_ = mkReal(hasPriors_ ? P_.pose_dim : 1);
-        if (hasPriors_ &&
+        bGradCam_ = mkReal(gradOn_ ? P_.n_dim : 1);
+        bGradPt_ = mkUint(1);
+        if (mirror_ &&
             kDlPoses + (P_.pose_dim + P_.exts.size()) * rs > VkContext::stagingCapacity())
             throw std::runtime_error("pose priors: the parameter readback exceeds the staging buffer");
+        if (gradOn_ && dlGrad() + P_.n_dim * rs + 4 > VkContext::stagingCapacity())
+            throw std::runtime_error("gradient stop: the gradient readback exceeds the staging buffer");
 
         // binding order must match sfm/shaders/ba/ba.slang + cg.slang; atomic views
         // alias the same VkBuffer at the odd bindings
@@ -260,6 +268,7 @@ public:
             bCgSp_.buf, bCgB_.buf, bCgM_.buf, bCamChunks_.buf, bPrecBlocks_.buf,
             bMemberInfo_.buf, bExts_.buf,
             bPriorRows_.buf, bPriorCols_.buf, bPriorErow_.buf, bPriorBlk_.buf, bPriorG_.buf,
+            bGradCam_.buf, bGradCam_.buf, bGradPt_.buf,
         };
         ownBufs_ = {&bObs_, &bObsImage_, &bObsPoint_, &bImageInfo_, &bGroupInfo_,
                     &bMemberInfo_, &bExts_, &bExtsBak_,
@@ -270,7 +279,8 @@ public:
                     &bPairEntries_, &bPairChunks_, &bW_, &bYp_, &bY_,
                     &bCamRanges_, &bCamObs_, &bCamChunks_, &bCgR_, &bCgZ_, &bCgP_, &bCgSp_,
                     &bCgV_, &bCgB_, &bCgM_, &bCgScal_, &bCgPart_, &bPrecBlocks_,
-                    &bPriorRows_, &bPriorCols_, &bPriorErow_, &bPriorBlk_, &bPriorG_};
+                    &bPriorRows_, &bPriorCols_, &bPriorErow_, &bPriorBlk_, &bPriorG_,
+                    &bGradCam_, &bGradPt_};
         double t_buf = prof_lap();
         ctx_.createDescriptors(binds);
         // Fresh-from-the-driver allocations happen to arrive zeroed; memory
@@ -294,6 +304,10 @@ public:
             std::string("dp_accum") + schurSuffix_,
         };
         if (!P_.members.empty()) entries.push_back("ext_update");
+        if (gradOn_) {
+            entries.push_back("grad_point_max");
+            entries.push_back(std::string("grad_cam") + schurSuffix_);
+        }
         if (hasPriors_) {
             entries.push_back("prior_add_g");
             if (!useCG_ || haveFallback_) entries.push_back("prior_add_s");
@@ -509,16 +523,18 @@ public:
     // same command buffer read back into the staging buffer.
     double readTotalCost() {
         double c = readCost();
-        if (!hasPriors_) return c;
+        trialPrior_ = 0;
+        if (!mirror_) return c;
         const uint8_t* st = (const uint8_t*)ctx_.stagingDownloadPtr() + kDlPoses;
         unpackReals(trialPoses_, st, P_.poses.size(), opt_.real);
         unpackReals(trialExts_, st + P_.poses.size() * realSize(opt_.real), P_.exts.size(),
                     opt_.real);
-        return c + priorCost(trialPoses_, trialExts_);
+        trialPrior_ = priorCost(trialPoses_, trialExts_);
+        return c + trialPrior_;
     }
 
     void acceptTrialParams() {
-        if (!hasPriors_) return;
+        if (!mirror_) return;
         hostPoses_.swap(trialPoses_);
         hostExts_.swap(trialExts_);
     }
@@ -528,7 +544,9 @@ public:
         auto t0 = std::chrono::high_resolution_clock::now();
         double damping = opt_.init_damping;
         double cost = computeCost();
+        double prior = priorCost(hostPoses_, hostExts_);
         stats_.initial_cost = cost;
+        stats_.prior_initial = prior;
         int noimprov = 0;
 
         bool reuse = false;  // after a reject, the assembly still matches the params
@@ -563,6 +581,11 @@ public:
             recordIteration((float)damping, reuse, path);
             endSeg();
             double newCost = readTotalCost();
+            if (gradOn_ && !reuse && gradientConverged()) {
+                restore_pending_ = true;  // the step this segment took is not taken
+                stats_.iterations = it;
+                break;
+            }
             stats_.iterations = it + 1;
 
             if (path == LinSolve::CG) {
@@ -629,18 +652,26 @@ public:
                 }
             }
 
+            const double newPrior = trialPrior_;
             if (std::isfinite(newCost) && newCost <= cost * (1.0 + opt_.rtol)) {
-                if (newCost / cost >= 1.0 - opt_.rtol) {
-                    // tie-zone accept: count toward patience and nudge lambda
-                    // UP -- shrinking it on micro-improvements lets it
-                    // collapse and the solver stall in an ill-conditioned
-                    // plateau (observed with the df config on 871)
-                    if (++noimprov >= opt_.patience) { cost = newCost; break; }
+                const LmAccept acc = classifyAccept(opt_, cost, newCost, absCentres_, prior,
+                                                    newPrior, stats_.prior_steps);
+                if (acc == LmAccept::Tie) {
+                    // tie: count toward patience and leave lambda -- shrinking it on
+                    // every micro-improvement collapses it and stalls the solver in an
+                    // ill-conditioned plateau (observed with the df config on 871)
+                    if (++noimprov >= opt_.patience) {
+                        cost = newCost;
+                        prior = newPrior;
+                        break;
+                    }
                 } else {
-                    noimprov = 0;
+                    if (acc == LmAccept::Improved) noimprov = 0;
+                    else stats_.prior_steps++;
                     damping = std::max(damping / 3.0, kMinDamping);
                 }
                 cost = newCost;
+                prior = newPrior;
                 stats_.accepted++;
                 acceptTrialParams();
                 reuse = false;
@@ -671,12 +702,17 @@ public:
         // must be the last *accepted* parameters.
         flushRestore();
         stats_.final_cost = cost;
+        stats_.prior_final = prior;
+        stats_.final_damping = damping;
         auto t1 = std::chrono::high_resolution_clock::now();
         stats_.solve_seconds = std::chrono::duration<double>(t1 - t0).count();
         ctx_.printProfile();
     }
 
     const SolverStats& stats() const { return cpu_ ? cpu_->stats() : stats_; }
+    // The last gradient test's inputs (sfm_prior_test).
+    const std::vector<double>& lastGradient() const { return cpu_ ? cpu_->lastGradient() : gfull_; }
+    double lastPointGradientMax() const { return cpu_ ? cpu_->lastPointGradientMax() : gptMax_; }
     // The scalar type actually in use, which init() may have stepped down from
     // what SolverOptions asked for (see pickRealForDevice). Anything that packs
     // or unpacks solver buffers from outside has to ask -- packing `double`
@@ -1276,6 +1312,7 @@ private:
 
             ctx_.copy(cb_, bBp_, bBp0_, bBp_.size);
             ctx_.barrier(cb_);
+            if (gradOn_) recordGradient();
         }
 
         {
@@ -1513,7 +1550,7 @@ private:
         ctx_.recordDownload(cb_, bCost_, realSize(opt_.real), 0, kDlCost);
         if (path == LinSolve::CG)
             ctx_.recordDownload(cb_, bCgScal_, 8 * realSize(opt_.real), 0, kDlCgScal);
-        if (hasPriors_) {
+        if (mirror_) {
             const VkDeviceSize pb = P_.poses.size() * realSize(opt_.real);
             ctx_.recordDownload(cb_, bPoses_, pb, 0, kDlPoses);
             if (!P_.exts.empty())
@@ -1525,6 +1562,46 @@ private:
     // Offsets into the download staging buffer for the folded readbacks above;
     // the trial poses (and extrinsics) follow when priors are on.
     static constexpr VkDeviceSize kDlCost = 0, kDlCgScal = 64, kDlPoses = 128;
+    // The gradient test's readback, after the poses: every column, then the point max.
+    VkDeviceSize dlGrad() const {
+        const VkDeviceSize end = kDlPoses + (P_.poses.size() + P_.exts.size()) * realSize(opt_.real);
+        return (end + 63) / 64 * 64;
+    }
+
+    // d cost / d column over every observation, before the Schur reduction, and
+    // max |d cost / d point| as float bits, at the point the Jacobian pass evaluated.
+    void recordGradient() {
+        ctx_.fillZero(cb_, bGradCam_);
+        ctx_.fillZero(cb_, bGradPt_);
+        ctx_.barrier(cb_);
+        Push p;
+        p.u0 = P_.num_obs;
+        launch(std::string("grad_cam") + schurSuffix_, P_.num_obs, 256, kWDp * wide_, p, atBase);
+        Push q;
+        q.u0 = P_.num_points;
+        room(kWLaunch + P_.num_points * kWPoint);
+        ctx_.dispatch(cb_, "grad_point_max", (P_.num_points + 255) / 256, q);
+        ctx_.barrier(cb_);
+        const VkDeviceSize gb = (VkDeviceSize)P_.n_dim * realSize(opt_.real);
+        ctx_.recordDownload(cb_, bGradCam_, gb, 0, dlGrad());
+        ctx_.recordDownload(cb_, bGradPt_, 4, 0, dlGrad() + gb);
+    }
+
+    bool gradientConverged() {
+        const uint8_t* st = (const uint8_t*)ctx_.stagingDownloadPtr() + dlGrad();
+        unpackReals(gfull_, st, P_.n_dim, opt_.real);
+        if (hasPriors_)
+            for (uint32_t i = 0; i < P_.pose_dim; i++) gfull_[i] += prior_.gradient()[i];
+        float pm;
+        memcpy(&pm, st + (size_t)P_.n_dim * realSize(opt_.real), 4);
+        gptMax_ = pm;
+        const double gn = sfm::gradientNormParts(P_, hostPoses_.data(), hostExts_.data(),
+                                                 gfull_.data(), gptMax_, opt_.metres_per_unit)
+                              .max();
+        stats_.gradient_norms.push_back(gn);
+        stats_.gradient_stop = gn <= opt_.gradient_tol;
+        return stats_.gradient_stop;
+    }
 
     double readCost() {
         std::vector<double> v;
@@ -1607,6 +1684,12 @@ private:
     // the parameters it is evaluated at (accepted, and the iteration's trial).
     sfm::PriorAssembler prior_;
     bool hasPriors_ = false;
+    bool absCentres_ = false;
     GpuBuffer bPriorRows_, bPriorCols_, bPriorErow_, bPriorBlk_, bPriorG_;
+    GpuBuffer bGradCam_, bGradPt_;
+    bool gradOn_ = false, mirror_ = false;  // mirror_: host copies of the accepted poses
+    std::vector<double> gfull_;
+    double gptMax_ = 0;
     std::vector<double> hostPoses_, hostExts_, trialPoses_, trialExts_;
+    double trialPrior_ = 0;  // the priors' cost at the trial parameters readTotalCost read
 };

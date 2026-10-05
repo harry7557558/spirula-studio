@@ -841,6 +841,54 @@ int cmdMetricSelftest(int, char**) {
         check(flat.inliers == 60, "T13: with every camera an inlier");
     }
 
+    // ---- T14: a level fit about an up that tips the camera path ------------
+    // A straight level flight levelled about an up 88 deg off runs almost along
+    // it: the short level part inflates the scale, which the 3D distances refuse.
+    {
+        Sim3 T;
+        T.scale = 2.6;
+        T.R = rotFromAxisAngle({0, 0, 1}, 0.3);
+        T.t = {5.0, -2.0, 160.0};
+        std::vector<Vec3> c(60);
+        for (int i = 0; i < 60; i++) c[i] = {0.5 * i, 0.01 * std::sin(0.4 * i), 0.0};
+        const MetricRef ref = makeRef(c, T);
+        MetricRef tipped = ref;
+        const Mat3 tip = rotFromAxisAngle({0, 1, 0}, 88.0 * M_PI / 180.0);
+        for (Vec3& p : tipped.centres) p = mul(tip, p);
+        const MetricFit good = fitMetricGauge(ref, 5.0, MetricAxes::Horizontal);
+        const MetricFit bad = fitMetricGauge(tipped, 5.0, MetricAxes::Horizontal);
+        printf("  T14: scale %.4f / 3D %.4f (true up), %.4f / 3D %.4f (88 deg off), reason %d\n",
+               good.T.scale, good.scale_3d, bad.T.scale, bad.scale_3d, (int)bad.reason);
+        check(good.ok && std::fabs(good.scale_3d / T.scale - 1.0) < 1e-9,
+              "T14: levelled about the true up, the 3D scale agrees");
+        check(!bad.ok && bad.reason == MetricFail::Tilted && bad.T.scale > 20.0 * T.scale &&
+                  std::fabs(bad.scale_3d / T.scale - 1.0) < 1e-9,
+              "T14: about an up 88 deg off, the inflated level scale is refused as tilted");
+
+        // A real 30 deg climb passes, whether the reference follows it or has no altitude.
+        std::vector<Vec3> climb(60);
+        const double a = 30.0 * M_PI / 180.0;
+        for (int i = 0; i < 60; i++)
+            climb[i] = {0.5 * i * std::cos(a), 0.01 * std::sin(0.4 * i), 0.5 * i * std::sin(a)};
+        MetricRef up = makeRef(climb, T), sea = up;
+        for (Vec3& p : sea.targets) p.z = 0.0;
+        const MetricFit rise = fitMetricGauge(up, 5.0, MetricAxes::Horizontal);
+        const MetricFit noalt = fitMetricGauge(sea, 5.0, MetricAxes::Horizontal);
+        printf("  T14: 30 deg climb: scale over 3D %.4f (altitude), %.4f (none)\n",
+               rise.T.scale / rise.scale_3d, noalt.T.scale / noalt.scale_3d);
+        check(rise.ok && noalt.ok && std::fabs(rise.T.scale / T.scale - 1.0) <= 1e-9,
+              "T14: a climb the up describes truly is not refused, altitude or none");
+
+        // Five fixes stated at sea level: the vertical place is the others' median.
+        MetricRef few = ref;
+        for (int i = 0; i < 60; i += 12) few.targets[i].z = 0.0;
+        const MetricFit med = fitMetricGauge(few, 5.0, MetricAxes::Horizontal);
+        printf("  T14: five fixes at sea level: t.z %.6f against %.6f, altitude sigma %.2e m\n",
+               med.T.t.z, T.t.z, med.vertical_sigma);
+        check(med.ok && std::fabs(med.T.t.z - T.t.z) < 1e-9 && med.vertical_sigma < 1e-9,
+              "T14: a few fixes without altitude move neither the vertical place nor its sigma");
+    }
+
     printf("%s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

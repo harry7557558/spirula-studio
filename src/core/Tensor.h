@@ -8,6 +8,7 @@
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
 
+#include <algorithm>
 #include <mutex>
 #include <tuple>
 #include <type_traits>
@@ -181,6 +182,8 @@ class DevicePool {
     Arena     _arena;
     PoolPhase _phase = PoolPhase::None;
     uint32_t  _epoch = 0;   // bumped per begin_phase; 0 never matches a Slot
+    int64_t   _live_splats = 0;
+    int64_t   _cap_splats = 0;
     // Guards _slots / _dyn / _arena against concurrent acquire. It does NOT
     // make the phase protocol thread-safe: two threads in different phases
     // would fight over the arena, which the engine mutex is what prevents.
@@ -219,8 +222,9 @@ class DevicePool {
     }
 
     // Grow-if-needed on a Slot already selected by the caller (mutex held).
+    // `reserve` > n allocates room for that many elements up front.
     template<typename T>
-    static T* _acquire_into(Slot& slot, size_t n) {
+    static T* _acquire_into(Slot& slot, size_t n, size_t reserve = 0) {
         size_t bytes = n * sizeof(T);
         // An arena slice is not capacity this slot may reuse; drop it first.
         if (!slot.owns) { slot.ptr = nullptr; slot.cap_bytes = 0; slot.owns = true; }
@@ -230,12 +234,13 @@ class DevicePool {
             // in a consistent empty state rather than {null ptr, stale cap}.
             slot.ptr = nullptr;
             slot.cap_bytes = 0;
-            slot.ptr = backend::device_malloc_checked(bytes);
-            slot.cap_bytes = bytes;
+            const size_t alloc = std::max(bytes, reserve * sizeof(T));
+            slot.ptr = backend::device_malloc_checked(alloc);
+            slot.cap_bytes = alloc;
             // SS_POISON_POOL=1: fresh device memory holds whatever the
             // driver left, so a read-before-write is silent where that is
             // zero and catastrophic where it is not. NaN makes it show.
-            if (_poison_pool()) backend::memset_sync(slot.ptr, 0xff, bytes);
+            if (_poison_pool()) backend::memset_sync(slot.ptr, 0xff, alloc);
         }
         slot.owns = true;
         slot.used_bytes = bytes;
@@ -333,8 +338,25 @@ public:
     T* acquire(PoolKey key, size_t n) {
         std::lock_guard<std::mutex> lock(_mu);
         const PoolSlot slot = pool_key_slot(key);
+        const LiveSizing live = slot_live_sizing(slot);
+        if (live != LiveSizing::None && _live_splats > 0 &&
+            _cap_splats > _live_splats && n > 0) {
+            const size_t reserve = live == LiveSizing::Draw
+                ? (size_t)_cap_splats
+                : (size_t)((double)n * (double)_cap_splats / (double)_live_splats + 1.0);
+            return _acquire_into<T>(_slots[key], n, reserve);
+        }
         return _acquire_checked<T>(_slots[key], n, slot_phase(slot),
                                    slot_name(slot));
+    }
+
+    // The engine's live and cap splat counts, which size the slots in
+    // POOL_LIVE_SPLAT_TABLE and POOL_SPLAT_DRAW_TABLE; the engine updates
+    // them wherever it changes either. 0 disables the reservation.
+    void set_splat_counts(int64_t live, int64_t cap) {
+        std::lock_guard<std::mutex> lock(_mu);
+        _live_splats = live;
+        _cap_splats = cap;
     }
 
     // Convenience: acquire a (slot, sub) buffer. sub defaults to the main slot.
@@ -401,6 +423,7 @@ public:
         if (_arena.ptr) backend::device_free(_arena.ptr);
         _arena = Arena{};
         _phase = PoolPhase::None;
+        _live_splats = _cap_splats = 0;
     }
 
     // Total bytes allocated (capacity, not logical size).
@@ -410,6 +433,30 @@ public:
         for (auto& s : _slots) total += s.cap_bytes;
         for (auto& kv : _dyn)  total += kv.second.slot.cap_bytes;
         return total;
+    }
+
+    // Per category, without building names: cheap enough to call every step.
+    struct CategoryBytes {
+        size_t used[(int)VramCategory::Count] = {};
+        size_t cap[(int)VramCategory::Count] = {};
+    };
+    CategoryBytes category_bytes() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        CategoryBytes out;
+        for (uint32_t i = 0; i < _slots.size(); ++i) {
+            const Slot& s = _slots[i];
+            if (s.cap_bytes == 0 && s.used_bytes == 0) continue;
+            const int c = (int)slot_category(pool_key_slot(i));
+            out.used[c] += s.used_bytes;
+            out.cap[c] += s.cap_bytes;
+        }
+        for (const auto& kv : _dyn) {
+            const int c = (int)kv.second.cat;
+            out.used[c] += kv.second.slot.used_bytes;
+            out.cap[c] += kv.second.slot.cap_bytes;
+        }
+        out.cap[(int)VramCategory::SplatXImg] += _arena.cap;
+        return out;
     }
 
     // Per-slot breakdown: [(name, used_bytes, cap_bytes), ...]. Names are

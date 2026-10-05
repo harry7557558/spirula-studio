@@ -146,54 +146,42 @@ SS_MSG(opt_model,
        "yavaştır ve yalnızca biraz daha iyidir."));
 
 SS_MSG(opt_max_size,
-    EN("Longest side of one image the network runs, and of the maps written. "
-       "A split sizes its faces off the full frame and meets this only as a "
-       "ceiling, so a wide capture still runs most of the detail it was shot "
-       "with. 1064 is what the model's own pipeline uses."),
-    JA("ネットワークが 1 枚で処理する画像と、書き出すマップの長辺で"
-       "す。分割時の面は元の解像度から大きさを決め、これは上限としてだけ効"
-       "きます。1064 はモデル本来のパイプラインが使う大きさです。"),
-    ZH_HANS("网络单张处理的图像、以及写出贴图的长边。拆分时各面的大小由原"
-            "分辨率决定，这里只作为上限，因此超广拍摄仍能保留大部分细节。"
-            "1064 是该模型自身流程使用的大小。"),
-    ZH_HANT("網路單張處理的影像、以及寫出貼圖的長邊。拆分時各面的大小由原"
-            "解析度決定，這裡只作為上限，因此超廣拍攝仍能保留大部分細節。"
-            "1064 是該模型自身流程使用的大小。"),
-    KO("신경망이 한 번에 처리하는 이미지와 기록하는 맵의 긴 변입니"
-       "다. 분할한 면의 크기는 원본 해상도에서 정해지고 이 값은 상한으로만 "
-       "쓰입니다. 1064 는 모델 자체 파이프라인이 쓰는 크기입니다."),
-    DE("Längste Seite eines Bildes, das das Netz verarbeitet, und der "
-       "geschriebenen Karten. Eine Zerlegung bemisst ihre Flächen am vollen "
-       "Bild und trifft dies nur als Obergrenze, eine weite Aufnahme läuft "
-       "also mit fast allen Details. 1064 nutzt die Pipeline des Modells."),
-    FR("Plus grand côté d'une image traitée par le réseau, et des cartes "
-       "écrites. Un découpage dimensionne ses faces sur l'image pleine et ne "
-       "rencontre ceci que comme plafond : une prise très ouverte garde donc "
-       "presque tout son détail. 1064 est ce qu'utilise le pipeline du modèle."),
-    ES("Lado mayor de una imagen que procesa la red, y de los mapas escritos. "
-       "Una división dimensiona sus caras sobre el cuadro completo y solo "
-       "encuentra esto como techo, así que una toma muy abierta conserva casi "
-       "todo su detalle. 1064 es lo que usa la tubería del modelo."),
-    PT("Maior lado de uma imagem que a rede processa, e dos mapas escritos. "
-       "Uma divisão dimensiona as suas faces pelo quadro completo e encontra "
-       "isto apenas como tecto, pelo que uma captura muito aberta mantém quase "
-       "todo o detalhe. 1064 é o que o pipeline do modelo usa."),
-    IT("Lato più lungo di un'immagine che la rete elabora, e delle mappe "
-       "scritte. Una divisione dimensiona le sue facce sul fotogramma intero e "
-       "incontra questo solo come tetto, quindi una ripresa molto ampia "
-       "conserva quasi tutto il dettaglio. 1064 è ciò che usa la pipeline del "
-       "modello."),
-    NL("Langste zijde van één beeld dat het netwerk verwerkt, en van de "
-       "geschreven kaarten. Een splitsing bemeet haar vlakken op het volledige "
-       "beeld en komt dit alleen als plafond tegen, dus een zeer wijde opname "
-       "houdt bijna al haar detail. 1064 gebruikt de pijplijn van het model."),
-    RU("Наибольшая сторона одного изображения для сети и "
-       "записываемых карт. При разбиении грани берут размер от "
-       "полного кадра, а это лишь потолок, так что широкая съёмка "
-       "сохраняет почти весь детализм. 1064 — размер конвейера модели."),
-    TR("Ağın işlediği bir görüntünün ve yazılan haritaların en uzun "
-       "kenarı. Bölme, yüzlerini tam kareye göre boyutlandırır ve bunu yalnızca "
-       "tavan olarak görür; çok geniş bir çekim ayrıntısının çoğunu korur. "
+    EN("Longest side of the maps written, and of one image the network runs. "
+       "A split sizes its faces to match the written maps (--face-res). 1064 "
+       "is what the model's own pipeline uses."),
+    JA("書き出すマップと、ネットワークが 1 枚で処理する画像の長辺です。分割時"
+       "の面は書き出すマップに合わせた大きさになります (--face-res)。1064 はモ"
+       "デル本来のパイプラインが使う大きさです。"),
+    ZH_HANS("写出贴图、以及网络单张处理的图像的长边。拆分时各面的大小与写出的"
+            "贴图相匹配 (--face-res)。1064 是该模型自身流程使用的大小。"),
+    ZH_HANT("寫出貼圖、以及網路單張處理的影像的長邊。拆分時各面的大小與寫出的"
+            "貼圖相匹配 (--face-res)。1064 是該模型自身流程使用的大小。"),
+    KO("기록하는 맵과 신경망이 한 번에 처리하는 이미지의 긴 변입니다. 분할한 "
+       "면의 크기는 기록하는 맵에 맞춰집니다 (--face-res). 1064 는 모델 자체 "
+       "파이프라인이 쓰는 크기입니다."),
+    DE("Längste Seite der geschriebenen Karten und eines Bildes, das das Netz "
+       "verarbeitet. Eine Zerlegung bemisst ihre Flächen passend zu den "
+       "geschriebenen Karten (--face-res). 1064 nutzt die Pipeline des Modells."),
+    FR("Plus grand côté des cartes écrites, et d'une image traitée par le "
+       "réseau. Un découpage dimensionne ses faces d'après les cartes écrites "
+       "(--face-res). 1064 est ce qu'utilise le pipeline du modèle."),
+    ES("Lado mayor de los mapas escritos, y de una imagen que procesa la red. "
+       "Una división dimensiona sus caras según los mapas escritos "
+       "(--face-res). 1064 es lo que usa la tubería del modelo."),
+    PT("Maior lado dos mapas escritos, e de uma imagem que a rede processa. "
+       "Uma divisão dimensiona as suas faces pelos mapas escritos "
+       "(--face-res). 1064 é o que o pipeline do modelo usa."),
+    IT("Lato più lungo delle mappe scritte, e di un'immagine che la rete "
+       "elabora. Una divisione dimensiona le sue facce sulle mappe scritte "
+       "(--face-res). 1064 è ciò che usa la pipeline del modello."),
+    NL("Langste zijde van de geschreven kaarten, en van één beeld dat het "
+       "netwerk verwerkt. Een splitsing bemeet haar vlakken naar de geschreven "
+       "kaarten (--face-res). 1064 gebruikt de pijplijn van het model."),
+    RU("Наибольшая сторона записываемых карт и одного изображения для сети. "
+       "При разбиении грани берут размер от записываемых карт (--face-res). "
+       "1064 — размер конвейера модели."),
+    TR("Yazılan haritaların ve ağın işlediği bir görüntünün en uzun kenarı. "
+       "Bölme, yüzlerini yazılan haritalara göre boyutlandırır (--face-res). "
        "1064 modelin kendi işlem hattının kullandığı boyuttur."));
 
 SS_MSG(opt_num_tokens,
@@ -416,6 +404,70 @@ SS_MSG(opt_split,
        "balık gözünü ise tek bir iğne deliği karenin dörtte üçünden azını "
        "koruyacaksa böler."));
 
+SS_MSG(opt_face_res,
+    EN("How finely a split samples the frame. `output` sizes each face to the "
+       "map it is written into, and no smaller than the network's least input. "
+       "`source` sizes it to the frame's own resolution, up to --max-size: "
+       "several times the work on a high-resolution capture, for a sharper "
+       "input to the network."),
+    JA("分割でフレームをどれだけ細かく取るかです。`output` は各面を書き出すマッ"
+       "プに合わせ、ネットワークの最小入力より小さくはしません。`source` は元の"
+       "フレームの解像度に合わせ、--max-size が上限です。高解像度の撮影では処理"
+       "量が数倍になる代わりに、ネットワークへの入力が鮮明になります。"),
+    ZH_HANS("拆分时对画面采样的精细程度。`output` 让每个面与写出的贴图相匹配，"
+            "且不小于网络的最小输入。`source` 让它与原画面的分辨率相同，以 "
+            "--max-size 为上限：对高分辨率拍摄，开销是数倍，换来更清晰的网络"
+            "输入。"),
+    ZH_HANT("拆分時對畫面取樣的精細程度。`output` 讓每個面與寫出的貼圖相匹配，"
+            "且不小於網路的最小輸入。`source` 讓它與原畫面的解析度相同，以 "
+            "--max-size 為上限：對高解析度拍攝，開銷是數倍，換來更清晰的網路"
+            "輸入。"),
+    KO("분할할 때 프레임을 얼마나 촘촘히 샘플링할지입니다. `output` 은 각 면을 "
+       "기록하는 맵에 맞추되 신경망의 최소 입력보다 작게 하지 않습니다. "
+       "`source` 는 원본 프레임의 해상도에 맞추며 --max-size 가 상한입니다. "
+       "고해상도 촬영에서는 비용이 몇 배가 되는 대신 신경망 입력이 더 "
+       "선명해집니다."),
+    DE("Wie fein eine Zerlegung das Bild abtastet. `output` bemisst jede Fläche "
+       "nach der Karte, in die sie geschrieben wird, nie kleiner als die "
+       "kleinste Eingabe des Netzes. `source` nach der Auflösung des Bildes "
+       "selbst, bis --max-size: bei einer hochauflösenden Aufnahme ein "
+       "Mehrfaches an Arbeit für eine schärfere Eingabe."),
+    FR("Finesse avec laquelle un découpage échantillonne l'image. `output` "
+       "dimensionne chaque face d'après la carte où elle est écrite, sans "
+       "descendre sous l'entrée minimale du réseau. `source` d'après la "
+       "résolution de l'image elle-même, jusqu'à --max-size : plusieurs fois "
+       "le travail sur une prise haute résolution, pour une entrée plus nette."),
+    ES("Con qué finura una división muestrea el cuadro. `output` dimensiona "
+       "cada cara según el mapa en que se escribe, nunca por debajo de la "
+       "entrada mínima de la red. `source` según la resolución del propio "
+       "cuadro, hasta --max-size: varias veces el trabajo en una toma de alta "
+       "resolución, a cambio de una entrada más nítida."),
+    PT("Com que finura uma divisão amostra o quadro. `output` dimensiona cada "
+       "face pelo mapa onde é escrita, nunca abaixo da entrada mínima da rede. "
+       "`source` pela resolução do próprio quadro, até --max-size: várias vezes "
+       "o trabalho numa captura de alta resolução, em troca de uma entrada "
+       "mais nítida."),
+    IT("Quanto finemente una divisione campiona il fotogramma. `output` "
+       "dimensiona ogni faccia sulla mappa in cui viene scritta, mai sotto "
+       "l'ingresso minimo della rete. `source` sulla risoluzione del "
+       "fotogramma stesso, fino a --max-size: più volte il lavoro su una "
+       "ripresa ad alta risoluzione, per un ingresso più nitido."),
+    NL("Hoe fijn een splitsing het beeld bemonstert. `output` bemeet elk vlak "
+       "naar de kaart waarin het geschreven wordt, nooit kleiner dan de "
+       "kleinste invoer van het netwerk. `source` naar de resolutie van het "
+       "beeld zelf, tot --max-size: bij een opname met hoge resolutie een "
+       "veelvoud van het werk, voor scherpere invoer."),
+    RU("Насколько подробно разбиение выбирает кадр. `output` подгоняет каждую "
+       "грань под карту, в которую она записывается, но не меньше "
+       "минимального входа сети. `source` — под разрешение самого кадра, до "
+       "--max-size: на съёмке высокого разрешения в несколько раз больше "
+       "работы ради более чёткого входа."),
+    TR("Bölmenin kareyi ne kadar ince örneklediği. `output` her yüzü yazıldığı "
+       "haritaya göre boyutlandırır, ağın en küçük girdisinden küçük yapmaz. "
+       "`source` karenin kendi çözünürlüğüne göre, --max-size sınırına kadar: "
+       "yüksek çözünürlüklü bir çekimde birkaç kat iş, daha net bir girdi "
+       "karşılığında."));
+
 SS_MSG(opt_depth_units,
     EN("What a stored depth value means. `relative` fills the 16 bits with the "
        "scene, dividing by its own 99.9th percentile, and is what the depth "
@@ -526,6 +578,43 @@ SS_MSG(opt_image_linear,
        "закодированными."),
     TR("Veri kümesi görüntülerini ekran kodlu değil, doğrusal ışık olarak ele "
        "al."));
+
+SS_MSG(opt_image_exposure,
+    EN("Brighten what the model sees, in linear light, without touching the "
+       "files: auto lifts each image darker than a typical photograph, or give "
+       "a number of stops."),
+    JA("ファイルを変えずに、モデルに渡す画像をリニア光で明るくします。auto は一般的な"
+       "写真より暗い画像をそれぞれ持ち上げ、数値なら段数です。"),
+    ZH_HANS("在线性光中调亮模型看到的图像，不改动文件：auto 会提亮比普通照片暗的"
+            "每张图像，也可给出档数。"),
+    ZH_HANT("在線性光中調亮模型看到的影像，不改動檔案：auto 會提亮比一般照片暗的"
+            "每張影像，也可給出檔數。"),
+    KO("파일은 그대로 두고 모델이 보는 이미지를 선형 광에서 밝게 합니다. auto 는 "
+       "일반 사진보다 어두운 이미지를 각각 끌어올리고, 숫자는 스톱 수입니다."),
+    DE("Hellt in linearem Licht auf, was das Modell sieht, ohne die Dateien zu "
+       "ändern: auto hebt jedes Bild an, das dunkler als ein typisches Foto ist, "
+       "oder eine Zahl von Blendenstufen."),
+    FR("Éclaircit en lumière linéaire ce que voit le modèle, sans toucher aux "
+       "fichiers : auto relève chaque image plus sombre qu'une photo typique, ou "
+       "indiquez un nombre de diaphs."),
+    ES("Aclara en luz lineal lo que ve el modelo, sin tocar los archivos: auto "
+       "levanta cada imagen más oscura que una foto típica, o indique un número "
+       "de pasos."),
+    PT("Clareia em luz linear o que o modelo vê, sem mexer nos arquivos: auto "
+       "ergue cada imagem mais escura que uma foto típica, ou indique um número "
+       "de pontos."),
+    IT("Schiarisce in luce lineare ciò che vede il modello, senza toccare i "
+       "file: auto solleva ogni immagine più scura di una foto tipica, oppure "
+       "indica un numero di stop."),
+    NL("Maakt in lineair licht lichter wat het model ziet, zonder de bestanden "
+       "te wijzigen: auto tilt elk beeld op dat donkerder is dan een gewone "
+       "foto, of geef een aantal stops."),
+    RU("Осветляет в линейном свете то, что видит модель, не трогая файлы: auto "
+       "поднимает каждое изображение темнее обычной фотографии, либо укажите "
+       "число ступеней."),
+    TR("Modelin gördüğünü dosyalara dokunmadan doğrusal ışıkta aydınlatır: auto, "
+       "tipik bir fotoğraftan koyu olan her görüntüyü yükseltir; ya da bir durak "
+       "sayısı verin."));
 
 SS_MSG(opt_overwrite,
     EN("Recompute maps that are already on disk. Without it a run continues "

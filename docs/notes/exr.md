@@ -1,6 +1,6 @@
 # Reading OpenEXR
 
-`src/core/ExrImage.{h,cpp}` is this repository's OpenEXR reader. It is ~1300
+`src/core/ExrImage.{h,cpp}` is this repository's OpenEXR reader. It is ~1900
 lines with no dependency beyond the vendored miniz, and it exists instead of
 `FetchContent(openexr)` for two reasons: OpenEXR drags in Imath and a large
 build, and it is slower — on the two 6000×4000 half-float captures this was
@@ -21,7 +21,7 @@ image scales across cores.
 - **Storage** — scanline and tiled parts. Mipmapped and ripmapped tiles decode
   at level 0; the other levels are skipped.
 - **Compression** — `NONE`, `RLE`, `ZIPS`, `ZIP`, `PIZ`, `PXR24`, `B44`,
-  `B44A`.
+  `B44A`, `DWAA`, `DWAB`.
 - **Pixel types** — `HALF`, `FLOAT`, `UINT`, mixed freely within one file.
 - **Channels** — `R`/`G`/`B`(`/A`); a single named layer (`diffuse.R`, …) when
   there are no bare ones; `Y` alone as greyscale; `Y`/`RY`/`BY` with subsampled
@@ -35,9 +35,10 @@ image scales across cores.
 - **Broken offset tables** — an all-zero chunk table (an interrupted write) is
   reconstructed by walking the chunks. Individual zero entries are skipped.
 
-Correctness is checked against OpenEXR itself: 51 generated cases across that
+Correctness is checked against OpenEXR itself: 77 generated cases across that
 matrix decode **bit-exactly**, single- and multi-threaded, as do the two
-6000x4000 production captures.
+6000x4000 production captures and eight frames spread across a 3840x2160
+`DWAA` shot.
 
 ## What it refuses, and what to do about it
 
@@ -46,19 +47,42 @@ wrong pixels.
 
 | Not supported | Message says | Fix |
 |---|---|---|
-| `DWAA` / `DWAB` | which one the file uses | re-save as ZIP or PIZ |
 | deep (`deepscanline`, `deeptile`) | it is deep | flatten it |
 | several layers, no bare `R`/`G`/`B` | the layer names it found | write one layer to its own file |
 | `B44` channels flagged `pLinear` | that flag | re-save as ZIP |
 | big-endian hosts | a `#error` at compile time | — |
 
-DWA is the one worth knowing about: it is a DCT codec with its own Huffman
-stage and a channel classifier, ~800 lines on its own, and nothing in the two
-captures this was built for uses it.
-
 Two more limits are silent because they do not affect what we do with the
 pixels: `pixelAspectRatio` is ignored, and subsampled `RY`/`BY` chroma is
 upsampled nearest rather than through OpenEXR's 27-tap filter.
+
+## DWA, and whose bits
+
+`DWAA` and `DWAB` are a lossy DCT codec, so "bit-exact" needs a referee:
+OpenEXR picks its inverse DCT at run time, and its three versions round
+differently. The scalar one takes its constants from `cosf`, the SSE2 one
+from literals that differ by a few float ulps, and the AVX one (inline
+assembly that MSVC cannot build) adds in yet another order. Which one a build
+of OpenEXR runs:
+
+| OpenEXR built for | inverse DCT |
+|---|---|
+| x86-64, MSVC (e.g. the Windows python wheel) | SSE2 |
+| x86-64, GCC/Clang, CPU without AVX | SSE2 |
+| x86-64, GCC/Clang, CPU with AVX | AVX |
+| ARM, or built with its run-time CPU check off | scalar |
+
+This reader reproduces the SSE2 one, operation for operation, with float
+contraction switched off around it so no compiler fuses a multiply-add. Against
+an OpenEXR on one of the other rows, some pixels differ, by a half-float step
+or so before the linear table: far below the codec's own loss.
+
+The rest of the codec is deterministic: the Huffman, zlib and RLE stages, the
+channel classifier (the version 2 rule list in the block, or the built-in rules
+for older files), the Y'CbCr triple for `R`/`G`/`B` sharing a prefix, and the
+2.2-gamma/log table that turns the stored values back to linear, built with
+`powf` exactly as OpenEXR builds it. A channel flagged `pLinear` skips that
+table.
 
 ## Colour space
 
@@ -88,12 +112,22 @@ the transfer still leaves the primaries to the file and vice versa. The same spl
 screen offers **From the file / Linear light / Display-encoded** next to the
 gamut's own **From the file**, and its runners state on the child's command
 line only the half the user answered. The give-away for such a file is a
-maximum of exactly 1.0 across a whole scene-linear capture.
+maximum of exactly 1.0 across a whole scene-linear capture, and `spirula sfm`
+warns when it sees one: every image it decoded as linear peaked at exactly 1.0.
+
+A TIFF with an ICC profile declares its colour space the same way and goes
+through the same adoption (`imagefile::declared_color_space`,
+`docs/notes/tiff.md`).
 
 ## Where it is wired in
 
+Callers that also read stb_image's formats reach it through
+`core/ImageFile.h`, which dispatches TIFF (`docs/notes/tiff.md`) the same way.
+
 - `spirula sfm` — `sfm::loadGrayImage`, decoding to sRGB on the decode pool
-  with `threads = 1` (the pool above already owns every core).
+  with `threads = 1` (the pool above already owns every core). An exposure
+  for what the detectors see applies here and in the two below
+  (`docs/notes/analysis-exposure.md`).
 - `spirula sam` / `spirula geometry` — `nn::load_image`, same conversion.
 - Training — `DataManager`'s RGB decode. An EXR probes as `FLOAT32`, never
   `UINT16`: half-float carries values above 1 and 16-bit normalized would clip
@@ -103,10 +137,10 @@ maximum of exactly 1.0 across a whole scene-linear capture.
   `ImageCompare`'s "Original file" pane, which quantizes the file's own values
   with no transfer curve so it shows what is stored rather than a display of it.
 
-The one path that cannot read an EXR is the **external masking fallback**,
-`reference/scripts/mask.py`: Pillow has no EXR reader. It now counts the files
-it could not open and says so at the end of the run rather than leaving the
-capture silently unmasked. The built-in masking (`SS_BUILD_SAM`) reads them.
+Masking (`SS_BUILD_SAM`) reads them too. The hand-run
+`reference/scripts/mask.py` cannot -- Pillow has no EXR reader -- so it counts
+the files it could not open and says so at the end of the run rather than
+leaving the capture silently unmasked.
 
 ## Testing
 

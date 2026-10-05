@@ -38,6 +38,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -98,6 +99,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -158,6 +160,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -218,6 +221,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -278,6 +282,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -338,6 +343,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -398,6 +404,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -458,6 +465,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -518,6 +526,7 @@ template void fused_projection_bwd_optimizer_3dgs_kernel_wrapper<
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,

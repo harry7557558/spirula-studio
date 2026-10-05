@@ -26,6 +26,16 @@
 
 namespace gui {
 
+// A path field's "..." click. GuiApp owns the one file dialog, so the editor
+// leaves the request here and the caller opens it.
+struct PathPick {
+    std::string field;                    // the flag; empty when none asked
+    std::string title;
+    bool folder = false;
+    std::vector<std::string> extensions;
+    std::string start_dir;                // "" = where the last pick landed
+};
+
 struct ConfigUIState {
     char search[128] = "";
     bool modified_only = false;
@@ -49,6 +59,8 @@ struct ConfigUIState {
     // What `search` matches, per field; recomputed when the box changes.
     std::string match_query;
     std::vector<char> match;
+
+    PathPick pick;
 };
 
 // How one value of a `choices` field is written in a dropdown: the value
@@ -64,5 +76,10 @@ std::string choice_display(const char* flag, const std::string& value);
 // changed this frame; the caller re-resolves the macro options when it does.
 bool draw_config_editor(TrainConfig& cfg, const TrainConfig& defaults,
                         ConfigUIState& st);
+
+// What a PathPick's dialog returned, stored into its field and marked edited.
+// A "<data>/" field stores a pick inside the dataset folder relative to it.
+void apply_path_pick(TrainConfig& cfg, ConfigUIState& st,
+                     const std::string& field, const std::string& path);
 
 }  // namespace gui

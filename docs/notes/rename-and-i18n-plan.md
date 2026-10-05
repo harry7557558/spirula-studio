@@ -781,7 +781,7 @@ correct regional face if the user switches away from the embedded region. Keep
 the fetch path compiled in for every value except `none`.
 
 Embedding reuses `ssplat_embed_file()` from `cmake/SsplatEmbed.cmake` — the
-same mechanism as `viewer.html` and `mask.py`. Fonts are OFL-1.1, which is
+same mechanism as `viewer.html`. Fonts are OFL-1.1, which is
 GPLv3-compatible for bundling; ship the licence text alongside, and do not
 rename the font files (OFL reserved font name clause).
 

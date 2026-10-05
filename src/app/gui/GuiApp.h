@@ -17,6 +17,7 @@
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryPanel.h"
 #include "app/gui/PartitionPanel.h"
+#include "app/gui/RoiEditor.h"
 #include "app/gui/ImageCompare.h"
 #include "app/gui/MatchMatrix.h"
 #include "app/gui/PairPreview.h"
@@ -25,6 +26,7 @@
 #include "app/gui/LidarStep.h"
 #include "app/gui/MeshRunner.h"
 #include "app/gui/ModelCache.h"
+#include "app/gui/RecentList.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
 #include "app/gui/SfmRunner.h"
@@ -117,7 +119,8 @@ private:
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
         MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
         EditSaveFile, EditSaveFolder, RenderProjectSave, RenderProjectOpen,
-        RenderOutput, RenderAddModel, StencilFile, LidarSource
+        RenderOutput, RenderAddModel, StencilFile, SeedPointcloud,
+        ConfigPath, LidarSource
     };
     // Which reconstruction back end the New Dataset screen runs.
     enum class Engine { BuiltIn, Colmap };
@@ -134,9 +137,9 @@ private:
     static std::string settings_path();
     void load_settings();
     void save_settings();
-    // By value: callers pass elements of _recents, which this mutates.
-    void add_recent(std::string path);
-    void add_model_recent(std::string path);
+    // Onto the recent list, and saved. By value: callers pass paths out of
+    // that list, which this reorders.
+    void remember(RecentKind kind, std::string path);
     // Which remembered directory a pick starts from. Several actions share one
     // key -- a dataset is a dataset wherever it is picked -- and the mode is
     // what separates the two things SourceReplace picks.
@@ -153,11 +156,10 @@ private:
                    const std::string& suggested_name = {});
 
     // ---- actions ----
-    // By value: callers pass elements of _recents, which open_dataset
-    // mutates via add_recent (a const& here would dangle).
-    // Clears the log panel unless `keep_log`: what is in it belongs to
-    // whatever was open before. The reconstruction handoff passes true,
-    // because there the log is this dataset's own build log.
+
+    // By value: callers pass paths out of _recent, which remember() reorders.
+    // Clears the log unless `keep_log`, which the reconstruction handoff
+    // passes: there the log is this dataset's own build log.
     void open_dataset(std::string dir, std::string image_dir = "",
                       std::string mask_dir = "", bool mask_flipped = false,
                       bool keep_log = false);
@@ -322,6 +324,24 @@ private:
     void draw_menu_bar();
     void draw_home();
     void draw_home_banner(float avail, float indent);
+    // The recent list under its tabs. `scroll`: in a scrolling child of its
+    // own, filling the space left; otherwise inline, as tall as it is.
+    void draw_home_recent(bool scroll);
+    // One entry as two lines; true when clicked. `badge` names its kind.
+    bool draw_recent_row(const RecentItem& item, bool badge);
+    void draw_recent_menu(const RecentItem& item, int tab_kind);
+    // An entry's own action. By value: every one of them reorders the list.
+    void open_recent(RecentItem item);
+    // A reconstruction while something else holds the device -- unless it is
+    // the one running, whose screen it already is.
+    bool recent_blocked(const RecentItem& item) const;
+    // A dataset run's output folder back on the screen that built it: its
+    // inputs from the folder's record, and its settings once the panel
+    // arrives there (draw_dataset_form).
+    void open_reconstruction(const std::string& workspace);
+    // Drop what is gone from the list, at most every few seconds and never
+    // on this thread.
+    void probe_recent();
     void draw_new_dataset();
     void draw_dataset_source();       // input list / output / resume
     void draw_sensor_badge(const PrepInput& s);
@@ -398,15 +418,19 @@ private:
     // Turning "keep intermediate files" OFF is the one option here that
     // destroys work: it is what makes a cancelled run resumable.
     void draw_drop_intermediate_modal();
-    // Masks that the kept reconstruction was not built with: the one question
-    // "Update dataset" cannot answer by itself (see masks_miss_kept_model).
-    void draw_mask_recon_modal();
-    // Is this run about to write masks the reconstruction it is keeping has
-    // never seen, with the panel asking for masked feature points? Then
-    // pressing the button means one of two runs, and it has to be asked which.
-    bool masks_miss_kept_model();
-    // Everything start_dataset_job does once that question is settled. False
-    // when the run did not start (busy, or the device could not be frozen).
+    // What pressing the button will reuse and redo (DatasetPlan.h), from the
+    // panel as it stands; the runner asks the same question of the same job.
+    const DatasetPlan& dataset_plan();
+    void draw_dataset_plan(const DatasetPlan& plan);
+    // A rebuild nobody asked for -- the frames or the reconstruction differ
+    // from the panel -- is confirmed first, with the option to keep them.
+    void draw_rebuild_confirm_modal();
+    // The settings the output folder's record says built it, onto the panel:
+    // when the folder changes, and from the plan's own button.
+    void restore_from_record(bool announce);
+    void restore_record_rows(const DatasetRecord& rec);
+    // Everything start_dataset_job does once the confirmation is settled.
+    // False when the run did not start (busy, or the device could not be frozen).
     bool launch_dataset_job();
     // An existing dataset as an input: its images/ become the source and the
     // folder itself the output, so the run adds to it instead of building a
@@ -500,6 +524,7 @@ private:
     void poll_batch_command();
     const spirula::i18n::Msg& batch_stage_name(BatchStage s) const;
     void draw_train_settings();      // left panel
+    void draw_device_issue_banner();
     // Native picker and frozen identity, available from shared settings/View menu.
     void draw_device_picker(bool as_menu = false);
     // Lists the native devices once per session. Enumeration is side-effect
@@ -551,7 +576,7 @@ private:
     bool any_found_masks() const;
     // Adopt the EXR colour space when the pictures are EXRs, unless the user
     // has already set one by hand.
-    void adopt_exr_color_space();
+    void adopt_file_color_space();
     void run_pending_if_stopped();
     void append_logs();
     void log(const std::string& s, bool detail = false);
@@ -607,7 +632,7 @@ private:
     std::string _pending_path;       // dataset dir for Pending::OpenDataset
     bool _pending_batch_skip = false;  // Pending::StartBatch's argument
     bool _parse_dirty = false;       // dataparser option edited -> reload
-    bool _color_space_touched = false;  // see adopt_exr_color_space
+    bool _color_space_touched = false;  // see adopt_file_color_space
 
     // ---- the one frozen native GPU choice ----
     // Typed request, including explicit Auto; frozen flag makes it immutable.
@@ -679,9 +704,6 @@ private:
     // object, shared by the viewer screen and the meshing preview: it owns the
     // engine while it is open, and the engine is a singleton.
     CompareView _compare;
-    // Model files opened here, most recent first, offered by the "add a
-    // model" menu. Separate from _recents, which holds datasets.
-    std::vector<std::string> _model_recents;
 
     // ---- meshing ----
     // The extraction runs as a child process (MeshRunner); the preview after
@@ -781,10 +803,11 @@ private:
     // The output folder this screen derived from the inputs. Kept so a folder
     // the user typed is never overwritten when the input list changes.
     std::string _workspace_auto;
-    // The output folder this panel has reconstructed into, so its stamp
-    // describes the settings still on the screen (SfmJob::settings_built_model).
-    // Cleared when the input list is replaced, which resets settings of its own.
-    std::string _built_workspace;
+    // Frames and a reconstruction whose settings differ from the panel's are
+    // kept rather than rebuilt (PlanRequest::keep_built). Forgotten when the
+    // output folder or the inputs change.
+    bool _keep_built = false;
+    std::string _keep_built_for;
     bool _resume = true;
     bool _mask_enable = false;
     // Hide what the masks cover from feature detection too, not only from
@@ -828,6 +851,13 @@ private:
     GeometryPanel _geometry_panel;
     PartitionPanel _partition_panel;
     void open_partition_panel(const DatasetFolders& f);
+    // The region a dataset trains in: the editor, and the training screen's
+    // row that picks which saved region a run uses.
+    RoiEditor _roi_editor;
+    void open_roi_editor(const std::string& dataset, const std::string& file = "");
+    void draw_roi_row(bool busy);
+    std::vector<std::string> _roi_files;
+    std::string _roi_files_for;
     // Queueing a partition's parts: the modal with the run's settings, the
     // "clear what is still pending?" question, and the rows it finally adds.
     struct PartitionQueue {
@@ -935,6 +965,7 @@ private:
     PickAction _pick = PickAction::None;
     std::string _pick_key;            // dir_key() of the pick in flight
     int _pick_source = -1;            // which input PickAction::SourceReplace edits
+    std::string _pick_field;          // which flag PickAction::ConfigPath sets
     // Which batch row the pending pick edits; -1 appends a new row.
     int _pick_row = -1;
     // ... and which of that row's training runs, for a pick made in one of
@@ -942,17 +973,15 @@ private:
     int _pick_slot = -1;
 
     // Settings (persisted).
-    std::vector<std::string> _recents;
+    RecentList _recent;
+    double _recent_probed_at = -1.0;
+    // Last frame's phase: a run is recorded as it reaches Done.
+    TrainRunner::Phase _seen_phase = TrainRunner::Phase::Idle;
     // Where a pick of each kind last landed, so a session opens where the last
     // one left off rather than at the home directory.
     std::map<std::string, std::string> _dialog_dirs;
     std::string _colmap_exe = "colmap";
     std::string _ffmpeg_exe = "ffmpeg";
-#ifdef _WIN32
-    std::string _python_exe = "python";
-#else
-    std::string _python_exe = "python3";
-#endif
 
     // Log console. `_log_dropped` counts the lines trimmed off the front since
     // the panel was last drawn: every one of them moves the remaining text up
@@ -1018,13 +1047,20 @@ private:
     bool _clear_open = false, _clear_shown = false;
     std::vector<std::string> _clear_targets;
     bool _drop_intermediate_open = false, _drop_intermediate_shown = false;
-    bool _mask_recon_open = false, _mask_recon_shown = false;
+    bool _rebuild_open = false, _rebuild_shown = false;
+    DatasetPlan _rebuild_plan;   // what the confirmation lists
 
     // workspace_state()'s cache: what it was asked about and when.
     WorkspaceState _ws_state;
     std::string _ws_state_key;
     std::vector<std::string> _ws_artifacts;
     double _ws_state_at = -1.0;
+    // ... the record it holds, read on the same clock, and the plan.
+    DatasetRecord _ws_record;
+    DatasetPlan _plan;
+    // The output folder whose record last reached the panel, so a folder is
+    // restored from once, when the panel arrives at it.
+    std::string _restored_ws;
 
     // VRAM readout on the status strip, polled from the backend at ~2 Hz.
     backend::MemoryUsage _vram;

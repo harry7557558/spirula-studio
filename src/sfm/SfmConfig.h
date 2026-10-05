@@ -30,6 +30,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "core/ColorSpace.h"
 #include "sfm/core/CameraSetup.h"
 #include "sfm/core/Sequence.h"
 #include "sfm/feature/Matcher.h"
@@ -119,11 +120,17 @@ struct SfmConfig {
     // Swap keep and ignore in every mask, for the exporters that paint the
     // region to REMOVE (sfm/core/Mask.h).
     bool flip_mask = false;
+    // A second mask tree, intersected with mask_dir's: what extraction skips
+    // but training keeps, the sky. Never flipped, never guessed from a sibling.
+    std::string feature_mask_dir;
 
     // The input files' colour space. Pixels convert to sRGB on decode, which
     // is what the detectors and the AI models were trained on.
     std::string image_gamut = "Rec.709";
     bool image_is_linear = false;
+    // "auto" or stops, for what the detectors see; finalize() parses it.
+    std::string image_exposure;
+    colorspace::Exposure exposure;
     // "srgb" leaves point colours there (trainer: point_color_gamut Rec.709);
     // "image" writes them back in the photographs' space, the trainer's default.
     std::string point_color_space = "srgb";
@@ -164,9 +171,10 @@ struct SfmConfig {
     // Instead: fix the gauge from an outside measurement in metres, so the
     // model is written metric (map/MetricGauge.h, D74).
     std::string metric_positions;       // one `image_name X Y Z` per line
-    // Each image's own EXIF GPS: "none", "horizontal" (latitude and longitude,
-    // tilt left to the cameras) or "full" (altitude as well).
-    std::string metric_gps = "none";
+    // The GPS a capture carries: "none", "horizontal" (latitude and longitude,
+    // tilt left to the cameras), "full" (altitude as well), or "auto", which
+    // resolves per capture before anything reads it (applyMetricGpsAuto).
+    std::string metric_gps = "auto";
     double metric_max_error = 0;        // metres; 0 resolves per source
     // The camera attitude each image records (map/AttitudeGauge.h): "auto"
     // takes up and north, "up" the tilt alone, "none" ignores it.
@@ -182,7 +190,10 @@ struct SfmConfig {
     // held to the sensors, pairs within `sensor_pair_radius` metres of GPS.
     bool sensor_verify = true;
     bool sensor_map = true;
-    bool sensor_pairs = true;
+    bool sensor_pairs = false;   // on request only: extra matching, see src/sfm/README.md
+    // An equirect camera declares camera -Y as up (a horizon-levelled stitch);
+    // refused per solve when the images disagree (ExifGpsPriors).
+    bool level_erp = true;
     double sensor_pair_radius = 20.0;
     double sensor_max_dt = 3.0;   // seconds a gyro rotation prior may span
     // Cameras farther from the metric fit than this fraction of the reference
@@ -281,6 +292,8 @@ struct SfmConfig {
     // additionally switches to pair selection above 100 images, which it can
     // only decide once extraction has counted them -- see cmdAuto.
     PairMode pairMode() const;
+    // Whether the GPS sets the written metric frame; an unresolved "auto" does not.
+    bool metricGps() const { return metric_gps == "horizontal" || metric_gps == "full"; }
 };
 
 // ---------------------------------------------------------------------------
@@ -338,11 +351,15 @@ struct SfmConfig {
     F(mask_dir, "mask-dir", CMD_AUTO | CMD_EXTRACT, Tier::Alias, "pipeline", 0, 0, "", mask_dir)   \
     F(flip_mask, "flip-mask", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, "",        \
       flip_mask)                                                                                   \
+    F(feature_mask_dir, "feature-masks", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0, 0, \
+      "", feature_masks)                                                                           \
     /* ---- colour ---- */                                                                         \
     F(image_gamut, "image-gamut", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,          \
       "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3", image_gamut)                           \
     F(image_is_linear, "image-linear", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0, "", \
       image_linear)                                                                                \
+    F(image_exposure, "image-exposure", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,    \
+      "", image_exposure)                                                                          \
     F(point_color_space, "point-color", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "colour", 0, 0,    \
       "srgb|image", point_color)                                                                   \
     /* ---- camera ---- */                                                                         \
@@ -447,7 +464,7 @@ struct SfmConfig {
     F(metric_positions, "metric-positions", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
       "mapper", 0, 0, "", metric_positions)                                                        \
     F(metric_gps, "metric-gps", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, 0,    \
-      "none|horizontal|full", metric_gps)                                                          \
+      "auto|none|horizontal|full", metric_gps)                                                          \
     F(exif_attitude, "exif-attitude", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced, "mapper", 0, \
       0, "auto|up|none", exif_attitude)                                                            \
     F(metric_max_error, "metric-max-error", CMD_AUTO | CMD_MAP | CMD_MERGE, Tier::Advanced,        \
@@ -462,6 +479,8 @@ struct SfmConfig {
       sensor_verify)                                                                               \
     F(sensor_map, "sensor-map", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "",            \
       sensor_map)                                                                                  \
+    F(level_erp, "level-erp", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "",              \
+      level_erp)                                                                                   \
     F(sensor_pairs, "sensor-pairs", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper", 0, 0, "",      \
       sensor_pairs)                                                                                \
     F(sensor_pair_radius, "sensor-pair-radius", CMD_AUTO | CMD_MATCH, Tier::Advanced, "mapper",    \
@@ -494,6 +513,10 @@ struct SfmConfig {
       retri_scale)                                                                                 \
     F(mapper.merge_tracks, "merge-tracks", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0, "", \
       merge_tracks)                                                                                \
+    F(mapper.seam_weld_frac, "seam-weld", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1, "",  \
+      seam_weld)                                                                                   \
+    F(mapper.gps_scale_band, "gps-scale-band", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1, \
+      "", gps_scale_band)                                                                          \
     F(mapper.rank_by_visibility, "rank-by-visibility", CMD_AUTO | CMD_MAP, Tier::Advanced,         \
       "mapper", 0, 0, "", rank_by_visibility)                                                      \
     F(mapper.seed_blocking, "seed-blocking", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,   \

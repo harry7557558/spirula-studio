@@ -146,8 +146,11 @@ and a 220-degree one alike:
   that width takes to go round with 15% shared between neighbours: 8 for a
   180-degree lens, 7 for 220. Each face tilts to its own sector's boundary; a
   face whose band runs along an image axis is cropped to it, down to 4:3.
-- Every face is sized at the lens's own pixel density where it points and
-  then capped at `--max-size`, so the cost is the capture's pixels, in pieces.
+- Every face is sized at the WRITTEN map's pixel density where it points,
+  raised to at least 1200 patches of 14 (MoGe's lowest token budget) as far
+  as the frame's own density allows, then capped at `--max-size`. So the cost
+  follows the map, not the capture -- "Face size" below. `--face-res source`
+  sizes them at the frame's own density instead.
 
 The faces **overlap by design**, which is the part worth reading before
 changing any of it:
@@ -167,6 +170,9 @@ changing any of it:
 - The blend runs in the log, where the trainer's Pearson-of-log depth loss
   reads it, and a face is weighted out wherever it saw the mid-grey fill
   instead of the frame.
+- A pixel ANY face masked (MoGe's sky) is written as no ground truth, even
+  where another face answered: no normal loss costs the trainer less than a
+  wrong one. A face votes only where it saw the frame, not the grey fill.
 
 Uncovered pixels are written **black** in the normal map and **0** in the
 depth map, which are the two sentinels the loss masks on
@@ -203,10 +209,10 @@ vit-large against input size, which is the lever that matters:
 Cost grows faster than the pixel count: attention is quadratic in tokens and
 the decoder's ConvGRU runs `3 * iterations` convolutions over a 1/4-resolution
 map. **1064 is the size Metric3D's own inference pipeline runs at**, is about
-2.5x quicker than 1600, and is `spirula geometry --max-size`'s default. It is a
-ceiling on one face rather than on the frame: a split sizes its faces off the
-full-resolution capture (`app/GeometryWarp.h`), so a fisheye still runs about
-as many pixels as it was shot with, in five pieces.
+2.5x quicker than 1600, and is `spirula geometry --max-size`'s default. It caps
+the written map, and a split sizes its faces to that map ("Face size" above),
+so a high-resolution 360 capture costs what its map does, not what its sensor
+does.
 
 The arena is planned up front (`Model::planArenaBytes`) because it will not
 grow while anything is live. Its peak is the DPT fuse chain's upsample stage,

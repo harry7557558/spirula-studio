@@ -149,59 +149,197 @@ SS_MSG(run_cameras,
     RU("Объектив: {0}   Группировка камер: {1}"),
     TR("Objektif: {0}   Kamera gruplaması: {1}"));
 
-// The images are EXRs and the transfer was left to them; {0} is the gamut in
-// force. Everything here converts to sRGB before it looks at a pixel.
-SS_MSG(run_exr_color,
-    EN("EXR input read as linear {0}"),
-    JA("EXR 入力を線形 {0} として読み込みます"),
-    ZH_HANS("EXR 输入按线性 {0} 读取"),
-    ZH_HANT("EXR 輸入依線性 {0} 讀取"),
-    KO("EXR 입력을 선형 {0}(으)로 읽습니다"),
-    DE("EXR-Eingabe wird als lineares {0} gelesen"),
-    FR("Entrée EXR lue comme {0} linéaire"),
-    ES("Entrada EXR leída como {0} lineal"),
-    PT("Entrada EXR lida como {0} linear"),
-    IT("Ingresso EXR letto come {0} lineare"),
-    NL("EXR-invoer gelezen als lineair {0}"),
-    RU("Вход EXR читается как линейный {0}"),
-    TR("EXR girdisi doğrusal {0} olarak okunuyor"));
+// A lens folder given the factory calibration its video carries
+// (sfm/core/LensCalibration.h): {0} the folder, {1} DJI's lens name, {2} the
+// file, {3} the camera model, {4}-{7} pixels, {8} the refit's worst pixel error.
+SS_MSG(lens_calib_used,
+    EN("{0}: factory calibration of the {1} lens from {2}, as {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "its 5-term radial curve refitted to within {8} px"),
+    JA("{0}: {2} の {1} レンズの工場キャリブレーションを {3} として使用: fx {4} fy {5} cx {6} cy {7}、"
+       "5 項の放射曲線を最大 {8} px の誤差で再フィット"),
+    ZH_HANS("{0}: 使用 {2} 中 {1} 镜头的出厂标定，作为 {3}: fx {4} fy {5} cx {6} cy {7}，"
+            "5 项径向曲线重新拟合，误差不超过 {8} px"),
+    ZH_HANT("{0}: 使用 {2} 中 {1} 鏡頭的出廠校正，作為 {3}: fx {4} fy {5} cx {6} cy {7}，"
+            "5 項徑向曲線重新擬合，誤差不超過 {8} px"),
+    KO("{0}: {2} 의 {1} 렌즈 공장 보정을 {3} 로 사용: fx {4} fy {5} cx {6} cy {7}, "
+       "5항 방사 곡선을 최대 {8} px 오차로 다시 맞춤"),
+    DE("{0}: Werkskalibrierung des Objektivs {1} aus {2}, als {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "die radiale Kurve mit 5 Termen auf höchstens {8} px neu angepasst"),
+    FR("{0} : calibration d'usine de l'objectif {1} tirée de {2}, en {3} : fx {4} fy {5} cx {6} cy {7}, "
+       "courbe radiale à 5 termes réajustée à {8} px près"),
+    ES("{0}: calibración de fábrica del objetivo {1} de {2}, como {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "curva radial de 5 términos reajustada con {8} px como máximo"),
+    PT("{0}: calibração de fábrica da lente {1} de {2}, como {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "curva radial de 5 termos reajustada com {8} px no máximo"),
+    IT("{0}: calibrazione di fabbrica dell'obiettivo {1} da {2}, come {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "curva radiale a 5 termini riadattata entro {8} px"),
+    NL("{0}: fabriekskalibratie van lens {1} uit {2}, als {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "radiale curve met 5 termen opnieuw gepast tot op {8} px"),
+    RU("{0}: заводская калибровка объектива {1} из {2}, как {3}: fx {4} fy {5} cx {6} cy {7}, "
+       "радиальная кривая из 5 членов переподогнана с ошибкой не более {8} px"),
+    TR("{0}: {2} içindeki {1} objektifinin fabrika kalibrasyonu, {3} olarak: fx {4} fy {5} cx {6} cy {7}, "
+       "5 terimli radyal eğri en çok {8} px hatayla yeniden oturtuldu"));
 
-SS_MSG(run_exr_gamut_from_file,
-    EN("EXR colour space: {0}, from the file"),
-    JA("EXR の色空間: {0}（ファイルの情報）"),
-    ZH_HANS("EXR 色彩空间: {0}（取自文件）"),
-    ZH_HANT("EXR 色彩空間: {0}（取自檔案）"),
-    KO("EXR 색 공간: {0}(파일에서 읽음)"),
-    DE("EXR-Farbraum: {0}, aus der Datei"),
-    FR("Espace colorimétrique EXR : {0}, d'après le fichier"),
-    ES("Espacio de color EXR: {0}, según el archivo"),
-    PT("Espaço de cor EXR: {0}, conforme o arquivo"),
-    IT("Spazio colore EXR: {0}, dal file"),
-    NL("EXR-kleurruimte: {0}, uit het bestand"),
-    RU("Цветовое пространство EXR: {0}, из файла"),
-    TR("EXR renk uzayı: {0}, dosyadan"));
+// The same, not used; {3} is one of the lens_skip_* reasons below.
+SS_MSG(lens_calib_skipped,
+    EN("{0}: factory calibration of the {1} lens from {2} not used: {3}"),
+    JA("{0}: {2} の {1} レンズの工場キャリブレーションは使いません: {3}"),
+    ZH_HANS("{0}: 未使用 {2} 中 {1} 镜头的出厂标定: {3}"),
+    ZH_HANT("{0}: 未使用 {2} 中 {1} 鏡頭的出廠校正: {3}"),
+    KO("{0}: {2} 의 {1} 렌즈 공장 보정을 쓰지 않습니다: {3}"),
+    DE("{0}: Werkskalibrierung des Objektivs {1} aus {2} nicht verwendet: {3}"),
+    FR("{0} : calibration d'usine de l'objectif {1} tirée de {2} non utilisée : {3}"),
+    ES("{0}: no se usa la calibración de fábrica del objetivo {1} de {2}: {3}"),
+    PT("{0}: calibração de fábrica da lente {1} de {2} não usada: {3}"),
+    IT("{0}: calibrazione di fabbrica dell'obiettivo {1} da {2} non usata: {3}"),
+    NL("{0}: fabriekskalibratie van lens {1} uit {2} niet gebruikt: {3}"),
+    RU("{0}: заводская калибровка объектива {1} из {2} не используется: {3}"),
+    TR("{0}: {2} içindeki {1} objektifinin fabrika kalibrasyonu kullanılmadı: {3}"));
 
-SS_MSG(run_exr_gamut_unknown,
-    EN("The EXR's color primaries match no known color space; reading it as Rec.709"),
-    JA("EXR の原色はどの既知の色空間とも一致しません。Rec.709 として読み込みます"),
-    ZH_HANS("EXR 的色彩基色不属于任何已知色彩空间，按 Rec.709 读取"),
-    ZH_HANT("EXR 的色彩基色不屬於任何已知色彩空間，依 Rec.709 讀取"),
-    KO("EXR의 원색이 알려진 색 공간과 일치하지 않습니다. Rec.709로 읽습니다"),
-    DE("Die Primärfarben der EXR passen zu keinem bekannten Farbraum; "
+SS_MSG(lens_skip_override,
+    EN("a camera setting given for it wins"),
+    JA("指定されたカメラ設定が優先されます"),
+    ZH_HANS("为它指定的相机设置优先"),
+    ZH_HANT("為它指定的相機設定優先"),
+    KO("지정한 카메라 설정이 우선합니다"),
+    DE("eine dafür angegebene Kameraeinstellung hat Vorrang"),
+    FR("un réglage de caméra donné pour lui l'emporte"),
+    ES("prevalece un ajuste de cámara indicado para él"),
+    PT("prevalece uma definição de câmera indicada para ela"),
+    IT("prevale un'impostazione della fotocamera indicata per esso"),
+    NL("een daarvoor opgegeven camera-instelling gaat voor"),
+    RU("приоритет у заданной для него настройки камеры"),
+    TR("onun için verilen kamera ayarı önceliklidir"));
+
+SS_MSG(lens_skip_dataset,
+    EN("a dataset-wide focal, distortion or calibration wins"),
+    JA("データセット全体の焦点距離、歪み、キャリブレーションが優先されます"),
+    ZH_HANS("整个数据集的焦距、畸变或标定优先"),
+    ZH_HANT("整個資料集的焦距、畸變或校正優先"),
+    KO("데이터셋 전체의 초점 거리, 왜곡 또는 보정이 우선합니다"),
+    DE("eine Brennweite, Verzeichnung oder Kalibrierung für den ganzen Datensatz hat Vorrang"),
+    FR("une focale, une distorsion ou une calibration pour tout le jeu de données l'emporte"),
+    ES("prevalece una focal, distorsión o calibración para todo el conjunto de datos"),
+    PT("prevalece uma focal, distorção ou calibração para todo o conjunto de dados"),
+    IT("prevale una focale, distorsione o calibrazione per l'intero dataset"),
+    NL("een brandpuntsafstand, vervorming of kalibratie voor de hele dataset gaat voor"),
+    RU("приоритет у фокусного расстояния, дисторсии или калибровки для всего набора данных"),
+    TR("tüm veri kümesi için odak uzaklığı, bozulma ya da kalibrasyon önceliklidir"));
+
+SS_MSG(lens_skip_model,
+    EN("{0} is not a fisheye model"),
+    JA("{0} は魚眼モデルではありません"),
+    ZH_HANS("{0} 不是鱼眼模型"),
+    ZH_HANT("{0} 不是魚眼模型"),
+    KO("{0} 은 어안 모델이 아닙니다"),
+    DE("{0} ist kein Fischaugenmodell"),
+    FR("{0} n'est pas un modèle fisheye"),
+    ES("{0} no es un modelo de ojo de pez"),
+    PT("{0} não é um modelo olho de peixe"),
+    IT("{0} non è un modello fisheye"),
+    NL("{0} is geen fisheyemodel"),
+    RU("{0} не модель «рыбий глаз»"),
+    TR("{0} bir balıkgözü modeli değil"));
+
+SS_MSG(lens_skip_size,
+    EN("its frames are {0}x{1}, the calibration is for {2}x{3}"),
+    JA("フレームは {0}x{1}、キャリブレーションは {2}x{3} 用です"),
+    ZH_HANS("其帧为 {0}x{1}，标定针对 {2}x{3}"),
+    ZH_HANT("其影格為 {0}x{1}，校正針對 {2}x{3}"),
+    KO("프레임은 {0}x{1}, 보정은 {2}x{3} 용입니다"),
+    DE("die Bilder sind {0}x{1}, die Kalibrierung gilt für {2}x{3}"),
+    FR("ses images font {0}x{1}, la calibration vaut pour {2}x{3}"),
+    ES("sus fotogramas son de {0}x{1} y la calibración es para {2}x{3}"),
+    PT("os quadros são {0}x{1} e a calibração é para {2}x{3}"),
+    IT("i fotogrammi sono {0}x{1}, la calibrazione è per {2}x{3}"),
+    NL("de beelden zijn {0}x{1}, de kalibratie geldt voor {2}x{3}"),
+    RU("кадры {0}x{1}, а калибровка для {2}x{3}"),
+    TR("kareleri {0}x{1}, kalibrasyon {2}x{3} için"));
+
+SS_MSG(lens_skip_images,
+    EN("no frame in its folder can be read"),
+    JA("フォルダー内に読めるフレームがありません"),
+    ZH_HANS("其文件夹中没有可读取的帧"),
+    ZH_HANT("其資料夾中沒有可讀取的影格"),
+    KO("폴더에 읽을 수 있는 프레임이 없습니다"),
+    DE("in seinem Ordner lässt sich kein Bild lesen"),
+    FR("aucune image de son dossier n'est lisible"),
+    ES("no se puede leer ningún fotograma de su carpeta"),
+    PT("nenhum quadro da pasta pode ser lido"),
+    IT("nessun fotogramma della sua cartella è leggibile"),
+    NL("geen enkel beeld in de map is leesbaar"),
+    RU("в его папке нет читаемых кадров"),
+    TR("klasöründe okunabilen kare yok"));
+
+// The images declare their colour space -- an EXR's header, a TIFF's ICC
+// profile -- and the transfer was left to them. {0} is the format ("EXR",
+// "TIFF"), {1} the gamut in force.
+SS_MSG(run_file_color_linear,
+    EN("{0} input read as linear {1}"),
+    JA("{0} 入力を線形 {1} として読み込みます"),
+    ZH_HANS("{0} 输入按线性 {1} 读取"),
+    ZH_HANT("{0} 輸入依線性 {1} 讀取"),
+    KO("{0} 입력을 선형 {1}(으)로 읽습니다"),
+    DE("{0}-Eingabe wird als lineares {1} gelesen"),
+    FR("Entrée {0} lue comme {1} linéaire"),
+    ES("Entrada {0} leída como {1} lineal"),
+    PT("Entrada {0} lida como {1} linear"),
+    IT("Ingresso {0} letto come {1} lineare"),
+    NL("{0}-invoer gelezen als lineair {1}"),
+    RU("Вход {0} читается как линейный {1}"),
+    TR("{0} girdisi doğrusal {1} olarak okunuyor"));
+
+SS_MSG(run_file_color_display,
+    EN("{0} input read as display-encoded {1}"),
+    JA("{0} 入力を表示用エンコードの {1} として読み込みます"),
+    ZH_HANS("{0} 输入按显示编码的 {1} 读取"),
+    ZH_HANT("{0} 輸入依顯示編碼的 {1} 讀取"),
+    KO("{0} 입력을 디스플레이 인코딩된 {1}(으)로 읽습니다"),
+    DE("{0}-Eingabe wird als anzeigecodiertes {1} gelesen"),
+    FR("Entrée {0} lue comme {1} encodé pour l'affichage"),
+    ES("Entrada {0} leída como {1} codificado para pantalla"),
+    PT("Entrada {0} lida como {1} codificado para exibição"),
+    IT("Ingresso {0} letto come {1} codificato per lo schermo"),
+    NL("{0}-invoer gelezen als weergavegecodeerd {1}"),
+    RU("Вход {0} читается как экранно закодированный {1}"),
+    TR("{0} girdisi ekran kodlu {1} olarak okunuyor"));
+
+SS_MSG(run_file_gamut_from_file,
+    EN("{0} colour space: {1}, from the file"),
+    JA("{0} の色空間: {1}（ファイルの情報）"),
+    ZH_HANS("{0} 色彩空间: {1}（取自文件）"),
+    ZH_HANT("{0} 色彩空間: {1}（取自檔案）"),
+    KO("{0} 색 공간: {1}(파일에서 읽음)"),
+    DE("{0}-Farbraum: {1}, aus der Datei"),
+    FR("Espace colorimétrique {0} : {1}, d'après le fichier"),
+    ES("Espacio de color {0}: {1}, según el archivo"),
+    PT("Espaço de cor {0}: {1}, conforme o arquivo"),
+    IT("Spazio colore {0}: {1}, dal file"),
+    NL("{0}-kleurruimte: {1}, uit het bestand"),
+    RU("Цветовое пространство {0}: {1}, из файла"),
+    TR("{0} renk uzayı: {1}, dosyadan"));
+
+SS_MSG(run_file_gamut_unknown,
+    EN("The {0} input's color primaries match no known color space; reading it as Rec.709"),
+    JA("{0} 入力の原色はどの既知の色空間とも一致しません。Rec.709 として読み込みます"),
+    ZH_HANS("{0} 输入的色彩基色不属于任何已知色彩空间，按 Rec.709 读取"),
+    ZH_HANT("{0} 輸入的色彩基色不屬於任何已知色彩空間，依 Rec.709 讀取"),
+    KO("{0} 입력의 원색이 알려진 색 공간과 일치하지 않습니다. Rec.709로 읽습니다"),
+    DE("Die Primärfarben der {0}-Eingabe passen zu keinem bekannten Farbraum; "
        "sie wird als Rec.709 gelesen"),
-    FR("Les primaires de l'EXR ne correspondent à aucun espace connu ; "
+    FR("Les primaires de l'entrée {0} ne correspondent à aucun espace connu ; "
        "lecture en Rec.709"),
-    ES("Los primarios del EXR no coinciden con ningún espacio conocido; "
+    ES("Los primarios de la entrada {0} no coinciden con ningún espacio conocido; "
        "se lee como Rec.709"),
-    PT("Os primários do EXR não correspondem a nenhum espaço conhecido; "
-       "lido como Rec.709"),
-    IT("I primari dell'EXR non corrispondono ad alcuno spazio noto; "
+    PT("Os primários da entrada {0} não correspondem a nenhum espaço conhecido; "
+       "lida como Rec.709"),
+    IT("I primari dell'ingresso {0} non corrispondono ad alcuno spazio noto; "
        "viene letto come Rec.709"),
-    NL("De primaire kleuren van de EXR passen bij geen bekende kleurruimte; "
-       "hij wordt als Rec.709 gelezen"),
-    RU("Основные цвета EXR не совпадают ни с одним известным пространством; "
-       "файл читается как Rec.709"),
-    TR("EXR'nin ana renkleri bilinen hiçbir renk uzayıyla eşleşmiyor; "
+    NL("De primaire kleuren van de {0}-invoer passen bij geen bekende kleurruimte; "
+       "die wordt als Rec.709 gelezen"),
+    RU("Основные цвета входа {0} не совпадают ни с одним известным пространством; "
+       "вход читается как Rec.709"),
+    TR("{0} girdisinin ana renkleri bilinen hiçbir renk uzayıyla eşleşmiyor; "
        "Rec.709 olarak okunuyor"));
 
 SS_MSG(run_masks,
@@ -632,6 +770,78 @@ SS_MSG(extract_mask_empty,
        "игнорируют чёрные, поэтому инвертированная маска убирает всё изображение."),
     TR("{0} maskesi {1} içinde tek bir anahtar nokta bırakmadı. Maskeler beyaz pikselleri "
        "tutar, siyahları yok sayar; ters çevrilmiş bir maske tüm görüntüyü eler."));
+
+// --image-exposure: what the detectors were shown, in signed EV. {0} and {1}
+// are the least and the most any one image was given.
+SS_MSG(extract_exposure_auto,
+    EN("Exposure for the detectors: auto, {0} to {1} EV"),
+    JA("検出器向けの露出: 自動、{0} ～ {1} EV"),
+    ZH_HANS("检测器所用曝光：自动，{0} 至 {1} EV"),
+    ZH_HANT("偵測器所用曝光：自動，{0} 至 {1} EV"),
+    KO("검출기용 노출: 자동, {0} ~ {1} EV"),
+    DE("Belichtung für die Detektoren: automatisch, {0} bis {1} EV"),
+    FR("Exposition pour les détecteurs : auto, de {0} à {1} EV"),
+    ES("Exposición para los detectores: auto, de {0} a {1} EV"),
+    PT("Exposição para os detectores: auto, de {0} a {1} EV"),
+    IT("Esposizione per i rilevatori: auto, da {0} a {1} EV"),
+    NL("Belichting voor de detectoren: automatisch, {0} tot {1} EV"),
+    RU("Экспозиция для детекторов: авто, от {0} до {1} EV"),
+    TR("Algılayıcılar için pozlama: otomatik, {0} ile {1} EV arası"));
+
+SS_MSG(extract_exposure_fixed,
+    EN("Exposure for the detectors: {0} EV"),
+    JA("検出器向けの露出: {0} EV"),
+    ZH_HANS("检测器所用曝光：{0} EV"),
+    ZH_HANT("偵測器所用曝光：{0} EV"),
+    KO("검출기용 노출: {0} EV"),
+    DE("Belichtung für die Detektoren: {0} EV"),
+    FR("Exposition pour les détecteurs : {0} EV"),
+    ES("Exposición para los detectores: {0} EV"),
+    PT("Exposição para os detectores: {0} EV"),
+    IT("Esposizione per i rilevatori: {0} EV"),
+    NL("Belichting voor de detectoren: {0} EV"),
+    RU("Экспозиция для детекторов: {0} EV"),
+    TR("Algılayıcılar için pozlama: {0} EV"));
+
+// Read as linear, and the largest value across all of them is exactly 1.0 --
+// what display-encoded pixels labelled linear look like.
+SS_MSG(extract_linear_peak_one,
+    EN("Images read as linear light normally go past 1.0, and none of these does: "
+       "either they are display-encoded (--no-image-linear), or their highlights "
+       "were clipped at white"),
+    JA("リニア光として読み込む画像は通常 1.0 を超えますが、これらはどれも超えていません。"
+       "表示用エンコードの画像（--no-image-linear）か、ハイライトが白でクリップされています"),
+    ZH_HANS("按线性光读取的图像通常会超过 1.0，而这些图像都没有：要么是显示编码的"
+            "（--no-image-linear），要么高光已在白点处被截断"),
+    ZH_HANT("依線性光讀取的影像通常會超過 1.0，而這些影像都沒有：要麼是顯示編碼的"
+            "（--no-image-linear），要麼高光已在白點處被截斷"),
+    KO("선형 광으로 읽는 이미지는 보통 1.0을 넘지만 이 이미지들은 하나도 넘지 않습니다. "
+       "디스플레이 인코딩된 이미지이거나(--no-image-linear) 하이라이트가 흰색에서 "
+       "잘렸습니다"),
+    DE("Als lineares Licht gelesene Bilder gehen meist über 1.0 hinaus, diese aber "
+       "nicht: Entweder sind sie anzeigecodiert (--no-image-linear), oder ihre "
+       "Lichter wurden bei Weiß abgeschnitten"),
+    FR("Des images lues en lumière linéaire dépassent normalement 1.0, et aucune "
+       "de celles-ci : soit elles sont encodées pour l'affichage "
+       "(--no-image-linear), soit leurs hautes lumières ont été écrêtées au blanc"),
+    ES("Las imágenes leídas como luz lineal suelen pasar de 1.0, y ninguna de estas "
+       "lo hace: o están codificadas para pantalla (--no-image-linear), o sus luces "
+       "se recortaron en el blanco"),
+    PT("Imagens lidas como luz linear costumam passar de 1.0, e nenhuma destas "
+       "passa: ou estão codificadas para exibição (--no-image-linear), ou os "
+       "realces foram cortados no branco"),
+    IT("Le immagini lette come luce lineare di solito superano 1.0, e nessuna di "
+       "queste lo fa: o sono codificate per lo schermo (--no-image-linear), o le "
+       "alte luci sono state tagliate al bianco"),
+    NL("Beelden die als lineair licht worden gelezen komen meestal boven 1.0, en "
+       "geen van deze doet dat: ze zijn weergavegecodeerd (--no-image-linear), of "
+       "hun hooglichten zijn bij wit afgekapt"),
+    RU("Изображения, читаемые как линейный свет, обычно выходят за 1.0, а эти — "
+       "нет: либо они экранно закодированы (--no-image-linear), либо их света "
+       "обрезаны на белом"),
+    TR("Doğrusal ışık olarak okunan görüntüler genellikle 1.0'ı aşar; bunların "
+       "hiçbiri aşmıyor: ya ekran kodlular (--no-image-linear) ya da parlak "
+       "alanları beyazda kırpılmış"));
 
 SS_MSG(extract_reusing,
     EN("Features an earlier run already wrote: {0}/{1} images -- keeping them."),
@@ -1552,31 +1762,36 @@ SS_MSG(map_assembled,
 
 SS_MSG(map_finishing,
     EN("Finishing passes ({0}): split {1}, folds cut {2}, reseeded {3}, dropped {4}, "
-       "repaired by the audit {5}, dropped by the audit {6}"),
+       "repaired by the audit {5}, dropped by the audit {6}, seams welded {7}"),
     JA("仕上げ処理（{0}）: 分割 {1}、折り返しの切断 {2}、再シード {3}、除外 {4}、"
-       "監査で修復 {5}、監査で除外 {6}"),
+       "監査で修復 {5}、監査で除外 {6}、継ぎ目の結合 {7}"),
     ZH_HANS("收尾处理（{0}）: 拆分 {1}，切开折叠 {2}，重新播种 {3}，丢弃 {4}，"
-            "审查修复 {5}，审查丢弃 {6}"),
+            "审查修复 {5}，审查丢弃 {6}，接缝合并 {7}"),
     ZH_HANT("收尾處理（{0}）: 拆分 {1}，切開折疊 {2}，重新播種 {3}，丟棄 {4}，"
-            "稽核修復 {5}，稽核丟棄 {6}"),
+            "稽核修復 {5}，稽核丟棄 {6}，接縫合併 {7}"),
     KO("마무리 단계({0}): 분할 {1}, 접힘 절단 {2}, 재시드 {3}, 제외 {4}, "
-       "감사로 복구 {5}, 감사로 제외 {6}"),
+       "감사로 복구 {5}, 감사로 제외 {6}, 이음매 결합 {7}"),
     DE("Abschlussdurchgänge ({0}): geteilt {1}, Faltungen getrennt {2}, neu gesät {3}, "
-       "verworfen {4}, von der Prüfung repariert {5}, von der Prüfung verworfen {6}"),
+       "verworfen {4}, von der Prüfung repariert {5}, von der Prüfung verworfen {6}, "
+       "Nähte verschweißt {7}"),
     FR("Passes finales ({0}) : scindés {1}, plis coupés {2}, réamorcés {3}, écartés {4}, "
-       "réparés par l'audit {5}, écartés par l'audit {6}"),
+       "réparés par l'audit {5}, écartés par l'audit {6}, coutures soudées {7}"),
     ES("Pasadas finales ({0}): divididos {1}, pliegues cortados {2}, resembrados {3}, "
-       "descartados {4}, reparados por la auditoría {5}, descartados por la auditoría {6}"),
+       "descartados {4}, reparados por la auditoría {5}, descartados por la auditoría {6}, "
+       "costuras soldadas {7}"),
     PT("Passagens finais ({0}): divididos {1}, dobras cortadas {2}, ressemeados {3}, "
-       "descartados {4}, reparados pela auditoria {5}, descartados pela auditoria {6}"),
+       "descartados {4}, reparados pela auditoria {5}, descartados pela auditoria {6}, "
+       "costuras soldadas {7}"),
     IT("Passate finali ({0}): divisi {1}, pieghe tagliate {2}, riseminati {3}, scartati {4}, "
-       "riparati dall'audit {5}, scartati dall'audit {6}"),
+       "riparati dall'audit {5}, scartati dall'audit {6}, cuciture saldate {7}"),
     NL("Afrondende rondes ({0}): gesplitst {1}, vouwen doorgesneden {2}, opnieuw gezaaid {3}, "
-       "afgevallen {4}, hersteld door de controle {5}, afgevallen door de controle {6}"),
+       "afgevallen {4}, hersteld door de controle {5}, afgevallen door de controle {6}, "
+       "naden gelast {7}"),
     RU("Завершающие проходы ({0}): разделено {1}, складок разрезано {2}, пересеяно {3}, "
-       "отброшено {4}, исправлено проверкой {5}, отброшено проверкой {6}"),
+       "отброшено {4}, исправлено проверкой {5}, отброшено проверкой {6}, "
+       "сварено швов {7}"),
     TR("Bitirme geçişleri ({0}): bölünen {1}, kesilen katlanma {2}, yeniden tohumlanan {3}, "
-       "elenen {4}, denetimle onarılan {5}, denetimle elenen {6}"));
+       "elenen {4}, denetimle onarılan {5}, denetimle elenen {6}, kaynatılan dikiş {7}"));
 
 
 // ===========================================================================
@@ -2905,6 +3120,32 @@ SS_MSG(metric_fail_collinear,
     TR("kameralar bir doğruya fazla yakın: enine yayılım bütünün {0}% kadarı ve en az {1}% "
        "olmalı, yani bu referans yönelim hatasını {2} kat büyütür"));
 
+SS_MSG(metric_fail_tilted,
+    EN("the level fit's scale {0} is {1}x the {2} the 3D distances give: the up it was "
+       "levelled about tips the camera path"),
+    JA("水平の当てはめの縮尺 {0} は 3D 距離から得た {2} の {1} 倍です。水平を取った上方向が"
+       "カメラの軌跡を傾けています"),
+    ZH_HANS("水平拟合的缩放 {0} 是三维距离给出的 {2} 的 {1} 倍: 用来摆正的向上方向让相机轨迹倾斜了"),
+    ZH_HANT("水平擬合的縮放 {0} 是三維距離給出的 {2} 的 {1} 倍: 用來擺正的向上方向讓相機軌跡傾斜了"),
+    KO("수평 맞춤의 축척 {0} 이(가) 3D 거리로 얻은 {2} 의 {1} 배입니다. 수평을 잡은 위쪽 방향이 "
+       "카메라 경로를 기울이고 있습니다"),
+    DE("der Maßstab der waagrechten Anpassung, {0}, ist das {1}-fache der {2} aus den "
+       "3D-Abständen: die Aufwärtsrichtung, nach der sie ausgerichtet wurde, kippt den Kamerapfad"),
+    FR("l'échelle de l'ajustement horizontal, {0}, vaut {1} fois les {2} des distances 3D : "
+       "le haut qui l'a mis d'aplomb incline la trajectoire des caméras"),
+    ES("la escala del ajuste horizontal, {0}, es {1} veces la de {2} que dan las distancias 3D: "
+       "el arriba con que se niveló inclina la trayectoria de las cámaras"),
+    PT("a escala do ajuste horizontal, {0}, é {1} vezes a de {2} que as distâncias 3D dão: o "
+       "cima com que foi nivelado inclina a trajetória das câmeras"),
+    IT("la scala della stima orizzontale, {0}, è {1} volte quella di {2} data dalle distanze 3D: "
+       "l'alto con cui è stata raddrizzata inclina il percorso delle fotocamere"),
+    NL("de schaal van de waterpas-fit, {0}, is {1}x de {2} die de 3D-afstanden geven: de "
+       "omhoog-richting waarlangs hij is genivelleerd kantelt het camerapad"),
+    RU("масштаб горизонтальной подгонки {0} в {1} раз больше {2}, который дают 3D-расстояния: "
+       "направление вверх, по которому её выровняли, наклоняет путь камер"),
+    TR("yatay uyumun ölçeği {0}, 3B uzaklıkların verdiği {2} değerinin {1} katı: hizalamada "
+       "kullanılan yukarı yönü kamera yolunu eğiyor"));
+
 SS_MSG(metric_matched,
     EN("Positions file: matched {0}/{1} cameras (names not in the model: {2})"),
     JA("位置ファイル: {0}/{1} 台のカメラと対応しました (モデルにない名前: {2})"),
@@ -2935,6 +3176,142 @@ SS_MSG(metric_gps_read,
     NL("EXIF-GPS: {0}/{1} camera's hebben een fix ({2} daarvan zonder hoogte)"),
     RU("GPS из EXIF: у {0}/{1} камер есть отсчёт ({2} из них без высоты)"),
     TR("EXIF GPS: {0}/{1} kamerada konum var ({2} tanesi yükseklik olmadan)"));
+
+SS_MSG(metric_gps_auto_dji,
+    EN("--metric-gps auto: `full` (DJI telemetry GPS, barometric altitude; tracks: {0})"),
+    JA("--metric-gps auto: `full` (DJI テレメトリの GPS、高度は気圧計; トラック数: {0})"),
+    ZH_HANS("--metric-gps auto: `full` (DJI 遥测 GPS，高度来自气压计; 轨迹数: {0})"),
+    ZH_HANT("--metric-gps auto: `full` (DJI 遙測 GPS，高度來自氣壓計; 軌跡數: {0})"),
+    KO("--metric-gps auto: `full` (DJI 텔레메트리 GPS, 고도는 기압계; 트랙 수: {0})"),
+    DE("--metric-gps auto: `full` (DJI-Telemetrie-GPS, barometrische Höhe; Spuren: {0})"),
+    FR("--metric-gps auto : `full` (GPS de télémétrie DJI, altitude barométrique ; pistes : "
+       "{0})"),
+    ES("--metric-gps auto: `full` (GPS de telemetría DJI, altitud barométrica; pistas: {0})"),
+    PT("--metric-gps auto: `full` (GPS de telemetria DJI, altitude barométrica; faixas: "
+       "{0})"),
+    IT("--metric-gps auto: `full` (GPS della telemetria DJI, quota barometrica; tracce: "
+       "{0})"),
+    NL("--metric-gps auto: `full` (DJI-telemetrie-gps, barometrische hoogte; sporen: {0})"),
+    RU("--metric-gps auto: `full` (GPS из телеметрии DJI, барометрическая высота; треков: "
+       "{0})"),
+    TR("--metric-gps auto: `full` (DJI telemetri GPS'i, barometrik yükseklik; iz sayısı: "
+       "{0})"));
+
+SS_MSG(metric_gps_auto_telemetry,
+    EN("--metric-gps auto: `horizontal` (telemetry GPS whose altitude is not trusted; "
+       "tracks not from DJI: {0}/{1})"),
+    JA("--metric-gps auto: `horizontal` (高度を信頼できないテレメトリ GPS; DJI 以外のトラック: {0}/{1})"),
+    ZH_HANS("--metric-gps auto: `horizontal` (遥测 GPS 的高度不可信; 非 DJI 轨迹: {0}/{1})"),
+    ZH_HANT("--metric-gps auto: `horizontal` (遙測 GPS 的高度不可信; 非 DJI 軌跡: {0}/{1})"),
+    KO("--metric-gps auto: `horizontal` (고도를 믿을 수 없는 텔레메트리 GPS; DJI 가 아닌 트랙: {0}/{1})"),
+    DE("--metric-gps auto: `horizontal` (Telemetrie-GPS mit unzuverlässiger Höhe; Spuren "
+       "nicht von DJI: {0}/{1})"),
+    FR("--metric-gps auto : `horizontal` (GPS de télémétrie à l'altitude peu fiable ; "
+       "pistes hors DJI : {0}/{1})"),
+    ES("--metric-gps auto: `horizontal` (GPS de telemetría con altitud poco fiable; pistas "
+       "que no son de DJI: {0}/{1})"),
+    PT("--metric-gps auto: `horizontal` (GPS de telemetria com altitude pouco confiável; "
+       "faixas que não são da DJI: {0}/{1})"),
+    IT("--metric-gps auto: `horizontal` (GPS della telemetria con quota inaffidabile; "
+       "tracce non DJI: {0}/{1})"),
+    NL("--metric-gps auto: `horizontal` (telemetrie-gps met onbetrouwbare hoogte; sporen "
+       "niet van DJI: {0}/{1})"),
+    RU("--metric-gps auto: `horizontal` (GPS из телеметрии с ненадёжной высотой; треков не "
+       "от DJI: {0}/{1})"),
+    TR("--metric-gps auto: `horizontal` (yüksekliği güvenilmez telemetri GPS'i; DJI olmayan "
+       "izler: {0}/{1})"));
+
+SS_MSG(metric_gps_auto_exif_alt,
+    EN("--metric-gps auto: `full` (EXIF GPS with altitude; images: {0})"),
+    JA("--metric-gps auto: `full` (高度付きの EXIF GPS; 画像数: {0})"),
+    ZH_HANS("--metric-gps auto: `full` (带高度的 EXIF GPS; 图像数: {0})"),
+    ZH_HANT("--metric-gps auto: `full` (帶高度的 EXIF GPS; 影像數: {0})"),
+    KO("--metric-gps auto: `full` (고도가 있는 EXIF GPS; 이미지 수: {0})"),
+    DE("--metric-gps auto: `full` (EXIF-GPS mit Höhe; Bilder: {0})"),
+    FR("--metric-gps auto : `full` (GPS EXIF avec altitude ; images : {0})"),
+    ES("--metric-gps auto: `full` (GPS EXIF con altitud; imágenes: {0})"),
+    PT("--metric-gps auto: `full` (GPS EXIF com altitude; imagens: {0})"),
+    IT("--metric-gps auto: `full` (GPS EXIF con quota; immagini: {0})"),
+    NL("--metric-gps auto: `full` (EXIF-gps met hoogte; beelden: {0})"),
+    RU("--metric-gps auto: `full` (GPS из EXIF с высотой; изображений: {0})"),
+    TR("--metric-gps auto: `full` (yükseklikli EXIF GPS; görüntü sayısı: {0})"));
+
+SS_MSG(metric_gps_auto_exif_noalt,
+    EN("--metric-gps auto: `horizontal` (EXIF GPS missing an altitude; images without one: "
+       "{0}/{1})"),
+    JA("--metric-gps auto: `horizontal` (高度のない EXIF GPS; 高度なしの画像: {0}/{1})"),
+    ZH_HANS("--metric-gps auto: `horizontal` (EXIF GPS 缺少高度; 没有高度的图像: {0}/{1})"),
+    ZH_HANT("--metric-gps auto: `horizontal` (EXIF GPS 缺少高度; 沒有高度的影像: {0}/{1})"),
+    KO("--metric-gps auto: `horizontal` (고도가 없는 EXIF GPS; 고도 없는 이미지: {0}/{1})"),
+    DE("--metric-gps auto: `horizontal` (EXIF-GPS ohne Höhe; Bilder ohne Höhe: {0}/{1})"),
+    FR("--metric-gps auto : `horizontal` (GPS EXIF sans altitude ; images sans altitude : "
+       "{0}/{1})"),
+    ES("--metric-gps auto: `horizontal` (GPS EXIF sin altitud; imágenes sin altitud: "
+       "{0}/{1})"),
+    PT("--metric-gps auto: `horizontal` (GPS EXIF sem altitude; imagens sem altitude: "
+       "{0}/{1})"),
+    IT("--metric-gps auto: `horizontal` (GPS EXIF senza quota; immagini senza quota: "
+       "{0}/{1})"),
+    NL("--metric-gps auto: `horizontal` (EXIF-gps zonder hoogte; beelden zonder hoogte: "
+       "{0}/{1})"),
+    RU("--metric-gps auto: `horizontal` (GPS из EXIF без высоты; изображений без высоты: "
+       "{0}/{1})"),
+    TR("--metric-gps auto: `horizontal` (yüksekliksiz EXIF GPS; yüksekliği olmayan "
+       "görüntüler: {0}/{1})"));
+
+SS_MSG(metric_gps_auto_exif_phone,
+    EN("--metric-gps auto: `horizontal` (a phone's EXIF GPS, whose altitude is poor; images "
+       "from {2}: {0}/{1})"),
+    JA("--metric-gps auto: `horizontal` (スマートフォンの EXIF GPS で高度の精度が低い; {2} の画像: {0}/{1})"),
+    ZH_HANS("--metric-gps auto: `horizontal` (手机的 EXIF GPS，高度不准; 来自 {2} 的图像: {0}/{1})"),
+    ZH_HANT("--metric-gps auto: `horizontal` (手機的 EXIF GPS，高度不準; 來自 {2} 的影像: {0}/{1})"),
+    KO("--metric-gps auto: `horizontal` (고도가 부정확한 휴대폰의 EXIF GPS; {2} 의 이미지: {0}/{1})"),
+    DE("--metric-gps auto: `horizontal` (EXIF-GPS eines Telefons mit schlechter Höhe; "
+       "Bilder von {2}: {0}/{1})"),
+    FR("--metric-gps auto : `horizontal` (GPS EXIF d'un téléphone, à l'altitude médiocre ; "
+       "images de {2} : {0}/{1})"),
+    ES("--metric-gps auto: `horizontal` (GPS EXIF de un teléfono, con altitud pobre; "
+       "imágenes de {2}: {0}/{1})"),
+    PT("--metric-gps auto: `horizontal` (GPS EXIF de um telefone, com altitude ruim; "
+       "imagens de {2}: {0}/{1})"),
+    IT("--metric-gps auto: `horizontal` (GPS EXIF di un telefono, con quota scadente; "
+       "immagini di {2}: {0}/{1})"),
+    NL("--metric-gps auto: `horizontal` (EXIF-gps van een telefoon, met slechte hoogte; "
+       "beelden van {2}: {0}/{1})"),
+    RU("--metric-gps auto: `horizontal` (GPS из EXIF телефона с плохой высотой; изображений "
+       "от {2}: {0}/{1})"),
+    TR("--metric-gps auto: `horizontal` (yüksekliği zayıf bir telefonun EXIF GPS'i; {2} "
+       "görüntüleri: {0}/{1})"));
+
+SS_MSG(metric_gps_auto_positions,
+    EN("--metric-gps auto: `none` (--metric-positions is the metric reference)"),
+    JA("--metric-gps auto: `none` (--metric-positions をメートル基準にします)"),
+    ZH_HANS("--metric-gps auto: `none` (以 --metric-positions 为米制基准)"),
+    ZH_HANT("--metric-gps auto: `none` (以 --metric-positions 為公制基準)"),
+    KO("--metric-gps auto: `none` (--metric-positions 를 미터 기준으로 씁니다)"),
+    DE("--metric-gps auto: `none` (--metric-positions ist die metrische Referenz)"),
+    FR("--metric-gps auto : `none` (--metric-positions est la référence métrique)"),
+    ES("--metric-gps auto: `none` (--metric-positions es la referencia métrica)"),
+    PT("--metric-gps auto: `none` (--metric-positions é a referência métrica)"),
+    IT("--metric-gps auto: `none` (--metric-positions è il riferimento metrico)"),
+    NL("--metric-gps auto: `none` (--metric-positions is de metrische referentie)"),
+    RU("--metric-gps auto: `none` (метрическая опора -- --metric-positions)"),
+    TR("--metric-gps auto: `none` (metrik referans --metric-positions)"));
+
+SS_MSG(metric_gps_auto_none,
+    EN("--metric-gps auto: `none` (no image or telemetry carries GPS)"),
+    JA("--metric-gps auto: `none` (GPS を持つ画像もテレメトリもありません)"),
+    ZH_HANS("--metric-gps auto: `none` (没有带 GPS 的图像或遥测)"),
+    ZH_HANT("--metric-gps auto: `none` (沒有帶 GPS 的影像或遙測)"),
+    KO("--metric-gps auto: `none` (GPS 가 있는 이미지도 텔레메트리도 없습니다)"),
+    DE("--metric-gps auto: `none` (weder Bilder noch Telemetrie tragen GPS)"),
+    FR("--metric-gps auto : `none` (ni les images ni la télémétrie ne portent de GPS)"),
+    ES("--metric-gps auto: `none` (ninguna imagen ni telemetría trae GPS)"),
+    PT("--metric-gps auto: `none` (nenhuma imagem nem telemetria traz GPS)"),
+    IT("--metric-gps auto: `none` (né le immagini né la telemetria hanno GPS)"),
+    NL("--metric-gps auto: `none` (geen beeld of telemetrie heeft gps)"),
+    RU("--metric-gps auto: `none` (ни у изображений, ни в телеметрии нет GPS)"),
+    TR("--metric-gps auto: `none` (ne görüntülerde ne telemetride GPS var)"));
 
 SS_MSG(metric_axes,
     EN("Residual RMS per reference axis: {0}/{1}/{2} m; fitted up axis vs the "

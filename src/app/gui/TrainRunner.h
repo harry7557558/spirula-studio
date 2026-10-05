@@ -88,11 +88,11 @@ public:
 
     // Latest per-step progress (copy).
     spirula::TrainerProgress latest_progress();
-    // Mean over the last 100 steps, which is also what the ETA is built from.
-    // A single step's latency swings several-fold with whether a viewer
-    // render landed on it, so it is not a number to put on screen.
+    // Mean over the last 100 steps. A single step's latency swings
+    // several-fold with whether a viewer render landed on it, so it is not a
+    // number to put on screen.
     double avg_step_latency();
-    double eta_seconds();         // < 0 when unknown
+    double eta_seconds();         // TrainerSession::eta_seconds; < 0 when unknown
     // Time spent in the step loop, pauses excluded: < 0 before a session
     // exists, 0 until the loop starts, frozen once it ends.
     double elapsed_seconds();

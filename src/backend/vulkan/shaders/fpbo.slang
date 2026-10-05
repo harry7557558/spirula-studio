@@ -23,6 +23,7 @@
 #include "proj_bwd_common.slang"
 #include "optim_quant.slang"
 #include "screen_size_hinge.slang"
+#include "visit.slang"
 
 [SpecializationConstant]
 const int kEval3d = 0;
@@ -99,6 +100,7 @@ struct FpboParams {
     float* radii;          // (kScaleAgnostic)
     float* densify_score;  // optional output (has_densify_score)
     int* steps;            // per-splat steps (has_steps)
+    uint* visit_counters;  // per-splat render counters (has_visit)
     // learning rates + regularizer weights (already divided by N host-side)
     float lr_means;
     float lr_quats;
@@ -127,6 +129,8 @@ struct FpboParams {
     uint32_t height;
     uint32_t wgs_per_row;
     uint32_t num_sh_buffer;
+    uint32_t has_visit;
+    uint32_t skip_unrendered_reg;
     uint32_t _pad0;
 };
 
@@ -205,6 +209,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // see that and warns 160 times across this file's variants.
     PbSplat s = {};
     PbGrads g = pb_grads_zero();
+    bool regularize = true;
     if (inside) {
         s = pb_load_splat(p.means, p.quats, p.scales, p.opacities,
                           p.features_dc, gid);
@@ -237,6 +242,11 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         gindex_t vpitch = sha.pair_pitch;
         SS_DISPATCH_CAM_DIST(_fpbo_call)
 
+        bool rendered = g.v_opacity != 0.0f;
+        if (p.has_visit != 0)
+            p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
+        regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+
         // per-splat regularizers -> gradient
         float v_losses[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
         float3 v_scale_t;
@@ -249,9 +259,11 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                              p.scale_regularization_weight,
                              p.erank_reg_weight, p.erank_reg_weight_s3,
                              p.quat_norm_reg_weight);
-        g.v_scale += v_scale_t;
-        g.v_quat += v_quat_t;
-        g.v_opacity += v_opac_t;
+        if (regularize) {
+            g.v_scale += v_scale_t;
+            g.v_quat += v_quat_t;
+            g.v_opacity += v_opac_t;
+        }
         g.v_dc += p.dc_reg_weight * max(s.dc - float3(0.5f / kSh0), float3(0.0f)) +
             (p.dc_reg_weight + p.sh_reg_weight) * min(s.dc + float3(0.5f / kSh0), float3(0.0f));
     }
@@ -283,7 +295,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         oq_state_read<3>(kNonShQuant != 0, p.nq_scales_packed,
                           p.nq_scales_bounds, p.g1_scales, p.g2_scales,
                           block_id, gid, g1, g2);
-        g.v_scale += screen_size_hinge_grad(
+        if (regularize) g.v_scale += screen_size_hinge_grad(
             p.radii[gid], p.max_screen_size, p.max_screen_size_penalty,
             s.scale,
             oq_sqrt3(float3(g2[0], g2[1], g2[2]) * ibc2) + float3(kFpboEps));

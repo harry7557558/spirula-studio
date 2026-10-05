@@ -51,8 +51,8 @@ tools/guictl.py             drive the GUI from a script -- list the widgets on
                               screen, click them, read the framebuffer back.
                               tools/gui_mcp.py is the same surface as an MCP
                               server; docs/notes/gui-automation.md
-reference/scripts/          dataset preprocessing CLI tools (Python, standalone;
-                              mask.py is embedded into the GUI binary)
+reference/scripts/          dataset preprocessing CLI tools (Python, standalone,
+                              run by hand; nothing in the build uses them)
 reference/python/           hand-run tools on NO code path: eval_lpips.py,
                               benchmark.py, camera_utils.py (the unported
                               orientation_method / center_method reference,
@@ -93,7 +93,9 @@ src/
 │   │                         one owner), RegionMesh.h (a region's boundary as
 │   │                         triangles, for drawing), ScenePartition.h (split a scene into
 │   │                         parts that train separately -- READ
-│   │                         docs/notes/scene-partition.md)
+│   │                         docs/notes/scene-partition.md), RoiDocument.h (the
+│   │                         ROI editor's shape list, and which <dataset>/roi/*.json
+│   │                         a run trains in -- docs/notes/roi-editor.md)
 │   └── parsers/              COLMAP / Nerfstudio / Metashape readers
 ├── mesh/                   meshing pipeline: Delaunay3D, UV, export/import, and
 │                             MeshingDevice.h -- the DEVICE SEAM the portable
@@ -125,7 +127,8 @@ src/
 ├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of
 │                             nn/. The DEFAULT geometry model
 │                             -- READ src/moge/README.md
-├── video/                  container demux + VK_KHR_video_decode_*, and the
+├── video/                  container demux (HEIC stills too) +
+│                             VK_KHR_video_decode_*, and the
 │                             VK_KHR_video_encode_* encoder behind `spirula
 │                             encode`, on top of nn/. PATENT-GATED: compiled
 │                             only with SS_ENABLE_PATENTED=ON -- READ
@@ -147,7 +150,8 @@ src/
 │   │                         sfm_main.cpp (sfm), sam_main.cpp (sam),
 │   │                         geometry_main.cpp (depth + normals)
 │   ├── FrameExtract.{h,cpp}  video -> sharp frames (`spirula sam extract` also
-│   │                         masks them in the same pass; the GUI masks after)
+│   │                         masks them in the same pass; the GUI masks after),
+│   │                         decoded by Vulkan Video or ffmpeg (FrameDecode.h)
 │   ├── E57Dataset.{h,cpp}  an E57 scan written out as a Nerfstudio dataset
 │   │                         with no SfM (`spirula e57`) -- docs/datasets.md
 │   ├── LidarAlign.{h,cpp}  a reconstruction fitted onto a laser scan (Sim3:
@@ -186,6 +190,8 @@ src/
 │                             seeding -> step loop -> eval. Both the CLI and
 │                             the GUI drive this; it lives in the engine
 │                             library (cmake/sources.txt), not the app targets.
+│                             TrainForecast.{h,cpp} beside it is the run's ETA
+│                             and VRAM forecast -- docs/notes/train-forecast.md
 ├── config/                 TrainConfig.h — the training config's single source
 │                             of truth: one X-macro row per flag, hand-written.
 │                             TrainConfigJson.h is the one flat-JSON encoding
@@ -243,9 +249,9 @@ both needs no reconfiguring and no `-B`. Options:
 `SS_SEPARATE_TOOLS`.
 Full matrix and per-platform notes: `docs/build.md`.
 
-**`SS_ENABLE_PATENTED` is OFF by default and should stay that way in
-anything you commit.** It gates `src/video/` -- the H.264 / H.265 / AV1
-bitstream parsers, the VK_KHR_video_decode_* driver and the
+**`SS_ENABLE_PATENTED` is OFF by default and should stay that way in anything
+you commit.** It gates `src/video/` -- the H.264 / H.265 / AV1 bitstream
+parsers, the HEIF container reader, the VK_KHR_video_decode_* driver and the
 VK_KHR_video_encode_* encoder behind `spirula encode` -- which is the only
 patent-encumbered code in the tree. With it off, everything that wanted it
 shells out to ffmpeg instead; no feature disappears, a subprocess appears. See
@@ -595,7 +601,10 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `SS_POOL_ALIAS_POISON=1` fills the arena at every phase switch so a read
   that outlives its phase becomes NaNs a parity test catches, and
   `SS_POOL_ALIAS=0` turns the whole thing off. Read
-  `docs/notes/vram-splat-x-img.md` before adding a row.
+  `docs/notes/vram-splat-x-img.md` before adding a row. A buffer whose
+  length follows the LIVE splat count goes in `POOL_LIVE_SPLAT_TABLE`, so it
+  is sized for `cap_max` once: the trainer's VRAM forecast assumes only
+  `splat x img` grows during a run.
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
   a per-category VRAM breakdown after any run that trained. What the biggest
@@ -663,6 +672,13 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `MeshJob` and not added there saves, loads, and quietly runs at its default.
   `preset_roundtrip_test` is the guard: it moves every field the table
   names off its default and compares after a round trip.
+- **What a dataset run reuses is decided in one place, from fields you have to
+  list.** `app/gui/DatasetPlan.h` compares, per step, the settings its output
+  was made with (`frames_fields`, `masks_fields`, `model_fields`,
+  `geometry_fields`) against the workspace's `.spirula-dataset.json`; a setting
+  that changes a step's output and is not in its list is silently reused
+  across. The panel and both runners ask the same function -- never decide
+  "rerun this?" anywhere else. docs/notes/dataset-rerun.md.
 - **A mesh format lives in four places and reads back in two.** `kMeshFormats`
   (`app/gui/MeshJob.h`) is the GUI's list, `parse_one_mesh_format` and
   `write_mesh` (`mesh/MeshExport.cpp`) are the writer, `check_export_support`

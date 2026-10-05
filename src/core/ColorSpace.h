@@ -11,9 +11,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace colorspace {
 
@@ -21,6 +24,23 @@ using Mat3 = std::array<float, 9>;
 
 inline constexpr const char* kGamuts[] = {
     "Rec.709", "ACES2065-1", "ACEScg", "Rec.2020", "AdobeRGB", "DCI-P3",
+};
+
+// The same gamuts as CIE xy: Rx Ry Gx Gy Bx By Wx Wy. A file's primaries match
+// one within 0.002 on all eight, the white included: "DCI-P3" is the theatrical
+// white, and passing P3-D65 off as it would be a visible green shift.
+struct GamutPrimaries {
+    const char* name;
+    float xy[8];
+};
+
+inline constexpr GamutPrimaries kGamutPrimaries[] = {
+    {"Rec.709",    {0.640f, 0.330f, 0.300f, 0.600f, 0.150f, 0.060f, 0.3127f, 0.3290f}},
+    {"ACES2065-1", {0.7347f, 0.2653f, 0.0f, 1.0f, 0.0001f, -0.0770f, 0.32168f, 0.33767f}},
+    {"ACEScg",     {0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f}},
+    {"Rec.2020",   {0.708f, 0.292f, 0.170f, 0.797f, 0.131f, 0.046f, 0.3127f, 0.3290f}},
+    {"AdobeRGB",   {0.640f, 0.330f, 0.210f, 0.710f, 0.150f, 0.060f, 0.3127f, 0.3290f}},
+    {"DCI-P3",     {0.680f, 0.320f, 0.265f, 0.690f, 0.150f, 0.060f, 0.314f, 0.351f}},
 };
 
 // "" and "none" are Rec.709, i.e. the identity.
@@ -200,6 +220,160 @@ inline void to_srgb_inplace(uint8_t* rgb, size_t n,
             rgb[3*i + c] = (uint8_t)(y < 0.0f ? 0.0f : (y > 255.0f ? 255.0f : y));
         }
     }
+}
+
+// Exact 8-bit quantization of linear_to_srgb: thresh[c] is the linear value at
+// which the code steps to c+1, so the search cannot disagree with the curve.
+inline const float* srgb8_thresholds() {
+    static const std::vector<float> t = [] {
+        std::vector<float> v(255);
+        for (int c = 0; c < 255; c++)
+            v[(size_t)c] = srgb_to_linear((c + 0.5f) / 255.0f);
+        return v;
+    }();
+    return t.data();
+}
+
+inline uint8_t quantize_srgb8(const float* thresh, float x) {
+    int lo = 0, hi = 255;
+    while (lo < hi) {
+        const int m = (lo + hi + 1) >> 1;
+        if (x >= thresh[m - 1]) lo = m;
+        else                    hi = m - 1;
+    }
+    return (uint8_t)lo;
+}
+
+inline uint8_t quantize_unit8(float x) {
+    return (uint8_t)std::lround(std::min(std::max(x, 0.0f), 1.0f) * 255.0f);
+}
+
+inline float luma709(const float v[3]) {
+    return 0.2126f * v[0] + 0.7152f * v[1] + 0.0722f * v[2];
+}
+
+// Float pixels in (gamut, is_linear) times `gain` to 8-bit sRGB, `nc` = 1, 3
+// or 4 per pixel. Every gamut maps white to white, so one channel takes only
+// the transfer; a fourth is alpha.
+struct Srgb8Encoder {
+    Mat3 m;
+    bool linear;
+    bool identity;
+    float gain;
+    const float* thresh;
+
+    Srgb8Encoder(const std::string& gamut, bool is_linear, float gain = 1.0f)
+        : m(gamut_to_rec709(gamut)), linear(is_linear),
+          identity(is_identity(gamut, is_linear) && gain == 1.0f), gain(gain),
+          thresh(srgb8_thresholds()) {}
+
+    // Linear Rec.709 light before the gain, which is what auto exposure meters.
+    void to_linear(const float* px, int nc, float v[3]) const {
+        if (nc == 1) {
+            v[0] = v[1] = v[2] = linear ? px[0] : srgb_to_linear(px[0]);
+            return;
+        }
+        for (int c = 0; c < 3; c++) v[c] = linear ? px[c] : srgb_to_linear(px[c]);
+        apply3x3(m, v);
+    }
+
+    void operator()(const float* px, uint8_t* o, size_t n, int nc) const {
+        for (size_t i = 0; i < n; i++, px += nc, o += nc) {
+            if (nc == 1) {
+                o[0] = linear || gain != 1.0f
+                           ? quantize_srgb8(thresh, (linear ? px[0] : srgb_to_linear(px[0])) * gain)
+                           : quantize_unit8(px[0]);
+                continue;
+            }
+            if (identity) {
+                for (int c = 0; c < 3; c++) o[c] = quantize_unit8(px[c]);
+            } else {
+                float v[3];
+                to_linear(px, nc, v);
+                for (int c = 0; c < 3; c++) o[c] = quantize_srgb8(thresh, v[c] * gain);
+            }
+            if (nc == 4) o[3] = quantize_unit8(px[3]);
+        }
+    }
+};
+
+// ================
+// Exposure for analysis
+// ================
+
+// A gain in linear light for what the detectors and the AI models look at;
+// training pixels never pass through it. docs/notes/analysis-exposure.md.
+struct Exposure {
+    bool automatic = false;
+    float stops = 0.0f;
+    bool active() const { return automatic || stops != 0.0f; }
+};
+
+// "auto", a number of stops ("2", "+1.5", "-1"), or "" / "0" for none.
+inline bool parse_exposure(const std::string& s, Exposure& out) {
+    out = Exposure();
+    if (s.empty() || s == "none" || s == "off") return true;
+    if (s == "auto") {
+        out.automatic = true;
+        return true;
+    }
+    char* end = nullptr;
+    const float v = std::strtof(s.c_str(), &end);
+    if (end == s.c_str() || *end != '\0' || !std::isfinite(v) || std::fabs(v) > 16.0f)
+        return false;
+    out.stops = v;
+    return true;
+}
+
+// Camera JPEGs of a 25-frame Fujifilm capture (issue #127) have median linear
+// luma 0.11-0.21, so auto lifts a darker image to 0.1 and leaves those alone.
+inline constexpr float kAutoExposureMedian = 0.1f;
+inline constexpr float kMaxExposureGain = 1024.0f;   // 10 stops; beyond is noise
+
+// Pixels apart, in x and in y, that keep an auto-exposure meter near 64k samples.
+inline size_t exposure_sample_step(size_t w, size_t h) {
+    return std::max<size_t>(1, (size_t)std::sqrt((double)w * (double)h / 65536.0));
+}
+
+// Auto never darkens past the point where the brightest sample reaches white,
+// so an image with nothing above 1.0 is only ever brightened. `luma` (linear
+// Rec.709) is reordered.
+inline float exposure_gain(const Exposure& e, std::vector<float>& luma) {
+    if (!e.automatic) return std::exp2(e.stops);
+    if (luma.empty()) return 1.0f;
+    const auto mid = luma.begin() + (std::ptrdiff_t)(luma.size() / 2);
+    std::nth_element(luma.begin(), mid, luma.end());
+    const float peak = *std::max_element(luma.begin(), luma.end());
+    const float lo = peak > 1.0f ? 1.0f / peak : 1.0f;
+    const float g = *mid > 0.0f ? kAutoExposureMedian / *mid : kMaxExposureGain;
+    return std::min(std::max(g, lo), kMaxExposureGain);
+}
+
+// The same for 8-bit sRGB pixels, which is all an stb_image format leaves.
+inline float exposure_gain_srgb8(const Exposure& e, const uint8_t* rgb, size_t w, size_t h) {
+    if (!e.automatic) return std::exp2(e.stops);
+    float lin[256];
+    for (int c = 0; c < 256; c++) lin[c] = srgb_to_linear(c * (1.0f / 255.0f));
+    const size_t step = exposure_sample_step(w, h);
+    std::vector<float> luma;
+    luma.reserve((w / step + 1) * (h / step + 1));
+    for (size_t y = 0; y < h; y += step)
+        for (size_t x = 0; x < w; x += step) {
+            const uint8_t* p = rgb + 3 * (y * w + x);
+            const float v[3] = {lin[p[0]], lin[p[1]], lin[p[2]]};
+            luma.push_back(luma709(v));
+        }
+    return exposure_gain(e, luma);
+}
+
+// Interleaved 8-bit sRGB times `gain` in linear light, in place.
+inline void expose_srgb8_inplace(uint8_t* px, size_t n_values, float gain) {
+    if (gain == 1.0f) return;
+    const float* thresh = srgb8_thresholds();
+    uint8_t lut[256];
+    for (int c = 0; c < 256; c++)
+        lut[c] = quantize_srgb8(thresh, srgb_to_linear(c * (1.0f / 255.0f)) * gain);
+    for (size_t i = 0; i < n_values; i++) px[i] = lut[px[i]];
 }
 
 // The inverse of to_srgb_inplace.

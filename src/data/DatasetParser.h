@@ -105,6 +105,9 @@ struct DatasetParserConfig {
     // auto-detect over {sparse/0, colmap/sparse/0, sparse, colmap, .}.
     std::string recon_dir;
 
+    // Replaces the seed cloud before centering, in the source dataset frame.
+    std::string seed_pointcloud;
+
     std::string image_dir  = "images";
     std::string mask_dir   = "masks";
     std::string depth_dir  = "depths";
@@ -357,6 +360,9 @@ PostSplitCameras bake_post_split(const ParsedDataset& ds,
 // parsers; exposed here so they stay in one place.
 // ===========================================================================
 namespace dsparse {
+
+ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
+                                   const std::string& path);
 
 // Stray cameras past this many median distances (a failed registration
 // 1700x out on a RealityScan export) are kept but set no scale. Must match

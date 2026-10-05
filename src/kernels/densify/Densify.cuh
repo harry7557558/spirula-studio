@@ -4,6 +4,7 @@
 #include <core/Tensor.h>
 
 #include "core/NonShQuantState.h"
+#include "core/SplatVisitState.h"
 
 
 // densify_update_weight score mode. Mirrors DensifyConfig::score_mode.
@@ -95,6 +96,38 @@ void densify_accum_finalize_tensor(
 );
 
 
+void densify_scale_score_by_renders_tensor(
+    int64_t num_splats,
+    DeviceVector<uint32_t> visit_counters,  // [N]
+    DeviceVector<float2> score              // [N, 2]; lane 0 is multiplied in place
+);
+
+
+void visit_camera_stats_zero_tensor(
+    int num_cameras,
+    DeviceVector<int32_t> cam_map,   // [C] post-split camera per batch slot
+    DeviceVector<float> cam_sum,     // [N_post]
+    DeviceVector<uint32_t> cam_cnt   // [N_post]
+);
+
+
+void visit_camera_stats_tensor(
+    int64_t n_isect,
+    int64_t num_splats,
+    int num_cameras,
+    bool packed,
+    DeviceVector<int32_t> camera_ids,
+    DeviceVector<int32_t> gaussian_ids,
+    DeviceTensorFloatND v_screen,    // packed screen-gradient rows
+    int row_stride,
+    int opac_offset,
+    DeviceVector<uint32_t> visit_counters,
+    DeviceVector<int32_t> cam_map,
+    DeviceVector<float> cam_sum,
+    DeviceVector<uint32_t> cam_cnt
+);
+
+
 void densify_clip_score_tensor(
     int64_t num_splats,
     DeviceVector<float2> accum_buffer,  // [N, 2]; only .x is clipped
@@ -129,7 +162,7 @@ void densify_oversize_weight_tensor(
 );
 
 
-void relocate_splats_with_long_axis_split_tensor(
+int64_t relocate_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     float min_opacity,
     float split_opacity_k,
@@ -142,6 +175,8 @@ void relocate_splats_with_long_axis_split_tensor(
     // draw while the kernel still propagates the raw accumulator src -> dst.
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
+    DeviceVector<uint32_t> visit_counters,
+    uint32_t dead_after_steps,
     int sh_optim_bits,
     int num_sh,
     // SH-quant bounds buffer + layout flag used to encode (g1=0, g2=0) into
@@ -160,7 +195,9 @@ void relocate_splats_with_long_axis_split_tensor(
     // Non-SH Adam-state quant: when enabled, each relocated dst splat gets
     // its packed bytes set to codec-encoded zero against the current bound.
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    int64_t max_relocate,
+    int64_t* num_dead_out
 );
 
 
@@ -177,6 +214,7 @@ void add_splats_with_long_axis_split_tensor(
     // draw while the kernel still propagates the raw accumulator src -> dst.
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
+    DeviceVector<uint32_t> visit_counters,
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,

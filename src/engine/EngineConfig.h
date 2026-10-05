@@ -9,7 +9,9 @@
 #include "kernels/loss/PerPixelLoss.cuh"   // LossWeightIndex
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 
 
 // Bundles the scalars engine_compute_loss_backward takes, for the call path
@@ -143,6 +145,8 @@ struct OptimConfig {
     // individual bits.
     int   quantization_level           = 0;
     bool  use_per_splat_bias_correction   = false;
+    // Per-splat regularizers act only on splats some camera rendered this step.
+    bool  reg_rendered_only               = false;
 
     // When true, fold projection-backward and Adam-based per-splat optim into
     // a single fused kernel (FusedProjectionBwdOptim). The engine then skips
@@ -238,7 +242,25 @@ struct DensifyConfig {
     float las_split_opacity_k_init      = 0.5f;
     float las_split_opacity_k_final     = 0.6f;
     int   las_split_opacity_k_warmup    = 4500;
+    // Split events (revivals + growth) per refine step, as a fraction of the
+    // live count; revivals draw first. >= 1 leaves both uncapped.
+    float max_split_fraction            = 1.0f;
+    // Draw weight for splits scales with renders since the last split.
+    bool  split_weight_by_renders       = false;
+    // A splat unrendered for this many steps is relocated as dead; 0 = off.
+    int   dead_after_steps              = 0;
 };
+
+// The schedule engine_densify_step grows the model on; the trainer's ETA and
+// VRAM forecasts replay it.
+inline bool densify_grows_at(const DensifyConfig& c, int step, int max_steps) {
+    return c.refine_every > 0 && step > c.refine_start_iter &&
+           step % c.refine_every == 0 &&
+           step < std::max(c.refine_stop_iter, max_steps - c.refine_stop_num_iter);
+}
+inline int64_t densify_target(const DensifyConfig& c, int64_t cur, int64_t cap) {
+    return std::max(cur, std::min(cap, (int64_t)(c.growth_factor * (float)cur)));
+}
 
 
 // Per-type Adam LR + TV regularization weight. lr <= 0 disables the channel

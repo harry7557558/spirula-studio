@@ -2,11 +2,14 @@
 
 #include "app/FrameMaskSvg.h"
 
+#include "core/CubicBezier.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -359,6 +362,20 @@ void arc(std::vector<float>& pts, float x1, float y1, float rx, float ry, float 
     }
 }
 
+// A path's last anchor sitting on its first is the same anchor, reached
+// again: it keeps the first's out-handle and brings its own in-handle.
+void close_anchors(std::vector<float>& a) {
+    constexpr size_t k = bezier::kAnchorFloats;
+    const size_t n = a.size() / k;
+    if (n < 2) return;
+    const float* last = &a[(n - 1) * k];
+    const float tol = 1e-6f * std::max({1.0f, std::fabs(a[2]), std::fabs(a[3])});
+    if (std::fabs(last[2] - a[2]) > tol || std::fabs(last[3] - a[3]) > tol) return;
+    a[0] = last[0];
+    a[1] = last[1];
+    a.resize((n - 1) * k);
+}
+
 }  // namespace
 
 bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::string& error) {
@@ -369,16 +386,30 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
     float cx2 = 0, cy2 = 0;
     char prev = 0, cmd = 0;
     SvgSubpath* cur = nullptr;
+    // Per subpath in `out`: whether it had a curve, and an arc.
+    std::vector<char> curved, arced;
     auto begin = [&](float nx, float ny) {
         out.push_back({});
+        curved.push_back(0);
+        arced.push_back(0);
         cur = &out.back();
         cur->pts = {nx, ny};
+        cur->anchors = {nx, ny, nx, ny, nx, ny};
         x = sx = nx;
         y = sy = ny;
     };
     auto need = [&]() -> SvgSubpath* {
         if (!cur || cur->closed) begin(x, y);
         return cur;
+    };
+    auto line_anchor = [&](float px, float py) {
+        cur->anchors.insert(cur->anchors.end(), {px, py, px, py, px, py});
+    };
+    auto curve_anchor = [&](float x1, float y1, float x2, float y2, float ex, float ey) {
+        cur->anchors[cur->anchors.size() - 2] = x1;
+        cur->anchors[cur->anchors.size() - 1] = y1;
+        cur->anchors.insert(cur->anchors.end(), {x2, y2, ex, ey, ex, ey});
+        curved.back() = 1;
     };
     while (!p.at_end()) {
         if (p.at_command()) cmd = p.command();
@@ -407,16 +438,19 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
                 x = ox + v[0];
                 y = oy + v[1];
                 need()->pts.insert(cur->pts.end(), {x, y});
+                line_anchor(x, y);
                 break;
             case 'H':
                 if (!read(1)) { error = d; return false; }
                 x = (rel ? x : 0.0f) + v[0];
                 need()->pts.insert(cur->pts.end(), {x, y});
+                line_anchor(x, y);
                 break;
             case 'V':
                 if (!read(1)) { error = d; return false; }
                 y = (rel ? y : 0.0f) + v[0];
                 need()->pts.insert(cur->pts.end(), {x, y});
+                line_anchor(x, y);
                 break;
             case 'C':
             case 'S': {
@@ -436,6 +470,7 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
                 cy2 = oy + v[1];
                 const float ex = ox + v[2], ey = oy + v[3];
                 cubic(need()->pts, x, y, x1, y1, cx2, cy2, ex, ey);
+                curve_anchor(x1, y1, cx2, cy2, ex, ey);
                 x = ex;
                 y = ey;
                 break;
@@ -455,6 +490,10 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
                 }
                 const float ex = ox + v[0], ey = oy + v[1];
                 quad(need()->pts, x, y, cx2, cy2, ex, ey);
+                // Degree elevation: the cubic with these handles IS the quadratic.
+                curve_anchor(x + 2.0f / 3.0f * (cx2 - x), y + 2.0f / 3.0f * (cy2 - y),
+                             ex + 2.0f / 3.0f * (cx2 - ex), ey + 2.0f / 3.0f * (cy2 - ey),
+                             ex, ey);
                 x = ex;
                 y = ey;
                 break;
@@ -468,6 +507,8 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
                 }
                 const float ex = ox + v[3], ey = oy + v[4];
                 arc(need()->pts, x, y, v[0], v[1], v[2], large, sweep, ex, ey);
+                line_anchor(ex, ey);
+                arced.back() = 1;
                 x = ex;
                 y = ey;
                 break;
@@ -483,6 +524,11 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
         }
         prev = up;
     }
+    for (size_t k = 0; k < out.size(); k++) {
+        if (curved[k] && !arced[k]) close_anchors(out[k].anchors);
+        if (!curved[k] || arced[k] || out[k].anchors.size() < 2 * bezier::kAnchorFloats)
+            out[k].anchors.clear();
+    }
     return true;
 }
 
@@ -490,12 +536,15 @@ bool parse_svg_path(const std::string& d, std::vector<SvgSubpath>& out, std::str
 // Writing
 // ---------------------------------------------------------------------------
 
-std::string write_mask_svg(const std::vector<MaskShape>& shapes, const std::string& title) {
+std::string write_mask_svg(const std::vector<MaskShape>& shapes, const std::string& title,
+                           const std::string& camera) {
     std::string o;
     o += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     // width/height only size a viewer's window; the geometry is the viewBox.
     o += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\" width=\"1024\" "
-         "height=\"1024\" preserveAspectRatio=\"none\">\n";
+         "height=\"1024\" preserveAspectRatio=\"none\"";
+    if (!camera.empty()) o += " data-camera=\"" + escape_xml(camera) + "\"";
+    o += ">\n";
     if (!title.empty()) o += "  <title>" + escape_xml(title) + "</title>\n";
     o += "  <desc>Spirula Studio frame stencil. Coordinates are normalized to the image, "
          "(0,0) top left to (1,1) bottom right. Shapes paint in order: black removes, "
@@ -528,6 +577,22 @@ std::string write_mask_svg(const std::vector<MaskShape>& shapes, const std::stri
                      "\" fill-rule=\"evenodd\"/>\n";
                 break;
             }
+            case MaskShape::Kind::Bezier: {
+                // Every segment a C, straight ones too, so it reads back as a
+                // Bezier; the last ends on the first anchor, which reading merges.
+                const size_t n = s.pts.size() / bezier::kAnchorFloats;
+                if (n == 0) break;
+                std::string d = "M" + num(s.pts[2]) + " " + num(s.pts[3]);
+                for (size_t i = 0; i < n; i++) {
+                    float c[8];
+                    bezier::segment(s.pts.data(), n, i, c);
+                    d += " C" + num(c[2]) + " " + num(c[3]) + " " + num(c[4]) + " " +
+                         num(c[5]) + " " + num(c[6]) + " " + num(c[7]);
+                }
+                o += head + "path data-op=\"" + op + "\" d=\"" + d + " Z\" fill=\"" + ink +
+                     "\" fill-rule=\"evenodd\"/>\n";
+                break;
+            }
             case MaskShape::Kind::Stroke: {
                 std::string pts;
                 for (size_t i = 0; i + 1 < s.pts.size(); i += 2)
@@ -556,9 +621,10 @@ std::string write_mask_svg(const std::vector<MaskShape>& shapes, const std::stri
 // ---------------------------------------------------------------------------
 
 bool read_mask_svg(const std::string& text, std::vector<MaskShape>& out, std::string& title,
-                   std::string& error) {
+                   std::string& error, std::string* camera) {
     out.clear();
     title.clear();
+    if (camera) camera->clear();
     float vx = 0, vy = 0, vw = 1, vh = 1;
     bool seen_svg = false;
     std::vector<Style> stack{Style{}};
@@ -665,6 +731,7 @@ bool read_mask_svg(const std::string& text, std::vector<MaskShape>& out, std::st
         if (tag.name == "svg") {
             if (!seen_svg) {
                 seen_svg = true;
+                if (camera) *camera = trim(tag.attrs["data-camera"]);
                 const std::vector<float> vb = parse_list(tag.attrs["viewBox"]);
                 if (vb.size() == 4 && vb[2] > 0 && vb[3] > 0) {
                     vx = vb[0]; vy = vb[1]; vw = vb[2]; vh = vb[3];
@@ -731,7 +798,12 @@ bool read_mask_svg(const std::string& text, std::vector<MaskShape>& out, std::st
                 error = "<path d=\"" + error + "\">: unreadable path data";
                 return false;
             }
-            for (const SvgSubpath& sp : subs) emit(st, to_norm(sp.pts), sp.closed, nullptr);
+            for (const SvgSubpath& sp : subs) {
+                MaskShape curve;
+                curve.kind = MaskShape::Kind::Bezier;
+                curve.pts = to_norm(sp.anchors);
+                emit(st, to_norm(sp.pts), sp.closed, sp.anchors.empty() ? nullptr : &curve);
+            }
         }
         if (!tag.self_closing && tag.name != "rect" && tag.name != "circle" &&
             tag.name != "ellipse" && tag.name != "polygon" && tag.name != "polyline" &&
@@ -747,7 +819,7 @@ bool read_mask_svg(const std::string& text, std::vector<MaskShape>& out, std::st
 }
 
 bool load_mask_svg(const std::string& path, std::vector<MaskShape>& out, std::string& title,
-                   std::string& error) {
+                   std::string& error, std::string* camera) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         error = path;
@@ -755,17 +827,44 @@ bool load_mask_svg(const std::string& path, std::vector<MaskShape>& out, std::st
     }
     std::stringstream ss;
     ss << f.rdbuf();
-    if (!read_mask_svg(ss.str(), out, title, error)) {
+    if (!read_mask_svg(ss.str(), out, title, error, camera)) {
         error = path + ": " + error;
         return false;
     }
     return true;
 }
 
+bool load_mask_svg_set(const std::string& path, MaskSet& out, std::string& title,
+                       std::string& error) {
+    out = MaskSet{};
+    std::string camera;
+    std::vector<MaskShape> shapes;
+    if (!load_mask_svg(path, shapes, title, error, &camera)) return false;
+    if (camera.empty()) {
+        out.shapes = std::move(shapes);
+        return true;
+    }
+    out.cameras[camera] = std::move(shapes);
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path self = fs::path(path).lexically_normal();
+    for (fs::directory_iterator it(self.parent_path().empty() ? fs::path(".") : self.parent_path(), ec),
+         end;
+         !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != ".svg" || it->path().lexically_normal() == self) continue;
+        std::string t, c, err;
+        std::vector<MaskShape> other;
+        // A sibling that does not read is not this set's business.
+        if (!load_mask_svg(it->path().string(), other, t, err, &c)) continue;
+        if (!c.empty() && t == title && !out.cameras.count(c)) out.cameras[c] = std::move(other);
+    }
+    return true;
+}
+
 bool save_mask_svg(const std::string& path, const std::vector<MaskShape>& shapes,
-                   const std::string& title, std::string& error) {
+                   const std::string& title, std::string& error, const std::string& camera) {
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (f) f << write_mask_svg(shapes, title);
+    if (f) f << write_mask_svg(shapes, title, camera);
     if (!f) {
         error = path;
         return false;

@@ -26,8 +26,8 @@ std::string exe_path();
 std::string exe_dir();
 
 // macOS only. A Finder launch inherits launchd's PATH -- /usr/bin:/bin:
-// /usr/sbin:/sbin -- so colmap, ffmpeg and python3 are invisible to the bundle
-// though a shell finds them. Appends, so an inherited PATH still wins.
+// /usr/sbin:/sbin -- so colmap and ffmpeg are invisible to the bundle though a
+// shell finds them. Appends, so an inherited PATH still wins.
 void add_desktop_search_paths();
 
 }  // namespace app

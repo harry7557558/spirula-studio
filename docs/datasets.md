@@ -74,7 +74,38 @@ the first, middle and last of them: an RGBA export that is opaque everywhere is
 no mask. Training decodes each such image twice, once for its colour and once
 for its alpha.
 
+A dataset the GUI built may also carry `feature_masks/`, mirroring `masks/`:
+what its "Hide from the reconstruction only" prompt matched (the 360-camera
+preset's `sky; cloud`). Only the reconstruction reads it -- `spirula sfm
+--feature-masks`, intersected with `--masks` -- so training never sees it and
+still learns the sky.
+
 ## Seed points
+
+`seed_pointcloud` replaces the dataset's seed cloud with an external ordinary
+PLY (ASCII or binary little-endian), for example a registered LiDAR cloud.
+It requires `x`, `y`, `z`, `red`, `green`, `blue`; coordinates must be finite
+and the cloud nonempty. Integer RGB is 0–255; floating RGB is 0–1.
+Relative paths resolve from the dataset directory; absolute paths also work.
+The GUI's training options include **Seed point cloud PLY** with a file picker;
+the CLI equivalent is `--seed-pointcloud lidar.ply`.
+Switching built-in training presets preserves this selection. **Use dataset
+points** clears the override and reloads the dataset's cloud. The GUI shows
+the initialization source and warns when another setting bypasses the selected
+external cloud.
+
+The external cloud replaces, rather than appends to, the format's own cloud.
+It must already align with the cameras in the source dataset coordinate frame
+(for Nerfstudio, before undoing `applied_transform`). It passes through the
+same centering, scaling and region filtering as the native cloud, including
+when the evaluation camera subset is parsed. Camera files and sparse points
+on disk are not modified. This path is saved in training presets and config.json.
+
+`init_ply` remains the entry for an already-trained Gaussian PLY.
+With `init_ply`, the seed cloud contributes only if `init_ply_add_points` is
+enabled; resume restores checkpoint splats instead. `random_init=always`
+still replaces the selected cloud with random points. Leave `seed_pointcloud`
+empty to retain the format's existing behavior.
 
 The splats start from the dataset's point cloud. `random_init` decides when
 they start from points drawn at random around the cameras instead: `auto` (the
@@ -717,10 +748,11 @@ clips at "2 fps" the one that walks briskly gets the denser frames and the one
 shot from a bench gets fewer. Each still keeps its own rate bounds. Rows
 measured by different models are NOT one budget -- see below.
 
-A workspace records what its frames were extracted with (`.spirula-frames`,
-`gui/ReconStamp.h`). A re-run whose answer differs -- a different rate, a
-different unwrap, another clip in the list -- goes back to the video instead of
-keeping them, and drops the features and matches that describe the old ones.
+A workspace records what its frames were extracted with
+(`.spirula-dataset.json`, docs/notes/dataset-rerun.md). A re-run whose answer
+differs -- a different rate, a different unwrap, another clip in the list --
+asks before it goes back to the video, and drops the features and matches that
+describe the old frames.
 
 ### Adaptive spacing
 
@@ -810,14 +842,28 @@ up to +100% on a 1080p clip, with the tracking itself overlapped with the
 decode. Nothing is buffered: a video's worth of pictures does not fit, and a
 plan cannot be made until the whole cost curve is known.
 
-Without the built-in decoder the same plan is made from the candidate frames
-ffmpeg already extracts, at `fps x max(window, range)` instead of
+In the GUI, without the built-in decoder the same plan is made from the
+candidate frames ffmpeg already extracts, at `fps x max(window, range)` instead of
 `fps x window` so there are enough of them for the fastest rate it may ask for
 (`gui/FrameSelect.h`). That path plans one video at a time -- the candidates of
 a whole group are not on disk at once -- and it numbers the frames it keeps by
 the candidate they were, not by how many it has kept. The stem is what times a
 frame against the video's IMU and GPS (`sfm/map/SensorGauge.h`), and an
 adaptive plan leaves nothing evenly spaced for a frame rate to recover it from.
+
+`spirula sam extract` has no candidates on disk. Without the built-in decoder
+(a build without `SS_ENABLE_PATENTED`, a device without a video queue such as
+MoltenVK's, or `--decoder ffmpeg`) it reads decoded pictures out of ffmpeg over
+a pipe, one process per track, into the same loop the built-in decoder feeds
+(`app/FrameDecode.h`) -- so `--sync`, `--adaptive`, the 360 views and masking
+all work there too, and the stems are source frame indices either way. Its
+motion pass takes every frame's Y plane and reduces it on the host exactly as
+`video.slang`'s thumbnail does, which makes the plan the built-in one: on a
+1920 px dual-fisheye `.insv`, `--sync --adaptive --skip 30` gave identical
+motion costs and 93 of 94 kept frames in common, and a fixed `--skip 30` 39 of
+40 (the rest is the sharpness score, CPU against GPU). That pass decodes in
+software, because NVDEC's download squeezed a full-range Y plane into studio
+range: 38 s against 11 s on that clip.
 
 The pass reports as it goes, in two places. It enters the Frames step itself --
 nothing else has, since a whole rate group is measured before any of it is

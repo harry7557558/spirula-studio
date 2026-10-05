@@ -16,6 +16,7 @@
 // driver that resets under a long solve. Either way the screen reads the same
 // typed status, from the event stream or from the snapshot the child writes.
 
+#include "app/gui/DatasetPlan.h"
 #include "app/gui/DatasetPrep.h"
 #include "core/Env.h"
 #include "app/gui/SfmProgress.h"
@@ -72,6 +73,33 @@ inline bool sfm_model_is_fisheye(const std::string& m) {
     return m == "opencv-fisheye" || m == "thin-prism-fisheye";
 }
 
+// What `spirula sfm` spells each of SfmJob's choices as, in index order.
+inline const char* const kSfmQuality[] = {"low", "medium", "high", "extreme"};
+inline const char* const kSfmDataType[] = {"individual", "video", "internet"};
+inline const char* const kSfmCameraMode[] = {"single", "folder", "image"};
+inline const char* const kSfmPairs[] = {"auto", "exhaustive", "sequential",
+                                        "prefilter"};
+inline const char* const kSfmMapper[] = {"flat", "bottom-up"};
+inline const char* const kSfmFeatures[] = {"sift", "aliked-n16rot", "aliked-n32",
+                                           "loma-b128", "loma-b"};
+inline const char* const kSfmMetricGps[] = {"none", "horizontal", "full", "auto"};
+inline const char* const kSfmSensorGauge[] = {"none", "up", "auto"};
+inline const char* const kSfmExifAttitude[] = {"none", "up", "auto"};
+
+template <int N>
+const char* sfm_pick(const char* const (&table)[N], int i, int fallback = 0) {
+    return table[(i >= 0 && i < N) ? i : fallback];
+}
+
+// The matcher combo is two entries -- brute force, or "the learned matcher for
+// this frontend" -- because a learned matcher only reads the descriptors it
+// was trained on. Which one that is follows --features.
+inline const char* sfm_matcher_for(int features, int matcher) {
+    if (features == 0 || matcher != 1) return "bruteforce";
+    const std::string f = sfm_pick(kSfmFeatures, features);
+    return f.rfind("loma", 0) == 0 ? sfm_pick(kSfmFeatures, features) : "lightglue";
+}
+
 // SS_SFM_SUBPROCESS=1 starts a session with the escape hatch below on.
 inline bool sfm_subprocess_default() {
     const char* v = spirula::env("SFM_SUBPROCESS");
@@ -88,13 +116,9 @@ struct SfmJob {
     LidarJob lidar;
 
     // ---- reconstruction ----
-    // Replace the model in the output folder. A run left to itself REUSES one,
-    // which is how a finished dataset gets masks and geometry without a rebuild.
-    bool redo_model = false;
-    // Did these settings write the stamp beside that model (ReconStamp.h)?
-    // Only then does a difference from it mean the user asked for a different
-    // model; a panel pointed at a dataset it did not build is at its defaults.
-    bool settings_built_model = false;
+    // What the user asked to redo or keep; the plan (DatasetPlan.h) decides
+    // the rest, step by step, against what the workspace records.
+    PlanRequest request;
     // Keep feature detection out of the masked areas too, not only training.
     // Off still writes the masks -- worth it where what they cover holds still
     // and carries the finer detail the cameras converge on.
@@ -142,10 +166,10 @@ struct SfmJob {
     // an order of magnitude slower per pair -- the panel greys it out for SIFT
     // and the CLI refuses the combination outright.
     int matcher = 0;
-    // Scale and heading from the photographs' EXIF GPS: 0 off, 1 (the default)
-    // latitude and longitude, 2 with altitude. 1 leaves the tilt to the
-    // cameras, which a city capture's altitude is too biased to give.
-    int metric_gps = 1;
+    // Scale and heading from the capture's GPS: 0 off, 1 latitude and
+    // longitude, 2 with altitude, 3 (the default) the CLI's per-capture `auto`.
+    // Indices are saved in presets, so `auto` is appended rather than first.
+    int metric_gps = 3;
     // The video's own IMU and GPS track: 0 off, 1 orientation only, 2 (the
     // default) orientation and whatever metric scale passes its own checks.
     int sensor_gauge = 2;
@@ -174,6 +198,9 @@ struct SfmJob {
     // what those detectors and models were trained on. Empty = Rec.709/sRGB.
     std::string image_gamut;
     std::optional<bool> image_is_linear;
+    // What the detectors and models see, brightened in linear light: "", "auto"
+    // or stops (core/ColorSpace.h). Training reads the files as they are.
+    std::string image_exposure;
     // false: the sparse point cloud stays sRGB (train with point-color-gamut
     // Rec.709). true: written in the images' space, the trainer's default.
     bool point_color_in_image_space = false;
@@ -288,9 +315,6 @@ private:
 #endif
     std::vector<std::string> recon_args(const SfmJob& job,
                                         const PrepResult& prep);
-    // Model flags shared by the workspace stamp and both launch paths. The
-    // frozen execution selector is appended only when launching, so changing
-    // GPUs does not invalidate a completed model.
 
     std::thread _worker;
     std::atomic<State> _state{State::Idle};

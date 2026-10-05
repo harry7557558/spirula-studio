@@ -30,9 +30,15 @@ interface ICameraModel : IDifferentiable {
     [Differentiable] RVec2 project(RVec3 p);
 };
 
+// theta^2 below which the rotation is Ceres' first-order p + aa x p: its
+// derivative -[p]x exists at aa = 0, the norm's does not. Host: kSmallAngle2 in CpuCamera.h.
+static const float kSmallAngle2 = 2.220446049250313e-16;
+
 [Differentiable]
 RVec3 angleAxisRotate(RVec3 axis, RVec3 p) {
-    Real theta = length3(axis);
+    Real t2 = dot3(axis, axis);
+    if (t2 <= Real(kSmallAngle2)) return p + cross3(axis, p);
+    Real theta = sqrt(t2);
     RVec3 a = axis * (Real(1.0) / (theta + Real(1e-15)));
     RVec2 sc = rsincos(theta);
     Real st = sc.x, ct = sc.y;

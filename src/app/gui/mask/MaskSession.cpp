@@ -432,6 +432,7 @@ void MaskSession::pump() {
     _livewire.reset();
     _path.set_livewire(nullptr);
     _path.cancel();
+    _pen.cancel();
     _win_dirty = true;
 }
 
@@ -1654,7 +1655,7 @@ size_t MaskSession::sam_held_bytes() const {
 
 void MaskSession::start_slideshow() {
     if (_slide_playing || frame_count() < 2 || _idx < 0 || !idle() || sam_work_pending() ||
-        _path.in_progress())
+        _pen.in_progress() || _path.in_progress())
         return;
     // Both want the same memory and never need it at once.
     sam_yield();

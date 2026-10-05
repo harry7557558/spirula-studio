@@ -184,16 +184,33 @@ static void testPairsAndFeatures(const fs::path& dir, int& fails) {
     writeFeatures(feat.string(), fs_);
     uint32_t count = 0;
     check(peekFeatures(feat.string(), count) && count == 50, "a whole feature file probes", fails);
-    check(!fs::exists(feat.string() + ".part"), "the write leaves no part file", fails);
-    {
-        const uintmax_t whole = fs::file_size(feat);
-        std::vector<char> bytes(whole);
-        std::ifstream(feat, std::ios::binary).read(bytes.data(), (std::streamsize)whole);
-        std::ofstream torn(feat, std::ios::binary | std::ios::trunc);
-        torn.write(bytes.data(), (std::streamsize)whole - 100);
-    }
+    bool part_left = false;
+    for (const auto& e : fs::directory_iterator(dir))
+        part_left |= e.path().filename().string().rfind("one.bin.part", 0) == 0;
+    check(!part_left, "the write leaves no part file", fails);
+    const uintmax_t whole = fs::file_size(feat);
+    std::vector<char> bytes(whole);
+    std::ifstream(feat, std::ios::binary).read(bytes.data(), (std::streamsize)whole);
+    std::ofstream(feat, std::ios::binary | std::ios::trunc)
+        .write(bytes.data(), (std::streamsize)whole - 100);
     count = 0;
     check(!peekFeatures(feat.string(), count), "a truncated feature file is refused", fails);
+    {
+        std::ofstream oversize(feat, std::ios::binary | std::ios::trunc);
+        oversize.write(bytes.data(), (std::streamsize)whole);
+        oversize.write(bytes.data(), 100);
+    }
+    count = 0;
+    check(!peekFeatures(feat.string(), count), "an oversize feature file is refused", fails);
+
+    // Colors, a camera id and scores exercise every optional v6 section.
+    fs_.colors.assign(50 * 3, 9);
+    fs_.exif_camera = "cam";
+    for (Keypoint& k : fs_.keypoints) k.response = 1.0f;
+    writeFeatures(feat.string(), fs_);
+    count = 0;
+    check(peekFeatures(feat.string(), count) && count == 50,
+          "a feature file with every optional section probes", fails);
 }
 
 static int cmdResumeTest(int, char**) {

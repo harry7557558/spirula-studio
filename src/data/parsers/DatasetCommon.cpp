@@ -24,6 +24,20 @@ constexpr double kPi = 3.14159265358979323846;   // MSVC has no M_PI by default
 
 namespace dsparse {
 
+ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
+                                   const std::string& path) {
+    const std::string resolved = (fs::path(dataset_dir) / fs::path(path)).string();
+    ColmapPoints3D points = read_ply_points(resolved);
+    if (points.num() == 0)
+        throw std::runtime_error(spirula::i18n::format(
+            spirula::i18n::msg::data::seed_cloud_empty, {resolved}));
+    for (double v : points.xyz)
+        if (!std::isfinite(v))
+            throw std::runtime_error(spirula::i18n::format(
+                spirula::i18n::msg::data::seed_cloud_nonfinite, {resolved}));
+    return points;
+}
+
 // Each image's EXIF Orientation, or an empty vector when nothing asks for a
 // turn. Only JPEG carries the tag, so anything else is skipped without opening
 // it -- a dataset of PNGs costs nothing.

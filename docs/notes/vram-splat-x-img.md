@@ -15,6 +15,21 @@ Three numbers describe a step, and every buffer below is one of them:
 | `nnz` | pairs that survive the visibility test | 15.1M |
 | `n_isects` | (splat, tile) pairs the raster consumes | 22M - 36M |
 
+## Only this category grows
+
+Splat buffers are sized for `cap_max`, so everything else a run allocates is
+fixed once the first densify step has run -- which is what lets the trainer
+forecast its peak from this category alone. Scratch requested per LIVE splat
+(the densify draws, `raster_bwd.accum_weight`, `fused_proj_bwd.cam_bounds`)
+is Splat too: `POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool
+allocate it for `cap_max` on first use, scaling the request by cap / live, and
+`POOL_SPLAT_DRAW_TABLE` gives the two index lists whose length is a draw count
+`cap_max` entries outright. Measured on bonsai at 1/4 resolution, 228k -> 666k
+splats: splat stays at 1042.6 MiB (revised) / 1019.7 MiB (MCMC); without the
+tables it climbs 11 MiB over the same run and `other` another 15 MiB. A new buffer whose length
+follows the live count goes in one of those two tables, or the forecast
+under-reads the peak.
+
 ## What each buffer costs
 
 Per element, after the 2026-08-30 pass:

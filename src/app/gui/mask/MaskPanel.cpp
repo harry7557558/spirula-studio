@@ -13,6 +13,7 @@
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/MaskSettings.h"
 #include "app/gui/Ui.h"
+#include "core/CubicBezier.h"
 #include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/MaskEdit.h"
 
@@ -42,6 +43,16 @@ std::string one_decimal(double v) {
     char buf[32];
     std::snprintf(buf, sizeof buf, "%.1f", v);
     return buf;
+}
+
+// A closed pen path in pane pixels as the polygon commit_stroke fills,
+// flattened to a quarter of a MASK pixel whatever the zoom.
+ShapeStroke pen_stroke(const std::vector<float>& anchors, float pane_per_mask) {
+    ShapeStroke s;
+    s.kind = ShapeKind::Polygon;
+    bezier::flatten_closed(anchors.data(), anchors.size() / bezier::kAnchorFloats, 1.0f, 1.0f,
+                           0.25f * pane_per_mask, s.pts);
+    return s;
 }
 
 }  // namespace
@@ -146,6 +157,7 @@ void MaskSession::pick_tool(ToolId t) {
     _tool.set_id(t);
     set_mode(CanvasMode::Shape);
     _path.cancel();
+    _pen.cancel();
 }
 
 // The eraser is the brush shape under a different paint mode, not a shape of
@@ -155,11 +167,19 @@ void MaskSession::pick_eraser() {
     _tool.set_id(ToolId::Brush);
     set_mode(CanvasMode::Eraser);
     _path.cancel();
+    _pen.cancel();
 }
 
 void MaskSession::pick_path() {
     set_mode(CanvasMode::Path);
     _tool.cancel();
+    _pen.cancel();
+}
+
+void MaskSession::pick_pen() {
+    set_mode(CanvasMode::Pen);
+    _tool.cancel();
+    _path.cancel();
 }
 
 // A click here is a prompt, not a stroke: nothing half drawn may survive into it.
@@ -167,6 +187,7 @@ void MaskSession::pick_sam() {
     set_mode(CanvasMode::Sam);
     _tool.cancel();
     _path.cancel();
+    _pen.cancel();
 }
 
 void MaskSession::draw_toolbar() {
@@ -174,6 +195,12 @@ void MaskSession::draw_toolbar() {
     for (int i = (int)ToolId::Box; i <= (int)ToolId::Brush; i++) {
         const ToolRow& row = tool_table()[i];
         if (i != (int)ToolId::Box) ImGui::SameLine();
+        // The pen takes the polygon's place and its P, as in a vector editor:
+        // clicked, it draws one.
+        if (row.id == ToolId::Polygon) {
+            if (ui::KeyButton(msg::tool_pen, w, "P", pen_mode())) pick_pen();
+            continue;
+        }
         if (ui::KeyButton(tool_label(row.id), w, row.key,
                           mode() == CanvasMode::Shape && _tool.id() == row.id))
             pick_tool(row.id);
@@ -277,7 +304,9 @@ void MaskSession::draw_toolbar() {
 
 // The window may not be narrower than any toolbar row, or that row's right
 // end clips unseen; _toolbar_w starts each frame at the tool row's width.
-bool MaskSession::shape_open() const { return _tool.in_progress() || _path.in_progress(); }
+bool MaskSession::shape_open() const {
+    return _tool.in_progress() || _path.in_progress() || _pen.in_progress();
+}
 
 void MaskSession::note_row_width() {
     _toolbar_w = std::max(_toolbar_w, ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x +
@@ -549,6 +578,19 @@ void MaskSession::draw_canvas() {
             _last_commit_ms = now_ms() - t0;
         }
         in_each_pane([&](const ImVec2& o) { draw_path_overlay(dl, o, _path); });
+    } else if (pen_mode()) {
+        _pen.set_space(path_space(m));
+        _pen.note_modifiers(io.KeyShift, io.KeyCtrl);
+        _pen.note_space(space);
+        std::vector<float> anchors;
+        bool consumed = false;
+        if (_pen.update(in, anchors, consumed)) {
+            const double t0 = now_ms();
+            upload_rect(commit_stroke(pen_stroke(anchors, m.scale),
+                                      paint_now(_pen.mode_shift(), _pen.mode_ctrl()), m));
+            _last_commit_ms = now_ms() - t0;
+        }
+        in_each_pane([&](const ImVec2& o) { draw_pen_overlay(dl, o, _pen); });
     } else {
         ShapeStroke stroke;
         bool consumed = false;
@@ -619,8 +661,10 @@ void MaskSession::handle_keys(const Mapping& m) {
     if (!io.KeyCtrl) {
         for (int i = (int)ToolId::Box; i <= (int)ToolId::Brush; i++) {
             const ToolRow& row = tool_table()[i];
+            if (row.id == ToolId::Polygon) continue;
             if (ImGui::IsKeyPressed((ImGuiKey)row.imgui_key, false)) pick_tool(row.id);
         }
+        if (ImGui::IsKeyPressed(ImGuiKey_P, false)) pick_pen();
         if (ImGui::IsKeyPressed(ImGuiKey_I, false)) pick_path();
         if (ImGui::IsKeyPressed(ImGuiKey_X, false)) pick_eraser();
         if (ImGui::IsKeyPressed(ImGuiKey_G, false) && sam_available()) pick_sam();
@@ -628,12 +672,14 @@ void MaskSession::handle_keys(const Mapping& m) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         if (sam_mode()) sam_cancel();
         else if (path_mode()) _path.cancel();
+        else if (pen_mode()) _pen.cancel();
         else _tool.cancel();
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
         const Paint mode = path_mode() ? paint_now(_path.mode_shift(), _path.mode_ctrl())
-                                      : paint_now(io.KeyShift, io.KeyCtrl);
+                           : pen_mode() ? paint_now(_pen.mode_shift(), _pen.mode_ctrl())
+                                        : paint_now(io.KeyShift, io.KeyCtrl);
         ShapeStroke s;
         bool pending = false;
         if (path_mode()) {
@@ -641,6 +687,10 @@ void MaskSession::handle_keys(const Mapping& m) {
             pending = _path.commit_pending(poly);
             s.kind = ShapeKind::Polygon;
             s.pts = std::move(poly);
+        } else if (pen_mode()) {
+            std::vector<float> anchors;
+            pending = _pen.commit_pending(anchors);
+            if (pending) s = pen_stroke(anchors, m.scale);
         } else {
             pending = _tool.commit_pending(s);
         }
@@ -652,7 +702,11 @@ void MaskSession::handle_keys(const Mapping& m) {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true)) set_radius(step_brush(radius(), false));
     if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, true)) set_radius(step_brush(radius(), true));
+    if (pen_mode() && _pen.in_progress() &&
+        (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_Delete, false)))
+        _pen.pop_anchor();
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+        if (!io.KeyShift && pen_mode() && _pen.in_progress() && _pen.pop_anchor()) return;
         if (!io.KeyShift && path_mode() && _path.in_progress() && _path.pop_anchor()) return;
         if (!io.KeyShift && !path_mode() && _tool.id() == ToolId::Polygon && _tool.in_progress() &&
             _tool.pop_point())
@@ -752,6 +806,10 @@ void MaskSession::draw_status() {
         ui::TextDisabledWrapped(msg::hint_path);
         ui::Text(msg::path_anchors, {_path.anchor_count()});
         if (!_path.snapping()) ui::TextDisabledWrapped(msg::path_straight);
+    }
+    if (pen_mode()) {
+        ui::TextDisabledWrapped(msg::hint_pen);
+        ui::Text(msg::pen_anchors, {_pen.anchor_count()});
     }
     ui::TextDisabledWrapped(msg::hint_view);
     ui::TextDisabledWrapped(_view_mode == ViewMode::SideBySide ? msg::peek_hint_side

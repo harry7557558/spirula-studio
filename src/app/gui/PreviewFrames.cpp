@@ -4,11 +4,12 @@
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/HeifPhoto.h"
 #include "app/gui/Subprocess.h"
 #include "i18n/catalog/Dataset.h"
 
 #include "core/ColorSpace.h"
-#include "core/ExrImage.h"
+#include "core/ImageFile.h"
 #ifdef SS_HAVE_VIDEO
 #include "app/FrameExtract.h"
 #include "video/Video.h"
@@ -37,10 +38,19 @@ fs::path temp_still(const char* tag) {
             ".jpg");
 }
 
+colorspace::Exposure exposure_of(const PreviewSource& src) {
+    colorspace::Exposure e;
+    colorspace::parse_exposure(src.image_exposure, e);
+    return e;
+}
+
 void convert_to_srgb(const PreviewSource& src, std::vector<uint8_t>& rgb) {
     colorspace::to_srgb_inplace(rgb.data(), rgb.size() / 3,
                                 src.image_gamut,
                                 src.image_is_linear.value_or(false));
+    colorspace::expose_srgb8_inplace(
+        rgb.data(), rgb.size(),
+        colorspace::exposure_gain_srgb8(exposure_of(src), rgb.data(), rgb.size() / 3, 1));
 }
 
 // A packed frame's lens `folder`, cut out in place.
@@ -54,11 +64,19 @@ void crop_packed(const PreviewSource& src, int folder, int& w, int h,
 }
 
 bool load_photo(const PreviewSource& src, const std::string& path,
-                int& w, int& h, std::vector<uint8_t>& rgb, int folder) {
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        if (!exr::decode_srgb8(path, exr::Options(), info, rgb,
-                               src.image_gamut, src.image_is_linear).empty())
+                int& w, int& h, std::vector<uint8_t>& rgb, int folder,
+                const std::atomic<bool>& cancel, std::string& error) {
+    if (is_heif_path(path)) {
+        if (!load_heif(path, src.builtin_decode, src.ffmpeg_exe, w, h, rgb, cancel,
+                       error))
+            return false;
+        convert_to_srgb(src, rgb);
+    } else if (imagefile::handles(path)) {
+        imagefile::Info info;
+        imagefile::Options opt;
+        opt.exposure = exposure_of(src);
+        if (!imagefile::decode_srgb8(path, opt, info, rgb, src.image_gamut,
+                                     src.image_is_linear).empty())
             return false;
         w = info.width;
         h = info.height;
@@ -205,9 +223,19 @@ bool load_preview_frame(const PreviewSource& src, const PreviewFrame& frame,
         return false;
     }
     if (!src.is_video) {
+#ifdef SS_BUILD_SAM
+        if (src.builtin_decode && is_heif_path(frame.path)) {
+            std::string select_error;
+            if (!sam::freeze_device(src.device, select_error)) {
+                error = select_error;
+                return false;
+            }
+        }
+#endif
+        std::string why;
         if (frame.path.empty() ||
-            !load_photo(src, frame.path, w, h, rgb, folder)) {
-            error = dmsg::preview_frame_unreadable.get();
+            !load_photo(src, frame.path, w, h, rgb, folder, cancel, why)) {
+            error = why.empty() ? dmsg::preview_frame_unreadable.get() : why;
             return false;
         }
         return true;
@@ -299,6 +327,7 @@ void scan_preview_frames(const PreviewSource& src,
     PreviewSource stored = src;
     stored.image_gamut.clear();
     stored.image_is_linear.reset();
+    stored.image_exposure.clear();
 #ifdef SS_BUILD_SAM
     if (src.is_video && src.builtin_decode) {
         std::string select_error;

@@ -2,20 +2,14 @@
 
 // FrameExtract -- video in, a folder of sharp (optionally masked) frames out.
 //
-// The composition of src/video/ (decode + a sharpness shader) and src/sam/
-// (masking), driven identically by `spirula-sam extract` and by the GUI's
-// dataset preparation, so the two cannot drift. It sits in src/app/ for the
-// same reason TrainerCore does: it belongs to neither subsystem, and every
-// front end wants exactly one copy of it.
+// Decoding (app/FrameDecode.h: Vulkan Video, or an ffmpeg child) composed with
+// the sharpness pick and src/sam/ masking, driven identically by `spirula sam
+// extract` and by the GUI's dataset preparation, so the two cannot drift.
 //
 // The frame-selection arithmetic reproduces
 // reference/scripts/extract_frames.py's -- a window of `keep` frames, one
-// written every `skip` -- so the same source frames get the same file names
-// whichever path produced them. That is what lets the GUI fall back to
-// ffmpeg + FrameSelect without the dataset changing.
-//
-// Only compiled when SS_ENABLE_PATENTED is ON; every caller has an ffmpeg
-// fallback for when it is not.
+// written every `skip` -- and files are named by source frame index whichever
+// decoder ran.
 
 #include "app/FrameLook.h"
 #include "app/FrameMotion.h"
@@ -29,6 +23,10 @@
 
 namespace app {
 
+// Auto takes the in-process decoder when the build and the device have one,
+// and ffmpeg otherwise.
+enum class FrameDecoder { Auto, Builtin, Ffmpeg };
+
 // What every frame goes through is the base class, so a preview can be handed
 // it whole (app/FrameLook.h); this adds which frames are kept and where.
 struct FrameExtractJob : FrameLook {
@@ -40,6 +38,9 @@ struct FrameExtractJob : FrameLook {
     // core/VulkanDeviceSelection.h parses. Frozen before the decode probe and
     // any Masker::init; a bad value fails the job.
     std::string device;
+
+    FrameDecoder decoder = FrameDecoder::Auto;
+    std::string ffmpeg_exe = "ffmpeg";
 
     // Selection
     int   skip = 1;                // write one frame every n source frames
@@ -103,6 +104,29 @@ struct FrameExtractSinks {
     const std::atomic<bool>* cancel = nullptr;
 };
 
+// Runs the whole thing. False with `error` set on failure; a cancellation
+// returns false with error == "cancelled".
+bool extract_frames(const FrameExtractJob& job, const FrameExtractSinks& sinks,
+                    FrameExtractStats& stats, std::string& error);
+
+// The view change across this video's first track, which is what an adaptive
+// plan is made of (app/FrameMotion.h). One decode of that track and nothing
+// else: for a caller planning several videos against one budget.
+bool scan_motion(const FrameExtractJob& job, const FrameExtractSinks& sinks,
+                 MotionPlanInput& out, FrameExtractStats& stats,
+                 std::string& error);
+
+// What a plan came out as: the log line, and `sinks.planned`.
+void report_plan(const FrameExtractSinks& sinks, const std::vector<int64_t>& plan,
+                 int64_t frames, double fps);
+
+// The timing table `spirula-sam extract` prints, so the CLI and the GUI log
+// agree on what the numbers mean.
+std::string format_extract_stats(const FrameExtractStats& s,
+                                 const std::string& out_dir, bool masked);
+
+// ---- only in SS_HAVE_VIDEO builds (app/FrameDecodeVulkan.cpp) ----
+
 // "" when in-process decoding is available on this device, otherwise the
 // reason it is not. CREATES the inference context, so freeze the device first;
 // backends() keeps the build-level answer for a UI that must not probe yet.
@@ -127,22 +151,6 @@ sfm::ExifTransform fold_auto_rotate(const std::string& path,
                                     const std::vector<int>& tracks,
                                     FrameLook& look, bool& mixed);
 
-// Runs the whole thing. False with `error` set on failure; a cancellation
-// returns false with error == "cancelled".
-bool extract_frames(const FrameExtractJob& job, const FrameExtractSinks& sinks,
-                    FrameExtractStats& stats, std::string& error);
-
-// The view change across this video's first track, which is what an adaptive
-// plan is made of (app/FrameMotion.h). One decode of that track and nothing
-// else: for a caller planning several videos against one budget.
-bool scan_motion(const FrameExtractJob& job, const FrameExtractSinks& sinks,
-                 MotionPlanInput& out, FrameExtractStats& stats,
-                 std::string& error);
-
-// What a plan came out as: the log line, and `sinks.planned`.
-void report_plan(const FrameExtractSinks& sinks, const std::vector<int64_t>& plan,
-                 int64_t frames, double fps);
-
 // The frames at `indices`, as extract_frames() would write them, served by
 // ONE forward pass -- the decoder cannot seek, so asking one at a time
 // re-reads the file each time. `folder` indexes frame_folders().
@@ -157,10 +165,5 @@ bool extract_one_frame(const std::string& input, const FrameLook& look,
                        int64_t index, int folder, nn::Image& out,
                        const std::atomic<bool>* cancel, std::string& error,
                        const std::string& device = {});
-
-// The timing table `spirula-sam extract` prints, so the CLI and the GUI log
-// agree on what the numbers mean.
-std::string format_extract_stats(const FrameExtractStats& s,
-                                 const std::string& out_dir, bool masked);
 
 }  // namespace app

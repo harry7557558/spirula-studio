@@ -147,16 +147,6 @@ bool RenderSession::dirty() const {
 
 void RenderSession::set_sources(std::vector<SourceInfo> sources) {
     _sources = std::move(sources);
-    // A dataset read after the project started still decides up, as long
-    // as nothing has been laid out against the old one.
-    if (_have_project && !_up_known && _project.keys.size() <= 1)
-        for (const SourceInfo& s : _sources)
-            if (s.has_up) {
-                const Sim3 to_world = s.view.norm_to_world * s.view.file_to_norm;
-                to_world.rotate(s.up, _project.up);
-                _up_known = true;
-                break;
-            }
     std::vector<SourceView> views;
     views.reserve(_sources.size());
     std::string sig;
@@ -171,6 +161,7 @@ void RenderSession::set_sources(std::vector<SourceInfo> sources) {
     }
     if (!_have_project) return;
     follow_placement();
+    follow_scene_up();
     reconcile_sources();
 }
 
@@ -261,17 +252,8 @@ void RenderSession::new_project() {
     reconcile_sources();
     // The model on screen, from the start: the first shot is there to change.
     _project.shots.assign(1, Shot{});
-    // Up is the dataset's when one says, else whatever the pane shows as up.
-    const Sim3 s2w = _w2s.inverse();
-    const double z[3] = {0, 0, 1};
-    s2w.rotate(z, _project.up);
-    _up_known = false;
-    for (const SourceInfo& s : _sources)
-        if (s.has_up) {
-            (s.view.norm_to_world * s.view.file_to_norm).rotate(s.up, _project.up);
-            _up_known = true;
-            break;
-        }
+    _up_known = scene_up(_project.up);
+    _up_taken = false;
     if (_panel) {
         add_key_from_view(0.0, true);
         if (_panel->view_model() == 3) {
@@ -418,6 +400,27 @@ Sim3 RenderSession::primary_placement() const {
     return _sources[0].view.norm_to_world * _sources[0].view.file_to_norm;
 }
 
+// A dataset's guess at up holds for the frame its model was read in. A model
+// turned in the editor was levelled by hand against the pane, so up is then
+// the pane's, not the guess turned along with the model.
+bool RenderSession::scene_up(double out[3]) const {
+    const double z[3] = {0, 0, 1};
+    _w2s.inverse().rotate(z, out);
+    bool turned = false;
+    for (const SourceInfo& s : _sources) {
+        const Sim3 placement = s.view.norm_to_world * s.view.file_to_norm;
+        Sim3 rot;
+        std::copy(placement.R, placement.R + 9, rot.R);
+        if (!rot.is_identity(1e-9)) {
+            turned = true;
+        } else if (s.has_up) {
+            placement.rotate(s.up, out);
+            return true;
+        }
+    }
+    return turned;
+}
+
 // A name for what is made of this move: the project's own, else the primary
 // model's, past the file and folder names every run and dataset share.
 std::string RenderSession::base_name() const {
@@ -488,6 +491,7 @@ void RenderSession::open_from(const std::string& path) {
         p.placement = now;
         _project = std::move(p);
         _have_project = true;
+        _up_taken = false;
         _tracked_load = _sources.empty() ? 0 : _sources[0].load_id;
         _baked_path.clear();
         // Its models by path: what it names and is not open is opened, and
@@ -945,6 +949,29 @@ void RenderSession::follow_placement() {
     project_changed();
 }
 
+// Up is the scene's until something is laid out against it: a dataset read
+// late, a model turned in the editor, a pane levelled or not. Like a
+// placement, not a step anyone takes back.
+void RenderSession::follow_scene_up() {
+    if (_project.keys.size() > 1 || _up_taken) return;
+    double up[3];
+    if (!scene_up(up)) return;
+    _up_known = true;
+    double diff = 0.0;
+    for (int k = 0; k < 3; k++) diff += std::fabs(up[k] - _project.up[k]);
+    if (diff < 1e-9) return;
+    const bool stable = !_hist.empty() && project_to_json(_project) == _hist[(size_t)_head].json;
+    const bool saved = project_to_json(_project) == _saved_json;
+    std::copy(up, up + 3, _project.up);
+    for (Keyframe& k : _project.keys) {
+        if (k.aim) k.roll = roll_of(k.rot, k.pos, k.target, _project.up);
+        update_aim(k, _project.up);
+    }
+    if (stable) _hist[(size_t)_head].json = project_to_json(_project);
+    if (saved) _saved_json = project_to_json(_project);
+    project_changed();
+}
+
 void RenderSession::remove_source(int index) {
     if (index < 0 || index >= (int)_project.sources.size() || _project.sources.size() < 2) return;
     const int r = rt(index);
@@ -995,6 +1022,7 @@ void RenderSession::take_up_from_view() {
     quat_to_matrix3(rot, R);
     for (int k = 0; k < 3; k++) _project.up[k] = R[k*3+1];
     _up_known = true;
+    _up_taken = true;
     for (Keyframe& k : _project.keys) update_aim(k, _project.up);
     project_changed();
 }

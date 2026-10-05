@@ -29,7 +29,7 @@ namespace ckpt {
 // also depends on the dataset carrying those maps, which only setup knows.
 struct TargetLayout {
     int64_t max_num_splats = 0;
-    int     num_sh         = 0;    // SH coefficients per colour channel
+    int     num_sh         = 0;    // non-DC SH coefficients per colour channel
     int     num_images     = 0;    // POST-split camera count
     // Grid extents as (L, H, W); unset means the target has no such channel.
     std::optional<std::array<int, 3>> bilagrid_rgb;

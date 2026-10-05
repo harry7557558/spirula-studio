@@ -58,6 +58,9 @@ void engine_setup_data_manager(
     // joined before we begin spinning up new ones.
     engine().dm.reset();
     engine().gt_mean_luma.clear();
+    engine().visit.num_post = (int32_t)(viewmats.size() / 16);
+    engine().visit.cam_sum = DeviceVector<float>();
+    engine().visit.cam_cnt = DeviceVector<uint32_t>();
 
     engine().dm = std::make_unique<DataManager>(
         std::move(cfg), std::move(camera_models), std::move(camera_distortions),
@@ -74,6 +77,33 @@ void engine_setup_data_manager(
         std::move(train_indices),    std::move(val_indices));
 }
 
+
+void engine_set_view_stats(bool enabled) {
+    auto& v = engine().visit;
+    v.enabled = enabled && v.num_post > 0;
+    if (!v.enabled) return;
+    if (v.cam_sum.data_ptr() == nullptr) {
+        v.cam_sum.resize(PoolSlot::EngVisitCamSum, v.num_post);
+        v.cam_cnt.resize(PoolSlot::EngVisitCamCnt, v.num_post);
+        v.cam_sum.zero();
+        v.cam_cnt.zero();
+    }
+}
+
+void engine_read_view_stats(std::vector<float>& cam_sum, std::vector<uint32_t>& cam_cnt) {
+    auto& v = engine().visit;
+    cam_sum.clear(); cam_cnt.clear();
+    if (!v.enabled || v.cam_sum.data_ptr() == nullptr) return;
+    cam_sum.resize((size_t)v.num_post);
+    cam_cnt.resize((size_t)v.num_post);
+    backend::memcpy_sync(cam_sum.data(), v.cam_sum.data_ptr(),
+                         (size_t)v.num_post * sizeof(float), backend::MemcpyKind::DeviceToHost);
+    backend::memcpy_sync(cam_cnt.data(), v.cam_cnt.data_ptr(),
+                         (size_t)v.num_post * sizeof(uint32_t), backend::MemcpyKind::DeviceToHost);
+}
+
+// The stats a DataManager epoch draws on are at most this many steps old.
+static constexpr int kViewStatsPushEvery = 100;
 
 // Resolve the `split_batch` + `use_fused_proj_bwd_optim` conflict. Both
 // turned on at once is an inconsistency: split_batch loops over single
@@ -298,6 +328,12 @@ std::map<std::string, float> engine_train_step_managed(
     EngineStepConfig cfg = _resolve_split_vs_fpbo(
         cfg_in, engine().dm->max_input_batch_size(),
         engine().dm->max_face_passes());
+
+    if (engine().visit.enabled && step % kViewStatsPushEvery == 0 && step > 0) {
+        std::vector<float> sum; std::vector<uint32_t> cnt;
+        engine_read_view_stats(sum, cnt);
+        engine().dm->set_view_stats(std::move(sum), std::move(cnt));
+    }
 
     const TrainStep& stp = engine().dm->next_train_step();
     if (stp.subs.empty())

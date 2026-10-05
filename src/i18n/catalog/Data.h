@@ -1308,6 +1308,28 @@ SS_MSG(file_unreadable,
        "прочитать {0}"),
     TR("{0} okunamadı"));
 
+SS_MSG(seed_cloud_empty,
+    EN("Seed point cloud is empty: {0}"), JA("初期点群が空です: {0}"),
+    ZH_HANS("初始化点云为空：{0}"), ZH_HANT("初始化點雲為空：{0}"),
+    KO("초기 점 구름이 비어 있습니다: {0}"), DE("Startpunktwolke ist leer: {0}"),
+    FR("Le nuage initial est vide : {0}"), ES("La nube inicial está vacía: {0}"),
+    PT("A nuvem inicial está vazia: {0}"), IT("La nuvola iniziale è vuota: {0}"),
+    NL("Startpuntenwolk is leeg: {0}"), RU("Начальное облако точек пусто: {0}"),
+    TR("Başlangıç nokta bulutu boş: {0}"));
+SS_MSG(seed_cloud_nonfinite,
+    EN("Seed point cloud has non-finite coordinates: {0}"),
+    JA("初期点群に有限でない座標があります: {0}"),
+    ZH_HANS("初始化点云含非有限坐标：{0}"), ZH_HANT("初始化點雲含非有限座標：{0}"),
+    KO("초기 점 구름에 유한하지 않은 좌표가 있습니다: {0}"),
+    DE("Startpunktwolke enthält nicht-endliche Koordinaten: {0}"),
+    FR("Le nuage initial contient des coordonnées non finies : {0}"),
+    ES("La nube inicial contiene coordenadas no finitas: {0}"),
+    PT("A nuvem inicial contém coordenadas não finitas: {0}"),
+    IT("La nuvola iniziale contiene coordinate non finite: {0}"),
+    NL("Startpuntenwolk bevat niet-eindige coördinaten: {0}"),
+    RU("Начальное облако содержит неконечные координаты: {0}"),
+    TR("Başlangıç bulutunda sonlu olmayan koordinatlar var: {0}"));
+
 }  // namespace data
 }  // namespace msg
 }  // namespace i18n

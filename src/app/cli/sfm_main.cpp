@@ -542,6 +542,12 @@ static bool collectModelDirs(const std::string& input, std::vector<fs::path>& ou
     return true;
 }
 
+static bool pairsContain(const std::vector<Mapper::SeamPair>& v, const Mapper::SeamPair& p) {
+    for (const Mapper::SeamPair& q : v)
+        if (q.pair == p.pair) return true;
+    return false;
+}
+
 static bool readModels(const std::string& dir, std::vector<Reconstruction>& models, bool verbose) {
     std::vector<fs::path> dirs;
     if (!collectModelDirs(dir, dirs)) return false;
@@ -603,7 +609,7 @@ static int cmdExtract(int argc, char** argv) {
 
     // ---- directory (batch) ----
     if (fs::is_directory(image)) {
-        adoptExrColorSpace(cfg, image, seen);
+        adoptFileColorSpace(cfg, image, seen);
         fs::path outdir = output.empty() ? fs::path("features") : fs::path(output);
         ExtractStats st;
         int rc = extractDirectory(image, outdir, cfg, st);
@@ -632,7 +638,8 @@ static int cmdExtract(int argc, char** argv) {
                     {image, cfg.mask_dir});
     }
     GrayImage img = loadGrayImage(image, cfg.max_image_size, /*want_color=*/true, maskpath,
-                                  cfg.image_gamut, cfg.image_is_linear, cfg.flip_mask);
+                                  cfg.image_gamut, cfg.image_is_linear, cfg.flip_mask,
+                                  false, "", cfg.exposure);
     if (cfg.sift.verbose)
         L::err(Tag::Extract, M::extract_to_gray,
                {image, img.width, img.height});
@@ -805,6 +812,7 @@ static int cmdMap(int argc, char** argv) {
 
     MapperOptions& opt = cfg.mapper;
     ManagerOptions& mgopt = cfg.manager;
+    opt.seam_order_by_name = cfg.pairs == "sequential";
     const std::string& featdir = cfg.feature_dir;
 
     MatchesDatabase db = readMatches(matchesPath);
@@ -904,12 +912,17 @@ static int cmdMap(int argc, char** argv) {
     }
     // The sensors, calibrated against the gyro on the verified pairs.
     const SensorCaptures sensors = loadSensorCaptures(cfg, opt.verbose);
+    applyMetricGpsAuto(cfg, sensors, cfg.image_dir);
     std::unique_ptr<TelemetryPriors> priors =
         cfg.sensor_map ? makeSensorPriors(cfg, sensors, db, cs.ids) : nullptr;
     if (priors)
         calibrateSensorPriorsFromDatabase(*priors, db, feats, perImageCameras(cs, feats.size()),
                                           cfg.twoview, cfg.threads, opt.verbose);
-    Mapper mapper(db, feats, opt, cs.ids, &rigs, &seqs, priors.get());
+    std::unique_ptr<ExifGpsPriors> exif_priors =
+        cfg.sensor_map && !priors ? makeExifGpsPriors(cfg, cfg.image_dir, db, cs, opt.verbose)
+                                  : nullptr;
+    Mapper mapper(db, feats, opt, cs.ids, &rigs, &seqs,
+                  priors ? static_cast<PriorSource*>(priors.get()) : exif_priors.get());
     std::vector<Reconstruction> models;
     AssembleStats ast;
     if (cfg.resume.empty()) {
@@ -968,6 +981,18 @@ static int cmdMap(int argc, char** argv) {
                 if (ss.dropped_images) printf(" (%zu images dropped)", ss.dropped_images);
             }
             printf("\n");
+            size_t strong = 0;
+            std::vector<Mapper::SeamPair> cand;
+            const std::vector<Mapper::SeamPair> open = mapper.openSeams(models[i], &strong, &cand);
+            printf("    open seams: %zu of %zu strong pairs (%zu explained under %.2f)\n",
+                   open.size(), strong, cand.size(), opt.seam_weld_frac);
+            // SS_SFM_MAP_PROF lists every candidate, so an offline scorer can check each term.
+            for (const Mapper::SeamPair& sp : MapProf::enabled() ? cand : open)
+                printf("    seam %s %s-%s explained %zu/%zu, shared neighbours %d, offset %.4f, "
+                       "gap %d, kink ratio %.2f\n",
+                       pairsContain(open, sp) ? "open" : "candidate",
+                       db.images[sp.a].name.c_str(), db.images[sp.b].name.c_str(), sp.explained,
+                       sp.matches, sp.nbr_common, sp.off_depth, sp.gap, sp.kink_ratio);
             DuplicateReport dr =
                 findDuplicateStructure(models[i], mgopt.duplicate, mapper.matchedPredicate());
             printf("    duplicate structure: %zu of %zu co-located pairs share no points "
@@ -1042,6 +1067,10 @@ static int cmdMap(int argc, char** argv) {
     recolorPoints(models, cfg);
     splitCamerasBySize(models, feats);
     if (!output.empty()) writeModels(models, output, opt.verbose, map_gauge, &rigs);
+    if (!output.empty() && !ast.pre_weld.empty()) {
+        resolveImageNames(ast.pre_weld, cfg.image_dir);
+        writeModels(ast.pre_weld, fs::path(output) / "pre_weld", opt.verbose, {}, &rigs);
+    }
     return map_metric ? 0 : 4;
 }
 
@@ -1106,7 +1135,9 @@ static int cmdMerge(int argc, char** argv) {
     }
     // A reference re-gauges a model instead of joining it to another, which is
     // the one thing this command does that one model can want (D74).
-    const bool metric = cfg.metric_gps != "none" || !cfg.metric_positions.empty() ||
+    const SensorCaptures merge_sensors = loadSensorCaptures(cfg, mo.verbose);
+    applyMetricGpsAuto(cfg, merge_sensors, cfg.image_dir);
+    const bool metric = cfg.metricGps() || !cfg.metric_positions.empty() ||
                         (!cfg.telemetry_inputs.empty() && cfg.sensor_gauge != "none") ||
                         (cfg.orient && cfg.exif_attitude != "none" && !cfg.image_dir.empty());
     if (models.size() < 2 && !metric) {
@@ -1145,7 +1176,8 @@ static int cmdMerge(int argc, char** argv) {
     std::vector<sfm::ModelGauge> merge_gauge;
     // These models came off disk, which records no Orientation tag.
     if (cfg.exif_orientation == "orient") fillExifOrientations(models, cfg.image_dir);
-    const bool merge_metric = fixGauge(models, cfg, cfg.image_dir, mo.verbose, merge_gauge);
+    const bool merge_metric =
+        fixGauge(models, cfg, cfg.image_dir, mo.verbose, merge_gauge, &merge_sensors);
     recolorPoints(models, cfg);
     writeModels(models, fs::path(output), mo.verbose, merge_gauge);
     // In place, the models that were absorbed must not stay behind as stale

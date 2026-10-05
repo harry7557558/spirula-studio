@@ -219,6 +219,33 @@ int cmdSensorGaugeTest(int, char**) {
         check(rr.calib_err_deg < 1.0, "T7 extrinsic within 1 deg");
         check(std::fabs(r.groups[0].g_norm - 9.81) < 0.3, "T7 gravity norm");
     }
+    // ---- T8: the Avata 360 -- an attitude into a z-down world, no accelerometer
+    {
+        Scenario sc;
+        sc.attitude_only = true;
+        sc.no_accel = true;
+        sc.z_down_world = true;
+        sc.declare_up = true;
+        RunResult rr = runScenario(sc);
+        const SensorGaugeResult& r = rr.r;
+        std::printf("T8 attitude, no accel: applied=%d metric=%d up=%.3f deg calib=%.3f deg sign=%.0f "
+                    "scale_err=%.4f\n", r.applied, r.metric, rr.up_err_deg, rr.calib_err_deg,
+                    r.groups[0].fit.gyro_sign, rr.scale_err);
+        printGroups(r);
+        check(r.groups[0].fit.ok && rr.calib_err_deg < 1.0, "T8 extrinsic within 1 deg, no accelerometer");
+        check(r.up_from_imu && rr.up_err_deg < 0.5, "T8 up from the declared vertical within 0.5 deg");
+        check(r.applied && r.metric && r.scale_from_gps && !r.scale_from_imu, "T8 metric from GPS alone");
+    }
+    // ---- T8b: the same with no vertical declared ------------------------------
+    {
+        Scenario sc;
+        sc.attitude_only = true;
+        sc.no_accel = true;
+        sc.z_down_world = true;
+        RunResult rr = runScenario(sc);
+        check(!rr.r.up_from_imu && rr.r.groups[0].fit.reason == ExtrinsicFail::NoStream,
+              "T8b no vertical declared, no up");
+    }
     std::printf("%s\n", fails ? "FAIL" : "PASS");
     return fails ? 1 : 0;
 }

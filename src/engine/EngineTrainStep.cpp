@@ -8,6 +8,7 @@
 #include "core/Env.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineState.h"
+#include "shaders/screen_layout.h"
 
 #include <cstdio>
 #include <map>
@@ -50,6 +51,29 @@ static TorchTensorView _slice_tv_range_first_dim(const TorchTensorView& tv,
     std::vector<int64_t> new_shape = shape;
     new_shape[0] = k_count;
     return TorchTensorView(base + offset_bytes, esize, std::move(new_shape));
+}
+
+
+// Folds this batch's screen gradients into the per-camera visit stats. Runs
+// right after the backward, before the optimizer sorts the packed ids.
+static void _visit_accumulate_camera_stats(const std::string& primitive) {
+    auto& v = engine().visit;
+    if (!v.enabled || v.cam_sum.data_ptr() == nullptr) return;
+    const auto& cam_map = engine().bilagrid_cur_cam_indices;
+    const int C = (int)engine().camera.num;
+    if (cam_map.data_ptr() == nullptr || (int64_t)cam_map.size() < C) return;
+    if (engine().fwd.v_splats_s.empty() || engine().fwd.v_splats_s[0].data_ptr() == nullptr)
+        return;
+    const int64_t N = engine().cur_num_splats;
+    const bool packed = engine().packed;
+    const int64_t n_isect = packed ? (int64_t)engine().fwd.camera_ids.size() : (int64_t)C * N;
+    const bool gut = primitive == "3dgut";
+    visit_camera_stats_zero_tensor(C, cam_map, v.cam_sum, v.cam_cnt);
+    visit_camera_stats_tensor(
+        n_isect, N, C, packed, engine().fwd.camera_ids, engine().fwd.gaussian_ids,
+        engine().fwd.v_splats_s[0], gut ? SCRG_STRIDE : SCR2_STRIDE,
+        gut ? SCRG_OPAC : SCR2_OPAC, engine().optim.visit_counters, cam_map,
+        v.cam_sum, v.cam_cnt);
 }
 
 
@@ -139,7 +163,10 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         engine().ppisp.enabled && engine().ppisp.cur_run_before_color_space;
     engine().background.match_luma_pending = cfg.background.match_luminance;
 
-    forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
+    {
+        SplatStageTimer stage_timer;
+        forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
+    }
 
     // PPISP already ran inside the forward in the before-color-space order.
     const bool ppisp_after = engine().ppisp.enabled &&
@@ -172,6 +199,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.color_shift_reg_beta);
     engine_bin_tile_observe(std::chrono::duration<double>(
         std::chrono::steady_clock::now() - step_t0).count());
+    _visit_accumulate_camera_stats(primitive);
     return losses;
 }
 
@@ -186,7 +214,10 @@ static void _engine_step_optim_and_densify(
     const EngineStepConfig& cfg,
     std::map<std::string, float>& loss_dict
 ) {
-    engine_optim_step(step, cfg.optim);
+    {
+        SplatStageTimer stage_timer;
+        engine_optim_step(step, cfg.optim);
+    }
 
     if (engine().background.enabled) {
         engine_background_optim_step(step, cfg.background);
@@ -226,9 +257,17 @@ static void _engine_step_optim_and_densify(
         ppisp_reg_readout.issue(losses_buf);
     }
 
-    int num_added = engine_densify_step(step, max_steps, cfg.densify);
+    int num_added = 0;
+    {
+        SplatStageTimer stage_timer;
+        num_added = engine_densify_step(step, max_steps, cfg.densify);
+    }
 
     loss_dict["num_added"] = (float)num_added;
+    if (densify_grows_at(cfg.densify, step, max_steps)) {
+        loss_dict["num_dead"]      = (float)engine().optim.last_num_dead;
+        loss_dict["num_relocated"] = (float)engine().optim.last_num_relocated;
+    }
     loss_dict["cur_num_splats"] = (float)engine().cur_num_splats;
     loss_dict["max_num_splats"] = (float)engine().max_num_splats;
 }

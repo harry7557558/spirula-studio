@@ -39,7 +39,14 @@ for A/B testing):
   blob uses a CAS-loop emulation (Intel ANV), and a
   `.atomicadd`-suffixed blob uses native `OpAtomicFAddEXT`; the pipeline
   layer picks per device at module load (no in-shader branch). Unlike
-  VkSplat, both variants are always built.
+  VkSplat, both variants are always built. The CAS loop has a second shape
+  behind the spec constant `kCasUniformExit` (ID 1000, clear of every
+  kernel's own 0..n-1), where no lane leaves the loop until every lane in
+  its wave has succeeded: the pipeline layer sets it only for
+  `backend::DeviceIssue::AmdWindowsFloatAtomics`, the AMD Windows driver
+  whose float sums come out thousands of times too large (issue #23), with
+  the per-lane loop exit as the suspect. Untested on that driver.
+  `SS_VK_CAS_UNIFORM_EXIT=0/1` forces it either way.
 - `shaderInt64` — 64-bit sort keys, morton codes, large-buffer indexing.
   Entries in an int64_compat-including source get a `.noint64` variant
   compiled with `-DSS_EMULATE_INT64` (`backend/vulkan/shaders/int64_compat.slang`),

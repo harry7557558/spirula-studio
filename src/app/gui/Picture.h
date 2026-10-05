@@ -32,17 +32,18 @@ struct Picture {
     bool fits(int side) const { return made_for >= side; }
 };
 
-// Compose `rgb` (w*h*3) with `mask` (w*h, 255 = keep; null for none), box
-// filtered down to `max_side` on the long edge. 0, or a size the source does
-// not reach, keeps the source resolution: nothing here ever upscales.
+// Compose `rgb` (w*h*3) with `mask` and `feature_mask` (w*h, 255 = keep, null
+// for none; MaskTint.h), box filtered down to `max_side` on the long edge. 0,
+// or a size the source does not reach, keeps the source: it never upscales.
 void make_picture(const uint8_t* rgb, int w, int h, const uint8_t* mask,
-                  int max_side, Picture& out);
+                  int max_side, Picture& out, const uint8_t* feature_mask = nullptr);
 
 // The same from files. `mask_path` may be empty or absent; a mask stored at
 // another size than its image is sampled to it. `mask_flipped`: the file's
 // 255 is drop (TrainConfig::flip_mask). Reuses `out`'s buffer.
 bool load_picture(const std::string& image_path, const std::string& mask_path,
-                  int max_side, Picture& out, bool mask_flipped = false);
+                  int max_side, Picture& out, bool mask_flipped = false,
+                  const std::string& feature_mask_path = "");
 
 // One panel of a row picture.
 struct PicturePanel {

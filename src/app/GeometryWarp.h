@@ -37,13 +37,18 @@ struct GeometryCamera {
     float source_params[16] = {};
 };
 
+// Where a split face takes its pixel density: the written map's, or the frame's
+// own -- several times the work on a capture much larger than the map, for no
+// measured gain (src/metric3d/README.md, "Face size").
+enum class FaceRes { Output, Source };
+
 class GeometryWarp {
 public:
-    // A split face is sized at the lens's own pixel density where it points,
-    // NOT from out_w x out_h, then capped at `max_face`; sides land on a
-    // multiple of `patch`. Throws std::runtime_error when nothing is visible.
+    // Split faces: `res`'s density, raised toward `min_face_px` pixels (never
+    // past the frame's own), capped at `max_face`; sides land on a multiple of
+    // `patch`. Throws std::runtime_error when nothing is visible.
     void plan(const GeometryCamera& cam, int out_w, int out_h, bool split, int patch,
-              int max_face);
+              int max_face, FaceRes res = FaceRes::Output, int64_t min_face_px = 0);
 
     bool split() const { return faces_.size() > 1; }
     int  faces() const { return (int)faces_.size(); }
@@ -76,11 +81,12 @@ public:
     // border reads as an edge to the network.
     void sampleFace(int k, const float* src, std::vector<float>& dst) const;
 
-    // `depth[k]` is [fh*fw] depth in ONE unit across faces, `normal[k]` is
-    // [fh*fw*3] unit normals in face k's frame; either list may be empty.
-    // Pixels no face covers come back 0, the trainer's "no ground truth here".
+    // Per face: [fh*fw] depth in ONE unit across faces, [fh*fw*3] normals in its
+    // own frame, [fh*fw] the chance the model answered; any list may be empty.
+    // 0 where no face reaches or ANY face masked: "no ground truth here".
     void gather(const std::vector<std::vector<float>>& depth,
-                const std::vector<std::vector<float>>& normal, bool ray_depth,
+                const std::vector<std::vector<float>>& normal,
+                const std::vector<std::vector<float>>& mask, bool ray_depth,
                 std::vector<float>* out_depth, std::vector<float>* out_normal) const;
 
 private:

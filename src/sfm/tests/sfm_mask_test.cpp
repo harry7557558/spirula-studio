@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "sfm/core/Features.h"
+#include "sfm/core/Image.h"
 #include "sfm/core/Mask.h"
 #include "sfm/tests/TestMain.h"
 
@@ -178,6 +179,62 @@ int cmdMaskSelftest(int, char**) {
         fs.descriptors.assign(5, 0);
         if (applyMask(fs, bad) != 0 || fs.count() != 5) {
             printf("  FAIL: empty mask must keep every keypoint\n");
+            fails++;
+        }
+    }
+
+    // ---- 2b. --masks and --feature-masks intersect, at the finer grid ----
+    {
+        auto grid = [](int w, int h, bool left_half) {
+            Mask m;
+            m.width = w;
+            m.height = h;
+            m.bits.resize((size_t)w * h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    m.bits[(size_t)y * w + x] = left_half ? x < w / 2 : y < h / 2;
+            return m;
+        };
+        Mask a = grid(40, 30, true);
+        intersectMask(a, grid(120, 90, false));
+        const double keep = a.keepFraction();
+        printf("mask: 40x30 left half & 120x90 top half -> %dx%d, keep %.3f (expect 0.250)\n",
+               a.width, a.height, keep);
+        if (a.width != 120 || a.height != 90 || std::fabs(keep - 0.25) > 1e-6 ||
+            !a.atUV(0.1f, 0.1f) || a.atUV(0.9f, 0.1f) || a.atUV(0.1f, 0.9f)) {
+            printf("  FAIL: intersection of masks at two resolutions\n");
+            fails++;
+        }
+        Mask none;
+        intersectMask(none, grid(8, 8, true));
+        Mask kept = grid(8, 8, true);
+        intersectMask(kept, Mask{});
+        if (none.keepFraction() != 0.5 || kept.keepFraction() != 0.5) {
+            printf("  FAIL: an empty mask must leave the other as it is\n");
+            fails++;
+        }
+
+        // Through the loader: both files apply, and a first mask that will not
+        // decode is reported as such rather than hidden by the second.
+        const fs::path d = tmp / "both";
+        writePgm(d / "img.pgm", 64, 48, std::vector<uint8_t>((size_t)64 * 48, 128));
+        writePgm(d / "a.pgm", 64, 48, leftHalfMask(64, 48, 0.5));
+        std::vector<uint8_t> top((size_t)64 * 48, 0);
+        std::fill(top.begin(), top.begin() + (size_t)64 * 24, (uint8_t)255);
+        writePgm(d / "b.pgm", 64, 48, top);
+        std::ofstream(d / "junk.png", std::ios::binary) << "not an image";
+        const std::string img = (d / "img.pgm").string();
+        GrayImage g = loadGrayImage(img, 0, false, (d / "a.pgm").string(), "", std::nullopt,
+                                    false, false, (d / "b.pgm").string());
+        GrayImage only = loadGrayImage(img, 0, false, "", "", std::nullopt, false, false,
+                                       (d / "b.pgm").string());
+        GrayImage broken = loadGrayImage(img, 0, false, (d / "junk.png").string(), "",
+                                         std::nullopt, false, false, (d / "b.pgm").string());
+        if (std::fabs(g.mask.keepFraction() - 0.25) > 1e-6 ||
+            std::fabs(only.mask.keepFraction() - 0.5) > 1e-6 || !broken.mask.empty()) {
+            printf("  FAIL: loader with a feature mask kept %.3f / %.3f, broken %s\n",
+                   g.mask.keepFraction(), only.mask.keepFraction(),
+                   broken.mask.empty() ? "empty" : "not empty");
             fails++;
         }
     }

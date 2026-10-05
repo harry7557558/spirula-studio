@@ -22,13 +22,15 @@ namespace backend {
 // counter/table are shared across all translation units. Allocation is pooled
 // upstream (Tensor.h), so this map is touched rarely, not per frame.
 namespace detail {
+// Leaked on purpose: DevicePool::global() is constructed before the first
+// device_malloc, so it is destroyed after these and frees through them.
 inline std::mutex& alloc_mutex() {
-    static std::mutex m;
-    return m;
+    static std::mutex* m = new std::mutex();
+    return *m;
 }
 inline std::unordered_map<void*, size_t>& alloc_sizes() {
-    static std::unordered_map<void*, size_t> m;
-    return m;
+    static auto* m = new std::unordered_map<void*, size_t>();
+    return *m;
 }
 inline std::atomic<uint64_t>& device_bytes() {
     static std::atomic<uint64_t> v{0};

@@ -190,6 +190,7 @@ expectation, one executable. Neither exists yet.
 | a mesh format, or which colors it carries | `mesh_format_roundtrip` — writes every format and reads it back through the other implementation |
 | a preset field, or a batch row's shape | `preset_roundtrip_test` |
 | what a typed-in command line becomes, or what a message may carry into it | `command_argv_test` — the message stays one argument and stays JSON-safe |
+| the home screen's recent list, or how `gui.conf` stores it | `recent_list_test` |
 | a per-cell optimizer launcher (Vulkan) | `SS_OPTIM_SLICE_CELLS=2048` on `optim_parity` / `optimgeo_parity`, which forces the multi-slice path only an SH buffer past ~24M splats would otherwise take ([SH layouts](notes/sh-quant-layout.md)) |
 | anything | one short training run per backend on a public scene |
 

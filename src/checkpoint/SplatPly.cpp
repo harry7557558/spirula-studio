@@ -140,9 +140,9 @@ float read_scalar(const uint8_t* row, const PlyProp& p) {
     return 0.0f;
 }
 
-// How many SH coefficients past the DC the file carries, as a degree. The
-// property count is 3 * ((deg+1)^2 - 1); anything else is a file we do not
-// understand, and reading it as if we did would render nonsense.
+// The SH degree an f_rest count encodes: 3 * ((deg+1)^2 - 1), or one slot more
+// per channel, the pad resumed runs wrote until issue #121. Any other count
+// would render nonsense if read.
 int sh_degree_from_rest(int n_rest, const std::string& path) {
     if (n_rest == 0) return 0;
     if (n_rest % 3 != 0)
@@ -150,7 +150,8 @@ int sh_degree_from_rest(int n_rest, const std::string& path) {
                                  " f_rest properties is not a multiple of 3");
     const int per_channel = n_rest / 3;
     for (int deg = 1; deg <= 4; deg++)
-        if (per_channel == (deg + 1) * (deg + 1) - 1) return deg;
+        if (per_channel == (deg + 1) * (deg + 1) - 1 ||
+            per_channel == (deg + 1) * (deg + 1)) return deg;
     throw std::runtime_error(path + ": " + std::to_string(per_channel) +
                              " SH coefficients per channel is not a whole degree");
 }
@@ -199,6 +200,7 @@ SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
     SplatCloud out;
     out.sh_degree = sh_degree_from_rest((int)crest.size(), path);
     const int64_t K = out.dim_sh() - 1;           // coefficients past the DC
+    const int64_t K_file = (int64_t)crest.size() / 3;
     const int64_t n = h.num_vertex;
     out.num = n;
     out.means.resize((size_t)n * 3);
@@ -217,7 +219,7 @@ SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
         // Channel-major in the file, coefficient-major in the engine.
         for (int ch = 0; ch < 3 && K > 0; ch++)
             for (int64_t j = 0; j < K; j++)
-                out.features_sh[(i * K + j) * 3 + ch] = v[crest[(size_t)(ch * K + j)]];
+                out.features_sh[(i * K + j) * 3 + ch] = v[crest[(size_t)(ch * K_file + j)]];
     };
 
     if (h.ascii) {

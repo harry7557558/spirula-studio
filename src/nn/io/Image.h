@@ -6,6 +6,8 @@
 // above nn/ speaks it: sam/ encodes it, video/ decodes into it, and the GUI
 // blits it. Pixels are 8-bit and interleaved; device tensors are nn::Tensor.
 
+#include "core/ColorSpace.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -23,9 +25,10 @@ struct Image {
 
 // Decodes to RGB; an unreadable file logs and returns empty(). `gamut` /
 // `is_linear` describe the file (core/ColorSpace.h names, an unset half read
-// from an EXR's header); pixels convert to sRGB, what the models expect.
+// from the file); pixels convert to sRGB, what the models expect.
 Image load_image(const std::string& path, const std::string& gamut = "",
-                 std::optional<bool> is_linear = std::nullopt);
+                 std::optional<bool> is_linear = std::nullopt,
+                 const colorspace::Exposure& exposure = {});
 
 // Writes RGB. `quality` in 0..100 selects JPEG, anything else lossless PNG --
 // the same convention as reference/scripts/extract_frames.py.

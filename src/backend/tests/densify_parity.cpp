@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
         float* nq_bounds[5];
         float* accum;                   // float2 [CAP]
         int32_t* bias_steps;
+        uint32_t* visit;                // core/SplatVisitState.h counters
         int64_t sh_state_bytes, sh_value_bytes;
         int64_t sh_state_bound_f, sh_value_bound_f;
         NonShQuantState nq{};
@@ -326,7 +327,16 @@ int main(int argc, char** argv) {
         std::vector<int32_t> steps(CAP);
         for (auto& v : steps) v = 1 + (int32_t)(rng() % 40);
         m.bias_steps = upload(steps);
+        // renders 0..99 | unrendered 0..59, all under the stale threshold
+        std::vector<int32_t> visit(CAP);
+        for (auto& v : visit)
+            v = (int32_t)((rng() % 100u) | ((rng() % 60u) << 16));
+        m.visit = (uint32_t*)upload(visit);
         return m;
+    };
+    auto set_visit = [&](Model& m, int64_t idx, uint32_t renders, uint32_t streak) {
+        uint32_t v = renders | (streak << 16);
+        backend::memcpy_sync(m.visit + idx, &v, sizeof v, MemcpyKind::HostToDevice);
     };
 
     auto readback_model = [&](const Model& m) {
@@ -337,6 +347,7 @@ int main(int argc, char** argv) {
         readback_f(lacc, m.dc, 3 * CAP);
         readback_f(lacc, (const float*)m.accum, 2 * CAP);
         readback_i(codes, m.bias_steps, CAP);
+        readback_i(codes, (const int32_t*)m.visit, CAP);
         if (m.sh_value_bits == 32)
             readback_f(lacc, m.sh, 3 * m.num_sh * CAP);
         else
@@ -387,14 +398,14 @@ int main(int argc, char** argv) {
                                              : (void*)m.sh_state_packed,
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
-            dv<int32_t>(m.bias_steps, CAP),
+            dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP), /*dead_after_steps=*/100u,
             m.sh_optim_bits, (int)m.num_sh,
             dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed);
+            seed, /*max_relocate=*/0, /*num_dead_out=*/nullptr);
         backend::device_synchronize();
     };
 
@@ -422,7 +433,7 @@ int main(int argc, char** argv) {
                                              : (void*)m.sh_state_packed,
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
-            dv<int32_t>(m.bias_steps, CAP),
+            dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP),
             m.sh_optim_bits, (int)m.num_sh,
             dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
@@ -546,6 +557,24 @@ int main(int argc, char** argv) {
                               /*dead_scale=*/1729);
         call_relocate_las(m, 0.005f, 121u);
         check_revived(m, 1729, "relocate_las");
+        readback_model(m);
+    }
+    {
+        // stale trigger: unrendered past dead_after_steps; the counters of
+        // the revived splat and of its source both come back zero
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
+        set_visit(m, 2424, /*renders=*/7u, /*streak=*/300u);
+        call_relocate_las(m, 0.005f, 141u);
+        std::vector<int32_t> vis(N);
+        backend::memcpy_sync(vis.data(), m.visit, N * sizeof(int32_t),
+                             MemcpyKind::DeviceToHost);
+        int zeros = 0;
+        for (int64_t i = 0; i < N; i++) zeros += vis[i] == 0;
+        if (vis[2424] != 0 || zeros != 2) {
+            std::printf("densify_parity: stale relocate reset %d counters "
+                        "(splat 2424 = %d), expected 2\n", zeros, vis[2424]);
+            revived_ok = false;
+        }
         readback_model(m);
     }
 

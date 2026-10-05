@@ -21,6 +21,9 @@ namespace vk {
 // kernel behaves identically on either path.
 struct Capabilities {
     bool float32_atomic_add = false;  // VK_EXT_shader_atomic_float
+    // The CAS-loop blobs' wave-uniform exit (shaders/atomic_float.slang), for
+    // backend::DeviceIssue::AmdWindowsFloatAtomics.
+    bool cas_uniform_exit = false;
     bool shader_int64 = false;        // shaderInt64 (else ".noint64" blobs)
     bool shader_int8 = false;         // shaderInt8 + storageBuffer8BitAccess
                                       // (picks the native ".int8" blobs)

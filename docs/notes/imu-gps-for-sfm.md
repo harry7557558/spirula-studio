@@ -130,7 +130,7 @@ first reported) drops it, leaving a 1.16 km path where the raw numbers said
 the file from being usable; both say the DOP is not enough of a gate on its
 own.
 
-### 2.3 DJI Osmo 360 (`.OSV`)
+### 2.3 DJI Osmo 360 and Avata 360 (`.OSV`)
 
 | stream | rate | notes |
 |---|---|---|
@@ -147,6 +147,87 @@ camera's own fusion output. Rotating the per-frame accelerometer by the
 quaternion gives a world vector steady to 2.8 degrees over a 146 s handheld
 clip, so the quaternion maps sensor to world and the accelerometer shares its
 frame. No GPS.
+
+**DJI Avata 360** (`dvtm_AVATA360`) writes the same message tree with its own
+field numbers; `read_dji` picks the numbers from the clip header's proto name.
+Field paths below are from the djmd sample root. The GPS, altitude and
+exposure rows were checked frame by frame against the SRT of a 139 s flight
+(8354 frames, packet p = SRT `FrameCnt` p+1): lat/lon within 5e-7 deg,
+altitudes within 1 mm, ISO and colour temperature exact, shutter within the
+SRT's 1/3-stop rounding. The rate matches the sample count (557781 attitude
+samples over 139.4 s is 4000 Hz).
+
+| quantity | Osmo (`dvtm_oq101`) | Avata (`dvtm_AVATA360`) | wire, unit |
+|---|---|---|---|
+| IMU fusion rate | `1.10.1` | `1.8.1` | varint Hz (4000) |
+| sensor fps | `1.11.1` | `1.9.1` | f32 (59.909) |
+| focal | `1.8.1` | none (`1.6` is empty) | f32 px |
+| accel per frame | `3.2.10.{2,3,4}` | none (`3.2.10.1` is a constant 4-byte pair) | f32 g |
+| attitude | `3.3.2.1.{1,2,3,4}` | same, no offset field 4; 66-67 quaternions per frame | f32 w,x,y,z |
+| GPS lat/lon | `3.4.2.1.{1 unit,2,3}` | `3.4.4.1.{2,3}`, no unit field | f64 degrees |
+| abs altitude | `3.4.2.2` | `3.4.4.2` | varint mm |
+| rel altitude | none | `3.4.5.1` | f32 mm, above take-off |
+| GPS status | `3.4.2.3` | not known (`3.4.4.4` = 1 always); every fix is kept, so the fix fraction says nothing here | |
+| ISO | none | `3.2.3.1` | f32 |
+| shutter | none | `3.2.4.1` | bytes holding two varints n, d: n/d s |
+| colour temperature | none | `3.2.6.1` | varint K |
+
+`1.10.1` (int64 -555) and `1.11.1` (4207) mean something else on the Avata
+and are not read. Aperture and EV are not read: both flights' SRTs carry one
+constant value (f/1.9, EV 0), so no field can be told apart. No accelerometer
+is written, so the report says `IMU absent` and the attitude alone gives
+rotation but not up; a hover also reads `GPS not usable` (no spread), which is
+the right answer. The `.LRF` proxy carries the same metadata at 30 fps; its
+second attitude batch (`3.3.2.2`) is not read.
+
+With no accelerometer nothing in the file says which way the attitude
+quaternion maps, or which way is up in its world. The hand-eye fit therefore
+tries both senses (the quaternion and its conjugate) and keeps the one that
+agrees with the poses. The vertical is declared by the reader: for
+`dvtm_AVATA360` the attitude world is z-down. That rests on one flight, where
+the up it gives came out 0.23 deg from the GPS-levelled model. A carrier with
+an accelerometer never takes either path, and an accelerometer-less attitude
+with no declared vertical gives no up vote.
+
+**Avata 360 lens calibration.** Sample 0's StreamMeta carries `PanoDewarpParams`
+at `2.5`: 24 `DewarpParams` entries, of which only `2.5.3`
+(`native_refine_far_slave`) and `2.5.4` (`native_refine_far_master`) are
+filled on every clip read (entries 1-2 hold a temperature, the rest nothing).
+Both djmd tracks carry the same pair. Per entry, all f32:
+
+| field | meaning |
+|---|---|
+| 1, 2, 3, 4 | fx, fy, cx, cy in pixels of the 3840 x 3840 frame (fx = fy to 0.02%) |
+| 5, 6, 7, 8, 15 | k1..k5: theta_d = theta (1 + k1 theta^2 + ... + k5 theta^10), r = f theta_d |
+| 20 (packed, 2) | p1, p2, on the equidistant coordinates as THIN_PRISM_FISHEYE's |
+| 10, 11 | width, height (3840, 3840) |
+| 12, 13, 14 | yaw, pitch, roll in degrees; 26, 28 quaternions (not read) |
+| 24 | lens_model, 8 on every clip; the reader takes only 8 |
+| 25, 31 | temperature (C), temperature-compensation k |
+
+k1..k5 and p are identical across the five clips read; fx, cx, cy (and the
+slave's yaw) move by up to 1 px and 3 px from clip to clip, so each clip's own
+header is used. Measured, on real frames:
+
+- **k5 is a fifth radial term.** Without it the polynomial turns over at 86.9
+  (master) and 90.1 deg (slave), short of the image circle; with it r(100 deg)
+  = 1917 and 1920 px, the frame's half width.
+- **Master is video track 0 (cam0), slave is track 1.** Against DJI Studio's
+  equirect export of the same frame (one hover clip, 2200 SIFT matches per lens,
+  one rotation fitted per candidate): master on track 0 0.55 px median, the
+  slave's set 2.2 px; slave on track 1 1.07 px, the master's set 4.6 px. Lens
+  to lens with no stitch involved (a flight at 37 m, rim overlap, 2500 and
+  1700 matches): 0.88 and 0.90 px, swapped 6.2 and 8.4 px.
+- **p is tangential, in that order and sign**: without it 2.0-2.2 px lens to
+  lens, swapped 1.4-1.7x worse, negated 2-3x worse. A 0.5 px shift of the
+  principal point is not resolved (0.55 against 0.57 px), so the pixel-centre
+  convention is taken from the code: keypoints put pixel i's centre at i.
+
+spirula's fisheye models stop at k4, so `sfm/core/LensCalibration.h` refits
+the radial curve (focal free) out to the inscribed circle: at worst 1.97 px
+(master) and 1.22 px (slave), and 0.98 against 0.88 px median lens to lens.
+A lens folder gets it as a #119 params override only when no setting a
+person gave covers it; the run prints which, and why not.
 
 ### 2.4 What the reader does with all this
 

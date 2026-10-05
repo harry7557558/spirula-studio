@@ -55,6 +55,13 @@ void readback_f(std::vector<float>& acc, const float* d, int64_t n) {
 }
 
 // 16-bit qadam cells -> two codes per cell.
+void readback_i(std::vector<int32_t>& acc, const int32_t* d, int64_t n) {
+    size_t off = acc.size();
+    acc.resize(off + n);
+    backend::memcpy_sync(acc.data() + off, d, n * sizeof(int32_t),
+                         MemcpyKind::DeviceToHost);
+}
+
 void readback_qadam16(std::vector<int32_t>& codes, const uint8_t* d,
                       int64_t n_cells) {
     std::vector<uint16_t> h(n_cells * 2);
@@ -197,6 +204,15 @@ int main(int argc, char** argv) {
             ct.opacities = d_opacs;
         }
 
+        // Render counters; the unrendered-splat gate follows zero_grad so
+        // both settings are covered.
+        std::vector<int32_t> vis(N);
+        for (auto& v : vis) v = (int32_t)((rng() % 50u) | ((rng() % 30u) << 16));
+        uint32_t* d_visit = (uint32_t*)upload(vis);
+        SplatVisitState visit;
+        visit.counters = d_visit;
+        visit.skip_unrendered_reg = c.zero_grad;
+
         // Two steps so the quantized configs decode self-written state.
         for (int step_i = 0; step_i < (c.nq ? 2 : 1); step_i++) {
             fused_optim_3dgs_geometry(
@@ -217,7 +233,7 @@ int main(int argc, char** argv) {
                 /*erank=*/0.1f, /*erank_s3=*/0.05f, /*quat_norm=*/0.1f,
                 /*dc_reg=*/0.01f, /*sh_reg=*/0.01f,
                 /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/1.5f,
-                c.sam, ct, nq, gq,
+                c.sam, ct, nq, visit, gq,
                 /*step=*/7 + step_i, steps, /*grad_scale=*/0.5f,
                 c.zero_grad);
             backend::device_synchronize();
@@ -241,6 +257,7 @@ int main(int argc, char** argv) {
             }
         }
         if (c.zero_grad && !c.gq) readback_f(acc, d_v_means, 3 * N);
+        readback_i(codes, (const int32_t*)d_visit, N);
     }
 
     // ---- fused_adamtr_(linear_)rgb_(sh_)optim ----

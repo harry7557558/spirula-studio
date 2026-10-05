@@ -2,7 +2,8 @@
 
 #include "app/gui/FrameSelect.h"
 
-#include "core/ExrImage.h"
+#include "app/FrameSharpness.h"
+#include "core/ImageFile.h"
 
 #include "external/stb_image.h"
 
@@ -28,49 +29,6 @@ namespace {
 // order. 64 grey frames is a few tens of megabytes whatever the source is.
 constexpr size_t kChunk = 64;
 
-// Box-average an interleaved RGB image into a grey rectangle. `rows` is how
-// much of the source to read, so an EAC canvas can be measured on its top row.
-void box_grey(const unsigned char* img, int W, int rows, int ow, int oh,
-              float* out) {
-    for (int y = 0; y < oh; y++) {
-        int y0 = (int)((int64_t)y * rows / oh), y1 = (int)((int64_t)(y + 1) * rows / oh);
-        if (y1 <= y0) y1 = y0 + 1;
-        for (int x = 0; x < ow; x++) {
-            int x0 = (int)((int64_t)x * W / ow), x1 = (int)((int64_t)(x + 1) * W / ow);
-            if (x1 <= x0) x1 = x0 + 1;
-            double acc = 0.0;
-            for (int yy = y0; yy < y1; yy++)
-                for (int xx = x0; xx < x1; xx++) {
-                    const unsigned char* p = img + ((size_t)yy * W + xx) * 3;
-                    // BT.601 luma like cv2.cvtColor BGR2GRAY (RGB order here).
-                    acc += 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
-                }
-            out[(size_t)y * ow + x] = (float)(acc / ((y1 - y0) * (x1 - x0)));
-        }
-    }
-}
-
-// Sharpness, matching extract_frames.py add_frame(): 512x512 grey, mean
-// subtracted, variance of the 3x3 Laplacian.
-double laplacian_variance(std::vector<float>& gray, int S) {
-    double mean = 0.0;
-    for (float v : gray) mean += v;
-    mean /= (double)gray.size();
-    for (float& v : gray) v -= (float)mean;
-    double sum = 0.0, sum2 = 0.0;
-    int64_t n = 0;
-    for (int y = 1; y < S - 1; y++)
-        for (int x = 1; x < S - 1; x++) {
-            const float* r = &gray[(size_t)y * S + x];
-            const double lap = (double)r[-S] + r[S] + r[-1] + r[1] - 4.0 * r[0];
-            sum += lap;
-            sum2 += lap * lap;
-            n++;
-        }
-    const double mu = sum / n;
-    return sum2 / n - mu * mu;
-}
-
 struct Analysis {
     double score = -1.0;
     std::vector<uint8_t> grey;   // empty unless the motion pass wants it
@@ -81,32 +39,30 @@ struct Analysis {
 void analyze(const std::string& path, int mw, int mh, bool top_rows,
              Analysis& out) {
     int W = 0, H = 0, C = 0;
-    std::vector<uint8_t> exr_rgb;
+    std::vector<uint8_t> own_rgb;
     unsigned char* img = nullptr;
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        if (!exr::decode_srgb8(path, exr::Options(), info, exr_rgb).empty()) return;
+    if (imagefile::handles(path)) {
+        imagefile::Info info;
+        if (!imagefile::decode_srgb8(path, imagefile::Options(), info, own_rgb).empty())
+            return;
         W = info.width;
         H = info.height;
-        img = exr_rgb.data();
+        img = own_rgb.data();
     } else {
         img = stbi_load(path.c_str(), &W, &H, &C, 3);
         if (!img) return;
     }
 
-    constexpr int S = 512;
-    std::vector<float> gray((size_t)S * S);
-    box_grey(img, W, H, S, S, gray.data());
-    out.score = laplacian_variance(gray, S);
+    out.score = app::sharpness_score(img, W, H);
 
     if (mw > 0 && mh > 0) {
         std::vector<float> f((size_t)mw * mh);
-        box_grey(img, W, top_rows ? H / 2 : H, mw, mh, f.data());
+        app::box_grey(img, W, top_rows ? H / 2 : H, mw, mh, f.data());
         out.grey.resize(f.size());
         for (size_t i = 0; i < f.size(); i++)
             out.grey[i] = (uint8_t)std::min(255.0f, std::max(0.0f, f[i] + 0.5f));
     }
-    if (exr_rgb.empty()) stbi_image_free(img);
+    if (own_rgb.empty()) stbi_image_free(img);
 }
 
 bool same_bytes(const fs::path& a, const fs::path& b) {

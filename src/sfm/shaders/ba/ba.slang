@@ -67,9 +67,14 @@ static const uint kNoMember = 0xFFFFFFFFu;
                                                             // [2*a+row], offset u_jc_off
 [[vk::binding(28)]] RWStructuredBuffer<Real> u_res;         // weighted residual (2 per obs)
 
-// ---- rigs (bindings 29..44 are cg.slang's, 47..51 prior.slang's) ----
+// ---- rigs (bindings 29..44 are cg.slang's, 47..51 prior.slang's, 52..54 the gradient's) ----
 [[vk::binding(45)]] StructuredBuffer<uint4> u_member_info;  // (per member) x=ext offset, y=ext column base, z=n_free, w=free-parameter mask
 [[vk::binding(46)]] RWStructuredBuffer<Real> u_exts;        // (6 per member) cam_from_rig
+
+// ---- the gradient test (sfm/ba/GradientNorm.h) ----
+[[vk::binding(52)]] RWStructuredBuffer<Real> u_gcam;        // (n_dim) d cost / d column, unreduced
+[[vk::binding(53)]] RWStructuredBuffer<AWord> u_gcam_a;
+[[vk::binding(54)]] RWStructuredBuffer<uint> u_gpt_max;     // (1) max |Bp| as float bits
 
 // packed lower-triangular index, row >= col
 uint pidx(uint r, uint c) { return r * (r + 1) / 2 + c; }
@@ -578,6 +583,34 @@ void dpAccumImpl<let MD : int>(uint o) {
     }
 }
 
+// u_gcam += Jc^T r, one thread per observation; u0 = num_obs
+void gradCamImpl<let MD : int>(uint o) {
+    if (o >= u0) return;
+    uint dof, base;
+    uint cols[MD];
+    obsCamCols<MD>(o, dof, base, cols);
+    Real r0 = u_res[2 * o], r1 = u_res[2 * o + 1];
+    for (uint a = 0; a < dof; a++) {
+        Real v = u_Jc[base + 2 * a] * r0 + u_Jc[base + 2 * a + 1] * r1;
+        if (isfinite(v))
+            atomicAccum(u_gcam_a, cols[a], v);
+    }
+}
+
+// max |Bp| over every point, before the back-substitution rewrites Bp: a
+// non-negative float orders as its bits. u0 = num_points
+[shader("compute")] [numthreads(256, 1, 1)]
+void grad_point_max(uint3 t : SV_DispatchThreadID) {
+    uint p = t.x;
+    if (p >= u0) return;
+    float m = 0.0f;
+    for (int i = 0; i < 3; i++) {
+        float a = abs(rToFloat(u_Bp[3 * p + i]));
+        m = max(m, isfinite(a) ? a : asfloat(0x7f800000u));
+    }
+    InterlockedMax(u_gpt_max[0], asuint(m));
+}
+
 // dP = (App+l)^-1 Bp; points -= dP.  W was precomputed by point_prep with the
 // same lambda; Bp has since been updated in place by dp_accum.  u0 = num_points
 [shader("compute")] [numthreads(256, 1, 1)]
@@ -665,6 +698,15 @@ void dp_accum_m(uint3 t : SV_DispatchThreadID) { dpAccumImpl<kDofMid>(t.x + u4);
 void dp_accum_w(uint3 t : SV_DispatchThreadID) { dpAccumImpl<kDofWide>(t.x + u4); }
 [shader("compute")] [numthreads(256, 1, 1)]
 void dp_accum_x(uint3 t : SV_DispatchThreadID) { dpAccumImpl<kDofRig>(t.x + u4); }
+
+[shader("compute")] [numthreads(256, 1, 1)]
+void grad_cam_c(uint3 t : SV_DispatchThreadID) { gradCamImpl<kDofCompact>(t.x + u4); }
+[shader("compute")] [numthreads(256, 1, 1)]
+void grad_cam_m(uint3 t : SV_DispatchThreadID) { gradCamImpl<kDofMid>(t.x + u4); }
+[shader("compute")] [numthreads(256, 1, 1)]
+void grad_cam_w(uint3 t : SV_DispatchThreadID) { gradCamImpl<kDofWide>(t.x + u4); }
+[shader("compute")] [numthreads(256, 1, 1)]
+void grad_cam_x(uint3 t : SV_DispatchThreadID) { gradCamImpl<kDofRig>(t.x + u4); }
 
 // =====================================================================
 // per-model entry points -- four lines per camera model: cost and Jacobian,

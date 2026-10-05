@@ -8,8 +8,6 @@
 
 #include <fstream>
 
-#include "app/gui/ReconStamp.h"
-
 #include "i18n/Locale.h"
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
@@ -57,31 +55,6 @@ inline std::string fmt(const spirula::i18n::Msg& m,
 namespace gui {
 
 namespace {
-
-const char* kQuality[] = {"low", "medium", "high", "extreme"};
-const char* kDataType[] = {"individual", "video", "internet"};
-const char* kCameraMode[] = {"single", "folder", "image"};
-const char* kPairs[] = {"auto", "exhaustive", "sequential", "prefilter"};
-const char* kMapper[] = {"flat", "bottom-up"};
-const char* kFeatures[] = {"sift", "aliked-n16rot", "aliked-n32", "loma-b128",
-                           "loma-b"};
-const char* kMetricGps[] = {"none", "horizontal", "full"};
-const char* kSensorGauge[] = {"none", "up", "auto"};
-const char* kExifAttitude[] = {"none", "up", "auto"};
-
-template <int N>
-const char* pick(const char* const (&table)[N], int i, int fallback = 0) {
-    return table[(i >= 0 && i < N) ? i : fallback];
-}
-
-// The matcher combo is two entries -- brute force, or "the learned matcher for
-// this frontend" -- because a learned matcher only reads the descriptors it
-// was trained on. Which one that is follows --features.
-const char* matcher_for(int features, int matcher) {
-    if (features == 0 || matcher != 1) return "bruteforce";
-    const std::string f = pick(kFeatures, features);
-    return f.rfind("loma", 0) == 0 ? pick(kFeatures, features) : "lightglue";
-}
 
 // A failed Vulkan call is the child's own English diagnostic -- a result name
 // and a source line -- not interface copy, so it is matched as one.
@@ -165,7 +138,7 @@ std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     };
     if (features <= 0) return out;
 
-    const std::string f = pick(kFeatures, features);
+    const std::string f = sfm_pick(kSfmFeatures, features);
     if (f.rfind("loma", 0) == 0) {
         // Three files, not one: the detector is shared, the descriptor follows
         // the variant, and the matcher is only wanted if it is selected.
@@ -290,6 +263,7 @@ void SfmRunner::take_masking(PrepJob& prep) {
     prep.mask_enable = _live.prep.mask_enable;
     prep.mask_prompt = _live.prep.mask_prompt;
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
+    prep.mask_feature_prompt = _live.prep.mask_feature_prompt;
     prep.mask_keep_subject = _live.prep.mask_keep_subject;
     prep.mask_max_image_size = _live.prep.mask_max_image_size;
     prep.mask_dilate_ratio = _live.prep.mask_dilate_ratio;
@@ -302,11 +276,9 @@ void SfmRunner::take_masking(PrepJob& prep) {
     prep.mask_model_path = _live.prep.mask_model_path;
     prep.mask_detector_path = _live.prep.mask_detector_path;
     prep.mask_detector_threshold = _live.prep.mask_detector_threshold;
-    prep.mask_model_name = _live.prep.mask_model_name;
-    prep.force_external_masking = _live.prep.force_external_masking;
     prep.image_gamut = _live.prep.image_gamut;
     prep.image_is_linear = _live.prep.image_is_linear;
-    prep.python_exe = _live.prep.python_exe;
+    prep.image_exposure = _live.prep.image_exposure;
 }
 
 void SfmRunner::cancel() { _cancel = true; }
@@ -498,26 +470,15 @@ sfm::Manifest SfmRunner::build_manifest(const SfmJob& job, const PrepResult& pre
     return man;
 }
 
-// One sequence per video (its lens folders, or its frames as they are) and
-// per folder marked as shot in order (its camera folders, or itself).
 std::vector<sfm::SequenceDef> SfmRunner::build_sequences(const SfmJob& job) {
     std::vector<sfm::SequenceDef> out;
     if (!job.use_sequence) return out;
-    auto join = [](const std::string& a, const std::string& b) {
-        return a.empty() ? b : b.empty() ? a : a + "/" + b;
-    };
-    for (const PrepInput& in : job.prep.inputs) {
-        if (!in.is_video && !in.sequential) continue;
-        sfm::SequenceDef d;
-        if (!in.subcameras.empty()) {
-            for (const SubCamera& sc : in.subcameras) d.members.push_back(join(in.subdir, sc.rel));
-        } else {
-            for (const std::string& lens : lens_dirs(job.prep, in))
-                d.members.push_back(join(in.subdir, lens));
-            if (d.members.empty()) d.members.push_back(in.subdir);
+    for (const PrepInput& in : job.prep.inputs)
+        for (std::vector<std::string>& members : input_sequences(job.prep, in)) {
+            sfm::SequenceDef d;
+            d.members = std::move(members);
+            out.push_back(std::move(d));
         }
-        out.push_back(std::move(d));
-    }
     return out;
 }
 
@@ -679,28 +640,26 @@ std::vector<sfm::RigDef> SfmRunner::build_rigs(const PrepJob& prep, const PrepRe
 }
 #endif  // SS_TOOL_SFM
 
-// Flags that describe the model rather than the execution device. The same
-// model vector feeds the workspace stamp and the launch settings; the frozen
-// device is appended only when launching.
+// Flags that describe the model rather than the execution device, which is
+// appended at launch. The manifest comes as its TEXT, written to a file there.
 std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
                                                const PrepResult& prep) {
     std::vector<std::string> argv = {
-        "--quality", pick(kQuality, job.quality, 2),
-        "--data-type", pick(kDataType, job.data_type),
+        "--quality", sfm_pick(kSfmQuality, job.quality, 2),
+        "--data-type", sfm_pick(kSfmDataType, job.data_type),
         "--camera-model", job.camera_model,
-        "--camera-mode", pick(kCameraMode, job.camera_mode, 1),
-        "--mapper", pick(kMapper, job.mapper),
-        "--features", pick(kFeatures, job.features),
+        "--camera-mode", sfm_pick(kSfmCameraMode, job.camera_mode, 1),
+        "--mapper", sfm_pick(kSfmMapper, job.mapper),
+        "--features", sfm_pick(kSfmFeatures, job.features),
         // A learned matcher only exists for the learned descriptors; asking
         // for one with SIFT selected is a usage error.
-        "--matcher", matcher_for(job.features, job.matcher),
+        "--matcher", sfm_matcher_for(job.features, job.matcher),
     };
     if (job.pairs > 0) {
         argv.push_back("--pairs");
-        argv.push_back(pick(kPairs, job.pairs));
+        argv.push_back(sfm_pick(kSfmPairs, job.pairs));
     }
-    // Only when it says something, so the stamp of a run at the default
-    // does not change with where the default is passed.
+    // Only when it says something: a run at the default passes nothing.
     if (job.pairs == 2 || (sequential_window_applies(job) && job.overlap != 10)) {
         argv.push_back("--overlap");
         argv.push_back(std::to_string(job.overlap));
@@ -733,9 +692,8 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--ba-real-coarse");
         argv.push_back("cpu");
     }
-    // Not flags any more: the groups go in the manifest. Its text joins the
-    // stamp so that changing a lens still counts as a different model
-    // (recon_stamp_change), which is the whole point of this list.
+    // Not flags any more: per-folder lenses, rigs and sequences go in the
+    // manifest.
 #ifdef SS_TOOL_SFM
     const std::string manifest = sfm::manifest_write(build_manifest(job, prep));
     if (!manifest.empty()) {
@@ -756,17 +714,15 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--max-image-size");
         argv.push_back(std::to_string(job.max_image_size));
     }
-    if (job.metric_gps > 0) {
-        argv.push_back("--metric-gps");
-        argv.push_back(pick(kMetricGps, job.metric_gps));
-    }
+    argv.push_back("--metric-gps");
+    argv.push_back(sfm_pick(kSfmMetricGps, job.metric_gps, 3));
     if (job.sensor_gauge != 2) {
         argv.push_back("--sensor-gauge");
-        argv.push_back(pick(kSensorGauge, job.sensor_gauge, 2));
+        argv.push_back(sfm_pick(kSfmSensorGauge, job.sensor_gauge, 2));
     }
     if (job.exif_attitude != 2) {
         argv.push_back("--exif-attitude");
-        argv.push_back(pick(kExifAttitude, job.exif_attitude, 2));
+        argv.push_back(sfm_pick(kSfmExifAttitude, job.exif_attitude, 2));
     }
     if (!job.image_gamut.empty()) {
         argv.push_back("--image-gamut");
@@ -775,6 +731,10 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
     if (job.image_is_linear.has_value())
         argv.push_back(*job.image_is_linear ? "--image-linear"
                                             : "--no-image-linear");
+    if (!job.image_exposure.empty()) {
+        argv.push_back("--image-exposure");
+        argv.push_back(job.image_exposure);
+    }
     if (job.point_color_in_image_space) {
         argv.push_back("--point-color");
         argv.push_back("image");
@@ -789,6 +749,11 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         // Otherwise `auto` picks up a stale masks/ sitting beside the images
         // from an earlier run with masking on.
         argv.push_back("--no-masks");
+    }
+    // Whatever the checkbox says: these exist only to be kept from the features.
+    if (!prep.feature_mask_dir.empty()) {
+        argv.push_back("--feature-masks");
+        argv.push_back(prep.feature_mask_dir);
     }
     for (const std::string& a : split_args(job.extra_args))
         argv.push_back(a);
@@ -819,6 +784,21 @@ void SfmRunner::run(SfmJob job) {
         if (prior.resumable())
             log(fmt(lmsg::sfm_resuming, {ws.string()}), /*detail=*/false);
 
+        // Each step asks the plan again when it is reached, with the settings
+        // the screen holds by then; what already ran stays as it went.
+        const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
+        const PlanRequest req = job.request;
+        DatasetPlan plan = plan_dataset(plan_job(job), prior, rec, req);
+        StepRecorder record(ws.string(), rec);
+        auto say = [&](Step s) {
+            for (const std::string& l : plan_log_lines(s, plan[s], ws.string()))
+                log(l, /*detail=*/false);
+        };
+        job.prep.redo_frames = plan[Step::Frames].act == Act::Redo;
+        say(Step::Frames);
+        if (makes(plan[Step::Frames].act))
+            record.begin(Step::Frames, frames_fields(job.prep));
+
         // Where the child will write its snapshots, and the two files it
         // leaves behind. Published before the stages that produce them, so the
         // screen is already watching when the first one lands.
@@ -842,9 +822,20 @@ void SfmRunner::run(SfmJob job) {
         {
             DatasetPrep dp(&_prog, _films, _cancel);
             std::string err;
-            if (!dp.run(job.prep, prep, err,
-                        [this](PrepJob& p) { take_masking(p); }))
-                return fail(err);
+            auto refresh = [&](PrepJob& p) {
+                take_masking(p);
+                SfmJob now = job;
+                now.prep = p;
+                plan = plan_dataset(plan_job(now), prior, rec, req, &plan, Step::Masks);
+                apply_masks_plan(plan[Step::Masks], p);
+                say(Step::Masks);
+                if (makes(plan[Step::Masks].act))
+                    record.begin(Step::Masks, masks_fields(p));
+            };
+            auto done = [&](Stage s, const PrepJob&) {
+                record.finish(s == Stage::Frames ? Step::Frames : Step::Masks);
+            };
+            if (!dp.run(job.prep, prep, err, refresh, done)) return fail(err);
         }
         {
             // The folders the previews draw from, published as soon as they
@@ -858,7 +849,6 @@ void SfmRunner::run(SfmJob job) {
         // Frames this run replaced: features/ and matches.bin describe the old
         // ones, and the resume signature is made of settings and cannot see it.
         if (prep.frames_rebuilt) {
-            job.redo_model = true;
             remove_tree(ws / "features");
             remove_tree(ws / sfm::resume::kDir);
             std::error_code fec;
@@ -881,28 +871,21 @@ void SfmRunner::run(SfmJob job) {
 
         // ---- 2. reconstruction --------------------------------------------
         take_reconstruction(job);
-        // The model, as the flags that make it. A copy stays in the workspace
-        // beside it (ReconStamp.h) so that a later run can tell whether the
-        // one already there still answers what the panel is asking for.
-        ReconStamp now;
-        now.present = true;
-        now.engine = "builtin";
         if (!lidar.sfm_args.empty()) job.camera_mode = std::max(job.camera_mode, 1);
-        now.args = recon_args(job, prep);
-        now.args.insert(now.args.end(), lidar.sfm_args.begin(), lidar.sfm_args.end());
-        const std::string changed =
-            recon_stamp_change(read_recon_stamp(ws.string()), now);
-
-        // A model already there is reused whoever made it, which is how a
-        // finished dataset gets masks and geometry. The one exception is a
-        // model this panel built and has since been asked to build differently.
-        const bool reuse_model = prior.model && !job.redo_model &&
-                                 (!job.settings_built_model || changed.empty());
-        if (reuse_model) {
-            log(fmt(lmsg::sfm_reusing_model, {ws.string()}), /*detail=*/false);
-        } else {
-            if (prior.model && job.settings_built_model && !changed.empty())
-                log(fmt(lmsg::sfm_settings_changed, {changed}), /*detail=*/false);
+        PlanJob planned = plan_job(job);
+        // The rendered views' lens makes the model as much as the panel does.
+        if (!lidar.sfm_args.empty()) {
+            std::string views;
+            for (const std::string& a : lidar.sfm_args) views += (views.empty() ? "" : " ") + a;
+            planned.model.push_back({"scan_views", "", views});
+        }
+        plan = plan_dataset(planned, prior, rec, req, &plan, Step::Model);
+        say(Step::Model);
+        const bool reuse_model = !makes(plan[Step::Model].act);
+        if (!reuse_model) {
+            std::vector<std::string> now = recon_args(job, prep);
+            now.insert(now.end(), lidar.sfm_args.begin(), lidar.sfm_args.end());
+            record.begin(Step::Model, planned.model);
             set_stage(Stage::Features, lmsg::stage_reconstructing_features.get());
             // What features/ and matches.bin are still worth is the run's own
             // decision, per stage and per file (sfm/core/Resume.h). The
@@ -915,24 +898,21 @@ void SfmRunner::run(SfmJob job) {
                 std::lock_guard<std::mutex> lk(_mu);
                 _sweep_dir = job.keep_intermediate ? "" : ws.string();
             }
-            // What the run is asked for, the same list either way. The
-            // manifest travels as TEXT in the stamp, because that is what
-            // defines the model; a run wants a file.
+            // What the run is asked for, the same list either way.
             std::vector<std::string> settings = {
                 prep.image_dir, "-o", ws.string(),
                 "--progress-dir", (ws / ".progress").string(),
             };
-            for (size_t k = 0; k < now.args.size(); k++) {
-                settings.push_back(now.args[k]);
-                if (now.args[k] != "--manifest" || k + 1 >= now.args.size()) continue;
-                // Dotted and prefixed, like .spirula_mask.py: the workspace
-                // is the user's, and a plain manifest.yaml there could be theirs.
+            for (size_t k = 0; k < now.size(); k++) {
+                settings.push_back(now[k]);
+                if (now[k] != "--manifest" || k + 1 >= now.size()) continue;
+                // Dotted and prefixed: the workspace is the user's, and a
+                // plain manifest.yaml there could be theirs.
                 const fs::path mf = ws / ".spirula_manifest.yaml";
-                std::ofstream(mf, std::ios::binary | std::ios::trunc) << now.args[++k];
+                std::ofstream(mf, std::ios::binary | std::ios::trunc) << now[++k];
                 settings.push_back(mf.string());
             }
-            // Keep the execution identity out of ReconStamp while making it
-            // explicit for both in-process and self-child runs.
+            // Explicit for both in-process and self-child runs.
             if (!job.device_selector.empty()) {
                 settings.push_back("--device");
                 settings.push_back(job.device_selector);
@@ -1014,7 +994,7 @@ void SfmRunner::run(SfmJob job) {
                               (reuse_model || has_model(ws / "sparse"));
         if (!modelled && !scanner_stands_in)
             return fail(lmsg::err_no_reconstruction.get());
-        if (!reuse_model && modelled) write_recon_stamp(ws.string(), now);
+        if (!reuse_model && modelled) record.finish(Step::Model);
 
         // ---- 3. the laser scans: alignment, then their depth and normals ----
         if (job.lidar.enabled()) {
@@ -1029,11 +1009,19 @@ void SfmRunner::run(SfmJob job) {
 
         // ---- 4. depth and normals -------------------------------------------
         take_geometry(job);
-        if (job.geometry.enable && !job.lidar.enabled()) {
+        // The scans gave the run its depth and normals.
+        if (job.lidar.enabled()) job.geometry.enable = false;
+        plan = plan_dataset(plan_job(job), prior, rec, req, &plan, Step::Geometry);
+        say(Step::Geometry);
+        if (makes(plan[Step::Geometry].act)) {
+            const GeometryJob g = geometry_for_plan(job.geometry, plan[Step::Geometry]);
+            record.begin(Step::Geometry, geometry_fields(job.geometry),
+                         geometry_made(plan[Step::Geometry], rec));
             std::string err;
-            if (!run_geometry_step(job.geometry, ws.string(), prep.image_dir,
-                                   _prog, _films.geometry, _cancel, err))
+            if (!run_geometry_step(g, ws.string(), prep.image_dir, _prog,
+                                   _films.geometry, _cancel, err))
                 return fail(err);
+            record.finish(Step::Geometry);
         }
 
         // ---- 5. tidy up ----------------------------------------------------

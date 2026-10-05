@@ -415,14 +415,16 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                                                        cam.height, cam.fx, cam.fy)
                     : settings.split == 1;
             app::GeometryWarp warp;
-            warp.plan(cam, ow, oh, split, patch, settings.max_size);
+            warp.plan(cam, ow, oh, split, patch, settings.max_size,
+                      settings.face_res == 1 ? app::FaceRes::Source : app::FaceRes::Output,
+                      app::GeometryModel::minFacePixels());
 
             // ---- run ----
             set_status(dmsg::geom_preview_running);
             const std::vector<float> rgb =
                 app::resize_area(j.frame.px.data(), j.frame.w, j.frame.h, 3,
                                  warp.sampleWidth(), warp.sampleHeight());
-            std::vector<std::vector<float>> face_depth, face_normal;
+            std::vector<std::vector<float>> face_depth, face_normal, face_mask;
             std::vector<float> face_rgb;
             // The first call after a load builds the pipelines and measures the
             // GEMM tiling, so timing it reports about 3x the steady-state cost
@@ -455,6 +457,9 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                 app::turn_pixels(back, 1, p.depth, dw, dh);
                 dw = p.width;
                 dh = p.height;
+                app::turn_pixels(back, 1, p.mask, dw, dh);
+                dw = p.width;
+                dh = p.height;
                 app::turn_normals(back, p.normal, dw, dh);
                 // One unit across faces before they are blended: Metric3D's
                 // depth is canonical to the face's focal.
@@ -462,12 +467,13 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
                 for (float& d : p.depth) d *= mm;
                 face_depth.push_back(std::move(p.depth));
                 face_normal.push_back(std::move(p.normal));
+                face_mask.push_back(std::move(p.mask));
             }
             const double each = nn::now_ms() - t0;
             std::vector<float> depth, normal;
             const bool ray = settings.ray_depth == 0 ? warp.defaultRayDepth()
                                                      : settings.ray_depth == 1;
-            warp.gather(face_depth, face_normal, ray, &depth, &normal);
+            warp.gather(face_depth, face_normal, face_mask, ray, &depth, &normal);
 
             auto normals = normal_picture(normal, warp.outWidth(), warp.outHeight());
             auto depths = depth_picture(depth, warp.outWidth(), warp.outHeight());

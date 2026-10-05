@@ -51,6 +51,9 @@ void guess_source_rigs(std::vector<PrepInput>& sources, bool force);
 // itself (a picked images/ has its reconstruction written beside it) rather
 // than a fresh one to be created next to the input.
 std::string default_workspace(const std::vector<PrepInput>& sources);
+// Is `ws` one default_workspace() gives these inputs -- the folder itself or
+// one of its _2, _3 -- whatever it holds by now?
+bool workspace_named_by(const std::vector<PrepInput>& sources, const std::string& ws);
 
 bool any_pano360(const std::vector<PrepInput>& sources);
 void reset_pano_size(const std::vector<PrepInput>& sources,

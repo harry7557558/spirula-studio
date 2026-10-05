@@ -48,6 +48,9 @@ struct BundleOptions {
     // 0 keeps the solver defaults (the final refinement passes do).
     double rtol = 0;
     int patience = 0;
+    // SolverOptions::gradient_tol and metres_per_unit; 0 = no gradient stop.
+    double gradient_tol = 0;
+    double metres_per_unit = 1;
     // Refine each camera's principal point, or hold it where the setup put it
     // (the image centre, unless something measured otherwise). COLMAP's
     // refine_principal_point, false there and here.
@@ -403,6 +406,8 @@ inline SolverOptions bundleSolverOptions(const BundleOptions& bopt) {
     sopt.loss_param = bopt.loss_param;
     if (bopt.rtol > 0) sopt.rtol = bopt.rtol;
     if (bopt.patience > 0) sopt.patience = bopt.patience;
+    sopt.gradient_tol = bopt.gradient_tol;
+    sopt.metres_per_unit = bopt.metres_per_unit;
     if (bopt.solver == "dense") sopt.solver = SolverSel::Dense;
     else if (bopt.solver == "cg") sopt.solver = SolverSel::CG;
     sopt.over_budget_throws = bopt.over_budget_throws;
@@ -528,16 +533,23 @@ inline double runGlobalBA(Reconstruction& rec, const BundleOptions& bopt) {
     g_map_prof.ba_write += t_write;
     g_map_prof.n_ba++;
     g_map_prof.n_ba_iters += stats.iterations;
+    char grad[64] = "";
+    if (!stats.gradient_norms.empty())
+        std::snprintf(grad, sizeof grad, ", gradient %.3e%s", stats.gradient_norms.back(),
+                      stats.gradient_stop ? " (stop)" : "");
     if (MapProf::enabled())
         slog::diag(slog::Tag::Map,
                    "[prof] BA #%ld: %u img %u pt %u obs | build %.3f init %.3f solve %.3f "
-                   "write %.3f s | %d LM iters, %s%s",
+                   "write %.3f s | %d LM iters, %s%s | prior %.3f -> %.3f, %d prior-driven, "
+                   "final damping %.1e, cost %.6e -> %.6e%s",
                    (long)g_map_prof.n_ba, P.num_images, P.num_points, P.num_obs, t_build, t_init,
                    t_solve, t_write, stats.iterations, stats.solver,
                    stats.cg_solves ? (" " + std::to_string((int)std::lround(
                                                  stats.cg_iters_total / stats.cg_solves)) +
                                       " its/solve").c_str()
-                                   : "");
+                                   : "",
+                   stats.prior_initial, stats.prior_final, stats.prior_steps,
+                   stats.final_damping, stats.initial_cost, stats.final_cost, grad);
     return stats.final_cost;
 }
 

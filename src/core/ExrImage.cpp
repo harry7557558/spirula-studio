@@ -9,27 +9,23 @@
 #include "core/ExrImage.h"
 
 #include "core/ColorSpace.h"
+#include "core/HalfFloat.h"
+#include "core/MappedFile.h"
 #include "external/miniz.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <mutex>
 #include <optional>
 #include <thread>
-
-#if defined(_WIN32)
-#  include <windows.h>
-#else
-#  include <fcntl.h>
-#  include <sys/mman.h>
-#  include <sys/stat.h>
-#  include <unistd.h>
-#endif
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
 #  error "core/ExrImage.cpp reads EXR words in host order; the host must be little-endian"
@@ -74,32 +70,6 @@ inline int num_samples(int s, int a, int b) {
     return s == 1 ? b - a + 1 : divp(b, s) - divp(a, s) + 1;
 }
 
-// 256 KB, built once. Real scene-linear captures are full of subnormals, and
-// the branchy bit-twiddle conversion measures slower on them than the table.
-const float* half_table() {
-    static const std::vector<float> table = [] {
-        std::vector<float> t(65536);
-        for (uint32_t h = 0; h < 65536; h++) {
-            const uint32_t sign = (h & 0x8000u) << 16;
-            uint32_t e = (h >> 10) & 0x1fu, m = h & 0x3ffu, bits;
-            if (e == 0 && m == 0) {
-                bits = sign;
-            } else if (e == 0) {
-                e = 1;
-                while (!(m & 0x400u)) { m <<= 1; e--; }
-                bits = sign | ((e + 112u) << 23) | ((m & 0x3ffu) << 13);
-            } else if (e == 31) {
-                bits = sign | 0x7f800000u | (m << 13);
-            } else {
-                bits = sign | ((e + 112u) << 23) | (m << 13);
-            }
-            std::memcpy(&t[h], &bits, 4);
-        }
-        return t;
-    }();
-    return table.data();
-}
-
 inline float sample_to_float(int type, const uint8_t* p, const float* halves) {
     if (type == kHalf) {
         uint16_t h;
@@ -115,85 +85,6 @@ inline float sample_to_float(int type, const uint8_t* p, const float* halves) {
     std::memcpy(&u, p, 4);
     return (float)u;
 }
-
-// ===========================================================================
-// Memory-mapped input
-// ===========================================================================
-
-class Mapped {
-public:
-    ~Mapped() { close(); }
-
-    std::string open(const std::string& path) {
-#if defined(_WIN32)
-        _file = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (_file == INVALID_HANDLE_VALUE) return "cannot open the file";
-        LARGE_INTEGER sz;
-        if (!GetFileSizeEx(_file, &sz) || sz.QuadPart <= 0) {
-            close();
-            return "the file is empty";
-        }
-        _size = (size_t)sz.QuadPart;
-        _mapping = CreateFileMappingA(_file, nullptr, PAGE_READONLY, 0, 0, nullptr);
-        if (_mapping)
-            _data = (const uint8_t*)MapViewOfFile(_mapping, FILE_MAP_READ, 0, 0, 0);
-#else
-        _fd = ::open(path.c_str(), O_RDONLY);
-        if (_fd < 0) return "cannot open the file";
-        struct stat st;
-        if (fstat(_fd, &st) != 0 || st.st_size <= 0) {
-            close();
-            return "the file is empty";
-        }
-        _size = (size_t)st.st_size;
-        void* p = mmap(nullptr, _size, PROT_READ, MAP_PRIVATE, _fd, 0);
-        if (p != MAP_FAILED) _data = (const uint8_t*)p;
-#endif
-        if (!_data) {
-            _fallback.resize(_size);
-            FILE* f = std::fopen(path.c_str(), "rb");
-            if (!f) { close(); return "cannot open the file"; }
-            const size_t got = std::fread(_fallback.data(), 1, _size, f);
-            std::fclose(f);
-            if (got != _size) { close(); return "the file was truncated while reading"; }
-            _data = _fallback.data();
-        }
-        return "";
-    }
-
-    const uint8_t* data() const { return _data; }
-    size_t size() const { return _size; }
-
-private:
-    void close() {
-        const bool mapped = _data && _fallback.empty();
-#if defined(_WIN32)
-        if (mapped) UnmapViewOfFile((LPCVOID)_data);
-        if (_mapping) CloseHandle(_mapping);
-        if (_file != INVALID_HANDLE_VALUE) CloseHandle(_file);
-        _mapping = nullptr;
-        _file = INVALID_HANDLE_VALUE;
-#else
-        if (mapped) munmap((void*)_data, _size);
-        if (_fd >= 0) ::close(_fd);
-        _fd = -1;
-#endif
-        _data = nullptr;
-        _size = 0;
-        _fallback.clear();
-    }
-
-    const uint8_t* _data = nullptr;
-    size_t _size = 0;
-    std::vector<uint8_t> _fallback;
-#if defined(_WIN32)
-    HANDLE _file = INVALID_HANDLE_VALUE;
-    HANDLE _mapping = nullptr;
-#else
-    int _fd = -1;
-#endif
-};
 
 // ===========================================================================
 // Header
@@ -333,27 +224,10 @@ std::string parse_part(Reader& r, Part& part) {
 // Colour space
 // ===========================================================================
 
-struct GamutEntry {
-    const char* name;
-    float xy[8];   // Rx Ry Gx Gy Bx By Wx Wy
-};
-
-// The white point is part of the match: core/ColorSpace.h's "DCI-P3" is the
-// theatrical white, and passing P3-D65 off as it is a visible green shift, so
-// that one is reported as unknown rather than as nearly right.
-const GamutEntry kGamutTable[] = {
-    {"Rec.709",    {0.640f, 0.330f, 0.300f, 0.600f, 0.150f, 0.060f, 0.3127f, 0.3290f}},
-    {"ACES2065-1", {0.7347f, 0.2653f, 0.0f, 1.0f, 0.0001f, -0.0770f, 0.32168f, 0.33767f}},
-    {"ACEScg",     {0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f}},
-    {"Rec.2020",   {0.708f, 0.292f, 0.170f, 0.797f, 0.131f, 0.046f, 0.3127f, 0.3290f}},
-    {"AdobeRGB",   {0.640f, 0.330f, 0.210f, 0.710f, 0.150f, 0.060f, 0.3127f, 0.3290f}},
-    {"DCI-P3",     {0.680f, 0.320f, 0.265f, 0.690f, 0.150f, 0.060f, 0.314f, 0.351f}},
-};
-
 void resolve_gamut(const Part& part, Info& info) {
     info.chromaticities = part.has_chroma;
     if (!part.has_chroma) return;
-    for (const GamutEntry& g : kGamutTable) {
+    for (const colorspace::GamutPrimaries& g : colorspace::kGamutPrimaries) {
         bool same = true;
         for (int i = 0; i < 8 && same; i++)
             same = std::fabs(part.chroma[i] - g.xy[i]) <= 0.002f;
@@ -521,6 +395,8 @@ struct Scratch {
     std::vector<HufDec> hdec;
     std::vector<int> huf_long;
     std::vector<int> huf_count;
+    std::vector<uint16_t> dwa_ac, dwa_dc, dwa_blocks;
+    std::vector<uint8_t> dwa_unknown, dwa_rle;
 };
 
 // ===========================================================================
@@ -1037,6 +913,488 @@ std::string b44_uncompress(const Part& part, const Rect& r, const uint8_t* in,
 }
 
 // ===========================================================================
+// DWAA / DWAB
+// ===========================================================================
+
+// OpenEXR's lossy DCT codec as its SSE2 path decodes it (OpenEXRCore/
+// internal_dwa_*.h, BSD-3-Clause, Copyright Contributors to the OpenEXR
+// Project). Why that path, and the bits it fixes: docs/notes/exr.md.
+#if defined(__clang__)
+#  pragma STDC FP_CONTRACT OFF
+#elif defined(__GNUC__)
+#  pragma GCC optimize("fp-contract=off")
+#elif defined(_MSC_VER)
+#  pragma fp_contract(off)
+#endif
+
+enum DwaScheme { kDwaUnknown = 0, kDwaDct = 1, kDwaRle = 2 };
+
+struct DwaRule {
+    std::string suffix;
+    int scheme = kDwaUnknown;
+    int type = kHalf;
+    int csc = -1;   // which of R, G, B it is in a colour-converted triple
+    bool nocase = false;
+};
+
+// What a version 0 or 1 block classifies by; version 2 carries its own list.
+const std::vector<DwaRule>& dwa_legacy_rules() {
+    static const std::vector<DwaRule> rules = [] {
+        std::vector<DwaRule> v;
+        auto add = [&](const char* suffix, int scheme, int csc,
+                       std::initializer_list<int> types) {
+            for (int t : types) v.push_back({suffix, scheme, t, csc, true});
+        };
+        for (const char* s : {"r", "red"}) add(s, kDwaDct, 0, {kHalf, kFloat});
+        for (const char* s : {"g", "grn", "green"}) add(s, kDwaDct, 1, {kHalf, kFloat});
+        for (const char* s : {"b", "blu", "blue"}) add(s, kDwaDct, 2, {kHalf, kFloat});
+        for (const char* s : {"y", "by", "ry"}) add(s, kDwaDct, -1, {kHalf, kFloat});
+        add("a", kDwaRle, -1, {kUint, kHalf, kFloat});
+        return v;
+    }();
+    return rules;
+}
+
+bool dwa_match(const DwaRule& r, const std::string& suffix, int type) {
+    if (r.type != type || r.suffix.size() != suffix.size()) return false;
+    for (size_t i = 0; i < suffix.size(); i++) {
+        char a = suffix[i], b = r.suffix[i];
+        if (r.nocase) {
+            a = (char)std::tolower((unsigned char)a);
+            b = (char)std::tolower((unsigned char)b);
+        }
+        if (a != b) return false;
+    }
+    return true;
+}
+
+std::string dwa_read_rules(const uint8_t*& p, size_t& left, std::vector<DwaRule>& rules) {
+    const char* const bad = "a DWA block's channel rules are corrupt";
+    if (left <= 2) return bad;
+    uint16_t size;
+    std::memcpy(&size, p, 2);
+    if (size < 2 || size > left) return bad;
+    const uint8_t* q = p + 2;
+    size_t n = (size_t)size - 2;
+    p += size;
+    left -= size;
+    while (n > 0) {
+        if (n <= 3) return bad;
+        size_t len = 0;
+        for (; len < 129; len++) {
+            if (len > n - 3) return bad;
+            if (q[len] == 0) break;
+        }
+        if (len == 129) return bad;
+        DwaRule r;
+        r.suffix.assign((const char*)q, len);
+        len++;
+        if (n < len + 2) return bad;
+        const uint8_t value = q[len], type = q[len + 1];
+        q += len + 2;
+        n -= len + 2;
+        r.csc = (value >> 4) - 1;
+        r.scheme = (value >> 2) & 3;
+        r.nocase = (value & 1) != 0;
+        r.type = type;
+        if (r.csc >= 3 || r.scheme > kDwaRle || type > kFloat) return bad;
+        rules.push_back(r);
+    }
+    return "";
+}
+
+uint16_t float_to_half(float f) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, 4);
+    const uint32_t ui = bits & 0x7fffffffu;
+    uint16_t ret = (uint16_t)((bits >> 16) & 0x8000u);
+    if (ui >= 0x38800000u) {
+        if (ui >= 0x7f800000u) {
+            ret |= 0x7c00;
+            if (ui == 0x7f800000u) return ret;
+            const uint32_t m = (ui & 0x7fffffu) >> 13;
+            return (uint16_t)(ret | m | (m == 0));
+        }
+        if (ui > 0x477fefffu) return (uint16_t)(ret | 0x7c00);
+        const uint32_t u = ui - 0x38000000u;
+        return (uint16_t)(ret | ((u + 0x00000fffu + ((u >> 13) & 1)) >> 13));
+    }
+    if (ui < 0x33000001u) return ret;
+    const uint32_t e = ui >> 23, shift = 0x7e - e;
+    const uint32_t m = 0x800000u | (ui & 0x7fffffu), r = m << (32 - shift);
+    ret = (uint16_t)(ret | (m >> shift));
+    if (r > 0x80000000u || (r == 0x80000000u && (ret & 1) != 0)) ++ret;
+    return ret;
+}
+
+// Stored values are 2.2-gamma below 1 and logarithmic above it.
+const uint16_t* dwa_to_linear() {
+    static const std::vector<uint16_t> lut = [] {
+        const float* halves = spirula::half_to_float_table();
+        std::vector<uint16_t> t(65536, 0);
+        for (uint32_t x = 1; x < 65536; x++) {
+            if ((x & 0x7c00u) == 0x7c00u) continue;
+            float f = halves[x];
+            const float sign = f < 0.0f ? -1.0f : 1.0f;
+            f = std::fabs(f);
+            const float px = f <= 1.0f ? f : 9.02501329156f;
+            const float py = f <= 1.0f ? 2.2f : f - 1.0f;
+            t[x] = float_to_half(sign * std::pow(px, py));
+        }
+        return t;
+    }();
+    return lut.data();
+}
+
+// In place, rows then columns, in the operation order of OpenEXR's SSE2 path:
+// the bits depend on it.
+void dct_inverse_8x8(float* data) {
+    constexpr float a = 3.535536e-01f, b = 4.903927e-01f, c = 4.619398e-01f,
+                    d = 4.157349e-01f, e = 2.777855e-01f, f = 1.913422e-01f,
+                    g = 9.754573e-02f;
+    // Row pass: column i of the basis scaled by input i, summed evens and odds.
+    constexpr float m[8][4] = {{a, a, a, a},   {b, d, e, g},  {c, f, -f, -c},
+                               {d, -g, -b, -e}, {a, -a, -a, a}, {e, -b, g, d},
+                               {f, -c, c, -f},  {g, -e, d, -b}};
+    for (int row = 0; row < 8; row++) {
+        float* r = data + row * 8;
+        float even[4], odd[4];
+        for (int j = 0; j < 4; j++) {
+            even[j] = 0.0f;
+            odd[j] = 0.0f;
+            for (int i = 0; i < 8; i += 2) {
+                even[j] = even[j] + r[i] * m[i][j];
+                odd[j] = odd[j] + r[i + 1] * m[i + 1][j];
+            }
+        }
+        for (int j = 0; j < 4; j++) {
+            r[j] = even[j] + odd[j];
+            r[7 - j] = even[j] - odd[j];
+        }
+    }
+    for (int col = 0; col < 8; col++) {
+        float* v = data + col;
+        const float alpha[4] = {c * v[16], f * v[16], c * v[48], f * v[48]};
+        const float beta[4] = {
+            (v[8] * b + v[24] * d) + (v[40] * e + v[56] * g),
+            (v[8] * d - v[24] * g) - (v[40] * b + v[56] * e),
+            (v[8] * e - v[24] * b) + (v[40] * g + v[56] * d),
+            (v[8] * g - v[24] * e) + (v[40] * d - v[56] * b)};
+        const float theta[4] = {a * (v[0] + v[32]), alpha[0] + alpha[3],
+                                alpha[1] - alpha[2], a * (v[0] - v[32])};
+        const float gamma[4] = {theta[0] + theta[1], theta[3] + theta[2],
+                                theta[3] - theta[2], theta[0] - theta[1]};
+        for (int j = 0; j < 4; j++) {
+            v[8 * j] = gamma[j] + beta[j];
+            v[8 * (7 - j)] = gamma[j] - beta[j];
+        }
+    }
+}
+
+// Y'CbCr back to R'G'B' with the 709 matrix, no offsets.
+inline void csc709_inverse(float& c0, float& c1, float& c2) {
+    const float y = c0, cb = c1, cr = c2;
+    c0 = y + 1.5747f * cr;
+    c1 = y - 0.1873f * cb - 0.4682f * cr;
+    c2 = y + 1.8556f * cb;
+}
+
+constexpr uint8_t kZigZag[64] = {
+    0,  1,  5,  6,  14, 15, 27, 28, 2,  4,  7,  13, 16, 26, 29, 42,
+    3,  8,  12, 17, 25, 30, 41, 43, 9,  11, 18, 24, 31, 40, 44, 53,
+    10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60,
+    21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63};
+
+struct DwaChannel {
+    int scheme = kDwaUnknown;
+    int nx = 0, ny = 0, bytes = 2, type = kHalf;
+    bool p_linear = false;
+    std::vector<uint8_t*> rows;
+    size_t planar = 0;   // offset into the UNKNOWN or RLE buffer
+};
+
+struct DwaStream {
+    const uint16_t* ac;
+    const uint16_t* ac_end;
+    const uint16_t* dc;
+    size_t dc_left;
+};
+
+// One channel, or an R, G, B triple coded together as Y'CbCr. `lin` turns the
+// stored nonlinear values back to linear; null for a pLinear channel.
+std::string dwa_dct_decode(DwaChannel* const* ch, int ncomp, const uint16_t* lin,
+                           DwaStream& st, Scratch& s) {
+    const char* const bad = "a DWA block's DCT data is corrupt";
+    const float* halves = spirula::half_to_float_table();
+    const int w = ch[0]->nx, h = ch[0]->ny;
+    const int bx = (w + 7) / 8, by = (h + 7) / 8;
+    const int left_x = w - (bx - 1) * 8, left_y = h - (by - 1) * 8, full_x = w / 8;
+    const size_t blocks = (size_t)bx * by;
+    if (st.dc_left < (size_t)ncomp * blocks) return bad;
+    s.dwa_blocks.resize((size_t)ncomp * bx * 64);
+    uint16_t* row_block[3];
+    const uint16_t* dc[3];
+    for (int k = 0; k < ncomp; k++) {
+        row_block[k] = s.dwa_blocks.data() + (size_t)k * bx * 64;
+        dc[k] = st.dc + (size_t)k * blocks;
+    }
+    alignas(16) float dct[3][64];
+    uint16_t zig[64];
+
+    for (int yb = 0; yb < by; yb++) {
+        const int max_y = yb == by - 1 ? left_y : 8;
+        for (int xb = 0; xb < bx; xb++) {
+            bool constant = true;
+            for (int k = 0; k < ncomp; k++) {
+                std::memset(zig, 0, sizeof zig);
+                zig[0] = *dc[k]++;
+                int comp = 1, last = 0;
+                while (comp < 64) {
+                    if (st.ac >= st.ac_end) return bad;
+                    const uint16_t v = *st.ac++;
+                    if ((v & 0xff00) == 0xff00) {
+                        const int run = v & 0xff;
+                        comp += run == 0 ? 64 : run;
+                    } else {
+                        last = comp;
+                        zig[comp++] = v;
+                    }
+                }
+                float* out = dct[k];
+                if (last == 0) {
+                    const float v = halves[zig[0]] * 3.535536e-01f * 3.535536e-01f;
+                    for (int i = 0; i < 64; i++) out[i] = v;
+                } else {
+                    constant = false;
+                    for (int i = 0; i < 64; i++) out[i] = halves[zig[kZigZag[i]]];
+                    dct_inverse_8x8(out);
+                }
+            }
+            const int n = constant ? 1 : 64;
+            if (ncomp == 3)
+                for (int i = 0; i < n; i++) csc709_inverse(dct[0][i], dct[1][i], dct[2][i]);
+            for (int k = 0; k < ncomp; k++) {
+                uint16_t* dst = row_block[k] + (size_t)xb * 64;
+                if (constant) {
+                    std::fill(dst, dst + 64, float_to_half(dct[k][0]));
+                } else {
+                    for (int i = 0; i < 64; i++) dst[i] = float_to_half(dct[k][i]);
+                }
+            }
+        }
+        for (int k = 0; k < ncomp; k++) {
+            for (int y = 8 * yb; y < 8 * yb + max_y; y++) {
+                uint8_t* dst = ch[k]->rows[(size_t)y];
+                for (int xb = 0; xb < bx; xb++) {
+                    const uint16_t* src = row_block[k] + (size_t)xb * 64 + (size_t)(y & 7) * 8;
+                    const int m = xb < full_x ? 8 : left_x;
+                    for (int x = 0; x < m; x++) {
+                        const uint16_t v = lin ? lin[src[x]] : src[x];
+                        std::memcpy(dst + (size_t)(xb * 8 + x) * 2, &v, 2);
+                    }
+                }
+            }
+        }
+    }
+    st.dc += (size_t)ncomp * blocks;
+    st.dc_left -= (size_t)ncomp * blocks;
+
+    // A FLOAT channel was decoded to half in the front of its row.
+    for (int k = 0; k < ncomp; k++) {
+        if (ch[k]->type != kFloat) continue;
+        for (uint8_t* row : ch[k]->rows)
+            for (int x = w - 1; x >= 0; x--) {
+                uint16_t hv;
+                std::memcpy(&hv, row + (size_t)x * 2, 2);
+                std::memcpy(row + (size_t)x * 4, &halves[hv], 4);
+            }
+    }
+    return "";
+}
+
+std::string dwa_uncompress(const Part& part, const Rect& r, const uint8_t* in,
+                           size_t in_n, Scratch& s, uint8_t* out) {
+    const char* const bad = "a DWA block is corrupt";
+    enum { kVersion, kUnknownRaw, kUnknownPacked, kAcPacked, kDcPacked, kRlePacked,
+           kRleUnpacked, kRleRaw, kAcCount, kDcCount, kAcCompression, kCounters };
+    if (in_n < kCounters * 8) return "a DWA block is truncated";
+    uint64_t n[kCounters];
+    std::memcpy(n, in, sizeof n);
+    for (uint64_t v : n)
+        if ((int64_t)v < 0) return bad;
+    if (n[kVersion] > 2) return "a DWA block is a version newer than this reader";
+    const uint64_t packed = n[kUnknownPacked] + n[kAcPacked] + n[kDcPacked] + n[kRlePacked];
+    if (n[kUnknownPacked] > in_n || n[kAcPacked] > in_n || n[kDcPacked] > in_n ||
+        n[kRlePacked] > in_n || packed > in_n - sizeof n)
+        return "a DWA block is truncated";
+
+    const uint8_t* p = in + sizeof n;
+    size_t left = in_n - sizeof n;
+    std::vector<DwaRule> own;
+    if (n[kVersion] >= 2)
+        if (const std::string e = dwa_read_rules(p, left, own); !e.empty()) return e;
+    const std::vector<DwaRule>& rules = n[kVersion] >= 2 ? own : dwa_legacy_rules();
+    if (packed > left) return "a DWA block is truncated";
+
+    // Each channel's scheme, and the R/G/B triples sharing a name prefix.
+    const size_t nch = part.channels.size();
+    std::vector<DwaChannel> ch(nch);
+    std::vector<std::string> prefixes;
+    std::vector<std::array<int, 3>> triples;
+    for (size_t c = 0; c < nch; c++) {
+        const Channel& pc = part.channels[c];
+        const size_t dot = pc.name.rfind('.');
+        const std::string prefix = dot == std::string::npos ? "" : pc.name.substr(0, dot + 1);
+        const std::string suffix = pc.name.substr(prefix.size());
+        size_t pi = 0;
+        while (pi < prefixes.size() && prefixes[pi] != prefix) pi++;
+        if (pi == prefixes.size()) {
+            prefixes.push_back(prefix);
+            triples.push_back({-1, -1, -1});
+        }
+        for (const DwaRule& rule : rules)
+            if (dwa_match(rule, suffix, pc.type)) {
+                ch[c].scheme = rule.scheme;
+                if (rule.csc >= 0) triples[pi][(size_t)rule.csc] = (int)c;
+            }
+        ch[c].nx = num_samples(pc.xs, r.x0, r.x1);
+        ch[c].ny = num_samples(pc.ys, r.y0, r.y1);
+        ch[c].bytes = type_size(pc.type);
+        ch[c].type = pc.type;
+        ch[c].p_linear = pc.p_linear;
+    }
+
+    // Where each UNKNOWN or RLE channel sits in its planar buffer.
+    size_t need[3] = {0, 0, 0};
+    for (DwaChannel& c : ch) {
+        const size_t size = (size_t)c.nx * c.ny * c.bytes;
+        if (c.scheme == kDwaDct) continue;
+        c.planar = need[c.scheme];
+        need[c.scheme] += size;
+    }
+    auto sizes_ok = [&](int scheme, uint64_t packed_n, uint64_t raw_n, uint64_t extra) {
+        if (need[scheme] > 0) return raw_n >= need[scheme] && packed_n != 0;
+        return raw_n == 0 && packed_n == 0 && extra == 0;
+    };
+    if (!sizes_ok(kDwaUnknown, n[kUnknownPacked], n[kUnknownRaw], 0) ||
+        !sizes_ok(kDwaRle, n[kRlePacked], n[kRleRaw], n[kRleUnpacked]))
+        return bad;
+    // The counts a block of this size can need, before anything is allocated by them.
+    const uint64_t raw = block_bytes(part, r);
+    const uint64_t blocks = (uint64_t)((r.y1 - r.y0 + 8) / 8) * (uint64_t)((r.x1 - r.x0 + 8) / 8);
+    uint64_t dct_channels = 0;
+    for (const DwaChannel& c : ch) dct_channels += c.scheme == kDwaDct;
+    if (n[kUnknownRaw] > raw || n[kRleRaw] > raw || n[kUnknownRaw] + n[kRleRaw] > raw ||
+        n[kRleUnpacked] > 2 * raw + 64 || n[kAcCount] > dct_channels * blocks * 63 ||
+        n[kDcCount] > dct_channels * blocks)
+        return bad;
+
+    const uint8_t* unknown_in = p;
+    const uint8_t* ac_in = unknown_in + n[kUnknownPacked];
+    const uint8_t* dc_in = ac_in + n[kAcPacked];
+    const uint8_t* rle_in = dc_in + n[kDcPacked];
+
+    if (n[kUnknownPacked] > 0) {
+        s.dwa_unknown.resize((size_t)n[kUnknownRaw]);
+        if (const std::string e = inflate_into(unknown_in, (size_t)n[kUnknownPacked],
+                                               s.dwa_unknown.data(), s.dwa_unknown.size());
+            !e.empty())
+            return e;
+    }
+
+    s.dwa_ac.assign((size_t)n[kAcCount], 0);
+    if (n[kAcPacked] > 0) {
+        std::string e;
+        if (n[kAcCompression] == 0)
+            e = huf_uncompress(s, ac_in, (size_t)n[kAcPacked], s.dwa_ac.data(), s.dwa_ac.size());
+        else if (n[kAcCompression] == 1)
+            e = inflate_into(ac_in, (size_t)n[kAcPacked], (uint8_t*)s.dwa_ac.data(),
+                             s.dwa_ac.size() * 2);
+        else
+            e = bad;
+        if (!e.empty()) return e;
+    }
+
+    s.dwa_dc.assign((size_t)n[kDcCount], 0);
+    if (n[kDcPacked] > 0) {
+        const size_t bytes = s.dwa_dc.size() * 2;
+        if (s.tmp.size() < bytes) s.tmp.resize(bytes);
+        if (const std::string e = inflate_into(dc_in, (size_t)n[kDcPacked], s.tmp.data(), bytes);
+            !e.empty())
+            return e;
+        unpredict(s.tmp.data(), bytes, (uint8_t*)s.dwa_dc.data());
+    } else if (n[kDcCount] != 0) {
+        return bad;
+    }
+
+    if (n[kRleRaw] > 0) {
+        if (s.tmp.size() < n[kRleUnpacked]) s.tmp.resize((size_t)n[kRleUnpacked]);
+        if (const std::string e = inflate_into(rle_in, (size_t)n[kRlePacked], s.tmp.data(),
+                                               (size_t)n[kRleUnpacked]);
+            !e.empty())
+            return e;
+        s.dwa_rle.resize((size_t)n[kRleRaw]);
+        if (const std::string e = rle_uncompress(s.tmp.data(), (size_t)n[kRleUnpacked],
+                                                 s.dwa_rle.data(), s.dwa_rle.size());
+            !e.empty())
+            return e;
+    }
+
+    // Rows in the block's own layout: by line, then by channel.
+    uint8_t* at = out;
+    for (int y = r.y0; y <= r.y1; y++)
+        for (size_t c = 0; c < nch; c++) {
+            if (modp(y, part.channels[c].ys) != 0) continue;
+            ch[c].rows.push_back(at);
+            at += (size_t)ch[c].nx * ch[c].bytes;
+        }
+
+    DwaStream st{s.dwa_ac.data(), s.dwa_ac.data() + s.dwa_ac.size(), s.dwa_dc.data(),
+                 s.dwa_dc.size()};
+    std::vector<char> done(nch, 0);
+    for (size_t pi = 0; pi < triples.size(); pi++) {
+        const std::array<int, 3>& t = triples[pi];
+        if (t[0] < 0 || t[1] < 0 || t[2] < 0) continue;
+        const Channel& c0 = part.channels[(size_t)t[0]];
+        const Channel& c1 = part.channels[(size_t)t[1]];
+        const Channel& c2 = part.channels[(size_t)t[2]];
+        if (c0.xs != c1.xs || c0.xs != c2.xs || c0.ys != c1.ys || c0.ys != c2.ys) continue;
+        DwaChannel* set[3] = {&ch[(size_t)t[0]], &ch[(size_t)t[1]], &ch[(size_t)t[2]]};
+        for (DwaChannel* c : set)
+            if (c->scheme != kDwaDct) return bad;
+        if (const std::string e = dwa_dct_decode(set, 3, dwa_to_linear(), st, s); !e.empty())
+            return e;
+        for (int k : t) done[(size_t)k] = 1;
+    }
+
+    for (size_t ci = 0; ci < nch; ci++) {
+        DwaChannel& c = ch[ci];
+        if (done[ci] || c.nx == 0 || c.ny == 0) continue;
+        const size_t row_bytes = (size_t)c.nx * c.bytes;
+        if (c.scheme == kDwaDct) {
+            DwaChannel* one[1] = {&c};
+            const uint16_t* lin = c.p_linear ? nullptr : dwa_to_linear();
+            if (const std::string e = dwa_dct_decode(one, 1, lin, st, s); !e.empty()) return e;
+        } else if (c.scheme == kDwaRle) {
+            const size_t plane = (size_t)c.nx * c.ny;
+            size_t i = 0;
+            for (uint8_t* row : c.rows)
+                for (int x = 0; x < c.nx; x++, i++)
+                    for (int b = 0; b < c.bytes; b++)
+                        row[(size_t)x * c.bytes + b] = s.dwa_rle[c.planar + b * plane + i];
+        } else {
+            size_t src = c.planar;
+            for (uint8_t* row : c.rows) {
+                if (src + row_bytes > s.dwa_unknown.size()) return bad;
+                std::memcpy(row, s.dwa_unknown.data() + src, row_bytes);
+                src += row_bytes;
+            }
+        }
+    }
+    return "";
+}
+
+// ===========================================================================
 // Decoder
 // ===========================================================================
 
@@ -1079,7 +1437,7 @@ size_t tile_table_size(const Part& part) {
 using RowSink = std::function<void(int y, int x0, int n, const float* px)>;
 
 struct Decoder {
-    Mapped map;
+    spirula::MappedFile map;
     Part part;
     Selection sel;
     Info info;
@@ -1098,7 +1456,8 @@ struct Decoder {
 
     std::string open(const std::string& path);
     std::string read_offsets(Reader& r);
-    std::string run(int threads);
+    // Chunks 0, stride, 2*stride, ...
+    std::string run(int threads, size_t stride = 1);
     std::string decode_chunk(size_t i, Scratch& s);
     void emit_rows(const Rect& r, const uint8_t* blk, Scratch& s);
 };
@@ -1158,10 +1517,7 @@ std::string Decoder::open(const std::string& path) {
         part.px0 = part.dx0; part.py0 = part.dy0;
         part.px1 = part.dx1; part.py1 = part.dy1;
     }
-    if (part.compression == kDwaa || part.compression == kDwab)
-        return std::string("DWA compression is not supported (this file is ") +
-               compression_name(part.compression) + "); re-save it as ZIP or PIZ";
-    if (part.compression < kNone || part.compression > kB44a)
+    if (part.compression < kNone || part.compression > kDwab)
         return "EXR compression code " + std::to_string(part.compression) +
                " is not one this reader knows";
     if (part.tiled && (part.tile_w == 0 || part.tile_h == 0))
@@ -1226,7 +1582,7 @@ std::string Decoder::read_offsets(Reader& r) {
 }
 
 void Decoder::emit_rows(const Rect& rect, const uint8_t* blk, Scratch& s) {
-    const float* halves = half_table();
+    const float* halves = spirula::half_to_float_table();
     const int w = info.width;
     const int x0 = std::max(rect.x0, part.px0);
     const int x1 = std::min(rect.x1, part.px1);
@@ -1361,6 +1717,8 @@ std::string Decoder::decode_chunk(size_t i, Scratch& s) {
             case kPxr24: e = pxr24_uncompress(part, rect, p, size, s, s.raw.data()); break;
             case kB44:
             case kB44a:  e = b44_uncompress(part, rect, p, size, s, s.raw.data()); break;
+            case kDwaa:
+            case kDwab:  e = dwa_uncompress(part, rect, p, size, s, s.raw.data()); break;
             default:     e = "an unsupported compression reached the block decoder";
         }
         if (!e.empty()) return e;
@@ -1371,9 +1729,9 @@ std::string Decoder::decode_chunk(size_t i, Scratch& s) {
     return "";
 }
 
-std::string Decoder::run(int threads) {
-    const size_t n = offsets.size();
-    if (n == 0) return "the file has no image chunks";
+std::string Decoder::run(int threads, size_t stride) {
+    if (offsets.empty()) return "the file has no image chunks";
+    const size_t n = (offsets.size() + stride - 1) / stride;
     unsigned hc = std::thread::hardware_concurrency();
     int want = threads > 0 ? threads : (hc > 0 ? (int)hc : 1);
     want = std::max(1, std::min<int>(want, (int)n));
@@ -1384,7 +1742,7 @@ std::string Decoder::run(int threads) {
     if (want == 1) {
         Scratch s;
         for (size_t i = 0; i < n; i++)
-            if (const std::string e = decode_chunk(i, s); !e.empty()) return e;
+            if (const std::string e = decode_chunk(i * stride, s); !e.empty()) return e;
         return "";
     }
 
@@ -1399,7 +1757,7 @@ std::string Decoder::run(int threads) {
             for (;;) {
                 const size_t i = next.fetch_add(1);
                 if (i >= n) return;
-                const std::string e = decode_chunk(i, s);
+                const std::string e = decode_chunk(i * stride, s);
                 if (e.empty()) continue;
                 std::lock_guard<std::mutex> lk(mu);
                 if (first.empty()) first = e;
@@ -1410,32 +1768,6 @@ std::string Decoder::run(int threads) {
     }
     for (std::thread& t : pool) t.join();
     return first;
-}
-
-// Exact 8-bit quantization of linear_to_srgb: thresh[c] is the linear value at
-// which the code steps to c+1, so the search cannot disagree with the curve.
-const float* srgb_thresholds() {
-    static const std::vector<float> t = [] {
-        std::vector<float> v(255);
-        for (int c = 0; c < 255; c++)
-            v[(size_t)c] = colorspace::srgb_to_linear((c + 0.5f) / 255.0f);
-        return v;
-    }();
-    return t.data();
-}
-
-inline uint8_t quantize_srgb(const float* t, float x) {
-    int lo = 0, hi = 255;
-    while (lo < hi) {
-        const int m = (lo + hi + 1) >> 1;
-        if (x >= t[m - 1]) lo = m;
-        else               hi = m - 1;
-    }
-    return (uint8_t)lo;
-}
-
-inline uint8_t quantize_unit(float x) {
-    return (uint8_t)std::lround(std::min(std::max(x, 0.0f), 1.0f) * 255.0f);
 }
 
 }  // namespace
@@ -1492,7 +1824,7 @@ std::string decode(const std::string& path, const Options& opt, Info& info,
 
 std::string decode_srgb8(const std::string& path, const Options& opt, Info& info,
                          std::vector<uint8_t>& out, const std::string& gamut,
-                         std::optional<bool> is_linear) {
+                         std::optional<bool> is_linear, std::vector<uint8_t>* unexposed) {
     if (opt.channels != 1 && opt.channels != 3 && opt.channels != 4)
         return "an EXR can be decoded to 1, 3 or 4 channels";
     Decoder d;
@@ -1500,39 +1832,55 @@ std::string decode_srgb8(const std::string& path, const Options& opt, Info& info
     d.out_channels = opt.channels;
     info = d.info;
 
-    const std::string g = gamut.empty() ? d.info.gamut : gamut;
+    const std::string& space = gamut.empty() ? d.info.gamut : gamut;
     const bool linear = is_linear.value_or(d.info.is_linear);
-    const colorspace::Mat3 m = colorspace::gamut_to_rec709(g);
-    const bool identity = colorspace::is_identity(g, linear);
-
+    const colorspace::Srgb8Encoder plain(space, linear);
     const size_t w = (size_t)d.info.width, h = (size_t)d.info.height;
-    out.resize(w * h * (size_t)opt.channels);
-    if (!d.covers_display()) std::fill(out.begin(), out.end(), (uint8_t)0);
     const int nc = opt.channels;
-    const float* thresh = srgb_thresholds();
+
+    // Auto exposure meters every eighth chunk, which costs an eighth of a
+    // decode rather than holding the whole image as float.
+    std::vector<float> luma;
+    if (opt.exposure.automatic) {
+        const size_t step = colorspace::exposure_sample_step(w, h);
+        std::mutex mu;
+        d.sink = [&](int, int x0, int n, const float* px) {
+            std::vector<float> got;
+            for (size_t i = (step - (size_t)x0 % step) % step; i < (size_t)n; i += step) {
+                float v[3];
+                plain.to_linear(px + i * (size_t)nc, nc, v);
+                got.push_back(colorspace::luma709(v));
+            }
+            std::lock_guard<std::mutex> lk(mu);
+            luma.insert(luma.end(), got.begin(), got.end());
+        };
+        if (const std::string e = d.run(opt.threads, d.offsets.size() >= 64 ? 8 : 1);
+            !e.empty())
+            return e;
+    }
+    info.gain = colorspace::exposure_gain(opt.exposure, luma);
+    const colorspace::Srgb8Encoder enc(space, linear, info.gain);
+
+    out.resize(w * h * (size_t)nc);
+    if (!d.covers_display()) std::fill(out.begin(), out.end(), (uint8_t)0);
+    const bool both = unexposed && info.gain != 1.0f;
+    if (unexposed) unexposed->assign(both ? out.size() : 0, 0);
     uint8_t* dst = out.data();
-    // A single channel is achromatic, and every gamut here maps white to
-    // white, so the matrix drops out and only the transfer is left.
-    d.sink = [&, dst, w, nc](int y, int x0, int n, const float* px) {
-        uint8_t* o = dst + ((size_t)y * w + (size_t)x0) * (size_t)nc;
-        for (int i = 0; i < n; i++, px += nc, o += nc) {
-            if (nc == 1) {
-                o[0] = linear ? quantize_srgb(thresh, px[0]) : quantize_unit(px[0]);
-                continue;
-            }
-            if (identity) {
-                for (int c = 0; c < 3; c++) o[c] = quantize_unit(px[c]);
-            } else {
-                float v[3] = {px[0], px[1], px[2]};
-                if (!linear)
-                    for (int c = 0; c < 3; c++) v[c] = colorspace::srgb_to_linear(v[c]);
-                colorspace::apply3x3(m, v);
-                for (int c = 0; c < 3; c++) o[c] = quantize_srgb(thresh, v[c]);
-            }
-            if (nc == 4) o[3] = quantize_unit(px[3]);
-        }
+    uint8_t* raw = both ? unexposed->data() : nullptr;
+    std::atomic<float> peak{0.0f};
+    d.sink = [&](int y, int x0, int n, const float* px) {
+        const size_t at = ((size_t)y * w + (size_t)x0) * (size_t)nc;
+        enc(px, dst + at, (size_t)n, nc);
+        if (raw) plain(px, raw + at, (size_t)n, nc);
+        float m = 0.0f;
+        for (size_t i = 0; i < (size_t)n * (size_t)nc; i++)
+            if (nc != 4 || i % 4 != 3) m = std::max(m, px[i]);
+        float cur = peak.load(std::memory_order_relaxed);
+        while (m > cur && !peak.compare_exchange_weak(cur, m, std::memory_order_relaxed)) {}
     };
-    return d.run(opt.threads);
+    const std::string e = d.run(opt.threads);
+    info.peak = peak.load();
+    return e;
 }
 
 }  // namespace exr

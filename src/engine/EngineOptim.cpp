@@ -225,6 +225,7 @@ static void _ensure_optim_state(int sh_optim_bits, int sh_value_bits,
     } else {
         engine().optim.bias_correction_steps = DeviceVector<int32_t>();
     }
+    engine().optim.visit_counters.resize(PoolSlot::EngVisitCounters, N);
 
     // Zero everything on first init. For the quantized non-SH path the codec's
     // (u=0, log_s=0) -> (g1=0, g2=0) fixed point makes zeroing the packed
@@ -262,6 +263,7 @@ static void _ensure_optim_state(int sh_optim_bits, int sh_value_bits,
     if (engine().world.features_sh_quant16_fpbo.initialized()) engine().world.features_sh_quant16_fpbo.zero();
     engine().optim.accum_buffer.zero();
     engine().optim.bias_correction_steps.zero();
+    engine().optim.visit_counters.zero();
 
     engine().optim.initialized = true;
 }
@@ -439,6 +441,10 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
         non_sh.features_dc_bounds = engine().optim.features_dc_quant_state_fpbo.bounds_ptr();
     }
 
+    SplatVisitState visit;
+    visit.counters = engine().optim.visit_counters.data_ptr();
+    visit.skip_unrendered_reg = cfg.reg_rendered_only;
+
     auto call_dispatch = [&](auto fn) {
         fn(
             N, max_sh_degree, splats_w,
@@ -457,7 +463,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             g1, g2,
             sh_packed_opt, sh_bounds_opt,
             sh_value_packed_opt, sh_value_bounds_opt,
-            non_sh,
+            non_sh, visit,
             engine().optim.radii,
             densify_score,
             cfg.lr_means, cfg.lr_quats, cfg.lr_scales,
@@ -573,6 +579,10 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         if (g.features_dc_q.initialized()) { grad_q.dc_packed     = g.features_dc_q.packed_ptr(); grad_q.dc_bounds     = g.features_dc_q.bounds_ptr(); }
     }
 
+    SplatVisitState visit;
+    visit.counters = engine().optim.visit_counters.data_ptr();
+    visit.skip_unrendered_reg = cfg.reg_rendered_only;
+
     fused_optim_3dgs_geometry(
         N,
         engine().world.means,     engine().grad.means,     engine().optim.g1_means,     engine().optim.g2_means,
@@ -592,6 +602,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         cfg.use_scale_agnostic_mean,
         color_trust,
         non_sh_optim,
+        visit,
         grad_q,
         step + 1, per_splat_steps,
         grad_scale, zero_grad

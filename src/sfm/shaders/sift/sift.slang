@@ -60,8 +60,9 @@ int clampi(int v, int lo, int hi) { return max(lo, min(hi, v)); }
 // Pyramid construction
 // =====================================================================
 
-// 2x bilinear upsample of the original image into a Gaussian-level slot.
-// p0=outOff  p1=inW  p2=inH  p3=outW  p4=outH
+// 2x bilinear upsample of the original image into tmpH, which blur_dog then
+// blurs into gauss(0,0).
+// p1=inW  p2=inH  p3=outW  p4=outH
 [shader("compute")] [numthreads(16, 16, 1)]
 void upsample(uint3 t : SV_DispatchThreadID) {
     uint ox = t.x, oy = t.y;
@@ -78,37 +79,73 @@ void upsample(uint3 t : SV_DispatchThreadID) {
     float a = img_in[y0c * inW + x0c], b = img_in[y0c * inW + x1c];
     float c = img_in[y1c * inW + x0c], d = img_in[y1c * inW + x1c];
     float top = a + (b - a) * wx, bot = c + (d - c) * wx;
-    gauss[p0 + oy * p3 + ox] = top + (bot - top) * wy;
+    tmpH[oy * p3 + ox] = top + (bot - top) * wy;
 }
 
-// Horizontal Gaussian pass: gauss[srcOff] -> tmpH.  Border = clamp (replicate).
-// p0=srcOff  p1=W  p2=H  p3=radius  p4=weightOff
-[shader("compute")] [numthreads(16, 16, 1)]
-void blur_h(uint3 t : SV_DispatchThreadID) {
-    uint x = t.x, y = t.y;
-    if (x >= p1 || y >= p2) return;
-    int W = int(p1), r = int(p3);
-    float acc = 0.0;
-    for (int k = -r; k <= r; k++) {
-        int xc = clampi(int(x) + k, 0, W - 1);
-        acc += weights[p4 + uint(k + r)] * gauss[p0 + y * p1 + uint(xc)];
+// One separable Gaussian step and the DoG level it completes, per 32x32 output
+// tile staged in shared memory: the same sums in the same order as separate
+// h / v / difference passes. Border = clamp (replicate).
+static const int BT = 32;
+static const int BT_R = 13;  // the largest of SiftExtractor::kBlurRadii
+static const int BT_IN = BT + 2 * BT_R;
+groupshared float btIn[BT_IN * BT_IN];
+groupshared float btMid[BT_IN * BT];
+
+// A compile-time radius keeps the taps in registers and unrolled: 2.1x on a
+// 2-CU RADV iGPU and 1.3x on an RTX 5070 against one runtime-radius kernel.
+void blurTile<let R : int>(uint3 g, uint3 gt) {
+    int W = int(p2), H = int(p3);
+    int x0 = int(g.x) * BT, y0 = int(g.y) * BT;
+    int tx = int(gt.x), ty = int(gt.y);
+    static const int N = BT + 2 * R;
+    float w[2 * R + 1];
+    [unroll] for (int k = 0; k <= 2 * R; k++) w[k] = weights[p4 + uint(k)];
+    for (int ly = ty; ly < N; ly += 8) {
+        uint row = uint(clampi(y0 - R + ly, 0, H - 1)) * uint(W);
+        for (int lx = tx; lx < N; lx += 32) {
+            uint si = row + uint(clampi(x0 - R + lx, 0, W - 1));
+            btIn[ly * BT_IN + lx] = p7 != 0u ? tmpH[si] : gauss[p0 + si];
+        }
     }
-    tmpH[y * p1 + x] = acc;
+    GroupMemoryBarrierWithGroupSync();
+    for (int ly = ty; ly < N; ly += 8) {
+        float acc = 0.0;
+        [unroll] for (int k = 0; k <= 2 * R; k++)
+            acc += w[k] * btIn[ly * BT_IN + tx + k];
+        btMid[ly * BT + tx] = acc;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    // Four adjacent output rows per thread share their 2R+4 loads.
+    float acc[4] = {0.0, 0.0, 0.0, 0.0};
+    int r0 = 4 * ty;
+    [unroll] for (int m = 0; m <= 2 * R + 3; m++) {
+        float v = btMid[(r0 + m) * BT + tx];
+        [unroll] for (int j = 0; j < 4; j++) {
+            if (m - j >= 0 && m - j <= 2 * R) acc[j] += w[m - j] * v;
+        }
+    }
+    int x = x0 + tx;
+    [unroll] for (int j = 0; j < 4; j++) {
+        int y = y0 + r0 + j;
+        if (x < W && y < H) {
+            uint o = uint(y) * uint(W) + uint(x);
+            gauss[p1 + o] = acc[j];
+            if (p6 != 0xffffffffu) dog[p6 + o] = acc[j] - btIn[(r0 + j + R) * BT_IN + tx + R];
+        }
+    }
 }
 
-// Vertical Gaussian pass: tmpH -> gauss[dstOff].
-// p0=dstOff  p1=W  p2=H  p3=radius  p4=weightOff
-[shader("compute")] [numthreads(16, 16, 1)]
-void blur_v(uint3 t : SV_DispatchThreadID) {
-    uint x = t.x, y = t.y;
-    if (x >= p1 || y >= p2) return;
-    int H = int(p2), r = int(p3);
-    float acc = 0.0;
-    for (int k = -r; k <= r; k++) {
-        int yc = clampi(int(y) + k, 0, H - 1);
-        acc += weights[p4 + uint(k + r)] * tmpH[uint(yc) * p1 + x];
+// Source is tmpH when p7 != 0, else gauss[p0]; p6 == ~0u writes no DoG.
+// p0=srcOff  p1=dstOff  p2=W  p3=H  p4=weightOff  p5=radius  p6=dogOff  p7=srcIsTmp
+[shader("compute")] [numthreads(32, 8, 1)]
+void blur_dog(uint3 g : SV_GroupID, uint3 gt : SV_GroupThreadID) {
+    switch (p5) {  // SiftExtractor::kBlurRadii
+    case 5: blurTile<5>(g, gt); break;
+    case 7: blurTile<7>(g, gt); break;
+    case 8: blurTile<8>(g, gt); break;
+    case 10: blurTile<10>(g, gt); break;
+    case 13: blurTile<13>(g, gt); break;
     }
-    gauss[p0 + y * p1 + x] = acc;
 }
 
 // Decimate by 2 (nearest): gauss[srcOff] (srcW x srcH) -> gauss[dstOff].
@@ -118,16 +155,6 @@ void downsample(uint3 t : SV_DispatchThreadID) {
     uint x = t.x, y = t.y;
     if (x >= p3 || y >= p4) return;
     gauss[p1 + y * p3 + x] = gauss[p0 + (2 * y) * p2 + (2 * x)];
-}
-
-// DoG = gauss(o,d+1) - gauss(o,d).
-// p0=gLoOff  p1=gHiOff  p2=dogOff  p3=W  p4=H
-[shader("compute")] [numthreads(16, 16, 1)]
-void dog_diff(uint3 t : SV_DispatchThreadID) {
-    uint x = t.x, y = t.y;
-    if (x >= p3 || y >= p4) return;
-    uint i = y * p3 + x;
-    dog[p2 + i] = gauss[p1 + i] - gauss[p0 + i];
 }
 
 // =====================================================================
@@ -402,95 +429,141 @@ void select_topk(uint3 t : SV_DispatchThreadID) {
 // 128-D descriptor
 // =====================================================================
 
-// One thread per selected keypoint of [p1, p0).
+// 32 threads per selected keypoint of [p1, p0): lane q < 25 owns the unit square
+// [qx-1,qx) x [qy-1,qy) of the 5x5 bin grid, so each sample is read once. 8x one
+// thread per keypoint on an RTX 5070, 5.6x on a 2-CU RADV iGPU.
+static const int DESC_KP_PER_GROUP = 2;
+static const int NSQ = NBP + 1;
+// Loop extent, x1 - x0 + 1 <= 2*ext + 3 < 21 while sigma_oct < SIGMA0*2^(3.5/S).
+// Compile-time, as per-thread trip counts hang Intel Arc B390 (drivers
+// 101.8992 / 101.9033, issue #122).
+static const int SQ_BOX = 20;
+groupshared float descPart[DESC_KP_PER_GROUP * NSQ * NSQ * 4 * NBO];
+groupshared float descSh[DESC_KP_PER_GROUP * 128];
+groupshared float descScal[DESC_KP_PER_GROUP * 3];
+
 [shader("compute")] [numthreads(64, 1, 1)]
-void descriptor(uint3 t : SV_DispatchThreadID) {
-    uint ki = t.x + p1;
-    if (ki >= p0) return;
-    uint ob = ki * uint(OKP_STRIDE);
-    float theta = fokp[ob + 3];
-    float x_oct = fokp[ob + 4], y_oct = fokp[ob + 5], sigma_oct = fokp[ob + 6];
-    uint oct = uint(fokp[ob + 7]);
+void descriptor(uint3 t : SV_DispatchThreadID, uint3 gt : SV_GroupThreadID) {
+    uint lane = gt.x & 31u, slot = gt.x >> 5;
+    uint ki = t.x / 32u + p1;
+    bool valid = ki < p0;
+    // Corner c of a square is cell (qx-1 + (c&1), qy-1 + (c>>1)).
+    float h[4 * NBO];
+    [unroll] for (int i = 0; i < 4 * NBO; i++) h[i] = 0.0;
+    if (valid && lane < uint(NSQ * NSQ)) {
+        uint ob = ki * uint(OKP_STRIDE);
+        float theta = fokp[ob + 3];
+        float x_oct = fokp[ob + 4], y_oct = fokp[ob + 5], sigma_oct = fokp[ob + 6];
+        uint oct = uint(fokp[ob + 7]);
+        // sigma_oct = SIGMA0 * 2^(s_cont/S)  ->  s_cont = S*log2(sigma_oct/SIGMA0)
+        float s_cont = float(S) * log2(sigma_oct / SIGMA0);
+        uint gi = gaussLevelIndex(oct, s_cont);
+        uint4 L = glev[gi];
+        uint off = L.x; int W = int(L.y), H = int(L.z);
 
-    float s_cont = SIGMA0;  // recover s_cont from sigma_oct for the level pick
-    // sigma_oct = SIGMA0 * 2^(s_cont/S)  ->  s_cont = S*log2(sigma_oct/SIGMA0)
-    s_cont = float(S) * log2(sigma_oct / SIGMA0);
-    uint gi = gaussLevelIndex(oct, s_cont);
-    uint4 L = glev[gi];
-    uint off = L.x; int W = int(L.y), H = int(L.z);
+        float binSize = MAGNIF * sigma_oct;
+        // Support radius: cover NBP+1 bins, rotated (sqrt2 factor), +0.5 round.
+        int R = int(floor(1.41421356 * binSize * float(NBP + 1) * 0.5 + 0.5));
+        float ct = cos(theta), st = sin(theta);
+        int xi = int(round(x_oct)), yi = int(round(y_oct));
+        float sigScale = float(NBP) * 0.5;
+        float inv2s2 = 1.0 / (2.0 * sigScale * sigScale);
 
-    float binSize = MAGNIF * sigma_oct;
-    // Support radius: cover NBP+1 bins, rotated (sqrt2 factor), +0.5 round.
-    int R = int(floor(1.41421356 * binSize * float(NBP + 1) * 0.5 + 0.5));
-    float ct = cos(theta), st = sin(theta);
-    int xi = int(round(x_oct)), yi = int(round(y_oct));
+        int qx = int(lane % uint(NSQ)), qy = int(lane / uint(NSQ));
+        float rxc = (float(qx) - 2.0) * binSize, ryc = (float(qy) - 2.0) * binSize;
+        float ccx = ct * rxc - st * ryc, ccy = st * rxc + ct * ryc;
+        float ext = 0.5 * binSize * (abs(ct) + abs(st)) + 1.0;
+        int x0 = max(max(-R, -xi), int(floor(ccx - ext)));
+        int x1 = min(min(R, W - 1 - xi), int(ceil(ccx + ext)));
+        int y0 = max(max(-R, -yi), int(floor(ccy - ext)));
+        int y1 = min(min(R, H - 1 - yi), int(ceil(ccy + ext)));
 
-    float d[128];
-    [unroll] for (int i = 0; i < 128; i++) d[i] = 0.0;
-    float sigScale = float(NBP) * 0.5;
-    float inv2s2 = 1.0 / (2.0 * sigScale * sigScale);
+        for (int iy = 0; iy < SQ_BOX; iy++)
+            for (int ix = 0; ix < SQ_BOX; ix++) {
+                int dx = x0 + ix, dy = y0 + iy;
+                if (dx > x1 || dy > y1) continue;
+                // Rotate sample offset into the descriptor frame, in bin units.
+                float rx = (ct * float(dx) + st * float(dy)) / binSize;
+                float ry = (-st * float(dx) + ct * float(dy)) / binSize;
+                // continuous bin coordinates centered so bins are at 0..NBP-1
+                float bx = rx + float(NBP) * 0.5 - 0.5;
+                float by = ry + float(NBP) * 0.5 - 0.5;
+                if (bx <= -1.0 || bx >= float(NBP) || by <= -1.0 || by >= float(NBP)) continue;
+                int bx0 = int(floor(bx)), by0 = int(floor(by));
+                if (bx0 != qx - 1 || by0 != qy - 1) continue;
 
-    for (int dy = -R; dy <= R; dy++)
-        for (int dx = -R; dx <= R; dx++) {
-            int px = xi + dx, py = yi + dy;
-            if (px < 0 || py < 0 || px >= W || py >= H) continue;
-            // Rotate sample offset into the descriptor frame, in bin units.
-            float rx = (ct * float(dx) + st * float(dy)) / binSize;
-            float ry = (-st * float(dx) + ct * float(dy)) / binSize;
-            // continuous bin coordinates centered so bins are at 0..NBP-1
-            float bx = rx + float(NBP) * 0.5 - 0.5;
-            float by = ry + float(NBP) * 0.5 - 0.5;
-            if (bx <= -1.0 || bx >= float(NBP) || by <= -1.0 || by >= float(NBP)) continue;
-
-            float mag, ang;
-            gradAt(off, W, H, px, py, mag, ang);
-            float w = exp(-(rx * rx + ry * ry) * inv2s2) * mag;
-            float ro = ang - theta;
-            while (ro < 0) ro += PI2;
-            while (ro >= PI2) ro -= PI2;
-            float ob_c = ro / PI2 * float(NBO);
-
-            int bx0 = int(floor(bx)), by0 = int(floor(by)), ob0 = int(floor(ob_c));
-            float fx = bx - float(bx0), fy = by - float(by0), fo = ob_c - float(ob0);
-            // trilinear scatter into 2x2x2 neighborhood
-            [unroll] for (int iy = 0; iy <= 1; iy++) {
-                int yb = by0 + iy;
-                if (yb < 0 || yb >= NBP) continue;
-                float wy = (iy == 0) ? (1.0 - fy) : fy;
-                [unroll] for (int ix = 0; ix <= 1; ix++) {
-                    int xb = bx0 + ix;
-                    if (xb < 0 || xb >= NBP) continue;
-                    float wx = (ix == 0) ? (1.0 - fx) : fx;
-                    [unroll] for (int io = 0; io <= 1; io++) {
-                        int obn = (ob0 + io) % NBO;
-                        float wo = (io == 0) ? (1.0 - fo) : fo;
-                        d[(yb * NBP + xb) * NBO + obn] += w * wx * wy * wo;
+                float mag, ang;
+                gradAt(off, W, H, xi + dx, yi + dy, mag, ang);
+                float w = exp(-(rx * rx + ry * ry) * inv2s2) * mag;
+                float ro = ang - theta;  // both in [0, 2pi)
+                if (ro < 0) ro += PI2;
+                if (ro >= PI2) ro -= PI2;
+                float ob_c = ro / PI2 * float(NBO);
+                int ob0 = int(floor(ob_c));
+                float fx = bx - float(bx0), fy = by - float(by0), fo = ob_c - float(ob0);
+                int o0 = ob0 % NBO, o1 = (ob0 + 1) % NBO;
+                // trilinear: 2x2 cells, 2 orientation bins
+                [unroll] for (int c = 0; c < 4; c++) {
+                    float wx = (c & 1) == 0 ? (1.0 - fx) : fx;
+                    float wy = (c & 2) == 0 ? (1.0 - fy) : fy;
+                    float a = w * wx * wy;
+                    float v0 = a * (1.0 - fo), v1 = a * fo;
+                    [unroll] for (int k = 0; k < NBO; k++) {
+                        if (k == o0) h[c * NBO + k] += v0;
+                        if (k == o1) h[c * NBO + k] += v1;
                     }
                 }
             }
+    }
+    uint pb = slot * uint(NSQ * NSQ * 4 * NBO);
+    if (lane < uint(NSQ * NSQ))
+        [unroll] for (int i = 0; i < 4 * NBO; i++)
+            descPart[pb + lane * uint(4 * NBO) + uint(i)] = h[i];
+    GroupMemoryBarrierWithGroupSync();
+
+    // Cell (cx, cy) gathers corner j of the squares qx in {cx+1, cx}, qy in {cy+1, cy}.
+    uint sb = slot * 128u;
+    if (lane < uint(NBP * NBP)) {
+        int cx = int(lane) % NBP, cy = int(lane) / NBP;
+        [unroll] for (int k = 0; k < NBO; k++) {
+            float sum = 0.0;
+            [unroll] for (int j = 0; j < 4; j++) {
+                int qx = cx + 1 - (j & 1), qy = cy + 1 - (j >> 1);
+                sum += descPart[pb + uint((qy * NSQ + qx) * 4 * NBO + j * NBO + k)];
+            }
+            descSh[sb + lane * uint(NBO) + uint(k)] = sum;
         }
+    }
+    GroupMemoryBarrierWithGroupSync();
 
     // Normalize: L2, clip to 0.2*||d||, L2 again (VLFeat), then RootSIFT
     // (L1-normalize + sqrt), then quantize round(512*x) clamped to 255 (COLMAP).
-    float norm = 0.0;
-    [unroll] for (int i = 0; i < 128; i++) norm += d[i] * d[i];
-    norm = sqrt(norm) + 1e-12;
-    float clip = 0.2 * norm;
-    float norm2 = 0.0;
-    [unroll] for (int i = 0; i < 128; i++) { d[i] = min(d[i], clip); norm2 += d[i] * d[i]; }
-    norm2 = sqrt(norm2) + 1e-12;
-    float l1 = 0.0;
-    [unroll] for (int i = 0; i < 128; i++) { d[i] /= norm2; l1 += d[i]; }
-    l1 += 1e-12;
-    uint base = ki * 32u;
-    [unroll] for (int j = 0; j < 32; j++) {
+    if (lane == 0u) {
+        float norm = 0.0;
+        for (int i = 0; i < 128; i++) norm += descSh[sb + i] * descSh[sb + i];
+        norm = sqrt(norm) + 1e-12;
+        float clip = 0.2 * norm;
+        float norm2 = 0.0;
+        for (int i = 0; i < 128; i++) { float v = min(descSh[sb + i], clip); norm2 += v * v; }
+        norm2 = sqrt(norm2) + 1e-12;
+        float l1 = 0.0;
+        for (int i = 0; i < 128; i++) l1 += min(descSh[sb + i], clip) / norm2;
+        descScal[slot * 3 + 0] = clip;
+        descScal[slot * 3 + 1] = norm2;
+        descScal[slot * 3 + 2] = l1 + 1e-12;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (!valid || lane >= uint(NBP * NBP)) return;
+    float clip = descScal[slot * 3 + 0], norm2 = descScal[slot * 3 + 1], l1 = descScal[slot * 3 + 2];
+    uint base = ki * 32u + lane * 2u;
+    [unroll] for (int j = 0; j < 2; j++) {
         uint packed = 0;
         [unroll] for (int k = 0; k < 4; k++) {
-            float v = sqrt(d[j * 4 + k] / l1);
+            float v = sqrt(min(descSh[sb + lane * 8u + uint(j * 4 + k)], clip) / norm2 / l1);
             int q = int(round(512.0 * v));
             q = clampi(q, 0, 255);
             packed |= uint(q) << (8 * k);
         }
-        desc[base + j] = packed;
+        desc[base + uint(j)] = packed;
     }
 }

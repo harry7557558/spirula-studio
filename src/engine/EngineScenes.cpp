@@ -180,6 +180,7 @@ void engine_scene_activate(int slot) {
     engine().world = s.world;
     engine().cur_num_splats = s.cur_num_splats;
     engine().max_num_splats = s.max_num_splats;
+    DevicePool::global().set_splat_counts(engine().cur_num_splats, engine().max_num_splats);
     engine().num_sh = s.num_sh;
     if (g_cs_slot != slot || g_cs_gen != s.cs_gen) {
         engine_init_color_space(s.cs_enabled, s.cs_transfer, s.cs_is_linear,

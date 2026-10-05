@@ -118,7 +118,7 @@ static bool run_case(const Case& c) {
             c.erank, c.erank_s3, /*quat_norm=*/0.01f,
             /*dc_reg=*/0.001f, /*sh_reg=*/0.001f,
             /*max_screen_size=*/0.3f, /*max_screen_size_penalty=*/0.f,
-            /*scale_agnostic_mean=*/false, ColorTrustState{}, nq, gq,
+            /*scale_agnostic_mean=*/false, ColorTrustState{}, nq, SplatVisitState{}, gq,
             step, DeviceVector<int32_t>(), /*grad_scale=*/1.f,
             /*zero_grad=*/false);
         backend::device_synchronize();

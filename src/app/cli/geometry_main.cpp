@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <future>
 #include <optional>
 #include <string>
 #include <vector>
@@ -67,10 +68,12 @@ struct Options {
     bool depth_mm = false;
     Tri  ray_depth = Tri::Auto;
     Tri  split = Tri::Auto;
+    app::FaceRes face_res = app::FaceRes::Output;
     bool overwrite = false;
     // The dataset's colour space; frames convert to sRGB before inference.
     std::string image_gamut;
-    std::optional<bool> image_is_linear;   // unset: an EXR's own header decides
+    std::optional<bool> image_is_linear;   // unset: the file's own declaration
+    colorspace::Exposure image_exposure;
 };
 
 void help_row(const char* flags, const spirula::i18n::Msg& m, int col = 26) {
@@ -103,9 +106,11 @@ void usage() {
     help_row("--depth-units relative|mm", G::opt_depth_units);
     help_row("--ray-depth auto|yes|no", G::opt_ray_depth);
     help_row("--split auto|yes|no", G::opt_split);
+    help_row("--face-res output|source", G::opt_face_res);
     help_row("--overwrite", G::opt_overwrite);
     help_row("--image-gamut <name>", G::opt_image_gamut);
     help_row("--image-linear / --no-image-linear", G::opt_image_linear);
+    help_row("--image-exposure auto|<stops>", G::opt_image_exposure);
     // English, like the other deep diagnostics in this repository: what it
     // prints is a table of numerical errors, read by whoever changed the warp.
     std::fprintf(stderr, "    --check                   "
@@ -202,7 +207,8 @@ int self_check() {
         // Uncapped faces on purpose: what is left after a correct rotation is
         // bilinear interpolation of a curve, and that error falls with the
         // square of the face's pixels.
-        warp.plan(cam, c.w / patch * patch, c.h / patch * patch, c.split, patch, 0);
+        warp.plan(cam, c.w / patch * patch, c.h / patch * patch, c.split, patch, 0,
+                  app::FaceRes::Source);
 
         const double* axes = warp.faceAxes();
         // The plane as each face would see it: `fd` its own z-depth, `fn` its
@@ -263,6 +269,7 @@ int self_check() {
         };
 
         double worst_n = 0, worst_z = 0, worst_r = 0, worst_align = 0;
+        int64_t sky_reach = 0, sky_leak = 0, sky_lost = 0;
         for (const double(&n)[3] : planes) {
             const double len = std::sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
             const double nn3[3] = {n[0]/len, n[1]/len, n[2]/len};
@@ -271,8 +278,8 @@ int self_check() {
             face_gt(nn3, fd, fn);
 
             std::vector<float> dz, dr, nrm;
-            warp.gather(fd, fn, false, &dz, &nrm);
-            warp.gather(fd, fn, true, &dr, nullptr);
+            warp.gather(fd, fn, {}, false, &dz, &nrm);
+            warp.gather(fd, fn, {}, true, &dr, nullptr);
 
             const double sx = (double)warp.outWidth() / c.w;
             const double sy = (double)warp.outHeight() / c.h;
@@ -299,16 +306,39 @@ int self_check() {
                                         std::acos(std::fmin(1.0, std::fmax(-1.0, c_ang))));
                 }
 
+            if (!warp.split()) continue;
+
+            // Face 0 calls everything sky: wherever it saw the frame the output
+            // must be empty, and nowhere else may change.
+            {
+                const size_t K = (size_t)warp.faces();
+                std::vector<std::vector<float>> ones(K), sky(K);
+                ones[0].assign(fd[0].size(), 1.0f);
+                sky[0].assign(fd[0].size(), 0.0f);
+                std::vector<float> reach, dm, nm;
+                warp.gather(ones, {}, {}, true, &reach, nullptr);
+                warp.gather(fd, fn, sky, true, &dm, &nm);
+                for (size_t i = 0; i < dr.size(); ++i) {
+                    const bool kept = dm[i] > 0.0f || nm[i * 3] != 0.0f ||
+                                      nm[i * 3 + 1] != 0.0f || nm[i * 3 + 2] != 0.0f;
+                    if (reach[i] > 0.0f) {
+                        ++sky_reach;
+                        if (kept) ++sky_leak;
+                    } else if ((dr[i] > 0.0f) != (dm[i] > 0.0f)) {
+                        ++sky_lost;
+                    }
+                }
+            }
+
             // Hand the faces that same plane at deliberately different
             // scales and the blend should put them back on one. The gauge is
             // free, so this measures the ratio's SPREAD, not the ratio.
-            if (!warp.split()) continue;
             for (int k = 0; k < warp.faces(); ++k) {
                 const float s = (float)std::exp(0.5 * ((k % 4) - 1.5));
                 for (float& v : fd[(size_t)k]) v *= s;
             }
             std::vector<float> misfit;
-            warp.gather(fd, {}, true, &dr, nullptr);
+            warp.gather(fd, {}, {}, true, &dr, nullptr);
             for (int y = 0; y < warp.outHeight(); ++y)
                 for (int x = 0; x < warp.outWidth(); ++x) {
                     const size_t i = (size_t)y * warp.outWidth() + x;
@@ -329,14 +359,50 @@ int self_check() {
             }
         }
         // Bilinear resampling of a smooth but curved field is what is left; a
-        // rotation or a scale error is orders of magnitude above these.
+        // rotation or a scale error is orders of magnitude above these. A face
+        // reaching the rim only half in frame does not vote, hence the slack.
         const bool ok = worst_n < 0.02 && worst_z < 0.02 && worst_r < 0.02 &&
-                        worst_align < 0.05;
+                        worst_align < 0.05 && sky_leak <= sky_reach / 200 && sky_lost == 0;
         if (!ok) ++failures;
         std::printf("  %s %-30s faces %d  normal %.4f deg  z %.2e  ray %.2e"
-                    "  realign %.3f\n",
+                    "  realign %.3f  sky leak %lld / %lld lost %lld\n",
                     ok ? "ok  " : "FAIL", c.name, warp.faces(),
-                    worst_n * 57.2957795, worst_z, worst_r, worst_align);
+                    worst_n * 57.2957795, worst_z, worst_r, worst_align,
+                    (long long)sky_leak, (long long)sky_reach, (long long)sky_lost);
+    }
+
+    // --face-res on a frame four times the map: output must cost less than
+    // source, and no face may fall under the floor the frame could have met.
+    std::printf("\n  --face-res output against source, maps at 1064\n");
+    for (const Case& c : cases) {
+        if (!c.split) continue;
+        app::GeometryCamera cam;
+        cam.model = c.model;
+        cam.distortion = c.tier;
+        cam.width = c.w * 4;
+        cam.height = c.h * 4;
+        cam.fx = c.fx * 4; cam.fy = c.fy * 4; cam.cx = c.cx * 4; cam.cy = c.cy * 4;
+        std::copy(std::begin(c.dist), std::end(c.dist), std::begin(cam.dist));
+        const double s = 1064.0 / std::max(cam.width, cam.height);
+        const int ow = (int)(cam.width * s), oh = (int)(cam.height * s);
+        const int64_t floor_px = app::GeometryModel::minFacePixels();
+        app::GeometryWarp out, src;
+        out.plan(cam, ow, oh, true, 1, 1064, app::FaceRes::Output, floor_px);
+        src.plan(cam, ow, oh, true, 1, 1064, app::FaceRes::Source, floor_px);
+        int64_t px_out = 0, px_src = 0;
+        bool floor_ok = out.faces() == src.faces();
+        for (int k = 0; k < out.faces() && floor_ok; ++k) {
+            const int64_t po = (int64_t)out.faceWidth(k) * out.faceHeight(k);
+            const int64_t ps = (int64_t)src.faceWidth(k) * src.faceHeight(k);
+            px_out += po;
+            px_src += ps;
+            // 2% for sides snapped to whole pixels.
+            floor_ok = po * 1.02 >= (double)std::min(floor_px, ps);
+        }
+        const bool ok = floor_ok && px_out < px_src;
+        if (!ok) ++failures;
+        std::printf("  %s %-30s %.2f Mpx against %.2f Mpx\n", ok ? "ok  " : "FAIL",
+                    c.name, px_out / 1e6, px_src / 1e6);
     }
 
     // The closed form that decided how many faces there were, against
@@ -496,10 +562,19 @@ int spirula_geometry_main(int argc, char** argv) {
         else if (a == "--depth-units") o.depth_mm = std::string(next()) == "mm";
         else if (a == "--ray-depth") { if (!tri(next(), o.ray_depth)) { usage(); return 2; } }
         else if (a == "--split") { if (!tri(next(), o.split)) { usage(); return 2; } }
+        else if (a == "--face-res") {
+            const std::string v = next();
+            if (v == "output") o.face_res = app::FaceRes::Output;
+            else if (v == "source") o.face_res = app::FaceRes::Source;
+            else { usage(); return 2; }
+        }
         else if (a == "--overwrite") o.overwrite = true;
         else if (a == "--image-gamut") o.image_gamut = next();
         else if (a == "--image-linear") o.image_is_linear = true;
         else if (a == "--no-image-linear") o.image_is_linear = false;
+        else if (a == "--image-exposure") {
+            if (!colorspace::parse_exposure(next(), o.image_exposure)) { usage(); return 2; }
+        }
         else if (a == "--device") { device = next(); device_set = true; }
         else if (!a.empty() && a[0] == '-') {
             std::fprintf(stderr, "unknown option '%s'\n\n", a.c_str());
@@ -604,7 +679,8 @@ int spirula_geometry_main(int argc, char** argv) {
                     ? camhost::splits_to_pinhole_faces(cam.model, cam.width,
                                                        cam.height, cam.fx, cam.fy)
                     : o.split == Tri::Yes;
-            warps[g].plan(cam, ow, oh, split, patch, o.max_size);
+            warps[g].plan(cam, ow, oh, split, patch, o.max_size, o.face_res,
+                          app::GeometryModel::minFacePixels());
 
             const char* model_name = camera_model_to_string(
                 (CameraModelType)cam.model);
@@ -657,30 +733,61 @@ int spirula_geometry_main(int argc, char** argv) {
         int64_t written = 0, skipped = 0, unreadable = 0;
         double model_ms = 0;
 
+        // Settled before any frame is read, so the next one can be decoded
+        // while the network runs on this one.
+        struct Todo {
+            int64_t i = 0;
+            fs::path np, dp;
+            bool normal = false, depth = false;
+        };
+        std::vector<Todo> todo;
         for (int64_t i = 0; i < N; ++i) {
-            const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
             // out_path creates the folder it names, so a map that was not asked
             // for must not have its path built: it would leave an empty depths/
             // in the dataset for a normals-only run.
-            fs::path np, dp;
+            Todo t;
+            t.i = i;
             if (o.want_normal)
-                np = out_path(normal_dir, i, o.normal_format == "jpg" ? ".jpg" : ".png");
-            if (o.want_depth) dp = out_path(depth_dir, i, ".png");
-            const bool need_normal = o.want_normal && (o.overwrite || !fs::exists(np, ec));
-            const bool need_depth = o.want_depth && (o.overwrite || !fs::exists(dp, ec));
-            if (!need_normal && !need_depth) { ++skipped; continue; }
+                t.np = out_path(normal_dir, i, o.normal_format == "jpg" ? ".jpg" : ".png");
+            if (o.want_depth) t.dp = out_path(depth_dir, i, ".png");
+            t.normal = o.want_normal && (o.overwrite || !fs::exists(t.np, ec));
+            t.depth = o.want_depth && (o.overwrite || !fs::exists(t.dp, ec));
+            if (!t.normal && !t.depth) { ++skipped; continue; }
+            todo.push_back(std::move(t));
+        }
 
-            const nn::Image img = nn::load_image(ds.image_filenames[(size_t)i],
-                                                 o.image_gamut, o.image_is_linear);
-            if (img.empty()) {
+        // Empty when the file does not decode.
+        auto read_at = [&](size_t j) {
+            const int64_t i = todo[j].i;
+            return std::async(std::launch::async, [&, i] {
+                const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
+                const nn::Image img =
+                    nn::load_image(ds.image_filenames[(size_t)i], o.image_gamut,
+                                   o.image_is_linear, o.image_exposure);
+                if (img.empty()) return std::vector<float>();
+                return app::resize_area(img.data.data(), img.width, img.height,
+                                        img.channels, warp.sampleWidth(),
+                                        warp.sampleHeight());
+            });
+        };
+        std::future<std::vector<float>> ahead;
+        if (!todo.empty()) ahead = read_at(0);
+
+        for (size_t j = 0; j < todo.size(); ++j) {
+            const int64_t i = todo[j].i;
+            const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
+            const fs::path& np = todo[j].np;
+            const fs::path& dp = todo[j].dp;
+            const bool need_normal = todo[j].normal;
+            const bool need_depth = todo[j].depth;
+
+            const std::vector<float> src = ahead.get();
+            if (j + 1 < todo.size()) ahead = read_at(j + 1);
+            if (src.empty()) {
                 NN_LOG_WARN("skipping %s\n", ds.image_filenames[(size_t)i].c_str());
                 ++unreadable;
                 continue;
             }
-            const std::vector<float> src =
-                app::resize_area(img.data.data(), img.width, img.height,
-                                 img.channels, warp.sampleWidth(),
-                                 warp.sampleHeight());
 
             // The network was trained upright, and a face cut from a photo
             // stored sideways is sideways. Turned for the forward pass and
@@ -690,7 +797,7 @@ int spirula_geometry_main(int argc, char** argv) {
             const sfm::ExifTransform back = app::inverse_turn(turn);
 
             const double t0 = nn::now_ms();
-            std::vector<std::vector<float>> face_depth, face_normal;
+            std::vector<std::vector<float>> face_depth, face_normal, face_mask;
             std::vector<float> face_rgb;
             for (int k = 0; k < warp.faces(); ++k) {
                 warp.sampleFace(k, src.data(), face_rgb);
@@ -708,6 +815,9 @@ int spirula_geometry_main(int argc, char** argv) {
                 app::turn_pixels(back, 1, p.depth, dw, dh);
                 dw = p.width;
                 dh = p.height;
+                app::turn_pixels(back, 1, p.mask, dw, dh);
+                dw = p.width;
+                dh = p.height;
                 app::turn_normals(back, p.normal, dw, dh);
                 p.width = warp.faceWidth(k);
                 p.height = warp.faceHeight(k);
@@ -717,14 +827,15 @@ int spirula_geometry_main(int argc, char** argv) {
                 for (float& d : p.depth) d *= mm;
                 face_depth.push_back(std::move(p.depth));
                 face_normal.push_back(std::move(p.normal));
+                face_mask.push_back(std::move(p.mask));
             }
             model_ms += nn::now_ms() - t0;
 
             const bool ray = o.ray_depth == Tri::Auto ? warp.defaultRayDepth()
                                                       : o.ray_depth == Tri::Yes;
             std::vector<float> depth, normal;
-            warp.gather(face_depth, face_normal, ray, need_depth ? &depth : nullptr,
-                        need_normal ? &normal : nullptr);
+            warp.gather(face_depth, face_normal, face_mask, ray,
+                        need_depth ? &depth : nullptr, need_normal ? &normal : nullptr);
 
             if (need_normal) {
                 app::WriteJob job;
@@ -771,8 +882,8 @@ int spirula_geometry_main(int argc, char** argv) {
                 writers.submit(std::move(job));
             }
 
-            // Every image, not every tenth: one costs about a second, and
-            // the GUI drives its bar and its preview reel off these lines.
+            // Every image, not every tenth: the GUI drives its bar and its
+            // preview reel off these lines.
             ++written;
             {
                 const double each = model_ms / (double)written;
@@ -780,7 +891,8 @@ int spirula_geometry_main(int argc, char** argv) {
                             format(G::log_progress,
                                    {(long long)(written + skipped), (long long)N,
                                     (long long)std::lround(each),
-                                    format_duration(each * (double)(N - i - 1) / 1000.0)})
+                                    format_duration(each * (double)(todo.size() - j - 1) /
+                                                    1000.0)})
                                 .c_str());
                 std::fflush(stdout);
             }

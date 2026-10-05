@@ -379,9 +379,24 @@ template <class Fn> inline void withLoss(const std::string& loss, Fn&& fn) {
 // Residual and Jacobian
 // ================
 
-// out = R(aa) p, matching camera.slang down to its 1e-15 guard on the norm.
+// theta^2 below which angleAxisRotate takes its first-order branch: Ceres'
+// AngleAxisRotatePoint threshold, double epsilon. Must match kSmallAngle2 in camera.slang.
+constexpr double kSmallAngle2 = 2.220446049250313e-16;
+
+inline double scalarOf(double x) { return x; }
+template <int N> inline double scalarOf(const Jet<N>& x) { return x.a; }
+
+// out = R(aa) p, matching camera.slang down to its 1e-15 guard on the norm. Below
+// theta^2 = eps it is Ceres' p + aa x p, whose derivative -[p]x the norm cannot give at 0.
 template <class T> inline void angleAxisRotate(const T axis[3], const T p[3], T out[3]) {
-    T theta = sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+    const T t2 = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
+    if (scalarOf(t2) <= kSmallAngle2) {
+        out[0] = p[0] + (axis[1] * p[2] - axis[2] * p[1]);
+        out[1] = p[1] + (axis[2] * p[0] - axis[0] * p[2]);
+        out[2] = p[2] + (axis[0] * p[1] - axis[1] * p[0]);
+        return;
+    }
+    T theta = sqrt(t2);
     T inv = T(1.0) / (theta + T(1e-15));
     T a[3] = {axis[0] * inv, axis[1] * inv, axis[2] * inv};
     T st = sin(theta), ct = cos(theta);
@@ -444,9 +459,7 @@ inline void angleAxisMatrix(const double axis[3], double R[9]) {
     R[8] = ct + w * a2 * a2;
 }
 
-// d(R(aa) p)/d aa as a 3x3 (row-major), by a dual pass over the axis alone:
-// the norm has no derivative at a zero rotation (every seed pair's first image)
-// and this keeps that 0/0 in the axis columns, where isfinite guards drop it.
+// d(R(aa) p)/d aa as a 3x3 (row-major), by a dual pass over the axis alone.
 inline void angleAxisJacobian(const double axis[3], const double p[3], double J[9], double out[3]) {
     Jet<3> aa[3], pj[3], oj[3];
     for (int i = 0; i < 3; i++) aa[i] = Jet<3>::var(axis[i], i);

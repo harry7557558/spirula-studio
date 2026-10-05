@@ -20,6 +20,10 @@ static const uint kRegionDifference = 6;
 static const uint kRegionComplement = 7;
 static const uint kRegionAll = 8;
 static const uint kRegionNone = 9;
+static const uint kRegionEllipsoid = 10;
+static const uint kRegionCylinder = 11;
+// Header.y vertices, their x,y pairs packed through the whole nodes after it.
+static const uint kRegionPrism = 12;
 static const uint kLabelNone = 255;
 static const uint kSeedOmni = 0xFFFFFF;
 
@@ -119,15 +123,39 @@ bool region_contains(float3 p, float3 n, bool has_n, float4* program, uint num_p
         float4 h = program[i * kRegionNodeStride];
         uint type = uint(h.x);
         bool v = false;
-        if (type == kRegionBox) {
+        if (type == kRegionBox || (type >= kRegionEllipsoid && type <= kRegionPrism)) {
             float4 c = program[i * kRegionNodeStride + 1];
             float4 half_ = program[i * kRegionNodeStride + 2];
             float3 d = p - c.xyz;
-            v = true;
-            for (uint r = 0; r < 3; r++) {
-                float4 row = program[i * kRegionNodeStride + 3 + r];
-                float q = dot(row.xyz, d);
-                if (abs(q) > half_[r]) v = false;
+            float3 q = float3(dot(program[i * kRegionNodeStride + 3].xyz, d),
+                              dot(program[i * kRegionNodeStride + 4].xyz, d),
+                              dot(program[i * kRegionNodeStride + 5].xyz, d));
+            if (type == kRegionBox) {
+                v = abs(q.x) <= half_.x && abs(q.y) <= half_.y && abs(q.z) <= half_.z;
+            } else if (type == kRegionEllipsoid) {
+                float3 u = q / half_.xyz;
+                v = dot(u, u) <= 1.0;
+            } else if (type == kRegionCylinder) {
+                float2 u = q.xy / half_.xy;
+                v = abs(q.z) <= half_.z && dot(u, u) <= 1.0;
+            } else {
+                uint nv = uint(h.y);
+                uint base = (i + 1) * kRegionNodeStride;
+                v = false;
+                if (abs(q.z) <= half_.z) {
+                    uint b = nv - 1;
+                    for (uint a = 0; a < nv; a++) {
+                        float4 fa = program[base + a / 2];
+                        float4 fb = program[base + b / 2];
+                        float2 va = (a & 1u) != 0 ? fa.zw : fa.xy;
+                        float2 vb = (b & 1u) != 0 ? fb.zw : fb.xy;
+                        if ((va.y > q.y) != (vb.y > q.y) &&
+                            q.x < (vb.x - va.x) * (q.y - va.y) / (vb.y - va.y) + va.x)
+                            v = !v;
+                        b = a;
+                    }
+                }
+                i += (2 * nv + 4 * kRegionNodeStride - 1) / (4 * kRegionNodeStride);
             }
         } else if (type == kRegionSphere) {
             float4 c = program[i * kRegionNodeStride + 1];

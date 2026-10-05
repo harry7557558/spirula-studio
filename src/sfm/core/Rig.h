@@ -87,8 +87,8 @@ inline Pose dualFisheyeNominal() {
 }
 
 // Fills in what a kind says about the first members where the definition does
-// not: a dual fisheye starts as two lenses turned 180 degrees about the image's
-// vertical, refined in all 6 DOF unless `refine:` says otherwise. "" or the error.
+// not: a dual fisheye is two lenses turned 180 degrees about the image's
+// vertical, the baseline between them their only translation. "" or the error.
 inline std::string applyRigKind(RigDef& d) {
     if (d.kind.empty()) return {};
     if (d.kind != "dual-fisheye") return "unknown rig kind '" + d.kind + "' (dual-fisheye)";
@@ -100,7 +100,7 @@ inline std::string applyRigKind(RigDef& d) {
         a.ext = {mat3Identity(), {0, 0, 0}};
         b.ext = dualFisheyeNominal();
         a.ext_fixed = b.ext_fixed = false;
-        // b.dof = kRigDofAxial;
+        b.dof = kRigDofAxial;
     }
     return {};
 }

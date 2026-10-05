@@ -1,8 +1,9 @@
 #pragma once
 
-// Minimal cross-platform subprocess runner for the GUI's external tools
-// (colmap, ffmpeg). Streams merged stdout+stderr line-by-line to a callback
-// and supports cooperative cancellation (the process is killed).
+// Minimal cross-platform subprocess runner for external tools (colmap,
+// ffmpeg). Streams merged stdout+stderr line-by-line to a callback and
+// supports cooperative cancellation (the process is killed). GUI-free: the
+// CLI's ffmpeg decoder (app/FfmpegVideo.h) links it too.
 
 #include <atomic>
 #include <functional>
@@ -38,6 +39,25 @@ public:
     // encoder is noticed.
     bool write(const void* data, size_t bytes);
     // Close its stdin and wait: the exit code, or kSpawnFailed.
+    int finish();
+    void kill();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
+};
+
+// A child whose STDOUT this process reads as bytes -- decoded frames out of
+// ffmpeg. Its stderr arrives line by line on a thread of the pipe's own.
+class ProcessReader {
+public:
+    ProcessReader();
+    ~ProcessReader();
+    bool start(const std::vector<std::string>& argv,
+               std::function<void(const std::string&)> on_line);
+    // Up to `bytes`; 0 at end of stream or on error. Blocks.
+    size_t read(void* data, size_t bytes);
+    // Wait for the child: its exit code, or kSpawnFailed.
     int finish();
     void kill();
 

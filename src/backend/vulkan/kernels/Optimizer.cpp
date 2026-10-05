@@ -390,7 +390,7 @@ struct OptimGeoParams {
     uint64_t scales, v_scales, g1_scales, g2_scales;
     uint64_t opacities, v_opacities, g1_opacities, g2_opacities;
     uint64_t features_dc, v_features_dc;
-    uint64_t radii, densify_score, steps;
+    uint64_t radii, densify_score, steps, visit_counters;
     uint64_t gq_means_packed, gq_means_bounds, gq_quats_packed,
         gq_quats_bounds, gq_scales_packed, gq_scales_bounds, gq_opac_packed,
         gq_opac_bounds, gq_dc_packed, gq_dc_bounds;
@@ -405,10 +405,11 @@ struct OptimGeoParams {
         dc_reg_weight, sh_reg_weight, grad_scale, max_screen_size,
         max_screen_size_penalty, eps_tr;
     int32_t scalar_step;
-    uint32_t has_steps, has_densify_score, numel, wgs_per_row;
+    uint32_t has_steps, has_densify_score, numel, wgs_per_row, has_visit,
+        skip_unrendered_reg;
     uint32_t _pad0;
 };
-static_assert(sizeof(OptimGeoParams) == 41 * 8 + 24 * 4,
+static_assert(sizeof(OptimGeoParams) == 42 * 8 + 26 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -566,6 +567,7 @@ void fused_optim_3dgs_geometry(
     bool use_scale_agnostic_mean,
     ColorTrustState color_trust,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     GradQuantBuffers gq,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
     float grad_scale, bool zero_grad
@@ -594,6 +596,9 @@ void fused_optim_3dgs_geometry(
     p.radii = vkk::or_fallback(radii.data_ptr());
     p.densify_score = vkk::or_fallback(densify_score.data_ptr());
     p.steps = vkk::or_fallback(per_splat_steps.data_ptr());
+    p.visit_counters = vkk::or_fallback(visit.counters);
+    p.has_visit = visit.counters ? 1u : 0u;
+    p.skip_unrendered_reg = visit.skip_unrendered_reg ? 1u : 0u;
 
     uint32_t gq_mask = 0;
     p.gq_means_packed = vkk::or_fallback(gq.means_packed);

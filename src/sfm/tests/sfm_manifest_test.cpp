@@ -277,6 +277,97 @@ static int cmdManifestTest(int, char**) {
     }
     check(threw, "an unknown camera model names itself in the error");
 
+    {
+        const std::string calibrated = dir + "/calibrated.yaml";
+        write_file(calibrated,
+                   "camera_mode: folder\ncameras:\n"
+                   "  - prefix: cam0\n    model: opencv-fisheye\n"
+                   "    params: [900, 910, 1200, 1190, 0.1, -0.02, 0.003, -0.0004]\n"
+                   "  - prefix: cam1\n    model: opencv-fisheye\n"
+                   "    params: [920, 930, 1240, 1210, 0.2, -0.03, 0.004, -0.0005]\n");
+        Manifest cm = manifest_read(calibrated);
+        for (bool json : {false, true}) {
+            write_file(dir + "/roundtrip.yaml", manifest_write(cm, json));
+            check(manifest_read(dir + "/roundtrip.yaml").cameras[0].params ==
+                      cm.cameras[0].params,
+                  "full calibration round trips through YAML and JSON");
+        }
+        SfmConfig cc;
+        std::string ci;
+        check(manifest_apply(cm, cc, {}, ci).empty() && cc.finalize(CMD_AUTO).empty(),
+              "full calibration reaches the camera setup");
+        std::vector<ImageEntry> images = {{"cam0/a.jpg", 0}, {"cam1/a.jpg", 0}};
+        std::vector<FeatureSet> feats(2);
+        for (FeatureSet& f : feats) {
+            f.width = f.height = 2464;
+            f.extract_width = f.extract_height = 1232;
+            f.exif_focal = 2000;
+        }
+        CameraSetup setup = buildCameras(images, feats, cc.camera);
+        auto matches = [&](const CameraSetup& s, size_t i, const std::vector<double>& expected) {
+            double p[12]{};
+            const Camera& cam = s.cameras.at(s.ids[i]);
+            packColmap(cam, p);
+            return std::vector<double>(p, p + expected.size()) == expected &&
+                   cam.width == 2464 && cam.height == 2464;
+        };
+        check(setup.count() == 2 && matches(setup, 0, cm.cameras[0].params) &&
+                  matches(setup, 1, cm.cameras[1].params),
+              "anisotropic focal and off-centre principal point stay in source pixels");
+        check(setup.focal_known.count(setup.ids[0]) && setup.focal_given.count(setup.ids[1]),
+              "complete calibrations suppress focal search");
+        MatchesDatabase db;
+        db.images = images;
+        storeCameraSetup(db, setup);
+        writeMatches(dir + "/calibrated.bin", db);
+        MatchesDatabase reread = readMatches(dir + "/calibrated.bin");
+        CameraSetup restored;
+        check(loadCameraSetup(reread, restored) &&
+                  matches(restored, 0, cm.cameras[0].params) &&
+                  matches(restored, 1, cm.cameras[1].params),
+              "calibration survives the match-to-map file boundary");
+        const auto old_signature = stageSignature(cc, CMD_MATCH);
+        cc.camera.overrides[0].params[2] += 1e-9;
+        check(stageSignature(cc, CMD_MATCH) != old_signature,
+              "changing only the principal point invalidates cached matches");
+
+        SfmConfig prefixed;
+        parseCameraOverride("cam0=800", OverrideKind::Focal, prefixed.camera.overrides);
+        check(manifest_apply(cm, prefixed, {}, ci).empty() &&
+                  prefixed.finalize(CMD_AUTO).empty(),
+              "prefixed CLI override still applies");
+        const auto pc = buildCameras(images, feats, prefixed.camera);
+        check(pc.cameras.at(pc.ids[0]).fx == 800 && matches(pc, 1, cm.cameras[1].params),
+              "a CLI camera entry wins over the same manifest prefix");
+
+        cm.cameras.resize(1);
+        cm.cameras[0].prefix.clear();
+        SfmConfig global;
+        global.focal = 850;
+        check(manifest_apply(cm, global, {"focal"}, ci).empty() &&
+                  global.finalize(CMD_AUTO).empty(),
+              "dataset-wide calibration accepts the CLI focal override");
+        const auto gc = buildCameras(images, feats, global.camera);
+        const Camera& gcam = gc.cameras.at(gc.ids[0]);
+        check(gcam.fx == 850 && gcam.fy == 850 && gcam.cx == 1200 && gcam.cy == 1190,
+              "a dataset-wide CLI focal wins while preserving the principal point");
+
+        for (const std::string& body : {
+                 "params: [1, 2, 3, 4]",
+                 "model: opencv-fisheye\n    params: [1, 2, 3, 4]",
+                 "model: opencv-fisheye\n    params: [1, 0, 3, 4, 0, 0, 0, 0]",
+                 "model: opencv-fisheye\n    params: [-1, 2, 3, 4, 0, 0, 0, 0]",
+                 "model: opencv-fisheye\n    params: [1, 2, NaN, 4, 0, 0, 0, 0]",
+                 "model: opencv-fisheye\n    params: [1, 2, 3, 4, 0, 0, 0, 0]\n    focal: 1",
+                 "model: opencv-fisheye\n    params: [1, 2, 3, 4, 0, 0, 0, 0]\n    distortion: []"}) {
+            write_file(dir + "/bad.yaml", "cameras:\n  - prefix: cam0\n    " + body + "\n");
+            bool rejected = false;
+            try { manifest_read(dir + "/bad.yaml"); }
+            catch (const std::exception&) { rejected = true; }
+            check(rejected, "invalid or ambiguous full calibration is rejected");
+        }
+    }
+
     std::filesystem::remove_all(dir, ec);
     std::printf("manifest: 2 camera groups, YAML and JSON agree\n");
     std::printf("%s\n", fails == 0 ? "PASS" : "FAIL");

@@ -50,6 +50,9 @@ constexpr int kMaxFaceSide = 4096;
 // The cross-fade ramps over this fraction of a face's half extent.
 constexpr double kBlend = 0.2;
 
+// moge::PredictOptions::mask_threshold: below it the model had no answer.
+constexpr float kMaskThreshold = 0.5f;
+
 struct Frame {
     double ax[3], ay[3], az[3];   // unit rows
     double ex = 1.0, ey = 1.0;    // half extents, tangent units
@@ -155,6 +158,27 @@ void sample(const float* img, int w, int h, int C, float px, float py, float* ou
     for (int c = 0; c < C; ++c)
         out[c] = (p00[c] * (1 - fx) + p01[c] * fx) * (1 - fy) +
                  (p10[c] * (1 - fx) + p11[c] * fx) * fy;
+}
+
+// `sample` over the taps that hold a depth: a 0 is "no answer here", and
+// averaging it in would pull a sky edge's depth toward the camera.
+float sample_depth(const float* img, int w, int h, float px, float py) {
+    const float x = px - 0.5f, y = py - 0.5f;
+    const int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
+    const float fx = x - x0, fy = y - y0;
+    float acc = 0.0f, wsum = 0.0f;
+    for (int j = 0; j < 2; ++j)
+        for (int i = 0; i < 2; ++i) {
+            const int xi = std::min(std::max(x0 + i, 0), w - 1);
+            const int yi = std::min(std::max(y0 + j, 0), h - 1);
+            const float d = img[(size_t)yi * w + xi];
+            const float wt = (i ? fx : 1 - fx) * (j ? fy : 1 - fy);
+            if (d > 0.0f && wt > 0.0f) {
+                acc += wt * d;
+                wsum += wt;
+            }
+        }
+    return wsum > 0.0f ? acc / wsum : 0.0f;
 }
 
 int snap(double px, int patch) {
@@ -264,7 +288,7 @@ std::vector<float> resize_area(const uint8_t* src, int sw, int sh, int channels,
 }
 
 void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool split,
-                        int patch, int max_face) {
+                        int patch, int max_face, FaceRes res, int64_t min_face_px) {
     out_w_ = out_w;
     out_h_ = out_h;
     faces_.clear();
@@ -301,10 +325,11 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
         throw std::runtime_error("no part of this camera's frame reaches a pinhole "
                                  "face; check the camera model and its coefficients");
 
-    // ---- pixel sizes: the lens's own density where a face points ----------
+    // ---- pixel sizes: the density `res` names where a face points ---------
     // The forward map reads at the sampling resolution, so a face at native
     // density resamples the frame once rather than through a smaller copy.
     const double sx = (double)out_w / cam.width, sy = (double)out_h / cam.height;
+    const double face_scale = res == FaceRes::Output ? std::fmax(sx, sy) : 1.0;
     double fs = 0.0;
     if (frames.empty()) {
         Face f;
@@ -321,7 +346,10 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
             const double theta = std::acos(std::clamp(fr.az[2], -1.0, 1.0));
             const double phi = std::atan2(fr.az[1], fr.az[0]);
             const double dens = source_density(hc, theta, phi);
-            double focal = dens;
+            double focal = dens * face_scale;
+            // Raised to the floor, but never past the frame's own density.
+            const double floor_focal = std::sqrt((double)min_face_px / (4.0 * fr.ex * fr.ey));
+            focal = std::fmax(focal, std::fmin(floor_focal, dens));
             const double longest = 2.0 * focal * std::fmax(fr.ex, fr.ey);
             const int cap = max_face > 0 ? std::min(max_face, kMaxFaceSide) : kMaxFaceSide;
             if (longest > cap) focal *= cap / longest;
@@ -518,11 +546,11 @@ std::vector<double> GeometryWarp::alignFaces(
             const Contrib& t = contrib_[(size_t)c];
             if (t.w <= 0.0f || depth[(size_t)t.face].empty()) continue;
             const Face& f = faces_[(size_t)t.face];
-            float ok = 0, d = 0;
+            float ok = 0;
             // What a face predicted over its mid-grey fill measures nothing.
             sample(f.valid.data(), f.w, f.h, 1, t.px, t.py, &ok);
             if (ok < 0.999f) continue;
-            sample(depth[(size_t)t.face].data(), f.w, f.h, 1, t.px, t.py, &d);
+            const float d = sample_depth(depth[(size_t)t.face].data(), f.w, f.h, t.px, t.py);
             if (!(d > 0.0f)) continue;
             // As a distance from the camera: the one quantity two faces
             // agree on the meaning of.
@@ -588,7 +616,8 @@ std::vector<double> GeometryWarp::alignFaces(
 }
 
 void GeometryWarp::gather(const std::vector<std::vector<float>>& depth,
-                          const std::vector<std::vector<float>>& normal, bool ray_depth,
+                          const std::vector<std::vector<float>>& normal,
+                          const std::vector<std::vector<float>>& mask, bool ray_depth,
                           std::vector<float>* out_depth,
                           std::vector<float>* out_normal) const {
     const size_t n = (size_t)out_w_ * out_h_;
@@ -616,6 +645,7 @@ void GeometryWarp::gather(const std::vector<std::vector<float>>& depth,
     nn::parallel_for(out_h_, [&](int64_t y0, int64_t y1) {
         for (size_t i = (size_t)y0 * out_w_; i < (size_t)y1 * out_w_; ++i) {
             double wd = 0, ld = 0, wn = 0, an[3] = {0, 0, 0};
+            bool rejected = false;
             for (int64_t c = contrib_off_[i]; c < contrib_off_[i + 1]; ++c) {
                 const Contrib& t = contrib_[(size_t)c];
                 const size_t k = (size_t)t.face;
@@ -627,12 +657,22 @@ void GeometryWarp::gather(const std::vector<std::vector<float>>& depth,
                 const double w = (double)t.w * ok;
                 if (w <= 0.0) continue;
 
+                // Sky if ANY face that saw this pixel says so: no supervision
+                // costs less than a wrong normal from a face that missed it.
+                if (k < mask.size() && !mask[k].empty() && ok >= 0.5f) {
+                    float p = 0;
+                    sample(mask[k].data(), fc.w, fc.h, 1, t.px, t.py, &p);
+                    if (p < kMaskThreshold) {
+                        rejected = true;
+                        break;
+                    }
+                }
+
                 // Linear depth is undefined past 90 degrees; the trainer's
                 // own warp drops those rather than divide by a zero cosine.
                 const double g = ray_depth ? t.sr : t.sz;
                 if (do_depth && !depth[k].empty() && g > 1e-6) {
-                    float d = 0;
-                    sample(depth[k].data(), fc.w, fc.h, 1, t.px, t.py, &d);
+                    const float d = sample_depth(depth[k].data(), fc.w, fc.h, t.px, t.py);
                     if (d > 0.0f) {
                         ld += w * (std::log((double)d * g) + scale[k]);
                         wd += w;
@@ -647,6 +687,7 @@ void GeometryWarp::gather(const std::vector<std::vector<float>>& depth,
                     wn += w;
                 }
             }
+            if (rejected) continue;
             // Blended in the log, where a scale error lives and where the
             // trainer's depth loss reads it.
             if (wd > 0.0) (*out_depth)[i] = (float)std::exp(ld / wd);

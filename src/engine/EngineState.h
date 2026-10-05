@@ -251,6 +251,7 @@ struct SplatOptim {
     DeviceVector<float>    radii;                  // [max_N]
     DeviceVector<float2>   accum_buffer;           // [max_N]
     DeviceVector<int32_t>  bias_correction_steps;  // [max_N], or empty
+    DeviceVector<uint32_t> visit_counters;         // [max_N]; core/SplatVisitState.h
     // accum_buffer with DensifyConfig::final_score_power applied to lane 0.
     // Empty when that power is 1, which is when accum_buffer IS the score.
     DeviceVector<float2>   densify_sample_score;   // [cur_N], or empty
@@ -258,6 +259,9 @@ struct SplatOptim {
     // refine, zeroed with accum_buffer. Empty when the oversize split
     // channel is off.
     DeviceVector<float>    densify_oversize;       // [max_N], or empty
+    // What the last refine step found and did, for the step's loss_dict.
+    int64_t last_num_dead      = 0;
+    int64_t last_num_relocated = 0;
 
     // Set per-step from cfg.optim.use_fused_proj_bwd_optim before forward/loss
     // so engine_compute_loss_backward knows to skip projection_*_backward and
@@ -560,6 +564,15 @@ struct EngineViewerState {
 };
 
 
+// Per post-split camera: the render counters of the splats it contributed to,
+// from its last render. The DataManager turns these into view draw weights.
+struct VisitStats {
+    bool    enabled  = false;
+    int32_t num_post = 0;
+    DeviceVector<float>    cam_sum;   // [num_post]
+    DeviceVector<uint32_t> cam_cnt;   // [num_post]
+};
+
 struct EngineState {
     // Top-level scalars + flags shared across sections.
     std::string primitive;
@@ -568,6 +581,7 @@ struct EngineState {
     int     num_sh         = 0;
     int     sh_degree      = 0;
     bool    packed         = false;
+    VisitStats visit;
     // Binning tile edge in pixels the caller asked for, or 0 to let the
     // forward choose from the measured splat footprint (engine_set_bin_tile_size).
     int     bin_tile_request = 0;

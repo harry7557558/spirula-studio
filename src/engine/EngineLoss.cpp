@@ -146,6 +146,7 @@ static void _engine_raster_proj_backward(
     TorchTensorView v_depth_dist = _tv_null(),
     TorchTensorView v_normal_dist = _tv_null()
 ) {
+    SplatStageTimer stage_timer;
     RenderOutput::TensorTuple v_render_outputs = std::make_tuple(
         DeviceTensor3D<float3>(v_render_rgb),
         DeviceTensor3D<float>(v_render_depth),
@@ -291,9 +292,8 @@ static void _engine_raster_proj_backward(
     // --- Projection backward ---
     // In fused-proj-bwd-optim mode the projection backward is folded into the
     // optimizer step; we just stash the screen-space gradients for that call.
-    if (engine().optim.use_fused_proj_bwd_optim) {
-        engine().fwd.v_splats_s = v_splats_s_out;
-    } else {
+    engine().fwd.v_splats_s = v_splats_s_out;
+    if (!engine().optim.use_fused_proj_bwd_optim) {
         // SH VALUE-quant: when active in non-FPBO mode, project_vjp reads
         // the source SH via the codec instead of fp32 features_sh (which is
         // unallocated). Pick the (packed, bounds) buffer + bounds-cell

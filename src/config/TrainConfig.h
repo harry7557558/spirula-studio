@@ -83,6 +83,37 @@ inline int train_tier_rank(const char* tier) {
     return kTrainNumTiers - 1;
 }
 
+// A path field's `choices` is "<folder>" or "<file>", a file optionally with
+// the extension it takes ("<file>.ply"), behind "<data>/" when a relative path
+// starts at the dataset folder. The GUI gives these a picker.
+struct TrainPathSpec {
+    bool is_path = false;
+    bool folder = false;
+    bool in_data = false;
+    const char* extension = "";
+};
+
+inline TrainPathSpec train_path_spec(const char* choices) {
+    TrainPathSpec s;
+    if (!std::strncmp(choices, "<data>/", 7)) {
+        s.in_data = true;
+        choices += 7;
+    }
+    if (!std::strcmp(choices, "<folder>")) {
+        s.is_path = s.folder = true;
+    } else if (!std::strncmp(choices, "<file>", 6)) {
+        s.is_path = true;
+        s.extension = choices + 6;
+    }
+    return s;
+}
+
+// Any text at all, rather than one word from a list.
+inline bool train_choices_free_form(const char* choices) {
+    return !*choices || !std::strcmp(choices, "none") ||
+           train_path_spec(choices).is_path;
+}
+
 
 // ===========================================================================
 // The field table
@@ -91,9 +122,9 @@ inline int train_tier_rank(const char* tier) {
 #define SS_CONFIG_FIELDS(X) \
                                                                              \
     /* ==== run -- run control: where output goes, how long, checkpoints, viewer ==== */ \
-    X(std::string, data, {}, "run", "basic", "")                             \
-    X(std::string, resume, "", "run", "advanced", "none")                    \
-    X(std::string, output_dir_prefix, "outputs", "run", "basic", "")         \
+    X(std::string, data, {}, "run", "basic", "<folder>")                     \
+    X(std::string, resume, "", "run", "advanced", "<folder>")                \
+    X(std::string, output_dir_prefix, "outputs", "run", "basic", "<folder>") \
     X(std::string, output_dir_name, "", "run", "basic", "none")              \
     X(int, num_iterations, 30000, "run", "basic", "")                        \
     X(int, steps_per_save, 2000, "run", "advanced", "")                      \
@@ -106,26 +137,27 @@ inline int train_tier_rank(const char* tier) {
                                                                              \
     /* ==== dataset -- which files are read, and which images are held out ==== */ \
     X(std::string, data_format, "", "dataset", "basic", "colmap|nerfstudio|metashape|none") \
-    X(std::string, image_dir, "images", "dataset", "basic", "")              \
-    X(std::string, mask_dir, "masks", "dataset", "basic", "")                \
+    X(std::string, image_dir, "images", "dataset", "basic", "<data>/<folder>") \
+    X(std::string, mask_dir, "masks", "dataset", "basic", "<data>/<folder>") \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
     X(std::optional<bool>, apply_loss_for_mask, std::nullopt, "dataset", "basic", "") \
     X(bool, flip_mask, false, "dataset", "basic", "")                        \
     X(float, mask_boundary_offset, 0.0f, "dataset", "advanced", "")          \
-    X(std::string, depth_dir, "depths", "dataset", "basic", "")              \
-    X(std::string, normal_dir, "normals", "dataset", "basic", "")            \
+    X(std::string, depth_dir, "depths", "dataset", "basic", "<data>/<folder>") \
+    X(std::string, normal_dir, "normals", "dataset", "basic", "<data>/<folder>") \
     X(bool, load_depths, true, "dataset", "basic", "")                       \
     X(bool, load_normals, true, "dataset", "basic", "")                      \
     X(float, depth_unit_scale_factor, 0.001f, "dataset", "expert", "")       \
-    X(std::string, colmap_recon_dir, "", "dataset", "basic", "none")         \
-    X(std::string, metashape_xml, "", "dataset", "advanced", "none")         \
-    X(std::string, metashape_ply, "", "dataset", "advanced", "none")         \
-    X(std::string, metashape_psx, "", "dataset", "advanced", "none")         \
-    X(std::string, init_ply, "", "dataset", "basic", "none")                 \
+    X(std::string, colmap_recon_dir, "", "dataset", "basic", "<data>/<folder>") \
+    X(std::string, metashape_xml, "", "dataset", "advanced", "<data>/<file>.xml") \
+    X(std::string, metashape_ply, "", "dataset", "advanced", "<data>/<file>.ply") \
+    X(std::string, metashape_psx, "", "dataset", "advanced", "<data>/<file>.psx") \
+    X(std::string, seed_pointcloud, "", "dataset", "basic", "<data>/<file>.ply") \
+    X(std::string, init_ply, "", "dataset", "basic", "<file>.ply")           \
     X(bool, init_ply_add_points, false, "dataset", "advanced", "")           \
-    X(std::string, partition, "", "dataset", "advanced", "none")             \
+    X(std::string, partition, "", "dataset", "advanced", "<file>.json")      \
     X(int, partition_part, -1, "dataset", "advanced", "")                    \
-    X(std::string, roi_region, "", "dataset", "advanced", "none")            \
+    X(std::string, roi_region, "", "dataset", "advanced", "<data>/<file>.json") \
     X(float, roi_outside_weight, 1e-4f, "dataset", "advanced", "")           \
     X(float, roi_outside_opacity_decay, 1.0f, "dataset", "advanced", "")     \
     X(bool, roi_mask_pixels, true, "dataset", "advanced", "")                \
@@ -202,6 +234,9 @@ inline int train_tier_rank(const char* tier) {
     X(float, densify_oversize_score_blend, 1.0f, "detail", "advanced", "")   \
     X(bool, use_long_axis_split, true, "detail", "expert", "")               \
     X(TrainVec3f, long_axis_split_opacity_k, train_v3f(0.5f, 0.6f, 15000.0f), "detail", "basic", "") \
+    X(float, max_split_fraction, 0.1f, "detail", "advanced", "")             \
+    X(bool, split_weight_by_renders, false, "detail", "advanced", "")        \
+    X(float, dead_after_epochs, 2.0f, "detail", "advanced", "")              \
     X(float, max_screen_size, 0.3f, "detail", "basic", "")                   \
     X(float, max_screen_size_clip_hardness, 1.5f, "detail", "basic", "")     \
     X(float, max_screen_size_penalty, 1.0f, "detail", "basic", "")           \
@@ -221,6 +256,9 @@ inline int train_tier_rank(const char* tier) {
     X(float, alpha_loss_weight_under, 0.0f, "loss", "basic", "")             \
     X(float, loss_saturation_threshold, -1.0f, "loss", "advanced", "")       \
     X(float, loss_luminance_normalization, 0.0f, "loss", "advanced", "")     \
+    X(std::string, view_sampling, "uniform", "loss", "basic", "uniform|deficit") \
+    X(float, view_deficit_power, 0.5f, "loss", "advanced", "")               \
+    X(float, view_deficit_max_ratio, 8.0f, "loss", "advanced", "")           \
                                                                              \
     /* ==== geometry -- how crisp the surfaces come out, and depth/normal guidance ==== */ \
     X(std::string, floater_suppression, "off", "geometry", "basic", "off|mild|strong") \
@@ -245,6 +283,7 @@ inline int train_tier_rank(const char* tier) {
                                                                              \
     /* ==== shape -- keeping individual splats compact and well behaved ==== */ \
     X(float, opacity_reg, 0.005f, "shape", "basic", "")                      \
+    X(bool, reg_rendered_only, true, "shape", "advanced", "")                \
     X(float, scale_reg, 0.01f, "shape", "basic", "")                         \
     X(float, opacity_reg_decay_power, 1.0f, "shape", "expert", "")           \
     X(float, scale_reg_decay_power, 0.4f, "shape", "expert", "")             \
@@ -314,6 +353,9 @@ inline int train_tier_rank(const char* tier) {
     /* ==== perf -- speed and memory; none of these change the result ==== */\
     X(std::string, cache_images, "disk", "perf", "basic", "cpu|gpu|disk")    \
     X(int, max_batch_per_epoch, 800, "perf", "basic", "")                    \
+    X(float, min_renders_per_refine, 0.0f, "perf", "basic", "")              \
+    X(float, render_quantile, 0.1f, "perf", "advanced", "")                  \
+    X(int, max_train_batch_size, -1, "perf", "advanced", "")                 \
     X(bool, split_batch, true, "perf", "advanced", "")                       \
     X(bool, use_fused_proj_bwd_optim, true, "perf", "advanced", "")          \
     X(bool, packed, true, "perf", "advanced", "")                            \
@@ -357,14 +399,10 @@ struct TrainConfig {
     X(data) \
     /* end */
 
-// Fields that change what load_dataset() produces: edit one of these in the
-// GUI and the parsed dataset it is holding is stale. Spelled out rather than
-// derived from `section`, because the two sets are not the same shape (the
-// warping and depth/normal flags are listed under other headings) and because
-// a heading is free to be reshuffled -- which must not silently change when
-// the GUI re-reads a dataset.
+// Section headings can move without changing which fields invalidate the
+// GUI's parsed dataset; warping and depth flags span several headings.
 #define SS_DATASET_PARSE_FIELDS(X) \
-    X(data) X(data_format) X(colmap_recon_dir) X(image_dir) X(mask_dir) \
+    X(data) X(data_format) X(colmap_recon_dir) X(seed_pointcloud) X(image_dir) X(mask_dir) \
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
     X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
     X(exif_orientation) X(orientation_method) X(center_method) X(auto_scale_poses) \
@@ -376,6 +414,7 @@ struct TrainConfig {
     X(load_depths) X(load_normals) X(relative_scale) \
     X(cap_max) X(random_init) X(random_init_fraction) X(random_init_distribution) \
     X(random_init_center) X(random_init_spread) X(random_init_std) \
+    X(roi_region) \
     /* end */
 
 
@@ -503,6 +542,10 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.use_bilateral_grid_for_geometry = false;
         c.use_ppisp = false;
         c.use_revised_densification = false;
+        c.reg_rendered_only = false;
+        c.dead_after_epochs = 0.0f;
+        c.split_weight_by_renders = false;
+        c.max_split_fraction = 1.0f;
         c.densify_loss_map_mode = "none";
         c.use_long_axis_split = false;
         c.use_fused_proj_bwd_optim = false;

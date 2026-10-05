@@ -54,6 +54,7 @@ struct PreviewSource {
     // The same input color metadata passed to dataset masking.
     std::string image_gamut;
     std::optional<bool> image_is_linear;
+    std::string image_exposure;
 
     // Photos read as the file STORES them rather than as it asks to be shown.
     // For a panel whose frames come with a camera: the camera describes the

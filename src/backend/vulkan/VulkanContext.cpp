@@ -75,6 +75,7 @@ struct DeviceProbe {
     bool shader_int64 = false;
     bool shader_int8 = false;
     uint32_t queue_family = UINT32_MAX;
+    VkDriverId driver_id = (VkDriverId)0;  // 0 when the device predates 1.2
     VkPhysicalDeviceProperties props{};
     VkPhysicalDeviceSubgroupProperties subgroup{};
 };
@@ -99,6 +100,15 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
     p2.pNext = &out.subgroup;
     vkGetPhysicalDeviceProperties2(pd, &p2);
     out.props = p2.properties;
+    if (out.props.apiVersion >= VK_API_VERSION_1_2) {
+        VkPhysicalDeviceDriverProperties drv{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 dp2{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        dp2.pNext = &drv;
+        vkGetPhysicalDeviceProperties2(pd, &dp2);
+        out.driver_id = drv.driverID;
+    }
 
     out.queue_family = pick_compute_queue_family(pd);
     out.required_ok =
@@ -113,6 +123,19 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
     out.shader_int64 = f2.features.shaderInt64;
     out.shader_int8 = f12.shaderInt8 && f12.storageBuffer8BitAccess;
     return out;
+}
+
+// Keyed on the driver ID, not the vendor: Mesa's Dozen (Vulkan over D3D12)
+// reports AMD's vendor ID too. Native fp32 buffer atomics start at RDNA3, and
+// RADV trains correctly on the older GPUs through the same CAS-loop shaders.
+backend::DeviceIssue device_issue(const DeviceProbe& p) {
+#ifdef _WIN32
+    if (p.props.vendorID == 0x1002 &&
+        p.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && !p.atomic_float)
+        return backend::DeviceIssue::AmdWindowsFloatAtomics;
+#endif
+    (void)p;
+    return backend::DeviceIssue::NoneKnown;
 }
 
 bool has_extension(VkPhysicalDevice pd, const char* name) {
@@ -234,9 +257,14 @@ std::string selection_error() {
     return g_selection_error;
 }
 
-const std::vector<EnumeratedDevice>& enumerate_devices() {
-    static const std::vector<EnumeratedDevice> list = [] {
-        std::vector<EnumeratedDevice> out;
+struct Enumeration {
+    std::vector<EnumeratedDevice> devices;
+    std::vector<backend::DeviceIssue> issues;  // parallel to devices
+};
+
+const Enumeration& enumeration() {
+    static const Enumeration list = [] {
+        Enumeration out;
         VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
         app.pApplicationName = "Spirula Studio";
         app.apiVersion = VK_API_VERSION_1_2;
@@ -262,12 +290,17 @@ const std::vector<EnumeratedDevice>& enumerate_devices() {
             if (!p.required_ok)
                 d.unusable_reason =
                     "needs Vulkan 1.2 + bufferDeviceAddress + timelineSemaphore";
-            out.push_back(std::move(d));
+            out.devices.push_back(std::move(d));
+            out.issues.push_back(device_issue(p));
         }
         vkDestroyInstance(inst, nullptr);
         return out;
     }();
     return list;
+}
+
+const std::vector<EnumeratedDevice>& enumerate_devices() {
+    return enumeration().devices;
 }
 
 // Selection precedence: backend::device_select (ordinal or identity) >
@@ -447,6 +480,12 @@ void Context::init() {
     if (const char* env = spirula::env("VK_NATIVE_INT8");
         env && env[0] == '0')
         _caps.shader_int8 = false;
+    // SS_VK_CAS_UNIFORM_EXIT=0/1 overrides the detection either way; with
+    // SS_VK_NATIVE_ATOMICS=0 it runs the workaround on any device.
+    _caps.cas_uniform_exit =
+        device_issue(probe) == backend::DeviceIssue::AmdWindowsFloatAtomics;
+    if (const char* env = spirula::env("VK_CAS_UNIFORM_EXIT"); env && env[0])
+        _caps.cas_uniform_exit = env[0] != '0';
 
     std::vector<const char*> extensions;
     // Enabling this one is mandatory, not optional: the spec forbids creating
@@ -590,7 +629,9 @@ void Context::init() {
             "float-atomic-add %s, int64 %s, int8 %s, timestamps %s\n",
             _device_name.c_str(), deviceTypeName(probe.props.deviceType),
             subgroup, _caps.max_push_constants,
-            _caps.float32_atomic_add ? "native" : "EMULATED",
+            _caps.float32_atomic_add ? "native"
+            : _caps.cas_uniform_exit ? "EMULATED (uniform exit)"
+                                     : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",
             _caps.shader_int8 ? "native" : "emulated",
             _caps.timestamps ? "yes" : "no");
@@ -691,6 +732,7 @@ DeviceInfo device_info(int index) {
     info.uuid = sel::selectorFor(d);
     info.vram_bytes = d.vram_bytes;
     info.usable = d.usable;
+    info.issue = vk::enumeration().issues[index];
     return info;
 }
 
@@ -776,6 +818,12 @@ bool device_identity_matches_current(const char* selector) {
 int device_current() {
     if (vk::g_context_created.load()) return vk::context_device_index();
     return vk::resolve_device_index();
+}
+
+int device_resolve(const std::string& selector, bool explicit_set) {
+    const sel::Resolution res = sel::resolveRequest(
+        sel::requestFrom(selector, explicit_set), vk::enumerate_devices());
+    return res.ok() ? res.device.index : -1;
 }
 
 MemoryUsage memory_usage() {

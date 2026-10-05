@@ -96,6 +96,12 @@ int GeometryModel::sizeGranularity() const {
     return impl_->is_moge ? 1 : metric3d::Predictor::sizeGranularity();
 }
 
+// Metric3D publishes no token range and shares MoGe's floor.
+int64_t GeometryModel::minFacePixels() {
+    const int64_t p = moge::Predictor::patchSize();
+    return 1200 * p * p;
+}
+
 double GeometryModel::depthToMillimetres(double face_focal_px) const {
     return impl_->is_moge ? 1000.0 : face_focal_px;
 }
@@ -106,6 +112,7 @@ GeometryPrediction GeometryModel::predict(const float* rgb, const GeometryReques
         moge::PredictOptions po;
         po.want_depth = req.want_depth;
         po.want_normal = req.want_normal;
+        po.want_mask = true;
         po.num_tokens = req.num_tokens;
         po.fx = (float)req.fx;
         po.fy = (float)req.fy;
@@ -116,6 +123,7 @@ GeometryPrediction GeometryModel::predict(const float* rgb, const GeometryReques
         out.height = p.height;
         out.depth = std::move(p.depth);
         out.normal = std::move(p.normal);
+        out.mask = std::move(p.mask);
         return out;
     }
     metric3d::PredictOptions po;

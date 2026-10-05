@@ -551,6 +551,49 @@ SS_MSG(flip_mask_help,
     TR("Her maskede korunanla yok sayılanı yer değiştirir; korunacak alan yerine "
        "KALDIRILACAK alanı boyayan dışa aktarma araçları için"));
 
+SS_MSG(feature_masks_help,
+    EN("A second directory of masks, intersected with --masks: keypoints are "
+       "kept only where both are nonzero. For what the reconstruction should "
+       "not use but training should, such as the sky. Never flipped"),
+    JA("2 つ目のマスクのディレクトリで、--masks と重ね合わせます。キーポイントは"
+       "両方が 0 でない画素にあるものだけが残ります。空のように、再構成には使わない"
+       "が学習には使うものに向けたものです。反転はしません"),
+    ZH_HANS("第二个掩码目录，与 --masks 取交集：只有两者都不为 0 的像素上的关键点"
+            "会被保留。用于重建不该用、训练却要用的区域，例如天空。不会被反转"),
+    ZH_HANT("第二個遮罩目錄，與 --masks 取交集：只有兩者都不為 0 的像素上的關鍵點"
+            "會被保留。用於重建不該用、訓練卻要用的區域，例如天空。不會被反轉"),
+    KO("두 번째 마스크 디렉터리로, --masks 와 교집합을 씁니다. 키포인트는 둘 다 "
+       "0 이 아닌 화소에서만 남습니다. 하늘처럼 재구성에는 쓰지 않지만 학습에는 "
+       "쓰는 영역을 위한 것입니다. 뒤집지 않습니다"),
+    DE("Ein zweites Maskenverzeichnis, mit --masks geschnitten: Schlüsselpunkte "
+       "bleiben nur, wo beide ungleich null sind. Für das, was die Rekonstruktion "
+       "nicht nutzen soll, das Training aber schon, etwa den Himmel. Wird nie "
+       "invertiert"),
+    FR("Un second dossier de masques, croisé avec --masks : les points clés ne "
+       "restent que là où les deux sont non nuls. Pour ce que la reconstruction ne "
+       "doit pas utiliser mais l'entraînement si, comme le ciel. Jamais inversé"),
+    ES("Una segunda carpeta de máscaras, intersecada con --masks: los puntos "
+       "clave solo quedan donde ambas son distintas de cero. Para lo que la "
+       "reconstrucción no debe usar pero el entrenamiento sí, como el cielo. "
+       "Nunca se invierte"),
+    PT("Uma segunda pasta de máscaras, intersectada com --masks: os pontos-chave "
+       "só ficam onde ambas são diferentes de zero. Para o que a reconstrução não "
+       "deve usar mas o treino sim, como o céu. Nunca é invertida"),
+    IT("Una seconda cartella di maschere, intersecata con --masks: i punti chiave "
+       "restano solo dove entrambe sono diverse da zero. Per ciò che la "
+       "ricostruzione non deve usare ma l'addestramento sì, come il cielo. Mai "
+       "invertita"),
+    NL("Een tweede map met maskers, gesneden met --masks: sleutelpunten blijven "
+       "alleen waar beide niet nul zijn. Voor wat de reconstructie niet moet "
+       "gebruiken maar de training wel, zoals de lucht. Wordt nooit omgekeerd"),
+    RU("Второй каталог масок, пересекаемый с --masks: ключевые точки остаются "
+       "только там, где обе маски ненулевые. Для того, что реконструкции брать не "
+       "нужно, а обучению нужно, например неба. Никогда не инвертируется"),
+    TR("--masks ile kesiştirilen ikinci bir maske dizini: anahtar noktalar yalnızca "
+       "ikisinin de sıfır olmadığı yerde kalır. Gökyüzü gibi, yeniden yapılandırmanın "
+       "kullanmaması ama eğitimin kullanması gereken alanlar için. Asla ters "
+       "çevrilmez"));
+
 SS_MSG(mask_dir_help,
     EN("Alias of --masks"),
     JA("--masks の別名"),
@@ -624,6 +667,57 @@ SS_MSG(image_linear_help,
     RU("Считать исходные изображения линейным светом, а не экранно "
        "закодированными"),
     TR("Girdi görüntülerini ekran kodlu değil, doğrusal ışık olarak ele al"));
+
+SS_MSG(image_exposure_help,
+    EN("Brighten what the detectors see, in linear light, without touching the "
+       "files: auto lifts each image whose median is darker than a typical "
+       "photograph's, or give a number of stops (2, -1). Point colours and the "
+       "training images keep the files' own values"),
+    JA("ファイルを変えずに、検出器に渡す画像だけをリニア光で明るくする。auto は"
+       "中央値が一般的な写真より暗い画像をそれぞれ持ち上げ、数値なら段数（2、-1）。"
+       "点群の色と学習用画像はファイル本来の値のまま"),
+    ZH_HANS("在线性光中只调亮检测器看到的图像，不改动文件：auto 会把中位亮度低于"
+            "普通照片的每张图像提亮，也可给出档数（2、-1）。点云颜色和训练图像保持"
+            "文件原值"),
+    ZH_HANT("在線性光中只調亮偵測器看到的影像，不改動檔案：auto 會把中位亮度低於"
+            "一般照片的每張影像提亮，也可給出檔數（2、-1）。點雲顏色與訓練影像維持"
+            "檔案原值"),
+    KO("파일은 그대로 두고 검출기가 보는 이미지만 선형 광에서 밝게 합니다. auto 는 "
+       "중앙값이 일반 사진보다 어두운 이미지를 각각 끌어올리고, 숫자는 스톱 "
+       "수입니다(2, -1). 점 구름 색과 학습 이미지는 파일 본래 값을 유지합니다"),
+    DE("Hellt in linearem Licht auf, was die Detektoren sehen, ohne die Dateien "
+       "zu ändern: auto hebt jedes Bild an, dessen Median dunkler ist als bei "
+       "einem typischen Foto, oder eine Zahl von Blendenstufen (2, -1). "
+       "Punktfarben und Trainingsbilder behalten die Werte der Dateien"),
+    FR("Éclaircit en lumière linéaire ce que voient les détecteurs, sans toucher "
+       "aux fichiers : auto relève chaque image dont la médiane est plus sombre "
+       "que celle d'une photo typique, ou indiquez un nombre de diaphs (2, -1). "
+       "Les couleurs des points et les images d'entraînement gardent les valeurs "
+       "des fichiers"),
+    ES("Aclara en luz lineal lo que ven los detectores, sin tocar los archivos: "
+       "auto levanta cada imagen cuya mediana es más oscura que la de una foto "
+       "típica, o indique un número de pasos (2, -1). Los colores de los puntos y "
+       "las imágenes de entrenamiento conservan los valores de los archivos"),
+    PT("Clareia em luz linear o que os detectores veem, sem mexer nos arquivos: "
+       "auto ergue cada imagem cuja mediana é mais escura que a de uma foto "
+       "típica, ou indique um número de pontos (2, -1). As cores dos pontos e as "
+       "imagens de treino mantêm os valores dos arquivos"),
+    IT("Schiarisce in luce lineare ciò che vedono i rilevatori, senza toccare i "
+       "file: auto solleva ogni immagine la cui mediana è più scura di quella di "
+       "una foto tipica, oppure indica un numero di stop (2, -1). I colori dei "
+       "punti e le immagini di addestramento mantengono i valori dei file"),
+    NL("Maakt in lineair licht lichter wat de detectoren zien, zonder de "
+       "bestanden te wijzigen: auto tilt elk beeld op waarvan de mediaan donkerder "
+       "is dan bij een gewone foto, of geef een aantal stops (2, -1). Puntkleuren "
+       "en trainingsbeelden houden de waarden van de bestanden"),
+    RU("Осветляет в линейном свете то, что видят детекторы, не трогая файлы: auto "
+       "поднимает каждое изображение, медиана которого темнее, чем у обычной "
+       "фотографии, либо укажите число ступеней (2, -1). Цвета точек и обучающие "
+       "изображения сохраняют значения файлов"),
+    TR("Algılayıcıların gördüğünü dosyalara dokunmadan doğrusal ışıkta aydınlatır: "
+       "auto, medyanı tipik bir fotoğrafınkinden koyu olan her görüntüyü "
+       "yükseltir; ya da bir durak sayısı verin (2, -1). Nokta renkleri ve eğitim "
+       "görüntüleri dosyaların kendi değerlerini korur"));
 
 SS_MSG(point_color_help,
     EN("Colour space the sparse point cloud is written in. image writes the "
@@ -2077,6 +2171,73 @@ SS_MSG(merge_tracks_help,
     RU("Сливать две 3D-точки, которые соответствие объявляет одним и тем же "
        "признаком"),
     TR("Bir karşılığın aynı öznitelik dediği iki 3B noktayı kaynaştır"));
+
+SS_MSG(seam_weld_help,
+    EN("Weld open seams: a verified pair of 100+ matches that the finished model explains "
+       "below this fraction, and whose images share almost no neighbours, is fused and "
+       "refined; 0 to skip"),
+    JA("開いた継ぎ目を結合します。検証済みの対応が 100 以上あり、完成したモデルがこの割合"
+       "未満しか説明できず、共通の近傍画像がほとんどない画像対を融合して再調整します。0 で"
+       "省略"),
+    ZH_HANS("合并开放的接缝：已验证匹配 100 个以上、而完成的模型只能解释其中低于此比例、且两"
+            "图几乎没有共同邻近图像的图像对，将被融合并重新优化；0 表示跳过"),
+    ZH_HANT("合併開放的接縫：已驗證匹配 100 個以上、而完成的模型只能解釋其中低於此比例、且兩"
+            "圖幾乎沒有共同鄰近影像的影像對，將被融合並重新最佳化；0 表示略過"),
+    KO("열린 이음매를 결합합니다. 검증된 매칭이 100개 이상인데 완성된 모델이 이 비율 "
+       "미만만 설명하고 공통 이웃 이미지가 거의 없는 이미지 쌍을 융합해 다시 최적화합니다. "
+       "0이면 건너뜁니다"),
+    DE("Offene Nähte verschweißen: ein geprüftes Paar mit 100+ Treffern, das das fertige "
+       "Modell unter diesem Anteil erklärt und dessen Bilder kaum gemeinsame Nachbarn haben, "
+       "wird verschmolzen und neu ausgeglichen; 0 überspringt"),
+    FR("Souder les coutures ouvertes : une paire vérifiée de 100+ correspondances que le "
+       "modèle final explique sous cette fraction, et dont les images n'ont presque aucun "
+       "voisin commun, est fusionnée et réajustée ; 0 pour sauter"),
+    ES("Soldar costuras abiertas: un par verificado de 100+ correspondencias que el modelo "
+       "final explica por debajo de esta fracción, y cuyas imágenes casi no comparten "
+       "vecinas, se funde y se reajusta; 0 para saltarlo"),
+    PT("Soldar costuras abertas: um par verificado com 100+ correspondências que o modelo "
+       "final explica abaixo desta fração, e cujas imagens quase não compartilham vizinhas, "
+       "é fundido e reajustado; 0 para pular"),
+    IT("Saldare le cuciture aperte: una coppia verificata con 100+ corrispondenze che il "
+       "modello finale spiega sotto questa frazione, e le cui immagini non hanno quasi vicine "
+       "in comune, viene fusa e riottimizzata; 0 per saltare"),
+    NL("Open naden lassen: een geverifieerd paar met 100+ overeenkomsten dat het eindmodel "
+       "onder deze fractie verklaart en waarvan de beelden bijna geen gemeenschappelijke "
+       "buren hebben, wordt samengesmolten en opnieuw vereffend; 0 om over te slaan"),
+    RU("Сваривать открытые швы: проверенную пару со 100+ соответствиями, которую итоговая "
+       "модель объясняет меньше чем на эту долю и у снимков которой почти нет общих соседей, "
+       "сливают и уточняют заново; 0 -- пропустить"),
+    TR("Açık dikişleri kaynat: son modelin bu oranın altında açıkladığı ve görüntülerinin "
+       "neredeyse hiç ortak komşusu olmadığı, 100+ eşleşmeli doğrulanmış çift kaynaştırılır "
+       "ve yeniden ayarlanır; atlamak için 0"));
+
+SS_MSG(gps_scale_band_help,
+    EN("Check the growing chain's scale against the GPS over 60-150 m of track and request a "
+       "bundle adjustment when a block has drifted; 0 to skip"),
+    JA("成長中の区間の縮尺を 60〜150 m の軌跡で GPS と照合し、ブロックがずれていたらバンドル"
+       "調整を要求します。0 で省略"),
+    ZH_HANS("在 60–150 米轨迹上将正在增长的链段尺度与 GPS 对照，区块漂移时请求进行"
+            "光束法平差；0 表示跳过"),
+    ZH_HANT("在 60–150 公尺軌跡上將正在增長的鏈段尺度與 GPS 對照，區塊漂移時請求進行"
+            "光束法平差；0 表示略過"),
+    KO("성장 중인 구간의 축척을 60~150 m 궤적에서 GPS와 대조하고, 블록이 어긋나면 "
+       "번들 조정을 요청합니다. 0이면 건너뜁니다"),
+    DE("Den Maßstab der wachsenden Kette über 60-150 m Strecke mit dem GPS vergleichen und bei "
+       "einem abgedrifteten Block einen Bündelausgleich anfordern; 0 überspringt"),
+    FR("Comparer l'échelle de la chaîne en croissance au GPS sur 60 à 150 m de trajet et "
+       "demander un ajustement de faisceaux quand un bloc a dérivé ; 0 pour sauter"),
+    ES("Comparar la escala de la cadena en crecimiento con el GPS sobre 60-150 m de recorrido y "
+       "solicitar un ajuste de haces cuando un bloque haya derivado; 0 para saltarlo"),
+    PT("Comparar a escala da cadeia em crescimento com o GPS em 60-150 m de percurso e "
+       "solicitar um ajuste de feixes quando um bloco tiver derivado; 0 para pular"),
+    IT("Confrontare la scala della catena in crescita con il GPS su 60-150 m di percorso e "
+       "richiedere un bundle adjustment quando un blocco è derivato; 0 per saltare"),
+    NL("De schaal van de groeiende keten over 60-150 m spoor met het GPS vergelijken en een "
+       "bundelaanpassing aanvragen wanneer een blok is verlopen; 0 om over te slaan"),
+    RU("Сверять масштаб растущей цепочки с GPS на 60-150 м пути и запрашивать "
+       "уточнение при уплывшем блоке; 0 -- пропустить"),
+    TR("Büyüyen zincirin ölçeğini 60-150 m iz boyunca GPS ile karşılaştır ve bir blok "
+       "kaydığında demet dengelemesi iste; atlamak için 0"));
 
 SS_MSG(rank_by_visibility_help,
     EN("Rank the next image by how its visible structure spreads over the frame, "
@@ -3584,49 +3745,85 @@ SS_MSG(metric_positions_help,
 SS_MSG(metric_gps_help,
     EN("Fit a local east-north-up metre frame to the images' EXIF GPS: `horizontal` reads "
        "latitude and longitude and leaves the tilt to the cameras' own up axis, `full` reads "
-       "altitude too; accuracy is a few metres, so the capture must be tens of metres across"),
+       "altitude too; accuracy is a few metres, so the capture must be tens of metres across"
+       ". `auto`, the default, picks `full` for a DJI telemetry track or EXIF fixes with an "
+       "altitude, `horizontal` for other telemetry, a phone's EXIF or fixes without an "
+       "altitude, and `none` without GPS or beside --metric-positions"),
     JA("画像の EXIF GPS にローカルな東北上メートル座標系を当てはめます。`horizontal` は"
        "緯度と経度だけを読み、傾きはカメラ自身の上方向に任せます。`full` は高度も読みます。"
-       "精度は数メートルなので、撮影範囲は数十メートル必要です"),
+       "精度は数メートルなので、撮影範囲は数十メートル必要です"
+       "。`auto` (既定) は DJI のテレメトリか高度付きの EXIF には `full`、それ以外のテレメトリ、スマートフォンの EXIF、高度のない位置には "
+       "`horizontal`、GPS がないときや --metric-positions があるときは `none` を選びます"),
     ZH_HANS("按图像 EXIF GPS 拟合本地东北天米制坐标系: `horizontal` 只读经纬度，倾斜交给相机"
-            "自身的上方向; `full` 连高度一起读。精度只有几米，所以采集范围要有几十米"),
+            "自身的上方向; `full` 连高度一起读。精度只有几米，所以采集范围要有几十米"
+            "。`auto` (默认) 对 DJI 遥测或带高度的 EXIF 选 `full`，对其他遥测、手机的 EXIF 或没有高度的定位选 `horizontal`，没有 "
+            "GPS 或给了 --metric-positions 时选 `none`"),
     ZH_HANT("按影像 EXIF GPS 擬合本地東北天公尺座標系: `horizontal` 只讀經緯度，傾斜交給相機"
-            "自身的上方向; `full` 連高度一起讀。精度只有幾公尺，所以拍攝範圍要有數十公尺"),
+            "自身的上方向; `full` 連高度一起讀。精度只有幾公尺，所以拍攝範圍要有數十公尺"
+            "。`auto` (預設) 對 DJI 遙測或帶高度的 EXIF 選 `full`，對其他遙測、手機的 EXIF 或沒有高度的定位選 `horizontal`，沒有 "
+            "GPS 或給了 --metric-positions 時選 `none`"),
     KO("이미지의 EXIF GPS 에 지역 동북상 미터 좌표계를 맞춥니다. `horizontal` 은 위도와 경도만 "
        "읽고 기울기는 카메라 자신의 위 방향에 맡기며, `full` 은 고도까지 읽습니다. 정확도가 "
-       "수 미터라 촬영 범위가 수십 미터는 되어야 합니다"),
+       "수 미터라 촬영 범위가 수십 미터는 되어야 합니다"
+       ". `auto` (기본값) 는 DJI 텔레메트리나 고도가 있는 EXIF 에는 `full`, 그 밖의 텔레메트리, 휴대폰의 EXIF, 고도 없는 "
+       "측위에는 `horizontal`, GPS 가 없거나 --metric-positions 가 있으면 `none` 을 고릅니다"),
     DE("Einen lokalen Ost-Nord-Oben-Meterrahmen an das EXIF-GPS der Bilder anpassen: "
        "`horizontal` liest Breite und Länge und überlässt die Neigung der eigenen Hochachse "
        "der Kameras, `full` liest auch die Höhe; die Genauigkeit liegt bei einigen Metern, "
-       "die Aufnahme muss also zehner Meter groß sein"),
+       "die Aufnahme muss also zehner Meter groß sein"
+       ". `auto`, die Vorgabe, wählt `full` für eine DJI-Telemetriespur oder "
+       "EXIF-Positionen mit Höhe, `horizontal` für andere Telemetrie, das EXIF eines "
+       "Telefons oder Positionen ohne Höhe, und `none` ohne GPS oder neben "
+       "--metric-positions"),
     FR("Ajuster un repère local est-nord-haut en mètres au GPS EXIF des images : `horizontal` "
        "lit la latitude et la longitude et laisse l'inclinaison à l'axe vertical des caméras, "
        "`full` lit aussi l'altitude ; la précision est de quelques mètres, la prise doit donc "
-       "faire des dizaines de mètres"),
+       "faire des dizaines de mètres"
+       ". `auto`, le défaut, choisit `full` pour une piste de télémétrie DJI ou des points "
+       "EXIF avec altitude, `horizontal` pour une autre télémétrie, l'EXIF d'un téléphone "
+       "ou des points sans altitude, et `none` sans GPS ou à côté de --metric-positions"),
     ES("Ajustar un marco local este-norte-arriba en metros al GPS EXIF de las imágenes: "
        "`horizontal` lee latitud y longitud y deja la inclinación al eje vertical de las "
        "cámaras, `full` lee también la altitud; la precisión es de unos metros, así que la "
-       "toma debe medir decenas de metros"),
+       "toma debe medir decenas de metros"
+       ". `auto`, el valor por defecto, elige `full` para una pista de telemetría DJI o "
+       "posiciones EXIF con altitud, `horizontal` para otra telemetría, el EXIF de un "
+       "teléfono o posiciones sin altitud, y `none` sin GPS o junto a --metric-positions"),
     PT("Ajustar um referencial local este-norte-cima em metros ao GPS EXIF das imagens: "
        "`horizontal` lê latitude e longitude e deixa a inclinação ao eixo vertical das "
        "câmeras, `full` lê também a altitude; a precisão é de alguns metros, por isso a "
-       "captura tem de ter dezenas de metros"),
+       "captura tem de ter dezenas de metros"
+       ". `auto`, o padrão, escolhe `full` para uma faixa de telemetria DJI ou posições "
+       "EXIF com altitude, `horizontal` para outra telemetria, o EXIF de um telefone ou "
+       "posições sem altitude, e `none` sem GPS ou junto de --metric-positions"),
     IT("Stimare un sistema locale est-nord-alto in metri dal GPS EXIF delle immagini: "
        "`horizontal` legge latitudine e longitudine e lascia l'inclinazione all'asse "
        "verticale delle camere, `full` legge anche la quota; la precisione è di alcuni metri, "
-       "quindi la ripresa deve misurare decine di metri"),
+       "quindi la ripresa deve misurare decine di metri"
+       ". `auto`, il predefinito, sceglie `full` per una traccia di telemetria DJI o punti "
+       "EXIF con quota, `horizontal` per altra telemetria, l'EXIF di un telefono o punti "
+       "senza quota, e `none` senza GPS o accanto a --metric-positions"),
     NL("Een lokaal oost-noord-omhoog meterstelsel op de EXIF-GPS van de beelden fitten: "
        "`horizontal` leest breedte en lengte en laat de kanteling aan de eigen verticale as "
        "van de camera's, `full` leest ook de hoogte; de nauwkeurigheid is enkele meters, dus "
-       "de opname moet tientallen meters groot zijn"),
+       "de opname moet tientallen meters groot zijn"
+       ". `auto`, de standaard, kiest `full` voor een DJI-telemetriespoor of EXIF-posities "
+       "met hoogte, `horizontal` voor andere telemetrie, de EXIF van een telefoon of "
+       "posities zonder hoogte, en `none` zonder gps of naast --metric-positions"),
     RU("Подогнать локальную метровую систему восток-север-верх к GPS из EXIF снимков: "
        "`horizontal` читает широту и долготу, а наклон оставляет собственной вертикали камер, "
        "`full` читает и высоту; точность в несколько метров, поэтому съёмка должна быть "
-       "десятки метров"),
+       "десятки метров"
+       ". `auto`, по умолчанию, выбирает `full` для трека телеметрии DJI или отсчётов EXIF "
+       "с высотой, `horizontal` для другой телеметрии, EXIF телефона или отсчётов без "
+       "высоты и `none` без GPS или рядом с --metric-positions"),
     TR("Görüntülerin EXIF GPS'ine yerel bir doğu-kuzey-yukarı metre çerçevesi oturt: "
        "`horizontal` enlem ve boylamı okur, eğimi kameraların kendi yukarı eksenine bırakır; "
        "`full` yüksekliği de okur; doğruluk birkaç metre olduğundan çekim onlarca metre "
-       "olmalı"));
+       "olmalı"
+       ". Varsayılan `auto`, DJI telemetri izi ya da yükseklikli EXIF konumları için "
+       "`full`, başka telemetri, bir telefonun EXIF'i ya da yüksekliksiz konumlar için "
+       "`horizontal`, GPS yoksa ya da --metric-positions varsa `none` seçer"));
 
 SS_MSG(metric_max_error_frac_help,
     EN("... or this fraction of the reference positions' RMS radius, whichever is larger, so "
@@ -3974,6 +4171,46 @@ SS_MSG(sensor_map_help,
        "силе тяжести, масштабу акселерометра и GPS"),
     TR("Kayıtları ve demet ayarlamalarını sensörlere bağla: jiroskopun dönüşleri, yerçekimi, "
        "ivmeölçerin ölçeği ve GPS"));
+
+SS_MSG(level_erp_help,
+    EN("Needs EXIF GPS. Hold every equirect image level, camera -Y up: an up factor per image and a "
+       "tilt check on each registration, both dropped for a run whose images are not level to "
+       "about 1 deg"),
+    JA("EXIF GPS が必要です。正距円筒画像をすべて水平 (カメラ -Y が上) として扱います: 画像ごとの"
+       "上方向の因子と各登録の傾き検査を加えますが、画像が約 1 度以内で水平でない撮影では、"
+       "どちらも使いません"),
+    ZH_HANS("需要 EXIF GPS。将每张等距柱状投影图像视为水平（相机 -Y 朝上）：为每张图像加入向上因子"
+            "并检查每次注册的倾斜；图像未水平到约 1 度以内时，二者都不使用"),
+    ZH_HANT("需要 EXIF GPS。將每張等距柱狀影像視為水平（相機 -Y 朝上）：為每張影像加入向上因子"
+            "並檢查每次註冊的傾斜；影像未水平到約 1 度以內時，兩者都不使用"),
+    KO("EXIF GPS가 필요합니다. 모든 등장방형 이미지를 수평(카메라 -Y가 위)으로 취급합니다. "
+       "이미지별 위쪽 인자와 등록마다의 기울기 검사를 넣으며, 이미지가 약 1도 이내로 수평이 "
+       "아니면 둘 다 사용하지 않습니다"),
+    DE("Benötigt EXIF-GPS. Jedes äquirektanguläre Bild waagerecht halten, Kamera -Y oben: ein "
+       "Oben-Faktor je Bild und eine Neigungsprüfung bei jeder Registrierung, beide entfallen, wenn "
+       "die Bilder nicht auf etwa 1 Grad waagerecht sind"),
+    FR("Nécessite le GPS EXIF. Tenir chaque image équirectangulaire de niveau, caméra -Y vers le "
+       "haut : un facteur de verticale par image et un contrôle d'inclinaison à chaque "
+       "enregistrement, tous deux abandonnés quand les images ne sont pas de niveau à environ 1 "
+       "degré près"),
+    ES("Requiere GPS EXIF. Mantener cada imagen equirrectangular nivelada, cámara -Y arriba: un "
+       "factor de vertical por imagen y una comprobación de inclinación en cada registro, ambos "
+       "descartados cuando las imágenes no están niveladas a aproximadamente 1 grado"),
+    PT("Requer GPS EXIF. Manter cada imagem equirretangular nivelada, câmara -Y para cima: um fator "
+       "de vertical por imagem e uma verificação de inclinação em cada registo, ambos descartados "
+       "quando as imagens não estão niveladas a cerca de 1 grau"),
+    IT("Richiede il GPS EXIF. Tenere ogni immagine equirettangolare in piano, camera -Y in alto: "
+       "un fattore di verticale per immagine e un controllo dell'inclinazione a ogni "
+       "registrazione, entrambi scartati quando le immagini non sono in piano entro circa 1 grado"),
+    NL("Vereist EXIF-GPS. Elk equirectangulair beeld waterpas houden, camera -Y omhoog: een "
+       "opwaartse factor per beeld en een kantelcontrole bij elke registratie, beide vervallen "
+       "wanneer de beelden niet tot op ongeveer 1 graad waterpas zijn"),
+    RU("Требуется EXIF GPS. Держать каждое равнопромежуточное изображение по горизонту, камера -Y "
+       "вверх: фактор вертикали на изображение и проверка наклона при каждой регистрации; оба "
+       "отключаются, если изображения не горизонтальны примерно до 1 градуса"),
+    TR("EXIF GPS gerekir. Her eşdikdörtgen görüntüyü yatay tut, kamera -Y yukarı: görüntü başına "
+       "bir yukarı faktörü ve her kayıtta bir eğim denetimi; görüntüler yaklaşık 1 derece içinde "
+       "yatay değilse ikisi de bırakılır"));
 
 SS_MSG(sensor_pairs_help,
     EN("Match images the GPS puts within --sensor-pair-radius metres of each other"),

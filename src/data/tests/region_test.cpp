@@ -1,5 +1,6 @@
 // region_test -- data/Region.h and data/LabelField.h: the primitives against
-// points whose side is known, the CSG operations, a mesh cube by ray parity,
+// points whose side is known (the ROI editor's ellipsoid, cylinder and
+// prism among them), the CSG operations, a mesh cube by ray parity,
 // the JSON round trip, and a label field built from two labelled blobs.
 
 #include "data/LabelField.h"
@@ -7,6 +8,7 @@
 #include "data/RegionMesh.h"
 #include "data/RegionProgram.h"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -67,6 +69,92 @@ int main() {
         HalfSpaceRegion h;
         h.normal[0] = 1; h.normal[2] = 0; h.offset = -1;
         check(h.inside(1.5f, 0, 0) && !h.inside(0.5f, 0, 0), "halfspace x >= 1");
+    }
+
+    // ---- the ROI editor's shapes ----
+    {
+        const double Rz[9] = {0, 1, 0, -1, 0, 0, 0, 0, 1};   // axes: y, -x, z
+        EllipsoidRegion e;
+        e.center[2] = 1; e.half[0] = 3; e.half[1] = 1; e.half[2] = 0.5;
+        for (int i = 0; i < 9; i++) e.R[i] = Rz[i];
+        check(e.inside(0.0f, 2.9f, 1.0f) && !e.inside(2.0f, 0.0f, 1.0f) && !e.inside(0, 0, 1.6f),
+              "ellipsoid: long axis follows the rotation");
+        const Aabb eb = e.bounds();
+        check(std::fabs(eb.hi[0] - 1.0) < 1e-9 && std::fabs(eb.hi[1] - 3.0) < 1e-9 &&
+                  std::fabs(eb.lo[2] - 0.5) < 1e-9,
+              "ellipsoid: bounds are tight");
+
+        CylinderRegion c;
+        c.half[0] = 2; c.half[1] = 1; c.half[2] = 4;
+        check(c.inside(1.9f, 0, 3.9f) && !c.inside(1.5f, 0.8f, 0) && !c.inside(0, 0, 4.1f),
+              "cylinder: elliptic section, capped");
+
+        PrismRegion l;   // an L: the unit square at the origin's corner is cut out
+        l.center[2] = 2; l.half_height = 1;
+        l.polygon = {0, 0, 2, 0, 2, 1, 1, 1, 1, 2, 0, 2};
+        check(l.inside(0.5f, 0.5f, 2.5f) && l.inside(1.5f, 0.5f, 1.5f) && l.inside(0.5f, 1.5f, 2.0f),
+              "prism: inside every arm of the L");
+        check(!l.inside(1.5f, 1.5f, 2.0f) && !l.inside(0.5f, 0.5f, 3.1f) && !l.inside(-0.1f, 0.5f, 2.0f),
+              "prism: outside the notch, above the top, beside the outline");
+        const Aabb lb = l.bounds();
+        check(std::fabs(lb.hi[0] - 2) < 1e-9 && std::fabs(lb.lo[2] - 1) < 1e-9 && std::fabs(lb.hi[2] - 3) < 1e-9,
+              "prism: bounds");
+
+        std::string err;
+        for (const Region* r : std::initializer_list<const Region*>{&e, &c, &l}) {
+            std::unique_ptr<Region> back = region_from_json(json_parse(region_to_json(*r)), "", err);
+            RegionProgram prog, moved;
+            check(back && std::string(back->kind()) == r->kind() && compile_region(*r, prog, err),
+                  std::string(r->kind()) + " round-trips through JSON and compiles: " + err);
+            moved = prog;
+            const double sc = 0.4, sh[3] = {-2, 7, 1};
+            moved.apply_similarity(sc, sh);
+            std::mt19937 rng(9);
+            std::uniform_real_distribution<double> uu(-4.0, 4.0);
+            int differ = 0;
+            for (int i = 0; i < 4000; i++) {
+                const double p[3] = {uu(rng), uu(rng), uu(rng)};
+                const double q[3] = {sc * p[0] + sh[0], sc * p[1] + sh[1], sc * p[2] + sh[2]};
+                const bool want = r->contains(p);
+                differ += (back && back->contains(p) != want) + (program_contains(prog, p) != want) +
+                          (program_contains(moved, q) != want);
+            }
+            check(differ <= 3, std::string(r->kind()) + ": parsed, compiled and moved agree (" +
+                                   std::to_string(differ) + " differ)");
+        }
+        // A prism's polygon fills whole nodes after it, which the evaluator
+        // has to step over to reach the node that follows.
+        PrismRegion many;
+        many.half_height = 1;
+        for (int k = 0; k < 40; k++)
+            for (double v : {3.0 * std::cos(k * 0.157), 3.0 * std::sin(k * 0.157)}) many.polygon.push_back(v);
+        auto pm = std::make_shared<PrismRegion>(many);
+        auto ball = std::make_shared<SphereRegion>();
+        ball->radius = 1;
+        CsgRegion cut;
+        cut.op = CsgOp::Difference;
+        cut.children = {pm, ball};
+        RegionProgram prog;
+        check(compile_region(cut, prog, err) &&
+                  prog.num_nodes() == 3 + RegionProgram::payload_nodes(40) &&
+                  RegionProgram::payload_nodes(40) == 4,
+              "a 40-gon prism takes four payload nodes");
+        check(program_contains(prog, std::array<double, 3>{2.0, 0, 0}.data()) &&
+                  !program_contains(prog, std::array<double, 3>{0.5, 0, 0}.data()),
+              "the node after the payload is evaluated");
+
+        // Geo-referenced: float spacing at 5e6 is 0.5, so a box whose face is
+        // 0.8 from the shifted origin only keeps it when the shift happens
+        // in double, before the nodes are narrowed.
+        BoxRegion geo;
+        geo.center[0] = 5e6 + 0.3; geo.center[1] = -3e6; geo.center[2] = 100;
+        for (double& h : geo.half) h = 0.5;
+        const double shift[3] = {-5e6, 3e6, -100};
+        RegionProgram local;
+        check(compile_region(geo, local, err, 1.0, shift) &&
+                  program_contains(local, std::array<double, 3>{0.78, 0, 0}.data()) &&
+                  !program_contains(local, std::array<double, 3>{0.82, 0, 0}.data()),
+              "a geo-referenced box compiled into a local frame keeps its faces");
     }
 
     // ---- mesh by parity ----

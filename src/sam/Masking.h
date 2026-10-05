@@ -3,8 +3,9 @@
 // positive phrases unioned; negative ones carved back out (a region matching
 // one is KEPT); the mask says what to keep, so prompted objects come out black
 // unless `keep_prompted`; a longest-side cap on what the model sees. Also the
-// visual path (clicks, SeedPrompt) and the two non-SAM models, BiRefNet's
-// subject and Grounding DINO's boxes (MaskOptions). src/sam/README.md.
+// visual path (clicks, SeedPrompt), the two non-SAM models, BiRefNet's
+// subject and Grounding DINO's boxes (MaskOptions), and the second mask that
+// keeps the sky out of feature extraction only. src/sam/README.md.
 
 #include "sam/Sam.h"
 
@@ -49,6 +50,10 @@ struct MaskOptions {
     // SS_VK_DEVICE and then Auto in charge; a bad value fails the run.
     std::string device;
     std::string text, neg_text;
+    // Phrases kept out of SfM feature extraction but not out of training --
+    // the sky, whose features ride along with the clouds. Their own mask,
+    // run()'s `features_out`, from the same backbone pass as `text`.
+    std::string feature_text;
     // Clicks seeding tracked instances. The only way to prompt a SAM 2
     // checkpoint, and usable alongside text on a SAM 3 one.
     std::vector<SeedPrompt> seeds;
@@ -106,23 +111,21 @@ public:
 
     bool init(const MaskOptions& o, std::string& error);
 
-    // Writes a mask the size of `image`: 255 where the pixel should be KEPT.
-    // `overlay_out`, when given, receives the raw detections for diagnostics.
-    //
-    // `frame_id` says which frame of the source this is, and is what
-    // SeedPrompt::frame is matched against. Callers that hand over every frame
-    // in order can leave it at -1 and get a plain 0, 1, 2 counter; the video
-    // extractor passes the decoded index instead, because it writes only the
-    // sharpest frame of each window and the two do not line up. A seed lands on
-    // the first frame at or after the one it was drawn on, so it is never lost
-    // to a frame that was skipped.
+    // A mask the size of `image`, 255 = KEEP; `features_out` likewise for
+    // feature_text, left empty without one. `frame_id` is what SeedPrompt::frame
+    // matches, -1 counting 0, 1, 2 (src/sam/README.md, "Clicked objects").
     bool run(const nn::Image& image, sam::Mask& out, sam::Result* overlay_out,
-             int64_t frame_id = -1);
+             int64_t frame_id = -1, sam::Mask* features_out = nullptr);
 
     const std::string& lastError() const;
     sam::Session& session();
     // Whether init() chose BiRefNet: the mask is the subject, no prompt used.
     bool subjectMode() const;
+    // Whether `out` answers anything: false when the only prompt is
+    // `feature_text`, and run() then writes a mask that keeps every pixel.
+    bool hasTarget() const;
+    // Whether run() fills `features_out`.
+    bool hasFeatureMask() const;
     // Returns every model's weights to the device; init() loads them again.
     void unload();
 

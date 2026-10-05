@@ -47,6 +47,9 @@ constexpr const char* kFeatureSuffixes[] = {".atomicadd", ".int8",
                                             ".noint64"};
 constexpr uint32_t kNumFeatures = 3;
 
+// [vk::constant_id] of kCasUniformExit in shaders/atomic_float.slang.
+constexpr uint32_t kCasUniformExitSpecId = 1000;
+
 const SpirvBlob* find_variant_blob(const std::string& name) {
     const Capabilities& caps = Context::get().caps();
     const bool desired[kNumFeatures] = {
@@ -147,14 +150,24 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
     VkShaderModule module = get_module(blob_name);
     if (module == VK_NULL_HANDLE) return VK_NULL_HANDLE;
 
-    VkSpecializationMapEntry entries[SpecList::kMax];
-    for (uint32_t i = 0; i < spec.count; i++)
+    VkSpecializationMapEntry entries[SpecList::kMax + 1];
+    uint32_t values[SpecList::kMax + 1];
+    uint32_t n = spec.count;
+    for (uint32_t i = 0; i < n; i++) {
         entries[i] = {i, i * 4u, 4u};
+        values[i] = spec.values[i];
+    }
+    // Every module, whether it declares the constant or not: an entry for an
+    // ID the shader lacks is ignored (VkSpecializationInfo).
+    if (Context::get().caps().cas_uniform_exit) {
+        entries[n] = {kCasUniformExitSpecId, n * 4u, 4u};
+        values[n++] = VK_TRUE;
+    }
     VkSpecializationInfo spec_info{};
-    spec_info.mapEntryCount = spec.count;
+    spec_info.mapEntryCount = n;
     spec_info.pMapEntries = entries;
-    spec_info.dataSize = spec.count * 4u;
-    spec_info.pData = spec.values;
+    spec_info.dataSize = n * 4u;
+    spec_info.pData = values;
 
     VkComputePipelineCreateInfo pci{
         VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
@@ -177,7 +190,7 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
         pci.stage.flags |=
             VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT;
     }
-    if (spec.count) pci.stage.pSpecializationInfo = &spec_info;
+    if (n) pci.stage.pSpecializationInfo = &spec_info;
     pci.layout = layout;
 
     if (spirula::env("VK_VERBOSE")) {

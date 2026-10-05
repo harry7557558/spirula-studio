@@ -10,6 +10,7 @@
 
 #include "sfm/core/Exif.h"   // ExifTransform
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,9 @@ struct GeometryPrediction {
     // sentinels: 0 and black wherever the model had no answer.
     std::vector<float> depth;
     std::vector<float> normal;
+    // [H*W] the probability the model has an answer at all (MoGe's sky mask),
+    // empty for a model that answers everywhere.
+    std::vector<float> mask;
 };
 
 class GeometryWarp;
@@ -62,6 +66,10 @@ public:
     // at the size that went in: 28 for Metric3D's decoder, 1 for MoGe, which
     // resamples its own output.
     int sizeGranularity() const;
+
+    // The fewest pixels a split face should hold: MoGe's lowest token budget,
+    // 1200 patches. GeometryWarp::plan's `min_face_px`.
+    static int64_t minFacePixels();
 
     // What a returned depth multiplies by to become millimetres. Metric3D's is
     // canonical to a focal of 1000, so it is the face's focal in pixels; MoGe's

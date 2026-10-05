@@ -55,6 +55,13 @@ void readback_f(std::vector<float>& acc, const float* d, int64_t n) {
 
 // qadam cells: BITS=16 -> one u32 word (u16 | s16<<16); BITS=8 -> one
 // halfword (u8 | s8<<8). Emits two codes per cell.
+void readback_i(std::vector<int32_t>& acc, const int32_t* d, int64_t n) {
+    size_t off = acc.size();
+    acc.resize(off + n);
+    backend::memcpy_sync(acc.data() + off, d, n * sizeof(int32_t),
+                         MemcpyKind::DeviceToHost);
+}
+
 void readback_qadam(std::vector<int32_t>& acc, const uint8_t* d,
                     int64_t cells, int bits) {
     std::vector<uint8_t> raw(cells * (bits == 16 ? 4 : 2));
@@ -364,6 +371,13 @@ int main(int argc, char** argv) {
         } else {
             step = (int32_t)10;
         }
+        std::vector<int32_t> vis(N);
+        for (auto& v : vis) v = (int32_t)((rng() % 50u) | ((rng() % 30u) << 16));
+        uint32_t* d_visit = (uint32_t*)upload(vis);
+        SplatVisitState visit;
+        visit.counters = d_visit;
+        visit.skip_unrendered_reg = cfg.per_splat_steps;
+
         float* d_ds = nullptr;
         DeviceVector<float> densify_score;
         if (cfg.densify) {
@@ -393,7 +407,7 @@ int main(int argc, char** argv) {
                dist_fixture::kTierNames[cfg.dist], dist_tv(cfg.dist),
                cam_ids, gauss_ids, aabb_2d, v_world,
                v_screen, g1_world, g2_world, shq_tv, shq_b_tv, shv_tv,
-               shv_b_tv, non_sh, radii, densify_score,
+               shv_b_tv, non_sh, visit, radii, densify_score,
                /*lr_means=*/1.6e-4f, /*lr_quats=*/1e-3f, /*lr_scales=*/5e-3f,
                /*lr_opacs=*/5e-2f, /*lr_features_dc=*/2.5e-3f,
                /*lr_features_sh=*/1.25e-4f, /*max_gauss_ratio=*/10.f,
@@ -442,6 +456,7 @@ int main(int argc, char** argv) {
         }
         if (cfg.densify)
             readback_f(acc_f, d_ds, N);
+        readback_i(acc_c, (const int32_t*)d_visit, N);
     }
 
     if (dumping) {

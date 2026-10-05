@@ -74,12 +74,14 @@ static void test_dataset_preset() {
 
     s.sfm.image_gamut = "Display P3";
     s.sfm.image_is_linear = true;
+    s.sfm.image_exposure = "auto";
     s.sfm.point_color_in_image_space = true;
 
     s.sfm.prep.mask_enable = true;
     s.sfm.mask_features = false;
     s.mask.prompt = "people; cars";
     s.mask.negative_prompt = "statue";
+    s.mask.feature_prompt = "sky; cloud";
     s.mask.keep_subject = true;
     s.mask.dilate_ratio = 0.25f;
     s.mask.shrink_ratio = 0.125f;
@@ -90,7 +92,6 @@ static void test_dataset_preset() {
     s.sfm.prep.mask_memory = true;
     s.sfm.prep.mask_detect_every = 4;
     s.sfm.prep.mask_memory_frames = 5;
-    s.sfm.prep.force_external_masking = true;
 
     s.sfm.geometry.enable = true;
     s.sfm.geometry.model = "moge2-vitl";
@@ -191,12 +192,14 @@ static void test_dataset_preset() {
 
     CHECK_EQ(b.sfm.image_gamut, s.sfm.image_gamut);
     CHECK(b.sfm.image_is_linear == s.sfm.image_is_linear);
+    CHECK(b.sfm.image_exposure == s.sfm.image_exposure);
     CHECK_EQ(b.sfm.point_color_in_image_space, s.sfm.point_color_in_image_space);
 
     CHECK_EQ(b.sfm.prep.mask_enable, s.sfm.prep.mask_enable);
     CHECK_EQ(b.sfm.mask_features, s.sfm.mask_features);
     CHECK_EQ(b.mask.prompt, s.mask.prompt);
     CHECK_EQ(b.mask.negative_prompt, s.mask.negative_prompt);
+    CHECK_EQ(b.mask.feature_prompt, s.mask.feature_prompt);
     CHECK_EQ(b.mask.keep_subject, s.mask.keep_subject);
     CHECK_EQ(b.mask.dilate_ratio, s.mask.dilate_ratio);
     CHECK_EQ(b.mask.shrink_ratio, s.mask.shrink_ratio);
@@ -207,7 +210,6 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.prep.mask_memory, s.sfm.prep.mask_memory);
     CHECK_EQ(b.sfm.prep.mask_detect_every, s.sfm.prep.mask_detect_every);
     CHECK_EQ(b.sfm.prep.mask_memory_frames, s.sfm.prep.mask_memory_frames);
-    CHECK_EQ(b.sfm.prep.force_external_masking, s.sfm.prep.force_external_masking);
 
     CHECK_EQ(b.sfm.geometry.enable, s.sfm.geometry.enable);
     CHECK_EQ(b.sfm.geometry.model, s.sfm.geometry.model);
@@ -378,6 +380,23 @@ static void test_sanitize() {
     CHECK_EQ(gui::mesh_job_outputs(two)[0], std::string("C:/runs/one/mesh.ply"));
 }
 
+// A key a newer build no longer knows is skipped, not an error.
+static void test_unknown_key_ignored() {
+    const std::string path = (scratch() / "old_dataset.json").string();
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    CHECK(f != nullptr);
+    if (!f) return;
+    std::fputs("{\"spirula_preset\": 1, \"kind\": \"dataset\", \"name\": \"old\", "
+               "\"settings\": {\"mask_enable\": true, "
+               "\"force_external_masking\": true}}", f);
+    std::fclose(f);
+    try {
+        CHECK(gui::load_dataset_preset(path).s.sfm.prep.mask_enable);
+    } catch (const std::exception&) {
+        CHECK(!"a preset with an unknown key must load");
+    }
+}
+
 // A preset of one kind must not load as another, whatever its name is.
 static void test_kinds_do_not_cross() {
     const std::string ds = (scratch() / "dataset.json").string();
@@ -402,6 +421,7 @@ int main() {
     test_dataset_preset();
     test_mesh_preset();
     test_sanitize();
+    test_unknown_key_ignored();
     test_kinds_do_not_cross();
     if (failures) {
         std::printf("preset_roundtrip_test: %d failure(s)\n", failures);

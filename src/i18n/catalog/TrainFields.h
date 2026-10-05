@@ -2898,6 +2898,28 @@ SS_MSG(background_noise_pre_warmup_help,
     TR("Arka plan gürültüsünün en başta ne kadar güçlü olduğu; 0 ile 1 arası. "
        "Yüksek değerler splat'ların ilk adımlarda silinip gitmesini önler."));
 
+SS_MSG(seed_pointcloud,
+    EN("Seed point cloud PLY"), JA("初期点群 PLY"),
+    ZH_HANS("初始化点云 PLY"), ZH_HANT("初始化點雲 PLY"), KO("초기 점 구름 PLY"),
+    DE("Startpunktwolke PLY"), FR("Nuage de points initial PLY"),
+    ES("Nube de puntos inicial PLY"), PT("Nuvem de pontos inicial PLY"),
+    IT("Nuvola di punti iniziale PLY"), NL("Startpuntenwolk PLY"),
+    RU("Начальное облако точек PLY"), TR("Başlangıç nokta bulutu PLY"));
+SS_MSG(seed_pointcloud_help,
+    EN("Replace the dataset's seed cloud with an XYZ + RGB PLY in the same source coordinate frame as the cameras. Relative paths start at the dataset directory. Scene centering and scaling apply to both. This is a point cloud, not an already-trained splat PLY. random_init=always overrides it; init_ply uses it only with init_ply_add_points. Resume restores checkpoint splats."),
+    JA("カメラと同じ元の座標系の XYZ + RGB PLY で初期点群を置き換えます。相対パスはデータセット基準です。中心移動とスケールは両方に適用されます。学習済みスプラットではなく点群です。random_init=always はこれを上書きし、init_ply は init_ply_add_points の場合のみ使用します。再開時はチェックポイントを復元します。"),
+    ZH_HANS("用与相机处于同一原始坐标系的 XYZ + RGB PLY 替换数据集的初始化点云。相对路径以数据集目录为基准，居中和缩放同时作用于点云与相机。这是普通点云，不是训练好的高斯 PLY。random_init=always 会覆盖它；init_ply 仅在 init_ply_add_points 开启时使用它。恢复训练使用检查点中的高斯。"),
+    ZH_HANT("用與相機處於同一原始座標系的 XYZ + RGB PLY 取代資料集的初始化點雲。相對路徑以資料集目錄為基準，置中和縮放同時作用於點雲與相機。這是普通點雲，不是訓練好的高斯 PLY。random_init=always 會覆蓋它；init_ply 僅在 init_ply_add_points 開啟時使用它。恢復訓練使用檢查點中的高斯。"),
+    KO("카메라와 같은 원본 좌표계의 XYZ + RGB PLY로 초기 점 구름을 교체합니다. 상대 경로는 데이터셋 기준이며 중심 이동과 배율은 둘 다에 적용됩니다. 학습된 스플랫이 아닌 점 구름입니다. random_init=always가 덮어쓰며 init_ply는 init_ply_add_points일 때만 사용합니다. 재개 시 체크포인트를 복원합니다."),
+    DE("Ersetzt die Startpunktwolke durch ein XYZ + RGB PLY im Quellkoordinatensystem der Kameras. Relative Pfade beginnen im Datensatzordner. Zentrierung und Skalierung gelten für beide. Kein trainiertes Splat-PLY. random_init=always überschreibt es; init_ply nutzt es nur mit init_ply_add_points. Fortsetzen stellt Checkpoint-Splats wieder her."),
+    FR("Remplace le nuage initial par un PLY XYZ + RGB dans le repère source des caméras. Les chemins relatifs partent du dossier du jeu de données. Centrage et échelle s'appliquent aux deux. Ce n'est pas un PLY de splats entraîné. random_init=always le remplace ; init_ply l'utilise uniquement avec init_ply_add_points. La reprise restaure les splats du checkpoint."),
+    ES("Sustituye la nube inicial por un PLY XYZ + RGB en el sistema de origen de las cámaras. Las rutas relativas parten del conjunto de datos. Centrado y escala se aplican a ambos. No es un PLY de splats entrenado. random_init=always lo sustituye; init_ply solo lo usa con init_ply_add_points. Reanudar restaura los splats del checkpoint."),
+    PT("Substitui a nuvem inicial por um PLY XYZ + RGB no sistema de origem das câmeras. Caminhos relativos partem da pasta do conjunto de dados. Centralização e escala se aplicam a ambos. Não é um PLY de splats treinado. random_init=always o substitui; init_ply só o usa com init_ply_add_points. Retomar restaura os splats do checkpoint."),
+    IT("Sostituisce la nuvola iniziale con un PLY XYZ + RGB nel sistema originale delle camere. I percorsi relativi partono dalla cartella del set di dati. Centratura e scala si applicano a entrambi. Non è un PLY di splat addestrati. random_init=always lo sostituisce; init_ply lo usa solo con init_ply_add_points. La ripresa ripristina gli splat del checkpoint."),
+    NL("Vervangt de startpuntenwolk door een XYZ + RGB PLY in het bronstelsel van de camera's. Relatieve paden beginnen bij de datasetmap. Centrering en schaal gelden voor beide. Geen getraind splat-PLY. random_init=always vervangt het; init_ply gebruikt het alleen met init_ply_add_points. Hervatten herstelt de checkpoint-splats."),
+    RU("Заменяет начальное облако файлом XYZ + RGB PLY в исходной системе координат камер. Относительные пути идут от каталога данных. Центрирование и масштаб применяются к обоим. Это не обученный PLY сплатов. random_init=always заменяет его; init_ply использует его только с init_ply_add_points. Возобновление восстанавливает сплаты контрольной точки."),
+    TR("Başlangıç bulutunu kameralarla aynı kaynak koordinat sistemindeki XYZ + RGB PLY ile değiştirir. Göreli yollar veri kümesi klasöründen başlar. Merkezleme ve ölçek ikisine de uygulanır. Eğitilmiş splat PLY değildir. random_init=always bunun yerine geçer; init_ply yalnızca init_ply_add_points ile kullanır. Devam etme kontrol noktası splatlarını geri yükler."));
+
 SS_MSG(init_ply,
     EN("Initial splat PLY"), JA("初期スプラットの PLY"),
     ZH_HANS("初始泼溅 PLY"), ZH_HANT("初始潑濺 PLY"), KO("초기 스플랫 PLY"),
@@ -3133,68 +3155,105 @@ SS_MSG(roi_region,
     NL("Bestand met interessegebied"), RU("Файл области интереса"),
     TR("İlgi bölgesi dosyası"));
 SS_MSG(roi_region_help,
-    EN("A region JSON (boxes, spheres, half-spaces, a partition's label field, "
-       "combined with union, intersection and difference). Splats whose centre "
-       "lies outside it are drawn for relocation and growth with "
-       "--roi-outside-weight instead of 1, so the model stops growing there. A "
-       "partitioned run gets its part's region without this."),
-    JA("領域 JSON（ボックス、球、半空間、分割のラベルフィールドを和・積・差で組み"
-       "合わせたもの）。中心が領域外にあるスプラットは、再配置と成長の抽選で 1 の"
-       "代わりに --roi-outside-weight の重みになり、そこではモデルが成長しなくな"
-       "ります。分割学習ではこれなしでパートの領域が使われます。"),
-    ZH_HANS("区域 JSON（盒、球、半空间、分区的标签场，用并、交、差组合）。中心在区域"
-            "外的泼溅在重定位与增长抽样中以 --roi-outside-weight 而非 1 为权重，"
-            "模型因此不再在那里增长。分区训练无需此项即使用其分区的区域。"),
-    ZH_HANT("區域 JSON（盒、球、半空間、分區的標籤場，用聯集、交集、差集組合）。中"
-            "心在區域外的潑濺在重定位與增長抽樣中以 --roi-outside-weight 而非 1 為"
-            "權重，模型因此不再在那裡增長。分區訓練無需此項即使用其分區的區域。"),
-    KO("영역 JSON(상자, 구, 반공간, 분할의 라벨 필드를 합집합·교집합·차집합으로 "
-       "결합). 중심이 영역 밖인 스플랫은 재배치와 성장 추첨에서 1 대신 "
-       "--roi-outside-weight 가중치를 받아 그곳에서 모델이 더 자라지 않습니다. "
-       "분할 학습은 이것 없이도 파트의 영역을 씁니다."),
-    DE("Eine Regions-JSON (Quader, Kugeln, Halbräume, das Labelfeld einer "
-       "Partition, verknüpft mit Vereinigung, Schnitt und Differenz). Splats mit "
-       "Zentrum außerhalb ziehen bei Verlagerung und Wachstum mit "
-       "--roi-outside-weight statt 1, das Modell wächst dort also nicht weiter. "
-       "Ein partitionierter Lauf bekommt den Bereich seines Teils auch ohne dies."),
-    FR("Un JSON de région (boîtes, sphères, demi-espaces, le champ d'étiquettes "
-       "d'une partition, combinés par union, intersection et différence). Les "
-       "splats dont le centre est en dehors tirent, pour la relocalisation et la "
-       "croissance, avec --roi-outside-weight au lieu de 1 : le modèle cesse d'y "
-       "croître. Un entraînement partitionné reçoit la région de sa partie sans "
-       "cela."),
-    ES("Un JSON de región (cajas, esferas, semiespacios, el campo de etiquetas de "
-       "una partición, combinados con unión, intersección y diferencia). Los "
-       "splats con el centro fuera sortean, para reubicación y crecimiento, con "
-       "--roi-outside-weight en vez de 1, así que el modelo deja de crecer ahí. "
-       "Una ejecución particionada recibe la región de su parte sin esto."),
-    PT("Um JSON de região (caixas, esferas, semiespaços, o campo de rótulos de "
-       "uma partição, combinados por união, interseção e diferença). Os splats "
-       "com o centro fora sorteiam, para realocação e crescimento, com "
-       "--roi-outside-weight em vez de 1, pelo que o modelo deixa de crescer aí. "
-       "Um treino particionado recebe a região da sua parte sem isto."),
-    IT("Un JSON di regione (scatole, sfere, semispazi, il campo di etichette di "
-       "una partizione, combinati con unione, intersezione e differenza). Gli "
+    EN("A region JSON: what the ROI editor saves in the dataset's roi folder, or any "
+       "region (boxes, ellipsoids, cylinders, outlines, half-spaces, a partition's "
+       "label field, combined with union, intersection and difference). Unset, the "
+       "first file in <dataset>/roi is used; `off` trains the whole scene; a bare "
+       "name picks that file there. Splats whose centre lies outside it are drawn "
+       "for relocation and growth with --roi-outside-weight instead of 1, so the "
+       "model stops growing there. A partitioned run keeps to where its part and "
+       "the region overlap."),
+    JA("領域 JSON。ROI エディタがデータセットの roi フォルダに保存するもの、または任"
+       "意の領域（ボックス、楕円体、円柱、輪郭、半空間、分割のラベルフィールドを和・"
+       "積・差で組み合わせたもの）。未設定なら <dataset>/roi の先頭のファイルを使い、"
+       "`off` ならシーン全体を学習し、名前だけならそこにあるそのファイルを選びます。"
+       "中心が領域外にあるスプラットは、再配置と成長の抽選で 1 の代わりに "
+       "--roi-outside-weight の重みになり、そこではモデルが成長しなくなります。分割"
+       "学習ではパートと領域の重なりだけが使われます。"),
+    ZH_HANS("区域 JSON：ROI 编辑器保存在数据集 roi 文件夹中的文件，或任意区域（盒、椭"
+            "球、圆柱、轮廓、半空间、分区的标签场，用并、交、差组合）。未设置时使用 "
+            "<dataset>/roi 中的第一个文件；`off` 训练整个场景；只写名称则选取该文件"
+            "夹中的同名文件。中心在区域外的泼溅在重定位与增长抽样中以 "
+            "--roi-outside-weight 而非 1 为权重，模型因此不再在那里增长。分区训练只使"
+            "用其分区与该区域的交集。"),
+    ZH_HANT("區域 JSON：ROI 編輯器儲存在資料集 roi 資料夾中的檔案，或任意區域（盒、橢"
+            "球、圓柱、輪廓、半空間、分區的標籤場，用聯集、交集、差集組合）。未設定時"
+            "使用 <dataset>/roi 中的第一個檔案；`off` 訓練整個場景；只寫名稱則選取該"
+            "資料夾中的同名檔案。中心在區域外的潑濺在重定位與增長抽樣中以 "
+            "--roi-outside-weight 而非 1 為權重，模型因此不再在那裡增長。分區訓練只使"
+            "用其分區與該區域的交集。"),
+    KO("영역 JSON: ROI 편집기가 데이터셋의 roi 폴더에 저장한 파일, 또는 임의의 영역"
+       "(상자, 타원체, 원기둥, 윤곽, 반공간, 분할의 라벨 필드를 합집합·교집합·차집합"
+       "으로 결합). 비워 두면 <dataset>/roi의 첫 번째 파일을 쓰고, `off`이면 장면 "
+       "전체를 학습하며, 이름만 쓰면 그 폴더의 해당 파일을 고릅니다. 중심이 영역 밖인 "
+       "스플랫은 재배치와 성장 추첨에서 1 대신 --roi-outside-weight 가중치를 받아 "
+       "그곳에서 모델이 더 자라지 않습니다. 분할 학습은 파트와 이 영역이 겹치는 부분"
+       "만 씁니다."),
+    DE("Eine Regions-JSON: was der ROI-Editor im roi-Ordner des Datensatzes "
+       "speichert, oder jede andere Region (Quader, Ellipsoide, Zylinder, Umrisse, "
+       "Halbräume, das Labelfeld einer Partition, verknüpft mit Vereinigung, Schnitt "
+       "und Differenz). Leer wird die erste Datei in <dataset>/roi verwendet; `off` "
+       "trainiert die ganze Szene; ein bloßer Name wählt die gleichnamige Datei dort. "
+       "Splats mit Zentrum außerhalb ziehen bei Verlagerung und Wachstum mit "
+       "--roi-outside-weight statt 1, das Modell wächst dort also nicht weiter. Ein "
+       "partitionierter Lauf nutzt nur die Schnittmenge seines Teils mit der Region."),
+    FR("Un JSON de région : ce que l'éditeur de ROI enregistre dans le dossier roi du "
+       "jeu de données, ou toute autre région (boîtes, ellipsoïdes, cylindres, "
+       "contours, demi-espaces, le champ d'étiquettes d'une partition, combinés par "
+       "union, intersection et différence). Vide, le premier fichier de "
+       "<dataset>/roi est utilisé ; `off` entraîne toute la scène ; un simple nom y "
+       "choisit ce fichier. Les splats dont le centre est en dehors tirent, pour la "
+       "relocalisation et la croissance, avec --roi-outside-weight au lieu de 1 : le "
+       "modèle cesse d'y croître. Un entraînement partitionné n'en garde que "
+       "l'intersection avec sa partie."),
+    ES("Un JSON de región: lo que el editor de ROI guarda en la carpeta roi del "
+       "conjunto de datos, o cualquier región (cajas, elipsoides, cilindros, "
+       "contornos, semiespacios, el campo de etiquetas de una partición, combinados "
+       "con unión, intersección y diferencia). Vacío, se usa el primer archivo de "
+       "<dataset>/roi; `off` entrena toda la escena; un nombre solo elige ese "
+       "archivo allí. Los splats con el centro fuera sortean, para reubicación y "
+       "crecimiento, con --roi-outside-weight en vez de 1, así que el modelo deja de "
+       "crecer ahí. Una ejecución particionada usa solo su intersección con su parte."),
+    PT("Um JSON de região: o que o editor de ROI guarda na pasta roi do conjunto de "
+       "dados, ou qualquer região (caixas, elipsoides, cilindros, contornos, "
+       "semiespaços, o campo de rótulos de uma partição, combinados por união, "
+       "interseção e diferença). Vazio, usa-se o primeiro ficheiro de <dataset>/roi; "
+       "`off` treina a cena inteira; um nome simples escolhe esse ficheiro lá. Os "
+       "splats com o centro fora sorteiam, para realocação e crescimento, com "
+       "--roi-outside-weight em vez de 1, pelo que o modelo deixa de crescer aí. Um "
+       "treino particionado usa apenas a interseção com a sua parte."),
+    IT("Un JSON di regione: ciò che l'editor di ROI salva nella cartella roi del "
+       "dataset, o qualsiasi regione (scatole, ellissoidi, cilindri, contorni, "
+       "semispazi, il campo di etichette di una partizione, combinati con unione, "
+       "intersezione e differenza). Se vuoto si usa il primo file in <dataset>/roi; "
+       "`off` addestra l'intera scena; un nome semplice sceglie quel file lì. Gli "
        "splat con il centro fuori estraggono, per ricollocazione e crescita, con "
-       "--roi-outside-weight invece di 1, così il modello smette di crescere lì. "
-       "Un addestramento partizionato riceve la regione della sua parte senza "
-       "questo."),
-    NL("Een regio-JSON (dozen, bollen, halfruimten, het labelveld van een "
-       "partitie, gecombineerd met vereniging, doorsnede en verschil). Splats met "
-       "het middelpunt erbuiten loten bij verplaatsing en groei met "
-       "--roi-outside-weight in plaats van 1, zodat het model daar niet verder "
-       "groeit. Een gepartitioneerde run krijgt het gebied van zijn deel ook "
-       "zonder dit."),
-    RU("JSON области (коробки, сферы, полупространства, поле меток разбиения, "
-       "объединённые операциями объединения, пересечения и разности). Сплаты с "
-       "центром снаружи участвуют в выборке для перемещения и роста с весом "
-       "--roi-outside-weight вместо 1, так что модель там не растёт. "
-       "Разбитый запуск получает область своей части и без этого."),
-    TR("Bir bölge JSON'u (kutular, küreler, yarı uzaylar, bir bölümlemenin etiket "
-       "alanı; birleşim, kesişim ve farkla birleştirilmiş). Merkezi dışarıda "
-       "kalan splatlar yer değiştirme ve büyüme çekilişine 1 yerine "
-       "--roi-outside-weight ile girer; model orada büyümeyi bırakır. "
-       "Bölümlenmiş bir eğitim bunu vermeden parçasının bölgesini alır."));
+       "--roi-outside-weight invece di 1, così il modello smette di crescere lì. Un "
+       "addestramento partizionato usa solo l'intersezione con la sua parte."),
+    NL("Een regio-JSON: wat de ROI-editor in de roi-map van de dataset opslaat, of "
+       "elk ander gebied (dozen, ellipsoïden, cilinders, omtrekken, halfruimten, het "
+       "labelveld van een partitie, gecombineerd met vereniging, doorsnede en "
+       "verschil). Leeg wordt het eerste bestand in <dataset>/roi gebruikt; `off` "
+       "traint de hele scène; een losse naam kiest dat bestand daar. Splats met het "
+       "middelpunt erbuiten loten bij verplaatsing en groei met --roi-outside-weight "
+       "in plaats van 1, zodat het model daar niet verder groeit. Een "
+       "gepartitioneerde run gebruikt alleen de doorsnede met zijn deel."),
+    RU("JSON области: то, что редактор ROI сохраняет в папку roi набора данных, или "
+       "любая область (коробки, эллипсоиды, цилиндры, контуры, полупространства, "
+       "поле меток разбиения, объединённые операциями объединения, пересечения и "
+       "разности). Если пусто, берётся первый файл из <dataset>/roi; `off` обучает "
+       "всю сцену; одно имя выбирает этот файл там. Сплаты с центром снаружи "
+       "участвуют в выборке для перемещения и роста с весом --roi-outside-weight "
+       "вместо 1, так что модель там не растёт. Разбитый запуск использует только "
+       "пересечение своей части с областью."),
+    TR("Bir bölge JSON'u: ROI düzenleyicisinin veri kümesinin roi klasörüne "
+       "kaydettiği dosya ya da herhangi bir bölge (kutular, elipsoitler, silindirler, "
+       "ana hatlar, yarı uzaylar, bir bölümlemenin etiket alanı; birleşim, kesişim ve "
+       "farkla birleştirilmiş). Boş bırakılırsa <dataset>/roi içindeki ilk dosya "
+       "kullanılır; `off` tüm sahneyi eğitir; yalnızca bir ad oradaki o dosyayı "
+       "seçer. Merkezi dışarıda kalan splatlar yer değiştirme ve büyüme çekilişine 1 "
+       "yerine --roi-outside-weight ile girer; model orada büyümeyi bırakır. "
+       "Bölümlenmiş bir eğitim yalnızca parçasıyla kesişimini kullanır."));
 SS_MSG(roi_outside_weight,
     EN("Draw weight outside the region"), JA("領域外の抽選重み"),
     ZH_HANS("区域外的抽样权重"), ZH_HANT("區域外的抽樣權重"), KO("영역 밖 추첨 가중치"),
@@ -5587,6 +5646,216 @@ SS_MSG(long_axis_split_opacity_k_help,
        "verilir. Yüksek değerler yarıları daha yoğun ve keskin tutar; düşük değerler "
        "uçuşan artıkların solup ayrıntı gereken yere taşınmasını sağlar."));
 
+SS_MSG(max_split_fraction,
+    EN("Split budget per round"),
+    JA("1 ラウンドあたりの分割上限"),
+    ZH_HANS("每轮分裂上限"),
+    ZH_HANT("每輪分裂上限"),
+    KO("회차당 분할 한도"),
+    DE("Teilungsbudget pro Runde"),
+    FR("Budget de division par cycle"),
+    ES("Presupuesto de división por ronda"),
+    PT("Orçamento de divisão por rodada"),
+    IT("Budget di divisione per ciclo"),
+    NL("Splitsbudget per ronde"),
+    RU("Лимит делений за раунд"),
+    TR("Tur başına bölme bütçesi"));
+SS_MSG(max_split_fraction_help,
+    EN("Largest share of the live splats that may be split in one round, "
+       "counting revived dead splats first and growth second. Dead splats "
+       "past the budget wait for a later round, which keeps a burst of deaths "
+       "from halving the opacity of a matching number of live splats at once. "
+       "1 or more leaves both uncapped."),
+    JA("1 ラウンドで分割してよい、生きているスプラットの割合の上限です。死んだ"
+       "スプラットの復活を先に、成長を後に数えます。上限を超えた死んだスプラッ"
+       "トは後のラウンドまで待つので、一度に大量に死んでも、同じ数の生きたスプ"
+       "ラットの不透明度が一斉に半減することはありません。1 以上にすると、どち"
+       "らも無制限になります。"),
+    ZH_HANS("一轮中可分裂的存活泼溅所占比例的上限，先计入复活的死亡泼溅，再计"
+            "入增长。超出上限的死亡泼溅会等到之后的轮次，以免一批泼溅同时死亡"
+            "时，同样数量的存活泼溅的不透明度一下子减半。设为 1 或更大则两者都"
+            "不设上限。"),
+    ZH_HANT("一輪中可分裂的存活潑濺所佔比例的上限，先計入復活的死亡潑濺，再計"
+            "入增長。超出上限的死亡潑濺會等到之後的輪次，以免一批潑濺同時死亡"
+            "時，同樣數量的存活潑濺的不透明度一下子減半。設為 1 或更大則兩者都"
+            "不設上限。"),
+    KO("한 회차에 분할할 수 있는, 살아 있는 스플랫의 최대 비율입니다. 죽은 스"
+       "플랫의 부활을 먼저, 성장을 나중에 셉니다. 한도를 넘은 죽은 스플랫은 이"
+       "후 회차까지 기다리므로, 한꺼번에 많이 죽어도 같은 수의 살아 있는 스플"
+       "랫의 불투명도가 한 번에 절반으로 줄지 않습니다. 1 이상이면 둘 다 제한"
+       "이 없습니다."),
+    DE("Größter Anteil der lebenden Splats, der in einer Runde geteilt werden "
+       "darf; wiederbelebte tote Splats zählen zuerst, Wachstum danach. Tote "
+       "Splats jenseits des Budgets warten auf eine spätere Runde, damit ein "
+       "Schwall von Toden nicht die Deckkraft ebenso vieler lebender Splats "
+       "auf einmal halbiert. 1 oder mehr hebt beide Grenzen auf."),
+    FR("Part maximale des splats vivants pouvant être divisés en un cycle, en "
+       "comptant d'abord les splats morts ranimés, puis la croissance. Les "
+       "splats morts au-delà du budget attendent un cycle ultérieur, ce qui "
+       "évite qu'une vague de morts ne divise d'un coup par deux l'opacité "
+       "d'autant de splats vivants. 1 ou plus lève les deux limites."),
+    ES("Mayor proporción de los splats vivos que se puede dividir en una "
+       "ronda, contando primero los splats muertos reanimados y después el "
+       "crecimiento. Los splats muertos que exceden el presupuesto esperan a "
+       "una ronda posterior, lo que evita que una oleada de muertes reduzca a "
+       "la mitad de golpe la opacidad de otros tantos splats vivos. 1 o más "
+       "deja ambos sin límite."),
+    PT("Maior parcela dos splats vivos que pode ser dividida numa rodada, "
+       "contando primeiro os splats mortos reativados e depois o crescimento. "
+       "Os splats mortos além do orçamento esperam uma rodada posterior, o "
+       "que evita que uma leva de mortes reduza à metade, de uma só vez, a "
+       "opacidade de igual número de splats vivos. 1 ou mais deixa ambos sem "
+       "limite."),
+    IT("Quota massima degli splat vivi che si può dividere in un ciclo, "
+       "contando prima gli splat morti rianimati e poi la crescita. Gli splat "
+       "morti oltre il budget aspettano un ciclo successivo, così un'ondata "
+       "di morti non dimezza tutta insieme l'opacità di altrettanti splat "
+       "vivi. 1 o più lascia entrambi senza limite."),
+    NL("Grootste deel van de levende splats dat in één ronde mag worden "
+       "gesplitst; eerst tellen herstelde dode splats, daarna groei. Dode "
+       "splats boven het budget wachten op een latere ronde, zodat een golf "
+       "sterfgevallen niet in één keer de dekking van evenveel levende splats "
+       "halveert. 1 of meer laat beide onbegrensd."),
+    RU("Наибольшая доля живых сплатов, которую можно разделить за один раунд; "
+       "сначала учитываются возрождённые мёртвые сплаты, затем рост. Мёртвые "
+       "сплаты сверх лимита ждут следующего раунда, чтобы волна гибели не "
+       "уменьшила разом вдвое непрозрачность такого же числа живых сплатов. 1 "
+       "и больше снимает оба ограничения."),
+    TR("Bir turda bölünebilecek canlı splat'ların en büyük payı; önce yeniden "
+       "canlandırılan ölü splat'lar, sonra büyüme sayılır. Bütçeyi aşan ölü "
+       "splat'lar sonraki bir turu bekler, böylece bir anda çok sayıda splat "
+       "öldüğünde aynı sayıda canlı splat'ın saydamsızlığı birden yarıya "
+       "inmez. 1 veya daha fazlası ikisini de sınırsız bırakır."));
+
+SS_MSG(split_weight_by_renders,
+    EN("Weight splits by renders"),
+    JA("描画回数で分割を重み付け"),
+    ZH_HANS("按渲染次数加权分裂"),
+    ZH_HANT("按算圖次數加權分裂"),
+    KO("렌더 횟수로 분할 가중"),
+    DE("Teilungen nach Renderzahl gewichten"),
+    FR("Pondérer les divisions par les rendus"),
+    ES("Ponderar divisiones por renderizados"),
+    PT("Ponderar divisões pelas renderizações"),
+    IT("Pesare le divisioni per i rendering"),
+    NL("Splitsingen wegen naar renders"),
+    RU("Взвешивать деления по числу отрисовок"),
+    TR("Bölmeleri işlenme sayısına göre ağırlıklandır"));
+SS_MSG(split_weight_by_renders_help,
+    EN("Multiply each splat's refinement score by how many times it has been "
+       "rendered since it was created or last split, so a splat is split "
+       "again only after the optimizer has had a chance to settle it. The "
+       "refinement-score view shows the weighted score."),
+    JA("各スプラットの細分化スコアに、作られてから、または前回分割されてから描"
+       "画された回数を掛けます。これでスプラットは、最適化が落ち着かせる機会を"
+       "得てからでないと再び分割されません。細分化スコアの表示には、重み付け後"
+       "のスコアが出ます。"),
+    ZH_HANS("把每个泼溅的细化分数乘以它自创建或上次分裂以来被渲染的次数，使泼"
+            "溅要等优化器有机会把它调稳之后才会再次分裂。细化分数视图显示的是"
+            "加权后的分数。"),
+    ZH_HANT("把每個潑濺的細化分數乘以它自建立或上次分裂以來被算圖的次數，使潑"
+            "濺要等最佳化器有機會把它調穩之後才會再次分裂。細化分數檢視顯示的"
+            "是加權後的分數。"),
+    KO("각 스플랫의 정제 점수에, 생성되거나 마지막으로 분할된 뒤 렌더된 횟수를"
+       " 곱합니다. 그래서 옵티마이저가 스플랫을 안정시킬 기회를 가진 뒤에야 다"
+       "시 분할됩니다. 정제 점수 보기에는 가중된 점수가 표시됩니다."),
+    DE("Den Verfeinerungswert jedes Splats damit multiplizieren, wie oft er "
+       "seit seiner Entstehung oder letzten Teilung gerendert wurde, sodass "
+       "ein Splat erst wieder geteilt wird, nachdem der Optimierer ihn "
+       "einpendeln lassen konnte. Die Ansicht des Verfeinerungswerts zeigt "
+       "den gewichteten Wert."),
+    FR("Multiplier le score de raffinement de chaque splat par le nombre de "
+       "fois qu'il a été rendu depuis sa création ou sa dernière division, "
+       "afin qu'un splat ne soit redivisé qu'après que l'optimiseur a pu le "
+       "stabiliser. La vue du score de raffinement affiche le score pondéré."),
+    ES("Multiplicar la puntuación de refinamiento de cada splat por las veces "
+       "que se ha renderizado desde que se creó o se dividió por última vez, "
+       "de modo que un splat solo vuelva a dividirse cuando el optimizador "
+       "haya tenido ocasión de asentarlo. La vista de puntuación de "
+       "refinamiento muestra la puntuación ponderada."),
+    PT("Multiplicar a pontuação de refinamento de cada splat pelo número de "
+       "vezes que foi renderizado desde que foi criado ou dividido pela "
+       "última vez, para que um splat só volte a ser dividido depois de o "
+       "otimizador ter tido a chance de estabilizá-lo. A vista da pontuação "
+       "de refinamento mostra a pontuação ponderada."),
+    IT("Moltiplicare il punteggio di raffinamento di ogni splat per il numero "
+       "di volte in cui è stato renderizzato da quando è nato o è stato "
+       "diviso l'ultima volta, così uno splat viene ridiviso solo dopo che "
+       "l'ottimizzatore ha avuto modo di assestarlo. La vista del punteggio "
+       "di raffinamento mostra il punteggio pesato."),
+    NL("De verfijningsscore van elke splat vermenigvuldigen met het aantal "
+       "keren dat hij is gerenderd sinds hij ontstond of voor het laatst werd "
+       "gesplitst, zodat een splat pas opnieuw wordt gesplitst nadat de "
+       "optimizer hem tot rust heeft kunnen brengen. De weergave van de "
+       "verfijningsscore toont de gewogen score."),
+    RU("Умножать оценку уточнения каждого сплата на число его отрисовок с "
+       "момента создания или последнего деления, чтобы сплат делился снова "
+       "лишь после того, как оптимизатор успел его стабилизировать. Вид "
+       "оценки уточнения показывает взвешенную оценку."),
+    TR("Her splat'ın iyileştirme puanını, oluşturulduğundan ya da son "
+       "bölünmesinden beri kaç kez işlendiğiyle çarpar; böylece bir splat "
+       "ancak optimize edici onu oturtma fırsatı bulduktan sonra yeniden "
+       "bölünür. İyileştirme puanı görünümü ağırlıklı puanı gösterir."));
+
+SS_MSG(dead_after_epochs,
+    EN("Dead after unrendered passes"),
+    JA("未描画で死とみなす巡数"),
+    ZH_HANS("未渲染多少遍后判为死亡"),
+    ZH_HANT("未算圖多少遍後判為死亡"),
+    KO("렌더되지 않은 바퀴 수 후 죽음 처리"),
+    DE("Tot nach Durchläufen ohne Rendern"),
+    FR("Mort après passages sans rendu"),
+    ES("Muerto tras pasadas sin renderizar"),
+    PT("Morto após passagens sem renderização"),
+    IT("Morto dopo passaggi senza rendering"),
+    NL("Dood na doorlopen zonder render"),
+    RU("Мёртв после проходов без отрисовки"),
+    TR("İşlenmeden geçen geçişlerden sonra ölü"));
+SS_MSG(dead_after_epochs_help,
+    EN("A splat that no camera has rendered for this many passes over the "
+       "dataset (fractional) is treated as dead and relocated at the next "
+       "round, whatever its opacity. 0 turns the rule off."),
+    JA("データセットをこの巡数（小数可）のあいだ、どのカメラにも描画されなかっ"
+       "たスプラットは、不透明度にかかわらず死んだものとみなし、次のラウンドで"
+       "移します。0 でこの規則を無効にします。"),
+    ZH_HANS("在这么多遍数据集（可为小数）内都没有被任何相机渲染的泼溅，无论不"
+            "透明度如何都视为死亡，并在下一轮迁移。0 关闭此规则。"),
+    ZH_HANT("在這麼多遍資料集（可為小數）內都沒有被任何相機算圖的潑濺，無論不"
+            "透明度如何都視為死亡，並在下一輪遷移。0 關閉此規則。"),
+    KO("데이터셋을 이만큼(소수 가능) 도는 동안 어떤 카메라에도 렌더되지 않은 "
+       "스플랫은 불투명도와 관계없이 죽은 것으로 보고 다음 회차에 옮깁니다. 0"
+       "이면 이 규칙을 끕니다."),
+    DE("Ein Splat, den so viele Durchläufe durch den Datensatz lang (auch "
+       "gebrochen) keine Kamera gerendert hat, gilt unabhängig von seiner "
+       "Deckkraft als tot und zieht in der nächsten Runde um. 0 schaltet die "
+       "Regel ab."),
+    FR("Un splat qu'aucune caméra n'a rendu pendant ce nombre de passages sur "
+       "le jeu de données (fractionnaire) est considéré comme mort et déplacé "
+       "au cycle suivant, quelle que soit son opacité. 0 désactive la règle."),
+    ES("Un splat que ninguna cámara ha renderizado durante este número de "
+       "pasadas sobre el conjunto de datos (admite decimales) se considera "
+       "muerto y se reubica en la siguiente ronda, sea cual sea su opacidad. "
+       "0 desactiva la regla."),
+    PT("Um splat que nenhuma câmera renderizou durante este número de "
+       "passagens pelo conjunto de dados (aceita frações) é tratado como "
+       "morto e realocado na rodada seguinte, qualquer que seja sua "
+       "opacidade. 0 desativa a regra."),
+    IT("Uno splat che nessuna fotocamera ha renderizzato per questo numero di "
+       "passaggi sul set di dati (anche frazionario) è considerato morto e "
+       "spostato al ciclo successivo, qualunque sia la sua opacità. 0 "
+       "disattiva la regola."),
+    NL("Een splat die geen enkele camera heeft gerenderd gedurende dit aantal "
+       "doorlopen van de dataset (mag een breuk zijn) geldt als dood en wordt "
+       "bij de volgende ronde verplaatst, ongeacht zijn dekking. 0 schakelt "
+       "de regel uit."),
+    RU("Сплат, который ни одна камера не отрисовала за столько проходов по "
+       "набору данных (можно дробное), считается мёртвым и перемещается в "
+       "следующем раунде, какой бы ни была его непрозрачность. 0 отключает "
+       "правило."),
+    TR("Veri kümesi üzerinde bu kadar geçiş (kesirli olabilir) boyunca hiçbir "
+       "kameranın işlemediği bir splat, saydamsızlığı ne olursa olsun ölü "
+       "sayılır ve sonraki turda taşınır. 0 kuralı kapatır."));
+
 SS_MSG(max_screen_size,
     EN("Maximum on-screen size"), JA("画面上の最大サイズ"),
     ZH_HANS("屏幕上的最大尺寸"), ZH_HANT("螢幕上的最大尺寸"),
@@ -7300,6 +7569,90 @@ SS_MSG(opacity_reg_help,
     TR("Splat'ların saydamsızlığını yumuşakça düşürerek zayıf olanların daha "
        "çok gerekli olduğu yere geri dönüştürülmesini sağlar. Yüksek değerler "
        "daha atak geri dönüştürür."));
+
+SS_MSG(reg_rendered_only,
+    EN("Regularize rendered splats only"),
+    JA("描画されたスプラットだけを正則化"),
+    ZH_HANS("只正则化被渲染的泼溅"),
+    ZH_HANT("只正則化被算圖的潑濺"),
+    KO("렌더된 스플랫만 정규화"),
+    DE("Nur gerenderte Splats regularisieren"),
+    FR("Régulariser seulement les splats rendus"),
+    ES("Regularizar solo los splats renderizados"),
+    PT("Regularizar só os splats renderizados"),
+    IT("Regolarizzare solo gli splat renderizzati"),
+    NL("Alleen gerenderde splats regulariseren"),
+    RU("Регуляризовать только отрисованные сплаты"),
+    TR("Yalnızca işlenen splat'ları düzenlileştir"));
+SS_MSG(reg_rendered_only_help,
+    EN("Apply the per-splat regularizers (opacity, scale, shape) only to "
+       "splats that at least one camera rendered this step. Off, a splat "
+       "nobody renders still loses about one learning rate of opacity and "
+       "scale per step, which kills fresh splats in sparsely captured regions "
+       "before their first render."),
+    JA("スプラットごとの正則化（不透明度・大きさ・形）を、このステップで少なく"
+       "とも 1 台のカメラが描画したスプラットだけにかけます。オフにすると、ど"
+       "こからも描画されないスプラットも 1 ステップごとに学習率ほど不透明度と"
+       "大きさを失い、まばらにしか撮られていない領域の新しいスプラットが、最初"
+       "に描画される前に消えてしまいます。"),
+    ZH_HANS("只对本步至少被一台相机渲染的泼溅施加逐泼溅的正则项（不透明度、尺"
+            "寸、形状）。关闭时，没有被任何相机渲染的泼溅每步仍会损失约一个学"
+            "习率的不透明度和尺寸，使拍摄稀疏区域中的新泼溅在第一次被渲染之前"
+            "就消亡。"),
+    ZH_HANT("只對本步至少被一台相機算圖的潑濺施加逐潑濺的正則項（不透明度、尺"
+            "寸、形狀）。關閉時，沒有被任何相機算圖的潑濺每步仍會損失約一個學"
+            "習率的不透明度和尺寸，使拍攝稀疏區域中的新潑濺在第一次被算圖之前"
+            "就消亡。"),
+    KO("스플랫별 정규화(불투명도, 크기, 모양)를 이번 스텝에 적어도 한 카메라가"
+       " 렌더한 스플랫에만 적용합니다. 끄면 아무도 렌더하지 않는 스플랫도 스텝"
+       "마다 학습률 하나만큼 불투명도와 크기를 잃어, 드문드문 촬영된 영역의 새"
+       " 스플랫이 처음 렌더되기도 전에 사라집니다."),
+    DE("Die Regularisierer pro Splat (Deckkraft, Größe, Form) nur auf Splats "
+       "anwenden, die in diesem Schritt mindestens eine Kamera gerendert hat. "
+       "Aus verliert auch ein Splat, den niemand rendert, pro Schritt etwa "
+       "eine Lernrate an Deckkraft und Größe, was frische Splats in spärlich "
+       "erfassten Bereichen tötet, bevor sie zum ersten Mal gerendert werden."),
+    FR("N'appliquer les régularisations par splat (opacité, taille, forme) "
+       "qu'aux splats qu'au moins une caméra a rendus à cette étape. "
+       "Désactivé, un splat que personne ne rend perd quand même environ un "
+       "taux d'apprentissage d'opacité et de taille à chaque étape, ce qui "
+       "tue les nouveaux splats des zones peu couvertes avant leur premier "
+       "rendu."),
+    ES("Aplicar los regularizadores por splat (opacidad, tamaño, forma) solo "
+       "a los splats que al menos una cámara ha renderizado en este paso. "
+       "Desactivado, un splat que nadie renderiza pierde igualmente cerca de "
+       "una tasa de aprendizaje de opacidad y tamaño por paso, lo que mata "
+       "los splats nuevos de las zonas poco capturadas antes de su primer "
+       "renderizado."),
+    PT("Aplicar os regularizadores por splat (opacidade, tamanho, forma) "
+       "apenas aos splats que pelo menos uma câmera renderizou neste passo. "
+       "Desligado, um splat que ninguém renderiza ainda perde cerca de uma "
+       "taxa de aprendizado de opacidade e tamanho por passo, o que mata "
+       "splats novos em regiões pouco capturadas antes da primeira "
+       "renderização."),
+    IT("Applicare i regolarizzatori per splat (opacità, dimensione, forma) "
+       "solo agli splat che almeno una fotocamera ha renderizzato in questo "
+       "passo. Se disattivato, uno splat che nessuno renderizza perde "
+       "comunque circa un tasso di apprendimento di opacità e dimensione a "
+       "ogni passo, e questo uccide gli splat nuovi nelle zone poco riprese "
+       "prima del loro primo rendering."),
+    NL("De regularisaties per splat (dekking, grootte, vorm) alleen toepassen "
+       "op splats die in deze stap door minstens één camera zijn gerenderd. "
+       "Uit verliest ook een splat die niemand rendert per stap ongeveer één "
+       "leersnelheid aan dekking en grootte, wat verse splats in schaars "
+       "vastgelegde gebieden doodt vóór hun eerste render."),
+    RU("Применять посплатовые регуляризаторы (непрозрачность, размер, форма) "
+       "только к сплатам, которые на этом шаге отрисовала хотя бы одна "
+       "камера. Если выключено, сплат, который никто не отрисовывает, всё "
+       "равно теряет за шаг примерно одну скорость обучения непрозрачности и "
+       "размера, и это убивает новые сплаты в редко снятых областях до их "
+       "первой отрисовки."),
+    TR("Splat başına düzenlileştiricileri (saydamsızlık, boyut, biçim) "
+       "yalnızca bu adımda en az bir kameranın işlediği splat'lara uygular. "
+       "Kapalıyken hiçbir kameranın işlemediği bir splat da her adımda "
+       "yaklaşık bir öğrenme oranı kadar saydamsızlık ve boyut kaybeder; bu "
+       "da seyrek çekilmiş bölgelerdeki yeni splat'ları ilk işlenmelerinden "
+       "önce öldürür."));
 
 SS_MSG(scale_reg,
     EN("Size penalty"), JA("大きさのペナルティ"), ZH_HANS("尺寸惩罚"),
@@ -10437,6 +10790,336 @@ SS_MSG(max_batch_per_epoch_help,
        "düşürmek bir adıma daha çok görüntü toplar, bu daha durağandır ama yavaştır "
        "ve daha çok bellek ister. Bundan küçük veri kümeleri adım başına tek "
        "görüntü kullanır."));
+
+SS_MSG(min_renders_per_refine,
+    EN("Min renders per round"),
+    JA("ラウンドあたりの最小描画回数"),
+    ZH_HANS("每轮最少渲染次数"),
+    ZH_HANT("每輪最少算圖次數"),
+    KO("회차당 최소 렌더 횟수"),
+    DE("Mindestzahl Renderings pro Runde"),
+    FR("Rendus minimaux par cycle"),
+    ES("Renderizados mínimos por ronda"),
+    PT("Renderizações mínimas por rodada"),
+    IT("Rendering minimi per ciclo"),
+    NL("Minimaal aantal renders per ronde"),
+    RU("Мин. отрисовок за раунд"),
+    TR("Tur başına en az işlenme"));
+SS_MSG(min_renders_per_refine_help,
+    EN("Choose the images per step so that a poorly seen splat (at the render "
+       "quantile) is still rendered at least this many times between two "
+       "refinement rounds, estimated from the seed points and the camera "
+       "frusta. 0 keeps the steps-per-pass rule instead."),
+    JA("見えにくいスプラット（描画分位点にあるもの）でも、2 回のラウンドの間に"
+       "少なくともこの回数は描画されるよう、1 ステップの画像枚数を選びます。見"
+       "積もりには初期点とカメラの視錐台を使います。0 にすると、代わりに 1 巡"
+       "あたりのステップ数の規則を使います。"),
+    ZH_HANS("选择每步的图像数，使难以看到的泼溅（处于渲染分位数处）在两轮细化"
+            "之间仍至少被渲染这么多次；这一估计基于初始点和相机视锥。0 则改用"
+            "每轮数据步数的规则。"),
+    ZH_HANT("選擇每步的影像數，使難以看到的潑濺（處於算圖分位數處）在兩輪細化"
+            "之間仍至少被算圖這麼多次；這一估計基於初始點和相機視錐。0 則改用"
+            "每輪資料步數的規則。"),
+    KO("잘 보이지 않는 스플랫(렌더 분위수에 해당하는 것)도 두 정제 회차 사이에"
+       " 적어도 이 횟수만큼 렌더되도록 스텝당 이미지 수를 고릅니다. 초기 점과 "
+       "카메라 절두체로 추정합니다. 0이면 대신 한 바퀴당 스텝 수 규칙을 따릅니"
+       "다."),
+    DE("Die Bilder pro Schritt so wählen, dass auch ein schlecht gesehener "
+       "Splat (am Render-Quantil) zwischen zwei Verfeinerungsrunden "
+       "mindestens so oft gerendert wird; geschätzt aus den Startpunkten und "
+       "den Kamerafrusta. 0 behält stattdessen die Regel der Schritte pro "
+       "Durchlauf."),
+    FR("Choisir le nombre d'images par étape pour qu'un splat peu vu (au "
+       "quantile de rendu) soit tout de même rendu au moins ce nombre de fois "
+       "entre deux cycles de raffinement, d'après une estimation tirée des "
+       "points initiaux et des frustums des caméras. 0 garde plutôt la règle "
+       "des étapes par passage."),
+    ES("Elegir las imágenes por paso para que un splat poco visto (en el "
+       "cuantil de renderizado) se renderice aun así al menos este número de "
+       "veces entre dos rondas de refinamiento, según una estimación a partir "
+       "de los puntos iniciales y los frustums de las cámaras. 0 mantiene en "
+       "su lugar la regla de pasos por pasada."),
+    PT("Escolher as imagens por passo para que um splat pouco visto (no "
+       "quantil de renderização) ainda seja renderizado pelo menos este "
+       "número de vezes entre duas rodadas de refinamento, estimado a partir "
+       "dos pontos iniciais e dos frustums das câmeras. 0 mantém em vez disso "
+       "a regra de passos por passagem."),
+    IT("Scegliere le immagini per passo in modo che uno splat poco visto (al "
+       "quantile di rendering) venga comunque renderizzato almeno questo "
+       "numero di volte tra due cicli di raffinamento, stimato dai punti "
+       "iniziali e dai frustum delle fotocamere. 0 mantiene invece la regola "
+       "dei passi per passaggio."),
+    NL("Het aantal beelden per stap zo kiezen dat ook een slecht geziene "
+       "splat (op het renderkwantiel) tussen twee verfijningsrondes nog "
+       "minstens zo vaak wordt gerenderd, geschat uit de startpunten en de "
+       "camerafrusta. 0 houdt in plaats daarvan de regel van stappen per "
+       "doorloop aan."),
+    RU("Подбирать число изображений на шаг так, чтобы даже плохо видимый "
+       "сплат (на квантиле отрисовок) отрисовывался между двумя раундами "
+       "уточнения не меньше этого числа раз; оценка строится по начальным "
+       "точкам и пирамидам видимости камер. 0 оставляет вместо этого правило "
+       "шагов за проход."),
+    TR("Adım başına görüntü sayısını, az görülen bir splat (işlenme "
+       "yüzdeliğindeki) bile iki iyileştirme turu arasında en az bu kadar kez "
+       "işlenecek şekilde seçer; tahmin başlangıç noktalarından ve kamera "
+       "görüş hacimlerinden yapılır. 0 bunun yerine geçiş başına adım "
+       "kuralını korur."));
+
+SS_MSG(render_quantile,
+    EN("Render quantile"),
+    JA("描画の分位点"),
+    ZH_HANS("渲染分位数"),
+    ZH_HANT("算圖分位數"),
+    KO("렌더 분위수"),
+    DE("Render-Quantil"),
+    FR("Quantile de rendu"),
+    ES("Cuantil de renderizado"),
+    PT("Quantil de renderização"),
+    IT("Quantile di rendering"),
+    NL("Renderkwantiel"),
+    RU("Квантиль отрисовок"),
+    TR("İşlenme yüzdeliği"));
+SS_MSG(render_quantile_help,
+    EN("Which splat min_renders_per_refine protects: 0.1 is the splat seen by "
+       "fewer cameras than 90% of the others."),
+    JA("min_renders_per_refine がどのスプラットを守るかです。0.1 は、ほかの "
+       "90% よりも少ないカメラにしか見えないスプラットです。"),
+    ZH_HANS("min_renders_per_refine 保护哪个泼溅：0.1 指看到它的相机数少于其余"
+            " 90% 泼溅的那个泼溅。"),
+    ZH_HANT("min_renders_per_refine 保護哪個潑濺：0.1 指看到它的相機數少於其餘"
+            " 90% 潑濺的那個潑濺。"),
+    KO("min_renders_per_refine가 어느 스플랫을 보호할지입니다. 0.1은 나머지 "
+       "90%보다 적은 카메라에 보이는 스플랫입니다."),
+    DE("Welchen Splat min_renders_per_refine schützt: 0.1 ist der Splat, den "
+       "weniger Kameras sehen als 90 % der übrigen."),
+    FR("Le splat que protège min_renders_per_refine : 0.1 est celui que "
+       "voient moins de caméras que 90 % des autres."),
+    ES("Qué splat protege min_renders_per_refine: 0.1 es el que ven menos "
+       "cámaras que al 90 % de los demás."),
+    PT("Qual splat min_renders_per_refine protege: 0.1 é o splat visto por "
+       "menos câmeras que 90% dos outros."),
+    IT("Quale splat protegge min_renders_per_refine: 0.1 è lo splat visto da "
+       "meno fotocamere del 90% degli altri."),
+    NL("Welke splat min_renders_per_refine beschermt: 0.1 is de splat die "
+       "door minder camera's wordt gezien dan 90% van de andere."),
+    RU("Какой сплат защищает min_renders_per_refine: 0.1 — сплат, который "
+       "видят меньше камер, чем 90% остальных."),
+    TR("min_renders_per_refine'ın hangi splat'ı koruduğu: 0.1, diğerlerinin "
+       "%90'ından daha az kameranın gördüğü splat'tır."));
+
+SS_MSG(max_train_batch_size,
+    EN("Max images per step"),
+    JA("1 ステップの最大画像数"),
+    ZH_HANS("每步最多图像数"),
+    ZH_HANT("每步最多影像數"),
+    KO("스텝당 최대 이미지 수"),
+    DE("Max. Bilder pro Schritt"),
+    FR("Images max. par étape"),
+    ES("Máx. de imágenes por paso"),
+    PT("Máx. de imagens por passo"),
+    IT("Immagini max per passo"),
+    NL("Max. beelden per stap"),
+    RU("Макс. изображений на шаг"),
+    TR("Adım başına en fazla görüntü"));
+SS_MSG(max_train_batch_size_help,
+    EN("Upper bound on the images one step may use under "
+       "min_renders_per_refine, which is what bounds its memory and time."),
+    JA("min_renders_per_refine のもとで 1 ステップが使える画像枚数の上限で、こ"
+       "れがステップのメモリと時間を抑えます。"),
+    ZH_HANS("在 min_renders_per_refine 下每步可使用的图像数上限，每步的内存和"
+            "时间也由它限定。"),
+    ZH_HANT("在 min_renders_per_refine 下每步可使用的影像數上限，每步的記憶體"
+            "和時間也由它限定。"),
+    KO("min_renders_per_refine 아래에서 한 스텝이 쓸 수 있는 이미지 수의 상한"
+       "으로, 이것이 스텝의 메모리와 시간을 제한합니다."),
+    DE("Obergrenze für die Bilder, die ein Schritt unter "
+       "min_renders_per_refine nutzen darf; sie begrenzt seinen Speicher und "
+       "seine Zeit."),
+    FR("Plafond d'images qu'une étape peut utiliser sous "
+       "min_renders_per_refine ; c'est ce qui borne sa mémoire et son temps."),
+    ES("Límite de imágenes que un paso puede usar con min_renders_per_refine; "
+       "es lo que acota su memoria y su tiempo."),
+    PT("Limite de imagens que um passo pode usar sob min_renders_per_refine; "
+       "é o que limita sua memória e seu tempo."),
+    IT("Limite alle immagini che un passo può usare con "
+       "min_renders_per_refine; è ciò che ne limita memoria e tempo."),
+    NL("Bovengrens voor de beelden die één stap onder min_renders_per_refine "
+       "mag gebruiken; die begrenst het geheugen en de tijd van de stap."),
+    RU("Верхняя граница числа изображений, которое шаг может взять при "
+       "min_renders_per_refine; именно она ограничивает его память и время."),
+    TR("min_renders_per_refine altında bir adımın kullanabileceği görüntü "
+       "sayısının üst sınırı; adımın belleğini ve süresini sınırlayan budur."));
+
+SS_MSG(view_sampling,
+    EN("View sampling"),
+    JA("視点のサンプリング"),
+    ZH_HANS("视角采样"),
+    ZH_HANT("視角取樣"),
+    KO("시점 샘플링"),
+    DE("Ansichtsauswahl"),
+    FR("Échantillonnage des vues"),
+    ES("Muestreo de vistas"),
+    PT("Amostragem de vistas"),
+    IT("Campionamento delle viste"),
+    NL("Selectie van aanzichten"),
+    RU("Выбор ракурсов"),
+    TR("Görünüm örnekleme"));
+SS_MSG(view_sampling_help,
+    EN("`uniform` visits every training image once per pass. `deficit` draws "
+       "images in proportion to how under-rendered the splats they show are, "
+       "measured from the splats each image actually contributed to last "
+       "time, so sparsely covered regions come up more often."),
+    JA("`uniform` は 1 巡ごとにすべての学習画像を 1 回ずつ使います。`deficit` "
+       "は、写っているスプラットの描画がどれだけ足りていないかに比例して画像を"
+       "選びます。不足の度合いは各画像が前回実際に寄与したスプラットから測るの"
+       "で、まばらにしか写っていない領域がより頻繁に選ばれます。"),
+    ZH_HANS("`uniform` 每遍数据把每张训练图像各用一次。`deficit` 按图像中泼溅"
+            "的渲染不足程度成比例地抽取图像，不足程度根据每张图像上一次实际贡"
+            "献过的泼溅来衡量，因此覆盖稀疏的区域会更常出现。"),
+    ZH_HANT("`uniform` 每遍資料把每張訓練影像各用一次。`deficit` 按影像中潑濺"
+            "的算圖不足程度成比例地抽取影像，不足程度根據每張影像上一次實際貢"
+            "獻過的潑濺來衡量，因此覆蓋稀疏的區域會更常出現。"),
+    KO("`uniform`은 한 바퀴마다 모든 학습 이미지를 한 번씩 씁니다. `deficit`은"
+       " 이미지에 보이는 스플랫이 얼마나 덜 렌더되었는지에 비례해 이미지를 뽑"
+       "으며, 이는 각 이미지가 지난번 실제로 기여한 스플랫으로 측정합니다. 그"
+       "래서 드문드문 담긴 영역이 더 자주 나옵니다."),
+    DE("`uniform` nutzt in jedem Durchlauf jedes Trainingsbild einmal. "
+       "`deficit` zieht Bilder im Verhältnis dazu, wie wenig die darauf "
+       "sichtbaren Splats gerendert wurden, gemessen an den Splats, zu denen "
+       "jedes Bild beim letzten Mal tatsächlich beigetragen hat; so kommen "
+       "spärlich erfasste Bereiche öfter an die Reihe."),
+    FR("`uniform` utilise chaque image d'entraînement une fois par passage. "
+       "`deficit` tire les images en proportion du manque de rendu des splats "
+       "qu'elles montrent, mesuré sur les splats auxquels chaque image a "
+       "réellement contribué la dernière fois, si bien que les zones peu "
+       "couvertes reviennent plus souvent."),
+    ES("`uniform` usa cada imagen de entrenamiento una vez por pasada. "
+       "`deficit` elige las imágenes en proporción a lo poco renderizados que "
+       "están los splats que muestran, medido a partir de los splats a los "
+       "que cada imagen contribuyó realmente la última vez, de modo que las "
+       "zonas poco cubiertas salen más a menudo."),
+    PT("`uniform` usa cada imagem de treino uma vez por passagem. `deficit` "
+       "sorteia imagens em proporção a quão pouco renderizados estão os "
+       "splats que elas mostram, medido pelos splats para os quais cada "
+       "imagem de fato contribuiu da última vez, de modo que regiões pouco "
+       "cobertas aparecem com mais frequência."),
+    IT("`uniform` usa ogni immagine di addestramento una volta per passaggio. "
+       "`deficit` estrae le immagini in proporzione a quanto sono poco "
+       "renderizzati gli splat che mostrano, misurato sugli splat a cui ogni "
+       "immagine ha davvero contribuito l'ultima volta, così le zone poco "
+       "coperte tornano più spesso."),
+    NL("`uniform` gebruikt elk trainingsbeeld één keer per doorloop. "
+       "`deficit` trekt beelden naar rato van hoe weinig de splats die ze "
+       "tonen zijn gerenderd, gemeten aan de splats waaraan elk beeld de "
+       "vorige keer werkelijk heeft bijgedragen, zodat schaars bedekte "
+       "gebieden vaker aan bod komen."),
+    RU("`uniform` берёт каждое обучающее изображение по разу за проход. "
+       "`deficit` выбирает изображения пропорционально тому, насколько "
+       "недоотрисованы видимые на них сплаты (по сплатам, в которые каждое "
+       "изображение реально внесло вклад в прошлый раз), поэтому редко "
+       "покрытые области попадаются чаще."),
+    TR("`uniform` her geçişte her eğitim görüntüsünü bir kez kullanır. "
+       "`deficit` görüntüleri, gösterdikleri splat'ların ne kadar az "
+       "işlendiğiyle orantılı seçer; bu, her görüntünün geçen sefer gerçekten "
+       "katkıda bulunduğu splat'lardan ölçülür, böylece seyrek kapsanan "
+       "bölgeler daha sık gelir."));
+
+SS_MSG(view_deficit_power,
+    EN("View deficit power"),
+    JA("視点不足の指数"),
+    ZH_HANS("视角不足指数"),
+    ZH_HANT("視角不足指數"),
+    KO("시점 부족 지수"),
+    DE("Exponent des Ansichtsdefizits"),
+    FR("Exposant du déficit de vues"),
+    ES("Exponente del déficit de vistas"),
+    PT("Expoente do déficit de vistas"),
+    IT("Esponente del deficit di viste"),
+    NL("Exponent van het aanzichttekort"),
+    RU("Степень дефицита ракурсов"),
+    TR("Görünüm açığı üssü"));
+SS_MSG(view_deficit_power_help,
+    EN("Exponent on the deficit ratio under `deficit` view sampling: 1 draws "
+       "an image in inverse proportion to its splats' render count, 0.5 "
+       "halves that pull."),
+    JA("`deficit` の視点サンプリングで、不足の比にかける指数です。1 なら画像を"
+       "、写っているスプラットの描画回数に反比例して選び、0.5 ならその引き寄せ"
+       "が半分になります。"),
+    ZH_HANS("在 `deficit` 视角采样下作用于不足比例的指数：1 按图像中泼溅渲染次"
+            "数的反比抽取图像，0.5 则让这股拉力减半。"),
+    ZH_HANT("在 `deficit` 視角取樣下作用於不足比例的指數：1 按影像中潑濺算圖次"
+            "數的反比抽取影像，0.5 則讓這股拉力減半。"),
+    KO("`deficit` 시점 샘플링에서 부족 비율에 거는 지수입니다. 1이면 이미지를 "
+       "그 스플랫들의 렌더 횟수에 반비례해 뽑고, 0.5면 그 끌림이 절반이 됩니다"
+       "."),
+    DE("Exponent auf das Defizitverhältnis bei der Ansichtsauswahl `deficit`: "
+       "1 zieht ein Bild umgekehrt proportional zur Renderzahl seiner Splats, "
+       "0.5 halbiert diesen Sog."),
+    FR("Exposant appliqué au rapport de déficit avec l'échantillonnage "
+       "`deficit` : 1 tire une image en proportion inverse du nombre de "
+       "rendus de ses splats, 0.5 réduit cette attraction de moitié."),
+    ES("Exponente sobre la razón de déficit con el muestreo `deficit`: 1 "
+       "elige una imagen en proporción inversa al número de renderizados de "
+       "sus splats, 0.5 reduce ese tirón a la mitad."),
+    PT("Expoente sobre a razão de déficit com a amostragem `deficit`: 1 "
+       "sorteia uma imagem em proporção inversa ao número de renderizações de "
+       "seus splats, 0.5 reduz essa atração à metade."),
+    IT("Esponente sul rapporto di deficit con il campionamento `deficit`: 1 "
+       "estrae un'immagine in proporzione inversa al numero di rendering dei "
+       "suoi splat, 0.5 dimezza questa spinta."),
+    NL("Exponent op de tekortverhouding bij selectie `deficit`: 1 trekt een "
+       "beeld omgekeerd evenredig met het aantal renders van zijn splats, 0.5 "
+       "halveert die trekkracht."),
+    RU("Показатель степени для отношения дефицита при выборе ракурсов "
+       "`deficit`: 1 выбирает изображение обратно пропорционально числу "
+       "отрисовок его сплатов, 0.5 вдвое ослабляет это притяжение."),
+    TR("`deficit` görünüm örneklemesinde açık oranına uygulanan üs: 1, bir "
+       "görüntüyü splat'larının işlenme sayısıyla ters orantılı seçer; 0.5 bu "
+       "çekimi yarıya indirir."));
+
+SS_MSG(view_deficit_max_ratio,
+    EN("View deficit max ratio"),
+    JA("視点不足の最大比"),
+    ZH_HANS("视角不足最大比"),
+    ZH_HANT("視角不足最大比"),
+    KO("시점 부족 최대 비율"),
+    DE("Max. Verhältnis des Ansichtsdefizits"),
+    FR("Rapport max. du déficit de vues"),
+    ES("Razón máx. del déficit de vistas"),
+    PT("Razão máx. do déficit de vistas"),
+    IT("Rapporto max del deficit di viste"),
+    NL("Max. verhouding van het aanzichttekort"),
+    RU("Макс. отношение дефицита ракурсов"),
+    TR("Görünüm açığı en büyük oranı"));
+SS_MSG(view_deficit_max_ratio_help,
+    EN("No image is drawn more than this many times as often, or this many "
+       "times less often, than the median image under `deficit` view sampling."),
+    JA("`deficit` の視点サンプリングでは、どの画像も中央値の画像と比べて、この"
+       "倍率を超えて多く、または少なく選ばれることはありません。"),
+    ZH_HANS("在 `deficit` 视角采样下，任何图像被抽中的频率，与中位图像相比都不"
+            "会高出或低于这个倍数以上。"),
+    ZH_HANT("在 `deficit` 視角取樣下，任何影像被抽中的頻率，與中位影像相比都不"
+            "會高出或低於這個倍數以上。"),
+    KO("`deficit` 시점 샘플링에서 어떤 이미지도 중앙값 이미지보다 이 배수를 넘"
+       "게 더 자주, 또는 더 드물게 뽑히지 않습니다."),
+    DE("Bei der Ansichtsauswahl `deficit` wird kein Bild mehr als so viele "
+       "Male häufiger oder seltener gezogen als das Medianbild."),
+    FR("Avec l'échantillonnage `deficit`, aucune image n'est tirée plus de ce "
+       "nombre de fois plus souvent, ou moins souvent, que l'image médiane."),
+    ES("Con el muestreo `deficit`, ninguna imagen sale más de este número de "
+       "veces más a menudo, ni menos a menudo, que la imagen mediana."),
+    PT("Com a amostragem `deficit`, nenhuma imagem é sorteada mais do que "
+       "este número de vezes mais, ou menos, frequentemente que a imagem "
+       "mediana."),
+    IT("Con il campionamento `deficit`, nessuna immagine viene estratta più "
+       "di questo numero di volte più spesso, o meno spesso, dell'immagine "
+       "mediana."),
+    NL("Bij selectie `deficit` wordt geen beeld meer dan zoveel keer vaker, "
+       "of zoveel keer minder vaak, getrokken dan het mediane beeld."),
+    RU("При выборе ракурсов `deficit` ни одно изображение не выбирается чаще "
+       "или реже медианного больше чем во столько раз."),
+    TR("`deficit` görünüm örneklemesinde hiçbir görüntü, medyan görüntüden bu "
+       "kattan daha sık ya da daha seyrek seçilmez."));
 
 SS_MSG(split_batch,
     EN("One image at a time"), JA("画像を 1 枚ずつ処理"),

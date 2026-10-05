@@ -33,6 +33,11 @@ struct Scenario {
     // frame instead of a raw gyro: the DJI Osmo 360.
     bool attitude_only = false;
     double accel_rate = 0;   // 0 keeps the 1 kHz the gyro is written at
+    // The Avata 360: the attitude alone, into a z-down world, and the vertical
+    // declared the way the DJI reader declares it.
+    bool no_accel = false;
+    bool z_down_world = false;
+    bool declare_up = false;
     unsigned seed = 7;
 };
 
@@ -88,14 +93,17 @@ inline Telemetry synthesize(const Scenario& sc, const Mat3& R_ci) {
         Vec3 am = mul(D, f_i + sc.ba + Vec3{N(rng), N(rng), N(rng)} * (sc.accel_noise / std::sqrt(adt)));
         const double tv = ti + sc.clock_offset;
         if (sc.attitude_only) {
-            const Quat q = rotationToQuaternion(mul(R_wi, transpose(D)));
+            const Mat3 F = sc.z_down_world ? Mat3{1, 0, 0, 0, -1, 0, 0, 0, -1} : mat3Identity();
+            const Quat q = rotationToQuaternion(mul(F, mul(R_wi, transpose(D))));
             t.orientation.push_back({tv, q[0], q[1], q[2], q[3]});
         } else {
             t.gyro.push_back({tv, wm.x, wm.y, wm.z});
         }
+        if (sc.no_accel) continue;
         if (sc.accel_rate > 0 && std::fmod(ti + 0.5, adt) >= dt) continue;
         t.accel.push_back({tv, am.x, am.y, am.z});
     }
+    if (sc.declare_up) t.attitude_world_up[2] = sc.z_down_world ? -1.0 : 1.0;
     if (sc.gps) {
         const double lat0 = 43.66, lon0 = -79.39;
         const double Re = 6378137.0;

@@ -2,7 +2,8 @@
 // shaders/region.slang) against its host mirror (data/RegionProgram.cpp,
 // data/LabelField.cpp): the same random splats, the same field of labelled
 // seeds and the same program must answer the same on every one of them, with
-// and without the normal. Self-checking, both backends.
+// and without the normal, and so must the leaf shapes the ROI editor draws.
+// Self-checking, both backends.
 
 #include <kernels/densify/Densify.cuh>
 
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <string>
 #include <vector>
 
 using backend::MemcpyKind;
@@ -39,8 +41,8 @@ DeviceVector<float4> dv4(const std::vector<float>& host, void*& keep) {
 }
 
 int g_failures = 0;
-void check(bool ok, const char* what) {
-    std::printf("%s %s\n", ok ? "ok  " : "FAIL", what);
+void check(bool ok, const std::string& what) {
+    std::printf("%s %s\n", ok ? "ok  " : "FAIL", what.c_str());
     if (!ok) g_failures++;
 }
 
@@ -133,8 +135,55 @@ int main() {
     const LabelField cams = LabelField::build(cam_xyz.data(), cam_lab.data(), nullptr,
                                               (int64_t)cam_lab.size(), 4);
 
-    void *k_prog, *k_bvh, *k_seeds, *k_cbvh, *k_cseeds;
+    // The shapes the ROI editor draws: an ellipsoid minus a star-shaped
+    // prism (non-convex, its polygon spilling into a second payload node),
+    // plus a tilted cylinder with a sphere taken out by complement.
+    RegionProgram shapes;
+    {
+        auto ell = std::make_shared<EllipsoidRegion>();
+        ell->center[0] = -2; ell->half[0] = 7; ell->half[1] = 5; ell->half[2] = 3;
+        const double Re[9] = {0.8, 0.6, 0, -0.6, 0.8, 0, 0, 0, 1};
+        for (int i = 0; i < 9; i++) ell->R[i] = Re[i];
+        auto star = std::make_shared<PrismRegion>();
+        star->center[0] = -3; star->half_height = 1.2;
+        for (int k = 0; k < 14; k++) {
+            const double a = k * 3.14159265358979 / 7, r = k % 2 ? 1.2 : 3.5;
+            star->polygon.push_back(r * std::cos(a));
+            star->polygon.push_back(r * std::sin(a));
+        }
+        auto cyl = std::make_shared<CylinderRegion>();
+        cyl->center[0] = 5; cyl->half[0] = 3; cyl->half[1] = 2.5; cyl->half[2] = 6;
+        const double Rc[9] = {1, 0, 0, 0, 0.6, 0.8, 0, -0.8, 0.6};
+        for (int i = 0; i < 9; i++) cyl->R[i] = Rc[i];
+        auto ball = std::make_shared<SphereRegion>();
+        ball->center[0] = 5; ball->radius = 1.5;
+        auto hole = std::make_shared<CsgRegion>();
+        hole->op = CsgOp::Complement;
+        hole->children = {ball};
+        auto cut = std::make_shared<CsgRegion>();
+        cut->op = CsgOp::Difference;
+        cut->children = {ell, star};
+        auto tube = std::make_shared<CsgRegion>();
+        tube->op = CsgOp::Intersection;
+        tube->children = {cyl, hole};
+        CsgRegion all;
+        all.op = CsgOp::Union;
+        all.children = {cut, tube};
+        check(compile_region(all, shapes, err), "shape program compiles");
+        check(shapes.num_nodes() == 10, "ten nodes: two of them the star's polygon");
+        int64_t wrong = 0;
+        std::mt19937 r2(5);
+        for (int i = 0; i < 20000; i++) {
+            const double p[3] = {u(r2), u(r2), u(r2) * 0.5};
+            wrong += program_contains(shapes, p) != all.contains(p);
+        }
+        std::printf("shape program vs regions: %lld of 20000 differ\n", (long long)wrong);
+        check(wrong <= 2, "shape program matches the regions it came from");
+    }
+
+    void *k_prog, *k_bvh, *k_seeds, *k_cbvh, *k_cseeds, *k_shapes;
     DeviceVector<float4> d_prog = dv4(prog.nodes, k_prog);
+    DeviceVector<float4> d_shapes = dv4(shapes.nodes, k_shapes);
     DeviceVector<float4> d_bvh = dv4(field->nodes, k_bvh);
     DeviceVector<float4> d_seeds = dv4(field->seeds, k_seeds);
     DeviceVector<float4> d_cbvh = dv4(cams.nodes, k_cbvh);
@@ -144,12 +193,13 @@ int main() {
     float3* d_scales = (float3*)upload(scales);
     float* d_w = (float*)backend::device_malloc((size_t)N * sizeof(float));
 
-    for (int pass = 0; pass < 2; pass++) {
+    for (int pass = 0; pass < 3; pass++) {
         const bool orient = pass == 1;
+        const RegionProgram& hp = pass == 2 ? shapes : prog;
         region_weight_tensor(N, dv<float3>(d_means, N),
                              orient ? dv<float4>(d_quats, N) : DeviceVector<float4>(),
                              dv<float3>(d_scales, N), orient ? d_cbvh : DeviceVector<float4>(),
-                             d_cseeds, d_prog, d_bvh, d_seeds, 1.0f, 1e-4f,
+                             d_cseeds, pass == 2 ? d_shapes : d_prog, d_bvh, d_seeds, 1.0f, 1e-4f,
                              dv<float>(d_w, N));
         backend::device_synchronize();
         std::vector<float> w((size_t)N);
@@ -167,16 +217,16 @@ int main() {
                 splat_normal(&quats[i * 4], &scales[i * 3], to, n);
                 np = n;
             }
-            const bool host = program_contains(prog, p, np);
+            const bool host = program_contains(hp, p, np);
             inside += host;
             if (host != (w[(size_t)i] > 0.5f)) mismatches++;
         }
-        std::printf("pass %d (%s): inside %lld of %lld, mismatches %lld\n", pass,
-                    orient ? "oriented" : "plain", (long long)inside, (long long)N,
-                    (long long)mismatches);
+        const char* what = pass == 2 ? "shapes" : orient ? "oriented" : "plain";
+        std::printf("pass %d (%s): inside %lld of %lld, mismatches %lld\n", pass, what,
+                    (long long)inside, (long long)N, (long long)mismatches);
         // Ties at floating-point precision differ across compilers; a handful
         // out of twenty thousand is that, more is a real divergence.
-        check(mismatches <= 5, orient ? "oriented: device matches host" : "plain: device matches host");
+        check(mismatches <= 5, std::string(what) + ": device matches host");
         check(inside > N / 10 && inside < N * 9 / 10, "both answers occur");
     }
 

@@ -627,6 +627,21 @@ SS_MSG(common_image_linear,
     RU("кадры -- линейный свет, а не экранное кодирование"),
     TR("kareler ekran kodlu değil, doğrusal ışıktır"));
 
+SS_MSG(common_image_exposure,
+    EN("brighten what the model sees, in linear light: auto, or stops"),
+    JA("モデルに渡す画像をリニア光で明るくします: auto または段数"),
+    ZH_HANS("在线性光中调亮模型看到的图像：auto 或档数"),
+    ZH_HANT("在線性光中調亮模型看到的影像：auto 或檔數"),
+    KO("모델이 보는 이미지를 선형 광에서 밝게 합니다: auto 또는 스톱 수"),
+    DE("was das Modell sieht, in linearem Licht aufhellen: auto oder Blendenstufen"),
+    FR("éclaircir en lumière linéaire ce que voit le modèle : auto, ou des diaphs"),
+    ES("aclarar en luz lineal lo que ve el modelo: auto, o pasos"),
+    PT("clarear em luz linear o que o modelo vê: auto, ou pontos"),
+    IT("schiarire in luce lineare ciò che vede il modello: auto, o stop"),
+    NL("wat het model ziet in lineair licht lichter maken: auto, of stops"),
+    RU("осветлить в линейном свете то, что видит модель: auto или ступени"),
+    TR("modelin gördüğünü doğrusal ışıkta aydınlat: auto ya da durak sayısı"));
+
 SS_MSG(common_max_size,
     EN("downscale inputs to fit (default 1600, 0 = off)"),
     JA("入力をこの大きさに収まるよう縮小します（既定 1600、0 で無効）"),
@@ -1049,6 +1064,50 @@ SS_MSG(xh_threads,
     RU("потоки кодировщика изображений (по умолчанию: ядра - 1)"),
     TR("görüntü kodlayıcı iş parçacıkları (varsayılan: çekirdek - 1)"));
 
+SS_MSG(xh_decoder,
+    EN("`auto` (default) decodes in-process where the build and the device can, else "
+       "with ffmpeg; `builtin` or `ffmpeg` insists on one"),
+    JA("`auto`（既定）はビルドとデバイスが対応していればプロセス内で、そうでなければ "
+       "ffmpeg でデコードします。`builtin` か `ffmpeg` でどちらかに固定します"),
+    ZH_HANS("`auto`（默认）在构建和设备支持时于进程内解码，否则用 ffmpeg；`builtin` 或 "
+            "`ffmpeg` 固定使用其一"),
+    ZH_HANT("`auto`（預設）在建置與裝置支援時於行程內解碼，否則用 ffmpeg；`builtin` 或 "
+            "`ffmpeg` 固定使用其一"),
+    KO("`auto`(기본값)는 빌드와 장치가 지원하면 프로세스 안에서, 아니면 ffmpeg 으로 "
+       "디코딩합니다. `builtin` 이나 `ffmpeg` 은 한쪽으로 고정합니다"),
+    DE("`auto` (Vorgabe) dekodiert im Prozess, wo Build und Gerät es können, sonst mit "
+       "ffmpeg; `builtin` oder `ffmpeg` besteht auf einem"),
+    FR("`auto` (défaut) décode dans le processus quand la compilation et le "
+       "périphérique le permettent, sinon avec ffmpeg ; `builtin` ou `ffmpeg` impose "
+       "l'un des deux"),
+    ES("`auto` (por defecto) decodifica dentro del proceso cuando la compilación y el "
+       "dispositivo lo permiten, si no con ffmpeg; `builtin` o `ffmpeg` obliga a uno"),
+    PT("`auto` (padrão) decodifica no processo quando a compilação e o dispositivo "
+       "permitem, senão com ffmpeg; `builtin` ou `ffmpeg` obriga a um deles"),
+    IT("`auto` (predefinito) decodifica nel processo dove build e dispositivo lo "
+       "consentono, altrimenti con ffmpeg; `builtin` o `ffmpeg` ne impone uno"),
+    NL("`auto` (standaard) decodeert in het proces waar build en apparaat dat kunnen, "
+       "anders met ffmpeg; `builtin` of `ffmpeg` dwingt er één af"),
+    RU("`auto` (по умолчанию) декодирует внутри процесса, где это позволяют сборка и "
+       "устройство, иначе через ffmpeg; `builtin` или `ffmpeg` требует одного из них"),
+    TR("`auto` (varsayılan) derleme ve aygıt destekliyorsa süreç içinde, değilse "
+       "ffmpeg ile çözer; `builtin` ya da `ffmpeg` birini zorunlu kılar"));
+
+SS_MSG(xh_ffmpeg,
+    EN("the ffmpeg executable (default: `ffmpeg` on PATH)"),
+    JA("ffmpeg の実行ファイル（既定: PATH 上の `ffmpeg`）"),
+    ZH_HANS("ffmpeg 可执行文件（默认：PATH 中的 `ffmpeg`）"),
+    ZH_HANT("ffmpeg 執行檔（預設：PATH 中的 `ffmpeg`）"),
+    KO("ffmpeg 실행 파일(기본값: PATH 의 `ffmpeg`)"),
+    DE("die ffmpeg-Programmdatei (Vorgabe: `ffmpeg` im PATH)"),
+    FR("l'exécutable ffmpeg (défaut : `ffmpeg` dans le PATH)"),
+    ES("el ejecutable de ffmpeg (por defecto: `ffmpeg` en el PATH)"),
+    PT("o executável do ffmpeg (padrão: `ffmpeg` no PATH)"),
+    IT("l'eseguibile di ffmpeg (predefinito: `ffmpeg` nel PATH)"),
+    NL("het ffmpeg-programma (standaard: `ffmpeg` in PATH)"),
+    RU("исполняемый файл ffmpeg (по умолчанию: `ffmpeg` из PATH)"),
+    TR("ffmpeg yürütülebilir dosyası (varsayılan: PATH'teki `ffmpeg`)"));
+
 SS_MSG(xh_model,
     EN("SAM 3 checkpoint"),
     JA("SAM 3 のチェックポイント"),
@@ -1358,41 +1417,55 @@ SS_MSG(mh_out,
 SS_MSG(mh_shape,
     EN("use these shapes instead of looking for a border; ';' separates them "
        "and a leading '-' cuts one out again. A path ending in .svg reads the "
-       "shapes the GUI saves"),
+       "shapes the GUI saves; a file saved for one camera brings the rest of its "
+       "set, each for its own camera folder"),
     JA("枠を探す代わりにこの図形を使います。';' で区切り、先頭の '-' はその"
        "図形の内側を逆に取り除きます。.svg で終わるパスは GUI が保存した"
-       "図形を読み込みます"),
+       "図形を読み込みます。カメラ 1 台分として保存したファイルは、同じ組の"
+       "ほかのファイルも読み込み、それぞれ自分のカメラのフォルダーに使います"),
     ZH_HANS("用这些图形，而不是去找边框；用 ';' 分隔，开头的 '-' 表示反过来去掉"
-            "该图形内部。以 .svg 结尾的路径会读取 GUI 保存的图形"),
+            "该图形内部。以 .svg 结尾的路径会读取 GUI 保存的图形；为某一台相机保存的"
+            "文件会连同同组的其他文件一起读取，各自用于自己的相机文件夹"),
     ZH_HANT("用這些圖形，而不是去找邊框；用 ';' 分隔，開頭的 '-' 表示反過來去掉"
-            "該圖形內部。以 .svg 結尾的路徑會讀取 GUI 儲存的圖形"),
+            "該圖形內部。以 .svg 結尾的路徑會讀取 GUI 儲存的圖形；為某一台相機儲存的"
+            "檔案會連同同組的其他檔案一起讀取，各自用於自己的相機資料夾"),
     KO("테두리를 찾는 대신 이 도형을 씁니다. ';' 로 나누고, 앞의 '-' 는 그 "
        "도형 안쪽을 도로 없앱니다. .svg 로 끝나는 경로는 GUI 가 저장한 "
-       "도형을 읽습니다"),
+       "도형을 읽습니다. 카메라 한 대용으로 저장한 파일은 같은 묶음의 나머지 "
+       "파일도 함께 읽어 각자 자기 카메라 폴더에 씁니다"),
     DE("diese Formen benutzen statt einen Rand zu suchen; ';' trennt sie, ein "
        "vorangestelltes '-' schneidet eine wieder heraus. Ein Pfad auf .svg "
-       "liest die Formen, die die GUI speichert"),
+       "liest die Formen, die die GUI speichert; eine für eine Kamera gespeicherte "
+       "Datei bringt den Rest ihres Satzes mit, jede für ihren eigenen Kameraordner"),
     FR("utiliser ces formes au lieu de chercher un bord ; ';' les sépare, un "
        "'-' en tête en retire une au contraire. Un chemin en .svg lit les "
-       "formes que l'interface enregistre"),
+       "formes que l'interface enregistre ; un fichier enregistré pour une caméra "
+       "amène le reste de son ensemble, chacun pour son propre dossier de caméra"),
     ES("usar estas formas en vez de buscar un borde; ';' las separa y un '-' "
        "delante recorta una en lugar de conservarla. Una ruta terminada en .svg "
-       "lee las formas que guarda la interfaz"),
+       "lee las formas que guarda la interfaz; un archivo guardado para una cámara "
+       "trae el resto de su juego, cada uno para su propia carpeta de cámara"),
     PT("usar estas formas em vez de procurar uma borda; ';' as separa e um '-' "
        "à frente recorta uma em vez de mantê-la. Um caminho terminado em .svg "
-       "lê as formas que a interface salva"),
+       "lê as formas que a interface salva; um arquivo salvo para uma câmera "
+       "traz o resto do seu conjunto, cada um para a sua pasta de câmera"),
     IT("usare queste forme invece di cercare un bordo; ';' le separa e un '-' "
        "davanti ne ritaglia una invece di tenerla. Un percorso che termina in "
-       ".svg legge le forme salvate dall'interfaccia"),
+       ".svg legge le forme salvate dall'interfaccia; un file salvato per una "
+       "fotocamera porta con sé il resto del suo insieme, ognuno per la propria "
+       "cartella di fotocamera"),
     NL("deze vormen gebruiken in plaats van een rand te zoeken; ';' scheidt "
        "ze, een '-' ervoor snijdt er juist een weg. Een pad op .svg leest de "
-       "vormen die de GUI opslaat"),
+       "vormen die de GUI opslaat; een bestand dat voor één camera is opgeslagen "
+       "brengt de rest van zijn set mee, elk voor zijn eigen cameramap"),
     RU("взять эти фигуры вместо поиска края; ';' разделяет их, а '-' в начале "
        "наоборот вырезает фигуру. Путь, оканчивающийся на .svg, читает фигуры, "
-       "сохранённые в интерфейсе"),
+       "сохранённые в интерфейсе; файл, сохранённый для одной камеры, подтягивает "
+       "остальные файлы своего набора, каждый для своей папки камеры"),
     TR("kenar aramak yerine bu biçimleri kullan; ';' ayırır, baştaki '-' ise "
        "biçimin içini tersine keser. .svg ile biten bir yol, arayüzün kaydettiği "
-       "biçimleri okur"));
+       "biçimleri okur; tek bir kamera için kaydedilmiş bir dosya, takımının geri "
+       "kalanını da getirir, her biri kendi kamera klasörü için"));
 
 SS_MSG(mh_shrink,
     EN("pull the found boundary inwards, as a fraction of its radius "

@@ -76,12 +76,11 @@ static_assert(sizeof(EfraimidisParams) == 4 * 8 + 6 * 4,
 // Mirrors RelocMaskParams.
 struct RelocMaskParams {
     uint64_t means, quats, scales, opacs, features_dc, mask, count,
-        dst_indices;
+        dst_indices, visit_counters;
     float min_opacity;
-    uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t num_splats, wgs_per_row, dead_after_steps;
 };
-static_assert(sizeof(RelocMaskParams) == 8 * 8 + 4 * 4,
+static_assert(sizeof(RelocMaskParams) == 9 * 8 + 4 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocLasParams.
@@ -95,13 +94,13 @@ struct RelocLasParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
-    uint64_t accum, bias_steps;
+    uint64_t accum, bias_steps, visit_counters;
     float split_opacity_k;
     uint32_t cur_num_splats, num_new_splats, num_sh;
     uint32_t has_dst, has_g1, has_fp32_sh, has_accum, has_bias_steps, non_sh,
-        sh_bounds_per_splat, wgs_per_row;
+        sh_bounds_per_splat, wgs_per_row, has_visit, _pad0;
 };
-static_assert(sizeof(RelocLasParams) == 34 * 8 + 12 * 4,
+static_assert(sizeof(RelocLasParams) == 35 * 8 + 14 * 4,
               "params layout must match the slang struct");
 
 // Mirror AccumFinalizeParams / ScoreGatherParams / ScoreClipParams.
@@ -116,6 +115,30 @@ struct ScorePairParams {  // densify_gather_score
     uint32_t num_splats, wgs_per_row;
 };
 static_assert(sizeof(ScorePairParams) == 2 * 8 + 2 * 4, "params layout");
+
+// Mirrors ScaleScoreByRendersParams.
+struct ScaleScoreByRendersParams {
+    uint64_t visit_counters, score;
+    uint32_t num_splats, wgs_per_row, _pad0, _pad1;
+};
+static_assert(sizeof(ScaleScoreByRendersParams) == 2 * 8 + 4 * 4,
+              "params layout must match the slang struct");
+
+// Mirrors VisitZeroParams / VisitStatsParams.
+struct VisitZeroParams {
+    uint64_t cam_map, cam_sum, cam_cnt;
+    uint32_t num_cameras, wgs_per_row;
+};
+static_assert(sizeof(VisitZeroParams) == 3 * 8 + 2 * 4,
+              "params layout must match the slang struct");
+struct VisitStatsParams {
+    uint64_t camera_ids, gaussian_ids, v_screen, visit_counters, cam_map,
+        cam_sum, cam_cnt;
+    uint32_t n_isect, num_splats, num_cameras, packed;
+    uint32_t row_stride, opac_offset, wgs_per_row, _pad0;
+};
+static_assert(sizeof(VisitStatsParams) == 7 * 8 + 8 * 4,
+              "params layout must match the slang struct");
 
 // Mirrors ScoreClipParams.
 struct ScoreClipParams {
@@ -580,7 +603,8 @@ static void launch_relocate_las(
     DeviceVector<float3>& g2_scales, DeviceVector<float>& g2_opacs,
     DeviceVector<float3>& g2_features_dc, DeviceVector<float3>& g2_features_sh,
     DeviceVector<float2>& densify_accum_buffer,
-    DeviceVector<int32_t>& bias_correction_steps, int sh_optim_bits,
+    DeviceVector<int32_t>& bias_correction_steps,
+    DeviceVector<uint32_t>& visit_counters, int sh_optim_bits,
     int num_sh, DeviceVector<float4>& sh_quant_bounds,
     bool sh_bounds_per_splat, const NonShQuantState& non_sh) {
     RelocLasParams p{};
@@ -609,6 +633,8 @@ static void launch_relocate_las(
     p.has_fp32_sh = features_sh.data_ptr() ? 1u : 0u;
     p.has_accum = densify_accum_buffer.data_ptr() ? 1u : 0u;
     p.has_bias_steps = bias_correction_steps.data_ptr() ? 1u : 0u;
+    p.visit_counters = vkk::or_fallback(visit_counters.data_ptr());
+    p.has_visit = visit_counters.data_ptr() ? 1u : 0u;
 
     vkk::Fold f = vkk::fold_1d(num_new_splats, 256);
     p.wgs_per_row = f.per_row;
@@ -617,7 +643,7 @@ static void launch_relocate_las(
                        sizeof(p));
 }
 
-void relocate_splats_with_long_axis_split_tensor(
+int64_t relocate_splats_with_long_axis_split_tensor(
     int64_t cur_num_splats,
     float min_opacity,
     float split_opacity_k,
@@ -627,6 +653,8 @@ void relocate_splats_with_long_axis_split_tensor(
     DeviceVector<float2> densify_accum_buffer,
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
+    DeviceVector<uint32_t> visit_counters,
+    uint32_t dead_after_steps,
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,
@@ -637,9 +665,11 @@ void relocate_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    int64_t max_relocate,
+    int64_t* num_dead_out
 ) {
-    if (cur_num_splats <= 0) return;
+    if (cur_num_splats <= 0) return 0;
 
     // Relocation mask + atomic compaction of dst indices (Vulkan mask is an
     // int32 array; the CUDA bool layout is a launcher-internal detail).
@@ -658,6 +688,8 @@ void relocate_splats_with_long_axis_split_tensor(
     mp.mask = (uint64_t)mask.data_ptr();
     mp.count = (uint64_t)count.data_ptr();
     mp.dst_indices = (uint64_t)dst_indices.data_ptr();
+    mp.visit_counters = vkk::or_fallback(visit_counters.data_ptr());
+    mp.dead_after_steps = visit_counters.data_ptr() ? dead_after_steps : 0u;
     mp.min_opacity = min_opacity;
     mp.num_splats = (uint32_t)cur_num_splats;
     vkk::dispatch_flat("densify.densify_reloc_mask", {}, cur_num_splats, 256,
@@ -666,7 +698,10 @@ void relocate_splats_with_long_axis_split_tensor(
     int32_t num_relocate = 0;
     backend::memcpy_sync(&num_relocate, count.data_ptr(), sizeof(int32_t),
                          MemcpyKind::DeviceToHost);
-    if (num_relocate == 0) return;
+    if (num_dead_out) *num_dead_out = num_relocate;
+    if (max_relocate > 0)
+        num_relocate = (int32_t)std::min<int64_t>(num_relocate, max_relocate);
+    if (num_relocate == 0) return 0;
 
     uint32_t num_eligible = 0;
     const int32_t* src_indices = wswr_sample(
@@ -677,7 +712,7 @@ void relocate_splats_with_long_axis_split_tensor(
         mask.data_ptr(), (uint32_t)num_relocate, seed, &num_eligible);
     // As in Relocation.cu: a dead src is also some pair's dst, and they race.
     num_relocate = std::min<int32_t>(num_relocate, (int32_t)num_eligible);
-    if (num_relocate == 0) return;
+    if (num_relocate == 0) return 0;
 
     launch_relocate_las(cur_num_splats, num_relocate, split_opacity_k,
                         src_indices, dst_indices.data_ptr(), means, quats,
@@ -686,13 +721,14 @@ void relocate_splats_with_long_axis_split_tensor(
                         g1_features_sh, g2_means, g2_quats, g2_scales,
                         g2_opacs, g2_features_dc, g2_features_sh,
                         densify_accum_buffer, bias_correction_steps,
-                        sh_optim_bits, num_sh, sh_quant_bounds,
+                        visit_counters, sh_optim_bits, num_sh, sh_quant_bounds,
                         sh_bounds_per_splat, non_sh);
 
     launch_copy_qsh_pairs(cur_num_splats, num_relocate, src_indices,
                           dst_indices.data_ptr(), sh_value_packed.data_ptr(),
                           sh_value_bounds.data_ptr(), num_sh, num_sh_buffer,
                           sh_value_bits, sh_value_bounds_per_splat);
+    return num_relocate;
 }
 
 void add_splats_with_long_axis_split_tensor(
@@ -705,6 +741,7 @@ void add_splats_with_long_axis_split_tensor(
     DeviceVector<float2> densify_accum_buffer,
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
+    DeviceVector<uint32_t> visit_counters,
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,
@@ -732,8 +769,8 @@ void add_splats_with_long_axis_split_tensor(
                         g1_scales, g1_opacs, g1_features_dc, g1_features_sh,
                         g2_means, g2_quats, g2_scales, g2_opacs,
                         g2_features_dc, g2_features_sh, densify_accum_buffer,
-                        bias_correction_steps, sh_optim_bits, num_sh,
-                        sh_quant_bounds, sh_bounds_per_splat, non_sh);
+                        bias_correction_steps, visit_counters, sh_optim_bits,
+                        num_sh, sh_quant_bounds, sh_bounds_per_splat, non_sh);
 
     launch_copy_qsh_pairs(cur_num_splats, num_new_splats, split_indices,
                           nullptr, sh_value_packed.data_ptr(),
@@ -982,6 +1019,69 @@ void densify_accum_finalize_tensor(int64_t num_splats,
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_accum_finalize", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
+}
+
+void visit_camera_stats_zero_tensor(int num_cameras,
+                                    DeviceVector<int32_t> cam_map,
+                                    DeviceVector<float> cam_sum,
+                                    DeviceVector<uint32_t> cam_cnt) {
+    if (num_cameras <= 0 || cam_map.data_ptr() == nullptr) return;
+    VisitZeroParams p{};
+    p.cam_map = (uint64_t)cam_map.data_ptr();
+    p.cam_sum = (uint64_t)cam_sum.data_ptr();
+    p.cam_cnt = (uint64_t)cam_cnt.data_ptr();
+    p.num_cameras = (uint32_t)num_cameras;
+    vkk::dispatch_flat("densify.visit_camera_stats_zero", {}, num_cameras, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
+}
+
+void visit_camera_stats_tensor(int64_t n_isect, int64_t num_splats,
+                               int num_cameras, bool packed,
+                               DeviceVector<int32_t> camera_ids,
+                               DeviceVector<int32_t> gaussian_ids,
+                               DeviceTensorFloatND v_screen, int row_stride,
+                               int opac_offset,
+                               DeviceVector<uint32_t> visit_counters,
+                               DeviceVector<int32_t> cam_map,
+                               DeviceVector<float> cam_sum,
+                               DeviceVector<uint32_t> cam_cnt) {
+    if (n_isect <= 0 || num_cameras <= 0 || v_screen.data_ptr() == nullptr ||
+        visit_counters.data_ptr() == nullptr || cam_map.data_ptr() == nullptr)
+        return;
+    VisitStatsParams p{};
+    p.camera_ids = vkk::or_fallback(camera_ids.data_ptr());
+    p.gaussian_ids = vkk::or_fallback(gaussian_ids.data_ptr());
+    p.v_screen = (uint64_t)v_screen.data_ptr();
+    p.visit_counters = (uint64_t)visit_counters.data_ptr();
+    p.cam_map = (uint64_t)cam_map.data_ptr();
+    p.cam_sum = (uint64_t)cam_sum.data_ptr();
+    p.cam_cnt = (uint64_t)cam_cnt.data_ptr();
+    if (n_isect > (int64_t)UINT32_MAX)
+        throw std::runtime_error("visit_camera_stats: intersections exceed the u32 index range");
+    p.n_isect = (uint32_t)n_isect;
+    p.num_splats = (uint32_t)num_splats;
+    p.num_cameras = (uint32_t)num_cameras;
+    p.packed = packed ? 1u : 0u;
+    p.row_stride = (uint32_t)row_stride;
+    p.opac_offset = (uint32_t)opac_offset;
+    vkk::Fold f = vkk::fold_1d(n_isect, 256);
+    p.wgs_per_row = f.per_row;
+    vkk::dispatch_ring("densify.visit_camera_stats", {}, f.per_row, f.rows, 1,
+                       &p, sizeof(p));
+}
+
+void densify_scale_score_by_renders_tensor(int64_t num_splats,
+                                           DeviceVector<uint32_t> visit_counters,
+                                           DeviceVector<float2> score) {
+    if (num_splats <= 0 || visit_counters.data_ptr() == nullptr ||
+        score.data_ptr() == nullptr)
+        return;
+    ScaleScoreByRendersParams p{};
+    p.visit_counters = (uint64_t)visit_counters.data_ptr();
+    p.score = (uint64_t)score.data_ptr();
+    p.num_splats = (uint32_t)num_splats;
+    vkk::dispatch_flat("densify.densify_scale_score_by_renders", {}, num_splats,
+                       256, &p, sizeof(p), &p.wgs_per_row);
 }
 
 void densify_clip_score_tensor(int64_t num_splats,

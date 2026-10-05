@@ -222,6 +222,21 @@ SS_MSG(menu_new_dataset,
     RU("Создать набор данных…"),
     TR("Yeni veri kümesi…"));
 
+SS_MSG(menu_open_recent,
+    EN("Open Recent"),
+    JA("最近使った項目を開く"),
+    ZH_HANS("打开最近使用的项目"),
+    ZH_HANT("開啟最近使用的項目"),
+    KO("최근 항목 열기"),
+    DE("Zuletzt verwendet"),
+    FR("Ouvrir un élément récent"),
+    ES("Abrir recientes"),
+    PT("Abrir recentes"),
+    IT("Apri recenti"),
+    NL("Recent geopend"),
+    RU("Открыть недавние"),
+    TR("Son kullanılanları aç"));
+
 // ===========================================================================
 // File dialog titles
 // ===========================================================================
@@ -614,6 +629,341 @@ SS_MSG(home_recent,
     KO("최근 항목"),      DE("Zuletzt"),      FR("Récents"),     ES("Recientes"),
     PT("Recentes"),      IT("Recenti"),      NL("Recent"),      RU("Недавние"),
     TR("Son kullanılan"));
+
+// The recent list's tabs: "Recent" (home_recent) holds every kind, these one
+// kind each. Labels, so plurals are fine.
+SS_MSG(home_tab_datasets,
+    EN("Datasets"),      JA("データセット"),   ZH_HANS("数据集"),   ZH_HANT("資料集"),
+    KO("데이터셋"),       DE("Datensätze"),   FR("Jeux de données"),
+    ES("Conjuntos de datos"), PT("Conjuntos de dados"), IT("Set di dati"),
+    NL("Datasets"),      RU("Наборы данных"), TR("Veri kümeleri"));
+
+SS_MSG(home_tab_recons,
+    EN("Reconstructions"), JA("再構成"),     ZH_HANS("重建"),     ZH_HANT("重建"),
+    KO("재구성"),         DE("Rekonstruktionen"), FR("Reconstructions"),
+    ES("Reconstrucciones"), PT("Reconstruções"), IT("Ricostruzioni"),
+    NL("Reconstructies"), RU("Реконструкции"), TR("Yeniden kurmalar"));
+
+SS_MSG(home_tab_models,
+    EN("Models"),        JA("モデル"),        ZH_HANS("模型"),     ZH_HANT("模型"),
+    KO("모델"),           DE("Modelle"),      FR("Modèles"),      ES("Modelos"),
+    PT("Modelos"),       IT("Modelli"),      NL("Modellen"),     RU("Модели"),
+    TR("Modeller"));
+
+SS_MSG(home_tab_runs,
+    EN("Training runs"), JA("学習の実行"),     ZH_HANS("训练运行"), ZH_HANT("訓練執行"),
+    KO("학습 실행"),      DE("Trainingsläufe"), FR("Entraînements"),
+    ES("Entrenamientos"), PT("Treinamentos"), IT("Addestramenti"),
+    NL("Trainingsruns"), RU("Запуски обучения"), TR("Eğitimler"));
+
+SS_MSG(home_tab_projects,
+    EN("Camera projects"), JA("カメラプロジェクト"), ZH_HANS("相机项目"),
+    ZH_HANT("相機專案"),   KO("카메라 프로젝트"), DE("Kameraprojekte"),
+    FR("Projets de caméra"), ES("Proyectos de cámara"),
+    PT("Projetos de câmera"), IT("Progetti di camera"), NL("Cameraprojecten"),
+    RU("Проекты камеры"), TR("Kamera projeleri"));
+
+// What one entry is, beside it in the "Recent" tab. A model says what the
+// file turned out to hold once that is known, and "Model" until then.
+SS_MSG(home_kind_dataset,
+    EN("Dataset"),       JA("データセット"),   ZH_HANS("数据集"),   ZH_HANT("資料集"),
+    KO("데이터셋"),       DE("Datensatz"),    FR("Jeu de données"),
+    ES("Conjunto de datos"), PT("Conjunto de dados"), IT("Set di dati"),
+    NL("Dataset"),       RU("Набор данных"), TR("Veri kümesi"));
+
+SS_MSG(home_kind_recon,
+    EN("Reconstruction"), JA("再構成"),      ZH_HANS("重建"),     ZH_HANT("重建"),
+    KO("재구성"),         DE("Rekonstruktion"), FR("Reconstruction"),
+    ES("Reconstrucción"), PT("Reconstrução"), IT("Ricostruzione"),
+    NL("Reconstructie"), RU("Реконструкция"), TR("Yeniden kurma"));
+
+SS_MSG(home_kind_model,
+    EN("Model"),         JA("モデル"),        ZH_HANS("模型"),     ZH_HANT("模型"),
+    KO("모델"),           DE("Modell"),       FR("Modèle"),       ES("Modelo"),
+    PT("Modelo"),        IT("Modello"),      NL("Model"),        RU("Модель"),
+    TR("Model"));
+
+SS_MSG(home_kind_splats,
+    EN("Splats"),        JA("スプラット"),     ZH_HANS("高斯点"),   ZH_HANT("高斯點"),
+    KO("스플랫"),         DE("Splats"),       FR("Splats"),       ES("Splats"),
+    PT("Splats"),        IT("Splat"),        NL("Splats"),       RU("Сплаты"),
+    TR("Splat'lar"));
+
+SS_MSG(home_kind_mesh,
+    EN("Mesh"),          JA("メッシュ"),       ZH_HANS("网格"),     ZH_HANT("網格"),
+    KO("메시"),           DE("Netz"),         FR("Maillage"),     ES("Malla"),
+    PT("Malha"),         IT("Mesh"),         NL("Mesh"),         RU("Меш"),
+    TR("Ağ"));
+
+SS_MSG(home_kind_points,
+    EN("Point cloud"),   JA("点群"),          ZH_HANS("点云"),     ZH_HANT("點雲"),
+    KO("포인트 클라우드"), DE("Punktwolke"),   FR("Nuage de points"),
+    ES("Nube de puntos"), PT("Nuvem de pontos"), IT("Nuvola di punti"),
+    NL("Puntenwolk"),    RU("Облако точек"), TR("Nokta bulutu"));
+
+SS_MSG(home_kind_run,
+    EN("Training run"),  JA("学習の実行"),     ZH_HANS("训练运行"), ZH_HANT("訓練執行"),
+    KO("학습 실행"),      DE("Trainingslauf"), FR("Entraînement"),
+    ES("Entrenamiento"), PT("Treinamento"),  IT("Addestramento"),
+    NL("Trainingsrun"),  RU("Запуск обучения"), TR("Eğitim"));
+
+SS_MSG(home_kind_project,
+    EN("Camera project"), JA("カメラプロジェクト"), ZH_HANS("相机项目"),
+    ZH_HANT("相機專案"),   KO("카메라 프로젝트"), DE("Kameraprojekt"),
+    FR("Projet de caméra"), ES("Proyecto de cámara"), PT("Projeto de câmera"),
+    IT("Progetto di camera"), NL("Cameraproject"), RU("Проект камеры"),
+    TR("Kamera projesi"));
+
+// What each tab holds: its hover help, and what an empty one says.
+SS_MSG(home_recent_about,
+    EN("Everything opened, built or trained here lately, newest first. "
+       "Whatever is no longer on disk drops off the list by itself. "
+       "Right-click an entry for more."),
+    JA("最近ここで開いた・作成した・学習したものが新しい順に並びます。"
+       "ディスクから消えたものは自動的に一覧から外れます。"
+       "項目を右クリックすると、ほかの操作も選べます。"),
+    ZH_HANS("最近在这里打开、创建或训练过的内容，按从新到旧排列。"
+            "已不在磁盘上的条目会自动从列表中移除。右键单击条目可进行更多操作。"),
+    ZH_HANT("最近在這裡開啟、建立或訓練過的內容，按從新到舊排列。"
+            "已不在磁碟上的項目會自動從清單中移除。在項目上按右鍵可進行更多操作。"),
+    KO("최근 여기서 열거나 만들거나 학습한 항목이 최신순으로 표시됩니다. "
+       "디스크에서 사라진 항목은 목록에서 저절로 빠집니다. "
+       "항목을 마우스 오른쪽 버튼으로 클릭하면 다른 작업도 할 수 있습니다."),
+    DE("Alles, was hier zuletzt geöffnet, erstellt oder trainiert wurde, das "
+       "Neueste zuerst. Was nicht mehr auf der Festplatte liegt, verschwindet "
+       "von selbst aus der Liste. Ein Rechtsklick auf einen Eintrag bietet mehr."),
+    FR("Tout ce qui a été ouvert, créé ou entraîné ici récemment, du plus récent "
+       "au plus ancien. Ce qui n'est plus sur le disque quitte la liste tout "
+       "seul. Un clic droit sur une entrée propose d'autres actions."),
+    ES("Todo lo que se abrió, creó o entrenó aquí últimamente, de lo más "
+       "reciente a lo más antiguo. Lo que ya no está en el disco sale de la "
+       "lista por sí solo. Haga clic derecho en una entrada para ver más."),
+    PT("Tudo o que foi aberto, criado ou treinado aqui recentemente, do mais "
+       "novo ao mais antigo. O que não está mais no disco sai da lista sozinho. "
+       "Clique com o botão direito em uma entrada para ver mais."),
+    IT("Tutto ciò che è stato aperto, creato o addestrato qui di recente, dal "
+       "più nuovo. Ciò che non è più sul disco esce dall'elenco da solo. Fai "
+       "clic destro su una voce per altre azioni."),
+    NL("Alles wat hier onlangs is geopend, gemaakt of getraind, het nieuwste "
+       "eerst. Wat niet meer op de schijf staat, verdwijnt vanzelf uit de "
+       "lijst. Klik met de rechtermuisknop op een item voor meer."),
+    RU("Всё, что недавно открывалось, создавалось или обучалось здесь, — "
+       "сначала самое новое. То, чего больше нет на диске, само исчезает из "
+       "списка. Щёлкните запись правой кнопкой мыши, чтобы увидеть другие "
+       "действия."),
+    TR("Burada son zamanlarda açılan, oluşturulan ya da eğitilen her şey, en "
+       "yenisi önce. Artık diskte olmayanlar listeden kendiliğinden düşer. "
+       "Diğer işlemler için bir girdiye sağ tıklayın."));
+
+SS_MSG(home_datasets_about,
+    EN("Datasets opened in the trainer. Click one to open it there again."),
+    JA("トレーナーで開いたデータセットです。クリックすると、もう一度トレーナーで"
+       "開きます。"),
+    ZH_HANS("在训练器中打开过的数据集。单击即可在训练器中再次打开。"),
+    ZH_HANT("在訓練器中開啟過的資料集。按一下即可在訓練器中再次開啟。"),
+    KO("트레이너에서 열었던 데이터셋입니다. 클릭하면 트레이너에서 다시 엽니다."),
+    DE("Im Trainer geöffnete Datensätze. Ein Klick öffnet einen davon dort "
+       "erneut."),
+    FR("Les jeux de données ouverts dans l'atelier. Cliquez sur l'un d'eux pour "
+       "l'y rouvrir."),
+    ES("Conjuntos de datos abiertos en el entrenador. Haga clic en uno para "
+       "volver a abrirlo allí."),
+    PT("Conjuntos de dados abertos no treinador. Clique em um para abri-lo lá "
+       "de novo."),
+    IT("Set di dati aperti nell'addestratore. Fai clic su uno per riaprirlo lì."),
+    NL("Datasets die in de trainer zijn geopend. Klik op een dataset om hem daar "
+       "opnieuw te openen."),
+    RU("Наборы данных, открытые в тренажёре. Щёлкните по одному, чтобы снова "
+       "открыть его там."),
+    TR("Eğiticide açılan veri kümeleri. Birine tıklayınca orada yeniden açılır."));
+
+SS_MSG(home_recons_about,
+    EN("Datasets built here from photos or video. Click one to go back to the "
+       "screen that built it, with its inputs and settings."),
+    JA("ここで写真や動画から作成したデータセットです。クリックすると、入力と"
+       "設定をそのままに、作成した画面に戻ります。"),
+    ZH_HANS("在这里从照片或视频创建的数据集。单击即可回到创建它的界面，输入和"
+            "设置都会恢复。"),
+    ZH_HANT("在這裡從相片或影片建立的資料集。按一下即可回到建立它的畫面，輸入和"
+            "設定都會還原。"),
+    KO("여기서 사진이나 동영상으로 만든 데이터셋입니다. 클릭하면 입력과 설정을 "
+       "그대로 가지고 그것을 만든 화면으로 돌아갑니다."),
+    DE("Hier aus Fotos oder Video erstellte Datensätze. Ein Klick führt mit "
+       "Eingaben und Einstellungen zurück zu dem Bildschirm, der ihn erstellt "
+       "hat."),
+    FR("Les jeux de données créés ici à partir de photos ou de vidéo. Cliquez "
+       "sur l'un d'eux pour revenir à l'écran qui l'a créé, avec ses entrées et "
+       "ses réglages."),
+    ES("Conjuntos de datos creados aquí a partir de fotos o vídeo. Haga clic en "
+       "uno para volver a la pantalla que lo creó, con sus entradas y ajustes."),
+    PT("Conjuntos de dados criados aqui a partir de fotos ou vídeo. Clique em "
+       "um para voltar à tela que o criou, com suas entradas e configurações."),
+    IT("Set di dati creati qui da fotografie o video. Fai clic su uno per "
+       "tornare alla schermata che l'ha creato, con i suoi ingressi e le sue "
+       "impostazioni."),
+    NL("Datasets die hier uit foto's of video zijn gemaakt. Klik op een dataset "
+       "om terug te gaan naar het scherm dat hem maakte, met zijn invoer en "
+       "instellingen."),
+    RU("Наборы данных, созданные здесь из фотографий или видео. Щёлкните по "
+       "одному, чтобы вернуться на экран, где он создавался, со всеми входами и "
+       "настройками."),
+    TR("Burada fotoğraflardan veya videodan oluşturulan veri kümeleri. Birine "
+       "tıklayınca, girdileri ve ayarlarıyla birlikte onu oluşturan ekrana "
+       "dönülür."));
+
+SS_MSG(home_models_about,
+    EN("Splats, meshes, point clouds and reconstructions opened in the viewer."),
+    JA("ビューアで開いたスプラット、メッシュ、点群、再構成です。"),
+    ZH_HANS("在查看器中打开过的高斯点、网格、点云和重建。"),
+    ZH_HANT("在檢視器中開啟過的高斯點、網格、點雲和重建。"),
+    KO("뷰어에서 열었던 스플랫, 메시, 포인트 클라우드, 재구성입니다."),
+    DE("Im Betrachter geöffnete Splats, Netze, Punktwolken und "
+       "Rekonstruktionen."),
+    FR("Les splats, maillages, nuages de points et reconstructions ouverts dans "
+       "la visionneuse."),
+    ES("Splats, mallas, nubes de puntos y reconstrucciones abiertos en el visor."),
+    PT("Splats, malhas, nuvens de pontos e reconstruções abertos no "
+       "visualizador."),
+    IT("Splat, mesh, nuvole di punti e ricostruzioni aperti nel visualizzatore."),
+    NL("Splats, meshes, puntenwolken en reconstructies die in de viewer zijn "
+       "geopend."),
+    RU("Сплаты, меши, облака точек и реконструкции, открытые в просмотрщике."),
+    TR("Görüntüleyicide açılan splat'lar, ağlar, nokta bulutları ve yeniden "
+       "yapımlar."));
+
+SS_MSG(home_runs_about,
+    EN("Training runs that finished and saved a model. Click one to look at it "
+       "in the viewer."),
+    JA("最後まで進んでモデルを保存した学習です。クリックするとビューアで表示"
+       "します。"),
+    ZH_HANS("已完成并保存了模型的训练运行。单击即可在查看器中查看。"),
+    ZH_HANT("已完成並儲存了模型的訓練執行。按一下即可在檢視器中檢視。"),
+    KO("끝까지 진행되어 모델을 저장한 학습 실행입니다. 클릭하면 뷰어에서 "
+       "봅니다."),
+    DE("Trainingsläufe, die fertig wurden und ein Modell gespeichert haben. Ein "
+       "Klick zeigt es im Betrachter."),
+    FR("Les entraînements terminés qui ont enregistré un modèle. Cliquez sur "
+       "l'un d'eux pour le voir dans la visionneuse."),
+    ES("Entrenamientos que terminaron y guardaron un modelo. Haga clic en uno "
+       "para verlo en el visor."),
+    PT("Treinamentos que terminaram e salvaram um modelo. Clique em um para "
+       "vê-lo no visualizador."),
+    IT("Addestramenti conclusi che hanno salvato un modello. Fai clic su uno "
+       "per vederlo nel visualizzatore."),
+    NL("Trainingsruns die klaar zijn en een model hebben opgeslagen. Klik op een "
+       "run om het model in de viewer te bekijken."),
+    RU("Завершённые запуски обучения, сохранившие модель. Щёлкните по одному, "
+       "чтобы посмотреть её в просмотрщике."),
+    TR("Biten ve bir model kaydeden eğitimler. Birine tıklayınca "
+       "görüntüleyicide açılır."));
+
+SS_MSG(home_projects_about,
+    EN("Camera moves saved or opened for a photo or video. Click one to open it "
+       "with its model."),
+    JA("写真や動画のために保存した、または開いたカメラの動きです。クリックすると"
+       "モデルと一緒に開きます。"),
+    ZH_HANS("为照片或视频保存或打开过的相机运动。单击即可连同其模型一起打开。"),
+    ZH_HANT("為相片或影片儲存或開啟過的相機運動。按一下即可連同其模型一起開啟。"),
+    KO("사진이나 동영상을 위해 저장하거나 열었던 카메라 움직임입니다. 클릭하면 "
+       "그 모델과 함께 엽니다."),
+    DE("Für ein Foto oder Video gespeicherte oder geöffnete Kamerafahrten. Ein "
+       "Klick öffnet eine davon mit ihrem Modell."),
+    FR("Les mouvements de caméra enregistrés ou ouverts pour une photo ou une "
+       "vidéo. Cliquez sur l'un d'eux pour l'ouvrir avec son modèle."),
+    ES("Movimientos de cámara guardados o abiertos para una foto o un vídeo. "
+       "Haga clic en uno para abrirlo con su modelo."),
+    PT("Movimentos de câmera salvos ou abertos para uma foto ou um vídeo. "
+       "Clique em um para abri-lo com o seu modelo."),
+    IT("Movimenti di camera salvati o aperti per una foto o un video. Fai clic "
+       "su uno per aprirlo con il suo modello."),
+    NL("Camerabewegingen die zijn opgeslagen of geopend voor een foto of video. "
+       "Klik op een beweging om hem met zijn model te openen."),
+    RU("Движения камеры, сохранённые или открытые для фото или видео. Щёлкните "
+       "по одному, чтобы открыть его вместе с моделью."),
+    TR("Bir fotoğraf ya da video için kaydedilen veya açılan kamera hareketleri. "
+       "Birine tıklayınca modeliyle birlikte açılır."));
+
+SS_MSG(home_recent_empty,
+    EN("Nothing here yet."), JA("まだ何もありません。"),
+    ZH_HANS("这里还没有内容。"), ZH_HANT("這裡還沒有內容。"),
+    KO("아직 아무것도 없습니다."), DE("Hier ist noch nichts."),
+    FR("Rien ici pour l'instant."), ES("Aquí aún no hay nada."),
+    PT("Ainda não há nada aqui."), IT("Qui non c'è ancora niente."),
+    NL("Hier staat nog niets."), RU("Здесь пока пусто."),
+    TR("Burada henüz bir şey yok."));
+
+// When an entry was last used: a time today or yesterday, a date before that.
+SS_MSG(home_recent_today,
+    EN("Today {0}"),     JA("今日 {0}"),      ZH_HANS("今天 {0}"), ZH_HANT("今天 {0}"),
+    KO("오늘 {0}"),       DE("Heute {0}"),    FR("Aujourd'hui {0}"), ES("Hoy {0}"),
+    PT("Hoje {0}"),      IT("Oggi {0}"),     NL("Vandaag {0}"),  RU("Сегодня {0}"),
+    TR("Bugün {0}"));
+
+SS_MSG(home_recent_yesterday,
+    EN("Yesterday {0}"), JA("昨日 {0}"),      ZH_HANS("昨天 {0}"), ZH_HANT("昨天 {0}"),
+    KO("어제 {0}"),       DE("Gestern {0}"),  FR("Hier {0}"),     ES("Ayer {0}"),
+    PT("Ontem {0}"),     IT("Ieri {0}"),     NL("Gisteren {0}"), RU("Вчера {0}"),
+    TR("Dün {0}"));
+
+// An entry's right-click menu.
+SS_MSG(home_recent_open,
+    EN("Open"),          JA("開く"),          ZH_HANS("打开"),     ZH_HANT("開啟"),
+    KO("열기"),           DE("Öffnen"),       FR("Ouvrir"),       ES("Abrir"),
+    PT("Abrir"),         IT("Apri"),         NL("Openen"),       RU("Открыть"),
+    TR("Aç"));
+
+SS_MSG(home_recent_show,
+    EN("Show in folder"), JA("フォルダで表示"), ZH_HANS("在文件夹中显示"),
+    ZH_HANT("在資料夾中顯示"), KO("폴더에서 보기"), DE("Im Ordner anzeigen"),
+    FR("Afficher dans le dossier"), ES("Mostrar en la carpeta"),
+    PT("Mostrar na pasta"), IT("Mostra nella cartella"), NL("In map weergeven"),
+    RU("Показать в папке"), TR("Klasörde göster"));
+
+SS_MSG(home_recent_copy,
+    EN("Copy path"),     JA("パスをコピー"),   ZH_HANS("复制路径"), ZH_HANT("複製路徑"),
+    KO("경로 복사"),      DE("Pfad kopieren"), FR("Copier le chemin"),
+    ES("Copiar la ruta"), PT("Copiar o caminho"), IT("Copia il percorso"),
+    NL("Pad kopiëren"),  RU("Скопировать путь"), TR("Yolu kopyala"));
+
+SS_MSG(home_recent_remove,
+    EN("Remove from list"), JA("一覧から削除"), ZH_HANS("从列表中移除"),
+    ZH_HANT("從清單中移除"), KO("목록에서 제거"), DE("Aus der Liste entfernen"),
+    FR("Retirer de la liste"), ES("Quitar de la lista"), PT("Remover da lista"),
+    IT("Rimuovi dall'elenco"), NL("Uit de lijst verwijderen"),
+    RU("Убрать из списка"), TR("Listeden kaldır"));
+
+SS_MSG(home_recent_clear,
+    EN("Clear this list"), JA("この一覧を消去"), ZH_HANS("清空此列表"),
+    ZH_HANT("清空此清單"), KO("이 목록 비우기"), DE("Diese Liste leeren"),
+    FR("Vider cette liste"), ES("Vaciar esta lista"), PT("Limpar esta lista"),
+    IT("Svuota questo elenco"), NL("Deze lijst wissen"),
+    RU("Очистить этот список"), TR("Bu listeyi temizle"));
+
+SS_MSG(home_recon_busy,
+    EN("Something is still running. Let it finish, or stop it, before opening "
+       "another reconstruction."),
+    JA("まだ処理が実行中です。別の再構成を開く前に、完了を待つか停止して"
+       "ください。"),
+    ZH_HANS("仍有任务在运行。请等它完成或将其停止，然后再打开另一个重建。"),
+    ZH_HANT("仍有工作在執行。請等它完成或將其停止，然後再開啟另一個重建。"),
+    KO("아직 실행 중인 작업이 있습니다. 다른 재구성을 열기 전에 끝날 때까지 "
+       "기다리거나 중지하세요."),
+    DE("Es läuft noch etwas. Lassen Sie es fertig werden oder beenden Sie es, "
+       "bevor Sie eine andere Rekonstruktion öffnen."),
+    FR("Une tâche est encore en cours. Laissez-la se terminer ou arrêtez-la "
+       "avant d'ouvrir une autre reconstruction."),
+    ES("Todavía hay algo en marcha. Deje que termine, o deténgalo, antes de "
+       "abrir otra reconstrucción."),
+    PT("Ainda há algo em execução. Deixe terminar, ou interrompa, antes de "
+       "abrir outra reconstrução."),
+    IT("C'è ancora qualcosa in corso. Lascialo finire, o fermalo, prima di "
+       "aprire un'altra ricostruzione."),
+    NL("Er loopt nog iets. Laat het afronden of stop het voordat u een andere "
+       "reconstructie opent."),
+    RU("Что-то ещё выполняется. Дождитесь завершения или остановите задачу, "
+       "прежде чем открывать другую реконструкцию."),
+    TR("Hâlâ çalışan bir iş var. Başka bir yeniden kurmayı açmadan önce "
+       "bitmesini bekleyin ya da durdurun."));
 
 SS_MSG(home_no_engine,
     EN("note: neither the built-in reconstruction nor COLMAP was found, so "
@@ -1144,6 +1494,46 @@ SS_MSG(device_cuda_locked,
        "выбор."),
     TR("CUDA aygıtı ilk motor işleminde sabitlenir; değiştirmek için uygulamayı "
        "yeniden başlatın. Yerel Vulkan işi kendi seçimini kullanır."));
+
+// The known-issue banner's link to the issue tracker.
+SS_MSG(device_issue_details,
+    EN("Details on GitHub"),
+    JA("GitHub で詳細を見る"),
+    ZH_HANS("在 GitHub 上查看详情"),
+    ZH_HANT("在 GitHub 上查看詳情"),
+    KO("GitHub에서 자세히 보기"),
+    DE("Details auf GitHub"),
+    FR("Détails sur GitHub"),
+    ES("Detalles en GitHub"),
+    PT("Detalhes no GitHub"),
+    IT("Dettagli su GitHub"),
+    NL("Details op GitHub"),
+    RU("Подробности на GitHub"),
+    TR("GitHub'da ayrıntılar"));
+
+SS_MSG(link_no_browser,
+    EN("Could not open a browser. The page is at {0} (copied to the clipboard)."),
+    JA("ブラウザを開けませんでした。ページは {0} にあります"
+       "（クリップボードにコピーしました）。"),
+    ZH_HANS("无法打开浏览器。页面在 {0}（已复制到剪贴板）。"),
+    ZH_HANT("無法開啟瀏覽器。頁面在 {0}（已複製到剪貼簿）。"),
+    KO("브라우저를 열지 못했습니다. 페이지는 {0}에 있습니다(클립보드에 "
+       "복사했습니다)."),
+    DE("Es ließ sich kein Browser öffnen. Die Seite steht unter {0} (in die "
+       "Zwischenablage kopiert)."),
+    FR("Impossible d'ouvrir un navigateur. La page est à l'adresse {0} "
+       "(copiée dans le presse-papiers)."),
+    ES("No se pudo abrir un navegador. La página está en {0} (copiada al "
+       "portapapeles)."),
+    PT("Não foi possível abrir um navegador. A página está em {0} (copiada "
+       "para a área de transferência)."),
+    IT("Non è stato possibile aprire un browser. La pagina si trova in {0} "
+       "(copiata negli appunti)."),
+    NL("Er kon geen browser worden geopend. De pagina staat op {0} "
+       "(gekopieerd naar het klembord)."),
+    RU("Не удалось открыть браузер. Страница находится по адресу {0} "
+       "(адрес скопирован в буфер обмена)."),
+    TR("Bir tarayıcı açılamadı. Sayfa şu adreste: {0} (panoya kopyalandı)."));
 
 // ---- basic options ----
 SS_MSG(opt_output_folder,
@@ -2206,6 +2596,184 @@ SS_MSG(vram_help,
     TR("GPU belleği (GiB): bu sürecin kullandığı / sistem genelinde kullanılan "
        "/ aygıtın kapasitesi. “?”, arka ucun o değeri sorgulayamadığı "
        "anlamına gelir."));
+
+// The VRAM forecast: the risk tag beside the bar, and its hover card.
+SS_MSG(oom_risk_low,
+    EN("OOM risk: low"), JA("メモリ不足リスク: 低"), ZH_HANS("显存不足风险：低"),
+    ZH_HANT("顯示記憶體不足風險：低"), KO("메모리 부족 위험: 낮음"),
+    DE("OOM-Risiko: gering"), FR("Risque de saturation : faible"),
+    ES("Riesgo de falta de memoria: bajo"), PT("Risco de falta de memória: baixo"),
+    IT("Rischio memoria esaurita: basso"), NL("Risico geheugentekort: laag"),
+    RU("Риск нехватки памяти: низкий"), TR("Bellek yetmeme riski: düşük"));
+
+SS_MSG(oom_risk_medium,
+    EN("OOM risk: medium"), JA("メモリ不足リスク: 中"), ZH_HANS("显存不足风险：中"),
+    ZH_HANT("顯示記憶體不足風險：中"), KO("메모리 부족 위험: 보통"),
+    DE("OOM-Risiko: mittel"), FR("Risque de saturation : moyen"),
+    ES("Riesgo de falta de memoria: medio"), PT("Risco de falta de memória: médio"),
+    IT("Rischio memoria esaurita: medio"), NL("Risico geheugentekort: middel"),
+    RU("Риск нехватки памяти: средний"), TR("Bellek yetmeme riski: orta"));
+
+SS_MSG(oom_risk_high,
+    EN("OOM risk: high"), JA("メモリ不足リスク: 高"), ZH_HANS("显存不足风险：高"),
+    ZH_HANT("顯示記憶體不足風險：高"), KO("메모리 부족 위험: 높음"),
+    DE("OOM-Risiko: hoch"), FR("Risque de saturation : élevé"),
+    ES("Riesgo de falta de memoria: alto"), PT("Risco de falta de memória: alto"),
+    IT("Rischio memoria esaurita: alto"), NL("Risico geheugentekort: hoog"),
+    RU("Риск нехватки памяти: высокий"), TR("Bellek yetmeme riski: yüksek"));
+
+SS_MSG(vram_chart_title,
+    EN("GPU memory over the run (GiB)"), JA("学習中の GPU メモリ（GiB）"),
+    ZH_HANS("训练过程中的显存（GiB）"), ZH_HANT("訓練過程中的顯示記憶體（GiB）"),
+    KO("학습 중 GPU 메모리(GiB)"), DE("Grafikspeicher im Verlauf (GiB)"),
+    FR("Mémoire GPU au fil de l'entraînement (Gio)"),
+    ES("Memoria de GPU durante el entrenamiento (GiB)"),
+    PT("Memória da GPU ao longo do treinamento (GiB)"),
+    IT("Memoria GPU durante l'addestramento (GiB)"),
+    NL("GPU-geheugen tijdens de training (GiB)"),
+    RU("Видеопамять по ходу обучения (ГиБ)"), TR("Eğitim boyunca GPU belleği (GiB)"));
+
+SS_MSG(vram_legend_run,
+    EN("this run"), JA("この学習"), ZH_HANS("本次训练"), ZH_HANT("本次訓練"),
+    KO("이 학습"), DE("dieses Training"), FR("cet entraînement"),
+    ES("este entrenamiento"), PT("este treinamento"), IT("questo addestramento"),
+    NL("deze training"), RU("это обучение"), TR("bu eğitim"));
+
+SS_MSG(vram_legend_projected,
+    EN("projected (95% band)"), JA("予測（95% 範囲）"), ZH_HANS("预测（95% 区间）"),
+    ZH_HANT("預測（95% 區間）"), KO("예측(95% 범위)"), DE("Prognose (95-%-Band)"),
+    FR("prévision (bande à 95 %)"), ES("previsión (banda del 95 %)"),
+    PT("previsão (faixa de 95%)"), IT("previsione (banda al 95%)"),
+    NL("prognose (95%-band)"), RU("прогноз (полоса 95 %)"), TR("tahmin (%95 aralığı)"));
+
+SS_MSG(vram_legend_others,
+    EN("other programs"), JA("他のプログラム"), ZH_HANS("其他程序"), ZH_HANT("其他程式"),
+    KO("다른 프로그램"), DE("andere Programme"), FR("autres programmes"),
+    ES("otros programas"), PT("outros programas"), IT("altri programmi"),
+    NL("andere programma's"), RU("другие программы"), TR("diğer programlar"));
+
+SS_MSG(vram_legend_capacity,
+    EN("device capacity"), JA("デバイスの容量"), ZH_HANS("设备容量"), ZH_HANT("裝置容量"),
+    KO("장치 용량"), DE("Kapazität des Geräts"), FR("capacité du périphérique"),
+    ES("capacidad del dispositivo"), PT("capacidade do dispositivo"),
+    IT("capacità del dispositivo"), NL("capaciteit van het apparaat"),
+    RU("объём устройства"), TR("aygıt kapasitesi"));
+
+SS_MSG(vram_chart_peak,
+    EN("Projected peak: {0} ± {1} GiB   free for training: {2} GiB   chance of running out: {3}%"),
+    JA("予測ピーク: {0} ± {1} GiB   学習に使える量: {2} GiB   不足する確率: {3}%"),
+    ZH_HANS("预计峰值：{0} ± {1} GiB   可供训练：{2} GiB   耗尽的概率：{3}%"),
+    ZH_HANT("預計峰值：{0} ± {1} GiB   可供訓練：{2} GiB   耗盡的機率：{3}%"),
+    KO("예상 최대치: {0} ± {1} GiB   학습에 쓸 수 있는 양: {2} GiB   부족할 확률: {3}%"),
+    DE("Erwartete Spitze: {0} ± {1} GiB   für das Training frei: {2} GiB   Wahrscheinlichkeit, dass er ausgeht: {3} %"),
+    FR("Pic prévu : {0} ± {1} Gio   disponible pour l'entraînement : {2} Gio   probabilité de saturation : {3} %"),
+    ES("Pico previsto: {0} ± {1} GiB   libre para entrenar: {2} GiB   probabilidad de quedarse sin memoria: {3} %"),
+    PT("Pico previsto: {0} ± {1} GiB   livre para o treinamento: {2} GiB   chance de faltar memória: {3}%"),
+    IT("Picco previsto: {0} ± {1} GiB   libera per l'addestramento: {2} GiB   probabilità di esaurirla: {3}%"),
+    NL("Verwachte piek: {0} ± {1} GiB   vrij voor training: {2} GiB   kans op tekort: {3}%"),
+    RU("Ожидаемый пик: {0} ± {1} ГиБ   доступно для обучения: {2} ГиБ   вероятность нехватки: {3} %"),
+    TR("Beklenen tepe: {0} ± {1} GiB   eğitim için boş: {2} GiB   yetmeme olasılığı: %{3}"));
+
+SS_MSG(vram_chart_provisional,
+    EN("The estimate firms up once the first densification step has run."),
+    JA("最初の高密度化ステップが済むと、推定の精度が上がります。"),
+    ZH_HANS("第一次加密步骤运行后，估计会更准确。"),
+    ZH_HANT("第一次加密步驟執行後，估計會更準確。"),
+    KO("첫 번째 밀집화 단계가 끝나면 추정이 더 정확해집니다."),
+    DE("Die Schätzung wird genauer, sobald der erste Verdichtungsschritt gelaufen ist."),
+    FR("L'estimation se précise après la première étape de densification."),
+    ES("La estimación se afina en cuanto se ejecuta el primer paso de densificación."),
+    PT("A estimativa fica mais precisa depois do primeiro passo de densificação."),
+    IT("La stima si affina dopo il primo passo di densificazione."),
+    NL("De schatting wordt nauwkeuriger zodra de eerste verdichtingsstap is uitgevoerd."),
+    RU("Оценка уточнится после первого шага уплотнения."),
+    TR("İlk yoğunlaştırma adımı çalıştıktan sonra tahmin netleşir."));
+
+SS_MSG(vram_chart_waiting,
+    EN("The projection appears after the first steps have been measured."),
+    JA("最初のステップを計測すると予測が表示されます。"),
+    ZH_HANS("测量完最初的若干步后会显示预测。"),
+    ZH_HANT("量測完最初的若干步後會顯示預測。"),
+    KO("처음 몇 단계를 측정하면 예측이 표시됩니다."),
+    DE("Die Prognose erscheint, sobald die ersten Schritte gemessen sind."),
+    FR("La prévision apparaît une fois les premières étapes mesurées."),
+    ES("La previsión aparece cuando se han medido los primeros pasos."),
+    PT("A previsão aparece depois que os primeiros passos são medidos."),
+    IT("La previsione compare dopo che i primi passi sono stati misurati."),
+    NL("De prognose verschijnt zodra de eerste stappen gemeten zijn."),
+    RU("Прогноз появится, когда будут измерены первые шаги."),
+    TR("Tahmin, ilk adımlar ölçüldükten sonra görünür."));
+
+SS_MSG(vram_breakdown_title,
+    EN("This run by category (GiB)"), JA("この学習の内訳（GiB）"),
+    ZH_HANS("本次训练按类别（GiB）"), ZH_HANT("本次訓練按類別（GiB）"),
+    KO("이 학습의 항목별 사용량(GiB)"), DE("Dieses Training nach Kategorie (GiB)"),
+    FR("Cet entraînement par catégorie (Gio)"), ES("Este entrenamiento por categoría (GiB)"),
+    PT("Este treinamento por categoria (GiB)"), IT("Questo addestramento per categoria (GiB)"),
+    NL("Deze training per categorie (GiB)"), RU("Это обучение по категориям (ГиБ)"),
+    TR("Bu eğitim, kategoriye göre (GiB)"));
+
+SS_MSG(vram_breakdown_growth,
+    EN("Faded: growth still to come, up to the projected peak."),
+    JA("薄い部分: 予測ピークまでにこれから増える分。"),
+    ZH_HANS("浅色部分：到预计峰值前还会增加的量。"),
+    ZH_HANT("淺色部分：到預計峰值前還會增加的量。"),
+    KO("흐린 부분: 예상 최대치까지 앞으로 늘어날 양."),
+    DE("Blass: der Zuwachs, der bis zur erwarteten Spitze noch kommt."),
+    FR("En pâle : la croissance encore à venir, jusqu'au pic prévu."),
+    ES("Atenuado: el crecimiento que aún falta hasta el pico previsto."),
+    PT("Esmaecido: o crescimento que ainda virá, até o pico previsto."),
+    IT("Sbiadito: la crescita ancora da venire, fino al picco previsto."),
+    NL("Vaag: de groei die nog komt, tot de verwachte piek."),
+    RU("Бледным: рост, который ещё впереди, до ожидаемого пика."),
+    TR("Soluk: beklenen tepeye kadar daha gelecek artış."));
+
+SS_MSG(vram_cat_splat,
+    EN("Splats"), JA("スプラット"), ZH_HANS("泼溅"), ZH_HANT("潑濺"), KO("스플랫"),
+    DE("Splats"), FR("Splats"), ES("Splats"), PT("Splats"), IT("Splat"),
+    NL("Splats"), RU("Сплаты"), TR("Splat'ler"));
+
+SS_MSG(vram_cat_splat_x_img,
+    EN("Splats × images"), JA("スプラット × 画像"), ZH_HANS("泼溅 × 图像"),
+    ZH_HANT("潑濺 × 影像"), KO("스플랫 × 이미지"), DE("Splats × Bilder"),
+    FR("Splats × images"), ES("Splats × imágenes"), PT("Splats × imagens"),
+    IT("Splat × immagini"), NL("Splats × beelden"), RU("Сплаты × изображения"),
+    TR("Splat × görüntü"));
+
+SS_MSG(vram_cat_image,
+    EN("Images"), JA("画像"), ZH_HANS("图像"), ZH_HANT("影像"), KO("이미지"),
+    DE("Bilder"), FR("Images"), ES("Imágenes"), PT("Imagens"), IT("Immagini"),
+    NL("Beelden"), RU("Изображения"), TR("Görüntüler"));
+
+SS_MSG(vram_cat_appearance,
+    EN("Appearance"), JA("外観補正"), ZH_HANS("外观校正"), ZH_HANT("外觀校正"),
+    KO("외관 보정"), DE("Erscheinungsbild"), FR("Apparence"), ES("Apariencia"),
+    PT("Aparência"), IT("Aspetto"), NL("Uiterlijk"), RU("Внешний вид"),
+    TR("Görünüm"));
+
+SS_MSG(vram_cat_viewer,
+    EN("Viewer"), JA("ビューア"), ZH_HANS("查看器"), ZH_HANT("檢視器"), KO("뷰어"),
+    DE("Betrachter"), FR("Visionneuse"), ES("Visor"), PT("Visualizador"),
+    IT("Visualizzatore"), NL("Viewer"), RU("Просмотр"), TR("Görüntüleyici"));
+
+SS_MSG(vram_cat_other,
+    EN("Other"), JA("その他"), ZH_HANS("其他"), ZH_HANT("其他"), KO("기타"),
+    DE("Sonstiges"), FR("Autre"), ES("Otros"), PT("Outros"), IT("Altro"),
+    NL("Overig"), RU("Прочее"), TR("Diğer"));
+
+SS_MSG(vram_cat_scratch,
+    EN("Sort scratch"), JA("ソート用の作業領域"), ZH_HANS("排序临时缓冲"),
+    ZH_HANT("排序暫存緩衝"), KO("정렬 작업 공간"), DE("Sortierpuffer"),
+    FR("Tampon de tri"), ES("Búfer de ordenación"), PT("Buffer de ordenação"),
+    IT("Buffer di ordinamento"), NL("Sorteerbuffer"), RU("Буфер сортировки"),
+    TR("Sıralama tamponu"));
+
+SS_MSG(vram_cat_unpooled,
+    EN("Backend and staging"), JA("バックエンドと転送用"), ZH_HANS("后端与中转"),
+    ZH_HANT("後端與中轉"), KO("백엔드와 전송용"), DE("Backend und Staging"),
+    FR("Backend et transfert"), ES("Backend y transferencia"),
+    PT("Backend e transferência"), IT("Backend e trasferimento"),
+    NL("Backend en staging"), RU("Бэкенд и передача"), TR("Arka uç ve aktarım"));
 
 // ===========================================================================
 // Log panel
@@ -9343,6 +9911,80 @@ SS_MSG(fd_replace_yes,
     RU("Заменить"),
     TR("Değiştir"));
 
+
+SS_MSG(seed_cloud_restore,
+    EN("Use dataset points"), JA("データセットの点群に戻す"), ZH_HANS("恢复数据集点云"), ZH_HANT("恢復資料集點雲"),
+    KO("데이터셋 점 구름 복원"), DE("Datensatzpunkte verwenden"), FR("Utiliser les points du jeu de données"),
+    ES("Usar puntos del conjunto de datos"), PT("Usar pontos do conjunto de dados"), IT("Usa i punti del set di dati"),
+    NL("Datasetpunten gebruiken"), RU("Использовать точки набора данных"), TR("Veri kümesi noktalarını kullan"));
+SS_MSG(seed_source_dataset,
+    EN("Point source: dataset point cloud."), JA("点群の読み込み元：データセット。"),
+    ZH_HANS("点云来源：数据集自带点云。"), ZH_HANT("點雲來源：資料集自帶點雲。"), KO("점 구름 출처: 데이터셋."),
+    DE("Punktquelle: Datensatzpunktwolke."), FR("Source des points : nuage du jeu de données."),
+    ES("Origen de puntos: nube del conjunto de datos."), PT("Origem dos pontos: nuvem do conjunto de dados."),
+    IT("Origine dei punti: nuvola del set di dati."), NL("Puntbron: datasetpuntenwolk."),
+    RU("Источник точек: облако набора данных."), TR("Nokta kaynağı: veri kümesi bulutu."));
+SS_MSG(seed_source_external,
+    EN("Point source: external PLY ({0})."), JA("点群の読み込み元：外部 PLY（{0}）。"),
+    ZH_HANS("点云来源：外部 PLY（{0}）。"), ZH_HANT("點雲來源：外部 PLY（{0}）。"), KO("점 구름 출처: 외부 PLY ({0})."),
+    DE("Punktquelle: externes PLY ({0})."), FR("Source des points : PLY externe ({0})."),
+    ES("Origen de puntos: PLY externo ({0})."), PT("Origem dos pontos: PLY externo ({0})."),
+    IT("Origine dei punti: PLY esterno ({0})."), NL("Puntbron: extern PLY ({0})."),
+    RU("Источник точек: внешний PLY ({0})."), TR("Nokta kaynağı: harici PLY ({0})."));
+SS_MSG(seed_source_random,
+    EN("Point source: random initialization."), JA("点群の読み込み元：ランダム初期化。"),
+    ZH_HANS("点云来源：随机初始化。"), ZH_HANT("點雲來源：隨機初始化。"), KO("점 구름 출처: 무작위 초기화."),
+    DE("Punktquelle: zufällige Initialisierung."), FR("Source des points : initialisation aléatoire."),
+    ES("Origen de puntos: inicialización aleatoria."), PT("Origem dos pontos: inicialização aleatória."),
+    IT("Origine dei punti: inizializzazione casuale."), NL("Puntbron: willekeurige initialisatie."),
+    RU("Источник точек: случайная инициализация."), TR("Nokta kaynağı: rastgele başlatma."));
+SS_MSG(seed_source_auto,
+    EN("Point source: dataset cloud, or random points if none is available."),
+    JA("点群の読み込み元：データセット。点群がない場合はランダムに初期化します。"),
+    ZH_HANS("点云来源：数据集；没有点云时自动随机初始化。"), ZH_HANT("點雲來源：資料集；沒有點雲時自動隨機初始化。"),
+    KO("점 구름 출처: 데이터셋. 점 구름이 없으면 무작위로 초기화합니다."),
+    DE("Punktquelle: Datensatz; ohne Punktwolke zufällige Punkte."),
+    FR("Source des points : jeu de données, ou points aléatoires en l'absence de nuage."),
+    ES("Origen de puntos: conjunto de datos, o puntos aleatorios si no hay nube."),
+    PT("Origem dos pontos: conjunto de dados, ou pontos aleatórios se não houver nuvem."),
+    IT("Origine dei punti: set di dati, o punti casuali se non è disponibile una nuvola."),
+    NL("Puntbron: dataset, of willekeurige punten als er geen puntenwolk is."),
+    RU("Источник точек: набор данных; при отсутствии облака — случайные точки."),
+    TR("Nokta kaynağı: veri kümesi; bulut yoksa rastgele noktalar."));
+SS_MSG(seed_source_resume,
+    EN("Initialization: restore Gaussians from the checkpoint."), JA("初期化：チェックポイントのガウシアンを復元します。"),
+    ZH_HANS("初始化来源：恢复检查点中的高斯。"), ZH_HANT("初始化來源：恢復檢查點中的高斯。"), KO("초기화: 체크포인트의 가우시안을 복원합니다."),
+    DE("Initialisierung: Gaussians aus dem Checkpoint wiederherstellen."), FR("Initialisation : restaurer les gaussiennes du checkpoint."),
+    ES("Inicialización: restaurar gaussianas del checkpoint."), PT("Inicialização: restaurar gaussianas do checkpoint."),
+    IT("Inizializzazione: ripristina le gaussiane dal checkpoint."), NL("Initialisatie: Gaussians uit checkpoint herstellen."),
+    RU("Инициализация: восстановление гауссиан из контрольной точки."), TR("Başlatma: kontrol noktasından Gaussianları geri yükle."));
+SS_MSG(seed_source_splat,
+    EN("Initialization: existing Gaussian PLY."), JA("初期化：既存のガウシアン PLY。"),
+    ZH_HANS("初始化来源：已有高斯 PLY。"), ZH_HANT("初始化來源：已有高斯 PLY。"), KO("초기화: 기존 가우시안 PLY."),
+    DE("Initialisierung: vorhandenes Gaussian-PLY."), FR("Initialisation : PLY gaussien existant."),
+    ES("Inicialización: PLY gaussiano existente."), PT("Inicialização: PLY gaussiano existente."),
+    IT("Inizializzazione: PLY gaussiano esistente."), NL("Initialisatie: bestaand Gaussian-PLY."),
+    RU("Инициализация: существующий PLY гауссиан."), TR("Başlatma: mevcut Gaussian PLY."));
+SS_MSG(seed_source_splat_add,
+    EN("Initialization: existing Gaussian PLY plus point seeds."), JA("初期化：既存のガウシアン PLY に初期点群を追加します。"),
+    ZH_HANS("初始化来源：已有高斯 PLY，同时追加点云。"), ZH_HANT("初始化來源：已有高斯 PLY，同時追加點雲。"), KO("초기화: 기존 가우시안 PLY에 초기 점 구름 추가."),
+    DE("Initialisierung: vorhandenes Gaussian-PLY mit zusätzlichen Startpunkten."),
+    FR("Initialisation : PLY gaussien existant et points initiaux supplémentaires."),
+    ES("Inicialización: PLY gaussiano existente y puntos iniciales adicionales."),
+    PT("Inicialização: PLY gaussiano existente e pontos iniciais adicionais."),
+    IT("Inizializzazione: PLY gaussiano esistente e punti iniziali aggiuntivi."),
+    NL("Initialisatie: bestaand Gaussian-PLY plus startpunten."),
+    RU("Инициализация: существующий PLY гауссиан с добавлением начальных точек."), TR("Başlatma: mevcut Gaussian PLY ve ek başlangıç noktaları."));
+SS_MSG(seed_cloud_unused,
+    EN("The selected external cloud is not used for this initialization."), JA("選択した外部点群は今回の初期化には使われません。"),
+    ZH_HANS("所选外部点云不参与本次初始化。"), ZH_HANT("所選外部點雲不參與本次初始化。"), KO("선택한 외부 점 구름은 이번 초기화에 사용되지 않습니다."),
+    DE("Die gewählte externe Punktwolke wird für diese Initialisierung nicht verwendet."),
+    FR("Le nuage externe sélectionné n'est pas utilisé pour cette initialisation."),
+    ES("La nube externa seleccionada no se usa en esta inicialización."),
+    PT("A nuvem externa selecionada não é usada nesta inicialização."),
+    IT("La nuvola esterna selezionata non viene usata per questa inizializzazione."),
+    NL("De geselecteerde externe puntenwolk wordt niet voor deze initialisatie gebruikt."),
+    RU("Выбранное внешнее облако не используется для этой инициализации."), TR("Seçilen harici bulut bu başlatmada kullanılmaz."));
 
 }  // namespace gui
 }  // namespace msg

@@ -137,6 +137,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
     [[maybe_unused]] const float eps_tr,
     // Non-SH Adam-state quantization bundle. Only read when non_sh_quant is on.
     const NonShQuantState non_sh,
+    const SplatVisitState visit,
     // Block-wise QUANTIZED gradient input (non-FPBO grad-quant path). For each
     // attribute whose *_packed is non-null the per-splat grad is decoded from
     // the codec instead of the fp32 v_* buffer (which is unallocated then);
@@ -211,6 +212,15 @@ __global__ void fused_optim_3dgs_geometry_kernel(
         else                  { gd_quat = v_quats[idx]; }
         if (gq.opac_packed)   { float _v[1]; gradq::Codec<16>::decode(gq.opac_packed,   (int64_t)1*idx, 1, gq.opac_bounds[blockIdx.x],   _v); gd_opac  = _v[0]; }
         else                  { gd_opac = v_opacities[idx]; }
+        const bool rendered = gd_opac != 0.0f;
+        if (visit.counters != nullptr)
+            visit.counters[idx] = visit_step(visit.counters[idx], rendered);
+        const bool regularize = !(visit.skip_unrendered_reg && !rendered);
+        if (!regularize) {
+            v_scale = make_float3(0.0f);
+            v_quat = make_float4(0.0f);
+            v_opac = 0.0f;
+        }
         v_scale += grad_scale * gd_scale;
         v_quat  += grad_scale * gd_quat;
         v_opac  += grad_scale * gd_opac;
@@ -229,7 +239,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
             g1_scale = g1_scales[idx];
             g2_scale = g2_scales[idx];
         }
-        if (radii != nullptr)
+        if (radii != nullptr && regularize)
             v_scale += screen_size_hinge_grad(
                 radii[idx], max_screen_size, max_screen_size_penalty, scale,
                 sqrtf(g2_scale * inv_bias_correction2) + eps);
@@ -446,6 +456,7 @@ void fused_optim_3dgs_geometry(
     bool use_scale_agnostic_mean,
     ColorTrustState color_trust,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     GradQuantBuffers gq,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
     float grad_scale, bool zero_grad
@@ -470,6 +481,7 @@ void fused_optim_3dgs_geometry(
         const float, const float, const float, const float,
         const float,
         const NonShQuantState,
+        const SplatVisitState,
         const GradQuantBuffers,
         const int32_t, const int32_t*, const int64_t);
     KFn kfn = nullptr;
@@ -509,6 +521,7 @@ void fused_optim_3dgs_geometry(
         grad_scale,
         color_trust.eps_tr,
         non_sh,
+        visit,
         gq,
         step, per_splat_steps.data_ptr(), num_splats
     );

@@ -197,7 +197,8 @@ matches the full model.
    present and are concatenated. Hard ownership, no feathering.
 9. **Region of interest while training**: a partitioned run hands its part's
    label region to the engine (`engine_set_region`), and `--roi-region` hands
-   any region JSON. At every refine step `region_weight_tensor` evaluates the
+   any region JSON -- by default the first one the ROI editor saved in the
+   dataset's `roi/` (docs/notes/roi-editor.md), intersected with the part's. At every refine step `region_weight_tensor` evaluates the
    compiled program at every splat centre -- normal oriented by the nearest
    training camera -- and a splat outside draws for relocation and growth
    with `--roi-outside-weight` (1e-4) instead of 1, in both the revised and
@@ -238,16 +239,17 @@ without any naming convention.
 ## Regions (`data/Region.h`, `data/RegionProgram.h`)
 
 The ownership field is one `Region` among several: `BoxRegion` (oriented),
-`SphereRegion`, `HalfSpaceRegion`, `MeshRegion` (closed mesh, ray parity over
-a BVH), `LabelRegion` (one label of a `LabelField`) and `CsgRegion` (union,
-intersection, difference, complement). Every kind serializes through
+`SphereRegion`, the ROI editor's `EllipsoidRegion`, `CylinderRegion` and
+`PrismRegion` (an extruded polygon), `HalfSpaceRegion`, `MeshRegion` (closed
+mesh, ray parity over a BVH), `LabelRegion` (one label of a `LabelField`) and
+`CsgRegion` (union, intersection, difference, complement). Every kind serializes through
 `region_to_json` / `region_from_json`, and `contains_many` answers a whole
 splat array in parallel on the host. Every kind but the mesh also compiles
 (`compile_region`) to a post-order program of float4 nodes that
 `shaders/region.slang` evaluates on both backends in one kernel, with the
-label field's seeds and BVH as two more float4 arrays uploaded once per run.
-A region built from the editor's selection tools would go through the same
-seam. Constants and layouts live in the shader; `data/LabelField.cpp` and
+label field's seeds and BVH as two more float4 arrays uploaded once per run;
+a prism's polygon follows its node as whole payload nodes the evaluator steps
+over. Constants and layouts live in the shader; `data/LabelField.cpp` and
 `data/RegionProgram.cpp` are its host mirrors and `region_parity` pins them.
 
 ## The GUI

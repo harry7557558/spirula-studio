@@ -106,6 +106,51 @@ public:
     bool emit(RegionProgram& out, std::string& error) const override;
 };
 
+// The box's frame and half extents, inside where sum (q_k / half_k)^2 <= 1.
+class EllipsoidRegion : public Region {
+public:
+    double center[3] = {0, 0, 0};
+    double half[3] = {1, 1, 1};
+    double R[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    bool contains(const double p[3]) const override;
+    Aabb bounds() const override;
+    const char* kind() const override { return "ellipsoid"; }
+    void write_json(JsonWriter& w) const override;
+    bool emit(RegionProgram& out, std::string& error) const override;
+};
+
+// An elliptic cylinder along the frame's third axis: (q0/half0)^2 +
+// (q1/half1)^2 <= 1 and |q2| <= half2.
+class CylinderRegion : public Region {
+public:
+    double center[3] = {0, 0, 0};
+    double half[3] = {1, 1, 1};
+    double R[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    bool contains(const double p[3]) const override;
+    Aabb bounds() const override;
+    const char* kind() const override { return "cylinder"; }
+    void write_json(JsonWriter& w) const override;
+    bool emit(RegionProgram& out, std::string& error) const override;
+};
+
+// A polygon in the frame's first two axes, extruded over |q2| <= half_height.
+// Even-odd rule, so an outline that crosses itself still has an answer.
+class PrismRegion : public Region {
+public:
+    double center[3] = {0, 0, 0};
+    double R[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    double half_height = 1;
+    std::vector<double> polygon;   // x,y pairs in the frame, about `center`
+    bool contains(const double p[3]) const override;
+    Aabb bounds() const override;
+    const char* kind() const override { return "prism"; }
+    void write_json(JsonWriter& w) const override;
+    bool emit(RegionProgram& out, std::string& error) const override;
+};
+
+// Even-odd point in polygon, `poly` x,y pairs.
+bool polygon_contains(const double* poly, size_t num_vertices, double x, double y);
+
 // n . p + d >= 0 is inside.
 class HalfSpaceRegion : public Region {
 public:

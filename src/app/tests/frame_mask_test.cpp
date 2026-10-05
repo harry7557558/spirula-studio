@@ -1,15 +1,19 @@
 // frame_mask_test -- app/FrameMask.h shapes with no GUI: the even-odd fill
 // in core/PolygonFill.h against a ray cast, the path spelling round trip,
 // the path fill on a non-square frame, the ordered composition rule, brush
-// strokes, and the SVG file form (app/FrameMaskSvg.h).
+// strokes, pen curves, the SVG file form (app/FrameMaskSvg.h), and a
+// stencil resolved per camera folder.
 
 #include "app/FrameMask.h"
 #include "app/FrameMaskSvg.h"
+#include "core/CubicBezier.h"
 #include "core/PolygonFill.h"
 #include "core/SourcePath.h"
+#include "external/stb_image_write.h"
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -491,6 +495,277 @@ void test_svg_hand_made() {
     check(!app::read_mask_svg("hello", out, title, err), "not an SVG is refused");
 }
 
+void test_border_adjustment() {
+    constexpr int W = 160, H = 200;
+    app::BorderAccumulator acc;
+    std::vector<uint8_t> pixels(W * H, 0);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            if (std::hypot(float(x - 76), float(y - 105)) < 68.0f)
+                pixels[y * W + x] = 180;
+    acc.add(pixels.data(), W, H, 1);
+    acc.add(pixels.data(), W, H, 1);
+    app::BorderDetectOptions options;
+    options.shrink = 0.0f;
+    const auto raw = acc.finish(options);
+    check(raw.found, "border: offset circle detected in a portrait frame");
+    if (!raw.found) return;
+
+    for (float amount : {-0.1f, 0.0f, 0.12f, 0.3f, 0.6f}) {
+        options.shrink = amount;
+        const auto batch = acc.finish(options);
+        const auto preview = app::shrink_border(raw.shape, amount);
+        check(batch.found && raster({batch.shape}, W, H) == raster({preview}, W, H),
+              "border: preview and batch agree at " + std::to_string(amount));
+    }
+    const auto small_shrink = raster({app::shrink_border(raw.shape, 0.12f)}, W, H);
+    const auto large_shrink = raster({app::shrink_border(raw.shape, 0.3f)}, W, H);
+    check(small_shrink[105 * W + 132] == 255 && large_shrink[105 * W + 132] == 0 &&
+              large_shrink[105 * W + 76] == 255,
+          "border: extended shrink removes the remaining rim while keeping the centre");
+
+    app::FrameStencil stencil;
+    stencil.detect_border = true;
+    stencil.shrink = 0.3f;
+    app::MaskShape remove;
+    remove.kind = app::MaskShape::Kind::Rect;
+    remove.remove = true;
+    remove.cx = 0.4f; remove.cy = 0.4f;
+    remove.rx = 0.6f; remove.ry = 0.6f;
+    stencil.mask.shapes.push_back(remove);
+    stencil.mask.image = "stencil.png";
+    const auto before = raster({app::shrink_border(raw.shape, stencil.shrink), remove}, W, H);
+    check(!app::edit_detected_border(stencil, app::BorderDetect{}),
+          "border: failed detection cannot become an editable ellipse");
+    check(app::edit_detected_border(stencil, raw) && !stencil.detect_border &&
+              stencil.mask.image == "stencil.png" && stencil.mask.shapes.size() == 2 &&
+              raster(stencil.mask.shapes, W, H) == before,
+          "border: conversion preserves the mask, image stencil and shape order");
+    check(!app::edit_detected_border(stencil, raw) && stencil.mask.shapes.size() == 2,
+          "border: conversion cannot insert the border twice");
+    auto& ellipse = stencil.mask.shapes.front();
+    ellipse.cx += 0.05f;
+    ellipse.ry *= 0.9f;
+    std::vector<app::MaskShape> restored;
+    std::string error;
+    check(app::parse_mask_shapes(app::format_mask_shapes(stencil.mask.shapes), restored, error) &&
+              raster(restored, W, H) == raster(stencil.mask.shapes, W, H),
+          "border: manually adjusted ellipse survives serialization");
+}
+
+// A circle as four cubics (the 0.5523 handle length), set against the
+// ellipse it approximates to within 0.03% of its radius.
+app::MaskShape bezier_circle(float cx, float cy, float r, bool remove) {
+    const float k = 0.5522847f * r;
+    app::MaskShape s;
+    s.kind = app::MaskShape::Kind::Bezier;
+    s.remove = remove;
+    s.pts = {cx - k, cy - r, cx, cy - r, cx + k, cy - r,
+             cx + r, cy - k, cx + r, cy, cx + r, cy + k,
+             cx + k, cy + r, cx, cy + r, cx - k, cy + r,
+             cx - r, cy + k, cx - r, cy, cx - r, cy - k};
+    return s;
+}
+
+void test_bezier() {
+    const int W = 200, H = 200;
+    app::MaskShape e;
+    e.kind = app::MaskShape::Kind::Ellipse;
+    e.remove = true;
+    e.cx = e.cy = 0.5f;
+    e.rx = e.ry = 0.3f;
+    const app::MaskShape c = bezier_circle(0.5f, 0.5f, 0.3f, true);
+    const std::vector<uint8_t> a = raster({e}, W, H), b = raster({c}, W, H);
+    size_t differ = 0, removed = 0;
+    for (size_t i = 0; i < a.size(); i++) {
+        differ += a[i] != b[i];
+        removed += b[i] == 0;
+    }
+    // Pixel centres within the flattening tolerance of the edge may go either way.
+    check(differ <= 40 && removed > 10000,
+          "bezier: four cubics fill the circle they approximate (" + std::to_string(differ) +
+              " of " + std::to_string(removed) + " pixels differ)");
+
+    // Corners only: the same polygon as a path, pixel for pixel.
+    app::MaskShape square, path;
+    square.kind = app::MaskShape::Kind::Bezier;
+    path.kind = app::MaskShape::Kind::Path;
+    square.remove = path.remove = true;
+    const float corners[] = {0.2f, 0.1f, 0.7f, 0.3f, 0.4f, 0.9f};
+    for (int k = 0; k < 3; k++) {
+        const float x = corners[2 * k], y = corners[2 * k + 1];
+        square.pts.insert(square.pts.end(), {x, y, x, y, x, y});
+        path.pts.insert(path.pts.end(), {x, y});
+    }
+    check(raster({square}, 97, 61) == raster({path}, 97, 61),
+          "bezier: straight segments fill exactly as the polygon does");
+
+    std::vector<app::MaskShape> back;
+    std::string err;
+    const std::string spec = app::format_mask_shapes({c, square});
+    check(app::parse_mask_shapes(spec, back, err) && back.size() == 2 &&
+              back[0].kind == app::MaskShape::Kind::Bezier && back[0].pts.size() == c.pts.size() &&
+              raster(back, W, H) == raster({c, square}, W, H),
+          "bezier: spelling round trip -- " + spec.substr(0, 40) + "...");
+    check(!app::parse_mask_shapes("bezier 0,0,0.5,0.5,1,1", back, err) &&
+              !app::parse_mask_shapes("bezier 0,0,0.5,0.5,1,1,0,0,0.5,0.5,1,1,0", back, err),
+          "bezier: one anchor, or a count not a multiple of six, is refused");
+
+    // SVG: a pen shape writes C commands and reads back as the same curve.
+    const std::string svg = app::write_mask_svg({c, square}, "curves");
+    std::string title;
+    err.clear();
+    check(svg.find(" C") != std::string::npos && app::read_mask_svg(svg, back, title, err) &&
+              back.size() == 2 && back[0].kind == app::MaskShape::Kind::Bezier &&
+              back[1].kind == app::MaskShape::Kind::Bezier &&
+              back[0].pts.size() == c.pts.size() && back[1].pts.size() == square.pts.size(),
+          "bezier svg: both come back as curves with their anchor counts: " + err);
+    float worst = 0.0f;
+    for (size_t i = 0; i < back[0].pts.size() && i < c.pts.size(); i++)
+        worst = std::max(worst, std::fabs(back[0].pts[i] - c.pts[i]));
+    check(worst < 1e-5f, "bezier svg: every handle to within 1e-5 (" + std::to_string(worst) + ")");
+    check(raster(back, W, H) == raster({c, square}, W, H), "bezier svg: identical raster");
+
+    // Hand-made: an open-ended C/L/Q outline, and a closed one that returns
+    // to its start, whose last anchor merges into the first.
+    const std::string hand =
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+        "<path d='M10 10 C 20 0, 40 0, 50 10 L 50 50 Q 30 70 10 50 Z'/>"
+        "<path d='M10 10 C 20 0 40 0 50 10 C 60 20 60 40 50 50 C 40 60 20 60 10 50 C 0 40 0 20 "
+        "10 10 Z'/>"
+        "</svg>";
+    check(app::read_mask_svg(hand, back, title, err) && back.size() == 2 &&
+              back[0].kind == app::MaskShape::Kind::Bezier && back[0].pts.size() == 24 &&
+              back[1].kind == app::MaskShape::Kind::Bezier && back[1].pts.size() == 24,
+          "bezier svg: hand-made curves keep their four anchors each: " + err);
+    if (back.size() == 2 && back[1].pts.size() == 24)
+        check(std::fabs(back[1].pts[0] - 0.0f) < 1e-6f && std::fabs(back[1].pts[1] - 0.2f) < 1e-6f,
+              "bezier svg: the returning curve's last handle becomes the first anchor's in-handle");
+    if (back.size() == 2 && back[0].pts.size() == 24)
+        check(std::fabs(back[0].pts[18 + 0] - (0.1f + 2.0f / 3.0f * 0.2f)) < 1e-5f &&
+                  std::fabs(back[0].pts[18 + 1] - (0.5f + 2.0f / 3.0f * 0.2f)) < 1e-5f,
+              "bezier svg: a quadratic is raised to the cubic with the same shape");
+}
+
+void test_per_camera_stencil() {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "spirula_frame_mask_test_cameras";
+    std::error_code ec;
+    fs::remove_all(root, ec);
+    const int W = 20, H = 10;
+    const std::vector<uint8_t> grey((size_t)W * H * 3, 128);
+    for (const char* cam : {"cam0", "cam1", "cam2"}) {
+        fs::create_directories(root / "images" / cam, ec);
+        stbi_write_png((root / "images" / cam / "f.png").string().c_str(), W, H, 3, grey.data(),
+                       W * 3);
+    }
+    app::MaskShape left, right;
+    left.kind = right.kind = app::MaskShape::Kind::Rect;
+    left.remove = right.remove = true;
+    left.cx = 0.0f; left.cy = 0.0f; left.rx = 0.5f; left.ry = 1.0f;
+    right.cx = 0.5f; right.cy = 0.0f; right.rx = 1.0f; right.ry = 1.0f;
+
+    app::FrameStencilRun run;
+    run.image_dir = (root / "images").string();
+    run.mask_dir = (root / "masks").string();
+    run.stencil.mask.shapes = {left};
+    run.stencil.cameras["cam1"].mask.shapes = {right};
+    run.stencil.cameras["cam2"] = app::CameraStencil{};
+    check(&run.stencil.for_camera("cam0") == &run.stencil &&
+              run.stencil.for_camera("cam1").mask.shapes.size() == 1,
+          "per camera: a listed camera has its own, the rest share the input's");
+    std::vector<std::string> seen;
+    app::FrameStencilSinks sinks;
+    sinks.camera = [&](const std::string& rel, int64_t) { seen.push_back(rel); };
+    std::string err;
+    const int64_t written = app::apply_frame_stencil(run, sinks, err);
+    check(written == 2 && seen.size() == 3,
+          "per camera: cam2's empty stencil writes nothing (" + std::to_string(written) + ")");
+    auto kept = [&](const char* cam, int x) {
+        int w = 0, h = 0;
+        std::vector<uint8_t> m;
+        if (!app::load_stencil((root / "masks" / cam / "f.png").string(), w, h, m)) return -1;
+        return m[(size_t)(h / 2) * w + x] ? 1 : 0;
+    };
+    check(kept("cam0", 2) == 0 && kept("cam0", 17) == 1,
+          "per camera: cam0 takes the input's shapes, the left half out");
+    check(kept("cam1", 2) == 1 && kept("cam1", 17) == 0,
+          "per camera: cam1 takes its own, the right half out");
+    check(!fs::exists(root / "masks" / "cam2" / "f.png"), "per camera: cam2 has no mask");
+    fs::remove_all(root, ec);
+}
+
+// One file per camera: data-camera says whose it is, a file that names a
+// camera brings its set's others, and a stencil goes to a set and back.
+void test_camera_sets() {
+    namespace fs = std::filesystem;
+    app::MaskShape box;
+    box.kind = app::MaskShape::Kind::Rect;
+    box.remove = true;
+    box.cx = 0.1f; box.cy = 0.1f; box.rx = 0.4f; box.ry = 0.4f;
+    std::vector<app::MaskShape> back;
+    std::string title, camera, err;
+    const std::string one = app::write_mask_svg({box}, "Rig", "cam0/sub & more");
+    check(app::read_mask_svg(one, back, title, err, &camera) && camera == "cam0/sub & more" &&
+              title == "Rig" && back.size() == 1,
+          "camera sets: data-camera round trip, '/' and '&' included");
+    check(app::read_mask_svg(app::write_mask_svg({box}, "Rig"), back, title, err, &camera) &&
+              camera.empty(),
+          "camera sets: a file for every camera names none");
+
+    const fs::path dir = fs::temp_directory_path() / "spirula_frame_mask_test_sets";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    app::MaskShape wide = box;
+    wide.rx = 0.9f;
+    app::save_mask_svg((dir / "a-cam0.svg").string(), {box}, "Rig", err, "cam0");
+    app::save_mask_svg((dir / "a-cam1.svg").string(), {box, wide}, "Rig", err, "cam1");
+    app::save_mask_svg((dir / "other-cam2.svg").string(), {box}, "Other rig", err, "cam2");
+    app::save_mask_svg((dir / "shared.svg").string(), {wide}, "Rig", err);
+    app::MaskSet set;
+    check(app::load_mask_svg_set((dir / "a-cam1.svg").string(), set, title, err) &&
+              set.cameras.size() == 2 && set.cameras["cam0"].size() == 1 &&
+              set.cameras["cam1"].size() == 2 && set.shapes.empty(),
+          "camera sets: one file brings its set, not another title's nor a shared file");
+    check(app::load_mask_svg_set((dir / "shared.svg").string(), set, title, err) &&
+              !set.per_camera() && set.shapes.size() == 1,
+          "camera sets: a file naming no camera stands alone");
+    fs::remove_all(dir, ec);
+
+    app::FrameStencil st;
+    st.detect_border = true;
+    st.mask.shapes = {wide};
+    set = app::MaskSet{};
+    set.cameras["cam0"] = {box};
+    set.cameras["cam1"] = {};
+    app::apply_mask_set(st, set);
+    check(st.mask.shapes.empty() && st.cameras.size() == 2 &&
+              st.cameras["cam0"].mask.shapes.size() == 1 && st.cameras["cam1"].mask.shapes.empty() &&
+              st.cameras["cam0"].detect_border,
+          "camera sets: applied, each named camera its own, borders kept");
+    app::FrameStencil ring;
+    ring.detect_border = true;
+    app::MaskShape lens;
+    lens.kind = app::MaskShape::Kind::Ellipse;
+    lens.cx = lens.cy = 0.5f;
+    lens.rx = lens.ry = 0.45f;
+    app::MaskSet edited;
+    edited.cameras["cam0"] = {lens, box};
+    edited.cameras["cam1"] = {box};
+    app::apply_mask_set(ring, edited);
+    check(!ring.cameras["cam0"].detect_border && ring.cameras["cam1"].detect_border,
+          "camera sets: a list that keeps first turns its camera's fit off, the other keeps it");
+    const app::MaskSet round = app::mask_set_of(st);
+    check(round.per_camera() && round.cameras.size() == 2 &&
+              round.cameras.at("cam0").size() == 1,
+          "camera sets: cameras that differ stay per camera");
+    st.cameras["cam1"].mask.shapes = {box};
+    const app::MaskSet same = app::mask_set_of(st);
+    check(!same.per_camera() && same.shapes.size() == 1,
+          "camera sets: cameras that agree are one list");
+}
+
 }  // namespace
 
 int main() {
@@ -503,6 +778,10 @@ int main() {
     test_stroke_fill();
     test_svg_round_trip();
     test_svg_hand_made();
+    test_border_adjustment();
+    test_bezier();
+    test_per_camera_stencil();
+    test_camera_sets();
     std::printf("%s: %d failure(s)\n", SS_FILE, g_failures);
     return g_failures;
 }

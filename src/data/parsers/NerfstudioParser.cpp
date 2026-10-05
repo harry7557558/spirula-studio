@@ -486,7 +486,9 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
 
     // ---- Seed points ------------------------------------------------------
     ColmapPoints3D points;
-    {
+    if (!cfg.seed_pointcloud.empty()) {
+        points = dsparse::read_seed_pointcloud(dataset_dir, cfg.seed_pointcloud);
+    } else {
         std::string ply_rel;
         if (const JsonValue* v = meta.find("ply_file_path")) ply_rel = v->as_string();
         else {

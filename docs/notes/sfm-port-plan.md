@@ -34,7 +34,7 @@ It replaces `src/app/gui/ColmapRunner.cpp`'s COLMAP half: `colmap
 feature_extractor / *_matcher / mapper / model_merger / bundle_adjuster`, the
 vocabulary-tree download, and the COLMAP version check. It does **not** replace
 ColmapRunner's other half — ffmpeg frame extraction, sharpest-frame selection,
-multi-track `.insv` splitting, and AI masking via `reference/scripts/mask.py` — which is
+multi-track `.insv` splitting, and AI masking — which is
 shared, not COLMAP-specific, and gets factored out for both paths (phase 5).
 
 Output is unchanged in kind: `<workspace>/sparse/0/{cameras,images,points3D}.bin`
@@ -269,8 +269,8 @@ The user installs nothing either way: the child is our own binary, found via
 `AppPaths::exe_path`, not via PATH.
 
 Everything else landed as written: `DatasetPrep` (item 1, and it grew built-in
-video decoding and masking with the ffmpeg/Python subprocesses kept as
-fallbacks), `Screen::NewDataset` and the engine selector (item 3), the beginner
+video decoding with the ffmpeg subprocess kept as a fallback, and in-process
+masking), `Screen::NewDataset` and the engine selector (item 3), the beginner
 panel with its auto-detection (item 4), and the settings persistence (item 6).
 
 Item 5 — the "All SfM options" editor over the phase-2 descriptor table — was

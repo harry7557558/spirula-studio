@@ -684,6 +684,22 @@ SS_MSG(error_line,
     RU("ошибка: {0}"),
     TR("hata: {0}"));
 
+// {0} is a URL.
+SS_MSG(details_line,
+    EN("Details: {0}"),
+    JA("詳細: {0}"),
+    ZH_HANS("详情：{0}"),
+    ZH_HANT("詳情：{0}"),
+    KO("자세한 내용: {0}"),
+    DE("Details: {0}"),
+    FR("Détails : {0}"),
+    ES("Detalles: {0}"),
+    PT("Detalhes: {0}"),
+    IT("Dettagli: {0}"),
+    NL("Details: {0}"),
+    RU("Подробности: {0}"),
+    TR("Ayrıntılar: {0}"));
+
 
 // ===========================================================================
 // `spirula sam` -- what a run says around its own work
@@ -927,48 +943,6 @@ SS_MSG(sam_no_video_decoder,
     TR("bu derlemede süreç içi video çözücü yok: yalnızca "
        "-DSS_ENABLE_PATENTED=ON ile derlenir (bkz. cmake/SsOptions.cmake). Bir "
        "dosyayı incelemek ya da kare çıkarmak için ffmpeg kullanın."));
-
-SS_MSG(sam_extract_needs_decoder,
-    EN("`extract` needs the in-process video decoder, which is compiled only "
-       "with -DSS_ENABLE_PATENTED=ON (see cmake/SsOptions.cmake). Extract "
-       "frames with ffmpeg and mask them with `{0} track` instead."),
-    JA("`extract` にはプロセス内の動画デコーダーが必要ですが、これは "
-       "-DSS_ENABLE_PATENTED=ON でのみ組み込まれます（cmake/SsOptions.cmake 参照）。"
-       "ffmpeg でフレームを取り出し、`{0} track` でマスクしてください。"),
-    ZH_HANS("`extract` 需要进程内视频解码器，而它只在 -DSS_ENABLE_PATENTED=ON 时编译"
-            "（见 cmake/SsOptions.cmake）。请用 ffmpeg 提取帧，再用 `{0} track` 遮罩。"),
-    ZH_HANT("`extract` 需要行程內視訊解碼器，而它只在 -DSS_ENABLE_PATENTED=ON 時編譯"
-            "（見 cmake/SsOptions.cmake）。請用 ffmpeg 擷取影格，再用 `{0} track` 遮罩。"),
-    KO("`extract` 에는 프로세스 내 비디오 디코더가 필요한데, 이는 "
-       "-DSS_ENABLE_PATENTED=ON 일 때만 컴파일됩니다(cmake/SsOptions.cmake 참고). "
-       "ffmpeg 으로 프레임을 뽑고 `{0} track` 으로 마스크하세요."),
-    DE("`extract` braucht den prozessinternen Videodekoder, der nur mit "
-       "-DSS_ENABLE_PATENTED=ON übersetzt wird (siehe cmake/SsOptions.cmake). "
-       "Entnehmen Sie die Einzelbilder mit ffmpeg und maskieren Sie sie mit "
-       "`{0} track`."),
-    FR("`extract` a besoin du décodeur vidéo intégré, qui n'est compilé qu'avec "
-       "-DSS_ENABLE_PATENTED=ON (voir cmake/SsOptions.cmake). Extrayez les "
-       "images avec ffmpeg et masquez-les avec `{0} track`."),
-    ES("`extract` necesita el descodificador de vídeo del propio proceso, que "
-       "solo se compila con -DSS_ENABLE_PATENTED=ON (mira "
-       "cmake/SsOptions.cmake). Extrae los fotogramas con ffmpeg y enmascáralos "
-       "con `{0} track`."),
-    PT("`extract` precisa do decodificador de vídeo no próprio processo, que só "
-       "é compilado com -DSS_ENABLE_PATENTED=ON (veja cmake/SsOptions.cmake). "
-       "Extraia os quadros com o ffmpeg e mascare-os com `{0} track`."),
-    IT("`extract` richiede il decodificatore video nel processo, compilato solo "
-       "con -DSS_ENABLE_PATENTED=ON (veda cmake/SsOptions.cmake). Estragga i "
-       "fotogrammi con ffmpeg e li mascheri con `{0} track`."),
-    NL("`extract` heeft de videodecoder in het proces zelf nodig, die alleen "
-       "met -DSS_ENABLE_PATENTED=ON gecompileerd wordt (zie "
-       "cmake/SsOptions.cmake). Haal de beelden eruit met ffmpeg en maskeer ze "
-       "met `{0} track`."),
-    RU("`extract` требует внутрипроцессного видеодекодера, который собирается "
-       "только с -DSS_ENABLE_PATENTED=ON (см. cmake/SsOptions.cmake). Извлеките "
-       "кадры через ffmpeg и замаскируйте их через `{0} track`."),
-    TR("`extract`, süreç içi video çözücüyü ister; o da yalnızca "
-       "-DSS_ENABLE_PATENTED=ON ile derlenir (bkz. cmake/SsOptions.cmake). "
-       "Kareleri ffmpeg ile çıkarıp `{0} track` ile maskeleyin."));
 
 SS_MSG(sam_video_decode,
     EN("Vulkan video decode: available"),

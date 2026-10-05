@@ -40,7 +40,7 @@ struct MetricRef {
     std::vector<uint32_t> image_ids;
 };
 
-enum class MetricFail { None, Pairs, Spread, Inliers, Collinear };
+enum class MetricFail { None, Pairs, Spread, Inliers, Collinear, Tilted };
 
 // Which components of the reference carry the gauge. Horizontal reads the
 // level pair and takes the tilt from the caller's own up axis: a GPS altitude
@@ -59,6 +59,10 @@ struct MetricFit {
     double rot_unc_deg = 0;     // worst principal axis -- advisory
     double spread = 0;          // metres, RMS radius of the reference positions
     double perp_frac = 0;       // spread across the least-resisted axis, over the whole
+    // Horizontal only: the scale the inliers' 3D distances give (0 without enough
+    // pairs), and the robust sigma of their altitude about the fitted vertical, metres.
+    double scale_3d = 0;
+    double vertical_sigma = 0;
     std::vector<char> inlier_mask;
 };
 
@@ -67,12 +71,39 @@ struct MetricFit {
 // the derivation gives the shape, not 20 rather than 10 (D74, one flight).
 inline constexpr double kMetricMinPerpFraction = 0.05;
 
+// A level fit's scale past this multiple of the 3D one: the up it was levelled
+// about tips the camera path, whose shortened level part inflates the scale. An
+// Avata clip's IMU up ~90 deg off read 35x; a path climbing 37 deg reads 1.25x.
+inline constexpr double kMetricMaxLevelScaleRatio = 1.25;
+
 namespace detail {
 
 inline Vec3 meanOf(const std::vector<Vec3>& v) {
     Vec3 m{0, 0, 0};
     for (const Vec3& p : v) m = m + p;
     return v.empty() ? m : m * (1.0 / (double)v.size());
+}
+
+inline double medianOf(std::vector<double> v) {
+    if (v.empty()) return 0;
+    std::nth_element(v.begin(), v.begin() + (long)(v.size() / 2), v.end());
+    return v[v.size() / 2];
+}
+
+// Median of reference over model distance between inliers a half and a third of
+// the set apart, rotation-free. Pairs under `min_dist` metres are noise; 0 under 5 pairs.
+inline double pairwiseScale(const MetricRef& ref, const std::vector<int>& keep, double min_dist) {
+    const size_t m = keep.size();
+    std::vector<double> r;
+    for (size_t a = 0; a < m; a++)
+        for (size_t step : {m / 2, m / 3}) {
+            if (!step) continue;
+            const int i = keep[a], j = keep[(a + step) % m];
+            const double dg = (ref.targets[i] - ref.targets[j]).norm();
+            const double dc = (ref.centres[i] - ref.centres[j]).norm();
+            if (dg > min_dist && dc > 0) r.push_back(dg / dc);
+        }
+    return r.size() < 5 ? 0.0 : medianOf(std::move(r));
 }
 
 }  // namespace detail
@@ -221,6 +252,22 @@ inline MetricFit fitMetricGauge(const MetricRef& ref, double max_error,
     out.rot_unc_deg = worst * 180.0 / M_PI;
     out.perp_frac = tr > 0.0 ? std::sqrt(std::max(perp_min, 0.0) / tr) : 0.0;
 
+    // The level fit's vertical place is the median altitude offset, not
+    // estimateSim3Yaw's mean, which a few fixes stated at sea level would drag.
+    if (flat) {
+        std::vector<double> rz;
+        rz.reserve(keep.size());
+        for (int i : keep) rz.push_back(ref.targets[i].z - transformPoint(out.T, ref.centres[i]).z);
+        const double dz = detail::medianOf(rz);
+        out.T.t.z += dz;
+        for (double& r : rz) r = std::fabs(r - dz);
+        out.vertical_sigma = 1.4826 * detail::medianOf(std::move(rz));
+        out.scale_3d = detail::pairwiseScale(ref, keep, 2.0 * max_error);
+        if (out.scale_3d > 0 && out.T.scale > kMetricMaxLevelScaleRatio * out.scale_3d) {
+            out.reason = MetricFail::Tilted;
+            return out;
+        }
+    }
     // The horizontal fit makes no rotation this can refuse.
     if (!flat && !(out.perp_frac >= kMetricMinPerpFraction)) {
         out.reason = MetricFail::Collinear;

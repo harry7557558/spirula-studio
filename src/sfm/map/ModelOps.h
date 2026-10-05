@@ -165,6 +165,7 @@ struct ManagerStats {
     double seam_bar_sum = 0, seam_reference_sum = 0;
     size_t seam_refused_pairs = 0, seam_passed = 0;
     size_t splits = 0, duplicate_splits = 0, split_dropped = 0;
+    size_t seams_welded = 0;       // open pairs Mapper::weldSeams fused
     size_t models_before = 0, models_after = 0;
     size_t covered_before = 0, covered_after = 0;
 };

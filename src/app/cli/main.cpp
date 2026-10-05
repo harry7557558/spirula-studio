@@ -12,6 +12,7 @@
 // GUI (gui/); this file adds CLI parsing, --help, progress printing and the
 // web viewer wiring.
 
+#include "app/DeviceIssue.h"
 #include "app/Tools.h"
 #include "app/TrainerCore.h"
 #include "app/webviewer/Viewer.h"
@@ -33,6 +34,13 @@
 #include <thread>
 #include <vector>
 #include "core/Env.h"
+#ifdef _WIN32
+#include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>   // NOMINMAX comes from cmake/SsOptions.cmake
+#else
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -103,11 +111,11 @@ void consume(std::array<T, N>& out, const std::string& key, int argc, char** arg
     }
 }
 
-// Choices validation for string fields. `choices` is "a|b|c" ('' free-form);
-// a lone "none" marks an optional free-form string.
+// Choices validation for string fields. `choices` is "a|b|c", or one of the
+// free-form spellings train_choices_free_form() knows.
 void check_choices(const std::string& value, const std::string& key, const char* choices) {
+    if (train_choices_free_form(choices)) return;
     std::string ch = choices;
-    if (ch.empty() || ch == "none") return;
     std::string want = value.empty() ? "none" : value;
     size_t pos = 0;
     while (pos <= ch.size()) {
@@ -219,6 +227,37 @@ std::string help_summary(const char* text, size_t max_columns = 110) {
 
 // ---- Compute device listing / selection -----------------------------------
 
+// A Windows console renders ANSI colour only once asked to; a pipe or a file
+// gets plain text.
+bool stderr_takes_color() {
+#ifdef _WIN32
+    if (!_isatty(_fileno(stderr))) return false;
+    HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD mode = 0;
+    if (!GetConsoleMode(h, &mode)) return false;
+    return (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) ||
+           SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+    return isatty(fileno(stderr));
+#endif
+}
+
+// In orange, on stderr: it has to survive `> train.log`.
+void warn_device_issue(const backend::DeviceInfo& d) {
+    const app::DeviceIssueText t = app::device_issue_text(d.issue);
+    if (!t.title) return;
+    const bool color = stderr_takes_color();
+    const char* bold = color ? "\x1b[1;38;5;208m" : "";
+    const char* on = color ? "\x1b[38;5;208m" : "";
+    const char* off = color ? "\x1b[0m" : "";
+    std::fprintf(stderr, "%s%s%s\n", bold, t.title->get(), off);
+    for (const std::string& line : i18n::wrap(format(*t.body, {d.name}), 76))
+        std::fprintf(stderr, "%s  %s%s\n", on, line.c_str(), off);
+    std::fprintf(stderr, "%s  %s%s\n", on,
+                 format(cmsg::details_line, {t.url}).c_str(), off);
+    std::fflush(stderr);
+}
+
 // Applies --device through the backend-neutral device API, then prints the
 // device table VkSplat-style (all visible devices, '*' on the one in use).
 // Vulkan takes the shared selector forms, CUDA only a nonnegative ordinal.
@@ -283,6 +322,7 @@ void select_and_print_devices(const std::string& requested, bool requested_set) 
                         format(cmsg::device_uuid_line, {d.uuid}).c_str());
     }
     std::fflush(stdout);
+    if (cur >= 0) warn_device_issue(backend::device_info(cur));
 }
 
 // `max_tier` is a rank into kTrainTiers: 0 lists only the flags a first run
@@ -340,7 +380,7 @@ void print_help(const char* argv0, const TrainConfig& c, int max_tier) {
         for (auto& ck : key_disp) if (ck == '_') ck = '-';                     \
         std::printf("  --%-38s [%s]%s%s\n      %s\n", key_disp.c_str(),        \
                     value_str(c.member).c_str(),                               \
-                    (ch.empty() || ch == "none") ? "" : (" {" + ch + "}").c_str(), \
+                    train_choices_free_form(choices) ? "" : (" {" + ch + "}").c_str(), \
                     "", h.c_str());                                            \
     }
     SS_CONFIG_FIELDS(SS_PRINT_HELP)
@@ -536,6 +576,10 @@ int spirula_train_main(int argc, char** argv) {
                 for (const char* k : {"rgb_loss", "ssim", "psnr"}) {
                     auto it = p.losses.find(k);
                     if (it != p.losses.end()) std::printf("  %s=%.4g", k, it->second);
+                }
+                for (const char* k : {"num_dead", "num_relocated", "num_added"}) {
+                    auto it = p.losses.find(k);
+                    if (it != p.losses.end()) std::printf("  %s=%lld", k, (long long)it->second);
                 }
                 std::printf("\n");
                 std::fflush(stdout);

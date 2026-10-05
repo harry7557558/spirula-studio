@@ -11,6 +11,7 @@
 // PhotoImport::InPlace records nothing in the workspace, so re-opening such a
 // dataset means setting data.image_dir in the dataparser options by hand.
 
+#include "app/gui/DatasetPlan.h"
 #include "app/gui/DatasetPrep.h"   // MaskClick
 #include "app/gui/FilmReel.h"
 #include "app/gui/GeometryRunner.h"
@@ -59,25 +60,15 @@ struct ColmapJob {
     // honoured by the built-in reconstruction.
     std::vector<PrepInput> inputs;
     std::string workspace;               // output dataset dir (created)
-    bool resume = true;                  // reuse artifacts an interrupted
-                                         // run left in the workspace:
-                                         // extracted frames, masks (mask.py
-                                         // resumes), features + matches
-                                         // (COLMAP skips existing DB rows),
-                                         // and completed sparse models.
+    bool resume = true;                  // reuse what an interrupted run
+                                         // left: frames, masks, features +
+                                         // matches, completed sparse models.
                                          // false = require a clean folder.
     std::string colmap_exe = "colmap";
     std::string ffmpeg_exe = "ffmpeg";
-    std::string python_exe = "python3";  // for the masking script
     bool force_external_decode = false;  // ffmpeg even when we could decode
-    bool force_external_masking = false; // mask.py even when we could segment
 
-    // Steps a re-run redoes rather than reuses; see PrepJob.
-    bool redo_frames = false;
-    bool redo_masks = false;
-    bool redo_model = false;             // reconstruct again over existing
-                                         // frames, masks and features
-    bool settings_built_model = false;   // see SfmJob
+    PlanRequest request;                 // see SfmJob
     bool mask_features = true;           // ... and so is this
     PhotoImport photo_import = PhotoImport::ConvertJpeg;  // see PrepJob
 
@@ -153,17 +144,15 @@ struct ColmapJob {
     bool final_bundle_adjust = true;     // bundle_adjuster refinement pass
     std::string vocab_tree_path;         // "" = auto find / download
 
-    // AI masking. The built-in path wants a checkpoint file
-    // (mask_model_path, from ModelCache); the mask.py fallback wants
-    // a model name it understands (mask_model).
+    // AI masking
     bool mask_enable = false;
     std::string mask_prompt;             // "people; cars; ..."
     std::string mask_negative_prompt;
+    std::string mask_feature_prompt;     // what features skip, training keeps
     bool mask_keep_subject = false;      // prompt names what to KEEP
     std::string mask_model_path;
     std::string mask_detector_path;      // Grounding DINO, when one is paired
     float mask_detector_threshold = 0.3f;
-    std::string mask_model = "sam2.1_hiera_large";
     int mask_max_image_size = 1600;
     float mask_dilate_ratio = 0.05f;
     float mask_threshold = 0.5f;         // all five: see PrepJob in DatasetPrep.h
@@ -176,6 +165,7 @@ struct ColmapJob {
     // The photographs' colour space; masking and geometry convert to sRGB.
     std::string image_gamut;
     std::optional<bool> image_is_linear;
+    std::string image_exposure;
 
     // Depth and normals, written after the reconstruction from the dataset it
     // produced. Shared with the built-in path (SfmJob), which runs the same
@@ -202,6 +192,9 @@ public:
     std::string image_dir();             // image_dir to train with ("" = default)
     std::string mask_dir();              // mask_dir to train with ("" = none)
     bool mask_flipped() const;           // ... and are they white where REMOVED?
+
+    // What preparation is handed, so the panel plans from the same job.
+    static PrepJob prep_job(const ColmapJob& job);
 
 private:
     void run(ColmapJob job);

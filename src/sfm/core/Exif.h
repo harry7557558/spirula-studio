@@ -23,6 +23,7 @@
 // exactly as before.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -62,6 +63,14 @@ struct ExifData {
 
 namespace detail {
 
+inline bool seekTo(FILE* f, uint64_t off) {
+#if defined(_WIN32)
+    return _fseeki64(f, (long long)off, SEEK_SET) == 0;
+#else
+    return fseeko(f, (off_t)off, SEEK_SET) == 0;
+#endif
+}
+
 // Bounds-checked little/big-endian reader over the TIFF block. Every accessor
 // returns 0 out of range, so a truncated or hostile file yields empty fields
 // instead of a read past the buffer.
@@ -69,15 +78,35 @@ struct TiffReader {
     const uint8_t* p = nullptr;
     size_t n = 0;
     bool le = true;
+    // Set instead of `p` for a TIFF file, which is read where it is asked for:
+    // its directories often follow megabytes of pixels.
+    FILE* f = nullptr;
+    mutable std::vector<uint8_t> window;
+    mutable size_t window_at = 0;
 
+    const uint8_t* at(size_t o, size_t len) const {
+        if (o > n || len > n - o) return nullptr;
+        if (!f) return p + o;
+        if (o < window_at || o + len > window_at + window.size()) {
+            window.resize(std::max<size_t>(len, std::min<size_t>(4096, n - o)));
+            window_at = o;
+            if (!seekTo(f, o) || std::fread(window.data(), 1, window.size(), f) != window.size()) {
+                window.clear();
+                return nullptr;
+            }
+        }
+        return window.data() + (o - window_at);
+    }
     uint16_t u16(size_t o) const {
-        if (o + 2 > n) return 0;
-        return le ? (uint16_t)(p[o] | (p[o + 1] << 8)) : (uint16_t)((p[o] << 8) | p[o + 1]);
+        const uint8_t* q = at(o, 2);
+        if (!q) return 0;
+        return le ? (uint16_t)(q[0] | (q[1] << 8)) : (uint16_t)((q[0] << 8) | q[1]);
     }
     uint32_t u32(size_t o) const {
-        if (o + 4 > n) return 0;
-        return le ? (uint32_t)(p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | ((uint32_t)p[o + 3] << 24))
-                  : (uint32_t)(((uint32_t)p[o] << 24) | (p[o + 1] << 16) | (p[o + 2] << 8) | p[o + 3]);
+        const uint8_t* q = at(o, 4);
+        if (!q) return 0;
+        return le ? (uint32_t)(q[0] | (q[1] << 8) | (q[2] << 16) | ((uint32_t)q[3] << 24))
+                  : (uint32_t)(((uint32_t)q[0] << 24) | (q[1] << 16) | (q[2] << 8) | q[3]);
     }
 };
 
@@ -101,7 +130,11 @@ inline bool tiffValue(const TiffReader& r, size_t entry, double& out) {
     if (esz == 0) return false;
     size_t vo = (esz * count <= 4) ? entry + 8 : r.u32(entry + 8);
     switch (type) {
-        case 1: case 7: out = vo < r.n ? r.p[vo] : 0; return vo < r.n;
+        case 1: case 7: {
+            const uint8_t* q = r.at(vo, 1);
+            out = q ? *q : 0;
+            return q != nullptr;
+        }
         case 3: out = r.u16(vo); return true;
         case 4: out = r.u32(vo); return true;
         case 9: out = (int32_t)r.u32(vo); return true;
@@ -139,9 +172,11 @@ inline std::string tiffString(const TiffReader& r, size_t entry) {
     if (count == 0) return {};
     size_t vo = (count <= 4) ? entry + 8 : r.u32(entry + 8);
     if (vo >= r.n) return {};
-    size_t len = std::min((size_t)count, r.n - vo);
-    while (len > 0 && r.p[vo + len - 1] == '\0') len--;
-    std::string s((const char*)r.p + vo, len);
+    size_t len = std::min({(size_t)count, r.n - vo, (size_t)4096});
+    const uint8_t* q = r.at(vo, len);
+    if (!q) return {};
+    while (len > 0 && q[len - 1] == '\0') len--;
+    std::string s((const char*)q, len);
     // Trailing spaces are common ("NIKON CORPORATION   ").
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
     return s;
@@ -307,11 +342,43 @@ inline std::string readXmpPacket(const std::string& path) {
     return std::string((const char*)seg.data() + sizeof kSig, seg.size() - sizeof kSig);
 }
 
+// A TIFF file's first directory is its EXIF block. Orientation is dropped: no
+// reader turns a TIFF's pixels, so all of them take the stored ones, as for a PNG.
+inline ExifData readTiffFileExif(const std::string& path) {
+    ExifData out;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return out;
+    uint8_t h[8];
+    const bool tiff = std::fread(h, 1, 8, f) == 8 &&
+                      ((h[0] == 'I' && h[1] == 'I' && h[2] == 42 && h[3] == 0) ||
+                       (h[0] == 'M' && h[1] == 'M' && h[2] == 0 && h[3] == 42));
+    long long size = -1;
+#if defined(_WIN32)
+    if (tiff && _fseeki64(f, 0, SEEK_END) == 0) size = _ftelli64(f);
+#else
+    if (tiff && fseeko(f, 0, SEEK_END) == 0) size = (long long)ftello(f);
+#endif
+    if (size > 8) {
+        detail::TiffReader r;
+        r.f = f;
+        r.n = (size_t)size;
+        r.le = h[0] == 'I';
+        const uint32_t ifd0 = r.u32(4);
+        if (ifd0 >= 8 && ifd0 < r.n) {
+            detail::parseIfd(r, ifd0, out, 0);
+            out.orientation = 1;
+            out.valid = true;
+        }
+    }
+    fclose(f);
+    return out;
+}
+
 // Read EXIF from an image file. Anything without one comes back invalid, which
 // every caller treats as "no prior".
 inline ExifData readExif(const std::string& path) {
     const std::vector<uint8_t> seg = readExifSegment(path);
-    if (seg.size() <= 6) return ExifData();
+    if (seg.size() <= 6) return readTiffFileExif(path);
     return parseExifTiff(seg.data() + 6, seg.size() - 6);
 }
 

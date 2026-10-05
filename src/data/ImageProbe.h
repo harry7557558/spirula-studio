@@ -1,7 +1,7 @@
 #pragma once
 
 // An image file's pixel size without decoding it -- stb_image's header reader,
-// or the EXR probe. Signature matches DatasetParserConfig::probe_image_size,
+// or core/ImageFile.h's. Signature matches DatasetParserConfig::probe_image_size,
 // which the WebAssembly viewer leaves null because it has neither decoder.
 
 #include <cstdint>

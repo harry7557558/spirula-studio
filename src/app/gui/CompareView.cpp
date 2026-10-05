@@ -676,8 +676,13 @@ void CompareView::feed_render() {
                 double a[12];
                 for (int k = 0; k < 12; k++) a[k] = A[k];
                 file_to_norm = spirula::Sim3::from_3x4(a);
-                si.has_up = true;
-                for (int k = 0; k < 3; k++) si.up[k] = v.ds->normalized_rotation[6 + k];
+                // Up as the pane shows it: the parsers' guess while it levels
+                // the cameras, else the file's own +Z, which a measured or
+                // hand-placed frame is known to have.
+                const bool level = m.panel.level_cameras();
+                si.has_up = level || v.ds->gauge_oriented || v.ds->edited_in_place;
+                for (int k = 0; k < 3; k++)
+                    si.up[k] = level ? v.ds->normalized_rotation[6 + k] : (k == 2 ? 1.0 : 0.0);
                 break;
             }
             case SplatViewer::Kind::Mesh:

@@ -55,11 +55,6 @@ struct ModelEntry {
     const char* family;      // "sam3" | "sam2" -- the licence unit
     uint64_t    bytes;       // expected download size, for the prompt
     bool        text_prompts;// false = clicks/boxes only (SAM 2 has no text tower)
-    // What `reference/scripts/mask.py` calls this checkpoint. Only the Python
-    // fallback path uses it -- the built-in masker is handed a file -- but it
-    // has to name the SAME model the user picked, or a run that falls back
-    // quietly changes which network produced the masks.
-    const char* legacy_name;   // "" where the Python fallback has no equivalent
     MaskModelKind kind = MaskModelKind::Sam;
     const char* url = nullptr;       // null: sam3.cpp's repository + `file`
     const char* mirror = nullptr;    // null: the project's mirror, under `file`

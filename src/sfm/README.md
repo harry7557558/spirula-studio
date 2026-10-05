@@ -279,6 +279,7 @@ spirula sfm auto IMAGES/ -o WORKSPACE/          # images -> sparse model
 spirula sfm auto -o ws/                         # ./images + ./masks, all defaults
 spirula sfm auto IMAGES/ -o ws/ --data-type video --quality medium
 spirula sfm auto IMAGES/ -o ws/ --masks MASKS/  # drop keypoints on masked pixels
+spirula sfm auto IMAGES/ -o ws/ --masks MASKS/ --feature-masks SKY/   # ... on either
 spirula sfm auto IMAGES/ -o ws/ --camera-model opencv-fisheye
 
 spirula sfm extract IMAGES/ -o feats/
@@ -296,6 +297,33 @@ their defaults and worked examples, and `spirula sfm --version` prints the
 package version. A usage error names the flag, says what was wrong with it and
 points at `--help`; it always exits 1, because `auto` spends exit codes 2 and 3
 on *the reconstruction* being absent or partial.
+
+A manifest camera can provide complete calibrated intrinsics in `params`, using
+the named model's COLMAP parameter order and the original image's pixel units:
+
+```yaml
+cameras:
+  - prefix: cam0
+    model: opencv-fisheye
+    params: [900, 910, 1200, 1190, 0.1, -0.02, 0.003, -0.0004]
+```
+
+For `opencv-fisheye` the order is `fx, fy, cx, cy, k1, k2, k3, k4`.
+`params` requires an explicit model and cannot share an entry with `focal` or
+`distortion`. It initializes matching and mapping without recentering or making
+the focal lengths equal; feature extraction downscaling does not change its
+pixel units. Existing CLI camera overrides retain precedence. Bundle adjustment
+still refines focal lengths; `--no-refine-extra-params --no-final-extra-params`
+holds distortion and the principal point at their supplied values.
+
+A DJI Avata 360 `.OSV` named by `--telemetry` or a manifest capture supplies
+the same thing unasked: its clip header holds each lens's factory calibration,
+and `cam0`/`cam1` (tracks 0 and 1) get it as a `params` entry in the run's
+fisheye model, refitted from the lens's five radial terms to four. Any camera
+setting that covers a lens folder, from the command line or the manifest, wins
+instead; the `[run]` lines say which lens got what. `--sensor-gauge none` does not
+turn it off. Field map and measurements:
+`docs/notes/imu-gps-for-sfm.md` §2.3.
 
 Every line a default run prints is **localized**, in the language `--lang`,
 `SS_LANG` or the OS says, and carries a translated stage tag padded to a common
@@ -493,8 +521,14 @@ fitted from the camera centres with LO-RANSAC over the same `estimateSim3` that
 model merging uses, and `--metric-max-error` is its inlier radius in metres (0
 picks 5 for GPS, 0.5 for a positions file).
 
-`--metric-gps` takes `none` (the CLI default; the GUI asks for `horizontal`),
-`horizontal` or `full`, and the difference is the altitude.
+`--metric-gps` takes `none`, `horizontal`, `full` or `auto` (the default, in the
+CLI and the GUI), and the difference is the altitude. `auto` picks per capture,
+from what the code can tell apart, and says which in one line: `full` for a DJI
+telemetry track (an Avata or Osmo `.OSV`, whose altitude is barometric) or for
+EXIF fixes that carry an altitude; `horizontal` for any other telemetry GPS (a
+GoPro, an Insta360, a phone's CAMM track), for EXIF a phone maker wrote, or where
+more than a tenth of the fixes lack an altitude; `none` with no GPS at all, or
+beside `--metric-positions` (`applyMetricGpsAuto`, `sfm/Pipeline.cpp`).
 `full` fits all seven parameters, so the reference's
 vertical sets the model's tilt; `horizontal` fits only scale, heading and place,
 against latitude and longitude, and leaves which way is up to the recorded
@@ -512,9 +546,12 @@ radius, so a street walked end to end — which `full` refuses — fits.
 The fit is refused rather than approximated, and **what refuses it is geometry,
 not a noise model**. Fewer than three positioned cameras, reference positions
 that do not spread wider than the inlier radius, under half the cameras inlying,
-or (full only) cameras lying so close to a line that the reference amplifies
-orientation error more than 20x — each reports its own reason with the numbers
-behind it; the model is then still written, in the ordinary orient gauge, and
+(full only) cameras lying so close to a line that the reference amplifies
+orientation error more than 20x, or (horizontal only) a level scale more than
+1.25x the median ratio of GPS to model distance between inliers far apart —
+the up it was levelled about tips the camera path, as an Avata 360's IMU up
+90 deg off did on a straight flight (35x) — each reports its own reason with
+the numbers behind it; the model is then still written, in the ordinary orient gauge, and
 the exit status is 4.
 
 `merge` accepts a single model when a metric reference is given: there is
@@ -587,25 +624,62 @@ future sensor implements the same way (`core/PriorSource.h`;
   re-solved with the rotation fixed (`ransacPnPKnownRotation`, and the rig
   form for a whole frame) and refused when that finds fewer than the
   registration's own inlier floor; the seed pair takes the gyro's rotation
-  when it agrees; the audit does not unseat a pose the gyro vouches for.
+  when it agrees; the audit does not unseat a pose the gyro vouches for. A
+  PnP pose four GPS-fit radii off right after one inside the radius is
+  refused as a wrong-place PnP; when more than a fifth of the images checked
+  (and at least 10) stand refused, the frame is what is wrong, and the model
+  drops it and its GPS factors and retries what it refused.
 - **Bundle adjustment** (`--sensor-map`): every solve, growth and joint alike,
   takes camera-side factors evaluated on the host and added to whichever
   linear system the solver builds (`ba/Priors.h`, `ba/README.md`): the gyro's
   relative rotation between consecutive frames of each lens, gravity in each
   frame against a world up refitted per solve, the accelerometer's metric
   scale as one velocity-free triple constraint per three consecutive frames,
-  and GPS positions through a similarity refitted per solve. Every gauge
+  and GPS positions through a similarity refitted per solve, none under
+  `--metric-gps none`, which leaves the GPS to pairing alone. Every gauge
   quantity is re-estimated from the poses before each solve and frozen inside
   the factors, so the solver carries no global parameter and the model stays
   in its own gauge; the finishing gauge fit above then runs as before.
-- **Pairing** (`--sensor-pairs`, on): images the GPS puts within
+- **Pairing** (`--sensor-pairs`, off): images the GPS puts within
   `--sensor-pair-radius` metres (20) of each other are matched whatever the
   shortlist thought.
+
+An image folder with EXIF GPS and no telemetry takes the same GPS factors
+(`ExifGpsPriors`). There, every image of an equirect camera group declares
+camera -Y as up (`--level-erp`, on): a horizon-levelled stitch, as DJI Studio
+and the Osmo 360 write, is level to 0.15-0.37 deg about its images' consensus.
+Each solve then states one up factor per image (sigma 0.3 deg) against that
+consensus, fits the GPS level about it, and a PnP pose tilted more than
+max(1 deg, 3 x the spread) off it is refused. The gate opens at 30 posed images
+and closes when the images disagree by more than 1 deg (the median about their
+consensus; a handheld 360's lens streams measure 2.7 and 10.8): the solve then
+takes no up factor and the GPS fit is what it was without them. Refused images
+never vote, so when more than 5% of the 20 or more images checked are refused
+the mapper drops the prior for the rest of the run and logs it once. Under
+`--metric-gps full` a GPS fit levelled by any up source keeps its vertical
+factor while the altitudes agree with the fit to within its inlier radius
+(their robust sigma about it); `horizontal` drops it.
 
 `--sensor-max-dt` (3 s) bounds the gap a gyro rotation may span. The mapper
 ends with how many registrations the gyro re-solved or refused and how many
 factors the last solve held; `SS_SFM_PRIOR_DUMP=1` prints each one. With no
 telemetry none of it runs and the pipeline is the one before it existed.
+
+During growth with GPS (`--gps-scale-band`, on) each registration reads the chain it
+extends against the GPS: model over GPS chord sums between nodes 5 m apart on the model's own
+path, over 60, 100 and 150 m, against the whole model's ratio (`map/BlockScale.h`). Past
+5 / 4 / 3 % a bundle adjustment is requested for the frames registered since the last BA
+(detection only -- nothing is rescaled); once growth ends, the strongest of the last 20
+readings is held to 4 / 3 / 2.5 %. A length is read only where its threshold clears three
+times the spread of the readings taken so far (the lower quartile of |x| over 0.3186, from 20
+readings, seeded from the model growth started with): GPS wander shows there and a drifted
+block, up to a third of the readings, does not. Four Insta360 tracks' readings spread 4.5 / 2.8 / 2.1 % (drone-grade GPS: 0.8 /
+0.6 / 0.45) and had asked for 28 BAs that moved none of them; the fit's own RMS would not do,
+since a stretched tail alone lifts it.
+`SS_SFM_SCALE_DUMP=1` prints every reading. On the
+bottom-up/atoms path (`map/Assemble.h`'s `growModels`) a request `growByPnP` raises is
+recorded but its `post` reading is never filled -- that model's BA is the caller's later
+joint solve, not one this check runs itself.
 
 The sources run in order -- the video's sensors, the recorded attitude, a
 metric reference, the fallback -- and read each other: `gauge.txt`'s two bits
@@ -934,6 +1008,40 @@ it.
   twelve intrinsics columns of the reduced system — so on anything but a small
   capture `--ba-solver auto` lands on CG.
 
+The last assembly pass, before those, is the seam weld (`--seam-weld`, 0.25). Two
+registration fronts that meet on thin support leave every point there twice, metres
+apart; no merge test accepts that union and the epipolar check cannot see an offset
+along the baseline. A verified pair of `seam_min_matches` (100) or more whose matches
+the model explains by a shared point below the bar is a candidate. Loop revisits and
+weak woods pairs read as low as the seam (220-481 candidates per canopy-capture model), and
+what separates them is the neighbourhood: a seam link's two images share at most one
+third image that both see with `seam_covis_min` (20) points, a loop revisit dozens. A
+candidate is open when that count is at most 1, the pair is not two lenses of one rig
+frame (back-to-back fisheyes share only their rims), its duplicated points sit no more
+than half the scene depth apart, and either they sit a coherent 10 % of it apart, or --
+in capture order, when the pair is at most 3 positions apart -- its rotation is 10x its
+neighbours' per-position rotation. Past half the depth the duplicates are other
+structure: four identical gates filmed from both sides read 1-9.
+With capture order every open pair must be 3 positions apart or fewer. Capture order
+is a declared `--sequence`, or with `--pairs sequential` each folder's images in file
+order; a photo folder has none, so only the offset branch runs. The open pairs'
+duplicated points are fused at the track-length-weighted mean and the model is
+refined with the fused points spared the first round's filter, then forced through a
+second round without retriangulation -- one round rarely closes a large kink before
+the ordinary stopping test exits it (a canopy drone capture: 2.95->1.19 deg and 3.20->0.78 deg).
+The weld is then judged and undone -- the model returned exactly as it came -- unless it
+held: no image dropped, no open pair left less tied than before, at least half of the ties
+fusing added still there, and the reprojection no more than 10 % worse. A seam's duplicates
+are one point seen twice and keep their ties (100 % in `sfm_seam_weld_test`); repeated
+structure, junk or a misplaced image cannot, short of dragging the model (a phone burst around
+one misplaced frame: -1 %, while the refine moved cameras by 8 % of the model; the gates as
+an unordered folder: 30 %, where the unguarded weld lost every image).
+On 27 saved models
+(a canopy drone capture, a power-corridor capture, a no-GPS Osmo 360 clip, an Avata 360 flight), measured offline, the rule flags
+only links at the canopy capture's seam (at most 3 per model) and nothing on the other captures. `[seam]` lines report what it found; under
+`SS_SFM_MAP_PROF` the models as they were before a weld are written to
+`sparse/pre_weld/` (in the mapper's frame, not the gauge's).
+
 `--mapper flat|bottom-up` picks the schedule (see the stage graph; flat is the
 default for every capture, and there is no size-based switch);
 `--bup-atom-size` and `--bup-overlap` size the atoms and the overlap the
@@ -967,6 +1075,9 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_mask_test` | mask uv sampling, decode, file discovery | no |
 | `sfm_telemetry_test` | the four telemetry carriers on synthetic files, and the sanity checks; `sfm_telemetry_test FILE` prints what a video carries | no |
 | `sfm_sequence_test` | the sequence table and its window pairs (`--no-gpu` stops there); a synthetic walk past a duplicated room through the mapper | yes |
+| `sfm_seam_weld_test` | the open-seam detector and weld on a two-front track, with and without capped GPS solves; what it leaves alone (duplicates too far apart, rig mates) and a weld it undoes (a perturbed copy) | yes |
+| `sfm_block_scale_test` | the block scale statistic on synthetic tracks: a hover, a loop, a stalled receiver, a rig, two fronts, the seam-jump mask over a model-space discontinuity, the noise gate | no |
+| `sfm_gps_scale_test` | the block scale check during growth (`--gps-scale-band`) on a corridor with a hover and a loop, true scale and with its GPS tail stretched | yes |
 | `sfm_prior_test` | pose priors in bundle adjustment: Jacobians against central differences, device against host, a gauge recovered from priors alone (`--no-gpu` keeps to the host) | yes |
 | `sfm_sensor_prior_test` | the fixed-rotation two-view and PnP estimators on scenes with equipment and outliers; the telemetry source's calibration, rotations and factors on the synthetic walk | no |
 

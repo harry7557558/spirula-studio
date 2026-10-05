@@ -6,7 +6,7 @@
 // declarations. They pull in nothing: no libpng, no libjpeg, no ffmpeg.
 
 #include "core/ColorSpace.h"
-#include "core/ExrImage.h"
+#include "core/ImageFile.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
 
@@ -20,13 +20,15 @@
 namespace nn {
 
 Image load_image(const std::string& path, const std::string& gamut,
-                 std::optional<bool> is_linear) {
+                 std::optional<bool> is_linear, const colorspace::Exposure& exposure) {
     Image img;
     int w = 0, h = 0, c = 0;
-    if (exr::is_exr(path)) {
-        exr::Info info;
+    if (imagefile::handles(path)) {
+        imagefile::Info info;
+        imagefile::Options opt;
+        opt.exposure = exposure;
         const std::string err =
-            exr::decode_srgb8(path, exr::Options(), info, img.data, gamut, is_linear);
+            imagefile::decode_srgb8(path, opt, info, img.data, gamut, is_linear);
         if (!err.empty()) {
             NN_LOG_ERROR("load_image: cannot read '%s': %s\n", path.c_str(), err.c_str());
             return Image();
@@ -49,6 +51,9 @@ Image load_image(const std::string& path, const std::string& gamut,
     stbi_image_free(data);
     colorspace::to_srgb_inplace(img.data.data(), (size_t)w * h, gamut,
                                 is_linear.value_or(false));
+    colorspace::expose_srgb8_inplace(
+        img.data.data(), img.data.size(),
+        colorspace::exposure_gain_srgb8(exposure, img.data.data(), (size_t)w, (size_t)h));
     return img;
 }
 

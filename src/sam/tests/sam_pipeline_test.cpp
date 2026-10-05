@@ -827,6 +827,38 @@ int main() {
         check(tracker.refineInstance(id, {{70.0f, 55.0f}}, {}), "refineInstance");
     }
 
+    // Random weights make whether "sky" matches anything noise, so what is
+    // checked is the shape of the answer, not its content.
+    std::printf("\nFeature-only phrases (sam::Masker)\n");
+    {
+        sam::MaskOptions mo;
+        mo.model = path;
+        mo.video = false;
+        mo.max_size = 0;
+        mo.threshold = 0.0f;
+        mo.keep_prompted = true;   // with nothing named, must still keep all
+        mo.feature_text = "sky; cloud";
+        sam::Masker masker;
+        std::string err;
+        const bool ok = masker.init(mo, err);
+        check(ok, "a feature prompt alone is something to segment");
+        if (ok) {
+            check(!masker.hasTarget() && masker.hasFeatureMask(),
+                  "... with nothing named for training");
+            sam::Mask m, f;
+            check(masker.run(make_image(160, 120), m, nullptr, -1, &f),
+                  "run with a feature mask");
+            const bool all_kept =
+                std::all_of(m.data.begin(), m.data.end(), [](uint8_t v) { return v == 255; });
+            check(m.width == 160 && m.height == 120 && all_kept,
+                  "nothing named for training keeps every pixel");
+            check(f.width == 160 && f.height == 120 && f.data.size() == 160u * 120u,
+                  "the feature mask comes back at the source resolution");
+            check(masker.run(make_image(160, 120), m, nullptr, -1, nullptr),
+                  "and without one asked for");
+        }
+    }
+
     std::printf("\nVRAM\n%s", session.vramReport().c_str());
 
     // ---- the same drill against a SAM 2 checkpoint --------------------------
@@ -932,6 +964,14 @@ int main() {
                     check(ids[3] == 2, "refining object 0 does not make a third");
                 }
             }
+        }
+        {
+            sam::MaskOptions mo;
+            mo.model = p2;
+            mo.feature_text = "sky";
+            sam::Masker masker;
+            std::string err;
+            check(!masker.init(mo, err), "a feature prompt needs a text model");
         }
         std::remove(p2.c_str());
     }

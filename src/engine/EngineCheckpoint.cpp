@@ -431,6 +431,7 @@ int engine_load_checkpoint(std::string input_dir) {
     // Install runtime scalars + optimizer layout from the checkpoint.
     s.cur_num_splats = cur_n;
     s.max_num_splats = max_n;
+    DevicePool::global().set_splat_counts(cur_n, max_n);
     s.num_sh         = num_sh;
     s.sh_degree      = sh_degree;
     s.packed         = (packed != 0);

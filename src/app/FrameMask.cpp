@@ -3,7 +3,8 @@
 #include "app/FrameMask.h"
 
 #include "app/FrameLook.h"
-#include "core/ExrImage.h"
+#include "core/CubicBezier.h"
+#include "core/ImageFile.h"
 #include "core/PolygonFill.h"
 
 #include "external/stb_image.h"
@@ -98,11 +99,11 @@ struct Gray {
 Gray load_gray(const std::string& path) {
     Gray g;
     int comp = 0;
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        exr::Options opt;
+    if (imagefile::handles(path)) {
+        imagefile::Info info;
+        imagefile::Options opt;
         opt.channels = 1;
-        if (!exr::decode_srgb8(path, opt, info, g.px).empty()) return Gray{};
+        if (!imagefile::decode_srgb8(path, opt, info, g.px).empty()) return Gray{};
         g.w = info.width;
         g.h = info.height;
         return g;
@@ -517,15 +518,14 @@ float valid_outside(const std::vector<uint8_t>& valid, int w, int h, const Circl
 }
 
 MaskShape to_shape(const Circle& c, float shrink, int w, int h) {
-    const float r = c.r * (1.0f - std::clamp(shrink, -0.5f, 0.9f));
     MaskShape s;
     s.kind = MaskShape::Kind::Ellipse;
     s.remove = false;
     s.cx = (c.cx + 0.5f) / (float)w;
     s.cy = (c.cy + 0.5f) / (float)h;
-    s.rx = r / (float)w;
-    s.ry = r / (float)h;
-    return s;
+    s.rx = c.r / (float)w;
+    s.ry = c.r / (float)h;
+    return shrink_border(s, shrink);
 }
 
 float kept_fraction(const MaskShape& s, int w, int h) {
@@ -569,6 +569,62 @@ void fill_stroke(const MaskShape& s, int W, int H, uint8_t* out) {
 
 }  // namespace
 
+MaskShape shrink_border(MaskShape shape, float shrink) {
+    const float scale = 1.0f - std::clamp(shrink, -0.5f, 0.9f);
+    shape.rx *= scale;
+    shape.ry *= scale;
+    return shape;
+}
+
+bool edit_detected_border(CameraStencil& stencil, const BorderDetect& border) {
+    if (!stencil.detect_border || !border.found) return false;
+    stencil.mask.shapes.insert(stencil.mask.shapes.begin(),
+                              shrink_border(border.shape, stencil.shrink));
+    stencil.detect_border = false;
+    return true;
+}
+
+bool MaskSet::empty() const {
+    for (const auto& [camera, list] : cameras)
+        if (!list.empty()) return false;
+    return shapes.empty();
+}
+
+MaskSet mask_set_of(const FrameStencil& stencil) {
+    MaskSet out;
+    if (!stencil.per_camera()) {
+        out.shapes = stencil.mask.shapes;
+        return out;
+    }
+    // The input's own list is only a fallback here: every camera the panel
+    // knew was given an entry when separate areas were turned on.
+    const std::string first = format_mask_shapes(stencil.cameras.begin()->second.mask.shapes);
+    bool same = true;
+    for (const auto& [camera, cs] : stencil.cameras)
+        same = same && format_mask_shapes(cs.mask.shapes) == first;
+    if (same) {
+        out.shapes = stencil.cameras.begin()->second.mask.shapes;
+        return out;
+    }
+    for (const auto& [camera, cs] : stencil.cameras) out.cameras[camera] = cs.mask.shapes;
+    return out;
+}
+
+void apply_mask_set(FrameStencil& stencil, const MaskSet& set) {
+    auto put = [](CameraStencil& cs, const std::vector<MaskShape>& list) {
+        cs.mask.shapes = list;
+        if (!list.empty() && !list.front().remove) cs.detect_border = false;
+    };
+    put(stencil, set.shapes);
+    for (auto& [camera, cs] : stencil.cameras) put(cs, set.shapes);
+    for (const auto& [camera, list] : set.cameras) {
+        auto it = stencil.cameras.find(camera);
+        if (it == stencil.cameras.end())
+            it = stencil.cameras.emplace(camera, static_cast<const CameraStencil&>(stencil)).first;
+        put(it->second, list);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Shapes
 // ---------------------------------------------------------------------------
@@ -601,6 +657,17 @@ bool parse_mask_shapes(const std::string& spec, std::vector<MaskShape>& out,
         if (kind == "path") {
             s.kind = MaskShape::Kind::Path;
             if (!parse_floats(nums, s.pts) || s.pts.size() < 6 || s.pts.size() % 2) {
+                error = piece;
+                return false;
+            }
+            out.push_back(s);
+            continue;
+        }
+        if (kind == "bezier") {
+            s.kind = MaskShape::Kind::Bezier;
+            if (!parse_floats(nums, s.pts) ||
+                s.pts.size() < 2 * bezier::kAnchorFloats ||
+                s.pts.size() % bezier::kAnchorFloats) {
                 error = piece;
                 return false;
             }
@@ -647,7 +714,12 @@ std::string format_mask_shapes(const std::vector<MaskShape>& shapes) {
     char buf[96];
     for (const MaskShape& s : shapes) {
         std::string piece = s.remove ? "-" : "";
-        if (s.kind == MaskShape::Kind::Path || s.kind == MaskShape::Kind::Stroke) {
+        if (s.kind == MaskShape::Kind::Bezier) {
+            // A handle is dragged by a fraction of a pixel; four places lose that at 8K.
+            piece += "bezier ";
+            for (size_t i = 0; i < s.pts.size(); i++)
+                append_printf(piece, "%s%.5f", i ? "," : "", s.pts[i]);
+        } else if (s.kind == MaskShape::Kind::Path || s.kind == MaskShape::Kind::Stroke) {
             const bool stroke = s.kind == MaskShape::Kind::Stroke;
             piece += stroke ? "stroke " : "path ";
             if (stroke) append_printf(piece, "%.5f,%.5f", s.rx, s.ry);
@@ -668,9 +740,9 @@ std::string format_mask_shapes(const std::vector<MaskShape>& shapes) {
 
 bool image_size(const std::string& path, int& width, int& height) {
     int comp = 0;
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        if (!exr::probe(path, info).empty()) return false;
+    if (imagefile::handles(path)) {
+        imagefile::Info info;
+        if (!imagefile::probe(path, info).empty()) return false;
         width = info.width;
         height = info.height;
         return true;
@@ -681,9 +753,10 @@ bool image_size(const std::string& path, int& width, int& height) {
 bool load_rgb(const std::string& path, int& width, int& height,
               std::vector<uint8_t>& out) {
     int comp = 0;
-    if (exr::is_exr(path)) {
-        exr::Info info;
-        if (!exr::decode_srgb8(path, exr::Options(), info, out).empty()) return false;
+    if (imagefile::handles(path)) {
+        imagefile::Info info;
+        if (!imagefile::decode_srgb8(path, imagefile::Options(), info, out).empty())
+            return false;
         width = info.width;
         height = info.height;
         return true;
@@ -714,8 +787,9 @@ bool rasterize_frame_mask(const FrameMask& m, int width, int height,
     }
     const bool base = m.shapes.empty() || m.shapes.front().remove;
 
-    // A path or stroke is filled once into its own plane; the pixel loop then
-    // reads it like any other inside test, so the ordering rule is untouched.
+    // A path, curve or stroke is filled once into its own plane; the pixel
+    // loop then reads it like any other inside test, so the ordering rule is
+    // untouched.
     std::vector<std::vector<uint8_t>> paths(m.shapes.size());
     std::vector<float> px;
     for (size_t k = 0; k < m.shapes.size(); k++) {
@@ -725,12 +799,19 @@ bool rasterize_frame_mask(const FrameMask& m, int width, int height,
             fill_stroke(s, width, height, paths[k].data());
             continue;
         }
-        if (s.kind != MaskShape::Kind::Path) continue;
-        paths[k].assign((size_t)width * height, 0);
-        px.resize(s.pts.size());
-        for (size_t i = 0; i + 1 < s.pts.size(); i += 2) {
-            px[i] = s.pts[i] * (float)width;
-            px[i + 1] = s.pts[i + 1] * (float)height;
+        if (s.kind == MaskShape::Kind::Bezier) {
+            paths[k].assign((size_t)width * height, 0);
+            bezier::flatten_closed(s.pts.data(), s.pts.size() / bezier::kAnchorFloats,
+                                   (float)width, (float)height, 0.05f, px);
+        } else if (s.kind == MaskShape::Kind::Path) {
+            paths[k].assign((size_t)width * height, 0);
+            px.resize(s.pts.size());
+            for (size_t i = 0; i + 1 < s.pts.size(); i += 2) {
+                px[i] = s.pts[i] * (float)width;
+                px[i + 1] = s.pts[i + 1] * (float)height;
+            }
+        } else {
+            continue;
         }
         polyfill::fill_even_odd(px.data(), px.size() / 2, width, height, paths[k].data(), 1);
     }
@@ -745,7 +826,7 @@ bool rasterize_frame_mask(const FrameMask& m, int width, int height,
             for (size_t k = 0; k < m.shapes.size(); k++) {
                 const MaskShape& s = m.shapes[k];
                 bool inside;
-                if (s.kind == MaskShape::Kind::Path || s.kind == MaskShape::Kind::Stroke) {
+                if (!paths[k].empty()) {
                     inside = paths[k][(size_t)y * width + x] != 0;
                 } else if (s.kind == MaskShape::Kind::Ellipse) {
                     if (s.rx <= 0.0f || s.ry <= 0.0f) continue;
@@ -966,6 +1047,16 @@ void intersect_with_file(std::vector<uint8_t>& px, int w, int h,
     }
 }
 
+// The mask already at `path` reads as these pixels. Rewriting it anyway would
+// only move its modification time, which is what `spirula sfm` checks feature
+// files against.
+bool mask_file_holds(const std::string& path, const std::vector<uint8_t>& px,
+                     int w, int h) {
+    int mw = 0, mh = 0;
+    std::vector<uint8_t> m;
+    return load_stencil(path, mw, mh, m) && mw == w && mh == h && m == px;
+}
+
 }  // namespace
 
 std::map<std::string, std::vector<std::string>> group_frames_by_camera(
@@ -1013,11 +1104,12 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
         if (sinks.cancel && sinks.cancel->load()) return written;
         if (sinks.camera) sinks.camera(rel, (int64_t)files.size());
 
-        FrameMask fm = run.stencil.mask;
+        const CameraStencil& stencil = run.stencil.for_camera(rel);
+        FrameMask fm = stencil.mask;
         BorderDetect border;
-        if (run.stencil.detect_border) {
+        if (stencil.detect_border) {
             BorderDetectOptions o = run.detect;
-            o.shrink = run.stencil.shrink;
+            o.shrink = stencil.shrink;
             border = detect_fisheye_border(files, o);
             // First, so the shapes drawn on top are applied to it in order.
             if (border.found) fm.shapes.insert(fm.shapes.begin(), border.shape);
@@ -1082,6 +1174,13 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
                 const Item& it = items[merges[(size_t)k]];
                 std::vector<uint8_t> px = cache.at({it.w, it.h, it.key_turn}).px;
                 intersect_with_file(px, it.w, it.h, it.src, run.flip_merge);
+                if (mask_file_holds(it.dst, px, it.w, it.h)) {
+                    if (sinks.progress) {
+                        std::lock_guard<std::mutex> lk(sink_mu);
+                        sinks.progress(seen + (++done), total);
+                    }
+                    continue;
+                }
                 // Masks gathered next to the images are HARD LINKS to the ones
                 // the photos came with; writing over one would edit the user's
                 // file. Unlink first, so this only ever adds a file.
@@ -1128,6 +1227,47 @@ int64_t apply_frame_stencil(const FrameStencilRun& run,
         }
     }
     return written;
+}
+
+int64_t intersect_mask_trees(const std::string& image_dir, const std::string& a,
+                             bool flip_a, const std::string& b,
+                             const std::string& out, const std::atomic<bool>* cancel,
+                             std::string& error) {
+    struct Item { std::string dst, a, b; int w = 0, h = 0; };
+    std::vector<Item> items;
+    std::error_code ec;
+    for (const auto& [rel, files] : group_frames_by_camera(image_dir)) {
+        for (const std::string& f : files) {
+            const fs::path name = fs::path(rel) / (fs::path(f).stem().string() + ".png");
+            Item it;
+            if (!a.empty() && fs::exists(fs::path(a) / name, ec))
+                it.a = (fs::path(a) / name).string();
+            if (!b.empty() && fs::exists(fs::path(b) / name, ec))
+                it.b = (fs::path(b) / name).string();
+            if ((it.a.empty() && it.b.empty()) || !image_size(f, it.w, it.h)) continue;
+            it.dst = (fs::path(out) / name).string();
+            fs::create_directories(fs::path(it.dst).parent_path(), ec);
+            items.push_back(std::move(it));
+        }
+    }
+    std::atomic<bool> failed{false};
+    std::mutex mu;
+    nn::parallel_for((int64_t)items.size(), [&](int64_t lo, int64_t hi) {
+        for (int64_t k = lo; k < hi; k++) {
+            if (failed.load() || (cancel && cancel->load())) return;
+            const Item& it = items[(size_t)k];
+            std::vector<uint8_t> px((size_t)it.w * it.h, 255);
+            if (!it.a.empty()) intersect_with_file(px, it.w, it.h, it.a, flip_a);
+            if (!it.b.empty()) intersect_with_file(px, it.w, it.h, it.b, false);
+            if (!stbi_write_png(it.dst.c_str(), it.w, it.h, 1, px.data(), it.w)) {
+                std::lock_guard<std::mutex> lk(mu);
+                error = it.dst;
+                failed = true;
+                return;
+            }
+        }
+    }, 1);
+    return failed.load() ? -1 : (int64_t)items.size();
 }
 
 }  // namespace app

@@ -98,6 +98,24 @@ Manifest manifest_read(const std::string& path) {
                     mc.distortion.push_back(d.num);
                 }
             }
+            if (const JsonValue* v = c.find("params")) {
+                CamModel model;
+                if (mc.model.empty() || !parseCamModelName(mc.model, model))
+                    bad(path, "params: an explicit camera model is required");
+                if (c.find("focal") || c.find("distortion"))
+                    bad(path, "params: cannot be combined with focal or distortion");
+                if (!v->is_array() || v->arr.size() != (size_t)camColmapParams(model))
+                    bad(path, "params: expected " + std::to_string(camColmapParams(model)) +
+                                  " numbers for " + mc.model);
+                for (const JsonValue& p : v->arr) {
+                    if (p.type != JsonValue::Type::Number || !std::isfinite(p.num))
+                        bad(path, "params: expected finite numbers");
+                    mc.params.push_back(p.num);
+                }
+                for (int i = 0; i < camInfo(model).ba_focal; i++)
+                    if (!(mc.params[(size_t)i] > 0))
+                        bad(path, "params: focal lengths must be positive");
+            }
             m.cameras.push_back(std::move(mc));
         }
     }
@@ -246,6 +264,12 @@ std::string manifest_write(const Manifest& m, bool json) {
                 for (double x : c.distortion) d.arr.push_back(number(x));
                 e.obj.emplace_back("distortion", std::move(d));
             }
+            if (!c.params.empty()) {
+                JsonValue p;
+                p.type = JsonValue::Type::Array;
+                for (double x : c.params) p.arr.push_back(number(x));
+                e.obj.emplace_back("params", std::move(p));
+            }
             cams.arr.push_back(std::move(e));
         }
         root.obj.emplace_back("cameras", std::move(cams));
@@ -345,6 +369,8 @@ std::string manifest_apply(const Manifest& m, SfmConfig& cfg,
             if (c.focal > 0 && !seen.count("focal")) cfg.focal = c.focal;
             if (!c.distortion.empty() && !seen.count("distortion"))
                 cfg.camera.extra = c.distortion;
+            if (!c.params.empty() && cfg.camera_model == c.model)
+                cfg.camera.params = c.params;
             continue;
         }
         CameraOverride o;
@@ -364,6 +390,7 @@ std::string manifest_apply(const Manifest& m, SfmConfig& cfg,
             o.has_extra = true;
             o.extra = c.distortion;
         }
+        o.params = c.params;
         // Among equal-length prefixes the earliest entry wins
         // (cameraOverrideFor), and the command line's were pushed while argv
         // was parsed -- so appending here is what lets a flag beat the file.

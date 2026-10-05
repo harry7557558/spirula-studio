@@ -170,8 +170,13 @@ inline ExtrinsicFit calibrateImuExtrinsicFrom(const std::vector<RotationPairObs>
     const bool attitude_only = !tl.hasGyro() && tl.hasRotation();
     double best_score = 1e300;
     ExtrinsicFail fail = ExtrinsicFail::Pairs;
+    // An attitude's -1 is its conjugate, tried only when no accelerometer
+    // settled the sense; its up votes follow the hypothesis.
     for (double sign : {1.0, -1.0}) {
-        if (sign < 0 && attitude_only) break;
+        if (sign < 0 && attitude_only && !tl.attitudeSenseOpen()) break;
+        std::vector<UpVote> up(frames.size());
+        for (size_t k = 0; k < frames.size(); k++)
+            up[k] = tl.attitudeSenseOpen() ? tl.upAt(frames[k].t, 0.25, sign) : frames[k].up;
         std::vector<Constraint> cs;
         int rot_pairs = 0, grav_pairs = 0;
         for (const RotationPairObs& rp : rot) {
@@ -189,18 +194,17 @@ inline ExtrinsicFit calibrateImuExtrinsicFrom(const std::vector<RotationPairObs>
         }
         for (int stride : {1, 3, 9, 27, 81}) {
             for (size_t k = (size_t)stride; k < frames.size(); k++) {
-                const SensorFrame& fj = frames[k - (size_t)stride];
-                const SensorFrame& fk = frames[k];
-                if (!fj.up.ok || !fk.up.ok) continue;
+                const size_t j = k - (size_t)stride;
+                if (!up[j].ok || !up[k].ok) continue;
                 Constraint c;
                 c.gravity = true;
-                c.Rj = fj.R;
-                c.Rk = fk.R;
-                c.aj = fj.up.up;
-                c.ak = fk.up.up;
-                rowsRXa(transpose(fj.R), fj.up.up, 1.0, c.rows);
+                c.Rj = frames[j].R;
+                c.Rk = frames[k].R;
+                c.aj = up[j].up;
+                c.ak = up[k].up;
+                rowsRXa(transpose(c.Rj), c.aj, 1.0, c.rows);
                 std::vector<double> neg;
-                rowsRXa(transpose(fk.R), fk.up.up, -1.0, neg);
+                rowsRXa(transpose(c.Rk), c.ak, -1.0, neg);
                 for (int i = 0; i < 27; i++) c.rows[(size_t)i] += neg[(size_t)i];
                 c.nrows = 3;
                 cs.push_back(std::move(c));
@@ -272,8 +276,8 @@ inline ExtrinsicFit calibrateImuExtrinsicFrom(const std::vector<RotationPairObs>
         // Rotation pairs alone cannot tell X from -X; that is left for a
         // caller with poses (SensorPriors.h settles it per model).
         double agree = 0;
-        for (const SensorFrame& fr : frames)
-            if (fr.up.ok) agree += mul(transpose(fr.R), mul(X, fr.up.up)).dot(mean_up_w);
+        for (size_t k = 0; k < frames.size(); k++)
+            if (up[k].ok) agree += mul(transpose(frames[k].R), mul(X, up[k].up)).dot(mean_up_w);
         if (agree < 0) X = mat3Scale(X, -1.0);
         f.R_ci = X;
         f.mirrored = det3(X) < 0;

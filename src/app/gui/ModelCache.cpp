@@ -67,36 +67,33 @@ const std::vector<ModelEntry>& model_catalog() {
     static const std::vector<ModelEntry> kCatalog = {
         {"sam3-q4_0", "sam3-q4_0.ggml",
          &dmsg::model_sam3_label, &dmsg::model_sam3_blurb,
-         "sam3", 707ull << 20, true, "sam3"},
+         "sam3", 707ull << 20, true},
         {"sam3-f16", "sam3-f16.ggml",
          &dmsg::model_sam3_f16_label, &dmsg::model_sam3_f16_blurb,
-         "sam3", 1884ull << 20, true, "sam3"},
+         "sam3", 1884ull << 20, true},
         {"sam2.1-large", "sam2.1_hiera_large_f16.ggml",
          &dmsg::model_sam21_large_label, &dmsg::model_sam21_large_blurb,
-         "sam2", 430ull << 20, false, "sam2.1_hiera_large"},
+         "sam2", 430ull << 20, false},
         {"sam2.1-base-plus", "sam2.1_hiera_base_plus_f16.ggml",
          &dmsg::model_sam21_baseplus_label, &dmsg::model_sam21_baseplus_blurb,
-         "sam2", 156ull << 20, false, "sam2.1_hiera_base_plus"},
+         "sam2", 156ull << 20, false},
         {"sam2.1-small", "sam2.1_hiera_small_f16.ggml",
          &dmsg::model_sam21_small_label, &dmsg::model_sam21_small_blurb,
-         "sam2", 89ull << 20, false, "sam2.1_hiera_small"},
+         "sam2", 89ull << 20, false},
         {"sam2.1-tiny", "sam2.1_hiera_tiny_f16.ggml",
          &dmsg::model_sam21_tiny_label, &dmsg::model_sam21_tiny_blurb,
-         "sam2", 76ull << 20, false, "sam2.1_hiera_tiny"},
-#ifdef SS_BUILD_SAM
-        // No prompt at all, so nothing the Python fallback can run.
+         "sam2", 76ull << 20, false},
         {"birefnet", "birefnet-general.safetensors",
          &dmsg::model_birefnet_label, &dmsg::model_birefnet_blurb,
-         "birefnet", 444473596ull, false, "", MaskModelKind::Subject,
+         "birefnet", 444473596ull, false, MaskModelKind::Subject,
          "https://huggingface.co/ZhengPeng7/BiRefNet/resolve/main/model.safetensors",
          "https://modelscope.cn/models/modelscope/BiRefNet/resolve/master/model.safetensors"},
         {"birefnet-lite", "birefnet-lite.safetensors",
          &dmsg::model_birefnet_lite_label, &dmsg::model_birefnet_lite_blurb,
-         "birefnet", 177634392ull, false, "", MaskModelKind::Subject,
+         "birefnet", 177634392ull, false, MaskModelKind::Subject,
          "https://huggingface.co/ZhengPeng7/BiRefNet_lite/resolve/main/model.safetensors",
          "https://modelscope.cn/models/1038lab/BiRefNet/resolve/master/"
          "BiRefNet_lite.safetensors"},
-#endif
     };
     return kCatalog;
 }

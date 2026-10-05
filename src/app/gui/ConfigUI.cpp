@@ -19,10 +19,12 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
 
+namespace fs = std::filesystem;
 namespace msg = spirula::i18n::msg::gui;
 namespace fld = spirula::i18n::msg::field;
 using spirula::i18n::Msg;
@@ -176,8 +178,7 @@ bool draw_value(const char*, float& v, const char*) {
 // and writing "" gives the trainer a spelling no parser knows.
 bool draw_value(const char* key, std::string& v, const char* choices,
                 bool blank_none = true) {
-    std::string ch = choices;
-    if (ch.empty() || ch == "none") {
+    if (train_choices_free_form(choices)) {
         ImGui::SetNextItemWidth(kFieldWidth);
         return ui::InputTextRaw("##v", &v);
     }
@@ -284,27 +285,90 @@ bool draw_value(const char*, std::array<int, N>& v, const char*) {
     return ImGui::InputScalarN("##v", ImGuiDataType_S32, v.data(), (int)N);
 }
 
+// ---- paths ------------------------------------------------------------------
+
+// What a path row needs besides its value: the folder "<data>/" means, and
+// where to leave a "..." click.
+struct PathRow {
+    const Msg& name;
+    const std::string& data;
+    PathPick& pick;
+};
+
+// The value's own folder, or the nearest existing one above it.
+std::string pick_start(const std::string& value, const TrainPathSpec& spec,
+                       const std::string& data) {
+    fs::path p = value;
+    if (spec.in_data && !data.empty() && p.is_relative()) p = fs::path(data) / p;
+    std::error_code ec;
+    while (!p.empty() && !fs::is_directory(p, ec)) {
+        if (p == p.parent_path()) return {};
+        p = p.parent_path();
+    }
+    return p.string();
+}
+
+bool draw_path(const char* key, std::string& v, const TrainPathSpec& spec,
+               PathRow& row) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float gap = style.ItemInnerSpacing.x;
+    const float button_w = ImGui::CalcTextSize("...").x + 2 * style.FramePadding.x;
+    // Grouped so the row's tooltip and right-click reset cover the button too.
+    ImGui::BeginGroup();
+    ImGui::SetNextItemWidth(kFieldWidth + 90 - gap - button_w);
+    const bool changed = ui::InputTextRaw("##v", &v);
+    ImGui::SameLine(0.0f, gap);
+    if (ui::ButtonRaw("...##pick")) {
+        row.pick.field = key;
+        row.pick.title = row.name.get();
+        row.pick.folder = spec.folder;
+        row.pick.extensions.clear();
+        if (*spec.extension) row.pick.extensions.push_back(spec.extension);
+        row.pick.start_dir = pick_start(v, spec, row.data);
+    }
+    ImGui::EndGroup();
+    return changed;
+}
+
+template <typename T>
+void store_path(T&, const std::string&, const char*, const std::string&) {}
+
+void store_path(std::string& v, const std::string& path, const char* choices,
+                const std::string& data) {
+    v = path;
+    if (!train_path_spec(choices).in_data || data.empty()) return;
+    std::error_code ec;
+    const fs::path rel = fs::path(path).lexically_normal().lexically_relative(
+        fs::absolute(data, ec).lexically_normal());
+    if (!rel.empty() && *rel.begin() != "..") v = rel.generic_string();
+}
+
 // ---- one field row -----------------------------------------------------------
 
 // Only a string widget cares what the default is, and it wants the BASE one:
 // a preset filling the field in does not stop "none" meaning unset, and the
 // word where "" belongs is what the trainer then has to reject.
 template <typename T>
-bool draw_value_of(const char* key, T& v, const T&, const char* choices) {
+bool draw_value_of(const char* key, T& v, const T&, const char* choices,
+                   PathRow&) {
     return draw_value(key, v, choices);
 }
 
 bool draw_value_of(const char* key, std::string& v, const std::string& base,
-                   const char* choices) {
+                   const char* choices, PathRow& row) {
+    const TrainPathSpec spec = train_path_spec(choices);
+    if (spec.is_path) return draw_path(key, v, spec, row);
     return draw_value(key, v, choices, /*blank_none=*/base.empty());
 }
 
 template <typename T>
 bool field_row(const char* cli_key, const Msg& name, const Msg& help,
-               T& v, const T& def, const T& base, const char* choices) {
+               T& v, const T& def, const T& base, const char* choices,
+               const std::string& data, PathPick& pick) {
     bool modified = !(v == def);
     ImGui::PushID(cli_key);
-    bool changed = draw_value_of(cli_key, v, base, choices);
+    PathRow row{name, data, pick};
+    bool changed = draw_value_of(cli_key, v, base, choices, row);
     bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
                                         ImGuiHoveredFlags_AllowWhenDisabled);
     ImGui::OpenPopupOnItemClick("ctx", ImGuiPopupFlags_MouseButtonRight);
@@ -472,7 +536,8 @@ bool draw_config_editor(TrainConfig& cfg, const TrainConfig& defaults,
         passes(kField_##member, #member, tier,                                 \
                !(cfg.member == defaults.member)) &&                            \
         field_row(#member, fld::member, fld::member##_help,                    \
-                  cfg.member, defaults.member, base.member, choices)) {        \
+                  cfg.member, defaults.member, base.member, choices,           \
+                  cfg.data, st.pick)) {                                        \
         any_changed = true;                                                    \
         st.touched.insert(#member);                                            \
         if (searching) st.sticky[cur_index] = 1;                               \
@@ -481,6 +546,18 @@ bool draw_config_editor(TrainConfig& cfg, const TrainConfig& defaults,
 #undef SS_DRAW
 
     return any_changed;
+}
+
+void apply_path_pick(TrainConfig& cfg, ConfigUIState& st,
+                     const std::string& field, const std::string& path) {
+#define SS_STORE_PATH(type, member, default_, section, tier, choices)          \
+    if (field == #member) {                                                    \
+        store_path(cfg.member, path, choices, cfg.data);                       \
+        st.touched.insert(#member);                                            \
+        return;                                                                \
+    }
+    SS_CONFIG_FIELDS(SS_STORE_PATH)
+#undef SS_STORE_PATH
 }
 
 }  // namespace gui

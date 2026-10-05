@@ -119,6 +119,7 @@ PrepInput make_source(const std::string& path, bool use_found_masks) {
         if (!use_found_masks) s.mask_dir.clear();
         s.packed_lenses = probe_packed_lenses(s.path);
         if (s.packed_lenses >= 2) s.rig = kRigOwn;
+        s.heif = folder_has_heif(s.path);
     }
     s.camera_model = default_lens(s);
     return s;
@@ -251,22 +252,25 @@ void guess_source_rigs(std::vector<PrepInput>& sources, bool force) {
 }
 
 
-std::string default_workspace(const std::vector<PrepInput>& sources) {
+namespace {
+
+std::string workspace_base(const std::vector<PrepInput>& sources, bool& exact) {
+    exact = false;
     if (sources.empty()) return {};
     std::string base;
-    // Normally a folder of its own, suffixed _2, _3, ... rather than pointing
-    // at something that already has content in it.
-    bool exact = false;
     if (sources.size() == 1) {
         const fs::path p(sources[0].path);
         if (sources[0].is_video) {
             base = (p.parent_path() / (p.stem().string() + "_dataset")).string();
-        } else if (named_images(p)) {
+        } else if (named_images(p) && !sources[0].heif) {
             // A dataset folder: images/ (and masks/) are already where every
             // parser looks for them, so the reconstruction belongs beside them
             // as sparse/ -- in that folder, not in a copy of it with a suffix.
             base = p.parent_path().string();
             exact = true;
+        } else if (named_images(p)) {
+            // ... unless they are HEIC, whose JPEGs need an images/ of their own.
+            base = p.parent_path().string() + "_dataset";
         } else {
             base = sources[0].path + "_dataset";
         }
@@ -276,8 +280,30 @@ std::string default_workspace(const std::vector<PrepInput>& sources) {
         const fs::path dir = fs::path(sources[0].path).parent_path();
         base = (dir / (dir.filename().string() + "_dataset")).string();
     }
+    return base;
+}
+
+}  // namespace
+
+std::string default_workspace(const std::vector<PrepInput>& sources) {
+    // Normally a folder of its own, suffixed _2, _3, ... rather than pointing
+    // at something that already has content in it.
+    bool exact = false;
+    const std::string base = workspace_base(sources, exact);
     if (base.empty()) return {};
     return exact ? base : fresh_workspace(base);
+}
+
+bool workspace_named_by(const std::vector<PrepInput>& sources, const std::string& ws) {
+    bool exact = false;
+    const std::string base = workspace_base(sources, exact);
+    if (base.empty() || ws.empty()) return false;
+    if (ws == base) return true;
+    if (exact || ws.size() <= base.size() + 1 || ws.compare(0, base.size() + 1, base + "_") != 0)
+        return false;
+    for (size_t i = base.size() + 1; i < ws.size(); i++)
+        if (!std::isdigit((unsigned char)ws[i])) return false;
+    return true;
 }
 
 

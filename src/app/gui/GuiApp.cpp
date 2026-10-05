@@ -3,21 +3,24 @@
 #include "app/gui/GuiApp.h"
 
 #include "core/ColorSpace.h"
-#include "core/ExrImage.h"
+#include "core/ImageFile.h"
 
 #include "checkpoint/SplatMerge.h"
 #include "checkpoint/SplatPly.h"
 #include "data/ScenePartition.h"
 #include "data/RegionMesh.h"
+#include "data/RoiDocument.h"
 #include "app/webviewer/RegionOverlay.h"
 #include "data/Json.h"
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
+#include "app/DeviceIssue.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/Subprocess.h"
 #include "mesh/MeshImport.h"
 #include "app/gui/Ui.h"
+#include "app/gui/VramForecastView.h"
 
 #include "i18n/Locale.h"
 #include "i18n/catalog/Brand.h"
@@ -31,6 +34,7 @@
 #include "i18n/catalog/MaskEdit.h"
 #include "i18n/catalog/Partition.h"
 #include "i18n/catalog/Render.h"
+#include "i18n/catalog/Roi.h"
 #include "i18n/catalog/Train.h"
 #include "i18n/catalog/TrainFields.h"
 
@@ -64,6 +68,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <sstream>
 
 namespace fs = std::filesystem;
 namespace i18n = spirula::i18n;
@@ -197,8 +203,13 @@ std::vector<std::string> video_dialog_filters() {
 // Lifecycle + persistence
 // ===========================================================================
 
+static ModelContent classify_recent_model(const std::string& path);
+
 GuiApp::GuiApp() {
     load_settings();
+    // Before the first frame, so an entry that is gone is never drawn.
+    _recent.start_probe(classify_recent_model);
+    _recent_probed_at = 0.0;
     _batch = load_batch_list();
     apply_preset("3dgs");
     // Built-in when it is there, COLMAP when it is not; effective_engine()
@@ -312,6 +323,7 @@ void GuiApp::shutdown() {
     _mask_editor.sam_drain_retiring();   // before nn::shutdown() frees the device
     _geometry_panel.destroy_gl();
     _partition_panel.destroy_gl();
+    _roi_editor.destroy_gl();
     if (_merge_thread.joinable()) _merge_thread.join();
     _colmap.cancel();
     _sfm.cancel();
@@ -373,16 +385,9 @@ void GuiApp::load_settings() {
         size_t eq = s.find('=');
         if (eq == std::string::npos) continue;
         std::string k = s.substr(0, eq), v = s.substr(eq + 1);
-        if (k == "recent" && !v.empty() &&
-            std::find(_recents.begin(), _recents.end(), v) == _recents.end())
-            _recents.push_back(v);
-        else if (k == "recent_model" && !v.empty() &&
-                 std::find(_model_recents.begin(), _model_recents.end(), v) ==
-                     _model_recents.end())
-            _model_recents.push_back(v);
-        else if (k == "colmap_exe" && !v.empty()) _colmap_exe = v;
+        if (_recent.read_setting(k, v)) continue;
+        if (k == "colmap_exe" && !v.empty()) _colmap_exe = v;
         else if (k == "ffmpeg_exe" && !v.empty()) _ffmpeg_exe = v;
-        else if (k == "python_exe" && !v.empty()) _python_exe = v;
         else if (k == "sfm_engine") _engine = v == "colmap" ? Engine::Colmap
                                                             : Engine::BuiltIn;
         else if (k == "batch_command") _batch_cmd = unescape_setting(v);
@@ -428,13 +433,9 @@ void GuiApp::load_settings() {
 void GuiApp::save_settings() {
     FILE* f = std::fopen(settings_path().c_str(), "w");
     if (!f) return;
-    for (const auto& r : _recents)
-        std::fprintf(f, "recent=%s\n", r.c_str());
-    for (const auto& r : _model_recents)
-        std::fprintf(f, "recent_model=%s\n", r.c_str());
+    _recent.write_settings(f);
     std::fprintf(f, "colmap_exe=%s\n", _colmap_exe.c_str());
     std::fprintf(f, "ffmpeg_exe=%s\n", _ffmpeg_exe.c_str());
-    std::fprintf(f, "python_exe=%s\n", _python_exe.c_str());
     std::fprintf(f, "sfm_engine=%s\n",
                  _engine == Engine::Colmap ? "colmap" : "builtin");
     std::fprintf(f, "batch_command=%s\n", escape_setting(_batch_cmd).c_str());
@@ -459,19 +460,23 @@ void GuiApp::save_settings() {
     std::fclose(f);
 }
 
-void GuiApp::add_recent(std::string path) {
-    _recents.erase(std::remove(_recents.begin(), _recents.end(), path),
-                   _recents.end());
-    _recents.insert(_recents.begin(), path);
-    if (_recents.size() > 10) _recents.resize(10);
+void GuiApp::remember(RecentKind kind, std::string path) {
+    if (path.empty()) return;
+    // A run folder opened in the viewer is still that run, not a second entry.
+    if (kind == RecentKind::Model && _recent.contains(RecentKind::Run, path))
+        kind = RecentKind::Run;
+    _recent.add(kind, path, (int64_t)std::time(nullptr));
+    save_settings();
 }
 
-void GuiApp::add_model_recent(std::string path) {
-    _model_recents.erase(
-        std::remove(_model_recents.begin(), _model_recents.end(), path),
-        _model_recents.end());
-    _model_recents.insert(_model_recents.begin(), std::move(path));
-    if (_model_recents.size() > 10) _model_recents.resize(10);
+static std::tm local_tm(std::time_t t) {
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    return tm;
 }
 
 // Local wall-clock stamp for log lines: [yyyy-MM-dd HH:mm:ss.fff].
@@ -480,12 +485,7 @@ static std::string log_stamp() {
     const std::time_t t = std::chrono::system_clock::to_time_t(now);
     const int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(
                            now.time_since_epoch()).count() % 1000);
-    std::tm tm{};
-#ifdef _WIN32
-    localtime_s(&tm, &t);
-#else
-    localtime_r(&t, &tm);
-#endif
+    const std::tm tm = local_tm(t);
     char date[32], frac[16];
     std::strftime(date, sizeof(date), "[%Y-%m-%d %H:%M:%S", &tm);
     std::snprintf(frac, sizeof(frac), ".%03d] ", ms);
@@ -494,14 +494,8 @@ static std::string log_stamp() {
 
 // Run-start stamp for log file names: yyyyMMddHHmmss.
 static std::string run_log_stamp() {
-    const std::time_t t =
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::tm tm{};
-#ifdef _WIN32
-    localtime_s(&tm, &t);
-#else
-    localtime_r(&t, &tm);
-#endif
+    const std::tm tm = local_tm(
+        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
     char buf[24];
     std::strftime(buf, sizeof(buf), "%Y%m%d%H%M%S", &tm);
     return buf;
@@ -678,7 +672,6 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("ba_cpu", cfg_str(j.ba_cpu));
     line("subprocess", cfg_str(j.subprocess));
     line("force_external_decode", cfg_str(j.prep.force_external_decode));
-    line("force_external_masking", cfg_str(j.prep.force_external_masking));
     line("video_fps", cfg_str(j.prep.video_fps));
     line("adaptive_fps", cfg_str(j.prep.adaptive_fps));
     if (j.prep.adaptive_fps) line("adaptive_range", cfg_str(j.prep.adaptive_range));
@@ -704,6 +697,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("want_depth", cfg_str(_geometry.want_depth));
     line("want_normal", cfg_str(_geometry.want_normal));
     line("max_size", std::to_string(_geometry.max_size));
+    line("face_res", _geometry.face_res == 1 ? "source" : "output");
 
     // The training config, grouped the way the options editor groups it.
     for (int si = 0; si < kTrainNumSections; si++) {
@@ -780,8 +774,10 @@ void GuiApp::apply_preset(const std::string& preset) {
     // Keep GUI-managed context across preset switches.
     fresh.data = _cfg.data;
     fresh.image_dir = _cfg.image_dir;
+    fresh.seed_pointcloud = _cfg.seed_pointcloud;
     fresh.output_dir_prefix = _cfg.output_dir_prefix;
     fresh.output_dir_name = _cfg.output_dir_name;
+    fresh.roi_region = _cfg.roi_region;
     // The native viewport replaces the web viewer by default; it can be
     // re-enabled in Basic Options for remote monitoring.
     fresh.disable_viewer = true;
@@ -801,7 +797,7 @@ void GuiApp::apply_preset(const std::string& preset) {
 }
 
 // A saved preset carries the whole config, so this replaces more than a
-// built-in preset does -- but the same four fields stay out of its reach
+// built-in preset does -- but the same five fields stay out of its reach
 // (SS_PRESET_CONTEXT_FIELDS), because a preset is "how", not "where".
 void GuiApp::apply_user_preset(const TrainPreset& p) {
     if (native_work_busy() || _batch_active) return;
@@ -811,6 +807,7 @@ void GuiApp::apply_user_preset(const TrainPreset& p) {
     fresh.resume = _cfg.resume;
     fresh.output_dir_prefix = _cfg.output_dir_prefix;
     fresh.output_dir_name = _cfg.output_dir_name;
+    fresh.roi_region = _cfg.roi_region;
     // The image and mask folders are ordinary dataset options and travel with
     // a preset, but a preset that never moved them must not move them here:
     // the handoff out of a reconstruction points them at folders that only
@@ -941,7 +938,7 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
     _resume = s.sfm.prep.resume;
     _photo_import = s.sfm.prep.photo_import;
     _flip_found_masks = s.sfm.prep.flip_found_masks;
-    _mask_enable = s.sfm.prep.mask_enable;
+    _mask_enable = s.sfm.prep.mask_enable && backends().builtin_masking;
     _mask_memory = s.sfm.prep.mask_memory;
     _mask_detect_every = s.sfm.prep.mask_detect_every;
     _mask_memory_frames = s.sfm.prep.mask_memory_frames;
@@ -959,9 +956,6 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
     rescan_found_masks();
     _workspace = ws;
     _workspace_auto = ws_auto;
-    // These settings did not build whatever model is sitting in the output
-    // folder, so its stamp no longer describes the screen.
-    _built_workspace.clear();
 }
 
 void GuiApp::apply_dataset_preset(const DatasetPreset& p) {
@@ -1079,6 +1073,8 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     // reconstruction, where the log is that reconstruction's and is the first
     // thing anyone would look at if the result seems wrong.
     if (dir != _cfg.data && !keep_log) clear_log();
+    // Another dataset's region choice means nothing here.
+    if (dir != _cfg.data) _cfg.roi_region.clear();
     _cfg.data = dir;
     // image_dir / mask_dir: the runner hands its (possibly external) folders
     // over in-memory right after a run -- photos indexed where they are keep
@@ -1099,11 +1095,10 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     _defaults.image_dir = _cfg.image_dir;
     _defaults.mask_dir = _cfg.mask_dir;
     _defaults.output_dir_prefix = _cfg.output_dir_prefix;
-    add_recent(dir);
     // However it was opened -- picked, dropped, from the recents list -- this
     // is where the picker starts next time.
     remember_dir("dataset", dir);
-    save_settings();
+    remember(RecentKind::Dataset, dir);
     detach_session_views();
     // Training is the end of the dataset screen's business with the run, so
     // this is where what it left for the screen to read goes.
@@ -1211,9 +1206,8 @@ void GuiApp::open_splat(std::string path) {
         _compare.render_project_when_ready(_render_project_after_open);
         _render_project_after_open.clear();
     }
-    add_model_recent(path);
     remember_dir("model", path);
-    save_settings();
+    remember(RecentKind::Model, path);
     _screen = Screen::Viewer;
 }
 
@@ -1226,9 +1220,8 @@ void GuiApp::add_splat(std::string path) {
     if (!freeze_cuda_device()) return;
 #endif
     _compare.add(path);
-    add_model_recent(path);
     remember_dir("model", path);
-    save_settings();
+    remember(RecentKind::Model, path);
 }
 
 void GuiApp::request_open_splat(std::string path) {
@@ -1265,6 +1258,7 @@ bool GuiApp::open_render_project(const std::string& path) {
         log(i18n::format(rmsg::project_model_missing, {model.empty() ? path : model}));
         return true;
     }
+    remember(RecentKind::Project, path);
     _render_project_after_open = path;
     request_open_splat(model);
     return true;
@@ -1601,6 +1595,11 @@ void GuiApp::record_batch_task() {
             if (ok) {
                 t.steps = _runner.latest_progress().step + 1;
                 if (auto* s = _runner.session()) t.result = s->out_dir.string();
+                // Here as well as in frame(): the next task starts in the same
+                // frame, so Done may never be seen there.
+                std::error_code ec;
+                if (!t.result.empty())
+                    remember(RecentKind::Run, fs::absolute(fs::u8path(t.result), ec).u8string());
             }
             break;
         }
@@ -1659,6 +1658,9 @@ bool GuiApp::launch_batch_dataset(BatchTask& task, const BatchRow& row) {
     _sources = sources;          // rescan_found_masks() re-derived the list
     _source_path_edits.clear();  // re-seeded from _sources by the next draw
     _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    _keep_built = false;
+    // The row's settings are the run's; the folder's record must not replace them.
+    _restored_ws = workspace;
     log(i18n::format(msg::batch_log_build,
                      {(long long)(_batch_current + 1), workspace}));
     follow_batch_screen(BatchStage::Dataset);
@@ -1916,6 +1918,31 @@ static bool looks_like_model(const fs::path& p) {
             return true;
     }
     return false;
+}
+
+// What the viewer will find in a recent model, asked of the file the way the
+// viewer asks it. Runs on the recent list's probe thread.
+static ModelContent classify_recent_model(const std::string& path) {
+    std::error_code ec;
+    const fs::path p = fs::u8path(path);
+    if (fs::is_directory(p, ec))
+        return looks_like_model(p) ? ModelContent::Splats : ModelContent::Points;
+    const std::string ext = lower_ext(p);
+    if (ext == ".ply") {
+        if (spirula::is_splat_ply(path)) return ModelContent::Splats;
+        return meshing::ply_is_mesh(path) ? ModelContent::Mesh : ModelContent::Points;
+    }
+    if (meshing::is_mesh_path(path)) return ModelContent::Mesh;
+    // transforms.json, cameras.bin, a Metashape .xml: a reconstruction.
+    return ModelContent::Points;
+}
+
+// What the viewer's "add a model" menu offers: models and finished runs.
+static std::vector<std::string> recent_models(const RecentList& r) {
+    std::vector<std::string> out;
+    for (const RecentItem& it : r.items())
+        if (it.kind == RecentKind::Model || it.kind == RecentKind::Run) out.push_back(it.path);
+    return out;
 }
 
 void GuiApp::handle_drop(const std::vector<std::string>& paths) {
@@ -2208,9 +2235,12 @@ void GuiApp::refresh_sources() {
     normalize_source_lenses(_sources, _sfm_job.camera_model);
     normalize_source_fps(_sources, _sfm_job.prep.video_fps);
 
-    // The output folder follows the input until the user takes it over.
+    // The output folder follows the input until the user takes it over --
+    // and stays put while the inputs still name it: a run filling it does not
+    // make it somebody else's, and a fresh _2 would mean starting over.
     if (_workspace.empty() || _workspace == _workspace_auto) {
-        _workspace = default_workspace(_sources);
+        if (!workspace_named_by(_sources, _workspace))
+            _workspace = default_workspace(_sources);
         _workspace_auto = _workspace;
     }
 }
@@ -2313,6 +2343,7 @@ void GuiApp::replace_source(size_t input, const std::string& path) {
     if (input >= _source_path_edits.size())
         _source_path_edits.resize(input + 1);
     _source_path_edits[input] = _sources[input].path;
+    _restored_ws.clear();
     mark_source_metadata_dirty();
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
     reapply_dataset_builtin();
@@ -2320,7 +2351,7 @@ void GuiApp::replace_source(size_t input, const std::string& path) {
         _sfm_job.image_gamut.clear();
         _sfm_job.image_is_linear.reset();
     }
-    adopt_exr_color_space();
+    adopt_file_color_space();
     refresh_sources();
 }
 bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
@@ -2347,9 +2378,8 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
         _sources.clear();
         _source_path_edits.clear();
         _mask_preview_input = 0;
-        // apply_capture_defaults() is about to move settings the stamp is made
-        // of, so it no longer describes anything this panel built.
-        _built_workspace.clear();
+        // A capture dropped again is restored from again (restore_from_record).
+        _restored_ws.clear();
         // A different capture is a different job, and the geometry options
         // are remembered nowhere: a run must never quietly cost an hour of
         // inference nobody asked for. (Not mid-run: that would disable it.)
@@ -2384,7 +2414,7 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
     reapply_dataset_builtin();
     if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
-    adopt_exr_color_space();
+    adopt_file_color_space();
     refresh_sources();
     return true;
 }
@@ -2413,8 +2443,8 @@ void GuiApp::add_dataset_folder(const std::string& dir) {
 // What this run draws on its inputs, kept in the output folder for next time.
 void GuiApp::save_run_stencils() {
     if (!_border_enable || _workspace.empty()) return;
-    std::vector<std::pair<std::string, std::vector<app::MaskShape>>> inputs;
-    for (const PrepInput& in : _sources) inputs.push_back({in.path, in.stencil.mask.shapes});
+    std::vector<std::pair<std::string, app::MaskSet>> inputs;
+    for (const PrepInput& in : _sources) inputs.push_back({in.path, app::mask_set_of(in.stencil)});
     std::string err;
     const std::vector<std::string> written = save_dataset_stencils(_workspace, inputs, err);
     if (!err.empty()) log(i18n::format(dmsg::stencil_save_failed, {err}));
@@ -2424,20 +2454,21 @@ void GuiApp::save_run_stencils() {
 void GuiApp::apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
                                 size_t first_input) {
     if (preset.empty()) return;
-    std::vector<app::MaskShape> shapes;
+    app::MaskSet set;
     std::string err;
-    if (!load_stencil_preset(preset, shapes, err)) {
+    if (!load_stencil_preset(preset, set, err)) {
         log(i18n::format(dmsg::stencil_load_failed, {err}));
         preset.clear();
         return;
     }
     for (size_t i = first_input; i < inputs.size(); i++)
-        inputs[i].stencil.mask.shapes = shapes;
+        app::apply_mask_set(inputs[i].stencil, set);
 }
 
-// A folder of EXRs declares its own colour space, and the picker for it is
-// under Advanced where nobody would think to look. Fill it in and say so.
-void GuiApp::adopt_exr_color_space() {
+// A folder of EXRs, or of TIFFs with an ICC profile, declares its own colour
+// space, and the picker for it is under Advanced where nobody would think to
+// look. Fill it in from the first such file and say so.
+void GuiApp::adopt_file_color_space() {
     if (_color_space_touched) return;
     std::error_code ec;
     for (const PrepInput& s : _sources) {
@@ -2447,13 +2478,14 @@ void GuiApp::adopt_exr_color_space() {
             if (!it->is_regular_file(ec)) continue;
             std::string e = it->path().extension().string();
             for (char& c : e) c = (char)std::tolower((unsigned char)c);
-            if (e != ".exr") continue;
-            exr::Info info;
-            if (!exr::declared_color_space(it->path().string(), info)) return;
-            _sfm_job.image_gamut = info.gamut;
-            _sfm_job.image_is_linear = info.is_linear;
-            log(i18n::format(dmsg::log_exr_color_space,
-                             {info.gamut.empty() ? "Rec.709" : info.gamut}));
+            if (e != ".exr" && e != ".tif" && e != ".tiff") continue;
+            imagefile::DeclaredColor d;
+            if (!imagefile::declared_color_space(it->path().string(), d)) return;
+            _sfm_job.image_gamut = d.gamut;
+            _sfm_job.image_is_linear = d.is_linear;
+            log(i18n::format(d.is_linear ? dmsg::log_file_color_linear
+                                         : dmsg::log_file_color_display,
+                             {d.format, d.gamut.empty() ? "Rec.709" : d.gamut}));
             return;
         }
     }
@@ -2480,6 +2512,7 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::RenderAddModel:
         case PickAction::MeshSource:        return "model";
         case PickAction::StencilFile:       return "stencil";
+        case PickAction::SeedPointcloud:    return "seed_pointcloud";
         case PickAction::LidarSource:       return "lidar";
         case PickAction::RenderProjectSave:
         case PickAction::RenderProjectOpen: return "render_project";
@@ -2497,6 +2530,7 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::BatchDatasetPresetFile:
         case PickAction::BatchMeshPresetFile: return "preset";
         case PickAction::MaskModelFile:
+        case PickAction::ConfigPath:
         case PickAction::None:              return "";
     }
     return "";
@@ -2514,7 +2548,10 @@ void GuiApp::open_pick(PickAction a, const std::string& title,
                        const std::string& start_dir, bool multi,
                        const std::string& suggested_name) {
     _pick = a;
-    _pick_key = dir_key(a, mode);
+    // One remembered folder per flag: a run to resume and a region JSON do
+    // not live in the same place.
+    _pick_key = a == PickAction::ConfigPath ? "train." + _pick_field
+                                            : dir_key(a, mode);
     std::string dir = start_dir;
     if (dir.empty()) {
         auto it = _dialog_dirs.find(_pick_key);
@@ -2568,11 +2605,19 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             _compare.edit().save_to(_edit_save_target, path);
             break;
         case PickAction::RenderProjectSave:
-            _compare.render().picked(gui::render::RenderSession::Pick::SaveProject, path);
+        case PickAction::RenderProjectOpen: {
+            const bool save = _pick == PickAction::RenderProjectSave;
+            _compare.render().picked(save ? gui::render::RenderSession::Pick::SaveProject
+                                          : gui::render::RenderSession::Pick::OpenProject,
+                                     path);
+            // Only if it worked: the session holds the file it picked, or for
+            // a save of a bare name, that name plus the .json it was given.
+            fs::path want = fs::u8path(path);
+            if (save && want.extension().empty()) want += ".json";
+            const std::string& now = _compare.render().project_file();
+            if (!path.empty() && fs::u8path(now) == want) remember(RecentKind::Project, now);
             break;
-        case PickAction::RenderProjectOpen:
-            _compare.render().picked(gui::render::RenderSession::Pick::OpenProject, path);
-            break;
+        }
         case PickAction::RenderOutput:
             _compare.render().picked(gui::render::RenderSession::Pick::Output, path);
             break;
@@ -2582,6 +2627,17 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
         case PickAction::MeshSource:
             set_mesh_source(path);
             break;
+        case PickAction::SeedPointcloud:
+            _cfg.seed_pointcloud = path;
+            _cfg_ui.touched.insert("seed_pointcloud");
+            _parse_dirty = true;
+            break;
+        case PickAction::ConfigPath: {
+            const TrainConfig before = _cfg;
+            apply_path_pick(_cfg, _cfg_ui, _pick_field, path);
+            if (!parse_settings_equal(before, _cfg)) _parse_dirty = true;
+            break;
+        }
         case PickAction::StencilFile:
             if (_segment.is_open() && _mask_preview_input < (int)_sources.size())
                 _segment.load_file(_sources[(size_t)_mask_preview_input].stencil, path);
@@ -2770,6 +2826,8 @@ std::string GuiApp::state_json() {
     out += _mask_editor.is_open() ? "true" : "false";
     out += ",\"partition_panel_open\":";
     out += _partition_panel.is_open() ? "true" : "false";
+    out += ",\"roi_editor_open\":";
+    out += _roi_editor.is_open() ? "true" : "false";
     // The app's one segmentation checkpoint, which both screens pick and fetch.
     static const char* kDownload[] = {"idle", "running", "done", "failed", "cancelled"};
     out += ",\"model_id\":" + quoted(_model_id);
@@ -2779,7 +2837,9 @@ std::string GuiApp::state_json() {
     out += kDownload[(int)_download.state()];
     out += "\",\"license_prompt\":" + quoted(_license_prompt);
     // Index order is the declaration order of mask::CanvasMode.
-    static const char* kCanvasModes[] = {"shape", "eraser", "path", "sam"};
+    static const char* kCanvasModes[] = {"shape", "eraser", "path", "pen", "sam"};
+    static_assert(sizeof(kCanvasModes) / sizeof(kCanvasModes[0]) == (size_t)mask::CanvasMode::Sam + 1,
+                  "one name per mask::CanvasMode");
     const mask::MaskDoc* mdoc = _mask_editor.doc();
     out += ",\"mask_editor_mode\":\"";
     out += kCanvasModes[(int)_mask_editor.mode()];
@@ -2815,6 +2875,7 @@ std::string GuiApp::state_json() {
            std::to_string(_mask_editor.sam_click_y()) + "]";
     out += ",\"mask_editor_canvas_h\":" + std::to_string(_mask_editor.canvas_height());
     out += ",\"mask_editor_anchors\":" + std::to_string(_mask_editor.path_anchors());
+    out += ",\"mask_editor_pen_anchors\":" + std::to_string(_mask_editor.pen_anchors());
     out += ",\"sam_margin\":" + std::to_string(_mask_editor.sam_margin());
     out += ",\"mask_dilate_ratio\":" + std::to_string(_mask.dilate_ratio);
     // The dataset screen's clicked objects, which no editor click may reach,
@@ -2876,6 +2937,15 @@ void GuiApp::frame() {
     // briefly idle, and a stale _parse_dirty would start a dataset parse right
     // where the next row wants the engine.
     advance_batch();
+
+    // A run that saved its model is one to come back to; a batch's too.
+    if (const TrainRunner::Phase ph = _runner.phase(); ph != _seen_phase) {
+        _seen_phase = ph;
+        if (ph == TrainRunner::Phase::Done && _runner.saved_on_stop() && _runner.session()) {
+            std::error_code ec;
+            remember(RecentKind::Run, fs::absolute(_runner.session()->out_dir, ec).u8string());
+        }
+    }
 
     // The queue survives a restart, so it is written back once the widget
     // being edited is idle -- the same deferral the dataset options use.
@@ -2942,6 +3012,7 @@ void GuiApp::frame() {
         case Screen::Batch:  draw_batch();  break;
         case Screen::Mesh:   draw_mesh();   break;
     }
+    if (_roi_editor.is_open()) _roi_editor.draw();
 
     // A job cancelled by the editor's close finishes its stage off this thread.
     _mask_editor.sam_poll_retiring();
@@ -2984,6 +3055,82 @@ void GuiApp::frame() {
     ImGui::End();
 }
 
+// ---------------------------------------------------------------------------
+// The recent list's words and colours, shared by the home screen and the
+// File menu
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// What an entry is called. A file keeps its folder in front, as the viewer's
+// panes do: "splat.ply" alone would name every checkpoint there is.
+std::string recent_name(const RecentItem& it) {
+    const fs::path p = fs::u8path(it.path);
+    const std::string leaf = p.filename().u8string();
+    if (leaf.empty()) return it.path;
+    const bool file_kind = it.kind == RecentKind::Model || it.kind == RecentKind::Project;
+    const std::string parent = p.parent_path().filename().u8string();
+    if (!file_kind || !p.has_extension() || parent.empty()) return leaf;
+    return parent + "/" + leaf;
+}
+
+const Msg& recent_badge(const RecentItem& it) {
+    switch (it.kind) {
+        case RecentKind::Dataset:        return msg::home_kind_dataset;
+        case RecentKind::Reconstruction: return msg::home_kind_recon;
+        case RecentKind::Run:            return msg::home_kind_run;
+        case RecentKind::Project:        return msg::home_kind_project;
+        case RecentKind::Model:          break;
+    }
+    switch (it.content) {
+        case ModelContent::Splats:  return msg::home_kind_splats;
+        case ModelContent::Mesh:    return msg::home_kind_mesh;
+        case ModelContent::Points:  return msg::home_kind_points;
+        case ModelContent::Unknown: break;
+    }
+    return msg::home_kind_model;
+}
+
+ImVec4 recent_color(RecentKind k) {
+    switch (k) {
+        case RecentKind::Dataset:        return ImVec4(0.45f, 0.68f, 1.00f, 1.0f);
+        case RecentKind::Reconstruction: return ImVec4(0.38f, 0.82f, 0.76f, 1.0f);
+        case RecentKind::Model:          return ImVec4(0.96f, 0.68f, 0.36f, 1.0f);
+        case RecentKind::Run:            return ImVec4(0.58f, 0.84f, 0.44f, 1.0f);
+        case RecentKind::Project:        return ImVec4(0.80f, 0.62f, 0.98f, 1.0f);
+    }
+    return kDim;
+}
+
+// "Today 14:32", "Yesterday 09:10", or the date. Empty when the entry came
+// from a gui.conf that kept no times.
+std::string recent_when(int64_t t) {
+    if (t <= 0) return {};
+    const std::tm then = local_tm((std::time_t)t);
+    const std::tm now = local_tm(std::time(nullptr));
+    auto same_day = [](const std::tm& a, const std::tm& b) {
+        return a.tm_year == b.tm_year && a.tm_yday == b.tm_yday;
+    };
+    char buf[32];
+    std::strftime(buf, sizeof buf, "%H:%M", &then);
+    if (same_day(then, now)) return i18n::format(msg::home_recent_today, {buf});
+    std::tm yesterday = now;
+    yesterday.tm_mday -= 1;
+    yesterday.tm_isdst = -1;
+    std::mktime(&yesterday);   // normalizes, and fills tm_yday
+    if (same_day(then, yesterday)) return i18n::format(msg::home_recent_yesterday, {buf});
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &then);
+    return buf;
+}
+
+}  // namespace
+
+bool GuiApp::recent_blocked(const RecentItem& it) const {
+    if (it.kind != RecentKind::Reconstruction || !native_work_busy()) return false;
+    auto norm = [](const std::string& s) { return fs::u8path(s).lexically_normal().make_preferred(); };
+    return !dataset_busy() || norm(it.path) != norm(_workspace);
+}
+
 void GuiApp::draw_menu_bar() {
     if (!ImGui::BeginMenuBar()) return;
     if (ui::BeginMenu(msg::menu_file)) {
@@ -2998,6 +3145,27 @@ void GuiApp::draw_menu_bar() {
         if (ui::MenuItem(msg::menu_open_splat)) {
             open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
                       FileDialog::Mode::File, {".ply"});
+        }
+        if (ui::BeginMenu(msg::menu_open_recent, !_recent.items().empty())) {
+            probe_recent();
+            RecentItem go;
+            bool picked = false;
+            int shown = 0;
+            for (const RecentItem& it : _recent.items()) {
+                if (++shown > 15) break;
+                ImGui::PushID(shown);
+                const bool blocked = recent_blocked(it);
+                if (ui::MenuItemRaw(recent_name(it).c_str(), recent_badge(it).get(), false,
+                                    !blocked)) {
+                    go = it;
+                    picked = true;
+                }
+                if (blocked) ui::help_on_hover_disabled(msg::home_recon_busy);
+                else ui::help_on_hover_raw(it.path.c_str());
+                ImGui::PopID();
+            }
+            ImGui::EndMenu();
+            if (picked) open_recent(go);
         }
         ImGui::Separator();
         if (ui::MenuItem(msg::menu_batch) && !native_work_busy())
@@ -3219,13 +3387,17 @@ void GuiApp::draw_home_banner(float avail, float indent) {
 }
 
 void GuiApp::draw_home() {
-    // The column is centred and never wider than the window: at 480 px it is
-    // wide enough for the longest button label in any language, and on a
-    // narrow window it gives up width rather than running text off the edge.
+    // 480 px fits the longest button label in any language; a narrow window
+    // narrows the column instead. The recent list goes beside it when it has
+    // room for a path, under it otherwise.
     const float avail = ImGui::GetContentRegionAvail().x;
-    const float w = std::max(std::min(px(480.0f), avail - px(16.0f)), px(200.0f));
+    const float margin = px(16.0f);
+    const float w = std::max(std::min(px(480.0f), avail - margin), px(200.0f));
+    const float gap = px(40.0f);
+    const float list_w = std::min(px(760.0f), avail - 2.0f * margin - w - gap);
+    const bool beside = list_w >= px(420.0f);
     const float bh = px(42.0f);
-    const float indent = std::max(0.0f, (avail - w) * 0.5f);
+    const float indent = std::max(0.0f, (avail - (beside ? w + gap + list_w : w)) * 0.5f);
 
     draw_home_banner(avail, indent);
 
@@ -3275,20 +3447,9 @@ void GuiApp::draw_home() {
     ImGui::Spacing();
     ui::TextDisabledWrapped(msg::home_drop_hint);
 
-    if (!_recents.empty()) {
+    if (!beside) {
         ImGui::Dummy(ImVec2(0, px(18.0f)));
-        ui::SeparatorText(msg::home_recent);
-        const float row_w = ImGui::GetContentRegionAvail().x;
-        for (size_t i = 0; i < _recents.size(); i++) {
-            ImGui::PushID((int)i);
-            // A path is a path in every language. It is elided from the
-            // middle, where a dataset path repeats what the ones above it
-            // already said; the ends are what tells two of them apart.
-            if (ui::SelectableRaw(elide_middle(_recents[i], row_w)))
-                request_open_dataset(_recents[i]);
-            if (ImGui::IsItemHovered()) ui::SetTooltipRaw(_recents[i]);
-            ImGui::PopID();
-        }
+        draw_home_recent(/*scroll=*/false);
     }
 
     ImGui::Dummy(ImVec2(0, px(18.0f)));
@@ -3297,6 +3458,209 @@ void GuiApp::draw_home() {
         ui::TextColored(kDim, msg::home_no_engine);
 
     ImGui::EndChild();
+
+    if (beside) {
+        ImGui::SameLine(0.0f, gap);
+        ImGui::BeginChild("##homerecent", ImVec2(list_w, 0));
+        ImGui::Dummy(ImVec2(0, px(24.0f)));
+        draw_home_recent(/*scroll=*/true);
+        ImGui::EndChild();
+    }
+}
+
+void GuiApp::draw_home_recent(bool scroll) {
+    probe_recent();
+    struct Tab {
+        const Msg* label;
+        const Msg* about;
+        int kind;   // -1: every kind
+    };
+    static const Tab kTabs[] = {
+        {&msg::home_recent, &msg::home_recent_about, -1},
+        {&msg::home_tab_datasets, &msg::home_datasets_about, (int)RecentKind::Dataset},
+        {&msg::home_tab_recons, &msg::home_recons_about, (int)RecentKind::Reconstruction},
+        {&msg::home_tab_models, &msg::home_models_about, (int)RecentKind::Model},
+        {&msg::home_tab_runs, &msg::home_runs_about, (int)RecentKind::Run},
+        {&msg::home_tab_projects, &msg::home_projects_about, (int)RecentKind::Project},
+    };
+    // Its own tooltips say what each tab holds, which a truncated label's
+    // would only repeat.
+    if (!ImGui::BeginTabBar("##recenttabs", ImGuiTabBarFlags_NoTooltip |
+                                                ImGuiTabBarFlags_DrawSelectedOverline))
+        return;
+    for (const Tab& t : kTabs) {
+        const bool open = ui::BeginTabItem(*t.label);
+        ui::help_on_hover(*t.about);
+        if (!open) continue;
+
+        // A copy: opening, removing and clearing all reorder the list.
+        std::vector<RecentItem> rows;
+        for (const RecentItem& it : _recent.items())
+            if (t.kind < 0 || (int)it.kind == t.kind) rows.push_back(it);
+        if (scroll) ImGui::BeginChild("##rows", ImVec2(0, 0));
+        ImGui::Dummy(ImVec2(0, px(4.0f)));
+        if (rows.empty()) {
+            ui::TextDisabled(msg::home_recent_empty);
+            ui::TextDisabledWrapped(*t.about);
+        }
+        bool picked = false;
+        RecentItem go;
+        for (const RecentItem& it : rows) {
+            ImGui::PushID((int)it.kind);
+            ImGui::PushID(it.path.c_str());
+            // The Models tab keeps the badge: what a file holds is what tells
+            // its entries apart.
+            if (draw_recent_row(it, t.kind < 0 || it.kind == RecentKind::Model)) {
+                go = it;
+                picked = true;
+            }
+            draw_recent_menu(it, t.kind);
+            ImGui::PopID();
+            ImGui::PopID();
+        }
+        if (scroll) ImGui::EndChild();
+        ImGui::EndTabItem();
+        if (picked) open_recent(go);
+    }
+    ImGui::EndTabBar();
+}
+
+// The name over the path, a dot in the kind's colour before them; on the
+// right the kind, in that colour, over when it was last used. Drawn rather
+// than laid out so that both lines are one item to hover and click.
+bool GuiApp::draw_recent_row(const RecentItem& it, bool badge) {
+    const float line = ImGui::GetTextLineHeight();
+    const float lead = px(2.0f);
+    const float w = ImGui::GetContentRegionAvail().x;
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    const bool blocked = recent_blocked(it);
+    // Lit while its menu is open, so the menu says which entry it is for.
+    const bool clicked = ui::SelectableRaw("##row", ImGui::IsPopupOpen("##menu"),
+                                           ImGuiSelectableFlags_None,
+                                           ImVec2(w, 2.0f * line + lead)) &&
+                         !blocked;
+    if (blocked) ui::help_on_hover(msg::home_recon_busy);
+    if (!ImGui::IsItemVisible()) return clicked;
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec4 color = recent_color(it.kind);
+    const float r = px(3.5f);
+    const float x = p.x + px(6.0f) + 2.0f * r + px(8.0f);
+    const float right = p.x + w - px(6.0f);
+    const float sep = px(14.0f);
+    dl->AddCircleFilled(ImVec2(p.x + px(6.0f) + r, p.y + 0.5f * line), r,
+                        ImGui::GetColorU32(color));
+
+    const char* kind = badge ? recent_badge(it).get() : "";
+    const std::string when = recent_when(it.time);
+    const float kind_w = *kind ? ImGui::CalcTextSize(kind).x + sep : 0.0f;
+    const float when_w = when.empty() ? 0.0f : ImGui::CalcTextSize(when.c_str()).x + sep;
+    const float min_w = px(60.0f);
+    // A path is a path in every language. Cut from the middle: the ends are
+    // what tell two of them apart.
+    const std::string name = elide_middle(recent_name(it), std::max(min_w, right - x - kind_w));
+    const std::string path = elide_middle(it.path, std::max(min_w, right - x - when_w));
+    if (!blocked && path != it.path) ui::help_on_hover_raw(it.path.c_str());
+    const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    dl->AddText(ImVec2(x, p.y), blocked ? dim : ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
+    dl->AddText(ImVec2(x, p.y + line + lead), dim, path.c_str());
+    if (*kind)
+        dl->AddText(ImVec2(right - kind_w + sep, p.y), ImGui::GetColorU32(color), kind);
+    if (!when.empty())
+        dl->AddText(ImVec2(right - when_w + sep, p.y + line + lead), dim, when.c_str());
+    return clicked;
+}
+
+void GuiApp::draw_recent_menu(const RecentItem& it, int tab_kind) {
+    if (!ImGui::BeginPopupContextItem("##menu")) return;
+    if (ui::MenuItem(msg::home_recent_open, nullptr, false, !recent_blocked(it)))
+        open_recent(it);
+    const bool model = it.kind == RecentKind::Model || it.kind == RecentKind::Run;
+    const bool splats = it.kind == RecentKind::Run || it.content == ModelContent::Splats;
+    if (model) {
+        if (ui::MenuItem(rmsg::train_render)) {
+            _render_after_open = true;
+            request_open_splat(it.path);
+        }
+        if (ui::MenuItem(rmsg::train_edit)) {
+            _edit_after_open = true;
+            request_open_splat(it.path);
+        }
+    }
+    if (model && splats &&
+        ui::MenuItem(msg::home_make_mesh, nullptr, false, !_mesh.busy())) {
+        set_mesh_source(it.path);
+        _screen = Screen::Mesh;
+    }
+    ImGui::Separator();
+    if (ui::MenuItem(msg::home_recent_show)) {
+        std::error_code ec;
+        const fs::path p = fs::u8path(it.path);
+        open_url((fs::is_directory(p, ec) ? p : p.parent_path()).u8string());
+    }
+    if (ui::MenuItem(msg::home_recent_copy)) ImGui::SetClipboardText(it.path.c_str());
+    ImGui::Separator();
+    if (ui::MenuItem(msg::home_recent_remove)) {
+        _recent.remove(it.kind, it.path);
+        save_settings();
+    }
+    if (ui::MenuItem(msg::home_recent_clear)) {
+        if (tab_kind < 0) _recent.clear();
+        else _recent.clear((RecentKind)tab_kind);
+        save_settings();
+    }
+    ImGui::EndPopup();
+}
+
+void GuiApp::open_recent(RecentItem it) {
+    switch (it.kind) {
+        case RecentKind::Dataset:        request_open_dataset(it.path); break;
+        case RecentKind::Reconstruction: open_reconstruction(it.path); break;
+        case RecentKind::Model:
+        case RecentKind::Run:            request_open_splat(it.path); break;
+        case RecentKind::Project:
+            if (!open_render_project(it.path))
+                log(i18n::format(rmsg::project_open_failed, {it.path}));
+            break;
+    }
+}
+
+void GuiApp::open_reconstruction(const std::string& workspace) {
+    if (recent_blocked({RecentKind::Reconstruction, workspace})) return;
+    if (dataset_busy()) {
+        _screen = Screen::NewDataset;
+        return;
+    }
+    std::error_code ec;
+    std::vector<std::string> inputs;
+    for (const PrepInput& in : decode_record_inputs(read_dataset_record(workspace).inputs).rows)
+        if (!in.path.empty() && fs::exists(fs::u8path(in.path), ec)) inputs.push_back(in.path);
+    _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    if (!inputs.empty()) {
+        add_sources(inputs, /*replace=*/true);
+        _workspace = workspace;
+    } else if (folder_looks_like_dataset(workspace)) {
+        // Its inputs are gone, but what they made is a dataset: add to it.
+        add_existing_dataset(workspace);
+    } else {
+        close_native_previews();
+        close_splat();
+        _sources.clear();
+        _source_path_edits.clear();
+        _mask_preview_input = 0;
+        refresh_sources();
+        _workspace = workspace;
+    }
+    remember(RecentKind::Reconstruction, workspace);
+    _screen = Screen::NewDataset;
+}
+
+void GuiApp::probe_recent() {
+    if (_recent.poll_probe()) save_settings();
+    const double now = ImGui::GetTime();
+    if (_recent.probing() || now - _recent_probed_at < 3.0) return;
+    _recent_probed_at = now;
+    _recent.start_probe(classify_recent_model);
 }
 
 
@@ -3394,8 +3758,7 @@ bool GuiApp::mask_model_missing() const {
 }
 
 bool GuiApp::mask_model_missing(bool enable, const std::vector<PrepInput>& inputs) const {
-    if (!enable || _sfm_job.prep.force_external_masking) return false;
-    if (!backends().builtin_masking) return false;
+    if (!enable) return false;
     // Inputs that arrived with their own masks are never segmented, so a job
     // made only of those needs no model at all.
     bool all_bring_masks = !inputs.empty();
@@ -3426,6 +3789,10 @@ const WorkspaceState& GuiApp::workspace_state() {
         _ws_state_at = now;
         _ws_state = probe_workspace(_workspace, _sources);
         _ws_artifacts = workspace_artifacts(_workspace, _sources);
+        PrepJob job = _sfm_job.prep;
+        job.inputs = _sources;
+        job.workspace = _workspace;
+        _ws_record = read_plan_record(_workspace, job);
     }
     return _ws_state;
 }
@@ -3434,11 +3801,11 @@ const WorkspaceState& GuiApp::workspace_state() {
 // their remaining options do not overlap. This is the one place they are
 // copied across, so a field cannot be set on the screen and silently not run.
 void GuiApp::fill_masking(PrepJob& prep) const {
-    prep.python_exe = _python_exe;
     // A click-only pick hides the prompt boxes, so what is left in them is not run.
     const MaskModelFiles mask_model = selected_mask_model();
     prep.mask_prompt = mask_model.text ? _mask.prompt : "";
     prep.mask_negative_prompt = mask_model.text ? _mask.negative_prompt : "";
+    prep.mask_feature_prompt = mask_model.text ? _mask.feature_prompt : "";
     prep.mask_keep_subject = _mask.keep_subject;
     prep.mask_max_image_size = _mask.max_image_size;
     prep.mask_dilate_ratio = _mask.boundary_ratio();
@@ -3451,9 +3818,6 @@ void GuiApp::fill_masking(PrepJob& prep) const {
     prep.mask_model_path = mask_model.model;
     prep.mask_detector_path = mask_model.detector;
     prep.mask_detector_threshold = _mask.box_threshold;
-    prep.force_external_masking = _sfm_job.prep.force_external_masking;
-    if (const ModelEntry* e = find_model(_model_id))
-        prep.mask_model_name = e->legacy_name;
     // The one frozen choice, re-applied here because a job is rebuilt from
     // panel state and would otherwise drop it. Empty before the freeze, which
     // is exactly what an unstarted job wants.
@@ -3475,6 +3839,7 @@ void GuiApp::sync_dataset_jobs() {
     prep.sharp_window = _sfm_job.prep.sharp_window;
     prep.pano = _sfm_job.prep.pano;
     prep.max_frames = _sfm_job.prep.max_frames;
+    prep.auto_rotate = _sfm_job.prep.auto_rotate;
     prep.force_external_decode = _sfm_job.prep.force_external_decode;
     prep.sync_tracks = _sfm_job.prep.sync_tracks;
     prep.ffmpeg_exe = _ffmpeg_exe;
@@ -3501,13 +3866,12 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.max_frames = prep.max_frames;
     _colmap_job.force_external_decode = prep.force_external_decode;
     _colmap_job.photo_import = prep.photo_import;
-    _colmap_job.force_external_masking = prep.force_external_masking;
     _colmap_job.colmap_exe = _colmap_exe;
     _colmap_job.ffmpeg_exe = _ffmpeg_exe;
-    _colmap_job.python_exe = _python_exe;
     _colmap_job.mask_enable = prep.mask_enable;
     _colmap_job.mask_prompt = prep.mask_prompt;
     _colmap_job.mask_negative_prompt = prep.mask_negative_prompt;
+    _colmap_job.mask_feature_prompt = prep.mask_feature_prompt;
     _colmap_job.mask_keep_subject = prep.mask_keep_subject;
     _colmap_job.mask_max_image_size = prep.mask_max_image_size;
     _colmap_job.mask_dilate_ratio = prep.mask_dilate_ratio;
@@ -3520,18 +3884,17 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.mask_model_path = prep.mask_model_path;
     _colmap_job.mask_detector_path = prep.mask_detector_path;
     _colmap_job.mask_detector_threshold = prep.mask_detector_threshold;
-    _colmap_job.mask_model = prep.mask_model_name;
 
-    _sfm_job.prep.redo_frames = _colmap_job.redo_frames = _redo_frames;
-    _sfm_job.prep.redo_masks = _colmap_job.redo_masks = _redo_masks;
-    _sfm_job.redo_model = _colmap_job.redo_model = _redo_model;
+    PlanRequest req;
+    req.redo_frames = _redo_frames;
+    req.redo_masks = _redo_masks;
+    req.redo_model = _redo_model;
+    req.redo_geometry = _redo_geometry;
+    req.keep_built = _keep_built && _keep_built_for == _workspace;
+    _sfm_job.request = _colmap_job.request = req;
     _sfm_job.mask_features = _colmap_job.mask_features = _mask_features;
-    _sfm_job.settings_built_model = _colmap_job.settings_built_model =
-        !_workspace.empty() && _workspace == _built_workspace;
     // The same step either way: `spirula geometry` over the finished dataset.
     _sfm_job.geometry = _colmap_job.geometry = _geometry;
-    _sfm_job.geometry.overwrite = _colmap_job.geometry.overwrite =
-        _geometry.overwrite || _redo_geometry;
     // The frozen choice survives the copy above, so a later panel edit cannot
     // drop the UUID a run already committed to.
     _sfm_job.geometry.device_uuid = _colmap_job.geometry.device_uuid =
@@ -3553,6 +3916,9 @@ void GuiApp::sync_dataset_jobs() {
         _sfm_job.image_is_linear;
     _sfm_job.prep.image_gamut = _sfm_job.image_gamut;
     _sfm_job.prep.image_is_linear = _sfm_job.image_is_linear;
+    _colmap_job.image_exposure = _sfm_job.geometry.image_exposure =
+        _colmap_job.geometry.image_exposure = _sfm_job.prep.image_exposure =
+            _sfm_job.image_exposure;
 }
 
 void GuiApp::update_dataset_job() {
@@ -3562,20 +3928,15 @@ void GuiApp::update_dataset_job() {
     else                                           _colmap.update(_colmap_job);
 }
 
-// Masks the reconstruction being kept has never seen, with the panel asking
-// for masked feature points: the run can add them for training alone or spend
-// the reconstruction again on them, and only the user knows which.
-bool GuiApp::masks_miss_kept_model() {
-    if (!_mask_enable || !_mask_features || _redo_model) return false;
-    if (!workspace_state().model) return false;
-    // A model this panel built is one these settings built, masks included --
-    // and if they have moved since, the run replaces it anyway.
-    if (_workspace == _built_workspace) return false;
-    // An input that arrived with its own masks is not segmented, so the
-    // dataset gains nothing the model could have missed.
-    for (const PrepInput& s : _sources)
-        if (s.mask_dir.empty()) return true;
-    return false;
+const DatasetPlan& GuiApp::dataset_plan() {
+    sync_dataset_jobs();
+    const WorkspaceState& ws = workspace_state();
+    if (effective_engine() == Engine::BuiltIn)
+        _plan = plan_dataset(plan_job(_sfm_job), ws, _ws_record, _sfm_job.request);
+    else
+        _plan = plan_dataset(plan_job(_colmap_job, ColmapRunner::prep_job(_colmap_job)),
+                             ws, _ws_record, _colmap_job.request);
+    return _plan;
 }
 
 void GuiApp::start_dataset_job() {
@@ -3585,8 +3946,11 @@ void GuiApp::start_dataset_job() {
         log(dmsg::sensors_reading.get());
         return;
     }
-    if (masks_miss_kept_model()) {
-        _mask_recon_open = true;
+    _ws_state_at = -1.0;
+    const DatasetPlan& plan = dataset_plan();
+    if (plan.ask()) {
+        _rebuild_plan = plan;
+        _rebuild_open = true;
         return;
     }
     launch_dataset_job();
@@ -3601,12 +3965,20 @@ bool GuiApp::launch_dataset_job() {
     close_splat();
     if (!freeze_native_device()) return false;
     app::set_crash_note("building dataset " + _workspace);
-    // The stamp this run leaves behind describes the settings on the screen
-    // only when the run actually reconstructs; after one that keeps the model
-    // it goes on describing whoever built it.
-    if (_redo_model || !workspace_state().model) _built_workspace = _workspace;
     sync_dataset_jobs();
     save_run_stencils();
+    {
+        const DatasetPlan& plan = dataset_plan();
+        bool made[kNumSteps];
+        for (int k = 0; k < kNumSteps; k++) made[k] = makes(plan[(Step)k].act);
+        write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
+                              encode_record_inputs({_sources, _mask.clicks}), made);
+    }
+    if (!_workspace.empty()) {
+        std::error_code ec;
+        remember(RecentKind::Reconstruction, fs::absolute(fs::u8path(_workspace), ec).u8string());
+    }
+    _restored_ws = _workspace;
     const std::string stamp = run_log_stamp();
     const fs::path prep_log_file =
         open_run_log(_prep_log,
@@ -3641,7 +4013,7 @@ namespace {
 // Built by hand rather than with ui::Combo for the same reason as the lens
 // pickers: what each row costs is the whole of the question, and one tooltip
 // on the closed combo cannot answer it row by row.
-void photo_import_combo(PhotoImport* mode, bool several_inputs) {
+void photo_import_combo(PhotoImport* mode, bool no_in_place) {
     const std::vector<const Msg*> labels{
         &dmsg::photo_import_convert, &dmsg::photo_import_copy,
         &dmsg::photo_import_move, &dmsg::photo_import_inplace};
@@ -3653,7 +4025,7 @@ void photo_import_combo(PhotoImport* mode, bool several_inputs) {
     if (ui::BeginCombo(dmsg::photo_import, labels[(size_t)idx]->get())) {
         for (int i = 0; i < kNumPhotoImports; i++) {
             const bool blocked =
-                several_inputs && (PhotoImport)i == PhotoImport::InPlace;
+                no_in_place && (PhotoImport)i == PhotoImport::InPlace;
             ImGui::BeginDisabled(blocked);
             if (ui::Selectable(*labels[(size_t)i], i == idx))
                 *mode = (PhotoImport)i;
@@ -3928,7 +4300,8 @@ void GuiApp::draw_dataset_source() {
         // A scan's photographs or views join the images, so they cannot be
         // read where they are.
         photo_import_combo(&_photo_import,
-                           _sources.size() > 1 || (!_lidar.empty() && !_lidar_in_frame));
+                           _sources.size() > 1 || (!_sources.empty() && _sources[0].heif) ||
+                               (!_lidar.empty() && !_lidar_in_frame));
     }
 
     ImGui::SetNextItemWidth(px(-220.0f));
@@ -3953,16 +4326,20 @@ void GuiApp::draw_dataset_source() {
     if (prior.resumable()) {
         ui::Checkbox(dmsg::resume_previous, &_resume);
         ui::help_on_hover(dmsg::resume_previous_help);
-        ImGui::SameLine();
-        ui::TextDisabled(dmsg::unfinished_run_detected);
+        // A finished run keeps features/ too; only its record can say the
+        // folder holds a step that never finished.
+        bool unfinished = !_ws_record.present;
+        for (const StepRecord& r : _ws_record.steps)
+            unfinished = unfinished || (r.present && !r.complete);
+        if (unfinished) {
+            ImGui::SameLine();
+            ui::TextDisabled(dmsg::unfinished_run_detected);
+        }
     }
-    // A finished dataset in the output folder is REUSED, which is what lets a
-    // capture somebody else reconstructed be given masks, depth and normals
-    // without an hour of rebuilding it.
+    // A finished dataset in the output folder is reused unless its settings
+    // differ, so a capture somebody else reconstructed can be given masks,
+    // depth and normals. draw_dataset_plan lists what a run will do with it.
     if (prior.model) {
-        ui::TextColoredWrapped(_redo_model ? kWarn : kOk,
-                               _redo_model ? dmsg::model_will_be_replaced
-                                           : dmsg::model_found_reuse);
         ui::Checkbox(dmsg::reconstruct_again, &_redo_model);
         ui::help_on_hover(dmsg::reconstruct_again_help);
     }
@@ -4043,12 +4420,11 @@ void GuiApp::draw_dataset_basics() {
     const bool builtin = effective_engine() == Engine::BuiltIn;
 
     // A model in the output folder is reused, so these settings reach it only
-    // through a rebuild -- which a mismatch against the stamp THIS panel wrote
-    // forces (ReconStamp.h). One it did not build is kept regardless.
+    // through a rebuild -- which a difference from the record it was built
+    // with forces (DatasetPlan.h). One with no record is kept regardless.
     const WorkspaceState& prior = workspace_state();
     const bool reusing = !dataset_busy() && prior.model && !_redo_model;
-    const bool inert =
-        reusing && !(prior.recon_stamp && _workspace == _built_workspace);
+    const bool inert = reusing && !_ws_record.step(Step::Model).present;
     if (reusing)
         ui::TextColoredWrapped(inert ? kWarn : kDim,
                                inert ? dmsg::recon_reuse_locked
@@ -4465,6 +4841,7 @@ PreviewSource GuiApp::preview_source(size_t input) const {
     src.device = _native_device_uuid;
     src.image_gamut = _sfm_job.image_gamut;
     src.image_is_linear = _sfm_job.image_is_linear;
+    src.image_exposure = _sfm_job.image_exposure;
     src.look.auto_rotate = _sfm_job.prep.auto_rotate;
     if (in.pano360.valid() && _sfm_job.prep.pano.mode != app::Pano360Mode::Off) {
         src.look.eac = in.pano360;
@@ -4837,17 +5214,25 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
                                    {with_masks, (int)inputs.size()});
     }
 
+    ImGui::BeginDisabled(!backends().builtin_masking);
     ui::Checkbox(dmsg::mask_enable, p.enable);
-    ui::help_on_hover(dmsg::mask_enable_help);
+    ImGui::EndDisabled();
+    if (backends().builtin_masking) {
+        ui::help_on_hover(dmsg::mask_enable_help);
+    } else {
+        ui::TextDisabledWrapped(dmsg::mask_objects_need_segmentation);
+        ui::help_on_hover_raw(backends().masking_reason.c_str());
+    }
 
     // A sibling, not a child: the stencil is geometry, so it works with no
     // model downloaded and on a build with no segmentation in it at all.
     if (ui::Checkbox(dmsg::mask_border_enable, p.border) && *p.border && p.fit_lens_border) {
         // Ticking it has to do something on its own. The fisheye border is
         // what it is for, so an input with nothing drawn on it yet gets the
-        // fit switched on; one that has been edited is left alone.
+        // fit, unless it is a GoPro's sphere, whose views have no border.
         for (PrepInput& in : inputs)
-            if (in.stencil.empty()) in.stencil.detect_border = true;
+            if (in.stencil.empty() && !in.pano360.valid() && !is_pano360_path(in.path))
+                in.stencil.detect_border = true;
     }
     ui::help_on_hover(dmsg::mask_border_enable_help);
     std::string& frame_shapes = *p.frame_shapes;
@@ -4861,7 +5246,7 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
             if (ui::Selectable(dmsg::stencil_areas_per_input, frame_shapes.empty()))
                 frame_shapes.clear();
             for (const StencilPreset& sp : _frame_shapes_list)
-                if (ui::SelectableRaw(sp.name, sp.name == frame_shapes)) {
+                if (ui::SelectableRaw(stencil_preset_label(sp), sp.name == frame_shapes)) {
                     frame_shapes = sp.name;
                     apply_frame_shapes(inputs, frame_shapes);
                 }
@@ -4883,9 +5268,8 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
     ImGui::Indent();
 
     const ModelEntry* entry = find_model(_model_id);
-    const bool builtin_masking = backends().builtin_masking;
 
-    if (*p.enable && builtin_masking) {
+    if (*p.enable) {
         const ModelEntry* before = entry;
         draw_mask_model_picker(_model_id, &_mask_detector_id, _download, [this] {
             request_model_download(_model_id, _mask_detector_id);
@@ -4922,9 +5306,6 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
                 ui::TextColoredWrapped(kWarn, dmsg::mask_inputs_need_clicks,
                                        {unprompted});
         }
-    } else if (*p.enable) {
-        ui::TextWrappedRaw(backends().masking_note);
-        ui::help_on_hover_raw(backends().masking_reason.c_str());
     }
 
     const bool mask_preview_busy = native_work_busy();
@@ -5026,6 +5407,12 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
     }
 
     if (ui::CollapsingHeader(dmsg::mask_advanced)) {
+        if (text) {
+            ImGui::SetNextItemWidth(px(320.0f));
+            ui::InputTextEnglish(dmsg::mask_features_only, "sky; cloud",
+                                 &_mask.feature_prompt);
+            ui::help_on_hover(dmsg::mask_features_only_help);
+        }
         // The preview reads these off the same fields. Grounding DINO scores
         // on its own scale, so the slider is its threshold there, and it keeps
         // every box, so there is no NMS to set.
@@ -5247,6 +5634,11 @@ void GuiApp::draw_geometry_options() {
         ImGui::SetNextItemWidth(px(220.0f));
         ui::ComboRaw(ui::detail::label(dmsg::geom_split), &_geometry.split, kTri, 3);
         ui::help_on_hover(gmsg::opt_split);
+        static const char* kFaceRes[] = {"output", "source"};
+        ImGui::SetNextItemWidth(px(220.0f));
+        ui::ComboRaw(ui::detail::label(dmsg::geom_face_res), &_geometry.face_res,
+                     kFaceRes, 2);
+        ui::help_on_hover(gmsg::opt_face_res);
         ImGui::SetNextItemWidth(px(220.0f));
         ui::ComboRaw(ui::detail::label(dmsg::geom_ray_depth), &_geometry.ray_depth,
                      kTri, 3);
@@ -5730,7 +6122,7 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
         // the app's convention -- only a bundled folder is ever left flipped.
         f.mask_dir = (fs::path(_workspace) / "masks").string();
     } else if (prior.input_masks && _sources.size() == 1 && !_sources[0].is_video &&
-               _sources[0].packed_lenses == 0) {
+               _sources[0].packed_lenses == 0 && !_sources[0].heif) {
         // Masks that came with the photos pair with them where they lie.
         f.image_dir = fs::absolute(_sources[0].path, ec).string();
         f.mask_dir = fs::absolute(_sources[0].mask_dir, ec).string();
@@ -5763,6 +6155,9 @@ void GuiApp::draw_dataset_open_buttons(const DatasetFolders& f, bool model) {
         ImGui::SameLine();
         if (ui::Button(spirula::i18n::msg::partition::open_button)) open_partition_panel(f);
         ui::help_on_hover(spirula::i18n::msg::partition::open_button_help);
+        ImGui::SameLine();
+        if (ui::Button(spirula::i18n::msg::roi::editor_button)) open_roi_editor(f.dir);
+        ui::help_on_hover(spirula::i18n::msg::roi::editor_button_help);
     }
     if (!f.mask_dir.empty()) {
         if (model) ImGui::SameLine();
@@ -5795,6 +6190,86 @@ void GuiApp::open_partition_panel(const DatasetFolders& f) {
         if (!native_work_busy()) _screen = Screen::Batch;
     };
     _partition_panel.open(f.dir, std::move(hooks));
+}
+
+void GuiApp::open_roi_editor(const std::string& dataset, const std::string& file) {
+    // A reconstruction in flight is rewriting the model the editor would read.
+    if (dataset_busy()) return;
+    RoiEditor::Hooks hooks;
+    hooks.log = [this](const std::string& s) { log(s); };
+    // The training screen's preview shows the region the run would use, so a
+    // save re-reads it -- unless a run owns the session.
+    hooks.changed = [this](const std::string& ds) {
+        _roi_files_for.clear();
+        std::error_code ec;
+        const TrainRunner::Phase ph = _runner.phase();
+        if (!_cfg.data.empty() && fs::equivalent(ds, _cfg.data, ec) &&
+            (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::LoadError))
+            _parse_dirty = true;
+    };
+    _roi_editor.open(dataset, std::move(hooks), file);
+}
+
+// Which saved region the run trains in: the first by default, any other, or
+// none. What it writes is --roi-region's own spelling, so a batch row and the
+// command line read it the same way.
+void GuiApp::draw_roi_row(bool busy) {
+    namespace roimsg = spirula::i18n::msg::roi;
+    if (_cfg.data.empty()) return;
+    if (_roi_files_for != _cfg.data) {
+        _roi_files_for = _cfg.data;
+        _roi_files = spirula::list_roi_files(_cfg.data);
+    }
+    auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
+    const spirula::RoiChoice now = spirula::resolve_roi_setting(_cfg.roi_region, _cfg.data);
+    std::string shown;
+    if (now.off) shown = roimsg::train_none.get();
+    else if (_cfg.roi_region.empty())
+        shown = _roi_files.empty() ? std::string(roimsg::train_auto_none.get())
+                                   : i18n::format(roimsg::train_auto, {stem(_roi_files.front())});
+    else shown = stem(now.path);
+    ui::Text(roimsg::train_label);
+    ui::help_on_hover(roimsg::train_help);
+    ImGui::BeginDisabled(busy);
+    const float edit_w = ImGui::CalcTextSize(roimsg::train_edit_region.get()).x +
+                         2 * ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - edit_w - px(8.0f)));
+    std::string pick;
+    bool picked = false;
+    if (ui::BeginComboRaw("##roirow", shown.c_str())) {
+        _roi_files = spirula::list_roi_files(_cfg.data);
+        const std::string auto_label =
+            _roi_files.empty() ? std::string(roimsg::train_auto_none.get())
+                               : i18n::format(roimsg::train_auto, {stem(_roi_files.front())});
+        if (ui::SelectableRaw(auto_label + "##auto", _cfg.roi_region.empty())) {
+            pick.clear();
+            picked = true;
+        }
+        for (size_t i = 0; i < _roi_files.size(); i++) {
+            ImGui::PushID((int)i);
+            std::error_code ec;
+            const bool on = !_cfg.roi_region.empty() && !now.off && fs::equivalent(now.path, _roi_files[i], ec);
+            if (ui::SelectableRaw(stem(_roi_files[i]), on)) {
+                pick = "roi/" + fs::path(_roi_files[i]).filename().generic_string();
+                picked = true;
+            }
+            ImGui::PopID();
+        }
+        if (ui::Selectable(roimsg::train_none, now.off)) {
+            pick = "off";
+            picked = true;
+        }
+        ImGui::EndCombo();
+    }
+    if (picked && pick != _cfg.roi_region) {
+        _cfg.roi_region = pick;
+        _cfg_ui.touched.insert("roi_region");
+        _parse_dirty = true;
+    }
+    ImGui::SameLine();
+    if (ui::Button(roimsg::train_edit_region))
+        open_roi_editor(_cfg.data, !now.off && !now.path.empty() ? now.path : std::string());
+    ImGui::EndDisabled();
 }
 
 int GuiApp::add_batch_partition_rows(const DatasetFolders& f, const std::string& partition,
@@ -5869,6 +6344,7 @@ void GuiApp::reset_recon_options() {
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
     normalize_source_lenses(_sources, _sfm_job.camera_model);
     _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    _keep_built = false;
     _resume = true;
     log(dmsg::reset_options_done.get());
 }
@@ -5975,49 +6451,243 @@ void GuiApp::draw_drop_intermediate_modal() {
     ImGui::EndPopup();
 }
 
-// Masks the reconstruction being kept has never seen. Adding them is minutes
-// and rebuilding with the masked feature points is the whole hour again; both
-// are what somebody means by the button, so it asks rather than choosing.
-void GuiApp::draw_mask_recon_modal() {
-    if (_mask_recon_open) {
-        ui::OpenPopup(dmsg::mask_recon_title);
-        _mask_recon_open = false;
-        _mask_recon_shown = true;
+// ---------------------------------------------------------------------------
+// What the run will reuse and redo
+// ---------------------------------------------------------------------------
+
+namespace {
+
+const Msg& plan_step_name(Step s) {
+    switch (s) {
+        case Step::Frames:   return dmsg::step_frames;
+        case Step::Masks:    return dmsg::step_masks;
+        case Step::Model:    return dmsg::plan_step_model;
+        case Step::Geometry: return dmsg::view_geometry;
     }
-    if (!_mask_recon_shown) return;
-    if (!ui::BeginPopupModal(dmsg::mask_recon_title, nullptr,
+    return dmsg::step_frames;
+}
+
+const Msg& plan_state(const StepPlan& s) {
+    switch (s.act) {
+        case Act::None:  break;
+        case Act::Run:
+            if (s.why == Why::Resume) return dmsg::plan_finish;
+            return s.adds || s.why == Why::Unrecorded ? dmsg::plan_add : dmsg::plan_run;
+        case Act::Reuse:
+            if (s.why == Why::InDataset) return dmsg::plan_in_dataset;
+            if (s.why == Why::Unrecorded) return dmsg::plan_unrecorded;
+            return s.masks_changed ? dmsg::plan_reuse_masks_changed : dmsg::plan_reuse;
+        case Act::Keep:  return dmsg::plan_keep;
+        case Act::Redo:
+            switch (s.why) {
+                case Why::Requested: return dmsg::plan_redo_requested;
+                case Why::Frames:    return dmsg::plan_redo_frames;
+                case Why::Model:     return dmsg::plan_redo_model;
+                case Why::Stale:     return dmsg::plan_redo_stale;
+                default:             return dmsg::plan_redo_settings;
+            }
+    }
+    return dmsg::plan_reuse;
+}
+
+ImVec4 plan_color(const StepPlan& s) {
+    if (s.act == Act::Redo || s.act == Act::Keep) return kWarn;
+    if (s.act == Act::Run) return kOk;
+    return kDim;
+}
+
+// The panel's own label for a setting where it has one; the identifier
+// otherwise, which is what the record spells.
+std::string plan_key_label(const std::string& key) {
+    static const std::pair<const char*, const Msg*> labels[] = {
+        {"quality", &dmsg::quality}, {"lens", &dmsg::camera_lens},
+        {"camera_mode", &dmsg::camera_sharing}, {"pairs", &dmsg::image_matching},
+        {"data_type", &dmsg::capture_type}, {"features", &dmsg::features},
+        {"mapper", &dmsg::mapper_schedule}, {"loop_closure", &dmsg::loop_closure},
+        {"prefilter_sequential", &dmsg::prefilter_sequential},
+        {"overlap", &dmsg::sequential_overlap}, {"focal_px", &dmsg::initial_focal_px},
+        {"distortion_refine", &dmsg::sfm_distortion_refinement},
+        {"final_free_rig", &dmsg::sfm_final_free_rig},
+        {"max_features", &dmsg::max_features_auto},
+        {"max_image_size", &dmsg::max_image_size_auto},
+        {"sensor_gauge", &dmsg::sfm_sensor_gauge}, {"metric_gps", &dmsg::sfm_metric_gps},
+        {"exif_attitude", &dmsg::sfm_exif_attitude},
+        {"masks_for_features", &dmsg::mask_for_features},
+        {"decoder", &dmsg::use_ffmpeg}, {"adaptive_fps", &dmsg::adaptive_fps},
+        {"adaptive_range", &dmsg::adaptive_range},
+        {"sharp_window", &dmsg::sharpness_window}, {"sync_tracks", &dmsg::sync_lenses},
+        {"pano_size", &dmsg::pano360_size}, {"mask_max_size", &dmsg::mask_max_size},
+        {"mask_nms", &dmsg::mask_nms}, {"mask_detect_every", &dmsg::mask_detect_every},
+        {"mask_memory_frames", &dmsg::mask_memory_frames},
+        {"mask_prompt", &dmsg::mask_what_to_remove},
+        {"mask_negative_prompt", &dmsg::mask_but_keep},
+        {"feature_prompt", &dmsg::mask_features_only},
+        {"mask_threshold", &dmsg::mask_threshold}, {"geometry_model", &dmsg::geom_model},
+        {"geometry_max_size", &dmsg::geom_max_size},
+        {"geometry_tokens", &dmsg::geom_num_tokens},
+        {"jpeg_quality", &dmsg::geom_jpeg_quality},
+    };
+    for (const auto& [k, m] : labels)
+        if (key == k) return m->get();
+    return key;
+}
+
+std::string plan_change_text(const FieldChange& c) {
+    auto shown = [](const std::string& v) {
+        if (v.empty()) return std::string("-");
+        return v[0] == '#' ? std::string("#") : v;
+    };
+    std::string out = plan_key_label(c.key);
+    if (!c.scope.empty() && c.scope != ".") out += " (" + c.scope + ")";
+    return out + ": " + shown(c.was) + " → " + shown(c.now);
+}
+
+void plan_changes_tooltip(const StepPlan& s) {
+    if (s.changes.empty() || !ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) ||
+        !ImGui::BeginTooltip())
+        return;
+    for (const FieldChange& c : s.changes) ui::TextRaw(plan_change_text(c));
+    ImGui::EndTooltip();
+}
+
+}  // namespace
+
+void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
+    float label_w = 0.0f;
+    for (int k = 0; k < kNumSteps; k++)
+        label_w = std::max(label_w, ImGui::CalcTextSize(plan_step_name((Step)k).get()).x);
+    bool differs = false;
+    for (int k = 0; k < kNumSteps; k++) {
+        const Step step = (Step)k;
+        const StepPlan& sp = plan[step];
+        if (sp.act == Act::None) continue;
+        ImGui::PushID(k);
+        ui::TextDisabled(plan_step_name(step));
+        ImGui::SameLine(label_w + ImGui::GetStyle().ItemSpacing.x * 3.0f);
+        ui::TextColored(plan_color(sp), plan_state(sp));
+        plan_changes_tooltip(sp);
+        if (!sp.changes.empty()) {
+            differs = true;
+            std::string first = plan_change_text(sp.changes[0]);
+            if (sp.changes.size() > 1)
+                first += "  (+" + std::to_string(sp.changes.size() - 1) + ")";
+            ImGui::SameLine();
+            ui::TextDisabledRaw(first);
+            plan_changes_tooltip(sp);
+        }
+        ImGui::PopID();
+    }
+    const bool keeping = _keep_built && _keep_built_for == _workspace;
+    if (plan.ask() || keeping) {
+        bool keep = keeping;
+        if (ui::Checkbox(dmsg::plan_keep_built, &keep)) {
+            _keep_built = keep;
+            _keep_built_for = _workspace;
+        }
+        ui::help_on_hover(dmsg::plan_keep_built_help);
+    }
+    if (differs && _ws_record.settings.is_object()) {
+        if (ui::SmallButton(dmsg::plan_use_record)) restore_from_record(true);
+        ui::help_on_hover(dmsg::plan_use_record_help);
+    }
+}
+
+// Making again what the user did not ask to: the frames, or the hour the
+// reconstruction took. Named step by step, with what changed, before it starts.
+void GuiApp::draw_rebuild_confirm_modal() {
+    if (_rebuild_open) {
+        ui::OpenPopup(dmsg::rebuild_title);
+        _rebuild_open = false;
+        _rebuild_shown = true;
+    }
+    if (!_rebuild_shown) return;
+    if (!ui::BeginPopupModal(dmsg::rebuild_title, nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-        _mask_recon_shown = false;
+        _rebuild_shown = false;
         return;
     }
-    ImGui::PushTextWrapPos(px(460.0f));
-    ui::Text(dmsg::mask_recon_confirm, {_workspace});
+    ImGui::PushTextWrapPos(px(520.0f));
+    ui::Text(dmsg::rebuild_confirm, {_workspace});
+    ImGui::Spacing();
+    for (int k = 0; k < kNumSteps; k++) {
+        const StepPlan& sp = _rebuild_plan[(Step)k];
+        if (!sp.ask) continue;
+        ui::TextColored(kWarn, plan_step_name((Step)k));
+        ImGui::Indent();
+        ui::Text(plan_state(sp));
+        for (size_t c = 0; c < sp.changes.size() && c < 12; c++)
+            ui::TextDisabledRaw(plan_change_text(sp.changes[c]));
+        if (sp.changes.size() > 12) ui::TextDisabledRaw("...");
+        ImGui::Unindent();
+    }
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
 
     bool go = false;
-    if (ui::Button(dmsg::mask_recon_rebuild, ImVec2(px(220.0f), 0))) {
-        _redo_model = go = true;
-    }
+    if (ui::Button(dmsg::rebuild_go, ImVec2(px(170.0f), 0))) go = true;
     ImGui::SameLine();
-    if (ui::Button(dmsg::mask_recon_masks_only, ImVec2(px(220.0f), 0))) {
-        // Answered for good rather than per run: the checkbox now shows what
-        // was decided here, and the question does not come back.
-        _mask_features = false;
+    if (ui::Button(dmsg::rebuild_keep, ImVec2(px(240.0f), 0))) {
+        _keep_built = true;
+        _keep_built_for = _workspace;
         go = true;
     }
-    ui::help_on_hover(dmsg::mask_recon_masks_only_help);
+    ui::help_on_hover(dmsg::plan_keep_built_help);
     ImGui::SameLine();
     if (ui::Button(dmsg::cancel, ImVec2(px(120.0f), 0))) {
-        _mask_recon_shown = false;
+        _rebuild_shown = false;
         ImGui::CloseCurrentPopup();
     }
     if (go) {
-        _mask_recon_shown = false;
+        _rebuild_shown = false;
         ImGui::CloseCurrentPopup();
         launch_dataset_job();
     }
     ImGui::EndPopup();
+}
+
+void GuiApp::restore_from_record(bool announce) {
+    if (_workspace.empty() || native_work_busy()) return;
+    DatasetRecord rec = read_dataset_record(_workspace);
+    DatasetSettings s = capture_dataset_settings();
+    if (rec.settings.is_object()) {
+        read_dataset_settings_json(rec.settings, s);
+    } else {
+        // A folder from before the record: what its stamps still say.
+        rec = read_legacy_settings(_workspace, s.sfm, s.colmap_engine);
+        if (!rec.present) return;
+    }
+    apply_dataset_settings(s);
+    restore_record_rows(rec);
+    // What the picker last applied no longer describes the panel, and a
+    // built-in left armed would be put back over it by the next probe.
+    _ds_presets.file.clear();
+    _ds_presets.builtin.clear();
+    _ds_presets.display.clear();
+    _ds_presets.desc.clear();
+    _ds_presets.msg_err = false;
+    _ds_presets.msg = i18n::format(dmsg::log_settings_restored, {_workspace});
+    _keep_built = false;
+    _ws_state_at = -1.0;
+    if (announce) log(_ds_presets.msg);
+}
+
+void GuiApp::restore_record_rows(const DatasetRecord& rec) {
+    PrepJob job = _sfm_job.prep;
+    job.inputs = _sources;
+    job.workspace = _workspace;
+    job.photo_import = _photo_import;
+    job.mask_clicks = _mask.clicks;
+    restore_record_inputs(rec, job, _sfm_job.camera_model);
+    _sources = job.inputs;
+    if (!job.mask_clicks.empty()) {
+        _mask.clicks = job.mask_clicks;
+        int objects = 1;
+        for (const MaskClick& c : _mask.clicks) objects = std::max(objects, c.object + 1);
+        _mask.object_count = objects;
+        _mask.current_object = 0;
+    }
+    normalize_source_lenses(_sources, _sfm_job.camera_model);
+    normalize_source_fps(_sources, _sfm_job.prep.video_fps);
 }
 
 // ---------------------------------------------------------------------------
@@ -6058,6 +6728,29 @@ void GuiApp::draw_color_space_options(bool with_point_color) {
         source_changed = true;
     }
     ui::help_on_hover(dmsg::input_is_linear_help);
+
+    // "" / "auto" / a number of stops: item 2 keeps a number even at zero.
+    std::string& ex = _sfm_job.image_exposure;
+    int exposure = ex.empty() ? 0 : ex == "auto" ? 1 : 2;
+    ImGui::SetNextItemWidth(px(260.0f));
+    if (ui::Combo(dmsg::input_exposure, &exposure,
+                  {&dmsg::exposure_as_stored, &dmsg::exposure_auto, &dmsg::exposure_fixed})) {
+        ex = exposure == 0 ? "" : exposure == 1 ? "auto" : "+2.0";
+        source_changed = true;
+    }
+    ui::help_on_hover(dmsg::input_exposure_help);
+    if (exposure == 2) {
+        colorspace::Exposure e;
+        colorspace::parse_exposure(ex, e);
+        float stops = e.stops;
+        ImGui::SetNextItemWidth(px(260.0f));
+        if (ui::SliderFloat(dmsg::input_exposure_stops, &stops, -4.0f, 10.0f, "%+.1f EV")) {
+            char buf[16];
+            std::snprintf(buf, sizeof buf, "%+.1f", stops);
+            ex = buf;
+            source_changed = true;
+        }
+    }
     if (source_changed) close_native_previews();
 
     // COLMAP writes its own point cloud, so the choice is the built-in SfM's.
@@ -6220,7 +6913,7 @@ void GuiApp::draw_sfm_advanced() {
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_metric_gps, &_sfm_job.metric_gps,
               {&dmsg::sfm_metric_gps_off, &dmsg::sfm_metric_gps_horizontal,
-               &dmsg::sfm_metric_gps_full});
+               &dmsg::sfm_metric_gps_full, &dmsg::sfm_metric_gps_auto});
     ui::help_on_hover(dmsg::sfm_metric_gps_help);
 
     ImGui::SetNextItemWidth(px(260.0f));
@@ -6251,10 +6944,6 @@ void GuiApp::draw_sfm_advanced() {
     ImGui::EndDisabled();
     ui::help_on_hover(backends().builtin_video ? dmsg::use_ffmpeg_help
                                                : dmsg::use_ffmpeg_always);
-    ImGui::BeginDisabled(!backends().builtin_masking);
-    ui::Checkbox(dmsg::use_python_masking, &_sfm_job.prep.force_external_masking);
-    ImGui::EndDisabled();
-    ui::help_on_hover(dmsg::use_python_masking_help);
 
     ui::Checkbox(dmsg::sfm_ba_cpu, &_sfm_job.ba_cpu);
     ui::help_on_hover(dmsg::sfm_ba_cpu_help);
@@ -6409,9 +7098,6 @@ void GuiApp::draw_tool_locations() {
         ui::help_on_hover(backends().builtin_video
                               ? dmsg::ffmpeg_executable_help_fallback
                               : dmsg::ffmpeg_executable_help_always);
-        ImGui::SetNextItemWidth(px(300.0f));
-        ch |= ui::InputText(dmsg::python_executable, &_python_exe);
-        ui::help_on_hover(dmsg::python_executable_help);
         if (ffmpeg_changed) mark_source_metadata_dirty();
         if (ch) save_settings();
     }
@@ -6424,6 +7110,14 @@ void GuiApp::draw_tool_locations() {
 // The form, and under it the button that acts on it. One column of the screen
 // when a run has something to show beside it, the whole of it otherwise.
 void GuiApp::draw_dataset_form(float height, bool running) {
+    // The panel arrives at an output folder -- dropped, picked or typed -- and
+    // takes the settings that folder's record says built it, once.
+    if (!running && _workspace != _restored_ws && _source_probes_ready) {
+        _restored_ws = _workspace;
+        restore_from_record(/*announce=*/true);
+    }
+    if (_keep_built && _keep_built_for != _workspace) _keep_built = false;
+
     // The action band's height is measured from the last frame, because how
     // tall it is depends on what it is saying.
     ImGui::BeginChild("##dsform", ImVec2(0, height - _ds_action_h));
@@ -6516,6 +7210,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
         const bool need_feat_model = feature_model_missing();
         const bool need_geom_model = geometry_model_missing();
         const bool need_model = need_mask_model || need_feat_model || need_geom_model;
+        if (ready) draw_dataset_plan(dataset_plan());
         // The button names what pressing it does: a folder that already holds
         // a reconstruction is added to, not built.
         const bool adding = workspace_state().model && !_redo_model;
@@ -6697,7 +7392,7 @@ void GuiApp::draw_new_dataset() {
     draw_partition_queue_modal();
     draw_clear_project_modal();
     draw_drop_intermediate_modal();
-    draw_mask_recon_modal();
+    draw_rebuild_confirm_modal();
 }
 
 // ---------------------------------------------------------------------------
@@ -6833,6 +7528,8 @@ void GuiApp::draw_train() {
         ui::help_on_hover(msg::preview_mode_help);
     }
 
+    draw_device_issue_banner();
+
     const float body_avail = ImGui::GetContentRegionAvail().y;
     if (_show_settings) {
         // Never more than 45% of the window: the viewport is the point of the
@@ -6901,7 +7598,7 @@ void GuiApp::draw_viewer() {
         ui::help_on_hover(rmsg::enter_render_help);
     }
     ImGui::SameLine();
-    _compare.set_recents(_model_recents);
+    _compare.set_recents(recent_models(_recent));
     _compare.draw_toolbar();
 
     const float log_h = log_height(ImGui::GetContentRegionAvail().y);
@@ -7048,6 +7745,7 @@ void GuiApp::open_mesh_preview() {
     }
     _compare.add(out, &msg::mesh_side_mesh);
     _mesh_preview_open = true;
+    remember(RecentKind::Model, out);
 }
 
 void GuiApp::draw_mesh_options() {
@@ -7265,7 +7963,7 @@ void GuiApp::draw_mesh() {
                 _compare.set_shown(out, on, &msg::mesh_side_mesh);
             ImGui::PopID();
         }
-        _compare.set_recents(_model_recents);
+        _compare.set_recents(recent_models(_recent));
         _compare.draw_toolbar();
         draw_compare_panes();
     } else {
@@ -7540,13 +8238,14 @@ void GuiApp::draw_batch() {
     // usually assembled from -- they are the ones already known to parse.
     if (ui::Button(msg::batch_add_recent)) ImGui::OpenPopup("##batchrecent");
     if (ImGui::BeginPopup("##batchrecent")) {
-        if (_recents.empty()) {
+        const std::vector<std::string> datasets = _recent.paths(RecentKind::Dataset);
+        if (datasets.empty()) {
             ui::TextDisabled(msg::batch_no_recent);
         } else {
-            for (size_t i = 0; i < _recents.size(); i++) {
+            for (size_t i = 0; i < datasets.size(); i++) {
                 ImGui::PushID((int)i);
                 // A path is a path in every language.
-                if (ui::SelectableRaw(_recents[i])) add_batch_row(_recents[i]);
+                if (ui::SelectableRaw(datasets[i])) add_batch_row(datasets[i]);
                 ImGui::PopID();
             }
         }
@@ -8579,6 +9278,49 @@ void GuiApp::draw_batch_progress() {
 }
 
 
+// For the GPU the picker names, or the one Auto would take: the same request
+// freeze_native_device() resolves when training starts.
+void GuiApp::draw_device_issue_banner() {
+#ifdef SS_BACKEND_VULKAN
+    const bool frozen = _native_device_frozen;
+    const int index = backend::device_resolve(
+        frozen ? _native_device_uuid : _native_device_request,
+        frozen || _native_device_choice_set);
+    if (index < 0) return;
+    const backend::DeviceInfo d = backend::device_info(index);
+    const app::DeviceIssueText t = app::device_issue_text(d.issue);
+    if (!t.title) return;
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.96f, 0.58f, 0.14f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.11f, 0.06f, 0.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(12.0f), px(8.0f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, px(4.0f));
+    ImGui::BeginChild("##device_issue", ImVec2(0, 0),
+                      ImGuiChildFlags_AutoResizeY |
+                          ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar);
+    ImGui::SetWindowFontScale(1.15f);
+    ui::TextWrapped(*t.title);
+    ImGui::SetWindowFontScale(1.0f);
+    ui::TextWrapped(*t.body, {d.name});
+
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.13f, 0.02f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.34f, 0.19f, 0.04f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.08f, 0.01f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.91f, 0.78f, 1.0f));
+    if (ui::Button(msg::device_issue_details) && !open_url(t.url)) {
+        ImGui::SetClipboardText(t.url);
+        log(i18n::format(msg::link_no_browser, {t.url}));
+    }
+    ui::help_on_hover_raw(t.url);
+    ImGui::PopStyleColor(4);
+
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+#endif
+}
+
 void GuiApp::draw_train_settings() {
     TrainRunner::Phase ph = _runner.phase();
     bool busy = ph == TrainRunner::Phase::Loading ||
@@ -8617,6 +9359,7 @@ void GuiApp::draw_train_settings() {
                   FileDialog::Mode::Folder);
     }
     ImGui::EndDisabled();
+    if (!_batch_active) draw_roi_row(busy);
 
     // Vulkan builds share the native picker with every built-in workflow.
 #ifdef SS_BACKEND_VULKAN
@@ -8671,9 +9414,62 @@ void GuiApp::draw_train_settings() {
         ui::SeparatorText(msg::section_basic_options);
         draw_basic_options();
 
+    #if 0
+        ui::Text(fld::seed_pointcloud);
+        if (!_cfg.seed_pointcloud.empty()) {
+            ImGui::SameLine();
+            if (ui::Button(msg::seed_cloud_restore)) {
+                _cfg.seed_pointcloud.clear();
+                _cfg_ui.touched.insert("seed_pointcloud");
+            }
+        }
+        ImGui::SetNextItemWidth(px(-70.0f));
+        if (ui::InputTextRaw("##seed_pointcloud", &_cfg.seed_pointcloud))
+            _cfg_ui.touched.insert("seed_pointcloud");
+        ui::help_on_hover(fld::seed_pointcloud_help);
+        ImGui::SameLine();
+        if (ui::ButtonRaw("...##seed_pointcloud_pick", ImVec2(60, 0)))
+            open_pick(PickAction::SeedPointcloud, fld::seed_pointcloud.get(),
+                      FileDialog::Mode::File, {".ply"});
+
+        auto* session = _runner.session();
+        const bool parsed = session && ph != TrainRunner::Phase::Loading &&
+            ph != TrainRunner::Phase::Preparing && ph != TrainRunner::Phase::LoadError &&
+            parse_settings_equal(session->cfg, _cfg);
+        const bool random = _cfg.random_init == "always" ||
+            (_cfg.random_init == "auto" && parsed && session->random_seeded);
+        if (!_cfg.resume.empty()) {
+            ui::TextWrapped(msg::seed_source_resume);
+        } else {
+            if (!_cfg.init_ply.empty())
+                ui::TextWrapped(_cfg.init_ply_add_points ? msg::seed_source_splat_add
+                                                       : msg::seed_source_splat);
+            if (_cfg.init_ply.empty() || _cfg.init_ply_add_points) {
+                if (random)
+                    ui::TextWrapped(msg::seed_source_random);
+                else if (!_cfg.seed_pointcloud.empty())
+                    ui::TextWrapped(msg::seed_source_external,
+                                    {fs::path(_cfg.seed_pointcloud).filename().string()});
+                else
+                    ui::TextWrapped(parsed || _cfg.random_init == "never"
+                                        ? msg::seed_source_dataset : msg::seed_source_auto);
+            }
+        }
+        if (!_cfg.seed_pointcloud.empty() && (!_cfg.resume.empty() || random ||
+            (!_cfg.init_ply.empty() && !_cfg.init_ply_add_points)))
+            ui::TextColoredWrapped(kWarn, msg::seed_cloud_unused);
+    #endif
+
         ImGui::Spacing();
         if (ui::CollapsingHeader(msg::section_all_options))
             draw_config_editor(_cfg, _defaults, _cfg_ui);
+        if (!_cfg_ui.pick.field.empty()) {
+            const PathPick p = std::exchange(_cfg_ui.pick, {});
+            _pick_field = p.field;
+            open_pick(PickAction::ConfigPath, p.title,
+                      p.folder ? FileDialog::Mode::Folder : FileDialog::Mode::File,
+                      p.extensions, p.start_dir);
+        }
         ImGui::EndDisabled();
 
         // The macro options (quality, floater_suppression, ...) fill in the
@@ -9138,10 +9934,12 @@ void GuiApp::draw_basic_options() {
     }
     ImGui::Spacing();
 
+#if 0
     // Ahead of the two flags it sets, so the usual path is to pick a quality
     // and move on, and the numbers below are what that choice came to.
     macro_option("quality", _cfg.quality, fld::quality, fld::quality_help,
                  {"low", "medium", "high", "ultra"});
+#endif
 
     ImGui::SetNextItemWidth(w);
     if (ui::InputInt(msg::opt_steps, &_cfg.num_iterations))
@@ -9460,8 +10258,35 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
                     format_gib(m.total_bytes) + " GiB"
               : "VRAM " + part(m.has_process, m.process_bytes) + " GiB";
 
+    // A run in progress (or just finished) has a forecast: its risk goes in
+    // front of the bar, and hovering either shows the projection behind it.
+    spirula::TrainerSession* session = nullptr;
+    {
+        const TrainRunner::Phase ph = _runner.phase();
+        if ((ph == TrainRunner::Phase::Training || ph == TrainRunner::Phase::Done) &&
+            _runner.engine_ready())
+            session = _runner.session();
+    }
+    const spirula::VramForecast brief =
+        session ? session->forecast().vram(false) : spirula::VramForecast{};
+    const spirula::i18n::Msg* risk = session ? oom_risk_label(brief.risk) : nullptr;
+    auto hover = [&] {
+        if (!session) { ui::help_on_hover(msg::vram_help); return; }
+        if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort |
+                                  ImGuiHoveredFlags_NoSharedDelay) ||
+            !ImGui::BeginTooltip())
+            return;
+        ImGui::PushTextWrapPos(px(480.0f));
+        ui::TextDisabled(msg::vram_help);
+        ImGui::PopTextWrapPos();
+        ImGui::Separator();
+        vram_forecast_card(session->forecast().vram(), session->cfg.num_iterations);
+        ImGui::EndTooltip();
+    };
+
     const ImGuiStyle& st = ImGui::GetStyle();
-    const float text_w = ImGui::CalcTextSize(label.c_str()).x;
+    float text_w = ImGui::CalcTextSize(label.c_str()).x;
+    if (risk) text_w += ImGui::CalcTextSize(risk->get()).x + st.ItemSpacing.x;
     ImGui::SameLine();
     // The bar is the first thing to give when the row is short -- the numbers
     // beside it say everything it does. Without this the readout ran off the
@@ -9475,6 +10300,11 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
     }
     if (target > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(target);
 
+    if (risk) {
+        ui::TextColored(oom_risk_color(brief.risk), *risk);
+        hover();
+        ImGui::SameLine();
+    }
     if (bar_w > 0.0f) {
         const float h = ImGui::GetTextLineHeight();
         const ImVec2 p = ImGui::GetCursorScreenPos();
@@ -9494,11 +10324,11 @@ void GuiApp::draw_vram_readout(float x0, float avail) {
         dl->AddRect(p, ImVec2(p.x + bar_w, p.y + h),
                     ImGui::GetColorU32(ImGuiCol_Border), r);
         ui::InvisibleButtonRaw("##vram", ImVec2(bar_w, h));
-        ui::help_on_hover(msg::vram_help);
+        hover();
         ImGui::SameLine(0.0f, gap);
     }
     ui::TextColoredRaw(sized ? kDim : color, label);
-    ui::help_on_hover(msg::vram_help);
+    hover();
 }
 
 // ---------------------------------------------------------------------------

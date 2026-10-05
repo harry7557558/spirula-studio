@@ -15,13 +15,13 @@ GUI acceptance remain unverified because this checkout has no model weights or
 bounded capture fixtures and no GUI launch was performed.
 
 The external compatibility tail is intentionally not implemented. COLMAP is
-not installed, the external Python masking dependencies are unavailable, and
-the installed ffmpeg path has no application-level GPU routing in this plan.
-Do not describe external COLMAP/Python work as honoring the native selector.
+not installed, and the installed ffmpeg path has no application-level GPU
+routing in this plan. Do not describe external COLMAP work as honoring the
+native selector.
 
 ## Goal and scope
 
-Make the selected GPU control **built-in SfM, masking, and geometry**, in the GUI and native CLI. Selection means the physical device that executes the work, not merely the name shown by the training picker. Complete and verify this native milestone before implementing external COLMAP/Python routing.
+Make the selected GPU control **built-in SfM, masking, and geometry**, in the GUI and native CLI. Selection means the physical device that executes the work, not merely the name shown by the training picker. Complete and verify this native milestone before implementing external COLMAP routing.
 
 | Native milestone | Required coverage |
 |---|---|
@@ -29,7 +29,7 @@ Make the selected GPU control **built-in SfM, masking, and geometry**, in the GU
 | Masking | SAM 2 and SAM 3; GUI preview and dataset masking; native segment, track, mask, extract, and GPU-backed video paths |
 | Geometry | MoGe-2 and Metric3D v2; GUI preview, dataset-run child process, and CLI |
 | Supporting integration | Existing Vulkan training choice, early preview/capability probing, native decoder sharing of NN, and runtime teardown/recreation |
-| Separate compatibility tail | External COLMAP and the existing external Python masking path; their flags, device namespaces, visibility rules, and fallback policy |
+| Separate compatibility tail | External COLMAP; its flags, device namespaces, visibility rules, and fallback policy |
 
 Not included: multi-GPU execution, one GPU assignment per stage, hot switching, merging the three Vulkan runtimes, model/kernel changes, a new Python dependency, a new recovery system, or CUDA validation. Keep patented decoding disabled by default. External ffmpeg hardware-acceleration routing is not added by this plan; preserve the existing ffmpeg fallback.
 
@@ -50,7 +50,7 @@ The implementation sources, rather than older architecture plans, establish this
 | Native job propagation | `src/app/gui/SfmRunner.cpp`, `recon_args`, omits `--device`; the same arguments feed `SfmInProcess.cpp` and the self-child path. `GeometryRunner.cpp` also omits it. `SegmentPanel`, `DatasetPrep`, and `GeometryPanel` do not receive the training choice. |
 | Premature first use | With `SS_HAVE_VIDEO`, `DatasetPrep::backends()` caches a call to `VideoPipeline::availability()`, which creates the NN context. Video preview/open can also use NN before model loading. Merely presenting preprocessing capabilities can therefore consume the first-use decision. |
 | Teardown | `nn::shutdown()` destroys stream, pipelines, pools, allocations, and context. Dataset preparation invokes it at job end; preview panels can retain the context after unloading weights. A later context generation currently selects afresh. The training backend has a different, process-lifetime context. |
-| External processes | `Subprocess.cpp` uses an inherited environment (`CreateProcess` with a null environment block, or `execvp`). `ColmapRunner` and the Python masking launch in `DatasetPrep` provide no explicit GPU routing. COLMAP's existing `ba_use_gpu` boolean is not a device selection. |
+| External processes | `Subprocess.cpp` uses an inherited environment (`CreateProcess` with a null environment block, or `execvp`). `ColmapRunner` provides no explicit GPU routing. COLMAP's existing `ba_use_gpu` boolean is not a device selection. |
 
 `backend::DeviceInfo`, `nn::DeviceInfo`, and the private SfM context expose no device UUID today. In a CUDA build the existing training picker enumerates CUDA devices, not Vulkan devices; its integer must never be forwarded as a native Vulkan index.
 
@@ -133,7 +133,6 @@ The following lanes share Phase A's resolved-device contract. They may run concu
 - Remove selection-specific `SS_VK_DEVICE` mutation in `sam_extract`; configure the native request before any decoder or model first use. Leave unrelated validation/profiling behavior unchanged.
 - Have Session/model reuse compare effective physical identity, not two textual spellings of the same selector. Default model allocation and trackers inherit the configured device.
 - Preserve both SAM families, existing prompt/tracking semantics, and model unloading. Native video and masking share the selected NN device where decoding is built in. The normal ffmpeg decode fallback remains available on a device without video support.
-- Keep external Python masking unchanged in this lane; the UI must not claim that it honors the native selector yet.
 
 **Acceptance:** actual SAM 2 visual and SAM 3 text/visual masks run on the chosen UUID in preview and batch paths; tracking spans multiple frames. Segment, track, extract, and GPU-backed video agree on numeric/name/UUID semantics. Preview followed by a dataset job, NN shutdown, and another preview retains the choice. A decode capability probe cannot select a different device first.
 
@@ -160,21 +159,20 @@ The following lanes share Phase A's resolved-device contract. They may run concu
 6. Report the actual resolved UUID/name at workload startup through existing log facilities. Verify identity at every context creation, including later SfM worker contexts; avoid per-kernel logging or a new telemetry system. A copied argv value or one process-global name banner is insufficient evidence.
 7. Run the native acceptance matrix below. After it passes, update the existing subsystem/app/backend documentation that describes independent selection and environment precedence; remove throwaway smoke artifacts. Do not create an unrelated documentation or recovery subsystem.
 
-**Native completion gate:** all three built-in workflows obey one selection in their real GUI/CLI surfaces, lifecycle/error cases pass, and native child routing is explicit. This gate can ship without external COLMAP or Python device routing. Mark external routing as independent in interface/help text rather than implying an app-wide guarantee it does not yet provide.
+**Native completion gate:** all three built-in workflows obey one selection in their real GUI/CLI surfaces, lifecycle/error cases pass, and native child routing is explicit. This gate can ship without external COLMAP device routing. Mark external routing as independent in interface/help text rather than implying an app-wide guarantee it does not yet provide.
 
 ### Phase D — External compatibility tail
 
 This is a separately reviewable follow-on, not a hidden prerequisite of Phases A–C.
 
-**Files:** `src/app/gui/ColmapRunner.{h,cpp}`, external Python launch in `DatasetPrep.cpp`, `src/app/gui/Subprocess.{h,cpp}`, and `reference/scripts/mask.py` only if its existing CLI needs an explicit device option.
+**Files:** `src/app/gui/ColmapRunner.{h,cpp}` and `src/app/gui/Subprocess.{h,cpp}`.
 
-1. Inventory the actual launched COLMAP/Python GPU operations and supported versions. Check the installed command's help for GPU index/use flags; do not assume the same option names across COLMAP releases. Extraction, matching, and GPU BA are separate operations. Preserve existing fisheye/CPU algorithm decisions.
+1. Inventory the actual launched COLMAP GPU operations and supported versions. Check the installed command's help for GPU index/use flags; do not assume the same option names across COLMAP releases. Extraction, matching, and GPU BA are separate operations. Preserve existing fisheye/CPU algorithm decisions.
 2. Define a compatibility mapping from native physical identity to the external runtime's identity/visible ordinal. Never pass a Vulkan integer straight to CUDA. Match a queried identity where supported; otherwise require an explicitly labeled external-runtime device override. Names alone are not sufficient on a machine with identical GPUs.
 3. Account for the caller's existing visibility restrictions and ordinal remapping. Scope any environment override to the specific child process; leave the parent and unrelated children unchanged. Extend the existing `run_process` environment support only as much as these launch sites require, on Windows and POSIX.
 4. For COLMAP, emit only supported device flags at each GPU operation and retain its CPU controls. A boolean such as `ba_use_gpu` cannot establish which GPU ran BA. Verify against the supported installed versions, not solely the latest web documentation.
-5. For external Python masking, apply the selected external device before the framework initializes it. Reuse the existing script/interpreter path; do not add Python to the native build, import reference tooling into native execution, or bundle model/framework dependencies.
-6. If the selected native device has no supported external-runtime counterpart, report that explicitly and offer the existing native path or an explicit external/CPU choice where that tool supports one. Do not silently choose the first NVIDIA GPU, select CPU, or override user visibility restrictions while claiming the original GPU was honored.
-7. Verify external routing separately on the supported COLMAP/Python installations: actual selected device, existing visibility filters, invalid/missing mappings, unavailable framework/backend, and child-environment isolation. No new CUDA backend validation project is part of this tail.
+5. If the selected native device has no supported external-runtime counterpart, report that explicitly and offer the existing native path or an explicit external/CPU choice where that tool supports one. Do not silently choose the first NVIDIA GPU, select CPU, or override user visibility restrictions while claiming the original GPU was honored.
+6. Verify external routing separately on the supported COLMAP installations: actual selected device, existing visibility filters, invalid/missing mappings, unavailable framework/backend, and child-environment isolation. No new CUDA backend validation project is part of this tail.
 
 Reference: [COLMAP CLI documentation](https://colmap.github.io/cli.html). The installed executable's help remains authoritative for its supported flags.
 

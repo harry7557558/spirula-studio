@@ -286,6 +286,10 @@ inline bool SelectableRaw(const std::string& s, bool selected = false) {
 inline bool SelectableRaw(const char* s, bool selected, ImGuiSelectableFlags f) {
     return ImGui::Selectable(s, selected, f);
 }
+inline bool SelectableRaw(const char* s, bool selected, ImGuiSelectableFlags f,
+                          const ImVec2& size) {
+    return ImGui::Selectable(s, selected, f, size);
+}
 inline bool RadioButtonRaw(const char* s, bool active) {
     return ImGui::RadioButton(s, active);
 }
@@ -318,6 +322,11 @@ inline bool MenuItem(const Msg& m, std::initializer_list<Arg> a) {
 inline bool MenuItemRaw(const char* s, bool selected = false) {
     return ImGui::MenuItem(s, nullptr, selected);
 }
+// ... and one with a dim note where a shortcut would go. No defaults, so a
+// two-argument call cannot convert the note to `selected`.
+inline bool MenuItemRaw(const char* s, const char* note, bool selected, bool enabled) {
+    return ImGui::MenuItem(s, note, selected, enabled);
+}
 inline bool BeginTabItem(const Msg& m, ImGuiTabItemFlags flags = 0) {
     return ImGui::BeginTabItem(detail::label(m), nullptr, flags);
 }
@@ -325,6 +334,9 @@ inline bool CollapsingHeader(const Msg& m, ImGuiTreeNodeFlags flags = 0) {
     return ImGui::CollapsingHeader(detail::label(m), flags);
 }
 inline bool TreeNode(const Msg& m) { return ImGui::TreeNode(detail::label(m)); }
+inline bool TreeNode(const Msg& m, std::initializer_list<Arg> a) {
+    return ImGui::TreeNode(detail::label(format(m, a), m));
+}
 inline void SeparatorText(const Msg& m) {
     ImGui::SeparatorText(detail::label(m));
 }
@@ -466,6 +478,11 @@ inline bool DragFloatRaw(const char* id, float* v, float speed, float lo,
 }
 inline bool DragFloat3Raw(const char* id, float v[3], float speed, const char* fmt) {
     return ImGui::DragFloat3(id, v, speed, 0.0f, 0.0f, fmt);
+}
+// Doubles, for coordinates a geo-referenced model puts beyond float's reach.
+inline bool DragDoubleNRaw(const char* id, double* v, int n, float speed, double lo,
+                           double hi, const char* fmt) {
+    return ImGui::DragScalarN(id, ImGuiDataType_Double, v, n, speed, &lo, &hi, fmt);
 }
 inline bool InputTextHintBufRaw(const char* id, const Msg& hint, char* buf,
                                 size_t buf_size) {

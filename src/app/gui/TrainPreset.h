@@ -21,12 +21,11 @@
 
 namespace gui {
 
-// What a preset must NOT carry: where the data is and where the run goes. A
-// preset answers "how", the trainer screen and a batch row answer "where" --
-// so loading one never moves the dataset out from under you, and any preset
-// can be paired with any dataset.
+// What a preset must NOT carry: where the data is, which part of it trains,
+// where the run goes. A preset is "how", the trainer screen and a batch row
+// "where" -- so any preset can be paired with any dataset.
 #define SS_PRESET_CONTEXT_FIELDS(X) \
-    X(data) X(resume) X(output_dir_prefix) X(output_dir_name) \
+    X(data) X(resume) X(output_dir_prefix) X(output_dir_name) X(roi_region) \
     /* end */
 
 struct TrainPreset {

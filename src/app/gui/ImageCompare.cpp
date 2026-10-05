@@ -7,7 +7,7 @@
 #include "app/TrainerCore.h"
 #include "app/gui/Layout.h"
 #include "app/gui/Ui.h"
-#include "core/ExrImage.h"
+#include "core/ImageFile.h"
 #include "engine/Engine.h"
 #include "external/stb_image.h"
 
@@ -523,12 +523,12 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     if (j.source_gt && j.index < (int)s.ds.image_filenames.size()) {
         const std::string& src = s.ds.image_filenames[(size_t)j.index];
         int w = 0, h = 0, ch = 0;
-        if (exr::is_exr(src)) {
+        if (imagefile::handles(src)) {
             // "Rec.709, not linear" is the identity: this pane shows the file's
             // own values, so an EXR is quantized without a transfer curve.
-            exr::Info info;
-            if (exr::decode_srgb8(src, exr::Options(), info, out.src,
-                                  "Rec.709", false).empty()) {
+            imagefile::Info info;
+            if (imagefile::decode_srgb8(src, imagefile::Options(), info, out.src,
+                                        "Rec.709", false).empty()) {
                 out.src_w = info.width;
                 out.src_h = info.height;
             } else {

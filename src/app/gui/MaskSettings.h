@@ -15,6 +15,7 @@ namespace gui {
 struct MaskSettings {
     std::string prompt;              // "people; cars"
     std::string negative_prompt;
+    std::string feature_prompt;      // "sky; cloud": PrepJob::mask_feature_prompt
     bool keep_subject = false;       // prompt names what to KEEP
     // How far the boundary moves from where the model drew it, as a share of
     // the object's own size. Two, because the polarities want opposite

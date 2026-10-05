@@ -14,6 +14,7 @@
 #include "app/gui/mask/MaskWindow.h"
 #include "app/gui/mask/Livewire.h"
 #include "app/gui/mask/PathTool.h"
+#include "app/gui/mask/PenTool.h"
 
 #include <algorithm>
 #include <atomic>
@@ -51,7 +52,7 @@ struct SamOps {
 
 // What a left click on the canvas does. One value rather than a flag per tool,
 // so no two can be on at once, whichever picker forgets what.
-enum class CanvasMode { Shape, Eraser, Path, Sam };
+enum class CanvasMode { Shape, Eraser, Path, Pen, Sam };
 
 // The continuous inverse of to_stored (MaskDoc.h): a stored point to the
 // displayed frame.
@@ -164,6 +165,7 @@ public:
     void set_mode(CanvasMode m) { _mode = m; }
     bool erasing() const { return _mode == CanvasMode::Eraser; }
     bool path_mode() const { return _mode == CanvasMode::Path; }
+    bool pen_mode() const { return _mode == CanvasMode::Pen; }
     bool sam_mode() const { return _mode == CanvasMode::Sam; }
     // Off returns to the shapes, which is where every other picker leaves it.
     void set_erasing(bool on) { _mode = on ? CanvasMode::Eraser : CanvasMode::Shape; }
@@ -305,6 +307,7 @@ public:
     float sam_click_y() const { return _sam_click_y; }
     float canvas_height() const { return _canvas_h; }
     int path_anchors() const { return _path.anchor_count(); }
+    int pen_anchors() const { return _pen.anchor_count(); }
     // The editor's own drop margin (its MaskSettings), -1 before SAM was used.
     float sam_margin() const;
 
@@ -387,6 +390,7 @@ public:
     // a record of never-edited targets is 0 bytes, so 256 MB is unreachable.
     void set_propagate_byte_cap_for_test(size_t bytes) { _prop_byte_cap = bytes; }
     PathTool& path_for_test() { return _path; }
+    PenTool& pen_for_test() { return _pen; }
     // A SAM job runs, its result waits for sam_pump(), or a margin re-apply
     // waits to start: propagate and Play wait for it, since Play
     // drops a waiting result. The job is asked through SamOps, as close() does.
@@ -467,6 +471,7 @@ private:
     void pick_tool(ToolId t);
     void pick_eraser();
     void pick_path();
+    void pick_pen();
     void pick_sam();
     void draw_toolbar();
     void draw_canvas();
@@ -521,6 +526,7 @@ private:
     double _last_commit_ms = 0.0;
 
     PathTool _path;
+    PenTool _pen;
     std::unique_ptr<Livewire> _livewire;   // the open frame's edge map, built on first use
     // Created on first use; its session is released by sam_yield() and a model
     // change, and close() releases it and then drops the object, clicks included.

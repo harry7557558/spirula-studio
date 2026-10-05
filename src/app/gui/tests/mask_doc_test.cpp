@@ -14,6 +14,7 @@
 #include "app/gui/mask/MaskSam.h"
 #include "app/gui/mask/MaskDoc.h"
 #include "app/gui/mask/PathTool.h"
+#include "app/gui/mask/PenTool.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "app/gui/mask/MaskSession.h"
 #include "app/gui/mask/MaskSlideshow.h"
@@ -1131,9 +1132,12 @@ void test_view_math() {
     check(std::fabs(m.to_mask_x(sx) - before_x) < 1e-2f && std::fabs(m.to_mask_y(sy) - before_y) < 1e-2f,
           "the point under the cursor stayed put");
     mk::zoom_about(v, 0.01f, sx, sy, dw, dh, pw, ph);
-    check(v.zoom == 1.0f, "zoom clamps at 1");
+    check(v.zoom == mk::kMinZoom, "zoom clamps at kMinZoom");
+    m = mk::mapping(v, dw, dh, pw, ph);
+    check(m.to_screen_x(0.0f) > 0.0f && m.to_screen_x((float)dw) < pw,
+          "zoomed out, the pane has room on both sides of the mask");
     for (int i = 0; i < 40; i++) mk::zoom_about(v, 2.0f, sx, sy, dw, dh, pw, ph);
-    check(v.zoom == 64.0f, "zoom clamps at 64");
+    check(v.zoom == mk::kMaxZoom, "zoom clamps at kMaxZoom");
     // Cursor at a pane corner, zooming in from an already-cornered view: the
     // recentred point lands off-image and must come back clamped, not just
     // the zoom factor -- the final clamp_view() has to run after recentring.
@@ -1156,6 +1160,10 @@ void test_view_math() {
     mk::Window w = mk::window_for(m, dw, dh, pw, ph);
     check(w.r.x0 == 0 && w.r.y0 == 0 && w.r.x1 == dw && w.r.y1 == dh, "window is the whole mask");
     check(w.step == 1 && w.tw == dw && w.th == dh, "no decimation under 4096");
+    const mk::View out{mk::kMinZoom, 400.0f, 300.0f};
+    const mk::Window ow = mk::window_for(mk::mapping(out, dw, dh, pw, ph), dw, dh, pw, ph);
+    check(ow.r.x0 == 0 && ow.r.y0 == 0 && ow.r.x1 == dw && ow.r.y1 == dh,
+          "zoomed out, the window stops at the mask's edges");
     // A 9000-wide mask fully visible decimates by 3.
     mk::View big{1.0f, 4500.0f, 2000.0f};
     const mk::Mapping bm = mk::mapping(big, 9000, 4000, pw, ph);
@@ -3875,6 +3883,216 @@ void test_path_tool_space() {
 }
 
 // ---------------------------------------------------------------------------
+// The Bezier pen
+// ---------------------------------------------------------------------------
+
+gui::ViewportInput held_at(float x, float y) {
+    gui::ViewportInput in = at(x, y);
+    in.down = true;
+    return in;
+}
+
+// Press, drag through (x, y) and let go there.
+void pen_drag(mk::PenTool& t, float px, float py, float x, float y,
+              gui::ViewportInput mods = gui::ViewportInput{}) {
+    std::vector<float> out;
+    bool consumed;
+    auto with = [&](gui::ViewportInput in) {
+        in.shift = mods.shift;
+        in.alt = mods.alt;
+        in.ctrl = mods.ctrl;
+        return in;
+    };
+    t.update(with(click_at(px, py)), out, consumed);
+    t.update(with(held_at(0.5f * (px + x), 0.5f * (py + y))), out, consumed);
+    t.update(with(held_at(x, y)), out, consumed);
+    t.update(with(at(x, y)), out, consumed);
+}
+
+void test_pen_tool_basic() {
+    mk::PenTool t;
+    std::vector<float> out, an;
+    bool consumed = false;
+    check(!t.update(at(10, 10), out, consumed) && !consumed && !t.in_progress(),
+          "pen: a move does nothing while idle");
+    check(!t.update(click_at(10, 10), out, consumed) && consumed && t.anchor_count() == 1,
+          "pen: a click drops an anchor and is consumed");
+    t.update(at(10, 10), out, consumed);
+    t.overlay(an);
+    check(same_points(an, {10, 10, 10, 10, 10, 10}, 1e-6f), "pen: a click is a corner");
+
+    // A drag pulls a smooth anchor: out under the pointer, in mirrored.
+    pen_drag(t, 100, 10, 130, 20);
+    t.overlay(an);
+    check(t.anchor_count() == 2 && same_points({an.begin() + 6, an.end()},
+                                               {70, 0, 100, 10, 130, 20}, 1e-4f),
+          "pen: a drag makes a smooth anchor with mirrored handles");
+    check(t.can_close(), "pen: two anchors with a curve between them can close");
+    float c[8];
+    t.update(at(60, 80), out, consumed);
+    check(t.preview(c) && same_points({c, c + 8}, {100, 10, 130, 20, 60, 80, 60, 80}, 1e-4f),
+          "pen: the preview runs from the last anchor's out-handle to the pointer");
+
+    // A drag shorter than kPenDragStart is still a click.
+    pen_drag(t, 100, 100, 101, 101);
+    t.overlay(an);
+    check(t.anchor_count() == 3 && same_points({an.begin() + 12, an.end()},
+                                               {100, 100, 100, 100, 100, 100}, 1e-6f),
+          "pen: a 1.4 px wobble is a click, not a curve");
+    t.update(at(12, 11), out, consumed);
+    check(t.cue() == mk::PenTool::Cue::Close, "pen: over the first anchor the badge says close");
+    check(!t.update(click_at(12, 11), out, consumed) && t.in_progress(),
+          "pen: closing waits for the release");
+    check(t.update(at(12, 11), out, consumed) && out.size() == 18 && !t.in_progress(),
+          "pen: the release on the first anchor closes three anchors");
+    check(same_points({out.begin() + 6, out.begin() + 12}, {70, 0, 100, 10, 130, 20}, 1e-4f),
+          "pen: the closed path keeps the smooth anchor's handles");
+
+    // Two corners enclose nothing.
+    t.update(click_at(10, 10), out, consumed);
+    t.update(at(10, 10), out, consumed);
+    t.update(click_at(50, 10), out, consumed);
+    t.update(at(50, 10), out, consumed);
+    check(!t.can_close() && !t.commit_pending(out) && t.in_progress(),
+          "pen: two corners cannot close, and a refused commit keeps the path");
+    check(!t.update(right_click_at(80, 80), out, consumed) && consumed && t.in_progress(),
+          "pen: nor can a right click");
+    t.update(click_at(50, 50), out, consumed);
+    t.update(at(50, 50), out, consumed);
+    check(t.update(right_click_at(80, 80), out, consumed) && out.size() == 18,
+          "pen: a right click closes three");
+    t.update(click_at(10, 10), out, consumed);
+    t.update(at(10, 10), out, consumed);
+    t.update(click_at(50, 10), out, consumed);
+    t.update(at(50, 10), out, consumed);
+    check(t.pop_anchor() && t.anchor_count() == 1 && t.pop_anchor() && !t.in_progress() &&
+              !t.pop_anchor(),
+          "pen: pop takes anchors back to empty");
+}
+
+void test_pen_tool_modifiers() {
+    mk::PenTool t;
+    std::vector<float> out, an;
+    bool consumed = false;
+    gui::ViewportInput shift, alt, ctrl;
+    shift.shift = true;
+    alt.alt = true;
+    ctrl.ctrl = true;
+
+    t.update(click_at(0, 0), out, consumed);
+    t.update(at(0, 0), out, consumed);
+    // Shift on a click: the new anchor turns about the last to 45 degrees.
+    gui::ViewportInput sc = click_at(100, 90);
+    sc.shift = true;
+    t.update(sc, out, consumed);
+    t.update(at(100, 90), out, consumed);
+    t.overlay(an);
+    const float r = std::hypot(100.0f, 90.0f) / std::sqrt(2.0f);
+    check(same_points({an.begin() + 8, an.begin() + 10}, {r, r}, 1e-3f),
+          "pen: Shift puts the click on the 45-degree line, at the same distance");
+    t.cancel();
+
+    // Shift on a drag: the handle snaps.
+    t.update(click_at(0, 0), out, consumed);
+    t.update(at(0, 0), out, consumed);
+    pen_drag(t, 100, 0, 150, 4, shift);
+    t.overlay(an);
+    check(std::fabs(an[11] - 0.0f) < 1e-3f && an[10] > 140.0f,
+          "pen: Shift levels a handle drawn nearly level");
+    t.cancel();
+
+    // Alt mid-drag: the in-handle stays where the drag had put it.
+    t.update(click_at(0, 0), out, consumed);
+    t.update(at(0, 0), out, consumed);
+    t.update(click_at(100, 0), out, consumed);
+    t.update(held_at(130, 0), out, consumed);
+    gui::ViewportInput ah = held_at(100, 40);
+    ah.alt = true;
+    t.update(ah, out, consumed);
+    t.update(at(100, 40), out, consumed);
+    t.overlay(an);
+    check(same_points({an.begin() + 6, an.end()}, {70, 0, 100, 0, 100, 40}, 1e-4f),
+          "pen: Alt breaks the handles -- in stays at (70,0), out follows to (100,40)");
+
+    // A click on the last anchor takes its out-handle back.
+    t.update(at(100, 1), out, consumed);
+    check(t.cue() == mk::PenTool::Cue::Retract, "pen: over the last anchor the badge says so");
+    t.update(click_at(100, 1), out, consumed);
+    t.update(at(100, 1), out, consumed);
+    t.overlay(an);
+    check(same_points({an.begin() + 6, an.end()}, {70, 0, 100, 0, 100, 0}, 1e-4f),
+          "pen: clicking the last anchor retracts its out-handle only");
+
+    // Ctrl+drag moves a point already placed, handles and all.
+    t.update(click_at(50, 80), out, consumed);
+    t.update(at(50, 80), out, consumed);
+    gui::ViewportInput hover = at(1, 1);
+    hover.ctrl = true;
+    t.update(hover, out, consumed);
+    check(t.cue() == mk::PenTool::Cue::Edit, "pen: Ctrl over an anchor offers to move it");
+    pen_drag(t, 1, 1, 11, -9, ctrl);
+    t.overlay(an);
+    check(t.anchor_count() == 3 && same_points({an.begin(), an.begin() + 6},
+                                               {10, -10, 10, -10, 10, -10}, 1e-4f),
+          "pen: Ctrl+drag moved the first anchor and added none");
+    // Ctrl+drag a smooth anchor's handle: the other swings opposite, keeping its length.
+    t.cancel();
+    t.update(click_at(0, 0), out, consumed);
+    t.update(at(0, 0), out, consumed);
+    pen_drag(t, 100, 0, 130, 0);
+    t.update(click_at(50, 80), out, consumed);
+    t.update(at(50, 80), out, consumed);
+    pen_drag(t, 130, 0, 100, 40, ctrl);
+    t.overlay(an);
+    check(same_points({an.begin() + 6, an.begin() + 12}, {100, -30, 100, 0, 100, 40}, 1e-3f),
+          "pen: moving one handle of a smooth anchor swings the other opposite");
+    t.cancel();
+
+    // Space while dragging carries the new anchor; the handles resume from there.
+    t.update(click_at(0, 0), out, consumed);
+    t.update(at(0, 0), out, consumed);
+    t.update(click_at(100, 0), out, consumed);
+    t.note_space(true);
+    t.update(held_at(110, 5), out, consumed);
+    t.update(held_at(120, 10), out, consumed);
+    t.note_space(false);
+    t.update(held_at(150, 10), out, consumed);
+    t.update(at(150, 10), out, consumed);
+    t.overlay(an);
+    check(same_points({an.begin() + 6, an.end()}, {90, 10, 120, 10, 150, 10}, 1e-4f),
+          "pen: Space moved the anchor to (120,10), then the drag pulled handles from it");
+
+    // The paint mode latches on the first anchor, as the livewire path's does.
+    t.cancel();
+    t.note_modifiers(false, true);
+    t.update(click_at(0, 0), out, consumed);
+    t.note_modifiers(false, false);
+    check(t.mode_ctrl(), "pen: Ctrl held on the first anchor is kept after it is released");
+}
+
+void test_pen_tool_space() {
+    // Fed = frame scaled 2x and offset: anchors report in fed pixels, and a
+    // drag's handles are measured there too.
+    mk::PenTool t;
+    mk::PathSpace sp;
+    sp.to_frame = [](float x, float y, float& fx, float& fy) { fx = (x - 5.0f) * 0.5f; fy = (y - 7.0f) * 0.5f; };
+    sp.from_frame = [](float fx, float fy, float& x, float& y) { x = fx * 2.0f + 5.0f; y = fy * 2.0f + 7.0f; };
+    t.set_space(sp);
+    std::vector<float> out, an;
+    bool consumed;
+    t.update(click_at(25, 27), out, consumed);
+    t.update(at(25, 27), out, consumed);
+    pen_drag(t, 125, 27, 145, 27);
+    t.update(click_at(125, 127), out, consumed);
+    t.update(at(125, 127), out, consumed);
+    t.overlay(an);
+    check(same_points({an.begin() + 6, an.begin() + 12}, {105, 27, 125, 27, 145, 27}, 1e-3f),
+          "pen: anchors and handles report in fed pixels");
+    check(t.commit_pending(out) && same_points({out.begin(), out.begin() + 2}, {25, 27}, 1e-3f),
+          "pen: the closed path comes back in fed pixels");
+}
+
+// ---------------------------------------------------------------------------
 // stored -> displayed, continuous, is the inverse of to_stored for all
 // eight EXIF orientations
 // ---------------------------------------------------------------------------
@@ -4895,7 +5113,8 @@ void test_session_sam_blocker_clears_its_own_error() {
 void test_canvas_mode_is_exclusive() {
     mk::MaskSession s;
     const mk::CanvasMode all[] = {mk::CanvasMode::Shape, mk::CanvasMode::Eraser,
-                                  mk::CanvasMode::Path, mk::CanvasMode::Sam};
+                                  mk::CanvasMode::Path, mk::CanvasMode::Pen,
+                                  mk::CanvasMode::Sam};
     bool exclusive = true;
     for (mk::CanvasMode a : all)
         for (mk::CanvasMode b : all) {
@@ -4904,6 +5123,7 @@ void test_canvas_mode_is_exclusive() {
             exclusive = exclusive && s.mode() == b &&
                         s.erasing() == (b == mk::CanvasMode::Eraser) &&
                         s.path_mode() == (b == mk::CanvasMode::Path) &&
+                        s.pen_mode() == (b == mk::CanvasMode::Pen) &&
                         s.sam_mode() == (b == mk::CanvasMode::Sam);
         }
     check(exclusive, "canvas mode: selecting any mode deselects every other");
@@ -8551,6 +8771,9 @@ int main() {
     test_path_tool_mode_latch();
     test_path_tool_livewire();
     test_path_tool_space();
+    test_pen_tool_basic();
+    test_pen_tool_modifiers();
+    test_pen_tool_space();
     test_to_displayed_float();
     test_livewire_corner_path();
     test_livewire_sign_alignment();

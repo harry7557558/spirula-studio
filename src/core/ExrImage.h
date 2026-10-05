@@ -6,6 +6,8 @@
 // gaps and what to re-save with. No OpenEXR/Imath dependency; inflate is the
 // vendored miniz.
 
+#include "core/ColorSpace.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,6 +29,9 @@ struct Info {
     bool gamut_known = true;
     bool tiled = false;
     int parts = 1;
+    // Set by decode_srgb8.
+    float peak = 0.0f;              // largest colour value
+    float gain = 1.0f;              // the exposure applied, in linear light
 };
 
 // True when the first four bytes are the EXR magic. A file this returns false
@@ -36,6 +41,7 @@ bool is_exr(const std::string& path);
 struct Options {
     int channels = 3;      // 1, 3 or 4 wanted, interleaved in that order
     int threads = 0;       // 0 = all cores; 1 = decode on the calling thread
+    colorspace::Exposure exposure;   // decode_srgb8 only
 };
 
 // Header only. Returns "" on success, else one sentence naming the problem.
@@ -50,11 +56,12 @@ bool declared_color_space(const std::string& path, Info& info);
 std::string decode(const std::string& path, const Options& opt, Info& info,
                    std::vector<float>& out);
 
-// Interleaved 8-bit sRGB, for consumers that want display pixels. Each half
-// falls back to the file's own when unset (empty `gamut`, disengaged
-// `is_linear`); "Rec.709" and `false` are what override a header that lies.
+// Interleaved 8-bit sRGB with `opt.exposure` applied. Each unset half of the
+// colour space is the file's own; "Rec.709" and `false` override a header that
+// lies. `unexposed` as in core/TiffImage.h.
 std::string decode_srgb8(const std::string& path, const Options& opt, Info& info,
                          std::vector<uint8_t>& out, const std::string& gamut = "",
-                         std::optional<bool> is_linear = std::nullopt);
+                         std::optional<bool> is_linear = std::nullopt,
+                         std::vector<uint8_t>* unexposed = nullptr);
 
 }  // namespace exr

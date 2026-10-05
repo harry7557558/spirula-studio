@@ -48,10 +48,7 @@ double TrainRunner::avg_step_latency() {
 }
 
 double TrainRunner::eta_seconds() {
-    std::lock_guard<std::mutex> lk(_mu);
-    const double avg = avg_latency_locked();
-    if (avg < 0.0 || _latest.total_steps <= 0) return -1.0;
-    return avg * std::max(0, _latest.total_steps - (_latest.step + 1));
+    return _session ? _session->eta_seconds() : -1.0;
 }
 
 double TrainRunner::elapsed_seconds() {

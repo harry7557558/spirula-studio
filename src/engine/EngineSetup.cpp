@@ -29,6 +29,7 @@ void set_data_3dgs(
 
     engine().cur_num_splats = num_splats;
     engine().max_num_splats = max_num_splats;
+    DevicePool::global().set_splat_counts(engine().cur_num_splats, engine().max_num_splats);
 
     auto sh_shape = std::get<2>(features_sh);
     engine().num_sh = (sh_shape.size() >= 2) ? (int)sh_shape[1] : 0;

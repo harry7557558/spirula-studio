@@ -27,7 +27,7 @@ struct DatasetSettings {
     ColmapJob colmap;
     MaskSettings mask;               // clicks excluded -- see the header note
     std::string mask_model_id = "sam2.1-base-plus";
-    std::string mask_detector_id = "gdino-tiny";   // a TextDetector, ModelCache.h
+    std::string mask_detector_id = "gdino-base";   // a TextDetector, ModelCache.h
     bool use_found_masks = true;
     bool border_enable = false;
     // A saved stencil's name (StencilPreset.h), drawn on every input.
@@ -58,6 +58,11 @@ bool is_dataset_preset_name(const std::string& name);
 // Apply one over whatever `s` already holds. False for an unknown name, which
 // leaves `s` alone.
 bool dataset_apply_preset(DatasetSettings& s, const std::string& name);
+
+// The settings alone, as the JSON object a preset file nests them in -- what a
+// dataset's own record keeps (DatasetRecord.h). Reading sanitizes.
+std::string dataset_settings_json(const DatasetSettings& s);
+void read_dataset_settings_json(const JsonValue& fields, DatasetSettings& s);
 
 // Throws std::runtime_error when the file cannot be written / read.
 void save_dataset_preset(const DatasetPreset& p, const std::string& path);

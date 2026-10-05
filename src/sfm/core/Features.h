@@ -6,13 +6,17 @@
 // (D4); a converter to/from COLMAP's SQLite database is a separate host tool.
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace sfm {
@@ -123,11 +127,14 @@ inline void scaleKeypoints(FeatureSet& fs, int w, int h) {
 // The layout and every version's appended section: src/sfm/README.md. Each one
 // is read back as its own absence, so a stale cache is reused, not rejected.
 
-// Written to a sibling and renamed over the destination, so a run killed mid
-// stage leaves a file that is either whole or absent -- which is what lets the
+// Written to a per-call sibling (a shared one lets two writers interleave) and
+// renamed over the destination, so the file is whole or absent -- which lets the
 // next run reuse it without reading the descriptor block back to check (D76).
 inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
-    const std::string tmp = path + ".part";
+    static std::atomic<uint64_t> write_seq{0};
+    const std::string tmp = path + ".part" + std::to_string(
+        ((uint64_t)std::hash<std::thread::id>{}(std::this_thread::get_id()) << 8) ^
+        ++write_seq);
     {
     std::ofstream f(tmp, std::ios::binary);
     if (!f) throw std::runtime_error("cannot write " + path);
@@ -162,6 +169,13 @@ inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
     }
     std::error_code ec;
     std::filesystem::rename(tmp, path, ec);
+    // Antivirus and indexers on Windows hold a fresh file open without
+    // delete-sharing for well under a second, failing the rename meanwhile.
+    for (int i = 0; ec && i < 4; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        ec.clear();
+        std::filesystem::rename(tmp, path, ec);
+    }
     if (ec) {
         std::filesystem::remove(tmp, ec);
         throw std::runtime_error("cannot write " + path);
@@ -169,8 +183,8 @@ inline void writeFeatures(const std::string& path, const FeatureSet& fs) {
 }
 
 // Is there a whole feature file at `path`, and how many keypoints does it hold?
-// The keypoints and descriptors are all but the whole file, so the size against
-// the header catches a truncated one without reading a gigabyte to find out.
+// Sized against the header without reading a gigabyte of descriptors: v6 to the
+// exact byte, so an oversize file is refused too; older versions for truncation.
 inline bool peekFeatures(const std::string& path, uint32_t& count) {
     std::error_code ec;
     const uint64_t bytes = (uint64_t)std::filesystem::file_size(path, ec);
@@ -188,8 +202,27 @@ inline bool peekFeatures(const std::string& path, uint32_t& count) {
     f.read((char*)&dim, 4);
     f.read((char*)&dtype, 4);
     if (!f || std::memcmp(magic, "VKFT", 4) != 0 || dtype > 1) return false;
-    const uint64_t need = 28 + (uint64_t)n * 16 + (uint64_t)n * dim * dtypeSize((DType)dtype);
-    if (bytes < need) return false;
+    uint64_t size = 28 + (uint64_t)n * 16 + (uint64_t)n * dim * dtypeSize((DType)dtype);
+    if (version < 6) {
+        if (bytes < size) return false;
+        count = n;
+        return true;
+    }
+    uint8_t flag = 0;
+    uint32_t cam_len = 0;
+    f.seekg((std::streamoff)size);
+    f.read((char*)&flag, 1);                        // has_colors
+    if (!f || flag > 1) return false;
+    size += 1 + (flag ? (uint64_t)n * 3 : 0) + 8;   // colors, exif_focal
+    f.seekg((std::streamoff)size);
+    f.read((char*)&cam_len, 4);
+    if (!f) return false;
+    size += 4 + cam_len + 8;                        // exif_camera, extract w+h
+    f.seekg((std::streamoff)size);
+    f.read((char*)&flag, 1);                        // has_scores
+    if (!f || flag > 1) return false;
+    size += 1 + (flag ? (uint64_t)n * 4 : 0) + 1;   // scores, exif_orientation
+    if (bytes != size) return false;
     count = n;
     return true;
 }

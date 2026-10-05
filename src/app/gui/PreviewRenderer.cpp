@@ -76,8 +76,9 @@ bool lens_valid(vec2 gl) {
     if (u_tier == 0) return true;
     const float e = 1e-3;
     vec2 f = lens(gl);
-    vec2 jx = (lens(gl + vec2(e, 0.0)) - f) / e, jy = (lens(gl + vec2(0.0, e)) - f) / e;
-    float jd = min(jx.x * jy.y - jy.x * jx.y, min(jx.x, jy.y));
+    vec2 dx = lens(gl + vec2(e, 0.0)) - f, dy = lens(gl + vec2(0.0, e)) - f;
+    // Not min(det, min(a, b)) with det = fma(a, b, ..): LLVM's InstSimplify segfaults (#135).
+    float jd = min((dx.x * dy.y - dy.x * dx.y) / (e * e), min(dx.x, dy.y) / e);
     return jd > 0.25 && jd < 4.0 && dot(gl, f) >= 0.0;
 }
 vec2 project_ndc(vec3 v, out bool clipped) {

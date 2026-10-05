@@ -820,10 +820,10 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
         n_all = (int64_t)frames.size();
     }
 
-    // In lenient (viewer) mode, tolerate a missing points3D file so a
-    // cameras-only reconstruction still yields camera poses / frustums.
     ColmapPoints3D points;
-    if (fmt.points3D == ColmapFmt::Bin)
+    if (!cfg.seed_pointcloud.empty())
+        points = dsparse::read_seed_pointcloud(dataset_dir, cfg.seed_pointcloud);
+    else if (fmt.points3D == ColmapFmt::Bin)
         points = read_points3D_binary(recon_dir);
     else if (fmt.points3D == ColmapFmt::Text)
         points = read_points3D_text(recon_dir);

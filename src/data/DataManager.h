@@ -106,6 +106,13 @@ struct DataManagerConfig {
     // Dilate (+) or erode (-) the final mask by this fraction of sqrt(W*H) of
     // the decoded mask, by an exact squared distance transform; 0 disables.
     float mask_boundary_offset = 0.0f;
+
+    // Deficit view sampling: an image is drawn per pass in proportion to
+    // ((median + 1) / (mean render count of the splats it showed + 1))^power,
+    // clamped to [1/max_ratio, max_ratio]. Off, every image is drawn once.
+    bool  deficit_sampling  = false;
+    float deficit_power     = 0.5f;
+    float deficit_max_ratio = 8.0f;
 };
 
 
@@ -363,6 +370,13 @@ public:
     // once the file is back. false abandons the pipeline: the ready queues
     // close, so the next fetch throws instead of blocking forever.
     void resolve_data_error(bool retry);
+
+    // ---- View stats -------------------------------------------------------
+
+    // Per POST-split camera: the sum and count of the render counters of the
+    // splats it contributed to at its last render (engine_read_view_stats).
+    // The next epoch's schedule draws on it under deficit_sampling.
+    void set_view_stats(std::vector<float> cam_sum, std::vector<uint32_t> cam_cnt);
 
     // ---- Stats ------------------------------------------------------------
 

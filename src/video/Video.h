@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace video {
 
@@ -42,6 +43,14 @@ struct VideoProbe {
 // What a file contains, without the decode session open() builds. False
 // with `error` set when the file has no readable video track.
 bool probe_video(const std::string& path, VideoProbe& out, std::string& error);
+
+// A HEIF still (.heic): its primary image's H.265 tiles decoded and composed,
+// then cropped and turned as the container asks. `exif`, when given, gets the
+// JPEG APP1 payload ("Exif\0\0" + TIFF) or nothing. One decode at a time.
+bool decode_heif(const std::string& path, nn::Image& out, std::vector<uint8_t>* exif,
+                 std::string& error);
+// Its displayed size, from the container alone.
+bool probe_heif(const std::string& path, int& width, int& height, std::string& error);
 
 class VideoReader {
 public:

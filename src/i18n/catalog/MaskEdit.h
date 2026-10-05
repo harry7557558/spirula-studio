@@ -870,6 +870,111 @@ SS_MSG(path_anchors,
     TR("Yol çapaları: {0}"));
 
 // ===========================================================================
+// The pen (Bezier curves), with the names vector editors give the tool
+// ===========================================================================
+
+SS_MSG(tool_pen,
+    EN("Pen"),        JA("ペン"),        ZH_HANS("钢笔"),  ZH_HANT("鋼筆"),
+    KO("펜"),          DE("Zeichenstift"), FR("Plume"),
+    ES("Pluma"),      PT("Caneta"),      IT("Penna"),
+    NL("Pen"),        RU("Перо"),        TR("Kalem"));
+
+SS_MSG(hint_pen,
+    EN("Click for a corner, drag for a curve. Shift keeps 45-degree steps; Alt while "
+       "dragging moves one handle alone; Space while dragging moves the anchor. Click the "
+       "last anchor to straighten the next segment; Ctrl+drag moves a point or handle "
+       "already placed. Hold Ctrl (keep) or Shift+Ctrl (clear) for the first anchor. Click "
+       "the first anchor, Enter or right-click closes it and paints its inside. Ctrl+Z or "
+       "Backspace takes an anchor back; Esc cancels."),
+    JA("クリックで角、ドラッグで曲線の点を置きます。Shift で 45 度刻み、ドラッグ中の Alt で"
+       "片方のハンドルだけを、ドラッグ中の Space で点そのものを動かします。最後の点を"
+       "クリックすると次の線分がまっすぐになり、Ctrl+ドラッグで置いた点やハンドルを"
+       "動かせます。最初の点を置くときに Ctrl で保持、Shift+Ctrl でクリアになります。"
+       "最初の点のクリック、Enter か右クリックで閉じて内側を塗ります。Ctrl+Z か "
+       "Backspace で点を戻し、Esc で中止します。"),
+    ZH_HANS("点击放下角点，拖动放下曲线点。Shift 以 45 度为步长；拖动时按 Alt 只移动一侧"
+            "手柄；拖动时按 Space 移动锚点本身。点击最后一个锚点可让下一段变直；Ctrl+拖动"
+            "可移动已放下的点或手柄。放下第一个锚点时按住 Ctrl 为保留，Shift+Ctrl 为清除。"
+            "点击第一个锚点、按 Enter 或右键闭合并涂抹其内部。Ctrl+Z 或 Backspace 撤回"
+            "一个锚点，Esc 取消。"),
+    ZH_HANT("點擊放下角點，拖曳放下曲線點。Shift 以 45 度為步長；拖曳時按 Alt 只移動一側"
+            "控制把手；拖曳時按 Space 移動錨點本身。點擊最後一個錨點可讓下一段變直；"
+            "Ctrl+拖曳可移動已放下的點或控制把手。放下第一個錨點時按住 Ctrl 為保留，"
+            "Shift+Ctrl 為清除。點擊第一個錨點、按 Enter 或右鍵閉合並塗抹其內部。Ctrl+Z "
+            "或 Backspace 收回一個錨點，Esc 取消。"),
+    KO("클릭하면 모서리, 드래그하면 곡선 앵커를 놓습니다. Shift는 45도 단위로 맞추고, "
+       "드래그 중 Alt는 핸들 한쪽만, 드래그 중 Space는 앵커 자체를 옮깁니다. 마지막 앵커를 "
+       "클릭하면 다음 선분이 곧게 이어지고, Ctrl+드래그로 이미 놓은 점이나 핸들을 옮깁니다. "
+       "첫 앵커를 놓을 때 Ctrl은 유지, Shift+Ctrl은 지우기입니다. 첫 앵커 클릭, Enter 또는 "
+       "오른쪽 클릭으로 닫고 안쪽을 칠합니다. Ctrl+Z나 Backspace는 앵커를 되돌리고 Esc는 "
+       "취소합니다."),
+    DE("Klick setzt eine Ecke, Ziehen einen Kurvenpunkt. Umschalt rastet in 45-Grad-"
+       "Schritten ein; Alt beim Ziehen bewegt nur einen Griff, Leertaste beim Ziehen den "
+       "Anker selbst. Ein Klick auf den letzten Anker macht den nächsten Abschnitt gerade; "
+       "Strg+Ziehen verschiebt einen schon gesetzten Punkt oder Griff. Strg (behalten) oder "
+       "Umschalt+Strg (löschen) beim ersten Anker halten. Erster Anker, Eingabe oder "
+       "Rechtsklick schließt ihn und malt sein Inneres. Strg+Z oder Rücktaste nimmt einen "
+       "Anker zurück, Esc bricht ab."),
+    FR("Un clic pose un angle, un glissé un point de courbe. Maj force des pas de 45 degrés ; "
+       "Alt pendant le glissé déplace une seule poignée, Espace déplace l'ancre elle-même. "
+       "Un clic sur la dernière ancre rend le segment suivant droit ; Ctrl+glisser déplace "
+       "un point ou une poignée déjà posé. Maintenez Ctrl (conserver) ou Maj+Ctrl (effacer) "
+       "pour la première ancre. La première ancre, Entrée ou un clic droit le ferme et peint "
+       "son intérieur. Ctrl+Z ou Retour arrière retire une ancre, Échap annule."),
+    ES("Un clic pone una esquina y un arrastre, un punto de curva. Mayús fija pasos de 45 "
+       "grados; Alt al arrastrar mueve un solo tirador y Espacio al arrastrar mueve el "
+       "ancla. Un clic en la última ancla deja recto el siguiente segmento; Ctrl+arrastrar "
+       "mueve un punto o tirador ya puesto. Mantenga Ctrl (conservar) o Mayús+Ctrl (borrar) "
+       "para la primera ancla. La primera ancla, Intro o clic derecho lo cierra y pinta su "
+       "interior. Ctrl+Z o Retroceso quita un ancla; Esc cancela."),
+    PT("Um clique põe um canto e um arraste, um ponto de curva. Shift fixa passos de 45 "
+       "graus; Alt ao arrastar move só uma alça e Espaço ao arrastar move a própria âncora. "
+       "Um clique na última âncora deixa reto o segmento seguinte; Ctrl+arrastar move um "
+       "ponto ou alça já posto. Segure Ctrl (manter) ou Shift+Ctrl (limpar) na primeira "
+       "âncora. A primeira âncora, Enter ou clique direito o fecha e pinta seu interior. "
+       "Ctrl+Z ou Backspace tira uma âncora; Esc cancela."),
+    IT("Un clic mette un angolo, un trascinamento un punto di curva. Maiusc blocca a passi "
+       "di 45 gradi; Alt durante il trascinamento muove una sola maniglia, Spazio muove "
+       "l'ancoraggio stesso. Un clic sull'ultimo ancoraggio rende dritto il segmento "
+       "successivo; Ctrl+trascina sposta un punto o una maniglia già messi. Tenga premuto "
+       "Ctrl (mantieni) o Maiusc+Ctrl (cancella) per il primo ancoraggio. Il primo "
+       "ancoraggio, Invio o il clic destro lo chiude e ne dipinge l'interno. Ctrl+Z o "
+       "Backspace toglie un ancoraggio; Esc annulla."),
+    NL("Klik zet een hoek, slepen een kromme. Shift houdt stappen van 45 graden aan; Alt "
+       "tijdens het slepen beweegt één greep, Spatie tijdens het slepen het anker zelf. Klik "
+       "op het laatste anker om het volgende stuk recht te maken; Ctrl+slepen verplaatst een "
+       "al gezet punt of greep. Houd Ctrl (behouden) of Shift+Ctrl (wissen) bij het eerste "
+       "anker. Het eerste anker, Enter of rechtsklik sluit het en schildert de binnenkant. "
+       "Ctrl+Z of Backspace neemt een anker terug; Esc breekt af."),
+    RU("Щелчок ставит угол, перетаскивание — точку кривой. Shift держит шаг 45 градусов; "
+       "Alt при перетаскивании двигает только одну ручку, пробел — саму точку. Щелчок по "
+       "последней точке выпрямляет следующий отрезок; Ctrl+перетаскивание двигает уже "
+       "поставленную точку или ручку. Держите Ctrl (сохранить) или Shift+Ctrl (стереть) для "
+       "первой точки. Первая точка, Enter или правая кнопка замыкают контур и закрашивают "
+       "внутренность. Ctrl+Z или Backspace убирает точку, Esc отменяет."),
+    TR("Tıklama bir köşe, sürükleme bir eğri noktası bırakır. Shift 45 derecelik adımlar "
+       "tutar; sürüklerken Alt tek bir tutamacı, Boşluk çapanın kendisini taşır. Son çapaya "
+       "tıklamak sonraki parçayı düz yapar; Ctrl+sürükleme önceden konmuş bir noktayı ya da "
+       "tutamacı taşır. İlk çapa için Ctrl (tut) veya Shift+Ctrl (temizle) basılı tutun. İlk "
+       "çapa, Enter veya sağ tık onu kapatır ve içini boyar. Ctrl+Z veya Backspace bir "
+       "çapayı geri alır; Esc iptal eder."));
+
+SS_MSG(pen_anchors,
+    EN("Pen anchors: {0}"),
+    JA("ペンの点: {0}"),
+    ZH_HANS("钢笔锚点：{0}"),
+    ZH_HANT("鋼筆錨點：{0}"),
+    KO("펜 앵커: {0}"),
+    DE("Zeichenstift-Anker: {0}"),
+    FR("Ancres de la plume : {0}"),
+    ES("Anclas de la pluma: {0}"),
+    PT("Âncoras da caneta: {0}"),
+    IT("Ancoraggi della penna: {0}"),
+    NL("Penankers: {0}"),
+    RU("Точек пера: {0}"),
+    TR("Kalem çapaları: {0}"));
+
+// ===========================================================================
 // SAM assist
 // ===========================================================================
 

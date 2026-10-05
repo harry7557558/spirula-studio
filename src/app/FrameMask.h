@@ -21,14 +21,14 @@
 namespace app {
 
 struct MaskShape {
-    enum class Kind { Ellipse, Rect, Path, Stroke };
+    enum class Kind { Ellipse, Rect, Path, Stroke, Bezier };
     Kind  kind = Kind::Ellipse;
     bool  remove = false;           // false = keep what is inside
     float cx = 0.5f, cy = 0.5f;     // rect: the two corners go in cx,cy / rx,ry
     // Stroke: its half-width per axis, so a brush stays round on any aspect.
     float rx = 0.5f, ry = 0.5f;
     // x,y pairs. Path: 3+ corners, closed, even-odd. Stroke: 1+ points of a
-    // round-capped polyline, what a brush drags.
+    // round-capped polyline. Bezier: 2+ anchors (core/CubicBezier.h), closed.
     std::vector<float> pts;
 };
 
@@ -46,8 +46,8 @@ struct FrameMask {
 };
 
 // "ellipse 0.5,0.5,0.49,0.49; -rect 0.2,0.9,0.8,1; path 0.1,0.1,0.9,0.1,0.5,0.9":
-// ';'-separated, '-' removes. rect: two corners; ellipse: centre, radii; path:
-// 3+ corners; stroke: rx, ry, then 1+ points. The file form is app/FrameMaskSvg.h.
+// ';'-separated, '-' removes; rect, ellipse, path, stroke (rx, ry, points) and
+// bezier (six numbers an anchor) as MaskShape stores them. File: FrameMaskSvg.h.
 bool parse_mask_shapes(const std::string& spec, std::vector<MaskShape>& out,
                        std::string& error);
 std::string format_mask_shapes(const std::vector<MaskShape>& shapes);
@@ -96,6 +96,8 @@ struct BorderDetect {
     int       width = 0, height = 0;
 };
 
+MaskShape shrink_border(MaskShape shape, float shrink);
+
 // Reads `samples` frames spread across `files` and fits the boundary of the
 // image circle. `files` is one camera's frames, in capture order.
 BorderDetect detect_fisheye_border(const std::vector<std::string>& files,
@@ -124,16 +126,50 @@ private:
 // Applying a stencil to a folder of frames
 // ---------------------------------------------------------------------------
 
-// One input's decision: the shapes drawn on it, and whether the lens circle
-// should also be fitted. Both, because the two answer different questions --
-// a dual-fisheye file writes two cameras whose circles differ by about 1% of
+// One camera's decision: the shapes drawn on it, and whether its lens circle is
+// fitted. Both, because a dual-fisheye file's two circles differ by about 1% of
 // the radius, and whatever drew the shapes only ever saw one of them.
-struct FrameStencil {
+struct CameraStencil {
     FrameMask mask;
     bool  detect_border = false;
     float shrink = 0.01f;      // overrides BorderDetectOptions::shrink
     bool empty() const { return mask.empty() && !detect_border; }
 };
+
+// One input's: shared by all of its cameras, except those listed in `cameras`
+// by the folder their frames land in ("cam1", a 360 view, a photo subfolder --
+// group_frames_by_camera's keys), which get their own instead.
+struct FrameStencil : CameraStencil {
+    std::map<std::string, CameraStencil> cameras;
+    bool per_camera() const { return !cameras.empty(); }
+    const CameraStencil& for_camera(const std::string& camera) const {
+        const auto it = cameras.find(camera);
+        return it == cameras.end() ? *this : it->second;
+    }
+    bool empty() const {
+        for (const auto& [name, c] : cameras)
+            if (!c.empty()) return false;
+        return CameraStencil::empty();
+    }
+};
+
+// The detection must have shrink=0; the stencil supplies the adjustment.
+bool edit_detected_border(CameraStencil& stencil, const BorderDetect& border);
+
+// A saved set of drawn areas: `shapes` for every camera, except each camera
+// `cameras` names, which gets its own. A per-camera set is one SVG per camera.
+struct MaskSet {
+    std::vector<MaskShape> shapes;
+    std::map<std::string, std::vector<MaskShape>> cameras;
+    bool per_camera() const { return !cameras.empty(); }
+    bool empty() const;
+};
+// What an input draws, as one list when every camera draws the same.
+MaskSet mask_set_of(const FrameStencil& stencil);
+// Replaces every drawn shape of `stencil` with `set`'s. A list starting with a
+// keep shape (an edited border ellipse) is the kept region already, and the
+// fitted circle would only widen it, so its camera's fit goes off.
+void apply_mask_set(FrameStencil& stencil, const MaskSet& set);
 
 // Image files under `dir`, grouped by the folder holding them -- a folder is a
 // camera, which is what a multi-track extraction writes (cam0/, cam1/). Keys
@@ -171,5 +207,13 @@ struct FrameStencilSinks {
 // Returns how many were written, or -1 with `error` set.
 int64_t apply_frame_stencil(const FrameStencilRun& run,
                             const FrameStencilSinks& sinks, std::string& error);
+
+// Masks `a` and `b` intersected into `out`, one per image of `image_dir` that
+// has either, named <rel>/<stem>.png as every writer here names them. For a
+// reader that takes one mask tree: COLMAP. Returns how many, or -1.
+int64_t intersect_mask_trees(const std::string& image_dir, const std::string& a,
+                             bool flip_a, const std::string& b,
+                             const std::string& out, const std::atomic<bool>* cancel,
+                             std::string& error);
 
 }  // namespace app

@@ -174,8 +174,8 @@ std::string metavarFor(const std::string&, const char* name, const char* choices
     // No metavar column in the table: the flag name says what it takes, and
     // "DIR" reads better than "VALUE" on the handful that take a path.
     std::string n = name;
-    if (n.find("dir") != std::string::npos || n == "masks" || n == "images" ||
-        n == "features" || n == "resume")
+    if (n.find("dir") != std::string::npos || n == "masks" || n == "feature-masks" ||
+        n == "images" || n == "features" || n == "resume")
         return "DIR";
     if (n.find("path") != std::string::npos) return "FILE";
     return "VALUE";
@@ -430,6 +430,9 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     mapper.max_reproj_error = max_error;
     // mapper.sequence_window = overlap;
 
+    if (!colorspace::parse_exposure(image_exposure, exposure))
+        return "bad --image-exposure '" + image_exposure + "' (auto, or a number of stops)";
+
     if (features != "sift" && !isAlikedType(features) && !isLomaType(features))
         return "unknown --features '" + features +
                "' (sift, aliked-n16rot, aliked-n32, loma-b128 or loma-b)";
@@ -461,7 +464,8 @@ std::string SfmConfig::finalize(uint32_t cmd) {
                std::to_string(lomaDescriptorDim(features)) + "-D ones";
     // Two metric references would each claim the gauge, and the fit would be
     // whichever the code happened to try first.
-    const bool gps = metric_gps != "none";
+    // `auto` stands down beside a positions file and without images or telemetry.
+    const bool gps = metricGps();
     if (!metric_positions.empty() && gps)
         return "--metric-positions and --metric-gps are two references for one "
                "gauge; pass one";
@@ -470,7 +474,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     // GPS is metres-accurate and a positions file is usually centimetres, so
     // one default cannot serve both; 0 means "the one for this source".
     if (metric_max_error == 0)
-        metric_max_error = gps ? 5.0 : 0.5;
+        metric_max_error = metric_gps != "none" && metric_positions.empty() ? 5.0 : 0.5;
     if (!telemetry.empty()) {
         bool listed = false;
         for (const TelemetryInput& t : telemetry_inputs)
@@ -604,26 +608,50 @@ bool signatureRelevant(const char* name) {
     return true;
 }
 
+// Left out while unset, so features extracted before the flag existed still
+// match a run that does not use it.
+bool signatureOmitsUnset(const char* name) {
+    return std::strcmp(name, "image-exposure") == 0;
+}
+
 }  // namespace
 
 std::string stageSignature(const SfmConfig& cfg, uint32_t cmd) {
     std::string out;
+    auto appendParams = [&](const std::vector<double>& params) {
+        char buf[32];
+        for (double p : params) {
+            std::snprintf(buf, sizeof buf, "%.17g,", p);
+            out += buf;
+        }
+    };
 #define SFM_SIG_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)   \
-    if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name)) \
+    if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias && signatureRelevant(name) && \
+        !(signatureOmitsUnset(name) && valueString(cfg.member) == "none"))              \
         out += std::string(name) + "=" + valueString(cfg.member) + "\n";
     SFM_CONFIG_FIELDS(SFM_SIG_FIELD)
 #undef SFM_SIG_FIELD
     // Per-group lenses reach the camera setup, and so verification, without
     // being table rows: `--camera-model cam0=opencv-fisheye` and the manifest
     // both land here.
-    if (cmd & (CMD_MATCH | CMD_MAP))
+    if (cmd & (CMD_MATCH | CMD_MAP)) {
+        if (!cfg.camera.params.empty()) {
+            out += "camera-params=";
+            appendParams(cfg.camera.params);
+            out += "\n";
+        }
         for (const CameraOverride& o : cfg.camera.overrides) {
             out += "override " + o.prefix + "=";
             if (o.has_model) out += camInfo(o.model).cli_name;
             if (o.has_focal) out += "," + valueString(o.focal);
             for (double e : o.extra) out += "," + valueString(e);
+            if (!o.params.empty()) {
+                out += ";params=";
+                appendParams(o.params);
+            }
             out += "\n";
         }
+    }
     // A sequence adds its temporal window to the pair list.
     if (cmd & (CMD_MATCH | CMD_MAP))
         for (const SequenceDef& d : cfg.sequences) {

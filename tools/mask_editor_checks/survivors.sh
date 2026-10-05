@@ -104,14 +104,14 @@ if [ "$order" = yes ]; then echo "ok   the slideshow branch sits between the can
 else echo "FAIL the slideshow branch sits between the canvas fill and !_doc"; FAILS=$((FAILS + 1)); fi
 has 1 'if (!fresh && input) {'
 has 1 '_slide_fresh = false;'
-if command grep -qF '_path.in_progress())' src/app/gui/mask/MaskSession.cpp &&
+if command grep -qF '_pen.in_progress() || _path.in_progress())' src/app/gui/mask/MaskSession.cpp &&
    command grep -qF 'bool animating() const { return _compare.animating() || _mask_editor.animating(); }' src/app/gui/GuiApp.h; then
     echo "ok   start_slideshow refuses a pen path; GuiApp::animating() asks the editor"
 else echo "FAIL start_slideshow refuses a pen path; GuiApp::animating() asks the editor"; FAILS=$((FAILS + 1)); fi
 # Row D, the frame keys and the navigation row stand down for the
 # worker, a half-drawn shape or pen path, and play; help shows when greyed;
 # M / Shift+M sit inside the keys' guard; the key list is the slider's tooltip.
-has 1 'bool MaskSession::shape_open() const { return _tool.in_progress() || _path.in_progress(); }'
+has 1 'return _tool.in_progress() || _path.in_progress() || _pen.in_progress();'
 find=$(awk '/if \(ui::Button\(msg::find_first\)\) go_to\(0\);/{print p; exit} {p=$0}' "$F")
 if [ "$(printf '%s' "$find" | sed 's/^ *//')" = 'ImGui::BeginDisabled(!idle() || _slide_playing || shape_open());' ]; then
     echo "ok   row D's find buttons wait for the worker, a half-drawn shape and play"

@@ -501,6 +501,7 @@ public:
     bool hasPipeline(const std::string& name) const { return pipelines_.count(name) != 0; }
 
     void upload(const GpuBuffer& dst, const void* src, VkDeviceSize size, VkDeviceSize dstOff = 0) {
+        if (pendingReadsStaging_) waitPending();
         const uint8_t* p = (const uint8_t*)src;
         for (VkDeviceSize off = 0; off < size; off += kStagingSize) {
             VkDeviceSize chunk = std::min<VkDeviceSize>(kStagingSize, size - off);
@@ -551,7 +552,10 @@ public:
                 continue;
             }
             if (used + it.size > kStagingSize) flush();
-            if (cb == VK_NULL_HANDLE) cb = begin();
+            if (cb == VK_NULL_HANDLE) {
+                if (pendingReadsStaging_) waitPending();
+                cb = begin();
+            }
             memcpy((uint8_t*)stagingPtr_ + used, it.src, it.size);
             copies.push_back(VkBufferCopy{used, 0, it.size});
             dsts.push_back(it.dst->buf);
@@ -586,6 +590,17 @@ public:
     }
     const void* stagingDownloadPtr() const { return stagingDlPtr_; }
     static constexpr VkDeviceSize stagingCapacity() { return kStagingSize; }
+
+    // The same for an upload: stage `src` now, copy when `cb` runs. Nothing else
+    // may stage until `cb` is submitted. `size` must not exceed stagingCapacity().
+    void recordUpload(VkCommandBuffer cb, const GpuBuffer& dst, const void* src,
+                      VkDeviceSize size) {
+        if (pendingReadsStaging_) waitPending();
+        recordedUpload_ = true;
+        memcpy(stagingPtr_, src, size);
+        VkBufferCopy c{0, 0, size};
+        vkCmdCopyBuffer(cb, staging_.buf, dst.buf, 1, &c);
+    }
 
     // ---- descriptor set (one set of N storage buffers shared by all pipelines) ----
     // Idempotent: the first call builds layout/pool/set, later calls (same
@@ -765,11 +780,31 @@ public:
     }
 
     void submit(VkCommandBuffer cb) {
+        submitAsync(cb);
+        waitPending();
+    }
+
+    // Submit without waiting, so the host can get on with something else.
+    // Every other submit waits for it first: at most one is ever in flight.
+    // With profiling on it waits at once, since begin() resets the queries.
+    void submitAsync(VkCommandBuffer cb) {
+        waitPending();
         VK_CHECK(vkEndCommandBuffer(cb));
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         si.commandBufferCount = 1;
         si.pCommandBuffers = &cb;
         VK_CHECK(vkQueueSubmit(queue_, 1, &si, fence_));
+        pending_ = cb;
+        pendingReadsStaging_ = recordedUpload_;
+        recordedUpload_ = false;
+        if (profiling_) waitPending();
+    }
+
+    void waitPending() {
+        if (pending_ == VK_NULL_HANDLE) return;
+        VkCommandBuffer cb = pending_;
+        pending_ = VK_NULL_HANDLE;
+        pendingReadsStaging_ = false;
         VK_CHECK(vkWaitForFences(device_, 1, &fence_, VK_TRUE, ~0ull));
         VK_CHECK(vkResetFences(device_, 1, &fence_));
         vkFreeCommandBuffers(device_, cmdPool_, 1, &cb);
@@ -992,6 +1027,10 @@ private:
     VkPhysicalDeviceMemoryProperties memProps_{};
     VkCommandPool cmdPool_ = VK_NULL_HANDLE;
     VkFence fence_ = VK_NULL_HANDLE;
+    VkCommandBuffer pending_ = VK_NULL_HANDLE;  // submitAsync()'s, until waited for
+    // Whether the command buffer being recorded, and the one in flight, copy
+    // out of the upload staging buffer; the next upload must wait for the latter.
+    bool recordedUpload_ = false, pendingReadsStaging_ = false;
     VkDescriptorSetLayout setLayout_ = VK_NULL_HANDLE;
     VkPipelineLayout pipeLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool descPool_ = VK_NULL_HANDLE;

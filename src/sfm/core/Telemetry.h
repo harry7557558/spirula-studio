@@ -1,7 +1,8 @@
 #pragma once
 // The IMU and GPS a video file carries alongside its pictures, recognised by
 // content rather than by extension: a GoPro `gpmd` track (GPMF), the Insta360
-// trailer after the MP4, a DJI `djmd` track (protobuf), or a CAMM track.
+// trailer after the MP4, a DJI `djmd` track (protobuf: Osmo 360 and Avata
+// 360, field numbers per proto), or a CAMM track.
 //
 // map/SensorGauge.h consumes it through core/SensorTimeline.h;
 // `sfm_telemetry_test FILE` prints what a file carries. Only the sample
@@ -44,6 +45,15 @@ struct TelemetryGps {
     double speed = -1;         // m/s over ground; < 0 unknown
     double track = -1;         // degrees clockwise from north; < 0 unknown
     double dop = 0;            // dilution of precision; 0 unknown
+    double rel_alt = 0;        // metres above take-off; read only with has_rel_alt
+    bool has_rel_alt = false;
+};
+
+struct TelemetryExposure {
+    double t = 0;
+    double iso = -1, shutter = -1, fnum = -1, color_temp = -1;  // < 0 unknown; shutter in s, colour in K
+    double ev = 0;
+    bool has_ev = false;
 };
 
 enum class TelemetryCarrier { None, Gpmf, Insta360, DjiDvtm, Camm };
@@ -69,7 +79,11 @@ struct Telemetry {
     // The order of accel-frame components the attitude acts on. GoPro's CORI
     // takes (X, Z, Y) of the ORIN frame: measured, see the note it carries.
     std::string orientation_axes = "XYZ";
+    // Up in the frame the attitude maps sensor vectors into, when the carrier
+    // says so; zero when it does not. Only read with no accelerometer.
+    double attitude_world_up[3] = {0, 0, 0};
     std::vector<TelemetryGps> gps;
+    std::vector<TelemetryExposure> exposure;  // not sensor data: empty() ignores it
     std::vector<std::string> notes;
 
     bool empty() const {
@@ -95,6 +109,22 @@ bool telemetry_read(uint64_t size, const TelemetryRead& read, Telemetry& out, st
 // is settled per file before anything else about it is wanted, and the
 // container's own boxes carry it. Empty when the file names none.
 VideoProjection video_projection(const std::string& path);
+
+// A lens's factory calibration (Avata 360 StreamMeta.5): theta_d = theta (1 +
+// k1 theta^2 + ... + k5 theta^10), p1 p2 as THIN_PRISM_FISHEYE's, pixel i
+// centred at i. Measured: docs/notes/imu-gps-for-sfm.md §2.3.
+struct LensCalibration {
+    int track = -1;        // the video track, i.e. the camN folder
+    std::string lens;      // "master" | "slave"
+    int width = 0, height = 0;
+    double fx = 0, fy = 0, cx = 0, cy = 0;
+    double k[5] = {0, 0, 0, 0, 0};
+    double p1 = 0, p2 = 0;
+};
+std::vector<LensCalibration> djmd_lenses(const uint8_t* sample, size_t n);
+// From the first djmd sample that holds a calibration; empty when none does.
+std::vector<LensCalibration> video_lenses(const std::string& path);
+std::vector<LensCalibration> video_lenses(const uint8_t* data, size_t size);
 
 // Whether the readings look like a working sensor, not whether they are
 // precise: units, coverage of the video, sample-rate regularity, a gravity

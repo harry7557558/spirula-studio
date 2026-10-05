@@ -251,7 +251,7 @@ int main() {
             "PINHOLE", dist_fixture::kTierNames[0],
             ttv(d_dist, {C, kCameraDistortionParams}), DeviceVector<int32_t>{},
             DeviceVector<int32_t>{}, aabb, v_world, v_screen, g1_world,
-            g2_world, shq, shq_b, shv, shv_b, f_non_sh, radii,
+            g2_world, shq, shq_b, shv, shv_b, f_non_sh, SplatVisitState{}, radii,
             dv<float>(f_score, N), kLrMeans, kLrQuats,
             kLrScales, kLrOpacs, kLrDc, kLrSh, /*max_gauss_ratio=*/10.f,
             /*scale_reg=*/0.1f, /*mcmc_op=*/0.01f, /*mcmc_scale=*/0.01f,
@@ -335,6 +335,7 @@ int main() {
             /*erank_s3=*/0.02f, /*quat_norm=*/0.01f, kDcReg, kShReg,
             /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
             /*use_scale_agnostic_mean=*/false, color_trust, s_non_sh,
+            SplatVisitState{},
             GradQuantBuffers{}, kStep, DeviceVector<int32_t>(),
             /*grad_scale=*/1.f, /*zero_grad=*/false);
 

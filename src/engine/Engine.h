@@ -506,8 +506,14 @@ void engine_debug_forward(
 // --- Query internal state ---
 
 void engine_copy_accum_buffer(TorchTensorView dst);
+// Per-camera visit stats for deficit view sampling: accumulated after every
+// backward once enabled, read back as [num_post] sums and counts.
+void engine_set_view_stats(bool enabled);
+void engine_read_view_stats(std::vector<float>& cam_sum, std::vector<uint32_t>& cam_cnt);
+
 int64_t engine_get_cur_num_splats();
 int64_t engine_get_max_num_splats();
+int engine_get_num_sh();   // non-DC SH coefficients per channel
 
 // `out_rgb_raw` is the pre-color-space-conversion render (linear / wide-gamut)
 // stashed by the color-space forward hook. Null OK; when the engine has no
@@ -678,6 +684,12 @@ std::vector<std::tuple<std::string, size_t, size_t>> engine_get_pool_breakdown()
 std::vector<std::tuple<std::string, std::string, size_t, size_t>>
 engine_get_pool_breakdown_categorized();
 size_t engine_get_scratch_bytes();
+
+// GPU seconds the next step spends in its splat stages (forward, raster and
+// projection backward, optimizer, densify) for the trainer's ETA model. Arm
+// before the step, read after; < 0 if not armed or the device has no timer.
+void engine_step_timing_arm();
+double engine_step_timing_read();
 
 // Formatted per-category pool report (SS_PROFILE). Reads the pool's
 // high-water capacities, so it is a peak, not an instantaneous figure.

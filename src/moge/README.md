@@ -141,7 +141,10 @@ against Metric3D's 28).
 
 `--num-tokens` is capped at what the image holds: asking for more tokens than
 it has patches would upsample into the network for nothing. At
-`--max-size 1064` a 16:9 frame tops out around 3200.
+`--max-size 1064` a 16:9 frame tops out around 3200. A split face is sized
+to the map it is written into, which on a panorama is about 900 tokens, so
+`app/GeometryModel.h`'s `minFacePixels` raises every face to 1200 patches
+where the frame has the pixels for it (src/metric3d/README.md, "Face size").
 
 RTX 5070 Laptop, a 1064x598 frame, the second call onwards (the first builds
 pipelines and measures the GEMM tiling):

@@ -123,6 +123,26 @@ inline uint32_t applyMask(FeatureSet& fs, const Mask& m) {
     return n - out;
 }
 
+// Keep only what both keep (--masks and --feature-masks), on the finer of the
+// two grids with the other sampled in uv, so the two need not share a
+// resolution. An empty mask keeps everything.
+inline void intersectMask(Mask& a, const Mask& b) {
+    if (b.empty()) return;
+    if (a.empty()) {
+        a = b;
+        return;
+    }
+    const bool b_finer = b.pixels() > a.pixels();
+    Mask fine = b_finer ? b : a;
+    const Mask& coarse = b_finer ? a : b;
+    for (int y = 0; y < fine.height; y++)
+        for (int x = 0; x < fine.width; x++) {
+            uint8_t& v = fine.bits[(size_t)y * fine.width + x];
+            if (v) v = coarse.atUV((x + 0.5f) / fine.width, (y + 0.5f) / fine.height);
+        }
+    a = std::move(fine);
+}
+
 // ---- finding the mask that belongs to an image --------------------------
 
 namespace detail {

@@ -115,6 +115,10 @@ add_library(ss_nn STATIC
     ${SS_SRC}/external/stb_image_impl.cpp
     ${SS_SRC}/external/stb_image_write_impl.cpp
     ${SS_SRC}/core/ExrImage.cpp
+    ${SS_SRC}/core/IccProfile.cpp
+    ${SS_SRC}/core/ImageFile.cpp
+    ${SS_SRC}/core/MappedFile.cpp
+    ${SS_SRC}/core/TiffImage.cpp
     ${SS_SRC}/external/miniz.c
 )
 target_include_directories(ss_nn PUBLIC ${SS_SRC})
@@ -251,11 +255,22 @@ if(SS_ENABLE_PATENTED)
 
     file(GLOB_RECURSE SS_VIDEO_SOURCES CONFIGURE_DEPENDS
          ${SS_SRC}/video/*.cpp)
+    list(FILTER SS_VIDEO_SOURCES EXCLUDE REGEX "/tests/")
     add_library(ss_video STATIC ${SS_VIDEO_SOURCES} ${SS_VIDEO_EMBED})
     target_link_libraries(ss_video PUBLIC ss_nn)
     target_compile_options(ss_video PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
     set_property(TARGET ss_video PROPERTY CXX_STANDARD 17)
+
+    file(GLOB SS_VIDEO_TESTS CONFIGURE_DEPENDS ${SS_SRC}/video/tests/*.cpp)
+    foreach(test_src ${SS_VIDEO_TESTS})
+        get_filename_component(test_name ${test_src} NAME_WE)
+        add_executable(${test_name} ${test_src})
+        target_link_libraries(${test_name} PRIVATE ss_video)
+        set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 17)
+        target_compile_options(${test_name} PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+    endforeach()
 endif()
 
 # ---------------------------------------------------------------------------

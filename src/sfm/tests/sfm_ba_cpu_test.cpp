@@ -174,21 +174,41 @@ void testJacobianRig(const char* name, const double* intr0, std::mt19937& rng) {
     report(name, worst, 1e-6);
 }
 
-// At a zero angle-axis -- the identity every seed pair starts from -- the norm
-// has no derivative. That belongs to the axis columns alone.
+// At a zero angle-axis -- the identity every seed pair starts from -- the
+// rotation still has a derivative, -[p]x, on the frame and on the extrinsic.
 template <class M>
-void testZeroRotation(const char* name, const double* intr) {
-    double pose[6] = {0, 0, 0, 0.1, -0.2, 0.0};
+void testZeroRotation(const char* name, const double* intr0) {
+    double pose[6] = {0, 0, 0, 0.1, -0.2, 0.0}, ext[6] = {0, 0, 0, 0.05, 0.0, -0.03};
     double X[3] = {0.3, -0.4, 3.0}, obs[2] = {5.0, -2.0};
-    double r[2], Jc[2 * (6 + M::kNumIntr)], Jp[6];
-    bacpu::jacobian<M>(pose, intr, X, obs, r, Jc, Jp);
-    const int DOF = 6 + M::kNumIntr;
-    bool ok = std::isfinite(r[0]) && std::isfinite(r[1]);
-    for (int i = 0; i < 6; i++) ok = ok && std::isfinite(Jp[i]);
-    for (int row = 0; row < 2; row++)
-        for (int k = 3; k < DOF; k++) ok = ok && std::isfinite(Jc[row * DOF + k]);
-    printf("%-34s %s\n", name, ok ? "                          PASS" : "  FAIL");
-    if (!ok) g_fail++;
+    double intr[M::kNumIntr];
+    for (int i = 0; i < M::kNumIntr; i++) intr[i] = intr0[i];
+    constexpr int DOF = 12 + M::kNumIntr;
+    double r[2], Jc[2 * DOF], Jp[6], Js[2 * (6 + M::kNumIntr)], Jps[6];
+    bacpu::jacobianRig<M>(pose, ext, intr, X, obs, r, Jc, Jp);
+    bacpu::jacobian<M>(pose, intr, X, obs, r, Js, Jps);
+    double worst = 0;
+    for (int k = 0; k < 12; k++) {
+        double* p = k < 6 ? &pose[k] : &ext[k - 6];
+        const double h = 1e-6, keep = *p;
+        double rp[2], rm[2], sp[2], sm[2];
+        *p = keep + h;
+        bacpu::residualRig<M>(pose, ext, intr, X, obs, rp);
+        if (k < 6) bacpu::residual<M>(pose, intr, X, obs, sp);
+        *p = keep - h;
+        bacpu::residualRig<M>(pose, ext, intr, X, obs, rm);
+        if (k < 6) bacpu::residual<M>(pose, intr, X, obs, sm);
+        *p = keep;
+        for (int row = 0; row < 2; row++) {
+            const double num = (rp[row] - rm[row]) / (2 * h), ana = Jc[row * DOF + k];
+            double e = std::fabs(num - ana) / std::max(1.0, std::fabs(num) + std::fabs(ana));
+            if (k < 6) {
+                const double ns = (sp[row] - sm[row]) / (2 * h), as = Js[row * (DOF - 6) + k];
+                e = std::max(e, std::fabs(ns - as) / std::max(1.0, std::fabs(ns) + std::fabs(as)));
+            }
+            worst = std::max(worst, std::isfinite(e) ? e : 1e300);
+        }
+    }
+    report(name, worst, 1e-6);
 }
 
 void testEquirectSeamResidual() {
@@ -594,7 +614,7 @@ int run(int argc, char** argv) {
         testAgainstReference(3, 1, "huber", true, 7, 6, rig, true);
         testAgainstReference(7, 1, "huber", false, 7, -1, rig, true);
         testAgainstReference(6, 1, "cauchy", true, 7, -1, rig, true);
-        // `refine: axial` and `refine: baseline`.
+        // A dual-fisheye lens: rotation and t.z, or t.z alone.
         testAgainstReference(6, 1, "huber", false, 7, -1, rig, true, 0x27);
         testAgainstReference(3, 1, "huber", true, 7, 6, rig, true, 0x20);
     }

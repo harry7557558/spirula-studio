@@ -24,7 +24,7 @@ Mapping mapping(const View& v, int dw, int dh, float pane_w, float pane_h) {
 }
 
 void clamp_view(View& v, int dw, int dh) {
-    v.zoom = std::clamp(v.zoom, 1.0f, 64.0f);
+    v.zoom = std::clamp(v.zoom, kMinZoom, kMaxZoom);
     v.cx = std::clamp(v.cx, 0.0f, (float)dw);
     v.cy = std::clamp(v.cy, 0.0f, (float)dh);
 }
@@ -33,7 +33,7 @@ void zoom_about(View& v, float factor, float sx, float sy, int dw, int dh,
                 float pane_w, float pane_h) {
     const Mapping before = mapping(v, dw, dh, pane_w, pane_h);
     const float mx = before.to_mask_x(sx), my = before.to_mask_y(sy);
-    v.zoom = std::clamp(v.zoom * factor, 1.0f, 64.0f);
+    v.zoom = std::clamp(v.zoom * factor, kMinZoom, kMaxZoom);
     const Mapping after = mapping(v, dw, dh, pane_w, pane_h);
     v.cx = mx - (sx - 0.5f * pane_w) / after.scale;
     v.cy = my - (sy - 0.5f * pane_h) / after.scale;

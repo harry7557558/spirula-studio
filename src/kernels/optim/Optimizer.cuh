@@ -3,6 +3,7 @@
 #include <core/Tensor.h>
 #include "core/ColorTrustState.h"
 #include "core/NonShQuantState.h"
+#include "core/SplatVisitState.h"
 #include "kernels/projection/ProjectionBwdQuantGrad.cuh"   // GradQuantBuffers
 
 
@@ -141,6 +142,7 @@ void fused_optim_3dgs_geometry(
     bool use_scale_agnostic_mean,
     ColorTrustState color_trust,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     GradQuantBuffers gq,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
     float grad_scale, bool zero_grad

@@ -16,6 +16,7 @@
 #undef CudaDeviceExport
 #include "optim_quant.slang"
 #include "screen_size_hinge.slang"
+#include "visit.slang"
 
 [SpecializationConstant]
 const int kScaleAgnostic = 0;
@@ -59,6 +60,7 @@ struct OptimGeoParams {
     float* radii;          // (kScaleAgnostic)
     float* densify_score;  // optional output (has_densify_score)
     int* steps;            // per-splat steps (has_steps)
+    uint* visit_counters;  // per-splat render counters (has_visit)
     // block-wise 16-bit quantized gradients (kGqMask; bound per 256 splats)
     uint* gq_means_packed;
     float2* gq_means_bounds;
@@ -105,6 +107,8 @@ struct OptimGeoParams {
     uint32_t has_densify_score;
     uint32_t numel;
     uint32_t wgs_per_row;
+    uint32_t has_visit;
+    uint32_t skip_unrendered_reg;
     uint32_t _pad0;
 };
 
@@ -157,6 +161,7 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
     float4 nq_mm_mean = float4(1e30f, -1e30f, 1e30f, -1e30f);
     float4 nq_mm_dc = float4(1e30f, -1e30f, 1e30f, -1e30f);
 
+    bool regularize = true;
     if (inside) {
         float step = float(p.has_steps != 0 ? p.steps[gid] : p.scalar_step);
         float ibc1 = 1.0f / (1.0f - pow(kGeoBeta1, step));
@@ -198,6 +203,15 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
         _geo_grad_read<1>((kGqMask & 8) != 0, p.gq_opac_packed,
                           p.gq_opac_bounds, p.v_opacities, block_id, gid,
                           gd_opac);
+        bool rendered = gd_opac[0] != 0.0f;
+        if (p.has_visit != 0)
+            p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
+        regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+        if (!regularize) {
+            v_scale = float3(0.0f);
+            v_quat = float4(0.0f);
+            v_opac = 0.0f;
+        }
         v_scale += p.grad_scale * float3(gd_scale[0], gd_scale[1],
                                          gd_scale[2]);
         v_quat += p.grad_scale * float4(gd_quat[0], gd_quat[1], gd_quat[2],
@@ -224,7 +238,7 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
             oq_state_read<3>(kNonShQuant != 0, p.nq_scales_packed,
                              p.nq_scales_bounds, p.g1_scales, p.g2_scales,
                              block_id, gid, g1, g2);
-            v_scale += screen_size_hinge_grad(
+            if (regularize) v_scale += screen_size_hinge_grad(
                 p.radii[gid], p.max_screen_size, p.max_screen_size_penalty,
                 scale,
                 oq_sqrt3(float3(g2[0], g2[1], g2[2]) * ibc2) +

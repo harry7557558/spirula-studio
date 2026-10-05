@@ -82,9 +82,10 @@ void turn_normals(const sfm::ExifTransform& t, std::vector<float>& xyz,
 // this header, and only SS_BUILD_SAM ones link ss_nn.
 inline nn::Image load_upright(const std::string& file, const std::string& gamut,
                               std::optional<bool> is_linear,
+                              const colorspace::Exposure& exposure,
                               sfm::ExifTransform& turn) {
     turn = photo_turn(file);
-    nn::Image img = nn::load_image(file, gamut, is_linear);
+    nn::Image img = nn::load_image(file, gamut, is_linear, exposure);
     if (!img.empty())
         turn_pixels(turn, img.channels, img.data, img.width, img.height);
     return img;

@@ -11,6 +11,7 @@
 #include "primitives/Primitive3DGUT.cuh"
 
 #include "core/NonShQuantState.h"
+#include "core/SplatVisitState.h"
 
 
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */
@@ -40,6 +41,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -90,6 +92,7 @@ void fused_projection_bwd_optimizer_mip(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -140,6 +143,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
+    SplatVisitState visit,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,

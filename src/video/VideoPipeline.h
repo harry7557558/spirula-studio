@@ -34,6 +34,10 @@ struct FrameHandle {
 struct ConvertOpts {
     float scale = 1.0f;   // < 1 downscales; 1.0 is a straight copy
     int   rotate = 0;     // 0, 90, 180 or 270, clockwise
+    // H.273 matrix_coefficients and range, for a container that overrides the
+    // bitstream's VUI (HEIF's colr); -1 keeps the stream's.
+    int   matrix_coefficients = -1;
+    int   full_range = -1;
 };
 
 class VideoPipeline {
@@ -49,6 +53,9 @@ public:
     // `lookahead` is how many decoded frames the caller may hold at once (the
     // motion-blur window); the picture pool is sized from it.
     bool open(const std::string& path, int track, int lookahead, std::string& error);
+    // Over packets from anywhere; `name` is what an error calls the source.
+    bool open(std::unique_ptr<Demuxer> demux, const std::string& name, int track,
+              int lookahead, std::string& error);
 
     const std::vector<TrackInfo>& tracks() const;
     const TrackInfo&              track() const;

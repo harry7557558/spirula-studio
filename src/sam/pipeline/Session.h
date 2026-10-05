@@ -41,12 +41,11 @@ struct Session::Impl {
     // Point/box prompt tokens for the SAM decoder. Returns the token count.
     int64_t buildSparsePrompt(const VisualPrompt& prompt, nn::Tensor& out_sparse);
 
-    // The text encoder is 24 transformer blocks over a fixed 32-token context
-    // and depends on nothing but the prompt, yet the tracker calls buildPrompt
-    // once per frame with the same words every time. The encoded rows live in
-    // PoolSlot::TextFeat and are reused until the token ids change.
-    std::vector<int32_t> text_cache_ids;
-    bool                 text_cache_valid = false;
+    // The text encoder (24 blocks over 32 tokens) reads nothing but the prompt,
+    // yet every frame asks again for each phrase of a masking run: entry i's
+    // rows live in PoolSlot::TextFeat sub i, encoded once per model load.
+    std::vector<std::vector<int32_t>> text_cache_ids;
+    size_t                            text_cache_next = 0;   // round-robin once full
 
     Result runConcept(const ConceptPrompt& prompt);
 

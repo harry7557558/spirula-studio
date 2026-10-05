@@ -27,6 +27,7 @@ ffmpeg to install.
 | | |
 |---|---|
 | containers | ISO-BMFF (`mp4`, `mov`, `m4v`, `insv`) and Matroska (`mkv`, `webm`), picked by content rather than extension. Multiple video tracks are enumerated, not merged — an Insta360 `.insv` is two fisheye streams. |
+| stills | HEIF (`heic`, `heif`, `hif`): an H.265 image or a grid of them — see "HEIF stills" below. |
 | codecs | H.264 (Baseline/Main/High), H.265 (Main/Main10/RExt), AV1 (Main/High/Professional) — whatever the *device* also advertises. |
 | not supported | fragmented MP4 (`moof`), laced Matroska blocks, field-coded (interlaced) H.264/H.265, slice groups (FMO). Each is reported by name. |
 
@@ -156,6 +157,40 @@ interpolated; against ffmpeg's `swscale` that is worth a maximum error of about
 Film grain synthesis is parsed but not requested (`apply_grain = 0`). It is a
 cosmetic post-process, the frames feed a segmentation model, and asking for it
 would force the distinct-output path on drivers that would rather not.
+
+## HEIF stills
+
+A phone's `.heic` is an ISO-BMFF file with no `moov`: the `meta` box names a
+primary item, and on every recent iPhone that item is a `grid` of H.265
+tiles (45 tiles of 640x896 for a 24 MP frame), each tile an independent intra
+picture sharing one `hvcC`. `Heif.cpp` reads the item tables, hands the tiles
+to `VideoPipeline` as a stream of key frames through an in-memory `Demuxer`,
+and composes, crops (`clap`), turns (`irot`) and mirrors (`imir`) the result
+in the order the item lists those properties. The EXIF item comes back as a
+JPEG APP1 payload, which is what keeps the focal-length prior when the photo
+becomes a JPEG in a dataset (`app/gui/HeifPhoto.h`).
+
+Four things decided by measurement or by the spec's history:
+
+1. **Main Still Picture needs no mapping.** The tiles are profile 3 and
+   NVIDIA 610 accepts that profile for an H.265 session as it is.
+2. **`imir` is read the amended way**: HEIF Amd 2 turned the first edition's
+   `axis` into `mode` and inverted it, so 0 flips top-bottom. libheif, libavif
+   and ffmpeg all read it so; on four rotated and mirrored copies of a real
+   photo this decoder matches libheif 1.23 to 66.6 dB.
+3. **Unspecified colour is BT.601.** A tile's VUI says full-range BT.601 on
+   an iPhone; with no `nclx` and no VUI matrix, the pipeline's own
+   height-based guess would pick by the TILE's height, so HEIF asks for
+   BT.601 explicitly (`ConvertOpts`), as libheif and ffmpeg do.
+4. **One decode at a time.** `decode_heif()` holds a process-wide lock across
+   the whole pipeline: callers are worker pools, and the compute stream is
+   one per process.
+
+Against ffmpeg 8.1 on a 24 MP iPhone photo the pixels agree to 50 dB (at
+most 2 levels, uniform across tiles); decode is ~95 ms a frame, most of it
+the per-tile RGB conversion. An essential property it does not apply, a
+non-H.265 image, or an overlay (`iovl`) is refused by name, and the app falls
+back to ffmpeg. Alpha, depth and gain-map auxiliary images are ignored.
 
 ## Encode
 

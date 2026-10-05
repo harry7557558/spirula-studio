@@ -23,6 +23,8 @@
 
 #define CudaDeviceExport ForceInline
 #include "shaders/densify.slang"
+#include "visit.slang"
+#include "atomic_float.slang"
 #undef CudaDeviceExport
 #include "optim_quant.slang"
 #include "sh_addr.slang"
@@ -459,10 +461,11 @@ struct RelocMaskParams {  // 80 bytes: pushed directly
     int* mask;           // [N] out: 1 = keep (samplable), 0 = relocated
     int* count;          // [1] out: number of relocated splats
     int* dst_indices;    // [N] out: compacted relocated indices
+    uint* visit_counters; // [N] (dead_after_steps != 0)
     float min_opacity;
     uint num_splats;
     uint wgs_per_row;
-    uint _pad0;
+    uint dead_after_steps;
 };
 
 [shader("compute")]
@@ -485,7 +488,9 @@ void densify_reloc_mask(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     bool is_low_opac = _dn_sigmoid(opac) <= p.min_opacity;
     bool is_finite = _dn_finitef(dot(mean, mean) / dot(quat, quat) +
                                  dot(scale, dc) * opac);
-    bool relocate = is_low_opac || !is_finite || splat_scale_is_dead(scale);
+    bool is_stale = p.dead_after_steps != 0u &&
+        visit_unrendered_steps(p.visit_counters[idx]) >= p.dead_after_steps;
+    bool relocate = is_low_opac || !is_finite || is_stale || splat_scale_is_dead(scale);
 
     p.mask[idx] = relocate ? 0 : 1;
 
@@ -538,6 +543,7 @@ struct RelocLasParams {
     float4* nq_dc_bounds;
     float2* accum;       // [cap] densify accum buffer (has_accum)
     int* bias_steps;     // [cap] (has_bias_steps)
+    uint* visit_counters; // [cap] (has_visit)
     float split_opacity_k;
     uint cur_num_splats;
     uint num_new_splats;
@@ -550,6 +556,8 @@ struct RelocLasParams {
     uint non_sh;
     uint sh_bounds_per_splat;
     uint wgs_per_row;
+    uint has_visit;
+    uint _pad0;
 };
 
 [shader("compute")]
@@ -645,6 +653,10 @@ void densify_relocate_las(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                            p.sh_bounds_per_splat != 0);
     }
     if (p.has_bias_steps != 0) p.bias_steps[idx_dst] = 0;
+    if (p.has_visit != 0) {
+        p.visit_counters[idx_src] = 0u;
+        p.visit_counters[idx_dst] = 0u;
+    }
 
     // will be cleared after densification anyway but doesn't hurt to do so
     if (p.has_accum != 0) p.accum[idx_dst] = p.accum[idx_src];
@@ -1222,6 +1234,98 @@ void densify_gather_score(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.num_splats) return;
     p.out[idx] = p.accum_buffer[idx].x;
+}
+
+struct ScaleScoreByRendersParams {  // 32 bytes: pushed directly
+    uint* visit_counters;
+    float2* score;
+    uint num_splats, wgs_per_row;
+    uint _pad0, _pad1;
+};
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void densify_scale_score_by_renders(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                                    uniform ScaleScoreByRendersParams p) {
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (idx >= p.num_splats) return;
+    p.score[idx].x *= float(visit_renders(p.visit_counters[idx]));
+}
+
+struct VisitZeroParams {  // 32 bytes: pushed directly
+    int* cam_map;
+    float* cam_sum;
+    uint* cam_cnt;
+    uint num_cameras, wgs_per_row;
+};
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void visit_camera_stats_zero(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                             uniform VisitZeroParams p) {
+    uint c = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (c >= p.num_cameras) return;
+    int g = p.cam_map[c];
+    p.cam_sum[g] = 0.0f;
+    p.cam_cnt[g] = 0u;
+}
+
+struct VisitStatsParams {
+    int* camera_ids;      // [nnz] (packed)
+    int* gaussian_ids;    // [nnz] (packed)
+    float* v_screen;      // [rows, row_stride]
+    uint* visit_counters; // [N]
+    int* cam_map;         // [C]
+    float* cam_sum;       // [N_post]
+    uint* cam_cnt;        // [N_post]
+    uint n_isect, num_splats, num_cameras, packed;
+    uint row_stride, opac_offset, wgs_per_row, _pad0;
+};
+
+static const uint kVisitMaxCams = 256;
+groupshared uint _vs_sum[kVisitMaxCams];
+groupshared uint _vs_cnt[kVisitMaxCams];
+
+// Mirrors visit_camera_stats_kernel (DensifyScoring.cu): a block folds its
+// per-camera sums in groupshared first, so the few camera slots do not take
+// every atomic.
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void visit_camera_stats(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                        uniform VisitStatsParams* pp) {
+    VisitStatsParams p = *pp;
+    bool fold = p.num_cameras <= kVisitMaxCams;
+    if (fold) {
+        for (uint c = tid; c < p.num_cameras; c += 256) {
+            _vs_sum[c] = 0u;
+            _vs_cnt[c] = 0u;
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (idx < p.n_isect &&
+        p.v_screen[gindex_t(idx) * gindex_t(p.row_stride) + gindex_t(p.opac_offset)] != 0.0f) {
+        uint cid = p.packed != 0 ? uint(p.camera_ids[idx]) : idx / p.num_splats;
+        uint gid = p.packed != 0 ? uint(p.gaussian_ids[idx]) : idx % p.num_splats;
+        uint r = visit_renders(p.visit_counters[gid]);
+        if (fold) {
+            InterlockedAdd(_vs_sum[cid], r);
+            InterlockedAdd(_vs_cnt[cid], 1u);
+        } else {
+            int g = p.cam_map[cid];
+            atomic_add_f32(&p.cam_sum[g], float(r));
+            InterlockedAdd(p.cam_cnt[g], 1u);
+        }
+    }
+    if (fold) {
+        GroupMemoryBarrierWithGroupSync();
+        for (uint c = tid; c < p.num_cameras; c += 256) {
+            if (_vs_cnt[c] == 0u) continue;
+            int g = p.cam_map[c];
+            atomic_add_f32(&p.cam_sum[g], float(_vs_sum[c]));
+            InterlockedAdd(p.cam_cnt[g], _vs_cnt[c]);
+        }
+    }
 }
 
 struct ScoreClipParams {  // 48 bytes: pushed directly

@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -61,6 +62,10 @@ public:
     static constexpr int KP_STRIDE = 6;
     static constexpr int OKP_STRIDE = 8;
     static constexpr int kNumBins = 2048;  // log2(scale) histogram for top-K
+    // Every radius planPyramid() derives, each a case of blur_dog in sift.slang.
+    static constexpr int kBlurRadii[] = {5, 7, 8, 10, 13};
+    static constexpr uint32_t kBlurTile = 32;
+    static constexpr uint32_t kDescThreads = 32;  // per keypoint
 
     explicit SiftExtractor(const SiftOptions& opt) : opt_(opt) {
         VkContextOptions vo;
@@ -72,22 +77,33 @@ public:
 
     VkContext& ctx() { return ctx_; }
 
-    // Extract from one image. Buffers/pipelines are allocated on first use and
-    // reused across calls; a larger image than any seen so far grows the
-    // size-dependent buffers (and rebinds the descriptor set). For a batch,
-    // process largest-first (SiftExtractor::extractDir does) so this happens
-    // exactly once.
-    FeatureSet extract(const GrayImage& img) {
+    // Buffers grow to the largest image seen, so a batch goes largest-first.
+    // `next`, if given, must be the following call's image: its upload and
+    // pyramid are queued behind this image's descriptors and run meanwhile.
+    FeatureSet extract(const GrayImage& img, const GrayImage* next = nullptr) {
         if (img.width < 4 || img.height < 4)
             throw std::runtime_error("image too small for SIFT");
-        planPyramid(img.width, img.height);
-        ensureAllocated();
-        uploadInputs(img);
-        runPyramid();
+        if (queued_ != std::make_pair(img.width, img.height)) {
+            if (queued_.first) throw std::logic_error("SIFT: not the image queued last call");
+            planPyramid(img.width, img.height);
+            ensureAllocated();
+            uploadTables();
+            runPyramid(img, false);
+        }
+        queued_ = {0, 0};
         uint32_t nkp = runExtrema();
         uint32_t nokp = runOrient(nkp);
         uint32_t nsel = runSelect(nokp);
-        runDescriptor(nsel);
+        const bool ahead = next && next->width >= 4 && next->height >= 4;
+        runDescriptor(nsel, ahead);
+        if (ahead) {
+            planPyramid(next->width, next->height);
+            if (!allocated()) ctx_.waitPending();  // rebinding the set in use is illegal
+            ensureAllocated();
+            uploadTables();
+            runPyramid(*next, true);
+            queued_ = {next->width, next->height};
+        }
         FeatureSet fs = readback(img.width, img.height, nsel);
         if (opt_.profile) ctx_.printProfile();
         return fs;
@@ -130,6 +146,9 @@ private:
         stepRad_.clear();
         auto addKernel = [&](double dsigma) {
             int r = std::max(1, (int)std::ceil(4.0 * dsigma));
+            if (std::find(std::begin(kBlurRadii), std::end(kBlurRadii), r) == std::end(kBlurRadii))
+                throw std::logic_error("SIFT blur radius " + std::to_string(r) +
+                                       " has no case in blur_dog (sift.slang)");
             stepOff_.push_back((uint32_t)weights_.size());
             stepRad_.push_back((uint32_t)r);
             double sum = 0;
@@ -154,16 +173,19 @@ private:
     const Level& dL(int o, int d) const { return dLevels_[o * DOG_PER_OCT + d]; }
 
     // ---- allocation + descriptor set ----
-    // Reallocate when first called or when a larger image than any so far needs
-    // bigger size-dependent buffers. Fixed-size buffers (keypoint lists, etc.)
-    // are sized from options and never grow. Process largest-first (extractDir)
-    // to make this run exactly once per batch.
-    void ensureAllocated() {
+    // Size-dependent buffers grow for an image larger than any before; the
+    // keypoint lists are sized from the options and never do.
+    bool allocated() const {
         size_t needImg = (size_t)(W0_ / 2) * (H0_ / 2);
-        if (setup_ && gaussFloats_ <= capGauss_ && dogFloats_ <= capDog_ && needImg <= capImg_ &&
-            (size_t)W0_ * H0_ <= capTmp_ && gLevels_.size() <= capGlev_ &&
-            dLevels_.size() <= capDlev_ && weights_.size() <= capW_)
-            return;
+        return setup_ && gaussFloats_ <= capGauss_ && dogFloats_ <= capDog_ &&
+               needImg <= capImg_ && (size_t)W0_ * H0_ <= capTmp_ &&
+               gLevels_.size() <= capGlev_ && dLevels_.size() <= capDlev_ &&
+               weights_.size() <= capW_;
+    }
+
+    void ensureAllocated() {
+        if (allocated()) return;
+        size_t needImg = (size_t)(W0_ / 2) * (H0_ / 2);
         allocate();
         setup_ = true;
         capGauss_ = gaussFloats_;
@@ -214,18 +236,14 @@ private:
     }
 
     static std::vector<std::string> kEntries() {
-        return {"upsample", "blur_h", "blur_v", "downsample",   "dog_diff",  "extrema",
+        return {"upsample", "blur_dog",   "downsample",  "extrema",
                 "orient",   "scale_hist", "select_topk", "descriptor"};
     }
 
-    // The image changes every call; the blur weights and the level tables only
-    // change when planPyramid() produces a different layout, which for a batch
-    // sorted largest-first is a handful of times over thousands of images.
-    // Each upload is its own fenced submit (VkContext::upload), so re-sending
-    // three unchanged buffers per image was three device round trips per image
-    // for nothing.
-    void uploadInputs(const GrayImage& img) {
-        ctx_.upload(bImg_, img.data.data(), img.data.size() * 4);
+    // The blur weights and the level tables only change when planPyramid()
+    // produces a different layout, which for a batch sorted largest-first is a
+    // handful of times over thousands of images.
+    void uploadTables() {
         if (planKey_ == lastPlanKey_ && plannedOnce_) return;
         ctx_.upload(bWeights_, weights_.data(), weights_.size() * 4);
         std::vector<uint32_t> gt(gLevels_.size() * 4), dt(dLevels_.size() * 4);
@@ -267,48 +285,51 @@ private:
         ctx_.dispatch(cb, name, grid(w, 16), p, grid(h, 16));
     }
 
-    // One pyramid is 0.83 s on a 2-CU RADV iGPU at 3200 px and past its 2 s
-    // watchdog at 5000, so it is submitted in pieces of the budget's size.
-    void runPyramid() {
+    // Submitted in pieces of the budget's size: a pyramid is 0.44 s on a 2-CU
+    // RADV iGPU at 3200 px. The image rides in the first piece; every fenced
+    // submit is a round trip the GPU spends idle.
+    void runPyramid(const GrayImage& img, bool async) {
+        const VkDeviceSize bytes = img.data.size() * 4;
+        if (bytes > VkContext::stagingCapacity()) ctx_.upload(bImg_, img.data.data(), bytes);
         VkCommandBuffer cb = ctx_.begin();
+        if (bytes <= VkContext::stagingCapacity()) {
+            ctx_.recordUpload(cb, bImg_, img.data.data(), bytes);
+            ctx_.barrier(cb);
+        }
         for (int o = 0; o < octaves_; o++) {
             const Level& g0 = gL(o, 0);
             if (o == 0) {
-                // upsample original -> gauss(0,0), then in-place blur to SIGMA0
+                // upsample original -> tmp, then blur to SIGMA0 into gauss(0,0)
                 img2d(cb, "upsample", g0.w, g0.h,
-                      pk(g0.off, (uint32_t)(W0_ / 2), (uint32_t)(H0_ / 2), g0.w, g0.h));
+                      pk(0, (uint32_t)(W0_ / 2), (uint32_t)(H0_ / 2), g0.w, g0.h));
                 ctx_.barrier(cb);
-                blur(cb, g0.off, g0.off, g0.w, g0.h, 0);
+                blur(cb, 0, g0.off, g0.w, g0.h, 0, kNoDog, true);
             } else {
                 const Level& prevTop = gL(o - 1, S);
                 img2d(cb, "downsample", g0.w, g0.h,
                       pk(prevTop.off, g0.off, prevTop.w, g0.w, g0.h));
                 ctx_.barrier(cb);
             }
+            // gauss(o,s) and dog(o,s-1) = gauss(o,s) - gauss(o,s-1) in one pass
             for (int s = 1; s < GAUSS_PER_OCT; s++) {
                 const Level& a = gL(o, s - 1);
                 const Level& b = gL(o, s);
-                blur(cb, a.off, b.off, b.w, b.h, s);
+                blur(cb, a.off, b.off, b.w, b.h, s, dL(o, s - 1).off, false);
             }
-            for (int d = 0; d < DOG_PER_OCT; d++) {
-                const Level& lo = gL(o, d);
-                const Level& hi = gL(o, d + 1);
-                const Level& dd = dL(o, d);
-                img2d(cb, "dog_diff", dd.w, dd.h, pk(lo.off, hi.off, dd.off, dd.w, dd.h));
-                pyramidWork_ += (double)dd.w * dd.h;
-            }
-            ctx_.barrier(cb);
         }
-        submitTimed(cb, pyramidBudget_, pyramidWork_);
+        submitTimed(cb, pyramidBudget_, pyramidWork_, async);
     }
 
-    // separable blur src->dst using step kernel `step`; requires src != tmp usage
+    static constexpr uint32_t kNoDog = 0xffffffffu;
+
+    // src and dst must not overlap: tiles read their halo from src while
+    // neighbouring tiles write dst.
     void blur(VkCommandBuffer& cb, uint32_t srcOff, uint32_t dstOff, uint32_t w, uint32_t h,
-              int step) {
+              int step, uint32_t dogOff, bool srcIsTmp) {
         uint32_t woff = stepOff_[step], r = stepRad_[step];
-        img2d(cb, "blur_h", w, h, pk(srcOff, w, h, r, woff));
-        ctx_.barrier(cb);
-        img2d(cb, "blur_v", w, h, pk(dstOff, w, h, r, woff));
+        ctx_.dispatch(cb, "blur_dog", grid(w, kBlurTile),
+                      pk(srcOff, dstOff, w, h, woff, r, dogOff, srcIsTmp ? 1u : 0u),
+                      grid(h, kBlurTile));
         ctx_.barrier(cb);
         pyramidWork_ += 2.0 * w * h * (2 * r + 1);
         if (pyramidWork_ >= pyramidBudget_.limit()) {
@@ -317,11 +338,19 @@ private:
         }
     }
 
-    void submitTimed(VkCommandBuffer cb, spirula::SubmitBudget& budget, double& work) {
+    // An async submit is not timed: its wait also covers whatever the host
+    // did meanwhile.
+    void submitTimed(VkCommandBuffer cb, spirula::SubmitBudget& budget, double& work,
+                     bool async = false) {
+        ctx_.waitPending();
         const auto t0 = std::chrono::steady_clock::now();
-        ctx_.submit(cb);
-        budget.record(work, std::chrono::duration<double>(
-                                std::chrono::steady_clock::now() - t0).count());
+        if (async) {
+            ctx_.submitAsync(cb);
+        } else {
+            ctx_.submit(cb);
+            budget.record(work, std::chrono::duration<double>(
+                                    std::chrono::steady_clock::now() - t0).count());
+        }
         work = 0;
     }
 
@@ -337,9 +366,7 @@ private:
                          opt_.max_raw_keypoints, fbits(opt_.peak_threshold),
                          fbits(opt_.edge_threshold)));
         }
-        ctx_.submit(cb);
-        uint32_t n = 0;
-        ctx_.download(bKpCnt_, &n, 4);
+        uint32_t n = submitCount(cb, bKpCnt_);
         if (n > opt_.max_raw_keypoints) {
             if (opt_.verbose)
                 slog::warn(slog::Tag::Extract, spirula::i18n::msg::sfm::sift_saturated_raw,
@@ -352,8 +379,8 @@ private:
         return n;
     }
 
-    // orient and descriptor are one thread per keypoint: 392 and 222 ms for one
-    // image's dispatch on a 2-CU RADV iGPU, so they go in keypoint ranges.
+    // orient and descriptor are ~200 and ~50 ms of one 3200 px image on a 2-CU
+    // RADV iGPU, so they go in keypoint ranges.
     uint32_t runOrient(uint32_t nkp) {
         VkCommandBuffer cb = ctx_.begin();
         ctx_.fillZero(cb, bOkpCnt_);
@@ -364,14 +391,18 @@ private:
                 ctx_.dispatch(cb, "orient", grid(n, 64),
                               pk(k0 + n, (uint32_t)opt_.max_num_orientations,
                                  opt_.max_oriented_keypoints, k0));
+            k0 += n;
+            if (k0 >= nkp) {
+                ctx_.barrier(cb);
+                ctx_.recordDownload(cb, bOkpCnt_, 4);
+            }
             double work = n;
             submitTimed(cb, orientBudget_, work);
-            k0 += n;
             if (k0 >= nkp) break;
             cb = ctx_.begin();
         }
         uint32_t n = 0;
-        ctx_.download(bOkpCnt_, &n, 4);
+        std::memcpy(&n, ctx_.stagingDownloadPtr(), 4);
         if (n > opt_.max_oriented_keypoints) {
             if (opt_.verbose)
                 slog::warn(slog::Tag::Extract, spirula::i18n::msg::sfm::sift_saturated_oriented,
@@ -403,10 +434,12 @@ private:
             ctx_.barrier(cb);
             ctx_.dispatch(cb, "scale_hist", grid(nokp, 64),
                           pk(nokp, kNumBins, fbits(logMin), fbits(invRange)));
+            ctx_.barrier(cb);
+            ctx_.recordDownload(cb, bHist_, kNumBins * 4);
             ctx_.submit(cb);
 
             std::vector<uint32_t> hist(kNumBins);
-            ctx_.download(bHist_, hist.data(), hist.size() * 4);
+            std::memcpy(hist.data(), ctx_.stagingDownloadPtr(), hist.size() * 4);
             // Accumulate from the high-scale end until we have >= K, keeping the
             // last bin included (smallest overshoot, never selects nothing).
             uint64_t run = 0;
@@ -424,27 +457,50 @@ private:
         ctx_.barrier(cb);
         ctx_.dispatch(cb, "select_topk", grid(nokp, 64),
                       pk(nokp, fbits((double)threshold), opt_.max_oriented_keypoints));
-        ctx_.submit(cb);
-        uint32_t nsel = 0;
-        ctx_.download(bSelCnt_, &nsel, 4);
-        nsel = std::min(nsel, opt_.max_oriented_keypoints);
+        const uint32_t nsel = std::min(submitCount(cb, bSelCnt_), opt_.max_oriented_keypoints);
         if (opt_.verbose)
             slog::err(slog::Tag::Extract, spirula::i18n::msg::sfm::sift_selected,
                       {(long long)nokp, (long long)nsel, slog::num(threshold, 3)});
         return nsel;
     }
 
-    void runDescriptor(uint32_t nsel) {
+    // The last chunk also copies the keypoints and descriptors out, at
+    // descOffset() in the download staging buffer.
+    void runDescriptor(uint32_t nsel, bool asyncLast) {
         for (uint32_t k0 = 0; k0 < nsel;) {
             const uint32_t n = (uint32_t)std::min<int64_t>(nsel - k0, descBudget_.chunk(1024, nsel));
             VkCommandBuffer cb = ctx_.begin();
-            ctx_.dispatch(cb, "descriptor", grid(n, 64), pk(k0 + n, k0));
-            double work = n;
-            submitTimed(cb, descBudget_, work);
+            ctx_.dispatch(cb, "descriptor", grid(n * kDescThreads, 64), pk(k0 + n, k0));
             k0 += n;
+            if (k0 >= nsel && fusedReadback(nsel)) {
+                ctx_.barrier(cb);
+                ctx_.recordDownload(cb, bFokp_, (VkDeviceSize)nsel * OKP_STRIDE * 4);
+                ctx_.recordDownload(cb, bDesc_, (VkDeviceSize)nsel * 128, 0, descOffset(nsel));
+            }
+            double work = n;
+            submitTimed(cb, descBudget_, work, asyncLast && k0 >= nsel);
         }
     }
 
+    static VkDeviceSize descOffset(uint32_t nsel) {
+        return ((VkDeviceSize)nsel * OKP_STRIDE * 4 + 15) & ~(VkDeviceSize)15;
+    }
+    static bool fusedReadback(uint32_t nsel) {
+        return descOffset(nsel) + (VkDeviceSize)nsel * 128 <= VkContext::stagingCapacity();
+    }
+
+    // Submit `cb` with a copy of the counter at the front of `counter`, and
+    // return it.
+    uint32_t submitCount(VkCommandBuffer cb, const GpuBuffer& counter) {
+        ctx_.barrier(cb);
+        ctx_.recordDownload(cb, counter, 4);
+        ctx_.submit(cb);
+        uint32_t n = 0;
+        std::memcpy(&n, ctx_.stagingDownloadPtr(), 4);
+        return n;
+    }
+
+    // Reads what runDescriptor's last chunk staged: no download in between.
     FeatureSet readback(int w0, int h0, uint32_t nsel) {
         FeatureSet fs;
         fs.width = w0;
@@ -453,10 +509,22 @@ private:
         fs.dtype = DType::U8;
         if (nsel == 0) return fs;
 
-        std::vector<float> okp((size_t)nsel * OKP_STRIDE);
-        ctx_.download(bFokp_, okp.data(), okp.size() * 4);
-        std::vector<uint8_t> desc((size_t)nsel * 128);
-        ctx_.download(bDesc_, desc.data(), desc.size());
+        std::vector<float> okpBuf;
+        std::vector<uint8_t> descBuf;
+        const float* okp;
+        const uint8_t* desc;
+        if (fusedReadback(nsel)) {
+            const uint8_t* staged = (const uint8_t*)ctx_.stagingDownloadPtr();
+            okp = (const float*)staged;
+            desc = staged + descOffset(nsel);
+        } else {
+            okpBuf.resize((size_t)nsel * OKP_STRIDE);
+            ctx_.download(bFokp_, okpBuf.data(), okpBuf.size() * 4);
+            descBuf.resize((size_t)nsel * 128);
+            ctx_.download(bDesc_, descBuf.data(), descBuf.size());
+            okp = okpBuf.data();
+            desc = descBuf.data();
+        }
 
         std::vector<Keypoint> kps(nsel);
         for (uint32_t i = 0; i < nsel; i++) {
@@ -534,6 +602,7 @@ private:
     bool setup_ = false, pipelinesLoaded_ = false;
     // Which pyramid layout the device-side weight/level tables currently hold.
     std::pair<int, int> planKey_{0, 0}, lastPlanKey_{-1, -1};
+    std::pair<int, int> queued_{0, 0};  // size of the image whose pyramid is in flight
     bool plannedOnce_ = false;
     size_t capGauss_ = 0, capDog_ = 0, capImg_ = 0, capTmp_ = 0, capGlev_ = 0, capDlev_ = 0,
            capW_ = 0;

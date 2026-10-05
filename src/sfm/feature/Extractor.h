@@ -67,6 +67,13 @@ struct IFeatureExtractor {
     // scales them back to the source file's, D46).
     virtual FeatureSet extract(const GrayImage& img) = 0;
 
+    // The same, told which image the next call will be, so an extractor that
+    // can start on it early does. `next` may be null.
+    virtual FeatureSet extractAhead(const GrayImage& img, const GrayImage* next) {
+        (void)next;
+        return extract(img);
+    }
+
     virtual const char* name() const = 0;
 
     // Whether the loader has to decode color. SIFT works on luma; a learned

@@ -62,8 +62,14 @@ projects beside it (`copy_moved_projects`) while the originals stay.
 
 *Up* comes from the dataset when there is one (the parsers' levelling guess,
 `ParsedDataset::normalized_rotation`, found through the run's `config.json`
-and moved by its `scene_transform.json`). A model nothing levels offers *Take
-up from the view*. Up decides how an orbit turns, how an aimed camera stays
+and moved by its `scene_transform.json`). A point cloud's is the one its
+pane shows: the guess while *auto-level* is on, else the file's own +Z --
+off by default for a frame that was measured or saved from the editor. A
+model turned in the editor was levelled by hand against the pane, so its up
+is the pane's, not the guess turned along with it (`RenderSession::scene_up`).
+Until a second key is laid out up follows all of these as they change
+(`follow_scene_up`); after that it turns with the keys. A model nothing
+levels offers *Take up from the view*. Up decides how an orbit turns, how an aimed camera stays
 level and which way the sweep travels. An orbit started from a view steeper
 than 60 degrees is tipped to 30, since from overhead it would only spin.
 

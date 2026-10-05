@@ -1,6 +1,6 @@
 #pragma once
 
-// Training vocabulary shared by the GUI and `spirula train --help`.
+// Training vocabulary shared by the GUI and `spirula train`.
 //
 // The presets are named on the command line ("spirula train 360-camera"), so
 // their NAMES are identifiers and live in config/TrainConfig.h with the
@@ -545,6 +545,94 @@ inline const Msg* section_label(const char* name) {
         if (std::strcmp(s.name, name) == 0) return s.label;
     return nullptr;
 }
+
+// ===========================================================================
+// Known device issues (backend::DeviceIssue, app/DeviceIssue.h)
+// ===========================================================================
+
+SS_MSG(device_issue_amd_windows_title,
+    EN("Known issue: training fails on this GPU"),
+    JA("既知の問題: この GPU では学習が失敗します"),
+    ZH_HANS("已知问题：此 GPU 无法正常训练"),
+    ZH_HANT("已知問題：此 GPU 無法正常訓練"),
+    KO("알려진 문제: 이 GPU에서는 학습이 실패합니다"),
+    DE("Bekanntes Problem: Das Training schlägt auf dieser GPU fehl"),
+    FR("Problème connu : l'entraînement échoue sur ce GPU"),
+    ES("Problema conocido: el entrenamiento falla en esta GPU"),
+    PT("Problema conhecido: o treinamento falha nesta GPU"),
+    IT("Problema noto: l'addestramento non riesce su questa GPU"),
+    NL("Bekend probleem: training mislukt op deze GPU"),
+    RU("Известная проблема: обучение на этом GPU не работает"),
+    TR("Bilinen sorun: bu GPU'da eğitim başarısız oluyor"));
+
+// {0} is the device name the driver reports.
+SS_MSG(device_issue_amd_windows,
+    EN("With AMD's Windows driver, training on {0} either crashes or produces a "
+       "model that is black or empty. This is a driver problem on Radeon RX 6000 "
+       "series and older GPUs, and no driver version is known to fix it yet. On "
+       "Linux, the default Mesa (RADV) driver trains correctly on these GPUs; "
+       "otherwise, use a different GPU."),
+    JA("AMD の Windows ドライバーでは、{0} での学習はクラッシュするか、真っ黒または"
+       "空のモデルになります。これは Radeon RX 6000 シリーズ以前の GPU で起きる"
+       "ドライバーの問題で、解決するドライバーのバージョンはまだ見つかっていません。"
+       "Linux の標準の Mesa (RADV) ドライバーなら、これらの GPU でも正しく学習"
+       "できます。それ以外の場合は、別の GPU を使ってください。"),
+    ZH_HANS("使用 AMD 的 Windows 驱动时，在 {0} 上训练要么崩溃，要么得到全黑或空的"
+            "模型。这是 Radeon RX 6000 系列及更早 GPU 的驱动问题，目前还没有已知能"
+            "修复它的驱动版本。在 Linux 上，默认的 Mesa (RADV) 驱动可以在这些 GPU "
+            "上正常训练；否则请换用其他 GPU。"),
+    ZH_HANT("使用 AMD 的 Windows 驅動程式時，在 {0} 上訓練不是當機，就是得到全黑或"
+            "空白的模型。這是 Radeon RX 6000 系列及更早 GPU 的驅動程式問題，目前還"
+            "沒有已知能修正它的驅動程式版本。在 Linux 上，預設的 Mesa (RADV) 驅動"
+            "程式可以在這些 GPU 上正常訓練；否則請改用其他 GPU。"),
+    KO("AMD Windows 드라이버에서는 {0}의 학습이 충돌하거나, 검은색 또는 빈 모델이 "
+       "만들어집니다. Radeon RX 6000 시리즈 및 그 이전 GPU의 드라이버 문제이며, 이를 "
+       "고친 드라이버 버전은 아직 알려져 있지 않습니다. Linux의 기본 Mesa(RADV) "
+       "드라이버에서는 이 GPU들에서도 정상적으로 학습됩니다. 그렇지 않으면 다른 GPU를 "
+       "사용하세요."),
+    DE("Mit dem Windows-Treiber von AMD stürzt das Training auf {0} entweder ab oder "
+       "liefert ein schwarzes oder leeres Modell. Das ist ein Treiberproblem bei GPUs "
+       "der Radeon-RX-6000-Serie und älter, und bisher ist keine Treiberversion "
+       "bekannt, die es behebt. Unter Linux trainiert der vorinstallierte "
+       "Mesa-Treiber (RADV) auf diesen GPUs korrekt; verwenden Sie andernfalls eine "
+       "andere GPU."),
+    FR("Avec le pilote Windows d'AMD, l'entraînement sur {0} plante ou produit un "
+       "modèle noir ou vide. C'est un problème de pilote sur les GPU Radeon RX "
+       "série 6000 et plus anciens, et aucune version du pilote ne le corrige à ce "
+       "jour. Sous Linux, le pilote Mesa (RADV) installé par défaut entraîne "
+       "correctement sur ces GPU ; sinon, utilisez un autre GPU."),
+    ES("Con el controlador de AMD para Windows, el entrenamiento en {0} se cierra "
+       "inesperadamente o produce un modelo negro o vacío. Es un problema del "
+       "controlador en las GPU Radeon RX serie 6000 y anteriores, y por ahora no se "
+       "conoce ninguna versión del controlador que lo corrija. En Linux, el "
+       "controlador Mesa (RADV) incluido por defecto entrena correctamente en estas "
+       "GPU; si no, use otra GPU."),
+    PT("Com o driver da AMD para Windows, o treinamento em {0} fecha "
+       "inesperadamente ou produz um modelo preto ou vazio. É um problema do driver "
+       "nas GPUs Radeon RX série 6000 e anteriores, e ainda não se conhece nenhuma "
+       "versão do driver que o corrija. No Linux, o driver Mesa (RADV) padrão "
+       "treina corretamente nessas GPUs; caso contrário, use outra GPU."),
+    IT("Con il driver AMD per Windows, l'addestramento su {0} va in crash oppure "
+       "produce un modello nero o vuoto. È un problema del driver sulle GPU Radeon "
+       "RX serie 6000 e precedenti, e finora non si conosce nessuna versione del "
+       "driver che lo risolva. Su Linux il driver Mesa (RADV) predefinito addestra "
+       "correttamente su queste GPU; altrimenti usa un'altra GPU."),
+    NL("Met het Windows-stuurprogramma van AMD crasht de training op {0} of levert "
+       "die een zwart of leeg model op. Dit is een probleem van het stuurprogramma "
+       "op GPU's uit de Radeon RX 6000-serie en ouder, en er is nog geen versie van "
+       "het stuurprogramma bekend die het verhelpt. Onder Linux traint het "
+       "standaard Mesa-stuurprogramma (RADV) correct op deze GPU's; gebruik anders "
+       "een andere GPU."),
+    RU("С драйвером AMD для Windows обучение на {0} либо завершается аварийно, либо "
+       "даёт чёрную или пустую модель. Это проблема драйвера на GPU Radeon RX серии "
+       "6000 и более старых, и версия драйвера, которая бы её исправляла, пока "
+       "неизвестна. В Linux стандартный драйвер Mesa (RADV) обучает на этих GPU "
+       "правильно; в остальных случаях используйте другой GPU."),
+    TR("AMD'nin Windows sürücüsüyle {0} üzerinde eğitim ya çöküyor ya da siyah veya "
+       "boş bir model üretiyor. Bu, Radeon RX 6000 serisi ve daha eski GPU'larda "
+       "görülen bir sürücü sorunu; henüz bunu düzelten bir sürücü sürümü "
+       "bilinmiyor. Linux'ta varsayılan Mesa (RADV) sürücüsü bu GPU'larda doğru "
+       "şekilde eğitim yapıyor; aksi hâlde başka bir GPU kullanın."));
 
 }  // namespace train
 }  // namespace msg

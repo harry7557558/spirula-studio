@@ -2,10 +2,10 @@
 
 #include "generated/slang.cuh"
 
-inline __device__ float3  max_0(float3  x_0, float3  y_0)
+inline __device__ float dot_0(float3  x_0, float3  y_0)
 {
-    float3  result_0;
     int i_0 = int(0);
+    float result_0 = 0.0f;
     for(;;)
     {
         if(i_0 < int(3))
@@ -15,46 +15,66 @@ inline __device__ float3  max_0(float3  x_0, float3  y_0)
         {
             break;
         }
-        *_slang_vector_get_element_ptr(&result_0, i_0) = (F32_max((_slang_vector_get_element(x_0, i_0)), (_slang_vector_get_element(y_0, i_0))));
+        float result_1 = result_0 + _slang_vector_get_element(x_0, i_0) * _slang_vector_get_element(y_0, i_0);
         i_0 = i_0 + int(1);
+        result_0 = result_1;
     }
     return result_0;
 }
 
-inline __device__ float dot_0(float3  x_1, float3  y_1)
+inline __device__ float length_0(float3  x_1)
+{
+    return (F32_sqrt((dot_0(x_1, x_1))));
+}
+
+inline __device__ float dot_1(float2  x_2, float2  y_1)
 {
     int i_1 = int(0);
-    float result_1 = 0.0f;
+    float result_2 = 0.0f;
     for(;;)
     {
-        if(i_1 < int(3))
+        if(i_1 < int(2))
         {
         }
         else
         {
             break;
         }
-        float result_2 = result_1 + _slang_vector_get_element(x_1, i_1) * _slang_vector_get_element(y_1, i_1);
+        float result_3 = result_2 + _slang_vector_get_element(x_2, i_1) * _slang_vector_get_element(y_1, i_1);
         i_1 = i_1 + int(1);
-        result_1 = result_2;
+        result_2 = result_3;
     }
-    return result_1;
+    return result_2;
+}
+
+inline __device__ float3  normalize_0(float3  x_3)
+{
+    return x_3 / make_float3 (length_0(x_3));
+}
+
+inline __device__ float3  max_0(float3  x_4, float3  y_2)
+{
+    float3  result_4;
+    int i_2 = int(0);
+    for(;;)
+    {
+        if(i_2 < int(3))
+        {
+        }
+        else
+        {
+            break;
+        }
+        *_slang_vector_get_element_ptr(&result_4, i_2) = (F32_max((_slang_vector_get_element(x_4, i_2)), (_slang_vector_get_element(y_2, i_2))));
+        i_2 = i_2 + int(1);
+    }
+    return result_4;
 }
 
 inline __device__ float aabb_d2_0(float3  p_0, float3  lo_0, float3  hi_0)
 {
     float3  d_0 = max_0(max_0(lo_0 - p_0, p_0 - hi_0), make_float3 (0.0f));
     return dot_0(d_0, d_0);
-}
-
-inline __device__ float length_0(float3  x_2)
-{
-    return (F32_sqrt((dot_0(x_2, x_2))));
-}
-
-inline __device__ float3  normalize_0(float3  x_3)
-{
-    return x_3 / make_float3 (length_0(x_3));
 }
 
 inline __device__ float3  oct_decode_0(uint packed_0)
@@ -153,22 +173,22 @@ inline __device__ uint label_field_nearest(float3  p_2, float3  n_2, bool has_n_
         uint count_0 = (F32_asuint((n1_0.w)));
         float best_1;
         uint label_1;
-        uint i_2;
+        uint i_3;
         if(count_0 > 0U)
         {
             best_1 = best_0;
             label_1 = label_0;
-            i_2 = first_0;
+            i_3 = first_0;
             for(;;)
             {
-                if(i_2 < (first_0 + count_0))
+                if(i_3 < (first_0 + count_0))
                 {
                 }
                 else
                 {
                     break;
                 }
-                float4  * _S8 = seeds_0 + i_2;
+                float4  * _S8 = seeds_0 + i_3;
                 float4  s_0 = *_S8;
                 float e2_3 = seed_d2_0(p_2, n_2, has_n_1, *_S8);
                 bool _S9;
@@ -186,7 +206,7 @@ inline __device__ uint label_field_nearest(float3  p_2, float3  n_2, bool has_n_
                     best_1 = e2_3;
                     label_1 = _S10;
                 }
-                i_2 = i_2 + 1U;
+                i_3 = i_3 + 1U;
             }
             sp_0 = sp_1;
         }
@@ -204,17 +224,17 @@ inline __device__ uint label_field_nearest(float3  p_2, float3  n_2, bool has_n_
             }
             if(_S12)
             {
-                i_2 = first_0 + 1U;
+                i_3 = first_0 + 1U;
             }
             else
             {
-                i_2 = first_0;
+                i_3 = first_0;
             }
             uint sp_2;
             if((sp_1 + 2U) <= 48U)
             {
                 uint sp_3 = sp_1 + 1U;
-                stack_0[sp_1] = i_2;
+                stack_0[sp_1] = i_3;
                 uint _S13 = sp_3 + 1U;
                 stack_0[sp_3] = label_1;
                 sp_2 = _S13;
@@ -235,72 +255,223 @@ inline __device__ uint label_field_nearest(float3  p_2, float3  n_2, bool has_n_
 
 inline __device__ bool region_contains(float3  p_3, float3  n_3, bool has_n_2, float4  * program_0, uint num_prog_0, float4  * bvh_1, float4  * seeds_1, uint num_field_nodes_0)
 {
-    bool b_0;
+    bool _S14;
     FixedArray<bool, 32>  stack_1;
-    uint i_3 = 0U;
+    stack_1[int(0)] = false;
+    stack_1[int(1)] = false;
+    stack_1[int(2)] = false;
+    stack_1[int(3)] = false;
+    stack_1[int(4)] = false;
+    stack_1[int(5)] = false;
+    stack_1[int(6)] = false;
+    stack_1[int(7)] = false;
+    stack_1[int(8)] = false;
+    stack_1[int(9)] = false;
+    stack_1[int(10)] = false;
+    stack_1[int(11)] = false;
+    stack_1[int(12)] = false;
+    stack_1[int(13)] = false;
+    stack_1[int(14)] = false;
+    stack_1[int(15)] = false;
+    stack_1[int(16)] = false;
+    stack_1[int(17)] = false;
+    stack_1[int(18)] = false;
+    stack_1[int(19)] = false;
+    stack_1[int(20)] = false;
+    stack_1[int(21)] = false;
+    stack_1[int(22)] = false;
+    stack_1[int(23)] = false;
+    stack_1[int(24)] = false;
+    stack_1[int(25)] = false;
+    stack_1[int(26)] = false;
+    stack_1[int(27)] = false;
+    stack_1[int(28)] = false;
+    stack_1[int(29)] = false;
+    stack_1[int(30)] = false;
+    stack_1[int(31)] = false;
+    uint i_4 = 0U;
     uint sp_4 = 0U;
     for(;;)
     {
-        if(i_3 < num_prog_0)
+        if(i_4 < num_prog_0)
         {
         }
         else
         {
             break;
         }
-        uint _S14 = i_3 * 6U;
-        float4  * _S15 = program_0 + _S14;
-        float4  h_0 = *_S15;
-        uint type_0 = uint((*_S15).x);
-        uint sp_5;
-        bool v_1;
-        if(type_0 == 0U)
+        uint _S15 = i_4 * 6U;
+        float4  * _S16 = program_0 + _S15;
+        float4  h_0 = *_S16;
+        uint type_0 = uint((*_S16).x);
+        bool _S17 = type_0 == 0U;
+        if(_S17)
         {
-            float4  _S16 = *(program_0 + (_S14 + 2U));
-            float3  _S17 = p_3 - float3 {(*(program_0 + (_S14 + 1U))).x, (*(program_0 + (_S14 + 1U))).y, (*(program_0 + (_S14 + 1U))).z};
-            v_1 = true;
-            sp_5 = 0U;
-            for(;;)
+            _S14 = true;
+        }
+        else
+        {
+            if(type_0 >= 10U)
             {
-                if(sp_5 < 3U)
+                _S14 = type_0 <= 12U;
+            }
+            else
+            {
+                _S14 = false;
+            }
+        }
+        uint sp_5;
+        uint i_5;
+        bool b_0;
+        bool a_1;
+        bool v_1;
+        if(_S14)
+        {
+            float4  half_0 = *(program_0 + (_S15 + 2U));
+            float3  d_2 = p_3 - float3 {(*(program_0 + (_S15 + 1U))).x, (*(program_0 + (_S15 + 1U))).y, (*(program_0 + (_S15 + 1U))).z};
+            float _S18 = dot_0(float3 {(*(program_0 + (_S15 + 3U))).x, (*(program_0 + (_S15 + 3U))).y, (*(program_0 + (_S15 + 3U))).z}, d_2);
+            float _S19 = dot_0(float3 {(*(program_0 + (_S15 + 4U))).x, (*(program_0 + (_S15 + 4U))).y, (*(program_0 + (_S15 + 4U))).z}, d_2);
+            float _S20 = dot_0(float3 {(*(program_0 + (_S15 + 5U))).x, (*(program_0 + (_S15 + 5U))).y, (*(program_0 + (_S15 + 5U))).z}, d_2);
+            float3  q_0 = make_float3 (_S18, _S19, _S20);
+            if(_S17)
+            {
+                if((F32_abs((_S18))) <= (half_0.x))
                 {
+                    b_0 = (F32_abs((_S19))) <= (half_0.y);
                 }
                 else
                 {
-                    break;
+                    b_0 = false;
                 }
-                if((F32_abs((dot_0(float3 {(*(program_0 + (_S14 + 3U + sp_5))).x, (*(program_0 + (_S14 + 3U + sp_5))).y, (*(program_0 + (_S14 + 3U + sp_5))).z}, _S17)))) > _slang_vector_get_element(_S16, sp_5))
+                if(b_0)
                 {
-                    v_1 = false;
+                    a_1 = (F32_abs((_S20))) <= (half_0.z);
                 }
-                sp_5 = sp_5 + 1U;
+                else
+                {
+                    a_1 = false;
+                }
+                v_1 = a_1;
+                sp_5 = i_4;
             }
+            else
+            {
+                if(type_0 == 10U)
+                {
+                    float3  u_1 = q_0 / float3 {half_0.x, half_0.y, half_0.z};
+                    v_1 = (dot_0(u_1, u_1)) <= 1.0f;
+                    sp_5 = i_4;
+                }
+                else
+                {
+                    if(type_0 == 11U)
+                    {
+                        float2  u_2 = make_float2 (_S18, _S19) / float2 {half_0.x, half_0.y};
+                        if((F32_abs((_S20))) <= (half_0.z))
+                        {
+                            b_0 = (dot_1(u_2, u_2)) <= 1.0f;
+                        }
+                        else
+                        {
+                            b_0 = false;
+                        }
+                        v_1 = b_0;
+                        sp_5 = i_4;
+                    }
+                    else
+                    {
+                        uint nv_0 = uint(h_0.y);
+                        uint _S21 = (i_4 + 1U) * 6U;
+                        if((F32_abs((_S20))) <= (half_0.z))
+                        {
+                            sp_5 = nv_0 - 1U;
+                            v_1 = false;
+                            i_5 = 0U;
+                            for(;;)
+                            {
+                                if(i_5 < nv_0)
+                                {
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                                float4  fa_0 = *(program_0 + (_S21 + i_5 / 2U));
+                                float4  fb_0 = *(program_0 + (_S21 + sp_5 / 2U));
+                                float2  va_0;
+                                if((i_5 & 1U) != 0U)
+                                {
+                                    va_0 = float2 {fa_0.z, fa_0.w};
+                                }
+                                else
+                                {
+                                    va_0 = float2 {fa_0.x, fa_0.y};
+                                }
+                                float2  vb_0;
+                                if((sp_5 & 1U) != 0U)
+                                {
+                                    vb_0 = float2 {fb_0.z, fb_0.w};
+                                }
+                                else
+                                {
+                                    vb_0 = float2 {fb_0.x, fb_0.y};
+                                }
+                                float _S22 = va_0.y;
+                                float _S23 = vb_0.y;
+                                if((_S22 > _S19) != (_S23 > _S19))
+                                {
+                                    float _S24 = va_0.x;
+                                    b_0 = _S18 < ((vb_0.x - _S24) * (_S19 - _S22) / (_S23 - _S22) + _S24);
+                                }
+                                else
+                                {
+                                    b_0 = false;
+                                }
+                                if(b_0)
+                                {
+                                    v_1 = !v_1;
+                                }
+                                uint _S25 = i_5 + 1U;
+                                sp_5 = i_5;
+                                i_5 = _S25;
+                            }
+                        }
+                        else
+                        {
+                            v_1 = false;
+                        }
+                        sp_5 = i_4 + (2U * nv_0 + 24U - 1U) / 24U;
+                    }
+                }
+            }
+            uint _S26 = sp_5;
             sp_5 = sp_4;
+            i_5 = _S26;
         }
         else
         {
             if(type_0 == 1U)
             {
-                float4  * _S18 = program_0 + (_S14 + 1U);
-                float3  d_2 = p_3 - float3 {(*_S18).x, (*_S18).y, (*_S18).z};
-                float _S19 = (*_S18).w;
-                v_1 = (dot_0(d_2, d_2)) <= (_S19 * _S19);
+                float4  * _S27 = program_0 + (_S15 + 1U);
+                float3  d_3 = p_3 - float3 {(*_S27).x, (*_S27).y, (*_S27).z};
+                float _S28 = (*_S27).w;
+                v_1 = (dot_0(d_3, d_3)) <= (_S28 * _S28);
                 sp_5 = sp_4;
             }
             else
             {
                 if(type_0 == 2U)
                 {
-                    float4  * _S20 = program_0 + (_S14 + 1U);
-                    v_1 = (dot_0(float3 {(*_S20).x, (*_S20).y, (*_S20).z}, p_3) + (*_S20).w) >= 0.0f;
+                    float4  * _S29 = program_0 + (_S15 + 1U);
+                    v_1 = (dot_0(float3 {(*_S29).x, (*_S29).y, (*_S29).z}, p_3) + (*_S29).w) >= 0.0f;
                     sp_5 = sp_4;
                 }
                 else
                 {
                     if(type_0 == 3U)
                     {
-                        uint _S21 = label_field_nearest(p_3, n_3, has_n_2, bvh_1, seeds_1, num_field_nodes_0);
-                        v_1 = _S21 == uint(h_0.w);
+                        uint _S30 = label_field_nearest(p_3, n_3, has_n_2, bvh_1, seeds_1, num_field_nodes_0);
+                        v_1 = _S30 == uint(h_0.w);
                         sp_5 = sp_4;
                     }
                     else
@@ -346,18 +517,16 @@ inline __device__ bool region_contains(float3  p_3, float3  n_3, bool has_n_2, f
                                         b_0 = false;
                                         sp_5 = sp_4;
                                     }
-                                    uint sp_8;
-                                    bool a_1;
                                     if(sp_5 > 0U)
                                     {
-                                        uint sp_9 = sp_5 - 1U;
-                                        a_1 = stack_1[sp_9];
-                                        sp_8 = sp_9;
+                                        uint sp_8 = sp_5 - 1U;
+                                        a_1 = stack_1[sp_8];
+                                        i_5 = sp_8;
                                     }
                                     else
                                     {
                                         a_1 = false;
-                                        sp_8 = sp_5;
+                                        i_5 = sp_5;
                                     }
                                     if(type_0 == 4U)
                                     {
@@ -395,88 +564,89 @@ inline __device__ bool region_contains(float3  p_3, float3  n_3, bool has_n_2, f
                                             }
                                         }
                                     }
-                                    sp_5 = sp_8;
+                                    sp_5 = i_5;
                                 }
                             }
                         }
                     }
                 }
             }
+            i_5 = i_4;
         }
         if(sp_5 < 32U)
         {
-            uint _S22 = sp_5 + 1U;
+            uint _S31 = sp_5 + 1U;
             stack_1[sp_5] = v_1;
-            sp_4 = _S22;
+            sp_4 = _S31;
         }
         else
         {
             sp_4 = sp_5;
         }
-        i_3 = i_3 + 1U;
+        i_4 = i_5 + 1U;
     }
     if(sp_4 > 0U)
     {
-        b_0 = stack_1[sp_4 - 1U];
+        _S14 = stack_1[sp_4 - 1U];
     }
     else
     {
-        b_0 = false;
+        _S14 = false;
     }
-    return b_0;
+    return _S14;
 }
 
 inline __device__ float3  splat_normal(float4  quat_0, float3  log_scale_0, float3  mean_0, float3  toward_0)
 {
     float w_0 = quat_0.x;
-    float x_4 = quat_0.y;
-    float y_2 = quat_0.z;
+    float x_5 = quat_0.y;
+    float y_3 = quat_0.z;
     float z_0 = quat_0.w;
-    float inv_0 = (F32_rsqrt(((F32_max((w_0 * w_0 + x_4 * x_4 + y_2 * y_2 + z_0 * z_0), (9.99999968265522539e-21f))))));
+    float inv_0 = (F32_rsqrt(((F32_max((w_0 * w_0 + x_5 * x_5 + y_3 * y_3 + z_0 * z_0), (9.99999968265522539e-21f))))));
     float w_1 = w_0 * inv_0;
-    float x_5 = x_4 * inv_0;
-    float y_3 = y_2 * inv_0;
+    float x_6 = x_5 * inv_0;
+    float y_4 = y_3 * inv_0;
     float z_1 = z_0 * inv_0;
-    float _S23 = y_3 * y_3;
-    float _S24 = z_1 * z_1;
-    float _S25 = x_5 * y_3;
-    float _S26 = z_1 * w_1;
-    float _S27 = x_5 * z_1;
-    float _S28 = y_3 * w_1;
-    float3  c0_0 = make_float3 (1.0f - 2.0f * (_S23 + _S24), 2.0f * (_S25 + _S26), 2.0f * (_S27 - _S28));
-    float _S29 = x_5 * x_5;
-    float _S30 = y_3 * z_1;
-    float _S31 = x_5 * w_1;
-    float3  c1_0 = make_float3 (2.0f * (_S25 - _S26), 1.0f - 2.0f * (_S29 + _S24), 2.0f * (_S30 + _S31));
-    float3  c2_0 = make_float3 (2.0f * (_S27 + _S28), 2.0f * (_S30 - _S31), 1.0f - 2.0f * (_S29 + _S23));
-    float _S32 = log_scale_0.y;
-    float _S33 = log_scale_0.x;
-    bool _S34;
-    if(_S32 < _S33)
+    float _S32 = y_4 * y_4;
+    float _S33 = z_1 * z_1;
+    float _S34 = x_6 * y_4;
+    float _S35 = z_1 * w_1;
+    float _S36 = x_6 * z_1;
+    float _S37 = y_4 * w_1;
+    float3  c0_0 = make_float3 (1.0f - 2.0f * (_S32 + _S33), 2.0f * (_S34 + _S35), 2.0f * (_S36 - _S37));
+    float _S38 = x_6 * x_6;
+    float _S39 = y_4 * z_1;
+    float _S40 = x_6 * w_1;
+    float3  c1_0 = make_float3 (2.0f * (_S34 - _S35), 1.0f - 2.0f * (_S38 + _S33), 2.0f * (_S39 + _S40));
+    float3  c2_0 = make_float3 (2.0f * (_S36 + _S37), 2.0f * (_S39 - _S40), 1.0f - 2.0f * (_S38 + _S32));
+    float _S41 = log_scale_0.y;
+    float _S42 = log_scale_0.x;
+    bool _S43;
+    if(_S41 < _S42)
     {
-        _S34 = _S32 <= (log_scale_0.z);
+        _S43 = _S41 <= (log_scale_0.z);
     }
     else
     {
-        _S34 = false;
+        _S43 = false;
     }
     float3  axis_0;
-    if(_S34)
+    if(_S43)
     {
         axis_0 = c1_0;
     }
     else
     {
-        float _S35 = log_scale_0.z;
-        if(_S35 < _S33)
+        float _S44 = log_scale_0.z;
+        if(_S44 < _S42)
         {
-            _S34 = _S35 < _S32;
+            _S43 = _S44 < _S41;
         }
         else
         {
-            _S34 = false;
+            _S43 = false;
         }
-        if(_S34)
+        if(_S43)
         {
             axis_0 = c2_0;
         }

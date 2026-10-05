@@ -3,9 +3,12 @@
 #include "engine/Engine.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineState.h"
+#include "core/Env.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <vector>
 
 
 // Helper: build DeviceVector<T> from TorchTensorView (non-owning view).
@@ -90,7 +93,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     bool densify_ongoing =
         (step < std::max(cfg.refine_stop_iter,
                          max_steps - cfg.refine_stop_num_iter));
-    bool do_densify = densify_ongoing && (step > cfg.refine_start_iter && step % cfg.refine_every == 0);
+    bool do_densify = densify_grows_at(cfg, step, max_steps);
     float progress = ((float)step + 0.5f) / (float)max_steps;
 
     // Use pool-backed DeviceVector/DeviceTensor from Buffers directly
@@ -153,6 +156,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     auto& dv_radii = engine().optim.radii;
     auto& dv_accum_buf = engine().optim.accum_buffer;
     auto& dv_bias_steps = engine().optim.bias_correction_steps;
+    auto& dv_visit = engine().optim.visit_counters;
 
     // SH quant bounds (one float4 per block) -- needed by the densify kernels
     // to encode (g1=0, g2=0) into the dst splats' packed bytes against the
@@ -289,6 +293,16 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                                   cfg.final_score_power, dv_sample_score);
     }
 
+    if (densify_ongoing && use_revised && cfg.split_weight_by_renders &&
+        dv_accum_buf.data_ptr() != nullptr && dv_visit.data_ptr() != nullptr) {
+        auto& score = engine().optim.densify_sample_score;
+        if (score.data_ptr() == nullptr) {
+            score.resize(PoolSlot::EngDensifySampleScore, max_num_splats);
+            densify_clip_score_tensor(cur_num_splats, dv_accum_buf, 1.0f, 1.0f, score);
+        }
+        densify_scale_score_by_renders_tensor(cur_num_splats, dv_visit, score);
+    }
+
     // The region test, on the refine cadence only: a weight per splat that
     // scales its draw in both relocation paths.
     auto& region = engine().region;
@@ -312,6 +326,10 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     }
 
     int num_added = 0;
+    const int64_t split_budget = cfg.max_split_fraction < 1.0f
+        ? std::max<int64_t>(1, (int64_t)(cfg.max_split_fraction * (float)cur_num_splats))
+        : 0;
+    int64_t num_dead = 0, num_relocated = 0;
 
     // Long-axis-split opacity split factor `k`, linearly scheduled over the
     // first `las_split_opacity_k_warmup` steps (clamped to [init, final]).
@@ -325,23 +343,27 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
 
     if (do_densify && use_revised) {
         // Revised relocation (long axis split)
-        relocate_splats_with_long_axis_split_tensor(
+        num_relocated = relocate_splats_with_long_axis_split_tensor(
             cur_num_splats, cfg.min_opacity, split_opacity_k,
             dv_means, dv_quats, dv_scales, dv_opacs, dv_features_dc, dv_features_sh,
             dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
             dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
             dv_accum_buf, engine().optim.densify_sample_score, dv_bias_steps,
+            dv_visit, (uint32_t)std::max(cfg.dead_after_steps, 0),
             sh_optim_bits, num_sh,
             dv_sh_quant_bounds, sh_bounds_per_splat,
             dv_sh_value_packed, dv_sh_value_bounds,
             sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
             non_sh,
-            2 * step + 0
+            2 * step + 0,
+            split_budget, &num_dead
         );
 
         // Add more splats
-        int64_t n_target = std::min(max_num_splats, (int64_t)(cfg.growth_factor * cur_num_splats));
+        int64_t n_target = densify_target(cfg, cur_num_splats, max_num_splats);
         num_added = (int)std::max((int64_t)0, n_target - cur_num_splats);
+        if (split_budget > 0)
+            num_added = (int)std::max<int64_t>(0, std::min<int64_t>(num_added, split_budget - num_relocated));
         if (num_added > 0) {
             // The oversize channel draws first, so its candidate set is the
             // splats the accumulator actually covers.
@@ -359,7 +381,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                     dv_g1_means, dv_g1_quats, dv_g1_scales, dv_g1_opacs, dv_g1_features_dc, dv_g1_features_sh,
                     dv_g2_means, dv_g2_quats, dv_g2_scales, dv_g2_opacs, dv_g2_features_dc, dv_g2_features_sh,
                     dv_accum_buf, weights,
-                    dv_bias_steps,
+                    dv_bias_steps, dv_visit,
                     sh_optim_bits, num_sh,
                     dv_sh_quant_bounds, sh_bounds_per_splat,
                     dv_sh_value_packed, dv_sh_value_bounds,
@@ -406,7 +428,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         , engine().region.weight);
 
         // MCMC sample add
-        int64_t n_target = std::min(max_num_splats, (int64_t)(cfg.growth_factor * cur_num_splats));
+        int64_t n_target = densify_target(cfg, cur_num_splats, max_num_splats);
         num_added = (int)std::max((int64_t)0, n_target - cur_num_splats);
         if (num_added > 0) {
             add_splats_mcmc_tensor(
@@ -448,6 +470,37 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
         }
     }
 
+    if (do_densify) {
+        engine().optim.last_num_dead      = num_dead;
+        engine().optim.last_num_relocated = num_relocated;
+    }
+    // SS_VISIT_LOG=1: what the render counters hold at each refine step, in
+    // English like the other deep diagnostics.
+    static const bool log_visit = [] {
+        const char* v = spirula::env("VISIT_LOG");
+        return v && *v && v[0] != '0';
+    }();
+    if (do_densify && log_visit && dv_visit.data_ptr() != nullptr) {
+        std::vector<uint32_t> h((size_t)cur_num_splats);
+        backend::memcpy_sync(h.data(), dv_visit.data_ptr(),
+                             h.size() * sizeof(uint32_t), backend::MemcpyKind::DeviceToHost);
+        std::vector<uint32_t> r(h.size()), u(h.size());
+        int64_t never = 0;
+        for (size_t i = 0; i < h.size(); ++i) {
+            r[i] = visit_renders(h[i]);
+            u[i] = visit_unrendered_steps(h[i]);
+            never += r[i] == 0u;
+        }
+        std::sort(r.begin(), r.end());
+        std::sort(u.begin(), u.end());
+        const size_t n = h.size();
+        std::fprintf(stderr,
+                     "[visit] step %d: never rendered %.1f%%, renders p10 %u median %u p90 %u, "
+                     "unrendered streak median %u p90 %u max %u\n",
+                     step, 100.0 * (double)never / (double)std::max<size_t>(n, 1),
+                     r[n / 10], r[n / 2], r[(9 * n) / 10], u[n / 2], u[(9 * n) / 10], u[n - 1]);
+    }
     engine().cur_num_splats = cur_num_splats + num_added;
+    DevicePool::global().set_splat_counts(engine().cur_num_splats, engine().max_num_splats);
     return num_added;
 }

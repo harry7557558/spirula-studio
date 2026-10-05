@@ -160,6 +160,10 @@ add_library(ss_sfm STATIC
     ${SS_SRC}/external/stb_image_impl.cpp
     ${SS_SRC}/external/stb_image_write_impl.cpp
     ${SS_SRC}/core/ExrImage.cpp
+    ${SS_SRC}/core/IccProfile.cpp
+    ${SS_SRC}/core/ImageFile.cpp
+    ${SS_SRC}/core/MappedFile.cpp
+    ${SS_SRC}/core/TiffImage.cpp
     ${SS_SRC}/core/SceneAlign.cpp
     ${SS_SRC}/external/miniz.c
 )

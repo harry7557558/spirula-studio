@@ -29,9 +29,11 @@ void Region::contains_many(const double* xyz, int64_t n, uint8_t* out) const {
 
 namespace {
 
+// Exact: a geo-referenced region sits millions of units out, where %.9g
+// rounds to centimetres.
 void write_vec(JsonWriter& w, const char* key, const double* v, int n) {
     w.key(key).array();
-    for (int i = 0; i < n; i++) w.value(v[i]);
+    for (int i = 0; i < n; i++) w.raw(json_number_exact(v[i]));
     w.end();
 }
 
@@ -40,6 +42,24 @@ bool read_vec(const JsonValue& obj, const char* key, double* out, int n) {
     if (!a || !a->is_array() || (int)a->arr.size() != n) return false;
     for (int i = 0; i < n; i++) out[i] = a->arr[(size_t)i].as_double();
     return true;
+}
+
+// R (p - c): the rows of R are the frame's axes.
+void to_frame(const double c[3], const double R[9], const double p[3], double q[3]) {
+    const double d[3] = {p[0] - c[0], p[1] - c[1], p[2] - c[2]};
+    for (int r = 0; r < 3; r++) q[r] = R[r * 3] * d[0] + R[r * 3 + 1] * d[1] + R[r * 3 + 2] * d[2];
+}
+
+// The world box around |q_k| <= half_k.
+Aabb framed_bounds(const double c[3], const double R[9], const double half[3]) {
+    Aabb b;
+    for (int j = 0; j < 3; j++) {
+        double e = 0;
+        for (int k = 0; k < 3; k++) e += std::fabs(R[k * 3 + j]) * half[k];
+        b.lo[j] = c[j] - e;
+        b.hi[j] = c[j] + e;
+    }
+    return b;
 }
 
 }  // namespace
@@ -77,6 +97,38 @@ std::unique_ptr<Region> region_from_json(const JsonValue& v, const std::string& 
             return nullptr;
         }
         r->radius = v.find("radius")->as_double();
+        return r;
+    }
+    if (type == "ellipsoid" || type == "cylinder") {
+        std::unique_ptr<Region> out;
+        double *c, *half, *R;
+        if (type == "ellipsoid") {
+            auto e = std::make_unique<EllipsoidRegion>();
+            c = e->center; half = e->half; R = e->R;
+            out = std::move(e);
+        } else {
+            auto e = std::make_unique<CylinderRegion>();
+            c = e->center; half = e->half; R = e->R;
+            out = std::move(e);
+        }
+        if (!read_vec(v, "center", c, 3) || !read_vec(v, "half", half, 3)) {
+            error = type + " needs center[3] and half[3]";
+            return nullptr;
+        }
+        read_vec(v, "rotation", R, 9);
+        return out;
+    }
+    if (type == "prism") {
+        auto r = std::make_unique<PrismRegion>();
+        const JsonValue* poly = v.find("polygon");
+        if (!read_vec(v, "center", r->center, 3) || !poly || !poly->is_array() ||
+            poly->arr.size() % 2 || poly->arr.size() < 6) {
+            error = "prism needs center[3] and a polygon of at least three x,y pairs";
+            return nullptr;
+        }
+        read_vec(v, "rotation", r->R, 9);
+        r->half_height = v.get_double("half_height", 1.0);
+        for (const JsonValue& x : poly->arr) r->polygon.push_back(x.as_double());
         return r;
     }
     if (type == "halfspace") {
@@ -208,6 +260,83 @@ Aabb SphereRegion::bounds() const {
 void SphereRegion::write_json(JsonWriter& w) const {
     write_vec(w, "center", center, 3);
     w.field("radius", radius);
+}
+
+bool EllipsoidRegion::contains(const double p[3]) const {
+    double q[3];
+    to_frame(center, R, p, q);
+    double s = 0;
+    for (int k = 0; k < 3; k++) s += (q[k] / half[k]) * (q[k] / half[k]);
+    return s <= 1.0;
+}
+
+Aabb EllipsoidRegion::bounds() const {
+    Aabb b;
+    for (int j = 0; j < 3; j++) {
+        double e2 = 0;
+        for (int k = 0; k < 3; k++) e2 += (R[k * 3 + j] * half[k]) * (R[k * 3 + j] * half[k]);
+        b.lo[j] = center[j] - std::sqrt(e2);
+        b.hi[j] = center[j] + std::sqrt(e2);
+    }
+    return b;
+}
+
+void EllipsoidRegion::write_json(JsonWriter& w) const {
+    write_vec(w, "center", center, 3);
+    write_vec(w, "half", half, 3);
+    write_vec(w, "rotation", R, 9);
+}
+
+bool CylinderRegion::contains(const double p[3]) const {
+    double q[3];
+    to_frame(center, R, p, q);
+    if (std::fabs(q[2]) > half[2]) return false;
+    return (q[0] / half[0]) * (q[0] / half[0]) + (q[1] / half[1]) * (q[1] / half[1]) <= 1.0;
+}
+
+Aabb CylinderRegion::bounds() const { return framed_bounds(center, R, half); }
+
+void CylinderRegion::write_json(JsonWriter& w) const {
+    write_vec(w, "center", center, 3);
+    write_vec(w, "half", half, 3);
+    write_vec(w, "rotation", R, 9);
+}
+
+bool polygon_contains(const double* poly, size_t n, double x, double y) {
+    bool in = false;
+    for (size_t i = 0, j = n - 1; i < n; j = i++) {
+        const double xi = poly[i * 2], yi = poly[i * 2 + 1];
+        const double xj = poly[j * 2], yj = poly[j * 2 + 1];
+        if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in = !in;
+    }
+    return in;
+}
+
+bool PrismRegion::contains(const double p[3]) const {
+    double q[3];
+    to_frame(center, R, p, q);
+    if (std::fabs(q[2]) > half_height || polygon.size() < 6) return false;
+    return polygon_contains(polygon.data(), polygon.size() / 2, q[0], q[1]);
+}
+
+Aabb PrismRegion::bounds() const {
+    Aabb b;
+    for (size_t i = 0; i + 1 < polygon.size(); i += 2)
+        for (double z : {-half_height, half_height}) {
+            const double q[3] = {polygon[i], polygon[i + 1], z};
+            double p[3];
+            for (int k = 0; k < 3; k++)
+                p[k] = center[k] + R[k] * q[0] + R[3 + k] * q[1] + R[6 + k] * q[2];
+            b.expand(p);
+        }
+    return b;
+}
+
+void PrismRegion::write_json(JsonWriter& w) const {
+    write_vec(w, "center", center, 3);
+    write_vec(w, "rotation", R, 9);
+    w.key("half_height").raw(json_number_exact(half_height));
+    write_vec(w, "polygon", polygon.data(), (int)polygon.size());
 }
 
 bool HalfSpaceRegion::contains(const double p[3]) const {

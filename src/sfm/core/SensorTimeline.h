@@ -67,6 +67,7 @@ public:
         _gyro.clear(); _accel.clear(); _att.clear();
         _q_plus.clear(); _q_minus.clear(); _gps.clear();
         _P = mat3Identity();
+        _up_declared = false;
         _gyro_rate = c.gyro.rate_hz;
         _accel_rate = c.accel.rate_hz;
         for (const TelemetryVec& v : t.gyro) _gyro.push_back({v.t, {v.x, v.y, v.z}});
@@ -102,6 +103,11 @@ public:
                 u = u + mul(quaternionToRotation(q), mul(_P, a.v));
             }
             _world_up = u.norm() > 0 ? u.normalized() : Vec3{0, 0, 1};
+            const Vec3 w{t.attitude_world_up[0], t.attitude_world_up[1], t.attitude_world_up[2]};
+            if (_accel.empty() && w.norm() > 0) {
+                _world_up = w.normalized();
+                _up_declared = true;
+            }
         }
 
         std::vector<TelemetryGps> kept;
@@ -120,7 +126,10 @@ public:
 
     bool hasRotation() const { return _use_gyro || _use_att; }
     bool hasGyro() const { return _use_gyro; }
-    bool hasUp() const { return !_accel.empty(); }
+    bool hasUp() const { return !_accel.empty() || _up_declared; }
+    // No accelerometer settled which way the attitude maps, so `sign` -1
+    // conjugates it: a hypothesis map/ImuExtrinsic.h tests like the gyro's.
+    bool attitudeSenseOpen() const { return _use_att && _accel.empty(); }
     // 20 Hz admits a camera writing one accelerometer reading per frame (the
     // DJI's 30 Hz); the position integral over a 0.1-1 s pair still has
     // samples to work with, and the fit's own sigma says when it does not.
@@ -138,7 +147,7 @@ public:
 
     // R_i(t0) <- i(t1): the rotation taking IMU-frame vectors at video time
     // t1 into the IMU frame at t0. `sign` -1 integrates the gyro negated,
-    // the left-handed-axes hypothesis map/ImuExtrinsic.h tests.
+    // the left-handed-axes hypothesis, or conjugates an open-sense attitude.
     bool rotationBetween(double t0, double t1, Mat3& R, double sign = 1.0) const {
         return rotationBetweenImu(t0 + time_offset, t1 + time_offset, R, sign);
     }
@@ -151,7 +160,7 @@ public:
         const double ti = t + time_offset;
         if (_use_att && _accel_rate < 50) {
             Quat q;
-            if (!attitudeAt(ti, q)) return v;
+            if (!hasUp() || !orientationAt(ti, q, sign)) return v;
             v.up = mul(transpose(_P), mul(transpose(quaternionToRotation(q)), _world_up)).normalized();
             v.ok = true;
             v.samples = 1;
@@ -249,6 +258,7 @@ private:
     Vec3 _world_up{0, 0, 1};
     double _gyro_rate = 0, _accel_rate = 0;
     bool _use_gyro = false, _use_att = false, _gps_usable = false;
+    bool _up_declared = false;
 
     // What the double integral cannot recover: a per-frame accelerometer
     // aliases the vibration a 1 kHz stream resolves and integrates away. The
@@ -340,7 +350,11 @@ private:
     // origin, R_origin <- i(ti), as a quaternion.
     bool orientationAt(double ti, Quat& q, double sign) const {
         using namespace timeline_detail;
-        if (_use_att) return attitudeAt(ti, q);
+        if (_use_att) {
+            if (!attitudeAt(ti, q)) return false;
+            if (sign < 0) q = quatConj(q);
+            return true;
+        }
         if (!_use_gyro || ti < _gyro.front().t || ti > _gyro.back().t) return false;
         std::vector<Quat>& tab = sign < 0 ? _q_minus : _q_plus;
         if (tab.empty()) buildCumulative(sign, tab);

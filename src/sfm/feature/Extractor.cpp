@@ -32,6 +32,9 @@ class SiftFrontend : public IFeatureExtractor {
 public:
     explicit SiftFrontend(const SiftOptions& opt) : ext_(opt) {}
     FeatureSet extract(const GrayImage& img) override { return ext_.extract(img); }
+    FeatureSet extractAhead(const GrayImage& img, const GrayImage* next) override {
+        return ext_.extract(img, next);
+    }
     const char* name() const override { return "sift"; }
 
 private:

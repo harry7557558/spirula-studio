@@ -28,6 +28,7 @@ struct ManifestCamera {
     std::string model;               // empty = the run's --camera-model
     double focal = 0;                // pixels; 0 = no prior
     std::vector<double> distortion;  // the model's BA order; empty = zeros
+    std::vector<double> params;      // complete COLMAP order, in source-image pixels
 };
 
 // One source video and the telemetry it carries. `telemetry` is the video

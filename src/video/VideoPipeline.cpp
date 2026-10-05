@@ -388,6 +388,13 @@ VideoPipeline::Impl::~Impl() {
 
 bool VideoPipeline::open(const std::string& path, int track, int lookahead,
                          std::string& error) {
+    std::unique_ptr<Demuxer> demux = open_demuxer(path, error);
+    if (!demux) return false;
+    return open(std::move(demux), path, track, lookahead, error);
+}
+
+bool VideoPipeline::open(std::unique_ptr<Demuxer> demux, const std::string& path,
+                         int track, int lookahead, std::string& error) {
     NN_ENSURE_EMBEDDED_MODULES(video);
     Impl& s = *impl_;
     const std::string why = availability();
@@ -396,8 +403,7 @@ bool VideoPipeline::open(const std::string& path, int track, int lookahead,
         return false;
     }
 
-    s.demux = open_demuxer(path, error);
-    if (!s.demux) return false;
+    s.demux = std::move(demux);
     if (track < 0) track = 0;
     if (track >= (int)s.demux->tracks().size()) {
         error = "'" + path + "' has " + std::to_string(s.demux->tracks().size()) +
@@ -1429,7 +1435,10 @@ bool VideoPipeline::toImage(const FrameHandle& h, const ConvertOpts& opts, nn::I
     s.copyPlanes(h.slot);
 
     float m[3][4];
-    color_matrix(s.fmt.matrix_coefficients, s.fmt.full_range, s.fmt.bit_depth, s.fmt.height, m);
+    color_matrix(opts.matrix_coefficients >= 0 ? opts.matrix_coefficients
+                                               : s.fmt.matrix_coefficients,
+                 opts.full_range >= 0 ? opts.full_range != 0 : s.fmt.full_range,
+                 s.fmt.bit_depth, s.fmt.height, m);
 
     const int rot = ((opts.rotate % 360) + 360) % 360;
     const int sw = (rot == 90 || rot == 270) ? oh : ow;
