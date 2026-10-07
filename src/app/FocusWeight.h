@@ -38,7 +38,7 @@ struct FocusSettings {
     float softness = 0.5f;
 };
 
-// Weights 0..255 at the photo's size; 0 where the depth had no answer.
+// Weights 0..255 at the photo's size; pixels without depth take their surroundings'.
 std::vector<uint8_t> render_focus_weight(const FocusCurve& c,
                                          const std::vector<float>& inv_depth,
                                          int depth_w, int depth_h, int meas_w,

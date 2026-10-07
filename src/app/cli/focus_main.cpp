@@ -133,8 +133,10 @@ int spirula_focus_main(int argc, char** argv) {
             int dw = 0, dh = 0;
             const std::vector<float> u = read_inverse_depth(dpath.string(), dw, dh);
             if (u.empty()) {
+                std::string exe = app::program_name();
+                if (exe.size() > 6 && exe.compare(exe.size() - 6, 6, " focus") == 0) exe.resize(exe.size() - 6);
                 std::fprintf(stderr, "%s\n", format(F::err_no_depth, {fs::path(image).filename().string(),
-                                                        o.depth_dir, app::program_name()}).c_str());
+                                                        o.depth_dir, exe}).c_str());
                 ++no_depth;
                 continue;
             }

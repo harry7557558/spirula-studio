@@ -258,6 +258,43 @@ std::array<double, 3> nnls3(const std::vector<std::array<double, 3>>& A, const s
     return best;
 }
 
+// Pixels without depth (0) filled from the valid depth around them by a push-pull
+// pyramid. `spirula geometry` leaves a border of zeros where the undistorted face
+// does not reach (11.6% of a 24 mm frame); those pixels show the same scene.
+Plane fill_missing(const Plane& u, int w, int h) {
+    struct Level { int w, h; std::vector<double> v, m; };
+    std::vector<Level> lv(1);
+    lv[0] = {w, h, std::vector<double>(u.begin(), u.end()), std::vector<double>(u.size())};
+    for (size_t i = 0; i < u.size(); ++i) lv[0].m[i] = u[i] > 0 ? 1.0 : 0.0;
+    while (lv.back().w > 1 || lv.back().h > 1) {
+        const Level& a = lv.back();
+        Level b{std::max(1, (a.w + 1) / 2), std::max(1, (a.h + 1) / 2), {}, {}};
+        b.v.assign((size_t)b.w * b.h, 0.0);
+        b.m.assign((size_t)b.w * b.h, 0.0);
+        for (int y = 0; y < a.h; ++y)
+            for (int x = 0; x < a.w; ++x) {
+                const size_t i = (size_t)y * a.w + x, j = (size_t)(y / 2) * b.w + x / 2;
+                b.v[j] += a.v[i] * a.m[i];
+                b.m[j] += a.m[i];
+            }
+        for (size_t j = 0; j < b.v.size(); ++j)
+            if (b.m[j] > 0) { b.v[j] /= b.m[j]; b.m[j] = 1.0; }
+        lv.push_back(std::move(b));
+    }
+    for (size_t k = lv.size() - 1; k-- > 0;) {
+        Level& a = lv[k];
+        const Level& b = lv[k + 1];
+        for (int y = 0; y < a.h; ++y)
+            for (int x = 0; x < a.w; ++x) {
+                const size_t i = (size_t)y * a.w + x;
+                if (a.m[i] > 0) continue;
+                a.v[i] = b.v[(size_t)(y / 2) * b.w + x / 2];
+                a.m[i] = b.m[(size_t)(y / 2) * b.w + x / 2];
+            }
+    }
+    return Plane(lv[0].v.begin(), lv[0].v.end());
+}
+
 double blur_at(const FocusCurve& c, double u) {
     const double d = u - c.u_f;
     const double n = c.k_near * std::max(d, 0.0), f = c.k_far * std::max(-d, 0.0);
@@ -464,10 +501,11 @@ std::vector<uint8_t> render_focus_weight(const FocusCurve& c, const Plane& inv_d
                                          int mh, int fw, int fh, const FocusSettings& s) {
     const double to_train = std::min((double)s.train_side, (double)std::max(fw, fh)) / std::max(mw, mh);
     const double top = 0.5 + 0.5 * std::tanh(1.5 / s.softness);
+    const Plane u = fill_missing(inv_depth, dw, dh);
     Plane wgt((size_t)dw * dh, 0.0f);
     for (size_t i = 0; i < wgt.size(); ++i) {
-        if (!(inv_depth[i] > 0)) continue;
-        const double b = blur_at(c, inv_depth[i]);
+        if (!(u[i] > 0)) continue;
+        const double b = blur_at(c, u[i]);
         const double d = std::sqrt(std::max(b * b - c.b0 * c.b0, 0.0)) * to_train;
         const double t = (d / std::max((double)s.allowed_px, 1e-6) - 1.0) / s.softness;
         wgt[i] = (float)std::clamp((0.5 - 0.5 * std::tanh(1.5 * t)) / top, 0.0, 1.0);
