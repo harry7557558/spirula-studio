@@ -64,6 +64,7 @@ __global__ void rasterize_to_pixels_fwd_kernel(
     const uint32_t N,   // zero if packed
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz], nullptr if not packed
+    float *__restrict__ splat_contribution,  // [N], optional
     const typename SplatPrimitive::WorldBuffer splat_wbuffer,
     const typename SplatPrimitive::ScreenBuffer splat_sbuffer,
 #if IS_EVAL3D
@@ -224,64 +225,67 @@ __global__ void rasterize_to_pixels_fwd_kernel(
         // process gaussians in the current batch for this pixel
         uint32_t batch_size = min((uint32_t)TILE_AREA, (uint32_t)(range_end - batch_start));
         for (uint32_t t = 0; t < batch_size; ++t) {
-            if (!splat_hit[t])  // gaussian misses this micro-tile (uniform skip)
-                continue;
-            if (done)
-                continue;
-            typename SplatPrimitive::FragmentFwd splat = splat_batch[t];
+            float contribution = 0.0f;
+            if (splat_hit[t] && !done) {
+                typename SplatPrimitive::FragmentFwd splat = splat_batch[t];
         #if IS_EVAL3D
-            float alpha = splat.evaluate_alpha(ray_o, ray_d);
+                float alpha = splat.evaluate_alpha(ray_o, ray_d);
         #else
-            float alpha = splat.evaluate_alpha(px, py);
+                float alpha = splat.evaluate_alpha(px, py);
         #endif
-            if (alpha <= ALPHA_THRESHOLD)
-                continue;
+                if (alpha > ALPHA_THRESHOLD) {
 
         #if IS_EVAL3D
-            const RenderOutput color = splat.evaluate_color(ray_o, ray_d);
-            if (color.depth <= 0.0f)
-                continue;
+                    const RenderOutput color = splat.evaluate_color(ray_o, ray_d);
+                    if (color.depth > 0.0f) {
         #else
-            const RenderOutput color = splat.evaluate_color(px, py);
+                    const RenderOutput color = splat.evaluate_color(px, py);
         #endif
 
-            const float next_T = T * (1.0f - alpha);
+                    const float next_T = T * (1.0f - alpha);
 
-            // median depth: detect the (unique) post-T crossing of 1/2.
-            // Done before the 1e-4 early-out so a splat that drops T past 1/2
-            // in one step is still captured. z is interpolated in ln(T).
-            if constexpr (output_median) {
-                if (median_prev_T >= 0.5f && next_T < 0.5f) {
-                    float a = __logf(median_prev_T);
-                    float b = __logf(next_T);
-                    float c = -0.6931471805599453f;  // ln(1/2)
-                    float d = b - a;
-                    float f = (fabsf(d) > 1e-20f) ? (c - a) / d : 0.0f;
-                    median_depth = median_prev_z + (color.depth - median_prev_z) * f;
+                    if constexpr (output_median) {
+                        if (median_prev_T >= 0.5f && next_T < 0.5f) {
+                            float a = __logf(median_prev_T);
+                            float b = __logf(next_T);
+                            float c = -0.6931471805599453f;
+                            float d = b - a;
+                            float f = (fabsf(d) > 1e-20f) ? (c - a) / d : 0.0f;
+                            median_depth = median_prev_z + (color.depth - median_prev_z) * f;
+                        }
+                        median_prev_T = next_T;
+                        median_prev_z = color.depth;
+                    }
+
+                    if (next_T > 1e-4f) {
+                        const float vis = alpha * T;
+                        RenderOutput acc = color;
+                        if constexpr (dist_has_depth(dist_type))
+                            acc.depth = __logf(fmaxf(color.depth, DEPTH_DIST_EPS));
+                        if constexpr (dist_any(dist_type))
+                            pix2_out += acc * acc * vis;
+                        pix_out += acc * vis;
+                        cur_idx = batch_start + t;
+                        T = next_T;
+                        contribution = vis;
+                    } else {
+                        done = true;
+                    }
+        #if IS_EVAL3D
+                    }
+        #endif
                 }
-                median_prev_T = next_T;
-                median_prev_z = color.depth;
             }
 
-            if (next_T > 1e-4f) {
-                const float vis = alpha * T;
-                // Depth distortion operates in log space: the depth channel is
-                // accumulated as ln(z) (rgb/normal unchanged), so C = pix_out and
-                // S = pix2_out are the log-depth moments. The rendered ray depth
-                // is recovered as exp(expected log depth) after the loop, so no
-                // extra global buffer is needed.
-                RenderOutput acc = color;
-                if constexpr (dist_has_depth(dist_type))
-                    acc.depth = __logf(fmaxf(color.depth, DEPTH_DIST_EPS));
-                // Distortion uses the closed form D = W*S - C^2 (computed once
-                // after the loop), so here we only accumulate the second moment
-                // S; the per-splat distortion increment is no longer needed.
-                if constexpr (dist_any(dist_type))
-                    pix2_out += acc * acc * vis;
-                pix_out += acc * vis;
-                cur_idx = batch_start + t;
-                T = next_T;
-            } else done = true;
+            if (splat_contribution != nullptr) {
+                for (int offset = 16; offset > 0; offset >>= 1)
+                    contribution += __shfl_down_sync(0xffffffff, contribution, offset);
+                if ((tid & 31) == 0)
+                    atomicAdd(splat_contribution +
+                                  (gaussian_ids ? gaussian_ids[flatten_ids[batch_start + t]]
+                                                : flatten_ids[batch_start + t] % N),
+                              contribution);
+            }
 
         }  // for (uint32_t t = 0; t < batch_size; ++t)
     }
@@ -333,6 +337,7 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const typename SplatPrimitive::WorldBuffer splat_wbuffer,
     const typename SplatPrimitive::ScreenBuffer splat_sbuffer,
 #if IS_EVAL3D
@@ -372,7 +377,7 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
         output_median
     ><<<grid, threads, 0, stream>>>(
         I, N, n_isects,
-        gaussian_ids, splat_wbuffer, splat_sbuffer,
+        gaussian_ids, splat_contribution, splat_wbuffer, splat_sbuffer,
     #if IS_EVAL3D
         viewmats, intrins, dist_coeffs_buffer, aabb,
     #endif

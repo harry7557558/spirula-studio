@@ -31,6 +31,7 @@
 
 #include "raster_common.slang"
 #include "dist_spec.slang"
+#include "atomic_float.slang"
 
 [SpecializationConstant]
 const int kCameraModel = 0;
@@ -61,11 +62,14 @@ struct Frag2d {
 };
 
 groupshared Frag2d _batch_2d[TILE_AREA];
+groupshared uint _batch_wi_2d[TILE_AREA];
 
 struct RasterFwd2dParams {
     // Packed ScreenBuffer rows, indexed by the flatten id (the 2D fragment
     // never touches the world buffer).
     float* s_screen;
+    int* gaussian_ids;
+    float* splat_contribution;
     int* tile_offsets;  // [I, tile_height, tile_width]
     int* flatten_ids;   // [n_isects]
     // outputs (RGB_D pixel type)
@@ -77,6 +81,7 @@ struct RasterFwd2dParams {
     float* dist_depth;   // [I,H,W],   kDistType != 0 only
     float* out_median;   // [I,H,W],   kOutputMedian only
     uint32_t I;
+    uint32_t N;
     uint32_t n_isects;
     uint32_t width;
     uint32_t height;
@@ -157,6 +162,8 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         bool hit = false;
         if (idx < range_end) {
             int g = p.flatten_ids[idx];  // flatten index in [I * N] or [nnz]
+            _batch_wi_2d[tid] = kRasterPacked != 0
+                                    ? uint(p.gaussian_ids[g]) : uint(g) % p.N;
             // 2D splatting: the fragment is just the screen data, so load it
             // (cheap) and cull from its own conic / opacity.
             Frag2d f;
@@ -184,65 +191,59 @@ void rasterize_fwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         // process gaussians in the current batch for this pixel
         uint batch_size = min(TILE_AREA, uint(range_end - batch_start));
         for (uint t = 0; t < batch_size; ++t) {
-            if (_hit[t] == 0u)  // gaussian misses this micro-tile
-                continue;
-            if (done)
-                continue;
-            Frag2d f = _batch_2d[t];
+            float contribution = 0.0f;
+            if (_hit[t] != 0u && !done) {
+                Frag2d f = _batch_2d[t];
+                float2 delta = float2(f.xy.x - px, f.xy.y - py);
+                float sigma = 0.5f * (f.conic.x * delta.x * delta.x +
+                                      f.conic.z * delta.y * delta.y) +
+                              f.conic.y * delta.x * delta.y;
+                float vis0 = exp(-sigma);
+                float alpha = min(0.999f, f.opac * vis0);
+                if (sigma < 0.f)
+                    alpha = 0.f;
+                if (alpha > ALPHA_THRESHOLD) {
+                    float3 color_rgb = f.rgb;
+                    float color_depth = f.depth;
+                    float next_T = T * (1.0f - alpha);
 
-            // FragmentFwd::evaluate_alpha(px, py)
-            float2 delta = float2(f.xy.x - px, f.xy.y - py);
-            float sigma = 0.5f * (f.conic.x * delta.x * delta.x +
-                                  f.conic.z * delta.y * delta.y) +
-                          f.conic.y * delta.x * delta.y;
-            float vis0 = exp(-sigma);
-            float alpha = min(0.999f, f.opac * vis0);
-            if (sigma < 0.f)
-                alpha = 0.f;
-            if (alpha <= ALPHA_THRESHOLD)
-                continue;
-
-            // FragmentFwd::evaluate_color(px, py)
-            float3 color_rgb = f.rgb;
-            float color_depth = f.depth;
-
-            float next_T = T * (1.0f - alpha);
-
-            // median depth: detect the (unique) post-T crossing of 1/2,
-            // z interpolated in ln(T)
-            if (kOutputMedian != 0) {
-                if (median_prev_T >= 0.5f && next_T < 0.5f) {
-                    float a = log(median_prev_T);
-                    float bb = log(next_T);
-                    float c = -0.6931471805599453f;  // ln(1/2)
-                    float d = bb - a;
-                    float fr = (abs(d) > 1e-20f) ? (c - a) / d : 0.0f;
-                    median_depth =
-                        median_prev_z + (color_depth - median_prev_z) * fr;
+                    if (kOutputMedian != 0) {
+                        if (median_prev_T >= 0.5f && next_T < 0.5f) {
+                            float a = log(median_prev_T);
+                            float bb = log(next_T);
+                            float c = -0.6931471805599453f;
+                            float d = bb - a;
+                            float fr = (abs(d) > 1e-20f) ? (c - a) / d : 0.0f;
+                            median_depth = median_prev_z +
+                                           (color_depth - median_prev_z) * fr;
+                        }
+                        median_prev_T = next_T;
+                        median_prev_z = color_depth;
+                    }
+                    if (next_T > 1e-4f) {
+                        float vis = alpha * T;
+                        float acc_depth = color_depth;
+                        if (kDistType != 0)
+                            acc_depth = log(max(color_depth, DEPTH_DIST_EPS));
+                        if (kDistType != 0) {
+                            pix2_rgb += color_rgb * color_rgb * vis;
+                            pix2_depth += acc_depth * acc_depth * vis;
+                        }
+                        pix_rgb += color_rgb * vis;
+                        pix_depth += acc_depth * vis;
+                        cur_idx = uint(batch_start) + t;
+                        T = next_T;
+                        contribution = vis;
+                    } else {
+                        done = true;
+                        InterlockedAdd(_done_count, 1);
+                    }
                 }
-                median_prev_T = next_T;
-                median_prev_z = color_depth;
             }
-
-            if (next_T > 1e-4f) {
-                float vis = alpha * T;
-                // depth distortion accumulates in log space; the rendered
-                // ray depth is recovered as exp(expected log depth) after
-                // the loop
-                float acc_depth = color_depth;
-                if (kDistType != 0)
-                    acc_depth = log(max(color_depth, DEPTH_DIST_EPS));
-                if (kDistType != 0) {
-                    pix2_rgb += color_rgb * color_rgb * vis;
-                    pix2_depth += acc_depth * acc_depth * vis;
-                }
-                pix_rgb += color_rgb * vis;
-                pix_depth += acc_depth * vis;
-                cur_idx = uint(batch_start) + t;
-                T = next_T;
-            } else {
-                done = true;
-                InterlockedAdd(_done_count, 1);
+            if (!is_null(p.splat_contribution)) {
+                float sum = WaveActiveSum(contribution);
+                if (WaveIsFirstLane())
+                    atomic_add_f32(p.splat_contribution + _batch_wi_2d[t], sum);
             }
         }
     }
@@ -290,6 +291,7 @@ struct Frag3dgut {
 };
 
 groupshared Frag3dgut _batch_ut[TILE_AREA];
+groupshared uint _batch_wi_ut[TILE_AREA];
 
 struct RasterFwd3dgutParams {
     // WorldBuffer members used by the fragment
@@ -297,6 +299,7 @@ struct RasterFwd3dgutParams {
     float* quats;   // [N, 4]
     float* scales;  // [N, 3]
     int* gaussian_ids;  // [nnz] packed mode or null (world idx = g % N)
+    float* splat_contribution;
     float* s_screen;  // packed ScreenBuffer rows; "scale" slot = 2D conic
     // cameras
     float* viewmats;     // [I, 16] row-major
@@ -413,6 +416,7 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int g = p.flatten_ids[idx];
             uint wi = kRasterPacked != 0 ? uint(p.gaussian_ids[g])
                                                 : uint(g) % p.N;
+            _batch_wi_ut[tid] = wi;
             // 3dgut keeps the projected 2D conic in the screen "scale"
             // channel and the ellipse center is the AABB center. Cull here,
             // before the (expensive) 3D fragment load, matching the tile
@@ -451,56 +455,58 @@ void rasterize_fwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
         uint batch_size = min(TILE_AREA, uint(range_end - batch_start));
         for (uint t = 0; t < batch_size; ++t) {
-            if (_hit[t] == 0u)
-                continue;
-            if (done)
-                continue;
-            Frag3dgut f = _batch_ut[t];
+            float contribution = 0.0f;
+            if (_hit[t] != 0u && !done) {
+                Frag3dgut f = _batch_ut[t];
+                float alpha = evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity,
+                                                  ray_o, ray_d);
+                if (alpha > ALPHA_THRESHOLD) {
+                    float3 color_rgb;
+                    float color_depth;
+                    evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb,
+                                        ray_o, ray_d, color_rgb, color_depth);
+                    if (color_depth > 0.0f) {
+                        float next_T = T * (1.0f - alpha);
 
-            float alpha = evaluate_alpha_3dgs(f.mean, f.iscl_rot, f.opacity,
-                                              ray_o, ray_d);
-            if (alpha <= ALPHA_THRESHOLD)
-                continue;
+                        if (kOutputMedian != 0) {
+                            if (median_prev_T >= 0.5f && next_T < 0.5f) {
+                                float a = log(median_prev_T);
+                                float bb = log(next_T);
+                                float c = -0.6931471805599453f;
+                                float d = bb - a;
+                                float fr = (abs(d) > 1e-20f) ? (c - a) / d : 0.0f;
+                                median_depth = median_prev_z +
+                                               (color_depth - median_prev_z) * fr;
+                            }
+                            median_prev_T = next_T;
+                            median_prev_z = color_depth;
+                        }
 
-            float3 color_rgb;
-            float color_depth;
-            evaluate_color_3dgs(f.mean, f.iscl_rot, f.opacity, f.rgb, ray_o,
-                                ray_d, color_rgb, color_depth);
-            if (color_depth <= 0.0f)
-                continue;
-
-            float next_T = T * (1.0f - alpha);
-
-            if (kOutputMedian != 0) {
-                if (median_prev_T >= 0.5f && next_T < 0.5f) {
-                    float a = log(median_prev_T);
-                    float bb = log(next_T);
-                    float c = -0.6931471805599453f;  // ln(1/2)
-                    float d = bb - a;
-                    float fr = (abs(d) > 1e-20f) ? (c - a) / d : 0.0f;
-                    median_depth =
-                        median_prev_z + (color_depth - median_prev_z) * fr;
+                        if (next_T > 1e-4f) {
+                            float vis = alpha * T;
+                            float acc_depth = color_depth;
+                            if (kDistType != 0)
+                                acc_depth = log(max(color_depth, DEPTH_DIST_EPS));
+                            if (kDistType != 0) {
+                                pix2_rgb += color_rgb * color_rgb * vis;
+                                pix2_depth += acc_depth * acc_depth * vis;
+                            }
+                            pix_rgb += color_rgb * vis;
+                            pix_depth += acc_depth * vis;
+                            cur_idx = uint(batch_start) + t;
+                            T = next_T;
+                            contribution = vis;
+                        } else {
+                            done = true;
+                            InterlockedAdd(_done_count, 1);
+                        }
+                    }
                 }
-                median_prev_T = next_T;
-                median_prev_z = color_depth;
             }
-
-            if (next_T > 1e-4f) {
-                float vis = alpha * T;
-                float acc_depth = color_depth;
-                if (kDistType != 0)
-                    acc_depth = log(max(color_depth, DEPTH_DIST_EPS));
-                if (kDistType != 0) {
-                    pix2_rgb += color_rgb * color_rgb * vis;
-                    pix2_depth += acc_depth * acc_depth * vis;
-                }
-                pix_rgb += color_rgb * vis;
-                pix_depth += acc_depth * vis;
-                cur_idx = uint(batch_start) + t;
-                T = next_T;
-            } else {
-                done = true;
-                InterlockedAdd(_done_count, 1);
+            if (!is_null(p.splat_contribution)) {
+                float sum = WaveActiveSum(contribution);
+                if (WaveIsFirstLane())
+                    atomic_add_f32(p.splat_contribution + _batch_wi_ut[t], sum);
             }
         }
     }

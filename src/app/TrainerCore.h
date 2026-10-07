@@ -203,6 +203,7 @@ public:
 
     // Output-dir / config.json overrides, for a front-end that owns them.
     std::string out_dir_override;      // "" = derive from cfg
+    bool        create_output_dir = true;
     bool        write_config_json = true;
 
     // Filled by load_dataset().

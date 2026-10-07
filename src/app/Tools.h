@@ -51,6 +51,7 @@ inline std::string help_text(const char* text, const char* written_as) {
 // executables of earlier releases keep working).
 constexpr const char* kToolTrain = "train";
 constexpr const char* kToolMesh  = "mesh";
+constexpr const char* kToolSplat = "splat";
 constexpr const char* kToolSfm   = "sfm";
 constexpr const char* kToolSam   = "sam";
 constexpr const char* kToolGeometry = "geometry";
@@ -67,6 +68,9 @@ int spirula_train_main(int argc, char** argv);
 #endif
 #ifdef SS_TOOL_MESH
 int spirula_mesh_main(int argc, char** argv);
+#endif
+#ifdef SS_TOOL_SPLAT
+int spirula_splat_main(int argc, char** argv);
 #endif
 #ifdef SS_TOOL_SFM
 int spirula_sfm_main(int argc, char** argv);

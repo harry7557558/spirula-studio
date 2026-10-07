@@ -13,6 +13,7 @@ void rasterize_to_pixels_fwd_kernel_wrapper(
     const uint32_t N,
     const uint32_t n_isects,
     const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    float *__restrict__ splat_contribution,  // [N], optional
     const typename SplatPrimitive::WorldBuffer splat_wbuffer,
     const typename SplatPrimitive::ScreenBuffer splat_sbuffer,
     const uint32_t image_width,
@@ -36,6 +37,7 @@ inline void launch_rasterize_to_pixels_fwd_kernel(
     typename SplatPrimitive::WorldBuffer splats_w,
     typename SplatPrimitive::ScreenBuffer splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -63,6 +65,7 @@ inline void launch_rasterize_to_pixels_fwd_kernel(
         (cudaStream_t)0,
         I, N, n_isects,
         (uint32_t*)gaussian_ids.data_ptr(),
+        splat_contribution.data_ptr(),
         splats_w, splats_s,
         image_width,
         image_height,
@@ -94,6 +97,7 @@ inline std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -123,6 +127,7 @@ inline std::tuple<
     launch_rasterize_to_pixels_fwd_kernel<SplatPrimitive, dist_type, output_median>(
         num_splats,
         splats_w, splats_s, gaussian_ids,
+        splat_contribution,
         image_width,
         image_height,
         tile_offsets,
@@ -161,6 +166,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -184,7 +190,7 @@ std::tuple<
 #undef _DISPATCH_FWD
     return dispatch(
         num_splats,
-        splats_w, splats_s, gaussian_ids,
+        splats_w, splats_s, gaussian_ids, splat_contribution,
         image_width, image_height,
         tile_offsets, flatten_ids, macro_log2
     );
@@ -209,6 +215,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     // image size
     const uint32_t image_width,
     const uint32_t image_height,
@@ -232,7 +239,7 @@ std::tuple<
 #undef _DISPATCH_FWD
     return dispatch(
         num_splats,
-        splats_w, splats_s, gaussian_ids,
+        splats_w, splats_s, gaussian_ids, splat_contribution,
         image_width, image_height,
         tile_offsets, flatten_ids, macro_log2
     );

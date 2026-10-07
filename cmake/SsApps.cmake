@@ -110,6 +110,9 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
 
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/splat_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_SPLAT=1)
+
 if(SS_BUILD_SFM)
     # ---- structure from motion ----
     # The SfM module carries its own Vulkan context and SPIR-V and shares

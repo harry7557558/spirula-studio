@@ -15,17 +15,19 @@ namespace {
 // Mirrors RasterFwd2dParams in shaders/rasterize_fwd.slang.
 struct RasterFwd2dParams {
     uint64_t s_screen;
+    uint64_t gaussian_ids, splat_contribution;
     uint64_t tile_offsets, flatten_ids;
     uint64_t out_rgb, out_depth, out_T, out_last_ids;
     uint64_t dist_rgb, dist_depth, out_median;
-    uint32_t I, n_isects, width, height, tile_width, tile_height, macro_log2;
+    uint32_t I, N, n_isects, width, height, tile_width, tile_height, macro_log2;
 };
-static_assert(sizeof(RasterFwd2dParams) == 10 * 8 + 7 * 4 + 4 /*pad*/,
+static_assert(sizeof(RasterFwd2dParams) == 12 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RasterFwd3dgutParams in shaders/rasterize_fwd.slang.
 struct RasterFwd3dgutParams {
     uint64_t means, quats, scales, gaussian_ids;
+    uint64_t splat_contribution;
     uint64_t s_screen;
     uint64_t viewmats, intrins, dist_coeffs, aabb;
     uint64_t tile_offsets, flatten_ids;
@@ -34,7 +36,7 @@ struct RasterFwd3dgutParams {
     uint32_t I, N, n_isects, width, height, tile_width, tile_height,
         macro_log2;
 };
-static_assert(sizeof(RasterFwd3dgutParams) == 18 * 8 + 8 * 4,
+static_assert(sizeof(RasterFwd3dgutParams) == 19 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 struct RasterOutputs {
@@ -107,6 +109,9 @@ std::tuple<RenderOutput::TensorTuple, DeviceTensor3D<float>,
            DeviceTensor3D<int32_t>, RenderOutput::TensorTuple,
            DeviceTensor3D<float>>
 launch_raster_2d_fwd(
+    int64_t num_splats,
+    const DeviceVector<int32_t>& gaussian_ids,
+    const DeviceVector<float>& splat_contribution,
     std::vector<DeviceTensorFloatND>& splats_s,
     const uint32_t image_width, const uint32_t image_height,
     const DeviceTensor3D<int32_t>& tile_offsets,
@@ -124,6 +129,8 @@ launch_raster_2d_fwd(
 
     RasterFwd2dParams p{};
     p.s_screen = (uint64_t)sb.raw_data();
+    p.gaussian_ids = (uint64_t)gaussian_ids.data_ptr();
+    p.splat_contribution = (uint64_t)splat_contribution.data_ptr();
     p.tile_offsets = (uint64_t)tile_offsets.data_ptr();
     p.flatten_ids = (uint64_t)flatten_ids.data_ptr();
     p.out_rgb = (uint64_t)std::get<0>(o.renders).data_ptr();
@@ -134,6 +141,7 @@ launch_raster_2d_fwd(
     p.dist_depth = (uint64_t)std::get<1>(o.distortions).data_ptr();
     p.out_median = (uint64_t)o.render_median.data_ptr();
     p.I = (uint32_t)batch;
+    p.N = gaussian_ids.data_ptr() ? 0u : (uint32_t)num_splats;
     p.n_isects = (uint32_t)flatten_ids.size();
     p.width = image_width;
     p.height = image_height;
@@ -142,7 +150,8 @@ launch_raster_2d_fwd(
     p.macro_log2 = (uint32_t)macro_log2;
 
     backend::vk::SpecList spec{0u, dist_spec(dist_type),
-                               output_median ? 1u : 0u};
+                               output_median ? 1u : 0u,
+                               gaussian_ids.data_ptr() ? 1u : 0u};
     static_assert(sizeof(RasterFwd2dParams) <= 128,
                   "must stay under the push-constant floor");
     dispatch_raster_push("rasterize_fwd.rasterize_fwd_2d", spec,
@@ -168,6 +177,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     const uint32_t image_width,
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
@@ -176,10 +186,9 @@ std::tuple<
     DistortionType dist_type,
     bool output_median
 ) {
-    // The 2D fragment reads only the screen buffer; num_splats /
-    // gaussian_ids / splats_w never reach the kernel (as in the CUDA path).
-    (void)num_splats; (void)splats_w; (void)gaussian_ids;
-    return launch_raster_2d_fwd(splats_s, image_width, image_height,
+    (void)splats_w;
+    return launch_raster_2d_fwd(num_splats, gaussian_ids, splat_contribution,
+                                splats_s, image_width, image_height,
                                 tile_offsets, flatten_ids, macro_log2, dist_type,
                                 output_median);
 }
@@ -195,6 +204,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     const uint32_t image_width,
     const uint32_t image_height,
     const DeviceTensor3D<int32_t> tile_offsets,
@@ -203,8 +213,9 @@ std::tuple<
     DistortionType dist_type,
     bool output_median
 ) {
-    (void)num_splats; (void)splats_w; (void)gaussian_ids;
-    return launch_raster_2d_fwd(splats_s, image_width, image_height,
+    (void)splats_w;
+    return launch_raster_2d_fwd(num_splats, gaussian_ids, splat_contribution,
+                                splats_s, image_width, image_height,
                                 tile_offsets, flatten_ids, macro_log2, dist_type,
                                 output_median);
 }
@@ -222,6 +233,7 @@ std::tuple<
     std::vector<DeviceTensorFloatND> splats_w,
     std::vector<DeviceTensorFloatND> splats_s,
     DeviceVector<int32_t> gaussian_ids,
+    DeviceVector<float> splat_contribution,
     TorchTensorView viewmats,  // [..., C, 4, 4]
     TorchTensorView intrins,  // [..., C, 4], fx, fy, cx, cy
     const std::string camera_model,
@@ -253,6 +265,7 @@ std::tuple<
     p.quats = (uint64_t)wb.raw_data(1);
     p.scales = (uint64_t)wb.raw_data(2);
     p.gaussian_ids = (uint64_t)gaussian_ids.data_ptr();
+    p.splat_contribution = (uint64_t)splat_contribution.data_ptr();
     p.s_screen = (uint64_t)sb.raw_data();
     p.viewmats = std::get<0>(viewmats);
     p.intrins = std::get<0>(intrins);

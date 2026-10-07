@@ -129,6 +129,8 @@ int main(int argc, char** argv) {
     float* d_intr = upload(intr);
     float* d_dist = upload(dist);
     float* d_radii = (float*)backend::device_malloc(N * sizeof(float));
+    float* d_contribution =
+        (float*)backend::device_malloc(N * sizeof(float));
 
     std::vector<DeviceTensorFloatND> in_splats = {
         DeviceTensorFloatND(ttv(d_means, {N, 3, 1})),
@@ -139,6 +141,7 @@ int main(int argc, char** argv) {
         DeviceTensorFloatND(ttv(d_sh, {N, NUM_SH * 3, 1})),
     };
     DeviceVector<float> radii(ttv(d_radii, {N, 1}));
+    DeviceVector<float> contribution(ttv(d_contribution, {N, 1}));
 
     const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
                            "EQUIRECTANGULAR"};
@@ -204,6 +207,7 @@ int main(int argc, char** argv) {
 
     for (const Cfg& cfg : cfgs) {
         backend::memset_sync(d_radii, 0, N * sizeof(float));
+        backend::memset_sync(d_contribution, 0, N * sizeof(float));
 
         // --- projection ---
         std::vector<DeviceTensorFloatND> splats_s;
@@ -271,7 +275,7 @@ int main(int argc, char** argv) {
             rout;
         if (cfg.prim == 2) {
             rout = rasterize_to_pixels_3dgut_fwd(
-                N, in_splats, splats_s, gauss_ids,
+                N, in_splats, splats_s, gauss_ids, contribution,
                 ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
@@ -280,7 +284,8 @@ int main(int argc, char** argv) {
         } else {
             auto fn = cfg.prim == 0 ? rasterize_to_pixels_3dgs_fwd
                                     : rasterize_to_pixels_mip_fwd;
-            rout = fn(N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
+            rout = fn(N, in_splats, splats_s, gauss_ids, contribution,
+                      W, H, tile_offsets,
                       flatten_ids, macro_log2, cfg.dt, cfg.median);
         }
         backend::device_synchronize();
@@ -303,6 +308,7 @@ int main(int argc, char** argv) {
                      n_pix * 3);
         if (dist_has_depth(cfg.dt))
             readback(acc, std::get<1>(distortions).data_ptr(), n_pix);
+        readback(acc, d_contribution, N);
         readback(acc, d_radii, N);
     }
 

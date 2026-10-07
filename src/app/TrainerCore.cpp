@@ -1127,12 +1127,14 @@ void TrainerSession::setup_engine() {
         out_dir = fs::path(cfg.output_dir_prefix) /
                   (fs::path(cfg.data).stem().string() + "_" + stamp);
     }
-    fs::create_directories(out_dir);
-    if (write_config_json) {
-        save_config_json(cfg, out_dir, preset);
-        save_scene_transform_json(ds, cfg, out_dir);
+    if (create_output_dir) {
+        fs::create_directories(out_dir);
+        if (write_config_json) {
+            save_config_json(cfg, out_dir, preset);
+            save_scene_transform_json(ds, cfg, out_dir);
+        }
+        log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
     }
-    log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
 
     // ---- Engine setup -------------------------------------------------
     engine_reset();

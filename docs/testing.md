@@ -151,7 +151,85 @@ display (`DISPLAY=:0`).
 A scripted run that serves the viewer needs **`--keep-viewer-alive 0`**, or
 the process hangs at exit waiting on it.
 
-## 3. What is gone
+## 3. Post-training splat compression
+
+`spirula splat prune` writes a derived PLY without changing the checkpoint it
+reads. It can retain the splats with the greatest rendered contribution,
+discard splats below an opacity threshold, and lower the SH degree. The
+contribution pass needs the training dataset; opacity and SH-only changes do
+not.
+
+```bash
+# Keep the 50% of splats with the greatest accumulated rendered contribution.
+./build_vulkan/spirula splat prune run/step-000010000.ckpt \
+    --data dataset --max-cameras 20 --keep-fraction 0.5 \
+    --output compressed.ply
+
+# Keep the geometry but lower degree-3 SH to degree 1.
+./build_vulkan/spirula splat prune run/step-000010000.ckpt \
+    --sh-degree 1 --output sh1.ply
+
+# Render both models from the same training cameras and report image drift.
+./build_vulkan/spirula splat compare run/step-000010000.ckpt sh1.ply \
+    --data dataset --max-cameras 20
+
+# Compare one model's renders to the source photographs on training cameras.
+./build_vulkan/spirula splat evaluate sh1.ply \
+    --data dataset --max-cameras 20
+
+# Use the parser's held-out validation split, when validation_fraction is set.
+./build_vulkan/spirula splat evaluate sh1.ply \
+    --data dataset --split validation --max-cameras 20
+
+# A standalone Mip or 3DGUT model has no config.json to identify its renderer.
+./build_vulkan/spirula splat evaluate mip-model.ply \
+    --data dataset --primitive mip --max-cameras 20
+```
+
+`splat compare` reports mean L1, global PSNR, and mean per-view SSIM. It
+splits wide-angle cameras exactly as the trainer does, so one source camera
+may contribute several views. Use it first with the same model twice: L1 must
+be zero, PSNR infinite, and SSIM one. Then compare the original checkpoint to
+the derived PLY before accepting the compression settings. The command writes
+no render files.
+
+`splat evaluate` measures the rendered model against the dataset's source
+images at the same training camera poses. It prints both raw and
+colour-corrected L1 / PSNR / SSIM, and reuses the trainer's image decoding,
+masks, and wide-camera warp rather than reconstructing a reference image on
+the host. This is a reconstruction-quality score; use it beside `splat
+compare`, which instead isolates the error introduced by compression. A
+training-camera score is intentionally optimistic. When the run configuration
+sets `validation_fraction`, `--split validation` uses that held-out partition
+through the same data path; otherwise it reports that the selected split is
+empty. It does not yet claim to evaluate a separate dataset-specific test
+split. Commands read the training primitive from `config.json`; for a
+standalone model without that file, pass `--primitive 3dgs`, `--primitive mip`,
+or `--primitive 3dgut`. The explicit flag also overrides the saved setting.
+
+### Compression benchmark
+
+The following fixed setting keeps 60% of contribution-ranked splats and reduces
+degree-3 SH to degree 2. Each result uses 20 source cameras.
+
+| Dataset / camera | Training primitive | Size (MB) | Splats | PSNR (dB) | SSIM |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Garden / pinhole | Mip, original | 248.0 | 999,991 | 23.5705 | 0.728546 |
+| Garden / pinhole | Mip, compressed | 98.4 | 599,995 | 23.0416 | 0.715456 |
+| indoor6k / equirectangular | 3DGS, original | 682.2 | 2,750,944 | 23.5934 | 0.883878 |
+| indoor6k / equirectangular | 3DGS, compressed | 270.7 | 1,650,567 | 23.0256 | 0.877304 |
+| indoor6k / dual fisheye | 3DGS, original | 743.6 | 2,998,224 | 19.0179 | 0.822091 |
+| indoor6k / dual fisheye | 3DGS, compressed | 295.0 | 1,798,935 | 18.9376 | 0.820310 |
+| Garden / pinhole | 3DGUT, original (3k steps, 1/2 resolution) | 105.7 | 446,978 | 22.1390 | 0.635582 |
+| Garden / pinhole | 3DGUT, compressed (3k steps, 1/2 resolution) | 41.9 | 268,187 | 22.0616 | 0.628453 |
+
+The 3DGUT rows use the same 60% contribution-ranked splats and degree-3 to
+degree-2 SH reduction, but are an independent smoke run rather than a
+like-for-like comparison with the 7,000-step Garden Mip run above. On its 20
+source cameras, the compressed 3DGUT model differs from the original by
+37.5592 dB PSNR and 0.987195 SSIM.
+
+## 4. What is gone
 
 The Python suite this document used to describe -- `tests/python/`, the
 dataparser and step-config goldens, the trainer and web-viewer gates -- was
