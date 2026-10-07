@@ -2,6 +2,7 @@
 
 #include "app/gui/edit/Selection.h"
 
+#include <cstddef>
 #include <algorithm>
 
 namespace gui {

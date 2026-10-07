@@ -5,6 +5,7 @@
 // supports cooperative cancellation (the process is killed). GUI-free: the
 // CLI's ffmpeg decoder (app/FfmpegVideo.h) links it too.
 
+#include <cstddef>
 #include <atomic>
 #include <functional>
 #include <memory>

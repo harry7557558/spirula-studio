@@ -4,6 +4,7 @@
 
 #include "core/Similarity.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <chrono>
 #include <cmath>

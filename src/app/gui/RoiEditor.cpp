@@ -15,6 +15,7 @@
 #include "imgui.h"
 #include "imgui_stdlib.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <array>
 #include <cfloat>

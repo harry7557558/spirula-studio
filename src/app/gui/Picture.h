@@ -11,6 +11,7 @@
 // thread, with a box filter, once per picture. stb's buffers are read in place
 // and the mask is decoded only once the photo is boxed, so the two never coexist.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>

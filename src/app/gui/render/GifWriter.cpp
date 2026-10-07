@@ -2,6 +2,7 @@
 
 #include "app/gui/render/GifWriter.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <cmath>
 #include <cstring>

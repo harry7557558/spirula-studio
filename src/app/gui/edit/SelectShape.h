@@ -9,6 +9,7 @@
 // a demo: front-most only, and a depth range; without them a lasso around a
 // chair also takes the wall behind it.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 

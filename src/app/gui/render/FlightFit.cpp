@@ -4,6 +4,7 @@
 
 #include "app/gui/render/Trajectory.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <cmath>
 

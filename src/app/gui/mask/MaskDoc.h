@@ -11,6 +11,7 @@
 #include "core/ImageOrient.h"
 #include "sfm/core/Exif.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>

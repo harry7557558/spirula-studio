@@ -20,6 +20,7 @@
 #include "data/FrustumTemplate.h"
 #include "i18n/Message.h"
 
+#include <cstddef>
 #include <atomic>
 #include <functional>
 #include <map>

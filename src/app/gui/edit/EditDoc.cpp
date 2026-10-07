@@ -4,6 +4,7 @@
 
 #include "i18n/catalog/Edit.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <cmath>
 

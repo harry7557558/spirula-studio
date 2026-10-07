@@ -7,6 +7,7 @@
 #include "app/gui/edit/Selection.h"
 #include "i18n/catalog/MaskEdit.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>

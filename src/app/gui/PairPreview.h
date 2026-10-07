@@ -18,6 +18,7 @@
 
 #include "imgui.h"
 
+#include <cstddef>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>

@@ -11,6 +11,7 @@
 #include "mesh/MeshExport.h"
 #include "i18n/catalog/EditAttributes.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <cmath>
 #include <limits>

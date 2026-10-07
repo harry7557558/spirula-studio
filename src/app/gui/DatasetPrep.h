@@ -19,6 +19,7 @@
 #include "app/gui/FilmReel.h"
 #include "app/gui/PrepProgress.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <atomic>
 #include <cstdio>

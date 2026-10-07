@@ -7,6 +7,7 @@
 // lets "box, minus a brush stroke, intersected with a depth range" work
 // without the tools knowing about each other.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 

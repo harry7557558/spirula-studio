@@ -16,6 +16,7 @@
 #include "data/SceneCenter.h"
 #include "i18n/Message.h"
 
+#include <cstddef>
 #include <atomic>
 #include <cstdint>
 #include <functional>

@@ -6,6 +6,7 @@
 // depth with the engine's own stencil (shaders/pixel_wise.slang
 // points_to_normal), so they mean what the trainer's depth normals mean.
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 

@@ -10,6 +10,7 @@
 #include "app/gui/ViewportInput.h"
 #include "app/gui/mask/PathTool.h"
 
+#include <cstddef>
 #include <vector>
 
 namespace gui {

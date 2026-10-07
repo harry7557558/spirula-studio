@@ -12,6 +12,7 @@
 #include "app/gui/render/TransitionFx.h"
 #include "data/DatasetParser.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <array>
 #include <cmath>

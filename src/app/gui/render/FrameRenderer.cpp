@@ -8,6 +8,7 @@
 #include "checkpoint/SplatPly.h"
 #include "engine/Engine.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <chrono>
 #include <cmath>

@@ -5,6 +5,7 @@
 // off the UI thread drops what is no longer on disk -- a share that has gone
 // away can take a network timeout to say so.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <memory>

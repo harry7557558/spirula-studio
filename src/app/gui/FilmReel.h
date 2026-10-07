@@ -16,6 +16,7 @@
 #include "app/gui/Picture.h"
 #include "app/gui/SfmProgress.h"    // KeyPoint2D
 
+#include <cstddef>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>

@@ -11,6 +11,7 @@
 // SfmRunner fills it by parsing the child's stdout; when the SfM module
 // becomes a library (docs/notes/sfm-port-plan.md phase 3) only that parser goes.
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <string>

@@ -16,6 +16,7 @@
 #include "app/gui/mask/PathTool.h"
 #include "app/gui/mask/PenTool.h"
 
+#include <cstddef>
 #include <algorithm>
 #include <atomic>
 #include <chrono>

@@ -33,6 +33,7 @@
 #include "imgui.h"
 #include "imgui_stdlib.h"
 
+#include <cstddef>
 #include <cfloat>
 #include <string>
 #include <vector>
