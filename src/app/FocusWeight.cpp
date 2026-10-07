@@ -13,6 +13,10 @@ namespace {
 constexpr std::array<double, 5> kScales = {1.0, 1.4, 2.0, 2.8, 4.0};
 constexpr int kDetect = 2;   // kScales[kDetect] == 2.0
 constexpr double kMinSnr = 4.0, kScaleSnr = 2.0, kMaxResidual = 0.12;
+// Blur below kMinSigma is a failed step-edge fit (texture finer than the smoothing
+// scales gives a negative variance), not an edge; kMinFloor is the sharpest an edge
+// comes out after lens, demosaicing and downsample, so ordinary sharpness is not defocus.
+constexpr double kMinSigma = 0.2, kMinFloor = 0.35;
 
 using Plane = std::vector<float>;
 
@@ -418,7 +422,7 @@ FocusCurve fit_focus_curve(const FocusEdges& e, int mw, int mh, const Plane& inv
     std::vector<std::vector<std::pair<float, float>>> slice(kBins);
     for (size_t k = 0; k < e.y.size(); ++k) {
         const int y = e.y[k], x = e.x[k];
-        if (!(vm[(size_t)y * mw + x] > 0.99f)) continue;
+        if (!(vm[(size_t)y * mw + x] > 0.99f) || e.sigma[k] < kMinSigma) continue;
         float lo = 1e30f, hi = -1e30f;
         for (int yy = std::max(0, y - R); yy <= std::min(mh - 1, y + R); ++yy)
             for (int xx = std::max(0, x - R); xx <= std::min(mw - 1, x + R); ++xx) {
@@ -505,8 +509,8 @@ std::vector<uint8_t> render_focus_weight(const FocusCurve& c, const Plane& inv_d
     Plane wgt((size_t)dw * dh, 0.0f);
     for (size_t i = 0; i < wgt.size(); ++i) {
         if (!(u[i] > 0)) continue;
-        const double b = blur_at(c, u[i]);
-        const double d = std::sqrt(std::max(b * b - c.b0 * c.b0, 0.0)) * to_train;
+        const double b = blur_at(c, u[i]), floor = std::max(c.b0, kMinFloor);
+        const double d = std::sqrt(std::max(b * b - floor * floor, 0.0)) * to_train;
         const double t = (d / std::max((double)s.allowed_px, 1e-6) - 1.0) / s.softness;
         wgt[i] = (float)std::clamp((0.5 - 0.5 * std::tanh(1.5 * t)) / top, 0.0, 1.0);
     }
