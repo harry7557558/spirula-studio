@@ -5872,13 +5872,18 @@ void GuiApp::draw_geometry_options() {
     ui::Checkbox(dmsg::geom_write_depth, &_geometry.want_depth);
     ui::help_on_hover(gmsg::opt_depth);
     ImGui::SameLine();
-    ui::Checkbox(dmsg::geom_write_focus, &_geometry.want_focus);
+    // Focus weights were validated on MoGe-2 large depth, so ticking them
+    // selects it; the user can still pick another model afterwards.
+    if (ui::Checkbox(dmsg::geom_write_focus, &_geometry.want_focus) && _geometry.want_focus)
+        _geometry.model = "moge2-vitl";
     ui::help_on_hover(dmsg::geom_write_focus_help);
     if (_geometry.want_focus) {
         ImGui::SetNextItemWidth(px(220.0f));
         if (ui::InputFloat(dmsg::geom_focus_allowed, &_geometry.focus_allowed, 0.1f))
             _geometry.focus_allowed = std::clamp(_geometry.focus_allowed, 0.2f, 8.0f);
         ui::help_on_hover(fmsg::opt_allowed);
+        if (_geometry.model != "moge2-vitl")
+            ui::TextColoredWrapped(kWarn, dmsg::geom_focus_prefers_large);
     }
     if (!_geometry.want_normal && !_geometry.want_depth && !_geometry.want_focus)
         ui::TextColoredWrapped(kWarn, dmsg::geom_nothing_to_write);

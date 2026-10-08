@@ -13802,6 +13802,35 @@ SS_MSG(geom_write_focus_help,
        "yazar: odak dışı pikseller eğitimde daha az sayılır, daha az bulanık "
        "Gauss ve yüzen parça bırakır. Derinlik haritaları da yazılır."));
 
+SS_MSG(geom_focus_prefers_large,
+    EN("Focus weights were tuned on MoGe-2 large depth; other models give "
+       "rougher depth and less reliable weights."),
+    JA("ピント重みは MoGe-2 ラージの深度で調整されています。他のモデルでは深度が"
+       "粗く、重みの信頼性も下がります。"),
+    ZH_HANS("实焦权重是按 MoGe-2 大 的深度调校的；其他模型深度更粗，权重也更不可靠。"),
+    ZH_HANT("實焦權重是按 MoGe-2 大 的深度調校的；其他模型深度更粗，權重也更不可靠。"),
+    KO("초점 가중치는 MoGe-2 라지 깊이에 맞춰 조정되었습니다. 다른 모델은 깊이가 "
+       "거칠고 가중치도 덜 믿을 만합니다."),
+    DE("Die Schärfegewichte wurden auf MoGe-2-Large-Tiefe abgestimmt; andere "
+       "Modelle liefern gröbere Tiefe und weniger verlässliche Gewichte."),
+    FR("Les poids de netteté ont été réglés sur la profondeur de MoGe-2 large ; "
+       "les autres modèles donnent une profondeur plus grossière et des poids "
+       "moins fiables."),
+    ES("Los pesos de enfoque se ajustaron con la profundidad de MoGe-2 large; "
+       "otros modelos dan una profundidad más tosca y pesos menos fiables."),
+    PT("Os pesos de foco foram ajustados com a profundidade do MoGe-2 large; "
+       "outros modelos dão profundidade mais grosseira e pesos menos "
+       "confiáveis."),
+    IT("I pesi di messa a fuoco sono stati tarati sulla profondità di MoGe-2 "
+       "large; altri modelli danno una profondità più grossolana e pesi meno "
+       "affidabili."),
+    NL("De scherptegewichten zijn afgestemd op MoGe-2 large-diepte; andere "
+       "modellen geven grovere diepte en minder betrouwbare gewichten."),
+    RU("Веса резкости настроены по глубине MoGe-2 large; другие модели дают "
+       "более грубую глубину и менее надёжные веса."),
+    TR("Odak ağırlıkları MoGe-2 large derinliğiyle ayarlandı; diğer modeller "
+       "daha kaba derinlik ve daha az güvenilir ağırlıklar verir."));
+
 SS_MSG(geom_focus_allowed,
     EN("Allowed blur (px)"),
     JA("許容ぼけ (px)"),   ZH_HANS("允许模糊 (px)"), ZH_HANT("允許模糊 (px)"),
