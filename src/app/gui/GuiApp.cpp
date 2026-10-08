@@ -3506,11 +3506,14 @@ void GuiApp::draw_home() {
                   FileDialog::Mode::Folder);
     }
     ui::help_on_hover(msg::home_open_dataset_help);
-    ImGui::BeginDisabled(native_work_busy() || training_busy());
-    if (ui::Button(msg::resume_training, ImVec2(-1, bh)))
-        open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
-    ImGui::EndDisabled();
-    ui::help_on_hover_disabled(msg::resume_training_help);
+    // Only runs saved with full checkpoints can resume; File menu still has it.
+    if (_keep_full_ckpt) {
+        ImGui::BeginDisabled(native_work_busy() || training_busy());
+        if (ui::Button(msg::resume_training, ImVec2(-1, bh)))
+            open_pick(PickAction::ResumeRun, msg::resume_training.get(), FileDialog::Mode::Folder);
+        ImGui::EndDisabled();
+        ui::help_on_hover_disabled(msg::resume_training_help);
+    }
 
     // Photos and video are one screen and one input list: a capture can hold
     // both, so splitting the entry point in two only asked a question with no
