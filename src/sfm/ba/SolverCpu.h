@@ -24,7 +24,7 @@
 #include "sfm/ba/Priors.h"
 #include "sfm/ba/Problem.h"
 #include "core/Env.h"
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Log.h"
 
@@ -334,7 +334,7 @@ private:
     }
 
     static double defaultBudgetMB() {
-        const size_t ram = sfm::physicalRamBytes();
+        const size_t ram = spirula::physicalRamBytes();
         // Half the machine, not nine tenths of it: unlike a GPU heap this is
         // shared with the rest of the pipeline (features, matches, the
         // reconstruction) and with the page cache.

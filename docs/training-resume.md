@@ -35,11 +35,16 @@ holds everything needed to continue: the world parameters, optimizer state and
 (`save_full_checkpoint`) is set to, because stopping early means you intend to
 come back.
 
-Periodic checkpoints, and the final one of a run that reached its step count,
-follow `save_full_checkpoint`. With it off they are smaller, without optimizer
-state: they hold the finished splats for viewing, export and meshing, but
-cannot continue training. Turn it on if you want to be able to continue
-from an intermediate save, for example after a crash.
+While only the newest checkpoint is kept (`save_only_latest_checkpoint`, the
+default), each periodic checkpoint holds the optimizer state too, so a run that
+crashed or was killed continues from its last save. It is replaced by the next
+one, so this costs disk space only until the run ends: with a 1M-splat cap it
+is about 330 MB, since it stores every splat slot.
+
+The final checkpoint of a run that reached its step count, and the older
+checkpoints kept when only the newest is not, follow `save_full_checkpoint`.
+With it off they are smaller, without optimizer state: they hold the finished
+splats for viewing, export and meshing, but cannot continue training.
 
 **Stop without saving** writes nothing, and `steps_per_save = 0` disables
 checkpoints entirely, including the one on stop.
@@ -55,3 +60,8 @@ The first form picks the latest checkpoint in the run. Settings come from the
 run's `config.json`; any flag given explicitly on the command line overrides
 them, and `--preset` re-applies a preset's overrides. The GUI uses the same
 code path (`ckpt::build_resume_config`, `src/checkpoint/Resume.h`).
+
+Ctrl-C during `spirula train` works like **Stop and Save**: the current step
+finishes, a resumable checkpoint is written and the command prints the line
+that continues it. A second Ctrl-C quits at once without saving. With
+`steps_per_save = 0` there is nothing to save, and Ctrl-C quits at once.

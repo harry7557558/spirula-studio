@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 #include "core/Env.h"
+#include "core/GpuStall.h"
 #include "core/VulkanDeviceSelection.h"
 #include "core/VulkanMemoryBudget.h"
 
@@ -601,8 +602,8 @@ void Context::init() {
 
     // Poll-based waits by default on real GPUs; SS_VK_POLL_WAIT=0/1
     // forces either mode (mainly for A/B timing).
-    _poll_waits =
-        probe.props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU;
+    _cpu_device = probe.props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+    _poll_waits = !_cpu_device;
     if (const char* env = spirula::env("VK_POLL_WAIT"); env && env[0])
         _poll_waits = env[0] != '0';
 
@@ -698,13 +699,9 @@ bool Context::wait(uint64_t value) {
     wi.semaphoreCount = 1;
     wi.pSemaphores = &_timeline;
     wi.pValues = &value;
-    // Waited in slices: after a driver reset, an unbounded wait can block forever
-    // instead of reporting the lost device. Windows resets any job running past
-    // two seconds, so a minute in which no work finishes means the GPU is gone.
-    uint64_t seen = 0;
-    auto progressed = std::chrono::steady_clock::now();
+    spirula::GpuStallWatch watch(_cpu_device);
     for (;;) {
-        VkResult r = vkWaitSemaphores(_device, &wi, 1000000000ull);
+        VkResult r = vkWaitSemaphores(_device, &wi, spirula::GpuStallWatch::kSliceNs);
         if (r == VK_SUCCESS) return true;
         if (r != VK_TIMEOUT) {
             set_error("vkWaitSemaphores failed", r);
@@ -716,13 +713,10 @@ bool Context::wait(uint64_t value) {
             set_error("vkGetSemaphoreCounterValue failed", r);
             return false;
         }
-        const auto now = std::chrono::steady_clock::now();
-        if (current != seen) {
-            seen = current;
-            progressed = now;
-        } else if (now - progressed > std::chrono::seconds(60)) {
+        if (watch.stalled(current)) {
             set_error("the GPU stopped responding: no work finished for a minute (the driver may have "
-                      "reset it, often after running out of GPU memory)", VK_ERROR_DEVICE_LOST);
+                      "reset it, often after running out of GPU memory; SS_GPU_STALL_SECONDS sets the wait)",
+                      VK_ERROR_DEVICE_LOST);
             return false;
         }
     }

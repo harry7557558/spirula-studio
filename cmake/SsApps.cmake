@@ -48,6 +48,19 @@ function(ss_configure_app target)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# ss_dense -- the dense point cloud's host core (src/dense/), for every app and
+# test. Kept out of the engine library: it builds on sfm/'s header-only
+# geometry and roma/'s option types, which the trainer must not reach.
+# ---------------------------------------------------------------------------
+file(GLOB SS_DENSE_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/dense/*.cpp)
+add_library(ss_dense STATIC ${SS_DENSE_SOURCES})
+target_include_directories(ss_dense PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR} ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(ss_dense PUBLIC ${SS_APP_LIBS})
+target_compile_options(ss_dense PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+set_property(TARGET ss_dense PROPERTY CXX_STANDARD 17)
+set(SS_APP_LIBS ss_dense ${SS_APP_LIBS})
+
+# ---------------------------------------------------------------------------
 # Which tools this build has
 #
 # Each block appends the tool's sources, the macro that declares its entry

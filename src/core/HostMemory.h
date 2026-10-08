@@ -15,7 +15,7 @@
 #include <unistd.h>
 #endif
 
-namespace sfm {
+namespace spirula {
 
 inline size_t physicalRamBytes() {
 #if defined(_WIN32)
@@ -69,4 +69,4 @@ inline size_t processRamBytes() {
     return 0;
 }
 
-}  // namespace sfm
+}  // namespace spirula

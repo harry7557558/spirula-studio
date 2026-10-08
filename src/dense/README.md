@@ -86,7 +86,7 @@ message in `i18n/catalog/Dense.h`, a round trip in
 | `src/app/gui/DenseRunner.cpp` | Launches the child and parses its translated progress lines. |
 | `src/app/gui/DenseMemoryView.h/.cpp` | Memory risk tag, RAM/VRAM bars and the projection card in the strip above the log. |
 | `src/data/CameraMath.h/.cpp` | Shared host camera models: every projection, inverse and Jacobian used here. |
-| `src/sfm/core/HostMemory.h` | Physical, available and per-process RAM. |
+| `src/core/HostMemory.h` | Physical, available and per-process RAM. |
 | `src/i18n/catalog/Dense.h` | Every dense message and tooltip, in 13 languages. |
 | `src/roma/` | The native RoMa v2 matcher (`Session`, model, shaders). |
 | `tools/roma/*.py` | Hand-run reference comparisons. Never a build or runtime dependency. |
@@ -119,13 +119,28 @@ and any fitted source lens (`source_model`), and RoMa sees the original pixels
 resized only to its grid. Faces from one image share `source_image`, so they
 never count as independent support.
 
-**Pairs.** Source automatic mode picks `reference_fraction` of the images by
-farthest-point coverage in pose space and emits directed reference→neighbour
-jobs ranked by shared sparse tracks, then pose affinity. Its sequential,
-exhaustive and explicit modes emit both directed jobs. Rectified jobs are
+**Pairs.** Rectified automatic mode pairs *views*: every face of a split lens
+is a `PairImage` of its own (`face` > 0), faces of one image are never paired,
+and split faces pair only through shared sparse points. A reference's
+candidates come from the inverted track index, each shared point weighted by
+`min(1, (angle/10°)²)` of the angle the two centres see it from, and from a
+kd-tree over camera centres when tracks run short, so nothing loops over all
+view pairs. `reference_coverage` (C) walks views in capture order and keeps a
+view as a reference only while a tenth of its sparse-point cells (2% of the
+median view depth) are seen by fewer than C earlier references; views with
+under 32 cells always stay. Source automatic
+mode picks `reference_fraction` of the images by farthest-point coverage in
+pose space and emits directed reference→neighbour jobs. Its sequential,
+exhaustive and explicit modes emit both directed jobs, and in rectified mode
+expand image pairs to every overlapping face pair. Rectified jobs are
 undirected; `add_pair` reconstructs both directions from one prediction. Jobs
 are sorted on disk; a reference is complete when its last job has been
 consumed.
+
+**Faces.** Dense plans `GeometryWarp` with `FaceLayout::Cube`: upright front,
+side and (past 270°) back faces cropped to the visible lens, so a fisheye is
+five views rather than the geometry step's cross-fading ring of up to fifteen.
+Cube plans have no gather map; only the geometry step gathers.
 
 **Reference completion.** All of a reference's pairs land in disk tiles keyed
 by matcher pixel. On completion the reference is processed alone, so a

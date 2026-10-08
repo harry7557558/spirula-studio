@@ -48,8 +48,10 @@ Resolution changes only between epochs, full passes in which every training
 image is used once. A switch requested at a given step moves to the nearest
 epoch boundary, so every image is trained the same number of times at each
 resolution. The run log lists the planned stages when training starts and
-each switch when it happens. The step numbers are approximate, because an
-epoch's length can vary slightly with the batch packing.
+each switch when it happens, at the planned step. An epoch that would run past
+a switch ends there: this happens when batch packing makes a pass slightly
+uneven, and after resuming from a checkpoint saved mid-epoch, so a resumed run
+switches on the same steps as one that was never interrupted.
 
 With disk streaming (`cache_images disk`), steps decode in parallel and are
 used as they finish. Near a boundary, the steps still in the prefetch pipeline

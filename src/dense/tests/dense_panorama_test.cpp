@@ -41,7 +41,7 @@ int main() {
             v.camera.model = (int)CameraModelType::EQUIRECTANGULAR; v.camera.width = 64; v.camera.height = 32;
             v.camera.fx = v.camera.fy = 32 / 3.141592653589793; v.camera.cx = 32; v.camera.cy = 16; v.validate();
         }
-        DenseConfig config; config.preset = "custom"; config.matching_space = "source";
+        DenseConfig config; config.preset = "custom"; config.stride = 1; config.matching_space = "source";
         config.match.low_width = 64; config.match.low_height = 32; config.match.high_width = config.match.high_height = 0;
         config.match.bidirectional = true; config.samples_per_reference = 0; config.source_reprojection_error = 0.08;
         config.voxel_size = 0.01; config.cpu_workers = 1; config.image_cache_bytes = 32 * 1024;

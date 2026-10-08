@@ -829,6 +829,8 @@ private:
     // to skip. Separate from GeometryJob::overwrite so pressing the button
     // does not leave the option ticked for every run after it.
     bool _redo_geometry = false;
+    bool _redo_dense = false;
+    bool _dense_rebuild = false;   // this run matches again, ignoring saved pair predictions
     // Panel-level state, copied into whichever job runs. The inputs are kept as
     // the struct both runners take (PrepInput), so the panel edits the thing
     // that runs instead of a parallel copy of it: a video file or photo folder
@@ -910,9 +912,17 @@ private:
     DenseJob _dense;
     FileDownload _dense_download;
     std::string _dense_selected_seed;
-    std::string _dense_config_text, _dense_config_error;
+    std::string _dense_config_error;   // why the last advanced edit is invalid
     void draw_dense_options();
+    void draw_dense_advanced();
     void draw_train_mask_mode(float width);
+    void draw_seed_cloud(TrainRunner::Phase ph);
+    void draw_dataset_geometry();
+    bool dense_cloud_present();
+    std::string _dense_probe_data;     // dense_cloud_present()'s cache
+    double _dense_probe_time = -1.0;
+    bool _dense_probe_found = false;
+    bool _seed_other = false;          // "Other PLY file" picked, no file yet
     void request_dense_download();
     bool dense_model_missing() const;
     GeometryPanel _geometry_panel;

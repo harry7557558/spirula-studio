@@ -43,6 +43,10 @@ struct GeometryCamera {
 // measured gain (src/metric3d/README.md, "Face size").
 enum class FaceRes { Output, Source };
 
+// Ring: the overlapping faces a monocular network needs to cross-fade. Cube: upright
+// front, side and back faces, each cropped to what the lens holds -- fewer views to match.
+enum class FaceLayout { Ring, Cube };
+
 class GeometryWarp {
 public:
     // Split faces: `res`'s density, raised toward `min_face_px` pixels (never
@@ -50,7 +54,7 @@ public:
     // `patch`. Throws std::runtime_error when nothing is visible.
     void plan(const GeometryCamera& cam, int out_w, int out_h, bool split, int patch,
               int max_face, FaceRes res = FaceRes::Output, int64_t min_face_px = 0,
-              bool source_indices = false);
+              bool source_indices = false, FaceLayout layout = FaceLayout::Ring);
 
     bool split() const { return faces_.size() > 1; }
     int  faces() const { return (int)faces_.size(); }

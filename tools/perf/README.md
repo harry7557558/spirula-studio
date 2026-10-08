@@ -7,12 +7,16 @@ the disk, or other per-step host work.
 
 Tick **Log performance stats** in the run settings (`--log-performance true`
 on the command line). From setup to the end of training, Spirula records once
-a second into `<run folder>/perf/`, and the log names the folder and the
-report command when the run ends:
+a second into a new `<run folder>/perf/<date-time>/` folder, and the log names
+the folder and the report command when the run ends:
 
 ```text
-python tools/perf/perf_report.py <run folder>/perf
+python tools/perf/perf_report.py <run folder>/perf/<date-time>
 ```
+
+Resuming a run in the same folder starts another session beside the earlier
+ones. Given `<run folder>/perf` itself, the report reads the newest session and
+names the others.
 
 It prints a per-stage summary, including the loading phase before the first
 step and the run's key settings, and writes `report.html` in that folder.

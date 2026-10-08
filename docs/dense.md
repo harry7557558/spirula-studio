@@ -16,8 +16,12 @@ recognizes the command and explains that the module is unavailable.
 
 ```text
 spirula dense DATASET --checkpoint /path/to/romav2.0.1.pt --preset precise
-spirula train --data DATASET --seed-pointcloud dense/roma.ply
+spirula train --data DATASET
 ```
+
+Training starts from the finished dense cloud whenever the dataset has one
+and `seed_pointcloud` is empty; `--seed-pointcloud sparse` keeps the sparse
+points. `config.json` records the cloud a run used.
 
 Use the official [RoMa v2 checkpoint](https://github.com/Parskatt/RoMaV2/releases/download/v2.0.1/romav2.0.1.pt).
 The expected SHA-256 is
@@ -33,10 +37,19 @@ before obtaining or using the weights.
 The parser supports COLMAP, Nerfstudio, and Metashape. Sparse points are
 optional. `--recon-dir`, `--metashape-xml`, `--metashape-psx`, and
 `--metashape-component` select the same inputs as the existing dataset
-parsers. Images are read through the shared color conversion. GeometryWarp
-rectifies distorted cameras and, when necessary, makes overlapping pinhole
-faces for wide lenses. Support always counts original images; faces of one
-image cannot satisfy the support threshold on their own.
+parsers. Images are read through the shared color conversion.
+
+Lenses are handled automatically, as the depth and normal step does: a lens a
+single undistorted pinhole view can hold is undistorted into one view, and a
+wider one (a fisheye, or a panorama) is split. The split for matching is a set
+of upright cube faces about the lens axis -- front, right, left, up, down, and
+back only for a lens that sees past 270 degrees -- each cropped to the part of
+its cell the lens covers and dropped when that is under 5%. A 190-degree
+fisheye becomes five views where the depth step's cross-fading ring uses up to
+fifteen, and a panorama becomes six. Faces stay upright because the matcher
+does not tolerate large in-plane rotation. Faces of one image are never
+matched with each other, and support always counts original images, so they
+cannot satisfy the support threshold on their own.
 
 Original-image matching is available with `--matching-space source`. It
 passes each source image through the existing color conversion and RoMa resize
@@ -70,14 +83,51 @@ source-workflow setup to restore the default.
 
 `spirula dense --help` lists every editable setting and its starting value.
 Boolean flags take `true`/`false` or `1`/`0`. Set a preset before overriding
-its individual dimensions or direction settings. Presets resolve to:
+its individual settings. The three presets set matching size, direction,
+neighbours, reference coverage and sampling stride together:
 
-| Preset | Initial grid | Refinement grid | Bidirectional |
-|---|---:|---:|---|
-| Turbo | 320 × 320 | Disabled | No |
-| Fast | 512 × 512 | Disabled | No |
-| Base | 640 × 640 | Disabled | No |
-| Precise | 800 × 800 | 1280 × 1280 | Yes |
+| Preset | Matching grid | Refinement grid | Both directions | Neighbors | Reference coverage | Stride |
+|---|---:|---:|---|---:|---:|---:|
+| Fast | 512 × 512 | Disabled | No | 4 | 2 | 2 |
+| Balanced (default) | 640 × 640 | Disabled | No | 6 | 3 | 2 |
+| High quality (`high`) | 800 × 800 | 1280 × 1280 | Yes | 8 | 0 (all) | 1 |
+
+Measured on an RTX 5070 (12 GB), each cloud then seeding 7,000 training steps
+scored on every eighth image. A 160-image 1920 × 1080 object capture with
+masks:
+
+| Preset | Pairs | References | Time | Points | Peak device memory | Training PSNR |
+|---|---:|---:|---:|---:|---:|---:|
+| Fast | 101 | 36 | 27 s | 54k | 2.2 GB | 36.25 |
+| Balanced | 191 | 48 | 59 s | 142k | 3.3 GB | 36.49 |
+| High quality | 560 | 160 | 704 s | 3.8M | 9.0 GB | 36.47–36.56 |
+| (sparse SfM seed) | | | | 15k | | 35.78 |
+
+The 185-image Mip-NeRF 360 garden at a quarter resolution, rich texture and no
+masks:
+
+| Preset | Time | Points | Training PSNR / SSIM |
+|---|---:|---:|---:|
+| Fast | 65 s | 1.6M | 25.58 / 0.836 |
+| Balanced | 156 s | 4.1M | 25.71 / 0.841 |
+| (sparse SfM seed) | | 139k | 25.60 / 0.818 |
+
+Stride 1 at Balanced's grid made garden take 586 s for 23.6M points, almost
+all of it CPU refinement and fusion, with about 60 GB of temporary tiles, for
+25.75 / 0.842; on the object capture it scored 36.61. Training subsamples a
+seed to its splat cap, so the extra points seldom pay for themselves.
+
+Device memory beyond the weights and matcher scratch is the view feature cache,
+which grows into whatever the card has free: with all but 5.5 GB of the card
+held by another process, Balanced peaked at 3.3 GB and High quality at 4.0 GB.
+The weights and scratch alone take 1.6 GB for Balanced and 3.5 GB for High
+quality (2.5 and 4.4 GB on a GPU without cooperative-matrix support, which runs
+FP32). Repeated training runs on the same seed differ by about 0.1 dB.
+
+The older matcher-only presets `turbo`, `base` and `precise` still load from
+saved settings and the command line; they set only the matching grids and
+direction (`precise` is High quality's matcher). `fast` is now the full preset
+above, whose matcher is the old `fast`.
 
 Custom dimensions use multiples of 16 for the initial grid and multiples
 of 4 for refinement. Disable refinement by setting both high dimensions
@@ -96,32 +146,52 @@ run reconstruction.
 
 ## Using the desktop app
 
-The dataset screen offers **Enable dense reconstruction** after camera
-reconstruction and before depth/normal estimation. It is disabled by default,
-including for older presets. Both built-in SfM and COLMAP use the same dense
-child command over their finished cameras.
+The dataset screen offers **Enable dense reconstruction** right after
+**Estimate depth and normals**, as one more checkbox rather than a section of
+its own. It is off by default, including for older presets. Both built-in SfM
+and COLMAP use the same dense child command over their finished cameras.
 
-Choose a preset, checkpoint identifier or local path, matching dimensions,
-directions, neighbor count, image support, and grid stride. **Advanced settings
-(JSON)** exposes the complete configuration; Apply validates the edited copy
-before replacing the settings in use. These settings are saved in dataset
-presets and the dataset step record. Settings can be changed until the dense
-step starts, when the runner takes a fixed copy.
+Once it is ticked, the screen shows only what a first run needs:
 
-Hover over any dense control to see its purpose, processing cost, and effect
-on the point cloud used to initialize training. Help also covers each resolution
-field, the checkpoint, download controls, advanced JSON and Apply, and the
-completed-cloud preview. The original-image controls (reference fraction,
-samples per reference, sampling seed and the reprojection limit) each have
-their own help, on the label as well as the field. So do the live-preview
-status lines, which explain provisional, filtered and final points. Help
-remains available when settings are disabled during a run. The training **Mask mode** uses the trainer's existing explanation;
-dense mask filtering and training mask supervision are separate choices.
+- **Quality**: Fast, Balanced (the default) or High quality. Each sets the
+  matching size, refinement, directions, neighbors, reference coverage and
+  stride together. It reads **Custom** while those settings match none of the
+  three; choosing one again resets them.
+- The model: **Dense matching model ready**, or **Get the dense matching
+  model** with its download size, a progress bar with Stop while it
+  downloads, and the error if the download failed. The same label appears on
+  the fetch button beside **Create dataset** when the dense model is the
+  missing one.
+- **Preview dense cloud**, once a cloud exists.
+
+**Advanced dense reconstruction** holds every other control as a compact field
+with its label beside it: matching and refinement size, both directions,
+precision; neighbors, reference coverage, images that must agree, stride;
+minimum match confidence, reprojection limit, minimum triangulation angle,
+outlier removal; splitting wide lenses into pinhole views, sparse-track face
+selection, masks, and the matching space (the four original-image controls
+appear only when original images are selected); the CPU image cache and the
+checkpoint identifier or path; **Use for training** with the training **Mask
+mode**; and performance logging. Matching sizes snap to the multiples the
+matcher needs when their field is left, other numbers are clamped to their
+valid range, and a combination that is still invalid is explained in red under
+the section. The JSON editor is gone from the GUI; the complete configuration
+remains available through `spirula dense --config` and `--write-config`.
+
+These settings are saved in dataset presets and the dataset step record.
+Settings can be changed until the dense step starts, when the runner takes a
+fixed copy. Hover over any dense control to see its purpose, processing cost,
+and effect on the point cloud used to initialize training; help remains
+available when settings are disabled during a run. The live-preview status
+lines explain provisional, filtered and final points. The training **Mask
+mode** uses the trainer's existing explanation; dense mask filtering and
+training mask supervision are separate choices.
 
 Updating a dataset regenerates a missing or stale cloud. Dense filtering
 changes leave camera reconstruction reusable. Rebuilding cameras, frames,
-or applicable masks invalidates the cloud. To force matching again, set
-`rebuild` to true in advanced settings; restore it to false for normal reuse.
+or applicable masks invalidates the cloud. To force matching again, use
+**Dense cloud again** under **Re-do one step**: that one run ignores saved
+pair predictions (`--rebuild true` on the command line).
 The planner checks output size and input metadata to offer reuse promptly.
 Before reusing a cloud, the background runner verifies input contents and
 the cloud checksum. Edits that preserve sizes and timestamps therefore still
@@ -183,8 +253,8 @@ them.
 The first edit keeps the untouched cloud as `roma.original.ply` beside the
 edited one. Later edits keep that file, so it always holds what the dense step
 produced. To go back, open `roma.original.ply` in the editor and choose **Save a
-copy...** onto `roma.ply`, which signs it like any edit; or run the dense step
-again with `rebuild` on. Renaming files by hand fails the check. Running the
+copy...** onto `roma.ply`, which signs it like any edit; or use **Dense cloud
+again** (`--rebuild true`). Renaming files by hand fails the check. Running the
 dense step again
 publishes a new cloud and leaves the edited one in its own generation.
 
@@ -253,11 +323,13 @@ requested. The GUI runner and CLI reject incompatible settings before dense
 processing starts.
 
 After completion, **Preview dense cloud** opens the shared point viewer.
-**Use dense cloud for training** selects the PLY when opening this dataset
-in the trainer and when a batch dataset step feeds training. An explicit seed
-choice retains precedence. Resume, an existing splat initialization, and
-forced random initialization retain the trainer's existing behavior. The
-trainer's seed field also allows selecting or clearing a cloud manually.
+The trainer seeds from the dense cloud by itself; turning off **Use dense
+cloud for training** sets `seed_pointcloud` to `sparse` for the dataset this
+run made (and for a batch dataset step's training). An explicit seed choice
+retains precedence. Resume, an existing splat initialization, and forced
+random initialization skip the automatic pick. The trainer's **Starting
+points** choice switches between the dense cloud, the sparse points and
+another PLY.
 
 The official model download uses the existing consent and download UI,
 with pinned size and SHA-256 validation before publication. RoMa's MIT terms
@@ -277,10 +349,35 @@ The manifest reports resolved precision. Mixed pair predictions have a separate
 cache identity; FP32 continues to reuse the existing cache. Feature eviction
 does not change precision, resolution, or support thresholds.
 
-Automatic pairing ranks shared sparse tracks before camera overlap and
-distance, with a starting limit of eight neighbors per image. Sequential
-pairing respects camera folders. Exhaustive pairing streams all unique
-pairs. Explicit pairing reads two registered image names per line from
+Automatic pairing works on views: an ordinary photo is one view, and each
+pinhole face split from a wide lens is a view of its own. Views split from the
+same image are never paired with each other. A view's neighbours are the views
+that share its sparse points, each shared point weighted by the angle the two
+camera centres see it from: a full weight from 10 degrees up, falling with the
+square of the angle below that, so near-duplicate frames with almost no
+baseline rank behind partners that triangulate well. Views without enough
+track partners fall back to the nearest camera centres whose views overlap.
+Faces split from a wide lens are paired only through shared points while
+`--sparse-face-pairs` is on (the default). Every step uses the track index and
+a nearest-neighbour search over camera centres, so planning is close to linear
+in the number of views and observations.
+
+`--reference-coverage` thins densely captured scenes. Sparse points are
+counted in small cells of space (2% of the median camera-to-point distance),
+because SfM breaks one surface into many short tracks: on an every-frame
+video the median track spans four frames. In capture order, a view becomes a
+reference only while at least a tenth of its cells are seen by fewer than
+that many earlier references; otherwise it is matched only as some
+reference's neighbour. A view with fewer than 32 sparse points always
+stays a reference, since it may be looking at untextured surface. A turntable
+or an every-frame video then costs about as much as the scene needs rather
+than as many frames as were shot, while a sparse capture keeps every view as
+a reference. `0` makes every view a reference. `--neighbors` caps the pairs of
+each reference; with every view a reference both ends of a pair are capped,
+as before.
+
+Sequential pairing respects camera folders. Exhaustive pairing streams all
+unique pairs. Explicit pairing reads two registered image names per line from
 `--pair-list`, with quoted names supported. Zero-baseline pairs are rejected.
 
 Source automatic mode selects references by deterministic pose coverage,
@@ -291,14 +388,10 @@ explicit, and exhaustive source modes retain their requested pairs and process
 both reference directions. Coverage selection does not allocate an image-by-image
 distance matrix. A cached reverse field is reused only when it actually exists.
 
-Automatic source ranking builds an inverted sparse-track index, rather than
-intersecting two visibility lists for every image pair. It preserves the
-ranking, tie breaks, and source degree cap in rectified mode. `--sparse-face-pairs true` then
-uses those tracks to reject wide-camera face pairs without any shared scene
-point. This is enabled by default and changes the face workload, not camera
-poses or matching dimensions. Sources with no shared sparse tracks retain
-the geometric overlap fallback. Disable it to match every geometrically
-overlapping face pair, including areas not represented by the sparse model.
+Sequential, exhaustive and explicit modes pick image pairs and then match
+every geometrically overlapping pair of their faces; `--sparse-face-pairs`
+drops face pairs that share no sparse point. Disable it to match every
+overlapping face pair, including areas the sparse model does not represent.
 
 The default density uses every matching-grid pixel (`--stride 1`). Filters
 require overlap of at least 0.5, a triangulation angle of at least 1 degree,
@@ -469,9 +562,13 @@ decoder concurrency and estimated image bytes. Source mode retains one decoded
 RGB/mask allocation per cached image instead of copying it into a second view.
 Fusion cells, boundary candidates and reconciliation state also have disk-backed
 paths; available memory controls their working sets rather than the cloud size.
-`--rebuild true` ignores cached predictions. `--keep-cache false` removes
-the predictions used by this run after successful publication. Ctrl+C stops
-processing; completed cached pairs remain usable when retention is enabled.
+`--rebuild true` ignores cached predictions. Predictions are written while
+the run goes, so a cancelled or failed run resumes from them, and are removed
+after a successful publication unless `--keep-cache true`. They are large:
+about 10 MB a pair at 640, 80 MB at 1280 in both directions, so a few hundred
+High quality pairs fill tens of gigabytes. A run stops writing new ones while
+the disk has less than 4 GB or 5% free. Settings saved before this default
+changed load with it off.
 Completed and failed temporary observation/sort directories are removed after
 their workers and streams have closed. Cleanup validates the application-owned
 run path and rejects redirected paths; image or dataset junctions are not cleanup
@@ -481,9 +578,8 @@ pending generations after acquiring the writer lock, while retaining published
 generations and unmarked directories. Published generations remain available
 for sessions that selected them explicitly.
 
-The default command generates a cloud only. Select it explicitly with the
-existing training seed option. Existing checkpoint resume and explicit
-initialization precedence still apply.
+Checkpoint resume and explicit initialization keep precedence over the
+automatic dense seed.
 
 ## Implementation and validation status
 

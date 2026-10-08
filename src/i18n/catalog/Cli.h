@@ -622,6 +622,54 @@ SS_MSG(train_done_viewer,
        "выйти."),
     TR("Eğitim tamamlandı. Görüntüleyici hâlâ çalışıyor -- çıkmak için Ctrl-C'ye "
        "basın."));
+SS_MSG(train_stopping,
+    EN("Stopping after this step and saving a checkpoint to resume from. Press "
+       "Ctrl-C again to quit without saving."),
+    JA("このステップの後で停止し、再開用のチェックポイントを保存します。保存せず"
+       "に終了するには、もう一度 Ctrl-C を押してください。"),
+    ZH_HANS("将在本步之后停止，并保存可继续训练的检查点。再按一次 Ctrl-C 则不保存"
+            "直接退出。"),
+    ZH_HANT("將在本步之後停止，並儲存可繼續訓練的檢查點。再按一次 Ctrl-C 則不儲存"
+            "直接結束。"),
+    KO("이 단계가 끝나면 멈추고 이어서 학습할 체크포인트를 저장합니다. 저장하지 "
+       "않고 끝내려면 Ctrl-C를 한 번 더 누르세요."),
+    DE("Hält nach diesem Schritt an und speichert einen Checkpoint zum Fortsetzen. "
+       "Erneut Strg-C drücken, um ohne Speichern zu beenden."),
+    FR("Arrêt après cette étape, avec une sauvegarde pour reprendre. Appuyez à "
+       "nouveau sur Ctrl-C pour quitter sans enregistrer."),
+    ES("Se detiene tras este paso y guarda un punto de control para continuar. "
+       "Pulsa Ctrl-C otra vez para salir sin guardar."),
+    PT("Parando após este passo e salvando um checkpoint para continuar. "
+       "Pressione Ctrl-C de novo para sair sem salvar."),
+    IT("Arresto dopo questo passo, con un checkpoint da cui riprendere. Premi di "
+       "nuovo Ctrl-C per uscire senza salvare."),
+    NL("Stopt na deze stap en slaat een checkpoint op om te hervatten. Druk "
+       "nogmaals op Ctrl-C om te stoppen zonder op te slaan."),
+    RU("Остановка после этого шага с сохранением контрольной точки для "
+       "продолжения. Нажмите Ctrl-C ещё раз, чтобы выйти без сохранения."),
+    TR("Bu adımdan sonra durulup devam etmek için bir denetim noktası "
+       "kaydediliyor. Kaydetmeden çıkmak için Ctrl-C'ye yeniden basın."));
+SS_MSG(train_stopped_resume,
+    EN("Stopped at step {0} of {1}. To continue: spirula train --resume \"{2}\""),
+    JA("{1} ステップ中 {0} ステップで停止しました。続けるには: spirula train "
+       "--resume \"{2}\""),
+    ZH_HANS("已在第 {0} 步（共 {1} 步）停止。要继续：spirula train --resume \"{2}\""),
+    ZH_HANT("已在第 {0} 步（共 {1} 步）停止。要繼續：spirula train --resume \"{2}\""),
+    KO("{1}단계 중 {0}단계에서 멈췄습니다. 이어서 하려면: spirula train --resume "
+       "\"{2}\""),
+    DE("Bei Schritt {0} von {1} angehalten. Zum Fortsetzen: spirula train --resume "
+       "\"{2}\""),
+    FR("Arrêté à l'étape {0} sur {1}. Pour reprendre : spirula train --resume "
+       "\"{2}\""),
+    ES("Detenido en el paso {0} de {1}. Para continuar: spirula train --resume "
+       "\"{2}\""),
+    PT("Parado no passo {0} de {1}. Para continuar: spirula train --resume \"{2}\""),
+    IT("Fermato al passo {0} di {1}. Per riprendere: spirula train --resume \"{2}\""),
+    NL("Gestopt bij stap {0} van {1}. Hervatten: spirula train --resume \"{2}\""),
+    RU("Остановлено на шаге {0} из {1}. Чтобы продолжить: spirula train --resume "
+       "\"{2}\""),
+    TR("{1} adımın {0}. adımında durduruldu. Devam etmek için: spirula train "
+       "--resume \"{2}\""));
 // ===========================================================================
 // `spirula mesh`
 // ===========================================================================

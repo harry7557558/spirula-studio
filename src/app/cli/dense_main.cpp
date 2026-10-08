@@ -19,7 +19,10 @@ using namespace spirula::dense;
 using spirula::i18n::format;
 namespace D = spirula::i18n::msg::dense;
 std::atomic<bool> interrupted{false};
-void interrupt(int) { interrupted.store(true); }
+// The first Ctrl+C stops at the next check and keeps finished pairs; a second one ends the process.
+void interrupt(int signal) {
+    if (interrupted.exchange(true)) { std::signal(signal, SIG_DFL); std::raise(signal); }
+}
 
 template<class T> void command_value(DenseConfig& config, const char* key, const T&, const std::string& text) {
     JsonValue value;
@@ -63,7 +66,7 @@ bool command_field(DenseConfig& config, std::string key, const std::string& valu
 }
 
 void help() {
-    std::printf("%s\n\n%s <dataset> [--preset turbo|fast|base|precise|custom] [--config PATH]\n\n%s\n\n",
+    std::printf("%s\n\n%s <dataset> [--preset fast|balanced|high|custom] [--config PATH]\n\n%s\n\n",
                 format(D::title, {}).c_str(), app::program_name().c_str(), format(D::help, {}).c_str());
     const DenseConfig defaults;
 #define SS_DENSE_HELP(key, member) { std::string name = #key; std::replace(name.begin(), name.end(), '_', '-'); \

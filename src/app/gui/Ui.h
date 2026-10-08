@@ -473,6 +473,12 @@ inline bool InputDoubleRaw(const char* id, double* v, double step,
 inline bool InputInt2Raw(const char* id, int v[2], ImGuiInputTextFlags flags = 0) {
     return ImGui::InputInt2(id, v, flags);
 }
+inline bool InputInt2(const Msg& m, int v[2], ImGuiInputTextFlags flags = 0) {
+    return ImGui::InputInt2(detail::label(m), v, flags);
+}
+inline bool InputDouble(const Msg& m, double* v, const char* fmt) {
+    return ImGui::InputDouble(detail::label(m), v, 0.0, 0.0, fmt);
+}
 inline bool DragFloatRaw(const char* id, float* v, float speed, float lo,
                          float hi, const char* fmt) {
     return ImGui::DragFloat(id, v, speed, lo, hi, fmt);

@@ -202,7 +202,9 @@ uint64_t Session::plannedScratchBytes(const MatchOptions& options) {
     options.validate();
     const uint64_t low = (uint64_t)options.low_width * options.low_height;
     const uint64_t high = (uint64_t)options.high_width * options.high_height;
-    return std::max(low, high) * 2048 + (128ull << 20);
+    // Measured peaks are 1295-1341 bytes a matching pixel (512, 640, and 1280 both ways);
+    // an arena cannot grow mid-pass, so this keeps about 15% over the worst.
+    return std::max(low, high) * 1536 + (128ull << 20);
 }
 
 PairPrediction Session::match(const float* a, int width_a, int height_a,

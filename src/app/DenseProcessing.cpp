@@ -23,7 +23,7 @@
 #include "nn/vk/Context.h"
 #include "nn/vk/Memory.h"
 #include "roma/model/Fetch.h"
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 
 #include <chrono>
 #include <algorithm>
@@ -236,7 +236,7 @@ GeometryWarp warp_for(const GeometryCamera& c, const DenseConfig& config) {
     const double scale = std::min(1.0, (double)config.max_face_size / std::max(c.width, c.height));
     const int w = std::max(16, (int)(c.width * scale) / 16 * 16), h = std::max(16, (int)(c.height * scale) / 16 * 16);
     const bool split = config.split_views && camhost::splits_to_pinhole_faces(c.model, c.width, c.height, c.fx, c.fy);
-    warp.plan(c, w, h, split, 16, config.max_face_size, FaceRes::Output, 0, true);
+    warp.plan(c, w, h, split, 16, config.max_face_size, FaceRes::Output, 0, true, FaceLayout::Cube);
     return warp;
 }
 
@@ -606,7 +606,7 @@ public:
         std::error_code error;
         fs::create_directories(dir_, error);
         fs::remove(memory_report_path(dir_), error);
-        report_.host_planned = sfm::processRamBytes() + planned;
+        report_.host_planned = spirula::processRamBytes() + planned;
         thread_ = std::thread([this] { run(); });
     }
     ~MemoryReporter() { stop(); }
@@ -635,9 +635,9 @@ private:
     void run() {
         std::unique_lock<std::mutex> lock(mutex_);
         for (;;) {
-            report_.host_process = sfm::processRamBytes();
-            report_.host_available = sfm::availableRamBytes();
-            report_.host_total = sfm::physicalRamBytes();
+            report_.host_process = spirula::processRamBytes();
+            report_.host_available = spirula::availableRamBytes();
+            report_.host_total = spirula::physicalRamBytes();
             report_.host_planned = std::max(report_.host_planned, report_.host_process);
             ++report_.sequence;
             write_memory_report(dir_, report_);
@@ -707,14 +707,14 @@ private:
             // The phase just left, at its last count: it can end between two samples.
             if (!closing_.empty()) {
                 std::fprintf(file_, "%lld,%s,0.0000,0.000,%llu\n", ms - 1, closing_.c_str(),
-                             (unsigned long long)sfm::processRamBytes());
+                             (unsigned long long)spirula::processRamBytes());
                 closing_.clear();
             }
             const double rate = done_ >= last_done_ ? (double)(done_ - last_done_) / std::max(interval, 1e-3) : 0.0;
             last_done_ = done_;
             std::fprintf(file_, "%lld,%s,%llu,%llu,%.4f,%.3f,%llu\n", ms, phase_.c_str(),
                          (unsigned long long)done_, (unsigned long long)total_, interval, rate,
-                         (unsigned long long)sfm::processRamBytes());
+                         (unsigned long long)spirula::processRamBytes());
             std::fflush(file_);
         }
     }
@@ -796,7 +796,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     config.validate_run(); check_cancel(cancel);
     DensePerfLog perf(perf_dir);
     const auto start = std::chrono::steady_clock::now();
-    const fs::path root = fs::absolute(dataset_path);
+    const fs::path root = resolved_dataset(dataset_path);
     fs::create_directories(root / "dense" / "cache");
     FileLock run_lock(root / "dense" / "run.lock");
     cleanup_pending_generations(root.string());
@@ -974,10 +974,11 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     const auto initial_input_stamp = input_stamp(input_paths);
     const auto initial_input_content = input_content_stamp(input_paths,[&] { check_cancel(cancel); },
                                                            [&](const auto& path) { return fingerprints.get(path); });
-    bool face_tracks = false;
+    bool face_tracks = false, tracks_aligned = false;
     if (!model_dir.empty()) {
         const auto tracks = read_sparse_stats(model_dir);
-        face_tracks = config.sparse_face_pairs && tracks.error.size() == (size_t)ds.points.num() && !tracks.empty();
+        tracks_aligned = tracks.error.size() == (size_t)ds.points.num() && !tracks.empty();
+        face_tracks = config.sparse_face_pairs && tracks_aligned;
         std::map<std::string, uint32_t> by_name;
         for (uint32_t i = 0; i < images.size(); ++i) by_name[images[i].name] = i;
         for (uint64_t p = 0; p + 1 < tracks.track_beg.size(); ++p)
@@ -990,6 +991,10 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
             }
         for (auto& image : images) { std::sort(image.visible_points.begin(), image.visible_points.end()); image.visible_points.erase(std::unique(image.visible_points.begin(), image.visible_points.end()), image.visible_points.end()); }
     }
+    std::vector<sfm::Vec3> point_positions;
+    if (tracks_aligned)
+        for (int64_t p = 0; p < ds.points.num(); ++p)
+            point_positions.push_back({ds.points.xyz[p * 3], ds.points.xyz[p * 3 + 1], ds.points.xyz[p * 3 + 2]});
     PairOptions pair_options = config.pairs;
     if (config.matching_space == "source" && pair_options.mode == PairMode::Automatic) {
         pair_options.directed = true;
@@ -1040,28 +1045,52 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
         }
         tracks_ready[image] = true;
     };
-    const auto pair_stats = select_pairs(images, pair_options, [&](ImagePair pair) {
-        check_cancel(cancel);
-        const bool guided = face_tracks && (faces[pair.first].size() > 1 || faces[pair.second].size() > 1) &&
-            shares_points(images[pair.first].visible_points, images[pair.second].visible_points);
-        if (guided) { prepare_face_tracks(pair.first); prepare_face_tracks(pair.second); }
-        for (uint32_t a : faces[pair.first]) for (uint32_t b : faces[pair.second]) {
-            const View& va = views[a], &vb = views[b];
-            const sfm::Vec3 fa{va.world_to_camera[6], va.world_to_camera[7], va.world_to_camera[8]};
-            const sfm::Vec3 fb{vb.world_to_camera[6], vb.world_to_camera[7], vb.world_to_camera[8]};
-            const double fova = std::atan(std::hypot(va.camera.width / va.camera.fx, va.camera.height / va.camera.fy) * 0.5);
-            const double fovb = std::atan(std::hypot(vb.camera.width / vb.camera.fx, vb.camera.height / vb.camera.fy) * 0.5);
-            const auto baseline = vb.center - va.center;
-            const bool facing = fa.dot(baseline) > 0 && fb.dot(baseline) < 0;
-            if (config.matching_space != "source" && !facing && std::acos(std::clamp(fa.dot(fb), -1.0, 1.0)) > fova + fovb) continue;
-            if (guided && !shares_points(prepared[a].visible_points, prepared[b].visible_points)) {
-                ++rejected_face_pairs; continue;
+    PairStatistics pair_stats;
+    if (pair_options.mode == PairMode::Automatic && config.matching_space != "source") {
+        // Faces are paired as views of their own, so a wide lens adds only the face pairs that share points.
+        std::vector<PairImage> view_images;
+        for (uint32_t i = 0; i < images.size(); ++i) {
+            if (tracks_aligned && faces[i].size() > 1) prepare_face_tracks(i);
+            for (size_t f = 0; f < faces[i].size(); ++f) {
+                const View& view = views[faces[i][f]];
+                PairImage v;
+                v.source_image = images[i].source_image; v.face = (int)f; v.name = images[i].name; v.center = view.center;
+                v.forward = sfm::Vec3{view.world_to_camera[6], view.world_to_camera[7], view.world_to_camera[8]}.normalized();
+                v.up = sfm::Vec3{view.world_to_camera[3], view.world_to_camera[4], view.world_to_camera[5]}.normalized();
+                v.half_fov_radians = std::clamp(std::atan(0.5 * std::hypot(view.camera.width / view.camera.fx, view.camera.height / view.camera.fy)), 0.1, 3.14159);
+                v.visible_points = faces[i].size() > 1 ? prepared[faces[i][f]].visible_points : images[i].visible_points;
+                v.shared_points_only = faces[i].size() > 1 && face_tracks;
+                view_images.push_back(std::move(v));
             }
-            write_disk_record(job_output,PairIndex{a,b});
-            if (config.matching_space == "source" && pair_options.mode != PairMode::Automatic)
-                write_disk_record(job_output,PairIndex{b,a});
         }
-    }, [&] { check_cancel(cancel); });
+        pair_stats = select_pairs(view_images, pair_options, [&](ImagePair pair) {
+            check_cancel(cancel);
+            write_disk_record(job_output,PairIndex{pair.first,pair.second});
+        }, [&] { check_cancel(cancel); }, point_positions);
+    } else {
+        pair_stats = select_pairs(images, pair_options, [&](ImagePair pair) {
+            check_cancel(cancel);
+            const bool guided = face_tracks && (faces[pair.first].size() > 1 || faces[pair.second].size() > 1) &&
+                shares_points(images[pair.first].visible_points, images[pair.second].visible_points);
+            if (guided) { prepare_face_tracks(pair.first); prepare_face_tracks(pair.second); }
+            for (uint32_t a : faces[pair.first]) for (uint32_t b : faces[pair.second]) {
+                const View& va = views[a], &vb = views[b];
+                const sfm::Vec3 fa{va.world_to_camera[6], va.world_to_camera[7], va.world_to_camera[8]};
+                const sfm::Vec3 fb{vb.world_to_camera[6], vb.world_to_camera[7], vb.world_to_camera[8]};
+                const double fova = std::atan(std::hypot(va.camera.width / va.camera.fx, va.camera.height / va.camera.fy) * 0.5);
+                const double fovb = std::atan(std::hypot(vb.camera.width / vb.camera.fx, vb.camera.height / vb.camera.fy) * 0.5);
+                const auto baseline = vb.center - va.center;
+                const bool facing = fa.dot(baseline) > 0 && fb.dot(baseline) < 0;
+                if (config.matching_space != "source" && !facing && std::acos(std::clamp(fa.dot(fb), -1.0, 1.0)) > fova + fovb) continue;
+                if (guided && !shares_points(prepared[a].visible_points, prepared[b].visible_points)) {
+                    ++rejected_face_pairs; continue;
+                }
+                write_disk_record(job_output,PairIndex{a,b});
+                if (config.matching_space == "source" && pair_options.mode != PairMode::Automatic)
+                    write_disk_record(job_output,PairIndex{b,a});
+            }
+        }, [&] { check_cancel(cancel); }, point_positions);
+    }
     flush_disk_output(job_output); job_output.close();
     auto order_jobs = [](const PairIndex& a,const PairIndex& b) { return std::tie(a.a,a.b) < std::tie(b.a,b.b); };
     external_sort<PairIndex>(unordered_jobs,ordered_jobs,resources.image_cache_bytes / 8,order_jobs,[&] { check_cancel(cancel); });
@@ -1127,6 +1156,14 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     std::deque<Matched> queue;
     bool closed = false, discard = false;
     std::exception_ptr failure;
+    // Cached predictions only serve resume and reuse, so a nearly full disk stops collecting them.
+    auto disk_has_room = [&](const roma::PairPrediction& p) {
+        std::error_code error;
+        const auto space = fs::space(predictions, error);
+        const uint64_t bytes = ((uint64_t)p.forward.warp.size() + p.forward.overlap.size() + p.forward.precision.size() +
+                                p.backward.warp.size() + p.backward.overlap.size() + p.backward.precision.size()) * sizeof(float);
+        return !error && space.available > bytes + std::max<uint64_t>(4ull << 30, space.capacity / 20);
+    };
     std::thread consumer([&] {
         for (;;) {
             Matched item;
@@ -1139,7 +1176,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
             }
             changed.notify_all();
             try {
-                if (item.store) cache_prediction(item.job.file,item.prediction);
+                if (item.store && disk_has_room(item.prediction)) cache_prediction(item.job.file,item.prediction);
                 const auto pa = item.a.get(), pb = item.b.get();
                 reconstruction.add_pair(item.job.a,item.job.b,*pa,*pb,item.prediction);
                 if (--remaining[item.job.a] == 0) reconstruction.complete_reference(item.job.a,true);
@@ -1267,6 +1304,7 @@ DenseResult run_dense(const std::string& dataset_path, const spirula::dense::Den
     manifest.field("source_images", (long long)images.size()).field("views", (long long)views.size());
     manifest.field("source_pairs", (long long)pair_stats.emitted).field("matched_pairs", (long long)result.pairs).field("cached_pairs", (long long)result.cached_pairs);
     manifest.field("reference_images",(long long)reference_count).field("directed_jobs",(long long)job_count);
+    manifest.field("selected_reference_views",(long long)pair_stats.references);
     manifest.field("unique_image_pairs",(long long)unique_pair_count).field("inference_calls",(long long)(result.pairs-result.cached_pairs));
     manifest.field("seconds", result.seconds).field("prepare_seconds", prepare_seconds).field("match_seconds", match_seconds);
     manifest.field("finish_seconds", finish_seconds).field("verification_seconds", verification_seconds);

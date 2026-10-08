@@ -22,9 +22,11 @@
 #include "i18n/catalog/TrainFields.h"
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -48,6 +50,27 @@ using namespace spirula;
 
 namespace cmsg = spirula::i18n::msg::cli;
 using spirula::i18n::format;
+
+// Ctrl-C during training stops after the step and saves a resumable checkpoint.
+// A second one is the user saying they meant it: the default action ends the process.
+static std::atomic<std::atomic<bool>*> g_train_stop{nullptr};
+static std::atomic<bool> g_train_interrupted{false};
+static std::string g_train_stopping;   // formatted before the handler can run
+
+extern "C" void trainOnInterrupt(int sig) {
+    std::atomic<bool>* stop = g_train_stop.load();
+    if (g_train_interrupted.exchange(true) || !stop) {
+        std::signal(sig, SIG_DFL);
+        std::raise(sig);
+        return;
+    }
+    stop->store(true);
+#ifdef _WIN32
+    _write(2, g_train_stopping.data(), (unsigned)g_train_stopping.size());
+#else
+    if (::write(2, g_train_stopping.data(), g_train_stopping.size()) < 0) {}
+#endif
+}
 
 
 // ===========================================================================
@@ -585,7 +608,23 @@ int spirula_train_main(int argc, char** argv) {
                 std::fflush(stdout);
             }
         };
+        const bool stop_on_interrupt = cfg.steps_per_save != 0;
+        if (stop_on_interrupt) {
+            g_train_stopping = std::string("\n") + cmsg::train_stopping.get() + "\n";
+            g_train_stop.store(&session.stop_requested);
+            std::signal(SIGINT, trainOnInterrupt);
+        }
         session.train(cb);
+        if (stop_on_interrupt) {
+            std::signal(SIGINT, SIG_DFL);
+            g_train_stop.store(nullptr);
+        }
+        if (g_train_interrupted.load()) {
+            std::printf("%s\n", format(cmsg::train_stopped_resume,
+                                       {(long long)session.cur_step.load(), cfg.num_iterations,
+                                        fs::absolute(session.out_dir).string()}).c_str());
+            return 130;   // the shell's convention for SIGINT, 128 + 2
+        }
         // Held-out eval. Replaces the engine's DataManager, so nothing may
         // train afterwards -- and the viewer, which only reads splats, is
         // unaffected. TODO: early stopping on the validation split.

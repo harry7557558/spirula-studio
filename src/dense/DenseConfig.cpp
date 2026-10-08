@@ -1,5 +1,5 @@
 #include "dense/DenseConfig.h"
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 
 #include <cmath>
 #include <algorithm>
@@ -9,14 +9,35 @@ namespace spirula::dense {
 
 uint64_t DenseConfig::resolved_image_cache_bytes() const {
     if (image_cache_bytes) return image_cache_bytes;
-    const uint64_t physical = sfm::physicalRamBytes(), available = sfm::availableRamBytes();
+    const uint64_t physical = spirula::physicalRamBytes(), available = spirula::availableRamBytes();
     const uint64_t budget = physical && available ? std::min(physical / 8,available / 2) : physical ? physical / 8 : available / 2;
     if (!budget) throw std::runtime_error("cannot determine dense host memory budget; set image_cache_bytes explicitly");
     return budget;
 }
 
+namespace {
+
+struct Preset { const char* name; int low, high; bool bidirectional; int neighbors, stride, coverage; };
+constexpr Preset kPresets[] = {
+    {"fast", 512, 0, false, 4, 2, 2},
+    {"balanced", 640, 0, false, 6, 2, 3},
+    {"high", 800, 1280, true, 8, 1, 0},
+};
+
+const Preset* find_preset(const std::string& name) {
+    for (const auto& preset : kPresets) if (name == preset.name) return &preset;
+    return nullptr;
+}
+
+}  // namespace
+
 void DenseConfig::apply_preset(const std::string& name) {
-    if (name != "custom") {
+    if (const auto* p = find_preset(name)) {
+        match.low_width = match.low_height = p->low;
+        match.high_width = match.high_height = p->high;
+        match.bidirectional = p->bidirectional; match.overlap_saturation = -1;
+        pairs.neighbors = p->neighbors; pairs.reference_coverage = p->coverage; stride = p->stride;
+    } else if (name != "custom") {
         const auto dimensions = roma::MatchOptions::preset(name);
         match.low_width = dimensions.low_width; match.low_height = dimensions.low_height;
         match.high_width = dimensions.high_width; match.high_height = dimensions.high_height;
@@ -24,6 +45,13 @@ void DenseConfig::apply_preset(const std::string& name) {
         match.overlap_saturation = dimensions.overlap_saturation;
     }
     preset = name;
+}
+
+bool DenseConfig::matches_preset(const std::string& name) const {
+    const auto* p = find_preset(name);
+    return p && match.low_width == p->low && match.low_height == p->low && match.high_width == p->high &&
+        match.high_height == p->high && match.bidirectional == p->bidirectional && match.overlap_saturation == -1 &&
+        pairs.neighbors == p->neighbors && pairs.reference_coverage == p->coverage && stride == p->stride;
 }
 
 void DenseConfig::apply_source_workflow() {
@@ -39,7 +67,7 @@ GeometryOptions DenseConfig::resolved_geometry() const {
 
 void DenseConfig::validate() const {
     match.validate(); pairs.validate(); geometry.validate();
-    if (preset != "custom") roma::MatchOptions::preset(preset);
+    if (preset != "custom" && !find_preset(preset)) roma::MatchOptions::preset(preset);
     auto positive = [](double v) { return std::isfinite(v) && v > 0; };
     auto probability = [](double v) { return std::isfinite(v) && v >= 0 && v <= 1; };
     if ((matching_space != "rectified" && matching_space != "source") ||

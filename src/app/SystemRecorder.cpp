@@ -1,6 +1,6 @@
 #include "app/SystemRecorder.h"
 
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 
 #if defined(_WIN32)
 #include <pdh.h>
@@ -560,10 +560,10 @@ class Platform {
 public:
     explicit Platform(int) {}
     void sample(MachineSample& s, double, std::vector<std::string>&) {
-        s.ram_total = (double)sfm::physicalRamBytes();
-        s.ram_avail = (double)sfm::availableRamBytes();
+        s.ram_total = (double)spirula::physicalRamBytes();
+        s.ram_avail = (double)spirula::availableRamBytes();
         s.procs = 1;
-        s.ws_bytes = (double)sfm::processRamBytes();
+        s.ws_bytes = (double)spirula::processRamBytes();
     }
 };
 std::string cpu_name() { return {}; }
@@ -594,7 +594,7 @@ struct SystemRecorder::Impl {
         std::ofstream out(dir / "meta.json");
         out << "{\n  \"started_unix_ms\": " << unix_ms() << ",\n  \"interval_s\": " << interval_s
             << ",\n  \"out\": " << json_str(dir.u8string()) << ",\n  \"cpu\": " << json_str(cpu_name())
-            << ",\n  \"logical_processors\": " << cores << ",\n  \"ram_bytes\": " << sfm::physicalRamBytes()
+            << ",\n  \"logical_processors\": " << cores << ",\n  \"ram_bytes\": " << spirula::physicalRamBytes()
             << ",\n  \"gpus\": [";
         for (size_t i = 0; i < gpus.size(); ++i)
             out << (i ? ", " : "") << "{\"name\": " << json_str(gpus[i]) << "}";

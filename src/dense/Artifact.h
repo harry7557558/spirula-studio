@@ -113,4 +113,13 @@ inline bool artifact_complete(const std::string& dataset, bool check_inputs = fa
     } catch (const std::exception&) { return false; }
 }
 
+// `seed_pointcloud`'s keyword for the dataset's own points even when a dense
+// cloud exists; the empty default picks the finished dense cloud.
+inline constexpr const char* kSparseSeed = "sparse";
+
+inline std::string automatic_seed(const std::string& dataset) {
+    if (dataset.empty() || !artifact_complete(dataset)) return {};
+    return artifact_files(dataset).cloud.string();
+}
+
 }  // namespace spirula::dense

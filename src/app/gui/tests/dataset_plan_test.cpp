@@ -508,6 +508,17 @@ int main() {
         StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
         rec.begin(Step::Dense, dense_fields(j.dense), {"roma.ply"}); rec.finish(Step::Dense);
         expect(plan(j)[Step::Dense].act == Act::Reuse, "completed dense settings are reused");
+        {
+            auto legacy = j;
+            legacy.dense.config.pairs.reference_coverage = 0;
+            StepRecorder old(ws.string(), read_dataset_record(ws.string()));
+            old.begin(Step::Dense, dense_fields(legacy.dense), {"roma.ply"}); old.finish(Step::Dense);
+            expect(plan(legacy)[Step::Dense].act == Act::Reuse, "a record from before reference coverage stays fresh at coverage 0");
+            legacy.dense.config.pairs.reference_coverage = 2;
+            expect(plan(legacy)[Step::Dense].act == Act::Redo, "a reference coverage change invalidates dense output");
+            StepRecorder again(ws.string(), read_dataset_record(ws.string()));
+            again.begin(Step::Dense, dense_fields(j.dense), {"roma.ply"}); again.finish(Step::Dense);
+        }
         std::atomic<bool> verification_cancel{false};
         auto verified = plan(j); verify_dense_reuse(verified,ws.string(),verification_cancel);
         expect(verified[Step::Dense].act == Act::Reuse,"dense reuse verifies source contents and cloud checksum");

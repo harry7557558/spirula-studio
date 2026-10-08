@@ -17,7 +17,7 @@ int main() {
         const auto root = std::filesystem::temp_directory_path() /
             ("spirula-dense-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         DenseConfig config;
-        config.preset = "custom";
+        config.preset = "custom"; config.stride = 1;
         config.match.low_width = config.match.low_height = 32;
         config.match.high_width = config.match.high_height = 0;
         config.geometry.min_source_images = 3;

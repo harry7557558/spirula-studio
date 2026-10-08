@@ -103,6 +103,7 @@ private:
     VkSemaphore _timeline = VK_NULL_HANDLE;
     uint64_t _last_value = 0;
     bool _poll_waits = false;
+    bool _cpu_device = false;
     std::mutex _submit_mutex;
     Capabilities _caps;
     std::string _device_name;

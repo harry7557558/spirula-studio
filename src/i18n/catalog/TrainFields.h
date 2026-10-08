@@ -363,56 +363,72 @@ SS_MSG(save_full_checkpoint,
     RU("Сохранять точки для продолжения"),
     TR("Sürdürülebilir denetim noktaları kaydet"));
 SS_MSG(save_full_checkpoint_help,
-    EN("Also store everything needed to resume training later, not just the finished "
-       "splats. Checkpoints get much larger because they carry every splat slot "
-       "and the optimizer state. Leave off if you only want the exported splat "
-       "file."),
-    JA("仕上がったスプラットだけでなく、後で学習を再開するのに必要なものもすべ"
-       "て保存します。すべてのスプラット枠とオプティマイザの状態を持つので、チ"
-       "ェックポイントはかなり大きくなります。書き出したスプラットファイルだけ"
-       "が欲しいならオフのままにしてください。"),
-    ZH_HANS("除了训练好的泼溅，还保存以后继续训练所需的一切。检查点会大得多，"
-            "因为它包含每个泼溅槽位和优化器状态。如果只想要导出的泼溅文件，就"
-            "保持关闭。"),
-    ZH_HANT("除了訓練好的潑濺，還儲存以後繼續訓練所需的一切。檢查點會大得多，"
-            "因為它包含每個潑濺槽位和最佳化器狀態。如果只想要匯出的潑濺檔案，"
-            "就保持關閉。"),
-    KO("완성된 스플랫뿐 아니라 나중에 학습을 이어가는 데 필요한 것도 모두 저장"
-       "합니다. 모든 스플랫 자리와 옵티마이저 상태를 담기 때문에 체크포인트가"
-       " 훨씬 커집니다. 내보낸 스플랫 파일만 필요하면 꺼 두십시오."),
-    DE("Zusätzlich alles speichern, was zum späteren Fortsetzen nötig ist, nicht "
-       "nur die fertigen Splats. Checkpoints werden viel größer, weil sie jeden "
-       "Splat-Platz und den Optimiererzustand mitführen. Ausgeschaltet lassen, "
-       "wenn nur die exportierte Splat-Datei gebraucht wird."),
-    FR("Enregistrer aussi tout ce qu'il faut pour reprendre l'entraînement plus "
-       "tard, pas seulement les splats finis. Les sauvegardes deviennent bien "
-       "plus grosses car elles portent chaque emplacement de splat et l'état "
-       "de l'optimiseur. À laisser décoché si seul le fichier de splats exporté "
-       "vous intéresse."),
-    ES("Guardar además todo lo necesario para reanudar el entrenamiento más tarde, "
-       "no solo los splats terminados. Los puntos de control se vuelven mucho "
-       "mayores porque llevan cada hueco de splat y el estado del optimizador. "
-       "Déjelo sin marcar si solo quiere el archivo de splats exportado."),
-    PT("Guardar também tudo o que é preciso para retomar o treinamento depois, "
-       "não só os splats prontos. Os checkpoints ficam bem maiores porque carregam "
-       "cada posição de splat e o estado do otimizador. Deixe desmarcado se quiser "
-       "apenas o arquivo de splats exportado."),
-    IT("Salvare anche tutto ciò che serve per riprendere l'addestramento più "
-       "tardi, non solo gli splat finiti. I checkpoint diventano molto più grandi "
-       "perché portano ogni posto splat e lo stato dell'ottimizzatore. Lasciare "
-       "deselezionato se serve solo il file di splat esportato."),
-    NL("Ook alles opslaan wat nodig is om later verder te trainen, niet alleen "
-       "de afgeronde splats. Checkpoints worden veel groter omdat ze elke splatplek "
-       "en de optimizerstatus meedragen. Laat uit als je alleen het geëxporteerde "
-       "splatbestand wilt."),
-    RU("Сохранять не только готовые сплаты, но и всё, что нужно, чтобы позже "
-       "продолжить обучение. Контрольные точки становятся заметно больше, поскольку "
-       "несут каждую ячейку сплата и состояние оптимизатора. Оставьте выключенным, "
-       "если нужен только выгруженный файл сплатов."),
-    TR("Yalnızca bitmiş splat'ları değil, sonradan eğitimi sürdürmek için gereken "
-       "her şeyi de kaydeder. Denetim noktaları çok daha büyür, çünkü her splat "
-       "yuvasını ve iyileştirici durumunu taşırlar. Yalnızca dışa aktarılmış "
-       "splat dosyasını istiyorsanız kapalı bırakın."));
+    EN("Store what training needs to continue in every checkpoint, the final one "
+       "and any older ones kept included. Without it, the newest checkpoint still "
+       "continues an interrupted run while only the newest is kept. Resumable "
+       "checkpoints are much larger because they carry every splat slot and the "
+       "optimizer state."),
+    JA("学習を続けるのに必要なものを、最後のものや残しておく古いものも含め、すべ"
+       "てのチェックポイントに保存します。オフでも、最新のチェックポイントだけを"
+       "残す設定なら、中断した学習はその最新のものから続けられます。再開できるチ"
+       "ェックポイントは、すべてのスプラット枠とオプティマイザの状態を持つので、"
+       "かなり大きくなります。"),
+    ZH_HANS("在每个检查点中都保存继续训练所需的一切，包括最后一个以及保留下来的旧"
+            "检查点。关闭时，只要设为只保留最新的检查点，中断的训练仍可从这个最新"
+            "检查点继续。可继续训练的检查点包含每个泼溅槽位和优化器状态，因此会大"
+            "得多。"),
+    ZH_HANT("在每個檢查點中都儲存繼續訓練所需的一切，包括最後一個以及保留下來的舊"
+            "檢查點。關閉時，只要設為只保留最新的檢查點，中斷的訓練仍可從這個最新"
+            "檢查點繼續。可繼續訓練的檢查點包含每個潑濺槽位和最佳化器狀態，因此會"
+            "大得多。"),
+    KO("학습을 이어가는 데 필요한 것을 마지막 체크포인트와 보관하는 이전 체크포"
+       "인트까지 모든 체크포인트에 저장합니다. 꺼 두어도 가장 최근 체크포인트만 "
+       "보관하는 동안에는 중단된 학습을 그 체크포인트에서 이어갈 수 있습니다. "
+       "이어할 수 있는 체크포인트는 모든 스플랫 자리와 옵티마이저 상태를 담기 "
+       "때문에 훨씬 커집니다."),
+    DE("Speichert in jedem Checkpoint, was zum Weitertrainieren nötig ist, auch im "
+       "letzten und in jedem aufbewahrten älteren. Ohne diese Option setzt der "
+       "neueste Checkpoint einen abgebrochenen Lauf trotzdem fort, solange nur der "
+       "neueste aufbewahrt wird. Fortsetzbare Checkpoints sind viel größer, weil "
+       "sie jeden Splat-Platz und den Optimiererzustand mitführen."),
+    FR("Enregistre dans chaque sauvegarde ce qu'il faut pour poursuivre "
+       "l'entraînement, y compris la dernière et les plus anciennes conservées. "
+       "Sans cette option, la sauvegarde la plus récente permet quand même de "
+       "reprendre une exécution interrompue tant que seule la plus récente est "
+       "conservée. Les sauvegardes reprenables sont bien plus grosses car elles "
+       "portent chaque emplacement de splat et l'état de l'optimiseur."),
+    ES("Guarda en cada punto de control lo necesario para seguir entrenando, "
+       "incluidos el último y los anteriores que se conserven. Sin esta opción, el "
+       "punto de control más reciente igualmente permite continuar una ejecución "
+       "interrumpida mientras solo se conserve el más reciente. Los puntos de "
+       "control reanudables son mucho mayores porque llevan cada hueco de splat y "
+       "el estado del optimizador."),
+    PT("Guarda em cada checkpoint o que é preciso para continuar o treinamento, "
+       "incluindo o último e os anteriores que forem mantidos. Sem esta opção, o "
+       "checkpoint mais recente ainda permite retomar uma execução interrompida "
+       "enquanto apenas o mais recente for mantido. Checkpoints retomáveis ficam "
+       "bem maiores porque carregam cada posição de splat e o estado do otimizador."),
+    IT("Salva in ogni checkpoint ciò che serve per continuare l'addestramento, "
+       "compresi l'ultimo e quelli precedenti conservati. Senza questa opzione, il "
+       "checkpoint più recente permette comunque di riprendere un'esecuzione "
+       "interrotta finché si conserva solo il più recente. I checkpoint "
+       "riprendibili sono molto più grandi perché portano ogni posto splat e lo "
+       "stato dell'ottimizzatore."),
+    NL("Slaat in elk checkpoint op wat nodig is om verder te trainen, ook in het "
+       "laatste en in elk bewaard ouder checkpoint. Zonder deze optie hervat het "
+       "nieuwste checkpoint een onderbroken run toch, zolang alleen het nieuwste "
+       "wordt bewaard. Hervatbare checkpoints zijn veel groter omdat ze elke "
+       "splatplek en de optimizerstatus meedragen."),
+    RU("Сохранять во всех контрольных точках всё, что нужно для продолжения "
+       "обучения, включая последнюю и сохраняемые более ранние. Без этого "
+       "прерванный запуск всё равно можно продолжить с последней точки, пока "
+       "хранится только последняя. Такие точки заметно больше, поскольку несут "
+       "каждую ячейку сплата и состояние оптимизатора."),
+    TR("Eğitime devam etmek için gerekenleri, son denetim noktası ve saklanan "
+       "eskiler de dahil olmak üzere her denetim noktasına kaydeder. Kapalıyken de "
+       "yalnızca en yeni denetim noktası saklandığı sürece yarıda kalan bir "
+       "çalışma o noktadan sürdürülebilir. Sürdürülebilir denetim noktaları her "
+       "splat yuvasını ve iyileştirici durumunu taşıdığı için çok daha büyüktür."));
 
 SS_MSG(save_eval_images,
     EN("Save evaluation images"), JA("評価用画像を保存"),
@@ -3242,19 +3258,19 @@ SS_MSG(seed_pointcloud,
     IT("Nuvola di punti iniziale PLY"), NL("Startpuntenwolk PLY"),
     RU("Начальное облако точек PLY"), TR("Başlangıç nokta bulutu PLY"));
 SS_MSG(seed_pointcloud_help,
-    EN("Replace the dataset's seed cloud with an XYZ + RGB PLY in the same source coordinate frame as the cameras. Relative paths start at the dataset directory. Scene centering and scaling apply to both. This is a point cloud, not an already-trained splat PLY. random_init=always overrides it; init_ply uses it only with init_ply_add_points. Resume restores checkpoint splats."),
-    JA("カメラと同じ元の座標系の XYZ + RGB PLY で初期点群を置き換えます。相対パスはデータセット基準です。中心移動とスケールは両方に適用されます。学習済みスプラットではなく点群です。random_init=always はこれを上書きし、init_ply は init_ply_add_points の場合のみ使用します。再開時はチェックポイントを復元します。"),
-    ZH_HANS("用与相机处于同一原始坐标系的 XYZ + RGB PLY 替换数据集的初始化点云。相对路径以数据集目录为基准，居中和缩放同时作用于点云与相机。这是普通点云，不是训练好的高斯 PLY。random_init=always 会覆盖它；init_ply 仅在 init_ply_add_points 开启时使用它。恢复训练使用检查点中的高斯。"),
-    ZH_HANT("用與相機處於同一原始座標系的 XYZ + RGB PLY 取代資料集的初始化點雲。相對路徑以資料集目錄為基準，置中和縮放同時作用於點雲與相機。這是普通點雲，不是訓練好的高斯 PLY。random_init=always 會覆蓋它；init_ply 僅在 init_ply_add_points 開啟時使用它。恢復訓練使用檢查點中的高斯。"),
-    KO("카메라와 같은 원본 좌표계의 XYZ + RGB PLY로 초기 점 구름을 교체합니다. 상대 경로는 데이터셋 기준이며 중심 이동과 배율은 둘 다에 적용됩니다. 학습된 스플랫이 아닌 점 구름입니다. random_init=always가 덮어쓰며 init_ply는 init_ply_add_points일 때만 사용합니다. 재개 시 체크포인트를 복원합니다."),
-    DE("Ersetzt die Startpunktwolke durch ein XYZ + RGB PLY im Quellkoordinatensystem der Kameras. Relative Pfade beginnen im Datensatzordner. Zentrierung und Skalierung gelten für beide. Kein trainiertes Splat-PLY. random_init=always überschreibt es; init_ply nutzt es nur mit init_ply_add_points. Fortsetzen stellt Checkpoint-Splats wieder her."),
-    FR("Remplace le nuage initial par un PLY XYZ + RGB dans le repère source des caméras. Les chemins relatifs partent du dossier du jeu de données. Centrage et échelle s'appliquent aux deux. Ce n'est pas un PLY de splats entraîné. random_init=always le remplace ; init_ply l'utilise uniquement avec init_ply_add_points. La reprise restaure les splats du checkpoint."),
-    ES("Sustituye la nube inicial por un PLY XYZ + RGB en el sistema de origen de las cámaras. Las rutas relativas parten del conjunto de datos. Centrado y escala se aplican a ambos. No es un PLY de splats entrenado. random_init=always lo sustituye; init_ply solo lo usa con init_ply_add_points. Reanudar restaura los splats del checkpoint."),
-    PT("Substitui a nuvem inicial por um PLY XYZ + RGB no sistema de origem das câmeras. Caminhos relativos partem da pasta do conjunto de dados. Centralização e escala se aplicam a ambos. Não é um PLY de splats treinado. random_init=always o substitui; init_ply só o usa com init_ply_add_points. Retomar restaura os splats do checkpoint."),
-    IT("Sostituisce la nuvola iniziale con un PLY XYZ + RGB nel sistema originale delle camere. I percorsi relativi partono dalla cartella del set di dati. Centratura e scala si applicano a entrambi. Non è un PLY di splat addestrati. random_init=always lo sostituisce; init_ply lo usa solo con init_ply_add_points. La ripresa ripristina gli splat del checkpoint."),
-    NL("Vervangt de startpuntenwolk door een XYZ + RGB PLY in het bronstelsel van de camera's. Relatieve paden beginnen bij de datasetmap. Centrering en schaal gelden voor beide. Geen getraind splat-PLY. random_init=always vervangt het; init_ply gebruikt het alleen met init_ply_add_points. Hervatten herstelt de checkpoint-splats."),
-    RU("Заменяет начальное облако файлом XYZ + RGB PLY в исходной системе координат камер. Относительные пути идут от каталога данных. Центрирование и масштаб применяются к обоим. Это не обученный PLY сплатов. random_init=always заменяет его; init_ply использует его только с init_ply_add_points. Возобновление восстанавливает сплаты контрольной точки."),
-    TR("Başlangıç bulutunu kameralarla aynı kaynak koordinat sistemindeki XYZ + RGB PLY ile değiştirir. Göreli yollar veri kümesi klasöründen başlar. Merkezleme ve ölçek ikisine de uygulanır. Eğitilmiş splat PLY değildir. random_init=always bunun yerine geçer; init_ply yalnızca init_ply_add_points ile kullanır. Devam etme kontrol noktası splatlarını geri yükler."));
+    EN("Empty uses the dataset's finished dense cloud (dense/roma.ply) when it has one, else its own points; `sparse` always uses its own points. A path: Replace the dataset's seed cloud with an XYZ + RGB PLY in the same source coordinate frame as the cameras. Relative paths start at the dataset directory. Scene centering and scaling apply to both. This is a point cloud, not an already-trained splat PLY. random_init=always overrides it; init_ply uses it only with init_ply_add_points. Resume restores checkpoint splats."),
+    JA("空欄では、データセットに完成した高密度点群（dense/roma.ply）があればそれを、なければ自身の点群を使います。`sparse` は常に自身の点群です。パスを指定した場合：カメラと同じ元の座標系の XYZ + RGB PLY で初期点群を置き換えます。相対パスはデータセット基準です。中心移動とスケールは両方に適用されます。学習済みスプラットではなく点群です。random_init=always はこれを上書きし、init_ply は init_ply_add_points の場合のみ使用します。再開時はチェックポイントを復元します。"),
+    ZH_HANS("留空时，若数据集有已完成的稠密点云（dense/roma.ply）则使用它，否则使用自带点云；`sparse` 始终使用自带点云。指定路径时：用与相机处于同一原始坐标系的 XYZ + RGB PLY 替换数据集的初始化点云。相对路径以数据集目录为基准，居中和缩放同时作用于点云与相机。这是普通点云，不是训练好的高斯 PLY。random_init=always 会覆盖它；init_ply 仅在 init_ply_add_points 开启时使用它。恢复训练使用检查点中的高斯。"),
+    ZH_HANT("留空時，若資料集有已完成的稠密點雲（dense/roma.ply）則使用它，否則使用自帶點雲；`sparse` 始終使用自帶點雲。指定路徑時：用與相機處於同一原始座標系的 XYZ + RGB PLY 取代資料集的初始化點雲。相對路徑以資料集目錄為基準，置中和縮放同時作用於點雲與相機。這是普通點雲，不是訓練好的高斯 PLY。random_init=always 會覆蓋它；init_ply 僅在 init_ply_add_points 開啟時使用它。恢復訓練使用檢查點中的高斯。"),
+    KO("비워 두면 데이터셋에 완성된 고밀도 점 구름(dense/roma.ply)이 있을 때 그것을, 없으면 자체 점 구름을 씁니다. `sparse`는 항상 자체 점 구름입니다. 경로를 주면: 카메라와 같은 원본 좌표계의 XYZ + RGB PLY로 초기 점 구름을 교체합니다. 상대 경로는 데이터셋 기준이며 중심 이동과 배율은 둘 다에 적용됩니다. 학습된 스플랫이 아닌 점 구름입니다. random_init=always가 덮어쓰며 init_ply는 init_ply_add_points일 때만 사용합니다. 재개 시 체크포인트를 복원합니다."),
+    DE("Leer nimmt die fertige dichte Punktwolke des Datensatzes (dense/roma.ply), sonst dessen eigene Punkte; `sparse` nimmt immer die eigenen Punkte. Ein Pfad: Ersetzt die Startpunktwolke durch ein XYZ + RGB PLY im Quellkoordinatensystem der Kameras. Relative Pfade beginnen im Datensatzordner. Zentrierung und Skalierung gelten für beide. Kein trainiertes Splat-PLY. random_init=always überschreibt es; init_ply nutzt es nur mit init_ply_add_points. Fortsetzen stellt Checkpoint-Splats wieder her."),
+    FR("Vide : le nuage dense terminé du jeu de données (dense/roma.ply) s'il existe, sinon ses propres points ; `sparse` prend toujours ses propres points. Un chemin : Remplace le nuage initial par un PLY XYZ + RGB dans le repère source des caméras. Les chemins relatifs partent du dossier du jeu de données. Centrage et échelle s'appliquent aux deux. Ce n'est pas un PLY de splats entraîné. random_init=always le remplace ; init_ply l'utilise uniquement avec init_ply_add_points. La reprise restaure les splats du checkpoint."),
+    ES("Vacío usa la nube densa terminada del conjunto de datos (dense/roma.ply) si existe, si no sus propios puntos; `sparse` usa siempre sus propios puntos. Una ruta: Sustituye la nube inicial por un PLY XYZ + RGB en el sistema de origen de las cámaras. Las rutas relativas parten del conjunto de datos. Centrado y escala se aplican a ambos. No es un PLY de splats entrenado. random_init=always lo sustituye; init_ply solo lo usa con init_ply_add_points. Reanudar restaura los splats del checkpoint."),
+    PT("Vazio usa a nuvem densa concluída do conjunto de dados (dense/roma.ply) quando existe, senão os próprios pontos; `sparse` usa sempre os próprios pontos. Um caminho: Substitui a nuvem inicial por um PLY XYZ + RGB no sistema de origem das câmeras. Caminhos relativos partem da pasta do conjunto de dados. Centralização e escala se aplicam a ambos. Não é um PLY de splats treinado. random_init=always o substitui; init_ply só o usa com init_ply_add_points. Retomar restaura os splats do checkpoint."),
+    IT("Vuoto usa la nuvola densa completata del set di dati (dense/roma.ply) se c'è, altrimenti i suoi punti; `sparse` usa sempre i suoi punti. Un percorso: Sostituisce la nuvola iniziale con un PLY XYZ + RGB nel sistema originale delle camere. I percorsi relativi partono dalla cartella del set di dati. Centratura e scala si applicano a entrambi. Non è un PLY di splat addestrati. random_init=always lo sostituisce; init_ply lo usa solo con init_ply_add_points. La ripresa ripristina gli splat del checkpoint."),
+    NL("Leeg gebruikt de voltooide dichte puntenwolk van de dataset (dense/roma.ply) als die er is, anders de eigen punten; `sparse` gebruikt altijd de eigen punten. Een pad: Vervangt de startpuntenwolk door een XYZ + RGB PLY in het bronstelsel van de camera's. Relatieve paden beginnen bij de datasetmap. Centrering en schaal gelden voor beide. Geen getraind splat-PLY. random_init=always vervangt het; init_ply gebruikt het alleen met init_ply_add_points. Hervatten herstelt de checkpoint-splats."),
+    RU("Пусто — готовое плотное облако набора данных (dense/roma.ply), если оно есть, иначе его собственные точки; `sparse` — всегда собственные точки. Путь: Заменяет начальное облако файлом XYZ + RGB PLY в исходной системе координат камер. Относительные пути идут от каталога данных. Центрирование и масштаб применяются к обоим. Это не обученный PLY сплатов. random_init=always заменяет его; init_ply использует его только с init_ply_add_points. Возобновление восстанавливает сплаты контрольной точки."),
+    TR("Boş bırakılırsa veri kümesinin tamamlanmış yoğun bulutu (dense/roma.ply) varsa o, yoksa kendi noktaları kullanılır; `sparse` her zaman kendi noktalarını kullanır. Bir yol: Başlangıç bulutunu kameralarla aynı kaynak koordinat sistemindeki XYZ + RGB PLY ile değiştirir. Göreli yollar veri kümesi klasöründen başlar. Merkezleme ve ölçek ikisine de uygulanır. Eğitilmiş splat PLY değildir. random_init=always bunun yerine geçer; init_ply yalnızca init_ply_add_points ile kullanır. Devam etme kontrol noktası splatlarını geri yükler."));
 
 SS_MSG(init_ply,
     EN("Initial splat PLY"), JA("初期スプラットの PLY"),

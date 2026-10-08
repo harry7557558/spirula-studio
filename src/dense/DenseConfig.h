@@ -9,11 +9,20 @@
 
 namespace spirula::dense {
 
+// Fast, balanced and high set matching size, pairing and density together; turbo,
+// base and precise are the older matcher-only presets that saved settings still name.
+inline constexpr const char* kDensePresets[] = {"fast", "balanced", "high"};
+inline bool is_dense_preset(const std::string& name) {
+    for (const char* preset : kDensePresets) if (name == preset) return true;
+    return false;
+}
+
 struct DenseConfig {
+    DenseConfig() { apply_preset(preset); }
     roma::MatchOptions match;
     PairOptions pairs;
     GeometryOptions geometry;
-    std::string preset = "precise", checkpoint = "romav2.0.1";
+    std::string preset = "balanced", checkpoint = "romav2.0.1";
     std::string image_dir = "images", recon_dir, pair_list;
     std::string mask_dir = "masks", feature_mask_dir = "feature_masks";
     bool use_masks = true;
@@ -40,10 +49,14 @@ struct DenseConfig {
     double outlier_stddev = 2;
     uint64_t image_cache_bytes = 0;
     int cpu_workers = 0;
-    bool resume = true, rebuild = false, keep_cache = true;
+    // Predictions stay on disk until the run succeeds, so a cancelled run resumes;
+    // keep_cache keeps them afterwards too (about 10 MB a pair at 640, 80 MB at 1280 both ways).
+    bool resume = true, rebuild = false, keep_cache = false;
     std::string device, image_gamut, image_exposure;
     std::optional<bool> image_is_linear;
     void apply_preset(const std::string& name);
+    // True while every setting a preset controls still holds that preset's value.
+    bool matches_preset(const std::string& name) const;
     void apply_source_workflow();
     GeometryOptions resolved_geometry() const;
     void validate() const;

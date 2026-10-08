@@ -3,13 +3,15 @@
 // One CSV row per second of a training run -- steps, how long they waited for
 // data versus ran, sampled GPU time, resolution stage, splats and memory -- for
 // tools/perf/ to line up against the machine's own counters. log_performance
-// writes it to <run>/perf; SS_TRAIN_PERF=1 to the run folder, else to its value.
+// writes it to a new <run>/perf/<date-time> per session, so a resumed run keeps
+// the earlier recording; SS_TRAIN_PERF=1 to the run folder, else to its value.
 
 #include "core/Env.h"
 
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <string>
 
@@ -19,11 +21,12 @@ class TrainPerfLog {
 public:
     ~TrainPerfLog() { if (_file) std::fclose(_file); }
 
-    void open(const std::filesystem::path& run_dir, bool log_performance) {
+    // `session_dir` is empty without log_performance.
+    void open(const std::filesystem::path& run_dir, const std::filesystem::path& session_dir) {
         const char* v = spirula::env("TRAIN_PERF");
         const bool by_env = v && *v && !(v[0] == '0' && !v[1]);
-        if (!log_performance && !by_env) return;
-        const std::filesystem::path dir = log_performance ? perf_dir(run_dir)
+        if (session_dir.empty() && !by_env) return;
+        const std::filesystem::path dir = !session_dir.empty() ? session_dir
             : std::string(v) == "1" ? run_dir : std::filesystem::path(v);
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
@@ -35,7 +38,15 @@ public:
     }
 
     bool enabled() const { return _file != nullptr; }
-    static std::filesystem::path perf_dir(const std::filesystem::path& run_dir) { return run_dir / "perf"; }
+    static std::filesystem::path new_session_dir(const std::filesystem::path& run_dir) {
+        char stamp[32];
+        const std::time_t now = std::time(nullptr);
+        std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", std::localtime(&now));
+        std::filesystem::path dir = run_dir / "perf" / stamp;
+        for (int k = 2; std::filesystem::exists(dir); ++k)
+            dir = run_dir / "perf" / (std::string(stamp) + "-" + std::to_string(k));
+        return dir;
+    }
 
     // `gpu_s` is negative on steps the GPU timer did not bracket.
     void add_step(double step_s, double data_wait_s, double gpu_s, double save_s) {

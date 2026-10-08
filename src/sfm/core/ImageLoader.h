@@ -46,7 +46,7 @@
 #include <utility>
 #include <vector>
 
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 #include "sfm/core/Image.h"
 
 namespace sfm {
@@ -91,7 +91,7 @@ struct ImageLoadOptions {
 // very files being decoded. Falls back to the historical 1 GiB when the
 // platform will not say how much memory it has.
 inline size_t defaultDecodeBudget() {
-    const size_t total = physicalRamBytes();
+    const size_t total = spirula::physicalRamBytes();
     if (total == 0) return 1ull << 30;
     return std::min<size_t>(std::max<size_t>(total / 4, 1ull << 30), 8ull << 30);
 }

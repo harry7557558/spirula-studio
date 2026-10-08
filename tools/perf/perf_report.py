@@ -290,6 +290,14 @@ def main(argv):
     session = Path(argv[1])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # A run's perf folder holds one session per start (a resume adds one); take the newest.
+    if not (session / "system.csv").exists():
+        sessions = sorted(p for p in session.glob("*") if (p / "system.csv").exists())
+        if sessions:
+            if len(sessions) > 1:
+                print(f"{len(sessions)} sessions in {session}; reading the newest. Earlier: "
+                      + ", ".join(p.name for p in sessions[:-1]))
+            session = sessions[-1]
     meta, train, system, nvidia, adapters = load(session)
     dense = [r for r in read_csv(session / "dense_perf.csv") if isinstance(r.get("interval_s"), float)]
     meta["cpu"] = str(meta.get("cpu", "")).strip()
@@ -384,7 +392,8 @@ def main(argv):
     lines = [f"Session: {session}", f"Machine: {meta.get('cpu', '?')}, {cores} threads, "
              f"{fmt((meta.get('ram_bytes') or 0) / GIB, 0)} GiB RAM",
              f"GPUs: {', '.join(g.get('name', '?') for g in meta.get('gpus', []))}", ""]
-    config_path = session.parent / "config.json"
+    config_path = next((d / "config.json" for d in (session.parent, session.parent.parent)
+                        if (d / "config.json").exists()), session.parent / "config.json")
     if config_path.exists():
         try:
             cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))

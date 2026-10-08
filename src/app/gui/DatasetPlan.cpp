@@ -775,6 +775,8 @@ StepFields dense_fields(const DenseJob& job) {
     for (const auto& [key, value] : object.obj) {
         if (key == "preset" || key == "device" || key == "memory_budget_bytes" || key == "image_cache_bytes" ||
             key == "cpu_workers" || key == "resume" || key == "rebuild" || key == "keep_cache") continue;
+        // A record from before reference spacing existed means 0, so such a cloud stays fresh.
+        if (key == "reference_coverage" && value.num == 0) continue;
         JsonWriter writer; json_write(writer, value);
         fields.push_back({key, "", writer.str()});
     }

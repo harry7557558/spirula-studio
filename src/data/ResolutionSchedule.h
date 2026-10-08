@@ -1,8 +1,8 @@
 #pragma once
 
-// Progressive training resolution: which image divisor each epoch trains at.
+// Progressive training resolution: which image divisor each step trains at.
 // A divisor applies on top of the resolution the dataset was loaded at, and
-// changes only between epochs, so every image is trained the same number of
+// switches on epoch boundaries, so every image is trained the same number of
 // times at each resolution. The splat budget can follow the same stages.
 // docs/progressive-resolution.md has the user view.
 
@@ -94,7 +94,7 @@ inline Setpoints to_epochs(const Setpoints& steps, int64_t steps_per_epoch) {
     return merged;
 }
 
-// 1 when the schedule is empty or the epoch precedes it.
+// 1 when the schedule is empty or `at` precedes it.
 inline int divisor_at(const Setpoints& stages, int64_t at) {
     int divisor = 1;
     for (const auto& [first, d] : stages) {

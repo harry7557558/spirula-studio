@@ -56,6 +56,7 @@ constexpr float kMaskThreshold = 0.5f;
 struct Frame {
     double ax[3], ay[3], az[3];   // unit rows
     double ex = 1.0, ey = 1.0;    // half extents, tangent units
+    double ox = 0.0, oy = 0.0;    // the extents' centre off the axis, tangent units
 };
 
 double dot3(const double* a, const double* b) {
@@ -251,6 +252,23 @@ bool plan_one_ring(const std::vector<double>& tmax, double inner, double outer,
     return any;
 }
 
+// Upright cube faces about the optical axis, each cropped to the lens's visible part
+// of its cell; a face holding under 5% of its cell is dropped.
+void plan_cube(const camhost::Camera& hc, std::vector<Frame>& frames) {
+    const double axes[6][3] = {{0, 0, 1}, {1, 0, 0}, {-1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}};
+    const double toward[6][3] = {{0, 1, 0}, {0, 1, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}};
+    for (int k = 0; k < 6; ++k) {
+        Frame f = upright_frame(axes[k], toward[k]);
+        const double R[9] = {f.ax[0], f.ax[1], f.ax[2], f.ay[0], f.ay[1], f.ay[2], f.az[0], f.az[1], f.az[2]};
+        const double cell[4] = {-kFrontOverlap, kFrontOverlap, -kFrontOverlap, kFrontOverlap};
+        double bb[4], fraction = 0;
+        if (!camhost::visible_bbox(hc, R, cell, bb, &fraction) || fraction < 0.05) continue;
+        f.ex = 0.5 * (bb[1] - bb[0]); f.ey = 0.5 * (bb[3] - bb[2]);
+        f.ox = 0.5 * (bb[1] + bb[0]); f.oy = 0.5 * (bb[3] + bb[2]);
+        frames.push_back(f);
+    }
+}
+
 // The rings around the front face: the first reaches in under its edge, each
 // next one in under the last, out to where the lens stops.
 void plan_ring(const camhost::Camera& hc, std::vector<Frame>& frames) {
@@ -298,7 +316,8 @@ std::vector<float> resize_area(const uint8_t* src, int sw, int sh, int channels,
 }
 
 void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool split,
-                        int patch, int max_face, FaceRes res, int64_t min_face_px, bool source_indices) {
+                        int patch, int max_face, FaceRes res, int64_t min_face_px, bool source_indices,
+                        FaceLayout layout) {
     camera_ = cam;
     out_w_ = out_w;
     out_h_ = out_h;
@@ -318,6 +337,8 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
             f.ex = f.ey = kCubeOverlap;
             frames.push_back(f);
         }
+    } else if (split && layout == FaceLayout::Cube) {
+        plan_cube(hc, frames);
     } else if (split) {
         // The front face, cropped (still centred) to what the lens holds.
         const double I[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
@@ -354,8 +375,10 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
         fs = 1.0;
     } else {
         for (const Frame& fr : frames) {
-            const double theta = std::acos(std::clamp(fr.az[2], -1.0, 1.0));
-            const double phi = std::atan2(fr.az[1], fr.az[0]);
+            double mid[3];
+            for (int m = 0; m < 3; ++m) mid[m] = fr.az[m] + fr.ox * fr.ax[m] + fr.oy * fr.ay[m];
+            const double theta = std::acos(std::clamp(mid[2] / len3(mid), -1.0, 1.0));
+            const double phi = std::atan2(mid[1], mid[0]);
             const double dens = source_density(hc, theta, phi);
             double focal = dens * face_scale;
             // Raised to the floor, but never past the frame's own density.
@@ -368,8 +391,8 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
             f.w = snap(2.0 * focal * fr.ex, patch);
             f.h = snap(2.0 * focal * fr.ey, patch);
             f.fx = f.fy = focal;
-            f.cx = 0.5 * f.w;
-            f.cy = 0.5 * f.h;
+            f.cx = 0.5 * f.w - fr.ox * focal;
+            f.cy = 0.5 * f.h - fr.oy * focal;
             // The extents follow the pixel grid so the pixels stay square.
             const double ex = f.w / (2.0 * focal), ey = f.h / (2.0 * focal);
             for (int m = 0; m < 3; ++m) {
@@ -432,6 +455,11 @@ void GeometryWarp::plan(const GeometryCamera& cam, int out_w, int out_h, bool sp
                 }
         });
     }
+
+    // Matching never gathers, and the gather below assumes faces centred on their axes.
+    contrib_off_.clear();
+    contrib_.clear();
+    if (layout == FaceLayout::Cube) return;
 
     // ---- inverse: which faces reach each output pixel -----------------------
     const double ofx = cam.fx * sx, ofy = cam.fy * sy;
@@ -651,6 +679,7 @@ void GeometryWarp::gather(const std::vector<std::vector<float>>& depth,
                           const std::vector<std::vector<float>>& mask, bool ray_depth,
                           std::vector<float>* out_depth,
                           std::vector<float>* out_normal) const {
+    if (contrib_off_.empty()) throw std::runtime_error("this face plan has no gather map");
     const size_t n = (size_t)out_w_ * out_h_;
     const bool do_depth = out_depth && !depth.empty();
     const bool do_normal = out_normal && !normal.empty();

@@ -33,7 +33,7 @@ void verify(const ColmapCamera& raw, const app::GeometryCamera& camera, const sf
     warp.plan(camera, std::max(16, (int)(camera.width * scale) / 16 * 16),
               std::max(16, (int)(camera.height * scale) / 16 * 16),
               camhost::splits_to_pinhole_faces(camera.model, camera.width, camera.height, camera.fx, camera.fy),
-              16, 1280, app::FaceRes::Output, 0, true);
+              16, 1280, app::FaceRes::Output, 0, true, app::FaceLayout::Cube);
     size_t checked = 0;
     double max_pixel_error = 0, max_ray_error = 0;
     camhost::Camera source_camera;

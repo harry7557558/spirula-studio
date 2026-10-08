@@ -98,6 +98,7 @@ static void test_dataset_preset() {
     s.sfm.dense.enable = true;
     s.sfm.dense.use_for_training = false;
     s.sfm.dense.config.apply_preset("fast");
+    s.sfm.dense.config.pairs.reference_coverage = 7;
     s.sfm.dense.config.geometry.min_source_images = 2;
     s.sfm.dense.config.min_overlap = 0.73;
     s.sfm.dense.config.match.memory_budget_bytes = 3456789012ull;

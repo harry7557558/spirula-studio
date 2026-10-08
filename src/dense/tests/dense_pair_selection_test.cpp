@@ -1,6 +1,7 @@
 #include "dense/PairSelection.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <set>
 #include <stdexcept>
@@ -55,6 +56,37 @@ int main() {
         for (auto pair : pairs(permuted, options)) identities.push_back(std::minmax(permuted[pair.first].source_image, permuted[pair.second].source_image));
         for (size_t i = 0; i < selected.size(); ++i)
             require(identities[i] == std::make_pair((int64_t)selected[i].first, (int64_t)selected[i].second), "input permutation changed automatic ranking");
+        {
+            // A ring of cameras around one cloud: wide-angle partners beat near duplicates,
+            // faces of one image are never paired, and reference coverage thins a dense capture.
+            std::vector<sfm::Vec3> cloud;
+            for (int i = 0; i < 200; ++i) cloud.push_back({std::cos(i * 0.7) * 0.2, std::sin(i * 1.3) * 0.2, std::cos(i * 2.1) * 0.2});
+            std::vector<PairImage> ring;
+            for (int i = 0; i < 360; ++i) {
+                const double angle = i * 3.141592653589793 / 180;
+                PairImage view;
+                view.source_image = i / 2; view.face = i % 2; view.name = std::to_string(i / 2);
+                view.center = {4 * std::cos(angle / 2), 4 * std::sin(angle / 2), 0};
+                view.forward = (sfm::Vec3{} - view.center).normalized();
+                for (uint64_t p = 0; p < cloud.size(); ++p) view.visible_points.push_back(p);
+                ring.push_back(view);
+            }
+            PairOptions automatic; automatic.neighbors = 4;
+            std::vector<ImagePair> chosen;
+            const auto statistics = select_pairs(ring, automatic, [&](ImagePair pair) { chosen.push_back(pair); }, {}, cloud);
+            double narrow = 0;
+            for (const auto& pair : chosen) {
+                require(ring[pair.first].source_image != ring[pair.second].source_image, "faces of one image were paired");
+                const auto a = ring[pair.first].center.normalized(), b = ring[pair.second].center.normalized();
+                narrow += std::acos(std::clamp(a.dot(b), -1.0, 1.0)) < 5 * 3.141592653589793 / 180;
+            }
+            require(statistics.references == ring.size() && narrow < chosen.size() / 4,
+                    "neighbours were not chosen for their triangulation angle");
+            automatic.reference_coverage = 3;
+            const auto spaced = select_pairs(ring, automatic, [](ImagePair) {}, {}, cloud);
+            require(spaced.references > 0 && spaced.references < ring.size() / 2 && spaced.emitted < statistics.emitted,
+                    "reference coverage did not thin a densely captured ring");
+        }
         options.mode = PairMode::Sequential; options.sequence_window = 1;
         selected = pairs(images, options);
         require(selected.size() == 10, "sequence window crossed folders or skipped a neighbor");
@@ -79,7 +111,7 @@ int main() {
         try { select_pairs(images, options, [](ImagePair) {}, [] { throw std::runtime_error("cancel"); }); }
         catch (const std::runtime_error&) { stopped = true; }
         require(stopped, "automatic ranking did not observe cancellation");
-        std::printf("PASS deterministic pairing, co-visibility, bounded degree, sequences, explicit/exhaustive modes, baseline and cancellation\n");
+        std::printf("PASS deterministic pairing, co-visibility, triangulation angle, reference coverage, face separation, bounded degree, sequences, explicit/exhaustive modes, baseline and cancellation\n");
         return 0;
     } catch (const std::exception& e) { std::printf("FAIL %s\n", e.what()); return 1; }
 }

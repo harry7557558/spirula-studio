@@ -971,7 +971,7 @@ void GuiApp::apply_dataset_settings(const DatasetSettings& in) {
     _mask_features = s.sfm.mask_features;
     _geometry = s.sfm.geometry;
     _dense = s.sfm.dense;
-    _dense_config_text.clear(); _dense_config_error.clear();
+    _dense_config_error.clear();
     // A colour space the preset spelled out is a decision, so the EXR probe
     // must not overwrite it later.
     _color_space_touched =
@@ -1104,13 +1104,15 @@ void GuiApp::open_dataset(std::string dir, std::string image_dir,
     // Another dataset's region choice and resume target mean nothing here.
     if (dir != _cfg.data) { _cfg.roi_region.clear(); _cfg.resume.clear(); }
     _cfg.data = dir;
-    if (!_dense_selected_seed.empty() && _cfg.seed_pointcloud == _dense_selected_seed && dir != _workspace) {
+    // The trainer picks a dense cloud up by itself; only the dense step's
+    // "not for training" needs saying, and only for the dataset it made.
+    if (!_dense_selected_seed.empty() && _cfg.seed_pointcloud == _dense_selected_seed) {
         _cfg.seed_pointcloud.clear(); _dense_selected_seed.clear();
     }
-    const bool want_dense = std::exchange(_force_dense_seed, false) || (_dense.enable && _dense.use_for_training);
-    if (dir == _workspace && want_dense && dense_completed(dir) &&
-        !_cfg_ui.touched.count("seed_pointcloud") && (_cfg.seed_pointcloud.empty() || _cfg.seed_pointcloud == _dense_selected_seed)) {
-        _dense_selected_seed = spirula::dense::artifact_files(dir).cloud.string();
+    const bool force_dense = std::exchange(_force_dense_seed, false);
+    if (dir == _workspace && !force_dense && _dense.enable && !_dense.use_for_training &&
+        !_cfg_ui.touched.count("seed_pointcloud") && _cfg.seed_pointcloud.empty()) {
+        _dense_selected_seed = spirula::dense::kSparseSeed;
         _cfg.seed_pointcloud = _dense_selected_seed;
     }
     // image_dir / mask_dir: the runner hands its (possibly external) folders
@@ -1742,10 +1744,9 @@ bool GuiApp::launch_batch_train(BatchTask& task, const BatchRow& row) {
         return false;
     }
     if (const BatchTask* made = batch_task_of(task.row, BatchStage::Dataset, 0);
-        made && made->status == BatchStatus::Done && _dense.enable && _dense.use_for_training &&
-        cfg.seed_pointcloud.empty() && cfg.resume.empty() && cfg.init_ply.empty() && cfg.random_init != "always" &&
-        dense_completed(dataset))
-        cfg.seed_pointcloud = spirula::dense::artifact_files(dataset).cloud.string();
+        made && made->status == BatchStatus::Done && _dense.enable && !_dense.use_for_training &&
+        cfg.seed_pointcloud.empty())
+        cfg.seed_pointcloud = spirula::dense::kSparseSeed;
     log(i18n::format(msg::batch_log_train,
                      {(long long)(_batch_current + 1), dataset}));
     follow_batch_screen(BatchStage::Train);
@@ -3980,6 +3981,7 @@ void GuiApp::sync_dataset_jobs() {
     req.redo_masks = _redo_masks;
     req.redo_model = _redo_model;
     req.redo_geometry = _redo_geometry;
+    req.redo_dense = _redo_dense;
     req.keep_built = _keep_built && _keep_built_for == _workspace;
     if (_part_choice_for == _workspace)
         std::copy(std::begin(_part_choice), std::end(_part_choice), std::begin(req.parts));
@@ -3988,6 +3990,7 @@ void GuiApp::sync_dataset_jobs() {
     // The same step either way: `spirula geometry` over the finished dataset.
     _sfm_job.geometry = _colmap_job.geometry = _geometry;
     _sfm_job.dense = _colmap_job.dense = _dense;
+    if (_redo_dense || _dense_rebuild) _sfm_job.dense.config.rebuild = _colmap_job.dense.config.rebuild = true;
     _sfm_job.dense.config.device = _colmap_job.dense.config.device = _native_device_uuid;
     _sfm_job.dense.config.image_gamut = _colmap_job.dense.config.image_gamut = _sfm_job.image_gamut;
     _sfm_job.dense.config.image_is_linear = _colmap_job.dense.config.image_is_linear = _sfm_job.image_is_linear;
@@ -4019,7 +4022,7 @@ void GuiApp::sync_dataset_jobs() {
 }
 
 void GuiApp::update_dataset_job() {
-    if (!dataset_busy()) return;
+    if (!dataset_busy()) { _dense_rebuild = false; return; }
     sync_dataset_jobs();
     if (_sfm.state() == SfmRunner::State::Running) _sfm.update(_sfm_job);
     else                                           _colmap.update(_colmap_job);
@@ -4062,6 +4065,8 @@ bool GuiApp::launch_dataset_job() {
     close_splat();
     if (!freeze_native_device()) return false;
     app::set_crash_note("building dataset " + _workspace);
+    // The runner takes the dense settings when that step starts, after the request is forgotten.
+    _dense_rebuild = _redo_dense;
     sync_dataset_jobs();
     save_run_stencils();
     {
@@ -6194,7 +6199,7 @@ void GuiApp::draw_dataset_preview(float height) {
 // Re-doing one step of what is already in the output folder, instead of the
 // whole run. The rules are probe_workspace's; this only names them.
 void GuiApp::draw_dataset_rerun(const WorkspaceState& prior) {
-    if (!prior.resumable() && !prior.model && !prior.geometry) return;
+    if (!prior.resumable() && !prior.model && !prior.geometry && !prior.dense) return;
     if (!ui::CollapsingHeader(dmsg::rerun_section)) return;
     ImGui::Indent();
     ui::TextDisabledWrapped(dmsg::rerun_section_help);
@@ -6247,6 +6252,15 @@ void GuiApp::draw_dataset_rerun(const WorkspaceState& prior) {
         ui::help_on_hover_disabled(need_geom_model ? dmsg::geom_model_first
                                                    : dmsg::rerun_geometry_help);
     }
+    if (prior.dense) {
+        ImGui::SameLine();
+        const bool need_dense_model = dense_model_missing();
+        ImGui::BeginDisabled(!_dense.enable || need_dense_model);
+        if (ui::Button(spirula::i18n::msg::dense::rerun)) _redo_dense = go = true;
+        ImGui::EndDisabled();
+        ui::help_on_hover_disabled(need_dense_model ? spirula::i18n::msg::dense::model_first
+                                                    : spirula::i18n::msg::dense::rerun_help);
+    }
     ImGui::NewLine();
     ImGui::Unindent();
     // Every route but the last re-reconstructs: a model built from frames or
@@ -6277,8 +6291,11 @@ GuiApp::DatasetFolders GuiApp::workspace_folders(const WorkspaceState& prior) co
 // PLY header when one is set, else the parsed dataset's points; -1 when unknown.
 int64_t GuiApp::starting_points() {
     std::error_code ec;
-    if (!_cfg.seed_pointcloud.empty()) {
-        fs::path p = _cfg.seed_pointcloud;
+    const std::string seed = _cfg.seed_pointcloud.empty() && dense_cloud_present()
+        ? spirula::dense::artifact_files(_cfg.data).cloud.string()
+        : _cfg.seed_pointcloud == spirula::dense::kSparseSeed ? std::string() : _cfg.seed_pointcloud;
+    if (!seed.empty()) {
+        fs::path p = seed;
         if (p.is_relative()) p = fs::path(_cfg.data) / p;
         const auto time = fs::last_write_time(p, ec);
         if (ec) return -1;
@@ -6584,7 +6601,7 @@ void GuiApp::reset_recon_options() {
     _colmap_job = ColmapJob{};
     _geometry = GeometryJob{};
     _dense = DenseJob{};
-    _dense_config_text.clear(); _dense_config_error.clear();
+    _dense_config_error.clear();
     _sfm_job.image_gamut = gamut;
     _sfm_job.image_is_linear = linear;
     _sfm_job.keep_intermediate = keep;
@@ -7019,7 +7036,7 @@ void GuiApp::restore_from_record(bool announce) {
 }
 
 void GuiApp::forget_redo_requests() {
-    _redo_frames = _redo_masks = _redo_model = _redo_geometry = false;
+    _redo_frames = _redo_masks = _redo_model = _redo_geometry = _redo_dense = false;
     std::fill(std::begin(_part_choice), std::end(_part_choice), PartChoice::Auto);
 }
 
@@ -7532,13 +7549,12 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     ImGui::EndDisabled();
     ImGui::Spacing();
 
-    ImGui::BeginDisabled(dataset_locked(Stage::Dense));
-    draw_dense_options();
-    ImGui::EndDisabled();
-    ImGui::Spacing();
     // A laser scan gives the run its depth and normals.
     ImGui::BeginDisabled(dataset_locked(Stage::Geometry) || !_lidar.empty());
     draw_geometry_options();
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(dataset_locked(Stage::Dense));
+    draw_dense_options();
     ImGui::EndDisabled();
     ImGui::Spacing();
 
@@ -7594,10 +7610,11 @@ void GuiApp::draw_dataset_form(float height, bool running) {
                              need_mask_model   ? dmsg::mask_model_first
                              : need_feat_model ? dmsg::feat_model_first
                              : need_geom_model ? dmsg::geom_model_first
-                                               : spirula::i18n::msg::dense::checkpoint,
+                                               : spirula::i18n::msg::dense::model_first,
                              need_mask_model   ? dmsg::mask_get_model
                              : need_feat_model ? dmsg::feat_get_model
-                                               : dmsg::geom_get_model,
+                             : need_geom_model ? dmsg::geom_get_model
+                                               : spirula::i18n::msg::dense::get_model,
                              [&] {
                                  if (need_mask_model)      request_model_download(_model_id, _mask_detector_id);
                                  else if (need_feat_model) request_feature_download();
@@ -9807,49 +9824,11 @@ void GuiApp::draw_train_settings() {
         ui::SeparatorText(msg::section_basic_options);
         draw_basic_options();
 
-        ui::Text(fld::seed_pointcloud);
-        if (!_cfg.seed_pointcloud.empty()) {
-            ImGui::SameLine();
-            if (ui::Button(msg::seed_cloud_restore)) {
-                _cfg.seed_pointcloud.clear();
-                _cfg_ui.touched.insert("seed_pointcloud");
-            }
-        }
-        ImGui::SetNextItemWidth(px(-70.0f));
-        if (ui::InputTextRaw("##seed_pointcloud", &_cfg.seed_pointcloud))
-            _cfg_ui.touched.insert("seed_pointcloud");
-        ui::help_on_hover(fld::seed_pointcloud_help);
-        ImGui::SameLine();
-        if (ui::ButtonRaw("...##seed_pointcloud_pick", ImVec2(60, 0)))
-            open_pick(PickAction::SeedPointcloud, fld::seed_pointcloud.get(),
-                      FileDialog::Mode::File, {".ply"});
-
-        auto* session = _runner.session();
-        const bool parsed = session && ph != TrainRunner::Phase::Loading &&
-            ph != TrainRunner::Phase::Preparing && ph != TrainRunner::Phase::LoadError &&
-            parse_settings_equal(session->cfg, _cfg);
-        const bool random = _cfg.random_init == "always" ||
-            (_cfg.random_init == "auto" && parsed && session->random_seeded);
-        if (!_cfg.resume.empty()) {
-            ui::TextWrapped(msg::seed_source_resume);
-        } else {
-            if (!_cfg.init_ply.empty())
-                ui::TextWrapped(_cfg.init_ply_add_points ? msg::seed_source_splat_add
-                                                       : msg::seed_source_splat);
-            if (_cfg.init_ply.empty() || _cfg.init_ply_add_points) {
-                if (random)
-                    ui::TextWrapped(msg::seed_source_random);
-                else if (!_cfg.seed_pointcloud.empty())
-                    ui::TextWrapped(msg::seed_source_external,
-                                    {fs::path(_cfg.seed_pointcloud).filename().string()});
-                else
-                    ui::TextWrapped(parsed || _cfg.random_init == "never"
-                                        ? msg::seed_source_dataset : msg::seed_source_auto);
-            }
-        }
-        if (!_cfg.seed_pointcloud.empty() && (!_cfg.resume.empty() || random ||
-            (!_cfg.init_ply.empty() && !_cfg.init_ply_add_points)))
-            ui::TextColoredWrapped(kWarn, msg::seed_cloud_unused);
+        // Without a dense cloud the only choice is the dataset's own points,
+        // so the section stays out of the way; Advanced still has the flag.
+        if (dense_cloud_present() ||
+            (!_cfg.seed_pointcloud.empty() && _cfg.seed_pointcloud != spirula::dense::kSparseSeed))
+            draw_seed_cloud(ph);
 
         ImGui::Spacing();
         if (ui::CollapsingHeader(msg::section_all_options))
@@ -10275,7 +10254,7 @@ void GuiApp::draw_preset_save_modal() {
 // macro options (see train_resolve_macros()).
 void GuiApp::draw_train_mask_mode(float width) {
     bool cut_out = _cfg.apply_loss_for_mask.value_or(spirula::dense::is_dense_seed(_cfg.data, _cfg.seed_pointcloud) ||
-        (_dense.enable && _dense.use_for_training));
+        (_cfg.seed_pointcloud.empty() && dense_cloud_present()) || (_dense.enable && _dense.use_for_training));
     const TrainRunner::Phase ph = _runner.phase();
     if (!_cfg.apply_loss_for_mask.has_value() &&
         (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
@@ -10296,6 +10275,113 @@ void GuiApp::draw_train_mask_mode(float width) {
         }
     }
     ui::help_on_hover_disabled(msg::opt_mask_mode_help);
+}
+
+bool GuiApp::dense_cloud_present() {
+    // Polled, not cached for good: a dense run in another window can land.
+    const double now = ImGui::GetTime();
+    if (_cfg.data != _dense_probe_data || now - _dense_probe_time > 1.0) {
+        _dense_probe_data = _cfg.data;
+        _dense_probe_time = now;
+        _dense_probe_found = !_cfg.data.empty() && dense_completed(_cfg.data);
+    }
+    return _dense_probe_found;
+}
+
+void GuiApp::draw_seed_cloud(TrainRunner::Phase ph) {
+    enum { Dense, Sparse, Other };
+    const bool dense = dense_cloud_present();
+    std::vector<int> ids;
+    std::vector<const Msg*> items;
+    if (dense) { ids.push_back(Dense); items.push_back(&msg::seed_choice_dense); }
+    ids.push_back(Sparse); items.push_back(&msg::seed_choice_sparse);
+    ids.push_back(Other); items.push_back(&msg::seed_choice_other);
+    const std::string& seed = _cfg.seed_pointcloud;
+    const int choice = _seed_other && seed.empty() ? Other
+        : seed.empty() ? (dense ? Dense : Sparse)
+        : seed == spirula::dense::kSparseSeed ? Sparse
+        : spirula::dense::is_dense_seed(_cfg.data, seed) ? Dense : Other;
+    int at = (int)(std::find(ids.begin(), ids.end(), choice) - ids.begin());
+    if (at == (int)ids.size()) at = (int)ids.size() - 1;
+    ImGui::SetNextItemWidth(px(170.0f));
+    if (ui::ComboRaw(ui::detail::label(msg::seed_choice), &at, items)) {
+        _seed_other = ids[at] == Other;
+        if (ids[at] == Sparse) _cfg.seed_pointcloud = spirula::dense::kSparseSeed;
+        else if (ids[at] == Dense || choice != Other) _cfg.seed_pointcloud.clear();
+        _cfg_ui.touched.insert("seed_pointcloud");
+    }
+    ui::help_on_hover(msg::seed_choice_help);
+    if (ids[at] == Other) {
+        ImGui::Indent();
+        ImGui::SetNextItemWidth(px(-70.0f));
+        if (ui::InputTextRaw("##seed_pointcloud", &_cfg.seed_pointcloud))
+            _cfg_ui.touched.insert("seed_pointcloud");
+        ui::help_on_hover(fld::seed_pointcloud_help);
+        ImGui::SameLine();
+        if (ui::ButtonRaw("...##seed_pointcloud_pick", ImVec2(60, 0))) {
+            _seed_other = true;
+            open_pick(PickAction::SeedPointcloud, fld::seed_pointcloud.get(),
+                      FileDialog::Mode::File, {".ply"});
+        }
+        ImGui::Unindent();
+    }
+
+    // Only the cases where the choice above is not what initializes.
+    auto* session = _runner.session();
+    const bool parsed = session && ph != TrainRunner::Phase::Loading &&
+        ph != TrainRunner::Phase::Preparing && ph != TrainRunner::Phase::LoadError &&
+        parse_settings_equal(session->cfg, _cfg);
+    const bool random = _cfg.random_init == "always" ||
+        (_cfg.random_init == "auto" && parsed && session->random_seeded);
+    const bool splat_only = !_cfg.init_ply.empty() && !_cfg.init_ply_add_points;
+    if (!_cfg.resume.empty())
+        ui::TextWrapped(msg::seed_source_resume);
+    else if (!_cfg.init_ply.empty())
+        ui::TextWrapped(_cfg.init_ply_add_points ? msg::seed_source_splat_add : msg::seed_source_splat);
+    if (_cfg.resume.empty() && !splat_only && random)
+        ui::TextWrapped(msg::seed_source_random);
+    if (!seed.empty() && seed != spirula::dense::kSparseSeed && (!_cfg.resume.empty() || random || splat_only))
+        ui::TextColoredWrapped(kWarn, msg::seed_cloud_unused);
+}
+
+// Ticking sets the preset's weight back (or a fallback where the preset has
+// none); unticking zeroes it, which is also what keeps the maps unloaded.
+void GuiApp::draw_dataset_geometry() {
+    // Unmeasured: the Pearson term is per image and stays well under 1, so it
+    // gets five times the per-pixel normal default.
+    constexpr float kDatasetDepthWeight = 0.05f;
+    const TrainRunner::Phase ph = _runner.phase();
+    auto* s = _runner.session();
+    if (!s || ph == TrainRunner::Phase::Loading || ph == TrainRunner::Phase::LoadError ||
+        s->cfg.data != _cfg.data)
+        return;
+    if (!s->ds.depth_filenames.empty()) {
+        bool on = _cfg.load_depths && _cfg.depth_supervision_weight > 0.0f;
+        if (ui::Checkbox(msg::opt_dataset_depths, &on)) {
+            _cfg.load_depths = _cfg.load_depths || on;
+            _cfg.depth_supervision_weight = !on ? 0.0f
+                : _defaults.depth_supervision_weight > 0.0f ? _defaults.depth_supervision_weight
+                                                           : kDatasetDepthWeight;
+            _cfg_ui.touched.insert("load_depths");
+            _cfg_ui.touched.insert("depth_supervision_weight");
+        }
+        ui::help_on_hover(msg::opt_dataset_depths_help);
+    }
+    if (!s->ds.normal_filenames.empty()) {
+        bool on = _cfg.load_normals && (_cfg.normal_supervision_weight > 0.0f ||
+                                        _cfg.median_normal_supervision_weight > 0.0f);
+        if (ui::Checkbox(msg::opt_dataset_normals, &on)) {
+            _cfg.load_normals = _cfg.load_normals || on;
+            _cfg.normal_supervision_weight = !on ? 0.0f
+                : _defaults.normal_supervision_weight > 0.0f ? _defaults.normal_supervision_weight
+                                                            : TrainConfig{}.normal_supervision_weight;
+            _cfg.median_normal_supervision_weight = on ? _defaults.median_normal_supervision_weight : 0.0f;
+            _cfg_ui.touched.insert("load_normals");
+            _cfg_ui.touched.insert("normal_supervision_weight");
+            _cfg_ui.touched.insert("median_normal_supervision_weight");
+        }
+        ui::help_on_hover(msg::opt_dataset_normals_help);
+    }
 }
 
 void GuiApp::draw_basic_options() {
@@ -10348,9 +10434,6 @@ void GuiApp::draw_basic_options() {
         ui::TextColoredWrappedRaw(
             kDim, "-> " + (fs::path(_cfg.output_dir_prefix) / run).string());
     }
-    if (ui::Checkbox(fld::log_performance, &_cfg.log_performance))
-        _cfg_ui.touched.insert("log_performance");
-    ui::help_on_hover(fld::log_performance_help);
     ImGui::Spacing();
 
 #if 0
@@ -10400,6 +10483,7 @@ void GuiApp::draw_basic_options() {
     }
     ui::help_on_hover(msg::opt_resolution_help);
 
+#if 0
     if (ui::Checkbox(fld::progressive_resolution, &_cfg.progressive_resolution))
         _cfg_ui.touched.insert("progressive_resolution");
     ui::help_on_hover(fld::progressive_resolution_help);
@@ -10431,6 +10515,7 @@ void GuiApp::draw_basic_options() {
         if (_cfg.progressive_splat_budget) draw_splat_budget(w);
         ImGui::Unindent();
     }
+#endif
 
     draw_train_mask_mode(w);
 
@@ -10460,6 +10545,8 @@ void GuiApp::draw_basic_options() {
                  {"off", "mild", "strong"});
     if (_cfg.distraction_robustness != "off")
         ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
+
+    draw_dataset_geometry();
 }
 
 void GuiApp::draw_train_controls() {

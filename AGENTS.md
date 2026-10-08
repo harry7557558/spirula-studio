@@ -72,7 +72,8 @@ a file's include lines tell you which subsystems it depends on.
 src/
 ├── core/                   Tensor.h, Camera.h, Common.cuh, GradQuant.cuh, …
 │                             GraphCut.h -- the normalized cut the SfM mapper
-│                             and the scene partitioner both use
+│                             and the scene partitioner both use; HostMemory.h
+│                             -- physical, available and per-process RAM
 │                             the types and device helpers everything uses
 ├── primitives/             Primitive*.cuh — 3DGS / Mip / 3DGUT traits
 │                             (compile-time types, not runtime branches)
@@ -126,6 +127,8 @@ src/
 │                             -- READ src/roma/README.md
 ├── dense/                  fixed-camera reconstruction, disk-backed observations,
 │                             fusion and source-frame PLY -- READ src/dense/README.md
+│                             (its own library, ss_dense, outside the engine: the
+│                              trainer reads only the header-only Artifact.h)
 ├── metric3d/               Metric3D v2 depth + normals, on top of nn/
 │                             -- READ src/metric3d/README.md
 ├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of

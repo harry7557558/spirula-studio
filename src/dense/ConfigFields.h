@@ -9,7 +9,7 @@
     X(high_width, match.high_width) X(high_height, match.high_height) \
     X(bidirectional, match.bidirectional) X(overlap_saturation, match.overlap_saturation) \
     X(memory_budget_bytes, match.memory_budget_bytes) X(precision, match.precision) \
-    X(pair_mode, pairs.mode) X(neighbors, pairs.neighbors) \
+    X(pair_mode, pairs.mode) X(neighbors, pairs.neighbors) X(reference_coverage, pairs.reference_coverage) \
     X(sequence_window, pairs.sequence_window) X(max_pairs, pairs.max_pairs) X(pair_list, pair_list) \
     X(min_angle_degrees, geometry.min_angle_degrees) \
     X(max_reprojection_error, geometry.max_reprojection_error) \
@@ -71,6 +71,12 @@ inline void read_config(DenseConfig& config, const JsonValue& object) {
     for (const auto& field : object.obj)
         if (!assign_config_field(config, field.first, field.second))
             throw std::runtime_error("unknown dense setting: " + field.first);
+    // Written before reference coverage existed: every image was a reference, and every
+    // prediction was kept because that was the default then, not a choice anyone made.
+    if (!object.find("reference_coverage")) {
+        if (!is_dense_preset(config.preset)) config.pairs.reference_coverage = 0;
+        config.keep_cache = false;
+    }
     config.validate();
 }
 

@@ -115,11 +115,11 @@ struct DataManagerConfig {
     float deficit_power     = 0.5f;
     float deficit_max_ratio = 8.0f;
 
-    // (first epoch, divisor) stages for training batches (data/ResolutionSchedule.h);
-    // empty trains at the loaded size. `first_epoch` is where a resumed run
-    // continues. Validation and fetch_one always use divisor 1.
+    // (first step, divisor) stages for training batches (data/ResolutionSchedule.h);
+    // empty trains at the loaded size. `first_step` is the step a resumed run
+    // continues from. Validation and fetch_one always use divisor 1.
     std::vector<std::pair<int64_t, int>> resolution_stages;
-    int64_t first_epoch = 0;
+    int64_t first_step = 0;
 };
 
 

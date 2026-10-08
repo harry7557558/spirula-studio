@@ -9,7 +9,7 @@
 #include "checkpoint/Adapt.h"
 #include "checkpoint/Resume.h"
 #include "data/ResolutionSchedule.h"
-#include "sfm/core/HostMemory.h"
+#include "core/HostMemory.h"
 #include "checkpoint/SplatPly.h"
 #include "config/TrainConfigJson.h"
 #include "core/ColorSpace.h"
@@ -444,6 +444,10 @@ int densify_accum_mode_int(const std::string& mode) {
     throw std::runtime_error("unknown densify_accum_mode: " + mode);
 }
 
+std::string parser_seed(const std::string& seed) {
+    return seed == spirula::dense::kSparseSeed ? std::string() : seed;
+}
+
 }  // namespace
 
 std::array<float, (int)LossWeightIndex::length>
@@ -874,10 +878,17 @@ void TrainerSession::seed_at_random() {
 }
 
 void TrainerSession::load_dataset() {
+    // Written back into cfg, so config.json names the cloud this run used.
+    if (cfg.seed_pointcloud.empty() && cfg.resume.empty() && cfg.random_init != "always" &&
+        (cfg.init_ply.empty() || cfg.init_ply_add_points)) {
+        cfg.seed_pointcloud = spirula::dense::automatic_seed(cfg.data);
+        if (!cfg.seed_pointcloud.empty())
+            log(lfmt(lmsg::dense_seed_automatic, {cfg.seed_pointcloud}));
+    }
     cfg.seed_pointcloud = spirula::dense::verified_seed_path(cfg.data, cfg.seed_pointcloud);
     DatasetParserConfig pcfg;
     pcfg.recon_dir            = cfg.colmap_recon_dir;
-    pcfg.seed_pointcloud      = cfg.seed_pointcloud;
+    pcfg.seed_pointcloud      = parser_seed(cfg.seed_pointcloud);
     pcfg.image_dir            = cfg.image_dir;
     pcfg.mask_dir             = cfg.mask_dir;
     pcfg.depth_dir            = cfg.depth_dir;
@@ -1150,10 +1161,11 @@ void TrainerSession::setup_engine() {
         save_scene_transform_json(ds, cfg, out_dir);
     }
     log(lfmt(lmsg::output_directory, {fs::absolute(out_dir).string()}));
+    _perf_dir.clear();
     if (cfg.log_performance) {
-        const fs::path perf = fs::absolute(TrainPerfLog::perf_dir(out_dir));
-        if (_system.start(perf)) log(lfmt(lmsg::perf_log_started, {perf.string()}));
-        else log(lfmt(lmsg::perf_log_failed, {perf.string()}));
+        _perf_dir = fs::absolute(TrainPerfLog::new_session_dir(out_dir));
+        if (_system.start(_perf_dir)) log(lfmt(lmsg::perf_log_started, {_perf_dir.string()}));
+        else log(lfmt(lmsg::perf_log_failed, {_perf_dir.string()}));
     }
 
     // ---- Engine setup -------------------------------------------------
@@ -1285,20 +1297,17 @@ void TrainerSession::setup_engine() {
     dm.deficit_power     = cfg.view_deficit_power;
     dm.deficit_max_ratio = cfg.view_deficit_max_ratio;
     if (cfg.progressive_resolution) {
-        dm.resolution_stages = progressive::to_epochs(resolution_setpoints(cfg), _batches_per_epoch);
-        // A resumed run picks the schedule up at the epoch its checkpoint was in.
+        for (const auto& [epoch, divisor] : progressive::to_epochs(resolution_setpoints(cfg), _batches_per_epoch))
+            dm.resolution_stages.emplace_back(epoch * _batches_per_epoch, divisor);
         if (!cfg.resume.empty()) {
             try {
                 const JsonValue state = ckpt::read_state_json(ckpt::resolve_checkpoint(cfg.resume).ckpt_dir);
-                if (const JsonValue* saved = state.find("step"))
-                    dm.first_epoch = saved->as_int() / std::max(1, _batches_per_epoch);
+                if (const JsonValue* saved = state.find("step")) dm.first_step = saved->as_int();
             } catch (const std::exception&) {}   // restore_checkpoint reports it
         }
-        for (const auto& [epoch, divisor] : dm.resolution_stages) {
-            const long long from = (long long)epoch * _batches_per_epoch;
-            log(divisor > 1 ? lfmt(lmsg::progressive_stage, {(long long)divisor, from})
-                            : lfmt(lmsg::progressive_stage_full, {from}));
-        }
+        for (const auto& [from, divisor] : dm.resolution_stages)
+            log(divisor > 1 ? lfmt(lmsg::progressive_stage, {(long long)divisor, (long long)from})
+                            : lfmt(lmsg::progressive_stage_full, {(long long)from}));
     }
     engine_setup_data_manager(
         dm, ds.camera_models, ds.camera_distortions,
@@ -1646,7 +1655,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         _warned_risk = OomRisk::Low;
     }
 
-    _perf.open(out_dir, cfg.log_performance);
+    _perf.open(out_dir, _perf_dir);
     int step = start_step;
     for (; step < cfg.num_iterations; step++) {
         // Pause gate + render-fairness yield: give viewer render workers an
@@ -1673,9 +1682,10 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         const bool timed = step % 10 == 0;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
-            if (step > 0 && cfg.steps_per_save > 0 && step % cfg.steps_per_save == 0) {
+            if (step > start_step && cfg.steps_per_save > 0 && step % cfg.steps_per_save == 0) {
                 const auto t0 = std::chrono::steady_clock::now();
-                save_checkpoint(step, cfg.save_full_checkpoint);
+                // The one checkpoint kept is what a crash resumes from, so it carries the optimizer.
+                save_checkpoint(step, cfg.save_full_checkpoint || cfg.save_only_latest_checkpoint);
                 save_s = std::chrono::duration<double>(
                     std::chrono::steady_clock::now() - t0).count();
             }
@@ -1722,7 +1732,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
                 size_t bytes = engine_get_scratch_bytes();
                 for (const auto& e : engine_get_pool_breakdown()) bytes += std::get<2>(e);
                 return bytes;
-            }, [] { return sfm::processRamBytes(); });
+            }, [] { return spirula::processRamBytes(); });
         }
         if (save_s > 0.0) _forecast.add_save(save_s, splats_ran);
         observe_memory(step, splats_ran);
@@ -1780,7 +1790,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
                                     format_duration(training_time_s)}));
     if (_system.running()) {
         _system.stop();
-        log(lfmt(lmsg::perf_log_report, {fs::absolute(TrainPerfLog::perf_dir(out_dir)).string()}));
+        log(lfmt(lmsg::perf_log_report, {_perf_dir.string()}));
     }
 }
 
@@ -1882,7 +1892,7 @@ void TrainerSession::eval() {
     // over all frames, so this is the exact complement of what training saw.
     DatasetParserConfig pcfg;
     pcfg.recon_dir            = cfg.colmap_recon_dir;
-    pcfg.seed_pointcloud      = cfg.seed_pointcloud;
+    pcfg.seed_pointcloud      = parser_seed(cfg.seed_pointcloud);
     pcfg.image_dir            = cfg.image_dir;
     pcfg.mask_dir             = cfg.mask_dir;
     pcfg.depth_dir            = cfg.depth_dir;

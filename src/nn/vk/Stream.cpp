@@ -4,11 +4,11 @@
 #include "nn/core/Log.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <map>
 #include "core/Env.h"
+#include "core/GpuStall.h"
 #include "core/SubmitBudget.h"
 
 namespace nn {
@@ -171,27 +171,21 @@ void Stream::shutdown() {
 
 namespace {
 
-// Waits in slices, failing on a lost device or a minute with no work finished:
-// after a driver reset an unbounded wait can block forever (see the training
-// backend's Context::wait for the same reasoning).
-void wait_timeline(VkDevice device, VkSemaphore timeline, const uint64_t* value) {
+void wait_timeline(const Context& ctx, VkSemaphore timeline, const uint64_t* value) {
     VkSemaphoreWaitInfo wi{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
     wi.semaphoreCount = 1;
     wi.pSemaphores = &timeline;
     wi.pValues = value;
-    uint64_t seen = 0;
-    auto progressed = std::chrono::steady_clock::now();
+    spirula::GpuStallWatch watch(std::strcmp(ctx.info().type, "cpu") == 0);
     for (;;) {
-        const VkResult r = vkWaitSemaphores(device, &wi, 1000000000ull);
+        const VkResult r = vkWaitSemaphores(ctx.device(), &wi, spirula::GpuStallWatch::kSliceNs);
         if (r == VK_SUCCESS) return;
         if (r != VK_TIMEOUT) NN_VK_CHECK(r);
         uint64_t current = 0;
-        NN_VK_CHECK(vkGetSemaphoreCounterValue(device, timeline, &current));
-        const auto now = std::chrono::steady_clock::now();
-        if (current != seen) { seen = current; progressed = now; }
-        else if (now - progressed > std::chrono::seconds(60))
-            ::nn::fail("the GPU stopped responding: no work finished for a minute "
-                       "(the driver may have reset it, often after running out of GPU memory)");
+        NN_VK_CHECK(vkGetSemaphoreCounterValue(ctx.device(), timeline, &current));
+        if (watch.stalled(current))
+            ::nn::fail("the GPU stopped responding: no work finished for a minute (the driver may have "
+                       "reset it, often after running out of GPU memory; SS_GPU_STALL_SECONDS sets the wait)");
     }
 }
 
@@ -207,7 +201,7 @@ VkCommandBuffer Stream::begin() {
         uint64_t v = 0;
         vkGetSemaphoreCounterValue(ctx.device(), s.timeline, &v);
         if (v < s.cb_value[s.cur]) {
-            wait_timeline(ctx.device(), s.timeline, &s.cb_value[s.cur]);
+            wait_timeline(ctx, s.timeline, &s.cb_value[s.cur]);
         }
         s.harvest(s.cur);
     }
@@ -301,7 +295,7 @@ void Stream::sync() {
     uint64_t v = 0;
     vkGetSemaphoreCounterValue(ctx.device(), s.timeline, &v);
     if (v < s.submitted) {
-        wait_timeline(ctx.device(), s.timeline, &s.submitted);
+        wait_timeline(ctx, s.timeline, &s.submitted);
     }
     for (int i = 0; i < Impl::kRing; ++i) s.harvest(i);
     s.resolveQueries();

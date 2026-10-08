@@ -1627,6 +1627,21 @@ SS_MSG(random_init_never,
        "rastgele çekilmesini yasaklıyor. --random-init auto ayarlayın ya da "
        "veri kümesine bir nokta bulutu verin."));
 
+SS_MSG(dense_seed_automatic,
+    EN("Seed points: the dataset's dense cloud {0} (--seed-pointcloud sparse uses the sparse points)"),
+    JA("初期点群：データセットの高密度点群 {0}（疎な点群は --seed-pointcloud sparse）"),
+    ZH_HANS("初始点云：数据集的稠密点云 {0}（--seed-pointcloud sparse 改用稀疏点云）"),
+    ZH_HANT("初始點雲：資料集的稠密點雲 {0}（--seed-pointcloud sparse 改用稀疏點雲）"),
+    KO("초기 점: 데이터셋의 고밀도 점 구름 {0} (희소 점은 --seed-pointcloud sparse)"),
+    DE("Startpunkte: dichte Punktwolke des Datensatzes {0} (--seed-pointcloud sparse nimmt die dünnen Punkte)"),
+    FR("Points initiaux : nuage dense du jeu de données {0} (--seed-pointcloud sparse pour les points épars)"),
+    ES("Puntos iniciales: nube densa del conjunto de datos {0} (--seed-pointcloud sparse usa los dispersos)"),
+    PT("Pontos iniciais: nuvem densa do conjunto de dados {0} (--seed-pointcloud sparse usa os esparsos)"),
+    IT("Punti iniziali: nuvola densa del set di dati {0} (--seed-pointcloud sparse usa quelli sparsi)"),
+    NL("Startpunten: dichte puntenwolk van de dataset {0} (--seed-pointcloud sparse gebruikt de ijle punten)"),
+    RU("Начальные точки: плотное облако набора данных {0} (--seed-pointcloud sparse — разреженные точки)"),
+    TR("Başlangıç noktaları: veri kümesinin yoğun bulutu {0} (seyrek noktalar için --seed-pointcloud sparse)"));
+
 SS_MSG(random_init_replaced,
     EN("Seed points from the dataset: {0}, replaced by random ones "
        "(--random-init always)"),

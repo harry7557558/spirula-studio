@@ -351,6 +351,7 @@ private:
     int _batches_per_epoch = 1;
     int _resolution_divisor = 0;   // of the last step; 0 before the first
     TrainPerfLog _perf;            // log_performance, SS_TRAIN_PERF
+    std::filesystem::path _perf_dir;   // this session's, under <run>/perf; empty without log_performance
     SystemRecorder _system;        // log_performance: setup_engine() to the end of train()
     std::atomic<int64_t> _live_splats{0};
     OomRisk _warned_risk = OomRisk::Low;

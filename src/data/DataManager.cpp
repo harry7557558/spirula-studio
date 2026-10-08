@@ -907,7 +907,7 @@ private:
     // build_train_schedule_locked() under _sampling_mu.
     std::vector<StepSpec>     _train_schedule;
     size_t                    _train_sched_cursor = 0;
-    int64_t                   _epoch = -1;   // of the schedule last built
+    int64_t                   _issued = 0;   // steps handed out since first_step
     std::atomic<int>          _last_train_divisor{1};
 
     // The currently-returned-to-caller data. We hold one slot per kind so the
@@ -1494,7 +1494,7 @@ void DataManagerImpl::preload_cpu_cache() {
     std::vector<int> coarse;
     const auto& stages = _cfg.resolution_stages;
     for (size_t k = 0; k < stages.size(); ++k)
-        if (stages[k].second > 1 && (k + 1 == stages.size() || stages[k + 1].first > _cfg.first_epoch))
+        if (stages[k].second > 1 && (k + 1 == stages.size() || stages[k + 1].first > _cfg.first_step))
             coarse.push_back(stages[k].second);
     for (int d : coarse) _rgb_cache_scaled[d].resize(N);
 
@@ -1980,9 +1980,16 @@ void DataManagerImpl::build_train_schedule_locked() {
     // Interleave step order so full-chunk and mixed steps don't cluster.
     std::shuffle(_train_schedule.begin(), _train_schedule.end(), _rng);
 
-    // One divisor per epoch, so each image trains equally often at each size.
-    _epoch = _epoch < 0 ? std::max<int64_t>(0, _cfg.first_epoch) : _epoch + 1;
-    const int divisor = progressive::divisor_at(_cfg.resolution_stages, _epoch);
+    // One divisor per epoch, so each image trains equally often at each size. An
+    // epoch that would cross a stage switch ends at it, which keeps the switch on
+    // its planned step after a mid-epoch resume or a pass of uneven length.
+    const int64_t at = _cfg.first_step + _issued;
+    const int divisor = progressive::divisor_at(_cfg.resolution_stages, at);
+    for (const auto& [first, d] : _cfg.resolution_stages)
+        if (first > at) {
+            if ((int64_t)_train_schedule.size() > first - at) _train_schedule.resize((size_t)(first - at));
+            break;
+        }
     for (auto& step : _train_schedule)
         for (auto& sub : step) sub.divisor = divisor;
     // CPU mode builds schedules on the consuming thread, the one that reads these rows.
@@ -2033,6 +2040,7 @@ StepSpec DataManagerImpl::next_train_step_spec() {
         throw std::runtime_error("DataManager: no training indices configured");
     if (_train_sched_cursor >= _train_schedule.size())
         build_train_schedule_locked();   // next epoch
+    ++_issued;
     return _train_schedule[_train_sched_cursor++];
 }
 

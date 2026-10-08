@@ -111,8 +111,8 @@ void data_manager(const std::string& image, CacheMode mode, const char* name) {
     cfg.resolution_stages = {{0, 2}, {1, 1}};
     std::vector<float> viewmat(16, 0.0f);
     viewmat[0] = viewmat[5] = viewmat[10] = viewmat[15] = 1.0f;
-    auto make = [&](int64_t first_epoch) {
-        cfg.first_epoch = first_epoch;
+    auto make = [&](int64_t first_step) {
+        cfg.first_step = first_step;
         return std::make_unique<DataManager>(cfg, std::vector<int32_t>{0}, std::vector<int32_t>{0},
             std::vector<std::string>{image}, std::vector<std::string>{}, std::vector<std::string>{},
             std::vector<std::string>{}, std::vector<int32_t>{W}, std::vector<int32_t>{H},
@@ -173,6 +173,37 @@ void data_manager(const std::string& image, CacheMode mode, const char* name) {
     }
 }
 
+// Three images, so one pass is three steps: a switch lands on its step whether
+// the run resumed mid-pass or the stage starts inside one.
+void stage_steps(const std::string& image, CacheMode mode, const char* name) {
+    DataManagerConfig cfg;
+    cfg.cache_mode = mode;
+    cfg.load_masks = cfg.load_depths = cfg.load_normals = false;
+    std::vector<float> viewmats(48, 0.0f);
+    for (int k = 0; k < 3; ++k)
+        for (int d = 0; d < 4; ++d) viewmats[k * 16 + d * 5] = 1.0f;
+    auto widths = [&](int64_t first_step, std::vector<std::pair<int64_t, int>> stages, int steps) {
+        cfg.first_step = first_step;
+        cfg.resolution_stages = std::move(stages);
+        DataManager dm(cfg, std::vector<int32_t>(3, 0), std::vector<int32_t>(3, 0),
+            std::vector<std::string>(3, image), std::vector<std::string>{}, std::vector<std::string>{},
+            std::vector<std::string>{}, std::vector<int32_t>(3, W), std::vector<int32_t>(3, H),
+            std::vector<int32_t>{}, std::vector<int32_t>{}, viewmats,
+            std::vector<float>{10.0f, 12.0f, 4.0f, 3.0f, 10.0f, 12.0f, 4.0f, 3.0f, 10.0f, 12.0f, 4.0f, 3.0f},
+            std::vector<float>(24, 0.0f), std::vector<int32_t>{}, std::vector<int32_t>{}, std::vector<float>{},
+            std::vector<float>{}, std::vector<float>{}, std::vector<int32_t>{}, std::vector<float>{},
+            std::vector<int32_t>{0, 1, 2}, std::vector<int32_t>{});
+        std::vector<int> out;
+        for (int k = 0; k < steps; ++k) out.push_back(dm.next_train_step().subs[0]->width);
+        return out;
+    };
+    const std::string tag = std::string(name) + ": ";
+    check(widths(1, {{0, 2}, {3, 1}}, 4) == std::vector<int>{4, 4, W, W},
+          tag + "resumed at step 1, the switch still lands on step 3");
+    check(widths(0, {{0, 2}, {2, 1}}, 5) == std::vector<int>{4, 4, W, W, W},
+          tag + "a switch inside a pass ends that pass early");
+}
+
 // A fisheye split into two 6x6 faces: faces render at 1/divisor, the input it
 // is warped from is resampled, so each takes its own scale.
 void split_camera(const std::string& image) {
@@ -213,6 +244,7 @@ int main() {
     const std::string image = write_image(dir);
     data_manager(image, CacheMode::CPU, "cpu cache");
     data_manager(image, CacheMode::DISK, "disk stream");
+    stage_steps(image, CacheMode::CPU, "cpu cache");
     split_camera(image);
     fs::remove_all(dir);
     std::printf(g_failures ? "FAIL %d\n" : "PASS progressive resolution schedule and batches\n", g_failures);

@@ -34,7 +34,10 @@ root included -- is an input like any other on the GUI's dataset screen: its
 model is reused, and the run only adds what was asked for (masks, depth and
 normals). `spirula geometry <dataset>` does the depth-and-normal half from the
 command line. Both write `depths/` and `normals/` beside `images/`, where the
-parsers already look, and touch nothing else.
+parsers already look, and touch nothing else. When a dataset has them, the
+trainer's Basic Options shows **Use dataset depth maps** (off by default; on
+sets `depth_supervision_weight` to the preset's value, or 0.05) and **Use
+dataset normal maps** (on by default); unticking zeroes the weight.
 
 ## Masks
 
@@ -92,12 +95,14 @@ PLY (ASCII or binary little-endian), for example a registered LiDAR cloud.
 It requires `x`, `y`, `z`, `red`, `green`, `blue`; coordinates must be finite
 and the cloud nonempty. Integer RGB is 0–255; floating RGB is 0–1.
 Relative paths resolve from the dataset directory; absolute paths also work.
-The GUI's training options include **Seed point cloud PLY** with a file picker;
-the CLI equivalent is `--seed-pointcloud lidar.ply`.
-Switching built-in training presets preserves this selection. **Use dataset
-points** clears the override and reloads the dataset's cloud. The GUI shows
-the initialization source and warns when another setting bypasses the selected
-external cloud.
+The CLI flag is `--seed-pointcloud lidar.ply`. Left empty, it picks the
+dataset's finished dense cloud (`dense/roma.ply`, [dense.md](dense.md)) when
+there is one; `sparse` always keeps the format's own cloud. In the GUI, Basic
+Options shows a **Starting points** choice only when the dataset has a dense
+cloud or a seed is already set: **Dense cloud**, **Sparse points** or **Other
+PLY file** with a file picker. Otherwise the flag is under All Options. Switching built-in training presets preserves
+this selection, and the GUI warns when resume, a Gaussian PLY or random
+initialization bypasses it.
 
 The external cloud replaces, rather than appends to, the format's own cloud.
 It must already align with the cameras in the source dataset coordinate frame
@@ -110,7 +115,8 @@ on disk are not modified. This path is saved in training presets and config.json
 With `init_ply`, the seed cloud contributes only if `init_ply_add_points` is
 enabled; resume restores checkpoint splats instead. `random_init=always`
 still replaces the selected cloud with random points. Leave `seed_pointcloud`
-empty to retain the format's existing behavior.
+empty on a dataset without a dense cloud, or set it to `sparse`, to keep the
+format's existing behavior.
 
 The splats start from the dataset's point cloud. `random_init` decides when
 they start from points drawn at random around the cameras instead: `auto` (the

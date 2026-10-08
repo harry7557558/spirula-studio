@@ -63,9 +63,14 @@ inline void generation_marker(const std::filesystem::path& directory, const char
     if (!output) throw std::runtime_error("cannot write dense generation ownership marker");
 }
 
+// Links above the dataset are resolved here; cleanup still refuses any inside it.
+inline std::filesystem::path resolved_dataset(const std::string& dataset) {
+    return std::filesystem::weakly_canonical(std::filesystem::absolute(dataset));
+}
+
 inline void cleanup_pending_generations(const std::string& dataset) {
     namespace fs = std::filesystem;
-    const auto root = fs::path(dataset) / "dense", parent = root / "generations";
+    const auto root = resolved_dataset(dataset) / "dense", parent = root / "generations";
     if (!fs::is_directory(parent)) return;
     std::string current;
     try {
@@ -123,7 +128,7 @@ inline ArtifactFiles publish_generation(const std::string& dataset, const std::s
                                         const std::filesystem::path& cloud, const std::filesystem::path& manifest,
                                         const std::function<void(const char*)>& checkpoint = {}) {
     namespace fs = std::filesystem;
-    const auto root = fs::absolute(dataset).lexically_normal() / "dense", directory = root / "generations" / generation;
+    const auto root = resolved_dataset(dataset) / "dense", directory = root / "generations" / generation;
     if (!generation_name(generation) || fs::exists(directory)) throw std::runtime_error("invalid or repeated dense generation");
     ArtifactFiles previous;
     try { previous = artifact_files(dataset); } catch (const std::exception&) {}

@@ -29,7 +29,21 @@ int main() {
         require(config.resolved_geometry().max_reprojection_error == 1, "source tolerance not resolved");
         config.reference_fraction = 0; rejects([&] { config.validate(); });
         config = original;
-        require(config.geometry.min_source_images == 3 && config.stride == 1 && config.effective_cycle_check(), "dense defaults differ");
+        require(config.preset == "balanced" && config.matches_preset("balanced") && config.geometry.min_source_images == 3 &&
+                config.match.high_width == 0 && config.pairs.reference_coverage > 0, "dense defaults differ");
+        for (const char* name : spirula::dense::kDensePresets) {
+            auto preset = original;
+            preset.geometry.min_source_images = 2; preset.use_masks = false;
+            preset.apply_preset(name); preset.validate_run();
+            require(preset.matches_preset(name) && preset.geometry.min_source_images == 2 && !preset.use_masks,
+                    "preset did not hold its own values or reset unrelated controls");
+            preset.pairs.neighbors += 1;
+            require(!preset.matches_preset(name), "an edited preset still reads as unedited");
+        }
+        config.apply_preset("high");
+        require(config.match.high_width == 1280 && config.effective_cycle_check() && config.pairs.reference_coverage == 0 &&
+                config.stride == 1, "high quality preset is not the full-quality setting");
+        config = original;
         config.geometry.min_source_images = 2;
         config.match.memory_budget_bytes = 123456789;
         config.apply_preset("fast");

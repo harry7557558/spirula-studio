@@ -62,7 +62,10 @@ int main() {
             std::printf("PASS cleanup rejects nested, root and parent redirects with target bytes preserved\n");
         }
         Fixture fixture;
+        require(automatic_seed(fixture.root.string()).empty(), "a dataset without a dense cloud got a seed");
         const auto legacy = fixture.stage("dense", "old");
+        require(automatic_seed(fixture.root.string()) == artifact_files(fixture.root.string()).cloud.string(),
+                "a finished dense cloud was not the automatic seed");
         bool stopped = false;
         {
             spirula::FileLock lock(fixture.root / "dense" / "run.lock");
@@ -179,7 +182,24 @@ int main() {
         }); } catch (const std::exception&) { stopped = true; }
         require(stopped && !artifact_complete(initial.root.string()),
                 "interrupted first publication exposed compatibility aliases as a successful legacy generation");
-        std::printf("PASS dense writer lock, owned cleanup, immutable generations, interrupted publication, legacy migration, checksums, seed resolution and recovery\n");
+        {
+            Fixture linked;
+            fs::create_directories(linked.root);
+            const auto link = fs::path(linked.root.string() + "-link");
+            std::error_code link_error;
+            fs::create_directory_symlink(linked.root, link, link_error);
+            if (!link_error) {
+                struct RemoveLink { fs::path path; ~RemoveLink() { std::error_code e; fs::remove(path, e); } } remove_link{link};
+                const auto staged = linked.stage("through-link", "linked");
+                const auto published = publish_generation(link.string(), staged.generation, staged.cloud, staged.manifest);
+                const auto pending = linked.root / "dense" / "generations" / "pending-through-link";
+                fs::create_directories(pending); generation_marker(pending, ".pending");
+                cleanup_pending_generations(link.string());
+                require(artifact_checksum_valid(published) && !fs::exists(pending) && artifact_complete(link.string()),
+                        "a dataset reached through a linked parent folder could not publish or clean up");
+            }
+        }
+        std::printf("PASS dense writer lock, owned cleanup, immutable generations, interrupted publication, legacy migration, checksums, seed resolution, linked datasets and recovery\n");
         return 0;
     } catch (const std::exception& error) { std::fprintf(stderr, "FAIL: %s\n", error.what()); return 1; }
 }
