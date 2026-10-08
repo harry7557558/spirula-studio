@@ -10751,6 +10751,17 @@ void GuiApp::draw_basic_options() {
         _cfg_ui.touched.insert("use_ppisp");
     ui::help_on_hover(msg::opt_ppisp_help);
 
+    bool use_focus = !_cfg.focus_dir.empty();
+    if (ui::Checkbox(msg::opt_use_focus, &use_focus)) {
+        _cfg.focus_dir = use_focus ? "focus" : "";
+        _cfg_ui.touched.insert("focus_dir");
+    }
+    ui::help_on_hover(msg::opt_use_focus_help);
+
+    if (ui::Checkbox(fld::export_y_up, &_cfg.export_y_up))
+        _cfg_ui.touched.insert("export_y_up");
+    ui::help_on_hover(fld::export_y_up_help);
+
     ImGui::Spacing();
 
     // The two "if the capture went wrong" dials, last because a first run

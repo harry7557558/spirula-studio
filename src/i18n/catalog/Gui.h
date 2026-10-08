@@ -2239,6 +2239,61 @@ SS_MSG(opt_ppisp_help,
        "pozlama / beyaz dengesi değişimleri için uygundur. İşareti kaldırmak "
        "eğitimi hızlandırır."));
 
+SS_MSG(opt_use_focus,
+    EN("Use focus weights"), JA("ピント重みを使う"),
+    ZH_HANS("使用实焦权重"), ZH_HANT("使用實焦權重"), KO("초점 가중치 사용"),
+    DE("Schärfegewichte verwenden"), FR("Utiliser les poids de netteté"),
+    ES("Usar pesos de enfoque"), PT("Usar pesos de foco"),
+    IT("Usa i pesi di messa a fuoco"), NL("Scherptegewichten gebruiken"),
+    RU("Использовать веса резкости"), TR("Odak ağırlıklarını kullan"));
+
+SS_MSG(opt_use_focus_help,
+    EN("Weight each pixel's loss by how sharply it was focused, from the "
+       "focus/ folder the depth step writes. Pixels outside the depth of field "
+       "count less instead of teaching the model blur. Without that folder "
+       "nothing changes."),
+    JA("深度ステップが書き出す focus/ フォルダーを使い、各画素の損失をピントの"
+       "合い具合で重み付けします。被写界深度の外の画素は、ぼけを学習させる代わりに"
+       "軽く扱われます。フォルダーが無ければ何も変わりません。"),
+    ZH_HANS("用深度步骤写出的 focus/ 文件夹，按每个像素的合焦程度加权其损失。"
+            "景深之外的像素权重降低，不会把虚焦教给模型。没有该文件夹时不起作用。"),
+    ZH_HANT("用深度步驟寫出的 focus/ 資料夾，按每個像素的合焦程度加權其損失。"
+            "景深之外的像素權重降低，不會把失焦教給模型。沒有該資料夾時不起作用。"),
+    KO("깊이 단계가 만든 focus/ 폴더로 각 픽셀의 손실을 초점이 맞은 정도에 따라 "
+       "가중합니다. 피사계 심도 밖의 픽셀은 흐림을 학습시키는 대신 덜 반영됩니다. "
+       "폴더가 없으면 아무것도 바뀌지 않습니다."),
+    DE("Den Verlust jedes Pixels danach gewichten, wie scharf es war, aus dem "
+       "Ordner focus/ des Tiefenschritts. Pixel außerhalb der Schärfentiefe "
+       "zählen weniger, statt dem Modell Unschärfe beizubringen. Ohne den "
+       "Ordner ändert sich nichts."),
+    FR("Pondérer la perte de chaque pixel selon sa netteté, d'après le dossier "
+       "focus/ écrit par l'étape de profondeur. Les pixels hors de la "
+       "profondeur de champ comptent moins au lieu d'apprendre le flou au "
+       "modèle. Sans ce dossier, rien ne change."),
+    ES("Ponderar la pérdida de cada píxel según su nitidez, a partir de la "
+       "carpeta focus/ que escribe el paso de profundidad. Los píxeles fuera "
+       "de la profundidad de campo cuentan menos en lugar de enseñar desenfoque "
+       "al modelo. Sin esa carpeta no cambia nada."),
+    PT("Ponderar a perda de cada pixel pela nitidez, a partir da pasta focus/ "
+       "gravada pela etapa de profundidade. Pixels fora da profundidade de "
+       "campo contam menos em vez de ensinar desfoque ao modelo. Sem essa "
+       "pasta nada muda."),
+    IT("Pesare la perdita di ogni pixel in base alla nitidezza, dalla cartella "
+       "focus/ scritta dal passo di profondità. I pixel fuori dalla profondità "
+       "di campo contano meno invece di insegnare la sfocatura al modello. "
+       "Senza quella cartella non cambia nulla."),
+    NL("Het verlies van elke pixel wegen naar hoe scherp hij was, uit de map "
+       "focus/ van de dieptestap. Pixels buiten de scherptediepte tellen minder "
+       "in plaats van het model onscherpte te leren. Zonder die map verandert "
+       "er niets."),
+    RU("Взвешивать потерю каждого пикселя по его резкости, из папки focus/, "
+       "которую пишет шаг глубины. Пиксели вне глубины резкости учитываются "
+       "слабее, а не учат модель размытию. Без этой папки ничего не меняется."),
+    TR("Her pikselin kaybını ne kadar net olduğuna göre ağırlıklandırır; derinlik "
+       "adımının yazdığı focus/ klasöründen. Alan derinliği dışındaki pikseller "
+       "modele bulanıklık öğretmek yerine daha az sayılır. Klasör yoksa hiçbir "
+       "şey değişmez."));
+
 SS_MSG(opt_distraction_warn,
     EN("Only enable distractor robustness for captures where people, vehicles "
        "or anything else moves between the photos and are not masked. On a "
