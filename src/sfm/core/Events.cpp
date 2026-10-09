@@ -16,6 +16,7 @@ Sink g_sink;
 // the atom workers while a sink runs on whichever thread emitted.
 std::mutex g_map_mu;
 std::vector<char> g_placed;
+std::vector<uint32_t> g_map_ids;
 int64_t g_placed_n = 0;
 }  // namespace
 
@@ -63,13 +64,23 @@ void progress(Stage s, int64_t done, int64_t total) {
 void map_begin(size_t n_images) {
     std::lock_guard<std::mutex> lk(g_map_mu);
     g_placed.assign(n_images, 0);
+    g_map_ids.clear();
     g_placed_n = 0;
+}
+
+void set_map_image_ids(const std::vector<uint32_t>& ids) {
+    std::lock_guard<std::mutex> lk(g_map_mu);
+    g_map_ids = ids;
 }
 
 void map_placed(uint32_t image) {
     int64_t done = 0, total = 0;
     {
         std::lock_guard<std::mutex> lk(g_map_mu);
+        if (!g_map_ids.empty()) {
+            if (image >= g_map_ids.size()) return;
+            image = g_map_ids[image];
+        }
         if (image >= g_placed.size() || g_placed[image]) return;
         g_placed[image] = 1;
         done = ++g_placed_n;

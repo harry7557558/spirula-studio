@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -46,6 +47,20 @@ public:
     template <class F>
     void run(int ntasks, F&& fn) {
         run(ntasks, size(), std::forward<F>(fn));
+    }
+    template <class F>
+    void runChecked(int ntasks, int maxWorkers, F&& fn) {
+        std::mutex failure_mutex; std::exception_ptr failure; std::atomic<bool> failed{false};
+        run(ntasks, maxWorkers, [&](int task, int tid) {
+            if (failed.load(std::memory_order_relaxed)) return;
+            try { fn(task, tid); }
+            catch (...) {
+                std::lock_guard<std::mutex> lock(failure_mutex);
+                if (!failure) failure = std::current_exception();
+                failed.store(true, std::memory_order_relaxed);
+            }
+        });
+        if (failure) std::rethrow_exception(failure);
     }
 
 private:

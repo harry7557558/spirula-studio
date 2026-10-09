@@ -55,6 +55,16 @@ images/ ──► extract ──► features/ ─┐
 
 `spirula sfm auto` runs all of it from two knobs, `--quality` and `--data-type`.
 
+For large GPS-equipped aerial captures, `--pairs spatial-blocks` selects global
+horizontal neighbours across spatial boundaries and loads descriptors through
+a bounded host cache. Combine it with `--mapper bottom-up`. Mapping streams
+overlapping regions from the existing matches, persists completed regions,
+coordinates shared landmarks and intrinsics with bounded BA windows, and unifies
+tracks on disk. Final points are triangulated against the coordinated poses;
+no full-capture model or final full-capture BA is materialized. Disabling spatial
+blocks retains the ordinary mapping path. Usage, memory limits, feature/match
+reuse and tests are in `docs/notes/sfm-spatial-blocks.md`.
+
 `--progress-dir DIR` adds a second, optional output: `model.bin` (the poses and
 a subsample of the points as they stand, coloured) and `pairs.bin` (per binned
 image pair: the inliers, how many pairs were candidates and how many have been
@@ -79,6 +89,16 @@ flat mapper's models are, which is what makes a regression in it impossible to
 confuse with a regression in the geometry. What it changes is where the cost and the risk
 sit — an atom is too small to get its own focal wrong, and too small for a
 whole-model pass to be expensive. `Bottomup.h` carries the numbers.
+
+When the completed atoms exceed the loaded-model allowance, temporary model
+storage precedes that schedule. `map/ModelStore.h` preserves their full runtime
+state and global ids; `Bottomup.h` loads groups linked by shared images, jointly
+refines them, and runs validated merge levels until the remaining models fit.
+Refused models are retained, and the preliminary levels do not grow, reseed or
+finish local regions. The original global assembly runs once the models fit;
+otherwise mapping fails explicitly. The allowance reserves two thirds of the
+working budget for transient work and is an allocation estimate, not a whole
+process RSS guarantee.
 
 **Neither mapper has a stage after it.** What each produces is a set of models,
 and from there they need the identical thing: merge what belongs together, grow
@@ -211,6 +231,7 @@ core/        types shared by every stage, no Vulkan:
                Features / Matches     the on-disk feature and match formats
                Mask                   keypoint masking, sampled in uv
                Model                  Reconstruction + COLMAP binary IO
+               HostMemory / ModelMemory physical RAM queries and model-size estimates
 feature/     Sift (GPU), Matcher (GPU), Pairing, PairSelection (GPU),
                Verification (host worker pool), and the two seams the learned
                frontends plug into: Extractor.h and LearnedMatcher.h, neither
@@ -232,6 +253,7 @@ map/         Mapper, Bundle, CorrespondenceGraph, Merge, Profile,
                Partition (view-graph normalized cut)
                Atoms (atoms reconstructed concurrently, one context per worker)
                Bottomup (the merge tree, and the schedule around it)
+               ModelStore / MemoryPolicy (temporary atom models and mapping budgets)
 shaders/     common/ (Real, df, dmath, linalg, camera, loss), ba/, sift/, match/
 tests/       one executable per file
 ```
@@ -1051,10 +1073,20 @@ only links at the canopy capture's seam (at most 3 per model) and nothing on the
 `sparse/pre_weld/` (in the mapper's frame, not the gauge's).
 
 `--mapper flat|bottom-up` picks the schedule (see the stage graph; flat is the
-default for every capture, and there is no size-based switch);
+CLI default, while the GUI's GPS partition selection chooses bottom-up);
 `--bup-atom-size` and `--bup-overlap` size the atoms and the overlap the
 merge aligns on. `--merge-tracks` and `--rank-by-visibility` are on by default
 and exist to be turned off when attributing a change.
+
+`--map-memory-mb 0` derives the mapping working allowance from physical and
+available RAM; positive values request a MiB budget capped by available RAM.
+`--map-graph-cache-mb` optionally lowers the correspondence graph's heap cache
+cap. Both apply to `auto` and `map`; they do not change existing feature or match
+files. To rerun only mapping, use `spirula sfm map FEATURES MATCHES -o OUTPUT
+--mapper bottom-up --images IMAGES` with the new budget flags. Graph caching and
+model spill reduce early peaks, but final single-model BA is not out of core.
+Joint BA splits on the separate 32-bit Jacobian index limit as well as memory
+budgets; a single model must fit both limits.
 
 Two things about the surface changed when it was unified, both deliberate:
 `auto --no-merge` now disables *merging* only, which is what it already meant on
@@ -1127,6 +1159,10 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_map_test` | synthetic reconstruction end to end, incl. assembly/audit/split | yes |
 | `sfm_rig_test` | rig bundle adjustment, GPU against host; a synthetic two-lens rig through the mapper and the merger | yes |
 | `sfm_ba_cpu_test` | host bundle adjustment against the written-out normal equations, rigs included | no |
+| `sfm_ba_index_capacity_test` | 32-bit scalar limits, plain/rig Jacobian offsets and preallocation refusal | no |
+| `sfm_model_store_test` | lossless atom-model spill, capacity estimates, bounded groups, concurrent writes and cleanup | no |
+| `sfm_correspondence_cache_test` | RAM/disk graph equality, view leases, eviction, cache limits and cleanup | no |
+| `sfm_mapping_memory_test` | RAM policy, camera bootstrap allocations and sparse image preparation through CPU mapping | no |
 | `sfm_cholesky_test` | dense GPU Cholesky vs a CPU reference | yes |
 | `sfm_geometry_test` | F, H, E, P3P, triangulation, RANSAC, SVD/eigen kernels | no |
 | `sfm_merge_test` | Sim(3) algebra, model alignment, track splicing, fold detection | no |
@@ -1260,9 +1296,10 @@ port. Ordered by what blocks the most.
     What is left is a scored comparison of the three frontends on a public
     dataset -- nothing here says which to reach for.
 16. A **global** (GLOMAP-style) mapper. The **bottom-up** one exists
-    (`--mapper bottom-up`, `map/Partition.h` + `map/Bottomup.h`); what it has
-    not got is parallel atom reconstruction, which needs a second `rec_` per
-    worker and one shared `VkContext`.
+    (`--mapper bottom-up`, `map/Partition.h` + `map/Bottomup.h`) and
+    reconstructs atoms in parallel with a private mapper and Vulkan context
+    per worker, and can spill completed atoms before bounded merging. A global
+    mapper and a disk-backed final single-model BA remain unimplemented.
 17. Parity benchmarking on ETH3D / IMC.
 
 **Deliberately out of scope**, so they are not silently skipped: GPS /

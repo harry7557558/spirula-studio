@@ -362,6 +362,29 @@ int main() {
                    p[ModelPart::Matching].act == Act::Redo &&
                    p[ModelPart::Matching].why == Why::Settings,
                "a rig changes the pairs matched, so it matches again");
+        {
+            SfmJob spatial = made;
+            spatial.pairs = 4;
+            const fs::path spatial_ws = ws / "spatial-plan";
+            spatial.prep.workspace = spatial_ws.string();
+            build(spatial_ws, spatial);
+            touch(spatial_ws / "features" / "cam0" / "00010.jpg.bin");
+            touch(spatial_ws / "matches.bin");
+            touch(spatial_ws / sfm::resume::kDir / sfm::resume::kExtractSig);
+            touch(spatial_ws / sfm::resume::kDir / sfm::resume::kMatchSig);
+            for (int field = 0; field < 4; ++field) {
+                SfmJob changed = spatial;
+                if (field == 0) ++changed.block_size;
+                if (field == 1) ++changed.block_neighbours;
+                if (field == 2) changed.block_radius = 123;
+                if (field == 3) ++changed.block_cache_mb;
+                const DatasetPlan blocks = plan(changed);
+                expect(blocks[ModelPart::Features].act == Act::Reuse &&
+                           blocks[ModelPart::Matching].act == Act::Redo &&
+                           blocks[ModelPart::Matching].why == Why::Settings,
+                       "a spatial block setting keeps features and redoes matching");
+            }
+        }
         j = made;
         j.mapper = 1;
         p = plan(j);
@@ -369,6 +392,14 @@ int main() {
                    p[ModelPart::Mapping].act == Act::Redo &&
                    p[ModelPart::Mapping].why == Why::Settings,
                "a mapper setting only maps again");
+        j = made;
+        j.map_memory_mb = 2048;
+        p = plan(j);
+        expect(p[ModelPart::Features].act == Act::Reuse &&
+                   p[ModelPart::Matching].act == Act::Reuse &&
+                   p[ModelPart::Mapping].act == Act::Redo &&
+                   p[ModelPart::Mapping].why == Why::Settings,
+               "a mapping memory budget reuses features and matches");
         j = made;
         j.prep.mask_dilate_ratio = 0.08f;
         p = plan(j, redo);

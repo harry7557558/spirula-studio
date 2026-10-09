@@ -215,6 +215,18 @@ int cmdMergeSelftest(int, char**) {
     Reconstruction B = buildModel(4, 11);
     applySim3(B, S);  // the second half lives in its own gauge
     {
+        MergeOptions limited;
+        limited.host_budget_bytes = 1;
+        MergeSession session({A, B}, limited);
+        bool refused = false;
+        try { session.tryMerge(0, 1); }
+        catch (const std::runtime_error&) { refused = true; }
+        check(refused && session.alive(0) && session.alive(1) &&
+                  session.model(0).points3D.size() == A.points3D.size() &&
+                  session.model(1).points3D.size() == B.points3D.size(),
+              "merge budget failure must preserve both original models");
+    }
+    {
         AlignmentResult r = alignReconstructions(B, A, MergeOptions());
         double err = 0;
         for (int p = 0; p < N; p += 13)

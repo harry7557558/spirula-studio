@@ -338,9 +338,13 @@ if(SS_SEPARATE_TOOLS)
         # ss_i18n is linked explicitly: these targets deliberately do not
         # link the engine library, and Main.cpp's `--lang` handling needs
         # it. It is a leaf (cmake/SsI18n.cmake), so this costs nothing.
-        add_executable(${name} ${SS_SRC}/app/Main.cpp ${sources})
+        add_executable(${name} ${SS_SRC}/app/Main.cpp ${sources}
+            ${SS_SRC}/app/AppPaths.cpp ${SS_SRC}/app/CrashLog.cpp)
         target_include_directories(${name} PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
         target_link_libraries(${name} PRIVATE ${libs} ss_i18n)
+        if(WIN32)
+            target_link_libraries(${name} PRIVATE dbghelp)
+        endif()
         target_compile_definitions(${name} PRIVATE
             ${defs} SS_VERSION="${SS_VERSION}" ${SS_I18N_DEFS})
         target_compile_options(${name} PRIVATE
@@ -490,6 +494,10 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/RigGuess.cpp)
     ss_configure_app(rig_guess_test)
 
+    add_executable(sfm_partition_policy_test
+        ${SS_SRC}/app/gui/tests/sfm_partition_policy_test.cpp)
+    ss_configure_app(sfm_partition_policy_test)
+
     add_executable(render_project_test
         ${SS_SRC}/app/gui/tests/render_project_test.cpp
         ${SS_SRC}/app/gui/render/FlightFit.cpp
@@ -560,6 +568,29 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMotion.cpp
         ${SS_SRC}/app/Pano360.cpp)
     ss_configure_app(dataset_prep_test)
+
+    if(SS_BUILD_SFM)
+        add_executable(telemetry_probe_test
+            ${SS_SRC}/app/gui/tests/telemetry_probe_test.cpp
+            ${SS_SRC}/app/gui/TelemetryProbe.cpp
+            ${SS_SRC}/sfm/core/Telemetry.cpp
+            ${SS_SRC}/app/gui/DatasetPrep.cpp
+            ${SS_SRC}/app/gui/HeifPhoto.cpp
+            ${SS_SRC}/app/gui/FrameSelect.cpp
+            ${SS_SRC}/app/FrameSharpness.cpp
+            ${SS_SRC}/app/FfmpegVideo.cpp
+            ${SS_SRC}/app/gui/PrepProgress.cpp
+            ${SS_SRC}/app/gui/DatasetRecord.cpp
+            ${SS_SRC}/app/gui/Subprocess.cpp
+            ${SS_SRC}/app/gui/mask/MaskLayer.cpp
+            ${SS_SRC}/app/FrameMask.cpp
+            ${SS_SRC}/app/FrameMaskSvg.cpp
+            ${SS_SRC}/app/FrameLook.cpp
+            ${SS_SRC}/app/FrameMotion.cpp
+            ${SS_SRC}/app/Pano360.cpp)
+        ss_configure_app(telemetry_probe_test)
+        target_compile_definitions(telemetry_probe_test PRIVATE SS_TOOL_SFM=1)
+    endif()
 
     # Which steps a dataset run reuses and which it redoes, against records
     # written to a scratch workspace. The same sources as above, no model.

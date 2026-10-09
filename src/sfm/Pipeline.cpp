@@ -48,6 +48,8 @@
 #include "sfm/core/Matches.h"
 #include "sfm/core/SerialWorker.h"
 #include "sfm/feature/Matcher.h"
+#include "sfm/feature/DescriptorCache.h"
+#include "sfm/feature/SpatialBlocks.h"
 #include "sfm/feature/PairSelection.h"
 #include "sfm/feature/Pairing.h"
 #include "sfm/feature/RigPairs.h"
@@ -1270,6 +1272,33 @@ SequenceTable buildSequences(const MatchesDatabase& db, const SfmConfig& cfg, bo
     return seqs;
 }
 
+void configureMappingMemory(SfmConfig& cfg, const std::string& scratch_dir) {
+    const auto limits = mappingMemoryLimits(spirula::physicalRamBytes(), spirula::availableRamBytes(),
+                                            cfg.map_memory_mb);
+    if (limits.working_bytes < (size_t{32} << 20))
+        throw std::runtime_error("mapping: insufficient available host memory; release memory "
+                                 "and resume using the existing features and matches");
+    cfg.mapper.graph_cache_bytes = limits.graph_bytes;
+    if (cfg.map_graph_cache_mb > 0)
+        cfg.mapper.graph_cache_bytes = std::min(limits.graph_bytes,
+            size_t(cfg.map_graph_cache_mb) * (size_t{1} << 20));
+    cfg.mapper.host_budget_bytes = limits.bundle_bytes;
+    cfg.mapper.sparse_image_features = true;
+    cfg.mapper.scratch_dir = scratch_dir;
+    cfg.bup.model_memory_bytes = limits.working_bytes;
+    cfg.manager.merge.host_budget_bytes = limits.working_bytes - limits.working_bytes / 3;
+    cfg.bup.scratch_dir = scratch_dir;
+    if (cfg.bup.atom.threads == 0)
+        cfg.bup.atom.max_threads = std::max(1, std::min(4,
+            (int)(limits.working_bytes / (size_t{256} << 20))));
+    if (!cfg.quiet)
+        L::diag(Tag::Map,
+                "[map] working memory: %.0f MiB; graph cache: %.0f MiB; BA host: %.0f MiB; "
+                "completed atoms use disk storage",
+                limits.working_bytes / 1048576.0, cfg.mapper.graph_cache_bytes / 1048576.0,
+                limits.bundle_bytes / 1048576.0);
+}
+
 std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
                                       const std::vector<FeatureSet>& feats, SfmConfig& cfg,
                                       AssembleStats& ast) {
@@ -1290,7 +1319,7 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     }
     // The assembly passes move images between models, so the last snapshot the
     // mapper took is not what came out. Leave the largest result on screen.
-    if (!models.empty()) sfm::progress::model(models.front(), /*force=*/true);
+    if (cfg.mapper.report_progress && !models.empty()) sfm::progress::model(models.front(), /*force=*/true);
     return models;
 }
 
@@ -1468,6 +1497,9 @@ bool featuresAreCurrent(const fs::path& feat, const fs::path& img,
 }
 
 }  // namespace
+
+std::string regionalInputDigest(const fs::path& features) { return featureDirDigest(features); }
+
 
 int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                      const SfmConfig& cfg, ExtractStats& stats, bool reuse,
@@ -1782,9 +1814,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
 
 int loadFeatureDir(const std::string& featdir, const SfmConfig& cfg, bool with_descriptors,
                    std::vector<FeatureSet>& feats, MatchesDatabase& db) {
-    // Recursively -- the tree mirrors the image tree -- sorted by name for
-    // stable indices. The image name is the relative path without ".bin",
-    // which is also COLMAP's convention for `images.bin` names.
+    // Sorted names fix the indices stored in matches and resume journals.
     std::vector<fs::path> files;
     std::error_code walk, ec;
     for (auto it = fs::recursive_directory_iterator(featdir, walk);
@@ -1851,23 +1881,52 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     const PairSelectionOptions& popt = cfg.prefilter;
     const TwoViewOptions& tvopt = cfg.twoview;
     const bool verbose = !cfg.quiet;
-    if (int rc = loadFeatureDir(featdir, cfg, /*with_descriptors=*/true, feats, db)) return rc;
+    const bool blocked = mode == PairMode::SpatialBlocks;
+    if (int rc = loadFeatureDir(featdir, cfg, !blocked, feats, db)) return rc;
     const size_t n_images = feats.size();
     stats.images = n_images;
     std::vector<std::string> image_names(n_images);
     for (size_t i = 0; i < n_images; i++) image_names[i] = db.images[i].name;
+    SfmConfig pair_cfg = cfg;
+    pair_cfg.sensor_pairs = cfg.sensor_pairs || blocked;
     // The grouping first: the sensors are keyed by camera group, and the GPS
     // pairs below go into the list before it is written.
     if (calib) {
         calib->cameras = buildCameras(db.images, feats, calib->setup);
         if (verbose) printCameraSetup(Tag::Match, calib->cameras, calib->setup, feats.size());
         if (calib->sensors)
-            calib->priors = makeSensorPriors(cfg, *calib->sensors, db, calib->cameras.ids);
+            calib->priors = makeSensorPriors(pair_cfg, *calib->sensors, db, calib->cameras.ids);
         if (!calib->priors)
-            calib->exif_priors = makeExifGpsPriors(cfg, calib->image_dir, db, calib->cameras, verbose);
+            calib->exif_priors = makeExifGpsPriors(pair_cfg, calib->image_dir, db, calib->cameras, verbose);
     }
     TelemetryPriors* priors = calib ? calib->priors.get() : nullptr;
     const PriorSource* placed = calib ? calib->positionPriors() : nullptr;
+
+    SpatialBlockPlan spatial;
+    if (blocked) {
+        std::vector<Vec3> positions(n_images);
+        size_t positioned = 0;
+        for (uint32_t i = 0; i < n_images; ++i)
+            if (placed && placed->position(i, positions[i]) &&
+                std::isfinite(positions[i].x) && std::isfinite(positions[i].y)) ++positioned;
+        if (positioned != n_images) {
+            L::fail(Tag::Match, M::match_blocks_need_gps,
+                    {(long long)positioned, (long long)n_images});
+            return 1;
+        }
+        const double t = now();
+        events::stage_begin(Stage::Select, (int64_t)n_images);
+        spatial = SpatialBlockIndex(positions).plan((size_t)cfg.block_size,
+            (size_t)cfg.block_neighbours, cfg.block_radius, [](size_t done, size_t total) {
+                cancel::check();
+                events::progress(Stage::Select, (int64_t)done, (int64_t)total);
+            });
+        events::stage_end(Stage::Select);
+        stats.select_seconds = now() - t;
+        if (verbose)
+            L::err(Tag::Match, M::match_blocks_plan,
+                   {(long long)spatial.blocks, (long long)spatial.pairs.size(), cfg.block_cache_mb});
+    }
 
     std::vector<std::pair<uint32_t, uint32_t>> pairs;
     // Pair selection is minutes on a large capture and used to look like a
@@ -1889,6 +1948,8 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         res && resume::readPairs(res->dir / "pairs.bin", res->signature, pairs);
     if (reused_pairs) {
         L::out(Tag::Match, M::match_reusing_pairs, {(long long)pairs.size()});
+    } else if (blocked) {
+        pairs = std::move(spatial.pairs);
     } else if (mode == PairMode::Prefilter) {
         stats.scored = n_images * (n_images - 1) / 2;
         double t0 = now();
@@ -1968,7 +2029,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     }
 #endif
     // Images the GPS puts near each other, whatever the shortlist thought.
-    if (placed && cfg.sensor_pairs && !reused_pairs) {
+    if (placed && cfg.sensor_pairs && !reused_pairs && !blocked) {
         size_t positioned = 0;
         const std::vector<std::pair<uint32_t, uint32_t>> nearby = gpsProximityPairs(
             *placed, (uint32_t)n_images, cfg.sensor_pair_radius, 20, &positioned);
@@ -1986,7 +2047,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     if (verbose)
         L::err(Tag::Match, M::match_plan,
                {(long long)n_images, (long long)pairs.size(),
-                mode == PairMode::Exhaustive ? "exhaustive"
+                blocked ? "spatial-blocks" : mode == PairMode::Exhaustive ? "exhaustive"
                 : mode == PairMode::Sequential
                     ? (cfg.loop_closure ? "sequential + loop closure" : "sequential")
                     : (cfg.prefilter_sequential ? "prefilter + sequential" : "prefilter")});
@@ -2014,13 +2075,26 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     } else {
         todo = pairs;
     }
+    if (blocked) orderSpatialPairs(todo, spatial.owner);
 
     std::unique_ptr<IFeatureMatcher> matcher =
         createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
+    std::unique_ptr<DescriptorCache> descriptors;
+    if (blocked)
+        descriptors = std::make_unique<DescriptorCache>(featdir, image_names, feats,
+                          (size_t)cfg.block_cache_mb << 20, (size_t)cfg.block_size);
+    auto matchList = [&](const std::vector<std::pair<uint32_t, uint32_t>>& list,
+                         size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {
+        auto run = [&](size_t cb, size_t ce, std::vector<std::vector<FeatureMatch>>& chunk) {
+            matcher->matchBatch(feats, list, cb, ce, chunk);
+        };
+        if (descriptors) descriptors->match(list, b, e, mout, run);
+        else run(b, e, mout);
+    };
     auto matchFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {
-        matcher->matchBatch(feats, todo, b, e, mout);
+        matchList(todo, b, e, mout);
     };
     // Rate-limiting the printed line lives in the CLI's event sink, which is
     // the only thing that prints it; verifyPairs emits the fraction either way.
@@ -2059,7 +2133,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 std::vector<std::vector<FeatureMatch>> chunk;
                 for (size_t b = 0; b < sample.size(); b += 16) {
                     size_t e = std::min(b + 16, sample.size());
-                    matcher->matchBatch(feats, sample, b, e, chunk);
+                    matchList(sample, b, e, chunk);
                     for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
                 }
             }
@@ -2119,7 +2193,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             std::vector<std::vector<FeatureMatch>> sm, chunk;
             for (size_t b = 0; b < sample.size(); b += 16) {
                 const size_t e = std::min(b + 16, sample.size());
-                matcher->matchBatch(feats, sample, b, e, chunk);
+                matchList(sample, b, e, chunk);
                 for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
             }
             const double t_c = now();
@@ -2233,7 +2307,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             if (!mates_todo.empty()) {
                 auto mateFn = [&](size_t b, size_t e,
                                   std::vector<std::vector<FeatureMatch>>& mout) {
-                    matcher->matchBatch(feats, mates_todo, b, e, mout);
+                    matchList(mates_todo, b, e, mout);
                 };
                 vopt.progress_done_base = pairs.size();
                 vopt.progress_total = pairs.size() + mates_todo.size();
@@ -2288,6 +2362,15 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 if (progress) progress(p + 1, todo.size());
             }
         }
+    }
+    if (blocked) {
+        std::sort(db.pairs.begin(), db.pairs.end(), [](const auto& a, const auto& b) {
+            return std::make_pair(a.image1, a.image2) < std::make_pair(b.image1, b.image2);
+        });
+        if (verbose)
+            L::err(Tag::Match, M::match_blocks_cache,
+                   {L::num(descriptors->peakBytes() / 1048576.0, 1),
+                    (long long)descriptors->loads()});
     }
     stats.kept = db.pairs.size();
     return 0;
@@ -2462,6 +2545,13 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     bool reused_matches = false;
     if (cfg.reuse && cfg.reuse_matches != "redo" && fs::exists(matchpath, rm_ec) &&
         (current || (keep_matches && est.reused == est.images))) {
+        if (cfg.pairs == "spatial-blocks") {
+            MatchesIndex index;
+            if (!indexMatches(matchpath.string(), index) || index.images.size() != est.images)
+                throw std::runtime_error("regional mapping: kept matches do not cover the extracted photos");
+            L::out(Tag::Match, M::match_reusing_matches, {(long long)index.pairs.size(), matchpath.string()});
+            if (auto result = run_regional(cfg, matchpath.string(), featdir.string(), _imagedir, sparsedir)) return *result;
+        }
         try {
             MatchesDatabase disk = readMatches(matchpath.string());
             bool loaded =
@@ -2521,6 +2611,13 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         resume::forget(rdir / "pairs.bin");
         if (cfg.reuse) resume::store(rdir / resume::kMatchSig, mres.signature);
     }
+    if (cfg.pairs == "spatial-blocks") {
+        std::vector<FeatureSet>().swap(feats);
+        db = MatchesDatabase();
+        if (auto result = run_regional(cfg, matchpath.string(), featdir.string(), _imagedir, sparsedir)) return *result;
+        if (loadFeatureDir(featdir.string(), cfg, false, feats, db)) { r.exit_code = 1; return r; }
+        db = readMatches(matchpath.string());
+    }
     // Nothing past this point reads a descriptor -- the mapper works on
     // keypoints, the correspondence graph and the per-keypoint colors -- and on
     // a large capture they are the biggest thing in the process: 8k features
@@ -2570,6 +2667,7 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         r.exit_code = 2;
         return r;
     }
+    configureMappingMemory(cfg, _workspace);
     Mapper mapper(db, feats, mapopt, cs.ids, &rigs, &seqs,
                   cfg.sensor_map ? calib.positionPriors() : nullptr);
     AssembleStats ast;

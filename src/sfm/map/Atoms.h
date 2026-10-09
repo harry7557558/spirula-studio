@@ -34,6 +34,7 @@
 #include <atomic>
 #include <cstdio>
 #include <exception>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -164,6 +165,7 @@ inline SubDatabase carveAtom(const MatchesDatabase& db, const std::vector<Featur
         sf.extract_height = f.extract_height;
         sf.exif_focal = f.exif_focal;
         sf.exif_camera = f.exif_camera;
+        sf.exif_orientation = f.exif_orientation;
         sf.keypoints = f.keypoints;
         sf.colors = f.colors;
         s.cam_ids[i] = cam_ids.empty() ? 1 : cam_ids[g];
@@ -201,20 +203,24 @@ inline void toGlobalIds(Reconstruction& m, const std::vector<uint32_t>& to_globa
     for (auto& kv : m.points3D)
         for (TrackElement& e : kv.second.track)
             if (e.image_id < to_global.size()) e.image_id = to_global[e.image_id];
+    std::set<uint32_t> detached;
+    for (uint32_t id : m.rig_detached)
+        if (id < to_global.size()) detached.insert(to_global[id]);
+    m.rig_detached = std::move(detached);
 }
 
 }  // namespace detail
 
-// Reconstruct every atom and return the models, in atom order. `base` is the
-// mapper options for the whole run; `seed_mapper` supplies the bootstrapped
-// intrinsics and is not otherwise used.
+using AtomModelSink = std::function<void(size_t, size_t, Reconstruction&&)>;
+
+// The optional sink runs on atom workers with global image and camera ids.
 inline std::vector<Reconstruction> reconstructAtoms(
     const MatchesDatabase& db, const std::vector<FeatureSet>& feats,
     const MapperOptions& base, const std::vector<uint32_t>& cam_ids,
     const std::map<uint32_t, Camera>& start_cams,
     const std::vector<std::vector<uint32_t>>& atoms, const AtomOptions& opt, AtomStats& st,
     const RigTable* rigs = nullptr, const SequenceTable* seqs = nullptr,
-    PriorSource* priors = nullptr) {
+    PriorSource* priors = nullptr, const AtomModelSink& sink = {}) {
     const auto t0 = std::chrono::steady_clock::now();
     st.atoms = atoms.size();
 
@@ -252,8 +258,12 @@ inline std::vector<Reconstruction> reconstructAtoms(
                              : std::min(hc > 0 ? (int)hc : 1, std::max(1, opt.max_threads));
     nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(atoms.size(), 1)));
     st.threads = nt;
+    if (base.host_budget_bytes)
+        mo.host_budget_bytes = std::max<size_t>(1, base.host_budget_bytes / static_cast<size_t>(nt));
 
     std::vector<std::vector<Reconstruction>> per_atom(atoms.size());
+    std::vector<size_t> model_counts(atoms.size(), 0);
+    std::vector<size_t> registrations(atoms.size(), 0);
     std::atomic<size_t> next{0};
     std::mutex log_mu;
     std::atomic<size_t> done{0};
@@ -283,14 +293,19 @@ inline std::vector<Reconstruction> reconstructAtoms(
                     reg += r.numRegistered();
                     for (const auto& kv : r.images)
                         if (kv.second.registered) events::map_placed(kv.first);
-                    per_atom[i].push_back(std::move(r));
+                    const size_t component = model_counts[i]++;
+                    if (sink) {
+                        sink(i, component, std::move(r));
+                        r = Reconstruction{};
+                    } else per_atom[i].push_back(std::move(r));
                 }
+                registrations[i] = reg;
                 if (opt.verbose) {
                     const size_t n = ++done;
                     std::lock_guard<std::mutex> lk(log_mu);
                     slog::diag(slog::Tag::Map,
                                "[bup] atom %zu/%zu: %zu images -> %zu model(s), %u registered",
-                               n, atoms.size(), atoms[i].size(), per_atom[i].size(), reg);
+                               n, atoms.size(), atoms[i].size(), model_counts[i], reg);
                 }
             }
         } catch (...) {
@@ -310,14 +325,16 @@ inline std::vector<Reconstruction> reconstructAtoms(
     if (first_error) std::rethrow_exception(first_error);
 
     std::vector<Reconstruction> models;
-    for (std::vector<Reconstruction>& v : per_atom) {
-        if (v.empty()) st.empty++;
+    st.models = 0;
+    for (size_t i = 0; i < per_atom.size(); ++i) {
+        std::vector<Reconstruction>& v = per_atom[i];
+        if (!model_counts[i]) st.empty++;
+        st.models += model_counts[i];
+        st.registered += registrations[i];
         for (Reconstruction& r : v) {
-            st.registered += r.numRegistered();
             models.push_back(std::move(r));
         }
     }
-    st.models = models.size();
     st.secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     return models;
 }

@@ -3,8 +3,11 @@
 #include "app/gui/SfmRunner.h"
 
 #include "app/gui/SfmInProcess.h"
+#include "app/gui/SfmPartition.h"
+#include "app/gui/TelemetryProbe.h"
 
 #include "sfm/core/Resume.h"
+#include "core/HostMemory.h"
 
 #include <fstream>
 
@@ -222,6 +225,16 @@ void SfmRunner::take_reconstruction(SfmJob& job) {
     job.camera_model = _live.camera_model;
     job.camera_mode = _live.camera_mode;
     job.pairs = _live.pairs;
+    job.partition_mode = _live.partition_mode;
+    job.non_partition_pairs = _live.non_partition_pairs;
+    job.partition_resolved = _live.partition_resolved;
+    job.block_size = _live.block_size;
+    job.block_size_auto = _live.block_size_auto;
+    job.block_neighbours = _live.block_neighbours;
+    job.block_radius = _live.block_radius;
+    job.block_cache_mb = _live.block_cache_mb;
+    job.map_memory_mb = _live.map_memory_mb;
+    job.block_cache_auto = _live.block_cache_auto;
     job.overlap = _live.overlap;
     job.loop_closure = _live.loop_closure;
     job.prefilter_sequential = _live.prefilter_sequential;
@@ -664,6 +677,14 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--pairs");
         argv.push_back(sfm_pick(kSfmPairs, job.pairs));
     }
+    if (job.pairs == 4) {
+        argv.insert(argv.end(), {"--block-size", std::to_string(job.block_size),
+                                "--block-neighbours", std::to_string(job.block_neighbours),
+                                "--block-radius", std::to_string(job.block_radius),
+                                "--block-cache-mb", std::to_string(job.block_cache_mb)});
+    }
+    if (job.map_memory_mb > 0)
+        argv.insert(argv.end(), {"--map-memory-mb", std::to_string(job.map_memory_mb)});
     // Only when it says something: a run at the default passes nothing.
     if (job.pairs == 2 || (sequential_window_applies(job) && job.overlap != 10)) {
         argv.push_back("--overlap");
@@ -767,10 +788,12 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
 
 void SfmRunner::run(SfmJob job) {
     auto fail = [&](const std::string& why) {
-        _prog.finish(_cancel.load() ? StageStatus::Skipped : StageStatus::Failed);
+        const bool cancelled = _cancel.load();
+        if (!cancelled && !why.empty()) log(why, /*detail=*/false);
+        _prog.finish(cancelled ? StageStatus::Skipped : StageStatus::Failed);
         std::lock_guard<std::mutex> lk(_mu);
         _error = why;
-        _state = _cancel.load() ? State::Cancelled : State::Failed;
+        _state = cancelled ? State::Cancelled : State::Failed;
     };
 
     try {
@@ -893,6 +916,32 @@ void SfmRunner::run(SfmJob job) {
 
         // ---- 2. reconstruction --------------------------------------------
         take_reconstruction(job);
+        if (!job.partition_resolved) {
+            const auto memory = sfm_partition_for_job(job, spirula::physicalRamBytes(),
+                                                     spirula::availableRamBytes());
+            if (job.block_size_auto) job.block_size = memory.photos;
+            if (job.block_cache_auto) job.block_cache_mb = memory.cache_mb;
+        }
+        const bool photos_only = !job.prep.inputs.empty() &&
+            std::all_of(job.prep.inputs.begin(), job.prep.inputs.end(),
+                        [](const PrepInput& in) { return !in.is_video; });
+        const bool needs_gps = photos_only &&
+            (job.partition_mode == (int)SfmPartitionMode::On ||
+             (job.partition_mode == (int)SfmPartitionMode::Auto &&
+              prep.n_images >= kSfmPartitionAutoThreshold));
+        TelemetryInfo photo_gps;
+        if (needs_gps) {
+            photo_gps = probe_photo_telemetry(prep.image_dir, &_cancel);
+            if (_cancel) return fail("");
+        }
+        const auto partition = sfm_partition_decision(job.partition_mode,
+            (size_t)prep.n_images, (size_t)photo_gps.with_gps,
+            !needs_gps || photo_gps.done, photos_only);
+        const bool was_partitioned = job.pairs == 4;
+        if (!was_partitioned) job.non_partition_pairs = job.pairs;
+        job.pairs = partition.enabled ? 4 : std::clamp(job.non_partition_pairs, 0, 3);
+        if (partition.enabled) job.mapper = 1;
+        else if (was_partitioned) job.mapper = 0;
         if (!lidar.sfm_args.empty()) job.camera_mode = std::max(job.camera_mode, 1);
         PlanJob planned = plan_job(job);
         // The rendered views' lens makes the model as much as the panel does.
