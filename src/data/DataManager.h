@@ -93,6 +93,10 @@ struct DataManagerConfig {
     // with its mask file if it has one; flip_mask turns only the file.
     std::vector<uint8_t> alpha_masks;
 
+    // Per input image, its focus/ weight map or "" (docs/notes/focus-weights.md).
+    // Non-empty switches masks to weights: 0..255, the mask's keep times this.
+    std::vector<std::string> focus_filenames;
+
     // One flag per input image whose alpha is composited onto composite_color
     // (display-referred, 0..1) as its colour is decoded -- the constant
     // background it is rendered against, so a transparent pixel's GT is that.

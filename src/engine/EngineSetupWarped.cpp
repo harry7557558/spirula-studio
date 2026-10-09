@@ -239,6 +239,7 @@ void set_training_data_warped(
                            {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 1LL});
         engine().gt.alpha = DeviceTensor3D<bool>(dv);
         engine().gt.has_mask = true;
+        split_gt_mask_weight();
     } else {
         engine().gt.alpha = DeviceTensor3D<bool>();
         engine().gt.has_mask = false;

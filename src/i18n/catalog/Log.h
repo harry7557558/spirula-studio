@@ -1523,6 +1523,21 @@ SS_MSG(ray_depth_straight_ahead,
     RU("расстояние прямо вперёд"),
     TR("ileri doğru mesafe"));
 
+SS_MSG(focus_weights_found,
+    EN("Focus weights from {0}/ ({1} of {2} images)"),
+    JA("{0}/ の合焦重みを使います（{2} 枚中 {1} 枚）"),
+    ZH_HANS("使用 {0}/ 中的实焦权重（{2} 张图像中的 {1} 张）"),
+    ZH_HANT("使用 {0}/ 中的實焦權重（{2} 張影像中的 {1} 張）"),
+    KO("{0}/ 의 초점 가중치를 사용합니다({2}장 중 {1}장)"),
+    DE("Fokusgewichte aus {0}/ ({1} von {2} Bildern)"),
+    FR("Poids de netteté de {0}/ ({1} images sur {2})"),
+    ES("Pesos de enfoque de {0}/ ({1} de {2} imágenes)"),
+    PT("Pesos de foco de {0}/ ({1} de {2} imagens)"),
+    IT("Pesi di fuoco da {0}/ ({1} immagini su {2})"),
+    NL("Focusgewichten uit {0}/ ({1} van {2} beelden)"),
+    RU("Веса резкости из {0}/ ({1} из {2} изображений)"),
+    TR("{0}/ içinden odak ağırlıkları ({2} görüntüden {1})"));
+
 SS_MSG(alpha_masks_found,
     EN("Alpha channel used as the mask ({0} of {1} images)"),
     JA("アルファチャンネルをマスクとして使います（{1} 枚中 {0} 枚）"),
@@ -4169,6 +4184,32 @@ SS_MSG(err_spawn_geometry,
     NL("kon het schatten van diepte en normalen niet starten ({0})"),
     RU("не удалось запустить оценку глубины и нормалей ({0})"),
     TR("derinlik ve normal kestirimi başlatılamadı ({0})"));
+
+SS_MSG(err_focus_failed,
+    EN("computing focus weights failed (see the log). The depth and normal maps "
+       "are written and the dataset can be trained on as it is."),
+    JA("合焦重みの計算に失敗しました（ログを見てください）。深度と法線のマップは"
+       "書き出し済みなので、そのまま学習に使えます。"),
+    ZH_HANS("实焦权重计算失败（请看日志）。深度图和法线图已经写出，数据集可以直接拿来训练。"),
+    ZH_HANT("實焦權重計算失敗（請看記錄）。深度圖和法線圖已經寫出，資料集可以直接拿來訓練。"),
+    KO("초점 가중치 계산에 실패했습니다(로그를 보세요). 깊이와 법선 맵은 이미 썼으므로 "
+       "데이터셋을 그대로 학습에 쓸 수 있습니다."),
+    DE("das Berechnen der Fokusgewichte ist fehlgeschlagen (siehe Log). Tiefen- und "
+       "Normalenkarten sind geschrieben, der Datensatz kann so trainiert werden."),
+    FR("le calcul des poids de netteté a échoué (voir le journal). Les cartes de "
+       "profondeur et de normales sont écrites et le jeu peut servir tel quel."),
+    ES("falló el cálculo de los pesos de enfoque (mire el registro). Los mapas de "
+       "profundidad y normales están escritos y el conjunto sirve tal cual."),
+    PT("o cálculo dos pesos de foco falhou (veja o registro). Os mapas de "
+       "profundidade e normais estão escritos e o conjunto serve como está."),
+    IT("il calcolo dei pesi di fuoco non è riuscito (vedi il log). Le mappe di "
+       "profondità e normali sono scritte e l'insieme si può addestrare così."),
+    NL("het berekenen van de focusgewichten is mislukt (zie het log). De diepte- en "
+       "normaalkaarten zijn geschreven en de dataset kan zo getraind worden."),
+    RU("не удалось вычислить веса резкости (см. журнал). Карты глубины и нормалей "
+       "записаны, набор можно обучать как есть."),
+    TR("odak ağırlıkları hesaplanamadı (günlüğe bakın). Derinlik ve normal "
+       "haritaları yazıldı, veri kümesi olduğu gibi eğitilebilir."));
 
 SS_MSG(err_geometry_failed,
     EN("estimating depth and normals failed (see the log). The reconstruction "

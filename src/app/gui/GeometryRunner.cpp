@@ -19,6 +19,8 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 
@@ -120,7 +122,7 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
         error = why;
         return false;
     }
-    if (!job.want_depth && !job.want_normal) return true;
+    if (!job.want_depth && !job.want_normal && !job.want_focus) return true;
 
     prog.enter(Stage::Geometry, lmsg::stage_geometry.get());
     auto log = [&](const std::string& s, bool detail) { prog.note(s, detail); };
@@ -139,7 +141,7 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
         "--split", kTri[std::clamp(job.split, 0, 2)],
         "--face-res", job.face_res == 1 ? "source" : "output",
     };
-    if (job.want_depth) argv.push_back("--depth");
+    if (job.want_depth || job.want_focus) argv.push_back("--depth");
     if (!job.want_normal) argv.push_back("--no-normal");
     if (job.overwrite) argv.push_back("--overwrite");
     // Carry the frozen UUID so an inherited environment cannot redirect the child.
@@ -170,7 +172,7 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
     // is watched by; a depth-only run has only the other folder.
     const fs::path root(dataset);
     OutputWatch watch(reel, root / (job.want_normal ? "normals" : "depths"),
-                      images, job.want_depth ? root / "depths" : fs::path());
+                      images, job.want_depth || job.want_focus ? root / "depths" : fs::path());
     const int rc = run_process(argv, "", [&](const std::string& raw) {
         const std::string line = trim_right(raw);
         if (line.empty()) return;
@@ -202,6 +204,34 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
     if (rc != 0) {
         error = lmsg::err_geometry_failed.get();
         return false;
+    }
+    if (job.want_focus) {
+        char allowed[32];
+        std::snprintf(allowed, sizeof allowed, "%g", job.focus_allowed);
+        std::vector<std::string> fargv = {
+            app::exe_path(), "--lang", spirula::i18n::code(spirula::i18n::current()),
+            "focus", dataset,
+            "--image-dir", images.empty() ? std::string("images") : images,
+            "--allowed", allowed,
+        };
+        if (job.overwrite) fargv.push_back("--overwrite");
+        std::string fcmd;
+        for (const std::string& a : fargv) fcmd += (fcmd.empty() ? "$ " : " ") + a;
+        log(fcmd, true);
+        const int frc = run_process(fargv, "", [&](const std::string& raw) {
+            const std::string line = trim_right(raw);
+            if (line.empty()) return;
+            prog.detail(Stage::Geometry, line);
+            log(line, true);
+        }, cancel);
+        if (frc == kCancelled) {
+            error = lmsg::err_cancelled.get();
+            return false;
+        }
+        if (frc != 0) {
+            error = lmsg::err_focus_failed.get();
+            return false;
+        }
     }
     prog.mark(Stage::Geometry, StageStatus::Done);
     return true;

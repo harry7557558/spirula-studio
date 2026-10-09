@@ -300,6 +300,57 @@ SS_MSG(steps_per_save_help,
        "bitince kaydeder, 0 hiç kaydetmez. Sık kaydetmek disk alanına ve biraz "
        "zamana mal olur."));
 
+SS_MSG(export_y_up,
+    EN("Also save a Y-up PLY"), JA("Y-up の PLY も保存"),
+    ZH_HANS("同时保存 Y 轴向上的 PLY"), ZH_HANT("同時儲存 Y 軸向上的 PLY"), KO("Y-up PLY도 저장"),
+    DE("Zusätzlich ein Y-up-PLY speichern"), FR("Enregistrer aussi un PLY Y-up"),
+    ES("Guardar también un PLY Y-up"), PT("Salvar também um PLY Y-up"),
+    IT("Salva anche un PLY Y-up"), NL("Ook een Y-up-PLY opslaan"),
+    RU("Также сохранить PLY с осью Y вверх"), TR("Ayrıca Y-up bir PLY kaydet"));
+SS_MSG(export_y_up_help,
+    EN("Write splat_y_up.ply beside each checkpoint's splat.ply: the same model "
+       "turned so +Y is up, with SuperSplat's 180-degree import turn undone, so "
+       "it opens upright there. splat.ply itself is unchanged."),
+    JA("各チェックポイントの splat.ply の隣に splat_y_up.ply を書き出します。+Y が"
+       "上になるよう回転し、SuperSplat が読み込み時に加える 180 度回転も打ち消す"
+       "ので、そのまま正立して開けます。splat.ply 自体は変わりません。"),
+    ZH_HANS("在每个检查点的 splat.ply 旁写出 splat_y_up.ply：同一模型旋转为 +Y 向上，"
+            "并抵消 SuperSplat 导入时的 180 度旋转，在其中打开即为正向。splat.ply "
+            "本身不变。"),
+    ZH_HANT("在每個檢查點的 splat.ply 旁寫出 splat_y_up.ply：同一模型旋轉為 +Y 向上，"
+            "並抵消 SuperSplat 匯入時的 180 度旋轉，在其中開啟即為正向。splat.ply "
+            "本身不變。"),
+    KO("각 체크포인트의 splat.ply 옆에 splat_y_up.ply 를 씁니다. 같은 모델을 +Y 가 "
+       "위가 되게 돌리고 SuperSplat 이 불러올 때 적용하는 180도 회전도 상쇄하므로 "
+       "바로 똑바로 열립니다. splat.ply 자체는 바뀌지 않습니다."),
+    DE("Schreibt neben das splat.ply jedes Checkpoints ein splat_y_up.ply: dasselbe "
+       "Modell mit +Y nach oben, die 180-Grad-Drehung von SuperSplat beim Import "
+       "ausgeglichen, sodass es dort aufrecht öffnet. splat.ply bleibt unverändert."),
+    FR("Écrit splat_y_up.ply à côté du splat.ply de chaque point de contrôle : le "
+       "même modèle tourné avec +Y vers le haut, la rotation de 180 degrés de "
+       "SuperSplat à l'import compensée, pour qu'il s'y ouvre droit. splat.ply ne "
+       "change pas."),
+    ES("Escribe splat_y_up.ply junto al splat.ply de cada punto de control: el mismo "
+       "modelo girado con +Y hacia arriba y el giro de 180 grados que SuperSplat "
+       "aplica al importar compensado, para que se abra derecho. splat.ply no cambia."),
+    PT("Escreve splat_y_up.ply ao lado do splat.ply de cada checkpoint: o mesmo "
+       "modelo girado com +Y para cima e o giro de 180 graus que o SuperSplat aplica "
+       "ao importar compensado, para abrir em pé. O splat.ply não muda."),
+    IT("Scrive splat_y_up.ply accanto allo splat.ply di ogni checkpoint: lo stesso "
+       "modello ruotato con +Y in alto, compensando la rotazione di 180 gradi che "
+       "SuperSplat applica all'importazione, così si apre dritto. splat.ply non cambia."),
+    NL("Schrijft naast de splat.ply van elk checkpoint een splat_y_up.ply: hetzelfde "
+       "model met +Y omhoog, met de draai van 180 graden die SuperSplat bij import "
+       "toepast gecompenseerd, zodat het daar rechtop opent. splat.ply blijft gelijk."),
+    RU("Пишет splat_y_up.ply рядом с splat.ply каждой контрольной точки: та же "
+       "модель, повёрнутая осью +Y вверх, с компенсацией поворота на 180 градусов, "
+       "который SuperSplat делает при импорте, — откроется там ровно. splat.ply не "
+       "меняется."),
+    TR("Her kontrol noktasının splat.ply dosyasının yanına splat_y_up.ply yazar: "
+       "aynı model +Y yukarı olacak şekilde döndürülür ve SuperSplat'in içe "
+       "aktarırken uyguladığı 180 derecelik dönüş telafi edilir, orada dik açılır. "
+       "splat.ply değişmez."));
+
 SS_MSG(save_only_latest_checkpoint,
     EN("Keep only the newest checkpoint"),
     JA("最新のチェックポイントだけ残す"), ZH_HANS("只保留最新的检查点"),
@@ -724,6 +775,52 @@ SS_MSG(mask_dir_help,
        "означает маска, задаёт apply_loss_for_mask."),
     TR("Görüntü maskelerini içeren alt klasör; COLMAP ve Metashape veri kümeleri "
        "için. Maskenin ne anlama geldiğini apply_loss_for_mask belirler."));
+
+SS_MSG(focus_dir,
+    EN("Focus weight subfolder"), JA("合焦重みのサブフォルダ"),
+    ZH_HANS("实焦权重子文件夹"), ZH_HANT("實焦權重子資料夾"), KO("초점 가중치 하위 폴더"),
+    DE("Unterordner der Fokusgewichte"), FR("Sous-dossier des poids de netteté"),
+    ES("Subcarpeta de pesos de enfoque"), PT("Subpasta de pesos de foco"),
+    IT("Sottocartella dei pesi di fuoco"), NL("Submap met focusgewichten"),
+    RU("Подпапка весов резкости"), TR("Odak ağırlıkları alt klasörü"));
+SS_MSG(focus_dir_help,
+    EN("Subfolder of per-pixel focus weights written by `spirula focus`. Where "
+       "it exists, each weight multiplies the image's mask and scales how much "
+       "that pixel counts in the photometric loss. Empty turns it off."),
+    JA("`spirula focus` が書き出す画素ごとの合焦重みのサブフォルダです。存在す"
+       "れば、各重みが画像のマスクに掛け合わされ、その画素が測光損失にどれだけ"
+       "効くかを決めます。空にすると使いません。"),
+    ZH_HANS("存放 `spirula focus` 写出的逐像素实焦权重的子文件夹。存在时，每个权"
+            "重会与该图像的蒙版相乘，决定该像素在光度损失中占多大比重。留空则不使用。"),
+    ZH_HANT("存放 `spirula focus` 寫出的逐像素實焦權重的子資料夾。存在時，每個權"
+            "重會與該影像的遮罩相乘，決定該像素在光度損失中占多大比重。留空則不使用。"),
+    KO("`spirula focus` 가 쓴 픽셀별 초점 가중치 하위 폴더입니다. 있으면 각 가중"
+       "치가 이미지 마스크에 곱해져 그 픽셀이 광도 손실에 얼마나 반영될지를 정합"
+       "니다. 비우면 쓰지 않습니다."),
+    DE("Unterordner mit den Fokusgewichten pro Pixel aus `spirula focus`. Wo er "
+       "existiert, multipliziert jedes Gewicht die Maske des Bildes und bestimmt, "
+       "wie stark das Pixel im photometrischen Verlust zählt. Leer schaltet ihn ab."),
+    FR("Sous-dossier des poids de netteté par pixel écrits par `spirula focus`. "
+       "S'il existe, chaque poids multiplie le masque de l'image et règle le poids "
+       "du pixel dans la perte photométrique. Vide le désactive."),
+    ES("Subcarpeta de pesos de enfoque por píxel escritos por `spirula focus`. "
+       "Si existe, cada peso multiplica la máscara de la imagen y fija cuánto cuenta "
+       "ese píxel en la pérdida fotométrica. Vacío lo desactiva."),
+    PT("Subpasta dos pesos de foco por pixel escritos por `spirula focus`. Se "
+       "existir, cada peso multiplica a máscara da imagem e define quanto esse pixel "
+       "conta na perda fotométrica. Vazio desativa."),
+    IT("Sottocartella dei pesi di fuoco per pixel scritti da `spirula focus`. Se "
+       "esiste, ogni peso moltiplica la maschera dell'immagine e stabilisce quanto "
+       "conta quel pixel nella perdita fotometrica. Vuoto la disattiva."),
+    NL("Submap met focusgewichten per pixel van `spirula focus`. Waar die bestaat, "
+       "vermenigvuldigt elk gewicht het masker van de afbeelding en bepaalt het hoe "
+       "zwaar die pixel telt in het fotometrische verlies. Leeg zet hem uit."),
+    RU("Подпапка весов резкости по пикселям от `spirula focus`. Если она есть, "
+       "каждый вес умножается на маску изображения и задаёт, насколько пиксель "
+       "учитывается в фотометрической потере. Пусто — отключено."),
+    TR("`spirula focus` tarafından yazılan piksel başına odak ağırlıkları alt "
+       "klasörü. Varsa her ağırlık görüntünün maskesiyle çarpılır ve o pikselin "
+       "fotometrik kayıpta ne kadar sayılacağını belirler. Boş bırakılırsa kapalıdır."));
 
 SS_MSG(load_masks,
     EN("Use dataset masks"), JA("データセットのマスクを使う"),

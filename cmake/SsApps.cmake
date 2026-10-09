@@ -170,6 +170,12 @@ if(SS_BUILD_SAM)
     list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/DenseProcessing.cpp)
     list(APPEND SS_TOOL_DEFS SS_HAVE_ROMA=1)
     list(APPEND SS_TOOL_LIBS ss_metric3d ss_moge ss_roma)
+
+    # ---- focus weights, from the depth above ----
+    list(APPEND SS_TOOL_SOURCES
+         ${SS_SRC}/app/cli/focus_main.cpp
+         ${SS_SRC}/app/FocusWeight.cpp)
+    list(APPEND SS_TOOL_DEFS SS_TOOL_FOCUS=1)
 endif()
 
 # ---------------------------------------------------------------------------

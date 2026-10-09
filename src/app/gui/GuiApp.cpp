@@ -33,6 +33,7 @@
 #include "i18n/catalog/Brand.h"
 #include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Lidar.h"
+#include "i18n/catalog/Focus.h"
 #include "i18n/catalog/Geometry.h"
 #include "data/SparseEdit.h"
 #include "i18n/catalog/Edit.h"
@@ -87,6 +88,7 @@ namespace emsg = spirula::i18n::msg::edit;
 namespace fld = spirula::i18n::msg::field;
 namespace dmsg = spirula::i18n::msg::dataset;
 namespace ldmsg = spirula::i18n::msg::lidar;
+namespace fmsg = spirula::i18n::msg::focus;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
 namespace rmsg = spirula::i18n::msg::render;
@@ -731,6 +733,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("enabled", cfg_str(_geometry.enable));
     line("model", _geometry.model);
     line("want_depth", cfg_str(_geometry.want_depth));
+    line("want_focus", cfg_str(_geometry.want_focus));
     line("want_normal", cfg_str(_geometry.want_normal));
     line("max_size", std::to_string(_geometry.max_size));
     line("face_res", _geometry.face_res == 1 ? "source" : "output");
@@ -5868,7 +5871,21 @@ void GuiApp::draw_geometry_options() {
     ImGui::SameLine();
     ui::Checkbox(dmsg::geom_write_depth, &_geometry.want_depth);
     ui::help_on_hover(gmsg::opt_depth);
-    if (!_geometry.want_normal && !_geometry.want_depth)
+    ImGui::SameLine();
+    // Focus weights were validated on MoGe-2 large depth, so ticking them
+    // selects it; the user can still pick another model afterwards.
+    if (ui::Checkbox(dmsg::geom_write_focus, &_geometry.want_focus) && _geometry.want_focus)
+        _geometry.model = "moge2-vitl";
+    ui::help_on_hover(dmsg::geom_write_focus_help);
+    if (_geometry.want_focus) {
+        ImGui::SetNextItemWidth(px(220.0f));
+        if (ui::InputFloat(dmsg::geom_focus_allowed, &_geometry.focus_allowed, 0.1f))
+            _geometry.focus_allowed = std::clamp(_geometry.focus_allowed, 0.2f, 8.0f);
+        ui::help_on_hover(fmsg::opt_allowed);
+        if (_geometry.model != "moge2-vitl")
+            ui::TextColoredWrapped(kWarn, dmsg::geom_focus_prefers_large);
+    }
+    if (!_geometry.want_normal && !_geometry.want_depth && !_geometry.want_focus)
         ui::TextColoredWrapped(kWarn, dmsg::geom_nothing_to_write);
 
     // Behind the checkpoint, unlike "Try the mask": there is no half of this
@@ -10738,6 +10755,17 @@ void GuiApp::draw_basic_options() {
     if (ui::Checkbox(msg::opt_ppisp, &_cfg.use_ppisp))
         _cfg_ui.touched.insert("use_ppisp");
     ui::help_on_hover(msg::opt_ppisp_help);
+
+    bool use_focus = !_cfg.focus_dir.empty();
+    if (ui::Checkbox(msg::opt_use_focus, &use_focus)) {
+        _cfg.focus_dir = use_focus ? "focus" : "";
+        _cfg_ui.touched.insert("focus_dir");
+    }
+    ui::help_on_hover(msg::opt_use_focus_help);
+
+    if (ui::Checkbox(fld::export_y_up, &_cfg.export_y_up))
+        _cfg_ui.touched.insert("export_y_up");
+    ui::help_on_hover(fld::export_y_up_help);
 
     ImGui::Spacing();
 
