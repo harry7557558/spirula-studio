@@ -30,8 +30,13 @@ out stays masked out and the two never fight.
    `b(u) = sqrt(b0^2 + (k_near (u - u_f)+)^2 + (k_far (u_f - u)+)^2)`
    by a grid over `u_f` and non-negative least squares with Huber reweighting.
    Slices above ~2 px are down-weighted: the estimator saturates there and the
-   plateau they form dragged `u_f` behind the true minimum.
-4. **Weight.** Defocus `sqrt(b(u)^2 - b0^2)`, converted to pixels at the
+   plateau they form dragged `u_f` behind the true minimum. Edges that fit
+   below 0.2 px are dropped: fine texture (cast bronze, engraving) gives a
+   negative variance there, which is a failed fit, not an edge, and it pulled
+   `b0` to zero so that ordinary sharpness read as defocus.
+4. **Weight.** Defocus `sqrt(b(u)^2 - max(b0, 0.35)^2)` (0.35 px: about the
+   sharpest an edge comes out after lens, demosaicing and downsampling),
+   converted to pixels at the
    training resolution, against one threshold `--allowed` (default 1.4 px at a
    5760 px long side) with a tanh transition: weight 0.5 at the threshold.
 
@@ -53,3 +58,5 @@ per-lens tuning, and training with the weights left no holes in the subject.
   Local blur evidence can, but it also cannot tell a soft shadow from a
   defocused edge and falsely suppressed in-focus, textureless table tops.
 - An image with too few sharp edges to fit keeps weight 1 everywhere.
+- Pixels the geometry model left without depth (its border, sky) take the
+  weight of their surroundings rather than 0, so the frame edge is not cut.
