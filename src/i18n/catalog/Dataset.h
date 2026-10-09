@@ -5422,6 +5422,66 @@ SS_MSG(subj_photographer,
     PT("Fotógrafo"),    IT("Fotografo"),  NL("Fotograaf"),   RU("Фотограф"),
     TR("Fotoğrafçı"));
 
+SS_MSG(subj_pedestrian,
+    EN("Pedestrian"), JA("歩行者"), ZH_HANS("行人"), ZH_HANT("行人"),
+    KO("보행자"), DE("Fußgänger"), FR("Piéton"), ES("Peatón"),
+    PT("Pedestre"), IT("Pedone"), NL("Voetganger"), RU("Пешеход"),
+    TR("Yaya"));
+
+SS_MSG(subj_child,
+    EN("Child"), JA("子ども"), ZH_HANS("儿童"), ZH_HANT("兒童"),
+    KO("어린이"), DE("Kind"), FR("Enfant"), ES("Niño"),
+    PT("Criança"), IT("Bambino"), NL("Kind"), RU("Ребёнок"),
+    TR("Çocuk"));
+
+SS_MSG(subj_guard,
+    EN("Security guard"), JA("警備員"), ZH_HANS("保安"), ZH_HANT("保全"),
+    KO("경비원"), DE("Wachpersonal"), FR("Agent de sécurité"), ES("Guardia de seguridad"),
+    PT("Segurança"), IT("Guardia di sicurezza"), NL("Beveiliger"), RU("Охранник"),
+    TR("Güvenlik görevlisi"));
+
+SS_MSG(subj_worker,
+    EN("Worker / staff"), JA("作業員・スタッフ"), ZH_HANS("工作人员"), ZH_HANT("工作人員"),
+    KO("작업자·직원"), DE("Personal"), FR("Personnel"), ES("Personal"),
+    PT("Funcionário"), IT("Personale"), NL("Personeel"), RU("Сотрудник"),
+    TR("Görevli"));
+
+SS_MSG(subj_cyclist,
+    EN("Cyclist"), JA("自転車に乗る人"), ZH_HANS("骑车人"), ZH_HANT("騎車人"),
+    KO("자전거 탄 사람"), DE("Radfahrer"), FR("Cycliste"), ES("Ciclista"),
+    PT("Ciclista"), IT("Ciclista"), NL("Fietser"), RU("Велосипедист"),
+    TR("Bisikletli"));
+
+SS_MSG(subj_handbag,
+    EN("Handbag"), JA("ハンドバッグ"), ZH_HANS("手提包"), ZH_HANT("手提包"),
+    KO("핸드백"), DE("Handtasche"), FR("Sac à main"), ES("Bolso"),
+    PT("Bolsa"), IT("Borsa"), NL("Handtas"), RU("Сумка"),
+    TR("El çantası"));
+
+SS_MSG(subj_umbrella,
+    EN("Umbrella"), JA("傘"), ZH_HANS("雨伞"), ZH_HANT("雨傘"),
+    KO("우산"), DE("Regenschirm"), FR("Parapluie"), ES("Paraguas"),
+    PT("Guarda-chuva"), IT("Ombrello"), NL("Paraplu"), RU("Зонт"),
+    TR("Şemsiye"));
+
+SS_MSG(subj_stroller,
+    EN("Stroller"), JA("ベビーカー"), ZH_HANS("婴儿车"), ZH_HANT("嬰兒車"),
+    KO("유모차"), DE("Kinderwagen"), FR("Poussette"), ES("Cochecito"),
+    PT("Carrinho de bebê"), IT("Passeggino"), NL("Kinderwagen"), RU("Коляска"),
+    TR("Bebek arabası"));
+
+SS_MSG(subj_selfie_stick,
+    EN("Selfie stick"), JA("自撮り棒"), ZH_HANS("自拍杆"), ZH_HANT("自拍棒"),
+    KO("셀카봉"), DE("Selfie-Stick"), FR("Perche à selfie"), ES("Palo selfie"),
+    PT("Pau de selfie"), IT("Bastone per selfie"), NL("Selfiestick"), RU("Селфи-палка"),
+    TR("Selfie çubuğu"));
+
+SS_MSG(subj_phone,
+    EN("Phone held up"), JA("掲げたスマホ"), ZH_HANS("举起的手机"), ZH_HANT("舉起的手機"),
+    KO("들고 있는 휴대폰"), DE("Hochgehaltenes Handy"), FR("Téléphone brandi"), ES("Móvil en alto"),
+    PT("Celular erguido"), IT("Telefono alzato"), NL("Opgeheven telefoon"), RU("Поднятый телефон"),
+    TR("Kaldırılmış telefon"));
+
 SS_MSG(subj_hand,
     EN("Hand"),         JA("手"),          ZH_HANS("手"),      ZH_HANT("手"),
     KO("손"),            DE("Hand"),       FR("Main"),        ES("Mano"),
