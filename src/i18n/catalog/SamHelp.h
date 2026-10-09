@@ -913,6 +913,21 @@ SS_MSG(xh_no_autorotate,
     RU("не поворачивать кадры на угол, который требует съёмка"),
     TR("kareleri çekimin istediği açıyla döndürme"));
 
+SS_MSG(xh_lut,
+    EN("3D colour LUT (.cube) applied to every frame, e.g. the camera's log to Rec.709"),
+    JA("全フレームに適用する 3D カラー LUT（.cube）。例：カメラのログ→Rec.709"),
+    ZH_HANS("套用到每一帧的 3D 颜色 LUT（.cube），例如相机的 Log 转 Rec.709"),
+    ZH_HANT("套用到每一幀的 3D 色彩 LUT（.cube），例如相機的 Log 轉 Rec.709"),
+    KO("모든 프레임에 적용할 3D 색상 LUT(.cube). 예: 카메라의 로그→Rec.709"),
+    DE("3D-Farb-LUT (.cube) für jedes Einzelbild, z. B. Log zu Rec.709 der Kamera"),
+    FR("LUT couleur 3D (.cube) appliquée à chaque image, p. ex. log vers Rec.709"),
+    ES("LUT de color 3D (.cube) para cada fotograma, p. ej. log a Rec.709"),
+    PT("LUT de cor 3D (.cube) aplicada a cada fotograma, p. ex. log para Rec.709"),
+    IT("LUT colore 3D (.cube) applicata a ogni fotogramma, es. log verso Rec.709"),
+    NL("3D-kleur-LUT (.cube) voor elk beeld, bijv. log naar Rec.709 van de camera"),
+    RU("3D-LUT цвета (.cube) для каждого кадра, например лог → Rec.709 камеры"),
+    TR("Her kareye uygulanan 3D renk LUT'u (.cube), ör. kameranın log'dan Rec.709'a"));
+
 SS_MSG(xh_scale,
     EN("resize factor, at most 1"),
     JA("リサイズ倍率。1 以下"),

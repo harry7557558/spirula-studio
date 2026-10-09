@@ -75,6 +75,7 @@ void usage() {
     help_row("-r, --rotate <deg>", H::xh_rotate);
     help_row("    --no-autorotate", H::xh_no_autorotate);
     help_row("    --scale <f>", H::xh_scale);
+    help_row("    --lut <file.cube>", H::xh_lut);
     help_row("    --track <i>", H::xh_track);
     help_row("    --sync", H::xh_sync);
     help_row("    --adaptive", H::xh_adaptive);
@@ -119,6 +120,7 @@ struct Options {
     int    quality = 95, rotate = 0;
     bool   auto_rotate = true;
     float  scale = 1.0f;
+    std::string lut;
     int    track = -1;
     bool   sync = false;
     bool   adaptive = false;
@@ -163,6 +165,7 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--no-autorotate") o.auto_rotate = false;
         else if (a == "--autorotate") o.auto_rotate = true;
         else if (a == "--scale") o.scale = std::strtof(next("--scale"), nullptr);
+        else if (a == "--lut") o.lut = next("--lut");
         else if (a == "--track") o.track = std::atoi(next("--track"));
         else if (a == "--sync") o.sync = true;
         else if (a == "--adaptive") o.adaptive = true;
@@ -282,6 +285,7 @@ int sam_cli_extract(int argc, char** argv) {
     job.rotate = o.rotate;
     job.auto_rotate = o.auto_rotate;
     job.scale = o.scale;
+    job.lut = o.lut;
     job.track = o.track;
     job.sync_tracks = o.sync;
     job.adaptive = o.adaptive;

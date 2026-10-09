@@ -2,6 +2,7 @@
 
 #include "app/gui/DatasetPrep.h"
 
+#include "app/CubeLut.h"
 #include "app/LidarDataset.h"
 #include "app/gui/DatasetRecord.h"
 #include "dense/Artifact.h"
@@ -1586,6 +1587,7 @@ static bool builtin_job(const PrepJob& job, const PrepInput& in,
     fx.adaptive = job.adaptive_fps && !every;
     fx.adaptive_range = job.adaptive_range;
     fx.auto_rotate = job.auto_rotate;
+    fx.lut = input_lut(job, in);
     fx.quality = 95;
     if (in.pano360.valid()) {
         const std::vector<app::Pano360View> views =
@@ -1749,6 +1751,18 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
 #endif
 }
 
+bool DatasetPrep::append_lut_filter(const PrepJob& job, const PrepInput& in,
+                                    std::string& chain, std::string& error) {
+    const std::string lut = input_lut(job, in);
+    if (lut.empty()) return true;
+    // ffmpeg's own lut3d reads the file, but its complaint is buried in the
+    // child's output; one read here says which file and why.
+    if (!app::cube_lut_cached(lut, error)) return false;
+    log(fmt(lmsg::video_lut_applied, {fs::path(lut).filename().string()}), false);
+    chain += (chain.empty() ? "" : ",") + app::ffmpeg_lut3d_filter(lut);
+    return true;
+}
+
 bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                                        const std::string& images,
                                        PrepResult& out, std::string& error) {
@@ -1809,15 +1823,17 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         remove_tree(cand);
         std::error_code ec;
         fs::create_directories(cand, ec);
-        char vf[64];
-        std::snprintf(vf, sizeof vf, "fps=%g", (double)input_fps(job, in) * group);
+        char rate[64];
+        std::snprintf(rate, sizeof rate, "fps=%g", (double)input_fps(job, in) * group);
+        std::string vf = every ? std::string() : std::string(rate);
+        if (!append_lut_filter(job, in, vf, error)) return false;
         // ffmpeg turns the picture by the container's matrix unless told not
         // to, which is what the built-in decoder's auto_rotate matches.
         std::vector<std::string> argv{job.ffmpeg_exe, "-nostdin", "-y"};
         if (!job.auto_rotate) argv.push_back("-noautorotate");
         argv.insert(argv.end(), {"-i", track_path});
         if (every) append_every_frame_args(argv, job.max_frames);
-        else argv.insert(argv.end(), {"-vf", vf});
+        if (!vf.empty()) argv.insert(argv.end(), {"-vf", vf});
         argv.insert(argv.end(), {"-qscale:v", "2", (cand / "c_%06d.jpg").string()});
         const int max_frames = job.max_frames;
         int rc = exec(argv, [&progress, window, max_frames](const std::string& line) {
@@ -1974,9 +1990,11 @@ bool DatasetPrep::extract_360_ffmpeg(const PrepJob& job, const PrepInput& in,
     const fs::path cand = ws / "frames_tmp";
     remove_tree(cand);
     fs::create_directories(cand, ec);
-    char pre[64] = "";
+    char rate[64] = "";
     if (!every)
-        std::snprintf(pre, sizeof pre, "fps=%g", (double)input_fps(job, in) * group);
+        std::snprintf(rate, sizeof rate, "fps=%g", (double)input_fps(job, in) * group);
+    std::string pre = rate;
+    if (!append_lut_filter(job, in, pre, error)) return false;
     const std::string graph = app::pano360_graph(in.pano360, pre);
     // A 360 capture's geometry is the EAC layout, not the display matrix: the
     // built-in path leaves it alone and so must this one.

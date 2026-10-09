@@ -36,6 +36,9 @@ struct FrameLook {
     // Fisheye circles side by side in one frame (packed_lens_count); two or
     // more are cut apart into cam0/, cam1/ ... as a multi-track file's are.
     int packed_lenses = 0;
+    // A .cube colour LUT (app/CubeLut.h) mapped over every decoded picture
+    // before anything else touches it; empty = the colours as decoded.
+    std::string lut;
     bool pano() const { return eac.valid() && !views.empty(); }
 };
 

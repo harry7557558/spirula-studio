@@ -89,6 +89,9 @@ inline std::string rig_letter(int letter) {
 // else, a rate of 0 is every frame.
 inline constexpr float kFpsEveryFrame = -1.0f;
 
+// PrepInput::lut for "no LUT" below a row that has one -- empty means "^".
+inline constexpr const char* kLutNone = "none";
+
 // One thing the user picked: a video file, or a folder of photos. A job holds
 // a list of them, because a capture is often shot as several clips, or on a rig
 // whose lenses each write their own file -- and those only reconstruct together
@@ -126,6 +129,9 @@ struct PrepInput {
     // as several clips is rarely shot at one pace, and a clip walked through
     // slowly wants fewer frames than the one that ran past the same wall.
     float fps = 0.0f;
+    // A .cube colour LUT baked into this video's frames as they are extracted
+    // (app/CubeLut.h). Empty = the row above's, kLutNone = none.
+    std::string lut;
     // The photos were taken one after another and named in that order, so the
     // reconstruction may trust neighbouring files first (a video's frames
     // always are; SfmRunner::build_sequences).
@@ -363,6 +369,19 @@ inline size_t input_index(const PrepJob& job, const PrepInput& in) {
 
 inline float input_fps(const PrepJob& job, const PrepInput& in) {
     return input_fps(job.inputs, job.video_fps, input_index(job, in));
+}
+
+// The LUT a row's frames are actually mapped through, "" for none: the nearest
+// row at or above it that says, as the rate column reads.
+inline std::string input_lut(const std::vector<PrepInput>& inputs, size_t at) {
+    for (size_t k = std::min(at + 1, inputs.size()); k-- > 0;)
+        if (!inputs[k].lut.empty())
+            return inputs[k].lut == kLutNone ? std::string() : inputs[k].lut;
+    return {};
+}
+
+inline std::string input_lut(const PrepJob& job, const PrepInput& in) {
+    return input_lut(job.inputs, input_index(job, in));
 }
 
 // No selection happens at all: no sharpness window, no motion plan.
@@ -692,6 +711,10 @@ private:
     bool extract_video_builtin(const PrepJob& job, const PrepInput& in,
                                const std::string& images,
                                PrepResult& out, std::string& error);
+    // The row's LUT appended to an ffmpeg filter chain, once the file has been
+    // read as one; false with `error` set when it cannot be.
+    bool append_lut_filter(const PrepJob& job, const PrepInput& in,
+                           std::string& chain, std::string& error);
     bool extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                               const std::string& images, PrepResult& out,
                               std::string& error);

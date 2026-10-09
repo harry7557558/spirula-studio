@@ -267,6 +267,7 @@ std::string encode_record_inputs(const RecordInputs& in) {
         w.field("is_video", s.is_video);
         w.field("subdir", s.subdir);
         w.field("fps", s.fps);
+        w.field("lut", s.lut);
         w.field("sequential", s.sequential);
         w.field("camera_model", s.camera_model);
         w.field("focal_factor", s.focal_factor);
@@ -313,6 +314,7 @@ RecordInputs decode_record_inputs(const JsonValue& v) {
             s.is_video = r.find("is_video") && r.find("is_video")->as_bool();
             s.subdir = text(r, "subdir");
             s.fps = (float)r.get_double("fps", 0.0);
+            s.lut = text(r, "lut");
             s.sequential = r.find("sequential") && r.find("sequential")->as_bool();
             s.camera_model = text(r, "camera_model");
             s.focal_factor = (float)r.get_double("focal_factor", 0.0);

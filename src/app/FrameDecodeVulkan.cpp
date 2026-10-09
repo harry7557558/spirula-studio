@@ -2,6 +2,7 @@
 // entry points of app/FrameExtract.h that exist only where it does.
 
 #include "app/FrameDecode.h"
+#include "app/CubeLut.h"
 
 #include "nn/core/Log.h"
 #include "nn/Device.h"
@@ -355,6 +356,8 @@ bool extract_frames_at(const std::string& input, const FrameLook& look_in,
         return false;
     }
 
+    std::shared_ptr<const CubeLut> lut;
+    if (!look.lut.empty() && !(lut = cube_lut_cached(look.lut, error))) return false;
     video::ConvertOpts conv;
     if (!pano) {
         conv.scale = look.scale;
@@ -399,8 +402,10 @@ bool extract_frames_at(const std::string& input, const FrameLook& look_in,
     };
     auto emit = [&](int64_t index) {
         std::vector<nn::Image> img(np);
-        for (size_t k = 0; k < np; k++)
+        for (size_t k = 0; k < np; k++) {
             if (!pipe[k]->toImage(held[k], conv, img[k], error)) return false;
+            if (lut) apply_cube_lut(*lut, img[k].data.data(), img[k].data.size() / 3);
+        }
         if (!pano) {
             if (look.packed_lenses >= 2) {
                 std::vector<uint8_t> lens;

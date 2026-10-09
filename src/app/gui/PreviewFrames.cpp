@@ -2,6 +2,7 @@
 
 #include "app/gui/PreviewFrames.h"
 
+#include "app/CubeLut.h"
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/HeifPhoto.h"
@@ -105,8 +106,14 @@ bool load_ffmpeg_frame(const PreviewSource& src, double at, int folder, int& w,
     const bool ok =
         ffmpeg_extract_frame(src.ffmpeg_exe, src.input, at, tmp.string(), cancel,
                              opts);
-    if (ok && !cancel.load() && app::load_rgb(tmp.string(), w, h, rgb))
+    if (ok && !cancel.load() && app::load_rgb(tmp.string(), w, h, rgb)) {
+        // First, as the run's ffmpeg filter graph and the built-in decoder do.
+        std::string lut_error;
+        if (!src.look.lut.empty())
+            if (auto lut = app::cube_lut_cached(src.look.lut, lut_error))
+                app::apply_cube_lut(*lut, rgb.data(), rgb.size() / 3);
         convert_to_srgb(src, rgb);
+    }
     std::error_code rm;
     fs::remove(tmp, rm);
     if (rgb.empty()) return false;

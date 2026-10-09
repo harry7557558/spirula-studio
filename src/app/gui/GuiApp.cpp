@@ -709,6 +709,9 @@ void GuiApp::write_run_settings(std::ofstream& f) {
         if (s.is_video && s.fps != 0.0f)
             line("video_fps:" + (s.subdir.empty() ? s.path : s.subdir),
                  cfg_str(std::max(s.fps, 0.0f)));
+    for (const PrepInput& s : _sources)
+        if (s.is_video && !s.lut.empty())
+            line("video_lut:" + (s.subdir.empty() ? s.path : s.subdir), s.lut);
     line("sharp_window", std::to_string(j.prep.sharp_window));
     line("sync_tracks", cfg_str(j.prep.sync_tracks));
     line("max_frames", std::to_string(j.prep.max_frames));
@@ -2706,6 +2709,7 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::RenderAddModel:
         case PickAction::MeshSource:        return "model";
         case PickAction::StencilFile:       return "stencil";
+        case PickAction::SourceLut:         return "lut";
         case PickAction::SeedPointcloud:    return "seed_pointcloud";
         case PickAction::LidarSource:       return "lidar";
         case PickAction::ResumeRun:         return "train.resume";   // shared with the field's own picker
@@ -2836,6 +2840,16 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             if (!parse_settings_equal(before, _cfg)) _parse_dirty = true;
             break;
         }
+        case PickAction::SourceLut:
+            if (!path.empty() && _pick_lut >= 0 && _pick_lut < (int)_sources.size()) {
+                // The one above already says this file: then it is a caret.
+                const bool same = _pick_lut > 0 &&
+                                  input_lut(_sources, (size_t)_pick_lut - 1) == path;
+                _sources[(size_t)_pick_lut].lut = same ? std::string() : path;
+                refresh_sources();
+            }
+            _pick_lut = -1;
+            break;
         case PickAction::StencilFile:
             if (_segment.is_open() && _mask_preview_input < (int)_sources.size())
                 _segment.load_file(_sources[(size_t)_mask_preview_input].stencil, path);
@@ -4387,6 +4401,40 @@ size_t first_video_row(const std::vector<PrepInput>& sources) {
 
 }  // namespace
 
+// The LUT box of a video row: its file, a caret for the row above's, or none.
+bool GuiApp::draw_source_lut(size_t i, bool head) {
+    PrepInput& s = _sources[i];
+    const std::string resolved = input_lut(_sources, i);
+    const std::string file = fs::path(resolved).filename().string();
+    const std::string shown = !head && s.lut.empty() ? dmsg::lens_same_as_above.get()
+                              : resolved.empty()     ? dmsg::video_lut_none.get()
+                                                     : file;
+    bool changed = false;
+    ImGui::SetNextItemWidth(px(130.0f));
+    if (ui::BeginComboRaw("##lut", shown.c_str())) {
+        if (ui::Selectable(dmsg::video_lut_choose, false)) {
+            _pick_lut = (int)i;
+            open_pick(PickAction::SourceLut, dmsg::video_lut_pick_title.get(),
+                      FileDialog::Mode::File, {".cube"},
+                      resolved.empty() ? std::string()
+                                       : fs::path(resolved).parent_path().string());
+        }
+        if (!head && ui::Selectable(dmsg::lens_same_as_above, s.lut.empty())) {
+            s.lut.clear();
+            changed = true;
+        }
+        const bool none = head ? s.lut.empty() || s.lut == kLutNone : s.lut == kLutNone;
+        if (ui::Selectable(dmsg::video_lut_none, none)) {
+            s.lut = head ? std::string() : std::string(kLutNone);
+            changed = true;
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(dmsg::video_lut_help,
+                      {resolved.empty() ? std::string(dmsg::video_lut_none.get()) : resolved});
+    return changed;
+}
+
 void GuiApp::draw_dataset_source() {
     // One row per input. Several videos reconstruct as one scene -- each gets
     // its own folder of frames under images/, and so its own camera.
@@ -4481,6 +4529,8 @@ void GuiApp::draw_dataset_source() {
                                               ? dmsg::frames_per_second_help_adaptive
                                               : dmsg::frames_per_second_help)
                                        : dmsg::video_fps_this_one_help);
+                ImGui::SameLine();
+                edited |= draw_source_lut(i, head);
                 ImGui::EndDisabled();
             } else {
                 ui::Checkbox(dmsg::frames_in_order, &s.sequential);
@@ -5131,6 +5181,7 @@ PreviewSource GuiApp::preview_source(size_t input) const {
         !_sfm_job.prep.force_external_decode && backends().builtin_video;
     src.tracks = std::max(in.video_tracks, 1);
     src.look.packed_lenses = in.packed_lenses;
+    if (in.is_video) src.look.lut = input_lut(_sources, input);
     // The one frozen choice, so a preview decodes and segments on the GPU the
     // run will use; empty leaves the panel's own precedence in charge.
     src.device = _native_device_uuid;
