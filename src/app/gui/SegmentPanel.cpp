@@ -1712,7 +1712,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     ImGui::SetNextItemWidth(-1);
     edited |= ui::InputTextEnglishRaw(
         "##prompt",
-        keep ? "the statue; its pedestal" : "person; car; shadow of a person",
+        keep ? "the statue; its pedestal" : "tourist; visitor; person; car; shadow of a person",
         &settings.prompt);
     ui::help_on_hover(keep ? dmsg::preview_prompt_help_keep
                            : dmsg::preview_prompt_help_remove);

@@ -182,7 +182,7 @@ bool dataset_apply_preset(DatasetSettings& s, const std::string& name) {
         // Whoever holds a 360 camera is in every frame of it, and so are
         // whatever they carry and their shadow.
         s.sfm.prep.mask_enable = true;
-        s.mask.prompt = "person; hand; backpack; shadow of person";
+        s.mask.prompt = "tourist; visitor; photographer; person; hand; backpack; shadow of person";
         // Outdoors half of every frame is sky, and a clear one yields no
         // feature points while a cloudy one yields points that drift.
         s.mask.feature_prompt = "sky; cloud";

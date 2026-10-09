@@ -5679,7 +5679,7 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
         ImGui::SetNextItemWidth(px(320.0f));
         ui::InputTextEnglish(
             keep_subject ? dmsg::mask_what_to_keep : dmsg::mask_what_to_remove,
-            keep_subject ? "the statue; its pedestal" : "person; car; shadow of a person",
+            keep_subject ? "the statue; its pedestal" : "tourist; visitor; person; car; shadow of a person",
             &_mask.prompt);
         ui::help_on_hover(keep_subject ? dmsg::mask_prompt_help_keep
                                        : dmsg::mask_prompt_help_remove);

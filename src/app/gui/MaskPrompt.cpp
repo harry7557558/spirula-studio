@@ -29,6 +29,10 @@ const ImVec4 kPickerErr(1.0f, 0.42f, 0.42f, 1.0f);
 // place in every frame anyway, which makes it app::FrameMask's job.
 const std::vector<MaskSubject>& subjects_impl() {
     static const std::vector<MaskSubject> v = {
+        // By role as well: "person" alone misses part of a crowd of passers-by.
+        {&dmsg::subj_tourist,         "tourist"},
+        {&dmsg::subj_visitor,         "visitor"},
+        {&dmsg::subj_photographer,    "photographer"},
         {&dmsg::subj_person,          "person"},
         {&dmsg::subj_hand,            "hand"},
         {&dmsg::subj_shoe,            "shoe"},

@@ -5404,6 +5404,24 @@ SS_MSG(subj_person,
     PT("Pessoa"),       IT("Persona"),    NL("Persoon"),     RU("Человек"),
     TR("İnsan"));
 
+SS_MSG(subj_tourist,
+    EN("Tourist"),      JA("観光客"),      ZH_HANS("游客"),    ZH_HANT("遊客"),
+    KO("관광객"),        DE("Tourist"),    FR("Touriste"),    ES("Turista"),
+    PT("Turista"),      IT("Turista"),    NL("Toerist"),     RU("Турист"),
+    TR("Turist"));
+
+SS_MSG(subj_visitor,
+    EN("Visitor"),      JA("来場者"),      ZH_HANS("参观者"),  ZH_HANT("參觀者"),
+    KO("방문객"),        DE("Besucher"),   FR("Visiteur"),    ES("Visitante"),
+    PT("Visitante"),    IT("Visitatore"), NL("Bezoeker"),    RU("Посетитель"),
+    TR("Ziyaretçi"));
+
+SS_MSG(subj_photographer,
+    EN("Photographer"), JA("撮影者"),      ZH_HANS("摄影师"),  ZH_HANT("攝影師"),
+    KO("사진가"),        DE("Fotograf"),   FR("Photographe"), ES("Fotógrafo"),
+    PT("Fotógrafo"),    IT("Fotografo"),  NL("Fotograaf"),   RU("Фотограф"),
+    TR("Fotoğrafçı"));
+
 SS_MSG(subj_hand,
     EN("Hand"),         JA("手"),          ZH_HANS("手"),      ZH_HANT("手"),
     KO("손"),            DE("Hand"),       FR("Main"),        ES("Mano"),
