@@ -23,6 +23,7 @@
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/Subprocess.h"
+#include "app/gui/ViewBookmarks.h"
 #include "mesh/MeshImport.h"
 #include "app/gui/Ui.h"
 #include "app/gui/VramForecastView.h"
@@ -3186,15 +3187,19 @@ void GuiApp::frame() {
         _compare.poll();
         _images.detach();   // the files own the engine while they are open
     } else if (_runner.engine_ready()) {
-        if (!_viewport.attached() && _runner.session())
+        if (!_viewport.attached() && _runner.session()) {
             _viewport.attach(*_runner.session());
+            bind_session_views(_viewport, *_runner.session());
+        }
         // The photograph-vs-render mode needs the DataManager as well as the
         // splats, so it waits for engine setup exactly as the viewport does.
         if (!_images.attached() && _runner.session())
             _images.attach(*_runner.session());
     } else if (_runner.phase() == TrainRunner::Phase::Ready) {
-        if (!_viewport.preview_active() && _runner.session())
+        if (!_viewport.preview_active() && _runner.session()) {
             _viewport.attach_preview(*_runner.session());
+            bind_session_views(_viewport, *_runner.session());
+        }
     }
     update_roi_overlay();
 

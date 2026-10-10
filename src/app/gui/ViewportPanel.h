@@ -16,6 +16,7 @@
 
 #include "app/webviewer/RenderWorker.h"
 #include "core/ColorSpace.h"
+#include "core/Similarity.h"
 #include "data/DatasetParser.h"
 #include "app/gui/NavCamera.h"
 #include "app/gui/PreviewRenderer.h"
@@ -31,6 +32,8 @@ struct ImVec2;
 namespace spirula { class TrainerSession; struct RegionOverlay; }
 
 namespace gui {
+
+struct ViewBookmarkSet;
 
 // What the viewer's primitive combo offers, in order. These are the
 // `forward_3dgs` primitive names, so they are identifiers, not words.
@@ -225,7 +228,29 @@ public:
     // (before ImGui/GLFW shutdown).
     void destroy_gl();
 
+    // ---- saved views (ViewBookmarks.cpp) ----
+    // The slots this panel offers and its model frame -> the frame they are
+    // saved in; null hides them.
+    void set_views(std::shared_ptr<ViewBookmarkSet> set, const spirula::Sim3& model_to_store);
+    void save_view(int slot);
+    void go_to_view(int slot);
+    static const char* camera_model_label(int model);
+
 private:
+    float views_width() const;
+    void draw_view_buttons();
+    void handle_view_keys();
+    void animate_glide(double now);
+    std::shared_ptr<ViewBookmarkSet> _views;
+    spirula::Sim3 _views_m2s;        // model -> saved frame
+    int _view_rename = -1;
+    std::string _view_name_edit;
+    // A glide to a saved view: pivot and rotation interpolated, the eye kept
+    // where it sits relative to both; stops when anything else moves the camera.
+    bool _glide = false;
+    double _glide_t0 = 0.0;
+    NavCamera _glide_from, _glide_to, _glide_last;
+
     enum class Mode { None, Preview, Engine };
 
     void compute_framing(const spirula::TrainerSession& session);
@@ -411,7 +436,7 @@ private:
     float _frustum_scale = 1.0f;     // camera-frustum size multiplier
     // 0 = auto (see render_scale), 1 = 50%, 2 = 75%, 3 = 100%
     int _scale_idx = 0;
-    float _last_pose[11] = {};       // pos + rot + target + ortho, to spot motion
+    float _last_pose[13] = {};       // pos + rot + target + ortho + lens, to spot motion
     // The pose (or camera model / FOV) changed during the last draw. Drives
     // the side-by-side link; note_motion sets it, draw clears it.
     bool _moved_last_draw = false;

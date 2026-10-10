@@ -4,6 +4,7 @@
 
 #include "app/gui/Layout.h"
 #include "app/gui/Ui.h"
+#include "app/gui/ViewBookmarks.h"
 #include "app/gui/edit/MeshDoc.h"
 #include "app/gui/edit/PointsDoc.h"
 #include "app/gui/edit/SplatDoc.h"
@@ -227,6 +228,7 @@ void CompareView::attach(Model& m) {
                 [&m] { m.src.release_screen_buffers(); });
             break;
     }
+    bind_file_views(m.panel, m.path, m.src.file(), file_to_norm_of(m));
     m.attached = true;
     // Land on whatever the panes already showing are looking at, so a model
     // added to a view in progress does not arrive facing somewhere else.

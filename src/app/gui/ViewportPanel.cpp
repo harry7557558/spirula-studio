@@ -62,6 +62,9 @@ constexpr float kOrthoPull = 256.0f;
 // An axis snap turns the view over this long rather than jumping: the eye
 // keeps track of which way up the model is.
 constexpr double kSnapSeconds = 0.18;
+// A saved view glides in over this long: far enough to follow, short enough
+// not to wait for.
+constexpr double kGlideSeconds = 0.3;
 
 void quat_slerp(const float a[4], const float b[4], float t, float out[4]) {
     float d = a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3];
@@ -93,6 +96,21 @@ void compose_3x4(const float a[12], const float b[12], float out[12]) {
         }
     }
     std::memcpy(out, o, sizeof o);
+}
+
+// The eye relative to the pivot, in the camera's own axes.
+void eye_offset(const NavCamera& c, float out[3]) {
+    float m[12];
+    c.c2w(m);
+    const float d[3] = {c.pos[0] - c.target[0], c.pos[1] - c.target[1],
+                        c.pos[2] - c.target[2]};
+    for (int k = 0; k < 3; k++) out[k] = m[0*4+k]*d[0] + m[1*4+k]*d[1] + m[2*4+k]*d[2];
+}
+
+bool same_pose(const NavCamera& a, const NavCamera& b) {
+    return std::memcmp(a.pos, b.pos, sizeof a.pos) == 0 &&
+           std::memcmp(a.rot, b.rot, sizeof a.rot) == 0 &&
+           std::memcmp(a.target, b.target, sizeof a.target) == 0;
 }
 
 }  // namespace
@@ -210,6 +228,9 @@ void ViewportPanel::recenter_at(const float p[3]) {
 
 const char* ViewportPanel::camera_model_name() const {
     return kViewerCameraModels[_cam_model].name;
+}
+const char* ViewportPanel::camera_model_label(int model) {
+    return kViewerCameraModels[std::clamp(model, 0, 3)].label->get();
 }
 float ViewportPanel::fov_min() const { return kViewerCameraModels[_cam_model].fov_min; }
 float ViewportPanel::fov_max() const { return kViewerCameraModels[_cam_model].fov_max; }
@@ -346,6 +367,7 @@ void ViewportPanel::frame_view(const float centre[3], float radius) {
 }
 
 void ViewportPanel::animate_view(double now) {
+    if (_glide) animate_glide(now);
     if (_frame_anim) {
         float t = (float)std::clamp((now - _frame_t0) / (kSnapSeconds * 1.5), 0.0, 1.0);
         t = t * t * (3.0f - 2.0f * t);
@@ -369,6 +391,46 @@ void ViewportPanel::animate_view(double now) {
     for (int i = 0; i < 3; i++) _cam.pos[i] = _cam.target[i] - back[i] * dist;
     _dirty = true;
     if (t >= 1.0f) _anim = false;
+}
+
+void ViewportPanel::animate_glide(double now) {
+    // Anything else that moved the camera meanwhile wins over the glide.
+    if (!same_pose(_cam, _glide_last)) {
+        _glide = false;
+        return;
+    }
+    float t = (float)std::clamp((now - _glide_t0) / kGlideSeconds, 0.0, 1.0);
+    if (t >= 1.0f) {
+        std::memcpy(_cam.pos, _glide_to.pos, sizeof _cam.pos);
+        std::memcpy(_cam.rot, _glide_to.rot, sizeof _cam.rot);
+        std::memcpy(_cam.target, _glide_to.target, sizeof _cam.target);
+        _glide = false;
+        _dirty = true;
+        return;
+    }
+    t = t * t * (3.0f - 2.0f * t);
+    float of[3], ot[3];
+    eye_offset(_glide_from, of);
+    eye_offset(_glide_to, ot);
+    // The offset's length goes geometrically, so a long way in is not a lunge.
+    const float lf = std::sqrt(of[0]*of[0] + of[1]*of[1] + of[2]*of[2]);
+    const float lt = std::sqrt(ot[0]*ot[0] + ot[1]*ot[1] + ot[2]*ot[2]);
+    float off[3];
+    for (int k = 0; k < 3; k++) off[k] = of[k] + (ot[k] - of[k]) * t;
+    const float lo = std::sqrt(off[0]*off[0] + off[1]*off[1] + off[2]*off[2]);
+    if (lf > 1e-9f && lt > 1e-9f && lo > 1e-9f) {
+        const float want = lf * std::pow(lt / lf, t);
+        for (float& v : off) v *= want / lo;
+    }
+    quat_slerp(_glide_from.rot, _glide_to.rot, t, _cam.rot);
+    for (int k = 0; k < 3; k++)
+        _cam.target[k] = _glide_from.target[k] + (_glide_to.target[k] - _glide_from.target[k]) * t;
+    float m[12];
+    _cam.c2w(m);
+    for (int r = 0; r < 3; r++)
+        _cam.pos[r] = _cam.target[r] + m[r*4+0]*off[0] + m[r*4+1]*off[1] + m[r*4+2]*off[2];
+    _glide_last = _cam;
+    _dirty = true;
 }
 
 float ViewportPanel::nav_dist() const {
@@ -1051,6 +1113,7 @@ void ViewportPanel::handle_input(float /*item_h*/) {
             frame_view(cf, (float)r);
         }
     }
+    if (hovered && !io.WantTextInput) handle_view_keys();
 
     // Gamepad: always active, like the browser's gamepadTick loop.
     {
@@ -1633,6 +1696,10 @@ void ViewportPanel::draw_nav_controls() {
         ui::TextDisabledRaw("360\xc2\xb0 x 180\xc2\xb0");
         ui::help_on_hover(msg::viewport_fov_help);
     }
+    if (_views) {
+        place(views_width());
+        draw_view_buttons();
+    }
 }
 
 void ViewportPanel::draw(bool training, int step) {
@@ -1780,11 +1847,13 @@ void ViewportPanel::draw_preview(const ImVec2& avail) {
 // must not look idle.
 void ViewportPanel::note_motion(double now) {
     constexpr double kSettle = 0.25;   // seconds of stillness before full res
-    float pose[11];
+    float pose[13];
     for (int i = 0; i < 3; i++) pose[i] = _cam.pos[i];
     for (int i = 0; i < 4; i++) pose[3 + i] = _cam.rot[i];
     for (int i = 0; i < 3; i++) pose[7 + i] = _cam.target[i];
     pose[10] = _ortho ? 1.0f : 0.0f;
+    pose[11] = (float)_cam_model;
+    pose[12] = _fov_deg[_cam_model];
     _moved_last_draw = std::memcmp(pose, _last_pose, sizeof pose) != 0;
     if (_moved_last_draw) {
         std::memcpy(_last_pose, pose, sizeof pose);
@@ -1816,6 +1885,13 @@ void ViewportPanel::sync_view_from(const ViewportPanel& src) {
     for (int i = 0; i < 4; i++) _fov_deg[i] = src._fov_deg[i];
     _home = src._home;
     _home_dist = src._home_dist;
+    // A glide travels too: the master is picked a frame late, so a pane left
+    // behind would otherwise pull the view back.
+    _glide = src._glide;
+    _glide_t0 = src._glide_t0;
+    _glide_from = src._glide_from;
+    _glide_to = src._glide_to;
+    _glide_last = src._glide_last;
     _dirty = true;
 }
 

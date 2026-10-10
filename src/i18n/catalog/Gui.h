@@ -10145,6 +10145,110 @@ SS_MSG(resume_failed_close,
     RU("ОК"),
     TR("Tamam"));
 
+// ---- saved views ----
+
+SS_MSG(viewport_views,
+    EN("Views"),         JA("ビュー"),        ZH_HANS("视角"),
+    ZH_HANT("視角"),      KO("뷰"),            DE("Ansichten"),
+    FR("Vues"),          ES("Vistas"),       PT("Vistas"),
+    IT("Viste"),         NL("Weergaven"),    RU("Виды"),
+    TR("Görünümler"));
+
+SS_MSG(view_default_name,
+    EN("View {0}"),      JA("ビュー {0}"),    ZH_HANS("视角 {0}"),
+    ZH_HANT("視角 {0}"),  KO("뷰 {0}"),        DE("Ansicht {0}"),
+    FR("Vue {0}"),       ES("Vista {0}"),    PT("Vista {0}"),
+    IT("Vista {0}"),     NL("Weergave {0}"), RU("Вид {0}"),
+    TR("Görünüm {0}"));
+
+SS_MSG(view_orthographic,
+    EN("Orthographic"),  JA("平行投影"),      ZH_HANS("正交"),
+    ZH_HANT("正交"),      KO("직교"),          DE("Orthografisch"),
+    FR("Orthographique"), ES("Ortográfica"), PT("Ortográfica"),
+    IT("Ortografica"),   NL("Orthografisch"), RU("Ортографическая"),
+    TR("Ortografik"));
+
+SS_MSG(view_slot_help,
+    EN("{0}: {1}, {2}. Saved {3}. Click or {4} goes there, {5} saves the "
+       "current view over it; right-click for more."),
+    JA("{0}: {1}、{2}。保存日時 {3}。クリックまたは {4} で移動、{5} で現在の"
+       "ビューを上書き保存します。右クリックでその他の操作。"),
+    ZH_HANS("{0}：{1}，{2}。保存于 {3}。单击或按 {4} 前往，按 {5} 用当前视角"
+            "覆盖保存；右键单击查看更多。"),
+    ZH_HANT("{0}：{1}，{2}。儲存於 {3}。按一下或按 {4} 前往，按 {5} 以目前視角"
+            "覆蓋儲存；按右鍵查看更多。"),
+    KO("{0}: {1}, {2}. 저장: {3}. 클릭하거나 {4}를 누르면 이동하고, {5}는 현재 "
+       "뷰로 덮어씁니다. 더 많은 작업은 오른쪽 클릭."),
+    DE("{0}: {1}, {2}. Gespeichert {3}. Klick oder {4} springt dorthin, {5} "
+       "überschreibt sie mit der aktuellen Ansicht; Rechtsklick für mehr."),
+    FR("{0} : {1}, {2}. Enregistrée le {3}. Un clic ou {4} y va, {5} la "
+       "remplace par la vue actuelle ; clic droit pour plus."),
+    ES("{0}: {1}, {2}. Guardada el {3}. Un clic o {4} va allí, {5} la "
+       "sustituye por la vista actual; clic derecho para más."),
+    PT("{0}: {1}, {2}. Salva em {3}. Um clique ou {4} vai até ela, {5} a "
+       "substitui pela vista atual; clique direito para mais."),
+    IT("{0}: {1}, {2}. Salvata il {3}. Un clic o {4} la raggiunge, {5} la "
+       "sostituisce con la vista attuale; clic destro per altro."),
+    NL("{0}: {1}, {2}. Opgeslagen {3}. Klik of {4} gaat erheen, {5} "
+       "overschrijft hem met de huidige weergave; rechtsklik voor meer."),
+    RU("{0}: {1}, {2}. Сохранён {3}. Щелчок или {4} переходит к нему, {5} "
+       "заменяет его текущим видом; правый щелчок — другие действия."),
+    TR("{0}: {1}, {2}. Kaydedildi: {3}. Tıklama veya {4} oraya gider, {5} "
+       "mevcut görünümle üzerine yazar; daha fazlası için sağ tıklayın."));
+
+SS_MSG(view_empty_help,
+    EN("Empty. Click or {0} saves the current view here."),
+    JA("空きスロット。クリックまたは {0} で現在のビューをここに保存します。"),
+    ZH_HANS("空位。单击或按 {0} 将当前视角保存到这里。"),
+    ZH_HANT("空位。按一下或按 {0} 將目前視角儲存到這裡。"),
+    KO("비어 있음. 클릭하거나 {0}를 누르면 현재 뷰를 여기에 저장합니다."),
+    DE("Leer. Klick oder {0} speichert die aktuelle Ansicht hier."),
+    FR("Vide. Un clic ou {0} enregistre ici la vue actuelle."),
+    ES("Vacía. Un clic o {0} guarda aquí la vista actual."),
+    PT("Vazia. Um clique ou {0} salva aqui a vista atual."),
+    IT("Vuota. Un clic o {0} salva qui la vista attuale."),
+    NL("Leeg. Klik of {0} slaat de huidige weergave hier op."),
+    RU("Пусто. Щелчок или {0} сохраняет сюда текущий вид."),
+    TR("Boş. Tıklama veya {0} mevcut görünümü buraya kaydeder."));
+
+SS_MSG(view_save_here,
+    EN("Save current view here"),       JA("現在のビューをここに保存"),
+    ZH_HANS("将当前视角保存到这里"),      ZH_HANT("將目前視角儲存到這裡"),
+    KO("현재 뷰를 여기에 저장"),          DE("Aktuelle Ansicht hier speichern"),
+    FR("Enregistrer la vue actuelle ici"), ES("Guardar aquí la vista actual"),
+    PT("Salvar aqui a vista atual"),    IT("Salva qui la vista attuale"),
+    NL("Huidige weergave hier opslaan"), RU("Сохранить сюда текущий вид"),
+    TR("Mevcut görünümü buraya kaydet"));
+
+SS_MSG(view_rename,
+    EN("Rename"),        JA("名前を変更"),    ZH_HANS("重命名"),
+    ZH_HANT("重新命名"),  KO("이름 바꾸기"),   DE("Umbenennen"),
+    FR("Renommer"),      ES("Renombrar"),    PT("Renomear"),
+    IT("Rinomina"),      NL("Hernoemen"),    RU("Переименовать"),
+    TR("Yeniden adlandır"));
+
+SS_MSG(view_clear,
+    EN("Clear"),         JA("消去"),          ZH_HANS("清除"),
+    ZH_HANT("清除"),      KO("지우기"),        DE("Löschen"),
+    FR("Effacer"),       ES("Borrar"),       PT("Limpar"),
+    IT("Cancella"),      NL("Wissen"),       RU("Очистить"),
+    TR("Temizle"));
+
+SS_MSG(view_save_failed,
+    EN("Could not save the views: {0}"),
+    JA("ビューを保存できませんでした: {0}"),
+    ZH_HANS("无法保存视角：{0}"),
+    ZH_HANT("無法儲存視角：{0}"),
+    KO("뷰를 저장할 수 없습니다: {0}"),
+    DE("Ansichten konnten nicht gespeichert werden: {0}"),
+    FR("Impossible d'enregistrer les vues : {0}"),
+    ES("No se pudieron guardar las vistas: {0}"),
+    PT("Não foi possível salvar as vistas: {0}"),
+    IT("Impossibile salvare le viste: {0}"),
+    NL("Kan de weergaven niet opslaan: {0}"),
+    RU("Не удалось сохранить виды: {0}"),
+    TR("Görünümler kaydedilemedi: {0}"));
+
 }  // namespace gui
 }  // namespace msg
 }  // namespace i18n
