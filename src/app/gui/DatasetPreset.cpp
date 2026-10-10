@@ -85,6 +85,15 @@ namespace {
     X("sfm_camera_model",           sfm.camera_model)                         \
     X("sfm_camera_mode",            sfm.camera_mode)                          \
     X("sfm_pairs",                  sfm.pairs)                                \
+    X("sfm_partition_mode",         sfm.partition_mode)                       \
+    X("sfm_non_partition_pairs",    sfm.non_partition_pairs)                  \
+    X("sfm_block_size",             sfm.block_size)                           \
+    X("sfm_block_size_auto",        sfm.block_size_auto)                      \
+    X("sfm_block_neighbours",       sfm.block_neighbours)                     \
+    X("sfm_block_radius",           sfm.block_radius)                         \
+    X("sfm_block_cache_mb",         sfm.block_cache_mb)                       \
+    X("sfm_map_memory_mb",          sfm.map_memory_mb)                        \
+    X("sfm_block_cache_auto",       sfm.block_cache_auto)                     \
     X("sfm_overlap",                sfm.overlap)                              \
     X("sfm_loop_closure",           sfm.loop_closure)                         \
     X("sfm_prefilter_sequential",   sfm.prefilter_sequential)                 \
@@ -252,6 +261,13 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     clamp_index(j.data_type, kSfmDataType);
     clamp_index(j.camera_mode, kSfmCameraMode);
     clamp_index(j.pairs, kSfmPairs);
+    clamp_to(j.partition_mode, 0, 2);
+    clamp_to(j.non_partition_pairs, 0, 3);
+    clamp_to(j.block_size, 2, 100000);
+    clamp_to(j.block_neighbours, 1, 100000);
+    clamp_to(j.block_cache_mb, 1, 1048576);
+    clamp_to(j.map_memory_mb, 0, 1048576);
+    j.block_radius = std::clamp(j.block_radius, 0.0f, 1000000.0f);
     clamp_to(j.overlap, 1, 1000);
     clamp_to(j.distortion_refine, 0, 2);
     clamp_index(j.mapper, kSfmMapper);
@@ -304,6 +320,12 @@ void read_dataset_settings_json(const JsonValue& fields, DatasetSettings& s) {
     if (const JsonValue* v = fields.find(key)) json_field::assign(s.member, *v);
     SS_DATASET_PRESET_FIELDS(SS_DS_LOAD)
 #undef SS_DS_LOAD
+    if (!fields.find("sfm_partition_mode") && s.sfm.pairs == 4)
+        s.sfm.partition_mode = 2;
+    if (!fields.find("sfm_block_size_auto") && fields.find("sfm_block_size"))
+        s.sfm.block_size_auto = s.sfm.block_size == 512;
+    if (!fields.find("sfm_block_cache_auto") && fields.find("sfm_block_cache_mb"))
+        s.sfm.block_cache_auto = s.sfm.block_cache_mb == 512;
     sanitize_dataset_settings(s);
 }
 
@@ -336,6 +358,12 @@ DatasetPreset load_dataset_preset(const std::string& path) {
         json_field::assign(p.s.member, *v);
     SS_DATASET_PRESET_FIELDS(SS_DS_LOAD)
 #undef SS_DS_LOAD
+    if (!fields->find("sfm_partition_mode") && p.s.sfm.pairs == 4)
+        p.s.sfm.partition_mode = 2;
+    if (!fields->find("sfm_block_size_auto") && fields->find("sfm_block_size"))
+        p.s.sfm.block_size_auto = p.s.sfm.block_size == 512;
+    if (!fields->find("sfm_block_cache_auto") && fields->find("sfm_block_cache_mb"))
+        p.s.sfm.block_cache_auto = p.s.sfm.block_cache_mb == 512;
     sanitize_dataset_settings(p.s);
     if (p.name.empty()) p.name = std::filesystem::path(path).stem().string();
     return p;

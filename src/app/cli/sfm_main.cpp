@@ -719,6 +719,7 @@ static int cmdMatch(int argc, char** argv) {
 
     VerifyCalibration calib;
     calib.setup = cfg.camera;
+    calib.image_dir = cfg.image_dir;
     const SensorCaptures sensors = loadSensorCaptures(cfg, !cfg.quiet);
     calib.sensors = &sensors;
     std::vector<FeatureSet> feats;
@@ -814,6 +815,9 @@ static int cmdMap(int argc, char** argv) {
     ManagerOptions& mgopt = cfg.manager;
     opt.seam_order_by_name = cfg.pairs == "sequential";
     const std::string& featdir = cfg.feature_dir;
+
+    if (auto result = run_regional(cfg, matchesPath, featdir, cfg.image_dir, output.empty() ? fs::path("sparse") : fs::path(output)))
+        return result->exit_code;
 
     MatchesDatabase db = readMatches(matchesPath);
     std::optional<FeatureCompactionPlan> compaction;
@@ -935,6 +939,7 @@ static int cmdMap(int argc, char** argv) {
     std::unique_ptr<ExifGpsPriors> exif_priors =
         cfg.sensor_map && !priors ? makeExifGpsPriors(cfg, cfg.image_dir, db, cs, opt.verbose)
                                   : nullptr;
+    configureMappingMemory(cfg, fs::path(output).parent_path().string());
     Mapper mapper(db, feats, opt, cs.ids, &rigs, &seqs,
                   priors ? static_cast<PriorSource*>(priors.get()) : exif_priors.get());
     std::vector<Reconstruction> models;

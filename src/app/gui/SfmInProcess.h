@@ -24,7 +24,7 @@ struct InProcessResult {
     // codes, and -1 when the settings could not be read at all.
     int exit_code = 0;
     bool cancelled = false;
-    std::string error;   // "" unless the run could not start
+    std::string error;   // parse or runtime failure; logged by the runner
 };
 
 // `args` is what `spirula sfm auto` would have been typed with, minus the

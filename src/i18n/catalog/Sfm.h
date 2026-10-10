@@ -4280,6 +4280,82 @@ SS_MSG(match_sequence_added,
     RU("окна последовательностей добавили пар: {0}, к выбранным парам: {1} (пар в окнах: {2})"),
     TR("dizi pencereleri çift ekledi: {0}, seçilmiş çiftlere ek olarak: {1} (pencere çifti: {2})"));
 
+SS_MSG(match_blocks_need_gps,
+    EN("GPS spatial blocks require positions for every image; positioned: {0}/{1}. Use auto pairing or provide GPS images with --image-dir."),
+    JA("GPS 空間ブロックには全画像の位置が必要です。位置あり: {0}/{1}。auto または --image-dir を使用してください。"),
+    ZH_HANS("GPS 分块空三需要每张照片的位置；有位置：{0}/{1}。请使用 auto 匹配，或通过 --image-dir 提供带 GPS 的原照片。"),
+    ZH_HANT("GPS 分塊空三需要每張照片的位置；有位置：{0}/{1}。請使用 auto 匹配，或透過 --image-dir 提供帶 GPS 的原照片。"),
+    KO("GPS 공간 블록에는 모든 이미지의 위치가 필요합니다. 위치 있음: {0}/{1}. auto 또는 --image-dir을 사용하세요."),
+    DE("GPS-Blöcke brauchen alle Bildpositionen; vorhanden: {0}/{1}. auto oder --image-dir verwenden."),
+    FR("Les blocs GPS exigent toutes les positions ; présentes : {0}/{1}. Utilisez auto ou --image-dir."),
+    ES("Los bloques GPS requieren todas las posiciones; disponibles: {0}/{1}. Use auto o --image-dir."),
+    PT("Blocos GPS precisam de todas as posições; disponíveis: {0}/{1}. Use auto ou --image-dir."),
+    IT("I blocchi GPS richiedono tutte le posizioni; presenti: {0}/{1}. Usare auto o --image-dir."),
+    NL("GPS-blokken vereisen alle posities; beschikbaar: {0}/{1}. Gebruik auto of --image-dir."),
+    RU("GPS-блокам нужны все позиции; доступны: {0}/{1}. Используйте auto или --image-dir."),
+    TR("GPS blokları tüm konumları gerektirir; mevcut: {0}/{1}. auto veya --image-dir kullanın."));
+
+SS_MSG(match_blocks_plan,
+    EN("GPS blocks: {0}; candidate pairs: {1}; host descriptor budget: {2} MiB"),
+    JA("GPS ブロック: {0}、候補ペア: {1}、ホスト記述子上限: {2} MiB"),
+    ZH_HANS("GPS 分块：{0}；候选像对：{1}；主机描述子预算：{2} MiB"),
+    ZH_HANT("GPS 分塊：{0}；候選像對：{1}；主機描述子預算：{2} MiB"),
+    KO("GPS 블록: {0}; 후보 쌍: {1}; 호스트 기술자 예산: {2} MiB"),
+    DE("GPS-Blöcke: {0}; Kandidatenpaare: {1}; RAM-Deskriptorbudget: {2} MiB"),
+    FR("Blocs GPS : {0} ; paires candidates : {1} ; budget RAM : {2} MiB"),
+    ES("Bloques GPS: {0}; pares candidatos: {1}; presupuesto RAM: {2} MiB"),
+    PT("Blocos GPS: {0}; pares candidatos: {1}; orçamento RAM: {2} MiB"),
+    IT("Blocchi GPS: {0}; coppie candidate: {1}; budget RAM: {2} MiB"),
+    NL("GPS-blokken: {0}; kandidaatparen: {1}; RAM-budget: {2} MiB"),
+    RU("GPS-блоки: {0}; пары-кандидаты: {1}; бюджет ОЗУ: {2} MiB"),
+    TR("GPS blokları: {0}; aday çiftler: {1}; RAM bütçesi: {2} MiB"));
+
+SS_MSG(match_blocks_cache,
+    EN("Host descriptor cache peak: {0} MiB; image loads: {1}"),
+    JA("ホスト記述子キャッシュ最大: {0} MiB、画像読み込み: {1}"),
+    ZH_HANS("主机描述子缓存峰值：{0} MiB；照片载入次数：{1}"),
+    ZH_HANT("主機描述子快取峰值：{0} MiB；照片載入次數：{1}"),
+    KO("호스트 기술자 캐시 최대: {0} MiB; 이미지 로드: {1}"),
+    DE("RAM-Deskriptorcache Spitze: {0} MiB; Bildladevorgänge: {1}"),
+    FR("Pic du cache RAM : {0} MiB ; chargements : {1}"),
+    ES("Pico de caché RAM: {0} MiB; cargas: {1}"),
+    PT("Pico do cache RAM: {0} MiB; carregamentos: {1}"),
+    IT("Picco cache RAM: {0} MiB; caricamenti: {1}"),
+    NL("Piek RAM-cache: {0} MiB; beeldladingen: {1}"),
+    RU("Пик кэша ОЗУ: {0} MiB; загрузки: {1}"),
+    TR("RAM önbellek zirvesi: {0} MiB; yüklemeler: {1}"));
+
+
+SS_MSG(regional_plan,
+    EN("Regional SfM: {0} regions, photo limit {1}; checkpoints: {2}"),
+    JA("領域 SfM: {0} 領域、画像上限 {1}、チェックポイント: {2}"),
+    ZH_HANS("区域空三：{0} 个计算块，照片上限 {1}；检查点：{2}"),
+    ZH_HANT("區域空三：{0} 個計算塊，照片上限 {1}；檢查點：{2}"),
+    KO("영역 SfM: {0} 영역, 사진 상한 {1}; 체크포인트: {2}"),
+    DE("Regionales SfM: {0} Regionen, Fotolimit {1}; Checkpoints: {2}"),
+    FR("SfM régional : {0} régions, limite {1} photos ; sauvegardes : {2}"),
+    ES("SfM regional: {0} regiones, límite {1} fotos; puntos de control: {2}"),
+    PT("SfM regional: {0} regiões, limite {1} fotos; pontos de controle: {2}"),
+    IT("SfM regionale: {0} regioni, limite {1} foto; checkpoint: {2}"),
+    NL("Regionale SfM: {0} regio’s, fotolimiet {1}; checkpoints: {2}"),
+    RU("Региональный SfM: {0} областей, лимит {1} фото; сохранения: {2}"),
+    TR("Bölgesel SfM: {0} bölge, fotoğraf sınırı {1}; kayıtlar: {2}"));
+
+SS_MSG(regional_region,
+    EN("Region {0}/{1}, coordination pass {2}; core photos: {3}, overlap photos: {4}"),
+    JA("領域 {0}/{1}、調整パス {2}、主要画像 {3}、重複画像 {4}"),
+    ZH_HANS("计算块 {0}/{1}，协调轮次 {2}；核心照片 {3}，重叠照片 {4}"),
+    ZH_HANT("計算塊 {0}/{1}，協調輪次 {2}；核心照片 {3}，重疊照片 {4}"),
+    KO("영역 {0}/{1}, 조정 단계 {2}; 핵심 사진 {3}, 중첩 사진 {4}"),
+    DE("Region {0}/{1}, Koordinationsrunde {2}; Kernfotos: {3}, Überlappung: {4}"),
+    FR("Région {0}/{1}, coordination {2} ; photos centrales : {3}, recouvrement : {4}"),
+    ES("Región {0}/{1}, coordinación {2}; fotos centrales: {3}, solapadas: {4}"),
+    PT("Região {0}/{1}, coordenação {2}; fotos centrais: {3}, sobrepostas: {4}"),
+    IT("Regione {0}/{1}, coordinamento {2}; foto centrali: {3}, sovrapposte: {4}"),
+    NL("Regio {0}/{1}, coördinatieronde {2}; kernfoto’s: {3}, overlapfoto’s: {4}"),
+    RU("Область {0}/{1}, проход {2}; основных фото: {3}, перекрытие: {4}"),
+    TR("Bölge {0}/{1}, koordinasyon turu {2}; ana fotoğraflar: {3}, örtüşen: {4}"));
+
 }  // namespace sfm
 }  // namespace msg
 }  // namespace i18n

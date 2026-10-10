@@ -8,6 +8,7 @@
 // on every frame it draws the row, so the first ask queues the read and every
 // later one returns whatever is known by then.
 
+#include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <map>
@@ -20,6 +21,7 @@ namespace gui {
 
 struct TelemetryInfo {
     bool done = false;      // false while the read is still queued or running
+    bool failed = false;
     bool video = false;
     // A video's streams, and the carrier they came in ("" when none did).
     bool gyro = false, accel = false, attitude = false, gps = false;
@@ -32,6 +34,9 @@ struct TelemetryInfo {
         return gyro || accel || attitude || gps || with_gps || with_attitude;
     }
 };
+
+TelemetryInfo probe_photo_telemetry(const std::string& path,
+                                   const std::atomic<bool>* cancel = nullptr);
 
 class TelemetryProbe {
 public:
@@ -48,7 +53,7 @@ private:
     std::map<std::string, TelemetryInfo> _known;
     std::deque<std::pair<std::string, bool>> _queue;
     std::thread _worker;
-    bool _quit = false;
+    std::atomic<bool> _quit{false};
 };
 
 }  // namespace gui

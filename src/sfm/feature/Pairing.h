@@ -22,7 +22,7 @@
 
 namespace sfm {
 
-enum class PairMode { Exhaustive, Sequential, Prefilter };
+enum class PairMode { Exhaustive, Sequential, Prefilter, SpatialBlocks };
 
 // Each image with the next `overlap` of its sequence and, with `quadratic`,
 // the ones 2^k ahead for k < overlap (COLMAP's quadratic_overlap). A window

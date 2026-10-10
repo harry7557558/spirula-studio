@@ -248,12 +248,13 @@ ModelPart field_part(const std::string& key) {
     static const char* const matching[] = {
         "lens",        "focal",        "camera_mode", "data_type", "matcher",
         "pairs",       "overlap",      "loop_closure", "prefilter_sequential",
+        "block_size", "block_neighbours", "block_radius", "block_cache_mb",
         "focal_px",    "distortion",   "sequence",    "rig",        "scan_views",
     };
     static const char* const mapping[] = {
         "mapper",         "distortion_refine", "final_per_image_intrinsics",
         "final_free_rig", "metric_gps",        "sensor_gauge",
-        "exif_attitude",
+        "exif_attitude", "map_memory_mb",
     };
     for (const char* k : matching)
         if (key == k) return ModelPart::Matching;
@@ -470,6 +471,14 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     std::string manifest;
     // What a flag the run left out stood for.
     job.pairs = 0;
+    job.partition_mode = job.non_partition_pairs = 0;
+    job.partition_resolved = false;
+    job.block_size_auto = job.block_cache_auto = true;
+    job.block_size = 2000;
+    job.block_cache_mb = 512;
+    job.map_memory_mb = 0;
+    job.block_neighbours = 40;
+    job.block_radius = 0;
     job.overlap = 10;
     job.prefilter_sequential = true;
     job.loop_closure = true;
@@ -495,8 +504,23 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--mapper") job.mapper = index_in(kSfmMapper, take(), 0);
         else if (flag == "--features") job.features = index_in(kSfmFeatures, take(), 0);
         else if (flag == "--matcher") job.matcher = take() == "bruteforce" ? 0 : 1;
-        else if (flag == "--pairs") job.pairs = index_in(kSfmPairs, take(), 0);
+        else if (flag == "--pairs") {
+            job.pairs = index_in(kSfmPairs, take(), 0);
+            if (job.pairs == 4) job.partition_mode = 2;
+            else job.non_partition_pairs = job.pairs;
+        }
+        else if (flag == "--block-size") {
+            job.block_size = (int)to_float(take());
+            job.block_size_auto = false;
+        }
+        else if (flag == "--block-neighbours") job.block_neighbours = (int)to_float(take());
+        else if (flag == "--block-radius") job.block_radius = to_float(take());
+        else if (flag == "--block-cache-mb") {
+            job.block_cache_mb = (int)to_float(take());
+            job.block_cache_auto = false;
+        }
         else if (flag == "--overlap") job.overlap = (int)to_float(take());
+        else if (flag == "--map-memory-mb") job.map_memory_mb = (int)to_float(take());
         else if (flag == "--no-loop-closure") job.loop_closure = false;
         else if (flag == "--no-prefilter-sequential") job.prefilter_sequential = false;
         else if (flag == "--focal") job.init_focal_px = to_float(take());
@@ -675,9 +699,16 @@ StepFields model_fields(const SfmJob& job) {
     add(f, "quality", "", sfm_pick(kSfmQuality, job.quality, 2));
     add(f, "data_type", "", sfm_pick(kSfmDataType, job.data_type));
     add(f, "mapper", "", sfm_pick(kSfmMapper, job.mapper));
+    add(f, "map_memory_mb", "", num(job.map_memory_mb));
     add(f, "features", "", sfm_pick(kSfmFeatures, job.features));
     add(f, "matcher", "", sfm_matcher_for(job.features, job.matcher));
     add(f, "pairs", "", sfm_pick(kSfmPairs, job.pairs));
+    if (job.pairs == 4) {
+        add(f, "block_size", "", num(job.block_size));
+        add(f, "block_neighbours", "", num(job.block_neighbours));
+        add(f, "block_radius", "", num(job.block_radius));
+        add(f, "block_cache_mb", "", num(job.block_cache_mb));
+    }
     if (sequential_window_applies(job)) add(f, "overlap", "", num(job.overlap));
     add(f, "loop_closure", "", onoff(job.loop_closure));
     add(f, "prefilter_sequential", "", onoff(job.prefilter_sequential));

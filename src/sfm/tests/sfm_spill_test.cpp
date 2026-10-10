@@ -92,6 +92,10 @@ static int run(int, char**) {
     wide.build(db, nf, /*wide=*/true);
     const auto before = dump(narrow);
     check(same(before, dump(wide)), "one- and two-word entries agree, spilled lists or not");
+    CorrespondenceGraph paged;
+    paged.build(db, nf, CorrespondenceGraph::Options{4096, dir});
+    check(paged.stats().disk_backed && same(before, dump(paged)),
+          "bounded graph cache reads spilled match lists identically");
     check(narrow.spill((dir / "graph1.spill").string()) &&
               wide.spill((dir / "graph2.spill").string()),
           "graph spills");

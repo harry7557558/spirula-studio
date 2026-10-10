@@ -21,6 +21,8 @@
 #include "app/CrashLog.h"
 #include "app/DeviceIssue.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/SfmPartition.h"
+#include "core/HostMemory.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/Subprocess.h"
 #include "app/gui/ViewBookmarks.h"
@@ -1827,7 +1829,8 @@ bool GuiApp::launch_batch_dataset(BatchTask& task, const BatchRow& row) {
     log(i18n::format(msg::batch_log_build,
                      {(long long)(_batch_current + 1), workspace}));
     follow_batch_screen(BatchStage::Dataset);
-    if (!launch_dataset_job()) {
+    // The runner confirms GPS after preparation; the queue cannot wait on a panel probe.
+    if (!launch_dataset_job(false)) {
         fail_batch_task(task, _native_device_error);
         return false;
     }
@@ -2436,6 +2439,7 @@ void GuiApp::refresh_sources() {
     }
 }
 void GuiApp::mark_source_metadata_dirty() {
+    _partition_memory_sampled = false;
     _source_probe.invalidate();
     _source_probes_ready = true;
     for (const PrepInput& s : _sources) {
@@ -3025,6 +3029,16 @@ std::string GuiApp::state_json() {
     out += _dialog.is_open() ? "true" : "false";
     out += ",\"models_open\":" + std::to_string(_compare.count());
     out += ",\"dataset\":" + quoted(_cfg.data);
+    const TelemetryInfo partition_info = sfm_partition_info();
+    out += ",\"sfm_partition_photos\":" + std::to_string(partition_info.photos);
+    out += ",\"sfm_partition_gps\":" + std::to_string(partition_info.with_gps);
+    out += ",\"sfm_partition_ready\":";
+    out += partition_info.done ? "true" : "false";
+    out += ",\"sfm_partition_mode\":" + std::to_string(_sfm_job.partition_mode);
+    out += ",\"sfm_partition_enabled\":";
+    out += _sfm_job.pairs == 4 ? "true" : "false";
+    out += ",\"sfm_block_size\":" + std::to_string(_sfm_job.block_size);
+    out += ",\"sfm_block_cache_mb\":" + std::to_string(_sfm_job.block_cache_mb);
     out += ",\"mask_editor_open\":";
     out += _mask_editor.is_open() ? "true" : "false";
     out += ",\"partition_panel_open\":";
@@ -4077,6 +4091,102 @@ const WorkspaceState& GuiApp::workspace_state() {
 // The panel edits one set of fields; each runner gets its own struct because
 // their remaining options do not overlap. This is the one place they are
 // copied across, so a field cannot be set on the screen and silently not run.
+TelemetryInfo GuiApp::sfm_partition_info() {
+    TelemetryInfo total;
+    total.done = true;
+    for (const PrepInput& in : _sources) {
+        if (in.is_video) { total.video = true; continue; }
+        const TelemetryInfo info = _telemetry.get(in.path, false);
+        total.done = total.done && info.done;
+        total.failed = total.failed || info.failed;
+        total.photos += info.photos;
+        total.with_gps += info.with_gps;
+    }
+    return total;
+}
+
+bool GuiApp::sfm_partition_pending() {
+    if (effective_engine() != Engine::BuiltIn || _sfm_job.partition_mode == 1)
+        return false;
+    const TelemetryInfo info = sfm_partition_info();
+    return !info.video && !info.done && !info.failed;
+}
+
+void GuiApp::sync_sfm_partition() {
+    if (effective_engine() != Engine::BuiltIn) return;
+    if (!_partition_memory_sampled) {
+        _partition_total_ram = spirula::physicalRamBytes();
+        _partition_available_ram = spirula::availableRamBytes();
+        _partition_memory_sampled = true;
+    }
+    const auto memory = sfm_partition_for_job(_sfm_job, _partition_total_ram,
+                                            _partition_available_ram);
+    if (_sfm_job.block_size_auto) _sfm_job.block_size = memory.photos;
+    if (_sfm_job.block_cache_auto) _sfm_job.block_cache_mb = memory.cache_mb;
+    _sfm_job.partition_resolved = true;
+    const TelemetryInfo info = sfm_partition_info();
+    const auto partition = sfm_partition_decision(_sfm_job.partition_mode,
+        (size_t)info.photos, (size_t)info.with_gps, info.done, !info.video);
+    const bool was_partitioned = _sfm_job.pairs == 4;
+    if (!was_partitioned) _sfm_job.non_partition_pairs = _sfm_job.pairs;
+    _sfm_job.pairs = partition.enabled ? 4 : std::clamp(_sfm_job.non_partition_pairs, 0, 3);
+    if (partition.enabled) _sfm_job.mapper = 1;
+    else if (was_partitioned) _sfm_job.mapper = 0;
+}
+
+void GuiApp::draw_sfm_partition() {
+    sync_sfm_partition();
+    const TelemetryInfo info = sfm_partition_info();
+    const auto partition = sfm_partition_decision(_sfm_job.partition_mode,
+        (size_t)info.photos, (size_t)info.with_gps, info.done, !info.video);
+    bool enabled = partition.enabled;
+    ImGui::BeginDisabled(!partition.available);
+    if (ui::Checkbox(dmsg::sfm_partition_enable, &enabled)) {
+        _sfm_job.partition_mode = enabled ? 2 : 1;
+        sync_sfm_partition();
+    }
+    ImGui::EndDisabled();
+    if (_sfm_job.partition_mode != 0) {
+        ImGui::SameLine();
+        if (ui::Button(dmsg::sfm_partition_automatic)) {
+            _sfm_job.partition_mode = 0;
+            sync_sfm_partition();
+        }
+    }
+    ui::TextDisabledWrapped(dmsg::sfm_partition_auto_help,
+                           {(long long)kSfmPartitionAutoThreshold});
+    if (!partition.available) {
+        if (info.video) ui::TextDisabledWrapped(dmsg::sfm_partition_photos_only);
+        else if (!info.done && !info.failed)
+            ui::TextDisabledWrapped(dmsg::sfm_partition_scanning);
+        else ui::TextDisabledWrapped(dmsg::sfm_partition_need_gps,
+                                    {info.with_gps, info.photos});
+    }
+    ImGui::BeginDisabled(_sfm_job.pairs != 4);
+    ImGui::SetNextItemWidth(px(220.0f));
+    if (ui::InputInt(dmsg::sfm_partition_photos, &_sfm_job.block_size)) {
+        _sfm_job.block_size = std::clamp(_sfm_job.block_size, 2, 100000);
+        _sfm_job.block_size_auto = false;
+    }
+    ImGui::SameLine();
+    if (ui::Button(dmsg::sfm_partition_use_recommended)) {
+        _partition_memory_sampled = false;
+        _sfm_job.block_size_auto = _sfm_job.block_cache_auto = true;
+        sync_sfm_partition();
+    }
+    ImGui::EndDisabled();
+    const auto memory = sfm_partition_for_job(_sfm_job, _partition_total_ram,
+                                            _partition_available_ram);
+    if (_partition_total_ram) {
+        char total[24], budget[24], available[24];
+        std::snprintf(total, sizeof total, "%.1f", _partition_total_ram / 1073741824.0);
+        std::snprintf(budget, sizeof budget, "%.1f", (_partition_total_ram / 2) / 1073741824.0);
+        std::snprintf(available, sizeof available, "%.1f", _partition_available_ram / 1073741824.0);
+        ui::TextDisabledWrapped(dmsg::sfm_partition_memory_recommended,
+                               {total, budget, available, memory.photos});
+    } else ui::TextDisabledWrapped(dmsg::sfm_partition_recommended, {memory.photos});
+}
+
 void GuiApp::fill_masking(PrepJob& prep) const {
     // A click-only pick hides the prompt boxes, so what is left in them is not run.
     const MaskModelFiles mask_model = selected_mask_model();
@@ -4102,6 +4212,7 @@ void GuiApp::fill_masking(PrepJob& prep) const {
 }
 
 void GuiApp::sync_dataset_jobs() {
+    sync_sfm_partition();
     PrepJob prep;
     prep.inputs = _sources;
     // The checkbox decides whether the run is given the stencils; the drawings
@@ -4228,7 +4339,7 @@ const DatasetPlan& GuiApp::dataset_plan() {
 void GuiApp::start_dataset_job() {
     if (native_work_busy()) return;
     pump_source_probes();
-    if (!_source_probes_ready) {
+    if (!_source_probes_ready || sfm_partition_pending()) {
         log(dmsg::sensors_reading.get());
         return;
     }
@@ -4242,11 +4353,12 @@ void GuiApp::start_dataset_job() {
     launch_dataset_job();
 }
 
-bool GuiApp::launch_dataset_job() {
+bool GuiApp::launch_dataset_job(bool require_partition_probe) {
     // The first GPU-consuming operation of this session freezes the one native
     // choice, before any preview, decode or child is dispatched. A rejected or
     // conflicting request is reported and the run does not start.
-    if (native_work_busy()) return false;
+    if (native_work_busy() || (require_partition_probe && sfm_partition_pending()))
+        return false;
     stop_inference_users();
     close_splat();
     if (!freeze_native_device()) return false;
@@ -4337,6 +4449,7 @@ void GuiApp::draw_sensor_badge(const PrepInput& s) {
                     : !fs::is_directory(s.path, ec)))
         return;
     const TelemetryInfo t = _telemetry.get(s.path, s.is_video);
+    if (t.failed) return;
     if (!t.done) {
         ImGui::SameLine();
         ui::TextDisabled(dmsg::sensors_reading);
@@ -4719,6 +4832,7 @@ bool colmap_lens_combo(const char* id, int* idx) {
 }  // namespace
 
 void GuiApp::draw_dataset_basics() {
+    sync_sfm_partition();
     const bool builtin = effective_engine() == Engine::BuiltIn;
 
     // A model in the output folder is reused, so these settings reach it only
@@ -4809,13 +4923,13 @@ void GuiApp::draw_dataset_basics() {
                &dmsg::camera_sharing_image});
     ui::help_on_hover(dmsg::camera_sharing_help);
 
-    if (builtin) {
+    if (builtin && _sfm_job.pairs != 4) {
         ImGui::SetNextItemWidth(px(220.0f));
         ui::Combo(dmsg::image_matching, &_sfm_job.pairs,
                   {&dmsg::matching_automatic, &dmsg::matching_every_pair,
                    &dmsg::matching_neighbours, &dmsg::matching_gpu_preselect});
         ui::help_on_hover(dmsg::matching_help_builtin);
-    } else {
+    } else if (!builtin) {
         int matcher_idx = _colmap_job.matcher - 1;
         if (matcher_idx < 0 || matcher_idx > 2)
             matcher_idx = (!_sources.empty() && _sources[0].is_video) ? 1 : 0;
@@ -4832,6 +4946,8 @@ void GuiApp::draw_dataset_basics() {
             ImGui::Unindent();
         }
     }
+
+    if (builtin) draw_sfm_partition();
 
     ImGui::EndDisabled();
 
@@ -7403,6 +7519,22 @@ void GuiApp::draw_sfm_advanced() {
     ui::Combo(dmsg::mapper_schedule, &_sfm_job.mapper,
               {&dmsg::mapper_flat, &dmsg::mapper_bottom_up});
     ui::help_on_hover(dmsg::mapper_schedule_help);
+    ImGui::SetNextItemWidth(px(260.0f));
+    ui::InputInt(dmsg::map_memory_mb, &_sfm_job.map_memory_mb);
+    _sfm_job.map_memory_mb = std::clamp(_sfm_job.map_memory_mb, 0, 1048576);
+    ui::help_on_hover(dmsg::map_memory_mb_help);
+
+    if (_sfm_job.pairs == 4) {
+        ui::TextWrapped(dmsg::spatial_blocks_help);
+        ui::InputInt(dmsg::block_neighbours, &_sfm_job.block_neighbours);
+        ui::InputFloat(dmsg::block_radius, &_sfm_job.block_radius, 0, 0, "%.1f");
+        if (ui::InputInt(dmsg::block_cache_mb, &_sfm_job.block_cache_mb))
+            _sfm_job.block_cache_auto = false;
+        _sfm_job.block_size = std::clamp(_sfm_job.block_size, 2, 100000);
+        _sfm_job.block_neighbours = std::clamp(_sfm_job.block_neighbours, 1, 100000);
+        _sfm_job.block_radius = std::clamp(_sfm_job.block_radius, 0.0f, 1000000.0f);
+        _sfm_job.block_cache_mb = std::clamp(_sfm_job.block_cache_mb, 1, 1048576);
+    }
 
     // "Automatic" resolves to sequential for a short video and to pair
     // selection at 100 images, so each is offered whenever it can be what runs.
@@ -7762,7 +7894,8 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     bool input_missing = (_sources.empty() && _lidar.empty()) || _workspace.empty();
     for (const PrepInput& s : _sources)
         input_missing = input_missing || s.path.empty();
-    const bool ready = !running && !input_missing && _source_probes_ready;
+    const bool ready = !running && !input_missing && _source_probes_ready &&
+                       !sfm_partition_pending();
     if (!running) {
         const bool need_mask_model = mask_model_missing();
         const bool need_feat_model = feature_model_missing();
@@ -7782,7 +7915,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
         if (input_missing) {
             ImGui::SameLine();
             ui::TextDisabled(dmsg::pick_input_first);
-        } else if (!_source_probes_ready) {
+        } else if (!_source_probes_ready || sfm_partition_pending()) {
             ImGui::SameLine();
             ui::TextDisabled(dmsg::sensors_reading);
         } else if (need_model) {

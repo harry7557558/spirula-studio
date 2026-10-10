@@ -30,6 +30,36 @@ namespace i18n {
 namespace msg {
 namespace sfmfield {
 
+SS_MSG(map_graph_cache_mb_help,
+    EN("Correspondence graph cache cap in MiB; 0 uses the mapping budget"),
+    JA("対応グラフのキャッシュ上限（MiB）。0 は建図の予算を使用"),
+    ZH_HANS("对应关系图缓存上限（MiB）；0 使用建模预算"),
+    ZH_HANT("對應關係圖快取上限（MiB）；0 使用建模預算"),
+    KO("대응 그래프 캐시 상한(MiB); 0은 매핑 예산 사용"),
+    DE("Korrespondenzcache-Limit in MiB; 0 nutzt das Rekonstruktionsbudget"),
+    FR("Plafond du cache de correspondances en Mio ; 0 utilise le budget de reconstruction"),
+    ES("Límite de caché de correspondencias en MiB; 0 usa el presupuesto de reconstrucción"),
+    PT("Limite do cache de correspondências em MiB; 0 usa o orçamento de reconstrução"),
+    IT("Limite cache delle corrispondenze in MiB; 0 usa il budget di ricostruzione"),
+    NL("Limiet van correspondentiecache in MiB; 0 gebruikt het reconstructiebudget"),
+    RU("Лимит кэша соответствий в МиБ; 0 использует бюджет реконструкции"),
+    TR("MiB cinsinden eşleşme önbelleği sınırı; 0 yeniden oluşturma bütçesini kullanır"));
+
+SS_MSG(map_memory_mb_help,
+    EN("Mapping working memory budget in MiB; 0 derives it from total and available RAM"),
+    JA("建図の作業メモリ予算（MiB）。0 は総 RAM と空き RAM から自動設定"),
+    ZH_HANS("建模工作内存预算（MiB）；0 按总内存和可用内存自动设置"),
+    ZH_HANT("建模工作記憶體預算（MiB）；0 依總記憶體和可用記憶體自動設定"),
+    KO("매핑 작업 메모리 예산(MiB); 0은 전체 및 가용 RAM에 따라 자동 설정"),
+    DE("Arbeitsspeicherbudget für die Rekonstruktion in MiB; 0 nutzt gesamten und freien RAM"),
+    FR("Budget mémoire de reconstruction en Mio ; 0 utilise la RAM totale et disponible"),
+    ES("Presupuesto de memoria de reconstrucción en MiB; 0 usa la RAM total y disponible"),
+    PT("Orçamento de memória de reconstrução em MiB; 0 usa a RAM total e disponível"),
+    IT("Budget di memoria di ricostruzione in MiB; 0 usa la RAM totale e disponibile"),
+    NL("Werkgeheugenbudget voor reconstructie in MiB; 0 gebruikt totale en beschikbare RAM"),
+    RU("Бюджет рабочей памяти реконструкции в МиБ; 0 учитывает общий и свободный объём RAM"),
+    TR("MiB cinsinden yeniden oluşturma belleği; 0 toplam ve boş RAM'e göre ayarlar"));
+
 // ---- the group headings the options are printed under ----
 
 SS_MSG(group_pipeline,
@@ -4374,6 +4404,112 @@ SS_MSG(sensor_gauge_help,
        "`up` только ориентацию, `none` игнорирует датчики"),
     TR("Telemetrinin belirlediği: `auto` denetimlerini geçen her şeyden yukarı, ölçek ve konumu, "
        "`up` yalnızca yönü alır, `none` sensörleri yok sayar"));
+
+SS_MSG(block_size_help,
+    EN("Maximum core photos per region; overlap photos are additional. Working-memory failures split and retry a region."),
+    JA("領域のコア写真数上限。重複写真は追加。作業メモリ上限に達した場合は分割して再試行。"),
+    ZH_HANS("每块核心照片上限，重叠照片额外添加；计算触发工作内存限制时拆块重试。"),
+    ZH_HANT("每塊核心照片上限，重疊照片額外加入；計算觸發工作記憶體限制時拆塊重試。"),
+    KO("영역당 핵심 사진 상한이며 겹치는 사진은 추가됩니다. 작업 메모리 제한에 도달하면 나눠 재시도합니다."),
+    DE("Maximale Kernfotos pro Region; Überlappungsfotos kommen hinzu. Bei Speicherlimitüberschreitung teilen und erneut berechnen."),
+    FR("Maximum de photos principales par région ; recouvrement ajouté. En cas de dépassement mémoire, diviser et relancer."),
+    ES("Máximo de fotos principales por región; se añade el solape. Al superar la memoria, dividir y reintentar."),
+    PT("Máximo de fotos principais por região; sobreposição adicionada. Ao exceder a memória, dividir e repetir."),
+    IT("Massimo di foto principali per regione; sovrapposizione aggiunta. Superando la memoria, dividere e riprovare."),
+    NL("Maximum kernfoto’s per regio; overlapfoto’s zijn extra. Bij overschrijding van het geheugenbudget splitsen en opnieuw proberen."),
+    RU("Максимум основных фото на область; фото перекрытия добавляются. При превышении бюджета памяти разделить и повторить."),
+    TR("Bölge başına ana fotoğraf üst sınırı; örtüşme fotoğrafları eklenir. Bellek sınırı aşılırsa bölüp yeniden deneyin."));
+
+SS_MSG(block_neighbours_help,
+    EN("GPS neighbours per image"),
+    JA("画像ごとの GPS 近傍数"),
+    ZH_HANS("每张照片的 GPS 邻居数量"),
+    ZH_HANT("每張照片的 GPS 鄰居數量"),
+    KO("이미지당 GPS 이웃 수"),
+    DE("GPS-Nachbarn pro Bild"),
+    FR("Voisins GPS par image"),
+    ES("Vecinos GPS por imagen"),
+    PT("Vizinhos GPS por imagem"),
+    IT("Vicini GPS per immagine"),
+    NL("GPS-buren per beeld"),
+    RU("Соседи GPS на изображение"),
+    TR("Görüntü başına GPS komşusu"));
+
+SS_MSG(block_radius_help,
+    EN("GPS radius (m, 0: unlimited)"),
+    JA("GPS 半径 (m, 0: 制限なし)"),
+    ZH_HANS("GPS 半径（米，0：不限）"),
+    ZH_HANT("GPS 半徑（米，0：不限）"),
+    KO("GPS 반경 (m, 0: 제한 없음)"),
+    DE("GPS-Radius (m, 0: unbegrenzt)"),
+    FR("Rayon GPS (m, 0 : illimité)"),
+    ES("Radio GPS (m, 0: ilimitado)"),
+    PT("Raio GPS (m, 0: ilimitado)"),
+    IT("Raggio GPS (m, 0: illimitato)"),
+    NL("GPS-straal (m, 0: onbeperkt)"),
+    RU("Радиус GPS (м, 0: без ограничения)"),
+    TR("GPS yarıçapı (m, 0: sınırsız)"));
+
+SS_MSG(block_cache_mb_help,
+    EN("Host descriptor cache (MiB)"),
+    JA("ホスト記述子キャッシュ (MiB)"),
+    ZH_HANS("主机描述子缓存（MiB）"),
+    ZH_HANT("主機描述子快取（MiB）"),
+    KO("호스트 기술자 캐시 (MiB)"),
+    DE("Deskriptor-Cache im RAM (MiB)"),
+    FR("Cache des descripteurs en RAM (MiB)"),
+    ES("Caché de descriptores en RAM (MiB)"),
+    PT("Cache de descritores em RAM (MiB)"),
+    IT("Cache descrittori in RAM (MiB)"),
+    NL("Descriptorcache in RAM (MiB)"),
+    RU("Кэш дескрипторов в ОЗУ (MiB)"),
+    TR("RAM tanımlayıcı önbelleği (MiB)"));
+
+
+SS_MSG(regional_iterations_help,
+    EN("Maximum shared-landmark coordination rounds"),
+    JA("共通ランドマーク調整の最大反復数"),
+    ZH_HANS("公共点协调最大轮数"),
+    ZH_HANT("公共點協調最大輪數"),
+    KO("공유 랜드마크 조정 최대 반복 횟수"),
+    DE("Maximale Runden der gemeinsamen Punktoptimierung"),
+    FR("Nombre maximal de cycles de coordination des points communs"),
+    ES("Máximo de rondas de coordinación de puntos comunes"),
+    PT("Máximo de ciclos de coordenação de pontos comuns"),
+    IT("Numero massimo di cicli di coordinamento dei punti comuni"),
+    NL("Maximum aantal rondes voor gedeelde punten"),
+    RU("Максимум итераций согласования общих точек"),
+    TR("Ortak nokta koordinasyonu için azami tur sayısı"));
+
+SS_MSG(regional_cost_tolerance_help,
+    EN("Stop when round cost change is below this fraction of initial cost"),
+    JA("初期コストに対する反復コスト変化の停止しきい値"),
+    ZH_HANS("轮次成本变化小于初始成本的此比例时停止"),
+    ZH_HANT("輪次成本變化小於初始成本的此比例時停止"),
+    KO("초기 비용 대비 반복 비용 변화 중단 기준"),
+    DE("Abbruchschwelle als Anteil der anfänglichen Kosten"),
+    FR("Seuil de variation du coût par rapport au coût initial"),
+    ES("Umbral de cambio de coste respecto al coste inicial"),
+    PT("Limiar de variação de custo em relação ao custo inicial"),
+    IT("Soglia di variazione del costo rispetto al costo iniziale"),
+    NL("Stopdrempel voor kostenverandering ten opzichte van de beginkosten"),
+    RU("Порог изменения стоимости относительно начальной стоимости"),
+    TR("Başlangıç maliyetine göre maliyet değişimi durdurma eşiği"));
+
+SS_MSG(regional_landmarks_help,
+    EN("Maximum shared landmarks; memory budget may reduce this sample"),
+    JA("共通ランドマーク数の上限。メモリ予算に応じて削減"),
+    ZH_HANS("公共点采样上限，工作内存预算可能进一步降低数量"),
+    ZH_HANT("公共點取樣上限，工作記憶體預算可能進一步降低數量"),
+    KO("공유 랜드마크 상한, 메모리 예산에 따라 감소"),
+    DE("Maximale gemeinsame Punkte; durch Speicherbudget begrenzt"),
+    FR("Maximum de points communs, limité par le budget mémoire"),
+    ES("Máximo de puntos comunes, limitado por la memoria"),
+    PT("Máximo de pontos comuns, limitado pela memória"),
+    IT("Massimo di punti comuni, limitato dalla memoria"),
+    NL("Maximum gedeelde punten, begrensd door het geheugenbudget"),
+    RU("Максимум общих точек, ограниченный бюджетом памяти"),
+    TR("Ortak nokta üst sınırı, bellek bütçesiyle sınırlı"));
 
 }  // namespace sfmfield
 }  // namespace msg

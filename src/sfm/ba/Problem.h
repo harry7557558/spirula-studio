@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "core/Env.h"
+#include "sfm/ba/Options.h"
 #include "sfm/core/Log.h"
 
 // Camera model registry; must match the entry points in sfm/shaders/ba/ba.slang.
@@ -59,6 +60,7 @@ namespace sfm { struct PosePriors; }
 
 struct BAProblem {
     uint32_t num_images = 0, num_points = 0, num_obs = 0;
+    uint64_t index_limit = UINT32_MAX;
     // Camera-side priors on the poses (sfm/ba/Priors.h), on BA image indices;
     // null or empty leaves both solvers exactly as they were.
     const sfm::PosePriors* priors = nullptr;
@@ -102,6 +104,9 @@ struct BAProblem {
     std::vector<double> exts;    // 6 per member (cam_from_rig)
     std::vector<double> intr;    // flat
     std::vector<double> points;  // 3 per point
+    std::vector<uint32_t> fixed_points;
+    std::vector<uint32_t> fixed_frames;
+    bool frameFixed(uint32_t frame) const { return !fixed_frames.empty() && fixed_frames.at(frame) != 0; }
 
     // per-(model, rig) observation lists (concatenated) for specialized dispatches
     struct ModelRange { uint32_t model, offset, count; bool rig; };
@@ -317,7 +322,12 @@ inline uint32_t imageColumns(const BAProblem& P, uint32_t img, uint32_t* cols) {
 
 // Build per-model obs lists and A_cp offsets from obs/image/group tables.
 inline void finalizeTables(BAProblem& P) {
+    if (!P.fixed_points.empty() && P.fixed_points.size() != P.num_points)
+        throw std::runtime_error("BA fixed-point mask size mismatch");
     if (P.image_frame.size() != P.num_images) P.identityFrames();
+    if (!P.fixed_frames.empty() && (P.fixed_frames.size() != P.num_frames ||
+        std::any_of(P.fixed_frames.begin(), P.fixed_frames.end(), [](uint32_t v) { return v > 1; })))
+        throw std::runtime_error("BA fixed-frame mask invalid");
     if (P.image_member.size() != P.num_images) P.image_member.assign(P.num_images, kNoMember);
     for (uint32_t i = 1; i < P.num_images; i++)
         if (P.image_frame[i] < P.image_frame[i - 1])
@@ -342,7 +352,13 @@ inline void finalizeTables(BAProblem& P) {
     // Bucket the observations in one counting pass: indices ascending within
     // each bucket, buckets in registry order, empty ones omitted.
     std::vector<uint32_t> cnt(nb, 0), off(nb, 0);
-    for (uint32_t o = 0; o < P.num_obs; o++) cnt[img_bucket[P.obs_image[o]]]++;
+    uint64_t acc = 0;
+    for (uint32_t o = 0; o < P.num_obs; o++) {
+        cnt[img_bucket[P.obs_image[o]]]++;
+        acc += 2 * (uint64_t)img_dof[P.obs_image[o]];
+    }
+    checkBAIndexCapacity(acc, P.index_limit, "Jc pool");
+    P.jc_total = acc;
     P.model_ranges.clear();
     uint32_t run = 0;
     for (int b = 0; b < nb; b++) {
@@ -355,13 +371,11 @@ inline void finalizeTables(BAProblem& P) {
     for (uint32_t o = 0; o < P.num_obs; o++) P.model_obs[off[img_bucket[P.obs_image[o]]]++] = o;
 
     P.jc_off.resize(P.num_obs);
-    uint64_t acc = 0;
+    acc = 0;
     for (uint32_t o = 0; o < P.num_obs; o++) {
         P.jc_off[o] = (uint32_t)acc;
         acc += 2 * (size_t)img_dof[P.obs_image[o]];
     }
-    P.jc_total = acc;
-    if (acc > 0xFFFFFFFFull) throw std::runtime_error("Jc pool exceeds 32-bit indexing");
     // note: the packed-triangle 32-bit limit (n_dim <~ 65k) applies only to
     // the dense solver and is checked when that path is selected
 }

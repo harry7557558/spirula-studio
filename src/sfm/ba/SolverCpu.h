@@ -335,10 +335,13 @@ private:
 
     static double defaultBudgetMB() {
         const size_t ram = spirula::physicalRamBytes();
+        const size_t available = spirula::availableRamBytes();
         // Half the machine, not nine tenths of it: unlike a GPU heap this is
         // shared with the rest of the pipeline (features, matches, the
         // reconstruction) and with the page cache.
-        return ram ? 0.5 * (double)ram / (1024.0 * 1024.0) : 4096.0;
+        const double physical = ram ? 0.5 * (double)ram / (1024.0 * 1024.0) : 4096.0;
+        return available ? std::min(physical, 0.75 * (double)available / (1024.0 * 1024.0))
+                         : physical;
     }
 
     double estimateMB(bool withDense, bool withCG) const {
@@ -387,8 +390,10 @@ private:
     }
 
     void decidePaths() {
-        const double budget =
-            opt_.vram_budget_mb > 0 ? opt_.vram_budget_mb : defaultBudgetMB();
+        double budget = opt_.vram_budget_mb > 0 ? opt_.vram_budget_mb : defaultBudgetMB();
+        if (opt_.host_budget_bytes)
+            budget = std::min(std::min(budget, defaultBudgetMB()),
+                              (double)opt_.host_budget_bytes / (1024 * 1024));
         const bool cgOk = nObs_ > 0;
         const double denseMB = estimateMB(true, false);
         double cgMB = estimateMB(false, true);
@@ -431,7 +436,8 @@ private:
                        denseMB, cgMB, budget);
         const double needMB = (useCG_ ? cgMB : denseNowMB) + (haveFallback_ ? denseNowMB : 0);
         if (needMB > budget) {
-            if (opt_.over_budget_throws) throw BAOverBudget(needMB, budget);
+            if (opt_.over_budget_throws || opt_.host_budget_bytes)
+                throw BAOverBudget(needMB, budget, "host");
             sfm::slog::diag(sfm::slog::Tag::Map,
                        "[cpu] warning: the %s solver needs ~%.0f MB and the budget is %.0f MB",
                        useCG_ ? "cg" : "dense", needMB, budget);
@@ -690,12 +696,14 @@ private:
                             for (int row = 0; row < 2; row++) {
                                 const double* src = jcf + row * DOF;
                                 double* dst = jc + row * dofw;
-                                for (uint32_t a = 0; a < 6; a++) dst[a] = src[a] * sw;
+                                for (uint32_t a = 0; a < 6; a++)
+                                    dst[a] = P_.frameFixed(P_.image_frame[img]) ? 0 : src[a] * sw;
                                 for (uint32_t i = 0, k = 6; i < 6; i++)
                                     if ((emask >> i) & 1u) dst[k++] = src[6 + i] * sw;
                                 for (uint32_t i = 0; i < gz; i++)
                                     dst[6 + ne + i] = src[6 + NE + i] * sw;
-                                for (int j = 0; j < 3; j++) jp[row * 3 + j] = jpf[row * 3 + j] * sw;
+                                for (int j = 0; j < 3; j++) jp[row * 3 + j] =
+                                    !P_.fixed_points.empty() && P_.fixed_points[p] ? 0 : jpf[row * 3 + j] * sw;
                             }
                             r[0] *= sw;
                             r[1] *= sw;
@@ -733,6 +741,9 @@ private:
             taskRange(nPts_, nt, t, lo, hi);
             for (int64_t p = lo; p < hi; p++) {
                 double m[9];
+                if (!P_.fixed_points.empty() && P_.fixed_points[p]) {
+                    std::fill_n(&W_[9 * (size_t)p], 9, 0.0); continue;
+                }
                 memcpy(m, &App_[9 * (size_t)p], sizeof m);
                 m[0] *= d;
                 m[4] *= d;
@@ -1505,7 +1516,7 @@ private:
 
     void camUpdate() {
         for (uint32_t i = 0; i < poseDim_; i++)
-            if (std::isfinite(g_[i])) P_.poses[i] -= g_[i];
+            if (!P_.frameFixed(i / 6) && std::isfinite(g_[i])) P_.poses[i] -= g_[i];
         for (const BAProblem::Member& m : P_.members)
             for (uint32_t i = 0, j = 0; m.n_free && i < 6; i++) {
                 if (!((m.mask >> i) & 1u)) continue;
