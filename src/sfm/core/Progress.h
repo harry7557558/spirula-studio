@@ -45,6 +45,16 @@ void gauge(bool oriented, bool metric);
 // u64 points; per registered image { u32 id, f32 c2w[12] OpenGL, u32 w, h,
 // colmap_model_id, nparams, f64 params[] }; u32 count, { f32 xyz, u8 rgb }.
 
+// images.bin, beside model.bin: "VKPI", u32 version=1, u32 images; per image
+// { u32 id, u8 placed, u32 keypoints, u32 points (seeing a 3D point), f32 mean and
+// f32 max reprojection error in pixels, u32 length, name }.
+
+// The capture's images by the ids models use, so images.bin lists the unplaced.
+void images(const std::vector<std::string>& names, const std::vector<uint32_t>& keypoints);
+// The same file anywhere, whether or not --progress-dir was given: the run
+// keeps one in its workspace, which outlives .progress.
+bool write_image_stats(const Reconstruction& rec, const std::string& path);
+
 // The model as it stands, subsampled to kMaxPoints. Call it as often as is
 // convenient; it returns immediately until the interval has passed, unless
 // `force` says this is the last word on a stage.

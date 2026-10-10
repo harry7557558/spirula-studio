@@ -1524,6 +1524,16 @@ void ViewportPanel::draw_controls(bool engine) {
         }
         ui::help_on_hover(msg::viewport_center_help);
     }
+    if (_trail) {
+        if (used > 0.0f && used + st.ItemSpacing.x + _trail_w <= row_w) {
+            ImGui::SameLine(0.0f, row_w - used - _trail_w);
+        } else {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, row_w - _trail_w));
+        }
+        used = row_w;
+        _trail();
+        _trail = nullptr;
+    }
     if (engine) {
         place(px(66.0f) + st.ItemInnerSpacing.x +
               text_w(msg::viewport_scale.get()));

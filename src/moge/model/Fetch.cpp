@@ -24,6 +24,9 @@ const ModelSource kSources[] = {
      {"moge2-vitl-normal.onnx",
       "https://huggingface.co/Ruicheng/moge-2-vitl-normal-onnx/resolve/main/model.onnx",
       "afbc4ccc3450298f3afb35b90f015f4c4f552dea21dc6470d5f7b78b77e2d751", 1324265014ull}},
+    {"moge3-vitl",
+     {"moge3-vitl.pt", "https://huggingface.co/Ruicheng/moge-3-vitl/resolve/main/model.pt",
+      "9b41b7b9f65ad80aab7ad686f5e9cc0d1fd33f1964022618dfbcd52fc1fb7925", 1481333394ull}},
 };
 
 }  // namespace
@@ -43,7 +46,7 @@ std::string model_id_list() {
     return s;
 }
 
-std::string ensure_model(const ModelSource& src) { return nn::ensure_file(src.onnx, "moge"); }
+std::string ensure_model(const ModelSource& src) { return nn::ensure_file(src.checkpoint, "moge"); }
 
 std::string resolve_model(const std::string& id_or_path) {
     if (const ModelSource* src = find_model_source(id_or_path)) return ensure_model(*src);

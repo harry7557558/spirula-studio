@@ -19,6 +19,7 @@
 // module has no child to run (see availability()).
 #include "sfm/core/Log.h"
 #include "sfm/core/Manifest.h"
+#include "sfm/SfmConfig.h"
 #include "i18n/catalog/Sfm.h"
 #endif
 
@@ -73,6 +74,18 @@ bool child_line_is_notable(const std::string& l) {
 #else
     const std::string run = sfm::slog::prefix(sfm::slog::Tag::Run);
     if (l.compare(0, run.size(), run) == 0) return true;
+    // What each progressive attempt and pass runs with, and what it gave.
+    const std::string map = sfm::slog::prefix(sfm::slog::Tag::Map);
+    if (l.compare(0, map.size(), map) == 0) {
+        namespace M = spirula::i18n::msg::sfm;
+        const std::string rest = l.substr(map.size());
+        std::vector<std::string> got;
+        for (const spirula::i18n::Msg* m :
+             {&M::progressive_attempt, &M::progressive_attempt_done, &M::progressive_feature_pass,
+              &M::progressive_feature_kept, &M::progressive_feature_undone,
+              &M::progressive_feature_failed, &M::progressive_time_up})
+            if (spirula::i18n::scan(*m, rest, got)) return true;
+    }
     for (const char* word : {spirula::i18n::msg::sfm::word_warning.get(),
                              spirula::i18n::msg::sfm::word_error.get()}) {
         const size_t at = l.find(word);
@@ -170,7 +183,9 @@ std::string SfmRunner::availability() {
 #endif
 }
 
-SfmRunner::~SfmRunner() {
+SfmRunner::~SfmRunner() { shutdown(); }
+
+void SfmRunner::shutdown() {
     cancel();
     if (_worker.joinable()) _worker.join();
 }
@@ -182,6 +197,7 @@ void SfmRunner::start(const SfmJob& job, RunFilms films) {
     _partial = false;
     _not_metric = false;
     _have_status = false;
+    _progressive_label.clear();
     _status_mtime = 0;
     _films = films;
     _prog.reset();
@@ -241,6 +257,7 @@ void SfmRunner::take_reconstruction(SfmJob& job) {
     job.exif_attitude = _live.exif_attitude;
     job.keep_intermediate = _live.keep_intermediate;
     job.ba_cpu = _live.ba_cpu;
+    job.options = _live.options;
     job.extra_args = _live.extra_args;
     // The lens is a reconstruction setting that happens to be stored on the
     // input it describes. The list itself cannot change while a run is live.
@@ -392,22 +409,43 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 7: set_stage_if_new(Stage::Matching, lmsg::stage_selecting_pairs.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
+        case 10: set_stage_if_new(Stage::Matching, lmsg::stage_measuring_focals.get());
+                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 1: set_stage_if_new(Stage::Matching, lmsg::stage_matching_images.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
-        case 2: case 3: case 4:
+        // Inside progressive alignment every attempt registers the images again;
+        // the attempt is what the label and the bar follow, not each image.
+        case 2: case 3: case 4: case 8:
+                if (!_progressive_label.empty()) {
+                    set_stage_if_new(Stage::Mapping, _progressive_label.c_str());
+                    break;
+                }
+                if (st.stage == 8) {
+                    set_stage_if_new(Stage::Mapping, lmsg::stage_seeding.get());
+                    _prog.fraction(Stage::Mapping, 0.0f);
+                    break;
+                }
                 set_stage_if_new(Stage::Mapping, lmsg::stage_reconstructing.get());
                 _prog.count(Stage::Mapping, st.done, st.total);
                 _prog.fraction(Stage::Mapping, mapping_fraction(st.done, st.total));
                 break;
         // Two stretches of the mapping step place no image, so the bar has
         // nothing to say and the label has to: choosing a focal and a seed
-        // before the first, and the finishing solves after the last.
-        case 8: set_stage_if_new(Stage::Mapping, lmsg::stage_seeding.get());
-                _prog.fraction(Stage::Mapping, 0.0f);
-                break;
-        case 9: set_stage_if_new(Stage::Mapping, lmsg::stage_refining.get());
+        // before the first (8, above), and the finishing solves after the last.
+        case 9: _progressive_label.clear();
+                set_stage_if_new(Stage::Mapping, lmsg::stage_refining.get());
                 _prog.fraction(Stage::Mapping, kMappingBarFull);
                 break;
+        // Every attempt places the images again, so the bar counts attempts.
+        // Each step begins the stage over, at 0, an instant before its count.
+        case 11: if (st.done <= 0) break;
+                 _progressive_label =
+                     format(lmsg::stage_progressive, {(long long)st.done, (long long)st.total});
+                 set_stage_if_new(Stage::Mapping, _progressive_label.c_str());
+                 if (st.total > 0)
+                     _prog.fraction(Stage::Mapping,
+                                    kMappingBarFull * (float)st.done / (float)st.total);
+                 break;
         default: break;
     }
     if (st.finished) {
@@ -674,6 +712,37 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
     // is a no-op under the other pair modes.
     if (!job.loop_closure) argv.push_back("--no-loop-closure");
     if (!job.prefilter_sequential) argv.push_back("--no-prefilter-sequential");
+    if (job.progressive) {
+        char buf[32];
+        argv.push_back("--progressive");
+        std::snprintf(buf, sizeof buf, "%g", job.progressive_error_start);
+        argv.push_back("--progressive-error-start");
+        argv.push_back(buf);
+        if (job.progressive_error_end > 0) {
+            std::snprintf(buf, sizeof buf, "%g", job.progressive_error_end);
+            argv.push_back("--progressive-error-end");
+            argv.push_back(buf);
+        }
+        argv.push_back("--progressive-error-steps");
+        argv.push_back(std::to_string(job.progressive_error_steps));
+        if (!job.progressive_features) {
+            argv.push_back("--no-progressive-features");
+        } else {
+            argv.push_back("--progressive-max-features-end");
+            argv.push_back(std::to_string(job.progressive_max_features_end));
+            argv.push_back("--progressive-image-size-end");
+            argv.push_back(std::to_string(job.progressive_image_size_end));
+            argv.push_back("--progressive-feature-steps");
+            argv.push_back(std::to_string(job.progressive_feature_steps));
+            argv.push_back("--progressive-patience");
+            argv.push_back(std::to_string(job.progressive_patience));
+            if (job.progressive_time > 0) {
+                std::snprintf(buf, sizeof buf, "%g", job.progressive_time);
+                argv.push_back("--progressive-time");
+                argv.push_back(buf);
+            }
+        }
+    }
     if (job.init_focal_px > 0) {
         char buf[32];
         std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);
@@ -760,8 +829,33 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--feature-masks");
         argv.push_back(prep.feature_mask_dir);
     }
+    for (const std::string& a : sfm_option_args(job.options)) argv.push_back(a);
     for (const std::string& a : split_args(job.extra_args))
         argv.push_back(a);
+    return argv;
+}
+
+std::vector<std::string> sfm_option_args(const std::map<std::string, std::string>& options) {
+    std::vector<std::string> argv;
+#ifdef SS_TOOL_SFM
+    // A flag a later version renamed or dropped would stop the run; it goes
+    // quietly instead, as a preset key this version does not know would.
+    static const std::vector<sfm::FieldView> table =
+        sfm::describeConfigFields(sfm::SfmConfig{}, sfm::CMD_AUTO);
+    for (const auto& [name, value] : options) {
+        auto row = std::find_if(table.begin(), table.end(),
+                                [&](const sfm::FieldView& f) { return name == f.name; });
+        if (row == table.end()) continue;
+        if (row->kind == sfm::FieldView::Kind::Switch) {
+            argv.push_back((value == "on" ? "--" : "--no-") + name);
+        } else {
+            argv.push_back("--" + name);
+            argv.push_back(value);
+        }
+    }
+#else
+    (void)options;
+#endif
     return argv;
 }
 

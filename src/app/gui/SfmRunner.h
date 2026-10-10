@@ -31,6 +31,7 @@
 #include "i18n/catalog/Dataset.h"
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -158,6 +159,20 @@ struct SfmJob {
     // 0 flat, 1 bottom-up. Flat for every capture, whatever its size: there is
     // no automatic switch, here or in `spirula sfm`.
     int mapper = 0;
+    // Progressive alignment: map at a loose pixel error, then at tighter ones
+    // down to the end (0 = the run's --max-error), in `progressive_error_steps`.
+    bool progressive = false;
+    float progressive_error_start = 20.0f;
+    float progressive_error_end = 0.0f;
+    int progressive_error_steps = 5;
+    // Then images still outside the largest model detected again, from the
+    // run's features and size to these ends (0: 4x the features, full size).
+    bool progressive_features = true;
+    int progressive_max_features_end = 0;
+    int progressive_image_size_end = 0;
+    int progressive_feature_steps = 3;
+    int progressive_patience = 2;
+    float progressive_time = 0.0f;   // minutes; 0 = no limit
     // An index into kSfmFeatures. A frontend choice, not a quality level: the
     // learned ones run on their own resolution ladder, so the quality preset
     // means something different for each.
@@ -205,6 +220,11 @@ struct SfmJob {
     // Rec.709). true: written in the images' space, the trainer's default.
     bool point_color_in_image_space = false;
 
+    // The advanced editor's edits, flag name (no "--") -> value as the flag
+    // takes it; a flag absent here is left to the quality level. Passed
+    // before extra_args, so a typed flag still wins.
+    std::map<std::string, std::string> options;
+
     // Extra flags typed by the user, appended verbatim. The escape hatch for
     // everything the panel does not surface -- `spirula-sfm auto --help` lists
     // the lot, and this is how an expert reaches it without us mirroring 130
@@ -219,6 +239,9 @@ inline bool sequential_window_applies(const SfmJob& j) {
     return j.pairs == 2 || (j.pairs == 0 && j.data_type == 1) ||
            ((j.pairs == 0 || j.pairs == 3) && j.prefilter_sequential);
 }
+
+// SfmJob::options as command-line flags, minus any this version has no row for.
+std::vector<std::string> sfm_option_args(const std::map<std::string, std::string>& options);
 
 // What a learned frontend still has to fetch, in order; empty for SIFT with
 // brute force, and empty once both artifacts are cached.
@@ -243,6 +266,9 @@ public:
     // never taken from here.
     void update(const SfmJob& job);
     void cancel();
+    // cancel() and join. The owner calls it while the films are still alive;
+    // the destructor is a backstop.
+    void shutdown();
 
     State state() const { return _state.load(); }
     // Which step the run is on, how far through, and its lines -- everything
@@ -324,6 +350,7 @@ private:
     std::atomic<bool> _not_metric{false};
     // The child said how it ended, so the exit code need not be interpreted.
     bool _have_status = false;
+    std::string _progressive_label;   // set while progressive attempts run
     int64_t _status_mtime = 0;
     RunProgress _prog;
     RunFilms _films;

@@ -376,8 +376,8 @@ F(member, name, cmds, tier, group, lo, hi, choices, help)
 ```
 
 The table is the single source of truth for the CLI parser, for `--help`, and
-(port plan phase 5) for the GUI's options editor; each is one macro expansion
-over it in `SfmConfig.cpp`, so a new knob is one row and never three edits.
+for the GUI's options editor; each is one macro expansion over it in
+`SfmConfig.cpp`, so a new knob is one row and never three edits.
 `cmds` is which subcommands accept the flag — a name may repeat across commands
 with disjoint masks, which is how `--max-error` is the verification tolerance
 for `auto`/`match`/`map` and the *alignment* tolerance for `merge`. `tier` is
@@ -397,6 +397,21 @@ Pipeline knobs are fanned out into the stage structs by `SfmConfig::finalize()`
 and nowhere else, so the CLI and the GUI cannot disagree about what
 `--max-error` (one tolerance, two struct fields — D47), `--device`, `--quiet`
 or the camera settings mean.
+
+The GUI's editor (*All reconstruction settings* on the New Dataset screen,
+`src/app/gui/SfmOptionsUI.h`) reads the table through
+`describeConfigFields()`. Its defaults are `applyPresets()` run on the panel's
+quality, frontend, matcher and capture type, so each row shows the value the
+run would get untouched. The quality level's own rows come first: the image
+size and the frontend's feature budget, `--prefilter-neighbors`, and whatever
+else the preset moved for that frontend (`--ratio` for a learned one). An edit
+is stored as flag → text in `SfmJob::options` and passed after the panel's own
+flags and before the typed extras, so the CLI's last-one-wins rule settles any
+overlap. The editor leaves out the flags the panel has a control for, and the
+colour, input and runtime groups. *Sparse reconstruction presets* (kind `sfm`)
+save the quality, frontend, matcher, budgets and edits, but not the capture.
+`sfm_options_table_test` checks that every value the editor shows parses back
+through `setConfigField` unchanged.
 
 The brute-force matcher takes 128-**or** 256-byte descriptors -- SIFT's and
 ALIKED's, and DeDoDe-G's. The kernel is built at both widths
@@ -441,18 +456,21 @@ pair selection. Two things fix it, and `auto` uses both:
   Forced on that same capture it also produced one model (249 images), for 1.6 s
   of selection and 2.5x the pairs to match. `--no-loop-closure` is the old
   behaviour.
-- **`--prefilter-sequential` (on by default) is the converse, above the
+- **`--prefilter-sequential` (off by default) is the converse, above the
   cutoff**: pair selection takes the sequential window too, so a weak link the
   content score ranked just outside an image's top-k is still matched when the
   file order says the two are neighbours. It applies to a folder of photos as
   much as to video (named in shooting order, it is the same thing); the
-  `internet` preset turns it off. On a 470-image `.insv` walk the shortlist
+  `internet` preset keeps it off. On a 470-image `.insv` walk the shortlist
   held only 1540 of the window's 5990 pairs, and 3644 of the 4450 it added
-  verified (median 53 inliers, against 223 for the shortlist's own).
+  verified (median 53 inliers, against 223 for the shortlist's own). Off, a
+  video of 100 frames or more is matched on content alone, with no pair taken
+  from its file order.
 
 Every sequential window runs per folder -- a rig's lenses, several clips --
-and, with `--quadratic-overlap` (on), also links each image to the ones 16,
-32, 64 ... ahead, up to 2^(overlap-1), as COLMAP's `quadratic_overlap` does.
+and, with `--quadratic-overlap` (off by default), also links each image to the
+ones 2, 4, 8 ... ahead, up to 2^(overlap-1), as COLMAP's `quadratic_overlap`
+does.
 
 Everything else has a default that a beginner should not have to touch.
 
@@ -883,7 +901,7 @@ front of. So those are consulted first, and the rest of the model only where
 they are silent (D79):
 
 - **Seeding.** The seed pair is searched among neighbour pairs (positions at
-  most `--overlap` apart) through the whole relaxation ladder; every other
+  most `MapperOptions::sequence_window` apart, 2) through the whole relaxation ladder; every other
   pair is offered only once those are exhausted. The seed is the one decision
   no consensus can check afterwards.
 - **Ordering.** A candidate whose neighbours' points alone could register it
@@ -915,10 +933,14 @@ a cut in the walk costs what it always cost, a second model to merge, and
 never a folded one. What the sequence cannot repair is a neighbour that was
 itself placed wrongly: the chain then follows it, as a tracker's would.
 
-`--overlap` is the one number: the matcher's window along each sequence
-(matched whatever `--pairs` chose, so the pairs the mapper trusts exist) and
-how far apart two images still count as neighbours in mapping. The run
-reports one line per sequence and, at the end, how many poses the neighbours
+Two images count as neighbours in mapping when their positions are at most
+`MapperOptions::sequence_window` (2) apart; it is not tied to `--overlap`, and
+no flag sets it. A sequence adds no pairs to matching: its neighbours are
+matched only if `--pairs` or `--prefilter-sequential` already chose them, so
+under pair selection a neighbour the shortlist dropped is simply not near for
+any purpose above. The window that matched every sequence's neighbours whatever
+`--pairs` chose made pair-rich captures less robust and is disabled in
+`matchFeatureDir`. The run reports one line per sequence and, at the end, how many poses the neighbours
 settled against the whole pool and how many registrations they carried past
 the ratio gate; both are zero on a capture with no duplicate structure, where
 the sequence changes the order of registration and nothing else.

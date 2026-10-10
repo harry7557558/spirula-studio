@@ -228,7 +228,7 @@ target_compile_options(ss_metric3d PRIVATE
 set_property(TARGET ss_metric3d PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
-# ss_moge -- MoGe-2 monocular point maps, normals and a validity mask
+# ss_moge -- MoGe-2 / MoGe-3 monocular point maps, normals and a validity mask
 #
 # The only one of these libraries with NO shaders of its own, hence no
 # ss_nn_shaders() edge: the ops it needed were general and went into nn/.

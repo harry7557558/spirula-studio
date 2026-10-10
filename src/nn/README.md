@@ -72,6 +72,13 @@ more than the arithmetic.
   checkpoint already holds, which is why it needs an fp16 weight and why an
   fp32 second operand (a matmul against another activation) falls back.
 
+  `sparse_conv` is the same four kernels with `x` read through a neighbour
+  table (`kGatherCi`, `load_x` in both GEMM modules): row m, column t·Ci + c is
+  `x[nbr[m, t], c]`. It is a sparse convolution with no column matrix, which
+  for MoGe-3's refiner would be 3.2 GB a convolution. Row splits move the
+  table, not `x`. The gathered loads, not the multiply, bound it at narrow
+  widths: at 32 output channels the tensor-core kernel is only 10% faster.
+
 - **Attention** has a cooperative-matrix variant too (`flash_attn_coop`),
   selected whenever the device offers tensor cores and `head_dim` is a multiple
   of 16 — Hiera's 96 qualifies, its 72 does not. Only `Q @ K^T` moves: the

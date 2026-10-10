@@ -184,6 +184,7 @@ public:
     // Replace the settings no stage has read yet; see SfmRunner::update.
     void update(const ColmapJob& job);
     void cancel();
+    void shutdown();   // see SfmRunner::shutdown
 
     State state() const { return _state.load(); }
     RunProgress& steps() { return _prog; }

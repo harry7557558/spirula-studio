@@ -110,6 +110,23 @@ struct SfmConfig {
     // verifier's inlier radius and the mapper's reprojection cap are the same
     // quantity in the same frame. finalize() writes both.
     double max_error = 3.0;
+    // Progressive alignment (docs/notes/sfm-progressive-alignment.md): verify at
+    // the start error, map once there, then map again at each step down to the
+    // end error, every attempt continuing from the last. End 0 is max_error.
+    bool progressive = false;
+    double progressive_error_start = 20.0;
+    double progressive_error_end = 0.0;
+    int progressive_error_steps = 5;
+    // Then feature passes on images outside the largest model with enough
+    // verified inliers: features and resolution from the run's own to the ends
+    // (0: 4x the features, the source size), in `progressive_feature_steps`.
+    bool progressive_features = true;
+    int progressive_max_features_end = 0;
+    int progressive_image_size_end = 0;
+    int progressive_feature_steps = 3;
+    int progressive_patience = 2;
+    int progressive_min_matches = 50;
+    double progressive_time = 0;   // minutes before no further feature pass starts; 0 = none
     // 0 means "whatever the selected frontend wants" -- 3200 for SIFT, 1600
     // for a learned one, mirroring COLMAP's EffMaxImageSize(). Resolved in
     // finalize(), so a command that applies no presets (extract, match) still
@@ -297,6 +314,9 @@ struct SfmConfig {
     // additionally switches to pair selection above 100 images, which it can
     // only decide once extraction has counted them -- see cmdAuto.
     PairMode pairMode() const;
+    // The pixel error of each progressive attempt, start to end, geometrically
+    // spaced; empty when progressive is off.
+    std::vector<double> progressiveErrors() const;
     // Whether the GPS sets the written metric frame; an unresolved "auto" does not.
     bool metricGps() const { return metric_gps == "horizontal" || metric_gps == "full"; }
 };
@@ -350,6 +370,28 @@ struct SfmConfig {
       "pipeline", 0, 100000, "", rig_pair_min_inliers)                                             \
     F(max_error, "max-error", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "pipeline", 0.1,     \
       100, "", max_error)                                                                          \
+    F(progressive, "progressive", CMD_AUTO | CMD_MATCH, Tier::Advanced, "progressive", 0, 0, "",   \
+      progressive)                                                                                 \
+    F(progressive_error_start, "progressive-error-start", CMD_AUTO | CMD_MATCH, Tier::Advanced,    \
+      "progressive", 0.1, 1000, "", progressive_error_start)                                       \
+    F(progressive_error_end, "progressive-error-end", CMD_AUTO, Tier::Advanced, "progressive", 0,  \
+      1000, "", progressive_error_end)                                                             \
+    F(progressive_error_steps, "progressive-error-steps", CMD_AUTO, Tier::Advanced, "progressive", \
+      2, 50, "", progressive_error_steps)                                                          \
+    F(progressive_features, "progressive-features", CMD_AUTO, Tier::Advanced, "progressive", 0, 0, \
+      "", progressive_features)                                                                    \
+    F(progressive_max_features_end, "progressive-max-features-end", CMD_AUTO, Tier::Advanced,      \
+      "progressive", 0, 1000000, "", progressive_max_features_end)                                 \
+    F(progressive_image_size_end, "progressive-image-size-end", CMD_AUTO, Tier::Advanced,          \
+      "progressive", 0, 20000, "", progressive_image_size_end)                                     \
+    F(progressive_feature_steps, "progressive-feature-steps", CMD_AUTO, Tier::Advanced,            \
+      "progressive", 1, 20, "", progressive_feature_steps)                                         \
+    F(progressive_patience, "progressive-patience", CMD_AUTO, Tier::Advanced, "progressive", 1,    \
+      20, "", progressive_patience)                                                                \
+    F(progressive_min_matches, "progressive-min-matches", CMD_AUTO, Tier::Advanced, "progressive", \
+      0, 1000000, "", progressive_min_matches)                                                     \
+    F(progressive_time, "progressive-time", CMD_AUTO, Tier::Advanced, "progressive", 0, 100000,    \
+      "", progressive_time)                                                                        \
     F(max_image_size, "max-image-size", CMD_AUTO | CMD_EXTRACT, Tier::Advanced, "pipeline", 0,     \
       20000, "", max_image_size)                                                                   \
     F(mask_dir, "masks", CMD_AUTO | CMD_EXTRACT, Tier::Basic, "pipeline", 0, 0, "", masks)         \
@@ -445,6 +487,10 @@ struct SfmConfig {
       "matching", 0, 1000000, "", prefilter_min_score)                                             \
     F(prefilter.ratio, "prefilter-ratio", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 1,  \
       "", prefilter_ratio)                                                                         \
+    F(prefilter.order_weight, "order-weight", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, \
+      100, "", order_weight)                                                                       \
+    F(prefilter.order_decay, "order-decay", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching",      \
+      0.1, 100000, "", order_decay)                                                                \
     /* ---- mapper ---- */                                                                         \
     F(compact_unused_features, "compact-unused-features", CMD_AUTO | CMD_MAP, Tier::Advanced,     \
       "mapper", 0, 0, "", compact_unused_features)                                                 \
@@ -689,6 +735,23 @@ void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults);
 // note after it, empty for a switch.
 void printOptionLine(FILE* out, const std::string& flag, const std::string& value,
                      const std::string& help);
+
+// One row of the table as an options editor sees it: what to draw, and the
+// value it has in `cfg`, spelled the way the flag takes it.
+struct FieldView {
+    enum class Kind { Switch, Integer, Real, Text };
+    const char* name;
+    const char* group;
+    Tier tier;
+    Kind kind;
+    double lo, hi;
+    const char* choices;
+    const char* help;
+    std::string value;
+};
+
+// The rows of `cmd` minus aliases, in table order.
+std::vector<FieldView> describeConfigFields(const SfmConfig& cfg, uint32_t cmd);
 
 // Everything a stage's output depends on, as text: the table's rows for `cmd`
 // minus the ones that cannot change a byte of it, plus the camera overrides.

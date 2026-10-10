@@ -249,11 +249,14 @@ ModelPart field_part(const std::string& key) {
         "lens",        "focal",        "camera_mode", "data_type", "matcher",
         "pairs",       "overlap",      "loop_closure", "prefilter_sequential",
         "focal_px",    "distortion",   "sequence",    "rig",        "scan_views",
+        "progressive", "progressive_error_start",
     };
     static const char* const mapping[] = {
         "mapper",         "distortion_refine", "final_per_image_intrinsics",
         "final_free_rig", "metric_gps",        "sensor_gauge",
-        "exif_attitude",
+        "exif_attitude",  "progressive_error_end", "progressive_error_steps",
+        "progressive_features", "progressive_max_features_end", "progressive_image_size_end",
+        "progressive_feature_steps", "progressive_patience", "progressive_time",
     };
     for (const char* k : matching)
         if (key == k) return ModelPart::Matching;
@@ -473,6 +476,15 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
     job.overlap = 10;
     job.prefilter_sequential = true;
     job.loop_closure = true;
+    job.progressive = false;
+    job.progressive_error_start = 20.0f;
+    job.progressive_error_end = 0.0f;
+    job.progressive_error_steps = 5;
+    job.progressive_features = true;
+    job.progressive_max_features_end = job.progressive_image_size_end = 0;
+    job.progressive_feature_steps = 3;
+    job.progressive_patience = 2;
+    job.progressive_time = 0.0f;
     job.metric_gps = 0;
     job.sensor_gauge = job.exif_attitude = 2;
     job.distortion_refine = 0;
@@ -499,6 +511,20 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--overlap") job.overlap = (int)to_float(take());
         else if (flag == "--no-loop-closure") job.loop_closure = false;
         else if (flag == "--no-prefilter-sequential") job.prefilter_sequential = false;
+        else if (flag == "--progressive") job.progressive = true;
+        else if (flag == "--progressive-error-start") job.progressive_error_start = to_float(take());
+        else if (flag == "--progressive-error-end") job.progressive_error_end = to_float(take());
+        else if (flag == "--progressive-error-steps")
+            job.progressive_error_steps = (int)to_float(take());
+        else if (flag == "--no-progressive-features") job.progressive_features = false;
+        else if (flag == "--progressive-max-features-end")
+            job.progressive_max_features_end = (int)to_float(take());
+        else if (flag == "--progressive-image-size-end")
+            job.progressive_image_size_end = (int)to_float(take());
+        else if (flag == "--progressive-feature-steps")
+            job.progressive_feature_steps = (int)to_float(take());
+        else if (flag == "--progressive-patience") job.progressive_patience = (int)to_float(take());
+        else if (flag == "--progressive-time") job.progressive_time = to_float(take());
         else if (flag == "--focal") job.init_focal_px = to_float(take());
         else if (flag == "--distortion") job.init_distortion = take();
         else if (flag == "--no-refine-extra-params")
@@ -681,6 +707,22 @@ StepFields model_fields(const SfmJob& job) {
     if (sequential_window_applies(job)) add(f, "overlap", "", num(job.overlap));
     add(f, "loop_closure", "", onoff(job.loop_closure));
     add(f, "prefilter_sequential", "", onoff(job.prefilter_sequential));
+    // Only when on, so a dataset made before the setting existed is not stale.
+    if (job.progressive) {
+        add(f, "progressive", "", "on");
+        add(f, "progressive_error_start", "", num(job.progressive_error_start));
+        add(f, "progressive_error_end", "", num(job.progressive_error_end));
+        add(f, "progressive_error_steps", "", num(job.progressive_error_steps));
+        add(f, "progressive_features", "", onoff(job.progressive_features));
+        if (job.progressive_features) {
+            add(f, "progressive_max_features_end", "", num(job.progressive_max_features_end));
+            add(f, "progressive_image_size_end", "", num(job.progressive_image_size_end));
+            add(f, "progressive_feature_steps", "", num(job.progressive_feature_steps));
+            add(f, "progressive_patience", "", num(job.progressive_patience));
+            if (job.progressive_time > 0)
+                add(f, "progressive_time", "", num(job.progressive_time));
+        }
+    }
     if (job.init_focal_px > 0) add(f, "focal_px", "", num(job.init_focal_px));
     if (!job.init_distortion.empty()) add(f, "distortion", "", job.init_distortion);
     add(f, "distortion_refine", "", num(job.distortion_refine));
@@ -695,6 +737,7 @@ StepFields model_fields(const SfmJob& job) {
     if (job.image_is_linear) add(f, "image_linear", "", onoff(*job.image_is_linear));
     if (!job.image_exposure.empty()) add(f, "image_exposure", "", job.image_exposure);
     add(f, "point_color", "", job.point_color_in_image_space ? "image" : "srgb");
+    for (const auto& [flag, value] : job.options) f.push_back({"--" + flag, "", value});
     if (!job.extra_args.empty()) add(f, "extra_args", "", job.extra_args);
     add_rigs(f, p);
     add_sequences(f, p, job.use_sequence);

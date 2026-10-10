@@ -11,6 +11,7 @@
 
 #include "sfm/core/Sequence.h"
 #include "sfm/feature/Pairing.h"
+#include "sfm/feature/PairSelection.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/tests/TestMain.h"
 
@@ -178,6 +179,34 @@ static double shapeError(const Reconstruction& m, const Walk& w, uint32_t& regis
     return worst;
 }
 
+static void testOrderWeight() {
+    const std::vector<std::string> names = {"a/1", "a/2", "a/3", "a/4", "b/1", "b/2"};
+    const FileOrder o = fileOrder(names);
+    check(o.pos[0] == 0 && o.pos[3] == 3 && o.pos[4] == 0 && o.run[4] != o.run[0],
+          "file order: positions restart per folder");
+    check(o.boost(0, 1, 1.0, 5.0) > o.boost(0, 3, 1.0, 5.0) && o.boost(0, 3, 1.0, 5.0) > 1.0,
+          "file order: the boost falls with distance");
+    check(o.boost(0, 4, 1.0, 5.0) == 1.0 && o.boost(0, 1, 0.0, 5.0) == 1.0,
+          "file order: no boost across folders or when off");
+
+    // Image 0 keeps one partner: 4 (other folder, score 10) or its neighbour 1
+    // (score 8). 1, 2 and 4 each prefer image 5, so a pair with 0 in the union
+    // is image 0's own choice.
+    auto best = [&](double w) {
+        detail::TopPartners top(6, 1, 4);
+        for (uint32_t p : {1u, 2u, 4u}) top.add(p, 5, 1000, 1000 * o.boost(p, 5, w, 5.0));
+        for (auto e : std::vector<std::pair<uint32_t, uint32_t>>{{1, 8}, {2, 3}, {4, 10}})
+            top.add(0, e.first, e.second, e.second * o.boost(0, e.first, w, 5.0));
+        uint32_t p = UINT32_MAX;
+        for (const auto& pr : top.pairs())
+            if (pr.first == 0) p = pr.second;
+        return p;
+    };
+    check(best(0.0) == 4, "order weight off: content decides");
+    check(best(1.0) == 1, "order weight on: the near pair wins a close call");
+    check(best(1.0) != 2, "order weight: min_score still gates the raw score");
+}
+
 static void testMapperWalk(int device, bool verbose) {
     Walk w = makeWalk();
     MapperOptions opt;
@@ -216,6 +245,7 @@ static int cmdSequenceTest(int argc, char** argv) {
         else if (a == "--no-gpu") gpu = false;
     }
     testTable();
+    testOrderWeight();
     if (gpu) testMapperWalk(device, verbose);
     printf("%s\n", fails == 0 ? "PASS" : "FAIL");
     return fails == 0 ? 0 : 1;

@@ -61,6 +61,7 @@ struct Options {
     // MoGe's ViT budget, which is what sets ITS cost -- the top of the range
     // its own inference offers (moge/README.md). Metric3D ignores it.
     int  num_tokens = 3600;
+    int  refine_steps = 3;
     bool want_depth = false;
     bool want_normal = true;
     std::string normal_format = "png";
@@ -100,6 +101,7 @@ void usage() {
     help_row("--model <id|file>", G::opt_model);
     help_row("--max-size <n>", G::opt_max_size);
     help_row("--num-tokens <n>", G::opt_num_tokens);
+    help_row("--refine-steps <n>", G::opt_refine_steps);
     help_row("--depth", G::opt_depth);
     help_row("--normal-format png|jpg", G::opt_normal_format);
     help_row("--jpeg-quality <n>", G::opt_jpeg_quality);
@@ -587,6 +589,7 @@ int spirula_geometry_main(int argc, char** argv) {
         else if (a == "--model") o.model = next();
         else if (a == "--max-size") o.max_size = std::atoi(next());
         else if (a == "--num-tokens") o.num_tokens = std::atoi(next());
+        else if (a == "--refine-steps") o.refine_steps = std::max(0, std::atoi(next()));
         else if (a == "--depth") o.want_depth = true;
         else if (a == "--no-normal") o.want_normal = false;
         else if (a == "--normal-format") o.normal_format = next();
@@ -834,6 +837,7 @@ int spirula_geometry_main(int argc, char** argv) {
             for (int k = 0; k < warp.faces(); ++k) {
                 warp.sampleFace(k, src.data(), face_rgb);
                 app::GeometryRequest rq = app::face_request(warp, k, o.num_tokens);
+                rq.refine_steps = o.refine_steps;
                 rq.want_depth = need_depth;
                 rq.want_normal = need_normal;
                 int fw = rq.width, fh = rq.height;

@@ -273,12 +273,38 @@ float decode(const uint8_t* p, const std::string& type) {
     return (float)*p;
 }
 
+// The numbers of a config dict beside the weights, by dotted path. A list keeps
+// its None entries as NaN, so positions still line up.
+void flatten_config(const V& v, const std::string& key,
+                    std::map<std::string, std::vector<double>>& out) {
+    auto number = [](const V& x, double* d) {
+        if (x->kind == Kind::Integer) { *d = (double)x->integer; return true; }
+        if (x->kind == Kind::Real) { *d = x->real; return true; }
+        if (x->kind == Kind::None) { *d = std::nan(""); return true; }
+        return false;
+    };
+    double d = 0;
+    if (v->kind == Kind::Dict) {
+        for (const auto& p : v->pairs) flatten_config(p.second, key + "." + p.first->text, out);
+    } else if (v->kind == Kind::Sequence) {
+        std::vector<double> list;
+        for (const V& x : v->items) {
+            if (!number(x, &d)) return;
+            list.push_back(d);
+        }
+        out[key] = std::move(list);
+    } else if (v->kind != Kind::None && number(v, &d)) {
+        out[key] = {d};
+    }
+}
+
 }  // namespace
 
 struct TorchCheckpoint::Impl {
     std::string path;
     std::map<std::string, Entry> entries;
     std::map<std::string, mz_uint> storages;
+    std::map<std::string, std::vector<double>> config;
 };
 
 TorchCheckpoint::TorchCheckpoint(const std::string& path) : impl_(new Impl) {
@@ -309,8 +335,16 @@ TorchCheckpoint::TorchCheckpoint(const std::string& path) : impl_(new Impl) {
     const auto bytes = archive.read(pickle_index, kMetadataLimit, path);
     V root = Pickle(bytes, path).read();
     NN_CHECK(root->kind == Kind::Dict, "%s: checkpoint root is not a state dictionary", path.c_str());
+    // {"state_dict": ...} and MoGe's {"model": ..., "model_config": ...} wrap the
+    // weights; whatever sits beside them is a config, kept for config().
+    V state = root;
     for (const auto& p : root->pairs)
-        if (p.first->text == "state_dict" && p.second->kind == Kind::Dict) { root = p.second; break; }
+        if ((p.first->text == "state_dict" || p.first->text == "model") &&
+            p.second->kind == Kind::Dict) { state = p.second; break; }
+    if (state != root)
+        for (const auto& p : root->pairs)
+            if (p.second != state) flatten_config(p.second, p.first->text, impl_->config);
+    root = state;
     for (const auto& p : root->pairs) {
         NN_CHECK(p.second->kind == Kind::Tensor, "%s: state dictionary entry '%s' is not a tensor", path.c_str(), p.first->text.c_str());
         Entry e = p.second->tensor;
@@ -337,6 +371,10 @@ const TorchCheckpoint::Entry& TorchCheckpoint::entry(const std::string& name) co
     const auto it = impl_->entries.find(name);
     NN_CHECK(it != impl_->entries.end(), "%s: no tensor '%s'", path().c_str(), name.c_str());
     return it->second;
+}
+std::vector<double> TorchCheckpoint::config(const std::string& key) const {
+    const auto it = impl_->config.find(key);
+    return it == impl_->config.end() ? std::vector<double>{} : it->second;
 }
 std::vector<std::string> TorchCheckpoint::names() const {
     std::vector<std::string> out;

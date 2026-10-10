@@ -132,6 +132,34 @@ void fixtures(const std::filesystem::path& path) {
               equal(reader.read("bool"), {0, 1}), "integer storage types");
         rejects([&] { reader.read("missing"); }, "missing tensor rejected");
     }
+    {
+        // MoGe's layout: {"model_config": {...}, "model": {state dict}}.
+        Fixture w;
+        auto ops = [&](std::initializer_list<uint8_t> b) { w.pickle.insert(w.pickle.end(), b); };
+        w.storage<float>("0", {1, 2});
+        w.text("model_config"); ops({'}', '('});
+        w.text("refiner"); ops({'}', '('});
+        w.text("factors"); ops({']', '('}); w.integer(2); w.integer(4); ops({'e'});
+        w.text("dims"); ops({']', '('}); w.integer(3); ops({'N', 'e'});
+        w.text("bins"); w.integer(256);
+        ops({'u'});
+        w.text("scale"); ops({'G', 0x3f, 0xe0, 0, 0, 0, 0, 0, 0});
+        ops({'u'});
+        w.text("model"); ops({'}', '('});
+        w.tensor("w", "FloatStorage", "0", 2, 0, {2}, {1});
+        ops({'u'});
+        w.write(path);
+        nn::TorchCheckpoint reader(path.string());
+        check(reader.names() == std::vector<std::string>{"w"} && equal(reader.read("w"), {1, 2}),
+              "state dictionary under \"model\"");
+        const auto dims = reader.config("model_config.refiner.dims");
+        check(reader.config("model_config.refiner.factors") == std::vector<double>({2, 4}) &&
+                  reader.config("model_config.refiner.bins") == std::vector<double>({256}) &&
+                  reader.config("model_config.scale") == std::vector<double>({0.5}) &&
+                  dims.size() == 2 && dims[0] == 3 && std::isnan(dims[1]) &&
+                  reader.config("model_config.missing").empty(),
+              "config beside the weights, by dotted path");
+    }
     auto bad = [&](const Fixture& input, const char* name) {
         input.write(path); rejects([&] { nn::TorchCheckpoint r(path.string()); }, name);
     };

@@ -8,7 +8,9 @@
 
 #include "sfm/core/Matches.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
@@ -133,6 +135,9 @@ struct State {
 
     // The pair matrix, binned down to kMatrixBins per side.
     uint32_t n_images = 0, bins = 0;
+    // The capture's images by id, so images.bin also lists those no model holds.
+    std::vector<std::string> names;
+    std::vector<uint32_t> keypoints;
     std::vector<uint32_t> counts, planned, verified;
     bool pairs_dirty = false;
 
@@ -193,6 +198,60 @@ bool due(Clock::time_point& last, bool& started) {
     started = true;
     last = now;
     return true;
+}
+
+// images.bin (Progress.h): every image of the model, placed or not.
+std::string image_stats(const Reconstruction& rec) {
+    const State& s = state();
+    uint32_t absent = 0;
+    for (uint32_t i = 0; i < s.names.size(); i++) absent += rec.images.count(i) ? 0 : 1;
+    std::string b;
+    b.reserve(16 + (rec.images.size() + absent) * 48);
+    put(b, "VKPI", 4);
+    put_u32(b, 1);
+    put_u32(b, (uint32_t)rec.images.size() + absent);
+    for (uint32_t i = 0; i < s.names.size(); i++) {
+        if (rec.images.count(i)) continue;
+        put_u32(b, i);
+        const uint8_t placed = 0;
+        put(b, &placed, 1);
+        put_u32(b, i < s.keypoints.size() ? s.keypoints[i] : 0);
+        put_u32(b, 0);
+        put_f32(b, 0.0f);
+        put_f32(b, 0.0f);
+        put_u32(b, (uint32_t)s.names[i].size());
+        put(b, s.names[i].data(), s.names[i].size());
+    }
+    for (const auto& kv : rec.images) {
+        const Image& im = kv.second;
+        uint32_t points = 0;
+        double sum = 0, worst = 0;
+        const auto cam = rec.cameras.find(im.camera_id);
+        if (im.registered && cam != rec.cameras.end())
+            for (size_t f = 0; f < im.point3D_ids.size() && f < im.points2D.size(); f++) {
+                const auto pt = rec.points3D.find(im.point3D_ids[f]);
+                if (pt == rec.points3D.end()) continue;
+                const Vec3 pc = mul(im.pose.R, pt->second.xyz) + im.pose.t;
+                if (pc.z <= 0) continue;
+                const Vec2 px = cam->second.project(pc);
+                const double e = std::hypot(px.x - im.points2D[f].x, px.y - im.points2D[f].y);
+                sum += e;
+                worst = std::max(worst, e);
+                points++;
+            }
+        put_u32(b, im.id);
+        const uint8_t placed = im.registered ? 1 : 0;
+        put(b, &placed, 1);
+        put_u32(b, (uint32_t)im.points2D.size());
+        put_u32(b, points);
+        put_f32(b, points ? (float)(sum / points) : 0.0f);
+        put_f32(b, (float)worst);
+        // The run's own stem: a finished model's names carry the extension.
+        const std::string& name = im.id < s.names.size() ? s.names[im.id] : im.name;
+        put_u32(b, (uint32_t)name.size());
+        put(b, name.data(), name.size());
+    }
+    return b;
 }
 
 void write_pairs_locked() {
@@ -317,6 +376,25 @@ void model(const Reconstruction& rec, bool force, const PointColor& color) {
         put(b, rgb, 3);
     }
     write_atomic("model.bin", b);
+    write_atomic("images.bin", image_stats(rec));
+}
+
+bool write_image_stats(const Reconstruction& rec, const std::string& path) {
+    std::string b;
+    {
+        std::lock_guard<std::mutex> lk(state().mu);
+        b = image_stats(rec);
+    }
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    f.write(b.data(), (std::streamsize)b.size());
+    return (bool)f;
+}
+
+void images(const std::vector<std::string>& names, const std::vector<uint32_t>& keypoints) {
+    State& s = state();
+    std::lock_guard<std::mutex> lk(s.mu);
+    s.names = names;
+    s.keypoints = keypoints;
 }
 
 void gauge(bool oriented, bool metric) {

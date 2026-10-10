@@ -1,10 +1,10 @@
 #pragma once
-// Which MoGe-2 checkpoint to fetch, and from where.
+// Which MoGe checkpoint to fetch, and from where.
 //
-// The artifacts are Ruicheng's own ONNX exports of MoGe-2, fetched
-// byte-for-byte. There is no fp16 export to prefer as there is for Metric3D,
-// so these are fp32 on disk and the loader rounds the matrices on the way to
-// the device.
+// The artifacts are Ruicheng's own, fetched byte-for-byte: ONNX exports of
+// MoGe-2, and MoGe-3's torch.save checkpoint, which has no export because its
+// refiner's sparse convolution has no ONNX operator. All are fp32 on disk and
+// the loader rounds the matrices on the way to the device.
 //
 // The licence is MIT, so unlike the segmentation checkpoints
 // (src/app/gui/ModelCache.cpp) this needs no consent gate. It still never
@@ -19,7 +19,7 @@ namespace moge {
 
 struct ModelSource {
     const char*   id;    // "moge2-vitb" -- what --model spells
-    nn::FetchFile onnx;
+    nn::FetchFile checkpoint;
 };
 
 // Null when `id` is not one of ours.

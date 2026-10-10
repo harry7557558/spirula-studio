@@ -177,41 +177,32 @@ SS_MSG(pairs_help,
        "kapatmayla), diğer durumlarda exhaustive demektir"));
 
 SS_MSG(overlap_help,
-    EN("Neighbours each image is paired with under --pairs sequential and along a "
-       "--sequence, and how far apart two images of a sequence still count as "
-       "neighbours in mapping"),
-    JA("--pairs sequential および --sequence に沿って各画像がペアを組む近傍の数、"
-       "またマッピングでシーケンスの 2 画像を近傍とみなす最大の間隔"),
-    ZH_HANS("在 --pairs sequential 下以及沿 --sequence，每张图像与多少个相邻图像配对；"
-            "也是建图时序列中两张图像相隔多远仍算相邻"),
-    ZH_HANT("在 --pairs sequential 下以及沿 --sequence，每張影像與多少個相鄰影像配對；"
-            "也是建圖時序列中兩張影像相隔多遠仍算相鄰"),
-    KO("--pairs sequential 일 때와 --sequence 를 따라 각 이미지가 짝을 이루는 이웃의 수, "
-       "그리고 매핑에서 시퀀스의 두 이미지가 얼마나 떨어져도 이웃으로 치는지"),
-    DE("Nachbarn, mit denen jedes Bild unter --pairs sequential und entlang einer "
-       "--sequence gepaart wird, und wie weit zwei Bilder einer Sequenz beim Mapping "
-       "noch als Nachbarn gelten"),
-    FR("Voisins avec lesquels chaque image est appariée sous --pairs sequential et le "
-       "long d'une --sequence, et jusqu'à quel écart deux images d'une séquence "
-       "comptent encore comme voisines au mapping"),
-    ES("Vecinos con los que se empareja cada imagen bajo --pairs sequential y a lo "
-       "largo de una --sequence, y a qué distancia dos imágenes de una secuencia aún "
-       "cuentan como vecinas al mapear"),
-    PT("Vizinhos com que cada imagem é emparelhada sob --pairs sequential e ao longo "
-       "de uma --sequence, e a que distância duas imagens de uma sequência ainda "
-       "contam como vizinhas no mapeamento"),
-    IT("Vicini con cui ogni immagine viene abbinata sotto --pairs sequential e lungo "
-       "una --sequence, e a quale distanza due immagini di una sequenza contano "
-       "ancora come vicine nel mapping"),
-    NL("Buren waarmee elk beeld gepaard wordt onder --pairs sequential en langs een "
-       "--sequence, en hoe ver twee beelden van een reeks bij het mappen nog als "
-       "buren gelden"),
-    RU("Сколько соседей получает каждое изображение при --pairs sequential и вдоль "
-       "--sequence, и на каком расстоянии два изображения последовательности ещё "
-       "считаются соседями при построении"),
-    TR("--pairs sequential altında ve bir --sequence boyunca her görüntünün eşleştiği "
-       "komşu sayısı ve haritalamada bir dizinin iki görüntüsünün ne kadar uzakken "
-       "hâlâ komşu sayıldığı"));
+    EN("Neighbours in file order each image is paired with under --pairs sequential "
+       "and --prefilter-sequential"),
+    JA("--pairs sequential および --prefilter-sequential で、各画像がファイル順で"
+       "ペアを組む近傍の数"),
+    ZH_HANS("在 --pairs sequential 和 --prefilter-sequential 下，每张图像按文件顺序"
+            "与多少个相邻图像配对"),
+    ZH_HANT("在 --pairs sequential 和 --prefilter-sequential 下，每張影像按檔案順序"
+            "與多少個相鄰影像配對"),
+    KO("--pairs sequential 일 때와 --prefilter-sequential 일 때 각 이미지가 파일 순서로 "
+       "짝을 이루는 이웃의 수"),
+    DE("Nachbarn in Dateireihenfolge, mit denen jedes Bild unter --pairs sequential "
+       "und --prefilter-sequential gepaart wird"),
+    FR("Voisins dans l'ordre des fichiers avec lesquels chaque image est appariée "
+       "sous --pairs sequential et --prefilter-sequential"),
+    ES("Vecinos en el orden de archivos con los que se empareja cada imagen bajo "
+       "--pairs sequential y --prefilter-sequential"),
+    PT("Vizinhos na ordem dos arquivos com que cada imagem é emparelhada sob "
+       "--pairs sequential e --prefilter-sequential"),
+    IT("Vicini nell'ordine dei file con cui ogni immagine viene abbinata sotto "
+       "--pairs sequential e --prefilter-sequential"),
+    NL("Buren in bestandsvolgorde waarmee elk beeld gepaard wordt onder "
+       "--pairs sequential en --prefilter-sequential"),
+    RU("Сколько соседей в порядке файлов получает каждое изображение при "
+       "--pairs sequential и --prefilter-sequential"),
+    TR("--pairs sequential ve --prefilter-sequential altında her görüntünün dosya "
+       "sırasında eşleştiği komşu sayısı"));
 
 SS_MSG(loop_closure_help,
     EN("Under --pairs sequential, also match the content-similar pairs GPU pair "
@@ -250,35 +241,35 @@ SS_MSG(loop_closure_help,
        "bağlanır"));
 
 SS_MSG(quadratic_overlap_help,
-    EN("A sequential window also pairs each image with the ones 16, 32, 64 ... "
+    EN("A sequential window also pairs each image with the ones 2, 4, 8 ... "
        "apart in file order, up to 2^(overlap-1), as COLMAP does"),
-    JA("逐次ウィンドウで、各画像をファイル順で 16、32、64 … 離れた画像とも"
+    JA("逐次ウィンドウで、各画像をファイル順で 2、4、8 … 離れた画像とも"
        "組にします（2^(overlap-1) まで、COLMAP と同じ）"),
-    ZH_HANS("顺序窗口也把每张图像与文件顺序中相隔 16、32、64 … 张的图像配对，"
+    ZH_HANS("顺序窗口也把每张图像与文件顺序中相隔 2、4、8 … 张的图像配对，"
             "直到 2^(overlap-1)，与 COLMAP 相同"),
-    ZH_HANT("循序視窗也把每張影像與檔案順序中相隔 16、32、64 … 張的影像配對，"
+    ZH_HANT("循序視窗也把每張影像與檔案順序中相隔 2、4、8 … 張的影像配對，"
             "直到 2^(overlap-1)，與 COLMAP 相同"),
-    KO("순차 창에서 각 이미지를 파일 순서로 16, 32, 64 … 장 떨어진 이미지와도 "
+    KO("순차 창에서 각 이미지를 파일 순서로 2, 4, 8 … 장 떨어진 이미지와도 "
        "짝짓습니다(2^(overlap-1)까지, COLMAP 과 같음)"),
     DE("Ein sequenzielles Fenster paart jedes Bild auch mit den Bildern, die in "
-       "Dateireihenfolge 16, 32, 64 ... entfernt liegen, bis 2^(overlap-1), wie "
+       "Dateireihenfolge 2, 4, 8 ... entfernt liegen, bis 2^(overlap-1), wie "
        "COLMAP"),
     FR("Une fenêtre séquentielle apparie aussi chaque image avec celles situées "
-       "à 16, 32, 64 ... dans l'ordre des fichiers, jusqu'à 2^(overlap-1), comme "
+       "à 2, 4, 8 ... dans l'ordre des fichiers, jusqu'à 2^(overlap-1), comme "
        "COLMAP"),
     ES("Una ventana secuencial también empareja cada imagen con las que están a "
-       "16, 32, 64 ... en el orden de archivos, hasta 2^(overlap-1), como COLMAP"),
+       "2, 4, 8 ... en el orden de archivos, hasta 2^(overlap-1), como COLMAP"),
     PT("Uma janela sequencial também emparelha cada imagem com as que estão a "
-       "16, 32, 64 ... na ordem dos arquivos, até 2^(overlap-1), como o COLMAP"),
+       "2, 4, 8 ... na ordem dos arquivos, até 2^(overlap-1), como o COLMAP"),
     IT("Una finestra sequenziale abbina ogni immagine anche a quelle distanti "
-       "16, 32, 64 ... nell'ordine dei file, fino a 2^(overlap-1), come COLMAP"),
+       "2, 4, 8 ... nell'ordine dei file, fino a 2^(overlap-1), come COLMAP"),
     NL("Een sequentieel venster paart elk beeld ook met de beelden die in "
-       "bestandsvolgorde 16, 32, 64 ... verder liggen, tot 2^(overlap-1), zoals "
+       "bestandsvolgorde 2, 4, 8 ... verder liggen, tot 2^(overlap-1), zoals "
        "COLMAP"),
     RU("Последовательное окно также сопоставляет каждое изображение с теми, что "
-       "стоят через 16, 32, 64 ... в порядке файлов, вплоть до 2^(overlap-1), "
+       "стоят через 2, 4, 8 ... в порядке файлов, вплоть до 2^(overlap-1), "
        "как в COLMAP"),
-    TR("Sıralı pencere her görüntüyü dosya sırasında 16, 32, 64 ... uzaktaki "
+    TR("Sıralı pencere her görüntüyü dosya sırasında 2, 4, 8 ... uzaktaki "
        "görüntülerle de eşleştirir; COLMAP gibi 2^(overlap-1)'e kadar"));
 
 SS_MSG(prefilter_sequential_help,
@@ -1564,6 +1555,323 @@ SS_MSG(prefilter_ratio_help,
        "оно только ранжирует"),
     TR("Puanlama geçişinin Lowe oranı; yalnızca sıraladığı için eşleştiricininki "
        "kadar sıkı değildir"));
+
+SS_MSG(order_weight_help,
+    EN("How much pair selection favours images close in file order within a folder; "
+       "an adjacent image's score counts 1 + this times. 0 is off"),
+    JA("ペア選択が同じフォルダ内でファイル順の近い画像をどれだけ優先するか。"
+       "隣の画像のスコアは 1 + この値 倍になります。0 で無効"),
+    ZH_HANS("像对筛选对同一文件夹中文件顺序相近的图像的偏好程度；"
+            "相邻图像的分数按 1 + 此值 倍计。0 为关闭"),
+    ZH_HANT("影像對篩選對同一資料夾中檔案順序相近的影像的偏好程度；"
+            "相鄰影像的分數按 1 + 此值 倍計。0 為關閉"),
+    KO("같은 폴더 안에서 파일 순서가 가까운 이미지를 쌍 선택이 얼마나 우대하는지. "
+       "바로 옆 이미지의 점수는 1 + 이 값 배가 됩니다. 0 은 끔"),
+    DE("Wie stark die Paarauswahl Bilder bevorzugt, die in einem Ordner in "
+       "Dateireihenfolge nahe liegen; der Wert eines direkten Nachbarn zählt "
+       "1 + diesen Wert fach. 0 ist aus"),
+    FR("À quel point la sélection de paires favorise les images proches dans "
+       "l'ordre des fichiers d'un même dossier ; le score d'une image voisine "
+       "compte 1 + cette valeur fois. 0 désactive"),
+    ES("Cuánto favorece la selección de pares a las imágenes cercanas en el orden "
+       "de archivos de una carpeta; la puntuación de una imagen contigua cuenta "
+       "1 + este valor veces. 0 lo desactiva"),
+    PT("Quanto a seleção de pares favorece imagens próximas na ordem dos arquivos "
+       "de uma pasta; a pontuação de uma imagem vizinha conta 1 + este valor "
+       "vezes. 0 desliga"),
+    IT("Quanto la selezione delle coppie favorisce le immagini vicine nell'ordine "
+       "dei file di una cartella; il punteggio di un'immagine adiacente conta "
+       "1 + questo valore volte. 0 la disattiva"),
+    NL("Hoeveel de paarselectie beelden voortrekt die binnen een map dicht bij "
+       "elkaar in bestandsvolgorde liggen; de score van een naastgelegen beeld "
+       "telt 1 + deze waarde keer. 0 is uit"),
+    RU("Насколько отбор пар предпочитает изображения, близкие в порядке файлов "
+       "одной папки; оценка соседнего изображения умножается на 1 + это значение. "
+       "0 выключает"),
+    TR("Çift seçiminin bir klasörde dosya sırasında yakın görüntüleri ne kadar "
+       "kayırdığı; bitişik bir görüntünün puanı 1 + bu değer kat sayılır. 0 kapalı"));
+
+SS_MSG(order_decay_help,
+    EN("File-order distance, in images, over which the --order-weight bonus falls "
+       "to about a third"),
+    JA("--order-weight の加点がおよそ 3 分の 1 に下がるファイル順の距離（画像数）"),
+    ZH_HANS("--order-weight 的加成降到约三分之一时的文件顺序距离（图像数）"),
+    ZH_HANT("--order-weight 的加成降到約三分之一時的檔案順序距離（影像數）"),
+    KO("--order-weight 가산이 약 3분의 1 로 줄어드는 파일 순서 거리(이미지 수)"),
+    DE("Abstand in Dateireihenfolge, in Bildern, über den der Bonus von "
+       "--order-weight auf etwa ein Drittel fällt"),
+    FR("Distance dans l'ordre des fichiers, en images, sur laquelle le bonus de "
+       "--order-weight tombe à environ un tiers"),
+    ES("Distancia en el orden de archivos, en imágenes, en la que la bonificación "
+       "de --order-weight cae a cerca de un tercio"),
+    PT("Distância na ordem dos arquivos, em imagens, em que o bônus de "
+       "--order-weight cai para cerca de um terço"),
+    IT("Distanza nell'ordine dei file, in immagini, entro cui il bonus di "
+       "--order-weight scende a circa un terzo"),
+    NL("Afstand in bestandsvolgorde, in beelden, waarover de bonus van "
+       "--order-weight tot ongeveer een derde zakt"),
+    RU("Расстояние в порядке файлов, в изображениях, на котором надбавка "
+       "--order-weight падает примерно до трети"),
+    TR("--order-weight ekinin yaklaşık üçte bire düştüğü dosya sırası uzaklığı "
+       "(görüntü sayısı)"));
+
+SS_MSG(progressive_help,
+    EN("Progressive alignment: map at a loose pixel error first, then again at "
+       "tighter ones, each attempt continuing from the last"),
+    JA("段階的な位置合わせ: まず緩いピクセル誤差でマッピングし、"
+       "その後より厳しい誤差で、前の試行から続けて繰り返します"),
+    ZH_HANS("渐进对齐：先以宽松的像素误差建图，再以更严格的误差重复，每次都从上一次继续"),
+    ZH_HANT("漸進對齊：先以寬鬆的像素誤差建圖，再以更嚴格的誤差重複，每次都從上一次繼續"),
+    KO("단계적 정렬: 먼저 느슨한 픽셀 오차로 매핑한 뒤 더 엄격한 오차로 다시, "
+       "매번 앞의 시도에서 이어서 합니다"),
+    DE("Schrittweise Ausrichtung: zuerst mit großzügigem Pixelfehler kartieren, "
+       "dann mit strengeren, jeder Versuch setzt den vorigen fort"),
+    FR("Alignement progressif : un premier mapping avec une erreur en pixels "
+       "large, puis d'autres plus strictes, chaque essai reprenant le précédent"),
+    ES("Alineación progresiva: primero se mapea con un error en píxeles amplio, "
+       "luego con otros más estrictos, y cada intento continúa el anterior"),
+    PT("Alinhamento progressivo: primeiro mapeia com um erro em pixels folgado, "
+       "depois com outros mais estritos, cada tentativa continuando a anterior"),
+    IT("Allineamento progressivo: prima il mapping con un errore in pixel largo, "
+       "poi con altri più stretti, ogni tentativo riprende il precedente"),
+    NL("Stapsgewijze uitlijning: eerst mappen met een ruime pixelfout, dan met "
+       "strengere, elke poging gaat verder waar de vorige stopte"),
+    RU("Постепенное выравнивание: сначала построение с мягкой ошибкой в "
+       "пикселях, затем со всё более строгой, каждая попытка продолжает предыдущую"),
+    TR("Kademeli hizalama: önce gevşek bir piksel hatasıyla haritalar, sonra daha "
+       "sıkılarıyla; her deneme bir öncekinden devam eder"));
+
+SS_MSG(progressive_error_start_help,
+    EN("Pixel error of the first progressive attempt; matches are verified at it"),
+    JA("段階的な位置合わせの最初の試行のピクセル誤差。マッチはこの値で検証されます"),
+    ZH_HANS("渐进对齐第一次尝试的像素误差；匹配按此值验证"),
+    ZH_HANT("漸進對齊第一次嘗試的像素誤差；匹配按此值驗證"),
+    KO("단계적 정렬 첫 시도의 픽셀 오차. 매치는 이 값으로 검증됩니다"),
+    DE("Pixelfehler des ersten schrittweisen Versuchs; die Zuordnungen werden "
+       "damit geprüft"),
+    FR("Erreur en pixels du premier essai progressif ; les correspondances sont "
+       "vérifiées avec elle"),
+    ES("Error en píxeles del primer intento progresivo; las correspondencias se "
+       "verifican con él"),
+    PT("Erro em pixels da primeira tentativa progressiva; as correspondências "
+       "são verificadas com ele"),
+    IT("Errore in pixel del primo tentativo progressivo; le corrispondenze sono "
+       "verificate con esso"),
+    NL("Pixelfout van de eerste stapsgewijze poging; de overeenkomsten worden "
+       "ermee gecontroleerd"),
+    RU("Ошибка в пикселях первой попытки; соответствия проверяются с ней"),
+    TR("İlk kademeli denemenin piksel hatası; eşleşmeler bununla doğrulanır"));
+
+SS_MSG(progressive_error_end_help,
+    EN("Pixel error of the last progressive attempt, and so of the written "
+       "model; 0 is --max-error"),
+    JA("段階的な位置合わせの最後の試行、つまり書き出すモデルのピクセル誤差。"
+       "0 は --max-error"),
+    ZH_HANS("渐进对齐最后一次尝试的像素误差，也就是写出的模型的误差；0 表示 --max-error"),
+    ZH_HANT("漸進對齊最後一次嘗試的像素誤差，也就是寫出的模型的誤差；0 表示 --max-error"),
+    KO("단계적 정렬 마지막 시도, 곧 기록되는 모델의 픽셀 오차. 0 은 --max-error"),
+    DE("Pixelfehler des letzten schrittweisen Versuchs und damit des "
+       "geschriebenen Modells; 0 ist --max-error"),
+    FR("Erreur en pixels du dernier essai progressif, donc du modèle écrit ; "
+       "0 vaut --max-error"),
+    ES("Error en píxeles del último intento progresivo, y por tanto del modelo "
+       "escrito; 0 es --max-error"),
+    PT("Erro em pixels da última tentativa progressiva, e portanto do modelo "
+       "gravado; 0 é --max-error"),
+    IT("Errore in pixel dell'ultimo tentativo progressivo, e quindi del modello "
+       "scritto; 0 è --max-error"),
+    NL("Pixelfout van de laatste stapsgewijze poging, en dus van het "
+       "weggeschreven model; 0 is --max-error"),
+    RU("Ошибка в пикселях последней попытки, а значит и записанной модели; "
+       "0 — это --max-error"),
+    TR("Son kademeli denemenin, dolayısıyla yazılan modelin piksel hatası; "
+       "0, --max-error demektir"));
+
+SS_MSG(progressive_features_help,
+    EN("After the error steps, detect features again on images still outside the "
+       "largest model, with more features and resolution each pass"),
+    JA("誤差の段階の後、最大モデルに入っていない画像で、パスごとに特徴点数と解像度を"
+       "増やして特徴点を検出し直します"),
+    ZH_HANS("误差各步之后，对仍不在最大模型中的图像重新检测特征，每一遍增加特征数和分辨率"),
+    ZH_HANT("誤差各步之後，對仍不在最大模型中的影像重新偵測特徵，每一遍增加特徵數和解析度"),
+    KO("오차 단계 뒤에, 아직 가장 큰 모델 밖에 있는 이미지에서 매 패스마다 특징점 수와 "
+       "해상도를 늘려 특징점을 다시 검출합니다"),
+    DE("Nach den Fehlerstufen auf Bildern, die noch außerhalb des größten Modells "
+       "liegen, erneut Merkmale erkennen, mit mehr Merkmalen und Auflösung je Durchgang"),
+    FR("Après les paliers d'erreur, redétecter les points des images encore hors du "
+       "plus grand modèle, avec plus de points et de résolution à chaque passe"),
+    ES("Tras los pasos de error, volver a detectar rasgos en las imágenes que siguen "
+       "fuera del modelo mayor, con más rasgos y resolución en cada pasada"),
+    PT("Após os passos de erro, detectar de novo os traços das imagens ainda fora do "
+       "maior modelo, com mais traços e resolução a cada passagem"),
+    IT("Dopo i passi di errore, rilevare di nuovo i punti sulle immagini ancora fuori "
+       "dal modello più grande, con più punti e risoluzione a ogni passaggio"),
+    NL("Na de foutstappen opnieuw kenmerken detecteren in beelden die nog buiten het "
+       "grootste model liggen, met meer kenmerken en resolutie per ronde"),
+    RU("После шагов ошибки заново искать признаки на снимках вне крупнейшей модели, "
+       "с большим числом признаков и разрешением на каждом проходе"),
+    TR("Hata adımlarından sonra, hâlâ en büyük modelin dışındaki görüntülerde her "
+       "geçişte daha çok öznitelik ve çözünürlükle öznitelikleri yeniden bulur"));
+
+SS_MSG(progressive_max_features_end_help,
+    EN("Feature limit of the last feature pass; the first uses the run's own. 0 is "
+       "four times the run's"),
+    JA("最後の特徴点パスの特徴点上限。最初のパスは実行自体の値を使います。0 はその 4 倍"),
+    ZH_HANS("最后一遍特征检测的特征上限；第一遍使用本次运行自身的值。0 为其 4 倍"),
+    ZH_HANT("最後一遍特徵偵測的特徵上限；第一遍使用本次執行自身的值。0 為其 4 倍"),
+    KO("마지막 특징점 패스의 특징점 한도. 첫 패스는 실행 자체의 값을 씁니다. 0 은 그 4 배"),
+    DE("Merkmalsgrenze des letzten Merkmalsdurchgangs; der erste nimmt die des Laufs. "
+       "0 ist das Vierfache davon"),
+    FR("Limite de points de la dernière passe ; la première prend celle de "
+       "l'exécution. 0 vaut quatre fois celle-ci"),
+    ES("Límite de rasgos de la última pasada; la primera usa el de la ejecución. 0 "
+       "es cuatro veces ese"),
+    PT("Limite de traços da última passagem; a primeira usa o da execução. 0 é quatro "
+       "vezes esse"),
+    IT("Limite di punti dell'ultimo passaggio; il primo usa quello dell'esecuzione. 0 "
+       "è quattro volte quello"),
+    NL("Kenmerkgrens van de laatste ronde; de eerste neemt die van de run. 0 is vier "
+       "keer die"),
+    RU("Предел признаков последнего прохода; первый берёт значение запуска. 0 — в "
+       "четыре раза больше"),
+    TR("Son öznitelik geçişinin öznitelik sınırı; ilki çalıştırmanınkini kullanır. 0, "
+       "bunun dört katıdır"));
+
+SS_MSG(progressive_image_size_end_help,
+    EN("Image size limit of the last feature pass, in pixels on the long edge; the "
+       "first uses the run's own. 0 is the images' full size"),
+    JA("最後の特徴点パスの画像サイズ上限（長辺のピクセル数）。最初のパスは実行自体の値。"
+       "0 は画像の元のサイズ"),
+    ZH_HANS("最后一遍特征检测的图像尺寸上限（长边像素）；第一遍使用本次运行自身的值。"
+            "0 为图像原始尺寸"),
+    ZH_HANT("最後一遍特徵偵測的影像尺寸上限（長邊像素）；第一遍使用本次執行自身的值。"
+            "0 為影像原始尺寸"),
+    KO("마지막 특징점 패스의 이미지 크기 한도(긴 변의 픽셀). 첫 패스는 실행 자체의 값을 "
+       "씁니다. 0 은 이미지 원래 크기"),
+    DE("Bildgrößengrenze des letzten Merkmalsdurchgangs, in Pixeln der langen Kante; "
+       "der erste nimmt die des Laufs. 0 ist die volle Bildgröße"),
+    FR("Taille d'image limite de la dernière passe, en pixels sur le grand côté ; la "
+       "première prend celle de l'exécution. 0 est la taille complète des images"),
+    ES("Límite de tamaño de imagen de la última pasada, en píxeles del lado largo; la "
+       "primera usa el de la ejecución. 0 es el tamaño completo de las imágenes"),
+    PT("Limite de tamanho de imagem da última passagem, em pixels no lado maior; a "
+       "primeira usa o da execução. 0 é o tamanho completo das imagens"),
+    IT("Limite di dimensione dell'immagine dell'ultimo passaggio, in pixel sul lato "
+       "lungo; il primo usa quello dell'esecuzione. 0 è la dimensione piena"),
+    NL("Grens voor de beeldgrootte van de laatste ronde, in pixels aan de lange kant; "
+       "de eerste neemt die van de run. 0 is de volle beeldgrootte"),
+    RU("Предел размера снимка для последнего прохода, в пикселях длинной стороны; "
+       "первый берёт значение запуска. 0 — полный размер снимков"),
+    TR("Son öznitelik geçişinin görüntü boyutu sınırı, uzun kenarda piksel; ilki "
+       "çalıştırmanınkini kullanır. 0, görüntülerin tam boyutudur"));
+
+SS_MSG(progressive_feature_steps_help,
+    EN("Feature passes from the run's settings to the ends"),
+    JA("実行自体の設定から上限まで行う特徴点パスの回数"),
+    ZH_HANS("从本次运行的设置到上限所进行的特征检测遍数"),
+    ZH_HANT("從本次執行的設定到上限所進行的特徵偵測遍數"),
+    KO("실행 자체의 설정에서 한도까지 진행하는 특징점 패스 횟수"),
+    DE("Merkmalsdurchgänge von den Einstellungen des Laufs bis zu den Grenzen"),
+    FR("Passes de détection des réglages de l'exécution jusqu'aux limites"),
+    ES("Pasadas de detección desde los ajustes de la ejecución hasta los límites"),
+    PT("Passagens de detecção dos ajustes da execução até os limites"),
+    IT("Passaggi di rilevamento dalle impostazioni dell'esecuzione fino ai limiti"),
+    NL("Detectierondes van de instellingen van de run tot de grenzen"),
+    RU("Проходы поиска признаков от настроек запуска до пределов"),
+    TR("Çalıştırmanın ayarlarından sınırlara kadar öznitelik geçişi sayısı"));
+
+SS_MSG(progressive_patience_help,
+    EN("Stop the feature passes after this many in a row that align no new image"),
+    JA("新しい画像を 1 枚も位置合わせできないパスがこの回数続いたら特徴点パスを止めます"),
+    ZH_HANS("连续这么多遍都没有对齐新图像时，停止特征检测"),
+    ZH_HANT("連續這麼多遍都沒有對齊新影像時，停止特徵偵測"),
+    KO("새 이미지를 하나도 정렬하지 못한 패스가 이만큼 이어지면 특징점 패스를 멈춥니다"),
+    DE("Merkmalsdurchgänge beenden, wenn so viele nacheinander kein neues Bild "
+       "ausrichten"),
+    FR("Arrêter les passes après autant de passes de suite sans nouvelle image alignée"),
+    ES("Detener las pasadas tras tantas seguidas que no alinean ninguna imagen nueva"),
+    PT("Parar as passagens após tantas seguidas que não alinham nenhuma imagem nova"),
+    IT("Fermare i passaggi dopo questi tanti di fila che non allineano immagini nuove"),
+    NL("Stop de rondes na zoveel achter elkaar die geen nieuw beeld uitlijnen"),
+    RU("Остановить проходы после стольких подряд без новых выровненных снимков"),
+    TR("Arka arkaya bu kadar geçiş yeni görüntü hizalamazsa öznitelik geçişlerini "
+       "durdurur"));
+
+SS_MSG(progressive_min_matches_help,
+    EN("Verified matches an unaligned image needs to be worked on; below it, the "
+       "image is taken for an outlier and left alone"),
+    JA("位置合わせされていない画像が処理対象になるのに必要な検証済みマッチ数。"
+       "これ未満は外れ値とみなして手を付けません"),
+    ZH_HANS("未对齐图像需要多少已验证匹配才会被处理；低于此值视为离群图像，不做处理"),
+    ZH_HANT("未對齊影像需要多少已驗證匹配才會被處理；低於此值視為離群影像，不做處理"),
+    KO("정렬되지 않은 이미지가 처리 대상이 되는 데 필요한 검증된 매치 수. 그보다 적으면 "
+       "이상치로 보고 건드리지 않습니다"),
+    DE("Geprüfte Zuordnungen, die ein nicht ausgerichtetes Bild braucht, um "
+       "bearbeitet zu werden; darunter gilt es als Ausreißer und bleibt liegen"),
+    FR("Correspondances vérifiées qu'une image non alignée doit avoir pour être "
+       "traitée ; en dessous, elle est prise pour aberrante et laissée de côté"),
+    ES("Correspondencias verificadas que necesita una imagen sin alinear para "
+       "tratarla; por debajo, se toma como atípica y se deja"),
+    PT("Correspondências verificadas que uma imagem não alinhada precisa para ser "
+       "tratada; abaixo disso, é tida como atípica e deixada de lado"),
+    IT("Corrispondenze verificate che un'immagine non allineata deve avere per "
+       "essere trattata; sotto, è presa per anomala e lasciata stare"),
+    NL("Gecontroleerde overeenkomsten die een niet-uitgelijnd beeld nodig heeft om "
+       "behandeld te worden; daaronder geldt het als uitschieter en blijft liggen"),
+    RU("Сколько проверенных соответствий нужно невыровненному снимку, чтобы им "
+       "занялись; меньше — снимок считается выбросом и не трогается"),
+    TR("Hizalanmamış bir görüntünün işlenmesi için gereken doğrulanmış eşleşme "
+       "sayısı; altında aykırı sayılır ve bırakılır"));
+
+SS_MSG(progressive_time_help,
+    EN("Minutes into progressive alignment after which no further feature pass "
+       "starts; 0 is no limit"),
+    JA("段階的な位置合わせの開始からこの分数を過ぎたら、次の特徴点パスを始めません。"
+       "0 で無制限"),
+    ZH_HANS("渐进对齐开始后超过这么多分钟，就不再开始新的特征检测；0 为不限"),
+    ZH_HANT("漸進對齊開始後超過這麼多分鐘，就不再開始新的特徵偵測；0 為不限"),
+    KO("단계적 정렬을 시작하고 이 분이 지나면 다음 특징점 패스를 시작하지 않습니다. "
+       "0 은 제한 없음"),
+    DE("Minuten nach Beginn der schrittweisen Ausrichtung, nach denen kein weiterer "
+       "Merkmalsdurchgang beginnt; 0 ist ohne Grenze"),
+    FR("Minutes après le début de l'alignement progressif au-delà desquelles aucune "
+       "passe ne démarre ; 0 est sans limite"),
+    ES("Minutos desde el inicio de la alineación progresiva tras los que no empieza "
+       "otra pasada; 0 es sin límite"),
+    PT("Minutos desde o início do alinhamento progressivo após os quais nenhuma "
+       "passagem começa; 0 é sem limite"),
+    IT("Minuti dall'inizio dell'allineamento progressivo dopo i quali non parte altro "
+       "passaggio; 0 è senza limite"),
+    NL("Minuten na het begin van de stapsgewijze uitlijning waarna geen nieuwe "
+       "ronde begint; 0 is zonder grens"),
+    RU("Минуты от начала постепенного выравнивания, после которых новый проход не "
+       "начинается; 0 — без ограничения"),
+    TR("Kademeli hizalama başladıktan sonra yeni geçiş başlatılmayan dakika sayısı; "
+       "0 sınırsızdır"));
+
+SS_MSG(progressive_error_steps_help,
+    EN("Progressive attempts from the start error to the end error, both "
+       "included, spaced evenly in ratio"),
+    JA("開始誤差から終了誤差までの段階的な試行の回数（両端を含み、比で等間隔）"),
+    ZH_HANS("从起始误差到结束误差的渐进尝试次数，含两端，按比例均匀分布"),
+    ZH_HANT("從起始誤差到結束誤差的漸進嘗試次數，含兩端，按比例均勻分佈"),
+    KO("시작 오차부터 끝 오차까지의 단계적 시도 횟수(양 끝 포함, 비율로 고르게)"),
+    DE("Schrittweise Versuche vom Start- bis zum Endfehler, beide "
+       "eingeschlossen, im Verhältnis gleichmäßig verteilt"),
+    FR("Essais progressifs de l'erreur de départ à l'erreur finale, les deux "
+       "comprises, espacés régulièrement en rapport"),
+    ES("Intentos progresivos del error inicial al final, ambos incluidos, "
+       "espaciados por igual en proporción"),
+    PT("Tentativas progressivas do erro inicial ao final, ambos incluídos, "
+       "espaçadas igualmente em proporção"),
+    IT("Tentativi progressivi dall'errore iniziale a quello finale, entrambi "
+       "inclusi, distanziati in rapporto costante"),
+    NL("Stapsgewijze pogingen van de begin- tot de eindfout, beide inbegrepen, "
+       "gelijkmatig verdeeld in verhouding"),
+    RU("Число попыток от начальной ошибки до конечной, включая обе, "
+       "равномерно по отношению"),
+    TR("Başlangıç hatasından bitiş hatasına kadar kademeli deneme sayısı; "
+       "ikisi de dahil, oranca eşit aralıklı"));
 
 // ===========================================================================
 // mapper

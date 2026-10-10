@@ -1,6 +1,8 @@
 // GuiApp.cpp -- see GuiApp.h.
 
 #include "app/gui/GuiApp.h"
+
+#include "sfm/ProgressivePresets.h"
 #include "i18n/catalog/Dense.h"
 #include "roma/model/Fetch.h"
 #include "dense/ConfigFields.h"
@@ -348,8 +350,10 @@ void GuiApp::shutdown() {
     _partition_panel.destroy_gl();
     _roi_editor.destroy_gl();
     if (_merge_thread.joinable()) _merge_thread.join();
-    _colmap.cancel();
-    _sfm.cancel();
+    // Joined here: the workers write into _film_*, which are destroyed before
+    // the runners are, and a run holds the inference device main() releases.
+    _colmap.shutdown();
+    _sfm.shutdown();
     reset_dataset_preview();
     _source_probe.stop();
     _download.cancel();
@@ -715,6 +719,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     line("sharp_window", std::to_string(j.prep.sharp_window));
     line("sync_tracks", cfg_str(j.prep.sync_tracks));
     line("max_frames", std::to_string(j.prep.max_frames));
+    for (const auto& [flag, value] : j.options) line("--" + flag, value);
     if (!j.extra_args.empty()) line("extra_args", j.extra_args);
 
     if (effective_engine() == Engine::Colmap) {
@@ -919,6 +924,13 @@ void GuiApp::refresh_mesh_presets() {
     _mesh_presets.items = list_mesh_presets();
 }
 
+void GuiApp::refresh_sfm_presets() {
+    double now = ImGui::GetTime();
+    if (_sfm_presets.scanned_at >= 0.0 && now - _sfm_presets.scanned_at < 2.0) return;
+    _sfm_presets.scanned_at = now;
+    _sfm_presets.items = list_sfm_presets();
+}
+
 
 // ---------------------------------------------------------------------------
 // Dataset and meshing presets
@@ -1019,6 +1031,7 @@ void GuiApp::apply_dataset_builtin(const std::string& name) {
     if (!dataset_apply_preset(s, use)) return;
     dataset_adapt_preset(use, _sources, s.sfm, s.colmap, _ffmpeg_exe);
     apply_dataset_settings(s);
+    _ds_builtin_base = capture_dataset_settings();
     _ds_presets.file.clear();
     _ds_presets.builtin = use;
     _ds_presets.display.clear();
@@ -1029,12 +1042,17 @@ void GuiApp::apply_dataset_builtin(const std::string& name) {
 // The capture's own defaults have just moved settings a built-in preset
 // decided, so it goes back on top of them and asks the new frames its own
 // question. Only a built-in: re-applying a FILE would undo every edit since.
-void GuiApp::reapply_dataset_builtin() {
+void GuiApp::reapply_dataset_builtin(const DatasetSettings& before) {
     if (!_ds_presets.file.empty() || _ds_presets.builtin.empty()) return;
     DatasetSettings s = capture_dataset_settings();
     if (dataset_apply_preset(s, _ds_presets.builtin)) apply_dataset_settings(s);
     dataset_adapt_preset(_ds_presets.builtin, _sources, _sfm_job, _colmap_job,
                          _ffmpeg_exe);
+    const DatasetSettings fresh = capture_dataset_settings();
+    DatasetSettings kept = fresh;
+    keep_dataset_edits(kept, before, _ds_builtin_base);
+    _ds_builtin_base = fresh;
+    apply_dataset_settings(kept);
 }
 
 void GuiApp::load_dataset_preset_file(const std::string& path) {
@@ -1095,6 +1113,30 @@ void GuiApp::load_mesh_preset_file(const std::string& path) {
     log(_mesh_presets.msg);
     _mesh_presets.scanned_at = -1.0;
     refresh_mesh_presets();
+}
+
+void GuiApp::apply_sfm_preset_file(const SfmPreset& p) {
+    apply_sfm_preset(p, _sfm_job);
+    _sfm_presets.file = p.path;
+    _sfm_presets.display = p.name;
+    _sfm_presets.desc = p.description;
+    _sfm_presets.msg.clear();
+}
+
+void GuiApp::load_sfm_preset_file(const std::string& path) {
+    if (path.empty()) return;
+    try {
+        SfmPreset p = load_sfm_preset(path);
+        apply_sfm_preset_file(p);
+        _sfm_presets.msg = i18n::format(msg::preset_loaded, {p.name});
+        _sfm_presets.msg_err = false;
+    } catch (const std::exception& e) {
+        _sfm_presets.msg = i18n::format(msg::preset_failed, {e.what()});
+        _sfm_presets.msg_err = true;
+    }
+    log(_sfm_presets.msg);
+    _sfm_presets.scanned_at = -1.0;
+    refresh_sfm_presets();
 }
 
 
@@ -2218,6 +2260,11 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
             if (!_mesh_presets.msg_err) _screen = Screen::Mesh;
             return;
         }
+        if (kind == PresetKind::Sfm) {
+            load_sfm_preset_file(paths[0]);
+            if (!_sfm_presets.msg_err) _screen = Screen::NewDataset;
+            return;
+        }
         if (kind == PresetKind::Train && is_preset_file(paths[0])) {
             load_preset_file(paths[0]);
             if (!_train_presets.msg_err && !_cfg.data.empty())
@@ -2479,8 +2526,9 @@ void GuiApp::pump_source_probes() {
     if (native_work_busy()) return;
     _source_probes_ready = !pending;
     if (!pano_changed) return;
+    const DatasetSettings before = capture_dataset_settings();
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
-    reapply_dataset_builtin();
+    reapply_dataset_builtin(before);
 }
 
 // Attach a picked `masks/` folder to the input whose images it describes --
@@ -2536,8 +2584,9 @@ void GuiApp::replace_source(size_t input, const std::string& path) {
     _source_path_edits[input] = _sources[input].path;
     _restored_ws.clear();
     mark_source_metadata_dirty();
+    const DatasetSettings before = capture_dataset_settings();
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
-    reapply_dataset_builtin();
+    reapply_dataset_builtin(before);
     if (!_color_space_touched) {
         _sfm_job.image_gamut.clear();
         _sfm_job.image_is_linear.reset();
@@ -2592,8 +2641,9 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
     }
     if (!inputs.empty()) mark_source_metadata_dirty();
     if (_sources.empty()) return false;
+    const DatasetSettings before = capture_dataset_settings();
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
-    reapply_dataset_builtin();
+    reapply_dataset_builtin(before);
     if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
     adopt_file_color_space();
     refresh_sources();
@@ -2723,6 +2773,7 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::PresetFile:
         case PickAction::DatasetPresetFile:
         case PickAction::MeshPresetFile:
+        case PickAction::SfmPresetFile:
         case PickAction::PresetSaveFolder:
         case PickAction::BatchPresetFile:
         case PickAction::BatchDatasetPresetFile:
@@ -2879,6 +2930,9 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             break;
         case PickAction::MeshPresetFile:
             load_mesh_preset_file(path);
+            break;
+        case PickAction::SfmPresetFile:
+            load_sfm_preset_file(path);
             break;
         case PickAction::BatchDataset:
             if (!path.empty()) {
@@ -4741,9 +4795,10 @@ void GuiApp::draw_dataset_basics() {
     // different knobs, so it is one control.
     ImGui::SetNextItemWidth(px(220.0f));
     if (builtin) {
-        ui::Combo(dmsg::quality, &_sfm_job.quality,
-                  {&dmsg::quality_fast, &dmsg::quality_balanced,
-                   &dmsg::quality_high_recommended, &dmsg::quality_maximum});
+        if (ui::Combo(dmsg::quality, &_sfm_job.quality,
+                      {&dmsg::quality_fast, &dmsg::quality_balanced,
+                       &dmsg::quality_high_recommended, &dmsg::quality_maximum}))
+            apply_progressive_preset();
         ui::help_on_hover(dmsg::quality_help_builtin);
     } else {
         ui::Combo(dmsg::quality, &_colmap_job.quality,
@@ -4815,6 +4870,7 @@ void GuiApp::draw_dataset_basics() {
                   {&dmsg::matching_automatic, &dmsg::matching_every_pair,
                    &dmsg::matching_neighbours, &dmsg::matching_gpu_preselect});
         ui::help_on_hover(dmsg::matching_help_builtin);
+        draw_progressive_options();
     } else {
         int matcher_idx = _colmap_job.matcher - 1;
         if (matcher_idx < 0 || matcher_idx > 2)
@@ -6049,11 +6105,31 @@ int draw_view_tabs(const Msg* const* names, const bool* avail, int n, int implie
 }  // namespace
 
 void GuiApp::draw_dataset_steps() {
+    // The plan last drawn or launched: what this run will do at each step.
+    auto planned = [&](Stage s) {
+        const bool staged = effective_engine() == Engine::BuiltIn;
+        switch (s) {
+            case Stage::Frames:   return _plan[Step::Frames].act != Act::None;
+            case Stage::Masks:    return _plan[Step::Masks].act != Act::None;
+            case Stage::Features: return staged ? _plan[ModelPart::Features].act != Act::None
+                                                : _plan[Step::Model].act != Act::None;
+            case Stage::Matching: return staged ? _plan[ModelPart::Matching].act != Act::None
+                                                : _plan[Step::Model].act != Act::None;
+            case Stage::Mapping:  return staged ? _plan[ModelPart::Mapping].act != Act::None
+                                                : _plan[Step::Model].act != Act::None;
+            case Stage::Align:    return !_lidar.empty();
+            case Stage::Dense:    return _plan[Step::Dense].act != Act::None;
+            case Stage::Geometry: return _plan[Step::Geometry].act != Act::None;
+            case Stage::Finishing: return true;
+        }
+        return true;
+    };
     std::vector<RunStep> all;
     for (int i = 0; i < kNumStages; i++) {
-        // Only a run with a laser scan has the step at all.
-        if ((Stage)i == Stage::Align && _lidar.empty() &&
-            dataset_steps()->stage(Stage::Align).status == StageStatus::Pending)
+        // A step this run does not take is left out, unless it has already
+        // said something about itself.
+        const StageStatus st = dataset_steps()->stage((Stage)i).status;
+        if ((st == StageStatus::Pending || st == StageStatus::Skipped) && !planned((Stage)i))
             continue;
         all.push_back({(Stage)i, &step_name((Stage)i)});
     }
@@ -6171,6 +6247,19 @@ void GuiApp::poll_sfm_progress() {
                           _sfm.live_matches_path());
 
     const std::string dir = _sfm.progress_dir();
+    // The run's own file while it lasts; the workspace's copy outlives it.
+    std::error_code ec;
+    const fs::path live = dir.empty() ? fs::path() : fs::path(dir) / "images.bin";
+    const std::string stats_path =
+        !live.empty() && fs::exists(live, ec) ? live.string()
+        : _workspace.empty()                  ? std::string()
+                                              : (fs::path(_workspace) / "image_stats.bin").string();
+    if (stats_path != _image_stats_path) {
+        _image_stats_path = stats_path;
+        _image_stats_mtime = 0;
+        _image_stats.clear();
+    }
+    const bool stats_read = read_image_stats(_image_stats_path, _image_stats_mtime, _image_stats);
     if (dir.empty()) return;
 
     PairMatrix pm;
@@ -6211,14 +6300,266 @@ void GuiApp::poll_sfm_progress() {
                                  (long long)_live_model.n_points}),
                    /*detail=*/false);
         }
-        // Same key every time: the pose the user navigated to belongs to the
-        // scene, not to the snapshot, and re-framing on every one of them
-        // would make the view unusable while it is most worth watching.
-        _model_view.attach_preview_data(_live_model.ds, _live_model.post,
-                                        "sfm-live", /*radius=*/1.0f,
-                                        /*with_cameras=*/true);
-        _model_attached = true;
+        attach_live_model();
+    } else if (stats_read && _model_attached) {
+        attach_live_model();
     }
+}
+
+namespace {
+
+// What the colours are measured against: the run's own error gates, and the
+// placed images' median 3D points.
+struct FitScale {
+    float green_px = 0, red_px = 3;
+    float median_points = 1;
+};
+
+// 0 for an image that fits the model well, 1 for one that barely does: by its
+// mean reprojection error against the gates, or by its 3D points against the
+// median, an eighth of it being red.
+float image_badness(const ImageStat& s, int by, const FitScale& f) {
+    if (by == 1)
+        return std::clamp((s.mean_error - f.green_px) / std::max(f.red_px - f.green_px, 1e-3f),
+                          0.0f, 1.0f);
+    const float n = (float)std::max<uint32_t>(s.points, 1);
+    return std::clamp(std::log2(std::max(f.median_points, 1.0f) / n) / 3.0f, 0.0f, 1.0f);
+}
+
+float median_points(const std::vector<ImageStat>& stats) {
+    std::vector<uint32_t> v;
+    for (const ImageStat& s : stats)
+        if (s.placed) v.push_back(s.points);
+    if (v.empty()) return 1.0f;
+    std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+    return (float)v[v.size() / 2];
+}
+
+// Green through yellow to red in twelve steps: the renderer draws the cameras
+// one colour at a time.
+ImVec4 badness_color(float b) {
+    const float q = std::round(b * 11.0f) / 11.0f;
+    const ImVec4 good(0.30f, 0.85f, 0.35f, 1), mid(0.95f, 0.80f, 0.20f, 1),
+        bad(0.95f, 0.25f, 0.20f, 1);
+    const ImVec4& a = q < 0.5f ? good : mid;
+    const ImVec4& c = q < 0.5f ? mid : bad;
+    const float f = q < 0.5f ? q * 2.0f : (q - 0.5f) * 2.0f;
+    return ImVec4(a.x + (c.x - a.x) * f, a.y + (c.y - a.y) * f, a.z + (c.z - a.z) * f, 1);
+}
+
+// --max-error's default: the run's own final gate when nothing sets it.
+constexpr float kDefaultMaxErrorPx = 3.0f;
+
+// A gate bounds every observation; an image's mean sat near a third of it in
+// the 260-image runs (1.5 px at 20, 0.9 px at 3). Progressive: red at a third
+// of the first attempt's gate, green at a third of the last's.
+constexpr float kMeanPerGate = 1.0f / 3.0f;
+
+FitScale fit_scale(const std::vector<ImageStat>& stats, const SfmJob& j) {
+    FitScale f;
+    f.median_points = median_points(stats);
+    const float end = j.progressive_error_end > 0 ? j.progressive_error_end : kDefaultMaxErrorPx;
+    f.green_px = (j.progressive ? end : 0.0f) * kMeanPerGate;
+    f.red_px = (j.progressive ? std::max(j.progressive_error_start, end * 1.5f) : end) *
+               kMeanPerGate;
+    return f;
+}
+
+}  // namespace
+
+void GuiApp::attach_live_model() {
+    std::vector<float> rgb;
+    const std::vector<uint32_t>& ids = _live_model.ids;
+    if (_camera_color != 0 && !_image_stats.empty() &&
+        ids.size() == (size_t)_live_model.ds.num_cameras) {
+        std::unordered_map<uint32_t, const ImageStat*> by_id;
+        const FitScale scale = fit_scale(_image_stats, _sfm_job);
+        for (const ImageStat& s : _image_stats) by_id[s.id] = &s;
+        rgb.resize(ids.size() * 3);
+        for (size_t i = 0; i < ids.size(); i++) {
+            const auto it = by_id.find(ids[i]);
+            const ImVec4 c = it == by_id.end() ? ImVec4(0.6f, 0.6f, 0.6f, 1)
+                                               : badness_color(image_badness(*it->second, _camera_color, scale));
+            rgb[i * 3] = c.x;
+            rgb[i * 3 + 1] = c.y;
+            rgb[i * 3 + 2] = c.z;
+        }
+    }
+    // Same key every time: the pose the user navigated to belongs to the
+    // scene, not to the snapshot, and re-framing on every one of them
+    // would make the view unusable while it is most worth watching.
+    _model_view.attach_preview_data(_live_model.ds, _live_model.post, "sfm-live",
+                                    /*radius=*/1.0f, /*with_cameras=*/true, nullptr,
+                                    rgb.empty() ? nullptr : rgb.data());
+    _model_attached = true;
+}
+
+std::string GuiApp::image_file_for(const std::string& stem) {
+    std::error_code ec;
+    fs::path dir = _sfm.sfm_image_dir();
+    if (dir.empty() || !fs::is_directory(dir, ec)) dir = fs::path(_workspace) / "images";
+    if (dir.string() != _image_files_dir) {
+        _image_files_dir = dir.string();
+        _image_files.clear();
+        for (fs::recursive_directory_iterator it(dir, ec), e; !ec && it != e; it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            const fs::path rel = it->path().lexically_relative(dir);
+            _image_files[(rel.parent_path() / rel.stem()).generic_string()] = it->path().string();
+        }
+    }
+    const auto it = _image_files.find(stem);
+    return it == _image_files.end() ? std::string() : it->second;
+}
+
+void GuiApp::view_from_camera(uint32_t id) {
+    const LiveModel& m = _live_model;
+    size_t i = 0;
+    while (i < m.ids.size() && m.ids[i] != id) i++;
+    if (i == m.ids.size() || i >= (size_t)m.ds.num_cameras) return;
+    // Train frame -> the preview's normalized one (as PreviewRenderer maps
+    // it) -> the frame navigation works in.
+    double T[16];
+    dsparse::train_to_normalized_inverse(m.ds, T);
+    float S[12];
+    _model_view.model_to_shared(S);
+    float M[12];
+    for (int row = 0; row < 3; row++)
+        for (int c = 0; c < 4; c++) {
+            double v = c == 3 ? S[row * 4 + 3] : 0.0;
+            for (int k = 0; k < 3; k++) v += S[row * 4 + k] * T[k * 4 + c];
+            M[row * 4 + c] = (float)v;
+        }
+    const float s = std::sqrt(M[0] * M[0] + M[4] * M[4] + M[8] * M[8]);
+    const float* c2w = &m.ds.c2w[i * 12];
+    float pose[12], eye[3];
+    for (int row = 0; row < 3; row++) {
+        float p = M[row * 4 + 3];
+        for (int k = 0; k < 3; k++) {
+            p += M[row * 4 + k] * c2w[k * 4 + 3];
+            float v = 0;
+            for (int j = 0; j < 3; j++) v += M[row * 4 + j] / s * c2w[j * 4 + k];
+            pose[row * 4 + k] = v;
+        }
+        pose[row * 4 + 3] = eye[row] = p;
+    }
+    // Look a short way ahead of the camera, so orbiting starts from where it looks.
+    float target[3];
+    for (int k = 0; k < 3; k++) target[k] = eye[k] - pose[k * 4 + 2] * 0.25f * s;
+    const float fx = m.ds.intrins[i * 4], w = (float)m.ds.widths[i];
+    if (fx > 0 && w > 0)
+        _model_view.set_view_lens(0, 2.0f * std::atan(w / (2.0f * fx)) * 57.29578f);
+    _model_view.set_nav_pose(pose, target);
+    _preview_tab = 4;
+}
+
+void GuiApp::draw_image_list(float height) {
+    const FitScale scale = fit_scale(_image_stats, _sfm_job);
+    uint32_t placed = 0;
+    for (const ImageStat& s : _image_stats) placed += s.placed ? 1 : 0;
+    ui::Text(dmsg::images_summary, {(long long)placed, (long long)_image_stats.size()});
+    ui::help_on_hover(dmsg::images_help);
+    const ImGuiTableFlags flags = ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY |
+                                  ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
+                                  ImGuiTableFlags_Resizable;
+    const float h = std::max(px(60.0f), height - ImGui::GetTextLineHeightWithSpacing());
+    const ImageStat* picked = nullptr;
+    for (const ImageStat& s : _image_stats)
+        if (s.id == _image_picked) picked = &s;
+    const float table_w = picked ? ImGui::GetContentRegionAvail().x * 0.55f : 0.0f;
+    const ImageStat* clicked = nullptr;
+    if (ImGui::BeginTable("##images", 6, flags, ImVec2(table_w, h))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ui::TableSetupColumn(dmsg::images_col_name,
+                             ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthStretch);
+        ui::TableSetupColumn(dmsg::images_col_status);
+        ui::TableSetupColumn(dmsg::images_col_points);
+        ui::TableSetupColumn(dmsg::images_col_keypoints);
+        ui::TableSetupColumn(dmsg::images_col_mean);
+        ui::TableSetupColumn(dmsg::images_col_max);
+        ImGui::TableHeadersRow();
+
+        std::vector<const ImageStat*> rows;
+        rows.reserve(_image_stats.size());
+        for (const ImageStat& s : _image_stats) rows.push_back(&s);
+        if (const ImGuiTableSortSpecs* spec = ImGui::TableGetSortSpecs(); spec && spec->SpecsCount) {
+            const int col = spec->Specs[0].ColumnIndex;
+            const bool up = spec->Specs[0].SortDirection == ImGuiSortDirection_Ascending;
+            auto key = [col](const ImageStat* s) -> double {
+                switch (col) {
+                    case 1: return s->placed ? 1 : 0;
+                    case 2: return s->points;
+                    case 3: return s->keypoints;
+                    case 4: return s->mean_error;
+                    case 5: return s->max_error;
+                    default: return 0;
+                }
+            };
+            std::stable_sort(rows.begin(), rows.end(), [&](const ImageStat* a, const ImageStat* b) {
+                if (col == 0) return up ? a->name < b->name : b->name < a->name;
+                return up ? key(a) < key(b) : key(b) < key(a);
+            });
+        }
+        ImGuiListClipper clip;
+        clip.Begin((int)rows.size());
+        while (clip.Step())
+            for (int r = clip.DisplayStart; r < clip.DisplayEnd; r++) {
+                const ImageStat& s = *rows[(size_t)r];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if (ui::SelectableRaw(s.name.c_str(), s.id == _image_picked,
+                                      ImGuiSelectableFlags_SpanAllColumns))
+                    clicked = &s;
+                ImGui::TableNextColumn();
+                if (s.placed) ui::TextColored(kOk, dmsg::images_placed);
+                else ui::TextColored(kDim, dmsg::images_not_placed);
+                ImGui::TableNextColumn();
+                if (s.placed)
+                    ui::TextColoredRaw(badness_color(image_badness(s, 2, scale)),
+                                       std::to_string(s.points));
+                ImGui::TableNextColumn();
+                ui::TextRaw(std::to_string(s.keypoints));
+                ImGui::TableNextColumn();
+                char num[32];
+                if (s.placed && s.points) {
+                    std::snprintf(num, sizeof num, "%.2f", s.mean_error);
+                    ui::TextColoredRaw(badness_color(image_badness(s, 1, scale)), num);
+                }
+                ImGui::TableNextColumn();
+                if (s.placed && s.points) {
+                    std::snprintf(num, sizeof num, "%.2f", s.max_error);
+                    ui::TextRaw(num);
+                }
+            }
+        ImGui::EndTable();
+    }
+    if (clicked && clicked->id != _image_picked) {
+        _image_picked = clicked->id;
+        picked = clicked;
+        _film_picked.clear();
+        FilmFrame f;
+        f.name = clicked->name;
+        f.image_path = image_file_for(clicked->name);
+        std::error_code ec;
+        const fs::path feats = fs::path(_sfm.features_dir().empty()
+                                            ? (fs::path(_workspace) / "features").string()
+                                            : _sfm.features_dir()) /
+                               (clicked->name + ".bin");
+        if (fs::exists(feats, ec)) f.points_path = feats.string();
+        if (!f.image_path.empty()) _film_picked.add_loaded(f);
+    }
+    if (!picked) return;
+
+    ImGui::SameLine();
+    ImGui::BeginChild("##picked", ImVec2(0, h));
+    bool in_model = false;
+    for (uint32_t id : _live_model.ids) in_model = in_model || id == picked->id;
+    ImGui::BeginDisabled(!picked->placed || !_model_attached || !in_model);
+    if (ui::Button(dmsg::images_view_from_camera)) view_from_camera(picked->id);
+    ImGui::EndDisabled();
+    ui::help_on_hover(dmsg::images_view_from_camera_help);
+    if (!_film_picked.has_frames()) ui::TextDisabledWrapped(dmsg::images_no_file);
+    else _film_picked.draw(ImGui::GetContentRegionAvail().y);
+    ImGui::EndChild();
 }
 
 // Everything the dataset screen holds about a run, given up: the previews, and
@@ -6238,11 +6579,17 @@ void GuiApp::reset_dataset_preview(bool sweep) {
     _pairs_view.clear();
     _pairs_view.destroy_gl();
     for (FilmReel* f : {&_film_frames, &_film_masks, &_film_features,
-                        &_film_geometry}) {
+                        &_film_geometry, &_film_picked}) {
         f->clear();
         f->destroy_gl();
     }
+    _image_picked = UINT32_MAX;
+    _image_files.clear();
+    _image_files_dir.clear();
     _model_mtime = _pairs_mtime = _matches_mtime = _dense_model_mtime = 0;
+    _image_stats.clear();
+    _image_stats_mtime = 0;
+    _image_stats_path.clear();
     _dense_model_read = {};
     _dense_preview_error.clear();
     _dense_polled_at = -1.0;
@@ -6255,7 +6602,7 @@ void GuiApp::reset_dataset_preview(bool sweep) {
 bool GuiApp::preview_has_content() const {
     return _film_frames.has_frames() || _film_masks.has_frames() ||
            _film_features.has_frames() || !_matrix.empty() || _model_attached ||
-           _film_geometry.has_frames();
+           _film_geometry.has_frames() || !_image_stats.empty();
 }
 
 // The frames / match map / model area. Which one it shows follows the running
@@ -6266,12 +6613,12 @@ bool GuiApp::preview_has_content() const {
 // needs; a column of its own hands its own height down instead.
 void GuiApp::draw_dataset_preview(float height) {
     // Null where the view is not a reel: the match map, the model, the motion.
-    FilmReel* reels[7] = {&_film_frames, &_film_masks, &_film_features,
-                          nullptr, nullptr, &_film_geometry, nullptr};
-    const bool avail[7] = {_film_frames.has_frames(), _film_masks.has_frames(),
+    FilmReel* reels[8] = {&_film_frames, &_film_masks, &_film_features,
+                          nullptr, nullptr, &_film_geometry, nullptr, nullptr};
+    const bool avail[8] = {_film_frames.has_frames(), _film_masks.has_frames(),
                            _film_features.has_frames(), !_matrix.empty(),
                            _model_attached, _film_geometry.has_frames(),
-                           !dataset_steps()->scan().empty()};
+                           !dataset_steps()->scan().empty(), !_image_stats.empty()};
     bool any_avail = false;
     for (bool v : avail) any_avail = any_avail || v;
     if (!any_avail && _dense_preview_error.empty() && !_dense_live) return;
@@ -6297,11 +6644,13 @@ void GuiApp::draw_dataset_preview(float height) {
 
     const int implied = preview_for_stage();
     if (dataset_busy() && implied >= 0) _preview_last_stage = implied;
-    const Msg* names[7] = {&dmsg::view_frames, &dmsg::view_masks,
+    // Beside the switch, unless the paused-preview note took the line under it.
+    if (_dense_preview_error.empty()) ImGui::SameLine(0.0f, px(24.0f));
+    const Msg* names[8] = {&dmsg::view_frames, &dmsg::view_masks,
                            &dmsg::view_features, &dmsg::view_matrix,
                            &dmsg::view_model, &dmsg::view_geometry,
-                           &dmsg::view_motion};
-    const int tab = draw_view_tabs(names, avail, 7, implied, _preview_tab);
+                           &dmsg::view_motion, &dmsg::view_images};
+    const int tab = draw_view_tabs(names, avail, 8, implied, _preview_tab);
     if (tab == 3) ui::help_on_hover(dmsg::matrix_help);
     if (tab == 6) ui::help_on_hover(dmsg::frame_spacing_help);
 
@@ -6331,6 +6680,10 @@ void GuiApp::draw_dataset_preview(float height) {
     }
     if (tab == 6) {
         draw_scan_view(h - px(8.0f));
+        return;
+    }
+    if (tab == 7) {
+        draw_image_list(h - px(8.0f));
         return;
     }
     if (tab == 3) {
@@ -6372,6 +6725,20 @@ void GuiApp::draw_dataset_preview(float height) {
     if (_live_model.empty()) {
         ui::TextDisabledWrapped(dmsg::model_waiting);
         return;
+    }
+    if (!_image_stats.empty()) {
+        const float combo = px(190.0f);
+        const ImGuiStyle& st = ImGui::GetStyle();
+        _model_view.trail_toolbar(
+            [this, combo] {
+                ImGui::SetNextItemWidth(combo);
+                if (ui::Combo(dmsg::camera_color, &_camera_color,
+                              {&dmsg::camera_color_plain, &dmsg::camera_color_error,
+                               &dmsg::camera_color_points}))
+                    attach_live_model();
+                ui::help_on_hover(dmsg::camera_color_help);
+            },
+            combo + st.ItemInnerSpacing.x + ImGui::CalcTextSize(dmsg::camera_color.get()).x);
     }
     // Width capped against the height: the band is as wide as the window, and
     // a 1600x150 letterbox of a 90-degree view shows a slice of the scene with
@@ -7200,7 +7567,14 @@ void GuiApp::restore_from_record(bool announce) {
     DatasetRecord rec = read_dataset_record(_workspace);
     DatasetSettings s = capture_dataset_settings();
     if (rec.settings.is_object()) {
-        read_dataset_settings_json(rec.settings, s);
+        // A record is written by whichever build ran last; one it cannot
+        // read is reported, never a reason to close the application.
+        try {
+            read_dataset_settings_json(rec.settings, s);
+        } catch (const std::exception& e) {
+            log(i18n::format(dmsg::log_settings_unreadable, {_workspace, e.what()}));
+            return;
+        }
     } else {
         // A folder from before the record: what its stamps still say.
         rec = read_legacy_settings(_workspace, s.sfm, s.colmap_engine);
@@ -7362,6 +7736,80 @@ void GuiApp::draw_feature_download() {
         ui::TextColoredWrappedRaw(kErr, dl.status());
 }
 
+// The quality level's progressive settings (sfm/ProgressivePresets.h), the
+// same ones `--quality` sets on the command line.
+void GuiApp::apply_progressive_preset() {
+    const sfm::ProgressivePreset& pp = sfm::kProgressivePresets[std::clamp(_sfm_job.quality, 0, 3)];
+    _sfm_job.progressive_error_start = pp.error_start;
+    _sfm_job.progressive_error_end = 0.0f;
+    _sfm_job.progressive_error_steps = pp.error_steps;
+    _sfm_job.progressive_features = pp.features;
+    _sfm_job.progressive_feature_steps = pp.feature_steps;
+    _sfm_job.progressive_patience = pp.patience;
+}
+
+void GuiApp::draw_progressive_options() {
+    if (ui::Checkbox(dmsg::progressive_alignment, &_sfm_job.progressive) && _sfm_job.progressive)
+        apply_progressive_preset();
+    ui::help_on_hover(dmsg::progressive_alignment_help);
+    if (_sfm_job.progressive) {
+        ImGui::Indent();
+        // Settled when a field is left, not per keystroke: typing 15 passes through 1.
+        bool settle = false;
+        ImGui::SetNextItemWidth(px(240.0f));
+        ui::InputFloat(dmsg::progressive_error_start, &_sfm_job.progressive_error_start, 0, 0,
+                       "%.3g");
+        settle |= ImGui::IsItemDeactivatedAfterEdit();
+        ui::help_on_hover(dmsg::progressive_error_start_help);
+        ImGui::SetNextItemWidth(px(240.0f));
+        ui::InputFloat(dmsg::progressive_error_end, &_sfm_job.progressive_error_end, 0, 0,
+                       "%.3g");
+        settle |= ImGui::IsItemDeactivatedAfterEdit();
+        ui::help_on_hover(dmsg::progressive_error_end_help);
+        ImGui::SetNextItemWidth(px(240.0f));
+        ui::InputInt(dmsg::progressive_attempts, &_sfm_job.progressive_error_steps);
+        ui::help_on_hover(dmsg::progressive_attempts_help);
+        _sfm_job.progressive_error_steps = std::clamp(_sfm_job.progressive_error_steps, 2, 50);
+        ui::Checkbox(dmsg::progressive_redetect, &_sfm_job.progressive_features);
+        ui::help_on_hover(dmsg::progressive_redetect_help);
+        if (_sfm_job.progressive_features) {
+            ImGui::Indent();
+            ImGui::SetNextItemWidth(px(240.0f));
+            ui::InputInt(dmsg::progressive_features_end, &_sfm_job.progressive_max_features_end);
+            ui::help_on_hover(dmsg::progressive_features_end_help);
+            ImGui::SetNextItemWidth(px(240.0f));
+            ui::InputInt(dmsg::progressive_size_end, &_sfm_job.progressive_image_size_end);
+            ui::help_on_hover(dmsg::progressive_size_end_help);
+            ImGui::SetNextItemWidth(px(240.0f));
+            ui::InputInt(dmsg::progressive_passes, &_sfm_job.progressive_feature_steps);
+            ui::help_on_hover(dmsg::progressive_passes_help);
+            ImGui::SetNextItemWidth(px(240.0f));
+            ui::InputInt(dmsg::progressive_patience, &_sfm_job.progressive_patience);
+            ui::help_on_hover(dmsg::progressive_patience_help);
+            ImGui::SetNextItemWidth(px(240.0f));
+            ui::InputFloat(dmsg::progressive_time_limit, &_sfm_job.progressive_time, 0, 0,
+                           "%.3g");
+            ui::help_on_hover(dmsg::progressive_time_limit_help);
+            SfmJob& j = _sfm_job;
+            j.progressive_time = std::max(0.0f, j.progressive_time);
+            j.progressive_max_features_end = std::max(0, j.progressive_max_features_end);
+            j.progressive_image_size_end = std::max(0, j.progressive_image_size_end);
+            j.progressive_feature_steps = std::clamp(j.progressive_feature_steps, 1, 20);
+            j.progressive_patience = std::clamp(j.progressive_patience, 1, 20);
+            ImGui::Unindent();
+        }
+        if (settle) {
+            // The run refuses a start at or below the end; 0 is --max-error, 3 by default.
+            SfmJob& j = _sfm_job;
+            j.progressive_error_end = std::max(0.0f, j.progressive_error_end);
+            const float end = j.progressive_error_end > 0 ? j.progressive_error_end : 3.0f;
+            j.progressive_error_start = std::max(j.progressive_error_start, end * 1.5f);
+        }
+        ImGui::Unindent();
+    }
+
+}
+
 void GuiApp::draw_sfm_advanced() {
     if (!ui::CollapsingHeader(dmsg::section_advanced)) return;
 
@@ -7446,13 +7894,6 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::sfm_per_image_intrinsics_help);
     ui::Checkbox(dmsg::sfm_final_free_rig, &_sfm_job.final_free_rig);
     ui::help_on_hover(dmsg::sfm_final_free_rig_help);
-
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_features_auto, &_sfm_job.max_features);
-    ui::help_on_hover(dmsg::max_features_auto_help);
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_image_size_auto, &_sfm_job.max_image_size);
-    ui::help_on_hover(dmsg::max_image_size_auto_help);
 
     // ---- what the sensors are allowed to settle ----
     // A video's own IMU and GPS track, and per photograph the EXIF position
@@ -7745,8 +8186,12 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     ImGui::Spacing();
 
     ImGui::BeginDisabled(dataset_locked(Stage::Features));
-    if (effective_engine() == Engine::BuiltIn) draw_sfm_advanced();
-    else                                       draw_colmap_options();
+    if (effective_engine() == Engine::BuiltIn) {
+        draw_sfm_advanced();
+        draw_sfm_options();
+    } else {
+        draw_colmap_options();
+    }
     ImGui::EndDisabled();
     // Tool locations are settings of the application, not of the run.
     draw_tool_locations();
@@ -10094,6 +10539,11 @@ void GuiApp::open_preset_save(PresetKind kind) {
             _preset_save_desc = _mesh_presets.desc;
             _preset_save_path = _mesh_presets.file;
             break;
+        case PresetKind::Sfm:
+            _preset_save_name = _sfm_presets.display;
+            _preset_save_desc = _sfm_presets.desc;
+            _preset_save_path = _sfm_presets.file;
+            break;
         default:
             _preset_save_name = _train_presets.display;
             _preset_save_desc = _train_presets.desc;
@@ -10182,6 +10632,57 @@ void GuiApp::draw_mesh_preset_picker() {
                                   _mesh_presets.msg);
     else if (!_mesh_presets.desc.empty())
         ui::TextColoredWrappedRaw(kDim, _mesh_presets.desc);
+}
+
+
+// The stock row drops the edits only: quality and frontend are the panel's.
+void GuiApp::draw_sfm_preset_picker() {
+    refresh_sfm_presets();
+    ImGui::SetNextItemWidth(px(-8.0f));
+    const PresetChoice picked = preset_combo("##sfmpreset", _sfm_presets,
+                                             _sfm_presets.file, {}, {});
+    if (picked.moved) {
+        if (picked.index >= 0 && picked.index < (int)_sfm_presets.items.size()) {
+            apply_sfm_preset_file(_sfm_presets.items[(size_t)picked.index]);
+        } else {
+            _sfm_job.options.clear();
+            _sfm_job.max_features = _sfm_job.max_image_size = 0;
+            _sfm_presets.file.clear();
+            _sfm_presets.display.clear();
+            _sfm_presets.desc.clear();
+            _sfm_presets.msg.clear();
+        }
+    }
+
+    if (ui::Button(msg::preset_save)) open_preset_save(PresetKind::Sfm);
+    ui::help_on_hover(msg::preset_save_help);
+    ImGui::SameLine();
+    if (ui::Button(msg::preset_load))
+        open_pick(PickAction::SfmPresetFile, msg::preset_pick_file.get(),
+                  FileDialog::Mode::File, {".json"});
+    ui::help_on_hover(msg::preset_load_help_plain);
+    if (!_sfm_presets.file.empty()) {
+        ImGui::SameLine();
+        if (ui::Button(msg::preset_delete)) {
+            _preset_delete_kind = PresetKind::Sfm;
+            _preset_delete_open = true;
+        }
+        ui::help_on_hover(msg::preset_delete_help);
+    }
+    if (!_sfm_presets.msg.empty())
+        ui::TextColoredWrappedRaw(_sfm_presets.msg_err ? kErr : kOk, _sfm_presets.msg);
+    else if (!_sfm_presets.desc.empty())
+        ui::TextColoredWrappedRaw(kDim, _sfm_presets.desc);
+}
+
+void GuiApp::draw_sfm_options() {
+    if (!ui::CollapsingHeader(dmsg::sfm_options_title)) return;
+    ImGui::PushID("sfmoptions");
+    ui::SeparatorText(msg::section_preset);
+    draw_sfm_preset_picker();
+    ImGui::Spacing();
+    draw_sfm_options_editor(_sfm_job, _sfm_options_ui);
+    ImGui::PopID();
 }
 
 
@@ -10283,6 +10784,10 @@ void GuiApp::draw_preset_delete_modal() {
         file = &_mesh_presets.file; display = &_mesh_presets.display;
         desc = &_mesh_presets.desc; out = &_mesh_presets.msg;
         out_err = &_mesh_presets.msg_err; scanned = &_mesh_presets.scanned_at;
+    } else if (_preset_delete_kind == PresetKind::Sfm) {
+        file = &_sfm_presets.file; display = &_sfm_presets.display;
+        desc = &_sfm_presets.desc; out = &_sfm_presets.msg;
+        out_err = &_sfm_presets.msg_err; scanned = &_sfm_presets.scanned_at;
     }
 
     ImGui::PushTextWrapPos(px(460.0f));
@@ -10306,6 +10811,7 @@ void GuiApp::draw_preset_delete_modal() {
             refresh_presets();
             refresh_dataset_presets();
             refresh_mesh_presets();
+            refresh_sfm_presets();
             // Rows pointing at the file that just went would fail at launch;
             // the next check says so instead.
             _batch_checked = false;
@@ -10401,6 +10907,8 @@ void GuiApp::draw_preset_save_modal() {
             out = &_ds_presets.msg; out_err = &_ds_presets.msg_err;
         } else if (_preset_save_kind == PresetKind::Mesh) {
             out = &_mesh_presets.msg; out_err = &_mesh_presets.msg_err;
+        } else if (_preset_save_kind == PresetKind::Sfm) {
+            out = &_sfm_presets.msg; out_err = &_sfm_presets.msg_err;
         }
         try {
             switch (_preset_save_kind) {
@@ -10427,6 +10935,17 @@ void GuiApp::draw_preset_save_modal() {
                     _mesh_presets.scanned_at = -1.0;
                     break;
                 }
+                case PresetKind::Sfm: {
+                    SfmPreset p = capture_sfm_preset(_sfm_job);
+                    p.name = _preset_save_name;
+                    p.description = _preset_save_desc;
+                    save_sfm_preset(p, _preset_save_path);
+                    _sfm_presets.file = _preset_save_path;
+                    _sfm_presets.display = p.name;
+                    _sfm_presets.desc = p.description;
+                    _sfm_presets.scanned_at = -1.0;
+                    break;
+                }
                 default: {
                     TrainPreset p;
                     p.name = _preset_save_name;
@@ -10449,6 +10968,7 @@ void GuiApp::draw_preset_save_modal() {
             refresh_presets();
             refresh_dataset_presets();
             refresh_mesh_presets();
+            refresh_sfm_presets();
         } catch (const std::exception& e) {
             *out = i18n::format(msg::preset_failed, {e.what()});
             *out_err = true;

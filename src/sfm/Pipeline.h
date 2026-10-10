@@ -174,12 +174,13 @@ struct VerifyCalibration {
 // Stages
 // ---------------------------------------------------------------------------
 
-// Features for every image under `imagedir`, written to `outdir` mirroring the
-// image tree. `reuse` keeps a whole file newer than its image and mask, and with
-// `trusted` an older one too, listed there; a file no image maps to is removed.
+// Features for every image under `imagedir` (or each stem in `only`), into
+// `outdir` mirroring the tree. `reuse` keeps a file newer than its image and mask,
+// with `trusted` an older one too; a file no image maps to is removed.
 int extractDirectory(const std::string& imagedir, const std::filesystem::path& outdir,
                      const SfmConfig& cfg, ExtractStats& stats, bool reuse = false,
-                     std::vector<std::filesystem::path>* trusted = nullptr);
+                     std::vector<std::filesystem::path>* trusted = nullptr,
+                     const std::set<std::string>* only = nullptr);
 
 // Where an interrupted run's matching left its work, and what those files must
 // carry to be this run's (sfm/core/Resume.h). Null is a run that starts over.

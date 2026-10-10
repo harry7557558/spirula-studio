@@ -144,8 +144,9 @@ void print_usage() {
                 spirula::i18n::language_list().c_str());
 }
 
-// The inference device must go before static destructors run: a validation
-// layer's own statics are gone by then, and it aborts on the first call.
+// The inference device must go before static destructors run: nn's singletons
+// die in reverse order of first use, so ~Stream frees into a dead Allocator,
+// and a validation layer's own statics are gone by then too. GUI included.
 int finish_tool(int rc) {
 #ifdef SS_TOOL_SAM
     nn::shutdown();
@@ -249,7 +250,7 @@ int main(int argc, char** argv) {
     }
 
 #ifdef SS_TOOL_GUI
-    return spirula_gui_main(argc, argv);
+    return finish_tool(spirula_gui_main(argc, argv));
 #else
     if (argc > 1)
         std::fprintf(stderr, "%s\n\n",

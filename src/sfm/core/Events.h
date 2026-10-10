@@ -19,8 +19,10 @@ namespace sfm {
 // The stages a front end shows: the CLI's subcommands, plus the phases inside
 // them that move no bar and so read as a hang unless a screen names them. The
 // numbering reaches a front end through status.bin -- append, never slot in.
-enum class Stage { Extract, Match, Map, Merge, Orient, Finish, Load, Select, Seed, Refine };
-inline constexpr int kNumStages = 10;
+enum class Stage {
+    Extract, Match, Map, Merge, Orient, Finish, Load, Select, Seed, Refine, Focal, Progressive
+};
+inline constexpr int kNumStages = 12;
 
 struct Event {
     enum class Kind {

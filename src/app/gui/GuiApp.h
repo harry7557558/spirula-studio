@@ -31,6 +31,8 @@
 #include "app/gui/Screenshot.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
+#include "app/gui/SfmOptionsUI.h"
+#include "app/gui/SfmPreset.h"
 #include "app/gui/SfmRunner.h"
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
@@ -119,7 +121,7 @@ private:
         None, OpenDataset, SourceImages, SourceVideo, SourceDataset,
         SourceReplace, Workspace,
         OutputPrefix, VocabTree, MaskModelFile, SplatFile,
-        PresetFile, DatasetPresetFile, MeshPresetFile, PresetSaveFolder,
+        PresetFile, DatasetPresetFile, MeshPresetFile, SfmPresetFile, PresetSaveFolder,
         BatchDataset, BatchOutput, BatchPresetFile, BatchDatasetPresetFile,
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
         MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
@@ -214,6 +216,7 @@ private:
     void refresh_presets();
     void refresh_dataset_presets();
     void refresh_mesh_presets();
+    void refresh_sfm_presets();
 
     // ---- dataset and meshing presets ----
     // The New Dataset screen's settings as a preset carries them, and back.
@@ -225,16 +228,21 @@ private:
     // them -- and then the one question only the frames can settle.
     void apply_dataset_builtin(const std::string& name);
     // ... and again once the inputs change, so the order they were picked in
-    // does not decide which of the two wins.
-    void reapply_dataset_builtin();
+    // does not decide which of the two wins. `before`: the panel before the
+    // capture's defaults moved it; what the user changed there stays.
+    void reapply_dataset_builtin(const DatasetSettings& before);
     void load_dataset_preset_file(const std::string& path);
     // Meshing, the same way: the model, its photographs and the output path
     // are what the preset is applied TO.
     void apply_mesh_preset(const MeshPreset& p);
     void load_mesh_preset_file(const std::string& path);
+    // The reconstruction's matching and mapping settings, onto _sfm_job.
+    void apply_sfm_preset_file(const SfmPreset& p);
+    void load_sfm_preset_file(const std::string& path);
     // The picker a screen draws above its options: combo, save, load, delete.
     void draw_dataset_preset_picker();
     void draw_mesh_preset_picker();
+    void draw_sfm_preset_picker();
     // Arm the shared save dialog for `kind`, seeded from what is on screen.
     void open_preset_save(PresetKind kind);
     void start_training();
@@ -457,6 +465,16 @@ private:
     void draw_dataset_preview(float height);
     bool preview_has_content() const;
     void poll_sfm_progress();
+    void draw_progressive_options();
+    void apply_progressive_preset();
+    // The live model onto the view, its cameras coloured by _camera_color.
+    void attach_live_model();
+    // Every image of the live model with how well it fits (images.bin).
+    void draw_image_list(float height);
+    // The model view looking out of a placed image's camera, at its lens.
+    void view_from_camera(uint32_t id);
+    // A stem from images.bin to the file it was read from; "" when not found.
+    std::string image_file_for(const std::string& stem);
     void poll_dense_progress();
     // Which of the three the running step implies, or -1 for none.
     int preview_for_stage();
@@ -512,6 +530,7 @@ private:
     void open_mask_preview();
     void draw_color_space_options(bool with_point_color);
     void draw_sfm_advanced();
+    void draw_sfm_options();
     void draw_feature_download();
     void draw_colmap_options();
     void draw_tool_locations();
@@ -759,7 +778,11 @@ private:
     // Saved presets, one picker per kind.
     PresetPicker<TrainPreset> _train_presets;
     PresetPicker<DatasetPreset> _ds_presets;
+    // The panel as the armed built-in last left it, to tell edits from it.
+    DatasetSettings _ds_builtin_base;
     PresetPicker<MeshPreset> _mesh_presets;
+    PresetPicker<SfmPreset> _sfm_presets;
+    SfmOptionsState _sfm_options_ui;
     // The save dialog, which the three kinds share -- it asks the same three
     // questions whatever is being saved.
     PresetKind _preset_save_kind = PresetKind::Train;
@@ -848,6 +871,14 @@ private:
     bool _model_attached = false;
     // Snapshot files already read, by their write time; 0 means "not yet".
     int64_t _model_mtime = 0, _pairs_mtime = 0, _matches_mtime = 0;
+    std::vector<ImageStat> _image_stats;
+    int64_t _image_stats_mtime = 0;
+    std::string _image_stats_path;
+    FilmReel _film_picked;                       // the Images view's chosen image
+    uint32_t _image_picked = UINT32_MAX;
+    std::map<std::string, std::string> _image_files;   // stem -> path, under _image_files_dir
+    std::string _image_files_dir;
+    int _camera_color = 1;   // 0 plain, 1 by reprojection error, 2 by 3D points
     double _sfm_polled_at = -1.0;
     // The dense step's own model.bin (dense::progress_dir), shown in the same view.
     int64_t _dense_model_mtime = 0;

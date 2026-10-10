@@ -14,10 +14,11 @@
 namespace app {
 namespace {
 
-// Which family a checkpoint belongs to when the user pointed at a file rather
-// than naming an id. The two graphs share no module path, and the node names
-// survive `read_onnx_structure`, which reads no payload.
+// The family of a file the user pointed at. The two graphs share no module
+// path, and `read_onnx_structure` reads node names without the payload. Only
+// MoGe-3 ships as a torch .pt.
 bool file_is_moge(const std::string& path) {
+    if (path.size() > 3 && path.compare(path.size() - 3, 3, ".pt") == 0) return true;
     const nn::OnnxFile g = nn::read_onnx_structure(path);
     for (const nn::OnnxNode& n : g.nodes) {
         if (n.name.find("/points_head/") != std::string::npos) return true;
@@ -114,6 +115,7 @@ GeometryPrediction GeometryModel::predict(const float* rgb, const GeometryReques
         po.want_normal = req.want_normal;
         po.want_mask = true;
         po.num_tokens = req.num_tokens;
+        po.refine_steps = req.refine_steps;
         po.fx = (float)req.fx;
         po.fy = (float)req.fy;
         po.cx = (float)req.cx;

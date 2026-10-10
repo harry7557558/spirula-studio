@@ -847,6 +847,24 @@ public:
         return snapshotModel();
     }
 
+    // The poses and intrinsics of `m`, its points triangulated afresh from this
+    // mapper's matches and refined: a model grown at a looser tolerance keeps
+    // tracks this one would never have built (progressive alignment).
+    Reconstruction retriangulate(const Reconstruction& m) {
+        Reconstruction bare;
+        bare.cameras = m.cameras;
+        bare.images = m.images;
+        bare.rigs = m.rigs;
+        bare.rig_detached = m.rig_detached;
+        ensureSetup();
+        resetModel();
+        adopt(bare);
+        rebuildScores();
+        completeAndRetriangulate();
+        globalRefine(true);
+        return snapshotModel();
+    }
+
     // The same, in place, for a caller that is asking a question rather than
     // producing an answer: false means the solve did not fit the device and
     // `m` is untouched. A single model's bundle adjustment cannot be split the

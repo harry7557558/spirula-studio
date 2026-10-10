@@ -3,6 +3,8 @@
 // table in SfmConfig.h, so a new knob is one row and never a fourth edit.
 #include "sfm/SfmConfig.h"
 
+#include "sfm/ProgressivePresets.h"
+
 #include "sfm/core/Log.h"
 #include "sfm/vk/VkContext.h"
 #include "i18n/catalog/SfmFields.h"
@@ -335,6 +337,20 @@ std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
     } else {
         return "unknown --quality '" + cfg.quality + "' (low, medium, high or extreme)";
     }
+    if (cfg.progressive) {
+        const int level = cfg.quality == "low" ? 0 : cfg.quality == "medium" ? 1
+                          : cfg.quality == "high"                           ? 2
+                                                                            : 3;
+        const ProgressivePreset& pp = kProgressivePresets[level];
+        presetSet(seen, moved, "progressive-error-start", cfg.progressive_error_start,
+                  (double)pp.error_start);
+        presetSet(seen, moved, "progressive-error-steps", cfg.progressive_error_steps,
+                  pp.error_steps);
+        presetSet(seen, moved, "progressive-features", cfg.progressive_features, pp.features);
+        presetSet(seen, moved, "progressive-feature-steps", cfg.progressive_feature_steps,
+                  pp.feature_steps);
+        presetSet(seen, moved, "progressive-patience", cfg.progressive_patience, pp.patience);
+    }
 
     // A learned descriptor needs a looser ratio than SIFT's 0.8, because its
     // second-best distance sits much closer to its best: measured on a
@@ -425,9 +441,16 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     // question --camera-model answers for the ones that have entries.
     mapper.camera_model = camera.model;
 
-    // One tolerance, two fields (D47).
-    twoview.ransac.max_error = max_error;
-    mapper.max_reproj_error = max_error;
+    // One tolerance, two fields (D47). Progressive: matches are verified at the
+    // start, and what the mapper is left holding is the end.
+    if (progressive) {
+        if (progressive_error_end <= 0) progressive_error_end = max_error;
+        if (progressive_error_start <= progressive_error_end)
+            return "--progressive-error-start must be above --progressive-error-end (" +
+                   std::to_string(progressive_error_end) + ")";
+    }
+    twoview.ransac.max_error = progressive ? progressive_error_start : max_error;
+    mapper.max_reproj_error = progressive ? progressive_error_end : max_error;
     // mapper.sequence_window = overlap;
 
     if (!colorspace::parse_exposure(image_exposure, exposure))
@@ -513,6 +536,17 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     return "";
 }
 
+std::vector<double> SfmConfig::progressiveErrors() const {
+    std::vector<double> e;
+    if (!progressive) return e;
+    const double a = progressive_error_start;
+    const double b = progressive_error_end > 0 ? progressive_error_end : max_error;
+    const int n = std::max(2, progressive_error_steps);
+    for (int i = 0; i < n; i++) e.push_back(a * std::pow(b / a, (double)i / (n - 1)));
+    e.back() = b;
+    return e;
+}
+
 PairMode SfmConfig::pairMode() const {
     if (pairs == "sequential") return PairMode::Sequential;
     if (pairs == "prefilter") return PairMode::Prefilter;
@@ -591,6 +625,29 @@ void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults) {
 void printOptionLine(FILE* out, const std::string& flag, const std::string& value,
                      const std::string& help) {
     printOption(out, flag, "", value, help, "");
+}
+
+namespace {
+FieldView::Kind kindOf(bool) { return FieldView::Kind::Switch; }
+FieldView::Kind kindOf(const std::string&) { return FieldView::Kind::Text; }
+template <class T>
+FieldView::Kind kindOf(T) {
+    return std::is_floating_point<T>::value ? FieldView::Kind::Real : FieldView::Kind::Integer;
+}
+// An editor shows an empty string as empty, not as `--help`'s "none".
+std::string editorValue(const std::string& v) { return v; }
+template <class T> std::string editorValue(const T& v) { return valueString(v); }
+}  // namespace
+
+std::vector<FieldView> describeConfigFields(const SfmConfig& cfg, uint32_t cmd) {
+    std::vector<FieldView> out;
+#define SFM_VIEW_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)                     \
+    if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias)                                         \
+        out.push_back({name, group, tier, kindOf(cfg.member), (double)(lo), (double)(hi), choices, \
+                       spirula::i18n::msg::sfmfield::help##_help.get(), editorValue(cfg.member)});
+    SFM_CONFIG_FIELDS(SFM_VIEW_FIELD)
+#undef SFM_VIEW_FIELD
+    return out;
 }
 
 // ---------------------------------------------------------------------------

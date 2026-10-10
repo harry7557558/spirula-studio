@@ -26,8 +26,17 @@ struct GemmParams {
     float    alpha;
     uint32_t x_row_stride;
     uint32_t groups_per_row;
+    uint64_t nbr;
+    uint32_t taps, n_in;
 };
-static_assert(sizeof(GemmParams) == 64, "GemmParams layout");
+static_assert(sizeof(GemmParams) == 80, "GemmParams layout");
+
+// A sparse convolution's implicit im2col (kGatherCi): x is [n_in, Ci] and row
+// m, column t*Ci + c of the operand is x[nbr[m, t], c].
+struct Gather {
+    Tensor  nbr;   // [M, taps] i32; invalid -> a dense GEMM
+    int64_t ci = 0;
+};
 
 // Below this many rows the 64x64 tiling has nothing to chew on and a
 // thread-per-K reduction wins. SAM 3 hits this constantly: every MLP head runs
@@ -116,6 +125,7 @@ TileKernels probe_tile_kernels() {
     p.K = (uint32_t)K;
     p.alpha = 1.0f;
     p.x_row_stride = (uint32_t)K;
+    p.nbr = vk::or_fallback(0);
     vk::Stream::get().fill(p.x, 0x3f000000u, (uint64_t)M * K * 4);
     vk::Stream::get().fill(p.w, 0x38003800u, (uint64_t)N * K * 2);
 
@@ -151,7 +161,7 @@ const TileKernels& tile_kernels() {
 
 void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
                    const Tensor& bias, const Tensor& residual, Act act, float alpha,
-                   int64_t x_row_stride) {
+                   int64_t x_row_stride, const Gather& g = {}) {
     // Weights keep their PyTorch rank in the store; a [Cout, Cin, kh, kw] conv
     // kernel is the same bytes as the [Cout, Cin*kh*kw] matrix this wants.
     const Tensor w = w_in.asMatrix();
@@ -163,12 +173,20 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
     NN_CHECK(out.dtype == DType::F32, "gemm output must be f32");
     NN_CHECK(w.rows() == N, "gemm: weight is [%lld, %lld] but out has %lld columns",
                (long long)w.rows(), (long long)K, (long long)N);
-    NN_CHECK(x.cols() == K || x_row_stride > 0,
-               "gemm: x has %lld columns but the weight expects %lld",
-               (long long)x.cols(), (long long)K);
-    NN_CHECK(x.rows() == M || x_row_stride > 0,
-               "gemm: x has %lld rows but out has %lld", (long long)x.rows(),
-               (long long)M);
+    const bool gather = g.nbr.valid();
+    if (gather) {
+        NN_CHECK(x.dtype == DType::F32 && g.nbr.dtype == DType::I32 && g.nbr.rows() == M &&
+                     x.cols() == g.ci && g.ci % 16 == 0 && g.nbr.cols() * g.ci == K,
+                 "gemm: a %lld-tap gather over %lld channels does not fit a K of %lld",
+                 (long long)g.nbr.cols(), (long long)x.cols(), (long long)K);
+    } else {
+        NN_CHECK(x.cols() == K || x_row_stride > 0,
+                 "gemm: x has %lld columns but the weight expects %lld",
+                 (long long)x.cols(), (long long)K);
+        NN_CHECK(x.rows() == M || x_row_stride > 0,
+                 "gemm: x has %lld rows but out has %lld", (long long)x.rows(),
+                 (long long)M);
+    }
     if (residual.valid())
         NN_CHECK(residual.numel() >= M * N, "gemm: residual is too small");
     if (bias.valid())
@@ -188,14 +206,19 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
     p.K = (uint32_t)K;
     p.alpha = alpha;
     p.x_row_stride = (uint32_t)(x_row_stride > 0 ? x_row_stride : K);
+    p.nbr = vk::or_fallback(g.nbr.ptr);
+    p.taps = (uint32_t)(gather ? g.nbr.cols() : 0);
+    p.n_in = (uint32_t)x.rows();
 
     vk::SpecList spec{(uint32_t)(w.dtype == DType::F16),
                       (uint32_t)(x.dtype == DType::F16),
                       (uint32_t)act,
                       (uint32_t)(bias.valid() ? 1 : 0),
-                      (uint32_t)(residual.valid() ? 1 : 0)};
+                      (uint32_t)(residual.valid() ? 1 : 0),
+                      (uint32_t)(gather ? g.ci : 0)};
 
     check_span("gemm", {w, bias});
+    if (gather) check_span("gemm", {x, g.nbr});
     const int64_t x_elem = x.dtype == DType::F16 ? 2 : 4;
 
     // Row tiles take one grid axis (65535 cap: a full-resolution 1x1 conv passes
@@ -215,7 +238,9 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
             GemmParams q = p;
             q.M = (uint32_t)rows;
             q.out = p.out + (uint64_t)m0 * N * 4;
-            q.x = p.x + (uint64_t)m0 * p.x_row_stride * x_elem;
+            // A gathered x is indexed by neighbour id, so its table moves instead.
+            if (gather) q.nbr = p.nbr + (uint64_t)m0 * p.taps * 4;
+            else q.x = p.x + (uint64_t)m0 * p.x_row_stride * x_elem;
             if (residual.valid()) q.residual = p.residual + (uint64_t)m0 * N * 4;
             run(q, rows);
         }
@@ -239,7 +264,8 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
                                (uint32_t)act,
                                (uint32_t)(bias.valid() ? 1 : 0),
                                (uint32_t)(residual.valid() ? 1 : 0),
-                               (uint32_t)(tile_m / 32)};
+                               (uint32_t)(tile_m / 32),
+                               (uint32_t)(gather ? g.ci : 0)};
             by_rows(tile_m, [&](const GemmParams& q, int64_t rows) {
                 vk::Stream::get().dispatch("gemm_coop.gemm_nt_coop", cspec, tn,
                                            (uint32_t)((rows + tile_m - 1) / tile_m), 1,
@@ -293,6 +319,12 @@ void linear(const Tensor& out, const Tensor& x, const Tensor& w, const LinearOpt
 void matmul_nt(const Tensor& out, const Tensor& a, const Tensor& b, float alpha,
                Act act) {
     dispatch_gemm(out, a, b, {}, {}, act, alpha, 0);
+}
+
+void sparse_conv(const Tensor& out, const Tensor& x, const Tensor& nbr, const Tensor& w,
+                 const LinearOpts& o) {
+    NN_CHECK(o.alpha == 1.0f && o.x_row_stride == 0, "sparse_conv: no alpha or stride");
+    dispatch_gemm(out, x, w, o.bias, o.residual, o.act, 1.0f, 0, Gather{nbr, x.cols()});
 }
 
 }  // namespace nn

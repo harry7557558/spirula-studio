@@ -273,6 +273,36 @@ SS_MSG(stage_selecting_pairs,
     RU("Выбор снимков для сравнения"),
     TR("Hangi görüntülerin karşılaştırılacağı seçiliyor"));
 
+SS_MSG(stage_measuring_focals,
+    EN("Measuring each camera's focal length"),
+    JA("各カメラの焦点距離を測っています"),
+    ZH_HANS("正在测量每台相机的焦距"),
+    ZH_HANT("正在測量每台相機的焦距"),
+    KO("각 카메라의 초점 거리를 재는 중"),
+    DE("Die Brennweite jeder Kamera wird gemessen"),
+    FR("Mesure de la focale de chaque caméra"),
+    ES("Midiendo la distancia focal de cada cámara"),
+    PT("Medindo a distância focal de cada câmera"),
+    IT("Misura della focale di ogni fotocamera"),
+    NL("De brandpuntsafstand van elke camera wordt gemeten"),
+    RU("Измерение фокусного расстояния каждой камеры"),
+    TR("Her kameranın odak uzaklığı ölçülüyor"));
+
+SS_MSG(stage_progressive,
+    EN("Progressive alignment: step {0} of {1}"),
+    JA("段階的な位置合わせ: {1} 段中 {0} 段目"),
+    ZH_HANS("渐进对齐：第 {0} 步，共 {1} 步"),
+    ZH_HANT("漸進對齊：第 {0} 步，共 {1} 步"),
+    KO("단계적 정렬: {1} 단계 중 {0} 단계"),
+    DE("Schrittweise Ausrichtung: Schritt {0} von {1}"),
+    FR("Alignement progressif : étape {0} sur {1}"),
+    ES("Alineación progresiva: paso {0} de {1}"),
+    PT("Alinhamento progressivo: passo {0} de {1}"),
+    IT("Allineamento progressivo: passo {0} di {1}"),
+    NL("Stapsgewijze uitlijning: stap {0} van {1}"),
+    RU("Постепенное выравнивание: шаг {0} из {1}"),
+    TR("Kademeli hizalama: {1} adımın {0}. adımı"));
+
 SS_MSG(stage_seeding,
     EN("Choosing the lens and a starting pair"),
     JA("レンズと最初のペアを決めています"),
@@ -629,6 +659,21 @@ SS_MSG(video_input,
     TR("Video: {0}"));
 
 // {0} how many, {1} the folder.
+SS_MSG(pruned_stale_layout,
+    EN("Removed {0} file(s) or folder(s) from {1} left by an earlier layout of the inputs"),
+    JA("入力の以前の配置で残った {0} 個のファイルまたはフォルダーを {1} から削除しました"),
+    ZH_HANS("已从 {1} 中删除输入先前布局遗留的 {0} 个文件或文件夹"),
+    ZH_HANT("已從 {1} 中刪除輸入先前配置遺留的 {0} 個檔案或資料夾"),
+    KO("입력의 이전 배치에서 남은 파일 또는 폴더 {0}개를 {1}에서 삭제했습니다"),
+    DE("{0} Datei(en) oder Ordner aus einer früheren Anordnung der Eingaben aus {1} entfernt"),
+    FR("{0} fichier(s) ou dossier(s) laissés par une disposition antérieure des entrées supprimés de {1}"),
+    ES("Se eliminaron de {1} {0} archivo(s) o carpeta(s) que dejó una disposición anterior de las entradas"),
+    PT("Foram removidos de {1} {0} arquivo(s) ou pasta(s) deixados por uma disposição anterior das entradas"),
+    IT("Rimossi da {1} {0} file o cartelle lasciati da una disposizione precedente degli input"),
+    NL("{0} bestand(en) of map(pen) uit een eerdere indeling van de invoer verwijderd uit {1}"),
+    RU("Из {1} удалено файлов или папок, оставшихся от прежнего расположения входных данных: {0}"),
+    TR("Girdilerin önceki düzeninden kalan {0} dosya veya klasör {1} konumundan kaldırıldı"));
+
 SS_MSG(resume_keep_frames,
     EN("Resume: keeping {0} extracted frames in {1} (delete the folder to "
        "re-extract)"),

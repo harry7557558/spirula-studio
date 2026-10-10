@@ -69,7 +69,7 @@ struct PairBlock {
 // and its exit code, which could report only one of "partial" and "not metric".
 struct RunStatus {
     // sfm::Stage: 0 extract, 1 match, 2 map, 3 merge, 4 orient, 5 finish,
-    // 6 load, 7 select, 8 seed, 9 refine.
+    // 6 load, 7 select, 8 seed, 9 refine, 10 focal, 11 progressive.
     uint32_t stage = 0;
     bool finished = false;
     bool partial = false;
@@ -100,6 +100,18 @@ float mapping_fraction(int64_t done, int64_t total);
 // keeps, so a poll that finds nothing new costs one stat.
 bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out,
                      uint64_t point_memory_budget = 0);
+
+// One image of the model in a snapshot (images.bin beside model.bin).
+struct ImageStat {
+    uint32_t id = 0;
+    bool placed = false;
+    uint32_t keypoints = 0;
+    uint32_t points = 0;            // its keypoints that see a 3D point
+    float mean_error = 0, max_error = 0;   // reprojection, pixels
+    std::string name;
+};
+// `path` is a run's images.bin or the image_stats.bin its workspace keeps.
+bool read_image_stats(const std::string& path, int64_t& mtime, std::vector<ImageStat>& out);
 
 // The similarity (row-major 3x4 [sR | t]) taking `from`'s normalized frame onto
 // `to`'s, fitted to the cameras both hold. False when too few are shared or they

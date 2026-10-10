@@ -39,6 +39,9 @@ struct Outputs {
 struct Model {
     Weights       weights;
     nn::vk::Arena arena{"moge"};
+    // The refiner's own, sized per step once the voxels are counted: how many
+    // there are depends on the depth map, so planArenaBytes cannot bound it.
+    nn::vk::Arena refine_arena{"moge-refine"};
 
     // The positional embedding resampled for one patch grid, and the five
     // levels' view-plane uv grids. Both are host work done once per input size
@@ -60,9 +63,15 @@ struct Model {
     // with ih/iw exact multiples of the patch stride.
     Features encode(const nn::Tensor& image);
 
-    // Runs the neck and the requested heads and resizes each to [H, W].
+    // Runs the neck and the requested heads and resizes each to [H, W]. With a
+    // refiner, the points head's raw map is refined `refine_steps` times first.
     void decode(const Features& f, int64_t H, int64_t W, bool want_points,
-                bool want_normal, bool want_mask, Outputs* out);
+                bool want_normal, bool want_mask, Outputs* out, int refine_steps = 0);
+
+    // MoGe-3's sparse 3D refinement of `raw`, the points head's [Hf, Wf, 3]
+    // (u, v, log z) map at 16x the patch grid, in place. Each step moves log z
+    // only. Refiner.cpp.
+    void refine(const Features& f, const nn::Tensor& raw, int steps);
 
     void ensurePosEmbed(int64_t gh, int64_t gw);
     void ensureUv(int64_t gh, int64_t gw, double aspect);

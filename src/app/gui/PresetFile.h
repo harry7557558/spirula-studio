@@ -20,7 +20,7 @@
 
 namespace gui {
 
-enum class PresetKind { Train, Dataset, Mesh };
+enum class PresetKind { Train, Dataset, Mesh, Sfm };
 
 // What the `kind` key spells, and where that kind's presets live. The folder
 // is created on first call; train presets keep <config>/presets itself, which

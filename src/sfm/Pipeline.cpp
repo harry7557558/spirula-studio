@@ -9,6 +9,7 @@
 // still be replaced by COLMAP's equivalent to bisect a failure.
 
 #include "sfm/Pipeline.h"
+#include "sfm/Progressive.h"
 
 #include <algorithm>
 #include <array>
@@ -1471,7 +1472,7 @@ bool featuresAreCurrent(const fs::path& feat, const fs::path& img,
 
 int extractDirectory(const std::string& imagedir, const fs::path& outdir,
                      const SfmConfig& cfg, ExtractStats& stats, bool reuse,
-                     std::vector<fs::path>* trusted) {
+                     std::vector<fs::path>* trusted, const std::set<std::string>* only) {
     const SiftOptions& opt = cfg.sift;
     const std::string& maskdir = cfg.mask_dir;
     const std::string& fmaskdir = cfg.feature_mask_dir;
@@ -1496,6 +1497,15 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
         if (it->is_regular_file() && isImageExt(it->path().extension().string()) &&
             !isSidecar(it->path()))
             found.push_back(it->path());
+    }
+    if (only) {
+        found.erase(std::remove_if(found.begin(), found.end(),
+                                   [&](const fs::path& p) {
+                                       fs::path stem = relativeTo(p, imagedir);
+                                       stem.replace_extension();
+                                       return !only->count(stem.generic_string());
+                                   }),
+                    found.end());
     }
     if (found.empty()) {
         L::fail(Tag::Extract, M::extract_no_images, {imagedir});
@@ -1887,13 +1897,18 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
     // list for the journal below to line up with it.
     const bool reused_pairs =
         res && resume::readPairs(res->dir / "pairs.bin", res->signature, pairs);
+    const FileOrder order = fileOrder(image_names);
+    const FileOrder* by_order = popt.order_weight > 0 ? &order : nullptr;
+    if (by_order && verbose && !reused_pairs)
+        L::err(Tag::Match, M::match_order_weight,
+               {L::num(popt.order_weight, 2), L::num(popt.order_decay, 1)});
     if (reused_pairs) {
         L::out(Tag::Match, M::match_reusing_pairs, {(long long)pairs.size()});
     } else if (mode == PairMode::Prefilter) {
         stats.scored = n_images * (n_images - 1) / 2;
         double t0 = now();
         events::stage_begin(Stage::Select, (int64_t)(n_images * (n_images - 1)));
-        pairs = prefilterPairs(feats, popt, sp);
+        pairs = prefilterPairs(feats, popt, sp, by_order);
         events::stage_end(Stage::Select);
         stats.select_seconds = now() - t0;
         if (verbose)
@@ -1930,7 +1945,8 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             stats.scored = n_images * (n_images - 1) / 2;
             double t0 = now();
             events::stage_begin(Stage::Select, (int64_t)(n_images * (n_images - 1)));
-            std::vector<std::pair<uint32_t, uint32_t>> extra = prefilterPairs(feats, popt, sp);
+            std::vector<std::pair<uint32_t, uint32_t>> extra =
+                prefilterPairs(feats, popt, sp, by_order);
             events::stage_end(Stage::Select);
             stats.select_seconds = now() - t0;
             pairs.insert(pairs.end(), extra.begin(), extra.end());
@@ -2056,12 +2072,17 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 size_t stride = std::max<size_t>(1, pairs.size() / std::max<size_t>(1, want));
                 for (size_t p = 0; p < pairs.size() && sample.size() < want; p += stride)
                     sample.push_back(pairs[p]);
+                // With a camera per image the sample is every pair, which with a
+                // learned matcher is as long as matching itself.
                 std::vector<std::vector<FeatureMatch>> chunk;
+                events::stage_begin(Stage::Focal, (int64_t)sample.size());
                 for (size_t b = 0; b < sample.size(); b += 16) {
                     size_t e = std::min(b + 16, sample.size());
                     matcher->matchBatch(feats, sample, b, e, chunk);
                     for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
+                    events::progress(Stage::Focal, (int64_t)e, (int64_t)sample.size());
                 }
+                events::stage_end(Stage::Focal);
             }
             if (want_rect) {
                 double t_f = now();
@@ -2528,8 +2549,9 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // whole of mapping for nothing.
     for (FeatureSet& fs : feats) fs.dropDescriptors();
     // After writeMatches, never before: the file on disk indexes the feature
-    // files, which keep every row.
-    if (cfg.compact_unused_features) {
+    // files, which keep every row. Not under progressive feature passes, which
+    // match against those files' rows again.
+    if (cfg.compact_unused_features && !(cfg.progressive && cfg.progressive_features)) {
         FeatureCompactionPlan plan = buildFeatureCompactionPlan(db);
         for (size_t i = 0; i < feats.size(); i++)
             feats[i] = compactFeatureSet(std::move(feats[i]), plan.old_to_new[i],
@@ -2560,6 +2582,15 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     t0 = now();
     events::stage_begin(Stage::Map, (int64_t)db.images.size());
     events::map_begin(db.images.size());
+    {
+        std::vector<std::string> names;
+        std::vector<uint32_t> keypoints;
+        for (const ImageEntry& im : db.images) {
+            names.push_back(im.name);
+            keypoints.push_back(im.num_features);
+        }
+        progress::images(names, keypoints);
+    }
     RigTable rigs;
     SequenceTable seqs;
     try {
@@ -2570,10 +2601,22 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         r.exit_code = 2;
         return r;
     }
-    Mapper mapper(db, feats, mapopt, cs.ids, &rigs, &seqs,
-                  cfg.sensor_map ? calib.positionPriors() : nullptr);
     AssembleStats ast;
-    std::vector<Reconstruction> models = runMapper(mapper, db, feats, cfg, ast);
+    std::vector<Reconstruction> models;
+    std::unique_ptr<ProgressiveAligner> progressive;
+    std::unique_ptr<Mapper> single;
+    if (cfg.progressive) {
+        progressive = std::make_unique<ProgressiveAligner>(db, feats, cfg, calib, rigs, seqs,
+                                                           _imagedir, ws);
+        models = progressive->run(ast);
+    } else {
+        single = std::make_unique<Mapper>(db, feats, mapopt, cs.ids, &rigs, &seqs,
+                                          cfg.sensor_map ? calib.positionPriors() : nullptr);
+        models = runMapper(*single, db, feats, cfg, ast);
+    }
+    Mapper& mapper = progressive ? progressive->mapper() : *single;
+    if (progressive && !progressive->writeReport(ws / "progressive.txt"))
+        L::err_raw(Tag::Map, "cannot write " + (ws / "progressive.txt").string());
     double t_map = now() - t0;
 
     {
@@ -2595,7 +2638,11 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // in the seed pair's frame, so a run watched to the end left a tilted model
     // on display until the user opened the written one.
     if (!gauge.empty()) progress::gauge(gauge[0].oriented, gauge[0].metric);
-    if (!models.empty()) progress::model(models.front(), /*force=*/true);
+    if (!models.empty()) {
+        progress::model(models.front(), /*force=*/true);
+        if (!progress::write_image_stats(models.front(), (ws / "image_stats.bin").string()))
+            L::err_raw(Tag::Map, "cannot write " + (ws / "image_stats.bin").string());
+    }
     // Before the split: the summary reports what was estimated, and the file's
     // one camera per frame size is not that.
     const size_t n_cameras = models.empty() ? 0 : models.front().cameras.size();

@@ -28,6 +28,10 @@
 [SpecializationConstant] const int kAct        = 0;
 [SpecializationConstant] const int kHasBias    = 0;
 [SpecializationConstant] const int kHasResidual = 0;
+// Nonzero: x is a sparse convolution's implicit im2col over Ci = kGatherCi
+// channels, x[nbr[m, t], c] or 0 where nbr is -1 -- never written, because at
+// MoGe-3's finest level the column matrix is 3.2 GB a convolution.
+[SpecializationConstant] const int kGatherCi   = 0;
 
 struct GemmParams {
     float* out;       // [M, N] f32
@@ -41,7 +45,19 @@ struct GemmParams {
     float  alpha;     // scales the matmul result before bias/residual
     uint   x_row_stride;  // in elements; == K unless x is a slice of a wider buffer
     uint   groups_per_row; // gemm_nt_thin only: N folds across (gid.x, gid.y)
+    uint*  nbr;           // [M, taps] i32 under kGatherCi (never null)
+    uint   taps;
+    uint   n_in;          // rows of x under kGatherCi
 };
+
+// x[m, k], directly or through the neighbour table.
+float load_x(GemmParams p, uint m, uint k) {
+    if (kGatherCi == 0) return load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0);
+    const uint tap = k / uint(kGatherCi);
+    const int id = int(p.nbr[m * p.taps + tap]);
+    if (id < 0 || uint(id) >= p.n_in) return 0.0f;
+    return load_elem(p.x, uint(id) * uint(kGatherCi) + (k - tap * uint(kGatherCi)), false);
+}
 
 static const uint BM = 64;
 static const uint BN = 64;
@@ -80,7 +96,7 @@ void gemm_nt(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                 uint k = k0 + load_k0 + u;
                 float v = 0.0f;
                 if (in_m && k < p.K)
-                    v = load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0);
+                    v = load_x(p, m, k);
                 sA[load_k0 + u][load_row] = v;
             }
         }
@@ -214,7 +230,7 @@ void gemm_nt_big(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
             [ForceUnroll] for (uint u = 0; u < 8; ++u) {
                 const uint m = tile_m + load_row + u * 16u;
                 ra[u] = (m < p.M && ka < p.K)
-                            ? load_elem(p.x, m * p.x_row_stride + ka, kInputF16 != 0)
+                            ? load_x(p, m, ka)
                             : 0.0f;
             }
             [ForceUnroll] for (uint u = 0; u < 4; ++u) {
@@ -298,7 +314,7 @@ void gemm_nt_narrow(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
                 uint k = k0 + load_k0 + u;
                 float v = 0.0f;
                 if (in_m && k < p.K)
-                    v = load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0);
+                    v = load_x(p, m, k);
                 sA[load_k0 + u][load_row] = v;
             }
         }
@@ -364,7 +380,7 @@ void gemm_nt_thin(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
 
     float sum = 0.0f;
     for (uint k = tid.x; k < p.K; k += 64) {
-        float xv = load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0);
+        float xv = load_x(p, m, k);
         float wv = load_elem(p.w, n * p.K + k, kWeightF16 != 0);
         sum += xv * wv;
     }

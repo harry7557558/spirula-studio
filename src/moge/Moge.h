@@ -1,6 +1,6 @@
 #pragma once
-// MoGe-2 monocular geometry: one image in, metric depth, surface normals and a
-// validity mask out.
+// MoGe-2 / MoGe-3 monocular geometry: one image in, metric depth, surface
+// normals and a validity mask out.
 //
 // The public surface of src/moge/. Two conventions are worth stating because
 // getting either wrong is silent:
@@ -38,6 +38,11 @@ struct PredictOptions {
     // here" sentinels -- depth 0, black normal. MoGe's own threshold, and what
     // rejects sky.
     float mask_threshold = 0.5f;
+
+    // MoGe-3's sparse 3D refinement passes; ignored by a checkpoint without a
+    // refiner. 3 is what it was trained with and MoGe's default; 0 is the
+    // unrefined base prediction.
+    int refine_steps = 3;
 };
 
 struct Prediction {
@@ -67,9 +72,9 @@ public:
     Predictor(const Predictor&) = delete;
     Predictor& operator=(const Predictor&) = delete;
 
-    // `model` is a known id ("moge2-vitb"), which is fetched and cached, or a
-    // path to an .onnx file. Throws nn::Error on anything that is not a MoGe-2
-    // checkpoint.
+    // `model` is a known id ("moge2-vitb", "moge3-vitl"), which is fetched and
+    // cached, or a path to an .onnx or .pt file. Throws nn::Error on anything
+    // that is not a MoGe-2 or MoGe-3 checkpoint.
     void load(const std::string& model);
     bool loaded() const;
 

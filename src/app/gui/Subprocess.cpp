@@ -5,7 +5,10 @@
 #include <cctype>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <filesystem>
 #include <thread>
 
@@ -354,8 +357,19 @@ bool command_exists(const std::string& exe) {
         std::error_code ec;
         return fs::exists(exe, ec);
     }
+    // Asked from draw code every frame, and a PATH walk is a stat per directory:
+    // 42% of the GUI thread on a long run. Remembered for five seconds.
+    static std::mutex mu;
+    static std::map<std::string, std::pair<bool, std::chrono::steady_clock::time_point>> seen;
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lk(mu);
+    auto it = seen.find(exe);
+    if (it != seen.end() && now - it->second.second < std::chrono::seconds(5))
+        return it->second.first;
     char found[MAX_PATH];
-    return SearchPathA(nullptr, exe.c_str(), ".exe", MAX_PATH, found, nullptr) > 0;
+    const bool ok = SearchPathA(nullptr, exe.c_str(), ".exe", MAX_PATH, found, nullptr) > 0;
+    seen[exe] = {ok, now};
+    return ok;
 }
 
 bool open_url(const std::string& url) {

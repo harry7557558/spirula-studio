@@ -27,6 +27,7 @@ std::optional<PresetKind> kind_of(const JsonValue& root) {
     if (s == "train") return PresetKind::Train;
     if (s == "dataset") return PresetKind::Dataset;
     if (s == "mesh") return PresetKind::Mesh;
+    if (s == "sfm") return PresetKind::Sfm;
     return std::nullopt;
 }
 
@@ -37,6 +38,7 @@ const char* preset_kind_name(PresetKind k) {
     switch (k) {
         case PresetKind::Dataset: return "dataset";
         case PresetKind::Mesh:    return "mesh";
+        case PresetKind::Sfm:     return "sfm";
         default:                  return "train";
     }
 }

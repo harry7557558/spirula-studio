@@ -52,6 +52,7 @@ using namespace linalg;
 [SpecializationConstant] const int kHasBias     = 0;
 [SpecializationConstant] const int kHasResidual = 0;
 [SpecializationConstant] const int kSgRows      = 4;
+[SpecializationConstant] const int kGatherCi    = 0;   // as gemm.slang's
 
 struct GemmParams {
     float* out;       // [M, N] f32
@@ -65,7 +66,18 @@ struct GemmParams {
     float  alpha;
     uint   x_row_stride;   // in elements; == K unless x is a slice of a wider buffer
     uint   groups_per_row; // unused here; keeps the struct byte-identical to gemm.slang
+    uint*  nbr;
+    uint   taps;
+    uint   n_in;
 };
+
+float load_x(GemmParams p, uint m, uint k) {
+    if (kGatherCi == 0) return load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0);
+    const uint tap = k / uint(kGatherCi);
+    const int id = int(p.nbr[m * p.taps + tap]);
+    if (id < 0 || uint(id) >= p.n_in) return 0.0f;
+    return load_elem(p.x, uint(id) * uint(kGatherCi) + (k - tap * uint(kGatherCi)), false);
+}
 
 typealias MatA = CoopMat<float16_t, MemoryScope::Subgroup, 16, 16, CoopMatMatrixUse::MatrixA>;
 typealias MatB = CoopMat<float16_t, MemoryScope::Subgroup, 16, 16, CoopMatMatrixUse::MatrixB>;
@@ -123,7 +135,7 @@ void gemm_nt_coop(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     [ForceUnroll] for (uint u = 0; u < MAX_RA; ++u) {
         const uint m = tile_m + u * 16u + load_row;
         ra[u] = (u * 16u < TM && m < p.M)
-                    ? load_elem(p.x, m * p.x_row_stride + load_k, kInputF16 != 0)
+                    ? load_x(p, m, load_k)
                     : 0.0f;
     }
 
@@ -148,7 +160,7 @@ void gemm_nt_coop(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
             [ForceUnroll] for (uint u = 0; u < MAX_RA; ++u) {
                 const uint m = tile_m + u * 16u + load_row;
                 ra[u] = (u * 16u < TM && m < p.M)
-                            ? load_elem(p.x, m * p.x_row_stride + k, kInputF16 != 0)
+                            ? load_x(p, m, k)
                             : 0.0f;
             }
         }

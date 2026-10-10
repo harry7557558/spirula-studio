@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -43,6 +44,13 @@ template <typename T, size_t N> std::string emit(const std::array<T, N>& v) {
     std::string s = "[";
     for (size_t i = 0; i < N; i++) s += (i ? ", " : "") + emit(v[i]);
     return s + "]";
+}
+// A name -> text map as an object; empty is `null`, like an empty string.
+inline std::string emit(const std::map<std::string, std::string>& v) {
+    if (v.empty()) return "null";
+    std::string s = "{";
+    for (const auto& [k, x] : v) s += (s.size() > 1 ? ", " : "") + json_quote(k) + ": " + json_quote(x);
+    return s + "}";
 }
 
 // ---- JSON value -> field --------------------------------------------------
@@ -76,6 +84,13 @@ inline void assign(std::optional<float>& out, const JsonValue& v) {
 }
 inline void assign(std::optional<bool>& out, const JsonValue& v) {
     if (v.is_null()) out = std::nullopt; else out = v.as_bool();
+}
+
+inline void assign(std::map<std::string, std::string>& out, const JsonValue& v) {
+    out.clear();
+    if (!v.is_object()) return;
+    for (const auto& [k, x] : v.obj)
+        if (x.type == JsonValue::Type::String) out[k] = x.as_string();
 }
 
 template <typename T, size_t N>

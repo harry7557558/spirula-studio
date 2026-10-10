@@ -68,11 +68,13 @@ inline bool assign_config_field(DenseConfig& config, const std::string& key, con
     return false;
 }
 
-inline void read_config(DenseConfig& config, const JsonValue& object) {
+// `skip_unknown`: settings saved by another build (a preset, a dataset record)
+// may name keys this one dropped; a file typed for the CLI may not.
+inline void read_config(DenseConfig& config, const JsonValue& object, bool skip_unknown = false) {
     if (!object.is_object()) throw std::runtime_error("dense settings must be a JSON object");
     if (const auto* preset = object.find("preset")) config.apply_preset(preset->as_string());
     for (const auto& field : object.obj)
-        if (!assign_config_field(config, field.first, field.second))
+        if (!assign_config_field(config, field.first, field.second) && !skip_unknown)
             throw std::runtime_error("unknown dense setting: " + field.first);
     // Written before reference coverage existed: every image was a reference, and every
     // prediction was kept because that was the default then, not a choice anyone made.
@@ -88,6 +90,6 @@ inline void read_config(DenseConfig& config, const JsonValue& object) {
 namespace json_field {
 inline std::string emit(const spirula::dense::DenseConfig& config) { return spirula::dense::config_json(config); }
 inline void assign(spirula::dense::DenseConfig& config, const JsonValue& value) {
-    if (!value.is_null()) spirula::dense::read_config(config, value);
+    if (!value.is_null()) spirula::dense::read_config(config, value, /*skip_unknown=*/true);
 }
 }

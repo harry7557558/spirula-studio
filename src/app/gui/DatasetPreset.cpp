@@ -88,6 +88,16 @@ namespace {
     X("sfm_overlap",                sfm.overlap)                              \
     X("sfm_loop_closure",           sfm.loop_closure)                         \
     X("sfm_prefilter_sequential",   sfm.prefilter_sequential)                 \
+    X("sfm_progressive",            sfm.progressive)                          \
+    X("sfm_progressive_error_start", sfm.progressive_error_start)             \
+    X("sfm_progressive_error_end",  sfm.progressive_error_end)                \
+    X("sfm_progressive_error_steps", sfm.progressive_error_steps)             \
+    X("sfm_progressive_features",   sfm.progressive_features)                 \
+    X("sfm_progressive_max_features_end", sfm.progressive_max_features_end)   \
+    X("sfm_progressive_image_size_end", sfm.progressive_image_size_end)       \
+    X("sfm_progressive_feature_steps", sfm.progressive_feature_steps)         \
+    X("sfm_progressive_patience",   sfm.progressive_patience)                 \
+    X("sfm_progressive_time",       sfm.progressive_time)                     \
     X("sfm_use_sequence",           sfm.use_sequence)                         \
     X("sfm_init_focal_px",          sfm.init_focal_px)                        \
     X("sfm_init_distortion",        sfm.init_distortion)                      \
@@ -105,6 +115,7 @@ namespace {
     X("sfm_keep_intermediate",      sfm.keep_intermediate)                    \
     X("sfm_ba_cpu",                 sfm.ba_cpu)                               \
     X("sfm_subprocess",             sfm.subprocess)                           \
+    X("sfm_options",                sfm.options)                              \
     X("sfm_extra_args",             sfm.extra_args)                           \
     /* ---- COLMAP ---- */                                                    \
     X("colmap_camera_model",        colmap.camera_model)                      \
@@ -296,6 +307,14 @@ std::string dataset_settings_json(const DatasetSettings& s) {
 #undef SS_DS_EMIT
     w.end();
     return w.str();
+}
+
+void keep_dataset_edits(DatasetSettings& to, const DatasetSettings& edited,
+                        const DatasetSettings& base) {
+#define SS_DS_KEEP(key, member)                                                        if (json_field::emit(edited.member) != json_field::emit(base.member))                 to.member = edited.member;
+    SS_DATASET_PRESET_FIELDS(SS_DS_KEEP)
+#undef SS_DS_KEEP
+    sanitize_dataset_settings(to);
 }
 
 void read_dataset_settings_json(const JsonValue& fields, DatasetSettings& s) {
