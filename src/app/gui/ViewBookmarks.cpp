@@ -223,13 +223,12 @@ void bind_session_views(ViewportPanel& panel, const spirula::TrainerSession& s) 
                     Sim3::translation(c) * Sim3::from_3x4(a));
 }
 
-void bind_file_views(ViewportPanel& panel, const std::string& asked,
-                     const std::string& file, const Sim3& file_to_model) {
+FileHome file_home(const std::string& asked, const std::string& file) {
     std::error_code ec;
     const fs::path a = fs::u8path(asked);
     const fs::path f = fs::u8path(file.empty() ? asked : file);
+    FileHome h;
     fs::path folder;
-    Sim3 file_to_dataset;
     // config.json sits in the run folder: beside a mesh, one up from a
     // checkpoint's splat.ply, or it is the folder that was opened.
     std::vector<fs::path> runs = {f.parent_path(), f.parent_path().parent_path()};
@@ -238,25 +237,36 @@ void bind_file_views(ViewportPanel& panel, const std::string& asked,
         if (run.empty() || !fs::is_regular_file(run / "config.json", ec)) continue;
         const JsonValue cfg = read_json(run / "config.json");
         if (!cfg.is_object()) continue;
+        h.run_dir = run.u8string();
         const JsonValue* data = cfg.find("data");
         if (data && !data->as_string().empty()) {
             fs::path dir = fs::u8path(data->as_string());
             if (dir.is_relative()) dir = run / dir;
             if (!fs::is_directory(dir, ec)) dir = dir.parent_path();
+            // A run trained elsewhere (a cloud pod) names a path that does not
+            // exist here; filed under <dataset>/outputs/ it still says whose it is.
+            if (!fs::is_directory(dir, ec) && run.parent_path().filename() == "outputs")
+                dir = run.parent_path().parent_path();
             if (fs::is_directory(dir, ec)) {
                 folder = dir;
-                file_to_dataset = train_from_world(run).inverse();
+                h.file_to_dataset = train_from_world(run).inverse();
             }
         }
         break;
     }
     if (folder.empty()) folder = fs::is_directory(a, ec) ? a : f.parent_path();
-    if (folder.empty()) {
+    h.folder = folder.u8string();
+    return h;
+}
+
+void bind_file_views(ViewportPanel& panel, const std::string& asked,
+                     const std::string& file, const Sim3& file_to_model) {
+    const FileHome h = file_home(asked, file);
+    if (h.folder.empty()) {
         panel.set_views(nullptr, Sim3());
         return;
     }
-    panel.set_views(view_bookmarks(folder.u8string()),
-                    file_to_dataset * file_to_model.inverse());
+    panel.set_views(view_bookmarks(h.folder), h.file_to_dataset * file_to_model.inverse());
 }
 
 // ---------------------------------------------------------------------------
@@ -269,11 +279,11 @@ void ViewportPanel::set_views(std::shared_ptr<ViewBookmarkSet> set,
     _views_m2s = model_to_store;
 }
 
-void ViewportPanel::save_view(int slot) {
-    if (!_views || slot < 0 || slot >= kNumViews) return;
+ViewBookmark ViewportPanel::current_pose() const {
+    ViewBookmark b;
+    if (!_views) return b;
     // shared -> model -> saved frame
     const Sim3 S = _views_m2s * Sim3::from_3x4(_m2s).inverse();
-    ViewBookmark& b = _views->slot[(size_t)slot];
     const double pos[3] = {_cam.pos[0], _cam.pos[1], _cam.pos[2]};
     const double tgt[3] = {_cam.target[0], _cam.target[1], _cam.target[2]};
     const double rot[4] = {_cam.rot[3], _cam.rot[0], _cam.rot[1], _cam.rot[2]};
@@ -284,6 +294,34 @@ void ViewportPanel::save_view(int slot) {
     b.aspect = _img_h > 1.0f ? _img_w / _img_h : 0.0f;
     b.saved_unix = (int64_t)std::time(nullptr);
     b.set = true;
+    return b;
+}
+
+int ViewportPanel::current_view() const {
+    if (!_views) return -1;
+    const ViewBookmark now = current_pose();
+    for (int i = 0; i < kNumViews; i++) {
+        const ViewBookmark& b = _views->slot[(size_t)i];
+        if (!b.set || b.cam_model != now.cam_model || b.ortho != now.ortho ||
+            std::fabs(b.fov_deg - now.fov_deg) > 0.05f)
+            continue;
+        // A recall lands through float, so "on the view" is within rounding.
+        double dp = 0.0, dq = 0.0, scale = 1e-9;
+        for (int k = 0; k < 3; k++) {
+            dp += (b.pos[k] - now.pos[k]) * (b.pos[k] - now.pos[k]);
+            scale += (b.target[k] - b.pos[k]) * (b.target[k] - b.pos[k]);
+        }
+        for (int k = 0; k < 4; k++) dq += b.rot[k] * now.rot[k];
+        if (dp <= 1e-8 * scale && std::fabs(dq) > 0.99999) return i;
+    }
+    return -1;
+}
+
+void ViewportPanel::save_view(int slot) {
+    if (!_views || slot < 0 || slot >= kNumViews) return;
+    const std::string name = _views->slot[(size_t)slot].name;
+    _views->slot[(size_t)slot] = current_pose();
+    _views->slot[(size_t)slot].name = name;
     _views->save();
 }
 

@@ -33,6 +33,7 @@ namespace spirula { class TrainerSession; struct RegionOverlay; }
 
 namespace gui {
 
+struct ViewBookmark;
 struct ViewBookmarkSet;
 
 // What the viewer's primitive combo offers, in order. These are the
@@ -235,8 +236,24 @@ public:
     void save_view(int slot);
     void go_to_view(int slot);
     static const char* camera_model_label(int model);
+    // The pose in the saved-views frame (set = false without one), and the
+    // saved view it sits on, -1 when none.
+    ViewBookmark current_pose() const;
+    int current_view() const;
+    const ViewBookmarkSet* views() const { return _views.get(); }
+
+    // ---- screenshots (defined in Screenshot.cpp) ----
+    // W x H from the current view without grid, frusta or outline, after the
+    // frame in flight; `done` runs on the GUI thread. False with no engine.
+    bool request_capture(int W, int H, std::function<void(ViewResult&&)> done);
+    bool capture_pending() const { return (bool)_shot_done; }
 
 private:
+    void submit_capture();
+    void poll_capture();
+    std::function<void(ViewResult&&)> _shot_done;
+    int _shot_w = 0, _shot_h = 0;
+    bool _shot_inflight = false;
     float views_width() const;
     void draw_view_buttons();
     void handle_view_keys();

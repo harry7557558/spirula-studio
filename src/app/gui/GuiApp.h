@@ -28,6 +28,7 @@
 #include "app/gui/MeshRunner.h"
 #include "app/gui/ModelCache.h"
 #include "app/gui/RecentList.h"
+#include "app/gui/Screenshot.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
 #include "app/gui/SfmRunner.h"
@@ -237,6 +238,17 @@ private:
     // Arm the shared save dialog for `kind`, seeded from what is on screen.
     void open_preset_save(PresetKind kind);
     void start_training();
+    // ---- screenshots (defined in Screenshot.cpp) ----
+    // The button and its settings popup, ending `right` px from the row's end.
+    void draw_screenshot_controls(float right);
+    void take_screenshot();
+    // The viewer's: every splat pane, each beside its own dataset.
+    void draw_viewer_screenshot_controls();
+    void take_viewer_screenshots();
+    // The shared "..." popup, and the log lines of writes that finished.
+    void draw_screenshot_settings();
+    void poll_screenshot_jobs();
+
     // Everything that renders from the training session, released together.
     // Every path that replaces or destroys the session goes through this.
     void detach_session_views();
@@ -741,6 +753,8 @@ private:
     // Persisted: the last value the user gave save_full_checkpoint by hand. A
     // preset only overrides it by turning it on.
     bool _keep_full_ckpt = false;
+    ScreenshotSettings _shot;
+    std::vector<std::future<std::string>> _shot_jobs;   // path written, or throws
 
     // Saved presets, one picker per kind.
     PresetPicker<TrainPreset> _train_presets;

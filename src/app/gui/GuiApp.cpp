@@ -434,6 +434,7 @@ void GuiApp::load_settings() {
         else if (k == "save_full_checkpoint") _keep_full_ckpt = v != "0";
         else if (k.rfind(kDirPrefix, 0) == 0 && !v.empty())
             _dialog_dirs[k.substr(sizeof kDirPrefix - 1)] = v;
+        else if (read_screenshot_setting(_shot, k, v)) {}
     }
     std::fclose(f);
 
@@ -482,6 +483,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "save_full_checkpoint=%d\n", _keep_full_ckpt ? 1 : 0);
     for (const auto& [key, dir] : _dialog_dirs)
         std::fprintf(f, "%s%s=%s\n", kDirPrefix, key.c_str(), dir.c_str());
+    write_screenshot_settings(f, _shot);
     for (const auto& l : accepted)
         std::fprintf(f, "accepted_license=%s\n", l.c_str());
     const bool ok = std::ferror(f) == 0;
@@ -8140,6 +8142,7 @@ void GuiApp::draw_train() {
     // it costs the preview below no height.
     {
         const float w = px(160.0f);
+        draw_screenshot_controls(w);
         ImGui::SameLine(std::max(0.0f, ImGui::GetContentRegionMax().x - w));
         ImGui::SetNextItemWidth(w);
         int mode = _preview_images ? 1 : 0;
@@ -8219,6 +8222,8 @@ void GuiApp::draw_viewer() {
         if (ui::Button(rmsg::train_render)) _compare.begin_render(std::max(0, _compare.editing()));
         ui::help_on_hover(rmsg::enter_render_help);
     }
+    ImGui::SameLine();
+    draw_viewer_screenshot_controls();
     ImGui::SameLine();
     _compare.set_recents(recent_models(_recent));
     _compare.draw_toolbar();

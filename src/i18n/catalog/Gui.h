@@ -10249,6 +10249,268 @@ SS_MSG(view_save_failed,
     RU("Не удалось сохранить виды: {0}"),
     TR("Görünümler kaydedilemedi: {0}"));
 
+// ---- screenshots ----
+
+SS_MSG(screenshot,
+    EN("Screenshot"),    JA("スクリーンショット"), ZH_HANS("截图"),
+    ZH_HANT("截圖"),      KO("스크린샷"),       DE("Screenshot"),
+    FR("Capture"),       ES("Captura"),      PT("Captura"),
+    IT("Screenshot"),    NL("Schermafbeelding"), RU("Снимок"),
+    TR("Ekran görüntüsü"));
+
+SS_MSG(screenshot_help,
+    EN("Render the current view at {0} x {1} and save it in {2}. Training "
+       "keeps running."),
+    JA("現在のビューを {0} x {1} でレンダリングし、{2} に保存します。学習は"
+       "そのまま続きます。"),
+    ZH_HANS("以 {0} x {1} 渲染当前视角并保存到 {2}。训练不会中断。"),
+    ZH_HANT("以 {0} x {1} 算繪目前視角並儲存到 {2}。訓練不會中斷。"),
+    KO("현재 뷰를 {0} x {1}로 렌더링해 {2}에 저장합니다. 학습은 계속됩니다."),
+    DE("Rendert die aktuelle Ansicht mit {0} x {1} und speichert sie in {2}. "
+       "Das Training läuft weiter."),
+    FR("Rend la vue actuelle en {0} x {1} et l'enregistre dans {2}. "
+       "L'entraînement continue."),
+    ES("Renderiza la vista actual a {0} x {1} y la guarda en {2}. El "
+       "entrenamiento sigue."),
+    PT("Renderiza a vista atual em {0} x {1} e a salva em {2}. O treino "
+       "continua."),
+    IT("Esegue il rendering della vista attuale a {0} x {1} e la salva in {2}. "
+       "L'addestramento continua."),
+    NL("Rendert de huidige weergave op {0} x {1} en slaat die op in {2}. De "
+       "training loopt door."),
+    RU("Рендерит текущий вид в {0} x {1} и сохраняет в {2}. Обучение "
+       "продолжается."),
+    TR("Mevcut görünümü {0} x {1} olarak işler ve {2} içine kaydeder. Eğitim "
+       "sürer."));
+
+SS_MSG(screenshot_unavailable,
+    EN("Available in the 3D view once training has started."),
+    JA("学習を開始すると 3D ビューで使えます。"),
+    ZH_HANS("训练开始后可在 3D 视图中使用。"),
+    ZH_HANT("訓練開始後可在 3D 檢視中使用。"),
+    KO("학습을 시작하면 3D 뷰에서 쓸 수 있습니다."),
+    DE("Verfügbar in der 3D-Ansicht, sobald das Training läuft."),
+    FR("Disponible dans la vue 3D une fois l'entraînement lancé."),
+    ES("Disponible en la vista 3D cuando el entrenamiento ha empezado."),
+    PT("Disponível na vista 3D depois que o treino começa."),
+    IT("Disponibile nella vista 3D una volta avviato l'addestramento."),
+    NL("Beschikbaar in de 3D-weergave zodra de training loopt."),
+    RU("Доступно в 3D-виде после начала обучения."),
+    TR("Eğitim başladıktan sonra 3B görünümde kullanılabilir."));
+
+SS_MSG(screenshot_settings,
+    EN("Screenshot settings"),          JA("スクリーンショットの設定"),
+    ZH_HANS("截图设置"),                  ZH_HANT("截圖設定"),
+    KO("스크린샷 설정"),                   DE("Screenshot-Einstellungen"),
+    FR("Réglages de capture"),          ES("Ajustes de captura"),
+    PT("Configurações de captura"),     IT("Impostazioni screenshot"),
+    NL("Instellingen schermafbeelding"), RU("Настройки снимка"),
+    TR("Ekran görüntüsü ayarları"));
+
+SS_MSG(screenshot_folder,
+    EN("Folder"),        JA("フォルダー"),    ZH_HANS("文件夹"),
+    ZH_HANT("資料夾"),    KO("폴더"),          DE("Ordner"),
+    FR("Dossier"),       ES("Carpeta"),      PT("Pasta"),
+    IT("Cartella"),      NL("Map"),          RU("Папка"),
+    TR("Klasör"));
+
+SS_MSG(screenshot_folder_help,
+    EN("A relative folder starts in the dataset folder. Wildcards: {dataset}, "
+       "{run}."),
+    JA("相対パスはデータセットのフォルダーが起点です。ワイルドカード: "
+       "{dataset}、{run}。"),
+    ZH_HANS("相对路径从数据集文件夹开始。通配符：{dataset}、{run}。"),
+    ZH_HANT("相對路徑從資料集資料夾開始。萬用字元：{dataset}、{run}。"),
+    KO("상대 경로는 데이터셋 폴더에서 시작합니다. 와일드카드: {dataset}, {run}."),
+    DE("Ein relativer Ordner beginnt im Datensatzordner. Platzhalter: "
+       "{dataset}, {run}."),
+    FR("Un dossier relatif part du dossier du jeu de données. Jokers : "
+       "{dataset}, {run}."),
+    ES("Una carpeta relativa parte de la carpeta del conjunto de datos. "
+       "Comodines: {dataset}, {run}."),
+    PT("Uma pasta relativa parte da pasta do conjunto de dados. Curingas: "
+       "{dataset}, {run}."),
+    IT("Una cartella relativa parte dalla cartella del dataset. Segnaposto: "
+       "{dataset}, {run}."),
+    NL("Een relatieve map begint in de datasetmap. Jokertekens: {dataset}, "
+       "{run}."),
+    RU("Относительная папка отсчитывается от папки набора данных. Шаблоны: "
+       "{dataset}, {run}."),
+    TR("Göreli bir klasör veri kümesi klasöründen başlar. Joker karakterler: "
+       "{dataset}, {run}."));
+
+SS_MSG(screenshot_name,
+    EN("File name"),     JA("ファイル名"),    ZH_HANS("文件名"),
+    ZH_HANT("檔名"),      KO("파일 이름"),     DE("Dateiname"),
+    FR("Nom du fichier"), ES("Nombre de archivo"), PT("Nome do arquivo"),
+    IT("Nome file"),     NL("Bestandsnaam"), RU("Имя файла"),
+    TR("Dosya adı"));
+
+SS_MSG(screenshot_name_help,
+    EN("Wildcards: {run} run folder, {view} saved view the camera is on (left "
+       "out when there is none), {n} running number, {step} training step, "
+       "{dataset} dataset folder, {date}, {time}."),
+    JA("ワイルドカード: {run} 実行フォルダー、{view} カメラがいる保存ビュー"
+       "（なければ省略）、{n} 連番、{step} 学習ステップ、{dataset} データセット"
+       "のフォルダー、{date}、{time}。"),
+    ZH_HANS("通配符：{run} 运行文件夹，{view} 相机所在的已存视角（没有则省略），"
+            "{n} 序号，{step} 训练步数，{dataset} 数据集文件夹，{date}，{time}。"),
+    ZH_HANT("萬用字元：{run} 執行資料夾，{view} 相機所在的已存視角（沒有則省略），"
+            "{n} 序號，{step} 訓練步數，{dataset} 資料集資料夾，{date}，{time}。"),
+    KO("와일드카드: {run} 실행 폴더, {view} 카메라가 있는 저장된 뷰(없으면 "
+       "생략), {n} 일련번호, {step} 학습 단계, {dataset} 데이터셋 폴더, "
+       "{date}, {time}."),
+    DE("Platzhalter: {run} Lauf-Ordner, {view} gespeicherte Ansicht, auf der "
+       "die Kamera steht (entfällt, wenn keine), {n} laufende Nummer, {step} "
+       "Trainingsschritt, {dataset} Datensatzordner, {date}, {time}."),
+    FR("Jokers : {run} dossier de l'exécution, {view} vue enregistrée où se "
+       "trouve la caméra (omis s'il n'y en a pas), {n} numéro d'ordre, {step} "
+       "étape d'entraînement, {dataset} dossier du jeu de données, {date}, "
+       "{time}."),
+    ES("Comodines: {run} carpeta de la ejecución, {view} vista guardada en la "
+       "que está la cámara (se omite si no hay), {n} número correlativo, "
+       "{step} paso de entrenamiento, {dataset} carpeta del conjunto de "
+       "datos, {date}, {time}."),
+    PT("Curingas: {run} pasta da execução, {view} vista salva em que a câmera "
+       "está (omitido se não houver), {n} número sequencial, {step} passo de "
+       "treino, {dataset} pasta do conjunto de dados, {date}, {time}."),
+    IT("Segnaposto: {run} cartella dell'esecuzione, {view} vista salvata su "
+       "cui si trova la camera (omesso se non c'è), {n} numero progressivo, "
+       "{step} passo di addestramento, {dataset} cartella del dataset, "
+       "{date}, {time}."),
+    NL("Jokertekens: {run} run-map, {view} opgeslagen weergave waarop de "
+       "camera staat (weggelaten als er geen is), {n} volgnummer, {step} "
+       "trainingsstap, {dataset} datasetmap, {date}, {time}."),
+    RU("Шаблоны: {run} папка запуска, {view} сохранённый вид, на котором "
+       "стоит камера (опускается, если его нет), {n} порядковый номер, "
+       "{step} шаг обучения, {dataset} папка набора данных, {date}, {time}."),
+    TR("Joker karakterler: {run} çalıştırma klasörü, {view} kameranın "
+       "bulunduğu kayıtlı görünüm (yoksa atlanır), {n} sıra numarası, {step} "
+       "eğitim adımı, {dataset} veri kümesi klasörü, {date}, {time}."));
+
+SS_MSG(screenshot_format,
+    EN("Format"),        JA("形式"),          ZH_HANS("格式"),
+    ZH_HANT("格式"),      KO("형식"),          DE("Format"),
+    FR("Format"),        ES("Formato"),      PT("Formato"),
+    IT("Formato"),       NL("Formaat"),      RU("Формат"),
+    TR("Biçim"));
+
+SS_MSG(screenshot_quality,
+    EN("JPG quality"),   JA("JPG 品質"),      ZH_HANS("JPG 质量"),
+    ZH_HANT("JPG 品質"),  KO("JPG 품질"),      DE("JPG-Qualität"),
+    FR("Qualité JPG"),   ES("Calidad JPG"),  PT("Qualidade JPG"),
+    IT("Qualità JPG"),   NL("JPG-kwaliteit"), RU("Качество JPG"),
+    TR("JPG kalitesi"));
+
+SS_MSG(screenshot_size,
+    EN("Size in pixels"), JA("サイズ（ピクセル）"), ZH_HANS("尺寸（像素）"),
+    ZH_HANT("尺寸（像素）"), KO("크기(픽셀)"),   DE("Größe in Pixeln"),
+    FR("Taille en pixels"), ES("Tamaño en píxeles"), PT("Tamanho em pixels"),
+    IT("Dimensione in pixel"), NL("Grootte in pixels"), RU("Размер в пикселях"),
+    TR("Piksel cinsinden boyut"));
+
+SS_MSG(screenshot_overlay,
+    EN("Info overlay"),  JA("情報オーバーレイ"), ZH_HANS("信息叠加"),
+    ZH_HANT("資訊疊加"),  KO("정보 오버레이"), DE("Info-Einblendung"),
+    FR("Encart d'infos"), ES("Recuadro de datos"), PT("Quadro de dados"),
+    IT("Riquadro info"), NL("Info-overlay"), RU("Инфо-плашка"),
+    TR("Bilgi kutusu"));
+
+SS_MSG(screenshot_overlay_help,
+    EN("Steps, splats and VRAM in the bottom-right corner of the image."),
+    JA("画像の右下にステップ数、スプラット数、VRAM を表示します。"),
+    ZH_HANS("在图像右下角显示步数、泼溅数和显存。"),
+    ZH_HANT("在影像右下角顯示步數、潑濺數和顯示記憶體。"),
+    KO("이미지 오른쪽 아래에 단계, 스플랫, VRAM을 표시합니다."),
+    DE("Schritte, Splats und VRAM in der rechten unteren Bildecke."),
+    FR("Étapes, splats et VRAM dans le coin inférieur droit de l'image."),
+    ES("Pasos, splats y VRAM en la esquina inferior derecha de la imagen."),
+    PT("Passos, splats e VRAM no canto inferior direito da imagem."),
+    IT("Passi, splat e VRAM nell'angolo in basso a destra dell'immagine."),
+    NL("Stappen, splats en VRAM in de rechteronderhoek van het beeld."),
+    RU("Шаги, сплаты и видеопамять в правом нижнем углу изображения."),
+    TR("Görüntünün sağ alt köşesinde adımlar, splat'ler ve VRAM."));
+
+SS_MSG(screenshot_defaults,
+    EN("Reset to defaults"),            JA("既定に戻す"),
+    ZH_HANS("恢复默认值"),                ZH_HANT("還原預設值"),
+    KO("기본값으로 재설정"),               DE("Auf Standard zurücksetzen"),
+    FR("Valeurs par défaut"),           ES("Restablecer valores"),
+    PT("Restaurar padrões"),            IT("Ripristina predefiniti"),
+    NL("Standaard herstellen"),         RU("Сбросить по умолчанию"),
+    TR("Varsayılanlara dön"));
+
+SS_MSG(screenshot_saved,
+    EN("Screenshot saved: {0}"),        JA("スクリーンショットを保存しました: {0}"),
+    ZH_HANS("截图已保存：{0}"),           ZH_HANT("截圖已儲存：{0}"),
+    KO("스크린샷 저장됨: {0}"),            DE("Screenshot gespeichert: {0}"),
+    FR("Capture enregistrée : {0}"),    ES("Captura guardada: {0}"),
+    PT("Captura salva: {0}"),           IT("Screenshot salvato: {0}"),
+    NL("Schermafbeelding opgeslagen: {0}"), RU("Снимок сохранён: {0}"),
+    TR("Ekran görüntüsü kaydedildi: {0}"));
+
+SS_MSG(screenshot_failed,
+    EN("Screenshot failed: {0}"),       JA("スクリーンショットに失敗しました: {0}"),
+    ZH_HANS("截图失败：{0}"),             ZH_HANT("截圖失敗：{0}"),
+    KO("스크린샷 실패: {0}"),              DE("Screenshot fehlgeschlagen: {0}"),
+    FR("Échec de la capture : {0}"),    ES("Error en la captura: {0}"),
+    PT("Falha na captura: {0}"),        IT("Screenshot non riuscito: {0}"),
+    NL("Schermafbeelding mislukt: {0}"), RU("Не удалось сделать снимок: {0}"),
+    TR("Ekran görüntüsü alınamadı: {0}"));
+
+SS_MSG(screenshot_viewer_help,
+    EN("Render every open splat model at {0} x {1} from the current view and "
+       "save each in its own dataset's screenshot folder. Step and splat cap "
+       "come from the run folder the file is in."),
+    JA("開いているすべてのスプラットモデルを現在のビューから {0} x {1} で"
+       "レンダリングし、それぞれのデータセットのスクリーンショットフォルダーに"
+       "保存します。ステップとスプラット上限はファイルのある実行フォルダーから"
+       "取得します。"),
+    ZH_HANS("以 {0} x {1} 从当前视角渲染每个打开的泼溅模型，并分别保存到各自"
+            "数据集的截图文件夹。步数和泼溅上限取自文件所在的运行文件夹。"),
+    ZH_HANT("以 {0} x {1} 從目前視角算繪每個開啟的潑濺模型，並分別儲存到各自"
+            "資料集的截圖資料夾。步數和潑濺上限取自檔案所在的執行資料夾。"),
+    KO("열려 있는 모든 스플랫 모델을 현재 뷰에서 {0} x {1}로 렌더링해 각 "
+       "데이터셋의 스크린샷 폴더에 저장합니다. 단계와 스플랫 상한은 파일이 있는 "
+       "실행 폴더에서 가져옵니다."),
+    DE("Rendert jedes geöffnete Splat-Modell mit {0} x {1} aus der aktuellen "
+       "Ansicht und speichert es im Screenshot-Ordner seines eigenen "
+       "Datensatzes. Schritt und Splat-Obergrenze stammen aus dem Lauf-Ordner "
+       "der Datei."),
+    FR("Rend chaque modèle de splats ouvert en {0} x {1} depuis la vue "
+       "actuelle et l'enregistre dans le dossier de captures de son propre jeu "
+       "de données. L'étape et la limite de splats viennent du dossier "
+       "d'exécution du fichier."),
+    ES("Renderiza cada modelo de splats abierto a {0} x {1} desde la vista "
+       "actual y lo guarda en la carpeta de capturas de su propio conjunto de "
+       "datos. El paso y el límite de splats vienen de la carpeta de ejecución "
+       "del archivo."),
+    PT("Renderiza cada modelo de splats aberto em {0} x {1} a partir da vista "
+       "atual e o salva na pasta de capturas do próprio conjunto de dados. O "
+       "passo e o limite de splats vêm da pasta de execução do arquivo."),
+    IT("Esegue il rendering di ogni modello di splat aperto a {0} x {1} dalla "
+       "vista attuale e lo salva nella cartella screenshot del proprio "
+       "dataset. Passo e limite di splat vengono dalla cartella "
+       "dell'esecuzione del file."),
+    NL("Rendert elk geopend splat-model op {0} x {1} vanuit de huidige "
+       "weergave en slaat het op in de screenshotmap van de eigen dataset. "
+       "Stap en splat-limiet komen uit de run-map van het bestand."),
+    RU("Рендерит каждую открытую модель сплатов в {0} x {1} из текущего вида "
+       "и сохраняет её в папку снимков её набора данных. Шаг и предел сплатов "
+       "берутся из папки запуска, где лежит файл."),
+    TR("Açık her splat modelini mevcut görünümden {0} x {1} olarak işler ve "
+       "her birini kendi veri kümesinin ekran görüntüsü klasörüne kaydeder. "
+       "Adım ve splat sınırı dosyanın bulunduğu çalıştırma klasöründen alınır."));
+
+SS_MSG(screenshot_viewer_unavailable,
+    EN("Open a splat model first."),    JA("先にスプラットモデルを開いてください。"),
+    ZH_HANS("请先打开一个泼溅模型。"),      ZH_HANT("請先開啟一個潑濺模型。"),
+    KO("먼저 스플랫 모델을 여세요."),       DE("Zuerst ein Splat-Modell öffnen."),
+    FR("Ouvrez d'abord un modèle de splats."), ES("Abre primero un modelo de splats."),
+    PT("Abra primeiro um modelo de splats."), IT("Apri prima un modello di splat."),
+    NL("Open eerst een splat-model."),  RU("Сначала откройте модель сплатов."),
+    TR("Önce bir splat modeli açın."));
+
 }  // namespace gui
 }  // namespace msg
 }  // namespace i18n

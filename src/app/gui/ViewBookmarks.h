@@ -47,8 +47,15 @@ std::shared_ptr<ViewBookmarkSet> view_bookmarks(const std::string& folder);
 
 // The trainer's viewport: the dataset folder, through the session's frames.
 void bind_session_views(ViewportPanel& panel, const spirula::TrainerSession& s);
-// A viewer pane over `file` (opened as `asked`): the dataset of the run it
-// came from when its config.json names one, else the folder it is in.
+// Where a model file belongs: the dataset of the run it came from when that
+// run's config.json names one, else the folder it is in. `run_dir` is the run
+// folder, "" when there is none. UTF-8 throughout.
+struct FileHome {
+    std::string folder, run_dir;
+    spirula::Sim3 file_to_dataset;
+};
+FileHome file_home(const std::string& asked, const std::string& file);
+// A viewer pane over `file` (opened as `asked`), at file_home's folder.
 // `file_to_model` maps the file's coordinates into the panel's model frame.
 void bind_file_views(ViewportPanel& panel, const std::string& asked,
                      const std::string& file, const spirula::Sim3& file_to_model);

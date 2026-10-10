@@ -903,6 +903,8 @@ void ViewportPanel::detach() {
     _on_primitive_changed = nullptr;
     if (_mode == Mode::Engine) _worker.stop();
     _pending = 0;
+    _shot_done = nullptr;
+    _shot_inflight = false;
     _mode = Mode::None;
 }
 
@@ -1948,9 +1950,10 @@ int ViewportPanel::idle_step_interval() const {
 
 void ViewportPanel::draw_engine(bool training, const ImVec2& avail, int step) {
     const double now = ImGui::GetTime();
+    if (_shot_inflight) poll_capture();
 
     // Poll the in-flight render.
-    if (_pending) {
+    if (_pending && !_shot_inflight) {
         ViewResult res;
         if (_worker.try_get_result(_pending, res)) {
             _pending = 0;
@@ -2006,6 +2009,7 @@ void ViewportPanel::draw_engine(bool training, const ImVec2& avail, int step) {
             live = now - _last_submit > 1.0;   // no step to count: 1 Hz
     }
     bool want = _dirty || live;
+    if (!_pending && _shot_done && !_shot_inflight) submit_capture();
     if (!_pending && want) {
         ViewRequest q;
         build_request(q, W, H);

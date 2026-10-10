@@ -115,6 +115,14 @@ public:
     void poll();
     // The row above the panes: what is open, the add button, the link.
     void draw_toolbar();
+    // Panes showing splats through the engine, for screenshots
+    // (defined in Screenshot.cpp).
+    struct PaneShot {
+        ViewportPanel* panel;
+        std::string asked, file;
+        int64_t splats;
+    };
+    std::vector<PaneShot> splat_panes();
     // The panes themselves, `height` tall (0 = all that is left).
     void draw(float height);
     void destroy_gl();
