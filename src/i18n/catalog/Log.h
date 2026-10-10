@@ -566,6 +566,21 @@ SS_MSG(motion_plan,
     RU("Анализ движения: запланировано {0} кадров, от {1} до {2} в секунду."),
     TR("Hareket incelemesi: {0} kare planlandı, saniyede {1} ile {2} arasında."));
 
+SS_MSG(video_lut_applied,
+    EN("Applying the colour LUT {0} to every extracted frame."),
+    JA("抽出する全フレームにカラー LUT {0} を適用します。"),
+    ZH_HANS("对每一帧导出画面套用颜色 LUT {0}。"),
+    ZH_HANT("對每一幀輸出畫面套用色彩 LUT {0}。"),
+    KO("추출하는 모든 프레임에 색상 LUT {0}을(를) 적용합니다."),
+    DE("Die Farb-LUT {0} wird auf jedes extrahierte Einzelbild angewendet."),
+    FR("La LUT couleur {0} est appliquée à chaque image extraite."),
+    ES("Se aplica la LUT de color {0} a cada fotograma extraído."),
+    PT("A LUT de cor {0} é aplicada a cada fotograma extraído."),
+    IT("La LUT colore {0} viene applicata a ogni fotogramma estratto."),
+    NL("De kleur-LUT {0} wordt op elk geëxtraheerd beeld toegepast."),
+    RU("Цветовая LUT {0} применяется к каждому извлечённому кадру."),
+    TR("{0} renk LUT'u çıkarılan her kareye uygulanıyor."));
+
 SS_MSG(video_autorotate,
     EN("The capture asks to be turned {0} degrees; the frames are written already turned."),
     JA("この撮影は {0} 度回転して表示するよう指定されています。フレームは回転済みで書き出されます。"),

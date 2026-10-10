@@ -598,6 +598,9 @@ StepFields frames_fields(const PrepJob& job) {
         const bool every = every_frame(job, in);
         rate = rate || !every;
         add(f, "fps", scope, every ? "every" : num(input_fps(job, in)));
+        // The colours are baked into the frames, so another LUT is other frames.
+        if (const std::string lut = input_lut(job, in); !lut.empty())
+            add(f, "lut", scope, norm_path(lut));
         multi = multi || (!in.pano360.valid() && in.video_tracks >= 2);
         pano = pano || in.pano360.valid();
     }
@@ -1089,7 +1092,10 @@ void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
                     if (o.rel == sc.rel) sc = o;
         }
         if (same_rows(rates))
-            for (size_t i = 0; i < rows.size(); i++) rows[i].fps = rates.rows[i].fps;
+            for (size_t i = 0; i < rows.size(); i++) {
+                rows[i].fps = rates.rows[i].fps;
+                rows[i].lut = rates.rows[i].lut;
+            }
         if (same_rows(clicks)) job.mask_clicks = clicks.clicks;
         if (!rows.empty()) camera_model = rows[0].camera_model;
         return;

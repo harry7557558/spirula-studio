@@ -2836,6 +2836,82 @@ SS_MSG(frames_per_second_help_adaptive,
        "video kendininkini kullanır. "
        "0 her kareyi tutar; o zaman harekete göre aralanacak bir şey kalmaz."));
 
+SS_MSG(video_lut_none,
+    EN("No LUT"), JA("LUT なし"), ZH_HANS("无 LUT"), ZH_HANT("無 LUT"),
+    KO("LUT 없음"), DE("Keine LUT"), FR("Aucune LUT"), ES("Sin LUT"),
+    PT("Sem LUT"), IT("Nessuna LUT"), NL("Geen LUT"), RU("Без LUT"),
+    TR("LUT yok"));
+
+SS_MSG(video_lut_choose,
+    EN("Choose a .cube file..."), JA(".cube ファイルを選択..."),
+    ZH_HANS("选择 .cube 文件…"), ZH_HANT("選擇 .cube 檔案…"),
+    KO(".cube 파일 선택..."), DE(".cube-Datei wählen..."),
+    FR("Choisir un fichier .cube..."), ES("Elegir un archivo .cube..."),
+    PT("Escolher um arquivo .cube..."), IT("Scegli un file .cube..."),
+    NL("Een .cube-bestand kiezen..."), RU("Выбрать файл .cube..."),
+    TR(".cube dosyası seç..."));
+
+SS_MSG(video_lut_pick_title,
+    EN("Choose a colour LUT (.cube)"), JA("カラー LUT（.cube）を選択"),
+    ZH_HANS("选择颜色 LUT（.cube）"), ZH_HANT("選擇色彩 LUT（.cube）"),
+    KO("색상 LUT(.cube) 선택"), DE("Farb-LUT (.cube) wählen"),
+    FR("Choisir une LUT couleur (.cube)"), ES("Elegir una LUT de color (.cube)"),
+    PT("Escolher uma LUT de cor (.cube)"), IT("Scegli una LUT colore (.cube)"),
+    NL("Een kleur-LUT (.cube) kiezen"), RU("Выбрать цветовую LUT (.cube)"),
+    TR("Renk LUT'u seç (.cube)"));
+
+SS_MSG(video_lut_help,
+    EN("A 3D colour LUT baked into this video's frames as they are extracted -- "
+       "the camera maker's log-to-Rec.709 LUT turns flat log footage into the "
+       "colours the reconstruction and the model should see. \"(same as above)\" "
+       "takes the row above's, so one choice covers a run of clips.\nNow: {0}"),
+    JA("抽出時にこの動画のフレームへ焼き込む 3D カラー LUT です。メーカー提供の"
+       "ログ→Rec.709 LUT を使うと、眠いログ映像が再構成とモデルに渡すべき色になります。"
+       "「（上と同じ）」は上の行の設定を引き継ぐので、同じカメラのクリップ群は一度の"
+       "選択で済みます。\n現在：{0}"),
+    ZH_HANS("抽帧时烘焙进这个视频每一帧的 3D 颜色 LUT。用相机厂商提供的 Log 转 "
+            "Rec.709 LUT，可以把灰平的 Log 素材还原成重建和模型应该看到的颜色。"
+            "“（同上）”沿用上一行的设置，一串同机拍的片段选一次就够。\n当前：{0}"),
+    ZH_HANT("抽幀時烘焙進這個影片每一幀的 3D 色彩 LUT。用相機廠商提供的 Log 轉 "
+            "Rec.709 LUT，可以把灰平的 Log 素材還原成重建和模型應該看到的顏色。"
+            "「（同上）」沿用上一行的設定，一串同機拍的片段選一次就夠。\n目前：{0}"),
+    KO("추출할 때 이 영상의 프레임에 구워 넣는 3D 색상 LUT입니다. 제조사의 로그→"
+       "Rec.709 LUT를 쓰면 밋밋한 로그 영상이 재구성과 모델이 봐야 할 색이 됩니다. "
+       "\"(위와 같음)\"은 위 행의 설정을 따르므로 같은 카메라의 클립들은 한 번만 "
+       "고르면 됩니다.\n현재: {0}"),
+    DE("Eine 3D-Farb-LUT, die beim Extrahieren in die Einzelbilder dieses Videos "
+       "eingerechnet wird -- die Log-zu-Rec.709-LUT des Herstellers macht aus "
+       "flachem Log-Material die Farben, die Rekonstruktion und Modell sehen "
+       "sollen. \"(wie oben)\" übernimmt die der Zeile darüber.\nJetzt: {0}"),
+    FR("Une LUT couleur 3D appliquée aux images de cette vidéo à l'extraction -- "
+       "la LUT log vers Rec.709 du fabricant rend aux images log les couleurs "
+       "que la reconstruction et le modèle doivent voir. « (comme ci-dessus) » "
+       "reprend celle de la ligne du dessus.\nActuelle : {0}"),
+    ES("Una LUT de color 3D aplicada a los fotogramas de este vídeo al "
+       "extraerlos: la LUT log a Rec.709 del fabricante devuelve al material log "
+       "los colores que deben ver la reconstrucción y el modelo. \"(igual que "
+       "arriba)\" toma la de la fila de arriba.\nAhora: {0}"),
+    PT("Uma LUT de cor 3D aplicada aos fotogramas deste vídeo na extração -- a "
+       "LUT log para Rec.709 do fabricante devolve ao material log as cores que "
+       "a reconstrução e o modelo devem ver. \"(igual ao de cima)\" usa a da "
+       "linha de cima.\nAgora: {0}"),
+    IT("Una LUT colore 3D applicata ai fotogrammi di questo video durante "
+       "l'estrazione: la LUT log-Rec.709 del produttore restituisce al materiale "
+       "log i colori che ricostruzione e modello devono vedere. \"(come sopra)\" "
+       "prende quella della riga sopra.\nOra: {0}"),
+    NL("Een 3D-kleur-LUT die bij het extraheren in de beelden van deze video "
+       "wordt ingebakken -- de log-naar-Rec.709-LUT van de fabrikant geeft "
+       "vlakke log-opnamen de kleuren die reconstructie en model moeten zien. "
+       "\"(zelfde als hierboven)\" neemt die van de rij erboven.\nNu: {0}"),
+    RU("3D-LUT цвета, запекаемая в кадры этого видео при извлечении: LUT "
+       "производителя «лог → Rec.709» возвращает плоскому лог-материалу цвета, "
+       "которые должны видеть реконструкция и модель. «(как выше)» берёт LUT "
+       "строки выше.\nСейчас: {0}"),
+    TR("Kareler çıkarılırken bu videonun karelerine işlenen 3D renk LUT'u -- "
+       "üreticinin log'dan Rec.709'a LUT'u düz log görüntüye, yeniden "
+       "oluşturmanın ve modelin görmesi gereken renkleri verir. \"(yukarıdakiyle "
+       "aynı)\" üstteki satırınkini alır.\nŞu an: {0}"));
+
 SS_MSG(video_fps_this_one_help,
     EN("Frames per second for this video alone. \"^\" is following the video "
        "above it; type that rate back in to go back to following. "

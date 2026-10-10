@@ -76,6 +76,7 @@ set(SS_TOOL_LIBS "")
 # src/app/Main.cpp needs to arm the crash handler for every subcommand --
 # including the ones the GUI spawns.
 list(APPEND SS_TOOL_SOURCES
+     ${SS_SRC}/app/CubeLut.cpp
      ${SS_SRC}/app/FrameMask.cpp
      ${SS_SRC}/app/FrameMaskSvg.cpp
      ${SS_SRC}/app/FrameLook.cpp
@@ -354,7 +355,8 @@ if(SS_SEPARATE_TOOLS)
             "SS_TOOL_SFM=1" "ss_sfm")
     endif()
     if(SS_BUILD_SAM)
-        set(_sam_src ${SS_SRC}/app/cli/sam_main.cpp ${SS_SRC}/app/FrameMask.cpp
+        set(_sam_src ${SS_SRC}/app/cli/sam_main.cpp ${SS_SRC}/app/CubeLut.cpp
+                     ${SS_SRC}/app/FrameMask.cpp
                      ${SS_SRC}/app/FrameMaskSvg.cpp
                      ${SS_SRC}/app/FrameLook.cpp ${SS_SRC}/app/FrameMotion.cpp
                      ${SS_SRC}/app/FrameSharpness.cpp ${SS_SRC}/app/Pano360.cpp
@@ -392,6 +394,12 @@ if(SS_BUILD_SAM)
     ss_configure_app(dense_camera_test)
     target_link_libraries(dense_camera_test PRIVATE ss_nn)
 endif()
+
+# .cube parsing and the tetrahedral map: a wrong colour is silent too.
+add_executable(cube_lut_test
+    ${SS_SRC}/app/tests/cube_lut_test.cpp
+    ${SS_SRC}/app/CubeLut.cpp)
+ss_configure_app(cube_lut_test)
 
 # The frame plan: no device, no GUI, and a wrong answer is silent.
 add_executable(frame_motion_test
@@ -558,6 +566,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMaskSvg.cpp
         ${SS_SRC}/app/FrameLook.cpp
         ${SS_SRC}/app/FrameMotion.cpp
+        ${SS_SRC}/app/CubeLut.cpp
         ${SS_SRC}/app/Pano360.cpp)
     ss_configure_app(dataset_prep_test)
 
@@ -579,6 +588,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameMaskSvg.cpp
         ${SS_SRC}/app/FrameLook.cpp
         ${SS_SRC}/app/FrameMotion.cpp
+        ${SS_SRC}/app/CubeLut.cpp
         ${SS_SRC}/app/Pano360.cpp)
     ss_configure_app(dataset_plan_test)
 endif()
