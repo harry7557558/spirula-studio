@@ -491,7 +491,7 @@ SparseFormat sparse_format_of(const std::string& dataset_dir) {
          !ec && it != end; it.increment(ec)) {
         std::string e = it->path().extension().string();
         for (char& c : e) c = (char)std::tolower((unsigned char)c);
-        if (e == ".xml") return SparseFormat::Metashape;
+        if (e == ".xml" || e == ".psx") return SparseFormat::Metashape;
     }
     return SparseFormat::None;
 }
@@ -752,8 +752,11 @@ SparseBaseline load_baseline(const std::string& dataset_dir) {
         }
         case SparseFormat::Metashape: {
             DatasetParserConfig cfg;
-            const JsonValue meta = metashape_meta(dataset_dir, cfg);
-            b.cloud = read_points_of(dataset_dir, nerf_ply_rel(meta));
+            ColmapPoints3D psx_points;
+            const JsonValue meta = metashape_meta(dataset_dir, cfg, &psx_points);
+            const std::string ply_rel = nerf_ply_rel(meta);
+            b.cloud = ply_rel.empty() ? std::move(psx_points)
+                                      : read_points_of(dataset_dir, ply_rel);
             JsonWriter w;
             json_write(w, meta);
             b.meta = w.str();

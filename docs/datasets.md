@@ -12,10 +12,20 @@ implementation, shared by the CLI trainer, the GUI and the WASM viewer.
 |---|---|---|
 | COLMAP | `cameras`/`images`, and `points3D` if there is one, in `.bin` or `.txt` | `ColmapParser.cpp` |
 | Nerfstudio | `transforms.json`, and a PLY point cloud if there is one | `NerfstudioParser.cpp` (PLY reader lives here) |
-| Metashape | camera-export `.xml`, a `.ply` if there is one, optionally a `.psx` project for filename disambiguation | `MetashapeParser.cpp` (XML via `app/Xml.h`, zips via `external/miniz`) |
+| Metashape | camera-export `.xml`, a `.ply` if there is one, optionally a `.psx` project for filename disambiguation; or a `.psx` project alone | `MetashapeParser.cpp` (XML via `app/Xml.h`, zips via `external/miniz`) |
 
 The point cloud is optional in every format: a dataset without one, or with an
 empty one, parses to poses alone and the trainer seeds it at random (below).
+
+A Metashape `.psx` with no camera-export `.xml` beside it is read directly:
+the active chunk's sensors, components and camera poses from
+`<name>.files/.../chunk.zip`, photo paths from the first frame's `frame.zip`,
+and the chosen component's tie points (coloured by track) from its
+`point_cloud.zip` as the seed cloud. The project has to be saved after
+*Align Photos*; one that never was fails with "no camera ... is aligned". When
+the folder holds several `.xml` or `.psx` files the parser will not guess:
+name one with `--metashape-xml` / `--metashape-psx` (the GUI's *Metashape
+project file* under All Options).
 
 An E57 laser scan is not read in place: it is written out once as a Nerfstudio
 dataset (below, "E57 laser scans"), which then opens like any other.

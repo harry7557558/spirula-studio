@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -84,6 +85,27 @@ ColmapPoints3D                  read_points3D_text(const std::string& recon_dir)
 // or double type, red/green/blue uchar or float). NerfstudioParser.cpp. A
 // vertex element of zero rows reads as an empty cloud.
 ColmapPoints3D read_ply_points(const std::string& path);
+
+// The vertex element of a PLY held in memory, in the formats above, walked
+// row by row. NerfstudioParser.cpp; `what` names the source in errors.
+class PlyVertexReader {
+public:
+    PlyVertexReader(std::string bytes, std::string what);
+    int64_t count() const { return count_; }
+    int column(const char* name) const;   // -1 when the vertex has none
+    bool is_float(int column) const;
+    // row(v) once per vertex, v[k] the value of column cols[k].
+    void each(const std::vector<int>& cols,
+              const std::function<void(const double*)>& row) const;
+
+private:
+    std::string bytes_, what_;
+    size_t data_ = 0;
+    int64_t count_ = 0;
+    bool binary_ = false;
+    std::vector<std::string> names_;
+    std::vector<uint8_t> types_;
+};
 
 
 // The exotic camera a fitted camera stands in for, so the re-distort kernel
@@ -166,10 +188,9 @@ struct DatasetParserConfig {
     float       train_resolution_divisor = 0.0f;
     std::string downscale_rounding_mode = "floor";   // floor | ceil | round
 
-    // Metashape inputs (parse_metashape_dataset). Relative paths resolve
-    // against the dataset dir; empty = auto-detect a unique candidate in the
-    // dataset dir (.psx is optional -- used only to disambiguate camera ->
-    // image filename matching).
+    // Metashape inputs, relative to the dataset dir; empty = its unique
+    // candidate. With an .xml the .psx only disambiguates image filenames;
+    // without one the .psx project itself is read.
     std::string metashape_xml;
     std::string metashape_ply;
     std::string metashape_psx;
@@ -275,17 +296,20 @@ ParsedDataset parse_metashape_dataset(const std::string& dataset_dir,
                                       const DatasetParserConfig& cfg);
 
 // Nerfstudio back-end over an already-built transforms.json-shaped meta
-// (NerfstudioParser.cpp; used by the Metashape front-end).
+// (NerfstudioParser.cpp; used by the Metashape front-end). A non-null
+// `points` is the seed cloud in the meta's frame, in place of its ply_file_path.
 struct JsonValue;
 ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
                                     const std::string& dataset_dir,
-                                    const DatasetParserConfig& cfg);
+                                    const DatasetParserConfig& cfg,
+                                    const ColmapPoints3D* points = nullptr);
 
-// The Metashape front-end's half: the XML read as that same meta. Exposed so
-// an edited reconstruction can be written out as the Nerfstudio dataset the
-// Metashape path already turns it into, rather than a second conversion.
+// The Metashape front-end's half, exposed so an edited reconstruction is
+// written out as the Nerfstudio dataset it already turns into. A lone .psx
+// has no cloud file to name: its tie points come back in `psx_points`.
 JsonValue metashape_meta(const std::string& dataset_dir,
-                         const DatasetParserConfig& cfg);
+                         const DatasetParserConfig& cfg,
+                         ColmapPoints3D* psx_points = nullptr);
 
 // Which directory under `dataset_dir` holds the COLMAP model the parser would
 // read, "" when none does; `points_text` reports the points3D spelling. One

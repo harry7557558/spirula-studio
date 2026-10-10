@@ -293,6 +293,10 @@ void SplatViewer::run(std::string path) {
             // Poses and points, not pixels: a reconstruction is worth opening
             // even when its images are somewhere else.
             dcfg.require_image_files = false;
+            // A picked Metashape file is the one meant, among its siblings.
+            const std::string ext = fs::path(path).extension().string();
+            if (ext == ".psx" || ext == ".PSX") dcfg.metashape_psx = path;
+            if (ext == ".xml" || ext == ".XML") dcfg.metashape_xml = path;
             ParsedDataset ds = parse_dataset(dataset, dcfg, "");
             PostSplitCameras post = bake_post_split(ds, false, false);
             const int64_t n = ds.points.num();

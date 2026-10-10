@@ -29,6 +29,15 @@ const ImVec4 kPickerErr(1.0f, 0.42f, 0.42f, 1.0f);
 // place in every frame anyway, which makes it app::FrameMask's job.
 const std::vector<MaskSubject>& subjects_impl() {
     static const std::vector<MaskSubject> v = {
+        // By role as well: "person" alone misses part of a crowd of passers-by.
+        {&dmsg::subj_tourist,         "tourist"},
+        {&dmsg::subj_visitor,         "visitor"},
+        {&dmsg::subj_photographer,    "photographer"},
+        {&dmsg::subj_pedestrian,      "pedestrian"},
+        {&dmsg::subj_child,           "child"},
+        {&dmsg::subj_guard,           "security guard"},
+        {&dmsg::subj_worker,          "worker"},
+        {&dmsg::subj_cyclist,         "cyclist"},
         {&dmsg::subj_person,          "person"},
         {&dmsg::subj_hand,            "hand"},
         {&dmsg::subj_shoe,            "shoe"},
@@ -45,6 +54,11 @@ const std::vector<MaskSubject>& subjects_impl() {
         {&dmsg::subj_camera,          "camera"},
         {&dmsg::subj_tripod,          "tripod"},
         {&dmsg::subj_backpack,        "backpack"},
+        {&dmsg::subj_handbag,         "handbag"},
+        {&dmsg::subj_umbrella,        "umbrella"},
+        {&dmsg::subj_stroller,        "stroller"},
+        {&dmsg::subj_selfie_stick,    "selfie stick"},
+        {&dmsg::subj_phone,           "phone held up"},
         {&dmsg::subj_helmet,          "helmet"},
         {&dmsg::subj_watermark,       "watermark"},
     };
@@ -53,6 +67,9 @@ const std::vector<MaskSubject>& subjects_impl() {
 
 const std::vector<MaskSubject>& exceptions_impl() {
     static const std::vector<MaskSubject> v = {
+        {&dmsg::subj_painting,        "painting"},
+        {&dmsg::subj_poster,          "poster"},
+        {&dmsg::subj_screen,          "screen"},
         {&dmsg::subj_person_painting, "person in a painting"},
         {&dmsg::subj_statue,          "statue"},
         {&dmsg::subj_mannequin,       "mannequin"},

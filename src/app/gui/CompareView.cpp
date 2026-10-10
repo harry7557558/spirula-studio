@@ -602,6 +602,11 @@ const ParsedDataset* CompareView::run_dataset(const std::string& model_file) {
                 if (dir.is_relative()) dir = run / dir;
                 DatasetParserConfig pc;
                 pc.require_image_files = false;
+                for (auto [key, field] : {std::pair{"metashape_xml", &pc.metashape_xml},
+                                          std::pair{"metashape_ply", &pc.metashape_ply},
+                                          std::pair{"metashape_psx", &pc.metashape_psx}})
+                    if (const JsonValue* v = cfg.find(key); v && v->type == JsonValue::Type::String)
+                        *field = v->as_string();
                 auto ds = std::make_unique<ParsedDataset>(parse_dataset(dir.string(), pc, ""));
                 // The run may have trained in a frame of its own; its
                 // scene_transform.json says how to get there.

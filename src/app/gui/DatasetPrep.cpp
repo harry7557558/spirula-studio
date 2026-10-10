@@ -868,8 +868,8 @@ std::vector<std::string> camera_group_models(const std::vector<PrepInput>& input
     return out;
 }
 
-// A camera .xml next to a point-cloud .ply, which is what MetashapeParser
-// probes for.
+// A camera .xml next to a point-cloud .ply, or a .psx project, which is what
+// MetashapeParser probes for.
 static bool metashape_export_here(const fs::path& p) {
     std::error_code ec;
     bool has_xml = false, has_ply = false;
@@ -878,6 +878,7 @@ static bool metashape_export_here(const fs::path& p) {
         if (!it->is_regular_file(ec)) continue;
         std::string e = it->path().extension().string();
         for (auto& c : e) c = (char)std::tolower((unsigned char)c);
+        if (e == ".psx") return true;
         has_xml = has_xml || e == ".xml";
         has_ply = has_ply || e == ".ply";
     }

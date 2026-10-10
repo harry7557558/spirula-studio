@@ -711,7 +711,7 @@ static std::string find_colmap_recon(const std::string& dataset_dir,
 }
 
 ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
-                                   const DatasetParserConfig& cfg) {
+                                    const DatasetParserConfig& cfg) {
     ColmapModelFmt fmt;
     std::string near_miss;
     std::string recon_dir = find_colmap_recon(dataset_dir, cfg, &fmt,
@@ -971,34 +971,34 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
 // complaint, which told the user nothing about what was actually wrong.
 // ===========================================================================
 
-// A Metashape camera export is <document ...><chunk ...><sensors>...; sniff
-// the head of the file so an unrelated .xml that happens to sit in the
-// directory is not mistaken for one (a plain "*.xml is present" test makes
-// any random folder look like a Metashape dataset).
-static bool looks_like_metashape_xml(const fs::path& p) {
+// An export is <document><chunk>..., a .psx <document path="..."/>. Sniffed,
+// because a plain "*.xml is present" test makes any folder with a stray .xml
+// look like a Metashape dataset.
+static bool looks_like_metashape(const fs::path& p, bool project) {
     std::ifstream f(p, std::ios::binary);
     if (!f) return false;
     char buf[8192];
     f.read(buf, sizeof buf);
     std::string head(buf, (size_t)f.gcount());
     return head.find("<document") != std::string::npos &&
-           head.find("<chunk") != std::string::npos;
+           head.find(project ? "path=" : "<chunk") != std::string::npos;
 }
 
-// Does the dataset dir hold a Metashape camera export? A .xml is the only
-// mandatory input (MetashapeParser.cpp resolve_input); an explicitly
-// configured one counts unconditionally -- the user named it, so any problem
-// with it belongs in the Metashape parser's own error message.
-static bool has_metashape_xml(const std::string& dataset_dir,
-                              const DatasetParserConfig& cfg) {
-    if (!cfg.metashape_xml.empty()) return true;
+// Does the dataset dir hold a Metashape camera export or project? An
+// explicitly configured one counts unconditionally -- the user named it, so
+// any problem with it belongs in the Metashape parser's own error message.
+static bool metashape_here(const std::string& dataset_dir,
+                           const DatasetParserConfig& cfg) {
+    if (!cfg.metashape_xml.empty() || !cfg.metashape_psx.empty()) return true;
     std::error_code ec;
     for (fs::directory_iterator it(dataset_dir, ec), end; !ec && it != end;
          it.increment(ec)) {
         if (!it->is_regular_file(ec)) continue;
         std::string ext = it->path().extension().string();
         for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
-        if (ext == ".xml" && looks_like_metashape_xml(it->path())) return true;
+        if ((ext == ".xml" || ext == ".psx") &&
+            looks_like_metashape(it->path(), ext == ".psx"))
+            return true;
     }
     return false;
 }
@@ -1042,7 +1042,7 @@ ParsedDataset parse_dataset(const std::string& dataset_dir,
     bool has_colmap = !find_colmap_recon(dataset_dir, cfg, &fmt,
                                          /*verbose=*/false,
                                          &colmap_near_miss).empty();
-    bool has_metashape = has_metashape_xml(dataset_dir, cfg);
+    bool has_metashape = metashape_here(dataset_dir, cfg);
 
     if (has_colmap) {
         if (!has_metashape) return parse_colmap_dataset(dataset_dir, cfg);
@@ -1069,7 +1069,7 @@ ParsedDataset parse_dataset(const std::string& dataset_dir,
         "  COLMAP      cameras and images, points3D if any (.bin or .txt) under\n"
         "              sparse/0, colmap/sparse/0, sparse, colmap or the dataset\n"
         "              dir itself\n"
-        "  Metashape   a camera-export .xml in the dataset dir\n" +
+        "  Metashape   a camera-export .xml or a .psx project in the dataset dir\n" +
         (colmap_near_miss.empty() ? std::string()
                                   : "Closest match: " + colmap_near_miss + ".\n") +
         "Point --data at the dataset folder that contains one of these, or use\n"

@@ -187,11 +187,11 @@ bool parse_settings_equal(const TrainConfig& a, const TrainConfig& b) {
 const std::vector<std::string> kViewableExtensions = {".ply", ".obj", ".gltf",
                                                       ".glb", ".stl"};
 
-// What "Open a Model or Reconstruction" shows. The extra four are how a
+// What "Open a Model or Reconstruction" shows. The rest are how a
 // reconstruction is named when the desktop's own picker cannot return a
-// folder: transforms.json, cameras.bin, points3D.txt, a Metashape .xml.
+// folder: transforms.json, cameras.bin, points3D.txt, a Metashape .xml / .psx.
 const std::vector<std::string> kOpenableExtensions = {
-    ".ply", ".obj", ".gltf", ".glb", ".stl", ".json", ".bin", ".txt", ".xml"};
+    ".ply", ".obj", ".gltf", ".glb", ".stl", ".json", ".bin", ".txt", ".xml", ".psx"};
 
 // Can this format carry this color? The child's own answer, asked through the
 // same function it refuses the run with.
@@ -2323,8 +2323,8 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     if (paths.size() == 1 && fs::is_regular_file(paths[0], ec) &&
         !is_video_path(paths[0])) {
         // A file from inside a dataset (transforms.json, database.db, a
-        // COLMAP .bin/.txt, a Metashape camera .xml) opens the dataset it
-        // belongs to.
+        // COLMAP .bin/.txt, a Metashape camera .xml or .psx) opens the dataset
+        // it belongs to.
         const fs::path p(paths[0]);
         std::string ext = p.extension().string();
         for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
@@ -2337,7 +2337,7 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
             return;
         }
         if (p.filename() == "transforms.json" || ext == ".db" ||
-            ext == ".bin" || ext == ".txt" || ext == ".xml") {
+            ext == ".bin" || ext == ".txt" || ext == ".xml" || ext == ".psx") {
             const std::string dir = p.parent_path().string();
             // A file from a COLMAP model folder names a reconstruction, not a
             // dataset: `sparse/0` has no images beside it to train from.
@@ -5686,7 +5686,7 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
         ImGui::SetNextItemWidth(px(320.0f));
         ui::InputTextEnglish(
             keep_subject ? dmsg::mask_what_to_keep : dmsg::mask_what_to_remove,
-            keep_subject ? "the statue; its pedestal" : "person; car; shadow of a person",
+            keep_subject ? "the statue; its pedestal" : "tourist; pedestrian; child; person; car; shadow of a person",
             &_mask.prompt);
         ui::help_on_hover(keep_subject ? dmsg::mask_prompt_help_keep
                                        : dmsg::mask_prompt_help_remove);

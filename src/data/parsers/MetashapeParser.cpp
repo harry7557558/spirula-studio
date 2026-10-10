@@ -1,13 +1,11 @@
 // MetashapeParser.cpp -- Agisoft Metashape dataset reader for DatasetParser.h.
 //
-// Inputs: a camera-export .xml + a point-export .ply in the dataset dir,
-// plus an optional .psx project whose .files zips provide the camera_id ->
-// photo-path table used to disambiguate image-filename matching (needed
-// when several image subdirectories share basenames, e.g. multi-lens rigs).
-// XML via app/Xml.h; zip reading via external/miniz. The parsed cameras are
-// converted to a transforms.json-shaped meta and fed through
-// parse_nerfstudio_meta, mirroring Python's
-// _parser_metashape_data -> _parse_nerfstudio_data(transforms[0]).
+// Inputs: a camera-export .xml (+ a point-export .ply), and an optional .psx
+// project whose camera_id -> photo-path table disambiguates image filenames
+// (several image subdirectories sharing basenames, e.g. multi-lens rigs).
+// Without an .xml the .psx project is read instead: its chunk document is the
+// same <chunk> an export writes, and its tie points are the cloud.
+// The cameras become a transforms.json-shaped meta for parse_nerfstudio_meta.
 
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
@@ -20,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -172,6 +171,136 @@ bool find_metashape_cameras_dict(const fs::path& root_dir,
 
 
 // ===========================================================================
+// .psx project: <name>.files/project.zip -> chunk.zip -> frame.zip ->
+// point_cloud.zip, each a doc.xml naming the next by a path relative to the
+// directory of the zip it is in.
+// ===========================================================================
+
+std::string zip_entry(const fs::path& zip, const char* name) {
+    mz_zip_archive za;
+    std::memset(&za, 0, sizeof(za));
+    if (!mz_zip_reader_init_file(&za, zip.string().c_str(), 0))
+        throw std::runtime_error("MetashapeParser: cannot open " + zip.string());
+    size_t size = 0;
+    void* data = mz_zip_reader_extract_file_to_heap(&za, name, &size, 0);
+    mz_zip_reader_end(&za);
+    if (!data)
+        throw std::runtime_error("MetashapeParser: " + zip.string() + " has no " + name);
+    std::string out((const char*)data, size);
+    mz_free(data);
+    return out;
+}
+
+const std::string* child_path(const XmlNode& doc, const char* tag) {
+    const XmlNode* n = doc.find(tag);
+    return n ? n->attr("path") : nullptr;
+}
+
+// path="{projectname}.files/project.zip"; empty when the .psx names none.
+fs::path psx_project_zip(const fs::path& psx_path) {
+    XmlNode psx = xml_parse_file(psx_path.string());
+    const std::string* rel = psx.attr("path");
+    if (!rel) return {};
+    std::string expanded = *rel;
+    const std::string token = "{projectname}";
+    if (size_t pos = expanded.find(token); pos != std::string::npos)
+        expanded.replace(pos, token.size(), psx_path.stem().string());
+    return psx_path.parent_path() / expanded;
+}
+
+struct PsxProject {
+    XmlNode chunk;
+    std::map<std::string, std::string> photos;   // camera_id -> photo path
+    fs::path cloud_zip;                          // empty: no tie points
+    XmlNode cloud;
+};
+
+PsxProject read_psx_project(const fs::path& psx_path) {
+    const fs::path project_zip = psx_project_zip(psx_path);
+    if (project_zip.empty())
+        throw std::runtime_error("MetashapeParser: " + psx_path.string() +
+                                 " names no project archive");
+    XmlNode project = xml_parse(zip_entry(project_zip, "doc.xml"));
+    const XmlNode* chunks = project.find("chunks");
+    if (!chunks || chunks->findall("chunk").empty())
+        throw std::runtime_error("MetashapeParser: " + psx_path.string() +
+                                 " has no chunks");
+    const XmlNode* chunk_ref = chunks->findall("chunk")[0];
+    if (const std::string* active = chunks->attr("active_id"))
+        for (const XmlNode* c : chunks->findall("chunk"))
+            if (const std::string* id = c->attr("id"); id && *id == *active) chunk_ref = c;
+    const std::string* chunk_rel = chunk_ref->attr("path");
+    if (!chunk_rel)
+        throw std::runtime_error("MetashapeParser: " + psx_path.string() +
+                                 " has a chunk without a path");
+
+    PsxProject out;
+    const fs::path chunk_zip = project_zip.parent_path() / *chunk_rel;
+    out.chunk = xml_parse(zip_entry(chunk_zip, "doc.xml"));
+
+    // Photos and tie points live in the chunk's first frame; more than one is
+    // a 4D (time-sequence) chunk, whose later frames reuse the same cameras.
+    const XmlNode* frames = out.chunk.find("frames");
+    const XmlNode* frame_ref = frames ? frames->find("frame") : nullptr;
+    const std::string* frame_rel = frame_ref ? frame_ref->attr("path") : nullptr;
+    if (!frame_rel) return out;
+    const fs::path frame_zip = chunk_zip.parent_path() / *frame_rel;
+    XmlNode frame = xml_parse(zip_entry(frame_zip, "doc.xml"));
+    cameras_dict_from_xml(frame, out.photos);
+    if (const std::string* cloud_rel = child_path(frame, "point_cloud")) {
+        out.cloud_zip = frame_zip.parent_path() / *cloud_rel;
+        out.cloud = xml_parse(zip_entry(out.cloud_zip, "doc.xml"));
+    }
+    return out;
+}
+
+// The tie points of one component (all of them for "") through `xf`, a
+// row-major similarity, coloured by their track.
+ColmapPoints3D psx_tie_points(const PsxProject& project, const std::string& component,
+                              const std::array<double, 16>& xf) {
+    ColmapPoints3D pts;
+    if (project.cloud_zip.empty()) return pts;
+
+    std::vector<uint8_t> track_rgb;
+    if (const std::string* rel = child_path(project.cloud, "tracks")) {
+        PlyVertexReader tracks(zip_entry(project.cloud_zip, rel->c_str()), *rel);
+        int ir = tracks.column("red"), ig = tracks.column("green"), ib = tracks.column("blue");
+        if (ir >= 0 && ig >= 0 && ib >= 0) {
+            track_rgb.reserve(tracks.count() * 3);
+            tracks.each({ir, ig, ib}, [&](const double* v) {
+                for (int k = 0; k < 3; k++)
+                    track_rgb.push_back((uint8_t)std::min(std::max(v[k], 0.0), 255.0));
+            });
+        }
+    }
+
+    for (const XmlNode* points : project.cloud.findall("points")) {
+        const std::string* comp = points->attr("component_id");
+        const std::string* rel = points->attr("path");
+        if (!rel || (!component.empty() && comp && *comp != component)) continue;
+        PlyVertexReader ply(zip_entry(project.cloud_zip, rel->c_str()), *rel);
+        int ix = ply.column("x"), iy = ply.column("y"), iz = ply.column("z");
+        int id = ply.column("id"), valid = ply.column("valid");
+        if (ix < 0 || iy < 0 || iz < 0)
+            throw std::runtime_error("MetashapeParser: " + *rel + " has no x/y/z");
+        std::vector<int> cols = {ix, iy, iz, id < 0 ? ix : id, valid < 0 ? ix : valid};
+        pts.xyz.reserve(pts.xyz.size() + ply.count() * 3);
+        pts.rgb.reserve(pts.rgb.size() + ply.count() * 3);
+        ply.each(cols, [&](const double* v) {
+            if (valid >= 0 && v[4] == 0.0) return;
+            for (int r = 0; r < 3; r++)
+                pts.xyz.push_back(xf[r*4]*v[0] + xf[r*4 + 1]*v[1] +
+                                  xf[r*4 + 2]*v[2] + xf[r*4 + 3]);
+            const size_t t = id < 0 ? SIZE_MAX : (size_t)v[3];
+            for (int k = 0; k < 3; k++)
+                pts.rgb.push_back(t < track_rgb.size() / 3 ? track_rgb[t*3 + k] : 128);
+        });
+    }
+    return pts;
+}
+
+
+// ===========================================================================
 // Input-file discovery.
 // Relative paths resolve against the dataset dir; empty = the unique
 // candidate with that extension in the dataset dir.
@@ -254,36 +383,43 @@ std::vector<std::string> split_tokens(const std::string& text) {
 // ===========================================================================
 
 JsonValue metashape_meta(const std::string& dataset_dir,
-                         const DatasetParserConfig& cfg) {
+                         const DatasetParserConfig& cfg,
+                         ColmapPoints3D* psx_points) {
     fs::path root(dataset_dir);
     if (!fs::is_directory(root))
         throw std::runtime_error("MetashapeParser: dataset dir " + dataset_dir +
                                  " not found");
 
-    fs::path xml_path = resolve_input(root, cfg.metashape_xml, ".xml", true,
+    fs::path xml_path = resolve_input(root, cfg.metashape_xml, ".xml", false,
                                       "metashape-xml");
-    // Optional: an XML alone is poses, which the trainer seeds at random
-    // (--random-init) and the viewer draws as frustums.
-    fs::path ply_path = resolve_input(root, cfg.metashape_ply, ".ply", false,
-                                      "metashape-ply");
     fs::path psx_path = resolve_input(root, cfg.metashape_psx, ".psx", false,
                                       "metashape-psx");
+    if (xml_path.empty() && psx_path.empty())
+        throw std::runtime_error("MetashapeParser: no camera-export .xml or .psx "
+                                 "project found in dataset dir; specify using "
+                                 "--metashape-xml or --metashape-psx");
+    const bool project_only = xml_path.empty();
+    // Optional: an XML alone is poses, which the trainer seeds at random
+    // (--random-init) and the viewer draws as frustums. A project has its own
+    // tie points, so only a .ply named outright replaces them.
+    fs::path ply_path;
+    if (!project_only || !cfg.metashape_ply.empty())
+        ply_path = resolve_input(root, cfg.metashape_ply, ".ply", false,
+                                 "metashape-ply");
 
-    // ---- Optional .psx camera_id -> photo path table -----------------------
+    // ---- .psx camera_id -> photo path table --------------------------------
     std::map<std::string, std::string> camera_dict;
     bool have_camera_dict = false;
-    if (!psx_path.empty()) {
-        XmlNode psx = xml_parse_file(psx_path.string());
-        if (const std::string* rel = psx.attr("path")) {
-            // path="{projectname}.files/project.zip"; the camera tables live
-            // in the .files tree that contains it.
-            std::string expanded = *rel;
-            const std::string token = "{projectname}";
-            if (size_t pos = expanded.find(token); pos != std::string::npos)
-                expanded.replace(pos, token.size(), psx_path.stem().string());
-            fs::path files_root = (psx_path.parent_path() / expanded).parent_path();
-            have_camera_dict = find_metashape_cameras_dict(files_root, camera_dict);
-        }
+    PsxProject project;
+    if (project_only) {
+        project = read_psx_project(psx_path);
+        camera_dict = project.photos;
+        have_camera_dict = !camera_dict.empty();
+    } else if (!psx_path.empty()) {
+        const fs::path project_zip = psx_project_zip(psx_path);
+        if (!project_zip.empty())
+            have_camera_dict =
+                find_metashape_cameras_dict(project_zip.parent_path(), camera_dict);
         if (!have_camera_dict)
             std::fprintf(stderr, "%s %s\n", dmsg::word_warning.get(),
                          format(dmsg::ms_no_camera_table,
@@ -305,12 +441,15 @@ JsonValue metashape_meta(const std::string& dataset_dir,
                 image_filenames.push_back(
                     fs::relative(entry.path(), root).generic_string());
 
-    // ---- Camera-export XML (metashape_to_json) ------------------------------
-    XmlNode doc = xml_parse_file(xml_path.string());
-    if (doc.children.empty())
-        throw std::runtime_error("MetashapeParser: empty document in " +
-                                 xml_path.string());
-    const XmlNode& chunk = doc.children[0];
+    // ---- The <chunk>: an export's first child, or the project's own --------
+    const std::string source = project_only ? psx_path.string() : xml_path.string();
+    XmlNode doc;
+    if (!project_only) {
+        doc = xml_parse_file(xml_path.string());
+        if (doc.children.empty())
+            throw std::runtime_error("MetashapeParser: empty document in " + source);
+    }
+    const XmlNode& chunk = project_only ? project.chunk : doc.children[0];
 
     const XmlNode* sensors = chunk.find("sensors");
     if (!sensors)
@@ -442,8 +581,13 @@ JsonValue metashape_meta(const std::string& dataset_dir,
     // ---- Cameras: filename match + sensor + transform ------------------------
     const XmlNode* cameras = chunk.find("cameras");
     if (!cameras)
-        throw std::runtime_error("MetashapeParser: cameras not found in " +
-                                 xml_path.string());
+        throw std::runtime_error("MetashapeParser: cameras not found in " + source);
+    // Rather than one missing-transform warning per photo of an unaligned project.
+    const std::vector<const XmlNode*> all_cameras = cameras->iter("camera");
+    if (std::none_of(all_cameras.begin(), all_cameras.end(),
+                     [](const XmlNode* c) { return c->find("transform") != nullptr; }))
+        throw std::runtime_error("MetashapeParser: no camera in " + source +
+                                 " is aligned; align the photos in Metashape first");
 
     struct ValidCamera {
         std::vector<double> transform;   // 16, row-major
@@ -455,7 +599,7 @@ JsonValue metashape_meta(const std::string& dataset_dir,
     int64_t num_skipped = 0;
 
     // <camera> elements can be nested inside <group>, hence the recursive iter.
-    for (const XmlNode* camera : cameras->iter("camera")) {
+    for (const XmlNode* camera : all_cameras) {
         const std::string* cam_id = camera->attr("id");
         if (!cam_id) continue;
         const std::string* label = camera->attr("label");
@@ -529,6 +673,7 @@ JsonValue metashape_meta(const std::string& dataset_dir,
 
     // ---- Pick the camera group to train on ----------------------------------
     std::vector<std::string> group;
+    std::string group_component;
     if (component_groups.empty()) {
         group = valid_order;
     } else {
@@ -552,6 +697,7 @@ JsonValue metashape_meta(const std::string& dataset_dir,
                                 {(long long)component_groups.size(),
                                  (long long)best_count,
                                  (long long)valid_cameras.size()}).c_str());
+        group_component = component_groups[best].first;
         // Keep document order within the group.
         std::vector<std::string> ids = component_groups[best].second;
         std::sort(ids.begin(), ids.end());
@@ -603,13 +749,20 @@ JsonValue metashape_meta(const std::string& dataset_dir,
     }
     if (frames.arr.empty())
         throw std::runtime_error("MetashapeParser: no usable aligned cameras in " +
-                                 xml_path.string());
+                                 source);
 
     JsonValue meta = jobj();
     jset(meta, "frames", std::move(frames));
-    if (!ply_path.empty())
+    if (!ply_path.empty()) {
         jset(meta, "ply_file_path",
              jstr(fs::relative(ply_path, root).generic_string()));
+    } else if (project_only && psx_points) {
+        std::array<double, 16> xf = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        if (auto it = component_transforms.find(group_component);
+            !group_component.empty() && it != component_transforms.end())
+            xf = it->second;
+        *psx_points = psx_tie_points(project, group_component, xf);
+    }
 
     if (num_skipped > 0)
         std::printf("%s\n",
@@ -624,5 +777,9 @@ JsonValue metashape_meta(const std::string& dataset_dir,
 
 ParsedDataset parse_metashape_dataset(const std::string& dataset_dir,
                                       const DatasetParserConfig& cfg) {
-    return parse_nerfstudio_meta(metashape_meta(dataset_dir, cfg), dataset_dir, cfg);
+    ColmapPoints3D psx_points;
+    const JsonValue meta = metashape_meta(dataset_dir, cfg, &psx_points);
+    const bool from_project = !meta.find("ply_file_path") && psx_points.num() > 0;
+    return parse_nerfstudio_meta(meta, dataset_dir, cfg,
+                                 from_project ? &psx_points : nullptr);
 }
