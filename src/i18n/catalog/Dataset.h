@@ -5602,6 +5602,24 @@ SS_MSG(subj_watermark,
     RU("Водяной знак или дата"),
     TR("Filigran veya zaman damgası"));
 
+SS_MSG(subj_painting,
+    EN("Painting"), JA("絵画"), ZH_HANS("绘画"), ZH_HANT("繪畫"),
+    KO("그림"), DE("Gemälde"), FR("Tableau"), ES("Cuadro"),
+    PT("Quadro"), IT("Dipinto"), NL("Schilderij"), RU("Картина"),
+    TR("Tablo"));
+
+SS_MSG(subj_poster,
+    EN("Poster"), JA("ポスター"), ZH_HANS("海报"), ZH_HANT("海報"),
+    KO("포스터"), DE("Plakat"), FR("Affiche"), ES("Póster"),
+    PT("Cartaz"), IT("Poster"), NL("Poster"), RU("Плакат"),
+    TR("Afiş"));
+
+SS_MSG(subj_screen,
+    EN("Screen"), JA("画面"), ZH_HANS("屏幕"), ZH_HANT("螢幕"),
+    KO("화면"), DE("Bildschirm"), FR("Écran"), ES("Pantalla"),
+    PT("Ecrã"), IT("Schermo"), NL("Scherm"), RU("Экран"),
+    TR("Ekran"));
+
 SS_MSG(subj_person_painting,
     EN("Person in a painting"),
     JA("絵の中の人物"),

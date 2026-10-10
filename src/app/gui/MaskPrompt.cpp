@@ -67,6 +67,9 @@ const std::vector<MaskSubject>& subjects_impl() {
 
 const std::vector<MaskSubject>& exceptions_impl() {
     static const std::vector<MaskSubject> v = {
+        {&dmsg::subj_painting,        "painting"},
+        {&dmsg::subj_poster,          "poster"},
+        {&dmsg::subj_screen,          "screen"},
         {&dmsg::subj_person_painting, "person in a painting"},
         {&dmsg::subj_statue,          "statue"},
         {&dmsg::subj_mannequin,       "mannequin"},

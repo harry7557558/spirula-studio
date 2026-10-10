@@ -184,6 +184,9 @@ bool dataset_apply_preset(DatasetSettings& s, const std::string& name) {
         s.sfm.prep.mask_enable = true;
         s.mask.prompt = "tourist; visitor; pedestrian; photographer; child; person; hand; backpack; "
                         "selfie stick; shadow of person";
+        // People that are pictures or carvings of people, which the
+        // role terms above would otherwise take.
+        s.mask.negative_prompt = "painting; statue; poster";
         // Outdoors half of every frame is sky, and a clear one yields no
         // feature points while a cloudy one yields points that drift.
         s.mask.feature_prompt = "sky; cloud";
