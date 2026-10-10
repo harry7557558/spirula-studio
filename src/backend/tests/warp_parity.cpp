@@ -1,31 +1,6 @@
-// Backend parity tool for the dataset GT warp + byte->float conversion
-// launch APIs (kernels/pixelwise/PixelWise.cuh launch_warp_* + EngineInternal.h raw
-// converters). The SAME source builds under both backends:
-//
-//   CUDA build:   ./warp_parity dump ref.bin
-//   Vulkan build: ./warp_parity compare ref.bin   (per device)
-//
-// Ref format: [nf tight floats].
-//
-// Everything here is deterministic per-pixel math (no atomics), so all
-// outputs live in one tight channel. Both backends run the same canonical
-// slang projection math (CUDA via the 2026.2.1 emission, Vulkan via
-// SPIR-V), so residual differences are fast-math rounding plus isolated
-// boundary pixels: a proj_nav valid-flip or a nearest/floor rounding flip
-// moves a whole sample, so the pass criterion is a small violation
-// fraction rather than a max-error bound. Mask bytes (0/1) are compared
-// through the same channel; a flipped boundary texel counts as one
-// violation.
-//
-// Coverage: all three wide camera models across the distortion tiers
-// (the NONE row also passes null dist_coeffs, the zeros-fallback path),
-// u8/u16 image, u8 mask, u16-ray + f32-linear depth
-// (GT at a different resolution than the intrinsics reference, exercising
-// the sx/sy rescale), u8/f32 normal (with all-zero "no data" sentinel
-// pixels), the equirectangular variants (x-wrap sampling), the re-distort
-// family at two modality resolutions, both branches of the skewed source
-// model and its fold rejection (shaders/camera_source.slang), and the four
-// raw byte->float converters with odd element counts (word-tail handling).
+// GT warp and byte conversion parity, including binary and three-label masks.
+// CUDA: warp_parity dump ref.bin; Vulkan: warp_parity compare ref.bin.
+// Nearest-sample boundary differences use a violation fraction (docs/testing.md).
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/pixelwise/PixelWise.cuh>
@@ -263,10 +238,9 @@ int main(int argc, char** argv) {
                 readback_f(out, n_out * 3);
             }
 
-            // mask (mostly-set with holes)
-            {
+            for (bool mixed : {false, true}) {
                 auto m = r.bytes((int64_t)B * Hin * Win);
-                for (auto& v : m) v = v < 200 ? 1 : 0;
+                for (auto& v : m) v = mixed ? v % 3 : v < 200 ? 1 : 0;
                 uint8_t* out = alloc_out<uint8_t>(n_out);
                 launch_warp_mask_wide(cam.model, d_tier, d_intr, d_dist, d_src_models, d_src_params,
                                       upload(m), B, Hin, Win, out, K, Hout,
@@ -365,14 +339,16 @@ int main(int argc, char** argv) {
                 o_img, g.out_h, g.out_w, refH, refW, 0.5f);
             readback_f(o_img, n_out * 3);
 
-            auto msk = r.bytes(n_in);
-            for (size_t i = 0; i < msk.size(); i++) msk[i] = (msk[i] > 40) ? 1 : 0;
-            uint8_t* o_msk = alloc_out<uint8_t>(n_out);
-            launch_redistort_mask(
-                "FISHEYE", "THIN_PRISM", d_intr, d_dist, d_src_m, d_src_p,
-                upload(msk), B, g.in_h, g.in_w,
-                o_msk, g.out_h, g.out_w, refH, refW);
-            readback_b(o_msk, n_out);
+            for (bool mixed : {false, true}) {
+                auto msk = r.bytes(n_in);
+                for (auto& v : msk) v = mixed ? v % 3 : v > 40 ? 1 : 0;
+                uint8_t* o_msk = alloc_out<uint8_t>(n_out);
+                launch_redistort_mask(
+                    "FISHEYE", "THIN_PRISM", d_intr, d_dist, d_src_m, d_src_p,
+                    upload(msk), B, g.in_h, g.in_w,
+                    o_msk, g.out_h, g.out_w, refH, refW);
+                readback_b(o_msk, n_out);
+            }
 
             // A smooth ramp, not noise: neighbouring taps thousands of counts
             // apart amplify a last-ULP difference in uv_src into a visible
@@ -477,9 +453,9 @@ int main(int argc, char** argv) {
                                            3, out, K, Hout, Wout, d_face, d_axes);
             readback_f(out, n_out * 3);
         }
-        {
+        for (bool mixed : {false, true}) {
             auto m = r.bytes((int64_t)B * Hin * Win);
-            for (auto& v : m) v = v < 180 ? 1 : 0;
+            for (auto& v : m) v = mixed ? v % 3 : v < 180 ? 1 : 0;
             uint8_t* out = alloc_out<uint8_t>(n_out);
             launch_warp_mask_equi(upload(m), B, Hin, Win, out, K, Hout,
                                   Wout, d_face, d_axes);

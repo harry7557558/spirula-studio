@@ -699,31 +699,31 @@ SS_MSG(mask_dir,
     RU("Подпапка масок"), TR("Maske alt klasörü"));
 SS_MSG(mask_dir_help,
     EN("Subfolder holding the image masks, for COLMAP and Metashape datasets. "
-       "What a mask means is set by apply_loss_for_mask."),
+       "What a mask means is set by mask_mode."),
     JA("画像マスクが入っているサブフォルダです。COLMAP と Metashape のデータセ"
-       "ットで使います。マスクの意味は apply_loss_for_mask で決まります。"),
+       "ットで使います。マスクの意味は mask_mode で決まります。"),
     ZH_HANS("存放图像蒙版的子文件夹，用于 COLMAP 和 Metashape 数据集。蒙版的含"
-            "义由 apply_loss_for_mask 决定。"),
+            "义由 mask_mode 决定。"),
     ZH_HANT("存放影像遮罩的子資料夾，用於 COLMAP 和 Metashape 資料集。遮罩的含"
-            "意由 apply_loss_for_mask 決定。"),
+            "意由 mask_mode 決定。"),
     KO("이미지 마스크가 들어 있는 하위 폴더입니다. COLMAP과 Metashape 데이터셋"
-       "에서 씁니다. 마스크의 의미는 apply_loss_for_mask가 정합니다."),
+       "에서 씁니다. 마스크의 의미는 mask_mode가 정합니다."),
     DE("Unterordner mit den Bildmasken, bei COLMAP- und Metashape-Datensätzen. "
-       "Was eine Maske bedeutet, legt apply_loss_for_mask fest."),
+       "Was eine Maske bedeutet, legt mask_mode fest."),
     FR("Sous-dossier contenant les masques d'image, pour les jeux de données "
-       "COLMAP et Metashape. Ce que signifie un masque est fixé par apply_loss_for_mask."),
+       "COLMAP et Metashape. Ce que signifie un masque est fixé par mask_mode."),
     ES("Subcarpeta con las máscaras de imagen, para conjuntos de datos COLMAP "
-       "y Metashape. Lo que significa una máscara lo fija apply_loss_for_mask."),
+       "y Metashape. Lo que significa una máscara lo fija mask_mode."),
     PT("Subpasta com as máscaras de imagem, para conjuntos de dados COLMAP e "
-       "Metashape. O que uma máscara significa é definido por apply_loss_for_mask."),
+       "Metashape. O que uma máscara significa é definido por mask_mode."),
     IT("Sottocartella con le maschere delle immagini, per i set di dati COLMAP "
-       "e Metashape. Che cosa significhi una maschera lo stabilisce apply_loss_for_mask."),
+       "e Metashape. Che cosa significhi una maschera lo stabilisce mask_mode."),
     NL("Submap met de beeldmaskers, voor COLMAP- en Metashape-datasets. Wat een "
-       "masker betekent, bepaalt apply_loss_for_mask."),
+       "masker betekent, bepaalt mask_mode."),
     RU("Подпапка с масками изображений — для наборов COLMAP и Metashape. Что "
-       "означает маска, задаёт apply_loss_for_mask."),
+       "означает маска, задаёт mask_mode."),
     TR("Görüntü maskelerini içeren alt klasör; COLMAP ve Metashape veri kümeleri "
-       "için. Maskenin ne anlama geldiğini apply_loss_for_mask belirler."));
+       "için. Maskenin ne anlama geldiğini mask_mode belirler."));
 
 SS_MSG(load_masks,
     EN("Use dataset masks"), JA("データセットのマスクを使う"),
@@ -737,47 +737,129 @@ SS_MSG(load_masks,
     RU("Использовать маски набора"),
     TR("Veri kümesinin maskelerini kullan"));
 SS_MSG(load_masks_help,
-    EN("Use the dataset's masks when they exist, and the alpha channel of "
+    EN("Only applies when `mask_mode` is `auto`. Use the dataset's masks when they exist, and the alpha channel of "
        "images that have one. What they then mean is set by "
        "apply_loss_for_mask; turn off to train as if the dataset had none."),
-    JA("データセットにマスクがあれば使います。アルファチャンネルのある画像は"
+    JA("`mask_mode` が `auto` の場合にのみ適用します。データセットにマスクがあれば使います。アルファチャンネルのある画像は"
        "それもマスクとして使います。その意味は apply_loss_for_mask で決まりま"
        "す。オフにするとマスクがないものとして学習します。"),
-    ZH_HANS("数据集里有蒙版时就使用它们，带 Alpha 通道的图像也用该通道作蒙版。"
+    ZH_HANS("仅在 `mask_mode=auto` 时生效。数据集里有蒙版时就使用它们，带 Alpha 通道的图像也用该通道作蒙版。"
             "它们的含义由 apply_loss_for_mask 决定；关掉就当作数据集没有蒙版"
             "来训练。"),
-    ZH_HANT("資料集裡有遮罩時就使用它們，帶 Alpha 通道的影像也用該通道作遮罩。"
+    ZH_HANT("僅在 `mask_mode=auto` 時生效。資料集裡有遮罩時就使用它們，帶 Alpha 通道的影像也用該通道作遮罩。"
             "它們的含意由 apply_loss_for_mask 決定；關掉就當作資料集沒有遮罩"
             "來訓練。"),
-    KO("데이터셋에 마스크가 있으면 사용하며, 알파 채널이 있는 이미지는 그 채"
+    KO("`mask_mode`가 `auto`일 때만 적용됩니다. 데이터셋에 마스크가 있으면 사용하며, 알파 채널이 있는 이미지는 그 채"
        "널도 마스크로 씁니다. 그 의미는 apply_loss_for_mask가 정하며, 끄면 마"
        "스크가 없는 데이터셋처럼 학습합니다."),
-    DE("Die Masken des Datensatzes verwenden, sofern vorhanden, dazu den "
+    DE("Gilt nur bei `mask_mode=auto`. Die Masken des Datensatzes verwenden, sofern vorhanden, dazu den "
        "Alphakanal von Bildern, die einen haben. Was sie bedeuten, legt "
        "apply_loss_for_mask fest; abschalten trainiert wie ohne Masken."),
-    FR("Utiliser les masques du jeu de données lorsqu'ils existent, ainsi que "
+    FR("Applicable uniquement avec `mask_mode=auto`. Utiliser les masques du jeu de données lorsqu'ils existent, ainsi que "
        "le canal alpha des images qui en ont un. Ce qu'ils signifient est fixé "
        "par apply_loss_for_mask ; décocher entraîne comme si le jeu n'en avait "
        "pas."),
-    ES("Usar las máscaras del conjunto de datos cuando existan, y el canal "
+    ES("Solo se aplica con `mask_mode=auto`. Usar las máscaras del conjunto de datos cuando existan, y el canal "
        "alfa de las imágenes que lo tengan. Lo que significan lo fija "
        "apply_loss_for_mask; desactive para entrenar como si no hubiera."),
-    PT("Usar as máscaras do conjunto de dados quando existirem, e o canal alfa "
+    PT("Aplica-se apenas com `mask_mode=auto`. Usar as máscaras do conjunto de dados quando existirem, e o canal alfa "
        "das imagens que tiverem um. O que elas significam é definido por "
        "apply_loss_for_mask; desligue para treinar como se não houvesse "
        "nenhuma."),
-    IT("Usare le maschere del set di dati quando ci sono, e il canale alfa "
+    IT("Si applica solo con `mask_mode=auto`. Usare le maschere del set di dati quando ci sono, e il canale alfa "
        "delle immagini che ne hanno uno. Che cosa significhino lo stabilisce "
        "apply_loss_for_mask; disattivare addestra come se non ce ne fossero."),
-    NL("De maskers van de dataset gebruiken als die er zijn, en het alfakanaal "
+    NL("Alleen van toepassing bij `mask_mode=auto`. De maskers van de dataset gebruiken als die er zijn, en het alfakanaal "
        "van beelden die er een hebben. Wat ze betekenen, bepaalt "
        "apply_loss_for_mask; zet uit om te trainen alsof er geen zijn."),
-    RU("Использовать маски набора, если они есть, а также альфа-канал "
+    RU("Применяется только при `mask_mode=auto`. Использовать маски набора, если они есть, а также альфа-канал "
        "изображений, у которых он есть. Что они означают, задаёт "
        "apply_loss_for_mask; выключите, чтобы обучать как без масок."),
-    TR("Veri kümesinde maskeler varsa onları, alfa kanalı olan görüntülerde de "
+    TR("Yalnızca `mask_mode=auto` olduğunda geçerlidir. Veri kümesinde maskeler varsa onları, alfa kanalı olan görüntülerde de "
        "bu kanalı kullanır. Ne anlama geldiklerini apply_loss_for_mask "
        "belirler; maskesiz eğitmek için kapatın."));
+
+SS_MSG(mask_mode,
+    EN("Mask mode"), JA("マスクの扱い"), ZH_HANS("蒙版模式"), ZH_HANT("遮罩模式"),
+    KO("마스크 모드"), DE("Maskenmodus"), FR("Mode de masque"),
+    ES("Modo de máscara"), PT("Modo de máscara"), IT("Modalità maschera"),
+    NL("Maskermodus"), RU("Режим маски"), TR("Maske kipi"));
+SS_MSG(mask_mode_help,
+    EN("`auto` uses load_masks and apply_loss_for_mask. `ignore` skips masked pixels; "
+       "`segment` trains them as empty. `segment_and_ignore` reads grayscale mask values: "
+       "0–127 ignore, 128–250 empty, 251–255 keep. `none` disables masks. An explicit mode "
+       "overrides the legacy options. In mixed mode, flip_mask swaps keep and ignore; gray stays empty."),
+    JA("`auto` は load_masks と apply_loss_for_mask に従います。`ignore` はマスク画素を無視、"
+       "`segment` は空として学習します。`segment_and_ignore` のグレー値は 0–127 が無視、"
+       "128–250 が空、251–255 が保持です。`none` はマスクを無効にします。明示したモードが"
+       "従来の設定より優先します。混合モードの flip_mask は保持と無視だけを入れ替えます。"),
+    ZH_HANS("`auto` 使用 load_masks 和 apply_loss_for_mask。`ignore` 忽略遮罩像素，`segment` "
+            "将其按空白训练。`segment_and_ignore` 读取蒙版灰度：0–127 忽略，128–250 裁除，"
+            "251–255 保留。`none` 禁用蒙版。显式模式优先于旧选项；混合模式下 flip_mask "
+            "交换保留与忽略，灰色仍然裁除。"),
+    ZH_HANT("`auto` 使用 load_masks 和 apply_loss_for_mask。`ignore` 忽略遮罩像素，`segment` "
+            "將其按空白訓練。`segment_and_ignore` 讀取遮罩灰階：0–127 忽略，128–250 裁除，"
+            "251–255 保留。`none` 停用遮罩。明確模式優先於舊選項；混合模式下 flip_mask "
+            "交換保留與忽略，灰色仍然裁除。"),
+    KO("`auto`는 load_masks와 apply_loss_for_mask를 따릅니다. `ignore`는 마스크 픽셀을 무시하고 "
+       "`segment`는 빈 공간으로 학습합니다. `segment_and_ignore`의 회색조 값: 0–127 무시, "
+       "128–250 빈 공간, 251–255 유지. `none`은 마스크를 끕니다. 명시한 모드가 기존 옵션보다 "
+       "우선합니다. 혼합 모드의 flip_mask는 유지와 무시만 바꿉니다."),
+    DE("`auto` folgt load_masks und apply_loss_for_mask. `ignore` ignoriert maskierte Pixel; "
+       "`segment` trainiert sie als leer. Graustufen in `segment_and_ignore`: 0–127 ignorieren, "
+       "128–250 leer, 251–255 behalten. `none` deaktiviert Masken. Ein expliziter Modus hat Vorrang. "
+       "flip_mask tauscht im Mischmodus Behalten und Ignorieren; Grau bleibt leer."),
+    FR("`auto` suit load_masks et apply_loss_for_mask. `ignore` ignore les pixels masqués ; "
+       "`segment` les entraîne comme vides. Niveaux de gris de `segment_and_ignore` : "
+       "0–127 ignorer, 128–250 vide, 251–255 conserver. `none` désactive les masques. Le mode explicite "
+       "est prioritaire. En mode mixte, flip_mask échange conserver et ignorer ; le gris reste vide."),
+    ES("`auto` usa load_masks y apply_loss_for_mask. `ignore` omite píxeles enmascarados; "
+       "`segment` los entrena como vacíos. Grises en `segment_and_ignore`: 0–127 ignorar, "
+       "128–250 vacío, 251–255 conservar. `none` desactiva máscaras. El modo explícito tiene prioridad. "
+       "En modo mixto, flip_mask intercambia conservar e ignorar; el gris sigue vacío."),
+    PT("`auto` usa load_masks e apply_loss_for_mask. `ignore` ignora pixels mascarados; "
+       "`segment` treina-os como vazios. Tons de cinza em `segment_and_ignore`: 0–127 ignorar, "
+       "128–250 vazio, 251–255 manter. `none` desativa máscaras. O modo explícito tem prioridade. "
+       "No modo misto, flip_mask troca manter e ignorar; cinza continua vazio."),
+    IT("`auto` usa load_masks e apply_loss_for_mask. `ignore` ignora i pixel mascherati; "
+       "`segment` li addestra come vuoti. Grigi in `segment_and_ignore`: 0–127 ignorare, "
+       "128–250 vuoto, 251–255 mantenere. `none` disattiva le maschere. Il modo esplicito ha priorità. "
+       "Nel modo misto, flip_mask scambia mantenere e ignorare; il grigio resta vuoto."),
+    NL("`auto` volgt load_masks en apply_loss_for_mask. `ignore` negeert gemaskeerde pixels; "
+       "`segment` traint ze als leeg. Grijswaarden in `segment_and_ignore`: 0–127 negeren, "
+       "128–250 leeg, 251–255 behouden. `none` schakelt maskers uit. Een expliciete modus gaat voor. "
+       "flip_mask wisselt in de gemengde modus behouden en negeren; grijs blijft leeg."),
+    RU("`auto` использует load_masks и apply_loss_for_mask. `ignore` пропускает закрытые пиксели; "
+       "`segment` обучает их как пустоту. Серые значения в `segment_and_ignore`: 0–127 игнорировать, "
+       "128–250 пустота, 251–255 сохранить. `none` отключает маски. Явный режим имеет приоритет. "
+       "В смешанном режиме flip_mask меняет сохранение и игнорирование; серый остаётся пустотой."),
+    TR("`auto`, load_masks ve apply_loss_for_mask kullanır. `ignore` maskeli pikselleri atlar; "
+       "`segment` boş olarak eğitir. `segment_and_ignore` gri değerleri: 0–127 yok say, "
+       "128–250 boş, 251–255 koru. `none` maskeleri kapatır. Açık kip eski seçeneklerden önceliklidir. "
+       "Karma kipte flip_mask koruma ve yok saymayı değiştirir; gri boş kalır."));
+
+SS_MSG(choice_mask_auto,
+    EN("Automatic"), JA("自動"), ZH_HANS("自动"), ZH_HANT("自動"), KO("자동"),
+    DE("Automatisch"), FR("Automatique"), ES("Automático"), PT("Automático"),
+    IT("Automatico"), NL("Automatisch"), RU("Автоматически"), TR("Otomatik"));
+SS_MSG(choice_mask_ignore,
+    EN("Ignore distractors"), JA("邪魔物を無視"), ZH_HANS("忽略干扰物"), ZH_HANT("忽略干擾物"),
+    KO("방해물 무시"), DE("Störendes ignorieren"), FR("Ignorer les gêneurs"),
+    ES("Ignorar los elementos molestos"), PT("Ignorar o que atrapalha"), IT("Ignorare i disturbi"),
+    NL("Storende dingen negeren"), RU("Игнорировать помехи"), TR("Rahatsız edicileri yok say"));
+SS_MSG(choice_mask_segment,
+    EN("Cut out background"), JA("背景を切り抜く"), ZH_HANS("裁掉背景"), ZH_HANT("裁掉背景"),
+    KO("배경 잘라내기"), DE("Hintergrund freistellen"), FR("Détourer l'arrière-plan"),
+    ES("Recortar el fondo"), PT("Recortar o fundo"), IT("Ritagliare lo sfondo"),
+    NL("Achtergrond uitsnijden"), RU("Вырезать фон"), TR("Arka planı ayır"));
+SS_MSG(choice_mask_mixed,
+    EN("Cut out and ignore"), JA("切り抜きと無視"),
+    ZH_HANS("裁除并忽略"), ZH_HANT("裁除並忽略"),
+    KO("잘라내기 및 무시"), DE("Freistellen und ignorieren"),
+    FR("Détourer et ignorer"), ES("Recortar e ignorar"),
+    PT("Recortar e ignorar"), IT("Ritagliare e ignorare"),
+    NL("Uitsnijden en negeren"), RU("Вырезать и игнорировать"),
+    TR("Ayır ve yok say"));
 
 SS_MSG(apply_loss_for_mask,
     EN("Train masked pixels as empty"), JA("マスク部分を空として学習"),
@@ -793,64 +875,64 @@ SS_MSG(apply_loss_for_mask,
     RU("Обучать закрытые маской пиксели как пустоту"),
     TR("Maskelenen pikselleri boş olarak eğit"));
 SS_MSG(apply_loss_for_mask_help,
-    EN("Whether masked-out pixels are ignored or trained as empty space. Off "
+    EN("Only applies when `mask_mode` is `auto`. Whether masked-out pixels are ignored or trained as empty space. Off "
        "ignores them, which is how you hide distractions such as people, cars, "
        "or the black area outside a fisheye circle. On trains them as empty, "
        "which removes the background and leaves just the subject. Left unset, "
        "it is on when the only masks are the images' own alpha channel, and "
        "off otherwise. "
        "Dense point-cloud seeds also default to cut out."),
-    JA("マスクされた画素を無視するか、空として学習するかを決めます。オフなら"
+    JA("`mask_mode` が `auto` の場合にのみ適用します。マスクされた画素を無視するか、空として学習するかを決めます。オフなら"
        "無視され、通行人や車、魚眼の円外の黒い部分といった邪魔物を隠すのに使"
        "えます。オンなら空として学習され、背景が取り除かれて被写体だけが残り"
        "ます。未設定なら、マスクが画像自身のアルファチャンネルだけのときにオ"
        "ン、それ以外はオフになります。 "
        "密な点群を初期値に使う場合も、既定は切り抜きです。"),
-    ZH_HANS("被遮住的像素是忽略还是按空白训练。关闭时忽略它们，可用来隐藏行人、"
+    ZH_HANS("仅在 `mask_mode=auto` 时生效。被遮住的像素是忽略还是按空白训练。关闭时忽略它们，可用来隐藏行人、"
             "汽车、鱼眼圆外的黑边等干扰物。开启时按空白训练，会去掉背景，只留"
             "下主体。未设置时，若蒙版只有图像自身的 Alpha 通道则开启，否则关"
             "闭。 "
        "使用稠密点云初始化时也默认裁掉背景。"),
-    ZH_HANT("被遮住的像素是忽略還是按空白訓練。關閉時忽略它們，可用來隱藏行人、"
+    ZH_HANT("僅在 `mask_mode=auto` 時生效。被遮住的像素是忽略還是按空白訓練。關閉時忽略它們，可用來隱藏行人、"
             "汽車、魚眼圓外的黑邊等干擾物。開啟時按空白訓練，會去掉背景，只留"
             "下主體。未設定時，若遮罩只有影像自身的 Alpha 通道則開啟，否則關"
             "閉。 "
        "使用稠密點雲初始化時也預設裁掉背景。"),
-    KO("가려진 픽셀을 무시할지, 빈 공간으로 학습할지 정합니다. 끄면 무시하므"
+    KO("`mask_mode`가 `auto`일 때만 적용됩니다. 가려진 픽셀을 무시할지, 빈 공간으로 학습할지 정합니다. 끄면 무시하므"
        "로 사람, 자동차, 어안 원 바깥의 검은 영역 같은 방해물을 가리는 데 쓸 "
        "수 있습니다. 켜면 빈 곳으로 학습해 배경이 사라지고 피사체만 남습니다."
        " 설정하지 않으면 마스크가 이미지 자체의 알파 채널뿐일 때 켜지고, 그 "
        "밖에는 꺼집니다. "
        "밀집 포인트 클라우드로 초기화할 때도 기본값은 배경 잘라내기입니다."),
-    DE("Ob maskierte Pixel ignoriert oder als leerer Raum trainiert werden. "
+    DE("Gilt nur bei `mask_mode=auto`. Ob maskierte Pixel ignoriert oder als leerer Raum trainiert werden. "
        "Aus ignoriert sie, womit sich Störendes wie Passanten, Autos oder der "
        "schwarze Bereich außerhalb des Fischaugenkreises ausblenden lässt. An "
        "trainiert sie als leer, was den Hintergrund entfernt und nur das Motiv "
        "übrig lässt. Ungesetzt ist es an, wenn die einzigen Masken der "
        "Alphakanal der Bilder selbst sind, sonst aus. "
        "Bei einer dichten Startpunktwolke ist Ausschneiden ebenfalls die Vorgabe."),
-    FR("Les pixels masqués sont-ils ignorés ou entraînés comme du vide. "
+    FR("Applicable uniquement avec `mask_mode=auto`. Les pixels masqués sont-ils ignorés ou entraînés comme du vide. "
        "Décoché, ils sont ignorés, ce qui permet de cacher les gêneurs : "
        "passants, voitures, ou la zone noire hors du cercle fisheye. Coché, "
        "ils sont entraînés comme vides, ce qui supprime l'arrière-plan et ne "
        "laisse que le sujet. Non défini, il est coché quand les seuls masques "
        "sont le canal alpha des images elles-mêmes, décoché sinon. "
        "Les nuages denses utilisés pour initialiser choisissent aussi le détourage par défaut."),
-    ES("Si los píxeles enmascarados se ignoran o se entrenan como espacio "
+    ES("Solo se aplica con `mask_mode=auto`. Si los píxeles enmascarados se ignoran o se entrenan como espacio "
        "vacío. Desactivado los ignora, que es como se ocultan elementos "
        "molestos: transeúntes, coches o la zona negra fuera del círculo de ojo "
        "de pez. Activado los entrena como vacíos, lo que elimina el fondo y "
        "deja solo el sujeto. Sin definir, se activa cuando las únicas máscaras "
        "son el canal alfa de las propias imágenes, y se desactiva en otro caso. "
        "La inicialización con nube densa también recorta por defecto."),
-    PT("Se os pixels mascarados são ignorados ou treinados como espaço vazio. "
+    PT("Aplica-se apenas com `mask_mode=auto`. Se os pixels mascarados são ignorados ou treinados como espaço vazio. "
        "Desligado os ignora, que é como se escondem elementos indesejados: "
        "pessoas, carros ou a área preta fora do círculo olho de peixe. Ligado "
        "os treina como vazios, o que remove o fundo e deixa só o sujeito. Sem "
        "valor definido, fica ligado quando as únicas máscaras são o canal alfa "
        "das próprias imagens, e desligado caso contrário. "
        "A inicialização com nuvem densa também recorta por padrão."),
-    IT("Se i pixel mascherati vengono ignorati o addestrati come spazio vuoto. "
+    IT("Si applica solo con `mask_mode=auto`. Se i pixel mascherati vengono ignorati o addestrati come spazio vuoto. "
        "Disattivato li ignora, ed è così che si nascondono gli elementi di "
        "disturbo: passanti, automobili o l'area nera fuori dal cerchio "
        "fisheye. Attivato li addestra come vuoti, il che rimuove lo sfondo e "
@@ -858,21 +940,21 @@ SS_MSG(apply_loss_for_mask_help,
        "maschere sono il canale alfa delle immagini stesse, altrimenti è "
        "disattivato. "
        "Anche l’inizializzazione con nuvola densa usa il ritaglio come predefinito."),
-    NL("Of gemaskeerde pixels worden genegeerd of als lege ruimte getraind. "
+    NL("Alleen van toepassing bij `mask_mode=auto`. Of gemaskeerde pixels worden genegeerd of als lege ruimte getraind. "
        "Uit negeert ze, waarmee je stoorelementen verbergt: voorbijgangers, "
        "auto's of het zwarte gebied buiten de fisheye-cirkel. Aan traint ze "
        "als leeg, waardoor de achtergrond verdwijnt en alleen het onderwerp "
        "overblijft. Niet ingesteld staat het aan als de enige maskers het "
        "alfakanaal van de beelden zelf zijn, en anders uit. "
        "Initialisatie met een dichte puntenwolk kiest standaard ook uitsnijden."),
-    RU("Игнорировать закрытые маской пиксели или обучать их как пустоту. "
+    RU("Применяется только при `mask_mode=auto`. Игнорировать закрытые маской пиксели или обучать их как пустоту. "
        "Выключено — игнорирует; так скрывают помехи: прохожих, машины, чёрную "
        "область вне круга фишая. Включено — обучает как пустоту, что убирает "
        "фон и оставляет только объект. Если не задано, включено, когда "
        "единственные маски — альфа-канал самих изображений, и выключено в "
        "остальных случаях. "
        "При инициализации плотным облаком по умолчанию также вырезается фон."),
-    TR("Maskelenen piksellerin yok sayılması mı yoksa boş alan olarak "
+    TR("Yalnızca `mask_mode=auto` olduğunda geçerlidir. Maskelenen piksellerin yok sayılması mı yoksa boş alan olarak "
        "eğitilmesi mi. Kapalıyken yok sayılır; geçen insanlar, arabalar ya da "
        "balıkgözü dairesinin dışındaki siyah alan gibi istenmeyenler böyle "
        "gizlenir. Açıkken boş olarak eğitilir; arka plan kalkar ve yalnızca "
@@ -12877,6 +12959,11 @@ struct ChoiceText {
 };
 
 inline constexpr ChoiceText kChoiceText[] = {
+    {"mask_mode", "auto", &choice_mask_auto},
+    {"mask_mode", "ignore", &choice_mask_ignore},
+    {"mask_mode", "segment", &choice_mask_segment},
+    {"mask_mode", "segment_and_ignore", &choice_mask_mixed},
+    {"mask_mode", "none", &choice_none},
     {"quality", "low",    &choice_low},
     {"quality", "medium", &choice_medium},
     {"quality", "high",   &choice_high},

@@ -1374,7 +1374,7 @@ __global__ void update_thumbnails_kernel(
     int B_post, int N, int S,
     uint8_t* __restrict__ thumbnails,        // [N, S, S, 4]
     uint8_t* __restrict__ done_mask,         // [N]
-    const bool*    __restrict__ alpha_mask,  // [B_post, H_alpha, W_alpha] bool or nullptr
+    const uint8_t* __restrict__ alpha_mask,  // [B_post, H_alpha, W_alpha] bool or nullptr
     int H_alpha, int W_alpha
 ) {
     int b = blockIdx.x;
@@ -1411,7 +1411,7 @@ __global__ void update_thumbnails_kernel(
         // mask pixels render as mid-gray so masked borders are visually
         // distinct from black image content.
         if (alpha_mask != nullptr) {
-            bool inside = nearest_sample_b(alpha_mask, b, sx, sy, S, S, W_alpha, H_alpha);
+            bool inside = nearest_sample_mask(alpha_mask, b, sx, sy, S, S, W_alpha, H_alpha) == 1;
             if (!inside) c = make_float3(0.5f, 0.5f, 0.5f);
         }
 
@@ -1498,7 +1498,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
     // The mask resolution can differ from gt.rgb (e.g. pit_renovation: RGB
     // 1920x1920, mask 1600x1600) so we pass its own H/W and use a separate
     // nearest sampler in the kernel.
-    const bool* d_alpha_mask = nullptr;
+    const uint8_t* d_alpha_mask = nullptr;
     int H_alpha = 0, W_alpha = 0;
     if (engine().gt.has_mask && engine().gt.alpha.data_ptr() != nullptr
         && engine().gt.alpha.size<0>() == B_post) {

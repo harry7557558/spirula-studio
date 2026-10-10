@@ -658,7 +658,7 @@ void engine_viewer_capture_thumbnails(TorchTensorView cam_indices_tv) {
         d_ci = tmp_ci;
     }
 
-    const bool* d_alpha_mask = nullptr;
+    const uint8_t* d_alpha_mask = nullptr;
     int H_alpha = 0, W_alpha = 0;
     if (engine().gt.has_mask && engine().gt.alpha.data_ptr() != nullptr
         && engine().gt.alpha.size<0>() == B_post) {

@@ -227,7 +227,7 @@ void engine_copy_gt_alpha_to_host(TorchTensorView out) {
     auto& t = engine().gt.alpha;
     if (t.data_ptr() == nullptr || std::get<0>(out) == 0) return;
     backend::memcpy_sync((void*)std::get<0>(out), t.data_ptr(),
-               t.numel() * sizeof(bool), backend::MemcpyKind::DeviceToHost);
+               t.numel() * sizeof(uint8_t), backend::MemcpyKind::DeviceToHost);
 }
 
 std::tuple<int64_t, int64_t, int64_t, int64_t> engine_get_gt_depth_shape() {

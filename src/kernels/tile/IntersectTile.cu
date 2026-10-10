@@ -355,7 +355,7 @@ static constexpr int kMaskPad = 1;
 // unmasked, sampled exactly as the loss samples the mask (core/Interpolation.cuh).
 
 __global__ void tile_active_kernel(
-    const bool* __restrict__ mask,      // [I, H_mask, W_mask]
+    const uint8_t* __restrict__ mask,      // [I, H_mask, W_mask]
     const int I, const int H_mask, const int W_mask,
     const int width, const int height,
     const uint32_t tile_width, const uint32_t tile_height,
@@ -376,7 +376,7 @@ __global__ void tile_active_kernel(
             const int x = (int)tx * bt.ix + dx;
             if (x >= width) break;
             if (x < 0) continue;
-            if (nearest_sample_b(mask, b, x, y, width, height, W_mask, H_mask)) {
+            if (nearest_sample_mask(mask, b, x, y, width, height, W_mask, H_mask) == 1) {
                 live = true;
                 break;
             }
@@ -406,7 +406,7 @@ void compute_tile_active(
     const uint32_t tile_height = _CEIL_DIV((uint32_t)height, bt.iy);
     const uint32_t n_tiles = (uint32_t)I * tile_width * tile_height;
     tile_active_kernel<<<_LAUNCH_ARGS_1D(n_tiles, 256)>>>(
-        (const bool*)std::get<0>(mask), I, H_mask, W_mask, width, height,
+        (const uint8_t*)std::get<0>(mask), I, H_mask, W_mask, width, height,
         tile_width, tile_height, bt, tile_active);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }

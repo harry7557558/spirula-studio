@@ -1,21 +1,12 @@
 #pragma once
 
-// Bilinear samplers for reading GT at a resolution other than the render's:
-// the fused per-pixel loss and the viewer's GT thumbnails. Header-only.
-//
-// Integer pixel (x_dst, y_dst) maps to the source with the
-// "align-corners=false" / half-pixel-center convention that matches
-// torch.nn.functional.grid_sample and OpenCV warps:
-//
-//     u = (x_dst + 0.5) * W_src / W_dst - 0.5
-//     v = (y_dst + 0.5) * H_src / H_dst - 0.5
-//
-// so equal-shape GT reads a single tap. Out-of-bound taps clamp to [0, src-1]
-// ("border"), which keeps backward gradient delivery in-bounds.
+// GT sampling uses half-pixel centers (align-corners=false) and border clamping.
+// Equal-shape inputs read one tap.
 
 #ifdef __CUDACC__
 
 #include <cuda_runtime.h>
+#include <cstdint>
 
 
 namespace _bilinear_detail {
@@ -103,10 +94,9 @@ __device__ __forceinline__ float3 bilinear_sample_f3(
     return out;
 }
 
-// Nearest-neighbor bool sampler — masks are boolean, bilinear has no
-// meaningful interpolation. Returns the value of the nearest source pixel.
-__device__ __forceinline__ bool nearest_sample_b(
-    const bool* __restrict__ src,
+// Mask labels must survive resampling without interpolation.
+__device__ __forceinline__ uint8_t nearest_sample_mask(
+    const uint8_t* __restrict__ src,
     int b, int x_dst, int y_dst,
     int W_dst, int H_dst,
     int W_src, int H_src

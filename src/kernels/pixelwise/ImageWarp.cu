@@ -91,9 +91,7 @@ __global__ void warp_image_equirectangular_to_pinhole_byte_to_float_kernel(
     }
 }
 
-// Nearest-neighbor mask warps. Mask is bool; we read uint8 (0 / nonzero)
-// and emit uint8 0/1 at the post-split resolution. Camera-model dispatch
-// matches the RGB kernels.
+// Nearest sampling preserves the training mask's categorical byte labels.
 template<CameraDistortionType distortion, bool from_source>
 __global__ void warp_mask_wide_to_pinhole_kernel(
     CameraModelType camera_model,
@@ -129,7 +127,7 @@ __global__ void warp_mask_wide_to_pinhole_kernel(
             int xs = (int)floorf(uv.x);
             int ys = (int)floorf(uv.y);
             if (xs >= 0 && xs < W && ys >= 0 && ys < H) {
-                out = (wide_mask.at(bid, ys, xs, 0) != 0) ? 1 : 0;
+                out = wide_mask.at(bid, ys, xs, 0);
             }
         }
         pinhole_masks.at(bid, ki, j, i, 0) = out;
@@ -163,7 +161,7 @@ __global__ void warp_mask_equirectangular_to_pinhole_kernel(
             // wrap u for equirectangular (panoramic continuity); clamp v.
             if (xs < 0) xs += w; else if (xs >= w) xs -= w;
             if (ys < 0) ys = 0; if (ys >= h) ys = h - 1;
-            out = (equi_mask.at(bid, ys, xs, 0) != 0) ? 1 : 0;
+            out = equi_mask.at(bid, ys, xs, 0);
         }
         pinhole_masks.at(bid, ki, j, i, 0) = out;
     }

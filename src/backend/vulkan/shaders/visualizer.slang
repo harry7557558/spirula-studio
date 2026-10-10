@@ -1209,7 +1209,7 @@ bool thumb_nearest_sample_b(uint* src_words, int b, int x_dst, int y_dst,
     int y = max(0, min(H_src - 1, int(floor(v + 0.5f))));
     gindex_t byte_idx = gindex_t(b) * gindex_t(H_src) * gindex_t(W_src) +
                         gindex_t(y) * W_src + x;
-    return u8_load(src_words, byte_idx) != 0;
+    return u8_load(src_words, byte_idx) == 1u;
 }
 
 [shader("compute")]

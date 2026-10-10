@@ -141,6 +141,7 @@ inline bool train_choices_free_form(const char* choices) {
     X(std::string, image_dir, "images", "dataset", "basic", "<data>/<folder>") \
     X(std::string, mask_dir, "masks", "dataset", "basic", "<data>/<folder>") \
     X(bool, load_masks, true, "dataset", "basic", "")                        \
+    X(std::string, mask_mode, "auto", "dataset", "basic", "auto|ignore|segment|segment_and_ignore|none") \
     X(std::optional<bool>, apply_loss_for_mask, std::nullopt, "dataset", "basic", "") \
     X(bool, flip_mask, false, "dataset", "basic", "")                        \
     X(float, mask_boundary_offset, 0.0f, "dataset", "advanced", "")          \
@@ -401,6 +402,12 @@ struct TrainConfig {
 #undef SS_DECLARE_FIELD
 };
 
+inline std::string train_mask_mode(const TrainConfig& c, bool default_segment = false) {
+    if (c.mask_mode != "auto") return c.mask_mode;
+    if (!c.load_masks) return "none";
+    return c.apply_loss_for_mask.value_or(default_segment) ? "segment" : "ignore";
+}
+
 // Fields whose default ({}) is not a usable value. Checked after flag
 // parsing, so --help still works without them.
 #define SS_CONFIG_REQUIRED_FIELDS(X) \
@@ -419,7 +426,7 @@ struct TrainConfig {
     X(eval_interval) X(depth_unit_scale_factor) X(validation_fraction) \
     X(warp_to_pinhole) X(warp_spherical_to_pinhole) X(warp_face_fit) \
     X(warp_back_face) \
-    X(load_masks) \
+    X(load_masks) X(mask_mode) \
     X(load_depths) X(load_normals) X(relative_scale) \
     X(cap_max) X(random_init) X(random_init_fraction) X(random_init_distribution) \
     X(random_init_center) X(random_init_spread) X(random_init_std) \

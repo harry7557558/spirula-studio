@@ -237,10 +237,10 @@ void set_training_data_warped(
         }
         TorchTensorView dv((uint64_t)d_mask_out, 1,
                            {(int64_t)B_post, (int64_t)out_H, (int64_t)out_W, 1LL});
-        engine().gt.alpha = DeviceTensor3D<bool>(dv);
+        engine().gt.alpha = DeviceTensor3D<uint8_t>(dv);
         engine().gt.has_mask = true;
     } else {
-        engine().gt.alpha = DeviceTensor3D<bool>();
+        engine().gt.alpha = DeviceTensor3D<uint8_t>();
         engine().gt.has_mask = false;
     }
 

@@ -63,13 +63,16 @@ struct Outcome {
 Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
             int64_t Hm = H, int64_t Wm = W, float w_ssim = 0.0f,
             const std::vector<float>* rgb_in = nullptr, float w_rgb = 1.0f,
-            float sat = -1.0f, const std::vector<float>* ref_in = nullptr) {
+            float sat = -1.0f, const std::vector<float>* ref_in = nullptr,
+            int scales = 1, float w_alpha_under = 0.0f,
+            const std::vector<float>* Ts_in = nullptr) {
     std::vector<float> rgb((size_t)3 * NP, 0.5f), ref((size_t)3 * NP, 0.25f);
     if (rgb_in) rgb = *rgb_in;
     for (size_t i = 0; i < ref.size(); i++)
         ref[i] = 0.25f + 0.5f * (float)((i * 37) % 17) / 17.0f;
     if (ref_in) ref = *ref_in;
     std::vector<float> Ts((size_t)NP, 0.5f);
+    if (Ts_in) Ts = *Ts_in;
     float* d_rgb = upload(rgb);
     float* d_ref = upload(ref);
     float* d_Ts = upload(Ts);
@@ -80,6 +83,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
     std::array<float, (int)LossWeightIndex::length> weights{};
     weights[(int)LossWeightIndex::RgbSupL1] = w_rgb;
     weights[(int)LossWeightIndex::AlphaSup] = w_alpha;
+    weights[(int)LossWeightIndex::AlphaSupUnder] = w_alpha_under;
 
     std::vector<float> v_losses((size_t)LossIndex::length, 0.0f);
     v_losses[(int)LossIndex::RgbLoss] = 1.0f;
@@ -96,7 +100,7 @@ Outcome run(const std::vector<uint8_t>& mask, bool zero_depth, float w_alpha,
 
     auto once = [&]() {
         return compute_multi_scale_per_pixel_losses(
-            1, ttv(d_rgb, {B, H, W, 3}), ttv(d_ref, {B, H, W, 3}), ttv_null(),
+            scales, ttv(d_rgb, {B, H, W, 3}), ttv(d_ref, {B, H, W, 3}), ttv_null(),
             d_depth ? ttv(d_depth, {B, H, W, 1}) : ttv_null(), ttv_null(),
             ttv_null(), ttv_null(), ttv(d_Ts, {B, H, W, 1}), ttv_null(),
             ttv_null(), ttv_null(), ttv_null(), ttv_null(),
@@ -169,6 +173,73 @@ int main() {
         }
     check(masked_zero && kept_nonzero,
           "ignore mode: masked pixels take no colour gradient");
+
+    for (int scales : {1, 3}) for (int size : {1, 2}) {
+        std::vector<uint8_t> mixed((size_t)NP * size * size);
+        for (int64_t y = 0; y < H * size; ++y)
+            for (int64_t x = 0; x < W * size; ++x)
+                mixed[(size_t)(y * W * size + x)] =
+                    x < 9 * size ? 2 : x < 19 * size ? 0 : 1;
+        Outcome a = run(mixed, false, 1.0f, H * size, W * size, 0.2f,
+                        nullptr, 1.0f, -1.0f, nullptr, scales, 1.0f);
+        bool dynamic_zero = true, sky_empty = true, static_color = false;
+        for (int64_t y = 0; y < H; ++y) for (int64_t x = 0; x < W; ++x) {
+            const size_t i = (size_t)(y * W + x);
+            if (x < 9) {
+                dynamic_zero &= a.v_render_Ts[i] == 0.0f;
+                for (int c = 0; c < 3; ++c)
+                    dynamic_zero &= a.v_render_rgb[3 * i + c] == 0.0f;
+            } else if (x < 19) {
+                sky_empty &= a.v_render_Ts[i] < 0.0f;
+                for (int c = 0; c < 3; ++c)
+                    sky_empty &= a.v_render_rgb[3 * i + c] == 0.0f;
+            } else {
+                static_color |= a.v_render_rgb[3 * i] != 0.0f;
+            }
+        }
+        std::printf("    mixed: scales=%d, mask size=%d\n", scales, size);
+        check(dynamic_zero, "mixed: ignored pixels get no colour or opacity gradient");
+        check(sky_empty, "mixed: segment pixels get only a transparency gradient");
+        check(static_color, "mixed: static foreground keeps colour supervision");
+
+        std::vector<float> changed_ref = ramp_image(17);
+        std::vector<float> changed_rgb = ramp_image(19);
+        Outcome baseline = run(mixed, false, 1.0f, H * size, W * size, 0.2f,
+                               &changed_rgb, 1.0f, -1.0f, &changed_ref, scales);
+        for (int64_t y = 0; y < H; ++y) for (int64_t x = 0; x < 9; ++x)
+            for (int c = 0; c < 3; ++c) {
+                changed_ref[(size_t)(y * W + x) * 3 + c] = 0.99f;
+                changed_rgb[(size_t)(y * W + x) * 3 + c] = 0.01f;
+            }
+        Outcome changed = run(mixed, false, 1.0f, H * size, W * size, 0.2f,
+                              &changed_rgb, 1.0f, -1.0f, &changed_ref, scales);
+        float worst = 0.0f;
+        for (size_t i = 0; i < changed.v_render_rgb.size(); ++i)
+            worst = std::max(worst, std::fabs(changed.v_render_rgb[i] - baseline.v_render_rgb[i]));
+        check(worst < 1e-6f && std::fabs(changed.rgb_loss - baseline.rgb_loss) < 1e-6f,
+              "mixed: ignored colours cannot contaminate static supervision");
+
+        std::vector<float> changed_Ts((size_t)NP, 0.5f);
+        Outcome opacity_a = run(mixed, false, 1.0f, H * size, W * size, 0.0f,
+                                nullptr, 0.0f, -1.0f, nullptr, scales, 1.0f);
+        for (int64_t y = 0; y < H; ++y) for (int64_t x = 0; x < 9; ++x)
+            changed_Ts[(size_t)(y * W + x)] = 0.95f;
+        Outcome opacity_b = run(mixed, false, 1.0f, H * size, W * size, 0.0f,
+                                nullptr, 0.0f, -1.0f, nullptr, scales, 1.0f, &changed_Ts);
+        worst = 0.0f;
+        for (size_t i = 0; i < opacity_a.v_render_Ts.size(); ++i)
+            worst = std::max(worst, std::fabs(opacity_a.v_render_Ts[i] - opacity_b.v_render_Ts[i]));
+        check(worst < 1e-6f && std::fabs(opacity_a.alpha_sup - opacity_b.alpha_sup) < 1e-6f,
+              "mixed: ignored opacity cannot contaminate transparency supervision");
+    }
+    {
+        Outcome empty = run(std::vector<uint8_t>((size_t)NP, 2), false, 1.0f,
+                            H, W, 0.2f, nullptr, 1.0f, -1.0f, nullptr, 3, 1.0f);
+        check(empty.alpha_sup == 0.0f && empty.rgb_loss == 0.0f &&
+              std::all_of(empty.v_render_Ts.begin(), empty.v_render_Ts.end(),
+                          [](float v) { return v == 0.0f; }),
+              "mixed: all-ignore image has no opacity target or divide-by-zero");
+    }
 
     // A mask is stored at the size of the file it came from, so a downscaled
     // run hands the kernels a mask larger than the render. Every consumer must

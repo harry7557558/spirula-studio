@@ -411,7 +411,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
                     if (q.mh > 0) {
                         const int64_t my = q.mh == H ? y : y * q.mh / H;
                         const int64_t mx = q.mw == W ? x : x * q.mw / W;
-                        if (!alpha[q.mask + (size_t)((b * q.mh + my) * q.mw + mx)])
+                        if (alpha[q.mask + (size_t)((b * q.mh + my) * q.mw + mx)] != 1)
                             continue;
                     }
                     const size_t pix = q.rgb + (size_t)(((b * H + y) * W + x) * C);
@@ -619,7 +619,7 @@ void ImageCompare::rebuild_textures() {
             const int my = (h == ph) ? y : (int)((int64_t)y * ph / h);
             for (int x = 0; x < w; x++) {
                 const int mx = (w == pw) ? x : (int)((int64_t)x * pw / w);
-                if (_shot.mask[(size_t)my * pw + mx]) continue;
+                if (_shot.mask[(size_t)my * pw + mx] == 1) continue;
                 uint8_t* p = out.data() + ((size_t)y * w + x) * 3;
                 if (_mask_show == MaskShow::Hide) p[0] = p[1] = p[2] = 0;
                 else for (int c = 0; c < 3; c++) p[c] = (uint8_t)(p[c] / 4);

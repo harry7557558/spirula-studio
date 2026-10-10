@@ -79,13 +79,33 @@ rendered on, which is what eval scores a render against over the whole frame,
 what the Images tab shows, and what a soft edge renders as. The other background modes
 have no one colour to composite onto and keep the stored one.
 
-What a masked-out pixel means is `apply_loss_for_mask` (the GUI's Mask mode):
-ignored ("Ignore distractors") or trained as empty space ("Cut out
-background"). Left unset it resolves per dataset: cut out when the only masks
-are the images' alpha or the seed is this dataset's `dense/roma.ply`; ignore
-otherwise. An explicit policy retains precedence. `config.json` records the
-resolved value. The dense panel and trainer use the same Mask mode control;
-Don't use masks disables both alpha and sidecar masks.
+`mask_mode` (the GUI's **Mask mode**) selects the training policy:
+`ignore` skips masked pixels, `segment` trains them as empty space,
+`segment_and_ignore` combines both in one grayscale mask, and `none` disables
+alpha and sidecar masks. With `auto` (the default), `load_masks` and
+`apply_loss_for_mask` retain their existing behavior: cut out when the only
+masks are image alpha or the seed is this dataset's `dense/roma.ply`; ignore
+otherwise. Explicit `mask_mode` overrides those legacy flags. `config.json`
+records the resolved mode. The dense panel and trainer share the same control.
+
+For `segment_and_ignore`, provide grayscale sidecar masks with these ranges
+(compatible with LichtFeld Studio):
+
+| Mask value | Meaning | Training behavior |
+|---|---|---|
+| 0–127 (black) | Ignore, e.g. moving people and vehicles | No image or opacity supervision |
+| 128–250 (gray) | Segment, e.g. sky | Drive foreground opacity to zero |
+| 251–255 (white) | Keep static scene | Normal image and geometry supervision |
+
+Use lossless masks with values **0 / 128 / 255** and
+`spirula train --data <dataset> --mask-mode segment_and_ignore`. Mask resizing
+and camera warps preserve the labels. Image alpha still cuts out transparent
+pixels, with Ignore taking precedence over alpha. `flip_mask` swaps Keep and
+Ignore while retaining Segment; `mask_boundary_offset` adjusts both exclusion
+boundaries, with Ignore winning overlaps. A coarse loss pixel containing any
+Ignore pixel also skips opacity supervision, and ignored pixels receive no
+upsampled gradients. The segmentation tools produce binary masks; prepare
+three-class masks before selecting this training mode.
 
 Which files carry alpha is read from their headers, then settled by decoding
 the first, middle and last of them: an RGBA export that is opaque everywhere is

@@ -110,7 +110,7 @@ void _cn_body(CannyParams p, uint3 wg, uint tid, int tx, int ty) {
     if (yid < p.H && xid < p.W) {
         uint pix = (uint(bid) * uint(p.H) + uint(yid)) * uint(p.W) + uint(xid);
         if (p.has_mask != 0 &&
-            u8_load(p.mask_in, pix) == 0u)
+            u8_load(p.mask_in, pix) != 1u)
             mag = 0.0f;
         p.img_out[pix] = mag;
     }
@@ -134,7 +134,7 @@ void canny_rgb(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 rgb = float3(p.img_in[3 * pix], p.img_in[3 * pix + 1],
                             p.img_in[3 * pix + 2]);
         PIX(y, x) = dot(rgb, float3(0.299f, 0.587f, 0.114f));
-        VLD(y, x) = (p.has_mask != 0 && u8_load(p.mask_in, (uint)pix) == 0u)
+        VLD(y, x) = (p.has_mask != 0 && u8_load(p.mask_in, (uint)pix) != 1u)
             ? 0.0f : 1.0f;
     }
     GroupMemoryBarrierWithGroupSync();
@@ -156,7 +156,7 @@ void canny_scalar(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         int xi = min(max(int(wg.x) * CB + x - CH, 0), p.W - 1);
         gindex_t pix = ((gindex_t)bid * p.H + yi) * (gindex_t)p.W + xi;
         PIX(y, x) = p.img_in[pix];
-        VLD(y, x) = (p.has_mask != 0 && u8_load(p.mask_in, (uint)pix) == 0u)
+        VLD(y, x) = (p.has_mask != 0 && u8_load(p.mask_in, (uint)pix) != 1u)
             ? 0.0f : 1.0f;
     }
     GroupMemoryBarrierWithGroupSync();
@@ -190,7 +190,7 @@ void residual_luma(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // Infinity, not zero: the quantile counts only strictly positive finite
     // values, so a masked residual is dropped instead of dragging the Tukey
     // cutoff around. The Tukey pass turns it into a real zero.
-    if (p.has_mask != 0 && u8_load(p.mask_in, (uint)idx) == 0u) {
+    if (p.has_mask != 0 && u8_load(p.mask_in, (uint)idx) != 1u) {
         p.out[idx] = 1.0f / 0.0f;
         return;
     }

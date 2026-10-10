@@ -10470,28 +10470,33 @@ void GuiApp::draw_preset_save_modal() {
 // generated editor does: a flag the user set by hand is off limits to the
 // macro options (see train_resolve_macros()).
 void GuiApp::draw_train_mask_mode(float width) {
-    bool cut_out = _cfg.apply_loss_for_mask.value_or(spirula::dense::is_dense_seed(_cfg.data, _cfg.seed_pointcloud) ||
-        (_cfg.seed_pointcloud.empty() && dense_cloud_present()) || (_dense.enable && _dense.use_for_training));
+    const bool default_segment = spirula::dense::is_dense_seed(_cfg.data, _cfg.seed_pointcloud) ||
+        (_cfg.seed_pointcloud.empty() && dense_cloud_present()) || (_dense.enable && _dense.use_for_training);
+    std::string mode = train_mask_mode(_cfg, default_segment);
     const TrainRunner::Phase ph = _runner.phase();
-    if (!_cfg.apply_loss_for_mask.has_value() &&
+    if (_cfg.mask_mode == "auto" && !_cfg.apply_loss_for_mask.has_value() &&
         (ph == TrainRunner::Phase::Ready || ph == TrainRunner::Phase::Training ||
          ph == TrainRunner::Phase::Done))
         if (auto* s = _runner.session())
-            cut_out = s->cfg.apply_loss_for_mask.value_or(false);
-    int mi = !_cfg.load_masks ? 2 : cut_out ? 1 : 0;
+            mode = train_mask_mode(s->cfg);
+    int mi = mode == "none" ? 3 : mode == "segment_and_ignore" ? 2 : mode == "segment" ? 1 : 0;
     ImGui::SetNextItemWidth(width);
     if (ui::Combo(msg::opt_mask_mode, &mi,
                   {&msg::opt_mask_mode_exclude,
                    &msg::opt_mask_mode_cut_out,
+                   &spirula::i18n::msg::field::choice_mask_mixed,
                    &msg::opt_mask_mode_off})) {
-        _cfg.load_masks = mi != 2;
+        constexpr const char* modes[] = {"ignore", "segment", "segment_and_ignore", "none"};
+        _cfg.mask_mode = modes[mi];
+        _cfg_ui.touched.insert("mask_mode");
+        _cfg.load_masks = mi != 3;
         _cfg_ui.touched.insert("load_masks");
-        if (mi != 2) {
-            _cfg.apply_loss_for_mask = mi == 1;
+        if (mi != 3) {
+            _cfg.apply_loss_for_mask = mi == 1 || mi == 2;
             _cfg_ui.touched.insert("apply_loss_for_mask");
         }
     }
-    ui::help_on_hover_disabled(msg::opt_mask_mode_help);
+    ui::help_on_hover_disabled(spirula::i18n::msg::field::mask_mode_help);
 }
 
 bool GuiApp::dense_cloud_present() {

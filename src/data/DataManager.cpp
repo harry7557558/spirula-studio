@@ -6,6 +6,7 @@
 #include "core/DistanceTransform.h"
 #include "core/ExrImage.h"
 #include "core/ImageOrient.h"
+#include "core/TrainingMask.h"
 #include "core/TiffImage.h"
 #include "data/ImageProbe.h"
 #include "data/ResolutionSchedule.h"
@@ -511,11 +512,25 @@ void decode_rgb_into(const std::string& path,
     }
 }
 
-// Signed dilate (+) / erode (-) of a 0/1 mask, by fraction * sqrt(W * H) pixels.
-void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction) {
+// Positive offsets grow kept regions; units are fraction * sqrt(W * H) pixels.
+void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction,
+                           bool mixed = false) {
     if (fraction == 0.0f) return;
     const float offset_px = fraction * std::sqrt((float)w * (float)h);
-    edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
+    if (!mixed) {
+        edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
+        return;
+    }
+    const size_t n = (size_t)h * w;
+    std::vector<uint8_t> segment(n), ignore(n);
+    for (size_t k = 0; k < n; ++k) {
+        segment[k] = mask[k] != (uint8_t)spirula::TrainingMask::Segment;
+        ignore[k] = mask[k] != (uint8_t)spirula::TrainingMask::Ignore;
+    }
+    edt::apply_mask_boundary_offset_in_place(segment.data(), h, w, offset_px);
+    edt::apply_mask_boundary_offset_in_place(ignore.data(), h, w, offset_px);
+    for (size_t k = 0; k < n; ++k)
+        mask[k] = !ignore[k] ? (uint8_t)spirula::TrainingMask::Ignore : segment[k];
 }
 
 void decode_mask_into(const std::string& path,
@@ -523,16 +538,14 @@ void decode_mask_into(const std::string& path,
                       bool flip,
                       float boundary_offset_frac,
                       uint8_t* dst,
-                      int turns_cw = 0)
+                      int turns_cw = 0, bool mixed = false)
 {
     int w, h, ch;
     stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 1);
     if (!img) throw std::runtime_error(decode_failure(path));
 
-    // Binarize on-disk pixels first so the broadcast / resize always emits
-    // strict 0/1 (matches the kernel's bool semantics).
     for (size_t i = 0; i < (size_t)w * h; ++i)
-        img[i] = (uint8_t)(img[i] != 0);
+        img[i] = spirula::decode_training_mask(img[i], mixed, flip);
 
     const stbi_uc* src = img;
     std::vector<stbi_uc> turned;
@@ -544,11 +557,7 @@ void decode_mask_into(const std::string& path,
     }
     stbi_image_free(img);
 
-    // Before the offset: a flipped mask's boundary is the one to grow or shrink.
-    if (flip)
-        for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) dst[i] = (uint8_t)!dst[i];
-
-    apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac);
+    apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac, mixed);
 }
 
 // An image's alpha as a 0/1 mask at dst_h x dst_w: area-resampled first, so a
@@ -1329,16 +1338,18 @@ void DataManagerImpl::decode_mask_of(int64_t i, int dst_h, int dst_w,
     if (!alpha_mask(i)) {
         if (file.empty()) std::memset(dst, 1, (size_t)dst_h * dst_w);
         else decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask,
-                              _cfg.mask_boundary_offset, dst, turns);
+                              _cfg.mask_boundary_offset, dst, turns, _cfg.segment_and_ignore);
         return;
     }
     decode_alpha_mask_into(_image_filenames[(size_t)i], dst_h, dst_w, dst, turns);
     if (!file.empty()) {
         std::vector<uint8_t> other((size_t)dst_h * dst_w);
-        decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask, 0.0f, other.data(), turns);
-        for (size_t k = 0; k < other.size(); ++k) dst[k] &= other[k];
+        decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask, 0.0f, other.data(), turns,
+                         _cfg.segment_and_ignore);
+        for (size_t k = 0; k < other.size(); ++k)
+            dst[k] = spirula::intersect_training_masks(dst[k], other[k]);
     }
-    apply_boundary_offset(dst, dst_h, dst_w, _cfg.mask_boundary_offset);
+    apply_boundary_offset(dst, dst_h, dst_w, _cfg.mask_boundary_offset, _cfg.segment_and_ignore);
 }
 
 

@@ -79,7 +79,7 @@ struct PplParams {
     float* normal_dist;
     float* median_depth;
     float* median_normal;
-    uint* ref_alpha;      // bool bytes, word-read
+    uint* ref_alpha;      // training label bytes, word-read
     float* loss_map;      // fwd only
     float* losses;        // fwd: raw-loss accum rows; bwd: v_raw_losses rows
     float* v_render_rgb;
@@ -265,14 +265,14 @@ void _ms_scatter_add_gt_normal(float* src, float* dst, int b, int x_dst,
 }
 
 [ForceInline]
-bool _ms_nearest_b(uint* src, int b, int x_dst, int y_dst, int W_dst,
+uint _ms_nearest_b(uint* src, int b, int x_dst, int y_dst, int W_dst,
                    int H_dst, int W_src, int H_src) {
     float u = (float(x_dst) + 0.5f) * float(W_src) / float(W_dst) - 0.5f;
     float v = (float(y_dst) + 0.5f) * float(H_src) / float(H_dst) - 0.5f;
     int x = max(0, min(W_src - 1, int(floor(u + 0.5f))));
     int y = max(0, min(H_src - 1, int(floor(v + 0.5f))));
     uint plane = uint(b) * uint(H_src) * uint(W_src);
-    return _ms_load_u8(src, plane + uint(y) * uint(W_src) + uint(x)) != 0u;
+    return _ms_load_u8(src, plane + uint(y) * uint(W_src) + uint(x));
 }
 
 // Which accumulator row(s) a raw-loss index adds into (mirrors
@@ -300,7 +300,7 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
                     out float3 ref_normal_v, out float render_Ts,
                     out float3 rgb_dist, out float depth_dist,
                     out float3 normal_dist, out float median_depth,
-                    out float3 median_normal, out bool ref_alpha_v) {
+                    out float3 median_normal, out uint ref_alpha_v) {
     render_rgb = (p.in_flags & kInRenderRgb) != 0
         ? rgb_load3(p.render_rgb, idx, (p.in_flags >> kInRenderRgbFmtShift) & 3u)
         : float3(0.0f);
@@ -326,7 +326,7 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
     normal_dist = (p.in_flags & kInNormalDist) != 0 ? _ms_load_f3(p.normal_dist, idx) : float3(0.0f);
     median_depth = (p.in_flags & kInMedianDepth) != 0 ? p.median_depth[idx] : 0.0f;
     median_normal = (p.in_flags & kInMedianNormal) != 0 ? _ms_load_f3(p.median_normal, idx) : float3(0.0f);
-    ref_alpha_v = false;
+    ref_alpha_v = 0u;
     if ((p.in_flags & kInRefAlpha) != 0)
         ref_alpha_v = _ms_nearest_b(p.ref_alpha, batch_idx, x_dst, y_dst,
                                     p.W_render, p.H_render, p.W_ref_alpha,
@@ -374,7 +374,7 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
         float3 rgb_dist, normal_dist, median_normal;
         float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-        bool ref_alpha_v;
+        uint ref_alpha_v;
         _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb,
                        ref_rgb, render_depth, ref_depth_v, render_normal,
                        depth_normal, ref_normal_v, render_Ts, rgb_dist,
@@ -457,7 +457,7 @@ void ppl_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float3 render_rgb, ref_rgb, render_normal, depth_normal, ref_normal_v;
     float3 rgb_dist, normal_dist, median_normal;
     float render_depth, ref_depth_v, render_Ts, depth_dist, median_depth;
-    bool ref_alpha_v;
+    uint ref_alpha_v;
     _ms_load_pixel(p, int(batch_idx), idx, x_dst, y_dst, render_rgb, ref_rgb,
                    render_depth, ref_depth_v, render_normal, depth_normal,
                    ref_normal_v, render_Ts, rgb_dist, depth_dist, normal_dist,
@@ -716,10 +716,12 @@ void ms_downsample_gt_geo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 struct MsPoolMaskedParams {
     uint* hs;    // read as hs_fmt (core/PixelFormat.h)
     uint* ls;    // written as ls_fmt
-    uint* mask;  // [B,hsH,hsW] bool bytes
+    uint* mask;  // [B,maskH,maskW] training labels
+    uint* mask_ls;
     int B, C;
     int hsH, hsW;
     int lsH, lsW;
+    int maskH, maskW;
     uint hs_fmt, ls_fmt, wgs_per_row, _pad0;
 };
 
@@ -737,10 +739,13 @@ void ms_downsample_masked_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float acc[3] = { 0.0f, 0.0f, 0.0f };
     float box[3] = { 0.0f, 0.0f, 0.0f };
     int n = 0;
+    uint target = 1u;
+    if (!is_null(p.mask_ls)) target = u8_load(p.mask_ls, active ? pix : 0u);
     for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++) {
             gindex_t i = base + ys[dy] * p.hsW + xs[dx];
-            bool valid = u8_load(p.mask, (uint)i) != 0u;
+            bool valid = target != 2u && _ms_nearest_b(p.mask, int(bid), int(xs[dx]), int(ys[dy]),
+                p.hsW, p.hsH, p.maskW, p.maskH) == target;
             for (int c = 0; c < p.C; c++) {
                 float v = rgb_load1(p.hs, i * p.C + c, p.hs_fmt);
                 box[c] += 0.25f * v;
@@ -751,7 +756,7 @@ void ms_downsample_masked_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     // All four masked: the coarse pixel is masked too, so the value is unused.
     float out[3] = { 0.0f, 0.0f, 0.0f };
     for (int c = 0; c < p.C; c++)
-        out[c] = n != 0 ? acc[c] / float(n) : box[c];
+        out[c] = n != 0 ? acc[c] / float(n) : is_null(p.mask_ls) ? box[c] : 0.0f;
     _ms_store_ls(p.ls, pix, p.C, out, p.ls_fmt, active);
 }
 
@@ -762,6 +767,7 @@ struct MsZeroMaskedParams {
     float* grad;
     uint* mask;
     int B, C, H, W;
+    int maskH, maskW, ignored_only;
     int _pad0;
 };
 
@@ -774,15 +780,27 @@ void ms_zero_masked_grad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint bid = wg.z;
     if (yid >= uint(p.H) || xid >= uint(p.W)) return;
     gindex_t i = ((gindex_t)bid * p.H + yid) * (gindex_t)p.W + xid;
-    if (u8_load(p.mask, (uint)i) != 0u) return;
+    uint value = _ms_nearest_b(p.mask, int(bid), int(xid), int(yid),
+        p.W, p.H, p.maskW, p.maskH);
+    if (p.ignored_only != 0 ? value != 2u : value == 1u) return;
     for (int c = 0; c < p.C; c++)
         p.grad[i * p.C + c] = 0.0f;
 }
 
+struct MsUpsampleParams {
+    float* hs;
+    float* ls;
+    uint* mask_hs;
+    uint* mask_ls;
+    int B, C, hsH, hsW, lsH, lsW, scale;
+    float a, b;
+    int _pad0;
+};
+
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void ms_upsample_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
-                   uniform MsPoolParams p) {
+                   uniform MsUpsampleParams p) {
     uint xid = wg.x * 16 + (tid % 16u);
     uint yid = wg.y * 16 + (tid / 16u);
     uint bid = wg.z;
@@ -795,22 +813,29 @@ void ms_upsample_f(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (yl < uint(p.lsH) && xl < uint(p.lsW)) {
             gindex_t lidx =
                 (((gindex_t)bid * p.lsH + yl) * (gindex_t)p.lsW + xl) * p.C + c;
-            v += p.b * p.ls[lidx];
+            uint hi = (bid * uint(p.hsH) + yid) * uint(p.hsW) + xid;
+            uint li = (bid * uint(p.lsH) + yl) * uint(p.lsW) + xl;
+            if (is_null(p.mask_hs))
+                v += p.b * p.ls[lidx];
+            else if (u8_load(p.mask_hs, hi) != 2u &&
+                     u8_load(p.mask_hs, hi) == u8_load(p.mask_ls, li))
+                v += p.b * p.ls[lidx];
         }
         p.hs[hidx] = v;
     }
 }
 
-// Bool ([B,H,W] bytes) 2x downsample: majority (>= 2 of 4). One thread per
+// Training labels: an ignored child overrides the binary majority. One thread per
 // output WORD so no byte-granular writes race; the tail word is patched with
 // And/Or atomics to leave bytes past the logical end untouched.
 struct MsPoolBoolParams {
-    uint* src;   // bool bytes
-    uint* dst;   // bool bytes
+    uint* src;
+    uint* dst;
     int B;
     int hsH, hsW;
     int lsH, lsW;
     uint wgs_per_row;
+    int resample_only, _pad0;
 };
 
 [shader("compute")]
@@ -833,16 +858,30 @@ void ms_downsample_b(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint rem = byte_idx - bid * hw;
         uint yid = rem / uint(p.lsW);
         uint xid = rem - yid * uint(p.lsW);
+        if (p.resample_only != 0) {
+            uint value = _ms_nearest_b(p.src, int(bid), int(xid), int(yid),
+                p.lsW, p.lsH, p.hsW, p.hsH);
+            out_w |= value << (8u * k);
+            continue;
+        }
         uint y0 = min(2 * yid, uint(p.hsH - 1)),
              y1 = min(2 * yid + 1, uint(p.hsH - 1));
         uint x0 = min(2 * xid, uint(p.hsW - 1)),
              x1 = min(2 * xid + 1, uint(p.hsW - 1));
         uint plane = bid * uint(p.hsH) * uint(p.hsW);
-        uint v = _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x0) +
-                 _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x1) +
-                 _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x0) +
-                 _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x1);
-        if (v >= 2u) out_w |= 1u << (8u * k);
+        uint values[4] = {
+            _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x0),
+            _ms_load_u8(p.src, plane + y0 * uint(p.hsW) + x1),
+            _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x0),
+            _ms_load_u8(p.src, plane + y1 * uint(p.hsW) + x1)
+        };
+        uint kept = 0u;
+        bool ignored = false;
+        for (uint j = 0u; j < 4u; ++j) {
+            kept += values[j] == 1u ? 1u : 0u;
+            ignored = ignored || values[j] == 2u;
+        }
+        out_w |= (ignored ? 2u : (kept >= 2u ? 1u : 0u)) << (8u * k);
     }
     if (covered == 0xffffffffu) {
         p.dst[word] = out_w;

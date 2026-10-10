@@ -97,6 +97,7 @@ struct MsCfg {
     float quantile;
     float nms_falloff;    // *_nms modes only; 0 = the hard canny suppression
     float sat;            // blown-highlight cutoff; <= 0 disables it
+    bool mixed = false;
 };
 
 void run_ms_cfg(Rng& r, const MsCfg& c) {
@@ -162,6 +163,10 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
     if (c.with_alpha) {
         std::vector<uint8_t> m(npa);
         for (auto& x : m) x = r.uf(0, 1) < 0.8f ? 1 : 0;
+        if (c.mixed)
+            for (int64_t y = 0; y < c.B * Ha; ++y)
+                for (int64_t x = 0; x < Wa; ++x)
+                    m[(size_t)(y * Wa + x)] = x < Wa / 3 ? 2 : x < 2 * Wa / 3 ? 0 : 1;
         ref_alpha = upload(m);
     }
 
@@ -397,6 +402,12 @@ int main(int argc, char** argv) {
          (int)DensifyLossMapMode::LossFull, 0.9f, 0.5f, 0.98f},
         {"sat_only", 1, 48, 48, 1, 0, 0, 0, 0, 0, 0, false, false, false,
          (int)DensifyLossMapMode::SsimFull, 0.9f, 0.5f, 0.98f},
+        {"mixed_full", 2, 64, 80, 3, 0, 0, 0, 0, 0, 0, true, true, false,
+         (int)DensifyLossMapMode::LossFull, 0.9f, 0.5f, -1.0f, true},
+        {"mixed_scaled", 1, 32, 32, 3, 64, 64, 16, 16, 64, 64, true, false, false,
+         (int)DensifyLossMapMode::SsimFull, 0.9f, 0.5f, -1.0f, true},
+        {"mixed_edge", 1, 32, 32, 2, 0, 0, 0, 0, 0, 0, true, false, false,
+         (int)DensifyLossMapMode::RobustEdgeAware, 0.85f, 0.5f, -1.0f, true},
     };
     for (const MsCfg& c : cfgs) run_ms_cfg(r, c);
     run_quantile(r);

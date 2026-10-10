@@ -5,6 +5,7 @@
 
 #include "data/DataManager.h"
 #include "data/ImageProbe.h"
+#include "config/TrainConfigJson.h"
 
 #include "external/stb_image_write.h"
 
@@ -118,12 +119,15 @@ struct Fetched {
 CacheMode g_mode = CacheMode::CPU;
 
 Fetched fetch(const std::string& image, const std::string& mask, bool alpha,
-              bool flip, const float* over = nullptr, bool load_masks = true) {
+              bool flip, const float* over = nullptr, bool load_masks = true,
+              bool mixed = false, float offset = 0.0f) {
     DataManagerConfig cfg;
     cfg.cache_mode = g_mode;
     cfg.load_masks = load_masks;
     cfg.load_depths = cfg.load_normals = false;
     cfg.flip_mask = flip;
+    cfg.segment_and_ignore = mixed;
+    cfg.mask_boundary_offset = offset;
     if (alpha) cfg.alpha_masks = {1};
     if (over) {
         cfg.composite_alpha = {1};
@@ -231,6 +235,33 @@ int main() {
                                         top_mask(W / 2, H / 2, 1));
     const std::string large_image = write_png(dir / "large.png", W * 2, H * 2, 1,
                                         top_mask(W * 2, H * 2, 4));
+    const uint8_t values[W] = {0, 127, 128, 250, 251, 255, 128, 0};
+    const uint8_t labels[W] = {2, 2, 0, 0, 1, 1, 0, 2};
+    std::vector<uint8_t> mixed_pixels((size_t)W * H * 4);
+    for (int y = 0; y < H * 2; ++y) for (int x = 0; x < W * 2; ++x)
+        mixed_pixels[(size_t)y * W * 2 + x] = values[x / 2];
+    const std::string mixed_image = write_png(dir / "mixed.png", W * 2, H * 2, 1, mixed_pixels);
+
+    {
+        TrainConfig legacy;
+        train_config_from_json(json_parse("{\"load_masks\":true,\"apply_loss_for_mask\":false}"), legacy);
+        check(train_mask_mode(legacy) == "ignore", "old configs retain ignore mode");
+        legacy.apply_loss_for_mask = true;
+        check(train_mask_mode(legacy) == "segment", "old configs retain cut-out mode");
+        legacy.load_masks = false;
+        check(train_mask_mode(legacy) == "none", "old configs retain disabled masks");
+        legacy.mask_mode = "segment_and_ignore";
+        std::string serialized = "{";
+        for (const auto& kv : train_config_json_pairs(legacy)) {
+            if (serialized.size() > 1) serialized += ',';
+            serialized += '"' + std::string(kv.first) + "\":" + kv.second;
+        }
+        serialized += '}';
+        TrainConfig restored;
+        train_config_from_json(json_parse(serialized), restored);
+        check(train_mask_mode(restored) == "segment_and_ignore",
+              "mixed mode round-trips and overrides legacy options");
+    }
 
     {
         std::vector<uint8_t> f = probe_alpha_masks({rgb, rgba, rgba_opaque});
@@ -247,6 +278,22 @@ int main() {
         run_cases(rgba, small_image, large_image);
         std::printf("-- %s cache, EXR\n", mode == CacheMode::CPU ? "cpu" : "disk");
         run_cases(rgba_exr, small_image, large_image);
+        for (bool alpha : {false, true}) for (bool flip : {false, true}) {
+            Fetched m = fetch(rgba, mixed_image, alpha, flip, nullptr, true, true);
+            bool ok = m.w == W * 2 && m.h == H * 2;
+            for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
+                uint8_t want = labels[x];
+                if (flip && want != 0) want = want == 1 ? 2 : 1;
+                if (alpha && !want_alpha(x) && want != 2) want = 0;
+                ok &= m.at(x, y) == want;
+            }
+            check(ok, "mixed mask preserves bands, resolution, flip and ignore priority over alpha");
+        }
+        Fetched disabled = fetch(rgba, mixed_image, true, false, nullptr, false, true);
+        check(disabled.mask.empty(), "mixed mask loading can be disabled");
+        Fetched offset = fetch(rgba, mixed_image, false, false, nullptr, true, true, -0.2f);
+        check(offset.at(2, 2) == 2 && offset.at(3, 2) == 0,
+              "mixed boundary expansion keeps ignore priority and segment labels");
     }
 
     fs::remove_all(dir);

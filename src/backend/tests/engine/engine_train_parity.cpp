@@ -196,6 +196,10 @@ int main(int argc, char** argv) {
         // One step per tier: PINHOLE compiles all three, and the tier is
         // orthogonal to everything the step does with the GT.
         for (int s = 0; s < 3; s++, step++) {
+            if (s == 2)
+                for (int64_t y = 0; y < C * H; ++y)
+                    for (int x = 0; x < W; ++x)
+                        gt_alpha[(size_t)(y * W + x)] = x < W / 3 ? 2 : x < 2 * W / 3 ? 0 : 1;
             auto losses = engine_train_step(
                 step, max_steps, "3dgs", 3, /*packed=*/false, W, H,
                 "PINHOLE", dist_fixture::kTierNames[s],
@@ -264,10 +268,13 @@ int main(int argc, char** argv) {
         int tier;      // distortion tier, index into dist_fixture::kTierNames
         int in_H, in_W;
         float fx, fy;
+        bool mixed = false;
     };
-    const WarpCase wcases[2] = {
+    const WarpCase wcases[] = {
         {"FISHEYE", 2, 48, 64, 20.0f, 20.5f},
         {"EQUIRECTANGULAR", 0, 32, 64, 10.2f, 10.2f},
+        {"FISHEYE", 2, 48, 64, 20.0f, 20.5f, true},
+        {"EQUIRECTANGULAR", 0, 32, 64, 10.2f, 10.2f, true},
     };
     const std::vector<float> warp_dist = dist_fixture::distortion_rows(1);
     for (const WarpCase& wc : wcases) {
@@ -283,6 +290,11 @@ int main(int argc, char** argv) {
         // skip path to differ from rendering everything.
         for (int y = 0; y < wc.in_H; y++)
             for (int x = 0; x < wc.in_W / 2; x++) gt_alpha[(int64_t)y * wc.in_W + x] = 0;
+        if (wc.mixed)
+            for (int y = 0; y < wc.in_H; ++y)
+                for (int x = 0; x < wc.in_W; ++x)
+                    gt_alpha[(size_t)(y * wc.in_W + x)] =
+                        x < wc.in_W / 3 ? 2 : x < 2 * wc.in_W / 3 ? 0 : 1;
         auto gt_depth = r.words((int64_t)wc.in_H * wc.in_W, 12);
         auto gt_normal = r.bytes((int64_t)wc.in_H * wc.in_W * 3);
 

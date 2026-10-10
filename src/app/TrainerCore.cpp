@@ -458,7 +458,8 @@ build_loss_weights(const TrainConfig& c, int step) {
     float median_factor = std::min((float)step / std::max(c.median_warmup, 1), 1.0f);
     float alpha_reg_factor = c.alpha_reg_weight *
         std::min((float)step / std::max(c.alpha_reg_warmup, 1), 1.0f);
-    float mask = c.apply_loss_for_mask.value_or(false) ? 1.0f : 0.0f;
+    const std::string mask_mode = train_mask_mode(c);
+    float mask = mask_mode == "segment" || mask_mode == "segment_and_ignore" ? 1.0f : 0.0f;
 
     float w_rgb_l1 = std::max(0.0f, c.l1_weight);
     float w_rgb_l2 = std::max(0.0f, c.l2_weight);
@@ -729,6 +730,9 @@ std::string train_config_unsupported(const TrainConfig& c) {
         return not_impl("--primitive " + c.primitive);
     if (c.quantization_level != 0 && c.quantization_level != 1)
         return lmsg::bad_quantization_level.get();
+    const std::string mode = train_mask_mode(c);
+    if (mode != "none" && mode != "ignore" && mode != "segment" && mode != "segment_and_ignore")
+        return lfmt(lmsg::bad_mask_mode, {c.mask_mode});
     return {};
 }
 
@@ -841,6 +845,7 @@ void TrainerSession::check_config() {
 // eval scores a render against, and what a soft edge renders as.
 void TrainerSession::set_alpha_config(DataManagerConfig& dm,
                                       const std::vector<uint8_t>& alpha) const {
+    dm.segment_and_ignore = cfg.mask_mode == "segment_and_ignore";
     if (cfg.load_masks) dm.alpha_masks = alpha;
     if (cfg.background_mode == "color") {
         dm.composite_alpha = alpha;
@@ -964,6 +969,7 @@ void TrainerSession::load_dataset() {
         resolve_face_fit(cfg), cfg.warp_back_face);
 
     // Warp-path guards, plus: a modality no weight reads is not loaded at all.
+    cfg.load_masks = train_mask_mode(cfg) != "none";
     alpha_images = probe_alpha_masks(ds.image_filenames);
     has_mask   = (!ds.mask_filenames.empty() || !alpha_images.empty()) &&
                  cfg.load_masks;
@@ -974,11 +980,13 @@ void TrainerSession::load_dataset() {
                  {n, (long long)ds.num_cameras}));
     }
     // Dense seeds and alpha cut-outs treat excluded pixels as empty space.
-    if (!cfg.apply_loss_for_mask.has_value()) {
-        cfg.apply_loss_for_mask = spirula::dense::is_dense_seed(cfg.data, cfg.seed_pointcloud) ||
-            (!alpha_images.empty() && ds.mask_filenames.empty());
-        if (*cfg.apply_loss_for_mask) log(lmsg::alpha_masks_cut_out.get());
-    }
+    const bool default_segment = spirula::dense::is_dense_seed(cfg.data, cfg.seed_pointcloud) ||
+        (!alpha_images.empty() && ds.mask_filenames.empty());
+    const bool automatic_cut_out = cfg.mask_mode == "auto" &&
+        !cfg.apply_loss_for_mask.has_value() && default_segment && cfg.load_masks;
+    cfg.mask_mode = train_mask_mode(cfg, default_segment);
+    cfg.apply_loss_for_mask = cfg.mask_mode == "segment" || cfg.mask_mode == "segment_and_ignore";
+    if (automatic_cut_out) log(lmsg::alpha_masks_cut_out.get());
     has_depth  = !ds.depth_filenames.empty()  && cfg.load_depths &&
                  cfg.depth_supervision_weight > 0.0f;
     has_normal = !ds.normal_filenames.empty() && cfg.load_normals &&

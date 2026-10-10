@@ -265,7 +265,7 @@ void tile_active_map(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             int my = max(0, min(p.H_mask - 1, int(floor(v + 0.5f))));
             gindex_t mi = b * gindex_t(p.H_mask) * gindex_t(p.W_mask) +
                           gindex_t(my) * gindex_t(p.W_mask) + gindex_t(mx);
-            if (u8_load(p.mask, mi) != 0) { live = true; break; }
+            if (u8_load(p.mask, mi) == 1u) { live = true; break; }
         }
     }
     p.tile_active[t] = live ? 1 : 0;

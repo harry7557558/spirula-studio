@@ -532,7 +532,7 @@ std::tuple<int64_t, int64_t, int64_t, int64_t> engine_get_gt_rgb_shape();
 std::tuple<int64_t, int64_t, int64_t, int64_t> engine_get_gt_alpha_shape();
 std::tuple<int64_t, int64_t, int64_t, int64_t> engine_get_render_rgb_shape();
 void engine_copy_gt_rgb_to_host(TorchTensorView out);   // float [B, H, W, 3]
-void engine_copy_gt_alpha_to_host(TorchTensorView out); // bool  [B, H, W, 1]
+void engine_copy_gt_alpha_to_host(TorchTensorView out); // u8 labels [B, H, W, 1]
 
 // The supervision modalities, at whatever resolution the files are -- the
 // loss samples them rather than resizing them, so these need not be the

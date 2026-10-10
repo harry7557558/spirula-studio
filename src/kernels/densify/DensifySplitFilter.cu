@@ -225,7 +225,7 @@ void smoothed_laplacian_edge_filter_tensor(
 
 __global__ void canny_edge_filter_kernel(
     TensorView<float, 4> img_in,
-    const bool* __restrict__ mask_in,
+    const uint8_t* __restrict__ mask_in,
     TensorView<float, 4> img_out
 ) {
     constexpr int BLOCK = 32;
@@ -251,7 +251,7 @@ __global__ void canny_edge_filter_kernel(
             int xi = min(max((int)(blockIdx.x * BLOCK) + x - HALO, 0), W-1);
             shared_pixels[y][x] = dot(img_in.load3(bid, yi, xi), float3{0.299f, 0.587f, 0.114f});
             shared_valid[y][x] = (mask_in == nullptr) ? 1.0f :
-                (float)mask_in[(&img_in.at(bid, yi, xi, 0) - img_in.data)/3];
+                (float)(mask_in[(&img_in.at(bid, yi, xi, 0) - img_in.data)/3] == 1);
         }
     }
     __syncthreads();
@@ -319,7 +319,7 @@ __global__ void canny_edge_filter_kernel(
             mag = 0.0f;
     }
     if (yid < H && xid < W) {
-        if (mask_in && !mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)/3])
+        if (mask_in && mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)/3] != 1)
             mag = 0.0f;
         img_out.store1(bid, yid, xid, mag);
     }
@@ -328,7 +328,7 @@ __global__ void canny_edge_filter_kernel(
 /*[AutoHeaderGeneratorExport]*/
 void canny_edge_filter_tensor(
     DeviceTensor3D<float3> img_in,
-    bool* mask_in_ptr,
+    uint8_t* mask_in_ptr,
     DeviceTensor3D<float> img_out
 ) {
     int B  = img_in.template size<0>();
@@ -366,7 +366,7 @@ __global__ void _robust_residual_luma_kernel(
     int B, int H, int W,
     const float3* __restrict__ render,
     const float3* __restrict__ ref,
-    const bool* __restrict__ mask_in,
+    const uint8_t* __restrict__ mask_in,
     float* __restrict__ out  // [B, H, W]
 ) {
     int xid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -377,7 +377,7 @@ __global__ void _robust_residual_luma_kernel(
     // Infinity, not zero: the quantile below counts only strictly positive
     // finite values, so a masked residual is dropped instead of dragging the
     // Tukey cutoff around. The Tukey pass turns it into a real zero.
-    if (mask_in != nullptr && !mask_in[idx]) {
+    if (mask_in != nullptr && mask_in[idx] != 1) {
         out[idx] = INFINITY;
         return;
     }
@@ -421,7 +421,7 @@ __global__ void _robust_tukey_inplace_kernel(
 // unroll heuristics.
 __global__ void canny_edge_filter_kernel_scalar(
     TensorView<float, 4> img_in,    // [B, H, W, 1]
-    const bool* __restrict__ mask_in,
+    const uint8_t* __restrict__ mask_in,
     TensorView<float, 4> img_out    // [B, H, W, 1]
 ) {
     constexpr int BLOCK = 32;
@@ -446,7 +446,7 @@ __global__ void canny_edge_filter_kernel_scalar(
             int xi = min(max((int)(blockIdx.x * BLOCK) + x - HALO, 0), W-1);
             shared_pixels[y][x] = img_in.load1(bid, yi, xi);
             shared_valid[y][x] = (mask_in == nullptr) ? 1.0f :
-                (float)mask_in[&img_in.at(bid, yi, xi, 0) - img_in.data];
+                (float)(mask_in[&img_in.at(bid, yi, xi, 0) - img_in.data] == 1);
         }
     }
     __syncthreads();
@@ -509,7 +509,7 @@ __global__ void canny_edge_filter_kernel_scalar(
             mag = 0.0f;
     }
     if (yid < H && xid < W) {
-        if (mask_in && !mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)])
+        if (mask_in && mask_in[(&img_in.at(bid, yid, xid, 0) - img_in.data)] != 1)
             mag = 0.0f;
         img_out.store1(bid, yid, xid, mag);
     }
@@ -519,7 +519,7 @@ __global__ void canny_edge_filter_kernel_scalar(
 void robust_canny_residual_tensor(
     DeviceTensor3D<float3> render,   // [B, H, W, 3]
     DeviceTensor3D<float3> ref,      // [B, H, W, 3]
-    bool* mask_in_ptr,               // optional [B*H*W] mask; nullptr for none
+    uint8_t* mask_in_ptr,               // optional [B*H*W] mask; nullptr for none
     float quantile,                  // Tukey cutoff = per-image q-quantile of |r|
     DeviceTensor3D<float> img_out    // [B, H, W, 1] -- written (not added)
 ) {

@@ -60,6 +60,7 @@ struct DataManagerConfig {
     CacheMode cache_mode = CacheMode::CPU;
 
     bool load_masks   = true;
+    bool segment_and_ignore = false;
     bool load_depths  = true;
     bool load_normals = true;
 
@@ -89,8 +90,8 @@ struct DataManagerConfig {
     bool flip_mask = false;
 
     // One flag per input image whose alpha channel is a cut-out
-    // (data/ImageProbe.h). Its mask is the alpha, opaque from 128 up, ANDed
-    // with its mask file if it has one; flip_mask turns only the file.
+    // (data/ImageProbe.h). Alpha keeps values from 128 up; sidecar Ignore wins
+    // over transparent alpha. flip_mask turns only the sidecar file.
     std::vector<uint8_t> alpha_masks;
 
     // One flag per input image whose alpha is composited onto composite_color
@@ -135,11 +136,9 @@ struct WarpFacePass {
 };
 
 
-// Element-type tag, matching the engine's set_training_data inputs.
-//   RGB:    UINT8 (sRGB 0..255), UINT16 (0..65535), or FLOAT32 (0..1).
-//   MASK:   UINT8 (treated as bool; nonzero -> valid pixel).
-//   DEPTH:  UINT16 (raw counts, no scaling) or FLOAT32.
-//   NORMAL: UINT8 (x/127.5 - 1) or FLOAT32 (already in [-1, 1]).
+// RGB: UINT8 (0..255), UINT16 (0..65535), or FLOAT32 (0..1).
+// MASK: UINT8 labels (core/TrainingMask.h). DEPTH: UINT16 counts or FLOAT32.
+// NORMAL: UINT8 (x/127.5 - 1) or FLOAT32 in [-1, 1].
 enum class PixelDType : uint8_t { UINT8 = 1, UINT16 = 2, FLOAT32 = 4 };
 
 inline uint32_t pixel_dtype_size(PixelDType t) { return (uint32_t)t; }

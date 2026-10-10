@@ -28,7 +28,7 @@ static inline TensorView<T, 4> _make_view4(T* data, long B, long H, long W, long
 
 static inline float* _fptr(const TorchTensorView& tv) { return (float*)std::get<0>(tv); }
 static inline float3* _f3ptr(const TorchTensorView& tv) { return (float3*)std::get<0>(tv); }
-static inline bool* _bptr(const TorchTensorView& tv) { return (bool*)std::get<0>(tv); }
+static inline uint8_t* _bptr(const TorchTensorView& tv) { return (uint8_t*)std::get<0>(tv); }
 static inline int64_t* _i64ptr(const TorchTensorView& tv) { return (int64_t*)std::get<0>(tv); }
 static inline bool _has(const TorchTensorView& tv) { return std::get<0>(tv) != 0; }
 
@@ -49,8 +49,8 @@ static inline TorchTensorView _pool_alloc_rgb(const std::string& key, long B, lo
     return TorchTensorView((uint64_t)p, pixel_format_bytes(f), {B, H, W, 3});
 }
 static inline TorchTensorView _pool_alloc_b(const std::string& key, long B, long H, long W) {
-    bool* p = (bool*)DevicePool::global().acquire_dynamic(
-        VramCategory::Image, key, (size_t)(B * H * W) * sizeof(bool),
+    uint8_t* p = (uint8_t*)DevicePool::global().acquire_dynamic(
+        VramCategory::Image, key, (size_t)(B * H * W) * sizeof(uint8_t),
         PoolPhase::Loss);
     return TorchTensorView((uint64_t)p, 1, {B, H, W, 1});
 }
@@ -124,7 +124,7 @@ __global__ void per_pixel_losses_forward_kernel(
     const float3* __restrict__ normal_dist,
     const float* __restrict__ median_depth,
     const float3* __restrict__ median_normal,
-    const bool* __restrict__ ref_alpha,
+    const uint8_t* __restrict__ ref_alpha,
     bool has_mask,                          // gt_alpha buffer present (per-pixel mask)
     float saturation_threshold,
     FixedArray<float, (uint)LossWeightIndex::length> loss_weights,
@@ -162,9 +162,9 @@ __global__ void per_pixel_losses_forward_kernel(
                 ref_normal, (int)batch_idx, x_dst, y_dst,
                 W_render, H_render, W_ref_normal, H_ref_normal);
         }
-        bool ref_alpha_v = false;
+        uint32_t ref_alpha_v = 0;
         if (ref_alpha) {
-            ref_alpha_v = nearest_sample_b(
+            ref_alpha_v = nearest_sample_mask(
                 ref_alpha, (int)batch_idx, x_dst, y_dst,
                 W_render, H_render, W_ref_alpha, H_ref_alpha);
         }
@@ -261,7 +261,7 @@ __global__ void per_pixel_losses_backward_kernel(
     const float3* __restrict__ normal_dist,
     const float* __restrict__ median_depth,
     const float3* __restrict__ median_normal,
-    const bool* __restrict__ ref_alpha,
+    const uint8_t* __restrict__ ref_alpha,
     bool has_mask,                          // gt_alpha buffer present
     float saturation_threshold,
     FixedArray<float, (uint)LossWeightIndex::length> loss_weights,
@@ -323,7 +323,7 @@ __global__ void per_pixel_losses_backward_kernel(
     // sees identical inputs.
     float  ref_depth_v  = 1.f;
     float3 ref_normal_v = make_float3(0);
-    bool   ref_alpha_v  = false;
+    uint32_t ref_alpha_v = 0;
     if (ref_depth) {
         ref_depth_v = bilinear_sample_gt_depth(
             ref_depth, (int)batch_idx, x_dst, y_dst,
@@ -335,7 +335,7 @@ __global__ void per_pixel_losses_backward_kernel(
             W_render, H_render, W_ref_normal, H_ref_normal);
     }
     if (ref_alpha) {
-        ref_alpha_v = nearest_sample_b(
+        ref_alpha_v = nearest_sample_mask(
             ref_alpha, (int)batch_idx, x_dst, y_dst,
             W_render, H_render, W_ref_alpha, H_ref_alpha);
     }
@@ -730,14 +730,13 @@ __global__ void avg_pool_downsample_gt_geometry_kernel(
             n ? acc[c] / (float)n : (channels == 1 ? 0.0f : -1.0f);
 }
 
-// RGB does not pool across a mask edge either: a box mean of two background
-// pixels and two distractor pixels is a colour the render is then asked to
-// match. Averaging only the unmasked children keeps every scale comparable.
+// Pooling across an exclusion edge changes the static color target.
 template<int channels>
 __global__ void avg_pool_downsample_masked_float_kernel(
     const PoolSrc image_hs,
     const TensorView<uint8_t, 4> mask_hs,
-    const PoolDst image_ls
+    const PoolDst image_ls,
+    const uint8_t* mask_ls
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -745,12 +744,15 @@ __global__ void avg_pool_downsample_masked_float_kernel(
     if (yid >= image_ls.H || xid >= image_ls.W)
         return;
     float acc[channels] = {}, box[channels] = {};
+    const uint8_t target = mask_ls ? mask_ls[(bid * image_ls.H + yid) * image_ls.W + xid] : 1;
     int n = 0;
     for (int dy = 0; dy < 2; ++dy)
         for (int dx = 0; dx < 2; ++dx) {
-            const bool valid = mask_hs.at(bid, 2*yid+dy, 2*xid+dx, 0) != 0;
+            const uint32_t x = min(2*xid+dx, image_hs.W-1), y = min(2*yid+dy, image_hs.H-1);
+            const bool valid = target != 2 && nearest_sample_mask(mask_hs.data, bid,
+                x, y, image_hs.W, image_hs.H, mask_hs.shape[2], mask_hs.shape[1]) == target;
             for (int c = 0; c < channels; ++c) {
-                float v = image_hs.at(bid, 2*yid+dy, 2*xid+dx, c);
+                float v = image_hs.at(bid, y, x, c);
                 box[c] += 0.25f * v;
                 if (valid) acc[c] += v;
             }
@@ -758,7 +760,7 @@ __global__ void avg_pool_downsample_masked_float_kernel(
         }
     // All four masked: the coarse pixel is masked too, so the value is unused.
     for (int c = 0; c < channels; ++c)
-        image_ls.at(bid, yid, xid, c) = n ? acc[c] / (float)n : box[c];
+        image_ls.at(bid, yid, xid, c) = n ? acc[c] / (float)n : mask_ls ? 0.0f : box[c];
 }
 
 template<typename uintx_t>
@@ -783,20 +785,30 @@ __global__ void avg_pool_downsample_integral_kernel(
 
 __global__ void avg_pool_downsample_bool_kernel(
     const TensorView<uint8_t, 4> image_hs,
-    TensorView<uint8_t, 4> image_ls
+    TensorView<uint8_t, 4> image_ls,
+    bool resample_only
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
     if (yid >= image_ls.shape[1] || xid >= image_ls.shape[2])
         return;
+    if (resample_only) {
+        image_ls.at(bid, yid, xid, 0) = nearest_sample_mask(image_hs.data, bid, xid, yid,
+            image_ls.shape[2], image_ls.shape[1], image_hs.shape[2], image_hs.shape[1]);
+        return;
+    }
     for (int c = 0; c < image_ls.shape[3]; ++c) {
-        uint8_t v =
-            image_hs.at(bid, 2*yid+0, 2*xid+0, c) +
-            image_hs.at(bid, 2*yid+0, 2*xid+1, c) +
-            image_hs.at(bid, 2*yid+1, 2*xid+0, c) +
-            image_hs.at(bid, 2*yid+1, 2*xid+1, c);
-        image_ls.at(bid, yid, xid, c) = (uint8_t)(v >= 2);
+        int kept = 0;
+        bool ignored = false;
+        for (int dy = 0; dy < 2; ++dy) for (int dx = 0; dx < 2; ++dx) {
+            const uint8_t v = image_hs.at(bid, min(2*yid+dy, (uint32_t)image_hs.shape[1]-1),
+                min(2*xid+dx, (uint32_t)image_hs.shape[2]-1), c);
+            kept += v == 1;
+            ignored |= v == 2;
+        }
+        // A coarse opacity target must not include an ignored child.
+        image_ls.at(bid, yid, xid, c) = ignored ? 2 : (uint8_t)(kept >= 2);
     }
 }
 
@@ -827,47 +839,53 @@ static void _avg_pool_downsample_gt_geometry(const TorchTensorView& src,
 // trained toward the distractor the mask exists to ignore.
 __global__ void zero_masked_grad_kernel(
     TensorView<float, 4> grad,
-    const TensorView<uint8_t, 4> mask
+    const TensorView<uint8_t, 4> mask,
+    bool ignored_only
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t bid = blockIdx.z * blockDim.z + threadIdx.z;
     if (yid >= grad.shape[1] || xid >= grad.shape[2])
         return;
-    if (mask.at(bid, yid, xid, 0) != 0)
+    const uint8_t value = nearest_sample_mask(mask.data, bid, xid, yid,
+        grad.shape[2], grad.shape[1], mask.shape[2], mask.shape[1]);
+    if (ignored_only ? value != 2 : value == 1)
         return;
     for (int c = 0; c < grad.shape[3]; ++c)
         grad.at(bid, yid, xid, c) = 0.0f;
 }
 
-static void _zero_masked_grad(const TorchTensorView& grad, const TorchTensorView& mask) {
+static void _zero_masked_grad(const TorchTensorView& grad, const TorchTensorView& mask,
+                              bool ignored_only = false) {
     const auto& s = std::get<2>(grad);
     zero_masked_grad_kernel<<<_LAUNCH_ARGS_3D(s[2], s[1], s[0], 16, 16, 1)>>>(
-        _tv_view4(grad), _tv_view4_u8(mask));
+        _tv_view4(grad), _tv_view4_u8(mask), ignored_only);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
 static void _avg_pool_downsample_masked_float(const TorchTensorView& src,
                                              const TorchTensorView& mask,
-                                             const TorchTensorView& dst) {
+                                             const TorchTensorView& dst,
+                                             const uint8_t* mask_ls = nullptr) {
     const auto& s = std::get<2>(dst);
     long b = s[0], h = s[1], w = s[2], c = s[3];
     if (c == 1)
         avg_pool_downsample_masked_float_kernel<1>
             <<<_LAUNCH_ARGS_3D(w, h, b, 16, 16, 1)>>>(
-                _pool_src(src), _tv_view4_u8(mask), _pool_dst(dst));
+                _pool_src(src), _tv_view4_u8(mask), _pool_dst(dst), mask_ls);
     else
         avg_pool_downsample_masked_float_kernel<3>
             <<<_LAUNCH_ARGS_3D(w, h, b, 16, 16, 1)>>>(
-                _pool_src(src), _tv_view4_u8(mask), _pool_dst(dst));
+                _pool_src(src), _tv_view4_u8(mask), _pool_dst(dst), mask_ls);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
-static void _avg_pool_downsample_bool(const TorchTensorView& src, const TorchTensorView& dst) {
+static void _avg_pool_downsample_bool(const TorchTensorView& src, const TorchTensorView& dst,
+                                      bool resample_only = false) {
     const auto& s = std::get<2>(dst);
     long b = s[0], h = s[1], w = s[2];
     avg_pool_downsample_bool_kernel<<<_LAUNCH_ARGS_3D(w, h, b, 16, 16, 1)>>>(
-        _tv_view4_u8(src), _tv_view4_u8(dst));
+        _tv_view4_u8(src), _tv_view4_u8(dst), resample_only);
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
 
@@ -988,7 +1006,9 @@ __global__ void avg_pool_upsample_float_kernel(
     TensorView<float, 4> image_hs,
     const TensorView<float, 4> image_ls,
     int scale,
-    float a, float b
+    float a, float b,
+    const uint8_t* mask_hs = nullptr,
+    const uint8_t* mask_ls = nullptr
 ) {
     uint32_t xid = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t yid = blockIdx.y * blockDim.y + threadIdx.y;
@@ -998,8 +1018,12 @@ __global__ void avg_pool_upsample_float_kernel(
     for (int c = 0; c < image_hs.shape[3]; ++c) {
         float v = (a == 0.0f) ? 0.0f :
             a * image_hs.at(bid, yid, xid, c);
-        if (yid/scale < image_ls.shape[1] && xid/scale < image_ls.shape[2])
-            v += b * image_ls.at(bid, yid/scale, xid/scale, c);
+        if (yid/scale < image_ls.shape[1] && xid/scale < image_ls.shape[2]) {
+            const size_t hi = (bid * image_hs.shape[1] + yid) * image_hs.shape[2] + xid;
+            const size_t li = (bid * image_ls.shape[1] + yid/scale) * image_ls.shape[2] + xid/scale;
+            if (!mask_hs || (mask_hs[hi] != 2 && mask_hs[hi] == mask_ls[li]))
+                v += b * image_ls.at(bid, yid/scale, xid/scale, c);
+        }
         image_hs.at(bid, yid, xid, c) = v;
     }
 }
@@ -1090,11 +1114,15 @@ LossValues compute_multi_scale_per_pixel_losses(
     median_depth_s[0] = median_depth; median_normal_s[0] = median_normal;
     ref_alpha_s[0] = ref_alpha;
 
-    // Downsample to create scales. Each modality halves its OWN previous-scale
-    // shape (rather than the render shape) so GT modalities at a different
-    // resolution from the rendered output still produce a coherent per-scale
-    // pyramid. The per-pixel loss kernel then bilinearly samples between the
-    // render-scale grid and each modality's scale grid at each scale.
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
+        const auto& ms = std::get<2>(ref_alpha);
+        if (ms[1] != H || ms[2] != W) {
+            ref_alpha_s[0] = _pool_alloc_b("ppl.mask.render", B, H, W);
+            _avg_pool_downsample_bool(ref_alpha, ref_alpha_s[0], true);
+        }
+    }
+
+    // GT geometry keeps its own grid; the mask pyramid follows rendered pixels.
     const PixelFormat rgb_level_fmt = pixel_format(render_rgb) == PixelFormat::F16
                                           ? PixelFormat::F16 : PixelFormat::F32;
     for (int sc = 1; sc < num_loss_scales; ++sc) {
@@ -1134,27 +1162,23 @@ LossValues compute_multi_scale_per_pixel_losses(
             }
         };
 
-        // Everything the loss compares pools over the same unmasked children,
-        // so a masked pixel reaches no coarse value -- which is what lets a
-        // fully-masked tile go unrendered (docs/datasets.md, "Skipping tiles").
+        // Excluded colors must not enter a coarse static-scene target.
         auto ds_m = [&](TorchTensorView& prev, TorchTensorView& curr,
                         const std::string& name, int C,
-                        PixelFormat f = PixelFormat::F32) {
+                        PixelFormat f = PixelFormat::F32, bool opacity = false) {
             if (!_has(prev)) return;
             const TorchTensorView& mk = ref_alpha_s[sc-1];
             const auto& pps = std::get<2>(prev);
-            const auto& mks = std::get<2>(mk);
-            // A mask at its own resolution cannot index this image's children.
-            const bool same = _has(mk) && mks[0] == pps[0] &&
-                              mks[1] == pps[1] && mks[2] == pps[2];
-            if (!has_mask || !same) {
+            if (!has_mask || !_has(mk)) {
                 ds_f(prev, curr, name, C, f);
                 return;
             }
             curr = alloc_level(name, std::max((long)1, (long)pps[1] / 2),
                                std::max((long)1, (long)pps[2] / 2), C, f);
-            _avg_pool_downsample_masked_float(prev, mk, curr);
+            _avg_pool_downsample_masked_float(prev, mk, curr,
+                opacity ? _bptr(ref_alpha_s[sc]) : nullptr);
         };
+        ds_b(ref_alpha_s[sc-1], ref_alpha_s[sc], "ra");
         ds_m(render_rgb_s[sc-1], render_rgb_s[sc], "rrgb", 3, rgb_level_fmt);
         ds_m(ref_rgb_s[sc-1], ref_rgb_s[sc], "frgb", 3, rgb_level_fmt);
         ds_m(render_depth_s[sc-1], render_depth_s[sc], "rd", 1);
@@ -1162,13 +1186,12 @@ LossValues compute_multi_scale_per_pixel_losses(
         ds_m(render_normal_s[sc-1], render_normal_s[sc], "rn", 3);
         ds_m(depth_normal_s[sc-1], depth_normal_s[sc], "dn", 3);
         ds_geo(ref_normal_s[sc-1], ref_normal_s[sc], "fn", 3);
-        ds_m(render_Ts_s[sc-1], render_Ts_s[sc], "rT", 1);
+        ds_m(render_Ts_s[sc-1], render_Ts_s[sc], "rT", 1, PixelFormat::F32, true);
         ds_m(rgb_dist_s[sc-1], rgb_dist_s[sc], "rgbd", 3);
         ds_m(depth_dist_s[sc-1], depth_dist_s[sc], "dd", 1);
         ds_m(normal_dist_s[sc-1], normal_dist_s[sc], "nd", 3);
         ds_m(median_depth_s[sc-1], median_depth_s[sc], "md", 1);
         ds_m(median_normal_s[sc-1], median_normal_s[sc], "mn", 3);
-        ds_b(ref_alpha_s[sc-1], ref_alpha_s[sc], "ra");
     }
 
     // Total losses accumulator -- pool-backed device buffer (D->H read at end)
@@ -1385,16 +1408,9 @@ LossValues compute_multi_scale_per_pixel_losses(
             }
         }
 
-        // Upsample gradients and accumulate into grads_out.
-        // At scale 0 the per-scale buffer aliases grads_out (see alloc_grad_f
-        // above), so the copy becomes a self-copy -- skip it via pointer check.
-        //
-        // Each modality's grad shape comes from its own view (NOT from outer
-        // render H/W), because GT modalities (v_ref_depth, v_ref_normal) live
-        // at the GT's resolution, which may differ from render. The src view
-        // is the per-scale scratch (downsampled by 2^scale relative to its
-        // own modality), the dst view is the full-resolution accumulator.
-        auto upsample_grad = [&](TorchTensorView& grad_scale, TorchTensorView& grad_acc, int C) {
+        // Opacity gradients stay within the class that supplied their target.
+        auto upsample_grad = [&](TorchTensorView& grad_scale, TorchTensorView& grad_acc, int C,
+                                  bool opacity = false) {
             if (_has(grad_acc) && scale == 0) {
                 if (_fptr(grad_scale) == _fptr(grad_acc)) return;  // aliased
                 const auto& ds = std::get<2>(grad_acc);
@@ -1414,7 +1430,9 @@ LossValues compute_multi_scale_per_pixel_losses(
                 avg_pool_upsample_float_kernel<<<_LAUNCH_ARGS_3D(dW, dH, dB, 16, 16, 1)>>>(
                     _make_view4(_fptr(grad_acc),   dB, dH, dW, (long)C),
                     _make_view4(_fptr(grad_scale), dB, sH, sW, (long)C),
-                    1 << scale, a, b
+                    1 << scale, a, b,
+                    opacity && has_mask ? _bptr(ref_alpha_s[0]) : nullptr,
+                    opacity && has_mask ? _bptr(ref_alpha_s[scale]) : nullptr
                 );
                 CHECK_DEVICE_ERROR(cudaGetLastError());
             }
@@ -1427,7 +1445,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         upsample_grad(scale_grads.v_render_normal, grads_out.v_render_normal, 3);
         upsample_grad(scale_grads.v_depth_normal, grads_out.v_depth_normal, 3);
         upsample_grad(scale_grads.v_ref_normal, grads_out.v_ref_normal, 3);
-        upsample_grad(scale_grads.v_render_Ts, grads_out.v_render_Ts, 1);
+        upsample_grad(scale_grads.v_render_Ts, grads_out.v_render_Ts, 1, true);
         upsample_grad(scale_grads.v_rgb_dist, grads_out.v_rgb_dist, 3);
         upsample_grad(scale_grads.v_depth_dist, grads_out.v_depth_dist, 1);
         upsample_grad(scale_grads.v_normal_dist, grads_out.v_normal_dist, 3);
@@ -1437,12 +1455,26 @@ LossValues compute_multi_scale_per_pixel_losses(
 
     // Scale 0 already leaves masked pixels at zero gradient; only the
     // upsampled coarse scales put anything there.
-    if (num_loss_scales > 1 && has_mask && _has(grads_out.v_render_rgb) &&
-            _has(ref_alpha)) {
-        const auto& gs = std::get<2>(grads_out.v_render_rgb);
+    if (num_loss_scales > 1 && has_mask && _has(ref_alpha)) {
         const auto& ms = std::get<2>(ref_alpha);
-        if (gs[0] == ms[0] && gs[1] == ms[1] && gs[2] == ms[2])
-            _zero_masked_grad(grads_out.v_render_rgb, ref_alpha);
+        auto gate = [&](const TorchTensorView& grad, bool ignored_only = false) {
+            if (_has(grad) && std::get<2>(grad)[0] == ms[0])
+                _zero_masked_grad(grad, ref_alpha, ignored_only);
+        };
+        gate(grads_out.v_render_rgb, false);
+        gate(grads_out.v_ref_rgb);
+        gate(grads_out.v_render_depth);
+        gate(grads_out.v_ref_depth);
+        gate(grads_out.v_render_normal);
+        gate(grads_out.v_depth_normal);
+        gate(grads_out.v_ref_normal);
+        gate(grads_out.v_render_Ts, true);
+        gate(grads_out.v_rgb_dist);
+        gate(grads_out.v_depth_dist);
+        gate(grads_out.v_normal_dist);
+        gate(grads_out.v_median_depth);
+        gate(grads_out.v_median_normal);
+        gate(loss_map_out);
     }
 
     // Scale total losses by 1/num_scales (device-side)

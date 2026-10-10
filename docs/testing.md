@@ -13,7 +13,8 @@ holds the fused chain to the per-stage kernels, and `pixel_format_parity`
 holds every compact-format reader and writer to float32;
 `mask_loss_semantics`, `reg_loss_underflow` and `fpbo_split_parity` are
 self-checking rather than dump-then-compare: the first pins what an image mask
-means in the loss, in both mask modes and with none; the second sweeps log
+means in the loss, including three-class masks, multiple scales, scaled masks
+and ignored-color isolation; the second sweeps log
 scales past every exp(scales) underflow threshold, down to -inf, and fails if
 the per-splat regularizers hand the optimizer a NaN or push a splat below
 kMinLogScale; the third steps FPBO and the non-fused optimizer path from the

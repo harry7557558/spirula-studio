@@ -101,11 +101,9 @@ __device__ __forceinline__ float get_pix_value(
     return ((float*)img)[(b * H * W + y * W + x) * 3 + c];
 }
 
-// A mask is stored at the size of the file it came from, which is not the
-// render's whenever the run is downscaled, so it is nearest-sampled exactly as
-// core/Interpolation.cuh's nearest_sample_b. Out-of-image taps read unmasked.
+// The mask keeps its file resolution; out-of-image taps read unmasked.
 __device__ __forceinline__ bool get_pix_value(
-    const bool* img,
+    const uint8_t* img,
     int b, int y, int x,
     int B_mask, int H_mask, int W_mask,
     int H, int W
@@ -124,7 +122,7 @@ __device__ __forceinline__ bool get_pix_value(
         xs = max(0, min(W_mask - 1, (int)floorf(u + 0.5f)));
         ys = max(0, min(H_mask - 1, (int)floorf(v + 0.5f)));
     }
-    return img[b * H_mask * W_mask + ys * W_mask + xs];
+    return img[b * H_mask * W_mask + ys * W_mask + xs] == 1;
 }
 
 // An image the memory-efficient kernel reads, in the form it is stored in.
@@ -149,7 +147,7 @@ __device__ __forceinline__ float get_pix_value(
 // error. Out-of-image taps read unmasked, as the mask fetch does.
 __device__ __forceinline__ bool get_pix_mask(
     SsimImg img1, SsimImg img2, float sat,
-    const bool* masks,
+    const uint8_t* masks,
     int b, int y, int x,
     int B_mask, int H_mask, int W_mask,
     int H, int W
@@ -186,7 +184,7 @@ __global__ void _ssim_mask_coverage_kernel(
     const SsimImg img1,
     const SsimImg img2,
     float sat,
-    const bool* __restrict__ masks,
+    const uint8_t* __restrict__ masks,
     int B_mask, int H_mask, int W_mask,
     float* __restrict__ out  // [B, H, W]
 ) {
@@ -232,7 +230,7 @@ __global__ void _ssim_mask_coverage_kernel(
 static float* _ssim_mask_coverage(
     int B, int H, int W,
     SsimImg img1, SsimImg img2, float sat,
-    const bool* masks, int B_mask, int H_mask, int W_mask
+    const uint8_t* masks, int B_mask, int H_mask, int W_mask
 ) {
     if (masks == nullptr && sat <= 0.0f) return nullptr;
     const size_t n = (size_t)B * H * W;
@@ -692,7 +690,7 @@ __global__ void memory_efficient_ssim_backward_kernel(
     int B, int H, int W,
     SsimImg img1,                      // [B, H, W, 3]
     SsimImg img2,                      // [B, H, W, 3]
-    const bool* __restrict__ masks,  // [B_mask, H_mask, W_mask, 1]
+    const uint8_t* __restrict__ masks,  // [B_mask, H_mask, W_mask, 1]
     int B_mask, int H_mask, int W_mask,
     float sat,                       // clip threshold, or <= 0 to disable
     const float* __restrict__ mask_w,  // [B, H, W] gaussian-blurred mask, or null
@@ -1090,9 +1088,9 @@ static inline float* _nullable_f(const TorchTensorView& tv) {
     uint64_t ptr = std::get<0>(tv);
     return ptr ? (float*)ptr : nullptr;
 }
-static inline bool* _nullable_b(const TorchTensorView& tv) {
+static inline uint8_t* _nullable_b(const TorchTensorView& tv) {
     uint64_t ptr = std::get<0>(tv);
-    return ptr ? (bool*)ptr : nullptr;
+    return ptr ? (uint8_t*)ptr : nullptr;
 }
 
 /*[AutoHeaderGeneratorExport]*/
@@ -1203,7 +1201,7 @@ static inline void _launch_fused_ssim_inplace(
     // GT-resolution mask paired with renders at a different resolution).
     // Pass the mask's own dims so the kernel's bounds check stays inside
     // the mask buffer regardless of the per-pixel-loss image dims.
-    bool* mask_ptr = _nullable_b(mask);
+    uint8_t* mask_ptr = _nullable_b(mask);
     int B_mask = 0, H_mask = 0, W_mask = 0;
     if (mask_ptr != nullptr) {
         const auto& ms = std::get<2>(mask);

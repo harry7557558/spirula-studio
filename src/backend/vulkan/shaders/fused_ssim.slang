@@ -74,9 +74,7 @@ float _fs_pix(uint* img, uint fmt, int b, int y, int x, int ci, int H, int W) {
     return rgb_load1(img, (((b * H) + y) * W + x) * 3 + ci, fmt);
 }
 
-// Nearest-sample the mask at ITS resolution, as core/Interpolation.cuh's
-// nearest_sample_b does: a mask is stored at the file's size, which is not the
-// render's whenever the run is downscaled.
+// The mask keeps its file resolution, which can differ from the render.
 [ForceInline]
 bool _fs_mask_at(uint* masks, int Bm, int Hm, int Wm, int H, int W,
                  int b, int y, int x) {
@@ -90,7 +88,7 @@ bool _fs_mask_at(uint* masks, int Bm, int Hm, int Wm, int H, int W,
         ys = max(0, min(Hm - 1, int(floor(v + 0.5f))));
     }
     uint idx = (uint(b) * uint(Hm) + uint(ys)) * uint(Wm) + uint(xs);
-    return u8_load(masks, idx) != 0u;
+    return u8_load(masks, idx) == 1u;
 }
 
 // A pixel both images clip above carries no recoverable error, so it drops out

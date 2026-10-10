@@ -187,7 +187,7 @@ struct GTData {
     TorchTensorView        rgb;
     DeviceTensor3D<float>  depth;
     DeviceTensor3D<float3> normal;
-    DeviceTensor3D<bool>   alpha;
+    DeviceTensor3D<uint8_t> alpha;
     bool has_gt   = false;
     bool has_mask = false;
 };

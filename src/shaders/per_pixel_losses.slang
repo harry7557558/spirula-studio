@@ -144,7 +144,7 @@ float[RawLossIndex::length] per_pixel_losses(
     float3 normal_dist,
     float median_depth,
     float3 median_normal,
-    bool ref_alpha,
+    no_diff uint ref_mask,
     no_diff bool has_mask,
     no_diff float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights
@@ -155,9 +155,8 @@ float[RawLossIndex::length] per_pixel_losses(
     // so the mean-vs-median L1 term sees the raw linear depth.
     float mean_depth_raw = render_depth;
 
-    // Per-pixel validity. 0 depth is the "no gt" sentinel; normal_mask is
-    // gt_normal_valid, spelled out here because core/Interpolation.cuh is
-    // CUDA-only. No mask means ref_alpha is false everywhere, not "empty".
+    // Training mask bytes: 0 = segment, 1 = keep, 2 = ignore (core/TrainingMask.h).
+    bool ref_alpha = ref_mask == 1u;
     bool mask = has_mask ? ref_alpha : true;
     // Both images clipped at the same ceiling: nothing about the pixel is
     // recoverable, so it leaves the loss the way a masked pixel does.
@@ -168,7 +167,7 @@ float[RawLossIndex::length] per_pixel_losses(
     bool depth_mask = (ref_depth != 0.0f);
     bool normal_mask = (ref_normal.x + ref_normal.y + ref_normal.z > -2.366f &&
                         dot(ref_normal, ref_normal) > 0.25f);
-    bool alpha_mask = has_mask;
+    bool alpha_mask = has_mask && ref_mask != 2u;
 
     // RGB - L1 and L2, plus YUV (BT.601) per-channel L1/L2, for training.
     // RgbL2 stays plain-RGB (PSNR calculation).
@@ -284,7 +283,7 @@ void per_pixel_losses_bwd(
     float3 normal_dist,
     float median_depth,
     float3 median_normal,
-    bool ref_alpha,
+    uint ref_mask,
     bool has_mask,
     float saturation_threshold,
     no_diff float[LossWeightIndex::length] weights,
@@ -330,7 +329,7 @@ void per_pixel_losses_bwd(
         dp_normal_dist,
         dp_median_depth,
         dp_median_normal,
-        ref_alpha,
+        ref_mask,
         has_mask,
         saturation_threshold,
         weights,
