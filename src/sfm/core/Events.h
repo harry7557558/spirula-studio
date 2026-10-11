@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
 #include <string>
 
 namespace sfm {
@@ -76,6 +77,7 @@ void progress(Stage s, int64_t done, int64_t total);
 // retry resets the model and an atom numbers from zero, so a bar taken from
 // either runs forward and falls back. Idempotent, and safe from the workers.
 void map_begin(size_t n_images);
+void set_map_image_ids(const std::vector<uint32_t>& ids);
 void map_placed(uint32_t image);
 
 }  // namespace events

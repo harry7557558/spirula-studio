@@ -38,6 +38,7 @@
 
 #include "sfm/core/Progress.h"
 #include "sfm/core/Features.h"
+#include "core/HostMemory.h"
 #include "sfm/core/Model.h"
 #include "sfm/core/PriorSource.h"
 #include "sfm/core/Sequence.h"
@@ -57,11 +58,17 @@
 // include this header, so there is no cycle.
 #include "sfm/map/Merge.h"
 #include "sfm/map/Profile.h"
+#include "sfm/map/MemoryPolicy.h"
 #include "core/Env.h"
 
 namespace sfm {
 
 struct MapperOptions {
+    size_t graph_cache_bytes = 0;
+    size_t host_budget_bytes = 0;
+    uint64_t ba_index_limit = UINT32_MAX;
+    std::string scratch_dir;
+    bool sparse_image_features = false;
     double focal = 0;                  // 0 = COLMAP default (1.2 * max dim)
     // Every pixel threshold below is in *extraction* pixels -- the frame the
     // keypoints were measured in, not the frame they are stored in. They are
@@ -822,6 +829,10 @@ public:
     // database, instead of leaving the choice to whichever small piece of the
     // capture it happens to reconstruct first.
     void bootstrapCameras() {
+        if (opt_.sparse_image_features) {
+            setupCameras();
+            if (opt_.focal_trials <= 0 || guessedFocalCameras().empty()) return;
+        }
         ensureSetup();
         bootstrapFocalLength();
     }
@@ -842,7 +853,12 @@ public:
         rebuildScores();
         const bool tight = opt_.ba_final_tight;
         opt_.ba_final_tight = tight && !coarse;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (...) {
+            opt_.ba_final_tight = tight;
+            throw;
+        }
         opt_.ba_final_tight = tight;
         return snapshotModel();
     }
@@ -863,6 +879,15 @@ public:
                            "[map] a %u-image refinement needs %.0f MB against a %.0f MB "
                            "budget; declining it", m.numRegistered(), e.need_mb, e.budget_mb);
             return false;
+        } catch (const BAIndexCapacity& e) {
+            ba_over_budget_throws_ = false;
+            if (opt_.verbose)
+                slog::diag(slog::Tag::Map, "[map] a %u-image refinement: %s; declining it",
+                           m.numRegistered(), e.what());
+            return false;
+        } catch (...) {
+            ba_over_budget_throws_ = false;
+            throw;
         }
         ba_over_budget_throws_ = false;
         return true;
@@ -1757,6 +1782,8 @@ public:
             if (m.numRegistered() >= 2) live++;
         if (live < 2) return;
         BundleOptions bo;
+        bo.host_budget_bytes = availableBundleBudget(opt_.host_budget_bytes);
+        bo.index_limit = opt_.ba_index_limit;
         bo.real = baReal(coarse);
         bo.device = opt_.device;
         bo.device_selector = opt_.device_selector;
@@ -1801,13 +1828,22 @@ public:
                 jointRefineBatched(models, bo, batches, pp);
                 break;
             } catch (const BAOverBudget& e) {
-                const int want =
-                    std::max(batches + 1, (int)std::ceil(e.need_mb / e.budget_mb * batches));
-                if (want > 64) throw;
+                if (batches >= (int)live) throw;
+                const int want = std::max(batches + 1, (int)std::min<double>((double)live,
+                    std::ceil(e.need_mb / std::max(1.0, e.budget_mb) * batches)));
                 if (opt_.verbose)
                     slog::diag(slog::Tag::Map,
                                "[map] the joint solve needs %.0f MB against a %.0f MB budget: "
                                "splitting it %d ways", e.need_mb, e.budget_mb, want);
+                batches = want;
+            } catch (const BAIndexCapacity& e) {
+                if (batches >= (int)live) throw;
+                const int want = std::max(batches + 1, (int)std::min<long double>(live,
+                    std::ceil((long double)e.need_elements /
+                              std::max<uint64_t>(1, e.limit_elements) * batches)));
+                if (opt_.verbose)
+                    slog::diag(slog::Tag::Map, "[map] %s; splitting the joint solve %d ways",
+                               e.what(), want);
                 batches = want;
             }
         }
@@ -1839,8 +1875,9 @@ private:
             runJointBA(models, bo, &pp);
             return;
         }
-        std::vector<size_t> order(models.size());
-        std::iota(order.begin(), order.end(), (size_t)0);
+        std::vector<size_t> order;
+        for (size_t i = 0; i < models.size(); i++)
+            if (models[i].numRegistered() >= 2) order.push_back(i);
         std::stable_sort(order.begin(), order.end(), [&models](size_t a, size_t b) {
             return models[a].numRegistered() > models[b].numRegistered();
         });
@@ -1852,7 +1889,7 @@ private:
         }
         std::map<uint32_t, Camera> shared;
         for (size_t b = 0; b < group.size(); b++) {
-            if (group[b].size() < 2) continue;
+            if (group[b].empty()) continue;
             // Seed this group with what the first one settled on, so it starts
             // where the others are rather than where its own atoms left it.
             if (b)
@@ -2633,6 +2670,7 @@ private:
             if (!kv.second.registered) continue;
             auto it = rec_.images.find(kv.first);
             if (it == rec_.images.end()) { missing++; continue; }
+            materializeImage(kv.first);
             // Image ids are positions in this database. A model from a
             // *different* database would adopt cleanly and silently reconstruct
             // nonsense, so the names are checked (the model's carry an
@@ -3265,7 +3303,7 @@ private:
         }
     }
 
-    void setup() {
+    void setupCameras() {
         if (cam_ids_.size() != db_.images.size()) cam_ids_.assign(db_.images.size(), 1);
         // One Camera per distinct id, sized from the first image that uses it.
         // The pristine default is kept so a camera whose images all get
@@ -3284,22 +3322,39 @@ private:
         // Priors survive every reset; see MapperOptions::known_focal_cameras.
         for (uint32_t cid : opt_.known_focal_cameras)
             if (rec_.cameras.count(cid)) focal_known_.insert(cid);
+    }
+
+    void materializeImage(uint32_t i) {
+        Image& im = rec_.images.at(i);
+        if (im.points2D.size() != feats_[i].count()) {
+            im.points2D.resize(feats_[i].count());
+            for (uint32_t f = 0; f < feats_[i].count(); f++) im.points2D[f] = kp(i, f);
+        }
+        if (im.point3D_ids.size() != feats_[i].count())
+            im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
+    }
+
+    void setup() {
+        setupCameras();
         for (uint32_t i = 0; i < db_.images.size(); i++) {
             Image im;
             im.id = i;
             im.camera_id = cam_ids_[i];
             im.name = db_.images[i].name;  // feature stem; CLI resolves the real filename
             im.exif_orientation = feats_[i].exif_orientation;
-            im.points2D.resize(feats_[i].count());
-            im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
-            for (uint32_t f = 0; f < feats_[i].count(); f++) im.points2D[f] = kp(i, f);
-            rec_.images[i] = im;
+            rec_.images[i] = std::move(im);
+            if (!opt_.sparse_image_features) materializeImage(i);
         }
         graph_.build(db_, [&] {
             std::vector<uint32_t> nf(db_.images.size());
             for (size_t i = 0; i < db_.images.size(); i++) nf[i] = feats_[i].count();
             return nf;
-        }());
+        }(), CorrespondenceGraph::Options{opt_.graph_cache_bytes, opt_.scratch_dir});
+        if (opt_.verbose && graph_.stats().disk_backed)
+            slog::diag(slog::Tag::Map,
+                       "[map] correspondence graph on disk: %.0f MiB; heap cache: %.0f MiB",
+                       graph_.stats().spilled_bytes / 1048576.0,
+                       opt_.graph_cache_bytes / 1048576.0);
         if (!opt_.spill_dir.empty()) {
             size_t entries = 0;
             for (const TwoViewMatches& p : db_.pairs) entries += 2 * p.matches.size();
@@ -3358,7 +3413,10 @@ private:
             Image& im = rec_.images[i];
             im.registered = false;
             im.pose = {mat3Identity(), {0, 0, 0}};
-            im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
+            if (opt_.sparse_image_features) {
+                std::vector<Vec2>().swap(im.points2D);
+                std::vector<uint64_t>().swap(im.point3D_ids);
+            } else im.point3D_ids.assign(feats_[i].count(), kInvalidPoint3D);
         }
         reg_trials_.assign(db_.images.size(), 0);
     }
@@ -3948,6 +4006,8 @@ private:
         }
 
         // Set up the two cameras and triangulate the inliers.
+        materializeImage(a);
+        materializeImage(b);
         rec_.images[a].pose = {mat3Identity(), {0, 0, 0}};
         rec_.images[a].registered = true;
         rec_.images[b].pose = g.pose;
@@ -4301,6 +4361,7 @@ private:
     void commitPose(uint32_t img, const Pose& pose, const std::vector<uint32_t>& feat,
                     const std::vector<uint64_t>& pid, const std::vector<char>& inlier,
                     int num_inliers, size_t pool) {
+        materializeImage(img);
         rec_.images[img].pose = pose;
         rec_.images[img].registered = true;
         for (size_t k = 0; k < feat.size(); k++) {
@@ -5279,6 +5340,8 @@ private:
             }
             size_t before = countObservations();
             BundleOptions bo;
+            bo.host_budget_bytes = availableBundleBudget(opt_.host_budget_bytes);
+            bo.index_limit = opt_.ba_index_limit;
             bo.real = realCfgFromName(opt_.ba_real);
             bo.device = opt_.device;
             bo.device_selector = opt_.device_selector;

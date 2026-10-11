@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <set>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -200,6 +201,8 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                     MatchStats& stats, VerifyCalibration* calib = nullptr,
                     const MatchResume* res = nullptr);
 
+void configureMappingMemory(SfmConfig& cfg, const std::string& scratch_dir);
+
 std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
                                       const std::vector<FeatureSet>& feats, SfmConfig& cfg,
                                       AssembleStats& ast);
@@ -310,6 +313,9 @@ struct AutoInputs {
     std::vector<PresetChange> preset_changes;
 };
 
+std::string regionalInputDigest(const std::filesystem::path& features);
+void writeGauge(const std::filesystem::path& dir, const ModelGauge& g);
+
 struct AutoResult {
     // 0 ok, 2 failed, 3 partial, 4 no metric frame -- the CLI's exit codes,
     // as data, so a front end need not read one number for two facts.
@@ -324,6 +330,8 @@ struct AutoResult {
 // Every stage, in order, from a finalized config. Throws `Cancelled` when the
 // run was stopped; other failures come back in `exit_code`.
 AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in);
+std::optional<AutoResult> run_regional(SfmConfig cfg, const std::string& matches,
+    const std::string& features, const std::string& images, const std::filesystem::path& sparse);
 
 // What a run was asked for: a finalized config and the inputs beside it.
 struct AutoRequest {

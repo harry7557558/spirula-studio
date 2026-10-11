@@ -186,38 +186,8 @@ inline void writeMatches(const std::string& path, const MatchesDatabase& db) {
     }
 }
 
-inline MatchesDatabase readMatches(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw std::runtime_error("cannot read " + path);
-    char magic[4];
-    f.read(magic, 4);
-    if (std::memcmp(magic, "VKMT", 4) != 0) throw std::runtime_error("bad magic in " + path);
-    uint32_t version, nimg;
-    f.read((char*)&version, 4);
-    f.read((char*)&nimg, 4);
-    MatchesDatabase db;
-    db.images.resize(nimg);
-    for (uint32_t i = 0; i < nimg; i++) {
-        uint32_t len;
-        f.read((char*)&len, 4);
-        db.images[i].name.resize(len);
-        f.read(&db.images[i].name[0], len);
-        f.read((char*)&db.images[i].num_features, 4);
-    }
-    uint32_t npairs;
-    f.read((char*)&npairs, 4);
-    db.pairs.resize(npairs);
-    for (uint32_t i = 0; i < npairs; i++) {
-        TwoViewMatches& p = db.pairs[i];
-        uint32_t nm;
-        f.read((char*)&p.image1, 4);
-        f.read((char*)&p.image2, 4);
-        f.read((char*)&p.config, 4);
-        f.read((char*)&nm, 4);
-        std::vector<FeatureMatch>& m = p.matches.mut();
-        m.resize(nm);
-        f.read((char*)m.data(), (std::streamsize)nm * 8);
-    }
+inline void readMatchesCameras(std::istream& f, uint32_t version, MatchesDatabase& db,
+                               const std::string& path) {
     if (version >= 3) {
         uint32_t ncam = 0;
         f.read((char*)&ncam, 4);
@@ -262,6 +232,41 @@ inline MatchesDatabase readMatches(const std::string& path) {
             db.focal_measured.clear();
         }
     }
+}
+
+inline MatchesDatabase readMatches(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("cannot read " + path);
+    char magic[4];
+    f.read(magic, 4);
+    if (std::memcmp(magic, "VKMT", 4) != 0) throw std::runtime_error("bad magic in " + path);
+    uint32_t version, nimg;
+    f.read((char*)&version, 4);
+    f.read((char*)&nimg, 4);
+    MatchesDatabase db;
+    db.images.resize(nimg);
+    for (uint32_t i = 0; i < nimg; i++) {
+        uint32_t len;
+        f.read((char*)&len, 4);
+        db.images[i].name.resize(len);
+        f.read(&db.images[i].name[0], len);
+        f.read((char*)&db.images[i].num_features, 4);
+    }
+    uint32_t npairs;
+    f.read((char*)&npairs, 4);
+    db.pairs.resize(npairs);
+    for (uint32_t i = 0; i < npairs; i++) {
+        TwoViewMatches& p = db.pairs[i];
+        uint32_t nm;
+        f.read((char*)&p.image1, 4);
+        f.read((char*)&p.image2, 4);
+        f.read((char*)&p.config, 4);
+        f.read((char*)&nm, 4);
+        auto& matches = p.matches.mut();
+        matches.resize(nm);
+        f.read((char*)matches.data(), (std::streamsize)nm * sizeof(FeatureMatch));
+    }
+    readMatchesCameras(f, version, db, path);
     return db;
 }
 
@@ -280,9 +285,12 @@ struct MatchesIndex {
     struct Entry {
         uint32_t image1 = 0, image2 = 0, count = 0;
         uint64_t offset = 0;      // first idx1 of this pair's array
+        int32_t config = 0;
     };
     std::vector<ImageEntry> images;
     std::vector<Entry> pairs;
+    MatchesDatabase metadata;
+    bool complete = false;
 };
 
 inline bool indexMatches(const std::string& path, MatchesIndex& out) {
@@ -299,7 +307,8 @@ inline bool indexMatches(const std::string& path, MatchesIndex& out) {
     uint32_t version = 0, nimg = 0;
     f.read((char*)&version, 4);
     f.read((char*)&nimg, 4);
-    if (!f || std::memcmp(magic, "VKMT", 4) != 0) return false;
+    if (!f || std::memcmp(magic, "VKMT", 4) != 0 || version < 2 || version > 4 ||
+        uint64_t(nimg) * 8 > bytes) return false;
     MatchesIndex idx;
     idx.images.resize(nimg);
     for (uint32_t i = 0; i < nimg; i++) {
@@ -317,10 +326,9 @@ inline bool indexMatches(const std::string& path, MatchesIndex& out) {
     if (!streaming) idx.pairs.reserve(npairs);
     for (uint32_t i = 0; streaming || i < npairs; i++) {
         MatchesIndex::Entry e;
-        int32_t config = 0;
         f.read((char*)&e.image1, 4);
         f.read((char*)&e.image2, 4);
-        f.read((char*)&config, 4);
+        f.read((char*)&e.config, 4);
         f.read((char*)&e.count, 4);
         // Streaming stops at the tail the writer has not finished; a fixed
         // count that runs out is a truncated file and stays an error.
@@ -331,21 +339,24 @@ inline bool indexMatches(const std::string& path, MatchesIndex& out) {
         // tail the writer has not finished, a short fixed one is truncated.
         if (e.offset + (uint64_t)e.count * 8 > bytes)
             return streaming ? (out = std::move(idx), true) : false;
+        if (e.image1 >= nimg || e.image2 >= nimg || e.image1 == e.image2) return false;
         idx.pairs.push_back(e);
         f.seekg((std::streamoff)e.count * 8, std::ios::cur);
         if (!f) return streaming ? (out = std::move(idx), true) : false;
     }
+    idx.metadata.images = idx.images;
+    readMatchesCameras(f, version, idx.metadata, path);
+    idx.complete = true;
     out = std::move(idx);
     return true;
 }
 
-inline bool readPairMatches(const std::string& path,
+inline bool readPairMatches(std::istream& f,
                             const MatchesIndex::Entry& e,
                             std::vector<FeatureMatch>& out) {
     out.clear();
     if (!e.count) return true;
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
+    f.clear();
     f.seekg((std::streamoff)e.offset);
     out.resize(e.count);
     for (uint32_t i = 0; i < e.count && f; i++) {
@@ -354,6 +365,12 @@ inline bool readPairMatches(const std::string& path,
     }
     if (!f) { out.clear(); return false; }
     return true;
+}
+
+inline bool readPairMatches(const std::string& path, const MatchesIndex::Entry& e,
+                            std::vector<FeatureMatch>& out) {
+    std::ifstream f(path, std::ios::binary);
+    return f && readPairMatches(f, e, out);
 }
 
 // Every pair's matches into a SpillFile at `path`, read back as MatchList

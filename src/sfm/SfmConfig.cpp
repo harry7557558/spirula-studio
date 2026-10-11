@@ -405,6 +405,17 @@ std::string applyPresets(SfmConfig& cfg, const std::set<std::string>& seen,
 // ---------------------------------------------------------------------------
 
 std::string SfmConfig::finalize(uint32_t cmd) {
+    if (map_memory_mb < 0 || map_memory_mb > 1048576)
+        return "invalid --map-memory-mb (0 means automatic)";
+    if (map_graph_cache_mb < 0 || map_graph_cache_mb > 1048576)
+        return "invalid --map-graph-cache-mb (0 means automatic)";
+    if (regional_iterations < 1 || regional_iterations > 100 || regional_landmarks < 50 || regional_landmarks > 1000000 ||
+        !std::isfinite(regional_cost_tolerance) || regional_cost_tolerance < 0 || regional_cost_tolerance > 1)
+        return "invalid regional coordination options";
+    if (pairs == "spatial-blocks" &&
+        (block_size < 2 || block_neighbours < 1 || block_cache_mb < 1 ||
+         block_radius < 0 || !std::isfinite(block_radius)))
+        return "invalid spatial block options";
     if (!parseCamModelName(camera_model, camera.model))
         return "unknown --camera-model '" + camera_model + "'";
     if (!parseCameraMode(camera_mode, camera.mode))
@@ -514,6 +525,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
 }
 
 PairMode SfmConfig::pairMode() const {
+    if (pairs == "spatial-blocks") return PairMode::SpatialBlocks;
     if (pairs == "sequential") return PairMode::Sequential;
     if (pairs == "prefilter") return PairMode::Prefilter;
     return PairMode::Exhaustive;  // "exhaustive", and "auto" until counted

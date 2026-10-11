@@ -1,4 +1,5 @@
 #pragma once
+#include "app/gui/SfmPartition.h"
 
 // SfmRunner -- turns raw images or a video into a trainable dataset using this
 // repository's own structure-from-motion, with nothing else installed.
@@ -78,7 +79,7 @@ inline const char* const kSfmQuality[] = {"low", "medium", "high", "extreme"};
 inline const char* const kSfmDataType[] = {"individual", "video", "internet"};
 inline const char* const kSfmCameraMode[] = {"single", "folder", "image"};
 inline const char* const kSfmPairs[] = {"auto", "exhaustive", "sequential",
-                                        "prefilter"};
+                                        "prefilter", "spatial-blocks"};
 inline const char* const kSfmMapper[] = {"flat", "bottom-up"};
 inline const char* const kSfmFeatures[] = {"sift", "aliked-n16rot", "aliked-n32",
                                            "loma-b128", "loma-b"};
@@ -128,7 +129,17 @@ struct SfmJob {
     int data_type = 0;                // 0 individual photos, 1 video, 2 internet
     std::string camera_model = "opencv";
     int camera_mode = 1;              // 0 single, 1 per folder, 2 per image
-    int pairs = 0;                    // 0 auto, 1 exhaustive, 2 sequential, 3 prefilter
+    int pairs = 0;                    // index into kSfmPairs
+    int partition_mode = 0;           // 0 automatic, 1 off, 2 on when GPS is complete
+    int non_partition_pairs = 0;      // pairing choice restored when partitioning is off
+    bool partition_resolved = false; // live GUI memory snapshot, not a preset setting
+    int block_size = 2000;
+    bool block_size_auto = true;
+    int block_neighbours = 40;
+    float block_radius = 0;
+    int block_cache_mb = 512;
+    int map_memory_mb = 0;
+    bool block_cache_auto = true;
     int overlap = 10;                 // sequential neighbours
     // Sequential pairing only: also match the pairs GPU pair selection finds,
     // so a capture that comes back on itself links across the seam instead of
@@ -155,8 +166,7 @@ struct SfmJob {
     bool final_free_rig = false;
     int max_features = 0;             // 0 = the quality preset's
     int max_image_size = 0;           // 0 = the quality preset's
-    // 0 flat, 1 bottom-up. Flat for every capture, whatever its size: there is
-    // no automatic switch, here or in `spirula sfm`.
+    // 0 flat, 1 bottom-up. GPS partitioning chooses bottom-up.
     int mapper = 0;
     // An index into kSfmFeatures. A frontend choice, not a quality level: the
     // learned ones run on their own resolution ladder, so the quality preset
@@ -218,6 +228,15 @@ struct SfmJob {
 inline bool sequential_window_applies(const SfmJob& j) {
     return j.pairs == 2 || (j.pairs == 0 && j.data_type == 1) ||
            ((j.pairs == 0 || j.pairs == 3) && j.prefilter_sequential);
+}
+
+inline SfmPartitionRecommendation sfm_partition_for_job(
+    const SfmJob& job, size_t total_ram, size_t available_ram) {
+    const int quality = std::clamp(job.quality, 0, 3);
+    const size_t features = job.max_features > 0 ? (size_t)job.max_features
+        : (size_t)(job.features == 0 ? 2048 : 1024) << quality;
+    const size_t descriptor = job.features == 0 ? 128 : job.features == 4 ? 1024 : 512;
+    return sfm_partition_recommendation(total_ram, available_ram, features, descriptor);
 }
 
 // What a learned frontend still has to fetch, in order; empty for SIFT with

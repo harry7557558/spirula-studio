@@ -43,6 +43,8 @@
 #include <vector>
 
 #include "sfm/core/Model.h"
+#include "sfm/core/ModelMemory.h"
+#include "core/HostMemory.h"
 #include "sfm/core/Pose.h"
 #include "sfm/geometry/LinAlg.h"
 #include "sfm/geometry/Triangulation.h"
@@ -376,7 +378,12 @@ inline std::vector<Reconstruction> splitDuplicateStructure(const Reconstruction&
 // Declared here for MergeOptions::validate; defined with mergeInto below.
 struct MergeCounts;
 
+struct MergeOverBudget : std::runtime_error {
+    MergeOverBudget() : std::runtime_error("merge: host memory budget cannot hold the candidate and its validation copy; release memory and resume mapping") {}
+};
+
 struct MergeOptions {
+    size_t host_budget_bytes = 0;
     // Alignment. `max_reproj_error` is the RANSAC inlier threshold in pixels
     // (COLMAP's model_merger default is 8 px -- looser than the mapper's 4,
     // because the two models were optimized independently and their shared
@@ -1209,6 +1216,16 @@ private:
         // cheaper inverse.
         const size_t anchor_obs = countObservations(models_[dst]);
         const uint32_t anchor_imgs = models_[dst].numRegistered();
+        if (opt_.host_budget_bytes) {
+            const size_t available = spirula::availableRamBytes();
+            const size_t budget = available
+                ? std::min(opt_.host_budget_bytes, available - available / 4)
+                : opt_.host_budget_bytes;
+            const size_t combined = model_memory_detail::addBytes(
+                modelResidentBytes(models_[dst]), modelResidentBytes(models_[src]));
+            if (combined > budget / 2)
+                throw MergeOverBudget();
+        }
         Reconstruction merged = models_[dst];
         MergeCounts c = mergeInto(merged, models_[src], a.alignment.transform, opt_);
         a.counts = c;

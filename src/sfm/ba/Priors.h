@@ -198,6 +198,7 @@ public:
             c += 0.5 * robustCost(ev.r, ev.cauchy);
             const double w = robustWeight(s, ev.cauchy);
             for (int a = 0; a < f.nf; a++) {
+                if (P.frameFixed(f.frame[a])) continue;
                 double* ga = &g_[6 * (size_t)f.frame[a]];
                 for (int p = 0; p < 6; p++) {
                     double v = 0;
@@ -205,6 +206,7 @@ public:
                     ga[p] += w * v;
                 }
                 for (int b = 0; b < f.nf; b++) {
+                    if (P.frameFixed(f.frame[b])) continue;
                     double* B = &blk_[36 * (size_t)f.entry[a][b]];
                     for (int p = 0; p < 6; p++)
                         for (int q = 0; q < 6; q++) {

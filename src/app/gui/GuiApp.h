@@ -324,6 +324,10 @@ private:
     void update_dataset_job();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
+    TelemetryInfo sfm_partition_info();
+    bool sfm_partition_pending();
+    void sync_sfm_partition();
+    void draw_sfm_partition();
     // The selected checkpoint and detector; empty paths until both are here.
     MaskModelFiles selected_mask_model() const;
     // Fetch them (with consent), and whether a run would need them and not
@@ -490,7 +494,7 @@ private:
     void forget_redo_requests();
     // Everything start_dataset_job does once the confirmation is settled.
     // False when the run did not start (busy, or the device could not be frozen).
-    bool launch_dataset_job();
+    bool launch_dataset_job(bool require_partition_probe = true);
     // An existing dataset as an input: its images/ become the source and the
     // folder itself the output, so the run adds to it instead of building a
     // copy beside it.
@@ -910,6 +914,8 @@ private:
     // What each input's IMU / GPS holds, read on its own thread and keyed by
     // path, so re-choosing a file already read costs nothing.
     TelemetryProbe _telemetry;
+    size_t _partition_total_ram = 0, _partition_available_ram = 0;
+    bool _partition_memory_sampled = false;
     std::string _workspace;
     // The output folder this screen derived from the inputs. Kept so a folder
     // the user typed is never overwritten when the input list changes.

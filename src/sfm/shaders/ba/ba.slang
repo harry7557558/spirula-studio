@@ -35,7 +35,7 @@ static const uint kNoMember = 0xFFFFFFFFu;
 [[vk::binding(0)]]  StructuredBuffer<Real> u_obs;          // (2 per obs)
 [[vk::binding(1)]]  StructuredBuffer<uint> u_obs_image;    // (per obs)
 [[vk::binding(2)]]  StructuredBuffer<uint> u_obs_point;    // (per obs)
-[[vk::binding(3)]]  StructuredBuffer<uint4> u_image_info;  // (per image) x=frame, y=member (kNoMember: none), z=group, w=flags (bit0: frame shared)
+[[vk::binding(3)]]  StructuredBuffer<uint4> u_image_info;  // x=frame, y=member, z=group, w=flags (bit0: shared, bit1: fixed)
 [[vk::binding(4)]]  StructuredBuffer<uint4> u_group_info;  // (per group) x=intr param offset, y=intr column base, z=n_intr, w=model id
 [[vk::binding(5)]]  RWStructuredBuffer<Real> u_poses;      // (6 per frame)
 [[vk::binding(6)]]  RWStructuredBuffer<Real> u_intr;       // (flat intrinsics)
@@ -301,6 +301,11 @@ void jac_impl<M : ICameraModel, let RIG : int>(uint tid) {
     r.x = jRound(r.x * sw);
     r.y = jRound(r.y * sw);
 
+    // A zero point block removes it from Schur elimination while retaining camera factors.
+    if (u2 != 0 && u_obs_ranges[u2 + pt] != 0)
+        for (int row = 0; row < 2; row++)
+            for (int j = 0; j < 3; j++) Jp[row][j] = Real(0.0);
+
     uint jb = u_jc_off[o];
     [ForceUnroll]
     for (int a = 0; a < DOF; a++) {
@@ -320,8 +325,9 @@ void jac_impl<M : ICameraModel, let RIG : int>(uint tid) {
             write = i < gi.z;
         }
         if (write) {
-            jcPut(jb + 2 * dst, Jc[0][a]);
-            jcPut(jb + 2 * dst + 1, Jc[1][a]);
+            bool fixed = a < 6 && (ii.w & 2u) != 0;
+            jcPut(jb + 2 * dst, fixed ? Real(0.0) : Jc[0][a]);
+            jcPut(jb + 2 * dst + 1, fixed ? Real(0.0) : Jc[1][a]);
         }
     }
     for (int j = 0; j < 3; j++) {
@@ -455,6 +461,10 @@ void schurObsImpl<let MD : int>(uint ti) {
 void point_prep(uint3 t : SV_DispatchThreadID) {
     uint p = t.x;
     if (p >= u0) return;
+    if (u2 != 0 && u_obs_ranges[u2 + p] != 0) {
+        for (int i = 0; i < 9; i++) u_W[9 * p + i] = Real(0.0);
+        return;
+    }
     Real A[9];
     for (int i = 0; i < 9; i++) A[i] = u_App[9 * p + i];
     A[0] = A[0] * (Real(1.0) + Real(f0));
@@ -707,6 +717,7 @@ void point_update(uint3 t : SV_DispatchThreadID) {
 void cam_update(uint3 t : SV_DispatchThreadID) {
     uint i = t.x;
     if (i >= u0) return;
+    if (u1 != 0 && u_obs_ranges[u1 + i / 6] != 0) return;
     Real d = u_g[i];
     if (!isfinite(d)) return;
     u_poses[i] = u_poses[i] - d;

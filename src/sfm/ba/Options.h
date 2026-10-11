@@ -69,11 +69,28 @@ enum class CgFallback { Auto, On, Off };
 // and only the caller knows how to make one (Mapper::jointRefine splits its
 // models into batches).
 struct BAOverBudget : std::runtime_error {
-    BAOverBudget(double need, double budget)
-        : std::runtime_error("bundle adjustment needs more device memory than the budget allows"),
+    BAOverBudget(double need, double budget, const char* resource = "device")
+        : std::runtime_error(std::string("bundle adjustment needs more ") + resource +
+                             " memory than the budget allows"),
           need_mb(need), budget_mb(budget) {}
     double need_mb, budget_mb;
 };
+
+struct BAIndexCapacity : std::runtime_error {
+    BAIndexCapacity(uint64_t need, uint64_t limit, const char* name)
+        : std::runtime_error(std::string("bundle adjustment ") + name + " needs " +
+                             std::to_string(need) + " indexed elements; capacity is " +
+                             std::to_string(limit)),
+          need_elements(need), limit_elements(limit), pool(name) {}
+    uint64_t need_elements, limit_elements;
+    std::string pool;
+};
+
+inline void checkBAIndexCapacity(uint64_t need, uint64_t limit = UINT32_MAX,
+                                 const char* pool = "Jc pool") {
+    if (limit > UINT32_MAX) limit = UINT32_MAX;
+    if (need > limit) throw BAIndexCapacity(need, limit, pool);
+}
 
 // Where a device solve had got to: its parameters are in the problem's host
 // vectors as of `iterations` LM iterations, so a restart after a device failure
@@ -101,6 +118,7 @@ struct SolverOptions {
     double metres_per_unit = 1;
     SolverSel solver = SolverSel::Auto;
     double vram_budget_mb = 0;    // 0 = 90% of the device-local heap (host: half the RAM)
+    size_t host_budget_bytes = 0;
     // Throw BAOverBudget instead of warning and trying anyway. For a caller
     // that can split the problem; the default keeps the old behaviour, since a
     // caller that cannot split is better served by an attempt than by a refusal.

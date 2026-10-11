@@ -132,7 +132,16 @@ static void test_dataset_preset() {
     s.sfm.data_type = 2;
     s.sfm.camera_model = "opencv-fisheye";
     s.sfm.camera_mode = 2;
-    s.sfm.pairs = 3;
+    s.sfm.pairs = 4;
+    s.sfm.partition_mode = 2;
+    s.sfm.non_partition_pairs = 3;
+    s.sfm.block_size = 257;
+    s.sfm.block_size_auto = false;
+    s.sfm.block_cache_auto = false;
+    s.sfm.block_neighbours = 63;
+    s.sfm.block_radius = 123.5f;
+    s.sfm.block_cache_mb = 129;
+    s.sfm.map_memory_mb = 4096;
     s.sfm.overlap = 25;
     s.sfm.loop_closure = false;
     s.sfm.use_sequence = false;
@@ -255,6 +264,15 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.camera_model, s.sfm.camera_model);
     CHECK_EQ(b.sfm.camera_mode, s.sfm.camera_mode);
     CHECK_EQ(b.sfm.pairs, s.sfm.pairs);
+    CHECK_EQ(b.sfm.partition_mode, s.sfm.partition_mode);
+    CHECK_EQ(b.sfm.non_partition_pairs, s.sfm.non_partition_pairs);
+    CHECK_EQ(b.sfm.block_size, s.sfm.block_size);
+    CHECK_EQ(b.sfm.block_size_auto, s.sfm.block_size_auto);
+    CHECK_EQ(b.sfm.block_cache_auto, s.sfm.block_cache_auto);
+    CHECK_EQ(b.sfm.block_neighbours, s.sfm.block_neighbours);
+    CHECK_EQ(b.sfm.block_radius, s.sfm.block_radius);
+    CHECK_EQ(b.sfm.block_cache_mb, s.sfm.block_cache_mb);
+    CHECK_EQ(b.sfm.map_memory_mb, s.sfm.map_memory_mb);
     CHECK_EQ(b.sfm.overlap, s.sfm.overlap);
     CHECK_EQ(b.sfm.loop_closure, s.sfm.loop_closure);
     CHECK_EQ(b.sfm.use_sequence, s.sfm.use_sequence);
@@ -443,6 +461,29 @@ static void test_kinds_do_not_cross() {
     CHECK(threw);
 }
 
+static void test_partition_preset_compatibility() {
+    const std::string path = (scratch() / "legacy_partition.json").string();
+    std::FILE* file = std::fopen(path.c_str(), "wb");
+    CHECK(file != nullptr);
+    if (!file) return;
+    std::fputs("{\"spirula_preset\":1,\"kind\":\"dataset\",\"name\":\"legacy\","
+               "\"settings\":{\"sfm_pairs\":4,\"sfm_block_size\":2400,"
+               "\"sfm_block_cache_mb\":128}}", file);
+    std::fclose(file);
+    const auto saved = gui::load_dataset_preset(path).s.sfm;
+    CHECK_EQ(saved.partition_mode, 2);
+    CHECK_EQ(saved.block_size, 2400);
+    CHECK(!saved.block_size_auto && !saved.block_cache_auto);
+    constexpr size_t gib = (size_t)1024 * 1024 * 1024;
+    gui::SfmJob learned;
+    learned.features = 1;
+    learned.max_features = 4096;
+    const auto ordinary = gui::sfm_partition_for_job(learned, 32 * gib, 16 * gib);
+    learned.max_features = 16384;
+    const auto larger = gui::sfm_partition_for_job(learned, 32 * gib, 16 * gib);
+    CHECK(larger.photos < ordinary.photos);
+}
+
 static void test_dense_draft_restore() {
     gui::DatasetPreset saved;
     saved.name = "Dense draft";
@@ -483,6 +524,7 @@ int main() {
     test_unknown_key_ignored();
     test_dense_draft_restore();
     test_kinds_do_not_cross();
+    test_partition_preset_compatibility();
     if (failures) {
         std::printf("preset_roundtrip_test: %d failure(s)\n", failures);
         return 1;

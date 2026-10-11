@@ -225,7 +225,7 @@ public:
         bExts_ = mkReal(P_.exts.size());
         bIntr_ = mkReal(P_.total_intr);
         bPoints_ = mkReal(3 * (uint64_t)P_.num_points);
-        bObsRanges_ = mkUint(P_.num_points + 1);
+        bObsRanges_ = mkUint(uint64_t(P_.num_points) + 1 + P_.fixed_points.size() + P_.fixed_frames.size());
         bModelObs_ = mkUint(obsIdentity_ ? 1 : P_.model_obs.size());
         bJcOff_ = mkUint(P_.num_obs);
         auto mkJac = [&](uint64_t n) {
@@ -438,7 +438,8 @@ public:
             ii.push_back(P_.image_frame[i]);
             ii.push_back(P_.image_member[i]);
             ii.push_back(P_.image_group[i]);
-            ii.push_back(frame_images[P_.image_frame[i]] > 1 ? 1u : 0u);
+            ii.push_back((frame_images[P_.image_frame[i]] > 1 ? 1u : 0u) |
+                         (P_.frameFixed(P_.image_frame[i]) ? 2u : 0u));
         }
         std::vector<uint32_t> mi;
         for (auto& m : P_.members) {
@@ -460,6 +461,13 @@ public:
             {&bIntr_, intr.data(), intr.size()},
             {&bPoints_, points.data(), points.size()},
         };
+        std::vector<uint32_t> point_ranges;
+        if (!P_.fixed_points.empty() || !P_.fixed_frames.empty()) {
+            point_ranges = P_.obs_ranges;
+            point_ranges.insert(point_ranges.end(), P_.fixed_points.begin(), P_.fixed_points.end());
+            point_ranges.insert(point_ranges.end(), P_.fixed_frames.begin(), P_.fixed_frames.end());
+            up[5] = {&bObsRanges_, point_ranges.data(), point_ranges.size() * 4};
+        }
         if (!P_.members.empty()) {
             up.push_back({&bMemberInfo_, mi.data(), mi.size() * 4});
             up.push_back({&bExts_, exts.data(), exts.size()});
@@ -537,7 +545,12 @@ public:
         if (cpu_) return;
         std::vector<uint8_t> tmp(std::max({bPoses_.size, bIntr_.size, bPoints_.size, bExts_.size}));
         ctx_.download(bPoses_, tmp.data(), P_.poses.size() * realSize(opt_.real));
-        unpackReals(P_.poses, tmp.data(), P_.poses.size(), opt_.real);
+        if (P_.fixed_frames.empty()) unpackReals(P_.poses, tmp.data(), P_.poses.size(), opt_.real);
+        else {
+            std::vector<double> poses;
+            unpackReals(poses, tmp.data(), P_.poses.size(), opt_.real);
+            for (size_t i = 0; i < poses.size(); ++i) if (!P_.frameFixed(uint32_t(i / 6))) P_.poses[i] = poses[i];
+        }
         ctx_.download(bIntr_, tmp.data(), P_.intr.size() * realSize(opt_.real));
         unpackReals(P_.intr, tmp.data(), P_.intr.size(), opt_.real);
         ctx_.download(bPoints_, tmp.data(), P_.points.size() * realSize(opt_.real));
@@ -1042,6 +1055,8 @@ private:
         b += 2 * (P_.pose_dim + P_.exts.size() + P_.total_intr) * rs;  // params + backups
         b += 3 * np * rs * 3;                                      // points, backup, Bp0
         b += 4 * (np + 1);
+        b += 4 * P_.fixed_points.size();
+        b += 4 * P_.fixed_frames.size();
         b += ((double)P_.jc_total + 8 * no) * (double)jacSize();  // Jc, Jp, res
         b += (9 + 3 + 9) * np * rs;                                // App, Bp, W
         b += 2 * n * rs;                                           // g, y
@@ -1398,6 +1413,7 @@ private:
             for (auto& mr : P_.model_ranges) {
                 Push p;
                 p.f0 = opt_.loss_param;
+                p.u2 = P_.fixed_points.empty() ? 0 : P_.num_points + 1;
                 launch(jacEntry(mr), mr.count, 128, kWJac * wide_, p, atModel(mr));
             }
             ctx_.barrier(cb_);
@@ -1410,6 +1426,7 @@ private:
         {
             Push q;
             q.u0 = P_.num_points;
+            q.u2 = P_.fixed_points.empty() ? 0 : P_.num_points + 1;
             q.f0 = damping;
             room(kWLaunch + P_.num_points * kWPoint);
             ctx_.dispatch(cb_, "point_prep", (P_.num_points + 255) / 256, q);
@@ -1617,6 +1634,7 @@ private:
             ctx_.dispatch(cb_, "point_update", (P_.num_points + 255) / 256, p);
             Push q;
             q.u0 = P_.pose_dim;
+            q.u1 = P_.fixed_frames.empty() ? 0 : uint32_t(P_.num_points + 1 + P_.fixed_points.size());
             ctx_.dispatch(cb_, "cam_update", (P_.pose_dim + 255) / 256, q);
             if (!P_.members.empty()) {
                 Push e;

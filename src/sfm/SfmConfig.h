@@ -83,6 +83,13 @@ struct SfmConfig {
     // for video below that, exhaustive otherwise. `match` reads it as
     // exhaustive (it has not counted the images).
     std::string pairs = "auto";
+    int block_size = 2000;
+    int block_neighbours = 40;
+    double block_radius = 0;  // horizontal metres; 0 = nearest neighbours without a distance cap
+    int block_cache_mb = 512;
+    int regional_iterations = 8;
+    double regional_cost_tolerance = 0.0001;
+    int regional_landmarks = 100000;
     int overlap = 10;
     // Sequential pairing is a chain: image i with the next `overlap`. A capture
     // that walks around a subject and comes back has no link across the seam,
@@ -262,6 +269,8 @@ struct SfmConfig {
     ManagerOptions manager;
     MergeOptions merge;
     BottomUpOptions bup;
+    int map_memory_mb = 0;
+    int map_graph_cache_mb = 0;
     // The schedule both mappers run once they have models: merge levels with
     // growth and a joint solve between them, then the finishing passes
     // (sfm/map/Assemble.h). Its flags are spelled --bup-* for history; they are
@@ -331,8 +340,19 @@ struct SfmConfig {
       quality)                                                                                     \
     F(data_type, "data-type", CMD_AUTO, Tier::Basic, "pipeline", 0, 0,                             \
       "individual|video|internet", data_type)                                                      \
-    F(pairs, "pairs", CMD_AUTO | CMD_MATCH, Tier::Basic, "pipeline", 0, 0,                         \
-      "auto|exhaustive|sequential|prefilter", pairs)                                               \
+    F(pairs, "pairs", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Basic, "pipeline", 0, 0,                         \
+      "auto|exhaustive|sequential|prefilter|spatial-blocks", pairs)                                \
+    F(block_size, "block-size", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "matching", 2, 100000,     \
+      "", block_size)                                                                            \
+    F(block_neighbours, "block-neighbours", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "matching",   \
+      1, 100000, "", block_neighbours)                                                            \
+    F(block_radius, "block-radius", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "matching", 0,        \
+      1000000, "", block_radius)                                                                  \
+    F(block_cache_mb, "block-cache-mb", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "matching", 1,     \
+      1048576, "", block_cache_mb)                                                                \
+    F(regional_iterations, "regional-iterations", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapping", 1, 100, "", regional_iterations) \
+    F(regional_cost_tolerance, "regional-cost-tolerance", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapping", 0, 1, "", regional_cost_tolerance) \
+    F(regional_landmarks, "regional-landmarks", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapping", 50, 1000000, "", regional_landmarks) \
     F(overlap, "overlap", CMD_AUTO | CMD_MATCH | CMD_MAP, Tier::Advanced, "pipeline", 1, 1000000, \
       "",                                                                                          \
       overlap)                                                                                     \
@@ -528,6 +548,10 @@ struct SfmConfig {
       "", seed_blocking)                                                                           \
     F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up",    \
       mapper)                                                                                      \
+    F(map_memory_mb, "map-memory-mb", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 1048576,    \
+      "", map_memory_mb)                                                                         \
+    F(map_graph_cache_mb, "map-graph-cache-mb", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper",     \
+      0, 1048576, "", map_graph_cache_mb)                                                          \
     F(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
       "mapper", 8, 100000, "", bup_atom_size)                                                      \
     F(bup.partition.overlap, "bup-overlap", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0,       \
@@ -637,6 +661,7 @@ struct SfmConfig {
     F(in_place, "in-place", CMD_MERGE, Tier::Advanced, "merge", 0, 0, "", in_place)                \
     /* ---- inputs ---- */                                                                         \
     F(image_dir, "images", CMD_MAP | CMD_MERGE, Tier::Advanced, "input", 0, 0, "", images)         \
+    F(image_dir, "image-dir", CMD_MATCH, Tier::Advanced, "input", 0, 0, "", images)               \
     F(feature_dir, "features", CMD_MAP, Tier::Advanced, "input", 0, 0, "", feature_dir)            \
     F(resume, "resume", CMD_MAP, Tier::Advanced, "input", 0, 0, "", resume)                        \
     F(reuse, "resume", CMD_AUTO, Tier::Basic, "input", 0, 0, "", auto_resume)                      \
