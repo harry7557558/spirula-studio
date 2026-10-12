@@ -289,9 +289,7 @@ int _ms_add_which(int i) {
     return 0;
 }
 
-// Shared input loading for fwd/bwd: buffer reads guarded by presence flags
-// with the CUDA kernels' per-modality null defaults, GT modalities bilinear-
-// sampled at their own resolution.
+// Presence flags distinguish missing inputs from fallback device buffers.
 [ForceInline]
 void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
                     int y_dst, out float3 render_rgb, out float3 ref_rgb,
@@ -308,7 +306,7 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
         ? rgb_load3(p.ref_rgb, idx, (p.in_flags >> kInRefRgbFmtShift) & 3u)
         : float3(0.0f);
     render_depth = (p.in_flags & kInRenderDepth) != 0 ? p.render_depth[idx] : 1.0f;
-    ref_depth_v = 1.0f;
+    ref_depth_v = 0.0f;
     if ((p.in_flags & kInRefDepth) != 0)
         ref_depth_v = _ms_sample_gt_depth(p.ref_depth, batch_idx, x_dst,
                                           y_dst, p.W_render, p.H_render,

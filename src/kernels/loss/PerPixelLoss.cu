@@ -147,10 +147,7 @@ __global__ void per_pixel_losses_forward_kernel(
 
     bool inside = pixel_idx < pixels_per_image;
     if (inside) {
-        // GT modalities -- bilinear-sample at (x_dst, y_dst) into their own
-        // shape. When the GT shape equals render shape, this collapses to
-        // a single-tap read (weight 1 on the diagonal).
-        float ref_depth_v = 1.f;
+        float ref_depth_v = 0.f;
         if (ref_depth) {
             ref_depth_v = bilinear_sample_gt_depth(
                 ref_depth, (int)batch_idx, x_dst, y_dst,
@@ -319,9 +316,8 @@ __global__ void per_pixel_losses_backward_kernel(
     float temp_v_median_depth;
     float3 temp_v_median_normal;
 
-    // Re-sample the GT modalities the same way the forward did, so the bwd
-    // sees identical inputs.
-    float  ref_depth_v  = 1.f;
+    // GT scatter must use the same samples as the forward pass.
+    float  ref_depth_v  = 0.f;
     float3 ref_normal_v = make_float3(0);
     bool   ref_alpha_v  = false;
     if (ref_depth) {

@@ -5,7 +5,7 @@ describe is gone -- see §3 for what it covered and what now does not.
 
 ## 1. Native cross-backend parity tests (the important ones)
 
-`src/backend/tests/*.cpp` — currently 22 tools covering projection (fwd, bwd,
+`src/backend/tests/*.cpp` — tools covering projection (fwd, bwd,
 quant-grad), rasterization bwd, tile intersect, warp, FPBO, optimizer (general
 + geometry), densify, per-pixel train, PPISP, bilagrid, multi-scale loss, the
 fused appearance chain and float16 / uint8 images (`appearance_parity check`
@@ -29,6 +29,11 @@ dump-then-compare: `engine_reset_state` trains the same scene twice across an
 scalar per camera, and the no-GT sentinels passing through untouched).
 `backend/vulkan/tests/` adds 3 Vulkan-only smoke tests (runtime, pipeline,
 sort/scan).
+
+`missing_depth_supervision` is self-checking on both backends: missing and
+all-zero reference depth must give zero depth loss and gradients, while valid
+depth must retain finite supervision. It covers masks, multiple scales and
+3-million-pixel frames.
 
 **The same source builds under both backends.** Each file only touches
 `backend::`, the generated launch declarations, and `Tensor.h`. The workflow
