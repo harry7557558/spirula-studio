@@ -4,10 +4,12 @@
 // feature_masks/ for a camera, and COLMAP's one mask tree is the two ANDed.
 // Real DatasetPrep::run, no model: the re-mask is the frame stencil, which is
 // also checked per camera folder. Built without SS_BUILD_SAM, so it also
-// checks that asking for a model fails. And `sparse/0` is not a dataset.
+// checks that asking for a model fails; that `sparse/0` is not a dataset; and
+// what becomes of the pictures a blur threshold leaves out.
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
 #include "core/SourcePath.h"
 #include "external/stb_image_write.h"
@@ -67,9 +69,12 @@ std::vector<uint8_t> box(int w, int h, int x0, int y0, int x1, int y1) {
 
 uint8_t at(const std::vector<uint8_t>& px, int w, int x, int y) { return px[(size_t)y * w + x]; }
 
-bool run_prep(const gui::PrepJob& job, gui::RunProgress& prog, std::string& error) {
+bool run_prep(const gui::PrepJob& job, gui::RunProgress& prog, std::string& error,
+              gui::PickSheet* picks = nullptr) {
     std::atomic<bool> cancel{false};
-    gui::DatasetPrep prep(&prog, gui::RunFilms{}, cancel);
+    gui::RunFilms films;
+    films.picks = picks;
+    gui::DatasetPrep prep(&prog, films, cancel);
     gui::PrepResult out;
     return prep.run(job, out, error);
 }
@@ -304,6 +309,163 @@ void test_heif_folder() {
           "no half-written JPEG is left for a resumed run to keep");
 }
 
+// A chequerboard smeared sideways across `smear` pixels: 10 px of edge sharp,
+// 40 px at a smear of 30. A PNG, since JPEG's ringing on a pattern this clean
+// outranks the smeared edges and leaves the picture unmeasured (and so kept).
+void write_squares(const fs::path& p, int smear) {
+    const int W = 640, H = 480;
+    std::vector<uint8_t> px((size_t)W * H * 3);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            int sum = 0;
+            for (int k = 0; k < smear; k++) {
+                const int cx = (x + k) / 40, cy = y / 40;
+                sum += (cx + cy) % 2 ? 110 + 15 * ((cx + 3 * cy) % 8) : 30;
+            }
+            for (int c = 0; c < 3; c++) px[((size_t)y * W + x) * 3 + c] = (uint8_t)(sum / smear);
+        }
+    std::error_code ec;
+    fs::create_directories(p.parent_path(), ec);
+    stbi_write_png(p.string().c_str(), W, H, 3, px.data(), W * 3);
+}
+
+int files_in(const fs::path& dir) {
+    std::error_code ec;
+    int n = 0;
+    for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+        n += it->is_regular_file(ec) ? 1 : 0;
+    return n;
+}
+
+// Eight photographs, two of them smeared. Left out, they are deleted from
+// images/ unless asked for -- and never when images/ holds the only copy.
+void test_skipped_photos() {
+    struct Case { const char* name; gui::PhotoImport import; bool keep; int skipped; };
+    const Case cases[] = {{"blur_drop", gui::PhotoImport::Copy, false, 0},
+                          {"blur_keep", gui::PhotoImport::Copy, true, 2},
+                          {"blur_move", gui::PhotoImport::Move, false, 2}};
+    for (const Case& c : cases) {
+        const fs::path root = scratch(c.name);
+        const fs::path photos = root / "photos", ws = root / "dataset";
+        for (int i = 0; i < 8; i++)
+            write_squares(photos / ("p" + std::to_string(i) + ".png"), i == 2 || i == 5 ? 30 : 1);
+        gui::PrepJob job;
+        job.workspace = ws.string();
+        job.photo_import = c.import;
+        gui::set_blur_mode(job, gui::kBlurStrict);
+        job.keep_skipped = c.keep;
+        gui::PrepInput in;
+        in.path = photos.string();
+        job.inputs = {in};
+        gui::RunProgress prog;
+        std::string err;
+        const std::string n = c.name;
+        gui::PickSheet sheet;
+        check(run_prep(job, prog, err, &sheet), n + ": run: " + err);
+        // Something to look at for the one left out: its file where it was
+        // kept, and otherwise the photograph it was copied from.
+        const fs::path seen(sheet.path(0, 2));
+        std::error_code at;
+        check(sheet.picks(0).size() == 8 && fs::exists(seen, at) &&
+                  seen.parent_path().filename() == (c.skipped ? "images_skipped" : "photos"),
+              n + ": the sheet shows the smeared one from " + seen.parent_path().string());
+        std::error_code ec;
+        check(files_in(ws / "images") == 6 && !fs::exists(ws / "images" / "p2.png", ec) &&
+                  !fs::exists(ws / "images" / "p5.png", ec),
+              n + ": the two smeared photographs are out of images/");
+        check(files_in(ws / "images_skipped") == c.skipped,
+              n + ": images_skipped/ holds " + std::to_string(c.skipped));
+        check(files_in(photos) + (c.import == gui::PhotoImport::Move ? 8 : 0) == 8,
+              n + ": the photographs given are where the import mode leaves them");
+        if (c.import == gui::PhotoImport::Move) continue;
+        // A later run that keeps the frames gathers the folder again, and must
+        // not let the two back in -- whatever the rule says by then.
+        gui::PrepJob again = job;
+        again.resume = true;
+        again.make_frames = false;
+        gui::set_blur_mode(again, gui::kBlurKeep);
+        gui::RunProgress prog2;
+        check(run_prep(again, prog2, err) && files_in(ws / "images") == 6 &&
+                  !fs::exists(ws / "images" / "p5.png", ec),
+              n + ": a run that keeps the frames leaves them sorted as they were");
+        again.make_frames = true;
+        check(run_prep(again, prog2, err) && files_in(ws / "images") == 8 &&
+                  !fs::exists(ws / gui::kSkippedListFile, ec),
+              n + ": a run that makes them again with the rule off brings both back");
+    }
+}
+
+// A review's sheet: a looser threshold brings a frame back by a rename, and
+// what is still left out is deleted without touching anything else there.
+void test_pick_sheet_discards() {
+    const fs::path root = scratch("picksheet");
+    const fs::path keep = root / "images", skip = root / "images_skipped" / "clip";
+    gui::PickSheet sheet;
+    sheet.reset({"clip"});
+    sheet.set_dirs(0, keep.string(), skip.string());
+    const float widths[] = {3, 3, 20, 3, 14, 3};
+    app::PickRule ran{8.0f, true, 0};
+    for (int i = 0; i < 6; i++) {
+        app::FramePick p;
+        p.index = i;
+        p.width = widths[i];
+        const bool kept = ran.judge(p) == app::PickVerdict::Kept;
+        const fs::path f = (kept ? keep : skip) / (std::to_string(i) + ".jpg");
+        write_jpg(f, 8, 8, i);
+        sheet.add(0, p, std::vector<uint8_t>(), f.string());
+    }
+    std::error_code ec;
+    check(files_in(keep) == 4 && files_in(skip) == 2, "sheet: 20 and 14 px are out at 8 px");
+    check(sheet.resort(0, app::PickRule{16.0f, true, 0}) == 1 && fs::exists(keep / "4.jpg", ec) &&
+              fs::exists(skip / "2.jpg", ec),
+          "sheet: at 16 px the 14 px frame is renamed back, the 20 px one stays out");
+    std::ofstream(root / "images_skipped" / "mine.txt") << "not the run's";
+    check(sheet.discard_skipped(0) == 1 && !fs::exists(skip, ec) && files_in(keep) == 5,
+          "sheet: the frame left out is deleted with its folder, the kept ones stay");
+    check(fs::exists(root / "images_skipped" / "mine.txt", ec),
+          "sheet: a file the sheet did not write is not touched");
+}
+
+// Photographs gathered with the rule off, then sorted where they lie: the
+// smeared ones move aside, and come back when the rule is turned off again.
+void test_sort_in_place() {
+    const fs::path root = scratch("sort_in_place");
+    const fs::path photos = root / "photos", ws = root / "dataset";
+    for (int i = 0; i < 8; i++)
+        write_squares(photos / ("p" + std::to_string(i) + ".png"), i == 2 || i == 5 ? 30 : 1);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = photos.string();
+    job.inputs = {in};
+    gui::RunProgress prog;
+    std::string err;
+    check(run_prep(job, prog, err) && files_in(ws / "images") == 8, "sort: made with the rule off");
+    gui::PrepJob sort = job;
+    sort.resume = true;
+    sort.make_frames = false;
+    sort.sort_frames = true;
+    gui::set_blur_mode(sort, gui::kBlurStrict);
+    std::error_code ec;
+    check(run_prep(sort, prog, err) && files_in(ws / "images") == 6 &&
+              files_in(ws / "images_skipped") == 2 && fs::exists(ws / "images_skipped" / "p2.png", ec),
+          "sort: the two smeared ones move to images_skipped, nothing is deleted");
+    check(gui::probe_workspace(ws.string(), sort.inputs).sorted_rule == gui::blur_rule_text(sort),
+          "sort: the folder says what it is sorted by");
+    sort.sort_frames = false;
+    check(run_prep(sort, prog, err) && files_in(ws / "images") == 6,
+          "sort: a later run that changes nothing leaves them aside");
+    gui::PrepJob off = job;
+    off.resume = true;
+    off.make_frames = false;
+    off.sort_frames = true;
+    check(run_prep(off, prog, err) && files_in(ws / "images") == 8 &&
+              files_in(ws / "images_skipped") == 0 &&
+              gui::probe_workspace(ws.string(), off.inputs).sorted_rule.empty(),
+          "sort: the rule turned off brings both back");
+}
+
 // A COLMAP model with nothing beside it is a reconstruction to view, not a
 // dataset, so a dropped `sparse/0` does not land on the trainer.
 void test_bare_model_is_not_a_dataset() {
@@ -329,6 +491,71 @@ void test_bare_model_is_not_a_dataset() {
           "a model beside its photos is a dataset");
 }
 
+// Two camera folders: a frame is the files of one name in both, and goes or
+// stays whole -- here on the strength of the second lens alone.
+void test_sort_rig_in_place() {
+    const fs::path root = scratch("sort_rig");
+    const fs::path photos = root / "photos", ws = root / "dataset";
+    for (int i = 0; i < 8; i++) {
+        const std::string name = "p" + std::to_string(i) + ".png";
+        write_squares(photos / "cam0" / name, 1);
+        write_squares(photos / "cam1" / name, i == 3 ? 30 : 1);
+    }
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = photos.string();
+    job.inputs = {in};
+    gui::RunProgress prog;
+    std::string err;
+    check(run_prep(job, prog, err) && files_in(ws / "images") == 16, "rig: made with the rule off");
+    gui::PrepJob sort = job;
+    sort.resume = true;
+    sort.make_frames = false;
+    sort.sort_frames = true;
+    gui::set_blur_mode(sort, gui::kBlurStrict);
+    gui::PickSheet sheet;
+    std::error_code ec;
+    // As a two-lens video leaves it: a frame the rule left out before the
+    // lenses were cut apart, whole, beside the camera folders.
+    write_squares(ws / "images_skipped" / "whole.png", 1);
+    check(run_prep(sort, prog, err, &sheet) && files_in(ws / "images") == 14 &&
+              fs::exists(ws / "images_skipped" / "cam0" / "p3.png", ec) &&
+              fs::exists(ws / "images_skipped" / "cam1" / "p3.png", ec),
+          "rig: the frame smeared in one lens moves aside in both");
+    // Sorted again by a rule nothing fails, over a reconstruction that placed
+    // the first lens only: the list alone must bring the second lens's file
+    // back, before anything is judged.
+    {
+        fs::create_directories(ws / "sparse" / "0", ec);
+        std::ofstream model(ws / "sparse" / "0" / "images.bin", std::ios::binary);
+        const uint64_t count = 8, none = 0;
+        model.write((const char*)&count, 8);
+        for (int i = 0; i < 8; i++) {
+            const int32_t id = i + 1, camera = 1;
+            const double pose[7] = {1, 0, 0, 0, 0, 0, 0};
+            const std::string name = "cam0/p" + std::to_string(i) + ".png";
+            model.write((const char*)&id, 4);
+            model.write((const char*)pose, sizeof pose);
+            model.write((const char*)&camera, 4);
+            model.write(name.c_str(), (std::streamsize)name.size() + 1);
+            model.write((const char*)&none, 8);
+        }
+    }
+    gui::PrepJob eased = sort;
+    eased.blur_px = 39.0f;
+    gui::PickSheet again;
+    check(run_prep(eased, prog, err, &again) && files_in(ws / "images") == 16 &&
+              files_in(ws / "images_skipped") == 1,
+          "rig: a second sort brings back both lenses' files of the frame the first moved");
+    check(run_prep(sort, prog, err, &sheet) && files_in(ws / "images") == 14, "rig: and a third moves it again");
+    check(sheet.picks(0).size() == 8 && sheet.resort(0, app::PickRule{}) == 1 &&
+              files_in(ws / "images") == 16 && files_in(ws / "images_skipped") == 1 &&
+              fs::exists(ws / "images_skipped" / "whole.png", ec),
+          "rig: eased in the review, both lenses' files come back and the whole frame stays");
+}
+
 int main() {
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
@@ -337,6 +564,10 @@ int main() {
     test_feature_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
+    test_skipped_photos();
+    test_pick_sheet_discards();
+    test_sort_in_place();
+    test_sort_rig_in_place();
     std::printf("%s: %d failure(s)\n", SS_FILE, g_failures);
     return g_failures;
 }

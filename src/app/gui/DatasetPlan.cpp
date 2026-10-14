@@ -595,6 +595,55 @@ bool masks_in_dataset(const PrepJob& job) {
     return true;
 }
 
+namespace {
+
+// What a frames record says they were sorted by as they were made, spelled as
+// blur_rule_text spells the screen's.
+struct MadeRule {
+    bool blur = false, neighbour = true, by_hand = false;
+    float px = 0.0f;
+    int similar = 0;
+    std::string text() const {
+        PrepJob j;
+        j.skip_blurry = blur;
+        j.blur_px = px;
+        j.blur_neighbour = neighbour;
+        j.blur_review = by_hand;
+        j.similar_bits = similar;
+        return blur_rule_text(j);
+    }
+};
+
+MadeRule made_rule(const StepFields& fields) {
+    MadeRule m;
+    for (const StepField& f : fields) {
+        if (f.key == "skip_blurry") m.blur = true, m.by_hand = f.value == "by hand";
+        if (f.key == "blur_px") m.px = std::strtof(f.value.c_str(), nullptr);
+        if (f.key == "blur_neighbour") m.neighbour = f.value == "on";
+        if (f.key == "similar_bits") m.similar = std::atoi(f.value.c_str());
+    }
+    return m;
+}
+
+// The screen's rule leaves out everything `made` did: every frame it could
+// keep is among those the dataset was made from, and has a camera.
+bool no_looser(const MadeRule& made, const PrepJob& job) {
+    if (job.similar_bits < made.similar) return false;
+    if (!made.blur) return true;
+    return job.skip_blurry && job.blur_px <= made.px && (made.neighbour || !job.blur_neighbour);
+}
+
+}  // namespace
+
+bool blur_rule_applies(const PrepJob& job) {
+    for (const PrepInput& in : job.inputs) {
+        if (input_in_dataset(job, in)) continue;
+        if (in.is_video ? !every_frame(job, in) : job.photo_import != PhotoImport::InPlace)
+            return true;
+    }
+    return false;
+}
+
 StepFields frames_fields(const PrepJob& job) {
     StepFields f;
     bool video = false, rate = false, multi = false, pano = false;
@@ -613,9 +662,24 @@ StepFields frames_fields(const PrepJob& job) {
         multi = multi || (!in.pano360.valid() && in.video_tracks >= 2);
         pano = pano || in.pano360.valid();
     }
+    // Which frames the blur rule leaves out: of a video's, and of photographs
+    // gathered into the dataset. Listed only when on, so a record from before
+    // the rule compares equal; by hand is its own value, since it is a pause.
+    const auto rule = [&] {
+        if (!blur_rule_applies(job)) return;
+        if (job.skip_blurry) {
+            add(f, "skip_blurry", "", job.blur_review ? "by hand" : "on");
+            add(f, "blur_px", "", num(job.blur_px));
+            add(f, "blur_neighbour", "", onoff(job.blur_neighbour));
+        }
+        if (job.similar_bits > 0) add(f, "similar_bits", "", num(job.similar_bits));
+    };
     // Photos already gathered are kept whatever the import mode says, so a
     // folder of photos has nothing else here that its images depend on.
-    if (!video) return f;
+    if (!video) {
+        rule();
+        return f;
+    }
     add(f, "decoder", "", job.force_external_decode ? "ffmpeg" : "builtin");
     add(f, "max_frames", "", num(job.max_frames));
     add(f, "auto_rotate", "", onoff(job.auto_rotate));
@@ -624,6 +688,7 @@ StepFields frames_fields(const PrepJob& job) {
         add(f, "adaptive_fps", "", onoff(job.adaptive_fps));
         if (job.adaptive_fps) add(f, "adaptive_range", "", num(job.adaptive_range));
     }
+    rule();
     if (multi) add(f, "sync_tracks", "", onoff(job.sync_tracks));
     if (pano) {
         add(f, "pano_mode", "", num((int)job.pano.mode));
@@ -933,6 +998,24 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
         set(fr, Act::Reuse, Why::Unrecorded);
     } else {
         compare(fr, rf, diff(rf.fields, frames_fields(job.prep)));
+        // A rule no looser than the one the frames were made with keeps only
+        // frames the dataset already has, each with its camera. It is applied
+        // to them where they lie, and nothing made from them is made again.
+        const auto of_rule = [](const std::string& k) {
+            return k == "skip_blurry" || k == "blur_px" || k == "blur_neighbour" ||
+                   k == "similar_bits";
+        };
+        bool rule_only = true;
+        for (const FieldChange& c : fr.changes) rule_only = rule_only && of_rule(c.key);
+        const MadeRule made = made_rule(rf.fields);
+        if (rf.complete && rule_only && blur_rule_applies(job.prep) &&
+            no_looser(made, job.prep) && (fr.act == Act::Reuse || fr.act == Act::Redo)) {
+            fr.changes.clear();
+            set(fr, Act::Reuse);
+            const std::string wanted = blur_rule_text(job.prep);
+            const std::string now = ws.sorted_rule.empty() ? made.text() : ws.sorted_rule;
+            fr.sort = wanted != now;
+        }
         if (fr.act == Act::Redo && rf.complete) {
             if (req.keep_built) set(fr, Act::Keep, Why::Settings);
             else fr.ask = true;
@@ -1263,6 +1346,7 @@ std::vector<std::string> plan_log_lines(Step step, const StepPlan& s,
     const bool settings = s.why == Why::Settings;
     switch (step) {
         case Step::Frames:
+            if (s.sort) return {L::plan_frames_sorted.get()};
             if (s.act == Act::Redo && settings) return {format(L::frames_settings_changed, {what})};
             if (s.act == Act::Keep) return {format(L::plan_frames_kept, {what})};
             break;

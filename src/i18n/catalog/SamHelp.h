@@ -1051,6 +1051,141 @@ SS_MSG(xh_adaptive_range,
     TR("uyarlanan hızın ortalamadan iki yöne de ne kadar sapabileceği "
        "(varsayılan 4: dörtte birinden dört katına)"));
 
+SS_MSG(xh_blur_reject,
+    EN("measure how blurred each chosen frame is, from how wide its edges "
+       "are, and leave out a frame blurred across more than this many "
+       "pixels, never more than two in a row (default 0: off)"),
+    JA("選ばれた各フレームのぶれをエッジの幅から測り、この画素数を超えてぶれたフ"
+       "レームを除外します。連続して除外するのは 2 枚まで（既定 0: オフ）"),
+    ZH_HANS("根据边缘宽度测量每个选中帧的模糊程度，剔除模糊超过此像素数的帧，连续最多"
+            "剔除两帧（默认 0：关闭）"),
+    ZH_HANT("依邊緣寬度測量每個選中影格的模糊程度，剔除模糊超過此像素數的影格，連續最"
+            "多剔除兩個（預設 0：關閉）"),
+    KO("선택된 각 프레임이 얼마나 흐린지 가장자리 폭으로 측정하고, 이 "
+       "픽셀 수보다 더 흐린 프레임을 뺍니다. 연속으로는 두 장까지만 뺍"
+       "니다(기본값 0: 끔)"),
+    DE("misst an der Breite der Kanten, wie unscharf jedes gewählte Bild "
+       "ist, und lässt ein Bild aus, das über mehr als so viele Pixel "
+       "verwischt ist, nie mehr als zwei in Folge (Standard 0: aus)"),
+    FR("mesure le flou de chaque image choisie d’après la largeur de ses "
+       "contours et écarte une image floue sur plus de ce nombre de "
+       "pixels, jamais plus de deux de suite (0 par défaut : désactivé)"),
+    ES("mide lo borroso que está cada fotograma elegido por el ancho de "
+       "sus bordes y descarta el que esté desenfocado en más de estos "
+       "píxeles, nunca más de dos seguidos (por defecto 0: desactivado)"),
+    PT("mede o quanto cada quadro escolhido está borrado pela largura das "
+       "suas bordas e deixa de fora o que estiver borrado em mais do que "
+       "estes pixels, nunca mais de dois seguidos (padrão 0: desligado)"),
+    IT("misura quanto è sfocato ogni fotogramma scelto dalla larghezza dei"
+       " suoi bordi e scarta quello sfocato per più di questi pixel, mai "
+       "più di due di seguito (predefinito 0: disattivato)"),
+    NL("meet aan de breedte van de randen hoe onscherp elk gekozen beeld "
+       "is en laat een beeld weg dat over meer dan dit aantal pixels "
+       "vervaagd is, nooit meer dan twee achter elkaar (standaard 0: uit)"),
+    RU("измеряет по ширине границ, насколько размыт каждый выбранный кадр,"
+       " и исключает кадр, размытый более чем на столько пикселей, но не "
+       "более двух подряд (по умолчанию 0: выключено)"),
+    TR("seçilen her karenin ne kadar bulanık olduğunu kenar genişliğinden "
+       "ölçer ve bu piksel sayısından fazla bulanık kareyi dışarıda "
+       "bırakır; art arda en çok iki kare (varsayılan 0: kapalı)"));
+
+SS_MSG(xh_similar,
+    EN("leave out a frame whose 64-bit fingerprint differs from the last "
+       "kept frame's by fewer than n bits, as when the camera stood still "
+       "(default 0: off)"),
+    JA("64 ビットの指紋が直前に残したフレームと n ビット未満しか違わないフ"
+       "レームを除外します。カメラが止まっていたときなど（既定 0: オフ）"),
+    ZH_HANS("剔除 64 位指纹与上一个保留帧相差不足 n 位的帧，例如相机静止时（默"
+            "认 0：关闭）"),
+    ZH_HANT("剔除 64 位元指紋與上一個保留影格相差不足 n 位元的影格，例如相機靜"
+            "止時（預設 0：關閉）"),
+    KO("64비트 지문이 마지막으로 남긴 프레임과 n비트 미만으로만 다른 "
+       "프레임을 뺍니다. 카메라가 멈춰 있었을 때 등(기본값 0: 끔)"),
+    DE("lässt ein Bild aus, dessen 64-Bit-Fingerabdruck sich um weniger "
+       "als n Bits vom zuletzt behaltenen Bild unterscheidet, etwa wenn "
+       "die Kamera stillstand (Standard 0: aus)"),
+    FR("écarte une image dont l’empreinte de 64 bits diffère de moins de n"
+       " bits de celle de la dernière image gardée, comme quand la caméra "
+       "était immobile (0 par défaut : désactivé)"),
+    ES("descarta el fotograma cuya huella de 64 bits difiere en menos de n"
+       " bits de la del último conservado, como cuando la cámara estaba "
+       "quieta (por defecto 0: desactivado)"),
+    PT("deixa de fora o quadro cuja impressão digital de 64 bits difere em"
+       " menos de n bits da do último quadro mantido, como quando a câmera"
+       " estava parada (padrão 0: desligado)"),
+    IT("scarta il fotogramma la cui impronta a 64 bit differisce per meno "
+       "di n bit da quella dell’ultimo tenuto, come quando la fotocamera "
+       "era ferma (predefinito 0: disattivato)"),
+    NL("laat een beeld weg waarvan de 64-bits vingerafdruk minder dan n "
+       "bits verschilt van die van het laatst behouden beeld, zoals "
+       "wanneer de camera stilstond (standaard 0: uit)"),
+    RU("исключает кадр, 64-битный отпечаток которого отличается от "
+       "отпечатка последнего оставленного кадра менее чем на n бит, "
+       "например когда камера стояла на месте (по умолчанию 0: выключено)"),
+    TR("64 bitlik parmak izi son tutulan kareninkinden n bitten az farklı "
+       "olan kareyi dışarıda bırakır; örneğin kamera sabit durduğunda "
+       "(varsayılan 0: kapalı)"));
+
+SS_MSG(xh_skipped_dir,
+    EN("write the frames left out to this folder rather than nowhere (one "
+       "video track, not 360)"),
+    JA("除外したフレームを捨てずにこのフォルダーへ書き出します（映像トラックが "
+       "1 本のとき。360 は対象外）"),
+    ZH_HANS("把被剔除的帧写入此文件夹，而不是丢弃（单个视频轨道，不含 360）"),
+    ZH_HANT("把被剔除的影格寫入此資料夾，而不是丟棄（單一視訊軌，不含 360）"),
+    KO("빠진 프레임을 버리지 않고 이 폴더에 씁니다(비디오 트랙 하나일 "
+       "때, 360 제외)"),
+    DE("schreibt die ausgelassenen Bilder in diesen Ordner, statt sie zu "
+       "verwerfen (eine Videospur, nicht 360)"),
+    FR("écrit les images écartées dans ce dossier au lieu de les "
+       "abandonner (une seule piste vidéo, pas en 360)"),
+    ES("escribe los fotogramas descartados en esta carpeta en vez de "
+       "desecharlos (una sola pista de vídeo, no 360)"),
+    PT("grava os quadros deixados de fora nesta pasta em vez de "
+       "descartá-los (uma só faixa de vídeo, não 360)"),
+    IT("scrive i fotogrammi scartati in questa cartella invece di "
+       "eliminarli (una sola traccia video, non 360)"),
+    NL("schrijft de weggelaten beelden naar deze map in plaats van ze weg "
+       "te gooien (één videospoor, geen 360)"),
+    RU("записывает исключённые кадры в эту папку, а не отбрасывает их "
+       "(одна видеодорожка, не 360)"),
+    TR("dışarıda bırakılan kareleri atmak yerine bu klasöre yazar (tek "
+       "video izi, 360 değil)"));
+
+SS_MSG(xh_report,
+    EN("write one line for each chosen frame to this CSV file: its number,"
+       " its edge width and blur in pixels, and whether it was kept"),
+    JA("選ばれたフレームごとに 1 行をこの CSV ファイルへ書き出します。番"
+       "号、エッジ幅とぶれ（ピクセル）、残したかどうか"),
+    ZH_HANS("为每个选中的帧向此 CSV 文件写入一行：编号、边缘宽度和模糊（像素）以"
+            "及是否保留"),
+    ZH_HANT("為每個選中的影格向此 CSV 檔寫入一行：編號、邊緣寬度和模糊（像素）以"
+            "及是否保留"),
+    KO("선택된 프레임마다 이 CSV 파일에 한 줄씩 씁니다. 번호, 가장"
+       "자리 폭과 흐림(픽셀), 유지 여부"),
+    DE("schreibt für jedes gewählte Bild eine Zeile in diese CSV-Datei: "
+       "seine Nummer, Kantenbreite und Unschärfe in Pixeln und ob es "
+       "behalten wurde"),
+    FR("écrit dans ce fichier CSV une ligne par image choisie : son "
+       "numéro, la largeur de ses contours et son flou en pixels, et si "
+       "elle a été gardée"),
+    ES("escribe en este archivo CSV una línea por cada fotograma elegido: "
+       "su número, el ancho de sus bordes y su desenfoque en píxeles, y si"
+       " se conservó"),
+    PT("grava neste arquivo CSV uma linha por quadro escolhido: o número, "
+       "a largura das bordas e o borrão em pixels, e se foi mantido"),
+    IT("scrive in questo file CSV una riga per ogni fotogramma scelto: il "
+       "numero, la larghezza dei bordi e la sfocatura in pixel, e se è "
+       "stato tenuto"),
+    NL("schrijft voor elk gekozen beeld één regel naar dit CSV-bestand: "
+       "het nummer, de randbreedte en onscherpte in pixels, en of het "
+       "behouden is"),
+    RU("записывает в этот CSV-файл по строке на каждый выбранный кадр: его"
+       " номер, ширину границ и размытие в пикселях и оставлен ли он"),
+    TR("seçilen her kare için bu CSV dosyasına bir satır yazar: numarası, "
+       "piksel cinsinden kenar genişliği ve bulanıklığı, tutulup "
+       "tutulmadığı"));
+
 SS_MSG(xh_track,
     EN("video track to read; default is every track, written to <out>/cam0, "
        "<out>/cam1, ..."),

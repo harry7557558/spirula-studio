@@ -241,6 +241,11 @@ public:
     void cancel();
 
     State state() const { return _state.load(); }
+    // The frames are out and the run is waiting to be told they are the ones
+    // wanted (PrepJob::review_frames). The settings that sort them are read
+    // when it is told.
+    bool reviewing() const { return _reviewing.load(); }
+    void continue_review() { _review_go = true; }
     // Which step the run is on, how far through, and its lines -- everything
     // the dataset screen draws.
     RunProgress& steps() { return _prog; }
@@ -292,6 +297,7 @@ private:
     // The three parts of update(), applied where the run reaches them.
     void take_reconstruction(SfmJob& job);
     void take_masking(PrepJob& prep);
+    void take_selection(PrepJob& prep);
     void take_geometry(SfmJob& job);
     void take_dense(SfmJob& job);
     void log(const std::string& line, bool detail = true);
@@ -316,6 +322,7 @@ private:
     std::thread _worker;
     std::atomic<State> _state{State::Idle};
     std::atomic<bool> _cancel{false};
+    std::atomic<bool> _reviewing{false}, _review_go{false};
     std::atomic<bool> _partial{false};
     std::atomic<bool> _not_metric{false};
     // The child said how it ended, so the exit code need not be interpreted.

@@ -159,8 +159,115 @@ int main() {
                "a folder of photos does not depend on the video rate or import mode");
     }
 
+    // ---- the blur rule and a video's frames ---------------------------------
+    {
+        SfmJob on = made, every = made, every_on = made;
+        set_blur_mode(on.prep, kBlurStandard);
+        expect(!(frames_fields(made.prep) == frames_fields(on.prep)),
+               "video: a blur threshold is part of the frames");
+        SfmJob still = on;
+        still.prep.similar_bits = 6;
+        expect(!(frames_fields(on.prep) == frames_fields(still.prep)),
+               "video: so is a similarity threshold");
+        SfmJob alone = on;
+        alone.prep.blur_neighbour = false;
+        expect(!(frames_fields(on.prep) == frames_fields(alone.prep)),
+               "video: and whether a skipped frame keeps a neighbour");
+        every.prep.video_fps = every_on.prep.video_fps = 0.0f;
+        set_blur_mode(every_on.prep, kBlurStandard);
+        every_on.prep.similar_bits = 6;
+        expect(frames_fields(every.prep) == frames_fields(every_on.prep),
+               "video: every frame is every frame, so the rule is not part of those");
+    }
+
+    // ---- the blur rule sorts photographs as it does video frames ---------------
+    {
+        const fs::path pw = ws.string() + "_photos";
+        SfmJob off;
+        off.prep.workspace = pw.string();
+        PrepInput p;
+        p.path = "/photos";
+        off.prep.inputs = {p};
+        off.camera_model = "opencv";
+        SfmJob on = off, hand = off, in_place = off;
+        set_blur_mode(on.prep, kBlurStandard);
+        set_blur_mode(hand.prep, kBlurManual);
+        hand.prep.blur_px = on.prep.blur_px;
+        set_blur_mode(in_place.prep, kBlurStandard);
+        in_place.prep.photo_import = PhotoImport::InPlace;
+        expect(!(frames_fields(off.prep) == frames_fields(on.prep)),
+               "photos: a blur threshold is part of the frames");
+        expect(!(frames_fields(on.prep) == frames_fields(hand.prep)),
+               "photos: the same threshold set by hand is another run, one that pauses");
+        SfmJob there = off;
+        there.prep.photo_import = PhotoImport::InPlace;
+        expect(frames_fields(there.prep) == frames_fields(in_place.prep),
+               "photos read where they are are never sorted, so the rule is not theirs");
+
+        fs::remove_all(pw);
+        touch(pw / "images" / "a.jpg");
+        touch(pw / "sparse" / "0" / "cameras.bin");
+        StepRecorder rec(pw.string(), DatasetRecord{});
+        for (Step s : {Step::Frames, Step::Masks, Step::Model}) {
+            rec.begin(s, s == Step::Frames  ? frames_fields(on.prep)
+                         : s == Step::Masks ? masks_fields(on.prep)
+                                            : model_fields(on));
+            rec.finish(s);
+        }
+        const DatasetPlan same = plan(on);
+        expect(same[Step::Frames].act == Act::Reuse && same[Step::Model].act == Act::Reuse,
+               "photos: the same threshold keeps the frames and the reconstruction");
+        SfmJob tighter = on;
+        set_blur_mode(tighter.prep, kBlurStrict);
+        const DatasetPlan t = plan(tighter);
+        expect(t[Step::Frames].act == Act::Reuse && t[Step::Frames].sort &&
+                   t[Step::Model].act == Act::Reuse && !t.ask(),
+               "photos: a tighter threshold only leaves more of the same frames out, "
+               "so it sorts them where they lie and keeps the reconstruction");
+        std::ofstream(pw / kSkippedListFile, std::ios::binary)
+            << "# " << blur_rule_text(tighter.prep) << "\n";
+        expect(!plan(tighter)[Step::Frames].sort && plan(on)[Step::Frames].sort &&
+                   plan(on)[Step::Model].act == Act::Reuse,
+               "photos: sorted by it already there is nothing to do, and going back to "
+               "the rule they were made with sorts again without making anything");
+        fs::remove(pw / kSkippedListFile);
+        SfmJob looser = on;
+        set_blur_mode(looser.prep, kBlurLight);
+        const DatasetPlan q = plan(looser);
+        expect(q[Step::Frames].act == Act::Redo && q[Step::Model].act == Act::Redo && q.ask(),
+               "photos: a looser threshold wants frames the dataset never had: made again");
+        const DatasetPlan none = plan(off);
+        expect(none[Step::Frames].act == Act::Redo && none[Step::Model].act == Act::Redo,
+               "photos: so does turning the rule off, which brings the ones left out back");
+    }
+
     // ---- a fresh run over a built dataset -------------------------------------
     build(ws, made);
+    {
+        SfmJob blur = made;
+        set_blur_mode(blur.prep, kBlurStandard);
+        const DatasetPlan b = plan(blur);
+        expect(b[Step::Frames].act == Act::Reuse && b[Step::Frames].sort &&
+                   b[Step::Masks].act == Act::Reuse && b[Step::Model].act == Act::Reuse &&
+                   !b.ask(),
+               "turning the blur rule on over a dataset made without it sorts the frames "
+               "where they lie: nothing is made again and nothing is asked");
+        std::ofstream(ws / kSkippedListFile, std::ios::binary)
+            << "# " << blur_rule_text(blur.prep) << "\n00020.jpg\n";
+        expect(!plan(blur)[Step::Frames].sort, "sorted by that rule already: nothing to do");
+        SfmJob tighter = blur;
+        set_blur_mode(tighter.prep, kBlurStrict);
+        expect(plan(tighter)[Step::Frames].sort && plan(made)[Step::Frames].sort &&
+                   plan(made)[Step::Model].act == Act::Reuse,
+               "another threshold sorts again, and so does turning the rule off, "
+               "which brings the frames back");
+        SfmJob faster = blur;
+        faster.prep.video_fps = 3.0f;
+        const DatasetPlan f = plan(faster);
+        expect(f[Step::Frames].act == Act::Redo && !f[Step::Frames].sort && f.ask(),
+               "a change that is not the rule's still makes the frames again");
+        fs::remove(ws / kSkippedListFile);
+    }
     {
         const DatasetPlan p = plan(made);
         expect(p[Step::Frames].act == Act::Reuse && p[Step::Masks].act == Act::Reuse &&

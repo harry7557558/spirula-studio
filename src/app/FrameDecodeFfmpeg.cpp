@@ -205,6 +205,8 @@ bool decode_lockstep_ffmpeg(const FrameExtractJob& o, const FrameExtractSinks& s
     // Only the best instant of the window is held: the window's argmax, as the
     // built-in decoder takes it, without keeping `keep` pictures a track.
     SelectClock clock{o.keep, o.skip, plan, 0};
+    PickRule rule{o.blur_reject, o.blur_neighbour, o.similar_bits};
+    const bool judge = rule.on() || (bool)sinks.judged;
     std::vector<nn::Image> cur(n), best(n);
     std::vector<double> score(n), score_ms(n);
     std::vector<std::string> errs(n);
@@ -270,6 +272,21 @@ bool decode_lockstep_ffmpeg(const FrameExtractJob& o, const FrameExtractSinks& s
             held = true;
         }
         if (!clock.step(i)) continue;
+        held = false;
+        if (judge) {
+            FramePick p;
+            p.index = best_index;
+            const double t1 = nn::now_ms();
+            measure_pick(p, best[0].data.data(), best[0].width, best[0].height,
+                         rule.max_blur > 0.0f);
+            t.sharpness += nn::now_ms() - t1;
+            rule.judge(p);
+            if (sinks.judged) sinks.judged(p, best[0]);
+            if (p.verdict != PickVerdict::Kept) {
+                ++(p.verdict == PickVerdict::Blurry ? t.blurry : t.similar);
+                continue;
+            }
+        }
         std::string err;
         if (!on_frame(best, best_index, err)) {
             log_line(sinks, "frame " + std::to_string(best_index) + ": " + err);

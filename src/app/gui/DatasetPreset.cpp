@@ -31,6 +31,12 @@ namespace {
     X("adaptive_fps",               sfm.prep.adaptive_fps)                    \
     X("adaptive_range",             sfm.prep.adaptive_range)                  \
     X("sharp_window",               sfm.prep.sharp_window)                    \
+    X("skip_blurry",                sfm.prep.skip_blurry)                     \
+    X("blur_px",                 sfm.prep.blur_px)                      \
+    X("blur_neighbour",             sfm.prep.blur_neighbour)                  \
+    X("similar_bits",               sfm.prep.similar_bits)                    \
+    X("blur_review",                sfm.prep.blur_review)                     \
+    X("keep_skipped",               sfm.prep.keep_skipped)                    \
     X("sync_tracks",                sfm.prep.sync_tracks)                     \
     X("max_frames",                 sfm.prep.max_frames)                      \
     X("auto_rotate",                sfm.prep.auto_rotate)                     \
@@ -226,6 +232,8 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     p.video_fps = std::clamp(p.video_fps, 0.0f, 240.0f);
     p.adaptive_range = std::clamp(p.adaptive_range, 1.0f, 64.0f);
     clamp_to(p.sharp_window, 1, 1000);
+    p.blur_px = std::clamp(p.blur_px, 1.0f, 40.0f);
+    clamp_to(p.similar_bits, 0, 32);
     clamp_to(p.max_frames, 1, 1000000);
     clamp_to(p.mask_detect_every, 1, 1000);
     clamp_to(p.mask_memory_frames, 0, 64);

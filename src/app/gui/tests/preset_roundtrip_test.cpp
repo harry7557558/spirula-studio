@@ -63,6 +63,12 @@ static void test_dataset_preset() {
     s.sfm.prep.adaptive_fps = true;
     s.sfm.prep.adaptive_range = 2.5f;
     s.sfm.prep.sharp_window = 7;
+    s.sfm.prep.skip_blurry = true;
+    s.sfm.prep.blur_px = 12.5f;
+    s.sfm.prep.blur_neighbour = false;
+    s.sfm.prep.similar_bits = 9;
+    s.sfm.prep.blur_review = true;
+    s.sfm.prep.keep_skipped = false;
     s.sfm.prep.sync_tracks = false;
     s.sfm.prep.max_frames = 1234;
     s.sfm.prep.auto_rotate = false;
@@ -201,6 +207,12 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.prep.adaptive_fps, s.sfm.prep.adaptive_fps);
     CHECK_EQ(b.sfm.prep.adaptive_range, s.sfm.prep.adaptive_range);
     CHECK_EQ(b.sfm.prep.sharp_window, s.sfm.prep.sharp_window);
+    CHECK_EQ(b.sfm.prep.skip_blurry, s.sfm.prep.skip_blurry);
+    CHECK_EQ(b.sfm.prep.blur_px, s.sfm.prep.blur_px);
+    CHECK_EQ(b.sfm.prep.blur_neighbour, s.sfm.prep.blur_neighbour);
+    CHECK_EQ(b.sfm.prep.similar_bits, s.sfm.prep.similar_bits);
+    CHECK_EQ(b.sfm.prep.blur_review, s.sfm.prep.blur_review);
+    CHECK_EQ(b.sfm.prep.keep_skipped, s.sfm.prep.keep_skipped);
     CHECK_EQ(b.sfm.prep.sync_tracks, s.sfm.prep.sync_tracks);
     CHECK_EQ(b.sfm.prep.max_frames, s.sfm.prep.max_frames);
     CHECK_EQ(b.sfm.prep.auto_rotate, s.sfm.prep.auto_rotate);

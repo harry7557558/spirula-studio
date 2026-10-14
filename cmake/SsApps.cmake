@@ -411,6 +411,12 @@ add_executable(frame_motion_test
     ${SS_SRC}/app/Pano360.cpp)
 ss_configure_app(frame_motion_test)
 
+# Which chosen frames are left out, and the blur measure behind it: no device.
+add_executable(frame_pick_test
+    ${SS_SRC}/app/tests/frame_pick_test.cpp
+    ${SS_SRC}/app/FrameSharpness.cpp)
+ss_configure_app(frame_pick_test)
+
 add_executable(model_download_test
     ${SS_SRC}/app/tests/model_download_test.cpp
     ${SS_SRC}/app/gui/ModelCache.cpp
@@ -559,6 +565,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/DatasetPrep.cpp
         ${SS_SRC}/app/gui/HeifPhoto.cpp
         ${SS_SRC}/app/gui/FrameSelect.cpp
+        ${SS_SRC}/app/gui/PickSheet.cpp
         ${SS_SRC}/app/FrameSharpness.cpp
         ${SS_SRC}/app/FfmpegVideo.cpp
         ${SS_SRC}/app/gui/PrepProgress.cpp
@@ -583,6 +590,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/DatasetPrep.cpp
         ${SS_SRC}/app/gui/HeifPhoto.cpp
         ${SS_SRC}/app/gui/FrameSelect.cpp
+        ${SS_SRC}/app/gui/PickSheet.cpp
         ${SS_SRC}/app/FrameSharpness.cpp
         ${SS_SRC}/app/FfmpegVideo.cpp
         ${SS_SRC}/app/gui/PrepProgress.cpp

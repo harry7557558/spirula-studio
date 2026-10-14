@@ -249,6 +249,11 @@ void ColmapRunner::take_reconstruction(ColmapJob& job) {
     const bool adaptive = job.adaptive_fps;
     const float range = job.adaptive_range;
     const int sharp = job.sharp_window, maxf = job.max_frames;
+    const bool skip_blurry = job.skip_blurry;
+    const float blur_px = job.blur_px;
+    const bool blur_neighbour = job.blur_neighbour;
+    const int similar_bits = job.similar_bits;
+    const bool keep_skipped = job.keep_skipped;
     job = _live;
     job.inputs = inputs;
     job.workspace = workspace;
@@ -257,6 +262,11 @@ void ColmapRunner::take_reconstruction(ColmapJob& job) {
     job.adaptive_fps = adaptive;
     job.adaptive_range = range;
     job.sharp_window = sharp;
+    job.skip_blurry = skip_blurry;
+    job.blur_px = blur_px;
+    job.blur_neighbour = blur_neighbour;
+    job.similar_bits = similar_bits;
+    job.keep_skipped = keep_skipped;
     job.max_frames = maxf;
 }
 
@@ -441,6 +451,11 @@ PrepJob ColmapRunner::prep_job(const ColmapJob& job) {
     pj.adaptive_fps = job.adaptive_fps;
     pj.adaptive_range = job.adaptive_range;
     pj.sharp_window = job.sharp_window;
+    pj.skip_blurry = job.skip_blurry;
+    pj.blur_px = job.blur_px;
+    pj.blur_neighbour = job.blur_neighbour;
+    pj.similar_bits = job.similar_bits;
+    pj.keep_skipped = job.keep_skipped;
     pj.pano = job.pano;
     pj.max_frames = job.max_frames;
     pj.ffmpeg_exe = job.ffmpeg_exe;
@@ -499,6 +514,8 @@ void ColmapRunner::run(ColmapJob job) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string())) log(l);
         };
         pj.redo_frames = plan[Step::Frames].act == Act::Redo;
+        pj.make_frames = makes(plan[Step::Frames].act);
+        pj.sort_frames = plan[Step::Frames].sort;
         say(Step::Frames);
         if (makes(plan[Step::Frames].act)) record.begin(Step::Frames, frames_fields(pj));
 

@@ -264,6 +264,14 @@ void SfmRunner::take_dense(SfmJob& job) {
     job.dense = _live.dense;
 }
 
+void SfmRunner::take_selection(PrepJob& prep) {
+    std::lock_guard<std::mutex> lk(_mu);
+    prep.skip_blurry = _live.prep.skip_blurry;
+    prep.blur_px = _live.prep.blur_px;
+    prep.blur_neighbour = _live.prep.blur_neighbour;
+    prep.similar_bits = _live.prep.similar_bits;
+}
+
 void SfmRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.prep.mask_enable;
@@ -808,6 +816,8 @@ void SfmRunner::run(SfmJob job) {
                 log(l, /*detail=*/false);
         };
         job.prep.redo_frames = plan[Step::Frames].act == Act::Redo;
+        job.prep.make_frames = makes(plan[Step::Frames].act);
+        job.prep.sort_frames = plan[Step::Frames].sort;
         say(Step::Frames);
         if (makes(plan[Step::Frames].act))
             record.begin(Step::Frames, frames_fields(job.prep));
@@ -845,12 +855,27 @@ void SfmRunner::run(SfmJob job) {
                 if (makes(plan[Step::Masks].act))
                     record.begin(Step::Masks, masks_fields(p));
             };
-            auto done = [&](Stage s, const PrepJob&) {
-                if (s == Stage::Frames) record.finish(Step::Frames, prep.captures);
-                else record.finish(Step::Masks);
+            const StepFields asked = frames_fields(job.prep);
+            auto done = [&](Stage s, const PrepJob& p) {
+                if (s == Stage::Masks) return record.finish(Step::Masks);
+                // A threshold moved while the frames were being looked at.
+                if (makes(plan[Step::Frames].act) && !(frames_fields(p) == asked))
+                    record.begin(Step::Frames, frames_fields(p));
+                record.finish(Step::Frames, prep.captures);
+            };
+            auto review = [&](PrepJob& p) {
+                _prog.fraction(Stage::Frames, 1.0f);
+                _prog.detail(Stage::Frames, lmsg::stage_review_frames.get());
+                _review_go = false;
+                _reviewing = true;
+                while (!_review_go.load() && !_cancel.load())
+                    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+                _reviewing = false;
+                take_selection(p);
+                take_selection(job.prep);
             };
             job.prep.recorded_captures = recorded_captures(ws.string(), job.prep);
-            if (!dp.run(job.prep, prep, err, refresh, done)) return fail(err);
+            if (!dp.run(job.prep, prep, err, refresh, done, review)) return fail(err);
         }
         // Frames a video made, brought back as a folder, still have its sensors.
         for (PrepCapture& c : captures_behind(job.prep)) {

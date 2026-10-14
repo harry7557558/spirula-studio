@@ -105,6 +105,11 @@ struct ColmapJob {
     bool adaptive_fps = false;           // see PrepJob
     float adaptive_range = 4.0f;
     int sharp_window = 3;                // pick sharpest of N candidates (1 = off)
+    bool skip_blurry = false;
+    float blur_px = 8.0f;
+    bool blur_neighbour = true;
+    int similar_bits = 0;
+    bool keep_skipped = true;
     app::Pano360Options pano;            // see PrepJob
     int max_frames = 100000;
 

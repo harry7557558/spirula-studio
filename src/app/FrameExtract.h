@@ -12,6 +12,7 @@
 // decoder ran.
 
 #include "app/FrameLook.h"
+#include "app/FramePick.h"
 #include "app/FrameMotion.h"
 #include "nn/io/Image.h"
 #include "sam/Masking.h"
@@ -58,6 +59,15 @@ struct FrameExtractJob : FrameLook {
     // within `adaptive_range` of it. Costs one extra pass over the first track.
     bool  adaptive = false;
     float adaptive_range = 4.0f;
+    // Which chosen frames are left out after all (app/FramePick.h, PickRule):
+    // blurred across more than `blur_reject` pixels, or too like the last one
+    // kept. 0 = off.
+    float blur_reject = 0.0f;
+    bool  blur_neighbour = true;
+    int   similar_bits = 0;
+    // Where a frame left out is written, as it would have been to image_dir,
+    // so it can still be looked at. Empty writes none. One track, no 360.
+    std::string skipped_dir;
     // The spacing to keep, when the caller has already worked it out: several
     // videos on one rate share a budget, and that plan cannot be made from one
     // of them. Empty lets the run measure and plan its own.
@@ -73,6 +83,7 @@ struct FrameExtractStats {
     double drain = 0, total = 0, encode_cpu = 0;
     double plan = 0;                 // the adaptive pass, decode included
     int64_t decoded = 0, measured = 0, written = 0, analyzed = 0;
+    int64_t blurry = 0, similar = 0; // chosen frames PickRule left out
     int    tracks = 1;
     int    encoder_threads = 0;
     int    write_failures = 0;
@@ -93,6 +104,9 @@ struct FrameExtractSinks {
     // frame it ends at, how many the capture holds, and the view change across
     // it.
     std::function<void(int64_t, int64_t, float)> measured;
+    // Each chosen frame as PickRule rules on it, kept or not, with its first
+    // track's pixels as extraction would write them.
+    std::function<void(const FramePick&, const nn::Image&)> judged;
     // A frame worth showing, RGB8 tightly packed, on the extraction thread with
     // the picture still on the host, and the file it is about to be written to
     // (which the writer pool has not reached yet). Copy what you need and

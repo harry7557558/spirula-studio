@@ -741,6 +741,153 @@ SS_MSG(kept_frames,
     RU("Оставлено кадров: {0} -> {1}"),
     TR("{0} kare tutuldu -> {1}"));
 
+SS_MSG(blurry_skipped,
+    EN("Blurry frames skipped: {0}"),
+    JA("ぶれのため除外したフレーム: {0}"),
+    ZH_HANS("跳过的模糊帧：{0}"),
+    ZH_HANT("略過的模糊影格：{0}"),
+    KO("건너뛴 흐린 프레임: {0}"),
+    DE("Unscharfe Bilder übersprungen: {0}"),
+    FR("Images floues ignorées : {0}"),
+    ES("Fotogramas borrosos omitidos: {0}"),
+    PT("Quadros borrados ignorados: {0}"),
+    IT("Fotogrammi sfocati saltati: {0}"),
+    NL("Onscherpe beelden overgeslagen: {0}"),
+    RU("Пропущено размытых кадров: {0}"),
+    TR("Atlanan bulanık kareler: {0}"));
+
+SS_MSG(similar_skipped,
+    EN("Frames skipped as too similar: {0}"),
+    JA("似すぎのため除外したフレーム: {0}"),
+    ZH_HANS("因过于相似而跳过的帧：{0}"),
+    ZH_HANT("因過於相似而略過的影格：{0}"),
+    KO("너무 비슷해서 건너뛴 프레임: {0}"),
+    DE("Als zu ähnlich übersprungene Bilder: {0}"),
+    FR("Images ignorées car trop semblables : {0}"),
+    ES("Fotogramas omitidos por demasiado parecidos: {0}"),
+    PT("Quadros ignorados por serem parecidos demais: {0}"),
+    IT("Fotogrammi saltati perché troppo simili: {0}"),
+    NL("Als te gelijkend overgeslagen beelden: {0}"),
+    RU("Пропущено слишком похожих кадров: {0}"),
+    TR("Fazla benzer olduğu için atlanan kareler: {0}"));
+
+SS_MSG(stage_review_frames,
+    EN("Waiting for the frames to be reviewed"),
+    JA("フレームの確認を待っています"),
+    ZH_HANS("正在等待检查帧"),
+    ZH_HANT("正在等待檢查影格"),
+    KO("프레임 확인을 기다리는 중"),
+    DE("Warten auf die Durchsicht der Bilder"),
+    FR("En attente de la vérification des images"),
+    ES("Esperando la revisión de los fotogramas"),
+    PT("Aguardando a revisão dos quadros"),
+    IT("In attesa della revisione dei fotogrammi"),
+    NL("Wachten op de controle van de beelden"),
+    RU("Ожидание проверки кадров"),
+    TR("Karelerin gözden geçirilmesi bekleniyor"));
+
+SS_MSG(stage_judging_photos,
+    EN("Measuring how sharp the frames are"),
+    JA("フレームのシャープさを測っています"),
+    ZH_HANS("正在测量帧的清晰度"),
+    ZH_HANT("正在測量影格的清晰度"),
+    KO("프레임의 선명도를 측정하는 중"),
+    DE("Schärfe der Bilder wird gemessen"),
+    FR("Mesure de la netteté des images"),
+    ES("Midiendo la nitidez de los fotogramas"),
+    PT("Medindo a nitidez dos quadros"),
+    IT("Misura della nitidezza dei fotogrammi"),
+    NL("Scherpte van de beelden meten"),
+    RU("Измерение резкости кадров"),
+    TR("Karelerin keskinliği ölçülüyor"));
+
+SS_MSG(skipped_discarded,
+    EN("Skipped frames not kept, deleted: {0}"),
+    JA("除外したフレームは残しません。削除: {0}"),
+    ZH_HANS("未保留被跳过的帧，已删除：{0}"),
+    ZH_HANT("未保留被略過的影格，已刪除：{0}"),
+    KO("건너뛴 프레임을 보관하지 않음, 삭제: {0}"),
+    DE("Übersprungene Bilder nicht aufbewahrt, gelöscht: {0}"),
+    FR("Images ignorées non conservées, supprimées : {0}"),
+    ES("Fotogramas omitidos no conservados, eliminados: {0}"),
+    PT("Quadros ignorados não guardados, apagados: {0}"),
+    IT("Fotogrammi saltati non conservati, eliminati: {0}"),
+    NL("Overgeslagen beelden niet bewaard, verwijderd: {0}"),
+    RU("Пропущенные кадры не сохранены, удалено: {0}"),
+    TR("Atlanan kareler saklanmadı, silinen: {0}"));
+
+SS_MSG(plan_frames_sorted,
+    EN("the blur rule is applied to the frames already there: the ones "
+       "left out move to images_skipped, and what was made from them is "
+       "kept"),
+    JA("すでにあるフレームにぶれの判定を適用します。外したものは images_"
+       "skipped に移し、そこから作ったものは残します"),
+    ZH_HANS("模糊规则应用于已有的帧：被剔除的移到 images_skipped，由它"
+            "们生成的内容保留"),
+    ZH_HANT("模糊規則套用到已有的影格：被剔除的移到 images_skipped，由"
+            "它們建立的內容保留"),
+    KO("이미 있는 프레임에 흐림 규칙을 적용합니다. 빠진 프레임은 ima"
+       "ges_skipped로 옮기고, 그것으로 만든 결과는 유지합니다"),
+    DE("die Unschärferegel wird auf die vorhandenen Bilder angewendet: die"
+       " ausgelassenen wandern nach images_skipped, und was aus ihnen "
+       "erstellt wurde, bleibt"),
+    FR("la règle de flou est appliquée aux images déjà présentes : celles "
+       "écartées vont dans images_skipped, et ce qui en a été tiré est "
+       "conservé"),
+    ES("la regla de desenfoque se aplica a los fotogramas que ya hay: los "
+       "apartados pasan a images_skipped y lo que se hizo con ellos se "
+       "conserva"),
+    PT("a regra de borrão é aplicada aos quadros que já existem: os "
+       "deixados de fora vão para images_skipped e o que foi feito a "
+       "partir deles é mantido"),
+    IT("la regola di sfocatura si applica ai fotogrammi già presenti: "
+       "quelli scartati vanno in images_skipped e ciò che ne è stato "
+       "ricavato resta"),
+    NL("de onscherpteregel wordt toegepast op de aanwezige beelden: de "
+       "weggelaten beelden gaan naar images_skipped, en wat ervan gemaakt "
+       "is blijft"),
+    RU("правило размытия применяется к уже имеющимся кадрам: исключённые "
+       "переносятся в images_skipped, а сделанное из них остаётся"),
+    TR("bulanıklık kuralı mevcut karelere uygulanıyor: dışarıda "
+       "bırakılanlar images_skipped klasörüne taşınır, onlardan "
+       "üretilenler korunur"));
+
+SS_MSG(frames_resorted,
+    EN("Frames that changed sides after the review: {0}"),
+    JA("確認後に振り分けが変わったフレーム: {0}"),
+    ZH_HANS("检查后改变去留的帧：{0}"),
+    ZH_HANT("檢查後改變去留的影格：{0}"),
+    KO("확인 후 분류가 바뀐 프레임: {0}"),
+    DE("Bilder, die nach der Durchsicht die Seite gewechselt haben: {0}"),
+    FR("Images ayant changé de côté après la vérification : {0}"),
+    ES("Fotogramas que cambiaron de lado tras la revisión: {0}"),
+    PT("Quadros que mudaram de lado após a revisão: {0}"),
+    IT("Fotogrammi che hanno cambiato lato dopo la revisione: {0}"),
+    NL("Beelden die na de controle van kant wisselden: {0}"),
+    RU("Кадров, сменивших сторону после проверки: {0}"),
+    TR("Gözden geçirmeden sonra taraf değiştiren kareler: {0}"));
+
+SS_MSG(photos_in_place_unsorted,
+    EN("Photos read where they are stay unsorted: nothing of theirs is "
+       "moved"),
+    JA("元の場所で読み込む写真は仕分けしません。写真は一切移動しません"),
+    ZH_HANS("原地读取的照片不做整理：不会移动其中任何文件"),
+    ZH_HANT("原地讀取的照片不做整理：不會移動其中任何檔案"),
+    KO("제자리에서 읽는 사진은 정리하지 않습니다. 사진은 하나도 옮기지 "
+       "않습니다"),
+    DE("Fotos, die an ihrem Ort gelesen werden, bleiben unsortiert: nichts"
+       " davon wird verschoben"),
+    FR("Les photos lues sur place ne sont pas triées : rien n’est déplacé"),
+    ES("Las fotos leídas en su sitio no se ordenan: no se mueve ninguna"),
+    PT("As fotos lidas no lugar não são organizadas: nada é movido"),
+    IT("Le foto lette dove si trovano non vengono riordinate: nulla viene "
+       "spostato"),
+    NL("Foto’s die ter plekke worden gelezen blijven ongesorteerd: er "
+       "wordt niets verplaatst"),
+    RU("Фотографии, читаемые на месте, не сортируются: ничего не "
+       "перемещается"),
+    TR("Yerinde okunan fotoğraflar ayıklanmaz: hiçbiri taşınmaz"));
+
 SS_MSG(stage_warp_360,
     EN("Warping 360 frames into views"),
     JA("360 フレームを各ビューに変換しています"),

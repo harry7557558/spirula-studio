@@ -52,7 +52,10 @@ same fields however the panel was arranged:
 - Frames: per input that writes images, its path and rate; the decoder,
   selection and unwrap settings only when a video is there to use them. A
   folder of photos depends on nothing else -- photos already gathered are kept
-  whatever the import mode says.
+  whatever the import mode says -- except the blur rule, which sorts gathered
+  photos as it does video frames: its threshold, the neighbour rule and the
+  similarity threshold are fields wherever it applies, listed only when on,
+  and a threshold set by hand is a value of its own because that run pauses.
 - Masks: per input, masks it brought and the stencil drawn on it; the
   segmentation settings, split into those that make training masks and those
   that make `feature_masks/`.
@@ -96,6 +99,37 @@ reconstruction rebuilt that nobody asked to redo. Its other answer -- keep
 them, run the rest -- is `PlanRequest::keep_built`, also a checkbox in the
 list, which turns both into **keep** until the output folder or the inputs
 change.
+
+### Photographs the blur rule left out
+
+Gathering photos copies whatever is not in `images/` yet, which would bring
+back the ones the blur rule deleted from it. So the run that sorts them
+writes their names to `.spirula-skipped`, and a run that keeps the frames
+(`PrepJob::make_frames` false) takes those out again after gathering and
+judges nothing: the frame set a kept reconstruction was made from stays the
+frame set. A run that makes the frames again judges every photo afresh and
+rewrites the list.
+
+### Sorting frames that are already there
+
+Frames made with the blur rule off are every frame the extraction chose, and
+the reconstruction has a camera for each. Turning the rule on afterwards, or
+moving its threshold, therefore makes nothing again: the frames step stays
+"reuse" with `StepPlan::sort` set, `DatasetPrep::sort_frames` measures the
+images where they lie and moves the ones left out to `images_skipped/`, and
+the trainer skips a camera whose image is not in `images/`. The frames record
+keeps the fields the frames were made with; what they are sorted by is the
+first line of `.spirula-skipped`, which the plan compares with the rule on
+screen. Turning the rule off moves everything back.
+
+Frames made WITH the rule work the same way as long as the rule on screen is
+no looser than the one they were made with: it can then only leave out more
+of the frames the dataset has. A looser one wants frames that were never
+reconstructed, so that still makes frames and reconstruction again. The two
+kinds of left-out frame share `images_skipped/` and are told apart by the
+list: `- path` never had a camera and stays aside, a bare path was moved
+aside by a sort and comes back with the next one. Frames of several files --
+`cam0/`, `cam1/` -- are judged by their worst lens and move together.
 
 ### Masks
 

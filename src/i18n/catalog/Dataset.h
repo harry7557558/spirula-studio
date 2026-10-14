@@ -901,6 +901,415 @@ SS_MSG(view_motion,
     RU("Движение"),
     TR("Hareket"));
 
+SS_MSG(view_sharpness,
+    EN("Sharpness"),
+    JA("シャープさ"),
+    ZH_HANS("清晰度"),
+    ZH_HANT("清晰度"),
+    KO("선명도"),
+    DE("Schärfe"),
+    FR("Netteté"),
+    ES("Nitidez"),
+    PT("Nitidez"),
+    IT("Nitidezza"),
+    NL("Scherpte"),
+    RU("Резкость"),
+    TR("Keskinlik"));
+
+SS_MSG(sharpness_preview,
+    EN("This is what these settings would keep, not what the dataset "
+       "holds. Applying them sorts the frames again; the list beside the "
+       "button says what else that redoes."),
+    JA("これは今の設定で残るフレームで、データセットの現状ではありません。適用す"
+       "るとフレームを仕分け直します。ほかに何をやり直すかは、ボタン横の一覧に出"
+       "ます。"),
+    ZH_HANS("这是按当前设置会保留的帧，而不是数据集现有的内容。应用后会重新整理帧；还"
+            "会重做什么，见按钮旁的列表。"),
+    ZH_HANT("這是依目前設定會保留的影格，而不是資料集現有的內容。套用後會重新整理影格"
+            "；還會重做什麼，請看按鈕旁的清單。"),
+    KO("지금 설정으로 남게 될 프레임이며, 데이터셋의 현재 상태가 아닙니"
+       "다. 적용하면 프레임을 다시 정리합니다. 그 밖에 무엇을 다시 하"
+       "는지는 버튼 옆 목록에 나옵니다."),
+    DE("Das ist, was diese Einstellungen behalten würden, nicht was der "
+       "Datensatz enthält. Beim Anwenden werden die Bilder neu sortiert; "
+       "was sonst noch neu gemacht wird, steht in der Liste neben der "
+       "Schaltfläche."),
+    FR("Voici ce que ces réglages garderaient, pas ce que contient le jeu "
+       "de données. Les appliquer trie de nouveau les images ; la liste à "
+       "côté du bouton dit ce qui est refait d’autre."),
+    ES("Esto es lo que conservarían estos ajustes, no lo que contiene el "
+       "conjunto de datos. Al aplicarlos se vuelven a ordenar los "
+       "fotogramas; la lista junto al botón dice qué más se rehace."),
+    PT("Isto é o que estas configurações manteriam, não o que o conjunto "
+       "de dados contém. Aplicá-las organiza os quadros de novo; a lista "
+       "ao lado do botão diz o que mais é refeito."),
+    IT("Questo è ciò che queste impostazioni terrebbero, non ciò che il "
+       "set di dati contiene. Applicandole i fotogrammi vengono "
+       "riordinati; l’elenco accanto al pulsante dice cos’altro viene "
+       "rifatto."),
+    NL("Dit is wat deze instellingen zouden behouden, niet wat de dataset "
+       "bevat. Toepassen sorteert de beelden opnieuw; de lijst naast de "
+       "knop zegt wat er verder opnieuw wordt gedaan."),
+    RU("Это то, что оставили бы эти настройки, а не то, что сейчас в "
+       "наборе данных. При применении кадры сортируются заново; что ещё "
+       "будет переделано, показано в списке рядом с кнопкой."),
+    TR("Bu, bu ayarların tutacağı karelerdir; veri kümesinde şu an olanlar"
+       " değil. Uygulandığında kareler yeniden ayıklanır; başka neyin "
+       "yeniden yapılacağını düğmenin yanındaki liste söyler."));
+
+SS_MSG(sharpness_apply,
+    EN("Apply to the dataset"),
+    JA("データセットに適用"),
+    ZH_HANS("应用到数据集"),
+    ZH_HANT("套用到資料集"),
+    KO("데이터셋에 적용"),
+    DE("Auf den Datensatz anwenden"),
+    FR("Appliquer au jeu de données"),
+    ES("Aplicar al conjunto de datos"),
+    PT("Aplicar ao conjunto de dados"),
+    IT("Applica al set di dati"),
+    NL("Toepassen op de dataset"),
+    RU("Применить к набору данных"),
+    TR("Veri kümesine uygula"));
+
+SS_MSG(sharpness_view_help,
+    EN("Every frame the run chose, in order, coloured by how blurred it "
+       "is: green for sharp, red for twice the threshold. The ones left "
+       "out are hollow or dimmed. Move a setting to see what it would "
+       "keep, click a frame to look at it closely, and hold Ctrl while "
+       "scrolling to resize the pictures."),
+    JA("処理が選んだすべてのフレームを順に並べ、ぶれの大きさで色分けします。緑は"
+       "シャープ、赤はしきい値の 2 倍です。除外されたものは枠だけ、または暗く"
+       "表示されます。設定を動かすと何が残るかが分かり、フレームをクリックすると"
+       "拡大して確認できます。Ctrl を押しながらスクロールすると画像の大きさ"
+       "を変えられます。"),
+    ZH_HANS("按顺序列出运行选中的每一帧，并按模糊程度着色：绿色表示清晰，红色表示达到"
+            "阈值的两倍。被剔除的帧显示为空心或变暗。调整设置可查看会保留哪些帧，点击"
+            "某一帧可放大查看，按住 Ctrl 滚动可调整图片大小。"),
+    ZH_HANT("依序列出執行選中的每個影格，並依模糊程度著色：綠色表示清晰，紅色表示達到"
+            "閾值的兩倍。被剔除的影格顯示為空心或變暗。調整設定可查看會保留哪些影格，"
+            "點選某個影格可放大查看，按住 Ctrl 捲動可調整圖片大小。"),
+    KO("실행에서 고른 모든 프레임을 순서대로 보여 주며, 흐린 정도에 따"
+       "라 색을 입힙니다. 초록은 선명함, 빨강은 임계값의 두 배입니다."
+       " 빠진 프레임은 속이 비거나 어둡게 표시됩니다. 설정을 움직이면 "
+       "무엇이 남는지 볼 수 있고, 프레임을 클릭하면 크게 볼 수 있으며"
+       ", Ctrl을 누른 채 스크롤하면 그림 크기가 바뀝니다."),
+    DE("Alle Bilder, die der Lauf gewählt hat, in ihrer Reihenfolge, "
+       "gefärbt nach ihrer Unschärfe: Grün für scharf, Rot für das "
+       "Doppelte der Schwelle. Ausgelassene Bilder sind hohl oder "
+       "abgedunkelt. Eine Einstellung verschieben zeigt, was sie behalten "
+       "würde, ein Klick auf ein Bild zeigt es aus der Nähe, und mit Strg "
+       "beim Scrollen ändert sich die Bildgröße."),
+    FR("Toutes les images choisies par le traitement, dans l’ordre, "
+       "colorées selon leur flou : vert pour net, rouge pour le double du "
+       "seuil. Celles qui sont écartées sont creuses ou assombries. "
+       "Déplacez un réglage pour voir ce qu’il garderait, cliquez sur une "
+       "image pour la regarder de près, et maintenez Ctrl en faisant "
+       "défiler pour changer la taille des images."),
+    ES("Todos los fotogramas que eligió el proceso, en orden, coloreados "
+       "según su desenfoque: verde para nítido, rojo para el doble del "
+       "umbral. Los descartados aparecen huecos o atenuados. Mueva un "
+       "ajuste para ver qué conservaría, haga clic en un fotograma para "
+       "verlo de cerca y mantenga Ctrl al desplazar para cambiar el tamaño"
+       " de las imágenes."),
+    PT("Todos os quadros que a execução escolheu, em ordem, coloridos pelo"
+       " quanto estão borrados: verde para nítido, vermelho para o dobro "
+       "do limiar. Os deixados de fora aparecem vazados ou escurecidos. "
+       "Mova uma configuração para ver o que ela manteria, clique em um "
+       "quadro para vê-lo de perto e segure Ctrl ao rolar para mudar o "
+       "tamanho das imagens."),
+    IT("Tutti i fotogrammi scelti dall’esecuzione, in ordine, colorati in "
+       "base alla sfocatura: verde per nitido, rosso per il doppio della "
+       "soglia. Quelli scartati sono vuoti o attenuati. Sposta "
+       "un’impostazione per vedere cosa terrebbe, fai clic su un "
+       "fotogramma per guardarlo da vicino e tieni premuto Ctrl mentre "
+       "scorri per cambiare la dimensione delle immagini."),
+    NL("Alle beelden die de run heeft gekozen, op volgorde, gekleurd naar "
+       "hun onscherpte: groen voor scherp, rood voor twee keer de drempel."
+       " De weggelaten beelden zijn hol of gedimd. Verschuif een "
+       "instelling om te zien wat die zou behouden, klik op een beeld om "
+       "het van dichtbij te bekijken en houd Ctrl ingedrukt tijdens het "
+       "scrollen om de beelden groter of kleiner te maken."),
+    RU("Все кадры, выбранные при запуске, по порядку, окрашенные по "
+       "степени размытия: зелёный — резкий, красный — вдвое больше порога."
+       " Исключённые кадры показаны пустыми или затемнёнными. Сдвиньте "
+       "настройку, чтобы увидеть, что она оставит, щёлкните кадр, чтобы "
+       "рассмотреть его, и прокручивайте с нажатой Ctrl, чтобы изменить "
+       "размер картинок."),
+    TR("Çalışmanın seçtiği tüm kareler sırayla, bulanıklığına göre "
+       "renklendirilmiş olarak gösterilir: yeşil net, kırmızı eşiğin iki "
+       "katı demektir. Dışarıda bırakılanlar içi boş veya soluk görünür. "
+       "Neyi tutacağını görmek için bir ayarı kaydırın, yakından bakmak "
+       "için bir kareye tıklayın, resimleri boyutlandırmak için "
+       "kaydırırken Ctrl tuşunu basılı tutun."));
+
+SS_MSG(sharpness_counts,
+    EN("{0}: kept {1}, blurry {2}, too similar {3}"),
+    JA("{0}: 残す {1}、ぶれ {2}、似すぎ {3}"),
+    ZH_HANS("{0}：保留 {1}，模糊 {2}，过于相似 {3}"),
+    ZH_HANT("{0}：保留 {1}，模糊 {2}，過於相似 {3}"),
+    KO("{0}: 유지 {1}, 흐림 {2}, 너무 비슷함 {3}"),
+    DE("{0}: behalten {1}, unscharf {2}, zu ähnlich {3}"),
+    FR("{0} : gardées {1}, floues {2}, trop semblables {3}"),
+    ES("{0}: conservados {1}, borrosos {2}, demasiado parecidos {3}"),
+    PT("{0}: mantidos {1}, borrados {2}, parecidos demais {3}"),
+    IT("{0}: tenuti {1}, sfocati {2}, troppo simili {3}"),
+    NL("{0}: behouden {1}, onscherp {2}, te gelijkend {3}"),
+    RU("{0}: оставлено {1}, размытых {2}, слишком похожих {3}"),
+    TR("{0}: tutulan {1}, bulanık {2}, fazla benzer {3}"));
+
+SS_MSG(pick_kept,
+    EN("Frame {0}, kept: blurred about {1} px"),
+    JA("フレーム {0}、残す: ぶれ約 {1} px"),
+    ZH_HANS("帧 {0}，保留：模糊约 {1} px"),
+    ZH_HANT("影格 {0}，保留：模糊約 {1} px"),
+    KO("프레임 {0}, 유지: 흐림 약 {1} px"),
+    DE("Bild {0}, behalten: etwa {1} px unscharf"),
+    FR("Image {0}, gardée : flou d’environ {1} px"),
+    ES("Fotograma {0}, conservado: desenfoque de unos {1} px"),
+    PT("Quadro {0}, mantido: borrão de cerca de {1} px"),
+    IT("Fotogramma {0}, tenuto: sfocatura di circa {1} px"),
+    NL("Beeld {0}, behouden: ongeveer {1} px onscherp"),
+    RU("Кадр {0}, оставлен: размытие около {1} px"),
+    TR("Kare {0}, tutuldu: yaklaşık {1} px bulanık"));
+
+SS_MSG(pick_blurry,
+    EN("Frame {0}, skipped as blurry: blurred about {1} px"),
+    JA("フレーム {0}、ぶれのため除外: ぶれ約 {1} px"),
+    ZH_HANS("帧 {0}，因模糊跳过：模糊约 {1} px"),
+    ZH_HANT("影格 {0}，因模糊略過：模糊約 {1} px"),
+    KO("프레임 {0}, 흐려서 건너뜀: 흐림 약 {1} px"),
+    DE("Bild {0}, als unscharf übersprungen: etwa {1} px unscharf"),
+    FR("Image {0}, ignorée car floue : flou d’environ {1} px"),
+    ES("Fotograma {0}, omitido por borroso: desenfoque de unos {1} px"),
+    PT("Quadro {0}, ignorado por estar borrado: borrão de cerca de {1} px"),
+    IT("Fotogramma {0}, saltato perché sfocato: sfocatura di circa {1} px"),
+    NL("Beeld {0}, overgeslagen als onscherp: ongeveer {1} px onscherp"),
+    RU("Кадр {0}, пропущен как размытый: размытие около {1} px"),
+    TR("Kare {0}, bulanık olduğu için atlandı: yaklaşık {1} px bulanık"));
+
+SS_MSG(pick_similar,
+    EN("Frame {0}, skipped as too similar to the last kept frame "
+       "(fingerprint bits that differ, of 64: {1})"),
+    JA("フレーム {0}、似すぎのため除外 (直前に残したフレームと違う指紋ビッ"
+       "ト、64 中: {1})"),
+    ZH_HANS("帧 {0}，过于相似，跳过（与上一个保留帧不同的指纹位，64 位中："
+            "{1}）"),
+    ZH_HANT("影格 {0}，過於相似，略過（與上一個保留的影格不同的指紋位元，64 位"
+            "元中：{1}）"),
+    KO("프레임 {0}, 너무 비슷해 건너뜀 (마지막으로 남긴 프레임과 다"
+       "른 지문 비트, 64비트 중: {1})"),
+    DE("Bild {0}, als zu ähnlich übersprungen (Bits des Fingerabdrucks, "
+       "die sich vom zuletzt behaltenen Bild unterscheiden, von 64: {1})"),
+    FR("Image {0}, ignorée car trop semblable à la dernière image gardée "
+       "(bits de l’empreinte qui diffèrent, sur 64 : {1})"),
+    ES("Fotograma {0}, omitido por parecerse demasiado al último "
+       "conservado (bits de la huella que difieren, de 64: {1})"),
+    PT("Quadro {0}, ignorado por ser parecido demais com o último mantido "
+       "(bits da impressão digital que diferem, de 64: {1})"),
+    IT("Fotogramma {0}, saltato perché troppo simile all’ultimo tenuto "
+       "(bit dell’impronta che differiscono, su 64: {1})"),
+    NL("Beeld {0}, overgeslagen als te gelijkend op het laatst behouden "
+       "beeld (vingerafdrukbits die verschillen, van 64: {1})"),
+    RU("Кадр {0}, пропущен как слишком похожий на последний оставленный "
+       "(отличается бит отпечатка, из 64: {1})"),
+    TR("Kare {0}, son tutulan kareye fazla benzediği için atlandı (farklı "
+       "parmak izi biti, 64 bitten: {1})"));
+
+SS_MSG(pick_unmeasured,
+    EN("Frame {0}: its blur was not measured"),
+    JA("フレーム {0}: ぶれは測っていません"),
+    ZH_HANS("帧 {0}：未测量模糊"),
+    ZH_HANT("影格 {0}：未測量模糊"),
+    KO("프레임 {0}: 흐림을 측정하지 않았습니다"),
+    DE("Bild {0}: Unschärfe wurde nicht gemessen"),
+    FR("Image {0} : son flou n’a pas été mesuré"),
+    ES("Fotograma {0}: no se midió su desenfoque"),
+    PT("Quadro {0}: o borrão não foi medido"),
+    IT("Fotogramma {0}: la sfocatura non è stata misurata"),
+    NL("Beeld {0}: onscherpte is niet gemeten"),
+    RU("Кадр {0}: размытие не измерялось"),
+    TR("Kare {0}: bulanıklığı ölçülmedi"));
+
+SS_MSG(review_continue,
+    EN("Continue with these frames"),
+    JA("これらのフレームで続行"),
+    ZH_HANS("用这些帧继续"),
+    ZH_HANT("用這些影格繼續"),
+    KO("이 프레임으로 계속"),
+    DE("Mit diesen Bildern fortfahren"),
+    FR("Continuer avec ces images"),
+    ES("Continuar con estos fotogramas"),
+    PT("Continuar com estes quadros"),
+    IT("Continua con questi fotogrammi"),
+    NL("Doorgaan met deze beelden"),
+    RU("Продолжить с этими кадрами"),
+    TR("Bu karelerle devam et"));
+
+SS_MSG(review_hint,
+    EN("The frames are out and the run is waiting. Set the thresholds, "
+       "look at what is left out, then continue: masks, reconstruction and"
+       " depth are made once, from the frames kept."),
+    JA("フレームの取り出しが終わり、処理は待機中です。しきい値を決めて除外される"
+       "ものを確かめてから続行してください。マスク、再構成、深度は残したフレーム"
+       "から一度だけ作られます。"),
+    ZH_HANS("帧已提取完毕，运行正在等待。设置阈值，查看被剔除的帧，然后继续：蒙版、重"
+            "建和深度只会用保留的帧生成一次。"),
+    ZH_HANT("影格已擷取完畢，執行正在等待。設定閾值，查看被剔除的影格，然後繼續：遮罩"
+            "、重建和深度只會用保留的影格建立一次。"),
+    KO("프레임 추출이 끝났고 실행이 기다리고 있습니다. 임계값을 정하고 "
+       "빠지는 프레임을 확인한 뒤 계속하세요. 마스크, 재구성, 깊이는 "
+       "남긴 프레임으로 한 번만 만듭니다."),
+    DE("Die Bilder sind entnommen, und der Lauf wartet. Schwellen "
+       "einstellen, ansehen, was ausgelassen wird, dann fortfahren: "
+       "Masken, Rekonstruktion und Tiefe werden einmal erstellt, aus den "
+       "behaltenen Bildern."),
+    FR("Les images sont extraites et le traitement attend. Réglez les "
+       "seuils, regardez ce qui est écarté, puis continuez : masques, "
+       "reconstruction et profondeur sont faits une seule fois, à partir "
+       "des images gardées."),
+    ES("Los fotogramas ya están extraídos y el proceso espera. Ajuste los "
+       "umbrales, mire lo que se descarta y continúe: las máscaras, la "
+       "reconstrucción y la profundidad se hacen una sola vez, con los "
+       "fotogramas conservados."),
+    PT("Os quadros já foram extraídos e a execução está esperando. Ajuste "
+       "os limiares, veja o que fica de fora e continue: máscaras, "
+       "reconstrução e profundidade são feitas uma única vez, a partir dos"
+       " quadros mantidos."),
+    IT("I fotogrammi sono stati estratti e l’esecuzione attende. Imposta "
+       "le soglie, guarda cosa viene scartato, poi continua: maschere, "
+       "ricostruzione e profondità vengono fatte una sola volta, dai "
+       "fotogrammi tenuti."),
+    NL("De beelden zijn uitgenomen en de run wacht. Stel de drempels in, "
+       "bekijk wat wordt weggelaten en ga dan door: maskers, reconstructie"
+       " en diepte worden één keer gemaakt, van de behouden beelden."),
+    RU("Кадры извлечены, запуск ждёт. Задайте пороги, посмотрите, что "
+       "исключается, и продолжайте: маски, реконструкция и глубина "
+       "делаются один раз, из оставленных кадров."),
+    TR("Kareler çıkarıldı ve çalışma bekliyor. Eşikleri ayarlayın, nelerin"
+       " dışarıda kaldığına bakın, sonra devam edin: maskeler, yeniden "
+       "kurma ve derinlik, tutulan karelerden bir kez üretilir."));
+
+SS_MSG(pick_back,
+    EN("Back to all frames"),
+    JA("すべてのフレームに戻る"),
+    ZH_HANS("返回全部帧"),
+    ZH_HANT("返回全部影格"),
+    KO("모든 프레임으로 돌아가기"),
+    DE("Zurück zu allen Bildern"),
+    FR("Retour à toutes les images"),
+    ES("Volver a todos los fotogramas"),
+    PT("Voltar a todos os quadros"),
+    IT("Torna a tutti i fotogrammi"),
+    NL("Terug naar alle beelden"),
+    RU("Назад ко всем кадрам"),
+    TR("Tüm karelere dön"));
+
+SS_MSG(pick_no_file,
+    EN("The full frame is not on disk; this is its thumbnail."),
+    JA("フレーム本体はディスクにありません。これはサムネイルです。"),
+    ZH_HANS("完整的帧不在磁盘上；这是它的缩略图。"),
+    ZH_HANT("完整的影格不在磁碟上；這是它的縮圖。"),
+    KO("원본 프레임이 디스크에 없습니다. 이것은 미리보기입니다."),
+    DE("Das volle Bild liegt nicht auf der Festplatte; dies ist seine "
+       "Vorschau."),
+    FR("L’image complète n’est pas sur le disque ; ceci est sa vignette."),
+    ES("El fotograma completo no está en el disco; esta es su miniatura."),
+    PT("O quadro completo não está no disco; esta é a miniatura."),
+    IT("Il fotogramma intero non è sul disco; questa è la sua miniatura."),
+    NL("Het volledige beeld staat niet op schijf; dit is de miniatuur."),
+    RU("Полного кадра на диске нет; это его миниатюра."),
+    TR("Karenin tamamı diskte yok; bu onun küçük resmi."));
+
+SS_MSG(pick_view_help,
+    EN("Scroll to zoom, drag to move, double-click for 1:1 or to fit. The "
+       "arrow keys step to the next frame and Esc goes back."),
+    JA("スクロールで拡大縮小、ドラッグで移動、ダブルクリックで等倍または全体表示"
+       "。矢印キーで次のフレームへ、Esc で戻ります。"),
+    ZH_HANS("滚动缩放，拖动平移，双击切换 1:1 或适应窗口。方向键切换到下一帧，E"
+            "sc 返回。"),
+    ZH_HANT("捲動縮放，拖曳平移，按兩下切換 1:1 或符合視窗。方向鍵切換到下一個影"
+            "格，Esc 返回。"),
+    KO("스크롤로 확대/축소, 끌어서 이동, 두 번 클릭하면 1:1 또는 "
+       "화면 맞춤. 화살표 키로 다음 프레임으로 가고 Esc로 돌아갑니다"
+       "."),
+    DE("Scrollen zoomt, Ziehen verschiebt, Doppelklick zeigt 1:1 oder "
+       "passt ein. Die Pfeiltasten gehen zum nächsten Bild, Esc geht "
+       "zurück."),
+    FR("Faites défiler pour zoomer, glissez pour déplacer, double-cliquez "
+       "pour 1:1 ou pour ajuster. Les flèches passent à l’image suivante "
+       "et Échap revient en arrière."),
+    ES("Desplace para ampliar, arrastre para mover, doble clic para 1:1 o "
+       "para ajustar. Las flechas pasan al siguiente fotograma y Esc "
+       "vuelve atrás."),
+    PT("Role para ampliar, arraste para mover, clique duas vezes para 1:1 "
+       "ou para ajustar. As setas passam ao próximo quadro e Esc volta."),
+    IT("Scorri per ingrandire, trascina per spostare, doppio clic per 1:1 "
+       "o per adattare. I tasti freccia passano al fotogramma successivo "
+       "ed Esc torna indietro."),
+    NL("Scrollen om te zoomen, slepen om te verplaatsen, dubbelklikken "
+       "voor 1:1 of passend. De pijltoetsen gaan naar het volgende beeld "
+       "en Esc gaat terug."),
+    RU("Прокрутка — масштаб, перетаскивание — сдвиг, двойной щелчок — 1:1 "
+       "или вписать. Стрелки переходят к следующему кадру, Esc возвращает "
+       "назад."),
+    TR("Yakınlaştırmak için kaydırın, taşımak için sürükleyin, 1:1 veya "
+       "sığdırmak için çift tıklayın. Ok tuşları sonraki kareye geçer, Esc"
+       " geri döner."));
+
+SS_MSG(blur_off_hint,
+    EN("Blur is measured only while blurry frames are being skipped. "
+       "Choose that under Skip blurry frames and create the dataset again "
+       "to see it for each frame."),
+    JA("ぶれは、ぶれたフレームを除外しているときだけ測ります。「ぶれたフレームを"
+       "除外」で選び、データセットを作り直すと、フレームごとに表示されます。"),
+    ZH_HANS("只有在跳过模糊帧时才会测量模糊。请在“跳过模糊帧”中选择，然后重新创建数"
+            "据集，即可看到每一帧的模糊程度。"),
+    ZH_HANT("只有在略過模糊影格時才會測量模糊。請在「略過模糊影格」中選擇，然後重新建"
+            "立資料集，即可看到每個影格的模糊程度。"),
+    KO("흐림은 흐린 프레임을 건너뛸 때만 측정합니다. ‘흐린 프레임 건너"
+       "뛰기’에서 선택하고 데이터셋을 다시 만들면 프레임마다 볼 수 있습"
+       "니다."),
+    DE("Unschärfe wird nur gemessen, solange unscharfe Bilder übersprungen"
+       " werden. Unter „Unscharfe Bilder überspringen“ wählen und den "
+       "Datensatz neu erstellen, um sie für jedes Bild zu sehen."),
+    FR("Le flou n’est mesuré que lorsque les images floues sont ignorées. "
+       "Choisissez-le sous « Ignorer les images floues » et recréez le jeu"
+       " de données pour le voir pour chaque image."),
+    ES("El desenfoque solo se mide mientras se omiten los fotogramas "
+       "borrosos. Elíjalo en «Omitir fotogramas borrosos» y vuelva a crear"
+       " el conjunto de datos para verlo en cada fotograma."),
+    PT("O borrão só é medido enquanto os quadros borrados estão sendo "
+       "ignorados. Escolha isso em “Ignorar quadros borrados” e crie o "
+       "conjunto de dados de novo para vê-lo em cada quadro."),
+    IT("La sfocatura viene misurata solo mentre si saltano i fotogrammi "
+       "sfocati. Sceglilo in «Salta i fotogrammi sfocati» e crea di nuovo "
+       "il set di dati per vederla su ogni fotogramma."),
+    NL("Onscherpte wordt alleen gemeten zolang onscherpe beelden worden "
+       "overgeslagen. Kies dat onder ‘Onscherpe beelden overslaan’ en maak"
+       " de dataset opnieuw om het voor elk beeld te zien."),
+    RU("Размытие измеряется, только когда размытые кадры пропускаются. "
+       "Выберите это в пункте «Пропускать размытые кадры» и создайте набор"
+       " данных заново, чтобы увидеть его для каждого кадра."),
+    TR("Bulanıklık yalnızca bulanık kareler atlanırken ölçülür. Bunu "
+       "“Bulanık kareleri atla” altında seçin ve her kare için görmek "
+       "üzere veri kümesini yeniden oluşturun."));
+
+SS_MSG(scan_picture_size,
+    EN("Picture size"),
+    JA("画像サイズ"),
+    ZH_HANS("图片大小"),
+    ZH_HANT("圖片大小"),
+    KO("그림 크기"),
+    DE("Bildgröße"),
+    FR("Taille des images"),
+    ES("Tamaño de imagen"),
+    PT("Tamanho da imagem"),
+    IT("Dimensione immagini"),
+    NL("Beeldgrootte"),
+    RU("Размер картинок"),
+    TR("Resim boyutu"));
+
 SS_MSG(scan_photos,
     EN("{0} photographs, nothing to measure"),
     JA("写真 {0} 枚、測るものはありません"),
@@ -930,6 +1339,21 @@ SS_MSG(scan_kept_frames,
     NL("{0} beelden gehouden"),
     RU("оставлено кадров: {0}"),
     TR("{0} kare tutuldu"));
+
+SS_MSG(scan_show_pictures,
+    EN("Show the frames"),
+    JA("フレームを表示"),
+    ZH_HANS("显示帧"),
+    ZH_HANT("顯示影格"),
+    KO("프레임 보기"),
+    DE("Bilder anzeigen"),
+    FR("Afficher les images"),
+    ES("Mostrar los fotogramas"),
+    PT("Mostrar os quadros"),
+    IT("Mostra i fotogrammi"),
+    NL("Beelden tonen"),
+    RU("Показывать кадры"),
+    TR("Kareleri göster"));
 
 SS_MSG(frame_spacing_help,
     EN("Left to right is the length of the capture. A tall bar is a stretch "
@@ -3357,6 +3781,826 @@ SS_MSG(pano360_colmap_warning,
        "стройте встроенным движком."),
     TR("COLMAP'te küresel kamera yok. Perspektif görünümleri seçin ya da "
        "yerleşik motorla geri çatın."));
+
+SS_MSG(skip_blurry,
+    EN("Skip blurry frames"),
+    JA("ぶれたフレームを除外"),
+    ZH_HANS("跳过模糊帧"),
+    ZH_HANT("略過模糊影格"),
+    KO("흐린 프레임 건너뛰기"),
+    DE("Unscharfe Bilder überspringen"),
+    FR("Ignorer les images floues"),
+    ES("Omitir fotogramas borrosos"),
+    PT("Ignorar quadros borrados"),
+    IT("Salta i fotogrammi sfocati"),
+    NL("Onscherpe beelden overslaan"),
+    RU("Пропускать размытые кадры"),
+    TR("Bulanık kareleri atla"));
+
+SS_MSG(skip_blurry_help,
+    EN("Leave out the frames blurred past the threshold. The blur is "
+       "measured on each frame by itself, from how wide its edges are: "
+       "video frames, image sequences and photographs alike."),
+    JA("しきい値を超えてぶれたフレームを除外します。ぶれはフレームごとにエッジの"
+       "幅から測るので、動画のフレーム、連番画像、写真のどれでも同じです。"),
+    ZH_HANS("剔除模糊超过阈值的帧。模糊按每一帧自身的边缘宽度测量：视频帧、图像序列和"
+            "照片都一样。"),
+    ZH_HANT("剔除模糊超過閾值的影格。模糊依每個影格自身的邊緣寬度測量：視訊影格、影像"
+            "序列和照片都一樣。"),
+    KO("임계값보다 더 흐린 프레임을 뺍니다. 흐림은 각 프레임의 가장자리"
+       " 폭으로 측정하므로 동영상 프레임, 이미지 시퀀스, 사진 모두 같"
+       "습니다."),
+    DE("Lässt die Bilder aus, die über die Schwelle hinaus unscharf sind. "
+       "Die Unschärfe wird an jedem Bild für sich gemessen, an der Breite "
+       "seiner Kanten: Videobilder, Bildsequenzen und Fotos gleichermaßen."),
+    FR("Écarte les images floues au-delà du seuil. Le flou est mesuré sur "
+       "chaque image, d’après la largeur de ses contours : images de "
+       "vidéo, séquences d’images et photos de la même façon."),
+    ES("Descarta los fotogramas desenfocados más allá del umbral. El "
+       "desenfoque se mide en cada fotograma por sí solo, por el ancho de "
+       "sus bordes: fotogramas de vídeo, secuencias de imágenes y "
+       "fotografías por igual."),
+    PT("Deixa de fora os quadros borrados além do limiar. O borrão é "
+       "medido em cada quadro, pela largura das suas bordas: quadros de "
+       "vídeo, sequências de imagens e fotografias da mesma forma."),
+    IT("Scarta i fotogrammi sfocati oltre la soglia. La sfocatura si "
+       "misura su ogni fotogramma, dalla larghezza dei suoi bordi: "
+       "fotogrammi video, sequenze di immagini e fotografie allo stesso "
+       "modo."),
+    NL("Laat de beelden weg die voorbij de drempel onscherp zijn. De "
+       "onscherpte wordt op elk beeld afzonderlijk gemeten, aan de breedte"
+       " van de randen: videobeelden, beeldreeksen en foto’s op dezelfde "
+       "manier."),
+    RU("Исключает кадры, размытые сильнее порога. Размытие измеряется по "
+       "самому кадру, по ширине его границ: одинаково для кадров видео, "
+       "последовательностей изображений и фотографий."),
+    TR("Eşiğin ötesinde bulanık olan kareleri dışarıda bırakır. Bulanıklık"
+       " her karenin kendisinde, kenarlarının genişliğinden ölçülür: video"
+       " kareleri, görüntü dizileri ve fotoğraflar için aynı şekilde."));
+
+SS_MSG(blur_mode,
+    EN("Skip blurry frames"),
+    JA("ぶれたフレームを除外"),
+    ZH_HANS("跳过模糊帧"),
+    ZH_HANT("略過模糊影格"),
+    KO("흐린 프레임 건너뛰기"),
+    DE("Unscharfe Bilder überspringen"),
+    FR("Ignorer les images floues"),
+    ES("Omitir fotogramas borrosos"),
+    PT("Ignorar quadros borrados"),
+    IT("Salta i fotogrammi sfocati"),
+    NL("Onscherpe beelden overslaan"),
+    RU("Пропускать размытые кадры"),
+    TR("Bulanık kareleri atla"));
+
+SS_MSG(blur_mode_help,
+    EN("What to do with frames smeared by camera shake or motion. The blur"
+       " is measured on each frame by itself, from how wide its edges are,"
+       " so video, image sequences and photographs are treated alike. Each"
+       " choice in the list says what it leaves out; only Set by hand "
+       "pauses the run."),
+    JA("手ぶれや動きで流れたフレームをどう扱うかを選びます。ぶれはフレームごとに"
+       "エッジの幅から測るので、動画、連番画像、写真のどれも同じ扱いです。一覧の"
+       "各項目に、何を除外するかが書いてあります。処理を一時停止するのは「手動で"
+       "設定」だけです。"),
+    ZH_HANS("选择如何处理因相机抖动或运动而模糊的帧。模糊按每一帧自身的边缘宽度测量，"
+            "因此视频、图像序列和照片的处理方式相同。列表中的每一项都说明它会剔除什么"
+            "；只有“手动设置”会暂停运行。"),
+    ZH_HANT("選擇如何處理因相機晃動或運動而模糊的影格。模糊依每個影格自身的邊緣寬度測"
+            "量，因此視訊、影像序列和照片的處理方式相同。清單中的每一項都說明它會剔除"
+            "什麼；只有「手動設定」會暫停執行。"),
+    KO("카메라 흔들림이나 움직임으로 번진 프레임을 어떻게 할지 정합니다."
+       " 흐림은 각 프레임의 가장자리 폭으로 측정하므로 동영상, 이미지 "
+       "시퀀스, 사진을 똑같이 다룹니다. 목록의 각 항목에 무엇을 빼는지"
+       " 적혀 있으며, 실행을 멈추는 것은 ‘직접 설정’뿐입니다."),
+    DE("Was mit Bildern geschieht, die durch Verwackeln oder Bewegung "
+       "verwischt sind. Die Unschärfe wird an jedem Bild für sich "
+       "gemessen, an der Breite seiner Kanten, sodass Video, Bildsequenzen"
+       " und Fotos gleich behandelt werden. Jeder Eintrag der Liste sagt, "
+       "was er auslässt; nur „Von Hand einstellen“ hält den Lauf an."),
+    FR("Que faire des images brouillées par un bougé ou un mouvement de la"
+       " caméra. Le flou est mesuré sur chaque image, d’après la largeur "
+       "de ses contours ; vidéo, séquences d’images et photos sont donc "
+       "traitées de la même façon. Chaque choix de la liste dit ce qu’il "
+       "écarte ; seul « Régler à la main » met le traitement en pause."),
+    ES("Qué hacer con los fotogramas emborronados por el temblor o el "
+       "movimiento de la cámara. El desenfoque se mide en cada fotograma "
+       "por sí solo, por el ancho de sus bordes, así que el vídeo, las "
+       "secuencias de imágenes y las fotografías se tratan igual. Cada "
+       "opción de la lista dice qué descarta; solo «Ajustar a mano» pausa "
+       "el proceso."),
+    PT("O que fazer com os quadros borrados por tremor ou movimento da "
+       "câmera. O borrão é medido em cada quadro, pela largura das suas "
+       "bordas, de modo que vídeo, sequências de imagens e fotografias são"
+       " tratados da mesma forma. Cada opção da lista diz o que deixa de "
+       "fora; só “Ajustar à mão” pausa a execução."),
+    IT("Cosa fare dei fotogrammi mossi per il tremolio o il movimento "
+       "della fotocamera. La sfocatura si misura su ogni fotogramma, dalla"
+       " larghezza dei suoi bordi, quindi video, sequenze di immagini e "
+       "fotografie sono trattati allo stesso modo. Ogni voce dell’elenco "
+       "dice cosa scarta; solo «Imposta a mano» mette in pausa "
+       "l’esecuzione."),
+    NL("Wat er gebeurt met beelden die door cameratrilling of beweging "
+       "zijn vervaagd. De onscherpte wordt op elk beeld afzonderlijk "
+       "gemeten, aan de breedte van de randen, zodat video, beeldreeksen "
+       "en foto’s gelijk worden behandeld. Elke keuze in de lijst zegt wat"
+       " ze weglaat; alleen ‘Met de hand instellen’ pauzeert de run."),
+    RU("Что делать с кадрами, смазанными из-за дрожания камеры или "
+       "движения. Размытие измеряется по самому кадру, по ширине его "
+       "границ, поэтому видео, последовательности изображений и фотографии"
+       " обрабатываются одинаково. Каждый пункт списка говорит, что он "
+       "исключает; приостанавливает запуск только «Задать вручную»."),
+    TR("Kamera sarsıntısı veya hareketle bulanıklaşan karelere ne "
+       "yapılacağını belirler. Bulanıklık her karenin kendisinde, "
+       "kenarlarının genişliğinden ölçülür; bu yüzden video, görüntü "
+       "dizileri ve fotoğraflar aynı şekilde ele alınır. Listedeki her "
+       "seçenek neyi dışarıda bıraktığını söyler; çalışmayı yalnızca “Elle"
+       " ayarla” duraklatır."));
+
+SS_MSG(blur_mode_keep,
+    EN("Off (keep all frames)"),
+    JA("オフ（すべて残す）"),
+    ZH_HANS("关闭（保留所有帧）"),
+    ZH_HANT("關閉（保留所有影格）"),
+    KO("끔(모든 프레임 유지)"),
+    DE("Aus (alle Bilder behalten)"),
+    FR("Désactivé (garder toutes les images)"),
+    ES("Desactivado (conservar todos)"),
+    PT("Desligado (manter todos os quadros)"),
+    IT("No (tieni tutti i fotogrammi)"),
+    NL("Uit (alle beelden behouden)"),
+    RU("Выкл. (оставить все кадры)"),
+    TR("Kapalı (tüm kareleri tut)"));
+
+SS_MSG(blur_mode_light,
+    EN("Skip heavy blur (over 10 px)"),
+    JA("強いぶれを除外（10 px 超）"),
+    ZH_HANS("跳过严重模糊（超过 10 px）"),
+    ZH_HANT("略過嚴重模糊（超過 10 px）"),
+    KO("심한 흐림 건너뛰기(10 px 초과)"),
+    DE("Starke Unschärfe überspringen (über 10 px)"),
+    FR("Ignorer le flou marqué (plus de 10 px)"),
+    ES("Omitir desenfoque fuerte (más de 10 px)"),
+    PT("Ignorar borrão forte (mais de 10 px)"),
+    IT("Salta la sfocatura forte (oltre 10 px)"),
+    NL("Sterke onscherpte overslaan (meer dan 10 px)"),
+    RU("Пропускать сильное размытие (более 10 px)"),
+    TR("Ağır bulanıklığı atla (10 px üzeri)"));
+
+SS_MSG(blur_mode_standard,
+    EN("Skip noticeable blur (over 8 px)"),
+    JA("目につくぶれを除外（8 px 超）"),
+    ZH_HANS("跳过明显模糊（超过 8 px）"),
+    ZH_HANT("略過明顯模糊（超過 8 px）"),
+    KO("눈에 띄는 흐림 건너뛰기(8 px 초과)"),
+    DE("Sichtbare Unschärfe überspringen (über 8 px)"),
+    FR("Ignorer le flou visible (plus de 8 px)"),
+    ES("Omitir desenfoque apreciable (más de 8 px)"),
+    PT("Ignorar borrão perceptível (mais de 8 px)"),
+    IT("Salta la sfocatura evidente (oltre 8 px)"),
+    NL("Zichtbare onscherpte overslaan (meer dan 8 px)"),
+    RU("Пропускать заметное размытие (более 8 px)"),
+    TR("Belirgin bulanıklığı atla (8 px üzeri)"));
+
+SS_MSG(blur_mode_strict,
+    EN("Skip even slight blur (over 5 px)"),
+    JA("わずかなぶれも除外（5 px 超）"),
+    ZH_HANS("轻微模糊也跳过（超过 5 px）"),
+    ZH_HANT("輕微模糊也略過（超過 5 px）"),
+    KO("약한 흐림도 건너뛰기(5 px 초과)"),
+    DE("Auch leichte Unschärfe überspringen (über 5 px)"),
+    FR("Ignorer même le flou léger (plus de 5 px)"),
+    ES("Omitir incluso desenfoque leve (más de 5 px)"),
+    PT("Ignorar até borrão leve (mais de 5 px)"),
+    IT("Salta anche la sfocatura lieve (oltre 5 px)"),
+    NL("Ook lichte onscherpte overslaan (meer dan 5 px)"),
+    RU("Пропускать даже слабое размытие (более 5 px)"),
+    TR("Hafif bulanıklığı bile atla (5 px üzeri)"));
+
+SS_MSG(blur_mode_manual,
+    EN("Set by hand (the run pauses)"),
+    JA("手動で設定（処理を一時停止）"),
+    ZH_HANS("手动设置（运行会暂停）"),
+    ZH_HANT("手動設定（執行會暫停）"),
+    KO("직접 설정(실행이 일시 중지됨)"),
+    DE("Von Hand einstellen (der Lauf pausiert)"),
+    FR("Régler à la main (le traitement se met en pause)"),
+    ES("Ajustar a mano (el proceso se pausa)"),
+    PT("Ajustar à mão (a execução pausa)"),
+    IT("Imposta a mano (l’esecuzione va in pausa)"),
+    NL("Met de hand instellen (de run pauzeert)"),
+    RU("Задать вручную (запуск приостановится)"),
+    TR("Elle ayarla (çalışma duraklar)"));
+
+SS_MSG(blur_mode_custom,
+    EN("By hand"),
+    JA("手動"),
+    ZH_HANS("手动"),
+    ZH_HANT("手動"),
+    KO("직접"),
+    DE("Von Hand"),
+    FR("À la main"),
+    ES("A mano"),
+    PT("À mão"),
+    IT("A mano"),
+    NL("Met de hand"),
+    RU("Вручную"),
+    TR("Elle"));
+
+SS_MSG(blur_mode_keep_help,
+    EN("Every frame is used, however blurred."),
+    JA("どれだけぶれていても、すべてのフレームを使います。"),
+    ZH_HANS("无论多模糊，每一帧都会使用。"),
+    ZH_HANT("無論多模糊，每個影格都會使用。"),
+    KO("아무리 흐려도 모든 프레임을 사용합니다."),
+    DE("Jedes Bild wird verwendet, wie unscharf auch immer."),
+    FR("Toutes les images sont utilisées, aussi floues soient-elles."),
+    ES("Se usan todos los fotogramas, por borrosos que estén."),
+    PT("Todos os quadros são usados, por mais borrados que estejam."),
+    IT("Si usano tutti i fotogrammi, per quanto sfocati."),
+    NL("Elk beeld wordt gebruikt, hoe onscherp ook."),
+    RU("Используются все кадры, какими бы размытыми они ни были."),
+    TR("Ne kadar bulanık olursa olsun her kare kullanılır."));
+
+SS_MSG(blur_mode_light_help,
+    EN("Leaves out only the frames that look shaken at a glance: smeared "
+       "across more than 10 pixels. The most frames are kept."),
+    JA("ひと目でぶれていると分かるフレームだけを除外します（10 ピクセルを超え"
+       "るぶれ）。残るフレームが最も多い設定です。"),
+    ZH_HANS("只剔除一眼就能看出抖动的帧：模糊超过 10 像素。保留的帧最多。"),
+    ZH_HANT("只剔除一眼就能看出晃動的影格：模糊超過 10 像素。保留的影格最多。"),
+    KO("한눈에 흔들려 보이는 프레임만 뺍니다(10픽셀 넘게 번진 것). "
+       "가장 많은 프레임이 남습니다."),
+    DE("Lässt nur die Bilder aus, die auf den ersten Blick verwackelt "
+       "aussehen: über mehr als 10 Pixel verwischt. Die meisten Bilder "
+       "bleiben."),
+    FR("N’écarte que les images qui paraissent bougées au premier coup "
+       "d’œil : brouillées sur plus de 10 pixels. C’est le choix qui garde"
+       " le plus d’images."),
+    ES("Descarta solo los fotogramas que se ven movidos a simple vista: "
+       "emborronados en más de 10 píxeles. Es la opción que más fotogramas"
+       " conserva."),
+    PT("Deixa de fora só os quadros que parecem tremidos à primeira vista:"
+       " borrados em mais de 10 pixels. É a opção que mantém mais quadros."),
+    IT("Scarta solo i fotogrammi che appaiono mossi a colpo d’occhio: "
+       "sfocati per più di 10 pixel. È la scelta che tiene più fotogrammi."),
+    NL("Laat alleen de beelden weg die in één oogopslag bewogen lijken: "
+       "over meer dan 10 pixels vervaagd. De meeste beelden blijven "
+       "behouden."),
+    RU("Исключает только кадры, которые с первого взгляда выглядят "
+       "смазанными: размытие более 10 пикселей. Остаётся больше всего "
+       "кадров."),
+    TR("Yalnızca ilk bakışta sarsılmış görünen kareleri dışarıda bırakır: "
+       "10 pikselden fazla bulanık olanlar. En çok kareyi tutan "
+       "seçenektir."));
+
+SS_MSG(blur_mode_standard_help,
+    EN("Leaves out frames whose blur shows as soon as they are looked at "
+       "in full size: smeared across more than 8 pixels. A good place to "
+       "start."),
+    JA("等倍で見るとすぐにぶれが分かるフレームを除外します（8 ピクセルを超える"
+       "ぶれ）。まずはこの設定がおすすめです。"),
+    ZH_HANS("剔除按原始大小一看就能发现模糊的帧：模糊超过 8 像素。适合作为起点。"),
+    ZH_HANT("剔除以原始大小一看就能發現模糊的影格：模糊超過 8 像素。適合作為起點。"),
+    KO("원래 크기로 보면 바로 흐림이 보이는 프레임을 뺍니다(8픽셀 넘게"
+       " 번진 것). 처음 시작하기에 좋습니다."),
+    DE("Lässt Bilder aus, deren Unschärfe auffällt, sobald man sie in "
+       "voller Größe ansieht: über mehr als 8 Pixel verwischt. Ein guter "
+       "Ausgangspunkt."),
+    FR("Écarte les images dont le flou se voit dès qu’on les regarde en "
+       "taille réelle : brouillées sur plus de 8 pixels. Un bon point de "
+       "départ."),
+    ES("Descarta los fotogramas cuyo desenfoque se nota en cuanto se miran"
+       " a tamaño completo: emborronados en más de 8 píxeles. Un buen "
+       "punto de partida."),
+    PT("Deixa de fora os quadros cujo borrão aparece assim que são vistos "
+       "em tamanho real: borrados em mais de 8 pixels. Um bom ponto de "
+       "partida."),
+    IT("Scarta i fotogrammi la cui sfocatura si nota appena li si guarda a"
+       " dimensione piena: sfocati per più di 8 pixel. Un buon punto di "
+       "partenza."),
+    NL("Laat beelden weg waarvan de onscherpte opvalt zodra je ze op volle"
+       " grootte bekijkt: over meer dan 8 pixels vervaagd. Een goed "
+       "beginpunt."),
+    RU("Исключает кадры, размытие которых заметно сразу при просмотре в "
+       "полном размере: более 8 пикселей. Хорошая отправная точка."),
+    TR("Tam boyutta bakıldığında bulanıklığı hemen görülen kareleri "
+       "dışarıda bırakır: 8 pikselden fazla bulanık olanlar. Başlamak için"
+       " iyi bir seçim."));
+
+SS_MSG(blur_mode_strict_help,
+    EN("Leaves out frames with even a mild smear, across more than 5 "
+       "pixels. Some usable frames go with them: for a capture with frames"
+       " to spare."),
+    JA("わずかなぶれ（5 ピクセル超）のフレームも除外します。使えるフレームも一"
+       "部いっしょに外れるので、フレーム数に余裕のある撮影向けです。"),
+    ZH_HANS("连轻微模糊（超过 5 像素）的帧也剔除。一些可用的帧也会被一并剔除，适合"
+            "帧数充裕的拍摄。"),
+    ZH_HANT("連輕微模糊（超過 5 像素）的影格也剔除。一些可用的影格也會被一併剔除，"
+            "適合影格數充裕的拍攝。"),
+    KO("약하게 번진 프레임(5픽셀 초과)도 뺍니다. 쓸 만한 프레임도 일"
+       "부 함께 빠지므로, 프레임이 넉넉한 촬영에 맞습니다."),
+    DE("Lässt auch Bilder mit leichter Unschärfe aus, über mehr als 5 "
+       "Pixel. Einige brauchbare Bilder gehen dabei mit: für Aufnahmen mit"
+       " Bildern im Überfluss."),
+    FR("Écarte même les images légèrement brouillées, sur plus de 5 "
+       "pixels. Quelques images utilisables partent avec elles : pour une "
+       "prise de vue qui a des images à revendre."),
+    ES("Descarta incluso los fotogramas con un desenfoque leve, de más de "
+       "5 píxeles. Con ellos se van algunos aprovechables: para capturas a"
+       " las que les sobran fotogramas."),
+    PT("Deixa de fora até os quadros com borrão leve, acima de 5 pixels. "
+       "Alguns quadros aproveitáveis vão junto: para capturas com quadros "
+       "de sobra."),
+    IT("Scarta anche i fotogrammi con una sfocatura lieve, oltre 5 pixel. "
+       "Con loro se ne vanno alcuni utilizzabili: per riprese con "
+       "fotogrammi in abbondanza."),
+    NL("Laat ook beelden met lichte onscherpte weg, over meer dan 5 "
+       "pixels. Enkele bruikbare beelden gaan mee: voor een opname met "
+       "beelden over."),
+    RU("Исключает кадры даже со слабым размытием, более 5 пикселей. Вместе"
+       " с ними уходит часть пригодных кадров: для съёмки, где кадров с "
+       "запасом."),
+    TR("Hafif bulanık kareleri bile dışarıda bırakır: 5 pikselden fazla "
+       "olanlar. Kullanılabilir bazı kareler de onlarla gider: karesi bol "
+       "çekimler için."));
+
+SS_MSG(blur_mode_manual_help,
+    EN("PAUSES the run once the frames are out and opens the Sharpness "
+       "view. Set the threshold there while looking at the frames, then "
+       "press Continue; masks, reconstruction and depth are not started "
+       "until then."),
+    JA("フレームを取り出した時点で処理を一時停止し、「シャープさ」ビューを開きま"
+       "す。フレームを見ながらしきい値を決め、「これらのフレームで続行」を押して"
+       "ください。マスク、再構成、深度はそれまで始まりません。"),
+    ZH_HANS("帧提取完成后会暂停运行并打开“清晰度”视图。一边查看帧一边设置阈值，然后"
+            "按“用这些帧继续”；在此之前不会开始生成蒙版、重建和深度。"),
+    ZH_HANT("影格擷取完成後會暫停執行並開啟「清晰度」檢視。一邊查看影格一邊設定閾值，"
+            "然後按「用這些影格繼續」；在此之前不會開始建立遮罩、重建和深度。"),
+    KO("프레임을 뽑은 뒤 실행을 멈추고 ‘선명도’ 보기를 엽니다. 프레임"
+       "을 보면서 임계값을 정한 다음 ‘이 프레임으로 계속’을 누르세요."
+       " 그때까지 마스크, 재구성, 깊이는 시작하지 않습니다."),
+    DE("HÄLT den Lauf AN, sobald die Bilder entnommen sind, und öffnet die"
+       " Ansicht „Schärfe“. Dort die Schwelle beim Betrachten der Bilder "
+       "einstellen und dann „Mit diesen Bildern fortfahren“ drücken; "
+       "Masken, Rekonstruktion und Tiefe beginnen erst danach."),
+    FR("MET le traitement EN PAUSE une fois les images extraites et ouvre "
+       "la vue « Netteté ». Réglez-y le seuil en regardant les images, "
+       "puis appuyez sur « Continuer avec ces images » ; masques, "
+       "reconstruction et profondeur ne commencent pas avant."),
+    ES("PAUSA el proceso cuando los fotogramas ya están extraídos y abre "
+       "la vista «Nitidez». Ajuste allí el umbral mirando los fotogramas y"
+       " pulse «Continuar con estos fotogramas»; las máscaras, la "
+       "reconstrucción y la profundidad no empiezan hasta entonces."),
+    PT("PAUSA a execução quando os quadros já foram extraídos e abre a "
+       "vista “Nitidez”. Ajuste ali o limiar olhando os quadros e "
+       "pressione “Continuar com estes quadros”; máscaras, reconstrução e "
+       "profundidade só começam depois disso."),
+    IT("METTE IN PAUSA l’esecuzione una volta estratti i fotogrammi e apre"
+       " la vista «Nitidezza». Imposta lì la soglia guardando i "
+       "fotogrammi, poi premi «Continua con questi fotogrammi»; maschere, "
+       "ricostruzione e profondità non iniziano prima."),
+    NL("PAUZEERT de run zodra de beelden zijn uitgenomen en opent de "
+       "weergave ‘Scherpte’. Stel daar de drempel in terwijl je de beelden"
+       " bekijkt en druk dan op ‘Doorgaan met deze beelden’; maskers, "
+       "reconstructie en diepte beginnen pas daarna."),
+    RU("ПРИОСТАНАВЛИВАЕТ запуск, когда кадры извлечены, и открывает вид "
+       "«Резкость». Задайте там порог, глядя на кадры, и нажмите "
+       "«Продолжить с этими кадрами»; маски, реконструкция и глубина до "
+       "этого не начинаются."),
+    TR("Kareler çıkarılınca çalışmayı DURAKLATIR ve “Keskinlik” görünümünü"
+       " açar. Karelere bakarak eşiği orada ayarlayın, sonra “Bu karelerle"
+       " devam et” düğmesine basın; maskeler, yeniden kurma ve derinlik o "
+       "zamana kadar başlamaz."));
+
+SS_MSG(blur_mode_custom_help,
+    EN("Any threshold: drag the line on the histogram below."),
+    JA("任意のしきい値: 下のヒストグラムの線をドラッグします。"),
+    ZH_HANS("任意阈值：拖动下方直方图上的线。"),
+    ZH_HANT("任意閾值：拖曳下方直方圖上的線。"),
+    KO("원하는 임계값: 아래 히스토그램의 선을 끌어 옮기세요."),
+    DE("Beliebige Schwelle: die Linie im Histogramm darunter ziehen."),
+    FR("Un seuil quelconque : faites glisser la ligne sur l’histogramme "
+       "ci-dessous."),
+    ES("Cualquier umbral: arrastre la línea del histograma de abajo."),
+    PT("Qualquer limiar: arraste a linha no histograma abaixo."),
+    IT("Una soglia qualsiasi: trascina la linea sull’istogramma qui sotto."),
+    NL("Elke drempel: sleep de lijn in het histogram hieronder."),
+    RU("Любой порог: перетащите линию на гистограмме ниже."),
+    TR("Herhangi bir eşik: aşağıdaki histogramdaki çizgiyi sürükleyin."));
+
+SS_MSG(blur_every_frame,
+    EN("A video that keeps every frame (0 fps) is not sorted: nothing is "
+       "skipped from it."),
+    JA("すべてのフレームを残す動画（0 fps）は仕分けしません。そこからは何も"
+       "除外されません。"),
+    ZH_HANS("保留每一帧的视频（0 fps）不做整理：不会从中跳过任何帧。"),
+    ZH_HANT("保留每個影格的視訊（0 fps）不做整理：不會從中略過任何影格。"),
+    KO("모든 프레임을 남기는 동영상(0 fps)은 정리하지 않습니다. 거"
+       "기서는 아무것도 건너뛰지 않습니다."),
+    DE("Ein Video, das jedes Bild behält (0 fps), wird nicht sortiert: "
+       "daraus wird nichts übersprungen."),
+    FR("Une vidéo qui garde toutes ses images (0 fps) n’est pas triée : "
+       "rien n’y est ignoré."),
+    ES("Un vídeo que conserva todos los fotogramas (0 fps) no se ordena: "
+       "no se omite nada de él."),
+    PT("Um vídeo que mantém todos os quadros (0 fps) não é organizado: "
+       "nada dele é ignorado."),
+    IT("Un video che tiene tutti i fotogrammi (0 fps) non viene "
+       "riordinato: non ne viene saltato nessuno."),
+    NL("Een video die elk beeld behoudt (0 fps) wordt niet gesorteerd: er "
+       "wordt niets uit overgeslagen."),
+    RU("Видео, из которого берётся каждый кадр (0 fps), не сортируется: из"
+       " него ничего не пропускается."),
+    TR("Her kareyi tutan bir video (0 fps) ayıklanmaz: ondan hiçbir kare "
+       "atlanmaz."));
+
+SS_MSG(plan_sort,
+    EN("Sort: leave the blurry ones out, keep what is built"),
+    JA("仕分け: ぶれたものを外し、作成済みのものは残す"),
+    ZH_HANS("整理：剔除模糊帧，保留已生成的内容"),
+    ZH_HANT("整理：剔除模糊影格，保留已建立的內容"),
+    KO("정리: 흐린 프레임은 빼고, 이미 만든 것은 유지"),
+    DE("Sortieren: unscharfe Bilder auslassen, Erstelltes behalten"),
+    FR("Trier : écarter les images floues, garder ce qui est construit"),
+    ES("Ordenar: apartar los borrosos, conservar lo ya construido"),
+    PT("Organizar: deixar de fora os borrados, manter o que já foi feito"),
+    IT("Riordina: scarta gli sfocati, tieni ciò che è già costruito"),
+    NL("Sorteren: onscherpe beelden weglaten, het gebouwde behouden"),
+    RU("Сортировка: убрать размытые, готовое оставить"),
+    TR("Ayıkla: bulanıkları çıkar, kurulmuş olanı koru"));
+
+SS_MSG(blur_kept_note,
+    EN("Not applied: this run keeps the frames the dataset already has. "
+       "Untick \"Keep the existing frames and reconstruction\" to sort "
+       "them again."),
+    JA("適用されません: 今回はデータセットに今あるフレームを残します。仕分け直"
+       "すには「いまあるフレームと再構成を残す」のチェックを外してください。"),
+    ZH_HANS("未应用：本次运行保留数据集已有的帧。要重新整理，请取消勾选“保留现有的帧"
+            "和重建”。"),
+    ZH_HANT("未套用：本次執行保留資料集已有的影格。要重新整理，請取消勾選「保留現有的"
+            "影格和重建」。"),
+    KO("적용되지 않음: 이번 실행은 데이터셋에 이미 있는 프레임을 그대로"
+       " 둡니다. 다시 정리하려면 ‘지금 있는 프레임과 재구성 남겨 두기"
+       "’를 해제하세요."),
+    DE("Nicht angewendet: dieser Lauf behält die Bilder, die der Datensatz"
+       " schon hat. „Vorhandene Bilder und Rekonstruktion behalten“ "
+       "abwählen, um sie neu zu sortieren."),
+    FR("Non appliqué : ce traitement garde les images que le jeu de "
+       "données a déjà. Décochez « Garder les images et la reconstruction "
+       "existantes » pour les trier de nouveau."),
+    ES("No aplicado: este proceso conserva los fotogramas que el conjunto "
+       "de datos ya tiene. Desmarque «Conservar los fotogramas y la "
+       "reconstrucción existentes» para volver a ordenarlos."),
+    PT("Não aplicado: esta execução mantém os quadros que o conjunto de "
+       "dados já tem. Desmarque “Manter os quadros e a reconstrução "
+       "existentes” para organizá-los de novo."),
+    IT("Non applicato: questa esecuzione tiene i fotogrammi che il set di "
+       "dati ha già. Deseleziona «Tenere i fotogrammi e la ricostruzione "
+       "esistenti» per riordinarli."),
+    NL("Niet toegepast: deze run behoudt de beelden die de dataset al "
+       "heeft. Vink ‘Bestaande beelden en reconstructie behouden’ uit om "
+       "ze opnieuw te sorteren."),
+    RU("Не применено: при этом запуске остаются кадры, которые уже есть в "
+       "наборе данных. Снимите флажок «Оставить имеющиеся кадры и "
+       "реконструкцию», чтобы отсортировать их заново."),
+    TR("Uygulanmadı: bu çalışma veri kümesinde zaten bulunan kareleri "
+       "korur. Yeniden ayıklamak için “Mevcut kareleri ve yeniden kurmayı "
+       "koru” işaretini kaldırın."));
+
+SS_MSG(blur_mode_manual_note,
+    EN("The run will pause after the frames, in the Sharpness view, until "
+       "you press Continue."),
+    JA("フレームの取り出し後、「シャープさ」ビューで処理が一時停止し、「これらの"
+       "フレームで続行」を押すまで待ちます。"),
+    ZH_HANS("提取帧之后，运行会在“清晰度”视图中暂停，直到你按下“用这些帧继续”。"),
+    ZH_HANT("擷取影格之後，執行會在「清晰度」檢視中暫停，直到你按下「用這些影格繼續」"
+            "。"),
+    KO("프레임을 뽑은 뒤 ‘선명도’ 보기에서 실행이 멈추고, ‘이 프레임"
+       "으로 계속’을 누를 때까지 기다립니다."),
+    DE("Der Lauf hält nach den Bildern in der Ansicht „Schärfe“ an, bis "
+       "„Mit diesen Bildern fortfahren“ gedrückt wird."),
+    FR("Le traitement se mettra en pause après les images, dans la vue « "
+       "Netteté », jusqu’à ce que vous appuyiez sur « Continuer avec ces "
+       "images »."),
+    ES("El proceso se pausará después de los fotogramas, en la vista "
+       "«Nitidez», hasta que pulse «Continuar con estos fotogramas»."),
+    PT("A execução vai pausar depois dos quadros, na vista “Nitidez”, até "
+       "você pressionar “Continuar com estes quadros”."),
+    IT("L’esecuzione andrà in pausa dopo i fotogrammi, nella vista "
+       "«Nitidezza», finché non premi «Continua con questi fotogrammi»."),
+    NL("De run pauzeert na de beelden, in de weergave ‘Scherpte’, totdat "
+       "je op ‘Doorgaan met deze beelden’ drukt."),
+    RU("Запуск приостановится после кадров, в виде «Резкость», пока вы не "
+       "нажмёте «Продолжить с этими кадрами»."),
+    TR("Çalışma karelerden sonra “Keskinlik” görünümünde duraklar ve siz "
+       "“Bu karelerle devam et” düğmesine basana kadar bekler."));
+
+SS_MSG(blur_mode_no_pause,
+    EN("Only the built-in engine pauses, and never in a batch: here the "
+       "threshold is applied as it stands."),
+    JA("一時停止するのは内蔵エンジンだけで、バッチでは停止しません。ここではしき"
+       "い値がそのまま適用されます。"),
+    ZH_HANS("只有内置引擎会暂停，批处理中从不暂停：这里会直接按当前阈值处理。"),
+    ZH_HANT("只有內建引擎會暫停，批次處理中從不暫停：這裡會直接依目前的閾值處理。"),
+    KO("내장 엔진만 멈추며, 일괄 처리에서는 멈추지 않습니다. 여기서는 "
+       "임계값이 그대로 적용됩니다."),
+    DE("Nur die eingebaute Engine hält an, und nie in einem Stapel: hier "
+       "wird die Schwelle so angewendet, wie sie steht."),
+    FR("Seul le moteur intégré se met en pause, et jamais dans un lot : "
+       "ici le seuil est appliqué tel quel."),
+    ES("Solo el motor integrado se pausa, y nunca en un lote: aquí el "
+       "umbral se aplica tal como está."),
+    PT("Só o motor integrado pausa, e nunca em um lote: aqui o limiar é "
+       "aplicado como está."),
+    IT("Solo il motore integrato va in pausa, e mai in un batch: qui la "
+       "soglia viene applicata così com’è."),
+    NL("Alleen de ingebouwde engine pauzeert, en nooit in een batch: hier "
+       "wordt de drempel toegepast zoals die staat."),
+    RU("Приостанавливается только встроенный движок, и никогда в пакете: "
+       "здесь порог применяется как есть."),
+    TR("Yalnızca yerleşik motor duraklar, toplu işte ise hiç duraklamaz: "
+       "burada eşik olduğu gibi uygulanır."));
+
+SS_MSG(keep_skipped,
+    EN("Keep the skipped frames"),
+    JA("除外したフレームを残す"),
+    ZH_HANS("保留被跳过的帧"),
+    ZH_HANT("保留被略過的影格"),
+    KO("건너뛴 프레임 보관"),
+    DE("Übersprungene Bilder aufbewahren"),
+    FR("Conserver les images ignorées"),
+    ES("Conservar los fotogramas omitidos"),
+    PT("Guardar os quadros ignorados"),
+    IT("Conserva i fotogrammi saltati"),
+    NL("Overgeslagen beelden bewaren"),
+    RU("Сохранять пропущенные кадры"),
+    TR("Atlanan kareleri sakla"));
+
+SS_MSG(keep_skipped_help,
+    EN("Keep the frames left out in an images_skipped folder beside "
+       "images, so they can be looked at and brought back by easing the "
+       "threshold. Unticked, they are deleted to save disk space, and a "
+       "looser threshold then means making the frames again. Frames sorted"
+       " in an existing dataset, and photographs moved into it, are always"
+       " kept."),
+    JA("除外したフレームを images の隣の images_skipped "
+       "フォルダーに残します。あとで確認でき、しきい値をゆるめれば戻せます。チェ"
+       "ックを外すとディスク容量を節約するために削除され、しきい値をゆるめるには"
+       "フレームを作り直すことになります。既存のデータセットで仕分けたフレームと"
+       "、データセットに移動した写真は常に残します。"),
+    ZH_HANS("把被剔除的帧保留在 images 旁边的 images_skipped "
+            "文件夹中，这样可以查看它们，放宽阈值时也能把它们放回来。取消勾选则会删除"
+            "它们以节省磁盘空间，之后放宽阈值就需要重新生成帧。在现有数据集中整理出的"
+            "帧，以及移动到数据集中的照片，始终会保留。"),
+    ZH_HANT("把被剔除的影格保留在 images 旁邊的 images_skipped"
+            " 資料夾中，這樣可以查看它們，放寬閾值時也能把它們放回來。取消勾選則會刪"
+            "除它們以節省磁碟空間，之後放寬閾值就需要重新產生影格。在現有資料集中整理"
+            "出的影格，以及移動到資料集中的照片，一律會保留。"),
+    KO("빠진 프레임을 images 옆의 images_skipped 폴더에"
+       " 보관합니다. 나중에 볼 수 있고, 임계값을 느슨하게 하면 되돌릴"
+       " 수 있습니다. 해제하면 디스크 공간을 아끼려고 삭제하며, 그 뒤"
+       " 임계값을 느슨하게 하려면 프레임을 다시 만들어야 합니다. 기존 "
+       "데이터셋에서 정리한 프레임과 데이터셋으로 옮긴 사진은 항상 보관합"
+       "니다."),
+    DE("Bewahrt die ausgelassenen Bilder in einem Ordner images_skipped "
+       "neben images auf, sodass man sie ansehen und durch Lockern der "
+       "Schwelle zurückholen kann. Ohne Häkchen werden sie gelöscht, um "
+       "Speicherplatz zu sparen, und eine lockerere Schwelle bedeutet "
+       "dann, die Bilder neu zu erstellen. Bilder, die in einem "
+       "vorhandenen Datensatz sortiert wurden, und Fotos, die in ihn "
+       "verschoben wurden, bleiben immer erhalten."),
+    FR("Conserve les images écartées dans un dossier images_skipped à côté"
+       " de images, pour pouvoir les regarder et les faire revenir en "
+       "assouplissant le seuil. Décoché, elles sont supprimées pour "
+       "économiser de l’espace disque, et un seuil plus souple oblige "
+       "alors à refaire les images. Les images triées dans un jeu de "
+       "données existant et les photos qui y ont été déplacées sont "
+       "toujours conservées."),
+    ES("Conserva los fotogramas descartados en una carpeta images_skipped "
+       "junto a images, para poder verlos y recuperarlos relajando el "
+       "umbral. Sin marcar, se eliminan para ahorrar espacio en disco, y "
+       "un umbral más laxo obliga entonces a rehacer los fotogramas. Los "
+       "fotogramas ordenados en un conjunto de datos existente y las "
+       "fotografías movidas a él se conservan siempre."),
+    PT("Guarda os quadros deixados de fora em uma pasta images_skipped ao "
+       "lado de images, para que possam ser vistos e trazidos de volta "
+       "afrouxando o limiar. Desmarcado, eles são apagados para economizar"
+       " espaço em disco, e um limiar mais frouxo passa a exigir refazer "
+       "os quadros. Quadros organizados em um conjunto de dados existente "
+       "e fotografias movidas para ele são sempre guardados."),
+    IT("Conserva i fotogrammi scartati in una cartella images_skipped "
+       "accanto a images, così si possono guardare e recuperare allentando"
+       " la soglia. Senza spunta vengono eliminati per risparmiare spazio "
+       "su disco, e una soglia più larga richiede allora di rifare i "
+       "fotogrammi. I fotogrammi riordinati in un set di dati esistente e "
+       "le fotografie spostate al suo interno vengono sempre conservati."),
+    NL("Bewaart de weggelaten beelden in een map images_skipped naast "
+       "images, zodat je ze kunt bekijken en terughalen door de drempel te"
+       " versoepelen. Uitgevinkt worden ze verwijderd om schijfruimte te "
+       "sparen, en een soepelere drempel betekent dan dat de beelden "
+       "opnieuw gemaakt moeten worden. Beelden die in een bestaande "
+       "dataset zijn gesorteerd en foto’s die erin zijn verplaatst, worden"
+       " altijd bewaard."),
+    RU("Сохраняет исключённые кадры в папке images_skipped рядом с images,"
+       " чтобы их можно было посмотреть и вернуть, ослабив порог. Если "
+       "флажок снят, они удаляются ради экономии места на диске, и тогда "
+       "более мягкий порог потребует создать кадры заново. Кадры, "
+       "отсортированные в существующем наборе данных, и фотографии, "
+       "перемещённые в него, сохраняются всегда."),
+    TR("Dışarıda bırakılan kareleri images klasörünün yanındaki "
+       "images_skipped klasöründe saklar; böylece bunlara bakılabilir ve "
+       "eşik gevşetilerek geri getirilebilir. İşaret kaldırılırsa disk "
+       "alanından kazanmak için silinirler ve daha gevşek bir eşik o zaman"
+       " kareleri yeniden üretmeyi gerektirir. Mevcut bir veri kümesinde "
+       "ayıklanan kareler ve içine taşınan fotoğraflar her zaman saklanır."));
+
+SS_MSG(blur_px,
+    EN("Blur threshold"),
+    JA("ぶれのしきい値"),
+    ZH_HANS("模糊阈值"),
+    ZH_HANT("模糊閾值"),
+    KO("흐림 임계값"),
+    DE("Unschärfeschwelle"),
+    FR("Seuil de flou"),
+    ES("Umbral de desenfoque"),
+    PT("Limiar de borrão"),
+    IT("Soglia di sfocatura"),
+    NL("Onscherptedrempel"),
+    RU("Порог размытия"),
+    TR("Bulanıklık eşiği"));
+
+SS_MSG(blur_px_help,
+    EN("Leave out a frame blurred across more pixels than this. The blur "
+       "is read off the frame itself: how wide its sharpest edges are, "
+       "less what the sharpest frames of the same capture manage. A lower "
+       "value skips more."),
+    JA("このピクセル数を超えてぶれたフレームを除外します。ぶれはフレームそのもの"
+       "から読み取ります。最もシャープなエッジの幅から、同じ撮影の最もシャープな"
+       "フレームが出せる幅を引いた値です。小さくするほど多く除外されます。"),
+    ZH_HANS("剔除模糊超过此像素数的帧。模糊直接从帧本身读出：其最清晰边缘的宽度，减去"
+            "同一次拍摄中最清晰的帧所能达到的宽度。数值越低，跳过的帧越多。"),
+    ZH_HANT("剔除模糊超過此像素數的影格。模糊直接從影格本身讀出：其最清晰邊緣的寬度，"
+            "減去同一次拍攝中最清晰的影格所能達到的寬度。數值越低，略過的影格越多。"),
+    KO("이 픽셀 수보다 더 흐린 프레임을 뺍니다. 흐림은 프레임 자체에서"
+       " 읽습니다. 가장 선명한 가장자리의 폭에서, 같은 촬영의 가장 선"
+       "명한 프레임이 내는 폭을 뺀 값입니다. 값이 낮을수록 더 많이 건"
+       "너뜁니다."),
+    DE("Lässt ein Bild aus, das über mehr Pixel als diesen Wert verwischt "
+       "ist. Die Unschärfe wird am Bild selbst abgelesen: die Breite "
+       "seiner schärfsten Kanten, abzüglich dessen, was die schärfsten "
+       "Bilder derselben Aufnahme erreichen. Ein kleinerer Wert "
+       "überspringt mehr."),
+    FR("Écarte une image floue sur plus de pixels que cette valeur. Le "
+       "flou est lu sur l’image elle-même : la largeur de ses contours les"
+       " plus nets, moins ce qu’atteignent les images les plus nettes de "
+       "la même prise de vue. Une valeur plus basse en ignore davantage."),
+    ES("Descarta el fotograma desenfocado en más píxeles que este valor. "
+       "El desenfoque se lee en el propio fotograma: el ancho de sus "
+       "bordes más nítidos, menos lo que logran los fotogramas más nítidos"
+       " de la misma captura. Un valor más bajo omite más."),
+    PT("Deixa de fora o quadro borrado em mais pixels do que este valor. O"
+       " borrão é lido no próprio quadro: a largura das suas bordas mais "
+       "nítidas, menos o que os quadros mais nítidos da mesma captura "
+       "conseguem. Um valor mais baixo ignora mais."),
+    IT("Scarta il fotogramma sfocato per più pixel di questo valore. La "
+       "sfocatura si legge sul fotogramma stesso: la larghezza dei suoi "
+       "bordi più nitidi, meno quanto riescono a fare i fotogrammi più "
+       "nitidi della stessa ripresa. Un valore più basso ne salta di più."),
+    NL("Laat een beeld weg dat over meer pixels dan deze waarde vervaagd "
+       "is. De onscherpte wordt van het beeld zelf afgelezen: de breedte "
+       "van de scherpste randen, min wat de scherpste beelden van dezelfde"
+       " opname halen. Een lagere waarde slaat meer over."),
+    RU("Исключает кадр, размытый более чем на столько пикселей. Размытие "
+       "считывается с самого кадра: ширина его самых резких границ за "
+       "вычетом того, чего достигают самые резкие кадры той же съёмки. Чем"
+       " меньше значение, тем больше пропускается."),
+    TR("Bu değerden fazla piksel boyunca bulanık olan kareyi dışarıda "
+       "bırakır. Bulanıklık karenin kendisinden okunur: en keskin "
+       "kenarlarının genişliği, eksi aynı çekimin en keskin karelerinin "
+       "ulaştığı değer. Daha düşük bir değer daha çok kare atlar."));
+
+SS_MSG(blur_neighbour,
+    EN("Keep a neighbour of every skipped frame"),
+    JA("除外した各フレームの隣を残す"),
+    ZH_HANS("为每个被跳过的帧保留相邻帧"),
+    ZH_HANT("為每個被略過的影格保留相鄰影格"),
+    KO("건너뛴 프레임마다 이웃 프레임 유지"),
+    DE("Zu jedem übersprungenen Bild einen Nachbarn behalten"),
+    FR("Garder une voisine de chaque image ignorée"),
+    ES("Conservar un vecino de cada fotograma omitido"),
+    PT("Manter um vizinho de cada quadro ignorado"),
+    IT("Tieni un vicino di ogni fotogramma saltato"),
+    NL("Van elk overgeslagen beeld een buur behouden"),
+    RU("Оставлять соседа каждого пропущенного кадра"),
+    TR("Atlanan her karenin bir komşusunu tut"));
+
+SS_MSG(blur_neighbour_help,
+    EN("Never skip more than two frames in a row, so every skipped frame "
+       "still has a kept one beside it and a shaky stretch is thinned "
+       "rather than cut out."),
+    JA("連続して 3 枚以上は除外しません。除外した各フレームの隣には必ず残した"
+       "フレームがあり、ぶれた区間は切り捨てられずに間引かれます。"),
+    ZH_HANS("连续跳过不超过两帧，这样每个被跳过的帧旁边仍有保留的帧，抖动的片段只是被"
+            "抽稀而不是被整段剪掉。"),
+    ZH_HANT("連續略過不超過兩個影格，這樣每個被略過的影格旁邊仍有保留的影格，晃動的片"
+            "段只是被抽稀而不是被整段剪掉。"),
+    KO("연속으로 두 장 넘게는 건너뛰지 않습니다. 그래서 건너뛴 프레임 "
+       "옆에는 늘 남긴 프레임이 있고, 흔들린 구간은 통째로 잘리지 않고"
+       " 솎아집니다."),
+    DE("Nie mehr als zwei Bilder in Folge überspringen, sodass neben jedem"
+       " übersprungenen Bild noch ein behaltenes steht und eine "
+       "verwackelte Strecke ausgedünnt statt herausgeschnitten wird."),
+    FR("Ne jamais ignorer plus de deux images de suite : chaque image "
+       "ignorée garde ainsi une voisine conservée, et un passage tremblé "
+       "est éclairci plutôt que coupé."),
+    ES("No omitir nunca más de dos fotogramas seguidos, de modo que cada "
+       "fotograma omitido tenga uno conservado al lado y un tramo movido "
+       "se aclare en vez de cortarse."),
+    PT("Nunca ignorar mais de dois quadros seguidos, para que cada quadro "
+       "ignorado ainda tenha um mantido ao lado e um trecho tremido seja "
+       "rareado em vez de cortado."),
+    IT("Non saltare mai più di due fotogrammi di seguito, così ogni "
+       "fotogramma saltato ne ha accanto uno tenuto e un tratto mosso "
+       "viene sfoltito anziché tagliato via."),
+    NL("Nooit meer dan twee beelden achter elkaar overslaan, zodat elk "
+       "overgeslagen beeld nog een behouden buur heeft en een schokkerig "
+       "stuk wordt uitgedund in plaats van weggeknipt."),
+    RU("Никогда не пропускать более двух кадров подряд, чтобы рядом с "
+       "каждым пропущенным кадром оставался сохранённый, а дрожащий "
+       "участок прореживался, а не вырезался."),
+    TR("Art arda ikiden fazla kareyi asla atlamaz; böylece atlanan her "
+       "karenin yanında tutulan bir kare kalır ve sarsıntılı bir bölüm "
+       "kesilip atılmak yerine seyreltilir."));
+
+SS_MSG(similar_bits,
+    EN("Skip similar frames"),
+    JA("似たフレームを除外"),
+    ZH_HANS("跳过相似帧"),
+    ZH_HANT("略過相似影格"),
+    KO("비슷한 프레임 건너뛰기"),
+    DE("Ähnliche Bilder überspringen"),
+    FR("Ignorer les images semblables"),
+    ES("Omitir fotogramas parecidos"),
+    PT("Ignorar quadros parecidos"),
+    IT("Salta i fotogrammi simili"),
+    NL("Gelijkende beelden overslaan"),
+    RU("Пропускать похожие кадры"),
+    TR("Benzer kareleri atla"));
+
+SS_MSG(similar_bits_help,
+    EN("Skip a frame that looks too much like the last one kept, as when "
+       "the camera stood still. Each frame gets a 64-bit fingerprint; this"
+       " is how many bits must differ. 0 keeps every frame, a higher value"
+       " skips more."),
+    JA("直前に残したフレームに似すぎたフレームを除外します。カメラが止まっていた"
+       "ときなどです。各フレームに 64 ビットの指紋を付け、ここで何ビット違え"
+       "ば別のフレームとみなすかを決めます。0 ならすべて残し、大きくするほど多"
+       "く除外します。"),
+    ZH_HANS("跳过与上一个保留帧过于相似的帧，例如相机静止时。每一帧都有一个 64 位"
+            "指纹；这里设置必须有多少位不同。0 表示保留所有帧，数值越高跳过越多。"),
+    ZH_HANT("略過與上一個保留影格過於相似的影格，例如相機靜止時。每個影格都有一個 6"
+            "4 位元指紋；這裡設定必須有多少位元不同。0 表示保留所有影格，數值越高"
+            "略過越多。"),
+    KO("마지막으로 남긴 프레임과 너무 비슷한 프레임을 건너뜁니다. 카메라"
+       "가 멈춰 있었을 때 등입니다. 프레임마다 64비트 지문이 있으며,"
+       " 여기서는 몇 비트가 달라야 하는지 정합니다. 0이면 모든 프레임"
+       "을 남기고, 값이 클수록 더 많이 건너뜁니다."),
+    DE("Überspringt ein Bild, das dem zuletzt behaltenen zu sehr gleicht, "
+       "etwa wenn die Kamera stillstand. Jedes Bild bekommt einen "
+       "64-Bit-Fingerabdruck; hier steht, wie viele Bits sich "
+       "unterscheiden müssen. 0 behält jedes Bild, ein höherer Wert "
+       "überspringt mehr."),
+    FR("Ignore une image qui ressemble trop à la dernière gardée, comme "
+       "quand la caméra était immobile. Chaque image reçoit une empreinte "
+       "de 64 bits ; ce réglage dit combien de bits doivent différer. 0 "
+       "garde toutes les images, une valeur plus haute en ignore "
+       "davantage."),
+    ES("Omite el fotograma que se parece demasiado al último conservado, "
+       "como cuando la cámara estaba quieta. Cada fotograma recibe una "
+       "huella de 64 bits; aquí se indica cuántos bits deben diferir. 0 "
+       "conserva todos los fotogramas, un valor más alto omite más."),
+    PT("Ignora o quadro que se parece demais com o último mantido, como "
+       "quando a câmera estava parada. Cada quadro recebe uma impressão "
+       "digital de 64 bits; aqui se define quantos bits devem diferir. 0 "
+       "mantém todos os quadros, um valor mais alto ignora mais."),
+    IT("Salta il fotogramma troppo simile all’ultimo tenuto, come quando "
+       "la fotocamera era ferma. Ogni fotogramma riceve un’impronta a 64 "
+       "bit; qui si indica quanti bit devono differire. 0 tiene tutti i "
+       "fotogrammi, un valore più alto ne salta di più."),
+    NL("Slaat een beeld over dat te veel lijkt op het laatst behouden "
+       "beeld, zoals wanneer de camera stilstond. Elk beeld krijgt een "
+       "64-bits vingerafdruk; hier staat hoeveel bits moeten verschillen. "
+       "0 behoudt elk beeld, een hogere waarde slaat meer over."),
+    RU("Пропускает кадр, слишком похожий на последний оставленный, "
+       "например когда камера стояла на месте. У каждого кадра есть "
+       "64-битный отпечаток; здесь задаётся, сколько бит должно "
+       "отличаться. 0 оставляет все кадры, большее значение пропускает "
+       "больше."),
+    TR("Son tutulan kareye fazla benzeyen kareyi atlar; örneğin kamera "
+       "sabit durduğunda. Her kare 64 bitlik bir parmak izi alır; burada "
+       "kaç bitin farklı olması gerektiği belirlenir. 0 her kareyi tutar, "
+       "daha yüksek bir değer daha çok kare atlar."));
 
 SS_MSG(sharpness_window,
     EN("Sharpness window"),

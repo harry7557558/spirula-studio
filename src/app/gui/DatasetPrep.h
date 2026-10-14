@@ -245,6 +245,11 @@ struct PrepCapture {
     bool lockstep = false;
 };
 
+// What the blur rule left out of images/, one path a line after a "# rule"
+// line: "- path" as the frames were made (it has no camera), a bare path when
+// moved aside since. A run that keeps the frames takes both out again.
+inline constexpr const char* kSkippedListFile = ".spirula-skipped";
+
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
     std::string workspace;           // output dataset dir (created)
@@ -284,6 +289,28 @@ struct PrepJob {
     bool  adaptive_fps = false;
     float adaptive_range = 4.0f;
     int   sharp_window = 3;          // keep the sharpest of N (1 = off)
+    // Which chosen frames are left out after all (app/FramePick.h, PickRule):
+    // blurred across more than `blur_px` pixels, or under `similar_bits`
+    // different from the last one kept (0 = off). Photographs too.
+    bool  skip_blurry = false;
+    float blur_px = 8.0f;
+    bool  blur_neighbour = true;
+    int   similar_bits = 0;
+    // The threshold is to be set at a pause, looking at the frames, rather
+    // than taken as it stands (blur_mode below).
+    bool  blur_review = false;
+    // Frames left out stay in images_skipped/ beside images/. On by default:
+    // a threshold can then be eased without extracting again.
+    bool  keep_skipped = true;
+    // Stop once the frames are out and wait for run()'s `review_frames`: the
+    // screen is there to look at them. Not a setting; a batch never waits.
+    bool  review_frames = false;
+    // Not a setting: this run makes the frames step (DatasetPlan) rather than
+    // keeping an earlier run's. Kept photographs are not sorted again.
+    bool  make_frames = true;
+    // Not a setting either: the rule is applied to the frames where they lie
+    // (DatasetPrep::sort_frames), as StepPlan::sort says.
+    bool  sort_frames = false;
     // Every track of a multi-lens file keeps the same instants (one sharpness
     // window over all of them), so every frame is a rig frame. Built-in decoder only.
     bool  sync_tracks = true;
@@ -394,6 +421,37 @@ inline std::string input_lut(const std::vector<PrepInput>& inputs, size_t at) {
 
 inline std::string input_lut(const PrepJob& job, const PrepInput& in) {
     return input_lut(job.inputs, input_index(job, in));
+}
+
+// PrepJob's blur settings as the one choice a screen offers: off, a fixed
+// threshold that runs straight through, or one set by hand at a pause. The
+// thresholds are named in dmsg::blur_mode_light and its neighbours.
+enum BlurMode { kBlurKeep = 0, kBlurLight, kBlurStandard, kBlurStrict, kBlurManual };
+inline constexpr float kBlurPreset[] = {10.0f, 8.0f, 5.0f};
+
+inline int blur_mode(const PrepJob& job) {
+    if (!job.skip_blurry) return kBlurKeep;
+    for (int i = 0; i < 3 && !job.blur_review; i++)
+        if (job.blur_px == kBlurPreset[i]) return kBlurLight + i;
+    return kBlurManual;
+}
+
+inline void set_blur_mode(PrepJob& job, int mode) {
+    job.skip_blurry = mode != kBlurKeep;
+    job.blur_review = mode == kBlurManual;
+    if (mode >= kBlurLight && mode <= kBlurStrict) job.blur_px = kBlurPreset[mode - kBlurLight];
+}
+
+// The rule as kSkippedListFile's first line states it: what the frames on
+// disk are sorted by. Empty when it is off.
+inline std::string blur_rule_text(const PrepJob& job) {
+    if (!job.skip_blurry && job.similar_bits <= 0) return {};
+    char text[96];
+    std::snprintf(text, sizeof text, "blur=%g neighbour=%d similar=%d%s",
+                  job.skip_blurry ? job.blur_px : 0.0f,
+                  job.skip_blurry && job.blur_neighbour ? 1 : 0, job.similar_bits,
+                  job.skip_blurry && job.blur_review ? " by-hand" : "");
+    return text;
 }
 
 // No selection happens at all: no sharpness window, no motion plan.
@@ -629,6 +687,8 @@ struct WorkspaceState {
     bool aligned = false;
     std::vector<std::string> aligned_clouds;
     bool aligned_kept_frame = false;
+    // blur_rule_text of the rule the frames are sorted by; "" for none.
+    std::string sorted_rule;
     // Something a resumed run can pick up instead of redoing.
     bool resumable() const { return frames || features || masks; }
 };
@@ -696,7 +756,8 @@ public:
 
     // False with `error` set on failure ("cancelled" when the token was set).
     bool run(const PrepJob& job, PrepResult& out, std::string& error,
-             const RefreshFn& refresh_masks = {}, const DoneFn& done = {});
+             const RefreshFn& refresh_masks = {}, const DoneFn& done = {},
+             const RefreshFn& review_frames = {});
 
     // Recursive, matching what COLMAP's feature_extractor indexes. `skip` is a
     // sub-folder not to descend into: a masks/ nested under the images is full
@@ -744,6 +805,10 @@ private:
     // Photos into the dataset's own images/<subdir>, by whichever of
     // PhotoImport the job asked for -- and the masks they came with into the
     // matching masks/<subdir>, so the two trees still mirror each other.
+    bool judge_photos(const PrepJob& job, const PrepInput& in, const std::string& images,
+                      std::string& error);
+    bool sort_frames(const PrepJob& job, const PrepInput& in, const std::string& images,
+                     std::string& error);
     bool gather_photos(const PrepJob& job, const PrepInput& in,
                        const std::string& images, const std::string& masks,
                        bool& have_masks, std::string& error);
@@ -786,6 +851,10 @@ private:
     std::vector<std::vector<int64_t>> _plans;
     std::vector<bool> _planned;
     StageTally _frames_tally, _masks_tally;
+    std::vector<std::string> _left_out;   // kSkippedListFile, as this run sorts
+    std::vector<std::string> _unbuilt;    // ... and its "- " lines
+    bool _split_later = false;            // packed lenses wait for the review
+    bool _sorted = false;                 // sort_frames ran on some input
 };
 
 }  // namespace gui

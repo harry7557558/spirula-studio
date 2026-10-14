@@ -17,4 +17,9 @@ void box_grey(const uint8_t* rgb, int width, int rows, int ow, int oh, float* ou
 // variance of the 3x3 Laplacian.
 double sharpness_score(const uint8_t* rgb, int width, int height);
 
+// How wide the sharpest of the frame's strong edges are, in its own pixels;
+// the wider of across-x and across-y, since motion smears one. A length, so it
+// compares between scenes. Negative where too few edges were found.
+float edge_width_px(const uint8_t* rgb, int width, int height);
+
 }  // namespace app

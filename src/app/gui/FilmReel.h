@@ -60,6 +60,7 @@ struct FilmFrame {
 };
 
 class FilmReel;
+class PickSheet;
 
 // The reels a run feeds as it works, one per step that produces pictures.
 // Any may be null: a caller with no screen wants the pipeline without them.
@@ -67,6 +68,7 @@ struct RunFilms {
     FilmReel* frames = nullptr;
     FilmReel* masks = nullptr;
     FilmReel* geometry = nullptr;
+    PickSheet* picks = nullptr;      // what the blur gate ruled on (PickSheet.h)
 };
 
 class FilmReel {

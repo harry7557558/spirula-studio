@@ -50,6 +50,9 @@ std::vector<std::string> geometry_kinds(const GeometryJob& job);
 // images/ dropped back on the panel, or photos read where they are), so there
 // is nothing to extract. The masks half asks the same of the masks.
 bool frames_in_dataset(const PrepJob& job);
+// Some input's frames are the blur rule's to sort: a video cut at a rate, or
+// photographs gathered into the dataset.
+bool blur_rule_applies(const PrepJob& job);
 bool masks_in_dataset(const PrepJob& job);
 
 // One shape for both engines.
@@ -114,6 +117,8 @@ struct StepPlan {
     std::vector<FieldChange> changes;
     // Rebuilds something the user did not ask to: confirmed first.
     bool ask = false;
+    // Frames, reused: the blur rule is applied to them where they lie first.
+    bool sort = false;
     // Model: kept although the masks its feature points avoided have changed.
     bool masks_changed = false;
     // Geometry: the kinds of map this run makes, and whether they are only

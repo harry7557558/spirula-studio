@@ -302,9 +302,10 @@ bool extract_synced(const FrameExtractJob& o, const FrameExtractSinks& sinks,
 // Entry points
 // ---------------------------------------------------------------------------
 
-bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sinks,
+bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sinks_in,
                     FrameExtractStats& stats, std::string& error) {
     FrameExtractJob job = job_in;
+    FrameExtractSinks sinks = sinks_in;
     if (job.skip < 1) job.skip = 1;
     if (job.keep < 0) job.keep = (int)(0.5 * job.skip + 0.5);
     if (job.rotate % 90 != 0) {
@@ -403,6 +404,28 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
     const double t_start = nn::now_ms();
     bool ok = true;
     const bool synced = !pano && job.sync_tracks && tracks.size() > 1;
+    // A frame left out goes to skipped_dir through the same pool, in the same
+    // colours a kept one has. ffmpeg's are mapped here: its kept frames get
+    // the LUT on the way to the sink, which a frame left out never reaches.
+    if (!job.skipped_dir.empty() && !pano && tracks.size() == 1) {
+        fs::create_directories(job.skipped_dir);
+        const bool jpeg = job.quality >= 0 && job.quality <= 100;
+        const bool map = lut && !dec.builtin;
+        sinks.judged = [&, jpeg, map](const FramePick& p, const nn::Image& im) {
+            if (p.verdict != PickVerdict::Kept) {
+                char stem[64];
+                std::snprintf(stem, sizeof(stem), "%05lld", (long long)p.index);
+                WriteJob w;
+                w.image = im;
+                if (map) apply_cube_lut(*lut, w.image.data.data(), w.image.data.size() / 3);
+                w.path = (fs::path(job.skipped_dir) /
+                          (std::string(stem) + (jpeg ? ".jpg" : ".png"))).string();
+                w.quality = job.quality;
+                pool.submit(std::move(w));
+            }
+            if (sinks_in.judged) sinks_in.judged(p, im);
+        };
+    }
     // One plan for the whole file, measured on its first track: the tracks of
     // a rig see the same motion, and the ones that do not are still one camera
     // moving through one scene.
@@ -466,6 +489,12 @@ bool extract_frames(const FrameExtractJob& job_in, const FrameExtractSinks& sink
     stats.total = nn::now_ms() - t_start;
     stats.encode_cpu = pool.busyMs();
     stats.write_failures = pool.failures();
+    if (stats.blurry > 0)
+        log_line(sinks, spirula::i18n::format(lmsg::blurry_skipped,
+                                              {(long long)stats.blurry}));
+    if (stats.similar > 0)
+        log_line(sinks, spirula::i18n::format(lmsg::similar_skipped,
+                                              {(long long)stats.similar}));
     return ok;
 }
 

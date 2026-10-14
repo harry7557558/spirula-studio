@@ -22,6 +22,7 @@
 #include "app/CrashLog.h"
 #include "app/CubeLut.h"
 #include "app/DeviceIssue.h"
+#include "app/FramePick.h"
 #include "app/LogLuts.h"
 #include "app/gui/DatasetPrep.h"
 #include "app/gui/MaskPrompt.h"
@@ -723,6 +724,12 @@ void GuiApp::write_run_settings(std::ofstream& f) {
             line("video_lut:" + (_sources[i].subdir.empty() ? _sources[i].path : _sources[i].subdir),
                  lut);
     line("sharp_window", std::to_string(j.prep.sharp_window));
+    line("skip_blurry", cfg_str(j.prep.skip_blurry));
+    if (j.prep.skip_blurry) {
+        line("blur_px", cfg_str(j.prep.blur_px));
+        line("blur_neighbour", cfg_str(j.prep.blur_neighbour));
+    }
+    if (j.prep.similar_bits > 0) line("similar_bits", std::to_string(j.prep.similar_bits));
     line("sync_tracks", cfg_str(j.prep.sync_tracks));
     line("max_frames", std::to_string(j.prep.max_frames));
     if (!j.extra_args.empty()) line("extra_args", j.extra_args);
@@ -3085,6 +3092,10 @@ std::string GuiApp::state_json() {
     out += "\",\"step\":" + std::to_string(_runner.latest_progress().step);
     out += ",\"busy\":";
     out += native_work_busy() ? "true" : "false";
+    // A dataset run stopped for its frames to be looked at: `review_continue`
+    // is the widget that lets it go on.
+    out += ",\"reviewing_frames\":";
+    out += _sfm.reviewing() ? "true" : "false";
     out += ",\"dialog_open\":";
     out += _dialog.is_open() ? "true" : "false";
     out += ",\"models_open\":" + std::to_string(_compare.count());
@@ -4179,6 +4190,12 @@ void GuiApp::sync_dataset_jobs() {
     prep.adaptive_fps = _sfm_job.prep.adaptive_fps;
     prep.adaptive_range = _sfm_job.prep.adaptive_range;
     prep.sharp_window = _sfm_job.prep.sharp_window;
+    prep.skip_blurry = _sfm_job.prep.skip_blurry;
+    prep.blur_px = _sfm_job.prep.blur_px;
+    prep.blur_neighbour = _sfm_job.prep.blur_neighbour;
+    prep.similar_bits = _sfm_job.prep.similar_bits;
+    prep.blur_review = _sfm_job.prep.blur_review;
+    prep.keep_skipped = _sfm_job.prep.keep_skipped;
     prep.pano = _sfm_job.prep.pano;
     prep.max_frames = _sfm_job.prep.max_frames;
     prep.auto_rotate = _sfm_job.prep.auto_rotate;
@@ -4204,6 +4221,11 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.adaptive_fps = prep.adaptive_fps;
     _colmap_job.adaptive_range = prep.adaptive_range;
     _colmap_job.sharp_window = prep.sharp_window;
+    _colmap_job.skip_blurry = prep.skip_blurry;
+    _colmap_job.blur_px = prep.blur_px;
+    _colmap_job.blur_neighbour = prep.blur_neighbour;
+    _colmap_job.similar_bits = prep.similar_bits;
+    _colmap_job.keep_skipped = prep.keep_skipped;
     _colmap_job.pano = prep.pano;
     _colmap_job.max_frames = prep.max_frames;
     _colmap_job.force_external_decode = prep.force_external_decode;
@@ -4324,6 +4346,9 @@ bool GuiApp::launch_dataset_job() {
         const DatasetPlan& plan = dataset_plan();
         bool made[kNumSteps];
         for (int k = 0; k < kNumSteps; k++) made[k] = makes(plan[(Step)k].act);
+        // Sorting leaves the frames as they were made but is what they are
+        // now: the rule's settings come back with the dataset.
+        made[(int)Step::Frames] = made[(int)Step::Frames] || plan[Step::Frames].sort;
         write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
                               encode_record_inputs({_sources, _mask.clicks}), made);
     }
@@ -4348,7 +4373,19 @@ bool GuiApp::launch_dataset_job() {
     // The preview holds a multi-gigabyte backbone; the run about to start
     // wants that VRAM for reconstruction.
     reset_dataset_preview(effective_engine() != Engine::BuiltIn);
-    const RunFilms films{&_film_frames, &_film_masks, &_film_geometry};
+    const RunFilms films{&_film_frames, &_film_masks, &_film_geometry, &_picks};
+    // An earlier run's picks would otherwise be the only view with anything in
+    // it for the first moments of this one, and the screen would open on them.
+    // A run that keeps this folder's frames keeps what was measured on them.
+    if (makes(dataset_plan()[Step::Frames].act) || dataset_plan()[Step::Frames].sort ||
+        _picks_workspace != _workspace) {
+        _picks.clear();
+        _picks_view.destroy_gl();
+        _picks_workspace = _workspace;
+    }
+    _sfm_job.prep.review_frames = !_batch_active &&
+                                  effective_engine() == Engine::BuiltIn &&
+                                  blur_mode(_sfm_job.prep) == kBlurManual;
     if (effective_engine() == Engine::BuiltIn) _sfm.start(_sfm_job, films);
     else                                      _colmap.start(_colmap_job, films);
     // One run each: a re-do that stayed armed would throw the same step away
@@ -4388,6 +4425,29 @@ void photo_import_combo(PhotoImport* mode, bool no_in_place) {
         ImGui::EndCombo();
     }
     ui::help_on_hover(dmsg::photo_import_help);
+}
+
+// "Blurry frames", each choice explained on the row that picks it. The last
+// one is `by_hand`: a pause in the form, a free line in the Sharpness view.
+bool blur_mode_combo(int* mode, float width, const Msg& by_hand, const Msg& by_hand_help) {
+    const Msg* labels[] = {&dmsg::blur_mode_keep, &dmsg::blur_mode_light,
+                           &dmsg::blur_mode_standard, &dmsg::blur_mode_strict, &by_hand};
+    const Msg* helps[] = {&dmsg::blur_mode_keep_help, &dmsg::blur_mode_light_help,
+                          &dmsg::blur_mode_standard_help, &dmsg::blur_mode_strict_help,
+                          &by_hand_help};
+    bool changed = false;
+    ImGui::SetNextItemWidth(width);
+    if (ui::BeginCombo(dmsg::blur_mode, labels[*mode]->get())) {
+        for (int i = 0; i <= kBlurManual; i++) {
+            if (ui::Selectable(*labels[i], i == *mode)) {
+                *mode = i;
+                changed = true;
+            }
+            ui::help_on_hover(*helps[i]);
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
 }
 
 }  // namespace
@@ -4757,6 +4817,36 @@ void GuiApp::draw_dataset_source() {
                                (!_lidar.empty() && !_lidar_in_frame));
     }
 
+    // Which frames are left out is asked with where they come from, of
+    // photographs and video alike; its fine print is in draw_dataset_basics.
+    if (!_sources.empty()) {
+        ImGui::BeginDisabled(dataset_locked(Stage::Frames));
+        PrepJob& prep = _sfm_job.prep;
+        int mode = blur_mode(prep);
+        if (blur_mode_combo(&mode, px(260.0f), dmsg::blur_mode_manual,
+                            dmsg::blur_mode_manual_help))
+            set_blur_mode(prep, mode);
+        ui::help_on_hover(dmsg::blur_mode_help);
+        if (mode == kBlurManual)
+            ui::TextDisabledWrapped(effective_engine() == Engine::BuiltIn
+                                        ? dmsg::blur_mode_manual_note
+                                        : dmsg::blur_mode_no_pause);
+        // Kept frames are not sorted, whatever this says: without the note
+        // "Keep them, run the rest" looks like a run that did nothing.
+        const StepPlan& frames = dataset_plan()[Step::Frames];
+        bool kept_unsorted = false;
+        for (const FieldChange& c : frames.changes)
+            kept_unsorted = kept_unsorted || c.key == "skip_blurry" || c.key == "blur_px" ||
+                            c.key == "blur_neighbour" || c.key == "similar_bits";
+        if (frames.act == Act::Keep && kept_unsorted)
+            ui::TextColoredWrapped(kWarn, dmsg::blur_kept_note);
+        // "Every frame" means it: extraction leaves the rule out there.
+        if ((mode != kBlurKeep || prep.similar_bits > 0) &&
+            all_videos_every_frame(_sources, prep.video_fps))
+            ui::TextColoredWrapped(kWarn, dmsg::blur_every_frame);
+        ImGui::EndDisabled();
+    }
+
     ImGui::SetNextItemWidth(px(-220.0f));
     ui::InputTextRaw("##ws", &_workspace);
     ImGui::SameLine();
@@ -4988,6 +5078,31 @@ void GuiApp::draw_dataset_basics() {
 
     ImGui::EndDisabled();
 
+    // The fine print of "Blurry frames", which is asked with the inputs
+    // (draw_dataset_source). Among the video options, or alone without video.
+    const auto draw_blur_options = [&] {
+        if (!_ds_advanced) return;
+        PrepJob& prep = _sfm_job.prep;
+        const int mode = blur_mode(prep);
+        if (mode == kBlurManual) {
+            ImGui::SetNextItemWidth(px(220.0f));
+            if (ui::SliderFloat(dmsg::blur_px, &prep.blur_px, 1.0f, 40.0f, "%.0f"))
+                prep.blur_px = std::round(prep.blur_px);
+            ui::help_on_hover(dmsg::blur_px_help);
+        }
+        if (mode != kBlurKeep) {
+            ui::Checkbox(dmsg::blur_neighbour, &prep.blur_neighbour);
+            ui::help_on_hover(dmsg::blur_neighbour_help);
+        }
+        ImGui::SetNextItemWidth(px(220.0f));
+        ui::SliderInt(dmsg::similar_bits, &prep.similar_bits, 0, 32);
+        ui::help_on_hover(dmsg::similar_bits_help);
+        if (mode != kBlurKeep || prep.similar_bits > 0) {
+            ui::Checkbox(dmsg::keep_skipped, &prep.keep_skipped);
+            ui::help_on_hover(dmsg::keep_skipped_help);
+        }
+    };
+
     bool any_video = false;
     for (const PrepInput& s : _sources) any_video = any_video || s.is_video;
     if (any_video) {
@@ -5009,9 +5124,10 @@ void GuiApp::draw_dataset_basics() {
         }
         if (_ds_advanced) {
             ImGui::SetNextItemWidth(px(220.0f));
-            ui::SliderInt(dmsg::sharpness_window, &_sfm_job.prep.sharp_window, 1, 8);
+            ui::SliderInt(dmsg::sharpness_window, &_sfm_job.prep.sharp_window, 1, 30);
             ui::help_on_hover(dmsg::sharpness_window_help);
         }
+        draw_blur_options();
         bool any_multi = false;
         for (const PrepInput& s : _sources)
             any_multi = any_multi || (s.is_video && !s.pano360.valid() && s.video_tracks >= 2);
@@ -5028,6 +5144,10 @@ void GuiApp::draw_dataset_basics() {
             ImGui::PopTextWrapPos();
             ui::help_on_hover_raw(backends().video_reason.c_str());
         }
+        ImGui::EndDisabled();
+    } else if (!_sources.empty()) {
+        ImGui::BeginDisabled(dataset_locked(Stage::Frames));
+        draw_blur_options();
         ImGui::EndDisabled();
     }
     if (dataset_busy()) ui::help_on_hover_disabled(dmsg::step_locked);
@@ -6180,16 +6300,17 @@ void draw_run_steps(const RunProgress& prog, const std::vector<RunStep>& steps) 
 // The views that have something to show, as a row of choices; the one drawn
 // follows `implied`, the running step's, until the user picks one. -1 when
 // none has anything.
-int draw_view_tabs(const Msg* const* names, const bool* avail, int n, int implied,
-                   int& pinned) {
+int draw_view_tabs(const Msg* const* names, const bool* avail, const int* order, int n,
+                   int implied, int& pinned) {
     int tab = pinned >= 0 ? pinned : (implied >= 0 ? implied : 0);
     if (!avail[tab]) {
         tab = -1;
-        for (int i = 0; i < n && tab < 0; i++)
-            if (avail[i]) tab = i;
+        for (int k = 0; k < n && tab < 0; k++)
+            if (avail[order[k]]) tab = order[k];
     }
     bool first = true;
-    for (int i = 0; i < n; i++) {
+    for (int k = 0; k < n; k++) {
+        const int i = order[k];
         if (!avail[i]) continue;
         if (!first) ImGui::SameLine();
         first = false;
@@ -6286,6 +6407,213 @@ void GuiApp::draw_scan_view(float h) {
     ImGui::EndChild();
 }
 
+// The frames are the ones wanted. The record is told first: the thresholds
+// may have moved since the run started, and a workspace that restored the
+// older ones would find its own frames "made with other settings".
+void GuiApp::continue_frame_review() {
+    bool made[kNumSteps] = {};
+    made[(int)Step::Frames] = true;
+    write_record_settings(_workspace, dataset_settings_json(capture_dataset_settings()),
+                          encode_record_inputs({_sources, _mask.clicks}), made);
+    _sfm.continue_review();
+}
+
+namespace {
+
+// A threshold set against the distribution it cuts: one bar a bin of `values`,
+// dimmed where the threshold leaves them out, and a line a drag moves.
+bool histogram_slider(const char* id, const std::vector<float>& values, float lo,
+                      float hi, float* v, float v_min, float v_max, ImVec2 size,
+                      bool cut_above, const std::function<ImU32(float)>& ink) {
+    constexpr int kBins = 48;
+    int count[kBins] = {};
+    int top = 0;
+    for (float x : values) {
+        const int b = std::clamp((int)((x - lo) / (hi - lo) * kBins), 0, kBins - 1);
+        top = std::max(top, ++count[b]);
+    }
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ui::InvisibleButtonRaw(id, size);
+    bool changed = false;
+    if (ImGui::IsItemActive()) {
+        const float x = (ImGui::GetIO().MousePos.x - at.x) / size.x;
+        const float to = std::clamp(lo + x * (hi - lo), v_min, v_max);
+        changed = to != *v;
+        *v = to;
+    }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y),
+                      ImGui::GetColorU32(ImGuiCol_FrameBg), ImGui::GetStyle().FrameRounding);
+    const float step = size.x / (float)kBins;
+    for (int b = 0; b < kBins && top > 0; b++) {
+        if (count[b] == 0) continue;
+        const float mid = lo + ((float)b + 0.5f) / kBins * (hi - lo);
+        const float tall = std::max(px(2.0f), size.y * (float)count[b] / (float)top);
+        const ImU32 c = ink(mid);
+        dl->AddRectFilled(ImVec2(at.x + step * (float)b, at.y + size.y - tall),
+                          ImVec2(at.x + step * (float)b + std::max(step - 1.0f, 1.0f),
+                                 at.y + size.y),
+                          (mid < *v) != cut_above ? (c & 0x00FFFFFF) | 0x50000000 : c);
+    }
+    const float x = at.x + (*v - lo) / (hi - lo) * size.x;
+    dl->AddLine(ImVec2(x, at.y), ImVec2(x, at.y + size.y),
+                ImGui::GetColorU32(ImGuiCol_Text), px(2.0f));
+    return changed;
+}
+
+}  // namespace
+
+// Every frame the run chose, input by input, under the settings that decide
+// which are left out. The picture follows the settings as they are moved: each
+// pick's measurements are held, so another threshold is a recount, not a run.
+void GuiApp::draw_sharpness_view(float h) {
+    const float y0 = ImGui::GetCursorPosY();
+    PrepJob& prep = _sfm_job.prep;
+    const PickStyle style{kErr, kWarn, kOk, prep.blur_px};
+    const std::vector<std::string> names = _picks.names();
+    std::vector<std::vector<Pick>> rows(names.size());
+    std::vector<float> moved, steps;
+    bool differs = false;
+    // What is shown is what pressing Update would leave: the run's own
+    // verdicts when it would change nothing, the frames the dataset has
+    // sorted again when it would sort, every frame when it makes them again.
+    const bool reviewing = _sfm.reviewing();
+    const StepPlan& frames = dataset_plan()[Step::Frames];
+    const bool settled = !reviewing && !dataset_busy() && frames.act == Act::Reuse;
+    for (size_t ri = 0; ri < names.size(); ri++) {
+        rows[ri] = _picks.picks(ri);
+        app::PickRule rule{prep.skip_blurry ? prep.blur_px : 0.0f, prep.blur_neighbour,
+                           prep.similar_bits};
+        for (size_t i = 0; i < rows[ri].size(); i++) {
+            Pick& p = rows[ri][i];
+            const app::PickVerdict ran = p.verdict;
+            // Left out as the frames were made: it has no camera, so a sort
+            // neither judges it nor brings it back.
+            const bool gone = !_picks.in_place(ri) && ran != app::PickVerdict::Kept;
+            if (settled && (!frames.sort || gone)) {
+                p.as_run = true;
+            } else {
+                p.dist = rule.distance(p.hash);
+                p.as_run = rule.judge(p) == ran;
+            }
+            differs = differs || !p.as_run;
+            if (p.blur >= 0.0f) moved.push_back(p.blur);
+            if (i == 0) continue;
+            // Against the frame before it, whatever was kept: what the
+            // histogram shows must not move when its own threshold does.
+            int bits = 0;
+            for (uint64_t x = rows[ri][i].hash ^ rows[ri][i - 1].hash; x; x &= x - 1) bits++;
+            steps.push_back((float)bits);
+        }
+    }
+
+    // ---- the settings, which stay put while the frames scroll under them
+    const bool locked = dataset_locked(Stage::Frames) && !reviewing;
+    if (reviewing) {
+        if (ui::Button(dmsg::review_continue)) continue_frame_review();
+        ImGui::SameLine();
+        ui::TextColoredWrapped(kWarn, dmsg::review_hint);
+    }
+    ImGui::BeginDisabled(locked);
+    // Where each preset puts the line. Whether a run pauses here is the
+    // form's choice (blur_review) and is not touched.
+    int at = prep.skip_blurry ? (int)kBlurManual : (int)kBlurKeep;
+    for (int i = 0; i < 3 && prep.skip_blurry; i++)
+        if (prep.blur_px == kBlurPreset[i]) at = kBlurLight + i;
+    if (blur_mode_combo(&at, px(260.0f), dmsg::blur_mode_custom,
+                        dmsg::blur_mode_custom_help)) {
+        prep.skip_blurry = at != kBlurKeep;
+        if (at >= kBlurLight && at <= kBlurStrict) prep.blur_px = kBlurPreset[at - kBlurLight];
+    }
+    ui::help_on_hover(dmsg::skip_blurry_help);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!prep.skip_blurry);
+    ui::Checkbox(dmsg::blur_neighbour, &prep.blur_neighbour);
+    ui::help_on_hover(dmsg::blur_neighbour_help);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::EndDisabled();
+    ui::Checkbox(dmsg::scan_show_pictures, &_picks_pictures);
+    if (_picks_pictures) {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(px(140.0f));
+        ui::SliderFloat(dmsg::scan_picture_size, &_picks_size, 24.0f, 256.0f, "%.0f");
+    }
+    ImGui::BeginDisabled(locked);
+    const float half =
+        (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    const ImVec2 bars(std::max(px(120.0f), half), px(44.0f));
+    char value[32];
+    ImGui::BeginGroup();
+    ImGui::BeginDisabled(!prep.skip_blurry);
+    ui::Text(dmsg::blur_px);
+    ui::help_on_hover(dmsg::blur_px_help);
+    ImGui::SameLine();
+    std::snprintf(value, sizeof value, "%.0f px", prep.blur_px);
+    ui::TextDisabledRaw(value);
+    histogram_slider("##blurhist", moved, 0.0f, 40.0f, &prep.blur_px, 1.0f, 40.0f, bars,
+                     /*cut_above=*/true,
+                     [&](float blur) { return PickSheetView::colour(style, blur); });
+    // Whole pixels: a finer threshold than the measurement means nothing, and
+    // every other value is one more "made with other settings" in the plan.
+    prep.blur_px = std::round(prep.blur_px);
+    ImGui::EndDisabled();
+    ImGui::EndGroup();
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    ui::Text(dmsg::similar_bits);
+    ui::help_on_hover(dmsg::similar_bits_help);
+    ImGui::SameLine();
+    std::snprintf(value, sizeof value, "%d", prep.similar_bits);
+    ui::TextDisabledRaw(value);
+    float similar = (float)prep.similar_bits;
+    const ImU32 plain = ImGui::GetColorU32(ImGuiCol_PlotHistogram);
+    if (histogram_slider("##similarhist", steps, 0.0f, 40.0f, &similar, 0.0f, 32.0f, bars,
+                         /*cut_above=*/false, [plain](float) { return plain; }))
+        prep.similar_bits = (int)std::lround(similar);
+    ImGui::EndGroup();
+    ImGui::EndDisabled();
+
+    if (!prep.skip_blurry || moved.empty()) ui::TextDisabledWrapped(dmsg::blur_off_hint);
+    if (differs && !dataset_busy()) {
+        // The same button as the form's, where the settings were moved.
+        ImGui::BeginDisabled(native_work_busy() || _batch_active);
+        if (ui::Button(dmsg::sharpness_apply)) start_dataset_job();
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ui::TextColoredWrapped(kWarn, dmsg::sharpness_preview);
+    }
+
+    const float rest = std::max(px(60.0f), h - (ImGui::GetCursorPosY() - y0));
+    if (_picks_view.viewing() && _picks_view.open_row() < rows.size()) {
+        _picks_view.draw_viewer(_picks, rows[_picks_view.open_row()],
+                                ImVec2(ImGui::GetContentRegionAvail().x, rest), style);
+        return;
+    }
+    ImGui::BeginChild("##sharpview", ImVec2(0, rest));
+    const float wheel = ImGui::GetIO().MouseWheel;
+    if (ImGui::IsWindowHovered() && ImGui::GetIO().KeyCtrl && wheel != 0.0f) {
+        _picks_pictures = true;
+        _picks_size = std::clamp(_picks_size * std::pow(1.15f, wheel), 24.0f, 256.0f);
+    }
+    for (size_t ri = 0; ri < names.size(); ri++) {
+        if (rows[ri].empty()) continue;
+        long long kept = 0, blurry = 0;
+        for (const Pick& p : rows[ri]) {
+            kept += p.verdict == app::PickVerdict::Kept ? 1 : 0;
+            blurry += p.verdict == app::PickVerdict::Blurry ? 1 : 0;
+        }
+        ui::Text(dmsg::sharpness_counts,
+                 {names[ri], kept, blurry, (long long)rows[ri].size() - kept - blurry});
+        const float w = ImGui::GetContentRegionAvail().x;
+        if (w < px(48.0f)) break;
+        _picks_view.draw(_picks, ri, rows[ri], w,
+                         _picks_pictures ? px(_picks_size) : 0.0f, style);
+        ImGui::Spacing();
+    }
+    ImGui::EndChild();
+}
+
 // Which of the three previews the running step implies. Frames, masks and
 // feature extraction all show pictures, so they share one.
 int GuiApp::preview_for_stage() {
@@ -6296,7 +6624,9 @@ int GuiApp::preview_for_stage() {
     switch (dataset_steps()->current()) {
         // Nothing is written while the motion is being measured, so the reel
         // has nothing to show and the curves have everything.
-        case Stage::Frames:    return dataset_steps()->scanning() ? 6 : 0;
+        case Stage::Frames:
+            if (_sfm.reviewing()) return 7;
+            return dataset_steps()->scanning() ? 6 : 0;
         case Stage::Masks:     return 1;
         case Stage::Features:  return 2;
         case Stage::Matching:  return 3;
@@ -6393,6 +6723,9 @@ void GuiApp::reset_dataset_preview(bool sweep) {
     _live_model = LiveModel{};
     _matrix.clear();
     _matrix.destroy_gl();
+    // _picks stays: a run that keeps the frames keeps what was measured on
+    // them (launch_dataset_job drops it when it is another folder's).
+    _picks_view.destroy_gl();
     _pairs_view.clear();
     _pairs_view.destroy_gl();
     for (FilmReel* f : {&_film_frames, &_film_masks, &_film_features,
@@ -6413,7 +6746,7 @@ void GuiApp::reset_dataset_preview(bool sweep) {
 bool GuiApp::preview_has_content() const {
     return _film_frames.has_frames() || _film_masks.has_frames() ||
            _film_features.has_frames() || !_matrix.empty() || _model_attached ||
-           _film_geometry.has_frames();
+           _film_geometry.has_frames() || (_picks.any() && _picks_workspace == _workspace);
 }
 
 // The frames / match map / model area. Which one it shows follows the running
@@ -6424,12 +6757,13 @@ bool GuiApp::preview_has_content() const {
 // needs; a column of its own hands its own height down instead.
 void GuiApp::draw_dataset_preview(float height) {
     // Null where the view is not a reel: the match map, the model, the motion.
-    FilmReel* reels[7] = {&_film_frames, &_film_masks, &_film_features,
-                          nullptr, nullptr, &_film_geometry, nullptr};
-    const bool avail[7] = {_film_frames.has_frames(), _film_masks.has_frames(),
+    FilmReel* reels[8] = {&_film_frames, &_film_masks, &_film_features,
+                          nullptr, nullptr, &_film_geometry, nullptr, nullptr};
+    const bool avail[8] = {_film_frames.has_frames(), _film_masks.has_frames(),
                            _film_features.has_frames(), !_matrix.empty(),
                            _model_attached, _film_geometry.has_frames(),
-                           !dataset_steps()->scan().empty()};
+                           !dataset_steps()->scan().empty(),
+                           _picks.any() && _picks_workspace == _workspace};
     bool any_avail = false;
     for (bool v : avail) any_avail = any_avail || v;
     if (!any_avail && _dense_preview_error.empty() && !_dense_live) return;
@@ -6453,15 +6787,22 @@ void GuiApp::draw_dataset_preview(float height) {
         ui::help_on_hover(spirula::i18n::msg::dense::live_phase_help);
     }
 
+    // The run has stopped to be looked at: a view pinned earlier gives way.
+    if (_sfm.reviewing() && !_was_reviewing) _preview_tab = -1;
+    _was_reviewing = _sfm.reviewing();
     const int implied = preview_for_stage();
     if (dataset_busy() && implied >= 0) _preview_last_stage = implied;
-    const Msg* names[7] = {&dmsg::view_frames, &dmsg::view_masks,
+    const Msg* names[8] = {&dmsg::view_frames, &dmsg::view_masks,
                            &dmsg::view_features, &dmsg::view_matrix,
                            &dmsg::view_model, &dmsg::view_geometry,
-                           &dmsg::view_motion};
-    const int tab = draw_view_tabs(names, avail, 7, implied, _preview_tab);
+                           &dmsg::view_motion, &dmsg::view_sharpness};
+    // In the order a run reaches them: the frames are sorted before anything
+    // is made from them.
+    const int order[8] = {0, 7, 6, 1, 2, 3, 4, 5};
+    const int tab = draw_view_tabs(names, avail, order, 8, implied, _preview_tab);
     if (tab == 3) ui::help_on_hover(dmsg::matrix_help);
     if (tab == 6) ui::help_on_hover(dmsg::frame_spacing_help);
+    if (tab == 7) ui::help_on_hover(dmsg::sharpness_view_help);
 
     // In a column of its own the height is the column's; otherwise a splitter,
     // as the log has -- what any of these views is worth depends entirely on
@@ -6489,6 +6830,10 @@ void GuiApp::draw_dataset_preview(float height) {
     }
     if (tab == 6) {
         draw_scan_view(h - px(8.0f));
+        return;
+    }
+    if (tab == 7) {
+        draw_sharpness_view(h - px(8.0f));
         return;
     }
     if (tab == 3) {
@@ -7092,6 +7437,7 @@ const Msg& plan_state(const StepPlan& s) {
             if (s.why == Why::Resume) return dmsg::plan_finish;
             return s.adds || s.why == Why::Unrecorded ? dmsg::plan_add : dmsg::plan_run;
         case Act::Reuse:
+            if (s.sort) return dmsg::plan_sort;
             if (s.why == Why::InDataset) return dmsg::plan_in_dataset;
             if (s.why == Why::Unrecorded) return dmsg::plan_unrecorded;
             return s.masks_changed ? dmsg::plan_reuse_masks_changed : dmsg::plan_reuse;
@@ -7150,7 +7496,7 @@ bool plan_parts_shown(const DatasetPlan& plan) {
 }
 
 ImVec4 plan_color(const StepPlan& s) {
-    if (s.act == Act::Redo || s.act == Act::Keep) return kWarn;
+    if (s.act == Act::Redo || s.act == Act::Keep || s.sort) return kWarn;
     if (s.act == Act::Run) return kOk;
     return kDim;
 }
@@ -7175,6 +7521,9 @@ std::string plan_key_label(const std::string& key) {
         {"decoder", &dmsg::use_ffmpeg}, {"adaptive_fps", &dmsg::adaptive_fps},
         {"adaptive_range", &dmsg::adaptive_range},
         {"sharp_window", &dmsg::sharpness_window}, {"sync_tracks", &dmsg::sync_lenses},
+        {"skip_blurry", &dmsg::skip_blurry}, {"blur_px", &dmsg::blur_px},
+        {"blur_neighbour", &dmsg::blur_neighbour},
+        {"similar_bits", &dmsg::similar_bits},
         {"pano_size", &dmsg::pano360_size}, {"mask_max_size", &dmsg::mask_max_size},
         {"mask_nms", &dmsg::mask_nms}, {"mask_detect_every", &dmsg::mask_detect_every},
         {"mask_memory_frames", &dmsg::mask_memory_frames},
@@ -7972,8 +8321,14 @@ void GuiApp::draw_dataset_form(float height, bool running) {
             draw_dataset_rerun(workspace_state());
             draw_dataset_reset();
         }
-    } else if (ui::Button(dmsg::cancel, ImVec2(px(200.0f), px(34.0f)))) {
-        cancel_dataset_job();
+    } else {
+        if (_sfm.reviewing()) {
+            if (ui::Button(dmsg::review_continue, ImVec2(px(200.0f), px(34.0f))))
+                continue_frame_review();
+            ui::help_on_hover(dmsg::review_hint);
+            ImGui::SameLine();
+        }
+        if (ui::Button(dmsg::cancel, ImVec2(px(200.0f), px(34.0f)))) cancel_dataset_job();
     }
 
     // Both runners report through the same three states.

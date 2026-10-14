@@ -947,6 +947,39 @@ is on ONE scale, because a clip that moves twice as much as its neighbour is
 exactly why it took the frames off it. A folder of photographs is a row that
 says it has no motion rather than a gap in the list.
 
+### Leaving out blurry frames
+
+Choosing the sharpest frame of a window never leaves a frame out, so through a
+shaky stretch the least bad frames still reach the dataset. `--blur-reject <px>`
+(the GUI: "Skip blurry frames") rules on each chosen frame afterwards, and
+`--similar <n>` leaves out one that is nearly the last frame kept. Both are off
+unless asked for, and read nothing but pixels: no shutter time, gyroscope or
+EXIF.
+
+- **The measure** (`app/FrameSharpness.h`, `edge_width_px`): how many pixels the
+  sharpest of a frame's strong edges take to cross, at half size, along the
+  wider of the two axes. Blur widens every edge, so the sharpest ones move with
+  it; a sharp frame of softly shaded things still has narrow edges among its
+  wide ones.
+- **The rule** (`app/FramePick.h`, `PickRule`): blur is that width less the
+  capture's own sharpest frames (the 10th percentile so far, plus 8%) in
+  quadrature, so the threshold is a length in pixels of the frame as extracted.
+  A frame past it is left out, but never more than two in a row, so a bad
+  stretch is thinned rather than cut. A frame nothing could be measured on is
+  kept.
+- **Similarity**: a 64-bit difference hash against the last frame kept; fewer
+  than `n` differing bits is a duplicate. A camera standing still is not a bad
+  stretch, so there is no cap on these.
+
+`--skipped-dir <dir>` writes the frames left out there instead of dropping them,
+and `--report <csv>` lists every chosen frame with its width, blur and verdict.
+
+The GUI offers three thresholds (10, 8 and 5 px) and "Set by hand", which pauses
+the run once the frames are out so the threshold is set in the **Sharpness**
+view while looking at them, before anything is built on those frames. The same
+rule sorts a folder of photographs, and a finished dataset can be sorted again
+by a tighter rule without reconstructing it: docs/notes/dataset-rerun.md.
+
 ## E57 laser scans
 
 Two ways in. On the GUI's dataset screen a laser scan (E57, LAS or PLY) is an
