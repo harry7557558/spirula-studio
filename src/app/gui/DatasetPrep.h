@@ -155,8 +155,8 @@ struct PrepInput {
     // Set instead when the file says it IS a 360 packing this build cannot
     // place, for the line that says its tracks are being left as they are.
     bool pano360_unsupported = false;
-    // Fisheye circles side by side in each frame of a .lrv / .prx, or each .insp of
-    // a folder (app::packed_lens_count); two are cut apart into cam0/, cam1/.
+    // Fisheye circles packed into each frame of a .lrv / .prx / unstitched QooCam
+    // .mp4, or each .insp of a folder (app::packed_lens_count); two become cam0/, cam1/.
     // 0 = not such an input, or not measured yet.
     int packed_lenses = 0;
     // The folder holds HEIC photos, which nothing downstream reads: they are
@@ -489,7 +489,7 @@ bool is_pano360_path(const std::string& path);
 // into each frame, which PrepInput::packed_lenses counts.
 bool is_packed_lens_path(const std::string& path);
 
-// Two fisheye lenses back to back, as tracks or side by side.
+// Two fisheye lenses back to back, as tracks or packed into one frame.
 inline bool is_dual_lens(const PrepInput& in) {
     return is_dual_fisheye_path(in.path) || in.packed_lenses >= 2;
 }

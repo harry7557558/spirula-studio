@@ -98,12 +98,17 @@ std::string default_lens(const PrepInput& s) {
 }
 
 
-void set_packed_lenses(PrepInput& s, int width, int height) {
-    if (!is_packed_lens_path(s.path) || s.packed_lenses > 0 || width <= 0 ||
-        height <= 0)
-        return;
+void set_packed_lenses(PrepInput& s, int width, int height, bool unstitched) {
+    if (s.packed_lenses > 0 || width <= 0 || height <= 0) return;
     bool exact = false;
-    s.packed_lenses = app::packed_lens_count(width, height, exact);
+    const int lenses = app::packed_lens_count(width, height, exact);
+    if (is_packed_lens_path(s.path)) {
+        s.packed_lenses = lenses;
+    } else if (unstitched && lenses >= 2) {
+        // Not known by its name, so make_source gave it a flat lens.
+        s.packed_lenses = lenses;
+        s.camera_model = default_lens(s);
+    }
     if (s.packed_lenses >= 2) s.rig = kRigOwn;
 }
 
@@ -147,9 +152,11 @@ void probe_sources(std::vector<PrepInput>& sources,
     }
     for (PrepInput& s : sources) {
         int w = 0, h = 0;
-        if (s.is_video && s.packed_lenses == 0 && is_packed_lens_path(s.path) &&
+        if (!s.is_video || s.packed_lenses != 0) continue;
+        const bool unstitched = s.video_tracks == 1 && app::kandao_unstitched(s.path);
+        if ((unstitched || is_packed_lens_path(s.path)) &&
             source_pixel_size(s, ffmpeg_exe, w, h))
-            set_packed_lenses(s, w, h);
+            set_packed_lenses(s, w, h, unstitched);
     }
     for (PrepInput& s : sources)
         if (s.is_video) s.lut_detected = app::detect_log_lut(s.path);

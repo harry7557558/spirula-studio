@@ -22,7 +22,8 @@ namespace gui {
 std::string default_lens(const PrepInput& s);
 
 // A packed video's lenses, from its frame size: two start as a rig of their own.
-void set_packed_lenses(PrepInput& s, int width, int height);
+// `unstitched` (app::kandao_unstitched) is a file its extension does not give away.
+void set_packed_lenses(PrepInput& s, int width, int height, bool unstitched);
 
 // One picked path -> the input it describes, with the defaults its kind wants.
 // A folder resolves to the images/ under it and the masks beside them, which

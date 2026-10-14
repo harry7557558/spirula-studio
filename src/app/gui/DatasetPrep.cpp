@@ -2242,9 +2242,9 @@ bool convert_to_jpeg(const fs::path& from, const fs::path& to,
     return true;
 }
 
-// `from`'s lenses left to right, one file each in `to`, each turned by
-// `orientation` after the cut: the lenses sit side by side in the STORED
-// pixels. The last is written last, so its existence means the set is whole.
+// `from`'s lenses in frame order, one file each in `to`, each turned by
+// `orientation` after the cut: the lenses are laid out in the STORED pixels.
+// The last is written last, so its existence means the set is whole.
 bool split_packed_image(const fs::path& from, const std::vector<fs::path>& to,
                         int orientation) {
     const std::string src = from.string();
@@ -2257,8 +2257,8 @@ bool split_packed_image(const fs::path& from, const std::vector<fs::path>& to,
     bool ok = true;
     for (size_t k = 0; k < to.size() && ok; k++) {
         std::vector<uint8_t> lens;
-        int lw = 0, lh = h;
-        app::packed_lens_crop(px, w, h, 3, (int)to.size(), (int)k, lens, lw);
+        int lw = 0, lh = 0;
+        app::packed_lens_crop(px, w, h, 3, (int)to.size(), (int)k, lens, lw, lh);
         app::turn_pixels(xf, 3, lens, lw, lh);
         fs::create_directories(to[k].parent_path(), ec);
         ok = is_jpeg_ext(to[k])

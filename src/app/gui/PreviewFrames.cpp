@@ -55,12 +55,12 @@ void convert_to_srgb(const PreviewSource& src, std::vector<uint8_t>& rgb) {
 }
 
 // A packed frame's lens `folder`, cut out in place.
-void crop_packed(const PreviewSource& src, int folder, int& w, int h,
+void crop_packed(const PreviewSource& src, int folder, int& w, int& h,
                  std::vector<uint8_t>& rgb) {
     if (src.look.packed_lenses < 2 || rgb.empty()) return;
     std::vector<uint8_t> lens;
     app::packed_lens_crop(rgb.data(), w, h, 3, src.look.packed_lenses, folder,
-                          lens, w);
+                          lens, w, h);
     rgb.swap(lens);
 }
 
@@ -85,7 +85,7 @@ bool load_photo(const PreviewSource& src, const std::string& path,
         if (!app::load_rgb(path, w, h, rgb)) return false;
         convert_to_srgb(src, rgb);
     }
-    // Cut before the turn: the lenses sit side by side in the stored pixels.
+    // Cut before the turn: the lenses are laid out in the stored pixels.
     crop_packed(src, folder, w, h, rgb);
     if (!src.photos_as_stored)
         app::turn_pixels(app::photo_turn(path), 3, rgb, w, h);

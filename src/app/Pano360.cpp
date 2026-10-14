@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <thread>
 
 namespace app {
@@ -439,6 +441,11 @@ int packed_lens_count(int width, int height, bool& exact) {
     exact = false;
     if (width <= 0 || height <= 0) return 1;
     const double r = (double)width / height;
+    // Stacked only at exactly 1:2: a portrait phone clip is nearer that than 1:1.
+    if (std::fabs(r * 2.0 - 1.0) <= 0.01) {
+        exact = true;
+        return 2;
+    }
     // Nearer in log ratio, so the two meet at sqrt(2).
     const int lenses = r >= std::sqrt(2.0) ? 2 : 1;
     exact = std::fabs(r / lenses - 1.0) <= 0.01;
@@ -447,15 +454,82 @@ int packed_lens_count(int width, int height, bool& exact) {
 
 void packed_lens_crop(const uint8_t* px, int width, int height, int channels,
                       int lenses, int lens, std::vector<uint8_t>& out,
-                      int& out_width) {
+                      int& out_width, int& out_height) {
     lenses = std::max(lenses, 1);
-    out_width = width / lenses;
-    const size_t row = (size_t)out_width * channels;
-    out.resize(row * height);
-    const size_t x0 = (size_t)std::min(std::max(lens, 0), lenses - 1) * out_width;
-    for (int y = 0; y < height; y++)
+    lens = std::min(std::max(lens, 0), lenses - 1);
+    const bool stacked = height > width;
+    const int w = stacked ? width : width / lenses;
+    const int h = stacked ? height / lenses : height;
+    const size_t x0 = stacked ? 0 : (size_t)lens * w;
+    const size_t y0 = stacked ? (size_t)lens * h : 0;
+    const size_t row = (size_t)w * channels;
+    out.resize(row * h);
+    for (int y = 0; y < h; y++)
         std::memcpy(out.data() + (size_t)y * row,
-                    px + ((size_t)y * width + x0) * channels, row);
+                    px + ((y0 + y) * width + x0) * channels, row);
+    out_width = w;
+    out_height = h;
+}
+
+namespace {
+
+uint32_t le32(const uint8_t* p) {
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 |
+           (uint32_t)p[3] << 24;
+}
+
+// The top-level MP4 box `type`, or empty. Kandao's are a few KB; `limit` keeps
+// a damaged size field from asking for the whole file.
+std::vector<uint8_t> top_level_box(const std::string& path, const char* type,
+                                   size_t limit) {
+    std::ifstream f(path, std::ios::binary);
+    uint8_t head[16];
+    for (uint64_t pos = 0; f.seekg((std::streamoff)pos) &&
+                           f.read((char*)head, 8);) {
+        uint64_t size = (uint64_t)head[0] << 24 | (uint64_t)head[1] << 16 |
+                        (uint64_t)head[2] << 8 | head[3];
+        uint64_t header = 8;
+        if (size == 1) {
+            if (!f.read((char*)head + 8, 8)) break;
+            size = 0;
+            for (int i = 8; i < 16; i++) size = size << 8 | head[i];
+            header = 16;
+        }
+        // 0 = the last box, running to the end of the file.
+        if (size != 0 && size < header) break;
+        if (std::memcmp(head + 4, type, 4) == 0) {
+            std::vector<uint8_t> body(
+                size ? (size_t)std::min<uint64_t>(size - header, limit) : limit);
+            f.read((char*)body.data(), (std::streamsize)body.size());
+            body.resize((size_t)f.gcount());
+            return body;
+        }
+        if (size == 0) break;
+        pos += size;
+    }
+    return {};
+}
+
+}  // namespace
+
+bool kandao_unstitched(const std::string& path) {
+    // A count, then per entry: name[32], type[8], element count, the elements.
+    // All little endian, unlike the box around them.
+    const std::vector<uint8_t> b = top_level_box(path, "kfix", 1 << 16);
+    if (b.size() < 4) return false;
+    size_t p = 4;
+    for (uint32_t n = le32(b.data()); n > 0 && p + 44 <= b.size(); n--) {
+        const char* name = (const char*)&b[p];
+        const char* type = (const char*)&b[p + 32];
+        // CHAR, or a letter and a width in bits: U8, S32, U64.
+        const int bits = std::strncmp(type, "CHAR", 8) == 0 ? 8 : std::atoi(type + 1);
+        const uint64_t bytes = (uint64_t)le32(&b[p + 40]) * (bits / 8);
+        p += 44;
+        if (bits < 8 || bits % 8 != 0 || bytes > b.size() - p) return false;
+        if (std::strncmp(name, "STITCHED", 32) == 0) return bytes >= 1 && b[p] == 0;
+        p += (size_t)bytes;
+    }
+    return false;
 }
 
 std::string pano360_graph(const Pano360Layout& l, const std::string& pre) {

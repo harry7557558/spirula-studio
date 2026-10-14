@@ -20,6 +20,7 @@ struct SourceProbeInfo {
     int width = 0, height = 0;
     app::Pano360Layout pano360;
     bool pano360_unsupported = false;
+    bool unstitched = false;   // app::kandao_unstitched
     std::string lut;   // app::detect_log_lut
 };
 

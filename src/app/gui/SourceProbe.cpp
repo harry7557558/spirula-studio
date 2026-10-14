@@ -42,6 +42,8 @@ SourceProbeInfo probe(const std::string& path, const std::string& ffmpeg_exe,
         out.pano360 = p.layout;
         out.pano360_unsupported = p.unsupported;
     }
+    if (!cancel.load() && out.video_tracks == 1)
+        out.unstitched = app::kandao_unstitched(path);
     if (!cancel.load()) out.lut = app::detect_log_lut(path);
     out.done = true;
     return out;

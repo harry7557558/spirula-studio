@@ -33,7 +33,7 @@ struct FrameLook {
     // source pixels and the plan turns the sphere itself.
     Pano360Layout eac;
     std::vector<Pano360View> views;
-    // Fisheye circles side by side in one frame (packed_lens_count); two or
+    // Fisheye circles packed into one frame (packed_lens_count); two or
     // more are cut apart into cam0/, cam1/ ... as a multi-track file's are.
     int packed_lenses = 0;
     // A .cube colour LUT (app/CubeLut.h) mapped over every decoded picture

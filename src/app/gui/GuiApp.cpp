@@ -2520,8 +2520,13 @@ void GuiApp::pump_source_probes() {
             if (s.pano360.valid() || s.video_tracks >= 2) s.rig = kRigOwn;
         }
         const int packed = s.packed_lenses;
-        set_packed_lenses(s, info.width, info.height);
+        set_packed_lenses(s, info.width, info.height, info.unstitched);
         pano_changed = pano_changed || packed != s.packed_lenses;
+        if (info.unstitched && packed != s.packed_lenses) {
+            // What add_sources does for a fisheye file it knows by its name.
+            _border_enable = true;
+            if (s.stencil.empty()) s.stencil.detect_border = true;
+        }
         if (s.lut_detected != info.lut) {
             s.lut_detected = info.lut;
             lut_changed = true;
@@ -2535,6 +2540,7 @@ void GuiApp::pump_source_probes() {
     _source_probes_ready = !pending;
     if (!pano_changed) return;
     apply_capture_defaults(_sources, _sfm_job, _colmap_job);
+    normalize_source_lenses(_sources, _sfm_job.camera_model);
     reapply_dataset_builtin();
 }
 
