@@ -35,6 +35,7 @@ src/mesh/*.cu
 src/mesh/*.cpp
 src/engine/*.cpp
 src/checkpoint/*.cpp
+src/lod/*.cpp
 src/data/*.cpp
 src/data/parsers/*.cpp
 src/app/webviewer/*.cpp
@@ -53,6 +54,7 @@ src/kernels/bilagrid/*.cpp
 src/mesh/*.cpp
 src/engine/*.cpp
 src/checkpoint/*.cpp
+src/lod/*.cpp
 src/data/*.cpp
 src/data/parsers/*.cpp
 src/app/webviewer/*.cpp

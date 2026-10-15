@@ -14,6 +14,9 @@
 #include "i18n/catalog/Gui.h"
 #include "app/TrainerCore.h"
 #include "mesh/MeshImport.h"
+#include "lod/HierarchyBuilder.h"
+#include "lod/HierarchyFile.h"
+#include "lod/HierarchyRenderer.h"
 
 #include <algorithm>
 #include <cmath>
@@ -323,6 +326,56 @@ void SplatViewer::run(std::string path) {
             _state = State::Ready;
             return;
         }
+
+        if (fs::path(path).extension() == ".slod") {
+            _kind = Kind::Splats;
+            log(format(msg::viewer_reading, {path}));
+            std::string val_err = spirula::validate_slod(path);
+            if (!val_err.empty()) return fail("Invalid .slod: " + val_err);
+
+            auto hier = std::make_shared<spirula::GaussianHierarchy>(spirula::read_slod(path, false));
+            _lod_renderer = std::make_shared<spirula::HierarchyRenderer>(hier);
+            _num_splats = hier->num_splats;
+            _sh_degree = hier->sh_degree;
+            _sb_lobes = hier->sb_lobes;
+
+            const auto& root_box = hier->nodes[(size_t)hier->root].bounds;
+            float center[3] = {root_box.center(0), root_box.center(1), root_box.center(2)};
+            float radius = root_box.diagonal() * 0.5f;
+            const float unit = view_distance_for(radius);
+            set_frame(center, unit);
+
+            ViewerRenderConfig vc;
+            vc.primitive = "3dgs";
+            vc.train_frame_scale = unit;
+            vc.train_to_normalized = {unit, 0, 0, center[0],
+                                      0, unit, 0, center[1],
+                                      0, 0, unit, center[2],
+                                      0, 0, 0, 1};
+            vc.scene_slot = _pending_slot;
+            vc.lod_renderer = _lod_renderer;
+            vc.lod_cfg.enabled = true;
+            vc.lod_cfg.quality_threshold = 1.0f;
+
+            {
+                std::lock_guard<std::mutex> lk(*_engine_mutex);
+                _scene_slot = _pending_slot;
+                spirula::LodViewParams init_vp;
+                init_vp.cam_pos[0] = center[0];
+                init_vp.cam_pos[1] = center[1];
+                init_vp.cam_pos[2] = center[2] + unit;
+                _lod_renderer->update_and_upload(init_vp, vc.lod_cfg, _pending_slot);
+            }
+
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _cfg = vc;
+            }
+            log(format(msg::viewer_loaded, {(long long)hier->num_splats, (long long)hier->sh_degree}));
+            _state = State::Ready;
+            return;
+        }
+
         _kind = Kind::Splats;
         log(format(msg::viewer_reading, {ply}));
         spirula::SplatCloud c = spirula::read_splat_ply(ply);
@@ -382,6 +435,25 @@ void SplatViewer::run(std::string path) {
                                   0, 0, inv, -inv * center[2]};
             vc.centers = dsparse::scene_centers(nullptr, 0, c.means.data(),
                                                 c.num, 3, A);
+        }
+
+        if (cfg.lod_rendering) {
+            fs::path slod_candidate = fs::path(ply);
+            slod_candidate.replace_extension(".slod");
+            std::shared_ptr<spirula::GaussianHierarchy> hier;
+            if (fs::exists(slod_candidate) && spirula::validate_slod(slod_candidate.string()).empty()) {
+                hier = std::make_shared<spirula::GaussianHierarchy>(
+                    spirula::read_slod(slod_candidate.string(), false));
+            } else {
+                hier = std::make_shared<spirula::GaussianHierarchy>(
+                    spirula::build_gaussian_hierarchy(c));
+            }
+            _lod_renderer = std::make_shared<spirula::HierarchyRenderer>(hier);
+            vc.lod_renderer = _lod_renderer;
+            vc.lod_cfg.enabled = true;
+            vc.lod_cfg.quality_threshold = cfg.lod_quality_threshold;
+            vc.lod_cfg.vram_budget_mb = cfg.lod_vram_budget_mb;
+            vc.lod_cfg.debug_colorize_levels = cfg.lod_debug_levels;
         }
 
         {

@@ -8,6 +8,7 @@
 #include "app/DepthColor.h"  // error_scale -- shared with the error pane
 #include "data/FrustumSize.h"
 #include "app/webviewer/RegionOverlay.h"
+#include "lod/HierarchyRenderer.h"
 
 #include <algorithm>
 #include <atomic>
@@ -177,7 +178,7 @@ struct RenderWorker::Impl {
 
     // c2w (client frame, OpenGL axes) -> the engine's world-to-camera, with
     // the train-frame remap and the relative scale applied.
-    void engine_viewmat(const float in_c2w[12], float vm[16]) const {
+    void engine_viewmat(const float in_c2w[12], float vm[16], float* out_cam_pos = nullptr) const {
         static const float D[3] = {1.f, -1.f, -1.f};
         float c2w[12];
         std::memcpy(c2w, in_c2w, sizeof c2w);
@@ -198,6 +199,11 @@ struct RenderWorker::Impl {
         double t[3] = {c2w[3], c2w[7], c2w[11]};
         if (cfg.relative_scale.has_value())
             for (auto& v : t) v *= *cfg.relative_scale;
+        if (out_cam_pos) {
+            out_cam_pos[0] = (float)t[0];
+            out_cam_pos[1] = (float)t[1];
+            out_cam_pos[2] = (float)t[2];
+        }
         std::memset(vm, 0, 16 * sizeof(float));
         for (int r = 0; r < 3; r++) {
             double ti = 0.0;
@@ -215,7 +221,8 @@ struct RenderWorker::Impl {
         const int W = q.W, H = q.H;
         const int64_t npx = (int64_t)W * H;
         float vm[16];
-        engine_viewmat(q.c2w, vm);
+        float cam_pos[3] = {};
+        engine_viewmat(q.c2w, vm, cam_pos);
         float intr[4] = {q.fx, q.fy, q.cx, q.cy};
         float dist[8];
         std::memcpy(dist, q.dist, sizeof dist);
@@ -229,6 +236,49 @@ struct RenderWorker::Impl {
         {
             std::lock_guard<std::mutex> lk(*hooks.engine_mutex);
             if (cfg.scene_slot >= 0) engine_scene_activate(cfg.scene_slot);
+            if (cfg.lod_renderer && cfg.lod_cfg.enabled) {
+                spirula::LodViewParams vp;
+                vp.width = W;
+                vp.height = H;
+                vp.fx = q.fx;
+                vp.fy = q.fy;
+                vp.cx = q.cx;
+                vp.cy = q.cy;
+                vp.cam_pos[0] = cam_pos[0];
+                vp.cam_pos[1] = cam_pos[1];
+                vp.cam_pos[2] = cam_pos[2];
+                vp.cam_right[0] = vm[0]; vp.cam_right[1] = vm[1]; vp.cam_right[2] = vm[2];
+                vp.cam_up[0]    = vm[4]; vp.cam_up[1]    = vm[5]; vp.cam_up[2]    = vm[6];
+                vp.cam_dir[0]   = vm[8]; vp.cam_dir[1]   = vm[9]; vp.cam_dir[2]   = vm[10];
+
+                if (q.model == "EQUIRECTANGULAR") {
+                    vp.camera_model = spirula::LodCameraModel::Equirectangular;
+                } else {
+                    vp.camera_model = spirula::LodCameraModel::Pinhole;
+                    float zn = 0.1f, zf = 1000.0f;
+                    float fov_rad = 2.0f * std::atan(0.5f * (float)H / q.fy);
+                    float tan_half = std::tan(fov_rad * 0.5f);
+                    float aspect = (float)W / (float)H;
+                    float a = 1.0f / (aspect * tan_half);
+                    float b = 1.0f / tan_half;
+                    float P[16] = {
+                        a,    0.0f, 0.0f, 0.0f,
+                        0.0f, b,    0.0f, 0.0f,
+                        0.0f, 0.0f, (zf + zn) / (zf - zn), -(2.0f * zf * zn) / (zf - zn),
+                        0.0f, 0.0f, 1.0f, 0.0f
+                    };
+                    for (int r = 0; r < 4; r++) {
+                        for (int c = 0; c < 4; c++) {
+                            float sum = 0.0f;
+                            for (int k = 0; k < 4; k++) sum += P[r * 4 + k] * vm[k * 4 + c];
+                            vp.view_proj[r * 4 + c] = sum;
+                        }
+                    }
+                }
+
+                cfg.lod_renderer->update_and_upload(vp, cfg.lod_cfg, cfg.scene_slot);
+                if (cfg.scene_slot >= 0) engine_scene_activate(cfg.scene_slot);
+            }
             // The restore has to run whatever the render does.
             struct After {
                 const std::function<void()>& f;

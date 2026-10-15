@@ -109,6 +109,8 @@ list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/partition_main.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_PARTITION=1)
 list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/dense_main.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_DENSE=1)
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/lod_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_LOD=1)
 
 # ---- mesh extraction ----
 # Both backends: the host side is portable (mesh/OccupancyEvaluator.cpp) and
@@ -382,7 +384,8 @@ endif()
 file(GLOB SS_CORE_TESTS CONFIGURE_DEPENDS
      ${SS_SRC}/core/tests/*.cpp ${SS_SRC}/data/tests/*.cpp
      ${SS_SRC}/dense/tests/*.cpp
-     ${SS_SRC}/mesh/tests/*.cpp)
+     ${SS_SRC}/mesh/tests/*.cpp
+     ${SS_SRC}/lod/tests/*.cpp)
 foreach(test_src ${SS_CORE_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})

@@ -372,6 +372,10 @@ inline bool train_choices_free_form(const char* choices) {
     X(int, quantization_level, 1, "perf", "advanced", "")                    \
     X(int, bin_tile_size, 0, "perf", "expert", "")                           \
     X(bool, preallocate_splat_tensors, true, "perf", "expert", "")           \
+    X(bool, lod_rendering, false, "perf", "advanced", "")                     \
+    X(float, lod_quality_threshold, 1.0f, "perf", "advanced", "")             \
+    X(int, lod_vram_budget_mb, 0, "perf", "advanced", "")                     \
+    X(bool, lod_debug_levels, false, "perf", "advanced", "")                  \
     X(std::string, optimizer_offload, "", "perf", "stub", "sh|all|none")     \
     X(bool, use_bvh, false, "perf", "stub", "")                              \
                                                                              \
