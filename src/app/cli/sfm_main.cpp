@@ -384,7 +384,7 @@ static void printEvent(const sfm::Event& e) {
                                       "image", "pair", "model", "result"};
         static const char* kStage[] = {"extract", "match", "map",  "merge",
                                        "orient",  "finish", "load", "select",
-                                       "seed",    "refine"};
+                                       "seed",    "refine", "focal", "progressive"};
         static_assert(sizeof kStage / sizeof *kStage == sfm::kNumStages, "");
         L::diag(Tag::Run, "[ev] %-11s %-7s done=%lld/%lld reg=%lld pts=%lld %s",
                 kKind[(int)e.kind], kStage[(int)e.stage], (long long)e.done,
@@ -411,11 +411,12 @@ static void printEvent(const sfm::Event& e) {
             // Apple M2 matching 8192-feature images, which reads as a hung
             // program. Rate-limit by time, keeping the count for a parser.
             static double last = 0.0;
-            if (e.stage != sfm::Stage::Match) break;
+            if (e.stage != sfm::Stage::Match && e.stage != sfm::Stage::Focal) break;
             const double t = now();
             if (e.done != e.total && t - last < 2.0) break;
             last = t;
-            L::err(Tag::Match, M::match_progress,
+            L::err(Tag::Match,
+                   e.stage == sfm::Stage::Focal ? M::focal_sample_progress : M::match_progress,
                    {(long long)e.done, (long long)e.total});
             break;
         }

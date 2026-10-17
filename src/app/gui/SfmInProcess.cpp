@@ -8,6 +8,9 @@
 #include "sfm/core/Events.h"
 #include "sfm/core/Log.h"
 #include "sfm/core/Progress.h"
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+#include "nn/Device.h"
+#endif
 
 #include "i18n/catalog/Sfm.h"
 #else
@@ -118,6 +121,13 @@ InProcessResult run_sfm_in_process(
         return out;
     }
 
+#if SS_HAVE_ALIKED || SS_HAVE_LOMA
+    // Declared first so it runs last. Safe: the GUI stopped every other nn user
+    // before the run began (DatasetPrep::run releases the same way).
+    struct ReleaseDevice {
+        ~ReleaseDevice() { nn::shutdown(); }
+    } release_device;
+#endif
     StatusFold fold;
     // Restored when this returns, however it returns, so a second run starts
     // from a clean process (sfm/Pipeline.h).

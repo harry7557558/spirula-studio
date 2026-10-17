@@ -26,6 +26,8 @@ struct GeometryRequest {
     // MoGe's ViT budget, which is what sets its cost. Per call rather than per
     // load, so changing it does not mean re-uploading the weights.
     int num_tokens = 3600;
+    // MoGe-3's refinement passes; every other model ignores it.
+    int refine_steps = 3;
 };
 
 struct GeometryPrediction {

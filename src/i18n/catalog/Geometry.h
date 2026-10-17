@@ -225,6 +225,45 @@ SS_MSG(opt_num_tokens,
        "boyutu değil bu belirler. Kendi aralığı 1200 ile 3600 arasıdır ve "
        "görüntünün içerdiğiyle sınırlanır. Metric3D bunu yok sayar."));
 
+SS_MSG(opt_refine_steps,
+    EN("MoGe-3's depth refinement passes, each sharpening depth edges a little "
+       "more. 3 is what it was trained with; 0 skips refinement. Other models "
+       "ignore this."),
+    JA("MoGe-3 の深度リファインの回数です。1 回ごとに深度の境界が少しずつ"
+       "鮮明になります。学習時の値は 3 で、0 でリファインを省きます。"
+       "他のモデルでは無視されます。"),
+    ZH_HANS("MoGe-3 深度细化的次数，每次都会让深度边缘更清晰一些。训练时用的是 3，"
+            "0 表示跳过细化。其他模型会忽略此项。"),
+    ZH_HANT("MoGe-3 深度細化的次數，每次都會讓深度邊緣更清晰一些。訓練時用的是 3，"
+            "0 表示略過細化。其他模型會忽略此項。"),
+    KO("MoGe-3 의 깊이 다듬기 횟수로, 한 번마다 깊이 경계가 조금씩 더 "
+       "선명해집니다. 학습 때 값은 3 이고 0 이면 다듬기를 건너뜁니다. 다른 "
+       "모델은 무시합니다."),
+    DE("Die Tiefenverfeinerungen von MoGe-3; jede schärft die Tiefenkanten ein "
+       "wenig mehr. Trainiert wurde mit 3, 0 überspringt die Verfeinerung. "
+       "Andere Modelle ignorieren dies."),
+    FR("Les passes d'affinage de profondeur de MoGe-3, chacune rendant les bords "
+       "de profondeur un peu plus nets. Il a été entraîné avec 3 ; 0 saute "
+       "l'affinage. Les autres modèles l'ignorent."),
+    ES("Las pasadas de refinado de profundidad de MoGe-3; cada una afina un "
+       "poco más los bordes de profundidad. Se entrenó con 3; 0 omite el "
+       "refinado. Los demás modelos lo ignoran."),
+    PT("As passagens de refinamento de profundidade do MoGe-3; cada uma torna "
+       "as arestas de profundidade um pouco mais nítidas. Foi treinado com 3; "
+       "0 salta o refinamento. Os outros modelos ignoram isto."),
+    IT("I passaggi di affinamento della profondità di MoGe-3, ognuno rende i "
+       "bordi di profondità un po' più netti. È stato addestrato con 3; 0 salta "
+       "l'affinamento. Gli altri modelli lo ignorano."),
+    NL("De diepteverfijningen van MoGe-3; elke maakt de dieptegrenzen iets "
+       "scherper. Getraind met 3; 0 slaat het verfijnen over. Andere modellen "
+       "negeren dit."),
+    RU("Число проходов уточнения глубины MoGe-3; каждый делает границы глубины "
+       "чуть чётче. Модель обучена с 3; 0 пропускает уточнение. Другие модели "
+       "это игнорируют."),
+    TR("MoGe-3'ün derinlik iyileştirme geçişleri; her biri derinlik kenarlarını "
+       "biraz daha keskinleştirir. 3 ile eğitildi; 0 iyileştirmeyi atlar. Diğer "
+       "modeller bunu yok sayar."));
+
 SS_MSG(opt_depth,
     EN("Also write depth maps. Off by default: the normals are what a "
        "reconstruction usually wants, and depth doubles both the time on disk "

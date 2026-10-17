@@ -6,6 +6,7 @@ the detail.
 | document | what it covers |
 |---|---|
 | [architecture.md](architecture.md) | layers, data flow, engine state, where each responsibility lives |
+| [cli/](cli/README.md) | every command-line flag of every `spirula` subcommand |
 | [build.md](build.md) | the build matrix, every option, per-platform notes |
 | [backends.md](backends.md) | the CUDA/Vulkan seam, coverage, pointers to the authoritative backend docs |
 | [codegen.md](codegen.md) | the four generators, what they own, and the invariants |

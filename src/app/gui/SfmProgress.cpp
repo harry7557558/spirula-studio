@@ -96,9 +96,27 @@ float mapping_fraction(int64_t done, int64_t total) {
     return (float)(kMappingBarFull * x * std::sqrt(x));
 }
 
-bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out, uint64_t point_memory_budget) {
+std::vector<uint32_t> live_model_sizes(const std::string& dir) {
+    std::vector<uint32_t> out;
+    for (size_t k = 0;; k++) {
+        const fs::path p = fs::path(dir) / (k ? "model_" + std::to_string(k) + ".bin"
+                                              : std::string("model.bin"));
+        std::ifstream f(p, std::ios::binary);
+        char h[20];
+        if (!f.read(h, sizeof h) || std::memcmp(h, "VKPM", 4) != 0) break;
+        uint32_t version = 0, registered = 0;
+        std::memcpy(&version, h + 4, 4);
+        // Version 3 put the flags word before the counts.
+        std::memcpy(&registered, h + (version >= 3 ? 16 : 12), 4);
+        out.push_back(registered);
+    }
+    return out;
+}
+
+bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out, uint64_t point_memory_budget,
+                     const std::string& file) {
     int64_t stamp = mtime;
-    const std::string b = slurp_if_newer(fs::path(dir) / "model.bin", stamp);
+    const std::string b = slurp_if_newer(fs::path(dir) / file, stamp);
     if (b.size() < 24 || std::memcmp(b.data(), "VKPM", 4) != 0) return false;
 
     Reader r{b.data() + 4, b.data() + b.size()};
@@ -275,6 +293,33 @@ bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out, uin
     m.post.c2w_flip = ds.c2w;
 
     out = std::move(m);
+    mtime = stamp;
+    return true;
+}
+
+bool read_image_stats(const std::string& path, int64_t& mtime, std::vector<ImageStat>& out) {
+    if (path.empty()) return false;
+    int64_t stamp = mtime;
+    const std::string b = slurp_if_newer(fs::path(path), stamp);
+    if (b.size() < 12 || std::memcmp(b.data(), "VKPI", 4) != 0) return false;
+    Reader r{b.data() + 4, b.data() + b.size()};
+    if (r.u32() != 1) return false;
+    const uint32_t n = r.u32();
+    if (!r.ok || n > b.size() / 21) return false;
+    std::vector<ImageStat> v(n);
+    for (ImageStat& s : v) {
+        s.id = r.u32();
+        uint8_t placed = 0;
+        r.take(&placed, 1);
+        s.placed = placed != 0;
+        s.keypoints = r.u32();
+        s.points = r.u32();
+        s.mean_error = r.f32();
+        s.max_error = r.f32();
+        s.name = r.text();
+    }
+    if (!r.ok) return false;
+    out = std::move(v);
     mtime = stamp;
     return true;
 }

@@ -1,6 +1,6 @@
 #pragma once
-// The shape of a MoGe-2 checkpoint, read off the file rather than keyed to the
-// model id.
+// The shape of a MoGe-2 or MoGe-3 checkpoint, read off the file rather than
+// keyed to the model id.
 //
 // The three published variants differ in encoder width, depth and how many
 // blocks the head reads, and every one of those is visible in the file: the
@@ -30,6 +30,16 @@ struct Hparams {
     static constexpr int kLevels = 5;
     int ch[kLevels] = {0, 0, 0, 0, 0};
     bool has_normal = false, has_mask = false, has_scale = false;
+
+    // ---- refiner (MoGe-3's sparse 3D U-Net) ------------------------------
+    // Absent from MoGe-2. Levels and widths come from the weights; the pooling
+    // factors and the depth binning only from the .pt's model_config.
+    static constexpr int kMaxRefinerLevels = 8;
+    bool has_refiner = false;
+    int refiner_levels = 0;
+    int refiner_ch[kMaxRefinerLevels] = {};
+    int refiner_pool[kMaxRefinerLevels] = {};   // factor from level i to i + 1
+    float refiner_depth_resolution = 256.0f;    // log-depth bins per unit
 
     // ImageNet statistics over 0..1 values, carried in the graph as
     // `encoder.image_mean` and `encoder.image_std`; these are the fallback.

@@ -969,6 +969,82 @@ void test_spatial(vk::Arena& arena) {
         check("gather_rows", readback(to), want, 1e-6f);
     }
     {
+        vk::ArenaScope scope(arena);
+        // Restored at the end: the cases after this one keep the inputs their
+        // tolerances were set on.
+        const std::mt19937 rng_before = g_rng;
+        const int N = 40, C = 5, T = 27;
+        auto x = randn((size_t)N * C);
+        std::uniform_int_distribution<int> pick(-1, N - 1);
+        Tensor tx = upload_f32(arena, x, N, C);
+        // A sparse convolution against its explicit column matrix on the host,
+        // on the 64-tile path and, at 128 output channels, the tensor-core one.
+        for (const int Co : {40, 128}) {
+            const int Ci = 32, Rc = 300;
+            auto xc = randn((size_t)N * Ci);
+            auto wc = randn((size_t)Co * T * Ci, 0.05f);
+            auto bc = randn((size_t)Co);
+            auto rc = randn((size_t)Rc * Co);
+            std::vector<int32_t> nc((size_t)Rc * T);
+            for (auto& v : nc) v = pick(g_rng);
+            Tensor txc = upload_f32(arena, xc, N, Ci);
+            Tensor tnc = arena_tensor(arena, DType::I32, Rc, T);
+            vk::Stream::get().upload(tnc.ptr, nc.data(), nc.size() * 4);
+            Tensor tbc = upload_f32(arena, bc, Co);
+            for (bool f16 : {false, true}) {
+                const bool coop = f16 && Co >= 128 && coop_matrix_enabled();
+                const std::vector<float> wr = f16 ? round_f16(wc) : wc;
+                const std::vector<float> xr = coop ? round_f16(xc) : xc;
+                Tensor twc = f16 ? upload_f16(arena, wc, Co, (int64_t)T * Ci)
+                                 : upload_f32(arena, wc, Co, (int64_t)T * Ci);
+                Tensor tout = upload_f32(arena, rc, Rc, Co);
+                LinearOpts lo;
+                lo.bias = tbc;
+                lo.residual = tout;
+                lo.act = Act::Silu;
+                sparse_conv(tout, txc, tnc, twc, lo);
+                std::vector<float> ref((size_t)Rc * Co);
+                for (int r = 0; r < Rc; ++r)
+                    for (int o = 0; o < Co; ++o) {
+                        double acc = bc[(size_t)o] + rc[(size_t)r * Co + o];
+                        for (int t = 0; t < T; ++t) {
+                            const int id = nc[(size_t)r * T + t];
+                            if (id < 0) continue;
+                            for (int c = 0; c < Ci; ++c)
+                                acc += (double)xr[(size_t)id * Ci + c] *
+                                       wr[((size_t)o * T + t) * Ci + c];
+                        }
+                        ref[(size_t)r * Co + o] = (float)(acc / (1.0 + std::exp(-acc)));
+                    }
+                const std::string name = std::string("sparse_conv ") + std::to_string(Co) +
+                                         (coop ? " coop" : f16 ? " f16 weights" : "");
+                check(name.c_str(), readback(tout), ref, coop ? 2e-3f : 1e-4f);
+            }
+        }
+
+        const int S = 9;
+        std::vector<int32_t> off = {0, 3, 3, 7, 8, 12, 20, 21, 30, 40};
+        std::vector<int32_t> ids(40);
+        for (size_t k = 0; k < ids.size(); ++k) ids[k] = (int32_t)((k * 7) % N);
+        Tensor toff = arena_tensor(arena, DType::I32, S + 1);
+        Tensor tids = arena_tensor(arena, DType::I32, (int64_t)ids.size());
+        vk::Stream::get().upload(toff.ptr, off.data(), off.size() * 4);
+        vk::Stream::get().upload(tids.ptr, ids.data(), ids.size() * 4);
+        Tensor tm = arena_tensor(arena, DType::F32, S, C);
+        segment_mean(tm, tx, toff, tids);
+        std::vector<float> mean((size_t)S * C, 0.0f);
+        for (int s = 0; s < S; ++s)
+            for (int c = 0; c < C; ++c) {
+                double sum = 0.0;
+                for (int k = off[(size_t)s]; k < off[(size_t)s + 1]; ++k)
+                    sum += x[(size_t)ids[(size_t)k] * C + c];
+                const int n = off[(size_t)s + 1] - off[(size_t)s];
+                mean[(size_t)s * C + c] = n ? (float)(sum / n) : 0.0f;
+            }
+        check("segment_mean", readback(tm), mean, 1e-5f);
+        g_rng = rng_before;
+    }
+    {
         // ROI-Align against the torchvision sampling_ratio=0 rule.
         vk::ArenaScope scope(arena);
         const int H = 12, W = 12, C = 4, S = 7, NB = 2;

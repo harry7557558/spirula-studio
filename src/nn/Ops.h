@@ -276,6 +276,17 @@ void resize_binarize(const Tensor& out_u8, const Tensor& logits, int64_t Ho, int
 
 void gather_rows(const Tensor& out, const Tensor& table, const Tensor& ids);
 
+// out = act(cols @ w[N, taps*Ci]^T + bias + residual), never materializing
+// cols[m, t*Ci + c] = x[nbr[m, t], c] (0 where the I32 [M, taps] table is -1).
+// Ci must be a multiple of 16; `residual` may alias `out`.
+void sparse_conv(const Tensor& out, const Tensor& x, const Tensor& nbr, const Tensor& w,
+                 const LinearOpts& opts = {});
+
+// out[s, :] = mean of x[ids[k], :] for k in [offsets[s], offsets[s+1]); an
+// empty segment writes 0. `offsets` and `ids` are I32.
+void segment_mean(const Tensor& out, const Tensor& x, const Tensor& offsets,
+                  const Tensor& ids);
+
 // Copy `rows` x `cols` between buffers with independent row strides. The
 // building block for concat, slice and token-sequence assembly.
 void strided_copy(const Tensor& out, const Tensor& in, int64_t rows, int64_t cols,

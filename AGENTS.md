@@ -41,7 +41,8 @@ cmake/                      build modules (options, backends, apps) + sources.tx
                               the source list BOTH build systems read
 build_develop.bash/.bat     the dev build entry points — USE THESE
 AGENTS.md  CLAUDE.md        this file (CLAUDE.md is a pointer to it)
-docs/                       architecture, build, backends, codegen, testing, notes
+docs/                       architecture, build, backends, codegen, testing, notes;
+                              docs/cli/ is the command-line reference
 src/                        ALL native code (see below)
 assets/fonts/               the five embedded UI faces + the full-CJK face
                               table (assets/fonts/README.md). The CJK subsets
@@ -316,7 +317,10 @@ Rules:
    `config.json` is flat so neither reaches disk. What the row does NOT carry
    is the flag's human name and help sentence: those are translated and live
    in `src/i18n/catalog/TrainFields.h`, resolved by member name at compile
-   time, so a row without an entry there fails to build.
+   time, so a row without an entry there fails to build. After changing a
+   row here or in `src/sfm/SfmConfig.h`, run `python3 tools/gen_cli_reference.py`
+   to refresh `docs/cli/train-flags.md` / `sfm-flags.md`; a flag a CLI parses by
+   hand is documented by hand in `docs/cli/`.
 5. `.cuh` declaration sections must stay CUDA-include-free — they have to
    parse under `-DSS_BACKEND_VULKAN` without the CUDA toolkit.
 
