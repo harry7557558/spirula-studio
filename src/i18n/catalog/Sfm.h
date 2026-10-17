@@ -3767,6 +3767,21 @@ SS_MSG(sensor_scale_gps,
     TR("Model {0}: GPS ölçeği {1} (belirsizlik %{2}), {3} kare; {4} m içindeki kameralar: "
        "{5}/{6}, RMS {7} m"));
 
+SS_MSG(sensor_gps_track_altitude,
+    EN("GPS altitude correction for {0}: {1} m"),
+    JA("{0} の GPS 高度補正: {1} m"),
+    ZH_HANS("{0} 的 GPS 高度校正: {1} m"),
+    ZH_HANT("{0} 的 GPS 高度校正: {1} m"),
+    KO("{0}의 GPS 고도 보정: {1} m"),
+    DE("GPS-Höhenkorrektur für {0}: {1} m"),
+    FR("Correction d'altitude GPS pour {0} : {1} m"),
+    ES("Corrección de altitud GPS para {0}: {1} m"),
+    PT("Correção de altitude GPS para {0}: {1} m"),
+    IT("Correzione dell'altitudine GPS per {0}: {1} m"),
+    NL("GPS-hoogtecorrectie voor {0}: {1} m"),
+    RU("Поправка высоты GPS для {0}: {1} м"),
+    TR("{0} için GPS irtifa düzeltmesi: {1} m"));
+
 SS_MSG(sensor_scale_gps_failed,
     EN("Model {0}: GPS log not usable for scale -- {1}"),
     JA("モデル {0}: GPS ログは縮尺に使えません -- {1}"),

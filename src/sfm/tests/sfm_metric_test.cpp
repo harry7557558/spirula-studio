@@ -91,6 +91,44 @@ int cmdMetricSelftest(int, char**) {
         check(fit.inliers == fit.n && fit.n == 24, what);
     }
 
+    // ---- T1a: separate barometric datums do not tip a full GPS fit --------
+    {
+        Sim3 T;
+        T.scale = 1.73;
+        T.R = rotFromAxisAngle({0, 0, 1}, 0.9);
+        T.t = {11.0, -4.0, 2.5};
+        MetricRef ref = makeRef(arcCentres(60), T);
+        const double raw[3] = {-1.5, 0.8, 2.5};
+        for (size_t i = 0; i < ref.targets.size(); i++) {
+            const int track = (int)(i % 3);
+            ref.tracks.push_back(track);
+            ref.targets[i].z += raw[track];
+        }
+        const double mean = (raw[0] + raw[1] + raw[2]) / 3.0;
+        const MetricFit fit = fitMetricGauge(ref, 0.0, MetricAxes::Full, 0.0,
+                                              MetricTrackOffsets::Vertical);
+        check(fit.ok, "T1a track altitude: fit");
+        check(std::fabs(fit.T.scale / T.scale - 1.0) < 1e-8, "T1a track altitude: scale");
+        check(chordal(fit.T.R, T.R) < 1e-8, "T1a track altitude: rotation");
+        check(fit.track_ids.size() == 3, "T1a track altitude: three corrections");
+        check(std::fabs(fit.trackVerticalOffset(0) - (raw[0] - mean)) < 1e-8 &&
+                  std::fabs(fit.trackVerticalOffset(1) - (raw[1] - mean)) < 1e-8 &&
+                  std::fabs(fit.trackVerticalOffset(2) - (raw[2] - mean)) < 1e-8,
+              "T1a track altitude: corrections recover relative datums");
+        check(fit.rms < 1e-8, "T1a track altitude: residual removed");
+
+        // Fixes stated at sea level: a mean would drag the height by ~1 m each.
+        for (int i : {0, 1, 2, 30, 31, 32}) ref.targets[(size_t)i].z = -T.t.z * 40.0;
+        const MetricFit sea = fitMetricGauge(ref, 0.0, MetricAxes::Full, 0.0,
+                                              MetricTrackOffsets::Vertical);
+        check(sea.ok && !sea.flat, "T1a track altitude: sea-level fixes, full fit");
+        check(std::fabs(sea.T.t.z - (T.t.z + mean)) < 1e-6, "T1a track altitude: height kept");
+        check(!sea.inlier_mask[0] && !sea.inlier_mask[31] && sea.inliers == 54,
+              "T1a track altitude: sea-level fixes rejected");
+        check(std::fabs(sea.trackVerticalOffset(2) - (raw[2] - mean)) < 1e-8,
+              "T1a track altitude: corrections unmoved");
+    }
+
     // ---- T1b: a left-handed reference, where the guard actually fires -----
     // Unguarded this fits to 3e-15 m with det(R) = -1, so no RMS gate can see
     // it. A coplanar fixture cannot test this: det(cov) is then round-off.

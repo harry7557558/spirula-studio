@@ -370,6 +370,12 @@ void reportSensorGauge(size_t i, const SensorGaugeResult& r,
         else
             L::err(Tag::Orient, M::sensor_scale_gps_failed, {model, metricReason(r.gps)});
     }
+    for (size_t k = 0; k < r.gps.track_ids.size() && k < r.gps.track_vertical_offsets.size(); k++) {
+        const int track = r.gps.track_ids[k];
+        if (track < 0 || (size_t)track >= caps.size()) continue;
+        L::out(Tag::Orient, M::sensor_gps_track_altitude,
+               {caps[(size_t)track]->cap.path, L::num(r.gps.track_vertical_offsets[k], 3)});
+    }
     if (r.disagree)
         L::warn(Tag::Orient, M::sensor_disagree, {model, L::num(r.scale_imu, 6), L::num(r.scale_gps, 6)});
     if (!r.applied) return;

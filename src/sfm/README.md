@@ -557,6 +557,16 @@ and recovers a scale 0.2 % away. The east and north residuals were the same to
 collinearity gate: a turn about the vertical is resisted by the whole in-plane
 radius, so a street walked end to end — which `full` refuses — fits.
 
+A `full` fit with a measured IMU up over two or more telemetry captures (any
+device, not only DJI; three or more inlying fixes each) also takes one altitude
+offset per capture, since each recording can start its own barometric datum. A
+level fit on the IMU up reads each capture's median step, the offsets are made
+zero-mean over the frames, and the full fit then runs on the corrected altitudes,
+so it still rejects bad altitudes and sets the tilt. The orient log prints each
+capture's offset, the value subtracted from its stated altitude; only their
+differences mean anything. The mapper's GPS centre priors and registration
+checks use the same corrected altitudes.
+
 The fit is refused rather than approximated, and **what refuses it is geometry,
 not a noise model**. Fewer than three positioned cameras, reference positions
 that do not spread wider than the inlier radius, under half the cameras inlying,
