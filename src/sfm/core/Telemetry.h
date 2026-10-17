@@ -2,7 +2,7 @@
 // The IMU and GPS a video file carries alongside its pictures, recognised by
 // content rather than by extension: a GoPro `gpmd` track (GPMF), the Insta360
 // trailer after the MP4, a DJI `djmd` track (protobuf: Osmo 360 and Avata
-// 360, field numbers per proto), or a CAMM track.
+// 360, field numbers per proto), a CAMM track, or a Kandao `kvar` box.
 //
 // map/SensorGauge.h consumes it through core/SensorTimeline.h;
 // `sfm_telemetry_test FILE` prints what a file carries. Only the sample
@@ -56,7 +56,7 @@ struct TelemetryExposure {
     bool has_ev = false;
 };
 
-enum class TelemetryCarrier { None, Gpmf, Insta360, DjiDvtm, Camm };
+enum class TelemetryCarrier { None, Gpmf, Insta360, DjiDvtm, Camm, Kandao };
 const char* telemetry_carrier_name(TelemetryCarrier c);
 // The same as one lowercase word, for files a program reads: "gpmf", "dji", ...
 const char* telemetry_carrier_token(TelemetryCarrier c);

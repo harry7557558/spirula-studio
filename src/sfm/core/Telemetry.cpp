@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +28,7 @@ const char* telemetry_carrier_name(TelemetryCarrier c) {
         case TelemetryCarrier::Insta360: return "Insta360 trailer";
         case TelemetryCarrier::DjiDvtm:  return "DJI djmd track";
         case TelemetryCarrier::Camm:     return "CAMM track";
+        case TelemetryCarrier::Kandao:   return "Kandao kvar box";
         default:                         return "none";
     }
 }
@@ -207,6 +209,8 @@ struct Movie {
     // Where makers put their settings as text or KLV: udta, moov/meta, and a
     // top-level meta (Sony's XML). Copies, for video_log_profile.
     std::vector<uint8_t> udta, moov_meta, file_meta;
+    // Kandao's two top-level boxes, payload offset and size; 0 when absent.
+    uint64_t kfix_off = 0, kfix_size = 0, kvar_off = 0, kvar_size = 0;
     double durationSec() const { return timescale ? (double)duration / timescale : 0.0; }
     // 1904-01-01 to 1970-01-01.
     double unixStart() const { return creation_1904 ? (double)creation_1904 - 2082844800.0 : 0.0; }
@@ -358,6 +362,8 @@ bool read_movie(const Source& src, Movie& mv, bool& is_mp4, std::string& error) 
         if (type == fourcc("ftyp")) is_mp4 = true;
         if (type == fourcc("meta") && size - h < (4u << 20))
             src.readVec(off + h, (size_t)(size - h), mv.file_meta);
+        if (type == fourcc("kfix")) { mv.kfix_off = off + h; mv.kfix_size = size - h; }
+        if (type == fourcc("kvar")) { mv.kvar_off = off + h; mv.kvar_size = size - h; }
         if (type == fourcc("moov")) {
             if (size - h > (1ull << 30)) { error = "moov box over 1 GiB"; return false; }
             if (!src.readVec(off + h, (size_t)(size - h), moov)) { error = "truncated moov"; return false; }
@@ -1297,6 +1303,120 @@ bool read_insta360(const Source& own, const Movie* mv, Telemetry& out, std::stri
 }
 
 // ================
+// Kandao kfix / kvar (QooCam)
+// ================
+
+struct KandaoField {
+    std::string name, type;
+    const uint8_t* data = nullptr;
+    size_t size = 0;   // bytes
+    std::string str() const {
+        const char* c = (const char*)data;
+        return std::string(c, strnlen(c, size));
+    }
+};
+
+// Both boxes: u32 count, then per field name[32], type[8], u32 n and n values,
+// little-endian. An IMU, GPS or EXP log is one U8 field holding its records.
+std::vector<KandaoField> kandao_fields(const uint8_t* p, size_t n) {
+    std::vector<KandaoField> out;
+    if (n < 4) return out;
+    const uint32_t count = le32(p);
+    size_t o = 4;
+    for (uint32_t i = 0; i < count && o + 44 <= n; i++) {
+        KandaoField f;
+        f.name.assign((const char*)p + o, strnlen((const char*)p + o, 32));
+        f.type.assign((const char*)p + o + 32, strnlen((const char*)p + o + 32, 8));
+        size_t width = 0;
+        if (f.type == "CHAR" || f.type == "BOOL" || f.type == "U8" || f.type == "S8") width = 1;
+        else if (f.type == "U16" || f.type == "S16") width = 2;
+        else if (f.type == "U32" || f.type == "S32" || f.type == "FLOAT") width = 4;
+        else if (f.type == "U64" || f.type == "S64" || f.type == "DOUBLE") width = 8;
+        const uint64_t size = (uint64_t)le32(p + o + 40) * width;
+        o += 44;
+        if (width == 0 || size > n - o) break;
+        f.data = p + o;
+        f.size = (size_t)size;
+        o += f.size;
+        out.push_back(std::move(f));
+    }
+    return out;
+}
+
+const KandaoField* kandao_find(const std::vector<KandaoField>& fs, const char* name) {
+    for (const KandaoField& f : fs) if (f.name == name) return &f;
+    return nullptr;
+}
+
+// One `KEY=value` of kvar's space-separated INFO string; < 0 when absent.
+double kandao_info(const std::string& info, const char* key) {
+    const std::string k = std::string(key) + "=";
+    size_t at = 0;
+    while ((at = info.find(k, at)) != std::string::npos) {
+        if (at == 0 || info[at - 1] == ' ') return std::atof(info.c_str() + at + k.size());
+        at += k.size();
+    }
+    return -1;
+}
+
+// Measured on a QooCam 3 Ultra (docs/notes/imu-gps-for-sfm.md §2.4): 20-byte
+// records at 1 kHz, stamped on the clock PTS stamps the frames with.
+bool read_kandao(const Source& src, const Movie& mv, Telemetry& out, std::string& error) {
+    if (mv.kvar_size > (1ull << 30)) { error = "kvar box over 1 GiB"; return false; }
+    std::vector<uint8_t> kvar, kfix;
+    if (!src.readVec(mv.kvar_off, (size_t)mv.kvar_size, kvar)) { error = "truncated kvar"; return false; }
+    if (mv.kfix_size > (1u << 20) || !src.readVec(mv.kfix_off, (size_t)mv.kfix_size, kfix)) kfix.clear();
+    const std::vector<KandaoField> var = kandao_fields(kvar.data(), kvar.size());
+    const std::vector<KandaoField> fix = kandao_fields(kfix.data(), kfix.size());
+
+    const KandaoField* imu = kandao_find(var, "IMU");
+    const KandaoField* info_f = kandao_find(var, "INFO");
+    const std::string info = info_f ? info_f->str() : std::string();
+    const double gyro_range = kandao_info(info, "V_G_RANGE");    // deg/s at int16 full scale
+    const double accel_range = kandao_info(info, "V_A_RANGE");   // g at int16 full scale
+    const double axes = kandao_info(info, "V_IMU_F");
+    if (!imu || !(gyro_range > 0) || !(accel_range > 0) || (axes >= 0 && axes != 6)) return true;
+
+    // PTS_UNIT 1 is microseconds; 0 and 2 are ExifTool's reading of the field.
+    double tick = 1e-6;
+    if (const KandaoField* u = kandao_find(var, "PTS_UNIT"); u && u->size >= 4)
+        tick = le32(u->data) == 0 ? 1e-3 : le32(u->data) == 2 ? 1e-9 : 1e-6;
+    const KandaoField* pts = kandao_find(var, "PTS");
+    const size_t item = 8 + 6 * 2;
+    const size_t n = imu->size / item;
+    if (n == 0) return true;
+    const bool have_pts = pts && pts->size >= 8;
+    const uint64_t first_frame = have_pts ? le64(pts->data) : le64(imu->data);
+
+    const double gyro_scale = gyro_range / 32768.0 * kPi / 180.0;
+    const double accel_scale = accel_range / 32768.0 * kG;
+    out.gyro.reserve(n);
+    out.accel.reserve(n);
+    for (size_t i = 0; i < n; i++) {
+        const uint8_t* p = imu->data + i * item;
+        const double t = (double)((int64_t)le64(p) - (int64_t)first_frame) * tick;
+        double v[6];
+        for (int k = 0; k < 6; k++) v[k] = (double)(int16_t)le16(p + 8 + 2 * k);
+        out.gyro.push_back({t, v[0] * gyro_scale, v[1] * gyro_scale, v[2] * gyro_scale});
+        out.accel.push_back({t, v[3] * accel_scale, v[4] * accel_scale, v[5] * accel_scale});
+    }
+
+    out.carrier = TelemetryCarrier::Kandao;
+    if (const KandaoField* f = kandao_find(fix, "PRODUCT")) out.camera = f->str();
+    if (const KandaoField* f = kandao_find(fix, "SN")) out.serial = f->str();
+    if (const KandaoField* f = kandao_find(fix, "SW_VER")) out.firmware = f->str();
+    char scale[64];
+    std::snprintf(scale, sizeof scale, "%.0f deg/s and %.0f g", gyro_range, accel_range);
+    out.notes.push_back(std::string("gyro and accel raw int16 at ") + scale +
+                        " full scale; axes are the IMU's own, not the lens frame");
+    if (!have_pts) out.notes.push_back("no PTS table: IMU t counted from its own first sample");
+    for (const char* gps : {"GPS", "GPSX"})
+        if (const KandaoField* f = kandao_find(var, gps); f && f->size > 0)
+            out.notes.push_back(std::string(gps) + " log present (" + std::to_string(f->size) + " bytes), not read");
+    return true;
+}
+
+// ================
 // Driver
 // ================
 
@@ -1326,6 +1446,7 @@ bool read_carrier(const Source& src, Telemetry& out, std::string& error,
         else if (tk.sample_type == fourcc("djmd")) { if (!read_dji(src, tk, out, error)) return false; }
         if (out.carrier != TelemetryCarrier::None) break;
     }
+    if (out.carrier == TelemetryCarrier::None && mv.kvar_size > 0) return read_kandao(src, mv, out, error);
     return true;
 }
 

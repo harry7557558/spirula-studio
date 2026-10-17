@@ -1,4 +1,4 @@
-// Telemetry: the four carriers on synthetic files, and the checks on
+// Telemetry: the five carriers on synthetic files, and the checks on
 // synthetic readings. With file arguments it prints what each file carries.
 #include <cmath>
 #include <cstdio>
@@ -503,6 +503,85 @@ static bool has_note(const Telemetry& tm, const std::string& needle, bool exact)
     return false;
 }
 
+static Bytes kandao_field(const char* name, const char* type, uint32_t count, const Bytes& data) {
+    Bytes b(40, 0);
+    std::memcpy(b.data(), name, std::strlen(name));
+    std::memcpy(b.data() + 32, type, std::strlen(type));
+    put_le32(b, count);
+    put_raw(b, data);
+    return b;
+}
+
+static Bytes kandao_box(const char* type, const std::vector<Bytes>& fields) {
+    Bytes p;
+    put_le32(p, (uint32_t)fields.size());
+    for (const Bytes& f : fields) put_raw(p, f);
+    return box(type, p);
+}
+
+static Bytes kandao_chars(const char* name, const char* s) {
+    Bytes d; put_str(d, s); put_u8(d, 0);
+    return kandao_field(name, "CHAR", (uint32_t)d.size(), d);
+}
+
+// `imu_f` is INFO's V_IMU_F; a negative one leaves the ranges out as well.
+static Bytes kandao_file(int imu_f, bool with_pts) {
+    const uint64_t first_frame = 5000000;   // microseconds
+    Bytes imu;
+    for (int i = 0; i < 4; i++) {
+        put_le64(imu, first_frame - 1000 + 1000 * i);
+        put_le16(imu, (uint16_t)(int16_t)(-16384 + i)); put_le16(imu, 0); put_le16(imu, 8192);
+        put_le16(imu, 0); put_le16(imu, (uint16_t)(int16_t)-2048); put_le16(imu, 1024);
+    }
+    Bytes pts; put_le64(pts, first_frame); put_le64(pts, first_frame + 40000);
+    Bytes unit; put_le32(unit, 1);
+    std::vector<Bytes> var = {kandao_field("PTS_UNIT", "U32", 1, unit)};
+    if (imu_f >= 0)
+        var.push_back(kandao_chars("INFO", ("V_FPS=25.0 V_IMU_F=" + std::to_string(imu_f) +
+                                            " V_G_RANGE=2000 V_A_RANGE=16 V_VERSION=3").c_str()));
+    if (with_pts) var.push_back(kandao_field("PTS", "U64", 2, pts));
+    var.push_back(kandao_field("IMU", "U8", (uint32_t)imu.size(), imu));
+    var.push_back(kandao_field("GPS", "U8", 20, Bytes(20, 0)));
+
+    Bytes file = build_mp4({}, 1000, 80, 0);
+    put_raw(file, kandao_box("kfix", {kandao_chars("PRODUCT", "QooCam 3 Ultra"), kandao_chars("SN", "QU0001"),
+                                      kandao_chars("SW_VER", "V1.1.2.15")}));
+    put_raw(file, kandao_box("kvar", var));
+    return file;
+}
+
+static void test_kandao() {
+    Telemetry tm;
+    std::string err;
+    Bytes file = kandao_file(6, true);
+    check(telemetry_read(file.data(), file.size(), tm, err), "kandao: read (" + err + ")");
+    check(tm.carrier == TelemetryCarrier::Kandao, "kandao: carrier");
+    check(tm.camera == "QooCam 3 Ultra" && tm.serial == "QU0001" && tm.firmware == "V1.1.2.15", "kandao: identity");
+    check(tm.gyro.size() == 4 && tm.accel.size() == 4 && tm.gps.empty(), "kandao: counts");
+    const double pi = 3.14159265358979323846;
+    check(tm.gyro.size() == 4 && close_to(tm.gyro[0].x, -1000.0 * pi / 180.0, 1e-9) &&
+          close_to(tm.gyro[0].z, 500.0 * pi / 180.0, 1e-9), "kandao: gyro in rad/s from the range in INFO");
+    check(tm.accel.size() == 4 && close_to(tm.accel[0].y, -9.80665, 1e-9) && close_to(tm.accel[0].z, 4.903325, 1e-9),
+          "kandao: accel in m/s^2 from the range in INFO");
+    check(tm.gyro.size() == 4 && close_to(tm.gyro[0].t, -0.001, 1e-12) && close_to(tm.gyro[3].t, 0.002, 1e-12),
+          "kandao: time counted from the first frame's PTS");
+    check(has_note(tm, "GPS log present", false), "kandao: an unread GPS log is said");
+
+    file = kandao_file(6, false);
+    check(telemetry_read(file.data(), file.size(), tm, err) && tm.gyro.size() == 4 && close_to(tm.gyro[0].t, 0, 1e-12) &&
+          has_note(tm, "no PTS table", false), "kandao: without PTS, time counts from the first sample and says so");
+
+    for (int imu_f : {9, -1}) {
+        file = kandao_file(imu_f, true);
+        check(telemetry_read(file.data(), file.size(), tm, err) && tm.carrier == TelemetryCarrier::None && tm.empty(),
+              "kandao: a record layout or range it cannot name is not read (V_IMU_F " + std::to_string(imu_f) + ")");
+    }
+
+    file = kandao_file(6, true);
+    file.resize(file.size() - 30);
+    check(telemetry_read(file.data(), file.size(), tm, err) && tm.empty(), "kandao: a cut-off kvar reads as empty");
+}
+
 static void test_dji_avata() {
     const Telemetry tm = read_samples({avata_sample("dvtm_AVATA360.proto", true, 200830583ull),
                                        avata_sample("dvtm_AVATA360.proto", false, 200847283ull)}, "avata: ");
@@ -977,6 +1056,7 @@ static int cmdTelemetryTest(int argc, char** argv) {
     test_insta360(true);
     test_insta360_slotted();
     test_insta360_proxy();
+    test_kandao();
     test_dji();
     test_dji_avata();
     test_dji_osmo_ignores_avata_fields();

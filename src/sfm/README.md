@@ -204,7 +204,7 @@ core/        types shared by every stage, no Vulkan:
                Attitude               the gimbal yaw / pitch / roll a drone writes
                                         into each photo's XMP
                Telemetry              the IMU / GPS a video carries (GPMF, Insta360,
-                                        DJI, CAMM), read by content --
+                                        DJI, CAMM, Kandao), read by content --
                                         docs/notes/imu-gps-for-sfm.md
                PriorSource            what a sensor tells the mapper, the verifier
                                         and the pair list -- docs/notes/sensor-priors.md
@@ -583,7 +583,8 @@ algebra (D74).
 
 `--telemetry VIDEO` fixes the same gauge from the **video's own sensors**,
 which is the default whenever the GUI extracted the frames from a file that
-carries them (Insta360 `.insv`, GoPro `.360`/`.mp4`, DJI `.OSV`, CAMM): its
+carries them (Insta360 `.insv`, GoPro `.360`/`.mp4`, DJI `.OSV`, CAMM, a
+QooCam 3 Ultra `.mp4`): its
 manifest lists one `captures:` entry per video, and the frame stems carry the
 source frame index, which is how a frame gets its time on the sensor clock.
 `map/SensorGauge.h` treats every reading as a factor on one small state (a
@@ -1182,7 +1183,7 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_merge_test` | Sim(3) algebra, model alignment, track splicing, fold detection | no |
 | `sfm_attitude_test` | the XMP attitude, its angle convention, the gauge's vote and refusals | no |
 | `sfm_mask_test` | mask uv sampling, decode, file discovery | no |
-| `sfm_telemetry_test` | the four telemetry carriers on synthetic files, and the sanity checks; `sfm_telemetry_test FILE` prints what a video carries | no |
+| `sfm_telemetry_test` | the five telemetry carriers on synthetic files, and the sanity checks; `sfm_telemetry_test FILE` prints what a video carries | no |
 | `sfm_sequence_test` | the sequence table and its window pairs (`--no-gpu` stops there); a synthetic walk past a duplicated room through the mapper | yes |
 | `sfm_seam_weld_test` | the open-seam detector and weld on a two-front track, with and without capped GPS solves; what it leaves alone (duplicates too far apart, rig mates) and a weld it undoes (a perturbed copy) | yes |
 | `sfm_block_scale_test` | the block scale statistic on synthetic tracks: a hover, a loop, a stalled receiver, a rig, two fronts, the seam-jump mask over a model-space discontinuity, the noise gate | no |
