@@ -78,6 +78,7 @@ struct DeviceProbe {
     bool required_ok = false;
     const char* unusable = nullptr;  // why required_ok is false
     bool atomic_float = false;
+    bool atomic_float_xchg = false;  // shaderBufferFloat32Atomics
     bool shader_int64 = false;
     bool shader_int8 = false;
     uint32_t queue_family = UINT32_MAX;
@@ -147,6 +148,7 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
         out.unusable = "needs compute subgroups of 64 lanes or fewer";
     out.required_ok = out.unusable == nullptr;
     out.atomic_float = fatomic.shaderBufferFloat32AtomicAdd;
+    out.atomic_float_xchg = fatomic.shaderBufferFloat32Atomics;
     // Optional: without shaderInt64 the pipeline layer loads the ".noint64"
     // blob variants (32-bit index emulation); with shaderInt8 (+ 8-bit
     // storage, near-universally paired) it loads the native ".int8" ones.
@@ -319,7 +321,11 @@ const Enumeration& enumeration() {
             d.usable = p.required_ok;
             if (!p.required_ok) d.unusable_reason = p.unusable;
             out.devices.push_back(std::move(d));
-            out.issues.push_back(device_issue(p));
+            // The exchange-based float add works around it where the device
+            // has float32 atomic exchange; only the rest is still reported.
+            out.issues.push_back(p.atomic_float_xchg
+                                     ? backend::DeviceIssue::NoneKnown
+                                     : device_issue(p));
         }
         vkDestroyInstance(inst, nullptr);
         return out;
@@ -506,12 +512,17 @@ void Context::init() {
     if (const char* env = spirula::env("VK_NATIVE_INT8");
         env && env[0] == '0')
         _caps.shader_int8 = false;
-    // SS_VK_CAS_UNIFORM_EXIT=0/1 overrides the detection either way; with
-    // SS_VK_NATIVE_ATOMICS=0 it runs the workaround on any device.
-    _caps.cas_uniform_exit =
+    // SS_VK_XCHG_FLOAT_ADD=0/1 overrides the detection either way; with
+    // SS_VK_NATIVE_ATOMICS=0 it runs the workaround on any device that has
+    // shaderBufferFloat32Atomics.
+    const bool amd_windows =
         device_issue(probe) == backend::DeviceIssue::AmdWindowsFloatAtomics;
-    if (const char* env = spirula::env("VK_CAS_UNIFORM_EXIT"); env && env[0])
-        _caps.cas_uniform_exit = env[0] != '0';
+    // 13 of its 148 ".int8" blobs crash that driver's compiler (ppl_fwd among
+    // them), and their gindex_t loads index before casting, as the CAS did.
+    if (amd_windows) _caps.shader_int8 = false;
+    _caps.xchg_float_add = amd_windows;
+    if (const char* env = spirula::env("VK_XCHG_FLOAT_ADD"); env && env[0])
+        _caps.xchg_float_add = env[0] != '0';
 
     std::vector<const char*> extensions;
     // Enabling this one is mandatory, not optional: the spec forbids creating
@@ -527,13 +538,23 @@ void Context::init() {
     if (has_extension(_physical,
                       VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME))
         extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
-    if (_caps.float32_atomic_add &&
-        has_extension(_physical, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME)) {
+    const bool has_fatomic =
+        has_extension(_physical, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+    if (_caps.float32_atomic_add && has_fatomic) {
         extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
         f12.pNext = &fatomic;
     } else {
         _caps.float32_atomic_add = false;
+        if (_caps.xchg_float_add && has_fatomic && probe.atomic_float_xchg) {
+            fatomic.shaderBufferFloat32AtomicAdd = VK_FALSE;
+            fatomic.shaderBufferFloat32Atomics = VK_TRUE;
+            extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+            f12.pNext = &fatomic;
+        } else {
+            _caps.xchg_float_add = false;
+        }
     }
+    if (_caps.float32_atomic_add) _caps.xchg_float_add = false;
 
     // VK_EXT_memory_budget: lets memory_usage() report system-wide usage and
     // budget (no feature struct, just enable it). Widely supported; absence
@@ -627,7 +648,7 @@ void Context::init() {
             _device_name.c_str(), deviceTypeName(probe.props.deviceType),
             subgroup, _caps.max_push_constants,
             _caps.float32_atomic_add ? "native"
-            : _caps.cas_uniform_exit ? "EMULATED (uniform exit)"
+            : _caps.xchg_float_add   ? "EMULATED (exchange)"
                                      : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",
             _caps.shader_int8 ? "native" : "emulated",

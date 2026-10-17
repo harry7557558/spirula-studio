@@ -52,8 +52,8 @@ constexpr const char* kFeatureSuffixes[] = {".atomicadd", ".int8",
                                             ".noint64"};
 constexpr uint32_t kNumFeatures = 3;
 
-// [vk::constant_id] of kCasUniformExit in shaders/atomic_float.slang.
-constexpr uint32_t kCasUniformExitSpecId = 1000;
+// [vk::constant_id] of kXchgFloatAdd in shaders/atomic_float.slang.
+constexpr uint32_t kXchgFloatAddSpecId = 1000;
 
 // Entries that run at 64 lanes where the device offers 32 and 64 (RDNA); the
 // rest run at 32. Each is GPU time at 64 over 32, paired within 1500-step
@@ -221,8 +221,8 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
     }
     // Every module, whether it declares the constant or not: an entry for an
     // ID the shader lacks is ignored (VkSpecializationInfo).
-    if (Context::get().caps().cas_uniform_exit) {
-        entries[n] = {kCasUniformExitSpecId, n * 4u, 4u};
+    if (Context::get().caps().xchg_float_add) {
+        entries[n] = {kXchgFloatAddSpecId, n * 4u, 4u};
         values[n++] = VK_TRUE;
     }
     VkSpecializationInfo spec_info{};
