@@ -14191,6 +14191,66 @@ SS_MSG(geom_write_depth,
     IT("Mappe di profondità"), NL("Dieptekaarten"), RU("Карты глубины"),
     TR("Derinlik haritaları"));
 
+SS_MSG(geom_write_focus,
+    EN("Focus weights"),
+    JA("合焦重み"),       ZH_HANS("实焦权重"),  ZH_HANT("實焦權重"),
+    KO("초점 가중치"),    DE("Fokusgewichte"), FR("Poids de netteté"),
+    ES("Pesos de enfoque"), PT("Pesos de foco"),
+    IT("Pesi di fuoco"), NL("Focusgewichten"), RU("Веса резкости"),
+    TR("Odak ağırlıkları"));
+
+SS_MSG(geom_write_focus_help,
+    EN("Merge focus confidence into masks/ after backing up original masks. Missing masks count as white. Training reads the merged grayscale masks automatically; no training switch is needed."),
+    JA("元のマスクをバックアップして合焦信頼度を masks/ に乗算します。マスクがなければ白として扱います。学習は統合済みのグレースケールマスクを自動で読みます。"),
+    ZH_HANS("先备份原遮罩，再将实焦置信度乘入 masks/；没有原遮罩时按全白处理。训练自动读取合并后的灰度遮罩，无需额外开关。"),
+    ZH_HANT("先備份原遮罩，再將實焦置信度乘入 masks/；沒有原遮罩時按全白處理。訓練自動讀取合併後的灰階遮罩，無需額外開關。"),
+    KO("원본 마스크를 백업한 뒤 초점 신뢰도를 masks/ 에 곱합니다. 마스크가 없으면 흰색으로 처리합니다. 학습은 병합된 회색조 마스크를 자동으로 읽습니다."),
+    DE("Fokusgewichte nach Sicherung der Originalmasken mit masks/ multiplizieren. Fehlende Masken gelten als weiß. Das Training liest die Graustufenmasken automatisch."),
+    FR("Sauvegarde les masques puis multiplie la confiance de netteté dans masks/. Un masque absent vaut blanc. L’entraînement lit automatiquement les masques en niveaux de gris."),
+    ES("Respalda las máscaras y multiplica la confianza de enfoque en masks/. Sin máscara se usa blanco. El entrenamiento lee automáticamente las máscaras en escala de grises."),
+    PT("Salva as máscaras originais e multiplica a confiança de foco em masks/. Máscaras ausentes valem branco. O treino lê automaticamente as máscaras em tons de cinza."),
+    IT("Salva le maschere originali e moltiplica la confidenza di fuoco in masks/. Le maschere assenti valgono bianco. L’addestramento legge automaticamente le maschere in scala di grigi."),
+    NL("Maakt een reservekopie en vermenigvuldigt focusgewichten met masks/. Ontbrekende maskers gelden als wit. De training leest de grijswaardenmaskers automatisch."),
+    RU("Сохраняет исходные маски и умножает веса резкости на masks/. Отсутствующая маска считается белой. Обучение автоматически читает маски в градациях серого."),
+    TR("Özgün maskeleri yedekler ve odak güvenini masks/ ile çarpar. Eksik maske beyaz sayılır. Eğitim birleştirilmiş gri tonlu maskeleri otomatik okur."));
+
+SS_MSG(geom_focus_prefers_large,
+    EN("Focus weights were tuned on MoGe-2 large depth; other models give "
+       "rougher depth and less reliable weights."),
+    JA("ピント重みは MoGe-2 ラージの深度で調整されています。他のモデルでは深度が"
+       "粗く、重みの信頼性も下がります。"),
+    ZH_HANS("实焦权重是按 MoGe-2 大 的深度调校的；其他模型深度更粗，权重也更不可靠。"),
+    ZH_HANT("實焦權重是按 MoGe-2 大 的深度調校的；其他模型深度更粗，權重也更不可靠。"),
+    KO("초점 가중치는 MoGe-2 라지 깊이에 맞춰 조정되었습니다. 다른 모델은 깊이가 "
+       "거칠고 가중치도 덜 믿을 만합니다."),
+    DE("Die Schärfegewichte wurden auf MoGe-2-Large-Tiefe abgestimmt; andere "
+       "Modelle liefern gröbere Tiefe und weniger verlässliche Gewichte."),
+    FR("Les poids de netteté ont été réglés sur la profondeur de MoGe-2 large ; "
+       "les autres modèles donnent une profondeur plus grossière et des poids "
+       "moins fiables."),
+    ES("Los pesos de enfoque se ajustaron con la profundidad de MoGe-2 large; "
+       "otros modelos dan una profundidad más tosca y pesos menos fiables."),
+    PT("Os pesos de foco foram ajustados com a profundidade do MoGe-2 large; "
+       "outros modelos dão profundidade mais grosseira e pesos menos "
+       "confiáveis."),
+    IT("I pesi di messa a fuoco sono stati tarati sulla profondità di MoGe-2 "
+       "large; altri modelli danno una profondità più grossolana e pesi meno "
+       "affidabili."),
+    NL("De scherptegewichten zijn afgestemd op MoGe-2 large-diepte; andere "
+       "modellen geven grovere diepte en minder betrouwbare gewichten."),
+    RU("Веса резкости настроены по глубине MoGe-2 large; другие модели дают "
+       "более грубую глубину и менее надёжные веса."),
+    TR("Odak ağırlıkları MoGe-2 large derinliğiyle ayarlandı; diğer modeller "
+       "daha kaba derinlik ve daha az güvenilir ağırlıklar verir."));
+
+SS_MSG(geom_focus_allowed,
+    EN("Allowed blur (px)"),
+    JA("許容ぼけ (px)"),   ZH_HANS("允许模糊 (px)"), ZH_HANT("允許模糊 (px)"),
+    KO("허용 흐림 (px)"),   DE("Erlaubte Unschärfe (px)"), FR("Flou toléré (px)"),
+    ES("Desenfoque permitido (px)"), PT("Desfoque permitido (px)"),
+    IT("Sfocatura consentita (px)"), NL("Toegestane onscherpte (px)"),
+    RU("Допустимое размытие (px)"), TR("İzin verilen bulanıklık (px)"));
+
 SS_MSG(geom_nothing_to_write,
     EN("Neither map is selected, so this step would write nothing."),
     JA("どちらのマップも選ばれていないので、この工程は何も書き出しません。"),

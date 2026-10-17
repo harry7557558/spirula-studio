@@ -71,7 +71,7 @@ namespace {
     X("geometry_max_size",          sfm.geometry.max_size)                    \
     X("geometry_num_tokens",        sfm.geometry.num_tokens)                  \
     X("geometry_want_normal",       sfm.geometry.want_normal)                 \
-    X("geometry_want_depth",        sfm.geometry.want_depth)                  \
+    X("geometry_want_depth",        sfm.geometry.want_depth)                      X("geometry_want_focus",        sfm.geometry.want_focus)                      X("geometry_focus_allowed",     sfm.geometry.focus_allowed)               \
     X("geometry_normal_jpg",        sfm.geometry.normal_jpg)                  \
     X("geometry_jpeg_quality",      sfm.geometry.jpeg_quality)                \
     X("geometry_depth_mm",          sfm.geometry.depth_mm)                    \
@@ -241,6 +241,7 @@ void sanitize_dataset_settings(DatasetSettings& s) {
     GeometryJob& g = s.sfm.geometry;
     clamp_to(g.max_size, 64, 8192);
     clamp_to(g.num_tokens, 0, 100000);
+    g.focus_allowed = std::clamp(g.focus_allowed, 0.2f, 8.0f);
     clamp_to(g.jpeg_quality, 1, 100);
     clamp_to(g.ray_depth, 0, 2);
     clamp_to(g.split, 0, 2);

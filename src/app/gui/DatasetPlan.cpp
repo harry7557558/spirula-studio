@@ -769,6 +769,8 @@ StepFields geometry_fields(const GeometryJob& g) {
     add(f, "face_res", "", num(g.face_res));
     add(f, "depth_mm", "", onoff(g.depth_mm));
     add(f, "normal_jpg", "", onoff(g.normal_jpg));
+    add(f, "geometry_want_focus", "", onoff(g.want_focus));
+    if (g.want_focus) add(f, "geometry_focus_allowed", "", num(g.focus_allowed));
     if (g.normal_jpg) add(f, "jpeg_quality", "", num(g.jpeg_quality));
     if (!g.image_gamut.empty()) add(f, "image_gamut", "", g.image_gamut);
     if (g.image_is_linear) add(f, "image_linear", "", onoff(*g.image_is_linear));
@@ -819,6 +821,7 @@ std::vector<std::string> geometry_kinds(const GeometryJob& g) {
     std::vector<std::string> k;
     if (g.want_normal) k.push_back("normal");
     if (g.want_depth) k.push_back("depth");
+    if (g.want_focus) k.push_back("focus");
     return k;
 }
 
@@ -1045,6 +1048,8 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
         set(g, Act::Redo, Why::Frames);
     } else if (makes(md.act) && ws.geometry) {
         set(g, Act::Redo, Why::Model);
+    } else if (makes(mk.act) && job.geometry.want_focus && ws.geometry) {
+        set(g, Act::Redo, Why::Masks);
     } else if (!ws.geometry) {
         set(g, Act::Run);
     } else if (req.redo_geometry || job.geometry.overwrite) {
@@ -1228,6 +1233,7 @@ GeometryJob geometry_for_plan(GeometryJob g, const StepPlan& s) {
     g.overwrite = s.act == Act::Redo;
     g.want_normal = has("normal");
     g.want_depth = has("depth");
+    g.want_focus = has("focus");
     return g;
 }
 

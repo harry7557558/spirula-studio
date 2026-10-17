@@ -55,6 +55,7 @@ constexpr const char* kToolSfm   = "sfm";
 constexpr const char* kToolSam   = "sam";
 constexpr const char* kToolGeometry = "geometry";
 constexpr const char* kToolDense = "dense";
+constexpr const char* kToolFocus = "focus";
 constexpr const char* kToolGui   = "gui";
 constexpr const char* kToolEncode = "encode";
 constexpr const char* kToolE57 = "e57";
@@ -80,6 +81,9 @@ int spirula_geometry_main(int argc, char** argv);
 #endif
 #ifdef SS_TOOL_DENSE
 int spirula_dense_main(int argc, char** argv);
+#endif
+#ifdef SS_TOOL_FOCUS
+int spirula_focus_main(int argc, char** argv);
 #endif
 #ifdef SS_TOOL_GUI
 int spirula_gui_main(int argc, char** argv);

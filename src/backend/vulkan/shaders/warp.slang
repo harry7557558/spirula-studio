@@ -557,7 +557,7 @@ uint _wp_mask_byte<D : ICameraDistortion>(WarpMaskParams p, uint n,
         if (xs < 0 || xs >= p.Win || ys < 0 || ys >= p.Hin) return 0u;
     }
     gindex_t idx = gindex_t(bid) * p.Hin * p.Win + gindex_t(ys) * p.Win + xs;
-    return _wp_load(p.src, idx, kElemU8) != 0.0f ? 1u : 0u;
+    return uint(_wp_load(p.src, idx, kElemU8));
 }
 
 [ForceInline]
@@ -738,7 +738,7 @@ uint _rd_mask_byte<D : ICameraDistortion>(WarpMaskParams p, uint n) {
     int ys = int(floor(clamp(uv.y, -8.0f, float(p.Hin) + 8.0f)));
     if (xs < 0 || xs >= p.Win || ys < 0 || ys >= p.Hin) return 0u;
     gindex_t idx = gindex_t(bid) * p.Hin * p.Win + gindex_t(ys) * p.Win + xs;
-    return _wp_load(p.src, idx, kElemU8) != 0.0f ? 1u : 0u;
+    return uint(_wp_load(p.src, idx, kElemU8));
 }
 
 [ForceInline]

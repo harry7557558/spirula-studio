@@ -165,7 +165,7 @@ __global__ void redistort_mask_kernel(
         int xs = (int)floorf(uv_src.x);
         int ys = (int)floorf(uv_src.y);
         if (xs >= 0 && xs < Win && ys >= 0 && ys < Hin)
-            out = (in_mask.at(bid, ys, xs, 0) != 0) ? 1 : 0;
+            out = in_mask.at(bid, ys, xs, 0);
     }
     out_mask.at(bid, j, i, 0) = out;
 }

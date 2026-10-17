@@ -710,6 +710,15 @@ static std::map<std::string, float> _engine_loss(
         pixel_grads
     );
 
+    // Weighted masks: a pixel counts in the photometric loss, and in the error
+    // map that steers densification, by its weight (docs/notes/focus-weights.md).
+    if (engine().gt.mask_weighted && engine().gt.has_mask &&
+        engine().gt.mask_weight.data_ptr() != nullptr) {
+        const TorchTensorView w = _dt3d_tv(engine().gt.mask_weight);
+        if (_tv_valid(pixel_grads.v_render_rgb)) scale_by_mask_weight(pixel_grads.v_render_rgb, w);
+        if (compute_loss_map && _tv_valid(loss_map_buf)) scale_by_mask_weight(loss_map_buf, w);
+    }
+
     // The one place the error map is conditioned, so the preview copy below
     // and the raster backward aggregation read the same picture.
     if (compute_loss_map && _tv_valid(loss_map_buf))
