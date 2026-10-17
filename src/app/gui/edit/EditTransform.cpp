@@ -10,6 +10,11 @@
 #include "app/gui/ViewportPanel.h"
 #include "core/SceneAlign.h"
 #include "app/gui/edit/WorldGrid.h"
+#include "data/MarkerTypes.h"
+#include "data/MarkerAlign.h"
+#include "data/MarkerTriangulate.h"
+#include "data/MarkerCropBox.h"
+#include "data/RoiDocument.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditTransform.h"
 
@@ -18,6 +23,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace msg = spirula::i18n::msg::xform;
 namespace emsg = spirula::i18n::msg::edit;
@@ -504,6 +510,138 @@ void EditSession::pick_align(float px_, float py_) {
     place_saved(step, msg::op_corner, /*carry=*/true);
     _status = spirula::i18n::format(msg::align_corner_found, {(long long)m});
     _status_err = false;
+}
+
+static std::string dataset_dir_of(const EditDoc* doc, const std::string& trainer_ds,
+                                  const std::string& dense_ds) {
+    if (doc && !doc->source_path().empty()) {
+        std::filesystem::path p(doc->source_path());
+        if (std::filesystem::is_directory(p)) return p.string();
+        return p.parent_path().string();
+    }
+    if (!trainer_ds.empty()) return trainer_ds;
+    if (!dense_ds.empty()) return dense_ds;
+    return {};
+}
+
+static bool find_markers_json(const std::string& base_dir,
+                              std::vector<spirula::Marker3D>& out) {
+    if (base_dir.empty()) return false;
+    std::filesystem::path p(base_dir);
+    std::filesystem::path cand = p / "markers.json";
+    if (std::filesystem::exists(cand)) return spirula::load_markers_json(cand.string(), out);
+    cand = p.parent_path() / "markers.json";
+    if (std::filesystem::exists(cand)) return spirula::load_markers_json(cand.string(), out);
+    cand = p / "sparse" / "0" / "markers.json";
+    if (std::filesystem::exists(cand)) return spirula::load_markers_json(cand.string(), out);
+    return false;
+}
+
+void EditSession::marker_align() {
+    if (!_doc || busy()) return;
+    const std::string dir = dataset_dir_of(_doc.get(), trainer_dataset(), dense_dataset());
+    std::vector<spirula::Marker3D> markers;
+    if (!find_markers_json(dir, markers) || markers.empty()) {
+        _status = msg::marker_not_found.get();
+        _status_err = true;
+        return;
+    }
+
+    const Sim3 cur = _doc->file_placement();
+    std::vector<spirula::Marker3D> cur_markers = markers;
+    for (auto& m : cur_markers) {
+        double p[3];
+        cur.apply(m.center, p);
+        m.center[0] = p[0]; m.center[1] = p[1]; m.center[2] = p[2];
+        for (int k = 0; k < 4; k++) {
+            double c[3];
+            cur.apply(m.corners[k], c);
+            m.corners[k][0] = c[0]; m.corners[k][1] = c[1]; m.corners[k][2] = c[2];
+        }
+    }
+
+    spirula::MarkerSystemConfig cfg;
+    cfg.three_markers.origin_id = _marker_origin;
+    cfg.three_markers.x_axis_id = _marker_xaxis;
+    cfg.three_markers.xy_plane_id = _marker_xyplane;
+    cfg.three_markers.dist_x = (double)_marker_dist_x;
+
+    Sim3 step;
+    if (!spirula::solve_marker_system(cur_markers, cfg, step)) {
+        _status = msg::marker_not_found.get();
+        _status_err = true;
+        return;
+    }
+
+    place_saved(step, msg::op_marker_align, /*carry=*/true);
+    _status = spirula::i18n::format(msg::marker_aligned,
+                                    {(long long)std::lround(step.s * 100.0)});
+    _status_err = false;
+    note(_status);
+}
+
+void EditSession::marker_crop() {
+    if (!_doc || busy()) return;
+    const std::string dir = dataset_dir_of(_doc.get(), trainer_dataset(), dense_dataset());
+    std::vector<spirula::Marker3D> markers;
+    if (!find_markers_json(dir, markers) || markers.empty()) {
+        _status = msg::marker_not_found.get();
+        _status_err = true;
+        return;
+    }
+
+    const Sim3 cur = _doc->file_placement();
+    std::vector<spirula::Marker3D> cur_markers = markers;
+    for (auto& m : cur_markers) {
+        double p[3];
+        cur.apply(m.center, p);
+        m.center[0] = p[0]; m.center[1] = p[1]; m.center[2] = p[2];
+        for (int k = 0; k < 4; k++) {
+            double c[3];
+            cur.apply(m.corners[k], c);
+            m.corners[k][0] = c[0]; m.corners[k][1] = c[1]; m.corners[k][2] = c[2];
+        }
+    }
+
+    spirula::MarkerCropOptions opt;
+    opt.pad_xy = (double)_marker_pad;
+    opt.z_min = -(double)_marker_pad;
+    opt.z_max = 1.0 + (double)_marker_pad;
+
+    const spirula::RoiDocument crop_doc = spirula::compute_marker_crop_box(cur_markers, opt);
+    std::shared_ptr<const spirula::Region> reg = spirula::roi_region(crop_doc);
+
+    const int64_t n = _doc->count();
+    const uint8_t* alive = _doc->alive();
+    const float* pos = _doc->positions();
+    const Sim3 to_saved = _doc->view_frame().inverse() * _doc->placement();
+
+    std::vector<uint8_t> sel((size_t)n, 0);
+    int64_t outside = 0;
+    for (int64_t i = 0; i < n; i++) {
+        if (!alive[i]) continue;
+        const double q[3] = {pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]};
+        double w[3];
+        to_saved.apply(q, w);
+        if (reg && !reg->contains(w)) {
+            sel[(size_t)i] = 255;
+            outside++;
+        }
+    }
+
+    if (outside > 0) {
+        _doc->run(make_select_op(*_doc, std::move(sel), emsg::op_select_box.get(), {}));
+        _doc->run(make_hide_op(*_doc, /*invert=*/false));
+    }
+
+    if (!dir.empty()) {
+        std::string crop_path, err;
+        spirula::save_marker_crop_roi(dir, crop_doc, "marker_crop.json", crop_path, err);
+    }
+
+    _status = spirula::i18n::format(msg::marker_cropped, {(long long)outside});
+    _status_err = false;
+    note(_status);
 }
 
 }  // namespace gui

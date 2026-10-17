@@ -60,6 +60,7 @@ constexpr const char* kToolEncode = "encode";
 constexpr const char* kToolE57 = "e57";
 constexpr const char* kToolLidar = "lidar";
 constexpr const char* kToolPartition = "partition";
+constexpr const char* kToolMarker = "marker";
 
 }  // namespace app
 
@@ -93,4 +94,7 @@ int spirula_encode_main(int argc, char** argv);
 #endif
 #ifdef SS_TOOL_PARTITION
 int spirula_partition_main(int argc, char** argv);
+#endif
+#ifdef SS_TOOL_MARKER
+int spirula_marker_main(int argc, char** argv);
 #endif

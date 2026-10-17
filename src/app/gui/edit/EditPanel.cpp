@@ -832,6 +832,44 @@ void EditSession::draw_transform_tab(float full) {
         ui::help_on_hover(xmsg::opt_align_tol_help);
     }
 
+    // ---- fiducial marker alignment & crop box ----
+    ui::SeparatorText(xmsg::sec_markers);
+    {
+        const float lw = std::max({ImGui::CalcTextSize(xmsg::marker_origin.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_xaxis.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_xyplane.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_dist_x.get()).x});
+        const float iw = std::max(half - lw - st.ItemInnerSpacing.x, half * 0.4f);
+
+        ImGui::SetNextItemWidth(iw);
+        ui::InputInt(xmsg::marker_origin, &_marker_origin);
+        ui::help_on_hover(xmsg::marker_origin_help);
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(iw);
+        ui::InputInt(xmsg::marker_xaxis, &_marker_xaxis);
+        ui::help_on_hover(xmsg::marker_xaxis_help);
+
+        ImGui::SetNextItemWidth(iw);
+        ui::InputInt(xmsg::marker_xyplane, &_marker_xyplane);
+        ui::help_on_hover(xmsg::marker_xyplane_help);
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(iw);
+        ui::InputFloat(xmsg::marker_dist_x, &_marker_dist_x, 0.0f, 0.0f, "%.2f");
+        ui::help_on_hover(xmsg::marker_dist_x_help);
+
+        const float plw = ImGui::CalcTextSize(xmsg::marker_pad.get()).x;
+        ImGui::SetNextItemWidth(std::max(full - plw - st.ItemInnerSpacing.x, full * 0.3f));
+        ui::SliderFloat(xmsg::marker_pad, &_marker_pad, 0.0f, 2.0f, "%.2f m");
+        ui::help_on_hover(xmsg::marker_pad_help);
+    }
+    if (ui::Button(xmsg::marker_align, ImVec2(half, 0))) marker_align();
+    ui::help_on_hover(xmsg::marker_align_help);
+    ImGui::SameLine();
+    if (ui::Button(xmsg::marker_crop, ImVec2(half, 0))) marker_crop();
+    ui::help_on_hover(xmsg::marker_crop_help);
+
     // ---- the numbers, in the file's own units ----
     ui::SeparatorText(xmsg::sec_numbers);
     {
