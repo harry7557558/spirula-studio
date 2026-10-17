@@ -66,6 +66,7 @@ public:
     static constexpr int kBlurRadii[] = {5, 7, 8, 10, 13};
     static constexpr uint32_t kBlurTile = 32;
     static constexpr uint32_t kDescThreads = 32;  // per keypoint
+    static constexpr uint32_t kDescBox = 20;      // sift.slang's descriptor loop extent
 
     explicit SiftExtractor(const SiftOptions& opt) : opt_(opt) {
         VkContextOptions vo;
@@ -470,7 +471,7 @@ private:
         for (uint32_t k0 = 0; k0 < nsel;) {
             const uint32_t n = (uint32_t)std::min<int64_t>(nsel - k0, descBudget_.chunk(1024, nsel));
             VkCommandBuffer cb = ctx_.begin();
-            ctx_.dispatch(cb, "descriptor", grid(n * kDescThreads, 64), pk(k0 + n, k0));
+            ctx_.dispatch(cb, "descriptor", grid(n * kDescThreads, 64), pk(k0 + n, k0, kDescBox));
             k0 += n;
             if (k0 >= nsel && fusedReadback(nsel)) {
                 ctx_.barrier(cb);
