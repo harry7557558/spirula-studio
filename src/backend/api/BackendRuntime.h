@@ -54,7 +54,8 @@ inline constexpr Stream kDefaultStream = nullptr;
 enum class DeviceIssue {
     NoneKnown,
     // AMD's Windows driver without native fp32 buffer atomic add (Radeon RX
-    // 6000 series and older): training crashes or diverges. Issue #23.
+    // 6000 series and older) and without fp32 atomic exchange to work around
+    // it: training crashes or diverges. Issue #23.
     AmdWindowsFloatAtomics,
 };
 
