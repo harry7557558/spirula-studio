@@ -24,6 +24,7 @@
 
 #include "data/DataManager.h"
 #include "engine/EngineConfig.h"
+#include "engine/SplatAttribute.h"
 
 #include <map>
 #include <string>
@@ -523,6 +524,15 @@ int64_t engine_get_cur_num_splats();
 int64_t engine_get_max_num_splats();
 int engine_get_num_sh();   // float3 per features_sh row: SH bands, then lobes
 int engine_get_sb_lobes();
+
+// --- Per-splat buffer inspection (developer view, docs/notes/splat-inspector.md) ---
+
+// Every per-splat attribute an expression may name, in display order. Reads
+// only the pool's slot table, so any thread may ask.
+std::vector<SplatAttribute> engine_splat_attributes();
+// `expr` (core/ExprProgram.h) at every live splat, NaN where a buffer stops
+// short. Throws on a parse error or an empty attribute. Vulkan only.
+std::vector<float> engine_eval_splat_expr(const std::string& expr);
 
 // `out_rgb_raw` is the pre-color-space-conversion render (linear / wide-gamut)
 // stashed by the color-space forward hook. Null OK; when the engine has no

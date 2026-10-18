@@ -606,7 +606,7 @@ void ViewportPanel::build_request(ViewRequest& q, int W, int H) const {
     q.W = W;
     q.H = H;
     q.model = camera_model_name();
-    q.key = _buffer_keys.empty() ? "rgb" : _buffer_keys[_buffer_idx];
+    q.key = _expr_on ? _expr : _buffer_keys.empty() ? "rgb" : _buffer_keys[_buffer_idx];
     q.show_cams = _show_cams;
     q.show_grid = _show_grid && !external_grid();
     q.show_roi = _show_roi && _roi_engine != nullptr;
@@ -865,6 +865,8 @@ void ViewportPanel::attach(spirula::TrainerSession& session) {
     _worker.set_region_overlay(_roi_engine);
     _buffer_keys = _worker.buffer_keys();
     _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    _splat_dev = !_worker.splat_attributes().empty();
+    _expr_on = _expr_on && _splat_dev;
     _has_cameras = session.ds.num_cameras > 0;
     adopt_gauge(session.ds, maybe_frame(session));
     _pending = 0;
@@ -879,6 +881,7 @@ void ViewportPanel::attach_scene(const ViewerRenderConfig& cfg,
     _worker.start(cfg, hooks);
     _buffer_keys = _worker.buffer_keys();
     _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
+    _splat_dev = _expr_on = false;
     _has_cameras = false;
     _show_cams = false;
     set_centers(&cfg.centers, cfg.center_cameras);
@@ -1436,15 +1439,50 @@ void ViewportPanel::draw_controls(bool engine) {
         place(px(130.0f));
         ImGui::SetNextItemWidth(px(130.0f));
         // Buffer names ("color", "depth") come from the engine.
-        if (ui::BeginComboRaw("##buffer", _buffer_keys[_buffer_idx].c_str())) {
+        const std::string& shown = _expr_on ? _expr : _buffer_keys[_buffer_idx];
+        if (ui::BeginComboRaw("##buffer", shown.c_str(), ImGuiComboFlags_HeightLarge)) {
             for (int i = 0; i < (int)_buffer_keys.size(); i++)
-                if (ui::SelectableRaw(_buffer_keys[i], i == _buffer_idx)) {
+                if (ui::SelectableRaw(_buffer_keys[i], !_expr_on && i == _buffer_idx)) {
                     _buffer_idx = i;
+                    _expr_on = false;
                     _dirty = true;
                 }
+            if (_splat_dev) {
+                // Re-read while open: a buffer fills on the step that first
+                // writes it.
+                ImGui::Separator();
+                for (const SplatAttribute& a : _worker.splat_attributes()) {
+                    if (ui::SelectableRaw(a.code.c_str(), _expr_on && _expr == a.code,
+                                          a.live ? 0 : ImGuiSelectableFlags_Disabled)) {
+                        _expr = _expr_edit = a.code;
+                        _expr_on = true;
+                        _dirty = true;
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ui::SetTooltipRaw(a.pool);
+                }
+            }
             ImGui::EndCombo();
         }
         ui::help_on_hover(msg::viewport_buffer_help);
+        if (_splat_dev) {
+            place(px(220.0f));
+            ImGui::SetNextItemWidth(px(220.0f));
+            // The error line sits under the image, often out of view.
+            const bool failed = _expr_on && !_last_error.empty();
+            if (failed) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.4f, 0.4f, 1));
+            if (ui::InputTextEnglishRaw("##splat_expr", "ln(abs(v_mean_x))", &_expr_edit,
+                                        ImGuiInputTextFlags_EnterReturnsTrue) &&
+                !_expr_edit.empty()) {
+                _expr = _expr_edit;
+                _expr_on = true;
+                _dirty = true;
+            }
+            if (failed) {
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) ui::SetTooltipRaw(_last_error);
+            }
+        }
     }
     // The "dataset preview" note explains why the image is points and not a
     // render; over a mesh it would be simply wrong.

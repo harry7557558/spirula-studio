@@ -1,8 +1,25 @@
+#pragma once
+
 #include "backend/api/BackendTypes.h"
 #include <cstdint>
+#include <vector>
 
 
 #include <core/Common.cuh>
+
+// One variable of a per-splat expression (shaders/splat_expr.h): where its
+// cells are and how to decode them. Must match ExprVar in
+// backend/vulkan/shaders/splat_expr.slang.
+struct SplatExprVar {
+    uint64_t data = 0;     // plain buffer, or a codec's packed bytes
+    uint64_t bounds = 0;   // the codec's per-block bounds
+    uint32_t codec = 0, bits = 0, layout = 0;
+    uint32_t stride = 0;         // cells per splat
+    uint32_t offset = 0;         // first cell read
+    uint32_t count = 1;          // cells read; past 1 their L2 norm
+    uint32_t bounds_stride = 0;  // cells per bound, a multiple of 256
+    uint32_t rows = 0;           // splats the buffer holds
+};
 
 
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */
@@ -49,3 +66,7 @@ void blit_train_cameras_tensor(
     bool show_training_cameras,
     TorchTensorView out_rgb           // [H, W, 3] uint8, pre-allocated
 );
+
+
+void splat_expr_eval_tensor(int64_t num_splats, const std::vector<SplatExprVar>& vars,
+                            const std::vector<uint32_t>& code, float* out);

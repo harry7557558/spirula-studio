@@ -26,7 +26,9 @@ per-camera samplers and the visibility cull), plus
 dump-then-compare: `engine_reset_state` trains the same scene twice across an
 `engine_reset()` and the two must land in the same place, and
 `gt_bilagrid_sentinels` pins the GT bilateral grids' invariants -- one depth
-scalar per camera, and the no-GT sentinels passing through untouched).
+scalar per camera, and the no-GT sentinels passing through untouched;
+`splat_inspect_parity`, Vulkan only, holds the developer view's reads of every
+pool layout to what the engine wrote -- docs/notes/splat-inspector.md).
 `backend/vulkan/tests/` adds 3 Vulkan-only smoke tests (runtime, pipeline,
 sort/scan).
 

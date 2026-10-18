@@ -84,6 +84,37 @@ inline float error_scale(const float* v, size_t n) {
     return hi > 0.0f ? hi : 1.0f;
 }
 
+// The 0.5th and 99.5th percentiles of the finite values: error_scale for
+// values of either sign. Equal when the values are, both 0 when none is finite.
+inline void value_range(const float* v, size_t n, float& lo, float& hi) {
+    double mn = INFINITY, mx = -INFINITY;
+    for (size_t i = 0; i < n; i++)
+        if (std::isfinite(v[i])) {
+            mn = std::min(mn, (double)v[i]);
+            mx = std::max(mx, (double)v[i]);
+        }
+    lo = hi = std::isfinite(mn) ? (float)mn : 0.0f;
+    if (!(mx > mn)) return;
+    constexpr int kBins = 1024;
+    size_t hist[kBins] = {};
+    size_t total = 0;
+    const double scale = (kBins - 1) / (mx - mn);
+    for (size_t i = 0; i < n; i++)
+        if (std::isfinite(v[i])) {
+            hist[(int)((v[i] - mn) * scale)]++;
+            total++;
+        }
+    const double cut = 0.005 * (double)total;
+    size_t acc = 0;
+    int b = 0;
+    for (; b + 1 < kBins && (double)(acc + hist[b]) <= cut; b++) acc += hist[b];
+    acc = 0;
+    int t = kBins - 1;
+    for (; t > b && (double)(acc + hist[t]) <= cut; t--) acc += hist[t];
+    lo = (float)(mn + b / scale);
+    hi = (float)std::min(mx, mn + (t + 1) / scale);
+}
+
 // [n] non-negative error values -> [n*3] bytes on the turbo ramp. `hi`
 // saturates it; 0 asks for error_scale(). Returns the normalizer used.
 inline float error_to_rgb(const float* err, size_t n, float hi, uint8_t* out) {

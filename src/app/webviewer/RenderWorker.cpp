@@ -6,6 +6,7 @@
 #include "engine/Engine.h"    // engine render + viewer entry points
 #include "core/Camera.h"    // camera_model_from_name
 #include "app/DepthColor.h"  // error_scale -- shared with the error pane
+#include "core/Env.h"
 #include "data/FrustumSize.h"
 #include "app/webviewer/RegionOverlay.h"
 
@@ -29,6 +30,22 @@ TorchTensorView tvp(const void* p, uint32_t elem_size, std::vector<int64_t> shap
     return {(uint64_t)(uintptr_t)p, elem_size, std::move(shape)};
 }
 TorchTensorView tv_null() { return {0, 0, {}}; }
+
+// SS_DEV_MODE=1 offers every per-splat pool buffer of a training session, and
+// a key that is no built-in buffer is an expression over them
+// (docs/notes/splat-inspector.md). The evaluator is Vulkan-only.
+bool splat_inspect_on(const ViewerRenderConfig& cfg) {
+#ifdef SS_BACKEND_VULKAN
+    static const bool on = [] {
+        const char* e = spirula::env("DEV_MODE");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on && cfg.scene_slot < 0;
+#else
+    (void)cfg;
+    return false;
+#endif
+}
 
 bool remaps(const std::array<float, 16>& T) {
     static const std::array<float, 16> kI{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -463,6 +480,24 @@ struct RenderWorker::Impl {
                 return out;
             };
 
+            // One value per live splat as a flat colour, single channel
+            // (turbo): [lo, hi] spans the ramp, the rest saturates, NaN is lo.
+            auto splat_value_render = [&](const std::vector<float>& v, float lo,
+                                          float hi) {
+                const float inv = hi > lo ? 1.0f / (hi - lo) : 0.0f;
+                std::vector<float> dc((size_t)engine_get_max_num_splats() * 3, 0.0f);
+                for (size_t i = 0; i < v.size(); i++) {
+                    const float t = (v[i] - lo) * inv;
+                    const float x = t >= 0.0f ? std::min(t, 1.0f) : 0.0f;
+                    dc[i*3] = dc[i*3+1] = dc[i*3+2] = (x - 0.5f) / 0.28f;
+                }
+                std::vector<float> vis = debug_render(dc, 0);
+                std::vector<float> mono((size_t)npx);
+                for (int64_t i = 0; i < npx; i++)
+                    mono[i] = (vis[i*3] + vis[i*3+1] + vis[i*3+2]) / 3.0f;
+                return mono;
+            };
+
             // Select the display buffer for the requested key.
             std::vector<float> local;
             const std::vector<float>* buf = nullptr;
@@ -488,25 +523,23 @@ struct RenderWorker::Impl {
                 buf = &local;
             }
             else if (q.key == "refinement_score") {
-                // Per-splat accum weight as a flat colour, single-channel
-                // (turbo), padded to max splats. app::error_scale is the
-                // error pane's normalizer: one scale across both views.
+                // app::error_scale is the error pane's normalizer: one scale
+                // across both views.
                 int64_t nsp = engine_get_cur_num_splats();
-                int64_t nmax = engine_get_max_num_splats();
                 std::vector<float> aw((size_t)nsp * 2, 0.0f);
                 engine_copy_accum_buffer(tvp(aw.data(), 4, {nsp, 2}));
                 std::vector<float> score((size_t)nsp);
                 for (int64_t i = 0; i < nsp; i++) score[i] = aw[i*2];
-                const float hi = app::error_scale(score.data(), (size_t)nsp);
-                std::vector<float> dc((size_t)nmax * 3, 0.0f);
-                for (int64_t i = 0; i < nsp; i++) {
-                    float x = (score[i] / hi - 0.5f) / 0.28f;
-                    dc[i*3] = dc[i*3+1] = dc[i*3+2] = x;
-                }
-                std::vector<float> vis = debug_render(dc, 0);
-                local.resize(npx);
-                for (int64_t i = 0; i < npx; i++)
-                    local[i] = (vis[i*3] + vis[i*3+1] + vis[i*3+2]) / 3.0f;
+                local = splat_value_render(score, 0.0f,
+                                           app::error_scale(score.data(), (size_t)nsp));
+                buf = &local;
+                C = 1;
+            }
+            else if (splat_inspect_on(cfg)) {
+                const std::vector<float> v = engine_eval_splat_expr(q.key);
+                float lo = 0.0f, hi = 0.0f;
+                app::value_range(v.data(), v.size(), lo, hi);
+                local = splat_value_render(v, lo, hi);
                 buf = &local;
                 C = 1;
             }
@@ -624,6 +657,11 @@ std::vector<std::string> RenderWorker::buffer_keys() const {
     keys.push_back("sh");
     keys.push_back("refinement_score");
     return keys;
+}
+
+std::vector<SplatAttribute> RenderWorker::splat_attributes() const {
+    if (!splat_inspect_on(_impl->cfg)) return {};
+    return engine_splat_attributes();
 }
 
 float viewer_camera_size_heuristic(const PostSplitCameras& post) {

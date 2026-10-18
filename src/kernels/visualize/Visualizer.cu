@@ -1890,3 +1890,11 @@ void blit_train_cameras_tensor(
     #undef LAUNCH
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
+
+
+/*[AutoHeaderGeneratorExport]*/
+void splat_expr_eval_tensor(int64_t num_splats, const std::vector<SplatExprVar>& vars,
+                            const std::vector<uint32_t>& code, float* out) {
+    (void)num_splats; (void)vars; (void)code; (void)out;
+    throw std::runtime_error("splat_expr_eval_tensor: the per-splat expression view is Vulkan-only");
+}

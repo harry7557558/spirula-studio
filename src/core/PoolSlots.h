@@ -366,6 +366,7 @@ enum class SaveClass : uint8_t {
   X(ViewerC2w                      , "viewer.c2w",                        Viewer   , Never) \
   X(ViewerOverlaySegs              , "viewer.overlay_segs",               Viewer   , Never) \
   X(ViewerOverlayColors            , "viewer.overlay_colors",             Viewer   , Never) \
+  X(ViewerSplatExpr                , "viewer.splat_expr",                 Viewer   , Never) \
   /* ---- sync visualizer scratch ---- */ \
   X(VisLss                         , "vis.lss",                           Viewer   , Never) \
   X(VisTri                         , "vis.tri",                           Viewer   , Never) \

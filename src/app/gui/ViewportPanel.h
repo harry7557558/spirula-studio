@@ -445,6 +445,11 @@ private:
     // Render options.
     int _buffer_idx = 0;
     std::vector<std::string> _buffer_keys;
+    // SS_DEV_MODE: per-splat buffers (RenderWorker::splat_attributes) and an
+    // expression over them, which stands in for the buffer key while on.
+    bool _splat_dev = false;
+    bool _expr_on = false;
+    std::string _expr, _expr_edit;
     bool _show_cams = false;
     bool _show_roi = true;
     std::shared_ptr<const spirula::RegionOverlay> _roi_engine, _roi_preview;

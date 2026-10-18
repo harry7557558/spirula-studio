@@ -14,6 +14,7 @@
 // (try_get_result, GUI frame loop).
 
 #include "data/DatasetParser.h"
+#include "engine/SplatAttribute.h"
 
 #include <array>
 #include <atomic>
@@ -170,6 +171,9 @@ public:
     // distortion buffers appear only when a distortion regularizer is
     // configured -- they cost full-resolution VRAM to produce).
     std::vector<std::string> buffer_keys() const;
+    // SS_DEV_MODE: the per-splat buffers a key may also be an expression over,
+    // each grayed when empty; none otherwise. Safe from any thread.
+    std::vector<SplatAttribute> splat_attributes() const;
 
 private:
     struct Impl;

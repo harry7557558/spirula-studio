@@ -494,6 +494,10 @@ the engine level.
   submission order already serializes). `SS_VK_DEBUG_SYNC=1` (legacy alias
   `SS_VIS_DEBUG_SYNC`) syncs + reports after EVERY kernel dispatch —
   the standard way to bisect device-lost/segfault failures to a kernel.
+- `kernels/SplatExpr.cpp` + `backend/vulkan/shaders/splat_expr.slang`:
+  `splat_expr_eval_tensor`, the developer view's per-splat expression
+  evaluator. Vulkan-only by design; the CUDA definition throws
+  (`docs/notes/splat-inspector.md`).
 - **UB-loop portability rule**: Visualizer.cu's Karras split search
   (`for (tf = 2; (t = (l+tf-1)/tf) >= 1; tf <<= 1)`) terminates only through
   signed-overflow / divide-by-zero UB. NVIDIA and llvmpipe happen to exit;
