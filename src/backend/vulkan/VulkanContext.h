@@ -22,7 +22,7 @@ namespace vk {
 struct Capabilities {
     bool float32_atomic_add = false;  // VK_EXT_shader_atomic_float
     // The CAS-loop blobs' exchange-based add (shaders/atomic_float.slang), for
-    // backend::DeviceIssue::AmdWindowsFloatAtomics.
+    // AMD's Windows driver, which miscompiles their CAS.
     bool xchg_float_add = false;
     bool shader_int64 = false;        // shaderInt64 (else ".noint64" blobs)
     bool shader_int8 = false;         // shaderInt8 + storageBuffer8BitAccess

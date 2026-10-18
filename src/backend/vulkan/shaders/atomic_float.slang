@@ -36,7 +36,9 @@ void atomic_add_f32(float* addr, float v) {
 
 #else
 
-// Set for backend::DeviceIssue::AmdWindowsFloatAtomics. The ID must match
+#ifdef SS_XCHG_FLOAT_ADD  // Windows builds (SpirvShaders.cmake)
+
+// Set on AMD's Windows driver (amd_windows_emulated_fadd). The ID must match
 // kXchgFloatAddSpecId in VulkanPipelines.cpp and stay clear of the 0..n-1
 // that each kernel's own constants take in declaration order.
 [vk::constant_id(1000)]
@@ -58,13 +60,17 @@ void atomic_add_f32_xchg(float* addr, float v) {
     }
 }
 
+#endif
+
 [ForceInline]
 void atomic_add_f32(float* addr, float v) {
     if (v == 0.0f) return;
+#ifdef SS_XCHG_FLOAT_ADD
     if (kXchgFloatAdd) {
         atomic_add_f32_xchg(addr, v);
         return;
     }
+#endif
     uint* w = (uint*)addr;
     uint expected = w[0];
     for (;;) {

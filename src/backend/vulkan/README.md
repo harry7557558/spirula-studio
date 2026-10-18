@@ -40,11 +40,17 @@ for A/B testing):
   blob uses a CAS-loop emulation (Intel ANV), and a
   `.atomicadd`-suffixed blob uses native `OpAtomicFAddEXT`; the pipeline
   layer picks per device at module load (no in-shader branch). Unlike
-  VkSplat, both variants are always built. The CAS-loop blob has a second
-  shape behind the spec constant `kXchgFloatAdd` (ID 1000, clear of every
-  kernel's own 0..n-1): an add built from two float atomic exchanges, which
-  needs `shaderBufferFloat32Atomics`. The pipeline layer sets it only for
-  `backend::DeviceIssue::AmdWindowsFloatAtomics`. That driver drops the
+  VkSplat, both variants are always built. In Windows builds the CAS-loop
+  blob has a second shape behind the spec constant `kXchgFloatAdd` (ID 1000,
+  clear of every kernel's own 0..n-1): an add built from two float atomic
+  exchanges. Its float atomics are in the module whether the constant takes
+  them or not, so every device loading a CAS-loop blob there enables
+  `shaderBufferFloat32Atomics` where it has it; elsewhere the path is not
+  compiled, since SPIRV-Cross emits it as `atomic_float`, which MSL lacks
+  before 3.0. The pipeline layer sets the constant only on AMD's Windows
+  driver without native fp32 add (`amd_windows_emulated_fadd`,
+  `VulkanContext.cpp`); such a device without the exchange either is what
+  still reports `backend::DeviceIssue::AmdWindowsFloatAtomics`. That driver drops the
   index of an indexed float pointer once it is reinterpreted as `uint*`
   (OpBitcast and OpConvertPtrToU alike; the SPIR-V validates), so every CAS
   of an array element hit the array's base and float sums came out

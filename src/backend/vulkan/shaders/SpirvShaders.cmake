@@ -33,6 +33,11 @@ function(ss_setup_spirv shared_dir vk_dir slangc spirv_dir embed_cpp debug)
     # strips line directives and slang's capability diagnostics (the embed
     # step's capability audit still runs).
     set(spirv_args -target spirv -stage compute -O2)
+    # atomic_float.slang's exchange-based add, for AMD's Windows driver only:
+    # MoltenVK turns its float exchange into atomic_float, which MSL < 3.0 lacks.
+    if(WIN32)
+        list(APPEND spirv_args -DSS_XCHG_FLOAT_ADD)
+    endif()
     if(debug)
         list(APPEND spirv_args -g2)
     else()
