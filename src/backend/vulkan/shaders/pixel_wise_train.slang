@@ -15,6 +15,7 @@
 #include "rgb_format.slang"
 
 #include "atomic_float.slang"
+#include "int8_compat.slang"
 #include "dist_spec.slang"
 
 // colorspace::Transfer and the working space's linearity, same convention as
@@ -449,3 +450,55 @@ void color_shift_update(uint tid: SV_GroupThreadID,
 // Declared last: spec IDs follow declaration order (see dist_spec.slang).
 [SpecializationConstant]
 const int kDistortion = 0;
+
+
+// ---------------------------------------------------------------------------
+// weighted mask (MaskWeight.cu): 0/1 mask out of 0..255 weights, one word of
+// four bytes per thread; and a per-pixel buffer scaled by the weight
+// ---------------------------------------------------------------------------
+
+struct SplitMaskWeightParams {  // 32 bytes: pushed directly
+    uint* weight;  // [n] bytes
+    uint* mask;    // [n] bytes, out
+    uint n, words, wgs_per_row, _pad;
+};
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void split_mask_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                       uniform SplitMaskWeightParams p) {
+    uint word = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (word >= p.words) return;
+    uint outw = 0u;
+    for (uint b = 0; b < 4u; b++)
+        if (word * 4u + b < p.n && u8_load(p.weight, word * 4u + b) != 0u)
+            outw |= 1u << (b * 8u);
+    p.mask[word] = outw;
+}
+
+struct ScaleByMaskWeightParams {  // 48 bytes: pushed directly
+    float* data;   // [B,H,W,C]
+    uint* weight;  // [B,Hm,Wm] bytes
+    uint H, W, C, Hm, Wm, total, wgs_per_row, _pad;
+};
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void scale_by_mask_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
+                          uniform ScaleByMaskWeightParams p) {
+    uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
+    if (idx >= p.total) return;
+    uint hw = p.H * p.W;
+    uint b = idx / hw, r = idx - b * hw;
+    int y = int(r / p.W), x = int(r - uint(y) * p.W);
+    int ys = y, xs = x;
+    if (p.Hm != p.H || p.Wm != p.W) {
+        float u = (float(x) + 0.5f) * float(p.Wm) / float(p.W) - 0.5f;
+        float v = (float(y) + 0.5f) * float(p.Hm) / float(p.H) - 0.5f;
+        xs = clamp(int(floor(u + 0.5f)), 0, int(p.Wm) - 1);
+        ys = clamp(int(floor(v + 0.5f)), 0, int(p.Hm) - 1);
+    }
+    float w = float(u8_load(p.weight, (b * p.Hm + uint(ys)) * p.Wm + uint(xs))) * (1.0f / 255.0f);
+    for (uint c = 0; c < p.C; c++)
+        p.data[idx * p.C + c] *= w;
+}

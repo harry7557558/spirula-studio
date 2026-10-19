@@ -147,6 +147,7 @@ HEADER_SOURCES["kernels/pixelwise/PixelWise"] = [
     "kernels/pixelwise/ImageWarp.cu",         # wide <-> pinhole warps, incl. byte-fused
     "kernels/pixelwise/ImageRedistort.cu",    # resample from an unrepresentable source lens
     "kernels/pixelwise/GtDepthNormalWarp.cu", # GT depth/normal wide -> pinhole warps
+    "kernels/pixelwise/MaskWeight.cu",        # weighted mask -> 0/1 mask; weight a buffer
     "kernels/ppisp/Ppisp.cu",                 # per-pixel image signal processing
 ]
 

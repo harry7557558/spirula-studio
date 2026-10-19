@@ -196,8 +196,11 @@ struct GTData {
     DeviceTensor3D<float>  depth;
     DeviceTensor3D<float3> normal;
     DeviceTensor3D<bool>   alpha;
+    // masks/ bytes stay continuous; alpha contains their nonzero support.
+    DeviceTensor3D<bool>   mask_weight;
     bool has_gt   = false;
     bool has_mask = false;
+    bool mask_weighted = false;
 };
 
 // Splat parameter gradients (pool-backed, zeroed each backward).

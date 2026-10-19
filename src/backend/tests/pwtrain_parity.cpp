@@ -1,7 +1,7 @@
 // Backend parity tool for the PixelWise training kernels (blend / noise
 // backwards, the display transfer both ways, overexposure grad, depth->normal
-// backward, linear->ray depth, color-shift regularizer) and the background-SH
-// backward. The SAME source builds under both backends:
+// backward, linear->ray depth, color-shift regularizer, weighted-mask split and
+// scale) and the background-SH backward. The SAME source builds under both backends:
 //
 //   CUDA build:   ./pwtrain_parity dump ref.bin
 //   Vulkan build: ./pwtrain_parity compare ref.bin   (per device)
@@ -282,6 +282,27 @@ int main(int argc, char** argv) {
             readback_f(acc, d_out, PIX * 3);
             readback_f(acc, d_vsh, K * 3);
         }
+    }
+
+    {
+        std::vector<uint8_t> wgt(PIX), half((size_t)B * (H / 2) * (W / 2));
+        for (auto& v : wgt) v = (rng() & 3) ? (uint8_t)(rng() & 0xff) : 0;
+        for (auto& v : half) v = (uint8_t)(rng() & 0xff);
+        uint8_t* d_w = upload(wgt);
+        uint8_t* d_half = upload(half);
+        uint8_t* d_m = (uint8_t*)backend::device_malloc(PIX);
+        split_mask_weight(ttv(d_w, {B, H, W, 1}), ttv(d_m, {B, H, W, 1}));
+        std::vector<uint8_t> m(PIX);
+        backend::memcpy_sync(m.data(), d_m, PIX, MemcpyKind::DeviceToHost);
+        for (uint8_t v : m) acc.push_back((float)v);
+        std::vector<float> data(PIX * 3);
+        fill(data, -1.f, 1.f);
+        float* d_data = upload(data);
+        scale_by_mask_weight(ttv(d_data, {B, H, W, 3}), ttv(d_w, {B, H, W, 1}));
+        readback_f(acc, d_data, PIX * 3);
+        float* d_map = upload(std::vector<float>(data.begin(), data.begin() + PIX));
+        scale_by_mask_weight(ttv(d_map, {B, H, W}), ttv(d_half, {B, H / 2, W / 2, 1}));
+        readback_f(acc, d_map, PIX);
     }
 
     if (dumping) {

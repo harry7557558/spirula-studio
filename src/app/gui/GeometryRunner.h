@@ -30,6 +30,9 @@ struct GeometryJob {
     int  num_tokens = 3600;       // MoGe's ViT budget; Metric3D ignores it
     bool want_normal = true;
     bool want_depth = false;
+    // `spirula focus` after the maps; it reads depth, so depth is written too.
+    bool want_focus = false;
+    float focus_allowed = 1.4f;
     bool normal_jpg = false;
     int  jpeg_quality = 95;
     bool depth_mm = false;

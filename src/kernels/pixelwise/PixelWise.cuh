@@ -631,6 +631,18 @@ void launch_warp_normal_equi(
     const float* d_axes);
 
 
+void split_mask_weight(
+    TorchTensorView weight,  // [B, H, W, 1] uint8, 0..255
+    TorchTensorView mask     // [B, H, W, 1] uint8, out: weight != 0
+);
+
+
+void scale_by_mask_weight(
+    TorchTensorView data,    // [B, H, W] or [B, H, W, C] float, scaled in place
+    TorchTensorView weight   // [B, Hm, Wm, 1] uint8, 0..255
+);
+
+
 void ppisp_forward(
     DeviceTensor3D<float3> in_image,    // [B, H, W, 3]
     TorchTensorView ppisp_params,       // [N_cam or B, PPISP_NUM_PARAMS]

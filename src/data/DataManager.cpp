@@ -518,37 +518,35 @@ void apply_boundary_offset(uint8_t* mask, int h, int w, float fraction) {
     edt::apply_mask_boundary_offset_in_place(mask, h, w, offset_px);
 }
 
-void decode_mask_into(const std::string& path,
-                      int dst_h, int dst_w,
-                      bool flip,
-                      float boundary_offset_frac,
-                      uint8_t* dst,
-                      int turns_cw = 0)
-{
+// Preserve continuous mask weights when resampling to the decoded shape.
+void decode_weight_into(const std::string& path, int dst_h, int dst_w, uint8_t* dst,
+                        int turns_cw = 0) {
     int w, h, ch;
     stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, 1);
     if (!img) throw std::runtime_error(decode_failure(path));
-
-    // Binarize on-disk pixels first so the broadcast / resize always emits
-    // strict 0/1 (matches the kernel's bool semantics).
-    for (size_t i = 0; i < (size_t)w * h; ++i)
-        img[i] = (uint8_t)(img[i] != 0);
-
     const stbi_uc* src = img;
     std::vector<stbi_uc> turned;
     turn_decoded(src, w, h, 1, turns_cw, turned);
     if (w == dst_w && h == dst_h) {
         std::memcpy(dst, src, (size_t)w * h);
-    } else {
-        cpu_nearest_resize_u8(src, h, w, dst, dst_h, dst_w);
+        stbi_image_free(img);
+        return;
+    }
+    const float fx = (float)w / (float)dst_w, fy = (float)h / (float)dst_h;
+    for (int y = 0; y < dst_h; ++y) {
+        const float v = std::max(0.0f, ((float)y + 0.5f) * fy - 0.5f);
+        const int y0 = std::min((int)v, h - 1), y1 = std::min(y0 + 1, h - 1);
+        const float ty = v - (float)y0;
+        for (int x = 0; x < dst_w; ++x) {
+            const float u = std::max(0.0f, ((float)x + 0.5f) * fx - 0.5f);
+            const int x0 = std::min((int)u, w - 1), x1 = std::min(x0 + 1, w - 1);
+            const float tx = u - (float)x0;
+            const float a = src[(size_t)y0 * w + x0] * (1 - tx) + src[(size_t)y0 * w + x1] * tx;
+            const float b = src[(size_t)y1 * w + x0] * (1 - tx) + src[(size_t)y1 * w + x1] * tx;
+            dst[(size_t)y * dst_w + x] = (uint8_t)std::lround(a * (1 - ty) + b * ty);
+        }
     }
     stbi_image_free(img);
-
-    // Before the offset: a flipped mask's boundary is the one to grow or shrink.
-    if (flip)
-        for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) dst[i] = (uint8_t)!dst[i];
-
-    apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac);
 }
 
 // An image's alpha as a 0/1 mask at dst_h x dst_w: area-resampled first, so a
@@ -980,7 +978,8 @@ private:
         return _has_alpha_masks && _cfg.alpha_masks[(size_t)i];
     }
     bool mask_present(int64_t i) const {
-        return !_mask_filenames[(size_t)i].empty() || alpha_mask(i) ||
+        return (!_mask_filenames.empty() && !_mask_filenames[(size_t)i].empty()) ||
+               alpha_mask(i) ||
                (!_synth_white_mask.empty() && _synth_white_mask[(size_t)i]);
     }
     // Image i's mask at dst_h x dst_w, from whichever of mask_present's
@@ -1324,21 +1323,27 @@ void DataManagerImpl::warn_mask_aspect() const {
 
 void DataManagerImpl::decode_mask_of(int64_t i, int dst_h, int dst_w,
                                      uint8_t* dst) const {
-    const std::string& file = _mask_filenames[(size_t)i];
+    const std::string file = _mask_filenames.empty() ? std::string() : _mask_filenames[(size_t)i];
     const int turns = turns_of(i);
-    if (!alpha_mask(i)) {
-        if (file.empty()) std::memset(dst, 1, (size_t)dst_h * dst_w);
-        else decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask,
-                              _cfg.mask_boundary_offset, dst, turns);
-        return;
+    const size_t n = (size_t)dst_h * dst_w;
+    if (file.empty()) std::memset(dst, 255, n);
+    else {
+        decode_weight_into(file, dst_h, dst_w, dst, turns);
+        if (_cfg.flip_mask)
+            for (size_t k = 0; k < n; ++k) dst[k] = 255 - dst[k];
     }
-    decode_alpha_mask_into(_image_filenames[(size_t)i], dst_h, dst_w, dst, turns);
-    if (!file.empty()) {
-        std::vector<uint8_t> other((size_t)dst_h * dst_w);
-        decode_mask_into(file, dst_h, dst_w, _cfg.flip_mask, 0.0f, other.data(), turns);
-        for (size_t k = 0; k < other.size(); ++k) dst[k] &= other[k];
+    if (alpha_mask(i)) {
+        std::vector<uint8_t> alpha(n);
+        decode_alpha_mask_into(_image_filenames[(size_t)i], dst_h, dst_w, alpha.data(), turns);
+        for (size_t k = 0; k < n; ++k) if (!alpha[k]) dst[k] = 0;
     }
-    apply_boundary_offset(dst, dst_h, dst_w, _cfg.mask_boundary_offset);
+    if (_cfg.mask_boundary_offset != 0.0f) {
+        std::vector<uint8_t> support(n);
+        for (size_t k = 0; k < n; ++k) support[k] = dst[k] != 0;
+        apply_boundary_offset(support.data(), dst_h, dst_w, _cfg.mask_boundary_offset);
+        for (size_t k = 0; k < n; ++k)
+            dst[k] = support[k] ? (dst[k] ? dst[k] : 255) : 0;
+    }
 }
 
 
@@ -1798,7 +1803,7 @@ void DataManagerImpl::fill_batch_from_cache(DecodedBatch& b) {
             uint8_t* dst_row = b.mask_buffer.data() + (size_t)j * mask_row;
             int32_t  ih = _mask_h_per[i], iw = _mask_w_per[i];
             if (ih == 1 && iw == 1) {
-                std::memset(dst_row, _mask_cache[i][0] ? 1 : 0, mask_row);
+                std::memset(dst_row, _mask_cache[i][0], mask_row);
             } else if (ih == b.mask_height && iw == b.mask_width) {
                 std::memcpy(dst_row, _mask_cache[i].data(), mask_row);
             } else {
