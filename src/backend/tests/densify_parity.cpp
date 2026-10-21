@@ -108,6 +108,7 @@ int main(int argc, char** argv) {
     std::vector<float> acc;    // tight floats
     std::vector<float> lacc;   // loose floats (sampling/noise downstream)
     std::vector<int32_t> codes;
+    bool frozen_ok = true;
 
     // ---- densify_clip_scale (tight) ----
     {
@@ -126,7 +127,7 @@ int main(int argc, char** argv) {
             densify_clip_scale_tensor(N, dv<float>(d_radii, N),
                                       dv<float3>(d_scales, N),
                                       c[3] != 0.f ? d_opacs : nullptr, c[0],
-                                      c[1], c[2]);
+                                      c[1], c[2], /*first_trainable_splat=*/0);
             backend::device_synchronize();
             readback_f(acc, d_scales, 3 * N);
             readback_f(acc, d_opacs, N);
@@ -150,7 +151,7 @@ int main(int argc, char** argv) {
         float* d_opacs = upload(opacs);
         mcmc_add_noise_tensor(N, 2e-2f, dv<float3>(d_means, N),
                               dv<float3>(d_scales, N), dv<float4>(d_quats, N),
-                              dv<float>(d_opacs, N));
+                              dv<float>(d_opacs, N), /*first_trainable_splat=*/0);
         backend::device_synchronize();
         readback_f(lacc, d_means, 3 * N);
 
@@ -160,9 +161,43 @@ int main(int argc, char** argv) {
                                  dv<float3>(d_means2, N),
                                  dv<float3>(d_scales, N),
                                  dv<float4>(d_quats, N),
-                                 dv<float>(d_opacs, N));
+                                 dv<float>(d_opacs, N), /*first_trainable_splat=*/0);
         backend::device_synchronize();
         readback_f(lacc, d_means2, 3 * N);
+
+        {
+            const int64_t frozen = N / 4;
+            std::vector<float> fmeans = means, fscales = scales, fopacs = opacs;
+            float* d_fm = upload(fmeans);
+            float* d_fs = upload(fscales);
+            float* d_fq = upload(quats);
+            float* d_fo = upload(fopacs);
+            float* d_fr = upload(radii);
+            mcmc_add_noise_tensor(N, 2e-2f, dv<float3>(d_fm, N),
+                                  dv<float3>(d_fs, N), dv<float4>(d_fq, N),
+                                  dv<float>(d_fo, N), frozen);
+            revised_add_noise_tensor(N, 5e-2f, dv<float>(d_fr, N),
+                                     dv<float3>(d_fm, N), dv<float3>(d_fs, N),
+                                     dv<float4>(d_fq, N), dv<float>(d_fo, N),
+                                     frozen);
+            backend::device_synchronize();
+            std::vector<float> got_m(fmeans.size()), got_s(fscales.size()),
+                got_o(fopacs.size());
+            backend::memcpy_sync(got_m.data(), d_fm, got_m.size() * 4,
+                                 MemcpyKind::DeviceToHost);
+            backend::memcpy_sync(got_s.data(), d_fs, got_s.size() * 4,
+                                 MemcpyKind::DeviceToHost);
+            backend::memcpy_sync(got_o.data(), d_fo, got_o.size() * 4,
+                                 MemcpyKind::DeviceToHost);
+            for (int64_t i = 0; i < 3 * frozen; i++) {
+                frozen_ok &= std::memcmp(&got_m[i], &means[i], 4) == 0;
+                frozen_ok &= std::memcmp(&got_s[i], &scales[i], 4) == 0;
+            }
+            for (int64_t i = 0; i < frozen; i++)
+                frozen_ok &= std::memcmp(&got_o[i], &opacs[i], 4) == 0;
+            if (!frozen_ok)
+                std::printf("densify_parity: noise touched the frozen prefix\n");
+        }
     }
 
     // ---- long-axis-split relocate/add + MCMC relocate/add ----
@@ -379,7 +414,8 @@ int main(int argc, char** argv) {
     auto call_relocate_las = [&](Model& m, float min_opacity, uint32_t seed,
                                  float* max_weight = nullptr,
                                  bool dead_by_opacity = true,
-                                 int64_t* num_dead = nullptr) {
+                                 int64_t* num_dead = nullptr,
+                                 int64_t first_trainable = 0) {
         relocate_splats_with_long_axis_split_tensor(
             N, min_opacity, /*split_opacity_k=*/0.6f,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -411,12 +447,14 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed, /*max_relocate=*/0, num_dead);
+            seed, /*max_relocate=*/0, num_dead,
+            first_trainable);
         backend::device_synchronize();
     };
 
     auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed,
-                            float* max_weight = nullptr) {
+                            float* max_weight = nullptr,
+                            int64_t first_trainable = 0) {
         add_splats_with_long_axis_split_tensor(
             N, num_add, /*split_opacity_k=*/0.6f,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -448,7 +486,7 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed);
+            seed, first_trainable);
         backend::device_synchronize();
     };
 
@@ -482,7 +520,7 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed, DeviceVector<float>());
+            seed, DeviceVector<float>(), /*first_trainable_splat=*/0);
         backend::device_synchronize();
     };
 
@@ -516,7 +554,7 @@ int main(int argc, char** argv) {
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
             m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed, DeviceVector<float>());
+            seed, DeviceVector<float>(), /*first_trainable_splat=*/0);
         backend::device_synchronize();
     };
 
@@ -832,6 +870,50 @@ int main(int argc, char** argv) {
         backend::device_free(d_mw);
     }
 
+    for (bool dead_by_opacity : {false, true}) {
+        const int64_t frozen = N / 4;
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, N - 1);
+        std::vector<float> op(CAP), mw(CAP, 1.f), accum(2 * CAP);
+        backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(accum.data(), m.accum, 2 * CAP * 4, MemcpyKind::DeviceToHost);
+        for (int64_t i = 0; i < frozen; ++i) {
+            op[i] = -8.f;
+            mw[i] = 0.f;
+            accum[2 * i] = 0.f;
+        }
+        backend::memcpy_sync(m.opacs, op.data(), CAP * 4, MemcpyKind::HostToDevice);
+        backend::memcpy_sync(m.accum, accum.data(), 2 * CAP * 4, MemcpyKind::HostToDevice);
+        auto prefix = [&] {
+            std::vector<float> values;
+            readback_f(values, m.means, 3 * frozen);
+            readback_f(values, m.quats, 4 * frozen);
+            readback_f(values, m.scales, 3 * frozen);
+            readback_f(values, m.opacs, frozen);
+            readback_f(values, m.dc, 3 * frozen);
+            readback_f(values, m.sh, 3 * m.num_sh * frozen);
+            return values;
+        };
+        const auto before = prefix();
+        float* d_mw = upload(mw);
+        int64_t num_dead = 0;
+        call_relocate_las(m, 0.005f, 171u, d_mw, dead_by_opacity, &num_dead, frozen);
+        const auto after = prefix();
+        if (num_dead != 1 || std::memcmp(before.data(), after.data(), before.size() * 4)) {
+            std::printf("densify_parity: max-weight relocation touched the frozen prefix\n");
+            frozen_ok = false;
+        }
+        std::fill(accum.begin(), accum.end(), 0.f);
+        if (dead_by_opacity) accum[2 * (N - 1)] = 1.f;
+        backend::memcpy_sync(m.accum, accum.data(), 2 * CAP * 4, MemcpyKind::HostToDevice);
+        call_add_las(m, MAX_ADD, 181u, d_mw, frozen);
+        const auto after_add = prefix();
+        if (std::memcmp(before.data(), after_add.data(), before.size() * 4)) {
+            std::printf("densify_parity: sparse-weight split draw touched the frozen prefix\n");
+            frozen_ok = false;
+        }
+        backend::device_free(d_mw);
+    }
+
     if (dumping) {
         std::ofstream f(argv[2], std::ios::binary);
         int64_t nf = (int64_t)acc.size(), nl = (int64_t)lacc.size(),
@@ -845,7 +927,7 @@ int main(int argc, char** argv) {
         std::printf("densify_parity: dumped %lld + %lld floats + %lld codes "
                     "to %s\n",
                     (long long)nf, (long long)nl, (long long)nc, argv[2]);
-        return revived_ok && inherit_ok ? 0 : 1;
+        return revived_ok && inherit_ok && frozen_ok ? 0 : 1;
     }
 
     // Diagnostics: DENSIFY_DUMP_GOT=<path> writes this run's outputs in the
@@ -931,7 +1013,7 @@ int main(int argc, char** argv) {
         lmax, (long long)lviol, 100.0 * lfrac, (long long)nc,
         (long long)max_c, (long long)cviol, 100.0 * cfrac);
     bool pass = ffrac <= 1e-3 && lfrac <= 2e-2 && cfrac <= 2e-2 && revived_ok &&
-                inherit_ok;
+                inherit_ok && frozen_ok;
     std::printf(pass ? "densify_parity: PASSED\n"
                      : "densify_parity: FAILED\n");
     return pass ? 0 : 1;

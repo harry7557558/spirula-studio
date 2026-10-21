@@ -205,6 +205,8 @@ inline bool train_choices_free_form(const char* choices) {
     X(int, background_noise_warmup, 2000, "splats", "expert", "")            \
     X(float, background_noise_pre_warmup, 0.25f, "splats", "expert", "")     \
     X(bool, background_match_luminance, false, "splats", "advanced", "")     \
+    X(bool, create_sky_splats, false, "splats", "basic", "")                 \
+    X(std::string, sky_resolution, "medium", "splats", "basic", "low|medium|high|ultra") \
     X(std::optional<float>, scale_init, std::nullopt, "splats", "advanced", "") \
     X(std::optional<float>, opacity_init, std::nullopt, "splats", "advanced", "") \
     X(bool, suppress_initial_scales, false, "splats", "expert", "")          \

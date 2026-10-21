@@ -242,6 +242,11 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     const int32_t scalar_step,
     const int32_t* __restrict__ steps
 ) {
+    if (visit.first_trainable_splat > 0 &&
+        (int64_t)blockIdx.x * (BLOCK_SIZE == 0 ? blockDim.x : BLOCK_SIZE) <
+            visit.first_trainable_splat)
+        return;
+
     uint32_t gid = blockIdx.x * (BLOCK_SIZE == 0 ? blockDim.x : BLOCK_SIZE) + threadIdx.x;
     bool inside = (gid < N);
 

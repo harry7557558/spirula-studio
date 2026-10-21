@@ -5,7 +5,7 @@
 #include "shaders/region.slang"
 #undef CudaDeviceExport
 
-struct RegionWeightParams {  // 120 bytes: pushed directly
+struct RegionWeightParams {  // 128 bytes: pushed directly
     float* means;          // [N, 3]
     float* quats;          // [N, 4]  (use_normal or num_pattern gates)
     float* scales;         // [N, 3]
@@ -20,6 +20,7 @@ struct RegionWeightParams {  // 120 bytes: pushed directly
     uint num_camera_nodes, num_prog, num_field_nodes, use_normal;
     uint num_pattern, seed;
     uint num_splats, wgs_per_row;
+    uint first_trainable_splat;
 };
 
 [shader("compute")]
@@ -28,6 +29,10 @@ void region_weight(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                    uniform RegionWeightParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
     if (idx >= p.num_splats) return;
+    if (idx < p.first_trainable_splat) {
+        p.weight[idx] = p.inside;
+        return;
+    }
     float3 pos = float3(p.means[3 * idx], p.means[3 * idx + 1], p.means[3 * idx + 2]);
     float3 n = float3(0.0);
     bool has_n = false;
@@ -73,7 +78,7 @@ struct DecayOpacityParams {  // 32 bytes: pushed directly
     float* opac;
     uint num_splats, wgs_per_row;
     float factor;
-    uint _pad0;
+    uint first_trainable_splat;
 };
 
 // Opacity is a logit: sigmoid(o) * factor, back to a logit.
@@ -82,7 +87,9 @@ struct DecayOpacityParams {  // 32 bytes: pushed directly
 void decay_opacity(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                    uniform DecayOpacityParams p) {
     uint idx = (wg.y * p.wgs_per_row + wg.x) * 256 + tid;
-    if (idx >= p.num_splats || p.weight[idx] >= 1.0) return;
+    if (idx >= p.num_splats || idx < p.first_trainable_splat ||
+        p.weight[idx] >= 1.0)
+        return;
     float q = p.factor / (1.0 + exp(-p.opac[idx]));
     p.opac[idx] = log(q / (1.0 - q));
 }

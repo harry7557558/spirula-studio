@@ -155,6 +155,9 @@ __global__ void fused_optim_3dgs_geometry_kernel(
     [[maybe_unused]] static constexpr float kSh0 = 0.28209479177387814f;  // 1 / (2*sqrt(pi))
 
     const int64_t idx = (int64_t)blockIdx.x * (int64_t)blockDim.x + (int64_t)threadIdx.x;
+    if (visit.first_trainable_splat > 0 &&
+        (int64_t)blockIdx.x * (int64_t)blockDim.x < visit.first_trainable_splat)
+        return;
     bool inside = (idx < numel);
 
     // Per-thread non-SH-quant state. Hoisted to function scope so the
@@ -527,6 +530,5 @@ void fused_optim_3dgs_geometry(
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
-
 
 

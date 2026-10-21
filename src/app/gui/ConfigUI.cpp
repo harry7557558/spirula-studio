@@ -427,6 +427,8 @@ constexpr int kNumTierChoices = 3;
 // here would offer the user two places to set the same thing.
 bool gui_managed(const char* cli_key) {
     return !std::strcmp(cli_key, "data") ||
+           !std::strcmp(cli_key, "create_sky_splats") ||
+           !std::strcmp(cli_key, "sky_resolution") ||
            !std::strcmp(cli_key, "quality") ||
            !std::strcmp(cli_key, "floater_suppression") ||
            !std::strcmp(cli_key, "distraction_robustness");

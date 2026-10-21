@@ -16,6 +16,7 @@
 struct SplatVisitState {
     uint32_t* counters           = nullptr;  // [N], null = off
     bool      skip_unrendered_reg = false;   // per-splat regularizers only on rendered splats
+    int64_t   first_trainable_splat = 0;     // rows below are the frozen sky prefix
 };
 
 SS_VISIT_FN uint32_t visit_step(uint32_t c, bool rendered) {

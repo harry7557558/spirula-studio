@@ -21,6 +21,7 @@
 #include "app/SystemRecorder.h"
 #include "app/TrainPerfLog.h"
 #include "app/TrainForecast.h"
+#include "app/SkyModel.h"
 #include "engine/Engine.h"
 #include "core/ColorSpace.h"
 #include "data/DatasetParser.h"
@@ -110,20 +111,22 @@ struct SeedSplats {
     std::vector<float> features_sh;
 };
 
+// extra_rows reserves zero-filled tail rows for the sky prefix.
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color);
+                       const ColorResolution& color, int64_t extra_rows = 0);
 
 // A warm start from a trained 3DGS PLY (--init-ply): the file supplies every
 // parameter, and only the layout is re-fitted to this run (cap_max, sh_degree,
 // relative_scale, splat gamut). The PLY must be in this run's training frame.
 SeedSplats seed_splats_from_ply(const std::string& path, const TrainConfig& cfg,
-                                const ColorResolution& color);
+                                const ColorResolution& color, int64_t extra_rows = 0);
 
 // The dataset's own seeds appended after the PLY's (--init-ply-add-points), so
 // the warm start covers what the source model has and the point cloud covers
 // what it does not. Adds nothing once `s` already fills cap_max.
 void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
-                        const TrainConfig& cfg, const ColorResolution& color);
+                        const TrainConfig& cfg, const ColorResolution& color,
+                        int64_t extra_rows = 0);
 
 
 // ===========================================================================
@@ -141,6 +144,8 @@ struct RunState {
     bool  bilagrid_depth_init  = false;
     bool  bilagrid_normal_init = false;
     bool  ppisp_init           = false;
+    // Frozen prefix; included in growth_caps and absolute engine row counts.
+    int64_t num_sky_splats     = 0;
     // (first step, splats): the progressive splat budget's growth ceilings.
     std::vector<std::pair<int, int64_t>> growth_caps;
 };
@@ -326,7 +331,12 @@ public:
 
     // The seeds setup_engine() hands the engine, from the point cloud and/or
     // cfg.init_ply.
-    SeedSplats seed_world(const ColorResolution& color);
+    SeedSplats seed_world(const ColorResolution& color, int64_t extra_rows = 0);
+
+    // Requires rows.opacities.size() extra rows reserved by seed_world.
+    int64_t add_sky_model(SeedSplats& seed, sky::Rows& rows);
+
+    void bake_sky(sky::Rows& rows);
 
     // Restore engine state from cfg.resume; sets start_step. Called by
     // setup_engine().

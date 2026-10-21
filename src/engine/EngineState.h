@@ -626,6 +626,8 @@ struct EngineState {
     std::string primitive;
     int64_t cur_num_splats = 0;
     int64_t max_num_splats = 0;
+    // Frozen rows [0, num_sky_splats).
+    int64_t num_sky_splats = 0;
     // features_sh row: num_sh float3, the last 2 * sb_lobes of them lobes
     // (core/ColorBasis.h); sh_degree is the bands the current step evaluates.
     int     num_sh         = 0;

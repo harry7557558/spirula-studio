@@ -72,6 +72,11 @@ jobs:
       - name: Smoke
         run: ./build_vulkan/spirula train --help
 
+      - name: Sky tests
+        run: |
+          ./build_vulkan/sky_model_test
+          ./build_vulkan/sky_setup_test
+
       - name: Package
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -116,6 +121,11 @@ jobs:
       - name: Smoke
         run: ./build/spirula train --help
 
+      - name: Sky tests
+        run: |
+          ./build/sky_model_test
+          ./build/sky_setup_test
+
       - name: Package
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -156,6 +166,14 @@ jobs:
       - name: Smoke
         shell: cmd
         run: build_vulkan\spirula.exe train --help
+
+      - name: Sky tests
+        shell: pwsh
+        run: |
+          & .\build_vulkan\sky_model_test.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\build_vulkan\sky_setup_test.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Package
         shell: pwsh

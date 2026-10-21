@@ -291,7 +291,8 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
     const float* weights,
     const bool* mask,
     float* out_weights,
-    int32_t* num_eligible  // null to skip counting
+    int32_t* num_eligible,  // null to skip counting
+    int64_t first_trainable_splat
 ) {
     int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= numel)
@@ -302,6 +303,7 @@ __global__ void compute_efraimidis_spirakis_weight_kernel(
     w = w / __logf(fmaxf(1.0f - u, 1e-30f));  // larger w -> smaller (more negative) value
     if (mask != nullptr && !mask[idx])
         w = 0.0f;
+    if (idx < first_trainable_splat) w = INFINITY;
     out_weights[idx] = w;
     // Strictly negative: a positive weight the mask admits. -0.0 is not one.
     if (num_eligible != nullptr && w < 0.0f)
@@ -326,7 +328,8 @@ int32_t* weighted_sample_without_replacement_internal(
     bool* masks_ptr,
     uint32_t num_sample,
     uint32_t seed,
-    uint32_t* num_eligible
+    uint32_t* num_eligible,
+    int64_t first_trainable_splat
 ) {
     // int stride = (int)(weights_numel / numel);
     int stride = 2;  // above is incorrect during warmup
@@ -347,7 +350,8 @@ int32_t* weighted_sample_without_replacement_internal(
         weights_ptr,
         masks_ptr,
         sorting_values,
-        d_eligible
+        d_eligible,
+        first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
     if (num_eligible) {

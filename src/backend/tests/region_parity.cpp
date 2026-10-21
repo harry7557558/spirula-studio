@@ -206,7 +206,7 @@ int main() {
                              dv<float3>(d_scales, N), orient ? d_cbvh : DeviceVector<float4>(),
                              d_cseeds, sampled ? d_pattern : DeviceVector<float4>(), seed,
                              pass % 3 == 2 ? d_shapes : d_prog, d_bvh, d_seeds, 1.0f, 1e-4f,
-                             dv<float>(d_w, N));
+                             dv<float>(d_w, N), /*first_trainable_splat=*/0);
         backend::device_synchronize();
         std::vector<float> w((size_t)N);
         backend::memcpy_sync(w.data(), d_w, (size_t)N * sizeof(float), MemcpyKind::DeviceToHost);
@@ -282,7 +282,7 @@ int main() {
         region_weight_tensor(N, dv<float3>(d_hm, N), dv<float4>(d_hq, N), dv<float3>(d_hs, N),
                              DeviceVector<float4>(), DeviceVector<float4>(), d_pattern, seed,
                              d_half, DeviceVector<float4>(), DeviceVector<float4>(), 1.0f, 1e-4f,
-                             dv<float>(d_w, N));
+                             dv<float>(d_w, N), /*first_trainable_splat=*/0);
         backend::device_synchronize();
         std::vector<float> w((size_t)N);
         backend::memcpy_sync(w.data(), d_w, (size_t)N * sizeof(float), MemcpyKind::DeviceToHost);

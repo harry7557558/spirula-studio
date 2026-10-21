@@ -11410,6 +11410,14 @@ void GuiApp::draw_basic_options() {
         _cfg_ui.touched.insert("cap_max");
     ui::help_on_hover(msg::opt_max_splats_help);
 
+    if (ui::Checkbox(fld::create_sky_splats, &_cfg.create_sky_splats))
+        _cfg_ui.touched.insert("create_sky_splats");
+    ui::help_on_hover(fld::create_sky_splats_help);
+    if (_cfg.create_sky_splats)
+        macro_option("sky_resolution", _cfg.sky_resolution,
+                     fld::sky_resolution, fld::sky_resolution_help,
+                     {"low", "medium", "high", "ultra"});
+
     {
         // Primitive names are the config's own values, written into
         // config.json and accepted by `--primitive`; they are not translated.

@@ -97,7 +97,8 @@ void densify_clip_scale_tensor(
     float* logit_opacs_ptr,
     float max_scale2d,
     float clip_hardness,
-    float max_scale3d
+    float max_scale3d,
+    int64_t first_trainable_splat
 );
 
 
@@ -112,7 +113,8 @@ void densify_learned_score_tensor(
     DeviceVector<float2> accum_buffer,
     float max_scale2d,
     DeviceVector<float> oversize_accum, // empty to skip
-    DeviceVector<float> stats           // [2], accumulated
+    DeviceVector<float> stats,          // [2], accumulated
+    int64_t first_trainable_splat
 );
 
 
@@ -189,7 +191,8 @@ void densify_update_weight(
     DeviceVector<float2> accum_buffer,
     int score_mode,
     float max_scale2d,
-    DeviceVector<float> oversize_accum
+    DeviceVector<float> oversize_accum,
+    int64_t first_trainable_splat
 );
 
 
@@ -198,7 +201,8 @@ void densify_oversize_weight_tensor(
     float blend,
     DeviceVector<float> oversize_accum,
     DeviceVector<float2> score,
-    DeviceVector<float2> out
+    DeviceVector<float2> out,
+    int64_t first_trainable_splat
 );
 
 
@@ -240,7 +244,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     NonShQuantState non_sh,
     uint32_t seed,
     int64_t max_relocate,
-    int64_t* num_dead_out
+    int64_t* num_dead_out,
+    int64_t first_trainable_splat
 );
 
 
@@ -269,7 +274,8 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    int64_t first_trainable_splat
 );
 
 
@@ -291,7 +297,8 @@ void relocate_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
+    DeviceVector<float> draw_weight,   // [N] or empty: scales each live splat's draw
+    int64_t first_trainable_splat
 );
 
 
@@ -314,7 +321,8 @@ void add_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
+    DeviceVector<float> draw_weight,   // [N] or empty: scales each live splat's draw
+    int64_t first_trainable_splat
 );
 
 
@@ -324,7 +332,8 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 );
 
 
@@ -335,7 +344,8 @@ void revised_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 );
 
 
@@ -393,7 +403,8 @@ void region_weight_tensor(
     DeviceVector<float4> field_seeds,
     float inside,
     float outside,
-    DeviceVector<float> weight           // [N] out
+    DeviceVector<float> weight,          // [N] out
+    int64_t first_trainable_splat
 );
 
 
@@ -408,5 +419,6 @@ void region_decay_opacity_tensor(
     int64_t num_splats,
     DeviceVector<float> weight,      // [N]; below 1 is outside the region
     DeviceVector<float> opacities,   // [N] logits, scaled in place outside
-    float factor                     // in (0, 1]
+    float factor,                    // in (0, 1]
+    int64_t first_trainable_splat
 );

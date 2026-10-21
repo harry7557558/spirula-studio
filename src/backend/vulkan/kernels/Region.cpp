@@ -15,8 +15,10 @@ struct RegionWeightParams {
     uint32_t num_camera_nodes, num_prog, num_field_nodes, use_normal;
     uint32_t num_pattern, seed;
     uint32_t num_splats, wgs_per_row;
+    uint32_t first_trainable_splat;
+    uint32_t _pad0;
 };
-static_assert(sizeof(RegionWeightParams) == 10 * 8 + 10 * 4, "params layout must match the slang struct");
+static_assert(sizeof(RegionWeightParams) == 10 * 8 + 12 * 4, "params layout must match the slang struct");
 
 // Mirrors ScaleScoreParams.
 struct ScaleScoreParams {
@@ -30,7 +32,7 @@ struct DecayOpacityParams {
     uint64_t weight, opac;
     uint32_t num_splats, wgs_per_row;
     float factor;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(DecayOpacityParams) == 2 * 8 + 4 * 4, "params layout must match the slang struct");
 
@@ -41,7 +43,8 @@ void region_weight_tensor(int64_t num_splats, DeviceVector<float3> means, Device
                           DeviceVector<float4> camera_seeds, DeviceVector<float4> pattern,
                           uint32_t seed, DeviceVector<float4> program,
                           DeviceVector<float4> field_bvh, DeviceVector<float4> field_seeds,
-                          float inside, float outside, DeviceVector<float> weight) {
+                          float inside, float outside, DeviceVector<float> weight,
+                          int64_t first_trainable_splat) {
     if (num_splats <= 0 || program.data_ptr() == nullptr) return;
     const bool splats = quats.data_ptr() && scales.data_ptr();
     const bool orient = splats && camera_bvh.data_ptr() && camera_seeds.data_ptr();
@@ -65,6 +68,7 @@ void region_weight_tensor(int64_t num_splats, DeviceVector<float3> means, Device
     p.num_pattern = splats && pattern.data_ptr() ? (uint32_t)pattern.size() : 0u;
     p.seed = seed;
     p.num_splats = (uint32_t)num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("region.region_weight", {}, num_splats, 256, &p, sizeof(p), &p.wgs_per_row);
 }
 
@@ -80,12 +84,14 @@ void densify_scale_score_tensor(int64_t num_splats, DeviceVector<float> weight,
 }
 
 void region_decay_opacity_tensor(int64_t num_splats, DeviceVector<float> weight,
-                                 DeviceVector<float> opacities, float factor) {
+                                 DeviceVector<float> opacities, float factor,
+                                 int64_t first_trainable_splat) {
     if (num_splats <= 0 || weight.data_ptr() == nullptr || !(factor < 1.0f)) return;
     DecayOpacityParams p{};
     p.weight = (uint64_t)weight.data_ptr();
     p.opac = (uint64_t)opacities.data_ptr();
     p.num_splats = (uint32_t)num_splats;
     p.factor = factor;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("region.decay_opacity", {}, num_splats, 256, &p, sizeof(p), &p.wgs_per_row);
 }

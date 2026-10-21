@@ -84,6 +84,7 @@ static std::string _build_state_json(EngineState& s, int step, bool full) {
     j << "  \"primitive\": \"" << s.primitive << "\",\n";
     j << "  \"cur_num_splats\": " << s.cur_num_splats << ",\n";
     j << "  \"max_num_splats\": " << s.max_num_splats << ",\n";
+    j << "  \"num_sky_splats\": " << s.num_sky_splats << ",\n";
     j << "  \"num_sh\": " << s.num_sh << ",\n";
     j << "  \"sh_degree\": " << s.sh_degree << ",\n";
     j << "  \"sb_lobes\": " << s.sb_lobes << ",\n";
@@ -278,6 +279,8 @@ void engine_save_checkpoint(
     std::vector<char> keep((size_t)N, 1);
     int64_t kept = 0, nan_dropped = 0, lowopa_dropped = 0, deadscale_dropped = 0;
     for (int64_t i = 0; i < N; i++) {
+        // Preserve sky opacity (+inf) through the finite-value filter.
+        if (i < s.num_sky_splats) { kept++; continue; }
         bool ok = fin3(h_means[i]) && fin4(h_quats[i]) && fin3(h_scales[i])
                   && fin1(h_opacities[i]) && fin3(h_features_dc[i]);
         // Quant-decoded SH values are finite by construction (byte to fp32
@@ -411,6 +414,7 @@ int engine_load_checkpoint(std::string input_dir) {
     const int     step          = (int)_json_int(sj, "step", 0);
     const int64_t cur_n         = _json_int(sj, "cur_num_splats", 0);
     const int64_t max_n         = _json_int(sj, "max_num_splats", 0);
+    const int64_t sky_n         = _json_int(sj, "num_sky_splats", 0);
     const int     num_sh        = (int)_json_int(sj, "num_sh", 0);
     const int     sh_degree     = (int)_json_int(sj, "sh_degree", 0);
     const int     sb_lobes      = (int)_json_int(sj, "sb_lobes", 0);
@@ -433,6 +437,11 @@ int engine_load_checkpoint(std::string input_dir) {
     s.cur_num_splats = cur_n;
     s.max_num_splats = max_n;
     DevicePool::global().set_splat_counts(cur_n, max_n);
+    if (sky_n < 0 || sky_n > cur_n || sky_n % 256 != 0)
+        throw std::runtime_error(
+            "engine_load_checkpoint: num_sky_splats " + std::to_string(sky_n) +
+            " is invalid for " + std::to_string(cur_n) + " splats");
+    s.num_sky_splats = sky_n;
     if (s.num_sh != 0 && (s.num_sh != num_sh || s.sb_lobes != sb_lobes))
         throw std::runtime_error(
             "engine_load_checkpoint: colour row mismatch (engine " +

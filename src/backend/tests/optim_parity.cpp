@@ -326,7 +326,7 @@ int main(int argc, char** argv) {
                 dv_f(d_w1, N),
                 c[2] ? dv_f(d_w2, N) : DeviceVector<float>{},
                 c[2] ? 0.3f : 0.f, 0.1f * (float)c[3], dv_f2(d_accum, N),
-                c[0], 5.0f, dv_f(d_over, N));
+                c[0], 5.0f, dv_f(d_over, N), /*first_trainable_splat=*/0);
             backend::device_synchronize();
             readback_f(acc, d_accum, N * 2);
             readback_f(acc, d_over, N);
@@ -337,7 +337,8 @@ int main(int argc, char** argv) {
             densify_update_weight(N, dv_f(d_radii, N), nullptr, d_opacs,
                                   dv_f(d_w1, N), DeviceVector<float>{}, 0.f,
                                   1.0f, dv_f2(d_accum, N), 2, 5.0f,
-                                  DeviceVector<float>{});
+                                  DeviceVector<float>{},
+                                  /*first_trainable_splat=*/0);
             backend::device_synchronize();
             std::vector<float> got(N * 2);
             backend::memcpy_sync(got.data(), d_accum, N * 2 * 4,
@@ -358,16 +359,37 @@ int main(int argc, char** argv) {
                 lacc[2 * i + 1] = i % 4 == 0 ? 0.f : (float)(int)uf(1.f, 30.f);
             }
             float* d_ratio = upload(ratio);
-            float* d_lacc = upload(lacc);
-            float* d_over = upload(over0);
-            float* d_stats = upload(std::vector<float>(2, 0.f));
-            densify_learned_score_tensor(N, 0.4f, 0.1f, -3.0f, 0.02f, dv_f(d_radii, N),
-                                         dv_f(d_ratio, 2 * N), dv_f2(d_lacc, N),
-                                         5.0f, dv_f(d_over, N), dv_f(d_stats, 2));
-            backend::device_synchronize();
-            readback_f(acc, d_lacc, N * 2);
-            readback_f(acc, d_over, N);
-            readback_f(acc, d_stats, 2);
+            for (int64_t frozen : {int64_t(0), int64_t(257), N}) {
+                float* d_lacc = upload(lacc);
+                float* d_over = upload(std::vector<float>(N, 1.f));
+                float* d_stats = upload(std::vector<float>(2, 0.f));
+                densify_learned_score_tensor(N, 0.4f, 0.1f, -3.0f, 0.02f, dv_f(d_radii, N),
+                                             dv_f(d_ratio, 2 * N), dv_f2(d_lacc, N),
+                                             5.0f, dv_f(d_over, N), dv_f(d_stats, 2), frozen);
+                backend::device_synchronize();
+                const size_t offset = acc.size();
+                readback_f(acc, d_lacc, N * 2);
+                readback_f(acc, d_over, N);
+                readback_f(acc, d_stats, 2);
+                bool frozen_ok = true;
+                int expected_count = 0;
+                for (int64_t i = 0; i < N; ++i) {
+                    if (i < frozen)
+                        frozen_ok &= acc[offset + 2 * i] == 0.f &&
+                                     acc[offset + 2 * i + 1] == 0.f &&
+                                     acc[offset + 2 * N + i] == 0.f;
+                    else
+                        expected_count += radii[i] > 0.f && ratio[N + i] > 0.f;
+                }
+                if (!frozen_ok || acc.back() != (float)expected_count) {
+                    std::printf("optim_parity: learned score included frozen rows\n");
+                    return 1;
+                }
+                backend::device_free(d_lacc);
+                backend::device_free(d_over);
+                backend::device_free(d_stats);
+            }
+            backend::device_free(d_ratio);
         }
 
         // ---- densify_oversize_weight ----
@@ -384,7 +406,8 @@ int main(int argc, char** argv) {
             for (float blend : {0.0f, 0.5f, 1.0f}) {
                 densify_oversize_weight_tensor(N, blend, dv_f(d_over, N),
                                                dv_f2(d_sc, N),
-                                               dv_f2(d_out, N));
+                                               dv_f2(d_out, N),
+                                               /*first_trainable_splat=*/0);
                 backend::device_synchronize();
                 readback_f(acc, d_out, N * 2);
             }

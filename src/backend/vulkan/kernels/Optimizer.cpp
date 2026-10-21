@@ -445,10 +445,10 @@ struct OptimGeoParams {
         max_screen_size_penalty, eps_tr;
     int32_t scalar_step;
     uint32_t has_steps, has_densify_score, numel, wgs_per_row, has_visit,
-        skip_unrendered_reg;
-    uint32_t _pad0;
+        skip_unrendered_reg, first_trainable_splat;
+    uint32_t _pad0, _pad1;
 };
-static_assert(sizeof(OptimGeoParams) == 42 * 8 + 26 * 4,
+static_assert(sizeof(OptimGeoParams) == 42 * 8 + 28 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -641,6 +641,7 @@ void fused_optim_3dgs_geometry(
     p.visit_counters = vkk::or_fallback(visit.counters);
     p.has_visit = visit.counters ? 1u : 0u;
     p.skip_unrendered_reg = visit.skip_unrendered_reg ? 1u : 0u;
+    p.first_trainable_splat = (uint32_t)visit.first_trainable_splat;
 
     uint32_t gq_mask = 0;
     p.gq_means_packed = vkk::or_fallback(gq.means_packed);

@@ -109,7 +109,9 @@ struct OptimGeoParams {
     uint32_t wgs_per_row;
     uint32_t has_visit;
     uint32_t skip_unrendered_reg;
+    uint32_t first_trainable_splat;
     uint32_t _pad0;
+    uint32_t _pad1;
 };
 
 // Data gradient for a PRIMS-wide attribute: decode from the 16-bit
@@ -141,6 +143,9 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
                                uniform OptimGeoParams* pp) {
     OptimGeoParams p = *pp;
     uint block_id = wg.y * p.wgs_per_row + wg.x;
+    if (p.first_trainable_splat != 0 &&
+        block_id * 256u < p.first_trainable_splat)
+        return;
     uint gid = block_id * 256 + tid;
     bool inside = gid < p.numel;
     // Grid-fold tail: block_id can pad past the last quant block, so bounds

@@ -38,6 +38,10 @@ int64_t engine_get_max_num_splats() {
     return engine().max_num_splats;
 }
 
+int64_t engine_get_num_sky_splats() {
+    return engine().num_sky_splats;
+}
+
 int engine_get_num_sh() {
     return engine().num_sh;
 }

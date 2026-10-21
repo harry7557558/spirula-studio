@@ -42,8 +42,9 @@ struct FpboParams {
     uint32_t num_sh_buffer;
     uint32_t has_visit, skip_unrendered_reg;
     uint32_t sb_base, _pad0;
+    uint32_t first_trainable_splat, _pad1;
 };
-static_assert(sizeof(FpboParams) == 48 * 8 + 19 * 4 + 13 * 4,
+static_assert(sizeof(FpboParams) == 48 * 8 + 21 * 4 + 13 * 4,
               "params layout must match the slang struct");
 
 using vkk::or_fallback;
@@ -202,6 +203,7 @@ void launch_fpbo_vk(
     p.visit_counters = or_fallback((uint64_t)visit.counters);
     p.has_visit = visit.counters ? 1u : 0u;
     p.skip_unrendered_reg = visit.skip_unrendered_reg ? 1u : 0u;
+    p.first_trainable_splat = (uint32_t)visit.first_trainable_splat;
     p.lr_means = lr_means;
     p.lr_quats = lr_quats;
     p.lr_scales = lr_scales;

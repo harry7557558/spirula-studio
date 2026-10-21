@@ -1678,6 +1678,74 @@ SS_MSG(seeded_from_ply,
     RU("Инициализировано из {0}: сплатов из PLY {1}, из облака точек {2}"),
     TR("{0} dosyasından başlatıldı: PLY'den {1} splat, nokta bulutundan {2}"));
 
+SS_MSG(sky_splats_created,
+    EN("Sky model: {0} splats, radius {1}"),
+    JA("スカイモデル: スプラット {0}、半径 {1}"),
+    ZH_HANS("天空模型：泼溅 {0} 个，半径 {1}"),
+    ZH_HANT("天空模型：潑濺 {0} 個，半徑 {1}"),
+    KO("하늘 모델: 스플랫 {0}개, 반지름 {1}"),
+    DE("Himmelsmodell: {0} Splats, Radius {1}"),
+    FR("Modèle de ciel : {0} splats, rayon {1}"),
+    ES("Modelo de cielo: {0} splats, radio {1}"),
+    PT("Modelo de céu: {0} splats, raio {1}"),
+    IT("Modello di cielo: {0} splat, raggio {1}"),
+    NL("Luchtmodel: {0} splats, straal {1}"),
+    RU("Модель неба: сплатов {0}, радиус {1}"),
+    TR("Gökyüzü modeli: {0} splat, yarıçap {1}"));
+SS_MSG(sky_colors_baked,
+    EN("Sky colors baked from {0} images"),
+    JA("スカイの色を {0} 枚の画像から焼き込みました"),
+    ZH_HANS("已从 {0} 张图像烘焙天空颜色"),
+    ZH_HANT("已從 {0} 張圖像烘焙天空顏色"),
+    KO("하늘 색을 이미지 {0}장에서 구웠습니다"),
+    DE("Himmelsfarben aus {0} Bildern gebacken"),
+    FR("Couleurs du ciel cuites depuis {0} images"),
+    ES("Colores del cielo horneados desde {0} imágenes"),
+    PT("Cores do céu assadas a partir de {0} imagens"),
+    IT("Colori del cielo cotti da {0} immagini"),
+    NL("Luchtkleuren gebakken uit {0} afbeeldingen"),
+    RU("Цвет неба запечён из {0} снимков"),
+    TR("Gökyüzü renkleri {0} görüntüden pişirildi"));
+SS_MSG(sky_skipped_no_points,
+    EN("Sky model skipped: the point cloud is empty or all at the origin"),
+    JA("スカイモデルを省略: 点群が空か、すべて原点にあります"),
+    ZH_HANS("已跳过天空模型：点云为空或全部位于原点"),
+    ZH_HANT("已略過天空模型：點雲為空或全部位於原點"),
+    KO("하늘 모델을 건너뜁니다: 점 구름이 비었거나 모두 원점에 있습니다"),
+    DE("Himmelsmodell übersprungen: Die Punktwolke ist leer oder liegt ganz im Ursprung"),
+    FR("Modèle de ciel ignoré : le nuage de points est vide ou entièrement à l'origine"),
+    ES("Modelo de cielo omitido: la nube de puntos está vacía o toda en el origen"),
+    PT("Modelo de céu ignorado: a nuvem de pontos está vazia ou toda na origem"),
+    IT("Modello di cielo saltato: la nuvola di punti è vuota o tutta nell'origine"),
+    NL("Luchtmodel overgeslagen: de puntenwolk is leeg of ligt helemaal in de oorsprong"),
+    RU("Модель неба пропущена: облако точек пусто или целиком в начале координат"),
+    TR("Gökyüzü modeli atlandı: nokta bulutu boş ya da tümü başlangıç noktasında"));
+SS_MSG(sky_resume_ignored,
+    EN("--create-sky-splats is ignored on resume: this checkpoint's field carries no "
+       "sky model"),
+    JA("--create-sky-splats は再開時には無視されます: このチェックポイントのフィールドに"
+       "スカイモデルがありません"),
+    ZH_HANS("恢复时忽略 --create-sky-splats：此检查点的场中没有天空模型"),
+    ZH_HANT("恢復時忽略 --create-sky-splats：此檢查點的場中沒有天空模型"),
+    KO("재개할 때 --create-sky-splats는 무시됩니다: 이 체크포인트의 필드에는 하늘 모델이 "
+       "없습니다"),
+    DE("--create-sky-splats wird beim Fortsetzen ignoriert: Das Feld dieses Checkpoints "
+       "enthält kein Himmelsmodell"),
+    FR("--create-sky-splats est ignoré à la reprise : le champ de ce point de contrôle "
+       "n'a pas de modèle de ciel"),
+    ES("--create-sky-splats se ignora al reanudar: el campo de este punto de control no "
+       "tiene modelo de cielo"),
+    PT("--create-sky-splats é ignorado ao retomar: o campo deste checkpoint não tem "
+       "modelo de céu"),
+    IT("--create-sky-splats è ignorato alla ripresa: il campo di questo checkpoint non ha "
+       "un modello di cielo"),
+    NL("--create-sky-splats wordt genegeerd bij hervatten: het veld van dit checkpoint "
+       "heeft geen luchtmodel"),
+    RU("--create-sky-splats игнорируется при продолжении: в поле этого чекпойнта нет "
+       "модели неба"),
+    TR("--create-sky-splats devam ederken yok sayılır: bu kontrol noktasının alanında "
+       "gökyüzü modeli yok"));
+
 // {1} is "x, y, z" in the dataset's frame; the shift lives on in
 // scene_transform.json, so this line is what a reader of the log sees first.
 SS_MSG(scene_centered,

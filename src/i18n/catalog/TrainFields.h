@@ -3523,6 +3523,108 @@ SS_MSG(background_match_luminance_help,
        "sağlar. Karanlık sahnelerin parlak bir arka planı gizlemek için pusla "
        "dolmasını önler. Yalnızca `noise` / `pseudorandom` / `random` arka "
        "planlarıyla kullanılır."));
+SS_MSG(create_sky_splats,
+    EN("Create sky model"), JA("スカイモデルを作成"), ZH_HANS("创建天空模型"),
+    ZH_HANT("建立天空模型"), KO("하늘 모델 만들기"), DE("Himmelsmodell erstellen"),
+    FR("Créer un modèle de ciel"), ES("Crear modelo de cielo"),
+    PT("Criar modelo de céu"), IT("Crea modello di cielo"),
+    NL("Luchtmodel maken"), RU("Создать модель неба"),
+    TR("Gökyüzü modeli oluştur"));
+SS_MSG(create_sky_splats_help,
+    EN("Adds a fixed sphere of sky splats around the scene, coloured from the "
+       "training photos, so the background comes out with the model instead of empty "
+       "space. Sky splats never move, grow or prune, and they stay in saved and "
+       "exported models. Built when the run starts; a reset builds them again."),
+    JA("シーンの周囲に固定のスカイスプラット球を追加し、学習写真から色を焼き込みます。"
+       "背景が空白ではなくモデルと一緒に出てくるようになります。スカイスプラットは移動・"
+       "成長・刈り込みされず、保存・書き出ししたモデルにも残ります。学習の開始時に作成され、"
+       "リセットすると作り直されます。"),
+    ZH_HANS("在场景周围添加一层固定的天空泼溅球，用训练照片烘焙它们的颜色，使背景随模型一"
+            "起出现而不是一片空白。天空泼溅不会移动、分裂或裁剪，并且会保留在保存和导出的模型"
+            "里。运行开始时创建，重置后重新创建。"),
+    ZH_HANT("在場景周圍加入一層固定的天空潑濺球，用訓練照片烘焙它們的顏色，使背景隨模型一"
+            "起出現而不是一片空白。天空潑濺不會移動、分裂或裁剪，並且會保留在儲存和匯出的模型"
+            "裡。執行開始時建立，重設後重新建立。"),
+    KO("장면 주위에 고정된 하늘 스플랫 구를 추가하고 훈련 사진에서 색을 구워 넣습니다. 배경이 "
+       "빈 공간이 아니라 모델과 함께 나옵니다. 하늘 스플랫은 움직이거나 커지거나 잘리지 않으며 "
+       "저장·내보낸 모델에도 남습니다. 실행이 시작될 때 만들어지고, 초기화하면 다시 만들어집니다."),
+    DE("Fügt eine feste Kugel aus Himmelssplats um die Szene hinzu und bäckt ihre "
+       "Farben aus den Trainingsfotos, sodass der Hintergrund mit dem Modell kommt "
+       "statt als leere Fläche. Himmelssplats bewegen sich nie, wachsen nie und werden "
+       "nie ausgedünnt; sie bleiben in gespeicherten und exportierten Modellen. Wird "
+       "beim Start des Laufs erstellt; ein Reset erstellt sie neu."),
+    FR("Ajoute une sphère fixe de splats de ciel autour de la scène et cuit leurs "
+       "couleurs à partir des photos d'entraînement, pour que l'arrière-plan fasse "
+       "partie du modèle au lieu de rester vide. Les splats de ciel ne bougent jamais, "
+       "ne grossissent pas et ne sont jamais élagués ; ils restent dans les modèles "
+       "enregistrés et exportés. Créés au démarrage de l'exécution ; une "
+       "réinitialisation les recrée."),
+    ES("Añade una esfera fija de splats de cielo alrededor de la escena y hornea sus "
+       "colores a partir de las fotos de entrenamiento, para que el fondo forme parte "
+       "del modelo en vez de quedar vacío. Los splats de cielo nunca se mueven, crecen "
+       "ni se podan, y permanecen en los modelos guardados y exportados. Se crean al "
+       "iniciar la ejecución; un reinicio los vuelve a crear."),
+    PT("Adiciona uma esfera fixa de splats de céu ao redor da cena e assa as suas cores "
+       "a partir das fotos de treino, para que o fundo venha com o modelo em vez de "
+       "ficar vazio. Os splats de céu nunca se movem, crescem nem são podados, e "
+       "permanecem nos modelos guardados e exportados. São criados no início da "
+       "execução; um reinício volta a criá-los."),
+    IT("Aggiunge una sfera fissa di splat di cielo attorno alla scena e ne cuoce i "
+       "colori dalle foto di addestramento, così lo sfondo esce insieme al modello "
+       "invece di restare vuoto. Gli splat di cielo non si muovono mai, non crescono e "
+       "non vengono potati, e restano nei modelli salvati ed esportati. Vengono creati "
+       "all'avvio dell'esecuzione; un ripristino li ricrea."),
+    NL("Voegt een vaste bol van luchtsplats rond de scène toe en bakt hun kleuren uit "
+       "de trainingsfoto's, zodat de achtergrond met het model meekomt in plaats van "
+       "leeg te blijven. Luchtsplats bewegen nooit, groeien niet en worden nooit "
+       "uitgedund; ze blijven in opgeslagen en geëxporteerde modellen. Worden gemaakt "
+       "bij de start van de run; een reset maakt ze opnieuw."),
+    RU("Добавляет вокруг сцены фиксированную сферу сплатов неба и запекает их цвет из "
+       "обучающих снимков, чтобы фон шёл вместе с моделью, а не оставался пустым. "
+       "Сплаты неба никогда не двигаются, не растут и не отсеиваются и остаются в "
+       "сохранённых и экспортированных моделях. Создаются при запуске; сброс создаёт "
+       "их заново."),
+    TR("Sahnenin çevresine sabit bir gökyüzü splat küresi ekler ve renklerini eğitim "
+       "fotoğraflarından pişirir; böylece arka plan boş kalmak yerine modelle birlikte "
+       "gelir. Gökyüzü splat'ları asla hareket etmez, büyümez ve budanmaz; kaydedilen "
+       "ve dışa aktarılan modellerde kalır. Çalıştırma başlarken oluşturulur; sıfırlama "
+       "yeniden oluşturur."));
+SS_MSG(sky_resolution,
+    EN("Sky model quality"), JA("スカイモデルの品質"), ZH_HANS("天空模型质量"),
+    ZH_HANT("天空模型品質"), KO("하늘 모델 품질"), DE("Himmelsmodellqualität"),
+    FR("Qualité du modèle de ciel"), ES("Calidad del modelo de cielo"),
+    PT("Qualidade do modelo de céu"), IT("Qualità del modello di cielo"),
+    NL("Kwaliteit van het luchtmodel"), RU("Качество модели неба"),
+    TR("Gökyüzü modeli kalitesi"));
+SS_MSG(sky_resolution_help,
+    EN("How many splats the sky model uses: low 32,768, medium 65,536, high "
+       "131,072, ultra 262,144. More splats improve the sky and cost more per step."),
+    JA("スカイモデルが使うスプラット数：低 32,768、中 65,536、高 131,072、最高 262,144。"
+       "多いほど空が良くなり、1ステップの処理が重くなります。"),
+    ZH_HANS("天空模型使用的泼溅数量：低 32,768，中 65,536，高 131,072，极高 262,144。"
+            "数量越多天空越好，每一步也越慢。"),
+    ZH_HANT("天空模型使用的潑濺數量：低 32,768，中 65,536，高 131,072，極高 262,144。"
+            "數量越多天空越好，每一步也越慢。"),
+    KO("하늘 모델이 사용하는 스플랫 수: 낮음 32,768, 보통 65,536, 높음 131,072, 최고 262,144. "
+       "많을수록 하늘이 좋아지고 단계마다 느려집니다."),
+    DE("Wie viele Splats das Himmelsmodell nutzt: niedrig 32.768, mittel "
+       "65.536, hoch 131.072, ultra 262.144. Mehr Splats verbessern den Himmel und kosten "
+       "pro Schritt mehr."),
+    FR("Nombre de splats du modèle de ciel : bas 32 768, moyen 65 536, élevé "
+       "131 072, ultra 262 144. Plus de splats améliorent le ciel et coûtent plus cher par étape."),
+    ES("Cuántos splats usa el modelo de cielo: bajo 32.768, medio 65.536, alto "
+       "131.072, ultra 262.144. Más splats mejoran el cielo y cuestan más por paso."),
+    PT("Quantos splats o modelo de céu usa: baixo 32.768, médio 65.536, alto "
+       "131.072, ultra 262.144. Mais splats melhoram o céu e custam mais por passo."),
+    IT("Quanti splat usa il modello di cielo: basso 32.768, medio 65.536, alto "
+       "131.072, ultra 262.144. Più splat migliorano il cielo e costano di più per passo."),
+    NL("Hoeveel splats het luchtmodel gebruikt: laag 32.768, gemiddeld 65.536, "
+       "hoog 131.072, ultra 262.144. Meer splats verbeteren de hemel en kosten meer per stap."),
+    RU("Сколько сплатов использует модель неба: низкое 32 768, среднее 65 536, "
+       "высокое 131 072, максимальное 262 144. Больше сплатов улучшают небо и стоят дороже на каждом шаге."),
+    TR("Gökyüzü modelinin kullandığı splat sayısı: düşük 32.768, orta 65.536, "
+       "yüksek 131.072, ultra 262.144. Daha çok splat gökyüzünü iyileştirir ve her adımda daha "
+       "pahalıdır."));
 SS_MSG(background_noise_pre_warmup,
     EN("Initial background noise"), JA("最初の背景ノイズの強さ"),
     ZH_HANS("初始背景噪声强度"), ZH_HANT("初始背景雜訊強度"),
@@ -13553,6 +13655,11 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"quality", "medium", &choice_medium},
     {"quality", "high",   &choice_high},
     {"quality", "ultra",  &choice_ultra},
+
+    {"sky_resolution", "low",    &choice_low},
+    {"sky_resolution", "medium", &choice_medium},
+    {"sky_resolution", "high",   &choice_high},
+    {"sky_resolution", "ultra",  &choice_ultra},
 
     {"floater_suppression", "off",    &choice_off},
     {"floater_suppression", "mild",   &choice_mild},

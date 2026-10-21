@@ -492,6 +492,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
     SplatVisitState visit;
     visit.counters = engine().optim.visit_counters.data_ptr();
     visit.skip_unrendered_reg = cfg.reg_rendered_only;
+    visit.first_trainable_splat = engine().num_sky_splats;
 
     auto call_dispatch = [&](auto fn) {
         fn(
@@ -631,6 +632,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
     SplatVisitState visit;
     visit.counters = engine().optim.visit_counters.data_ptr();
     visit.skip_unrendered_reg = cfg.reg_rendered_only;
+    visit.first_trainable_splat = engine().num_sky_splats;
 
     fused_optim_3dgs_geometry(
         N,

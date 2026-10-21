@@ -768,6 +768,9 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
     set_int("cur_num_splats", target_cur);
     set_int("max_num_splats", max_new);
     set_int("num_sh", K_new);
+    // Kept rows stay in order, so the prefix survives unless it is truncated.
+    set_int("num_sky_splats",
+            std::min((int64_t)state.get_double("num_sky_splats", 0), target_cur));
     if (st.find("\"sb_lobes\":") == std::string::npos) {
         const size_t k = st.find("\"num_sh\":");
         if (k != std::string::npos)

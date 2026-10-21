@@ -186,13 +186,19 @@ __global__ void compute_relocation_mask_kernel(
     const float* __restrict__ max_weight,
     bool* __restrict__ masks,
     int32_t* __restrict__ num_relocate,
-    int32_t* __restrict__ relocate_indices
+    int32_t* __restrict__ relocate_indices,
+    int64_t first_trainable_splat
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     int num_relocate_delta = 0;
 
     if (idx < num_splats) {
+
+        if ((int64_t)idx < first_trainable_splat) {
+            masks[idx] = true;
+            return;
+        }
 
         float3 mean = means[idx];
         float4 quat = quats[idx];
@@ -265,7 +271,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     NonShQuantState non_sh,
     uint32_t seed,
     int64_t max_relocate,
-    int64_t* num_dead_out
+    int64_t* num_dead_out,
+    int64_t first_trainable_splat
 ) {
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
     bool* mask = DevicePool::global().acquire<bool>(
@@ -291,7 +298,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
         max_weight.data_ptr(),
         mask,
         num_relocate_ptr,
-        dst_indices
+        dst_indices,
+        first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
@@ -308,7 +316,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     uint32_t num_eligible = 0;
     int32_t* src_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, mask, num_relocate, seed, &num_eligible);
+        weights.size() * 2, mask, num_relocate, seed, &num_eligible,
+        first_trainable_splat);
     // Past the live splats of positive weight the draw returns dead ones,
     // each also some pair's dst: the two writes race and the revival is lost.
     // The rest wait for the next step.
@@ -373,17 +382,21 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    int64_t first_trainable_splat
 ) {
     if (num_new_splats == 0)
         return;
+    if (first_trainable_splat > 0 && num_new_splats > cur_num_splats - first_trainable_splat)
+        throw std::runtime_error("sky split draw exceeds trainable parent count");
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
 
     DeviceVector<float2> weights = sample_weights.data_ptr()
         ? sample_weights : densify_accum_buffer;
     int32_t* split_indices = weighted_sample_without_replacement_internal(
         cur_num_splats, (float*)weights.data_ptr(),
-        weights.size() * 2, nullptr, num_new_splats, seed);
+        weights.size() * 2, nullptr, num_new_splats, seed, nullptr,
+        first_trainable_splat);
 
     #define _DENSIFY_LAS_ADD_LAUNCH(T, bnd_ptr, bps) \
         relocate_with_long_axis_split_kernel<T><<<_LAUNCH_ARGS_1D(num_new_splats, 256)>>>( \

@@ -65,11 +65,17 @@ __global__ void mcmc_compute_relocation_probabilities_kernel(
     const float* __restrict__ opacs,
     const float3* __restrict__ scales,
     const float* __restrict__ weight,
-    float* __restrict__ probs
+    float* __restrict__ probs,
+    uint32_t first_trainable_splat
 ) {
     uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= num_splats)
         return;
+
+    if (tid < first_trainable_splat) {
+        probs[tid] = 0.0f;
+        return;
+    }
 
     float opac = sigmoid(opacs[tid]);
 
@@ -89,11 +95,18 @@ __global__ void mcmc_compute_relocation_index_map_kernel(
     int32_t* __restrict__ index_map,  // [N]
     int32_t* __restrict__ n_idx_buffer,  // [N]
     uint32_t numel,
-    uint32_t seed
+    uint32_t seed,
+    uint32_t first_trainable_splat
 ) {
     uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= numel)
         return;
+
+    // A frozen row maps to itself (probability 0 reads as dead below).
+    if (tid < first_trainable_splat) {
+        index_map[tid] = (int32_t)tid;
+        return;
+    }
 
     float prob = sample_probs[tid];
 
@@ -241,7 +254,8 @@ void relocate_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
+    DeviceVector<float> draw_weight,   // [N] or empty: scales each live splat's draw
+    int64_t first_trainable_splat
 ) {
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
     float* sample_probs = DevicePool::global().acquire<float>(
@@ -252,7 +266,8 @@ void relocate_splats_mcmc_tensor(
         opacs.data_ptr(),
         scales.data_ptr(),
         draw_weight.data_ptr(),
-        sample_probs
+        sample_probs,
+        (uint32_t)first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
@@ -283,7 +298,8 @@ void relocate_splats_mcmc_tensor(
         index_map,
         n_idx_buffer,
         cur_num_splats,
-        seed
+        seed,
+        (uint32_t)first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
@@ -475,7 +491,8 @@ void add_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
+    DeviceVector<float> draw_weight,   // [N] or empty: scales each live splat's draw
+    int64_t first_trainable_splat
 ) {
     if (num_add == 0)
         return;
@@ -489,7 +506,8 @@ void add_splats_mcmc_tensor(
         opacs.data_ptr(),
         scales.data_ptr(),
         draw_weight.data_ptr(),
-        sample_probs
+        sample_probs,
+        (uint32_t)first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 
@@ -572,10 +590,11 @@ __global__ void mcmc_add_noise_3dgs_kernel(
     float3* __restrict__ means,
     const float3* __restrict__ log_scales,
     const float4* __restrict__ quats,
-    const float* __restrict__ logit_opacs
+    const float* __restrict__ logit_opacs,
+    long first_trainable_splat
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_splats)
+    if (idx >= num_splats || (long)idx < first_trainable_splat)
         return;
 
     SlangDensify::mcmc_add_noise_3dgs(
@@ -591,10 +610,11 @@ __global__ void revised_add_noise_3dgs_kernel(
     float3* __restrict__ means,
     const float3* __restrict__ log_scales,
     const float4* __restrict__ quats,
-    const float* __restrict__ logit_opacs
+    const float* __restrict__ logit_opacs,
+    long first_trainable_splat
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= num_splats)
+    if (idx >= num_splats || (long)idx < first_trainable_splat)
         return;
 
     SlangDensify::revised_add_noise_3dgs(
@@ -629,14 +649,16 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 ) {
     mcmc_add_noise_3dgs_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
         num_splats, scaler,
         means.data_ptr(),
         log_scales.data_ptr(),
         quats.data_ptr(),
-        opacs.data_ptr()
+        opacs.data_ptr(),
+        (long)first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
@@ -650,7 +672,8 @@ void revised_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 ) {
     revised_add_noise_3dgs_kernel<<<_LAUNCH_ARGS_1D(num_splats, 256)>>>(
         num_splats, scaler,
@@ -658,7 +681,8 @@ void revised_add_noise_tensor(
         means.data_ptr(),
         log_scales.data_ptr(),
         quats.data_ptr(),
-        opacs.data_ptr()
+        opacs.data_ptr(),
+        (long)first_trainable_splat
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }

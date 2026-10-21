@@ -469,6 +469,22 @@ add_executable(frame_mask_test
     ${SS_SRC}/app/FrameLook.cpp)
 ss_configure_app(frame_mask_test)
 
+add_executable(sky_model_test
+    ${SS_SRC}/app/tests/sky_model_test.cpp
+    ${SS_SRC}/app/SkyModel.cpp
+    ${SS_SRC}/data/CameraMath.cpp
+    ${SS_SRC}/data/SourceCamera.cpp)
+target_include_directories(sky_model_test PRIVATE ${SS_SRC})
+target_compile_options(sky_model_test PRIVATE ${SPLAT_CXX_FLAGS})
+target_link_libraries(sky_model_test PRIVATE Threads::Threads)
+if(TARGET OpenMP::OpenMP_CXX)
+    target_link_libraries(sky_model_test PRIVATE OpenMP::OpenMP_CXX)
+endif()
+set_property(TARGET sky_model_test PROPERTY CXX_STANDARD 17)
+
+add_executable(sky_setup_test ${SS_SRC}/app/tests/sky_setup_test.cpp)
+ss_configure_app(sky_setup_test)
+
 # The GUI files with no GUI in them: the plan that decides which steps of a
 # dataset run are kept or redone, and the preset serializers. Named rather
 # than globbed -- each such test names its own sources.

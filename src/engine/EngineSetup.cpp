@@ -16,7 +16,8 @@ void set_data_3dgs(
     TorchTensorView opacities,
     TorchTensorView features_dc,
     TorchTensorView features_sh,
-    int sb_lobes
+    int sb_lobes,
+    int64_t num_sky_splats
 ) {
     int64_t max_num_splats = std::get<2>(means)[0];
     if (std::get<2>(quats)[0] != max_num_splats ||
@@ -27,9 +28,13 @@ void set_data_3dgs(
         throw std::runtime_error("setData3DGS: max_num_splats mismatch across splat tensors");
     if (max_num_splats < num_splats)
         throw std::runtime_error("setData3DGS: tensor size smaller than num_splats");
+    if (num_sky_splats < 0 || num_sky_splats > num_splats ||
+        num_sky_splats % 256 != 0)
+        throw std::runtime_error("setData3DGS: invalid num_sky_splats");
 
     engine().cur_num_splats = num_splats;
     engine().max_num_splats = max_num_splats;
+    engine().num_sky_splats = num_sky_splats;
     DevicePool::global().set_splat_counts(engine().cur_num_splats, engine().max_num_splats);
 
     auto sh_shape = std::get<2>(features_sh);

@@ -31,5 +31,6 @@ int32_t* weighted_sample_without_replacement_internal(
     bool* masks_ptr,
     uint32_t num_sample,
     uint32_t seed,
-    uint32_t* num_eligible = nullptr
+    uint32_t* num_eligible = nullptr,
+    int64_t first_trainable_splat = 0
 );

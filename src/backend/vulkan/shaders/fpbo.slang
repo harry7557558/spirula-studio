@@ -136,6 +136,8 @@ struct FpboParams {
     uint32_t skip_unrendered_reg;
     uint32_t sb_base; // float3 coefficient of the first lobe in a row
     uint32_t _pad0;
+    uint32_t first_trainable_splat;
+    uint32_t _pad1;
 };
 
 [ForceInline]
@@ -213,6 +215,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
           uniform FpboParams* pp) {
     FpboParams p = *pp;
     uint block_id = wg.y * p.wgs_per_row + wg.x;
+    if (p.first_trainable_splat != 0 &&
+        block_id * 256u < p.first_trainable_splat)
+        return;
     uint gid = block_id * 256 + tid;
     bool inside = gid < p.N;
     // Grid-fold tail: block_id can pad past the last quant block, so bounds

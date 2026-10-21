@@ -29,7 +29,7 @@ struct DensifyUpdateWeightParams {
     uint32_t use_opacs, use_w2, num_splats, wgs_per_row;
     float max_scale2d;
     uint32_t use_oversize;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(DensifyUpdateWeightParams) == 6 * 8 + 10 * 4,
               "params layout must match the slang struct");
@@ -39,8 +39,10 @@ struct DensifyLearnedScoreParams {
     uint64_t radii, ratio, accum_buffer, oversize_accum, stats;
     float power, rate, log_prior, max_scale2d, max_ratio, min_score, pull;
     uint32_t num_splats, wgs_per_row, use_oversize;
+    uint32_t first_trainable_splat;
+    uint32_t _pad0;
 };
-static_assert(sizeof(DensifyLearnedScoreParams) == 5 * 8 + 10 * 4,
+static_assert(sizeof(DensifyLearnedScoreParams) == 5 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 // Mirrors DensifyOversizeWeightParams.
@@ -48,7 +50,7 @@ struct DensifyOversizeWeightParams {
     uint64_t oversize_accum, score, out;
     float blend;
     uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(DensifyOversizeWeightParams) == 3 * 8 + 4 * 4,
               "params layout must match the slang struct");
@@ -58,7 +60,7 @@ struct DensifyClipScaleParams {
     uint64_t radii, log_scales, logit_opacs;
     float max_scale2d, clip_hardness, max_scale3d;
     uint32_t has_opacs, num_splats, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(DensifyClipScaleParams) == 3 * 8 + 8 * 4,
               "params layout must match the slang struct");
@@ -68,7 +70,7 @@ struct DensifyNoiseParams {
     uint64_t means, log_scales, quats, logit_opacs, radii;
     float scaler;
     uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(DensifyNoiseParams) == 5 * 8 + 4 * 4,
               "params layout must match the slang struct");
@@ -77,7 +79,7 @@ static_assert(sizeof(DensifyNoiseParams) == 5 * 8 + 4 * 4,
 struct EfraimidisParams {
     uint64_t weights, mask, out_keys, eligible;
     uint32_t stride, seed, use_mask, numel, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(EfraimidisParams) == 4 * 8 + 6 * 4,
               "params layout must match the slang struct");
@@ -89,8 +91,10 @@ struct RelocMaskParams {
     float min_opacity;
     uint32_t num_splats, wgs_per_row, dead_after_steps, dead_by_opacity,
         has_max_weight;
+    uint32_t first_trainable_splat;
+    uint32_t _pad0;
 };
-static_assert(sizeof(RelocMaskParams) == 10 * 8 + 6 * 4,
+static_assert(sizeof(RelocMaskParams) == 10 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocLasParams.
@@ -211,7 +215,7 @@ struct McmcProbsParams {
     uint64_t opacs, scales, probs, weight;
     float min_opacity;
     uint32_t num_splats, wgs_per_row, use_weight;
-    uint32_t _pad0, _pad1;
+    uint32_t first_trainable_splat, _pad1;
 };
 static_assert(sizeof(McmcProbsParams) == 4 * 8 + 6 * 4,
               "params layout must match the slang struct");
@@ -220,7 +224,7 @@ static_assert(sizeof(McmcProbsParams) == 4 * 8 + 6 * 4,
 struct McmcRelocIndexMapParams {
     uint64_t sample_probs, sample_probs_cumsum, index_map, n_idx_buffer;
     uint32_t numel, seed, wgs_per_row;
-    uint32_t _pad0;
+    uint32_t first_trainable_splat;
 };
 static_assert(sizeof(McmcRelocIndexMapParams) == 4 * 8 + 4 * 4,
               "params layout must match the slang struct");
@@ -366,7 +370,8 @@ uint32_t fill_g1g2(P& p, const DeviceVector<float3>& g1_means,
 // CUB's, keeps -0.0 ahead of +0.0. `num_eligible` as there.
 const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
                            const int32_t* mask_ptr, uint32_t num_sample,
-                           uint32_t seed, uint32_t* num_eligible = nullptr) {
+                           uint32_t seed, uint32_t* num_eligible = nullptr,
+                           int64_t first_trainable_splat = 0) {
     // stride fixed to 2 (accum buffer float2; see the CUDA comment about
     // warmup making the derived stride incorrect)
     DeviceVector<int32_t> keys_in, keys_out, idx_in, idx_out, out_idx;
@@ -389,6 +394,7 @@ const int32_t* wswr_sample(int64_t numel, const float* weights_ptr,
     ep.seed = seed;
     ep.use_mask = mask_ptr ? 1u : 0u;
     ep.numel = (uint32_t)numel;
+    ep.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_efraimidis_keys", {}, numel, 256, &ep,
                        sizeof(ep), &ep.wgs_per_row);
 
@@ -529,7 +535,7 @@ void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
                        const DeviceVector<float3>& scales,
                        const DeviceVector<float>& draw_weight, PoolSlot probs_slot,
                        PoolSlot cumsum_slot, DeviceVector<float>& probs,
-                       DeviceVector<float>& cumsum) {
+                       DeviceVector<float>& cumsum, int64_t first_trainable_splat) {
     probs.resize(probs_slot, cur_num_splats);
     cumsum.resize(cumsum_slot, cur_num_splats);
     McmcProbsParams p{};
@@ -540,6 +546,7 @@ void mcmc_probs_cumsum(int64_t cur_num_splats, float min_opacity,
     p.use_weight = draw_weight.data_ptr() ? 1u : 0u;
     p.min_opacity = min_opacity;
     p.num_splats = (uint32_t)cur_num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_mcmc_probs", {}, cur_num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
     backend::inclusive_sum<float>(probs.data_ptr(), cumsum.data_ptr(),
@@ -562,7 +569,8 @@ void densify_update_weight(
     DeviceVector<float2> accum_buffer,
     int score_mode,
     float max_scale2d,
-    DeviceVector<float> oversize_accum
+    DeviceVector<float> oversize_accum,
+    int64_t first_trainable_splat
 ) {
     (void)scales_ptr;  // unused by the kernel, as in CUDA
     if (num_splats <= 0) return;
@@ -581,6 +589,7 @@ void densify_update_weight(
     p.oversize_accum = vkk::or_fallback(oversize_accum.data_ptr());
     p.max_scale2d = max_scale2d;
     p.use_oversize = oversize_accum.data_ptr() ? 1u : 0u;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_update_weight",
                        backend::vk::SpecList{}, num_splats, 256, &p,
                        sizeof(p), &p.wgs_per_row);
@@ -597,7 +606,8 @@ void densify_learned_score_tensor(
     DeviceVector<float2> accum_buffer,
     float max_scale2d,
     DeviceVector<float> oversize_accum,
-    DeviceVector<float> stats
+    DeviceVector<float> stats,
+    int64_t first_trainable_splat
 ) {
     if (num_splats <= 0) return;
     DensifyLearnedScoreParams p{};
@@ -613,6 +623,7 @@ void densify_learned_score_tensor(
     p.max_scale2d = max_scale2d;
     p.max_ratio = kLearnedScoreMaxRatio;
     p.min_score = kLearnedScoreFloor;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     p.num_splats = (uint32_t)num_splats;
     p.use_oversize = oversize_accum.data_ptr() ? 1u : 0u;
     vkk::dispatch_flat("densify.densify_learned_score", {}, num_splats, 256,
@@ -624,7 +635,8 @@ void densify_oversize_weight_tensor(
     float blend,
     DeviceVector<float> oversize_accum,
     DeviceVector<float2> score,
-    DeviceVector<float2> out
+    DeviceVector<float2> out,
+    int64_t first_trainable_splat
 ) {
     if (num_splats <= 0) return;
     DensifyOversizeWeightParams p{};
@@ -633,6 +645,7 @@ void densify_oversize_weight_tensor(
     p.out = (uint64_t)out.data_ptr();
     p.blend = blend;
     p.num_splats = (uint32_t)num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_oversize_weight", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
 }
@@ -644,7 +657,8 @@ void densify_clip_scale_tensor(
     float* logit_opacs_ptr,
     float max_scale2d,
     float clip_hardness,
-    float max_scale3d
+    float max_scale3d,
+    int64_t first_trainable_splat
 ) {
     if (num_splats <= 0) return;
     DensifyClipScaleParams p{};
@@ -656,6 +670,7 @@ void densify_clip_scale_tensor(
     p.max_scale3d = max_scale3d;
     p.has_opacs = logit_opacs_ptr ? 1u : 0u;
     p.num_splats = (uint32_t)num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_clip_scale", {}, num_splats, 256, &p,
                        sizeof(p), &p.wgs_per_row);
 }
@@ -666,7 +681,8 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -677,6 +693,7 @@ void mcmc_add_noise_tensor(
     p.radii = vkk::null_fallback();
     p.scaler = scaler;
     p.num_splats = (uint32_t)num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_mcmc_add_noise", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
 }
@@ -688,7 +705,8 @@ void revised_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    int64_t first_trainable_splat
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -699,6 +717,7 @@ void revised_add_noise_tensor(
     p.radii = (uint64_t)radii.data_ptr();
     p.scaler = scaler;
     p.num_splats = (uint32_t)num_splats;
+    p.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_revised_add_noise", {}, num_splats,
                        256, &p, sizeof(p), &p.wgs_per_row);
 }
@@ -786,7 +805,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     NonShQuantState non_sh,
     uint32_t seed,
     int64_t max_relocate,
-    int64_t* num_dead_out
+    int64_t* num_dead_out,
+    int64_t first_trainable_splat
 ) {
     if (cur_num_splats <= 0) return 0;
 
@@ -814,6 +834,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     mp.dead_by_opacity = dead_by_opacity ? 1u : 0u;
     mp.min_opacity = min_opacity;
     mp.num_splats = (uint32_t)cur_num_splats;
+    mp.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_reloc_mask", {}, cur_num_splats, 256,
                        &mp, sizeof(mp), &mp.wgs_per_row);
 
@@ -831,7 +852,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
         (const float*)(sample_weights.data_ptr()
                            ? sample_weights.data_ptr()
                            : densify_accum_buffer.data_ptr()),
-        mask.data_ptr(), (uint32_t)num_relocate, seed, &num_eligible);
+        mask.data_ptr(), (uint32_t)num_relocate, seed, &num_eligible,
+        first_trainable_splat);
     // As in Relocation.cu: a dead src is also some pair's dst, and they race.
     num_relocate = std::min<int32_t>(num_relocate, (int32_t)num_eligible);
     if (num_relocate == 0) return 0;
@@ -875,16 +897,19 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
-    uint32_t seed
+    uint32_t seed,
+    int64_t first_trainable_splat
 ) {
     if (num_new_splats == 0 || cur_num_splats <= 0) return;
+    if (first_trainable_splat > 0 && num_new_splats > cur_num_splats - first_trainable_splat)
+        throw std::runtime_error("sky split draw exceeds trainable parent count");
 
     const int32_t* split_indices = wswr_sample(
         cur_num_splats,
         (const float*)(sample_weights.data_ptr()
                            ? sample_weights.data_ptr()
                            : densify_accum_buffer.data_ptr()),
-        nullptr, (uint32_t)num_new_splats, seed);
+        nullptr, (uint32_t)num_new_splats, seed, nullptr, first_trainable_splat);
 
     launch_relocate_las(cur_num_splats, num_new_splats, split_opacity_k,
                         split_indices, nullptr, means, quats, scales, opacs,
@@ -920,14 +945,16 @@ void relocate_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight
+    DeviceVector<float> draw_weight,
+    int64_t first_trainable_splat
 ) {
     if (cur_num_splats <= 0) return;
 
     DeviceVector<float> probs, cumsum;
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
                       PoolSlot::DensifyMcmcSampleProbs,
-                      PoolSlot::DensifyMcmcSampleProbsCumsum, probs, cumsum);
+                      PoolSlot::DensifyMcmcSampleProbsCumsum, probs, cumsum,
+                      first_trainable_splat);
 
     DeviceVector<int32_t> index_map, n_idx_buffer;
     index_map.resize(PoolSlot::DensifyMcmcIndexMap, cur_num_splats);
@@ -942,6 +969,7 @@ void relocate_splats_mcmc_tensor(
     imp.n_idx_buffer = (uint64_t)n_idx_buffer.data_ptr();
     imp.numel = (uint32_t)cur_num_splats;
     imp.seed = seed;
+    imp.first_trainable_splat = (uint32_t)first_trainable_splat;
     vkk::dispatch_flat("densify.densify_mcmc_reloc_index_map", {},
                        cur_num_splats, 256, &imp, sizeof(imp),
                        &imp.wgs_per_row);
@@ -1008,7 +1036,8 @@ void add_splats_mcmc_tensor(
     int  num_sh_buffer,
     NonShQuantState non_sh,
     uint32_t seed,
-    DeviceVector<float> draw_weight
+    DeviceVector<float> draw_weight,
+    int64_t first_trainable_splat
 ) {
     if (num_add == 0 || cur_num_splats <= 0) return;
 
@@ -1016,7 +1045,7 @@ void add_splats_mcmc_tensor(
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
                       PoolSlot::DensifyMcmcAddSampleProbs,
                       PoolSlot::DensifyMcmcAddSampleProbsCumsum, probs,
-                      cumsum);
+                      cumsum, first_trainable_splat);
 
     DeviceVector<int32_t> index_map, n_idx_buffer;
     index_map.resize(PoolSlot::DensifyMcmcAddIndexMap, num_add);
