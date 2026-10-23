@@ -26,7 +26,11 @@ import urllib.request
 
 
 def config_dir():
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    # Must match app::config_dir() in src/app/AppPaths.cpp.
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or "."
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     current = os.path.join(base, "spirula-studio")
     legacy = os.path.join(base, "spirulae-splat")
     if not os.path.isdir(current) and os.path.isdir(legacy):
@@ -86,7 +90,8 @@ def target(args):
 
 def cmd_launch(args):
     exe = args.exe or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "..", "build_cuda", "spirula")
+        os.path.dirname(os.path.abspath(__file__)), "..", "build_cuda",
+        "spirula.exe" if os.name == "nt" else "spirula")
     exe = os.path.abspath(exe)
     if not os.path.exists(exe):
         sys.exit("no such executable: %s" % exe)
