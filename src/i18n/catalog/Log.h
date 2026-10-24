@@ -273,6 +273,21 @@ SS_MSG(stage_selecting_pairs,
     RU("Выбор снимков для сравнения"),
     TR("Hangi görüntülerin karşılaştırılacağı seçiliyor"));
 
+SS_MSG(stage_measuring_focals,
+    EN("Measuring each camera's focal length"),
+    JA("各カメラの焦点距離を測っています"),
+    ZH_HANS("正在测量每台相机的焦距"),
+    ZH_HANT("正在測量每台相機的焦距"),
+    KO("각 카메라의 초점 거리를 재는 중"),
+    DE("Die Brennweite jeder Kamera wird gemessen"),
+    FR("Mesure de la focale de chaque caméra"),
+    ES("Midiendo la distancia focal de cada cámara"),
+    PT("Medindo a distância focal de cada câmera"),
+    IT("Misura della focale di ogni fotocamera"),
+    NL("De brandpuntsafstand van elke camera wordt gemeten"),
+    RU("Измерение фокусного расстояния каждой камеры"),
+    TR("Her kameranın odak uzaklığı ölçülüyor"));
+
 SS_MSG(stage_seeding,
     EN("Choosing the lens and a starting pair"),
     JA("レンズと最初のペアを決めています"),

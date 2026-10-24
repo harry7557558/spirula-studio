@@ -69,7 +69,7 @@ struct PairBlock {
 // and its exit code, which could report only one of "partial" and "not metric".
 struct RunStatus {
     // sfm::Stage: 0 extract, 1 match, 2 map, 3 merge, 4 orient, 5 finish,
-    // 6 load, 7 select, 8 seed, 9 refine.
+    // 6 load, 7 select, 8 seed, 9 refine, 10 focal.
     uint32_t stage = 0;
     bool finished = false;
     bool partial = false;

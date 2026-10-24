@@ -401,6 +401,8 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 7: set_stage_if_new(Stage::Matching, lmsg::stage_selecting_pairs.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
+        case 10: set_stage_if_new(Stage::Matching, lmsg::stage_measuring_focals.get());
+                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 1: set_stage_if_new(Stage::Matching, lmsg::stage_matching_images.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 2: case 3: case 4:

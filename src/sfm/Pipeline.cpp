@@ -2119,12 +2119,17 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 size_t stride = std::max<size_t>(1, pairs.size() / std::max<size_t>(1, want));
                 for (size_t p = 0; p < pairs.size() && sample.size() < want; p += stride)
                     sample.push_back(pairs[p]);
+                // With a camera per image the sample is every pair, which with a
+                // learned matcher is as long as matching itself.
                 std::vector<std::vector<FeatureMatch>> chunk;
+                events::stage_begin(Stage::Focal, (int64_t)sample.size());
                 for (size_t b = 0; b < sample.size(); b += 16) {
                     size_t e = std::min(b + 16, sample.size());
                     matcher->matchBatch(feats, sample, b, e, chunk);
                     for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
+                    events::progress(Stage::Focal, (int64_t)e, (int64_t)sample.size());
                 }
+                events::stage_end(Stage::Focal);
             }
             if (want_rect) {
                 double t_f = now();
