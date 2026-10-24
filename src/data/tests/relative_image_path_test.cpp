@@ -160,6 +160,26 @@ int main() {
         }
     }
 
+    // RealityScan mask filename conventions
+    {
+        const fs::path rroot = base / "realityscan_masks";
+        fs::create_directories(rroot / "masks");
+        touch(rroot / "masks" / "00000.jpg.mask.png");
+        touch(rroot / "masks" / "00001.mask.png");
+        touch(rroot / "masks" / "00002.jpg_00096.mask.png");
+        touch(rroot / "masks" / "00003_00096.mask.png");
+
+        const std::string m0 = dsparse::find_aux_file((rroot / "masks").string(), "00000.jpg", "mask");
+        const std::string m1 = dsparse::find_aux_file((rroot / "masks").string(), "00001.jpg", "mask");
+        const std::string m2 = dsparse::find_aux_file((rroot / "masks").string(), "00002.jpg", "mask");
+        const std::string m3 = dsparse::find_aux_file((rroot / "masks").string(), "00003.jpg", "mask");
+
+        check(fs::path(m0) == rroot / "masks" / "00000.jpg.mask.png", "RealityScan mask option 1: 00000.jpg.mask.png");
+        check(fs::path(m1) == rroot / "masks" / "00001.mask.png", "RealityScan mask option 2: 00001.mask.png");
+        check(fs::path(m2) == rroot / "masks" / "00002.jpg_00096.mask.png", "RealityScan mask option 3: 00002.jpg_00096.mask.png");
+        check(fs::path(m3) == rroot / "masks" / "00003_00096.mask.png", "RealityScan mask indexed: 00003_00096.mask.png");
+    }
+
     fs::remove_all(base, ec);
     std::printf("%s\n", g_failures ? "FAILED" : "all passed");
     return g_failures ? 1 : 0;

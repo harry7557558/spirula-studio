@@ -266,18 +266,84 @@ std::string find_aux_file(const std::string& aux_dir_s, const std::string& rel_n
     fs::path aux_dir(aux_dir_s);
     const fs::path rel = fs::path(rel_name).lexically_normal();
     if (rel.empty() || rel.is_absolute() || *rel.begin() == "..") return "";
-    if (!fs::is_directory(aux_dir)) return "";
-    std::string stem_rel = (rel.parent_path() / rel.stem()).string();
+    std::error_code ec;
+    if (!fs::is_directory(aux_dir, ec)) return "";
+    const std::string stem_rel = (rel.parent_path() / rel.stem()).string();
     const std::string exts[] = {".png", ".PNG", ".jpg", ".JPG", ".jpeg", ".JPEG"};
     std::vector<std::string> candidates;
     for (const auto& e : exts) {
         candidates.push_back(rel.string() + e);   // image.jpg.png
-        candidates.push_back(stem_rel + e);   // image.png
+        candidates.push_back(stem_rel + e);       // image.png
     }
-    candidates.push_back(stem_rel + "_" + suffix_tag + ".png");   // image_mask.png
+    if (suffix_tag && *suffix_tag) {
+        const std::string tag = suffix_tag;
+        for (const auto& e : exts) {
+            candidates.push_back(rel.string() + "." + tag + e);     // image.jpg.mask.png
+            candidates.push_back(stem_rel + "." + tag + e);         // image.mask.png
+            candidates.push_back(rel.string() + "_" + tag + e);     // image.jpg_mask.png
+            candidates.push_back(stem_rel + "_" + tag + e);         // image_mask.png
+            candidates.push_back(rel.string() + "-" + tag + e);     // image.jpg-mask.png
+            candidates.push_back(stem_rel + "-" + tag + e);         // image-mask.png
+        }
+    }
+    if (rel.has_parent_path()) {
+        const std::string fname = rel.filename().string();
+        const std::string fstem = rel.stem().string();
+        for (const auto& e : exts) {
+            candidates.push_back(fname + e);
+            candidates.push_back(fstem + e);
+        }
+        if (suffix_tag && *suffix_tag) {
+            const std::string tag = suffix_tag;
+            for (const auto& e : exts) {
+                candidates.push_back(fname + "." + tag + e);
+                candidates.push_back(fstem + "." + tag + e);
+                candidates.push_back(fname + "_" + tag + e);
+                candidates.push_back(fstem + "_" + tag + e);
+            }
+        }
+    }
     for (const auto& cand : candidates) {
         fs::path p = aux_dir / cand;
-        if (fs::exists(p)) return p.string();
+        if (fs::exists(p, ec)) return p.string();
+    }
+    if (suffix_tag && *suffix_tag) {
+        const fs::path search_dirs[] = {aux_dir / rel.parent_path(), aux_dir};
+        const std::string fname = rel.filename().string();
+        const std::string fstem = rel.stem().string();
+        const std::string prefix_full = fname + "_";
+        const std::string prefix_stem = fstem + "_";
+        const std::string tag = suffix_tag;
+        for (const auto& sdir : search_dirs) {
+            if (!fs::is_directory(sdir, ec)) continue;
+            for (auto it = fs::directory_iterator(sdir, ec);
+                 !ec && it != fs::directory_iterator(); it.increment(ec)) {
+                if (!it->is_regular_file(ec)) continue;
+                const std::string name = it->path().filename().string();
+                if (name.rfind(prefix_full, 0) == 0 && name.find(tag) != std::string::npos) {
+                    for (const auto& e : exts) {
+                        if (name.size() >= e.size() &&
+                            name.compare(name.size() - e.size(), e.size(), e) == 0)
+                            return it->path().string();
+                    }
+                }
+            }
+            for (auto it = fs::directory_iterator(sdir, ec);
+                 !ec && it != fs::directory_iterator(); it.increment(ec)) {
+                if (!it->is_regular_file(ec)) continue;
+                const std::string name = it->path().filename().string();
+                if (name.rfind(prefix_stem, 0) == 0) {
+                    size_t tag_pos = name.find(tag, prefix_stem.size());
+                    if (tag_pos != std::string::npos) {
+                        for (const auto& e : exts) {
+                            if (name.size() >= e.size() &&
+                                name.compare(name.size() - e.size(), e.size(), e) == 0)
+                                return it->path().string();
+                        }
+                    }
+                }
+            }
+        }
     }
     return "";
 }
