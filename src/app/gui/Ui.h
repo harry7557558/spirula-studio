@@ -594,8 +594,8 @@ inline bool InputFloatRaw(const char* id, float* v, const char* fmt) {
     return ImGui::InputFloat(id, v, 0.0f, 0.0f, fmt);
 }
 inline bool InputFloatRaw(const char* id, float* v, float step, float step_fast,
-                          const char* fmt) {
-    return ImGui::InputFloat(id, v, step, step_fast, fmt);
+                          const char* fmt, ImGuiInputTextFlags flags = 0) {
+    return ImGui::InputFloat(id, v, step, step_fast, fmt, flags);
 }
 inline bool InputDoubleRaw(const char* id, double* v, double step,
                            double step_fast, const char* fmt) {

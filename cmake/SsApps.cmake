@@ -507,6 +507,18 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/edit/Selection.cpp)
     ss_configure_app(attributes_test)
 
+    add_executable(distance_scale_test
+        ${SS_SRC}/app/gui/tests/distance_scale_test.cpp
+        ${SS_SRC}/app/gui/edit/DistanceScaleTool.cpp
+        ${SS_SRC}/app/gui/edit/SelectShape.cpp
+        ${SS_SRC}/app/gui/edit/EditDoc.cpp
+        ${SS_SRC}/app/gui/edit/ElementGrid.cpp
+        ${SS_SRC}/app/gui/edit/Selection.cpp
+        ${SS_SRC}/app/gui/Automation.cpp
+        ${SS_SRC}/app/AppPaths.cpp)
+    ss_configure_app(distance_scale_test)
+    target_link_libraries(distance_scale_test PRIVATE imgui_glfw OpenGL::GL)
+
     add_executable(rig_guess_test
         ${SS_SRC}/app/gui/tests/rig_guess_test.cpp
         ${SS_SRC}/app/gui/RigGuess.cpp)

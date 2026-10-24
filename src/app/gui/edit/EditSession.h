@@ -10,6 +10,7 @@
 
 #include "app/gui/ViewportInput.h"
 #include "app/gui/edit/Attributes.h"
+#include "app/gui/edit/DistanceScaleTool.h"
 #include "app/gui/edit/EditDoc.h"
 #include "app/gui/edit/EditTool.h"
 #include "app/gui/edit/ElementGrid.h"
@@ -111,13 +112,15 @@ public:
     void draw_status();
 
     bool owns_left_button() const override {
-        return _tool.owns_pointer() || _xform.active() || _pick != Pick::None;
+        return _tool.owns_pointer() || _xform.active() || _pick != Pick::None ||
+               _dist_scale.active();
     }
     // The letter that switched tools is usually still down on the frame the
     // switch takes effect, so Q would both select Navigate and fly the camera
     // once. The block lifts when that key comes up.
     bool blocks_fly_keys() const override {
-        return _tool.owns_keys() || _xform.active() || _fly_block_key != 0;
+        return _tool.owns_keys() || _xform.active() || _dist_scale.active() ||
+               _fly_block_key != 0;
     }
     bool owns_right_button() const override { return _xform.active(); }
     // Once the model has been moved the renderers' own grid is in the wrong
@@ -267,6 +270,7 @@ private:
     ToolId _xform_return = ToolId::Navigate;
     int _pivot = (int)Pivot::Median;
     Pick _pick = Pick::None;
+    DistanceScaleTool _dist_scale;
     bool _align_yaw = true, _align_centre = true, _corner_to_origin = false;
     float _align_tol = 1.0f;          // x 1% of the model's extent
     bool _levelling_was = false, _levelling_touched = false;

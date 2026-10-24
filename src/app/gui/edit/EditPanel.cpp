@@ -311,6 +311,14 @@ void EditSession::draw_status() {
                                                            : xmsg::hint_op);
         return;
     }
+    if (_dist_scale.active()) {
+        switch (_dist_scale.hint_state()) {
+            case 0: ui::TextDisabled(xmsg::hint_pick_dist_a); break;
+            case 1: ui::TextDisabled(xmsg::hint_pick_dist_b); break;
+            default: ui::TextDisabled(xmsg::hint_pick_dist_ready); break;
+        }
+        return;
+    }
     if (_pick != Pick::None) {
         ui::TextDisabled(_pick == Pick::Ground   ? xmsg::hint_pick_ground
                          : _pick == Pick::Corner ? xmsg::hint_pick_corner
@@ -754,9 +762,10 @@ void EditSession::draw_transform_tab(float full) {
     for (int i = 0; i < 3; i++) {
         if (i) ImGui::SameLine();
         if (key_button(*modes[i].name, third, modes[i].key,
-                       _xform_mode == modes[i].kind)) {
+                       _xform_mode == modes[i].kind && !_dist_scale.active())) {
             _xform_mode = modes[i].kind;
             _pick = Pick::None;
+            _dist_scale.set_active(false);
         }
         ui::help_on_hover(*modes[i].help);
     }
@@ -805,8 +814,10 @@ void EditSession::draw_transform_tab(float full) {
     if (ui::Button(xmsg::auto_align, ImVec2(full, 0))) auto_align();
     ui::help_on_hover(xmsg::auto_align_help);
     auto pick_button = [&](Pick what, const Msg& name, const Msg& help, float w) {
-        if (key_button(name, w, nullptr, _pick == what))
+        if (key_button(name, w, nullptr, _pick == what)) {
             _pick = _pick == what ? Pick::None : what;
+            if (_pick != Pick::None) _dist_scale.set_active(false);
+        }
         ui::help_on_hover(help);
     };
     pick_button(Pick::Ground, xmsg::pick_ground, xmsg::pick_ground_help, half);
@@ -830,6 +841,27 @@ void EditSession::draw_transform_tab(float full) {
         ImGui::SetNextItemWidth(std::max(full - lw - st.ItemInnerSpacing.x, full * 0.3f));
         ui::SliderFloat(xmsg::opt_align_tol, &_align_tol, 0.1f, 5.0f, "%.2f");
         ui::help_on_hover(xmsg::opt_align_tol_help);
+    }
+
+    // ---- metric scaling by reference distance ----
+    ui::SeparatorText(xmsg::mode_distance_scale);
+    if (key_button(xmsg::mode_distance_scale, full, nullptr, _dist_scale.active())) {
+        _dist_scale.set_active(!_dist_scale.active());
+        if (_dist_scale.active()) {
+            _pick = Pick::None;
+            _xform.cancel();
+        }
+    }
+    ui::help_on_hover(xmsg::mode_distance_scale_help);
+
+    if (_dist_scale.active()) {
+        spirula::Sim3 step;
+        bool should_scale = false;
+        _dist_scale.draw_panel_ui(step, should_scale);
+        if (should_scale) {
+            place_saved(step, xmsg::op_scale_distance, /*carry=*/false);
+            _dist_scale.apply_transform(step);
+        }
     }
 
     // ---- the numbers, in the file's own units ----
