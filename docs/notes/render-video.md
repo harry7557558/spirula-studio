@@ -238,7 +238,9 @@ it gives the dataset's own cameras, held while an operator runs, times the
 panel's slider. A click hits any drawn line or axis.
 The camera's own picture sits in a resizable corner, fills the view, or sits
 beside it: then the pane's controls run the whole width and the view and the
-picture share the row under them, a splitter between.
+picture share the row under them, a splitter between. In both full and split
+views, dragging on the picture turns the camera, right-drag slides, the wheel
+moves and Ctrl+wheel zooms.
 
 ## Transitions
 
