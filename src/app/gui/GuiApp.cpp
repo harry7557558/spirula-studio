@@ -7919,7 +7919,14 @@ void GuiApp::restore_from_record(bool announce) {
     DatasetRecord rec = read_dataset_record(_workspace);
     DatasetSettings s = capture_dataset_settings();
     if (rec.settings.is_object()) {
-        read_dataset_settings_json(rec.settings, s);
+        // A record is written by whichever build ran last; one it cannot
+        // read is reported, never a reason to close the application.
+        try {
+            read_dataset_settings_json(rec.settings, s);
+        } catch (const std::exception& e) {
+            log(i18n::format(dmsg::log_settings_unreadable, {_workspace, e.what()}));
+            return;
+        }
     } else {
         // A folder from before the record: what its stamps still say.
         rec = read_legacy_settings(_workspace, s.sfm, s.colmap_engine);

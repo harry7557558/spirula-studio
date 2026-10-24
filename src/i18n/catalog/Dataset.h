@@ -14758,6 +14758,30 @@ SS_MSG(log_settings_restored,
     RU("Настройки восстановлены из набора данных в {0}"),
     TR("Ayarlar {0} içindeki veri kümesinden geri yüklendi"));
 
+SS_MSG(log_settings_unreadable,
+    EN("The settings saved in {0} could not be read ({1}); the panel keeps "
+       "its own"),
+    JA("{0} に保存された設定を読み込めませんでした（{1}）。パネルは現在の設定のままです"),
+    ZH_HANS("无法读取 {0} 中保存的设置（{1}）；面板保留当前设置"),
+    ZH_HANT("無法讀取 {0} 中儲存的設定（{1}）；面板保留目前設定"),
+    KO("{0} 에 저장된 설정을 읽을 수 없습니다({1}). 패널은 현재 설정을 유지합니다"),
+    DE("Die in {0} gespeicherten Einstellungen ließen sich nicht lesen ({1}); "
+       "das Panel behält seine eigenen"),
+    FR("Les réglages enregistrés dans {0} sont illisibles ({1}) ; le panneau "
+       "garde les siens"),
+    ES("No se pudieron leer los ajustes guardados en {0} ({1}); el panel "
+       "conserva los suyos"),
+    PT("Não foi possível ler as definições guardadas em {0} ({1}); o painel "
+       "mantém as suas"),
+    IT("Impossibile leggere le impostazioni salvate in {0} ({1}); il pannello "
+       "tiene le sue"),
+    NL("De instellingen in {0} konden niet worden gelezen ({1}); het paneel "
+       "houdt de eigen instellingen"),
+    RU("Не удалось прочитать настройки, сохранённые в {0} ({1}); панель "
+       "оставляет свои"),
+    TR("{0} içinde kayıtlı ayarlar okunamadı ({1}); panel kendi ayarlarını "
+       "korur"));
+
 SS_MSG(rerun_geometry,
     EN("Depth and normals again"),
     JA("深度と法線をやり直す"), ZH_HANS("重算深度与法线"), ZH_HANT("重算深度與法線"),
