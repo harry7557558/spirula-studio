@@ -204,13 +204,18 @@ public:
 
     // Blocks and gradient at the given parameters, the diagonal blocks damped
     // by (1 + damping) as the observation kernels damp theirs. Returns the cost.
-    double assemble(const BAProblem& P, const double* poses, const double* exts, double damping) {
+    double assemble(const BAProblem& P, const double* poses, const double* exts, double damping,
+                    bool fix_rotations = false) {
         std::fill(blk_.begin(), blk_.end(), 0.0);
         std::fill(g_.begin(), g_.end(), 0.0);
         double c = 0;
         Eval ev;
         for (const Fact& f : fact_) {
             evaluate(P, poses, exts, f, ev);
+            if (fix_rotations)
+                for (int a = 0; a < f.nf; a++)
+                    for (int m = 0; m < 3; m++)
+                        for (int p = 0; p < 3; p++) ev.J[a][m][p] = 0;
             const double s = ev.r[0] * ev.r[0] + ev.r[1] * ev.r[1] + ev.r[2] * ev.r[2];
             c += 0.5 * robustCost(ev.r, ev.cauchy);
             const double w = robustWeight(s, ev.cauchy);

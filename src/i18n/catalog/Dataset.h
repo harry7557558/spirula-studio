@@ -9168,53 +9168,74 @@ SS_MSG(mapper_bottom_up,
     RU("Снизу вверх (атомы, объединяемые вверх)"),
     TR("Aşağıdan yukarı (atomlar, yukarı doğru birleştirilir)"));
 
+SS_MSG(mapper_global,
+    EN("Global (experimental)"), JA("グローバル（実験的）"),
+    ZH_HANS("全局（实验性）"), ZH_HANT("全域（實驗性）"),
+    KO("전역(실험적)"), DE("Global (experimentell)"),
+    FR("Global (expérimental)"), ES("Global (experimental)"),
+    PT("Global (experimental)"), IT("Globale (sperimentale)"),
+    NL("Globaal (experimenteel)"), RU("Глобальная (экспериментально)"),
+    TR("Küresel (deneysel)"));
+
 SS_MSG(mapper_schedule_help,
     EN("How the scene is built. Flat grows one reconstruction image by image, "
        "and is the default for any capture. Bottom-up cuts the view graph "
        "into small groups, reconstructs them independently and merges "
-       "upwards."),
+       "upwards. Global estimates the camera orientations and positions together; "
+       "it is experimental."),
     JA("シーンをどう組み立てるかです。フラットは1つの再構成を画像ごとに"
        "育てていく方式で、どの撮影でも既定です。ボトムアップはビューグラフを"
-       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"),
+       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"
+       "グローバルはカメラの向きと位置をまとめて推定する実験的な方式です。"),
     ZH_HANS("场景如何构建。扁平方式逐张图像地扩展同一个重建，是任何拍摄的默认选择。"
-            "自下而上把视图图切成小组，各自独立重建后再向上合并。"),
+            "自下而上把视图图切成小组，各自独立重建后再向上合并。"
+            "全局方式同时估计相机方向和位置，目前为实验性功能。"),
     ZH_HANT("場景如何建構。扁平方式逐張影像地擴展同一個重建，是任何拍攝的預設選擇。"
-            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"),
+            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"
+            "全域方式同時估計相機方向和位置，目前為實驗性功能。"),
     KO("장면을 어떻게 만들지입니다. 평면 방식은 재구성 하나를 이미지마다 키워 "
        "가며, 어떤 촬영에서든 기본값입니다. 상향식은 뷰 그래프를 작은 묶음으로 "
-       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다."),
+       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다. 전역 방식은 카메라의 "
+       "방향과 위치를 함께 추정하는 실험적 기능입니다."),
     DE("Wie die Szene aufgebaut wird. Flach lässt eine Rekonstruktion Bild für "
        "Bild wachsen und ist die Vorgabe für jede Aufnahme. Von unten zerlegt "
        "den Sichtgraphen in kleine Gruppen, rekonstruiert sie unabhängig und "
-       "führt sie nach oben zusammen."),
+       "führt sie nach oben zusammen. Global schätzt Kamerarichtungen und Positionen "
+       "gemeinsam und ist experimentell."),
     FR("Comment la scène est construite. Le mode plat fait croître une seule "
        "reconstruction image par image, et c'est la valeur par défaut pour "
        "toute prise. Le mode ascendant découpe le graphe de vues en petits "
-       "groupes, les reconstruit indépendamment et fusionne vers le haut."),
+       "groupes, les reconstruit indépendamment et fusionne vers le haut. Le mode global "
+       "estime ensemble les orientations et les positions des caméras ; il est expérimental."),
     ES("Cómo se construye la escena. El modo plano hace crecer una sola "
        "reconstrucción imagen a imagen, y es lo predeterminado en cualquier "
        "captura. El ascendente corta el grafo de vistas en grupos pequeños, "
-       "los reconstruye por separado y los fusiona hacia arriba."),
+       "los reconstruye por separado y los fusiona hacia arriba. El modo global estima "
+       "las orientaciones y posiciones de las cámaras conjuntamente; es experimental."),
     PT("Como a cena é construída. O modo plano faz uma única reconstrução "
        "crescer imagem a imagem, e é o padrão para qualquer captura. O "
        "ascendente corta o grafo de vistas em grupos pequenos, reconstrói "
-       "cada um em separado e mescla para cima."),
+       "cada um em separado e mescla para cima. O modo global estima as orientações e "
+       "posições das câmeras em conjunto; é experimental."),
     IT("Come viene costruita la scena. Il modo piatto fa crescere una sola "
        "ricostruzione immagine dopo immagine ed è l'impostazione predefinita "
        "per qualsiasi ripresa. Quello dal basso taglia il grafo delle viste in "
        "piccoli gruppi, li ricostruisce in modo indipendente e li unisce verso "
-       "l'alto."),
+       "l'alto. Il modo globale stima insieme orientamenti e posizioni delle fotocamere; "
+       "è sperimentale."),
     NL("Hoe de scène wordt opgebouwd. Vlak laat één reconstructie beeld voor "
        "beeld groeien en is de standaard voor elke opname. Bottom-up knipt de "
        "beeldgraaf in kleine groepen, reconstrueert die apart en voegt ze naar "
-       "boven samen."),
+       "boven samen. Globaal schat de camerarichtingen en posities samen en is experimenteel."),
     RU("Как строится сцена. Плоская схема наращивает одну реконструкцию снимок "
        "за снимком и подходит любой съёмке. Схема снизу вверх режет граф видов "
-       "на небольшие группы, восстанавливает их независимо и объединяет вверх."),
+       "на небольшие группы, восстанавливает их независимо и объединяет вверх. Глобальная "
+       "схема совместно оценивает ориентации и положения камер; она экспериментальна."),
     TR("Sahnenin nasıl kurulacağı. Düz plan tek bir yeniden oluşturmayı "
        "görüntü görüntü büyütür ve her çekim için varsayılandır. Aşağıdan "
        "yukarı plan görünüm çizgesini küçük öbeklere böler, her birini ayrı "
-       "yeniden oluşturur ve yukarı doğru birleştirir."));
+       "yeniden oluşturur ve yukarı doğru birleştirir. Küresel plan kamera yönlerini ve "
+       "konumlarını birlikte tahmin eder; deneysel bir özelliktir."));
 
 SS_MSG(prefilter_sequential,
     EN("Also match neighbouring frames"),

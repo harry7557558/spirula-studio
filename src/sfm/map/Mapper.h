@@ -835,14 +835,16 @@ public:
     // one. For a caller asking a yes/no question about the result (can this
     // seam be reconciled at all?) the last digits of convergence decide
     // nothing, and something else optimizes the model properly afterwards.
-    Reconstruction refine(const Reconstruction& m, bool coarse = false) {
+    Reconstruction refine(const Reconstruction& m, bool coarse = false,
+                          bool fixed_rotation_stage = false) {
         ensureSetup();
         resetModel();
         adopt(m);
+        fitGpsFrame();
         rebuildScores();
         const bool tight = opt_.ba_final_tight;
         opt_.ba_final_tight = tight && !coarse;
-        globalRefine(true);
+        globalRefine(true, fixed_rotation_stage);
         opt_.ba_final_tight = tight;
         return snapshotModel();
     }
@@ -5277,7 +5279,7 @@ private:
     // registration that passed its PnP gates but stopped agreeing with the
     // refined model exits (and may re-register later, better) instead of
     // staying and bending everything around it (D36).
-    void globalRefine(bool final_pass) {
+    void globalRefine(bool final_pass, bool fixed_rotation_stage = false) {
         std::unordered_set<uint64_t> welded;
         welded.swap(welded_);
         if (rec_.numRegistered() < 2 || rec_.points3D.size() < 10) return;
@@ -5355,6 +5357,11 @@ private:
                     if (pf.gps.ok)
                         bo.metres_per_unit = std::sqrt(A[0] * A[0] + A[3] * A[3] + A[6] * A[6]);
                 }
+            }
+            if (fixed_rotation_stage) {
+                BundleOptions fixed = bo;
+                fixed.fix_rotations = true;
+                runGlobalBA(rec_, fixed);
             }
             double cost = runGlobalBA(rec_, bo);
             if (rigs_ && !final_.no_rig) snapRigFrames();

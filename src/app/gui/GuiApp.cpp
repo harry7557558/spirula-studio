@@ -8121,7 +8121,7 @@ void GuiApp::draw_sfm_advanced() {
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::mapper_schedule, &_sfm_job.mapper,
-              {&dmsg::mapper_flat, &dmsg::mapper_bottom_up});
+              {&dmsg::mapper_flat, &dmsg::mapper_bottom_up, &dmsg::mapper_global});
     ui::help_on_hover(dmsg::mapper_schedule_help);
 
     // "Automatic" resolves to sequential for a short video and to pair

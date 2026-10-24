@@ -532,7 +532,7 @@ struct SfmConfig {
       "mapper", 0, 0, "", rank_by_visibility)                                                      \
     F(mapper.seed_blocking, "seed-blocking", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,   \
       "", seed_blocking)                                                                           \
-    F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up",    \
+    F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up|global", \
       mapper)                                                                                      \
     F(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
       "mapper", 8, 100000, "", bup_atom_size)                                                      \

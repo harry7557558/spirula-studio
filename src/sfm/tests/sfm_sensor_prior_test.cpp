@@ -322,7 +322,11 @@ static void testTelemetryPriors() {
     Mat3 Ra, Rb;
     double sa, sb;
     const bool ok_a = sub.relativeRotation(0, 1, Ra, sa), ok_b = src.relativeRotation(20, 21, Rb, sb);
-    check(ok_a && ok_b && angleDeg(Ra, Rb) < 1e-9, "remapped: relative rotation");
+    double rotation_diff = 0;
+    if (ok_a && ok_b)
+        for (int k = 0; k < 9; k++) rotation_diff = std::max(rotation_diff, std::abs(Ra[k] - Rb[k]));
+    check(ok_a && ok_b && rotation_diff < 1e-12 && std::abs(sa - sb) < 1e-12,
+          "remapped: relative rotation");
     check(!sub.has(45) || sub.neighbours(5).size() >= 2, "remapped: neighbours");
     std::vector<PosedImage> local;
     for (uint32_t k = 0; k < to_global.size(); k++)

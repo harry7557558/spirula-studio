@@ -2291,31 +2291,19 @@ SS_MSG(seed_blocking_help,
        "aynısını yeniden kurmaz"));
 
 SS_MSG(mapper_help,
-    EN("One incremental reconstruction of the whole capture, or small atoms of "
-       "the view graph reconstructed separately and merged upwards"),
-    JA("撮影全体を 1 つの逐次再構成で作るか、視点グラフの小さな原子を別々に"
-       "再構成して上へ統合するか"),
-    ZH_HANS("对整段拍摄做一次增量重建，或把视图图切成小原子分别重建再逐层向上合并"),
-    ZH_HANT("對整段拍攝做一次增量重建，或把視圖圖切成小原子分別重建再逐層向上合併"),
-    KO("촬영 전체를 한 번의 증분 재구성으로 만들지, 뷰 그래프의 작은 원자들을 따로 "
-       "재구성해 위로 병합할지"),
-    DE("Eine inkrementelle Rekonstruktion der ganzen Aufnahme, oder kleine Atome "
-       "des Sichtgraphen einzeln rekonstruiert und nach oben zusammengeführt"),
-    FR("Une reconstruction incrémentale de toute la prise de vue, ou de petits "
-       "atomes du graphe de vues reconstruits séparément puis fusionnés vers le "
-       "haut"),
-    ES("Una reconstrucción incremental de toda la captura, o átomos pequeños del "
-       "grafo de vistas reconstruidos por separado y fusionados hacia arriba"),
-    PT("Uma reconstrução incremental de toda a captura, ou pequenos átomos do "
-       "grafo de vistas reconstruídos à parte e fundidos para cima"),
-    IT("Una ricostruzione incrementale dell'intera ripresa, o piccoli atomi del "
-       "grafo delle viste ricostruiti a parte e fusi verso l'alto"),
-    NL("Eén incrementele reconstructie van de hele opname, of kleine atomen van "
-       "de zichtgraaf apart gereconstrueerd en naar boven samengevoegd"),
-    RU("Одна инкрементальная реконструкция всей съёмки либо мелкие атомы графа "
-       "видов, восстановленные по отдельности и слитые вверх"),
-    TR("Tüm çekimin tek bir artımlı yeniden oluşturması ya da görüş çizgesinin "
-       "küçük atomlarının ayrı ayrı oluşturulup yukarı doğru birleştirilmesi"));
+    EN("Mapping strategy: flat, bottom-up or global"),
+    JA("マッピング方式: flat、bottom-up、global"),
+    ZH_HANS("建图方式：flat、bottom-up 或 global"),
+    ZH_HANT("建圖方式：flat、bottom-up 或 global"),
+    KO("매핑 방식: flat, bottom-up 또는 global"),
+    DE("Rekonstruktionsverfahren: flat, bottom-up oder global"),
+    FR("Méthode de reconstruction : flat, bottom-up ou global"),
+    ES("Método de reconstrucción: flat, bottom-up o global"),
+    PT("Método de reconstrução: flat, bottom-up ou global"),
+    IT("Metodo di ricostruzione: flat, bottom-up o global"),
+    NL("Reconstructiemethode: flat, bottom-up of global"),
+    RU("Метод реконструкции: flat, bottom-up или global"),
+    TR("Yeniden oluşturma yöntemi: flat, bottom-up veya global"));
 
 SS_MSG(bup_atom_size_help,
     EN("Images a view-graph atom is split until it is under"),

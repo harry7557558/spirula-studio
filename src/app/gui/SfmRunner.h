@@ -79,7 +79,7 @@ inline const char* const kSfmDataType[] = {"individual", "video", "internet"};
 inline const char* const kSfmCameraMode[] = {"single", "folder", "image"};
 inline const char* const kSfmPairs[] = {"auto", "exhaustive", "sequential",
                                         "prefilter"};
-inline const char* const kSfmMapper[] = {"flat", "bottom-up"};
+inline const char* const kSfmMapper[] = {"flat", "bottom-up", "global"};
 inline const char* const kSfmFeatures[] = {"sift", "aliked-n16rot", "aliked-n32",
                                            "loma-b128", "loma-b"};
 inline const char* const kSfmMetricGps[] = {"none", "horizontal", "full", "auto"};
