@@ -65,6 +65,11 @@ struct PairSelectionOptions {
     // Lowe ratio for the scoring pass. Independent of the full matcher's
     // ratio: scoring only ranks pairs, so it can afford to be looser.
     float ratio = 0.8f;
+    // A pair of one folder ranks as score * (1 + order_weight * exp(-gap /
+    // order_decay)), gap in positions. min_score still gates the raw score, so a
+    // neighbour with no content match gains nothing; 0 is off.
+    float order_weight = 0.0f;
+    float order_decay = 5.0f;
     // Scoring problems are ~1/32 the size of full matching, so batch more
     // pairs per submit than the full matcher does.
     int batch_pairs = 256;
@@ -147,7 +152,7 @@ inline std::vector<uint32_t> scoreOrderedPairs(
     return score;
 }
 
-// Each image's `k` best partners by (score descending, partner ascending), kept
+// Each image's `k` best partners by (rank descending, partner ascending), kept
 // as unordered (i, j, score) edges arrive: a bounded heap per image, so the
 // shortlist pass over n^2/2 pairs holds n*k edges, not every one twice.
 class TopPartners {
@@ -155,10 +160,11 @@ public:
     TopPartners(uint32_t n, uint32_t k, uint32_t min_score)
         : k_(k), min_score_(min_score), heaps_(n) {}
 
-    void add(uint32_t i, uint32_t j, uint32_t score) {
+    void add(uint32_t i, uint32_t j, uint32_t score) { add(i, j, score, (double)score); }
+    void add(uint32_t i, uint32_t j, uint32_t score, double rank) {
         if (score < min_score_ || k_ == 0) return;
-        push(heaps_[i], {score, j});
-        push(heaps_[j], {score, i});
+        push(heaps_[i], {rank, j});
+        push(heaps_[j], {rank, i});
     }
 
     // Their union, in lexicographic pair order.
@@ -172,7 +178,7 @@ public:
     }
 
 private:
-    using Edge = std::pair<uint32_t, uint32_t>;  // (score, partner)
+    using Edge = std::pair<double, uint32_t>;  // (rank, partner)
     // A strict total order (partners are distinct), so the k kept are the k a
     // full sort would put first; the heap's front is the worst of them.
     static bool better(const Edge& x, const Edge& y) {
@@ -194,15 +200,20 @@ private:
 
 }  // namespace detail
 
-// Score candidate pairs and return the union of each image's top-k partners,
-// in lexicographic pair order. Deterministic: the matcher is exact, subset
-// selection and every tie-break are index-ordered. `progress(done, total)` is
-// optional.
+// The union of each image's top-k partners, in lexicographic pair order.
+// Deterministic: the matcher is exact and every tie-break is index-ordered.
+// `progress(done, total)` and `order` (for opt.order_weight) are optional.
 inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
     const std::vector<FeatureSet>& feats, const PairSelectionOptions& opt,
-    const std::function<void(size_t, size_t)>& progress = nullptr) {
+    const std::function<void(size_t, size_t)>& progress = nullptr,
+    const FileOrder* order = nullptr) {
     const uint32_t n = (uint32_t)feats.size();
     if (n < 2) return {};
+    // The coarse pass takes the boost too, or a near pair is cut before the
+    // reliable score ever sees it.
+    auto rank = [&](uint32_t i, uint32_t j, uint32_t score) {
+        return order ? score * order->boost(i, j, opt.order_weight, opt.order_decay) : (double)score;
+    };
     const size_t all_ordered = (size_t)n * (n - 1);
     const bool coarse = opt.coarse_features > 0 && n >= opt.coarse_min_images;
 
@@ -230,8 +241,10 @@ inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
                 for (uint32_t j = i + 1; j < n; j++) ordered.emplace_back(i, (uint32_t)(n + j));
             const std::vector<uint32_t> s = detail::scoreOrderedPairs(
                 matcher, sets, ordered, opt, done_pairs, all_ordered, progress);
-            for (size_t k = 0; k < ordered.size(); k++)
-                top.add(ordered[k].first, ordered[k].second - n, s[k]);
+            for (size_t k = 0; k < ordered.size(); k++) {
+                const uint32_t a = ordered[k].first, b = ordered[k].second - n;
+                top.add(a, b, s[k], rank(a, b, s[k]));
+            }
             done_pairs += ordered.size();
         }
         cand = top.pairs();
@@ -292,8 +305,69 @@ inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairs(
     for (size_t k = 0; k < s.size(); k++)
         edge_score[edge_of[k]] = std::max(edge_score[edge_of[k]], s[k]);
     detail::TopPartners top(n, opt.num_neighbors, opt.min_score);
-    for (size_t e = 0; e < cand.size(); e++) top.add(cand[e].first, cand[e].second, edge_score[e]);
+    for (size_t e = 0; e < cand.size(); e++)
+        top.add(cand[e].first, cand[e].second, edge_score[e],
+                rank(cand[e].first, cand[e].second, edge_score[e]));
     return top.pairs();
+}
+
+// prefilterPairs over target x partner pairs only (and target x target), each
+// target keeping its `opt.num_neighbors` best. Every listed image needs
+// descriptors; the rest of `feats` is not read.
+inline std::vector<std::pair<uint32_t, uint32_t>> prefilterPairsFor(
+    const std::vector<FeatureSet>& feats, const PairSelectionOptions& opt,
+    const std::vector<uint32_t>& targets, const std::vector<uint32_t>& partners,
+    const FileOrder* order = nullptr) {
+    const uint32_t n = (uint32_t)feats.size();
+    std::vector<char> is_target(n, 0);
+    for (uint32_t t : targets) is_target[t] = 1;
+    std::vector<std::pair<uint32_t, uint32_t>> cand;
+    for (uint32_t t : targets) {
+        for (uint32_t p : partners)
+            if (!is_target[p]) cand.emplace_back(std::min(t, p), std::max(t, p));
+        for (uint32_t u : targets)
+            if (u > t) cand.emplace_back(t, u);
+    }
+    std::sort(cand.begin(), cand.end());
+    cand.erase(std::unique(cand.begin(), cand.end()), cand.end());
+    if (cand.empty()) return {};
+
+    std::vector<uint32_t> used;
+    for (const auto& c : cand) {
+        used.push_back(c.first);
+        used.push_back(c.second);
+    }
+    std::sort(used.begin(), used.end());
+    used.erase(std::unique(used.begin(), used.end()), used.end());
+    // The matcher sizes itself over every entry, so the rest point at an empty set.
+    const FeatureSet none;
+    std::vector<FeatureSet> owned(n);
+    std::vector<const FeatureSet*> sets(2 * (size_t)n, &none);
+    for (uint32_t i : used) {
+        owned[i] = topScaleSubset(feats[i], opt.num_features);
+        sets[i] = &owned[i];
+        sets[(size_t)n + i] = &feats[i];
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> ordered;
+    ordered.reserve(2 * cand.size());
+    for (const auto& c : cand) {
+        ordered.emplace_back(c.first, n + c.second);
+        ordered.emplace_back(c.second, n + c.first);
+    }
+    BruteForceMatcher matcher(detail::countingOptions(opt));
+    const std::vector<uint32_t> s =
+        detail::scoreOrderedPairs(matcher, sets, ordered, opt, 0, ordered.size(), nullptr);
+    detail::TopPartners top(n, opt.num_neighbors, opt.min_score);
+    for (size_t e = 0; e < cand.size(); e++) {
+        const uint32_t score = std::max(s[2 * e], s[2 * e + 1]);
+        const uint32_t a = cand[e].first, b = cand[e].second;
+        top.add(a, b, score,
+                order ? score * order->boost(a, b, opt.order_weight, opt.order_decay) : (double)score);
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> out;
+    for (const auto& p : top.pairs())
+        if (is_target[p.first] || is_target[p.second]) out.push_back(p);
+    return out;
 }
 
 }  // namespace sfm

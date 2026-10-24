@@ -304,7 +304,8 @@ spirula sfm ba      sparse/0 sparse/0 --real cpu  # ... in place, on the host
 their defaults and worked examples, and `spirula sfm --version` prints the
 package version. A usage error names the flag, says what was wrong with it and
 points at `--help`; it always exits 1, because `auto` spends exit codes 2 and 3
-on *the reconstruction* being absent or partial.
+on *the reconstruction* being absent or partial. Every flag of every command
+is listed in `docs/cli/sfm.md` and `docs/cli/sfm-flags.md`.
 
 A manifest camera can provide complete calibrated intrinsics in `params`, using
 the named model's COLMAP parameter order and the original image's pixel units:
@@ -441,18 +442,21 @@ pair selection. Two things fix it, and `auto` uses both:
   Forced on that same capture it also produced one model (249 images), for 1.6 s
   of selection and 2.5x the pairs to match. `--no-loop-closure` is the old
   behaviour.
-- **`--prefilter-sequential` (on by default) is the converse, above the
+- **`--prefilter-sequential` (off by default) is the converse, above the
   cutoff**: pair selection takes the sequential window too, so a weak link the
   content score ranked just outside an image's top-k is still matched when the
   file order says the two are neighbours. It applies to a folder of photos as
   much as to video (named in shooting order, it is the same thing); the
-  `internet` preset turns it off. On a 470-image `.insv` walk the shortlist
+  `internet` preset keeps it off. On a 470-image `.insv` walk the shortlist
   held only 1540 of the window's 5990 pairs, and 3644 of the 4450 it added
-  verified (median 53 inliers, against 223 for the shortlist's own).
+  verified (median 53 inliers, against 223 for the shortlist's own). Off, a
+  video of 100 frames or more is matched on content alone, with no pair taken
+  from its file order.
 
 Every sequential window runs per folder -- a rig's lenses, several clips --
-and, with `--quadratic-overlap` (on), also links each image to the ones 16,
-32, 64 ... ahead, up to 2^(overlap-1), as COLMAP's `quadratic_overlap` does.
+and, with `--quadratic-overlap` (off by default), also links each image to the
+ones 2, 4, 8 ... ahead, up to 2^(overlap-1), as COLMAP's `quadratic_overlap`
+does.
 
 Everything else has a default that a beginner should not have to touch.
 
@@ -934,7 +938,7 @@ front of. So those are consulted first, and the rest of the model only where
 they are silent (D79):
 
 - **Seeding.** The seed pair is searched among neighbour pairs (positions at
-  most `--overlap` apart) through the whole relaxation ladder; every other
+  most `MapperOptions::sequence_window` apart, 2) through the whole relaxation ladder; every other
   pair is offered only once those are exhausted. The seed is the one decision
   no consensus can check afterwards.
 - **Ordering.** A candidate whose neighbours' points alone could register it
@@ -966,10 +970,14 @@ a cut in the walk costs what it always cost, a second model to merge, and
 never a folded one. What the sequence cannot repair is a neighbour that was
 itself placed wrongly: the chain then follows it, as a tracker's would.
 
-`--overlap` is the one number: the matcher's window along each sequence
-(matched whatever `--pairs` chose, so the pairs the mapper trusts exist) and
-how far apart two images still count as neighbours in mapping. The run
-reports one line per sequence and, at the end, how many poses the neighbours
+Two images count as neighbours in mapping when their positions are at most
+`MapperOptions::sequence_window` (2) apart; it is not tied to `--overlap`, and
+no flag sets it. A sequence adds no pairs to matching: its neighbours are
+matched only if `--pairs` or `--prefilter-sequential` already chose them, so
+under pair selection a neighbour the shortlist dropped is simply not near for
+any purpose above. The window that matched every sequence's neighbours whatever
+`--pairs` chose made pair-rich captures less robust and is disabled in
+`matchFeatureDir`. The run reports one line per sequence and, at the end, how many poses the neighbours
 settled against the whole pool and how many registrations they carried past
 the ratio gate; both are zero on a capture with no duplicate structure, where
 the sequence changes the order of registration and nothing else.

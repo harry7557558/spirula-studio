@@ -273,6 +273,21 @@ SS_MSG(stage_selecting_pairs,
     RU("Выбор снимков для сравнения"),
     TR("Hangi görüntülerin karşılaştırılacağı seçiliyor"));
 
+SS_MSG(stage_progressive,
+    EN("Progressive alignment: step {0} of {1}"),
+    JA("段階的な位置合わせ: {1} 段中 {0} 段目"),
+    ZH_HANS("渐进对齐：第 {0} 步，共 {1} 步"),
+    ZH_HANT("漸進對齊：第 {0} 步，共 {1} 步"),
+    KO("단계적 정렬: {1} 단계 중 {0} 단계"),
+    DE("Schrittweise Ausrichtung: Schritt {0} von {1}"),
+    FR("Alignement progressif : étape {0} sur {1}"),
+    ES("Alineación progresiva: paso {0} de {1}"),
+    PT("Alinhamento progressivo: passo {0} de {1}"),
+    IT("Allineamento progressivo: passo {0} di {1}"),
+    NL("Stapsgewijze uitlijning: stap {0} van {1}"),
+    RU("Постепенное выравнивание: шаг {0} из {1}"),
+    TR("Kademeli hizalama: {1} adımın {0}. adımı"));
+
 SS_MSG(stage_seeding,
     EN("Choosing the lens and a starting pair"),
     JA("レンズと最初のペアを決めています"),
@@ -644,6 +659,23 @@ SS_MSG(video_input,
     TR("Video: {0}"));
 
 // {0} how many, {1} the folder.
+SS_MSG(pruned_stale_layout,
+    EN("Entries left in {1} by an earlier layout of the inputs, removed: {0}"),
+    JA("入力の以前の配置で {1} に残っていた項目を削除しました: {0}"),
+    ZH_HANS("已删除输入先前布局遗留在 {1} 中的条目：{0}"),
+    ZH_HANT("已刪除輸入先前配置遺留在 {1} 中的項目：{0}"),
+    KO("입력의 이전 배치로 {1}에 남아 있던 항목을 삭제했습니다: {0}"),
+    DE("Von einer früheren Anordnung der Eingaben in {1} zurückgelassene Einträge, "
+       "entfernt: {0}"),
+    FR("Entrées laissées dans {1} par une disposition antérieure des entrées, supprimées : "
+       "{0}"),
+    ES("Entradas que dejó en {1} una disposición anterior de las entradas, eliminadas: {0}"),
+    PT("Entradas deixadas em {1} por uma disposição anterior das entradas, removidas: {0}"),
+    IT("Voci lasciate in {1} da una disposizione precedente degli input, rimosse: {0}"),
+    NL("Items in {1} van een eerdere indeling van de invoer, verwijderd: {0}"),
+    RU("Удалено записей, оставшихся в {1} от прежнего расположения входных данных: {0}"),
+    TR("Girdilerin önceki düzeninden {1} içinde kalan ve kaldırılan öğe: {0}"));
+
 SS_MSG(resume_keep_frames,
     EN("Resume: keeping {0} extracted frames in {1} (delete the folder to "
        "re-extract)"),

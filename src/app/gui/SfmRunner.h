@@ -154,6 +154,20 @@ struct SfmJob {
     // 0 flat, 1 bottom-up. Flat for every capture, whatever its size: there is
     // no automatic switch, here or in `spirula sfm`.
     int mapper = 0;
+    // Progressive alignment: map at a loose pixel error, then at tighter ones
+    // down to the end (0 = the run's --max-error), in `progressive_error_steps`.
+    bool progressive = false;
+    float progressive_error_start = 20.0f;
+    float progressive_error_end = 0.0f;
+    int progressive_error_steps = 5;
+    // Then images still outside the largest model detected again, from the
+    // run's features and size to these ends (0: 4x the features, full size).
+    bool progressive_features = true;
+    int progressive_max_features_end = 0;
+    int progressive_image_size_end = 0;
+    int progressive_feature_steps = 3;
+    int progressive_patience = 2;
+    float progressive_time = 0.0f;   // minutes; 0 = no limit
     // An index into kSfmFeatures. A frontend choice, not a quality level: the
     // learned ones run on their own resolution ladder, so the quality preset
     // means something different for each.
@@ -239,6 +253,9 @@ public:
     // never taken from here.
     void update(const SfmJob& job);
     void cancel();
+    // cancel() and join. The owner calls it while the films are still alive;
+    // the destructor is a backstop.
+    void shutdown();
 
     State state() const { return _state.load(); }
     // The frames are out and the run is waiting to be told they are the ones
@@ -327,6 +344,7 @@ private:
     std::atomic<bool> _not_metric{false};
     // The child said how it ended, so the exit code need not be interpreted.
     bool _have_status = false;
+    std::string _progressive_label;   // set while progressive attempts run
     int64_t _status_mtime = 0;
     RunProgress _prog;
     RunFilms _films;

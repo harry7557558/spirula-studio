@@ -228,8 +228,9 @@ private:
     // them -- and then the one question only the frames can settle.
     void apply_dataset_builtin(const std::string& name);
     // ... and again once the inputs change, so the order they were picked in
-    // does not decide which of the two wins.
-    void reapply_dataset_builtin();
+    // does not decide which of the two wins. `before`: the panel before the
+    // capture's defaults moved it; what the user changed there stays.
+    void reapply_dataset_builtin(const DatasetSettings& before);
     void load_dataset_preset_file(const std::string& path);
     // Meshing, the same way: the model, its photographs and the output path
     // are what the preset is applied TO.
@@ -463,6 +464,16 @@ private:
     void draw_dataset_preview(float height);
     bool preview_has_content() const;
     void poll_sfm_progress();
+    void draw_progressive_options();
+    void apply_progressive_preset();
+    // The live model onto the view, its cameras coloured by _camera_color.
+    void attach_live_model();
+    // Every image of the live model with how well it fits (images.bin).
+    void draw_image_list(float height);
+    // The model view looking out of a placed image's camera, at its lens.
+    void view_from_camera(uint32_t id);
+    // A stem from images.bin to the file it was read from; "" when not found.
+    std::string image_file_for(const std::string& stem);
     void poll_dense_progress();
     // Which of the three the running step implies, or -1 for none.
     int preview_for_stage();
@@ -765,6 +776,8 @@ private:
     // Saved presets, one picker per kind.
     PresetPicker<TrainPreset> _train_presets;
     PresetPicker<DatasetPreset> _ds_presets;
+    // The panel as the armed built-in last left it, to tell edits from it.
+    DatasetSettings _ds_builtin_base;
     PresetPicker<MeshPreset> _mesh_presets;
     // The save dialog, which the three kinds share -- it asks the same three
     // questions whatever is being saved.
@@ -844,6 +857,7 @@ private:
     // and a run that does all three would otherwise overwrite its own evidence.
     FilmReel _film_frames, _film_masks, _film_features, _film_geometry;
     FeatureWatcher _features;
+    std::string _features_shown;   // the folder the reel was filled from
     MatchMatrix _matrix;
     // Every frame a run chose and what the rule made of it (the Sharpness view).
     PickSheet _picks;
@@ -865,9 +879,20 @@ private:
     // trainer screen uses before training starts.
     ViewportPanel _model_view;
     LiveModel _live_model;
+    // Which of the run's models is on screen: 0 the largest, k its model_k.bin.
+    int _model_pick = 0;
+    std::vector<uint32_t> _model_sizes;
     bool _model_attached = false;
     // Snapshot files already read, by their write time; 0 means "not yet".
     int64_t _model_mtime = 0, _pairs_mtime = 0, _matches_mtime = 0;
+    std::vector<ImageStat> _image_stats;
+    int64_t _image_stats_mtime = 0;
+    std::string _image_stats_path;
+    FilmReel _film_picked;                       // the Images view's chosen image
+    uint32_t _image_picked = UINT32_MAX;
+    std::map<std::string, std::string> _image_files;   // stem -> path, under _image_files_dir
+    std::string _image_files_dir;
+    int _camera_color = 1;   // 0 plain, 1 by reprojection error, 2 by 3D points
     double _sfm_polled_at = -1.0;
     // The dense step's own model.bin (dense::progress_dir), shown in the same view.
     int64_t _dense_model_mtime = 0;

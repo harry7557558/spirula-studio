@@ -206,7 +206,9 @@ void write_unregistered_list(const fs::path& ws, const std::string& images_dir) 
 
 }  // namespace
 
-ColmapRunner::~ColmapRunner() {
+ColmapRunner::~ColmapRunner() { shutdown(); }
+
+void ColmapRunner::shutdown() {
     cancel();
     if (_worker.joinable()) _worker.join();
 }
