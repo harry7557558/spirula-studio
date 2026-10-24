@@ -10921,62 +10921,6 @@ SS_MSG(max_features_auto,
     RU("Предел особых точек на снимок (0 — авто)"),
     TR("Görüntü başına en çok öznitelik (0 = otomatik)"));
 
-SS_MSG(max_features_auto_help,
-    EN("Keypoints kept per image -- largest scales first for SIFT, highest "
-       "detection scores for a learned frontend. Overrides the quality preset "
-       "when non-zero. The two are not comparable: SIFT wants tens of "
-       "thousands, ALIKED a few thousand."),
-    JA("1枚あたりに残すキーポイントの数です。SIFT ではスケールの大きい順、"
-       "学習型フロントエンドでは検出スコアの高い順に残します。0 以外なら"
-       "品質プリセットより優先されます。両者の数は比べられません。SIFT は"
-       "数万、ALIKED は数千を求めます。"),
-    ZH_HANS("每张图像保留的关键点数量——SIFT 按尺度从大到小，学习型前端按检测"
-            "分数从高到低。非零时会覆盖质量预设。两者的数值不可比：SIFT 要几万个，"
-            "ALIKED 只要几千个。"),
-    ZH_HANT("每張影像保留的關鍵點數量——SIFT 按尺度從大到小，學習型前端按偵測"
-            "分數從高到低。非零時會覆蓋品質預設。兩者的數值不可比：SIFT 要幾萬個，"
-            "ALIKED 只要幾千個。"),
-    KO("이미지당 남기는 키포인트 수입니다. SIFT는 스케일이 큰 것부터, 학습형 "
-       "프런트엔드는 검출 점수가 높은 것부터 남깁니다. 0이 아니면 품질 프리셋보다 "
-       "우선합니다. 두 값은 서로 비교할 수 없습니다. SIFT는 수만 개, ALIKED는 "
-       "수천 개를 원합니다."),
-    DE("Schlüsselpunkte je Bild -- bei SIFT die größten Skalen zuerst, bei "
-       "einem gelernten Frontend die höchsten Erkennungswerte. Übergeht die "
-       "Qualitätsvorgabe, wenn ungleich null. Die Zahlen sind nicht "
-       "vergleichbar: SIFT will Zehntausende, ALIKED ein paar Tausend."),
-    FR("Points clés conservés par image -- les plus grandes échelles d'abord "
-       "pour SIFT, les meilleurs scores de détection pour un frontal appris. "
-       "Prend le pas sur le préréglage de qualité s'il est non nul. Les deux "
-       "ne sont pas comparables : SIFT en veut des dizaines de milliers, "
-       "ALIKED quelques milliers."),
-    ES("Puntos clave conservados por imagen: las escalas mayores primero en "
-       "SIFT, las puntuaciones de detección más altas en un frontal "
-       "aprendido. Si no es cero, prevalece sobre el ajuste de calidad. Los "
-       "dos no son comparables: SIFT quiere decenas de miles, ALIKED unos "
-       "pocos miles."),
-    PT("Pontos-chave mantidos por imagem -- as maiores escalas primeiro no "
-       "SIFT, as maiores pontuações de detecção num front-end aprendido. "
-       "Prevalece sobre a predefinição de qualidade quando não é zero. Os dois "
-       "não são comparáveis: o SIFT quer dezenas de milhares, o ALIKED alguns "
-       "milhares."),
-    IT("Punti chiave tenuti per immagine: le scale maggiori prima per SIFT, i "
-       "punteggi di rilevamento più alti per un frontend appreso. Se diverso "
-       "da zero, prevale sulla preimpostazione di qualità. I due numeri non "
-       "sono confrontabili: SIFT ne vuole decine di migliaia, ALIKED qualche "
-       "migliaio."),
-    NL("Sleutelpunten per beeld -- bij SIFT de grootste schalen eerst, bij een "
-       "geleerde frontend de hoogste detectiescores. Gaat boven de "
-       "kwaliteitsvoorinstelling als het niet nul is. De twee zijn niet "
-       "vergelijkbaar: SIFT wil er tienduizenden, ALIKED een paar duizend."),
-    RU("Сколько ключевых точек оставлять на снимок — у SIFT сначала самые "
-       "крупные масштабы, у обученного фронтенда самые высокие оценки "
-       "детекции. Ненулевое значение важнее пресета качества. Числа несравнимы: "
-       "SIFT хочет десятки тысяч, ALIKED — несколько тысяч."),
-    TR("Görüntü başına tutulan anahtar nokta sayısı -- SIFT'te önce en büyük "
-       "ölçekler, öğrenilmiş bir ön uçta en yüksek bulma puanları. Sıfır "
-       "değilse kalite hazır ayarını geçersiz kılar. İkisi kıyaslanabilir "
-       "değildir: SIFT on binlerce, ALIKED birkaç bin ister."));
-
 SS_MSG(max_image_size_auto,
     EN("Max image size (0 = auto)"),
     JA("画像サイズの上限（0 で自動）"),
@@ -10992,42 +10936,123 @@ SS_MSG(max_image_size_auto,
     RU("Предел размера изображения (0 — авто)"),
     TR("En büyük görüntü boyutu (0 = otomatik)"));
 
-SS_MSG(max_image_size_auto_help,
-    EN("Longest edge the feature extractor runs on; bigger images are "
-       "downscaled first. Keypoints are still reported in the source image's "
-       "pixels."),
-    JA("特徴抽出を行う長辺の長さです。これより大きい画像は先に縮小されます。"
-       "キーポイントの座標は元画像のピクセルで報告されます。"),
-    ZH_HANS("特征提取所用的最长边长度；更大的图像会先缩小。关键点坐标仍以源图像"
-            "的像素给出。"),
-    ZH_HANT("特徵擷取所用的最長邊長度；更大的影像會先縮小。關鍵點座標仍以來源影像"
-            "的像素給出。"),
-    KO("특징 추출을 수행하는 긴 변의 길이입니다. 그보다 큰 이미지는 먼저 "
-       "축소됩니다. 키포인트 좌표는 여전히 원본 이미지의 픽셀로 보고됩니다."),
-    DE("Längste Kante, auf der die Merkmalsextraktion läuft; größere Bilder "
-       "werden zuvor verkleinert. Schlüsselpunkte werden weiterhin in Pixeln "
-       "des Ausgangsbildes angegeben."),
-    FR("Plus grand côté sur lequel l'extraction de points s'exécute ; les "
-       "images plus grandes sont d'abord réduites. Les points clés restent "
-       "exprimés en pixels de l'image source."),
-    ES("Lado más largo sobre el que se ejecuta la extracción de "
-       "características; las imágenes mayores se reducen antes. Los puntos "
-       "clave se siguen dando en píxeles de la imagen de origen."),
-    PT("Maior lado sobre o qual a extração de características roda; imagens "
-       "maiores são reduzidas antes. Os pontos-chave continuam em pixels da "
-       "imagem de origem."),
-    IT("Lato più lungo su cui gira l'estrazione delle caratteristiche; le "
-       "immagini più grandi vengono prima ridotte. I punti chiave restano "
-       "espressi in pixel dell'immagine di partenza."),
-    NL("Langste zijde waarop de kenmerkextractie draait; grotere beelden "
-       "worden eerst verkleind. Sleutelpunten worden nog steeds in pixels van "
-       "het bronbeeld gegeven."),
-    RU("Наибольшая сторона, на которой работает выделение особых точек; "
-       "изображения крупнее сначала уменьшаются. Координаты точек всё равно "
-       "даются в пикселях исходного изображения."),
-    TR("Öznitelik çıkarımının çalıştığı en uzun kenar; daha büyük görüntüler "
-       "önce küçültülür. Anahtar noktalar yine kaynak görüntünün pikselleri "
-       "cinsinden bildirilir."));
+// ---- the built-in reconstruction's options editor (SfmOptionsUI.h) ----
+
+SS_MSG(sfm_options_title,
+    EN("All reconstruction settings"), JA("すべての再構成設定"),
+    ZH_HANS("全部重建设置"), ZH_HANT("全部重建設定"), KO("모든 재구성 설정"),
+    DE("Alle Rekonstruktionseinstellungen"),
+    FR("Tous les réglages de reconstruction"),
+    ES("Todos los ajustes de reconstrucción"),
+    PT("Todas as definições de reconstrução"),
+    IT("Tutte le impostazioni di ricostruzione"),
+    NL("Alle reconstructie-instellingen"), RU("Все настройки реконструкции"),
+    TR("Tüm yeniden oluşturma ayarları"));
+
+SS_MSG(sfm_options_intro,
+    EN("Every value the reconstruction runs with. An edited one replaces "
+       "what the quality level would set; right-click a row to reset it."),
+    JA("再構成が使うすべての値です。編集した値は品質レベルが設定する値の代わりに"
+       "使われます。行を右クリックすると元に戻せます。"),
+    ZH_HANS("重建所用的全部数值。修改过的值会取代质量等级设定的值；右键单击某一行"
+            "可将其还原。"),
+    ZH_HANT("重建所用的全部數值。修改過的值會取代品質等級設定的值；右鍵按一下某一列"
+            "可將其還原。"),
+    KO("재구성이 사용하는 모든 값입니다. 편집한 값은 품질 수준이 정하는 값을 "
+       "대신합니다. 행을 오른쪽 클릭하면 되돌릴 수 있습니다."),
+    DE("Jeder Wert, mit dem die Rekonstruktion läuft. Ein bearbeiteter ersetzt, "
+       "was die Qualitätsstufe setzen würde; Rechtsklick auf eine Zeile setzt "
+       "sie zurück."),
+    FR("Chaque valeur utilisée par la reconstruction. Une valeur modifiée "
+       "remplace celle du niveau de qualité ; clic droit sur une ligne pour la "
+       "réinitialiser."),
+    ES("Cada valor con el que se ejecuta la reconstrucción. Uno editado "
+       "sustituye al que fijaría el nivel de calidad; clic derecho en una fila "
+       "para restablecerla."),
+    PT("Cada valor com que a reconstrução corre. Um valor editado substitui o "
+       "que o nível de qualidade definiria; clique com o botão direito numa "
+       "linha para a repor."),
+    IT("Ogni valore con cui gira la ricostruzione. Uno modificato sostituisce "
+       "quello del livello di qualità; clic destro su una riga per ripristinarla."),
+    NL("Elke waarde waarmee de reconstructie draait. Een bewerkte vervangt wat "
+       "het kwaliteitsniveau zou instellen; rechtsklik op een regel om hem "
+       "terug te zetten."),
+    RU("Все значения, с которыми идёт реконструкция. Изменённое заменяет то, "
+       "что задал бы уровень качества; щелчок правой кнопкой по строке "
+       "сбрасывает её."),
+    TR("Yeniden oluşturmanın kullandığı her değer. Düzenlenen bir değer, kalite "
+       "düzeyinin koyacağının yerine geçer; sıfırlamak için satıra sağ tıklayın."));
+
+SS_MSG(sfm_options_from_quality,
+    EN("Set by the quality level"), JA("品質レベルが設定する値"),
+    ZH_HANS("由质量等级设定"), ZH_HANT("由品質等級設定"), KO("품질 수준이 정하는 값"),
+    DE("Von der Qualitätsstufe gesetzt"), FR("Fixés par le niveau de qualité"),
+    ES("Fijados por el nivel de calidad"), PT("Definidos pelo nível de qualidade"),
+    IT("Impostati dal livello di qualità"), NL("Ingesteld door het kwaliteitsniveau"),
+    RU("Задаются уровнем качества"), TR("Kalite düzeyinin belirledikleri"));
+
+SS_MSG(sfm_options_from_quality_help,
+    EN("What the quality level above passes for the chosen features and "
+       "matcher. Change the level and these follow it, except the ones you "
+       "edited."),
+    JA("上の品質レベルが、選んだ特徴点とマッチャーに対して渡す値です。レベルを"
+       "変えるとこれらも追従しますが、編集したものは変わりません。"),
+    ZH_HANS("上方的质量等级针对所选特征点和匹配器传入的值。更改等级时这些值会随之"
+            "变化，但你修改过的除外。"),
+    ZH_HANT("上方的品質等級針對所選特徵點和匹配器傳入的值。變更等級時這些值會隨之"
+            "變化，但你修改過的除外。"),
+    KO("위의 품질 수준이 선택한 특징점과 매처에 대해 넘기는 값입니다. 수준을 "
+       "바꾸면 이 값들도 따라 바뀌지만, 편집한 값은 그대로입니다."),
+    DE("Was die Qualitätsstufe oben für die gewählten Merkmale und den Matcher "
+       "übergibt. Ändert sich die Stufe, folgen diese ihr, außer den "
+       "bearbeiteten."),
+    FR("Ce que le niveau de qualité ci-dessus transmet pour les points et "
+       "l'apparieur choisis. Changez de niveau et ils suivent, sauf ceux que "
+       "vous avez modifiés."),
+    ES("Lo que el nivel de calidad de arriba pasa para los rasgos y el "
+       "emparejador elegidos. Si cambia el nivel, estos lo siguen, salvo los "
+       "que haya editado."),
+    PT("O que o nível de qualidade acima passa para os traços e o emparelhador "
+       "escolhidos. Mude o nível e estes acompanham-no, exceto os que editou."),
+    IT("Ciò che il livello di qualità qui sopra passa per i punti e "
+       "l'abbinatore scelti. Cambiando livello questi lo seguono, tranne quelli "
+       "modificati."),
+    NL("Wat het kwaliteitsniveau hierboven doorgeeft voor de gekozen kenmerken "
+       "en matcher. Verander het niveau en deze volgen, behalve de bewerkte."),
+    RU("Что уровень качества выше передаёт для выбранных признаков и "
+       "сопоставителя. При смене уровня они меняются вслед, кроме изменённых "
+       "вами."),
+    TR("Yukarıdaki kalite düzeyinin seçilen öznitelikler ve eşleştirici için "
+       "verdiği değerler. Düzeyi değiştirince bunlar da değişir; düzenledikleriniz "
+       "hariç."));
+
+SS_MSG(sfm_options_reset_all,
+    EN("Reset all"), JA("すべて元に戻す"), ZH_HANS("全部还原"), ZH_HANT("全部還原"),
+    KO("모두 되돌리기"), DE("Alle zurücksetzen"), FR("Tout réinitialiser"),
+    ES("Restablecer todo"), PT("Repor tudo"), IT("Ripristina tutto"),
+    NL("Alles terugzetten"), RU("Сбросить всё"), TR("Tümünü sıfırla"));
+
+SS_MSG(sfm_options_reset_all_help,
+    EN("Drop every edit, so the run takes the quality level's values again."),
+    JA("すべての編集を取り消し、品質レベルの値で実行するように戻します。"),
+    ZH_HANS("放弃所有修改，让运行重新采用质量等级的值。"),
+    ZH_HANT("放棄所有修改，讓執行重新採用品質等級的值。"),
+    KO("모든 편집을 버리고 품질 수준의 값으로 다시 실행하게 합니다."),
+    DE("Verwirft jede Bearbeitung, sodass der Lauf wieder die Werte der "
+       "Qualitätsstufe nimmt."),
+    FR("Abandonne toutes les modifications : la reconstruction reprend les "
+       "valeurs du niveau de qualité."),
+    ES("Descarta todas las ediciones, de modo que la ejecución vuelve a tomar "
+       "los valores del nivel de calidad."),
+    PT("Descarta todas as edições, para a execução voltar a usar os valores do "
+       "nível de qualidade."),
+    IT("Scarta ogni modifica, così l'esecuzione riprende i valori del livello "
+       "di qualità."),
+    NL("Gooit elke bewerking weg, zodat de run weer de waarden van het "
+       "kwaliteitsniveau neemt."),
+    RU("Отменяет все изменения, и запуск снова берёт значения уровня качества."),
+    TR("Tüm düzenlemeleri atar; çalıştırma yeniden kalite düzeyinin değerlerini "
+       "kullanır."));
 
 SS_MSG(flip_found_masks,
     EN("They mark what to remove"),

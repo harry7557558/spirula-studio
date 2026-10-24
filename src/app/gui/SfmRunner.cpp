@@ -19,6 +19,7 @@
 // module has no child to run (see availability()).
 #include "sfm/core/Log.h"
 #include "sfm/core/Manifest.h"
+#include "sfm/SfmConfig.h"
 #include "i18n/catalog/Sfm.h"
 #endif
 
@@ -240,6 +241,7 @@ void SfmRunner::take_reconstruction(SfmJob& job) {
     job.exif_attitude = _live.exif_attitude;
     job.keep_intermediate = _live.keep_intermediate;
     job.ba_cpu = _live.ba_cpu;
+    job.options = _live.options;
     job.extra_args = _live.extra_args;
     // The lens is a reconstruction setting that happens to be stored on the
     // input it describes. The list itself cannot change while a run is live.
@@ -777,8 +779,33 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         argv.push_back("--feature-masks");
         argv.push_back(prep.feature_mask_dir);
     }
+    for (const std::string& a : sfm_option_args(job.options)) argv.push_back(a);
     for (const std::string& a : split_args(job.extra_args))
         argv.push_back(a);
+    return argv;
+}
+
+std::vector<std::string> sfm_option_args(const std::map<std::string, std::string>& options) {
+    std::vector<std::string> argv;
+#ifdef SS_TOOL_SFM
+    // A flag a later version renamed or dropped would stop the run; it goes
+    // quietly instead, as a preset key this version does not know would.
+    static const std::vector<sfm::FieldView> table =
+        sfm::describeConfigFields(sfm::SfmConfig{}, sfm::CMD_AUTO);
+    for (const auto& [name, value] : options) {
+        auto row = std::find_if(table.begin(), table.end(),
+                                [&](const sfm::FieldView& f) { return name == f.name; });
+        if (row == table.end()) continue;
+        if (row->kind == sfm::FieldView::Kind::Switch) {
+            argv.push_back((value == "on" ? "--" : "--no-") + name);
+        } else {
+            argv.push_back("--" + name);
+            argv.push_back(value);
+        }
+    }
+#else
+    (void)options;
+#endif
     return argv;
 }
 

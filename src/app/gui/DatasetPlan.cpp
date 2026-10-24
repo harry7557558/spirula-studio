@@ -774,6 +774,7 @@ StepFields model_fields(const SfmJob& job) {
     if (job.image_is_linear) add(f, "image_linear", "", onoff(*job.image_is_linear));
     if (!job.image_exposure.empty()) add(f, "image_exposure", "", job.image_exposure);
     add(f, "point_color", "", job.point_color_in_image_space ? "image" : "srgb");
+    for (const auto& [flag, value] : job.options) f.push_back({"--" + flag, "", value});
     if (!job.extra_args.empty()) add(f, "extra_args", "", job.extra_args);
     add_rigs(f, p);
     add_sequences(f, p);

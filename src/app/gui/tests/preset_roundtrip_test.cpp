@@ -9,6 +9,8 @@
 
 #include "app/gui/DatasetPreset.h"
 #include "app/gui/MeshPreset.h"
+#include "app/gui/SfmPreset.h"
+#include "app/gui/SfmRunner.h"
 #include "core/SourcePath.h"
 #include "dense/ConfigFields.h"
 
@@ -158,6 +160,7 @@ static void test_dataset_preset() {
     s.sfm.ba_cpu = true;
     s.sfm.subprocess = true;
     s.sfm.extra_args = "--some-flag 3";
+    s.sfm.options = {{"ratio", "0.85"}, {"cross-check", "off"}};
 
     s.colmap.camera_model = "FULL_OPENCV";
     s.colmap.camera_mode = 2;
@@ -285,6 +288,7 @@ static void test_dataset_preset() {
     CHECK_EQ(b.sfm.ba_cpu, s.sfm.ba_cpu);
     CHECK_EQ(b.sfm.subprocess, s.sfm.subprocess);
     CHECK_EQ(b.sfm.extra_args, s.sfm.extra_args);
+    CHECK(b.sfm.options == s.sfm.options);
 
     CHECK_EQ(b.colmap.camera_model, s.colmap.camera_model);
     CHECK_EQ(b.colmap.camera_mode, s.colmap.camera_mode);
@@ -364,6 +368,47 @@ static void test_mesh_preset() {
     CHECK(back.job.checkpoint.empty());
     CHECK(back.job.data_dir.empty());
     CHECK(back.job.output.empty());
+}
+
+static void test_sfm_preset() {
+    gui::SfmJob job;
+    job.quality = 3;
+    job.features = 1;
+    job.matcher = 1;
+    job.max_features = 6000;
+    job.max_image_size = 2000;
+    job.options = {{"ratio", "0.9"}, {"min-inliers", "30"}, {"cross-check", "off"}};
+    gui::SfmPreset p = gui::capture_sfm_preset(job);
+    p.name = "Dense matching";
+    p.description = "looser ratio";
+
+    const std::string path = (scratch() / "sfm.json").string();
+    gui::save_sfm_preset(p, path);
+    const gui::SfmPreset back = gui::load_sfm_preset(path);
+    CHECK_EQ(back.name, p.name);
+    CHECK_EQ(back.description, p.description);
+
+    // Applied onto a job, it moves its own fields and nothing of the capture.
+    gui::SfmJob onto;
+    onto.camera_model = "opencv-fisheye";
+    onto.data_type = 1;
+    gui::apply_sfm_preset(back, onto);
+    CHECK_EQ(onto.quality, job.quality);
+    CHECK_EQ(onto.features, job.features);
+    CHECK_EQ(onto.matcher, job.matcher);
+    CHECK_EQ(onto.max_features, job.max_features);
+    CHECK_EQ(onto.max_image_size, job.max_image_size);
+    CHECK(onto.options == job.options);
+    CHECK_EQ(onto.camera_model, std::string("opencv-fisheye"));
+    CHECK_EQ(onto.data_type, 1);
+
+    bool threw = false;
+    try {
+        (void)gui::load_mesh_preset(path);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
 }
 
 // A file a user has edited by hand must not reach a runner with a value
@@ -489,6 +534,7 @@ static void test_dense_draft_restore() {
 int main() {
     test_dataset_preset();
     test_mesh_preset();
+    test_sfm_preset();
     test_sanitize();
     test_unknown_key_ignored();
     test_dense_draft_restore();

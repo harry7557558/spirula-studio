@@ -754,6 +754,7 @@ void GuiApp::write_run_settings(std::ofstream& f) {
     }
     line("sync_tracks", cfg_str(j.prep.sync_tracks));
     line("max_frames", std::to_string(j.prep.max_frames));
+    for (const auto& [flag, value] : j.options) line("--" + flag, value);
     if (!j.extra_args.empty()) line("extra_args", j.extra_args);
 
     if (effective_engine() == Engine::Colmap) {
@@ -959,6 +960,13 @@ void GuiApp::refresh_mesh_presets() {
     _mesh_presets.items = list_mesh_presets();
 }
 
+void GuiApp::refresh_sfm_presets() {
+    double now = ImGui::GetTime();
+    if (_sfm_presets.scanned_at >= 0.0 && now - _sfm_presets.scanned_at < 2.0) return;
+    _sfm_presets.scanned_at = now;
+    _sfm_presets.items = list_sfm_presets();
+}
+
 
 // ---------------------------------------------------------------------------
 // Dataset and meshing presets
@@ -1139,6 +1147,30 @@ void GuiApp::load_mesh_preset_file(const std::string& path) {
     log(_mesh_presets.msg);
     _mesh_presets.scanned_at = -1.0;
     refresh_mesh_presets();
+}
+
+void GuiApp::apply_sfm_preset_file(const SfmPreset& p) {
+    apply_sfm_preset(p, _sfm_job);
+    _sfm_presets.file = p.path;
+    _sfm_presets.display = p.name;
+    _sfm_presets.desc = p.description;
+    _sfm_presets.msg.clear();
+}
+
+void GuiApp::load_sfm_preset_file(const std::string& path) {
+    if (path.empty()) return;
+    try {
+        SfmPreset p = load_sfm_preset(path);
+        apply_sfm_preset_file(p);
+        _sfm_presets.msg = i18n::format(msg::preset_loaded, {p.name});
+        _sfm_presets.msg_err = false;
+    } catch (const std::exception& e) {
+        _sfm_presets.msg = i18n::format(msg::preset_failed, {e.what()});
+        _sfm_presets.msg_err = true;
+    }
+    log(_sfm_presets.msg);
+    _sfm_presets.scanned_at = -1.0;
+    refresh_sfm_presets();
 }
 
 
@@ -2289,6 +2321,11 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
             if (!_mesh_presets.msg_err) _screen = Screen::Mesh;
             return;
         }
+        if (kind == PresetKind::Sfm) {
+            load_sfm_preset_file(paths[0]);
+            if (!_sfm_presets.msg_err) _screen = Screen::NewDataset;
+            return;
+        }
         if (kind == PresetKind::Train && is_preset_file(paths[0])) {
             load_preset_file(paths[0]);
             if (!_train_presets.msg_err && !_cfg.data.empty())
@@ -2819,6 +2856,7 @@ const char* GuiApp::dir_key(PickAction a, FileDialog::Mode m) {
         case PickAction::PresetFile:
         case PickAction::DatasetPresetFile:
         case PickAction::MeshPresetFile:
+        case PickAction::SfmPresetFile:
         case PickAction::PresetSaveFolder:
         case PickAction::BatchPresetFile:
         case PickAction::BatchDatasetPresetFile:
@@ -2983,6 +3021,9 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             break;
         case PickAction::MeshPresetFile:
             load_mesh_preset_file(path);
+            break;
+        case PickAction::SfmPresetFile:
+            load_sfm_preset_file(path);
             break;
         case PickAction::BatchDataset:
             if (!path.empty()) {
@@ -8165,13 +8206,6 @@ void GuiApp::draw_sfm_advanced() {
     ui::Checkbox(dmsg::sfm_final_free_rig, &_sfm_job.final_free_rig);
     ui::help_on_hover(dmsg::sfm_final_free_rig_help);
 
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_features_auto, &_sfm_job.max_features);
-    ui::help_on_hover(dmsg::max_features_auto_help);
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::InputInt(dmsg::max_image_size_auto, &_sfm_job.max_image_size);
-    ui::help_on_hover(dmsg::max_image_size_auto_help);
-
     // ---- what the sensors are allowed to settle ----
     // A video's own IMU and GPS track, and per photograph the EXIF position
     // and a drone's recorded attitude. Any one can be all an input has.
@@ -8474,8 +8508,12 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     ImGui::Spacing();
 
     ImGui::BeginDisabled(dataset_locked(Stage::Features));
-    if (effective_engine() == Engine::BuiltIn) draw_sfm_advanced();
-    else                                       draw_colmap_options();
+    if (effective_engine() == Engine::BuiltIn) {
+        draw_sfm_advanced();
+        draw_sfm_options();
+    } else {
+        draw_colmap_options();
+    }
     ImGui::EndDisabled();
     // Tool locations are settings of the application, not of the run.
     draw_tool_locations();
@@ -10830,6 +10868,11 @@ void GuiApp::open_preset_save(PresetKind kind) {
             _preset_save_desc = _mesh_presets.desc;
             _preset_save_path = _mesh_presets.file;
             break;
+        case PresetKind::Sfm:
+            _preset_save_name = _sfm_presets.display;
+            _preset_save_desc = _sfm_presets.desc;
+            _preset_save_path = _sfm_presets.file;
+            break;
         default:
             _preset_save_name = _train_presets.display;
             _preset_save_desc = _train_presets.desc;
@@ -10918,6 +10961,57 @@ void GuiApp::draw_mesh_preset_picker() {
                                   _mesh_presets.msg);
     else if (!_mesh_presets.desc.empty())
         ui::TextColoredWrappedRaw(kDim, _mesh_presets.desc);
+}
+
+
+// The stock row drops the edits only: quality and frontend are the panel's.
+void GuiApp::draw_sfm_preset_picker() {
+    refresh_sfm_presets();
+    ImGui::SetNextItemWidth(px(-8.0f));
+    const PresetChoice picked = preset_combo("##sfmpreset", _sfm_presets,
+                                             _sfm_presets.file, {}, {});
+    if (picked.moved) {
+        if (picked.index >= 0 && picked.index < (int)_sfm_presets.items.size()) {
+            apply_sfm_preset_file(_sfm_presets.items[(size_t)picked.index]);
+        } else {
+            _sfm_job.options.clear();
+            _sfm_job.max_features = _sfm_job.max_image_size = 0;
+            _sfm_presets.file.clear();
+            _sfm_presets.display.clear();
+            _sfm_presets.desc.clear();
+            _sfm_presets.msg.clear();
+        }
+    }
+
+    if (ui::Button(msg::preset_save)) open_preset_save(PresetKind::Sfm);
+    ui::help_on_hover(msg::preset_save_help);
+    ImGui::SameLine();
+    if (ui::Button(msg::preset_load))
+        open_pick(PickAction::SfmPresetFile, msg::preset_pick_file.get(),
+                  FileDialog::Mode::File, {".json"});
+    ui::help_on_hover(msg::preset_load_help_plain);
+    if (!_sfm_presets.file.empty()) {
+        ImGui::SameLine();
+        if (ui::Button(msg::preset_delete)) {
+            _preset_delete_kind = PresetKind::Sfm;
+            _preset_delete_open = true;
+        }
+        ui::help_on_hover(msg::preset_delete_help);
+    }
+    if (!_sfm_presets.msg.empty())
+        ui::TextColoredWrappedRaw(_sfm_presets.msg_err ? kErr : kOk, _sfm_presets.msg);
+    else if (!_sfm_presets.desc.empty())
+        ui::TextColoredWrappedRaw(kDim, _sfm_presets.desc);
+}
+
+void GuiApp::draw_sfm_options() {
+    if (!ui::CollapsingHeader(dmsg::sfm_options_title)) return;
+    ImGui::PushID("sfmoptions");
+    ui::SeparatorText(msg::section_preset);
+    draw_sfm_preset_picker();
+    ImGui::Spacing();
+    draw_sfm_options_editor(_sfm_job, _sfm_options_ui);
+    ImGui::PopID();
 }
 
 
@@ -11019,6 +11113,10 @@ void GuiApp::draw_preset_delete_modal() {
         file = &_mesh_presets.file; display = &_mesh_presets.display;
         desc = &_mesh_presets.desc; out = &_mesh_presets.msg;
         out_err = &_mesh_presets.msg_err; scanned = &_mesh_presets.scanned_at;
+    } else if (_preset_delete_kind == PresetKind::Sfm) {
+        file = &_sfm_presets.file; display = &_sfm_presets.display;
+        desc = &_sfm_presets.desc; out = &_sfm_presets.msg;
+        out_err = &_sfm_presets.msg_err; scanned = &_sfm_presets.scanned_at;
     }
 
     ImGui::PushTextWrapPos(px(460.0f));
@@ -11042,6 +11140,7 @@ void GuiApp::draw_preset_delete_modal() {
             refresh_presets();
             refresh_dataset_presets();
             refresh_mesh_presets();
+            refresh_sfm_presets();
             // Rows pointing at the file that just went would fail at launch;
             // the next check says so instead.
             _batch_checked = false;
@@ -11137,6 +11236,8 @@ void GuiApp::draw_preset_save_modal() {
             out = &_ds_presets.msg; out_err = &_ds_presets.msg_err;
         } else if (_preset_save_kind == PresetKind::Mesh) {
             out = &_mesh_presets.msg; out_err = &_mesh_presets.msg_err;
+        } else if (_preset_save_kind == PresetKind::Sfm) {
+            out = &_sfm_presets.msg; out_err = &_sfm_presets.msg_err;
         }
         try {
             switch (_preset_save_kind) {
@@ -11163,6 +11264,17 @@ void GuiApp::draw_preset_save_modal() {
                     _mesh_presets.scanned_at = -1.0;
                     break;
                 }
+                case PresetKind::Sfm: {
+                    SfmPreset p = capture_sfm_preset(_sfm_job);
+                    p.name = _preset_save_name;
+                    p.description = _preset_save_desc;
+                    save_sfm_preset(p, _preset_save_path);
+                    _sfm_presets.file = _preset_save_path;
+                    _sfm_presets.display = p.name;
+                    _sfm_presets.desc = p.description;
+                    _sfm_presets.scanned_at = -1.0;
+                    break;
+                }
                 default: {
                     TrainPreset p;
                     p.name = _preset_save_name;
@@ -11185,6 +11297,7 @@ void GuiApp::draw_preset_save_modal() {
             refresh_presets();
             refresh_dataset_presets();
             refresh_mesh_presets();
+            refresh_sfm_presets();
         } catch (const std::exception& e) {
             *out = i18n::format(msg::preset_failed, {e.what()});
             *out_err = true;

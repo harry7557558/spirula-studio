@@ -33,6 +33,8 @@
 #include "app/gui/Screenshot.h"
 #include "app/gui/SegmentPanel.h"
 #include "app/gui/mask/MaskSession.h"
+#include "app/gui/SfmOptionsUI.h"
+#include "app/gui/SfmPreset.h"
 #include "app/gui/SfmRunner.h"
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
@@ -122,7 +124,7 @@ private:
         None, OpenDataset, SourceImages, SourceVideo, SourceDataset,
         SourceReplace, Workspace,
         OutputPrefix, VocabTree, MaskModelFile, SplatFile,
-        PresetFile, DatasetPresetFile, MeshPresetFile, PresetSaveFolder,
+        PresetFile, DatasetPresetFile, MeshPresetFile, SfmPresetFile, PresetSaveFolder,
         BatchDataset, BatchOutput, BatchPresetFile, BatchDatasetPresetFile,
         BatchMeshPresetFile, BatchSourceImages, BatchSourceVideo, BatchModel,
         MeshSource, MeshPhotos, MeshOutput, AddSplatFile, SplatFolder,
@@ -217,6 +219,7 @@ private:
     void refresh_presets();
     void refresh_dataset_presets();
     void refresh_mesh_presets();
+    void refresh_sfm_presets();
 
     // ---- dataset and meshing presets ----
     // The New Dataset screen's settings as a preset carries them, and back.
@@ -235,9 +238,13 @@ private:
     // are what the preset is applied TO.
     void apply_mesh_preset(const MeshPreset& p);
     void load_mesh_preset_file(const std::string& path);
+    // The reconstruction's matching and mapping settings, onto _sfm_job.
+    void apply_sfm_preset_file(const SfmPreset& p);
+    void load_sfm_preset_file(const std::string& path);
     // The picker a screen draws above its options: combo, save, load, delete.
     void draw_dataset_preset_picker();
     void draw_mesh_preset_picker();
+    void draw_sfm_preset_picker();
     // Arm the shared save dialog for `kind`, seeded from what is on screen.
     void open_preset_save(PresetKind kind);
     void start_training();
@@ -518,6 +525,7 @@ private:
     void open_mask_preview();
     void draw_color_space_options(bool with_point_color);
     void draw_sfm_advanced();
+    void draw_sfm_options();
     void draw_feature_download();
     void draw_colmap_options();
     void draw_tool_locations();
@@ -766,6 +774,8 @@ private:
     PresetPicker<TrainPreset> _train_presets;
     PresetPicker<DatasetPreset> _ds_presets;
     PresetPicker<MeshPreset> _mesh_presets;
+    PresetPicker<SfmPreset> _sfm_presets;
+    SfmOptionsState _sfm_options_ui;
     // The save dialog, which the three kinds share -- it asks the same three
     // questions whatever is being saved.
     PresetKind _preset_save_kind = PresetKind::Train;
