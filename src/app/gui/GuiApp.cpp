@@ -6873,12 +6873,17 @@ void GuiApp::poll_sfm_progress() {
     if (dir.empty()) return;
 
     PairMatrix pm;
-    if (read_pair_matrix(dir, _pairs_mtime, pm)) _matrix.set(pm);
+    if (read_pair_matrix(dir, _pairs_mtime, pm)) {
+        _pair_matrix = pm;
+        _matrix.set(pm);
+    }
     // matches.bin is the whole truth and outlives the live file, which the run
     // deletes with the rest of the intermediates.
     if (!dataset_busy() &&
-        read_pair_matrix_from_matches(_sfm.matches_path(), _matches_mtime, pm))
+        read_pair_matrix_from_matches(_sfm.matches_path(), _matches_mtime, pm)) {
+        _pair_matrix = pm;
         _matrix.set(pm);
+    }
 
     LiveModel lm;
     if (read_live_model(dir, _model_mtime, lm)) {
@@ -7061,6 +7066,14 @@ void GuiApp::draw_dataset_preview(float height) {
         // legend under it.
         ImGui::BeginGroup();
         if (_matrix.draw(side, block)) _pairs_view.show(block);
+        if (!_matrix.empty() && !dataset_busy()) {
+            ImGui::Spacing();
+            if (ui::Button(dmsg::matrix_edit_matches)) {
+                _matrix_editor.configure(_sfm.sfm_image_dir(), _sfm.sfm_mask_dir(),
+                                         _sfm.features_dir(), _sfm.matches_path());
+                _matrix_editor.open();
+            }
+        }
         ImGui::EndGroup();
         const float rest = avail - side - ImGui::GetStyle().ItemSpacing.x;
         if (rest > px(160.0f)) {
@@ -8719,6 +8732,11 @@ void GuiApp::draw_new_dataset() {
     draw_clear_project_modal();
     draw_drop_intermediate_modal();
     draw_rebuild_confirm_modal();
+    if (_matrix_editor.is_open()) {
+        if (_matrix_editor.draw(_pair_matrix, _matrix, _pairs_view)) {
+            _matches_mtime = 0;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

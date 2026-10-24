@@ -530,6 +530,26 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/AppPaths.cpp)
     ss_configure_app(preset_roundtrip_test)
 
+    add_executable(match_matrix_editor_test
+        ${SS_SRC}/app/gui/tests/match_matrix_editor_test.cpp
+        ${SS_SRC}/app/gui/MatchMatrixEditor.cpp
+        ${SS_SRC}/app/gui/MatchMatrix.cpp
+        ${SS_SRC}/app/gui/PairPreview.cpp
+        ${SS_SRC}/app/gui/Picture.cpp
+        ${SS_SRC}/app/gui/SfmProgress.cpp
+        ${SS_SRC}/app/gui/GlLoader.cpp
+        ${SS_SRC}/app/gui/Layout.cpp
+        ${SS_SRC}/app/gui/Automation.cpp
+        ${SS_SRC}/app/AppPaths.cpp
+        ${SS_SRC}/app/FrameMask.cpp
+        ${SS_SRC}/app/FrameMaskSvg.cpp
+        ${SS_SRC}/app/FrameLook.cpp
+        ${SS_SRC}/app/gui/Subprocess.cpp
+        ${SS_SRC}/app/gui/HeifPhoto.cpp)
+    ss_configure_app(match_matrix_editor_test)
+    target_link_libraries(match_matrix_editor_test PRIVATE imgui_glfw OpenGL::GL)
+    target_compile_definitions(match_matrix_editor_test PRIVATE SS_TOOL_SFM=1)
+
     add_executable(stencil_edit_test
         ${SS_SRC}/app/gui/tests/stencil_edit_test.cpp
         ${SS_SRC}/app/gui/StencilEdit.cpp

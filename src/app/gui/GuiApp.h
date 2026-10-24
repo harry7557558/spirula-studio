@@ -21,6 +21,7 @@
 #include "app/gui/RoiEditor.h"
 #include "app/gui/ImageCompare.h"
 #include "app/gui/MatchMatrix.h"
+#include "app/gui/MatchMatrixEditor.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/PickSheetView.h"
 #include "app/gui/PairPreview.h"
@@ -845,6 +846,8 @@ private:
     FilmReel _film_frames, _film_masks, _film_features, _film_geometry;
     FeatureWatcher _features;
     MatchMatrix _matrix;
+    MatchMatrixEditor _matrix_editor;
+    PairMatrix _pair_matrix;
     // Every frame a run chose and what the rule made of it (the Sharpness view).
     PickSheet _picks;
     PickSheetView _picks_view;

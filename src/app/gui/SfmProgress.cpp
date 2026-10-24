@@ -465,7 +465,7 @@ bool read_pair_matrix_from_matches(const std::string& matches_path,
     PairMatrix m;
     m.n_images = (uint32_t)idx.images.size();
     if (m.n_images == 0) return false;
-    m.bins = std::min(m.n_images, sfm::progress::kMatrixBins);
+    m.bins = std::min(m.n_images, 2048u);
     m.counts.assign((size_t)m.bins * m.bins, 0);
     // A finished file holds the pairs that survived and says nothing about the
     // ones that were tried and failed, so it cannot fill `planned` /

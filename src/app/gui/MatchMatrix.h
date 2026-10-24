@@ -32,6 +32,12 @@ public:
     bool draw(float size, PairBlock& block);
     void destroy_gl();
 
+    const PairMatrix& matrix() const { return _m; }
+    PairMatrix& matrix() { return _m; }
+    void mark_dirty() { _dirty = true; }
+    void ensure_texture();
+    GLuint texture() { ensure_texture(); return _tex; }
+
 private:
     PairMatrix _m;
     GLuint _tex = 0;
