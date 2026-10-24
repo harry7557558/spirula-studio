@@ -140,6 +140,7 @@ private:
     // Mesh only, same handoff.
     meshing::MeshData _mesh;
     float _mesh_t2n[12] = {1,0,0,0, 0,1,0,0, 0,0,1,0};
+    std::shared_ptr<spirula::HierarchyRenderer> _lod_renderer;
 };
 
 }  // namespace gui

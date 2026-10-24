@@ -438,6 +438,8 @@ private:
     std::function<void(const char* gamut, int transfer, bool linear)>
         _apply_color_space;
     std::function<void()> _on_primitive_changed;
+    bool _has_lod = false;
+    spirula::LodRenderConfig _lod_cfg;
 
     // Mesh display switches (preview mode over a mesh).
     bool _mesh_shade = true, _mesh_flat = false, _mesh_color_on = true;

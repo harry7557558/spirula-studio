@@ -90,8 +90,9 @@ launch_projection_fwd_vk(
     Vanilla3DGS<0>::ScreenBuffer sb(splats_screen);
 
     const uint64_t total_threads = (uint64_t)C * (uint64_t)N;
+    if (total_threads == 0) return std::make_tuple(aabb, sorting_depths, splats_screen);
     const uint32_t wgs = (uint32_t)((total_threads + 127) / 128);
-    const uint32_t per_row = std::min(wgs, 65535u);
+    const uint32_t per_row = std::min(std::max(wgs, 1u), 65535u);
     const uint32_t rows = (wgs + per_row - 1) / per_row;
 
     ProjectionFwdParams p{};
@@ -221,8 +222,9 @@ std::tuple<
     Vanilla3DGUT<0>::ScreenBuffer sb(splats_screen);
 
     const uint64_t total_threads = (uint64_t)C * (uint64_t)N;
+    if (total_threads == 0) return std::make_tuple(aabb, sorting_depths, splats_screen);
     const uint32_t wgs = (uint32_t)((total_threads + 127) / 128);
-    const uint32_t per_row = std::min(wgs, 65535u);
+    const uint32_t per_row = std::min(std::max(wgs, 1u), 65535u);
     const uint32_t rows = (wgs + per_row - 1) / per_row;
 
     Projection3dgutParams p{};
