@@ -44,7 +44,7 @@ struct GeometryJob {
     std::string image_exposure;
 };
 
-// One checkpoint the screen offers, MoGe's three first and each family's
+// One checkpoint the screen offers, MoGe's four first and each family's
 // largest last. Index 1 is the default -- moge2-vitb, which is metric, rejects
 // the sky, and is quicker than Metric3D's large.
 struct GeometryModel {

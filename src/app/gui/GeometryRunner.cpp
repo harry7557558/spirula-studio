@@ -45,6 +45,7 @@ constexpr uint64_t kGiantBytes = 1401125724ull + 1355808768ull;
 constexpr uint64_t kMogeSBytes = 140852051ull;
 constexpr uint64_t kMogeBBytes = 419411850ull;
 constexpr uint64_t kMogeLBytes = 1324265014ull;
+constexpr uint64_t kMoge3LBytes = 1481333394ull;
 // Streamed, never stored: the files on disk come to 11 GB.
 constexpr uint64_t kMarigoldBytes = 44844605868ull;
 
@@ -64,6 +65,8 @@ const std::vector<GeometryModel>& geometry_models() {
          kMogeBBytes},
         {"moge2-vitl", &dmsg::geom_model_moge_l, &dmsg::geom_model_moge_l_blurb,
          kMogeLBytes},
+        {"moge3-vitl", &dmsg::geom_model_moge3_l, &dmsg::geom_model_moge3_l_blurb,
+         kMoge3LBytes},
         {"metric3d-vit-small", &dmsg::geom_model_small,
          &dmsg::geom_model_small_blurb, kSmallBytes},
         {"metric3d-vit-large", &dmsg::geom_model_large,
@@ -96,9 +99,9 @@ std::vector<PendingDownload> geometry_model_downloads(const std::string& id) {
             out.push_back(d);
         }
         // Its depth is anchored to MoGe-2's.
-        want(moge::find_model_source("moge2-vitb")->onnx);
+        want(moge::find_model_source("moge2-vitb")->checkpoint);
     } else if (const moge::ModelSource* m = moge::find_model_source(id)) {
-        want(m->onnx);
+        want(m->checkpoint);
     } else if (const metric3d::ModelSource* src = metric3d::find_model_source(id)) {
         want(src->onnx);
         want(src->data);

@@ -1,11 +1,12 @@
-// MoGe-2 checkpoint and forward-pass gate: shapes, a finite prediction, and
+// MoGe checkpoint and forward-pass gate: shapes, a finite prediction, and
 // the shift solve against an analytic plane. It cannot check the network's
 // numbers -- we do not own these weights and cannot embed a golden copy. That
-// is tools/moge/compare_ort.py's job, and it is the gate that matters.
+// is tools/moge/compare_ort.py's job (and check_refiner.py's for MoGe-3).
 //
 //   ./build_vulkan/moge_test                        # cached checkpoints, or SKIP
 //   ./build_vulkan/moge_test --fetch                # download them first
 //   ./build_vulkan/moge_test --model M --image IMG.jpg [--num-tokens N] [--repeat N]
+//       [--refine-steps N]
 //   SS_MOGE_DUMP=/tmp/ours ./build_vulkan/moge_test --model M --image IMG.jpg
 
 #include "moge/Moge.h"
@@ -15,6 +16,7 @@
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
+#include "nn/vk/Stream.h"
 
 #include <cmath>
 #include <cstdio>
@@ -101,7 +103,7 @@ void test_recover() {
 }
 
 void run_one(const std::string& model, const std::string& image, int max_size,
-             int num_tokens, int repeat) {
+             int num_tokens, int repeat, int refine_steps) {
     std::printf("%s\n", model.c_str());
     const double t0 = nn::now_ms();
     moge::Predictor pred;
@@ -118,6 +120,7 @@ void run_one(const std::string& model, const std::string& image, int max_size,
     moge::PredictOptions po;
     po.num_tokens = num_tokens;
     po.want_mask = true;
+    po.refine_steps = refine_steps;
     moge::Prediction out = pred.predict(rgb.data(), w, h, po);
     // The first call builds pipelines and measures the GEMM tiling; the rate a
     // dataset actually runs at is the second one onwards.
@@ -126,6 +129,7 @@ void run_one(const std::string& model, const std::string& image, int max_size,
         out = pred.predict(rgb.data(), w, h, po);
         std::printf("  predict %.0f ms\n", nn::now_ms() - t);
     }
+    nn::vk::Stream::get().report();   // per-kernel times under SS_PROFILE=1
 
     check(out.width == w && out.height == h, "prediction comes back at the input size");
     check((size_t)out.depth.size() == (size_t)w * h, "depth is full size");
@@ -165,7 +169,7 @@ void run_one(const std::string& model, const std::string& image, int max_size,
 
 int main(int argc, char** argv) {
     std::string model, image;
-    int max_size = 0, num_tokens = 1800, repeat = 1;
+    int max_size = 0, num_tokens = 1800, repeat = 1, refine_steps = 3;
     bool fetch = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -174,6 +178,7 @@ int main(int argc, char** argv) {
         else if (a == "--max-size" && i + 1 < argc) max_size = std::atoi(argv[++i]);
         else if (a == "--num-tokens" && i + 1 < argc) num_tokens = std::atoi(argv[++i]);
         else if (a == "--repeat" && i + 1 < argc) repeat = std::atoi(argv[++i]);
+        else if (a == "--refine-steps" && i + 1 < argc) refine_steps = std::atoi(argv[++i]);
         else if (a == "--fetch") fetch = true;
         else {
             std::fprintf(stderr, "unknown argument '%s'\n", a.c_str());
@@ -186,20 +191,20 @@ int main(int argc, char** argv) {
         test_recover();
 
         if (!model.empty()) {
-            run_one(model, image, max_size, num_tokens, repeat);
+            run_one(model, image, max_size, num_tokens, repeat, refine_steps);
         } else {
             int ran = 0;
-            for (const char* id : {"moge2-vits", "moge2-vitb", "moge2-vitl"}) {
+            for (const char* id : {"moge2-vits", "moge2-vitb", "moge2-vitl", "moge3-vitl"}) {
                 const moge::ModelSource* src = moge::find_model_source(id);
                 if (!src) continue;
                 std::error_code ec;
-                if (!fetch && !fs::exists(nn::cached_path(src->onnx), ec)) continue;
-                run_one(id, image, max_size, num_tokens, repeat);
+                if (!fetch && !fs::exists(nn::cached_path(src->checkpoint), ec)) continue;
+                run_one(id, image, max_size, num_tokens, repeat, refine_steps);
                 ++ran;
             }
             if (ran == 0)
                 std::printf("SKIP: no cached checkpoint (--fetch downloads them, or "
-                            "--model <path.onnx>)\n");
+                            "--model <path.onnx|.pt>)\n");
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "\nerror: %s\n", e.what());

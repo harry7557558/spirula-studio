@@ -32,6 +32,10 @@ public:
     bool has(const std::string& name) const;
     const Entry& entry(const std::string& name) const;
     std::vector<std::string> names() const;
+    // A number or list stored beside the weights, by dotted path, e.g.
+    // "model_config.refiner.model_channels"; None list entries are NaN. Empty
+    // when absent.
+    std::vector<double> config(const std::string& key) const;
     // Opens the archive for this one read; a thread reading many tensors keeps a Reader.
     OnnxTensor read(const std::string& name) const;
 
