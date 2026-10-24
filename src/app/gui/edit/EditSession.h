@@ -167,6 +167,8 @@ private:
     void auto_align();
     void ground_from_selection();
     void pick_align(float px, float py);
+    void marker_align();
+    void marker_crop();
     // Live layer-0 points in saved coordinates, thinned to at most `cap`.
     std::vector<double> saved_points(int64_t cap, bool selected_only,
                                      std::vector<int64_t>* index = nullptr) const;
@@ -269,6 +271,8 @@ private:
     Pick _pick = Pick::None;
     bool _align_yaw = true, _align_centre = true, _corner_to_origin = false;
     float _align_tol = 1.0f;          // x 1% of the model's extent
+    int _marker_origin = 0, _marker_xaxis = 1, _marker_xyplane = 2;
+    float _marker_dist_x = 1.0f, _marker_pad = 0.2f;
     bool _levelling_was = false, _levelling_touched = false;
     bool _moved_ever = false;         // the grid is this session's from here on
     struct Centres {

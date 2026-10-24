@@ -128,6 +128,7 @@ add_library(csrc STATIC ${SPLAT_SOURCES})
 
 target_include_directories(csrc PRIVATE
     ${SS_SRC}
+    ${SS_SRC}/external/apriltag
     ${CMAKE_BINARY_DIR}      # app_generated/viewer_html.h
     ${CUDAToolkit_INCLUDE_DIRS}
 )

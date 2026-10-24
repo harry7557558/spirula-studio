@@ -29,6 +29,7 @@
 function(ss_configure_app target)
     target_include_directories(${target} PRIVATE
         ${SS_SRC}
+        ${SS_SRC}/external/apriltag
         ${CMAKE_BINARY_DIR}      # app_generated/*.h
         ${CUDAToolkit_INCLUDE_DIRS}
     )
@@ -126,6 +127,10 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/ScanDepth.cpp
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
+
+# ---- fiducial marker tool: detect, align, crop ----
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/marker_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_MARKER=1)
 
 if(SS_BUILD_SFM)
     # ---- structure from motion ----

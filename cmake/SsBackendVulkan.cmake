@@ -28,7 +28,7 @@ target_compile_options(csrc_portable PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>
     $<$<COMPILE_LANGUAGE:C>:${SPLAT_C_FLAGS}>)
 target_compile_definitions(csrc_portable PUBLIC SS_BACKEND_VULKAN)
-target_include_directories(csrc_portable PUBLIC ${SS_SRC} ${CMAKE_BINARY_DIR})
+target_include_directories(csrc_portable PUBLIC ${SS_SRC} ${SS_SRC}/external/apriltag ${CMAKE_BINARY_DIR})
 target_link_libraries(csrc_portable PUBLIC ss_i18n ${CMAKE_DL_LIBS})   # dlopen: NVML
 
 find_package(OpenMP)

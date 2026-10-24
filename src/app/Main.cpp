@@ -101,6 +101,9 @@ const std::vector<Tool>& tools() {
 #ifdef SS_TOOL_PARTITION
         {app::kToolPartition, &cmsg::tool_partition, spirula_partition_main},
 #endif
+#ifdef SS_TOOL_MARKER
+        {app::kToolMarker, &cmsg::tool_marker, spirula_marker_main},
+#endif
     };
     return kTools;
 }
