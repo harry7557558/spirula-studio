@@ -1,5 +1,6 @@
 #include "marigold/model/Install.h"
 
+#include "core/AtomicFile.h"
 #include "core/Sha256.h"
 #include "marigold/Common.h"
 #include "marigold/model/Files.h"
@@ -206,9 +207,7 @@ void save_resume(const std::string& path, const std::string& plan, const Resume&
           << r.sha.total << '\n';
         NN_CHECK(o.good(), "cannot write '%s'", tmp.c_str());
     }
-    std::error_code ec;
-    fs::rename(tmp, path, ec);
-    NN_CHECK(!ec, "cannot write '%s': %s", path.c_str(), ec.message().c_str());
+    spirula::replace_file(tmp, path);
 }
 
 // `plan` empty: any plan, for an estimate.

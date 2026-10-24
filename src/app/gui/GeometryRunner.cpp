@@ -21,8 +21,11 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
+#include <mutex>
 
 namespace fs = std::filesystem;
 namespace dmsg = spirula::i18n::msg::dataset;
@@ -76,6 +79,26 @@ const std::vector<GeometryModel>& geometry_models() {
     return kModels;
 }
 
+#ifdef SS_TOOL_GEOMETRY
+namespace {
+
+// Asked from draw code every frame, and Marigold's answer reads the file its
+// installer keeps replacing, which Windows refuses while it is open. Two seconds.
+app::GeometryInstall install_needs(const std::string& id) {
+    static std::mutex mu;
+    static std::map<std::string, std::pair<app::GeometryInstall, std::chrono::steady_clock::time_point>> seen;
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lk(mu);
+    auto it = seen.find(id);
+    if (it != seen.end() && now - it->second.second < std::chrono::seconds(2)) return it->second.first;
+    const app::GeometryInstall need = app::geometry_install_needs(id, true, true);
+    seen[id] = {need, now};
+    return need;
+}
+
+}  // namespace
+#endif
+
 std::vector<PendingDownload> geometry_model_downloads(const std::string& id) {
     std::vector<PendingDownload> out;
 #ifdef SS_TOOL_GEOMETRY
@@ -87,7 +110,7 @@ std::vector<PendingDownload> geometry_model_downloads(const std::string& id) {
     if (id == marigold::kModelId) {
         // Both maps: a run that later turns depth on should not stop for a second
         // install. The child checks the disk before anything streams.
-        const app::GeometryInstall need = app::geometry_install_needs(id, true, true);
+        const app::GeometryInstall need = install_needs(id);
         if (need.needed()) {
             PendingDownload d;
             d.bytes = need.download;
@@ -126,7 +149,7 @@ bool geometry_model_cached(const std::string& id) {
 GeometryDisk geometry_model_disk(const std::string& id) {
     GeometryDisk d;
 #ifdef SS_TOOL_GEOMETRY
-    const app::GeometryInstall need = app::geometry_install_needs(id, true, true);
+    const app::GeometryInstall need = install_needs(id);
     d.needed = need.needed();
     d.fits = need.fits();
     d.disk = need.disk;
