@@ -25,8 +25,10 @@
 #include <string>
 #include <vector>
 
+#include "lod/LodConfig.h"
+
 // Static per-run info the render path needs (subset of model config).
-namespace spirula { struct RegionOverlay; }
+namespace spirula { struct RegionOverlay; class HierarchyRenderer; }
 
 struct ViewerRenderConfig {
     std::string primitive = "3dgs";
@@ -57,6 +59,10 @@ struct ViewerRenderConfig {
     // is false over a file, which has none, so those modes are not offered.
     dsparse::CenterTable centers{};
     bool center_cameras = false;
+
+    // Optional hierarchical LOD renderer
+    std::shared_ptr<spirula::HierarchyRenderer> lod_renderer;
+    spirula::LodRenderConfig lod_cfg;
 };
 
 struct ViewerHooks {
@@ -112,6 +118,7 @@ struct ViewRequest {
     // render in flight is never half-switched.
     std::string primitive;    // "" = ViewerRenderConfig::primitive
     int sh_degree = -1;       // < 0 = the warmup schedule
+    std::optional<spirula::LodRenderConfig> lod_cfg;
 
     // ---- a frame for a file rather than for the screen ----
     // No overlays and no display transform: ViewResult::rgba8 comes back as

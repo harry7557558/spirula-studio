@@ -191,14 +191,14 @@ bool parse_settings_equal(const TrainConfig& a, const TrainConfig& b) {
 // What the viewer can open: Gaussians and SfM clouds (.ply), and every mesh
 // format the mesher writes -- one list, so the picker and the drop handler
 // cannot disagree about what is openable.
-const std::vector<std::string> kViewableExtensions = {".ply", ".obj", ".gltf",
+const std::vector<std::string> kViewableExtensions = {".ply", ".slod", ".obj", ".gltf",
                                                       ".glb", ".stl"};
 
 // What "Open a Model or Reconstruction" shows. The rest are how a
 // reconstruction is named when the desktop's own picker cannot return a
 // folder: transforms.json, cameras.bin, points3D.txt, a Metashape .xml / .psx.
 const std::vector<std::string> kOpenableExtensions = {
-    ".ply", ".obj", ".gltf", ".glb", ".stl", ".json", ".bin", ".txt", ".xml", ".psx"};
+    ".ply", ".slod", ".obj", ".gltf", ".glb", ".stl", ".json", ".bin", ".txt", ".xml", ".psx"};
 
 // Can this format carry this color? The child's own answer, asked through the
 // same function it refuses the run with.
@@ -2143,6 +2143,7 @@ static ModelContent classify_recent_model(const std::string& path) {
     if (fs::is_directory(p, ec))
         return looks_like_model(p) ? ModelContent::Splats : ModelContent::Points;
     const std::string ext = lower_ext(p);
+    if (ext == ".slod") return ModelContent::Splats;
     if (ext == ".ply") {
         if (spirula::is_splat_ply(path)) return ModelContent::Splats;
         return meshing::ply_is_mesh(path) ? ModelContent::Mesh : ModelContent::Points;
@@ -3469,7 +3470,7 @@ void GuiApp::draw_menu_bar() {
         }
         if (ui::MenuItem(msg::menu_open_splat)) {
             open_pick(PickAction::SplatFile, msg::viewer_pick_file.get(),
-                      FileDialog::Mode::File, {".ply"});
+                      FileDialog::Mode::File, {".ply", ".slod"});
         }
         if (ui::BeginMenu(msg::menu_open_recent, !_recent.items().empty())) {
             probe_recent();
