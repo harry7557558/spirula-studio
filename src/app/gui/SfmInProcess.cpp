@@ -4,6 +4,7 @@
 
 #ifdef SS_TOOL_SFM
 #include "sfm/Pipeline.h"
+#include "sfm/Repair.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
 #include "sfm/core/Log.h"
@@ -26,6 +27,17 @@ InProcessResult run_sfm_in_process(
     const std::function<void(const RunStatus&)>& on_status,
     const std::atomic<bool>& cancel) {
     (void)args; (void)log; (void)on_status; (void)cancel;
+    InProcessResult out;
+    out.exit_code = -1;
+    out.error = spirula::i18n::msg::log::err_no_sfm_module.get();
+    return out;
+}
+
+InProcessResult run_repair_in_process(const RepairRequest& rq,
+                                      const std::function<void(const std::string&)>& log,
+                                      const std::atomic<bool>& cancel,
+                                      std::vector<RepairResultLine>* report) {
+    (void)rq; (void)log; (void)cancel; (void)report;
     InProcessResult out;
     out.exit_code = -1;
     out.error = spirula::i18n::msg::log::err_no_sfm_module.get();
@@ -139,6 +151,55 @@ InProcessResult run_sfm_in_process(
     try {
         const sfm::AutoResult r = sfm::run_auto(req.cfg, req.in);
         out.exit_code = r.exit_code;
+    } catch (const sfm::Cancelled&) {
+        out.cancelled = true;
+        out.exit_code = 2;
+    } catch (const std::exception& e) {
+        out.exit_code = 2;
+        out.error = e.what();
+    }
+    return out;
+}
+
+InProcessResult run_repair_in_process(const RepairRequest& rq,
+                                      const std::function<void(const std::string&)>& log,
+                                      const std::atomic<bool>& cancel,
+                                      std::vector<RepairResultLine>* report) {
+    InProcessResult out;
+    sfm::RepairJob job;
+    job.workspace = rq.workspace;
+    job.model_dir = rq.model_dir;
+    job.output_dir = rq.output_dir;
+    job.replace = rq.replace;
+    job.add = rq.add;
+    job.exclude = rq.exclude;
+    job.add_missing = rq.add_missing;
+    job.audit_all = rq.audit_all;
+    job.match = rq.match;
+    job.cfg.image_dir = rq.image_dir;
+    if (!rq.features.empty()) job.cfg.features = rq.features;
+    if (!rq.matcher.empty()) job.cfg.matcher = rq.matcher;
+    for (const RepairRequest::Hint& h : rq.hints) {
+        sfm::RepairHint s;
+        s.name = h.name;
+        for (int i = 0; i < 9; i++) s.pose.R[i] = h.R[i];
+        s.pose.t = {h.t[0], h.t[1], h.t[2]};
+        job.hints.push_back(std::move(s));
+    }
+
+    sfm::RunContext ctx;
+    ctx.set_cancel(&cancel);
+    const LinePrinter printer;
+    if (log)
+        ctx.set_log([&](sfm::slog::Tag t, sfm::slog::Level lv, const std::string& s) {
+            log(printer.render(t, lv, s));
+        });
+    try {
+        std::vector<sfm::RepairLine> lines;
+        out.exit_code = sfm::runRepair(std::move(job), &lines);
+        if (report)
+            for (const sfm::RepairLine& l : lines)
+                report->push_back({l.name, l.outcome, l.rot_deg, l.shift});
     } catch (const sfm::Cancelled&) {
         out.cancelled = true;
         out.exit_code = 2;

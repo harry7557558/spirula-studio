@@ -37,4 +37,28 @@ InProcessResult run_sfm_in_process(
     const std::function<void(const RunStatus&)>& on_status,
     const std::atomic<bool>& cancel);
 
+// A repair of one finished model (sfm/Repair.h), in GUI terms.
+struct RepairRequest {
+    std::string workspace, model_dir, output_dir, image_dir;
+    std::vector<std::string> replace, add, exclude;
+    struct Hint {
+        std::string name;
+        double R[9];  // world-to-camera, row-major, COLMAP's axes
+        double t[3];
+    };
+    std::vector<Hint> hints;
+    bool add_missing = false, audit_all = false, match = true;
+    std::string features, matcher;  // "" = the defaults; should be what the run used
+};
+
+struct RepairResultLine {
+    std::string name, outcome;  // moved | kept | added | failed | removed
+    double rot_deg = 0, shift = 0;
+};
+
+InProcessResult run_repair_in_process(const RepairRequest& rq,
+                                      const std::function<void(const std::string&)>& log,
+                                      const std::atomic<bool>& cancel,
+                                      std::vector<RepairResultLine>* report);
+
 }  // namespace gui
