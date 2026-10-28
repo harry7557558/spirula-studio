@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <random>
 #include <string>
@@ -166,11 +167,12 @@ int main(int argc, char** argv) {
     cfg.optim.lr_features_dc = 2.5e-3f;
     cfg.optim.lr_features_sh = 1.25e-4f;
     cfg.optim.sh_value_bits = 32;
-    // Disable densification via refine_start_iter: the step gate evaluates
-    // `step % refine_every` whenever step > refine_start_iter, so a zero
-    // refine_every alone SIGFPEs. Keep both fields out of reach.
+    // A zero refine_every alone divides by zero in the step gate.
     cfg.densify.refine_start_iter = 1 << 20;
     cfg.densify.refine_every = 1 << 20;
+    // Clipping runs even without refinement; a zero world limit makes log-scales -inf.
+    cfg.densify.max_screen_size = std::numeric_limits<float>::infinity();
+    cfg.densify.max_world_size = std::numeric_limits<float>::infinity();
 
     const int max_steps = 100;
     int step = 1;
@@ -344,11 +346,18 @@ int main(int argc, char** argv) {
                      (long long)engine().cur_num_splats);
         return 1;
     }
+    const size_t params_begin = g_loose.size();
     readback_dev_f(g_loose, engine().world.means.data_ptr(), N * 3);
     readback_dev_f(g_loose, engine().world.quats.data_ptr(), N * 4);
     readback_dev_f(g_loose, engine().world.scales.data_ptr(), N * 3);
     readback_dev_f(g_loose, engine().world.opacities.data_ptr(), N);
     readback_dev_f(g_loose, engine().world.features_dc.data_ptr(), N * 3);
+    for (size_t i = params_begin; i < g_loose.size(); ++i) {
+        if (!std::isfinite(g_loose[i])) {
+            std::fprintf(stderr, "non-finite trained parameter at %zu\n", i - params_begin);
+            return 1;
+        }
+    }
 
     const int64_t nt = (int64_t)g_tight.size(),
                   nl = (int64_t)g_loose.size();
