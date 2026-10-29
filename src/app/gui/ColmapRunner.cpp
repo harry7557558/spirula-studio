@@ -456,6 +456,8 @@ PrepJob ColmapRunner::prep_job(const ColmapJob& job) {
     pj.blur_neighbour = job.blur_neighbour;
     pj.similar_bits = job.similar_bits;
     pj.keep_skipped = job.keep_skipped;
+    pj.sync_tracks = job.sync_tracks;
+    pj.auto_rotate = job.auto_rotate;
     pj.pano = job.pano;
     pj.max_frames = job.max_frames;
     pj.ffmpeg_exe = job.ffmpeg_exe;
@@ -509,6 +511,8 @@ void ColmapRunner::run(ColmapJob job) {
         const DatasetRecord rec = read_plan_record(ws.string(), pj);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job, pj), prior, rec, req);
+        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+            return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string())) log(l);
@@ -534,8 +538,10 @@ void ColmapRunner::run(ColmapJob job) {
                 pj = p;
             };
             auto done = [&](Stage s, const PrepJob&) {
-                record.finish(s == Stage::Frames ? Step::Frames : Step::Masks);
+                if (s == Stage::Frames) record.finish(Step::Frames, prep.captures);
+                else record.finish(Step::Masks);
             };
+            pj.recorded_captures = recorded_captures(ws.string(), pj);
             if (!dp.run(pj, prep, err, refresh, done)) return fail(err);
         }
         const std::string images = prep.image_dir;

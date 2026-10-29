@@ -32,6 +32,8 @@ struct VideoFacts {
 bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
                         VideoFacts& out, const std::atomic<bool>& cancel);
 
+enum class FfmpegFrameFormat { Gray8, Rgb8, Rgb48Be };
+
 // One ffmpeg decoding to a pipe as PPM (RGB) or PGM (grey) pictures. Each
 // carries its own size, so an autorotated or scaled stream needs no guess at
 // what ffmpeg made of it.
@@ -42,11 +44,13 @@ public:
     FfmpegFrames(const FfmpegFrames&) = delete;
     FfmpegFrames& operator=(const FfmpegFrames&) = delete;
     // `argv` is the command up to the output, which this appends.
-    bool open(std::vector<std::string> argv, bool gray, std::string& error);
+    bool open(std::vector<std::string> argv, FfmpegFrameFormat format,
+              std::string& error);
     // The next picture; false at the end of the stream with `error` empty, or
-    // on a failure with it set.
+    // on a failure with it set. RGB48 samples are big-endian byte pairs.
     bool next(std::vector<uint8_t>& px, int& width, int& height,
               std::string& error);
+    int sample_bytes() const { return _format == FfmpegFrameFormat::Rgb48Be ? 2 : 1; }
     // Stops the child if it is still running.
     void close();
 
@@ -59,7 +63,7 @@ private:
     std::unique_ptr<gui::ProcessReader> _proc;
     std::vector<uint8_t> _buf;
     size_t _at = 0, _end = 0;
-    bool _gray = false;
+    FfmpegFrameFormat _format = FfmpegFrameFormat::Rgb8;
     std::string _last_line;   // of its stderr: what a failure says
 };
 

@@ -26,6 +26,9 @@
 #include "external/stb_image.h"      // stbi_info (image size probe), stbi_load
 #include "external/stb_image_write.h"  // stbi_write_jpg (the photo re-encode)
 
+#if defined(SS_BUILD_SAM) || defined(SS_HAVE_VIDEO)
+#include "app/FrameExtract.h"
+#endif
 #ifdef SS_BUILD_SAM
 #include "app/WriterPool.h"
 #include "nn/Device.h"
@@ -33,7 +36,6 @@
 #include "sam/Masking.h"
 #endif
 #ifdef SS_HAVE_VIDEO
-#include "app/FrameExtract.h"
 #include "video/Video.h"
 #endif
 
@@ -110,6 +112,7 @@ int candidate_group(const PrepJob& job, const PrepInput& in) {
                             : window;
 }
 
+#ifndef SS_BUILD_SAM
 // How ffmpeg is told to write every decoded frame exactly once: the image2
 // muxer is constant-rate by default, and pads or drops a variable-rate file to
 // fit. -vsync rather than -fps_mode, which ffmpeg before 5.1 rejects.
@@ -117,6 +120,7 @@ void append_every_frame_args(std::vector<std::string>& argv, int max_frames) {
     argv.insert(argv.end(), {"-vsync", "passthrough"});
     if (max_frames > 0) argv.insert(argv.end(), {"-frames:v", std::to_string(max_frames)});
 }
+#endif
 
 // Throw away what a previous run generated, for a step being re-done. Only
 // under the workspace: photos read where they are belong to the user, and a
@@ -1177,6 +1181,40 @@ int DatasetPrep::exec(
     }, _cancel);
 }
 
+#ifdef SS_BUILD_SAM
+struct FrameSourceInfo {
+    double fps = 0.0;
+    int64_t frames = 0;
+    int tracks = 0;
+};
+
+static bool probe_frame_source(const PrepJob& job, const PrepInput& in,
+                                FrameSourceInfo& out,
+                                const std::atomic<bool>& cancel,
+                                std::string& error) {
+    std::string probe_error;
+#ifdef SS_HAVE_VIDEO
+    if (!job.force_external_decode) {
+        video::VideoProbe probe;
+        if (video::probe_video(in.path, probe, probe_error) && probe.tracks > 0) {
+            out = {probe.fps, probe.frame_count, probe.tracks};
+            return true;
+        }
+    }
+#endif
+    VideoFacts facts;
+    if (ffmpeg_probe_video(job.ffmpeg_exe, in.path, facts, cancel) &&
+        !facts.tracks.empty()) {
+        out = {facts.fps, facts.frames, (int)facts.tracks.size()};
+        return true;
+    }
+    error = cancel.load() ? lmsg::err_cancelled.get()
+            : !command_exists(job.ffmpeg_exe) ? fmt(lmsg::err_ffmpeg_missing, {job.ffmpeg_exe})
+            : probe_error.empty() ? "no video track" : probe_error;
+    return false;
+}
+#endif
+
 int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
                                      const std::string& images) {
     // What a resumed run keeps is exactly what is there already.
@@ -1190,27 +1228,22 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
         if (!in.mask_dir.empty()) n += (int64_t)walk_images(in.mask_dir).size();
         return n;
     }
-    // The probe has to match the path the extraction will take: the two count
-    // tracks differently, and ffmpeg resamples the video rather than stepping
-    // through the frames the container holds.
-
     // A 360 capture writes one image per view; its two tracks are one frame.
     const int per_frame =
         in.pano360.valid()
             ? (int)app::pano360_views(in.pano360, job.pano).size()
             : std::max(in.packed_lenses, 0);
-#ifdef SS_HAVE_VIDEO
-    if (!job.force_external_decode && native_decode_reason().empty()) {
-        std::string err;
-        video::VideoProbe probe;
-        if (video::probe_video(in.path, probe, err) && probe.tracks > 0) {
-            const double src_fps = probe.fps > 1.0 ? probe.fps : 30.0;
-            return expected_frames(job, input_fps(job, in), src_fps,
-                                   clip_length(in, src_fps, probe.frame_count),
-                                   per_frame > 0 ? per_frame : probe.tracks);
-        }
+#ifdef SS_BUILD_SAM
+    FrameSourceInfo source;
+    std::string error;
+    if (probe_frame_source(job, in, source, _cancel, error)) {
+        const double src_fps = source.fps > 1.0 ? source.fps : 30.0;
+        return expected_frames(job, input_fps(job, in), src_fps,
+                               clip_length(in, src_fps, source.frames),
+                               per_frame > 0 ? per_frame : source.tracks);
     }
-#endif
+    return 0;
+#else
     VideoFacts facts;
     if (ffmpeg_probe_video(job.ffmpeg_exe, in.path, facts, _cancel) &&
         facts.fps > 1.0)
@@ -1219,6 +1252,7 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
                                per_frame > 0 ? per_frame
                                              : (is_dual_fisheye_path(in.path) ? 2 : 1));
     return 0;
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1249,18 +1283,15 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     for (PrepInput& in : job.inputs)
         if (!in.is_video) in.heif = folder_has_heif(in.path);
 
-    // Before the built-in decoder can pick one. Only a job that will reach the
-    // decoder pays: asking whether THIS device decodes is what the freeze makes
-    // safe, and a photo-only job that masks freezes inside Masker::init.
-#ifdef SS_HAVE_VIDEO
-    bool wants_native_decode = false;
-    if (!job.force_external_decode)
-        for (const PrepInput& in : job.inputs)
-            if (in.is_video || in.heif) {
-                wants_native_decode = true;
-                break;
-            }
-    if (wants_native_decode && !sam::freeze_device(job.device, error))
+    // Software decoding still shares GPU frame selection with native decoding.
+#ifdef SS_BUILD_SAM
+    bool wants_frame_device = false;
+    for (const PrepInput& in : job.inputs)
+        if (in.is_video || (in.heif && !job.force_external_decode)) {
+            wants_frame_device = true;
+            break;
+        }
+    if (wants_frame_device && !sam::freeze_device(job.device, error))
         return false;
 #endif
 
@@ -1386,8 +1417,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             if (in.is_video) {
                 const bool keeping =
                     job.resume && !job.redo_frames && count_images(p.images) > 0;
-                if (!keeping && !job.force_external_decode &&
-                    native_decode_reason().empty() && !plan_group(job, i, error))
+                if (!keeping && !plan_group(job, i, error))
                     return false;
                 if (!extract_video(job, in, p.images, out, error))
                     return false;
@@ -1424,8 +1454,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     const bool pause = picked && job.review_frames && review_frames && movable;
     if (picked && job.review_frames && review_frames && !movable)
         log(lmsg::review_not_movable.get(), /*detail=*/false);
-    // The built-in decoder rules on a frame as it goes, against the frames
-    // before it; once all are in, against all of them (app::whole_capture).
+    // Streaming selection can settle the rule against the whole capture.
     if (picked && !pause && job.skip_blurry) {
         const app::PickRule rule = pick_rule(job);
         int moved = 0;
@@ -1668,28 +1697,19 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 // Video -> frames
 // ---------------------------------------------------------------------------
 
-// Whether one stem's frames were taken at one instant: a 360 packing's views
-// are cut from one decoded canvas; separate tracks only under `sync_tracks`,
-// which only the built-in decoder does.
-static bool lockstep_extraction(const PrepJob& job, const PrepInput& in, bool builtin) {
+static bool lockstep_extraction(const PrepJob& job, const PrepInput& in, bool streaming) {
     if (in.pano360.valid()) return job.pano.mode != app::Pano360Mode::Off;
     if (in.packed_lenses >= 2) return true;
-    return builtin && job.sync_tracks;
+    return streaming && job.sync_tracks;
 }
 
-// The built-in decoder names a frame by its source index; ffmpeg's fallback
-// numbers the candidates it resampled at the kept rate times the group (every
-// frame is not resampled, so there too the stem is the source index).
-static PrepCapture capture_of(const PrepJob& job, const PrepInput& in, bool builtin) {
-    const double fps = builtin ? 0.0 : (double)input_fps(job, in) * candidate_group(job, in);
-    PrepCapture c{in.subdir, in.path, fps, lockstep_extraction(job, in, builtin)};
-    if (!builtin && in.clipped()) c.time_offset = in.clip_start;
+PrepCapture video_capture(const PrepJob& job, const PrepInput& in, bool source_indices) {
+    const double fps = source_indices ? 0.0 : (double)input_fps(job, in) * candidate_group(job, in);
+    PrepCapture c{in.subdir, in.path, fps, lockstep_extraction(job, in, source_indices)};
+    if (!source_indices && in.clipped()) c.time_offset = in.clip_start;
     return c;
 }
 
-PrepCapture video_capture(const PrepJob& job, const PrepInput& in) {
-    return capture_of(job, in, !job.force_external_decode && native_decode_reason().empty());
-}
 
 static bool same_path(const std::string& a, const std::string& b) {
     std::error_code ec;
@@ -1710,60 +1730,50 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
             std::error_code ec;
             if (fs::is_directory(fs::path(images) / "cam1", ec))
                 out.per_folder_cameras = true;
-            // As the record says they were cut; with no record, as this build
-            // would cut them. A wrong rate is refused downstream by the
-            // gyro-against-poses check, not misused.
-            PrepCapture cap = video_capture(job, in);
-            for (const PrepCapture& c : job.recorded_captures)
-                if (c.subdir == in.subdir && same_path(c.path, in.path)) cap = c;
+            auto capture = std::find_if(
+                job.recorded_captures.begin(), job.recorded_captures.end(),
+                [&](const PrepCapture& c) {
+                    return c.subdir == in.subdir && same_path(c.path, in.path);
+                });
+            if (capture == job.recorded_captures.end()) {
+                error = "Frame timing is not recorded; extract this video's frames again.";
+                return false;
+            }
+            PrepCapture cap = *capture;
             cap.path = in.path;
             out.captures.push_back(cap);
             return split_packed_frames(in, images, out, error);
         }
     }
 
-    const bool want_builtin =
-        !job.force_external_decode && native_decode_reason().empty();
-    if (want_builtin) {
-        if (extract_video_builtin(job, in, images, out, error)) {
-            out.captures.push_back(capture_of(job, in, true));
-            return split_packed_frames(in, images, out, error);
-        }
-        if (_cancel.load()) return false;
-        // A container or profile the driver cannot decode is exactly what the
-        // fallback is for, and the user should not have to know which is which.
-        log(fmt(lmsg::decode_fallback_ffmpeg, {error}), /*detail=*/false);
-    }
+#ifdef SS_BUILD_SAM
+    if (!extract_video_streaming(job, in, images, out, error)) return false;
+    out.captures.push_back(video_capture(job, in, true));
+    return split_packed_frames(in, images, out, error);
+#else
     const bool ok = in.pano360.valid() && job.pano.mode != app::Pano360Mode::Off
                         ? extract_360_ffmpeg(job, in, images, out, error)
                         : extract_video_ffmpeg(job, in, images, out, error);
-    if (ok) out.captures.push_back(capture_of(job, in, false));
+    if (ok) out.captures.push_back(video_capture(job, in, false));
     return ok && split_packed_frames(in, images, out, error);
+#endif
 }
 
-#ifdef SS_HAVE_VIDEO
-// The job's frame-selection half, which the scan and the extraction have to
-// read the same way or a plan would be spaced against the wrong schedule.
-static bool builtin_job(const PrepJob& job, const PrepInput& in,
-                        app::FrameExtractJob& fx, int64_t* frames,
-                        std::string& error) {
-    video::VideoProbe probe;
-    std::string probe_err;
-    if (!video::probe_video(in.path, probe, probe_err) || probe.tracks <= 0) {
-        error = probe_err.empty() ? "no video track" : probe_err;
-        return false;
-    }
-    const double src_fps = probe.fps > 1.0 ? probe.fps : 30.0;
+#ifdef SS_BUILD_SAM
+static bool streaming_job(const PrepJob& job, const PrepInput& in,
+                          app::FrameExtractJob& fx, FrameSourceInfo& source,
+                          const std::atomic<bool>& cancel, std::string& error) {
+    if (!probe_frame_source(job, in, source, cancel, error)) return false;
+    const double src_fps = source.fps > 1.0 ? source.fps : 30.0;
     fx.clip_start = in.clip_start;
     fx.clip_end = in.clip_end;
-    if (frames) *frames = clip_length(in, src_fps, probe.frame_count);
     const bool every = every_frame(job, in);
     const int window = every ? 1 : std::max(job.sharp_window, 1);
     fx.input = in.path;
     fx.device = job.device;
-    // This run has its own ffmpeg path (extract_video_ffmpeg), numbered by
-    // candidate rather than source frame.
-    fx.decoder = app::FrameDecoder::Builtin;
+    fx.decoder = job.force_external_decode ? app::FrameDecoder::Ffmpeg
+                                          : app::FrameDecoder::Auto;
+    fx.ffmpeg_exe = job.ffmpeg_exe;
     fx.skip = frame_skip(input_fps(job, in), src_fps);
     fx.keep = window > 1 ? std::min(window, fx.skip) : 0;
     fx.max_frames = job.max_frames;
@@ -1793,7 +1803,7 @@ static bool builtin_job(const PrepJob& job, const PrepInput& in,
 // frames off one shot from a bench, as far as the two were measured the same
 // way. Scanned here so the group is measured before any of it is written.
 bool DatasetPrep::plan_group(const PrepJob& job, size_t at, std::string& error) {
-#ifndef SS_HAVE_VIDEO
+#ifndef SS_BUILD_SAM
     (void)job; (void)at; (void)error;
     return true;
 #else
@@ -1811,8 +1821,11 @@ bool DatasetPrep::plan_group(const PrepJob& job, size_t at, std::string& error) 
     std::vector<int64_t> lengths(rows.size(), 0);
     int64_t group_frames = 0;
     for (size_t k = 0; k < rows.size(); k++) {
-        if (!builtin_job(job, job.inputs[rows[k]], jobs[k], &lengths[k], error))
+        FrameSourceInfo source;
+        if (!streaming_job(job, job.inputs[rows[k]], jobs[k], source, _cancel, error))
             return false;
+        lengths[k] = clip_length(job.inputs[rows[k]],
+                                 source.fps > 1.0 ? source.fps : 30.0, source.frames);
         group_frames += std::max<int64_t>(0, lengths[k]);
     }
 
@@ -1853,37 +1866,21 @@ bool DatasetPrep::plan_group(const PrepJob& job, size_t at, std::string& error) 
 #endif
 }
 
-// Extraction writes frames and nothing else: masking is a separate pass
-// (generate_masks_builtin), so frames are visible before the user chooses
-// masks and re-masking costs no re-extraction.
-bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
-                                        const std::string& images,
-                                        PrepResult& out, std::string& error) {
-#ifndef SS_HAVE_VIDEO
-    (void)job; (void)in; (void)images; (void)out;
-    error = backends().video_reason;
-    return false;
-#else
-    enter(Stage::Frames, lmsg::stage_extract_gpu.get());
+#ifdef SS_BUILD_SAM
+bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& in,
+                                          const std::string& images,
+                                          PrepResult& out, std::string& error) {
+    enter(Stage::Frames, job.force_external_decode ? lmsg::stage_extract_ffmpeg.get()
+                                                   : lmsg::stage_extract_gpu.get());
     log(fmt(lmsg::video_input, {in.path}), /*detail=*/false);
 
-    // fps -> "one frame every N source frames". The source rate is what the
-    // container states; a variable-rate file is close enough for this.
-    std::string probe_err;
-    video::VideoProbe probe;
-    if (!video::probe_video(in.path, probe, probe_err) || probe.tracks <= 0) {
-        error = probe_err.empty() ? "no video track" : probe_err;
-        return false;
-    }
-    const std::vector<app::Pano360View> views =
-        in.pano360.valid() ? app::pano360_views(in.pano360, job.pano)
-                          : std::vector<app::Pano360View>();
-    if (!views.empty()) out.per_folder_cameras = views.size() > 1;
-    else if (probe.tracks > 1) out.per_folder_cameras = true;
-
     app::FrameExtractJob fx;
-    if (!builtin_job(job, in, fx, nullptr, error)) return false;
+    FrameSourceInfo source;
+    if (!streaming_job(job, in, fx, source, _cancel, error)) return false;
     fx.image_dir = images;
+    const std::vector<app::Pano360View>& views = fx.views;
+    if (!views.empty()) out.per_folder_cameras = out.per_folder_cameras || views.size() > 1;
+    else if (source.tracks > 1) out.per_folder_cameras = true;
     const size_t row = input_index(job, in);
     if (row < _plans.size()) fx.plan = _plans[row];
     if (!views.empty())
@@ -1901,8 +1898,8 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
     };
     // Only where this run is going to measure for itself: a plan handed in was
     // made by plan_group, which reported its own pass.
-    ScanProgress scan(_prog, clip_length(in, probe.fps > 1.0 ? probe.fps : 30.0,
-                                         probe.frame_count));
+    ScanProgress scan(_prog, clip_length(in, source.fps > 1.0 ? source.fps : 30.0,
+                                         source.frames));
     if (fx.adaptive && fx.plan.empty()) {
         scan.begin(leaf_name(in.path));
         sinks.scanning = [&](int64_t done, int64_t total) {
@@ -1917,7 +1914,7 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
     };
     // One track of ordinary video is the case a frame left out has a file of
     // its own to be looked at: a rig or a sphere is several pictures a frame.
-    const bool single = views.empty() && probe.tracks == 1;
+    const bool single = views.empty() && source.tracks == 1;
     const fs::path skipped = under((fs::path(job.workspace) / "images_skipped").string(),
                                    in.subdir);
     remove_tree(skipped);
@@ -1967,8 +1964,10 @@ bool DatasetPrep::extract_video_builtin(const PrepJob& job, const PrepInput& in,
         return false;
     }
     return true;
-#endif
 }
+#endif
+
+#ifndef SS_BUILD_SAM
 
 // The clip as input options, before `-i`: a seek, then how much to read.
 // Stems count from the seek (PrepCapture::time_offset).
@@ -2328,6 +2327,7 @@ bool DatasetPrep::extract_360_ffmpeg(const PrepJob& job, const PrepInput& in,
         /*detail=*/false);
     return true;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // Photos -> the dataset's own images/
@@ -3266,12 +3266,13 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         return false;
     }
     const fs::path image_root(images);
-    // Frames the built-in decoder wrote are still named after the source frame
-    // they were chosen from; ffmpeg's were renumbered by frame selection, and a
-    // photo folder's clicks were recorded against its own sorted order.
+    // A resumed extraction keeps the numbering recorded when it was written.
+    PrepCapture capture = video_capture(job, in, kStreamingFrameExtraction);
+    if (job.resume && !job.redo_frames)
+        for (const PrepCapture& c : job.recorded_captures)
+            if (c.subdir == in.subdir && same_path(c.path, in.path)) capture = c;
     std::vector<int64_t> ids;
-    const bool by_stem = in.is_video && !job.force_external_decode &&
-                         native_decode_reason().empty() &&
+    const bool by_stem = in.is_video && capture.source_indices() &&
                          frame_ids_from_stems(files, ids);
     if (!by_stem) {
         ids.resize(files.size());
@@ -3305,9 +3306,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     const std::vector<MaskClick> clicks =
         train ? clicks_for(job, in) : std::vector<MaskClick>{};
     mo.video = (in.is_video && job.mask_memory && train) || !clicks.empty();
-    // A click's own frame number survives whenever the numbering it was
-    // recorded against did. ffmpeg resampled the video, and a packed photo's
-    // preview counted the files before the cut: there only the fraction holds.
+    // Packed photo previews count files before the lens split.
     mo.seeds = seeds_from_clicks(
         clicks, cameras, ids,
         /*exact=*/(!in.is_video && in.packed_lenses < 2) || by_stem);

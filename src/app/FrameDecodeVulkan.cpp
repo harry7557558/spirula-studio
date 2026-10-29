@@ -28,10 +28,20 @@ namespace app {
 // a video's worth of pictures until the plan is known.
 bool measure_motion_vulkan(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                            int track, int tracks, MotionPlanInput& out,
-                           FrameExtractStats& t, std::string& error) {
+                           FrameExtractStats& t, std::string& error,
+                           bool& startup_failed) {
+    startup_failed = false;
+    if (sinks.cancel && sinks.cancel->load()) {
+        error = "cancelled";
+        return false;
+    }
     const double t_start = nn::now_ms();
     video::VideoPipeline pipe;
-    if (!pipe.open(o.input, track, 1, error)) return false;
+    if (!pipe.open(o.input, track, 1, error)) {
+        if (sinks.cancel && sinks.cancel->load()) error = "cancelled";
+        else startup_failed = true;
+        return false;
+    }
     const video::TrackInfo& info = pipe.track();
 
     MotionOptions mo;
@@ -224,7 +234,13 @@ bool compose_frame(const FrameLook& look, int folder, std::vector<nn::Image>& im
 bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                             const std::vector<int>& tracks, bool convert,
                             const std::vector<int64_t>& plan, FrameExtractStats& t,
-                            std::string& error, const InstantSink& on_frame) {
+                            std::string& error, const InstantSink& on_frame,
+                            bool& startup_failed) {
+    startup_failed = false;
+    if (sinks.cancel && sinks.cancel->load()) {
+        error = "cancelled";
+        return false;
+    }
     const size_t n = tracks.size();
     video::ConvertOpts conv;
     if (convert) {
@@ -235,8 +251,16 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
     if (!convert_lut(o.lut, conv, lut, error)) return false;
     std::vector<std::unique_ptr<video::VideoPipeline>> pipe;
     for (size_t k = 0; k < n; k++) {
+        if (sinks.cancel && sinks.cancel->load()) {
+            error = "cancelled";
+            return false;
+        }
         pipe.push_back(std::make_unique<video::VideoPipeline>());
-        if (!pipe[k]->open(o.input, tracks[k], std::max(o.keep, 1), error)) return false;
+        if (!pipe[k]->open(o.input, tracks[k], std::max(o.keep, 1), error)) {
+            if (sinks.cancel && sinks.cancel->load()) error = "cancelled";
+            else startup_failed = true;
+            return false;
+        }
     }
 
     struct Buffered {
@@ -288,7 +312,7 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
     };
 
     auto flush_window = [&](bool write) {
-        if (window.empty()) return;
+        if (window.empty()) return true;
         if (write) {
             if (measured_pending) {
                 const double t0 = nn::now_ms();
@@ -319,7 +343,12 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
             for (size_t k = 0; k < n && ok; k++)
                 ok = pipe[k]->toImage(chosen.h[k], conv, imgs[k], err);
             t.convert += nn::now_ms() - t0;
-            if (ok && judge) {
+            if (!ok) {
+                error = "frame " + std::to_string(chosen.index) + ": " + err;
+                drain();
+                return false;
+            }
+            if (judge) {
                 FramePick p;
                 p.index = chosen.index;
                 if (imgs[0].channels == 3) {
@@ -334,10 +363,10 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
                 if (p.verdict != PickVerdict::Kept) {
                     ++(p.verdict == PickVerdict::Blurry ? t.blurry : t.similar);
                     drain();
-                    return;
+                    return true;
                 }
             }
-            if (ok) ok = on_frame(imgs, chosen.index, err);
+            ok = on_frame(imgs, chosen.index, err);
             if (!ok) {
                 log_line(sinks, "frame " + std::to_string(chosen.index) + ": " + err);
             } else {
@@ -346,6 +375,7 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
             }
         }
         drain();
+        return true;
     };
 
     while (o.max_frames <= 0 || written < o.max_frames) {
@@ -400,7 +430,10 @@ bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& s
             release(window.front());
             window.pop_front();
         }
-        if (clock.step(b.index)) flush_window(true);
+        if (clock.step(b.index) && !flush_window(true)) {
+            release_ahead();
+            return false;
+        }
     }
     flush_window(false);
     return true;

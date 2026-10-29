@@ -101,9 +101,10 @@ starts with no focal-length prior.
 
 Turning it on buys in-process GPU decoding and encoding: roughly 15× faster
 frame extraction (a 127-second 1080p30 clip in ten seconds rather than
-minutes), `spirula encode` for the render mode's videos, and no ffmpeg to
-install. A device without a video queue -- MoltenVK on every Mac -- decodes
-with ffmpeg even then.
+minutes), `spirula encode` for the render mode's videos, and no FFmpeg
+dependency for inputs supported by the device. Devices without a video queue
+(including MoltenVK on macOS) and unsupported codec profiles still decode
+with external FFmpeg.
 Nothing else in the build changes.
 
 If you distribute binaries, decide for your jurisdiction and your users before

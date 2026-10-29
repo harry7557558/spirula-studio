@@ -229,51 +229,53 @@ bool cube_lut_file(const std::string& spec, std::string& path, std::string& erro
     return true;
 }
 
-void apply_cube_lut(const CubeLut& lut, uint8_t* rgb, size_t pixels, int threads) {
-    if (lut.empty() || pixels == 0) return;
-    const int n = lut.size;
-    // An 8-bit input has 256 positions per axis, so the cell and the weight
-    // inside it are looked up rather than computed per pixel.
-    int base[3][256];
-    float frac[3][256];
-    for (int c = 0; c < 3; c++)
-        for (int v = 0; v < 256; v++) {
-            const float t = (v / 255.0f - lut.domain_min[c]) /
-                            (lut.domain_max[c] - lut.domain_min[c]);
-            const float x = std::clamp(t, 0.0f, 1.0f) * (float)(n - 1);
-            const int i = std::min((int)x, n - 2);
-            base[c][v] = i;
-            frac[c][v] = x - (float)i;
-        }
-    const float* L = lut.rgb.data();
-    const size_t sr = 3, sg = (size_t)n * 3, sb = (size_t)n * n * 3;
+namespace {
 
-    auto run = [&](size_t from, size_t to) {
-        for (size_t p = from; p < to; p++) {
-            uint8_t* px = rgb + p * 3;
-            const float fr = frac[0][px[0]], fg = frac[1][px[1]], fb = frac[2][px[2]];
-            const float* c000 = L + base[0][px[0]] * sr + base[1][px[1]] * sg +
-                                base[2][px[2]] * sb;
-            const float* c111 = c000 + sr + sg + sb;
-            // Which of the cube's six tetrahedra holds the point decides the two
-            // corners between c000 and c111; the weights are the sorted fractions.
-            const float *c1, *c2;
-            float w0, w1, w2, w3;
-            if (fr > fg) {
-                if (fg > fb)      { c1 = c000 + sr; c2 = c000 + sr + sg; w0 = 1 - fr; w1 = fr - fg; w2 = fg - fb; w3 = fb; }
-                else if (fr > fb) { c1 = c000 + sr; c2 = c000 + sr + sb; w0 = 1 - fr; w1 = fr - fb; w2 = fb - fg; w3 = fg; }
-                else              { c1 = c000 + sb; c2 = c000 + sr + sb; w0 = 1 - fb; w1 = fb - fr; w2 = fr - fg; w3 = fg; }
-            } else {
-                if (fb > fg)      { c1 = c000 + sb; c2 = c000 + sg + sb; w0 = 1 - fb; w1 = fb - fg; w2 = fg - fr; w3 = fr; }
-                else if (fb > fr) { c1 = c000 + sg; c2 = c000 + sg + sb; w0 = 1 - fg; w1 = fg - fb; w2 = fb - fr; w3 = fr; }
-                else              { c1 = c000 + sg; c2 = c000 + sr + sg; w0 = 1 - fg; w1 = fg - fr; w2 = fr - fb; w3 = fb; }
-            }
-            for (int c = 0; c < 3; c++) {
-                const float v = w0 * c000[c] + w1 * c1[c] + w2 * c2[c] + w3 * c111[c];
-                px[c] = (uint8_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f);
-            }
+struct LutAxis {
+    int base;
+    float frac;
+};
+
+struct CubeSampler {
+    const CubeLut& lut;
+    const size_t sr = 3, sg, sb;
+
+    explicit CubeSampler(const CubeLut& lut)
+        : lut(lut), sg((size_t)lut.size * 3), sb((size_t)lut.size * lut.size * 3) {}
+
+    LutAxis axis(float v, int c) const {
+        const float t = (v - lut.domain_min[c]) /
+                        (lut.domain_max[c] - lut.domain_min[c]);
+        const float x = std::clamp(t, 0.0f, 1.0f) * (float)(lut.size - 1);
+        const int i = std::min((int)x, lut.size - 2);
+        return {i, x - (float)i};
+    }
+
+    void map(LutAxis r, LutAxis g, LutAxis b, uint8_t* out) const {
+        const float fr = r.frac, fg = g.frac, fb = b.frac;
+        const float* c000 = lut.rgb.data() + r.base * sr + g.base * sg + b.base * sb;
+        const float* c111 = c000 + sr + sg + sb;
+        // Sorted fractions select one of the cube's six tetrahedra.
+        const float *c1, *c2;
+        float w0, w1, w2, w3;
+        if (fr > fg) {
+            if (fg > fb)      { c1 = c000 + sr; c2 = c000 + sr + sg; w0 = 1 - fr; w1 = fr - fg; w2 = fg - fb; w3 = fb; }
+            else if (fr > fb) { c1 = c000 + sr; c2 = c000 + sr + sb; w0 = 1 - fr; w1 = fr - fb; w2 = fb - fg; w3 = fg; }
+            else              { c1 = c000 + sb; c2 = c000 + sr + sb; w0 = 1 - fb; w1 = fb - fr; w2 = fr - fg; w3 = fg; }
+        } else {
+            if (fb > fg)      { c1 = c000 + sb; c2 = c000 + sg + sb; w0 = 1 - fb; w1 = fb - fg; w2 = fg - fr; w3 = fr; }
+            else if (fb > fr) { c1 = c000 + sg; c2 = c000 + sg + sb; w0 = 1 - fg; w1 = fg - fb; w2 = fb - fr; w3 = fr; }
+            else              { c1 = c000 + sg; c2 = c000 + sr + sg; w0 = 1 - fg; w1 = fg - fr; w2 = fr - fb; w3 = fb; }
         }
-    };
+        for (int c = 0; c < 3; c++) {
+            const float v = w0 * c000[c] + w1 * c1[c] + w2 * c2[c] + w3 * c111[c];
+            out[c] = (uint8_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f);
+        }
+    }
+};
+
+template <typename Run>
+void map_pixels(size_t pixels, int threads, const Run& run) {
     int t = threads > 0 ? threads : (int)std::max(1u, std::thread::hardware_concurrency());
     t = (int)std::min<size_t>((size_t)t, std::max<size_t>(1, pixels / 65536));
     if (t <= 1) {
@@ -287,6 +289,39 @@ void apply_cube_lut(const CubeLut& lut, uint8_t* rgb, size_t pixels, int threads
         if (a < b) pool.emplace_back(run, a, b);
     }
     for (std::thread& th : pool) th.join();
+}
+
+}  // namespace
+
+void apply_cube_lut(const CubeLut& lut, uint8_t* rgb, size_t pixels, int threads) {
+    if (lut.empty() || pixels == 0) return;
+    const CubeSampler sampler(lut);
+    // RGB8 has only 256 positions per axis; RGB16 avoids a 65536-entry table.
+    LutAxis axis[3][256];
+    for (int c = 0; c < 3; c++)
+        for (int v = 0; v < 256; v++) axis[c][v] = sampler.axis(v / 255.0f, c);
+    map_pixels(pixels, threads, [&](size_t from, size_t to) {
+        for (size_t p = from; p < to; p++) {
+            uint8_t* px = rgb + p * 3;
+            sampler.map(axis[0][px[0]], axis[1][px[1]], axis[2][px[2]], px);
+        }
+    });
+}
+
+void apply_cube_lut_rgb48be(const CubeLut& lut, const uint8_t* rgb48, uint8_t* rgb8,
+                           size_t pixels, int threads) {
+    if (lut.empty() || pixels == 0) return;
+    const CubeSampler sampler(lut);
+    map_pixels(pixels, threads, [&](size_t from, size_t to) {
+        for (size_t p = from; p < to; p++) {
+            const uint8_t* px = rgb48 + p * 6;
+            const auto axis = [&](int c) {
+                const unsigned v = (unsigned)px[c * 2] * 256 + px[c * 2 + 1];
+                return sampler.axis(v / 65535.0f, c);
+            };
+            sampler.map(axis(0), axis(1), axis(2), rgb8 + p * 3);
+        }
+    });
 }
 
 std::string ffmpeg_lut3d_filter(const std::string& path) {

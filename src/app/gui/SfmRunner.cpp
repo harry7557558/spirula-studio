@@ -9,6 +9,7 @@
 #include <fstream>
 
 #include "i18n/Locale.h"
+#include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
 
@@ -825,6 +826,8 @@ void SfmRunner::run(SfmJob job) {
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job), prior, rec, req);
+        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+            return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string()))

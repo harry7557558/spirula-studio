@@ -37,14 +37,12 @@ runs.
   marks it complete when it finishes.
 - **The videos the frames were cut from** (the frames step's `captures`: path,
   folder, what a stem counts), written when that step finishes. They are not
-  fields -- they follow from the fields and decide no reuse -- but they are
-  what gives frames brought back their video's IMU and GPS: a run that keeps
+  fields, but their timing must be known to reuse existing video frames. They
+  also give frames brought back their video's IMU and GPS: a run that keeps
   the frames reports these rather than what its own decoder would have
-  numbered (an ffmpeg extraction counts candidates, not source frames), and a
-  photo input that is some dataset's `images/` takes that dataset's
-  (`captures_behind`). A record without them, or a workspace with only the
-  legacy stamp, has them derived from its frames fields
-  (`recorded_captures`).
+  numbered, and a photo input that is some dataset's `images/` takes that
+  dataset's (`captures_behind`). A record without them, including a workspace
+  with only the legacy stamp, cannot infer the timing from the current decoder.
 
 The fields are a step's *inputs*, normalized so that the same output gives the
 same fields however the panel was arranged:
@@ -100,6 +98,13 @@ reconstruction rebuilt that nobody asked to redo. Its other answer -- keep
 them, run the rest -- is `PlanRequest::keep_built`, also a checkbox in the
 list, which turns both into **keep** until the output folder or the inputs
 change.
+
+Existing video frames without capture timing cannot be kept. Both runners
+require `PlanRequest::redo_frames` before writing any step record or replacing
+those frames, independently of `keep_built`. The confirmation's **Redo them**
+sets that consent; **Keep them, run the rest** is disabled. A batch row has no
+frame-redo consent and fails before updating the dataset record. Rebuild on
+the dataset screen first, or use a fresh output folder for the batch.
 
 ### Photographs the blur rule left out
 

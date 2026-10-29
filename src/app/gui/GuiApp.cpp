@@ -1876,6 +1876,11 @@ bool GuiApp::launch_batch_dataset(BatchTask& task, const BatchRow& row) {
     _keep_built = false;
     // The row's settings are the run's; the folder's record must not replace them.
     _restored_ws = workspace;
+    _ws_state_at = -1.0;
+    if (!dataset_plan()[Step::Frames].can_keep) {
+        fail_batch_task(task, dmsg::rerun_section_help.get());
+        return false;
+    }
     log(i18n::format(msg::batch_log_build,
                      {(long long)(_batch_current + 1), workspace}));
     follow_batch_screen(BatchStage::Dataset);
@@ -4262,6 +4267,8 @@ void GuiApp::sync_dataset_jobs() {
     _colmap_job.blur_neighbour = prep.blur_neighbour;
     _colmap_job.similar_bits = prep.similar_bits;
     _colmap_job.keep_skipped = prep.keep_skipped;
+    _colmap_job.sync_tracks = prep.sync_tracks;
+    _colmap_job.auto_rotate = prep.auto_rotate;
     _colmap_job.pano = prep.pano;
     _colmap_job.max_frames = prep.max_frames;
     _colmap_job.force_external_decode = prep.force_external_decode;
@@ -4370,6 +4377,11 @@ bool GuiApp::launch_dataset_job() {
     // choice, before any preview, decode or child is dispatched. A rejected or
     // conflicting request is reported and the run does not start.
     if (native_work_busy()) return false;
+    _ws_state_at = -1.0;
+    if (!_redo_frames && !dataset_plan()[Step::Frames].can_keep) {
+        log(dmsg::rerun_section_help.get());
+        return false;
+    }
     stop_inference_users();
     close_splat();
     if (!freeze_native_device()) return false;
@@ -7871,11 +7883,14 @@ void GuiApp::draw_dataset_plan(const DatasetPlan& plan) {
     const bool keeping = _keep_built && _keep_built_for == _workspace;
     if (plan.ask() || keeping) {
         bool keep = keeping;
+        ImGui::BeginDisabled(!plan[Step::Frames].can_keep);
         if (ui::Checkbox(dmsg::plan_keep_built, &keep)) {
             _keep_built = keep;
             _keep_built_for = _workspace;
         }
-        ui::help_on_hover(dmsg::plan_keep_built_help);
+        ImGui::EndDisabled();
+        if (plan[Step::Frames].can_keep) ui::help_on_hover(dmsg::plan_keep_built_help);
+        else ui::help_on_hover_disabled(dmsg::rerun_frames);
     }
     if (differs && _ws_record.settings.is_object()) {
         if (ui::SmallButton(dmsg::plan_use_record)) restore_from_record(true);
@@ -7916,14 +7931,22 @@ void GuiApp::draw_rebuild_confirm_modal() {
     ImGui::Spacing();
 
     bool go = false;
-    if (ui::Button(dmsg::rebuild_go, ImVec2(px(170.0f), 0))) go = true;
+    if (ui::Button(dmsg::rebuild_go, ImVec2(px(170.0f), 0))) {
+        _keep_built = false;
+        _keep_built_for.clear();
+        if (!_rebuild_plan[Step::Frames].can_keep) _redo_frames = true;
+        go = true;
+    }
     ImGui::SameLine();
+    ImGui::BeginDisabled(!_rebuild_plan[Step::Frames].can_keep);
     if (ui::Button(dmsg::rebuild_keep, ImVec2(px(240.0f), 0))) {
         _keep_built = true;
         _keep_built_for = _workspace;
         go = true;
     }
-    ui::help_on_hover(dmsg::plan_keep_built_help);
+    ImGui::EndDisabled();
+    if (_rebuild_plan[Step::Frames].can_keep) ui::help_on_hover(dmsg::plan_keep_built_help);
+    else ui::help_on_hover_disabled(dmsg::rerun_frames);
     ImGui::SameLine();
     if (ui::Button(dmsg::cancel, ImVec2(px(120.0f), 0))) {
         _rebuild_shown = false;

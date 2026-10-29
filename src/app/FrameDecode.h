@@ -50,15 +50,18 @@ using InstantSink = std::function<bool(std::vector<nn::Image>& imgs, int64_t ind
 
 void log_line(const FrameExtractSinks& sinks, const std::string& s);
 
+// Only native open failures set startup_failed, before any frame or callback.
 // `convert` false hands pictures over as decoded, unscaled and unturned: a 360
 // layout is measured in source pixels.
 bool decode_lockstep_vulkan(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                             const std::vector<int>& tracks, bool convert,
                             const std::vector<int64_t>& plan, FrameExtractStats& t,
-                            std::string& error, const InstantSink& on_frame);
+                            std::string& error, const InstantSink& on_frame,
+                            bool& startup_failed);
 bool measure_motion_vulkan(const FrameExtractJob& o, const FrameExtractSinks& sinks,
                            int track, int tracks, MotionPlanInput& out,
-                           FrameExtractStats& t, std::string& error);
+                           FrameExtractStats& t, std::string& error,
+                           bool& startup_failed);
 
 // The same two over ffmpeg. `facts` is the probe the track numbers index.
 bool decode_lockstep_ffmpeg(const FrameExtractJob& o, const FrameExtractSinks& sinks,

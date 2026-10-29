@@ -26,8 +26,7 @@
 
 namespace app {
 
-// Auto takes the in-process decoder when the build and the device have one,
-// and ffmpeg otherwise.
+// Auto uses native decoding when startup succeeds, otherwise software ffmpeg.
 enum class FrameDecoder { Auto, Builtin, Ffmpeg };
 
 // What every frame goes through is the base class, so a preview can be handed
