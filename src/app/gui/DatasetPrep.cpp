@@ -9,6 +9,7 @@
 #include "app/gui/mask/MaskLayer.h"
 #include "sfm/core/Resume.h"
 
+#include "i18n/catalog/Data.h"
 #include "i18n/catalog/Log.h"
 #include "i18n/catalog/MaskEdit.h"
 
@@ -1959,6 +1960,10 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     app::FrameExtractStats stats;
     if (!app::extract_frames(fx, sinks, stats, error)) return false;
     log(app::format_extract_stats(stats, images, /*masked=*/false));
+    if (stats.write_failures > 0) {
+        error = fmt(spirula::i18n::msg::data::write_failures, {stats.write_failures});
+        return false;
+    }
     if (stats.written == 0) {
         error = lmsg::err_no_frames_extracted.get();
         return false;

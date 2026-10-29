@@ -633,6 +633,27 @@ if(SS_BUILD_GUI)
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_prep_test)
 
+    if(SS_BUILD_SAM)
+        get_target_property(SS_DATASET_PREP_TEST_SOURCES dataset_prep_test SOURCES)
+        list(REMOVE_ITEM SS_DATASET_PREP_TEST_SOURCES
+            ${SS_SRC}/app/gui/tests/dataset_prep_test.cpp)
+        add_executable(dataset_prep_streaming_test
+            ${SS_SRC}/app/gui/tests/dataset_prep_streaming_test.cpp
+            ${SS_DATASET_PREP_TEST_SOURCES}
+            ${SS_SRC}/app/DepthPng.cpp
+            ${SS_SRC}/app/FrameExtract.cpp
+            ${SS_SRC}/app/FrameDecodeFfmpeg.cpp)
+        ss_configure_app(dataset_prep_streaming_test)
+        target_compile_definitions(dataset_prep_streaming_test PRIVATE
+            SS_BUILD_SAM=1 SS_HAVE_BLUR_GPU=1)
+        target_link_libraries(dataset_prep_streaming_test PRIVATE ss_sam ss_blur)
+        if(SS_ENABLE_PATENTED)
+            target_sources(dataset_prep_streaming_test PRIVATE
+                ${SS_SRC}/app/FrameDecodeVulkan.cpp)
+            target_link_libraries(dataset_prep_streaming_test PRIVATE ss_video)
+        endif()
+    endif()
+
     # Which steps a dataset run reuses and which it redoes, against records
     # written to a scratch workspace. The same sources as above, no model.
     add_executable(dataset_plan_test
