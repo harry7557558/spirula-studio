@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory>
@@ -843,7 +844,18 @@ public:
         rebuildScores();
         const bool tight = opt_.ba_final_tight;
         opt_.ba_final_tight = tight && !coarse;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const BAOverBudget&) {
+            opt_.ba_final_tight = tight;
+            throw;
+        } catch (const std::exception& e) {
+            opt_.ba_final_tight = tight;
+            slog::err_raw(slog::Tag::Map,
+                          "[map] model refinement failed: " + std::string(e.what()) +
+                          "; keeping unrefined model");
+            return m;
+        }
         opt_.ba_final_tight = tight;
         return snapshotModel();
     }
@@ -1150,7 +1162,15 @@ public:
         // second round, without retriangulation (44a78445 dropped that deliberately), pulls it.
         final_.min_rounds = 2;
         final_.no_retri = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[seam] weld refinement failed: " + std::string(e.what()) +
+                          "; keeping unwelded model");
+            return m;
+        }
         final_ = FinalRelease{};
         st.rounds = refine_rounds_;
         st.reproj_after = meanReprojPx();
@@ -1255,7 +1275,15 @@ public:
         for (const auto& kv : rec_.cameras) before[kv.first] = {kv.second.cx, kv.second.cy};
         final_.pp = pp;
         final_.extra = extra;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] polish refinement failed: " + std::string(e.what()) +
+                          "; keeping unpolished model");
+            return m;
+        }
         final_ = FinalRelease{};
         if (opt_.verbose)
             for (const auto& kv : rec_.cameras) {
@@ -1281,7 +1309,15 @@ public:
         if (!splitCamerasPerImage()) return m;
         final_.extra = free_extra;
         final_.no_sanitize = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] per-image intrinsics refinement failed: " + std::string(e.what()) +
+                          "; keeping shared intrinsics model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1296,7 +1332,15 @@ public:
         adopt(m);
         rebuildScores();
         final_.no_rig = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] free-rig refinement failed: " + std::string(e.what()) +
+                          "; keeping calibrated rig model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1804,12 +1848,21 @@ public:
             } catch (const BAOverBudget& e) {
                 const int want =
                     std::max(batches + 1, (int)std::ceil(e.need_mb / e.budget_mb * batches));
-                if (want > 64) throw;
+                if (want > 64) {
+                    slog::err_raw(slog::Tag::Map,
+                                  "[map] joint solve exceeds memory budget across 64 batches; keeping unrefined models");
+                    return;
+                }
                 if (opt_.verbose)
                     slog::diag(slog::Tag::Map,
                                "[map] the joint solve needs %.0f MB against a %.0f MB budget: "
                                "splitting it %d ways", e.need_mb, e.budget_mb, want);
                 batches = want;
+            } catch (const std::exception& e) {
+                slog::err_raw(slog::Tag::Map,
+                              "[map] joint solve failed: " + std::string(e.what()) +
+                              "; keeping unrefined models");
+                return;
             }
         }
         // Deliberately no per-model refine afterwards: that would re-fit each
@@ -3077,7 +3130,16 @@ private:
             ProfTimer pt(g_map_prof.snapshot);
             snap = takeSnapshot();
         }
-        globalRefine(final_pass);
+        try {
+            globalRefine(final_pass);
+        } catch (const std::exception& e) {
+            slog::err_raw(slog::Tag::Map,
+                          "[map] global refinement failed: " + std::string(e.what()) +
+                          "; keeping current model");
+            restoreSnapshot(snap);
+            recent_regs_.clear();
+            return;
+        }
         // Collapse = losing half the registered images. Observation loss alone
         // is NOT a collapse: shredding most of a junk-heavy image's points
         // while every pose survives is the filters working as intended, and

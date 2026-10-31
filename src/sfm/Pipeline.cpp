@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -2696,7 +2697,15 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         // on a large capture, with the last image long since placed.
         events::stage_begin(Stage::Refine);
         double t_finish = 0;
-        models = finishModels(mapper, std::move(models), cfg, verbose, t_finish);
+        try {
+            std::vector<Reconstruction> finished =
+                finishModels(mapper, models, cfg, verbose, t_finish);
+            models = std::move(finished);
+        } catch (const std::exception& e) {
+            L::err_raw(Tag::Map,
+                       "[map] finishing passes failed: " + std::string(e.what()) +
+                       "; continuing with current model");
+        }
         t_map += t_finish;
         events::stage_end(Stage::Refine);
     }
