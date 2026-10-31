@@ -2015,12 +2015,21 @@ inline __device__ float3  unproject_raydir_0(float2  uv_5, int camera_model_0, b
         {
             float r_4 = length_1(uv_5);
             raydir_0 = make_float3 ((uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).x, (uv_5 * make_float2 ((F32_sqrt(((F32_max((0.0f), (1.0f - 0.25f * r_4 * r_4)))))))).y, 1.0f - 0.5f * r_4 * r_4);
+            is_unit_0 = true;
+        }
+        else if(camera_model_0 == int(3))
+        {
+            float lon_0 = uv_5.x;
+            float lat_0 = uv_5.y;
+            float cl_0 = F32_cos((lat_0));
+            raydir_0 = make_float3 (cl_0 * F32_sin((lon_0)), F32_sin((lat_0)), cl_0 * F32_cos((lon_0)));
+            is_unit_0 = true;
         }
         else
         {
             raydir_0 = make_float3 (uv_5.x, uv_5.y, 1.0f);
+            is_unit_0 = false;
         }
-        is_unit_0 = _S378;
     }
     if(is_ray_depth_0)
     {
@@ -2120,12 +2129,21 @@ inline __device__ float3  s_primal_ctx_unproject_raydir_0(float2  dpuv_2, int ca
         {
             float _S395 = length_1(dpuv_2);
             raydir_1 = make_float3 ((dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S395 * _S395)))))).x, (dpuv_2 * make_float2 (s_primal_ctx_sqrt_0((F32_max((0.0f), (1.0f - 0.25f * _S395 * _S395)))))).y, 1.0f - 0.5f * _S395 * _S395);
+            is_unit_1 = true;
+        }
+        else if(camera_model_3 == int(3))
+        {
+            float lon_1 = dpuv_2.x;
+            float lat_1 = dpuv_2.y;
+            float cl_1 = s_primal_ctx_cos_0((lat_1));
+            raydir_1 = make_float3 (cl_1 * s_primal_ctx_sin_0((lon_1)), s_primal_ctx_sin_0((lat_1)), cl_1 * s_primal_ctx_cos_0((lon_1)));
+            is_unit_1 = true;
         }
         else
         {
             raydir_1 = make_float3 (dpuv_2.x, dpuv_2.y, 1.0f);
+            is_unit_1 = false;
         }
-        is_unit_1 = _S394;
     }
     if(is_ray_depth_3)
     {
