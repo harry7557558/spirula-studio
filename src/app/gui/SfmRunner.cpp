@@ -74,6 +74,19 @@ bool child_line_is_notable(const std::string& l) {
 #else
     const std::string run = sfm::slog::prefix(sfm::slog::Tag::Run);
     if (l.compare(0, run.size(), run) == 0) return true;
+    // What each progressive attempt and pass runs with, and what it gave.
+    const std::string map = sfm::slog::prefix(sfm::slog::Tag::Map);
+    if (l.compare(0, map.size(), map) == 0) {
+        namespace M = spirula::i18n::msg::sfm;
+        const std::string rest = l.substr(map.size());
+        std::vector<std::string> got;
+        for (const spirula::i18n::Msg* m :
+             {&M::progressive_attempt, &M::progressive_attempt_done, &M::progressive_feature_pass,
+              &M::progressive_feature_kept, &M::progressive_feature_undone,
+              &M::progressive_feature_failed, &M::progressive_time_up,
+              &M::progressive_ladder_skip})
+            if (spirula::i18n::scan(*m, rest, got)) return true;
+    }
     for (const char* word : {spirula::i18n::msg::sfm::word_warning.get(),
                              spirula::i18n::msg::sfm::word_error.get()}) {
         const size_t at = l.find(word);
@@ -172,7 +185,9 @@ std::string SfmRunner::availability() {
 #endif
 }
 
-SfmRunner::~SfmRunner() {
+SfmRunner::~SfmRunner() { shutdown(); }
+
+void SfmRunner::shutdown() {
     cancel();
     if (_worker.joinable()) _worker.join();
 }
@@ -184,6 +199,7 @@ void SfmRunner::start(const SfmJob& job, RunFilms films) {
     _partial = false;
     _not_metric = false;
     _have_status = false;
+    _progressive_label.clear();
     _status_mtime = 0;
     _map_work = MappingWork(job.mapper == 1);
     _films = films;
@@ -418,6 +434,9 @@ void SfmRunner::apply_status(const RunStatus& st) {
         // One bar over the whole step, whatever it is doing: a seed retry comes
         // back to seeding mid-run, and the finishing solves place no image.
         case 2: case 3: case 4: case 8: case 9: {
+            // Inside progressive alignment the attempt (11) drives label and bar.
+            if (st.stage == 9) _progressive_label.clear();
+            if (!_progressive_label.empty()) break;
             if (st.stage == 2) _map_work.placed(st.done, st.total);
             if (st.stage == 3) _map_work.levels(st.done, st.total);
             if (st.stage == 9) _map_work.refining();
@@ -429,6 +448,15 @@ void SfmRunner::apply_status(const RunStatus& st) {
             if (_map_work.work() > 0.0) _prog.fraction(Stage::Mapping, (float)_map_work.work());
             break;
         }
+        // Every attempt places the images again, so the bar counts attempts.
+        // Each step begins the stage over, at 0, an instant before its count.
+        case 11: if (st.done <= 0) break;
+                 _progressive_label =
+                     format(lmsg::stage_progressive, {(long long)st.done, (long long)st.total});
+                 set_stage_if_new(Stage::Mapping, _progressive_label.c_str(), /*relabel=*/true);
+                 _map_work.placed(st.done, st.total);
+                 _prog.fraction(Stage::Mapping, (float)_map_work.work());
+                 break;
         default: break;
     }
     if (st.finished) {
@@ -703,6 +731,37 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
     // is a no-op under the other pair modes.
     if (!job.loop_closure) argv.push_back("--no-loop-closure");
     if (!job.prefilter_sequential) argv.push_back("--no-prefilter-sequential");
+    if (job.progressive) {
+        char buf[32];
+        argv.push_back("--progressive");
+        std::snprintf(buf, sizeof buf, "%g", job.progressive_error_start);
+        argv.push_back("--progressive-error-start");
+        argv.push_back(buf);
+        if (job.progressive_error_end > 0) {
+            std::snprintf(buf, sizeof buf, "%g", job.progressive_error_end);
+            argv.push_back("--progressive-error-end");
+            argv.push_back(buf);
+        }
+        argv.push_back("--progressive-error-steps");
+        argv.push_back(std::to_string(job.progressive_error_steps));
+        argv.push_back("--progressive-patience");
+        argv.push_back(std::to_string(job.progressive_patience));
+        if (!job.progressive_features) {
+            argv.push_back("--no-progressive-features");
+        } else {
+            argv.push_back("--progressive-max-features-end");
+            argv.push_back(std::to_string(job.progressive_max_features_end));
+            argv.push_back("--progressive-image-size-end");
+            argv.push_back(std::to_string(job.progressive_image_size_end));
+            argv.push_back("--progressive-feature-steps");
+            argv.push_back(std::to_string(job.progressive_feature_steps));
+            if (job.progressive_time > 0) {
+                std::snprintf(buf, sizeof buf, "%g", job.progressive_time);
+                argv.push_back("--progressive-time");
+                argv.push_back(buf);
+            }
+        }
+    }
     if (job.init_focal_px > 0) {
         char buf[32];
         std::snprintf(buf, sizeof buf, "%g", job.init_focal_px);

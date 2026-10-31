@@ -59,6 +59,11 @@ bool is_dataset_preset_name(const std::string& name);
 // leaves `s` alone.
 bool dataset_apply_preset(DatasetSettings& s, const std::string& name);
 
+// Every field where `edited` differs from `base`, copied onto `to`: the user's
+// own changes, kept when a preset goes back on.
+void keep_dataset_edits(DatasetSettings& to, const DatasetSettings& edited,
+                        const DatasetSettings& base);
+
 // The settings alone, as the JSON object a preset file nests them in -- what a
 // dataset's own record keeps (DatasetRecord.h). Reading sanitizes.
 std::string dataset_settings_json(const DatasetSettings& s);

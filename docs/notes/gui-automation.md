@@ -104,7 +104,9 @@ exactly as a drag-and-drop would — the shortest way to get a model open.
 The server binds `127.0.0.1` only and requires a token. That is not paranoia
 about the network: these are GETs with side effects, and any page in any
 browser can issue one at localhost. The token is written to
-`<config dir>/automation.json`, which is where both clients read it from.
+`<config dir>/automation.json` (`%APPDATA%\spirula-studio` on Windows;
+`$XDG_CONFIG_HOME/spirula-studio`, else `~/.config/spirula-studio`, elsewhere,
+macOS included), which is where both clients read it from.
 
 Offscreen still needs a display to create a context against. For a machine with
 none, run it under `Xvfb`; the rest behaves identically.
