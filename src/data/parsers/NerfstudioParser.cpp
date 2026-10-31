@@ -594,7 +594,8 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     double T_n_from_camera[16], R_align[9];
     double scale_factor = dsparse::compute_normalized_transform(
         c2w_all.data(), n_all, T_n_from_camera, R_align,
-        exif_level ? exif_o.data() : nullptr);
+        exif_level ? exif_o.data() : nullptr,
+        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses);
     // train_to_normalized = inv(T_n_from_camera @ [A | 0])
     double T_n_from_train[16];
     for (int r = 0; r < 4; r++)

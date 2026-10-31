@@ -928,7 +928,14 @@ void TrainerSession::check_config() {
     if (cfg.progressive_resolution) resolution_setpoints(cfg);
     if (cfg.progressive_resolution && cfg.progressive_splat_budget)
         progressive::resolve_budget(resolution_setpoints(cfg), cfg.progressive_splat_budget_schedule, 1, cfg.cap_max);
-    if (cfg.orientation_method != "up" || cfg.center_method != "poses")
+    const bool orient_ok = (cfg.orientation_method == "up" ||
+                            cfg.orientation_method == "pca" ||
+                            cfg.orientation_method == "vertical" ||
+                            cfg.orientation_method == "none");
+    const bool center_ok = (cfg.center_method == "poses" ||
+                            cfg.center_method == "focus" ||
+                            cfg.center_method == "none");
+    if (!orient_ok || !center_ok)
         log(lfmt(lmsg::warn_pose_normalization_approx,
                  {cfg.orientation_method, cfg.center_method}));
 }
@@ -999,6 +1006,9 @@ void TrainerSession::load_dataset() {
     pcfg.center_mode          = cfg.scene_center;
     pcfg.center_auto_threshold = cfg.scene_center_threshold;
     pcfg.exif_orientation     = cfg.exif_orientation;
+    pcfg.orientation_method   = cfg.orientation_method;
+    pcfg.center_method        = cfg.center_method;
+    pcfg.auto_scale_poses     = cfg.auto_scale_poses;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;
@@ -2033,6 +2043,9 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     // The mode `auto` resolved to for training, so eval cannot decide differently.
     pcfg.center_mode          = ds.center_mode;
     pcfg.exif_orientation     = cfg.exif_orientation;
+    pcfg.orientation_method   = cfg.orientation_method;
+    pcfg.center_method        = cfg.center_method;
+    pcfg.auto_scale_poses     = cfg.auto_scale_poses;
     pcfg.probe_image_size        = probe_image_size;
     pcfg.train_resolution_divisor = cfg.train_resolution_divisor;
     pcfg.downscale_rounding_mode = cfg.downscale_rounding_mode;

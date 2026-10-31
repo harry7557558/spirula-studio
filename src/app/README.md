@@ -312,9 +312,8 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
 5. COLMAP **text** format fallback. (Metashape parser: DONE,
    `MetashapeParser.cpp`. Camera-to-image resolution fit: DONE,
    `dsparse::fit_camera_resolution`.)
-6. Non-default orientation/center methods (`pca`/`vertical`/`gsplat`/`focus`)
-   — currently approximated as `up`/`poses` with a warning (only affects
-   `train_frame_scale`).
+6. Non-default orientation/center methods (`pca`/`vertical`/`focus`/`none`
+   DONE, `DatasetCommon.cpp`; `gsplat` remains approximated with a warning).
 7. Windows: MSVC+nvcc build DONE (2026-07-10, VS2022 + CUDA 12.8 on an
    RTX 3090: no-torch static build links `spirula.exe` and trains
    mipnerf360/garden; only source fix needed was an MSVC branch for a GCC

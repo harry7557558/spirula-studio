@@ -9,9 +9,9 @@ is, so the port does not have to be reverse-engineered from a diff.
 
 | config | native behaviour |
 |---|---|
-| `orientation_method` | always `up`; anything else warns and is approximated |
-| `center_method` | always `poses`; ditto |
-| `auto_scale_poses` | effectively always on — the scale is folded into `train_frame_scale` |
+| `orientation_method` | `up`, `pca`, `vertical`, `none` supported; `gsplat` warns and is approximated |
+| `center_method` | `poses`, `focus`, `none` supported; `gsplat` warns and is approximated |
+| `auto_scale_poses` | supported — when off, `scale_factor` is 1.0; when on, folded into `train_frame_scale` |
 | `train_frame` | only `points`; `normalized` / `camera` are rejected by `check_config()` |
 
 **Where the frame now comes from.** `spirula sfm` applies this same
@@ -34,7 +34,9 @@ uses to place its default camera. That is why the native trainer can warn and
 carry on rather than refuse: the approximation is real but bounded.
 
 `src/data/parsers/DatasetCommon.cpp::compute_normalized_transform` is the C++
-side. It implements the `up`/`poses` path only.
+side. It implements `up`, `pca`, `vertical`, `none` orientation, `poses`,
+`focus`, `none` centering, and respects `auto_scale_poses`. `gsplat` remains
+approximated with a warning.
 
 ## Reference implementation
 
