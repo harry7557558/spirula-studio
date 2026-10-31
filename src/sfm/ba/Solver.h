@@ -447,6 +447,9 @@ public:
             mi.push_back(m.n_free);
             mi.push_back(m.mask);
         }
+        std::vector<uint32_t> jc_off32;
+        jc_off32.reserve(P_.jc_off.size());
+        for (uint64_t off : P_.jc_off) jc_off32.push_back((uint32_t)off);
         std::vector<VkContext::UploadItem> up = {
             {&bObs_, obs.data(), obs.size()},
             {&bObsImage_, P_.obs_image.data(), P_.obs_image.size() * 4},
@@ -455,7 +458,7 @@ public:
             {&bGroupInfo_, gi.data(), gi.size() * 4},
             {&bObsRanges_, P_.obs_ranges.data(), P_.obs_ranges.size() * 4},
             {&bModelObs_, P_.model_obs.data(), obsIdentity_ ? 0 : P_.model_obs.size() * 4},
-            {&bJcOff_, P_.jc_off.data(), P_.jc_off.size() * 4},
+            {&bJcOff_, jc_off32.data(), jc_off32.size() * 4},
             {&bPoses_, poses.data(), poses.size()},
             {&bIntr_, intr.data(), intr.size()},
             {&bPoints_, points.data(), points.size()},
@@ -508,9 +511,10 @@ public:
     bool releaseHostTables() {
         if (cpu_) return false;
         for (std::vector<uint32_t>* v :
-             {&P_.obs_image, &P_.obs_point, &P_.obs_ranges, &P_.model_obs, &P_.jc_off,
+             {&P_.obs_image, &P_.obs_point, &P_.obs_ranges, &P_.model_obs,
               &P_.pair_entries, &P_.pair_chunks, &P_.cam_obs, &P_.cam_chunks})
             std::vector<uint32_t>().swap(*v);
+        std::vector<uint64_t>().swap(P_.jc_off);
         std::vector<double>().swap(P_.obs_xy);
         return true;
     }
@@ -957,7 +961,7 @@ private:
             if (jac32_ || !jacAllowed || (needMB <= budget && chunksFit())) break;
         }
         // Nothing past one binding, ever: the solve goes to the host instead.
-        if (!chunksFit() ||
+        if (P_.jc_total > 0xFFFFFFFFull || !chunksFit() ||
             largestOtherBuffer((!useCG_ || haveFallback_) && pairOk, pairEntries) > chunkCapBytes())
             throw VkError(VK_ERROR_OUT_OF_DEVICE_MEMORY,
                           "bundle adjustment: a buffer exceeds the device's " +
