@@ -376,8 +376,8 @@ F(member, name, cmds, tier, group, lo, hi, choices, help)
 ```
 
 The table is the single source of truth for the CLI parser, for `--help`, and
-(port plan phase 5) for the GUI's options editor; each is one macro expansion
-over it in `SfmConfig.cpp`, so a new knob is one row and never three edits.
+for the GUI's options editor; each is one macro expansion over it in
+`SfmConfig.cpp`, so a new knob is one row and never three edits.
 `cmds` is which subcommands accept the flag — a name may repeat across commands
 with disjoint masks, which is how `--max-error` is the verification tolerance
 for `auto`/`match`/`map` and the *alignment* tolerance for `merge`. `tier` is
@@ -397,6 +397,21 @@ Pipeline knobs are fanned out into the stage structs by `SfmConfig::finalize()`
 and nowhere else, so the CLI and the GUI cannot disagree about what
 `--max-error` (one tolerance, two struct fields — D47), `--device`, `--quiet`
 or the camera settings mean.
+
+The GUI's editor (*All reconstruction settings* on the New Dataset screen,
+`src/app/gui/SfmOptionsUI.h`) reads the table through
+`describeConfigFields()`. Its defaults are `applyPresets()` run on the panel's
+quality, frontend, matcher and capture type, so each row shows the value the
+run would get untouched. The quality level's own rows come first: the image
+size and the frontend's feature budget, `--prefilter-neighbors`, and whatever
+else the preset moved for that frontend (`--ratio` for a learned one). An edit
+is stored as flag → text in `SfmJob::options` and passed after the panel's own
+flags and before the typed extras, so the CLI's last-one-wins rule settles any
+overlap. The editor leaves out the flags the panel has a control for, and the
+colour, input and runtime groups. *Sparse reconstruction presets* (kind `sfm`)
+save the quality, frontend, matcher, budgets and edits, but not the capture.
+`sfm_options_table_test` checks that every value the editor shows parses back
+through `setConfigField` unchanged.
 
 The brute-force matcher takes 128-**or** 256-byte descriptors -- SIFT's and
 ALIKED's, and DeDoDe-G's. The kernel is built at both widths

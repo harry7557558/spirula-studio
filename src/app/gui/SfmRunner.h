@@ -31,6 +31,7 @@
 #include "i18n/catalog/Dataset.h"
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -201,6 +202,11 @@ struct SfmJob {
     // Rec.709). true: written in the images' space, the trainer's default.
     bool point_color_in_image_space = false;
 
+    // The advanced editor's edits, flag name (no "--") -> value as the flag
+    // takes it; a flag absent here is left to the quality level. Passed
+    // before extra_args, so a typed flag still wins.
+    std::map<std::string, std::string> options;
+
     // Extra flags typed by the user, appended verbatim. The escape hatch for
     // everything the panel does not surface -- `spirula-sfm auto --help` lists
     // the lot, and this is how an expert reaches it without us mirroring 130
@@ -215,6 +221,9 @@ inline bool sequential_window_applies(const SfmJob& j) {
     return j.pairs == 2 || (j.pairs == 0 && j.data_type == 1) ||
            ((j.pairs == 0 || j.pairs == 3) && j.prefilter_sequential);
 }
+
+// SfmJob::options as command-line flags, minus any this version has no row for.
+std::vector<std::string> sfm_option_args(const std::map<std::string, std::string>& options);
 
 // What a learned frontend still has to fetch, in order; empty for SIFT with
 // brute force, and empty once both artifacts are cached.
