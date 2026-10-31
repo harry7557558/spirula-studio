@@ -58,6 +58,8 @@
 #include "sfm/geometry/TwoView.h"
 #include "sfm/map/Assemble.h"
 #include "sfm/map/AttitudeGauge.h"
+#include "sfm/map/GlobalPositionGpu.h"
+#include "sfm/map/GlobalReconstruction.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/map/MetricGauge.h"
 #include "sfm/map/Orient.h"
@@ -1348,7 +1350,33 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     AssembleOptions ao = cfg.assemble;
     ao.verbose = !cfg.quiet;
     std::vector<Reconstruction> models;
-    if (!bup) {
+    if (cfg.mapper_mode == "global") {
+        if (!cfg.quiet) L::out(Tag::Map, M::map_global_start);
+        mapper.bootstrapCameras();
+        GlobalReconstructionOptions go;
+        go.relative.geometry = cfg.twoview;
+        go.relative.threads = cfg.threads;
+        go.rigs = mapper.rigs();
+        go.rotation_priors = mapper.priors();
+        go.position_priors = mapper.priors();
+        go.fixed_focals = mapper.options().given_focal_cameras;
+        go.min_triangulation_angle = cfg.mapper.min_tri_angle_deg * M_PI / 180.0;
+        go.position_solver = [&](GlobalPositionProblem& problem, const GlobalPositionOptions& options) {
+            return solveGlobalPositionGpu(problem, options, cfg.mapper.device, cfg.mapper.device_selector);
+        };
+        GlobalReconstructionStats gs;
+        models = buildGlobalReconstructions(db, feats, mapper.cameraIds(), mapper.startingCameras(),
+                                            mapper.options().known_focal_cameras, go, gs);
+        if (!gs.rotation_converged) L::warn(Tag::Map, M::map_global_rotation_unconverged);
+        if (!cfg.quiet)
+            L::out(Tag::Map, M::map_global_initial,
+                   {(long long)gs.edges, (long long)gs.tracks, (long long)gs.conflicting,
+                    (long long)gs.models});
+        for (Reconstruction& model : models) model = mapper.refine(model, false, true);
+        mapper.claimAll(models);
+        ao.tag = "global";
+        if (!models.empty()) models = assembleModels(mapper, std::move(models), cfg.manager, ao, ast);
+    } else if (!bup) {
         ao.tag = "map";
         models = assembleModels(mapper, mapper.run(), cfg.manager, ao, ast);
     } else {
@@ -2690,6 +2718,12 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     AssembleStats ast;
     std::vector<Reconstruction> models = runMapper(mapper, db, feats, cfg, ast);
     double t_map = now() - t0;
+    if (models.empty()) {
+        L::fail(Tag::Map, M::map_no_model_to_work_with);
+        events::stage_end(Stage::Map);
+        r.exit_code = 1;
+        return r;
+    }
 
     {
         // A global solve per model, and up to two more passes over them: minutes

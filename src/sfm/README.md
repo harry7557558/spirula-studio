@@ -80,7 +80,12 @@ confuse with a regression in the geometry. What it changes is where the cost and
 sit — an atom is too small to get its own focal wrong, and too small for a
 whole-model pass to be expensive. `Bottomup.h` carries the numbers.
 
-**Neither mapper has a stage after it.** What each produces is a set of models,
+`--mapper global` uses experimental global initialization before the same BA and
+assembly stages. Positioning runs on Vulkan; pairwise planar and panoramic
+geometries are skipped, and fixed rig rotations also constrain averaging. Its
+scope and validation are in `docs/notes/global-sfm.md`.
+
+What each mapper produces is a set of models,
 and from there they need the identical thing: merge what belongs together, grow
 what did not merge (merging cannot invent overlap that is not there), optimize
 what changed, repeat — then, once, the passes no amount of merging can stand in
@@ -1111,7 +1116,7 @@ only links at the canopy capture's seam (at most 3 per model) and nothing on the
 `SS_SFM_MAP_PROF` the models as they were before a weld are written to
 `sparse/pre_weld/` (in the mapper's frame, not the gauge's).
 
-`--mapper flat|bottom-up` picks the schedule (see the stage graph; flat is the
+`--mapper flat|bottom-up|global` picks the schedule (see the stage graph; flat is the
 default for every capture, and there is no size-based switch);
 `--bup-atom-size` and `--bup-overlap` size the atoms and the overlap the
 merge aligns on. `--merge-tracks` and `--rank-by-visibility` are on by default
@@ -1320,10 +1325,8 @@ port. Ordered by what blocks the most.
     onnxruntime on the same checkpoints; both are matchers for a SHORTLIST.
     What is left is a scored comparison of the three frontends on a public
     dataset -- nothing here says which to reach for.
-16. A **global** (GLOMAP-style) mapper. The **bottom-up** one exists
-    (`--mapper bottom-up`, `map/Partition.h` + `map/Bottomup.h`); what it has
-    not got is parallel atom reconstruction, which needs a second `rec_` per
-    worker and one shared `VkContext`.
+16. Complete and benchmark the experimental global mapper against GLOMAP;
+    the remaining stages are listed in `docs/notes/global-sfm.md`.
 17. Parity benchmarking on ETH3D / IMC.
 
 **Deliberately out of scope**, so they are not silently skipped: GPS /

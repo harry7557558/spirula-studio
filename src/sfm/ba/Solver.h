@@ -568,7 +568,7 @@ public:
 
     void uploadPriors(double damping) {
         if (!hasPriors_) return;
-        prior_.assemble(P_, hostPoses_.data(), hostExts_.data(), damping);
+        prior_.assemble(P_, hostPoses_.data(), hostExts_.data(), damping, opt_.fix_rotations);
         std::vector<uint8_t> blk, g;
         packReals(blk, prior_.blocks().data(), prior_.blocks().size(), opt_.real);
         packReals(g, prior_.gradient().data(), prior_.gradient().size(), opt_.real);
@@ -1398,6 +1398,7 @@ private:
             for (auto& mr : P_.model_ranges) {
                 Push p;
                 p.f0 = opt_.loss_param;
+                p.u2 = opt_.fix_rotations ? 1 : 0;
                 launch(jacEntry(mr), mr.count, 128, kWJac * wide_, p, atModel(mr));
             }
             ctx_.barrier(cb_);
