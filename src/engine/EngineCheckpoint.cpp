@@ -377,22 +377,7 @@ void engine_save_checkpoint(
 }
 
 
-// Restore engine state from a checkpoint's state.tar for resuming training.
-//
-// Preconditions (established by the resume flow from config.json): the engine
-// skeleton is configured -- world buffers seeded/allocated at max_num_splats
-// (set_data_3dgs), and any bilagrid/PPISP channels present in the checkpoint
-// initialized (engine_init_bilagrid_*/engine_init_ppisp). This function then:
-//   1. reads state.json and installs runtime scalars + the optimizer-state
-//      layout flags (quant bits, FPBO, bias correction),
-//   2. force-allocates optimizer + appearance-optimizer buffers to that layout
-//      (no training step is run; the _ensure_* calls only allocate + zero, and
-//      no-op for absent components),
-//   3. memcpies every saved .npy back into its pool slot by name (chunked
-//      H->D, no extra device memory), validating byte sizes,
-//   4. leaves *_initialized flags set so the lazy guards won't re-zero data.
-// Returns the saved training `step`.
-int engine_load_checkpoint(std::string input_dir) {
+int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth) {
     EngineState& s = engine();
 
     fs::path tarpath = fs::path(input_dir) / "state.tar";
@@ -452,10 +437,12 @@ int engine_load_checkpoint(std::string input_dir) {
     engine_ensure_optim_state(sh_opt_bits, sh_val_bits, non_sh_bits, bias != 0);
     _ensure_bilagrid_optim_state();
     _ensure_ppisp_optim_state();
+    _ensure_bg_sh_optim_state();
 
     // Restore each saved .npy into its pool slot by name.
     std::vector<char> host_stage;
     int restored = 0;
+    if (!restore_projective_depth) engine_clear_projective_depth();
     for (auto& m : members) {
         const std::string& fn = m.name;
         if (fn.size() < 4 || fn.compare(fn.size() - 4, 4, ".npy") != 0) continue;
@@ -464,6 +451,13 @@ int engine_load_checkpoint(std::string input_dir) {
         PoolSlot slot; uint32_t sub;
         if (!parse_saved_name(base, slot, sub))
             throw std::runtime_error("engine_load_checkpoint: unknown slot '" + base + "'");
+
+        if (!restore_projective_depth &&
+            (slot == PoolSlot::EngProjectiveState || slot == PoolSlot::EngProjectiveInformation)) continue;
+        if (slot == PoolSlot::EngProjectiveState)
+            s.projective_state.resize(slot,s.max_num_splats);
+        if (slot == PoolSlot::EngProjectiveInformation)
+            s.projective_information.resize(slot,s.max_num_splats);
 
         void*  ptr    = nullptr;
         size_t nbytes = 0;

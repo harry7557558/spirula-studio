@@ -267,6 +267,28 @@ void avgpool(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
     store_at(p.out, i, sum / float(p.kh * p.kw));
 }
 
+// nn.MaxPool2d(kernel, stride), unpadded: every window lies inside the input.
+[shader("compute")]
+[numthreads(WG, 1, 1)]
+void maxpool(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
+             uniform PoolParams p) {
+    uint i = fold_index(gid, tid, p.groups_per_row, uint(WG));
+    if (i >= p.Ho * p.Wo * p.C) return;
+    uint c = i % p.C;
+    uint rest = i / p.C;
+    uint xo = rest % p.Wo;
+    uint yo = rest / p.Wo;
+
+    float best = -3.402823466e+38f;
+    for (uint ky = 0; ky < p.kh; ++ky) {
+        uint row = (yo * p.stride_y + ky) * p.Wi;
+        for (uint kx = 0; kx < p.kw; ++kx)
+            best = max(best, load_at(p.x, (row + xo * p.stride_x + kx) * p.C + c,
+                                     kInputF16 != 0));
+    }
+    store_at(p.out, i, best);
+}
+
 // ---------------------------------------------------------------------------
 // Mask export: resize + threshold + pack to bytes, in one pass
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 // Spec IDs: 0..5 from proj_bwd_common.slang, this file's after, kDistortion
 // last.
 
+#include "shaders/projective_depth.slang"
 #define CudaDeviceExport ForceInline
 #include "aabb16.slang"
 #include "int64_compat.slang"
@@ -104,6 +105,12 @@ struct FpboParams {
     int* steps;            // per-splat steps (has_steps)
     uint* visit_counters;  // per-splat render counters (has_visit)
     // learning rates + regularizer weights (already divided by N host-side)
+    float4* depth_states;
+    float* depth_information;
+    float4* depth_centers;
+    int* depth_cameras;
+    float depth_lr, depth_angular_lr;
+    uint has_depth, depth_photo, depth_relative, depth_pad;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -174,6 +181,9 @@ void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
     row.base = qbase;
     row.bounds_stride = vstride;
     row.pair_pitch = vpitch;
+    // Two passes, projection then colour: the colour VJP's v_sh row is then
+    // still zero through the projection VJP's autodiff temporaries. One loop
+    // held both and spilled 1.5 KB per thread (fpbo_bench 10.4 -> 8.7 ms at 1M).
     for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
         // Packed: the forward emits (gaussian, camera) order, so cid_t is
         // the out_idx that indexes aabb / camera_ids / vs_screen.
@@ -185,22 +195,25 @@ void _fpbo_camera_loop<let cam : CameraModelType, D : ICameraDistortion>(
                                           p.dist_coeffs, uint(cid));
         if (kEval3d != 0) {
             float* v_row = scrg_row(p.vs_screen, idx);
-            float3 v_ss = scrg_scale(v_row);
-            float v_so = scrg_opac(v_row);
-            float3 v_rgb = scrg_rgb(v_row);
-            pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, v_ss, v_so, g);
-            pb_color_vjp<D>(s, c, row, int(p.sb_base), v_rgb, g);
+            pb_vjp_3dgut<cam, D>(s, c, p.width, p.height, scrg_scale(v_row),
+                                 scrg_opac(v_row), g);
         } else {
             float* v_row = scr2_row(p.vs_screen, idx);
-            float2 v_xy = scr2_xy(v_row);
-            float v_depth = scr2_depth(v_row);
-            float3 v_conic = scr2_conic(v_row);
-            float v_opac = scr2_opac(v_row);
-            float3 v_rgb = scr2_rgb(v_row);
-            pb_vjp_2d<cam, D>(s, c, p.width, p.height, v_xy, v_depth, v_conic,
-                              v_opac, g);
-            pb_color_vjp<D>(s, c, row, int(p.sb_base), v_rgb, g);
+            pb_vjp_2d<cam, D>(s, c, p.width, p.height, scr2_xy(v_row),
+                              scr2_depth(v_row), scr2_conic(v_row),
+                              scr2_opac(v_row), g);
         }
+    }
+    for (int cid_t = cid_0; cid_t < cid_1; ++cid_t) {
+        int idx = (kPacked != 0) ? cid_t : cid_t * int(p.N) + int(gid);
+        int cid = (kPacked != 0) ? p.camera_ids[idx] : cid_t;
+        if (aabb16_is_empty(p.aabb[idx]))
+            continue;
+        PbCamera<D> c = pb_load_camera<D>(p.viewmats, p.intrins,
+                                          p.dist_coeffs, uint(cid));
+        float3 v_rgb = kEval3d != 0 ? scrg_rgb(scrg_row(p.vs_screen, idx))
+                                    : scr2_rgb(scr2_row(p.vs_screen, idx));
+        pb_color_vjp<D>(s, c, row, int(p.sb_base), v_rgb, g);
     }
 }
 
@@ -231,6 +244,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     PbSplat s = {};
     PbGrads g = pb_grads_zero();
     bool regularize = true;
+    float projective_gradient = 0;
+    bool projective_active = false;
     if (inside) {
         s = pb_load_splat(p.means, p.quats, p.scales, p.opacities,
                           p.features_dc, gid);
@@ -267,6 +282,19 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.has_visit != 0)
             p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
         regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+
+        projective_active = p.has_depth != 0 && p.radii[gid] > 0
+            && dot(g.v_mean,g.v_mean)+dot(g.v_scale,g.v_scale) > 0;
+        if (projective_active) {
+            float anchor_id = p.depth_states[gid].x;
+            projective_active = anchor_id > 0;
+            if (projective_active) {
+                float3 projective_anchor = p.depth_centers[max(int(anchor_id),1)-1].xyz;
+                float3 projective_camera = p.depth_centers[p.depth_cameras[0]].xyz;
+                projective_gradient = projective_depth_gradient(projective_anchor,projective_camera,
+                    s.mean,g.v_mean,g.v_scale,p.depth_photo != 0);
+            }
+        }
 
         // per-splat regularizers -> gradient
         float v_losses[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
@@ -474,6 +502,20 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         }
     }
 
+    if (projective_active) {
+        float4 projective_state = p.depth_states[gid];
+        float3 projective_anchor = p.depth_centers[max(int(projective_state.x),1)-1].xyz;
+        float3 projective_camera = p.depth_centers[p.depth_cameras[0]].xyz;
+        float3 mean = float3(p.means[3*gid],p.means[3*gid+1],p.means[3*gid+2]);
+        float3 scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
+        projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
+            p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
+            projective_state,mean,scale);
+        p.means[3*gid] = mean.x; p.means[3*gid+1] = mean.y; p.means[3*gid+2] = mean.z;
+        p.scales[3*gid] = scale.x; p.scales[3*gid+1] = scale.y; p.scales[3*gid+2] = scale.z;
+        p.depth_states[gid] = projective_state;
+    }
+
     // update features_dc
     if (inside) {
         float3 v_dc = g.v_dc;
@@ -560,8 +602,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     const int sb_cells = 6 * kSbLobes;
     float lr_sh = p.lr_features_sh * ibc1;
     float lr_sb = p.lr_features_sb * ibc1;
-    const float reg_weight =
-        p.sh_reg_weight * (1.0f / max(float(num_sh), 1.0f));
+    const float reg_weight = p.sh_reg_weight;  // per coefficient, as fused_adam_step
 
     // Per-channel DC color + clip radius for the trust-region SH update.
     float3 c_dc = float3(0.0f);
@@ -662,7 +703,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         const int sb_c0 = 3 * int(p.sb_base);
 
         if (inside) {
-            for (int j = 0; j < num_sh; ++j) {
+            [ForceUnroll]
+            for (int j = 0; j < kVcMaxShCoeffs; ++j) {
+                if (j >= num_sh) continue;
                 float3 g1v, g2v;
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ch++) {
@@ -783,7 +826,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint* wp_v = elem_at(p.sh_value_packed, sh_base >> 1);
         if (inside) {
             uint pend_s = 0, pend_v = 0, w = 0u;
-            for (int j = 0; j < num_sh; ++j) {
+            [ForceUnroll]
+            for (int j = 0; j < kVcMaxShCoeffs; ++j) {
+                if (j >= num_sh) continue;
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ++ch) {
                     uint2 q = qadam_quantize_us<8>(u_sh_vals[j][ch],

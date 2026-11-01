@@ -62,6 +62,14 @@ struct GpsFrame {
     double gate = 0;          // metres, the fit's inlier radius
     Vec3 centroid{0, 0, 0};   // metres, the fitted positions' mean
     double spread = 0;        // metres, their RMS radius; 0 leaves `gate` flat
+    std::vector<int> track_ids;
+    std::vector<double> track_vertical_offsets;
+
+    double trackVerticalOffset(int track) const {
+        for (size_t i = 0; i < track_ids.size() && i < track_vertical_offsets.size(); i++)
+            if (track_ids[i] == track) return track_vertical_offsets[i];
+        return 0.0;
+    }
 
     // The radius at metric position p. Error correlated across a fit leaves its frame
     // off by up to its noise at the spread; past it, by that much more per spread out.

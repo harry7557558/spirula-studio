@@ -55,7 +55,7 @@ struct Result {
 };
 
 Result run(TorchTensorView rgb, TorchTensorView ref, const float* Ts,
-           const uint8_t* mask, int mode, int scales = 3) {
+           const uint8_t* mask, int mode, int scales = 3, int loss = 0) {
     std::array<float, (int)LossWeightIndex::length> weights{};
     weights[(int)LossWeightIndex::RgbSupL1] = 0.8f;
     weights[(int)LossWeightIndex::RgbSupL2] = 0.2f;
@@ -75,7 +75,7 @@ Result run(TorchTensorView rgb, TorchTensorView ref, const float* Ts,
         scales, rgb, ref, null_view(), null_view(), null_view(), null_view(),
         null_view(), view(Ts, 4, 1), null_view(), null_view(), null_view(),
         null_view(), null_view(), view(mask, 1, 1), /*has_mask=*/true,
-        weights, 0.2f, /*saturation_threshold=*/0.9f,
+        weights, 0.2f, loss, /*saturation_threshold=*/0.9f,
         std::make_tuple((uint64_t)d_v_losses, (uint32_t)4,
                         std::vector<int64_t>{(int64_t)LossIndex::length}),
         needs, B, null_view(), view(map, 4, 1), mode, 0.75f, 0.5f, grads);
@@ -86,12 +86,13 @@ Result run(TorchTensorView rgb, TorchTensorView ref, const float* Ts,
     return r;
 }
 
-void expect_same(const Result& a, const Result& b, const char* what) {
+void expect_same(const Result& a, const Result& b, const char* what,
+                 double rel = 1e-6) {
     double worst = 0.0;
     auto cmp = [&](const std::vector<float>& x, const std::vector<float>& y) {
         for (size_t i = 0; i < x.size(); i++)
             worst = std::max(worst, std::fabs((double)x[i] - y[i]) /
-                                        (1e-9 + 1e-6 * std::fabs((double)y[i])));
+                                        (1e-9 + rel * std::fabs((double)y[i])));
     };
     cmp(a.v_rgb, b.v_rgb);
     cmp(a.v_Ts, b.v_Ts);
@@ -364,31 +365,41 @@ int main() {
     uint8_t* d_mask = upload(mask);
     uint8_t* d_mask4 = upload(mask4);
 
-    const struct { int mode; const char* name; } modes[] = {
+    // S-CIELAB's sRGB decode and cube root go through driver transcendentals:
+    // NVIDIA Vulkan's uint8 pipeline lands its map 1.7e-6 off (CUDA: exact).
+    constexpr int kScielab = (int)PerceptualLoss::SCielab;
+    constexpr int kFlip = (int)PerceptualLoss::Flip;
+    const struct { int mode; const char* name; int loss = 0; } modes[] = {
         {(int)DensifyLossMapMode::SsimContrastStruct, "ssim_cs"},
         {(int)DensifyLossMapMode::LossFull, "loss_full"},
         {(int)DensifyLossMapMode::EdgeAware, "edge_aware"},
         {(int)DensifyLossMapMode::RobustEdgeAware, "robust_edge_aware"},
         {(int)DensifyLossMapMode::SsimFullNms, "ssim_full_nms"},
+        {(int)DensifyLossMapMode::SCielab, "s_cielab", kScielab},
+        {(int)DensifyLossMapMode::LossFull, "loss_full on s_cielab", kScielab},
+        {(int)DensifyLossMapMode::FlipFeature, "flip_feature", kFlip},
+        {(int)DensifyLossMapMode::LossFull, "loss_full on flip", kFlip},
+        {(int)DensifyLossMapMode::SsimContrastStruct, "ssim_cs on ssim_blur_tolerant",
+         (int)PerceptualLoss::SsimBlurTolerant},
     };
     for (const auto& m : modes) {
         char what[128];
         const Result base8 = run(view(d_rgbf, 4, 3), view(d_ref8f, 4, 3), d_Ts,
-                                 d_mask, m.mode);
+                                 d_mask, m.mode, 3, m.loss);
         std::snprintf(what, sizeof(what), "uint8 ground truth, %s", m.name);
         expect_same(run(view(d_rgbf, 4, 3), view(d_ref8, 1, 3), d_Ts, d_mask,
-                        m.mode), base8, what);
+                        m.mode, 3, m.loss), base8, what, m.loss ? 1e-5 : 1e-6);
         const Result base16 = run(view(d_rgb16f, 4, 3), view(d_ref16f, 4, 3),
-                                  d_Ts, d_mask, m.mode, 1);
+                                  d_Ts, d_mask, m.mode, 1, m.loss);
         std::snprintf(what, sizeof(what), "float16 render and ground truth, %s",
                       m.name);
         expect_same(run(view(d_rgb16, 2, 3), view(d_ref16, 2, 3), d_Ts, d_mask,
-                        m.mode, 1), base16, what);
+                        m.mode, 1, m.loss), base16, what, m.loss ? 1e-5 : 1e-6);
         const Result basep = run(view(d_rgbpf, 4, 3), view(d_refpf, 4, 3), d_Ts,
-                                 d_mask4, m.mode);
+                                 d_mask4, m.mode, 3, m.loss);
         std::snprintf(what, sizeof(what), "float16 pyramid, %s", m.name);
         expect_same(run(view(d_rgbp, 2, 3), view(d_refp, 2, 3), d_Ts, d_mask4,
-                        m.mode), basep, what);
+                        m.mode, 3, m.loss), basep, what, m.loss ? 1e-5 : 1e-6);
     }
     check_half_stages(rng);
     std::printf("pixel_format_parity: %s\n", g_failures ? "FAILED" : "PASSED");

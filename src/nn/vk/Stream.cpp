@@ -230,6 +230,10 @@ void wait_timeline(const Context& ctx, VkSemaphore timeline, const uint64_t* val
 
 }  // namespace
 
+void wait_timeline(VkSemaphore timeline, uint64_t value) {
+    wait_timeline(Context::get(), timeline, &value);
+}
+
 VkCommandBuffer Stream::begin() {
     Impl& s = impl();
     if (s.recording) return s.cbs[s.cur];

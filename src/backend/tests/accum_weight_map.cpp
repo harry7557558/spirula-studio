@@ -158,7 +158,8 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
     auto rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s, gauss_ids,
                                              W, H, tile_offsets, flatten_ids,
                                              macro_log2,
-                                             DistortionType::None, false, true);
+                                             DistortionType::None, false, true,
+                                             SplatScoreRender{}, 0.0f);
     backend::device_synchronize();
     auto& renders = std::get<0>(rout);
     auto& render_Ts = std::get<1>(rout);
@@ -187,14 +188,15 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         }
     }
 
-    auto run = [&](const std::vector<float>& map) {
+    auto run = [&](const std::vector<float>& map,
+                   DeviceVector<float> max_weight = {}, float mw_scale = 1.0f) {
         backend::memcpy_sync(d_awmap, map.data(), map.size() * 4,
                              MemcpyKind::HostToDevice);
         auto [vw, vs, aw] = rasterize_to_pixels_3dgs_bwd(
             N, in_splats, splats_s, gauss_ids, W, H, tile_offsets, flatten_ids,
             macro_log2,
             render_Ts, last_ids, renders, std::nullopt, DistortionType::None,
-            t3f1(d_awmap), accum_mode, v_renders, t3f1(d_v_T),
+            t3f1(d_awmap), accum_mode, max_weight, mw_scale, 0.0f, v_renders, t3f1(d_v_T),
             DeviceTensor3D<float>{}, std::nullopt, 0.0f, std::nullopt, std::nullopt);
         backend::device_synchronize();
         // Avg lands as [numerator, denominator] planar; the engine divides it
@@ -297,6 +299,28 @@ void run_mode(bool packed, DensifyAccumMode accum_mode) {
         std::printf("   avg normalization: worst |ones_score - 1| = %.2e\n",
                     worst_one);
         check(worst_one < 1e-5, "avg is not normalized by the covered weight");
+    }
+
+    // 4) The peak-weight buffer is that same all-ones Max score, scaled and
+    // maxed into what the buffer held.
+    if (accum_mode == DensifyAccumMode::Max) {
+        const float kInit = 0.3f, kScale = 1.5f;
+        std::vector<float> h_mw(N, kInit);
+        float* d_mw = upload(h_mw);
+        run(std::vector<float>(n_pix, 1.0f),
+            DeviceVector<float>(ttv(d_mw, {N, 1})), kScale);
+        backend::memcpy_sync(h_mw.data(), d_mw, N * 4, MemcpyKind::DeviceToHost);
+        backend::device_free(d_mw);
+        double worst = 0.0;
+        int raised = 0;
+        for (int64_t i = 0; i < N; i++) {
+            const float want = std::max(kInit, kScale * peak[i]);
+            raised += want > kInit;
+            worst = std::max(worst, std::fabs((double)h_mw[i] - want) / want);
+        }
+        std::printf("   max weight: %d raised, worst rel err %.2e\n", raised, worst);
+        check(raised > 100, "too few splats raised the peak weight");
+        check(worst < 1e-6, "peak weight is not the max of alpha*T");
     }
 }
 

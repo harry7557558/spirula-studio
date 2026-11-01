@@ -1,15 +1,13 @@
-// Timing harness for the fused projection-backward + optimizer, the kernel
-// that dominates a training step (~2/3 of GPU time at cap_max splats).
-// Builds the same buffer set the engine hands it at quantization_level 1 and
-// times R back-to-back calls, so a kernel change can be A/B'd in seconds
-// instead of a 30k-step run. Same source on both backends; lobes are
-// Vulkan-only.
+// Fixed projected inputs for timing FPBO, quantized projection backward,
+// or quantized SH Adam. Same source on both backends; lobes are Vulkan-only.
 //
-//   ./fpbo_bench [num_splats] [iters] [sh_degree=3] [sb_lobes=0]
+// ./fpbo_bench [num_splats] [iters] [sh_degree=3] [sb_lobes=0] [fpbo|qgrad|adam]
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/projection/ProjectionPackedFwd.cuh>
 #include <kernels/optim/FusedProjectionBwdOptim.cuh>
+#include <kernels/optim/Optimizer.cuh>
+#include <kernels/projection/ProjectionBwdQuantGrad.cuh>
 
 #include <chrono>
 #include <cmath>
@@ -60,10 +58,19 @@ int main(int argc, char** argv) {
     const int iters = argc > 2 ? std::atoi(argv[2]) : 20;
     const ColorBasis color{argc > 3 ? std::atoi(argv[3]) : 3,
                            argc > 4 ? std::atoi(argv[4]) : 0};
+    const char* mode = argc > 5 ? argv[5] : "fpbo";
+    const bool qgrad = std::strcmp(mode, "qgrad") == 0;
+    const bool adam = std::strcmp(mode, "adam") == 0;
+    if (!qgrad && !adam && std::strcmp(mode, "fpbo") != 0) {
+        std::fprintf(stderr, "mode must be fpbo, qgrad, or adam\n");
+        return 2;
+    }
+    const bool separate = qgrad || adam;
     const int num_sh = color.coeffs();
     const int64_t C = 1;
     const int64_t NB = (N + 255) / 256;
-    const int64_t cells = sh_fpbo_cells(N, num_sh);
+    const int64_t cells = separate ? N * 3 * num_sh : sh_fpbo_cells(N, num_sh);
+    const int64_t sh_blocks = separate ? (cells + 255) / 256 : NB;
 
     std::mt19937 rng(20260825u);
     auto uf = [&](float lo, float hi) {
@@ -108,8 +115,8 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> shq(cells * 2, 0);
     std::vector<uint8_t> shv(cells * 2);
     for (auto& v : shv) v = (uint8_t)(rng() & 0xff);
-    std::vector<float> shq_b(4 * NB, 0.f), shv_b(2 * NB);
-    for (int64_t b = 0; b < NB; b++) {
+    std::vector<float> shq_b(4 * sh_blocks, 0.f), shv_b(2 * sh_blocks);
+    for (int64_t b = 0; b < sh_blocks; b++) {
         shv_b[2 * b] = -0.3f;
         shv_b[2 * b + 1] = 0.3f;
     }
@@ -120,16 +127,16 @@ int main(int argc, char** argv) {
     shq.clear(); shq.shrink_to_fit();
     shv.clear(); shv.shrink_to_fit();
     std::optional<TorchTensorView> shq_tv = ttv(d_shq, {cells, 1});
-    std::optional<TorchTensorView> shq_b_tv = ttv(d_shq_b, {NB, 4});
+    std::optional<TorchTensorView> shq_b_tv = ttv(d_shq_b, {sh_blocks, 4});
     std::optional<TorchTensorView> shv_tv = ttv(d_shv, {cells, 1});
-    std::optional<TorchTensorView> shv_b_tv = ttv(d_shv_b, {NB, 2});
+    std::optional<TorchTensorView> shv_b_tv = ttv(d_shv_b, {sh_blocks, 2});
 
     auto out = projection_3dgs_packed_forward(
         N, color, splats, ttv(d_vm, {C, 16}), ttv(d_intr, {C, 4}), W, H,
         "PINHOLE", dist_fixture::kTierNames[0],
         ttv(d_dist + dist_fixture::row_offset(0, C),
             {C, kCameraDistortionParams}),
-        radii, shv_tv, shv_b_tv, (uint32_t)num_sh, 16, 0);
+        radii, shv_tv, shv_b_tv, (uint32_t)num_sh, 16, separate ? 256 : 0);
     DeviceVector<int32_t> cam_ids = std::get<0>(out);
     DeviceVector<int32_t> gauss_ids = std::get<1>(out);
     DeviceTensor2D<uint2> aabb_2d = vec_to_2d_aabb(std::get<2>(out));
@@ -200,17 +207,73 @@ int main(int argc, char** argv) {
                          n_isect * sizeof(int32_t),
                          MemcpyKind::DeviceToDevice);
 
+    GradQuantBuffers gq{};
+    struct GradAllocation { uint8_t* packed; float2* bounds; size_t bytes; };
+    std::vector<GradAllocation> grad_allocations;
+    auto gradient = [&](int prims, int bits, uint8_t*& packed, float2*& bounds) {
+        size_t bytes = (size_t)N * prims * (bits / 8);
+        packed = (uint8_t*)backend::device_malloc(bytes);
+        bounds = (float2*)backend::device_malloc(NB * sizeof(float2));
+        backend::memset_sync(packed, 0, bytes);
+        backend::memset_sync(bounds, 0, NB * sizeof(float2));
+        grad_allocations.push_back({packed, bounds, bytes});
+    };
+    if (separate) {
+        if (qgrad) {
+            gradient(3, 16, gq.means_packed, gq.means_bounds);
+            gradient(4, 16, gq.quats_packed, gq.quats_bounds);
+            gradient(3, 16, gq.scales_packed, gq.scales_bounds);
+            gradient(1, 16, gq.opac_packed, gq.opac_bounds);
+            gradient(3, 16, gq.dc_packed, gq.dc_bounds);
+        }
+        gradient(3 * num_sh, 8, gq.sh_packed, gq.sh_bounds);
+        if (adam) {
+            std::vector<uint8_t> codes((size_t)cells);
+            for (auto& c : codes) c = (uint8_t)(rng() & 0xff);
+            backend::memcpy_sync(gq.sh_packed, codes.data(), codes.size(),
+                                 MemcpyKind::HostToDevice);
+            std::vector<float2> bounds((size_t)NB, float2{-0.1f, 0.1f});
+            backend::memcpy_sync(gq.sh_bounds, bounds.data(), NB * sizeof(float2),
+                                 MemcpyKind::HostToDevice);
+        }
+    }
+
     auto one_call = [&](int step) {
+        if (adam) {
+            SbOptimCells sb;
+            if (color.sb_lobes > 0) sb = {3 * color.sh_coeffs(), 2.5e-3f};
+            fused_adam_step_quantized_value(
+                N, cells, DeviceTensorFloatND(ttv(nullptr, {N, 3 * num_sh, 1})),
+                gq.sh_packed, gq.sh_bounds, d_shq, (float4*)d_shq_b,
+                d_shv, (float2*)d_shv_b, 2.5e-4f, 500,
+                DeviceVector<int32_t>(ttv(d_steps, {N, 1})), 1e-3f, 0.f,
+                8, 16, ColorTrustState{}, sb, 1.f, false);
+            return;
+        }
         backend::memcpy_sync(gauss_ids.data_ptr(), d_gauss_ref,
                              n_isect * sizeof(int32_t),
                              MemcpyKind::DeviceToDevice);
+        if (qgrad) {
+            for (const auto& a : grad_allocations) {
+                backend::memset_async(a.packed, 0, a.bytes);
+                backend::memset_async(a.bounds, 0, NB * sizeof(float2));
+            }
+            projection_3dgs_backward_quantgrad(
+                N, color, splats, ttv(d_vm, {C, 16}), ttv(d_intr, {C, 4}), W, H,
+                "PINHOLE", dist_fixture::kTierNames[0],
+                ttv(d_dist + dist_fixture::row_offset(0, C),
+                    {C, kCameraDistortionParams}),
+                cam_ids, gauss_ids, aabb_2d, v_screen, v_world, gq,
+                shv_tv, shv_b_tv, (uint32_t)num_sh, 16, 256);
+            return;
+        }
         fused_projection_bwd_optimizer_3dgs(
             N, color, splats, ttv(d_vm, {C, 16}), ttv(d_intr, {C, 4}), W,
             H, "PINHOLE", dist_fixture::kTierNames[0],
             ttv(d_dist + dist_fixture::row_offset(0, C),
                 {C, kCameraDistortionParams}),
             cam_ids, gauss_ids, aabb_2d, v_world, v_screen, g1, g2, shq_tv,
-            shq_b_tv, shv_tv, shv_b_tv, non_sh, SplatVisitState{}, radii,
+            shq_b_tv, shv_tv, shv_b_tv, non_sh, SplatVisitState{}, {}, radii,
             densify_score,
             1.28e-4f, 1.5e-3f, 0.02f, 0.025f, 5e-3f, 2.5e-4f, 2.5e-3f, 10.f,
             0.01f, 0.01f, 0.01f, 0.f, 0.f, 0.f, 1e-3f, 1e-3f,
@@ -231,6 +294,6 @@ int main(int argc, char** argv) {
 
     const double ms =
         std::chrono::duration<double, std::milli>(t1 - t0).count() / iters;
-    std::printf("fpbo: %.3f ms/call  (%.1f Msplat/ms)\n", ms, N / ms / 1e6);
+    std::printf("%s: %.3f ms/call  (%.1f Msplat/ms)\n", mode, ms, N / ms / 1e6);
     return 0;
 }

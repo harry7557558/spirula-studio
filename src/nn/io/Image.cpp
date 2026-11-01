@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace nn {
@@ -38,7 +39,8 @@ Image load_image(const std::string& path, const std::string& gamut,
         img.channels = 3;
         return img;
     }
-    uint8_t* data = stbi_load(path.c_str(), &w, &h, &c, 3);
+    std::unique_ptr<uint8_t, decltype(&stbi_image_free)> data(
+        stbi_load(path.c_str(), &w, &h, &c, 3), &stbi_image_free);
     if (!data) {
         NN_LOG_ERROR("load_image: cannot read '%s': %s\n", path.c_str(),
                        stbi_failure_reason() ? stbi_failure_reason() : "unknown format");
@@ -47,8 +49,8 @@ Image load_image(const std::string& path, const std::string& gamut,
     img.width = w;
     img.height = h;
     img.channels = 3;
-    img.data.assign(data, data + (size_t)w * h * 3);
-    stbi_image_free(data);
+    img.data.assign(data.get(), data.get() + (size_t)w * h * 3);
+    data.reset();
     colorspace::to_srgb_inplace(img.data.data(), (size_t)w * h, gamut,
                                 is_linear.value_or(false));
     colorspace::expose_srgb8_inplace(

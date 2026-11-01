@@ -954,7 +954,8 @@ static void testKeptFrame() {
           "kept: the origin is the point the positions are east-north-up about");
     check(!gauge[0].origin.ok, "kept: a model with no GPS frame has no origin");
 
-    writeModels({models[1]}, dir / "sparse", false, {gauge[1]});
+    std::vector<Reconstruction> exported = {models[1]};
+    writeModels(exported, dir / "sparse", false, {gauge[1]});
     std::map<std::string, std::string> keys;
     std::ifstream gf(dir / "sparse" / "0" / "gauge.txt");
     std::string line;

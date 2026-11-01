@@ -137,11 +137,12 @@ static BgLumaViews _bg_luma_views(const EngineBackground& bg) {
     return v;
 }
 
-static void _ensure_bg_sh_optim_state() {
+void _ensure_bg_sh_optim_state() {
     auto& bg = engine().background;
     if (bg.sh_optim_initialized) return;
     if (bg.mode != EngineBackground::Mode::Sh) return;
     int64_t n = bg.sh_coeffs.size();
+    if (n == 0) return;
     bg.sh_g1.resize(PoolSlot::EngBgSkyG1, n); bg.sh_g1.zero();
     bg.sh_g2.resize(PoolSlot::EngBgSkyG2, n); bg.sh_g2.zero();
     bg.sh_optim_initialized = true;

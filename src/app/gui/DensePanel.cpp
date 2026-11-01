@@ -1,5 +1,6 @@
 #include "app/gui/GuiApp.h"
 
+#include "app/gui/ProgressView.h"
 #include "app/gui/SfmProgress.h"
 #include "app/gui/Ui.h"
 #include "dense/Artifact.h"
@@ -146,8 +147,7 @@ void GuiApp::draw_dense_options() {
 
     // The model, the way the geometry step shows its own.
     if (_dense_download.state() == FileDownload::State::Running) {
-        ui::ProgressBarRaw(std::max(0.f, _dense_download.progress()), ImVec2(px(260.0f), 0),
-                           _dense_download.status().c_str());
+        download_bar(_dense_download, _dense_download.status());
         ImGui::SameLine();
         ImGui::PushID("densedl");
         if (ui::Button(dmsg::stop)) _dense_download.cancel();

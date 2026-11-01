@@ -3,8 +3,10 @@
 
 `spirula train --save-eval-images 1` writes one `eval-gt-NNNNN.png` /
 `eval-render-NNNNN.png` pair per held-out view and a metrics.json holding
-l1 / psnr / ssim and their colour-corrected `cc_` variants. Everything except
-LPIPS is computed natively; LPIPS needs AlexNet and VGG16, so it stays here.
+l1 / psnr / ssim and their colour-corrected `cc_` variants. A build with the
+inference layer (SS_BUILD_SAM, the Vulkan default) adds LPIPS itself
+(src/lpips/), scored on these same 8-bit images, so the two agree; this script
+is for builds without it.
 
     python3 reference/python/eval_lpips.py <run_dir> [--write]
 

@@ -273,6 +273,21 @@ SS_MSG(stage_selecting_pairs,
     RU("Выбор снимков для сравнения"),
     TR("Hangi görüntülerin karşılaştırılacağı seçiliyor"));
 
+SS_MSG(stage_measuring_focals,
+    EN("Measuring each camera's focal length"),
+    JA("各カメラの焦点距離を測っています"),
+    ZH_HANS("正在测量每台相机的焦距"),
+    ZH_HANT("正在測量每台相機的焦距"),
+    KO("각 카메라의 초점 거리를 재는 중"),
+    DE("Die Brennweite jeder Kamera wird gemessen"),
+    FR("Mesure de la focale de chaque caméra"),
+    ES("Midiendo la distancia focal de cada cámara"),
+    PT("Medindo a distância focal de cada câmera"),
+    IT("Misura della focale di ogni fotocamera"),
+    NL("De brandpuntsafstand van elke camera wordt gemeten"),
+    RU("Измерение фокусного расстояния каждой камеры"),
+    TR("Her kameranın odak uzaklığı ölçülüyor"));
+
 SS_MSG(stage_seeding,
     EN("Choosing the lens and a starting pair"),
     JA("レンズと最初のペアを決めています"),
@@ -304,19 +319,19 @@ SS_MSG(stage_refining,
     TR("Biten model iyileştiriliyor"));
 
 SS_MSG(stage_reconstructing,
-    EN("Reconstructing cameras (the slow part)"),
-    JA("カメラ位置を復元しています（時間のかかる工程）"),
-    ZH_HANS("正在恢复相机位姿（最慢的一步）"),
-    ZH_HANT("正在還原相機位姿（最慢的一步）"),
-    KO("카메라 위치를 복원하는 중(가장 오래 걸리는 단계)"),
-    DE("Kamerastandpunkte werden rekonstruiert (der langsame Teil)"),
-    FR("Reconstruction des caméras (l'étape lente)"),
-    ES("Reconstruyendo las cámaras (la parte lenta)"),
-    PT("Reconstruindo as câmeras (a parte lenta)"),
-    IT("Ricostruzione delle fotocamere (la parte lenta)"),
-    NL("Camerastandpunten reconstrueren (het trage deel)"),
-    RU("Восстановление положений камер (самый долгий этап)"),
-    TR("Kamera konumları yeniden kuruluyor (yavaş kısım)"));
+    EN("Reconstructing cameras"),
+    JA("カメラ位置を復元しています"),
+    ZH_HANS("正在恢复相机位姿"),
+    ZH_HANT("正在還原相機位姿"),
+    KO("카메라 위치를 복원하는 중"),
+    DE("Kamerastandpunkte werden rekonstruiert"),
+    FR("Reconstruction des caméras"),
+    ES("Reconstruyendo las cámaras"),
+    PT("Reconstruindo as câmeras"),
+    IT("Ricostruzione delle fotocamere"),
+    NL("Camerastandpunten reconstrueren"),
+    RU("Восстановление положений камер"),
+    TR("Kamera konumları yeniden kuruluyor"));
 
 SS_MSG(stage_reconstructing_features,
     EN("Reconstructing (finding features)"),
@@ -456,19 +471,19 @@ SS_MSG(stage_match_exhaustive,
     TR("Öznitelikler eşleştiriliyor (tam karşılaştırma)"));
 
 SS_MSG(stage_colmap_mapper,
-    EN("Reconstructing cameras (mapper; this is the slow part)"),
-    JA("カメラ位置を復元しています（mapper。時間のかかる工程です）"),
-    ZH_HANS("正在恢复相机位姿（mapper，这一步最慢）"),
-    ZH_HANT("正在還原相機位姿（mapper，這一步最慢）"),
-    KO("카메라 위치를 복원하는 중(mapper, 가장 오래 걸리는 단계)"),
-    DE("Kamerastandpunkte werden rekonstruiert (mapper; der langsame Teil)"),
-    FR("Reconstruction des caméras (mapper ; c'est l'étape lente)"),
-    ES("Reconstruyendo las cámaras (mapper; esta es la parte lenta)"),
-    PT("Reconstruindo as câmeras (mapper; esta é a parte lenta)"),
-    IT("Ricostruzione delle fotocamere (mapper; è la parte lenta)"),
-    NL("Camerastandpunten reconstrueren (mapper; dit is het trage deel)"),
-    RU("Восстановление положений камер (mapper; это самый долгий этап)"),
-    TR("Kamera konumları yeniden kuruluyor (mapper; yavaş kısım budur)"));
+    EN("Reconstructing cameras (mapper)"),
+    JA("カメラ位置を復元しています（mapper）"),
+    ZH_HANS("正在恢复相机位姿（mapper）"),
+    ZH_HANT("正在還原相機位姿（mapper）"),
+    KO("카메라 위치를 복원하는 중(mapper)"),
+    DE("Kamerastandpunkte werden rekonstruiert (mapper)"),
+    FR("Reconstruction des caméras (mapper)"),
+    ES("Reconstruyendo las cámaras (mapper)"),
+    PT("Reconstruindo as câmeras (mapper)"),
+    IT("Ricostruzione delle fotocamere (mapper)"),
+    NL("Camerastandpunten reconstrueren (mapper)"),
+    RU("Восстановление положений камер (mapper)"),
+    TR("Kamera konumları yeniden kuruluyor (mapper)"));
 
 SS_MSG(stage_merge_models,
     EN("Merging partial models"),
@@ -2334,6 +2349,100 @@ SS_MSG(eval_metrics_written,
     RU("Показатели оценки записаны в {0}"),
     TR("Değerlendirme ölçütleri {0} dosyasına yazıldı"));
 
+SS_MSG(eval_lpips_unavailable,
+    EN("Eval: this build has no inference layer (SS_BUILD_SAM), so LPIPS is left "
+       "out; reference/python/eval_lpips.py scores the images --save-eval-images "
+       "writes."),
+    JA("評価: このビルドには推論レイヤー（SS_BUILD_SAM）がないため、LPIPS は省きます。"
+       "--save-eval-images が書き出す画像は reference/python/eval_lpips.py で採点できます。"),
+    ZH_HANS("评估：此构建不含推理层（SS_BUILD_SAM），因此不计算 LPIPS；"
+            "reference/python/eval_lpips.py 可为 --save-eval-images 写出的图像评分。"),
+    ZH_HANT("評估：此建置不含推論層（SS_BUILD_SAM），因此不計算 LPIPS；"
+            "reference/python/eval_lpips.py 可為 --save-eval-images 寫出的影像評分。"),
+    KO("평가: 이 빌드에는 추론 계층(SS_BUILD_SAM)이 없어 LPIPS를 뺍니다. "
+       "--save-eval-images가 쓰는 이미지는 reference/python/eval_lpips.py로 채점할 수 "
+       "있습니다."),
+    DE("Auswertung: Dieser Build hat keine Inferenzschicht (SS_BUILD_SAM), daher "
+       "fehlt LPIPS; reference/python/eval_lpips.py bewertet die Bilder, die "
+       "--save-eval-images schreibt."),
+    FR("Évaluation : ce build n'a pas de couche d'inférence (SS_BUILD_SAM), LPIPS est "
+       "donc omis ; reference/python/eval_lpips.py note les images qu'écrit "
+       "--save-eval-images."),
+    ES("Evaluación: esta compilación no tiene capa de inferencia (SS_BUILD_SAM), así "
+       "que se omite LPIPS; reference/python/eval_lpips.py puntúa las imágenes que "
+       "escribe --save-eval-images."),
+    PT("Avaliação: esta compilação não tem camada de inferência (SS_BUILD_SAM), então "
+       "o LPIPS fica de fora; reference/python/eval_lpips.py pontua as imagens que "
+       "--save-eval-images grava."),
+    IT("Valutazione: questa build non ha il livello di inferenza (SS_BUILD_SAM), "
+       "quindi LPIPS è escluso; reference/python/eval_lpips.py valuta le immagini "
+       "scritte da --save-eval-images."),
+    NL("Evaluatie: deze build heeft geen inferentielaag (SS_BUILD_SAM), dus LPIPS "
+       "ontbreekt; reference/python/eval_lpips.py scoort de beelden die "
+       "--save-eval-images wegschrijft."),
+    RU("Оценка: в этой сборке нет слоя вывода (SS_BUILD_SAM), поэтому LPIPS "
+       "пропускается; reference/python/eval_lpips.py оценивает изображения, которые "
+       "пишет --save-eval-images."),
+    TR("Değerlendirme: bu derlemede çıkarım katmanı (SS_BUILD_SAM) yok, bu yüzden "
+       "LPIPS atlanıyor; reference/python/eval_lpips.py, --save-eval-images'ın yazdığı "
+       "görüntüleri puanlar."));
+
+SS_MSG(eval_lpips_missing,
+    EN("{0}\nThe eval pass scores held-out views with LPIPS, which needs these "
+       "checkpoints: --lpips-checkpoints <folder> reads them from a folder, and "
+       "--eval-lpips 0 trains without LPIPS."),
+    JA("{0}\n評価では取り分けた視点を LPIPS で採点し、そのためにこれらのチェック"
+       "ポイントが必要です。--lpips-checkpoints <folder> でフォルダーから読み込むか、"
+       "--eval-lpips 0 で LPIPS なしに学習してください。"),
+    ZH_HANS("{0}\n评估用 LPIPS 为留出的视角评分，需要这些检查点："
+            "--lpips-checkpoints <folder> 从文件夹读取它们，--eval-lpips 0 则不用 "
+            "LPIPS 训练。"),
+    ZH_HANT("{0}\n評估用 LPIPS 為留出的視角評分，需要這些檢查點："
+            "--lpips-checkpoints <folder> 從資料夾讀取它們，--eval-lpips 0 則不用 "
+            "LPIPS 訓練。"),
+    KO("{0}\n평가는 떼어 둔 시점을 LPIPS로 채점하며 이 체크포인트가 필요합니다. "
+       "--lpips-checkpoints <folder>는 폴더에서 읽고, --eval-lpips 0은 LPIPS 없이 "
+       "학습합니다."),
+    DE("{0}\nDie Auswertung bewertet zurückgehaltene Ansichten mit LPIPS und braucht "
+       "dafür diese Checkpoints: --lpips-checkpoints <folder> liest sie aus einem "
+       "Ordner, --eval-lpips 0 trainiert ohne LPIPS."),
+    FR("{0}\nL'évaluation note les vues mises de côté avec LPIPS, qui a besoin de ces "
+       "points de contrôle : --lpips-checkpoints <folder> les lit dans un dossier, "
+       "et --eval-lpips 0 entraîne sans LPIPS."),
+    ES("{0}\nLa evaluación puntúa las vistas apartadas con LPIPS, que necesita estos "
+       "puntos de control: --lpips-checkpoints <folder> los lee de una carpeta y "
+       "--eval-lpips 0 entrena sin LPIPS."),
+    PT("{0}\nA avaliação pontua as vistas reservadas com LPIPS, que precisa destes "
+       "checkpoints: --lpips-checkpoints <folder> os lê de uma pasta e "
+       "--eval-lpips 0 treina sem LPIPS."),
+    IT("{0}\nLa valutazione assegna un punteggio LPIPS alle viste messe da parte, e "
+       "le servono questi checkpoint: --lpips-checkpoints <folder> li legge da una "
+       "cartella, --eval-lpips 0 addestra senza LPIPS."),
+    NL("{0}\nDe evaluatie scoort opzijgezette aanzichten met LPIPS, dat deze "
+       "checkpoints nodig heeft: --lpips-checkpoints <folder> leest ze uit een map, "
+       "--eval-lpips 0 traint zonder LPIPS."),
+    RU("{0}\nОценка проверяет отложенные виды по LPIPS, и ей нужны эти контрольные "
+       "точки: --lpips-checkpoints <folder> читает их из папки, а --eval-lpips 0 "
+       "обучает без LPIPS."),
+    TR("{0}\nDeğerlendirme ayrılmış görünümleri LPIPS ile puanlar ve bu denetim "
+       "noktalarına ihtiyaç duyar: --lpips-checkpoints <folder> onları bir klasörden "
+       "okur, --eval-lpips 0 ise LPIPS olmadan eğitir."));
+
+SS_MSG(eval_lpips_failed,
+    EN("Eval: LPIPS failed and is left out of metrics.json: {0}"),
+    JA("評価: LPIPS に失敗したため metrics.json から省きます: {0}"),
+    ZH_HANS("评估：LPIPS 失败，metrics.json 中不含它：{0}"),
+    ZH_HANT("評估：LPIPS 失敗，metrics.json 中不含它：{0}"),
+    KO("평가: LPIPS가 실패해 metrics.json에서 뺍니다: {0}"),
+    DE("Auswertung: LPIPS ist fehlgeschlagen und fehlt in metrics.json: {0}"),
+    FR("Évaluation : LPIPS a échoué et est omis de metrics.json : {0}"),
+    ES("Evaluación: LPIPS falló y se omite de metrics.json: {0}"),
+    PT("Avaliação: o LPIPS falhou e fica fora de metrics.json: {0}"),
+    IT("Valutazione: LPIPS non è riuscito ed è escluso da metrics.json: {0}"),
+    NL("Evaluatie: LPIPS is mislukt en ontbreekt in metrics.json: {0}"),
+    RU("Оценка: LPIPS не удалось, в metrics.json его нет: {0}"),
+    TR("Değerlendirme: LPIPS başarısız oldu ve metrics.json'a yazılmadı: {0}"));
+
 // ===========================================================================
 // Failures -- what the screen says when a run stops
 // ===========================================================================
@@ -2622,6 +2731,76 @@ SS_MSG(ppisp_before_color_space_order,
     RU("{0} требует {1}: покадровая коррекция цвета всегда применяется в sRGB"),
     TR("{0}, {1} gerektirir: fotoğraf başına renk düzeltmesi her zaman sRGB'de "
        "uygulanır"));
+SS_MSG(learned_score_needs,
+    EN("--densify-learned-score needs --use-revised-densification, a "
+       "--densify-loss-map-mode other than none, --densify-score-blend-world-grad "
+       "0, and positive --densify-score-power and --densify-loss-map-power"),
+    JA("--densify-learned-score には --use-revised-densification、none 以外の "
+       "--densify-loss-map-mode、--densify-score-blend-world-grad 0、正の "
+       "--densify-score-power と --densify-loss-map-power が必要です"),
+    ZH_HANS("--densify-learned-score 需要开启 --use-revised-densification、"
+            "--densify-loss-map-mode 不为 none、--densify-score-blend-world-grad "
+            "为 0，以及正的 --densify-score-power 和 --densify-loss-map-power"),
+    ZH_HANT("--densify-learned-score 需要開啟 --use-revised-densification、"
+            "--densify-loss-map-mode 不為 none、--densify-score-blend-world-grad "
+            "為 0，以及正的 --densify-score-power 和 --densify-loss-map-power"),
+    KO("--densify-learned-score에는 --use-revised-densification, none이 아닌 "
+       "--densify-loss-map-mode, --densify-score-blend-world-grad 0, 양수인 "
+       "--densify-score-power와 --densify-loss-map-power가 필요합니다"),
+    DE("--densify-learned-score setzt --use-revised-densification, einen "
+       "--densify-loss-map-mode außer none, --densify-score-blend-world-grad 0 "
+       "sowie positive Werte für --densify-score-power und "
+       "--densify-loss-map-power voraus"),
+    FR("--densify-learned-score requiert --use-revised-densification, un "
+       "--densify-loss-map-mode autre que none, --densify-score-blend-world-grad "
+       "0, et des valeurs positives de --densify-score-power et "
+       "--densify-loss-map-power"),
+    ES("--densify-learned-score requiere --use-revised-densification, un "
+       "--densify-loss-map-mode distinto de none, --densify-score-blend-world-grad "
+       "0, y valores positivos de --densify-score-power y --densify-loss-map-power"),
+    PT("--densify-learned-score exige --use-revised-densification, um "
+       "--densify-loss-map-mode diferente de none, --densify-score-blend-world-grad "
+       "0, e valores positivos de --densify-score-power e --densify-loss-map-power"),
+    IT("--densify-learned-score richiede --use-revised-densification, un "
+       "--densify-loss-map-mode diverso da none, --densify-score-blend-world-grad "
+       "0, e valori positivi di --densify-score-power e --densify-loss-map-power"),
+    NL("--densify-learned-score vereist --use-revised-densification, een "
+       "--densify-loss-map-mode anders dan none, --densify-score-blend-world-grad "
+       "0, en positieve waarden voor --densify-score-power en "
+       "--densify-loss-map-power"),
+    RU("--densify-learned-score требует --use-revised-densification, "
+       "--densify-loss-map-mode, отличного от none, --densify-score-blend-world-grad "
+       "0 и положительных --densify-score-power и --densify-loss-map-power"),
+    TR("--densify-learned-score; --use-revised-densification, none dışında bir "
+       "--densify-loss-map-mode, --densify-score-blend-world-grad 0 ve pozitif "
+       "--densify-score-power ile --densify-loss-map-power gerektirir"));
+SS_MSG(dead_criterion_needs_revised,
+    EN("--dead-criterion {0} needs --use-revised-densification: the MCMC "
+       "relocation tests opacity only"),
+    JA("--dead-criterion {0} には --use-revised-densification が必要です。MCMC "
+       "の再配置は不透明度しか見ません"),
+    ZH_HANS("--dead-criterion {0} 需要开启 --use-revised-densification：MCMC "
+            "重定位只检查不透明度"),
+    ZH_HANT("--dead-criterion {0} 需要開啟 --use-revised-densification：MCMC "
+            "重定位只檢查不透明度"),
+    KO("--dead-criterion {0}에는 --use-revised-densification이 필요합니다. "
+       "MCMC 재배치는 불투명도만 봅니다"),
+    DE("--dead-criterion {0} setzt --use-revised-densification voraus: Die "
+       "MCMC-Umverteilung prüft nur die Deckkraft"),
+    FR("--dead-criterion {0} requiert --use-revised-densification : la "
+       "relocalisation MCMC ne teste que l'opacité"),
+    ES("--dead-criterion {0} requiere --use-revised-densification: la "
+       "reubicación MCMC solo comprueba la opacidad"),
+    PT("--dead-criterion {0} exige --use-revised-densification: a realocação "
+       "MCMC só testa a opacidade"),
+    IT("--dead-criterion {0} richiede --use-revised-densification: il "
+       "riposizionamento MCMC controlla solo l'opacità"),
+    NL("--dead-criterion {0} vereist --use-revised-densification: de "
+       "MCMC-herplaatsing test alleen de dekking"),
+    RU("--dead-criterion {0} требует --use-revised-densification: перемещение "
+       "MCMC проверяет только непрозрачность"),
+    TR("--dead-criterion {0}, --use-revised-densification gerektirir: MCMC "
+       "yeniden yerleştirmesi yalnızca saydamsızlığı sınar"));
 SS_MSG(bad_quantization_level,
     EN("quantization_level must be 0 or 1"),
     JA("quantization_level は 0 か 1 にしてください"),

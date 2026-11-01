@@ -13,6 +13,7 @@
 // growing until memory runs out; `submit` blocks when it is full.
 
 #include "app/DepthPng.h"
+#include "core/HardwareThreads.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
 #include "sam/Sam.h"
@@ -46,7 +47,7 @@ public:
     explicit WriterPool(int threads = 0) {
         const int n = threads > 0
                           ? threads
-                          : std::max(1, (int)std::thread::hardware_concurrency() - 1);
+                          : std::max(1, (int)spirula::hardware_threads() - 1);
         limit_ = (size_t)n * 3;
         for (int i = 0; i < n; ++i) workers_.emplace_back([this] { run(); });
     }

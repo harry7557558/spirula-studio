@@ -1,6 +1,6 @@
 // Vulkan implementation of the multi-scale per-pixel training loss
 // (kernels/loss/PerPixelLoss.cuh compute_multi_scale_per_pixel_losses), including its
-// internal fused-SSIM backward (kernels/loss/FusedSSIM.cu inplace path) and the
+// fused SSIM / S-CIELAB / FLIP backward (kernels/loss/FusedSSIM.cu) and the
 // edge-aware densification maps (kernels/densify/DensifySplitFilter.cu canny / robust-residual
 // path). Device work: shaders/{multi_scale_loss,fused_ssim,canny}.slang
 // plus the quantile radix-select in Quantile.cpp.
@@ -14,9 +14,12 @@
 
 #include "backend/vulkan/kernels/KernelCommon.h"
 #include "core/PixelFormat.h"
+#include "core/Env.h"
 
 #include <array>
 #include <cmath>
+#include <cstring>
+#include <cstdlib>
 
 // Quantile.cpp
 template <bool invert_quantile>
@@ -127,10 +130,9 @@ struct SsimParams {
     int32_t B, H, W;
     int32_t Bm, Hm, Wm;
     float dL_dmap, map_weight, sat;
-    int32_t mode;
     uint32_t flags;
 };
-static_assert(sizeof(SsimParams) == 7 * 8 + 11 * 4 + 4, "layout");
+static_assert(sizeof(SsimParams) == 7 * 8 + 10 * 4, "layout");
 
 struct SsimCovParams {
     uint64_t masks, img1, img2, out;
@@ -141,11 +143,31 @@ struct SsimCovParams {
 };
 static_assert(sizeof(SsimCovParams) == 4 * 8 + 8 * 4, "layout");
 
+struct ScielabParams {
+    uint64_t img1, img2, masks, cov, dL_dimg1, val, loss_map;
+    int32_t B, H, W;
+    int32_t Bm, Hm, Wm;
+    float dL_dmap, map_weight, sat;
+    uint32_t flags;
+};
+static_assert(sizeof(ScielabParams) == 7 * 8 + 10 * 4, "layout");
+
+// Matches fused_ssim.slang's BtParams.
+struct BtParams {
+    uint64_t img1, img2, masks, mask_w, blurred, norm, g_blur, dL_dimg1, val, loss_map;
+    int32_t B, H, W;
+    int32_t Bm, Hm, Wm;
+    float dL_dmap, map_weight, sat;
+    uint32_t flags;
+};
+static_assert(sizeof(BtParams) == 10 * 8 + 10 * 4, "layout");
+
 constexpr uint32_t kSsimHasMask = 1u << 0;
 constexpr uint32_t kSsimHasVal = 1u << 1;
 constexpr uint32_t kSsimWriteGrad = 1u << 2;
 constexpr uint32_t kSsimHasLossMap = 1u << 3;
 constexpr uint32_t kSsimHasCov = 1u << 4;
+constexpr uint32_t kFlipMapFeatures = 1u << 5;
 
 struct CannyParams {
     uint64_t img_in, mask_in, img_out;
@@ -243,16 +265,27 @@ uint32_t ssim_tile() {
                                                                          : 16u;
 }
 
-// fmts: fused_ssim.slang's kSsimFmts.
+// fmts, mode: fused_ssim.slang's kSsimFmts, kSsimMode.
 void dispatch_ssim(const char* entry, int64_t W, int64_t H, int64_t B,
-                   const void* params, uint32_t size, uint32_t fmts) {
+                   const void* params, uint32_t size, uint32_t fmts,
+                   uint32_t mode) {
     if (W <= 0 || H <= 0 || B <= 0) return;
     const uint32_t t = ssim_tile();
+    if (std::strcmp(entry, "fused_ssim.ssim_bt_bwd") == 0) {
+        const bool supported = backend::vk::supports_workgroup_size("fused_ssim.ssim_bt_bwd_wide", 512u);
+        const char* force = spirula::env("VK_SSIM_THREADS");
+        const int threads = force ? std::atoi(force) : (t == 24u && supported ? 512 : 256);
+        if (threads != 256 && threads != 512)
+            throw std::runtime_error("SS_VK_SSIM_THREADS must be 256 or 512");
+        if (threads == 512 && !supported)
+            throw std::runtime_error("SS_VK_SSIM_THREADS=512 exceeds the device workgroup limit");
+        if (threads == 512) entry = "fused_ssim.ssim_bt_bwd_wide";
+    }
     uint32_t gx = (uint32_t)((W + t - 1) / t), gy = (uint32_t)((H + t - 1) / t);
     if (gx > 65535 || gy > 65535 || B > 65535)
         throw std::runtime_error("ssim: tile grid dimension exceeds 65535");
-    vkk::dispatch_budgeted(entry, {t, fmts}, gx, gy, (uint32_t)B, params,
-                           size);
+    vkk::dispatch_budgeted(entry, {t, fmts, mode}, gx, gy, (uint32_t)B,
+                           params, size);
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +373,7 @@ void launch_fused_ssim_inplace(
     const TorchTensorView& mask, float dL_dmap,
     const TorchTensorView& dL_dimg1, float* ssim_buf,
     const TorchTensorView& ssim_loss_map, float ssim_loss_map_weight,
-    int ssim_loss_map_mode, float saturation_threshold
+    int ssim_loss_map_mode, float saturation_threshold, float blur_tolerance
 ) {
     const auto& s = std::get<2>(img1);
     int B = (int)s[0], H = (int)s[1], W = (int)s[2];
@@ -372,7 +405,7 @@ void launch_fused_ssim_inplace(
         // Coverage is what turns the dropped window sums into means over the
         // observed pixels; with nothing dropped the kernel skips the divide.
         const size_t n = (size_t)B * H * W;
-        float* cov = DevicePool::global().acquire<float>(PoolSlot::SsimMaskWeight, n);
+        float* cov = DevicePool::global().acquire_reused<float>(PoolSlot::SsimMaskWeight, n);
         SsimCovParams cp{};
         cp.masks = p.masks;
         cp.img1 = p.img1;
@@ -388,12 +421,54 @@ void launch_fused_ssim_inplace(
     }
     p.dL_dmap = dL_dmap;
     p.map_weight = ssim_loss_map_weight;
-    p.mode = ssim_loss_map_mode;
     if (ssim_buf) p.flags |= kSsimHasVal;
     if (_has(dL_dimg1)) p.flags |= kSsimWriteGrad;
     if (_has(ssim_loss_map)) p.flags |= kSsimHasLossMap;
+    // The kernels read the mode only while writing the map: one pipeline.
+    const uint32_t mode =
+        (p.flags & kSsimHasLossMap) ? (uint32_t)ssim_loss_map_mode : 0u;
 
-    dispatch_ssim("fused_ssim.ssim_bwd_inplace", W, H, B, &p, sizeof(p), fmts);
+    if (blur_tolerance > 0.0f) {
+        BtParams q{};
+        q.img1 = p.img1; q.img2 = p.img2; q.masks = p.masks; q.mask_w = p.mask_w;
+        q.dL_dimg1 = p.dL_dimg1; q.val = p.ssim_val; q.loss_map = p.loss_map;
+        q.B = B; q.H = H; q.W = W;
+        q.Bm = p.Bm; q.Hm = p.Hm; q.Wm = p.Wm;
+        q.dL_dmap = dL_dmap; q.map_weight = ssim_loss_map_weight;
+        q.sat = saturation_threshold; q.flags = p.flags;
+        const int r = std::min(6, (int)std::ceil(3.0f * blur_tolerance));
+        float w[7] = {};
+        float sum = 0.0f;
+        for (int d = 0; d <= r; ++d) {
+            w[d] = std::exp(-0.5f * d * d / (blur_tolerance * blur_tolerance));
+            sum += (d ? 2.0f : 1.0f) * w[d];
+        }
+        for (int d = 0; d <= r; ++d) w[d] /= sum;
+        // The blur passes read no mode: 0 keeps one pipeline per radius.
+        backend::vk::SpecList blur_spec{16u, fmts, 0u, (uint32_t)r};
+        for (float v : w) {
+            uint32_t bits;
+            std::memcpy(&bits, &v, sizeof(bits));
+            blur_spec.values[blur_spec.count++] = bits;
+        }
+        auto& pool = DevicePool::global();
+        const size_t n = (size_t)B * H * W;
+        q.blurred = (uint64_t)pool.acquire_reused<float>(PoolSlot::SsimBlurred, 3 * n);
+        q.norm = (uint64_t)pool.acquire_reused<float>(PoolSlot::SsimBlurNorm, n);
+        q.g_blur = _has(dL_dimg1) ? (uint64_t)pool.acquire_reused<float>(PoolSlot::SsimBlurGrad, 3 * n)
+                                  : vkk::or_fallback(nullptr);
+        const uint32_t gx = (uint32_t)((W + 15) / 16), gy = (uint32_t)((H + 15) / 16);
+        vkk::dispatch_budgeted("fused_ssim.ssim_bt_blur", blur_spec, gx, gy,
+                               (uint32_t)B, &q, sizeof(q));
+        dispatch_ssim("fused_ssim.ssim_bt_bwd", W, H, B, &q, sizeof(q), fmts,
+                      mode);
+        if (_has(dL_dimg1))
+            vkk::dispatch_budgeted("fused_ssim.ssim_bt_blur_adj", blur_spec, gx, gy,
+                                   (uint32_t)B, &q, sizeof(q));
+        return;
+    }
+    dispatch_ssim("fused_ssim.ssim_bwd_inplace", W, H, B, &p, sizeof(p), fmts,
+                  mode);
 }
 
 float fused_ssim_inplace_vk(
@@ -401,7 +476,7 @@ float fused_ssim_inplace_vk(
     const TorchTensorView& mask, float dL_dmap,
     const TorchTensorView& dL_dimg1, bool return_ssim_val,
     const TorchTensorView& ssim_loss_map, float ssim_loss_map_weight,
-    int ssim_loss_map_mode, float saturation_threshold
+    int ssim_loss_map_mode, float saturation_threshold, float blur_tolerance
 ) {
     float* ssim_buf = nullptr;
     if (return_ssim_val) {
@@ -411,7 +486,8 @@ float fused_ssim_inplace_vk(
     }
     launch_fused_ssim_inplace(img1, img2, mask, dL_dmap, dL_dimg1, ssim_buf,
                               ssim_loss_map, ssim_loss_map_weight,
-                              ssim_loss_map_mode, saturation_threshold);
+                              ssim_loss_map_mode, saturation_threshold,
+                              blur_tolerance);
     if (return_ssim_val) {
         float val;
         backend::memcpy_sync(&val, ssim_buf, sizeof(float),
@@ -426,16 +502,204 @@ float fused_ssim_inplace_async_vk(
     const TorchTensorView& mask, float dL_dmap,
     const TorchTensorView& dL_dimg1, const TorchTensorView& ssim_loss_map,
     float ssim_loss_map_weight, int ssim_loss_map_mode,
-    float saturation_threshold, AsyncReadout<float>& readout
+    float saturation_threshold, float blur_tolerance, AsyncReadout<float>& readout
 ) {
     float* ssim_buf = DevicePool::global().acquire<float>(PoolSlot::SsimScalar, 1);
     backend::memset_async(ssim_buf, 0, sizeof(float), backend::kDefaultStream);
     launch_fused_ssim_inplace(img1, img2, mask, dL_dmap, dL_dimg1, ssim_buf,
                               ssim_loss_map, ssim_loss_map_weight,
-                              ssim_loss_map_mode, saturation_threshold);
+                              ssim_loss_map_mode, saturation_threshold,
+                              blur_tolerance);
     const float* prev = readout.read_previous();
     float val = prev ? prev[0] : 0.0f;
     readout.issue(ssim_buf);
+    return val;
+}
+
+// fused_ssim.slang's kSsimFmts.
+uint32_t loss_fmts(const TorchTensorView& img1, const TorchTensorView& img2) {
+    return (uint32_t)pixel_format(img1) | ((uint32_t)pixel_format(img2) << 2);
+}
+
+// The S-CIELAB and FLIP entries' shared params (FlipParams has
+// ScielabParams' layout). When a mask or the clip test drops pixels,
+// `cov_entry` first writes `cov_words` words of coverage per pixel.
+ScielabParams colour_loss_params(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, float* val_buf,
+    const TorchTensorView& loss_map, float loss_map_weight,
+    float saturation_threshold, const char* cov_entry, PoolSlot cov_slot,
+    int cov_words
+) {
+    const auto& s = std::get<2>(img1);
+    int B = (int)s[0], H = (int)s[1], W = (int)s[2];
+
+    ScielabParams p{};
+    p.img1 = std::get<0>(img1);
+    p.img2 = std::get<0>(img2);
+    const uint32_t fmts = loss_fmts(img1, img2);
+    p.masks = vkk::or_fallback(std::get<0>(mask));
+    p.cov = vkk::or_fallback(nullptr);
+    p.dL_dimg1 = vkk::or_fallback(std::get<0>(dL_dimg1));
+    p.val = vkk::or_fallback(val_buf);
+    p.loss_map = vkk::or_fallback(std::get<0>(loss_map));
+    p.B = B;
+    p.H = H;
+    p.W = W;
+    if (_has(mask)) {
+        const auto& ms = std::get<2>(mask);
+        if (ms.size() >= 3) {
+            p.Bm = (int32_t)ms[0];
+            p.Hm = (int32_t)ms[1];
+            p.Wm = (int32_t)ms[2];
+        }
+        p.flags |= kSsimHasMask;
+    }
+    p.sat = saturation_threshold;
+    if (_has(mask) || saturation_threshold > 0.0f) {
+        const size_t n = (size_t)B * H * W * cov_words;
+        float* cov = DevicePool::global().acquire_reused<float>(cov_slot, n);
+        SsimCovParams cp{};
+        cp.masks = p.masks;
+        cp.img1 = p.img1;
+        cp.img2 = p.img2;
+        cp.out = (uint64_t)cov;
+        cp.B = B; cp.H = H; cp.W = W;
+        cp.Bm = p.Bm; cp.Hm = p.Hm; cp.Wm = p.Wm;
+        cp.sat = saturation_threshold;
+        cp.fmts = fmts;
+        dispatch_tiles(cov_entry, W, H, B, &cp, sizeof(cp));
+        p.cov = (uint64_t)cov;
+        p.flags |= kSsimHasCov;
+    }
+    p.dL_dmap = dL_dmap;
+    p.map_weight = loss_map_weight;
+    if (val_buf) p.flags |= kSsimHasVal;
+    if (_has(dL_dimg1)) p.flags |= kSsimWriteGrad;
+    if (_has(loss_map)) p.flags |= kSsimHasLossMap;
+    return p;
+}
+
+// SC_T / FL_T (fused_ssim.slang) are fixed at 16; the first spec value is
+// kSsimTile's slot, which these entries do not read.
+void dispatch_colour_loss(const char* entry, const ScielabParams& p,
+                          uint32_t fmts) {
+    uint32_t gx = (uint32_t)((p.W + 15) / 16), gy = (uint32_t)((p.H + 15) / 16);
+    if (gx > 65535 || gy > 65535 || p.B > 65535)
+        throw std::runtime_error("colour loss: tile grid dimension exceeds 65535");
+    vkk::dispatch_budgeted(entry, {16u, fmts}, gx, gy, (uint32_t)p.B, &p, sizeof(p));
+}
+
+// Mirrors FusedSSIM.cu's _launch_fused_scielab_inplace. dL_dimg1 and
+// loss_map may each be null.
+void launch_fused_scielab_inplace(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, float* val_buf,
+    const TorchTensorView& loss_map, float loss_map_weight,
+    float saturation_threshold
+) {
+    const ScielabParams p = colour_loss_params(
+        img1, img2, mask, dL_dmap, dL_dimg1, val_buf, loss_map, loss_map_weight,
+        saturation_threshold, "fused_ssim.scielab_mask_cov",
+        PoolSlot::ScielabMaskWeight, 3);
+    dispatch_colour_loss("fused_ssim.scielab_bwd_inplace", p, loss_fmts(img1, img2));
+}
+
+// Mirrors FusedSSIM.cu's _launch_fused_flip_inplace.
+void launch_fused_flip_inplace(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, float* val_buf,
+    const TorchTensorView& loss_map, float loss_map_weight, bool map_features,
+    float saturation_threshold
+) {
+    ScielabParams p = colour_loss_params(
+        img1, img2, mask, dL_dmap, dL_dimg1, val_buf, loss_map, loss_map_weight,
+        saturation_threshold, "fused_ssim.flip_mask_cov", PoolSlot::FlipMaskWeight,
+        4);
+    if (map_features) p.flags |= kFlipMapFeatures;
+    dispatch_colour_loss("fused_ssim.flip_bwd_inplace", p, loss_fmts(img1, img2));
+}
+
+float fused_flip_inplace_vk(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, bool return_val,
+    const TorchTensorView& loss_map, float loss_map_weight, bool map_features,
+    float saturation_threshold
+) {
+    float* val_buf = nullptr;
+    if (return_val) {
+        val_buf = DevicePool::global().acquire<float>(PoolSlot::SsimScalar, 1);
+        backend::memset_async(val_buf, 0, sizeof(float), backend::kDefaultStream);
+    }
+    launch_fused_flip_inplace(img1, img2, mask, dL_dmap, dL_dimg1, val_buf,
+                              loss_map, loss_map_weight, map_features,
+                              saturation_threshold);
+    if (return_val) {
+        float val;
+        backend::memcpy_sync(&val, val_buf, sizeof(float), MemcpyKind::DeviceToHost);
+        return val;
+    }
+    return -1.0f;
+}
+
+float fused_flip_inplace_async_vk(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, const TorchTensorView& loss_map,
+    float loss_map_weight, bool map_features, float saturation_threshold,
+    AsyncReadout<float>& readout
+) {
+    float* val_buf = DevicePool::global().acquire<float>(PoolSlot::SsimScalar, 1);
+    backend::memset_async(val_buf, 0, sizeof(float), backend::kDefaultStream);
+    launch_fused_flip_inplace(img1, img2, mask, dL_dmap, dL_dimg1, val_buf,
+                              loss_map, loss_map_weight, map_features,
+                              saturation_threshold);
+    const float* prev = readout.read_previous();
+    float val = prev ? prev[0] : 0.0f;
+    readout.issue(val_buf);
+    return val;
+}
+
+float fused_scielab_inplace_vk(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, bool return_val,
+    const TorchTensorView& loss_map, float loss_map_weight,
+    float saturation_threshold
+) {
+    float* val_buf = nullptr;
+    if (return_val) {
+        val_buf = DevicePool::global().acquire<float>(PoolSlot::SsimScalar, 1);
+        backend::memset_async(val_buf, 0, sizeof(float), backend::kDefaultStream);
+    }
+    launch_fused_scielab_inplace(img1, img2, mask, dL_dmap, dL_dimg1, val_buf,
+                                 loss_map, loss_map_weight, saturation_threshold);
+    if (return_val) {
+        float val;
+        backend::memcpy_sync(&val, val_buf, sizeof(float), MemcpyKind::DeviceToHost);
+        return val;
+    }
+    return -1.0f;
+}
+
+float fused_scielab_inplace_async_vk(
+    const TorchTensorView& img1, const TorchTensorView& img2,
+    const TorchTensorView& mask, float dL_dmap,
+    const TorchTensorView& dL_dimg1, const TorchTensorView& loss_map,
+    float loss_map_weight, float saturation_threshold,
+    AsyncReadout<float>& readout
+) {
+    float* val_buf = DevicePool::global().acquire<float>(PoolSlot::SsimScalar, 1);
+    backend::memset_async(val_buf, 0, sizeof(float), backend::kDefaultStream);
+    launch_fused_scielab_inplace(img1, img2, mask, dL_dmap, dL_dimg1, val_buf,
+                                 loss_map, loss_map_weight, saturation_threshold);
+    const float* prev = readout.read_previous();
+    float val = prev ? prev[0] : 0.0f;
+    readout.issue(val_buf);
     return val;
 }
 
@@ -699,6 +963,7 @@ LossValues compute_multi_scale_per_pixel_losses(
     bool has_mask,
     const std::array<float, (int)LossWeightIndex::length> loss_weights_0,
     const float w_ssim,
+    const int perceptual_loss,
     const float saturation_threshold,
     TorchTensorView v_losses,
     std::vector<bool> needs_input_grad,
@@ -714,10 +979,21 @@ LossValues compute_multi_scale_per_pixel_losses(
     const auto _mode = densify_loss_map_base((DensifyLossMapMode)loss_map_mode);
     const bool _nms =
         densify_loss_map_has_nms((DensifyLossMapMode)loss_map_mode);
+    const bool _ssim_bt = perceptual_loss == (int)PerceptualLoss::SsimBlurTolerant;
+    const bool _ssim = perceptual_loss == (int)PerceptualLoss::Ssim || _ssim_bt;
+    const bool _scielab = perceptual_loss == (int)PerceptualLoss::SCielab;
+    const bool _flip = perceptual_loss == (int)PerceptualLoss::Flip;
     const bool _per_pixel_write = (_mode == DensifyLossMapMode::LossFull);
+    const bool _scielab_map = _mode == DensifyLossMapMode::SCielab ||
+                              (_per_pixel_write && _scielab);
+    const bool _flip_features = _mode == DensifyLossMapMode::FlipFeature;
+    const bool _flip_map = _mode == DensifyLossMapMode::Flip || _flip_features ||
+                           (_per_pixel_write && _flip);
     const int _ssim_mode = [&]() -> int {
         switch (_mode) {
             case DensifyLossMapMode::LossFull:
+                return _ssim ? (int)SsimLossMapMode::SsimFull
+                             : (int)SsimLossMapMode::SsimNone;
             case DensifyLossMapMode::SsimFull:
                 return (int)SsimLossMapMode::SsimFull;
             case DensifyLossMapMode::SsimContrastStruct:
@@ -728,6 +1004,7 @@ LossValues compute_multi_scale_per_pixel_losses(
                 return (int)SsimLossMapMode::SsimNone;
         }
     }();
+    const float _map_w = (_per_pixel_write || w_ssim > 0.0f) ? w_ssim : 1.0f;
     const auto& s = std::get<2>(render_rgb);
     long B = s[0], H = s[1], W = s[2];
 
@@ -847,7 +1124,7 @@ LossValues compute_multi_scale_per_pixel_losses(
     backend::memset_async(total_losses_ptr, 0, kNL * sizeof(float),
                           backend::kDefaultStream);
 
-    float ssim_val = 0.0f;
+    float ssim_val = 0.0f, delta_e = 0.0f, flip_val = 0.0f;
 
     for (int scale = 0; scale < num_loss_scales; ++scale) {
         const auto& ss = std::get<2>(render_rgb_s[scale]);
@@ -986,20 +1263,54 @@ LossValues compute_multi_scale_per_pixel_losses(
             dispatch_ppl("multi_scale_loss.ppl_bwd", ppi, B, bp);
         }
 
-        // SSIM backward (fused forward+backward); scalar routed through an
-        // async readout at scale 0 for the verbose display.
+        // The perceptual term (fused forward+backward); scalar routed through
+        // an async readout at scale 0 for the verbose display.
         static AsyncReadout<float> ssim_readout(1);
-        float ssim;
-        if (scale == 0) {
-            ssim = fused_ssim_inplace_async_vk(
+        static AsyncReadout<float> scielab_readout(1);
+        static AsyncReadout<float> flip_readout(1);
+        // A map-only SSIM pass stays plain: only the trained term tolerates blur.
+        const float ssim_blur =
+            _ssim_bt ? kSsimBlurTolerance / (float)(1 << scale) : 0.0f;
+        if (_ssim && scale == 0) {
+            ssim_val = fused_ssim_inplace_async_vk(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim, scale_grads.v_render_rgb, loss_map_scale, w_ssim,
-                _ssim_mode, saturation_threshold, ssim_readout);
-        } else {
-            ssim = fused_ssim_inplace_vk(
+                -w_ssim, scale_grads.v_render_rgb, loss_map_scale, _map_w,
+                _ssim_mode, saturation_threshold, ssim_blur, ssim_readout);
+        } else if (_ssim || _ssim_mode != (int)SsimLossMapMode::SsimNone) {
+            fused_ssim_inplace_vk(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                -w_ssim, scale_grads.v_render_rgb, /*return_ssim_val=*/false,
-                loss_map_scale, w_ssim, _ssim_mode, saturation_threshold);
+                _ssim ? -w_ssim : 0.0f,
+                _ssim ? scale_grads.v_render_rgb : TorchTensorView{},
+                /*return_ssim_val=*/false, loss_map_scale, _map_w, _ssim_mode,
+                saturation_threshold, ssim_blur);
+        }
+        TorchTensorView scielab_map = _scielab_map ? loss_map_scale : TorchTensorView{};
+        if (_scielab && scale == 0) {
+            delta_e = fused_scielab_inplace_async_vk(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
+                w_ssim * kScielabLossPerDeltaE, scale_grads.v_render_rgb,
+                scielab_map, _map_w * kScielabLossPerDeltaE,
+                saturation_threshold, scielab_readout);
+        } else if (_scielab || _scielab_map) {
+            fused_scielab_inplace_vk(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
+                w_ssim * kScielabLossPerDeltaE,
+                _scielab ? scale_grads.v_render_rgb : TorchTensorView{},
+                /*return_val=*/false, scielab_map,
+                _map_w * kScielabLossPerDeltaE, saturation_threshold);
+        }
+        TorchTensorView flip_map = _flip_map ? loss_map_scale : TorchTensorView{};
+        if (_flip && scale == 0) {
+            flip_val = fused_flip_inplace_async_vk(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
+                w_ssim, scale_grads.v_render_rgb, flip_map, _map_w,
+                _flip_features, saturation_threshold, flip_readout);
+        } else if (_flip || _flip_map) {
+            fused_flip_inplace_vk(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale], w_ssim,
+                _flip ? scale_grads.v_render_rgb : TorchTensorView{},
+                /*return_val=*/false, flip_map, _map_w, _flip_features,
+                saturation_threshold);
         }
 
         // Edge-aware loss maps overwrite the (still zero) per-scale map.
@@ -1024,7 +1335,6 @@ LossValues compute_multi_scale_per_pixel_losses(
                                     "ppl.nms.s" + std::to_string(scale),
                                     nms_falloff);
 
-        if (scale == 0) ssim_val = ssim;
 
         vector_add_scaled_vk(total_losses_ptr, losses_ptr, 1.0f, kNL);
 
@@ -1117,6 +1427,8 @@ LossValues compute_multi_scale_per_pixel_losses(
         out.median_render_normal_reg = h_prev[(int)LossIndex::MedianRenderNormalReg];
     }
     out.ssim = ssim_val;
+    out.delta_e = delta_e;
+    out.flip = flip_val;
     losses_readout.issue(total_losses_ptr);
     return out;
 }

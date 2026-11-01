@@ -34,6 +34,15 @@ struct DensifyUpdateWeightParams {
 static_assert(sizeof(DensifyUpdateWeightParams) == 6 * 8 + 10 * 4,
               "params layout must match the slang struct");
 
+// Mirrors DensifyLearnedScoreParams.
+struct DensifyLearnedScoreParams {
+    uint64_t radii, ratio, accum_buffer, oversize_accum, stats;
+    float power, rate, log_prior, max_scale2d, max_ratio, min_score, pull;
+    uint32_t num_splats, wgs_per_row, use_oversize;
+};
+static_assert(sizeof(DensifyLearnedScoreParams) == 5 * 8 + 10 * 4,
+              "params layout must match the slang struct");
+
 // Mirrors DensifyOversizeWeightParams.
 struct DensifyOversizeWeightParams {
     uint64_t oversize_accum, score, out;
@@ -56,12 +65,13 @@ static_assert(sizeof(DensifyClipScaleParams) == 3 * 8 + 8 * 4,
 
 // Mirrors DensifyNoiseParams.
 struct DensifyNoiseParams {
-    uint64_t means, log_scales, quats, logit_opacs, radii;
+    uint64_t means, log_scales, quats, logit_opacs, radii, peak_weight;
     float scaler;
     uint32_t num_splats, wgs_per_row;
-    uint32_t _pad0;
+    float peak_weight_scale;
+    uint32_t has_peak_weight, seed;
 };
-static_assert(sizeof(DensifyNoiseParams) == 5 * 8 + 4 * 4,
+static_assert(sizeof(DensifyNoiseParams) == 6 * 8 + 6 * 4,
               "params layout must match the slang struct");
 
 // Mirrors EfraimidisParams.
@@ -76,11 +86,12 @@ static_assert(sizeof(EfraimidisParams) == 4 * 8 + 6 * 4,
 // Mirrors RelocMaskParams.
 struct RelocMaskParams {
     uint64_t means, quats, scales, opacs, features_dc, mask, count,
-        dst_indices, visit_counters;
+        dst_indices, visit_counters, max_weight;
     float min_opacity;
-    uint32_t num_splats, wgs_per_row, dead_after_steps;
+    uint32_t num_splats, wgs_per_row, dead_after_steps, dead_by_opacity,
+        has_max_weight;
 };
-static_assert(sizeof(RelocMaskParams) == 9 * 8 + 4 * 4,
+static_assert(sizeof(RelocMaskParams) == 10 * 8 + 6 * 4,
               "params layout must match the slang struct");
 
 // Mirrors RelocLasParams.
@@ -94,13 +105,13 @@ struct RelocLasParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
-    uint64_t accum, bias_steps, visit_counters;
+    uint64_t accum, bias_steps, visit_counters, max_weight, projective_state, projective_information;
     float split_opacity_k;
     uint32_t cur_num_splats, num_new_splats, num_sh;
     uint32_t has_dst, has_g1, has_fp32_sh, has_accum, has_bias_steps, non_sh,
-        sh_bounds_per_splat, wgs_per_row, has_visit, _pad0;
+        sh_bounds_per_splat, wgs_per_row, has_visit, has_max_weight, has_projective_state;
 };
-static_assert(sizeof(RelocLasParams) == 35 * 8 + 14 * 4,
+static_assert(sizeof(RelocLasParams) == 38 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
 // Mirror AccumFinalizeParams / ScoreGatherParams / ScoreClipParams.
@@ -115,6 +126,15 @@ struct ScorePairParams {  // densify_gather_score
     uint32_t num_splats, wgs_per_row;
 };
 static_assert(sizeof(ScorePairParams) == 2 * 8 + 2 * 4, "params layout");
+
+// Mirrors MaxWeightParams.
+struct MaxWeightParams {
+    uint64_t opacs, max_weight;
+    float scale;
+    uint32_t num_splats, wgs_per_row, _pad0;
+};
+static_assert(sizeof(MaxWeightParams) == 2 * 8 + 4 * 4,
+              "params layout must match the slang struct");
 
 // Mirrors ScaleScoreByRendersParams.
 struct ScaleScoreByRendersParams {
@@ -152,11 +172,13 @@ static_assert(sizeof(ScoreClipParams) == 3 * 8 + 6 * 4,
 
 // Mirrors NormalizeClipMapParams.
 struct NormalizeClipMapParams {
-    uint64_t data, inv_median, clip;
+    uint64_t data, inv_median, clip, fit;
     uint32_t B, N, use_median, use_clip, wgs_per_row;
     float power;
+    uint32_t use_fit;
+    float inv_max_ratio;
 };
-static_assert(sizeof(NormalizeClipMapParams) == 3 * 8 + 6 * 4,
+static_assert(sizeof(NormalizeClipMapParams) == 4 * 8 + 8 * 4,
               "params layout must match the slang struct");
 
 // Mirrors CopyQshPairsParams.
@@ -233,9 +255,11 @@ static_assert(sizeof(McmcRelocParams) == 28 * 8 + 8 * 4,
 // Mirrors McmcUpdateRelocParams.
 struct McmcUpdateRelocParams {
     uint64_t index_map, means, quats, scales, opacs, features_dc, features_sh;
+    uint64_t projective_state, projective_information;
+    uint32_t has_projective, projective_pad;
     uint32_t num_splats, num_sh, has_fp32_sh, wgs_per_row;
 };
-static_assert(sizeof(McmcUpdateRelocParams) == 7 * 8 + 4 * 4,
+static_assert(sizeof(McmcUpdateRelocParams) == 9 * 8 + 6 * 4,
               "params layout must match the slang struct");
 
 // Mirrors McmcComputeAddParams.
@@ -258,12 +282,14 @@ struct McmcUpdateAddParams {
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
     uint64_t bias_steps;
+    uint64_t projective_state, projective_information;
+    uint32_t has_projective, projective_pad;
     uint32_t num_splats, num_add, num_sh;
     uint32_t has_g1, has_fp32_sh, has_bias_steps, non_sh, sh_bounds_per_splat,
         wgs_per_row;
     uint32_t _pad0;
 };
-static_assert(sizeof(McmcUpdateAddParams) == 32 * 8 + 10 * 4,
+static_assert(sizeof(McmcUpdateAddParams) == 34 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 // kShOptimBits spec value: 0 = fp32 SH state, 8 / 4 = QuantizedAdamState.
@@ -565,6 +591,39 @@ void densify_update_weight(
                        sizeof(p), &p.wgs_per_row);
 }
 
+void densify_learned_score_tensor(
+    int64_t num_splats,
+    float power,
+    float rate,
+    float log_prior,
+    float pull,
+    DeviceVector<float> radii,
+    DeviceVector<float> ratio,
+    DeviceVector<float2> accum_buffer,
+    float max_scale2d,
+    DeviceVector<float> oversize_accum,
+    DeviceVector<float> stats
+) {
+    if (num_splats <= 0) return;
+    DensifyLearnedScoreParams p{};
+    p.radii = (uint64_t)radii.data_ptr();
+    p.ratio = (uint64_t)ratio.data_ptr();
+    p.accum_buffer = (uint64_t)accum_buffer.data_ptr();
+    p.oversize_accum = vkk::or_fallback(oversize_accum.data_ptr());
+    p.stats = (uint64_t)stats.data_ptr();
+    p.power = power;
+    p.rate = rate;
+    p.log_prior = log_prior;
+    p.pull = pull;
+    p.max_scale2d = max_scale2d;
+    p.max_ratio = kLearnedScoreMaxRatio;
+    p.min_score = kLearnedScoreFloor;
+    p.num_splats = (uint32_t)num_splats;
+    p.use_oversize = oversize_accum.data_ptr() ? 1u : 0u;
+    vkk::dispatch_flat("densify.densify_learned_score", {}, num_splats, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
+}
+
 void densify_oversize_weight_tensor(
     int64_t num_splats,
     float blend,
@@ -612,7 +671,8 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    uint32_t seed
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -622,6 +682,7 @@ void mcmc_add_noise_tensor(
     p.logit_opacs = (uint64_t)opacs.data_ptr();
     p.radii = vkk::null_fallback();
     p.scaler = scaler;
+    p.seed = seed;
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_mcmc_add_noise", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
@@ -634,7 +695,10 @@ void revised_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    DeviceVector<float> peak_weight,
+    float peak_weight_scale,
+    uint32_t seed
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -643,7 +707,11 @@ void revised_add_noise_tensor(
     p.quats = (uint64_t)quats.data_ptr();
     p.logit_opacs = (uint64_t)opacs.data_ptr();
     p.radii = (uint64_t)radii.data_ptr();
+    p.peak_weight = vkk::or_fallback(peak_weight.data_ptr());
+    p.has_peak_weight = peak_weight.data_ptr() ? 1u : 0u;
+    p.peak_weight_scale = peak_weight_scale;
     p.scaler = scaler;
+    p.seed = seed;
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_revised_add_noise", {}, num_splats,
                        256, &p, sizeof(p), &p.wgs_per_row);
@@ -665,9 +733,10 @@ static void launch_relocate_las(
     DeviceVector<float3>& g2_features_dc, DeviceVector<float3>& g2_features_sh,
     DeviceVector<float2>& densify_accum_buffer,
     DeviceVector<int32_t>& bias_correction_steps,
-    DeviceVector<uint32_t>& visit_counters, int sh_optim_bits,
-    int num_sh, DeviceVector<float4>& sh_quant_bounds,
-    bool sh_bounds_per_splat, const NonShQuantState& non_sh) {
+    DeviceVector<uint32_t>& visit_counters, DeviceVector<float>& max_weight,
+    int sh_optim_bits, int num_sh, DeviceVector<float4>& sh_quant_bounds,
+    bool sh_bounds_per_splat, const NonShQuantState& non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information) {
     RelocLasParams p{};
     p.src_indices = (uint64_t)src_indices;
     p.dst_indices = vkk::or_fallback(dst_indices);
@@ -696,7 +765,12 @@ static void launch_relocate_las(
     p.has_bias_steps = bias_correction_steps.data_ptr() ? 1u : 0u;
     p.visit_counters = vkk::or_fallback(visit_counters.data_ptr());
     p.has_visit = visit_counters.data_ptr() ? 1u : 0u;
+    p.max_weight = vkk::or_fallback(max_weight.data_ptr());
+    p.has_max_weight = max_weight.data_ptr() ? 1u : 0u;
 
+    p.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    p.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    p.has_projective_state = projective_state.data_ptr() ? 1u : 0u;
     vkk::Fold f = vkk::fold_1d(num_new_splats, 256);
     p.wgs_per_row = f.per_row;
     vkk::dispatch_ring("densify.densify_relocate_las",
@@ -716,6 +790,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
     uint32_t dead_after_steps,
+    DeviceVector<float> max_weight,
+    bool dead_by_opacity,
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,
@@ -726,11 +802,18 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     int64_t max_relocate,
     int64_t* num_dead_out
 ) {
     if (cur_num_splats <= 0) return 0;
+    // The mask and the dst list, then wswr_sample's keys, indices and draw.
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    const int64_t draw = max_relocate > 0 ? std::min(max_relocate, cur_num_splats)
+                                          : cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({n4, n4, n4, n4, n4, n4, 4 * (size_t)draw}));
 
     // Relocation mask + atomic compaction of dst indices (Vulkan mask is an
     // int32 array; the CUDA bool layout is a launcher-internal detail).
@@ -751,6 +834,9 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     mp.dst_indices = (uint64_t)dst_indices.data_ptr();
     mp.visit_counters = vkk::or_fallback(visit_counters.data_ptr());
     mp.dead_after_steps = visit_counters.data_ptr() ? dead_after_steps : 0u;
+    mp.max_weight = vkk::or_fallback(max_weight.data_ptr());
+    mp.has_max_weight = max_weight.data_ptr() ? 1u : 0u;
+    mp.dead_by_opacity = dead_by_opacity ? 1u : 0u;
     mp.min_opacity = min_opacity;
     mp.num_splats = (uint32_t)cur_num_splats;
     vkk::dispatch_flat("densify.densify_reloc_mask", {}, cur_num_splats, 256,
@@ -782,8 +868,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
                         g1_features_sh, g2_means, g2_quats, g2_scales,
                         g2_opacs, g2_features_dc, g2_features_sh,
                         densify_accum_buffer, bias_correction_steps,
-                        visit_counters, sh_optim_bits, num_sh, sh_quant_bounds,
-                        sh_bounds_per_splat, non_sh);
+                        visit_counters, max_weight, sh_optim_bits, num_sh,
+                        sh_quant_bounds, sh_bounds_per_splat, non_sh, projective_state, projective_information);
 
     launch_copy_qsh_pairs(cur_num_splats, num_relocate, src_indices,
                           dst_indices.data_ptr(), sh_value_packed.data_ptr(),
@@ -803,6 +889,7 @@ void add_splats_with_long_axis_split_tensor(
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
+    DeviceVector<float> max_weight,
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,
@@ -813,9 +900,13 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 ) {
     if (num_new_splats == 0 || cur_num_splats <= 0) return;
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({n4, n4, n4, n4, 4 * (size_t)num_new_splats}));
 
     const int32_t* split_indices = wswr_sample(
         cur_num_splats,
@@ -830,8 +921,9 @@ void add_splats_with_long_axis_split_tensor(
                         g1_scales, g1_opacs, g1_features_dc, g1_features_sh,
                         g2_means, g2_quats, g2_scales, g2_opacs,
                         g2_features_dc, g2_features_sh, densify_accum_buffer,
-                        bias_correction_steps, visit_counters, sh_optim_bits,
-                        num_sh, sh_quant_bounds, sh_bounds_per_splat, non_sh);
+                        bias_correction_steps, visit_counters, max_weight,
+                        sh_optim_bits, num_sh, sh_quant_bounds,
+                        sh_bounds_per_splat, non_sh, projective_state, projective_information);
 
     launch_copy_qsh_pairs(cur_num_splats, num_new_splats, split_indices,
                           nullptr, sh_value_packed.data_ptr(),
@@ -856,10 +948,13 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight
 ) {
     if (cur_num_splats <= 0) return;
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify, DevicePool::arena_span({n4, n4, n4, n4}));
 
     DeviceVector<float> probs, cumsum;
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
@@ -907,6 +1002,9 @@ void relocate_splats_mcmc_tensor(
     }
 
     McmcUpdateRelocParams up{};
+    up.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    up.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    up.has_projective = projective_state.data_ptr() ? 1u : 0u;
     up.index_map = (uint64_t)index_map.data_ptr();
     up.means = (uint64_t)means.data_ptr();
     up.quats = (uint64_t)quats.data_ptr();
@@ -944,10 +1042,14 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight
 ) {
     if (num_add == 0 || cur_num_splats <= 0) return;
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({n4, n4, 4 * (size_t)num_add, n4}));
 
     DeviceVector<float> probs, cumsum;
     mcmc_probs_cumsum(cur_num_splats, min_opacity, opacs, scales, draw_weight,
@@ -980,6 +1082,9 @@ void add_splats_mcmc_tensor(
                        256, &cp, sizeof(cp), &cp.wgs_per_row);
 
     McmcUpdateAddParams ap{};
+    ap.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    ap.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    ap.has_projective = projective_state.data_ptr() ? 1u : 0u;
     ap.index_map = (uint64_t)index_map.data_ptr();
     ap.means = (uint64_t)means.data_ptr();
     ap.quats = (uint64_t)quats.data_ptr();
@@ -1028,10 +1133,12 @@ void normalize_clip_map_inplace_tensor(
     TorchTensorView data,
     bool normalize_median,
     float clip_quantile,
-    float power
+    float power,
+    TorchTensorView fit
 ) {
     const bool do_clip = (clip_quantile > 0.0f && clip_quantile < 1.0f);
-    if (!normalize_median && !do_clip && power == 1.0f) return;
+    const uint64_t fit_ptr = std::get<0>(fit);
+    if (!normalize_median && !do_clip && power == 1.0f && !fit_ptr) return;
     float* ptr = (float*)std::get<0>(data);
     if (ptr == nullptr) return;
     const auto& shape = std::get<2>(data);
@@ -1067,6 +1174,9 @@ void normalize_clip_map_inplace_tensor(
     p.use_median = normalize_median ? 1u : 0u;
     p.use_clip = do_clip ? 1u : 0u;
     p.power = power;
+    p.fit = vkk::or_fallback(fit_ptr);
+    p.use_fit = fit_ptr ? 1u : 0u;
+    p.inv_max_ratio = 1.0f / kLearnedScoreMaxRatio;
     vkk::dispatch_flat("densify.normalize_clip_map", {}, total, 256, &p,
                        sizeof(p), &p.wgs_per_row);
 }
@@ -1145,6 +1255,30 @@ void densify_scale_score_by_renders_tensor(int64_t num_splats,
                        256, &p, sizeof(p), &p.wgs_per_row);
 }
 
+void densify_max_weight_init_tensor(int64_t num_splats,
+                                    DeviceVector<float> opacs,
+                                    DeviceVector<float> max_weight) {
+    if (num_splats <= 0) return;
+    MaxWeightParams p{};
+    p.opacs = (uint64_t)opacs.data_ptr();
+    p.max_weight = (uint64_t)max_weight.data_ptr();
+    p.num_splats = (uint32_t)num_splats;
+    vkk::dispatch_flat("densify.densify_max_weight_init", {}, num_splats, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
+}
+
+void densify_max_weight_scale_tensor(int64_t num_splats, float scale,
+                                     DeviceVector<float> max_weight) {
+    if (num_splats <= 0) return;
+    MaxWeightParams p{};
+    p.opacs = vkk::null_fallback();
+    p.max_weight = (uint64_t)max_weight.data_ptr();
+    p.scale = scale;
+    p.num_splats = (uint32_t)num_splats;
+    vkk::dispatch_flat("densify.densify_max_weight_scale", {}, num_splats, 256,
+                       &p, sizeof(p), &p.wgs_per_row);
+}
+
 void densify_clip_score_tensor(int64_t num_splats,
                                DeviceVector<float2> accum_buffer,
                                float quantile,
@@ -1158,6 +1292,7 @@ void densify_clip_score_tensor(int64_t num_splats,
     float* cutoff = nullptr;
     if (do_clip) {
         // The selector wants a contiguous row, and .x is strided; gather first.
+        pool_begin_phase(PoolPhase::Densify, DevicePool::arena_span({4 * (size_t)num_splats}));
         float* gathered = DevicePool::global().acquire<float>(
             PoolSlot::DensifyScoreGather, (size_t)num_splats);
         cutoff =

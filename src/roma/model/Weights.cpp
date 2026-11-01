@@ -1,5 +1,6 @@
 #include "roma/model/Weights.h"
 
+#include "core/HardwareThreads.h"
 #include "nn/core/Error.h"
 #include "nn/core/Half.h"
 
@@ -242,7 +243,7 @@ void Weights::load(const std::string& path, bool mixed, const std::function<void
                 for (auto& thread : pool) thread.join();
             }
         } join{pool, mutex, changed, stop};
-        const unsigned threads = std::clamp(std::thread::hardware_concurrency(), 1u, 16u);
+        const unsigned threads = std::clamp(spirula::hardware_threads(), 1u, 16u);
         for (unsigned t = 0; t < threads; ++t) pool.emplace_back(work);
         for (size_t i = 0; i < n; ++i) {
             if (progress && i * 100 / n != (i + 1) * 100 / n)

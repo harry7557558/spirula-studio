@@ -30,8 +30,9 @@ Direction of travel, so you don't push the wrong way:
 - `nerfstudio` / `gsplat` / `torch` are **not** dependencies and must not be
   reintroduced.
 - `reference/python/` holds hand-run tools that are on no code path (LPIPS
-  scoring, the benchmark driver, the pose-normalization reference). Nothing
-  there may be imported by anything, and nothing in the build may need it.
+  scoring for builds without the inference layer, the benchmark driver, the
+  pose-normalization reference). Nothing there may be imported by anything,
+  and nothing in the build may need it.
 
 ## Repo map
 
@@ -129,6 +130,8 @@ src/
 │                             -- READ src/roma/README.md
 ├── blur/                   the frame blur measure (app/FrameSharpness.h) on nn/'s
 │                             device; EdgeWidth.h is the part both copies share
+├── lpips/                  LPIPS (AlexNet + VGG16) for the eval pass, on top of
+│                             nn/ -- READ src/lpips/README.md
 ├── dense/                  fixed-camera reconstruction, disk-backed observations,
 │                             fusion and source-frame PLY -- READ src/dense/README.md
 │                             (its own library, ss_dense, outside the engine: the
@@ -138,6 +141,10 @@ src/
 ├── moge/                   MoGe-2 point maps + normals + a sky mask, on top of
 │                             nn/. The DEFAULT geometry model
 │                             -- READ src/moge/README.md
+├── marigold/               Marigold v2 depth + normals: a 20B diffusion
+│                             transformer, installed by streaming 45 GB into
+│                             11 GB of NF4, its blocks streamed to the device
+│                             beside the compute -- READ src/marigold/README.md
 ├── video/                  container demux (HEIC stills too) +
 │                             VK_KHR_video_decode_*, and the
 │                             VK_KHR_video_encode_* encoder behind `spirula
@@ -210,7 +217,10 @@ src/
 │                             the GUI drive this; it lives in the engine
 │                             library (cmake/sources.txt), not the app targets.
 │                             TrainForecast.{h,cpp} beside it is the run's ETA
-│                             and VRAM forecast -- docs/notes/train-forecast.md
+│                             and VRAM forecast -- docs/notes/train-forecast.md;
+│                             ResourceForecast.h is the shape every job's RAM /
+│                             VRAM forecast takes, RunReport.h how a child
+│                             reports it -- docs/notes/memory-forecast.md
 ├── config/                 TrainConfig.h — the training config's single source
 │                             of truth: one X-macro row per flag, hand-written.
 │                             TrainConfigJson.h is the one flat-JSON encoding
@@ -222,7 +232,8 @@ src/
 │                             language set is written -- READ src/i18n/README.md
 ├── app/EvalMetrics.{h,cpp} l1 / psnr / ssim (torchmetrics-compatible) and the
 │                             colour correction the cc_ metrics use. LPIPS is
-│                             NOT here — reference/python/eval_lpips.py
+│                             src/lpips/, reached through TrainerCore's
+│                             LpipsHooks (app/EvalLpips.cpp installs them)
 ├── checkpoint/             Resume.{h,cpp} — config.json -> TrainConfig,
 │                             checkpoint resolution, resumability checks;
 │                             Adapt.{h,cpp} — host-side layout adaptation
@@ -325,11 +336,11 @@ Rules:
 ## The Vulkan-only subsystems
 
 `src/sfm/`, `src/nn/`, `src/sam/`, `src/swin/`, `src/gdino/`, `src/birefnet/`,
-`src/aliked/`, `src/loma/`, `src/metric3d/`, `src/moge/`, `src/blur/` and `src/video/` are
-**not** part of the two-backend rule below. They are Vulkan + Slang only, carry their own Vulkan
-context, share nothing with the training engine, and are absent from a CUDA
-build by default (`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there).
-Nothing in them goes through `cmake/sources.txt`.
+`src/aliked/`, `src/loma/`, `src/metric3d/`, `src/moge/`, `src/marigold/`, `src/blur/`,
+`src/lpips/` and `src/video/` are **not** part of the two-backend rule below.
+They are Vulkan + Slang only, carry their own Vulkan context, share nothing
+with the training engine, and are absent from a CUDA build by default
+(`SS_BUILD_SFM` / `SS_BUILD_SAM` default OFF there). Nothing in them goes through `cmake/sources.txt`.
 
 The layering runs one way and must keep doing so:
 
@@ -340,6 +351,8 @@ app/gui, app/cli ──► sam ──────┬──► nn ──► nn/vk
                  ├──► loma ────┤
                  ├──► metric3d ┤
                  ├──► moge ────┤
+                 ├──► marigold ┤
+                 ├──► lpips ───┤
                  └──► video ───┘
                  └──► sfm  (its own vk/, independent of nn/)
 ```
@@ -627,15 +640,23 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   `SS_POOL_ALIAS_POISON=1` fills the arena at every phase switch so a read
   that outlives its phase becomes NaNs a parity test catches, and
   `SS_POOL_ALIAS=0` turns the whole thing off. Read
-  `docs/notes/vram-splat-x-img.md` before adding a row. A buffer whose
-  length follows the LIVE splat count goes in `POOL_LIVE_SPLAT_TABLE`, so it
-  is sized for `cap_max` once: the trainer's VRAM forecast assumes only
-  `splat x img` grows during a run.
+  `docs/notes/vram-splat-x-img.md` before adding a row. A phase opener that
+  can compute its size passes it to `pool_begin_phase()`: an arena that grows
+  by overflowing holds the overflow beside the old arena, a transient no
+  end-of-step VRAM sample sees. A buffer whose length follows the LIVE splat
+  count and outlives a call goes in `POOL_LIVE_SPLAT_TABLE`, so it is sized
+  for `cap_max` once: the trainer's VRAM forecast assumes only `splat x img`
+  grows during a run.
 - **`SS_PROFILE=1`** enables the per-stage backend timing breakdown
   (H2D / D2H / D2D / memset / device / host), header-only, both backends, plus
   a per-category VRAM breakdown after any run that trained. What the biggest
   category costs per element, and what has already been tried against it, is
-  `docs/notes/vram-splat-x-img.md`.
+  `docs/notes/vram-splat-x-img.md`. `SS_VRAM_TRACE=<MiB>` prints every pool
+  allocation at least that large with the process total and peak it brings.
+- **On Windows, VRAM is also limited by commit charge.** WDDM charges every
+  device allocation to the system commit limit (RAM + page file), so a small
+  page file fails an allocation as out-of-memory with VRAM to spare; the
+  forecast and the OOM error both account for it (`docs/notes/train-forecast.md`).
 - **A kernel that fills the gaps between sorted keys is a scaling trap.** One
   thread per INPUT walking `[ids[i-1]+1, ids[i]]` is fine while the ids are
   dense and quadratic when they are not: `qgrad_camera_id_bounds` measured
@@ -675,12 +696,15 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   owns the 0.75 threshold and is deliberately blind to the distortion
   coefficients so the answer cannot move between builds. `--check` compares the
   closed form to counting the pixels.
-- **Two monocular geometry models sit behind `spirula geometry`, and they
+- **Three monocular geometry models sit behind `spirula geometry`, and they
   answer different questions.** Metric3D v2 predicts depth; MoGe-2 predicts an
   affine POINT MAP that needs the camera's focal length to become one, plus a
-  metric scale and a sky mask. `app/GeometryModel.h` is the one seam between
-  them and `--model` is what picks; a caller that reaches past it into
-  `metric3d::` or `moge::` has hard-coded a family.
+  metric scale and a sky mask; Marigold v2 predicts depth only up to an affine
+  map of its LOG, which is fitted to MoGe-2's on the same face. `app/GeometryModel.h`
+  is the one seam between them and `--model` is what picks; a caller that
+  reaches past it into `metric3d::`, `moge::` or `marigold::` has hard-coded a
+  family. Marigold alone is installed rather than downloaded
+  (`geometry_install_needs`), and the disk is checked before it starts.
 - **Segmentation weights are never committed or bundled.** SAM's are Meta's,
   under Meta's licences, and SAM 3's is not GPLv3-compatible; Grounding DINO
   (Apache-2.0) and BiRefNet (MIT) are fetched the same way for consistency. They are fetched
@@ -767,6 +791,10 @@ no ceremony — do not ask, do not leave a note saying you removed it.
   primitive and selection test works unchanged. Anything that takes a
   RELATIVE depth tolerance has to subtract the pull-back first
   (`ViewProjection::ortho_back`).
+- **A progress bar is time, not a count, and never goes back.** Every bar is a
+  `ProgressClock` (`app/gui/ProgressClock.h`) fed the job's own 0..1 of work;
+  a job whose total can grow counts an upper bound first, so the bar jumps
+  forward when the real one arrives. docs/notes/progress-bars.md.
 - **A GUI worker that clears a `busy` flag at the end of its function will
   strand it.** Every early `return set_error(...)` skips the line, and the next
   request is refused forever. Use a scope guard (`SegmentPanel::start_job`).

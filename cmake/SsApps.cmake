@@ -29,6 +29,7 @@
 function(ss_configure_app target)
     target_include_directories(${target} PRIVATE
         ${SS_SRC}
+        ${SS_SRC}/external/apriltag
         ${CMAKE_BINARY_DIR}      # app_generated/*.h
         ${CUDAToolkit_INCLUDE_DIRS}
     )
@@ -127,6 +128,10 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
 
+# ---- fiducial marker tool: detect, align, crop ----
+list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/cli/marker_main.cpp)
+list(APPEND SS_TOOL_DEFS SS_TOOL_MARKER=1)
+
 if(SS_BUILD_SFM)
     # ---- structure from motion ----
     # The SfM module carries its own Vulkan context and SPIR-V and shares
@@ -171,7 +176,12 @@ if(SS_BUILD_SAM)
     list(APPEND SS_TOOL_DEFS SS_TOOL_GEOMETRY=1)
     list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/DenseProcessing.cpp)
     list(APPEND SS_TOOL_DEFS SS_HAVE_ROMA=1)
-    list(APPEND SS_TOOL_LIBS ss_metric3d ss_moge ss_roma)
+    list(APPEND SS_TOOL_LIBS ss_metric3d ss_moge ss_marigold ss_roma)
+
+    # ---- LPIPS in the eval pass, installed into TrainerCore by Main.cpp ----
+    list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/EvalLpips.cpp)
+    list(APPEND SS_TOOL_DEFS SS_HAVE_LPIPS=1)
+    list(APPEND SS_TOOL_LIBS ss_lpips)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -420,6 +430,7 @@ ss_configure_app(frame_pick_test)
 add_executable(model_download_test
     ${SS_SRC}/app/tests/model_download_test.cpp
     ${SS_SRC}/app/gui/ModelCache.cpp
+    ${SS_SRC}/app/gui/ProgressClock.cpp
     ${SS_SRC}/app/gui/Subprocess.cpp
     ${SS_SRC}/app/AppPaths.cpp)
 ss_configure_app(model_download_test)
@@ -485,9 +496,10 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/tests/align_fit_test.cpp)
     ss_configure_app(align_fit_test)
 
-    add_executable(stage_eta_test
-        ${SS_SRC}/app/gui/tests/stage_eta_test.cpp)
-    ss_configure_app(stage_eta_test)
+    add_executable(progress_clock_test
+        ${SS_SRC}/app/gui/tests/progress_clock_test.cpp
+        ${SS_SRC}/app/gui/ProgressClock.cpp)
+    ss_configure_app(progress_clock_test)
 
     add_executable(recent_list_test
         ${SS_SRC}/app/gui/tests/recent_list_test.cpp
@@ -501,6 +513,18 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/edit/ElementGrid.cpp
         ${SS_SRC}/app/gui/edit/Selection.cpp)
     ss_configure_app(attributes_test)
+
+    add_executable(distance_scale_test
+        ${SS_SRC}/app/gui/tests/distance_scale_test.cpp
+        ${SS_SRC}/app/gui/edit/DistanceScaleTool.cpp
+        ${SS_SRC}/app/gui/edit/SelectShape.cpp
+        ${SS_SRC}/app/gui/edit/EditDoc.cpp
+        ${SS_SRC}/app/gui/edit/ElementGrid.cpp
+        ${SS_SRC}/app/gui/edit/Selection.cpp
+        ${SS_SRC}/app/gui/Automation.cpp
+        ${SS_SRC}/app/AppPaths.cpp)
+    ss_configure_app(distance_scale_test)
+    target_link_libraries(distance_scale_test PRIVATE imgui_glfw OpenGL::GL)
 
     add_executable(rig_guess_test
         ${SS_SRC}/app/gui/tests/rig_guess_test.cpp
@@ -524,6 +548,26 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/PresetFile.cpp
         ${SS_SRC}/app/AppPaths.cpp)
     ss_configure_app(preset_roundtrip_test)
+
+    add_executable(match_matrix_editor_test
+        ${SS_SRC}/app/gui/tests/match_matrix_editor_test.cpp
+        ${SS_SRC}/app/gui/MatchMatrixEditor.cpp
+        ${SS_SRC}/app/gui/MatchMatrix.cpp
+        ${SS_SRC}/app/gui/PairPreview.cpp
+        ${SS_SRC}/app/gui/Picture.cpp
+        ${SS_SRC}/app/gui/SfmProgress.cpp
+        ${SS_SRC}/app/gui/GlLoader.cpp
+        ${SS_SRC}/app/gui/Layout.cpp
+        ${SS_SRC}/app/gui/Automation.cpp
+        ${SS_SRC}/app/AppPaths.cpp
+        ${SS_SRC}/app/FrameMask.cpp
+        ${SS_SRC}/app/FrameMaskSvg.cpp
+        ${SS_SRC}/app/FrameLook.cpp
+        ${SS_SRC}/app/gui/Subprocess.cpp
+        ${SS_SRC}/app/gui/HeifPhoto.cpp)
+    ss_configure_app(match_matrix_editor_test)
+    target_link_libraries(match_matrix_editor_test PRIVATE imgui_glfw OpenGL::GL)
+    target_compile_definitions(match_matrix_editor_test PRIVATE SS_TOOL_SFM=1)
 
     add_executable(stencil_edit_test
         ${SS_SRC}/app/gui/tests/stencil_edit_test.cpp
@@ -575,6 +619,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameSharpness.cpp
         ${SS_SRC}/app/FfmpegVideo.cpp
         ${SS_SRC}/app/gui/PrepProgress.cpp
+        ${SS_SRC}/app/gui/ProgressClock.cpp
         ${SS_SRC}/app/gui/DatasetRecord.cpp
         ${SS_SRC}/app/gui/Subprocess.cpp
         ${SS_SRC}/app/gui/mask/MaskLayer.cpp
@@ -587,6 +632,27 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/Pano360.cpp
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_prep_test)
+
+    if(SS_BUILD_SAM)
+        get_target_property(SS_DATASET_PREP_TEST_SOURCES dataset_prep_test SOURCES)
+        list(REMOVE_ITEM SS_DATASET_PREP_TEST_SOURCES
+            ${SS_SRC}/app/gui/tests/dataset_prep_test.cpp)
+        add_executable(dataset_prep_streaming_test
+            ${SS_SRC}/app/gui/tests/dataset_prep_streaming_test.cpp
+            ${SS_DATASET_PREP_TEST_SOURCES}
+            ${SS_SRC}/app/DepthPng.cpp
+            ${SS_SRC}/app/FrameExtract.cpp
+            ${SS_SRC}/app/FrameDecodeFfmpeg.cpp)
+        ss_configure_app(dataset_prep_streaming_test)
+        target_compile_definitions(dataset_prep_streaming_test PRIVATE
+            SS_BUILD_SAM=1 SS_HAVE_BLUR_GPU=1)
+        target_link_libraries(dataset_prep_streaming_test PRIVATE ss_sam ss_blur)
+        if(SS_ENABLE_PATENTED)
+            target_sources(dataset_prep_streaming_test PRIVATE
+                ${SS_SRC}/app/FrameDecodeVulkan.cpp)
+            target_link_libraries(dataset_prep_streaming_test PRIVATE ss_video)
+        endif()
+    endif()
 
     # Which steps a dataset run reuses and which it redoes, against records
     # written to a scratch workspace. The same sources as above, no model.
@@ -601,6 +667,7 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/FrameSharpness.cpp
         ${SS_SRC}/app/FfmpegVideo.cpp
         ${SS_SRC}/app/gui/PrepProgress.cpp
+        ${SS_SRC}/app/gui/ProgressClock.cpp
         ${SS_SRC}/app/gui/Subprocess.cpp
         ${SS_SRC}/app/gui/mask/MaskLayer.cpp
         ${SS_SRC}/app/FrameMask.cpp

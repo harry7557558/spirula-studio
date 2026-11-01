@@ -141,6 +141,8 @@ struct IsectCountParams {  // pushed directly
     uint32_t macro_log2;       // binning tile = TILE_MICRO_X << macro_log2
     // Row layout of proj_screen; xy_off < 0 -> center from the AABB.
     int32_t row_stride, xy_off, conic_off, opac_off;
+    float max_sigma;  // ProjEllipseView::max_sigma
+    uint32_t _pad0;
 };
 
 // Mode flags as specialization constants. Spec-folded so no load ever sits
@@ -189,7 +191,9 @@ void intersect_tile_count(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                              0.5f * (aabb.y + aabb.w));
                 float3 conic = float3(row[p.conic_off], row[p.conic_off + 1],
                                       row[p.conic_off + 2]);
-                conic = conic * (0.5f / log(row[p.opac_off] / ALPHA_THRESHOLD));
+                float reach = log(row[p.opac_off] / ALPHA_THRESHOLD);
+                if (p.max_sigma > 0.0f) reach = min(reach, p.max_sigma);
+                conic = conic * (0.5f / reach);
                 n = count_ellipse_grid_overlaps(
                     xy, conic,
                     int(tile_min.x), int(tile_max.x), int(tile_min.y),
@@ -295,6 +299,7 @@ struct IsectWriteParams {  // pushed directly
     uint32_t n_isects;   // isect_ids / flatten_ids length
     uint32_t macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
+    float max_sigma;  // ProjEllipseView::max_sigma
 };
 
 [shader("compute")]
@@ -347,7 +352,9 @@ void intersect_tile_write(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             : float2(0.5f * (aabb.x + aabb.z), 0.5f * (aabb.y + aabb.w));
         float3 conic = float3(row[p.conic_off], row[p.conic_off + 1],
                               row[p.conic_off + 2]);
-        conic = conic * (0.5f / log(row[p.opac_off] / ALPHA_THRESHOLD));
+        float reach = log(row[p.opac_off] / ALPHA_THRESHOLD);
+        if (p.max_sigma > 0.0f) reach = min(reach, p.max_sigma);
+        conic = conic * (0.5f / reach);
 
         if (int(tile_max.y - tile_min.y) * bt.ix <=
             int(tile_max.x - tile_min.x) * bt.iy) {

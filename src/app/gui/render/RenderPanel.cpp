@@ -3,6 +3,8 @@
 
 #include "app/gui/render/RenderSession.h"
 
+#include "app/gui/ProgressView.h"
+
 #include "app/gui/Subprocess.h"
 #include "app/gui/Ui.h"
 #include "app/gui/ViewportPanel.h"
@@ -1568,9 +1570,12 @@ void RenderSession::draw_output_section(float full) {
         if (o.kind != OutputKind::Photo)
             ui::TextDisabled(msg::out_summary, {seconds(T), (long long)frame_count()});
     } else {
-        const float frac = _job.frames > 0 ? (float)_job.frame / (float)_job.frames : 0.0f;
-        ui::ProgressBar(frac, ImVec2(full, 0), msg::render_progress,
+        const double now = progress_now();
+        if (!_job_clock.started() || _job.frame == 0) _job_clock.start(now);
+        if (_job.frames > 0) _job_clock.work(now, (double)_job.frame / (double)_job.frames);
+        ui::ProgressBar(_job_clock.fraction(), ImVec2(full, 0), msg::render_progress,
                         {(long long)_job.frame, (long long)_job.frames});
+        progress_time_line(_job_clock);
         if (ui::Button(msg::render_cancel, ImVec2(full, 0))) cancel_export();
     }
 }

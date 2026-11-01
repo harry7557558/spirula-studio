@@ -17,6 +17,14 @@
 #include <cstddef>
 
 
+struct DensifyConfig;
+struct OptimConfig;
+
+// Readies DeadCriterion::MaxWeight's buffer for `step`'s raster backward:
+// set to opacity on first use, freed once nothing can relocate. Idempotent
+// within a step (EngineDensify.cpp).
+void engine_max_weight_begin_step(int step, int max_steps, const DensifyConfig& cfg);
+
 // --- Raw-pointer image conversion helpers (ImageConvert.cu). ---
 void uint8_image_to_float_raw (const uint8_t*  d_in, float* d_out,
                                int B, int H, int W, int C);
@@ -167,6 +175,7 @@ void _engine_background_backward_hook(
 // bg.fwd_background (forward) and taken back from its image gradient.
 void _engine_background_chain_params(AppearanceChainParams& p);
 void _engine_background_sh_backward(const float* v_background);
+void _ensure_bg_sh_optim_state();
 
 // Background blend, PPISP and the display encode in one kernel each way, from
 // forward_3dgs; engine().appearance says whether this step's forward took it.
@@ -229,3 +238,7 @@ struct SplatStageTimer {
     SplatStageTimer& operator=(const SplatStageTimer&) = delete;
     int _pair = -1;
 };
+
+void engine_prepare_projective_depth(const OptimConfig& cfg);
+void engine_observe_projective_depth();
+void engine_clear_projective_depth();

@@ -36,39 +36,43 @@ void atomic_add_f32(float* addr, float v) {
 
 #else
 
-// Set for backend::DeviceIssue::AmdWindowsFloatAtomics. The ID must match
-// kCasUniformExitSpecId in VulkanPipelines.cpp and stay clear of the 0..n-1
+#ifdef SS_XCHG_FLOAT_ADD  // Windows builds (SpirvShaders.cmake)
+
+// Set on AMD's Windows driver (amd_windows_emulated_fadd). The ID must match
+// kXchgFloatAddSpecId in VulkanPipelines.cpp and stay clear of the 0..n-1
 // that each kernel's own constants take in declaration order.
 [vk::constant_id(1000)]
-const bool kCasUniformExit = false;
+const bool kXchgFloatAdd = false;
 
-// No lane leaves until every lane in its wave has succeeded, so the exit is a
-// uniform branch; a ballot (rasterize_bwd already needs one), not a vote.
-// Inlined at projection_bwd_3dgs's 290 call sites, slangc 2026.12 aborts.
+// Needs shaderBufferFloat32Atomics. AMD's Windows compiler loses the index of a
+// float pointer reinterpreted as uint*, so its CAS loop hit the array base
+// (issue #23). Not inlined: slangc 2026.12 aborts at 290 call sites.
 [noinline]
-void atomic_add_f32_uniform_exit(uint* w, uint expected, float v) {
-    bool done = false;
+void atomic_add_f32_xchg(float* addr, float v) {
+    float carry = v;
     for (;;) {
-        if (!done) {
-            uint prev;
-            InterlockedCompareExchange(
-                w[0], expected, asuint(asfloat(expected) + v), prev);
-            done = prev == expected;
-            expected = prev;
-        }
-        if (WaveActiveCountBits(!done) == 0) break;
+        float cur;
+        InterlockedExchange(addr[0], 0.0f, cur);
+        float back;  // whatever another thread deposited meanwhile
+        InterlockedExchange(addr[0], cur + carry, back);
+        if (back == 0.0f) break;
+        carry = back;
     }
 }
+
+#endif
 
 [ForceInline]
 void atomic_add_f32(float* addr, float v) {
     if (v == 0.0f) return;
-    uint* w = (uint*)addr;
-    uint expected = w[0];
-    if (kCasUniformExit) {
-        atomic_add_f32_uniform_exit(w, expected, v);
+#ifdef SS_XCHG_FLOAT_ADD
+    if (kXchgFloatAdd) {
+        atomic_add_f32_xchg(addr, v);
         return;
     }
+#endif
+    uint* w = (uint*)addr;
+    uint expected = w[0];
     for (;;) {
         uint desired = asuint(asfloat(expected) + v);
         uint prev;

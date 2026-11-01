@@ -43,7 +43,7 @@ MODULES = {
         " warps, color-space, PPISP.",
     ),
     "Optimizer.h": (
-        ["kernels/optim/Optimizer.cuh"],
+        ["kernels/optim/Optimizer.cuh", "kernels/optim/ProjectiveDepth.cuh"],
         "Fused Adam / AdaGrad / Newton optimizer steps, quantized and"
         " offloaded variants.",
     ),

@@ -9,6 +9,8 @@
 #include "core/Env.h"
 
 #include <algorithm>
+#include <array>
+#include <initializer_list>
 #include <mutex>
 #include <tuple>
 #include <type_traits>
@@ -70,22 +72,16 @@ typedef std::tuple<
 > TorchTensorView;
 
 
-// AsyncReadout<T> -- pinned-host ring buffer for non-blocking D->H scalar readouts.
-//
-// Usage pattern (one iteration of training):
-//     static AsyncReadout<float> R(N);
-//     const float* prev = R.read_previous();   // sync on prior issue (cheap)
-//     LossValues out = prev ? pack(prev) : LossValues{};
-//     R.issue(d_src, stream);                  // async D->H of this iter
-//     return out;
-//
-// `read_previous()` returns the host pointer to the most-recently-issued slot
-// AFTER synchronizing on its completion event. Because there's a full
-// iteration of GPU work between issue() and the next read_previous(), the
-// event is essentially always already complete -- the event sync returns
-// immediately, replacing what used to be a blocking device-to-host memcpy.
-//
-// First call: read_previous() returns nullptr.
+namespace spirula {
+inline uint64_t& async_readout_generation() {
+    static uint64_t generation = 0;
+    return generation;
+}
+}
+
+// Read the previous iteration before issuing this one's copy, so its event
+// usually completes before the host needs it. Pool resets invalidate results
+// even when the readout itself has process lifetime.
 template<typename T>
 class AsyncReadout {
 public:
@@ -116,14 +112,14 @@ public:
                               backend::MemcpyKind::DeviceToHost, stream);
         backend::event_record(_evt[i], stream);
         _valid[i] = true;
+        _generation = spirula::async_readout_generation();
         _next_write = (_next_write + 1) % _n_slots;
     }
 
-    // Pointer to the slot most recently filled by issue(), after syncing on
-    // its completion event. nullptr if no issue() yet.
     const T* read_previous() {
         int i = (_next_write + _n_slots - 1) % _n_slots;
-        if (!_valid[i]) return nullptr;
+        if (!_valid[i] || _generation != spirula::async_readout_generation())
+            return nullptr;
         backend::event_synchronize(_evt[i]);
         return _h[i];
     }
@@ -137,6 +133,7 @@ private:
     std::vector<backend::Event*> _evt;
     std::vector<bool> _valid;
     int _next_write;
+    uint64_t _generation = 0;
 };
 
 
@@ -159,6 +156,7 @@ class DevicePool {
         uint8_t   dtype_tag  = (uint8_t)NpyScalar::u1;  // scalar type of last acquire<T>
         bool      owns       = true;  // false: ptr is a slice of _arena
         uint32_t  epoch      = 0;     // phase instance this slice came from
+        size_t    slice_bytes = 0;    // the slice's length, for acquire_reused
     };
     struct DynSlot {
         Slot         slot;
@@ -166,20 +164,24 @@ class DevicePool {
         PoolPhase    phase = PoolPhase::None;
     };
 
-    // The one allocation every PoolPhase carves its buffers out of.
-    // `want` is the largest cursor any phase has asked for since the last
-    // grow; growing happens at a phase switch, when nothing holds a slice.
+    // The one allocation every PoolPhase carves its buffers out of. `want` is
+    // the largest cursor asked for since the last grow, at a phase switch when
+    // nothing holds a slice; `reserve`, what the open phase's opener sized.
     struct Arena {
-        void*  ptr    = nullptr;
-        size_t cap    = 0;
-        size_t cursor = 0;
-        size_t want   = 0;
+        void*  ptr     = nullptr;
+        size_t cap     = 0;
+        size_t cursor  = 0;
+        size_t want    = 0;
+        size_t reserve = 0;
     };
     static constexpr size_t kArenaAlign = 256;
 
     std::vector<Slot> _slots;                          // indexed by PoolKey
     std::unordered_map<std::string, DynSlot> _dyn;     // acquire_dynamic scratch
     Arena     _arena;
+    // Per phase: the most an instance carved beyond its reservation -- what a
+    // later reservation of that phase must leave room for.
+    std::array<size_t, (size_t)PoolPhase::Count> _tail{};
     PoolPhase _phase = PoolPhase::None;
     uint32_t  _epoch = 0;   // bumped per begin_phase; 0 never matches a Slot
     int64_t   _live_splats = 0;
@@ -224,7 +226,7 @@ class DevicePool {
     // Grow-if-needed on a Slot already selected by the caller (mutex held).
     // `reserve` > n allocates room for that many elements up front.
     template<typename T>
-    static T* _acquire_into(Slot& slot, size_t n, size_t reserve = 0) {
+    static T* _acquire_into(Slot& slot, size_t n, const char* what, size_t reserve = 0) {
         size_t bytes = n * sizeof(T);
         // An arena slice is not capacity this slot may reuse; drop it first.
         if (!slot.owns) { slot.ptr = nullptr; slot.cap_bytes = 0; slot.owns = true; }
@@ -235,7 +237,7 @@ class DevicePool {
             slot.ptr = nullptr;
             slot.cap_bytes = 0;
             const size_t alloc = std::max(bytes, reserve * sizeof(T));
-            slot.ptr = backend::device_malloc_checked(alloc);
+            slot.ptr = backend::device_malloc_checked(alloc, what);
             slot.cap_bytes = alloc;
             // SS_POISON_POOL=1: fresh device memory holds whatever the
             // driver left, so a read-before-write is silent where that is
@@ -252,25 +254,32 @@ class DevicePool {
     // a private allocation for this call and raises `want`, so the next phase
     // switch grows the arena and the call after that is aliased again.
     template<typename T>
-    T* _acquire_arena(Slot& slot, size_t n) {
+    T* _acquire_arena(Slot& slot, size_t n, const char* what, bool reuse) {
+        const size_t bytes = n * sizeof(T);
         // Each acquire gets a FRESH slice, so a second one in the same phase
         // would silently move the buffer -- say so rather than hand it back.
-        if (slot.epoch == _epoch)
+        if (slot.epoch == _epoch) {
+            if (reuse && bytes <= (slot.owns ? slot.cap_bytes : slot.slice_bytes)) {
+                slot.used_bytes = bytes;
+                slot.dtype_tag  = (uint8_t)npy_scalar_tag<T>();
+                return static_cast<T*>(slot.ptr);
+            }
             throw std::runtime_error(
                 "DevicePool: arena-backed buffer acquired twice in one phase; "
                 "resize it once, or split the phase");
+        }
         slot.epoch = _epoch;
-        const size_t bytes = n * sizeof(T);
         const size_t off = (_arena.cursor + kArenaAlign - 1) & ~(kArenaAlign - 1);
         // The cursor advances even when the slice does not fit, or `want`
         // would come out one buffer wide instead of one phase wide.
         _arena.cursor = off + bytes;
         if (_arena.want < _arena.cursor) _arena.want = _arena.cursor;
         if (!_arena.ptr || off + bytes > _arena.cap)
-            return _acquire_into<T>(slot, n);
+            return _acquire_into<T>(slot, n, what);
         if (slot.ptr && slot.owns) backend::device_free(slot.ptr);
         slot.ptr        = static_cast<char*>(_arena.ptr) + off;
         slot.cap_bytes  = 0;
+        slot.slice_bytes = bytes;
         slot.used_bytes = bytes;
         slot.dtype_tag  = (uint8_t)npy_scalar_tag<T>();
         slot.owns       = false;
@@ -280,15 +289,16 @@ class DevicePool {
     // The one place the phase rule is enforced (mutex held). `what` names the
     // buffer for the error; enum slots and acquire_dynamic both come through.
     template<typename T>
-    T* _acquire_checked(Slot& slot, size_t n, PoolPhase ph, const char* what) {
+    T* _acquire_checked(Slot& slot, size_t n, PoolPhase ph, const char* what,
+                        bool reuse = false) {
         if (ph == PoolPhase::None || !_alias_enabled())
-            return _acquire_into<T>(slot, n);
+            return _acquire_into<T>(slot, n, what);
         if (ph != _phase)
             throw std::runtime_error(
                 std::string("DevicePool: ") + what + " is arena-backed in phase "
                 + to_string(ph) + " but the open phase is " + to_string(_phase)
                 + " -- see POOL_ALIAS_TABLE in core/PoolSlots.h");
-        return _acquire_arena<T>(slot, n);
+        return _acquire_arena<T>(slot, n, what, reuse);
     }
 
 public:
@@ -297,30 +307,63 @@ public:
         return pool;
     }
 
-    // Open `p`. Every slice the previous phase carved out of the arena dies
-    // here -- POOL_ALIAS_TABLE's rows are the claim that nothing still reads
-    // one. Grows the arena first, which is safe for the same reason.
-    void begin_phase(PoolPhase p) {
+    // Arena bytes for slices of these sizes, each placed at kArenaAlign.
+    static size_t arena_span(std::initializer_list<size_t> slices) {
+        size_t span = 0;
+        for (size_t b : slices) span += (b + kArenaAlign - 1) & ~(kArenaAlign - 1);
+        return span;
+    }
+
+    // Open `p`; the previous phase's slices die (POOL_ALIAS_TABLE's claim), so
+    // the arena may grow here. `reserve` sizes it for what the opener will
+    // carve before any slice is live, instead of overflowing beside it.
+    void begin_phase(PoolPhase p, size_t reserve = 0) {
         std::lock_guard<std::mutex> lock(_mu);
+        if (_phase != PoolPhase::None && _arena.cursor > _arena.reserve) {
+            size_t& tail = _tail[(size_t)_phase];
+            tail = std::max(tail, _arena.cursor - _arena.reserve);
+        }
         _phase = p;
         ++_epoch;
+        _arena.reserve = 0;
         if (!_alias_enabled() || p == PoolPhase::None) return;
+        if (reserve > 0) {
+            _arena.reserve = reserve;
+            _arena.want = std::max(_arena.want, reserve + _tail[(size_t)p]);
+        }
         if (_arena.want > _arena.cap) {
-            for (Slot& s : _slots)
+            // The overflow buffers of the call that raised `want` are as dead as
+            // its slices; held, they sat beside the new arena -- a transient as
+            // large as the overflow that the end-of-step VRAM sample never saw.
+            auto drop = [](Slot& s, PoolPhase ph) {
                 if (!s.owns) { s.ptr = nullptr; s.owns = true; }
-            for (auto& kv : _dyn) {
-                Slot& s = kv.second.slot;
-                if (!s.owns) { s.ptr = nullptr; s.owns = true; }
-            }
+                else if (s.ptr && ph != PoolPhase::None) {
+                    backend::device_free(s.ptr);
+                    s = Slot{};
+                }
+            };
+            for (uint32_t i = 0; i < _slots.size(); ++i)
+                drop(_slots[i], slot_phase(pool_key_slot(i)));
+            for (auto& kv : _dyn) drop(kv.second.slot, kv.second.phase);
             if (_arena.ptr) backend::device_free(_arena.ptr);
             _arena.ptr = nullptr;
             _arena.cap = 0;
-            _arena.ptr = backend::device_malloc_checked(_arena.want);
+            _arena.ptr = backend::device_malloc_checked(_arena.want, "alias arena");
             _arena.cap = _arena.want;
         }
         _arena.cursor = 0;
         if (_poison_arena() && _arena.ptr)
             backend::memset_sync(_arena.ptr, 0xff, _arena.cap);
+    }
+
+    // Raise the open phase's reservation to `bytes` from its start. False when
+    // the arena cannot hold that: a caller whose live slices are cheap to redo
+    // then reopens the phase with the reservation.
+    bool phase_reserve(size_t bytes) {
+        std::lock_guard<std::mutex> lock(_mu);
+        if (!_alias_enabled() || _phase == PoolPhase::None) return true;
+        _arena.reserve = std::max(_arena.reserve, bytes);
+        return _arena.reserve + _tail[(size_t)_phase] <= _arena.cap;
     }
 
     struct ArenaStats { size_t cap_bytes; size_t want_bytes; size_t slots; };
@@ -338,21 +381,19 @@ public:
     T* acquire(PoolKey key, size_t n) {
         std::lock_guard<std::mutex> lock(_mu);
         const PoolSlot slot = pool_key_slot(key);
-        const LiveSizing live = slot_live_sizing(slot);
-        if (live != LiveSizing::None && _live_splats > 0 &&
+        if (slot_live_sized(slot) && _live_splats > 0 &&
             _cap_splats > _live_splats && n > 0) {
-            const size_t reserve = live == LiveSizing::Draw
-                ? (size_t)_cap_splats
-                : (size_t)((double)n * (double)_cap_splats / (double)_live_splats + 1.0);
-            return _acquire_into<T>(_slots[key], n, reserve);
+            const size_t reserve =
+                (size_t)((double)n * (double)_cap_splats / (double)_live_splats + 1.0);
+            return _acquire_into<T>(_slots[key], n, slot_name(slot), reserve);
         }
         return _acquire_checked<T>(_slots[key], n, slot_phase(slot),
                                    slot_name(slot));
     }
 
     // The engine's live and cap splat counts, which size the slots in
-    // POOL_LIVE_SPLAT_TABLE and POOL_SPLAT_DRAW_TABLE; the engine updates
-    // them wherever it changes either. 0 disables the reservation.
+    // POOL_LIVE_SPLAT_TABLE; the engine updates them wherever it changes
+    // either. 0 disables the reservation.
     void set_splat_counts(int64_t live, int64_t cap) {
         std::lock_guard<std::mutex> lock(_mu);
         _live_splats = live;
@@ -363,6 +404,15 @@ public:
     template<typename T>
     T* acquire(PoolSlot slot, size_t n, uint32_t sub = kSubMain) {
         return acquire<T>(pool_key(slot, sub), n);
+    }
+
+    // For per-call scratch a loop re-acquires inside one phase, largest call
+    // first: a second acquire in the phase returns the first slice when it fits.
+    template<typename T>
+    T* acquire_reused(PoolSlot slot, size_t n) {
+        std::lock_guard<std::mutex> lock(_mu);
+        return _acquire_checked<T>(_slots[pool_key(slot, kSubMain)], n,
+                                   slot_phase(slot), slot_name(slot), true);
     }
 
     // Escape hatch for Never-saved scratch whose key is built at runtime and so
@@ -422,6 +472,7 @@ public:
         _dyn.clear();
         if (_arena.ptr) backend::device_free(_arena.ptr);
         _arena = Arena{};
+        _tail.fill(0);
         _phase = PoolPhase::None;
         _live_splats = _cap_splats = 0;
     }
@@ -652,8 +703,8 @@ public:
 // Open a pool phase; the arena's slices from the previous one die here.
 // Called by the launcher that owns a phase, not by the engine layer -- see
 // POOL_ALIAS_TABLE in core/PoolSlots.h.
-inline void pool_begin_phase(PoolPhase p) {
-    DevicePool::global().begin_phase(p);
+inline void pool_begin_phase(PoolPhase p, size_t reserve = 0) {
+    DevicePool::global().begin_phase(p, reserve);
 }
 
 
@@ -662,6 +713,7 @@ inline void pool_begin_phase(PoolPhase p) {
 inline void freeAllDeviceMemory() {
     DevicePool::global().freeAll();
     DeviceScratch::global().freeAll();
+    ++spirula::async_readout_generation();
 }
 
 
@@ -1157,6 +1209,13 @@ public:
         shape = {tensor.template size<0>(), tensor.template size<1>(), tensor.template size<2>(), 4};
     }
 };
+
+// The arena span of float buffers shaped like `tmpl`, as zeros_pool carves them.
+inline size_t pool_arena_span_like(const std::vector<DeviceTensorFloatND>& tmpl) {
+    size_t span = 0;
+    for (const auto& t : tmpl) span += DevicePool::arena_span({(size_t)t.numel() * sizeof(float)});
+    return span;
+}
 
 
 // ============================================================================

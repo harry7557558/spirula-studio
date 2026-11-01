@@ -30,7 +30,9 @@ __global__ void relocate_with_long_axis_split_kernel(
     NonShQuantState non_sh,
     float2*__restrict__ densify_accum_buffer,
     int32_t* __restrict__ bias_correction_steps,
-    uint32_t* __restrict__ visit_counters
+    uint32_t* __restrict__ visit_counters,
+    float* __restrict__ max_weight,
+    float4* __restrict__ projective_state, float* __restrict__ projective_information
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_new_splats)
@@ -56,6 +58,17 @@ __global__ void relocate_with_long_axis_split_kernel(
     opacs[idx_src] = new_opac;
     opacs[idx_dst] = new_opac;
     quats[idx_dst] = quat;
+    // Both halves keep the parent's peak weight, scaled as alpha is.
+    if (max_weight) {
+        float w = max_weight[idx_src] * sigmoid(new_opac) / fmaxf(sigmoid(opac), 1e-12f);
+        max_weight[idx_src] = w;
+        max_weight[idx_dst] = w;
+    }
+
+    if (projective_state) {
+        projective_state[idx_dst] = projective_state[idx_src];
+        projective_information[idx_dst] = projective_information[idx_src];
+    }
 
     // appearance - copy
     features_dc[idx_dst] = features_dc[idx_src];
@@ -175,6 +188,8 @@ __global__ void compute_relocation_mask_kernel(
     const float3* __restrict__ features_dc,
     const uint32_t* __restrict__ visit_counters,
     uint32_t dead_after_steps,
+    bool dead_by_opacity,
+    const float* __restrict__ max_weight,
     bool* __restrict__ masks,
     int32_t* __restrict__ num_relocate,
     int32_t* __restrict__ relocate_indices
@@ -191,7 +206,8 @@ __global__ void compute_relocation_mask_kernel(
         float opac = opacities[idx];
         float3 feature_dc = features_dc[idx];
 
-        bool is_low_opac = sigmoid(opac) <= min_opacity;
+        bool is_low_opac = (dead_by_opacity && sigmoid(opac) <= min_opacity)
+            || (max_weight != nullptr && max_weight[idx] <= min_opacity);
 
         bool is_finite = isfinite(
             dot(mean, mean) / dot(quat, quat) + dot(scale, feature_dc) * opac
@@ -232,6 +248,10 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
     uint32_t dead_after_steps,
+    // Peak alpha * T per splat; when given it is a second dead test against
+    // min_opacity and is carried src -> dst. dead_by_opacity keeps the first.
+    DeviceVector<float> max_weight,
+    bool dead_by_opacity,
     int sh_optim_bits,
     int num_sh,
     // SH-quant bounds buffer + layout flag used to encode (g1=0, g2=0) into
@@ -249,11 +269,19 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     // Non-SH Adam-state quant: when enabled, each relocated dst splat gets
     // its packed bytes set to codec-encoded zero against the current bound.
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     int64_t max_relocate,
     int64_t* num_dead_out
 ) {
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
+    // The mask and the dst list, then the draw's keys, indices and output.
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    const int64_t draw = max_relocate > 0 ? std::min(max_relocate, cur_num_splats)
+                                          : cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({(size_t)cur_num_splats, n4, n4,
+                                             4 * (size_t)draw, n4, n4, n4}));
     bool* mask = DevicePool::global().acquire<bool>(
         PoolSlot::DensifyRelocMask, cur_num_splats);
     int32_t* num_relocate_ptr = DevicePool::global().acquire<int32_t>(
@@ -273,6 +301,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
         features_dc.data_ptr(),
         visit_counters.data_ptr(),
         dead_after_steps,
+        dead_by_opacity,
+        max_weight.data_ptr(),
         mask,
         num_relocate_ptr,
         dst_indices
@@ -316,7 +346,8 @@ int64_t relocate_splats_with_long_axis_split_tensor(
                 bnd_ptr, bps, \
                 non_sh, \
                 densify_accum_buffer.data_ptr(), \
-                bias_correction_steps_ptr, visit_counters.data_ptr())
+                bias_correction_steps_ptr, visit_counters.data_ptr(), \
+                max_weight.data_ptr(), projective_state.data_ptr(), projective_information.data_ptr())
         if      (sh_optim_bits == 32) _DENSIFY_LAS_LAUNCH(float3, nullptr, false);
         else if (sh_optim_bits == 8)  _DENSIFY_LAS_LAUNCH(short3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
         else if (sh_optim_bits == 4)  _DENSIFY_LAS_LAUNCH(uchar3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
@@ -345,6 +376,7 @@ void add_splats_with_long_axis_split_tensor(
     DeviceVector<float2> sample_weights,
     DeviceVector<int32_t> bias_correction_steps,
     DeviceVector<uint32_t> visit_counters,
+    DeviceVector<float> max_weight,  // carried src -> dst; empty to skip
     int sh_optim_bits,
     int num_sh,
     DeviceVector<float4> sh_quant_bounds,
@@ -355,11 +387,15 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 ) {
     if (num_new_splats == 0)
         return;
     int32_t* bias_correction_steps_ptr = bias_correction_steps.data_ptr();
+    const size_t n4 = 4 * (size_t)cur_num_splats;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({n4, 4 * (size_t)num_new_splats, n4, n4, n4}));
 
     DeviceVector<float2> weights = sample_weights.data_ptr()
         ? sample_weights : densify_accum_buffer;
@@ -383,7 +419,8 @@ void add_splats_with_long_axis_split_tensor(
             bnd_ptr, bps, \
             non_sh, \
             densify_accum_buffer.data_ptr(), \
-            bias_correction_steps_ptr, visit_counters.data_ptr())
+            bias_correction_steps_ptr, visit_counters.data_ptr(), \
+            max_weight.data_ptr(), projective_state.data_ptr(), projective_information.data_ptr())
     if      (sh_optim_bits == 32) _DENSIFY_LAS_ADD_LAUNCH(float3, nullptr, false);
     else if (sh_optim_bits == 8)  _DENSIFY_LAS_ADD_LAUNCH(short3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
     else if (sh_optim_bits == 4)  _DENSIFY_LAS_ADD_LAUNCH(uchar3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);

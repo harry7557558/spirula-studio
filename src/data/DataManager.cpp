@@ -5,6 +5,7 @@
 
 #include "core/DistanceTransform.h"
 #include "core/ExrImage.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageOrient.h"
 #include "core/TiffImage.h"
 #include "data/ImageProbe.h"
@@ -1510,7 +1511,7 @@ void DataManagerImpl::preload_cpu_cache() {
 
     // Pick a sensible worker count for the preload sweep — capped by the
     // number of images, so we don't spawn 32 threads to decode 4 images.
-    int n_threads = (int)std::max(1u, std::thread::hardware_concurrency());
+    int n_threads = (int)std::max(1u, spirula::hardware_threads());
     n_threads = std::min(n_threads, (int)N);
 
     std::atomic<int64_t> next_idx{0};

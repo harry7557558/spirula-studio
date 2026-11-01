@@ -81,7 +81,8 @@ __global__ void _normalize_clip_map_kernel(
     float power,
     float* __restrict__ data,
     const float* __restrict__ inv_median,  // [B], null to skip
-    const float* __restrict__ clip         // [B], null to skip
+    const float* __restrict__ clip,        // [B], null to skip
+    const float* __restrict__ fit          // [B, N], null to skip
 ) {
     int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total)
@@ -94,9 +95,11 @@ __global__ void _normalize_clip_map_kernel(
     }
     if (inv_median != nullptr)
         v *= inv_median[b];
-    // The map's flat-region background is tiny negative noise; a fractional
-    // power of it is NaN, so the floor is what makes the exponent usable.
-    if (power != 1.0f)
+    // The learned score fits the unpowered map. The flat-region background is
+    // tiny negative noise, and a fractional power of it is NaN: hence the floor.
+    if (fit != nullptr)
+        v = v > 0.0f ? v / fmaxf(fit[idx], v * (1.0f / kLearnedScoreMaxRatio)) : 0.0f;
+    else if (power != 1.0f)
         v = powf(fmaxf(v, 0.0f), power);
     data[idx] = v;
 }
@@ -106,14 +109,19 @@ void normalize_clip_map_inplace_tensor(
     TorchTensorView data,  // [B, ...], rows normalized independently
     bool normalize_median,
     float clip_quantile,
-    float power
+    float power,
+    // The learned score's rendered map, same shape: the result is then the
+    // map, conditioned but not powered, over it -- the ratio the score update
+    // reads (docs/notes/learned-densify-score.md). Null skips.
+    TorchTensorView fit
 ) {
     // Quantiles are scale-equivariant and x -> x^p is monotone, so clipping
     // against the un-normalized cutoff and rescaling and powering after is
     // the normalize-then-clip-then-power result in one pass.
     const bool do_clip = (clip_quantile > 0.0f && clip_quantile < 1.0f);
     const bool do_power = (power != 1.0f);
-    if (!normalize_median && !do_clip && !do_power)
+    const float* fit_ptr = (const float*)std::get<0>(fit);
+    if (!normalize_median && !do_clip && !do_power && fit_ptr == nullptr)
         return;
     float* ptr = (float*)std::get<0>(data);
     if (ptr == nullptr)
@@ -145,7 +153,8 @@ void normalize_clip_map_inplace_tensor(
     _normalize_clip_map_kernel<<<_LAUNCH_ARGS_1D(total, 256)>>>(
         total, N, power, ptr,
         normalize_median ? inv_median : nullptr,
-        do_clip ? clip : nullptr
+        do_clip ? clip : nullptr,
+        fit_ptr
     );
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }
@@ -413,6 +422,9 @@ void weighted_sample_without_replacement_tensor(
 ) {
     if (numel == -1)
         numel = weights.size();
+    const size_t n4 = 4 * (size_t)numel;
+    pool_begin_phase(PoolPhase::Densify,
+                     DevicePool::arena_span({n4, 4 * (size_t)num_sample, n4, n4, n4}));
 
     int32_t* result = weighted_sample_without_replacement_internal(
         numel,

@@ -42,7 +42,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -83,7 +86,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -124,7 +130,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -165,7 +174,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -206,7 +218,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -247,7 +262,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -288,7 +306,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -329,7 +350,10 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_bwd_kernel_wrapper<
@@ -370,5 +394,8 @@ template void rasterize_to_pixels_bwd_kernel_wrapper<
     Vanilla3DGS<0>::WorldBuffer v_splat_wbuffer,
     Vanilla3DGS<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den
+    float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut
 );

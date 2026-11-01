@@ -13,7 +13,8 @@ template<
     CameraModelType camera_model,
     CameraDistortionType distortion,
     DistortionType dist_type,
-    bool output_median
+    bool output_median,
+    bool output_score
 >
 void rasterize_to_pixels_eval3d_fwd_kernel_wrapper(
     cudaStream_t stream,
@@ -38,11 +39,14 @@ void rasterize_to_pixels_eval3d_fwd_kernel_wrapper(
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids, // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 
-template <typename SplatPrimitive, DistortionType dist_type, bool output_median>
+template <typename SplatPrimitive, DistortionType dist_type, bool output_median,
+          bool output_score>
 inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     // Gaussian parameters
     int64_t num_splats,  // = cur_num_splats; non-packed projection layout stride
@@ -67,7 +71,8 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
     DeviceTensor3D<float> transmittances,
     DeviceTensor3D<int32_t> last_ids,
     RenderOutput::Tensor distortions,
-    DeviceTensor3D<float> render_median
+    DeviceTensor3D<float> render_median,
+    const SplatScoreRender& score
 ) {
     // splats_w.size() returns max_num_splats (pre-allocated); the projection
     // layout uses cur_num_splats per camera stride. See RasterizationBwd.cu.
@@ -90,14 +95,15 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
             tile_offsets.data_ptr(), flatten_ids.data_ptr(), \
             renders, transmittances.data_ptr(), last_ids.data_ptr(), \
             dist_any(dist_type) ? distortions.buffer() : RenderOutput::Buffer(), \
-            output_median ? render_median.data_ptr() : nullptr \
+            output_median ? render_median.data_ptr() : nullptr, \
+            score, 0.0f \
         )
 
     #define _DISPATCH(M, D) \
         if (camera_model == CameraModelType::M && distortion == CameraDistortionType::D) \
             rasterize_to_pixels_eval3d_fwd_kernel_wrapper<SplatPrimitive, \
                 CameraModelType::M, CameraDistortionType::D, \
-                dist_type, output_median> _LAUNCH_ARGS; else
+                dist_type, output_median, output_score> _LAUNCH_ARGS; else
     SS_FOR_EACH_CAMERA_VARIANT(_DISPATCH)
         throw std::runtime_error("Unsupported camera model / distortion tier");
     #undef _DISPATCH
@@ -107,7 +113,8 @@ inline void launch_rasterize_to_pixels_eval3d_fwd_kernel(
 }
 
 
-template <typename SplatPrimitive, DistortionType dist_type, bool output_median>
+template <typename SplatPrimitive, DistortionType dist_type, bool output_median,
+          bool output_score>
 inline std::tuple<
     RenderOutput::TensorTuple,  // renders
     DeviceTensor3D<float>,  // transmittances
@@ -133,7 +140,8 @@ inline std::tuple<
     const DeviceTensor3D<int32_t> tile_offsets, // [I, tile_height, tile_width]
     const DeviceVector<int32_t> flatten_ids,    // [n_isects]
     int macro_log2,                             // binning granularity
-    bool output_depth
+    bool output_depth,
+    const SplatScoreRender& score
 ) {
     int64_t batch = tile_offsets.size<0>();
 
@@ -154,13 +162,14 @@ inline std::tuple<
     if (output_median)
         render_median.resize(PoolSlot::RenderMedian, batch, image_height, image_width);
 
-    launch_rasterize_to_pixels_eval3d_fwd_kernel<SplatPrimitive, dist_type, output_median>(
+    launch_rasterize_to_pixels_eval3d_fwd_kernel<SplatPrimitive, dist_type, output_median,
+                                                 output_score>(
         num_splats,
         splats_w, splats_s, gaussian_ids,
         viewmats, intrins, camera_model, distortion, dist_coeffs, aabb,
         image_width, image_height, tile_offsets, flatten_ids,
         macro_log2,
-        renders, render_Ts, render_last_ids, distortions, render_median
+        renders, render_Ts, render_last_ids, distortions, render_median, score
     );
 
     return std::make_tuple(
@@ -203,26 +212,29 @@ std::tuple<
     int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median,
-    bool output_depth             // false: nothing reads the depth, leave it out
+    bool output_depth,            // false: nothing reads the depth, leave it out
+    SplatScoreRender score
 ) {
     // Only None/D/RGB_D are instantiated for this RGB_D primitive; DN/RGB_DN
     // require a normal-rendering primitive (add their cases + generator entries
     // when one exists).
-#define _DISPATCH_FWD(DT) (output_median ? \
-        rasterize_to_pixels_eval3d_fwd_tensor<Vanilla3DGUT<0>, DT, true> : \
-        rasterize_to_pixels_eval3d_fwd_tensor<Vanilla3DGUT<0>, DT, false>)
+#define _F(DT, M, S) rasterize_to_pixels_eval3d_fwd_tensor<Vanilla3DGUT<0>, DT, M, S>
+#define _DISPATCH_FWD(DT) (output_median \
+        ? (score.enabled() ? _F(DT, true, true) : _F(DT, true, false)) \
+        : (score.enabled() ? _F(DT, false, true) : _F(DT, false, false)))
     auto dispatch =
         dist_type == DistortionType::None  ? _DISPATCH_FWD(DistortionType::None) :
         dist_type == DistortionType::D     ? _DISPATCH_FWD(DistortionType::D) :
         dist_type == DistortionType::RGB_D ? _DISPATCH_FWD(DistortionType::RGB_D) :
         throw std::runtime_error("rasterize_to_pixels_3dgut_fwd: distortion type not instantiated (normal needs a normal-rendering primitive)");
 #undef _DISPATCH_FWD
+#undef _F
     return dispatch(
         num_splats,
         splats_w, splats_s, gaussian_ids,
         viewmats, intrins, cmt(camera_model), cdt(distortion), dist_coeffs, aabb,
         image_width, image_height,
-        tile_offsets, flatten_ids, macro_log2, output_depth
+        tile_offsets, flatten_ids, macro_log2, output_depth, score
     );
 }
 

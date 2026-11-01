@@ -3,10 +3,6 @@
 
 #include <core/Common.cuh>
 
-// For the NonShQuantState struct used in the kernel signature. FPBO.cuh
-// declares the host-side wrappers that take this struct and also defines it
-// at the top of the file (above the auto-generated section). Including it
-// here keeps the kernel-side and dispatcher-side definitions in sync.
 #include "kernels/optim/FusedProjectionBwdOptim.cuh"
 #include "kernels/optim/ScreenSizeHinge.cuh"
 
@@ -15,6 +11,10 @@
 #endif
 
 #include "generated/slang.cuh"
+namespace SlangProjectiveDepth {
+#include "generated/set_namespace.cuh"
+#include "generated/projective_depth.cuh"
+}
 namespace SlangPerSplatLosses {
 #include "generated/set_namespace.cuh"
 #include "generated/per_splat_losses.cuh"
@@ -213,7 +213,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     // g1_/g2_splats_world buffers; enabled == true -> reads/writes the
     // packed bytes against per-block float4 bounds.
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -346,6 +346,22 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     if (inside && visit.counters != nullptr)
         visit.counters[gid] = visit_step(visit.counters[gid], rendered);
     const bool regularize = !(visit.skip_unrendered_reg && !rendered);
+
+    float projective_gradient = 0;
+    bool projective_active = inside && depth.states && radii && radii[gid] > 0
+        && dot(v_splat_world.mean,v_splat_world.mean)+dot(v_splat_world.scale,v_splat_world.scale) > 0;
+    if (projective_active) {
+        float anchor_id = depth.states[gid].x;
+        projective_active = anchor_id > 0;
+        if (projective_active) {
+            float4 a = depth.centers[int(anchor_id)-1];
+            float4 c = depth.centers[depth.camera_indices[0]];
+            float3 projective_anchor{a.x,a.y,a.z}, projective_camera{c.x,c.y,c.z};
+            projective_gradient = SlangProjectiveDepth::projective_depth_gradient(
+                projective_anchor,projective_camera,splat_world.mean,
+                v_splat_world.mean,v_splat_world.scale,depth.single_photometric);
+        }
+    }
 
     // add regularization to gradient
     static constexpr int kNumPerSplatLosses = 5;
@@ -567,6 +583,19 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         }
     }
 
+    if (projective_active) {
+        float4 projective_state = depth.states[gid];
+        float4 a = depth.centers[int(projective_state.x)-1], c = depth.centers[depth.camera_indices[0]];
+        float3 projective_anchor{a.x,a.y,a.z}, projective_camera{c.x,c.y,c.z};
+        float3 mean = splats_world.means(gid), scale = splats_world.scales(gid);
+        SlangProjectiveDepth::projective_depth_update(projective_anchor,projective_camera,
+            depth.lr,depth.angular_lr,depth.single_photometric,depth.angular_relative,
+            projective_gradient,depth.information[gid],&projective_state,&mean,&scale);
+        splats_world.means(gid) = mean;
+        splats_world.scales(gid) = scale;
+        depth.states[gid] = projective_state;
+    }
+
     // update features_dc
     if (inside) {
         float3 v_dc = v_splat_world.features_dc;
@@ -665,7 +694,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
     [[maybe_unused]] float lr_sh = lr_features_sh * inv_bias_correction1;
     [[maybe_unused]] float* v_sh_ptr = v_splat_world.features_sh;
     float* sh_ptr = splats_world.features_sh(gid);
-    [[maybe_unused]] const float reg_weight = sh_reg_weight * (1.0f / fmaxf((float)num_sh, 1.0f));
+    [[maybe_unused]] const float reg_weight = sh_reg_weight;  // per coefficient, as fused_adam_step
 
     // SH stays in coefficient space. Linearizing the DC encode about the DC
     // colour needs |sh| << c_dc, which does not hold: measured |sh| p99 is
@@ -1014,7 +1043,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     // g1_/g2_splats_world buffers; enabled == true -> reads/writes the
     // packed bytes against per-block float4 bounds.
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -1067,7 +1096,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
         v_splats_world, v_splats_screen,
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,
         sh_value_packed, sh_value_bounds,
-        non_sh, visit,
+        non_sh, visit, depth,
         radii, densify_score,
         lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc, lr_features_sh,
         max_gauss_ratio,

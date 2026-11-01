@@ -9,6 +9,7 @@
 #include <fstream>
 
 #include "i18n/Locale.h"
+#include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
 
@@ -108,6 +109,7 @@ void sweep_sfm_intermediates(const std::string& ws) {
     remove_tree(dir / sfm::resume::kDir);
     std::error_code ec;
     fs::remove(dir / "matches.bin", ec);
+    fs::remove(dir / "matches.bin.bak", ec);
 }
 
 
@@ -183,6 +185,7 @@ void SfmRunner::start(const SfmJob& job, RunFilms films) {
     _not_metric = false;
     _have_status = false;
     _status_mtime = 0;
+    _map_work = MappingWork(job.mapper == 1);
     _films = films;
     _prog.reset();
     if (_films.frames) _films.frames->clear();
@@ -363,13 +366,20 @@ void SfmRunner::sweep_intermediates() {
     }
     sweep_sfm_intermediates(ws);
 }
+void SfmRunner::keep_intermediates() {
+    std::lock_guard<std::mutex> lk(_mu);
+    _sweep_dir.clear();
+}
 void SfmRunner::log(const std::string& line, bool detail) {
     _prog.note(line, detail);
 }
 
-void SfmRunner::set_stage_if_new(Stage st, const char* s) {
-    if (_prog.current() == st && _prog.stage(st).detail == s) return;
-    set_stage(st, s);
+void SfmRunner::set_stage_if_new(Stage st, const char* s, bool relabel) {
+    const bool same_stage = _prog.current() == st;
+    if (same_stage && _prog.stage(st).detail == s) return;
+    if (!same_stage || !relabel) return set_stage(st, s);
+    _prog.detail(st, s);
+    log(std::string("==== ") + s + " ====", /*detail=*/false);
 }
 
 void SfmRunner::set_stage(Stage st, const std::string& s) {
@@ -394,29 +404,31 @@ void SfmRunner::apply_status(const RunStatus& st) {
     switch (st.stage) {
         case 0: set_stage_if_new(Stage::Features, lmsg::stage_finding_features.get());
                 _prog.count(Stage::Features, st.done, st.total); break;
-        // Reading the feature files and choosing which pairs to match are both
-        // matching, and both used to leave the screen on a full features bar
-        // with nothing moving -- minutes of it with a learned frontend.
+        // Reading the features and choosing pairs are matching too -- minutes
+        // with a learned frontend. Each phase counts something different, so
+        // each is a bar of its own.
         case 6: set_stage_if_new(Stage::Matching, lmsg::stage_reading_features.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 7: set_stage_if_new(Stage::Matching, lmsg::stage_selecting_pairs.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
+        case 10: set_stage_if_new(Stage::Matching, lmsg::stage_measuring_focals.get());
+                 _prog.count(Stage::Matching, st.done, st.total); break;
         case 1: set_stage_if_new(Stage::Matching, lmsg::stage_matching_images.get());
                 _prog.count(Stage::Matching, st.done, st.total); break;
-        case 2: case 3: case 4:
-                set_stage_if_new(Stage::Mapping, lmsg::stage_reconstructing.get());
-                _prog.count(Stage::Mapping, st.done, st.total);
-                _prog.fraction(Stage::Mapping, mapping_fraction(st.done, st.total));
-                break;
-        // Two stretches of the mapping step place no image, so the bar has
-        // nothing to say and the label has to: choosing a focal and a seed
-        // before the first, and the finishing solves after the last.
-        case 8: set_stage_if_new(Stage::Mapping, lmsg::stage_seeding.get());
-                _prog.fraction(Stage::Mapping, 0.0f);
-                break;
-        case 9: set_stage_if_new(Stage::Mapping, lmsg::stage_refining.get());
-                _prog.fraction(Stage::Mapping, kMappingBarFull);
-                break;
+        // One bar over the whole step, whatever it is doing: a seed retry comes
+        // back to seeding mid-run, and the finishing solves place no image.
+        case 2: case 3: case 4: case 8: case 9: {
+            if (st.stage == 2) _map_work.placed(st.done, st.total);
+            if (st.stage == 3) _map_work.levels(st.done, st.total);
+            if (st.stage == 9) _map_work.refining();
+            set_stage_if_new(Stage::Mapping,
+                             st.stage == 8   ? lmsg::stage_seeding.get()
+                             : st.stage == 9 ? lmsg::stage_refining.get()
+                                             : lmsg::stage_reconstructing.get(),
+                             /*relabel=*/true);
+            if (_map_work.work() > 0.0) _prog.fraction(Stage::Mapping, (float)_map_work.work());
+            break;
+        }
         default: break;
     }
     if (st.finished) {
@@ -814,6 +826,8 @@ void SfmRunner::run(SfmJob job) {
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job), prior, rec, req);
+        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+            return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string()))

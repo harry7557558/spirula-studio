@@ -30,7 +30,7 @@ fails with `LNK1104`. The portable tests need no GPU or model:
 ```text
 dense_geometry_test  dense_reconstruction_test  dense_panorama_test
 dense_config_test    dense_pair_selection_test  dense_fusion_test
-dense_artifact_test  dense_spill_test           dense_memory_report_test
+dense_artifact_test  dense_spill_test           dense_memory_plan_test
 dense_filter_test    dense_visibility_test
 ```
 
@@ -51,7 +51,7 @@ take dataset arguments and are manual diagnostics (see [Diagnostics](#diagnostic
 - Do not weaken masks, minimum confidence or distinct-image support to raise
   point counts. Point count is not a quality score.
 - Every host working set is a share of one budget, `image_cache_bytes`. If you
-  add one, update `planned_host_bytes` in `MemoryReport.cpp`, or the GUI's
+  add one, update `planned_host_bytes` in `MemoryPlan.cpp`, or the GUI's
   memory projection silently under-reports.
 - A new GUI control needs an `SS_MSG` in `i18n/catalog/Dense.h` in all 13
   languages and a `ui::help_on_hover_disabled` tooltip on its label and its
@@ -82,7 +82,7 @@ message in `i18n/catalog/Dense.h`, a round trip in
 | `src/dense/DiskArray.h`, `DiskTable.h`, `ExternalSort.h` | Spill-to-disk arrays, a paged read-only table, stable external merge sort. |
 | `src/dense/DenseConfig.h/.cpp`, `ConfigFields.h` | The one settings struct, presets, the source-workflow setup, and the field table. |
 | `src/dense/Artifact.h`, `Generation.h` | Freshness probes, content verification, immutable generations and the current-generation record. |
-| `src/dense/MemoryReport.h/.cpp` | The child's memory report, the host plan, and the out-of-memory risk rule. |
+| `src/dense/MemoryPlan.h/.cpp` | The host memory the run's budgets allow: the peak its memory report plans for. |
 | `src/app/DenseProcessing.cpp` | `run_dense`: parsing, view preparation, decoding, pair jobs, RoMa inference, caches, live snapshot, memory reporter, publication. |
 | `src/app/cli/dense_main.cpp` | `spirula dense`. The GUI runs this same command as a child process. |
 | `src/app/gui/DensePanel.cpp` | Dense settings and their tooltips; live-preview polling. |
@@ -318,14 +318,12 @@ observation tiles are deleted as soon as it is refined, so disk use follows
 the references in flight rather than every pair matched.
 
 `MemoryReporter` (`DenseProcessing.cpp`) writes `dense/progress/memory.json`
-twice a second, atomically. The GUI's `DenseMemoryView` reads it and draws it in
-a strip above the log, right-aligned like the training VRAM readout. The risk rule is
-`demand = max(planned, now) [+ other programs on the device] / supply`, where
-host supply is this process plus free RAM and device supply is the device
-size. Below 0.8 is low, below 0.95 medium, otherwise high; the shown risk is
-the worse of the two. `VK_EXT_memory_budget` reports *this process's* heap
-usage, so "other programs" on the device is device size minus our budget, not
-usage minus ours.
+twice a second, atomically, through the report every child shares
+(`app/RunReport.h`). Its planned peak is the budgets' ceiling with a tenth of
+it as sigma; the GUI draws it in a strip above the log with the same risk rule
+as every other memory forecast (docs/notes/memory-forecast.md).
+`VK_EXT_memory_budget` reports *this process's* heap usage, so "other programs"
+on the device is device size minus our budget, not usage minus ours.
 
 ---
 
@@ -367,7 +365,7 @@ file holds the final cloud.
 | `dense_fusion_test` | Cell and partition boundaries, normals, depth layers, chain bounds, parallel/spilled equality. |
 | `dense_artifact_test` | Locking, cleanup, generations, interrupted publication, legacy adoption, checksums. |
 | `dense_spill_test` | Spill arrays, external merge, sampler equivalence. |
-| `dense_memory_report_test` | Host plan, risk thresholds, device gating, report round trip, torn files. |
+| `dense_memory_plan_test` | The host plan adds the matching budgets. The report and the risk rule are `resource_forecast_test`'s. |
 | `dense_filter_test` | Each point filter on inputs whose answer is known, then end to end through `Reconstruction`; each test names the wrong implementation it catches. |
 
 ---

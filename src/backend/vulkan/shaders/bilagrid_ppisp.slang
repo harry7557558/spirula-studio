@@ -322,9 +322,9 @@ void bilagrid_ppisp_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
 static const int kBpFootX = kBgV1BlockX + 2;  // 10
 static const int kBpFootY = kBgV1BlockY + 2;  // 10
-static const int kBpFootZ = 3;
+static const int kBpFootZ = 4;
 static const int kBpChans = 9;
-static const int kBpCells = kBpFootX * kBpFootY * kBpFootZ;  // 300
+static const int kBpCells = kBpFootX * kBpFootY * kBpFootZ;
 
 groupshared float _bp_shmem[kBpFootZ * kBpFootY * kBpFootX * kBpChans];
 
@@ -357,12 +357,14 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
     uint3 t = uint3(ltid % 8u, ltid / 8u, 0u);
     // Block-uniform decode BEFORE any per-thread early return (the preload
     // barrier below must be reached by all 64 threads).
+    // Two-plane dispatch must match backend/vulkan/kernels/Bilagrid.cpp.
+    const int layers = (p.L + 1) / 2;
     int block_z_total =
-        kPatched != 0 ? p.N * p.m_batch_stride * p.L : p.N * p.L;
+        kPatched != 0 ? p.N * p.m_batch_stride * layers : p.N * layers;
     if (int(bid.z) >= block_z_total) return;
 
     int idx_block = int(bid.z);
-    int zi = idx_block % p.L; idx_block /= p.L;
+    int zi = 2 * (idx_block % layers); idx_block /= layers;
     int m_batch_i = 0;
     if (kPatched != 0) {
         m_batch_i = idx_block % p.m_batch_stride;
@@ -405,9 +407,11 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
                       p.mult_y % kBgV1BlockY != 0);
     if (!inside && slow_path) return;
 
-    float accum[kBpChans];
+    float accum[2][kBpChans];
     [ForceUnroll]
-    for (int ci = 0; ci < kBpChans; ci++) accum[ci] = 0.0f;
+    for (int dz = 0; dz < 2; dz++)
+    [ForceUnroll]
+    for (int ci = 0; ci < kBpChans; ci++) accum[dz][ci] = 0.0f;
 
     if (inside) {
         int mi_begin = kPatched != 0 ? m_batch_i : 0;
@@ -452,7 +456,7 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
 
                 BgCells c = bg_cells_uniform(0, p.L, p.H, p.W, kBpChans, x, y,
                                              z);
-                if (zi != c.z0 && zi != c.z1) continue;
+                if (zi != c.z0 && zi != c.z1 && zi + 1 != c.z0 && zi + 1 != c.z1) continue;
 
                 // Every grid gradient this pixel gives is linear in its
                 // incoming one, so a zero one -- a masked pixel, mostly --
@@ -499,28 +503,32 @@ void bilagrid_ppisp_bwd_v1_grid(uint3 bid: SV_GroupID, uint ltid: SV_GroupThread
                 _bp_transform_bwd(float3(sr, sg, sb), exposure, cp, v_out,
                                   v_rgb, v_e, v_cp);
 
-                float accum_t = bg_v1_accum_t(xi, yi, zi, c);
                 [ForceUnroll]
-                for (int ci = 0; ci < kBpChans; ci++)
-                    accum[ci] += accum_t * _bp_get_param(v_e, v_cp, ci);
+                for (int dz = 0; dz < 2; dz++) {
+                    if (zi + dz >= p.L || (zi + dz != c.z0 && zi + dz != c.z1)) continue;
+                    float accum_t = bg_v1_accum_t(xi, yi, zi + dz, c);
+                    [ForceUnroll]
+                    for (int ci = 0; ci < kBpChans; ci++)
+                        accum[dz][ci] += accum_t * _bp_get_param(v_e, v_cp, ci);
+                }
             }
         }
     }
 
-    int out_idx_start = (((ni * p.L + zi) * p.H + yi) * p.W + xi) * kBpChans;
-
-    if (slow_path) {
+    [ForceUnroll]
+    for (int dz = 0; dz < 2; dz++) {
+        if (zi + dz >= p.L) continue;
+        int out_idx_start = (((ni * p.L + zi + dz) * p.H + yi) * p.W + xi) * kBpChans;
         [ForceUnroll]
         for (int ci = 0; ci < kBpChans; ci++) {
-            if (bg_finite(accum[ci]) && accum[ci] != 0.0f)
-                atomic_add_f32(&p.v_bilagrid[out_idx_start + ci], accum[ci]);
+            if (slow_path) {
+                if (bg_finite(accum[dz][ci]) && accum[dz][ci] != 0.0f)
+                    atomic_add_f32(&p.v_bilagrid[out_idx_start + ci], accum[dz][ci]);
+            } else {
+                bg_block_add_64(&p.v_bilagrid[out_idx_start + ci], accum[dz][ci], ltid);
+            }
         }
-        return;
     }
-
-    [ForceUnroll]
-    for (int ci = 0; ci < kBpChans; ci++)
-        bg_block_add_64(&p.v_bilagrid[out_idx_start + ci], accum[ci], ltid);
 }
 
 // ---------------------------------------------------------------------------
@@ -589,9 +597,23 @@ void bilagrid_ppisp_bwd_v1_rgb(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 
     float exposure = 0.0f;
     ColorPPISPParams cp = {float2(0.0f, 0.0f), float2(0.0f, 0.0f), float2(0.0f, 0.0f), float2(0.0f, 0.0f)};
+    float corners[8][9];
     [ForceUnroll]
-    for (int ci = 0; ci < 9; ci++)
-        _bp_set_param(exposure, cp, ci, bg_trilerp(kValueQuant != 0, r, c, ci));
+    for (int corner = 0; corner < 8; corner++) {
+        [ForceUnroll]
+        for (int ci = 0; ci < 9; ci++)
+            corners[corner][ci] = bg_read(kValueQuant != 0, r, c.o[corner] + ci);
+    }
+    [ForceUnroll]
+    for (int ci = 0; ci < 9; ci++) {
+        float c00 = corners[0][ci] * (1.0f - c.fx) + corners[1][ci] * c.fx;
+        float c01 = corners[2][ci] * (1.0f - c.fx) + corners[3][ci] * c.fx;
+        float c10 = corners[4][ci] * (1.0f - c.fx) + corners[5][ci] * c.fx;
+        float c11 = corners[6][ci] * (1.0f - c.fx) + corners[7][ci] * c.fx;
+        float c0 = c00 * (1.0f - c.fy) + c01 * c.fy;
+        float c1 = c10 * (1.0f - c.fy) + c11 * c.fy;
+        _bp_set_param(exposure, cp, ci, c0 * (1.0f - c.fz) + c1 * c.fz);
+    }
 
     float3 v_rgb;
     float v_e;
@@ -607,7 +629,7 @@ void bilagrid_ppisp_bwd_v1_rgb(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float trilerp = 0.0f;
         [ForceUnroll]
         for (int ci = 0; ci < 9; ci++)
-            trilerp += bg_read(kValueQuant != 0, r, c.o[corner] + ci) *
+            trilerp += corners[corner][ci] *
                        _bp_get_param(v_e, v_cp, ci);
         gz_grad += d8[corner] * float(p.L - 1) * trilerp;
     }

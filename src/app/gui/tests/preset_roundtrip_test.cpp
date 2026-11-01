@@ -431,6 +431,19 @@ static void test_unknown_key_ignored() {
     } catch (const std::exception&) {
         CHECK(!"a preset with an unknown key must load");
     }
+
+    // ... and so is one inside the nested dense settings, which a dataset's
+    // record also carries: a crash on opening the dataset otherwise.
+    try {
+        gui::DatasetSettings s;
+        gui::read_dataset_settings_json(
+            json_parse("{\"dense_config\": {\"preset\": \"fast\", \"source\": \"depth\", "
+                       "\"depth_step\": 2, \"neighbors\": 5}}"),
+            s);
+        CHECK_EQ(s.sfm.dense.config.pairs.neighbors, 5);
+    } catch (const std::exception&) {
+        CHECK(!"dense settings with a retired key must load");
+    }
 }
 
 // A preset of one kind must not load as another, whatever its name is.

@@ -62,43 +62,46 @@ void MatchMatrix::clear() {
     _dirty = true;
 }
 
+void MatchMatrix::ensure_texture() {
+    if (_m.empty() || !_dirty) return;
+    // Log scale: inlier counts are heavy-tailed -- a handful of adjacent
+    // pairs carry thousands and the loop closures that matter carry tens,
+    // and on a linear ramp the second kind is black.
+    const float top = std::log1p((float)_m.peak);
+    std::vector<uint8_t> px((size_t)_m.bins * _m.bins * 3);
+    for (size_t i = 0; i < (size_t)_m.bins * _m.bins; i++) {
+        const Cell state = cell_state(_m, i);
+        if (state != Cell::Matched) {
+            const ImU32 flat = state == Cell::Filtered ? kFilteredCol
+                             : state == Cell::Pending  ? kPendingCol
+                                                       : kNoMatchCol;
+            px[i * 3 + 0] = (uint8_t)(flat & 0xff);
+            px[i * 3 + 1] = (uint8_t)((flat >> 8) & 0xff);
+            px[i * 3 + 2] = (uint8_t)((flat >> 16) & 0xff);
+            continue;
+        }
+        const float t = top > 0.0f ? std::log1p((float)_m.counts[i]) / top : 0.0f;
+        // Dark blue -> cyan -> white, which keeps the low end visible
+        // against the panel and still separates the top decade.
+        px[i * 3 + 0] = (uint8_t)(255.0f * std::max(0.0f, t * 1.6f - 0.6f));
+        px[i * 3 + 1] = (uint8_t)(255.0f * std::min(1.0f, t * 1.5f));
+        px[i * 3 + 2] = (uint8_t)(255.0f * std::min(1.0f, 0.15f + t * 1.2f));
+    }
+    if (!_tex) glGenTextures(1, &_tex);
+    glBindTexture(GL_TEXTURE_2D, _tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)_m.bins, (GLsizei)_m.bins,
+                 0, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+    _dirty = false;
+}
+
 bool MatchMatrix::draw(float size, PairBlock& block) {
     if (_m.empty()) return false;
-    if (_dirty) {
-        // Log scale: inlier counts are heavy-tailed -- a handful of adjacent
-        // pairs carry thousands and the loop closures that matter carry tens,
-        // and on a linear ramp the second kind is black.
-        const float top = std::log1p((float)_m.peak);
-        std::vector<uint8_t> px((size_t)_m.bins * _m.bins * 3);
-        for (size_t i = 0; i < (size_t)_m.bins * _m.bins; i++) {
-            const Cell state = cell_state(_m, i);
-            if (state != Cell::Matched) {
-                const ImU32 flat = state == Cell::Filtered ? kFilteredCol
-                                 : state == Cell::Pending  ? kPendingCol
-                                                           : kNoMatchCol;
-                px[i * 3 + 0] = (uint8_t)(flat & 0xff);
-                px[i * 3 + 1] = (uint8_t)((flat >> 8) & 0xff);
-                px[i * 3 + 2] = (uint8_t)((flat >> 16) & 0xff);
-                continue;
-            }
-            const float t = top > 0.0f ? std::log1p((float)_m.counts[i]) / top : 0.0f;
-            // Dark blue -> cyan -> white, which keeps the low end visible
-            // against the panel and still separates the top decade.
-            px[i * 3 + 0] = (uint8_t)(255.0f * std::max(0.0f, t * 1.6f - 0.6f));
-            px[i * 3 + 1] = (uint8_t)(255.0f * std::min(1.0f, t * 1.5f));
-            px[i * 3 + 2] = (uint8_t)(255.0f * std::min(1.0f, 0.15f + t * 1.2f));
-        }
-        if (!_tex) glGenTextures(1, &_tex);
-        glBindTexture(GL_TEXTURE_2D, _tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)_m.bins, (GLsizei)_m.bins,
-                     0, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-        _dirty = false;
-    }
+    ensure_texture();
     if (!_tex) return false;
 
     const ImVec2 at = ImGui::GetCursorScreenPos();

@@ -13,6 +13,7 @@
 #include "app/gui/SfmProgress.h"
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -36,5 +37,9 @@ InProcessResult run_sfm_in_process(
     const std::function<void(const std::string&)>& log,
     const std::function<void(const RunStatus&)>& on_status,
     const std::atomic<bool>& cancel);
+
+// What the module's devices hold in this process, false without the module or
+// before its first device buffer.
+bool sfm_device_memory(uint64_t& ours, uint64_t& others, uint64_t& capacity);
 
 }  // namespace gui

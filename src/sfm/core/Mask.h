@@ -171,6 +171,18 @@ inline std::string stripMaskTag(const std::string& s) {
     return s;
 }
 
+// RealityScan appends an index to the image's FILE name ("00002.jpg_00096");
+// "img_0012" keeps its digits, or every frame of a clip would claim "img".
+inline std::string stripIndexSuffix(const std::string& s) {
+    size_t underscore = s.rfind('_');
+    if (underscore == std::string::npos || underscore + 1 >= s.size()) return s;
+    for (size_t i = underscore + 1; i < s.size(); ++i) {
+        if (!std::isdigit((unsigned char)s[i])) return s;
+    }
+    const std::string base = s.substr(0, underscore);
+    return stripExt(base) != base ? base : s;
+}
+
 inline std::string baseName(const std::string& s) {
     size_t slash = s.find_last_of("/\\");
     return slash == std::string::npos ? s : s.substr(slash + 1);
@@ -227,7 +239,17 @@ public:
             if (fs::exists(p, ec)) return p.string();
         }
         for (const char* e : kExts) {
-            fs::path p = dir_ / (stem + "_mask" + e);
+            fs::path p = dir_ / (rel_name + ".mask" + e);
+            if (fs::exists(p, ec)) return p.string();
+            p = dir_ / (stem + ".mask" + e);
+            if (fs::exists(p, ec)) return p.string();
+            p = dir_ / (rel_name + "_mask" + e);
+            if (fs::exists(p, ec)) return p.string();
+            p = dir_ / (stem + "_mask" + e);
+            if (fs::exists(p, ec)) return p.string();
+            p = dir_ / (rel_name + "-mask" + e);
+            if (fs::exists(p, ec)) return p.string();
+            p = dir_ / (stem + "-mask" + e);
             if (fs::exists(p, ec)) return p.string();
         }
         // Fall back to the stripped-name index.
@@ -285,19 +307,25 @@ private:
             const std::string low = lowerStr(rel);
             const std::string s1 = stripExt(low);       // "00023.jpg.png" -> "00023.jpg"
             const std::string s2 = stripExt(s1);        //                 -> "00023"
+            const std::string t1 = stripMaskTag(s1);
+            const std::string t2 = stripMaskTag(s2);
             // Levels: 0 = full name, 1 = one extension off, 2 = two off or a
             // mask marker off, +4 for the basename-only forms (which only ever
             // resolve a flat mask directory against nested images).
             claim(low, rel, 0);
             claim(s1, rel, 1);
             claim(s2, rel, 2);
-            claim(stripMaskTag(s1), rel, 2);
-            claim(stripMaskTag(s2), rel, 2);
+            claim(t1, rel, 2);
+            claim(t2, rel, 2);
+            claim(stripIndexSuffix(t1), rel, 3);
+            claim(stripIndexSuffix(t2), rel, 3);
             claim(baseName(low), rel, 4);
             claim(baseName(s1), rel, 5);
             claim(baseName(s2), rel, 6);
-            claim(baseName(stripMaskTag(s1)), rel, 6);
-            claim(baseName(stripMaskTag(s2)), rel, 6);
+            claim(baseName(t1), rel, 6);
+            claim(baseName(t2), rel, 6);
+            claim(baseName(stripIndexSuffix(t1)), rel, 7);
+            claim(baseName(stripIndexSuffix(t2)), rel, 7);
         }
     }
 

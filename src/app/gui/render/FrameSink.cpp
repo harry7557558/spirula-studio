@@ -4,6 +4,7 @@
 
 #include "app/gui/Subprocess.h"
 #include "app/gui/render/GifWriter.h"
+#include "core/HardwareThreads.h"
 
 #include "external/stb_image_write.h"
 
@@ -101,7 +102,7 @@ public:
     ImageSink(std::string path, int w, int h, ImageFormat format, int quality)
         : _path(std::move(path)), _w(w), _h(h), _jpeg(format == ImageFormat::Jpeg),
           _quality(quality), _c(format == ImageFormat::PngAlpha ? 4 : 3) {
-        const int threads = std::clamp((int)std::thread::hardware_concurrency() - 2, 1, 6);
+        const int threads = std::clamp((int)spirula::hardware_threads() - 2, 1, 6);
         _q.start(threads, [this](Queue::Item& it) { return write(it); },
                  (size_t)threads * 2);
     }
@@ -161,7 +162,7 @@ public:
         _colours = kColours[std::clamp(quality, 0, 2)];
         _ok = _gif.open(path, w, h);
         if (!_ok) _error = path;
-        const int threads = std::clamp((int)std::thread::hardware_concurrency() / 2, 1, 4);
+        const int threads = std::clamp((int)spirula::hardware_threads() / 2, 1, 4);
         _q.start(threads, [this](Queue::Item& it) { return encode(it); }, (size_t)threads * 2);
     }
     ~GifSink() override { _q.close(true); }

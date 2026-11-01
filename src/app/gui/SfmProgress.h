@@ -35,7 +35,7 @@ struct LiveModel {
 };
 
 // Inlier counts between image ranges. `bins` is `n_images` for a capture small
-// enough and 512 above that, so a cell is a block of images rather than one.
+// enough and capped above that, so a cell is a block of images rather than one.
 struct PairMatrix {
     uint32_t n_images = 0, bins = 0;
     std::vector<uint32_t> counts;   // bins*bins, symmetric
@@ -48,6 +48,9 @@ struct PairMatrix {
     bool empty() const { return bins == 0 || counts.empty(); }
     bool staged() const { return planned.size() == counts.size(); }
     uint32_t at(uint32_t r, uint32_t c) const { return cell(counts, r, c); }
+    uint32_t cell_of(uint32_t image) const {
+        return (uint32_t)((uint64_t)image * bins / n_images);
+    }
     uint32_t cell(const std::vector<uint32_t>& v, uint32_t r, uint32_t c) const {
         const size_t i = (size_t)r * bins + c;
         return r < bins && c < bins && i < v.size() ? v[i] : 0;
@@ -69,7 +72,7 @@ struct PairBlock {
 // and its exit code, which could report only one of "partial" and "not metric".
 struct RunStatus {
     // sfm::Stage: 0 extract, 1 match, 2 map, 3 merge, 4 orient, 5 finish,
-    // 6 load, 7 select, 8 seed, 9 refine.
+    // 6 load, 7 select, 8 seed, 9 refine, 10 focal.
     uint32_t stage = 0;
     bool finished = false;
     bool partial = false;
@@ -85,15 +88,22 @@ struct RunStatus {
 
 bool read_status(const std::string& dir, int64_t& mtime, RunStatus& out);
 
-// Where the mapping bar stops with every image placed: the finishing solves
-// come after the last one, and a phase that places none holds it here or at
-// zero and moves its label instead.
-inline constexpr float kMappingBarFull = 0.94f;
+// How far the mapping step is, 0..1, from what the mapper reports: images
+// placed, then merge levels, then the finishing solves, each given its share
+// of the step's time. Never falls back. Shares: docs/notes/progress-bars.md.
+class MappingWork {
+public:
+    explicit MappingWork(bool bottom_up = false);
+    void placed(int64_t done, int64_t total);
+    void levels(int64_t done, int64_t total);
+    void refining();
+    double work() const { return _work; }
 
-// The mapping bar at `done` of `total` images placed. Not the ratio: an image
-// costs what the model it joins costs to solve, so the count runs ahead of the
-// clock (docs/notes/sfm-design.md D77).
-float mapping_fraction(int64_t done, int64_t total);
+private:
+    void raise(double w);
+    double _place = 0.0, _merge = 0.0;
+    double _work = 0.0;
+};
 
 // `dir` is the --progress-dir the child was given. All return false when the
 // file is absent, unfinished or not newer than `mtime` -- which the caller
@@ -112,8 +122,10 @@ bool read_pair_matrix(const std::string& dir, int64_t& mtime, PairMatrix& out);
 
 // The same matrix from a finished `matches.bin`, which is what a run leaves
 // behind: the live file is deleted with the rest of the intermediates.
+// `max_bins` 0 is the live matrix's size, so the map does not change at the end.
 bool read_pair_matrix_from_matches(const std::string& matches_path,
-                                   int64_t& mtime, PairMatrix& out);
+                                   int64_t& mtime, PairMatrix& out,
+                                   uint32_t max_bins = 0);
 
 // A keypoint as a preview draws it: where it is, and how big the detector said
 // the feature was. `r` is 0 when the detector reports no scale -- ALIKED has

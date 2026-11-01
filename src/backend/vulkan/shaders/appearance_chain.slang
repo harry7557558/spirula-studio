@@ -157,7 +157,8 @@ void appearance_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     rgb_store3(p.fwd_out, pix, c, p.out_fmt, active);
 }
 
-groupshared float _app_red[256];
+static const uint kPpispReduceThreads = 256u;
+#include "ppisp_reduce.slang"
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -231,21 +232,15 @@ void appearance_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         _app_st3(p.out_rgb, pix, v);
     }
 
-    // Block-wide per-parameter reduce, one atomic per (block, param).
     if (kPpisp != 0) {
         int np = _pp_num_params();
-        for (int i = 0; i < np; i++) {
+        [ForceUnroll]
+        for (int i = 0; i < kMaxParams; i++) {
+            if (i >= np) continue;
             float g = _pp_finite(vbuf[i]) ? vbuf[i] : 0.0f;
-            GroupMemoryBarrierWithGroupSync();
-            _app_red[tid] = g;
-            GroupMemoryBarrierWithGroupSync();
-            [ForceUnroll]
-            for (uint s = 128; s > 0; s >>= 1) {
-                if (tid < s) _app_red[tid] += _app_red[tid + s];
-                GroupMemoryBarrierWithGroupSync();
-            }
-            if (tid == 0 && _app_red[0] != 0.0f)
-                atomic_add_f32(&p.v_ppisp_params[slot * np + i], _app_red[0]);
+            float sum = ppisp_reduce_sum(g, tid);
+            if (tid == 0 && sum != 0.0f)
+                atomic_add_f32(&p.v_ppisp_params[slot * np + i], sum);
         }
     }
 }

@@ -21,9 +21,9 @@ namespace vk {
 // kernel behaves identically on either path.
 struct Capabilities {
     bool float32_atomic_add = false;  // VK_EXT_shader_atomic_float
-    // The CAS-loop blobs' wave-uniform exit (shaders/atomic_float.slang), for
-    // backend::DeviceIssue::AmdWindowsFloatAtomics.
-    bool cas_uniform_exit = false;
+    // The CAS-loop blobs' exchange-based add (shaders/atomic_float.slang), for
+    // AMD's Windows driver, which miscompiles their CAS.
+    bool xchg_float_add = false;
     bool shader_int64 = false;        // shaderInt64 (else ".noint64" blobs)
     bool shader_int8 = false;         // shaderInt8 + storageBuffer8BitAccess
                                       // (picks the native ".int8" blobs)
@@ -38,6 +38,8 @@ struct Capabilities {
     uint32_t subgroup_force = 0;      // SS_VK_SUBGROUP: one width for every kernel
     uint32_t max_push_constants = 128;
     uint32_t max_workgroup_invocations = 0;
+    uint32_t max_workgroup_size_x = 0;
+    uint32_t max_workgroup_subgroups = 0;
     uint32_t max_shared_memory = 0;
     VkDeviceSize non_coherent_atom_size = 64;
 };

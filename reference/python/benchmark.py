@@ -6,11 +6,12 @@ bilagrid/PPISP/background, optimizer moments, colour-space matrices, device
 pool) starts clean. Several scenes in one process leak state between them and
 silently degrade the later ones.
 
-Each run writes its own metrics.json -- l1/psnr/ssim, their colour-corrected
-`cc_` variants, `training_time` and `engine_vram`, all native. This script
-reads those back and prints a table. With --lpips it also runs
-eval_lpips.py per scene, which needs torch + torchmetrics; without it, this
-script needs nothing beyond the standard library.
+Each run writes its own metrics.json -- l1/psnr/ssim, LPIPS where the build
+has the inference layer, their colour-corrected `cc_` variants,
+`training_time` and `engine_vram`, all native. This script reads those back
+and prints a table. With --lpips it also runs eval_lpips.py per scene, for a
+build without native LPIPS; that needs torch + torchmetrics, and without it
+this script needs nothing beyond the standard library.
 
     python3 reference/python/benchmark.py 360_v2 --data /path/to/360_v2
     python3 reference/python/benchmark.py zipnerf --data /path/to/zipnerf \\
@@ -41,6 +42,12 @@ BENCHMARKS: dict[str, dict] = {
                    ("counter", 2), ("kitchen", 2), ("room", 2)],
         # garden's images_4 was rounded, the rest ceiled.
         "rounding": lambda scene: "round" if scene == "garden" else "ceil",
+        "extra": lambda scene: [],
+    },
+    "tandt_db": {
+        "help": "Truck and DrJohnson from the 3DGS benchmark",
+        "scenes": [("tandt/truck", 1), ("db/drjohnson", 1)],
+        "rounding": lambda scene: "floor",
         "extra": lambda scene: [],
     },
     "zipnerf": {
@@ -76,8 +83,8 @@ def run_scene(trainer: str, preset: str, data_dir: Path, out_prefix: Path,
         "--data", str(data_dir),
         "--data-format", "colmap",
         "--colmap-recon-dir", "sparse/0",
-        "--rescale-camera-to-fit", str(downscale),
-        "--image-dir", f"images_{downscale}",
+        "--train-resolution-divisor", "1",
+        "--image-dir", f"images_{downscale}" if downscale > 1 else "images",
         "--downscale-rounding-mode", rounding,
         "--eval-mode", "interval",
         "--save-eval-images", "1",
@@ -144,29 +151,36 @@ def main() -> None:
     ap.add_argument("benchmark", choices=sorted(BENCHMARKS))
     ap.add_argument("--data", type=Path, required=True,
                     help="folder holding the benchmark's scenes")
+    ap.add_argument("--trainer", type=Path, help="trainer executable")
+    ap.add_argument("--scenes", nargs="+", help="run only these scene names")
     ap.add_argument("--preset", default="academic-baseline",
                     help="spirula train preset (default: academic-baseline)")
     ap.add_argument("--output-dir-prefix", type=Path, default=Path("outputs"))
     ap.add_argument("--lpips", action="store_true",
                     help="also run eval_lpips.py per scene (needs torchmetrics)")
-    ap.add_argument("rest", nargs="*",
-                    help="after `--`, extra flags for every spirula train call")
-    args = ap.parse_args()
+    argv = sys.argv[1:]
+    split = argv.index("--") if "--" in argv else len(argv)
+    args = ap.parse_args(argv[:split])
+    args.rest = argv[split + 1:]
 
     spec = BENCHMARKS[args.benchmark]
     if not args.data.is_dir():
-        raise SystemExit(f"dataset not found at {args.data}\n  see {spec['url']}")
+        raise SystemExit(f"dataset not found at {args.data}")
 
-    trainer = find_trainer()
+    trainer = str(args.trainer.resolve()) if args.trainer else find_trainer()
     tag = (f"{args.benchmark}-{args.preset}-"
            f"{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}")
 
     results = []
-    for scene, downscale in spec["scenes"]:
+    selected = [(scene, scale) for scene, scale in spec["scenes"]
+                if not args.scenes or scene in args.scenes or Path(scene).name in args.scenes]
+    if not selected:
+        raise SystemExit("no matching scenes")
+    for scene, downscale in selected:
         print(f"\n=== {scene} ===", flush=True)
         results.append((scene, run_scene(
             trainer, args.preset, args.data / scene, args.output_dir_prefix,
-            f"benchmark-{tag}-{scene}", downscale, spec["rounding"](scene),
+            f"benchmark-{tag}-{scene.replace('/', '-')}", downscale, spec["rounding"](scene),
             spec["extra"](scene) + list(args.rest), args.lpips)))
 
     print_table(results)

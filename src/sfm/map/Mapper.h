@@ -58,6 +58,7 @@
 #include "sfm/map/Merge.h"
 #include "sfm/map/Profile.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 
 namespace sfm {
 
@@ -362,7 +363,7 @@ struct MapperOptions {
     std::string device_selector;
     // Host worker threads for the passes that fan out over points
     // (filterPoints) and for a bundle adjustment that runs on the host.
-    // 0 = hardware_concurrency.
+    // 0 = hardware_threads().
     int threads = 0;
     bool verbose = true;
     // Whether this mapper speaks for the run: it writes the snapshot a front
@@ -1362,7 +1363,7 @@ public:
         modelScale();  // warm the lazy cache before any worker reads it
         std::vector<char> hit(ids.size(), 0);
         std::vector<Pose> alts(ids.size());
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         if (audit_dump_) nt = 1;
         nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(ids.size(), 1)));
@@ -3772,7 +3773,7 @@ private:
         // same cache). That is the atom case -- the parallelism there is over
         // atoms, so each mapper runs single-threaded -- and leaving the
         // prefetch on cost 2578 two-view RANSACs where 34 atoms needed 84.
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         const size_t max_block =
             std::max<size_t>(1, opt_.threads > 0 ? (size_t)opt_.threads : (hc ? hc : 1));
         size_t block = 1;
@@ -3899,7 +3900,7 @@ private:
         if (todo.size() < 2) return;  // one pair is not worth a pool
         std::vector<TwoViewGeometry> out(todo.size());
         std::atomic<size_t> next{0};
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         const size_t want = opt_.threads > 0 ? (size_t)opt_.threads : std::max(1u, hc);
         const size_t nt = std::min<size_t>(todo.size(), want);
         std::vector<std::thread> pool;
@@ -5628,7 +5629,7 @@ private:
     // worker gets a zeroed flag buffer the size of the image table.
     template <class F>
     void parallelFor(size_t n, size_t block, F&& fn) {
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)((n + block - 1) / block)));
         std::atomic<size_t> next{0};
@@ -5677,7 +5678,7 @@ private:
 
         std::vector<uint64_t> drop;
         std::atomic<int> removed_obs_atomic{0};
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(pts.size() / 512, 1)));
         std::vector<std::vector<uint64_t>> drop_per_thread(nt);

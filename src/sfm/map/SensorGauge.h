@@ -446,14 +446,20 @@ private:
             ref.centres.push_back(mul(R_up, _frames[(size_t)owner[i]].c));
             ref.targets.push_back(enu[i]);
             ref.image_ids.push_back(_frames[(size_t)owner[i]].image_id);
+            ref.tracks.push_back(_frames[(size_t)owner[i]].capture);
         }
         out.gps_frames = (int)ref.centres.size();
         out.gps = fitMetricGauge(ref, _opt.gps_max_error,
                                  _opt.gps_full ? MetricAxes::Full : MetricAxes::Horizontal,
-                                 _opt.gps_max_error_frac);
+                                 _opt.gps_max_error_frac,
+                                 _opt.gps_full && _up_ok ? MetricTrackOffsets::Vertical
+                                                         : MetricTrackOffsets::None);
         if (!out.gps.ok) return;
-        for (size_t i = 0; i < owner.size(); i++)
+        for (size_t i = 0; i < owner.size(); i++) {
+            _gps_enu[(size_t)owner[i]].z -=
+                out.gps.trackVerticalOffset(_frames[(size_t)owner[i]].capture);
             if (!out.gps.inlier_mask[i]) _gps_ok[(size_t)owner[i]] = 0;
+        }
         out.scale_gps = out.gps.T.scale;
         // The residual-derived sigma under-states a correlated receiver's
         // error by ~4x (D74), and the scale sigma is used to weigh it here.

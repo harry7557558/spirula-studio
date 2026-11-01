@@ -10,6 +10,7 @@
 
 #include "core/ColorSpace.h"
 #include "core/HalfFloat.h"
+#include "core/HardwareThreads.h"
 #include "core/MappedFile.h"
 #include "external/miniz.h"
 
@@ -1732,7 +1733,7 @@ std::string Decoder::decode_chunk(size_t i, Scratch& s) {
 std::string Decoder::run(int threads, size_t stride) {
     if (offsets.empty()) return "the file has no image chunks";
     const size_t n = (offsets.size() + stride - 1) / stride;
-    unsigned hc = std::thread::hardware_concurrency();
+    unsigned hc = spirula::hardware_threads();
     int want = threads > 0 ? threads : (hc > 0 ? (int)hc : 1);
     want = std::max(1, std::min<int>(want, (int)n));
     // Y/RY/BY reconstructs an odd row from the chroma of the row above it, and

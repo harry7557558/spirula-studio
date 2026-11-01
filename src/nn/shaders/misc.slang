@@ -89,6 +89,38 @@ void gather_rows(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
 }
 
 // ---------------------------------------------------------------------------
+// Segment mean (sparse voxel pooling)
+// ---------------------------------------------------------------------------
+
+struct SegmentMeanParams {
+    float* out;      // [segments, C]
+    uint*  x;        // [n, C]
+    uint*  offsets;  // [segments + 1] i32 into `ids`
+    uint*  ids;      // i32 rows of `x`
+    uint   segments;
+    uint   C;
+    uint   n;
+    uint   groups_per_row;
+};
+
+[shader("compute")]
+[numthreads(WG, 1, 1)]
+void segment_mean(uint3 gid : SV_GroupID, uint3 tid : SV_GroupThreadID,
+                  uniform SegmentMeanParams p) {
+    uint i = fold_index(gid, tid, p.groups_per_row, uint(WG));
+    if (i >= p.segments * p.C) return;
+    uint s = i / p.C;
+    uint c = i % p.C;
+    uint b = p.offsets[s], e = p.offsets[s + 1u];
+    float sum = 0.0;
+    for (uint k = b; k < e; ++k) {
+        uint id = p.ids[k];
+        if (id < p.n) sum += load_at(p.x, id * p.C + c, kInputF16 != 0);
+    }
+    store_at(p.out, i, e > b ? sum / float(e - b) : 0.0);
+}
+
+// ---------------------------------------------------------------------------
 // Strided row copy (concat, slice, q/k/v extraction)
 // ---------------------------------------------------------------------------
 

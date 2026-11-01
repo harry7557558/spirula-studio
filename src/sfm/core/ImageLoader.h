@@ -46,6 +46,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/HardwareThreads.h"
 #include "core/HostMemory.h"
 #include "sfm/core/Image.h"
 
@@ -53,7 +54,7 @@ namespace sfm {
 
 struct ImageLoadOptions {
     int max_image_size = 3200;    // long-edge clamp, COLMAP's default
-    int num_threads = 0;          // 0 = hardware_concurrency, 1 = decode inline
+    int num_threads = 0;          // 0 = hardware_threads(), 1 = decode inline
     bool want_color = false;      // also decode a downscaled RGB buffer (for point colors)
     // The files' colour space; decoded pixels are converted to sRGB.
     std::string gamut;
@@ -150,7 +151,7 @@ inline ImageLoadPlan planImageLoad(const std::vector<std::pair<int, int>>& dims,
     plan.held_bytes = maxOutPix * (4 + 3 * colours)  // gray float (+ RGB u8)
                     + (masks ? maxOutPix : 0);
 
-    unsigned hc = std::thread::hardware_concurrency();
+    unsigned hc = spirula::hardware_threads();
     int want = opt.num_threads > 0 ? opt.num_threads : (hc > 0 ? (int)hc : 1);
     const size_t budget =
         opt.memory_budget_bytes ? opt.memory_budget_bytes : defaultDecodeBudget();

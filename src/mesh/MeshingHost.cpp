@@ -1626,7 +1626,9 @@ bool generate_mesh(
     // finishes. A phase that takes minutes and prints only on completion is
     // indistinguishable from a hang, and it leaves any progress display with
     // nothing to show.
+    MeshProgress prog(cfg, cfg.on_progress, ev.num_points(), want_vertex, want_texture);
     // ---- 1. point cloud (float everywhere except the Delaunay call) ----
+    prog.enter(MeshPhase::PointCloud);
     if (cfg.verbose)
         mlog::out(mlog::Stage::PointCloud, mmsg::point_cloud_sampling,
                   {ev.num_kept()});
@@ -1639,6 +1641,7 @@ bool generate_mesh(
 
     // ---- 2. Delaunay tetrahedralization (needs double precision) ----
     auto t1 = Clock::now();
+    prog.enter(MeshPhase::Delaunay);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Delaunay, mmsg::delaunay_start, {P});
     std::vector<double> pts_d(pts.begin(), pts.end());
@@ -1661,6 +1664,7 @@ bool generate_mesh(
 
     // ---- 3. occupancy at all vertices ----
     auto t2 = Clock::now();
+    prog.enter(MeshPhase::Occupancy);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Occupancy, mmsg::occupancy_start, {P});
     std::vector<float> occ(P);
@@ -1671,6 +1675,7 @@ bool generate_mesh(
 
     // ---- 4. collect cut edges ----
     auto t3 = Clock::now();
+    prog.enter(MeshPhase::CutEdges);
     if (cfg.verbose)
         mlog::out(mlog::Stage::CutEdges, mmsg::cut_edges_start, {M});
     const int* cv = (const int*)tri.cell_vertices.data();
@@ -1721,6 +1726,8 @@ bool generate_mesh(
 
     // ---- 5. bisection: one mesh vertex per cut edge ----
     auto t4 = Clock::now();
+    prog.edges(E);
+    prog.enter(MeshPhase::Bisection);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Bisection, mmsg::bisection_start,
                   {E, cfg.bisection_iters});
@@ -1745,6 +1752,7 @@ bool generate_mesh(
     // i.e. away from the occupied tet corners. This yields a consistently
     // outward-facing, watertight mesh (good for backface culling / normals).
     auto t5 = Clock::now();
+    prog.enter(MeshPhase::Marching);
     mesh.F.reserve((size_t)n_mt_tri);
     for (long t = 0; t < (long)M; ++t) {
         const MTCase& mc = kMT[code[t]];
@@ -1799,12 +1807,16 @@ bool generate_mesh(
 
     // ---- 7. merge (do this once to reduce chance of GPU OOM during 6b, but risk CPU OOM) ----
     auto t6 = Clock::now();
+    prog.raw_faces((double)mesh.F.size());
+    prog.enter(MeshPhase::Merge);
     merge_vertices(mesh, cfg.merge_factor, cfg.merge_max_flip_deg, cfg.verbose, cfg.num_threads);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Merge, mmsg::seconds,
                   {mlog::num(secs_since(t6), 2)});
 
   for (int iter = 0; iter < 2; ++iter) {
+    prog.faces((double)mesh.F.size());
+    prog.enter(iter == 0 ? MeshPhase::Pass1 : MeshPhase::Pass2);
 
     // ---- 6b. cull vertices seen by no training camera (dataset path only) ----
     // A vertex is kept iff some camera both sees it in-frame and has an
@@ -1888,8 +1900,10 @@ bool generate_mesh(
                   {mlog::num(secs_since(tcl), 2)});
   }
 
+    prog.faces((double)mesh.F.size());
     // ---- 7a2. valence flips + tangential relaxation ----
     if (cfg.quality_iters > 0) {
+        prog.enter(MeshPhase::Quality);
         auto tq = Clock::now();
         improve_mesh_quality(mesh, cfg.quality_iters, cfg.verbose, cfg.num_threads);
         // the relaxation moved vertices; one more degenerate sweep catches
@@ -1902,6 +1916,7 @@ bool generate_mesh(
 
     // ---- 7b. globally consistent, outward-facing winding ----
     auto t7 = Clock::now();
+    prog.enter(MeshPhase::Orient);
     orient_mesh(mesh);
     if (cfg.verbose)
         mlog::out(mlog::Stage::Orient, mmsg::seconds,
@@ -1914,6 +1929,7 @@ bool generate_mesh(
     // ---- 7d. color: per-vertex, or a baked texture atlas ----
     auto t8 = Clock::now();
     if (want_vertex && !mesh.V.empty()) {
+        prog.enter(MeshPhase::Color);
         const int nv = (int)mesh.V.size();
         std::vector<float> rgb(3 * nv);
         ev.colorize(&mesh.V[0][0], nv, rgb.data());
@@ -1930,6 +1946,7 @@ bool generate_mesh(
     // ---- 8. write everything the atlas does not touch ----
     // Before it, not after: baking splits the seam vertices, so V/F/C stop
     // describing the mesh a vertex-colored or plain file is meant to hold.
+    prog.enter(MeshPhase::Write);
     if (cfg.verbose) print_mesh_stats(mesh);
     for (const MeshOutputRequest& r : outputs)
         if (r.mode != MeshColorMode::Texture)
@@ -1937,6 +1954,7 @@ bool generate_mesh(
 
     if (want_texture && !mesh.V.empty()) {
         t8 = Clock::now();
+        prog.enter(MeshPhase::Atlas);
         UVAtlasConfig uvcfg;
         uvcfg.texture_size = cfg.texture_size;
         uvcfg.gutter_px = cfg.tex_gutter_px;
@@ -1991,6 +2009,8 @@ bool generate_mesh(
             }
         }
         std::vector<int> face_chart = build_uv_atlas(mesh, uvcfg);
+        prog.texels((double)uvcfg.texture_size * (double)uvcfg.texture_size);
+        prog.enter(MeshPhase::Bake);
         bake_texture(mesh, face_chart, uvcfg,
                      [&](const float* xyz, int n, float* rgb) {
                          ev.colorize(xyz, n, rgb);
@@ -2002,6 +2022,7 @@ bool generate_mesh(
             if (r.mode == MeshColorMode::Texture)
                 write_mesh(mesh, r.mode, r.spec, r.base, /*verbose=*/true);
     }
+    prog.finish();
     mlog::out(mlog::Stage::Done, mmsg::done_summary,
               {(long long)mesh.V.size(), (long long)mesh.F.size(),
                mlog::num(secs_since(t0), 2)});

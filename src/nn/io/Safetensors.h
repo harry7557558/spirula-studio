@@ -33,11 +33,23 @@ public:
     // for a missing name or a dtype that is not a float.
     OnnxTensor read(const std::string& name) const;
 
+    // Where the data section starts: an entry's bytes are at this + begin.
+    uint64_t dataOffset() const { return data_offset_; }
+    // __metadata__'s string values; empty when the file has none.
+    const std::unordered_map<std::string, std::string>& metadata() const { return meta_; }
+
 private:
     std::string path_;
     uint64_t    data_offset_ = 0;
     uint64_t    file_size_ = 0;
     std::unordered_map<std::string, Entry> entries_;
+    std::unordered_map<std::string, std::string> meta_;
 };
+
+// The header JSON of a safetensors file, wherever the bytes came from. `what`
+// names the source in errors.
+std::unordered_map<std::string, SafetensorsFile::Entry> parse_safetensors_header(
+    const std::string& json, const std::string& what,
+    std::unordered_map<std::string, std::string>* metadata = nullptr);
 
 }  // namespace nn

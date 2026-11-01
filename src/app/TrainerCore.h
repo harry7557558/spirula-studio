@@ -190,6 +190,32 @@ struct EvalProgress {
     int64_t total = 0;
 };
 
+// LPIPS for eval(). This library has no inference layer, so a front end built
+// with one installs these (app/EvalLpips.h); without them eval() leaves LPIPS
+// to reference/python/eval_lpips.py.
+class LpipsScorer {
+public:
+    virtual ~LpipsScorer() = default;
+    // The metrics score() fills, in order: "lpips_alex", "lpips_vgg".
+    virtual std::vector<std::string> names() const = 0;
+    // [metric][i]: preds[i] against gt, all [height, width, 3] in [0, 1].
+    virtual std::vector<std::vector<float>> score(const float* gt,
+                                                  const std::vector<const float*>& preds,
+                                                  int width, int height) = 0;
+};
+
+struct LpipsHooks {
+    // The checkpoints on disk, downloading what is missing; throws. Called by
+    // setup_engine(), so a failed download stops the run before it trains.
+    std::function<void(const TrainConfig&)> prepare;
+    // The networks for one eval pass.
+    std::function<std::unique_ptr<LpipsScorer>(const TrainConfig&)> open;
+};
+// Process-wide: Main.cpp installs them once, before any session starts.
+void set_lpips_hooks(LpipsHooks hooks);
+// Whether a run of `cfg` holds views out and scores them with LPIPS.
+bool lpips_wanted(const TrainConfig& cfg);
+
 struct TrainerCallbacks {
     // Called after every completed step, engine mutex released.
     std::function<void(const TrainerProgress&)> on_step;
@@ -293,14 +319,9 @@ public:
 
     void save_checkpoint(int step, bool full);
 
-    // Held-out eval: render every frame of the eval split, score it, and write
-    // metrics.json. No-op when eval_mode is "all" (nothing is held out) or the
-    // eval split is empty. Replaces the engine's DataManager with one over the
-    // eval split, so it must run AFTER training.
-    //
-    // Reports l1/psnr/ssim and the cc_ variants of each (computed on the
-    // colour-corrected render). LPIPS is not computed here -- pass
-    // --save-eval-images and run reference/python/eval_lpips.py over the PNGs.
+    // Scores the held-out views into metrics.json: l1/psnr/ssim, LPIPS when its
+    // hooks are installed, and cc_ variants on the colour-corrected render.
+    // Replaces the engine's DataManager, so it must run AFTER training.
     void eval(const std::function<void(const EvalProgress&)>& on_progress = {});
 
     // The seeds setup_engine() hands the engine, from the point cloud and/or

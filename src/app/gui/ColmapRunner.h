@@ -110,6 +110,8 @@ struct ColmapJob {
     bool blur_neighbour = true;
     int similar_bits = 0;
     bool keep_skipped = true;
+    bool sync_tracks = true;
+    bool auto_rotate = true;
     app::Pano360Options pano;            // see PrepJob
     int max_frames = 100000;
 

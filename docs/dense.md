@@ -489,8 +489,8 @@ masks** disables sidecar and image-alpha masks. These use the existing
 `load_masks` and `apply_loss_for_mask` training settings and saved training
 presets. For CLI training, choose `--load-masks true
 --apply-loss-for-mask true` for transparency or `--load-masks false` to
-disable masks. An unset mask policy defaults to cut out for a `dense/roma.ply`
-seed as well as alpha-only images; an explicit training policy wins. Old
+disable masks. An unset mask policy defaults to cut out only for alpha-only
+images, whatever the seed; an explicit training policy wins. Old
 training presets that saved an explicit false value retain Ignore distractors
 until changed. RGB behind the mask is not used as a black background target.
 

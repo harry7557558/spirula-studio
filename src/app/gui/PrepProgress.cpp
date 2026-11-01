@@ -66,14 +66,31 @@ bool RunProgress::scanning() const {
 
 void RunProgress::enter(Stage s, const std::string& detail) {
     std::lock_guard<std::mutex> lk(_mu);
+    const double now = progress_now();
     for (int i = 0; i < (int)s; i++)
-        if (_st[i].status == StageStatus::Pending)
+        if (_st[i].status == StageStatus::Pending) {
             _st[i].status = StageStatus::Skipped;
-        else if (_st[i].status == StageStatus::Running)
+        } else if (_st[i].status == StageStatus::Running) {
             _st[i].status = StageStatus::Done;
-    _st[(int)s].status = StageStatus::Running;
-    _st[(int)s].detail = detail;
+            _st[i].clock.finish(now);
+        }
+    StageProgress& p = _st[(int)s];
+    if (p.status != StageStatus::Running || p.detail != detail) {
+        p.clock.start(now);
+        p.fraction = -1.0f;
+        p.done = p.total = 0;
+    }
+    p.status = StageStatus::Running;
+    p.detail = detail;
     _cur = s;
+}
+
+void RunProgress::restart(Stage s) {
+    std::lock_guard<std::mutex> lk(_mu);
+    StageProgress& p = _st[(int)s];
+    p.clock.start(progress_now());
+    p.fraction = -1.0f;
+    p.done = p.total = 0;
 }
 
 void RunProgress::count(Stage s, int64_t done, int64_t total) {
@@ -82,11 +99,14 @@ void RunProgress::count(Stage s, int64_t done, int64_t total) {
     p.done = done;
     p.total = total;
     p.fraction = total > 0 ? (float)((double)done / (double)total) : -1.0f;
+    if (p.fraction >= 0.0f) p.clock.work(progress_now(), p.fraction);
 }
 
 void RunProgress::fraction(Stage s, float f) {
     std::lock_guard<std::mutex> lk(_mu);
-    _st[(int)s].fraction = f;
+    StageProgress& p = _st[(int)s];
+    p.fraction = f;
+    if (f >= 0.0f) p.clock.work(progress_now(), f);
 }
 
 void RunProgress::detail(Stage s, const std::string& text) {
@@ -97,13 +117,20 @@ void RunProgress::detail(Stage s, const std::string& text) {
 void RunProgress::mark(Stage s, StageStatus st) {
     std::lock_guard<std::mutex> lk(_mu);
     _st[(int)s].status = st;
-    if (st == StageStatus::Done) _st[(int)s].fraction = 1.0f;
+    if (st == StageStatus::Done) {
+        _st[(int)s].fraction = 1.0f;
+        _st[(int)s].clock.finish(progress_now());
+    }
 }
 
 void RunProgress::finish(StageStatus st) {
     std::lock_guard<std::mutex> lk(_mu);
+    const double now = progress_now();
     for (StageProgress& p : _st)
-        if (p.status == StageStatus::Running) p.status = st;
+        if (p.status == StageStatus::Running) {
+            p.status = st;
+            if (st == StageStatus::Done) p.clock.finish(now);
+        }
 }
 
 void RunProgress::note(const std::string& text, bool detail) {

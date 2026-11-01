@@ -6,6 +6,7 @@
 
 #include "app/FrameLook.h"
 #include "app/FrameMask.h"
+#include "core/HardwareThreads.h"
 #include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/MaskEdit.h"
 
@@ -612,7 +613,7 @@ void MaskSession::propagate(PropagateScope scope, int lo, int hi) {
     j->source_key = _doc->key();
     j->W = _doc->width();
     j->H = _doc->height();
-    j->threads = propagate_threads(j->W, j->H, std::thread::hardware_concurrency());
+    j->threads = propagate_threads(j->W, j->H, spirula::hardware_threads());
     j->base = _doc->base();
     j->drop = _doc->drop();
     j->keep = _doc->keep();
@@ -796,7 +797,7 @@ void MaskSession::undo_propagate() {
     }
     sam_forget_clicks(frames);
     const int threads = propagate_threads(_doc->width(), _doc->height(),
-                                          std::thread::hardware_concurrency());
+                                          spirula::hardware_threads());
     _prop_cancel = false;
     _prop_done = 0;
     _prop_total = (int)rec->targets.size();
@@ -1676,7 +1677,7 @@ void MaskSession::start_slideshow() {
             h = fh;
         }
     }
-    _slide_threads = mask::slide_threads(w, h, std::thread::hardware_concurrency());
+    _slide_threads = mask::slide_threads(w, h, spirula::hardware_threads());
     const auto t0 = std::chrono::steady_clock::now();
     _slide.start(std::move(frames), _slide_threads);   // joins a halted playback's leftovers
     _slide_join_ms =

@@ -13,6 +13,7 @@
 #include "app/GeometryModel.h"
 #include "app/GeometryWarp.h"
 #include "app/WriterPool.h"
+#include "app/cli/LicenseCli.h"
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
@@ -29,8 +30,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <future>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -51,6 +54,7 @@ enum class Tri { Auto, Yes, No };
 
 struct Options {
     std::string dataset;
+    std::string install;   // --install <id>: fetch and stop
     // Relative to the dataset, or absolute: a capture reconstructed from
     // photos read where they are keeps its images outside the dataset folder.
     std::string image_dir = "images";
@@ -61,6 +65,7 @@ struct Options {
     // MoGe's ViT budget, which is what sets ITS cost -- the top of the range
     // its own inference offers (moge/README.md). Metric3D ignores it.
     int  num_tokens = 3600;
+    int  refine_steps = 3;
     bool want_depth = false;
     bool want_normal = true;
     std::string normal_format = "png";
@@ -98,8 +103,10 @@ void usage() {
     std::fprintf(stderr, "\n%s\n", G::head_options.get());
     help_row("--image-dir <dir>", G::opt_image_dir);
     help_row("--model <id|file>", G::opt_model);
+    help_row("--install <id>", G::opt_install);
     help_row("--max-size <n>", G::opt_max_size);
     help_row("--num-tokens <n>", G::opt_num_tokens);
+    help_row("--refine-steps <n>", G::opt_refine_steps);
     help_row("--depth", G::opt_depth);
     help_row("--normal-format png|jpg", G::opt_normal_format);
     help_row("--jpeg-quality <n>", G::opt_jpeg_quality);
@@ -562,6 +569,46 @@ std::string camera_key(const ParsedDataset& ds, int64_t i) {
     return k;
 }
 
+std::string gb(uint64_t b) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.1f GB", b / 1e9);
+    return buf;
+}
+
+// Checks the disk before anything streams: a 45 GB install that fails at 80%
+// for want of space is the failure this exists to prevent.
+int install_model(const std::string& id, bool depth, bool normal) {
+    const app::GeometryInstall need = app::geometry_install_needs(id, depth, normal);
+    if (!need.needed()) return 0;
+    std::printf("%s\n", format(G::log_install_plan, {id, gb(need.download), gb(need.disk),
+                                                     need.where, gb(need.free)})
+                            .c_str());
+    if (!need.fits()) {
+        std::fprintf(stderr, "%s\n", format(G::err_install_disk,
+                                            {id, gb(need.disk), need.where, gb(need.free),
+                                             gb(need.spare)})
+                                         .c_str());
+        return 1;
+    }
+    const double t0 = nn::now_ms();
+    double last = 0;
+    app::geometry_install(id, depth, normal, [&](uint64_t done, uint64_t total) {
+        const double now = nn::now_ms();
+        if (now - last < 1000 && done < total) return;
+        last = now;
+        char d[16], t[16], r[16];
+        std::snprintf(d, sizeof d, "%.1f", done / 1e9);
+        std::snprintf(t, sizeof t, "%.1f", total / 1e9);
+        std::snprintf(r, sizeof r, "%.0f", done / 1e3 / std::max(now - t0, 1.0));
+        std::printf("\r%s   ", format(G::log_install_progress, {id, d, t, r}).c_str());
+        std::fflush(stdout);
+    }, nullptr);
+    std::printf("\n%s\n", format(G::log_install_done,
+                                  {id, format_duration((nn::now_ms() - t0) / 1000.0)})
+                               .c_str());
+    return 0;
+}
+
 }  // namespace
 
 int spirula_geometry_main(int argc, char** argv) {
@@ -585,8 +632,10 @@ int spirula_geometry_main(int argc, char** argv) {
         else if (a == "--check") return self_check();
         else if (a == "--image-dir") o.image_dir = next();
         else if (a == "--model") o.model = next();
+        else if (a == "--install") o.install = next();
         else if (a == "--max-size") o.max_size = std::atoi(next());
         else if (a == "--num-tokens") o.num_tokens = std::atoi(next());
+        else if (a == "--refine-steps") o.refine_steps = std::max(0, std::atoi(next()));
         else if (a == "--depth") o.want_depth = true;
         else if (a == "--no-normal") o.want_normal = false;
         else if (a == "--normal-format") o.normal_format = next();
@@ -614,6 +663,14 @@ int spirula_geometry_main(int argc, char** argv) {
             return 2;
         } else if (o.dataset.empty()) o.dataset = a;
         else { usage(); return 2; }
+    }
+    if (!o.install.empty()) {
+        try {
+            return install_model(o.install, o.want_depth, o.want_normal);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "\nerror: %s\n", e.what());
+            return 1;
+        }
     }
     if (o.dataset.empty()) {
         std::fprintf(stderr, "%s\n",
@@ -670,8 +727,23 @@ int spirula_geometry_main(int argc, char** argv) {
         // ---- the model ------------------------------------------------------
         // Before the warps: which input sizes round-trip is the network's, and
         // Metric3D's decoder crops where MoGe resamples its own output.
+        const app::GeometryInstall need =
+            app::geometry_install_needs(o.model, o.want_depth, o.want_normal);
+        if (need.needed()) {
+            std::fprintf(stderr, "%s\n",
+                         format(G::err_not_installed, {o.model, app::program_name(),
+                                                       gb(need.download), gb(need.disk)})
+                             .c_str());
+            const app::ConsentIO io = app::stdio_consent();
+            if (!io.tty) return 1;
+            std::fprintf(stderr, "%s", G::ask_install.get());
+            const std::string answer = io.read_line();
+            if (answer != "y" && answer != "Y" && answer != "yes") return 1;
+            if (const int rc = install_model(o.model, o.want_depth, o.want_normal)) return rc;
+        }
+
         app::GeometryModel pred;
-        pred.load(o.model, selector);
+        pred.load(o.model, selector, o.want_depth, o.want_normal);
 
         // ---- one warp plan per camera --------------------------------------
         const int patch = pred.sizeGranularity();
@@ -762,7 +834,7 @@ int spirula_geometry_main(int argc, char** argv) {
 
         app::WriterPool writers;
         const double t_start = nn::now_ms();
-        int64_t written = 0, skipped = 0, unreadable = 0;
+        int64_t written = 0, skipped = 0, unreadable = 0, modeled = 0;
         double model_ms = 0;
 
         // Settled before any frame is read, so the next one can be decoded
@@ -802,132 +874,174 @@ int spirula_geometry_main(int argc, char** argv) {
                                         warp.sampleHeight());
             });
         };
-        std::future<std::vector<float>> ahead;
-        if (!todo.empty()) ahead = read_at(0);
 
-        for (size_t j = 0; j < todo.size(); ++j) {
-            const int64_t i = todo[j].i;
-            const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
-            const fs::path& np = todo[j].np;
-            const fs::path& dp = todo[j].dp;
-            const bool need_normal = todo[j].normal;
-            const bool need_depth = todo[j].depth;
+        // Whole frames, as many as the model takes faces of at once (one where
+        // batching buys nothing), of one camera and wanting the same maps. The
+        // next batch is read while this one runs.
+        std::map<size_t, std::future<std::vector<float>>> ahead;
+        size_t next_read = 0;
+        auto read_until = [&](size_t end) {
+            for (; next_read < std::min(end, todo.size()); ++next_read)
+                ahead[next_read] = read_at(next_read);
+        };
 
-            const std::vector<float> src = ahead.get();
-            if (j + 1 < todo.size()) ahead = read_at(j + 1);
-            if (src.empty()) {
-                NN_LOG_WARN("skipping %s\n", ds.image_filenames[(size_t)i].c_str());
-                ++unreadable;
-                continue;
+        for (size_t j0 = 0; j0 < todo.size();) {
+            const size_t g = (size_t)group[(size_t)todo[j0].i];
+            const app::GeometryWarp& warp = warps[g];
+            const size_t per = std::max<size_t>(
+                1, (size_t)pred.batchCapacity(app::face_request(warp, 0, o.num_tokens)) /
+                       (size_t)std::max(1, warp.faces()));
+            size_t j1 = j0 + 1;
+            while (j1 < todo.size() && j1 - j0 < per && (size_t)group[(size_t)todo[j1].i] == g &&
+                   todo[j1].normal == todo[j0].normal && todo[j1].depth == todo[j0].depth)
+                ++j1;
+            read_until(j1 + per);
+
+            struct Frame {
+                size_t j = 0;
+                sfm::ExifTransform back;
+                size_t first = 0;   // its first face in `reqs`
+            };
+            std::vector<Frame> frames;
+            std::vector<std::vector<float>> face_rgb;
+            std::vector<app::GeometryRequest> reqs;
+            for (size_t j = j0; j < j1; ++j) {
+                const int64_t i = todo[j].i;
+                const std::vector<float> src = ahead[j].get();
+                ahead.erase(j);
+                if (src.empty()) {
+                    NN_LOG_WARN("skipping %s\n", ds.image_filenames[(size_t)i].c_str());
+                    ++unreadable;
+                    continue;
+                }
+                // The network was trained upright, and a face cut from a photo
+                // stored sideways is sideways. Turned for the forward pass and
+                // back before the blend, so the maps stay in the stored frame.
+                const sfm::ExifTransform turn =
+                    app::photo_turn(ds.image_filenames[(size_t)i]);
+                frames.push_back({j, app::inverse_turn(turn), reqs.size()});
+                for (int k = 0; k < warp.faces(); ++k) {
+                    std::vector<float> rgb;
+                    warp.sampleFace(k, src.data(), rgb);
+                    app::GeometryRequest rq = app::face_request(warp, k, o.num_tokens);
+                    rq.refine_steps = o.refine_steps;
+                    rq.want_depth = todo[j].depth;
+                    rq.want_normal = todo[j].normal;
+                    int fw = rq.width, fh = rq.height;
+                    app::turn_pixels(turn, 3, rgb, fw, fh);
+                    reqs.push_back(app::turn_request(rq, turn));
+                    face_rgb.push_back(std::move(rgb));
+                }
             }
-
-            // The network was trained upright, and a face cut from a photo
-            // stored sideways is sideways. Turned for the forward pass and
-            // back before the blend, so the maps stay in the stored frame.
-            const sfm::ExifTransform turn =
-                app::photo_turn(ds.image_filenames[(size_t)i]);
-            const sfm::ExifTransform back = app::inverse_turn(turn);
-
             const double t0 = nn::now_ms();
-            std::vector<std::vector<float>> face_depth, face_normal, face_mask;
-            std::vector<float> face_rgb;
-            for (int k = 0; k < warp.faces(); ++k) {
-                warp.sampleFace(k, src.data(), face_rgb);
-                app::GeometryRequest rq = app::face_request(warp, k, o.num_tokens);
-                rq.want_depth = need_depth;
-                rq.want_normal = need_normal;
-                int fw = rq.width, fh = rq.height;
-                app::turn_pixels(turn, 3, face_rgb, fw, fh);
-                rq = app::turn_request(rq, turn);
-                app::GeometryPrediction p = pred.predict(face_rgb.data(), rq);
-                NN_CHECK(p.width == rq.width && p.height == rq.height,
-                         "the network returned %dx%d for a %dx%d face", p.width,
-                         p.height, rq.width, rq.height);
-                int dw = p.width, dh = p.height;
-                app::turn_pixels(back, 1, p.depth, dw, dh);
-                dw = p.width;
-                dh = p.height;
-                app::turn_pixels(back, 1, p.mask, dw, dh);
-                dw = p.width;
-                dh = p.height;
-                app::turn_normals(back, p.normal, dw, dh);
-                p.width = warp.faceWidth(k);
-                p.height = warp.faceHeight(k);
-                // Millimetres on every face before they are blended: Metric3D's
-                // depth is canonical to the face's own focal.
-                const float mm = (float)pred.depthToMillimetres(warp.faceFocal(k));
-                for (float& d : p.depth) d *= mm;
-                face_depth.push_back(std::move(p.depth));
-                face_normal.push_back(std::move(p.normal));
-                face_mask.push_back(std::move(p.mask));
-            }
+            std::vector<const float*> faces;
+            for (const std::vector<float>& f : face_rgb) faces.push_back(f.data());
+            std::vector<app::GeometryPrediction> preds =
+                faces.empty() ? std::vector<app::GeometryPrediction>()
+                              : pred.predictBatch(faces, reqs);
             model_ms += nn::now_ms() - t0;
+            modeled += (int64_t)frames.size();
 
-            const bool ray = o.ray_depth == Tri::Auto ? warp.defaultRayDepth()
-                                                      : o.ray_depth == Tri::Yes;
-            std::vector<float> depth, normal;
-            warp.gather(face_depth, face_normal, face_mask, ray,
-                        need_depth ? &depth : nullptr, need_normal ? &normal : nullptr);
+            for (const Frame& f : frames) {
+                const size_t j = f.j;
+                const fs::path& np = todo[j].np;
+                const fs::path& dp = todo[j].dp;
+                const bool need_normal = todo[j].normal;
+                const bool need_depth = todo[j].depth;
+                const sfm::ExifTransform& back = f.back;
+                std::vector<std::vector<float>> face_depth, face_normal, face_mask;
+                for (int k = 0; k < warp.faces(); ++k) {
+                    app::GeometryPrediction& p = preds[f.first + (size_t)k];
+                    const app::GeometryRequest& rq = reqs[f.first + (size_t)k];
+                    NN_CHECK(p.width == rq.width && p.height == rq.height,
+                             "the network returned %dx%d for a %dx%d face", p.width,
+                             p.height, rq.width, rq.height);
+                    int dw = p.width, dh = p.height;
+                    app::turn_pixels(back, 1, p.depth, dw, dh);
+                    dw = p.width;
+                    dh = p.height;
+                    app::turn_pixels(back, 1, p.mask, dw, dh);
+                    dw = p.width;
+                    dh = p.height;
+                    app::turn_normals(back, p.normal, dw, dh);
+                    p.width = warp.faceWidth(k);
+                    p.height = warp.faceHeight(k);
+                    // Millimetres on every face before they are blended: Metric3D's
+                    // depth is canonical to the face's own focal.
+                    const float mm = (float)pred.depthToMillimetres(warp.faceFocal(k));
+                    for (float& d : p.depth) d *= mm;
+                    face_depth.push_back(std::move(p.depth));
+                    face_normal.push_back(std::move(p.normal));
+                    face_mask.push_back(std::move(p.mask));
+                }
 
-            if (need_normal) {
-                app::WriteJob job;
-                job.path = np.string();
-                // A quality INSIDE 0..100 is what selects JPEG; the extension
-                // is not consulted (nn/io/Image.h). 100 wrote a JPEG called
-                // .png, which is lossy right where the mask edge is.
-                job.quality = o.normal_format == "jpg" ? o.jpeg_quality : -1;
-                job.image.width = warp.outWidth();
-                job.image.height = warp.outHeight();
-                job.image.channels = 3;
-                job.image.data.resize(normal.size());
-                // BLACK is the trainer's "no normal here": it decodes
-                // byte/127.5 - 1 and masks on a sum <= -2.366 or a length
-                // under 0.25 (core/Interpolation.cuh's gt_normal_valid).
-                for (size_t p = 0; p * 3 < normal.size(); ++p) {
-                    const float* v = &normal[p * 3];
-                    uint8_t* out = &job.image.data[p * 3];
-                    if (v[0]*v[0] + v[1]*v[1] + v[2]*v[2] < 0.25f) {
-                        out[0] = out[1] = out[2] = 0;
-                        continue;
+                const bool ray = o.ray_depth == Tri::Auto ? warp.defaultRayDepth()
+                                                          : o.ray_depth == Tri::Yes;
+                std::vector<float> depth, normal;
+                warp.gather(face_depth, face_normal, face_mask, ray,
+                            need_depth ? &depth : nullptr, need_normal ? &normal : nullptr);
+
+                if (need_normal) {
+                    app::WriteJob job;
+                    job.path = np.string();
+                    // A quality INSIDE 0..100 is what selects JPEG; the extension
+                    // is not consulted (nn/io/Image.h). 100 wrote a JPEG called
+                    // .png, which is lossy right where the mask edge is.
+                    job.quality = o.normal_format == "jpg" ? o.jpeg_quality : -1;
+                    job.image.width = warp.outWidth();
+                    job.image.height = warp.outHeight();
+                    job.image.channels = 3;
+                    job.image.data.resize(normal.size());
+                    // BLACK is the trainer's "no normal here": it decodes
+                    // byte/127.5 - 1 and masks on a sum <= -2.366 or a length
+                    // under 0.25 (core/Interpolation.cuh's gt_normal_valid).
+                    for (size_t p = 0; p * 3 < normal.size(); ++p) {
+                        const float* v = &normal[p * 3];
+                        uint8_t* out = &job.image.data[p * 3];
+                        if (v[0]*v[0] + v[1]*v[1] + v[2]*v[2] < 0.25f) {
+                            out[0] = out[1] = out[2] = 0;
+                            continue;
+                        }
+                        for (int c = 0; c < 3; ++c)
+                            out[c] = (uint8_t)std::lround(
+                                std::fmin(255.0f, std::fmax(0.0f, 127.5f + 127.5f * v[c])));
                     }
-                    for (int c = 0; c < 3; ++c)
-                        out[c] = (uint8_t)std::lround(
-                            std::fmin(255.0f, std::fmax(0.0f, 127.5f + 127.5f * v[c])));
+                    writers.submit(std::move(job));
                 }
-                writers.submit(std::move(job));
-            }
-            if (need_depth) {
-                // 0 is the trainer's "no ground truth here", so a covered pixel
-                // never rounds into it.
-                const float inv = o.depth_mm ? 1.0f : 1.0f / depth_scale(depth);
-                app::WriteJob job;
-                job.path = dp.string();
-                job.depth_w = warp.outWidth();
-                job.depth_h = warp.outHeight();
-                job.depth.resize(depth.size());
-                for (size_t j = 0; j < depth.size(); ++j) {
-                    if (depth[j] <= 0.0f) { job.depth[j] = 0; continue; }
-                    const float v = depth[j] * inv * (o.depth_mm ? 1.0f : 65535.0f);
-                    job.depth[j] = (uint16_t)std::lround(
-                        std::fmin(65535.0f, std::fmax(1.0f, v)));
+                if (need_depth) {
+                    // 0 is the trainer's "no ground truth here", so a covered pixel
+                    // never rounds into it.
+                    const float inv = o.depth_mm ? 1.0f : 1.0f / depth_scale(depth);
+                    app::WriteJob job;
+                    job.path = dp.string();
+                    job.depth_w = warp.outWidth();
+                    job.depth_h = warp.outHeight();
+                    job.depth.resize(depth.size());
+                    for (size_t px = 0; px < depth.size(); ++px) {
+                        if (depth[px] <= 0.0f) { job.depth[px] = 0; continue; }
+                        const float v = depth[px] * inv * (o.depth_mm ? 1.0f : 65535.0f);
+                        job.depth[px] = (uint16_t)std::lround(
+                            std::fmin(65535.0f, std::fmax(1.0f, v)));
+                    }
+                    writers.submit(std::move(job));
                 }
-                writers.submit(std::move(job));
-            }
 
-            // Every image, not every tenth: the GUI drives its bar and its
-            // preview reel off these lines.
-            ++written;
-            {
-                const double each = model_ms / (double)written;
-                std::printf("\r%s   ",
-                            format(G::log_progress,
-                                   {(long long)(written + skipped), (long long)N,
-                                    (long long)std::lround(each),
-                                    format_duration(each * (double)(todo.size() - j - 1) /
-                                                    1000.0)})
-                                .c_str());
-                std::fflush(stdout);
+                // Every image, not every tenth: the GUI drives its bar and its
+                // preview reel off these lines.
+                ++written;
+                {
+                    const double each = model_ms / (double)std::max<int64_t>(modeled, 1);
+                    std::printf("\r%s   ",
+                                format(G::log_progress,
+                                       {(long long)(written + skipped), (long long)N,
+                                        (long long)std::lround(each),
+                                        format_duration(each * (double)(todo.size() - j - 1) /
+                                                        1000.0)})
+                                    .c_str());
+                    std::fflush(stdout);
+                }
             }
+            j0 = j1;
         }
         writers.finish();
         std::printf("\r%s\n",

@@ -79,11 +79,13 @@ std::vector<uint8_t> box(int w, int h, int x0, int y0, int x1, int y1) {
 uint8_t at(const std::vector<uint8_t>& px, int w, int x, int y) { return px[(size_t)y * w + x]; }
 
 bool run_prep(const gui::PrepJob& job, gui::RunProgress& prog, std::string& error,
-              gui::PickSheet* picks = nullptr, gui::FilmReel* frames = nullptr) {
+              gui::PickSheet* picks = nullptr, gui::FilmReel* frames = nullptr,
+              gui::FilmReel* masks = nullptr) {
     std::atomic<bool> cancel{false};
     gui::RunFilms films;
     films.picks = picks;
     films.frames = frames;
+    films.masks = masks;
     gui::DatasetPrep prep(&prog, films, cancel);
     gui::PrepResult out;
     return prep.run(job, out, error);
@@ -157,6 +159,11 @@ void test_rerun_reapplies_corrections() {
     app::load_stencil((ws / "masks" / "b.png").string(), w, h, b);
     check(b.size() == run1.size() && at(b, W, 15, 30) == 0,
           "re-run: a's keep is not applied to uncorrected frame b");
+    job.resume = true;
+    job.make_frames = false;
+    gui::FilmReel frames, masks;
+    check(run_prep(job, prog, err, nullptr, &frames, &masks), "resume previews: " + err);
+    check(frames.size() == 3 && masks.size() == 3, "reused frames and masks populate their preview reels");
 }
 
 // A sibling holding the same PNGs under another name IS a camera, so only
@@ -433,6 +440,11 @@ void test_frames_reel_counts_images() {
     check(files_in(ws / "images" / "dual") == 4, "reel: the dual-lens photographs are split in two");
     check(files_in(ws / "images") == 11 && reel.size() == 11,
           "reel: lists all 11 images, has " + std::to_string(reel.size()));
+    job.resume = true;
+    job.make_frames = false;
+    reel.clear();
+    check(run_prep(job, prog, err, nullptr, &reel), "reel: resume: " + err);
+    check(reel.size() == 11, "reel: reused frames remain available for preview");
 }
 
 // A review's sheet: a looser threshold brings a frame back by a rename, and

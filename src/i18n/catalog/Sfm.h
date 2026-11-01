@@ -1109,6 +1109,21 @@ SS_MSG(match_progress,
     RU("Сопоставлено пар: {0}/{1}"),
     TR("{0}/{1} çift eşleştirildi"));
 
+SS_MSG(focal_sample_progress,
+    EN("{0}/{1} pairs matched for the focal search"),
+    JA("焦点距離の探索用に {0}/{1} ペアを照合しました"),
+    ZH_HANS("已为焦距搜索匹配 {0}/{1} 对"),
+    ZH_HANT("已為焦距搜尋匹配 {0}/{1} 對"),
+    KO("초점 거리 탐색용 {0}/{1} 쌍 정합 완료"),
+    DE("{0}/{1} Paare für die Brennweitensuche abgeglichen"),
+    FR("{0}/{1} paires appariées pour la recherche de focale"),
+    ES("{0}/{1} pares emparejados para la búsqueda de la focal"),
+    PT("{0}/{1} pares pareados para a busca da focal"),
+    IT("{0}/{1} coppie abbinate per la ricerca della focale"),
+    NL("{0}/{1} paren gekoppeld voor het zoeken van de brandpuntsafstand"),
+    RU("Сопоставлено пар для поиска фокусного расстояния: {0}/{1}"),
+    TR("Odak uzaklığı araması için {0}/{1} çift eşleştirildi"));
+
 SS_MSG(match_reusing_pairs,
     EN("Image pairs chosen by an earlier run: {0} -- keeping them."),
     JA("前回の実行が選んだ画像ペア: {0} 件。そのまま使います。"),
@@ -3766,6 +3781,21 @@ SS_MSG(sensor_scale_gps,
        "{4} м: {5}/{6}, RMS {7} м"),
     TR("Model {0}: GPS ölçeği {1} (belirsizlik %{2}), {3} kare; {4} m içindeki kameralar: "
        "{5}/{6}, RMS {7} m"));
+
+SS_MSG(sensor_gps_track_altitude,
+    EN("GPS altitude correction for {0}: {1} m"),
+    JA("{0} の GPS 高度補正: {1} m"),
+    ZH_HANS("{0} 的 GPS 高度校正: {1} m"),
+    ZH_HANT("{0} 的 GPS 高度校正: {1} m"),
+    KO("{0}의 GPS 고도 보정: {1} m"),
+    DE("GPS-Höhenkorrektur für {0}: {1} m"),
+    FR("Correction d'altitude GPS pour {0} : {1} m"),
+    ES("Corrección de altitud GPS para {0}: {1} m"),
+    PT("Correção de altitude GPS para {0}: {1} m"),
+    IT("Correzione dell'altitudine GPS per {0}: {1} m"),
+    NL("GPS-hoogtecorrectie voor {0}: {1} m"),
+    RU("Поправка высоты GPS для {0}: {1} м"),
+    TR("{0} için GPS irtifa düzeltmesi: {1} m"));
 
 SS_MSG(sensor_scale_gps_failed,
     EN("Model {0}: GPS log not usable for scale -- {1}"),

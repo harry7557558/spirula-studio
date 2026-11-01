@@ -10,6 +10,8 @@
 // costs is far below the work being split; a persistent pool would buy nothing
 // and would have to be shut down cleanly across the library boundary.
 
+#include "core/HardwareThreads.h"
+
 #include <algorithm>
 #include <exception>
 #include <mutex>
@@ -24,7 +26,7 @@ namespace nn {
 template <typename F>
 void parallel_for(int64_t n, const F& body, int64_t min_chunk = 1) {
     if (n <= 0) return;
-    unsigned hw = std::thread::hardware_concurrency();
+    unsigned hw = spirula::hardware_threads();
     if (hw == 0) hw = 1;
     int64_t workers = std::min<int64_t>((int64_t)hw, (n + min_chunk - 1) / min_chunk);
     if (workers <= 1) {

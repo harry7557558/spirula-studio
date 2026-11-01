@@ -113,6 +113,10 @@ private:
     void            barrier(VkCommandBuffer cb);
 };
 
+// Blocks the calling thread until `timeline` reaches `value`; a GPU that stops
+// making progress throws rather than hanging. Any thread.
+void wait_timeline(VkSemaphore timeline, uint64_t value);
+
 // SS_NN_DEBUG_SYNC=1: sync + report after every dispatch, printing the entry
 // name and grid BEFORE the dispatch, so a hang bisects to the exact kernel
 // even when the sync never returns.

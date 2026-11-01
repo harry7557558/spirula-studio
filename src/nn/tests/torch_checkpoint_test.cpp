@@ -132,6 +132,34 @@ void fixtures(const std::filesystem::path& path) {
               equal(reader.read("bool"), {0, 1}), "integer storage types");
         rejects([&] { reader.read("missing"); }, "missing tensor rejected");
     }
+    {
+        // MoGe's layout: {"model_config": {...}, "model": {state dict}}.
+        Fixture w;
+        auto ops = [&](std::initializer_list<uint8_t> b) { w.pickle.insert(w.pickle.end(), b); };
+        w.storage<float>("0", {1, 2});
+        w.text("model_config"); ops({'}', '('});
+        w.text("refiner"); ops({'}', '('});
+        w.text("factors"); ops({']', '('}); w.integer(2); w.integer(4); ops({'e'});
+        w.text("dims"); ops({']', '('}); w.integer(3); ops({'N', 'e'});
+        w.text("bins"); w.integer(256);
+        ops({'u'});
+        w.text("scale"); ops({'G', 0x3f, 0xe0, 0, 0, 0, 0, 0, 0});
+        ops({'u'});
+        w.text("model"); ops({'}', '('});
+        w.tensor("w", "FloatStorage", "0", 2, 0, {2}, {1});
+        ops({'u'});
+        w.write(path);
+        nn::TorchCheckpoint reader(path.string());
+        check(reader.names() == std::vector<std::string>{"w"} && equal(reader.read("w"), {1, 2}),
+              "state dictionary under \"model\"");
+        const auto dims = reader.config("model_config.refiner.dims");
+        check(reader.config("model_config.refiner.factors") == std::vector<double>({2, 4}) &&
+                  reader.config("model_config.refiner.bins") == std::vector<double>({256}) &&
+                  reader.config("model_config.scale") == std::vector<double>({0.5}) &&
+                  dims.size() == 2 && dims[0] == 3 && std::isnan(dims[1]) &&
+                  reader.config("model_config.missing").empty(),
+              "config beside the weights, by dotted path");
+    }
     auto bad = [&](const Fixture& input, const char* name) {
         input.write(path); rejects([&] { nn::TorchCheckpoint r(path.string()); }, name);
     };
@@ -174,6 +202,108 @@ void fixtures(const std::filesystem::path& path) {
     rejects([&] { nn::TorchCheckpoint r(path.string()); }, "truncated ZIP rejected");
 }
 
+// torch.save before 1.6: five pickles, then each storage as an int64 count and
+// its elements. `py2` spells the dictionary the way Python 2 pickled it (the
+// LPIPS linear layers), otherwise as torchvision's vgg16-397923af.pth does.
+struct Legacy {
+    Bytes object, keys;
+    std::vector<std::pair<std::string, Bytes>> storages;
+    bool py2 = false;
+
+    static void str(Bytes& b, const std::string& s) {
+        b.push_back('U'); b.push_back((uint8_t)s.size()); b.insert(b.end(), s.begin(), s.end());
+    }
+    static void glob(Bytes& b, const std::string& module, const std::string& name) {
+        b.push_back('c');
+        for (const std::string& s : {module, name}) { b.insert(b.end(), s.begin(), s.end()); b.push_back('\n'); }
+    }
+    static void ints(Bytes& b, const std::vector<int64_t>& v) {
+        b.push_back('(');
+        for (int64_t d : v) { b.push_back('M'); b.push_back((uint8_t)d); b.push_back((uint8_t)(d >> 8)); }
+        b.push_back('t');
+    }
+    void tensor(const std::string& name, const std::string& key, int64_t elements, int64_t offset,
+                const std::vector<int64_t>& shape, const std::vector<int64_t>& stride, bool v2 = true) {
+        if (py2) { object.push_back(']'); object.push_back('('); }
+        str(object, name);
+        glob(object, "torch._utils", v2 ? "_rebuild_tensor_v2" : "_rebuild_tensor");
+        object.push_back('('); object.push_back('(');
+        str(object, "storage"); glob(object, "torch", "FloatStorage"); str(object, key); str(object, "cpu");
+        object.push_back('K'); object.push_back((uint8_t)elements); object.push_back('N');
+        object.push_back('t'); object.push_back('Q');
+        object.push_back('K'); object.push_back((uint8_t)offset);
+        ints(object, shape); ints(object, stride);
+        if (v2) { object.push_back(0x89); object.push_back('N'); }
+        object.push_back('t'); object.push_back('R');
+        if (py2) object.push_back('e');
+    }
+    void storage(const std::string& key, const std::vector<float>& values) {
+        Bytes raw(values.size() * 4);
+        if (!raw.empty()) std::memcpy(raw.data(), values.data(), raw.size());
+        storages.emplace_back(key, std::move(raw));
+    }
+    void write(const std::filesystem::path& path, bool little = true, int64_t count_skew = 0,
+               size_t truncate = 0) const {
+        Bytes out{0x80, 2, 0x8a, 10, 0x6c, 0xfc, 0x9c, 0x46, 0xf9, 0x20, 0x6a, 0xa8, 0x50, 0x19, '.'};
+        out.insert(out.end(), {0x80, 2, 'M', 0xe9, 0x03, '.', 0x80, 2, '}', '('});
+        str(out, "protocol_version"); out.insert(out.end(), {'M', 0xe9, 0x03});
+        str(out, "little_endian"); out.push_back(little ? 0x88 : 0x89);
+        out.insert(out.end(), {'u', '.', 0x80, 2});
+        glob(out, "collections", "OrderedDict");
+        if (py2) out.insert(out.end(), {']', '('});
+        else out.insert(out.end(), {')', 'R', '('});
+        out.insert(out.end(), object.begin(), object.end());
+        if (py2) {
+            // OrderedDict(items) and the _metadata attribute BUILD restores.
+            out.insert(out.end(), {'e', 0x85, 'R', '}'});
+            str(out, "_metadata");
+            glob(out, "collections", "OrderedDict");
+            out.insert(out.end(), {']', 0x85, 'R', 's', 'b'});
+        } else {
+            out.push_back('u');
+        }
+        out.insert(out.end(), {'.', 0x80, 2, ']', '('});
+        for (const auto& s : storages) str(out, s.first);
+        out.insert(out.end(), {'e', '.'});
+        for (const auto& s : storages) {
+            const int64_t count = (int64_t)(s.second.size() / 4) + count_skew;
+            for (int i = 0; i < 8; ++i) out.push_back((uint8_t)((uint64_t)count >> (8 * i)));
+            out.insert(out.end(), s.second.begin(), s.second.end());
+        }
+        if (truncate) out.resize(out.size() - truncate);
+        FILE* f = std::fopen(path.string().c_str(), "wb");
+        NN_CHECK(f && std::fwrite(out.data(), 1, out.size(), f) == out.size(), "cannot write fixture");
+        std::fclose(f);
+    }
+};
+
+void legacy(const std::filesystem::path& path) {
+    for (bool py2 : {true, false}) {
+        Legacy f;
+        f.py2 = py2;
+        f.storage("200", {9, 8});
+        f.storage("100", {0, 1, 2, 3, 4, 5});
+        f.tensor("weight", "100", 6, 0, {2, 3}, {1, 2}, py2);
+        f.tensor("bias", "200", 2, 1, {1}, {1}, py2);
+        f.tensor("shared", "100", 6, 3, {3}, {1}, py2);
+        f.write(path);
+        nn::TorchCheckpoint reader(path.string());
+        const char* form = py2 ? "legacy (Python 2 items)" : "legacy (_rebuild_tensor)";
+        check(reader.names().size() == 3, form);
+        check(equal(reader.read("weight"), {0, 2, 4, 1, 3, 5}) && equal(reader.read("bias"), {8}) &&
+              equal(reader.read("shared"), {3, 4, 5}), "legacy storages located by key order");
+        nn::TorchCheckpoint::Reader r(reader);
+        check(equal(r.read("bias"), {8}) && equal(r.read("weight"), {0, 2, 4, 1, 3, 5}),
+              "legacy reader out of order");
+        f.write(path, false);
+        rejects([&] { nn::TorchCheckpoint c(path.string()); }, "big-endian legacy checkpoint rejected");
+        f.write(path, true, 1);
+        rejects([&] { nn::TorchCheckpoint c(path.string()); }, "legacy storage count mismatch rejected");
+        f.write(path, true, 0, 4);
+        rejects([&] { nn::TorchCheckpoint c(path.string()); }, "truncated legacy storage rejected");
+    }
+}
+
 void official(const char* path) {
     nn::TorchCheckpoint reader(path);
     check(reader.names().size() == 907, "official RoMa v2.0.1 tensor count");
@@ -196,7 +326,7 @@ void official(const char* path) {
 int main(int argc, char** argv) {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto path = std::filesystem::temp_directory_path() / ("spirula-torch-" + std::to_string(nonce) + ".pt");
-    try { fixtures(path); if (argc > 1) official(argv[1]); }
+    try { fixtures(path); legacy(path); if (argc > 1) official(argv[1]); }
     catch (const std::exception& e) { std::printf("FAIL %s\n", e.what()); ++failures; }
     std::error_code ec;
     std::filesystem::remove(path, ec);

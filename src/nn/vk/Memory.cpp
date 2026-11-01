@@ -142,7 +142,7 @@ const char* oom_platform_hint() {
 DevicePtr Allocator::allocRaw(VkDeviceSize bytes, VkBufferUsageFlags usage,
                               VkMemoryPropertyFlags required,
                               VkMemoryPropertyFlags preferred, bool map,
-                              void** mapped_out, const char* what) {
+                              void** mapped_out, const char* what, bool shared) {
     if (bytes == 0) return 0;
     // 16-byte rounding: shaders read uint8 buffers as whole u32 words and
     // vector loads may overrun the logical end; the slack keeps them in bounds.
@@ -156,6 +156,12 @@ DevicePtr Allocator::allocRaw(VkDeviceSize bytes, VkBufferUsageFlags usage,
     bci.size = bytes;
     bci.usage = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    const uint32_t families[2] = {ctx.queueFamily(), ctx.transferFamily()};
+    if (shared && ctx.transferFamily() != UINT32_MAX) {
+        bci.sharingMode = VK_SHARING_MODE_CONCURRENT;
+        bci.queueFamilyIndexCount = 2;
+        bci.pQueueFamilyIndices = families;
+    }
     NN_VK_CHECK(vkCreateBuffer(ctx.device(), &bci, nullptr, &a.buffer));
 
     VkMemoryRequirements req{};
@@ -225,6 +231,14 @@ DevicePtr Allocator::allocDevice(VkDeviceSize bytes, const char* what) {
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, nullptr, what);
+}
+
+DevicePtr Allocator::allocDeviceShared(VkDeviceSize bytes, const char* what) {
+    return allocRaw(bytes,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, nullptr, what, true);
 }
 
 DevicePtr Allocator::allocHost(VkDeviceSize bytes, void** mapped_out, const char* what,

@@ -2,6 +2,7 @@
 
 #include "app/Pano360.h"
 
+#include "core/HardwareThreads.h"
 #include "core/KandaoBox.h"
 
 #include <algorithm>
@@ -377,7 +378,7 @@ void pano360_remap(const Pano360Layout& l, const Pano360View& v,
 void pano360_apply(const Pano360Remap& m, const uint8_t* canvas, int canvas_w,
                    int canvas_h, int threads, uint8_t* out) {
     if (threads <= 0)
-        threads = std::max(1, (int)std::thread::hardware_concurrency());
+        threads = std::max(1, (int)spirula::hardware_threads());
     threads = std::min(threads, std::max(1, m.height));
 
     auto rows = [&](int y0, int y1) {

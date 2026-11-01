@@ -13,6 +13,9 @@
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
 #include "i18n/catalog/Dense.h"
+#ifdef SS_HAVE_LPIPS
+#include "app/EvalLpips.h"
+#endif
 #ifdef SS_TOOL_SAM
 #include "app/ModelLicenses.h"
 #include "app/cli/LicenseCli.h"   // --accept-license: the inference layer is in this build
@@ -97,6 +100,9 @@ const std::vector<Tool>& tools() {
 #endif
 #ifdef SS_TOOL_PARTITION
         {app::kToolPartition, &cmsg::tool_partition, spirula_partition_main},
+#endif
+#ifdef SS_TOOL_MARKER
+        {app::kToolMarker, &cmsg::tool_marker, spirula_marker_main},
 #endif
     };
     return kTools;
@@ -210,6 +216,9 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "%s\n", e.what());
         return 2;
     }
+#endif
+#ifdef SS_HAVE_LPIPS
+    spirula::install_eval_lpips();
 #endif
 
     // Every tool, not only the window: the GUI runs reconstruction, masking

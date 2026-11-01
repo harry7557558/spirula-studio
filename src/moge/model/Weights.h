@@ -1,10 +1,12 @@
 #pragma once
-// The MoGe-2 checkpoint: an .onnx file in, named device tensors out.
+// A MoGe checkpoint: an .onnx export (MoGe-2) or a torch.save .pt (MoGe-3, which
+// has no export) in, named device tensors out.
 //
-// Torch lowers nn.Linear to MatMul + Add, so those matrices arrive anonymous
-// ("onnx::MatMul_3480") and transposed, and it is the MatMul node's name that
-// carries the module path. The scale head is the exception: it exports as Gemm
-// with transB, which keeps both name and layout.
+// Torch lowers nn.Linear to MatMul + Add, so in the ONNX file those matrices
+// arrive anonymous ("onnx::MatMul_3480") and transposed, and it is the MatMul
+// node's name that carries the module path. The scale head is the exception:
+// it exports as Gemm with transB, which keeps both name and layout. The .pt
+// holds module paths and [out, in] layouts as they are.
 //
 // Names are normalized on the way in -- `encoder.backbone.` loses its middle
 // term, which is what the graph's node paths already spell -- so the forward
@@ -26,10 +28,10 @@ public:
     Weights(const Weights&) = delete;
     Weights& operator=(const Weights&) = delete;
 
-    // Parses, validates, transforms and uploads. Throws nn::Error naming the
-    // tensor on any missing or unexpectedly shaped weight -- a checkpoint that
-    // is not MoGe-2 must fail here with a sentence, not later with a fault.
-    void load(const std::string& onnx_path);
+    // A .pt is read as a torch checkpoint. Throws nn::Error naming the tensor
+    // on any missing or misshapen weight -- a checkpoint that is not MoGe must
+    // fail here with a sentence, not later with a fault.
+    void load(const std::string& path);
 
     bool loaded() const { return loaded_; }
     const Hparams& hparams() const { return hp_; }
@@ -54,7 +56,20 @@ public:
     const std::vector<float>& patchPos() const { return patch_pos_; }
     const std::vector<float>& clsPos() const { return cls_pos_; }
 
+    // Residual blocks in one stage of the refiner ("down_stages.2",
+    // "bottleneck_stage"), counted off the file like resBlocks().
+    int refinerBlocks(const std::string& stage) const;
+
 private:
+    struct Staged {
+        std::string          name;
+        std::vector<int64_t> shape;
+        std::vector<float>   data;
+        bool                 f16 = false;
+    };
+    void stageOnnx(const std::string& path, std::vector<Staged>& staged);
+    void stageTorch(const std::string& path, std::vector<Staged>& staged);
+
     std::unordered_map<std::string, nn::Tensor> tensors_;
     Hparams                    hp_;
     std::string                path_;

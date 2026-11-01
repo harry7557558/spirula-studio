@@ -1,4 +1,5 @@
 #include "backend/vulkan/VulkanPipelines.h"
+#include "backend/vulkan/SpirvDispatchBase.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -28,7 +29,7 @@ struct Module {
     VkShaderModule handle = VK_NULL_HANDLE;
     uint32_t local_x = 0;  // workgroup X, 0 when not a literal
 };
-std::map<std::string, Module> g_modules;                 // by blob name
+std::map<std::string, Module> g_modules;                 // by blob name + dispatch mode
 std::map<uint32_t, VkPipelineLayout> g_layouts;          // by push size
 std::map<std::string, VkPipeline> g_pipelines;           // by full key
 
@@ -52,8 +53,8 @@ constexpr const char* kFeatureSuffixes[] = {".atomicadd", ".int8",
                                             ".noint64"};
 constexpr uint32_t kNumFeatures = 3;
 
-// [vk::constant_id] of kCasUniformExit in shaders/atomic_float.slang.
-constexpr uint32_t kCasUniformExitSpecId = 1000;
+// [vk::constant_id] of kXchgFloatAdd in shaders/atomic_float.slang.
+constexpr uint32_t kXchgFloatAddSpecId = 1000;
 
 // Entries that run at 64 lanes where the device offers 32 and 64 (RDNA); the
 // rest run at 32. Each is GPU time at 64 over 32, paired within 1500-step
@@ -137,8 +138,9 @@ uint32_t spirv_local_size_x(const uint32_t* words, size_t n) {
     return 0;
 }
 
-const Module* get_module(const std::string& name) {
-    auto it = g_modules.find(name);
+const Module* get_module(const std::string& name, bool dispatch_base) {
+    const std::string key = name + (dispatch_base ? "|base" : "");
+    auto it = g_modules.find(key);
     if (it != g_modules.end()) return &it->second;
     const SpirvBlob* blob = find_variant_blob(name);
     if (!blob) {
@@ -155,6 +157,16 @@ const Module* get_module(const std::string& name) {
     VkShaderModuleCreateInfo sci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     sci.codeSize = blob->size_bytes;
     sci.pCode = blob->data;
+    std::vector<uint32_t> adjusted;
+    if (dispatch_base) {
+        if (!spirv_dispatch_base(blob->data, blob->size_bytes / 4, adjusted)) {
+            set_error("cannot derive dispatch workgroup IDs from this SPIR-V module",
+                      VK_SUCCESS);
+            return nullptr;
+        }
+        sci.codeSize = adjusted.size() * sizeof(uint32_t);
+        sci.pCode = adjusted.data();
+    }
     Module m;
     VkResult r = vkCreateShaderModule(Context::get().device(), &sci, nullptr,
                                       &m.handle);
@@ -163,7 +175,7 @@ const Module* get_module(const std::string& name) {
         return nullptr;
     }
     m.local_x = spirv_local_size_x(blob->data, blob->size_bytes / 4);
-    return &(g_modules[name] = m);
+    return &(g_modules[key] = m);
 }
 
 VkPipelineLayout get_layout(uint32_t push_size) {
@@ -209,7 +221,7 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
     auto it = g_pipelines.find(key);
     if (it != g_pipelines.end()) return it->second;
 
-    const Module* module = get_module(blob_name);
+    const Module* module = get_module(blob_name, dispatch_base);
     if (!module) return VK_NULL_HANDLE;
 
     VkSpecializationMapEntry entries[SpecList::kMax + 1];
@@ -221,8 +233,8 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
     }
     // Every module, whether it declares the constant or not: an entry for an
     // ID the shader lacks is ignored (VkSpecializationInfo).
-    if (Context::get().caps().cas_uniform_exit) {
-        entries[n] = {kCasUniformExitSpecId, n * 4u, 4u};
+    if (Context::get().caps().xchg_float_add) {
+        entries[n] = {kXchgFloatAddSpecId, n * 4u, 4u};
         values[n++] = VK_TRUE;
     }
     VkSpecializationInfo spec_info{};
@@ -269,6 +281,14 @@ VkPipeline get_pipeline(const std::string& blob_name, const SpecList& spec,
 }
 
 }  // namespace
+
+bool supports_workgroup_size(const char* entry_name, uint32_t threads) {
+    const auto& caps = Context::get().caps();
+    const uint32_t width = subgroup_width(entry_name);
+    return threads <= caps.max_workgroup_invocations &&
+           threads <= caps.max_workgroup_size_x &&
+           (!width || uint64_t(threads) <= uint64_t(width) * caps.max_workgroup_subgroups);
+}
 
 namespace {
 

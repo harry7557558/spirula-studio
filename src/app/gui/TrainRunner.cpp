@@ -4,13 +4,64 @@
 
 #include "backend/api/BackendRuntime.h"
 #include "engine/Engine.h"
+#include "i18n/catalog/Gui.h"
 #include "i18n/catalog/Log.h"
+#ifdef SS_HAVE_LPIPS
+#include "app/gui/FetchSource.h"
+#include "lpips/Fetch.h"
+#endif
 
 #include <algorithm>
+#include <chrono>
+#include <stdexcept>
 
 namespace gui {
 
 using spirula::TrainerSession;
+
+std::string TrainRunner::fetch_line() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return _fetch_line;
+}
+
+float TrainRunner::fetch_progress() {
+    std::lock_guard<std::mutex> lk(_mu);
+    return _fetch_progress;
+}
+
+void TrainRunner::fetch_eval_models(const TrainConfig& cfg) {
+#ifdef SS_HAVE_LPIPS
+    if (!spirula::lpips_wanted(cfg) || !cfg.lpips_checkpoints.empty()) return;
+    namespace gmsg = spirula::i18n::msg::gui;
+    for (const nn::FetchFile& f : lpips::missing_files({lpips::Net::Alex, lpips::Net::Vgg})) {
+        PendingDownload d = pending_download(f);
+        d.sha256 = f.sha256;
+        FileDownload dl;
+        dl.start(d);
+        while (dl.state() == FileDownload::State::Running) {
+            if (_session && _session->stop_requested.load()) dl.cancel();
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _fetch_line = spirula::i18n::format(gmsg::fetching_lpips, {f.file, dl.status()});
+                _fetch_progress = dl.progress();
+            }
+            for (const std::string& line : dl.drain_log()) push_log(line);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        for (const std::string& line : dl.drain_log()) push_log(line);
+        {
+            std::lock_guard<std::mutex> lk(_mu);
+            _fetch_line.clear();
+            _fetch_progress = -1.0f;
+        }
+        if (dl.state() != FileDownload::State::Done)
+            throw std::runtime_error(
+                spirula::i18n::format(gmsg::lpips_fetch_failed, {f.file, dl.status()}));
+    }
+#else
+    (void)cfg;
+#endif
+}
 
 void TrainRunner::push_log(const std::string& s) {
     std::lock_guard<std::mutex> lk(_mu);
@@ -153,6 +204,7 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
                     "thread; restart the application or choose another GPU");
 #endif
             s->check_config();
+            fetch_eval_models(s->cfg);
             s->load_dataset();
             s->setup_engine();
             s->viewer_base_camera_size = viewer_upload_cameras(s->post);
@@ -175,11 +227,16 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
             cb.on_data_error = [this](const std::string& what) {
                 return await_data_decision(what);
             };
-            cb.on_step = [this](const spirula::TrainerProgress& p) {
+            cb.on_step = [this, metrics_ready = false](const spirula::TrainerProgress& p) mutable {
                 std::lock_guard<std::mutex> lk(_mu);
                 _latest = p;
                 _latencies.push_back(p.step_latency);
                 if (_latencies.size() > 100) _latencies.pop_front();
+                // Scalar readbacks lag one step; the first callback has no metrics yet.
+                if (!metrics_ready) {
+                    metrics_ready = true;
+                    return;
+                }
                 MetricPoint m;
                 m.step = p.step;
                 auto get = [&](const char* k) {

@@ -87,14 +87,17 @@ bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
 FfmpegFrames::FfmpegFrames() = default;
 FfmpegFrames::~FfmpegFrames() { close(); }
 
-bool FfmpegFrames::open(std::vector<std::string> argv, bool gray,
+bool FfmpegFrames::open(std::vector<std::string> argv, FfmpegFrameFormat format,
                         std::string& error) {
     close();
-    _gray = gray;
+    _format = format;
     _at = _end = 0;
     _buf.resize(1 << 16);
     _last_line.clear();
-    argv.insert(argv.end(), {"-f", "image2pipe", "-c:v", gray ? "pgm" : "ppm", "-"});
+    const bool gray = _format == FfmpegFrameFormat::Gray8;
+    const char* pixel_format = gray ? "gray" : sample_bytes() == 2 ? "rgb48be" : "rgb24";
+    argv.insert(argv.end(), {"-f", "image2pipe", "-c:v", gray ? "pgm" : "ppm",
+                             "-pix_fmt", pixel_format, "-"});
     _proc = std::make_unique<gui::ProcessReader>();
     if (!_proc->start(argv, [this](const std::string& l) { _last_line = l; })) {
         _proc.reset();
@@ -158,14 +161,16 @@ bool FfmpegFrames::next(std::vector<uint8_t>& px, int& width, int& height,
         return false;
     }
     int maxval = 0;
-    if (p != 'P' || get() != (_gray ? '5' : '6') || !read_int(width) ||
-        !read_int(height) || !read_int(maxval) || maxval != 255 || width <= 0 ||
-        height <= 0) {
+    const bool gray = _format == FfmpegFrameFormat::Gray8;
+    const int expected_maxval = sample_bytes() == 2 ? 65535 : 255;
+    if (p != 'P' || get() != (gray ? '5' : '6') || !read_int(width) ||
+        !read_int(height) || !read_int(maxval) || maxval != expected_maxval ||
+        width <= 0 || height <= 0) {
         close();
         error = "ffmpeg wrote a picture this could not read";
         return false;
     }
-    px.resize((size_t)width * height * (_gray ? 1 : 3));
+    px.resize((size_t)width * height * (gray ? 1 : 3) * sample_bytes());
     if (!read_exact(px.data(), px.size())) {
         if (finish(error)) error = "ffmpeg stopped mid-picture";
         return false;

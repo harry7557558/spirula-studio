@@ -43,8 +43,16 @@ public:
     // Draw the pair of this block, numbered as the reconstruction numbers
     // them, that holds the most matches -- or its first pair when none does.
     void show(const PairBlock& block);
+    void show_pair(uint32_t a, uint32_t b);
+    // Reads the pair on screen again at the next show(): matches.bin changed.
+    void reload();
     bool empty() const;
     void clear();
+
+    void set_show_keypoints(bool s) { _show_keypoints = s; }
+    void set_show_matches(bool s) { _show_matches = s; }
+    bool show_keypoints() const { return _show_keypoints; }
+    bool show_matches() const { return _show_matches; }
 
     // Into the current window, `box` pixels. GL context must be current.
     void draw(const ImVec2& box);
@@ -129,6 +137,8 @@ private:
     // ---- UI thread only ----
     Shot _shot;
     Pane _left, _right;
+    bool _show_keypoints = true;
+    bool _show_matches = true;
 };
 
 }  // namespace gui

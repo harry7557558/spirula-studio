@@ -12,6 +12,7 @@
 #include "app/gui/Layout.h"
 #include "app/gui/MaskPrompt.h"
 #include "app/gui/MaskSettings.h"
+#include "app/gui/ProgressView.h"
 #include "app/gui/Ui.h"
 #include "core/CubicBezier.h"
 #include "i18n/catalog/Dataset.h"
@@ -382,7 +383,10 @@ void MaskSession::draw_workflow_row() {
     // In the warning's row and at its height, so a run moves nothing below it.
     if (const int total = propagate_total(); total > 0) {
         const int done = std::min(propagate_done(), total);
-        ui::ProgressBar((float)done / (float)total,
+        const double now = progress_now();
+        if (!_prop_clock.started()) _prop_clock.start(now);
+        _prop_clock.work(now, (double)done / (double)total);
+        ui::ProgressBar(_prop_clock.fraction(),
                         ImVec2(px(420.0f), ImGui::GetTextLineHeight()), msg::prop_progress,
                         {done, total});
         ImGui::SameLine();
@@ -390,7 +394,10 @@ void MaskSession::draw_workflow_row() {
         if (ui::SmallButton(msg::prop_cancel)) cancel_propagate();
         ImGui::EndDisabled();
         ui::help_on_hover_disabled(msg::prop_cancel_help);
+        ImGui::SameLine();
+        progress_time_line(_prop_clock);
     } else {
+        _prop_clock = ProgressClock{};
         ui::TextDisabled(msg::prop_warn_moves);
     }
     note_row_width();

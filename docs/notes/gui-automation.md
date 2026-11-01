@@ -132,6 +132,20 @@ sharing an id.
 Display coordinates are not framebuffer pixels on a HiDPI screen; `/ui/state`
 reports both and the scale between them.
 
+## Sparse editor to trainer regression
+
+Open a COLMAP dataset in the trainer, then open its `images.bin` through
+"Open a Model or Reconstruction" and enter Edit. Delete some points and save
+over the reconstruction. Return Home and choose "Back to Trainer": the point
+count and preview must match the edited `points3D.bin`. Issue #249 left the
+trainer's cached preview showing the original points until the dataset was
+explicitly reopened.
+
+Repeat with a fresh dataset and only a quarter turn, keeping every point and
+camera. The trainer must reload the saved orientation and turn auto-level off
+even though its framing key's path and element counts are unchanged. Saving
+a copy elsewhere must leave the original dataset's trainer preview alone.
+
 ## As an MCP server
 
 `tools/gui_mcp.py` wraps the same endpoints as MCP tools over stdio, in the

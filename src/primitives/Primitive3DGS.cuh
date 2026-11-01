@@ -249,31 +249,45 @@ struct _Base3DGS : public _BasePrimitive3DGS<sh_degree> {
             _BasePrimitive3DGS<sh_degree>::Screen::atomicStore(sbuffer, si);
         }
 
+        // kernel_cut > 0: cut at sigma = kernel_cut, the tail renormalized to reach zero there
+        // (PlayCanvas: 4); 0: the full gaussian. vis is the kernel, dvis = -d vis / d sigma.
+        __device__ __forceinline__ void kernel_vis(
+            float sigma, float kernel_cut, float& vis, float& dvis
+        ) const {
+            vis = dvis = __expf(-sigma);
+            if (kernel_cut > 0.f) {
+                const float inv = 1.f / (1.f - __expf(-kernel_cut));
+                dvis = sigma < kernel_cut ? vis * inv : 0.f;
+                vis = sigma < kernel_cut ? (vis - __expf(-kernel_cut)) * inv : 0.f;
+            }
+        }
+
         __device__ __forceinline__ float evaluate_alpha(
-            float px, float py
+            float px, float py, float kernel_cut = 0.f
         ) const {
             float2 delta = {this->xy.x - px, this->xy.y - py};
             float sigma = 0.5f * (this->conic.x * delta.x * delta.x +
                                     this->conic.z * delta.y * delta.y) +
                             this->conic.y * delta.x * delta.y;
-            float vis = __expf(-sigma);
+            float vis, dvis;
+            kernel_vis(sigma, kernel_cut, vis, dvis);
             float alpha = min(0.999f, this->opac * vis);
             return sigma < 0.f ? 0.f : alpha;
         }
 
         __device__ __forceinline__ void evaluate_alpha_vjp(
             float px, float py, float v_alpha,
-            FragmentFwd& v_frag
+            FragmentFwd& v_frag, float kernel_cut = 0.f
         ) const {
             float2 delta = {this->xy.x - px, this->xy.y - py};
             float sigma = 0.5f * (this->conic.x * delta.x * delta.x +
                                     this->conic.z * delta.y * delta.y) +
                             this->conic.y * delta.x * delta.y;
-            float vis = __expf(-sigma);
-            float alpha = min(0.999f, this->opac * vis);
+            float vis, dvis;
+            kernel_vis(sigma, kernel_cut, vis, dvis);
 
             if (sigma >= 0.f && this->opac * vis <= 0.999f) {
-                const float v_sigma = -this->opac * vis * v_alpha;
+                const float v_sigma = -this->opac * dvis * v_alpha;
                 v_frag.conic += float3{
                     0.5f * v_sigma * delta.x * delta.x,
                     v_sigma * delta.x * delta.y,

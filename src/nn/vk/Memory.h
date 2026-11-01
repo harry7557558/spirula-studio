@@ -54,6 +54,9 @@ public:
     // Returns 0 only for a zero-byte request; a real failure throws with the
     // size, the device name and current usage in the message.
     DevicePtr allocDevice(VkDeviceSize bytes, const char* what);
+    // The same, also written by the transfer queue (vk/Transfer.h): sharing
+    // is concurrent across the two families, so no ownership transfer is due.
+    DevicePtr allocDeviceShared(VkDeviceSize bytes, const char* what);
 
     // Host-visible, coherent, persistently mapped. Used for staging and for
     // the kernel-params ring. `mapped_out` receives the host pointer.
@@ -84,7 +87,7 @@ private:
 
     DevicePtr allocRaw(VkDeviceSize bytes, VkBufferUsageFlags usage,
                        VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred,
-                       bool map, void** mapped_out, const char* what);
+                       bool map, void** mapped_out, const char* what, bool shared = false);
 
     mutable std::mutex mu_;
     std::unordered_map<DevicePtr, Allocation> allocs_;  // keyed by base address

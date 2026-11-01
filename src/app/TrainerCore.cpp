@@ -3,6 +3,7 @@
 #include "app/TrainerCore.h"
 #include "backend/api/BackendRuntime.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "core/SphericalBeta.h"
 #include "core/Tensor.h"
 #include "data/SceneTransform.h"
@@ -88,6 +89,17 @@ static void remove_tree(const std::filesystem::path& p) {
 #else
     std::filesystem::remove_all(p);
 #endif
+}
+
+static LpipsHooks& lpips_hooks() {
+    static LpipsHooks hooks;
+    return hooks;
+}
+
+void set_lpips_hooks(LpipsHooks hooks) { lpips_hooks() = std::move(hooks); }
+
+bool lpips_wanted(const TrainConfig& cfg) {
+    return cfg.eval_lpips && cfg.eval_mode != "all";
 }
 
 // ===========================================================================
@@ -444,7 +456,21 @@ void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
 
 namespace {
 
-int densify_loss_map_mode_int(const std::string& mode) {
+int perceptual_loss_int(const std::string& loss) {
+    if (loss == "ssim")     return (int)PerceptualLoss::Ssim;
+    if (loss == "ssim_blur_tolerant") return (int)PerceptualLoss::SsimBlurTolerant;
+    if (loss == "s_cielab") return (int)PerceptualLoss::SCielab;
+    if (loss == "flip")     return (int)PerceptualLoss::Flip;
+    throw std::runtime_error("unknown perceptual_loss: " + loss);
+}
+
+// `auto` is the contrast-structure half of SSIM, S-CIELAB, or FLIP's feature
+// error, whichever the loss is: the map comes from the kernel it runs anyway.
+int densify_loss_map_mode_int(const std::string& mode, const std::string& loss) {
+    if (mode == "auto")
+        return loss == "s_cielab" ? (int)DensifyLossMapMode::SCielab
+             : loss == "flip"     ? (int)DensifyLossMapMode::FlipFeature
+                                  : (int)DensifyLossMapMode::SsimContrastStruct;
     if (mode == "none")              return 0;
     if (mode == "loss_full")         return 1;
     if (mode == "ssim_full")         return 2;
@@ -456,7 +482,20 @@ int densify_loss_map_mode_int(const std::string& mode) {
     if (mode == "ssim_full_nms")       return 8;
     if (mode == "ssim_cs_nms")         return 9;
     if (mode == "ssim_structure_nms")  return 10;
+    if (mode == "s_cielab")            return 11;
+    if (mode == "s_cielab_nms")        return 12;
+    if (mode == "flip")                return 13;
+    if (mode == "flip_nms")            return 14;
+    if (mode == "flip_feature")        return 15;
+    if (mode == "flip_feature_nms")    return 16;
     throw std::runtime_error("unknown densify_loss_map_mode: " + mode);
+}
+
+DeadCriterion dead_criterion_enum(const std::string& c) {
+    if (c == "opacity")    return DeadCriterion::Opacity;
+    if (c == "max_weight") return DeadCriterion::MaxWeight;
+    if (c == "either")     return DeadCriterion::Either;
+    throw std::runtime_error("unknown dead_criterion: " + c);
 }
 
 int densify_accum_mode_int(const std::string& mode) {
@@ -522,9 +561,15 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     // ---- loss ----------------------------------------------------------
     cfg.loss.weights = build_loss_weights(c, step);
     cfg.loss.w_ssim = c.ssim_lambda;
+    // A hash of the step picks the steps rendered with PlayCanvas's kernel: cut at sigma = 4
+    // (2 sqrt(2) standard deviations), the tail renormalized to reach zero there.
+    cfg.loss.raster_kernel_cut =
+        (float)((uint32_t)step * 2654435761u) < c.viewer_kernel_fraction * 4294967296.0f ? 4.0f : 0.0f;
+    cfg.loss.perceptual_loss = perceptual_loss_int(c.perceptual_loss);
     cfg.loss.num_loss_scales = c.num_loss_scales + 1;
     cfg.loss.loss_scale_min_pixels = c.loss_scale_min_pixels;
-    int loss_map_mode = densify_loss_map_mode_int(c.densify_loss_map_mode);
+    int loss_map_mode =
+        densify_loss_map_mode_int(c.densify_loss_map_mode, c.perceptual_loss);
     // blend >= 1: world-grad score only, loss map has no consumer.
     if (c.densify_score_blend_world_grad >= 1.0f) loss_map_mode = 0;
     cfg.loss.loss_map_mode = loss_map_mode;
@@ -534,7 +579,9 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.loss.loss_map_normalize = c.densify_loss_map_normalize;
     cfg.loss.loss_map_clip_quantile = c.densify_loss_map_clip_quantile;
     cfg.loss.loss_map_power = c.densify_loss_map_power;
-    cfg.loss.loss_map_accum_mode = densify_accum_mode_int(c.densify_accum_mode);
+    // The learned score's update needs the ratio map's weighted mean.
+    cfg.loss.loss_map_accum_mode = c.densify_learned_score
+        ? (int)DensifyAccumMode::Avg : densify_accum_mode_int(c.densify_accum_mode);
     cfg.loss.saturation_threshold = c.loss_saturation_threshold;
     cfg.loss.luminance_normalization = c.loss_luminance_normalization;
     cfg.loss.overexposure_reg_weight = c.overexposure_reg;
@@ -549,6 +596,14 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     float means_lr = scheduled_lr(step, max_steps_lr, c.means_lr, c.means_lr_final);
     if (!c.use_scale_agnostic_mean) means_lr *= alpha;
     cfg.optim.lr_means       = means_lr;
+    cfg.optim.lr_projective_depth = scheduled_lr(step,max_steps_lr,
+        c.projective_depth_lr,c.projective_depth_lr_final);
+    cfg.optim.projective_photometric = true;
+    for (auto loss : {LossWeightIndex::NormalReg,LossWeightIndex::DepthDistReg,
+                     LossWeightIndex::NormalDistReg,LossWeightIndex::MeanMedianDepthSup,
+                     LossWeightIndex::MedianDepthNormalReg,LossWeightIndex::MedianNormalSup,
+                     LossWeightIndex::MedianRenderNormalReg})
+        if (cfg.loss.weights[(int)loss] != 0) cfg.optim.projective_photometric = false;
     cfg.optim.lr_quats       = scheduled_lr(step, max_steps_lr, c.quats_lr);
     cfg.optim.lr_scales      = scheduled_lr(step, max_steps_lr, c.scales_lr, c.scales_lr_final);
     cfg.optim.lr_opacities   = scheduled_lr(step, max_steps_lr, c.opacities_lr);
@@ -600,12 +655,15 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.refine_every                  = c.refine_every;
     cfg.densify.growth_factor                 = c.growth_factor;
     cfg.densify.min_opacity                   = c.min_opacity;
+    cfg.densify.dead_criterion = dead_criterion_enum(c.dead_criterion);
+    cfg.densify.max_weight_half_life = (float)std::max(c.max_batch_per_epoch, 1);
     cfg.densify.max_screen_size               = c.max_screen_size;
     cfg.densify.max_screen_size_clip_hardness = c.max_screen_size_clip_hardness;
     cfg.densify.clip_screen_size_at_refine    = c.max_screen_size_penalty > 0.0f;
     cfg.densify.max_world_size                = c.max_world_size * alpha;
     cfg.densify.noise_lr                      = c.noise_lr * noise_lr_scalar;
     cfg.densify.noise_lr_final                = c.noise_lr_final * noise_lr_scalar;
+    cfg.densify.noise_gate_peak_weight        = c.noise_gate_peak_weight;
     cfg.densify.use_revised_densification     = c.use_revised_densification;
     cfg.densify.score_mode = c.densify_score_mode == "mean" ? 0
         : c.densify_score_mode == "max" ? 1
@@ -614,6 +672,9 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.densify.score_power = c.densify_score_power;
     cfg.densify.score_clip_quantile = c.densify_score_clip_quantile;
     cfg.densify.final_score_power = c.densify_final_score_power;
+    cfg.densify.learned_score = c.densify_learned_score;
+    cfg.loss.learned_score = c.densify_learned_score && loss_map_mode != 0 &&
+        step < std::max(c.refine_stop_iter, c.num_iterations - c.refine_stop_num_iter);
     cfg.densify.oversize_split_fraction = c.densify_oversize_split_fraction;
     cfg.densify.oversize_score_blend = c.densify_oversize_score_blend;
     cfg.densify.las_split_opacity_k_init   = c.long_axis_split_opacity_k[0];
@@ -754,6 +815,13 @@ std::string train_config_unsupported(const TrainConfig& c) {
         return lmsg::bad_quantization_level.get();
     if (c.sb_lobes < 0 || c.sb_lobes > ColorBasis::kMaxSbLobes)
         return lfmt(lmsg::bad_sb_lobes, {ColorBasis::kMaxSbLobes});
+    if (c.dead_criterion != "opacity" && !c.use_revised_densification)
+        return lfmt(lmsg::dead_criterion_needs_revised, {c.dead_criterion});
+    if (c.densify_learned_score &&
+        (!c.use_revised_densification || c.densify_loss_map_mode == "none" ||
+         c.densify_score_blend_world_grad != 0.0f || !(c.densify_score_power > 0.0f) ||
+         !(c.densify_loss_map_power > 0.0f)))
+        return lmsg::learned_score_needs.get();
 #ifndef SS_BACKEND_VULKAN
     if (c.sb_lobes > 0) return lmsg::sb_lobes_need_vulkan.get();
 #endif
@@ -1002,10 +1070,9 @@ void TrainerSession::load_dataset() {
                                            : lmsg::alpha_masks_with_files,
                  {n, (long long)ds.num_cameras}));
     }
-    // Dense seeds and alpha cut-outs treat excluded pixels as empty space.
+    // Alpha cut-outs treat excluded pixels as empty space.
     if (!cfg.apply_loss_for_mask.has_value()) {
-        cfg.apply_loss_for_mask = spirula::dense::is_dense_seed(cfg.data, cfg.seed_pointcloud) ||
-            (!alpha_images.empty() && ds.mask_filenames.empty());
+        cfg.apply_loss_for_mask = !alpha_images.empty() && ds.mask_filenames.empty();
         if (*cfg.apply_loss_for_mask) log(lmsg::alpha_masks_cut_out.get());
     }
     has_depth  = !ds.depth_filenames.empty()  && cfg.load_depths &&
@@ -1175,6 +1242,15 @@ void TrainerSession::setup_engine() {
 #ifndef SS_BACKEND_VULKAN
     check_cuda_runtime();
 #endif
+    if (lpips_wanted(cfg) && !lpips_hooks().prepare) {
+        log(lmsg::eval_lpips_unavailable.get());
+    } else if (lpips_wanted(cfg)) {
+        try {
+            lpips_hooks().prepare(cfg);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(lfmt(lmsg::eval_lpips_missing, {std::string(e.what())}));
+        }
+    }
 
     // ---- Output dir ----------------------------------------------------
     if (!out_dir_override.empty()) {
@@ -1319,6 +1395,7 @@ void TrainerSession::setup_engine() {
 
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
+    dm.seed = (uint64_t)std::max(cfg.sampling_seed,0);
     // A split needs a mask even when none is on disk: the synthesized
     // all-white one becomes the post-split FOV mask (0 past the lens),
     // without which the unseen face regions train as black.
@@ -1520,7 +1597,7 @@ void TrainerSession::restore_checkpoint() {
     }
 
     try {
-        start_step = engine_load_checkpoint(load_from.string());
+        start_step = engine_load_checkpoint(load_from.string(),cfg.projective_depth_lr > 0);
     } catch (const std::exception& e) {
         if (adapted) remove_tree(tmp);
         throw std::runtime_error(
@@ -1654,11 +1731,15 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     m.process_bytes = mu.process_bytes;
     m.used_bytes = mu.used_bytes;
     m.total_bytes = mu.total_bytes;
+    m.process_peak_bytes = mu.process_peak_bytes;
+    m.has_commit = mu.has_commit;
+    m.commit_free_bytes = mu.commit_free_bytes;
+    backend::memory_peak_reset();
     _forecast.add_memory(m);
 
     // Once per level, so a run that stays at risk says it once.
     const VramForecast v = _forecast.vram(false);
-    if (!v.valid || (int)v.risk <= (int)_warned_risk) return;
+    if (!v.projected || (int)v.risk <= (int)_warned_risk) return;
     _warned_risk = v.risk;
     auto gib = [](double b) {
         char s[32];
@@ -1668,8 +1749,8 @@ void TrainerSession::observe_memory(int step, int64_t splats_ran) {
     char pct[16];
     std::snprintf(pct, sizeof pct, "%.0f", v.p_oom * 100.0);
     log(lfmt(lmsg::vram_forecast_warn,
-             {gib(v.peak_mean), gib(v.peak_sigma),
-              gib(0.99 * v.total_bytes - v.others_bytes), std::string(pct)}));
+             {gib(v.peak_mean), gib(v.peak_sigma), gib(v.limit),
+              std::string(pct)}));
 }
 
 void TrainerSession::train(const TrainerCallbacks& cb) {
@@ -1692,6 +1773,7 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         _forecast.reset(fs);
         _live_splats = engine_get_cur_num_splats();
         _warned_risk = OomRisk::Low;
+        backend::memory_peak_reset();  // setup's transients are not the run's
     }
 
     _perf.open(out_dir, _perf_dir);
@@ -1784,11 +1866,12 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
             const double gib = 1024.0 * 1024.0 * 1024.0;
             std::fprintf(stderr,
                 "[forecast] step %d  eta %.1f +- %.1f s  ours %.3f GiB  peak %.3f +- %.3f GiB"
-                "  others %.3f  total %.3f  p_oom %.3f%s\n",
+                "  others %.3f  total %.3f  limit %.3f%s  p_oom %.3f\n",
                 step + 1, e.seconds, e.sigma,
-                v.ours_bytes / gib,
-                v.peak_mean / gib, v.peak_sigma / gib, v.others_bytes / gib,
-                v.total_bytes / gib, v.p_oom, v.provisional ? "  provisional" : "");
+                v.ours / gib,
+                v.peak_mean / gib, v.peak_sigma / gib, v.others / gib,
+                v.capacity / gib, v.limit / gib,
+                v.commit_limited ? " (commit)" : "", v.p_oom);
         }
 
         if (cb.on_step) {
@@ -1841,7 +1924,7 @@ std::string TrainerSession::progress_json() {
     const VramForecast v = _forecast.vram(false);
     static const char* const kRisk[] = {"unknown", "low", "medium", "high"};
     char tail[160];
-    if (v.valid)
+    if (v.projected)
         std::snprintf(tail, sizeof tail,
             ", \"vram_peak_bytes\": %.0f, \"vram_peak_sigma\": %.0f, "
             "\"oom_probability\": %.4f, \"oom_risk\": \"%s\"}",
@@ -1921,6 +2004,12 @@ std::vector<uint8_t> to_png_bytes(const std::vector<float>& rgb) {
     return out;
 }
 
+// In place: what to_png_bytes stores, read back as eval_lpips.py reads a PNG.
+void quantize_8bit(std::vector<float>& rgb) {
+    for (float& x : rgb)
+        x = (float)std::lround(std::min(std::max(x, 0.0f), 1.0f) * 255.0f) / 255.0f;
+}
+
 }  // namespace
 
 void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_progress) {
@@ -1975,6 +2064,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     // otherwise pack several resolutions into one step.
     DataManagerConfig dm;
     dm.cache_mode  = (cfg.cache_images == "disk") ? CacheMode::DISK : CacheMode::CPU;
+    dm.seed = (uint64_t)std::max(cfg.sampling_seed,0);
     const std::vector<uint8_t> eval_alpha = probe_alpha_masks(eds.image_filenames);
     const bool eval_masks =
         (!eds.mask_filenames.empty() || !eval_alpha.empty()) && cfg.load_masks;
@@ -2020,22 +2110,39 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         int64_t index = 0;
         int H = 0, W = 0, C = 0;
         std::vector<float> gt, pred;
+        std::vector<uint8_t> mask;
     };
     struct ViewScore {
         bool  filled = false;
         float l1 = 0, psnr = 0, ssim = 0, cc_l1 = 0, cc_psnr = 0, cc_ssim = 0;
+        std::vector<float> masked;
+        std::vector<float> masked_lpips, masked_cc_lpips;
+        std::vector<float> lpips, cc_lpips;   // one per lpips_names entry
     };
 
-    // Per worker: a GT + a render + the colour-corrected copy (3 x H*W*C
-    // floats) plus SSIM's eleven H*W double buffers. ~725 MB at 4K, so the
-    // pool is capped by a memory budget as well as by cores -- an eval run
-    // must not be the thing that OOMs the machine.
+    // On the inference layer's device, which takes one view at a time. A
+    // failure drops LPIPS from metrics.json and keeps everything else.
+    std::unique_ptr<LpipsScorer> lpips;
+    std::vector<std::string> lpips_names;
+    if (lpips_wanted(cfg) && lpips_hooks().open) {
+        try {
+            lpips = lpips_hooks().open(cfg);
+            lpips_names = lpips->names();
+        } catch (const std::exception& e) {
+            lpips.reset();
+            log(lfmt(lmsg::eval_lpips_failed, {std::string(e.what())}));
+        }
+    }
+    std::mutex lpips_mu;
+    std::atomic<bool> lpips_ok{lpips != nullptr};
+
+    // Bound simultaneous RGB buffers and SSIM scratch so eval fits host RAM.
     const int64_t view_pixels = eds.widths.empty()
         ? (int64_t)1 << 20
         : (int64_t)eds.widths[0] * eds.heights[0];
-    const int64_t bytes_per_view = view_pixels * (3 * 3 * 4 + 11 * 8);
+    const int64_t bytes_per_view = view_pixels * (5 * 3 * 4 + 12 * 8 + 1);
     const int64_t kBudget = (int64_t)4 << 30;
-    int n_workers = (int)std::max(1u, std::thread::hardware_concurrency() / 4u);
+    int n_workers = (int)std::max(1u, spirula::hardware_threads() / 4u);
     n_workers = (int)std::min<int64_t>(n_workers,
                                        std::max<int64_t>(1, kBudget / std::max<int64_t>(bytes_per_view, 1)));
     n_workers = std::min<int>(n_workers, 8);
@@ -2069,6 +2176,51 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         s.cc_l1   = image_l1(g, cc.data(), view_px);
         s.cc_psnr = image_psnr(g, cc.data(), view_px);
         s.cc_ssim = image_ssim(g, cc.data(), j.H, j.W, j.C);
+        if (!j.mask.empty()) {
+            const uint8_t* m = j.mask.data();
+            color_correct_into(j.pred.data(), g, (int64_t)j.H * j.W, j.C, cc,
+                               5, 0.5f / 255.0f, m);
+            s.masked = {image_l1(g, j.pred.data(), view_px, m, j.C),
+                image_psnr(g, j.pred.data(), view_px, m, j.C),
+                image_ssim(g, j.pred.data(), j.H, j.W, j.C, m),
+                image_l1(g, cc.data(), view_px, m, j.C),
+                image_psnr(g, cc.data(), view_px, m, j.C),
+                image_ssim(g, cc.data(), j.H, j.W, j.C, m)};
+        }
+        if (lpips_ok.load()) {
+            // On the 8-bit images, as eval_lpips.py and 3DGS's metrics.py score
+            // them: bonsai's float renders averaged 1.8% (alex) / 0.9% (vgg)
+            // higher, the size of what LPIPS gets compared on. PNGs are unchanged.
+            quantize_8bit(j.gt);
+            quantize_8bit(j.pred);
+            color_correct_into(j.pred.data(), g, (int64_t)j.H * j.W, j.C, cc);
+            try {
+                if (j.C != 3) throw std::runtime_error("LPIPS needs RGB views");
+                std::vector<const float*> predictions{j.pred.data(),cc.data()};
+                thread_local std::vector<float> valid_pred, valid_cc;
+                if (!j.mask.empty()) {
+                    valid_pred = j.pred;
+                    color_correct_into(j.pred.data(),g,(int64_t)j.H*j.W,j.C,valid_cc,
+                                       5,0.5f/255.0f,j.mask.data());
+                    for (size_t p = 0; p < valid_pred.size(); ++p)
+                        if (!j.mask[p/j.C]) valid_pred[p] = valid_cc[p] = g[p];
+                    predictions.push_back(valid_pred.data());
+                    predictions.push_back(valid_cc.data());
+                }
+                std::lock_guard<std::mutex> lk(lpips_mu);
+                for (const std::vector<float>& m : lpips->score(g,predictions,j.W,j.H)) {
+                    s.lpips.push_back(m[0]);
+                    s.cc_lpips.push_back(m[1]);
+                    if (!j.mask.empty()) {
+                        s.masked_lpips.push_back(m[2]);
+                        s.masked_cc_lpips.push_back(m[3]);
+                    }
+                }
+            } catch (const std::exception& e) {
+                if (lpips_ok.exchange(false))
+                    log(lfmt(lmsg::eval_lpips_failed, {std::string(e.what())}));
+            }
+        }
         {
             std::lock_guard<std::mutex> lk(smu);
             if ((size_t)j.index >= scores.size()) scores.resize((size_t)j.index + 1);
@@ -2085,11 +2237,16 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                                     bytes.data(), j.W * j.C))
                     throw std::runtime_error("cannot write " + path.string());
             };
-            // Both sides, because the LPIPS tool needs the pair -- and the
-            // 8-bit clip here is what it will score, so its numbers are
-            // reproducible from the files alone.
+            // Both sides, and 8-bit: what LPIPS scores, so the pair rescores
+            // from the files alone (reference/python/eval_lpips.py).
             png("gt", j.gt);
             png("render", j.pred);
+            if (!j.mask.empty()) {
+                std::vector<float> mask_rgb(j.mask.size() * j.C);
+                for (size_t i = 0; i < mask_rgb.size(); ++i)
+                    mask_rgb[i] = j.mask[i / j.C] ? 1.0f : 0.0f;
+                png("mask", mask_rgb);
+            }
         }
         report_progress();
     };
@@ -2100,7 +2257,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
             // Threads inside the metrics would oversubscribe against the pool;
             // the per-view work is already the coarser and cheaper split.
 #ifdef _OPENMP
-            omp_set_num_threads(std::max(1, (int)std::thread::hardware_concurrency() / n_workers));
+            omp_set_num_threads(std::max(1, (int)spirula::hardware_threads() / n_workers));
 #endif
             for (;;) {
                 ViewJob job;
@@ -2135,9 +2292,10 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         if (stop_requested.load() || worker_failed.load()) break;
         int64_t H = 0, W = 0, B = 0, Cc = 0;
         std::vector<float> gt, render;
+        std::vector<uint8_t> mask;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
-            int n_view = engine_eval_forward(cfg.primitive, sh_deg, cfg.packed);
+            int n_view = engine_eval_forward((int)i, cfg.primitive, sh_deg, cfg.packed);
             if (n_view == 0) break;
             auto shape = engine_get_render_rgb_shape();
             B = std::get<0>(shape); H = std::get<1>(shape);
@@ -2151,6 +2309,23 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                 TorchTensorView{0, 0, {}}, TorchTensorView{0, 0, {}});
             engine_copy_gt_rgb_to_host(
                 TorchTensorView{(uint64_t)(uintptr_t)gt.data(), 4, {B, H, W, Cc}});
+            if (!cfg.apply_loss_for_mask.value_or(false)) {
+                auto ms = engine_get_gt_alpha_shape();
+                const int64_t mh = std::get<1>(ms), mw = std::get<2>(ms);
+                if (std::get<0>(ms) == B && mh > 0 && mw > 0) {
+                    std::vector<uint8_t> source((size_t)(B * mh * mw));
+                    engine_copy_gt_alpha_to_host(TorchTensorView{
+                        (uint64_t)(uintptr_t)source.data(), 1, {B, mh, mw, 1}});
+                    mask.resize((size_t)(B * H * W));
+                    for (int64_t b = 0; b < B; ++b)
+                        for (int64_t y = 0; y < H; ++y)
+                            for (int64_t x = 0; x < W; ++x) {
+                                int64_t sy = std::min((int64_t)((y + 0.5) * mh / H), mh - 1);
+                                int64_t sx = std::min((int64_t)((x + 0.5) * mw / W), mw - 1);
+                                mask[(b*H+y)*W+x] = source[(b*mh+sy)*mw+sx];
+                            }
+                }
+            }
         }
 
         // Per POST-split view inside the batch (K faces of one input image).
@@ -2163,6 +2338,12 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                           gt.begin() + (size_t)((v + 1) * view_px));
             job.pred.assign(render.begin() + (size_t)(v * view_px),
                             render.begin() + (size_t)((v + 1) * view_px));
+            if (!mask.empty()) {
+                job.mask.assign(mask.begin() + (size_t)(v * H * W),
+                                mask.begin() + (size_t)((v + 1) * H * W));
+                if (std::none_of(job.mask.begin(), job.mask.end(), [](uint8_t x) { return x != 0; }))
+                    continue;
+            }
             for (float& x : job.pred) x = std::min(std::max(x, 0.0f), 1.0f);
             {
                 std::unique_lock<std::mutex> lk(qmu);
@@ -2187,8 +2368,12 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     }
     qcv.notify_all();
     for (auto& t : workers) t.join();
+    lpips.reset();
     if (worker_error) std::rethrow_exception(worker_error);
 
+    bool with_lpips = lpips_ok.load();
+    for (const ViewScore& s : scores)
+        with_lpips = with_lpips && (!s.filled || s.lpips.size() == lpips_names.size());
     std::map<std::string, std::vector<float>> per_image;
     for (const ViewScore& s : scores) {
         if (!s.filled) continue;
@@ -2198,6 +2383,18 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         per_image["cc_l1"].push_back(s.cc_l1);
         per_image["cc_psnr"].push_back(s.cc_psnr);
         per_image["cc_ssim"].push_back(s.cc_ssim);
+        constexpr const char* masked_keys[] = {"masked_l1", "masked_psnr", "masked_ssim",
+            "masked_cc_l1", "masked_cc_psnr", "masked_cc_ssim"};
+        for (size_t m = 0; m < s.masked.size(); ++m)
+            per_image[masked_keys[m]].push_back(s.masked[m]);
+        for (size_t m = 0; with_lpips && m < lpips_names.size(); ++m) {
+            per_image[lpips_names[m]].push_back(s.lpips[m]);
+            per_image["cc_" + lpips_names[m]].push_back(s.cc_lpips[m]);
+            if (!s.masked_lpips.empty()) {
+                per_image["masked_" + lpips_names[m]].push_back(s.masked_lpips[m]);
+                per_image["masked_cc_" + lpips_names[m]].push_back(s.masked_cc_lpips[m]);
+            }
+        }
     }
 
     if (per_image.empty()) {

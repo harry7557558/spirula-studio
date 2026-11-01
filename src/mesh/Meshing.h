@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "mesh/MeshExport.h"   // MeshColorMode + format helpers
+#include "mesh/MeshProgress.h"
 
 namespace meshing {
 
@@ -100,6 +101,9 @@ struct MeshingConfig {
                                     // budget (power of two in [1024, 8192])
     int   tex_gutter_px = 4;        // atlas spacing between charts (texels)
     float chart_angle_deg = 60.0f;  // max normal deviation within a UV chart
+
+    // Told at every stage how far the run is and the memory it expects.
+    MeshProgressSink on_progress;
 };
 
 // Full camera intrinsics/extrinsics for the rasterize-and-sample (dataset)

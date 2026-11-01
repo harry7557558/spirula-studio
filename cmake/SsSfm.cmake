@@ -134,17 +134,9 @@ list(LENGTH _sfm_blobs _sfm_nblobs)
 message(STATUS "SfM SPIR-V: ${_sfm_nblobs} blobs "
     "(reals: ${SS_SFM_REALS}; losses: ${SS_SFM_LOSSES})")
 
-# List file for the embed step (keeps the command line short).
-set(_sfm_listfile ${_sfm_spirv_dir}/blobs.txt)
-string(REPLACE ";" "\n" _sfm_listbody "${_sfm_blobs}")
-ss_write_if_different(${_sfm_listfile} "${_sfm_listbody}\n")
-
-add_custom_command(OUTPUT ${_sfm_embed_cpp}
-    COMMAND ${SS_SFM_SPIRV_TOOL} embed --sfm ${_sfm_embed_cpp}
-            --list ${_sfm_listfile}
-    DEPENDS ${SS_SFM_SPIRV_TOOL} ${_sfm_blobs} ${_sfm_listfile}
-    COMMENT "Embedding SfM SPIR-V (${_sfm_nblobs} blobs)"
-    VERBATIM)
+ss_embed_spirv(${_sfm_embed_cpp} ${_sfm_spirv_dir}/blobs.txt
+    "Embedding SfM SPIR-V (${_sfm_nblobs} blobs)"
+    BLOBS ${_sfm_blobs} FLAGS --sfm)
 
 # ---------------------------------------------------------------------------
 # Library

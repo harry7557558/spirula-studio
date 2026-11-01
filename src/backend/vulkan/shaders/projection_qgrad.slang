@@ -118,10 +118,71 @@ void _qg_nonsh<let PRIMS : int>(bool active, uint* packed, float2* bounds,
     }
 }
 
-// Cell `k` of the splat's lobes, 0 outside them.
 [ForceInline]
-float _qg_sb_contrib(PbGrads g, int k) {
-    return (k >= 0 && k < 6 * kSbLobes) ? g.v_sb[k / 3][k % 3] : 0.0f;
+void _qg_color_word(uint* words, uint cell, uint first, uint last,
+                     uint code, inout uint acc) {
+    uint b = cell & 3u;
+    acc |= code << (8u * b);
+    if (b == 3u || cell + 1u == last) {
+        uint w = cell >> 2;
+        uint fb = (w == (first >> 2)) ? (first & 3u) : 0u;
+        if (fb == 0u && b == 3u) {
+            words[w] = acc;
+        } else {
+            uint mask = (0xffffffffu >> (8u * (3u - b))) &
+                        (0xffffffffu << (8u * fb));
+            InterlockedAnd(words[w], ~mask);
+            InterlockedOr(words[w], acc & mask);
+        }
+        acc = 0u;
+    }
+}
+
+[ForceInline]
+void _qg_color_cell<let encode : bool>(
+    uint* words, uint cell, uint first, uint last, float contrib,
+    float2 old_mm, float2 new_mm, inout float2 mm, inout uint acc) {
+    float nv = gradq_decode1<8>(words, cell, old_mm) + contrib;
+    if (encode) {
+        uint code = gradq_encode1<8>(nv, new_mm) & 0xffu;
+        _qg_color_word(words, cell, first, last, code, acc);
+    } else {
+        mm.x = min(mm.x, nv);
+        mm.y = max(mm.y, nv);
+    }
+}
+
+[ForceInline]
+void _qg_color_pass<let encode : bool>(
+    ProjectionQgradParams p, uint gid, PbGrads g, float2 old_mm,
+    float2 new_mm, inout float2 mm) {
+    const int num_sh = kShDegree * (kShDegree + 2);
+    const int sb_c0 = 3 * int(p.sb_base);
+    const gindex_t base = (gindex_t)(3u * p.num_sh_buffer) * (gindex_t)gid;
+    uint* words = elem_at(p.gq_sh_packed, base >> 2);
+    uint first = uint(base) & 3u;
+    uint last = first + 3u * p.num_sh_buffer;
+    uint acc = 0u;
+
+    [ForceUnroll]
+    for (int j = 0; j < kVcMaxShCoeffs; ++j) {
+        if (j >= num_sh) continue;
+        [ForceUnroll]
+        for (int ch = 0; ch < 3; ++ch)
+            _qg_color_cell<encode>(words, first + uint(3 * j + ch),
+                first, last, g.v_sh[j][ch], old_mm, new_mm, mm, acc);
+    }
+    for (int c = 3 * num_sh; c < sb_c0; ++c)
+        _qg_color_cell<encode>(words, first + uint(c), first, last,
+                               0.0f, old_mm, new_mm, mm, acc);
+    [ForceUnroll]
+    for (int j = 0; j < kVcMaxSbCoeffs; ++j) {
+        if (j >= 2 * kSbLobes) continue;
+        [ForceUnroll]
+        for (int ch = 0; ch < 3; ++ch)
+            _qg_color_cell<encode>(words, first + uint(sb_c0 + 3 * j + ch),
+                first, last, g.v_sb[j][ch], old_mm, new_mm, mm, acc);
+    }
 }
 
 // The per-splat camera loop, generic over the two projection spec axes so the
@@ -233,76 +294,18 @@ void projection_qgrad(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                      block_id, gid, tid, inside, blk_ok, vd);
     }
 
-    // Colour-row grad (8-bit): two passes over the full 3*K cells so inactive
-    // warmup bands (contribution 0) stay re-encoded against the fresh bound.
+    // Inactive warmup cells must be re-encoded against the fresh bound too.
     if ((kGqMask & 32) != 0) {
-        const int num_sh = kShDegree * (kShDegree + 2);
-        const int sb_c0 = 3 * int(p.sb_base);
-        // Word pointer + in-word byte offset: the splat's run is addressed
-        // relatively from here, so it stays 32-bit past 2^32 cells.
-        const gindex_t sh_cell0 =
-            (gindex_t)(3u * p.num_sh_buffer) * (gindex_t)gid;
-        uint* sh_words = elem_at(p.gq_sh_packed, sh_cell0 >> 2);
-        const uint sh_base = uint(sh_cell0) & 3u;
-        const int total = int(3u * p.num_sh_buffer);
-        const float2 sh_old =
-            inside ? p.gq_sh_bounds[block_id] : float2(0.0f, 0.0f);
-        float2 sh_mm = float2(1e30f, -1e30f);
-        if (inside) {
-            // Split so the v_sh read is a constant channel index; the inactive
-            // warmup bands contribute nothing and only re-encode.
-            for (int j = 0; j < num_sh; ++j) {
-                [ForceUnroll]
-                for (int ch = 0; ch < 3; ++ch) {
-                    float nv = gradq_decode1<8>(
-                                   sh_words,
-                                   sh_base + uint(3 * j + ch), sh_old) +
-                               g.v_sh[j][ch];
-                    sh_mm.x = min(sh_mm.x, nv);
-                    sh_mm.y = max(sh_mm.y, nv);
-                }
-            }
-            for (int c = 3 * num_sh; c < total; ++c) {
-                float nv = gradq_decode1<8>(sh_words,
-                                            sh_base + uint(c), sh_old) +
-                           _qg_sb_contrib(g, c - sb_c0);
-                sh_mm.x = min(sh_mm.x, nv);
-                sh_mm.y = max(sh_mm.y, nv);
-            }
-        }
-        sh_mm = oq_block_reduce_mm2(sh_mm, tid);
+        float2 old_mm = inside ? p.gq_sh_bounds[block_id] : float2(0.0f);
+        float2 mm = float2(1e30f, -1e30f);
+        if (inside)
+            _qg_color_pass<false>(p, gid, g, old_mm, float2(0.0f), mm);
+        mm = oq_block_reduce_mm2(mm, tid);
         if (tid == 0 && blk_ok)
-            p.gq_sh_bounds[block_id] = sh_mm;
-
-        // Whole-word writeback of this thread's contiguous byte-cell run. The
-        // per-cell stores it replaces cost a masked atomic pair each; here only
-        // the up-to-two edge words are shared with a neighbouring splat.
+            p.gq_sh_bounds[block_id] = mm;
         if (inside) {
-            uint c0 = sh_base, c1 = sh_base + uint(total);
-            uint acc = 0u;
-            for (uint cell = c0; cell < c1; ++cell) {
-                int c = int(cell - c0);
-                float old = gradq_decode1<8>(sh_words, cell, sh_old);
-                float contrib = (c < 3 * num_sh)
-                                    ? g.v_sh[c / 3][c % 3]
-                                    : _qg_sb_contrib(g, c - sb_c0);
-                uint code = gradq_encode1<8>(old + contrib, sh_mm) & 0xffu;
-                uint b = cell & 3u;
-                acc |= code << (8u * b);
-                if (b == 3u || cell + 1u == c1) {
-                    uint w = cell >> 2;
-                    uint fb = (w == (c0 >> 2)) ? (c0 & 3u) : 0u;
-                    if (fb == 0u && b == 3u) {
-                        sh_words[w] = acc;
-                    } else {
-                        uint mask = (0xffffffffu >> (8u * (3u - b))) &
-                                    (0xffffffffu << (8u * fb));
-                        InterlockedAnd(sh_words[w], ~mask);
-                        InterlockedOr(sh_words[w], acc & mask);
-                    }
-                    acc = 0u;
-                }
-            }
+            float2 unused = float2(0.0f);
+            _qg_color_pass<true>(p, gid, g, old_mm, mm, unused);
         }
     }
 }

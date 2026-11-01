@@ -50,6 +50,9 @@ template void rasterize_to_pixels_eval3d_bwd_kernel_wrapper<
     Vanilla3DGUT<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
     float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut,
     float *__restrict__ v_viewmats // [B, C, 4, 4]
 );
 
@@ -99,6 +102,9 @@ template void rasterize_to_pixels_eval3d_bwd_kernel_wrapper<
     Vanilla3DGUT<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
     float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut,
     float *__restrict__ v_viewmats // [B, C, 4, 4]
 );
 
@@ -148,5 +154,8 @@ template void rasterize_to_pixels_eval3d_bwd_kernel_wrapper<
     Vanilla3DGUT<0>::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
     float *__restrict__ o_accum_weight_den,
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut,
     float *__restrict__ v_viewmats // [B, C, 4, 4]
 );

@@ -10,7 +10,6 @@
 #include "app/gui/ColmapRunner.h"
 #include "app/gui/CommandRunner.h"
 #include "app/gui/CompareView.h"
-#include "app/gui/DenseMemoryView.h"
 #include "app/gui/Fonts.h"
 #include "app/gui/ConfigUI.h"
 #include "app/gui/FileDialog.h"
@@ -21,7 +20,10 @@
 #include "app/gui/RoiEditor.h"
 #include "app/gui/ImageCompare.h"
 #include "app/gui/MatchMatrix.h"
+#include "app/gui/MatchMatrixEditor.h"
 #include "app/gui/PickSheet.h"
+#include "app/gui/ProgressClock.h"
+#include "app/gui/RunMemoryView.h"
 #include "app/gui/PickSheetView.h"
 #include "app/gui/PairPreview.h"
 #include "app/gui/SfmProgress.h"
@@ -37,7 +39,6 @@
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
-#include "app/gui/StageEta.h"
 #include "app/gui/TelemetryProbe.h"
 #include "app/gui/TrainPreset.h"
 #include "app/gui/TrainRunner.h"
@@ -592,6 +593,10 @@ private:
     // cannot say, and how long it has been going.
     float batch_task_fraction();
     double batch_task_elapsed() const;
+    ProgressClock _batch_queue_clock, _batch_task_clock;
+    ProgressClock _train_clock, _eval_clock;
+    void tick_train_clock();
+    int _batch_clock_task = -1;
     // The row the running task belongs to, null when nothing is running.
     // `_batch_current` indexes the TASKS, which outnumber the rows.
     const BatchRow* batch_running_row() const;
@@ -784,6 +789,8 @@ private:
     bool _preset_delete_shown = false;
 
     TrainRunner _runner;
+    enum class PlotMetric { Psnr, Ssim, Loss, LogLoss };
+    PlotMetric _plot_metric = PlotMetric::Psnr;
     ViewportPanel _viewport;
     // The trainer screen's other preview: one training photograph beside the
     // render of the same camera. Reads from the session's engine, so it is
@@ -845,6 +852,7 @@ private:
     FilmReel _film_frames, _film_masks, _film_features, _film_geometry;
     FeatureWatcher _features;
     MatchMatrix _matrix;
+    MatchMatrixEditor _matrix_editor;
     // Every frame a run chose and what the rule made of it (the Sharpness view).
     PickSheet _picks;
     PickSheetView _picks_view;
@@ -883,12 +891,10 @@ private:
     std::future<DenseLiveRead> _dense_model_read;
     std::string _dense_preview_error;
     bool _dense_live = false;
-    DenseMemoryView _dense_memory;
-    bool _dense_memory_active = false;
-    StageEta _dense_eta;
+    RunMemoryView _run_memory;
+    Stage _run_memory_step = Stage::Frames;   // whose memory it holds; Frames for none
     std::string _resume_error;
     bool _open_resume_error = false;
-    double _dense_started_at = 0.0;
     bool _show_preview = true;
     // Which view the panel shows: -1 follows the running step, otherwise the
     // one the user picked and wants to keep.

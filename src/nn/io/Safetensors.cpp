@@ -127,15 +127,34 @@ SafetensorsFile::SafetensorsFile(const std::string& path) : path_(path) {
              "%s: truncated header", path.c_str());
     data_offset_ = 8 + n;
 
-    Json j{header.data(), header.data() + header.size(), path_};
+    entries_ = parse_safetensors_header(header, path_, &meta_);
+    for (const auto& kv : entries_)
+        NN_CHECK(data_offset_ + kv.second.end <= file_size_,
+                 "%s: tensor '%s' runs past the end of the file (truncated download?)",
+                 path.c_str(), kv.first.c_str());
+}
+
+std::unordered_map<std::string, SafetensorsFile::Entry> parse_safetensors_header(
+    const std::string& header, const std::string& what,
+    std::unordered_map<std::string, std::string>* metadata) {
+    std::unordered_map<std::string, SafetensorsFile::Entry> entries;
+    Json j{header.data(), header.data() + header.size(), what};
     j.expect('{');
     while (!j.peek('}')) {
         const std::string name = j.str();
         j.expect(':');
         if (name == "__metadata__") {
-            j.skip_value();
+            j.expect('{');
+            while (!j.peek('}')) {
+                const std::string key = j.str();
+                j.expect(':');
+                const std::string value = j.str();
+                if (metadata) (*metadata)[key] = value;
+                if (j.peek(',')) ++j.p;
+            }
+            ++j.p;
         } else {
-            Entry e;
+            SafetensorsFile::Entry e;
             bool offsets = false;
             j.expect('{');
             while (!j.peek('}')) {
@@ -158,14 +177,12 @@ SafetensorsFile::SafetensorsFile(const std::string& path) : path_(path) {
             }
             ++j.p;
             NN_CHECK(offsets && !e.dtype.empty(), "%s: tensor '%s' lacks dtype or offsets",
-                     path.c_str(), name.c_str());
-            NN_CHECK(data_offset_ + e.end <= file_size_,
-                     "%s: tensor '%s' runs past the end of the file (truncated download?)",
-                     path.c_str(), name.c_str());
-            entries_[name] = std::move(e);
+                     what.c_str(), name.c_str());
+            entries[name] = std::move(e);
         }
         if (j.peek(',')) ++j.p;
     }
+    return entries;
 }
 
 const SafetensorsFile::Entry& SafetensorsFile::entry(const std::string& name) const {

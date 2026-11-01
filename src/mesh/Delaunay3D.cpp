@@ -16,6 +16,8 @@
 
 #include "mesh/Delaunay3D.h"
 
+#include "core/HardwareThreads.h"
+
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -1905,7 +1907,7 @@ namespace delaunay3d {
 
         index_t nthreads;
         if(num_threads <= 0) {
-            unsigned hc = std::thread::hardware_concurrency();
+            unsigned hc = spirula::hardware_threads();
             nthreads = (hc == 0) ? 1u : index_t(hc);
         } else {
             nthreads = index_t(num_threads);

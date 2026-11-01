@@ -242,6 +242,9 @@ static void _engine_raster_proj_backward(
             dist_type,
             accum_weight_map,
             accum_mode,
+            engine().max_weight.value,
+            engine().max_weight.step_scale,
+            engine().fwd.kernel_cut,
             v_render_outputs,
             v_render_Ts,
             v_median,
@@ -281,6 +284,8 @@ static void _engine_raster_proj_backward(
             DeviceTensor3D<float>(),  // loss_map
             accum_weight_map,
             accum_mode,
+            engine().max_weight.value,
+            engine().max_weight.step_scale,
             v_render_outputs,
             v_render_Ts,
             v_median,
@@ -304,6 +309,7 @@ static void _engine_raster_proj_backward(
     // In fused-proj-bwd-optim mode the projection backward is folded into the
     // optimizer step; we just stash the screen-space gradients for that call.
     engine().fwd.v_splats_s = v_splats_s_out;
+    engine_observe_projective_depth();
     if (!engine().optim.use_fused_proj_bwd_optim) {
         // SH VALUE-quant: when active in non-FPBO mode, project_vjp reads
         // the source SH via the codec instead of fp32 features_sh (which is
@@ -470,6 +476,7 @@ int engine_resolve_num_loss_scales(int num_loss_scales,
 static std::map<std::string, float> _engine_loss(
     std::array<float, (int)LossWeightIndex::length> loss_weights,
     float w_ssim,
+    int perceptual_loss,
     int num_loss_scales,
     int loss_scale_min_pixels,
     bool compute_loss_map,
@@ -698,6 +705,7 @@ static std::map<std::string, float> _engine_loss(
         engine().gt.has_mask,
         loss_weights,
         w_ssim,
+        perceptual_loss,
         saturation_threshold,
         v_losses_buf,
         needs_input_grad,
@@ -711,11 +719,19 @@ static std::map<std::string, float> _engine_loss(
     );
 
     // The one place the error map is conditioned, so the preview copy below
-    // and the raster backward aggregation read the same picture.
+    // and the raster backward read the same picture; a learned-score step
+    // divides it, unpowered, by the rendered score map for the bwd to average.
+    TorchTensorView score_fit = _tv_null();
+    if (!map_only && engine().fwd.render_score.data_ptr() != nullptr)
+        score_fit = TorchTensorView((uint64_t)engine().fwd.render_score.data_ptr(),
+                                    4, {C, H, W, 1});
     if (compute_loss_map && _tv_valid(loss_map_buf))
         normalize_clip_map_inplace_tensor(loss_map_buf, loss_map_normalize,
                                           loss_map_clip_quantile,
-                                          loss_map_power);
+                                          loss_map_power, score_fit);
+    if (!map_only)
+        engine().learned_score.ratio_map =
+            compute_loss_map && _tv_valid(loss_map_buf) && _tv_valid(score_fit);
 
     if (map_only) {
         backend::memcpy_sync((void*)std::get<0>(map_out),
@@ -912,9 +928,17 @@ static std::map<std::string, float> _engine_loss(
     auto sdiv = [](float x, float y) -> float { return y != 0.0f ? x / y : 0.0f; };
 
     std::map<std::string, float> loss_dict;
-    loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * (1.0f - lv.ssim);
     loss_dict["psnr"] = lv.rgb_psnr;
-    loss_dict["ssim"] = lv.ssim;
+    if (perceptual_loss == (int)PerceptualLoss::SCielab) {
+        loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * kScielabLossPerDeltaE * lv.delta_e;
+        loss_dict["delta_e"] = lv.delta_e;
+    } else if (perceptual_loss == (int)PerceptualLoss::Flip) {
+        loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * lv.flip;
+        loss_dict["flip"] = lv.flip;
+    } else {
+        loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * (1.0f - lv.ssim);
+        loss_dict["ssim"] = lv.ssim;
+    }
     loss_dict["depth_loss"] = sdiv(lv.depth_sup,
         loss_weights[(int)LossWeightIndex::DepthSup]);
     loss_dict["normal_loss"] = sdiv(lv.normal_sup,
@@ -948,6 +972,7 @@ std::map<std::string, float> engine_compute_loss_backward(
     int step,
     std::array<float, (int)LossWeightIndex::length> loss_weights,
     float w_ssim,
+    int perceptual_loss,
     int num_loss_scales,
     int loss_scale_min_pixels,
     bool compute_loss_map,
@@ -963,7 +988,7 @@ std::map<std::string, float> engine_compute_loss_backward(
     float color_shift_reg_weight,
     float color_shift_reg_beta
 ) {
-    return _engine_loss(loss_weights, w_ssim, num_loss_scales,
+    return _engine_loss(loss_weights, w_ssim, perceptual_loss, num_loss_scales,
                         loss_scale_min_pixels, compute_loss_map, loss_map_mode,
                         robust_edge_aware_quantile, nms_falloff,
                         loss_map_normalize,
@@ -982,7 +1007,7 @@ bool engine_preview_loss_map(const LossConfig& loss, TorchTensorView out) {
         throw std::runtime_error("engine_preview_loss_map: null destination");
     // The regularizer weights are dropped: each of them only ever adds to a
     // gradient this call does not compute.
-    _engine_loss(loss.weights, loss.w_ssim, loss.num_loss_scales,
+    _engine_loss(loss.weights, loss.w_ssim, loss.perceptual_loss, loss.num_loss_scales,
                  loss.loss_scale_min_pixels, true, loss.loss_map_mode,
                  loss.robust_edge_aware_quantile, loss.nms_falloff,
                  loss.loss_map_normalize,

@@ -107,18 +107,44 @@ enum class DensifyLossMapMode : int {
     SsimFullNms = 8,
     SsimContrastStructNms = 9,
     SsimStructureNms = 10,
+    SCielab = 11,
+    SCielabNms = 12,
+    Flip = 13,
+    FlipNms = 14,
+    FlipFeature = 15,
+    FlipFeatureNms = 16,
 };
 
 // A *Nms mode is its base plus canny's non-maximum-suppression step (see
 // loss_map_nms in PerPixelLoss.cu), so everything upstream switches on base.
 constexpr bool densify_loss_map_has_nms(DensifyLossMapMode m) {
-    return m >= DensifyLossMapMode::LossFullNms;
+    return (m >= DensifyLossMapMode::LossFullNms &&
+            m <= DensifyLossMapMode::SsimStructureNms) ||
+           m == DensifyLossMapMode::SCielabNms || m == DensifyLossMapMode::FlipNms ||
+           m == DensifyLossMapMode::FlipFeatureNms;
 }
 constexpr DensifyLossMapMode densify_loss_map_base(DensifyLossMapMode m) {
+    if (m >= DensifyLossMapMode::SCielab)
+        return densify_loss_map_has_nms(m) ? (DensifyLossMapMode)((int)m - 1) : m;
     return densify_loss_map_has_nms(m)
         ? (DensifyLossMapMode)((int)m - (int)DensifyLossMapMode::LossFullNms + 1)
         : m;
 }
+
+// What ssim_lambda weights: the `perceptual_loss` flag.
+enum class PerceptualLoss : int {
+    Ssim = 0,
+    SCielab = 1,
+    Flip = 2,
+    SsimBlurTolerant = 3,
+};
+
+// SsimBlurTolerant's blur sigma in full-resolution pixels; each coarser loss
+// scale halves it (docs/notes/ssim-blur-tolerance.md).
+constexpr float kSsimBlurTolerance = 1.5f;
+
+// The S-CIELAB term is mean dE*ab / 100, so L* spans [0, 1] as the image does.
+constexpr float kScielabLossPerDeltaE = 0.01f;
 
 // Mode dispatched to the SSIM kernel (the SSIM kernel doesn't need to know
 // about per-pixel L1/L2 or edge-aware; those are handled outside it).
@@ -134,7 +160,8 @@ enum class SsimLossMapMode : int {
 };
 
 // Per-step loss values returned by compute_multi_scale_per_pixel_losses.
-// Fields mirror LossIndex (raw weighted sums) plus ssim.
+// Fields mirror LossIndex (raw weighted sums) plus the perceptual term: ssim,
+// delta_e (mean S-CIELAB dE*ab) or flip (mean FLIP) -- whichever was trained.
 struct LossValues {
     float rgb_loss;
     float rgb_psnr;
@@ -151,6 +178,8 @@ struct LossValues {
     float median_normal_sup;
     float median_render_normal_reg;
     float ssim;
+    float delta_e;
+    float flip;
 };
 
 
@@ -177,6 +206,8 @@ LossValues compute_multi_scale_per_pixel_losses(
     bool has_mask,
     const std::array<float, (int)LossWeightIndex::length> loss_weights_0,
     const float w_ssim,
+    // PerceptualLoss: what w_ssim weights.
+    const int perceptual_loss,
     // Positive: a pixel whose render and reference are both above it in every
     // channel leaves the loss entirely -- value, map and gradient. Both are
     // clipped there, so no colour error at that pixel is recoverable.

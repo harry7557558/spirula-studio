@@ -39,6 +39,12 @@ std::tuple<
     DistortionType dist_type,  // distortion channel set (None/D/RGB_D)
     DeviceTensor3D<float> accum_weight_map,  // [I, H, W]
     DensifyAccumMode accum_mode,
+    // [num_splats] running peak of alpha * T, atomic-maxed times
+    // max_weight_scale; empty to skip.
+    DeviceVector<float> max_weight,
+    float max_weight_scale,
+    // Primitive3DGS::kernel_vis: > 0 cut and renormalized, 0 the full gaussian
+    float kernel_cut,
     // gradients of outputs
     RenderOutput::TensorTuple v_render_outputs,
     const DeviceTensor3D<float> v_render_Ts,

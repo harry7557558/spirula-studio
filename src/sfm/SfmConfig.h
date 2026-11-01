@@ -235,8 +235,8 @@ struct SfmConfig {
     std::string reuse_matches = "auto";
 
     // Runtime.
-    int threads = 0;           // host worker pools; 0 = hardware_concurrency
-    int decode_threads = 0;    // image decode pool; 0 = hardware_concurrency
+    int threads = 0;           // host worker pools; 0 = hardware_threads()
+    int decode_threads = 0;    // image decode pool; 0 = hardware_threads()
     int decode_budget_mb = 0;  // 0 = ImageLoadOptions default
     // Input spelling; downstream options carry the canonical UUID below.
     int device = -1;

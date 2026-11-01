@@ -21,6 +21,9 @@ struct ProjEllipseView {
     int32_t xy = -1;     // -1: ellipse center is the AABB center (3DGUT)
     int32_t conic = 0;
     int32_t opac = 0;
+    // > 0: the kernel is cut at sigma = max_sigma (Primitive3DGS::kernel_vis), so no tile past
+    // it is visited even where alpha would still exceed 1/255
+    float max_sigma = 0.0f;
 };
 
 // The two screen layouts as ellipse views. 3DGUT keeps its projected conic in

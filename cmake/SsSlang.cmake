@@ -129,3 +129,43 @@ function(ss_build_spirv_tool out_var)
 
     set(${out_var} ${tool_exe} PARENT_SCOPE)
 endfunction()
+
+# ss_embed_spirv(<out_cpp> <listfile> <comment> BLOBS <spv>... FLAGS <arg>...)
+#
+# The one route from .spv blobs into a binary (spirv_tool embed). Records
+# <listfile> for shader_limits_test, so no embedded shader set escapes it.
+function(ss_embed_spirv out_cpp listfile comment)
+    cmake_parse_arguments(PARSE_ARGV 3 _e "" "" "BLOBS;FLAGS")
+    ss_build_spirv_tool(_tool)
+    string(REPLACE ";" "\n" _body "${_e_BLOBS}")
+    ss_write_if_different(${listfile} "${_body}\n")
+    add_custom_command(OUTPUT ${out_cpp}
+        COMMAND ${_tool} embed ${_e_FLAGS} ${out_cpp} --list ${listfile}
+        DEPENDS ${_tool} ${_e_BLOBS} ${listfile}
+        COMMENT "${comment}"
+        VERBATIM)
+    set_property(GLOBAL APPEND PROPERTY SS_SPIRV_LISTFILES ${listfile})
+    set_property(GLOBAL APPEND PROPERTY SS_SPIRV_BLOBS ${_e_BLOBS})
+endfunction()
+
+# ss_shader_limits_test()
+#
+# Call after every ss_embed_spirv(): the test reads the listfiles recorded so far.
+function(ss_shader_limits_test)
+    get_property(_lists GLOBAL PROPERTY SS_SPIRV_LISTFILES)
+    get_property(_blobs GLOBAL PROPERTY SS_SPIRV_BLOBS)
+    if(NOT _lists)
+        return()
+    endif()
+    set(_index ${CMAKE_BINARY_DIR}/spirv_listfiles.txt)
+    string(REPLACE ";" "\n" _body "${_lists}")
+    ss_write_if_different(${_index} "${_body}\n")
+    add_custom_target(ss_spirv_blobs DEPENDS ${_blobs})
+    add_executable(shader_limits_test
+        ${SS_SRC}/backend/vulkan/shaders/tests/shader_limits_test.cpp)
+    target_compile_definitions(shader_limits_test PRIVATE
+        SS_SPIRV_LISTFILES="${_index}")
+    target_compile_options(shader_limits_test PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+    add_dependencies(shader_limits_test ss_spirv_blobs)
+endfunction()

@@ -195,7 +195,8 @@ Prediction Predictor::predict(const float* rgb, int width, int height,
     const bool want_mask = h.has_mask;
     const Features f = m.encode(image);
     Outputs o;
-    m.decode(f, height, width, want_points, want_normal, want_mask, &o);
+    m.decode(f, height, width, want_points, want_normal, want_mask, &o,
+             std::max(opts.refine_steps, 0));
 
     // Growing the arena rebases it, so an under-reserve is silent corruption
     // rather than a fault: whatever was allocated first comes back as whatever

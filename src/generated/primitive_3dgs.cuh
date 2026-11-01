@@ -2627,60 +2627,55 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
             *aabb_xyxy_0 = _S602;
             break;
         }
+        Matrix<float, 2, 2>  covar2d_0;
         Matrix<float, 2, 2>  _S604 = makeMatrix<float, 2, 2> (0.0f);
-        Matrix<float, 2, 2>  covar2d_0 = _S604;
         *opacity_0 = 1.0f / (1.0f + (F32_exp((- in_opacity_0))));
-        float4  _S605 = normalize_0(quat_0);
-        float3  _S606 = exp_0(scale_0);
-        float x_15 = _S605.y;
+        bool _S605;
+        float4  _S606 = normalize_0(quat_0);
+        float3  _S607 = exp_0(scale_0);
+        float x_15 = _S606.y;
         float x2_0 = x_15 * x_15;
-        float y2_0 = _S605.z * _S605.z;
-        float z2_0 = _S605.w * _S605.w;
-        float xy_0 = _S605.y * _S605.z;
-        float xz_0 = _S605.y * _S605.w;
-        float yz_0 = _S605.z * _S605.w;
-        float wx_0 = _S605.x * _S605.y;
-        float wy_0 = _S605.x * _S605.z;
-        float wz_0 = _S605.x * _S605.w;
-        Matrix<float, 3, 3>  M_0 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_0 + z2_0), 2.0f * (xy_0 + wz_0), 2.0f * (xz_0 - wy_0), 2.0f * (xy_0 - wz_0), 1.0f - 2.0f * (x2_0 + z2_0), 2.0f * (yz_0 + wx_0), 2.0f * (xz_0 + wy_0), 2.0f * (yz_0 - wx_0), 1.0f - 2.0f * (x2_0 + y2_0))), makeMatrix<float, 3, 3> (_S606.x, 0.0f, 0.0f, 0.0f, _S606.y, 0.0f, 0.0f, 0.0f, _S606.z));
-        Matrix<float, 3, 3>  _S607 = transpose_3(R_0);
-        Matrix<float, 3, 3>  covar_c_0 = mul_5(mul_5(R_0, mul_5(M_0, transpose_3(M_0))), _S607);
-        float _S608 = _S603 * _S603;
-        if(_S608 <= (9.0f * covar_c_0.rows[int(2)].z))
-        {
-            *aabb_xyxy_0 = _S602;
-            break;
-        }
-        bool _S609;
+        float y2_0 = _S606.z * _S606.z;
+        float z2_0 = _S606.w * _S606.w;
+        float xy_0 = _S606.y * _S606.z;
+        float xz_0 = _S606.y * _S606.w;
+        float yz_0 = _S606.z * _S606.w;
+        float wx_0 = _S606.x * _S606.y;
+        float wy_0 = _S606.x * _S606.z;
+        float wz_0 = _S606.x * _S606.w;
+        Matrix<float, 3, 3>  M_0 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_0 + z2_0), 2.0f * (xy_0 + wz_0), 2.0f * (xz_0 - wy_0), 2.0f * (xy_0 - wz_0), 1.0f - 2.0f * (x2_0 + z2_0), 2.0f * (yz_0 + wx_0), 2.0f * (xz_0 + wy_0), 2.0f * (yz_0 - wx_0), 1.0f - 2.0f * (x2_0 + y2_0))), makeMatrix<float, 3, 3> (_S607.x, 0.0f, 0.0f, 0.0f, _S607.y, 0.0f, 0.0f, 0.0f, _S607.z));
+        Matrix<float, 3, 3>  _S608 = transpose_3(R_0);
+        Matrix<float, 3, 3>  covar_c_0 = mul_5(mul_5(R_0, mul_5(M_0, transpose_3(M_0))), _S608);
         for(;;)
         {
             covar2d_0 = _S604;
             for(;;)
             {
-                float2  _S610 = float2 {mean_c_0.x, mean_c_0.y};
-                _S601 = _S610;
-                float2  uv0_3 = _S610 / make_float2 (_S603);
-                bool _S611 = _S603 < 0.0f;
-                if(_S611)
+                float2  _S609 = float2 {mean_c_0.x, mean_c_0.y};
+                _S601 = _S609;
+                float2  uv0_3 = _S609 / make_float2 (_S603);
+                bool _S610 = _S603 < 0.0f;
+                if(_S610)
                 {
                     *mean2d_10 = uv0_3;
-                    _S609 = false;
+                    _S605 = false;
                     break;
                 }
-                float2  uv_6 = _S610 / make_float2 (_S603);
-                FixedArray<float, 1>  _S612 = dist_coeffs_9;
-                float2  _S613 = DistNone_distort_0(uv_6, &_S612);
-                *mean2d_10 = make_float2 (fx_10 * _S613.x + cx_3, fy_10 * _S613.y + cy_3);
-                _S609 = true;
+                float2  uv_6 = _S609 / make_float2 (_S603);
+                FixedArray<float, 1>  _S611 = dist_coeffs_9;
+                float2  _S612 = DistNone_distort_0(uv_6, &_S611);
+                *mean2d_10 = make_float2 (fx_10 * _S612.x + cx_3, fy_10 * _S612.y + cy_3);
+                _S605 = true;
                 break;
             }
-            if(!_S609)
+            if(!_S605)
             {
-                _S609 = false;
+                _S605 = false;
                 break;
             }
             Matrix<float, 2, 3>  J_13;
-            float2  s_diff_uv_9 = make_float2 (1.0f, 0.0f) * make_float2 (_S603) / make_float2 (_S608);
+            float _S613 = _S603 * _S603;
+            float2  s_diff_uv_9 = make_float2 (1.0f, 0.0f) * make_float2 (_S603) / make_float2 (_S613);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S614;
             (&_S614)->primal_0 = _S601 / make_float2 (_S603);
             (&_S614)->differential_0 = s_diff_uv_9;
@@ -2690,7 +2685,7 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
             Matrix<float, 2, 3>  J_14;
             *&(((&J_14)->rows + (int(0)))->x) = _S616.differential_0.x * fx_10;
             *&(((&J_14)->rows + (int(1)))->x) = _S617;
-            float2  s_diff_uv_10 = make_float2 (0.0f, 1.0f) * make_float2 (_S603) / make_float2 (_S608);
+            float2  s_diff_uv_10 = make_float2 (0.0f, 1.0f) * make_float2 (_S603) / make_float2 (_S613);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S618;
             (&_S618)->primal_0 = _S601 / make_float2 (_S603);
             (&_S618)->differential_0 = s_diff_uv_10;
@@ -2699,7 +2694,7 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
             float _S621 = _S620.differential_0.y * fy_10;
             *&(((&J_14)->rows + (int(0)))->y) = _S620.differential_0.x * fx_10;
             *&(((&J_14)->rows + (int(1)))->y) = _S621;
-            float2  s_diff_uv_11 = (make_float2 (0.0f, 0.0f) - _S601) / make_float2 (_S608);
+            float2  s_diff_uv_11 = (make_float2 (0.0f, 0.0f) - _S601) / make_float2 (_S613);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S622;
             (&_S622)->primal_0 = _S601 / make_float2 (_S603);
             (&_S622)->differential_0 = s_diff_uv_11;
@@ -2719,10 +2714,10 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
             *&(((&J_13)->rows + (int(0)))->z) = clamp_0(*&(((&J_13)->rows + (int(0)))->z), - (_S626 + _S627 - cx_3) * rz_3, - (- _S627 - cx_3) * rz_3);
             *&(((&J_13)->rows + (int(1)))->z) = clamp_0(*&(((&J_13)->rows + (int(1)))->z), min_Jyz_3, max_Jyz_3);
             covar2d_0 = mul_4(mul_3(J_13, covar_c_0), transpose_1(J_13));
-            _S609 = true;
+            _S605 = true;
             break;
         }
-        if(!(true & _S609))
+        if(!(true & _S605))
         {
             *aabb_xyxy_0 = _S602;
             break;
@@ -2768,29 +2763,29 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
         float _S637 = (*mean2d_10).y + radius_y_0;
         if(_S635 <= 0.0f)
         {
-            _S609 = true;
+            _S605 = true;
         }
         else
         {
-            _S609 = _S634 >= float(image_width_0);
+            _S605 = _S634 >= float(image_width_0);
         }
-        if(_S609)
+        if(_S605)
         {
-            _S609 = true;
+            _S605 = true;
         }
         else
         {
-            _S609 = _S637 <= 0.0f;
+            _S605 = _S637 <= 0.0f;
         }
-        if(_S609)
+        if(_S605)
         {
-            _S609 = true;
+            _S605 = true;
         }
         else
         {
-            _S609 = _S636 >= float(image_height_0);
+            _S605 = _S636 >= float(image_height_0);
         }
-        if(_S609)
+        if(_S605)
         {
             *aabb_xyxy_0 = _S602;
             break;
@@ -2798,7 +2793,7 @@ inline __device__ void projection_3dgs_persp_none(bool antialiased_0, float3  me
         *aabb_xyxy_0 = make_float4 (_S634, _S636, _S635, _S637);
         *sorting_depth_0 = _S603;
         *conic_0 = make_float3 (_S632.rows[int(0)].x, _S632.rows[int(0)].y, _S632.rows[int(1)].y);
-        *radius_1 = view_radius_3dgs_0(mean_1, scale_0, in_opacity_0, - mul_6(_S607, t_0));
+        *radius_1 = view_radius_3dgs_0(mean_1, scale_0, in_opacity_0, - mul_6(_S608, t_0));
         break;
     }
     return;
@@ -2824,99 +2819,94 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
             *aabb_xyxy_1 = _S639;
             break;
         }
+        Matrix<float, 2, 2>  covar2d_1;
         Matrix<float, 2, 2>  _S641 = makeMatrix<float, 2, 2> (0.0f);
-        Matrix<float, 2, 2>  covar2d_1 = _S641;
         *opacity_1 = 1.0f / (1.0f + (F32_exp((- in_opacity_1))));
-        float4  _S642 = normalize_0(quat_1);
-        float3  _S643 = exp_0(scale_1);
-        float x_16 = _S642.y;
+        bool _S642;
+        float4  _S643 = normalize_0(quat_1);
+        float3  _S644 = exp_0(scale_1);
+        float x_16 = _S643.y;
         float x2_1 = x_16 * x_16;
-        float y2_1 = _S642.z * _S642.z;
-        float z2_1 = _S642.w * _S642.w;
-        float xy_1 = _S642.y * _S642.z;
-        float xz_1 = _S642.y * _S642.w;
-        float yz_1 = _S642.z * _S642.w;
-        float wx_1 = _S642.x * _S642.y;
-        float wy_1 = _S642.x * _S642.z;
-        float wz_1 = _S642.x * _S642.w;
-        Matrix<float, 3, 3>  M_1 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_1 + z2_1), 2.0f * (xy_1 + wz_1), 2.0f * (xz_1 - wy_1), 2.0f * (xy_1 - wz_1), 1.0f - 2.0f * (x2_1 + z2_1), 2.0f * (yz_1 + wx_1), 2.0f * (xz_1 + wy_1), 2.0f * (yz_1 - wx_1), 1.0f - 2.0f * (x2_1 + y2_1))), makeMatrix<float, 3, 3> (_S643.x, 0.0f, 0.0f, 0.0f, _S643.y, 0.0f, 0.0f, 0.0f, _S643.z));
-        Matrix<float, 3, 3>  _S644 = transpose_3(R_1);
-        Matrix<float, 3, 3>  covar_c_1 = mul_5(mul_5(R_1, mul_5(M_1, transpose_3(M_1))), _S644);
-        float _S645 = _S640 * _S640;
-        if(_S645 <= (9.0f * covar_c_1.rows[int(2)].z))
-        {
-            *aabb_xyxy_1 = _S639;
-            break;
-        }
-        bool _S646;
+        float y2_1 = _S643.z * _S643.z;
+        float z2_1 = _S643.w * _S643.w;
+        float xy_1 = _S643.y * _S643.z;
+        float xz_1 = _S643.y * _S643.w;
+        float yz_1 = _S643.z * _S643.w;
+        float wx_1 = _S643.x * _S643.y;
+        float wy_1 = _S643.x * _S643.z;
+        float wz_1 = _S643.x * _S643.w;
+        Matrix<float, 3, 3>  M_1 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_1 + z2_1), 2.0f * (xy_1 + wz_1), 2.0f * (xz_1 - wy_1), 2.0f * (xy_1 - wz_1), 1.0f - 2.0f * (x2_1 + z2_1), 2.0f * (yz_1 + wx_1), 2.0f * (xz_1 + wy_1), 2.0f * (yz_1 - wx_1), 1.0f - 2.0f * (x2_1 + y2_1))), makeMatrix<float, 3, 3> (_S644.x, 0.0f, 0.0f, 0.0f, _S644.y, 0.0f, 0.0f, 0.0f, _S644.z));
+        Matrix<float, 3, 3>  _S645 = transpose_3(R_1);
+        Matrix<float, 3, 3>  covar_c_1 = mul_5(mul_5(R_1, mul_5(M_1, transpose_3(M_1))), _S645);
         for(;;)
         {
             covar2d_1 = _S641;
             for(;;)
             {
-                float2  _S647 = float2 {mean_c_1.x, mean_c_1.y};
-                _S638 = _S647;
-                float2  uv0_4 = _S647 / make_float2 (_S640);
+                float2  _S646 = float2 {mean_c_1.x, mean_c_1.y};
+                _S638 = _S646;
+                float2  uv0_4 = _S646 / make_float2 (_S640);
                 if(_S640 < 0.0f)
                 {
-                    _S646 = true;
+                    _S642 = true;
                 }
                 else
                 {
-                    float2  _S648 = make_float2 (1.0f, 0.0f);
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S649;
-                    (&_S649)->primal_0 = uv0_4;
-                    (&_S649)->differential_0 = _S648;
-                    FixedArray<float, 4>  _S650 = dist_coeffs_10;
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S651 = s_fwd_DistOpenCV_distort_0(&_S649, &_S650);
-                    float2  _S652 = make_float2 (0.0f, 1.0f);
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S653;
-                    (&_S653)->primal_0 = uv0_4;
-                    (&_S653)->differential_0 = _S652;
-                    FixedArray<float, 4>  _S654 = dist_coeffs_10;
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S655 = s_fwd_DistOpenCV_distort_0(&_S653, &_S654);
-                    Matrix<float, 2, 2>  _S656 = transpose_0(makeMatrix<float, 2, 2> (_S651.differential_0, _S655.differential_0));
-                    float _S657 = (F32_min((determinant_0(_S656)), ((F32_min((_S656.rows[int(0)].x), (_S656.rows[int(1)].y))))));
-                    if(_S657 > 0.25f)
+                    float2  _S647 = make_float2 (1.0f, 0.0f);
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S648;
+                    (&_S648)->primal_0 = uv0_4;
+                    (&_S648)->differential_0 = _S647;
+                    FixedArray<float, 4>  _S649 = dist_coeffs_10;
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S650 = s_fwd_DistOpenCV_distort_0(&_S648, &_S649);
+                    float2  _S651 = make_float2 (0.0f, 1.0f);
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S652;
+                    (&_S652)->primal_0 = uv0_4;
+                    (&_S652)->differential_0 = _S651;
+                    FixedArray<float, 4>  _S653 = dist_coeffs_10;
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S654 = s_fwd_DistOpenCV_distort_0(&_S652, &_S653);
+                    Matrix<float, 2, 2>  _S655 = transpose_0(makeMatrix<float, 2, 2> (_S650.differential_0, _S654.differential_0));
+                    float _S656 = (F32_min((determinant_0(_S655)), ((F32_min((_S655.rows[int(0)].x), (_S655.rows[int(1)].y))))));
+                    if(_S656 > 0.25f)
                     {
-                        _S646 = _S657 < 4.0f;
+                        _S642 = _S656 < 4.0f;
                     }
                     else
                     {
-                        _S646 = false;
+                        _S642 = false;
                     }
-                    if(_S646)
+                    if(_S642)
                     {
-                        FixedArray<float, 4>  _S658 = dist_coeffs_10;
-                        float2  _S659 = DistOpenCV_distort_0(uv0_4, &_S658);
-                        _S646 = (dot_0(uv0_4, _S659)) >= 0.0f;
+                        FixedArray<float, 4>  _S657 = dist_coeffs_10;
+                        float2  _S658 = DistOpenCV_distort_0(uv0_4, &_S657);
+                        _S642 = (dot_0(uv0_4, _S658)) >= 0.0f;
                     }
                     else
                     {
-                        _S646 = false;
+                        _S642 = false;
                     }
-                    _S646 = !_S646;
+                    _S642 = !_S642;
                 }
-                if(_S646)
+                if(_S642)
                 {
                     *mean2d_11 = uv0_4;
-                    _S646 = false;
+                    _S642 = false;
                     break;
                 }
-                float2  uv_7 = _S647 / make_float2 (_S640);
-                FixedArray<float, 4>  _S660 = dist_coeffs_10;
-                float2  _S661 = DistOpenCV_distort_0(uv_7, &_S660);
-                *mean2d_11 = make_float2 (fx_11 * _S661.x + cx_4, fy_11 * _S661.y + cy_4);
-                _S646 = true;
+                float2  uv_7 = _S646 / make_float2 (_S640);
+                FixedArray<float, 4>  _S659 = dist_coeffs_10;
+                float2  _S660 = DistOpenCV_distort_0(uv_7, &_S659);
+                *mean2d_11 = make_float2 (fx_11 * _S660.x + cx_4, fy_11 * _S660.y + cy_4);
+                _S642 = true;
                 break;
             }
-            if(!_S646)
+            if(!_S642)
             {
-                _S646 = false;
+                _S642 = false;
                 break;
             }
             Matrix<float, 2, 3>  J_15;
-            float2  s_diff_uv_12 = make_float2 (1.0f, 0.0f) * make_float2 (_S640) / make_float2 (_S645);
+            float _S661 = _S640 * _S640;
+            float2  s_diff_uv_12 = make_float2 (1.0f, 0.0f) * make_float2 (_S640) / make_float2 (_S661);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S662;
             (&_S662)->primal_0 = _S638 / make_float2 (_S640);
             (&_S662)->differential_0 = s_diff_uv_12;
@@ -2926,7 +2916,7 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
             Matrix<float, 2, 3>  J_16;
             *&(((&J_16)->rows + (int(0)))->x) = _S664.differential_0.x * fx_11;
             *&(((&J_16)->rows + (int(1)))->x) = _S665;
-            float2  s_diff_uv_13 = make_float2 (0.0f, 1.0f) * make_float2 (_S640) / make_float2 (_S645);
+            float2  s_diff_uv_13 = make_float2 (0.0f, 1.0f) * make_float2 (_S640) / make_float2 (_S661);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S666;
             (&_S666)->primal_0 = _S638 / make_float2 (_S640);
             (&_S666)->differential_0 = s_diff_uv_13;
@@ -2935,7 +2925,7 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
             float _S669 = _S668.differential_0.y * fy_11;
             *&(((&J_16)->rows + (int(0)))->y) = _S668.differential_0.x * fx_11;
             *&(((&J_16)->rows + (int(1)))->y) = _S669;
-            float2  s_diff_uv_14 = (make_float2 (0.0f, 0.0f) - _S638) / make_float2 (_S645);
+            float2  s_diff_uv_14 = (make_float2 (0.0f, 0.0f) - _S638) / make_float2 (_S661);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S670;
             (&_S670)->primal_0 = _S638 / make_float2 (_S640);
             (&_S670)->differential_0 = s_diff_uv_14;
@@ -2955,10 +2945,10 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
             *&(((&J_15)->rows + (int(0)))->z) = clamp_0(*&(((&J_15)->rows + (int(0)))->z), - (_S674 + _S675 - cx_4) * rz_4, - (- _S675 - cx_4) * rz_4);
             *&(((&J_15)->rows + (int(1)))->z) = clamp_0(*&(((&J_15)->rows + (int(1)))->z), min_Jyz_4, max_Jyz_4);
             covar2d_1 = mul_4(mul_3(J_15, covar_c_1), transpose_1(J_15));
-            _S646 = true;
+            _S642 = true;
             break;
         }
-        if(!(true & _S646))
+        if(!(true & _S642))
         {
             *aabb_xyxy_1 = _S639;
             break;
@@ -3004,29 +2994,29 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
         float _S685 = (*mean2d_11).y + radius_y_1;
         if(_S683 <= 0.0f)
         {
-            _S646 = true;
+            _S642 = true;
         }
         else
         {
-            _S646 = _S682 >= float(image_width_1);
+            _S642 = _S682 >= float(image_width_1);
         }
-        if(_S646)
+        if(_S642)
         {
-            _S646 = true;
+            _S642 = true;
         }
         else
         {
-            _S646 = _S685 <= 0.0f;
+            _S642 = _S685 <= 0.0f;
         }
-        if(_S646)
+        if(_S642)
         {
-            _S646 = true;
+            _S642 = true;
         }
         else
         {
-            _S646 = _S684 >= float(image_height_1);
+            _S642 = _S684 >= float(image_height_1);
         }
-        if(_S646)
+        if(_S642)
         {
             *aabb_xyxy_1 = _S639;
             break;
@@ -3034,7 +3024,7 @@ inline __device__ void projection_3dgs_persp_opencv(bool antialiased_1, float3  
         *aabb_xyxy_1 = make_float4 (_S682, _S684, _S683, _S685);
         *sorting_depth_1 = _S640;
         *conic_1 = make_float3 (_S680.rows[int(0)].x, _S680.rows[int(0)].y, _S680.rows[int(1)].y);
-        *radius_2 = view_radius_3dgs_0(mean_2, scale_1, in_opacity_1, - mul_6(_S644, t_1));
+        *radius_2 = view_radius_3dgs_0(mean_2, scale_1, in_opacity_1, - mul_6(_S645, t_1));
         break;
     }
     return;
@@ -3060,99 +3050,94 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
             *aabb_xyxy_2 = _S687;
             break;
         }
+        Matrix<float, 2, 2>  covar2d_2;
         Matrix<float, 2, 2>  _S689 = makeMatrix<float, 2, 2> (0.0f);
-        Matrix<float, 2, 2>  covar2d_2 = _S689;
         *opacity_2 = 1.0f / (1.0f + (F32_exp((- in_opacity_2))));
-        float4  _S690 = normalize_0(quat_2);
-        float3  _S691 = exp_0(scale_2);
-        float x_17 = _S690.y;
+        bool _S690;
+        float4  _S691 = normalize_0(quat_2);
+        float3  _S692 = exp_0(scale_2);
+        float x_17 = _S691.y;
         float x2_2 = x_17 * x_17;
-        float y2_2 = _S690.z * _S690.z;
-        float z2_2 = _S690.w * _S690.w;
-        float xy_2 = _S690.y * _S690.z;
-        float xz_2 = _S690.y * _S690.w;
-        float yz_2 = _S690.z * _S690.w;
-        float wx_2 = _S690.x * _S690.y;
-        float wy_2 = _S690.x * _S690.z;
-        float wz_2 = _S690.x * _S690.w;
-        Matrix<float, 3, 3>  M_2 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_2 + z2_2), 2.0f * (xy_2 + wz_2), 2.0f * (xz_2 - wy_2), 2.0f * (xy_2 - wz_2), 1.0f - 2.0f * (x2_2 + z2_2), 2.0f * (yz_2 + wx_2), 2.0f * (xz_2 + wy_2), 2.0f * (yz_2 - wx_2), 1.0f - 2.0f * (x2_2 + y2_2))), makeMatrix<float, 3, 3> (_S691.x, 0.0f, 0.0f, 0.0f, _S691.y, 0.0f, 0.0f, 0.0f, _S691.z));
-        Matrix<float, 3, 3>  _S692 = transpose_3(R_2);
-        Matrix<float, 3, 3>  covar_c_2 = mul_5(mul_5(R_2, mul_5(M_2, transpose_3(M_2))), _S692);
-        float _S693 = _S688 * _S688;
-        if(_S693 <= (9.0f * covar_c_2.rows[int(2)].z))
-        {
-            *aabb_xyxy_2 = _S687;
-            break;
-        }
-        bool _S694;
+        float y2_2 = _S691.z * _S691.z;
+        float z2_2 = _S691.w * _S691.w;
+        float xy_2 = _S691.y * _S691.z;
+        float xz_2 = _S691.y * _S691.w;
+        float yz_2 = _S691.z * _S691.w;
+        float wx_2 = _S691.x * _S691.y;
+        float wy_2 = _S691.x * _S691.z;
+        float wz_2 = _S691.x * _S691.w;
+        Matrix<float, 3, 3>  M_2 = mul_5(transpose_3(makeMatrix<float, 3, 3> (1.0f - 2.0f * (y2_2 + z2_2), 2.0f * (xy_2 + wz_2), 2.0f * (xz_2 - wy_2), 2.0f * (xy_2 - wz_2), 1.0f - 2.0f * (x2_2 + z2_2), 2.0f * (yz_2 + wx_2), 2.0f * (xz_2 + wy_2), 2.0f * (yz_2 - wx_2), 1.0f - 2.0f * (x2_2 + y2_2))), makeMatrix<float, 3, 3> (_S692.x, 0.0f, 0.0f, 0.0f, _S692.y, 0.0f, 0.0f, 0.0f, _S692.z));
+        Matrix<float, 3, 3>  _S693 = transpose_3(R_2);
+        Matrix<float, 3, 3>  covar_c_2 = mul_5(mul_5(R_2, mul_5(M_2, transpose_3(M_2))), _S693);
         for(;;)
         {
             covar2d_2 = _S689;
             for(;;)
             {
-                float2  _S695 = float2 {mean_c_2.x, mean_c_2.y};
-                _S686 = _S695;
-                float2  uv0_5 = _S695 / make_float2 (_S688);
+                float2  _S694 = float2 {mean_c_2.x, mean_c_2.y};
+                _S686 = _S694;
+                float2  uv0_5 = _S694 / make_float2 (_S688);
                 if(_S688 < 0.0f)
                 {
-                    _S694 = true;
+                    _S690 = true;
                 }
                 else
                 {
-                    float2  _S696 = make_float2 (1.0f, 0.0f);
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S697;
-                    (&_S697)->primal_0 = uv0_5;
-                    (&_S697)->differential_0 = _S696;
-                    FixedArray<float, 8>  _S698 = dist_coeffs_11;
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S699 = s_fwd_DistThinPrism_distort_0(&_S697, &_S698);
-                    float2  _S700 = make_float2 (0.0f, 1.0f);
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S701;
-                    (&_S701)->primal_0 = uv0_5;
-                    (&_S701)->differential_0 = _S700;
-                    FixedArray<float, 8>  _S702 = dist_coeffs_11;
-                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S703 = s_fwd_DistThinPrism_distort_0(&_S701, &_S702);
-                    Matrix<float, 2, 2>  _S704 = transpose_0(makeMatrix<float, 2, 2> (_S699.differential_0, _S703.differential_0));
-                    float _S705 = (F32_min((determinant_0(_S704)), ((F32_min((_S704.rows[int(0)].x), (_S704.rows[int(1)].y))))));
-                    if(_S705 > 0.25f)
+                    float2  _S695 = make_float2 (1.0f, 0.0f);
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S696;
+                    (&_S696)->primal_0 = uv0_5;
+                    (&_S696)->differential_0 = _S695;
+                    FixedArray<float, 8>  _S697 = dist_coeffs_11;
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S698 = s_fwd_DistThinPrism_distort_0(&_S696, &_S697);
+                    float2  _S699 = make_float2 (0.0f, 1.0f);
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S700;
+                    (&_S700)->primal_0 = uv0_5;
+                    (&_S700)->differential_0 = _S699;
+                    FixedArray<float, 8>  _S701 = dist_coeffs_11;
+                    DiffPair_vectorx3Cfloatx2C2x3E_0 _S702 = s_fwd_DistThinPrism_distort_0(&_S700, &_S701);
+                    Matrix<float, 2, 2>  _S703 = transpose_0(makeMatrix<float, 2, 2> (_S698.differential_0, _S702.differential_0));
+                    float _S704 = (F32_min((determinant_0(_S703)), ((F32_min((_S703.rows[int(0)].x), (_S703.rows[int(1)].y))))));
+                    if(_S704 > 0.25f)
                     {
-                        _S694 = _S705 < 4.0f;
+                        _S690 = _S704 < 4.0f;
                     }
                     else
                     {
-                        _S694 = false;
+                        _S690 = false;
                     }
-                    if(_S694)
+                    if(_S690)
                     {
-                        FixedArray<float, 8>  _S706 = dist_coeffs_11;
-                        float2  _S707 = DistThinPrism_distort_0(uv0_5, &_S706);
-                        _S694 = (dot_0(uv0_5, _S707)) >= 0.0f;
+                        FixedArray<float, 8>  _S705 = dist_coeffs_11;
+                        float2  _S706 = DistThinPrism_distort_0(uv0_5, &_S705);
+                        _S690 = (dot_0(uv0_5, _S706)) >= 0.0f;
                     }
                     else
                     {
-                        _S694 = false;
+                        _S690 = false;
                     }
-                    _S694 = !_S694;
+                    _S690 = !_S690;
                 }
-                if(_S694)
+                if(_S690)
                 {
                     *mean2d_12 = uv0_5;
-                    _S694 = false;
+                    _S690 = false;
                     break;
                 }
-                float2  uv_8 = _S695 / make_float2 (_S688);
-                FixedArray<float, 8>  _S708 = dist_coeffs_11;
-                float2  _S709 = DistThinPrism_distort_0(uv_8, &_S708);
-                *mean2d_12 = make_float2 (fx_12 * _S709.x + cx_5, fy_12 * _S709.y + cy_5);
-                _S694 = true;
+                float2  uv_8 = _S694 / make_float2 (_S688);
+                FixedArray<float, 8>  _S707 = dist_coeffs_11;
+                float2  _S708 = DistThinPrism_distort_0(uv_8, &_S707);
+                *mean2d_12 = make_float2 (fx_12 * _S708.x + cx_5, fy_12 * _S708.y + cy_5);
+                _S690 = true;
                 break;
             }
-            if(!_S694)
+            if(!_S690)
             {
-                _S694 = false;
+                _S690 = false;
                 break;
             }
             Matrix<float, 2, 3>  J_17;
-            float2  s_diff_uv_15 = make_float2 (1.0f, 0.0f) * make_float2 (_S688) / make_float2 (_S693);
+            float _S709 = _S688 * _S688;
+            float2  s_diff_uv_15 = make_float2 (1.0f, 0.0f) * make_float2 (_S688) / make_float2 (_S709);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S710;
             (&_S710)->primal_0 = _S686 / make_float2 (_S688);
             (&_S710)->differential_0 = s_diff_uv_15;
@@ -3162,7 +3147,7 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
             Matrix<float, 2, 3>  J_18;
             *&(((&J_18)->rows + (int(0)))->x) = _S712.differential_0.x * fx_12;
             *&(((&J_18)->rows + (int(1)))->x) = _S713;
-            float2  s_diff_uv_16 = make_float2 (0.0f, 1.0f) * make_float2 (_S688) / make_float2 (_S693);
+            float2  s_diff_uv_16 = make_float2 (0.0f, 1.0f) * make_float2 (_S688) / make_float2 (_S709);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S714;
             (&_S714)->primal_0 = _S686 / make_float2 (_S688);
             (&_S714)->differential_0 = s_diff_uv_16;
@@ -3171,7 +3156,7 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
             float _S717 = _S716.differential_0.y * fy_12;
             *&(((&J_18)->rows + (int(0)))->y) = _S716.differential_0.x * fx_12;
             *&(((&J_18)->rows + (int(1)))->y) = _S717;
-            float2  s_diff_uv_17 = (make_float2 (0.0f, 0.0f) - _S686) / make_float2 (_S693);
+            float2  s_diff_uv_17 = (make_float2 (0.0f, 0.0f) - _S686) / make_float2 (_S709);
             DiffPair_vectorx3Cfloatx2C2x3E_0 _S718;
             (&_S718)->primal_0 = _S686 / make_float2 (_S688);
             (&_S718)->differential_0 = s_diff_uv_17;
@@ -3191,10 +3176,10 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
             *&(((&J_17)->rows + (int(0)))->z) = clamp_0(*&(((&J_17)->rows + (int(0)))->z), - (_S722 + _S723 - cx_5) * rz_5, - (- _S723 - cx_5) * rz_5);
             *&(((&J_17)->rows + (int(1)))->z) = clamp_0(*&(((&J_17)->rows + (int(1)))->z), min_Jyz_5, max_Jyz_5);
             covar2d_2 = mul_4(mul_3(J_17, covar_c_2), transpose_1(J_17));
-            _S694 = true;
+            _S690 = true;
             break;
         }
-        if(!(true & _S694))
+        if(!(true & _S690))
         {
             *aabb_xyxy_2 = _S687;
             break;
@@ -3240,29 +3225,29 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
         float _S733 = (*mean2d_12).y + radius_y_2;
         if(_S731 <= 0.0f)
         {
-            _S694 = true;
+            _S690 = true;
         }
         else
         {
-            _S694 = _S730 >= float(image_width_2);
+            _S690 = _S730 >= float(image_width_2);
         }
-        if(_S694)
+        if(_S690)
         {
-            _S694 = true;
+            _S690 = true;
         }
         else
         {
-            _S694 = _S733 <= 0.0f;
+            _S690 = _S733 <= 0.0f;
         }
-        if(_S694)
+        if(_S690)
         {
-            _S694 = true;
+            _S690 = true;
         }
         else
         {
-            _S694 = _S732 >= float(image_height_2);
+            _S690 = _S732 >= float(image_height_2);
         }
-        if(_S694)
+        if(_S690)
         {
             *aabb_xyxy_2 = _S687;
             break;
@@ -3270,7 +3255,7 @@ inline __device__ void projection_3dgs_persp_prism(bool antialiased_2, float3  m
         *aabb_xyxy_2 = make_float4 (_S730, _S732, _S731, _S733);
         *sorting_depth_2 = _S688;
         *conic_2 = make_float3 (_S728.rows[int(0)].x, _S728.rows[int(0)].y, _S728.rows[int(1)].y);
-        *radius_3 = view_radius_3dgs_0(mean_3, scale_2, in_opacity_2, - mul_6(_S692, t_2));
+        *radius_3 = view_radius_3dgs_0(mean_3, scale_2, in_opacity_2, - mul_6(_S693, t_2));
         break;
     }
     return;

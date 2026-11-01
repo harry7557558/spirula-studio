@@ -5,6 +5,7 @@
 // the densify schedule still to come. The models and the measurements behind
 // their constants: docs/notes/train-forecast.md.
 
+#include "app/ResourceForecast.h"
 #include "core/PoolSlots.h"
 #include "engine/EngineConfig.h"
 
@@ -42,35 +43,14 @@ private:
     int64_t _cap = 0;
 };
 
-enum class OomRisk : uint8_t { Unknown, Low, Medium, High };
-
 struct EtaForecast {
     double seconds = -1.0;   // < 0 while unknown
     double sigma = -1.0;
 };
 
-// All byte figures are device memory. "Ours" is this process; "others" is
+// Device memory, with x the training step. "Ours" is this process; "others" is
 // everything else on the device, which includes the backend's own context.
-struct VramForecast {
-    bool valid = false;
-    // No densify step has run yet, so the live-splat scratch the first one
-    // allocates is an estimate rather than a measurement.
-    bool provisional = false;
-    double total_bytes = 0.0;
-    double ours_bytes = 0.0;
-    double others_bytes = 0.0;
-    double others_sigma = 0.0;
-
-    struct Sample { int step; double ours; double others; };
-    std::vector<Sample> history;
-    struct Band { int step; double mean; double sigma; };
-    std::vector<Band> projection;      // ours, from the next step to the end
-
-    double peak_mean = 0.0;            // ours at the last step
-    double peak_sigma = 0.0;
-    double p_oom = 0.0;                // chance ours + others exceeds the device
-    OomRisk risk = OomRisk::Unknown;
-
+struct VramForecast : ResourceForecast {
     // Ours now, split by pool category, plus scratch and what the pool does
     // not account for; and the splat x img share projected at the peak.
     std::array<double, (int)VramCategory::Count> category{};
@@ -95,8 +75,10 @@ struct MemorySample {
     std::array<size_t, (int)VramCategory::Count> pool_used{};
     std::array<size_t, (int)VramCategory::Count> pool_cap{};
     size_t scratch = 0;
-    bool has_process = false, has_used = false, has_total = false;
+    bool has_process = false, has_used = false, has_total = false, has_commit = false;
     uint64_t process_bytes = 0, used_bytes = 0, total_bytes = 0;
+    uint64_t process_peak_bytes = 0;   // since the previous sample
+    uint64_t commit_free_bytes = 0;
 };
 
 class TrainForecast {
@@ -133,6 +115,7 @@ private:
     struct MemWindow {
         int steps = 0;
         double log_ratio = 0.0, log_ratio_sq = 0.0;
+        double peak = 0.0;               // the window's own high-water of the growth
     };
 
     int sh_coeffs(int step) const;
@@ -162,6 +145,7 @@ private:
     double _g[2] = {0, 0};
     double _G[2][2] = {};
     double _demand_sd = 0.0;
+    double _swing_sq = 0.0;              // windows' peaks about the fit, relative, squared
     double _ours_hw = 0.0, _grow_hw = 0.0;
 
     std::vector<VramForecast::Sample> _history;

@@ -77,7 +77,7 @@ Outcome run(int64_t h, int64_t w, int scales, bool masked,
     for (int replay = 0; replay < 3; ++replay) {
         losses = compute_multi_scale_per_pixel_losses(scales, rgb, rgb, depth, gt,
             absent(), absent(), absent(), transmittance, absent(), absent(), absent(),
-            absent(), absent(), alpha, masked, weights, 0.0f, -1.0f, v_losses, needs,
+            absent(), absent(), alpha, masked, weights, 0.0f, 0, -1.0f, v_losses, needs,
             1, absent(), absent(), static_cast<int>(DensifyLossMapMode::None), 0.75f, 0.0f, grads);
         backend::device_synchronize();
     }

@@ -290,17 +290,36 @@ void _engine_bilagrid_tv_into(float* tv_buf3_device) {
     if (engine().bilagrid_normal.enabled) run(engine().bilagrid_normal, 2);
 }
 
-// Populate engine().bilagrid_cur_cam_indices from a host or device int32
-// tensor. Empty/null tensor -> leave it null (kernels fall back to identity).
-// Called by engine_bilagrid_forward / engine_ppisp_forward, and directly by
-// engine_train_step before the forwards.
 void _set_cur_cam_indices(TorchTensorView tv) {
-    if (std::get<0>(tv) == 0 || std::get<2>(tv).empty()) {
-        engine().bilagrid_cur_cam_indices = DeviceVector<int32_t>();
-    } else {
-        engine().bilagrid_cur_cam_indices = _hv_to_dv<int32_t>(
-            PoolSlot::EngBgCamIndices, tv);
+    auto& s = engine();
+    s.optim.projective_one_center = false;
+    s.optim.projective_center_id = -1;
+    if (std::get<0>(tv) == 0 || std::get<2>(tv).empty() || std::get<2>(tv)[0] <= 0) {
+        s.bilagrid_cur_cam_indices = DeviceVector<int32_t>();
+        return;
     }
+    s.bilagrid_cur_cam_indices = _hv_to_dv<int32_t>(PoolSlot::EngBgCamIndices,tv);
+    int64_t n = std::get<2>(tv)[0];
+    const auto& centers = s.projective_centers_host;
+    if (centers.empty()) { s.optim.projective_one_center = n == 1; return; }
+    const int32_t* indices = reinterpret_cast<const int32_t*>(std::get<0>(tv));
+    std::vector<int32_t> host;
+    if (_is_device_ptr(indices)) {
+        host.resize(n);
+        backend::memcpy_sync(host.data(),indices,n*sizeof(int32_t),backend::MemcpyKind::DeviceToHost);
+        indices = host.data();
+    }
+    int32_t first = indices[0];
+    if (first < 0 || (size_t)first >= centers.size()) return;
+    const float4 c = centers[first];
+    for (int64_t i = 1; i < n; ++i) {
+        int32_t id = indices[i];
+        if (id < 0 || (size_t)id >= centers.size()) return;
+        const float4 v = centers[id];
+        if (c.x != v.x || c.y != v.y || c.z != v.z) return;
+    }
+    s.optim.projective_one_center = true;
+    s.optim.projective_center_id = first;
 }
 
 // Apply bilagrid forward in-place for each enabled type for the current batch.

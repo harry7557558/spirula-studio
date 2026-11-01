@@ -176,7 +176,7 @@ static VramForecast run_vram(double others_gib, int stop_at) {
     std::printf("  vram @%d: peak %.3f +- %.3f GiB, truth %.3f GiB, p_oom %.3f\n",
                 stop_at, at_stop.peak_mean / gib, at_stop.peak_sigma / gib,
                 truth / gib, at_stop.p_oom);
-    CHECK(at_stop.valid, "no forecast at step %d", stop_at);
+    CHECK(at_stop.projected, "no forecast at step %d", stop_at);
     CHECK(std::fabs(at_stop.peak_mean - truth) < 3.0 * at_stop.peak_sigma + 0.02 * truth,
           "peak off: %.3f vs %.3f GiB", at_stop.peak_mean / gib, truth / gib);
     return at_stop;

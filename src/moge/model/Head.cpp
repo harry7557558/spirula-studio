@@ -92,7 +92,7 @@ void add_projected(Model& m, const Tensor& out, const Tensor& in, const std::str
 }  // namespace
 
 void Model::decode(const Features& f, int64_t H, int64_t W, bool want_points,
-                   bool want_normal, bool want_mask, Outputs* out) {
+                   bool want_normal, bool want_mask, Outputs* out, int refine_steps) {
     const Hparams& h = hp();
     const int64_t D = h.embed_dim;
     const int64_t np = f.gh * f.gw;
@@ -153,6 +153,11 @@ void Model::decode(const Features& f, int64_t H, int64_t W, bool want_points,
                    weights.get(std::string(mod) + ".output_blocks.4.weight"), 1, 1, co);
         if (dump_enabled())
             dump_tensor((std::string(mod) + "_raw").c_str(), raw, {Hf, Wf, dst.shape[2]});
+        // MoGe-3 refines at the head's own resolution and resizes after.
+        if (refine_steps > 0 && h.has_refiner && std::string(mod) == "points_head") {
+            refine(f, raw, refine_steps);
+            if (dump_enabled()) dump_tensor("points_head_refined", raw, {Hf, Wf, 3});
+        }
         nn::resize_bilinear(dst, raw);
     };
 

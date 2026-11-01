@@ -410,9 +410,16 @@ buys overlap with PNG encoding rather than raw metric throughput — 30 views of
 a 3115×2076 scene take ~90 s of scoring however the threads are arranged, and
 `--save-eval-images` adds ~35 s on top instead of ~115 s.
 
-LPIPS is not native. `--save-eval-images 1` writes `eval-gt-NNNNN.png` and
-`eval-render-NNNNN.png` per view; `reference/python/eval_lpips.py` reads those
-and merges `lpips_*` into `metrics.json`.
+LPIPS (`lpips_alex`, `lpips_vgg` and their `cc_` variants) is native where the
+build has the inference layer: `src/lpips/`, reached through `LpipsHooks`,
+which `EvalLpips.cpp` installs, on the 8-bit images `--save-eval-images` would
+write -- so the numbers are `reference/python/eval_lpips.py`'s, to the six
+digits `metrics.json` prints. Its
+checkpoints are fetched in `setup_engine()`, before training, and a failed
+download fails the run there; `--eval-lpips 0` turns it off and
+`--lpips-checkpoints <folder>` reads the files from a folder. A build without
+the inference layer says so and leaves LPIPS to that script.
+src/lpips/README.md has the details.
 
 ## Unsupported-by-design (guarded with clear errors)
 

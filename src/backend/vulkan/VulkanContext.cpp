@@ -16,6 +16,9 @@
 #include "core/GpuStall.h"
 #include "core/VulkanDeviceSelection.h"
 #include "core/VulkanMemoryBudget.h"
+#ifdef _WIN32
+#include "core/HostMemory.h"
+#endif
 
 namespace backend {
 
@@ -31,6 +34,7 @@ std::string g_error;
 // Live device_malloc byte total, defined in VulkanRuntime.cpp; read below by
 // backend::memory_usage() for the process VRAM figure.
 extern std::atomic<uint64_t> g_device_bytes;
+extern std::atomic<uint64_t> g_device_peak_bytes;
 
 void set_error(const char* what, VkResult result) {
     std::lock_guard<std::mutex> lock(g_error_mutex);
@@ -78,6 +82,7 @@ struct DeviceProbe {
     bool required_ok = false;
     const char* unusable = nullptr;  // why required_ok is false
     bool atomic_float = false;
+    bool atomic_float_xchg = false;  // shaderBufferFloat32Atomics
     bool shader_int64 = false;
     bool shader_int8 = false;
     uint32_t queue_family = UINT32_MAX;
@@ -87,6 +92,7 @@ struct DeviceProbe {
     // VK_EXT_subgroup_size_control can pin compute pipelines within [min, max].
     bool subgroup_control = false;
     uint32_t min_subgroup = 0, max_subgroup = 0;
+    uint32_t max_workgroup_subgroups = 0;
 };
 
 DeviceProbe probe_device(VkPhysicalDevice pd) {
@@ -134,6 +140,7 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
                                (sp.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT);
         out.min_subgroup = sp.minSubgroupSize;
         out.max_subgroup = sp.maxSubgroupSize;
+        out.max_workgroup_subgroups = sp.maxComputeWorkgroupSubgroups;
     }
     // 64 is the widest the kernels are tested at (AMD GCN has nothing narrower).
     const uint32_t narrowest =
@@ -147,6 +154,7 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
         out.unusable = "needs compute subgroups of 64 lanes or fewer";
     out.required_ok = out.unusable == nullptr;
     out.atomic_float = fatomic.shaderBufferFloat32AtomicAdd;
+    out.atomic_float_xchg = fatomic.shaderBufferFloat32Atomics;
     // Optional: without shaderInt64 the pipeline layer loads the ".noint64"
     // blob variants (32-bit index emulation); with shaderInt8 (+ 8-bit
     // storage, near-universally paired) it loads the native ".int8" ones.
@@ -158,13 +166,20 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
 // Keyed on the driver ID, not the vendor: Mesa's Dozen (Vulkan over D3D12)
 // reports AMD's vendor ID too. Native fp32 buffer atomics start at RDNA3, and
 // RADV trains correctly on the older GPUs through the same CAS-loop shaders.
-backend::DeviceIssue device_issue(const DeviceProbe& p) {
+bool amd_windows_emulated_fadd(const DeviceProbe& p) {
 #ifdef _WIN32
-    if (p.props.vendorID == 0x1002 &&
-        p.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && !p.atomic_float)
-        return backend::DeviceIssue::AmdWindowsFloatAtomics;
-#endif
+    return p.props.vendorID == 0x1002 &&
+           p.driver_id == VK_DRIVER_ID_AMD_PROPRIETARY && !p.atomic_float;
+#else
     (void)p;
+    return false;
+#endif
+}
+
+// What is left once Context::init has applied its workarounds.
+backend::DeviceIssue device_issue(const DeviceProbe& p) {
+    if (amd_windows_emulated_fadd(p) && !p.atomic_float_xchg)
+        return backend::DeviceIssue::AmdWindowsFloatAtomics;
     return backend::DeviceIssue::NoneKnown;
 }
 
@@ -465,6 +480,8 @@ void Context::init() {
     _caps.max_push_constants = probe.props.limits.maxPushConstantsSize;
     _caps.max_workgroup_invocations =
         probe.props.limits.maxComputeWorkGroupInvocations;
+    _caps.max_workgroup_size_x = probe.props.limits.maxComputeWorkGroupSize[0];
+    _caps.max_workgroup_subgroups = probe.max_workgroup_subgroups;
     _caps.max_shared_memory = probe.props.limits.maxComputeSharedMemorySize;
     _caps.non_coherent_atom_size = probe.props.limits.nonCoherentAtomSize;
     _caps.float32_atomic_add = probe.atomic_float;
@@ -506,12 +523,17 @@ void Context::init() {
     if (const char* env = spirula::env("VK_NATIVE_INT8");
         env && env[0] == '0')
         _caps.shader_int8 = false;
-    // SS_VK_CAS_UNIFORM_EXIT=0/1 overrides the detection either way; with
-    // SS_VK_NATIVE_ATOMICS=0 it runs the workaround on any device.
-    _caps.cas_uniform_exit =
-        device_issue(probe) == backend::DeviceIssue::AmdWindowsFloatAtomics;
-    if (const char* env = spirula::env("VK_CAS_UNIFORM_EXIT"); env && env[0])
-        _caps.cas_uniform_exit = env[0] != '0';
+    const bool amd_windows = amd_windows_emulated_fadd(probe);
+    // 13 of its 148 ".int8" blobs crash that driver's compiler (ppl_fwd among
+    // them), and their gindex_t loads index before casting, as the CAS did.
+    if (amd_windows) _caps.shader_int8 = false;
+#ifdef _WIN32
+    // Only Windows blobs carry the path. SS_VK_XCHG_FLOAT_ADD=0/1 overrides the
+    // detection; with SS_VK_NATIVE_ATOMICS=0 it runs on any device.
+    _caps.xchg_float_add = amd_windows;
+    if (const char* env = spirula::env("VK_XCHG_FLOAT_ADD"); env && env[0])
+        _caps.xchg_float_add = env[0] != '0';
+#endif
 
     std::vector<const char*> extensions;
     // Enabling this one is mandatory, not optional: the spec forbids creating
@@ -527,12 +549,26 @@ void Context::init() {
     if (has_extension(_physical,
                       VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME))
         extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
-    if (_caps.float32_atomic_add &&
-        has_extension(_physical, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME)) {
+    const bool has_fatomic =
+        has_extension(_physical, VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+    if (_caps.float32_atomic_add && has_fatomic) {
         extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
         f12.pNext = &fatomic;
+        _caps.xchg_float_add = false;
     } else {
         _caps.float32_atomic_add = false;
+#ifdef _WIN32
+        // Each CAS-loop module holds the exchange's float atomics whether its
+        // spec constant takes them or not (VUID-RuntimeSpirv-None-06338).
+        if (has_fatomic && probe.atomic_float_xchg) {
+            fatomic.shaderBufferFloat32AtomicAdd = VK_FALSE;
+            fatomic.shaderBufferFloat32Atomics = VK_TRUE;
+            extensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+            f12.pNext = &fatomic;
+        } else {
+            _caps.xchg_float_add = false;
+        }
+#endif
     }
 
     // VK_EXT_memory_budget: lets memory_usage() report system-wide usage and
@@ -627,7 +663,7 @@ void Context::init() {
             _device_name.c_str(), deviceTypeName(probe.props.deviceType),
             subgroup, _caps.max_push_constants,
             _caps.float32_atomic_add ? "native"
-            : _caps.cas_uniform_exit ? "EMULATED (uniform exit)"
+            : _caps.xchg_float_add   ? "EMULATED (exchange)"
                                      : "EMULATED",
             _caps.shader_int64 ? "native" : "EMULATED",
             _caps.shader_int8 ? "native" : "emulated",
@@ -847,7 +883,12 @@ MemoryUsage memory_usage() {
         m.has_total = true;
     }
     m.process_bytes = vk::g_device_bytes.load(std::memory_order_relaxed);
+    m.process_peak_bytes = vk::g_device_peak_bytes.load(std::memory_order_relaxed);
     m.has_process = true;
+#ifdef _WIN32
+    m.commit_free_bytes = (uint64_t)spirula::availableCommitBytes();
+    m.has_commit = m.commit_free_bytes > 0;
+#endif
 
     // heapBudget discounts other applications; querying must not create a device.
     if (vk::g_context_created.load() && vk::Context::get().ok() &&
@@ -859,6 +900,11 @@ MemoryUsage memory_usage() {
         }
     }
     return m;
+}
+
+void memory_peak_reset() {
+    vk::g_device_peak_bytes.store(vk::g_device_bytes.load(std::memory_order_relaxed),
+                                  std::memory_order_relaxed);
 }
 
 }  // namespace backend

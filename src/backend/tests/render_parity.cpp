@@ -5,13 +5,10 @@
 //   CUDA build:   ./render_parity dump ref.bin
 //   Vulkan build: ./render_parity compare ref.bin   (per device)
 //
-// Sections:
-//   1. Background SH forward: SH degree x (camera model, distortion tier).
-//   2. Full pipeline (projection -> intersect -> rasterize), fused + packed,
-//      per primitive, with dist-loss / median variants. Rendered images,
-//      transmittances, and tile offsets are compared with tolerance; near-tie
-//      depth keys may sort differently across backends (last-ulp projection
-//      divergence), so a small violation fraction is allowed.
+// Covers background SH and projection -> intersect -> rasterize (packed or
+// not, per primitive, with distortion / median / score-map variants). Near-tie
+// depth keys may sort differently across backends, so a small violation
+// fraction is allowed.
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/background/BackgroundSphericalHarmonics.cuh>
@@ -187,20 +184,34 @@ int main(int argc, char** argv) {
         int dist;      // distortion tier, index into dist_fixture::kTierNames
         DistortionType dt;
         bool median;
+        bool score;    // the learned densification score map
     };
     // Only the 3dgut rasterizer reads the camera, so its rows carry the tier
     // sweep; for 3dgs/mip the tier reaches the projection alone.
     const Cfg cfgs[] = {
-        {0, false, 0, 1, DistortionType::RGB_D, true},
-        {1, false, 0, 0, DistortionType::RGB_D, true},
-        {2, false, 0, 1, DistortionType::RGB_D, true},
-        {2, false, 0, 2, DistortionType::D, false},
-        {0, false, 1, 2, DistortionType::D, false},
-        {2, false, 3, 0, DistortionType::None, true},
-        {0, true, 3, 0, DistortionType::None, false},
-        {1, true, 0, 2, DistortionType::D, false},
-        {2, true, 0, 2, DistortionType::None, false},
+        {0, false, 0, 1, DistortionType::RGB_D, true, true},
+        {1, false, 0, 0, DistortionType::RGB_D, true, false},
+        {2, false, 0, 1, DistortionType::RGB_D, true, true},
+        {2, false, 0, 2, DistortionType::D, false, false},
+        {0, false, 1, 2, DistortionType::D, false, false},
+        {2, false, 3, 0, DistortionType::None, true, false},
+        {0, true, 3, 0, DistortionType::None, false, true},
+        {1, true, 0, 2, DistortionType::D, false, false},
+        {2, true, 0, 2, DistortionType::None, false, true},
     };
+
+    // Scores as the densify state holds them, (s^p, updates); every fifth
+    // splat has no update yet and renders the prior.
+    std::vector<float> score_in(N * 2), score_one(N * 2, 1.0f);
+    for (int64_t i = 0; i < N; i++) {
+        score_in[2 * i] = uf(0.0f, 1.0f);
+        score_in[2 * i + 1] = i % 5 == 0 ? 0.0f : uf(1.0f, 10.0f);
+    }
+    float* d_score_in = upload(score_in);
+    float* d_score_one = upload(score_one);
+    float* d_score_out =
+        (float*)backend::device_malloc((size_t)C * H * W * sizeof(float));
+    bool score_self_ok = true;
 
     for (const Cfg& cfg : cfgs) {
         backend::memset_sync(d_radii, 0, N * sizeof(float));
@@ -269,21 +280,51 @@ int main(int argc, char** argv) {
                    DeviceTensor3D<int32_t>, RenderOutput::TensorTuple,
                    DeviceTensor3D<float>>
             rout;
-        if (cfg.prim == 2) {
-            rout = rasterize_to_pixels_3dgut_fwd(
-                N, in_splats, splats_s, gauss_ids,
-                ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
-                cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
-                dist_tv(cfg.dist), aabb_2d, W, H,
-                tile_offsets, flatten_ids, macro_log2, cfg.dt,
-                cfg.median, true);
-        } else {
-            auto fn = cfg.prim == 0 ? rasterize_to_pixels_3dgs_fwd
-                                    : rasterize_to_pixels_mip_fwd;
-            rout = fn(N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
-                      flatten_ids, macro_log2, cfg.dt, cfg.median, true);
+        auto raster = [&](const float* score) {
+            SplatScoreRender sr;
+            if (score) {
+                sr.score = (const float2*)score;
+                sr.out = d_score_out;
+                sr.exponent = 2.5f;
+                sr.prior = 0.3f;
+            }
+            if (cfg.prim == 2) {
+                rout = rasterize_to_pixels_3dgut_fwd(
+                    N, in_splats, splats_s, gauss_ids,
+                    ttv(d_vm, {(int64_t)C, 16}), ttv(d_intr, {(int64_t)C, 4}),
+                    cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
+                    dist_tv(cfg.dist), aabb_2d, W, H,
+                    tile_offsets, flatten_ids, macro_log2, cfg.dt,
+                    cfg.median, true, sr);
+            } else {
+                auto fn = cfg.prim == 0 ? rasterize_to_pixels_3dgs_fwd
+                                        : rasterize_to_pixels_mip_fwd;
+                rout = fn(N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
+                          flatten_ids, macro_log2, cfg.dt, cfg.median, true, sr, 0.0f);
+            }
+            backend::device_synchronize();
+        };
+        const int64_t n_pix = (int64_t)C * H * W;
+        if (cfg.score) {
+            // With every s = 1 the coverage-normalized map is 1 wherever
+            // anything is drawn: holds on either backend, whatever the order.
+            raster(d_score_one);
+            if (check_error()) return 1;
+            std::vector<float> m(n_pix), t(n_pix);
+            backend::memcpy_sync(m.data(), d_score_out, n_pix * 4,
+                                 MemcpyKind::DeviceToHost);
+            backend::memcpy_sync(t.data(), std::get<1>(rout).data_ptr(),
+                                 n_pix * 4, MemcpyKind::DeviceToHost);
+            for (int64_t i = 0; i < n_pix; i++)
+                if (1.0f - t[i] > 1e-3f ? std::fabs(m[i] - 1.0f) > 1e-3f
+                                        : !(m[i] >= 0.0f && m[i] <= 1.001f)) {
+                    std::fprintf(stderr, "score map at pixel %lld: %g, coverage %g\n",
+                                 (long long)i, m[i], 1.0f - t[i]);
+                    score_self_ok = false;
+                    break;
+                }
         }
-        backend::device_synchronize();
+        raster(cfg.score ? d_score_in : nullptr);
         if (check_error()) return 1;
 
         auto& renders = std::get<0>(rout);
@@ -291,7 +332,8 @@ int main(int argc, char** argv) {
         auto& distortions = std::get<3>(rout);
         auto& render_median = std::get<4>(rout);
 
-        const int64_t n_pix = (int64_t)C * H * W;
+        if (cfg.score)
+            readback(acc, d_score_out, n_pix);
         readback(acc, (const float*)std::get<0>(renders).data_ptr(),
                  n_pix * 3);
         readback(acc, std::get<1>(renders).data_ptr(), n_pix);
@@ -304,6 +346,11 @@ int main(int argc, char** argv) {
         if (dist_has_depth(cfg.dt))
             readback(acc, std::get<1>(distortions).data_ptr(), n_pix);
         readback(acc, d_radii, N);
+    }
+
+    if (!score_self_ok) {
+        std::printf("render_parity: FAILED (score map)\n");
+        return 1;
     }
 
     if (dumping) {

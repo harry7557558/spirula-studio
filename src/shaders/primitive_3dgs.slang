@@ -9,11 +9,6 @@
 #undef CudaDeviceExport
 #endif
 
-// sigma-along-the-ray / depth is the EWA linearization's expansion parameter;
-// under this many sigmas the Gaussian straddles the projection singularity and
-// cov2d folds. Scale-free; 3DGUT culls the same splats through its sigma points.
-static const float EWA_NEAR_SIGMAS = 3.0f;
-
 struct SigmaPoints {
     float3 p[7];
     float w_mean[7];
@@ -441,6 +436,8 @@ void projection_3dgs<
     float cull_z = (camera_model == CameraModelType::PINHOLE) ?
         mean_c.z : length(mean_c);
     depth = length(mean_c);
+    // Center only, as gsplat and PlayCanvas cull. A size-aware cull hides near splats from training that every
+    // other renderer still draws: -0.76 dB in gsplat on Mip-NeRF 360 room.
     if (!assume_valid && cull_z <= 0.0f) {
         aabb_xyxy = float4(0.0f);
         return;
@@ -490,14 +487,6 @@ void projection_3dgs<
         }
         float3x3 covar_c;
         covarW2C(R, covar, covar_c);
-
-        if (!assume_valid && camera_model == CameraModelType::PINHOLE) {
-            float sigma_r2 = covar_c[2][2];  // or dot(mean_c, mul(covar_c, mean_c)) / dot(mean_c, mean_c) for fisheye
-            if (cull_z * cull_z <= (EWA_NEAR_SIGMAS * EWA_NEAR_SIGMAS) * sigma_r2) {
-                aabb_xyxy = float4(0.0f);
-                return;
-            }
-        }
 
         if (camera_model == CameraModelType::PINHOLE)
             is_valid &= persp_proj_3dgs<D, assume_valid>(

@@ -41,5 +41,6 @@ std::tuple<
     int macro_log2,               // binning granularity
     DistortionType dist_type,
     bool output_median,
-    bool output_depth             // false: nothing reads the depth, leave it out
+    bool output_depth,            // false: nothing reads the depth, leave it out
+    SplatScoreRender score
 );

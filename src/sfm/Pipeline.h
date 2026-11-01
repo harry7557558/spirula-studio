@@ -239,7 +239,7 @@ void resolveImageNames(std::vector<Reconstruction>& models, const std::string& i
 void recolorPoints(std::vector<Reconstruction>& models, const SfmConfig& cfg);
 void splitCamerasBySize(std::vector<Reconstruction>& models,
                         const std::vector<FeatureSet>& feats);
-void writeModels(const std::vector<Reconstruction>& models,
+void writeModels(std::vector<Reconstruction>& models,
                  const std::filesystem::path& dir, bool verbose,
                  const std::vector<ModelGauge>& gauge = {}, const RigTable* rigs = nullptr);
 void writeRigs(const std::filesystem::path& dir, const Reconstruction& m, const RigTable* rigs);

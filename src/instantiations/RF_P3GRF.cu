@@ -7,6 +7,7 @@
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
     DistortionType::None,
+    true,
     true
 >(
     cudaStream_t stream,
@@ -27,12 +28,15 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
     DistortionType::None,
+    true,
     false
 >(
     cudaStream_t stream,
@@ -53,12 +57,15 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
-    DistortionType::D,
+    DistortionType::None,
+    false,
     true
 >(
     cudaStream_t stream,
@@ -79,12 +86,15 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
-    DistortionType::D,
+    DistortionType::None,
+    false,
     false
 >(
     cudaStream_t stream,
@@ -105,12 +115,15 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
-    DistortionType::RGB_D,
+    DistortionType::D,
+    true,
     true
 >(
     cudaStream_t stream,
@@ -131,12 +144,15 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );
 
 template void rasterize_to_pixels_fwd_kernel_wrapper<
     Vanilla3DGS<0>,
-    DistortionType::RGB_D,
+    DistortionType::D,
+    true,
     false
 >(
     cudaStream_t stream,
@@ -157,5 +173,94 @@ template void rasterize_to_pixels_fwd_kernel_wrapper<
     float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
     int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
     RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
-    float *__restrict__ render_median // [I, image_height, image_width, 1], optional
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
+);
+
+template void rasterize_to_pixels_fwd_kernel_wrapper<
+    Vanilla3DGS<0>,
+    DistortionType::D,
+    false,
+    true
+>(
+    cudaStream_t stream,
+    const uint32_t I,
+    const uint32_t N,
+    const uint32_t n_isects,
+    const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
+    const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const uint32_t tile_width,
+    const uint32_t tile_height,
+    const int macro_log2,
+    const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
+    const int32_t *__restrict__ flatten_ids,  // [n_isects]
+    RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
+    float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
+    int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
+    RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
+);
+
+template void rasterize_to_pixels_fwd_kernel_wrapper<
+    Vanilla3DGS<0>,
+    DistortionType::D,
+    false,
+    false
+>(
+    cudaStream_t stream,
+    const uint32_t I,
+    const uint32_t N,
+    const uint32_t n_isects,
+    const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
+    const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const uint32_t tile_width,
+    const uint32_t tile_height,
+    const int macro_log2,
+    const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
+    const int32_t *__restrict__ flatten_ids,  // [n_isects]
+    RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
+    float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
+    int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
+    RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
+);
+
+template void rasterize_to_pixels_fwd_kernel_wrapper<
+    Vanilla3DGS<0>,
+    DistortionType::RGB_D,
+    true,
+    true
+>(
+    cudaStream_t stream,
+    const uint32_t I,
+    const uint32_t N,
+    const uint32_t n_isects,
+    const uint32_t *__restrict__ gaussian_ids,  // [nnz] optional, for packed mode
+    const Vanilla3DGS<0>::WorldBuffer splat_wbuffer,
+    const Vanilla3DGS<0>::ScreenBuffer splat_sbuffer,
+    const uint32_t image_width,
+    const uint32_t image_height,
+    const uint32_t tile_width,
+    const uint32_t tile_height,
+    const int macro_log2,
+    const int32_t *__restrict__ tile_offsets, // [I, tile_height, tile_width]
+    const int32_t *__restrict__ flatten_ids,  // [n_isects]
+    RenderOutput::Buffer render_colors, // [I, image_height, image_width, 3]
+    float *__restrict__ render_Ts, // [I, image_height, image_width, 1]
+    int32_t *__restrict__ last_ids,        // [I, image_height, image_width]
+    RenderOutput::Buffer render_distortions, // [I, image_height, image_width, ...]
+    float *__restrict__ render_median, // [I, image_height, image_width, 1], optional
+    const SplatScoreRender score,
+    const float kernel_cut
 );

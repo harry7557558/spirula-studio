@@ -50,6 +50,9 @@ bool cube_lut_file(const std::string& spec, std::string& path, std::string& erro
 
 // Maps `pixels` interleaved RGB8 pixels in place. `threads` 0 = hardware.
 void apply_cube_lut(const CubeLut& lut, uint8_t* rgb, size_t pixels, int threads = 0);
+// Maps big-endian RGB16 samples normalized by 65535, quantizing only the result.
+void apply_cube_lut_rgb48be(const CubeLut& lut, const uint8_t* rgb48, uint8_t* rgb8,
+                           size_t pixels, int threads = 0);
 
 // `path` as the value of ffmpeg's lut3d `file` option inside a filter graph,
 // escaped for both levels ffmpeg parses it at.

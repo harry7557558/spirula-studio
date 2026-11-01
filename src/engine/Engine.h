@@ -162,6 +162,7 @@ std::map<std::string, float> engine_compute_loss_backward(
     // loss weights
     std::array<float, (int)LossWeightIndex::length> loss_weights,
     float w_ssim,
+    int perceptual_loss,  // PerceptualLoss: what w_ssim weights
     int num_loss_scales,
     // When positive, overrides num_loss_scales based on the render resolution
     // (see LossConfig::loss_scale_min_pixels). Zero leaves it untouched.
@@ -482,19 +483,9 @@ double engine_take_data_wait_seconds();
 // the worker is parked on, false abandons the pipeline. See DataManager.h.
 void engine_resolve_data_error(bool retry);
 
-// Pull the next batch from the DataManager, install it as GT + camera params,
-// and run the forward pass only -- no loss, no backward, no optimizer, no
-// densification. What an eval pass needs: it reuses the same decode, mask and
-// fisheye/equirect warp path training does, so eval GT is the warped GT and
-// not a host-side reconstruction of it.
-//
-// Afterwards `engine_copy_gt_rgb_to_host` and `engine_copy_render_to_host`
-// read the pair back. Returns the POST-split view count in the batch (K per
-// input image), or 0 when the stream is exhausted.
-//
-// Call `engine_setup_data_manager` with the eval split first; that replaces
-// the training DataManager, so this belongs after the training loop.
-int engine_eval_forward(std::string primitive, int sh_degree, bool packed);
+// Render one eval image by dataset index, using the training decode and warp path.
+// The installed GT remains available to the host-copy functions. Returns face count.
+int engine_eval_forward(int index, std::string primitive, int sh_degree, bool packed);
 
 // Same, for ONE image by dataset index (the GUI's compare view), rendering one
 // pass of its faces as step `cfg` would: returns that pass's views, `out_passes`
@@ -741,9 +732,5 @@ void engine_save_checkpoint(
     int step
 );
 
-// Restore engine state from `input_dir`/state.tar (resume training). The engine
-// skeleton must already be configured (world seeded at max_num_splats; any
-// bilagrid/PPISP channels in the checkpoint initialized). Sets runtime scalars +
-// optimizer layout from state.json, force-allocates optimizer/appearance-optim
-// buffers, and restores every saved buffer by slot name. Returns the saved step.
-int engine_load_checkpoint(std::string input_dir);
+// Requires seeded world buffers and initialized appearance channels; returns the saved step.
+int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth = true);

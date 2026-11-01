@@ -16,6 +16,10 @@ the detail.
 | [notes/pose-normalization.md](notes/pose-normalization.md) | orientation/centering: what the native parser implements, and the kept reference for what it doesn't |
 | [notes/compare-view.md](notes/compare-view.md) | showing several models at once: engine scene slots, the shared navigation frame |
 | [notes/spherical-beta.md](notes/spherical-beta.md) | spherical-beta lobes: the colour row they share with SH, training, rotation, the PLY layout, results |
+| [notes/s-cielab.md](notes/s-cielab.md) | the S-CIELAB alternative to SSIM: colour pipeline, blur radii, the `auto` densification map |
+| [notes/flip.md](notes/flip.md) | the FLIP alternative: the viewing distance that makes its filters 11x11, where it departs from the reference, its two densification maps |
+| [notes/ssim-blur-tolerance.md](notes/ssim-blur-tolerance.md) | blur-tolerant SSIM, so blurry photos stop blurring the scene; the loss and map study behind it on degraded mip-NeRF 360 scenes |
+| [notes/web-viewer-robustness.md](notes/web-viewer-robustness.md) | what web viewers draw differently, training on PlayCanvas's kernel for part of the steps, the peak-weight noise gate, the per-coefficient SH reg, and what did not help |
 | [notes/vram-splat-x-img.md](notes/vram-splat-x-img.md) | what the largest scratch category costs per element, the bitmask compaction, and the measured dead ends |
 | [notes/vram-high-res.md](notes/vram-high-res.md) | the per-pixel half of VRAM: the fused appearance chain, float16 images, what a 60 and a 120 MP image cost |
 | [notes/color-transfer.md](notes/color-transfer.md) | linear storage vs the output tone curve, the dynamic range a curve buys, and why its clip is straight-through |

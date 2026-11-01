@@ -110,39 +110,39 @@ SS_MSG(opt_image_dir,
 
 SS_MSG(opt_model,
     EN("Which checkpoint to run. A known id is fetched and cached; a path to "
-       "an .onnx file is used as it is. Larger is slower and only somewhat "
-       "better."),
-    JA("使うチェックポイントです。既知の ID は取得してキャッシュし、.onnx への"
-       "パスはそのまま使います。大きいほど遅く、精度の伸びはわずかです。"),
-    ZH_HANS("要运行的权重。已知 id 会自动下载并缓存；给出 .onnx 路径则直接使用。"
+       "an .onnx or .pt file is used as it is. Larger is slower and only "
+       "somewhat better."),
+    JA("使うチェックポイントです。既知の ID は取得してキャッシュし、.onnx や .pt "
+       "へのパスはそのまま使います。大きいほど遅く、精度の伸びはわずかです。"),
+    ZH_HANS("要运行的权重。已知 id 会自动下载并缓存；给出 .onnx 或 .pt 路径则直接使用。"
             "越大越慢，精度提升有限。"),
-    ZH_HANT("要執行的權重。已知 id 會自動下載並快取；給出 .onnx 路徑則直接使用。"
+    ZH_HANT("要執行的權重。已知 id 會自動下載並快取；給出 .onnx 或 .pt 路徑則直接使用。"
             "越大越慢，精度提升有限。"),
-    KO("실행할 체크포인트입니다. 알려진 id 는 받아서 캐시하고, .onnx 경로는 그대로 "
-       "씁니다. 클수록 느리고 정확도 향상은 크지 않습니다."),
+    KO("실행할 체크포인트입니다. 알려진 id 는 받아서 캐시하고, .onnx 나 .pt 경로는 "
+       "그대로 씁니다. 클수록 느리고 정확도 향상은 크지 않습니다."),
     DE("Welche Gewichte laufen sollen. Eine bekannte Kennung wird geholt und "
-       "zwischengespeichert, ein Pfad auf eine .onnx unverändert benutzt. "
+       "zwischengespeichert, ein Pfad auf eine .onnx oder .pt unverändert benutzt. "
        "Größer heißt langsamer und nur etwas besser."),
     FR("Quel jeu de poids exécuter. Un identifiant connu est téléchargé puis "
-       "mis en cache ; un chemin vers un .onnx est utilisé tel quel. Plus gros "
+       "mis en cache ; un chemin vers un .onnx ou un .pt est utilisé tel quel. Plus gros "
        "est plus lent et à peine meilleur."),
     ES("Qué pesos ejecutar. Un identificador conocido se descarga y se guarda "
-       "en caché; una ruta a un .onnx se usa tal cual. Más grande es más lento "
+       "en caché; una ruta a un .onnx o .pt se usa tal cual. Más grande es más lento "
        "y solo algo mejor."),
     PT("Que pesos executar. Um identificador conhecido é obtido e guardado em "
-       "cache; um caminho para um .onnx é usado tal como está. Maior é mais "
+       "cache; um caminho para um .onnx ou .pt é usado tal como está. Maior é mais "
        "lento e só um pouco melhor."),
     IT("Quali pesi eseguire. Un identificatore noto viene scaricato e messo in "
-       "cache; un percorso a un .onnx è usato così com'è. Più grande è più "
+       "cache; un percorso a un .onnx o .pt è usato così com'è. Più grande è più "
        "lento e solo un po' migliore."),
     NL("Welke gewichten draaien. Een bekende id wordt opgehaald en bewaard; "
-       "een pad naar een .onnx wordt gebruikt zoals het is. Groter is trager "
+       "een pad naar een .onnx of .pt wordt gebruikt zoals het is. Groter is trager "
        "en maar iets beter."),
     RU("Какие веса запускать. Известный идентификатор скачивается и "
-       "кэшируется, путь к .onnx берётся как есть. Крупнее — медленнее и лишь "
+       "кэшируется, путь к .onnx или .pt берётся как есть. Крупнее — медленнее и лишь "
        "немного точнее."),
     TR("Hangi ağırlıkların çalışacağı. Bilinen bir kimlik indirilip "
-       "önbelleğe alınır; bir .onnx yolu olduğu gibi kullanılır. Büyüğü daha "
+       "önbelleğe alınır; bir .onnx veya .pt yolu olduğu gibi kullanılır. Büyüğü daha "
        "yavaştır ve yalnızca biraz daha iyidir."));
 
 SS_MSG(opt_max_size,
@@ -224,6 +224,45 @@ SS_MSG(opt_num_tokens,
     TR("MoGe'nin dönüştürücüsünün işlediği yama sayısı; maliyeti görüntü "
        "boyutu değil bu belirler. Kendi aralığı 1200 ile 3600 arasıdır ve "
        "görüntünün içerdiğiyle sınırlanır. Metric3D bunu yok sayar."));
+
+SS_MSG(opt_refine_steps,
+    EN("MoGe-3's depth refinement passes, each sharpening depth edges a little "
+       "more. 3 is what it was trained with; 0 skips refinement. Other models "
+       "ignore this."),
+    JA("MoGe-3 の深度リファインの回数です。1 回ごとに深度の境界が少しずつ"
+       "鮮明になります。学習時の値は 3 で、0 でリファインを省きます。"
+       "他のモデルでは無視されます。"),
+    ZH_HANS("MoGe-3 深度细化的次数，每次都会让深度边缘更清晰一些。训练时用的是 3，"
+            "0 表示跳过细化。其他模型会忽略此项。"),
+    ZH_HANT("MoGe-3 深度細化的次數，每次都會讓深度邊緣更清晰一些。訓練時用的是 3，"
+            "0 表示略過細化。其他模型會忽略此項。"),
+    KO("MoGe-3 의 깊이 다듬기 횟수로, 한 번마다 깊이 경계가 조금씩 더 "
+       "선명해집니다. 학습 때 값은 3 이고 0 이면 다듬기를 건너뜁니다. 다른 "
+       "모델은 무시합니다."),
+    DE("Die Tiefenverfeinerungen von MoGe-3; jede schärft die Tiefenkanten ein "
+       "wenig mehr. Trainiert wurde mit 3, 0 überspringt die Verfeinerung. "
+       "Andere Modelle ignorieren dies."),
+    FR("Les passes d'affinage de profondeur de MoGe-3, chacune rendant les bords "
+       "de profondeur un peu plus nets. Il a été entraîné avec 3 ; 0 saute "
+       "l'affinage. Les autres modèles l'ignorent."),
+    ES("Las pasadas de refinado de profundidad de MoGe-3; cada una afina un "
+       "poco más los bordes de profundidad. Se entrenó con 3; 0 omite el "
+       "refinado. Los demás modelos lo ignoran."),
+    PT("As passagens de refinamento de profundidade do MoGe-3; cada uma torna "
+       "as arestas de profundidade um pouco mais nítidas. Foi treinado com 3; "
+       "0 salta o refinamento. Os outros modelos ignoram isto."),
+    IT("I passaggi di affinamento della profondità di MoGe-3, ognuno rende i "
+       "bordi di profondità un po' più netti. È stato addestrato con 3; 0 salta "
+       "l'affinamento. Gli altri modelli lo ignorano."),
+    NL("De diepteverfijningen van MoGe-3; elke maakt de dieptegrenzen iets "
+       "scherper. Getraind met 3; 0 slaat het verfijnen over. Andere modellen "
+       "negeren dit."),
+    RU("Число проходов уточнения глубины MoGe-3; каждый делает границы глубины "
+       "чуть чётче. Модель обучена с 3; 0 пропускает уточнение. Другие модели "
+       "это игнорируют."),
+    TR("MoGe-3'ün derinlik iyileştirme geçişleri; her biri derinlik kenarlarını "
+       "biraz daha keskinleştirir. 3 ile eğitildi; 0 iyileştirmeyi atlar. Diğer "
+       "modeller bunu yok sayar."));
 
 SS_MSG(opt_depth,
     EN("Also write depth maps. Off by default: the normals are what a "
@@ -814,6 +853,205 @@ SS_MSG(warn_fitted_camera,
     TR("kamera {0}, hiçbir bozulma kademesinin tam olarak temsil etmediği bir "
        "mercek kullanıyor; haritalar uyum üzerinden yeniden örneklenir ve "
        "görüntülerin bir piksel yakınına düşer"));
+
+SS_MSG(opt_install,
+    EN("Fetch what --model <id> needs and stop; no dataset. Only Marigold v2 "
+       "needs it: it is built from about 45 GB streamed from Hugging Face (its "
+       "ModelScope mirror when that fails) and keeps 11 GB. --depth and "
+       "--no-normal choose which of its two networks to build. The free disk "
+       "space is checked first."),
+    JA("--model <id> に必要なものを取得して終了します（データセットは不要です）。"
+       "これが要るのは Marigold v2 だけで、Hugging Face（失敗したときはその "
+       "ModelScope ミラー）から約 45 GB をストリーミングして組み立て、11 GB "
+       "を残します。--depth と --no-normal で 2 つのネットワークのどちらを作るか"
+       "選びます。空き容量を先に確かめます。"),
+    ZH_HANS("获取 --model <id> 所需的文件后退出，不需要数据集。只有 Marigold v2 "
+            "需要这样做：它从 Hugging Face（失败时改用其 ModelScope 镜像）流式读取约 "
+            "45 GB 来构建，最终保留 11 GB。--depth 和 --no-normal 选择构建两个网络中"
+            "的哪一个。会先检查磁盘剩余空间。"),
+    ZH_HANT("取得 --model <id> 所需的檔案後結束，不需要資料集。只有 Marigold v2 "
+            "需要這樣做：它從 Hugging Face（失敗時改用其 ModelScope 鏡像）串流讀取約 "
+            "45 GB 來建置，最後保留 11 GB。--depth 和 --no-normal 選擇建置兩個網路中"
+            "的哪一個。會先檢查磁碟剩餘空間。"),
+    KO("--model <id> 에 필요한 것을 받아 두고 끝냅니다. 데이터셋은 필요 없습니다. "
+       "이것이 필요한 모델은 Marigold v2 뿐입니다. Hugging Face(실패하면 그 "
+       "ModelScope 미러)에서 약 45 GB 를 스트리밍해 만들고 11 GB 를 남깁니다. "
+       "--depth 와 --no-normal 로 두 신경망 중 무엇을 만들지 고릅니다. 디스크 여유 "
+       "공간을 먼저 확인합니다."),
+    DE("Holt, was --model <id> braucht, und endet, ohne Datensatz. Nur "
+       "Marigold v2 braucht das: Es wird aus rund 45 GB gebaut, die von Hugging "
+       "Face gestreamt werden (bei Fehlern von seinem ModelScope-Spiegel), und "
+       "belegt danach 11 GB. --depth und --no-normal wählen, welches seiner zwei "
+       "Netze gebaut wird. Der freie Speicherplatz wird vorher geprüft."),
+    FR("Récupère ce dont --model <id> a besoin puis s'arrête, sans jeu de "
+       "données. Seul Marigold v2 en a besoin : il est construit à partir "
+       "d'environ 45 Go lus en flux depuis Hugging Face (son miroir ModelScope "
+       "en cas d'échec) et en garde 11 Go. --depth et --no-normal choisissent "
+       "lequel de ses deux réseaux construire. L'espace disque libre est vérifié "
+       "d'abord."),
+    ES("Obtiene lo que necesita --model <id> y termina, sin conjunto de datos. "
+       "Solo Marigold v2 lo necesita: se construye a partir de unos 45 GB "
+       "transmitidos desde Hugging Face (desde su réplica de ModelScope si "
+       "falla) y ocupa 11 GB. --depth y --no-normal eligen cuál de sus dos redes "
+       "construir. Antes se comprueba el espacio libre en disco."),
+    PT("Obtém o que --model <id> precisa e termina, sem conjunto de dados. Só o "
+       "Marigold v2 precisa disto: é construído a partir de cerca de 45 GB "
+       "transmitidos do Hugging Face (do seu espelho no ModelScope se falhar) e "
+       "ocupa 11 GB. --depth e --no-normal escolhem qual das suas duas redes "
+       "construir. O espaço livre em disco é verificado primeiro."),
+    IT("Recupera ciò che serve a --model <id> e termina, senza insieme di "
+       "dati. Serve solo a Marigold v2: viene costruito da circa 45 GB "
+       "trasmessi da Hugging Face (dal suo mirror ModelScope in caso di errore) "
+       "e ne tiene 11 GB. --depth e --no-normal scelgono quale delle sue due "
+       "reti costruire. Lo spazio libero su disco viene controllato prima."),
+    NL("Haalt op wat --model <id> nodig heeft en stopt, zonder dataset. Alleen "
+       "Marigold v2 heeft dit nodig: het wordt gebouwd uit zo'n 45 GB die van "
+       "Hugging Face worden gestreamd (van zijn ModelScope-spiegel als dat "
+       "mislukt) en houdt 11 GB over. --depth en --no-normal kiezen welke van "
+       "zijn twee netwerken wordt gebouwd. De vrije schijfruimte wordt eerst "
+       "gecontroleerd."),
+    RU("Получает то, что нужно для --model <id>, и завершается, без набора "
+       "данных. Это нужно только Marigold v2: он собирается из примерно 45 ГБ, "
+       "потоково загружаемых с Hugging Face (при ошибке — с его зеркала на "
+       "ModelScope), и занимает 11 ГБ. --depth и --no-normal выбирают, какую из "
+       "двух его сетей собрать. Свободное место на диске проверяется заранее."),
+    TR("--model <id> için gerekenleri alır ve veri kümesi olmadan çıkar. Buna "
+       "yalnızca Marigold v2 ihtiyaç duyar: Hugging Face'ten (başarısız olursa "
+       "ModelScope yansısından) akıtılan yaklaşık 45 GB'tan oluşturulur ve 11 GB "
+       "yer kaplar. --depth ve --no-normal iki ağından hangisinin "
+       "oluşturulacağını seçer. Önce boş disk alanı denetlenir."));
+
+SS_MSG(log_install_plan,
+    EN("{0}: {1} to stream, {2} to write under {3}, {4} free"),
+    JA("{0}: ストリーミング {1}、{3} に書き込み {2}、空き {4}"),
+    ZH_HANS("{0}: 需流式读取 {1}, 需写入 {2} 到 {3}, 剩余 {4}"),
+    ZH_HANT("{0}: 需串流讀取 {1}, 需寫入 {2} 到 {3}, 剩餘 {4}"),
+    KO("{0}: 스트리밍 {1}, {3} 에 기록 {2}, 여유 {4}"),
+    DE("{0}: {1} zu streamen, {2} zu schreiben unter {3}, {4} frei"),
+    FR("{0} : {1} à lire en flux, {2} à écrire sous {3}, {4} libres"),
+    ES("{0}: {1} por transmitir, {2} por escribir en {3}, {4} libres"),
+    PT("{0}: {1} a transmitir, {2} a escrever em {3}, {4} livres"),
+    IT("{0}: {1} da trasmettere, {2} da scrivere in {3}, {4} liberi"),
+    NL("{0}: {1} te streamen, {2} te schrijven onder {3}, {4} vrij"),
+    RU("{0}: загрузить {1}, записать {2} в {3}, свободно {4}"),
+    TR("{0}: akıtılacak {1}, {3} altına yazılacak {2}, boş {4}"));
+
+SS_MSG(err_install_disk,
+    EN("Not enough disk space for {0}: it writes {1} more under {2}, which has "
+       "{3} free, and keeps {4} spare. Free some space, or move the cache with "
+       "XDG_CACHE_HOME (LOCALAPPDATA on Windows)."),
+    JA("{0} を入れるにはディスクの空きが足りません。{2} にさらに {1} を書き込みますが、"
+       "空きは {3} で、{4} は予備として残します。空きを増やすか、XDG_CACHE_HOME"
+       "（Windows では LOCALAPPDATA）でキャッシュの場所を移してください。"),
+    ZH_HANS("磁盘空间不足，无法安装 {0}：需要在 {2} 下再写入 {1}，该处剩余 {3}，"
+            "并需保留 {4} 余量。请腾出空间，或用 XDG_CACHE_HOME（Windows 上为 "
+            "LOCALAPPDATA）把缓存移到别处。"),
+    ZH_HANT("磁碟空間不足，無法安裝 {0}：需要在 {2} 下再寫入 {1}，該處剩餘 {3}，"
+            "並需保留 {4} 餘量。請騰出空間，或用 XDG_CACHE_HOME（Windows 上為 "
+            "LOCALAPPDATA）把快取移到別處。"),
+    KO("{0} 을(를) 설치할 디스크 공간이 부족합니다. {2} 에 {1} 을(를) 더 써야 하는데 "
+       "여유 공간은 {3} 이고, {4} 는 여분으로 남겨 둡니다. 공간을 비우거나 "
+       "XDG_CACHE_HOME(Windows 에서는 LOCALAPPDATA)으로 캐시 위치를 옮기세요."),
+    DE("Zu wenig Speicherplatz für {0}: Es schreibt noch {1} unter {2}, dort "
+       "sind {3} frei, und {4} bleiben als Reserve. Schaffen Sie Platz oder "
+       "verlegen Sie den Zwischenspeicher mit XDG_CACHE_HOME (unter Windows "
+       "LOCALAPPDATA)."),
+    FR("Pas assez d'espace disque pour {0} : il écrit encore {1} sous {2}, qui "
+       "a {3} de libre, et garde {4} de réserve. Libérez de l'espace ou "
+       "déplacez le cache avec XDG_CACHE_HOME (LOCALAPPDATA sous Windows)."),
+    ES("No hay espacio en disco suficiente para {0}: escribe {1} más en {2}, "
+       "que tiene {3} libres, y deja {4} de reserva. Libera espacio o mueve la "
+       "caché con XDG_CACHE_HOME (LOCALAPPDATA en Windows)."),
+    PT("Não há espaço em disco suficiente para {0}: escreve mais {1} em {2}, "
+       "que tem {3} livres, e mantém {4} de reserva. Liberte espaço ou mude a "
+       "cache de sítio com XDG_CACHE_HOME (LOCALAPPDATA no Windows)."),
+    IT("Spazio su disco insufficiente per {0}: scrive altri {1} in {2}, che ha "
+       "{3} liberi, e ne tiene {4} di riserva. Libera spazio o sposta la cache "
+       "con XDG_CACHE_HOME (LOCALAPPDATA su Windows)."),
+    NL("Te weinig schijfruimte voor {0}: het schrijft nog {1} onder {2}, waar "
+       "{3} vrij is, en houdt {4} in reserve. Maak ruimte vrij of verplaats de "
+       "cache met XDG_CACHE_HOME (LOCALAPPDATA op Windows)."),
+    RU("Недостаточно места на диске для {0}: нужно записать ещё {1} в {2}, где "
+       "свободно {3}, и оставить {4} в запасе. Освободите место или перенесите "
+       "кэш через XDG_CACHE_HOME (LOCALAPPDATA в Windows)."),
+    TR("{0} için yeterli disk alanı yok: {2} altına {1} daha yazılacak, orada "
+       "{3} boş ve {4} yedek bırakılıyor. Yer açın ya da önbelleği "
+       "XDG_CACHE_HOME (Windows'ta LOCALAPPDATA) ile taşıyın."));
+
+// Read back by the GUI (i18n::scan) for its progress bar: keep the
+// separators between the placeholders.
+SS_MSG(log_install_progress,
+    EN("installing {0}: {1} / {2} GB, {3} MB/s"),
+    JA("{0} をインストール中: {1} / {2} GB、{3} MB/s"),
+    ZH_HANS("正在安装 {0}: {1} / {2} GB, {3} MB/s"),
+    ZH_HANT("正在安裝 {0}: {1} / {2} GB, {3} MB/s"),
+    KO("{0} 설치 중: {1} / {2} GB, {3} MB/s"),
+    DE("installiere {0}: {1} / {2} GB, {3} MB/s"),
+    FR("installation de {0} : {1} / {2} Go, {3} Mo/s"),
+    ES("instalando {0}: {1} / {2} GB, {3} MB/s"),
+    PT("a instalar {0}: {1} / {2} GB, {3} MB/s"),
+    IT("installazione di {0}: {1} / {2} GB, {3} MB/s"),
+    NL("{0} installeren: {1} / {2} GB, {3} MB/s"),
+    RU("установка {0}: {1} / {2} ГБ, {3} МБ/с"),
+    TR("{0} kuruluyor: {1} / {2} GB, {3} MB/sn"));
+
+SS_MSG(log_install_done,
+    EN("{0} installed in {1}"),
+    JA("{0} のインストール完了、所要 {1}"),
+    ZH_HANS("{0} 安装完成, 用时 {1}"),
+    ZH_HANT("{0} 安裝完成, 用時 {1}"),
+    KO("{0} 설치 완료, 소요 {1}"),
+    DE("{0} installiert, in {1}"),
+    FR("{0} installé en {1}"),
+    ES("{0} instalado en {1}"),
+    PT("{0} instalado em {1}"),
+    IT("{0} installato in {1}"),
+    NL("{0} geïnstalleerd in {1}"),
+    RU("{0} установлен за {1}"),
+    TR("{0} kuruldu, süre {1}"));
+
+SS_MSG(err_not_installed,
+    EN("{0} is not installed. `{1} --install {0}` builds it: {2} to stream, "
+       "{3} to write."),
+    JA("{0} がインストールされていません。`{1} --install {0}` で組み立てられます"
+       "（ストリーミング {2}、書き込み {3}）。"),
+    ZH_HANS("{0} 尚未安装。`{1} --install {0}` 可以构建它：需流式读取 {2}，"
+            "写入 {3}。"),
+    ZH_HANT("{0} 尚未安裝。`{1} --install {0}` 可以建置它：需串流讀取 {2}，"
+            "寫入 {3}。"),
+    KO("{0} 이(가) 설치되어 있지 않습니다. `{1} --install {0}` 으로 만들 수 있습니다. "
+       "스트리밍 {2}, 기록 {3}."),
+    DE("{0} ist nicht installiert. `{1} --install {0}` baut es: {2} zu "
+       "streamen, {3} zu schreiben."),
+    FR("{0} n'est pas installé. `{1} --install {0}` le construit : {2} à lire "
+       "en flux, {3} à écrire."),
+    ES("{0} no está instalado. `{1} --install {0}` lo construye: {2} por "
+       "transmitir, {3} por escribir."),
+    PT("{0} não está instalado. `{1} --install {0}` constrói-o: {2} a "
+       "transmitir, {3} a escrever."),
+    IT("{0} non è installato. `{1} --install {0}` lo costruisce: {2} da "
+       "trasmettere, {3} da scrivere."),
+    NL("{0} is niet geïnstalleerd. `{1} --install {0}` bouwt het: {2} te "
+       "streamen, {3} te schrijven."),
+    RU("{0} не установлен. `{1} --install {0}` соберёт его: загрузить {2}, "
+       "записать {3}."),
+    TR("{0} kurulu değil. `{1} --install {0}` onu oluşturur: akıtılacak {2}, "
+       "yazılacak {3}."));
+
+SS_MSG(ask_install,
+    EN("Install it now? [y/N] "),
+    JA("今すぐインストールしますか? [y/N] "),
+    ZH_HANS("现在安装吗？[y/N] "),
+    ZH_HANT("現在安裝嗎？[y/N] "),
+    KO("지금 설치할까요? [y/N] "),
+    DE("Jetzt installieren? [y/N] "),
+    FR("L'installer maintenant ? [y/N] "),
+    ES("¿Instalarlo ahora? [y/N] "),
+    PT("Instalar agora? [y/N] "),
+    IT("Installarlo ora? [y/N] "),
+    NL("Nu installeren? [y/N] "),
+    RU("Установить сейчас? [y/N] "),
+    TR("Şimdi kurulsun mu? [y/N] "));
 
 }  // namespace geometry
 }  // namespace msg

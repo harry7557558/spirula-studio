@@ -40,6 +40,7 @@
 #include <thread>
 #include <vector>
 
+#include "core/HardwareThreads.h"
 #include "sfm/core/Events.h"
 #include "sfm/core/Features.h"
 #include "sfm/core/Matches.h"
@@ -52,10 +53,9 @@
 namespace sfm {
 
 struct AtomOptions {
-    // Workers, each with its own Vulkan context. 0 = hardware_concurrency,
-    // clamped by `max_threads`: the contexts are the reason for a ceiling
-    // (each maps two 64 MB staging buffers), and past a handful of them the
-    // atoms' small solves are contending for one device anyway.
+    // Workers, each with its own Vulkan context. 0 = hardware_threads(), clamped
+    // by `max_threads`: each context maps two 64 MB staging buffers, and past a
+    // handful the atoms' small solves contend for one device anyway.
     int threads = 0;
     int max_threads = 8;
     // Bundle-adjustment cadence inside an atom. Far looser than the mapper's
@@ -247,7 +247,7 @@ inline std::vector<Reconstruction> reconstructAtoms(
     // An explicit count is taken literally; the default is capped, because the
     // ceiling exists for the contexts (two 64 MB staging buffers each) and for
     // a device that a handful of concurrent small solves already saturates.
-    unsigned hc = std::thread::hardware_concurrency();
+    unsigned hc = spirula::hardware_threads();
     int nt = opt.threads > 0 ? opt.threads
                              : std::min(hc > 0 ? (int)hc : 1, std::max(1, opt.max_threads));
     nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(atoms.size(), 1)));

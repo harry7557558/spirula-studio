@@ -95,7 +95,7 @@ struct BundleOptions {
     // outlive one solve. The caller owns it and must keep (real, loss) fixed
     // across calls on the same context. Null = scoped context per call.
     VkContext* shared_ctx = nullptr;
-    // Host worker threads, for the `cpu` scalar; 0 = hardware_concurrency.
+    // Host worker threads, for the `cpu` scalar; 0 = hardware_threads().
     int threads = 0;
     // Rigs (sfm/core/Rig.h): with a table, every frame whose members have an
     // established calibration is one pose block and the member extrinsics are

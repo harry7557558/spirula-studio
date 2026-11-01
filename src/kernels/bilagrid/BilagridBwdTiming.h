@@ -1,14 +1,6 @@
 #pragma once
-// Async per-dispatch GPU timer for the bilateral-grid backward (Phase 2 of the
-// bilagrid backward-selection plan; see BilagridBackwardSelection.md). It
-// brackets each backward dispatch with a start/end timing event and reads the
-// elapsed GPU time back ONE ITERATION BEHIND, so the hot path never stalls on
-// a query wait. The harvested measurements feed the BilagridBwdSelector
-// (Phase 5); in Phase 2 they are only logged.
-//
-// Backend-portable: uses only the backend:: event API. On CUDA an event record
-// is a cheap cudaEventRecord; on Vulkan it flushes the stream so the two
-// timestamps bracket exactly the bilagrid dispatch(es) in between.
+// Bilateral-grid backward timings, harvested one iteration later to avoid stalls.
+// See BilagridBackwardSelection.md for the selector design.
 
 #include "kernels/bilagrid/BilagridBwdSelector.h"          // ContextKey
 #include "backend/api/BackendRuntime.h"   // backend::Event, Stream, event_*
@@ -68,16 +60,13 @@ public:
         }
     }
 
-    // Complete all pending measurements from PRIOR iterations and append them
-    // to `out`. Call once at the top of the backward hook, BEFORE any begin()
-    // this iteration -- every pending slot is then >= 1 iteration old, so the
-    // synchronize is effectively free (the GPU finished it long ago).
+    // Harvest before begin() so pending events are at least one iteration old.
     void harvest(std::vector<BwdMeasurement>& out) {
         for (Slot& s : slots_) {
             if (!s.pending) continue;
             backend::event_synchronize(s.end);
             double ms = (double)backend::event_elapsed_ms(s.start, s.end);
-            out.push_back({s.key, s.arm, ms});
+            if (ms > 0.0) out.push_back({s.key, s.arm, ms});
             s.pending = false;
         }
     }

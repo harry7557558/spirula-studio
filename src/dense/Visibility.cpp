@@ -1,5 +1,6 @@
 #include "dense/Visibility.h"
 
+#include "core/HardwareThreads.h"
 #include "data/Knn.h"
 
 #include <algorithm>
@@ -35,7 +36,7 @@ template<class F> void parallel(size_t n, const F& body) {
     std::atomic<size_t> next{0};
     auto run = [&] { for (size_t i; (i = next.fetch_add(4096)) < n;) for (size_t j = i; j < std::min(n, i + 4096); ++j) body(j); };
     std::vector<std::thread> pool;
-    for (unsigned t = 1; t < std::max(1u, std::thread::hardware_concurrency()); ++t) pool.emplace_back(run);
+    for (unsigned t = 1; t < std::max(1u, spirula::hardware_threads()); ++t) pool.emplace_back(run);
     run();
     for (auto& thread : pool) thread.join();
 }
@@ -204,7 +205,7 @@ ProjectedPoints project_visibility(const std::vector<View>& views, const std::ve
             }
         }
     };
-    const unsigned threads = std::max(1u, std::thread::hardware_concurrency());
+    const unsigned threads = std::max(1u, spirula::hardware_threads());
     std::vector<std::thread> pool;
     for (unsigned t = 1; t < std::min<size_t>(threads, views.size()); ++t) pool.emplace_back(work);
     work();

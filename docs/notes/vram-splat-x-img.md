@@ -20,15 +20,15 @@ Three numbers describe a step, and every buffer below is one of them:
 Splat buffers are sized for `cap_max`, so everything else a run allocates is
 fixed once the first densify step has run -- which is what lets the trainer
 forecast its peak from this category alone. Scratch requested per LIVE splat
-(the densify draws, `raster_bwd.accum_weight`, `fused_proj_bwd.cam_bounds`)
-is Splat too: `POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool
-allocate it for `cap_max` on first use, scaling the request by cap / live, and
-`POOL_SPLAT_DRAW_TABLE` gives the two index lists whose length is a draw count
-`cap_max` entries outright. Measured on bonsai at 1/4 resolution, 228k -> 666k
-splats: splat stays at 1042.6 MiB (revised) / 1019.7 MiB (MCMC); without the
-tables it climbs 11 MiB over the same run and `other` another 15 MiB. A new buffer whose length
-follows the live count goes in one of those two tables, or the forecast
-under-reads the peak.
+that lives across a step (`raster_bwd.accum_weight`,
+`fused_proj_bwd.cam_bounds`, the oversize draw's weights) is Splat too:
+`POOL_LIVE_SPLAT_TABLE` in `core/PoolSlots.h` makes the pool allocate it for
+`cap_max` on first use, scaling the request by cap / live. Measured on bonsai
+at 1/4 resolution, 228k -> 666k splats: splat stays at 1042.6 MiB (revised) /
+1019.7 MiB (MCMC); without the table it climbs 11 MiB over the same run and
+`other` another 15 MiB. A new buffer whose length follows the live count goes
+in that table, or the forecast under-reads the peak -- unless it dies inside
+one call, in which case it belongs in the arena (the densify scratch below).
 
 ## What each buffer costs
 
@@ -172,13 +172,55 @@ gradient buffer rides along free.
 
 The multi-scale loss's scratch is a third phase, `Loss`
 ([vram-high-res.md](vram-high-res.md)); at tens of megapixels it is the
-largest of the three and sets the arena.
+largest of the three and sets the arena. The perceptual losses' scratch (the
+SSIM blur and coverage maps, ~27 bytes a pixel) is in it too: they run once per
+pyramid scale inside one `Loss` instance, so they take `acquire_reused`, which
+hands a later scale back the first slice -- scale 0's, the largest.
+
+`Densify` holds what a densify launcher allocates and drops before it returns:
+the relocation mask and destination list, the draw's sort keys and index
+buffers, the MCMC probabilities. Each launcher opens its own instance (they
+run one after another, and each re-acquires the same draw buffers). It is
+sized by the LIVE count, not the cap -- the arena is what grows, which is
+what the forecast already models. 28 bytes a live splat on Vulkan.
+
+Bicycle at 1/4, `--cap-max 13000000`, RTX 3070, the step trained to the cap
+(`SS_VRAM_TRACE` for the peak):
+
+| | before | after |
+|---|---|---|
+| splat, MiB | 4567 | 4220 |
+| image, MiB | 66.9 | 39.8 |
+| arena, MiB | 296 | 347 |
+| pool + scratch, MiB | 5420 | 5085 |
+| process peak, MiB | 5548 | 5086 |
+
+### Reservations: growing before anything is live
+
+An arena that grows only at a phase switch has to overflow first: a call that
+needs more than it holds gets private allocations for the slices that do not
+fit, and the arena grows at the next switch. That overflow is a transient the
+size of the growth, held beside the old arena, and the end-of-step VRAM
+sample never sees it -- 128 MiB above the steady pool at 13M splats in the run
+above, and as large as the intersect phase at tens of millions.
+
+So an opener that knows its size says so: `pool_begin_phase(p, bytes)` grows
+the arena to `bytes` plus what that phase has carved past its reservation
+before (the tile phase's appearance image), while nothing is live. The raster
+backward reserves `v_screen`, every densify launcher its lists. The tile
+intersector learns `n_isects` only after its count pass; when that does not
+fit (`phase_reserve`) it reopens the phase reserved and counts again -- one
+count pass, on the steps the intersections grow. `Loss` and `ImageBwd` do not
+reserve: they are sized by the image and grow only with the resolution.
+Overflow buffers that remain are freed before the arena regrows, never held
+beside the new one.
 
 ### Adding a buffer to a phase
 
 1. Add its row to `POOL_ALIAS_TABLE`. If the phase is new, add the enumerator
    and the one `pool_begin_phase()` call that opens it -- put that call in the
-   launcher that allocates the phase's first buffer, not in the engine layer.
+   launcher that allocates the phase's first buffer, not in the engine layer,
+   and give it the phase's size if the launcher can compute it.
 2. Run the parity suite with `SS_POOL_ALIAS_POISON=1`, which fills the arena
    with 0xff at every phase switch. A buffer that is still being read turns
    into NaNs the tests catch instead of the plausible stale data they would
@@ -194,8 +236,10 @@ largest of the three and sets the arena.
 - Acquiring a phase-tagged slot while a different phase is open throws, naming
   the buffer and both phases. That is the ordering bug caught for free.
 - A request the arena cannot fit yet takes a private allocation for that call
-  and raises the arena's target, so a growing `n_isects` degrades to today's
-  behavior for one step rather than overflowing.
+  and raises the arena's target, so an unreserved phase that grows degrades to
+  owned buffers for one call rather than overflowing.
+- A second acquire of one slot in one phase throws, except through
+  `acquire_reused`, which returns the first slice when it fits.
 - The VRAM report marks aliased rows `arena` in the cap column (they own
   nothing) and prints the arena's one allocation as `of which alias arena`, so
   the category caps and the pool total still add up.
@@ -203,7 +247,9 @@ largest of the three and sets the arena.
 ### Candidates not yet taken
 
 `raster_bwd.accum_weight` (114 MiB) would fit the `RasterBwd` phase and balance
-it against the intersect phase, for a net ~53 MiB. It is not tagged because
+it against the intersect phase, for a net ~53 MiB (`fused_proj_bwd.cam_bounds`,
+4 bytes a splat, likewise; `eng.densify.oversize_weight`, 8, is filled by the
+engine before the draw opens its phase, so it would need the draw to compute it). It is not tagged because
 the non-split training path can leave `engine().fwd.accum_weight` pointing at
 the previous step's buffer when a step produces none -- harmless today (stale
 but plausible numbers), garbage once the bytes are reused. Fix that stale view

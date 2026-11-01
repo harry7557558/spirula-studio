@@ -283,6 +283,9 @@ int cmdMaskSelftest(int, char**) {
             {"cam1/e.jpg", "cam1/e.jpg.JPEG"},     // upper-case, different container
             {"cam1/f.jpg", "f.png"},               // flat mask dir, nested images
             {"cam1/g.png", "cam1/g.png.png"},      // png image, png mask
+            {"cam2/h.jpg", "cam2/h.jpg.mask.png"},  // RealityScan
+            {"cam2/i.jpg", "cam2/i.mask.png"},
+            {"cam2/j.jpg", "cam2/j.jpg_00096.mask.png"},
         };
         for (const Case& c : cases) writePgm(md / c.mask, 8, 8, px);
         MaskIndex idx(md.string());
@@ -300,6 +303,13 @@ int cmdMaskSelftest(int, char**) {
         // image's mask).
         if (!idx.find("cam0/nosuch.jpg").empty()) {
             printf("  FAIL: invented a mask for an unmasked image\n");
+            fails++;
+        }
+        // RealityScan's index follows the file name; a frame's own digits do not
+        // make it another frame's mask.
+        writePgm(md / "cam2" / "clip_7_2.png", 8, 8, px);
+        if (!MaskIndex(md.string()).find("cam2/clip_7.jpg").empty()) {
+            printf("  FAIL: clip_7 took clip_7_2's mask\n");
             fails++;
         }
         // Ambiguity: two sub-folders both holding `dup.png` must not resolve a

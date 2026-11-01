@@ -475,6 +475,156 @@ SS_MSG(save_eval_images_help,
        "yazar. Kaliteyi değerlendirmek için işe yarar, karşılığında biraz disk "
        "yeri harcar."));
 
+SS_MSG(eval_lpips,
+    EN("Score eval views with LPIPS"),
+    JA("評価用の視点を LPIPS で採点"),
+    ZH_HANS("用 LPIPS 为评估视角评分"),
+    ZH_HANT("用 LPIPS 為評估視角評分"),
+    KO("평가 시점을 LPIPS로 채점"),
+    DE("Auswertungsansichten mit LPIPS bewerten"),
+    FR("Noter les vues d'évaluation avec LPIPS"),
+    ES("Puntuar las vistas de evaluación con LPIPS"),
+    PT("Pontuar as vistas de avaliação com LPIPS"),
+    IT("Valutare le viste con LPIPS"),
+    NL("Evaluatieaanzichten scoren met LPIPS"),
+    RU("Оценивать виды по LPIPS"),
+    TR("Değerlendirme görünümlerini LPIPS ile puanla"));
+SS_MSG(eval_lpips_help,
+    EN("When views are held out, also score them with LPIPS (AlexNet and VGG) in "
+       "metrics.json. Its four checkpoints, about 800 MB, are downloaded once when a "
+       "run starts, and a run whose download fails stops before it trains. A build "
+       "without the inference layer (SS_BUILD_SAM) leaves LPIPS to "
+       "reference/python/eval_lpips.py."),
+    JA("評価用に視点を取り分けたとき、LPIPS（AlexNet と VGG）でも採点して "
+       "metrics.json に書きます。4 つのチェックポイント（約 800 MB）は実行の開始時に"
+       "一度だけダウンロードされ、ダウンロードに失敗した実行は学習の前に止まります。"
+       "推論レイヤー（SS_BUILD_SAM）を含まないビルドでは、LPIPS は "
+       "reference/python/eval_lpips.py に任せます。"),
+    ZH_HANS("留出评估视角时，同时用 LPIPS（AlexNet 和 VGG）评分并写入 metrics.json。"
+            "它的四个检查点（约 800 MB）在运行开始时下载一次；下载失败的运行会在训练前"
+            "停止。不含推理层（SS_BUILD_SAM）的构建把 LPIPS 留给 "
+            "reference/python/eval_lpips.py。"),
+    ZH_HANT("留出評估視角時，同時用 LPIPS（AlexNet 與 VGG）評分並寫入 metrics.json。"
+            "它的四個檢查點（約 800 MB）在執行開始時下載一次；下載失敗的執行會在訓練前"
+            "停止。不含推論層（SS_BUILD_SAM）的建置把 LPIPS 交給 "
+            "reference/python/eval_lpips.py。"),
+    KO("평가용으로 시점을 떼어 두면 LPIPS(AlexNet과 VGG)로도 채점해 metrics.json에 "
+       "씁니다. 체크포인트 4개(약 800 MB)는 실행이 시작될 때 한 번 내려받으며, "
+       "내려받기에 실패한 실행은 학습 전에 멈춥니다. 추론 계층(SS_BUILD_SAM)이 없는 "
+       "빌드에서는 LPIPS를 reference/python/eval_lpips.py에 맡깁니다."),
+    DE("Werden Ansichten zurückgehalten, sie zusätzlich mit LPIPS (AlexNet und VGG) "
+       "bewerten und in metrics.json schreiben. Die vier Checkpoints, etwa 800 MB, "
+       "werden beim Start eines Laufs einmal heruntergeladen; schlägt das fehl, stoppt "
+       "der Lauf, bevor er trainiert. Ein Build ohne Inferenzschicht (SS_BUILD_SAM) "
+       "überlässt LPIPS reference/python/eval_lpips.py."),
+    FR("Quand des vues sont mises de côté, les noter aussi avec LPIPS (AlexNet et "
+       "VGG) dans metrics.json. Ses quatre points de contrôle, environ 800 Mo, sont "
+       "téléchargés une fois au début d'une exécution ; si le téléchargement échoue, "
+       "l'exécution s'arrête avant d'entraîner. Un build sans couche d'inférence "
+       "(SS_BUILD_SAM) laisse LPIPS à reference/python/eval_lpips.py."),
+    ES("Cuando se apartan vistas, puntuarlas también con LPIPS (AlexNet y VGG) en "
+       "metrics.json. Sus cuatro puntos de control, unos 800 MB, se descargan una vez "
+       "al empezar una ejecución; si la descarga falla, la ejecución se detiene antes "
+       "de entrenar. Una compilación sin la capa de inferencia (SS_BUILD_SAM) deja "
+       "LPIPS a reference/python/eval_lpips.py."),
+    PT("Quando há vistas reservadas, pontuá-las também com LPIPS (AlexNet e VGG) em "
+       "metrics.json. Seus quatro checkpoints, cerca de 800 MB, são baixados uma vez "
+       "ao iniciar uma execução; se o download falhar, a execução para antes de "
+       "treinar. Uma compilação sem a camada de inferência (SS_BUILD_SAM) deixa o "
+       "LPIPS para reference/python/eval_lpips.py."),
+    IT("Quando delle viste sono messe da parte, valutarle anche con LPIPS (AlexNet e "
+       "VGG) in metrics.json. I suoi quattro checkpoint, circa 800 MB, vengono "
+       "scaricati una volta all'avvio di un'esecuzione; se il download non riesce, "
+       "l'esecuzione si ferma prima di addestrare. Una build senza il livello di "
+       "inferenza (SS_BUILD_SAM) lascia LPIPS a reference/python/eval_lpips.py."),
+    NL("Als er aanzichten opzij worden gezet, die ook met LPIPS (AlexNet en VGG) "
+       "scoren in metrics.json. De vier checkpoints, ongeveer 800 MB, worden eenmaal "
+       "gedownload wanneer een run start; mislukt dat, dan stopt de run voordat hij "
+       "traint. Een build zonder inferentielaag (SS_BUILD_SAM) laat LPIPS over aan "
+       "reference/python/eval_lpips.py."),
+    RU("Если виды отложены для оценки, оценивать их также по LPIPS (AlexNet и VGG) и "
+       "записывать в metrics.json. Четыре контрольные точки, около 800 МБ, скачиваются "
+       "один раз при запуске; если загрузка не удалась, запуск останавливается до "
+       "обучения. Сборка без слоя вывода (SS_BUILD_SAM) оставляет LPIPS скрипту "
+       "reference/python/eval_lpips.py."),
+    TR("Görünümler ayrıldığında onları LPIPS (AlexNet ve VGG) ile de puanlayıp "
+       "metrics.json'a yazar. Dört denetim noktası, yaklaşık 800 MB, bir çalıştırma "
+       "başlarken bir kez indirilir; indirme başarısız olursa çalıştırma eğitmeden "
+       "durur. Çıkarım katmanı (SS_BUILD_SAM) olmayan bir derleme LPIPS'i "
+       "reference/python/eval_lpips.py'ye bırakır."));
+
+SS_MSG(lpips_checkpoints,
+    EN("LPIPS checkpoints folder"),
+    JA("LPIPS チェックポイントのフォルダー"),
+    ZH_HANS("LPIPS 检查点文件夹"),
+    ZH_HANT("LPIPS 檢查點資料夾"),
+    KO("LPIPS 체크포인트 폴더"),
+    DE("Ordner der LPIPS-Checkpoints"),
+    FR("Dossier des points de contrôle LPIPS"),
+    ES("Carpeta de puntos de control de LPIPS"),
+    PT("Pasta dos checkpoints do LPIPS"),
+    IT("Cartella dei checkpoint LPIPS"),
+    NL("Map met LPIPS-checkpoints"),
+    RU("Папка контрольных точек LPIPS"),
+    TR("LPIPS denetim noktası klasörü"));
+SS_MSG(lpips_checkpoints_help,
+    EN("A folder that already holds the four LPIPS checkpoints, used instead of "
+       "downloading them: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, and LPIPS "
+       "v0.1's alex.pth and vgg.pth. Torch's hub cache (~/.cache/torch/hub/checkpoints) "
+       "is such a folder. Empty: the model cache, downloading what is missing."),
+    JA("4 つの LPIPS チェックポイントがすでに入っているフォルダーで、ダウンロードの"
+       "代わりに使います：alexnet-owt-7be5be79.pth、vgg16-397923af.pth、LPIPS v0.1 の "
+       "alex.pth と vgg.pth。torch のハブキャッシュ（~/.cache/torch/hub/checkpoints）"
+       "がそうしたフォルダーです。空のときはモデルキャッシュを使い、足りないものを"
+       "ダウンロードします。"),
+    ZH_HANS("已经存有四个 LPIPS 检查点的文件夹，用它代替下载：alexnet-owt-7be5be79.pth、"
+            "vgg16-397923af.pth，以及 LPIPS v0.1 的 alex.pth 和 vgg.pth。torch 的 hub "
+            "缓存（~/.cache/torch/hub/checkpoints）就是这样的文件夹。留空则使用模型缓存，"
+            "并下载缺少的文件。"),
+    ZH_HANT("已經存有四個 LPIPS 檢查點的資料夾，用它代替下載：alexnet-owt-7be5be79.pth、"
+            "vgg16-397923af.pth，以及 LPIPS v0.1 的 alex.pth 與 vgg.pth。torch 的 hub "
+            "快取（~/.cache/torch/hub/checkpoints）就是這樣的資料夾。留空則使用模型快取，"
+            "並下載缺少的檔案。"),
+    KO("LPIPS 체크포인트 4개가 이미 들어 있는 폴더로, 내려받는 대신 씁니다: "
+       "alexnet-owt-7be5be79.pth, vgg16-397923af.pth, 그리고 LPIPS v0.1의 alex.pth와 "
+       "vgg.pth. torch의 허브 캐시(~/.cache/torch/hub/checkpoints)가 그런 폴더입니다. "
+       "비워 두면 모델 캐시를 쓰고 없는 파일을 내려받습니다."),
+    DE("Ein Ordner, der die vier LPIPS-Checkpoints schon enthält, statt sie "
+       "herunterzuladen: alexnet-owt-7be5be79.pth, vgg16-397923af.pth sowie alex.pth "
+       "und vgg.pth von LPIPS v0.1. Der Hub-Cache von torch "
+       "(~/.cache/torch/hub/checkpoints) ist so ein Ordner. Leer: der Modell-Cache, "
+       "Fehlendes wird heruntergeladen."),
+    FR("Un dossier qui contient déjà les quatre points de contrôle LPIPS, utilisé au "
+       "lieu de les télécharger : alexnet-owt-7be5be79.pth, vgg16-397923af.pth, et "
+       "alex.pth et vgg.pth de LPIPS v0.1. Le cache hub de torch "
+       "(~/.cache/torch/hub/checkpoints) en est un. Vide : le cache des modèles, en "
+       "téléchargeant ce qui manque."),
+    ES("Una carpeta que ya contiene los cuatro puntos de control de LPIPS, usada en "
+       "lugar de descargarlos: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, y "
+       "alex.pth y vgg.pth de LPIPS v0.1. La caché hub de torch "
+       "(~/.cache/torch/hub/checkpoints) es una de ellas. Vacía: la caché de modelos, "
+       "descargando lo que falte."),
+    PT("Uma pasta que já contém os quatro checkpoints do LPIPS, usada em vez de "
+       "baixá-los: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, e alex.pth e vgg.pth "
+       "do LPIPS v0.1. O cache hub do torch (~/.cache/torch/hub/checkpoints) é uma "
+       "delas. Vazia: o cache de modelos, baixando o que faltar."),
+    IT("Una cartella che contiene già i quattro checkpoint LPIPS, usata al posto del "
+       "download: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, e alex.pth e vgg.pth "
+       "di LPIPS v0.1. La cache hub di torch (~/.cache/torch/hub/checkpoints) è una di "
+       "queste. Vuota: la cache dei modelli, scaricando ciò che manca."),
+    NL("Een map die de vier LPIPS-checkpoints al bevat, gebruikt in plaats van "
+       "downloaden: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, en alex.pth en "
+       "vgg.pth van LPIPS v0.1. De hub-cache van torch (~/.cache/torch/hub/checkpoints) "
+       "is zo'n map. Leeg: de modelcache, met een download van wat ontbreekt."),
+    RU("Папка, где уже лежат четыре контрольные точки LPIPS; используется вместо "
+       "загрузки: alexnet-owt-7be5be79.pth, vgg16-397923af.pth, а также alex.pth и "
+       "vgg.pth из LPIPS v0.1. Кэш hub у torch (~/.cache/torch/hub/checkpoints) — "
+       "такая папка. Пусто: кэш моделей, недостающее скачивается."),
+    TR("Dört LPIPS denetim noktasını zaten içeren, indirmek yerine kullanılan bir "
+       "klasör: alexnet-owt-7be5be79.pth, vgg16-397923af.pth ve LPIPS v0.1'in alex.pth "
+       "ile vgg.pth dosyaları. torch'un hub önbelleği (~/.cache/torch/hub/checkpoints) "
+       "böyle bir klasördür. Boş: model önbelleği; eksik olanlar indirilir."));
+
 SS_MSG(log_performance,
     EN("Log performance stats"),
     JA("性能の統計を記録"),
@@ -1337,6 +1487,27 @@ SS_MSG(metashape_psx_help,
        "несколько изображений проекта имеют одинаковое имя файла."),
     TR("Metashape proje dosyası; projede birden çok görüntü aynı dosya adını "
        "taşıdığında hangisinin kastedildiğini çözmek için kullanılır."));
+
+SS_MSG(sampling_seed,
+    EN("Camera sampling seed"), JA("カメラ選択の乱数シード"), ZH_HANS("相机采样随机种子"),
+    ZH_HANT("相機取樣隨機種子"), KO("카메라 샘플링 시드"), DE("Startwert der Kameraauswahl"),
+    FR("Graine de sélection des caméras"), ES("Semilla de muestreo de cámaras"),
+    PT("Semente de amostragem de câmeras"), IT("Seme di campionamento delle fotocamere"),
+    NL("Startwaarde voor cameraselectie"), RU("Зерно выборки камер"), TR("Kamera örnekleme tohumu"));
+SS_MSG(sampling_seed_help,
+    EN("Random seed for camera sampling. 0 chooses a new seed for each run."),
+    JA("カメラ選択に使う乱数シードです。0 は実行ごとに新しい値を選びます。"),
+    ZH_HANS("相机采样的随机种子。0 表示每次运行选择新种子。"),
+    ZH_HANT("相機取樣的隨機種子。0 表示每次執行選擇新種子。"),
+    KO("카메라 샘플링의 난수 시드입니다. 0은 실행마다 새 시드를 선택합니다."),
+    DE("Zufallsstartwert für die Kameraauswahl. 0 wählt für jeden Lauf einen neuen Wert."),
+    FR("Graine aléatoire de sélection des caméras. 0 choisit une nouvelle graine à chaque exécution."),
+    ES("Semilla aleatoria para el muestreo de cámaras. 0 elige una nueva en cada ejecución."),
+    PT("Semente aleatória para amostragem de câmeras. 0 escolhe uma nova a cada execução."),
+    IT("Seme casuale per il campionamento delle fotocamere. 0 sceglie un nuovo seme a ogni esecuzione."),
+    NL("Willekeurige startwaarde voor cameraselectie. 0 kiest bij elke uitvoering een nieuwe waarde."),
+    RU("Зерно случайной выборки камер. При 0 для каждого запуска выбирается новое зерно."),
+    TR("Kamera örneklemesi için rastgele tohum. 0, her çalıştırmada yeni bir tohum seçer."));
 
 SS_MSG(train_resolution_divisor,
     EN("Training resolution divisor"), JA("学習解像度の分母"),
@@ -3373,6 +3544,128 @@ SS_MSG(background_match_luminance_help,
        "sağlar. Karanlık sahnelerin parlak bir arka planı gizlemek için pusla "
        "dolmasını önler. Yalnızca `noise` / `pseudorandom` / `random` arka "
        "planlarıyla kullanılır."));
+SS_MSG(noise_gate_peak_weight,
+    EN("Hidden splats explore"), JA("隠れたスプラットも探索"),
+    ZH_HANS("被遮挡的泼溅也探索"), ZH_HANT("被遮擋的潑濺也探索"),
+    KO("가려진 스플랫도 탐색"), DE("Verdeckte Splats suchen weiter"),
+    FR("Les splats cachés explorent"), ES("Los splats ocultos exploran"),
+    PT("Splats ocultos exploram"), IT("Gli splat nascosti esplorano"),
+    NL("Verborgen splats zoeken verder"), RU("Скрытые сплаты тоже ищут место"),
+    TR("Gizli splat'lar da yer arar"));
+SS_MSG(noise_gate_peak_weight_help,
+    EN("Decide which splats get exploration noise by what they show at most "
+       "(their peak opacity times transmittance) rather than by their opacity "
+       "alone, so an opaque splat that stays hidden behind others moves like a "
+       "faint one."),
+    JA("探索ノイズを与えるスプラットを、不透明度だけでなく実際に見えている最大の"
+       "量（不透明度と透過率の積の最大値）で決めます。他のスプラットの後ろに隠れ"
+       "続ける不透明なスプラットも、薄いスプラットと同じように動きます。"),
+    ZH_HANS("按泼溅实际显示的最大程度（不透明度与透射率乘积的峰值），而不仅按不"
+            "透明度，决定哪些泼溅获得探索噪声。这样一直被遮挡的不透明泼溅也会像"
+            "淡的泼溅一样移动。"),
+    ZH_HANT("按潑濺實際顯示的最大程度（不透明度與穿透率乘積的峰值），而不僅按不"
+            "透明度，決定哪些潑濺獲得探索噪聲。這樣一直被遮擋的不透明潑濺也會像"
+            "淡的潑濺一樣移動。"),
+    KO("탐색 노이즈를 줄 스플랫을 불투명도만이 아니라 실제로 보이는 최대 정도"
+       "(불투명도와 투과율 곱의 최댓값)로 정합니다. 다른 스플랫 뒤에 계속 가려진 "
+       "불투명한 스플랫도 옅은 스플랫처럼 움직입니다."),
+    DE("Entscheidet nach dem, was ein Splat höchstens zeigt (seiner höchsten "
+       "Deckkraft mal Transmission), statt nur nach der Deckkraft, welche Splats "
+       "Suchrauschen bekommen. Ein deckender Splat, der hinter anderen verborgen "
+       "bleibt, bewegt sich dann wie ein schwacher."),
+    FR("Choisit les splats qui reçoivent le bruit d'exploration selon ce qu'ils "
+       "montrent au plus (leur opacité maximale fois la transmittance) plutôt que "
+       "selon leur seule opacité : un splat opaque qui reste caché derrière "
+       "d'autres bouge alors comme un splat pâle."),
+    ES("Decide qué splats reciben ruido de exploración por lo que muestran como "
+       "máximo (su opacidad máxima por la transmitancia) y no solo por su "
+       "opacidad, de modo que un splat opaco que queda oculto tras otros se mueve "
+       "como uno tenue."),
+    PT("Decide quais splats recebem ruído de exploração pelo que mostram no "
+       "máximo (sua opacidade máxima vezes a transmitância), e não só pela "
+       "opacidade, de modo que um splat opaco que fica escondido atrás de outros "
+       "se move como um fraco."),
+    IT("Sceglie gli splat che ricevono il rumore di esplorazione in base a quanto "
+       "mostrano al massimo (la loro opacità massima per la trasmittanza) e non "
+       "solo in base all'opacità: uno splat opaco che resta nascosto dietro altri "
+       "si muove così come uno tenue."),
+    NL("Bepaalt welke splats verkenningsruis krijgen op grond van wat ze "
+       "hoogstens laten zien (hun hoogste dekking maal transmissie) in plaats van "
+       "alleen hun dekking, zodat een dekkende splat die achter andere verborgen "
+       "blijft beweegt als een vage."),
+    RU("Решает, каким сплатам давать шум для поиска места, по тому, сколько они "
+       "максимально видны (пик произведения непрозрачности на пропускание), а не "
+       "только по непрозрачности: непрозрачный сплат, который остаётся скрытым за "
+       "другими, движется как бледный."),
+    TR("Hangi splat'ların arama gürültüsü alacağına yalnızca opaklıklarına göre "
+       "değil, en fazla ne kadar göründüklerine (opaklık ile geçirgenlik "
+       "çarpımının en yüksek değeri) göre karar verir; böylece başkalarının "
+       "arkasında gizli kalan opak bir splat soluk biri gibi hareket eder."));
+SS_MSG(viewer_kernel_fraction,
+    EN("Web viewer kernel share"), JA("Webビューアのカーネルの割合"),
+    ZH_HANS("网页查看器核函数比例"), ZH_HANT("網頁檢視器核函數比例"),
+    KO("웹 뷰어 커널 비율"), DE("Anteil des Web-Viewer-Kernels"),
+    FR("Part du noyau des visionneuses web"),
+    ES("Proporción del núcleo de visores web"),
+    PT("Proporção do núcleo de visualizadores web"),
+    IT("Quota del kernel dei visualizzatori web"),
+    NL("Aandeel van de webviewer-kernel"), RU("Доля ядра веб-просмотрщиков"),
+    TR("Web görüntüleyici çekirdeğinin payı"));
+SS_MSG(viewer_kernel_fraction_help,
+    EN("Share of training steps that draw splats the way web viewers such as "
+       "PlayCanvas and SuperSplat do: cut off at about 2.8 sigma, with the falloff "
+       "rescaled to reach zero there. The model then looks in those viewers the way "
+       "it looks while training. 0 trains with the full Gaussian only."),
+    JA("学習ステップのうち、PlayCanvas や SuperSplat などの Web ビューアと同じ方法で"
+       "スプラットを描く割合です。約 2.8 sigma で打ち切り、そこでゼロになるよう減衰を"
+       "調整します。これらのビューアでも学習時と同じ見た目になります。0 なら完全な"
+       "ガウス分布だけで学習します。"),
+    ZH_HANS("训练步骤中按 PlayCanvas、SuperSplat 等网页查看器的方式绘制泼溅的比例："
+            "在约 2.8 sigma 处截断，并调整衰减使其在该处降为零。这样模型在这些查看器"
+            "中与训练时看起来一致。0 表示只用完整的高斯分布训练。"),
+    ZH_HANT("訓練步驟中按 PlayCanvas、SuperSplat 等網頁檢視器的方式繪製潑濺的比例："
+            "在約 2.8 sigma 處截斷，並調整衰減使其在該處降為零。這樣模型在這些檢視器"
+            "中與訓練時看起來一致。0 表示只用完整的高斯分布訓練。"),
+    KO("학습 단계 중 PlayCanvas, SuperSplat 같은 웹 뷰어와 같은 방식으로 스플랫을 "
+       "그리는 비율입니다. 약 2.8 sigma에서 자르고 그 지점에서 0이 되도록 감쇠를 "
+       "조정합니다. 그러면 이런 뷰어에서도 학습 때와 같게 보입니다. 0이면 완전한 "
+       "가우시안으로만 학습합니다."),
+    DE("Anteil der Trainingsschritte, die Splats so zeichnen wie Web-Viewer wie "
+       "PlayCanvas und SuperSplat: bei etwa 2,8 Sigma abgeschnitten, mit einem Abfall, "
+       "der dort auf null skaliert ist. Das Modell sieht dann in diesen Viewern so aus "
+       "wie beim Training. 0 trainiert nur mit der vollen Gaußfunktion."),
+    FR("Part des étapes d'entraînement qui dessinent les splats comme les "
+       "visionneuses web telles que PlayCanvas et SuperSplat : coupés vers 2,8 sigma, "
+       "avec une décroissance remise à l'échelle pour s'annuler à cet endroit. Le "
+       "modèle garde alors dans ces visionneuses l'aspect qu'il a à l'entraînement. "
+       "0 n'entraîne qu'avec la gaussienne complète."),
+    ES("Proporción de pasos de entrenamiento que dibujan los splats como los visores "
+       "web, por ejemplo PlayCanvas y SuperSplat: recortados hacia 2,8 sigma, con la "
+       "caída reescalada para llegar a cero allí. Así el modelo se ve en esos visores "
+       "como durante el entrenamiento. 0 entrena solo con la gaussiana completa."),
+    PT("Proporção dos passos de treinamento que desenham os splats como os "
+       "visualizadores web, como PlayCanvas e SuperSplat: cortados por volta de 2,8 "
+       "sigma, com o decaimento reescalado para chegar a zero ali. Assim o modelo fica "
+       "nesses visualizadores como no treinamento. 0 treina apenas com a gaussiana "
+       "completa."),
+    IT("Quota dei passi di addestramento che disegnano gli splat come i "
+       "visualizzatori web, ad esempio PlayCanvas e SuperSplat: tagliati a circa 2,8 "
+       "sigma, con il decadimento riscalato perché lì arrivi a zero. Il modello appare "
+       "così in quei visualizzatori come durante l'addestramento. 0 addestra solo con "
+       "la gaussiana completa."),
+    NL("Aandeel van de trainingsstappen dat splats tekent zoals webviewers als "
+       "PlayCanvas en SuperSplat dat doen: afgekapt rond 2,8 sigma, met het verloop zo "
+       "geschaald dat het daar nul bereikt. Het model ziet er dan in die viewers uit "
+       "zoals tijdens de training. 0 traint alleen met de volledige gaussiaan."),
+    RU("Доля шагов обучения, в которых сплаты рисуются так же, как в "
+       "веб-просмотрщиках вроде PlayCanvas и SuperSplat: обрезаются около 2,8 сигмы, "
+       "а спад масштабируется так, чтобы там стать нулём. Тогда модель выглядит в этих "
+       "просмотрщиках так же, как при обучении. 0 — обучение только с полной "
+       "гауссианой."),
+    TR("Eğitim adımlarından, splat'ları PlayCanvas ve SuperSplat gibi web "
+       "görüntüleyicilerin yaptığı gibi çizenlerin payı: yaklaşık 2,8 sigmada kesilir "
+       "ve azalma orada sıfıra inecek şekilde ölçeklenir. Böylece model bu "
+       "görüntüleyicilerde eğitimdeki gibi görünür. 0 yalnızca tam Gauss ile eğitir."));
 SS_MSG(background_noise_pre_warmup,
     EN("Initial background noise"), JA("最初の背景ノイズの強さ"),
     ZH_HANS("初始背景噪声强度"), ZH_HANT("初始背景雜訊強度"),
@@ -4828,6 +5121,106 @@ SS_MSG(min_opacity_help,
     TR("Bundan daha soluk splat'lar gereken yerlere geri dönüştürülür. Yükseltmek "
        "daha sert budar ve splat bütçesini görünen yüzeylerde tutar."));
 
+SS_MSG(dead_criterion,
+    EN("Dead-splat test"), JA("不要なスプラットの判定"),
+    ZH_HANS("失效泼溅的判定方式"), ZH_HANT("失效潑濺的判定方式"),
+    KO("죽은 스플랫 판정 기준"),
+    DE("Test für tote Splats"),
+    FR("Critère de splat mort"),
+    ES("Criterio de splat muerto"),
+    PT("Critério de splat morto"),
+    IT("Criterio di splat morto"),
+    NL("Criterium voor dode splats"),
+    RU("Признак мёртвого сплата"),
+    TR("Ölü splat ölçütü"));
+SS_MSG(dead_criterion_help,
+    EN("What marks a splat as dead, to be recycled into a place that needs it. "
+       "`opacity` recycles splats fainter than the recycle opacity. `max_weight` "
+       "asks how much the splat really shows in the photos -- the most it added to "
+       "any one pixel, forgotten with a half-life of `max_batch_per_epoch` steps -- "
+       "so splats hidden behind others or out of every view go too. `either` "
+       "recycles a splat that fails either test."),
+    JA("スプラットを不要とみなして、必要な場所へ回す条件です。`opacity` は再利"
+       "用の不透明度より薄いスプラットを回します。`max_weight` はスプラットが写"
+       "真に実際どれだけ写ったか（1 つの画素に加えた最大の重み。"
+       "`max_batch_per_epoch` ステップの半減期で忘れていきます）を見るので、ほ"
+       "かの陰に隠れたものや、どの視点からも見えないものも回されます。`either` "
+       "はどちらかの条件に当てはまれば回します。"),
+    ZH_HANS("判定泼溅失效、把它回收到需要位置的条件。`opacity` 回收比回收不透明"
+            "度更淡的泼溅。`max_weight` 看泼溅在照片中实际显现了多少——它对单个"
+            "像素贡献过的最大权重，以 `max_batch_per_epoch` 步为半衰期逐渐遗忘——"
+            "因此被其他泼溅遮挡或不在任何视角内的泼溅也会被回收。`either` 只要"
+            "满足任一条件就回收。"),
+    ZH_HANT("判定潑濺失效、把它回收到需要位置的條件。`opacity` 回收比回收不透明"
+            "度更淡的潑濺。`max_weight` 看潑濺在照片中實際顯現了多少——它對單個"
+            "像素貢獻過的最大權重，以 `max_batch_per_epoch` 步為半衰期逐漸遺忘——"
+            "因此被其他潑濺遮擋或不在任何視角內的潑濺也會被回收。`either` 只要"
+            "滿足任一條件就回收。"),
+    KO("스플랫을 죽은 것으로 보고 필요한 곳으로 재배치하는 조건입니다. "
+       "`opacity` 는 재활용 불투명도보다 옅은 스플랫을 재배치합니다. "
+       "`max_weight` 는 스플랫이 사진에 실제로 얼마나 드러났는지(한 화소에 더한 "
+       "가장 큰 가중치를 `max_batch_per_epoch` 스텝의 반감기로 잊어 감)를 보므로, "
+       "다른 것에 가려졌거나 어느 시점에서도 보이지 않는 스플랫도 재배치됩니다. "
+       "`either` 는 둘 중 하나라도 해당하면 재배치합니다."),
+    DE("Was einen Splat als tot markiert, sodass er dorthin recycelt wird, wo er "
+       "gebraucht wird. `opacity` recycelt Splats, die blasser als die "
+       "Recycling-Deckkraft sind. `max_weight` fragt, wie viel der Splat in den "
+       "Fotos wirklich zu sehen ist -- das größte Gewicht, das er einem Pixel "
+       "beigetragen hat, vergessen mit einer Halbwertszeit von "
+       "`max_batch_per_epoch` Schritten --, sodass auch verdeckte oder in keiner "
+       "Ansicht sichtbare Splats recycelt werden. `either` recycelt einen Splat, "
+       "der einen der beiden Tests nicht besteht."),
+    FR("Ce qui fait qu'un splat est jugé mort et recyclé là où il manque. "
+       "`opacity` recycle les splats plus pâles que l'opacité de recyclage. "
+       "`max_weight` regarde ce que le splat montre réellement sur les photos -- le "
+       "plus grand poids qu'il ait apporté à un pixel, oublié avec une demi-vie de "
+       "`max_batch_per_epoch` pas --, si bien que les splats cachés derrière "
+       "d'autres ou hors de toute vue sont recyclés aussi. `either` recycle un "
+       "splat qui échoue à l'un ou l'autre test."),
+    ES("Qué marca un splat como muerto para reciclarlo donde haga falta. "
+       "`opacity` recicla los splats más tenues que la opacidad de reciclaje. "
+       "`max_weight` mira cuánto se ve realmente el splat en las fotos -- el mayor "
+       "peso que aportó a un píxel, olvidado con una vida media de "
+       "`max_batch_per_epoch` pasos --, así que también se reciclan los splats "
+       "tapados por otros o fuera de toda vista. `either` recicla un splat que "
+       "falle cualquiera de las dos pruebas."),
+    PT("O que marca um splat como morto para ser reciclado onde faz falta. "
+       "`opacity` recicla os splats mais fracos que a opacidade de reciclagem. "
+       "`max_weight` vê quanto o splat aparece de fato nas fotos -- o maior peso "
+       "que deu a um pixel, esquecido com uma meia-vida de `max_batch_per_epoch` "
+       "passos --, por isso também são reciclados os splats tapados por outros ou "
+       "fora de todas as vistas. `either` recicla um splat que falhe qualquer um "
+       "dos testes."),
+    IT("Che cosa rende morto uno splat, da riciclare dove serve. `opacity` "
+       "ricicla gli splat più deboli dell'opacità di riciclo. `max_weight` guarda "
+       "quanto lo splat si vede davvero nelle foto -- il peso massimo che ha dato a "
+       "un pixel, dimenticato con un tempo di dimezzamento di "
+       "`max_batch_per_epoch` passi --, così vengono riciclati anche gli splat "
+       "nascosti da altri o fuori da ogni vista. `either` ricicla uno splat che "
+       "non supera l'uno o l'altro test."),
+    NL("Wat een splat als dood markeert, zodat hij wordt hergebruikt waar hij "
+       "nodig is. `opacity` hergebruikt splats die vager zijn dan de "
+       "hergebruikdekking. `max_weight` kijkt hoeveel de splat echt in de foto's "
+       "te zien is -- het grootste gewicht dat hij aan één pixel bijdroeg, vergeten "
+       "met een halveringstijd van `max_batch_per_epoch` stappen --, zodat ook "
+       "splats die achter andere verborgen zijn of in geen enkel beeld voorkomen "
+       "worden hergebruikt. `either` hergebruikt een splat die voor een van beide "
+       "tests zakt."),
+    RU("Что делает сплат мёртвым, чтобы переработать его туда, где он нужен. "
+       "`opacity` перерабатывает сплаты бледнее порога переработки. "
+       "`max_weight` смотрит, насколько сплат действительно виден на фотографиях, "
+       "-- наибольший вес, который он внёс в один пиксель, забываемый с периодом "
+       "полураспада `max_batch_per_epoch` шагов, -- поэтому перерабатываются и "
+       "сплаты, закрытые другими или не попадающие ни в один ракурс. `either` "
+       "перерабатывает сплат, не прошедший любую из двух проверок."),
+    TR("Bir splat'ı ölü sayıp gereken yere geri dönüştüren koşul. `opacity` "
+       "geri dönüşüm saydamsızlığından daha soluk splat'ları geri dönüştürür. "
+       "`max_weight` splat'ın fotoğraflarda gerçekten ne kadar göründüğüne bakar "
+       "-- tek bir piksele kattığı en büyük ağırlık, `max_batch_per_epoch` "
+       "adımlık yarı ömürle unutulur --, böylece başkalarının arkasında kalan ya "
+       "da hiçbir görüntüde yer almayan splat'lar da geri dönüştürülür. `either` "
+       "iki testten birini geçemeyen splat'ı geri dönüştürür."));
+
 SS_MSG(refine_every,
     EN("Refinement interval"), JA("スプラット追加の間隔"),
     ZH_HANS("细化间隔"), ZH_HANT("細化間隔"), KO("정제 간격"),
@@ -5286,7 +5679,8 @@ SS_MSG(densify_loss_map_mode_help,
        "whether or not they are already reconstructed well. `robust_edge_aware` "
        "does the same but ignores the worst-matching pixels, so moving people "
        "and cars do not attract splats. `none` spreads new splats evenly. Any mode with `_nms` first thins the "
-       "error down to its ridge lines, so splats land on the sharpest edge rather than spreading across the blur around it."),
+       "error down to its ridge lines, so splats land on the sharpest edge rather than spreading across the blur around it."
+       " `s_cielab` scores the S-CIELAB color difference, as the eye sees it. `flip` scores FLIP, the difference a viewer notices flipping between the two images, and `flip_feature` only its edge and point part. `auto` takes `s_cielab` or `flip_feature` when `--perceptual-loss` is `s_cielab` or `flip`, and `ssim_cs` otherwise."),
     JA("新しいスプラットをどこに足すかを、どの種類の誤差で決めるかです。`ssim_structure` "
        "は明るさの違いを無視して、模様やエッジの食い違いを狙います。`ssim_full`、"
        "`ssim_cs`、`loss_full` の順に、生の色の誤差をより多く取り込みます。`edge_aware` "
@@ -5294,21 +5688,24 @@ SS_MSG(densify_loss_map_mode_help,
        "ます。`robust_edge_aware` は同じですが、いちばん合っていない画素を無視"
        "するので、動く人や車にスプラットが集まりません。`none` は新しいスプラ"
        "ットを均等に散らします。`_nms` の付いたモードは、まず誤差を稜線だけに"
-       "細らせるので、ぼやけた広がりではなく、いちばん鋭いところにスプラットが乗ります。"),
+       "細らせるので、ぼやけた広がりではなく、いちばん鋭いところにスプラットが乗ります。"
+       "`s_cielab` は目に見えるとおりの S-CIELAB 色差で評価します。`flip` は FLIP（二つの画像を切り替えたときに気づく違い）で、`flip_feature` はそのうちエッジと点の部分だけで評価します。`auto` は `--perceptual-loss` が `s_cielab` なら `s_cielab`、`flip` なら `flip_feature`、それ以外なら `ssim_cs` を使います。"),
     ZH_HANS("用哪种误差决定在哪里新增泼溅。`ssim_structure` 忽略明暗差异，专门"
             "盯住图案和边缘的不一致。`ssim_full`、`ssim_cs`、`loss_full` 依次"
             "纳入更多原始颜色误差。`edge_aware` 追踪参考照片中的边缘，无论那里"
             "是否已经重建得很好。`robust_edge_aware` 与之相同，但忽略最不匹配"
             "的像素，因此移动的行人和车辆不会吸引泼溅。`none` 则把新泼溅均匀铺"
             "开。带 `_nms` 的模式会先把误差收细成一条线，因此泼溅落在最清晰的边缘上，"
-            "而不是散布在它周围的模糊里。"),
+            "而不是散布在它周围的模糊里。"
+            "`s_cielab` 按人眼所见的 S-CIELAB 色差打分。`flip` 按 FLIP（在两张图像之间来回切换时能察觉到的差异）打分，`flip_feature` 只取其中边缘和点的部分。`auto` 在 `--perceptual-loss` 为 `s_cielab` 时用 `s_cielab`，为 `flip` 时用 `flip_feature`，否则用 `ssim_cs`。"),
     ZH_HANT("用哪種誤差決定在哪裡新增潑濺。`ssim_structure` 忽略明暗差異，專門"
             "盯住圖案和邊緣的不一致。`ssim_full`、`ssim_cs`、`loss_full` 依次"
             "納入更多原始顏色誤差。`edge_aware` 追蹤參考照片中的邊緣，無論那裡"
             "是否已經重建得很好。`robust_edge_aware` 與之相同，但忽略最不吻合"
             "的像素，因此移動的行人和車輛不會吸引潑濺。`none` 則把新潑濺均勻鋪"
             "開。帶 `_nms` 的模式會先把誤差收細成一條線，因此潑濺落在最清晰的邊緣上，"
-            "而不是散布在它周圍的模糊裡。"),
+            "而不是散布在它周圍的模糊裡。"
+            "`s_cielab` 按人眼所見的 S-CIELAB 色差打分。`flip` 按 FLIP（在兩張圖像之間來回切換時能察覺到的差異）打分，`flip_feature` 只取其中邊緣和點的部分。`auto` 在 `--perceptual-loss` 為 `s_cielab` 時用 `s_cielab`，為 `flip` 時用 `flip_feature`，否則用 `ssim_cs`。"),
     KO("새 스플랫을 어디에 추가할지 어떤 종류의 오차로 정할지입니다. `ssim_structure`는"
        " 밝기 차이를 무시하고 무늬와 가장자리의 불일치를 노립니다. `ssim_full`, "
        "`ssim_cs`, `loss_full` 순으로 원본 색 오차를 점점 더 많이 반영합니다. "
@@ -5316,7 +5713,8 @@ SS_MSG(densify_loss_map_mode_help,
        "습니다. `robust_edge_aware`는 같지만 가장 안 맞는 픽셀을 무시하므로 움"
        "직이는 사람과 차에 스플랫이 몰리지 않습니다. `none`은 새 스플랫을 고르"
        "게 흩뿌립니다. `_nms`가 붙은 방식은 오차를 먼저 능선만 남기고 얇게 깎아"
-       "내므로, 흐릿하게 번진 곳이 아니라 가장 날카로운 가장자리에 스플랫이 놓입니다."),
+       "내므로, 흐릿하게 번진 곳이 아니라 가장 날카로운 가장자리에 스플랫이 놓입니다."
+       " `s_cielab`은 눈에 보이는 대로의 S-CIELAB 색차로 평가합니다. `flip`은 FLIP(두 이미지를 번갈아 볼 때 눈에 띄는 차이)으로, `flip_feature`는 그중 가장자리와 점 부분만으로 평가합니다. `auto`는 `--perceptual-loss`가 `s_cielab`이면 `s_cielab`을, `flip`이면 `flip_feature`를, 아니면 `ssim_cs`를 씁니다."),
     DE("Welche Art von Fehler entscheidet, wo neue Splats hinzukommen. `ssim_structure` "
        "zielt auf abweichende Muster und Kanten und ignoriert Helligkeitsunterschiede. "
        "`ssim_full`, `ssim_cs` und `loss_full` nehmen zunehmend mehr vom reinen "
@@ -5324,7 +5722,8 @@ SS_MSG(densify_loss_map_mode_help,
        "ob sie schon gut rekonstruiert sind. `robust_edge_aware` tut dasselbe, "
        "ignoriert aber die am schlechtesten passenden Pixel, sodass bewegte Personen "
        "und Autos keine Splats anziehen. `none` verteilt neue Splats gleichmäßig. Jeder Modus mit `_nms` dünnt den "
-       "Fehler zuerst auf seine Gratlinien aus, sodass Splats auf der schärfsten Kante landen statt in der Unschärfe darum herum."),
+       "Fehler zuerst auf seine Gratlinien aus, sodass Splats auf der schärfsten Kante landen statt in der Unschärfe darum herum."
+       " `s_cielab` bewertet den S-CIELAB-Farbabstand, so wie das Auge ihn sieht. `flip` bewertet FLIP, den Unterschied, der beim Hin- und Herschalten zwischen beiden Bildern auffällt, und `flip_feature` nur dessen Kanten- und Punktanteil. `auto` nimmt `s_cielab` bzw. `flip_feature`, wenn `--perceptual-loss` auf `s_cielab` bzw. `flip` steht, sonst `ssim_cs`."),
     FR("Quel type d'erreur décide où ajouter de nouveaux splats. `ssim_structure` "
        "vise les motifs et les contours qui ne correspondent pas, en ignorant "
        "les écarts de luminosité. `ssim_full`, `ssim_cs` et `loss_full` intègrent "
@@ -5333,7 +5732,8 @@ SS_MSG(densify_loss_map_mode_help,
        "ou non. `robust_edge_aware` fait de même mais ignore les pixels qui correspondent "
        "le moins, de sorte que passants et voitures n'attirent pas de splats. "
        "`none` répartit les nouveaux splats uniformément. Tout mode avec `_nms` "
-       "amincit d'abord l'erreur jusqu'à ses lignes de crête, de sorte que les splats se posent sur le contour le plus net plutôt que dans le flou autour."),
+       "amincit d'abord l'erreur jusqu'à ses lignes de crête, de sorte que les splats se posent sur le contour le plus net plutôt que dans le flou autour."
+       " `s_cielab` évalue l'écart de couleur S-CIELAB, tel que l'œil le perçoit. `flip` évalue FLIP, l'écart qu'on remarque en alternant entre les deux images, et `flip_feature` seulement sa part de contours et de points. `auto` prend `s_cielab` ou `flip_feature` quand `--perceptual-loss` vaut `s_cielab` ou `flip`, et `ssim_cs` sinon."),
     ES("Qué tipo de error decide dónde se añaden splats nuevos. `ssim_structure` "
        "apunta a los patrones y bordes que no coinciden e ignora las diferencias "
        "de brillo. `ssim_full`, `ssim_cs` y `loss_full` incorporan progresivamente "
@@ -5342,7 +5742,8 @@ SS_MSG(densify_loss_map_mode_help,
        "hace lo mismo pero ignora los píxeles que peor coinciden, de modo que "
        "personas y coches en movimiento no atraen splats. `none` reparte los "
        "splats nuevos de manera uniforme. Cualquier modo con `_nms` adelgaza primero "
-       "el error hasta sus líneas de cresta, de modo que los splats caen en el borde más nítido y no en el desenfoque que lo rodea."),
+       "el error hasta sus líneas de cresta, de modo que los splats caen en el borde más nítido y no en el desenfoque que lo rodea."
+       " `s_cielab` puntúa la diferencia de color S-CIELAB, tal como la ve el ojo. `flip` puntúa FLIP, la diferencia que se nota al alternar entre las dos imágenes, y `flip_feature` solo su parte de bordes y puntos. `auto` usa `s_cielab` o `flip_feature` cuando `--perceptual-loss` es `s_cielab` o `flip`, y `ssim_cs` en otro caso."),
     PT("Que tipo de erro decide onde novos splats são acrescentados. `ssim_structure` "
        "mira os padrões e bordas que não coincidem e ignora diferenças de brilho. "
        "`ssim_full`, `ssim_cs` e `loss_full` incorporam progressivamente mais "
@@ -5351,7 +5752,8 @@ SS_MSG(densify_loss_map_mode_help,
        "mas ignora os pixels que pior coincidem, de modo que pessoas e carros "
        "em movimento não atraem splats. `none` espalha os novos splats de forma "
        "uniforme. Qualquer modo com `_nms` afina primeiro o erro até às suas linhas "
-       "de crista, de modo que os splats assentam na borda mais nítida e não no desfoque à volta dela."),
+       "de crista, de modo que os splats assentam na borda mais nítida e não no desfoque à volta dela."
+       " `s_cielab` pontua a diferença de cor S-CIELAB, tal como o olho a vê. `flip` pontua o FLIP, a diferença que se nota ao alternar entre as duas imagens, e `flip_feature` só a sua parte de bordas e pontos. `auto` usa `s_cielab` ou `flip_feature` quando `--perceptual-loss` é `s_cielab` ou `flip`, e `ssim_cs` caso contrário."),
     IT("Che tipo di errore decide dove aggiungere nuovi splat. `ssim_structure` "
        "punta a motivi e bordi che non corrispondono e ignora le differenze di "
        "luminosità. `ssim_full`, `ssim_cs` e `loss_full` includono via via più "
@@ -5360,7 +5762,8 @@ SS_MSG(densify_loss_map_mode_help,
        "ma ignora i pixel che corrispondono peggio, così persone e automobili "
        "in movimento non attirano splat. `none` distribuisce i nuovi splat in "
        "modo uniforme. Ogni modalità con `_nms` assottiglia prima l'errore fino alle "
-       "sue linee di cresta, così gli splat si posano sul bordo più nitido e non nella sfocatura attorno."),
+       "sue linee di cresta, così gli splat si posano sul bordo più nitido e non nella sfocatura attorno."
+       " `s_cielab` valuta la differenza di colore S-CIELAB, come la vede l'occhio. `flip` valuta FLIP, la differenza che si nota alternando le due immagini, e `flip_feature` solo la sua parte di bordi e punti. `auto` usa `s_cielab` o `flip_feature` quando `--perceptual-loss` è `s_cielab` o `flip`, altrimenti `ssim_cs`."),
     NL("Welk soort fout bepaalt waar nieuwe splats bij komen. `ssim_structure` "
        "mikt op patronen en randen die niet kloppen en negeert helderheidsverschillen. "
        "`ssim_full`, `ssim_cs` en `loss_full` nemen stapsgewijs meer van de ruwe "
@@ -5368,7 +5771,8 @@ SS_MSG(densify_loss_map_mode_help,
        "nu al goed gereconstrueerd zijn of niet. `robust_edge_aware` doet hetzelfde "
        "maar negeert de slechtst passende pixels, zodat bewegende mensen en auto's "
        "geen splats aantrekken. `none` verdeelt nieuwe splats gelijkmatig. Elke modus met `_nms` dunt de fout "
-       "eerst uit tot haar ribbellijnen, zodat splats op de scherpste rand landen en niet in de onscherpte eromheen."),
+       "eerst uit tot haar ribbellijnen, zodat splats op de scherpste rand landen en niet in de onscherpte eromheen."
+       " `s_cielab` beoordeelt het S-CIELAB-kleurverschil, zoals het oog het ziet. `flip` beoordeelt FLIP, het verschil dat opvalt als je tussen beide beelden wisselt, en `flip_feature` alleen het rand- en puntdeel daarvan. `auto` neemt `s_cielab` of `flip_feature` als `--perceptual-loss` op `s_cielab` of `flip` staat, anders `ssim_cs`."),
     RU("Какая именно ошибка решает, куда добавлять новые сплаты. `ssim_structure` "
        "целится в несовпадающие узоры и края и не смотрит на разницу яркости. "
        "`ssim_full`, `ssim_cs` и `loss_full` последовательно добавляют всё больше "
@@ -5377,7 +5781,8 @@ SS_MSG(densify_loss_map_mode_help,
        "делает то же, но пропускает хуже всего совпадающие пиксели, поэтому идущие "
        "люди и машины не притягивают сплаты. `none` распределяет новые сплаты "
        "равномерно. Любой режим с `_nms` сначала утончает ошибку до её гребней, "
-       "поэтому сплаты ложатся на самый резкий край, а не расплываются вокруг него."),
+       "поэтому сплаты ложатся на самый резкий край, а не расплываются вокруг него."
+       " `s_cielab` оценивает цветовое различие S-CIELAB так, как его видит глаз. `flip` оценивает FLIP — разницу, заметную при переключении между двумя изображениями, а `flip_feature` — только её часть по краям и точкам. `auto` берёт `s_cielab` или `flip_feature`, если `--perceptual-loss` равен `s_cielab` или `flip`, иначе `ssim_cs`."),
     TR("Yeni splat'ların nereye ekleneceğine hangi tür hatanın karar vereceği. "
        "`ssim_structure` parlaklık farklarını yok sayar ve uyuşmayan desenlerle "
        "kenarları hedefler. `ssim_full`, `ssim_cs` ve `loss_full` sırayla ham "
@@ -5386,7 +5791,8 @@ SS_MSG(densify_loss_map_mode_help,
        "aynısını yapar ama en kötü uyuşan pikselleri yok sayar; böylece hareket "
        "eden insanlar ve arabalar splat çekmez. `none` ise yeni splat'ları eşit "
        "dağıtır. `_nms` içeren her kip, hatayı önce sırt çizgilerine kadar inceltir; "
-       "böylece splat'lar çevredeki bulanıklığa yayılmak yerine en keskin kenara oturur."));
+       "böylece splat'lar çevredeki bulanıklığa yayılmak yerine en keskin kenara oturur."
+       " `s_cielab`, S-CIELAB renk farkını gözün gördüğü gibi puanlar. `flip`, iki görüntü arasında gidip gelirken fark edilen farkı, yani FLIP'i puanlar; `flip_feature` ise yalnızca onun kenar ve nokta kısmını. `auto`, `--perceptual-loss` `s_cielab` ise `s_cielab`, `flip` ise `flip_feature`, değilse `ssim_cs` kullanır."));
 
 SS_MSG(densify_robust_edge_aware_quantile,
     EN("Ignored worst-error share"), JA("無視する誤差上位の割合"),
@@ -5994,6 +6400,100 @@ SS_MSG(densify_final_score_power_help,
        "başına biten puanı bu kuvvete yükseltir. 1'in üstünde yeni ayrıntı en "
        "yüksek puanlı splat'larda toplanır; 1'in altında sahneye daha eşit "
        "dağılır. 1 doğrudan puana göre çeker."));
+SS_MSG(densify_learned_score,
+    EN("Learned splat scores"), JA("学習したスプラット点数"),
+    ZH_HANS("学习得到的泼溅分数"), ZH_HANT("學習得到的潑濺分數"),
+    KO("학습된 스플랫 점수"),
+    DE("Gelernte Splat-Bewertung"),
+    FR("Notes de splat apprises"),
+    ES("Puntuación de splats aprendida"),
+    PT("Pontuação dos splats aprendida"),
+    IT("Punteggio degli splat appreso"),
+    NL("Geleerde splatscore"),
+    RU("Обучаемые оценки сплатов"),
+    TR("Öğrenilen splat puanları"));
+SS_MSG(densify_learned_score_help,
+    EN("Instead of averaging the error under each splat, fit one score per splat "
+       "so that the scores, blended like colours, reproduce the error map. A "
+       "pixel's error then goes to the splats that can explain it: a large splat "
+       "that only borders a badly reconstructed edge stops taking that edge's "
+       "blame. The scores keep the scale of the averaged ones. Needs the revised "
+       "densification rule and a detail error measure."),
+    JA("各スプラットが覆う誤差を平均する代わりに、点数を色と同じように重ねたもの"
+       "が誤差マップを再現するように、スプラットごとの点数を学習します。画素の誤"
+       "差はそれを説明できるスプラットに割り当てられるので、再現の悪い境目に接し"
+       "ているだけの大きなスプラットは、その境目の誤差を負わなくなります。点数の"
+       "大きさは平均したものと同じです。改良版の増やし方と誤差の測り方が必要で"
+       "す。"),
+    ZH_HANS("不再对每个泼溅覆盖范围内的误差取平均，而是为每个泼溅学习一个分数，"
+            "使这些分数像颜色一样混合后能重现误差图。像素的误差因此会分给能够"
+            "解释它的泼溅：只是挨着一处重建很差的边缘的大泼溅，不再为那条边缘的"
+            "误差负责。分数的大小与取平均时相同。需要开启改进的加密规则和误差度"
+            "量方式。"),
+    ZH_HANT("不再對每個潑濺覆蓋範圍內的誤差取平均，而是為每個潑濺學習一個分數，"
+            "使這些分數像顏色一樣混合後能重現誤差圖。像素的誤差因此會分給能夠"
+            "解釋它的潑濺：只是挨著一處重建很差的邊緣的大潑濺，不再為那條邊緣的"
+            "誤差負責。分數的大小與取平均時相同。需要開啟改良的加密規則和誤差度"
+            "量方式。"),
+    KO("각 스플랫이 덮은 오차를 평균하는 대신, 점수를 색처럼 섞었을 때 오차 맵이 "
+       "재현되도록 스플랫마다 점수를 학습합니다. 화소의 오차는 그것을 설명할 수 "
+       "있는 스플랫에 돌아가므로, 잘못 재구성된 경계에 맞닿아 있을 뿐인 큰 "
+       "스플랫은 그 경계의 오차를 떠안지 않게 됩니다. 점수의 크기는 평균할 때와 "
+       "같습니다. 개선된 밀집화 규칙과 오차 측정 방식이 필요합니다."),
+    DE("Statt den Fehler unter jedem Splat zu mitteln, je Splat eine Punktzahl "
+       "lernen, sodass die wie Farben überblendeten Punktzahlen die Fehlerkarte "
+       "nachbilden. Der Fehler eines Pixels geht dann an die Splats, die ihn "
+       "erklären können: Ein großer Splat, der nur an eine schlecht rekonstruierte "
+       "Kante grenzt, trägt deren Fehler nicht mehr. Die Punktzahlen behalten den "
+       "Maßstab der gemittelten. Setzt die überarbeitete Verdichtungsregel und ein "
+       "Fehlermaß voraus."),
+    FR("Au lieu de moyenner l'erreur sous chaque splat, apprendre une note par "
+       "splat de sorte que les notes, mélangées comme les couleurs, reproduisent la "
+       "carte d'erreur. L'erreur d'un pixel revient alors aux splats capables de "
+       "l'expliquer : un gros splat qui ne fait que border une arête mal "
+       "reconstruite n'en porte plus l'erreur. Les notes gardent l'échelle des "
+       "notes moyennées. Requiert la règle de densification révisée et une mesure "
+       "d'erreur."),
+    ES("En lugar de promediar el error bajo cada splat, aprender una puntuación "
+       "por splat de modo que las puntuaciones, mezcladas como los colores, "
+       "reproduzcan el mapa de error. El error de un píxel va entonces a los "
+       "splats que pueden explicarlo: un splat grande que solo bordea una arista "
+       "mal reconstruida deja de cargar con su error. Las puntuaciones conservan "
+       "la escala de las promediadas. Requiere la regla de densificación revisada "
+       "y una medida de error."),
+    PT("Em vez de calcular a média do erro sob cada splat, aprender uma pontuação "
+       "por splat de modo que as pontuações, misturadas como as cores, reproduzam "
+       "o mapa de erro. O erro de um pixel vai então para os splats que o podem "
+       "explicar: um splat grande que apenas faz fronteira com uma aresta mal "
+       "reconstruída deixa de carregar o seu erro. As pontuações mantêm a escala "
+       "das calculadas pela média. Exige a regra de densificação revisada e uma "
+       "medida de erro."),
+    IT("Invece di fare la media dell'errore sotto ogni splat, apprendere un "
+       "punteggio per splat in modo che i punteggi, miscelati come i colori, "
+       "riproducano la mappa d'errore. L'errore di un pixel va allora agli splat "
+       "che possono spiegarlo: uno splat grande che confina soltanto con un bordo "
+       "ricostruito male smette di prenderne l'errore. I punteggi mantengono la "
+       "scala di quelli mediati. Richiede la regola di densificazione rivista e "
+       "una misura dell'errore."),
+    NL("In plaats van de fout onder elke splat te middelen, per splat een score "
+       "leren zodat de scores, gemengd zoals kleuren, de foutkaart nabootsen. De "
+       "fout van een pixel gaat dan naar de splats die hem kunnen verklaren: een "
+       "grote splat die alleen grenst aan een slecht gereconstrueerde rand krijgt "
+       "die fout niet meer. De scores houden de schaal van de gemiddelde. Vereist "
+       "de herziene verdichtingsregel en een foutmaat."),
+    RU("Вместо усреднения ошибки под каждым сплатом обучать для каждого сплата "
+       "оценку так, чтобы оценки, смешанные как цвета, воспроизводили карту "
+       "ошибки. Ошибка пикселя тогда достаётся сплатам, которые могут её "
+       "объяснить: крупный сплат, лишь граничащий с плохо восстановленным краем, "
+       "перестаёт брать на себя его ошибку. Оценки сохраняют масштаб усреднённых. "
+       "Требует уточнённого правила уплотнения и меры ошибки."),
+    TR("Her splat'ın altındaki hatanın ortalamasını almak yerine, puanlar renkler "
+       "gibi karıştırıldığında hata haritasını yeniden üretecek şekilde splat "
+       "başına bir puan öğrenir. Bir pikselin hatası böylece onu açıklayabilen "
+       "splat'lara gider: kötü yeniden kurulmuş bir kenara yalnızca komşu olan "
+       "büyük bir splat artık o kenarın hatasını üstlenmez. Puanlar, ortalaması "
+       "alınanlarla aynı ölçeği korur. Gözden geçirilmiş yoğunlaştırma kuralını ve "
+       "bir hata ölçüsünü gerektirir."));
 SS_MSG(densify_oversize_split_fraction,
     EN("Split share for oversized splats"),
     JA("大きすぎるスプラットに回す分割の割合"),
@@ -6671,51 +7171,177 @@ SS_MSG(ssim_lambda_help,
     EN("How much the loss cares about local structure instead of exact pixel "
        "color. Higher brings out fine texture and high-frequency detail; lower "
        "gives a smoother, less noisy background, which sometimes looks better "
-       "in outdoor scenes."),
+       "in outdoor scenes."
+       " With `--perceptual-loss s_cielab` or `flip` it weights the S-CIELAB color difference or FLIP instead."),
     JA("損失が、画素ごとの正確な色よりも局所の構造をどれだけ重視するかです。高"
        "いほど細かな質感や高周波の細部が出ます。低いほど背景がなめらかでノイズ"
-       "が少なくなり、屋外のシーンではそのほうがよく見えることがあります。"),
+       "が少なくなり、屋外のシーンではそのほうがよく見えることがあります。"
+       "`--perceptual-loss` が `s_cielab` や `flip` のときは、代わりに S-CIELAB 色差や FLIP の重みになります。"),
     ZH_HANS("损失在多大程度上关注局部结构而非逐像素的精确颜色。数值越高，细腻"
             "纹理和高频细节越突出；越低则背景更平滑、噪点更少，在户外场景中有"
-            "时更好看。"),
+            "时更好看。"
+            "当 `--perceptual-loss` 为 `s_cielab` 或 `flip` 时，它改为 S-CIELAB 色差或 FLIP 的权重。"),
     ZH_HANT("損失在多大程度上關注局部結構而非逐像素的精確顏色。數值越高，細緻"
             "紋理和高頻細節越突出；越低則背景更平滑、雜訊更少，在戶外場景中有"
-            "時更好看。"),
+            "時更好看。"
+            "當 `--perceptual-loss` 為 `s_cielab` 或 `flip` 時，它改為 S-CIELAB 色差或 FLIP 的權重。"),
     KO("손실이 픽셀별 정확한 색보다 국소 구조를 얼마나 중시할지입니다. 값이 크"
        "면 미세한 질감과 고주파 디테일이 살아나고, 작으면 배경이 더 매끄럽고 "
-       "노이즈가 적어져 실외 장면에서는 그편이 더 나아 보이기도 합니다."),
+       "노이즈가 적어져 실외 장면에서는 그편이 더 나아 보이기도 합니다."
+       " `--perceptual-loss`가 `s_cielab`이나 `flip`일 때는 대신 S-CIELAB 색차나 FLIP의 가중치가 됩니다."),
     DE("Wie stark der Verlust auf lokale Struktur statt auf die exakte Pixelfarbe "
        "achtet. Höher holt feine Textur und hochfrequentes Detail heraus; niedriger "
        "ergibt einen glatteren, rauschärmeren Hintergrund, was in Außenszenen "
-       "manchmal besser aussieht."),
+       "manchmal besser aussieht."
+       " Mit `--perceptual-loss s_cielab` oder `flip` gewichtet es stattdessen den S-CIELAB-Farbabstand bzw. FLIP."),
     FR("Dans quelle mesure la fonction de coût s'attache à la structure locale "
        "plutôt qu'à la couleur exacte des pixels. Plus haut fait ressortir la "
        "texture fine et les détails à haute fréquence ; plus bas donne un arrière-plan "
-       "plus lisse et moins bruité, ce qui rend parfois mieux en extérieur."),
+       "plus lisse et moins bruité, ce qui rend parfois mieux en extérieur."
+       " Avec `--perceptual-loss s_cielab` ou `flip`, il pondère à la place l'écart de couleur S-CIELAB ou FLIP."),
     ES("Cuánto atiende la función de pérdida a la estructura local en vez de "
        "al color exacto de cada píxel. Más alto realza la textura fina y el detalle "
        "de alta frecuencia; más bajo da un fondo más suave y menos ruidoso, que "
-       "a veces queda mejor en exteriores."),
+       "a veces queda mejor en exteriores."
+       " Con `--perceptual-loss s_cielab` o `flip` pondera en su lugar la diferencia de color S-CIELAB o FLIP."),
     PT("O quanto a função de perda se importa com a estrutura local em vez da "
        "cor exata de cada pixel. Mais alto realça a textura fina e o detalhe "
        "de alta frequência; mais baixo dá um fundo mais suave e menos ruidoso, "
-       "que às vezes fica melhor em cenas ao ar livre."),
+       "que às vezes fica melhor em cenas ao ar livre."
+       " Com `--perceptual-loss s_cielab` ou `flip` pondera, em vez disso, a diferença de cor S-CIELAB ou o FLIP."),
     IT("Quanto la funzione di perdita si interessa alla struttura locale invece "
        "che al colore esatto dei pixel. Più alto fa emergere la texture fine "
        "e il dettaglio ad alta frequenza; più basso dà uno sfondo più liscio "
-       "e meno rumoroso, che a volte rende meglio negli esterni."),
+       "e meno rumoroso, che a volte rende meglio negli esterni."
+       " Con `--perceptual-loss s_cielab` o `flip` pesa invece la differenza di colore S-CIELAB o FLIP."),
     NL("Hoeveel de verliesfunctie let op lokale structuur in plaats van op de "
        "exacte pixelkleur. Hoger haalt fijne textuur en hoogfrequent detail naar "
        "voren; lager geeft een gladdere, minder ruizige achtergrond, wat in buitenscènes "
-       "soms beter oogt."),
+       "soms beter oogt."
+       " Met `--perceptual-loss s_cielab` of `flip` weegt het in plaats daarvan het S-CIELAB-kleurverschil of FLIP."),
     RU("Насколько функция потерь смотрит на локальную структуру, а не на точный "
        "цвет пикселя. Больше — сильнее проявляется мелкая фактура и высокочастотные "
        "детали; меньше — фон глаже и менее шумный, что на улице иногда выглядит "
-       "лучше."),
+       "лучше."
+       " При `--perceptual-loss s_cielab` или `flip` это вес цветового различия S-CIELAB или FLIP."),
     TR("Kaybın piksel rengindeki kesinlik yerine yerel yapıya ne kadar önem verdiği. "
        "Yüksek değerler ince dokuyu ve yüksek frekanslı ayrıntıyı öne çıkarır; "
        "düşük değerler daha pürüzsüz, daha az gürültülü bir arka plan verir ve "
-       "bu dış mekân sahnelerinde bazen daha iyi görünür."));
+       "bu dış mekân sahnelerinde bazen daha iyi görünür."
+       " `--perceptual-loss s_cielab` veya `flip` ile bunun yerine S-CIELAB renk farkını ya da FLIP'i ağırlıklandırır."));
+
+SS_MSG(perceptual_loss,
+    EN("Perceptual loss"), JA("知覚損失"), ZH_HANS("感知损失"),
+    ZH_HANT("感知損失"), KO("지각 손실"), DE("Wahrnehmungsverlust"),
+    FR("Perte perceptuelle"), ES("Pérdida perceptual"),
+    PT("Perda perceptual"), IT("Perdita percettiva"),
+    NL("Perceptueel verlies"), RU("Перцептивная потеря"),
+    TR("Algısal kayıp"));
+SS_MSG(perceptual_loss_help,
+    EN("Whether the structure weight trains SSIM, the S-CIELAB color "
+       "difference or FLIP. `ssim` compares local structure. `s_cielab` (S-CIELAB) measures color difference as the eye "
+       "sees it: color is blurred more than brightness before comparing, so fine "
+       "color noise counts for little and broad color shifts for a lot."
+       " `flip` (FLIP) scores the difference a viewer notices flipping between "
+       "the render and the photo: color error as the eye sees it, made larger "
+       "where edges and points do not match."
+       " `ssim_blur_tolerant` compares each patch of the photo with the better of the render and a slightly blurred render: photos blurrier than the scene (motion or focus blur) stop pulling it blurry, while a render blurrier than the photo is still penalized as with `ssim`."),
+    JA("構造の重みで SSIM、S-CIELAB 色差、FLIP のどれを学習するかです。`ssim` は局所的な構造を比べます。"
+       "`s_cielab`（S-CIELAB）は目に見えるとおりの色の差を測ります。比べる前に"
+       "色を明るさより強くぼかすので、細かな色のノイズはあまり効かず、広い範囲"
+       "の色のずれは強く効きます。"
+       "`flip`（FLIP）は、レンダリングと写真を切り替えたときに気づく違いを測ります。"
+       "目に見えるとおりの色の差を、エッジや点が合わないところで大きくします。"
+       "`ssim_blur_tolerant` は、写真の各部分を、レンダリングと少しぼかしたレンダリングのうち合うほうと比べます。シーンよりぼやけた写真（手ぶれやピンぼけ）がシーンをぼやけさせなくなり、写真よりぼやけたレンダリングは `ssim` と同じく罰せられます。"),
+    ZH_HANS("结构权重训练的是 SSIM、S-CIELAB 色差还是 FLIP。`ssim` 比较局部结构。`s_cielab`"
+            "（S-CIELAB）按人眼所见衡量颜色差异：比较前对颜色的模糊强于亮度，"
+            "因此细小的颜色噪点影响很小，大面积的色偏影响很大。"
+            "`flip`（FLIP）衡量在渲染和照片之间来回切换时能察觉到的差异：按人眼所见"
+            "的颜色误差，在边缘和点不匹配处加重。"
+            "`ssim_blur_tolerant` 将照片的每一小块与渲染图和略微模糊的渲染图中更接近的那个比较：比场景更模糊的照片（运动模糊或失焦）不再把场景拉模糊，而比照片更模糊的渲染仍像 `ssim` 一样受罚。"),
+    ZH_HANT("結構權重訓練的是 SSIM、S-CIELAB 色差還是 FLIP。`ssim` 比較局部結構。`s_cielab`"
+            "（S-CIELAB）按人眼所見衡量顏色差異：比較前對顏色的模糊強於亮度，"
+            "因此細小的顏色雜訊影響很小，大面積的色偏影響很大。"
+            "`flip`（FLIP）衡量在渲染和照片之間來回切換時能察覺到的差異：按人眼所見"
+            "的顏色誤差，在邊緣和點不吻合處加重。"
+            "`ssim_blur_tolerant` 將照片的每一小塊與渲染圖和略微模糊的渲染圖中更接近的那個比較：比場景更模糊的照片（動態模糊或失焦）不再把場景拉模糊，而比照片更模糊的渲染仍像 `ssim` 一樣受罰。"),
+    KO("구조 가중치로 SSIM, S-CIELAB 색차, FLIP 중 무엇을 학습할지입니다. `ssim`은 국소 구조를 비교합니다. "
+       "`s_cielab`(S-CIELAB)은 눈에 보이는 대로 색 차이를 잽니다. 비교하기 전에 "
+       "색을 밝기보다 더 흐리게 하므로 미세한 색 노이즈는 거의 반영되지 않고 "
+       "넓은 색 틀어짐은 크게 반영됩니다."
+       " `flip`(FLIP)은 렌더링과 사진을 번갈아 볼 때 눈에 띄는 차이를 잽니다. "
+       "눈에 보이는 대로의 색 차이를, 가장자리와 점이 맞지 않는 곳에서 더 크게 셉니다."
+       " `ssim_blur_tolerant`는 사진의 각 부분을 렌더링과 살짝 흐리게 한 렌더링 중 더 잘 맞는 쪽과 비교합니다. 장면보다 흐린 사진(흔들림이나 초점 빗나감)이 더 이상 장면을 흐리게 만들지 않고, 사진보다 흐린 렌더링은 `ssim`처럼 계속 불이익을 받습니다."),
+    DE("Ob das Strukturgewicht SSIM, den S-CIELAB-Farbabstand oder FLIP trainiert. `ssim` vergleicht "
+       "lokale Struktur. `s_cielab` (S-CIELAB) misst den Farbabstand so, wie das "
+       "Auge ihn sieht: Farbe wird vor dem Vergleich stärker weichgezeichnet als "
+       "Helligkeit, sodass feines Farbrauschen wenig zählt und großflächige "
+       "Farbstiche viel."
+       " `flip` (FLIP) misst den Unterschied, der beim Hin- und Herschalten "
+       "zwischen Rendering und Foto auffällt: den Farbabstand, wie das Auge ihn "
+       "sieht, verstärkt dort, wo Kanten und Punkte nicht übereinstimmen."
+       " `ssim_blur_tolerant` vergleicht jeden Ausschnitt des Fotos mit dem besser passenden von Rendering und leicht weichgezeichnetem Rendering: Fotos, die unschärfer sind als die Szene (Bewegungs- oder Fokusunschärfe), ziehen sie nicht mehr unscharf, während ein Rendering, das unschärfer ist als das Foto, weiter wie bei `ssim` bestraft wird."),
+    FR("Si le poids de la structure entraîne le SSIM, l'écart de couleur S-CIELAB ou FLIP. `ssim` compare "
+       "la structure locale. `s_cielab` (S-CIELAB) mesure l'écart de couleur tel "
+       "que l'œil le perçoit : la couleur est plus floutée que la luminosité avant "
+       "la comparaison, si bien que le bruit de couleur fin compte peu et les "
+       "dominantes de couleur étendues beaucoup."
+       " `flip` (FLIP) mesure l'écart qu'on remarque en alternant entre le rendu "
+       "et la photo : l'écart de couleur tel que l'œil le perçoit, renforcé là où "
+       "contours et points ne correspondent pas."
+       " `ssim_blur_tolerant` compare chaque zone de la photo au meilleur du rendu et d'un rendu légèrement flouté : les photos plus floues que la scène (flou de bougé ou de mise au point) ne la rendent plus floue, tandis qu'un rendu plus flou que la photo reste pénalisé comme avec `ssim`."),
+    ES("Si el peso de la estructura entrena el SSIM, la diferencia de color S-CIELAB o FLIP. `ssim` compara "
+       "la estructura local. `s_cielab` (S-CIELAB) mide la diferencia de color tal "
+       "como la ve el ojo: el color se desenfoca más que el brillo antes de "
+       "comparar, de modo que el ruido de color fino cuenta poco y las dominantes "
+       "de color amplias cuentan mucho."
+       " `flip` (FLIP) mide la diferencia que se nota al alternar entre el render "
+       "y la foto: la diferencia de color tal como la ve el ojo, aumentada donde "
+       "los bordes y los puntos no coinciden."
+       " `ssim_blur_tolerant` compara cada zona de la foto con lo que mejor encaje entre el render y el render ligeramente desenfocado: las fotos más borrosas que la escena (movimiento o desenfoque) dejan de volverla borrosa, mientras que un render más borroso que la foto se sigue penalizando como con `ssim`."),
+    PT("Se o peso da estrutura treina o SSIM, a diferença de cor S-CIELAB ou o FLIP. `ssim` compara a estrutura "
+       "local. `s_cielab` (S-CIELAB) mede a diferença de cor tal como o olho a vê: "
+       "a cor é desfocada mais do que o brilho antes da comparação, de modo que o "
+       "ruído de cor fino conta pouco e as dominantes de cor amplas contam muito."
+       " `flip` (FLIP) mede a diferença que se nota ao alternar entre a "
+       "renderização e a foto: a diferença de cor tal como o olho a vê, aumentada "
+       "onde bordas e pontos não coincidem."
+       " `ssim_blur_tolerant` compara cada região da foto com o que melhor corresponder entre a renderização e a renderização levemente desfocada: fotos mais desfocadas que a cena (tremido ou foco errado) deixam de deixá-la desfocada, enquanto uma renderização mais desfocada que a foto continua penalizada como com `ssim`."),
+    IT("Se il peso della struttura allena l'SSIM, la differenza di colore S-CIELAB o FLIP. `ssim` "
+       "confronta la struttura locale. `s_cielab` (S-CIELAB) misura la differenza "
+       "di colore come la vede l'occhio: prima del confronto il colore viene "
+       "sfocato più della luminosità, così il rumore di colore fine conta poco e "
+       "le dominanti di colore estese contano molto."
+       " `flip` (FLIP) misura la differenza che si nota alternando il render e "
+       "la foto: la differenza di colore come la vede l'occhio, accresciuta dove "
+       "bordi e punti non corrispondono."
+       " `ssim_blur_tolerant` confronta ogni zona della foto con il migliore tra il render e il render leggermente sfocato: le foto più sfocate della scena (mosso o fuori fuoco) non la rendono più sfocata, mentre un render più sfocato della foto resta penalizzato come con `ssim`."),
+    NL("Of het structuurgewicht SSIM, het S-CIELAB-kleurverschil of FLIP traint. `ssim` vergelijkt "
+       "lokale structuur. `s_cielab` (S-CIELAB) meet kleurverschil zoals het oog "
+       "het ziet: kleur wordt vóór het vergelijken sterker vervaagd dan "
+       "helderheid, zodat fijne kleurruis weinig telt en een brede kleurzweem veel."
+       " `flip` (FLIP) meet het verschil dat opvalt als je tussen render en foto "
+       "wisselt: kleurverschil zoals het oog het ziet, versterkt waar randen en "
+       "punten niet kloppen."
+       " `ssim_blur_tolerant` vergelijkt elk stuk van de foto met de best passende van de render en een licht vervaagde render: foto's die waziger zijn dan de scène (bewegings- of focusonscherpte) maken haar niet meer onscherp, terwijl een render die waziger is dan de foto net als bij `ssim` bestraft blijft."),
+    RU("Что обучает вес структуры: SSIM, цветовое различие S-CIELAB или FLIP. `ssim` "
+       "сравнивает локальную структуру. `s_cielab` (S-CIELAB) измеряет разницу "
+       "цвета так, как её видит глаз: перед сравнением цвет размывается сильнее "
+       "яркости, поэтому мелкий цветовой шум почти не учитывается, а обширные "
+       "цветовые сдвиги — сильно."
+       " `flip` (FLIP) измеряет разницу, заметную при переключении между рендером "
+       "и снимком: цветовое различие так, как его видит глаз, усиленное там, где "
+       "не совпадают края и точки."
+       " `ssim_blur_tolerant` сравнивает каждый участок снимка с тем, что лучше совпадает: с рендером или со слегка размытым рендером. Снимки, размытые сильнее сцены (смаз или промах фокуса), больше не размывают её, а рендер, размытый сильнее снимка, по-прежнему штрафуется, как при `ssim`."),
+    TR("Yapı ağırlığının SSIM'i mi, S-CIELAB renk farkını mı yoksa FLIP'i mi eğittiği. `ssim` yerel yapıyı "
+       "karşılaştırır. `s_cielab` (S-CIELAB) renk farkını gözün gördüğü gibi "
+       "ölçer: karşılaştırmadan önce renk parlaklıktan daha çok bulanıklaştırılır; "
+       "böylece ince renk gürültüsü az, geniş renk kaymaları çok sayılır."
+       " `flip` (FLIP), görüntü ile fotoğraf arasında gidip gelirken fark edilen "
+       "farkı ölçer: gözün gördüğü gibi renk farkını, kenarların ve noktaların "
+       "uyuşmadığı yerlerde büyütür."
+       " `ssim_blur_tolerant`, fotoğrafın her parçasını görüntü ile hafifçe bulanıklaştırılmış görüntüden hangisi daha iyi uyuyorsa onunla karşılaştırır: sahneden daha bulanık fotoğraflar (hareket ya da odak bulanıklığı) artık sahneyi bulanıklaştırmaz, fotoğraftan daha bulanık bir görüntü ise `ssim`'deki gibi cezalandırılmaya devam eder."));
+
 
 SS_MSG(l1_weight,
     EN("Color error weight (L1)"), JA("色の誤差の重み（L1）"),
@@ -12146,6 +12772,49 @@ SS_MSG(use_bvh_help,
 // ===========================================================================
 // Learning Rates
 // ===========================================================================
+
+SS_MSG(projective_depth_lr,
+    EN("Depth learning rate"), JA("奥行きの学習率"), ZH_HANS("深度学习率"),
+    ZH_HANT("深度學習率"), KO("깊이 학습률"), DE("Tiefenlernrate"),
+    FR("Taux d'apprentissage de profondeur"), ES("Tasa de aprendizaje de profundidad"),
+    PT("Taxa de aprendizado de profundidade"), IT("Tasso di apprendimento della profondità"),
+    NL("Leersnelheid voor diepte"), RU("Скорость обучения глубины"), TR("Derinlik öğrenme oranı"));
+SS_MSG(projective_depth_lr_help,
+    EN("How quickly uncertain geometry adjusts its depth. Set to 0 to disable."),
+    JA("不確かな形状の奥行きを調整する速さです。0 で無効になります。"),
+    ZH_HANS("不确定几何体调整深度的速度。设为 0 可禁用。"),
+    ZH_HANT("不確定幾何體調整深度的速度。設為 0 可停用。"),
+    KO("불확실한 형상의 깊이를 조정하는 속도입니다. 0으로 설정하면 비활성화됩니다."),
+    DE("Wie schnell unsichere Geometrie ihre Tiefe anpasst. 0 deaktiviert die Anpassung."),
+    FR("Vitesse d'ajustement de la profondeur des géométries incertaines. 0 désactive l'ajustement."),
+    ES("Rapidez con la que la geometría incierta ajusta su profundidad. 0 desactiva el ajuste."),
+    PT("Rapidez com que a geometria incerta ajusta sua profundidade. 0 desativa o ajuste."),
+    IT("Velocità di regolazione della profondità della geometria incerta. 0 disattiva la regolazione."),
+    NL("Hoe snel onzekere geometrie de diepte aanpast. Zet op 0 om dit uit te schakelen."),
+    RU("Скорость уточнения глубины неопределённой геометрии. 0 отключает уточнение."),
+    TR("Belirsiz geometrinin derinliğini ayarlama hızı. Devre dışı bırakmak için 0 yapın."));
+
+SS_MSG(projective_depth_lr_final,
+    EN("Final depth learning rate"), JA("最後の奥行きの学習率"), ZH_HANS("最终深度学习率"),
+    ZH_HANT("最終深度學習率"), KO("최종 깊이 학습률"), DE("Abschließende Tiefenlernrate"),
+    FR("Taux final d'apprentissage de profondeur"), ES("Tasa final de aprendizaje de profundidad"),
+    PT("Taxa final de aprendizado de profundidade"), IT("Tasso finale di apprendimento della profondità"),
+    NL("Uiteindelijke leersnelheid voor diepte"), RU("Итоговая скорость обучения глубины"),
+    TR("Son derinlik öğrenme oranı"));
+SS_MSG(projective_depth_lr_final_help,
+    EN("Depth learning rate at the end of training. Set to none to keep it constant."),
+    JA("学習終了時の奥行きの学習率です。none で一定に保ちます。"),
+    ZH_HANS("训练结束时的深度学习率。设为 none 可保持不变。"),
+    ZH_HANT("訓練結束時的深度學習率。設為 none 可保持不變。"),
+    KO("학습 종료 시의 깊이 학습률입니다. none으로 설정하면 일정하게 유지됩니다."),
+    DE("Tiefenlernrate am Ende des Trainings. none hält sie konstant."),
+    FR("Taux d'apprentissage de profondeur en fin d'entraînement. none le garde constant."),
+    ES("Tasa de aprendizaje de profundidad al final del entrenamiento. none la mantiene constante."),
+    PT("Taxa de aprendizado de profundidade no fim do treinamento. none mantém a taxa constante."),
+    IT("Tasso di apprendimento della profondità a fine addestramento. none lo mantiene costante."),
+    NL("Leersnelheid voor diepte aan het einde van de training. none houdt deze constant."),
+    RU("Скорость обучения глубины в конце обучения. none сохраняет её постоянной."),
+    TR("Eğitim sonundaki derinlik öğrenme oranı. Sabit tutmak için none yapın."));
 
 SS_MSG(means_lr,
     EN("Movement rate"), JA("移動の学習率"), ZH_HANS("移动学习率"),
