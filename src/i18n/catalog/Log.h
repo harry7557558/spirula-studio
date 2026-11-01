@@ -2691,26 +2691,7 @@ SS_MSG(err_mesh_failed,
 // ===========================================================================
 // What the trainer says about its own limits
 // ===========================================================================
-//
-// The flag NAME in each of these is an identifier -- `--use-bvh` is
-// `--use-bvh` in every language -- so it arrives as {0} and is printed
-// verbatim. These reach the GUI's batch pre-flight as well as the log, which
-// is why they are messages and not sentences built in place.
 
-SS_MSG(not_supported_yet,
-    EN("{0} is not supported yet"),
-    JA("{0} はまだ対応していません"),
-    ZH_HANS("{0} 还不支持"),
-    ZH_HANT("{0} 還不支援"),
-    KO("{0}은(는) 아직 지원하지 않습니다"),
-    DE("{0} wird noch nicht unterstützt"),
-    FR("{0} n'est pas encore pris en charge"),
-    ES("{0} todavía no está admitido"),
-    PT("{0} ainda não é aceito"),
-    IT("{0} non è ancora supportato"),
-    NL("{0} wordt nog niet ondersteund"),
-    RU("{0} пока не поддерживается"),
-    TR("{0} henüz desteklenmiyor"));
 SS_MSG(ppisp_before_color_space_order,
     EN("{0} needs {1}: the per-photo color correction is always applied in sRGB"),
     JA("{0} には {1} が必要です。写真ごとの色補正はつねに sRGB で適用されます"),

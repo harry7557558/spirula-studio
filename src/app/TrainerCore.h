@@ -1,22 +1,8 @@
 #pragma once
 
-// TrainerCore -- the engine-side training session shared by the standalone
-// CLI (app/cli/main.cpp) and the native GUI (app/gui/). This is the single
-// training driver. It began as a port of a Python trainer that no longer
-// exists; the per-step logic lives in build_step_config() and nowhere else,
-// so there is nothing left to keep in sync.
-//
-// TrainerSession splits the run into phases so front-ends can interleave
-// their own UI between them:
-//   check_config()  -> throws for unported features, logs warnings
-//   load_dataset()  -> parse + post-split bake (no GPU work)
-//   setup_engine()  -> output dir, seeding, engine + DataManager init
-//   train()         -> the step loop; pause / stop / render-fairness via
-//                      the public atomics, per-step callback for progress
-//
+// Training session shared by the CLI and GUI.
 // The engine is a process-global singleton: one live session at a time.
-// setup_engine() calls engine_reset(), so a fresh session can follow a
-// finished one in the same process (the GUI's "train again" path).
+// setup_engine() resets it before starting another run.
 
 #include "app/SystemRecorder.h"
 #include "app/TrainPerfLog.h"
@@ -159,11 +145,8 @@ void save_config_json(const TrainConfig& c, const std::filesystem::path& out_dir
 void save_scene_transform_json(const ParsedDataset& ds, const TrainConfig& c,
                                const std::filesystem::path& out_dir);
 
-// "" when this config is runnable, else the sentence naming the flag that is
-// not implemented -- exactly what TrainerSession::check_config() throws. A
-// front-end that wants to report the problem instead of catching it (the
-// GUI's batch pre-flight) asks this first.
-std::string train_config_unsupported(const TrainConfig& c);
+// Shared validation for CLI training and GUI preflight; empty means valid.
+std::string train_config_error(const TrainConfig& c);
 
 
 // ===========================================================================

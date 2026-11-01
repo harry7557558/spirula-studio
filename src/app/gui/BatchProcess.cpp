@@ -540,7 +540,7 @@ void check_train_stage(const BatchRow& row, const BatchCapabilities& caps,
         }
         // Everything the trainer refuses outright, asked before the queue has
         // spent an hour getting to this row.
-        if (std::string what = spirula::train_config_unsupported(cfg); !what.empty())
+        if (std::string what = spirula::train_config_error(cfg); !what.empty())
             out.push_back(issue_of(msg::chk_unsupported, kSt, true, what));
         // A missing image folder is a warning, not an error: the COLMAP and
         // Nerfstudio parsers both index images by what the reconstruction

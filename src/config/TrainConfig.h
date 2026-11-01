@@ -1,44 +1,10 @@
 #pragma once
 
-// The training config: every flag `spirula train` accepts, in one table.
-//
-// This file is the single source of truth for the flag's BEHAVIOUR. Adding a
-// row to SS_CONFIG_FIELDS makes the field appear in the CLI parser, in
-// `--help`, in the GUI's "All Options" editor, in the run's config.json and
-// in TrainerCore. The struct is expanded from the same table, so a field
-// cannot exist in one and not the other.
-//
-// The one thing a row does NOT carry is what the flag is CALLED and what it
-// does in words: that is translated, so it lives in
-// i18n/catalog/TrainFields.h, one `SS_MSG(<member>, ...)` name and one
-// `SS_MSG(<member>_help, ...)` sentence per row. `--help` and the GUI tooltip
-// both read those, and a row with no entry there is a compile error naming
-// the flag. This header must not include that catalog -- it is included
-// nearly everywhere and should not drag the translations behind it; the
-// consumers that draw text include both and paste the two together.
-//
-// Row: X(type, member, default, section, tier, choices)
-//
-//   type     one of the scalar types below, or TrainVec3i / TrainVec3f.
-//            std::array<T, N> cannot appear here: its comma would split the
-//            macro argument.
-//   member   the struct member AND, stringified, the CLI flag. The parser
-//            treats '-' and '_' alike, so --sh-degree sets sh_degree.
-//   default  a constant expression. Vector defaults go through train_v3i() /
-//            train_v3f() for the same comma reason.
-//   section  the heading the flag is listed under, one of kTrainSections.
-//            Rows must stay contiguous per section: --help and the GUI stream
-//            headings as they walk the table rather than sorting first.
-//            Purely presentational -- config.json is flat, so a flag can be
-//            moved to a different heading without breaking anything on disk.
-//   tier     how much of a specialist the flag is for, one of kTrainTiers:
-//            "basic"    the ~20 flags a first run needs. `--help` and the
-//                       GUI's default view show these and nothing else.
-//            "advanced" reached for often enough to be worth browsing.
-//            "expert"   warmups, schedules and regularizer internals.
-//            "stub"     parsed but not implemented; hidden unless asked for.
-//   choices  '|'-separated list for string fields; "" is free-form; "none"
-//            means the empty string is allowed and displays as `none`.
+// SS_CONFIG_FIELDS drives the CLI, GUI, config.json and preset fields.
+// Labels and help live in i18n/catalog/TrainFields.h; section and tier are
+// display metadata and never reach disk. Rows must stay contiguous per section.
+// Row: X(type, member, default, section, tier, choices).
+// Vector types use aliases so their commas cannot split macro arguments.
 
 #include <array>
 #include <cstring>
@@ -72,7 +38,7 @@ inline int train_section_index(const char* section) {
 
 // Least specialist first, so "show me everything up to advanced" is a <=.
 inline constexpr const char* kTrainTiers[] = {
-    "basic", "advanced", "expert", "stub",
+    "basic", "advanced", "expert",
 };
 inline constexpr int kTrainNumTiers =
     (int)(sizeof(kTrainTiers) / sizeof(kTrainTiers[0]));
@@ -112,6 +78,22 @@ inline TrainPathSpec train_path_spec(const char* choices) {
 inline bool train_choices_free_form(const char* choices) {
     return !*choices || !std::strcmp(choices, "none") ||
            train_path_spec(choices).is_path;
+}
+
+
+inline bool train_choice_valid(const std::string& value, const char* choices) {
+    if (train_choices_free_form(choices)) return true;
+    const std::string options = choices;
+    const std::string want = value.empty() ? "none" : value;
+    size_t pos = 0;
+    while (pos <= options.size()) {
+        const size_t bar = options.find('|', pos);
+        if (options.substr(pos, bar == std::string::npos ? std::string::npos : bar - pos) == want)
+            return true;
+        if (bar == std::string::npos) break;
+        pos = bar + 1;
+    }
+    return false;
 }
 
 
@@ -182,7 +164,6 @@ inline bool train_choices_free_form(const char* choices) {
     X(bool, warp_spherical_to_pinhole, true, "dataset", "advanced", "")      \
     X(std::string, warp_face_fit, "uniform", "dataset", "advanced", "uniform|per-face") \
     X(bool, warp_back_face, false, "dataset", "expert", "")                  \
-    X(bool, deblur_training_images, false, "dataset", "stub", "")            \
                                                                              \
     /* ==== scene -- how the capture is placed, oriented and scaled ==== */  \
     X(std::string, exif_orientation, "orient", "scene", "advanced", "none|orient|apply") \
@@ -193,7 +174,6 @@ inline bool train_choices_free_form(const char* choices) {
     X(std::string, scene_center, "auto", "scene", "basic", "auto|none|point-median|camera-median|camera-focus|point-mean|camera-mean") \
     X(float, scene_center_threshold, 20.0f, "scene", "expert", "")           \
     X(std::optional<float>, relative_scale, std::nullopt, "scene", "expert", "") \
-    X(std::string, train_frame, "points", "scene", "expert", "normalized|camera|points") \
                                                                              \
     /* ==== splats -- what a splat is and how the splats start out ==== */   \
     X(std::string, primitive, "3dgs", "splats", "basic", "3dgs|mip|3dgut")   \
@@ -216,7 +196,6 @@ inline bool train_choices_free_form(const char* choices) {
     X(std::string, random_init_center, "camera-median", "splats", "expert", "camera-median|camera-focus|camera-mean|origin") \
     X(std::string, random_init_spread, "median", "splats", "expert", "median|mean") \
     X(float, random_init_std, 1.0f, "splats", "expert", "")                  \
-    X(bool, use_camera_optimizer, false, "splats", "stub", "")               \
                                                                              \
     /* ==== detail -- how many splats there are and where they go ==== */    \
     X(std::string, quality, "medium", "detail", "basic", "low|medium|high|ultra") \
@@ -369,7 +348,7 @@ inline bool train_choices_free_form(const char* choices) {
     X(std::string, point_color_gamut, "", "colorspace", "basic", "Rec.709|ACES2065-1|ACEScg|Rec.2020|AdobeRGB|DCI-P3|none") \
                                                                              \
     /* ==== perf -- speed and memory; none of these change the result ==== */\
-    X(std::string, cache_images, "disk", "perf", "basic", "cpu|gpu|disk")    \
+    X(std::string, cache_images, "disk", "perf", "basic", "cpu|disk")        \
     X(int, max_batch_per_epoch, 800, "perf", "basic", "")                    \
     X(float, min_renders_per_refine, 0.0f, "perf", "basic", "")              \
     X(float, render_quantile, 0.1f, "perf", "advanced", "")                  \
@@ -380,8 +359,6 @@ inline bool train_choices_free_form(const char* choices) {
     X(int, quantization_level, 1, "perf", "advanced", "")                    \
     X(int, bin_tile_size, 0, "perf", "expert", "")                           \
     X(bool, preallocate_splat_tensors, true, "perf", "expert", "")           \
-    X(std::string, optimizer_offload, "", "perf", "stub", "sh|all|none")     \
-    X(bool, use_bvh, false, "perf", "stub", "")                              \
                                                                              \
     /* ==== rates -- how fast each splat parameter is allowed to change ==== */ \
     X(float, projective_depth_lr, 0.01f, "rates", "advanced", "")          \
@@ -427,7 +404,7 @@ struct TrainConfig {
     X(depth_dir) X(normal_dir) X(metashape_xml) X(metashape_ply) \
     X(metashape_psx) X(train_resolution_divisor) X(downscale_rounding_mode) \
     X(exif_orientation) X(orientation_method) X(center_method) X(auto_scale_poses) \
-    X(outlier_threshold) X(scene_center) X(scene_center_threshold) X(train_frame) X(eval_mode) \
+    X(outlier_threshold) X(scene_center) X(scene_center_threshold) X(eval_mode) \
     X(train_split_fraction) \
     X(eval_interval) X(depth_unit_scale_factor) X(validation_fraction) \
     X(warp_to_pinhole) X(warp_spherical_to_pinhole) X(warp_face_fit) \

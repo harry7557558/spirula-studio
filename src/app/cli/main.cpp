@@ -137,18 +137,8 @@ void consume(std::array<T, N>& out, const std::string& key, int argc, char** arg
 // Choices validation for string fields. `choices` is "a|b|c", or one of the
 // free-form spellings train_choices_free_form() knows.
 void check_choices(const std::string& value, const std::string& key, const char* choices) {
-    if (train_choices_free_form(choices)) return;
-    std::string ch = choices;
-    std::string want = value.empty() ? "none" : value;
-    size_t pos = 0;
-    while (pos <= ch.size()) {
-        size_t bar = ch.find('|', pos);
-        std::string tok = ch.substr(pos, bar == std::string::npos ? std::string::npos : bar - pos);
-        if (tok == want) return;
-        if (bar == std::string::npos) break;
-        pos = bar + 1;
-    }
-    bad_value(key, value, "expected one of: " + ch);
+    if (!train_choice_valid(value, choices))
+        bad_value(key, value, std::string("expected one of: ") + choices);
 }
 // non-string fields (template rather than C-variadic: clang rejects passing
 // std::string through `...`)

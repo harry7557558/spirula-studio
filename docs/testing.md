@@ -240,11 +240,15 @@ expectation, one executable. Neither exists yet.
 
 ## What to run before calling a change done
 
+`train_config_test` checks built-in training presets, loading older configs,
+omitting retired fields when saving, and rejecting invalid saved choices such
+as GPU image caching. It runs without a GPU on either backend.
+
 | change | gate |
 |---|---|
 | any kernel | CUDA build + Vulkan build + the relevant parity test on both |
 | engine logic | both builds + `engine_render_parity` + `engine_train_step`-level check |
-| config field | add the row in `src/config/TrainConfig.h`; check `spirula train --help` and the GUI's All Options editor |
+| config field | `train_config_test`; check `spirula train --help` and the GUI's All Options editor |
 | training-loop logic | `TrainerCore.cpp` — `build_step_config()` is the only place it lives |
 | build system | every mode in [build.md](build.md) |
 | a comment you wrote | `python3 tools/check_comment_length.py` — the build runs it anyway ([lints](build.md#lints)) |

@@ -312,7 +312,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     for (int pi = 0; pi < npass; pi++) {
         std::lock_guard<std::mutex> lk(s.engine_mutex);
         const int views = engine_preview_forward(
-            j.index, s.cfg.primitive, sh_deg, s.cfg.packed || s.cfg.use_bvh,
+            j.index, s.cfg.primitive, sh_deg, s.cfg.packed,
             j.color_correct, step_cfg, pi, &npass);
         auto shape = engine_get_render_rgb_shape();
         Pass q;

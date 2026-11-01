@@ -300,10 +300,9 @@ Two paths, both gathering per destination pixel:
 
 ## Two-stage parse
 
-1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the raw
-   `train_frame="points"` frame — poses and points exactly as stored. The
-   normalized-frame similarity is computed only to obtain the
-   `train_frame_scale` scalar.
+1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the source
+   dataset frame, translated by `scene_center`. A normalized-frame similarity
+   supplies `train_frame_scale` and the viewer remapping.
 2. **`bake_post_split`** (`data/PostSplit.cpp`) → the post-split arrays
    `engine_setup_data_manager` consumes. This is either an identity (K=1)
    pass-through, or the split `camhost::plan_split_faces` plans for a wide
@@ -460,9 +459,9 @@ pixel count.
 
 That normalized-frame similarity is where `orientation_method` and
 `center_method` act — and only `up` / `poses` is implemented natively;
-anything else is approximated with a warning. Since `train_frame="points"`
-leaves splats in the raw frame, the choice moves `train_frame_scale` and the
-viewer's default camera, not the training coordinates. The unported methods
+anything else is approximated with a warning. Since training uses the dataset
+frame, the choice moves `train_frame_scale` and the viewer's default camera,
+not the training coordinates. The unported methods
 (`pca`, `vertical`, `gsplat`, `focus`) still have a working Python reference:
 [notes/pose-normalization.md](notes/pose-normalization.md).
 

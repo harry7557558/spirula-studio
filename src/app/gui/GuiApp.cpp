@@ -4439,7 +4439,7 @@ bool GuiApp::launch_dataset_job() {
             log(_dataset_training.error);
             return false;
         }
-        _dataset_training.error = spirula::train_config_unsupported(preset.cfg);
+        _dataset_training.error = spirula::train_config_error(preset.cfg);
         if (!_dataset_training.error.empty()) {
             log(_dataset_training.error);
             return false;

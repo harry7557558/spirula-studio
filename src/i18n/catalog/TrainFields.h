@@ -2398,44 +2398,6 @@ SS_MSG(warp_back_face_help,
        "%20 artış). Yalnızca gerçekten arkasını gören bir mercek için açın. "
        "Panorama her zaman altı yüzü de kullanır."));
 
-SS_MSG(deblur_training_images,
-    EN("Deblur training images"), JA("学習画像のぶれを補正"),
-    ZH_HANS("对训练图像去模糊"), ZH_HANT("對訓練影像去模糊"),
-    KO("학습 이미지 흐림 보정"),
-    DE("Unschärfe der Trainingsbilder entfernen"),
-    FR("Corriger le flou des images d'entraînement"),
-    ES("Corregir el desenfoque de las imágenes"),
-    PT("Corrigir o desfoque das imagens"),
-    IT("Correggere la sfocatura delle immagini"),
-    NL("Onscherpte uit de trainingsbeelden halen"),
-    RU("Убирать смаз с обучающих изображений"),
-    TR("Eğitim görüntülerindeki bulanıklığı gider"));
-SS_MSG(deblur_training_images_help,
-    EN("Sharpen blurry photos with a learned deblurring model before training. "
-       "Not supported yet."),
-    JA("学習の前に、ぶれた写真を学習済みのモデルでくっきりさせます。まだ対応し"
-       "ていません。"),
-    ZH_HANS("训练前用一个学习到的去模糊模型让模糊照片变清晰。尚未支持。"),
-    ZH_HANT("訓練前用一個學習到的去模糊模型讓模糊照片變清晰。尚未支援。"),
-    KO("학습 전에 흐린 사진을 학습된 디블러 모델로 선명하게 만듭니다. 아직 지"
-       "원하지 않습니다."),
-    DE("Verwackelte Fotos vor dem Training mit einem gelernten Entschärfungsmodell "
-       "schärfen. Noch nicht unterstützt."),
-    FR("Rendre nettes les photos floues avec un modèle de défloutage appris, "
-       "avant l'entraînement. Pas encore pris en charge."),
-    ES("Enfocar las fotos borrosas con un modelo de desenfoque aprendido antes "
-       "de entrenar. Todavía no está admitido."),
-    PT("Deixar nítidas as fotos borradas com um modelo de remoção de desfoque "
-       "aprendido, antes de treinar. Ainda não é suportado."),
-    IT("Rendere nitide le foto sfocate con un modello di deblurring appreso, "
-       "prima dell'addestramento. Non ancora supportato."),
-    NL("Wazige foto's vóór de training verscherpen met een geleerd ontwazingsmodel. "
-       "Nog niet ondersteund."),
-    RU("Перед обучением делать смазанные снимки резче обученной моделью устранения "
-       "смаза. Пока не поддерживается."),
-    TR("Eğitimden önce bulanık fotoğrafları öğrenilmiş bir netleştirme modeliyle "
-       "keskinleştirir. Henüz desteklenmiyor."));
-
 
 // ===========================================================================
 // Scene Placement
@@ -2939,42 +2901,6 @@ SS_MSG(relative_scale_help,
     TR("Eğitimden önce tüm sahneyi bu çarpanla büyütür. Geniş bir çekim ayrıntı "
        "çözünmeyecek kadar küçük çıktığında yükseltin. Ayarlanmazsa sahne ölçeğiyle "
        "başa çıkmak iyileştiriciye bırakılır."));
-
-SS_MSG(train_frame,
-    EN("Training coordinate frame"), JA("学習に使う座標系"),
-    ZH_HANS("训练坐标系"), ZH_HANT("訓練座標系"), KO("학습 좌표계"),
-    DE("Koordinatensystem für das Training"),
-    FR("Repère utilisé pour l'entraînement"),
-    ES("Sistema de coordenadas del entrenamiento"),
-    PT("Sistema de coordenadas do treinamento"),
-    IT("Sistema di coordinate dell'addestramento"),
-    NL("Coördinatenstelsel voor de training"),
-    RU("Система координат обучения"), TR("Eğitim koordinat sistemi"));
-SS_MSG(train_frame_help,
-    EN("Coordinate frame the splats are trained in. Only `points`, the dataset's "
-       "own frame, is supported."),
-    JA("スプラットを学習する座標系です。対応しているのは、データセット自身の座"
-       "標系である `points` だけです。"),
-    ZH_HANS("训练泼溅所用的坐标系。目前只支持 `points`，即数据集自身的坐标系。"),
-    ZH_HANT("訓練潑濺所用的座標系。目前只支援 `points`，即資料集自身的座標系。"),
-    KO("스플랫을 학습하는 좌표계입니다. 데이터셋 자체의 좌표계인 `points`만 지"
-       "원합니다."),
-    DE("Koordinatensystem, in dem die Splats trainiert werden. Unterstützt wird "
-       "nur `points`, das eigene System des Datensatzes."),
-    FR("Repère dans lequel les splats sont entraînés. Seul `points`, le repère "
-       "propre au jeu de données, est pris en charge."),
-    ES("Sistema de coordenadas en el que se entrenan los splats. Solo se admite "
-       "`points`, el propio sistema del conjunto de datos."),
-    PT("Sistema de coordenadas em que os splats são treinados. Só há suporte "
-       "para `points`, o próprio sistema do conjunto de dados."),
-    IT("Sistema di coordinate in cui gli splat vengono addestrati. È supportato "
-       "solo `points`, il sistema proprio del set di dati."),
-    NL("Coördinatenstelsel waarin de splats worden getraind. Alleen `points`, "
-       "het eigen stelsel van de dataset, wordt ondersteund."),
-    RU("Система координат, в которой обучаются сплаты. Поддерживается только "
-       "`points` — собственная система набора данных."),
-    TR("Splat'ların eğitildiği koordinat sistemi. Yalnızca veri kümesinin kendi "
-       "sistemi olan `points` desteklenir."));
 
 
 // ===========================================================================
@@ -4805,41 +4731,6 @@ SS_MSG(random_init_std_help,
        "toplanır; bu, kameraların çevresinde döndüğü bir nesneye uyar. 1'in "
        "üstünde kameraların ötesine yayılır; bu, kameraların içinde durduğu "
        "bir sahneye uyar."));
-
-SS_MSG(use_camera_optimizer,
-    EN("Refine camera poses"), JA("カメラ位置を微調整"),
-    ZH_HANS("微调相机位姿"), ZH_HANT("微調相機位姿"),
-    KO("카메라 포즈 미세 조정"), DE("Kameraposen nachjustieren"),
-    FR("Affiner les poses des caméras"),
-    ES("Afinar las poses de las cámaras"),
-    PT("Ajustar as poses das câmeras"), IT("Affinare le pose delle camere"),
-    NL("Cameraposes bijstellen"), RU("Уточнять положения камер"),
-    TR("Kamera duruşlarını ince ayarla"));
-SS_MSG(use_camera_optimizer_help,
-    EN("Let training nudge the camera poses to absorb small pose errors. Not "
-       "supported yet."),
-    JA("小さな姿勢の誤差を吸収できるよう、学習中にカメラの位置をわずかに動かし"
-       "ます。まだ対応していません。"),
-    ZH_HANS("让训练过程微调相机位姿，以吸收细小的位姿误差。尚未支持。"),
-    ZH_HANT("讓訓練過程微調相機位姿，以吸收細小的位姿誤差。尚未支援。"),
-    KO("작은 포즈 오차를 흡수하도록 학습이 카메라 위치를 조금씩 움직이게 합니"
-       "다. 아직 지원하지 않습니다."),
-    DE("Das Training die Kameraposen leicht nachschieben lassen, um kleine Posenfehler "
-       "aufzufangen. Noch nicht unterstützt."),
-    FR("Laisser l'entraînement ajuster légèrement les poses des caméras pour "
-       "absorber de petites erreurs de pose. Pas encore pris en charge."),
-    ES("Dejar que el entrenamiento retoque un poco las poses de las cámaras para "
-       "absorber pequeños errores de pose. Todavía no está admitido."),
-    PT("Deixar o treinamento ajustar levemente as poses das câmeras para absorver "
-       "pequenos erros de pose. Ainda não é suportado."),
-    IT("Lasciare che l'addestramento sposti leggermente le pose delle camere "
-       "per assorbire piccoli errori di posa. Non ancora supportato."),
-    NL("De training de cameraposes licht laten bijstellen om kleine posefouten "
-       "op te vangen. Nog niet ondersteund."),
-    RU("Позволить обучению слегка подвинуть положения камер, чтобы поглотить "
-       "мелкие ошибки поз. Пока не поддерживается."),
-    TR("Küçük duruş hatalarını soğurmak için eğitimin kamera duruşlarını hafifçe "
-       "kaydırmasına izin verir. Henüz desteklenmiyor."));
 
 
 // ===========================================================================
@@ -11903,42 +11794,41 @@ SS_MSG(cache_images,
     TR("Görüntü önbelleği"));
 SS_MSG(cache_images_help,
     EN("Where decoded training images are kept between steps. `disk` re-reads "
-       "them and uses the least memory, `cpu` keeps them in RAM for faster steps. "
-       "`gpu` is not supported yet."),
+       "them and uses the least memory, `cpu` keeps them in RAM for faster steps."),
     JA("デコードした学習画像をステップの間どこに置くかです。`disk` は毎回読み"
        "直すのでメモリをいちばん使いません。`cpu` は RAM に保持してステップを"
-       "速くします。`gpu` はまだ対応していません。"),
+       "速くします。"),
     ZH_HANS("解码后的训练图像在两步之间存放在哪里。`disk` 每次重新读取，占用内"
-            "存最少；`cpu` 把它们留在内存里，让每步更快；`gpu` 尚未支持。"),
+            "存最少；`cpu` 把它们留在内存里，让每步更快。"),
     ZH_HANT("解碼後的訓練影像在兩步之間存放在哪裡。`disk` 每次重新讀取，佔用記"
-            "憶體最少；`cpu` 把它們留在記憶體裡，讓每步更快；`gpu` 尚未支援。"),
+            "憶體最少；`cpu` 把它們留在記憶體裡，讓每步更快。"),
     KO("디코딩한 학습 이미지를 스텝 사이에 어디에 둘지입니다. `disk`는 매번 다"
        "시 읽어 메모리를 가장 적게 쓰고, `cpu`는 RAM에 담아 스텝을 빠르게 합니"
-       "다. `gpu`는 아직 지원하지 않습니다."),
+       "다."),
     DE("Wo dekodierte Trainingsbilder zwischen den Schritten liegen. `disk` liest "
        "sie neu ein und braucht am wenigsten Speicher, `cpu` hält sie im RAM "
-       "für schnellere Schritte. `gpu` wird noch nicht unterstützt."),
+       "für schnellere Schritte."),
     FR("Où sont conservées les images d'entraînement décodées entre deux étapes. "
        "`disk` les relit et consomme le moins de mémoire, `cpu` les garde en "
-       "RAM pour des étapes plus rapides. `gpu` n'est pas encore pris en charge."),
+       "RAM pour des étapes plus rapides."),
     ES("Dónde se guardan las imágenes de entrenamiento decodificadas entre pasos. "
        "`disk` vuelve a leerlas y usa la menor memoria, `cpu` las mantiene en "
-       "RAM para pasos más rápidos. `gpu` todavía no está admitido."),
+       "RAM para pasos más rápidos."),
     PT("Onde as imagens de treinamento decodificadas ficam entre os passos. `disk` "
        "volta a lê-las e usa menos memória, `cpu` mantém-nas na RAM para passos "
-       "mais rápidos. `gpu` ainda não é suportado."),
+       "mais rápidos."),
     IT("Dove restano le immagini di addestramento decodificate tra un passo e "
        "l'altro. `disk` le rilegge e usa meno memoria, `cpu` le tiene in RAM "
-       "per passi più rapidi. `gpu` non è ancora supportato."),
+       "per passi più rapidi."),
     NL("Waar gedecodeerde trainingsbeelden tussen stappen blijven staan. `disk` "
        "leest ze opnieuw in en gebruikt het minste geheugen, `cpu` houdt ze in "
-       "RAM voor snellere stappen. `gpu` wordt nog niet ondersteund."),
+       "RAM voor snellere stappen."),
     RU("Где между шагами хранятся раскодированные обучающие изображения. `disk` "
        "перечитывает их и расходует меньше всего памяти, `cpu` держит их в ОЗУ "
-       "ради более быстрых шагов. `gpu` пока не поддерживается."),
+       "ради более быстрых шагов."),
     TR("Kodu çözülmüş eğitim görüntülerinin adımlar arasında nerede tutulacağı. "
        "`disk` onları yeniden okur ve en az belleği kullanır, `cpu` daha hızlı "
-       "adımlar için RAM'de tutar. `gpu` henüz desteklenmiyor."));
+       "adımlar için RAM'de tutar."));
 
 SS_MSG(max_batch_per_epoch,
     EN("Steps per pass"), JA("1 巡あたりのステップ数"),
@@ -12688,86 +12578,6 @@ SS_MSG(preallocate_splat_tensors_help,
        "yol ortasında GPU belleğinin tükenmesini önler; karşılığında o bellek "
        "en baştan tutulur."));
 
-SS_MSG(optimizer_offload,
-    EN("Offload optimizer state"), JA("オプティマイザの状態を退避"),
-    ZH_HANS("把优化器状态移出显存"), ZH_HANT("把最佳化器狀態移出顯示記憶體"),
-    KO("옵티마이저 상태 내리기"), DE("Optimiererzustand auslagern"),
-    FR("Décharger l'état de l'optimiseur"),
-    ES("Descargar el estado del optimizador"),
-    PT("Descarregar o estado do otimizador"),
-    IT("Scaricare lo stato dell'ottimizzatore"),
-    NL("Optimizerstatus uitplaatsen"),
-    RU("Выгружать состояние оптимизатора"),
-    TR("İyileştirici durumunu belleğe taşı"));
-SS_MSG(optimizer_offload_help,
-    EN("Move optimizer state to system memory to free up GPU memory. Not supported "
-       "yet."),
-    JA("オプティマイザの状態をシステムメモリへ移し、GPU メモリを空けます。まだ"
-       "対応していません。"),
-    ZH_HANS("把优化器状态移到系统内存，以腾出显存。尚未支持。"),
-    ZH_HANT("把最佳化器狀態移到系統記憶體，以騰出顯示記憶體。尚未支援。"),
-    KO("옵티마이저 상태를 시스템 메모리로 옮겨 GPU 메모리를 비웁니다. 아직 지"
-       "원하지 않습니다."),
-    DE("Den Optimiererzustand in den Systemspeicher verschieben, um GPU-Speicher "
-       "frei zu machen. Noch nicht unterstützt."),
-    FR("Déplacer l'état de l'optimiseur vers la mémoire système pour libérer "
-       "de la mémoire GPU. Pas encore pris en charge."),
-    ES("Mover el estado del optimizador a la memoria del sistema para liberar "
-       "memoria de GPU. Todavía no está admitido."),
-    PT("Mover o estado do otimizador para a memória do sistema para liberar memória "
-       "da GPU. Ainda não é suportado."),
-    IT("Spostare lo stato dell'ottimizzatore nella memoria di sistema per liberare "
-       "memoria GPU. Non ancora supportato."),
-    NL("De optimizerstatus naar het systeemgeheugen verplaatsen om GPU-geheugen "
-       "vrij te maken. Nog niet ondersteund."),
-    RU("Переносить состояние оптимизатора в системную память, чтобы освободить "
-       "видеопамять. Пока не поддерживается."),
-    TR("İyileştirici durumunu sistem belleğine taşıyarak GPU belleğini boşaltır. "
-       "Henüz desteklenmiyor."));
-
-SS_MSG(use_bvh,
-    EN("Spatial index (BVH)"), JA("空間インデックス（BVH）"),
-    ZH_HANS("空间索引（BVH）"), ZH_HANT("空間索引（BVH）"),
-    KO("공간 인덱스(BVH)"), DE("Räumlicher Index (BVH)"),
-    FR("Index spatial (BVH)"), ES("Índice espacial (BVH)"),
-    PT("Índice espacial (BVH)"), IT("Indice spaziale (BVH)"),
-    NL("Ruimtelijke index (BVH)"), RU("Пространственный индекс (BVH)"),
-    TR("Uzamsal dizin (BVH)"));
-SS_MSG(use_bvh_help,
-    EN("Use a spatial index for splat-tile intersection, which can help when "
-       "batching many small patches. Not supported yet."),
-    JA("スプラットとタイルの交差判定に空間インデックスを使います。小さなパッチ"
-       "を多数まとめて処理するときに効くことがあります。まだ対応していません。"),
-    ZH_HANS("在泼溅与图块的相交判断中使用空间索引。当批量处理很多小图块时可能"
-            "有帮助。尚未支持。"),
-    ZH_HANT("在潑濺與圖塊的相交判斷中使用空間索引。當批次處理很多小圖塊時可能"
-            "有幫助。尚未支援。"),
-    KO("스플랫과 타일의 교차 판정에 공간 인덱스를 씁니다. 작은 패치를 많이 묶"
-       "어 처리할 때 도움이 될 수 있습니다. 아직 지원하지 않습니다."),
-    DE("Einen räumlichen Index für den Splat-Kachel-Schnitt verwenden, was helfen "
-       "kann, wenn viele kleine Ausschnitte gebündelt verarbeitet werden. Noch "
-       "nicht unterstützt."),
-    FR("Utiliser un index spatial pour l'intersection splat-tuile, ce qui peut "
-       "aider quand on traite par lots beaucoup de petites zones. Pas encore "
-       "pris en charge."),
-    ES("Usar un índice espacial para la intersección entre splats y teselas, "
-       "algo que puede ayudar al procesar por lotes muchos parches pequeños. "
-       "Todavía no está admitido."),
-    PT("Usar um índice espacial para a interseção entre splats e blocos, o que "
-       "pode ajudar ao processar em lote muitos pedaços pequenos. Ainda não é "
-       "suportado."),
-    IT("Usare un indice spaziale per l'intersezione tra splat e tasselli, il "
-       "che può aiutare quando si elaborano a lotti molte piccole porzioni. Non "
-       "ancora supportato."),
-    NL("Een ruimtelijke index gebruiken voor de doorsnede van splats en tegels, "
-       "wat kan helpen bij het in batches verwerken van veel kleine stukjes. "
-       "Nog niet ondersteund."),
-    RU("Использовать пространственный индекс для пересечения сплатов с тайлами "
-       "— это может помочь при пакетной обработке множества мелких фрагментов. "
-       "Пока не поддерживается."),
-    TR("Splat ile karo kesişimi için uzamsal bir dizin kullanır; çok sayıda küçük "
-       "parça toplu işlenirken yardımcı olabilir. Henüz desteklenmiyor."));
-
 
 // ===========================================================================
 // Learning Rates
@@ -13471,24 +13281,6 @@ SS_MSG(choice_round,
     PT("arredondar"),    IT("arrotonda"),    NL("afronden"),     RU("к ближайшему"),
     TR("yuvarla"));
 
-SS_MSG(choice_normalized,
-    EN("normalized"),    JA("正規化"),        ZH_HANS("归一化"),   ZH_HANT("正規化"),
-    KO("정규화"),         DE("normalisiert"), FR("normalisé"),    ES("normalizado"),
-    PT("normalizado"),   IT("normalizzato"), NL("genormaliseerd"), RU("нормализованная"),
-    TR("normalleştirilmiş"));
-
-SS_MSG(choice_camera,
-    EN("camera"),        JA("カメラ"),        ZH_HANS("相机"),     ZH_HANT("相機"),
-    KO("카메라"),         DE("Kamera"),       FR("caméra"),       ES("cámara"),
-    PT("câmera"),        IT("camera"),       NL("camera"),       RU("камера"),
-    TR("kamera"));
-
-SS_MSG(choice_points,
-    EN("points"),        JA("点群"),          ZH_HANS("点云"),     ZH_HANT("點雲"),
-    KO("포인트"),         DE("Punkte"),       FR("points"),       ES("puntos"),
-    PT("pontos"),        IT("punti"),        NL("punten"),       RU("точки"),
-    TR("noktalar"));
-
 SS_MSG(choice_none,
     EN("none"),          JA("なし"),          ZH_HANS("无"),       ZH_HANT("無"),
     KO("없음"),           DE("keine"),        FR("aucun"),        ES("ninguno"),
@@ -13573,12 +13365,6 @@ SS_MSG(choice_cpu,
     KO("메모리"),         DE("RAM"),          FR("RAM"),          ES("RAM"),
     PT("RAM"),           IT("RAM"),          NL("RAM"),          RU("ОЗУ"),
     TR("RAM"));
-
-SS_MSG(choice_gpu,
-    EN("GPU"),           JA("GPU"),          ZH_HANS("GPU"),     ZH_HANT("GPU"),
-    KO("GPU"),           DE("GPU"),          FR("GPU"),          ES("GPU"),
-    PT("GPU"),           IT("GPU"),          NL("GPU"),          RU("видеопамять"),
-    TR("GPU"));
 
 SS_MSG(choice_disk,
     EN("disk"),          JA("ディスク"),      ZH_HANS("磁盘"),     ZH_HANT("磁碟"),
@@ -13757,10 +13543,6 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"downscale_rounding_mode", "ceil",  &choice_ceil},
     {"downscale_rounding_mode", "round", &choice_round},
 
-    {"train_frame", "normalized", &choice_normalized},
-    {"train_frame", "camera",     &choice_camera},
-    {"train_frame", "points",     &choice_points},
-
     {"scene_center", "auto",          &choice_far_from_origin},
     {"scene_center", "none",          &choice_none},
     {"scene_center", "point-median",  &choice_point_median},
@@ -13778,7 +13560,6 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"densify_accum_mode", "avg", &choice_mean},
 
     {"cache_images", "cpu",  &choice_cpu},
-    {"cache_images", "gpu",  &choice_gpu},
     {"cache_images", "disk", &choice_disk},
 
     // `none` is the UNSET value for these six, not a colour space -- Rec.709
