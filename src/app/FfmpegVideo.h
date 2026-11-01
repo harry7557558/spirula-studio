@@ -28,6 +28,7 @@ struct VideoFacts {
     // `-map 0:N`: `0:v:N` would count a cover picture.
     std::vector<std::pair<int, int>> tracks;
     std::vector<int> streams;
+    std::string error;   // why ffmpeg itself could not be started, if it could not
 };
 bool ffmpeg_probe_video(const std::string& ffmpeg_exe, const std::string& path,
                         VideoFacts& out, const std::atomic<bool>& cancel);

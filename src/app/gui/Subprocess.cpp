@@ -383,6 +383,18 @@ bool open_url(const std::string& url) {
 // POSIX: fork/execvp + pipe, poll(2), process-group kill on cancel.
 // ---------------------------------------------------------------------------
 
+// In the child. A failed exec is otherwise silent, and an executable the
+// machine cannot run (EBADARCH, a missing interpreter) passes command_exists.
+[[noreturn]] static void exec_or_report(const std::vector<std::string>& argv) {
+    std::vector<char*> args;
+    for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
+    args.push_back(nullptr);
+    execvp(args[0], args.data());
+    const std::string why = "cannot run " + argv[0] + ": " + std::strerror(errno) + "\n";
+    if (write(STDERR_FILENO, why.data(), why.size()) < 0) {}
+    _exit(127);
+}
+
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
@@ -401,11 +413,7 @@ int run_process(const std::vector<std::string>& argv,
         close(fds[0]);
         close(fds[1]);
         if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(127);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec_or_report(argv);
     }
     close(fds[1]);
 
@@ -467,11 +475,7 @@ bool ProcessPipe::start(const std::vector<std::string>& argv,
         dup2(out[1], STDOUT_FILENO);
         dup2(out[1], STDERR_FILENO);
         close(in[0]); close(in[1]); close(out[0]); close(out[1]);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec_or_report(argv);
     }
     close(in[0]);
     close(out[1]);
@@ -562,11 +566,7 @@ bool ProcessReader::start(const std::vector<std::string>& argv,
         dup2(out[1], STDOUT_FILENO);
         dup2(err[1], STDERR_FILENO);
         close(out[0]); close(out[1]); close(err[0]); close(err[1]);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec_or_report(argv);
     }
     close(out[1]);
     close(err[1]);

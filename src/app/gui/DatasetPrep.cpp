@@ -1212,6 +1212,7 @@ static bool probe_frame_source(const PrepJob& job, const PrepInput& in,
     }
     error = cancel.load() ? lmsg::err_cancelled.get()
             : !command_exists(job.ffmpeg_exe) ? fmt(lmsg::err_ffmpeg_missing, {job.ffmpeg_exe})
+            : !facts.error.empty() ? fmt(lmsg::err_ffmpeg_unrunnable, {facts.error})
             : probe_error.empty() ? "no video track" : probe_error;
     return false;
 }
