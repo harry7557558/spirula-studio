@@ -27,11 +27,13 @@
 #include "nn/io/Image.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <map>
 #include <optional>
@@ -167,7 +169,103 @@ float depth_scale(const std::vector<float>& depth) {
 // that merely looks plausible.
 // ---------------------------------------------------------------------------
 
+int output_self_check() {
+    const fs::path root = fs::temp_directory_path() / ("spirula-geometry-check-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(root);
+    struct Cleanup {
+        fs::path root;
+        ~Cleanup() { std::error_code ec; fs::remove_all(root, ec); }
+    } cleanup{root};
+    int failures = 0;
+    auto check = [&](bool good, const char* what) {
+        std::printf("  %s geometry resume: %s\n", good ? "ok  " : "FAIL", what);
+        if (!good) ++failures;
+    };
+    const std::string normal_key = "synthetic-source|six-faces|normal|png";
+    const std::string depth_key = "synthetic-source|six-faces|depth";
+    const auto normal = root / "normal.png";
+    const auto depth = root / "depth.png";
+    { std::ofstream placeholder(normal, std::ios::binary); }
+    check(!app::geometry_output_complete(normal, normal_key),
+          "zero-byte sharding placeholder is not completed work");
+    nn::Image image;
+    image.width = 4; image.height = 3; image.channels = 3;
+    image.data.assign(36, 127);
+    check(nn::save_image(image, normal.string(), -1), "create legacy fixture");
+    const auto legacy_hash = spirula::sha256_file(normal.string());
+    check(!app::geometry_output_complete(normal, normal_key),
+          "decodable unmarked legacy map cannot prove all faces completed");
+    check(!app::publish_geometry_output(normal, normal_key, [](const std::string& part) {
+              std::ofstream out(part, std::ios::binary); out << "partial";
+              return false;
+          }) && spirula::sha256_file(normal.string()) == legacy_hash,
+          "interrupted encoder preserves the old map and does not publish success");
+    bool refused_legacy = false;
+    try {
+        app::publish_geometry_output(normal, normal_key, [&](const std::string& part) {
+            return nn::save_image(image, part, -1);
+        });
+    } catch (const std::exception&) { refused_legacy = true; }
+    check(refused_legacy && spirula::sha256_file(normal.string()) == legacy_hash,
+          "unmarked nonempty output requires explicit overwrite and stays unchanged");
+    {
+        app::WriterPool writers(1);
+        for (const char* format : {"png", "jpg"}) {
+            app::WriteJob job;
+            job.image = image;
+            job.path = (root / (std::string("normal.") + format)).string();
+            job.quality = std::string(format) == "jpg" ? 95 : -1;
+            job.geometry_key = std::string(format) == "png" ? normal_key : normal_key + "|jpg";
+            job.geometry_overwrite = true;
+            writers.submit(std::move(job));
+        }
+        app::WriteJob job;
+        job.path = depth.string();
+        job.depth_w = 4; job.depth_h = 3;
+        job.depth.assign(12, 1234);
+        job.geometry_key = depth_key;
+        writers.submit(std::move(job));
+        writers.finish();
+        check(writers.failures() == 0, "checked writers finish all requested formats");
+    }
+    check(app::geometry_output_complete(normal, normal_key) &&
+          app::geometry_output_complete(root / "normal.jpg", normal_key + "|jpg") &&
+          app::geometry_output_complete(depth, depth_key),
+          "PNG/JPEG normals and 16-bit depth resume only after publication");
+    check(!app::geometry_output_complete(normal, normal_key + "|different-faces") &&
+          !app::geometry_output_complete(normal, depth_key),
+          "completion is bound to the requested faces and output family");
+    fs::remove(app::geometry_completion_path(depth));
+    check(app::geometry_output_complete(normal, normal_key) &&
+          !app::geometry_output_complete(depth, depth_key),
+          "missing sibling publication cannot skip the incomplete map");
+    fs::create_directory(root / "directory.png");
+    check(!app::geometry_output_complete(root / "directory.png", normal_key),
+          "a directory at an output path is not completed work");
+    {
+        std::fstream output(normal, std::ios::binary | std::ios::in | std::ios::out);
+        output.put('x');
+    }
+    check(!app::geometry_output_complete(normal, normal_key),
+          "same-size output damage invalidates the completion checksum");
+    {
+        app::WriterPool writers(1);
+        app::WriteJob job;
+        job.image = image;
+        job.path = (root / "missing" / "normal.png").string();
+        job.geometry_key = normal_key;
+        const std::string path = job.path;
+        writers.submit(std::move(job));
+        writers.finish();
+        check(writers.failures() == 1 && !app::geometry_output_complete(path, normal_key),
+              "failed asynchronous writes report failure without completion");
+    }
+    return failures;
+}
+
 int self_check() {
+    const int output_failures = output_self_check();
     struct Case {
         const char* name;
         int model, tier;
@@ -546,7 +644,7 @@ int self_check() {
     }
 
     std::printf("\n%s\n", failures ? "FAILURES" : "camera round trip is exact");
-    return failures ? 1 : 0;
+    return failures || output_failures ? 1 : 0;
 }
 
 // Every image whose camera is byte-identical shares one warp plan; a dataset
@@ -843,6 +941,7 @@ int spirula_geometry_main(int argc, char** argv) {
             int64_t i = 0;
             fs::path np, dp;
             bool normal = false, depth = false;
+            std::string key;
         };
         std::vector<Todo> todo;
         for (int64_t i = 0; i < N; ++i) {
@@ -854,8 +953,31 @@ int spirula_geometry_main(int argc, char** argv) {
             if (o.want_normal)
                 t.np = out_path(normal_dir, i, o.normal_format == "jpg" ? ".jpg" : ".png");
             if (o.want_depth) t.dp = out_path(depth_dir, i, ".png");
-            t.normal = o.want_normal && (o.overwrite || !fs::exists(t.np, ec));
-            t.depth = o.want_depth && (o.overwrite || !fs::exists(t.dp, ec));
+            const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
+            const std::string source = spirula::sha256_file(ds.image_filenames[(size_t)i]);
+            t.key = source.empty() ? "" : source + "|" + keys[(size_t)i] + "|" +
+                o.model + "|" + std::to_string(warp.outWidth()) + "," +
+                std::to_string(warp.outHeight()) + "," + std::to_string(warp.faces()) + "|" +
+                std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
+                std::to_string(o.refine_steps) + "," + std::to_string((int)o.split) + "," +
+                std::to_string((int)o.face_res) + "," + std::to_string((int)o.ray_depth) + "," +
+                std::to_string(o.depth_mm) + "|" + o.image_gamut + "|" +
+                (o.image_is_linear ? (*o.image_is_linear ? "linear" : "srgb") : "auto") + "|" +
+                std::to_string(o.image_exposure.automatic) + "," +
+                std::to_string(o.image_exposure.stops);
+            const std::string normal_key = t.key + "|normal|" + o.normal_format + "|" +
+                                           std::to_string(o.jpeg_quality);
+            t.normal = o.want_normal && (o.overwrite || source.empty() ||
+                !app::geometry_output_complete(t.np, normal_key));
+            t.depth = o.want_depth && (o.overwrite || source.empty() ||
+                !app::geometry_output_complete(t.dp, t.key + "|depth"));
+            if (!o.overwrite) {
+                for (const auto& path : {t.np, t.dp}) {
+                    if (!path.empty() && app::geometry_output_requires_overwrite(path))
+                        throw std::runtime_error("unmarked geometry output " + path.string() +
+                            " is preserved; use --overwrite to replace it");
+                }
+            }
             if (!t.normal && !t.depth) { ++skipped; continue; }
             todo.push_back(std::move(t));
         }
@@ -939,6 +1061,8 @@ int spirula_geometry_main(int argc, char** argv) {
             std::vector<app::GeometryPrediction> preds =
                 faces.empty() ? std::vector<app::GeometryPrediction>()
                               : pred.predictBatch(faces, reqs);
+            NN_CHECK(preds.size() == reqs.size(), "the network returned %zu of %zu faces",
+                     preds.size(), reqs.size());
             model_ms += nn::now_ms() - t0;
             modeled += (int64_t)frames.size();
 
@@ -956,6 +1080,11 @@ int spirula_geometry_main(int argc, char** argv) {
                     NN_CHECK(p.width == rq.width && p.height == rq.height,
                              "the network returned %dx%d for a %dx%d face", p.width,
                              p.height, rq.width, rq.height);
+                    const size_t pixels = (size_t)p.width * p.height;
+                    NN_CHECK((!need_depth || p.depth.size() == pixels) &&
+                             (!need_normal || p.normal.size() == pixels * 3) &&
+                             (p.mask.empty() || p.mask.size() == pixels),
+                             "the network returned incomplete geometry for face %d", k);
                     int dw = p.width, dh = p.height;
                     app::turn_pixels(back, 1, p.depth, dw, dh);
                     dw = p.width;
@@ -980,10 +1109,16 @@ int spirula_geometry_main(int argc, char** argv) {
                 std::vector<float> depth, normal;
                 warp.gather(face_depth, face_normal, face_mask, ray,
                             need_depth ? &depth : nullptr, need_normal ? &normal : nullptr);
+                NN_CHECK((!need_depth || depth.size() == (size_t)warp.outWidth() * warp.outHeight()) &&
+                         (!need_normal || normal.size() == (size_t)warp.outWidth() * warp.outHeight() * 3),
+                         "the gathered geometry is incomplete");
 
                 if (need_normal) {
                     app::WriteJob job;
                     job.path = np.string();
+                    job.geometry_key = todo[j].key + "|normal|" + o.normal_format + "|" +
+                                       std::to_string(o.jpeg_quality);
+                    job.geometry_overwrite = o.overwrite;
                     // A quality INSIDE 0..100 is what selects JPEG; the extension
                     // is not consulted (nn/io/Image.h). 100 wrote a JPEG called
                     // .png, which is lossy right where the mask edge is.
@@ -1014,6 +1149,8 @@ int spirula_geometry_main(int argc, char** argv) {
                     const float inv = o.depth_mm ? 1.0f : 1.0f / depth_scale(depth);
                     app::WriteJob job;
                     job.path = dp.string();
+                    job.geometry_key = todo[j].key + "|depth";
+                    job.geometry_overwrite = o.overwrite;
                     job.depth_w = warp.outWidth();
                     job.depth_h = warp.outHeight();
                     job.depth.resize(depth.size());

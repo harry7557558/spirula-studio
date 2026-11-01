@@ -13,7 +13,9 @@
 // growing until memory runs out; `submit` blocks when it is full.
 
 #include "app/DepthPng.h"
+#include "app/GeometryOutput.h"
 #include "core/HardwareThreads.h"
+#include "external/stb_image_write.h"
 #include "nn/core/Log.h"
 #include "nn/io/Image.h"
 #include "sam/Sam.h"
@@ -22,6 +24,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <cstdio>
 #include <exception>
 #include <mutex>
 #include <string>
@@ -38,6 +41,8 @@ struct WriteJob {
     int                   depth_w = 0, depth_h = 0;
     std::string           path;
     int                   quality = 95;
+    std::string           geometry_key; // opt-in checked, atomic geometry publication
+    bool                  geometry_overwrite = false;
 };
 
 class WriterPool {
@@ -100,13 +105,32 @@ private:
             bool ok = false;
             std::string why;
             try {
-                ok = !job.depth.empty()
-                         ? save_depth_png16(job.path, job.depth.data(),
-                                            job.depth_w, job.depth_h)
-                         : (job.image.empty()
-                                ? sam::save_mask_png(job.mask, job.path)
-                                : nn::save_image(job.image, job.path,
-                                                 job.quality));
+                auto encode = [&](const std::string& path) {
+                    if (!job.depth.empty())
+                        return save_depth_png16(path, job.depth.data(), job.depth_w, job.depth_h);
+                    if (job.geometry_key.empty())
+                        return job.image.empty() ? sam::save_mask_png(job.mask, path)
+                                                 : nn::save_image(job.image, path, job.quality);
+                    if (job.image.empty()) return false;
+                    std::FILE* file = std::fopen(path.c_str(), "wb");
+                    if (!file) return false;
+                    auto write = [](void* context, void* data, int size) {
+                        std::fwrite(data, 1, (size_t)size, static_cast<std::FILE*>(context));
+                    };
+                    const auto& image = job.image;
+                    const int encoded = job.quality >= 0 && job.quality <= 100
+                        ? stbi_write_jpg_to_func(write, file, image.width, image.height,
+                                                 image.channels, image.data.data(), job.quality)
+                        : stbi_write_png_to_func(write, file, image.width, image.height,
+                                                 image.channels, image.data.data(),
+                                                 image.width * image.channels);
+                    const bool good = encoded && !std::ferror(file);
+                    const bool closed = std::fclose(file) == 0;
+                    return good && closed;
+                };
+                ok = job.geometry_key.empty()
+                    ? encode(job.path)
+                    : publish_geometry_output(job.path, job.geometry_key, encode, job.geometry_overwrite);
             } catch (const std::exception& e) {
                 why = e.what();
             } catch (...) {

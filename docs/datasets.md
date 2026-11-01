@@ -55,6 +55,43 @@ takes seconds an image and an 11 GB install built from 45 GB streamed once
 (`spirula geometry --install marigold-v2`, or the GUI's download button).
 `src/marigold/README.md` has its numbers.
 
+### Reusing generated frames and geometry
+
+The GUI records the sources that made a workspace's frames, not just their
+paths. Replacing a video or an imported photo in place, changing the photo
+inventory, or editing a file-backed video LUT invalidates frame reuse.
+Runners check content hashes before planning and verify them again during
+preparation (after transfer for **Move** photo imports, before final frame
+completion otherwise); a same-size, same-timestamp replacement is still a
+change. Existing external-source frames without matching identities also
+need an explicit rebuild. **Keep them, run the rest** cannot bypass this guard:
+confirm **Redo them** on the dataset screen or choose a fresh workspace.
+Dataset images and photographs read in place are already the frames and are
+exempt from this external-source identity check. See
+[dataset reruns](notes/dataset-rerun.md#frame-source-identity) for details.
+
+When `spirula geometry` runs, it reuses a depth or normal map only if the
+map's sibling `<map filename>.geometry-complete` marker matches the request
+and its SHA-256 checksum matches the map. The request binds source image
+content, camera/face planning, model and inference options, colour/exposure,
+and output kind/encoding. Missing or empty maps and stale or damaged marked
+maps are regenerated; depth and normals are checked independently.
+
+**Nonempty outputs without a recognized completion marker are preserved,
+not silently adopted or replaced.** This includes older generated maps.
+To replace them intentionally, run:
+
+```sh
+spirula geometry <dataset> --overwrite
+```
+
+The GUI's geometry overwrite option also permits replacement. Keep markers
+with their maps when copying a dataset. The GUI plan's step-level reuse
+decision still uses the dataset record; per-map validation occurs when the
+geometry tool actually runs. See
+[completion and overwrite rules](notes/dataset-rerun.md#depth-and-normal-map-completion).
+
+
 ## Masks
 
 A training image's mask comes from up to two places:

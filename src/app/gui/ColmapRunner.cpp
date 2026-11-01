@@ -508,6 +508,8 @@ void ColmapRunner::run(ColmapJob job) {
             log("Resuming previous run in " + ws.string() +
                 " (completed stages are reused)");
         PrepJob pj = prep_job(job);
+        std::string identity_error;
+        if (!snapshot_frame_sources(pj, identity_error)) return fail(identity_error);
         const DatasetRecord rec = read_plan_record(ws.string(), pj);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job, pj), prior, rec, req);

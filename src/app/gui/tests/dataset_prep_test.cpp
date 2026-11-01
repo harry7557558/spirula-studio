@@ -10,6 +10,7 @@
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/DatasetRecord.h"
 #include "app/gui/FilmReel.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
@@ -638,7 +639,75 @@ void test_sort_folders_not_rig() {
           "days: the one smeared photograph moves aside, alone");
 }
 
+void test_source_aware_video_resume() {
+    const fs::path root = scratch("source_identity");
+    const fs::path source = root / "source.mp4", ws = root / "dataset";
+    { std::ofstream file(source, std::ios::binary); file << "first video bytes"; }
+    for (int i = 1; i <= 3; ++i)
+        write_jpg(ws / "images" / ("frame_00000" + std::to_string(i) + ".jpg"), 16, 12, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    gui::PrepInput input;
+    input.path = source.string();
+    input.is_video = true;
+    job.inputs = {input};
+    job.make_frames = false;
+    job.recorded_captures = {{"", source.string(), 1.0, false}};
+    std::string error;
+    check(gui::snapshot_frame_sources(job, error), "source resume: snapshot succeeds");
+    gui::StepRecord frames;
+    frames.present = frames.complete = true;
+    frames.id = "fixture";
+    frames.fields = {{"source_content", ".", job.source_content[0]}};
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    gui::RunProgress progress;
+    const bool reused = run_prep(job, progress, error);
+    check(reused, "unchanged video reuses its existing frames: " + error);
+    const auto stamp = fs::last_write_time(source);
+    { std::ofstream file(source, std::ios::binary); file << "other video bytes"; }
+    fs::last_write_time(source, stamp);
+    std::atomic<bool> cancel{false};
+    gui::DatasetPrep prep(&progress, {}, cancel);
+    gui::PrepResult result;
+    bool completed = false;
+    check(!prep.run(job, result, error, {},
+                    [&](gui::Stage, const gui::PrepJob&) { completed = true; }) &&
+              !completed && error.find("changed") != std::string::npos,
+          "source changed after planning never publishes frame completion");
+    job.source_content.clear();
+    error.clear();
+    check(!run_prep(job, progress, error) && error.find("identity") != std::string::npos,
+          "same-size same-timestamp replacement cannot reuse old video frames");
+    check(fs::exists(ws / "images" / "frame_000001.jpg"),
+          "identity mismatch preserves existing frames until explicit rebuild");
+    frames.fields.clear();
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    error.clear();
+    check(!run_prep(job, progress, error), "legacy record without source identity fails closed");
+    check(fs::exists(source), "resume failure preserves the source");
+    gui::PrepJob photos;
+    photos.workspace = ws.string();
+    photos.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput photo;
+    photo.path = (root / "photos").string();
+    photos.inputs = {photo};
+    write_jpg(root / "photos" / "a.jpg", 16, 12, 1);
+    const std::string inventory = gui::frame_source_identity(photos, photos.inputs[0], true);
+    fs::rename(root / "photos" / "a.jpg", root / "photos" / "b.jpg");
+    check(!inventory.empty() &&
+              inventory != gui::frame_source_identity(photos, photos.inputs[0], true),
+          "photo inventory identity includes relative names, not just image bytes");
+    const fs::path lut = root / "look.cube";
+    { std::ofstream file(lut); file << "first LUT"; }
+    job.inputs[0].lut = lut.string();
+    const std::string with_lut = gui::frame_source_identity(job, job.inputs[0], true);
+    { std::ofstream file(lut); file << "other LUT"; }
+    check(!with_lut.empty() && with_lut != gui::frame_source_identity(job, job.inputs[0], true),
+          "file-backed LUT content is a frame source dependency");
+}
+
 int main() {
+    test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();

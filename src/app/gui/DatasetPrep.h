@@ -242,6 +242,8 @@ inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
+    // Frozen by the runner before planning; empty in the panel's cheap preview.
+    std::vector<std::string> source_content;
     std::string workspace;           // output dataset dir (created)
     bool resume = true;              // reuse what a previous run completed
     // Steps a re-run is redoing rather than reusing: their output is thrown
@@ -359,6 +361,10 @@ struct PrepJob {
     std::string mask_detector_path;
     float mask_detector_threshold = 0.3f;   // sam::MaskOptions::detector_threshold
 };
+
+// Empty on an unreadable/changing source. Includes photo inventory and LUT bytes.
+std::string frame_source_identity(const PrepJob& job, const PrepInput& in, bool content);
+bool snapshot_frame_sources(PrepJob& job, std::string& error);
 
 // The rate a row is actually extracted at (0 = every frame). A row's 0 means
 // "the same as the row above", as the lens column spells a decision made once

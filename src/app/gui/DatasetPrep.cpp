@@ -21,6 +21,8 @@
 #include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "core/ImageOrient.h"
+#include "core/Sha256.h"
+#include <utility>
 #include "sfm/core/Exif.h"
 #ifdef SS_TOOL_SFM
 #include "sfm/core/Telemetry.h"
@@ -1129,6 +1131,88 @@ int DatasetPrep::count_images(const std::string& dir, const std::string& skip) {
     return (int)walk_images(dir, skip).size();
 }
 
+static std::string frame_source_identity_impl(
+    const PrepJob& job, const PrepInput& in, bool content,
+    const std::vector<std::pair<fs::path, fs::path>>* transferred = nullptr) {
+    std::error_code ec;
+    const fs::path root = fs::absolute(in.path, ec).lexically_normal();
+    if (ec) return {};
+    if (!in.is_video &&
+        (reads_photos_in_place(job.inputs, job.photo_import) ||
+         fs::equivalent(root, fs::path(job.workspace) / "images", ec)))
+        return "in-dataset";
+    ec.clear();
+    std::vector<fs::path> files;
+    if (transferred) {
+        for (const auto& file : *transferred) files.push_back(file.first);
+    } else if (in.is_video) files.push_back(root);
+    else {
+        const fs::path workspace = fs::absolute(job.workspace, ec).lexically_normal();
+        if (ec) return {};
+        for (fs::recursive_directory_iterator it(root, fs::directory_options::follow_directory_symlink, ec),
+             end; !ec && it != end; it.increment(ec)) {
+            if (it->is_directory(ec) && it->path().lexically_normal() == workspace) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (it->is_regular_file(ec) && is_image_file(it->path())) files.push_back(it->path());
+        }
+        if (ec || files.empty()) return {};
+        std::sort(files.begin(), files.end());
+    }
+    const std::string lut = input_lut(job, in);
+    if (in.is_video && !lut.empty() && !app::is_builtin_lut(lut)) files.emplace_back(lut);
+    spirula::Sha256 identity;
+    const auto append = [&](const std::string& value) {
+        identity.update(reinterpret_cast<const uint8_t*>(value.data()), value.size());
+        const uint8_t zero = 0;
+        identity.update(&zero, 1);
+    };
+    for (size_t i = 0; i < files.size(); ++i) {
+        const fs::path& name = files[i];
+        const fs::path& file = transferred ? (*transferred)[i].second : name;
+        const auto size = fs::file_size(file, ec);
+        if (ec) return {};
+        const auto stamp = fs::last_write_time(file, ec);
+        if (ec) return {};
+        append(name.lexically_relative(root).generic_string());
+        append(std::to_string(size));
+        if (content) {
+            std::ifstream stream(file, std::ios::binary);
+            if (!stream) return {};
+            spirula::Sha256 hash;
+            char buffer[65536];
+            while (stream) {
+                stream.read(buffer, sizeof buffer);
+                hash.update(reinterpret_cast<const uint8_t*>(buffer), (size_t)stream.gcount());
+            }
+            if (!stream.eof()) return {};
+            append(hash.hex());
+            if (fs::file_size(file, ec) != size || ec) return {};
+            if (fs::last_write_time(file, ec) != stamp || ec) return {};
+        } else append(std::to_string(stamp.time_since_epoch().count()));
+    }
+    return identity.hex();
+}
+
+std::string frame_source_identity(const PrepJob& job, const PrepInput& in, bool content) {
+    return frame_source_identity_impl(job, in, content);
+}
+
+bool snapshot_frame_sources(PrepJob& job, std::string& error) {
+    std::vector<std::string> identities;
+    for (const PrepInput& in : job.inputs) {
+        std::string identity = frame_source_identity(job, in, true);
+        if (identity.empty()) {
+            error = "Cannot identify frame source: " + in.path;
+            return false;
+        }
+        identities.push_back(std::move(identity));
+    }
+    job.source_content = std::move(identities);
+    return true;
+}
+
 // Pixel size from the header alone, no decode. STORED, not displayed: an
 // import that does not re-encode leaves the EXIF turn on the file, and the
 // focal prior this feeds describes the pixels every reader then sees.
@@ -1284,6 +1368,26 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // it was added would otherwise be read in place.
     for (PrepInput& in : job.inputs)
         if (!in.is_video) in.heif = folder_has_heif(in.path);
+    if (job.source_content.empty() && !snapshot_frame_sources(job, error)) return false;
+    if (job.resume && !job.redo_frames) {
+        const DatasetRecord record = read_dataset_record(job.workspace);
+        const StepRecord& frames = record.step(Step::Frames);
+        for (size_t i = 0; i < job.inputs.size(); ++i) {
+            const PrepInput& in = job.inputs[i];
+            if (!in.is_video || count_images(under((ws / "images").string(), in.subdir).string()) == 0)
+                continue;
+            const std::string scope = in.subdir.empty() ? "." : in.subdir;
+            const bool identified = std::any_of(frames.fields.begin(), frames.fields.end(),
+                [&](const StepField& field) {
+                    return field.key == "source_content" && field.scope == scope &&
+                           i < job.source_content.size() && field.value == job.source_content[i];
+                });
+            if (!frames.complete || !identified) {
+                error = "Existing frames have no matching completed source identity; extract frames again.";
+                return false;
+            }
+        }
+    }
 
     // Software decoding still shares GPU frame selection with native decoding.
 #ifdef SS_BUILD_SAM
@@ -1540,6 +1644,16 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 
     // Only once the images are there, so an interrupted extraction is not
     // recorded as having produced what it was asked for.
+    for (size_t i = 0; i < job.inputs.size(); ++i) {
+        // Move imports were checked at the ownership transfer, before sorting
+        // can relocate their only remaining copies into images_skipped/.
+        if (!job.inputs[i].is_video && job.photo_import == PhotoImport::Move) continue;
+        if (i >= job.source_content.size() ||
+            frame_source_identity(job, job.inputs[i], true) != job.source_content[i]) {
+            error = "Frame source changed during preparation; run frame extraction again.";
+            return false;
+        }
+    }
     if (done) done(Stage::Frames, job);
 
     out.n_images = count_images(out.image_dir, skip_dir);
@@ -1721,8 +1835,7 @@ static bool same_path(const std::string& a, const std::string& b) {
 bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
                                 const std::string& images, PrepResult& out,
                                 std::string& error) {
-    // Resume: frames are moved into place in one batch after selection, so a
-    // non-empty folder means a previous extraction of THIS input finished.
+    // The run preflight checked the completed record and this source's bytes.
     if (job.redo_frames) clear_generated(images, job.workspace);
     if (job.resume && !job.redo_frames) {
         const int have = count_images(images);
@@ -3128,6 +3241,25 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
         for (const std::string& n : notes) log(n);
         if (!failure.empty()) { error = failure; return false; }
         if (_cancel.load()) { error = lmsg::err_cancelled.get(); return false; }
+        if (move && t.photos) {
+            std::vector<std::pair<fs::path, fs::path>> transferred;
+            for (const PhotoMove& m : plan) {
+                std::error_code exists_ec;
+                transferred.emplace_back(m.from, fs::exists(m.from, exists_ec) ? m.from : m.to);
+            }
+            const size_t row = input_index(job, in);
+            if (row >= job.source_content.size() ||
+                frame_source_identity_impl(job, in, true, &transferred) != job.source_content[row]) {
+                error = "Frame source changed during photo transfer; run preparation again.";
+                return false;
+            }
+            for (const fs::path& file : walk_images(t.from, inside(t.to, t.from) ? t.to : fs::path())) {
+                if (!std::binary_search(files.begin(), files.end(), file)) {
+                    error = "Frame source inventory changed during photo transfer.";
+                    return false;
+                }
+            }
+        }
         if (move)
             log(fmt(lmsg::moved_kept,
                     {(long long)tally.moved.load(), (long long)tally.kept.load()}));

@@ -320,6 +320,33 @@ int main() {
         fs::remove_all(w);
     }
     {
+        const fs::path w = ws.string() + "_source_identity";
+        const fs::path source = ws.string() + "_source.mp4";
+        touch(source);
+        SfmJob j = video_job(w);
+        j.prep.inputs[0].path = source.string();
+        std::string error;
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot the video");
+        build(w, j);
+        expect(plan(j)[Step::Frames].act == Act::Reuse, "identified unchanged source reuses frames");
+        const auto stamp = fs::last_write_time(source);
+        std::ofstream(source) << "y";
+        fs::last_write_time(source, stamp);
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot replacement");
+        PlanRequest keep;
+        keep.keep_built = true;
+        const DatasetPlan changed = plan(j, keep);
+        expect(changed[Step::Frames].act == Act::Redo && !changed[Step::Frames].can_keep &&
+                   changed.ask() && makes(changed[Step::Masks].act) &&
+                   makes(changed[Step::Model].act),
+               "same-size same-time source replacement invalidates frames and their dependents");
+        PlanRequest redo;
+        redo.redo_frames = true;
+        expect(!plan(j, redo).ask(), "explicit extraction authorizes source invalidation");
+        fs::remove_all(w);
+        fs::remove(source);
+    }
+    {
         SfmJob scans = made;
         scans.lidar.clouds = {"/scan.e57"};
         scans.lidar.scanner_only = true;

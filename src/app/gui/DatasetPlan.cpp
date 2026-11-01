@@ -460,7 +460,10 @@ StepRecord legacy_frames(const std::string& workspace, const PrepJob& now) {
     r.present = r.complete = true;
     r.fields = frames_fields(j);
     r.fields.erase(std::remove_if(r.fields.begin(), r.fields.end(),
-                                  [](const StepField& f) { return f.key == "frame_indices"; }),
+                                  [](const StepField& f) {
+                                      return f.key == "frame_indices" || f.key == "source_inventory" ||
+                                             f.key == "source_content";
+                                  }),
                    r.fields.end());
     for (StepField& f : r.fields)
         if (f.key == "decoder") f.value = j.force_external_decode ? "ffmpeg" : "builtin";
@@ -653,6 +656,10 @@ StepFields frames_fields(const PrepJob& job) {
         if (input_in_dataset(job, in)) continue;
         const std::string scope = scope_of(in.subdir);
         add(f, "input", scope, norm_path(in.path));
+        add(f, "source_inventory", scope, frame_source_identity(job, in, false));
+        const size_t index = input_index(job, in);
+        if (index < job.source_content.size())
+            add(f, "source_content", scope, job.source_content[index]);
         if (!in.is_video) continue;
         video = true;
         const bool every = every_frame(job, in);
@@ -975,9 +982,15 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     } else if (req.redo_frames) {
         set(fr, Act::Redo, Why::Requested);
     } else if (!rf.present) {
-        set(fr, Act::Reuse, Why::Unrecorded);
+        set(fr, Act::Redo, Why::Unrecorded);
+        fr.can_keep = false;
+        fr.ask = true;
     } else {
-        compare(fr, rf, diff(rf.fields, frames_fields(job.prep)));
+        StepFields recorded = rf.fields;
+        if (job.prep.source_content.empty())
+            recorded.erase(std::remove_if(recorded.begin(), recorded.end(),
+                [](const StepField& f) { return f.key == "source_content"; }), recorded.end());
+        compare(fr, rf, diff(recorded, frames_fields(job.prep)));
         // A rule no looser than the one the frames were made with keeps only
         // frames the dataset already has, each with its camera. It is applied
         // to them where they lie, and nothing made from them is made again.
@@ -1015,6 +1028,17 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
                 fr.ask = !req.redo_frames;
                 break;
             }
+        }
+    }
+    if (!fixed(Step::Frames) && ws.frames && !req.redo_frames) {
+        bool identity_changed = false;
+        for (const FieldChange& c : fr.changes)
+            identity_changed = identity_changed || c.key == "source_inventory" ||
+                               c.key == "source_content";
+        if (identity_changed) {
+            set(fr, Act::Redo, Why::Stale);
+            fr.can_keep = false;
+            fr.ask = true;
         }
     }
 
