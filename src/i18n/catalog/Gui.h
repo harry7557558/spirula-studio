@@ -7923,6 +7923,31 @@ SS_MSG(overlay_grid_relative,
 // Photograph vs render (src/app/gui/ImageCompare.h)
 // ===========================================================================
 
+SS_MSG(compare_separate,
+    EN("Separate images"), JA("画像を並べる"), ZH_HANS("分开显示"), ZH_HANT("分開顯示"),
+    KO("이미지 나란히"), DE("Einzelbilder"), FR("Images séparées"), ES("Imágenes separadas"),
+    PT("Imagens separadas"), IT("Immagini separate"), NL("Afzonderlijke beelden"),
+    RU("Отдельные изображения"), TR("Ayrı görüntüler"));
+
+SS_MSG(compare_blend,
+    EN("Blend"), JA("重ね合わせ"), ZH_HANS("混合"), ZH_HANT("混合"),
+    KO("혼합"), DE("Überblenden"), FR("Fondu"), ES("Mezcla"),
+    PT("Mistura"), IT("Fusione"), NL("Overvloeien"), RU("Смешивание"), TR("Karıştır"));
+
+SS_MSG(compare_error_unavailable,
+    EN("This run does not produce a detail error map."),
+    JA("この学習では詳細の誤差マップを生成しません。"),
+    ZH_HANS("本次训练不生成细节误差图。"), ZH_HANT("本次訓練不產生細節誤差圖。"),
+    KO("이 학습에서는 디테일 오차 맵을 생성하지 않습니다."),
+    DE("Dieser Trainingslauf erzeugt keine Detailfehlerkarte."),
+    FR("Cet entraînement ne produit pas de carte d'erreur de détail."),
+    ES("Este entrenamiento no genera un mapa de error de detalle."),
+    PT("Este treinamento não produz um mapa de erro de detalhe."),
+    IT("Questo addestramento non produce una mappa dell'errore di dettaglio."),
+    NL("Deze training maakt geen detailfoutkaart."),
+    RU("В этом запуске карта ошибки детализации не создаётся."),
+    TR("Bu eğitim ayrıntı hatası haritası üretmez."));
+
 SS_MSG(preview_mode_3d,
     EN("3D view"),       JA("3Dビュー"),      ZH_HANS("3D 视图"),  ZH_HANT("3D 檢視"),
     KO("3D 보기"),        DE("3D-Ansicht"),   FR("Vue 3D"),       ES("Vista 3D"),

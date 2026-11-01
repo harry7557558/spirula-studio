@@ -1,17 +1,8 @@
 #pragma once
 
-// ImageCompare -- the training preview's second mode: one training frame's
-// ground truth beside the render of the same camera, one block per modality
-// the run loaded (photo, depth / normals where supervised, the densification
-// error map), on a grid draw_panes fits to the picture's shape.
-//
-// The panes come out of the engine (engine_preview_forward,
-// engine_preview_loss_map), so what is on screen is what the loss compares
-// and what densification scores. Zoom and pan are shared: the question this
-// mode answers is whether the render is soft because the model is, or
-// because the photograph was.
-//
-// GUI thread only, plus its one worker. detach() BEFORE the session goes away.
+// Training images, renders and supervision maps, shown separately or blended.
+// The engine supplies the images compared by the loss and the map used for densification.
+// GUI thread plus one worker. detach() before the session goes away.
 
 #include "app/gui/GlLoader.h"
 
@@ -61,8 +52,6 @@ private:
     // What the region the mask excludes looks like.
     enum class MaskShow { Dim = 0, Unmarked = 1, Hide = 2 };
 
-    // What the worker was asked for. Equality decides whether the pair on
-    // screen still answers the current selection.
     struct Job {
         int  index = 0;
         bool color_correct = true;
@@ -70,9 +59,9 @@ private:
         bool source_gt = false;
         // Also compute the densification error map, which costs a loss pass.
         bool error_map = false;
-        bool operator==(const Job& o) const {
+        bool covers(const Job& o) const {
             return index == o.index && color_correct == o.color_correct &&
-                   source_gt == o.source_gt && error_map == o.error_map;
+                   source_gt == o.source_gt && (!o.error_map || error_map);
         }
     };
 
@@ -139,7 +128,8 @@ private:
     struct Block;
     int  collect(Block* out) const;
     void draw_pane(const Pane& p, const ImVec2& box,
-                   const spirula::i18n::Msg& caption);
+                   const char* id, const char* caption,
+                   const Pane* overlay = nullptr, float opacity = 0.0f);
     void handle_view_input();
     void handle_keys();
     // The split factor of the selected image.
@@ -159,6 +149,9 @@ private:
     bool _show_depth = true;
     bool _show_normal = true;
     bool _show_error = true;
+    bool _blend = false;
+    int _blend_pair = 0;
+    float _blend_amount[3] = {50.0f, 50.0f, 50.0f};
     // Whether this run builds a densification error map at all -- a mode of
     // `none`, or a score taken entirely from the world gradient, builds none.
     bool _has_error_map = false;
@@ -199,7 +192,7 @@ private:
 
     // ---- what is on screen ----
     Shot _shot;
-    Job  _requested{-1, false, false, false};  // never equals a real selection
+    Job  _requested{-1, false, false, false};
     uint64_t _in_flight = 0;
     bool _dirty = true;           // the selection changed; re-request
     bool _tex_dirty = true;       // the composite changed; re-upload
