@@ -1190,7 +1190,7 @@ static std::string frame_source_identity_impl(
             append(hash.hex());
             if (fs::file_size(file, ec) != size || ec) return {};
             if (fs::last_write_time(file, ec) != stamp || ec) return {};
-        } else append(std::to_string(stamp.time_since_epoch().count()));
+        } else append(std::to_string((long long)stamp.time_since_epoch().count()));
     }
     return identity.hex();
 }
