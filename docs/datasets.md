@@ -773,6 +773,19 @@ degrees of elevation, 120 apart in azimuth -- rather than axis-aligned:
 - **The operator.** Whoever is holding it is in the downward and rearward views
   of every frame of most captures, and wants masking out.
 
+## Training after dataset creation
+
+On the GUI's New Dataset screen, enable **Start training after dataset creation**
+to begin training when all dataset steps finish successfully. Choose a built-in
+or saved training preset and optionally override the step count, maximum splats,
+SH degree and floater suppression. Empty numeric fields and **Floater suppression
+per preset** inherit the preset's values. These controls are also available
+for batch training and partition queueing.
+
+The training settings are captured when dataset creation starts. Failed or
+cancelled dataset jobs do not start training. Training uses the resulting image
+and mask folders and writes runs under the dataset's `outputs/` folder.
+
 ## Frames out of a video
 
 One frame every `skip` source frames, the sharpest of a window of `keep`

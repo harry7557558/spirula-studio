@@ -326,6 +326,7 @@ private:
     // Push edits made while a job runs into the runner, which takes each half
     // as it reaches it (SfmRunner::update).
     void update_dataset_job();
+    void advance_dataset_training();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
     // The selected checkpoint and detector; empty paths until both are here.
@@ -577,8 +578,6 @@ private:
     // The built-in / saved picker one stage of one row uses. True when the
     // choice moved.
     bool draw_batch_train_preset(BatchPreset& p, const char* id, int row, int slot);
-    // One training run: its preset, its three overrides and whether the row's
-    // Mesh stage covers it, on one line.
     bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing);
     // The colour and format sets a row writes, over what its preset says.
     bool draw_batch_mesh_outputs(BatchMeshOptions& mesh);
@@ -840,6 +839,13 @@ private:
     ColmapJob _colmap_job;
     SfmRunner _sfm;
     SfmJob _sfm_job;
+    struct DatasetTraining {
+        bool enabled = false, pending = false, builtin = false;
+        BatchRun run;
+        TrainPreset preset;
+        std::string error;
+    };
+    DatasetTraining _dataset_training;
     // ALIKED and LightGlue, when the advanced options ask for them. Fetched
     // here rather than by the run's child process, whose download nobody
     // asked for and nobody can see.
@@ -1165,7 +1171,7 @@ private:
     int _pick_lut = -1;               // which input PickAction::SourceLut sets
     int _pick_source = -1;            // which input PickAction::SourceReplace edits
     std::string _pick_field;          // which flag PickAction::ConfigPath sets
-    // Which batch row the pending pick edits; -1 appends a new row.
+    // -1 appends a row; -2 edits the partition run; -3 edits post-creation training.
     int _pick_row = -1;
     // ... and which of that row's training runs, for a pick made in one of
     // their preset combos.

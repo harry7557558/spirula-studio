@@ -251,7 +251,8 @@ expectation, one executable. Neither exists yet.
 | `SS_FILE` or `SS_SOURCE_ROOT` | `source_path` on each toolchain — MSVC, GCC and nvcc spell `__FILE__` differently |
 | a mesh format, or which colors it carries | `mesh_format_roundtrip` — writes every format and reads it back through the other implementation |
 | the UV atlas | `uv_atlas_split` — tens of thousands of charts that fail to flatten and must split |
-| a preset field, or a batch row's shape | `preset_roundtrip_test` |
+| a preset field | `preset_roundtrip_test` |
+| a batch row's shape or training overrides | `batch_process_test` |
 | what a typed-in command line becomes, or what a message may carry into it | `command_argv_test` — the message stays one argument and stays JSON-safe |
 | the home screen's recent list, or how `gui.conf` stores it | `recent_list_test` |
 | a per-cell optimizer launcher (Vulkan) | `SS_OPTIM_SLICE_CELLS=2048` on `optim_parity` / `optimgeo_parity`, which forces the multi-slice path only an SH buffer past ~24M splats would otherwise take ([SH layouts](notes/sh-quant-layout.md)) |

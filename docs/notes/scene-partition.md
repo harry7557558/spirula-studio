@@ -260,8 +260,8 @@ over. Constants and layouts live in the shader; `data/LabelField.cpp` and
 The Partition button on the dataset screen opens the panel over the parsed
 reconstruction and computes nothing until Compute is pressed. "Queue parts in
 Batch" saves the partition, then asks for the run's preset, splat cap, SH
-degree and step count in a dialog; Queue is the confirmation, and if the
-batch list still holds rows that have not finished it asks whether to clear
+degree, step count and floater suppression in a dialog; Queue is the confirmation.
+If the batch list still holds rows that have not finished it asks whether to clear
 them first. With "merge once all have trained" ticked the list gets a final
 Merge row (`BatchStage::Merge`), which finds the parts' runs under the runs
 folder by their `config.json` and writes `<dataset>_merged_<stamp>.ply`

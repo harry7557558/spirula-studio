@@ -3075,10 +3075,11 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             _pick_row = -1;
             break;
         case PickAction::BatchPresetFile:
-            if (!path.empty() && _pick_row == -2) {
+            if (!path.empty() && (_pick_row == -2 || _pick_row == -3)) {
                 try {
                     TrainPreset p = load_preset(path);
-                    _pq.run.preset = {p.path, p.name};
+                    BatchRun& run = _pick_row == -2 ? _pq.run : _dataset_training.run;
+                    run.preset = {p.path, p.name};
                 } catch (const std::exception& e) {
                     log(e.what());
                 }
@@ -3264,6 +3265,7 @@ void GuiApp::frame() {
             _download_model_id.clear();
     }
     pump_source_probes();
+    advance_dataset_training();
     // Before the reload check below: between two batch rows the runner is
     // briefly idle, and a stale _parse_dirty would start a dataset parse right
     // where the next row wants the engine.
@@ -4061,6 +4063,7 @@ void GuiApp::cancel_dataset_job() {
     // Cancelling the run on screen gives up the queue driving it, which is
     // what the trainer's stop confirmation already does.
     if (_batch_active) _batch_stop_after = _batch_stop_now = true;
+    _dataset_training.pending = false;
     _sfm.cancel();
     _colmap.cancel();
 }
@@ -4349,6 +4352,45 @@ void GuiApp::update_dataset_job() {
     else                                           _colmap.update(_colmap_job);
 }
 
+void GuiApp::advance_dataset_training() {
+    if (!_dataset_training.pending || dataset_busy()) return;
+    _dataset_training.pending = false;
+    const bool builtin = _dataset_training.builtin;
+    const bool done = builtin ? _sfm.state() == SfmRunner::State::Done
+                              : _colmap.state() == ColmapRunner::State::Done;
+    if (!done || _batch_active || native_work_busy()) return;
+
+    TrainPreset& preset = _dataset_training.preset;
+    TrainConfig& cfg = preset.cfg;
+    cfg.data = builtin ? _sfm.dataset_dir() : _colmap.dataset_dir();
+    const std::string images = builtin ? _sfm.image_dir() : _colmap.image_dir();
+    const std::string masks = builtin ? _sfm.mask_dir() : _colmap.mask_dir();
+    if (!images.empty()) cfg.image_dir = images;
+    if (!masks.empty()) {
+        cfg.mask_dir = masks;
+        cfg.flip_mask = builtin ? _sfm.mask_flipped() : _colmap.mask_flipped();
+    }
+    cfg.output_dir_prefix = (fs::path(cfg.data) / "outputs").string();
+    if (_dense.enable && !_dense.use_for_training && cfg.seed_pointcloud.empty())
+        cfg.seed_pointcloud = spirula::dense::kSparseSeed;
+
+    _cfg = cfg;
+    _defaults = cfg;
+    _cfg_ui.touched = preset.touched;
+    _preset = preset.base;
+    _train_presets.file = preset.path;
+    _train_presets.display = preset.name;
+    _train_presets.desc.clear();
+    _train_presets.msg.clear();
+    _parse_dirty = false;
+    remember_dir("dataset", cfg.data);
+    remember(RecentKind::Dataset, cfg.data);
+    reset_dataset_preview();
+    close_source_preview();
+    _screen = Screen::Train;
+    launch_training(_cfg, _preset);
+}
+
 const DatasetPlan& GuiApp::dataset_plan() {
     sync_dataset_jobs();
     const WorkspaceState& ws = workspace_state();
@@ -4378,14 +4420,32 @@ void GuiApp::start_dataset_job() {
 }
 
 bool GuiApp::launch_dataset_job() {
-    // The first GPU-consuming operation of this session freezes the one native
-    // choice, before any preview, decode or child is dispatched. A rejected or
-    // conflicting request is reported and the run does not start.
+    // Device choice must freeze before any preview, decode or child process starts.
     if (native_work_busy()) return false;
     _ws_state_at = -1.0;
     if (!_redo_frames && !dataset_plan()[Step::Frames].can_keep) {
         log(dmsg::rerun_section_help.get());
         return false;
+    }
+    _dataset_training.pending = false;
+    _dataset_training.error.clear();
+    if (!_batch_active && _dataset_training.enabled) {
+        BatchRow row;
+        row.runs.push_back(_dataset_training.run);
+        TrainPreset& preset = _dataset_training.preset;
+        if (!batch_build_train_config(row, 0, _workspace, {}, {}, false,
+                                      preset.cfg, preset.base, _dataset_training.error,
+                                      &preset.touched)) {
+            log(_dataset_training.error);
+            return false;
+        }
+        _dataset_training.error = spirula::train_config_unsupported(preset.cfg);
+        if (!_dataset_training.error.empty()) {
+            log(_dataset_training.error);
+            return false;
+        }
+        preset.path = _dataset_training.run.preset.path;
+        preset.name = _dataset_training.run.preset.name;
     }
     stop_inference_users();
     close_splat();
@@ -4438,6 +4498,8 @@ bool GuiApp::launch_dataset_job() {
     }
     _sfm_job.prep.review_frames = !_batch_active && effective_engine() == Engine::BuiltIn &&
                                   _sfm_job.prep.skip_blurry && _sfm_job.prep.blur_review;
+    _dataset_training.builtin = effective_engine() == Engine::BuiltIn;
+    _dataset_training.pending = !_batch_active && _dataset_training.enabled;
     if (effective_engine() == Engine::BuiltIn) _sfm.start(_sfm_job, films);
     else                                      _colmap.start(_colmap_job, films);
     // A run is what the column is for while it goes.
@@ -8464,13 +8526,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     // tall it is depends on what it is saying.
     ImGui::BeginChild("##dsform", ImVec2(0, height - _ds_action_h));
 
-    // What is greyed out is decided per section, by whether the step that
-    // reads it has started -- see dataset_locked. The whole form used to grey
-    // the instant a run began, which left nothing to do for the twenty minutes
-    // a capture takes to extract, and nothing to look at but the log.
-    //
-    // The inputs and the engine define the run and are the exception: they are
-    // fixed the moment it starts.
+    // Step settings stay editable until the runner consumes them; inputs and engine stay fixed.
     ImGui::BeginDisabled(native_work_busy());
     draw_dataset_source();
 
@@ -8530,6 +8586,22 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     draw_dense_options();
     ImGui::EndDisabled();
     ImGui::Spacing();
+
+    if (!_batch_active) {
+        ImGui::PushID("dataset_training");
+        ImGui::BeginDisabled(running || native_work_busy());
+        if (ui::Checkbox(dmsg::train_after_creation, &_dataset_training.enabled))
+            _dataset_training.error.clear();
+        if (_dataset_training.enabled) {
+            ui::Text(msg::batch_stage_train);
+            draw_batch_run(_dataset_training.run, -3, 0, false);
+            if (!_dataset_training.error.empty())
+                ui::TextColoredWrappedRaw(kErr, _dataset_training.error.c_str());
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+        ImGui::Spacing();
+    }
 
     ImGui::BeginDisabled(dataset_locked(Stage::Features));
     if (effective_engine() == Engine::BuiltIn) draw_sfm_advanced();
@@ -9974,7 +10046,6 @@ void GuiApp::draw_partition_queue_modal() {
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
     if (!_pq.ask_clear) {
-        // The same line a batch row shows: preset, then the three numbers.
         ImGui::SetNextItemWidth(px(520.0f));
         draw_batch_run(_pq.run, -2, 0, false);
         ui::Checkbox(pmsg::pq_merge, &_pq.merge);
@@ -10233,8 +10304,9 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
         ImGui::PushID((int)i);
         if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh)))
             batch_edited();
-        ImGui::SameLine(0, 2);
-        if (ui::ButtonRaw("x##rmrun")) drop = (int)i;
+        ImGui::SameLine();
+        if (ui::ButtonRaw("x##rmrun", ImVec2(bw, 0))) drop = (int)i;
+        ui::help_on_hover(dmsg::remove);
         ImGui::PopID();
     }
     if (drop >= 0) {
@@ -10262,22 +10334,30 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
 }
 
 
-// One training run on one line: which preset, the three numbers worth
-// changing without a preset for each combination, and -- when the row meshes
-// -- whether this is one of the runs it meshes.
 bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
     bool moved = false;
     const float num_w = px(84.0f);
     const float sp = ImGui::GetStyle().ItemSpacing.x;
     const float bw = ImGui::GetFrameHeight() + 6.0f;
-    const float boxes = 3.0f * (num_w + sp) + (meshing ? bw + sp : 0.0f);
+    const bool inline_floater = row >= 0;
+    const char* values[] = {"", "off", "mild", "strong"};
+    const Msg* choices[] = {&msg::floater_per_preset, &msg::floater_off,
+                            &msg::floater_mild, &msg::floater_strong};
+    int selected = 0;
+    float floater_w = 0.0f;
+    for (int k = 0; k < 4; k++) {
+        if (run.floater_suppression == values[k]) selected = k;
+        floater_w = std::max(floater_w, ImGui::CalcTextSize(choices[k]->get()).x);
+    }
+    floater_w += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float boxes = 3.0f * (num_w + sp) +
+                        (meshing ? ImGui::GetFrameHeight() + sp : 0.0f) +
+                        (inline_floater ? floater_w + sp + bw + sp : 0.0f);
     ImGui::SetNextItemWidth(std::max(px(120.0f),
-                                     ImGui::GetContentRegionAvail().x - bw - boxes));
+                                     ImGui::GetContentRegionAvail().x - boxes));
     moved |= draw_batch_train_preset(run.preset, "##trpreset", row, slot);
 
-    // Text boxes rather than spinners because empty means "whatever the preset
-    // says", and 0 is a legal SH degree. The hint is the column name, which is
-    // shown exactly when the box is empty and there is nothing else to say.
+    // Empty means inherit; SH degree 0 is an explicit override.
     const Msg* labels[] = {&msg::batch_col_splats, &msg::batch_col_sh,
                            &msg::batch_col_steps};
     std::string* fields[] = {&run.cap_max, &run.sh_degree, &run.iterations};
@@ -10291,6 +10371,19 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         ui::help_on_hover(msg::batch_override_help);
         ImGui::PopID();
     }
+    if (inline_floater) ImGui::SameLine(0, sp);
+    ImGui::SetNextItemWidth(floater_w);
+    if (ui::BeginComboRaw("##floater_suppression", choices[selected]->get())) {
+        for (int k = 0; k < 4; k++) {
+            if (ui::Selectable(*choices[k], selected == k)) {
+                run.floater_suppression = values[k];
+                moved = true;
+            }
+            if (selected == k) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(fld::floater_suppression_help);
     if (meshing) {
         ImGui::SameLine(0, sp);
         if (ui::CheckboxRaw("##runmesh", &run.mesh)) moved = true;

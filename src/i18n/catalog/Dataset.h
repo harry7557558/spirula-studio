@@ -391,6 +391,21 @@ SS_MSG(create_dataset,
     PT("Criar o conjunto de dados"), IT("Crea il set di dati"),
     NL("Dataset maken"), RU("Создать набор данных"), TR("Veri kümesini oluştur"));
 
+SS_MSG(train_after_creation,
+    EN("Start training after dataset creation"),
+    JA("データセット作成後に学習を開始"),
+    ZH_HANS("创建数据集后开始训练"),
+    ZH_HANT("建立資料集後開始訓練"),
+    KO("데이터셋 생성 후 학습 시작"),
+    DE("Training nach der Datensatzerstellung starten"),
+    FR("Démarrer l'entraînement après la création du jeu de données"),
+    ES("Iniciar el entrenamiento tras crear el conjunto de datos"),
+    PT("Iniciar o treino após criar o conjunto de dados"),
+    IT("Avvia l'addestramento dopo la creazione del set di dati"),
+    NL("Training starten na het maken van de dataset"),
+    RU("Начать обучение после создания набора данных"),
+    TR("Veri kümesi oluşturulduktan sonra eğitimi başlat"));
+
 SS_MSG(pick_input_first,
     EN("pick the input and the output folder first"),
     JA("先に入力と出力フォルダを選んでください"),

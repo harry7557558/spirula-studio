@@ -679,6 +679,24 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/Pano360.cpp
         ${SS_FILM_REEL_SOURCES})
     ss_configure_app(dataset_plan_test)
+
+    get_target_property(SS_BATCH_TEST_SOURCES dataset_plan_test SOURCES)
+    list(REMOVE_ITEM SS_BATCH_TEST_SOURCES
+        ${SS_SRC}/app/gui/tests/dataset_plan_test.cpp)
+    add_executable(batch_process_test
+        ${SS_SRC}/app/gui/tests/batch_process_test.cpp
+        ${SS_BATCH_TEST_SOURCES}
+        ${SS_SRC}/app/gui/BatchProcess.cpp
+        ${SS_SRC}/app/gui/SourceList.cpp
+        ${SS_SRC}/app/gui/RigGuess.cpp
+        ${SS_SRC}/app/gui/DatasetPreset.cpp
+        ${SS_SRC}/app/gui/TrainPreset.cpp
+        ${SS_SRC}/app/gui/MeshPreset.cpp
+        ${SS_SRC}/app/gui/MeshJob.cpp
+        ${SS_SRC}/app/gui/StencilPreset.cpp
+        ${SS_SRC}/app/gui/PresetFile.cpp
+        ${SS_SRC}/app/AppPaths.cpp)
+    ss_configure_app(batch_process_test)
 endif()
 
 # `--accept-license` through the real binary (Main.cpp), not a stand-in for it.
