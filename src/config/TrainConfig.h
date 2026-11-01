@@ -463,7 +463,6 @@ inline constexpr TrainPresetInfo kTrainPresets[] = {
     // {"academic-baseline"},  // hidden by default, uncomment to enable
 };
 
-// Returns false for an unknown preset name.
 inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
     if (name == "3dgs") {
         return true;
@@ -522,6 +521,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         // c.features_dc_lr = 0.0015f;
         c.features_sh_lr = 0.0001f;
         c.ssim_lambda = 0.1f;
+        c.noise_gate_peak_weight = false;
         return true;
     }
     if (name == "synthetic") {
