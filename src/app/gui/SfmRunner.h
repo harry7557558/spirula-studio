@@ -162,12 +162,11 @@ struct SfmJob {
     // an order of magnitude slower per pair -- the panel greys it out for SIFT
     // and the CLI refuses the combination outright.
     int matcher = 0;
-    // Scale and heading from the capture's GPS: 0 off, 1 latitude and
-    // longitude, 2 with altitude, 3 (the default) the CLI's per-capture `auto`.
-    // Indices are saved in presets, so `auto` is appended rather than first.
+    // Any GPS, video or EXIF: 0 off, 1 latitude and longitude, 2 with altitude,
+    // 3 (default) the CLI's `auto`. Saved in presets, so `auto` is appended.
     int metric_gps = 3;
-    // The video's own IMU and GPS track: 0 off, 1 orientation only, 2 (the
-    // default) orientation and whatever metric scale passes its own checks.
+    // The video's own IMU: 0 off, 1 orientation only, 2 (the default)
+    // orientation and the accelerometer's scale where it passes its checks.
     int sensor_gauge = 2;
     // The camera attitude a drone writes into each photo: 0 off, 1 orientation
     // only, 2 (the default) orientation and north.

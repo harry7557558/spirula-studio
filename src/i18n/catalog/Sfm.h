@@ -3977,6 +3977,21 @@ SS_MSG(sensor_fail_noup,
     RU("голоса IMU за вертикаль не сходятся, и ни один источник масштаба не прошёл"),
     TR("IMU yukarı oyları uyuşmuyor ve hiçbir ölçek kaynağı geçmedi"));
 
+SS_MSG(sensor_fail_noup_noimu,
+    EN("no IMU measured which way is up and no scale source passed"),
+    JA("上方向を測った IMU がなく、縮尺の情報源も通りませんでした"),
+    ZH_HANS("没有 IMU 测得上方向，且没有通过的缩放来源"),
+    ZH_HANT("沒有 IMU 測得上方向，且沒有通過的縮放來源"),
+    KO("위 방향을 잰 IMU 가 없고 통과한 축척 정보원도 없습니다"),
+    DE("keine IMU hat gemessen, wo oben ist, und keine Maßstabsquelle hielt"),
+    FR("aucune IMU n'a mesuré la verticale et aucune source d'échelle n'a tenu"),
+    ES("ninguna IMU midió la vertical y ninguna fuente de escala pasó"),
+    PT("nenhuma IMU mediu a vertical e nenhuma fonte de escala passou"),
+    IT("nessuna IMU ha misurato la verticale e nessuna fonte di scala ha retto"),
+    NL("geen IMU heeft gemeten waar boven is en geen schaalbron hield stand"),
+    RU("ни одна IMU не измерила вертикаль, и ни один источник масштаба не прошёл"),
+    TR("hiçbir IMU yukarı yönü ölçmedi ve hiçbir ölçek kaynağı geçmedi"));
+
 SS_MSG(sensor_untimed,
     EN("Model {0}: {1} of {2} registered images matched no telemetry"),
     JA("モデル {0}: 登録済み {2} 枚のうち {1} 枚はテレメトリに対応しません"),

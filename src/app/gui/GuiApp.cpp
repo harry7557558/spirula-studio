@@ -4509,11 +4509,12 @@ void GuiApp::draw_sensor_toggles(PrepInput& s) {
     }
     const bool colmap = effective_engine() != Engine::BuiltIn;
     // Nothing under Advanced quiets photo GPS entirely: --metric-gps none still
-    // lets it propose pairs and admit an equirect capture's level prior.
+    // lets it propose pairs and admit an equirect capture's level prior. A
+    // video's GPS has no such use unless --sensor-pairs asks.
     const Msg* imu_off = s.is_video ? (_sfm_job.sensor_gauge == 0 ? &dmsg::sfm_sensor_gauge : nullptr)
                                     : (_sfm_job.exif_attitude == 0 ? &dmsg::sfm_exif_attitude : nullptr);
     const Msg* gps_off =
-        s.is_video && _sfm_job.sensor_gauge == 0 ? &dmsg::sfm_sensor_gauge : nullptr;
+        s.is_video && _sfm_job.metric_gps == 0 ? &dmsg::sfm_metric_gps : nullptr;
     auto explain = [&](const Msg& help, const Msg* off) {
         if (colmap) {
             ui::help_on_hover_disabled(dmsg::sensors_unused_colmap);
@@ -8230,22 +8231,22 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::max_image_size_auto_help);
 
     // ---- what the sensors are allowed to settle ----
-    // A video's own IMU and GPS track, and per photograph the EXIF position
-    // and a drone's recorded attitude. Any one can be all an input has.
+    // GPS from a video's track or a photo's EXIF, a video's IMU, and a
+    // drone's recorded attitude. Any one can be all an input has.
     ImGui::Spacing();
     ui::SeparatorText(dmsg::section_sensors);
     ui::TextDisabledWrapped(dmsg::sensors_section_caption);
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::Combo(dmsg::sfm_sensor_gauge, &_sfm_job.sensor_gauge,
-              {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
-               &dmsg::sfm_sensor_gauge_auto});
-    ui::help_on_hover(dmsg::sfm_sensor_gauge_help);
-
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_metric_gps, &_sfm_job.metric_gps,
               {&dmsg::sfm_metric_gps_off, &dmsg::sfm_metric_gps_horizontal,
                &dmsg::sfm_metric_gps_full, &dmsg::sfm_metric_gps_auto});
     ui::help_on_hover(dmsg::sfm_metric_gps_help);
+
+    ImGui::SetNextItemWidth(px(260.0f));
+    ui::Combo(dmsg::sfm_sensor_gauge, &_sfm_job.sensor_gauge,
+              {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
+               &dmsg::sfm_sensor_gauge_auto});
+    ui::help_on_hover(dmsg::sfm_sensor_gauge_help);
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_exif_attitude, &_sfm_job.exif_attitude,
