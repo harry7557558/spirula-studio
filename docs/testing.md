@@ -263,7 +263,8 @@ as GPU image caching. It runs without a GPU on either backend.
 | a launch through `dispatch_budgeted` (Vulkan), or a new one | its parity tool under `SS_SUBMIT_BUDGET_MS=0.01`, which splits every budgeted launch after its entry's first into ranges of one slice (`SS_VK_VERBOSE=1` prints the dispatch-base pipelines that ran them); compare against a dump made without it ([submit budget](notes/gpu-submit-budget.md)) |
 | H.265 reference handling | `hevc_reference_retention_test` on a non-NVIDIA Vulkan video-decode device with `SS_ENABLE_PATENTED=ON` |
 | H.265 encode dimensions or HEIF image correctness | `hevc_sps_crop_test` (CPU) and `heif_test` (non-NVIDIA Vulkan encode/decode); fixtures are generated at runtime |
-| `run_process`, `ProcessPipe` or `ProcessReader` | `subprocess_lifecycle_test` (CPU): cancellation and owner death stop nested children too |
+| `run_process`, `ProcessPipe`, `ProcessReader` or `ProcessDuplex` | `subprocess_lifecycle_test` (CPU): cancellation and owner death stop nested children too |
+| how masking or depth/normal work is split across GPUs | `inference_worker_test`, `inference_worker_devices_test`, `mask_worker_manifest_test`, `geometry_model_budget_test` (CPU); `mask_worker_parity_test` with a cached model on one GPU, then two |
 | anything | one short training run per backend on a public scene |
 
 ## H.265 retained-reference regression
@@ -342,9 +343,9 @@ The executable re-launches itself in synthetic helper modes, including a
 child that natively spawns a nested child retaining inherited output handles.
 Readiness is acknowledged through PID files in a unique temporary directory
 whose name contains spaces; no fixed startup sleeps determine success.
-For each of `run_process`, `ProcessPipe` and `ProcessReader`, it checks:
+For each of `run_process`, `ProcessPipe`, `ProcessReader` and `ProcessDuplex`, it checks:
 
-- Cancellation (`run_process`) or explicit `kill()` (pipe/reader) stops both
+- Cancellation (`run_process`) or explicit `kill()` (pipe/reader/duplex) stops both
   child and nested child, does not report success, and returns without hanging
   on inherited pipes.
 - Abrupt owner death (`TerminateProcess` on Windows, `SIGKILL` on POSIX) stops
@@ -356,6 +357,11 @@ For each of `run_process`, `ProcessPipe` and `ProcessReader`, it checks:
 - Cancellation still works after both child and descendant close stdout/stderr
   while remaining alive.
 - An independently spawned unrelated process remains alive.
+
+`ProcessDuplex` also checks binary request/response round trips with stderr
+delivered separately as diagnostic lines, that `kill()` unblocks a read and a
+4 MiB write already in flight on other threads (both fail and `finish()` returns
+nonzero), and that destroying it without `finish()` stops the tree.
 
 Normal completion separately checks merged stdout/stderr including a final
 unterminated line, preserved nonzero exit codes, exact reader bytes, and pipe
@@ -379,6 +385,56 @@ inherited lifecycle lease descriptors or discard their associated environment
 metadata are outside the synchronous nested-cleanup guarantee. Windows waits
 on retained job-member process handles; teardown of raw descendants that
 already exited before the membership snapshot is outside that guarantee.
+
+## Local inference worker checks
+
+`inference_worker_test` needs no GPU, model or license. It runs real child
+processes and checks dynamic dispatch to children of unequal speed, exact task
+and output ownership, separate diagnostic and protocol streams, byte-exact
+frames containing newlines (the child's stdout starts in text mode on Windows),
+complete response acknowledgement, output-family rejection, byte and frame
+admission limits, worker death (including a nonzero exit after a valid
+response), and cancellation while a response is blocked or acceptance is slow.
+`inference_worker_devices_test` checks which GPUs Auto, None and an explicit
+list give workers. `geometry_model_budget_test` checks the host memory reserved
+for an ONNX geometry model: each external weight file is charged once, unrelated
+files are not, and a missing one is refused.
+
+`mask_worker_manifest_test` (`mask_worker_parity_test --manifest-check`) needs
+`SS_BUILD_SAM=ON` but no GPU, model or license. It round-trips the JSONL input
+and output records mask workers exchange, including escaped path characters and
+a sequence manifest larger than the 1 MiB transport frame, and rejects
+oversized, truncated and empty records. Write records with `JsonWriter(false)`:
+the default pretty format contains newlines, which the record writer rejects.
+
+`dataset_prep_test` also checks the mask workers' output ownership preflight:
+paths too long once staged, duplicate stems, aliases (relative/absolute,
+lexical, directory symlinks, and Windows case and extended-path forms), and
+that existing masks are kept.
+
+```sh
+cmake --build build_vulkan --config Release --target inference_worker_test inference_worker_devices_test geometry_model_budget_test mask_worker_parity_test
+ctest --test-dir build_vulkan -C Release -R "^(inference_worker_test|inference_worker_devices_test|mask_worker_manifest_test|geometry_model_budget_test)$" --output-on-failure
+```
+
+`mask_worker_parity_test` needs a SAM 3 or BiRefNet checkpoint the application
+has already downloaded. It masks synthetic images in-process, then through one
+worker process per given GPU, and requires byte-identical train and feature
+masks, for independent images and for one tracked sequence (with a click seed
+for SAM 3), plus a clean worker exit. Run it on one GPU first, then on two of
+the same model; `spirula sam devices` lists the UUIDs. A failed run keeps its
+scratch directory and prints its path. `spirula geometry --check` includes the
+worker publication cases: an image's staged maps complete together or not at
+all, and unmarked maps still need `--overwrite`.
+
+```sh
+build_vulkan/mask_worker_parity_test /path/to/sam3-q4_0.ggml uuid:<32 hex digits>
+build_vulkan/mask_worker_parity_test /path/to/sam3-q4_0.ggml uuid:<first>,uuid:<second>
+build_vulkan/spirula geometry --check
+```
+
+Byte equality is only expected between identical GPUs. Different GPU models
+need a mask/depth tolerance and a visual check instead.
 
 ## Profiling
 

@@ -15,6 +15,17 @@ Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name|auto|uuid:hex>`,
 `SS_PROFILE=1`, `SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`, `SS_NN_COOPMAT=0`,
 `SS_SUBMIT_BUDGET_MS`, `SS_VK_SUBMIT_LOG` (docs/notes/gpu-submit-budget.md).
 
+Host loops in `core/Parallel.h` accept a process-local thread cap through
+`nn::set_parallel_threads(unsigned)`, including the calling thread.
+`nn::parallel_threads()` returns the effective cap, limited to hardware concurrency
+with a minimum of one. Zero restores the default automatic hardware sizing.
+The setting is atomic; each `parallel_for` snapshots it once, so changes do not
+resize an in-flight loop. It is a per-loop cap, not a shared pool across concurrent
+or nested calls. Worker processes set it before starting their host work.
+`nn::configured_parallel_threads()` returns the configured value, retaining zero
+for automatic sizing. `nn::load_image` forwards an explicit cap to EXR/TIFF
+decoders, but preserves their all-core default when no cap is configured.
+
 The context probes optional `VK_EXT_memory_budget`. `Context::memoryBudget`
 queries the selected device's current local-heap budgets and usage, or returns
 an empty report when unsupported. The query in `core/VulkanMemoryBudget.h`

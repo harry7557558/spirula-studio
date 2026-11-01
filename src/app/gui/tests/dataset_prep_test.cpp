@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -706,7 +707,48 @@ void test_source_aware_video_resume() {
           "file-backed LUT content is a frame source dependency");
 }
 
+void test_mask_output_ownership() {
+    const fs::path root = scratch("mask_owners") / std::string(96, 'p');
+    const fs::path masks = root / "masks";
+    fs::create_directories(masks);
+    const fs::path output = masks / "frame.png";
+    { std::ofstream file(output); file << "existing mask"; }
+    gui::MaskOutputOwners owners;
+    auto rejected = [&](const fs::path& path) {
+        try { owners.claim(path); }
+        catch (const std::runtime_error&) { return true; }
+        return false;
+    };
+    const fs::path old_owner = root / ".spirula-mask-attempts" / "attempt" / "owners" /
+        fs::absolute(output).relative_path();
+    check(old_owner.native().size() > 260, "ownership regression exceeds Windows scratch path limit");
+    check(!rejected(output), "long destination claims ownership without mirroring its path on disk");
+    check(rejected(output), "two images with the same mask stem are rejected");
+    check(rejected(masks / "." / "frame.png"), "lexical aliases cannot own the same mask");
+    check(rejected(fs::relative(output, fs::current_path())), "relative and absolute owners collide");
+    check(!rejected(root / "feature_masks" / "frame.png"), "separate train and feature outputs are allowed");
+    check(!fs::exists(root / ".spirula-mask-attempts"), "ownership validation creates no scratch tree");
+    std::string contents;
+    { std::ifstream file(output); std::getline(file, contents); }
+    check(contents == "existing mask", "ownership validation preserves existing masks");
+    std::error_code ec;
+    fs::create_directory_symlink(masks, root / "alias", ec);
+    if (!ec)
+        check(rejected(root / "alias" / "frame.png"), "directory symlink aliases cannot own the same mask");
+#ifdef _WIN32
+    check(rejected(masks / "FRAME.PNG"), "Windows ownership remains case-insensitive");
+    check(!rejected(masks / fs::path(L"\u00c4.png")) &&
+          rejected(masks / fs::path(L"\u00e4.png")), "Windows Unicode case aliases collide");
+    const auto absolute = fs::absolute(output).native();
+    if (absolute.rfind(L"\\\\", 0) != 0)
+        check(rejected(fs::path(L"\\\\?\\" + absolute)), "Windows extended and ordinary paths collide");
+#else
+    check(!rejected(masks / "FRAME.PNG"), "case-distinct POSIX outputs remain separate");
+#endif
+}
+
 int main() {
+    test_mask_output_ownership();
     test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();

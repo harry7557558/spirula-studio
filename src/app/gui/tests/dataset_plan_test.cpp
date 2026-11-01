@@ -125,6 +125,19 @@ int main() {
     const fs::path ws = fs::temp_directory_path() / "spirula_dataset_plan_test";
     const SfmJob made = video_job(ws);
 
+    {
+        SfmJob workers = made;
+        expect(workers.prep.inference_devices.empty() &&
+                   workers.geometry.worker_devices.empty(),
+               "worker scheduling defaults to serial before GPU selection");
+        workers.prep.inference_devices = "uuid:00112233445566778899aabbccddeeff";
+        workers.geometry.worker_devices = workers.prep.inference_devices;
+        expect(frames_fields(made.prep) == frames_fields(workers.prep) &&
+                   masks_fields(made.prep) == masks_fields(workers.prep) &&
+                   geometry_fields(made.geometry) == geometry_fields(workers.geometry),
+               "GPU routing does not change output recipes");
+    }
+
     // ---- which LUT a row's frames go through ---------------------------------
     {
         std::vector<PrepInput> rows(5);

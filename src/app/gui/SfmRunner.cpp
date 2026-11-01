@@ -278,6 +278,7 @@ void SfmRunner::take_selection(PrepJob& prep) {
 void SfmRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.prep.mask_enable;
+    prep.inference_devices = _live.prep.inference_devices;
     prep.mask_prompt = _live.prep.mask_prompt;
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_feature_prompt = _live.prep.mask_feature_prompt;

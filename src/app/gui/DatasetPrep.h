@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -265,6 +266,7 @@ struct PrepJob {
 
     // Shared frame selection and masking device, frozen at the top of run().
     std::string device;
+    std::string inference_devices;       // empty = existing serial implementation
 
     // ---- video extraction ----
     // What a 360 capture (PrepInput::pano360) becomes. Dataset-wide: mixing
@@ -621,6 +623,17 @@ std::vector<std::vector<std::string>> input_sequences(const PrepJob& job,
 // which is why every walk in here follows directory symlinks.
 void resolve_photo_folder(const std::string& picked, std::string& images,
                           std::string& masks);
+
+// In-memory preflight: no destination path is mirrored into worker scratch.
+class MaskOutputOwners {
+public:
+    void claim(const std::filesystem::path& path);
+private:
+    struct Less {
+        bool operator()(const std::filesystem::path& a, const std::filesystem::path& b) const;
+    };
+    std::set<std::filesystem::path, Less> paths;
+};
 
 // Every folder under `dir` holding images DIRECTLY, '/'-separated, parents
 // before children, "" being `dir` itself -- exactly the groups `--camera-mode

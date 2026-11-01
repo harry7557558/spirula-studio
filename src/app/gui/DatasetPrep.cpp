@@ -35,6 +35,11 @@
 #endif
 #ifdef SS_BUILD_SAM
 #include "app/WriterPool.h"
+#include "app/AppPaths.h"
+#include "app/InferenceWorker.h"
+#include "app/InferenceWorkerDevices.h"
+#include "app/MaskWorker.h"
+#include "data/JsonWrite.h"
 #include "nn/Device.h"
 #include "nn/io/Image.h"
 #include "sam/Masking.h"
@@ -43,7 +48,15 @@
 #include "video/Video.h"
 #endif
 
-#ifndef _WIN32
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <ftw.h>
 #endif
 
@@ -89,6 +102,19 @@ bool is_image_file(const fs::path& p) {
     return e == ".jpg" || e == ".jpeg" || e == ".png" || e == ".webp" ||
            e == ".tif" || e == ".tiff" || e == ".bmp" || e == ".exr" ||
            e == ".insp" || is_heif_path(p.string());
+}
+
+bool MaskOutputOwners::Less::operator()(const fs::path& a, const fs::path& b) const {
+#ifdef _WIN32
+    return CompareStringOrdinal(a.c_str(), -1, b.c_str(), -1, TRUE) == CSTR_LESS_THAN;
+#else
+    return a < b;
+#endif
+}
+
+void MaskOutputOwners::claim(const fs::path& path) {
+    if (!paths.insert(fs::weakly_canonical(fs::absolute(path))).second)
+        throw std::runtime_error("Multiple mask images own the same output path");
 }
 
 namespace {
@@ -1786,6 +1812,10 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         // failing (n == 0 with rerr non-empty), must still say so.
         if (n > 0) log(fmt(mmsg::log_recomposited, {(long long)n}), /*detail=*/false);
         if (!rerr.empty()) log(fmt(mmsg::log_recomposite_failed, {rerr}), /*detail=*/false);
+        if (!job.inference_devices.empty() && !rerr.empty()) {
+            error = rerr;
+            return false;
+        }
     }
     if (_films.masks && (!out.mask_dir.empty() || !out.feature_mask_dir.empty())) {
         std::vector<FilmFrame> listed;
@@ -1804,6 +1834,10 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             listed.push_back(std::move(ff));
         }
         _films.masks->relist(std::move(listed));
+    }
+    if (!job.inference_devices.empty() && _cancel.load()) {
+        error = lmsg::err_cancelled.get();
+        return false;
     }
     if (done) done(Stage::Masks, job);
     return true;
@@ -3449,12 +3483,17 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         clicks, cameras, ids,
         /*exact=*/(!in.is_video && in.packed_lenses < 2) || by_stem);
 
+    const bool isolated = !job.inference_devices.empty();
     sam::Masker masker;
-    if (!masker.init(mo, error)) return false;
+    if (!isolated && !masker.init(mo, error)) return false;
     // Nothing named for training still writes masks/ when there is a stencil
     // to put in it, and an all-white one when there is not would be noise.
-    const bool write_train = train && (masker.hasTarget() || !in.stencil.empty());
-    const bool write_features = features && masker.hasFeatureMask();
+    const bool write_train = train && ((isolated
+        ? sam::is_subject_model(mo.model) || !sam::split_phrases(mo.text).empty() || !mo.seeds.empty()
+        : masker.hasTarget()) || !in.stencil.empty());
+    const bool write_features = features && (isolated
+        ? !sam::is_subject_model(mo.model) && !sam::split_phrases(mo.feature_text).empty()
+        : masker.hasFeatureMask());
     if (!write_train && !write_features) return true;
 
     // The stencil goes in here rather than in a pass of its own: it is one AND
@@ -3496,7 +3535,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         if (!on) return d;
         // Masks mirror the image tree, so cam0/ and cam1/ keep their names.
         d.path = root / rel.parent_path() / (rel.stem().string() + ".png");
-        d.write = !(job.resume && !job.redo_masks && fs::exists(d.path, ec));
+        d.write = isolated || !(job.resume && !job.redo_masks && fs::exists(d.path, ec));
         if (d.write) fs::create_directories(d.path.parent_path(), ec);
         return d;
     };
@@ -3512,6 +3551,207 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         todo_files.push_back(files[i]);
         todo_dst.push_back(std::move(dst));
         todo_fdst.push_back(std::move(fdst));
+    }
+
+    if (isolated) {
+        fs::path scratch;
+        bool scratch_owned = false;
+        try {
+            const auto devices = app::parse_worker_devices(job.inference_devices);
+            const uint64_t budget = app::default_worker_memory_bytes();
+            const fs::path base = fs::path(job.workspace) / ".spirula-mask-attempts";
+            fs::create_directories(base);
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            for (unsigned attempt = 0;; ++attempt) {
+                scratch = base / (std::to_string(nonce) + "-" + std::to_string(attempt));
+                if (fs::create_directory(scratch)) { scratch_owned = true; break; }
+            }
+            const std::string recipe = app::mask_worker_recipe(mo, job.image_gamut,
+                job.image_is_linear, job.image_exposure);
+            std::vector<app::WorkerTask> tasks;
+            std::vector<std::vector<size_t>> groups;
+            MaskOutputOwners owners;
+            for (size_t k = 0; k < todo.size(); ++k) {
+                for (const Dst* dst : {&todo_dst[k], &todo_fdst[k]}) {
+                    if (!dst->write) continue;
+                    owners.claim(dst->path);
+                }
+            }
+            auto probe_size = [](const fs::path& file, int& width, int& height) {
+                if (imagefile::handles(file.string())) {
+                    imagefile::Info info;
+                    if (!imagefile::probe(file.string(), info).empty()) return false;
+                    width = info.width; height = info.height;
+                    return width > 0 && height > 0;
+                }
+                int channels = 0;
+                return stbi_info(file.string().c_str(), &width, &height, &channels) != 0 &&
+                    width > 0 && height > 0;
+            };
+            std::vector<std::string> source_hashes;
+            source_hashes.reserve(todo_files.size());
+            for (const auto& source : todo_files) {
+                auto hash = spirula::sha256_file(source.string());
+                if (hash.empty()) throw std::runtime_error("Cannot freeze mask source identity");
+                source_hashes.push_back(std::move(hash));
+            }
+            if (mo.video) {
+                groups.emplace_back();
+                for (size_t k = 0; k < todo.size(); ++k) groups.back().push_back(k);
+            } else {
+                for (size_t k = 0; k < todo.size(); ++k) groups.push_back({k});
+            }
+            for (size_t group = 0; group < groups.size(); ++group) {
+                const auto manifest = scratch / ("task-" + std::to_string(group) + ".jsonl");
+                std::ofstream records(manifest, std::ios::binary | std::ios::trunc);
+                if (!records) throw std::runtime_error("Cannot create mask input manifest");
+                uint64_t bytes = 0;
+                for (size_t k : groups[group]) {
+                    if (_cancel.load()) throw std::runtime_error("Mask preparation canceled");
+                    int width = 0, height = 0;
+                    if (!probe_size(todo_files[k], width, height))
+                        throw std::runtime_error("Cannot size required mask input");
+                    // Decode, inference host RGB, masks and publication scratch; only
+                    // one frame of a tracked sequence is resident at a time.
+                    const uint64_t side = (uint64_t)std::max(1024, mo.max_size);
+                    const uint64_t pixels = std::max(uint64_t(width) * height, side * side);
+                    if (pixels > budget / 128)
+                        throw std::runtime_error("Mask image exceeds shared host-memory budget");
+                    bytes = std::max(bytes, pixels * 128);
+                    JsonWriter item(false);
+                    app::write_mask_manifest_record(records, item.object()
+                        .field("source", todo_files[k].string())
+                        .field("source_sha256", source_hashes[k])
+                        .field("stage", (scratch / std::to_string(k)).string())
+                        .field("frame", std::to_string(ids[todo[k]]))
+                        .field("train", todo_dst[k].write).field("feature", todo_fdst[k].write).end().str());
+                }
+                records.close();
+                if (!records) throw std::runtime_error("Could not close mask input manifest");
+                JsonWriter request;
+                tasks.push_back({request.object().field("id", std::to_string(group))
+                    .field("recipe", recipe).field("manifest", manifest.string())
+                    .field("count", std::to_string(groups[group].size())).end().str(), bytes});
+            }
+            std::vector<std::vector<std::string>> commands;
+            for (const auto& device : devices)
+                commands.push_back({app::exe_path(), "sam", "--mask-worker", device});
+            const uint64_t resident_per_worker = 2 * (fs::file_size(mo.model) +
+                (mo.detector.empty() ? 0 : fs::file_size(mo.detector))) + 16 * 1024 * 1024;
+            const uint64_t admitted = std::min(commands.size(), tasks.size());
+            if (admitted && resident_per_worker > budget / admitted)
+                throw std::runtime_error("Mask model residency exceeds shared host-memory budget");
+            const uint64_t task_budget = budget - resident_per_worker * admitted;
+            RateLimitedProgress progress(_prog, Stage::Masks, lmsg::noun_images_masked, _masks_tally);
+            const bool ok = app::run_inference_workers(commands, tasks, task_budget, _cancel,
+                [&](size_t group, const std::string& response, std::string& why) {
+                    const auto reply = json_parse(response);
+                    const auto* identity = reply.find("id");
+                    const auto* count = reply.find("count");
+                    if (!identity || identity->as_string() != std::to_string(group) ||
+                        !count || count->as_string() != std::to_string(groups[group].size())) {
+                        why = "Mask worker returned the wrong output family";
+                        return false;
+                    }
+                    std::ifstream outputs(scratch / ("task-" + std::to_string(group) + ".jsonl.outputs"),
+                        std::ios::binary);
+                    if (!outputs) { why = "Missing mask output manifest"; return false; }
+                    std::string record;
+                    for (size_t index = 0; index < groups[group].size(); ++index) {
+                        if (_cancel.load()) { why = "Mask publication canceled"; return false; }
+                        if (!app::read_mask_manifest_record(outputs, record)) {
+                            why = "Incomplete mask output manifest";
+                            return false;
+                        }
+                        const size_t k = groups[group][index];
+                        const auto value = json_parse(record);
+                        const int width = (int)value.get_double("width", 0);
+                        const int height = (int)value.get_double("height", 0);
+                        const auto* mirror = value.find("mirror");
+                        sfm::ExifTransform turn;
+                        turn.turns_cw = (int)value.get_double("turn", -1);
+                        turn.mirror = mirror && mirror->as_bool();
+                        if (width <= 0 || height <= 0 || turn.turns_cw < 0 || turn.turns_cw > 3 || !mirror) {
+                            why = "Invalid mask worker image/orientation metadata";
+                            return false;
+                        }
+                        int expected_width = 0, expected_height = 0;
+                        const auto expected_turn = app::photo_turn(todo_files[k].string());
+                        if (!probe_size(todo_files[k], expected_width, expected_height)) {
+                            why = "Required mask source became unreadable";
+                            return false;
+                        }
+                        if (expected_turn.turns_cw & 1) std::swap(expected_width, expected_height);
+                        if (width != expected_width || height != expected_height ||
+                            turn.turns_cw != expected_turn.turns_cw || turn.mirror != expected_turn.mirror) {
+                            why = "Mask output does not match its source orientation/dimensions";
+                            return false;
+                        }
+                        if (spirula::sha256_file(todo_files[k].string()) != source_hashes[k]) {
+                            why = "Mask source changed during inference";
+                            return false;
+                        }
+                        auto load = [&](const char* name, bool required, sam::Mask& mask) {
+                            if (!required) return true;
+                            int w = 0, h = 0, channels = 0;
+                            unsigned char* data = stbi_load((scratch / std::to_string(k) / name).string().c_str(),
+                                &w, &h, &channels, 1);
+                            if (!data || w != width || h != height) {
+                                stbi_image_free(data);
+                                why = "Missing or invalid required staged mask";
+                                return false;
+                            }
+                            mask.width = w; mask.height = h;
+                            mask.data.assign(data, data + size_t(w) * h);
+                            stbi_image_free(data);
+                            return true;
+                        };
+                        sam::Mask mask, feature;
+                        if (!load("train.png", todo_dst[k].write, mask) ||
+                            !load("feature.png", todo_fdst[k].write, feature)) return false;
+                        if (todo_dst[k].write && !stencil.apply(todo_files[k], image_root, mask, why)) return false;
+                        const auto back = app::inverse_turn(turn);
+                        app::turn_pixels(back, 1, mask.data, mask.width, mask.height);
+                        app::turn_pixels(back, 1, feature.data, feature.width, feature.height);
+                        const auto family = scratch / std::to_string(k);
+                        auto save = [&](const sam::Mask& m, const Dst& dst, const char* name) {
+                            return !dst.write || (!m.data.empty() &&
+                                stbi_write_png((family / name).string().c_str(),
+                                    m.width, m.height, 1, m.data.data(), m.width));
+                        };
+                        if (!save(mask, todo_dst[k], "train-final.png") ||
+                            !save(feature, todo_fdst[k], "feature-final.png")) {
+                            why = "Could not close complete postprocessed mask family";
+                            return false;
+                        }
+                        auto publish = [&](const Dst& dst, const char* name) {
+                            if (!dst.write) return;
+                            if (_cancel.load()) throw std::runtime_error("Mask publication canceled");
+                            std::error_code remove_error;
+                            fs::remove(dst.path, remove_error);
+                            if (remove_error) throw std::runtime_error("Could not replace generated mask: " + remove_error.message());
+                            fs::rename(family / name, dst.path);
+                        };
+                        publish(todo_dst[k], "train-final.png");
+                        publish(todo_fdst[k], "feature-final.png");
+                        if (_cancel.load()) { why = "Mask publication canceled"; return false; }
+                        ++done;
+                        progress.update(done, done == (int)files.size());
+                    }
+                    if (_cancel.load()) { why = "Mask publication canceled"; return false; }
+                    if (app::read_mask_manifest_record(outputs, record)) {
+                        why = "Unexpected extra mask output record";
+                        return false;
+                    }
+                    return true;
+                }, [&](const std::string& line) { log(line); }, error);
+            remove_tree(scratch);
+            return ok && !_cancel.load();
+        } catch (const std::exception& e) {
+            if (scratch_owned) remove_tree(scratch);
+            error = e.what();
+            return false;
+        }
     }
 
     // Encoding a 1080p mask costs about a third of what the model costs to

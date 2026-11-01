@@ -55,6 +55,41 @@ takes seconds an image and an 11 GB install built from 45 GB streamed once
 (`spirula geometry --install marigold-v2`, or the GUI's download button).
 `src/marigold/README.md` has its numbers.
 
+### Primary GPU and Additional GPUs
+
+Dataset settings use **Primary GPU** for reconstruction, training and previews.
+Its **Auto** choice prefers usable discrete GPUs over integrated GPUs, then the
+GPU with the most memory. Between identical GPUs it takes the one other programs
+use less memory on, measured when the application first lists its GPUs (on
+Windows the adapter's dedicated memory in use, as Task Manager shows it;
+elsewhere the `VK_EXT_memory_budget` budget). A difference under 256 MiB counts
+as a tie, so idle cards keep their usual order. The primary choice freezes at
+the first GPU operation in a session; changing it afterwards requires
+restarting the application.
+
+**Additional GPUs** shares masking and depth & normals across the primary and
+selected extra GPUs, with one isolated process per GPU. **Auto** (the default)
+adds all other supported GPUs of the best kind present: discrete if available,
+otherwise integrated. Choose **None** for in-process serial inference on the
+primary, or select individual GPUs. With no extra GPU selected, inference is
+also serial. Reconstruction, training and previews stay on the primary GPU.
+Only usable discrete and integrated GPUs with UUIDs support workers.
+The additional selection is saved locally in `gui.conf` as `additional_gpus`;
+portable dataset presets do not carry it.
+
+Workers share a host-memory admission budget of half the machine's physical
+RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
+runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
+are charged against it; insufficient admission memory is an error, not a
+silent reduction in workers. Mask workers own complete images or tracked
+sequences, and geometry workers own an image and all its generated faces.
+
+The geometry CLI can explicitly select worker UUIDs and override the shared
+budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
+The list includes every worker GPU, including the primary when desired; an
+empty list uses serial inference. Obtain UUIDs with `spirula sam devices`.
+Geometry output ownership, reuse and `--overwrite` rules are unchanged.
+
 ### Reusing generated frames and geometry
 
 The GUI records the sources that made a workspace's frames, not just their

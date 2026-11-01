@@ -8,6 +8,9 @@
 
 #include "app/Tools.h"
 
+#include "app/AppPaths.h"
+#include "app/InferenceWorker.h"
+#include "app/InferenceWorkerDevices.h"
 #include "app/DepthPng.h"
 #include "app/FrameLook.h"
 #include "app/GeometryModel.h"
@@ -17,6 +20,7 @@
 #include "data/CameraMath.h"
 #include "data/DatasetParser.h"
 #include "data/ImageProbe.h"
+#include "data/JsonWrite.h"
 #include "core/VulkanDeviceSelection.h"
 #include "i18n/Locale.h"
 #include "i18n/TimeFormat.h"
@@ -24,9 +28,13 @@
 #include "nn/Device.h"
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
+#include "nn/core/Parallel.h"
 #include "nn/io/Image.h"
 
 #include <algorithm>
+#include <atomic>
+#include <limits>
+#include <set>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -77,6 +85,9 @@ struct Options {
     Tri  split = Tri::Auto;
     app::FaceRes face_res = app::FaceRes::Output;
     bool overwrite = false;
+    bool worker = false;
+    std::string worker_devices;
+    uint64_t worker_memory = app::default_worker_memory_bytes();
     // The dataset's colour space; frames convert to sRGB before inference.
     std::string image_gamut;
     std::optional<bool> image_is_linear;   // unset: the file's own declaration
@@ -124,6 +135,8 @@ void usage() {
     // prints is a table of numerical errors, read by whoever changed the warp.
     std::fprintf(stderr, "    --check                   "
                          "run the camera round-trip self-test and exit\n");
+    help_row("--worker-devices <uuid,...>", G::opt_worker_devices);
+    help_row("--worker-memory-mb <n>", G::opt_worker_memory);
     std::fprintf(stderr, "\n%s --device <index|name|uuid>  --lang <code>\n",
                  G::label_common.get());
     std::fprintf(stderr, "%s SS_NN_LOG=0..3  SS_VK_DEVICE  SS_PROFILE=1\n",
@@ -236,6 +249,51 @@ int output_self_check() {
     check(!app::geometry_output_complete(normal, normal_key + "|different-faces") &&
           !app::geometry_output_complete(normal, depth_key),
           "completion is bound to the requested faces and output family");
+    const fs::path staged_normal = root / "staged-normal.png";
+    const fs::path staged_depth = root / "staged-depth.png";
+    const fs::path family_normal = root / "family-normal.png";
+    const fs::path family_depth = root / "family-depth.png";
+    auto stage_copy = [&](const fs::path& source, const fs::path& target) {
+        fs::copy_file(source, target, fs::copy_options::overwrite_existing);
+        fs::copy_file(app::geometry_completion_path(source),
+                      app::geometry_completion_path(target), fs::copy_options::overwrite_existing);
+    };
+    stage_copy(normal, staged_normal);
+    check(nn::save_image(image, family_normal.string(), -1), "create legacy family fixture");
+    const auto family_hash = spirula::sha256_file(family_normal.string());
+    const std::vector<app::GeometryStagedOutput> family = {
+        {staged_normal, family_normal, normal_key}, {staged_depth, family_depth, depth_key}};
+    bool refused_family = false;
+    try { app::publish_geometry_family(family, true); }
+    catch (const std::exception&) { refused_family = true; }
+    check(refused_family && spirula::sha256_file(family_normal.string()) == family_hash &&
+          !fs::exists(family_depth) && fs::exists(staged_normal),
+          "missing worker sibling cannot mutate or complete the final family");
+    stage_copy(depth, staged_depth);
+    refused_family = false;
+    try { app::publish_geometry_family(family, false); }
+    catch (const std::exception&) { refused_family = true; }
+    check(refused_family && spirula::sha256_file(family_normal.string()) == family_hash &&
+          fs::exists(staged_normal) && fs::exists(staged_depth),
+          "worker publication preserves legacy overwrite policy for the entire family");
+    app::publish_geometry_family(family, true);
+    check(app::geometry_output_complete(family_normal, normal_key) &&
+          app::geometry_output_complete(family_depth, depth_key) &&
+          !fs::exists(staged_normal) && !fs::exists(staged_depth),
+          "worker family completes only after every staged map has moved");
+    stage_copy(normal, staged_normal);
+    stage_copy(depth, staged_depth);
+    const auto blocker = root / "blocked";
+    { std::ofstream out(blocker); out << "not a directory"; }
+    refused_family = false;
+    try {
+        app::publish_geometry_family({{staged_normal, family_normal, normal_key},
+                                     {staged_depth, blocker / "depth.png", depth_key}}, true);
+    } catch (const std::exception&) { refused_family = true; }
+    check(refused_family && !app::geometry_output_complete(family_normal, normal_key) &&
+          !app::geometry_output_requires_overwrite(family_normal) &&
+          !fs::exists(app::geometry_completion_path(blocker / "depth.png")),
+          "interrupted multi-map publication leaves no new family completion");
     fs::remove(app::geometry_completion_path(depth));
     check(app::geometry_output_complete(normal, normal_key) &&
           !app::geometry_output_complete(depth, depth_key),
@@ -748,6 +806,22 @@ int spirula_geometry_main(int argc, char** argv) {
             else { usage(); return 2; }
         }
         else if (a == "--overwrite") o.overwrite = true;
+        else if (a == "--worker") o.worker = true;
+        else if (a == "--worker-devices") o.worker_devices = next();
+        else if (a == "--worker-memory-mb") {
+            const std::string value = next();
+            try {
+                size_t end = 0;
+                const auto mb = std::stoull(value, &end);
+                if (value.empty() || value[0] == '-' || end != value.size() || mb == 0 ||
+                    mb > std::numeric_limits<uint64_t>::max() / (1024 * 1024))
+                    throw std::invalid_argument("range");
+                o.worker_memory = mb * 1024 * 1024;
+            } catch (...) {
+                std::fprintf(stderr, "--worker-memory-mb needs a positive integer\n");
+                return 2;
+            }
+        }
         else if (a == "--image-gamut") o.image_gamut = next();
         else if (a == "--image-linear") o.image_is_linear = true;
         else if (a == "--no-image-linear") o.image_is_linear = false;
@@ -776,6 +850,8 @@ int spirula_geometry_main(int argc, char** argv) {
         return 2;
     }
     if (!o.want_depth && !o.want_normal) return 0;
+    if (o.worker && (!o.worker_devices.empty() || !app::worker_begin())) return 2;
+    if (o.worker) nn::set_parallel_threads(1);
     // Resolve once before weights load; all later stages inherit the UUID.
     // Explicit --device beats SS_VK_DEVICE, then Auto.
     const spirula::vkselect::Request req =
@@ -791,6 +867,7 @@ int spirula_geometry_main(int argc, char** argv) {
     const std::string selector = nn::configured_device_selector();
 
     try {
+        const auto worker_devices = app::parse_worker_devices(o.worker_devices);
         // ---- the dataset --------------------------------------------------
         DatasetParserConfig cfg;
         cfg.require_image_files = false;   // the point cloud is not our business
@@ -841,10 +918,12 @@ int spirula_geometry_main(int argc, char** argv) {
         }
 
         app::GeometryModel pred;
-        pred.load(o.model, selector, o.want_depth, o.want_normal);
+        if (o.worker_devices.empty()) pred.load(o.model, selector, o.want_depth, o.want_normal);
 
         // ---- one warp plan per camera --------------------------------------
-        const int patch = pred.sizeGranularity();
+        uint64_t model_host_bytes = 0;
+        const int patch = o.worker_devices.empty() ? pred.sizeGranularity()
+            : app::geometry_model_preflight(o.model, o.want_depth, o.want_normal, model_host_bytes);
         std::vector<app::GeometryWarp> warps(group_first.size());
         for (size_t g = 0; g < group_first.size(); ++g) {
             const int64_t i = group_first[g];
@@ -930,9 +1009,8 @@ int spirula_geometry_main(int argc, char** argv) {
             return out;
         };
 
-        app::WriterPool writers;
         const double t_start = nn::now_ms();
-        int64_t written = 0, skipped = 0, unreadable = 0, modeled = 0;
+        int64_t written = 0, skipped = 0, modeled = 0;
         double model_ms = 0;
 
         // Settled before any frame is read, so the next one can be decoded
@@ -944,6 +1022,8 @@ int spirula_geometry_main(int argc, char** argv) {
             std::string key;
         };
         std::vector<Todo> todo;
+        std::vector<Todo> retained;
+        std::set<fs::path> owned;
         for (int64_t i = 0; i < N; ++i) {
             // out_path creates the folder it names, so a map that was not asked
             // for must not have its path built: it would leave an empty depths/
@@ -953,9 +1033,23 @@ int spirula_geometry_main(int argc, char** argv) {
             if (o.want_normal)
                 t.np = out_path(normal_dir, i, o.normal_format == "jpg" ? ".jpg" : ".png");
             if (o.want_depth) t.dp = out_path(depth_dir, i, ".png");
+            if (!o.worker_devices.empty()) {
+                for (const auto& path : {t.np, t.dp}) {
+                    if (path.empty()) continue;
+                    auto canonical = fs::weakly_canonical(path).generic_string();
+#ifdef _WIN32
+                    std::transform(canonical.begin(), canonical.end(), canonical.begin(),
+                        [](unsigned char c) { return (char)std::tolower(c); });
+#endif
+                    NN_CHECK(owned.insert(canonical).second,
+                             "multiple images own geometry output %s", path.string().c_str());
+                }
+            }
             const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
             const std::string source = spirula::sha256_file(ds.image_filenames[(size_t)i]);
-            t.key = source.empty() ? "" : source + "|" + keys[(size_t)i] + "|" +
+            NN_CHECK(!source.empty(), "cannot hash geometry source %s",
+                     ds.image_filenames[(size_t)i].c_str());
+            t.key = source + "|" + keys[(size_t)i] + "|" +
                 o.model + "|" + std::to_string(warp.outWidth()) + "," +
                 std::to_string(warp.outHeight()) + "," + std::to_string(warp.faces()) + "|" +
                 std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
@@ -967,9 +1061,9 @@ int spirula_geometry_main(int argc, char** argv) {
                 std::to_string(o.image_exposure.stops);
             const std::string normal_key = t.key + "|normal|" + o.normal_format + "|" +
                                            std::to_string(o.jpeg_quality);
-            t.normal = o.want_normal && (o.overwrite || source.empty() ||
+            t.normal = o.want_normal && (o.overwrite ||
                 !app::geometry_output_complete(t.np, normal_key));
-            t.depth = o.want_depth && (o.overwrite || source.empty() ||
+            t.depth = o.want_depth && (o.overwrite ||
                 !app::geometry_output_complete(t.dp, t.key + "|depth"));
             if (!o.overwrite) {
                 for (const auto& path : {t.np, t.dp}) {
@@ -978,9 +1072,23 @@ int spirula_geometry_main(int argc, char** argv) {
                             " is preserved; use --overwrite to replace it");
                 }
             }
-            if (!t.normal && !t.depth) { ++skipped; continue; }
+            if (!t.normal && !t.depth) {
+                ++skipped;
+                retained.push_back(std::move(t));
+                continue;
+            }
             todo.push_back(std::move(t));
         }
+
+        auto normal_key = [&](const Todo& t) {
+            return t.key + "|normal|" + o.normal_format + "|" + std::to_string(o.jpeg_quality);
+        };
+        auto complete = [&](const Todo& t) {
+            return (!o.want_normal || app::geometry_output_complete(t.np, normal_key(t))) &&
+                   (!o.want_depth || app::geometry_output_complete(t.dp, t.key + "|depth"));
+        };
+        auto process = [&](const std::vector<Todo>& todo) {
+        app::WriterPool writers(o.worker ? 1 : 0);
 
         // Empty when the file does not decode.
         auto read_at = [&](size_t j) {
@@ -1010,14 +1118,14 @@ int spirula_geometry_main(int argc, char** argv) {
         for (size_t j0 = 0; j0 < todo.size();) {
             const size_t g = (size_t)group[(size_t)todo[j0].i];
             const app::GeometryWarp& warp = warps[g];
-            const size_t per = std::max<size_t>(
+            const size_t per = o.worker ? 1 : std::max<size_t>(
                 1, (size_t)pred.batchCapacity(app::face_request(warp, 0, o.num_tokens)) /
                        (size_t)std::max(1, warp.faces()));
             size_t j1 = j0 + 1;
             while (j1 < todo.size() && j1 - j0 < per && (size_t)group[(size_t)todo[j1].i] == g &&
                    todo[j1].normal == todo[j0].normal && todo[j1].depth == todo[j0].depth)
                 ++j1;
-            read_until(j1 + per);
+            read_until(o.worker ? j1 : j1 + per);
 
             struct Frame {
                 size_t j = 0;
@@ -1031,11 +1139,8 @@ int spirula_geometry_main(int argc, char** argv) {
                 const int64_t i = todo[j].i;
                 const std::vector<float> src = ahead[j].get();
                 ahead.erase(j);
-                if (src.empty()) {
-                    NN_LOG_WARN("skipping %s\n", ds.image_filenames[(size_t)i].c_str());
-                    ++unreadable;
-                    continue;
-                }
+                NN_CHECK(!src.empty(), "cannot decode geometry source %s",
+                         ds.image_filenames[(size_t)i].c_str());
                 // The network was trained upright, and a face cut from a photo
                 // stored sideways is sideways. Turned for the forward pass and
                 // back before the blend, so the maps stay in the stored frame.
@@ -1181,21 +1286,166 @@ int spirula_geometry_main(int argc, char** argv) {
             j0 = j1;
         }
         writers.finish();
+        NN_CHECK(writers.failures() == 0, "geometry writers failed");
+        for (const auto& t : todo)
+            NN_CHECK(complete(t), "incomplete geometry for image %lld", (long long)t.i);
+        };
+        if (o.worker) {
+            std::set<int64_t> assigned;
+            std::string frame;
+            while (app::worker_read_frame(frame)) {
+                const JsonValue request = json_parse(frame);
+                const auto* image = request.find("i");
+                const auto* key = request.find("key");
+                const auto* stage = request.find("stage");
+                const auto* normal = request.find("normal");
+                const auto* depth = request.find("depth");
+                NN_CHECK(image && image->type == JsonValue::Type::Number &&
+                         std::isfinite(image->num) && image->num >= 0 && image->num < N &&
+                         std::floor(image->num) == image->num &&
+                         key && key->type == JsonValue::Type::String &&
+                         stage && stage->type == JsonValue::Type::String && !stage->str.empty() &&
+                         normal && normal->type == JsonValue::Type::Bool &&
+                         depth && depth->type == JsonValue::Type::Bool,
+                         "invalid geometry worker request");
+                const int64_t i = image->as_int();
+                const auto found = std::find_if(todo.begin(), todo.end(),
+                    [&](const Todo& t) { return t.i == i; });
+                NN_CHECK(found != todo.end() && assigned.insert(i).second &&
+                         !key->str.empty() && found->key == key->str &&
+                         found->normal == normal->b && found->depth == depth->b,
+                         "geometry worker request does not match frozen inputs");
+                Todo task = *found;
+                auto unchanged = [&] {
+                    const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)i]);
+                    return !hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0;
+                };
+                NN_CHECK(unchanged(), "geometry source changed before inference");
+                const fs::path folder(stage->str);
+                NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");
+                if (task.normal)
+                    task.np = folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png");
+                if (task.depth) task.dp = folder / "depth.png";
+                process({task});
+                NN_CHECK(unchanged() && complete(task),
+                         "geometry worker did not complete the frozen image");
+                NN_CHECK(app::worker_write_frame(frame), "geometry worker acknowledgement failed");
+            }
+            return 0;
+        }
+        if (!worker_devices.empty() && !todo.empty()) {
+            const fs::path scratch = root / (".geometry-workers-" + std::to_string(
+                std::chrono::steady_clock::now().time_since_epoch().count()));
+            NN_CHECK(fs::create_directory(scratch), "cannot create private geometry staging");
+            struct Cleanup {
+                fs::path root;
+                ~Cleanup() { std::error_code ec; fs::remove_all(root, ec); }
+            } cleanup{scratch};
+            std::vector<std::vector<app::GeometryStagedOutput>> families;
+            std::vector<app::WorkerTask> tasks;
+            uint64_t warp_bytes = 0;
+            for (const auto& warp : warps) {
+                NN_CHECK(warp.bytes() <= o.worker_memory - std::min(warp_bytes, o.worker_memory),
+                         "geometry warp plans exceed the worker memory budget");
+                warp_bytes += warp.bytes();
+            }
+            const size_t children = std::min(worker_devices.size(), todo.size());
+            NN_CHECK(warp_bytes <= o.worker_memory / (children + 1),
+                     "resident geometry warp plans exceed the shared worker memory budget");
+            uint64_t task_budget = o.worker_memory - warp_bytes * (children + 1);
+            NN_CHECK(model_host_bytes <= task_budget / children,
+                     "resident geometry models exceed the shared worker memory budget");
+            task_budget -= model_host_bytes * children;
+            for (const auto& t : todo) {
+                const auto& warp = warps[(size_t)group[(size_t)t.i]];
+                int source_w = 0, source_h = 0;
+                NN_CHECK(probe_image_size(ds.image_filenames[(size_t)t.i].c_str(),
+                                         &source_w, &source_h),
+                         "cannot read geometry source dimensions");
+                uint64_t pixels = 0;
+                auto add_pixels = [&](int w, int h) {
+                    NN_CHECK(w > 0 && h > 0, "invalid geometry buffer dimensions");
+                    const uint64_t area = (uint64_t)w * h;
+                    NN_CHECK(area <= std::numeric_limits<uint64_t>::max() - pixels,
+                             "geometry task memory estimate overflow");
+                    pixels += area;
+                };
+                add_pixels(source_w, source_h);
+                add_pixels(warp.sampleWidth(), warp.sampleHeight());
+                add_pixels(warp.outWidth(), warp.outHeight());
+                for (int face = 0; face < warp.faces(); ++face)
+                    add_pixels(warp.faceWidth(face), warp.faceHeight(face));
+                NN_CHECK(pixels <= std::numeric_limits<uint64_t>::max() / 128,
+                         "geometry task memory estimate overflow");
+                const fs::path folder = scratch / std::to_string(t.i);
+                JsonWriter request;
+                request.object().field("i", (long long)t.i).field("key", t.key)
+                    .field("stage", fs::absolute(folder).string())
+                    .field("normal", t.normal).field("depth", t.depth).end();
+                tasks.push_back({request.str(), pixels * 128});
+                std::vector<app::GeometryStagedOutput> outputs;
+                if (t.normal) outputs.push_back({
+                    folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png"),
+                    t.np, normal_key(t)});
+                if (t.depth) outputs.push_back({folder / "depth.png", t.dp, t.key + "|depth"});
+                families.push_back(std::move(outputs));
+            }
+            std::vector<std::vector<std::string>> commands;
+            for (size_t device_index = 0; device_index < children; ++device_index) {
+                const auto& uuid = worker_devices[device_index];
+                std::vector<std::string> command = {app::exe_path(), "--lang",
+                    spirula::i18n::code(spirula::i18n::current()), "geometry"};
+                for (int i = 1; i < argc; ++i) {
+                    const std::string flag = argv[i];
+                    if (flag == "--worker-devices" || flag == "--worker-memory-mb" ||
+                        flag == "--device") { ++i; continue; }
+                    command.push_back(flag);
+                }
+                command.insert(command.end(), {"--worker", "--device", uuid});
+                commands.push_back(std::move(command));
+            }
+            const std::atomic<bool> cancel{false};
+            std::string error;
+            const bool ok = app::run_inference_workers(commands, tasks, task_budget, cancel,
+                [&](size_t j, const std::string& response, std::string& why) {
+                    try {
+                        NN_CHECK(response == tasks[j].request, "geometry task acknowledgement mismatch");
+                        const auto& t = todo[j];
+                        const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)t.i]);
+                        NN_CHECK(!hash.empty() && t.key.compare(0, hash.size() + 1, hash + "|") == 0,
+                                 "geometry source changed during inference");
+                        const auto& warp = warps[(size_t)group[(size_t)t.i]];
+                        for (const auto& output : families[j]) {
+                            int w = 0, h = 0;
+                            NN_CHECK(probe_image_size(output.staged.string().c_str(), &w, &h) &&
+                                     w == warp.outWidth() && h == warp.outHeight(),
+                                     "invalid staged geometry dimensions");
+                        }
+                        app::publish_geometry_family(families[j], o.overwrite);
+                        NN_CHECK(complete(t), "published geometry family is incomplete");
+                        ++written;
+                        std::printf("\r%s   ", format(G::log_progress,
+                            {(long long)(written + skipped), (long long)N, 0LL,
+                             format_duration(0)}).c_str());
+                        std::fflush(stdout);
+                        return true;
+                    } catch (const std::exception& e) { why = e.what(); return false; }
+                },
+                [](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); },
+                error);
+            NN_CHECK(ok, "%s", error.c_str());
+        } else if (worker_devices.empty()) {
+            process(todo);
+        }
+        for (const auto& t : retained)
+            NN_CHECK(complete(t), "retained geometry family is incomplete for image %lld",
+                     (long long)t.i);
         std::printf("\r%s\n",
                     format(G::log_done,
                            {(long long)written, (long long)skipped,
                             format_duration((nn::now_ms() - t_start) / 1000.0)})
                         .c_str());
-        // Nothing readable means the wrong image_dir, not an empty dataset:
-        // exiting 0 reports a reconstruction that wrote an empty normals/ as
-        // a success.
-        if (written == 0 && unreadable > 0) {
-            std::fprintf(stderr, "%s\n",
-                         format(G::err_no_images_read, {image_root.string()})
-                             .c_str());
-            return 1;
-        }
-        return writers.failures() ? 1 : 0;
+        return 0;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "\nerror: %s\n", e.what());
         return 1;

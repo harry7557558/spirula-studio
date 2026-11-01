@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace app {
 
@@ -71,6 +72,48 @@ bool publish_geometry_output(const std::filesystem::path& path, const std::strin
         return true;
     } catch (...) {
         cleanup();
+        throw;
+    }
+}
+
+struct GeometryStagedOutput {
+    std::filesystem::path staged, destination;
+    std::string key;
+};
+
+inline void publish_geometry_family(const std::vector<GeometryStagedOutput>& outputs,
+                                    bool overwrite) {
+    if (outputs.empty()) throw std::runtime_error("empty geometry output family");
+    for (const auto& output : outputs) {
+        if (!geometry_output_complete(output.staged, output.key))
+            throw std::runtime_error("incomplete staged geometry: " + output.staged.string());
+        if (!overwrite && geometry_output_requires_overwrite(output.destination))
+            throw std::runtime_error("unmarked geometry output " + output.destination.string() +
+                                     " is preserved; use --overwrite to replace it");
+    }
+    // Incomplete owner records permit safe resume without adopting legacy files.
+    auto incomplete = [](const GeometryStagedOutput& output) {
+        const std::filesystem::path pending(output.staged.string() + ".pending");
+        std::ofstream record(pending, std::ios::binary | std::ios::trunc);
+        record << "spirula-geometry-1\n";
+        record.close();
+        if (!record) throw std::runtime_error("cannot invalidate geometry completion");
+        spirula::replace_file(pending, geometry_completion_path(output.destination));
+    };
+    for (const auto& output : outputs) incomplete(output);
+    for (const auto& output : outputs)
+        spirula::replace_file(output.staged, output.destination);
+    try {
+        for (const auto& output : outputs)
+            spirula::replace_file(geometry_completion_path(output.staged),
+                                  geometry_completion_path(output.destination));
+    } catch (...) {
+        for (const auto& output : outputs) {
+            try { incomplete(output); } catch (...) {
+                std::error_code ec;
+                std::filesystem::remove(geometry_completion_path(output.destination), ec);
+            }
+        }
         throw;
     }
 }

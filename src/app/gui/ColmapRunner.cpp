@@ -283,6 +283,7 @@ void ColmapRunner::take_dense(ColmapJob& job) {
 void ColmapRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.mask_enable;
+    prep.inference_devices = _live.inference_devices;
     prep.mask_prompt = _live.mask_prompt;
     prep.mask_negative_prompt = _live.mask_negative_prompt;
     prep.mask_feature_prompt = _live.mask_feature_prompt;
@@ -447,6 +448,7 @@ PrepJob ColmapRunner::prep_job(const ColmapJob& job) {
     // masking use the same GPU as everything else. COLMAP's own device
     // routing is untouched.
     pj.device = job.device;
+    pj.inference_devices = job.inference_devices;
     pj.video_fps = job.video_fps;
     pj.adaptive_fps = job.adaptive_fps;
     pj.adaptive_range = job.adaptive_range;

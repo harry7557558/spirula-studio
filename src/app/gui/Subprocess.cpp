@@ -21,6 +21,7 @@
 #include <climits>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -516,6 +517,112 @@ ProcessReader::~ProcessReader() {
         kill();
         finish();
     }
+}
+
+struct ProcessDuplex::Impl {
+    HANDLE process = nullptr;
+    OwnedJob job;
+    std::mutex job_mutex;
+    HANDLE in_wr = nullptr, out_rd = nullptr, err_rd = nullptr;
+    std::thread diagnostics;
+    std::atomic<bool> cancelled{false};
+};
+
+bool ProcessDuplex::start(const std::vector<std::string>& argv,
+                          std::function<void(const std::string&)> on_stderr) {
+    if (argv.empty() || _impl->process) return false;
+    std::string command;
+    for (const auto& arg : argv)
+        command += (command.empty() ? "" : " ") + quote_arg(arg);
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+    HANDLE in_rd = nullptr, out_wr = nullptr, err_wr = nullptr;
+    const bool pipes =
+        CreatePipe(&in_rd, &_impl->in_wr, &sa, 1 << 20) &&
+        CreatePipe(&_impl->out_rd, &out_wr, &sa, 1 << 20) &&
+        CreatePipe(&_impl->err_rd, &err_wr, &sa, 0) &&
+        SetHandleInformation(_impl->in_wr, HANDLE_FLAG_INHERIT, 0) &&
+        SetHandleInformation(_impl->out_rd, HANDLE_FLAG_INHERIT, 0) &&
+        SetHandleInformation(_impl->err_rd, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOA startup{};
+    startup.cb = sizeof startup;
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = in_rd;
+    startup.hStdOutput = out_wr;
+    startup.hStdError = err_wr;
+    PROCESS_INFORMATION process{};
+    const bool started = pipes &&
+        create_owned_process(command.data(), nullptr, startup, CREATE_NO_WINDOW,
+                             process, _impl->job.handle);
+    for (HANDLE handle : {in_rd, out_wr, err_wr})
+        if (handle) CloseHandle(handle);
+    if (!started) {
+        for (HANDLE handle : {_impl->in_wr, _impl->out_rd, _impl->err_rd})
+            if (handle) CloseHandle(handle);
+        _impl->in_wr = _impl->out_rd = _impl->err_rd = nullptr;
+        return false;
+    }
+    CloseHandle(process.hThread);
+    _impl->process = process.hProcess;
+    _impl->job.cleanup_ok = true;
+    _impl->job.terminating = false;
+    _impl->cancelled.store(false);
+    Impl* im = _impl.get();
+    _impl->diagnostics = std::thread([im, on_stderr = std::move(on_stderr)] {
+        read_owned_lines(im->process, im->job, im->job_mutex, im->err_rd, on_stderr);
+    });
+    return true;
+}
+
+bool ProcessDuplex::write(const void* data, size_t bytes) {
+    if (!_impl->in_wr || _impl->cancelled.load()) return false;
+    const char* cursor = static_cast<const char*>(data);
+    while (bytes) {
+        DWORD put = 0;
+        if (_impl->cancelled.load() ||
+            !WriteFile(_impl->in_wr, cursor, (DWORD)std::min<size_t>(bytes, 1 << 24),
+                       &put, nullptr) || !put) return false;
+        cursor += put;
+        bytes -= put;
+    }
+    return true;
+}
+
+size_t ProcessDuplex::read(void* data, size_t bytes) {
+    if (!_impl->out_rd || _impl->cancelled.load()) return 0;
+    DWORD got = 0;
+    return ReadFile(_impl->out_rd, data, (DWORD)std::min<size_t>(bytes, 1 << 24),
+                    &got, nullptr) ? got : 0;
+}
+
+int ProcessDuplex::finish() {
+    if (!_impl->process) return kSpawnFailed;
+    CloseHandle(_impl->in_wr);
+    _impl->in_wr = nullptr;
+    char discard[4096];
+    while (read(discard, sizeof discard)) {}
+    WaitForSingleObject(_impl->process, INFINITE);
+    close_owned_job(_impl->job, _impl->job_mutex);
+    if (_impl->diagnostics.joinable()) _impl->diagnostics.join();
+    DWORD code = 1;
+    GetExitCodeProcess(_impl->process, &code);
+    CloseHandle(_impl->process);
+    CloseHandle(_impl->out_rd);
+    CloseHandle(_impl->err_rd);
+    _impl->process = _impl->out_rd = _impl->err_rd = nullptr;
+    return _impl->job.cleanup_ok ? (int)code : 1;
+}
+
+void ProcessDuplex::kill() {
+    _impl->cancelled.store(true);
+    std::lock_guard<std::mutex> lock(_impl->job_mutex);
+    terminate_owned_job(_impl->job);
+}
+
+ProcessDuplex::~ProcessDuplex() {
+    kill();
+    finish();
 }
 
 
@@ -1088,6 +1195,127 @@ ProcessReader::~ProcessReader() {
     }
 }
 
+struct ProcessDuplex::Impl {
+    pid_t pid = -1;
+    OwnedChild child;
+    int in_fd = -1, out_fd = -1, err_fd = -1;
+    std::thread diagnostics;
+    std::atomic<bool> cancelled{false};
+};
+
+bool ProcessDuplex::start(const std::vector<std::string>& argv,
+                          std::function<void(const std::string&)> on_stderr) {
+    if (argv.empty() || _impl->pid > 0) return false;
+    ExecArgs exec(argv);
+    int in[2], out[2], err[2];
+    if (!owned_pipe(in)) return false;
+    if (!owned_pipe(out)) { close(in[0]); close(in[1]); return false; }
+    if (!owned_pipe(err)) {
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        return false;
+    }
+    const pid_t pid = fork_owned(_impl->child, exec);
+    if (pid < 0) {
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        close(err[0]); close(err[1]);
+        return false;
+    }
+    if (pid == 0) {
+        if (dup2(in[0], STDIN_FILENO) < 0 ||
+            dup2(out[1], STDOUT_FILENO) < 0 ||
+            dup2(err[1], STDERR_FILENO) < 0) _exit(127);
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        close(err[0]); close(err[1]);
+        exec.execute();
+    }
+    close(in[0]); close(out[1]); close(err[1]);
+    _impl->pid = pid;
+    _impl->in_fd = in[1];
+    _impl->out_fd = out[0];
+    _impl->err_fd = err[0];
+    _impl->cancelled.store(false);
+    Impl* im = _impl.get();
+    _impl->diagnostics = std::thread([im, on_stderr = std::move(on_stderr)] {
+        std::string acc;
+        char buffer[4096];
+        for (;;) {
+            const ssize_t got = ::read(im->err_fd, buffer, sizeof buffer);
+            if (got < 0 && errno == EINTR) continue;
+            if (got <= 0) break;
+            emit_lines(acc, buffer, (size_t)got, on_stderr);
+        }
+        emit_tail(acc, on_stderr);
+    });
+    return true;
+}
+
+bool ProcessDuplex::write(const void* data, size_t bytes) {
+    if (_impl->in_fd < 0 || _impl->cancelled.load()) return false;
+    sigset_t blocked, previous, pending;
+    sigemptyset(&blocked);
+    sigaddset(&blocked, SIGPIPE);
+    if (pthread_sigmask(SIG_BLOCK, &blocked, &previous) != 0) return false;
+    sigpending(&pending);
+    const bool already_pending = sigismember(&pending, SIGPIPE) == 1;
+    const char* cursor = static_cast<const char*>(data);
+    bool success = true;
+    while (bytes) {
+        if (_impl->cancelled.load()) { success = false; break; }
+        const ssize_t put = ::write(_impl->in_fd, cursor,
+                                    std::min<size_t>(bytes, 1 << 24));
+        if (put < 0 && errno == EINTR) continue;
+        if (put <= 0) { success = false; break; }
+        cursor += put;
+        bytes -= (size_t)put;
+    }
+    // Consume only a SIGPIPE generated by this write before restoring the mask.
+    sigpending(&pending);
+    if (!already_pending && sigismember(&pending, SIGPIPE) == 1) {
+        int ignored;
+        sigwait(&blocked, &ignored);
+    }
+    pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+    return success;
+}
+
+size_t ProcessDuplex::read(void* data, size_t bytes) {
+    if (_impl->out_fd < 0 || _impl->cancelled.load()) return 0;
+    for (;;) {
+        const ssize_t got = ::read(_impl->out_fd, data,
+                                   std::min<size_t>(bytes, 1 << 24));
+        if (got < 0 && errno == EINTR) continue;
+        return got > 0 ? (size_t)got : 0;
+    }
+}
+
+int ProcessDuplex::finish() {
+    if (_impl->pid <= 0) return kSpawnFailed;
+    close(_impl->in_fd);
+    _impl->in_fd = -1;
+    char discard[4096];
+    while (read(discard, sizeof discard)) {}
+    const int status = _impl->child.wait();
+    if (_impl->diagnostics.joinable()) _impl->diagnostics.join();
+    close(_impl->out_fd); close(_impl->err_fd);
+    _impl->out_fd = _impl->err_fd = -1;
+    _impl->pid = -1;
+    if (WIFEXITED(status)) {
+        const int code = WEXITSTATUS(status);
+        return code == 127 ? kSpawnFailed : code;
+    }
+    return 1;
+}
+
+void ProcessDuplex::kill() {
+    _impl->cancelled.store(true);
+    _impl->child.cancel();
+}
+
+ProcessDuplex::~ProcessDuplex() {
+    kill();
+    finish();
+}
+
 
 // A folder passes access(X_OK) too, and then fails to spawn without a word.
 static bool runnable(const std::string& path) {
@@ -1164,6 +1392,7 @@ bool open_url(const std::string& url) {
 
 ProcessPipe::ProcessPipe() : _impl(new Impl) {}
 ProcessReader::ProcessReader() : _impl(new Impl) {}
+ProcessDuplex::ProcessDuplex() : _impl(new Impl) {}
 
 // Platform-independent: argv assembly is the same everywhere.
 std::vector<std::string> split_args(const std::string& s) {

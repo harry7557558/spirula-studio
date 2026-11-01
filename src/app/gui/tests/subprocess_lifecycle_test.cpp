@@ -18,6 +18,8 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
 #else
 #include <cerrno>
 #include <csignal>
@@ -293,6 +295,24 @@ int helper(const std::string& mode, const fs::path& directory) {
         std::fputs("payload", stdout);
         std::fputs("diagnostic\n", stderr);
         return 7;
+    } else if (mode == "duplex") {
+#ifdef _WIN32
+        _setmode(_fileno(stdin), _O_BINARY);
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
+        char message[4];
+        while (std::fread(message, 1, sizeof message, stdin) == sizeof message) {
+            std::fputs("diagnostic\n", stderr);
+            std::fflush(stderr);
+            if (std::fwrite(message, 1, sizeof message, stdout) != sizeof message) return 8;
+            std::fflush(stdout);
+        }
+        std::fputs("stderr tail", stderr);
+        return 7;
+    } else if (mode == "duplex-drain") {
+        while (std::getchar() != EOF) {}
+        std::string output(2 << 20, 'x');
+        return std::fwrite(output.data(), 1, output.size(), stdout) == output.size() ? 0 : 8;
     } else if (mode != "idle") {
         return 92;
     }
@@ -326,6 +346,42 @@ int normal_cases() {
     size_t count = 0;
     while ((count = reader.read(bytes, sizeof bytes))) output.append(bytes, count);
     if (reader.finish() != 7 || output != "payload" || !diagnostic) return 5;
+#ifndef _WIN32
+    std::signal(SIGPIPE, SIG_DFL);
+#endif
+    gui::ProcessDuplex duplex;
+    std::vector<std::string> diagnostics;
+    if (duplex.start({}, {}) || duplex.finish() != gui::kSpawnFailed) return 6;
+    if (!duplex.start({executable, "duplex"}, [&](const std::string& line) {
+            diagnostics.push_back(line);
+        })) return 7;
+    const std::string payload("a\0\r\n", 4);
+    for (int request = 0; request < 3; ++request) {
+        if (!duplex.write(payload.data(), payload.size())) return 8;
+        std::string response;
+        while (response.size() < payload.size()) {
+            count = duplex.read(bytes, sizeof bytes);
+            if (!count) return 9;
+            response.append(bytes, count);
+        }
+        if (response != payload) return 10;
+    }
+    if (duplex.finish() != 7 ||
+        diagnostics != std::vector<std::string>{"diagnostic", "diagnostic",
+                                                "diagnostic", "stderr tail"}) return 11;
+    if (duplex.read(bytes, sizeof bytes) || duplex.write("x", 1)) return 12;
+    if (!duplex.start({executable, "duplex-drain"}, {}) || duplex.finish() != 0) return 13;
+    if (!duplex.start({executable, "produce"}, {})) return 14;
+    output.clear();
+    while ((count = duplex.read(bytes, sizeof bytes))) output.append(bytes, count);
+    if (output != "payload" || duplex.write("x", 1) || duplex.finish() != 7) return 15;
+    if (duplex.start({"spirula-intentionally-missing-duplex-executable"}, {}) &&
+        duplex.finish() != gui::kSpawnFailed) return 16;
+#ifndef _WIN32
+    struct sigaction disposition{};
+    if (sigaction(SIGPIPE, nullptr, &disposition) != 0 ||
+        disposition.sa_handler != SIG_DFL) return 17;
+#endif
     return 0;
 }
 
@@ -353,6 +409,55 @@ int runner(const std::string& api, const std::string& action, const fs::path& di
         if (!released) return 19;
         return result == (action == "exit" ? 0 : gui::kCancelled) ? 0 : 10;
     }
+    if (api == "duplex" &&
+        (action == "blocked" || action == "destructor")) {
+        auto process = std::make_unique<gui::ProcessDuplex>();
+        if (!process->start(command, {})) return 20;
+        if (!wait_for([&] { return read_pid(directory / "tree") > 0; })) return 21;
+        if (action == "destructor") {
+            process.reset();
+            return resources_released(directory) ? 0 : 22;
+        }
+        std::string ready;
+        char bytes[6];
+        while (ready.size() < 6) {
+            const size_t got = process->read(bytes, 6 - ready.size());
+            if (!got) return 23;
+            ready.append(bytes, got);
+        }
+        if (ready != "ready\n") {
+#ifdef _WIN32
+            // Existing tree fixture writes text-mode CRLF.
+            if (ready != "ready\r") return 24;
+            if (process->read(bytes, 1) != 1 || bytes[0] != '\n') return 24;
+#else
+            return 24;
+#endif
+        }
+        std::atomic<int> entered{0}, completed{0};
+        size_t got = 1;
+        bool wrote = true;
+        std::thread reader([&] {
+            entered.fetch_add(1);
+            got = process->read(bytes, sizeof bytes);
+            completed.fetch_add(1);
+        });
+        const std::string large(4 << 20, 'x');
+        std::thread writer([&] {
+            entered.fetch_add(1);
+            wrote = process->write(large.data(), large.size());
+            completed.fetch_add(1);
+        });
+        const bool started = wait_for([&] { return entered.load() == 2; });
+        std::this_thread::sleep_for(50ms);
+        const bool blocked = completed.load() == 0;
+        process->kill();
+        reader.join();
+        writer.join();
+        const int result = process->finish();
+        return started && blocked && got == 0 && !wrote && result != 0 &&
+            resources_released(directory) ? 0 : 25;
+    }
     auto exercise = [&](auto& process) {
         if (!process.start(command, {})) return 11;
         if (!wait_for([&] { return read_pid(directory / "tree") > 0; })) return 12;
@@ -371,6 +476,10 @@ int runner(const std::string& api, const std::string& action, const fs::path& di
     };
     if (api == "pipe") {
         gui::ProcessPipe process;
+        return exercise(process);
+    }
+    if (api == "duplex") {
+        gui::ProcessDuplex process;
         return exercise(process);
     }
     gui::ProcessReader process;
@@ -413,9 +522,11 @@ int suite() {
         check(started && wait_for([&] { return normal.exited(); }) && normal.code == 0,
               "normal completion, exact output, stdin EOF and nonzero exit preservation");
     }
-    for (const std::string api : {"run", "pipe", "reader"}) {
+    for (const std::string api : {"run", "pipe", "reader", "duplex"}) {
         for (const std::string action : {"cancel", "death", "chain-cancel",
-                                         "chain-death", "exit", "closed"}) {
+                                         "chain-death", "exit", "closed",
+                                         "blocked", "destructor"}) {
+            if (api != "duplex" && (action == "blocked" || action == "destructor")) continue;
             const auto directory = root / (api + "-" + action);
             fs::create_directory(directory);
             NativeProcess owner;

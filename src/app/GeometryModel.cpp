@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <limits>
 
 namespace app {
 namespace {
@@ -64,13 +66,8 @@ std::vector<float> anchor_depth(const std::vector<float>& rel, const std::vector
     return out;
 }
 
-// The family of a file the user pointed at. The two graphs share no module
-// path, and `read_onnx_structure` reads node names without the payload. Only
-// MoGe-3 ships as a torch .pt.
-bool file_is_moge(const std::string& path) {
-    if (path.size() > 3 && path.compare(path.size() - 3, 3, ".pt") == 0) return true;
-    const nn::OnnxFile g = nn::read_onnx_structure(path);
-    for (const nn::OnnxNode& n : g.nodes) {
+bool graph_is_moge(const nn::OnnxFile& graph, const std::string& path) {
+    for (const nn::OnnxNode& n : graph.nodes) {
         if (n.name.find("/points_head/") != std::string::npos) return true;
         if (n.name.find("/depth_model/") != std::string::npos) return false;
     }
@@ -78,11 +75,48 @@ bool file_is_moge(const std::string& path) {
              path.c_str(), geometry_model_ids().c_str());
 }
 
+bool file_is_moge(const std::string& path) {
+    if (path.size() > 3 && path.compare(path.size() - 3, 3, ".pt") == 0) return true;
+    return graph_is_moge(nn::read_onnx_structure(path), path);
+}
+
 }  // namespace
 
 std::string geometry_model_ids() {
     return moge::model_id_list() + ", " + metric3d::model_id_list() + ", " +
            marigold::kModelId;
+}
+
+int geometry_model_preflight(const std::string& id_or_path, bool depth, bool normal,
+                             uint64_t& host_bytes) {
+    host_bytes = 16ull * 1024 * 1024;
+    auto reserve_file = [&](const std::string& path) {
+        const auto bytes = std::filesystem::file_size(path);
+        NN_CHECK(bytes <= (std::numeric_limits<uint64_t>::max() - host_bytes) / 2,
+                 "geometry model memory estimate overflow");
+        host_bytes += bytes * 2;
+    };
+    if (is_marigold(id_or_path)) {
+        reserve_file(moge::resolve_model(kAnchorModel));
+        reserve_file(marigold::base_path());
+        if (depth) reserve_file(marigold::task_path(marigold::Task::Depth));
+        if (normal) reserve_file(marigold::task_path(marigold::Task::Normals));
+        return 1;
+    }
+    if (moge::find_model_source(id_or_path)) {
+        reserve_file(moge::resolve_model(id_or_path));
+        return 1;
+    }
+    if (const auto* source = metric3d::find_model_source(id_or_path)) {
+        reserve_file(metric3d::resolve_model(id_or_path));
+        if (source->data.file) reserve_file(nn::cached_path(source->data));
+        return metric3d::Predictor::sizeGranularity();
+    }
+    reserve_file(id_or_path);
+    if (std::filesystem::path(id_or_path).extension() == ".pt") return 1;
+    const nn::OnnxFile graph = nn::read_onnx_structure(id_or_path);
+    for (const std::string& payload : graph.external_files) reserve_file(payload);
+    return graph_is_moge(graph, id_or_path) ? 1 : metric3d::Predictor::sizeGranularity();
 }
 
 GeometryInstall geometry_install_needs(const std::string& id, bool want_depth,

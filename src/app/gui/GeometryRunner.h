@@ -24,6 +24,7 @@ struct GeometryJob {
     bool enable = false;
     // Canonical UUID from the frozen GUI choice; children must not re-rank.
     std::string device_uuid;
+    std::string worker_devices;
     // A model id (geometry_models()) or a path to an .onnx or .pt file.
     std::string model = "moge2-vitb";
     int  max_size = 1064;         // longest side of the maps, and of one face

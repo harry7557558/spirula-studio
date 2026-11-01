@@ -204,15 +204,14 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
     if (job.want_depth) argv.push_back("--depth");
     if (!job.want_normal) argv.push_back("--no-normal");
     if (job.overwrite) argv.push_back("--overwrite");
+    if (!job.worker_devices.empty())
+        argv.insert(argv.end(), {"--worker-devices", job.worker_devices});
     // Carry the frozen UUID so an inherited environment cannot redirect the child.
     std::string device = job.device_uuid;
 #ifdef SS_TOOL_GEOMETRY
     if (device.empty()) device = nn::configured_device_selector();
 #endif
-    if (!device.empty()) {
-        argv.push_back("--device");
-        argv.push_back(device);
-    }
+    if (!device.empty()) argv.insert(argv.end(), {"--device", device});
     if (!job.image_gamut.empty()) {
         argv.push_back("--image-gamut");
         argv.push_back(job.image_gamut);

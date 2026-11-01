@@ -1,7 +1,7 @@
 #pragma once
 
 // Cross-platform owned subprocesses for external tools (colmap, ffmpeg).
-// All three APIs terminate owned descendants on cancel/kill, owner death, or
+// These APIs terminate owned descendants on cancel/kill, owner death, or
 // direct-child exit. Windows uses non-inherited kill-on-close jobs assigned at
 // creation; POSIX uses an owner-death pipe guardian and isolated process group.
 // run_process/finish join managed cleanup; kill only signals cancellation.
@@ -62,6 +62,25 @@ public:
     // Up to `bytes`; 0 at end of stream or on error. Blocks.
     size_t read(void* data, size_t bytes);
     // Join owned cleanup: exit code, or kSpawnFailed.
+    int finish();
+    void kill();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
+};
+
+// One caller per read/write; join both before finish() drains stdout.
+// kill() unblocks I/O; the destructor kills and joins. stderr feeds on_stderr.
+class ProcessDuplex {
+public:
+    ProcessDuplex();
+    ~ProcessDuplex();
+    bool start(const std::vector<std::string>& argv,
+               std::function<void(const std::string&)> on_stderr);
+    // Full write or false; read may be short and returns zero at EOF/error.
+    bool write(const void* data, size_t bytes);
+    size_t read(void* data, size_t bytes);
     int finish();
     void kill();
 
