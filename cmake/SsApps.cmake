@@ -436,6 +436,19 @@ add_executable(model_download_test
 ss_configure_app(model_download_test)
 target_link_libraries(model_download_test PRIVATE ss_license)
 
+add_executable(subprocess_lifecycle_test
+    ${SS_SRC}/app/gui/tests/subprocess_lifecycle_test.cpp
+    ${SS_SRC}/app/gui/Subprocess.cpp)
+target_include_directories(subprocess_lifecycle_test PRIVATE ${SS_SRC})
+target_link_libraries(subprocess_lifecycle_test PRIVATE Threads::Threads)
+set_property(TARGET subprocess_lifecycle_test PROPERTY CXX_STANDARD 17)
+target_compile_options(subprocess_lifecycle_test PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+enable_testing()
+add_test(NAME subprocess_lifecycle_test COMMAND subprocess_lifecycle_test)
+set_tests_properties(subprocess_lifecycle_test PROPERTIES
+    LABELS "cpu;headless" TIMEOUT 600)
+
 add_executable(packed_lens_test
     ${SS_SRC}/app/tests/packed_lens_test.cpp
     ${SS_SRC}/app/Pano360.cpp)

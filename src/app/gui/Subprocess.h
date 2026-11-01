@@ -1,9 +1,12 @@
 #pragma once
 
-// Minimal cross-platform subprocess runner for external tools (colmap,
-// ffmpeg). Streams merged stdout+stderr line-by-line to a callback and
-// supports cooperative cancellation (the process is killed). GUI-free: the
-// CLI's ffmpeg decoder (app/FfmpegVideo.h) links it too.
+// Cross-platform owned subprocesses for external tools (colmap, ffmpeg).
+// All three APIs terminate owned descendants on cancel/kill, owner death, or
+// direct-child exit. Windows uses non-inherited kill-on-close jobs assigned at
+// creation; POSIX uses an owner-death pipe guardian and isolated process group.
+// run_process/finish join managed cleanup; kill only signals cancellation.
+// POSIX tools must retain private lease FDs/metadata and stay in their group.
+// open_url is detached. The CLI decoder links this GUI-free implementation too.
 
 #include <cstddef>
 #include <atomic>
@@ -39,7 +42,7 @@ public:
     // False once the child has stopped reading, which is how a crashed
     // encoder is noticed.
     bool write(const void* data, size_t bytes);
-    // Close its stdin and wait: the exit code, or kSpawnFailed.
+    // Close stdin and join owned cleanup: exit code, or kSpawnFailed.
     int finish();
     void kill();
 
@@ -58,7 +61,7 @@ public:
                std::function<void(const std::string&)> on_line);
     // Up to `bytes`; 0 at end of stream or on error. Blocks.
     size_t read(void* data, size_t bytes);
-    // Wait for the child: its exit code, or kSpawnFailed.
+    // Join owned cleanup: exit code, or kSpawnFailed.
     int finish();
     void kill();
 
