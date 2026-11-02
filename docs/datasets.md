@@ -81,8 +81,14 @@ Workers share a host-memory admission budget of half the machine's physical
 RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
 runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
 are charged against it; insufficient admission memory is an error, not a
-silent reduction in workers. Mask workers own complete images or tracked
-sequences, and geometry workers own an image and all its generated faces.
+silent reduction in workers. A worker decodes its next image while the current
+one runs, and encodes finished outputs on a `WriterPool` before the parent
+accepts them, in the original order. Independent images go to workers in
+pairs; a tracked sequence stays one task, in frame order. Each worker's CPU
+loops and writers use `max(1, hardware_threads / workers)` threads. A mask
+task reserves two frames of the budget, a tracked sequence's included, and the
+step fails when that does not fit; a geometry pair that does not fit is sent
+as two single images.
 
 The geometry CLI can explicitly select worker UUIDs and override the shared
 budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.

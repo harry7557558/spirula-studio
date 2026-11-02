@@ -88,6 +88,7 @@ struct Options {
     bool worker = false;
     std::string worker_devices;
     uint64_t worker_memory = app::default_worker_memory_bytes();
+    unsigned worker_threads = 1;
     // The dataset's colour space; frames convert to sRGB before inference.
     std::string image_gamut;
     std::optional<bool> image_is_linear;   // unset: the file's own declaration
@@ -807,6 +808,7 @@ int spirula_geometry_main(int argc, char** argv) {
         }
         else if (a == "--overwrite") o.overwrite = true;
         else if (a == "--worker") o.worker = true;
+        else if (a == "--worker-threads") o.worker_threads = std::max(1, std::atoi(next()));
         else if (a == "--worker-devices") o.worker_devices = next();
         else if (a == "--worker-memory-mb") {
             const std::string value = next();
@@ -851,7 +853,7 @@ int spirula_geometry_main(int argc, char** argv) {
     }
     if (!o.want_depth && !o.want_normal) return 0;
     if (o.worker && (!o.worker_devices.empty() || !app::worker_begin())) return 2;
-    if (o.worker) nn::set_parallel_threads(1);
+    if (o.worker) nn::set_parallel_threads(o.worker_threads);
     // Resolve once before weights load; all later stages inherit the UUID.
     // Explicit --device beats SS_VK_DEVICE, then Auto.
     const spirula::vkselect::Request req =
@@ -1088,7 +1090,7 @@ int spirula_geometry_main(int argc, char** argv) {
                    (!o.want_depth || app::geometry_output_complete(t.dp, t.key + "|depth"));
         };
         auto process = [&](const std::vector<Todo>& todo) {
-        app::WriterPool writers(o.worker ? 1 : 0);
+        app::WriterPool writers(o.worker ? (int)o.worker_threads : 0);
 
         // Empty when the file does not decode.
         auto read_at = [&](size_t j) {
@@ -1125,7 +1127,7 @@ int spirula_geometry_main(int argc, char** argv) {
             while (j1 < todo.size() && j1 - j0 < per && (size_t)group[(size_t)todo[j1].i] == g &&
                    todo[j1].normal == todo[j0].normal && todo[j1].depth == todo[j0].depth)
                 ++j1;
-            read_until(o.worker ? j1 : j1 + per);
+            read_until(j1 + (o.worker ? 1 : per));
 
             struct Frame {
                 size_t j = 0;
@@ -1294,41 +1296,52 @@ int spirula_geometry_main(int argc, char** argv) {
             std::set<int64_t> assigned;
             std::string frame;
             while (app::worker_read_frame(frame)) {
-                const JsonValue request = json_parse(frame);
-                const auto* image = request.find("i");
-                const auto* key = request.find("key");
-                const auto* stage = request.find("stage");
-                const auto* normal = request.find("normal");
-                const auto* depth = request.find("depth");
-                NN_CHECK(image && image->type == JsonValue::Type::Number &&
-                         std::isfinite(image->num) && image->num >= 0 && image->num < N &&
-                         std::floor(image->num) == image->num &&
-                         key && key->type == JsonValue::Type::String &&
-                         stage && stage->type == JsonValue::Type::String && !stage->str.empty() &&
-                         normal && normal->type == JsonValue::Type::Bool &&
-                         depth && depth->type == JsonValue::Type::Bool,
-                         "invalid geometry worker request");
-                const int64_t i = image->as_int();
-                const auto found = std::find_if(todo.begin(), todo.end(),
-                    [&](const Todo& t) { return t.i == i; });
-                NN_CHECK(found != todo.end() && assigned.insert(i).second &&
-                         !key->str.empty() && found->key == key->str &&
-                         found->normal == normal->b && found->depth == depth->b,
-                         "geometry worker request does not match frozen inputs");
-                Todo task = *found;
-                auto unchanged = [&] {
-                    const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)i]);
-                    return !hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0;
-                };
-                NN_CHECK(unchanged(), "geometry source changed before inference");
-                const fs::path folder(stage->str);
-                NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");
-                if (task.normal)
-                    task.np = folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png");
-                if (task.depth) task.dp = folder / "depth.png";
-                process({task});
-                NN_CHECK(unchanged() && complete(task),
-                         "geometry worker did not complete the frozen image");
+                const auto batch = json_parse(frame);
+                const auto* next = batch.find("next");
+                std::vector<std::string> requests{frame};
+                if (next) requests.push_back(next->as_string());
+                std::vector<Todo> pending;
+                for (const auto& item : requests) {
+                    const JsonValue request = json_parse(item);
+                    const auto* image = request.find("i");
+                    const auto* key = request.find("key");
+                    const auto* stage = request.find("stage");
+                    const auto* normal = request.find("normal");
+                    const auto* depth = request.find("depth");
+                    NN_CHECK(image && image->type == JsonValue::Type::Number &&
+                             std::isfinite(image->num) && image->num >= 0 && image->num < N &&
+                             std::floor(image->num) == image->num &&
+                             key && key->type == JsonValue::Type::String &&
+                             stage && stage->type == JsonValue::Type::String && !stage->str.empty() &&
+                             normal && normal->type == JsonValue::Type::Bool &&
+                             depth && depth->type == JsonValue::Type::Bool,
+                             "invalid geometry worker request");
+                    const int64_t i = image->as_int();
+                    const auto found = std::find_if(todo.begin(), todo.end(),
+                        [&](const Todo& t) { return t.i == i; });
+                    NN_CHECK(found != todo.end() && assigned.insert(i).second &&
+                             !key->str.empty() && found->key == key->str &&
+                             found->normal == normal->b && found->depth == depth->b,
+                             "geometry worker request does not match frozen inputs");
+                    Todo task = *found;
+                    auto unchanged = [&] {
+                        const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)i]);
+                        return !hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0;
+                    };
+                    NN_CHECK(unchanged(), "geometry source changed before inference");
+                    const fs::path folder(stage->str);
+                    NN_CHECK(fs::create_directory(folder), "geometry staging directory is not private");
+                    if (task.normal)
+                        task.np = folder / (o.normal_format == "jpg" ? "normal.jpg" : "normal.png");
+                    if (task.depth) task.dp = folder / "depth.png";
+                    pending.push_back(std::move(task));
+                }
+                process(pending);
+                for (const auto& task : pending) {
+                    const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)task.i]);
+                    NN_CHECK(!hash.empty() && task.key.compare(0, hash.size() + 1, hash + "|") == 0 &&
+                             complete(task), "geometry worker did not complete the frozen image");
+                }
                 NN_CHECK(app::worker_write_frame(frame), "geometry worker acknowledgement failed");
             }
             return 0;
@@ -1378,7 +1391,7 @@ int spirula_geometry_main(int argc, char** argv) {
                 NN_CHECK(pixels <= std::numeric_limits<uint64_t>::max() / 128,
                          "geometry task memory estimate overflow");
                 const fs::path folder = scratch / std::to_string(t.i);
-                JsonWriter request;
+                JsonWriter request(false);
                 request.object().field("i", (long long)t.i).field("key", t.key)
                     .field("stage", fs::absolute(folder).string())
                     .field("normal", t.normal).field("depth", t.depth).end();
@@ -1389,6 +1402,22 @@ int spirula_geometry_main(int argc, char** argv) {
                     t.np, normal_key(t)});
                 if (t.depth) outputs.push_back({folder / "depth.png", t.dp, t.key + "|depth"});
                 families.push_back(std::move(outputs));
+            }
+            std::vector<app::WorkerTask> dispatch;
+            std::vector<std::vector<size_t>> batches;
+            for (size_t j = 0; j < tasks.size(); ++j) {
+                std::vector<size_t> batch{j};
+                auto task = tasks[j];
+                if (j + 1 < tasks.size() && tasks[j + 1].host_bytes <= task_budget -
+                    std::min(task.host_bytes, task_budget)) {
+                    const auto first = task.request.substr(0, task.request.size() - 1);
+                    JsonWriter extra(false);
+                    task.request = first + ",\"next\":" + extra.value(tasks[j + 1].request).str() + "}";
+                    task.host_bytes += tasks[j + 1].host_bytes;
+                    batch.push_back(++j);
+                }
+                dispatch.push_back(std::move(task));
+                batches.push_back(std::move(batch));
             }
             std::vector<std::vector<std::string>> commands;
             for (size_t device_index = 0; device_index < children; ++device_index) {
@@ -1401,33 +1430,37 @@ int spirula_geometry_main(int argc, char** argv) {
                         flag == "--device") { ++i; continue; }
                     command.push_back(flag);
                 }
-                command.insert(command.end(), {"--worker", "--device", uuid});
+                command.insert(command.end(), {"--worker", "--worker-threads",
+                    std::to_string(std::max(1u, spirula::hardware_threads() / (unsigned)children)),
+                    "--device", uuid});
                 commands.push_back(std::move(command));
             }
             const std::atomic<bool> cancel{false};
             std::string error;
-            const bool ok = app::run_inference_workers(commands, tasks, task_budget, cancel,
+            const bool ok = app::run_inference_workers(commands, dispatch, task_budget, cancel,
                 [&](size_t j, const std::string& response, std::string& why) {
                     try {
-                        NN_CHECK(response == tasks[j].request, "geometry task acknowledgement mismatch");
-                        const auto& t = todo[j];
-                        const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)t.i]);
-                        NN_CHECK(!hash.empty() && t.key.compare(0, hash.size() + 1, hash + "|") == 0,
-                                 "geometry source changed during inference");
-                        const auto& warp = warps[(size_t)group[(size_t)t.i]];
-                        for (const auto& output : families[j]) {
-                            int w = 0, h = 0;
-                            NN_CHECK(probe_image_size(output.staged.string().c_str(), &w, &h) &&
-                                     w == warp.outWidth() && h == warp.outHeight(),
-                                     "invalid staged geometry dimensions");
+                        NN_CHECK(response == dispatch[j].request, "geometry task acknowledgement mismatch");
+                        for (size_t index : batches[j]) {
+                            const auto& t = todo[index];
+                            const auto hash = spirula::sha256_file(ds.image_filenames[(size_t)t.i]);
+                            NN_CHECK(!hash.empty() && t.key.compare(0, hash.size() + 1, hash + "|") == 0,
+                                     "geometry source changed during inference");
+                            const auto& warp = warps[(size_t)group[(size_t)t.i]];
+                            for (const auto& output : families[index]) {
+                                int w = 0, h = 0;
+                                NN_CHECK(probe_image_size(output.staged.string().c_str(), &w, &h) &&
+                                         w == warp.outWidth() && h == warp.outHeight(),
+                                         "invalid staged geometry dimensions");
+                            }
+                            app::publish_geometry_family(families[index], o.overwrite);
+                            NN_CHECK(complete(t), "published geometry family is incomplete");
+                            ++written;
+                            std::printf("\r%s   ", format(G::log_progress,
+                                {(long long)(written + skipped), (long long)N, 0LL,
+                                 format_duration(0)}).c_str());
+                            std::fflush(stdout);
                         }
-                        app::publish_geometry_family(families[j], o.overwrite);
-                        NN_CHECK(complete(t), "published geometry family is incomplete");
-                        ++written;
-                        std::printf("\r%s   ", format(G::log_progress,
-                            {(long long)(written + skipped), (long long)N, 0LL,
-                             format_duration(0)}).c_str());
-                        std::fflush(stdout);
                         return true;
                     } catch (const std::exception& e) { why = e.what(); return false; }
                 },

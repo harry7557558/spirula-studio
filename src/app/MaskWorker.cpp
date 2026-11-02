@@ -1,6 +1,7 @@
 #include "app/MaskWorker.h"
 #include "app/InferenceWorker.h"
 #include "app/FrameLook.h"
+#include "app/WriterPool.h"
 #include "core/ImageFile.h"
 #include "core/Sha256.h"
 #include "data/JsonWrite.h"
@@ -11,6 +12,7 @@
 #include "nn/core/Parallel.h"
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <stdexcept>
 
 namespace app {
@@ -92,6 +94,8 @@ int mask_worker_main(const std::string& device) {
         bool temporal_done = false;
         while (worker_read_frame(request)) {
             const auto task = json_parse(request);
+            const auto* threads = task.find("threads");
+            nn::set_parallel_threads(threads ? std::max(1, (int)threads->as_int()) : 1);
             const std::string recipe = required(task, "recipe").as_string();
             const auto config = json_parse(recipe);
             const bool temporal = required(config, "video").as_bool();
@@ -147,39 +151,60 @@ int mask_worker_main(const std::string& device) {
             std::ifstream inputs(manifest, std::ios::binary);
             std::ofstream outputs(manifest + ".outputs", std::ios::binary | std::ios::trunc);
             if (!inputs || !outputs) throw std::runtime_error("Cannot open mask task manifests");
-            std::string record;
-            for (uint64_t index = 0; index < count; ++index) {
+            struct Prepared {
+                JsonValue item;
+                nn::Image image;
+                sfm::ExifTransform turn;
+            };
+            auto prepare = [&] {
+                std::string record;
                 if (!read_mask_manifest_record(inputs, record))
                     throw std::runtime_error("Incomplete mask input manifest");
-                const auto item = json_parse(record);
-                if (spirula::sha256_file(required(item, "source").as_string()) !=
-                    required(item, "source_sha256").as_string())
+                Prepared p;
+                p.item = json_parse(record);
+                if (spirula::sha256_file(required(p.item, "source").as_string()) !=
+                    required(p.item, "source_sha256").as_string())
                     throw std::runtime_error("Mask source identity changed before inference");
-                sfm::ExifTransform turn;
-                const auto image = load_upright(required(item, "source").as_string(),
-                    required(config, "gamut").as_string(), linear, exposure, turn);
-                if (image.empty()) throw std::runtime_error("Unreadable required mask input");
+                p.image = load_upright(required(p.item, "source").as_string(),
+                    required(config, "gamut").as_string(), linear, exposure, p.turn);
+                if (p.image.empty()) throw std::runtime_error("Unreadable required mask input");
+                return p;
+            };
+            app::WriterPool writers((int)nn::parallel_threads());
+            auto ahead = std::async(std::launch::async, prepare);
+            for (uint64_t index = 0; index < count; ++index) {
+                auto prepared = ahead.get();
+                if (index + 1 < count) ahead = std::async(std::launch::async, prepare);
+                const auto& item = prepared.item;
+                const auto& image = prepared.image;
+                const auto& turn = prepared.turn;
                 sam::Mask mask, feature;
                 const bool want_feature = required(item, "feature").as_bool();
                 if (!masker.run(image, mask, nullptr, std::stoll(required(item, "frame").as_string()), want_feature ? &feature : nullptr))
                     throw std::runtime_error(masker.lastError());
                 const std::string root = required(item, "stage").as_string();
+                writers.wait();
                 std::filesystem::create_directories(root);
-                auto save = [&](const sam::Mask& m, const char* name, bool required_output) {
+                auto save = [&](sam::Mask&& m, const char* name, bool required_output) {
                     if (!required_output) return;
                     if (m.width != image.width || m.height != image.height ||
-                        m.data.size() != (size_t)m.width * m.height ||
-                        !stbi_write_png((std::filesystem::path(root) / name).string().c_str(),
-                            m.width, m.height, 1, m.data.data(), m.width))
-                        throw std::runtime_error("Could not stage required mask output");
+                        m.data.size() != (size_t)m.width * m.height)
+                        throw std::runtime_error("Invalid required mask dimensions");
+                    app::WriteJob job;
+                    job.path = (std::filesystem::path(root) / name).string();
+                    job.mask = std::move(m);
+                    writers.submit(std::move(job));
                 };
-                save(mask, "train.png", required(item, "train").as_bool());
-                save(feature, "feature.png", want_feature);
+                save(std::move(mask), "train.png", required(item, "train").as_bool());
+                save(std::move(feature), "feature.png", want_feature);
                 JsonWriter metadata(false);
                 write_mask_manifest_record(outputs, metadata.object()
                     .field("turn", turn.turns_cw).field("mirror", turn.mirror)
                     .field("width", image.width).field("height", image.height).end().str());
             }
+            writers.finish();
+            if (writers.failures()) throw std::runtime_error("Could not stage required mask output");
+            std::string record;
             if (read_mask_manifest_record(inputs, record))
                 throw std::runtime_error("Unexpected extra mask input record");
             outputs.close();

@@ -3,6 +3,7 @@
 #include "app/InferenceWorkerDevices.h"
 #include "app/MaskWorker.h"
 #include "core/Sha256.h"
+#include "core/HardwareThreads.h"
 #include "data/JsonWrite.h"
 #include "external/stb_image.h"
 #include "external/stb_image_write.h"
@@ -145,7 +146,7 @@ int main(int argc, char** argv) {
             nn::shutdown();
             std::vector<std::vector<size_t>> groups;
             if (temporal) groups.push_back({0, 1, 2, 3});
-            else for (size_t k = 0; k < sources.size(); ++k) groups.push_back({k});
+            else groups = {{0, 1}, {2, 3}};
             std::vector<app::WorkerTask> tasks;
             for (size_t group = 0; group < groups.size(); ++group) {
                 const auto manifest = root / ((temporal ? "sequence-" : "independent-") +
@@ -164,14 +165,15 @@ int main(int argc, char** argv) {
                 JsonWriter request;
                 tasks.push_back({request.object().field("id", std::to_string(group)).field("recipe", recipe)
                     .field("manifest", manifest.string()).field("count", std::to_string(groups[group].size()))
-                    .end().str(), 96 * 64 * 128});
+                    .field("threads", (int)std::max(1u, spirula::hardware_threads() / (unsigned)devices.size()))
+                    .end().str(), 2 * 96 * 64 * 128});
             }
             std::vector<std::vector<std::string>> commands;
             for (const auto& device : devices) commands.push_back({fs::absolute(argv[0]).string(), "--child", device});
             std::atomic<bool> cancel{false};
             std::string error;
             size_t checked = 0;
-            const bool workers_ok = app::run_inference_workers(commands, tasks, 2 * 96 * 64 * 128, cancel,
+            const bool workers_ok = app::run_inference_workers(commands, tasks, 4 * 96 * 64 * 128, cancel,
                 [&](size_t group, const std::string& response, std::string&) {
                     const auto reply = json_parse(response);
                     require(reply.find("id") && reply.find("id")->as_string() == std::to_string(group), "Wrong task identity");
@@ -197,6 +199,10 @@ int main(int argc, char** argv) {
                                 std::equal(reference.data.begin(), reference.data.end(), pixels);
                             stbi_image_free(pixels);
                             require(same, "Worker masks differ from canonical same-device reference");
+                            const auto canonical = path.string() + ".canonical.png";
+                            require(sam::save_mask_png(reference, canonical), "Cannot encode canonical mask");
+                            require(spirula::sha256_file(canonical) == spirula::sha256_file(path.string()),
+                                "Worker PNG bytes differ from canonical encoding");
                         };
                         compare("train.png", expected[k]);
                         if (!options.feature_text.empty()) compare("feature.png", expected_features[k]);

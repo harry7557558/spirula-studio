@@ -152,7 +152,7 @@ if(SS_BUILD_SFM)
 endif()
 
 if(SS_BUILD_SAM)
-    add_library(ss_mask_worker STATIC ${SS_SRC}/app/MaskWorker.cpp)
+    add_library(ss_mask_worker STATIC ${SS_SRC}/app/MaskWorker.cpp ${SS_SRC}/app/DepthPng.cpp)
     target_include_directories(ss_mask_worker PRIVATE ${SS_SRC} ${CMAKE_BINARY_DIR})
     target_compile_options(ss_mask_worker PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
     target_link_libraries(ss_mask_worker PUBLIC ss_sam ss_inference_worker)

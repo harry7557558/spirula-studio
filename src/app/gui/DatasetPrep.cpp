@@ -3599,7 +3599,10 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 groups.emplace_back();
                 for (size_t k = 0; k < todo.size(); ++k) groups.back().push_back(k);
             } else {
-                for (size_t k = 0; k < todo.size(); ++k) groups.push_back({k});
+                for (size_t k = 0; k < todo.size(); k += 2) {
+                    groups.push_back({k});
+                    if (k + 1 < todo.size()) groups.back().push_back(k + 1);
+                }
             }
             for (size_t group = 0; group < groups.size(); ++group) {
                 const auto manifest = scratch / ("task-" + std::to_string(group) + ".jsonl");
@@ -3611,13 +3614,12 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                     int width = 0, height = 0;
                     if (!probe_size(todo_files[k], width, height))
                         throw std::runtime_error("Cannot size required mask input");
-                    // Decode, inference host RGB, masks and publication scratch; only
-                    // one frame of a tracked sequence is resident at a time.
+                    // Two frames cover decode/inference overlap and pending mask writes.
                     const uint64_t side = (uint64_t)std::max(1024, mo.max_size);
                     const uint64_t pixels = std::max(uint64_t(width) * height, side * side);
-                    if (pixels > budget / 128)
+                    if (pixels > budget / 256)
                         throw std::runtime_error("Mask image exceeds shared host-memory budget");
-                    bytes = std::max(bytes, pixels * 128);
+                    bytes = std::max(bytes, pixels * 256);
                     JsonWriter item(false);
                     app::write_mask_manifest_record(records, item.object()
                         .field("source", todo_files[k].string())
@@ -3631,7 +3633,10 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                 JsonWriter request;
                 tasks.push_back({request.object().field("id", std::to_string(group))
                     .field("recipe", recipe).field("manifest", manifest.string())
-                    .field("count", std::to_string(groups[group].size())).end().str(), bytes});
+                    .field("count", std::to_string(groups[group].size()))
+                    .field("threads", (int)std::max(1u, spirula::hardware_threads() /
+                        (unsigned)std::max<size_t>(1, std::min(devices.size(), groups.size()))))
+                    .end().str(), bytes});
             }
             std::vector<std::vector<std::string>> commands;
             for (const auto& device : devices)

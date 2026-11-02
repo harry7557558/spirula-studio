@@ -68,6 +68,11 @@ public:
         work_.notify_one();
     }
 
+    void wait() {
+        std::unique_lock<std::mutex> lk(mu_);
+        space_.wait(lk, [this] { return queue_.empty() && active_ == 0; });
+    }
+
     // Waits for everything queued to reach the disk. Called by the destructor,
     // so it is only needed when the caller wants the files to exist before it
     // goes on to the next stage.
@@ -97,6 +102,7 @@ private:
                 if (queue_.empty()) return;
                 job = std::move(queue_.front());
                 queue_.pop_front();
+                ++active_;
                 space_.notify_one();
             }
             const double t0 = nn::now_ms();
@@ -144,6 +150,11 @@ private:
             double expected = busy_ms_.load();
             const double add = nn::now_ms() - t0;
             while (!busy_ms_.compare_exchange_weak(expected, expected + add)) {}
+            {
+                std::lock_guard<std::mutex> lk(mu_);
+                --active_;
+            }
+            space_.notify_all();
         }
     }
 
@@ -153,6 +164,7 @@ private:
     std::condition_variable  work_, space_;
     size_t                   limit_ = 3;
     bool                     done_ = false;
+    size_t                   active_ = 0;
     std::atomic<double>      busy_ms_{0.0};
     std::atomic<int>         failures_{0};
 };
