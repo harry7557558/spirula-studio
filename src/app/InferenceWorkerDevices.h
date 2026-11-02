@@ -2,8 +2,11 @@
 
 #include "nn/Device.h"
 #include "core/HostMemory.h"
+#include "core/Env.h"
 
 #include <algorithm>
+#include <charconv>
+#include <cstring>
 #include <cctype>
 #include <set>
 #include <stdexcept>
@@ -16,15 +19,41 @@ inline bool worker_device_supported(const nn::DeviceInfo& device) {
     return device.usable && !device.uuid.empty() &&
         (device.type == "discrete" || device.type == "integrated");
 }
+inline unsigned parse_workers_per_gpu(const char* value) {
+    if (!value) return 1;
+    unsigned count = 0;
+    const char* end = value + std::strlen(value);
+    const auto parsed = std::from_chars(value, end, count);
+    if (parsed.ec != std::errc{} || parsed.ptr != end || !count)
+        throw std::runtime_error("SS_WORKERS_PER_GPU must be an integer >= 1");
+    return count;
+}
+
+inline unsigned workers_per_gpu() {
+    return parse_workers_per_gpu(spirula::env("WORKERS_PER_GPU"));
+}
+
+inline std::vector<std::string> expand_worker_devices(
+    const std::vector<std::string>& devices, unsigned count) {
+    if (count == 1 || devices.empty()) return devices;
+    std::vector<std::string> result;
+    if (!count || count > result.max_size() / devices.size())
+        throw std::runtime_error("SS_WORKERS_PER_GPU exceeds the worker-list capacity");
+    result.reserve(devices.size() * count);
+    for (unsigned i = 0; i < count; ++i)
+        result.insert(result.end(), devices.begin(), devices.end());
+    return result;
+}
 
 inline std::vector<std::string> worker_devices_for(
     const std::string& additional, const std::string& primary,
-    const std::vector<nn::DeviceInfo>& devices) {
+    const std::vector<nn::DeviceInfo>& devices, unsigned copies = 1) {
     const auto first = std::find_if(devices.begin(), devices.end(), [&](const auto& device) {
         return device.uuid == primary && worker_device_supported(device);
     });
-    if (primary.empty() || first == devices.end() || additional == "none")
-        return {};
+    if (primary.empty() || first == devices.end()) return {};
+    if (additional == "none")
+        return copies > 1 ? std::vector<std::string>{primary} : std::vector<std::string>{};
     const bool discrete = std::any_of(devices.begin(), devices.end(), [](const auto& device) {
         return device.type == "discrete" && worker_device_supported(device);
     });
@@ -38,7 +67,7 @@ inline std::vector<std::string> worker_devices_for(
             : ("," + additional + ",").find("," + device.uuid + ",") != std::string::npos;
         if (selected) result.push_back(device.uuid);
     }
-    if (result.size() == 1) result.clear();
+    if (result.size() == 1 && copies == 1) result.clear();
     return result;
 }
 

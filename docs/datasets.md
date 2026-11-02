@@ -77,6 +77,15 @@ Only usable discrete and integrated GPUs with UUIDs support workers.
 The additional selection is saved locally in `gui.conf` as `additional_gpus`;
 portable dataset presets do not carry it.
 
+`SS_WORKERS_PER_GPU` opts into multiple isolated inference processes per
+selected GPU. It must be an integer >= 1 and defaults to 1. For example,
+`SS_WORKERS_PER_GPU=2` runs two mask workers and two geometry workers per
+selected GPU, in their respective stages. With **None** or no extra GPU
+available, it instead runs two workers on the primary GPU. Each process
+loads its own models; the shared host-memory admission budget does not grow,
+and this setting does not impose a VRAM cap. Tracking sequences remain owned
+by one worker, so a single sequence cannot use all requested processes.
+
 Workers share a host-memory admission budget of half the machine's physical
 RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
 runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
@@ -93,7 +102,9 @@ as two single images.
 The geometry CLI can explicitly select worker UUIDs and override the shared
 budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
 The list includes every worker GPU, including the primary when desired; an
-empty list uses serial inference. Obtain UUIDs with `spirula sam devices`.
+empty list uses serial inference unless `SS_WORKERS_PER_GPU` is greater than 1,
+in which case it uses that many workers on the resolved primary GPU.
+Obtain UUIDs with `spirula sam devices`.
 Geometry output ownership, reuse and `--overwrite` rules are unchanged.
 
 ### Reusing generated frames and geometry

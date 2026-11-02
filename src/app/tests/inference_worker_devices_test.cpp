@@ -58,6 +58,27 @@ int main() {
             {integrated, primary, other}) ==
             std::vector<std::string>{primary.uuid, integrated.uuid, other.uuid},
             "Workers must follow enumeration order after the primary without a two-GPU cap");
+        require(app::parse_workers_per_gpu(nullptr) == 1 &&
+                app::parse_workers_per_gpu("1") == 1 &&
+                app::parse_workers_per_gpu("2") == 2,
+            "Worker multiplicity must default to one and accept positive integers");
+        for (const char* value : {"", "0", "-1", "1x", "1.5", " 2", "+2", "4294967296"}) {
+            bool rejected = false;
+            try { app::parse_workers_per_gpu(value); }
+            catch (const std::exception&) { rejected = true; }
+            require(rejected, "Invalid worker multiplicity was accepted");
+        }
+        require(app::expand_worker_devices(two, 1) == two,
+            "One worker per GPU must preserve the device list");
+        require(app::expand_worker_devices(two, 2) ==
+                std::vector<std::string>{primary.uuid, other.uuid, primary.uuid, other.uuid},
+            "Two workers per GPU must repeat each selected device without deduplication");
+        for (const char* selection : {"none", "auto"}) {
+            const auto selected = app::worker_devices_for(selection, primary.uuid, {primary}, 2);
+            require(app::expand_worker_devices(selected, 2) ==
+                    std::vector<std::string>{primary.uuid, primary.uuid},
+                "One GPU must use isolated duplicate workers when requested");
+        }
         std::puts("inference worker device selection checks passed");
         return 0;
     } catch (const std::exception& error) {

@@ -5892,7 +5892,8 @@ std::string GuiApp::resolved_worker_devices() const {
     std::string csv;
 #ifdef SS_BUILD_SAM
     for (const std::string& uuid :
-         app::worker_devices_for(_additional_gpus, _native_device_uuid, _native_devices)) {
+         app::worker_devices_for(_additional_gpus, _native_device_uuid, _native_devices,
+                                 app::workers_per_gpu())) {
         if (!csv.empty()) csv += ',';
         csv += uuid;
     }

@@ -869,7 +869,10 @@ int spirula_geometry_main(int argc, char** argv) {
     const std::string selector = nn::configured_device_selector();
 
     try {
-        const auto worker_devices = app::parse_worker_devices(o.worker_devices);
+        const unsigned copies = o.worker ? 1 : app::workers_per_gpu();
+        if (copies > 1 && o.worker_devices.empty()) o.worker_devices = selector;
+        const auto worker_devices = app::expand_worker_devices(
+            app::parse_worker_devices(o.worker_devices), copies);
         // ---- the dataset --------------------------------------------------
         DatasetParserConfig cfg;
         cfg.require_image_files = false;   // the point cloud is not our business

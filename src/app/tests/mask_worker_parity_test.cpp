@@ -96,7 +96,8 @@ int main(int argc, char** argv) {
     fs::path root;
     bool root_owned = false;
     try {
-        const auto devices = app::parse_worker_devices(argv[2]);
+        const auto devices = app::expand_worker_devices(
+            app::parse_worker_devices(argv[2]), app::workers_per_gpu());
         root = fs::temp_directory_path() / ("spirula-mask-parity-" +
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         root_owned = fs::create_directory(root);

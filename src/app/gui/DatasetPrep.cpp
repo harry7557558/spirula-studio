@@ -3557,7 +3557,8 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
         fs::path scratch;
         bool scratch_owned = false;
         try {
-            const auto devices = app::parse_worker_devices(job.inference_devices);
+            const auto devices = app::expand_worker_devices(
+                app::parse_worker_devices(job.inference_devices), app::workers_per_gpu());
             const uint64_t budget = app::default_worker_memory_bytes();
             const fs::path base = fs::path(job.workspace) / ".spirula-mask-attempts";
             fs::create_directories(base);

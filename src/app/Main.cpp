@@ -17,6 +17,7 @@
 #include "app/EvalLpips.h"
 #endif
 #ifdef SS_TOOL_SAM
+#include "app/InferenceWorkerDevices.h"
 #include "app/ModelLicenses.h"
 #include "app/cli/LicenseCli.h"   // --accept-license: the inference layer is in this build
 #include "nn/Device.h"
@@ -209,6 +210,7 @@ int main(int argc, char** argv) {
     // accepts a model licence. Removed from argv, so no tool's parser sees it;
     // the gate installed here answers every command that fetches a licensed model.
     try {
+        app::workers_per_gpu();   // a malformed SS_WORKERS_PER_GPU fails every command here
         app::register_model_licenses();
         app::install_license_gate();
         app::consume_accept_license_args(argc, argv);
