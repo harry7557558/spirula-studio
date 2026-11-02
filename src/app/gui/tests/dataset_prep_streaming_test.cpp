@@ -2,6 +2,7 @@
 #include "app/gui/Subprocess.h"
 #include "i18n/catalog/Data.h"
 #include "nn/Device.h"
+#include "core/Sha256.h"
 
 #include <algorithm>
 #include <atomic>
@@ -59,6 +60,53 @@ void extract(const fs::path& video, const fs::path& workspace, bool block_write)
     }
 }
 
+void parallel_extract(const fs::path& video, const fs::path& root) {
+    gui::PrepJob job;
+    job.resume = false;
+    job.force_external_decode = true;
+    job.video_fps = gui::kFpsEveryFrame;
+    job.sharp_window = 1;
+    job.max_frames = 4;
+    gui::PrepInput input;
+    input.path = video.string();
+    input.is_video = true;
+    input.lut = gui::kLutNone;
+    input.packed_lenses = 2;
+    input.subdir = "a";
+    job.inputs.push_back(input);
+    std::atomic<bool> cancel{false};
+    auto run = [&](const char* name) {
+        job.workspace = (root / name).string();
+        gui::RunProgress progress;
+        gui::DatasetPrep prep(&progress, {}, cancel);
+        gui::PrepResult output;
+        std::string error;
+        check(prep.run(job, output, error), std::string(name) + ": " + error);
+        check(output.captures.size() == job.inputs.size(), "ordered capture count");
+        for (size_t k = 0; k < output.captures.size(); ++k)
+            check(output.captures[k].subdir == job.inputs[k].subdir, "capture order");
+    };
+    run("serial");
+    input.subdir = "b";
+    job.inputs.push_back(input);
+    run("parallel");
+    size_t compared = 0;
+    for (const auto& file : fs::recursive_directory_iterator(root / "serial/images/a")) {
+        if (!file.is_regular_file()) continue;
+        const auto relative = fs::relative(file.path(), root / "serial/images/a");
+        const auto hash = spirula::sha256_file(file.path().string());
+        for (const char* camera : {"a", "b"})
+            check(!hash.empty() && hash == spirula::sha256_file(
+                (root / "parallel/images" / camera / relative).string()),
+                "parallel packed JPEG parity: " + relative.string());
+        ++compared;
+    }
+    check(compared == 8, "four frames split into two lenses");
+    job.adaptive_fps = true;
+    job.video_fps = 5;
+    run("adaptive");
+}
+
 }  // namespace
 
 int main() {
@@ -79,13 +127,14 @@ int main() {
     std::string output;
     const int rc = gui::run_process(
         {"ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=64x64:rate=30", "-frames:v", "4", "-c:v", "ffv1",
+         "-i", "testsrc2=size=128x64:rate=30", "-frames:v", "60", "-c:v", "ffv1",
          video.string()},
         "", [&](const std::string& line) { output += line + "\n"; }, cancel);
-    check(rc == 0, "create a four-frame software video: " + output);
+    check(rc == 0, "create a 60-frame software video: " + output);
     if (rc == 0) {
         extract(video, root / "blocked", true);
         extract(video, root / "complete", false);
+        parallel_extract(video, root);
     }
     fs::remove_all(root);
     return failures == 0 ? 0 : 1;

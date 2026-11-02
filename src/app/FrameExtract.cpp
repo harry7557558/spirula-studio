@@ -26,6 +26,7 @@
 #include <functional>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -71,6 +72,9 @@ using app::WriterPool;
 
 struct Decoder {
     bool builtin = false;
+#ifdef SS_HAVE_VIDEO
+    std::unique_lock<std::mutex> video_lock;
+#endif
     VideoFacts facts;                          // ffmpeg's probe, when not built-in
     std::vector<std::pair<int, int>> sizes;    // one per track
 };
@@ -83,6 +87,10 @@ bool cancelled(const FrameExtractSinks& sinks, std::string& error) {
 
 bool use_ffmpeg(const FrameExtractJob& job, const FrameExtractSinks& sinks,
                 Decoder& d, const std::string& why, std::string& error) {
+#ifdef SS_HAVE_VIDEO
+    // All native pipelines have unwound before falling back to ffmpeg.
+    if (d.video_lock.owns_lock()) d.video_lock.unlock();
+#endif
     if (cancelled(sinks, error)) return false;
     if (!gui::command_exists(job.ffmpeg_exe)) {
         error = job.decoder == FrameDecoder::Ffmpeg
@@ -116,6 +124,11 @@ bool pick_decoder(const FrameExtractJob& job, const FrameExtractSinks& sinks,
                       " (-DSS_ENABLE_PATENTED=OFF)";
     if (job.decoder != FrameDecoder::Ffmpeg) {
 #ifdef SS_HAVE_VIDEO
+        // ponytail: serialize native jobs sharing nn::vk::Stream; independent
+        // streams would let these overlap. Explicit ffmpeg never takes the lock.
+        static std::mutex video_mutex;
+        d.video_lock = std::unique_lock<std::mutex>(video_mutex);
+        if (cancelled(sinks, error)) return false;
         why = video_decode_availability();
         if (cancelled(sinks, error)) return false;
         if (why.empty()) {

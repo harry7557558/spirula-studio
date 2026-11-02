@@ -861,6 +861,8 @@ private:
     std::vector<std::vector<int64_t>> _plans;
     std::vector<bool> _planned;
     StageTally _frames_tally, _masks_tally;
+    int _frame_threads = 0;
+    std::function<void(int64_t)> _frame_progress;
     std::vector<std::string> _left_out;   // kSkippedListFile, as this run sorts
     std::vector<std::string> _unbuilt;    // ... and its "- " lines
     std::vector<bool> _streamed;          // ruled on by streaming extraction as it went

@@ -72,6 +72,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <map>
 #include <mutex>
 #include <set>
@@ -206,6 +207,23 @@ fs::path under_root(const fs::path& file, const fs::path& root) {
 bool inside(const fs::path& p, const fs::path& root) {
     const fs::path rel = p.lexically_relative(root);
     return !rel.empty() && *rel.begin() != "..";
+}
+
+bool separate_frame_dirs(const fs::path& a, const fs::path& b) {
+    std::error_code ec;
+    const auto left = fs::weakly_canonical(a, ec);
+    if (ec) return false;
+    const auto right = fs::weakly_canonical(b, ec);
+    if (ec) return false;
+    auto l = left.begin(), r = right.begin();
+    for (; l != left.end() && r != right.end(); ++l, ++r)
+#ifdef _WIN32
+        if (CompareStringOrdinal(l->c_str(), -1, r->c_str(), -1, TRUE) != CSTR_EQUAL)
+            return true;
+#else
+        if (*l != *r) return true;
+#endif
+    return false;
 }
 
 // The frame number the masker should be given for each file, taken from the
@@ -1543,15 +1561,79 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         _streamed.assign(job.inputs.size(), false);
         _split_later = job.make_frames && _films.picks &&
                        ((job.review_frames && review_frames) || job.skip_blurry);
+#ifdef SS_BUILD_SAM
+        for (size_t i = 0; i < job.inputs.size(); ++i)
+            if (job.inputs[i].is_video &&
+                !(job.resume && !job.redo_frames && count_images(per[i].images) > 0) &&
+                !plan_group(job, i, error))
+                return false;
+        std::vector<bool> extracted(job.inputs.size(), false);
+#endif
         for (size_t i = 0; i < job.inputs.size(); i++) {
             const PrepInput& in = job.inputs[i];
             Prepared& p = per[i];
+#ifdef SS_BUILD_SAM
+            if (in.is_video && !extracted[i] && i + 1 < job.inputs.size() &&
+                job.inputs[i + 1].is_video && spirula::hardware_threads() >= 2 &&
+                separate_frame_dirs(per[i].images, per[i + 1].images)) {
+                std::mutex progress_mu;
+                int64_t written[2] = {};
+                StageTally wave_tally = _frames_tally;
+                RateLimitedProgress progress(_prog, Stage::Frames, lmsg::noun_frames_written,
+                                             wave_tally);
+                struct VideoResult {
+                    PrepResult output;
+                    std::string error;
+                    bool ok = false, streamed = false;
+                };
+                std::future<VideoResult> pending[2];
+                for (size_t k = 0; k < 2; ++k) {
+                    const size_t row = i + k;
+                    pending[k] = std::async(std::launch::async,
+                        [&, row, k, plan = std::move(_plans[row])]() mutable {
+                            DatasetPrep child(_prog, _films, _cancel);
+                            child._plans.resize(job.inputs.size());
+                            child._plans[row] = std::move(plan);
+                            child._streamed.assign(job.inputs.size(), false);
+                            child._split_later = _split_later;
+                            child._frame_threads = (int)spirula::hardware_threads() / 2;
+                            child._frames_tally.plan(planned[row]);
+                            child._frame_progress = [&, k](int64_t count) {
+                                std::lock_guard<std::mutex> lock(progress_mu);
+                                written[k] = count;
+                                progress.update(written[0] + written[1]);
+                            };
+                            VideoResult result;
+                            result.ok = child.extract_video(job, job.inputs[row],
+                                per[row].images, result.output, result.error);
+                            result.streamed = child._streamed[row];
+                            return result;
+                        });
+                }
+                VideoResult results[2] = {pending[0].get(), pending[1].get()};
+                for (size_t k = 0; k < 2; ++k) {
+                    if (!results[k].ok) {
+                        error = results[k].error;
+                        return false;
+                    }
+                    extracted[i + k] = true;
+                    _streamed[i + k] = results[k].streamed;
+                    out.per_folder_cameras |= results[k].output.per_folder_cameras;
+                    for (auto& capture : results[k].output.captures)
+                        out.captures.push_back(std::move(capture));
+                }
+            }
+#endif
             if (in.is_video) {
                 const bool keeping =
                     job.resume && !job.redo_frames && count_images(p.images) > 0;
                 if (!keeping && !plan_group(job, i, error))
                     return false;
+#ifdef SS_BUILD_SAM
+                if (!extracted[i] && !extract_video(job, in, p.images, out, error))
+#else
                 if (!extract_video(job, in, p.images, out, error))
+#endif
                     return false;
             } else if (!gather_photos(job, in, p.images, p.masks, p.have_masks,
                                       error) ||
@@ -1982,21 +2064,44 @@ bool DatasetPrep::plan_group(const PrepJob& job, size_t at, std::string& error) 
     sinks.log = [this](const std::string& l) { log(l); };
     sinks.cancel = &_cancel;
     ScanProgress scan(_prog, group_frames);
-    sinks.scanning = [&](int64_t done, int64_t total) { scan.update(done, total); };
+    std::mutex scan_mu;
+    std::vector<int64_t> scanned(rows.size(), 0);
+    int64_t scanned_total = 0;
     std::vector<app::MotionPlanInput> measured(rows.size());
     std::vector<double> fps(rows.size(), 0.0);
     for (size_t k = 0; k < rows.size(); k++) {
         scan.begin(leaf_name(job.inputs[rows[k]].path));
         _prog->scan_open(rows[k]);
-        sinks.measured = [this, row = rows[k]](int64_t at, int64_t of, float c) {
-            _prog->scan_step(row, at, of, c);
-        };
-        app::FrameExtractStats stats;
-        if (!app::scan_motion(jobs[k], sinks, measured[k], stats, error))
-            return false;
-        fps[k] = measured[k].fps;
-        scan.finish(lengths[k] > 0 ? lengths[k] : measured[k].frames);
     }
+    std::atomic<size_t> next{0};
+    std::vector<std::string> errors(rows.size());
+    const size_t concurrency = std::min(rows.size(),
+        (size_t)std::min(2u, std::max(1u, spirula::hardware_threads())));
+    std::vector<std::future<void>> scans;
+    for (size_t t = 0; t < concurrency; ++t)
+        scans.push_back(std::async(std::launch::async, [&] {
+            for (;;) {
+                const size_t k = next.fetch_add(1);
+                if (k >= rows.size()) return;
+                auto local = sinks;
+                local.scanning = [&, k](int64_t done, int64_t) {
+                    std::lock_guard<std::mutex> lock(scan_mu);
+                    scanned_total += done - scanned[k];
+                    scanned[k] = done;
+                    scan.update(scanned_total, group_frames);
+                };
+                local.measured = [this, row = rows[k]](int64_t at, int64_t of, float c) {
+                    _prog->scan_step(row, at, of, c);
+                };
+                app::FrameExtractStats stats;
+                if (!app::scan_motion(jobs[k], local, measured[k], stats, errors[k]))
+                    return;
+                fps[k] = measured[k].fps;
+            }
+        }));
+    for (auto& pending : scans) pending.get();
+    for (const auto& why : errors)
+        if (!why.empty()) { error = why; return false; }
     const std::vector<std::vector<int64_t>> plans =
         app::plan_by_motion(measured, job.adaptive_range);
     for (size_t k = 0; k < rows.size() && k < plans.size(); k++) {
@@ -2027,6 +2132,7 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     FrameSourceInfo source;
     if (!streaming_job(job, in, fx, source, _cancel, error)) return false;
     fx.image_dir = images;
+    if (_frame_threads > 0) fx.threads = std::max(1, _frame_threads - 1);
     const std::vector<app::Pano360View>& views = fx.views;
     if (!views.empty()) out.per_folder_cameras = out.per_folder_cameras || views.size() > 1;
     else if (source.tracks > 1) out.per_folder_cameras = true;
@@ -2043,7 +2149,8 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
                                  _frames_tally);
     sinks.progress = [&](int64_t written, int64_t decoded) {
         (void)decoded;
-        progress.update(written);
+        if (_frame_progress) _frame_progress(written);
+        else progress.update(written);
     };
     // Only where this run is going to measure for itself: a plan handed in was
     // made by plan_group, which reported its own pass.
@@ -3373,7 +3480,8 @@ bool DatasetPrep::split_packed_frames(const PrepInput& in,
         }
     };
     const unsigned cores = spirula::hardware_threads();
-    const int threads = (int)std::clamp<unsigned>(cores ? cores : 1u, 1u, 8u);
+    const int threads = (int)std::clamp<unsigned>(
+        _frame_threads > 0 ? (unsigned)_frame_threads : cores ? cores : 1u, 1u, 8u);
     std::vector<std::thread> pool;
     for (int t = 1; t < threads; t++) pool.emplace_back(worker);
     worker();
