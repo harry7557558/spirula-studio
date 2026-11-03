@@ -97,7 +97,8 @@ struct SeedSplats {
 };
 
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color);
+                       const ColorResolution& color,
+                       const PostSplitCameras* post = nullptr);
 
 // A warm start from a trained 3DGS PLY (--init-ply): the file supplies every
 // parameter, and only the layout is re-fitted to this run (cap_max, sh_degree,
@@ -109,7 +110,8 @@ SeedSplats seed_splats_from_ply(const std::string& path, const TrainConfig& cfg,
 // the warm start covers what the source model has and the point cloud covers
 // what it does not. Adds nothing once `s` already fills cap_max.
 void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
-                        const TrainConfig& cfg, const ColorResolution& color);
+                        const TrainConfig& cfg, const ColorResolution& color,
+                        const PostSplitCameras* post = nullptr);
 
 
 // ===========================================================================

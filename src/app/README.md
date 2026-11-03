@@ -307,8 +307,8 @@ agree. Only the C++ exists now, so the table said nothing the code does not.
    glTexImage2D — fine at viewport sizes), debug-only `sh` /
    `refinement_score` buffers (engine_debug_forward) not ported, COLMAP
    progress bar is stage-based only, no mesh-export UI (use `spirula-mesh`).
-4. Seeding fidelity: jitter repeated seed points toward a neighbor instead of
-   exact duplication; `suppress_initial_scales`. (Exact kNN: DONE, `Knn.h`.)
+4. ~~Seeding fidelity: jitter repeated seed points toward a neighbor instead of
+   exact duplication; `suppress_initial_scales`.~~ DONE (Exact kNN: `Knn.h`).
 5. COLMAP **text** format fallback. (Metashape parser: DONE,
    `MetashapeParser.cpp`. Camera-to-image resolution fit: DONE,
    `dsparse::fit_camera_resolution`.)
