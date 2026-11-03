@@ -72,10 +72,10 @@ static void test_suppress_initial_scales() {
     cfg.cap_max = 10;
     cfg.min_init_fraction = 0.1f;
     cfg.preallocate_splat_tensors = false;
-    ColorResolution color;
+    spirula::ColorResolution color;
 
     cfg.suppress_initial_scales = false;
-    SeedSplats s_nosupp = seed_splats(pts, cfg, color);
+    spirula::SeedSplats s_nosupp = spirula::seed_splats(pts, cfg, color);
 
     PostSplitCameras post;
     post.n_post = 1;
@@ -91,7 +91,7 @@ static void test_suppress_initial_scales() {
     };
 
     cfg.suppress_initial_scales = true;
-    SeedSplats s_supp = seed_splats(pts, cfg, color, &post);
+    spirula::SeedSplats s_supp = spirula::seed_splats(pts, cfg, color, &post);
 
     check(s_nosupp.num == 6 && s_supp.num == 6, "seed splats count matches");
     check(s_supp.scales[5 * 3] < s_nosupp.scales[5 * 3],
