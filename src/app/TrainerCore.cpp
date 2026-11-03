@@ -228,8 +228,104 @@ private:
     Mat3f to_709_, from_709_;
 };
 
+// Suppress initial scales in sparse areas by capping against projected footprint.
+static void suppress_initial_scales(SeedSplats& s, int64_t n_distinct,
+                                    const PostSplitCameras& post) {
+    if (post.n_post <= 0 || n_distinct <= 0 || s.num <= 0) return;
+    const int64_t num = s.num;
+    constexpr double kPi = 3.14159265358979323846;
+    const int EQUIRECT_V = (int)CameraModelType::EQUIRECTANGULAR;
+    std::vector<float> log_scales((size_t)n_distinct, -1e30f);
+    std::vector<bool> has_camera((size_t)n_distinct, false);
+
+    #pragma omp parallel for schedule(dynamic, 256)
+    for (int64_t i = 0; i < n_distinct; i++) {
+        const float x = s.means[(size_t)i * 3 + 0];
+        const float y = s.means[(size_t)i * 3 + 1];
+        const float z = s.means[(size_t)i * 3 + 2];
+        float max_sc = -1e30f;
+        bool visible = false;
+        for (int64_t c = 0; c < post.n_post; c++) {
+            const float* vm = &post.viewmats[(size_t)c * 16];
+            const float* intr = &post.intrins[(size_t)c * 4];
+            const int W = post.post_widths[(size_t)c];
+            const int H = post.post_heights[(size_t)c];
+            if (W <= 0 || H <= 0) continue;
+
+            const float px = vm[0]*x + vm[1]*y + vm[2]*z + vm[3];
+            const float py = vm[4]*x + vm[5]*y + vm[6]*z + vm[7];
+            const float pz = vm[8]*x + vm[9]*y + vm[10]*z + vm[11];
+
+            if (post.post_models[(size_t)c] == EQUIRECT_V) {
+                const float D2 = px*px + py*py + pz*pz;
+                if (D2 <= 1e-8f) continue;
+                const float det = ((float)W * (float)H) / (4.0f * (float)kPi * D2);
+                if (det <= 1e-12f) continue;
+                const float sc = 0.5f * std::log(((float)W * (float)H) / (det * det));
+                if (sc > max_sc) { max_sc = sc; visible = true; }
+                continue;
+            }
+
+            if (pz <= 1e-4f) continue;
+            const float rz = 1.0f / pz;
+            const float u = px * rz;
+            const float v = py * rz;
+            const float fx = intr[0], fy = intr[1], cx = intr[2], cy = intr[3];
+            if (fx <= 0.0f || fy <= 0.0f) continue;
+            const float x_px = fx * u + cx;
+            const float y_px = fy * v + cy;
+            const float margin_x = 0.15f * (float)W;
+            const float margin_y = 0.15f * (float)H;
+            if (x_px < -margin_x || x_px > (float)W + margin_x ||
+                y_px < -margin_y || y_px > (float)H + margin_y)
+                continue;
+
+            const float det = (fx * fy * rz * rz) * (fx * fy * rz * rz) * (1.0f + u * u + v * v);
+            if (det <= 1e-12f) continue;
+            const float sc = 0.5f * std::log(((float)W * (float)H) / det);
+            if (sc > max_sc) { max_sc = sc; visible = true; }
+        }
+        if (visible) {
+            log_scales[(size_t)i] = -max_sc;
+            has_camera[(size_t)i] = true;
+        }
+    }
+
+    double sum_orig = 0.0;
+    for (int64_t i = 0; i < num; i++) sum_orig += s.scales[(size_t)i * 3];
+    const double original_mean = sum_orig / (double)num;
+
+    double sum_ls = 0.0;
+    int64_t count_ls = 0;
+    for (int64_t i = 0; i < n_distinct; i++) {
+        if (has_camera[(size_t)i]) {
+            sum_ls += log_scales[(size_t)i];
+            count_ls++;
+        }
+    }
+    if (count_ls == 0) return;
+
+    const float offset = (float)(original_mean - (sum_ls / (double)count_ls));
+    for (int64_t i = 0; i < n_distinct; i++)
+        if (has_camera[(size_t)i]) log_scales[(size_t)i] += offset;
+
+    for (int64_t i = 0; i < num; i++) {
+        const int64_t src = i % n_distinct;
+        if (has_camera[(size_t)src])
+            for (int d = 0; d < 3; d++)
+                s.scales[(size_t)i * 3 + d] =
+                    std::min(s.scales[(size_t)i * 3 + d], log_scales[(size_t)src]);
+    }
+
+    double sum_new = 0.0;
+    for (int64_t i = 0; i < num; i++) sum_new += s.scales[(size_t)i * 3];
+    const float re_offset = (float)(original_mean - (sum_new / (double)num));
+    for (int64_t i = 0; i < num * 3; i++) s.scales[(size_t)i] += re_offset;
+}
+
 SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
-                       const ColorResolution& color) {
+                       const ColorResolution& color,
+                       const PostSplitCameras* post) {
     std::mt19937 rng(42);
     std::normal_distribution<float> gauss(0.f, 1.f);
     std::uniform_real_distribution<float> uni(0.f, 1.f);
@@ -281,7 +377,7 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
 
     // log(scale_init * sqrt(mean d^2 of 4-NN)) over xyz, over the DISTINCT
     // points: a repeat is its own zero-distance neighbor, and would seed
-    // every splat at log(1e-8). TODO: suppress_initial_scales.
+    // every splat at log(1e-8).
     std::vector<float> nn = knn::mean_knn_dist(s.means, n_distinct, 4);
     for (int64_t i = 0; i < num; i++) {
         float d = nn[i % n_distinct];
@@ -292,6 +388,8 @@ SeedSplats seed_splats(const ColmapPoints3D& pts, const TrainConfig& cfg,
         float v = std::log(scale_init * d + 1e-8f);
         s.scales[i*3+0] = s.scales[i*3+1] = s.scales[i*3+2] = v;
     }
+    if (cfg.suppress_initial_scales && post && post->n_post > 0)
+        suppress_initial_scales(s, n_distinct, *post);
 
     for (int64_t i = 0; i < num; i++) {
         float q[4] = {gauss(rng), gauss(rng), gauss(rng), gauss(rng)};
@@ -412,7 +510,8 @@ SeedSplats seed_splats_from_ply(const std::string& path, const TrainConfig& cfg,
 }
 
 void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
-                        const TrainConfig& cfg, const ColorResolution& color) {
+                        const TrainConfig& cfg, const ColorResolution& color,
+                        const PostSplitCameras* post) {
     const int64_t room = (int64_t)cfg.cap_max - s.num;
     if (room <= 0 || pts.num() == 0) return;
 
@@ -421,7 +520,7 @@ void append_point_seeds(SeedSplats& s, const ColmapPoints3D& pts,
     TrainConfig sub = cfg;
     sub.cap_max = (int)room;
     sub.preallocate_splat_tensors = false;
-    SeedSplats p = seed_splats(pts, sub, color);
+    SeedSplats p = seed_splats(pts, sub, color, post);
 
     const int64_t K = ColorBasis{cfg.sh_degree, cfg.sb_lobes}.coeffs();
     const int64_t at = s.num, total = s.num + p.num;
@@ -1545,13 +1644,13 @@ void TrainerSession::setup_engine() {
 // --init-ply warm start, or both. A resume overwrites them either way.
 SeedSplats TrainerSession::seed_world(const ColorResolution& color) {
     if (cfg.init_ply.empty() || !cfg.resume.empty())
-        return seed_splats(ds.points, cfg, color);
+        return seed_splats(ds.points, cfg, color, &post);
 
     // A run or checkpoint directory resolves to its splat.ply, as --resume does.
     const std::string ply = find_splat_ply(cfg.init_ply).first;
     SeedSplats s = seed_splats_from_ply(ply, cfg, color);
     const int64_t from_ply = s.num;
-    if (cfg.init_ply_add_points) append_point_seeds(s, ds.points, cfg, color);
+    if (cfg.init_ply_add_points) append_point_seeds(s, ds.points, cfg, color, &post);
     log(lfmt(lmsg::seeded_from_ply,
              {ply, (long long)from_ply, (long long)(s.num - from_ply)}));
     return s;

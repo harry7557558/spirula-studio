@@ -56,9 +56,52 @@ static void saved_config() {
     check(!spirula::train_config_error(cfg).empty(), "quantization validation is preserved");
 }
 
+static void test_suppress_initial_scales() {
+    ColmapPoints3D pts;
+    pts.xyz = {
+        0.0, 0.0, 2.0,
+        0.05, 0.0, 2.0,
+        -0.05, 0.0, 2.0,
+        0.0, 0.05, 2.0,
+        0.0, -0.05, 2.0,
+        0.0, 0.0, 30.0
+    };
+    pts.rgb.assign(6 * 3, 200);
+
+    TrainConfig cfg;
+    cfg.cap_max = 10;
+    cfg.min_init_fraction = 0.1f;
+    cfg.preallocate_splat_tensors = false;
+    ColorResolution color;
+
+    cfg.suppress_initial_scales = false;
+    SeedSplats s_nosupp = seed_splats(pts, cfg, color);
+
+    PostSplitCameras post;
+    post.n_post = 1;
+    post.post_widths = {800};
+    post.post_heights = {600};
+    post.intrins = {500.f, 500.f, 400.f, 300.f};
+    post.post_models = {0};
+    post.viewmats = {
+        1.f, 0.f, 0.f, 0.f,
+        0.f, 1.f, 0.f, 0.f,
+        0.f, 0.f, 1.f, 0.f,
+        0.f, 0.f, 0.f, 1.f
+    };
+
+    cfg.suppress_initial_scales = true;
+    SeedSplats s_supp = seed_splats(pts, cfg, color, &post);
+
+    check(s_nosupp.num == 6 && s_supp.num == 6, "seed splats count matches");
+    check(s_supp.scales[5 * 3] < s_nosupp.scales[5 * 3],
+          "isolated floater scale is suppressed");
+}
+
 int main() {
     presets();
     saved_config();
+    test_suppress_initial_scales();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;
