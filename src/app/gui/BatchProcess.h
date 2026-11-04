@@ -99,6 +99,7 @@ struct BatchRow {
     // just says "train this" needs nothing filled in.
     std::vector<BatchRun> runs;
     std::string output_dir;             // "" = <dataset>/outputs
+    std::string roi_region;
     // One part of a scene partition (data/ScenePartition.h), trained with
     // --partition / --partition-part; a Merge row names the partition with no
     // part and joins the parts' models found under `output_dir`.

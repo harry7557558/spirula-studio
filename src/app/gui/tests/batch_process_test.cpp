@@ -64,9 +64,15 @@ static void training_overrides(const fs::path& root) {
     run.floater_suppression = "mild";
     row.partition = (root / "partition.json").string();
     row.partition_part = 2;
+    row.roi_region = "roi/castle.json";
     SS_CHECK(build());
     SS_CHECK(cfg.num_iterations == 12 && cfg.cap_max == 12345 && cfg.sh_degree == 0);
     SS_CHECK(cfg.partition == row.partition && cfg.partition_part == 2);
+    SS_CHECK(cfg.roi_region == "roi/castle.json");
+    row.roi_region = "off";
+    SS_CHECK(build());
+    SS_CHECK(cfg.roi_region == "off");
+    row.roi_region.clear();
     SS_CHECK(cfg.floater_suppression == "mild");
     SS_CHECK(close(cfg.depth_distortion_reg, 0.01f) && close(cfg.sh_reg, 0.25f));
     SS_CHECK(touched.count("cap_max") && touched.count("num_iterations") &&
@@ -107,6 +113,7 @@ static void training_overrides(const fs::path& root) {
 static void queue_roundtrip(const fs::path& root) {
     gui::BatchRow row;
     row.dataset = root.string();
+    row.roi_region = "roi/castle.json";
     for (const auto& value : {"", "off", "mild", "strong"}) {
         gui::BatchRun run;
         run.iterations = "123";
@@ -119,6 +126,7 @@ static void queue_roundtrip(const fs::path& root) {
     const auto loaded = gui::load_batch_list();
     SS_CHECK(loaded.size() == 1);
     if (loaded.size() != 1) return;
+    SS_CHECK(loaded[0].roi_region == "roi/castle.json");
     SS_CHECK(loaded[0].runs.size() == row.runs.size());
     if (loaded[0].runs.size() != row.runs.size()) return;
     for (size_t i = 0; i < row.runs.size(); i++) {
