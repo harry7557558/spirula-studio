@@ -694,12 +694,8 @@ inline std::vector<Reconstruction> finishModels(Mapper& mapper,
         const size_t before = models.size();
         models = splitFoldedModels(mapper, std::move(models), fopt, memo, st.finish);
         if (models.size() != before) {
-            for (Reconstruction& m : models)
-                if (m.numRegistered() >= 2 && memo.audited.insert(ModelMemo::of(m)).second)
-                    m = mapper.refine(m);
-            // The refine can re-register a cut piece into the main model while the piece
-            // grows over its rig mates, leaving a contained duplicate (4412-image rig).
-            models = dropRedundantModels(std::move(models), mopt, st.finish);
+            models = refineAfterFoldSplit(std::move(models), memo, mopt, st.finish,
+                                          [&](const Reconstruction& m) { return mapper.refine(m); });
         }
         st.t_fold = secs(t0, clk());
     }
