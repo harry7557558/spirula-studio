@@ -25,6 +25,9 @@ struct Scene {
     bool cs_is_linear = false;
     std::vector<float> cs_matrix;
     uint64_t cs_gen = 1;
+    bool has_bg_sh = false;
+    int bg_sh_degree = 0;
+    DeviceVector<float3> bg_sh_coeffs;
 };
 
 std::array<Scene, kMaxEngineScenes>& scenes() {
@@ -138,6 +141,21 @@ void engine_scene_set_color_space(int slot, bool enabled, int transfer,
 }
 
 
+void engine_scene_set_background_sh(int slot, int sh_degree,
+                                   TorchTensorView coeffs) {
+    Scene& s = at(slot);
+    if (std::get<0>(coeffs) == 0) {
+        s.has_bg_sh = false;
+        s.bg_sh_degree = 0;
+        s.bg_sh_coeffs = DeviceVector<float3>{};
+        return;
+    }
+    s.has_bg_sh = true;
+    s.bg_sh_degree = sh_degree;
+    s.bg_sh_coeffs = upload_dv<float3>(buffer_name(slot, "bg_sh_coeffs"), coeffs);
+}
+
+
 namespace {
 
 // Bytes per element of a slot attribute, and where it lives, by the name
@@ -197,6 +215,14 @@ void engine_scene_activate(int slot) {
         g_cs_slot = slot;
         g_cs_gen = s.cs_gen;
     }
+    if (s.has_bg_sh && s.bg_sh_coeffs.size() > 0) {
+        engine().background.mode = EngineBackground::Mode::Sh;
+        engine().background.enabled = true;
+        engine().background.sh_degree = s.bg_sh_degree;
+        engine().background.sh_coeffs = s.bg_sh_coeffs;
+    } else {
+        engine().background.enabled = false;
+    }
 }
 
 
@@ -214,6 +240,8 @@ void engine_scene_free(int slot) {
     if (s.world.means.data_ptr() &&
         engine().world.means.data_ptr() == s.world.means.data_ptr())
         engine().world = WorldSplats{};
+    s.has_bg_sh = false;
+    s.bg_sh_coeffs = DeviceVector<float3>{};
     DevicePool::global().free_dynamic_prefix(slot_prefix(slot));
     s = Scene{};
     if (g_cs_slot == slot) g_cs_slot = -1;

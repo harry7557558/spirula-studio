@@ -281,6 +281,7 @@ void engine_init_background_color(const float color[3], int splat_transfer,
 // whole table.
 void engine_init_background_sh(
     int sh_degree, int splat_transfer, bool splat_is_linear);
+bool engine_has_background_sh(int* out_degree = nullptr);
 
 // Per-iter values for the next forward_3dgs blend. The loss scale pair is the
 // LossConfig's, because the randomized backgrounds size their cells over the
@@ -665,6 +666,9 @@ void engine_scene_set_data_3dgs(
 void engine_scene_set_color_space(int slot, bool enabled, int transfer,
                                   bool is_linear,
                                   std::vector<float> color_matrix);
+
+void engine_scene_set_background_sh(int slot, int sh_degree,
+                                   TorchTensorView coeffs);
 
 // Overwrite one attribute array of a loaded slot in place, at the shape
 // engine_scene_set_data_3dgs uploaded it with. `field` names one of means /

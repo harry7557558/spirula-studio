@@ -12,6 +12,7 @@
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include "checkpoint/BackgroundExport.h"
 #include "checkpoint/SplatPly.h"
 #include "core/CheckpointIO.h"
 #include "external/npy.hpp"
@@ -119,6 +120,12 @@ static std::string _build_state_json(EngineState& s, int step, bool full) {
     emit_bg("bilagrid_rgb",    s.bilagrid_rgb,    &s.bilagrid_rgb.type, s.bilagrid_rgb.C);
     emit_bg("bilagrid_depth",  s.bilagrid_depth,  nullptr, 0);
     emit_bg("bilagrid_normal", s.bilagrid_normal, nullptr, 0);
+    j << "  \"background\": {\"mode\": "
+      << (s.background.mode == EngineBackground::Mode::Sh ? "\"sh\"" : "\"other\"")
+      << ", \"sh_degree\": " << s.background.sh_degree
+      << ", \"splat_transfer\": " << s.background.splat_transfer
+      << ", \"splat_is_linear\": " << b(s.background.splat_is_linear)
+      << "},\n";
     j << "  \"ppisp\": {\"enabled\": " << b(s.ppisp.enabled);
     if (s.ppisp.enabled)
         j << ", \"param_type\": \"" << s.ppisp.param_type << "\""
@@ -374,6 +381,17 @@ void engine_save_checkpoint(
                                    sl.ptr, sl.nbytes, sl.dtype_tag, host_stage);
     }
     ckpt::tar_finish(tar);
+
+    if (s.background.mode == EngineBackground::Mode::Sh && s.background.sh_coeffs.size() > 0) {
+        std::vector<float3> h_bg((size_t)s.background.sh_coeffs.size());
+        backend::memcpy_sync(h_bg.data(), s.background.sh_coeffs.data_ptr(),
+                             h_bg.size() * sizeof(float3),
+                             backend::MemcpyKind::DeviceToHost);
+        ckpt::export_background_sh_webp(out_root / "background.webp", h_bg.data(),
+                                        s.background.sh_degree, 2048, 1024,
+                                        s.background.splat_transfer,
+                                        s.background.splat_is_linear);
+    }
 }
 
 
@@ -437,6 +455,31 @@ int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth)
     engine_ensure_optim_state(sh_opt_bits, sh_val_bits, non_sh_bits, bias != 0);
     _ensure_bilagrid_optim_state();
     _ensure_ppisp_optim_state();
+
+    for (const auto& m : members) {
+        if (m.name == "eng.bg_sky.sh_coeffs.npy") {
+            auto info = ckpt::npy_locate(in, m.data_offset, m.size);
+            int64_t n_coeffs = (int64_t)(info.data_bytes / (3 * sizeof(float)));
+            int deg = (int)std::round(std::sqrt((double)n_coeffs)) - 1;
+            if (deg >= 0 && deg <= 4 && (deg + 1) * (deg + 1) == n_coeffs) {
+                int bg_transfer = s.background.splat_transfer;
+                bool bg_is_linear = s.background.splat_is_linear;
+                size_t bg_pos = sj.find("\"background\":");
+                if (bg_pos != std::string::npos) {
+                    size_t tr = sj.find("\"splat_transfer\":", bg_pos);
+                    if (tr != std::string::npos) bg_transfer = std::atoi(sj.c_str() + tr + 17);
+                    size_t lin = sj.find("\"splat_is_linear\":", bg_pos);
+                    if (lin != std::string::npos) bg_is_linear = (std::atoi(sj.c_str() + lin + 18) != 0);
+                }
+                if (s.background.mode != EngineBackground::Mode::Sh ||
+                    s.background.sh_degree != deg ||
+                    s.background.sh_coeffs.size() != n_coeffs) {
+                    engine_init_background_sh(deg, bg_transfer, bg_is_linear);
+                }
+            }
+            break;
+        }
+    }
     _ensure_bg_sh_optim_state();
 
     // Restore each saved .npy into its pool slot by name.
