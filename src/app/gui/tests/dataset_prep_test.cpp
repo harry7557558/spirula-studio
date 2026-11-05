@@ -10,6 +10,7 @@
 
 #include "app/FrameMask.h"
 #include "app/gui/DatasetPrep.h"
+#include "app/gui/DatasetRecord.h"
 #include "app/gui/FilmReel.h"
 #include "app/gui/PickSheet.h"
 #include "app/gui/mask/MaskLayer.h"
@@ -24,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -79,11 +81,13 @@ std::vector<uint8_t> box(int w, int h, int x0, int y0, int x1, int y1) {
 uint8_t at(const std::vector<uint8_t>& px, int w, int x, int y) { return px[(size_t)y * w + x]; }
 
 bool run_prep(const gui::PrepJob& job, gui::RunProgress& prog, std::string& error,
-              gui::PickSheet* picks = nullptr, gui::FilmReel* frames = nullptr) {
+              gui::PickSheet* picks = nullptr, gui::FilmReel* frames = nullptr,
+              gui::FilmReel* masks = nullptr) {
     std::atomic<bool> cancel{false};
     gui::RunFilms films;
     films.picks = picks;
     films.frames = frames;
+    films.masks = masks;
     gui::DatasetPrep prep(&prog, films, cancel);
     gui::PrepResult out;
     return prep.run(job, out, error);
@@ -157,6 +161,11 @@ void test_rerun_reapplies_corrections() {
     app::load_stencil((ws / "masks" / "b.png").string(), w, h, b);
     check(b.size() == run1.size() && at(b, W, 15, 30) == 0,
           "re-run: a's keep is not applied to uncorrected frame b");
+    job.resume = true;
+    job.make_frames = false;
+    gui::FilmReel frames, masks;
+    check(run_prep(job, prog, err, nullptr, &frames, &masks), "resume previews: " + err);
+    check(frames.size() == 3 && masks.size() == 3, "reused frames and masks populate their preview reels");
 }
 
 // A sibling holding the same PNGs under another name IS a camera, so only
@@ -433,6 +442,11 @@ void test_frames_reel_counts_images() {
     check(files_in(ws / "images" / "dual") == 4, "reel: the dual-lens photographs are split in two");
     check(files_in(ws / "images") == 11 && reel.size() == 11,
           "reel: lists all 11 images, has " + std::to_string(reel.size()));
+    job.resume = true;
+    job.make_frames = false;
+    reel.clear();
+    check(run_prep(job, prog, err, nullptr, &reel), "reel: resume: " + err);
+    check(reel.size() == 11, "reel: reused frames remain available for preview");
 }
 
 // A review's sheet: a looser threshold brings a frame back by a rename, and
@@ -626,7 +640,131 @@ void test_sort_folders_not_rig() {
           "days: the one smeared photograph moves aside, alone");
 }
 
+void test_source_aware_video_resume() {
+    const fs::path root = scratch("source_identity");
+    const fs::path source = root / "source.mp4", ws = root / "dataset";
+    { std::ofstream file(source, std::ios::binary); file << "first video bytes"; }
+    for (int i = 1; i <= 3; ++i)
+        write_jpg(ws / "images" / ("frame_00000" + std::to_string(i) + ".jpg"), 16, 12, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    gui::PrepInput input;
+    input.path = source.string();
+    input.is_video = true;
+    job.inputs = {input};
+    job.make_frames = false;
+    job.recorded_captures = {{"", source.string(), 1.0, false}};
+    std::string error;
+    check(gui::snapshot_frame_sources(job, error), "source resume: snapshot succeeds");
+    gui::StepRecord frames;
+    frames.present = frames.complete = true;
+    frames.id = "fixture";
+    frames.fields = {{"source_content", ".", job.source_content[0]}};
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    gui::RunProgress progress;
+    const bool reused = run_prep(job, progress, error);
+    check(reused, "unchanged video reuses its existing frames: " + error);
+    const auto stamp = fs::last_write_time(source);
+    { std::ofstream file(source, std::ios::binary); file << "other video bytes"; }
+    fs::last_write_time(source, stamp);
+    std::atomic<bool> cancel{false};
+    gui::DatasetPrep prep(&progress, {}, cancel);
+    gui::PrepResult result;
+    bool completed = false;
+    check(!prep.run(job, result, error, {},
+                    [&](gui::Stage, const gui::PrepJob&) { completed = true; }) &&
+              !completed && error.find("changed") != std::string::npos,
+          "source changed after planning never publishes frame completion");
+    job.source_content.clear();
+    error.clear();
+    check(!run_prep(job, progress, error) && error.find("identity") != std::string::npos,
+          "same-size same-timestamp replacement cannot reuse old video frames");
+    check(fs::exists(ws / "images" / "frame_000001.jpg"),
+          "identity mismatch preserves existing frames until explicit rebuild");
+    frames.fields.clear();
+    gui::write_step_record(job.workspace, gui::Step::Frames, frames);
+    error.clear();
+    check(!run_prep(job, progress, error), "legacy record without source identity fails closed");
+    check(fs::exists(source), "resume failure preserves the source");
+    gui::PrepJob photos;
+    photos.workspace = ws.string();
+    photos.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput photo;
+    photo.path = (root / "photos").string();
+    photos.inputs = {photo};
+    write_jpg(root / "photos" / "a.jpg", 16, 12, 1);
+    const std::string inventory = gui::frame_source_identity(photos, photos.inputs[0], true);
+    fs::rename(root / "photos" / "a.jpg", root / "photos" / "b.jpg");
+    check(!inventory.empty() &&
+              inventory != gui::frame_source_identity(photos, photos.inputs[0], true),
+          "photo inventory identity includes relative names, not just image bytes");
+    const fs::path lut = root / "look.cube";
+    { std::ofstream file(lut); file << "first LUT"; }
+    job.inputs[0].lut = lut.string();
+    const std::string with_lut = gui::frame_source_identity(job, job.inputs[0], true);
+    { std::ofstream file(lut); file << "other LUT"; }
+    check(!with_lut.empty() && with_lut != gui::frame_source_identity(job, job.inputs[0], true),
+          "file-backed LUT content is a frame source dependency");
+}
+
+void test_mask_output_ownership() {
+    const fs::path root = scratch("mask_owners") / std::string(96, 'p');
+    const fs::path masks = root / "masks";
+    fs::create_directories(masks);
+    const fs::path output = masks / "frame.png";
+    { std::ofstream file(output); file << "existing mask"; }
+    gui::MaskOutputOwners owners;
+    auto rejected = [&](const fs::path& path) {
+        try { owners.claim(path); }
+        catch (const std::runtime_error&) { return true; }
+        return false;
+    };
+    const fs::path old_owner = root / ".spirula-mask-attempts" / "attempt" / "owners" /
+        fs::absolute(output).relative_path();
+    check(old_owner.native().size() > 260, "ownership regression exceeds Windows scratch path limit");
+    check(!rejected(output), "long destination claims ownership without mirroring its path on disk");
+    check(rejected(output), "two images with the same mask stem are rejected");
+    check(rejected(masks / "." / "frame.png"), "lexical aliases cannot own the same mask");
+    check(rejected(fs::relative(output, fs::current_path())), "relative and absolute owners collide");
+    check(!rejected(root / "feature_masks" / "frame.png"), "separate train and feature outputs are allowed");
+    check(!fs::exists(root / ".spirula-mask-attempts"), "ownership validation creates no scratch tree");
+    std::string contents;
+    { std::ifstream file(output); std::getline(file, contents); }
+    check(contents == "existing mask", "ownership validation preserves existing masks");
+    std::error_code ec;
+    fs::create_directory_symlink(masks, root / "alias", ec);
+    if (!ec)
+        check(rejected(root / "alias" / "frame.png"), "directory symlink aliases cannot own the same mask");
+#ifdef _WIN32
+    check(rejected(masks / "FRAME.PNG"), "Windows ownership remains case-insensitive");
+    check(!rejected(masks / fs::path(L"\u00c4.png")) &&
+          rejected(masks / fs::path(L"\u00e4.png")), "Windows Unicode case aliases collide");
+    const auto absolute = fs::absolute(output).native();
+    if (absolute.rfind(L"\\\\", 0) != 0)
+        check(rejected(fs::path(L"\\\\?\\" + absolute)), "Windows extended and ordinary paths collide");
+#else
+    check(!rejected(masks / "FRAME.PNG"), "case-distinct POSIX outputs remain separate");
+#endif
+}
+
+void test_geometry_reel_outputs() {
+    const auto root = scratch("geometry-reel");
+    const auto maps = root / "normals";
+    write_png(maps / "frame.png", 16, 16, 128);
+    std::ofstream(maps / "frame.png.geometry-complete") << "completion record";
+    std::ofstream(maps / "frame.png.part-1") << "unfinished image";
+    gui::FilmReel reel;
+    gui::OutputWatch watch(&reel, maps, {}, {}, false, true);
+    watch.poll();
+    check(reel.size() == 1, "atomic geometry appears immediately without markers or temporary files");
+    watch.poll(true);
+    check(reel.size() == 1, "geometry flush does not duplicate published frames");
+}
+
 int main() {
+    test_geometry_reel_outputs();
+    test_mask_output_ownership();
+    test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();

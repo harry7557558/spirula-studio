@@ -45,7 +45,7 @@ void fused_projection_bwd_optimizer_3dgs_kernel_wrapper(
     const uint8_t* __restrict__ sh_value_packed,
     float2* __restrict__ sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     // float *__restrict__ v_viewmats // [C, 4, 4] optional
     // optimizer params
     const float* __restrict__ radii,
@@ -130,7 +130,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     // optimizer params
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
@@ -195,7 +195,7 @@ inline void launch_fused_projection_bwd_optimizer_3dgs_kernel(
             sh_quant_bounds.has_value() ? (float4*)std::get<0>(sh_quant_bounds.value()) : nullptr, \
             sh_value_packed.has_value() ? (const uint8_t*)std::get<0>(sh_value_packed.value()) : nullptr, \
             sh_value_bounds.has_value() ? (float2*)std::get<0>(sh_value_bounds.value()) : nullptr, \
-            non_sh, visit, \
+            non_sh, visit, depth, \
             /*v_viewmats.has_value() ? v_viewmats.value().data_ptr<float>() : nullptr */ \
             radii.data_ptr(), \
             densify_score.data_ptr(), \
@@ -261,7 +261,7 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     // optimizer params
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
@@ -320,7 +320,7 @@ static inline void _fused_projection_bwd_optimizer_dispatch(
         sh_quant_bounds, \
         sh_value_packed, \
         sh_value_bounds, \
-        non_sh, visit, \
+        non_sh, visit, depth, \
         radii, \
         densify_score, \
         lr_means, \
@@ -414,7 +414,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -448,7 +448,7 @@ void fused_projection_bwd_optimizer_3dgs(
         v_splats_world, v_splats_screen,
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,
         sh_value_packed, sh_value_bounds,
-        non_sh, visit,
+        non_sh, visit, depth,
         radii, densify_score, lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,
@@ -483,7 +483,7 @@ void fused_projection_bwd_optimizer_mip(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -517,7 +517,7 @@ void fused_projection_bwd_optimizer_mip(
         v_splats_world, v_splats_screen,
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,
         sh_value_packed, sh_value_bounds,
-        non_sh, visit,
+        non_sh, visit, depth,
         radii, densify_score, lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,
@@ -552,7 +552,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -586,7 +586,7 @@ void fused_projection_bwd_optimizer_3dgut(
         v_splats_world, v_splats_screen,
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,
         sh_value_packed, sh_value_bounds,
-        non_sh, visit,
+        non_sh, visit, depth,
         radii, densify_score, lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,
         lr_features_sh, max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight,

@@ -85,6 +85,19 @@ recorded here waits on that value. `commandBuffer()` and `barrierNow()` are the
 matching escape hatch for the few commands this class does not wrap — image
 layout transitions and image↔buffer copies in `src/video`.
 
+### The transfer queue
+
+Where the device has a transfer-only queue family (a DMA engine: NVIDIA's and
+AMD's discrete parts do), `Context` creates one queue on it and `vk/Transfer.h`
+records host-to-device copies there, so they run while the compute queue keeps
+dispatching. Ordering is the two timelines: a copy waits for the stream to pass
+a value (it is done reading what gets overwritten), and the stream waits for
+the copy's ticket with `waitOn`. A buffer the transfer queue writes must come
+from `allocDeviceShared` (concurrent sharing across the two families, so no
+ownership transfer). Without such a family, or with `SS_NN_TRANSFER_QUEUE=0`,
+`Transfer` records its copies on the stream in order and the caller is
+unchanged. `src/marigold/` streams its transformer blocks through it.
+
 ## Pipelines
 
 One pipeline layout in the process: a push-constant range and no descriptor

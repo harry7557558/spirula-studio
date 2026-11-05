@@ -18,6 +18,35 @@ static const uint TILE_AREA = TILE_SIZE_X * TILE_SIZE_Y;
 // ALPHA_THRESHOLD comes from projection_utils.slang.
 static const float DEPTH_DIST_EPS = 1e-6f;
 
+// Primitive3DGS::kernel_vis (cut > 0: cut at sigma = cut, the tail renormalized to
+// zero there); dvis = -d vis / d sigma where vis > 0. cut stays a push constant: a
+// folded exp(-cut) may round unlike the device's, and both passes must agree on alpha.
+[ForceInline]
+float kernel_vis(float sigma, float cut, out float dvis) {
+    float vis = exp(-sigma);
+    dvis = vis;
+    if (cut > 0.0f) {
+        float inv = 1.0f / (1.0f - exp(-cut));
+        dvis = vis * inv;
+        vis = max(vis - exp(-cut), 0.0f) * inv;
+    }
+    return vis;
+}
+[ForceInline]
+float kernel_vis(float sigma, float cut) {
+    float dvis;
+    return kernel_vis(sigma, cut, dvis);
+}
+
+// The sigma at which opac * kernel_vis(sigma, cut) falls to ALPHA_THRESHOLD: the cull
+// radius, which the forward and the backward must compute identically.
+[ForceInline]
+float kernel_reach(float opac, float cut) {
+    if (cut <= 0.0f) return log(opac / ALPHA_THRESHOLD);
+    float ec = exp(-cut);
+    return -log(ec + (1.0f - ec) * (ALPHA_THRESHOLD / opac));
+}
+
 // Test whether the unit ellipse (x^T inv_cov x = 1, centered at origin)
 // overlaps an axis-aligned box [x0,x1]x[y0,y1]. Port of Common.cuh
 // ellipse_box_overlap_test.

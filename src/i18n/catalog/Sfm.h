@@ -1109,6 +1109,21 @@ SS_MSG(match_progress,
     RU("Сопоставлено пар: {0}/{1}"),
     TR("{0}/{1} çift eşleştirildi"));
 
+SS_MSG(focal_sample_progress,
+    EN("{0}/{1} pairs matched for the focal search"),
+    JA("焦点距離の探索用に {0}/{1} ペアを照合しました"),
+    ZH_HANS("已为焦距搜索匹配 {0}/{1} 对"),
+    ZH_HANT("已為焦距搜尋匹配 {0}/{1} 對"),
+    KO("초점 거리 탐색용 {0}/{1} 쌍 정합 완료"),
+    DE("{0}/{1} Paare für die Brennweitensuche abgeglichen"),
+    FR("{0}/{1} paires appariées pour la recherche de focale"),
+    ES("{0}/{1} pares emparejados para la búsqueda de la focal"),
+    PT("{0}/{1} pares pareados para a busca da focal"),
+    IT("{0}/{1} coppie abbinate per la ricerca della focale"),
+    NL("{0}/{1} paren gekoppeld voor het zoeken van de brandpuntsafstand"),
+    RU("Сопоставлено пар для поиска фокусного расстояния: {0}/{1}"),
+    TR("Odak uzaklığı araması için {0}/{1} çift eşleştirildi"));
+
 SS_MSG(match_reusing_pairs,
     EN("Image pairs chosen by an earlier run: {0} -- keeping them."),
     JA("前回の実行が選んだ画像ペア: {0} 件。そのまま使います。"),
@@ -3812,6 +3827,21 @@ SS_MSG(sensor_scale_gps,
     TR("Model {0}: GPS ölçeği {1} (belirsizlik %{2}), {3} kare; {4} m içindeki kameralar: "
        "{5}/{6}, RMS {7} m"));
 
+SS_MSG(sensor_gps_track_altitude,
+    EN("GPS altitude correction for {0}: {1} m"),
+    JA("{0} の GPS 高度補正: {1} m"),
+    ZH_HANS("{0} 的 GPS 高度校正: {1} m"),
+    ZH_HANT("{0} 的 GPS 高度校正: {1} m"),
+    KO("{0}의 GPS 고도 보정: {1} m"),
+    DE("GPS-Höhenkorrektur für {0}: {1} m"),
+    FR("Correction d'altitude GPS pour {0} : {1} m"),
+    ES("Corrección de altitud GPS para {0}: {1} m"),
+    PT("Correção de altitude GPS para {0}: {1} m"),
+    IT("Correzione dell'altitudine GPS per {0}: {1} m"),
+    NL("GPS-hoogtecorrectie voor {0}: {1} m"),
+    RU("Поправка высоты GPS для {0}: {1} м"),
+    TR("{0} için GPS irtifa düzeltmesi: {1} m"));
+
 SS_MSG(sensor_scale_gps_failed,
     EN("Model {0}: GPS log not usable for scale -- {1}"),
     JA("モデル {0}: GPS ログは縮尺に使えません -- {1}"),
@@ -3991,6 +4021,21 @@ SS_MSG(sensor_fail_noup,
     NL("de IMU-stemmen voor omhoog komen niet overeen en geen schaalbron hield stand"),
     RU("голоса IMU за вертикаль не сходятся, и ни один источник масштаба не прошёл"),
     TR("IMU yukarı oyları uyuşmuyor ve hiçbir ölçek kaynağı geçmedi"));
+
+SS_MSG(sensor_fail_noup_noimu,
+    EN("no IMU measured which way is up and no scale source passed"),
+    JA("上方向を測った IMU がなく、縮尺の情報源も通りませんでした"),
+    ZH_HANS("没有 IMU 测得上方向，且没有通过的缩放来源"),
+    ZH_HANT("沒有 IMU 測得上方向，且沒有通過的縮放來源"),
+    KO("위 방향을 잰 IMU 가 없고 통과한 축척 정보원도 없습니다"),
+    DE("keine IMU hat gemessen, wo oben ist, und keine Maßstabsquelle hielt"),
+    FR("aucune IMU n'a mesuré la verticale et aucune source d'échelle n'a tenu"),
+    ES("ninguna IMU midió la vertical y ninguna fuente de escala pasó"),
+    PT("nenhuma IMU mediu a vertical e nenhuma fonte de escala passou"),
+    IT("nessuna IMU ha misurato la verticale e nessuna fonte di scala ha retto"),
+    NL("geen IMU heeft gemeten waar boven is en geen schaalbron hield stand"),
+    RU("ни одна IMU не измерила вертикаль, и ни один источник масштаба не прошёл"),
+    TR("hiçbir IMU yukarı yönü ölçmedi ve hiçbir ölçek kaynağı geçmedi"));
 
 SS_MSG(sensor_untimed,
     EN("Model {0}: {1} of {2} registered images matched no telemetry"),

@@ -17,11 +17,11 @@
 namespace sfm {
 
 // (a'/i, b'/j), a' facing away from a, for each seed (a/i, b/j) whose frame
-// pair has at most a quarter of the members in seeds -- the weak links -- where
-// a'/i and b'/j face within `max_angle_deg` had a/i and b/j faced alike.
+// pair has at most a quarter of the members in seeds (the weak links; all of
+// them unless `weak_only`), where a'/i and b'/j face within `max_angle_deg`.
 inline std::vector<std::pair<uint32_t, uint32_t>> rigMatePairs(
     const RigTable& rigs, const std::vector<std::pair<uint32_t, uint32_t>>& seeds,
-    double max_angle_deg) {
+    double max_angle_deg, bool weak_only = true) {
     const double cos_max = std::cos(max_angle_deg * M_PI / 180.0);
     // implied[r][a * n + b]: the member pairs a chosen (a, b) brings.
     std::vector<std::vector<std::vector<std::pair<uint32_t, uint32_t>>>> implied(rigs.rigs.size());
@@ -68,7 +68,7 @@ inline std::vector<std::pair<uint32_t, uint32_t>> rigMatePairs(
         if (!si.valid() || !sj.valid() || si.rig != sj.rig || si.frame == sj.frame) continue;
         const RigSpec& spec = rigs.rigs[si.rig];
         const size_t n = spec.members.size();
-        if (links[frameKey(si, sj)] > std::max<size_t>(1, n / 4)) continue;
+        if (weak_only && links[frameKey(si, sj)] > std::max<size_t>(1, n / 4)) continue;
         for (const auto& mm : implied[si.rig][si.member * n + sj.member]) {
             const uint32_t p = spec.frames[si.frame][mm.first];
             const uint32_t q = spec.frames[sj.frame][mm.second];

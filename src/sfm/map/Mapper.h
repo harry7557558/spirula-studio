@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory>
@@ -58,6 +59,7 @@
 #include "sfm/map/Merge.h"
 #include "sfm/map/Profile.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 
 namespace sfm {
 
@@ -362,7 +364,7 @@ struct MapperOptions {
     std::string device_selector;
     // Host worker threads for the passes that fan out over points
     // (filterPoints) and for a bundle adjustment that runs on the host.
-    // 0 = hardware_concurrency.
+    // 0 = hardware_threads().
     int threads = 0;
     bool verbose = true;
     // Whether this mapper speaks for the run: it writes the snapshot a front
@@ -844,7 +846,18 @@ public:
         rebuildScores();
         const bool tight = opt_.ba_final_tight;
         opt_.ba_final_tight = tight && !coarse;
-        globalRefine(true, fixed_rotation_stage);
+        try {
+            globalRefine(true);
+        } catch (const BAOverBudget&) {
+            opt_.ba_final_tight = tight;
+            throw;
+        } catch (const std::exception& e) {
+            opt_.ba_final_tight = tight;
+            slog::err_raw(slog::Tag::Map,
+                          "[map] model refinement failed: " + std::string(e.what()) +
+                          "; keeping unrefined model");
+            return m;
+        }
         opt_.ba_final_tight = tight;
         return snapshotModel();
     }
@@ -1151,7 +1164,15 @@ public:
         // second round, without retriangulation (44a78445 dropped that deliberately), pulls it.
         final_.min_rounds = 2;
         final_.no_retri = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[seam] weld refinement failed: " + std::string(e.what()) +
+                          "; keeping unwelded model");
+            return m;
+        }
         final_ = FinalRelease{};
         st.rounds = refine_rounds_;
         st.reproj_after = meanReprojPx();
@@ -1256,7 +1277,15 @@ public:
         for (const auto& kv : rec_.cameras) before[kv.first] = {kv.second.cx, kv.second.cy};
         final_.pp = pp;
         final_.extra = extra;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] polish refinement failed: " + std::string(e.what()) +
+                          "; keeping unpolished model");
+            return m;
+        }
         final_ = FinalRelease{};
         if (opt_.verbose)
             for (const auto& kv : rec_.cameras) {
@@ -1282,7 +1311,15 @@ public:
         if (!splitCamerasPerImage()) return m;
         final_.extra = free_extra;
         final_.no_sanitize = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] per-image intrinsics refinement failed: " + std::string(e.what()) +
+                          "; keeping shared intrinsics model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1297,7 +1334,15 @@ public:
         adopt(m);
         rebuildScores();
         final_.no_rig = true;
-        globalRefine(true);
+        try {
+            globalRefine(true);
+        } catch (const std::exception& e) {
+            final_ = FinalRelease{};
+            slog::err_raw(slog::Tag::Map,
+                          "[map] free-rig refinement failed: " + std::string(e.what()) +
+                          "; keeping calibrated rig model");
+            return m;
+        }
         final_ = FinalRelease{};
         return snapshotModel();
     }
@@ -1364,7 +1409,7 @@ public:
         modelScale();  // warm the lazy cache before any worker reads it
         std::vector<char> hit(ids.size(), 0);
         std::vector<Pose> alts(ids.size());
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         if (audit_dump_) nt = 1;
         nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(ids.size(), 1)));
@@ -1805,12 +1850,21 @@ public:
             } catch (const BAOverBudget& e) {
                 const int want =
                     std::max(batches + 1, (int)std::ceil(e.need_mb / e.budget_mb * batches));
-                if (want > 64) throw;
+                if (want > 64) {
+                    slog::err_raw(slog::Tag::Map,
+                                  "[map] joint solve exceeds memory budget across 64 batches; keeping unrefined models");
+                    return;
+                }
                 if (opt_.verbose)
                     slog::diag(slog::Tag::Map,
                                "[map] the joint solve needs %.0f MB against a %.0f MB budget: "
                                "splitting it %d ways", e.need_mb, e.budget_mb, want);
                 batches = want;
+            } catch (const std::exception& e) {
+                slog::err_raw(slog::Tag::Map,
+                              "[map] joint solve failed: " + std::string(e.what()) +
+                              "; keeping unrefined models");
+                return;
             }
         }
         // Deliberately no per-model refine afterwards: that would re-fit each
@@ -3078,7 +3132,16 @@ private:
             ProfTimer pt(g_map_prof.snapshot);
             snap = takeSnapshot();
         }
-        globalRefine(final_pass);
+        try {
+            globalRefine(final_pass);
+        } catch (const std::exception& e) {
+            slog::err_raw(slog::Tag::Map,
+                          "[map] global refinement failed: " + std::string(e.what()) +
+                          "; keeping current model");
+            restoreSnapshot(snap);
+            recent_regs_.clear();
+            return;
+        }
         // Collapse = losing half the registered images. Observation loss alone
         // is NOT a collapse: shredding most of a junk-heavy image's points
         // while every pose survives is the filters working as intended, and
@@ -3774,7 +3837,7 @@ private:
         // same cache). That is the atom case -- the parallelism there is over
         // atoms, so each mapper runs single-threaded -- and leaving the
         // prefetch on cost 2578 two-view RANSACs where 34 atoms needed 84.
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         const size_t max_block =
             std::max<size_t>(1, opt_.threads > 0 ? (size_t)opt_.threads : (hc ? hc : 1));
         size_t block = 1;
@@ -3901,7 +3964,7 @@ private:
         if (todo.size() < 2) return;  // one pair is not worth a pool
         std::vector<TwoViewGeometry> out(todo.size());
         std::atomic<size_t> next{0};
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         const size_t want = opt_.threads > 0 ? (size_t)opt_.threads : std::max(1u, hc);
         const size_t nt = std::min<size_t>(todo.size(), want);
         std::vector<std::thread> pool;
@@ -5635,7 +5698,7 @@ private:
     // worker gets a zeroed flag buffer the size of the image table.
     template <class F>
     void parallelFor(size_t n, size_t block, F&& fn) {
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)((n + block - 1) / block)));
         std::atomic<size_t> next{0};
@@ -5684,7 +5747,7 @@ private:
 
         std::vector<uint64_t> drop;
         std::atomic<int> removed_obs_atomic{0};
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = opt_.threads > 0 ? opt_.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(pts.size() / 512, 1)));
         std::vector<std::vector<uint64_t>> drop_per_thread(nt);

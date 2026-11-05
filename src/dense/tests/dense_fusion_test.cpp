@@ -1,3 +1,4 @@
+#include "core/HardwareThreads.h"
 #include "dense/Fusion.h"
 #include "dense/DiskTable.h"
 
@@ -57,7 +58,7 @@ int main() {
             const auto stats = fuse_surfaces(source,output,work,1,budget,workers);
             auto result = read(output);
             require(stats.surfaces == 337 && result.size() == 337,"neighbor fusion duplicated or lost a surface");
-            if (std::string(name) == "parallel" && std::thread::hardware_concurrency() > 1)
+            if (std::string(name) == "parallel" && spirula::hardware_threads() > 1)
                 require(stats.workers == 2,"independent fusion partitions were not processed in parallel");
             if (baseline.empty()) baseline = result;
             else {

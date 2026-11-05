@@ -281,6 +281,7 @@ void engine_init_background_color(const float color[3], int splat_transfer,
 // whole table.
 void engine_init_background_sh(
     int sh_degree, int splat_transfer, bool splat_is_linear);
+bool engine_has_background_sh(int* out_degree = nullptr);
 
 // Per-iter values for the next forward_3dgs blend. The loss scale pair is the
 // LossConfig's, because the randomized backgrounds size their cells over the
@@ -482,19 +483,9 @@ double engine_take_data_wait_seconds();
 // the worker is parked on, false abandons the pipeline. See DataManager.h.
 void engine_resolve_data_error(bool retry);
 
-// Pull the next batch from the DataManager, install it as GT + camera params,
-// and run the forward pass only -- no loss, no backward, no optimizer, no
-// densification. What an eval pass needs: it reuses the same decode, mask and
-// fisheye/equirect warp path training does, so eval GT is the warped GT and
-// not a host-side reconstruction of it.
-//
-// Afterwards `engine_copy_gt_rgb_to_host` and `engine_copy_render_to_host`
-// read the pair back. Returns the POST-split view count in the batch (K per
-// input image), or 0 when the stream is exhausted.
-//
-// Call `engine_setup_data_manager` with the eval split first; that replaces
-// the training DataManager, so this belongs after the training loop.
-int engine_eval_forward(std::string primitive, int sh_degree, bool packed);
+// Render one eval image by dataset index, using the training decode and warp path.
+// The installed GT remains available to the host-copy functions. Returns face count.
+int engine_eval_forward(int index, std::string primitive, int sh_degree, bool packed);
 
 // Same, for ONE image by dataset index (the GUI's compare view), rendering one
 // pass of its faces as step `cfg` would: returns that pass's views, `out_passes`
@@ -676,6 +667,10 @@ void engine_scene_set_color_space(int slot, bool enabled, int transfer,
                                   bool is_linear,
                                   std::vector<float> color_matrix);
 
+void engine_scene_set_background_sh(int slot, int sh_degree,
+                                   TorchTensorView coeffs, int transfer = 0,
+                                   bool is_linear = false);
+
 // Overwrite one attribute array of a loaded slot in place, at the shape
 // engine_scene_set_data_3dgs uploaded it with. `field` names one of means /
 // quats / scales / opacities / features_dc / features_sh.
@@ -710,31 +705,15 @@ std::string engine_vram_report();
 // SS_PROFILE is set.
 void engine_profile_capture_vram();
 
-// --- Checkpoint save ---
-//
-// Writes into `output_dir`:
-//   splat.ply  : cur_num_splats only, NaN+low-opacity-filtered (inference).
-//   state.tar  : POSIX ustar (zero-dep) containing
-//                  state.json          -- runtime + validation manifest
-//                  <slot_name>.npy     -- one flat typed array per saved pool
-//                                         slot (e.g. world.means.npy,
-//                                         eng.sh_quant.q.npy). Quantized codecs
-//                                         emit .q (packed) and .qb (bounds).
-// Which slots are saved is driven by SaveClass metadata (PoolSlots.h), so the
-// set can never drift from the live buffers:
-//   full_dump=false -> Always slots  (appearance / inference params)
-//   full_dump=true  -> Always+Resume (world raw params + all optimizer state,
-//                                      i.e. sufficient to resume training)
-// The device->host copy is chunked, using no extra device memory.
+// Writes splat.ply, state.tar and (for SH backgrounds) a 2:1 background.webp.
+// full_dump includes optimizer state for resume; otherwise saves appearance only.
+// Device buffers are copied in chunks; background_export_height is in pixels.
 void engine_save_checkpoint(
     std::string output_dir,
     bool full_dump,
-    int step
+    int step,
+    int background_export_height = 512
 );
 
-// Restore engine state from `input_dir`/state.tar (resume training). The engine
-// skeleton must already be configured (world seeded at max_num_splats; any
-// bilagrid/PPISP channels in the checkpoint initialized). Sets runtime scalars +
-// optimizer layout from state.json, force-allocates optimizer/appearance-optim
-// buffers, and restores every saved buffer by slot name. Returns the saved step.
-int engine_load_checkpoint(std::string input_dir);
+// Requires seeded world buffers and initialized appearance channels; returns the saved step.
+int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth = true);

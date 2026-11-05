@@ -25,7 +25,6 @@ find_package(Threads REQUIRED)
 
 include(SsSlang)
 ss_find_slangc(SS_NN_SLANGC)
-ss_build_spirv_tool(SS_NN_SPIRV_TOOL)
 
 set(SS_NN_SHADER_ROOT ${SS_SRC}/nn/shaders)
 
@@ -83,17 +82,10 @@ function(ss_nn_shaders tag shader_dir out_embed_cpp)
     list(LENGTH _blobs _n)
     message(STATUS "Inference SPIR-V (${tag}): ${_n} modules")
 
-    set(_listfile ${_spv_dir}/blobs.txt)
-    string(REPLACE ";" "\n" _listbody "${_blobs}")
-    ss_write_if_different(${_listfile} "${_listbody}\n")
-
     set(_embed ${CMAKE_CURRENT_BINARY_DIR}/nn_shaders_${tag}.cpp)
-    add_custom_command(OUTPUT ${_embed}
-        COMMAND ${SS_NN_SPIRV_TOOL} embed --nn ${tag} ${_embed}
-                --list ${_listfile}
-        DEPENDS ${SS_NN_SPIRV_TOOL} ${_blobs} ${_listfile}
-        COMMENT "Embedding SPIR-V (${tag}: ${_n} modules)"
-        VERBATIM)
+    ss_embed_spirv(${_embed} ${_spv_dir}/blobs.txt
+        "Embedding SPIR-V (${tag}: ${_n} modules)"
+        BLOBS ${_blobs} FLAGS --nn ${tag})
 
     set(${out_embed_cpp} ${_embed} PARENT_SCOPE)
 endfunction()
@@ -228,7 +220,7 @@ target_compile_options(ss_metric3d PRIVATE
 set_property(TARGET ss_metric3d PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
-# ss_moge -- MoGe-2 monocular point maps, normals and a validity mask
+# ss_moge -- MoGe-2 / MoGe-3 monocular point maps, normals and a validity mask
 #
 # The only one of these libraries with NO shaders of its own, hence no
 # ss_nn_shaders() edge: the ops it needed were general and went into nn/.
@@ -241,6 +233,20 @@ target_link_libraries(ss_moge PUBLIC ss_nn)
 target_compile_options(ss_moge PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 set_property(TARGET ss_moge PROPERTY CXX_STANDARD 17)
+
+# ---------------------------------------------------------------------------
+# ss_marigold -- Marigold v2 depth and normals on Qwen-Image-Edit-2509, from
+# 4-bit weights streamed to the device. No shaders of its own: the NF4
+# expansion and the per-head RMSNorm it needed are general and went into nn/.
+# ---------------------------------------------------------------------------
+file(GLOB_RECURSE SS_MARIGOLD_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/marigold/*.cpp)
+list(FILTER SS_MARIGOLD_SOURCES EXCLUDE REGEX "/tests/")
+
+add_library(ss_marigold STATIC ${SS_MARIGOLD_SOURCES})
+target_link_libraries(ss_marigold PUBLIC ss_nn)
+target_compile_options(ss_marigold PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+set_property(TARGET ss_marigold PROPERTY CXX_STANDARD 17)
 
 # ---------------------------------------------------------------------------
 # ss_roma -- native RoMa v2 inference
@@ -264,6 +270,19 @@ target_link_libraries(ss_blur PUBLIC ss_nn)
 target_compile_options(ss_blur PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
 set_property(TARGET ss_blur PROPERTY CXX_STANDARD 17)
+
+# ---------------------------------------------------------------------------
+# ss_lpips -- LPIPS for the eval pass, which reaches it through the hook
+# app/EvalLpips.cpp installs: TrainerCore lives in the engine library and
+# cannot link this. Its one shader is the per-tap distance.
+# ---------------------------------------------------------------------------
+ss_nn_shaders(lpips ${SS_SRC}/lpips/shaders SS_LPIPS_EMBED)
+file(GLOB SS_LPIPS_SOURCES CONFIGURE_DEPENDS ${SS_SRC}/lpips/*.cpp)
+add_library(ss_lpips STATIC ${SS_LPIPS_SOURCES} ${SS_LPIPS_EMBED})
+target_link_libraries(ss_lpips PUBLIC ss_nn)
+target_compile_options(ss_lpips PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>)
+set_property(TARGET ss_lpips PROPERTY CXX_STANDARD 17)
 
 add_executable(edge_width_test ${SS_SRC}/blur/tests/edge_width_test.cpp
                                ${SS_SRC}/app/FrameSharpness.cpp)
@@ -318,15 +337,17 @@ file(GLOB SS_NN_TESTS CONFIGURE_DEPENDS
      ${SS_SRC}/nn/tests/*.cpp ${SS_SRC}/sam/tests/*.cpp
      ${SS_SRC}/aliked/tests/*.cpp ${SS_SRC}/loma/tests/*.cpp
      ${SS_SRC}/metric3d/tests/*.cpp
-     ${SS_SRC}/moge/tests/*.cpp ${SS_SRC}/birefnet/tests/*.cpp
-     ${SS_SRC}/gdino/tests/*.cpp ${SS_SRC}/roma/tests/*.cpp)
+     ${SS_SRC}/moge/tests/*.cpp ${SS_SRC}/marigold/tests/*.cpp
+     ${SS_SRC}/birefnet/tests/*.cpp
+     ${SS_SRC}/gdino/tests/*.cpp ${SS_SRC}/roma/tests/*.cpp
+     ${SS_SRC}/lpips/tests/*.cpp)
 foreach(test_src ${SS_NN_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
     # Every test links every library above it: the four are small, and one
     # rule here beats a per-directory list that drifts.
     target_link_libraries(${test_name} PRIVATE ss_sam ss_aliked ss_loma ss_metric3d
-                                                ss_moge ss_roma)
+                                               ss_moge ss_marigold ss_roma ss_lpips)
     set_property(TARGET ${test_name} PROPERTY CXX_STANDARD 17)
     target_compile_definitions(${test_name} PRIVATE SS_REPO_ROOT="${SS_ROOT}")
     target_compile_options(${test_name} PRIVATE

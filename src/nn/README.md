@@ -15,6 +15,17 @@ Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name|auto|uuid:hex>`,
 `SS_PROFILE=1`, `SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`, `SS_NN_COOPMAT=0`,
 `SS_SUBMIT_BUDGET_MS`, `SS_VK_SUBMIT_LOG` (docs/notes/gpu-submit-budget.md).
 
+Host loops in `core/Parallel.h` accept a process-local thread cap through
+`nn::set_parallel_threads(unsigned)`, including the calling thread.
+`nn::parallel_threads()` returns the effective cap, limited to hardware concurrency
+with a minimum of one. Zero restores the default automatic hardware sizing.
+The setting is atomic; each `parallel_for` snapshots it once, so changes do not
+resize an in-flight loop. It is a per-loop cap, not a shared pool across concurrent
+or nested calls. Worker processes set it before starting their host work.
+`nn::configured_parallel_threads()` returns the configured value, retaining zero
+for automatic sizing. `nn::load_image` forwards an explicit cap to EXR/TIFF
+decoders, but preserves their all-core default when no cap is configured.
+
 The context probes optional `VK_EXT_memory_budget`. `Context::memoryBudget`
 queries the selected device's current local-heap budgets and usage, or returns
 an empty report when unsupported. The query in `core/VulkanMemoryBudget.h`
@@ -71,6 +82,13 @@ more than the arithmetic.
   matters for frame time. It keeps its weight tile in shared in the fp16 the
   checkpoint already holds, which is why it needs an fp16 weight and why an
   fp32 second operand (a matmul against another activation) falls back.
+
+  `sparse_conv` is the same four kernels with `x` read through a neighbour
+  table (`kGatherCi`, `load_x` in both GEMM modules): row m, column t·Ci + c is
+  `x[nbr[m, t], c]`. It is a sparse convolution with no column matrix, which
+  for MoGe-3's refiner would be 3.2 GB a convolution. Row splits move the
+  table, not `x`. The gathered loads, not the multiply, bound it at narrow
+  widths: at 32 output channels the tensor-core kernel is only 10% faster.
 
 - **Attention** has a cooperative-matrix variant too (`flash_attn_coop`),
   selected whenever the device offers tensor cores and `head_dim` is a multiple
@@ -185,6 +203,15 @@ Tiny track, 38 in 17 M for a SAM 3 image, all on boundaries. Both kernels take
 fp16 operands with an fp32 accumulator, which is the arithmetic PyTorch runs
 these models in; `nn_ops_test` checks each path against a reference rounded the
 same way, so the tolerances stay tight rather than being widened to absorb it.
+- **Quantized weights** are a storage format, not a GEMM. `dequant_nf4`
+  expands bitsandbytes' NF4 (blocksize 64, bf16 scales, `dequantize_4bit`'s
+  bf16 rounding) into the fp16 matrix the GEMMs above already take, optionally
+  adding a merged LoRA product and scaling rows by a gate. It needs no device
+  feature past the baseline, so a model that streams 4-bit weights runs
+  wherever fp16 weights do; `src/marigold/` expands one projection at a time
+  into a reused scratch. `LinearOpts::x_scale` is its companion: activations
+  past fp16's range (Qwen-Image's reach 5e4) are prescaled by a power of two
+  before the tensor-core kernel rounds them, which changes nothing else.
 - **Convolution** is chunked im2col + GEMM, not a bespoke kernel. A full im2col
   of the seg head's 288×288×256 3×3 conv would be 764 MiB, so the output
   positions are chunked to keep the column buffer near 32 MiB. Depthwise is

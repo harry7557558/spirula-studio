@@ -50,9 +50,9 @@
 // other.
 enum class VramCategory : uint8_t {
     Splat = 0,   // per-splat params, gradients, optimizer state, densify aux
-    // Scratch sized by (camera, gaussian), visible or splat-tile PAIRS: the
-    // one category that grows during training. Splat is sized for cap_max
-    // (POOL_LIVE_SPLAT_TABLE) -- docs/notes/vram-splat-x-img.md.
+    // Scratch sized by (camera, gaussian), visible or splat-tile PAIRS, and
+    // the alias arena: the one category that grows during training. Splat is
+    // sized for cap_max (POOL_LIVE_SPLAT_TABLE) -- docs/notes/vram-splat-x-img.md.
     SplatXImg,
     Image,       // per-image buffers: render outputs, GT, loss maps, img grads
     Appearance,  // bilagrid / background-SH / PPISP / color-space / color-shift
@@ -126,10 +126,15 @@ enum class SaveClass : uint8_t {
   X(EngAccumBuffer                 , "eng.accum_buffer",                  Splat    , Resume) \
   X(EngBiasCorrectionSteps         , "eng.bias_correction_steps",         Splat    , Resume) \
   X(EngVisitCounters               , "eng.visit_counters",                Splat    , Resume) \
+  X(EngProjectiveState, "eng.projective_state", Splat, Resume) \
+  X(EngProjectiveInformation, "eng.projective_information", Splat, Resume) \
+  X(EngProjectiveCenters, "eng.projective_centers", Other, Never) \
+  X(EngMaxWeight                   , "eng.max_weight",                    Splat    , Never) \
   X(EngDensifyWorldGradScore       , "eng.densify.world_grad_score",      Splat    , Never) \
   X(EngDensifySampleScore          , "eng.densify.sample_score",          Splat    , Never) \
   X(EngDensifyOversize             , "eng.densify.oversize",              Splat    , Never) \
   X(EngDensifyOversizeWeight       , "eng.densify.oversize_weight",       Splat    , Never) \
+  X(EngLearnedScoreStats           , "eng.densify.learned_score_stats",   Other    , Never) \
   X(EngRegionWeight                , "eng.region.weight",                 Splat    , Never) \
   X(EngRegionProgram               , "eng.region.program",                Other    , Never) \
   X(EngRegionFieldBvh              , "eng.region.field_bvh",              Other    , Never) \
@@ -194,6 +199,7 @@ enum class SaveClass : uint8_t {
   X(RenderTs                       , "render.Ts",                         Image    , Never) \
   X(RenderLastIds                  , "render.last_ids",                   Image    , Never) \
   X(RenderMedian                   , "render.median",                     Image    , Never) \
+  X(RenderScore                    , "render.score",                      Image    , Never) \
   /* render/distortion channel tuples: sub-buffers ".rgb"/".depth"/".normal" */ \
   X(Renders                        , "renders",                           Image    , Never) \
   X(Distortions                    , "distortions",                       Image    , Never) \
@@ -318,7 +324,11 @@ enum class SaveClass : uint8_t {
   X(SemiOffloadedAdamBuf           , "semi_offloaded_adam_buf",           Other    , Never) \
   X(SsimScalar                     , "ssim_scalar",                       Other    , Never) \
   X(SsimMaskWeight                 , "ssim.mask_weight",                  Image    , Never) \
+  X(SsimBlurred                    , "ssim.blurred",                      Image    , Never) \
+  X(SsimBlurNorm                   , "ssim.blur_norm",                    Image    , Never) \
+  X(SsimBlurGrad                   , "ssim.blur_grad",                    Image    , Never) \
   X(ScielabMaskWeight              , "scielab.mask_weight",               Image    , Never) \
+  X(FlipMaskWeight                 , "flip.mask_weight",                  Image    , Never) \
   /* ---- densify scratch ---- */ \
   X(DensifyQuantileTemp            , "densify_quantile_temp",             Other    , Never) \
   X(DensifyMapNorm                 , "densify_map_norm",                  Other    , Never) \
@@ -472,14 +482,15 @@ constexpr const char* to_string(SaveClass s) {
 // ---- Aliasing: phases that share one arena --------------------------------
 
 // A slot listed in POOL_ALIAS_TABLE below owns no storage: every phase carves
-// out of ONE arena, so it costs the largest phase and not the sum. Adding a
-// row is a lifetime claim -- docs/notes/vram-splat-x-img.md says how to test it.
+// out of ONE arena (booked to SplatXImg), so it costs the largest phase. Adding
+// a row is a lifetime claim -- docs/notes/vram-splat-x-img.md says how to test it.
 enum class PoolPhase : uint8_t {
     None = 0,   // owns its allocation -- every slot not listed below
     TileIsect,  // scratch that dies inside do_intersect_tile_generic
     Loss,       // the loss pyramid and its scratch, dead once the loss returns
     ImageBwd,   // what the image stages' backward rebuilds after the loss
     RasterBwd,  // raster backward -> projection backward / fused optim step
+    Densify,    // one densify launcher's scratch, dead when it returns
     Count
 };
 
@@ -494,7 +505,33 @@ enum class PoolPhase : uint8_t {
   /* Screen-space gradients: written by the raster backward, consumed by the \
      projection backward, or stashed for the fused optim step -- all before \
      the next forward's intersection. forward_3dgs drops the stashed view. */ \
-  X(RasterBwdVScreen   , RasterBwd)
+  X(RasterBwdVScreen   , RasterBwd) \
+  /* The perceptual losses' per-call scratch, re-acquired per pyramid scale \
+     (acquire_reused): scale 0 sizes it. */ \
+  X(SsimMaskWeight     , Loss) \
+  X(SsimBlurred        , Loss) \
+  X(SsimBlurNorm       , Loss) \
+  X(SsimBlurGrad       , Loss) \
+  X(ScielabMaskWeight  , Loss) \
+  X(FlipMaskWeight     , Loss) \
+  /* Each relocate / add / score-clip launcher opens its own instance: the \
+     draw's sort and the relocation lists never leave the call. */ \
+  X(DensifyScoreGather             , Densify) \
+  X(DensifyWswrSortingValues       , Densify) \
+  X(DensifyWswrKeysOut             , Densify) \
+  X(DensifyWswrIndicesIn           , Densify) \
+  X(DensifyWswrIndicesOut          , Densify) \
+  X(DensifyWswrOutIdx              , Densify) \
+  X(DensifyRelocMask               , Densify) \
+  X(DensifyRelocDstIndices         , Densify) \
+  X(DensifyMcmcSampleProbs         , Densify) \
+  X(DensifyMcmcSampleProbsCumsum   , Densify) \
+  X(DensifyMcmcIndexMap            , Densify) \
+  X(DensifyMcmcNIdxBuffer          , Densify) \
+  X(DensifyMcmcAddSampleProbs      , Densify) \
+  X(DensifyMcmcAddSampleProbsCumsum, Densify) \
+  X(DensifyMcmcAddIndexMap         , Densify) \
+  X(DensifyMcmcAddNIdxBuffer       , Densify)
 
 struct AliasRow { PoolSlot slot; PoolPhase phase; };
 inline constexpr AliasRow kAliasRows[] = {
@@ -527,61 +564,28 @@ static_assert(ce_alias_rows_unique(),
 #define POOL_LIVE_SPLAT_TABLE(X) \
   X(EngSubbatchAccumWeightSum)       X(EngDensifyOversizeWeight) \
   X(RasterBwdAccumWeight)            X(RasterBwdVWorld) \
-  X(FusedProjBwdCamBounds)           X(DensifyScoreGather) \
-  X(DensifyWswrSortingValues)        X(DensifyWswrKeysOut) \
-  X(DensifyWswrIndicesIn)            X(DensifyWswrIndicesOut) \
-  X(DensifyRelocMask)                X(DensifyRelocDstIndices) \
-  X(DensifyMcmcSampleProbs)          X(DensifyMcmcSampleProbsCumsum) \
-  X(DensifyMcmcIndexMap)             X(DensifyMcmcNIdxBuffer) \
-  X(DensifyMcmcAddSampleProbs)       X(DensifyMcmcAddSampleProbsCumsum) \
-  X(DensifyMcmcAddNIdxBuffer)
-
-// One int32 per drawn splat: the draw's size varies from call to call and is
-// bounded only by the live count, so these get cap_max elements outright.
-#define POOL_SPLAT_DRAW_TABLE(X) \
-  X(DensifyWswrOutIdx)               X(DensifyMcmcAddIndexMap)
-
-enum class LiveSizing : uint8_t { None, Proportional, Draw };
+  X(FusedProjBwdCamBounds)
 
 inline constexpr PoolSlot kLiveSplatSlots[] = {
 #define X(name) PoolSlot::name,
     POOL_LIVE_SPLAT_TABLE(X)
 #undef X
 };
-inline constexpr PoolSlot kSplatDrawSlots[] = {
-#define X(name) PoolSlot::name,
-    POOL_SPLAT_DRAW_TABLE(X)
-#undef X
-};
 
-constexpr LiveSizing slot_live_sizing(PoolSlot s) {
+constexpr bool slot_live_sized(PoolSlot s) {
     for (PoolSlot r : kLiveSplatSlots)
-        if (r == s) return LiveSizing::Proportional;
-    for (PoolSlot r : kSplatDrawSlots)
-        if (r == s) return LiveSizing::Draw;
-    return LiveSizing::None;
+        if (r == s) return true;
+    return false;
 }
 
 constexpr bool ce_live_splat_rows_are_splat() {
     for (PoolSlot r : kLiveSplatSlots)
         if (slot_category(r) != VramCategory::Splat || slot_phase(r) != PoolPhase::None)
             return false;
-    for (PoolSlot r : kSplatDrawSlots)
-        if (slot_category(r) != VramCategory::Splat || slot_phase(r) != PoolPhase::None)
-            return false;
     return true;
 }
 static_assert(ce_live_splat_rows_are_splat(),
               "POOL_LIVE_SPLAT_TABLE: rows must be Splat and own their memory");
-
-// DevicePool::category_bytes() books the whole arena to SplatXImg.
-constexpr bool ce_alias_rows_grow() {
-    for (const AliasRow& r : kAliasRows)
-        if (slot_category(r.slot) != VramCategory::SplatXImg) return false;
-    return true;
-}
-static_assert(ce_alias_rows_grow(),
-              "POOL_ALIAS_TABLE: an arena-backed slot must be SplatXImg");
 
 constexpr const char* to_string(PoolPhase p) {
     switch (p) {
@@ -590,6 +594,7 @@ constexpr const char* to_string(PoolPhase p) {
         case PoolPhase::Loss:      return "loss";
         case PoolPhase::ImageBwd:  return "image-bwd";
         case PoolPhase::RasterBwd: return "raster-bwd";
+        case PoolPhase::Densify:   return "densify";
         default:                   return "?";
     }
 }

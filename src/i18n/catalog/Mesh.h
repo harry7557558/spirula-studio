@@ -1804,6 +1804,21 @@ SS_MSG(help_quality_iters,
     RU("итерации перекладывания по валентности и касательной релаксации [{0}]"),
     TR("değerlik çevirme ve teğetsel gevşetme yinelemeleri [{0}]"));
 
+SS_MSG(help_progress_dir,
+    EN("write how far the run is and the memory it expects into <dir>/memory.json while it goes, for a front end that is watching"),
+    JA("実行中、進み具合と見込みのメモリ量を <dir>/memory.json に書き出す（見守るフロントエンド向け）"),
+    ZH_HANS("运行期间把进度和预计的内存写入 <dir>/memory.json，供监视它的前端读取"),
+    ZH_HANT("執行期間把進度和預計的記憶體寫入 <dir>/memory.json，供監看它的前端讀取"),
+    KO("실행 중 진행 정도와 예상 메모리를 <dir>/memory.json에 기록합니다(지켜보는 프런트엔드용)"),
+    DE("schreibt während des Laufs Fortschritt und erwarteten Speicher nach <dir>/memory.json, für eine Oberfläche, die zusieht"),
+    FR("écrit pendant le calcul l'avancement et la mémoire prévue dans <dir>/memory.json, pour une interface qui le suit"),
+    ES("escribe durante la ejecución el avance y la memoria prevista en <dir>/memory.json, para una interfaz que la observa"),
+    PT("grava durante a execução o progresso e a memória prevista em <dir>/memory.json, para uma interface que a acompanha"),
+    IT("scrive durante l'esecuzione l'avanzamento e la memoria prevista in <dir>/memory.json, per un'interfaccia che la segue"),
+    NL("schrijft tijdens het draaien de voortgang en het verwachte geheugen naar <dir>/memory.json, voor een interface die meekijkt"),
+    RU("во время работы записывает ход выполнения и ожидаемую память в <dir>/memory.json для следящего интерфейса"),
+    TR("çalışırken ilerlemeyi ve beklenen belleği, izleyen bir arayüz için <dir>/memory.json dosyasına yazar"));
+
 SS_MSG(help_quiet,
     EN("less progress output"),
     JA("進捗の出力を減らす"),

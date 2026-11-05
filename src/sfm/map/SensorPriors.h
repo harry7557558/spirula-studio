@@ -168,9 +168,12 @@ inline MetricFit gpsCentreFactors(MetricRef ref, const Vec3* up_w, double max_er
             fitted.centres.push_back(ref.centres[i]);
             fitted.targets.push_back(ref.targets[i]);
             fitted.image_ids.push_back(ref.image_ids[i]);
+            if (i < ref.tracks.size()) fitted.tracks.push_back(ref.tracks[i]);
         }
     fit = fitMetricGauge(fitted, max_error, up_w ? MetricAxes::Horizontal : MetricAxes::Full,
-                         max_error_frac);
+                         max_error_frac,
+                         up_w && trusted ? MetricTrackOffsets::Vertical
+                                         : MetricTrackOffsets::None);
     if (!fit.ok) return fit;
     // 1e-6 of the spread keeps exact (synthetic) positions' factors finite.
     const double least = 1e-6 * fit.spread;
@@ -188,6 +191,7 @@ inline MetricFit gpsCentreFactors(MetricRef ref, const Vec3* up_w, double max_er
         f.img[0] = ref.image_ids[i];
         f.A[0] = A;
         f.b = ref.targets[i] - fit.T.t;
+        if (i < ref.tracks.size()) f.b.z -= fit.trackVerticalOffset(ref.tracks[i]);
         f.sigma = {sh, sh, levelOnly(i) ? 0.0 : sv};
         f.cauchy = trusted ? kTrustedGpsCauchy : 0.0;
         out.centres.push_back(f);
@@ -200,6 +204,8 @@ inline MetricFit gpsCentreFactors(MetricRef ref, const Vec3* up_w, double max_er
     out.gps.gate = fit.max_error;
     out.gps.centroid = fit.centroid;
     out.gps.spread = fit.spread;
+    out.gps.track_ids = fit.track_ids;
+    out.gps.track_vertical_offsets = fit.track_vertical_offsets;
     return fit;
 }
 
@@ -440,6 +446,19 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         ensureEnuOrigin();
         return enu_origin_;
+    }
+
+    bool positionError(uint32_t img, const Pose& pose, const GpsFrame& f,
+                       double& metres) const override {
+        if (!f.ok || !opt_.gps || !has(img)) return false;
+        std::lock_guard<std::mutex> lk(mu_);
+        Vec3 p;
+        if (!positionLocked(img, p)) return false;
+        p.z -= f.trackVerticalOffset(cap_[img]);
+        Vec3 r = mul(f.A, cameraCenter(pose)) + f.t - p;
+        if (f.flat) r.z = 0;
+        metres = r.norm();
+        return true;
     }
 
     PosePriors factors(const std::vector<PosedImage>& imgs) override {
@@ -730,6 +749,7 @@ private:
             ref.centres.push_back(f.c);
             ref.targets.push_back(p);
             ref.image_ids.push_back(f.image_id);
+            ref.tracks.push_back(f.capture);
         }
         const int posed = (int)ref.centres.size();
         const size_t before = out.centres.size();

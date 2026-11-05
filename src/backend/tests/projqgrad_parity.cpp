@@ -35,7 +35,7 @@ using backend::MemcpyKind;
 static constexpr int64_t N = 3072;
 static constexpr int64_t C = 2;
 static constexpr uint32_t W = 200, H = 150;
-static constexpr int NUM_SH = 15;
+static constexpr int NUM_SH = 24;
 static constexpr int64_t NB = (N + 255) / 256;  // bounds blocks
 
 template <typename T>
@@ -186,6 +186,7 @@ int main(int argc, char** argv) {
         {0, true, 2, 1, 2, true, false},
         {2, true, 0, 2, 1, false, true},
         {1, false, 0, 0, 3, true, false},
+        {0, true, 0, 0, 4, true, true},
     };
 
     for (const Cfg& cfg : cfgs) {

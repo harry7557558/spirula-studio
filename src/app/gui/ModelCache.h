@@ -20,6 +20,7 @@
 // every Linux/macOS ship it), resumable, into "<file>.part" so an interrupted
 // fetch never looks like a complete model.
 
+#include "app/gui/ProgressClock.h"
 #include "i18n/Message.h"
 
 #include <atomic>
@@ -137,6 +138,9 @@ struct PendingDownload {
     std::string mirror;          // tried when `url` fails; empty: none
     std::string license_family;  // empty: none needed
     std::string sha256;          // lowercase hex the file must match; empty: unchecked
+    // Not a file at a URL but a child that builds the model (`spirula
+    // geometry --install`), its progress read off geometry::log_install_progress.
+    std::vector<std::string> command;
 };
 
 // A single background download. One at a time is enough for the GUI, so this
@@ -162,12 +166,15 @@ public:
     State state() const { return _state.load(); }
     // 0..1, or -1 when the server did not send a length.
     float progress() const { return _progress.load(); }
+    // The bar's clock, brought up to date from progress(). UI thread.
+    const ProgressClock& clock();
     std::string status();          // "412 MB of 707 MB", or the error
     std::string path();            // valid when Done
     std::vector<std::string> drain_log();
 
 private:
     void run(std::vector<std::string> urls, std::string dest, uint64_t expected_bytes, std::string sha256);
+    void run_command(std::vector<std::string> argv);
     int fetch(const std::string& url, const std::string& part, uint64_t expected_bytes);
     void log(const std::string& line);
 
@@ -175,6 +182,7 @@ private:
     std::atomic<State> _state{State::Idle};
     std::atomic<bool>  _cancel{false};
     std::atomic<float> _progress{-1.0f};
+    ProgressClock _clock;
     std::mutex _mu;
     std::string _status, _path;
     std::vector<std::string> _log;

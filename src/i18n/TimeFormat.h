@@ -31,8 +31,9 @@ inline std::string format_duration(double seconds) {
 
 // The same, without the milliseconds: an estimate of when a queue of runs will
 // be done is hours long, and "02:41:07.913" reads as a measurement of one.
+// What every progress bar shows, so an unknown keeps the same shape.
 inline std::string format_duration_coarse(double seconds) {
-    if (seconds < 0) return "--:--";
+    if (seconds < 0) return "--:--:--";
     const long long s = (long long)(seconds + 0.5);
     char buf[64];
     std::snprintf(buf, sizeof buf, "%02lld:%02lld:%02lld", s / 3600,

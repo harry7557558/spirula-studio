@@ -109,6 +109,10 @@ enum class DensifyLossMapMode : int {
     SsimStructureNms = 10,
     SCielab = 11,
     SCielabNms = 12,
+    Flip = 13,
+    FlipNms = 14,
+    FlipFeature = 15,
+    FlipFeatureNms = 16,
 };
 
 // A *Nms mode is its base plus canny's non-maximum-suppression step (see
@@ -116,10 +120,12 @@ enum class DensifyLossMapMode : int {
 constexpr bool densify_loss_map_has_nms(DensifyLossMapMode m) {
     return (m >= DensifyLossMapMode::LossFullNms &&
             m <= DensifyLossMapMode::SsimStructureNms) ||
-           m == DensifyLossMapMode::SCielabNms;
+           m == DensifyLossMapMode::SCielabNms || m == DensifyLossMapMode::FlipNms ||
+           m == DensifyLossMapMode::FlipFeatureNms;
 }
 constexpr DensifyLossMapMode densify_loss_map_base(DensifyLossMapMode m) {
-    if (m == DensifyLossMapMode::SCielabNms) return DensifyLossMapMode::SCielab;
+    if (m >= DensifyLossMapMode::SCielab)
+        return densify_loss_map_has_nms(m) ? (DensifyLossMapMode)((int)m - 1) : m;
     return densify_loss_map_has_nms(m)
         ? (DensifyLossMapMode)((int)m - (int)DensifyLossMapMode::LossFullNms + 1)
         : m;
@@ -129,7 +135,13 @@ constexpr DensifyLossMapMode densify_loss_map_base(DensifyLossMapMode m) {
 enum class PerceptualLoss : int {
     Ssim = 0,
     SCielab = 1,
+    Flip = 2,
+    SsimBlurTolerant = 3,
 };
+
+// SsimBlurTolerant's blur sigma in full-resolution pixels; each coarser loss
+// scale halves it (docs/notes/ssim-blur-tolerance.md).
+constexpr float kSsimBlurTolerance = 1.5f;
 
 // The S-CIELAB term is mean dE*ab / 100, so L* spans [0, 1] as the image does.
 constexpr float kScielabLossPerDeltaE = 0.01f;
@@ -149,7 +161,7 @@ enum class SsimLossMapMode : int {
 
 // Per-step loss values returned by compute_multi_scale_per_pixel_losses.
 // Fields mirror LossIndex (raw weighted sums) plus the perceptual term: ssim,
-// or delta_e (mean S-CIELAB dE*ab) -- whichever one was trained.
+// delta_e (mean S-CIELAB dE*ab) or flip (mean FLIP) -- whichever was trained.
 struct LossValues {
     float rgb_loss;
     float rgb_psnr;
@@ -167,6 +179,7 @@ struct LossValues {
     float median_render_normal_reg;
     float ssim;
     float delta_e;
+    float flip;
 };
 
 

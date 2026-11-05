@@ -636,6 +636,8 @@ void Context::createDevice(const ContextOptions& opts) {
     // module is first acquired -- so leaving the flag false is enough to keep
     // the capability off the device entirely.
 #ifdef VK_KHR_cooperative_matrix
+    const char* coop_env = spirula::env("NN_COOPMAT");
+    const bool coop_forced_on = coop_env && std::strcmp(coop_env, "1") == 0;
     if (!envFlagDefaultOn("NN_COOPMAT")) {
         coopmat_reason_ = "disabled by SS_NN_COOPMAT=0";
     } else if (!has(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME)) {
@@ -646,6 +648,12 @@ void Context::createDevice(const ContextOptions& opts) {
         VkPhysicalDeviceVulkan12Features p12{
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         pcm.pNext = &p12;
+#ifdef VK_EXT_shader_atomic_float
+        VkPhysicalDeviceShaderAtomicFloatFeaturesEXT fatomic{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT};
+        const bool has_atomic_float = has(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+        if (has_atomic_float) p12.pNext = &fatomic;
+#endif
         VkPhysicalDeviceFeatures2 pf2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
         pf2.pNext = &pcm;
         vkGetPhysicalDeviceFeatures2(physical_, &pf2);
@@ -656,11 +664,23 @@ void Context::createDevice(const ContextOptions& opts) {
         pp2.pNext = &pcmp;
         vkGetPhysicalDeviceProperties2(physical_, &pp2);
 
+        // Pre-RDNA3 AMD lacks WMMA; driver emulates cooperative matrix in
+        // software, producing NaNs and ~250x slowdown. Native fadd starts at RDNA3.
+        const bool is_amd = pp2.properties.vendorID == 0x1002;
+#ifdef VK_EXT_shader_atomic_float
+        const bool amd_has_matrix_hw = has_atomic_float && fatomic.shaderBufferFloat32AtomicAdd;
+#else
+        const bool amd_has_matrix_hw = false;
+#endif
+        const bool amd_emulated_coop = is_amd && !amd_has_matrix_hw;
+
         // Reported in the order the shader would trip over them.
         if (!pcm.cooperativeMatrix)
             coopmat_reason_ = "cooperativeMatrix feature not supported";
         else if (!(pcmp.cooperativeMatrixSupportedStages & VK_SHADER_STAGE_COMPUTE_BIT))
             coopmat_reason_ = "cooperative matrix is not supported in compute shaders";
+        else if (!coop_forced_on && amd_emulated_coop)
+            coopmat_reason_ = "AMD pre-RDNA3 GPU lacks hardware matrix cores (driver cooperative matrix is emulated and unstable)";
         else if (!p12.shaderFloat16)
             coopmat_reason_ = "no shaderFloat16";
         else if (!p12.vulkanMemoryModel || !p12.vulkanMemoryModelDeviceScope)
@@ -800,6 +820,19 @@ void Context::createDevice(const ContextOptions& opts) {
     }
 #endif
 
+    // A transfer-only family is the copy engine: work on it runs beside the
+    // compute queue rather than between its dispatches.
+    if (envFlagDefaultOn("NN_TRANSFER_QUEUE"))
+        for (uint32_t i = 0; i < nq; ++i) {
+            const VkQueueFlags f = qf2[i].queueFamilyProperties.queueFlags;
+            if ((f & VK_QUEUE_TRANSFER_BIT) &&
+                !(f & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) &&
+                i != video_queue_family_ && i != encode_queue_family_) {
+                transfer_family_ = i;
+                break;
+            }
+        }
+
     // ---- queues ---------------------------------------------------------
     const float prio = 1.0f;
     std::vector<VkDeviceQueueCreateInfo> qcis;
@@ -816,6 +849,10 @@ void Context::createDevice(const ContextOptions& opts) {
         if (encode_queue_family_ != UINT32_MAX && encode_queue_family_ != queue_family_ &&
             encode_queue_family_ != video_queue_family_) {
             q.queueFamilyIndex = encode_queue_family_;
+            qcis.push_back(q);
+        }
+        if (transfer_family_ != UINT32_MAX) {
+            q.queueFamilyIndex = transfer_family_;
             qcis.push_back(q);
         }
     }
@@ -895,6 +932,8 @@ void Context::createDevice(const ContextOptions& opts) {
                          video_queue_family_ == queue_family_ ? 0 : 0, &video_queue_);
     if (encode_queue_family_ != UINT32_MAX)
         vkGetDeviceQueue(device_, encode_queue_family_, 0, &encode_queue_);
+    if (transfer_family_ != UINT32_MAX)
+        vkGetDeviceQueue(device_, transfer_family_, 0, &transfer_queue_);
 
 }
 

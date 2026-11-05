@@ -633,7 +633,8 @@ void launch_family_bwd_v1(
             patched ? (m + mi_batch_size - 1) / mi_batch_size : 1;
         uint32_t gx = (uint32_t)((W * mult_x + kBwdV1BlockX - 1) / kBwdV1BlockX);
         uint32_t gy = (uint32_t)((H * mult_y + kBwdV1BlockY - 1) / kBwdV1BlockY);
-        uint32_t gz = (uint32_t)(patched ? N * num_m_batches * L : N * L);
+        const int layers = entry.rfind("bilagrid_ppisp.", 0) == 0 ? (L + 1) / 2 : L;
+        uint32_t gz = (uint32_t)(patched ? N * num_m_batches * layers : N * layers);
         check_grid_dims(gx, gy, gz, e.v1_grid);
 
         BpV1GridParams p{};

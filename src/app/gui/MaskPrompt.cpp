@@ -4,6 +4,7 @@
 
 #include "app/gui/Layout.h"
 #include "app/gui/ModelCache.h"
+#include "app/gui/ProgressView.h"
 #include "app/gui/Ui.h"
 #include "i18n/catalog/Dataset.h"
 
@@ -20,13 +21,7 @@ namespace {
 const ImVec4 kPickerOk(0.35f, 0.85f, 0.45f, 1.0f);
 const ImVec4 kPickerErr(1.0f, 0.42f, 0.42f, 1.0f);
 
-// The English terms. Chosen for what SAM 3 actually responds to -- a concrete
-// countable noun, singular, optionally qualified -- rather than for what reads
-// best in a menu.
-//
-// Nothing here names the black area outside a fisheye circle. It is not an
-// object, the model does not find it under any wording, and it is in the same
-// place in every frame anyway, which makes it app::FrameMask's job.
+// Terms stay in English for SAM 3; labels follow the interface language.
 const std::vector<MaskSubject>& subjects_impl() {
     static const std::vector<MaskSubject> v = {
         // By role as well: "person" alone misses part of a crowd of passers-by.
@@ -48,8 +43,10 @@ const std::vector<MaskSubject>& subjects_impl() {
         {&dmsg::subj_vehicle,         "vehicle"},
         {&dmsg::subj_license_plate,   "license plate"},
         {&dmsg::subj_sky,             "sky"},
+        {&dmsg::subj_cloud,           "cloud"},
+        {&dmsg::subj_water,           "water"},
+        {&dmsg::subj_wave,            "wave"},
         {&dmsg::subj_shadow,          "shadow of person"},
-        // {&dmsg::subj_water,           "water"},
         // {&dmsg::subj_reflection,      "reflection"},
         {&dmsg::subj_camera,          "camera"},
         {&dmsg::subj_tripod,          "tripod"},
@@ -347,8 +344,7 @@ void draw_mask_model_picker(std::string& model_id, std::string* detector_id,
             break;
         case PickerRow::Downloading:
             // The overlay is a byte count from curl, not a sentence.
-            ui::ProgressBarRaw(std::max(download.progress(), 0.0f), ImVec2(260, 0),
-                               download.status().c_str());
+            download_bar(download, download.status());
             ImGui::SameLine();
             if (ui::Button(dmsg::stop)) download.cancel();
             break;

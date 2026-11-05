@@ -11,6 +11,8 @@
 // SfmRunner fills it by parsing the child's stdout; when the SfM module
 // becomes a library (docs/notes/sfm-port-plan.md phase 3) only that parser goes.
 
+#include "app/gui/ProgressClock.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -30,9 +32,10 @@ enum class StageStatus { Pending, Running, Done, Skipped, Failed };
 
 struct StageProgress {
     StageStatus status = StageStatus::Pending;
-    float   fraction = -1.0f;    // 0..1, or -1 when the step cannot estimate one
+    float   fraction = -1.0f;    // 0..1 of the work, or -1 when the step cannot estimate one
     int64_t done = 0, total = 0;
     std::string detail;          // already formatted; the line under the bar
+    ProgressClock clock;         // what the bar draws: time, not `fraction`
 };
 
 // How much the view changed along one input, for the panel that watches the
@@ -66,9 +69,11 @@ class RunProgress {
 public:
     void reset();
 
-    // Enter a step. Everything before it still Pending becomes Skipped, so a
-    // run that masks nothing does not leave "Masks" looking like it is next.
+    // Enter a step; everything before it still Pending becomes Skipped. The
+    // running step entered with a new label is a new phase counting something
+    // new, and its bar and clock start over; detail() only relabels.
     void enter(Stage s, const std::string& detail);
+    void restart(Stage s);
     void count(Stage s, int64_t done, int64_t total);
     void fraction(Stage s, float f);
     void detail(Stage s, const std::string& text);

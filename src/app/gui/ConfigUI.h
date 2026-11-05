@@ -1,22 +1,7 @@
 #pragma once
 
-// ConfigUI -- the "Advanced options" editor. All widgets are expanded from
-// the SS_CONFIG_FIELDS X-macro (config/TrainConfig.h), so every one of
-// the training config fields is editable, with:
-//   - grouping under the field table's `section` headings, collapsed by
-//     default so novices are not overwhelmed
-//   - a detail filter over the field table's `tier`, so the default view is
-//     the ~20 flags a first run needs rather than all 178
-//   - a search box filtering by flag name, label and help text, which ignores
-//     the detail filter: searching finds a flag wherever it is buried
-//   - a translated label per row (i18n/catalog/TrainFields.h), with the
-//     `--flag` it stands for and its help text as a hover tooltip (+ the
-//     preset default)
-//   - modified-from-preset highlighting and right-click "Reset to default"
-//   - fields with `choices` as dropdowns, std::optional as auto/override
-//
-// A row added to the field table appears here automatically -- no GUI change
-// needed.
+// Training options from SS_CONFIG_FIELDS, with translated labels and help,
+// section grouping, detail/search filters and preset comparisons.
 
 #include "config/TrainConfig.h"
 

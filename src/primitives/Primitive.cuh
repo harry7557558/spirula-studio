@@ -41,6 +41,17 @@ constexpr bool accum_any(DensifyAccumMode m) { return m != DensifyAccumMode::Non
 constexpr int accum_lanes(DensifyAccumMode m)
     { return m == DensifyAccumMode::Avg ? 2 : 1; }
 
+// The learned densification score's map: s blended like a colour and
+// normalized by coverage, as depth is (docs/notes/learned-densify-score.md).
+// s_i = score[i].x^exponent, or `prior` until the update count score[i].y > 0.
+struct SplatScoreRender {
+    const float2* score = nullptr;  // [N]; null renders no map
+    float* out = nullptr;           // [I, H, W]
+    float exponent = 1.0f;
+    float prior = 1.0f;
+    bool enabled() const { return score != nullptr; }
+};
+
 // Depth distortion operates on log depth (ln z). This floor keeps the log/exp
 // and the 1/z gradient chain finite for non-positive depths (the eval3d path
 // already guarantees z > 0; the 2D path does not). Must match in fwd + bwd.

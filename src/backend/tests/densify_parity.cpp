@@ -1,30 +1,10 @@
-// Backend parity tool for the densification launch APIs: densify_clip_scale,
-// the MCMC/revised noise kernels, the long-axis-split relocate/add family
-// and the MCMC relocate/add family. The SAME source builds under both
-// backends:
-//
-//   CUDA build:   ./densify_parity dump ref.bin
-//   Vulkan build: ./densify_parity compare ref.bin   (per device)
-//
-// Ref format: [nf tight floats] [nl loose floats] [nc int32 codes].
-//
-// Channels: deterministic outputs (clip_scale) compare in the tight float
-// channel. Everything downstream of float-hash randomness sits in the LOOSE
-// float channel with a violation-fraction cap: randn3 noise and the
-// sampling draws (efraimidis keys, MCMC cumsum binary searches) hash
-// integers bit-exactly on both backends, but their float post-processing
-// (fract/log/cumsum association) can flip rare boundary cases
-// cross-backend, and one flipped sample rewrites one splat's row. Quantized
-// packed cells compare as integer codes with a +-1 allowance and the same
-// rationale for its violation cap.
-//
-// The long-axis-split RELOCATE path pairs sampled srcs with atomically
-// compacted dst slots, so the pairing is scheduling-dependent even on CUDA
-// alone. The relocate configs are therefore constructed with EXACTLY ONE
-// relocating splat (one low-opacity config, one non-finite config), making
-// the pairing trivial and the comparison elementwise; the ADD path (same
-// kernel, dst = cur + i deterministic) covers many concurrent dst splats,
-// including neighbor-word masked atomic stores in the quantized layouts.
+// Densification parity: dump a CUDA reference, compare it on Vulkan.
+// Ref format: tight floats, loose floats, integer codes.
+// Integer noise keys match exactly; transcendental functions and cumulative
+// sampling sums allow small numerical differences in the loose channel.
+// Relocation uses one destination per fixture because atomic compaction makes
+// source/destination pairing schedule-dependent. Addition tests concurrent
+// destinations, including masked stores to shared quantization words.
 
 #include <kernels/densify/Densify.cuh>
 
@@ -150,7 +130,7 @@ int main(int argc, char** argv) {
         float* d_opacs = upload(opacs);
         mcmc_add_noise_tensor(N, 2e-2f, dv<float3>(d_means, N),
                               dv<float3>(d_scales, N), dv<float4>(d_quats, N),
-                              dv<float>(d_opacs, N));
+                              dv<float>(d_opacs, N), 27);
         backend::device_synchronize();
         readback_f(lacc, d_means, 3 * N);
 
@@ -160,9 +140,24 @@ int main(int argc, char** argv) {
                                  dv<float3>(d_means2, N),
                                  dv<float3>(d_scales, N),
                                  dv<float4>(d_quats, N),
-                                 dv<float>(d_opacs, N));
+                                 dv<float>(d_opacs, N),
+                                 DeviceVector<float>(), 1.0f, 27);
         backend::device_synchronize();
         readback_f(lacc, d_means2, 3 * N);
+
+        // gated on the peak weight: half the splats look hidden (peak far under opacity)
+        std::vector<float> peak(N);
+        for (int64_t i = 0; i < N; ++i) peak[i] = (i % 2) ? 0.5f : 2e-3f;
+        float* d_means3 = upload(means);
+        float* d_peak = upload(peak);
+        revised_add_noise_tensor(N, 5e-2f, dv<float>(d_radii, N),
+                                 dv<float3>(d_means3, N),
+                                 dv<float3>(d_scales, N),
+                                 dv<float4>(d_quats, N),
+                                 dv<float>(d_opacs, N),
+                                 dv<float>(d_peak, N), 0.5f, 27);
+        backend::device_synchronize();
+        readback_f(lacc, d_means3, 3 * N);
     }
 
     // ---- long-axis-split relocate/add + MCMC relocate/add ----
@@ -182,6 +177,8 @@ int main(int argc, char** argv) {
         float* sh_value_bounds;         // float2 blocks
         uint8_t* nq_packed[5];
         float* nq_bounds[5];
+        float* projective_state;
+        float* projective_information;
         float* accum;                   // float2 [CAP]
         int32_t* bias_steps;
         uint32_t* visit;                // core/SplatVisitState.h counters
@@ -227,6 +224,15 @@ int main(int argc, char** argv) {
         m.scales = upload(scales);
         m.opacs = upload(opacs);
         m.dc = upload(dc);
+        std::vector<float> depth_state(4*CAP);
+        for (int64_t i = 0; i < CAP; ++i) {
+            for (int k = 0; k < 3; ++k) depth_state[4*i+k] = dc[3*i+k];
+            depth_state[4*i+3] = 42;
+        }
+        m.projective_state = upload(depth_state);
+        std::vector<float> information(CAP);
+        for (int64_t i = 0; i < CAP; ++i) information[i] = dc[3*i]*dc[3*i]+1;
+        m.projective_information = upload(information);
 
         if (sh_value_bits == 32) {
             std::vector<float> sh(3 * num_sh * CAP);
@@ -376,7 +382,25 @@ int main(int argc, char** argv) {
     };
 
     // Argument pack shared by the four API calls.
-    auto call_relocate_las = [&](Model& m, float min_opacity, uint32_t seed) {
+    auto check_projective_state = [&](const Model& m) {
+        std::vector<float> colors(3*CAP), state(4*CAP), information(CAP);
+        backend::memcpy_sync(colors.data(),m.dc,colors.size()*4,MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(state.data(),m.projective_state,state.size()*4,MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(information.data(),m.projective_information,information.size()*4,MemcpyKind::DeviceToHost);
+        for (int64_t i = 0; i < CAP; ++i) {
+            if (information[i] != colors[3*i]*colors[3*i]+1)
+                throw std::runtime_error("split child lost its bearing information");
+            for (int k = 0; k < 3; ++k)
+                if (colors[3*i+k] != state[4*i+k])
+                    throw std::runtime_error("split child lost its parent's projective state");
+            if (state[4*i+3] != 42) throw std::runtime_error("split child lost its optimizer age");
+        }
+    };
+
+    auto call_relocate_las = [&](Model& m, float min_opacity, uint32_t seed,
+                                 float* max_weight = nullptr,
+                                 bool dead_by_opacity = true,
+                                 int64_t* num_dead = nullptr) {
         relocate_splats_with_long_axis_split_tensor(
             N, min_opacity, /*split_opacity_k=*/0.6f,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -401,17 +425,20 @@ int main(int argc, char** argv) {
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
             dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP), /*dead_after_steps=*/100u,
+            dv<float>(max_weight, max_weight ? CAP : 0), dead_by_opacity,
             m.sh_optim_bits, (int)m.num_sh,
             dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
-            seed, /*max_relocate=*/0, /*num_dead_out=*/nullptr);
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
+            seed, /*max_relocate=*/0, num_dead);
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
-    auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed) {
+    auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed,
+                            float* max_weight = nullptr) {
         add_splats_with_long_axis_split_tensor(
             N, num_add, /*split_opacity_k=*/0.6f,
             dv<float3>(m.means, CAP), dv<float4>(m.quats, CAP),
@@ -436,14 +463,16 @@ int main(int argc, char** argv) {
                        0),
             dv<float2>(m.accum, CAP), DeviceVector<float2>{},
             dv<int32_t>(m.bias_steps, CAP), dv<uint32_t>(m.visit, CAP),
+            dv<float>(max_weight, max_weight ? CAP : 0),
             m.sh_optim_bits, (int)m.num_sh,
             dv<float4>(m.sh_state_bounds, m.sh_state_bound_f / 4),
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed);
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     auto call_relocate_mcmc = [&](Model& m, float min_opacity,
@@ -475,9 +504,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed, DeviceVector<float>());
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     auto call_add_mcmc = [&](Model& m, int64_t num_add, float min_opacity,
@@ -509,9 +539,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed, DeviceVector<float>());
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     // A recycled splat must come back alive. Parity cannot see this on its
@@ -741,6 +772,90 @@ int main(int argc, char** argv) {
         call_add_mcmc(m, 600, 0.005f, 112u);
         check_inherited(m, N + 600, "add_mcmc q16");
         readback_model(m);
+    }
+
+    // Peak-weight dead test: a transparent splat seen in front stays unless
+    // opacity is tested too; an unseen opaque one dies. Rows start at half
+    // their opacity, and a split scales both. Self-checked, not dumped.
+    auto sig = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
+    auto mw_ratio_ok = [&](const std::vector<float>& op,
+                           const std::vector<float>& mw, int64_t n,
+                           auto&& skip) {
+        for (int64_t i = 0; i < n; i++) {
+            if (skip(i)) continue;
+            const float want = 0.5f * sig(op[i]);
+            if (std::fabs(mw[i] - want) > 1e-5f * want) return false;
+        }
+        return true;
+    };
+    for (int either = 0; either < 2; either++) {
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
+        std::vector<float> op(CAP), mw(CAP), accum(2 * CAP);
+        backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(accum.data(), m.accum, 2 * CAP * 4,
+                             MemcpyKind::DeviceToHost);
+        auto transparent = [](int64_t i) { return i % 97 == 5; };
+        auto unseen = [&](int64_t i) { return i % 89 == 7 && !transparent(i); };
+        int64_t n_transparent = 0, n_unseen = 0;
+        for (int64_t i = 0; i < CAP; i++) {
+            if (i < N && transparent(i)) {
+                op[i] = -8.f;
+                accum[2 * i] = 0.f;  // never drawn as a source
+            }
+            mw[i] = 0.5f * sig(op[i]);
+            if (i < N && transparent(i)) { mw[i] = 0.5f; n_transparent++; }
+            if (i < N && unseen(i)) { mw[i] = 1e-3f; n_unseen++; }
+        }
+        backend::memcpy_sync(m.opacs, op.data(), CAP * 4, MemcpyKind::HostToDevice);
+        backend::memcpy_sync(m.accum, accum.data(), 2 * CAP * 4,
+                             MemcpyKind::HostToDevice);
+        float* d_mw = upload(mw);
+        int64_t num_dead = 0;
+        call_relocate_las(m, 0.005f, 151u + either, d_mw, either != 0, &num_dead);
+        backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(mw.data(), d_mw, CAP * 4, MemcpyKind::DeviceToHost);
+        int64_t kept = 0;
+        for (int64_t i = 0; i < N; i++)
+            kept += transparent(i) && op[i] == -8.f && mw[i] == 0.5f;
+        const int64_t want_dead = n_unseen + (either ? n_transparent : 0);
+        const int64_t want_kept = either ? 0 : n_transparent;
+        const bool ratio = mw_ratio_ok(op, mw, N, [&](int64_t i) {
+            return !either && transparent(i);
+        });
+        if (num_dead != want_dead || kept != want_kept || !ratio) {
+            std::printf("densify_parity: max-weight relocate (%s) found %lld "
+                        "dead (want %lld), kept %lld transparent (want %lld), "
+                        "weights %s\n", either ? "either" : "max_weight",
+                        (long long)num_dead, (long long)want_dead,
+                        (long long)kept, (long long)want_kept,
+                        ratio ? "ok" : "off");
+            revived_ok = false;
+        }
+        backend::device_free(d_mw);
+    }
+    {
+        Model m = build_model(32, 32, false, false, 15, 15, -1, -1, -1);
+        std::vector<float> op(CAP), mw(CAP), want(CAP);
+        backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
+        float* d_mw = upload(mw);
+        densify_max_weight_init_tensor(N, dv<float>(m.opacs, CAP), dv<float>(d_mw, CAP));
+        densify_max_weight_scale_tensor(N, 0.5f, dv<float>(d_mw, CAP));
+        backend::device_synchronize();
+        check_projective_state(m);
+        backend::memcpy_sync(mw.data(), d_mw, CAP * 4, MemcpyKind::DeviceToHost);
+        const bool init_ok = mw_ratio_ok(op, mw, N, [](int64_t) { return false; });
+        const int64_t num_add = 555;
+        call_add_las(m, num_add, 161u, d_mw);
+        backend::memcpy_sync(op.data(), m.opacs, CAP * 4, MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(mw.data(), d_mw, CAP * 4, MemcpyKind::DeviceToHost);
+        const bool add_ok =
+            mw_ratio_ok(op, mw, N + num_add, [](int64_t) { return false; });
+        if (!init_ok || !add_ok) {
+            std::printf("densify_parity: max-weight %s off\n",
+                        init_ok ? "after add" : "init/scale");
+            revived_ok = false;
+        }
+        backend::device_free(d_mw);
     }
 
     if (dumping) {

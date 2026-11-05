@@ -36,6 +36,11 @@ struct GatherParams {
     uint32_t n, cols, vocab, groups_per_row, _pad0;
 };
 
+struct SegmentMeanParams {
+    uint64_t out, x, offsets, ids;
+    uint32_t segments, C, n, groups_per_row;
+};
+
 struct StridedCopyParams {
     uint64_t out, x;
     uint32_t rows, cols, in_stride, out_stride, groups_per_row, _pad0;
@@ -252,6 +257,26 @@ void gather_rows(const Tensor& out, const Tensor& table, const Tensor& ids) {
                                    &p.groups_per_row);
 }
 
+void segment_mean(const Tensor& out, const Tensor& x, const Tensor& offsets,
+                  const Tensor& ids) {
+    NN_CHECK(out.cols() == x.cols() && offsets.numel() == out.rows() + 1,
+             "segment_mean: %lld segments of %lld channels need %lld offsets, got %lld",
+             (long long)out.rows(), (long long)x.cols(), (long long)(out.rows() + 1),
+             (long long)offsets.numel());
+    const KernelName entry = span_entry("misc.segment_mean", {out, x});
+    SegmentMeanParams p{};
+    p.out = out.ptr;
+    p.x = x.ptr;
+    p.offsets = offsets.ptr;
+    p.ids = ids.ptr;
+    p.segments = (uint32_t)out.rows();
+    p.C = (uint32_t)out.cols();
+    p.n = (uint32_t)x.rows();
+    vk::SpecList spec{(uint32_t)(x.dtype == DType::F16), 0u};
+    vk::Stream::get().dispatchFlat(entry, spec, out.numel(), 256, &p, sizeof(p),
+                                   &p.groups_per_row);
+}
+
 void strided_copy(const Tensor& out, const Tensor& in, int64_t rows, int64_t cols,
                   int64_t in_stride, int64_t out_stride) {
     vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u};
@@ -455,6 +480,35 @@ void upsample_nearest2x(const Tensor& out, const Tensor& in) {
 }
 void maxpool2x2(const Tensor& out, const Tensor& in) {
     resize_op("resample.maxpool2x2", out, in);
+}
+
+void maxpool(const Tensor& out, const Tensor& in, int kernel, int stride) {
+    NN_CHECK(out.ndim == 3 && in.ndim == 3, "maxpool expects [H, W, C] tensors");
+    NN_CHECK(out.shape[2] == in.shape[2], "maxpool: channel counts differ");
+    NN_CHECK(kernel > 0 && stride > 0 && in.shape[0] >= kernel && in.shape[1] >= kernel,
+             "maxpool(%d, %d) of %lldx%lld", kernel, stride, (long long)in.shape[0],
+             (long long)in.shape[1]);
+    const int64_t want_h = (in.shape[0] - kernel) / stride + 1;
+    const int64_t want_w = (in.shape[1] - kernel) / stride + 1;
+    NN_CHECK(out.shape[0] == want_h && out.shape[1] == want_w,
+             "maxpool(%d, %d) of %lldx%lld is %lldx%lld, but out is %lldx%lld", kernel, stride,
+             (long long)in.shape[0], (long long)in.shape[1], (long long)want_h,
+             (long long)want_w, (long long)out.shape[0], (long long)out.shape[1]);
+    const KernelName entry = span_entry("resample.maxpool", {out, in});
+
+    PoolParams p{};
+    p.out = out.ptr;
+    p.x = in.ptr;
+    p.Ho = (uint32_t)out.shape[0];
+    p.Wo = (uint32_t)out.shape[1];
+    p.Hi = (uint32_t)in.shape[0];
+    p.Wi = (uint32_t)in.shape[1];
+    p.C = (uint32_t)out.shape[2];
+    p.kh = p.kw = (uint32_t)kernel;
+    p.stride_y = p.stride_x = (uint32_t)stride;
+    vk::SpecList spec{(uint32_t)(in.dtype == DType::F16), 0u, 0u};
+    vk::Stream::get().dispatchFlat(entry, spec, out.numel(), 256, &p, sizeof(p),
+                                   &p.groups_per_row);
 }
 
 void resize_nearest(const Tensor& out, const Tensor& in, float scale_y, float scale_x) {

@@ -57,7 +57,8 @@ struct RunResult {
     double up_err_deg = 0, scale_err = 0, calib_err_deg = 0;
 };
 
-static RunResult runScenario(const Scenario& sc, SensorMode mode = SensorMode::Auto) {
+static RunResult runScenario(const Scenario& sc, SensorMode mode = SensorMode::Auto,
+                             bool gps = true) {
     RunResult out;
     out.R_ci = angleAxisToRotation(Vec3{0.3, -1.2, 0.7});
     Telemetry t = synthesize(sc, out.R_ci);
@@ -77,6 +78,7 @@ static RunResult runScenario(const Scenario& sc, SensorMode mode = SensorMode::A
     cap.timeline = &tl;
     SensorGaugeOptions opt;
     opt.mode = mode;
+    opt.gps = gps;
     out.r = fitSensorGauge(rec, {cap}, opt);
     const SensorGaugeResult& r = out.r;
     // The recovered T must take model up to +Z and model units to metres.
@@ -171,8 +173,24 @@ int cmdSensorGaugeTest(int, char**) {
     // ---- T5: up only mode ------------------------------------------------------
     {
         Scenario sc;
-        RunResult rr = runScenario(sc, SensorMode::Up);
+        RunResult rr = runScenario(sc, SensorMode::Up, false);
         check(rr.r.applied && !rr.r.metric && rr.up_err_deg < 0.5, "T5 up-only mode");
+        check(rr.r.no_scale == SensorNoScale::NotAsked, "T5 scale not asked");
+    }
+    {
+        Scenario sc;
+        RunResult rr = runScenario(sc, SensorMode::Up);
+        std::printf("T5b up + GPS: up %.3f deg, scale err %.4f\n", rr.up_err_deg, rr.scale_err);
+        check(rr.r.applied && rr.r.metric && rr.r.scale_from_gps && !rr.r.scale_from_imu &&
+                  rr.r.up_from_imu && rr.up_err_deg < 0.5,
+              "T5b IMU up, GPS scale");
+    }
+    {
+        Scenario sc;
+        RunResult rr = runScenario(sc, SensorMode::Auto, false);
+        check(rr.r.applied && rr.r.metric && rr.r.scale_from_imu && !rr.r.scale_from_gps &&
+                  !rr.r.place_from_gps,
+              "T5c GPS off");
     }
     // ---- T6: GPS only (no IMU streams) ----------------------------------------
     {

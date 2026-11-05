@@ -72,29 +72,29 @@ float _oq_round(float x) { return floor(x + 0.5f); }
 // Every helper both begins and ends its groupshared use with a barrier, so
 // they are safely callable in sequence within one kernel.
 groupshared uint _oq_pack[256];
-groupshared float4 _oq_red4[256];
+groupshared float4 _oq_red4[64];  // one partial per subgroup of >= 4 lanes
 
-// Block-wide (min, max, min, max) reduction over all 256 threads,
-// broadcast to every thread. Groupshared tree combine (no subgroup-id
-// assumptions, and min/max is exactly associative so the result matches a
-// serial fold bit-for-bit). Pass sentinels (+1e30, -1e30, ...) for threads
-// that must not contribute.
+// Block-wide (min, max, min, max) over the 256 threads, broadcast to all. Two
+// barriers, not a tree's nine (fpbo holds one workgroup per SM); subgroups are
+// contiguous tids, as rasterize_bwd assumes. Sentinels (+-1e30) keep a thread out.
 [ForceInline]
 float4 oq_block_reduce_mm4(float4 v, uint tid) {
+    // Non-finite inputs drop out, as _oq_min / _oq_max drop them.
+    const float inf = asfloat(0x7f800000u);
+    v = float4(_oq_finite(v.x) ? v.x : inf, _oq_finite(v.y) ? v.y : -inf,
+               _oq_finite(v.z) ? v.z : inf, _oq_finite(v.w) ? v.w : -inf);
+    v = float4(WaveActiveMin(v.x), WaveActiveMax(v.y), WaveActiveMin(v.z),
+               WaveActiveMax(v.w));
+    const uint wsize = WaveGetLaneCount();
     GroupMemoryBarrierWithGroupSync();
-    _oq_red4[tid] = v;
+    if (WaveIsFirstLane()) _oq_red4[tid / wsize] = v;
     GroupMemoryBarrierWithGroupSync();
-    [ForceUnroll]
-    for (uint st = 128; st > 0; st >>= 1) {
-        if (tid < st) {
-            float4 a = _oq_red4[tid];
-            float4 b = _oq_red4[tid + st];
-            _oq_red4[tid] = float4(_oq_min(a.x, b.x), _oq_max(a.y, b.y),
-                                   _oq_min(a.z, b.z), _oq_max(a.w, b.w));
-        }
-        GroupMemoryBarrierWithGroupSync();
+    float4 r = _oq_red4[0];
+    for (uint i = 1; i < 256u / wsize; i++) {
+        float4 b = _oq_red4[i];
+        r = float4(min(r.x, b.x), max(r.y, b.y), min(r.z, b.z), max(r.w, b.w));
     }
-    return _oq_red4[0];
+    return r;
 }
 
 // float2 (min, max) variant over the same scratch.

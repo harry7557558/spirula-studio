@@ -8,6 +8,7 @@
 // what the GUI edits. Flags that do not name one scalar field are parsed here
 // first, so a hand-parsed name wins -- `map --audit` (run an audit pass) has to
 // beat the table's `--audit` / `--no-audit` switch.
+#include "app/RunReport.h"
 #include "app/Tools.h"
 #include "sfm/Pipeline.h"
 
@@ -32,6 +33,7 @@
 #include "core/ColorSpace.h"
 #include "core/Env.h"
 #include "core/ExrImage.h"
+#include "core/HardwareThreads.h"
 #include "sfm/SfmConfig.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Manifest.h"
@@ -384,7 +386,7 @@ static void printEvent(const sfm::Event& e) {
                                       "image", "pair", "model", "result"};
         static const char* kStage[] = {"extract", "match", "map",  "merge",
                                        "orient",  "finish", "load", "select",
-                                       "seed",    "refine"};
+                                       "seed",    "refine", "focal"};
         static_assert(sizeof kStage / sizeof *kStage == sfm::kNumStages, "");
         L::diag(Tag::Run, "[ev] %-11s %-7s done=%lld/%lld reg=%lld pts=%lld %s",
                 kKind[(int)e.kind], kStage[(int)e.stage], (long long)e.done,
@@ -411,11 +413,12 @@ static void printEvent(const sfm::Event& e) {
             // Apple M2 matching 8192-feature images, which reads as a hung
             // program. Rate-limit by time, keeping the count for a parser.
             static double last = 0.0;
-            if (e.stage != sfm::Stage::Match) break;
+            if (e.stage != sfm::Stage::Match && e.stage != sfm::Stage::Focal) break;
             const double t = now();
             if (e.done != e.total && t - last < 2.0) break;
             last = t;
-            L::err(Tag::Match, M::match_progress,
+            L::err(Tag::Match,
+                   e.stage == sfm::Stage::Focal ? M::focal_sample_progress : M::match_progress,
                    {(long long)e.done, (long long)e.total});
             break;
         }
@@ -823,7 +826,7 @@ static int cmdMap(int argc, char** argv) {
         // Descriptors are skipped: matching is over, and on a 5000-image
         // capture they are several gigabytes of file that nothing downstream
         // reads. Parallel because it is pure per-file work landing by index.
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = cfg.threads > 0 ? cfg.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)db.images.size()));
         std::atomic<size_t> next{0};
@@ -1229,6 +1232,13 @@ static int cmdAuto(int argc, char** argv) {
         return usageError("auto", err);
     if (req.wants_help) { printCommandHelp(*findCommand("auto")); return 0; }
     if (!req.progress_dir.empty()) sfm::progress::set_dir(req.progress_dir);
+    spirula::RunReporter memory(req.progress_dir, [](spirula::RunReporter::Device& d) {
+        const sfm::DeviceMemoryTally& t = sfm::DeviceMemoryTally::get();
+        d.capacity = t.capacity.load();
+        d.ours = t.bytes.load();
+        d.others = t.others.load();
+        return d.capacity > 0;
+    });
     installEventPrinter(req.cfg);
     return run_auto(req.cfg, req.in).exit_code;
 }

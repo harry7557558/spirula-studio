@@ -19,8 +19,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
+
+#include "core/Env.h"
 
 struct CUstream_st;
 
@@ -54,7 +57,8 @@ inline constexpr Stream kDefaultStream = nullptr;
 enum class DeviceIssue {
     NoneKnown,
     // AMD's Windows driver without native fp32 buffer atomic add (Radeon RX
-    // 6000 series and older): training crashes or diverges. Issue #23.
+    // 6000 series and older) and without fp32 atomic exchange to work around
+    // it: training crashes or diverges. Issue #23.
     AmdWindowsFloatAtomics,
 };
 
@@ -114,13 +118,20 @@ int device_current();
 // treat 0 as "empty". Never throws; cheap enough to poll per frame.
 struct MemoryUsage {
     uint64_t process_bytes = 0;  // device memory allocated by THIS process
+    uint64_t process_peak_bytes = 0;  // process_bytes' high-water since memory_peak_reset
     uint64_t used_bytes = 0;     // device memory in use system-wide (all apps)
     uint64_t total_bytes = 0;    // device-local memory capacity
+    // System commit still free, where device allocations are charged to it
+    // (Windows): a second ceiling, below the VRAM when the page file is small.
+    uint64_t commit_free_bytes = 0;
     bool has_process = false;
     bool has_used = false;
     bool has_total = false;
+    bool has_commit = false;
 };
 MemoryUsage memory_usage();
+// Restarts process_peak_bytes from what the process holds now.
+void memory_peak_reset();
 
 // --- memory ---
 void* device_malloc(size_t bytes);
@@ -165,17 +176,37 @@ inline std::string _fmt_bytes(uint64_t bytes) {
                _fmt_bytes(m.total_bytes) + ".";
     if (m.has_process)
         msg += " Used by this process: " + _fmt_bytes(m.process_bytes) + ".";
+    if (m.has_commit && m.commit_free_bytes < (uint64_t)bytes + (1ull << 30))
+        msg += " Windows has only " + _fmt_bytes(m.commit_free_bytes) +
+               " of commit charge left, and every GPU allocation reserves commit:"
+               " a larger page file or closing other applications raises the"
+               " effective VRAM limit.";
     msg += err ? " If the device is out of memory, try"
                : " Try";
     msg += " a smaller model (fewer splats / SH), a lower "
            "training image resolution, or a GPU with more memory.";
     throw std::runtime_error(msg);
 }
+// SS_VRAM_TRACE=<MiB>: print every checked allocation at least that large, with
+// the process total it brings, to find the step that sets the peak.
+inline size_t vram_trace_bytes() {
+    static const size_t v = [] {
+        const char* e = spirula::env("VRAM_TRACE");
+        return e && e[0] ? (size_t)(std::strtod(e, nullptr) * 1048576.0) : SIZE_MAX;
+    }();
+    return v;
+}
 // device_malloc that throws the friendly OOM error above instead of returning
 // null. A zero-byte request still returns null (a valid no-op allocation).
 inline void* device_malloc_checked(size_t bytes, const char* what = nullptr) {
     void* ptr = device_malloc(bytes);
     if (!ptr && bytes > 0) throw_out_of_memory(bytes, what);
+    if (bytes >= vram_trace_bytes()) {
+        const MemoryUsage m = memory_usage();
+        std::fprintf(stderr, "[vram] +%.1f MiB %s -> %.1f MiB (peak %.1f)\n",
+                     bytes / 1048576.0, what ? what : "?",
+                     m.process_bytes / 1048576.0, m.process_peak_bytes / 1048576.0);
+    }
     return ptr;
 }
 

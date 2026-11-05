@@ -26,6 +26,9 @@ struct FpboParams {
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
     uint64_t radii, densify_score, steps, visit_counters;
+    uint64_t depth_states, depth_information, depth_centers, depth_cameras;
+    float depth_lr, depth_angular_lr;
+    uint32_t has_depth, depth_photo, depth_relative, depth_pad;
     float lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,
         lr_features_sh, lr_features_sb;
     float max_gauss_ratio, scale_regularization_weight;
@@ -43,7 +46,7 @@ struct FpboParams {
     uint32_t has_visit, skip_unrendered_reg;
     uint32_t sb_base, _pad0;
 };
-static_assert(sizeof(FpboParams) == 48 * 8 + 19 * 4 + 13 * 4,
+static_assert(sizeof(FpboParams) == 52 * 8 + 21 * 4 + 17 * 4,
               "params layout must match the slang struct");
 
 using vkk::or_fallback;
@@ -69,7 +72,7 @@ void launch_fpbo_vk(
     const std::optional<TorchTensorView>& sh_value_packed,
     const std::optional<TorchTensorView>& sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float>& radii,
     DeviceVector<float>& densify_score,
     const float lr_means, const float lr_quats, const float lr_scales,
@@ -202,6 +205,15 @@ void launch_fpbo_vk(
     p.visit_counters = or_fallback((uint64_t)visit.counters);
     p.has_visit = visit.counters ? 1u : 0u;
     p.skip_unrendered_reg = visit.skip_unrendered_reg ? 1u : 0u;
+    p.depth_states = vkk::or_fallback(depth.states);
+    p.depth_information = vkk::or_fallback(depth.information);
+    p.depth_centers = vkk::or_fallback(depth.centers);
+    p.depth_cameras = vkk::or_fallback(depth.camera_indices);
+    p.depth_lr = depth.lr; p.depth_angular_lr = depth.angular_lr;
+    p.has_depth = depth.states ? 1u : 0u;
+    p.depth_photo = depth.single_photometric;
+    p.depth_relative = depth.angular_relative;
+
     p.lr_means = lr_means;
     p.lr_quats = lr_quats;
     p.lr_scales = lr_scales;
@@ -263,7 +275,7 @@ void launch_fpbo_vk(
         camera_ids,                                                         \
         gaussian_ids, aabb, v_splats_world, v_splats_screen,                \
         g1_splats_world, g2_splats_world, sh_packed, sh_quant_bounds,       \
-        sh_value_packed, sh_value_bounds, non_sh, visit, radii,             \
+        sh_value_packed, sh_value_bounds, non_sh, visit, depth, radii,             \
         densify_score,                                                      \
         lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc,            \
         lr_features_sh, lr_features_sb, max_gauss_ratio,                    \
@@ -291,7 +303,7 @@ void launch_fpbo_vk(
         const std::optional<TorchTensorView> sh_quant_bounds,               \
         const std::optional<TorchTensorView> sh_value_packed,               \
         const std::optional<TorchTensorView> sh_value_bounds,               \
-        NonShQuantState non_sh, SplatVisitState visit,                      \
+        NonShQuantState non_sh, SplatVisitState visit, ProjectiveDepthOptim depth,                      \
         DeviceVector<float> radii,                                          \
         DeviceVector<float> densify_score, const float lr_means,            \
         const float lr_quats, const float lr_scales, const float lr_opacs,  \
@@ -315,7 +327,7 @@ static void _fpbo_call(bool eval3d, bool antialiased, _FPBO_PARAMS) {
                    gaussian_ids, aabb,
                    v_splats_world, v_splats_screen, g1_splats_world,
                    g2_splats_world, sh_packed, sh_quant_bounds,
-                   sh_value_packed, sh_value_bounds, non_sh, visit, radii,
+                   sh_value_packed, sh_value_bounds, non_sh, visit, depth, radii,
                    densify_score, lr_means, lr_quats, lr_scales, lr_opacs,
                    lr_features_dc, lr_features_sh, lr_features_sb,
                    max_gauss_ratio,

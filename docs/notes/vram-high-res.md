@@ -111,11 +111,12 @@ constants (`kSsimFmts`, the grid modules' `kRgbFmt`/`kOutFmt`).
 
 ### The loss's scratch shares the alias arena
 
-The multi-scale pyramid, its per-scale gradients, the coarse loss maps and
-the NMS scratch are all dead when `compute_multi_scale_per_pixel_losses`
-returns, so they live in a `PoolPhase::Loss` slice of the arena the tile
-intersector and the raster backward already share. The arena then costs the
-largest of the three phases, which at high resolution is the loss.
+The multi-scale pyramid, its per-scale gradients, the coarse loss maps, the
+NMS scratch and the perceptual losses' blur and coverage maps are all dead
+when `compute_multi_scale_per_pixel_losses` returns, so they live in a
+`PoolPhase::Loss` slice of the arena the tile intersector and the raster
+backward already share. The arena then costs the largest of the phases, which
+at high resolution is the loss.
 
 ### Depth only when something reads it
 

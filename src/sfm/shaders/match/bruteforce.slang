@@ -89,12 +89,13 @@ static const uint TT = (DESC_WORDS >= 64) ? 32 : 64;  // trains per shared tile
     uint outA;     // uint4 index where A-side results start
     uint outB;     // uint4 index where B-side results start
     uint numWG;    // workgroups the match dispatch used (for reduce_cols)
+    uint colBase;  // this pair's colPartial region; pairs in flight do not share one
 };
 
 [[vk::binding(0)]] StructuredBuffer<uint>    desc;   // all resident descriptors
 [[vk::binding(1)]] RWStructuredBuffer<uint>  norm;   // ||d||^2 per descriptor
 [[vk::binding(2)]] RWStructuredBuffer<uint4> result; // (bestIdx, bestD2, secondD2, 0)
-[[vk::binding(3)]] RWStructuredBuffer<uint>  colPartial;  // numWG * nTrain packed candidates
+[[vk::binding(3)]] RWStructuredBuffer<uint>  colPartial;  // numWG * nTrain packed candidates per pair in flight
 
 // ||d||^2 for a run of descriptors, once per upload. u0 = first descriptor
 // index, u1 = how many.
@@ -125,11 +126,8 @@ groupshared uint sCol[TT];               // packed (d2 << 6) | localQuery
 // increasing index order either way, so the result is bit-identical.
 
 // Row reduction shared by both match entry points; WITH_COLS also feeds the
-// column candidates for the cross-check. match_rows exists because dispatches
-// that skip the column side share no writable state (disjoint `result`
-// regions, read-only desc/norm), so a whole batch of them can run with *no*
-// inter-pair barriers -- that is what makes pair-selection scoring (thousands
-// of tiny dispatches per submit) GPU-bound instead of pipeline-drain-bound.
+// column candidates for the cross-check. match_rows shares no writable state
+// between pairs, so a scoring batch needs no inter-pair barriers at all.
 void matchImpl<let WITH_COLS : bool, let NQ : uint>(uint3 gid, uint3 lid) {
     const uint lq = lid.x;
     const uint q = gid.x * NQ + lq;
@@ -168,17 +166,16 @@ void matchImpl<let WITH_COLS : bool, let NQ : uint>(uint3 gid, uint3 lid) {
                 else if (d2 < second) { second = d2; }
                 packed = (d2 << 6) | lq;
             }
-            // Straight to the shared atomic. Pre-folding within the wave
-            // (WaveActiveMin + WaveIsFirstLane) to cut same-address contention
-            // measured *slower* here -- the hardware resolves the conflict
-            // cheaper than the subgroup ops cost -- so keep it simple.
+            // Straight to the shared atomic: pre-folding within the wave
+            // (WaveActiveMin + WaveIsFirstLane) measured slower, as the hardware
+            // resolves the conflict cheaper than the subgroup ops cost.
             if (WITH_COLS && packed != 0xffffffffu) InterlockedMin(sCol[c], packed);
         }
 
         if (WITH_COLS) {
             GroupMemoryBarrierWithGroupSync();  // sCol complete before it is flushed
             for (uint c = lid.x; c < cnt; c += NQ)
-                colPartial[gid.x * nTrain + t0 + c] = sCol[c];
+                colPartial[colBase + gid.x * nTrain + t0 + c] = sCol[c];
         }
     }
 
@@ -207,7 +204,7 @@ void reduce_cols(uint3 tid : SV_DispatchThreadID) {
 
     uint bestD2 = 0xffffffffu, bestIdx = 0xffffffffu;
     for (uint w = 0; w < numWG; w++) {
-        uint packed = colPartial[w * nTrain + j];
+        uint packed = colPartial[colBase + w * nTrain + j];
         if (packed == 0xffffffffu) continue;  // no query in that workgroup
         uint d2 = packed >> 6;
         uint gi = w * TQ + (packed & 63u);

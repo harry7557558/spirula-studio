@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -31,6 +32,7 @@
 
 #include "core/ColorSpace.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
@@ -235,16 +237,18 @@ static void logLensPlan(const LensPlan& p) {
 
 SensorCaptures loadSensorCaptures(const SfmConfig& cfg, bool verbose) {
     SensorCaptures out;
-    if (cfg.sensor_gauge == "none") return out;
+    // --sensor-gauge none is the IMU's off switch; the GPS log is --metric-gps's.
+    const bool imu_on = cfg.sensor_gauge != "none";
     for (const TelemetryInput& in : cfg.telemetry_inputs) {
-        if (!in.imu && !in.gps) continue;
+        const bool imu = in.imu && imu_on;
+        if (!imu && !in.gps) continue;
         Telemetry t;
         std::string err;
         if (!telemetry_read(in.path, t, err) || t.empty()) {
             L::warn(Tag::Orient, M::sensor_file_bad, {in.path, err.empty() ? "-" : err});
             continue;
         }
-        if (!in.imu) {
+        if (!imu) {
             t.gyro.clear();
             t.accel.clear();
             t.magnet.clear();
@@ -345,7 +349,8 @@ void reportSensorGauge(size_t i, const SensorGaugeResult& r,
         L::out(Tag::Orient, M::sensor_up,
                {model, (long long)r.up.votes, L::num(r.up.spread_deg, 2), (long long)r.up.outliers});
     if (r.fail == SensorFail::NoUp) {
-        L::err(Tag::Orient, M::sensor_declined, {model, M::sensor_fail_noup.get()});
+        const auto& why = r.up.votes > 0 ? M::sensor_fail_noup : M::sensor_fail_noup_noimu;
+        L::err(Tag::Orient, M::sensor_declined, {model, why.get()});
         return;
     }
     if (r.scale_imu_sigma > 0) {
@@ -371,6 +376,12 @@ void reportSensorGauge(size_t i, const SensorGaugeResult& r,
                     (long long)r.gps.n, L::num(r.gps.rms, 2)});
         else
             L::err(Tag::Orient, M::sensor_scale_gps_failed, {model, metricReason(r.gps)});
+    }
+    for (size_t k = 0; k < r.gps.track_ids.size() && k < r.gps.track_vertical_offsets.size(); k++) {
+        const int track = r.gps.track_ids[k];
+        if (track < 0 || (size_t)track >= caps.size()) continue;
+        L::out(Tag::Orient, M::sensor_gps_track_altitude,
+               {caps[(size_t)track]->cap.path, L::num(r.gps.track_vertical_offsets[k], 3)});
     }
     if (r.disagree)
         L::warn(Tag::Orient, M::sensor_disagree, {model, L::num(r.scale_imu, 6), L::num(r.scale_gps, 6)});
@@ -573,7 +584,7 @@ void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<Featur
             ok[k] = 1;
         }
     };
-    const unsigned hc = std::thread::hardware_concurrency();
+    const unsigned hc = spirula::hardware_threads();
     const int nt = std::max(1, std::min<int>(threads > 0 ? threads : (hc ? (int)hc : 1),
                                              (int)std::max<size_t>(use.size(), 1)));
     std::vector<std::thread> pool;
@@ -666,10 +677,11 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
     }
     const std::vector<std::unique_ptr<LoadedCapture>>& loaded = sensors->loaded;
     std::vector<MetricFit> log_fit(models.size());   // the GPS log's, where it was fitted
-    if (!loaded.empty()) {
+    if (!loaded.empty() && (cfg.sensor_gauge != "none" || gps)) {
         std::vector<SensorCapture> caps = sensors->caps();
         SensorGaugeOptions opt;
-        opt.mode = cfg.sensor_gauge == "up" ? SensorMode::Up : SensorMode::Auto;
+        opt.mode = cfg.sensor_gauge == "auto" ? SensorMode::Auto : SensorMode::Up;
+        opt.gps = gps;
         opt.gps_full = cfg.metric_gps == "full";
         opt.gps_max_error = gps ? cfg.metric_max_error : 0.0;
         opt.gps_max_error_frac = cfg.metric_max_error_frac;
@@ -1103,11 +1115,12 @@ RigTable readRigs(const fs::path& dir, Reconstruction& m) {
 // Every reconstruction as <dir>/0, <dir>/1, ... (D41) -- COLMAP's layout for a
 // view graph that is not connected. `sparse/0` has the most 3D points, so a
 // single-model dataset still writes exactly `sparse/0`.
-void writeModels(const std::vector<Reconstruction>& models, const fs::path& dir,
+void writeModels(std::vector<Reconstruction>& models, const fs::path& dir,
                  bool verbose, const std::vector<ModelGauge>& gauge, const RigTable* rigs) {
     for (size_t i = 0; i < models.size(); i++) {
         fs::path p = dir / std::to_string(i);
         fs::create_directories(p);
+        models[i].updatePointErrors();
         models[i].writeBinary(p.string());
         if (i < gauge.size()) writeGauge(p, gauge[i]);
         writeRigs(p, models[i], rigs);
@@ -1896,7 +1909,7 @@ int loadFeatureDir(const std::string& featdir, const SfmConfig& cfg, bool with_d
     db.images.resize(files.size());
     events::stage_begin(Stage::Load, (int64_t)files.size());
     {
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = cfg.threads > 0 ? cfg.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)files.size()));
         std::atomic<size_t> next{0}, done{0};
@@ -2110,8 +2123,31 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
+    // Pairs the focal search already matched, by pairKey: with a camera per
+    // image its sample is every pair, which matching them again would double.
+    std::unordered_map<uint64_t, std::vector<FeatureMatch>> premat;
     auto matchFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {
-        matcher->matchBatch(feats, todo, b, e, mout);
+        if (premat.empty()) {
+            matcher->matchBatch(feats, todo, b, e, mout);
+            return;
+        }
+        mout.assign(e - b, {});
+        std::vector<std::pair<uint32_t, uint32_t>> rest;
+        std::vector<size_t> rest_at;
+        for (size_t k = b; k < e; k++) {
+            const auto it = premat.find(resume::pairKey(todo[k].first, todo[k].second));
+            if (it == premat.end()) {
+                rest.push_back(todo[k]);
+                rest_at.push_back(k - b);
+                continue;
+            }
+            mout[k - b] = std::move(it->second);
+            premat.erase(it);
+        }
+        if (rest.empty()) return;
+        std::vector<std::vector<FeatureMatch>> got;
+        matcher->matchBatch(feats, rest, 0, rest.size(), got);
+        for (size_t k = 0; k < rest.size(); k++) mout[rest_at[k]] = std::move(got[k]);
     };
     // Rate-limiting the printed line lives in the CLI's event sink, which is
     // the only thing that prints it; verifyPairs emits the fraction either way.
@@ -2147,12 +2183,17 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 size_t stride = std::max<size_t>(1, pairs.size() / std::max<size_t>(1, want));
                 for (size_t p = 0; p < pairs.size() && sample.size() < want; p += stride)
                     sample.push_back(pairs[p]);
+                // With a camera per image the sample is every pair, which with a
+                // learned matcher is as long as matching itself.
                 std::vector<std::vector<FeatureMatch>> chunk;
+                events::stage_begin(Stage::Focal, (int64_t)sample.size());
                 for (size_t b = 0; b < sample.size(); b += 16) {
                     size_t e = std::min(b + 16, sample.size());
                     matcher->matchBatch(feats, sample, b, e, chunk);
                     for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
+                    events::progress(Stage::Focal, (int64_t)e, (int64_t)sample.size());
                 }
+                events::stage_end(Stage::Focal);
             }
             if (want_rect) {
                 double t_f = now();
@@ -2192,6 +2233,9 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                             L::num(bc.bytes() / 1048576.0, 0), focals});
                 }
             }
+            for (size_t k = 0; k < sample.size() && k < sm.size(); k++)
+                premat.emplace(resume::pairKey(sample[k].first, sample[k].second),
+                               std::move(sm[k]));
         }
         // The gyro's word on every pair it covers: calibrated on a sample of
         // time-adjacent pairs first, since the rotation prior needs the
@@ -2264,9 +2308,22 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         resume::MatchJournal journal;
         if (res) journal.open(journal_path, res->signature, resumed_verify);
         vopt.journal = &journal;
+        // The rig-mate pass below verifies pairs only this pass's results name.
+        // Its bound is counted in now, so the bar jumps forward when the
+        // real count is known rather than falling back.
+        size_t mates_bound = 0;
+        if (cfg.rig_pairs && !cfg.rigs.empty()) {
+            try {
+                for (const auto& q : rigMatePairs(buildRigTable(image_names, cfg.rigs), pairs,
+                                                  cfg.rig_pair_angle, /*weak_only=*/false))
+                    if (!std::binary_search(pairs.begin(), pairs.end(), q) &&
+                        !done_set.count(resume::pairKey(q.first, q.second)))
+                        mates_bound++;
+            } catch (const std::exception&) {}
+        }
         vopt.progress_done_base = pairs.size() - todo.size();
-        vopt.progress_total = pairs.size();
-        events::stage_begin(Stage::Match, (int64_t)pairs.size());
+        vopt.progress_total = pairs.size() + mates_bound;
+        events::stage_begin(Stage::Match, (int64_t)vopt.progress_total);
         // Added, not assigned: the journal already counted what an earlier run
         // offered the verifier, and verifyPairs writes its own total.
         uint64_t putative = 0;
@@ -2678,7 +2735,15 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         // on a large capture, with the last image long since placed.
         events::stage_begin(Stage::Refine);
         double t_finish = 0;
-        models = finishModels(mapper, std::move(models), cfg, verbose, t_finish);
+        try {
+            std::vector<Reconstruction> finished =
+                finishModels(mapper, models, cfg, verbose, t_finish);
+            models = std::move(finished);
+        } catch (const std::exception& e) {
+            L::err_raw(Tag::Map,
+                       "[map] finishing passes failed: " + std::string(e.what()) +
+                       "; continuing with current model");
+        }
         t_map += t_finish;
         events::stage_end(Stage::Refine);
     }

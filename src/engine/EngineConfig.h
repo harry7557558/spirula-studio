@@ -21,6 +21,9 @@
 struct LossConfig {
     std::array<float, (int)LossWeightIndex::length> weights{};
     float w_ssim          = 0.0f;
+    // This step's kernel (Primitive3DGS::kernel_vis): > 0 cut at that sigma and renormalized,
+    // 0 the full gaussian. Training renders only.
+    float raster_kernel_cut = 0.0f;
     int   perceptual_loss = 0;   // PerceptualLoss: what w_ssim weights
     int   num_loss_scales = 1;
     // When positive, overrides num_loss_scales per train step based on the
@@ -58,6 +61,10 @@ struct LossConfig {
     // backward reduces the map to one score per splat. Ignored when the map
     // is off.
     int   loss_map_accum_mode    = (int)DensifyAccumMode::Max;
+    // Fit per-splat scores whose rendered map matches the conditioned,
+    // unpowered loss map (DensifyConfig::learned_score): the forward renders
+    // that map and the loss divides by it. Needs loss_map_accum_mode Avg.
+    bool  learned_score          = false;
     // Positive: a pixel above this in every channel of BOTH the render and the
     // reference leaves the photometric loss (value, map, gradient, SSIM), the
     // way a masked pixel does. Negative (default) keeps every pixel.
@@ -97,6 +104,8 @@ struct LossConfig {
 // that applies; the engine consumes them verbatim.
 struct OptimConfig {
     float lr_means        = 0.0f;
+    float lr_projective_depth = 0.0f;
+    bool projective_photometric = true;
     float lr_quats        = 0.0f;
     float lr_scales       = 0.0f;
     float lr_opacities    = 0.0f;
@@ -197,6 +206,9 @@ struct OptimConfig {
 };
 
 
+// What relocation treats as dead (TrainConfig::dead_criterion).
+enum class DeadCriterion : int { Opacity = 0, MaxWeight = 1, Either = 2 };
+
 // MCMC / revised-relocate densification controls. max_world_size / noise_lr*
 // arrive pre-scaled by alpha.
 struct DensifyConfig {
@@ -210,6 +222,10 @@ struct DensifyConfig {
     int   refine_every                  = 0;
     float growth_factor                 = 1.0f;
     float min_opacity                   = 0.0f;
+    // MaxWeight compares min_opacity against each splat's peak alpha * T,
+    // halved every max_weight_half_life steps. Revised relocation only.
+    DeadCriterion dead_criterion        = DeadCriterion::Opacity;
+    float max_weight_half_life          = 800.0f;
     float max_screen_size               = 0.0f;
     float max_screen_size_clip_hardness = 0.0f;
     // With the soft penalty on, the hard clip drops to a once-per-refine
@@ -219,6 +235,7 @@ struct DensifyConfig {
     float max_world_size                = 0.0f;
     float noise_lr                      = 0.0f;
     float noise_lr_final                = 0.0f;
+    bool  noise_gate_peak_weight        = false;
     bool use_revised_densification      = true;
     int  score_mode                     = 0;    // 0=mean, 1=max, 2=median, 3=geom
     // Blend weight `w` between the image-space accum_weight score and the
@@ -232,6 +249,15 @@ struct DensifyConfig {
     // Exponent applied to a step's per-splat score after the image-to-splat
     // reduction (Avg's divide included) and before the across-step one.
     float score_power                   = 1.0f;
+    // Replace both reductions by a score s fitted to the unpowered map, stored
+    // as s^(map power x score_power) (docs/notes/learned-densify-score.md);
+    // score_mode is then unused.
+    bool  learned_score                 = false;
+    // Floor of the EMA weight of the fit's per-view target (a splat's first
+    // 1 / rate updates average), and the share of ln s pulled back to the
+    // prior per update; bicycle numbers in docs/notes/learned-densify-score.md.
+    float learned_score_rate            = 0.02f;
+    float learned_score_pull            = 0.01f;
     // Clips the per-splat score that densification actually samples -- after
     // both the image-to-splat and the across-step reduction -- at this
     // quantile of the positive scores. Outside (0, 1) nothing is clipped.

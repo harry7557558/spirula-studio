@@ -607,7 +607,7 @@ Result Tracker::trackEncoded() {
             cp.text = impl_->params.text_prompt;
             cp.score_threshold = impl_->params.score_threshold;
             cp.nms_threshold = impl_->params.nms_threshold;
-            detections = s.runConcept(cp);
+            detections = std::move(s.runConcepts({cp}).front());
         }
 
         // ---- 3. associate detections with tracks by mask IoU ----

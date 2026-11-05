@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <utility>
@@ -63,16 +64,18 @@ uint64_t elements(const std::vector<int64_t>& shape) {
 
 class Pickle {
 public:
-    Pickle(const std::vector<uint8_t>& bytes, const std::string& path)
-        : bytes_(bytes), path_(path) {}
+    Pickle(const std::vector<uint8_t>& bytes, const std::string& path, size_t start = 0)
+        : bytes_(bytes), path_(path), pos_(start) {}
 
-    V read() {
+    // `whole`: the pickle must end exactly at the end of `bytes`. A legacy file
+    // is several pickles back to back, read with it off.
+    V read(bool whole = true) {
         while (pos_ < bytes_.size()) {
             const uint8_t op = byte();
             switch (op) {
             case 0x80: { const uint8_t p = byte(); require(p >= 2 && p <= 5, "unsupported pickle protocol"); break; }
             case 0x95: { const uint64_t n = uint_le(8); require(n <= bytes_.size() - pos_, "truncated pickle frame"); break; }
-            case '.': require(stack_.size() == 1 && pos_ == bytes_.size(), "invalid pickle STOP"); return stack_[0];
+            case '.': require(stack_.size() == 1 && (!whole || pos_ == bytes_.size()), "invalid pickle STOP"); return stack_[0];
             case 'N': push(make(Kind::None)); break;
             case 0x88: integer(1); break;
             case 0x89: integer(0); break;
@@ -83,8 +86,8 @@ public:
             case 0x8b: long_integer(uint_le(4)); break;
             case 'G': { uint64_t bits = 0; for (int i = 0; i < 8; ++i) bits = (bits << 8) | byte();
                         V v = make(Kind::Real); std::memcpy(&v->real, &bits, 8); push(v); break; }
-            case 'X': string(uint_le(4)); break;
-            case 0x8c: string(byte()); break;
+            case 'X': case 'T': string(uint_le(4)); break;
+            case 0x8c: case 'U': string(byte()); break;
             case 0x8d: string(uint_le(8)); break;
             case 'c': { const std::string module = line(), name = line(); global(module + "\n" + name); break; }
             case 0x93: { V name = pop(), module = pop();
@@ -121,6 +124,7 @@ public:
         }
         fail("%s: truncated checkpoint pickle", path_.c_str());
     }
+    size_t end() const { return pos_; }
 
 private:
     const std::vector<uint8_t>& bytes_;
@@ -192,7 +196,11 @@ private:
     }
     void persistent() {
         V id = pop();
-        require(id->kind == Kind::Sequence && id->items.size() == 5, "invalid tensor storage id");
+        // The legacy format appends view_metadata, which is None unless the
+        // storage is a view of another (never in a state dictionary).
+        require(id->kind == Kind::Sequence &&
+                (id->items.size() == 5 || (id->items.size() == 6 && id->items[5]->kind == Kind::None)),
+                "invalid tensor storage id");
         const auto& a = id->items;
         require(a[0]->kind == Kind::String && a[0]->text == "storage" && a[1]->kind == Kind::Global &&
                 a[1]->text.compare(0, 6, "torch\n") == 0 && a[2]->kind == Kind::String &&
@@ -209,7 +217,21 @@ private:
         require(call->kind == Kind::Global && args->kind == Kind::Sequence, "invalid pickle REDUCE");
         const auto& a = args->items;
         if (call->text == "collections\nOrderedDict") {
-            require(a.empty(), "unsupported OrderedDict constructor"); push(make(Kind::Dict)); return;
+            // Python 2's pickler passes the items: OrderedDict([[key, value], ...]).
+            require(a.empty() || (a.size() == 1 && a[0]->kind == Kind::Sequence),
+                    "unsupported OrderedDict constructor");
+            V v = make(Kind::Dict);
+            if (!a.empty()) {
+                std::vector<V> pairs;
+                for (const V& item : a[0]->items) {
+                    require(item->kind == Kind::Sequence && item->items.size() == 2,
+                            "invalid OrderedDict item");
+                    pairs.push_back(item->items[0]);
+                    pairs.push_back(item->items[1]);
+                }
+                put_pairs(v, pairs);
+            }
+            push(v); return;
         }
         if (call->text == "torch._utils\n_rebuild_parameter") {
             require(a.size() == 3 && a[0]->kind == Kind::Tensor && a[1]->kind == Kind::Integer && a[2]->kind == Kind::Dict,
@@ -221,7 +243,8 @@ private:
         require((!v2 && a.size() == 4) || (v2 && (a.size() == 6 || a.size() == 7)), "invalid tensor constructor");
         require(a[0]->kind == Kind::Storage && a[1]->kind == Kind::Integer && a[1]->integer >= 0,
                 "invalid checkpoint tensor storage offset");
-        if (v2) require(a[4]->kind == Kind::Integer && a[5]->kind == Kind::Dict && a[5]->pairs.empty(),
+        if (v2) require(a[4]->kind == Kind::Integer &&
+                        ((a[5]->kind == Kind::Dict && a[5]->pairs.empty()) || a[5]->kind == Kind::None),
                         "unsupported checkpoint tensor hooks");
         if (a.size() == 7) require(a[6]->kind == Kind::Dict || a[6]->kind == Kind::None, "invalid tensor metadata");
         V v = make(Kind::Tensor); v->tensor = a[0]->tensor;
@@ -302,16 +325,154 @@ void decode(Storage kind, const uint8_t* p, uint64_t step, float* out, uint64_t 
     }
 }
 
+// The numbers of a config dict beside the weights, by dotted path. A list keeps
+// its None entries as NaN, so positions still line up.
+void flatten_config(const V& v, const std::string& key,
+                    std::map<std::string, std::vector<double>>& out) {
+    auto number = [](const V& x, double* d) {
+        if (x->kind == Kind::Integer) { *d = (double)x->integer; return true; }
+        if (x->kind == Kind::Real) { *d = x->real; return true; }
+        if (x->kind == Kind::None) { *d = std::nan(""); return true; }
+        return false;
+    };
+    double d = 0;
+    if (v->kind == Kind::Dict) {
+        for (const auto& p : v->pairs) flatten_config(p.second, key + "." + p.first->text, out);
+    } else if (v->kind == Kind::Sequence) {
+        std::vector<double> list;
+        for (const V& x : v->items) {
+            if (!number(x, &d)) return;
+            list.push_back(d);
+        }
+        out[key] = std::move(list);
+    } else if (v->kind != Kind::None && number(v, &d)) {
+        out[key] = {d};
+    }
+}
+
+// {"state_dict": ...} and MoGe's {"model": ..., "model_config": ...} wrap the
+// weights; whatever sits beside them is a config, kept for config().
+V state_dict(V root, const std::string& path, std::map<std::string, std::vector<double>>& config) {
+    // torch.save(tensor) pickles the tensor itself; it is read back as "".
+    if (root->kind == Kind::Tensor) {
+        V dict = std::make_shared<Value>();
+        dict->kind = Kind::Dict;
+        V name = std::make_shared<Value>();
+        name->kind = Kind::String;
+        dict->pairs.emplace_back(name, root);
+        root = dict;
+    }
+    NN_CHECK(root->kind == Kind::Dict, "%s: checkpoint root is not a state dictionary", path.c_str());
+    V state = root;
+    for (const auto& p : root->pairs)
+        if ((p.first->text == "state_dict" || p.first->text == "model") &&
+            p.second->kind == Kind::Dict) { state = p.second; break; }
+    if (state != root)
+        for (const auto& p : root->pairs)
+            if (p.second != state) flatten_config(p.second, p.first->text, config);
+    return state;
+}
+
+// The first of a legacy file's pickles: torch's magic number, a 10-byte long.
+constexpr uint8_t kLegacyMagic[] = {0x80, 0x02, 0x8a, 0x0a, 0x6c, 0xfc, 0x9c, 0x46,
+                                    0xf9, 0x20, 0x6a, 0xa8, 0x50, 0x19, '.'};
+
 }  // namespace
 
 struct TorchCheckpoint::Impl {
     std::string path;
     std::map<std::string, Entry> entries;
-    std::map<std::string, mz_uint> storages;
+    std::map<std::string, mz_uint> storages;    // ZIP: the member holding each storage
+    bool legacy = false;
+    std::map<std::string, uint64_t> offsets;    // legacy: the file offset of each storage
+    std::map<std::string, std::vector<double>> config;
+
+    void open_legacy();
 };
+
+// Pickles of the magic number, the format version, the writer's type sizes, the
+// object and its storage keys; then each storage in key order as an int64
+// element count followed by the elements.
+void TorchCheckpoint::Impl::open_legacy() {
+    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    NN_CHECK(f, "%s: cannot open checkpoint", path.c_str());
+    const uint64_t size = (uint64_t)f.tellg();
+    std::vector<uint8_t> head((size_t)std::min<uint64_t>(size, kMetadataLimit));
+    f.seekg(0);
+    f.read((char*)head.data(), (std::streamsize)head.size());
+    NN_CHECK(f, "%s: cannot read checkpoint", path.c_str());
+
+    size_t pos = sizeof kLegacyMagic;
+    auto next = [&] {
+        Pickle p(head, path, pos);
+        V v = p.read(false);
+        pos = p.end();
+        return v;
+    };
+    const V version = next();
+    NN_CHECK(version->kind == Kind::Integer && version->integer == 1001,
+             "%s: unsupported legacy checkpoint version", path.c_str());
+    const V info = next();
+    bool little = false;
+    if (info->kind == Kind::Dict)
+        for (const auto& p : info->pairs)
+            if (p.first->text == "little_endian")
+                little = p.second->kind == Kind::Integer && p.second->integer == 1;
+    NN_CHECK(little, "%s: only little-endian checkpoints are supported", path.c_str());
+    const V root = state_dict(next(), path, config);
+    const V keys = next();
+    NN_CHECK(keys->kind == Kind::Sequence, "%s: legacy checkpoint has no storage list", path.c_str());
+
+    std::map<std::string, const Entry*> storage_of;
+    for (const auto& p : root->pairs) {
+        NN_CHECK(p.second->kind == Kind::Tensor, "%s: state dictionary entry '%s' is not a tensor",
+                 path.c_str(), p.first->text.c_str());
+        const Entry& e = entries.emplace(p.first->text, p.second->tensor).first->second;
+        const auto seen = storage_of.emplace(e.storage, &e);
+        NN_CHECK(seen.first->second->dtype == e.dtype &&
+                 seen.first->second->storage_elements == e.storage_elements,
+                 "%s: tensors disagree about storage '%s'", path.c_str(), e.storage.c_str());
+    }
+    NN_CHECK(!entries.empty(), "%s: empty checkpoint state dictionary", path.c_str());
+
+    uint64_t at = pos;
+    for (const V& key : keys->items) {
+        NN_CHECK(key->kind == Kind::String, "%s: invalid legacy storage key", path.c_str());
+        const auto it = storage_of.find(key->text);
+        NN_CHECK(it != storage_of.end(), "%s: storage '%s' belongs to no tensor", path.c_str(),
+                 key->text.c_str());
+        const uint32_t width = storage_width(it->second->dtype);
+        int64_t count = -1;
+        NN_CHECK(at + 8 <= size, "%s: truncated legacy checkpoint", path.c_str());
+        f.seekg((std::streamoff)at);
+        f.read((char*)&count, 8);
+        NN_CHECK(f && count >= 0 && (uint64_t)count == it->second->storage_elements,
+                 "%s: storage '%s' size differs from metadata", path.c_str(), key->text.c_str());
+        NN_CHECK((uint64_t)count <= (size - at - 8) / width, "%s: truncated legacy checkpoint",
+                 path.c_str());
+        NN_CHECK(offsets.emplace(key->text, at + 8).second, "%s: duplicate storage '%s'",
+                 path.c_str(), key->text.c_str());
+        at += 8 + (uint64_t)count * width;
+    }
+    for (const auto& e : entries)
+        NN_CHECK(offsets.count(e.second.storage), "%s: missing tensor storage '%s'", path.c_str(),
+                 e.second.storage.c_str());
+    legacy = true;
+}
 
 TorchCheckpoint::TorchCheckpoint(const std::string& path) : impl_(new Impl) {
     impl_->path = path;
+    {
+        std::ifstream probe(path, std::ios::binary);
+        uint8_t head[sizeof kLegacyMagic] = {};
+        probe.read((char*)head, sizeof head);
+        if (probe.gcount() == (std::streamsize)sizeof head &&
+            !std::memcmp(head, kLegacyMagic, sizeof head)) {
+            probe.close();
+            impl_->open_legacy();
+            return;
+        }
+    }
     Zip archive(path);
     std::string prefix;
     mz_uint pickle_index = 0;
@@ -336,10 +497,7 @@ TorchCheckpoint::TorchCheckpoint(const std::string& path) : impl_(new Impl) {
         NN_CHECK(std::string(bytes.begin(), bytes.end()) == "little", "%s: only little-endian checkpoints are supported", path.c_str());
     }
     const auto bytes = archive.read(pickle_index, kMetadataLimit, path);
-    V root = Pickle(bytes, path).read();
-    NN_CHECK(root->kind == Kind::Dict, "%s: checkpoint root is not a state dictionary", path.c_str());
-    for (const auto& p : root->pairs)
-        if (p.first->text == "state_dict" && p.second->kind == Kind::Dict) { root = p.second; break; }
+    const V root = state_dict(Pickle(bytes, path).read(), path, impl_->config);
     for (const auto& p : root->pairs) {
         NN_CHECK(p.second->kind == Kind::Tensor, "%s: state dictionary entry '%s' is not a tensor", path.c_str(), p.first->text.c_str());
         Entry e = p.second->tensor;
@@ -367,6 +525,10 @@ const TorchCheckpoint::Entry& TorchCheckpoint::entry(const std::string& name) co
     NN_CHECK(it != impl_->entries.end(), "%s: no tensor '%s'", path().c_str(), name.c_str());
     return it->second;
 }
+std::vector<double> TorchCheckpoint::config(const std::string& key) const {
+    const auto it = impl_->config.find(key);
+    return it == impl_->config.end() ? std::vector<double>{} : it->second;
+}
 std::vector<std::string> TorchCheckpoint::names() const {
     std::vector<std::string> out;
     out.reserve(impl_->entries.size());
@@ -375,10 +537,20 @@ std::vector<std::string> TorchCheckpoint::names() const {
 }
 OnnxTensor TorchCheckpoint::read(const std::string& name) const { return Reader(*this).read(name); }
 
-struct TorchCheckpoint::Reader::Archive : Zip { using Zip::Zip; };
+struct TorchCheckpoint::Reader::Archive {
+    std::unique_ptr<Zip> zip;
+    std::ifstream file;
+};
 
 TorchCheckpoint::Reader::Reader(const TorchCheckpoint& checkpoint)
-    : checkpoint_(checkpoint), archive_(std::make_unique<Archive>(checkpoint.path())) {}
+    : checkpoint_(checkpoint), archive_(std::make_unique<Archive>()) {
+    if (checkpoint.impl_->legacy) {
+        archive_->file.open(checkpoint.path(), std::ios::binary);
+        NN_CHECK(archive_->file, "%s: cannot open checkpoint", checkpoint.path().c_str());
+    } else {
+        archive_->zip = std::make_unique<Zip>(checkpoint.path());
+    }
+}
 TorchCheckpoint::Reader::~Reader() = default;
 
 OnnxTensor TorchCheckpoint::Reader::read(const std::string& name) {
@@ -387,7 +559,17 @@ OnnxTensor TorchCheckpoint::Reader::read(const std::string& name) {
     const uint64_t n = elements(e.shape);
     NN_CHECK(n <= std::numeric_limits<size_t>::max() / sizeof(float), "%s: tensor too large for host", path.c_str());
     const uint32_t width = storage_width(e.dtype);
-    const auto bytes = archive_->read(checkpoint_.impl_->storages.at(e.storage), e.storage_elements * width, path);
+    std::vector<uint8_t> bytes;
+    if (archive_->zip) {
+        bytes = archive_->zip->read(checkpoint_.impl_->storages.at(e.storage), e.storage_elements * width, path);
+    } else {
+        NN_CHECK(e.storage_elements * width <= std::numeric_limits<size_t>::max(),
+                 "%s: tensor too large for host", path.c_str());
+        bytes.resize((size_t)(e.storage_elements * width));
+        archive_->file.seekg((std::streamoff)checkpoint_.impl_->offsets.at(e.storage));
+        archive_->file.read((char*)bytes.data(), (std::streamsize)bytes.size());
+        NN_CHECK(archive_->file, "%s: cannot read tensor '%s'", path.c_str(), name.c_str());
+    }
     OnnxTensor out;
     out.name = name; out.shape = e.shape; out.was_f16 = e.dtype == "HalfStorage";
     out.data.resize((size_t)n);

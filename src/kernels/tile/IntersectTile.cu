@@ -191,7 +191,9 @@ __global__ void intersect_tile_kernel(
                  : float2{0.5f * (xmin + xmax), 0.5f * (ymin + ymax)};
         conic = float3{row[ellipse.conic], row[ellipse.conic + 1],
                        row[ellipse.conic + 2]};
-        conic = conic * (0.5f / __logf(row[ellipse.opac] / ALPHA_THRESHOLD));
+        float reach = __logf(row[ellipse.opac] / ALPHA_THRESHOLD);
+        if (ellipse.max_sigma > 0.0f) reach = fminf(reach, ellipse.max_sigma);
+        conic = conic * (0.5f / reach);
     }
 
     uint2 tile_min, tile_max;
@@ -455,11 +457,14 @@ std::tuple<
     DeviceTensor3D<int32_t> offsets_out;
     DeviceVector<int64_t> isect_ids_a, isect_ids_b;
     DeviceVector<int32_t> flatten_ids_a, flatten_ids_b;
+    size_t isect_reserve = 0;
     for (;;) {
         // Opens the tile-intersect phase, whose buffers share the arena with
         // the raster backward (POOL_ALIAS_TABLE, core/PoolSlots.h). Re-opened
         // per attempt: an arena slot may be acquired only once per phase.
-        pool_begin_phase(PoolPhase::TileIsect);
+        pool_begin_phase(PoolPhase::TileIsect,
+                         isect_reserve ? isect_reserve
+                                       : DevicePool::arena_span({4 * (size_t)total_count}));
         bt = bin_tile(macro_log2);
         tile_width = _CEIL_DIV(image_width, (uint32_t)bt.ix);
         tile_height = _CEIL_DIV(image_height, (uint32_t)bt.iy);
@@ -507,10 +512,20 @@ std::tuple<
             // costs the skipped-tile optimization for this step, and the next
             // one is built at the size this settles on.
             active = nullptr;
+            isect_reserve = 0;
             continue;
         }
         intersect_check_isect_count(n_isects64);
         n_isects = (int32_t)n_isects64;
+        // Grown past the arena: reopen sized for it and count again, rather
+        // than overflow into buffers beside the old arena (core/Tensor.h).
+        const size_t isect_span = DevicePool::arena_span(
+            {4 * (size_t)total_count, 4 * (size_t)total_count,
+             8 * (size_t)n_isects, 8 * (size_t)n_isects});
+        if (!DevicePool::global().phase_reserve(isect_span) && isect_reserve == 0) {
+            isect_reserve = isect_span;
+            continue;
+        }
 
         /* Inclusive prefix sum -> cumulative tile counts */
         cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);

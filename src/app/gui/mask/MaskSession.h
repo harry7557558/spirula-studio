@@ -7,6 +7,7 @@
 // Design: docs/notes/mask-editor.md.
 
 #include "app/gui/GlLoader.h"
+#include "app/gui/ProgressClock.h"
 #include "app/gui/edit/EditTool.h"
 #include "app/gui/mask/MaskAdd.h"
 #include "app/gui/mask/MaskDoc.h"
@@ -667,6 +668,7 @@ private:
     size_t _prop_byte_cap = kMaxHistoryBytes;   // UI thread; copied into the job
     // A running propagate or its undo, for the bar: targets handled, of total.
     std::atomic<int> _prop_done{0}, _prop_total{0};
+    ProgressClock _prop_clock;   // the UI thread's, for the bar
     std::atomic<bool> _prop_cancel{false};
     std::string _prop_stopped;       // guarded by _mu: the status of a run a cancel cut short
     std::string _status, _error;     // guarded by _mu

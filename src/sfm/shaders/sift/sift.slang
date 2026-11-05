@@ -434,10 +434,9 @@ void select_topk(uint3 t : SV_DispatchThreadID) {
 // thread per keypoint on an RTX 5070, 5.6x on a 2-CU RADV iGPU.
 static const int DESC_KP_PER_GROUP = 2;
 static const int NSQ = NBP + 1;
-// Loop extent, x1 - x0 + 1 <= 2*ext + 3 < 21 while sigma_oct < SIGMA0*2^(3.5/S).
-// Compile-time, as per-thread trip counts hang Intel Arc B390 (drivers
-// 101.8992 / 101.9033, issue #122).
-static const int SQ_BOX = 20;
+// Loop extent p2 = Sift.h's kDescBox: x1 - x0 + 1 <= 2*ext + 3 < 21 while sigma_oct
+// < SIGMA0*2^(3.5/S). Uniform, as per-thread trip counts hang Intel Arc B390 (#122);
+// a compile-time one AMD's Windows compiler fully unrolls and never finishes (#23).
 groupshared float descPart[DESC_KP_PER_GROUP * NSQ * NSQ * 4 * NBO];
 groupshared float descSh[DESC_KP_PER_GROUP * 128];
 groupshared float descScal[DESC_KP_PER_GROUP * 3];
@@ -478,8 +477,8 @@ void descriptor(uint3 t : SV_DispatchThreadID, uint3 gt : SV_GroupThreadID) {
         int y0 = max(max(-R, -yi), int(floor(ccy - ext)));
         int y1 = min(min(R, H - 1 - yi), int(ceil(ccy + ext)));
 
-        for (int iy = 0; iy < SQ_BOX; iy++)
-            for (int ix = 0; ix < SQ_BOX; ix++) {
+        for (int iy = 0; iy < int(p2); iy++)
+            for (int ix = 0; ix < int(p2); ix++) {
                 int dx = x0 + ix, dy = y0 + iy;
                 if (dx > x1 || dy > y1) continue;
                 // Rotate sample offset into the descriptor frame, in bin units.

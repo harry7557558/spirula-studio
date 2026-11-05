@@ -8,13 +8,16 @@
 // knows nothing about editing and this knows nothing about how the panel
 // renders.
 
+#include "app/gui/ProgressClock.h"
 #include "app/gui/ViewportInput.h"
 #include "app/gui/edit/Attributes.h"
+#include "app/gui/edit/DistanceScaleTool.h"
 #include "app/gui/edit/EditDoc.h"
 #include "app/gui/edit/EditTool.h"
 #include "app/gui/edit/ElementGrid.h"
 #include "app/gui/edit/SelectShape.h"
 #include "app/gui/edit/TransformTool.h"
+#include "data/MarkerScan.h"
 
 #include <atomic>
 #include <functional>
@@ -111,13 +114,15 @@ public:
     void draw_status();
 
     bool owns_left_button() const override {
-        return _tool.owns_pointer() || _xform.active() || _pick != Pick::None;
+        return _tool.owns_pointer() || _xform.active() || _pick != Pick::None ||
+               _dist_scale.active();
     }
     // The letter that switched tools is usually still down on the frame the
     // switch takes effect, so Q would both select Navigate and fly the camera
     // once. The block lifts when that key comes up.
     bool blocks_fly_keys() const override {
-        return _tool.owns_keys() || _xform.active() || _fly_block_key != 0;
+        return _tool.owns_keys() || _xform.active() || _dist_scale.active() ||
+               _fly_block_key != 0;
     }
     bool owns_right_button() const override { return _xform.active(); }
     // Once the model has been moved the renderers' own grid is in the wrong
@@ -132,7 +137,7 @@ public:
     bool frame_bounds(double centre[3], double& radius) override;
     // A long job is in flight; editing waits for it.
     bool busy() const {
-        return _comp_busy.load() || _save_busy.load() || _attr_busy.load();
+        return _comp_busy.load() || _save_busy.load() || _attr_busy.load() || _marker_busy.load();
     }
     // Give up on it. The worker checks between cells, so this is not instant.
     void cancel_work();
@@ -167,6 +172,13 @@ private:
     void auto_align();
     void ground_from_selection();
     void pick_align(float px, float py);
+    void marker_align();
+    void marker_crop();
+    void marker_detect();
+    void marker_reload();
+    void take_marker_result();
+    void marker_defaults();
+    void draw_marker_overlay(const ViewportOverlay& v, const ViewProjection& camera);
     // Live layer-0 points in saved coordinates, thinned to at most `cap`.
     std::vector<double> saved_points(int64_t cap, bool selected_only,
                                      std::vector<int64_t>* index = nullptr) const;
@@ -254,6 +266,7 @@ private:
     std::thread _save_worker;
     std::atomic<bool> _save_busy{false};
     std::atomic<int> _save_done{0}, _save_total{0};
+    ProgressClock _work_clock;   // the UI thread's, for the bar
     std::string _save_error;
     std::string _save_path;
 
@@ -267,8 +280,22 @@ private:
     ToolId _xform_return = ToolId::Navigate;
     int _pivot = (int)Pivot::Median;
     Pick _pick = Pick::None;
+    DistanceScaleTool _dist_scale;
     bool _align_yaw = true, _align_centre = true, _corner_to_origin = false;
     float _align_tol = 1.0f;          // x 1% of the model's extent
+    int _marker_origin = -1, _marker_xaxis = -1, _marker_xyplane = -1;
+    float _marker_dist_x = 0.0f, _marker_pad = 0.2f;
+    spirula::MarkerFamily _marker_family = spirula::MarkerFamily::Auto;
+    float _marker_decimate = 1.0f;
+    std::vector<spirula::Marker3D> _markers;
+    std::string _markers_file, _marker_error;
+    spirula::MarkerDataset _marker_dataset;
+    std::string _marker_status;
+    bool _marker_status_err = false, _marker_show = true;
+    std::thread _marker_worker;
+    std::atomic<bool> _marker_busy{false};
+    std::atomic<int> _marker_done{0}, _marker_total{0};
+    spirula::MarkerScanResult _marker_result;
     bool _levelling_was = false, _levelling_touched = false;
     bool _moved_ever = false;         // the grid is this session's from here on
     struct Centres {

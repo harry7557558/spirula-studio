@@ -101,6 +101,11 @@ public:
     void get_metrics(std::vector<MetricPoint>& out);
     std::vector<std::string> drain_log();
 
+    // While start_training() downloads an LPIPS checkpoint: the line to show
+    // and 0..1 (-1 unknown). Empty otherwise.
+    std::string fetch_line();
+    float fetch_progress();
+
     // ---- Unreadable dataset file ------------------------------------------
 
     // Non-empty while the training thread is blocked on a file it could not
@@ -115,6 +120,9 @@ private:
     double avg_latency_locked() const;   // caller holds _mu
     void join_worker();
     bool await_data_decision(const std::string& what);
+    // What setup_engine() would download, fetched with a progress readout
+    // instead; throws when a file does not arrive.
+    void fetch_eval_models(const TrainConfig& cfg);
 
     std::unique_ptr<spirula::TrainerSession> _session;
     std::unique_ptr<ViewerServer> _web_viewer;
@@ -134,6 +142,8 @@ private:
     std::deque<double> _latencies;
     std::vector<MetricPoint> _metrics;
     std::vector<std::string> _log;
+    std::string _fetch_line;
+    float _fetch_progress = -1.0f;
 };
 
 }  // namespace gui

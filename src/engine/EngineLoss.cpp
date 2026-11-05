@@ -242,6 +242,9 @@ static void _engine_raster_proj_backward(
             dist_type,
             accum_weight_map,
             accum_mode,
+            engine().max_weight.value,
+            engine().max_weight.step_scale,
+            engine().fwd.kernel_cut,
             v_render_outputs,
             v_render_Ts,
             v_median,
@@ -281,6 +284,8 @@ static void _engine_raster_proj_backward(
             DeviceTensor3D<float>(),  // loss_map
             accum_weight_map,
             accum_mode,
+            engine().max_weight.value,
+            engine().max_weight.step_scale,
             v_render_outputs,
             v_render_Ts,
             v_median,
@@ -304,6 +309,7 @@ static void _engine_raster_proj_backward(
     // In fused-proj-bwd-optim mode the projection backward is folded into the
     // optimizer step; we just stash the screen-space gradients for that call.
     engine().fwd.v_splats_s = v_splats_s_out;
+    engine_observe_projective_depth();
     if (!engine().optim.use_fused_proj_bwd_optim) {
         // SH VALUE-quant: when active in non-FPBO mode, project_vjp reads
         // the source SH via the codec instead of fp32 features_sh (which is
@@ -713,11 +719,19 @@ static std::map<std::string, float> _engine_loss(
     );
 
     // The one place the error map is conditioned, so the preview copy below
-    // and the raster backward aggregation read the same picture.
+    // and the raster backward read the same picture; a learned-score step
+    // divides it, unpowered, by the rendered score map for the bwd to average.
+    TorchTensorView score_fit = _tv_null();
+    if (!map_only && engine().fwd.render_score.data_ptr() != nullptr)
+        score_fit = TorchTensorView((uint64_t)engine().fwd.render_score.data_ptr(),
+                                    4, {C, H, W, 1});
     if (compute_loss_map && _tv_valid(loss_map_buf))
         normalize_clip_map_inplace_tensor(loss_map_buf, loss_map_normalize,
                                           loss_map_clip_quantile,
-                                          loss_map_power);
+                                          loss_map_power, score_fit);
+    if (!map_only)
+        engine().learned_score.ratio_map =
+            compute_loss_map && _tv_valid(loss_map_buf) && _tv_valid(score_fit);
 
     if (map_only) {
         backend::memcpy_sync((void*)std::get<0>(map_out),
@@ -918,6 +932,9 @@ static std::map<std::string, float> _engine_loss(
     if (perceptual_loss == (int)PerceptualLoss::SCielab) {
         loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * kScielabLossPerDeltaE * lv.delta_e;
         loss_dict["delta_e"] = lv.delta_e;
+    } else if (perceptual_loss == (int)PerceptualLoss::Flip) {
+        loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * lv.flip;
+        loss_dict["flip"] = lv.flip;
     } else {
         loss_dict["rgb_loss"] = lv.rgb_loss + w_ssim * (1.0f - lv.ssim);
         loss_dict["ssim"] = lv.ssim;

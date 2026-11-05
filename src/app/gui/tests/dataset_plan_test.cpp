@@ -77,7 +77,12 @@ void build(const fs::path& ws, const SfmJob& job) {
     touch(ws / "sparse" / "0" / "cameras.bin");
     StepRecorder rec(ws.string(), DatasetRecord{});
     rec.begin(Step::Frames, frames_fields(job.prep));
-    rec.finish(Step::Frames);
+    std::vector<PrepCapture> captures;
+    for (const PrepInput& in : job.prep.inputs)
+        if (in.is_video)
+            captures.push_back(
+                {in.subdir, fs::absolute(in.path).lexically_normal().generic_string(), 0.0, true});
+    rec.finish(Step::Frames, captures);
     rec.begin(Step::Masks, masks_fields(job.prep));
     rec.finish(Step::Masks);
     rec.begin(Step::Model, model_fields(job));
@@ -119,6 +124,19 @@ SfmJob dropped_images(const fs::path& ws, const SfmJob& built) {
 int main() {
     const fs::path ws = fs::temp_directory_path() / "spirula_dataset_plan_test";
     const SfmJob made = video_job(ws);
+
+    {
+        SfmJob workers = made;
+        expect(workers.prep.inference_devices.empty() &&
+                   workers.geometry.worker_devices.empty(),
+               "worker scheduling defaults to serial before GPU selection");
+        workers.prep.inference_devices = "uuid:00112233445566778899aabbccddeeff";
+        workers.geometry.worker_devices = workers.prep.inference_devices;
+        expect(frames_fields(made.prep) == frames_fields(workers.prep) &&
+                   masks_fields(made.prep) == masks_fields(workers.prep) &&
+                   geometry_fields(made.geometry) == geometry_fields(workers.geometry),
+               "GPU routing does not change output recipes");
+    }
 
     // ---- which LUT a row's frames go through ---------------------------------
     {
@@ -291,6 +309,57 @@ int main() {
         expect(p[Step::Geometry].act == Act::None, "geometry off is not a step");
     }
     {
+        const fs::path w = ws.string() + "_ambiguous";
+        SfmJob j = video_job(w);
+        build(w, j);
+        StepRecorder rec(w.string(), read_dataset_record(w.string()));
+        rec.begin(Step::Frames, frames_fields(j.prep));
+        rec.finish(Step::Frames);
+        const DatasetPlan p = plan(j);
+        expect(p[Step::Frames].act == Act::Redo && !p[Step::Frames].can_keep && p.ask(),
+               "completed video frames without recorded timing must be extracted again");
+        PlanRequest keep;
+        keep.keep_built = true;
+        const DatasetPlan preserved = plan(j, keep);
+        expect(!preserved[Step::Frames].can_keep && preserved.ask() &&
+                   recorded_captures(w.string(), j.prep).empty(),
+               "preserving ambiguous video frames is unavailable and still needs authorization");
+        PlanRequest redo;
+        redo.redo_frames = true;
+        redo.keep_built = true;
+        const DatasetPlan authorized = plan(j, redo);
+        expect(authorized[Step::Frames].act == Act::Redo && !authorized.ask(),
+               "explicit frame rebuilding takes precedence over a retained preservation choice");
+        fs::remove_all(w);
+    }
+    {
+        const fs::path w = ws.string() + "_source_identity";
+        const fs::path source = ws.string() + "_source.mp4";
+        touch(source);
+        SfmJob j = video_job(w);
+        j.prep.inputs[0].path = source.string();
+        std::string error;
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot the video");
+        build(w, j);
+        expect(plan(j)[Step::Frames].act == Act::Reuse, "identified unchanged source reuses frames");
+        const auto stamp = fs::last_write_time(source);
+        std::ofstream(source) << "y";
+        fs::last_write_time(source, stamp);
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot replacement");
+        PlanRequest keep;
+        keep.keep_built = true;
+        const DatasetPlan changed = plan(j, keep);
+        expect(changed[Step::Frames].act == Act::Redo && !changed[Step::Frames].can_keep &&
+                   changed.ask() && makes(changed[Step::Masks].act) &&
+                   makes(changed[Step::Model].act),
+               "same-size same-time source replacement invalidates frames and their dependents");
+        PlanRequest redo;
+        redo.redo_frames = true;
+        expect(!plan(j, redo).ask(), "explicit extraction authorizes source invalidation");
+        fs::remove_all(w);
+        fs::remove(source);
+    }
+    {
         SfmJob scans = made;
         scans.lidar.clouds = {"/scan.e57"};
         scans.lidar.scanner_only = true;
@@ -355,7 +424,12 @@ int main() {
             rec.begin(s, s == Step::Frames  ? frames_fields(j.prep)
                          : s == Step::Masks ? masks_fields(j.prep)
                                             : model_fields(j));
-            rec.finish(s);
+            if (s == Step::Frames)
+                rec.finish(s, {{a.subdir, fs::absolute(a.path).lexically_normal().generic_string(),
+                                 0.0, true},
+                                {b.subdir, fs::absolute(b.path).lexically_normal().generic_string(),
+                                 0.0, false}});
+            else rec.finish(s);
         }
         SfmJob d = j;
         PrepInput in;
@@ -445,8 +519,8 @@ int main() {
         StepRecorder rec(ws.string(), read_dataset_record(ws.string()));
         rec.begin(Step::Frames, frames_fields(made.prep));
         const DatasetPlan p = plan(made);
-        expect(p[Step::Frames].act == Act::Run && p[Step::Frames].why == Why::Resume,
-               "frames interrupted on the same settings are finished");
+        expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].why == Why::Unrecorded,
+               "interrupted video frames without timing are extracted again");
         expect(p[Step::Model].act == Act::Redo,
                "... and the model built from the frames before them is not trusted");
     }
@@ -787,16 +861,17 @@ int main() {
         SfmJob j = made;
         j.quality = 3;
         DatasetPlan p = plan(j);
-        expect(p[Step::Frames].why == Why::Unrecorded && p[Step::Model].why == Why::Unrecorded &&
-                   !p.ask(),
-               "with no record, what is there is kept");
+        expect(p[Step::Frames].act == Act::Redo &&
+                   p[Step::Frames].why == Why::Unrecorded &&
+                   p[Step::Model].act == Act::Redo && p.ask(),
+               "unrecorded video frames need known timing before their model is reused");
         std::ofstream(ws / ".spirula-frames")
             << "builtin\n--fps\n2\n--adaptive\n0\n--range\n4\n--sharp\n3\n--sync\n1\n"
                "--max-frames\n100000\n--rotate\n1\n--photos\n0\n--360\n0\n--360-size\n0\n"
                "--360-orient\n0,0,0\n--input\n/captures/walk.insv\n\n0\n";
         p = plan(made);
-        expect(p[Step::Frames].act == Act::Reuse && p[Step::Frames].why == Why::None,
-               "the old stamp still matches its own frames");
+        expect(p[Step::Frames].act == Act::Redo && p.ask(),
+               "a legacy stamp cannot recover missing frame timing");
         j = made;
         j.prep.video_fps = 4.0f;
         p = plan(j);
@@ -873,16 +948,17 @@ int main() {
         std::vector<PrepCapture> c = recorded_captures(ws.string(), made.prep);
         // Absolute as the record keeps it: Windows puts the current drive in front.
         const std::string walk = fs::absolute("/captures/walk.insv").lexically_normal().generic_string();
-        expect(c.size() == 1 && c[0].path == walk && c[0].subdir.empty(),
-               "the frames' fields name the video they were cut from");
+        expect(c.size() == 1 && c[0].path == walk && c[0].subdir.empty() &&
+                   c[0].source_indices(),
+               "source-indexed extraction retains exact frame timing");
         SfmJob f = made;
         f.prep.force_external_decode = true;
         StepRecorder r(ws.string(), read_dataset_record(ws.string()));
         r.begin(Step::Frames, frames_fields(f.prep));
-        r.finish(Step::Frames);
-        c = recorded_captures(ws.string(), f.prep);
+        r.finish(Step::Frames, {{"", walk, 6.0, false}});
+        c = recorded_captures(ws.string(), made.prep);
         expect(c.size() == 1 && c[0].fps == 6.0,
-               "ffmpeg's stems count candidates at the rate times the window");
+               "legacy resampled timing survives a different decoder choice");
         const fs::path video = fs::temp_directory_path() / "spirula_dataset_plan_test.insv";
         touch(video);
         r.begin(Step::Frames, frames_fields(made.prep));
@@ -897,6 +973,13 @@ int main() {
         c = recorded_captures(ws.string(), made.prep);
         expect(c.size() == 1 && c[0].time_offset == 12.5,
                "a clip's start, where ffmpeg numbered from, is kept with the frames");
+        offset.fps = 0.0;
+        r.begin(Step::Frames, frames_fields(made.prep));
+        r.finish(Step::Frames, {offset});
+        c = recorded_captures(ws.string(), made.prep);
+        expect(c.size() == 1 && c[0].fps == 0.0 && !c[0].source_indices() &&
+                   c[0].time_offset == 12.5,
+               "a full-rate legacy clip cannot treat clip-relative stems as source click frames");
         SfmJob d = dropped_images(ws, made);
         c = captures_behind(d.prep);
         expect(c.size() == 1 && c[0].path == video.string() && c[0].subdir.empty(),

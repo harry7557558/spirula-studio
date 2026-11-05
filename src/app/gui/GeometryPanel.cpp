@@ -429,7 +429,9 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
             // The first call after a load builds the pipelines and measures the
             // GEMM tiling, so timing it reports about 3x the steady-state cost
             // -- and that number is what the whole-capture estimate is made of.
-            if (just_loaded) {
+            if (just_loaded && !j.pred.cheapWarmup()) {
+                j.pred.prepare(face_request(warp, 0, settings.num_tokens));
+            } else if (just_loaded) {
                 warp.sampleFace(0, rgb.data(), face_rgb);
                 app::GeometryRequest warm =
                     face_request(warp, 0, settings.num_tokens);
@@ -442,17 +444,25 @@ void GeometryPanel::start_job(const GeometryJob& settings) {
             const sfm::ExifTransform turn = app::photo_turn(frame.path);
             const sfm::ExifTransform back = app::inverse_turn(turn);
             const double t0 = nn::now_ms();
+            // Both maps, whatever the checkboxes say: they decide what the RUN
+            // writes, and a pane that appears without another forward pass is
+            // worth the decoder head.
+            std::vector<std::vector<float>> rgbs;
+            std::vector<app::GeometryRequest> reqs;
             for (int k = 0; k < warp.faces(); k++) {
-                if (_cancel.load()) return;
                 warp.sampleFace(k, rgb.data(), face_rgb);
                 app::GeometryRequest rq = face_request(warp, k, settings.num_tokens);
                 int fw = rq.width, fh = rq.height;
                 app::turn_pixels(turn, 3, face_rgb, fw, fh);
-                // Both maps, whatever the checkboxes say: they decide what the
-                // RUN writes, and a pane that appears without another forward
-                // pass is worth the decoder head.
-                app::GeometryPrediction p =
-                    j.pred.predict(face_rgb.data(), app::turn_request(rq, turn));
+                reqs.push_back(app::turn_request(rq, turn));
+                rgbs.push_back(face_rgb);
+            }
+            if (_cancel.load()) return;
+            std::vector<const float*> faces;
+            for (const std::vector<float>& f : rgbs) faces.push_back(f.data());
+            std::vector<app::GeometryPrediction> preds = j.pred.predictBatch(faces, reqs);
+            for (int k = 0; k < warp.faces(); k++) {
+                app::GeometryPrediction& p = preds[(size_t)k];
                 int dw = p.width, dh = p.height;
                 app::turn_pixels(back, 1, p.depth, dw, dh);
                 dw = p.width;

@@ -1,6 +1,8 @@
 // Engine Adam + per-splat regularization optimizer step.
 
 #include "engine/Engine.h"
+#include "backend/api/Optimizer.h"
+#include "shaders/screen_layout.h"
 #include "engine/EngineCommon.h"
 #include "engine/EngineState.h"
 
@@ -339,13 +341,92 @@ static inline DeviceTensorFloatND _fnd_view(float* ptr, int64_t N, int64_t P) {
 }
 
 
-// Fused projection-bwd + Adam-and-regularization optimizer step. Replaces
-// the projection_*_backward + engine_optim_step pair when
-// `cfg.use_fused_proj_bwd_optim` is set. Requires
-// engine_compute_loss_backward to have stashed v_splats_s into
-// engine().fwd.v_splats_s. World-space gradient buffers are not allocated
-// in this path (raster_*_bwd's world atomicStore is null-pointer-guarded
-// per channel, and the fused kernel's atomicLoad uses the same guard).
+void engine_clear_projective_depth() {
+    auto& s = engine();
+    s.optim.observe_projective = {};
+    s.projective_state = DeviceVector<float4>();
+    s.projective_information = DeviceVector<float>();
+    s.projective_centers = DeviceVector<float4>();
+    auto& pool = DevicePool::global();
+    pool.free(PoolSlot::EngProjectiveState);
+    pool.free(PoolSlot::EngProjectiveInformation);
+    pool.free(PoolSlot::EngProjectiveCenters);
+}
+
+static ProjectiveDepthOptim projective_depth_state(const OptimConfig& cfg) {
+    auto& s = engine();
+    ProjectiveDepthOptim depth;
+    if (cfg.lr_projective_depth <= 0) {
+        if (s.projective_state.data_ptr() || s.projective_information.data_ptr() || s.projective_centers.data_ptr())
+            engine_clear_projective_depth();
+        return depth;
+    }
+    if (!s.bilagrid_cur_cam_indices.data_ptr() || s.bilagrid_cur_cam_indices.size() == 0) return depth;
+    if (!s.projective_centers.data_ptr()) {
+        if (s.projective_centers_host.empty()) return depth;
+        s.projective_centers.resize(PoolSlot::EngProjectiveCenters,s.projective_centers_host.size());
+        backend::memcpy_sync(s.projective_centers.data_ptr(),s.projective_centers_host.data(),
+            s.projective_centers_host.size()*sizeof(float4),backend::MemcpyKind::HostToDevice);
+    }
+    if (!s.projective_state.data_ptr()) {
+        s.projective_state.resize(PoolSlot::EngProjectiveState,s.max_num_splats);
+        s.projective_state.zero();
+        s.projective_information.resize(PoolSlot::EngProjectiveInformation,s.max_num_splats);
+        s.projective_information.zero();
+    }
+    depth.states = s.projective_state.data_ptr();
+    depth.information = s.projective_information.data_ptr();
+    depth.centers = s.projective_centers.data_ptr();
+    depth.camera_indices = s.bilagrid_cur_cam_indices.data_ptr();
+    depth.lr = cfg.lr_projective_depth;
+    depth.angular_lr = 3.333333f*cfg.lr_means;
+    depth.angular_relative = cfg.use_scale_agnostic_mean;
+    depth.single_observation = s.bilagrid_cur_cam_indices.size() == 1;
+    bool photometric = cfg.projective_photometric && !s.gt.depth.data_ptr() && !s.gt.normal.data_ptr();
+    depth.single_photometric = s.optim.zero_grad_in_optim
+        ? cfg.projective_photometric && s.optim.projective_step_photometric && s.optim.projective_step_one_center
+        : photometric && (depth.single_observation || s.optim.projective_one_center);
+    return depth;
+}
+
+void engine_prepare_projective_depth(const OptimConfig& cfg) {
+    auto& s = engine(); auto& opt = s.optim;
+    if (cfg.lr_projective_depth <= 0) { opt.observe_projective = projective_depth_state(cfg); return; }
+    if (!opt.zero_grad_in_optim) {
+        bool photometric = cfg.projective_photometric && !s.gt.depth.data_ptr() && !s.gt.normal.data_ptr();
+        bool one_center = opt.projective_one_center && opt.projective_center_id >= 0;
+        if (!opt.skip_grad_zero) {
+            opt.projective_step_one_center = one_center;
+            opt.projective_step_photometric = photometric;
+            opt.projective_step_center_id = opt.projective_center_id;
+        } else {
+            opt.projective_step_photometric &= photometric;
+            if (opt.projective_step_one_center && one_center) {
+                const float4 a = s.projective_centers_host[opt.projective_step_center_id];
+                const float4 b = s.projective_centers_host[opt.projective_center_id];
+                one_center = a.x == b.x && a.y == b.y && a.z == b.z;
+            }
+            opt.projective_step_one_center &= one_center;
+        }
+    }
+    opt.observe_projective = projective_depth_state(cfg);
+}
+
+void engine_observe_projective_depth() {
+    auto& s = engine();
+    auto depth = s.optim.observe_projective;
+    s.optim.observe_projective = {};
+    if (!depth.states || s.fwd.v_splats_s.empty()) return;
+    bool gut = s.primitive == "3dgut";
+    int stride = gut ? SCRG_STRIDE : SCR2_STRIDE;
+    int offset = gut ? SCRG_OPAC : SCR2_OPAC;
+    int64_t count = s.packed ? s.fwd.gaussian_ids.size()
+        : s.cur_num_splats*s.bilagrid_cur_cam_indices.size();
+    projective_depth_observe_tensor(count,s.cur_num_splats,s.packed,
+        s.fwd.camera_ids,s.fwd.gaussian_ids,s.fwd.v_splats_s[0],stride,offset,
+        s.world.means,s.world.scales,s.world.quats,depth);
+}
+
 void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
     _ensure_optim_state(cfg.sh_optim_bits, cfg.sh_value_bits,
                         cfg.non_sh_optim_bits,
@@ -357,14 +438,8 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             "engine_fused_proj_bwd_optim_step: v_splats_s not stashed; "
             "engine_compute_loss_backward must run first");
 
-    // World-grad vector handed to the FPBO kernel. For 3dgs / mip the
-    // per-channel slots stay null (raster_*_bwd never writes the world
-    // buffer for those prims, so there is nothing to pick up). For 3dgut,
-    // raster_*_bwd has already atomicAdded mean / quat / scale into the
-    // engine grad buffers (_alloc_grad_buffers allocates them in that case);
-    // pass those three slots so the kernel's atomicLoad picks them up and
-    // sums them with the projection-bwd contribution. Other slots remain
-    // null -- they were never written and reading 0 is correct.
+    // 3DGUT adds raster world gradients; 3DGS/Mip receive only projection gradients.
+    // Null channels are guarded by both raster stores and fused projection loads.
     std::vector<DeviceTensorFloatND> v_splats_w;
     if (engine().grad.means.data_ptr() != nullptr) {
         v_splats_w = {
@@ -511,7 +586,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             g1, g2,
             sh_packed_opt, sh_bounds_opt,
             sh_value_packed_opt, sh_value_bounds_opt,
-            non_sh, visit,
+            non_sh, visit, projective_depth_state(cfg),
             engine().optim.radii,
             densify_score,
             cfg.lr_means, cfg.lr_quats, cfg.lr_scales,
@@ -652,7 +727,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         color_trust,
         non_sh_optim,
         visit,
-        grad_q,
+        grad_q, projective_depth_state(cfg),
         step + 1, per_splat_steps,
         grad_scale, zero_grad
     );

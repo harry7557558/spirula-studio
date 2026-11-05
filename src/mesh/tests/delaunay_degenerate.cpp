@@ -8,6 +8,7 @@
 // Each case runs under a watchdog: the failure guarded against is a walk that
 // never ends, not a wrong answer.
 
+#include "core/HardwareThreads.h"
 #include "mesh/Delaunay3D.h"
 
 #include <atomic>
@@ -175,7 +176,7 @@ int check(const std::vector<double>& pts, int threads, const char* what,
 }  // namespace
 
 int main(int argc, char** argv) {
-    const int hw = (int)std::thread::hardware_concurrency();
+    const int hw = (int)spirula::hardware_threads();
     std::vector<int> thread_counts = {1, hw > 1 ? hw : 4};
     if (argc > 1) thread_counts = {std::atoi(argv[1])};
 

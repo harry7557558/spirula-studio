@@ -53,6 +53,10 @@ struct LinearOpts {
     Act     act = Act::None;
     float   alpha = 1.0f;       // scales the matmul before bias/residual
     int64_t x_row_stride = 0;   // 0 -> x.cols(); set when x is a wide-buffer slice
+    // Tensor cores round x to fp16, whose range ends at 65504; x is scaled by
+    // this before the rounding and the product by its inverse after. A power
+    // of two changes nothing else. The fp32 kernels never round x and ignore it.
+    float   x_scale = 1.0f;
 };
 
 // out[M, N] = act(alpha * x[M, K] @ w[N, K]^T + bias + residual)
@@ -84,6 +88,20 @@ enum class GemmTile { Measured, Wide, Narrow };
 void set_gemm_tile(GemmTile t);
 
 // ================
+// Quantized weights
+// ================
+
+// bitsandbytes' NF4, blocksize 64, bit for bit as dequantize_4bit returns it:
+// out[n, k] f16 = row_scale[n] * (bf16(level[code] * absmax) + residual[n, k]).
+// Codes are quantize_4bit's bytes; absmax is one bf16 per block, which is exact.
+struct Nf4Opts {
+    Tensor residual;    // [N, K] f32; a merged LoRA product
+    Tensor row_scale;   // [N] f32; folds a per-output gate into the matrix
+};
+void dequant_nf4(const Tensor& out, const Tensor& codes, const Tensor& absmax,
+                 const Nf4Opts& opts = {});
+
+// ================
 // Normalization
 // ================
 
@@ -91,6 +109,11 @@ void set_gemm_tile(GemmTile t);
 // first -- the post-norm pattern `x = LN(x + sublayer(x))`.
 void layer_norm(const Tensor& out, const Tensor& x, const Tensor& w, const Tensor& b,
                 float eps = 1e-5f, const Tensor& residual = {});
+
+// In-place RMSNorm (weight [head_dim]) of each head of q or k where a fused qkv
+// projection left it: head h of token i starts at i * row_stride + h * head_dim.
+void rms_norm_heads(const Tensor& x, const Tensor& w, int64_t n, int n_heads,
+                    int head_dim, int64_t row_stride, float eps = 1e-6f);
 
 // GroupNorm over the channel (last) dimension of a channel-last map.
 // Needs an arena for the [groups, 2] statistics.
@@ -170,9 +193,12 @@ struct ConvOpts {
     // nn.Conv2d(padding_mode='replicate'), which every 3x3 in MoGe's head uses.
     // Only conv2d honours it; the depthwise and deformable kernels zero-pad.
     bool pad_replicate = false;
+    // [Ho, Wo, Co], added after the bias and before `act`. conv2d only.
+    Tensor residual;
 };
 
-// out[Ho, Wo, Co] = conv2d(in[Hi, Wi, Ci], w[Co, Ci, kh, kw]).
+// out[Ho, Wo, Co] = conv2d(in[Hi, Wi, Ci], w[Co, Ci, kh, kw]), sized by `out`;
+// taps past the edge read zero, so ZeroPad2d((0, 1, 0, 1)) + stride 2 is pad 0.
 // Runs as chunked im2col + GEMM; `arena` supplies the column workspace.
 void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor& w,
             int kh, int kw, const ConvOpts& opts = {});
@@ -234,6 +260,9 @@ void resize_bicubic(const Tensor& out, const Tensor& in);
 
 void upsample_nearest2x(const Tensor& out, const Tensor& in);
 void maxpool2x2(const Tensor& out, const Tensor& in);
+// nn.MaxPool2d(kernel, stride) with no padding and ceil_mode=False -- AlexNet's
+// 3x3 stride-2 pool. `out` must be [(Hi - kernel)/stride + 1, ...].
+void maxpool(const Tensor& out, const Tensor& in, int kernel, int stride);
 
 // F.interpolate(scale_factor=(sy, sx), mode='nearest'). Pass the SCALE the
 // reference asked for, not out/in: torch sizes the output floor(in * s) and
@@ -275,6 +304,17 @@ void resize_binarize(const Tensor& out_u8, const Tensor& logits, int64_t Ho, int
 // ================
 
 void gather_rows(const Tensor& out, const Tensor& table, const Tensor& ids);
+
+// out = act(cols @ w[N, taps*Ci]^T + bias + residual), never materializing
+// cols[m, t*Ci + c] = x[nbr[m, t], c] (0 where the I32 [M, taps] table is -1).
+// Ci must be a multiple of 16; `residual` may alias `out`.
+void sparse_conv(const Tensor& out, const Tensor& x, const Tensor& nbr, const Tensor& w,
+                 const LinearOpts& opts = {});
+
+// out[s, :] = mean of x[ids[k], :] for k in [offsets[s], offsets[s+1]); an
+// empty segment writes 0. `offsets` and `ids` are I32.
+void segment_mean(const Tensor& out, const Tensor& x, const Tensor& offsets,
+                  const Tensor& ids);
 
 // Copy `rows` x `cols` between buffers with independent row strides. The
 // building block for concat, slice and token-sequence assembly.

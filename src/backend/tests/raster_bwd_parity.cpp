@@ -1,15 +1,6 @@
-// Backend parity tool for the rasterization backward. Runs the (already
-// parity-verified) forward chain — projection -> tile intersect ->
-// rasterize forward — to build real forward state, then drives
-// rasterize_to_pixels_{3dgs,3dgut}_bwd with deterministic output gradients.
-// The SAME source builds under both backends:
-//
-//   CUDA build:   ./raster_bwd_parity dump ref.bin
-//   Vulkan build: ./raster_bwd_parity compare ref.bin   (per device)
-//
-// Per-splat gradients are accumulated across macro tiles with atomic adds
-// whose order differs between backends (and between runs on CUDA), so the
-// comparison is tolerance-based with a small violation-fraction cap.
+// Raster backward parity from real projection/intersection/forward state.
+// CUDA: raster_bwd_parity dump ref.bin; Vulkan: compare ref.bin.
+// Atomic accumulation order varies; comparisons cap tolerance violations.
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/tile/IntersectTile.cuh>
@@ -147,6 +138,11 @@ int main(int argc, char** argv) {
     float* d_v_drgb = upload(h_v_drgb);
     float* d_v_dd = upload(h_v_dd);
     float* d_awmap = upload(h_awmap);
+    // Peak-weight seed: some splats keep it, the rest are raised past it.
+    std::vector<float> h_mw(N);
+    for (auto& v : h_mw) v = uf(0.f, 0.3f);
+    float* d_mw = upload(h_mw);
+    const float kMwScale = 1.25f;
 
     auto t3f3 = [&](float* p) {
         return DeviceTensor3D<float3>(ttv(p, {(int64_t)C, H, W, 3}));
@@ -183,18 +179,31 @@ int main(int argc, char** argv) {
         bool median;
         DensifyAccumMode aw;
         bool vmg;  // 3dgut viewmat grad
+        bool mw;   // peak-weight output
+        float cut; // 3dgs kernel_cut: Primitive3DGS::kernel_vis
+        bool depth_grad = true;
     };
     // The 3dgs backward never sees the camera, so the tier sweep lives on the
     // 3dgut rows; the 3dgs rows carry it through the projection only.
     const Cfg cfgs[] = {
-        {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, false},
-        {0, false, 0, 1, DistortionType::RGB_D, true, DensifyAccumMode::Max, false},
-        {0, true, 1, 2, DistortionType::D, false, DensifyAccumMode::Sum, false},
-        {0, true, 1, 2, DistortionType::D, false, DensifyAccumMode::Avg, false},
-        {2, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, true},
-        {2, false, 1, 2, DistortionType::D, true, DensifyAccumMode::Max, false},
-        {2, false, 0, 1, DistortionType::RGB_D, false, DensifyAccumMode::Sum, false},
-        {2, true, 0, 2, DistortionType::D, false, DensifyAccumMode::Avg, false},
+        {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, false, true, 0.0f},
+        {0, false, 0, 1, DistortionType::RGB_D, true, DensifyAccumMode::Max, false, false, 0.0f},
+        {0, true, 1, 2, DistortionType::D, false, DensifyAccumMode::Sum, false, true, 0.0f},
+        {0, true, 1, 2, DistortionType::D, false, DensifyAccumMode::Avg, false, false, 0.0f},
+        {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::Sum, false, true, 4.0f},
+        {0, true, 1, 1, DistortionType::D, false, DensifyAccumMode::Avg, false, false, 4.0f},
+        {2, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, true, false, 0.0f},
+        {2, false, 1, 2, DistortionType::D, true, DensifyAccumMode::Max, false, true, 0.0f},
+        {2, false, 0, 1, DistortionType::RGB_D, false, DensifyAccumMode::Sum, false, false, 0.0f},
+        {2, true, 0, 2, DistortionType::D, false, DensifyAccumMode::Avg, false, true, 0.0f},
+        {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, false, true, 0.0f, false},
+        {0, true, 1, 1, DistortionType::None, false, DensifyAccumMode::Avg, false, true, 4.0f, false},
+        {2, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, true, false, 0.0f, false},
+        {2, true, 1, 2, DistortionType::None, false, DensifyAccumMode::Avg, false, true, 0.0f, false},
+        {0, true, 1, 1, DistortionType::RGB_D, true, DensifyAccumMode::Max, false, false, 0.0f, false},
+        {2, false, 0, 1, DistortionType::D, true, DensifyAccumMode::Sum, true, true, 0.0f, false},
+        {0, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, false, false, 0.0f, false},
+        {2, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, true, false, 0.0f, false},
     };
     const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
                            "EQUIRECTANGULAR"};
@@ -204,6 +213,8 @@ int main(int argc, char** argv) {
     };
 
     for (const Cfg& cfg : cfgs) {
+        auto v_render_cfg = v_renders;
+        if (!cfg.depth_grad) std::get<1>(v_render_cfg) = DeviceTensor3D<float>{};
         backend::memset_sync(d_radii, 0, N * sizeof(float));
 
         // --- projection ---
@@ -249,7 +260,7 @@ int main(int argc, char** argv) {
         int macro_log2 = kMacroLog2Default;
         auto [isect_ids, flatten_ids, tile_offsets] =
             do_intersect_tile_generic(aabb_2d, depths_nd,
-                                      ellipse_view(splats_s, cfg.prim == 2), C,
+                                      ellipse_view(splats_s, cfg.prim == 2, cfg.cut), C,
                                       ttv(d_intr, {(int64_t)C, 4}), W, H,
                                       image_ids_ptr, /*tile_active=*/nullptr,
                                       macro_log2);
@@ -268,13 +279,14 @@ int main(int argc, char** argv) {
                 cams[cfg.cam], dist_fixture::kTierNames[cfg.dist],
                 dist_tv(cfg.dist), aabb_2d, W, H,
                 tile_offsets, flatten_ids, macro_log2, cfg.dt,
-                cfg.median, true);
+                cfg.median, true, SplatScoreRender{});
         } else {
             rout = rasterize_to_pixels_3dgs_fwd(N, in_splats, splats_s,
                                                 gauss_ids, W, H, tile_offsets,
                                                 flatten_ids,
                                                 macro_log2, cfg.dt,
-                                                cfg.median, true);
+                                                cfg.median, true,
+                                                SplatScoreRender{}, cfg.cut);
         }
         backend::device_synchronize();
         if (check_error()) return 1;
@@ -293,6 +305,12 @@ int main(int argc, char** argv) {
             ? t3f1(d_awmap) : DeviceTensor3D<float>{};
         DeviceTensor3D<float> v_med_t =
             cfg.median ? t3f1(d_v_med) : DeviceTensor3D<float>{};
+        DeviceVector<float> mw_t;
+        if (cfg.mw) {
+            backend::memcpy_sync(d_mw, h_mw.data(), N * sizeof(float),
+                                 MemcpyKind::HostToDevice);
+            mw_t = DeviceVector<float>(ttv(d_mw, {N, 1}));
+        }
 
         // --- rasterization backward ---
         if (cfg.prim == 2) {
@@ -306,8 +324,8 @@ int main(int argc, char** argv) {
                     tile_offsets, flatten_ids, macro_log2,
                     render_Ts, last_ids, renders,
                     dist_fwd_opt, cfg.dt, DeviceTensor3D<float>{}, awmap_t,
-                    cfg.aw, v_renders, t3f1(d_v_T), v_med_t, v_dist_opt, 0.0f,
-                    std::nullopt, std::nullopt, cfg.vmg);
+                    cfg.aw, mw_t, kMwScale, v_render_cfg, t3f1(d_v_T), v_med_t,
+                    v_dist_opt, 0.0f, std::nullopt, std::nullopt, cfg.vmg);
             backend::device_synchronize();
             if (check_error()) return 1;
             for (int c = 0; c < 3; c++)  // v means/quats/scales
@@ -318,13 +336,14 @@ int main(int argc, char** argv) {
                 readback(acc, v_viewmats.data_ptr(), (int64_t)C * 16);
             if (accum_any(cfg.aw))
                 readback(acc, aw_out.data_ptr(), N * accum_lanes(cfg.aw));
+            if (cfg.mw) readback(acc, d_mw, N);
         } else {
             auto [v_w, v_s, aw_out] = rasterize_to_pixels_3dgs_bwd(
                 N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
                 flatten_ids, macro_log2, render_Ts, last_ids,
                 renders, dist_fwd_opt,
-                cfg.dt, awmap_t, cfg.aw, v_renders, t3f1(d_v_T), v_med_t,
-                v_dist_opt, 0.0f,
+                cfg.dt, awmap_t, cfg.aw, mw_t, kMwScale, cfg.cut, v_render_cfg,
+                t3f1(d_v_T), v_med_t, v_dist_opt, 0.0f,
                 std::nullopt, std::nullopt);
             backend::device_synchronize();
             if (check_error()) return 1;
@@ -333,6 +352,7 @@ int main(int argc, char** argv) {
                              {SCR2_OPAC, 1}, {SCR2_RGB, 3}});
             if (accum_any(cfg.aw))
                 readback(acc, aw_out.data_ptr(), N * accum_lanes(cfg.aw));
+            if (cfg.mw) readback(acc, d_mw, N);
 
             if (cfg.dt == DistortionType::RGB_D) {
                 std::vector<float> got[2];
@@ -341,7 +361,8 @@ int main(int argc, char** argv) {
                         N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
                         flatten_ids, macro_log2, render_Ts, last_ids,
                         renders, dist_fwd_opt, cfg.dt, awmap_t, cfg.aw,
-                        v_renders, t3f1(d_v_T), v_med_t,
+                        DeviceVector<float>{}, 1.0f, cfg.cut,
+                        v_render_cfg, t3f1(d_v_T), v_med_t,
                         k == 0 ? v_dists_tied : v_dists_derived,
                         k == 0 ? 0.0f : kDistRatio, std::nullopt, std::nullopt);
                     backend::device_synchronize();

@@ -133,6 +133,13 @@ user sees in the preview is what gets written.
   `MaskOptions::model` (`src/birefnet/`) masks the main subject with no prompt
   at all. Both reach the same union, margin and polarity as SAM 3's matches.
 
+SAM 3 submits an image's positive, negative and feature phrases together through
+`Session::segmentConcepts`, sharing the first fusion image self-attention.
+Scores, boxes and presence are read back together; CPU thresholding and NMS
+remain per phrase, in input order. Only surviving masks are decoded, then read
+back together. Phrase batches are capped at eight and reduced for arena
+headroom; mapped mask readback is capped at 128 MiB (or one mask if larger).
+
 The text half matches `reference/scripts/mask.py`, defaults included, so a dataset masked
 either way is the same dataset. Clicks have no counterpart there:
 lang-segment-anything takes words and nothing else.

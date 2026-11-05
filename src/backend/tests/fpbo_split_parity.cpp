@@ -1,12 +1,5 @@
-// FPBO against the non-fused optimizer path (fused_optim_3dgs_geometry + the
-// DC/SH kernels): one step from identical state and identical world gradients
-// must move every splat parameter the same way, or a dataset large enough to
-// pick the split-batch path trains under a different update law. Self-checking
-// on either backend, and on Vulkan again with spherical-beta lobes in the
-// colour rows; `v_splats_screen` is zeroed so the fused projection-backward
-// half contributes nothing and only the optimizers differ.
-//
-//   ./fpbo_split_parity
+// Fused and separate optimizers must agree from identical state and data gradients.
+// Zero screen gradients isolate the optimizer from projection backward.
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/optim/FusedProjectionBwdOptim.cuh>
@@ -256,13 +249,22 @@ static int run(int lobes) {
             shv_b = ttv(f_shv_b, {NB, 2});
         }
 
+        std::vector<float4> depth_rows(N,{1,.002f,.0001f,8});
+        auto depth_centers = upload(std::vector<float4>{{0,0,-4,1},{0,0,-5,1}});
+        auto depth_cameras = upload(std::vector<int32_t>{0,1});
+        auto f_depth_rows = upload(depth_rows), s_depth_rows = upload(depth_rows);
+        auto depth_information = upload(std::vector<float>(N,100));
+        ProjectiveDepthOptim f_depth{f_depth_rows,depth_information,depth_centers,depth_cameras,
+                                    .01f,.0005f,false,false};
+        ProjectiveDepthOptim s_depth = f_depth; s_depth.states = s_depth_rows;
+
         float* f_score = upload(std::vector<float>(N, 0.f));
         fused_projection_bwd_optimizer_3dgs(
             N, basis, splats, ttv(d_vm, {C, 16}), ttv(d_intr, {C, 4}), W, H,
             "PINHOLE", dist_fixture::kTierNames[0],
             ttv(d_dist, {C, kCameraDistortionParams}), DeviceVector<int32_t>{},
             DeviceVector<int32_t>{}, aabb, v_world, v_screen, g1_world,
-            g2_world, shq, shq_b, shv, shv_b, f_non_sh, SplatVisitState{}, radii,
+            g2_world, shq, shq_b, shv, shv_b, f_non_sh, SplatVisitState{}, f_depth, radii,
             dv<float>(f_score, N), kLrMeans, kLrQuats,
             kLrScales, kLrOpacs, kLrDc, kLrSh, kLrSb,
             /*max_gauss_ratio=*/10.f,
@@ -348,7 +350,7 @@ static int run(int lobes) {
             /*max_screen_size=*/0.02f, /*max_screen_size_penalty=*/1.f,
             /*use_scale_agnostic_mean=*/false, color_trust, s_non_sh,
             SplatVisitState{},
-            GradQuantBuffers{}, kStep, DeviceVector<int32_t>(),
+            GradQuantBuffers{}, s_depth, kStep, DeviceVector<int32_t>(),
             /*grad_scale=*/1.f, /*zero_grad=*/false);
 
         // The engine's dispatch: quantized state folds DC into the geometry
@@ -413,6 +415,10 @@ static int run(int lobes) {
         compare("features_dc", download(f_dc, N * 3), download(s_dc, N * 3),
                 tol);
         compare("score", download(f_score, N), download(s_score, N), tol);
+        compare("projective", download((float*)f_depth_rows,4*N),
+                download((float*)s_depth_rows,4*N),tol);
+        for (auto p : {f_depth_rows,s_depth_rows,depth_centers}) backend::device_free(p);
+        backend::device_free(depth_cameras); backend::device_free(depth_information);
         if (!level1) {
             compare("features_sh", download(f_sh, SH_CELLS),
                     download(s_sh, SH_CELLS), sh_tol);

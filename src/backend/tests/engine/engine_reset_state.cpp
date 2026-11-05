@@ -1,13 +1,5 @@
-// engine_reset() must leave NO state behind: the second scene in a process
-// has to train exactly like the first. The GUI is the reason -- "Train again"
-// after a stop reuses the process, and every buffer the previous run allocated
-// has been freed by then, so any "already uploaded" flag that outlives the
-// reset points at memory nobody wrote.
-//
-// Self-checking (no reference file): the same seeded scene is trained twice
-// with engine_reset() between the runs and the splats must land in the same
-// place. Only the per-pixel loss drives the optimizer here (w_ssim = 0), so a
-// lost cotangent seed shows up as splats that never moved.
+// A second run in the same process must reproduce both the trained splats
+// and the metric readbacks, including the first step after engine_reset().
 
 #include <engine/Engine.h>
 #include <engine/EngineState.h>
@@ -32,8 +24,12 @@ static TorchTensorView ttv_null() {
     return std::make_tuple((uint64_t)0, 4u, std::vector<int64_t>{0});
 }
 
-// One full run: seed the scene, train a few steps, read the splats back.
-static std::vector<float> run_once() {
+struct RunResult {
+    std::vector<float> splats;
+    std::vector<float> metrics;
+};
+
+static RunResult run_once() {
     std::mt19937 rng(20260815u);
     auto uf = [&](float lo, float hi) {
         return lo + (hi - lo) * (float)(rng() & 0xffffff) / 16777215.0f;
@@ -67,8 +63,7 @@ static std::vector<float> run_once() {
     W_(LossWeightIndex::RgbSupL2) = 0.2f;
     W_(LossWeightIndex::DepthSup) = 0.5f;
     W_(LossWeightIndex::NormalSup) = 0.5f;
-    // The whole optimizer signal comes through the per-pixel loss cotangents.
-    cfg.loss.w_ssim = 0.0f;
+    cfg.loss.w_ssim = 0.2f;
     cfg.loss.num_loss_scales = 1;
     cfg.optim.lr_means = 1.6e-3f;
     cfg.optim.lr_quats = 1e-2f;
@@ -94,8 +89,9 @@ static std::vector<float> run_once() {
     for (auto& v : gt_normal) v = (uint8_t)(rng() & 0xff);
     for (auto& v : gt_depth) v = (uint16_t)(1 + (rng() % 4000));
 
-    for (int step = 1; step <= 8; step++)
-        engine_train_step(
+    RunResult result;
+    for (int step = 1; step <= 8; step++) {
+        const auto losses = engine_train_step(
             step, 100, "3dgs", 1, /*packed=*/false, W, H, "PINHOLE", "NONE",
             ttv(vm.data(), 4, {C, 4, 4}), ttv(intr.data(), 4, {C, 4}),
             ttv(dist.data(), 4, {C, kCameraDistortionParams}),
@@ -103,10 +99,13 @@ static std::vector<float> run_once() {
             ttv(gt_depth.data(), 2, {C, H, W, 1}),
             ttv(gt_normal.data(), 1, {C, H, W, 3}),
             ttv_null(), ttv_null(), cfg);
+        for (const char* key : {"psnr", "ssim", "rgb_loss"})
+            result.metrics.push_back(losses.at(key));
+    }
 
     backend::device_synchronize();
-    std::vector<float> out((size_t)N * 11);
-    float* p = out.data();
+    result.splats.resize((size_t)N * 11);
+    float* p = result.splats.data();
     auto grab = [&](const void* d, int64_t n) {
         backend::memcpy_sync(p, d, n * sizeof(float), MemcpyKind::DeviceToHost);
         p += n;
@@ -115,13 +114,13 @@ static std::vector<float> run_once() {
     grab(engine().world.quats.data_ptr(), N * 4);
     grab(engine().world.opacities.data_ptr(), N);
     grab(engine().world.features_dc.data_ptr(), N * 3);
-    return out;
+    return result;
 }
 
 int main() {
-    std::vector<float> first = run_once();
+    RunResult first = run_once();
     engine_reset();
-    std::vector<float> second = run_once();
+    RunResult second = run_once();
 
     if (const char* err = backend::last_error()) {
         std::fprintf(stderr, "backend error: %s\n", err);
@@ -130,17 +129,26 @@ int main() {
 
     double max_abs = 0.0;
     int64_t viol = 0;
-    for (size_t i = 0; i < first.size(); i++) {
-        double d = std::fabs((double)first[i] - (double)second[i]);
+    for (size_t i = 0; i < first.splats.size(); i++) {
+        double d = std::fabs((double)first.splats[i] - (double)second.splats[i]);
         max_abs = std::max(max_abs, d);
         // Atomic accumulation order is the only legitimate difference, and it
         // lands around 1e-4; a lost cotangent seed moves splats by whole units.
-        if (d > 5e-3 + 1e-3 * std::fabs((double)first[i])) viol++;
+        if (d > 5e-3 + 1e-3 * std::fabs((double)first.splats[i])) viol++;
     }
-    const bool pass = viol == 0;
+    int metric_viol = 0;
+    for (size_t i = 0; i < first.metrics.size(); i++) {
+        const float a = first.metrics[i], b = second.metrics[i];
+        if (!std::isfinite(a) || !std::isfinite(b) ||
+            std::fabs(a - b) > 5e-4f + 1e-4f * std::fabs(a)) {
+            std::fprintf(stderr, "metric %zu: first %.7g, second %.7g\n", i, a, b);
+            metric_viol++;
+        }
+    }
+    const bool pass = viol == 0 && metric_viol == 0;
     std::printf("engine_reset_state: %zu floats (max_abs %.3g, violations "
-                "%lld)\nengine_reset_state: %s\n",
-                first.size(), max_abs, (long long)viol,
+                "%lld), metric violations %d\nengine_reset_state: %s\n",
+                first.splats.size(), max_abs, (long long)viol, metric_viol,
                 pass ? "PASSED" : "FAILED");
     return pass ? 0 : 1;
 }

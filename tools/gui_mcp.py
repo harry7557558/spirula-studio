@@ -281,9 +281,10 @@ def handle(msg):
 
 
 def main():
-    out = sys.stdout
-    for line in sys.stdin:
-        line = line.strip()
+    # Bytes: Windows text mode decodes stdin as ANSI and writes \r\n.
+    out = sys.stdout.buffer
+    for raw in sys.stdin.buffer:
+        line = raw.decode("utf-8", "replace").strip()
         if not line:
             continue
         try:
@@ -305,7 +306,7 @@ def main():
                                               % msg.get("method")}}
             else:
                 reply = {"jsonrpc": "2.0", "id": msg["id"], "result": result}
-        out.write(json.dumps(reply) + "\n")
+        out.write((json.dumps(reply) + "\n").encode("utf-8"))
         out.flush()
 
 

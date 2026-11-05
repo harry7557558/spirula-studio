@@ -61,10 +61,12 @@ inline GeoOrigin telemetryGeoOrigin(const std::vector<SensorCapture>& caps,
     return {true, meanGeodetic(all), every_alt ? alt : ""};
 }
 
+// What the IMU settles: `Up` skips its scale. The GPS is `gps`'s, either way.
 enum class SensorMode { Auto, Up, None };
 
 struct SensorGaugeOptions {
     SensorMode mode = SensorMode::Auto;
+    bool gps = true;                // scale, heading and place from the GPS log
     bool gps_full = false;          // fit altitude too (D75 says not to)
     double gps_max_error = 0;       // metres, the RANSAC radius (0: the fixes' own scatter) ...
     double gps_max_error_frac = 0;  // ... or this fraction of the fixes' RMS radius
@@ -173,8 +175,8 @@ public:
                 consensus(out);
                 imuScale(out);
             }
-            gpsScale(out);
         }
+        if (_opt.gps) gpsScale(out);
         assemble(out);
         return out;
     }
@@ -446,14 +448,20 @@ private:
             ref.centres.push_back(mul(R_up, _frames[(size_t)owner[i]].c));
             ref.targets.push_back(enu[i]);
             ref.image_ids.push_back(_frames[(size_t)owner[i]].image_id);
+            ref.tracks.push_back(_frames[(size_t)owner[i]].capture);
         }
         out.gps_frames = (int)ref.centres.size();
         out.gps = fitMetricGauge(ref, _opt.gps_max_error,
                                  _opt.gps_full ? MetricAxes::Full : MetricAxes::Horizontal,
-                                 _opt.gps_max_error_frac);
+                                 _opt.gps_max_error_frac,
+                                 _opt.gps_full && _up_ok ? MetricTrackOffsets::Vertical
+                                                         : MetricTrackOffsets::None);
         if (!out.gps.ok) return;
-        for (size_t i = 0; i < owner.size(); i++)
+        for (size_t i = 0; i < owner.size(); i++) {
+            _gps_enu[(size_t)owner[i]].z -=
+                out.gps.trackVerticalOffset(_frames[(size_t)owner[i]].capture);
             if (!out.gps.inlier_mask[i]) _gps_ok[(size_t)owner[i]] = 0;
+        }
         out.scale_gps = out.gps.T.scale;
         // The residual-derived sigma under-states a correlated receiver's
         // error by ~4x (D74), and the scale sigma is used to weigh it here.
@@ -549,7 +557,7 @@ private:
             out.applied = true;
             out.metric = false;
             out.scale = out.T.scale;
-            out.no_scale = _opt.mode != SensorMode::Auto ? SensorNoScale::NotAsked
+            out.no_scale = _opt.mode != SensorMode::Auto && !_opt.gps ? SensorNoScale::NotAsked
                            : (out.scale_imu_sigma > 0 && !imu) ? SensorNoScale::ImuWeak
                            : (out.gps_frames > 0 && !out.gps.ok) ? SensorNoScale::GpsRefused
                                                                   : SensorNoScale::NoSource;

@@ -1,17 +1,3 @@
-// EvalMetrics.cpp -- see EvalMetrics.h.
-//
-// Everything here accumulates in double and is parallelized with OpenMP over
-// pixels or rows. At 4K this is the difference between 4.7 s and 1.1 s per
-// eval view, which is most of what the eval pass costs.
-//
-// Reductions sum fixed per-thread partials rather than using `omp reduction`,
-// so the combine order is at least stable within a thread count. The reported
-// metrics are floats, and reordering a double sum of a few million terms moves
-// the result by ~1e-11 relative -- far below float precision, so every metric
-// this file returns is bit-identical to the serial version and independent of
-// OMP_NUM_THREADS. The one place that was NOT true is documented on
-// solve_spd().
-
 #include "app/EvalMetrics.h"
 
 #include <algorithm>
@@ -53,31 +39,43 @@ double combine(const std::vector<double>& partials) {
 
 }  // namespace
 
-float image_l1(const float* a, const float* b, int64_t n) {
+float image_l1(const float* a, const float* b, int64_t n, const uint8_t* mask, int C) {
+    int64_t valid = n;
+    if (mask) {
+        valid = 0;
+        for (int64_t i = 0; i < n; ++i) valid += mask[i / C] != 0;
+    }
     std::vector<double> part((size_t)max_threads(), 0.0);
 #pragma omp parallel
     {
         double s = 0.0;
 #pragma omp for schedule(static) nowait
-        for (int64_t i = 0; i < n; i++) s += std::abs((double)a[i] - (double)b[i]);
+        for (int64_t i = 0; i < n; i++)
+            if (!mask || mask[i / C]) s += std::abs((double)a[i] - (double)b[i]);
         part[(size_t)this_thread()] = s;
     }
-    return (float)(combine(part) / (double)std::max<int64_t>(n, 1));
+    return (float)(combine(part) / (double)std::max<int64_t>(valid, 1));
 }
 
-float image_psnr(const float* a, const float* b, int64_t n) {
+float image_psnr(const float* a, const float* b, int64_t n, const uint8_t* mask, int C) {
+    int64_t valid = n;
+    if (mask) {
+        valid = 0;
+        for (int64_t i = 0; i < n; ++i) valid += mask[i / C] != 0;
+    }
     std::vector<double> part((size_t)max_threads(), 0.0);
 #pragma omp parallel
     {
         double s = 0.0;
 #pragma omp for schedule(static) nowait
         for (int64_t i = 0; i < n; i++) {
+            if (mask && !mask[i / C]) continue;
             double d = (double)a[i] - (double)b[i];
             s += d * d;
         }
         part[(size_t)this_thread()] = s;
     }
-    double mse = combine(part) / (double)std::max<int64_t>(n, 1);
+    double mse = combine(part) / (double)std::max<int64_t>(valid, 1);
     if (mse <= 0.0) return std::numeric_limits<float>::infinity();
     return (float)(10.0 * std::log10(1.0 / mse));   // data_range = 1
 }
@@ -164,7 +162,7 @@ void conv_reflect(const double* src, int H, int W, const double* g,
 
 }  // namespace
 
-float image_ssim(const float* a, const float* b, int H, int W, int C) {
+float image_ssim(const float* a, const float* b, int H, int W, int C, const uint8_t* mask) {
     if (H < kWin || W < kWin)
         throw std::runtime_error("image_ssim: image smaller than the 11x11 window");
     const std::vector<double> gw = gaussian_window();
@@ -173,18 +171,10 @@ float image_ssim(const float* a, const float* b, int H, int W, int C) {
     const double C2 = (kK2 * 1.0) * (kK2 * 1.0);
     const size_t np = (size_t)H * W;
 
-    // Eleven H*W double buffers -- 52 MB each at 4K. One thread_local slab,
-    // grown and never freed: allocating them per call means ~1.1 GB of mmap +
-    // kernel page-zeroing per view, and the mmap lock is per PROCESS, so with
-    // several eval views in flight the faulting serializes and costs more than
-    // the arithmetic does.
-    //
-    // The slab is thread_local but the pointers below are ordinary locals, so
-    // the OpenMP regions all address the SAME memory. Naming the vectors
-    // directly inside a parallel region would instead resolve to each team
-    // thread's own (empty) copy -- which is exactly as bad as it sounds.
+    // Reuse the slab to avoid repeated mmap/page-zeroing at 4K. Only the local
+    // pointers may be named inside OpenMP regions: thread_local resolves per worker.
     thread_local std::vector<double> slab;
-    if (slab.size() < 11 * np) slab.resize(11 * np);
+    if (slab.size() < 12 * np) slab.resize(12 * np);
     double* x   = slab.data();
     double* y   = x + np;
     double* xx  = y + np;
@@ -196,6 +186,16 @@ float image_ssim(const float* a, const float* b, int H, int W, int C) {
     double* myy = mxx + np;
     double* mxy = myy + np;
     double* tmp = mxy + np;
+    double* support = tmp + np;
+    int64_t valid = np;
+    if (mask) {
+        valid = 0;
+        for (size_t i = 0; i < np; ++i) {
+            x[i] = mask[i] ? 1.0 : 0.0;
+            valid += mask[i] != 0;
+        }
+        conv_reflect(x, H, W, g, support, tmp);
+    }
     std::vector<double> part((size_t)max_threads());
 
     double total = 0.0;
@@ -203,6 +203,7 @@ float image_ssim(const float* a, const float* b, int H, int W, int C) {
 #pragma omp parallel for schedule(static)
         for (int64_t p = 0; p < (int64_t)np; p++) {
             double va = a[p * C + c], vb = b[p * C + c];
+            if (mask && !mask[p]) va = vb = 0.0;
             x[p] = va;  y[p] = vb;
             xx[p] = va * va;
             yy[p] = vb * vb;
@@ -220,17 +221,19 @@ float image_ssim(const float* a, const float* b, int H, int W, int C) {
             double acc = 0.0;
 #pragma omp for schedule(static) nowait
             for (int64_t i = 0; i < (int64_t)np; i++) {
-                double ux = mx[i], uy = my[i];
-                double sxx = mxx[i] - ux * ux;
-                double syy = myy[i] - uy * uy;
-                double sxy = mxy[i] - ux * uy;
+                if (mask && !mask[i]) continue;
+                double w = mask ? 1.0 / std::max(support[i], 1e-30) : 1.0;
+                double ux = mx[i] * w, uy = my[i] * w;
+                double sxx = std::max(mxx[i] * w - ux * ux, 0.0);
+                double syy = std::max(myy[i] * w - uy * uy, 0.0);
+                double sxy = mxy[i] * w - ux * uy;
                 double num = (2.0 * ux * uy + C1) * (2.0 * sxy + C2);
                 double den = (ux * ux + uy * uy + C1) * (sxx + syy + C2);
                 acc += num / den;
             }
             part[(size_t)this_thread()] = acc;
         }
-        total += combine(part) / (double)np;
+        total += combine(part) / (double)std::max<int64_t>(valid, 1);
     }
     return (float)(total / (double)C);
 }
@@ -312,15 +315,12 @@ std::vector<float> color_correct(const float* img, const float* ref,
 
 void color_correct_into(const float* img, const float* ref,
                         int64_t num_pixels, int C, std::vector<float>& out,
-                        int num_iters, float eps) {
+                        int num_iters, float eps, const uint8_t* valid_mask) {
     const int n = design_cols(C);
     const size_t nv = (size_t)num_pixels * C;
     const double lo = (double)eps, hi = 1.0 - (double)eps;
     auto unclipped = [&](double z) { return z >= lo && z <= hi; };
 
-    // Grown, never shrunk, and thread_local for the same reason as SSIM's
-    // slab: at 4K this is ~175 MB of scratch that would otherwise be mmapped
-    // and faulted in once per view.
     out.resize(nv);
     thread_local std::vector<float> scratch;
     thread_local std::vector<uint8_t> mask0;
@@ -354,6 +354,7 @@ void color_correct_into(const float* img, const float* ref,
             std::vector<double> row((size_t)n);
 #pragma omp for schedule(static) nowait
             for (int64_t p = 0; p < num_pixels; p++) {
+                if (valid_mask && !valid_mask[p]) continue;
                 const float* px = &cur[(size_t)p * C];
                 // Rows saturated in the input, in the current estimate, or in
                 // the reference contribute nothing.

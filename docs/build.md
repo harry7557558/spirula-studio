@@ -79,7 +79,7 @@ from one checkout and neither reconfigures the other.
 | `SS_CUDA_EMBED_PTX` | `OFF` | embed PTX beside the cubin in the CUDA fatbin. Only buys JIT onto an architecture the binary was not built for, and costs about a third of every object; the build already detects the local GPU. Turn on for a redistributable binary. |
 | `SS_SLANGC` | *(empty)* | path to a `slangc` to use; empty means find on PATH and fetch the pinned release on miss/mismatch |
 | `SS_BUILD_SFM` | `ON` for `vulkan`, `OFF` for `cuda` | `ss_sfm` + `spirula sfm` + `sfm_*_test`. Vulkan-only; a CUDA build can opt in if the Vulkan SDK is present. |
-| `SS_BUILD_SAM` | `ON` for `vulkan`, `OFF` for `cuda` | `ss_nn` + `ss_sam` + `spirula sam` + `nn_ops_test` / `sam_pipeline_test`, and the GUI's in-process masking. Same rule as SfM. |
+| `SS_BUILD_SAM` | `ON` for `vulkan`, `OFF` for `cuda` | `ss_nn` + `ss_sam` + `spirula sam` + `nn_ops_test` / `sam_pipeline_test`, the GUI's in-process masking, and LPIPS in the eval pass (`ss_lpips`). Same rule as SfM. |
 | `SS_ENABLE_PATENTED` | `OFF` | `ss_video` — container demux (HEIF stills included) + `VK_KHR_video_decode_*`, and the `VK_KHR_video_encode_*` encoder behind `spirula encode`. **Read the note below before turning it on.** |
 | `SS_SFM_REALS` / `SS_SFM_LOSSES` | all | trim the bundle-adjustment shader variant matrix while iterating (`src/sfm/README.md`) |
 | `SS_CHECK_COMMENTS` | `ON` | run the comment-length lint on every build ([Lints](#lints)) |
@@ -101,9 +101,10 @@ starts with no focal-length prior.
 
 Turning it on buys in-process GPU decoding and encoding: roughly 15× faster
 frame extraction (a 127-second 1080p30 clip in ten seconds rather than
-minutes), `spirula encode` for the render mode's videos, and no ffmpeg to
-install. A device without a video queue -- MoltenVK on every Mac -- decodes
-with ffmpeg even then.
+minutes), `spirula encode` for the render mode's videos, and no FFmpeg
+dependency for inputs supported by the device. Devices without a video queue
+(including MoltenVK on macOS) and unsupported codec profiles still decode
+with external FFmpeg.
 Nothing else in the build changes.
 
 If you distribute binaries, decide for your jurisdiction and your users before

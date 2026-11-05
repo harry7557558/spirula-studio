@@ -63,8 +63,9 @@ and the gates survive as golden-value regression tests
 
 Nothing is left in Python. Checkpoint resume and its layout adaptation are
 native (`src/checkpoint/`), and so is the eval pass
-(`src/app/EvalMetrics.{h,cpp}`) except LPIPS, which needs AlexNet + VGG16 and
-is a hand-run tool over the saved eval PNGs (`reference/python/eval_lpips.py`).
+(`src/app/EvalMetrics.{h,cpp}`), LPIPS included: AlexNet + VGG16 run on the
+inference layer (`src/lpips/`). A build without that layer leaves LPIPS to a
+hand-run tool over the saved eval PNGs (`reference/python/eval_lpips.py`).
 
 ## The engine
 

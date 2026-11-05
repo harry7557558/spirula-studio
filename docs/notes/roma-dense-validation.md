@@ -338,11 +338,11 @@ panorama and 2K photo pair.
   reprojection label. The live-preview status lines explain the three point
   phases.
 - **Memory bar.** The dense step runs as a child process, so it reports its own
-  memory (`dense/MemoryReport.h`, `dense/progress/memory.json`, twice a
-  second). The GUI draws RAM and VRAM bars with a risk tag and a hover card of
-  history against the planned ceiling and capacity. Risk thresholds are 0.8
-  and 0.95 of supply. `dense_memory_report_test` covers the plan, thresholds,
-  device gating and a torn report.
+  memory (`app/RunReport.h`, `dense/progress/memory.json`, twice a second).
+  The GUI draws RAM and VRAM bars with a risk tag and a hover card of history
+  against the planned peak and capacity (docs/notes/memory-forecast.md).
+  `dense_memory_plan_test` covers the plan; `resource_forecast_test` the risk
+  rule and a torn report.
 - **Edits.** Saving a dense cloud from the point editor re-signs its manifest
   and keeps the original as `roma.original.ply` (`commit_edit` in
   `dense/Generation.h`). `dense_edit_test` covers both artifact layouts, a

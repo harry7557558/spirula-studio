@@ -4,6 +4,7 @@
 
 #include "app/gui/Layout.h"
 #include "app/gui/Ui.h"
+#include "core/HardwareThreads.h"
 #include "i18n/catalog/SourcePreview.h"
 
 #include "imgui.h"
@@ -41,7 +42,7 @@ void PhotoBrowser::start() {
     if (!_workers.empty()) return;
     _quit = false;
     _cancel = false;
-    const unsigned n = std::clamp(std::thread::hardware_concurrency() / 4, 2u, 4u);
+    const unsigned n = std::clamp(spirula::hardware_threads() / 4, 2u, 4u);
     for (unsigned i = 0; i < n; i++) _workers.emplace_back([this] { work(); });
 }
 

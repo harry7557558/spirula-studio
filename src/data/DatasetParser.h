@@ -1,15 +1,7 @@
 #pragma once
 
-// DatasetParser -- dataset readers + camera bakes. No external deps: JSON via
-// data/Json.h, PLY reader in NerfstudioParser.cpp, images via stb in the
-// engine's DataManager.
-//
-// parse_colmap_dataset / parse_nerfstudio_dataset / parse_metashape_dataset
-// read one format each; parse_dataset identifies the format from its marker
-// files. All produce a ParsedDataset of PER-INPUT cameras in the raw
-// train_frame="points" frame. bake_post_split() (PostSplit.cpp) then expands
-// that to the POST-split arrays engine_setup_data_manager consumes: identity
-// at K=1, or the pinhole faces camhost::plan_split_faces cuts a wide camera into.
+// Dataset readers produce per-input cameras in the source frame, translated
+// by scene centering. PostSplit.cpp expands them into the engine's camera table.
 
 #include "data/SceneCenter.h"
 #include "data/SceneTransform.h"
@@ -200,6 +192,13 @@ struct DatasetParserConfig {
     // is levelled by it, pixels untouched) or "apply" (images are loaded turned
     // and the reconstruction already describes that frame). docs/datasets.md.
     std::string exif_orientation = "none";
+
+    // How the dataset's cameras are oriented and centered in the normalized
+    // frame: orientation_method in {"up", "pca", "vertical", "none"},
+    // center_method in {"poses", "focus", "none"}.
+    std::string orientation_method = "up";
+    std::string center_method = "poses";
+    bool        auto_scale_poses = true;
 
     // Which <component> group to use when a Metashape export contains several.
     // -1 (default) keeps the historical behavior: train on the largest group.
@@ -403,14 +402,16 @@ ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
 // kStrayOverMedian in data/FrustumSize.h.
 constexpr float kStrayCameraThreshold = 20.0f;
 
-// T_n_from_camera = scale * [R_align | -R_align @ center] (row-major 4x4)
-// over c2w [N,3,4], orient="up" / center="poses"; returns scale_factor. The
-// viewer remap is inv(that @ applied); `R_out` is R_align alone.
+// T_n_from_camera = scale * [R_align | -R_align @ center] (row-major 4x4).
+// Returns scale_factor; `R_out` is R_align alone.
 double compute_normalized_transform(const double* c2w, int64_t n,
                                     double T_out[16], double R_out[9] = nullptr,
                                     // [N]: level by the up each image's EXIF
                                     // names, not by the image's own.
-                                    const uint8_t* exif_orientation = nullptr);
+                                    const uint8_t* exif_orientation = nullptr,
+                                    const std::string& orientation_method = "up",
+                                    const std::string& center_method = "poses",
+                                    bool auto_scale_poses = true);
 
 // Each image's EXIF Orientation, 1 where the file carries none. Empty when
 // `mode` is "none" or nothing in the set asks for a turn, which is the test

@@ -17,8 +17,10 @@
 #include "shaders/screen_layout.h"
 
 inline ProjEllipseView ellipse_view(const std::vector<DeviceTensorFloatND>& s,
-                                    bool eval3d) {
-    return proj_ellipse_view(s[0].data_ptr(), eval3d);
+                                    bool eval3d, float max_sigma = 0.0f) {
+    ProjEllipseView v = proj_ellipse_view(s[0].data_ptr(), eval3d);
+    v.max_sigma = max_sigma;
+    return v;
 }
 
 // Component-major host data -> one packed row buffer. Each entry is

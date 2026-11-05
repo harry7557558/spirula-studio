@@ -12,6 +12,7 @@
 // dataset with the same C++ parsers the CLI trainer uses, and calls
 // meshing::generate_mesh (Meshing.h) for the heavy lifting.
 
+#include "app/RunReport.h"
 #include "app/Tools.h"
 
 #include "backend/api/BackendRuntime.h"
@@ -160,6 +161,7 @@ struct Options {
     // Canonical selector passed by GUI children; empty uses shared precedence.
     std::string device;
     std::optional<float> iso;           // default depends on cameras
+    std::string progress_dir;           // app/RunReport.h, for the GUI
     meshing::MeshingConfig m;           // remaining knobs live here
 };
 
@@ -242,6 +244,7 @@ void print_help(const char* argv0) {
              {(double)d.m.degenerate_angle_deg});
     help_row("--quality-iters <n>", mmsg::help_quality_iters,
              {d.m.quality_iters});
+    help_row("--progress-dir <dir>", mmsg::help_progress_dir);
     help_row("--quiet", mmsg::help_quiet);
 }
 
@@ -302,6 +305,7 @@ Options parse_args(int argc, char** argv) {
         else if (key == "fill_hole_max_edges") o.m.fill_hole_max_edges = parse_i(key, next());
         else if (key == "degenerate_angle_deg") o.m.degenerate_angle_deg = parse_f(key, next());
         else if (key == "quality_iters")   o.m.quality_iters = parse_i(key, next());
+        else if (key == "progress_dir")    o.progress_dir = next();
         else if (key == "quiet")           o.m.verbose = false;
         else throw std::runtime_error("unknown flag: --" + key + " (see --help)");
     }
@@ -316,6 +320,20 @@ Options parse_args(int argc, char** argv) {
 int spirula_mesh_main(int argc, char** argv) {
     try {
         Options o = parse_args(argc, argv);
+        spirula::RunReporter report(o.progress_dir, [](spirula::RunReporter::Device& d) {
+            const backend::MemoryUsage m = backend::memory_usage();
+            if (!m.has_process || !m.has_total) return false;
+            d.ours = m.process_bytes;
+            d.capacity = m.total_bytes;
+            d.others = m.has_used && m.used_bytes > m.process_bytes ? m.used_bytes - m.process_bytes : 0;
+            return true;
+        });
+        if (!o.progress_dir.empty())
+            o.m.on_progress = [&report](const meshing::MeshProgressReport& r) {
+                report.work(r.work);
+                report.host_peak({r.host_peak, r.host_sigma});
+                report.device_peak({r.device_peak, r.device_sigma});
+            };
 
         // The identity API is Vulkan-only; a CUDA child receives its ordinal.
 #ifdef SS_BACKEND_VULKAN

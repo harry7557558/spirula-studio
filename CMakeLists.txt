@@ -55,6 +55,10 @@ if(SS_BUILD_SAM)
     include(SsNn)
 endif()
 
+if(COMMAND ss_shader_limits_test)
+    ss_shader_limits_test()
+endif()
+
 include(SsApps)
 
 # After SsApps: the packaging targets depend on the `spirula` target.

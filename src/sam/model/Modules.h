@@ -119,7 +119,10 @@ void encode_geometry(const SamModel& m, vk::Arena& arena,
 // to the prompt tokens. In-place on `feats` ([grid*grid, D]).
 void fusion_encoder(const SamModel& m, vk::Arena& arena, const nn::Tensor& feats,
                     const nn::Tensor& pos, const nn::Tensor& prompt, int64_t n_prompt,
-                    const nn::Tensor& prompt_bias);
+                    const nn::Tensor& prompt_bias, bool prefix_done = false);
+
+void fusion_encoder_prefix(const SamModel& m, vk::Arena& arena,
+                           const nn::Tensor& feats, const nn::Tensor& pos);
 
 struct DetrOutputs {
     nn::Tensor queries;        // [num_queries, D]  -- post-norm object queries

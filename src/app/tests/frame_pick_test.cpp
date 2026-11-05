@@ -8,6 +8,8 @@
 
 #include "app/FramePick.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -158,6 +160,38 @@ void test_hash() {
            "dHash: no pixels, or fewer than its 9x8 cells, is 0");
 }
 
+void test_sharpness_precision() {
+    const int W = 640, H = 480;
+    std::vector<float> scratch8, scratch16;
+    for (int smear : {1, 13}) {
+        const std::vector<uint8_t> rgb8 = squares(W, H, smear, false);
+        std::vector<uint8_t> rgb48(rgb8.size() * 2);
+        for (size_t i = 0; i < rgb8.size(); i++) {
+            rgb48[i * 2] = rgb8[i];
+            rgb48[i * 2 + 1] = rgb8[i];
+        }
+        const double s8 = app::sharpness_score(rgb8.data(), W, H, scratch8);
+        const double s16 = app::sharpness_score_rgb48be(rgb48.data(), W, H, scratch16);
+        expect(std::fabs(s8 - s16) <= 1e-8 * std::max(1.0, s8),
+               "sharpness: RGB16 and RGB8 exact samples have equivalent scores, smear " +
+                   std::to_string(smear));
+    }
+    std::vector<uint8_t> rgb48((size_t)W * H * 6), rounded((size_t)W * H * 3);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++) {
+            const unsigned v = 32800 + ((x / 40 + y / 40) % 2) * 64;
+            for (int c = 0; c < 3; c++) {
+                const size_t i = ((size_t)y * W + x) * 3 + c;
+                rgb48[i * 2] = (uint8_t)(v >> 8);
+                rgb48[i * 2 + 1] = (uint8_t)v;
+                rounded[i] = (uint8_t)((v + 128) / 257);
+            }
+        }
+    expect(app::sharpness_score_rgb48be(rgb48.data(), W, H, scratch16) > 0.0 &&
+               app::sharpness_score(rounded.data(), W, H, scratch8) == 0.0,
+           "sharpness: sub-RGB8 contrast is measured before LUT grading and rounding");
+}
+
 void test_edge_width() {
     const int W = 640, H = 480;
     const float sharp = app::edge_width_px(squares(W, H, 1, false).data(), W, H);
@@ -198,6 +232,7 @@ int main() {
     test_rule();
     test_similar();
     test_hash();
+    test_sharpness_precision();
     test_edge_width();
     std::printf("%s\n", g_failures ? "FAILED" : "PASSED");
     return g_failures;

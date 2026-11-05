@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "sfm/core/Progress.h"
 #include "sfm/core/Camera.h"
 #include "sfm/core/Features.h"
@@ -80,7 +81,7 @@ inline BearingCache precomputeBearings(const std::vector<FeatureSet>& feats,
     const size_t n = std::min(feats.size(), cams.size());
     // Millions of independent Newton inversions, one per keypoint; images are
     // written to disjoint slots, so this is a straight fan-out.
-    const unsigned hc = std::thread::hardware_concurrency();
+    const unsigned hc = spirula::hardware_threads();
     int nt = threads > 0 ? threads : (hc > 0 ? (int)hc : 1);
     nt = std::max(1, std::min<int>(nt, (int)std::max<size_t>(n, 1)));
     std::atomic<size_t> next{0};
@@ -177,7 +178,7 @@ inline FocalScore focalInliers(const std::vector<FeatureSet>& feats,
             periph += w;
         }
     };
-    int nt = threads > 0 ? threads : (int)std::max(1u, std::thread::hardware_concurrency());
+    int nt = threads > 0 ? threads : (int)std::max(1u, spirula::hardware_threads());
     std::vector<std::thread> pool;
     for (int t = 0; t < nt; t++) pool.emplace_back(worker);
     for (std::thread& t : pool) t.join();
@@ -453,7 +454,7 @@ inline FocalVoteReport focalFromEpipolar(const std::vector<FeatureSet>& feats,
         std::lock_guard<std::mutex> lk(mtx);
         votes.insert(votes.end(), local.begin(), local.end());
     };
-    const int nt = threads > 0 ? threads : (int)std::max(1u, std::thread::hardware_concurrency());
+    const int nt = threads > 0 ? threads : (int)std::max(1u, spirula::hardware_threads());
     std::vector<std::thread> pool;
     for (int t = 0; t < std::max(1, nt); t++) pool.emplace_back(worker);
     for (std::thread& t : pool) t.join();
@@ -533,7 +534,7 @@ struct VerificationOptions {
     // sphere; `two_view.ransac.max_error` stays in pixels and is converted per
     // pair with the two cameras' focal lengths.
     const BearingCache* bearings = nullptr;
-    // Worker threads for the RANSAC. 0 = hardware_concurrency, 1 = verify
+    // Worker threads for the RANSAC. 0 = hardware_threads(), 1 = verify
     // inline on the calling thread (no pool, no queue).
     int num_threads = 0;
     // Producer backpressure: the queue holds at most num_threads * this many
@@ -570,7 +571,7 @@ struct VerifyPriorStats {
 
 inline int verificationThreadCount(const VerificationOptions& opt) {
     if (opt.num_threads > 0) return opt.num_threads;
-    unsigned hc = std::thread::hardware_concurrency();
+    unsigned hc = spirula::hardware_threads();
     return hc > 0 ? (int)hc : 1;
 }
 

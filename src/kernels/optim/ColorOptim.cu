@@ -387,7 +387,7 @@ void fused_adamtr_linear_rgb_sh_optim(
         1.0f - powf(beta2, step),
         eps,
         eps_tr,
-        2.0f * sh_reg_weight / (float)num_params,
+        2.0f * sh_reg_weight / (float)(3 * num_gs),
         grad_scale,
         step
     );
@@ -440,7 +440,7 @@ void fused_adamtr_rgb_sh_optim(
         1.0f - powf(beta2, step),
         eps,
         eps_tr,
-        2.0f * sh_reg_weight / (float)num_params,
+        2.0f * sh_reg_weight / (float)(3 * num_gs),
         grad_scale,
         step
     );

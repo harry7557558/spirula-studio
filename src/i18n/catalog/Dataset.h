@@ -391,6 +391,21 @@ SS_MSG(create_dataset,
     PT("Criar o conjunto de dados"), IT("Crea il set di dati"),
     NL("Dataset maken"), RU("Создать набор данных"), TR("Veri kümesini oluştur"));
 
+SS_MSG(train_after_creation,
+    EN("Start training after dataset creation"),
+    JA("データセット作成後に学習を開始"),
+    ZH_HANS("创建数据集后开始训练"),
+    ZH_HANT("建立資料集後開始訓練"),
+    KO("데이터셋 생성 후 학습 시작"),
+    DE("Training nach der Datensatzerstellung starten"),
+    FR("Démarrer l'entraînement après la création du jeu de données"),
+    ES("Iniciar el entrenamiento tras crear el conjunto de datos"),
+    PT("Iniciar o treino após criar o conjunto de dados"),
+    IT("Avvia l'addestramento dopo la creazione del set di dati"),
+    NL("Training starten na het maken van de dataset"),
+    RU("Начать обучение после создания набора данных"),
+    TR("Veri kümesi oluşturulduktan sonra eğitimi başlat"));
+
 SS_MSG(pick_input_first,
     EN("pick the input and the output folder first"),
     JA("先に入力と出力フォルダを選んでください"),
@@ -816,6 +831,309 @@ SS_MSG(matrix_pair_matches,
     KO("대응: {0}"),      DE("Zuordnungen: {0}"), FR("Appariements : {0}"),
     ES("Emparejamientos: {0}"), PT("Pareamentos: {0}"), IT("Confronti: {0}"),
     NL("Koppelingen: {0}"), RU("Сопоставлений: {0}"), TR("Eşleşme: {0}"));
+
+SS_MSG(matrix_edit_matches,
+    EN("Edit Matches..."),
+    JA("照合を編集..."),
+    ZH_HANS("编辑匹配..."),
+    ZH_HANT("編輯比對..."),
+    KO("정합 편집..."),
+    DE("Zuordnungen bearbeiten..."),
+    FR("Modifier les appariements..."),
+    ES("Editar emparejamientos..."),
+    PT("Editar pareamentos..."),
+    IT("Modifica confronti..."),
+    NL("Koppelingen bewerken..."),
+    RU("Редактировать сопоставления..."),
+    TR("Eşleşmeleri düzenle..."));
+
+SS_MSG(matrix_editor_title,
+    EN("Match Matrix Editor"),
+    JA("照合行列エディタ"),
+    ZH_HANS("匹配矩阵编辑器"),
+    ZH_HANT("比對矩陣編輯器"),
+    KO("정합 행렬 편집기"),
+    DE("Zuordnungsmatrix-Editor"),
+    FR("Éditeur de matrice d'appariement"),
+    ES("Editor de matriz de emparejamiento"),
+    PT("Editor de matriz de pareamento"),
+    IT("Editor matrice di confronto"),
+    NL("Koppelingsmatrixbewerker"),
+    RU("Редактор матрицы сопоставлений"),
+    TR("Eşleşme Matrisi Düzenleyicisi"));
+
+SS_MSG(matrix_remove_matches,
+    EN("Remove Matches"),
+    JA("照合を削除"),
+    ZH_HANS("移除匹配"),
+    ZH_HANT("移除比對"),
+    KO("정합 제거"),
+    DE("Zuordnungen entfernen"),
+    FR("Supprimer les appariements"),
+    ES("Eliminar emparejamientos"),
+    PT("Remover pareamentos"),
+    IT("Rimuovi confronti"),
+    NL("Koppelingen verwijderen"),
+    RU("Удалить сопоставления"),
+    TR("Eşleşmeleri kaldır"));
+
+SS_MSG(matrix_undo,
+    EN("Undo"),
+    JA("元に戻す"),
+    ZH_HANS("撤销"),
+    ZH_HANT("復原"),
+    KO("실행 취소"),
+    DE("Rückgängig"),
+    FR("Annuler"),
+    ES("Deshacer"),
+    PT("Desfazer"),
+    IT("Annulla"),
+    NL("Ongedaan maken"),
+    RU("Отменить"),
+    TR("Geri al"));
+
+SS_MSG(matrix_restore_backup,
+    EN("Restore backup"),
+    JA("バックアップを復元"),
+    ZH_HANS("恢复备份"),
+    ZH_HANT("還原備份"),
+    KO("백업 복원"),
+    DE("Sicherung wiederherstellen"),
+    FR("Restaurer la sauvegarde"),
+    ES("Restaurar copia de seguridad"),
+    PT("Restaurar cópia de segurança"),
+    IT("Ripristina backup"),
+    NL("Back-up herstellen"),
+    RU("Восстановить резервную копию"),
+    TR("Yedeği geri yükle"));
+
+SS_MSG(matrix_restore_backup_help,
+    EN("Replace matches.bin with matches.bin.bak and clear the undo history. The backup is kept."),
+    JA("matches.bin を matches.bin.bak で置き換え、元に戻す履歴を消去します。バックアップは保持されます。"),
+    ZH_HANS("用 matches.bin.bak 替换 matches.bin 并清除撤销历史。备份将保留。"),
+    ZH_HANT("以 matches.bin.bak 取代 matches.bin 並清除復原記錄。備份會保留。"),
+    KO("matches.bin을 matches.bin.bak으로 바꾸고 실행 취소 기록을 지웁니다. 백업은 유지됩니다."),
+    DE("matches.bin durch matches.bin.bak ersetzen und den Rückgängig-Verlauf löschen. Die Sicherung bleibt erhalten."),
+    FR("Remplacer matches.bin par matches.bin.bak et effacer l’historique d’annulation. La sauvegarde est conservée."),
+    ES("Reemplazar matches.bin por matches.bin.bak y borrar el historial de deshacer. La copia se conserva."),
+    PT("Substituir matches.bin por matches.bin.bak e limpar o histórico de desfazer. A cópia é mantida."),
+    IT("Sostituisce matches.bin con matches.bin.bak e cancella la cronologia di annullamento. Il backup viene conservato."),
+    NL("Vervang matches.bin door matches.bin.bak en wis de geschiedenis voor ongedaan maken. De back-up blijft bewaard."),
+    RU("Заменить matches.bin файлом matches.bin.bak и очистить историю отмены. Резервная копия сохраняется."),
+    TR("matches.bin dosyasını matches.bin.bak ile değiştirir ve geri alma geçmişini temizler. Yedek korunur."));
+
+SS_MSG(matrix_clear_selection,
+    EN("Clear Selection"),
+    JA("選択を解除"),
+    ZH_HANS("清除选择"),
+    ZH_HANT("清除選擇"),
+    KO("선택 해제"),
+    DE("Auswahl aufheben"),
+    FR("Désélectionner"),
+    ES("Deseleccionar"),
+    PT("Limpar seleção"),
+    IT("Deseleziona"),
+    NL("Selectie wissen"),
+    RU("Снять выделение"),
+    TR("Seçimi temizle"));
+
+SS_MSG(matrix_show_features,
+    EN("Features"),
+    JA("特徴点"),
+    ZH_HANS("特征点"),
+    ZH_HANT("特徵點"),
+    KO("특징점"),
+    DE("Merkmale"),
+    FR("Points d'intérêt"),
+    ES("Puntos clave"),
+    PT("Pontos-chave"),
+    IT("Punti chiave"),
+    NL("Kenmerken"),
+    RU("Признаки"),
+    TR("Öznitelikler"));
+
+SS_MSG(matrix_show_matches,
+    EN("Matches"),
+    JA("対応線"),
+    ZH_HANS("匹配线"),
+    ZH_HANT("比對線"),
+    KO("대응선"),
+    DE("Linien"),
+    FR("Correspondances"),
+    ES("Líneas de coincidencia"),
+    PT("Linhas de pareamento"),
+    IT("Linee di confronto"),
+    NL("Koppelingslijnen"),
+    RU("Линии сопоставления"),
+    TR("Eşleşme çizgileri"));
+
+SS_MSG(matrix_reset_view,
+    EN("Reset View"),
+    JA("表示をリセット"),
+    ZH_HANS("重置视图"),
+    ZH_HANT("重設檢視"),
+    KO("화면 초기화"),
+    DE("Ansicht zurücksetzen"),
+    FR("Réinitialiser la vue"),
+    ES("Restablecer vista"),
+    PT("Redefinir visualização"),
+    IT("Reimposta vista"),
+    NL("Weergave herstellen"),
+    RU("Сбросить вид"),
+    TR("Görünümü sıfırla"));
+
+SS_MSG(matrix_help_edit,
+    EN("{0}\n\nRight-click the map to take false matches out by hand."),
+    JA("{0}\n\nマップを右クリックすると、誤った照合を手で取り除けます。"),
+    ZH_HANS("{0}\n\n在图上右键单击，可以手动去掉错误的匹配。"),
+    ZH_HANT("{0}\n\n在圖上按右鍵，可以手動去掉錯誤的比對。"),
+    KO("{0}\n\n지도를 오른쪽 클릭하면 잘못된 정합을 직접 없앨 수 있습니다."),
+    DE("{0}\n\nRechtsklick auf die Karte, um falsche Zuordnungen von Hand zu entfernen."),
+    FR("{0}\n\nClic droit sur la carte pour retirer à la main les faux appariements."),
+    ES("{0}\n\nHaga clic derecho en el mapa para quitar a mano los emparejamientos falsos."),
+    PT("{0}\n\nClique com o botão direito no mapa para retirar à mão os pareamentos falsos."),
+    IT("{0}\n\nFai clic destro sulla mappa per togliere a mano i confronti sbagliati."),
+    NL("{0}\n\nKlik met rechts op de kaart om foute koppelingen met de hand te verwijderen."),
+    RU("{0}\n\nЩёлкните по карте правой кнопкой, чтобы вручную убрать ложные сопоставления."),
+    TR("{0}\n\nYanlış eşleşmeleri elle kaldırmak için haritaya sağ tıklayın."));
+
+SS_MSG(matrix_editor_help,
+    EN("Removing pairs rewrites matches.bin; the first edit keeps the original as "
+       "matches.bin.bak. The next run then reconstructs again from the edited "
+       "matches. A run that matches again -- because a matching setting changed -- "
+       "replaces them."),
+    JA("ペアを取り除くと matches.bin が書き換わります。最初の編集のときに元のファイルを "
+       "matches.bin.bak として残します。次の実行では、編集した照合から再構成をやり直します。"
+       "照合の設定を変えて照合をやり直すと、編集は置き換えられます。"),
+    ZH_HANS("去掉图像对会改写 matches.bin；第一次编辑时，原文件保留为 matches.bin.bak。"
+            "下一次运行会用编辑后的匹配重新重建。如果改了匹配设置而重新匹配，编辑结果会被替换。"),
+    ZH_HANT("去掉影像對會改寫 matches.bin；第一次編輯時，原檔案保留為 matches.bin.bak。"
+            "下一次執行會用編輯後的比對重新重建。如果改了比對設定而重新比對，編輯結果會被取代。"),
+    KO("쌍을 없애면 matches.bin 이 다시 쓰입니다. 처음 편집할 때 원본을 matches.bin.bak 으로 "
+       "남겨 둡니다. 다음 실행은 편집한 정합으로 다시 재구성합니다. 정합 설정을 바꿔 정합을 "
+       "다시 하면 편집한 내용은 대체됩니다."),
+    DE("Entfernte Paare schreiben matches.bin neu; die erste Änderung behält das "
+       "Original als matches.bin.bak. Der nächste Lauf rekonstruiert dann aus den "
+       "bearbeiteten Zuordnungen neu. Ein Lauf, der neu zuordnet -- weil sich eine "
+       "Zuordnungseinstellung geändert hat --, ersetzt sie."),
+    FR("Retirer des paires réécrit matches.bin ; la première modification garde "
+       "l'original sous matches.bin.bak. Le passage suivant reconstruit alors à "
+       "partir des appariements modifiés. Un passage qui apparie de nouveau -- parce "
+       "qu'un réglage d'appariement a changé -- les remplace."),
+    ES("Quitar pares reescribe matches.bin; la primera edición guarda el original "
+       "como matches.bin.bak. La siguiente ejecución reconstruye entonces a partir "
+       "de los emparejamientos editados. Una ejecución que vuelve a emparejar -- "
+       "porque cambió un ajuste de emparejamiento -- los reemplaza."),
+    PT("Retirar pares reescreve matches.bin; a primeira edição guarda o original "
+       "como matches.bin.bak. A próxima execução reconstrói então a partir dos "
+       "pareamentos editados. Uma execução que pareia de novo -- porque uma "
+       "definição de pareamento mudou -- os substitui."),
+    IT("Togliere coppie riscrive matches.bin; la prima modifica conserva "
+       "l'originale come matches.bin.bak. L'esecuzione successiva ricostruisce "
+       "allora dai confronti modificati. Un'esecuzione che confronta di nuovo -- "
+       "perché è cambiata un'impostazione di confronto -- li sostituisce."),
+    NL("Paren verwijderen herschrijft matches.bin; de eerste bewerking bewaart het "
+       "origineel als matches.bin.bak. De volgende run reconstrueert dan opnieuw uit "
+       "de bewerkte koppelingen. Een run die opnieuw koppelt -- omdat een "
+       "koppelinstelling is veranderd -- vervangt ze."),
+    RU("Удаление пар перезаписывает matches.bin; при первой правке оригинал "
+       "сохраняется как matches.bin.bak. Следующий запуск реконструирует заново по "
+       "исправленным сопоставлениям. Запуск, который сопоставляет заново -- потому "
+       "что изменилась настройка сопоставления, -- заменит их."),
+    TR("Çift kaldırmak matches.bin dosyasını yeniden yazar; ilk düzenleme özgün "
+       "dosyayı matches.bin.bak olarak saklar. Sonraki çalıştırma düzenlenmiş "
+       "eşleşmelerden yeniden kurar. Eşleştirmeyi yeniden yapan bir çalıştırma -- "
+       "bir eşleştirme ayarı değiştiği için -- bunları değiştirir."));
+
+SS_MSG(matrix_selection_counts,
+    EN("Pairs: {0}   Matches: {1}"),
+    JA("ペア: {0}   対応: {1}"),
+    ZH_HANS("图像对：{0}   匹配：{1}"),
+    ZH_HANT("影像對：{0}   比對：{1}"),
+    KO("쌍: {0}   대응: {1}"),
+    DE("Paare: {0}   Zuordnungen: {1}"),
+    FR("Paires : {0}   Appariements : {1}"),
+    ES("Pares: {0}   Emparejamientos: {1}"),
+    PT("Pares: {0}   Pareamentos: {1}"),
+    IT("Coppie: {0}   Confronti: {1}"),
+    NL("Paren: {0}   Koppelingen: {1}"),
+    RU("Пар: {0}   Сопоставлений: {1}"),
+    TR("Çift: {0}   Eşleşme: {1}"));
+
+SS_MSG(matrix_removed,
+    EN("Removed -- pairs: {0}, matches: {1}"),
+    JA("取り除いたもの -- ペア: {0}、対応: {1}"),
+    ZH_HANS("已去掉 —— 图像对：{0}，匹配：{1}"),
+    ZH_HANT("已去掉 —— 影像對：{0}，比對：{1}"),
+    KO("없앤 것 -- 쌍: {0}, 대응: {1}"),
+    DE("Entfernt -- Paare: {0}, Zuordnungen: {1}"),
+    FR("Retiré -- paires : {0}, appariements : {1}"),
+    ES("Quitado -- pares: {0}, emparejamientos: {1}"),
+    PT("Retirado -- pares: {0}, pareamentos: {1}"),
+    IT("Tolto -- coppie: {0}, confronti: {1}"),
+    NL("Verwijderd -- paren: {0}, koppelingen: {1}"),
+    RU("Удалено -- пар: {0}, сопоставлений: {1}"),
+    TR("Kaldırıldı -- çift: {0}, eşleşme: {1}"));
+
+SS_MSG(matrix_restored,
+    EN("Restored -- pairs: {0}, matches: {1}"),
+    JA("元に戻したもの -- ペア: {0}、対応: {1}"),
+    ZH_HANS("已恢复 —— 图像对：{0}，匹配：{1}"),
+    ZH_HANT("已恢復 —— 影像對：{0}，比對：{1}"),
+    KO("되돌린 것 -- 쌍: {0}, 대응: {1}"),
+    DE("Wiederhergestellt -- Paare: {0}, Zuordnungen: {1}"),
+    FR("Rétabli -- paires : {0}, appariements : {1}"),
+    ES("Restaurado -- pares: {0}, emparejamientos: {1}"),
+    PT("Restaurado -- pares: {0}, pareamentos: {1}"),
+    IT("Ripristinato -- coppie: {0}, confronti: {1}"),
+    NL("Hersteld -- paren: {0}, koppelingen: {1}"),
+    RU("Восстановлено -- пар: {0}, сопоставлений: {1}"),
+    TR("Geri yüklendi -- çift: {0}, eşleşme: {1}"));
+
+SS_MSG(matrix_edit_failed,
+    EN("The matches were not changed: {0}"),
+    JA("照合は変更されていません: {0}"),
+    ZH_HANS("匹配没有改动：{0}"),
+    ZH_HANT("比對沒有改動：{0}"),
+    KO("정합은 바뀌지 않았습니다: {0}"),
+    DE("Die Zuordnungen wurden nicht geändert: {0}"),
+    FR("Les appariements n'ont pas été modifiés : {0}"),
+    ES("Los emparejamientos no se cambiaron: {0}"),
+    PT("Os pareamentos não foram alterados: {0}"),
+    IT("I confronti non sono stati modificati: {0}"),
+    NL("De koppelingen zijn niet gewijzigd: {0}"),
+    RU("Сопоставления не изменены: {0}"),
+    TR("Eşleşmeler değiştirilmedi: {0}"));
+
+SS_MSG(matrix_file_changed,
+    EN("matches.bin was rewritten by another run; there is nothing to undo."),
+    JA("matches.bin は別の実行で書き換えられました。元に戻せるものはありません。"),
+    ZH_HANS("matches.bin 已被另一次运行改写，没有可以撤销的操作。"),
+    ZH_HANT("matches.bin 已被另一次執行改寫，沒有可以復原的操作。"),
+    KO("matches.bin 이 다른 실행에서 다시 쓰였습니다. 실행 취소할 것이 없습니다."),
+    DE("matches.bin wurde von einem anderen Lauf neu geschrieben; es gibt nichts rückgängig zu machen."),
+    FR("matches.bin a été réécrit par un autre passage ; il n'y a rien à annuler."),
+    ES("Otra ejecución reescribió matches.bin; no hay nada que deshacer."),
+    PT("Outra execução reescreveu matches.bin; não há nada para desfazer."),
+    IT("Un'altra esecuzione ha riscritto matches.bin; non c'è nulla da annullare."),
+    NL("matches.bin is door een andere run herschreven; er valt niets ongedaan te maken."),
+    RU("matches.bin перезаписан другим запуском; отменять нечего."),
+    TR("matches.bin başka bir çalıştırma tarafından yeniden yazıldı; geri alınacak bir şey yok."));
+
+SS_MSG(matrix_close,
+    EN("Close"),
+    JA("閉じる"),
+    ZH_HANS("关闭"),
+    ZH_HANT("關閉"),
+    KO("닫기"),
+    DE("Schließen"),
+    FR("Fermer"),
+    ES("Cerrar"),
+    PT("Fechar"),
+    IT("Chiudi"),
+    NL("Sluiten"),
+    RU("Закрыть"),
+    TR("Kapat"));
 
 SS_MSG(model_live_counts,
     EN("Placed cameras: {0} of {1}   Points: {2}"),
@@ -6607,6 +6925,12 @@ SS_MSG(subj_sky,
     PT("Céu"),          IT("Cielo"),      NL("Lucht"),       RU("Небо"),
     TR("Gökyüzü"));
 
+SS_MSG(subj_cloud,
+    EN("Cloud"), JA("雲"), ZH_HANS("云"), ZH_HANT("雲"),
+    KO("구름"), DE("Wolke"), FR("Nuage"), ES("Nube"),
+    PT("Nuvem"), IT("Nuvola"), NL("Wolk"), RU("Облако"),
+    TR("Bulut"));
+
 SS_MSG(subj_shadow,
     EN("Shadow of a person"),
     JA("人の影"),
@@ -6627,6 +6951,12 @@ SS_MSG(subj_water,
     KO("물"),            DE("Wasser"),     FR("Eau"),         ES("Agua"),
     PT("Água"),         IT("Acqua"),      NL("Water"),       RU("Вода"),
     TR("Su"));
+
+SS_MSG(subj_wave,
+    EN("Wave"), JA("波"), ZH_HANS("波浪"), ZH_HANT("波浪"),
+    KO("파도"), DE("Welle"), FR("Vague"), ES("Ola"),
+    PT("Onda"), IT("Onda"), NL("Golf"), RU("Волна"),
+    TR("Dalga"));
 
 SS_MSG(subj_reflection,
     EN("Reflection"),   JA("映り込み"),    ZH_HANS("倒影"),     ZH_HANT("倒影"),
@@ -9658,19 +9988,19 @@ SS_MSG(sfm_distortion_refinement_help,
        "korur."));
 
 SS_MSG(sfm_metric_gps,
-    EN("Photo GPS"),
-    JA("写真の GPS"),
-    ZH_HANS("照片 GPS"),
-    ZH_HANT("相片 GPS"),
-    KO("사진의 GPS"),
-    DE("GPS der Fotos"),
-    FR("GPS des photos"),
-    ES("GPS de las fotos"),
-    PT("GPS das fotos"),
-    IT("GPS delle foto"),
-    NL("Gps van de foto's"),
-    RU("GPS фотографий"),
-    TR("Fotoğrafların GPS'i"));
+    EN("GPS"),
+    JA("GPS"),
+    ZH_HANS("GPS"),
+    ZH_HANT("GPS"),
+    KO("GPS"),
+    DE("GPS"),
+    FR("GPS"),
+    ES("GPS"),
+    PT("GPS"),
+    IT("GPS"),
+    NL("Gps"),
+    RU("GPS"),
+    TR("GPS"));
 
 SS_MSG(sfm_metric_gps_off,
     EN("Off"),
@@ -9739,19 +10069,19 @@ SS_MSG(section_sensors,
     TR("Sensörler"));
 
 SS_MSG(sfm_sensor_gauge,
-    EN("Video IMU and GPS"),
-    JA("動画のIMU・GPS"),
-    ZH_HANS("视频 IMU 与 GPS"),
-    ZH_HANT("影片 IMU 與 GPS"),
-    KO("동영상 IMU 및 GPS"),
-    DE("IMU und GPS des Videos"),
-    FR("IMU et GPS de la vidéo"),
-    ES("IMU y GPS del vídeo"),
-    PT("IMU e GPS do vídeo"),
-    IT("IMU e GPS del video"),
-    NL("IMU en GPS van de video"),
-    RU("IMU и GPS видео"),
-    TR("Videonun IMU ve GPS'i"));
+    EN("Video IMU"),
+    JA("動画のIMU"),
+    ZH_HANS("视频 IMU"),
+    ZH_HANT("影片 IMU"),
+    KO("동영상 IMU"),
+    DE("IMU des Videos"),
+    FR("IMU de la vidéo"),
+    ES("IMU del vídeo"),
+    PT("IMU do vídeo"),
+    IT("IMU del video"),
+    NL("IMU van de video"),
+    RU("IMU видео"),
+    TR("Videonun IMU'su"));
 
 SS_MSG(sfm_sensor_gauge_off,
     EN("Ignore"),        JA("使わない"),      ZH_HANS("不使用"),    ZH_HANT("不使用"),
@@ -9790,65 +10120,94 @@ SS_MSG(sfm_sensor_gauge_auto,
     TR("Yukarı yönü ve metrik ölçek"));
 
 SS_MSG(sfm_sensor_gauge_help,
-    EN("Use the IMU and GPS a video records alongside its pictures: which way "
-       "is up, and how many metres across the scene is. Each is fitted with "
-       "its own uncertainty and dropped when it does not hold, so a capture "
-       "indoors or with no sensors simply gets less of it. Off is for a file "
-       "whose telemetry is known to be wrong."),
-    JA("動画が映像と一緒に記録しているIMUとGPSを使います。上がどちらか、シーンが"
-       "何メートルかを求めます。それぞれ不確かさ付きで推定し、成り立たないものは"
-       "捨てるので、屋内やセンサーのない撮影では使われる情報が減るだけです。"
-       "オフは、記録が明らかに誤っているファイル向けです。"),
-    ZH_HANS("使用视频随画面一同记录的 IMU 与 GPS：判断上方向，以及场景实际有多少"
-            "米。每一项都带不确定度拟合，不成立时会被舍弃，所以室内或无传感器的"
-            "拍摄只是可用信息更少。若已知某文件的遥测数据有误，可以关闭。"),
-    ZH_HANT("使用影片隨畫面一同記錄的 IMU 與 GPS：判斷上方向，以及場景實際有多少"
-            "公尺。每一項都帶不確定度擬合，不成立時會被捨棄，所以室內或無感測器的"
-            "拍攝只是可用資訊更少。若已知某檔案的遙測資料有誤，可以關閉。"),
-    KO("동영상이 영상과 함께 기록한 IMU와 GPS를 씁니다. 어느 쪽이 위인지, 장면이 "
-       "몇 미터인지를 구합니다. 각각 불확실도와 함께 맞추고 맞지 않으면 버리므로, "
-       "실내이거나 센서가 없는 촬영은 쓰이는 정보가 줄어들 뿐입니다. 끄기는 기록이 "
-       "틀린 것이 확실한 파일을 위한 것입니다."),
-    DE("Nutzt IMU und GPS, die ein Video neben den Bildern aufzeichnet: wo "
-       "oben ist und wie viele Meter die Szene misst. Jedes wird mit eigener "
-       "Unsicherheit geschätzt und verworfen, wenn es nicht trägt; drinnen "
-       "oder ohne Sensoren bleibt einfach weniger übrig. Aus ist für eine "
-       "Datei, deren Telemetrie nachweislich falsch ist."),
-    FR("Utilise l'IMU et le GPS qu'une vidéo enregistre avec ses images : où "
-       "est le haut, et combien de mètres fait la scène. Chacun est estimé "
-       "avec son incertitude et abandonné s'il ne tient pas ; en intérieur ou "
-       "sans capteurs, il en reste simplement moins. Désactiver convient à un "
-       "fichier dont la télémétrie est connue comme fausse."),
-    ES("Usa la IMU y el GPS que un vídeo graba junto a sus imágenes: hacia "
-       "dónde está arriba y cuántos metros mide la escena. Cada uno se ajusta "
-       "con su incertidumbre y se descarta si no se sostiene, así que en "
-       "interiores o sin sensores simplemente queda menos. Desactivar es para "
-       "un archivo cuya telemetría se sabe errónea."),
-    PT("Usa a IMU e o GPS que um vídeo grava junto das imagens: para onde é "
-       "cima e quantos metros mede a cena. Cada um é ajustado com a sua "
-       "incerteza e descartado se não se sustentar, pelo que no interior ou "
-       "sem sensores fica apenas menos. Desligar serve para um ficheiro cuja "
-       "telemetria se sabe errada."),
-    IT("Usa l'IMU e il GPS che un video registra accanto alle immagini: dove "
-       "è l'alto e quanti metri misura la scena. Ciascuno è stimato con la "
-       "propria incertezza e scartato se non regge, quindi al chiuso o senza "
-       "sensori resta semplicemente meno. Disattiva serve per un file la cui "
-       "telemetria è notoriamente sbagliata."),
-    NL("Gebruikt de IMU en gps die een video naast de beelden opneemt: welke "
-       "kant boven is en hoeveel meter de scène meet. Elk wordt met eigen "
-       "onzekerheid geschat en losgelaten als het niet standhoudt; binnen of "
-       "zonder sensoren blijft er eenvoudig minder over. Uit is voor een "
-       "bestand waarvan de telemetrie aantoonbaar fout is."),
-    RU("Использует IMU и GPS, которые видео пишет рядом с кадрами: где верх и "
-       "сколько метров занимает сцена. Каждое оценивается со своей "
-       "неопределённостью и отбрасывается, если не подтверждается, поэтому в "
-       "помещении или без датчиков просто останется меньше. «Не "
-       "использовать» — для файла с заведомо неверной телеметрией."),
-    TR("Bir videonun görüntülerin yanında kaydettiği IMU ve GPS'i kullanır: "
-       "yukarının nerede olduğunu ve sahnenin kaç metre olduğunu. Her biri "
-       "kendi belirsizliğiyle kestirilir ve tutmazsa bırakılır; iç mekanda ya "
-       "da sensörsüz çekimde yalnızca daha azı kalır. Kapalı, telemetrisi "
-       "yanlış olduğu bilinen bir dosya içindir."));
+    EN("Use the IMU a video records alongside its pictures -- gyro, "
+       "accelerometer and recorded orientation -- for which way is up and, "
+       "from the accelerometer, how many metres across the scene is. Each "
+       "is fitted with its own uncertainty and dropped when it does not "
+       "hold, so a capture that only pans, or a file with no IMU, simply "
+       "gets less of it. The video's GPS is the setting above. Ignore is "
+       "for a file whose IMU is known to be wrong."),
+    JA("動画が映像と一緒に記録しているIMU (ジャイロ、加速度計、記録された姿"
+       "勢) を使い、上がどちらかと、加速度計からシーンが何メートルかを求め"
+       "ます。それぞれ不確かさ付きで推定し、成り立たないものは捨てるので、"
+       "向きを変えるだけの撮影やIMUのないファイルでは使われる情報が減るだけ"
+       "です。動画のGPSは上の設定です。「使わない」は、IMUの記録が明らかに"
+       "誤っているファイル向けです。"),
+    ZH_HANS("使用视频随画面一同记录的 IMU (陀螺仪、加速度计和记录的姿态)："
+            "判断上方向，并由加速度计得出场景实际有多少米。每一项都带不确定"
+            "度拟合，不成立时会被舍弃，所以只转动不移动的拍摄或没有 IMU 的"
+            "文件只是可用信息更少。视频的 GPS 由上面的选项管。若已知某文件"
+            "的 IMU 数据有误，可以选“不使用”。"),
+    ZH_HANT("使用影片隨畫面一同記錄的 IMU (陀螺儀、加速度計和記錄的姿態)："
+            "判斷上方向，並由加速度計得出場景實際有多少公尺。每一項都帶不確"
+            "定度擬合，不成立時會被捨棄，所以只轉動不移動的拍攝或沒有 IMU "
+            "的檔案只是可用資訊更少。影片的 GPS 由上面的選項管。若已知某檔"
+            "案的 IMU 資料有誤，可以選「不使用」。"),
+    KO("동영상이 영상과 함께 기록한 IMU (자이로, 가속도계, 기록된 자세) 를 "
+       "씁니다. 어느 쪽이 위인지, 그리고 가속도계로 장면이 몇 미터인지를 "
+       "구합니다. 각각 불확실도와 함께 맞추고 맞지 않으면 버리므로, 방향만 "
+       "돌리는 촬영이나 IMU 가 없는 파일은 쓰이는 정보가 줄어들 뿐입니다. "
+       "동영상의 GPS 는 위의 설정입니다. '사용 안 함'은 IMU 기록이 틀린 "
+       "것이 확실한 파일을 위한 것입니다."),
+    DE("Nutzt die IMU, die ein Video neben den Bildern aufzeichnet -- "
+       "Gyroskop, Beschleunigungsmesser und aufgezeichnete Lage: wo oben "
+       "ist und, aus dem Beschleunigungsmesser, wie viele Meter die Szene "
+       "misst. Jedes wird mit eigener Unsicherheit geschätzt und "
+       "verworfen, wenn es nicht trägt; eine Aufnahme, die nur schwenkt, "
+       "oder eine Datei ohne IMU bekommt einfach weniger davon. Das GPS "
+       "des Videos ist die Einstellung darüber. Ignorieren ist für eine "
+       "Datei, deren IMU nachweislich falsch ist."),
+    FR("Utilise l'IMU qu'une vidéo enregistre avec ses images -- "
+       "gyroscope, accéléromètre et attitude enregistrée : où est le haut "
+       "et, par l'accéléromètre, combien de mètres fait la scène. Chacun "
+       "est estimé avec son incertitude et abandonné s'il ne tient pas ; "
+       "une prise qui ne fait que pivoter ou un fichier sans IMU en reçoit "
+       "simplement moins. Le GPS de la vidéo est le réglage au-dessus. "
+       "Ignorer convient à un fichier dont l'IMU est connue comme fausse."),
+    ES("Usa la IMU que un vídeo graba junto a sus imágenes -- giroscopio, "
+       "acelerómetro y actitud registrada: hacia dónde está arriba y, por "
+       "el acelerómetro, cuántos metros mide la escena. Cada uno se ajusta "
+       "con su incertidumbre y se descarta si no se sostiene; una toma que "
+       "solo gira o un archivo sin IMU simplemente recibe menos. El GPS "
+       "del vídeo es el ajuste de arriba. Ignorar es para un archivo cuya "
+       "IMU se sabe errónea."),
+    PT("Usa a IMU que um vídeo grava junto das imagens -- giroscópio, "
+       "acelerómetro e atitude registada: para onde é cima e, pelo "
+       "acelerómetro, quantos metros mede a cena. Cada um é ajustado com a "
+       "sua incerteza e descartado se não se sustentar; uma captura que só "
+       "roda ou um ficheiro sem IMU recebe apenas menos. O GPS do vídeo é "
+       "a opção acima. Ignorar serve para um ficheiro cuja IMU se sabe "
+       "errada."),
+    IT("Usa l'IMU che un video registra accanto alle immagini -- "
+       "giroscopio, accelerometro e assetto registrato: dove è l'alto e, "
+       "dall'accelerometro, quanti metri misura la scena. Ciascuno è "
+       "stimato con la propria incertezza e scartato se non regge; una "
+       "ripresa che ruota soltanto o un file senza IMU ne riceve "
+       "semplicemente meno. Il GPS del video è l'impostazione qui sopra. "
+       "Ignora serve per un file la cui IMU è notoriamente sbagliata."),
+    NL("Gebruikt de IMU die een video naast de beelden opneemt -- "
+       "gyroscoop, versnellingsmeter en opgenomen stand: welke kant boven "
+       "is en, uit de versnellingsmeter, hoeveel meter de scène meet. Elk "
+       "wordt met eigen onzekerheid geschat en losgelaten als het niet "
+       "standhoudt; een opname die alleen draait of een bestand zonder IMU "
+       "krijgt er eenvoudig minder van. De gps van de video is de "
+       "instelling hierboven. Negeren is voor een bestand waarvan de IMU "
+       "aantoonbaar fout is."),
+    RU("Использует IMU, которую видео пишет рядом с кадрами, — гироскоп, "
+       "акселерометр и записанную ориентацию: где верх и, по "
+       "акселерометру, сколько метров занимает сцена. Каждое оценивается "
+       "со своей неопределённостью и отбрасывается, если не "
+       "подтверждается, поэтому съёмка, где камера только поворачивается, "
+       "или файл без IMU просто получат меньше. GPS видео — настройка "
+       "выше. «Не использовать» — для файла с заведомо неверными данными "
+       "IMU."),
+    TR("Bir videonun görüntülerin yanında kaydettiği IMU'yu -- jiroskop, "
+       "ivmeölçer ve kaydedilen duruş -- kullanır: yukarının nerede "
+       "olduğunu ve ivmeölçerden sahnenin kaç metre olduğunu. Her biri "
+       "kendi belirsizliğiyle kestirilir ve tutmazsa bırakılır; yalnızca "
+       "dönen bir çekim ya da IMU'suz bir dosya daha azını alır. Videonun "
+       "GPS'i yukarıdaki ayardır. Yok say, IMU'su yanlış olduğu bilinen "
+       "bir dosya içindir."));
 
 SS_MSG(sfm_exif_attitude,
     EN("Photo attitude"),
@@ -10345,143 +10704,154 @@ SS_MSG(sensors_section_caption,
        "Burada kapatmak o sensörü tüm girdiler için kapatır."));
 
 SS_MSG(sfm_metric_gps_help,
-    EN("Write the model in metres, sized and turned to the GPS in the photos' "
-       "EXIF. Latitude and longitude alone is the safe choice: it takes the "
-       "scale and the compass heading from the fixes and leaves which way is "
-       "up to the cameras themselves. Adding altitude also levels the scene by "
-       "GPS, which a phone measures badly -- in a city it can tilt the whole "
-       "model by degrees. Either way the capture must be tens of metres across. "
-       "Photographs carrying no position are passed over, and a model that "
-       "cannot be fitted is written unscaled and says so; a video's own sensors "
-       "are the setting above."
+    EN("Write the model in metres, sized and turned to the GPS: the track "
+       "a video records, or the position in a photo's EXIF. Latitude and "
+       "longitude alone is the safe choice: it takes the scale and the "
+       "compass heading from the fixes and leaves which way is up to the "
+       "video's IMU or the cameras themselves. Adding altitude also levels "
+       "the scene by GPS, which a phone measures badly -- in a city it can "
+       "tilt the whole model by degrees. Either way the capture must be "
+       "tens of metres across. Images carrying no position are passed "
+       "over, and a model that cannot be fitted is written unscaled and "
+       "says so."
        " Automatic, the default, decides per capture: with altitude for a DJI drone's own "
        "GPS or photos whose GPS carries an altitude, latitude and longitude for a phone, an "
        "action camera or fixes without an altitude, and off where nothing carries GPS."),
-    JA("写真の EXIF にある GPS に合わせて、寸法と向きを決めたメートル単位の"
-       "モデルを書き出します。緯度と経度だけを使うのが安全です。位置から寸法と"
-       "方位だけを取り、どちらが上かはカメラ自身に任せます。高度も使うと傾きまで"
-       "GPS で決めますが、スマートフォンの高度は誤差が大きく、市街地ではモデル"
-       "全体が数度傾くことがあります。いずれの場合も撮影範囲は数十メートル必要です。"
-       "位置を持たない写真は対象外となり、当てはめられないモデルは寸法なしで"
-       "書き出してその旨を伝えます。動画自身のセンサーは上の設定です。"
+    JA("GPS (動画が記録する軌跡、または写真の EXIF にある位置) に合わせて、"
+       "寸法と向きを決めたメートル単位のモデルを書き出します。緯度と経度だ"
+       "けを使うのが安全です。位置から寸法と方位だけを取り、どちらが上かは"
+       "動画のIMUかカメラ自身に任せます。高度も使うと傾きまでGPS で決めます"
+       "が、スマートフォンの高度は誤差が大きく、市街地ではモデル全体が数度"
+       "傾くことがあります。いずれの場合も撮影範囲は数十メートル必要です。"
+       "位置を持たない画像は対象外となり、当てはめられないモデルは寸法なし"
+       "で書き出してその旨を伝えます。"
        "自動 (既定) は撮影ごとに決めます。DJI の機体自身の GPS や高度付きの写真なら高度も使い、スマートフォン、アクションカメラ、高度のない位置なら緯度と経度だけ、"
        "GPS がなければ使いません。"),
-    ZH_HANS("按照片 EXIF 中的 GPS 确定尺度和朝向，以米为单位写出模型。只用经纬度"
-            "更稳妥：只从定位取尺度和方位角，哪边朝上仍交给相机自身判断。连高度"
-            "一起用则连倾斜也由 GPS 决定，而手机测得的高度误差很大——在城市里可能"
-            "让整个模型倾斜几度。两种方式都要求采集范围有几十米。不带定位的照片会"
-            "被略过；拟合不成功时按未定尺度写出并给出说明。视频自身的传感器由上面"
-            "的选项管。"
+    ZH_HANS("按 GPS (视频记录的轨迹，或照片 EXIF 中的位置) 确定尺度和朝向，"
+            "以米为单位写出模型。只用经纬度更稳妥：只从定位取尺度和方位角，"
+            "哪边朝上仍交给视频的 IMU 或相机自身判断。连高度一起用则连倾斜"
+            "也由 GPS 决定，而手机测得的高度误差很大——在城市里可能让整个模"
+            "型倾斜几度。两种方式都要求采集范围有几十米。不带定位的图像会被"
+            "略过；拟合不成功时按未定尺度写出并给出说明。"
             "自动 (默认) 按每次采集决定：DJI 设备自身的 GPS 或带高度的照片连高度一起用，手机、运动相机或没有高度的定位只用经纬度，没有 GPS 则不使用。"),
-    ZH_HANT("按照片 EXIF 中的 GPS 確定尺度和朝向，以公尺為單位寫出模型。只用經緯度"
-            "更穩妥：只從定位取尺度和方位角，哪邊朝上仍交給相機自身判斷。連高度"
-            "一起用則連傾斜也由 GPS 決定，而手機測得的高度誤差很大——在城市裡可能"
-            "讓整個模型傾斜幾度。兩種方式都要求拍攝範圍有數十公尺。不帶定位的照片會"
-            "被略過；擬合不成功時按未定尺度寫出並給出說明。影片自身的感測器由上面"
-            "的選項管。"
+    ZH_HANT("按 GPS (影片記錄的軌跡，或相片 EXIF 中的位置) 確定尺度和朝向，"
+            "以公尺為單位寫出模型。只用經緯度更穩妥：只從定位取尺度和方位角"
+            "，哪邊朝上仍交給影片的 IMU 或相機自身判斷。連高度一起用則連傾"
+            "斜也由 GPS 決定，而手機測得的高度誤差很大——在城市裡可能讓整個"
+            "模型傾斜幾度。兩種方式都要求拍攝範圍有數十公尺。不帶定位的影像"
+            "會被略過；擬合不成功時按未定尺度寫出並給出說明。"
             "自動 (預設) 按每次拍攝決定：DJI 裝置自身的 GPS 或帶高度的照片連高度一起用，手機、運動相機或沒有高度的定位只用經緯度，沒有 GPS 則不使用。"),
-    KO("사진 EXIF 의 GPS 에 맞춰 크기와 방향을 정한 미터 단위 모델을 씁니다. "
-       "위도와 경도만 쓰는 쪽이 안전합니다. 위치에서 크기와 방위만 가져오고, "
-       "어느 쪽이 위인지는 카메라 자신에게 맡깁니다. 고도까지 쓰면 기울기도 GPS 로 "
-       "정하는데, 휴대전화의 고도는 오차가 커서 도심에서는 모델 전체가 몇 도 기울 "
-       "수 있습니다. 어느 쪽이든 촬영 범위가 수십 미터는 되어야 합니다. 위치가 없는 "
-       "사진은 건너뛰고, 맞추지 못한 모델은 크기 없이 쓰며 그 사실을 알립니다. "
-       "동영상 자체의 센서는 위의 설정입니다."
+    KO("GPS (동영상이 기록한 궤적, 또는 사진 EXIF 의 위치) 에 맞춰 크기와 "
+       "방향을 정한 미터 단위 모델을 씁니다. 위도와 경도만 쓰는 쪽이 "
+       "안전합니다. 위치에서 크기와 방위만 가져오고, 어느 쪽이 위인지는 "
+       "동영상의 IMU 나 카메라 자신에게 맡깁니다. 고도까지 쓰면 기울기도 "
+       "GPS 로 정하는데, 휴대전화의 고도는 오차가 커서 도심에서는 모델 "
+       "전체가 몇 도 기울 수 있습니다. 어느 쪽이든 촬영 범위가 수십 미터는 "
+       "되어야 합니다. 위치가 없는 이미지는 건너뛰고, 맞추지 못한 모델은 "
+       "크기 없이 쓰며 그 사실을 알립니다."
        " 자동 (기본값) 은 촬영마다 정합니다. DJI 기체 자체의 GPS 나 고도가 있는 사진은 고도까지, 휴대전화나 액션캠, 고도 없는 위치는 위도와 "
        "경도만 쓰고, GPS 가 없으면 쓰지 않습니다."),
-    DE("Das Modell in Metern schreiben, in Größe und Richtung an das GPS in den "
-       "EXIF-Daten der Fotos angepasst. Breite und Länge allein ist die sichere "
-       "Wahl: sie nehmen Maßstab und Himmelsrichtung aus den Positionen und "
-       "überlassen das Oben den Kameras selbst. Mit der Höhe richtet auch das "
-       "GPS die Szene aus, das ein Telefon schlecht misst -- in der Stadt kann "
-       "das das ganze Modell um Grade kippen. In beiden Fällen muss die Aufnahme "
-       "zehner Meter groß sein. Fotos ohne Position werden übergangen; ein "
-       "Modell, das nicht passt, wird unskaliert geschrieben und sagt das. Die "
-       "Sensoren eines Videos sind die Einstellung darüber."
+    DE("Das Modell in Metern schreiben, in Größe und Richtung an das GPS "
+       "angepasst: die Spur, die ein Video aufzeichnet, oder die Position "
+       "in den EXIF-Daten eines Fotos. Breite und Länge allein ist die "
+       "sichere Wahl: sie nehmen Maßstab und Himmelsrichtung aus den "
+       "Positionen und überlassen das Oben der IMU des Videos oder den "
+       "Kameras selbst. Mit der Höhe richtet auch das GPS die Szene aus, "
+       "das ein Telefon schlecht misst -- in der Stadt kann das das ganze "
+       "Modell um Grade kippen. In beiden Fällen muss die Aufnahme zehner "
+       "Meter groß sein. Bilder ohne Position werden übergangen; ein "
+       "Modell, das nicht passt, wird unskaliert geschrieben und sagt das."
        " Automatisch, die Vorgabe, entscheidet je Aufnahme: mit Höhe für das eigene GPS "
        "einer DJI-Drohne oder Fotos, deren GPS eine Höhe trägt, Breite und Länge für ein "
        "Telefon, eine Actionkamera oder Positionen ohne Höhe, und aus, wo nichts GPS trägt."),
-    FR("Écrire le modèle en mètres, dimensionné et orienté d'après le GPS des "
-       "EXIF des photos. La latitude et la longitude seules sont le choix sûr : "
-       "elles prennent l'échelle et le cap dans les positions et laissent le "
-       "haut aux caméras elles-mêmes. Avec l'altitude, le GPS redresse aussi la "
-       "scène, or un téléphone la mesure mal -- en ville cela peut incliner tout "
-       "le modèle de plusieurs degrés. Dans les deux cas la prise doit faire des "
-       "dizaines de mètres. Les photos sans position sont ignorées ; un modèle "
-       "qui ne s'ajuste pas est écrit sans échelle et le signale. Les capteurs "
-       "d'une vidéo sont le réglage au-dessus."
+    FR("Écrire le modèle en mètres, dimensionné et orienté d'après le GPS "
+       ": la trace qu'enregistre une vidéo, ou la position dans les EXIF "
+       "d'une photo. La latitude et la longitude seules sont le choix sûr "
+       ": elles prennent l'échelle et le cap dans les positions et "
+       "laissent le haut à l'IMU de la vidéo ou aux caméras elles-mêmes. "
+       "Avec l'altitude, le GPS redresse aussi la scène, or un téléphone "
+       "la mesure mal -- en ville cela peut incliner tout le modèle de "
+       "plusieurs degrés. Dans les deux cas la prise doit faire des "
+       "dizaines de mètres. Les images sans position sont ignorées ; un "
+       "modèle qui ne s'ajuste pas est écrit sans échelle et le signale."
        " Automatique, le défaut, décide par prise : avec l'altitude pour le GPS propre d'un "
        "drone DJI ou des photos dont le GPS porte une altitude, latitude et longitude pour "
        "un téléphone, une caméra d'action ou des points sans altitude, et désactivé quand "
        "rien ne porte de GPS."),
-    ES("Escribir el modelo en metros, con el tamaño y el giro que da el GPS de "
-       "los EXIF de las fotos. Solo latitud y longitud es la opción segura: toma "
-       "la escala y el rumbo de las posiciones y deja el arriba a las propias "
-       "cámaras. Con la altitud el GPS también nivela la escena, y un teléfono "
-       "la mide mal: en ciudad puede inclinar el modelo entero varios grados. En "
-       "ambos casos la toma debe medir decenas de metros. Las fotos sin posición "
-       "se pasan por alto; un modelo que no se puede ajustar se escribe sin "
-       "escalar y lo dice. Los sensores de un vídeo son el ajuste de arriba."
+    ES("Escribir el modelo en metros, con el tamaño y el giro que da el "
+       "GPS: la traza que graba un vídeo o la posición en los EXIF de una "
+       "foto. Solo latitud y longitud es la opción segura: toma la escala "
+       "y el rumbo de las posiciones y deja el arriba a la IMU del vídeo o "
+       "a las propias cámaras. Con la altitud el GPS también nivela la "
+       "escena, y un teléfono la mide mal: en ciudad puede inclinar el "
+       "modelo entero varios grados. En ambos casos la toma debe medir "
+       "decenas de metros. Las imágenes sin posición se pasan por alto; un "
+       "modelo que no se puede ajustar se escribe sin escalar y lo dice."
        " Automático, el valor por defecto, decide en cada toma: con la altitud para el GPS "
        "propio de un dron DJI o fotos cuyo GPS trae altitud, latitud y longitud para un "
        "teléfono, una cámara de acción o posiciones sin altitud, y desactivado cuando nada "
        "trae GPS."),
-    PT("Escrever o modelo em metros, dimensionado e virado conforme o GPS dos "
-       "EXIF das fotos. Só latitude e longitude é a escolha segura: tira a "
-       "escala e o rumo das posições e deixa o para cima às próprias câmeras. "
-       "Com a altitude o GPS também nivela a cena, e um telemóvel mede-a mal -- "
-       "na cidade pode inclinar o modelo inteiro em graus. Em qualquer dos casos "
-       "a captura tem de ter dezenas de metros. As fotos sem posição são "
-       "ignoradas; um modelo que não se ajusta é escrito sem escala e avisa "
-       "disso. Os sensores de um vídeo são a opção acima."
+    PT("Escrever o modelo em metros, dimensionado e virado conforme o GPS: "
+       "o trajeto que um vídeo grava ou a posição nos EXIF de uma foto. Só "
+       "latitude e longitude é a escolha segura: tira a escala e o rumo "
+       "das posições e deixa o para cima à IMU do vídeo ou às próprias "
+       "câmeras. Com a altitude o GPS também nivela a cena, e um telemóvel "
+       "mede-a mal -- na cidade pode inclinar o modelo inteiro em graus. "
+       "Em qualquer dos casos a captura tem de ter dezenas de metros. As "
+       "imagens sem posição são ignoradas; um modelo que não se ajusta é "
+       "escrito sem escala e avisa disso."
        " Automático, o padrão, decide em cada captura: com a altitude para o GPS próprio de "
        "um drone DJI ou fotos cujo GPS traz altitude, latitude e longitude para um "
        "telemóvel, uma câmara de ação ou posições sem altitude, e desligado quando nada "
        "traz GPS."),
-    IT("Scrivere il modello in metri, dimensionato e ruotato in base al GPS "
-       "negli EXIF delle foto. Solo latitudine e longitudine è la scelta sicura: "
-       "prende scala e direzione dalle posizioni e lascia l'alto alle camere "
-       "stesse. Con la quota anche l'inclinazione viene dal GPS, che un telefono "
-       "misura male: in città può inclinare l'intero modello di gradi. In "
-       "entrambi i casi la ripresa deve misurare decine di metri. Le foto senza "
-       "posizione vengono ignorate; un modello che non si stima viene scritto "
-       "senza scala e lo segnala. I sensori di un video sono l'impostazione "
-       "qui sopra."
+    IT("Scrivere il modello in metri, dimensionato e ruotato in base al "
+       "GPS: la traccia che un video registra o la posizione negli EXIF di "
+       "una foto. Solo latitudine e longitudine è la scelta sicura: prende "
+       "scala e direzione dalle posizioni e lascia l'alto all'IMU del "
+       "video o alle camere stesse. Con la quota anche l'inclinazione "
+       "viene dal GPS, che un telefono misura male: in città può inclinare "
+       "l'intero modello di gradi. In entrambi i casi la ripresa deve "
+       "misurare decine di metri. Le immagini senza posizione vengono "
+       "ignorate; un modello che non si stima viene scritto senza scala e "
+       "lo segnala."
        " Automatico, il predefinito, decide per ogni ripresa: con la quota per il GPS di un "
        "drone DJI o per foto il cui GPS porta la quota, latitudine e longitudine per un "
        "telefono, una action cam o punti senza quota, e disattivato quando nulla porta GPS."),
-    NL("Het model in meters schrijven, op maat en gedraaid volgens de GPS in de "
-       "EXIF van de foto's. Alleen breedte en lengte is de veilige keuze: die "
-       "halen de schaal en de kompasrichting uit de posities en laten het boven "
-       "aan de camera's zelf. Met de hoogte zet het GPS de scène ook waterpas, "
-       "en die meet een telefoon slecht -- in een stad kan dat het hele model "
-       "graden doen kantelen. In beide gevallen moet de opname tientallen meters "
-       "groot zijn. Foto's zonder positie worden overgeslagen; een model dat "
-       "niet past wordt ongeschaald geschreven en meldt dat. De sensoren van een "
-       "video zijn de instelling hierboven."
+    NL("Het model in meters schrijven, op maat en gedraaid volgens de gps: "
+       "het spoor dat een video opneemt, of de positie in de EXIF van een "
+       "foto. Alleen breedte en lengte is de veilige keuze: die halen de "
+       "schaal en de kompasrichting uit de posities en laten het boven aan "
+       "de IMU van de video of aan de camera's zelf. Met de hoogte zet de "
+       "gps de scène ook waterpas, en die meet een telefoon slecht -- in "
+       "een stad kan dat het hele model graden doen kantelen. In beide "
+       "gevallen moet de opname tientallen meters groot zijn. Beelden "
+       "zonder positie worden overgeslagen; een model dat niet past wordt "
+       "ongeschaald geschreven en meldt dat."
        " Automatisch, de standaard, beslist per opname: met hoogte voor de eigen gps van "
        "een DJI-drone of foto's waarvan de gps een hoogte draagt, breedte en lengte voor "
        "een telefoon, een actiecamera of posities zonder hoogte, en uit waar niets gps "
        "draagt."),
-    RU("Записать модель в метрах, с размером и поворотом по GPS из EXIF снимков. "
-       "Только широта и долгота — безопасный выбор: масштаб и направление берутся "
-       "из координат, а где верх, решают сами камеры. С высотой по GPS задаётся и "
-       "наклон, а телефон измеряет её плохо — в городе это может наклонить всю "
-       "модель на градусы. В обоих случаях съёмка должна быть десятки метров. "
-       "Снимки без координат пропускаются; модель, которую подобрать не удалось, "
-       "пишется без масштаба и сообщает об этом. Датчики самого видео — "
-       "настройка выше."
+    RU("Записать модель в метрах, с размером и поворотом по GPS: по треку, "
+       "который пишет видео, или по координатам в EXIF снимка. Только "
+       "широта и долгота — безопасный выбор: масштаб и направление берутся "
+       "из координат, а где верх, решают IMU видео или сами камеры. С "
+       "высотой по GPS задаётся и наклон, а телефон измеряет её плохо — в "
+       "городе это может наклонить всю модель на градусы. В обоих случаях "
+       "съёмка должна быть десятки метров. Изображения без координат "
+       "пропускаются; модель, которую подобрать не удалось, пишется без "
+       "масштаба и сообщает об этом."
        " Автоматически (по умолчанию) — решение для каждой съёмки: с высотой для "
        "собственного GPS дрона DJI или снимков, чей GPS несёт высоту, широта и долгота для "
        "телефона, экшн-камеры или отсчётов без высоты, и выключено, если GPS нигде нет."),
-    TR("Modeli, fotoğrafların EXIF'indeki GPS'e göre ölçeklenmiş ve döndürülmüş "
-       "olarak metre biriminde yaz. Yalnızca enlem ve boylam güvenli seçimdir: "
-       "ölçeği ve pusula yönünü konumlardan alır, yukarının neresi olduğunu "
-       "kameralara bırakır. Yükseklik de eklenirse sahneyi GPS düzler; telefonun "
-       "yükseklik ölçümü kötüdür ve şehirde tüm modeli derecelerce yatırabilir. "
-       "Her iki durumda da çekim onlarca metre olmalı. Konumu olmayan "
-       "fotoğraflar atlanır; oturtulamayan model ölçeksiz yazılır ve bunu "
-       "bildirir. Videonun kendi sensörleri yukarıdaki ayardır."
+    TR("Modeli GPS'e göre ölçeklenmiş ve döndürülmüş olarak metre "
+       "biriminde yaz: bir videonun kaydettiği iz ya da bir fotoğrafın "
+       "EXIF'indeki konum. Yalnızca enlem ve boylam güvenli seçimdir: "
+       "ölçeği ve pusula yönünü konumlardan alır, yukarının neresi "
+       "olduğunu videonun IMU'suna ya da kameralara bırakır. Yükseklik de "
+       "eklenirse sahneyi GPS düzler; telefonun yükseklik ölçümü kötüdür "
+       "ve şehirde tüm modeli derecelerce yatırabilir. Her iki durumda da "
+       "çekim onlarca metre olmalı. Konumu olmayan görüntüler atlanır; "
+       "oturtulamayan model ölçeksiz yazılır ve bunu bildirir."
        " Varsayılan Otomatik, her çekim için karar verir: bir DJI dronun kendi GPS'i ya da "
        "GPS'i yükseklik taşıyan fotoğraflar için yükseklikle, telefon, aksiyon kamerası ya "
        "da yüksekliksiz konumlar için enlem ve boylamla, hiçbir şey GPS taşımıyorsa kapalı."));
@@ -14779,6 +15149,30 @@ SS_MSG(log_settings_restored,
     RU("Настройки восстановлены из набора данных в {0}"),
     TR("Ayarlar {0} içindeki veri kümesinden geri yüklendi"));
 
+SS_MSG(log_settings_unreadable,
+    EN("The settings saved in {0} could not be read ({1}); the panel keeps "
+       "its own"),
+    JA("{0} に保存された設定を読み込めませんでした（{1}）。パネルは現在の設定のままです"),
+    ZH_HANS("无法读取 {0} 中保存的设置（{1}）；面板保留当前设置"),
+    ZH_HANT("無法讀取 {0} 中儲存的設定（{1}）；面板保留目前設定"),
+    KO("{0} 에 저장된 설정을 읽을 수 없습니다({1}). 패널은 현재 설정을 유지합니다"),
+    DE("Die in {0} gespeicherten Einstellungen ließen sich nicht lesen ({1}); "
+       "das Panel behält seine eigenen"),
+    FR("Les réglages enregistrés dans {0} sont illisibles ({1}) ; le panneau "
+       "garde les siens"),
+    ES("No se pudieron leer los ajustes guardados en {0} ({1}); el panel "
+       "conserva los suyos"),
+    PT("Não foi possível ler as definições guardadas em {0} ({1}); o painel "
+       "mantém as suas"),
+    IT("Impossibile leggere le impostazioni salvate in {0} ({1}); il pannello "
+       "tiene le sue"),
+    NL("De instellingen in {0} konden niet worden gelezen ({1}); het paneel "
+       "houdt de eigen instellingen"),
+    RU("Не удалось прочитать настройки, сохранённые в {0} ({1}); панель "
+       "оставляет свои"),
+    TR("{0} içinde kayıtlı ayarlar okunamadı ({1}); panel kendi ayarlarını "
+       "korur"));
+
 SS_MSG(rerun_geometry,
     EN("Depth and normals again"),
     JA("深度と法線をやり直す"), ZH_HANS("重算深度与法线"), ZH_HANT("重算深度與法線"),
@@ -14990,29 +15384,86 @@ SS_MSG(geom_model_moge_l,
 
 SS_MSG(geom_model_moge_l_blurb,
     EN("1.3 GB of download and 630 MB on the card, about 0.7 s an image, for "
-       "the sharpest maps of the three."),
-    JA("ダウンロード 1.3 GB、カード上は 630 MB、1 枚あたり約 0.7 秒。3 つの中で"
+       "the sharpest MoGe-2 maps."),
+    JA("ダウンロード 1.3 GB、カード上は 630 MB、1 枚あたり約 0.7 秒。MoGe-2 で"
        "最も鮮明なマップになります。"),
-    ZH_HANS("下载 1.3 GB，显存占 630 MB，每张约 0.7 秒，贴图是三者中最清晰的。"),
-    ZH_HANT("下載 1.3 GB，顯存佔 630 MB，每張約 0.7 秒，貼圖是三者中最清晰的。"),
-    KO("내려받기 1.3 GB, 카드에서 630 MB, 장당 약 0.7 초로 셋 중 가장 선명한 "
-       "맵을 냅니다."),
+    ZH_HANS("下载 1.3 GB，显存占 630 MB，每张约 0.7 秒，贴图是 MoGe-2 中最清晰的。"),
+    ZH_HANT("下載 1.3 GB，顯存佔 630 MB，每張約 0.7 秒，貼圖是 MoGe-2 中最清晰的。"),
+    KO("내려받기 1.3 GB, 카드에서 630 MB, 장당 약 0.7 초로 MoGe-2 중 가장 "
+       "선명한 맵을 냅니다."),
     DE("1,3 GB Download und 630 MB auf der Karte, etwa 0,7 s je Bild, für die "
-       "schärfsten Karten der drei."),
+       "schärfsten Karten von MoGe-2."),
     FR("1,3 Go à télécharger et 630 Mo sur la carte, environ 0,7 s par image, "
-       "pour les cartes les plus nettes des trois."),
+       "pour les cartes MoGe-2 les plus nettes."),
     ES("1,3 GB de descarga y 630 MB en la tarjeta, unos 0,7 s por imagen, para "
-       "los mapas más nítidos de los tres."),
+       "los mapas más nítidos de MoGe-2."),
     PT("1,3 GB de transferência e 630 MB na placa, cerca de 0,7 s por imagem, "
-       "para os mapas mais nítidos dos três."),
+       "para os mapas mais nítidos do MoGe-2."),
     IT("1,3 GB da scaricare e 630 MB sulla scheda, circa 0,7 s per immagine, "
-       "per le mappe più nitide dei tre."),
+       "per le mappe più nitide di MoGe-2."),
     NL("1,3 GB download en 630 MB op de kaart, ongeveer 0,7 s per beeld, voor "
-       "de scherpste kaarten van de drie."),
+       "de scherpste kaarten van MoGe-2."),
     RU("1,3 ГБ загрузки и 630 МБ на карте, около 0,7 с на изображение, ради "
-       "самых резких карт из трёх."),
-    TR("1,3 GB indirme ve kartta 630 MB, görüntü başına yaklaşık 0,7 s; üçünün "
-       "en keskin haritaları."));
+       "самых резких карт MoGe-2."),
+    TR("1,3 GB indirme ve kartta 630 MB, görüntü başına yaklaşık 0,7 s; "
+       "MoGe-2'nin en keskin haritaları."));
+
+SS_MSG(geom_model_moge3_l,
+    EN("MoGe-3 large"),
+    JA("MoGe-3 ラージ"), ZH_HANS("MoGe-3 大"), ZH_HANT("MoGe-3 大"),
+    KO("MoGe-3 라지"),   DE("MoGe-3 groß"),
+    FR("MoGe-3 grand"),  ES("MoGe-3 grande"),
+    PT("MoGe-3 grande"), IT("MoGe-3 grande"),
+    NL("MoGe-3 groot"),  RU("MoGe-3 большая"),
+    TR("MoGe-3 büyük"));
+
+SS_MSG(geom_model_moge3_l_blurb,
+    EN("1.5 GB of download and 760 MB on the card. Normal maps alone cost what "
+       "MoGe-2 large does; with depth maps on, it refines the depth in 3D for "
+       "sharper depth edges, at about twice the time and 1.2 GB more on the "
+       "card."),
+    JA("ダウンロード 1.5 GB、カード上は 760 MB。法線マップだけなら MoGe-2 ラージと"
+       "同じ負荷です。深度マップをオンにすると深度を 3D で仕上げて深度の境界を"
+       "鮮明にしますが、時間は約 2 倍、カード上でさらに 1.2 GB 使います。"),
+    ZH_HANS("下载 1.5 GB，显存占 760 MB。只写法线图时开销与 MoGe-2 大相同；开启深度图后"
+            "会在 3D 中细化深度，让深度边缘更清晰，但耗时约为两倍，显存多占 1.2 GB。"),
+    ZH_HANT("下載 1.5 GB，顯存佔 760 MB。只寫法線圖時開銷與 MoGe-2 大相同；開啟深度圖後"
+            "會在 3D 中細化深度，讓深度邊緣更清晰，但耗時約為兩倍，顯存多佔 1.2 GB。"),
+    KO("내려받기 1.5 GB, 카드에서 760 MB 입니다. 법선 맵만 쓰면 MoGe-2 라지와 같은 "
+       "비용이고, 깊이 맵을 켜면 깊이를 3D 로 다듬어 깊이 경계가 더 선명해지지만 "
+       "시간은 약 두 배, 카드에서 1.2 GB 를 더 씁니다."),
+    DE("1,5 GB Download und 760 MB auf der Karte. Nur Normalenkarten kosten so "
+       "viel wie MoGe-2 groß; mit Tiefenkarten verfeinert es die Tiefe in 3D für "
+       "schärfere Tiefenkanten, bei etwa doppelter Zeit und 1,2 GB mehr auf der "
+       "Karte."),
+    FR("1,5 Go à télécharger et 760 Mo sur la carte. Les cartes de normales "
+       "seules coûtent autant que MoGe-2 grand ; avec les cartes de profondeur, "
+       "il affine la profondeur en 3D pour des bords de profondeur plus nets, en "
+       "environ deux fois plus de temps et avec 1,2 Go de plus sur la carte."),
+    ES("1,5 GB de descarga y 760 MB en la tarjeta. Solo con mapas de normales "
+       "cuesta lo mismo que MoGe-2 grande; con mapas de profundidad, refina la "
+       "profundidad en 3D para bordes de profundidad más nítidos, en el doble de "
+       "tiempo aproximadamente y con 1,2 GB más en la tarjeta."),
+    PT("1,5 GB de transferência e 760 MB na placa. Só com mapas de normais custa "
+       "o mesmo que o MoGe-2 grande; com mapas de profundidade, refina a "
+       "profundidade em 3D para arestas de profundidade mais nítidas, em cerca do "
+       "dobro do tempo e com mais 1,2 GB na placa."),
+    IT("1,5 GB da scaricare e 760 MB sulla scheda. Con le sole mappe di normali "
+       "costa quanto MoGe-2 grande; con le mappe di profondità affina la "
+       "profondità in 3D per bordi di profondità più netti, in circa il doppio "
+       "del tempo e con 1,2 GB in più sulla scheda."),
+    NL("1,5 GB download en 760 MB op de kaart. Alleen normaalkaarten kosten "
+       "evenveel als MoGe-2 groot; met dieptekaarten verfijnt het de diepte in 3D "
+       "voor scherpere dieptegrenzen, in ongeveer twee keer de tijd en met 1,2 GB "
+       "meer op de kaart."),
+    RU("1,5 ГБ загрузки и 760 МБ на карте. Только карты нормалей обходятся как у "
+       "MoGe-2 большой; с картами глубины она уточняет глубину в 3D ради более "
+       "чётких границ глубины, но примерно вдвое дольше и с 1,2 ГБ больше на "
+       "карте."),
+    TR("1,5 GB indirme ve kartta 760 MB. Yalnızca normal haritaları MoGe-2 büyük "
+       "kadar tutar; derinlik haritaları açıkken derinliği 3B'de iyileştirerek "
+       "daha keskin derinlik kenarları verir, yaklaşık iki kat sürede ve kartta "
+       "1,2 GB fazlasıyla."));
 
 SS_MSG(geom_model_small,
     EN("Metric3D v2 small"),
@@ -15117,6 +15568,125 @@ SS_MSG(geom_model_giant_blurb,
        "скромного выигрыша над большой."),
     TR("2,6 GB indirme ve kartta 2,6 GB, görüntü başına yaklaşık 2 s; büyüğe "
        "göre kazanç ölçülüdür."));
+
+SS_MSG(geom_model_marigold,
+    EN("Marigold v2 (finest, slow)"),
+    JA("Marigold v2（最も精細・低速）"), ZH_HANS("Marigold v2（最精细，较慢）"),
+    ZH_HANT("Marigold v2（最精細，較慢）"), KO("Marigold v2 (가장 정밀, 느림)"),
+    DE("Marigold v2 (feinste, langsam)"), FR("Marigold v2 (le plus fin, lent)"),
+    ES("Marigold v2 (el más fino, lento)"), PT("Marigold v2 (o mais fino, lento)"),
+    IT("Marigold v2 (il più fine, lento)"), NL("Marigold v2 (fijnste, traag)"),
+    RU("Marigold v2 (самая детальная, медленная)"), TR("Marigold v2 (en ince, yavaş)"));
+
+SS_MSG(geom_model_marigold_blurb,
+    EN("A 20-billion-parameter diffusion model tuned for depth and normals: the "
+       "finest detail here and by far the slowest, about 10 s an image for both "
+       "maps on an RTX 5070. It also runs on 6 GB cards, streaming its weights. "
+       "MoGe-2 base sets its depth's scale and finds the sky. Built once from "
+       "45 GB streamed; keeps 11 GB."),
+    JA("深度と法線向けに調整された 200 億パラメータの拡散モデルです。ここで最も"
+       "精細で、ずば抜けて遅く、RTX 5070 で両方のマップに 1 枚約 10 秒かかります。"
+       "重みをストリーミングするので 6 GB のカードでも動きます。深度の尺度と空の"
+       "判定には MoGe-2 ベースを使います。45 GB をストリーミングして一度だけ組み立て、"
+       "11 GB を残します。"),
+    ZH_HANS("为深度和法线微调的 200 亿参数扩散模型：这里细节最精细，也远比其他慢，"
+            "在 RTX 5070 上两种图合计每张约 10 秒。它流式加载权重，6 GB 显卡也能运行。"
+            "深度的尺度和天空由 MoGe-2 中确定。只需流式读取 45 GB 构建一次，保留 11 GB。"),
+    ZH_HANT("為深度和法線微調的 200 億參數擴散模型：這裡細節最精細，也遠比其他慢，"
+            "在 RTX 5070 上兩種圖合計每張約 10 秒。它串流載入權重，6 GB 顯示卡也能執行。"
+            "深度的尺度和天空由 MoGe-2 中確定。只需串流讀取 45 GB 建置一次，保留 11 GB。"),
+    KO("깊이와 법선용으로 조정된 200억 매개변수 확산 모델입니다. 여기서 가장 정밀하고 "
+       "단연 가장 느려서, RTX 5070 에서 두 맵에 장당 약 10 초가 걸립니다. 가중치를 "
+       "스트리밍하므로 6 GB 카드에서도 돌아갑니다. 깊이의 축척과 하늘은 MoGe-2 "
+       "베이스가 정합니다. 45 GB 를 스트리밍해 한 번 만들고 11 GB 를 남깁니다."),
+    DE("Ein Diffusionsmodell mit 20 Milliarden Parametern, auf Tiefe und "
+       "Normalen abgestimmt: das feinste Detail hier und mit Abstand das "
+       "langsamste, etwa 10 s je Bild für beide Karten auf einer RTX 5070. Es "
+       "läuft auch auf 6-GB-Karten, indem es seine Gewichte streamt. MoGe-2 "
+       "mittel legt den Maßstab der Tiefe fest und findet den Himmel. Einmal aus "
+       "45 GB gestreamt gebaut; belegt 11 GB."),
+    FR("Un modèle de diffusion de 20 milliards de paramètres adapté à la "
+       "profondeur et aux normales : le détail le plus fin ici, et de loin le "
+       "plus lent, environ 10 s par image pour les deux cartes sur une RTX 5070. "
+       "Il tourne aussi sur des cartes de 6 Go en lisant ses poids en flux. "
+       "MoGe-2 moyen fixe l'échelle de sa profondeur et trouve le ciel. "
+       "Construit une fois à partir de 45 Go lus en flux ; en garde 11 Go."),
+    ES("Un modelo de difusión de 20 mil millones de parámetros ajustado para "
+       "profundidad y normales: el detalle más fino aquí y, con diferencia, el "
+       "más lento, unos 10 s por imagen para ambos mapas en una RTX 5070. "
+       "También funciona en tarjetas de 6 GB transmitiendo sus pesos. MoGe-2 "
+       "medio fija la escala de su profundidad y detecta el cielo. Se construye "
+       "una vez a partir de 45 GB transmitidos; ocupa 11 GB."),
+    PT("Um modelo de difusão de 20 mil milhões de parâmetros afinado para "
+       "profundidade e normais: o detalhe mais fino aqui e, de longe, o mais "
+       "lento, cerca de 10 s por imagem para os dois mapas numa RTX 5070. Também "
+       "funciona em placas de 6 GB, transmitindo os pesos. O MoGe-2 médio fixa a "
+       "escala da profundidade e encontra o céu. Construído uma vez a partir de "
+       "45 GB transmitidos; ocupa 11 GB."),
+    IT("Un modello di diffusione da 20 miliardi di parametri adattato a "
+       "profondità e normali: il dettaglio più fine qui e di gran lunga il più "
+       "lento, circa 10 s per immagine per entrambe le mappe su una RTX 5070. "
+       "Gira anche su schede da 6 GB trasmettendo i pesi. MoGe-2 medio fissa la "
+       "scala della profondità e trova il cielo. Costruito una volta da 45 GB "
+       "trasmessi; ne tiene 11 GB."),
+    NL("Een diffusiemodel met 20 miljard parameters, afgestemd op diepte en "
+       "normalen: het fijnste detail hier en verreweg het traagst, ongeveer 10 s "
+       "per afbeelding voor beide kaarten op een RTX 5070. Het draait ook op "
+       "kaarten van 6 GB door zijn gewichten te streamen. MoGe-2 middel bepaalt "
+       "de schaal van zijn diepte en vindt de lucht. Eenmalig gebouwd uit 45 GB "
+       "gestreamd; houdt 11 GB."),
+    RU("Диффузионная модель на 20 миллиардов параметров, настроенная на глубину "
+       "и нормали: самая детальная здесь и самая медленная — около 10 с на "
+       "изображение для обеих карт на RTX 5070. Работает и на картах с 6 ГБ, "
+       "подгружая веса потоком. Масштаб глубины и небо определяет MoGe-2 средняя. "
+       "Собирается один раз из 45 ГБ, загружаемых потоком; занимает 11 ГБ."),
+    TR("Derinlik ve normaller için ayarlanmış 20 milyar parametreli bir "
+       "difüzyon modeli: buradaki en ince ayrıntı ve açık ara en yavaşı; RTX "
+       "5070'te iki harita için görüntü başına yaklaşık 10 sn. Ağırlıklarını "
+       "akıtarak 6 GB'lık kartlarda da çalışır. Derinliğin ölçeğini ve gökyüzünü "
+       "MoGe-2 orta belirler. Akıtılan 45 GB'tan bir kez oluşturulur; 11 GB yer "
+       "kaplar."));
+
+SS_MSG(geom_install_disk,
+    EN("Keeps {0} under {1}; that disk has {2} free."),
+    JA("{1} に {0} を残します。そのディスクの空きは {2} です。"),
+    ZH_HANS("将在 {1} 下保留 {0}；该磁盘剩余 {2}。"),
+    ZH_HANT("將在 {1} 下保留 {0}；該磁碟剩餘 {2}。"),
+    KO("{1} 에 {0} 를 남깁니다. 그 디스크의 여유 공간은 {2} 입니다."),
+    DE("Belegt {0} unter {1}; dort sind {2} frei."),
+    FR("Garde {0} sous {1} ; ce disque a {2} de libre."),
+    ES("Ocupa {0} en {1}; ese disco tiene {2} libres."),
+    PT("Ocupa {0} em {1}; esse disco tem {2} livres."),
+    IT("Occupa {0} in {1}; quel disco ha {2} liberi."),
+    NL("Houdt {0} onder {1}; die schijf heeft {2} vrij."),
+    RU("Займёт {0} в {1}; на этом диске свободно {2}."),
+    TR("{1} altında {0} yer kaplar; o diskte {2} boş."));
+
+SS_MSG(geom_install_no_disk,
+    EN("Not enough disk space: it keeps {0} under {1}, plus {2} spare, and that "
+       "disk has {3} free."),
+    JA("ディスクの空きが足りません。{1} に {0} を残し、さらに {2} の予備が要りますが、"
+       "そのディスクの空きは {3} です。"),
+    ZH_HANS("磁盘空间不足：需在 {1} 下保留 {0}，另加 {2} 余量，而该磁盘只剩 {3}。"),
+    ZH_HANT("磁碟空間不足：需在 {1} 下保留 {0}，另加 {2} 餘量，而該磁碟只剩 {3}。"),
+    KO("디스크 공간이 부족합니다. {1} 에 {0} 와 여분 {2} 가 필요한데 그 디스크의 여유 "
+       "공간은 {3} 입니다."),
+    DE("Zu wenig Speicherplatz: Es belegt {0} unter {1}, dazu {2} Reserve, und "
+       "dort sind {3} frei."),
+    FR("Pas assez d'espace disque : il garde {0} sous {1}, plus {2} de réserve, "
+       "et ce disque a {3} de libre."),
+    ES("No hay espacio suficiente: ocupa {0} en {1}, más {2} de reserva, y ese "
+       "disco tiene {3} libres."),
+    PT("Espaço em disco insuficiente: ocupa {0} em {1}, mais {2} de reserva, e "
+       "esse disco tem {3} livres."),
+    IT("Spazio su disco insufficiente: occupa {0} in {1}, più {2} di riserva, e "
+       "quel disco ha {3} liberi."),
+    NL("Te weinig schijfruimte: het houdt {0} onder {1}, plus {2} reserve, en "
+       "die schijf heeft {3} vrij."),
+    RU("Недостаточно места: нужно {0} в {1} и ещё {2} в запасе, а на этом диске "
+       "свободно {3}."),
+    TR("Yeterli disk alanı yok: {1} altında {0} ve {2} yedek gerekiyor, o diskte "
+       "{3} boş."));
 
 SS_MSG(geom_get_model,
     EN("Get the geometry model"),

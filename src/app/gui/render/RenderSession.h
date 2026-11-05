@@ -9,6 +9,7 @@
 // It reaches the pane through ViewportInteractor, as the editor does, and the
 // models through the SourceViews its owner hands it every frame.
 
+#include "app/gui/ProgressClock.h"
 #include "app/gui/ViewportInput.h"
 #include "app/gui/edit/TransformTool.h"
 #include "app/gui/render/FlightFit.h"
@@ -403,6 +404,7 @@ private:
     std::string _fit_keys;
 
     Job _job;
+    ProgressClock _job_clock;
     std::atomic<int> _encoder_probe{0};  // 0 unknown, 1 probing, 2 built-in works, 3 not
     std::atomic<int> _encoder_codecs{0}; // bit 0 H.264, bit 1 H.265, bit 2 AV1
     int _encoder_max[3][2] = {};         // largest frame per codec

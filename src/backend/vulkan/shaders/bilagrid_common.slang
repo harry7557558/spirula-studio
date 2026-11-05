@@ -153,11 +153,8 @@ bool bg_finite(float v) {
 }
 
 // ---------------------------------------------------------------------------
-// bilagrid_bwd_v1_block_atomic_add equivalent: block-wide (64-thread) sum,
-// one global atomic per call. Groupshared tree instead of CUDA's warp
-// shuffles — same sum, different rounding order; v_bilagrid comparisons are
-// tolerance-based anyway. All 64 threads must call together; safe to call
-// repeatedly (barriers bracket the scratch use).
+// All 64 threads must participate. The subgroup fold preserves the shared
+// tree's addition order; the next call's first barrier protects its scratch.
 // ---------------------------------------------------------------------------
 
 groupshared float _bg_red64[64];
@@ -167,12 +164,18 @@ void bg_block_add_64(float* addr, float val, uint tid) {
     GroupMemoryBarrierWithGroupSync();
     _bg_red64[tid] = bg_finite(val) ? val : 0.0f;
     GroupMemoryBarrierWithGroupSync();
-    [ForceUnroll]
-    for (uint s = 32; s > 0; s >>= 1) {
+    uint width = WaveGetLaneCount();
+    for (uint s = 32; s >= width; s >>= 1) {
         if (tid < s) _bg_red64[tid] += _bg_red64[tid + s];
         GroupMemoryBarrierWithGroupSync();
     }
-    if (tid == 0 && _bg_red64[0] != 0.0f) atomic_add_f32(addr, _bg_red64[0]);
+    uint lane = WaveGetLaneIndex();
+    float sum = _bg_red64[lane];
+    for (uint s = min(32u, width / 2u); s > 0; s >>= 1) {
+        float other = WaveReadLaneAt(sum, min(lane + s, width - 1u));
+        if (lane < s) sum += other;
+    }
+    if (tid == 0 && sum != 0.0f) atomic_add_f32(addr, sum);
 }
 
 // ---------------------------------------------------------------------------

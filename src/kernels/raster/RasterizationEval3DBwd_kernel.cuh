@@ -103,7 +103,11 @@ __global__ void rasterize_to_pixels_bwd_kernel(
     typename SplatPrimitive::WorldBuffer v_splat_wbuffer,
     typename SplatPrimitive::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den  // Avg lane 2, else null
+    float *__restrict__ o_accum_weight_den,  // Avg lane 2, else null
+    // Peak alpha * T per splat, atomic-maxed times max_weight_scale; null = off.
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut  // Primitive3DGS::kernel_vis; the 2D path only
 #if IS_EVAL3D
     ,
     float *__restrict__ v_viewmats // [B, C, 4, 4]
@@ -351,7 +355,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             float c_ex = c_xy.x, c_ey = c_xy.y;
         #endif
             if (c_opac > ALPHA_THRESHOLD) {
-                float kk = 0.5f / __logf(c_opac / ALPHA_THRESHOLD);
+                float kk = 0.5f / kernel_reach(c_opac, IS_EVAL3D ? 0.f : kernel_cut);
                 float3 inv_cov = { c_conic.x*kk, c_conic.y*kk, c_conic.z*kk };
                 ok = ellipse_box_overlap_test(inv_cov,
                     cull_bx0 - c_ex, cull_bx0 + TILE_SIZE_DX - c_ex,
@@ -390,6 +394,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
         typename SplatPrimitive::FragmentBwd v_splat = SplatPrimitive::FragmentBwd::zero(splat);
         [[maybe_unused]] float accum_weight = 0.0f;
         [[maybe_unused]] float accum_weight_den = 0.0f;
+        float max_weight = 0.0f;
         // A survivor overlaps the sub-tile but often clears no pixel's alpha
         // threshold; its gradient is then all zeros and the ~12 atomics that
         // write it are pure cost.
@@ -424,7 +429,7 @@ __global__ void rasterize_to_pixels_bwd_kernel(
             if (alpha <= ALPHA_THRESHOLD || dot(ray_d, ray_d) == 0.0f)
                 continue;
         #else
-            float alpha = splat.evaluate_alpha(px, py);
+            float alpha = splat.evaluate_alpha(px, py, kernel_cut);
             if (alpha <= ALPHA_THRESHOLD)
                 continue;
         #endif
@@ -555,11 +560,13 @@ __global__ void rasterize_to_pixels_bwd_kernel(
                 splat.evaluate_alpha_vjp(ray_o, ray_d, v_alpha, v_splat, v_ray_o_alpha, v_ray_d_alpha);
                 splat.evaluate_color_vjp(ray_o, ray_d, v_color, v_splat, v_ray_o_color, v_ray_d_color);
             #else
-                splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat);
+                splat.evaluate_alpha_vjp(px, py, v_alpha, v_splat, kernel_cut);
                 splat.evaluate_color_vjp(px, py, v_color, v_splat);
             #endif
             }
 
+            if (o_max_weight != nullptr)
+                max_weight = fmaxf(max_weight, alpha * T0);
             if constexpr (output_accum_weight) {
                 const float w = alpha * T0;  // this splat's contribution here
                 if constexpr (accum_mode == DensifyAccumMode::Max) {
@@ -599,6 +606,8 @@ __global__ void rasterize_to_pixels_bwd_kernel(
                                   accum_weight_den);
                 }
             }
+            if (o_max_weight != nullptr && max_weight > 0.0f)
+                atomicMax(o_max_weight + splat_wid, max_weight * max_weight_scale);
         }
     }  // for splat_b (within segment)
 
@@ -716,7 +725,11 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
     typename SplatPrimitive::WorldBuffer v_splat_wbuffer,
     typename SplatPrimitive::ScreenBuffer v_splat_sbuffer,
     float *__restrict__ o_accum_weight,
-    float *__restrict__ o_accum_weight_den  // Avg lane 2, else null
+    float *__restrict__ o_accum_weight_den,  // Avg lane 2, else null
+    // Peak alpha * T per splat, atomic-maxed times max_weight_scale; null = off.
+    float *__restrict__ o_max_weight,
+    const float max_weight_scale,
+    const float kernel_cut  // Primitive3DGS::kernel_vis; the 2D path only
 #if IS_EVAL3D
     ,
     float *__restrict__ v_viewmats // [B, C, 4, 4]
@@ -762,7 +775,10 @@ void rasterize_to_pixels_bwd_kernel_wrapper(
         v_dist_rgb_per_depth,
         v_splat_wbuffer, v_splat_sbuffer,
         o_accum_weight,
-        o_accum_weight_den
+        o_accum_weight_den,
+        o_max_weight,
+        max_weight_scale,
+        kernel_cut
     #if IS_EVAL3D
         , v_viewmats
     #endif

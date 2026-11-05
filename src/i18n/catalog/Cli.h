@@ -189,6 +189,21 @@ SS_MSG(tool_mesh,
     RU("извлечь меш из обученной модели"),
     TR("eğitilmiş bir modelden ağ çıkarmak"));
 
+SS_MSG(tool_marker,
+    EN("detect fiducial markers (AprilTag) to align coordinates, scale and crop"),
+    JA("座標の整列・スケーリング・クロップのためにマーカー（AprilTag）を検出する"),
+    ZH_HANS("检测基准标记（AprilTag）以对齐坐标系、缩放与裁剪"),
+    ZH_HANT("偵測基準標記（AprilTag）以對齊座標系、縮放與裁切"),
+    KO("좌표 정렬, 스케일링 및 자르기를 위해 기준 마커(AprilTag) 감지"),
+    DE("Passermarken (AprilTag) erkennen, um Koordinaten auszurichten, zu skalieren und zuzuschneiden"),
+    FR("détecter des marqueurs (AprilTag) pour aligner les coordonnées, mettre à l'échelle et rogner"),
+    ES("detectar marcadores fiduciarios (AprilTag) para alinear coordenadas, escalar y recortar"),
+    PT("detectar marcadores fiduciários (AprilTag) para alinhar coordenadas, dimensionar e recortar"),
+    IT("rilevare marcatori fiduciari (AprilTag) per allineare coordinate, scalare e ritagliare"),
+    NL("passermerken (AprilTag) detecteren om coördinaten uit te lijnen, te schalen en bij te snijden"),
+    RU("обнаружение меток (AprilTag) для выравнивания координат, масштабирования и обрезки"),
+    TR("koordinatları hizalamak, ölçeklemek ve kırpmak için işaretçileri (AprilTag) tespit et"));
+
 // ===========================================================================
 // `spirula --help` -- the usage block itself
 // ===========================================================================

@@ -74,7 +74,8 @@ void ppisp_image_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     p.out_image[3 * pix + 2] = out_pixel.z;
 }
 
-groupshared float _pp_red64[64];
+static const uint kPpispReduceThreads = 64u;
+#include "ppisp_reduce.slang"
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
@@ -120,19 +121,13 @@ void ppisp_image_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         p.v_in_image[3 * pix + 2] = v_pixel.z;
     }
 
-    // Block-wide per-parameter reduce, one atomic per (block, param).
-    for (int i = 0; i < np; i++) {
+    [ForceUnroll]
+    for (int i = 0; i < kMaxParams; i++) {
+        if (i >= np) continue;
         float param = _pp_finite(vbuf[i]) ? vbuf[i] : 0.0f;
-        GroupMemoryBarrierWithGroupSync();
-        _pp_red64[tid] = param;
-        GroupMemoryBarrierWithGroupSync();
-        [ForceUnroll]
-        for (uint s = 32; s > 0; s >>= 1) {
-            if (tid < s) _pp_red64[tid] += _pp_red64[tid + s];
-            GroupMemoryBarrierWithGroupSync();
-        }
-        if (tid == 0 && _pp_red64[0] != 0.0f)
-            atomic_add_f32(&p.v_ppisp_params[p_id * np + i], _pp_red64[0]);
+        float sum = ppisp_reduce_sum(param, tid);
+        if (tid == 0 && sum != 0.0f)
+            atomic_add_f32(&p.v_ppisp_params[p_id * np + i], sum);
     }
 }
 

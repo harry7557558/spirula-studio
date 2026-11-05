@@ -1,5 +1,6 @@
 #include "dense/Fusion.h"
 
+#include "core/HardwareThreads.h"
 #include "dense/DiskArray.h"
 #include "dense/DiskTable.h"
 
@@ -78,7 +79,7 @@ struct Edge { uint64_t a = 0, b = 0; };
 
 template<class Process> unsigned parallel_partitions(DiskArray<Partition>& partitions, unsigned requested,
     uint64_t budget, const std::function<void()>& check, Process process) {
-    const unsigned hardware = std::max(1u,std::thread::hardware_concurrency());
+    const unsigned hardware = std::max(1u,spirula::hardware_threads());
     const uint64_t minimum = 8 * (sizeof(Cluster) + sizeof(CellRange) + sizeof(Edge));
     const unsigned workers = (unsigned)std::min<uint64_t>(partitions.size(),std::min<uint64_t>(
         requested ? std::min(requested,hardware) : hardware,std::max<uint64_t>(1,budget / minimum)));

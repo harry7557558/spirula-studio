@@ -171,11 +171,8 @@ void add_lenses(StepFields& f, const PrepJob& p, const std::string& camera_model
 // of them. A 360 file's views and a dual-fisheye file's lenses are only known
 // when one decode took them at one instant.
 void add_rigs(StepFields& f, const PrepJob& p) {
-    const bool builtin = backends().builtin_video && !p.force_external_decode;
     auto video_kind = [&](const PrepInput& in) -> std::string {
-        const bool lockstep = in.pano360.valid() ? p.pano.mode != app::Pano360Mode::Off
-                              : in.packed_lenses >= 2 ? true
-                                                      : builtin && p.sync_tracks;
+        const bool lockstep = video_capture(p, in, kStreamingFrameExtraction).lockstep;
         if (!lockstep) return "free";
         if (in.pano360.valid()) return "360";
         return is_dual_lens(in) ? "dual-fisheye" : "free";
@@ -462,6 +459,14 @@ StepRecord legacy_frames(const std::string& workspace, const PrepJob& now) {
         return r;
     r.present = r.complete = true;
     r.fields = frames_fields(j);
+    r.fields.erase(std::remove_if(r.fields.begin(), r.fields.end(),
+                                  [](const StepField& f) {
+                                      return f.key == "frame_indices" || f.key == "source_inventory" ||
+                                             f.key == "source_content";
+                                  }),
+                   r.fields.end());
+    for (StepField& f : r.fields)
+        if (f.key == "decoder") f.value = j.force_external_decode ? "ffmpeg" : "builtin";
     return r;
 }
 
@@ -651,6 +656,10 @@ StepFields frames_fields(const PrepJob& job) {
         if (input_in_dataset(job, in)) continue;
         const std::string scope = scope_of(in.subdir);
         add(f, "input", scope, norm_path(in.path));
+        add(f, "source_inventory", scope, frame_source_identity(job, in, false));
+        const size_t index = input_index(job, in);
+        if (index < job.source_content.size())
+            add(f, "source_content", scope, job.source_content[index]);
         if (!in.is_video) continue;
         video = true;
         const bool every = every_frame(job, in);
@@ -682,7 +691,8 @@ StepFields frames_fields(const PrepJob& job) {
         rule();
         return f;
     }
-    add(f, "decoder", "", job.force_external_decode ? "ffmpeg" : "builtin");
+    add(f, "decoder", "", job.force_external_decode ? "ffmpeg" : "auto");
+    add(f, "frame_indices", "", kStreamingFrameExtraction ? "source" : "candidates");
     add(f, "max_frames", "", num(job.max_frames));
     add(f, "auto_rotate", "", onoff(job.auto_rotate));
     if (rate) {
@@ -930,32 +940,7 @@ DatasetRecord read_plan_record(const std::string& workspace, const PrepJob& job)
 }
 
 std::vector<PrepCapture> recorded_captures(const std::string& workspace, const PrepJob& job) {
-    const StepRecord fr = read_plan_record(workspace, job).step(Step::Frames);
-    if (!fr.present || !fr.captures.empty()) return fr.captures;
-    // frames_fields back onto a job, as far as the stems depend on it.
-    PrepJob j = job;
-    j.inputs.clear();
-    for (const StepField& f : fr.fields)
-        if (f.key == "input" && is_video_path(f.value)) {
-            PrepInput in;
-            in.path = f.value;
-            in.is_video = true;
-            in.subdir = f.scope == "." ? "" : f.scope;
-            for (const StepField& r : fr.fields)
-                if (r.key == "fps" && r.scope == f.scope)
-                    in.fps = r.value == "every" ? kFpsEveryFrame : to_float(r.value);
-            j.inputs.push_back(std::move(in));
-        }
-    for (const StepField& f : fr.fields) {
-        if (f.key == "decoder") j.force_external_decode = f.value == "ffmpeg";
-        else if (f.key == "sharp_window") j.sharp_window = (int)to_float(f.value);
-        else if (f.key == "adaptive_fps") j.adaptive_fps = f.value == "on";
-        else if (f.key == "adaptive_range") j.adaptive_range = to_float(f.value);
-        else if (f.key == "sync_tracks") j.sync_tracks = f.value == "on";
-    }
-    std::vector<PrepCapture> out;
-    for (const PrepInput& in : j.inputs) out.push_back(video_capture(j, in));
-    return out;
+    return read_plan_record(workspace, job).step(Step::Frames).captures;
 }
 
 std::vector<PrepCapture> captures_behind(const PrepJob& job) {
@@ -997,9 +982,15 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
     } else if (req.redo_frames) {
         set(fr, Act::Redo, Why::Requested);
     } else if (!rf.present) {
-        set(fr, Act::Reuse, Why::Unrecorded);
+        set(fr, Act::Redo, Why::Unrecorded);
+        fr.can_keep = false;
+        fr.ask = true;
     } else {
-        compare(fr, rf, diff(rf.fields, frames_fields(job.prep)));
+        StepFields recorded = rf.fields;
+        if (job.prep.source_content.empty())
+            recorded.erase(std::remove_if(recorded.begin(), recorded.end(),
+                [](const StepField& f) { return f.key == "source_content"; }), recorded.end());
+        compare(fr, rf, diff(recorded, frames_fields(job.prep)));
         // A rule no looser than the one the frames were made with keeps only
         // frames the dataset already has, each with its camera. It is applied
         // to them where they lie, and nothing made from them is made again.
@@ -1021,6 +1012,33 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
         if (fr.act == Act::Redo && rf.complete) {
             if (req.keep_built) set(fr, Act::Keep, Why::Settings);
             else fr.ask = true;
+        }
+    }
+
+    if (!fixed(Step::Frames) && ws.frames) {
+        for (const PrepInput& in : job.prep.inputs) {
+            if (!in.is_video) continue;
+            const bool recorded = std::any_of(
+                rf.captures.begin(), rf.captures.end(), [&](const PrepCapture& c) {
+                    return c.subdir == in.subdir && norm_path(c.path) == norm_path(in.path);
+                });
+            if (!recorded) {
+                set(fr, Act::Redo, req.redo_frames ? Why::Requested : Why::Unrecorded);
+                fr.can_keep = false;
+                fr.ask = !req.redo_frames;
+                break;
+            }
+        }
+    }
+    if (!fixed(Step::Frames) && ws.frames && !req.redo_frames) {
+        bool identity_changed = false;
+        for (const FieldChange& c : fr.changes)
+            identity_changed = identity_changed || c.key == "source_inventory" ||
+                               c.key == "source_content";
+        if (identity_changed) {
+            set(fr, Act::Redo, Why::Stale);
+            fr.can_keep = false;
+            fr.ask = true;
         }
     }
 

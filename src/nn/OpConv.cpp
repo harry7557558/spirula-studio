@@ -74,6 +74,7 @@ void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor&
         LinearOpts lo;
         lo.bias = o.bias;
         lo.act = o.act;
+        lo.residual = o.residual;
         linear(out.view(Ho * Wo, Co), in.view(Hi * Wi, Ci), w, lo);
         return;
     }
@@ -115,6 +116,8 @@ void conv2d(vk::Arena& arena, const Tensor& out, const Tensor& in, const Tensor&
         LinearOpts lo;
         lo.bias = o.bias;
         lo.act = o.act;
+        if (o.residual.valid())
+            lo.residual = Tensor(o.residual.ptr + (uint64_t)(p0 * Co) * 4, DType::F32, P, Co);
         Tensor out_chunk(out.ptr + (uint64_t)(p0 * Co) * 4, DType::F32, P, Co);
         linear(out_chunk, cols.view(P, K), w, lo);
     }

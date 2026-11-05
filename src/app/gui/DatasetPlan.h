@@ -117,6 +117,7 @@ struct StepPlan {
     std::vector<FieldChange> changes;
     // Rebuilds something the user did not ask to: confirmed first.
     bool ask = false;
+    bool can_keep = true;
     // Frames, reused: the blur rule is applied to them where they lie first.
     bool sort = false;
     // Model: kept although the masks its feature points avoided have changed.
@@ -158,9 +159,7 @@ DatasetPlan plan_dataset(const PlanJob& job, const WorkspaceState& ws,
 void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
                            std::string& camera_model);
 
-// The videos a workspace's frames were cut from: as recorded when the frames
-// were made, or else as their fields (or the legacy stamp) say. `job` fills
-// in what a legacy stamp leaves to probing.
+// Recorded stem timing only; missing provenance requires extracting again.
 std::vector<PrepCapture> recorded_captures(const std::string& workspace, const PrepJob& job);
 // Those of every photo input that is a dataset's images/ -- a dataset made
 // from a video dropped back in as its frames -- under the input's subdir.

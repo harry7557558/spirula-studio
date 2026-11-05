@@ -90,11 +90,37 @@ bool read_status(const std::string& dir, int64_t& mtime, RunStatus& out) {
     return true;
 }
 
-float mapping_fraction(int64_t done, int64_t total) {
-    if (total <= 0) return -1.0f;
+namespace {
+
+// The finishing solves after the last image took 19-28% of the flat mapper's
+// step on three captures of 39-226 images. Bottom-up on 235 images: seed and
+// atoms 48%, three merge levels 18%, the finishing passes 34% with no report.
+constexpr double kFlatFinish = 0.25;
+constexpr double kAtomShare = 0.4, kMergeShare = 0.25;
+
+}  // namespace
+
+MappingWork::MappingWork(bool bottom_up)
+    : _place(bottom_up ? kAtomShare : 1.0 - kFlatFinish),
+      _merge(bottom_up ? kMergeShare : 0.0) {}
+
+void MappingWork::raise(double w) { _work = std::max(_work, std::min(1.0, w)); }
+
+// An image costs what the model it joins costs to solve, so the flat mapper's
+// count runs ahead of the clock (docs/notes/sfm-design.md D77); atoms solve
+// small models side by side, and their count does not.
+void MappingWork::placed(int64_t done, int64_t total) {
+    if (total <= 0) return;
     const double x = std::min(1.0, (double)done / (double)total);
-    return (float)(kMappingBarFull * x * std::sqrt(x));
+    raise(_place * (_merge > 0.0 ? x : x * std::sqrt(x)));
 }
+
+void MappingWork::levels(int64_t done, int64_t total) {
+    if (total <= 0) return;
+    raise(_place + _merge * std::min(1.0, (double)done / (double)total));
+}
+
+void MappingWork::refining() { raise(_place + _merge); }
 
 bool read_live_model(const std::string& dir, int64_t& mtime, LiveModel& out, uint64_t point_memory_budget) {
     int64_t stamp = mtime;
@@ -446,9 +472,10 @@ bool read_pair_matrix(const std::string& dir, int64_t& mtime, PairMatrix& out) {
 }
 
 bool read_pair_matrix_from_matches(const std::string& matches_path,
-                                   int64_t& mtime, PairMatrix& out) {
+                                   int64_t& mtime, PairMatrix& out,
+                                   uint32_t max_bins) {
 #ifndef SS_TOOL_SFM
-    (void)matches_path; (void)mtime; (void)out;
+    (void)matches_path; (void)mtime; (void)out; (void)max_bins;
     return false;
 #else
     std::error_code ec;
@@ -465,15 +492,15 @@ bool read_pair_matrix_from_matches(const std::string& matches_path,
     PairMatrix m;
     m.n_images = (uint32_t)idx.images.size();
     if (m.n_images == 0) return false;
-    m.bins = std::min(m.n_images, sfm::progress::kMatrixBins);
+    m.bins = std::min(m.n_images, max_bins ? max_bins : sfm::progress::kMatrixBins);
     m.counts.assign((size_t)m.bins * m.bins, 0);
     // A finished file holds the pairs that survived and says nothing about the
     // ones that were tried and failed, so it cannot fill `planned` /
     // `verified`: what is left is the count, and the drawing says so.
     for (const sfm::MatchesIndex::Entry& p : idx.pairs) {
         if (p.image1 >= m.n_images || p.image2 >= m.n_images) continue;
-        const uint32_t a = (uint32_t)((uint64_t)p.image1 * m.bins / m.n_images);
-        const uint32_t b = (uint32_t)((uint64_t)p.image2 * m.bins / m.n_images);
+        const uint32_t a = m.cell_of(p.image1);
+        const uint32_t b = m.cell_of(p.image2);
         m.counts[(size_t)a * m.bins + b] += p.count;
         if (a != b) m.counts[(size_t)b * m.bins + a] += p.count;
     }

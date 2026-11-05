@@ -9,11 +9,13 @@
 // per-camera renders, and every byte it held is gone when it exits. The child
 // is this same executable (`spirula mesh`), so there is nothing to install.
 //
-// The stages come from the child's own `[meshing] <stage> (<secs>s)` lines,
-// which both backends print, so the panel reports real progress rather than a
-// spinner.
+// The caption comes from the child's own `[meshing] <stage>: ...` lines, which
+// both backends print; how far it is and the memory it expects come from the
+// report it writes beside them (app/RunReport.h, mesh/MeshProgress.h).
 
 #include "app/gui/MeshJob.h"
+#include "app/gui/ProgressClock.h"
+#include "app/gui/RunMemoryView.h"
 
 #include <atomic>
 #include <cstdint>
@@ -51,12 +53,11 @@ public:
     // Vertices / faces reported by the child's final line, 0 until then.
     int64_t num_verts() const { return _verts.load(); }
     int64_t num_faces() const { return _faces.load(); }
-    // 0..1 over the pipeline's stages, or -1 before the first one. Between
-    // two stage marks it creeps with elapsed time toward the next mark, so a
-    // long silent phase (Delaunay is minutes on a big model) still LOOKS like
-    // it is running; a phase that reports "i/n" overrides the creep with the
-    // real fraction.
-    float progress() const;
+    // Reads the child's report into the bar and the memory strip. UI thread,
+    // every frame while the screen or the batch shows the run; at most twice a second.
+    void poll();
+    const ProgressClock& clock() const { return _clock; }
+    const RunMemoryView& memory() const { return _memory; }
 
     std::vector<std::string> drain_log();
 
@@ -69,12 +70,13 @@ private:
     std::atomic<State> _state{State::Idle};
     std::atomic<bool> _cancel{false};
     std::atomic<uint64_t> _run_id{0};
-    // The bracket the bar is currently inside, and when it was entered.
-    std::atomic<float> _stage_lo{-1.0f}, _stage_hi{-1.0f}, _stage_frac{-1.0f};
-    std::atomic<double> _stage_at{0.0};
     std::atomic<int64_t> _verts{0}, _faces{0};
+    // The UI thread's: poll() writes them, the screen reads them.
+    ProgressClock _clock;
+    RunMemoryView _memory;
+    uint64_t _polled_run = 0;
     std::mutex _mu;
-    std::string _stage, _error, _output;
+    std::string _stage, _error, _output, _progress_dir;
     std::vector<std::string> _outputs;
     std::vector<std::string> _log;
 };

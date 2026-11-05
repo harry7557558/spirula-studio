@@ -160,6 +160,13 @@ struct ForwardCache {
     // Armed by a training step none of whose terms reads the rendered depth,
     // and cleared by the forward it applies to.
     bool                              skip_depth_pending = false;
+    // LossConfig::raster_kernel_cut of the training step in flight, for its forward and
+    // backward; 0 outside one, so every other render is the full gaussian.
+    float                             kernel_cut = 0.0f;
+    // Armed like the above by a step that fits the learned densification
+    // score; the forward then renders render_score (else leaves it empty).
+    bool                              score_pending = false;
+    DeviceTensor3D<float>             render_score;  // [C,H,W]
     // What the stages after the rasterizer write (armed like the above, by a
     // training step that stores its images compact), and how renders.rgb is
     // stored now; its shape holds whatever the format.
@@ -230,6 +237,10 @@ struct SplatGrad {
 
 // Adam moment + densify aux state (pool-backed, persistent across steps).
 struct SplatOptim {
+    ProjectiveDepthOptim observe_projective;
+    bool projective_one_center = false;
+    int32_t projective_center_id = -1, projective_step_center_id = -1;
+    bool projective_step_one_center = false, projective_step_photometric = false;
     bool initialized = false;
     // SH Adam-state quantization bit depth (32 = off, 4 or 8 = packed). When
     // off, g1_features_sh / g2_features_sh hold full fp32 moments. When 4/8,
@@ -618,6 +629,9 @@ struct VisitStats {
 };
 
 struct EngineState {
+    DeviceVector<float4> projective_state, projective_centers;
+    DeviceVector<float> projective_information;
+    std::vector<float4> projective_centers_host;
     // Top-level scalars + flags shared across sections.
     std::string primitive;
     int64_t cur_num_splats = 0;
@@ -677,6 +691,31 @@ struct EngineState {
         float opacity_decay = 1.0f;   // kept share of opacity outside, per refine step
         bool active() const { return program.data_ptr() != nullptr; }
     } region;
+
+    // Peak alpha * T per splat for DeadCriterion::MaxWeight, stored times
+    // 2^((step - base_step) / half_life) so that forgetting needs no per-step
+    // pass; densify rebases it to the true value. Empty when not tracked.
+    struct MaxWeight {
+        DeviceVector<float> value;  // [max_N]
+        int   base_step  = 0;
+        float half_life  = 0.0f;
+        float step_scale = 1.0f;    // what this step's raster bwd multiplies by
+    } max_weight;
+
+    // The learned densification score lives in optim.accum_buffer as
+    // (s^power, update count); docs/notes/learned-densify-score.md. A splat
+    // no update has reached renders and starts from exp(log_prior).
+    struct LearnedScore {
+        // Map power x score power: the fit is to the unpowered map.
+        float power     = 1.0f;
+        float log_prior = 0.0f;   // EMA of the mean ln s of updated splats
+        bool  has_prior = false;
+        // This step's map was divided by render_score, so the raster bwd
+        // accumulated the ratio the update wants.
+        bool  ratio_map = false;
+        bool  stats_pending = false;  // issued this run, not read yet
+        DeviceVector<float> stats;  // [2]: sum ln s, count; EngLearnedScoreStats
+    } learned_score;
 
     BilagridRGB    bilagrid_rgb;
     BilagridDepth  bilagrid_depth;

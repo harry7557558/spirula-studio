@@ -4,10 +4,12 @@
 #include "app/gui/edit/EditSession.h"
 
 #include "app/gui/NavCamera.h"
+#include "app/gui/ProgressView.h"
 #include "app/gui/Ui.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/EditAttributes.h"
 #include "i18n/catalog/EditTransform.h"
+#include "i18n/catalog/Marker.h"
 #include "i18n/catalog/Render.h"
 
 #include "imgui.h"
@@ -21,6 +23,8 @@ namespace xmsg = spirula::i18n::msg::xform;
 namespace amsg = spirula::i18n::msg::attr;
 namespace rmsg = spirula::i18n::msg::render;
 using spirula::i18n::Msg;
+
+namespace mmsg = spirula::i18n::msg::marker;
 
 namespace gui {
 
@@ -309,6 +313,14 @@ void EditSession::draw_status() {
     if (_xform.active()) {
         ui::TextDisabled(_xform.kind() == XformKind::Scale ? xmsg::hint_op_scale
                                                            : xmsg::hint_op);
+        return;
+    }
+    if (_dist_scale.active()) {
+        switch (_dist_scale.hint_state()) {
+            case 0: ui::TextDisabled(xmsg::hint_pick_dist_a); break;
+            case 1: ui::TextDisabled(xmsg::hint_pick_dist_b); break;
+            default: ui::TextDisabled(xmsg::hint_pick_dist_ready); break;
+        }
         return;
     }
     if (_pick != Pick::None) {
@@ -664,25 +676,33 @@ void EditSession::draw_panel() {
     ImGui::EndChild();
 
     if (busy()) {
-        const int total = work_total(), done = work_done();
-        // Only the search is cancellable: a half-written file is worse than
-        // a wait for one that is finishing.
+        const bool detecting = _marker_busy.load();
+        const int total = detecting ? _marker_total.load() : work_total();
+        const int done = detecting ? _marker_done.load() : work_done();
+        // A file write must finish before another edit can start.
         const bool can_stop = !_save_busy.load();
         const float bw = can_stop
             ? ImGui::CalcTextSize(msg::cancel_job.get()).x +
                   2.0f * st.FramePadding.x + st.ItemSpacing.x
             : 0.0f;
-        if (total > 1)
-            ui::ProgressBar((float)done / (float)total, ImVec2(-bw, 0),
-                            msg::saving_progress,
+        const double now = progress_now();
+        if (!_work_clock.started()) _work_clock.start(now);
+        if (total > 1) {
+            _work_clock.work(now, (double)done / (double)total);
+            ui::ProgressBar(_work_clock.fraction(), ImVec2(-bw, 0),
+                            detecting ? mmsg::marker_progress : msg::saving_progress,
                             {(long long)done, (long long)total});
-        else
+        } else {
             ui::ProgressBar(-1.0f * (float)ImGui::GetTime(), ImVec2(-bw, 0),
                             msg::working);
+        }
         if (can_stop) {
             ImGui::SameLine();
             if (ui::Button(msg::cancel_job)) cancel_work();
         }
+        progress_time_line(_work_clock);
+    } else {
+        _work_clock = ProgressClock{};
     }
 }
 
@@ -754,9 +774,10 @@ void EditSession::draw_transform_tab(float full) {
     for (int i = 0; i < 3; i++) {
         if (i) ImGui::SameLine();
         if (key_button(*modes[i].name, third, modes[i].key,
-                       _xform_mode == modes[i].kind)) {
+                       _xform_mode == modes[i].kind && !_dist_scale.active())) {
             _xform_mode = modes[i].kind;
             _pick = Pick::None;
+            _dist_scale.set_active(false);
         }
         ui::help_on_hover(*modes[i].help);
     }
@@ -805,8 +826,10 @@ void EditSession::draw_transform_tab(float full) {
     if (ui::Button(xmsg::auto_align, ImVec2(full, 0))) auto_align();
     ui::help_on_hover(xmsg::auto_align_help);
     auto pick_button = [&](Pick what, const Msg& name, const Msg& help, float w) {
-        if (key_button(name, w, nullptr, _pick == what))
+        if (key_button(name, w, nullptr, _pick == what)) {
             _pick = _pick == what ? Pick::None : what;
+            if (_pick != Pick::None) _dist_scale.set_active(false);
+        }
         ui::help_on_hover(help);
     };
     pick_button(Pick::Ground, xmsg::pick_ground, xmsg::pick_ground_help, half);
@@ -831,6 +854,112 @@ void EditSession::draw_transform_tab(float full) {
         ui::SliderFloat(xmsg::opt_align_tol, &_align_tol, 0.1f, 5.0f, "%.2f");
         ui::help_on_hover(xmsg::opt_align_tol_help);
     }
+
+    // ---- metric scaling by reference distance ----
+    ui::SeparatorText(xmsg::mode_distance_scale);
+    if (key_button(xmsg::mode_distance_scale, full, nullptr, _dist_scale.active())) {
+        _dist_scale.set_active(!_dist_scale.active());
+        if (_dist_scale.active()) {
+            _pick = Pick::None;
+            _xform.cancel();
+        }
+    }
+    ui::help_on_hover(xmsg::mode_distance_scale_help);
+
+    if (_dist_scale.active()) {
+        spirula::Sim3 step;
+        bool should_scale = false;
+        _dist_scale.draw_panel_ui(step, should_scale);
+        if (should_scale) {
+            place_saved(step, xmsg::op_scale_distance, /*carry=*/false);
+        }
+    }
+
+    // ---- fiducial marker alignment & crop box ----
+    ui::SeparatorText(xmsg::sec_markers);
+    const bool marker_dataset = !_marker_dataset.directory.empty();
+    if (!marker_dataset) ui::TextDisabledWrapped(mmsg::marker_dataset_missing);
+    if (!_marker_status.empty())
+        ui::TextColoredWrappedRaw(_marker_status_err ? ImVec4(1, 0.5f, 0.5f, 1)
+                                                   : st.Colors[ImGuiCol_Text], _marker_status);
+    if (_marker_busy.load())
+        ui::Text(mmsg::marker_progress, {(long long)_marker_done.load(), (long long)_marker_total.load()});
+    ImGui::BeginDisabled(!marker_dataset);
+    const auto family_preview = _marker_family == spirula::MarkerFamily::Auto
+        ? mmsg::marker_auto.get() : spirula::marker_family_name(_marker_family);
+    if (ui::BeginCombo(mmsg::marker_family, family_preview)) {
+        for (int i = -1; i <= (int)spirula::MarkerFamily::ArucoOriginal; ++i) {
+            const auto family = (spirula::MarkerFamily)i;
+            const bool selected = family == spirula::MarkerFamily::Auto
+                ? ui::Selectable(mmsg::marker_auto, family == _marker_family)
+                : ui::SelectableRaw(spirula::marker_family_name(family), family == _marker_family);
+            if (selected) _marker_family = family;
+        }
+        ImGui::EndCombo();
+    }
+    ui::SliderFloat(mmsg::marker_decimate, &_marker_decimate, 1.0f, 4.0f, "%.1f");
+    ui::help_on_hover(mmsg::marker_decimate_help);
+    if (ui::Button(mmsg::marker_detect, ImVec2(half, 0))) marker_detect();
+    ImGui::SameLine();
+    if (ui::Button(mmsg::marker_reload, ImVec2(half, 0))) marker_reload();
+    if (!_markers.empty()) {
+        ui::Checkbox(mmsg::marker_preview, &_marker_show);
+        ui::help_on_hover(mmsg::marker_preview_help);
+        std::string ids;
+        for (const auto& m : _markers) {
+            if (!ids.empty()) ids += ", ";
+            ids += std::to_string(m.id);
+        }
+        ui::TextWrapped(mmsg::marker_ids, {ids});
+        auto marker_id = [&](const Msg& label, int& id) {
+            const auto preview = id < 0 ? std::string(msg::act_none.get()) : std::to_string(id);
+            if (ui::BeginCombo(label, preview.c_str())) {
+                for (const auto& m : _markers) {
+                    const auto text = std::to_string(m.id);
+                    if (ui::SelectableRaw(text, m.id == id)) id = m.id;
+                }
+                ImGui::EndCombo();
+            }
+        };
+
+        const float lw = std::max({ImGui::CalcTextSize(xmsg::marker_origin.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_xaxis.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_xyplane.get()).x,
+                                   ImGui::CalcTextSize(xmsg::marker_dist_x.get()).x});
+        const float iw = std::max(half - lw - st.ItemInnerSpacing.x, half * 0.4f);
+
+        ImGui::SetNextItemWidth(iw);
+        marker_id(xmsg::marker_origin, _marker_origin);
+        ui::help_on_hover(xmsg::marker_origin_help);
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(iw);
+        marker_id(xmsg::marker_xaxis, _marker_xaxis);
+        ui::help_on_hover(xmsg::marker_xaxis_help);
+
+        ImGui::SetNextItemWidth(iw);
+        marker_id(xmsg::marker_xyplane, _marker_xyplane);
+        ui::help_on_hover(xmsg::marker_xyplane_help);
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(iw);
+        ui::InputFloat(xmsg::marker_dist_x, &_marker_dist_x, 0.0f, 0.0f, "%.2f");
+        ui::help_on_hover(xmsg::marker_dist_x_help);
+
+        const float plw = ImGui::CalcTextSize(xmsg::marker_pad.get()).x;
+        ImGui::SetNextItemWidth(std::max(full - plw - st.ItemInnerSpacing.x, full * 0.3f));
+        ui::SliderFloat(xmsg::marker_pad, &_marker_pad, 0.0f, 2.0f, "%.2f m");
+        ui::help_on_hover(xmsg::marker_pad_help);
+
+        ImGui::BeginDisabled(_markers.empty());
+        if (ui::Button(xmsg::marker_align, ImVec2(half, 0))) marker_align();
+        ui::help_on_hover(xmsg::marker_align_help);
+        ImGui::SameLine();
+        if (ui::Button(xmsg::marker_crop, ImVec2(half, 0))) marker_crop();
+        ui::help_on_hover(xmsg::marker_crop_help);
+        ImGui::EndDisabled();
+    }
+    ImGui::EndDisabled();
 
     // ---- the numbers, in the file's own units ----
     ui::SeparatorText(xmsg::sec_numbers);

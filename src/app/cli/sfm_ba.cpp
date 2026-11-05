@@ -335,6 +335,7 @@ int cmdBa(int argc, char** argv) {
             namespace fs = std::filesystem;
             sfm::writeBundle(rec, layout, P);
             fs::create_directories(out_path);
+            rec.updatePointErrors();
             rec.writeBinary(out_path);
             sfm::writeRigs(out_path, rec, rigs.empty() ? nullptr : &rigs);
             const fs::path gauge = fs::path(file) / "gauge.txt";

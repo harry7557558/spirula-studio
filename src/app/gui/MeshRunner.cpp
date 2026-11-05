@@ -10,8 +10,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,54 +25,34 @@ namespace gui {
 
 namespace {
 
-// The pipeline's stages, in the order the child prints them, and how far
-// through the run each one is. The child's own `[meshing] <stage>: ...` lines
-// drive this -- no separate protocol to keep in sync.
-// Each phase announces itself when it STARTS, so `at` is where the bar sits
-// on entry and the next row's `at` is where it may creep to.
-//
-// Nothing here is English. The child runs with the same --lang this process
-// is in, so `stage` is compared against the very message the child printed
-// (meshing::mlog::stage_label), and the counts come out of the bodies with
-// i18n::scan(), which matches a line against the message it came from. The
-// caption under the bar is a separate string, a phrase rather than a column.
-struct StageMark {
-    meshing::mlog::Stage stage;        // what the child prints after the tag
-    float at;                          // fraction complete when it appears
-    const spirula::i18n::Msg* caption; // what the GUI shows while it lasts
+// The caption under the bar for each stage the child names. Not English: the
+// child runs with this process's --lang, so its stage column is compared with
+// the message it printed (meshing::mlog::stage_label).
+struct StageCaption {
+    meshing::mlog::Stage stage;
+    const spirula::i18n::Msg* caption;
 };
 using MStage = meshing::mlog::Stage;
-const StageMark kStages[] = {
-    {MStage::Loading,     0.00f,  &lmsg::mesh_stage_loading},
-    {MStage::PointCloud,  0.04f,  &lmsg::mesh_stage_point_cloud},
-    {MStage::Delaunay,    0.10f,  &lmsg::mesh_stage_delaunay},
-    {MStage::Occupancy,   0.34f,  &lmsg::mesh_stage_occupancy},
-    {MStage::CutEdges,    0.60f,  &lmsg::mesh_stage_cut_edges},
-    {MStage::Bisection,   0.64f,  &lmsg::mesh_stage_bisection},
-    {MStage::Marching,    0.74f,  &lmsg::mesh_stage_marching_tets},
-    {MStage::Merge,       0.78f,  &lmsg::mesh_stage_merge},
-    {MStage::Cleanup,     0.82f,  &lmsg::mesh_stage_cleanup},
-    {MStage::Cull,        0.85f,  &lmsg::mesh_stage_cull_unseen},
-    {MStage::Quality,     0.88f,  &lmsg::mesh_stage_quality},
-    {MStage::Orient,      0.90f,  &lmsg::mesh_stage_orient},
-    {MStage::Color,       0.91f,  &lmsg::mesh_stage_color},
-    {MStage::Uv,          0.94f,  &lmsg::mesh_stage_uv},
-    {MStage::Bake,        0.96f,  &lmsg::mesh_stage_bake},
-    {MStage::Texture,     0.98f,  &lmsg::mesh_stage_texture},
-    {MStage::Stats,       0.99f,  &lmsg::mesh_stage_stats},
-    {MStage::Wrote,       0.995f, &lmsg::mesh_stage_wrote},
+const StageCaption kStages[] = {
+    {MStage::Loading,    &lmsg::mesh_stage_loading},
+    {MStage::PointCloud, &lmsg::mesh_stage_point_cloud},
+    {MStage::Delaunay,   &lmsg::mesh_stage_delaunay},
+    {MStage::Occupancy,  &lmsg::mesh_stage_occupancy},
+    {MStage::CutEdges,   &lmsg::mesh_stage_cut_edges},
+    {MStage::Bisection,  &lmsg::mesh_stage_bisection},
+    {MStage::Marching,   &lmsg::mesh_stage_marching_tets},
+    {MStage::Merge,      &lmsg::mesh_stage_merge},
+    {MStage::Cleanup,    &lmsg::mesh_stage_cleanup},
+    {MStage::Cull,       &lmsg::mesh_stage_cull_unseen},
+    {MStage::Quality,    &lmsg::mesh_stage_quality},
+    {MStage::Orient,     &lmsg::mesh_stage_orient},
+    {MStage::Color,      &lmsg::mesh_stage_color},
+    {MStage::Uv,         &lmsg::mesh_stage_uv},
+    {MStage::Bake,       &lmsg::mesh_stage_bake},
+    {MStage::Texture,    &lmsg::mesh_stage_texture},
+    {MStage::Stats,      &lmsg::mesh_stage_stats},
+    {MStage::Wrote,      &lmsg::mesh_stage_wrote},
 };
-constexpr int kNumStages = (int)(sizeof(kStages) / sizeof(kStages[0]));
-
-// How long a phase is assumed to take when it reports nothing (seconds). The
-// creep is 1 - exp(-t/tau), so it approaches the next mark without ever
-// reaching or passing it -- a bar that moves but never lies about finishing.
-constexpr double kCreepTau = 25.0;
-
-double now_seconds() {
-    using namespace std::chrono;
-    return duration<double>(steady_clock::now().time_since_epoch()).count();
-}
 
 }  // namespace
 
@@ -95,12 +73,14 @@ void MeshRunner::start(const MeshJob& job) {
     }
     _verts = 0;
     _faces = 0;
-    _stage_lo = -1.0f;
-    _stage_hi = -1.0f;
-    _stage_frac = -1.0f;
-    _stage_at = now_seconds();
     _cancel = false;
-    _run_id.fetch_add(1);
+    const uint64_t id = _run_id.fetch_add(1) + 1;
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        _progress_dir = (fs::path(app::cache_dir()) / "mesh-progress" /
+                         std::to_string((uint64_t)(progress_now() * 1e3) * 1000 + id % 1000))
+                            .string();
+    }
     _state = State::Running;
     _worker = std::thread([this, job] { run(job); });
 }
@@ -138,18 +118,24 @@ std::vector<std::string> MeshRunner::drain_log() {
     return out;
 }
 
-float MeshRunner::progress() const {
-    const float lo = _stage_lo.load();
-    if (lo < 0.0f) return -1.0f;
-#if 1
-    return std::pow(lo, 2.0f);
-#else
-    const float hi = _stage_hi.load();
-    const float sub = _stage_frac.load();
-    if (sub >= 0.0f) return lo + (hi - lo) * std::min(std::max(sub, 0.0f), 1.0f);
-    const double dt = std::max(0.0, now_seconds() - _stage_at.load());
-    return lo + (hi - lo) * (float)(1.0 - std::exp(-dt / kCreepTau));
-#endif
+void MeshRunner::poll() {
+    const uint64_t id = _run_id.load();
+    const double now = progress_now();
+    if (id != _polled_run) {
+        _polled_run = id;
+        _clock.start(now);
+        _memory.reset();
+    }
+    const State st = _state.load();
+    if (st == State::Done) _clock.finish(now);
+    if (st != State::Running) return;
+    std::string dir;
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        dir = _progress_dir;
+    }
+    _memory.poll_report(dir);
+    if (_memory.reported_work() >= 0.0) _clock.work(now, _memory.reported_work());
 }
 
 void MeshRunner::note_line(const std::string& line) {
@@ -158,48 +144,23 @@ void MeshRunner::note_line(const std::string& line) {
     if (at == std::string::npos) return;
     const std::string rest = line.substr(at + tag.size());
 
-    // "<stage>: <body>" -- the stage moves the bar, the body may say how far
-    // through the stage the child is.
-    for (int i = 0; i < kNumStages; ++i) {
-        const std::string label = meshing::mlog::stage_label(kStages[i].stage);
+    for (const StageCaption& s : kStages) {
+        const std::string label = meshing::mlog::stage_label(s.stage);
         if (rest.rfind(label, 0) != 0) continue;
-        _stage_lo = kStages[i].at;
-        _stage_hi = i + 1 < kNumStages ? kStages[i + 1].at : 1.0f;
-        _stage_frac = -1.0f;
-        _stage_at = now_seconds();
         std::lock_guard<std::mutex> lk(_mu);
         // Resolved here rather than at draw time so the caption is settled on
         // the thread that noticed the stage change; the language cannot move
         // between the two, and the UI thread does no lookup.
-        _stage = kStages[i].caption->get();
+        _stage = s.caption->get();
         break;
     }
 
-    // The "<stage>: " column comes off first -- including for the stages the
-    // table above does not track, which still report their own progress.
     std::string tail = rest;
     const size_t colon = rest.find(": ");
     if (colon != std::string::npos) tail = rest.substr(colon + 2);
 
-    // "cameras rendered: 12/120" -- a phase reporting its own fraction.
-    // Matched against the message itself, so no digit anywhere else in the
-    // line (a path, a timing) can be mistaken for progress. Monotone within a
-    // bracket: the bisection loop sweeps the camera set once per iteration,
-    // and a bar that runs backwards reads as a bug.
-    std::vector<std::string> got;
-    if (_stage_lo.load() >= 0.0f &&
-        spirula::i18n::scan(spirula::i18n::msg::mesh::cameras_rendered, tail,
-                            got) &&
-        got.size() == 2) {
-        const double done = std::atof(got[0].c_str());
-        const double total = std::atof(got[1].c_str());
-        if (total > 0.0) {
-            const float f = (float)(done / total);
-            if (f > _stage_frac.load()) _stage_frac = f;
-        }
-    }
-
     // The final count, from the one line that knows both.
+    std::vector<std::string> got;
     if (spirula::i18n::scan(spirula::i18n::msg::mesh::done_summary, tail, got) &&
         got.size() == 3) {
         _verts = std::atoll(got[0].c_str());
@@ -251,6 +212,13 @@ void MeshRunner::run(MeshJob job) {
         "--color", colors,
         "--output", job.output,
     };
+    std::string progress_dir;
+    {
+        std::lock_guard<std::mutex> lk(_mu);
+        progress_dir = _progress_dir;
+    }
+    argv.push_back("--progress-dir");
+    argv.push_back(progress_dir);
     if (!job.use_data) {
         argv.push_back("--no-data");
     } else if (!job.data_dir.empty()) {
@@ -315,6 +283,10 @@ void MeshRunner::run(MeshJob job) {
         log(l);
         note_line(l);
     }, _cancel);
+    {
+        std::error_code ec;
+        fs::remove_all(progress_dir, ec);
+    }
 
     if (rc == kCancelled) {
         _state = State::Cancelled;
@@ -341,9 +313,6 @@ void MeshRunner::run(MeshJob job) {
         for (const std::string& cand : all)
             if (fs::is_regular_file(cand, ec)) _outputs.push_back(cand);
     }
-    _stage_lo = 1.0f;
-    _stage_hi = 1.0f;
-    _stage_frac = -1.0f;
     _state = State::Done;
 }
 

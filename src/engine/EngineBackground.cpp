@@ -137,11 +137,12 @@ static BgLumaViews _bg_luma_views(const EngineBackground& bg) {
     return v;
 }
 
-static void _ensure_bg_sh_optim_state() {
+void _ensure_bg_sh_optim_state() {
     auto& bg = engine().background;
     if (bg.sh_optim_initialized) return;
     if (bg.mode != EngineBackground::Mode::Sh) return;
     int64_t n = bg.sh_coeffs.size();
+    if (n == 0) return;
     bg.sh_g1.resize(PoolSlot::EngBgSkyG1, n); bg.sh_g1.zero();
     bg.sh_g2.resize(PoolSlot::EngBgSkyG2, n); bg.sh_g2.zero();
     bg.sh_optim_initialized = true;
@@ -560,4 +561,13 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
         0.5f, (colorspace::Transfer)bg.splat_transfer, bg.splat_is_linear);
     for (int64_t i = 0; i < n; ++i) h[i] = fill;
     return 1;
+}
+
+
+bool engine_has_background_sh(int* out_degree) {
+    if (engine().background.enabled && engine().background.mode == EngineBackground::Mode::Sh) {
+        if (out_degree) *out_degree = engine().background.sh_degree;
+        return true;
+    }
+    return false;
 }

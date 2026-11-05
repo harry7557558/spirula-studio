@@ -2,6 +2,8 @@
 
 #include "app/FrameMotion.h"
 
+#include "core/HardwareThreads.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -570,7 +572,7 @@ void MotionTracker::track(const uint8_t* gray, int64_t index) {
         // of has the GPU busy and the cores idle.
         const size_t n = s.gx.size();
         const int threads = std::max(
-            1, std::min((int)std::thread::hardware_concurrency(), (int)(n / 64)));
+            1, std::min((int)spirula::hardware_threads(), (int)(n / 64)));
         std::vector<Impl::Pair> part((size_t)threads);
         const size_t span = (n + threads - 1) / (size_t)threads;
         auto run = [&](int t) {

@@ -36,6 +36,10 @@ inline std::atomic<uint64_t>& device_bytes() {
     static std::atomic<uint64_t> v{0};
     return v;
 }
+inline std::atomic<uint64_t>& device_peak_bytes() {
+    static std::atomic<uint64_t> v{0};
+    return v;
+}
 // The ordinal a successful device_select picked, for device_bind to re-apply
 // on another thread. -1 until then: no selection means no rebinding, so an
 // app that never selects keeps the runtime's default device. One per program.
@@ -107,8 +111,14 @@ inline MemoryUsage memory_usage() {
         cudaGetLastError();
     }
     m.process_bytes = detail::device_bytes().load(std::memory_order_relaxed);
+    m.process_peak_bytes = detail::device_peak_bytes().load(std::memory_order_relaxed);
     m.has_process = true;
     return m;
+}
+
+inline void memory_peak_reset() {
+    detail::device_peak_bytes().store(detail::device_bytes().load(std::memory_order_relaxed),
+                                      std::memory_order_relaxed);
 }
 
 inline cudaMemcpyKind _to_cuda(MemcpyKind kind) {
@@ -148,7 +158,10 @@ inline void* device_malloc(size_t bytes) {
     if (ptr) {
         std::lock_guard<std::mutex> lock(detail::alloc_mutex());
         detail::alloc_sizes()[ptr] = bytes;
-        detail::device_bytes().fetch_add(bytes, std::memory_order_relaxed);
+        const uint64_t now =
+            detail::device_bytes().fetch_add(bytes, std::memory_order_relaxed) + bytes;
+        if (now > detail::device_peak_bytes().load(std::memory_order_relaxed))
+            detail::device_peak_bytes().store(now, std::memory_order_relaxed);
     }
     return ptr;
 }

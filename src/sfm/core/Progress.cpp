@@ -381,9 +381,9 @@ void status(const Event& e) {
         s.last.done = e.done;
         s.last.total = e.total;
     } else if (e.kind == K::ModelUpdated) {
-        // Model size, not the bar: mapping's fraction comes from
-        // events::map_placed, because this count falls back on a seed retry.
-        s.last.stage = e.stage;
+        // Model size, not the bar or the stage: mapping's fraction comes from
+        // events::map_placed, because this count falls back on a seed retry,
+        // and a growth pass inside a merge level must not relabel the level's count.
         s.last.registered = e.registered;
         s.last.images = e.images;
         s.last.points = e.points;

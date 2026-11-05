@@ -852,7 +852,8 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
 
     double T_n[16], T_inv[16], R_align[9];
     double scale_factor = dsparse::compute_normalized_transform(
-        c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr);
+        c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr,
+        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses);
     dsparse::invert_affine4x4(T_n, T_inv);
     float train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
 

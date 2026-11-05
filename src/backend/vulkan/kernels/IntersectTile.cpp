@@ -20,8 +20,10 @@ struct IsectCountParams {
     uint32_t N, image_width, image_height, tile_width, tile_height, total,
         wgs_per_row, macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
+    float max_sigma;
+    uint32_t _pad0;
 };
-static_assert(sizeof(IsectCountParams) == 6 * 8 + 12 * 4,
+static_assert(sizeof(IsectCountParams) == 6 * 8 + 14 * 4,
               "params layout must match the slang struct");
 
 struct IsectWriteParams {
@@ -30,8 +32,9 @@ struct IsectWriteParams {
     uint32_t N, image_width, image_height, tile_width, tile_height, total,
         wgs_per_row, n_isects, macro_log2;
     int32_t row_stride, xy_off, conic_off, opac_off;
+    float max_sigma;
 };
-static_assert(sizeof(IsectWriteParams) == 8 * 8 + 13 * 4 + 4 /*pad*/,
+static_assert(sizeof(IsectWriteParams) == 8 * 8 + 14 * 4,
               "params layout must match the slang struct");
 
 struct TileActiveParams {
@@ -128,11 +131,14 @@ std::tuple<
     backend::vk::SpecList mode_spec;
     DeviceVector<int32_t> tiles_per_splat;
     DeviceVector<uint32_t> isect_total;
+    size_t isect_reserve = 0;
     for (;;) {
         // Opens the tile-intersect phase, whose buffers share the arena with
         // the raster backward (POOL_ALIAS_TABLE, core/PoolSlots.h). Re-opened
         // per attempt: an arena slot may be acquired only once per phase.
-        pool_begin_phase(PoolPhase::TileIsect);
+        pool_begin_phase(PoolPhase::TileIsect,
+                         isect_reserve ? isect_reserve
+                                       : DevicePool::arena_span({4 * (size_t)total_count}));
         tile_width = _CEIL_DIV(image_width, (uint32_t)bin_tile_x(macro_log2));
         tile_height = _CEIL_DIV(image_height, (uint32_t)bin_tile_y(macro_log2));
         n_tiles = intersect_check_tile_count(tile_width, tile_height, I);
@@ -166,6 +172,7 @@ std::tuple<
             cp.xy_off = ellipse.xy;
             cp.conic_off = ellipse.conic;
             cp.opac_off = ellipse.opac;
+            cp.max_sigma = ellipse.max_sigma;
             vkk::dispatch("intersect_tile.intersect_tile_count", mode_spec,
                           g.per_row, g.rows, 1, &cp, sizeof(cp));
         }
@@ -185,10 +192,20 @@ std::tuple<
             // costs the skipped-tile optimization for this step, and the next
             // one is built at the size this settles on.
             active = nullptr;
+            isect_reserve = 0;
             continue;
         }
         intersect_check_isect_count(n_isects64);
         n_isects = (int32_t)n_isects64;
+        // Grown past the arena: reopen sized for it and count again, rather
+        // than overflow into buffers beside the old arena (core/Tensor.h).
+        const size_t isect_span = DevicePool::arena_span(
+            {4 * (size_t)total_count, 4 * (size_t)total_count,
+             8 * (size_t)n_isects, 8 * (size_t)n_isects});
+        if (!DevicePool::global().phase_reserve(isect_span) && isect_reserve == 0) {
+            isect_reserve = isect_span;
+            continue;
+        }
 
         /* Inclusive prefix sum -> cumulative tile counts */
         cum_tiles_per_splat.resize(PoolSlot::IsectCumTiles, total_count);
@@ -235,6 +252,7 @@ std::tuple<
         wp.xy_off = ellipse.xy;
         wp.conic_off = ellipse.conic;
         wp.opac_off = ellipse.opac;
+        wp.max_sigma = ellipse.max_sigma;
         vkk::dispatch("intersect_tile.intersect_tile_write", mode_spec, g.per_row,
                       g.rows, 1, &wp, sizeof(wp));
     }

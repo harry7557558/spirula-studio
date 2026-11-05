@@ -29,6 +29,15 @@ float3 color_row_load<let QBITS : int>(ColorRow r, int j) {
                          r.pair_pitch, j);
 }
 
+struct ColorRowReader<let QBITS : int> : IShCoefficientReader {
+    ColorRow row;
+
+    [ForceInline]
+    float3 load(int j) {
+        return color_row_load<QBITS>(row, j);
+    }
+}
+
 [ForceInline]
 float3 sb_row_color<let QBITS : int>(int lobes, int sb_base, float3 dir,
                                      ColorRow r) {
@@ -66,9 +75,7 @@ float3 color_eval<let QBITS : int>(int degree, int lobes, int sb_base,
     return rgb;
 }
 
-// VJP of color_eval, accumulating. The SH half mirrors harmonics.slang's
-// `_sh_coeffs_to_color_vjp<1>`; the clamp mask is the SH half's alone, and
-// one bwd_diff through the view direction serves both halves.
+// The SH clamp excludes the lobes; both halves share the view-direction VJP.
 [ForceInline]
 void color_vjp<let QBITS : int>(
     int degree, int lobes, int sb_base,
@@ -78,10 +85,8 @@ void color_vjp<let QBITS : int>(
     inout float3 v_sh[kVcMaxShCoeffs],
     inout float3 v_sb[kVcMaxSbCoeffs],
     inout float3 v_mean, inout float3x3 v_R, inout float3 v_t) {
-    const int K = degree * (degree + 2);
-    float3 C[kVcMaxShCoeffs];
-    for (int j = 0; j < kVcMaxShCoeffs; j++)
-        C[j] = (j < K) ? color_row_load<QBITS>(r, j) : float3(0.0f);
+    ColorRowReader<QBITS> C;
+    C.row = r;
 
     float3 viewdir = mean_viewmat_to_unnormalized_viewdir(mean, R, t);
     float3 rgb = _shv_forward(degree, viewdir, dc, C);

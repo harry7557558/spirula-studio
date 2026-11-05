@@ -289,8 +289,9 @@ __global__ void per_pixel_losses_backward_kernel(
     int x_dst = (int)(pixel_idx % (size_t)W_render);
     int y_dst = (int)(pixel_idx / (size_t)W_render);
 
-    if (camera_indices != nullptr)
-        batch_idx = camera_indices[batch_idx];
+    // The camera's loss row; the GT taps below stay on the batch slot.
+    const size_t loss_row = camera_indices != nullptr
+        ? (size_t)camera_indices[batch_idx] : batch_idx;
     FixedArray<float, (uint)RawLossIndex::length> v_losses;
     for (uint i = 0; i < (uint)RawLossIndex::length; i++) {
         float temp_loss = 0.0f;
@@ -298,7 +299,7 @@ __global__ void per_pixel_losses_backward_kernel(
         if (which == 0 || which == 2)
             temp_loss += v_out_losses[i];
         if (which == 1 || which == 2)
-            temp_loss += v_out_losses[(batch_idx+1)*(size_t)RawLossIndex::length + i];
+            temp_loss += v_out_losses[(loss_row+1)*(size_t)RawLossIndex::length + i];
         v_losses[i] = temp_loss;
     }
 
@@ -1040,18 +1041,24 @@ LossValues compute_multi_scale_per_pixel_losses(
     pool_begin_phase(PoolPhase::Loss);
     const auto _mode = densify_loss_map_base((DensifyLossMapMode)loss_map_mode);
     const bool _nms = densify_loss_map_has_nms((DensifyLossMapMode)loss_map_mode);
+    const bool _ssim_bt = perceptual_loss == (int)PerceptualLoss::SsimBlurTolerant;
+    const bool _ssim = perceptual_loss == (int)PerceptualLoss::Ssim || _ssim_bt;
     const bool _scielab = perceptual_loss == (int)PerceptualLoss::SCielab;
+    const bool _flip = perceptual_loss == (int)PerceptualLoss::Flip;
     // Per-pixel L1/L2/aux terms contribute to the loss map only for LossFull.
     const bool _per_pixel_write = (_mode == DensifyLossMapMode::LossFull);
     // Which perceptual term the map takes: LossFull takes the trained one. A
-    // map term from the other one runs that kernel for its map alone.
+    // map term from another one runs that kernel for its map alone.
     const bool _scielab_map = _mode == DensifyLossMapMode::SCielab ||
                               (_per_pixel_write && _scielab);
+    const bool _flip_features = _mode == DensifyLossMapMode::FlipFeature;
+    const bool _flip_map = _mode == DensifyLossMapMode::Flip || _flip_features ||
+                           (_per_pixel_write && _flip);
     const int _ssim_mode = [&]() -> int {
         switch (_mode) {
             case DensifyLossMapMode::LossFull:
-                return _scielab ? (int)SsimLossMapMode::SsimNone
-                                : (int)SsimLossMapMode::SsimFull;
+                return _ssim ? (int)SsimLossMapMode::SsimFull
+                             : (int)SsimLossMapMode::SsimNone;
             case DensifyLossMapMode::SsimFull:
                 return (int)SsimLossMapMode::SsimFull;
             case DensifyLossMapMode::SsimContrastStruct:
@@ -1181,7 +1188,7 @@ LossValues compute_multi_scale_per_pixel_losses(
         PoolSlot::PplTotalLosses, (uint)LossIndex::length);
     cudaMemset(total_losses_ptr, 0, (uint)LossIndex::length * sizeof(float));
 
-    float ssim_val = 0.0f, delta_e = 0.0f;
+    float ssim_val = 0.0f, delta_e = 0.0f, flip_val = 0.0f;
 
     for (int scale = 0; scale < num_loss_scales; ++scale) {
         const auto& ss = std::get<2>(render_rgb_s[scale]);
@@ -1300,18 +1307,22 @@ LossValues compute_multi_scale_per_pixel_losses(
         // goes through an async readout, for display without a host sync.
         static AsyncReadout<float> ssim_readout(1);
         static AsyncReadout<float> scielab_readout(1);
-        if (!_scielab && scale == 0) {
+        static AsyncReadout<float> flip_readout(1);
+        // A map-only SSIM pass stays plain: only the trained term tolerates blur.
+        const float ssim_blur =
+            _ssim_bt ? kSsimBlurTolerance / (float)(1 << scale) : 0.0f;
+        if (_ssim && scale == 0) {
             ssim_val = fused_ssim_inplace_async(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
                 -w_ssim, scale_grads.v_render_rgb, loss_map_scale, _map_w,
-                _ssim_mode, saturation_threshold, ssim_readout);
-        } else if (!_scielab || _ssim_mode != (int)SsimLossMapMode::SsimNone) {
+                _ssim_mode, saturation_threshold, ssim_blur, ssim_readout);
+        } else if (_ssim || _ssim_mode != (int)SsimLossMapMode::SsimNone) {
             fused_ssim_inplace(
                 render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
-                _scielab ? 0.0f : -w_ssim,
-                _scielab ? TorchTensorView{} : scale_grads.v_render_rgb,
+                _ssim ? -w_ssim : 0.0f,
+                _ssim ? scale_grads.v_render_rgb : TorchTensorView{},
                 /*return_ssim_val=*/false, loss_map_scale, _map_w,
-                _ssim_mode, saturation_threshold);
+                _ssim_mode, saturation_threshold, ssim_blur);
         }
         TorchTensorView scielab_map = _scielab_map ? loss_map_scale : TorchTensorView{};
         if (_scielab && scale == 0) {
@@ -1327,6 +1338,19 @@ LossValues compute_multi_scale_per_pixel_losses(
                 _scielab ? scale_grads.v_render_rgb : TorchTensorView{},
                 /*return_val=*/false, scielab_map,
                 _map_w * kScielabLossPerDeltaE, saturation_threshold);
+        }
+        TorchTensorView flip_map = _flip_map ? loss_map_scale : TorchTensorView{};
+        if (_flip && scale == 0) {
+            flip_val = fused_flip_inplace_async(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale],
+                w_ssim, scale_grads.v_render_rgb, flip_map, _map_w,
+                _flip_features, saturation_threshold, flip_readout);
+        } else if (_flip || _flip_map) {
+            fused_flip_inplace(
+                render_rgb_s[scale], ref_rgb_s[scale], ref_alpha_s[scale], w_ssim,
+                _flip ? scale_grads.v_render_rgb : TorchTensorView{},
+                /*return_val=*/false, flip_map, _map_w, _flip_features,
+                saturation_threshold);
         }
 
         // Edge-aware loss maps: nothing above wrote loss_map_scale in these
@@ -1482,6 +1506,7 @@ LossValues compute_multi_scale_per_pixel_losses(
     }
     out.ssim = ssim_val;
     out.delta_e = delta_e;
+    out.flip = flip_val;
     losses_readout.issue(total_losses_ptr);
     return out;
 }

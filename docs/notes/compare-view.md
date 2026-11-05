@@ -10,6 +10,22 @@ better?", which is the question anyone tuning a reconstruction is actually
 asking, and it is only answerable if the two pictures differ in nothing but the
 model.
 
+The **Wipe** checkbox shows every open model in one pane: vertical sections
+for two or three models, and a 2×2 arrangement for four, in row order. Each
+section has a name along its bottom edge. Drag a divider to resize sections;
+in the 2×2 view, drag the intersection to move both dividers together. Sections
+start at equal sizes when the model count changes. Vertical dividers in the
+three-model view stop at their neighbors.
+
+Wipe forces linked navigation and supports splats, meshes and point clouds
+in any mix. Editing or rendering a model temporarily suspends the wipe.
+
+The other viewports render without controls at the first viewport's size,
+then their textures are cropped at the dividers. Engine renders are asynchronous,
+so the sections can briefly show different frames during navigation; they
+converge when the camera stops. Preview textures use the opposite vertical UV
+direction to engine textures.
+
 Three pieces make that work.
 
 ## Several splat models resident at once

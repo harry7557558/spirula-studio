@@ -386,7 +386,7 @@ void RenderSession::draw_timeline() {
     ui::help_on_hover(msg::tl_track_help);
 }
 
-// The camera's own view, and in Through mode where it is flown from. What
+// The camera's own view, where it can be adjusted directly. What
 // moves is the key at the playhead, made there if there is none.
 void RenderSession::draw_preview_pane() {
     if (!_panel || !_have_project) return;
@@ -414,10 +414,14 @@ void RenderSession::draw_preview_pane() {
     dl->AddRect(a, b, IM_COL32(90, 220, 255, 160));
     const bool hovered = ImGui::IsItemHovered();
     const bool active = ImGui::IsItemActive();
+    // Through mode's caption already is the hint.
+    if (_preview_mode != PreviewMode::Through)
+        ui::help_on_hover(msg::pv_through_hint,
+                          {(long long)_project.output.width, (long long)_project.output.height});
     ImGui::SetCursorScreenPos(ImVec2(a.x, b.y + ImGui::GetStyle().ItemSpacing.y));
     ui::TextDisabled(_preview_mode == PreviewMode::Through ? msg::pv_through_hint : msg::pv_caption,
                      {(long long)_project.output.width, (long long)_project.output.height});
-    if (_preview_mode != PreviewMode::Through || _project.keys.empty()) return;
+    if (_project.keys.empty()) return;
 
     const ImGuiIO& io = ImGui::GetIO();
     const bool turn = active && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f) && !io.KeyShift;

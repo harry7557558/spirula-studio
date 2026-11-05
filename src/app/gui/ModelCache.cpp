@@ -15,6 +15,7 @@
 #include "i18n/catalog/Dense.h"
 
 #include "i18n/catalog/Dataset.h"
+#include "i18n/catalog/Geometry.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -238,6 +239,14 @@ void register_dense_license() {
                           &spirula::i18n::msg::dense::terms);
 }
 
+const ProgressClock& FileDownload::clock() {
+    const double now = progress_now();
+    const State st = _state.load();
+    if (st == State::Done) _clock.finish(now);
+    else if (st == State::Running && _progress.load() >= 0.0f) _clock.work(now, _progress.load());
+    return _clock;
+}
+
 void FileDownload::start(const PendingDownload& d) {
     if (_state.load() == State::Running) return;
     if (_worker.joinable()) _worker.join();
@@ -251,15 +260,56 @@ void FileDownload::start(const PendingDownload& d) {
     }
     _cancel = false;
     _progress = -1.0f;
+    _clock.start(progress_now());
     {
         std::lock_guard<std::mutex> lk(_mu);
         _status.clear();
         _path.clear();
     }
     _state = State::Running;
+    if (!d.command.empty()) {
+        _worker = std::thread([this, d] { run_command(d.command); });
+        return;
+    }
     std::vector<std::string> urls{d.url};
     if (!d.mirror.empty()) urls.push_back(d.mirror);
     _worker = std::thread([this, urls, d] { run(urls, d.dest, d.bytes, d.sha256); });
+}
+
+void FileDownload::run_command(std::vector<std::string> argv) {
+    std::string cmd;
+    for (const std::string& a : argv) cmd += (cmd.empty() ? "$ " : " ") + a;
+    log(cmd);
+    std::string last;
+    const int rc = run_process(argv, "", [&](const std::string& raw) {
+        std::string line = raw;
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.pop_back();
+        if (line.empty()) return;
+        std::vector<std::string> got;
+        if (spirula::i18n::scan(spirula::i18n::msg::geometry::log_install_progress, line, got) &&
+            got.size() >= 3) {
+            const float done = std::strtof(got[1].c_str(), nullptr);
+            const float total = std::strtof(got[2].c_str(), nullptr);
+            _progress = total > 0.0f ? std::min(done / total, 1.0f) : -1.0f;
+            std::lock_guard<std::mutex> lk(_mu);
+            _status = line;
+            return;
+        }
+        last = line;
+        log(line);
+    }, _cancel);
+    std::lock_guard<std::mutex> lk(_mu);
+    if (rc == kCancelled) {
+        _status = "cancelled";
+        _state = State::Cancelled;
+    } else if (rc != 0) {
+        _status = last.empty() ? "install failed; see the log" : last;
+        _state = State::Failed;
+    } else {
+        _progress = 1.0f;
+        _status = "ready";
+        _state = State::Done;
+    }
 }
 
 bool FileDownload::start(const ModelEntry& e, const TextDetector* d) {
@@ -400,9 +450,11 @@ void FileDownload::run(std::vector<std::string> urls, std::string dest,
 // ---------------------------------------------------------------------------
 
 void DownloadQueue::start(std::vector<PendingDownload> files) {
-    if (running()) return;
-    _rest = std::move(files);
-    pump();
+    if (running() || files.empty()) return;
+    // A new request, not the tail of one that failed or was stopped: pump()
+    // would drop it for that.
+    _rest.assign(files.begin() + 1, files.end());
+    _dl.start(files.front());
 }
 
 void DownloadQueue::pump() {

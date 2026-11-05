@@ -4,19 +4,21 @@
 #include "app/FrameLook.h"
 #include "app/SystemRecorder.h"
 #include "app/GeometryWarp.h"
+#include "app/RunReport.h"
 #include "core/AtomicFile.h"
 #include "core/FileLock.h"
 #include "core/LongPath.h"
 #include "core/OwnedDirectory.h"
 #include "core/DistanceTransform.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "core/Sha256.h"
 #include "data/ImageProbe.h"
 #include "data/SparseEdit.h"
 #include "dense/ConfigFields.h"
 #include "dense/DiskTable.h"
-#include "dense/MemoryReport.h"
+#include "dense/MemoryPlan.h"
 #include "dense/Visibility.h"
 #include "external/stb_image.h"
 #include "nn/Device.h"
@@ -115,7 +117,7 @@ void dump_pair_prediction(uint32_t a, uint32_t b, const roma::PairPrediction& pr
 }
 
 unsigned worker_count(const DenseConfig& config) {
-    const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+    const unsigned hardware = std::max(1u, spirula::hardware_threads());
     return std::min(config.cpu_workers > 0 ? (unsigned)config.cpu_workers : hardware, hardware);
 }
 
@@ -600,65 +602,33 @@ private:
     bool written_ = false;
 };
 
-// Twice a second, this process's memory for the GUI's bar (dense/MemoryReport.h).
+// This process's memory for the GUI's bar (app/RunReport.h), bounded by the
+// ceiling the run's own budgets allow -- a bound, not a prediction: on 235
+// images it was 2.0x the RAM peak and 1.6x the VRAM's. The slack is the spread.
 class MemoryReporter {
 public:
-    MemoryReporter(const std::string& dir, uint64_t planned) : dir_(dir) {
-        if (dir_.empty()) return;
-        std::error_code error;
-        fs::create_directories(dir_, error);
-        fs::remove(memory_report_path(dir_), error);
-        report_.host_planned = spirula::processRamBytes() + planned;
-        thread_ = std::thread([this] { run(); });
+    MemoryReporter(const std::string& dir, uint64_t planned)
+        : host_((double)spirula::processRamBytes() + (double)planned), report_(dir) {
+        report_.host_peak(peak(host_));
     }
-    ~MemoryReporter() { stop(); }
-
-    void phase(const char* name) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        report_.phase = name;
-    }
-
+    void phase(const char* name) { report_.phase(name); }
     // A working set sized by the views rather than by the budget, such as the free-space grid.
     void add_planned(uint64_t bytes) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (report_.host_planned) report_.host_planned += bytes;
+        host_ += (double)bytes;
+        report_.host_peak(peak(host_));
     }
-
     // `ours` counts the driver's view of this process; `others` is the device less its budget for us.
     void device(uint64_t ours, uint64_t others, uint64_t capacity, uint64_t planned) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        report_.device_known = true;
-        report_.device_ours = ours; report_.device_others = others;
-        report_.device_capacity = capacity; report_.device_planned = std::max(planned, ours);
+        report_.device({ours, others, capacity});
+        report_.device_peak(peak((double)std::max(planned, ours)));
     }
-
-    void stop() {
-        if (!thread_.joinable()) return;
-        { std::lock_guard<std::mutex> lock(mutex_); quit_ = true; }
-        wake_.notify_all();
-        thread_.join();
-    }
+    void stop() { report_.stop(); }
 
 private:
-    void run() {
-        std::unique_lock<std::mutex> lock(mutex_);
-        for (;;) {
-            report_.host_process = spirula::processRamBytes();
-            report_.host_available = spirula::availableRamBytes();
-            report_.host_total = spirula::physicalRamBytes();
-            report_.host_planned = std::max(report_.host_planned, report_.host_process);
-            ++report_.sequence;
-            write_memory_report(dir_, report_);
-            if (wake_.wait_for(lock, std::chrono::milliseconds(500), [&] { return quit_; })) return;
-        }
-    }
-
-    fs::path dir_;
-    MemoryReport report_;
-    std::mutex mutex_;
-    std::condition_variable wake_;
-    bool quit_ = false;
-    std::thread thread_;
+    static constexpr double kSlack = 0.1;
+    static spirula::PlannedPeak peak(double bytes) { return {bytes, kSlack * bytes, /*ceiling=*/true}; }
+    double host_;
+    spirula::RunReporter report_;
 };
 
 // --perf-dir: once a second, the phase and its progress beside the machine's

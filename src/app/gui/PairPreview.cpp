@@ -117,6 +117,15 @@ void PairPreview::show(const PairBlock& block) {
     _cv.notify_all();
 }
 
+void PairPreview::show_pair(uint32_t a, uint32_t b) {
+    show(PairBlock{a, a + 1, b, b + 1});
+}
+
+void PairPreview::reload() {
+    std::lock_guard<std::mutex> lk(_mu);
+    _shot.loaded = false;
+}
+
 bool PairPreview::empty() const {
     std::lock_guard<std::mutex> lk(_mu);
     return !_shot.ready;
@@ -362,7 +371,8 @@ void PairPreview::draw_side(const Pane& p, const Side& s, const ImVec2& min,
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddImage((ImTextureID)(intptr_t)p.tex, min,
                  ImVec2(min.x + size.x, min.y + size.y));
-    draw_keypoints(dl, s.pts, min, size, IM_COL32(120, 255, 140, 190));
+    if (_show_keypoints)
+        draw_keypoints(dl, s.pts, min, size, IM_COL32(120, 255, 140, 190));
 }
 
 void PairPreview::draw(const ImVec2& box) {
@@ -423,7 +433,7 @@ void PairPreview::draw(const ImVec2& box) {
     // The matches themselves, each a line from one picture to the other. What
     // they are for is their SHAPE: a pair that only matched along one edge, or
     // whose lines fan out at every angle, is a pair that will register badly.
-    if (!_shot.lines.empty() && _left.tex && _right.tex) {
+    if (_show_matches && !_shot.lines.empty() && _left.tex && _right.tex) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const size_t n = _shot.lines.size() / 4;
         // A few dozen matches is the loop closure worth checking, and faint

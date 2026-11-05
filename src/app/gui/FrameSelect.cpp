@@ -4,6 +4,7 @@
 
 #include "app/FrameSharpness.h"
 #include "app/gui/PickSheet.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "i18n/catalog/Log.h"
 
@@ -221,7 +222,7 @@ int select_sharpest_frames(const std::string& cand_dir,
     const Judge judge = !rule.on() && !options.judged ? Judge::No
                         : rule.max_blur > 0.0f        ? Judge::Blur
                                                       : Judge::Similar;
-    const unsigned n_threads = std::max(1u, std::thread::hardware_concurrency());
+    const unsigned n_threads = std::max(1u, spirula::hardware_threads());
     if (group > 1 || options.adaptive) {
         auto last_log = std::chrono::steady_clock::now();
         for (size_t base = 0; base < files.size(); base += kChunk) {
@@ -389,7 +390,7 @@ int judge_image_folder(const std::string& dir, const FrameSelectOptions& options
     std::vector<std::string> paths;
     for (const fs::path& f : files) paths.push_back(f.string());
     std::vector<Analysis> got =
-        measure_all(paths, judge, std::thread::hardware_concurrency() / 2, options.scanning, cancel);
+        measure_all(paths, judge, spirula::hardware_threads() / 2, options.scanning, cancel);
     if (cancel.load()) return -1;
     std::vector<app::FramePick> measured;
     for (const Analysis& a : got) measured.push_back(a.pick);
@@ -439,7 +440,7 @@ int judge_image_sets(const std::string& dir, const std::vector<std::string>& fol
         for (const std::string& f : folders) paths.push_back((root / f / n).string());
     const std::function<void(int64_t, int64_t)> scanning = options.scanning;
     std::vector<Analysis> got = measure_all(
-        paths, judge, std::thread::hardware_concurrency() / 2,
+        paths, judge, spirula::hardware_threads() / 2,
         [&](int64_t done, int64_t) {
             if (scanning) scanning(done / (int64_t)lenses, (int64_t)names.size());
         },

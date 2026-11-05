@@ -80,6 +80,10 @@ bool is_set(const std::string& text) {
     return text.find_first_not_of(" \t") != std::string::npos;
 }
 
+bool valid_floater_override(const std::string& value) {
+    return value.empty() || value == "off" || value == "mild" || value == "strong";
+}
+
 // Which built-in a row's Dataset stage runs on. A row written before there
 // were any names none, and the base one is what it always had.
 std::string builtin_dataset_name(const BatchRow& row) {
@@ -169,7 +173,7 @@ bool same_run(const BatchRun& a, const BatchRun& b) {
     if (a.preset.path != b.preset.path) return false;
     if (a.preset.path.empty() && a.preset.name != b.preset.name) return false;
     return a.cap_max == b.cap_max && a.sh_degree == b.sh_degree &&
-           a.iterations == b.iterations;
+           a.iterations == b.iterations && a.floater_suppression == b.floater_suppression;
 }
 
 bool same_train_work(const BatchRow& a, const BatchRow& b) {
@@ -316,12 +320,15 @@ BatchProgress batch_progress(const std::vector<BatchTask>& tasks, int current,
     for (int i = 0; i < (int)tasks.size(); i++) {
         const BatchTask& t = tasks[(size_t)i];
         if (i == current) {
-            // Its own runner knows best; a stage average is the fallback, and
-            // a task cannot be estimated to finish before now.
+            // Its own runner knows best, except a dataset run, whose fraction
+            // counts steps rather than time: there a finished one's length wins.
+            // A task cannot be estimated to finish before now.
             double rem = -1.0;
-            if (frac > 0.02 && frac < 1.0) rem = elapsed * (1.0 - frac) / frac;
-            else if (const double g = guess(t.stage); g > 0.0)
+            const double g = guess(t.stage);
+            if (t.stage == BatchStage::Dataset && stage_n[(int)t.stage] > 0)
                 rem = std::max(g - elapsed, 0.0);
+            else if (frac > 0.02 && frac < 1.0) rem = elapsed * (1.0 - frac) / frac;
+            else if (g > 0.0) rem = std::max(g - elapsed, 0.0);
             p.task_remaining = rem;
             if (rem < 0.0) known = false;
             else total += rem;
@@ -508,6 +515,14 @@ void check_train_stage(const BatchRow& row, const BatchCapabilities& caps,
         for (size_t i = 0; i < specs.size(); i++)
             if (!parse_override(specs[i].text, specs[i].lo, specs[i].hi, &scratch))
                 out.push_back(issue_of(*bad[i], kSt, true, specs[i].text));
+        if (!valid_floater_override(run.floater_suppression)) {
+            BatchIssue issue;
+            issue.raw = spirula::i18n::format(spirula::i18n::msg::log::err_bad_flag_value,
+                                              {"floater_suppression", run.floater_suppression});
+            issue.stage = kSt;
+            issue.fatal = true;
+            out.push_back(std::move(issue));
+        }
 
         const BatchPreset& p = run.preset;
         TrainConfig cfg;
@@ -525,7 +540,7 @@ void check_train_stage(const BatchRow& row, const BatchCapabilities& caps,
         }
         // Everything the trainer refuses outright, asked before the queue has
         // spent an hour getting to this row.
-        if (std::string what = spirula::train_config_unsupported(cfg); !what.empty())
+        if (std::string what = spirula::train_config_error(cfg); !what.empty())
             out.push_back(issue_of(msg::chk_unsupported, kSt, true, what));
         // A missing image folder is a warning, not an error: the COLMAP and
         // Nerfstudio parsers both index images by what the reconstruction
@@ -750,7 +765,8 @@ bool batch_build_train_config(const BatchRow& row, int variant,
                               const std::string& image_dir,
                               const std::string& mask_dir, bool mask_flipped,
                               TrainConfig& cfg, std::string& preset_base,
-                              std::string& error) {
+                              std::string& error,
+                              std::set<std::string>* touched_fields) {
     const BatchRun run = batch_run_of(row, variant);
 
     std::set<std::string> touched;
@@ -789,10 +805,22 @@ bool batch_build_train_config(const BatchRow& row, int variant,
         cfg.*o.field = v;
         touched.insert(o.flag);
     }
+    if (!valid_floater_override(run.floater_suppression)) {
+        error = spirula::i18n::format(spirula::i18n::msg::log::err_bad_flag_value,
+                                       {"floater_suppression", run.floater_suppression});
+        return false;
+    }
+    if (!run.floater_suppression.empty()) {
+        cfg.floater_suppression = run.floater_suppression;
+        touched.insert("floater_suppression");
+    }
 
     // The same resolution order the trainer screen uses, so a run trains with
     // the values the options editor would have shown for this preset.
-    train_resolve_macros(cfg, touched);
+    TrainConfig macro_base;
+    train_apply_preset(macro_base, preset_base);
+    train_resolve_macros(cfg, touched, nullptr, &macro_base);
+    if (touched_fields) *touched_fields = touched;
     return true;
 }
 
@@ -830,13 +858,14 @@ bool batch_build_mesh_job(const BatchRow& row, const std::string& model,
 
 namespace {
 
-// The three overrides, wherever a file spells them. They sat on the row
-// before they sat on the run, and a queue written then still loads.
+// Row-level overrides keep queues written before per-run settings readable.
 void read_overrides(const JsonValue& j, BatchRun& run) {
     if (const JsonValue* v = j.find("cap_max")) run.cap_max = v->as_string();
     if (const JsonValue* v = j.find("sh_degree")) run.sh_degree = v->as_string();
     if (const JsonValue* v = j.find("num_iterations"))
         run.iterations = v->as_string();
+    if (const JsonValue* v = j.find("floater_suppression"))
+        run.floater_suppression = v->as_string();
 }
 
 BatchRow read_row(const JsonValue& j) {
@@ -966,6 +995,7 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
             w.field("cap_max", run.cap_max);
             w.field("sh_degree", run.sh_degree);
             w.field("num_iterations", run.iterations);
+            w.field("floater_suppression", run.floater_suppression);
             w.field("mesh", run.mesh);
             w.end();
         }

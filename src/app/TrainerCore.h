@@ -1,22 +1,8 @@
 #pragma once
 
-// TrainerCore -- the engine-side training session shared by the standalone
-// CLI (app/cli/main.cpp) and the native GUI (app/gui/). This is the single
-// training driver. It began as a port of a Python trainer that no longer
-// exists; the per-step logic lives in build_step_config() and nowhere else,
-// so there is nothing left to keep in sync.
-//
-// TrainerSession splits the run into phases so front-ends can interleave
-// their own UI between them:
-//   check_config()  -> throws for unported features, logs warnings
-//   load_dataset()  -> parse + post-split bake (no GPU work)
-//   setup_engine()  -> output dir, seeding, engine + DataManager init
-//   train()         -> the step loop; pause / stop / render-fairness via
-//                      the public atomics, per-step callback for progress
-//
+// Training session shared by the CLI and GUI.
 // The engine is a process-global singleton: one live session at a time.
-// setup_engine() calls engine_reset(), so a fresh session can follow a
-// finished one in the same process (the GUI's "train again" path).
+// setup_engine() resets it before starting another run.
 
 #include "app/SystemRecorder.h"
 #include "app/TrainPerfLog.h"
@@ -159,11 +145,8 @@ void save_config_json(const TrainConfig& c, const std::filesystem::path& out_dir
 void save_scene_transform_json(const ParsedDataset& ds, const TrainConfig& c,
                                const std::filesystem::path& out_dir);
 
-// "" when this config is runnable, else the sentence naming the flag that is
-// not implemented -- exactly what TrainerSession::check_config() throws. A
-// front-end that wants to report the problem instead of catching it (the
-// GUI's batch pre-flight) asks this first.
-std::string train_config_unsupported(const TrainConfig& c);
+// Shared validation for CLI training and GUI preflight; empty means valid.
+std::string train_config_error(const TrainConfig& c);
 
 
 // ===========================================================================
@@ -189,6 +172,32 @@ struct EvalProgress {
     int64_t completed = 0;
     int64_t total = 0;
 };
+
+// LPIPS for eval(). This library has no inference layer, so a front end built
+// with one installs these (app/EvalLpips.h); without them eval() leaves LPIPS
+// to reference/python/eval_lpips.py.
+class LpipsScorer {
+public:
+    virtual ~LpipsScorer() = default;
+    // The metrics score() fills, in order: "lpips_alex", "lpips_vgg".
+    virtual std::vector<std::string> names() const = 0;
+    // [metric][i]: preds[i] against gt, all [height, width, 3] in [0, 1].
+    virtual std::vector<std::vector<float>> score(const float* gt,
+                                                  const std::vector<const float*>& preds,
+                                                  int width, int height) = 0;
+};
+
+struct LpipsHooks {
+    // The checkpoints on disk, downloading what is missing; throws. Called by
+    // setup_engine(), so a failed download stops the run before it trains.
+    std::function<void(const TrainConfig&)> prepare;
+    // The networks for one eval pass.
+    std::function<std::unique_ptr<LpipsScorer>(const TrainConfig&)> open;
+};
+// Process-wide: Main.cpp installs them once, before any session starts.
+void set_lpips_hooks(LpipsHooks hooks);
+// Whether a run of `cfg` holds views out and scores them with LPIPS.
+bool lpips_wanted(const TrainConfig& cfg);
 
 struct TrainerCallbacks {
     // Called after every completed step, engine mutex released.
@@ -293,14 +302,9 @@ public:
 
     void save_checkpoint(int step, bool full);
 
-    // Held-out eval: render every frame of the eval split, score it, and write
-    // metrics.json. No-op when eval_mode is "all" (nothing is held out) or the
-    // eval split is empty. Replaces the engine's DataManager with one over the
-    // eval split, so it must run AFTER training.
-    //
-    // Reports l1/psnr/ssim and the cc_ variants of each (computed on the
-    // colour-corrected render). LPIPS is not computed here -- pass
-    // --save-eval-images and run reference/python/eval_lpips.py over the PNGs.
+    // Scores the held-out views into metrics.json: l1/psnr/ssim, LPIPS when its
+    // hooks are installed, and cc_ variants on the colour-corrected render.
+    // Replaces the engine's DataManager, so it must run AFTER training.
     void eval(const std::function<void(const EvalProgress&)>& on_progress = {});
 
     // The seeds setup_engine() hands the engine, from the point cloud and/or

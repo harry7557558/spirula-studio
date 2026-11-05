@@ -162,12 +162,11 @@ struct SfmJob {
     // an order of magnitude slower per pair -- the panel greys it out for SIFT
     // and the CLI refuses the combination outright.
     int matcher = 0;
-    // Scale and heading from the capture's GPS: 0 off, 1 latitude and
-    // longitude, 2 with altitude, 3 (the default) the CLI's per-capture `auto`.
-    // Indices are saved in presets, so `auto` is appended rather than first.
+    // Any GPS, video or EXIF: 0 off, 1 latitude and longitude, 2 with altitude,
+    // 3 (default) the CLI's `auto`. Saved in presets, so `auto` is appended.
     int metric_gps = 3;
-    // The video's own IMU and GPS track: 0 off, 1 orientation only, 2 (the
-    // default) orientation and whatever metric scale passes its own checks.
+    // The video's own IMU: 0 off, 1 orientation only, 2 (the default)
+    // orientation and the accelerometer's scale where it passes its checks.
     int sensor_gauge = 2;
     // The camera attitude a drone writes into each photo: 0 off, 1 orientation
     // only, 2 (the default) orientation and north.
@@ -285,6 +284,9 @@ public:
     // leaving the dataset screen, or closing the app. A no-op while a run is
     // going, and for a job that asked to keep them.
     void sweep_intermediates();
+    // Never sweeps them: the matches were edited by hand, and a run that
+    // matched again would throw the edit away.
+    void keep_intermediates();
     // Done, but under half the images registered (or a high reprojection
     // error). The dataset is usable; the user should know it has gaps.
     bool partial() const { return _partial.load(); }
@@ -302,9 +304,9 @@ private:
     void take_dense(SfmJob& job);
     void log(const std::string& line, bool detail = true);
     void set_stage(Stage st, const std::string& s);
-    // Stage changes driven by the child's output, which repeats a
-    // stage's lines many times over.
-    void set_stage_if_new(Stage st, const char* s);
+    // Stage changes driven by the child's output, which repeats a stage's
+    // lines many times over. `relabel` keeps the running step's bar.
+    void set_stage_if_new(Stage st, const char* s, bool relabel = false);
     // Where the run is: polled from the child's status.bin, or handed over
     // by the in-process run. apply_status is what both feed.
     void poll_status();
@@ -328,6 +330,7 @@ private:
     // The child said how it ended, so the exit code need not be interpreted.
     bool _have_status = false;
     int64_t _status_mtime = 0;
+    MappingWork _map_work;
     RunProgress _prog;
     RunFilms _films;
     std::mutex _mu;

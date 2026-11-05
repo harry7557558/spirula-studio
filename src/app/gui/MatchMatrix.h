@@ -32,7 +32,13 @@ public:
     bool draw(float size, PairBlock& block);
     void destroy_gl();
 
+    const PairMatrix& matrix() const { return _m; }
+    // The matrix as a bins x bins RGB texture, built if stale. GL context must be current.
+    GLuint texture() { ensure_texture(); return _tex; }
+
 private:
+    void ensure_texture();
+
     PairMatrix _m;
     GLuint _tex = 0;
     bool _dirty = false;

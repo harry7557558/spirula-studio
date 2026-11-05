@@ -1,5 +1,6 @@
 #include "dense/Reconstruction.h"
 
+#include "core/HardwareThreads.h"
 #include "data/SparseEdit.h"
 #include "data/Knn.h"
 #include "dense/ReferenceSampling.h"
@@ -122,7 +123,7 @@ struct Reconstruction::Impl {
         // Without the id, so the spacing sample, and with it the automatic voxel, match a run before ids.
         run_records = std::max<uint64_t>(1, config.image_cache_bytes / (8 * (sizeof(Surface) - sizeof(Surface::id))));
         pending_limit = std::max<uint64_t>(sizeof(Record), config.image_cache_bytes / 8);
-        const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+        const unsigned hardware = std::max(1u, spirula::hardware_threads());
         const uint64_t requested = c.matching_space == "source" && c.samples_per_reference ?
             std::min<uint64_t>(c.samples_per_reference, (uint64_t)width * height) : (uint64_t)width * kRows;
         const uint64_t working_bytes = std::max<uint64_t>(sizeof(Record), requested * 128);
@@ -610,8 +611,8 @@ struct Reconstruction::Impl {
         std::ifstream input(work / "two-image.bin",std::ios::binary);
         struct Candidate { RefinedSurface entry; std::vector<TrackObservation> track; std::vector<int64_t> sources; char verdict = 0; };
         std::vector<Candidate> block;
-        const unsigned workers = std::max(1u,std::min(config.cpu_workers ? (unsigned)config.cpu_workers : std::thread::hardware_concurrency(),
-                                                      std::max(1u,std::thread::hardware_concurrency())));
+        const unsigned workers = std::max(1u,std::min(config.cpu_workers ? (unsigned)config.cpu_workers : spirula::hardware_threads(),
+                                                      std::max(1u,spirula::hardware_threads())));
         auto judge = [&] {
             std::atomic<size_t> next{0};
             auto work_on = [&] {
@@ -731,7 +732,7 @@ struct Reconstruction::Impl {
             if (required > config.image_cache_bytes)
                 throw std::runtime_error("dense exact outlier filtering requires " + std::to_string(required) +
                     " bytes; host cache budget is " + std::to_string(config.image_cache_bytes) + " bytes");
-            const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+            const unsigned hardware = std::max(1u, spirula::hardware_threads());
             const unsigned workers = (unsigned)std::min<uint64_t>(std::min(config.cpu_workers ? (unsigned)config.cpu_workers : hardware, hardware),
                 std::min<uint64_t>((records + 255) / 256, std::max<uint64_t>(1,(config.image_cache_bytes - index_bytes) / std::max<uint64_t>(1,query_bytes))));
             std::ifstream input(work / "fused.bin", std::ios::binary);

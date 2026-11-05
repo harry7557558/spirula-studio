@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <numeric>
@@ -37,6 +38,7 @@
 #include <utility>
 #include <vector>
 
+#include "sfm/core/Events.h"
 #include "sfm/core/Model.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/map/Merge.h"
@@ -362,7 +364,12 @@ inline void mergeUpwards(Mapper& mapper, std::vector<Reconstruction>& models,
     int grow_passes = 0;
     bool solve_pending = false;  // a level merged and its joint solve was deferred
     if (!mopt.do_merge && !mopt.do_grow) return;
+    // The bar's count: a level halves the models, and the two on top are for
+    // the extra levels a refused pair earns -- over rather than under.
+    const int64_t levels =
+        (int64_t)std::ceil(std::log2((double)std::max<size_t>(2, models.size()))) + 2;
     for (int round = 0; round < std::max(1, opt.max_rounds) && models.size() > 1; round++) {
+        events::progress(Stage::Merge, std::min<int64_t>(round, levels - 1), levels);
         st.rounds = (size_t)round + 1;
         size_t refused = 0;
         std::map<std::string, size_t> why;
@@ -493,6 +500,7 @@ inline void mergeUpwards(Mapper& mapper, std::vector<Reconstruction>& models,
         st.joint_ba++;
         st.t_ba += secs(t0, clk());
     }
+    events::progress(Stage::Merge, levels, levels);
 
     if (opt.verbose) {
         const ManagerStats& f = st.finish;

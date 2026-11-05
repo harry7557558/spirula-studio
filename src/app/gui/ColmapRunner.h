@@ -76,6 +76,7 @@ struct ColmapJob {
     // COLMAP does not read it, so its routing remains a separate compatibility
     // tail.
     std::string device;
+    std::string inference_devices;
 
     // Cameras
     std::string camera_model = "OPENCV"; // ImageReader.camera_model
@@ -110,6 +111,8 @@ struct ColmapJob {
     bool blur_neighbour = true;
     int similar_bits = 0;
     bool keep_skipped = true;
+    bool sync_tracks = true;
+    bool auto_rotate = true;
     app::Pano360Options pano;            // see PrepJob
     int max_frames = 100000;
 

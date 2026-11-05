@@ -1,21 +1,6 @@
 #pragma once
 
-// Shared preamble for the optimizer kernels.
-//
-// Optimizer.cu was one file (~2.7k lines) holding every optimizer variant.
-// It is split by function; the parts all declare into the single
-// Optimizer.cuh via HEADER_SOURCES['Optimizer'] in generate_headers.py.
-// See docs/codegen.md.
-//
-//   TensorSetZero.cu           set_zero_tensor
-//   AdamOptim.cu               Adam, multi-tensor Adam, Riemannian quat Adam,
-//                              8-bit / stepped variants
-//   NewtonOptim.cu             Newton
-//   ScaleAgnosticMeanOptim.cu  scale-agnostic mean Adam
-//   FusedGeometryOptim.cu      fused 3DGS geometry optimizer
-//   FusedAppearanceOptim.cu    fused appearance optimizer (quantized SH)
-//   TrustRegion3DGS2Optim.cu   3DGS^2-TR mean/scale/color/opacity/quaternion
-//   ColorOptim.cu              linear-RGB Adam, trust-region RGB / SH Adam
+// Shared device helpers for optimizer launchers.
 
 #include "kernels/optim/Optimizer.cuh"
 
@@ -31,6 +16,11 @@ namespace SlangPixelWise {
 namespace SlangPerSplatLosses {
 #include "generated/set_namespace.cuh"
 #include "generated/per_splat_losses.cuh"
+}
+
+namespace SlangProjectiveDepth {
+#include "generated/set_namespace.cuh"
+#include "generated/projective_depth.cuh"
 }
 
 #include <core/Common.cuh>

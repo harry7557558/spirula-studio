@@ -8,6 +8,7 @@
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
 #include "nn/core/Log.h"
+#include "nn/core/Parallel.h"
 #include "nn/io/Image.h"
 
 #include "external/stb_image.h"
@@ -15,6 +16,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
+#include <memory>
 #include <vector>
 
 namespace nn {
@@ -27,6 +30,9 @@ Image load_image(const std::string& path, const std::string& gamut,
         imagefile::Info info;
         imagefile::Options opt;
         opt.exposure = exposure;
+        if (configured_parallel_threads())
+            opt.threads = (int)std::min(parallel_threads(),
+                                      (unsigned)std::numeric_limits<int>::max());
         const std::string err =
             imagefile::decode_srgb8(path, opt, info, img.data, gamut, is_linear);
         if (!err.empty()) {
@@ -38,7 +44,8 @@ Image load_image(const std::string& path, const std::string& gamut,
         img.channels = 3;
         return img;
     }
-    uint8_t* data = stbi_load(path.c_str(), &w, &h, &c, 3);
+    std::unique_ptr<uint8_t, decltype(&stbi_image_free)> data(
+        stbi_load(path.c_str(), &w, &h, &c, 3), &stbi_image_free);
     if (!data) {
         NN_LOG_ERROR("load_image: cannot read '%s': %s\n", path.c_str(),
                        stbi_failure_reason() ? stbi_failure_reason() : "unknown format");
@@ -47,8 +54,8 @@ Image load_image(const std::string& path, const std::string& gamut,
     img.width = w;
     img.height = h;
     img.channels = 3;
-    img.data.assign(data, data + (size_t)w * h * 3);
-    stbi_image_free(data);
+    img.data.assign(data.get(), data.get() + (size_t)w * h * 3);
+    data.reset();
     colorspace::to_srgb_inplace(img.data.data(), (size_t)w * h, gamut,
                                 is_linear.value_or(false));
     colorspace::expose_srgb8_inplace(

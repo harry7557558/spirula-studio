@@ -8,6 +8,7 @@
 #include "core/Env.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -171,6 +172,10 @@ void forward_3dgs(
     // next render, which has no reason to want the transform.
     const bool output_depth = !engine().fwd.skip_depth_pending;
     engine().fwd.skip_depth_pending = false;
+    // The scores exist from the first optimizer step on.
+    const bool output_score = engine().fwd.score_pending &&
+                              engine().optim.accum_buffer.data_ptr() != nullptr;
+    engine().fwd.score_pending = false;
     engine().fwd.image_fmt = engine().fwd.image_fmt_pending;
     engine().fwd.image_fmt_pending = PixelFormat::F32;
     const bool ppisp_in_forward = engine().ppisp.forward_pending;
@@ -370,6 +375,8 @@ void forward_3dgs(
     // ellipse-vs-tile test instead of the conservative AABB one.
     ProjEllipseView ellipse = proj_ellipse_view(
         engine().fwd.splats_s[0].data_ptr(), primitive == "3dgut");
+    if (primitive != "3dgut")  // the 3DGUT rasterizer draws the full gaussian
+        ellipse.max_sigma = engine().fwd.kernel_cut;
 
     auto& bin = bin_choice();
     engine().fwd.macro_log2 = engine_bin_macro_log2();
@@ -407,6 +414,19 @@ void forward_3dgs(
     // the forward, so a later preview or viewer render cannot inherit it.
     engine().fwd.tile_active = DeviceVector<int32_t>();
 
+    SplatScoreRender score;
+    if (output_score) {
+        const auto& ls = engine().learned_score;
+        engine().fwd.render_score.resize(PoolSlot::RenderScore, engine().camera.num,
+                                         engine().camera.height, engine().camera.width);
+        score.score = engine().optim.accum_buffer.data_ptr();
+        score.out = engine().fwd.render_score.data_ptr();
+        score.exponent = 1.0f / ls.power;
+        score.prior = std::exp(ls.log_prior);
+    } else {
+        engine().fwd.render_score = DeviceTensor3D<float>();
+    }
+
     // --- Rasterization forward ---
     RenderOutput::TensorTuple renders;
     RenderOutput::TensorTuple distortions;
@@ -420,7 +440,7 @@ void forward_3dgs(
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
-            dist_type, output_median, output_depth);
+            dist_type, output_median, output_depth, score, engine().fwd.kernel_cut);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "mip") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_mip_fwd(
@@ -428,7 +448,7 @@ void forward_3dgs(
             in_splats, engine().fwd.splats_s, engine().fwd.gaussian_ids,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
-            dist_type, output_median, output_depth);
+            dist_type, output_median, output_depth, score, engine().fwd.kernel_cut);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     } else if (primitive == "3dgut") {
         auto [r, rTs, lids, dist, med] = rasterize_to_pixels_3dgut_fwd(
@@ -440,7 +460,7 @@ void forward_3dgs(
             engine().fwd.aabb,
             (uint32_t)engine().camera.width, (uint32_t)engine().camera.height,
             tile_offsets, flatten_ids, engine().fwd.macro_log2,
-            dist_type, output_median, output_depth);
+            dist_type, output_median, output_depth, score);
         renders = r; render_Ts = rTs; last_ids = lids; render_median = med; distortions = dist;
     }
 

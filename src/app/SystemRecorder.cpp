@@ -1,5 +1,6 @@
 #include "app/SystemRecorder.h"
 
+#include "core/HardwareThreads.h"
 #include "core/HostMemory.h"
 
 #if defined(_WIN32)
@@ -652,7 +653,7 @@ bool SystemRecorder::start(const fs::path& dir, double interval_s) {
     auto impl = std::make_unique<Impl>();
     impl->dir = dir;
     impl->interval_s = std::max(0.1, interval_s);
-    impl->cores = std::max(1, (int)std::thread::hardware_concurrency());
+    impl->cores = std::max(1, (int)spirula::hardware_threads());
     std::error_code ec;
     fs::create_directories(dir, ec);
     impl->system = std::fopen((dir / "system.csv").string().c_str(), "w");

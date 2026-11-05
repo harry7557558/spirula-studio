@@ -1,18 +1,17 @@
-# Pose normalization: orientation, centering, scale, and train_frame
+# Pose normalization: orientation, centering and scale
 
 `orientation_method`, `center_method` and `auto_scale_poses` are accepted by
-both trainers but only *partially* implemented natively. This note records
-what the C++ does, what it does not, and where the reference implementation
-is, so the port does not have to be reverse-engineered from a diff.
+the CLI and GUI. Orientation and centering methods are only partially
+implemented. This note describes the native behavior and preserves the
+historical reference for the other methods.
 
 ## Status
 
 | config | native behaviour |
 |---|---|
-| `orientation_method` | always `up`; anything else warns and is approximated |
-| `center_method` | always `poses`; ditto |
-| `auto_scale_poses` | effectively always on — the scale is folded into `train_frame_scale` |
-| `train_frame` | only `points`; `normalized` / `camera` are rejected by `check_config()` |
+| `orientation_method` | `up`, `pca`, `vertical`, `none` supported; `gsplat` warns and is approximated |
+| `center_method` | `poses`, `focus`, `none` supported; `gsplat` warns and is approximated |
+| `auto_scale_poses` | supported — when off, `scale_factor` is 1.0; when on, folded into `train_frame_scale` |
 
 **Where the frame now comes from.** `spirula sfm` applies this same
 similarity to the model before writing it (`src/sfm/map/Orient.h`,
@@ -26,15 +25,17 @@ still describes what the trainer does — it is simply being handed a scene that
 has nothing left to normalize. Datasets from COLMAP, Metashape or nerfstudio
 are unchanged and still arrive in whatever gauge their producer chose.
 
-Because `train_frame="points"` keeps splats in the raw SfM frame, the
-orientation/centering choice does **not** move the training coordinates. It
+Training uses the source dataset frame, translated by `scene_center` and
+scaled by `relative_scale`. The orientation/centering choice does **not** move the training coordinates. It
 only changes `train_frame_scale` (and hence the LR / regularizer rescaling
 that hangs off it) and `train_to_normalized`, the similarity the web viewer
 uses to place its default camera. That is why the native trainer can warn and
 carry on rather than refuse: the approximation is real but bounded.
 
 `src/data/parsers/DatasetCommon.cpp::compute_normalized_transform` is the C++
-side. It implements the `up`/`poses` path only.
+side. It implements `up`, `pca`, `vertical`, `none` orientation, `poses`,
+`focus`, `none` centering, and respects `auto_scale_poses`. `gsplat` remains
+approximated with a warning.
 
 ## Reference implementation
 
@@ -53,7 +54,8 @@ Verbatim from `spirulae_splat/modules/dataparser.py::_parse_nerfstudio_data`
 at commit `af96993`, the last commit before the Python parser was deleted
 (`git show af96993:spirulae_splat/modules/dataparser.py` for the full file).
 Reproduced rather than paraphrased so it cannot drift from what was actually
-verified against the native parser.
+verified against the native parser. Its `train_frame` setting is historical;
+the native trainer has no frame selector.
 
 ```python
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
@@ -161,10 +163,8 @@ verified against the native parser.
 - The `gsplat` branch sets `scale_factor = 1 / scene_scale` and carries a
   `# TODO: this messes up scale_reg` comment from before `train_frame_scale`
   existed. Worth re-checking rather than porting the comment.
-- `train_frame="points"` additionally undoes nerfstudio's `applied_transform`
-  so poses and points land back in the original SfM frame. The native parser
-  does implement this (`NerfstudioParser.cpp`); it is only the
-  orientation/centering *choice* that is missing.
+- The native Nerfstudio parser undoes `applied_transform` so poses and
+  points return to the source frame before scene centering.
 - The `train_frame_scale = 1 / scale_factor` relationship is what the engine
   uses to rescale `means_lr`, `scale_reg`, `max_world_size` and `noise_lr`.
   A port that changes `scale_factor` changes effective learning rates.

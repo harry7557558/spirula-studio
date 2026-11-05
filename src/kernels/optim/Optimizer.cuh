@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ProjectiveDepthState.h"
 #include <core/Tensor.h>
 #include "core/ColorBasis.h"
 #include "core/ColorTrustState.h"
@@ -126,9 +127,7 @@ void fused_optim_3dgs_geometry(
     DeviceVector<float4> quats, DeviceVector<float4> v_quats, DeviceVector<float4> g1_quats, DeviceVector<float4> g2_quats,
     DeviceVector<float3> scales, DeviceVector<float3> v_scales, DeviceVector<float3> g1_scales, DeviceVector<float3> g2_scales,
     DeviceVector<float> opacities, DeviceVector<float> v_opacities, DeviceVector<float> g1_opacities, DeviceVector<float> g2_opacities,
-    // features_dc + grad: consumed only when non_sh has its quant buffers
-    // populated (via non_sh.enabled flagged in `non_sh`). The fp32 path
-    // ignores them and runs the separate fused_adam_step features_dc call.
+    // The fp32 DC path uses the separate Adam launch.
     DeviceVector<float3> features_dc, DeviceVector<float3> v_features_dc,
     DeviceVector<float> radii,
     // optional [N] densification world-grad score output; empty disables.
@@ -144,7 +143,7 @@ void fused_optim_3dgs_geometry(
     ColorTrustState color_trust,
     NonShQuantState non_sh,
     SplatVisitState visit,
-    GradQuantBuffers gq,
+    GradQuantBuffers gq, ProjectiveDepthOptim depth,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
     float grad_scale, bool zero_grad
 );
