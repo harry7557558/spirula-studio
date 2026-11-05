@@ -1340,6 +1340,7 @@ static bool probe_frame_source(const PrepJob& job, const PrepInput& in,
     }
     error = cancel.load() ? lmsg::err_cancelled.get()
             : !command_exists(job.ffmpeg_exe) ? fmt(lmsg::err_ffmpeg_missing, {job.ffmpeg_exe})
+            : !facts.error.empty() ? fmt(lmsg::err_ffmpeg_unrunnable, {facts.error})
             : probe_error.empty() ? "no video track" : probe_error;
     return false;
 }
@@ -3848,6 +3849,15 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
                         };
                         publish(todo_dst[k], "train-final.png");
                         publish(todo_fdst[k], "feature-final.png");
+                        if (_films.masks) {
+                            FilmFrame frame;
+                            frame.name = under_root(todo_files[k], image_root).generic_string();
+                            frame.image_path = todo_files[k].string();
+                            frame.mask_path = todo_dst[k].path.string();
+                            frame.feature_mask_path = todo_fdst[k].path.string();
+                            if (_films.masks->wants()) _films.masks->add_loaded(frame);
+                            else _films.masks->add(frame);
+                        }
                         if (_cancel.load()) { why = "Mask publication canceled"; return false; }
                         ++done;
                         progress.update(done, done == (int)files.size());

@@ -747,7 +747,22 @@ void test_mask_output_ownership() {
 #endif
 }
 
+void test_geometry_reel_outputs() {
+    const auto root = scratch("geometry-reel");
+    const auto maps = root / "normals";
+    write_png(maps / "frame.png", 16, 16, 128);
+    std::ofstream(maps / "frame.png.geometry-complete") << "completion record";
+    std::ofstream(maps / "frame.png.part-1") << "unfinished image";
+    gui::FilmReel reel;
+    gui::OutputWatch watch(&reel, maps, {}, {}, false, true);
+    watch.poll();
+    check(reel.size() == 1, "atomic geometry appears immediately without markers or temporary files");
+    watch.poll(true);
+    check(reel.size() == 1, "geometry flush does not duplicate published frames");
+}
+
 int main() {
+    test_geometry_reel_outputs();
     test_mask_output_ownership();
     test_source_aware_video_resume();
     test_bare_model_is_not_a_dataset();

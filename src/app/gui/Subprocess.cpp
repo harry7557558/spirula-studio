@@ -735,18 +735,34 @@ struct ExecArgs {
         environment.push_back(nullptr);
     }
 
+    [[noreturn]] void report_failure() {
+        const int code = errno;
+        const char prefix[] = "cannot run ";
+        const char reason[] = ": exec failed, errno ";
+        char digits[16];
+        char* end = digits + sizeof digits;
+        *--end = '\n';
+        unsigned value = static_cast<unsigned>(code);
+        do { *--end = char('0' + value % 10); value /= 10; } while (value);
+        if (::write(STDERR_FILENO, prefix, sizeof prefix - 1) < 0) {}
+        if (::write(STDERR_FILENO, args[0], std::strlen(args[0])) < 0) {}
+        if (::write(STDERR_FILENO, reason, sizeof reason - 1) < 0) {}
+        if (::write(STDERR_FILENO, end, digits + sizeof digits - end) < 0) {}
+        _exit(127);
+    }
+
     [[noreturn]] void execute() {
         for (const auto& path : paths) {
             execve(path.c_str(), args.data(), environment.data());
             if (errno == ENOEXEC) {
                 shell[1] = const_cast<char*>(path.c_str());
                 execve("/bin/sh", shell.data(), environment.data());
-                _exit(127);
+                report_failure();
             }
             if (errno != EACCES && errno != ENOENT && errno != ENOTDIR &&
                 errno != ESTALE && errno != ENODEV && errno != ETIMEDOUT) break;
         }
-        _exit(127);
+        report_failure();
     }
 };
 

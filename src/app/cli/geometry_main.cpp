@@ -1273,12 +1273,10 @@ int spirula_geometry_main(int argc, char** argv) {
                     writers.submit(std::move(job));
                 }
 
-                // Every image, not every tenth: the GUI drives its bar and its
-                // preview reel off these lines.
                 ++written;
-                {
+                if (!o.worker) {
                     const double each = model_ms / (double)std::max<int64_t>(modeled, 1);
-                    std::printf("\r%s   ",
+                    std::printf("%s\n",
                                 format(G::log_progress,
                                        {(long long)(written + skipped), (long long)N,
                                         (long long)std::lround(each),
@@ -1459,9 +1457,11 @@ int spirula_geometry_main(int argc, char** argv) {
                             app::publish_geometry_family(families[index], o.overwrite);
                             NN_CHECK(complete(t), "published geometry family is incomplete");
                             ++written;
-                            std::printf("\r%s   ", format(G::log_progress,
-                                {(long long)(written + skipped), (long long)N, 0LL,
-                                 format_duration(0)}).c_str());
+                            const double each = (nn::now_ms() - t_start) / written;
+                            std::printf("%s\n", format(G::log_progress,
+                                {(long long)(written + skipped), (long long)N,
+                                 (long long)std::lround(each),
+                                 format_duration(each * (N - written - skipped) / 1000.0)}).c_str());
                             std::fflush(stdout);
                         }
                         return true;

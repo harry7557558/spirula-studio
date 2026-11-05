@@ -60,7 +60,7 @@ void extract(const fs::path& video, const fs::path& workspace, bool block_write)
     }
 }
 
-void parallel_extract(const fs::path& video, const fs::path& root) {
+void parallel_extract(const fs::path& video, const fs::path& root, bool blur = false) {
     gui::PrepJob job;
     job.resume = false;
     job.force_external_decode = true;
@@ -71,7 +71,14 @@ void parallel_extract(const fs::path& video, const fs::path& root) {
     input.path = video.string();
     input.is_video = true;
     input.lut = gui::kLutNone;
-    input.packed_lenses = 2;
+    input.packed_lenses = blur ? 0 : 2;
+    if (blur) {
+        job.video_fps = 5;
+        job.skip_blurry = true;
+        job.blur_px = 1000;
+        job.blur_neighbour = 0;
+        job.similar_bits = 0;
+    }
     input.subdir = "a";
     job.inputs.push_back(input);
     std::atomic<bool> cancel{false};
@@ -101,7 +108,7 @@ void parallel_extract(const fs::path& video, const fs::path& root) {
                 "parallel packed JPEG parity: " + relative.string());
         ++compared;
     }
-    check(compared == 8, "four frames split into two lenses");
+    check(blur ? compared > 0 : compared == 8, "selected frames reach both output folders");
     job.adaptive_fps = true;
     job.video_fps = 5;
     run("adaptive");
@@ -127,7 +134,7 @@ int main() {
     std::string output;
     const int rc = gui::run_process(
         {"ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=128x64:rate=30", "-frames:v", "60", "-c:v", "ffv1",
+         "-i", "testsrc2=size=256x256:rate=30", "-frames:v", "60", "-c:v", "ffv1",
          video.string()},
         "", [&](const std::string& line) { output += line + "\n"; }, cancel);
     check(rc == 0, "create a 60-frame software video: " + output);
@@ -135,6 +142,7 @@ int main() {
         extract(video, root / "blocked", true);
         extract(video, root / "complete", false);
         parallel_extract(video, root);
+        parallel_extract(video, root / "blur", true);
     }
     fs::remove_all(root);
     return failures == 0 ? 0 : 1;

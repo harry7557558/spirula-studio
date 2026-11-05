@@ -231,7 +231,8 @@ bool run_geometry_step(const GeometryJob& job, const std::string& dataset,
     // is watched by; a depth-only run has only the other folder.
     const fs::path root(dataset);
     OutputWatch watch(reel, root / (job.want_normal ? "normals" : "depths"),
-                      images, job.want_depth ? root / "depths" : fs::path());
+                      images, job.want_depth ? root / "depths" : fs::path(),
+                      /*fresh_only=*/false, /*atomic_outputs=*/true);
     const int rc = run_process(argv, "", [&](const std::string& raw) {
         const std::string line = trim_right(raw);
         if (line.empty()) return;
