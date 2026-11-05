@@ -125,6 +125,19 @@ int main() {
     const fs::path ws = fs::temp_directory_path() / "spirula_dataset_plan_test";
     const SfmJob made = video_job(ws);
 
+    {
+        SfmJob workers = made;
+        expect(workers.prep.inference_devices.empty() &&
+                   workers.geometry.worker_devices.empty(),
+               "worker scheduling defaults to serial before GPU selection");
+        workers.prep.inference_devices = "uuid:00112233445566778899aabbccddeeff";
+        workers.geometry.worker_devices = workers.prep.inference_devices;
+        expect(frames_fields(made.prep) == frames_fields(workers.prep) &&
+                   masks_fields(made.prep) == masks_fields(workers.prep) &&
+                   geometry_fields(made.geometry) == geometry_fields(workers.geometry),
+               "GPU routing does not change output recipes");
+    }
+
     // ---- which LUT a row's frames go through ---------------------------------
     {
         std::vector<PrepInput> rows(5);
@@ -318,6 +331,33 @@ int main() {
         expect(authorized[Step::Frames].act == Act::Redo && !authorized.ask(),
                "explicit frame rebuilding takes precedence over a retained preservation choice");
         fs::remove_all(w);
+    }
+    {
+        const fs::path w = ws.string() + "_source_identity";
+        const fs::path source = ws.string() + "_source.mp4";
+        touch(source);
+        SfmJob j = video_job(w);
+        j.prep.inputs[0].path = source.string();
+        std::string error;
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot the video");
+        build(w, j);
+        expect(plan(j)[Step::Frames].act == Act::Reuse, "identified unchanged source reuses frames");
+        const auto stamp = fs::last_write_time(source);
+        std::ofstream(source) << "y";
+        fs::last_write_time(source, stamp);
+        expect(snapshot_frame_sources(j.prep, error), "source identity: snapshot replacement");
+        PlanRequest keep;
+        keep.keep_built = true;
+        const DatasetPlan changed = plan(j, keep);
+        expect(changed[Step::Frames].act == Act::Redo && !changed[Step::Frames].can_keep &&
+                   changed.ask() && makes(changed[Step::Masks].act) &&
+                   makes(changed[Step::Model].act),
+               "same-size same-time source replacement invalidates frames and their dependents");
+        PlanRequest redo;
+        redo.redo_frames = true;
+        expect(!plan(j, redo).ask(), "explicit extraction authorizes source invalidation");
+        fs::remove_all(w);
+        fs::remove(source);
     }
     {
         SfmJob scans = made;

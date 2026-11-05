@@ -108,6 +108,32 @@ GUI (Basic Options) for remote monitoring.
 | `gui/Subprocess.h/.cpp` | Cross-platform subprocess with merged stdout/stderr line streaming + kill-on-cancel (fork/execvp + process group on POSIX, CreateProcess + pipe on Windows). Bare `\r` ends a log line (ffmpeg/curl progress). `split_args()` splits a typed-in argument string the way a shell would for the simple cases -- a line break separates like any other space and a backslash before one continues the line, so a multi-line command pasted out of a terminal splits into what its author meant -- and `command_argv()` builds an argv from a typed-in command line with a token replaced by `safe_arg(value)` -- the value lands in ONE argument whether or not the user quoted the token, and `safe_arg` leaves nothing in it that a JSON payload or a command line would have to escape (quotes curl to `”` / `’`, a backslash becomes `/`, control characters become spaces). Guarded by `command_argv_test`. `ProcessReader` is the other direction: a child's stdout read as bytes (stderr still line by line), which is how `FfmpegVideo` takes decoded pictures out of ffmpeg. GUI-free, and linked into the CLI for that. |
 | `gui/CommandRunner.h/.cpp` | One external command the user asked for, run on a thread because the GUI cannot block on it: the same `drain_log()` shape as the other runners, plus `take_exit_code()`, which reports an outcome once so the caller can say "not found" (`kSpawnFailed`), "exited with code N" or "finished". It knows nothing about what it runs -- the caller hands it an argv. |
 
+`run_process`, `ProcessPipe` and `ProcessReader` own nested work until the direct
+child exits: cancellation, destruction and abrupt owner death terminate it.
+Windows assigns a non-inheritable kill-on-close job atomically during creation
+and explicitly limits inherited handles. Shutdown first blocks new job admission,
+retains identity-checked handles for the job's current members, terminates the job,
+and waits for those handles to signal and the active process count to reach zero.
+The first cancellation request retains these handles until `finish`; accounting
+alone is not a resource-release barrier. Seal/query/open/membership/termination
+failures or a five-second cleanup timeout return failure rather than success.
+**Windows limitation:** an unmanaged descendant that already exited and disappeared
+from the job's process list before the shutdown snapshot cannot be retained for
+waiting, even if its final resource teardown is still pending. This barrier does
+not prove synchronous resource reclamation for all previously spawned descendants.
+POSIX uses an isolated guardian and owner-death pipe. A separate completion-pipe
+lease is inherited across owned launches; nested guardians retain ancestor leases
+until their own cleanup finishes. `run_process` and `finish` wait for completion
+EOF before returning; `kill` only signals cancellation. Private descriptor metadata
+is passed in each child's environment, without modifying the caller's environment.
+External POSIX tools that detach with `setsid`/`setpgid`, close inherited completion
+leases, or discard their metadata before launching more owned work are outside
+the synchronous reclamation guarantee. This is not a process sandbox.
+`open_url` closes the leases and deliberately leaves the browser independent.
+Direct model-download `system`/`popen` calls inherit containment when running
+inside an owned child, but top-level downloads do not themselves use this API.
+
+
 The frustum-size control also reaches the web viewer: viewer.html gained a
 "Camera Size" slider sending `camera_size_scale` per /render; the render
 worker applies it via the new `engine_viewer_set_camera_size()` (Engine.h /

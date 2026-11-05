@@ -26,6 +26,7 @@
 #include <functional>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -71,6 +72,7 @@ using app::WriterPool;
 
 struct Decoder {
     bool builtin = false;
+    std::unique_lock<std::mutex> video_lock;
     VideoFacts facts;                          // ffmpeg's probe, when not built-in
     std::vector<std::pair<int, int>> sizes;    // one per track
 };
@@ -83,6 +85,9 @@ bool cancelled(const FrameExtractSinks& sinks, std::string& error) {
 
 bool use_ffmpeg(const FrameExtractJob& job, const FrameExtractSinks& sinks,
                 Decoder& d, const std::string& why, std::string& error) {
+    // ffmpeg still uses the shared GPU stream for blur scoring and masking.
+    if (d.video_lock.owns_lock() && job.blur_reject <= 0 && job.mask.model.empty())
+        d.video_lock.unlock();
     if (cancelled(sinks, error)) return false;
     if (!gui::command_exists(job.ffmpeg_exe)) {
         error = job.decoder == FrameDecoder::Ffmpeg
@@ -95,6 +100,7 @@ bool use_ffmpeg(const FrameExtractJob& job, const FrameExtractSinks& sinks,
         log_line(sinks, spirula::i18n::format(lmsg::decode_fallback_ffmpeg, {why}));
     error.clear();
     Decoder ff;
+    ff.video_lock = std::move(d.video_lock);
     static const std::atomic<bool> never{false};
     ffmpeg_probe_video(job.ffmpeg_exe, job.input, ff.facts,
                        sinks.cancel ? *sinks.cancel : never);
@@ -117,6 +123,15 @@ bool pick_decoder(const FrameExtractJob& job, const FrameExtractSinks& sinks,
     if (cancelled(sinks, error)) return false;
     std::string why = "this build has no in-process video decoder"
                       " (-DSS_ENABLE_PATENTED=OFF)";
+    bool uses_gpu = job.blur_reject > 0 || !job.mask.model.empty();
+#ifdef SS_HAVE_VIDEO
+    uses_gpu = uses_gpu || job.decoder != FrameDecoder::Ffmpeg;
+#endif
+    if (uses_gpu) {
+        static std::mutex video_mutex;
+        d.video_lock = std::unique_lock<std::mutex>(video_mutex);
+        if (cancelled(sinks, error)) return false;
+    }
     if (job.decoder != FrameDecoder::Ffmpeg) {
 #ifdef SS_HAVE_VIDEO
         why = video_decode_availability();

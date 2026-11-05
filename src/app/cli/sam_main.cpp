@@ -22,6 +22,7 @@
 #include "nn/io/Image.h"
 #include "birefnet/BiRefNet.h"
 #include "sam/Masking.h"
+#include "app/MaskWorker.h"
 #include "sam/Sam.h"
 #ifdef SS_HAVE_VIDEO
 #include "video/Video.h"
@@ -830,6 +831,11 @@ int sam_cli_extract(int argc, char** argv);
 
 int spirula_sam_main(int argc, char** argv) {
     app::set_program_name(argc > 0 ? argv[0] : nullptr, "spirula sam");
+    if (argc == 3 && std::strcmp(argv[1], "--mask-worker") == 0) {
+        const int rc = app::mask_worker_main(argv[2]);
+        nn::shutdown();
+        return rc;
+    }
     if (argc >= 2 &&
         (std::strcmp(argv[1], "--help") == 0 ||
          std::strcmp(argv[1], "-h") == 0)) {

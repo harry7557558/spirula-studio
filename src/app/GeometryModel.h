@@ -105,6 +105,10 @@ private:
 // Every model id `--model` accepts, MoGe's first, for a usage message.
 std::string geometry_model_ids();
 
+// Resolve cached weights before starting isolated workers, without allocating a device.
+int geometry_model_preflight(const std::string& id_or_path, bool depth, bool normal,
+                             uint64_t& host_bytes);
+
 // What has to be fetched before load() can run, beyond the single files the
 // families fetch themselves. Only Marigold v2 has any: it is built from ~45 GB
 // streamed (src/marigold/README.md), and the disk is checked beforehand.

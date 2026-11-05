@@ -2103,6 +2103,38 @@ void test_parallel_for() {
     } else {
         std::printf("  ok   %-28s\n", "parallel_for rethrow");
     }
+
+    const unsigned automatic = parallel_threads();
+    for (unsigned cap : {1u, 2u}) {
+        std::thread configure([cap] { set_parallel_threads(cap); });
+        configure.join();
+        std::atomic<unsigned> calls{0};
+        covered = 0;
+        parallel_for(1 << 16, [&](int64_t lo, int64_t hi) {
+            ++calls;
+            covered += hi - lo;
+        });
+        const unsigned expected = std::min(cap, automatic);
+        ++g_checks;
+        if (configured_parallel_threads() != cap || parallel_threads() != expected ||
+            calls.load() != expected || covered.load() != (1 << 16)) {
+            ++g_failures;
+            std::printf("  FAIL %-28s cap %u, threads %u, calls %u, covered %lld\n",
+                        "parallel_for cap", cap, parallel_threads(), calls.load(),
+                        (long long)covered.load());
+        } else {
+            std::printf("  ok   %-28s cap %u\n", "parallel_for cap", cap);
+        }
+    }
+    set_parallel_threads(0);
+    ++g_checks;
+    if (configured_parallel_threads() != 0 || parallel_threads() != automatic) {
+        ++g_failures;
+        std::printf("  FAIL %-28s expected %u, got %u\n",
+                    "parallel_for reset", automatic, parallel_threads());
+    } else {
+        std::printf("  ok   %-28s\n", "parallel_for reset");
+    }
 }
 
 int main(int argc, char** argv) {

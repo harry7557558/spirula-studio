@@ -44,6 +44,9 @@
 #include "app/gui/TrainRunner.h"
 #include "app/gui/ViewportPanel.h"
 #include "data/PointCloudFile.h"
+#ifdef SS_BUILD_SAM
+#include "nn/Device.h"
+#endif
 
 #include <cstddef>
 #include <atomic>
@@ -438,6 +441,10 @@ private:
     void draw_masking_options(const MaskingPanel& p);
     // The job's mask_* fields from the shared settings; `mask_enable` excepted.
     void fill_masking(PrepJob& prep) const;
+    std::string resolved_worker_devices() const;
+#ifdef SS_BUILD_SAM
+    void draw_additional_gpus();
+#endif
     void draw_geometry_options();
     // Opens the geometry preview on the output folder when it already holds a
     // reconstruction -- the only case where the real cameras are known -- and
@@ -744,11 +751,15 @@ private:
     // What the picker lists: the native Vulkan records when the build has one,
     // backend rows otherwise. Cached: enumeration spins up a throwaway
     // instance, and the machine's device set does not change under a session.
+#ifdef SS_BUILD_SAM
+    using NativeDeviceRow = nn::DeviceInfo;
+#else
     struct NativeDeviceRow {
         std::string name, type, uuid;   // uuid canonical, "" when unreported
         uint64_t vram_bytes = 0;
         bool usable = false;
     };
+#endif
     std::vector<NativeDeviceRow> _native_devices;
     bool _native_devices_loaded = false;
 
@@ -1001,6 +1012,7 @@ private:
     bool _mask_memory = false;
     int  _mask_detect_every = 1;
     int  _mask_memory_frames = 0;
+    std::string _additional_gpus = "auto";
     // The static stencils are kept on the inputs themselves (PrepInput::
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.

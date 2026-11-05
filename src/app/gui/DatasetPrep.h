@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -242,6 +243,8 @@ inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
+    // Frozen by the runner before planning; empty in the panel's cheap preview.
+    std::vector<std::string> source_content;
     std::string workspace;           // output dataset dir (created)
     bool resume = true;              // reuse what a previous run completed
     // Steps a re-run is redoing rather than reusing: their output is thrown
@@ -263,6 +266,7 @@ struct PrepJob {
 
     // Shared frame selection and masking device, frozen at the top of run().
     std::string device;
+    std::string inference_devices;       // empty = existing serial implementation
 
     // ---- video extraction ----
     // What a 360 capture (PrepInput::pano360) becomes. Dataset-wide: mixing
@@ -359,6 +363,10 @@ struct PrepJob {
     std::string mask_detector_path;
     float mask_detector_threshold = 0.3f;   // sam::MaskOptions::detector_threshold
 };
+
+// Empty on an unreadable/changing source. Includes photo inventory and LUT bytes.
+std::string frame_source_identity(const PrepJob& job, const PrepInput& in, bool content);
+bool snapshot_frame_sources(PrepJob& job, std::string& error);
 
 // The rate a row is actually extracted at (0 = every frame). A row's 0 means
 // "the same as the row above", as the lens column spells a decision made once
@@ -616,6 +624,17 @@ std::vector<std::vector<std::string>> input_sequences(const PrepJob& job,
 void resolve_photo_folder(const std::string& picked, std::string& images,
                           std::string& masks);
 
+// In-memory preflight: no destination path is mirrored into worker scratch.
+class MaskOutputOwners {
+public:
+    void claim(const std::filesystem::path& path);
+private:
+    struct Less {
+        bool operator()(const std::filesystem::path& a, const std::filesystem::path& b) const;
+    };
+    std::set<std::filesystem::path, Less> paths;
+};
+
 // Every folder under `dir` holding images DIRECTLY, '/'-separated, parents
 // before children, "" being `dir` itself -- exactly the groups `--camera-mode
 // folder` will make, grouping an image on its parent path (core/CameraSetup.h).
@@ -842,6 +861,8 @@ private:
     std::vector<std::vector<int64_t>> _plans;
     std::vector<bool> _planned;
     StageTally _frames_tally, _masks_tally;
+    int _frame_threads = 0;
+    std::function<void(int64_t)> _frame_progress;
     std::vector<std::string> _left_out;   // kSkippedListFile, as this run sorts
     std::vector<std::string> _unbuilt;    // ... and its "- " lines
     std::vector<bool> _streamed;          // ruled on by streaming extraction as it went

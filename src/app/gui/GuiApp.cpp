@@ -71,6 +71,7 @@
 // Side-effect-free native listing; it must not publish the engine selection.
 #if defined(SS_BUILD_SAM)
 #include "nn/Device.h"
+#include "app/InferenceWorkerDevices.h"
 #include "nn/vk/Context.h"
 #elif defined(SS_TOOL_SFM)
 #include "sfm/vk/VkContext.h"
@@ -442,6 +443,7 @@ void GuiApp::load_settings() {
         else if (k == "sfm_engine") _engine = v == "colmap" ? Engine::Colmap
                                                             : Engine::BuiltIn;
         else if (k == "batch_command") _batch_cmd = unescape_setting(v);
+        else if (k == "additional_gpus") _additional_gpus = unescape_setting(v);
         // accepted_license= is read from the file on demand (license_accepted).
         else if (k == "lang" && !v.empty()) saved_lang = v;
         else if (k == "ui_scale") _scale.set_user(std::clamp((float)atof(v.c_str()),
@@ -495,6 +497,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "sfm_engine=%s\n",
                  _engine == Engine::Colmap ? "colmap" : "builtin");
     std::fprintf(f, "batch_command=%s\n", escape_setting(_batch_cmd).c_str());
+    std::fprintf(f, "additional_gpus=%s\n", escape_setting(_additional_gpus).c_str());
     std::fprintf(f, "lang=%s\n", spirula::i18n::code(spirula::i18n::current()));
     std::fprintf(f, "ui_scale=%.3f\n", _scale.user());
     std::fprintf(f, "panel_w=%.1f\n", _panel_w);
@@ -684,6 +687,10 @@ void GuiApp::write_run_settings(std::ofstream& f) {
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     line("native_device", _native_device_uuid.empty() ? "auto" : _native_device_uuid);
     if (!_native_device_name.empty()) line("native_device_name", _native_device_name);
+#endif
+#ifdef SS_BUILD_SAM
+    line("additional_gpus", _additional_gpus);
+    line("worker_devices", resolved_worker_devices());
 #endif
 #ifndef SS_BACKEND_VULKAN
     if (_cuda_device_index >= 0)
@@ -3563,7 +3570,7 @@ void GuiApp::draw_menu_bar() {
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     {
         // Native choice is reachable before previews and engine work.
-        if (ui::BeginMenu(msg::menu_device)) {
+        if (ui::BeginMenu(msg::primary_gpu)) {
             draw_device_picker(/*as_menu=*/true);
             ImGui::EndMenu();
         }
@@ -4224,6 +4231,7 @@ void GuiApp::fill_masking(PrepJob& prep) const {
     // panel state and would otherwise drop it. Empty before the freeze, which
     // is exactly what an unstarted job wants.
     prep.device = _native_device_uuid;
+    prep.inference_devices = resolved_worker_devices();
 }
 
 void GuiApp::sync_dataset_jobs() {
@@ -4266,6 +4274,7 @@ void GuiApp::sync_dataset_jobs() {
     // The frozen choice, so a later edit cannot drop the UUID the run has
     // already committed to. Empty before the freeze.
     _colmap_job.device = _native_device_uuid;
+    _colmap_job.inference_devices = prep.inference_devices;
     _colmap_job.video_fps = prep.video_fps;
     _colmap_job.adaptive_fps = prep.adaptive_fps;
     _colmap_job.adaptive_range = prep.adaptive_range;
@@ -4313,6 +4322,7 @@ void GuiApp::sync_dataset_jobs() {
     _sfm_job.mask_features = _colmap_job.mask_features = _mask_features;
     // The same step either way: `spirula geometry` over the finished dataset.
     _sfm_job.geometry = _colmap_job.geometry = _geometry;
+    _sfm_job.geometry.worker_devices = _colmap_job.geometry.worker_devices = resolved_worker_devices();
     _sfm_job.dense = _colmap_job.dense = _dense;
     if (_redo_dense || _dense_rebuild) _sfm_job.dense.config.rebuild = _colmap_job.dense.config.rebuild = true;
     _sfm_job.dense.config.device = _colmap_job.dense.config.device = _native_device_uuid;
@@ -5547,15 +5557,7 @@ void GuiApp::load_native_devices() {
     _native_devices.clear();
 #if defined(SS_BUILD_SAM)
     // The inference layer's own side-effect-free enumeration.
-    for (const nn::DeviceInfo& d : nn::list_devices()) {
-        NativeDeviceRow r;
-        r.name = d.name;
-        r.type = d.type;
-        r.uuid = d.uuid;
-        r.vram_bytes = d.vram_bytes;
-        r.usable = d.usable;
-        _native_devices.push_back(std::move(r));
-    }
+    _native_devices = nn::list_devices();
 #elif defined(SS_TOOL_SFM)
     // No inference layer, but SfM carries its own Vulkan context: a listing
     // that creates nothing. A build with neither has no native GPU work to
@@ -5671,7 +5673,7 @@ void GuiApp::draw_device_picker(bool as_menu) {
     } else {
         ImGui::BeginDisabled(disabled);
         ImGui::SetNextItemWidth(px(220.0f));
-        if (ui::BeginCombo(msg::menu_device,
+        if (ui::BeginCombo(msg::primary_gpu,
                            no_devices ? msg::no_device_found.get() : shown)) {
             if (ui::Selectable(msg::device_auto, auto_sel)) {
                 _native_device_choice_set = true;
@@ -5845,6 +5847,10 @@ void GuiApp::propagate_frozen_device() {
     _colmap_job.geometry.device_uuid = uuid;
     _geometry.device_uuid = uuid;
     _mesh_job.device_uuid = uuid;
+    const std::string workers = resolved_worker_devices();
+    _sfm_job.prep.inference_devices = _colmap_job.inference_devices = workers;
+    _sfm_job.geometry.worker_devices = _colmap_job.geometry.worker_devices =
+        _geometry.worker_devices = workers;
 }
 
 void GuiApp::open_mask_preview() {
@@ -5881,6 +5887,68 @@ GuiApp::MaskingPanel GuiApp::dataset_masking_panel() {
     p.open_preview = [this] { open_mask_preview(); };
     return p;
 }
+
+std::string GuiApp::resolved_worker_devices() const {
+    std::string csv;
+#ifdef SS_BUILD_SAM
+    for (const std::string& uuid :
+         app::worker_devices_for(_additional_gpus, _native_device_uuid, _native_devices,
+                                 app::workers_per_gpu())) {
+        if (!csv.empty()) csv += ',';
+        csv += uuid;
+    }
+#endif
+    return csv;
+}
+
+#ifdef SS_BUILD_SAM
+void GuiApp::draw_additional_gpus() {
+    load_native_devices();
+    std::string primary = _native_device_uuid;
+#ifdef SS_BACKEND_VULKAN
+    if (primary.empty()) {
+        const int index = backend::device_resolve(_native_device_request, _native_device_choice_set);
+        if (index >= 0) primary = backend::device_info(index).uuid;
+    }
+#endif
+    auto selected = app::worker_devices_for(_additional_gpus, primary, _native_devices);
+    if (!selected.empty()) selected.erase(selected.begin());
+    const auto row = [&](size_t i) {
+        return _native_devices[i].name + " [" + std::to_string(i) + "]";
+    };
+    std::string preview;
+    for (size_t i = 0; i < _native_devices.size(); ++i)
+        if (std::find(selected.begin(), selected.end(), _native_devices[i].uuid) != selected.end())
+            preview += (preview.empty() ? "" : ", ") + row(i);
+    const bool auto_mode = _additional_gpus == "auto";
+    ImGui::SetNextItemWidth(px(220.0f));
+    if (ui::BeginCombo(msg::additional_gpus, auto_mode ? msg::device_auto.get() :
+                      preview.empty() ? msg::additional_gpus_none.get() : preview.c_str())) {
+        std::string next = _additional_gpus;
+        if (ui::Selectable(msg::device_auto, auto_mode)) next = "auto";
+        if (ui::Selectable(msg::additional_gpus_none, _additional_gpus == "none")) next = "none";
+        ImGui::Separator();
+        for (size_t i = 0; i < _native_devices.size(); ++i) {
+            const auto& d = _native_devices[i];
+            if (!app::worker_device_supported(d) || d.uuid == primary) continue;
+            const auto found = std::find(selected.begin(), selected.end(), d.uuid);
+            bool on = found != selected.end();
+            if (!ui::CheckboxRaw((row(i) + "##" + d.uuid).c_str(), &on)) continue;
+            if (on) selected.push_back(d.uuid);
+            else selected.erase(found);
+            next.clear();
+            for (const auto& uuid : selected) next += (next.empty() ? "" : ",") + uuid;
+            if (next.empty()) next = "none";
+        }
+        if (next != _additional_gpus) {
+            _additional_gpus = next;
+            save_settings();
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(msg::additional_gpus_help);
+}
+#endif
 
 void GuiApp::draw_masking_options(const MaskingPanel& p) {
     std::vector<PrepInput>& inputs = *p.inputs;
@@ -8569,6 +8637,11 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     // before any of them can be started.
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     draw_device_picker();
+#ifdef SS_BUILD_SAM
+    ImGui::BeginDisabled(running);
+    draw_additional_gpus();
+    ImGui::EndDisabled();
+#endif
     ImGui::Spacing();
 #endif
     draw_dataset_basics();

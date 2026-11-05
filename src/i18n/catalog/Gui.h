@@ -1178,11 +1178,59 @@ SS_MSG(device_auto,
     PT("Automático"),    IT("Automatico"),   NL("Automatisch"),  RU("Автоматически"),
     TR("Otomatik"));
 
-SS_MSG(menu_device,
-    EN("Device"),        JA("デバイス"),       ZH_HANS("设备"),     ZH_HANT("裝置"),
-    KO("장치"),           DE("Gerät"),        FR("Périphérique"), ES("Dispositivo"),
-    PT("Dispositivo"),   IT("Dispositivo"),  NL("Apparaat"),     RU("Устройство"),
-    TR("Aygıt"));
+SS_MSG(primary_gpu,
+    EN("Primary GPU"), JA("メインGPU"), ZH_HANS("主 GPU"), ZH_HANT("主要 GPU"),
+    KO("주 GPU"), DE("Primäre GPU"), FR("GPU principal"), ES("GPU principal"),
+    PT("GPU principal"), IT("GPU principale"), NL("Primaire GPU"), RU("Основной GPU"),
+    TR("Birincil GPU"));
+
+SS_MSG(additional_gpus,
+    EN("Additional GPUs"), JA("追加GPU"), ZH_HANS("其他 GPU"), ZH_HANT("其他 GPU"),
+    KO("추가 GPU"), DE("Weitere GPUs"), FR("GPU supplémentaires"), ES("GPU adicionales"),
+    PT("GPUs adicionais"), IT("GPU aggiuntive"), NL("Extra GPU's"), RU("Дополнительные GPU"),
+    TR("Ek GPU'lar"));
+
+SS_MSG(additional_gpus_none,
+    EN("None"), JA("なし"), ZH_HANS("无"), ZH_HANT("無"), KO("없음"),
+    DE("Keine"), FR("Aucun"), ES("Ninguna"), PT("Nenhuma"), IT("Nessuna"),
+    NL("Geen"), RU("Нет"), TR("Yok"));
+
+SS_MSG(additional_gpus_help,
+    EN("Extra GPUs share masking and depth & normals with the primary GPU, one process each. "
+       "Reconstruction and training use only the primary GPU. Auto adds every other GPU of "
+       "the best kind present: discrete before integrated."),
+    JA("追加GPUはメインGPUとマスク、深度と法線の処理を分担し、各GPUで1つのプロセスを使います。"
+       "再構成と学習はメインGPUのみを使います。自動は独立GPUを優先し、なければ統合GPUを追加します。"),
+    ZH_HANS("其他 GPU 与主 GPU 分担遮罩、深度和法线处理，每个 GPU 一个进程。重建和训练仅使用主 GPU。"
+       "自动添加所有其他最佳类型的 GPU：优先独立 GPU，其次集成 GPU。"),
+    ZH_HANT("其他 GPU 與主要 GPU 分擔遮罩、深度和法線處理，每個 GPU 一個程序。重建和訓練僅使用主要 GPU。"
+       "自動加入所有其他最佳類型的 GPU：優先獨立 GPU，其次整合 GPU。"),
+    KO("추가 GPU는 주 GPU와 마스크, 깊이 및 법선 처리를 나누며 GPU마다 프로세스 하나를 사용합니다. "
+       "재구성과 학습은 주 GPU만 사용합니다. 자동은 외장 GPU 우선, 없으면 내장 GPU를 모두 추가합니다."),
+    DE("Weitere GPUs teilen Maskierung, Tiefe und Normalen mit der primären GPU, je ein Prozess. "
+       "Rekonstruktion und Training nutzen nur die primäre GPU. Automatisch ergänzt alle weiteren "
+       "GPUs der besten vorhandenen Art: dediziert vor integriert."),
+    FR("Les GPU supplémentaires partagent masques, profondeur et normales avec le GPU principal, "
+       "un processus chacun. Reconstruction et entraînement restent sur le GPU principal. "
+       "Auto ajoute tous les autres GPU du meilleur type présent : dédié avant intégré."),
+    ES("Los GPU adicionales comparten máscaras, profundidad y normales con el principal, un proceso "
+       "por GPU. Reconstrucción y entrenamiento usan solo el principal. Auto añade los demás GPU "
+       "del mejor tipo disponible: dedicado antes que integrado."),
+    PT("As GPUs adicionais partilham máscaras, profundidade e normais com a principal, um processo "
+       "por GPU. Reconstrução e treino usam só a principal. Auto adiciona todas as outras GPUs "
+       "do melhor tipo presente: dedicado antes de integrado."),
+    IT("Le GPU aggiuntive condividono maschere, profondità e normali con la principale, un processo "
+       "ciascuna. Ricostruzione e training usano solo la principale. Auto aggiunge le altre GPU "
+       "del tipo migliore presente: dedicato prima di integrato."),
+    NL("Extra GPU's delen maskers, diepte en normalen met de primaire GPU, elk met één proces. "
+       "Reconstructie en training gebruiken alleen de primaire GPU. Auto voegt alle andere GPU's "
+       "van het beste aanwezige type toe: afzonderlijk vóór geïntegreerd."),
+    RU("Дополнительные GPU делят маски, глубину и нормали с основным GPU, по одному процессу на GPU. "
+       "Реконструкция и обучение используют только основной GPU. Авто добавляет остальные GPU "
+       "лучшего доступного типа: дискретные перед встроенными."),
+    TR("Ek GPU'lar maskeleme, derinlik ve normalleri birincil GPU ile paylaşır; her birine bir süreç. "
+       "Yeniden oluşturma ve eğitim yalnızca birincil GPU'yu kullanır. Otomatik, en iyi türdeki "
+       "diğer tüm GPU'ları ekler: önce ayrık, yoksa tümleşik."));
 
 SS_MSG(device_help,
     EN("The GPU for built-in Vulkan jobs. Chosen once per session at the first "
@@ -1236,25 +1284,32 @@ SS_MSG(device_help,
        "ayarlar kullanır."));
 
 SS_MSG(device_auto_help,
-    EN("Let the application rank the devices and pick the best usable one."),
-    JA("アプリにデバイスを評価させ、使用可能な最良のものを選ばせます。"),
-    ZH_HANS("让程序对设备排序并选择最合适的可用设备。"),
-    ZH_HANT("讓程式對裝置排序並選擇最合適的可用裝置。"),
-    KO("앱이 장치를 평가해 사용 가능한 가장 좋은 것을 고르게 합니다."),
-    DE("Die Anwendung die Geräte bewerten und das beste nutzbare wählen lassen."),
-    FR("Laisser l'application classer les périphériques et prendre le meilleur "
-       "utilisable."),
-    ES("Dejar que la aplicación ordene los dispositivos y elija el mejor "
-       "utilizable."),
-    PT("Deixar o aplicativo classificar os dispositivos e escolher o melhor "
-       "utilizável."),
-    IT("Lasciare che l'applicazione ordini i dispositivi e scelga il migliore "
-       "utilizzabile."),
-    NL("De toepassing de apparaten laten rangschikken en het beste bruikbare "
-       "laten kiezen."),
-    RU("Позволить программе оценить устройства и выбрать лучшее доступное."),
-    TR("Uygulamanın aygıtları sıralayıp kullanılabilir en iyisini seçmesine izin "
-       "ver."));
+    EN("Picks the best usable GPU: discrete before integrated, then the one with the most memory; "
+       "between identical GPUs, the one with more free memory."),
+    JA("使用可能なGPUを選びます。独立GPU、統合GPUの順で、同じ種類ではメモリが最大のGPUを、"
+       "同じGPU同士では空きメモリが多い方を優先します。"),
+    ZH_HANS("选择最佳可用 GPU：优先独立 GPU，其次集成 GPU，同类型中选择内存最多的；"
+            "相同的 GPU 之间选择可用内存更多的。"),
+    ZH_HANT("選擇最佳可用 GPU：優先獨立 GPU，其次整合 GPU，同類型中選擇記憶體最多的；"
+            "相同的 GPU 之間選擇可用記憶體更多的。"),
+    KO("사용 가능한 GPU 중 외장, 내장 순으로 선택하고 같은 종류에서는 메모리가 가장 많은 GPU를, "
+       "동일한 GPU끼리는 여유 메모리가 더 많은 GPU를 선택합니다."),
+    DE("Wählt die beste nutzbare GPU: dediziert vor integriert, dann die mit dem meisten Speicher; "
+       "bei baugleichen GPUs die mit mehr freiem Speicher."),
+    FR("Choisit le meilleur GPU utilisable : dédié avant intégré, puis celui avec le plus de mémoire ; "
+       "entre GPU identiques, celui avec le plus de mémoire libre."),
+    ES("Elige el mejor GPU disponible: dedicado antes que integrado, luego el de mayor memoria; "
+       "entre GPU idénticos, el de más memoria libre."),
+    PT("Escolhe a melhor GPU disponível: dedicada antes de integrada, depois a de maior memória; "
+       "entre GPUs idênticas, a de mais memória livre."),
+    IT("Sceglie la migliore GPU utilizzabile: dedicata prima di integrata, poi quella con più memoria; "
+       "tra GPU identiche, quella con più memoria libera."),
+    NL("Kiest de beste bruikbare GPU: afzonderlijk vóór geïntegreerd, daarna die met het meeste geheugen; "
+       "bij identieke GPU's die met het meeste vrije geheugen."),
+    RU("Выбирает лучший доступный GPU: дискретный перед встроенным, затем с наибольшей памятью; "
+       "из одинаковых GPU — с большим объёмом свободной памяти."),
+    TR("En iyi kullanılabilir GPU'yu seçer: önce ayrık, sonra tümleşik; ardından en çok belleği olanı; "
+       "aynı GPU'lar arasında boş belleği daha çok olanı."));
 
 // {0} device name
 SS_MSG(device_frozen_at,

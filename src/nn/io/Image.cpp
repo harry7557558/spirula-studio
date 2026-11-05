@@ -8,6 +8,7 @@
 #include "core/ColorSpace.h"
 #include "core/ImageFile.h"
 #include "nn/core/Log.h"
+#include "nn/core/Parallel.h"
 #include "nn/io/Image.h"
 
 #include "external/stb_image.h"
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -28,6 +30,9 @@ Image load_image(const std::string& path, const std::string& gamut,
         imagefile::Info info;
         imagefile::Options opt;
         opt.exposure = exposure;
+        if (configured_parallel_threads())
+            opt.threads = (int)std::min(parallel_threads(),
+                                      (unsigned)std::numeric_limits<int>::max());
         const std::string err =
             imagefile::decode_srgb8(path, opt, info, img.data, gamut, is_linear);
         if (!err.empty()) {

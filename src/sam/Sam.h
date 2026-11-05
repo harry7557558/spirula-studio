@@ -176,6 +176,7 @@ public:
     bool imageEncoded() const;
 
     Result segmentConcept(const ConceptPrompt& prompt);
+    std::vector<Result> segmentConcepts(const std::vector<ConceptPrompt>& prompts);
     Result segmentVisual(const VisualPrompt& prompt);
 
     const std::string& lastError() const;
