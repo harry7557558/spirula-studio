@@ -809,6 +809,9 @@ std::string train_config_error(const TrainConfig& c) {
         !error.empty()) return error;
     SS_CONFIG_FIELDS(SS_CHECK_CHOICE)
 #undef SS_CHECK_CHOICE
+    if (c.background_export_height < 1 || c.background_export_height > 8192)
+        return lfmt(lmsg::err_bad_flag_value,
+                    {"--background-export-height", std::to_string(c.background_export_height)});
     if (c.quantization_level != 0 && c.quantization_level != 1)
         return lmsg::bad_quantization_level.get();
     if (c.sb_lobes < 0 || c.sb_lobes > ColorBasis::kMaxSbLobes)
@@ -1612,6 +1615,11 @@ void TrainerSession::restore_checkpoint() {
             e.what());
     }
     if (adapted) remove_tree(tmp);
+    int bg_deg = 0;
+    if (engine_has_background_sh(&bg_deg)) {
+        cfg.background_mode = "sh";
+        cfg.background_sh_degree = bg_deg;
+    }
     log(lfmt(lmsg::resumed_from, {r.ckpt_dir.string(), (long long)start_step}));
 }
 
@@ -1620,7 +1628,12 @@ void TrainerSession::save_checkpoint(int step, bool full) {
     std::snprintf(name, sizeof name, "step-%09d.ckpt", step);
     fs::path ckpt = out_dir / name;
     fs::create_directories(ckpt);
-    engine_save_checkpoint(ckpt.string(), full, step);
+    engine_save_checkpoint(ckpt.string(), full, step, cfg.background_export_height);
+    std::error_code bg_ec;
+    if (fs::is_regular_file(ckpt / "background.webp", bg_ec)) {
+        fs::copy_file(ckpt / "background.webp", out_dir / "background.webp",
+                      fs::copy_options::overwrite_existing, bg_ec);
+    }
     if (cfg.save_only_latest_checkpoint) {
         std::vector<fs::path> stale;
         for (const auto& e : fs::directory_iterator(out_dir)) {

@@ -25,6 +25,11 @@ struct Scene {
     bool cs_is_linear = false;
     std::vector<float> cs_matrix;
     uint64_t cs_gen = 1;
+    bool has_bg_sh = false;
+    int bg_sh_degree = 0;
+    int bg_transfer = 0;
+    bool bg_is_linear = false;
+    DeviceVector<float3> bg_sh_coeffs;
 };
 
 std::array<Scene, kMaxEngineScenes>& scenes() {
@@ -138,6 +143,27 @@ void engine_scene_set_color_space(int slot, bool enabled, int transfer,
 }
 
 
+void engine_scene_set_background_sh(int slot, int sh_degree,
+                                   TorchTensorView coeffs, int transfer, bool is_linear) {
+    Scene& s = at(slot);
+    if (std::get<0>(coeffs) == 0) {
+        s.has_bg_sh = false;
+        s.bg_sh_degree = 0;
+        s.bg_sh_coeffs = DeviceVector<float3>{};
+        return;
+    }
+    const auto& shape = std::get<2>(coeffs);
+    if (sh_degree < 0 || sh_degree > 4 || std::get<1>(coeffs) != sizeof(float) ||
+        shape.size() != 2 || shape[0] != (sh_degree + 1) * (sh_degree + 1) || shape[1] != 3)
+        throw std::runtime_error("engine_scene_set_background_sh: invalid coefficient shape");
+    s.bg_transfer = transfer;
+    s.bg_is_linear = is_linear;
+    s.has_bg_sh = true;
+    s.bg_sh_degree = sh_degree;
+    s.bg_sh_coeffs = upload_dv<float3>(buffer_name(slot, "bg_sh_coeffs"), coeffs);
+}
+
+
 namespace {
 
 // Bytes per element of a slot attribute, and where it lives, by the name
@@ -197,6 +223,18 @@ void engine_scene_activate(int slot) {
         g_cs_slot = slot;
         g_cs_gen = s.cs_gen;
     }
+    if (s.has_bg_sh && s.bg_sh_coeffs.size() > 0) {
+        engine().background.mode = EngineBackground::Mode::Sh;
+        engine().background.enabled = true;
+        engine().background.splat_transfer = s.bg_transfer;
+        engine().background.splat_is_linear = s.bg_is_linear;
+        engine().background.sh_degree = s.bg_sh_degree;
+        engine().background.sh_coeffs = s.bg_sh_coeffs;
+    } else {
+        engine().background.enabled = false;
+        engine().background.mode = EngineBackground::Mode::None;
+        engine().background.sh_coeffs = DeviceVector<float3>{};
+    }
 }
 
 
@@ -214,6 +252,12 @@ void engine_scene_free(int slot) {
     if (s.world.means.data_ptr() &&
         engine().world.means.data_ptr() == s.world.means.data_ptr())
         engine().world = WorldSplats{};
+    if (s.bg_sh_coeffs.data_ptr() &&
+        engine().background.sh_coeffs.data_ptr() == s.bg_sh_coeffs.data_ptr()) {
+        engine().background.enabled = false;
+        engine().background.mode = EngineBackground::Mode::None;
+        engine().background.sh_coeffs = DeviceVector<float3>{};
+    }
     DevicePool::global().free_dynamic_prefix(slot_prefix(slot));
     s = Scene{};
     if (g_cs_slot == slot) g_cs_slot = -1;

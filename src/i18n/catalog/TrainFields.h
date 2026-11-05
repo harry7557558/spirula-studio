@@ -3332,6 +3332,27 @@ SS_MSG(background_color_help,
        "bedavadır: harmanlamayı tümüyle atlar. Yalnızca "
        "`color` arka planıyla kullanılır."));
 
+SS_MSG(background_export_height,
+    EN("Background export height"), JA("背景の出力高さ"), ZH_HANS("背景导出高度"),
+    ZH_HANT("背景匯出高度"), KO("배경 내보내기 높이"), DE("Höhe des Hintergrundexports"),
+    FR("Hauteur d'export de l'arrière-plan"), ES("Altura de exportación del fondo"),
+    PT("Altura de exportação do fundo"), IT("Altezza di esportazione dello sfondo"),
+    NL("Hoogte van de achtergrondexport"), RU("Высота экспорта фона"), TR("Arka plan dışa aktarma yüksekliği"));
+SS_MSG(background_export_height_help,
+    EN("Height in pixels of background.webp saved with SH checkpoints (1–8192). Width is twice the height."),
+    JA("SHチェックポイントと保存する background.webp の高さ（ピクセル、1–8192）。幅は高さの2倍です。"),
+    ZH_HANS("随 SH 检查点保存的 background.webp 的像素高度（1–8192）。宽度为高度的两倍。"),
+    ZH_HANT("隨 SH 檢查點儲存的 background.webp 的像素高度（1–8192）。寬度為高度的兩倍。"),
+    KO("SH 체크포인트와 함께 저장되는 background.webp의 픽셀 높이(1–8192). 너비는 높이의 두 배입니다."),
+    DE("Höhe der mit SH-Checkpoints gespeicherten background.webp in Pixeln (1–8192). Die Breite ist doppelt so groß."),
+    FR("Hauteur en pixels de background.webp enregistré avec les checkpoints SH (1–8192). La largeur est le double."),
+    ES("Altura en píxeles de background.webp guardado con los checkpoints SH (1–8192). El ancho es el doble."),
+    PT("Altura em pixels de background.webp salvo com os checkpoints SH (1–8192). A largura é o dobro."),
+    IT("Altezza in pixel di background.webp salvato con i checkpoint SH (1–8192). La larghezza è il doppio."),
+    NL("Hoogte in pixels van background.webp bij SH-checkpoints (1–8192). De breedte is tweemaal de hoogte."),
+    RU("Высота background.webp, сохраняемого с контрольными точками SH, в пикселях (1–8192). Ширина вдвое больше высоты."),
+    TR("SH kontrol noktalarıyla kaydedilen background.webp dosyasının piksel yüksekliği (1–8192). Genişlik yüksekliğin iki katıdır."));
+
 SS_MSG(background_sh_degree,
     EN("Skybox detail"), JA("スカイボックスの細かさ"), ZH_HANS("天空盒细节"),
     ZH_HANT("天空盒細節"), KO("스카이박스 디테일"), DE("Detail der Skybox"),
