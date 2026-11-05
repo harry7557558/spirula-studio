@@ -1,13 +1,16 @@
 #include "sfm/map/GlobalPositionGpu.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <vector>
 
+#include "core/SubmitBudget.h"
 #include "sfm/vk/EmbeddedSpirv.h"
 #include "sfm/vk/VkContext.h"
 
@@ -100,7 +103,7 @@ public:
             const VkDeviceSize size = bytes[i];
             if (size > ctx_.maxBufferBytes())
                 throw std::length_error("global positioning: GPU buffer exceeds device limit");
-            const VkBufferUsageFlags usage = i + 1 == bytes.size() ? VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT : 0;
+            const VkBufferUsageFlags usage = i == 10 ? VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT : 0;
             buffers_.push_back(ctx_.createBuffer(size, usage));
             handles.push_back(buffers_.back().buf);
         }
@@ -150,7 +153,17 @@ public:
             dispatch(cb, "gp_cg_scalar", 1, push);
             ctx_.barrier(cb);
             ctx_.indirectBarrier(cb);
+            double lead = 2 * cgWork(), done = 0;
+            int slice = cgSlice(opt.cg_iterations), since = 0;
             for (int cg = 0; cg < opt.cg_iterations; cg++) {
+                if (since == slice) {
+                    timedSubmit(cb, lead, done);
+                    cb = ctx_.begin();
+                    lead = 0;
+                    since = 0;
+                    slice = cgSlice(opt.cg_iterations - cg);
+                }
+                since++;
                 push = base(); push.u3 = 1; push.f0 = (float)damping;
                 dispatchIndirect(cb, "gp_nodes", 0, push);
                 dispatchIndirect(cb, "gp_points", 1, push);
@@ -174,6 +187,8 @@ public:
                 dispatchIndirect(cb, "gp_vector", 5, push);
                 ctx_.barrier(cb);
             }
+            timedSubmit(cb, lead, done);
+            cb = ctx_.begin();
             push = base(); push.u3 = 3;
             dispatch(cb, "gp_vector", groups(dim_), push);
             push.u3 = 0; push.f0 = (float)damping;
@@ -220,6 +235,25 @@ public:
 
 private:
     static uint32_t groups(uint32_t n) { return (uint32_t)(((uint64_t)n + 63) / 64); }
+    double cgWork() const { return (double)no_ + dim_; }
+    // CG iterations one submit may carry under the driver watchdog.
+    int cgSlice(int most) const {
+        const int64_t w = budget_.chunk((int64_t)(8 * cgWork()), (int64_t)(most * cgWork()));
+        return (int)std::max<int64_t>(1, (int64_t)(w / cgWork()));
+    }
+    // Times by the iterations the GPU ran (cg_state[1].y), not the ones recorded:
+    // a converged CG turns the rest into empty dispatches that would inflate the rate.
+    void timedSubmit(VkCommandBuffer cb, double lead, double& done) {
+        ctx_.recordDownload(cb, buffers_[9], 2 * sizeof(Float4));
+        const auto t0 = std::chrono::steady_clock::now();
+        ctx_.submit(cb);
+        const double dt =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        Float4 state[2];
+        std::memcpy(state, ctx_.stagingDownloadPtr(), sizeof(state));
+        budget_.record(lead + (state[1].y - done) * cgWork(), dt);
+        done = state[1].y;
+    }
     static void put(std::vector<float>& v, uint32_t i, const Vec3& x) {
         v[i] = (float)x.x; v[i + 1] = (float)x.y; v[i + 2] = (float)x.z;
     }
@@ -263,6 +297,7 @@ private:
         return {(float)x, (float)y, (float)z, (float)w};
     }
     VkContext ctx_;
+    spirula::SubmitBudget budget_;
     std::vector<GpuBuffer> buffers_;
     uint32_t nc_, np_, no_, nodes_, npr_, dim_, var_dim_;
     bool metric_scale_, free_camera_gauge_;

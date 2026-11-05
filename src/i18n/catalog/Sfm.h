@@ -2807,19 +2807,19 @@ SS_MSG(map_global_rotation_unconverged,
     TR("genel dönme ortalaması yineleme sınırına ulaştı"));
 
 SS_MSG(map_global_initial,
-    EN("global initialization: {0} edges, {1} tracks, {2} conflicts, {3} models"),
+    EN("global initialization: edges {0}, tracks {1}, conflicts {2}, models {3}"),
     JA("グローバル初期化: エッジ {0}、トラック {1}、競合 {2}、モデル {3}"),
     ZH_HANS("全局初始化：边 {0}，轨迹 {1}，冲突 {2}，模型 {3}"),
     ZH_HANT("全域初始化：邊 {0}，軌跡 {1}，衝突 {2}，模型 {3}"),
     KO("전역 초기화: 에지 {0}, 트랙 {1}, 충돌 {2}, 모델 {3}"),
-    DE("globale Initialisierung: {0} Kanten, {1} Tracks, {2} Konflikte, {3} Modelle"),
-    FR("initialisation globale : {0} liens, {1} pistes, {2} conflits, {3} modèles"),
-    ES("inicialización global: {0} aristas, {1} pistas, {2} conflictos, {3} modelos"),
-    PT("inicialização global: {0} arestas, {1} trilhas, {2} conflitos, {3} modelos"),
-    IT("inizializzazione globale: {0} archi, {1} tracce, {2} conflitti, {3} modelli"),
-    NL("globale initialisatie: {0} verbindingen, {1} sporen, {2} conflicten, {3} modellen"),
+    DE("globale Initialisierung: Kanten {0}, Tracks {1}, Konflikte {2}, Modelle {3}"),
+    FR("initialisation globale : liens {0}, pistes {1}, conflits {2}, modèles {3}"),
+    ES("inicialización global: aristas {0}, pistas {1}, conflictos {2}, modelos {3}"),
+    PT("inicialização global: arestas {0}, trilhas {1}, conflitos {2}, modelos {3}"),
+    IT("inizializzazione globale: archi {0}, tracce {1}, conflitti {2}, modelli {3}"),
+    NL("globale initialisatie: verbindingen {0}, sporen {1}, conflicten {2}, modellen {3}"),
     RU("глобальная инициализация: рёбер {0}, треков {1}, конфликтов {2}, моделей {3}"),
-    TR("genel başlatma: {0} kenar, {1} iz, {2} çakışma, {3} model"));
+    TR("genel başlatma: kenar {0}, iz {1}, çakışma {2}, model {3}"));
 
 SS_MSG(map_no_model_to_work_with,
     EN("there is no model to work with"),
