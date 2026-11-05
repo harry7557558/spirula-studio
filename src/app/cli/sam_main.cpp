@@ -110,6 +110,7 @@ void usage() {
                  "--point 700,300\n"
                  "                                --object --point 120,500\n");
     help_row("", H::trk_at_frame_example);
+    help_row("--mask-mode <m>", H::trk_mask_mode);
     help_row("--detect-every <n>", H::trk_detect_every);
     help_row("--memory-frames <n>", H::trk_memory_frames);
     help_row("--max-frames <n>", H::trk_max_frames);
@@ -201,6 +202,7 @@ struct Options {
     int max_frames = 0;
     int img_size = 0;
     int detect_every = 1, memory_frames = 0, max_size = 1600;
+    std::string mask_mode = "video";
 
     // The frames' colour space; they convert to sRGB before the model sees them.
     std::string image_gamut;
@@ -251,6 +253,7 @@ bool parse_args(int argc, char** argv, Options& o) {
         else if (a == "--out") o.out_dir = next("--out");
         else if (a == "--text") o.text = next("--text");
         else if (a == "--neg-text") o.neg_text = next("--neg-text");
+        else if (a == "--mask-mode") o.mask_mode = next("--mask-mode");
         else if (a == "--detect-every") o.detect_every = std::atoi(next("--detect-every"));
         else if (a == "--memory-frames") o.memory_frames = std::atoi(next("--memory-frames"));
         else if (a == "--max-size") o.max_size = std::atoi(next("--max-size"));
@@ -399,6 +402,7 @@ sam::MaskOptions mask_options(const Options& o) {
     mo.threshold = o.threshold;
     mo.nms = o.nms;
     mo.dilate_ratio = o.dilate_ratio;
+    mo.video = o.mask_mode != "image";
     mo.detect_every = o.detect_every;
     mo.memory_frames = o.memory_frames;
     mo.max_size = o.max_size;
