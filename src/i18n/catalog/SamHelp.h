@@ -365,6 +365,32 @@ SS_MSG(trk_at_frame_example,
     TR("... bir kez tıklanıp 90. karede düzeltilmiş bir nesne ile ikinci bir "
        "nesne demektir."));
 
+SS_MSG(trk_mask_mode,
+    EN("video (default) tracks instances across frames; image segments every "
+       "frame on its own"),
+    JA("video（既定）はフレームをまたいでインスタンスを追跡し、image は各フレーム"
+       "を独立に扱います"),
+    ZH_HANS("video（默认）跨帧跟踪实例；image 则把每一帧各自独立处理"),
+    ZH_HANT("video（預設）跨格追蹤實例；image 則把每一格各自獨立處理"),
+    KO("video(기본)는 프레임을 넘나들며 인스턴스를 추적하고, image 는 프레임을 각각 "
+       "따로 다룹니다"),
+    DE("video (Vorgabe) verfolgt Instanzen über die Bilder hinweg; image "
+       "behandelt jedes Bild für sich"),
+    FR("video (défaut) suit les instances d'une image à l'autre ; image traite "
+       "chaque image séparément"),
+    ES("video (por defecto) sigue las instancias de un fotograma a otro; image "
+       "trata cada fotograma por separado"),
+    PT("video (padrão) rastreia as instâncias de quadro em quadro; image trata "
+       "cada quadro à parte"),
+    IT("video (predefinito) traccia le istanze tra i fotogrammi; image tratta "
+       "ogni fotogramma a sé"),
+    NL("video (standaard) volgt exemplaren over de beelden heen; image behandelt "
+       "elk beeld apart"),
+    RU("video (по умолчанию) отслеживает экземпляры между кадрами; image "
+       "обрабатывает каждый кадр отдельно"),
+    TR("video (varsayılan) örnekleri kareler boyunca izler; image her kareyi "
+       "ayrı ele alır"));
+
 SS_MSG(trk_detect_every,
     EN("run the detector every n frames; the memory bank carries tracks in "
        "between"),

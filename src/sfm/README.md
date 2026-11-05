@@ -622,8 +622,10 @@ pre-integrates from the attitude instead, and a per-frame accelerometer has
 the attenuation its own aliasing noise causes taken back out. Two scale
 sources are combined by information and reported separately, and an
 IMU-versus-GPS disagreement beyond three sigma keeps the more certain one
-and says so. `--sensor-gauge up` takes the orientation alone; `none` ignores
-the sensors. On the X5 walk the whole fit
+and says so. `--sensor-gauge` is the IMU's: `up` takes its orientation
+without the accelerometer's scale, `none` ignores it. The GPS log is
+`--metric-gps`'s, as EXIF GPS is, and `none` there keeps it out of the gauge.
+On the X5 walk the whole fit
 takes 0.3 s; a metric reference the user passes still outranks an upright-only
 sensor frame. `docs/notes/imu-gps-for-sfm.md` records what the files carry
 and what was measured.

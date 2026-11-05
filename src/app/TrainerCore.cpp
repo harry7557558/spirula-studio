@@ -792,25 +792,23 @@ void TrainerSession::log(const std::string& msg) {
     std::fflush(stdout);
 }
 
-// The unported-feature guards, as a pure check. Split out of check_config()
-// so a front-end can ask the question without the answer arriving as an
-// exception: the GUI's batch pre-flight reports every row's problems at once,
-// before anything starts, which is the whole point of a pre-flight.
-std::string train_config_unsupported(const TrainConfig& c) {
-    // The flag name is an IDENTIFIER and goes in as {0}: `--use-bvh` reads the
-    // same in every language, and it is what the reader would type or search
-    // for. Only the sentence around it is translated.
-    auto not_impl = [](const std::string& what) {
-        return lfmt(lmsg::not_supported_yet, {what});
-    };
-    if (c.use_bvh)                    return not_impl("--use-bvh");
-    if (c.use_camera_optimizer)       return not_impl("--use-camera-optimizer");
-    if (c.deblur_training_images)     return not_impl("--deblur-training-images");
-    if (!c.optimizer_offload.empty()) return not_impl("--optimizer-offload");
-    if (c.cache_images == "gpu")      return not_impl("--cache-images gpu");
-    if (c.train_frame != "points")    return not_impl("--train-frame " + c.train_frame);
-    if (c.primitive != "3dgs" && c.primitive != "mip" && c.primitive != "3dgut")
-        return not_impl("--primitive " + c.primitive);
+static std::string choice_error(const std::string& value, const char* key,
+                                const char* choices) {
+    if (train_choice_valid(value, choices)) return {};
+    std::string flag = key;
+    for (char& ch : flag) if (ch == '_') ch = '-';
+    return lfmt(lmsg::err_bad_flag_value, {"--" + flag, value});
+}
+
+template <typename T>
+static std::string choice_error(const T&, const char*, const char*) { return {}; }
+
+std::string train_config_error(const TrainConfig& c) {
+#define SS_CHECK_CHOICE(type, member, default_, section, tier, choices)      \
+    if (std::string error = choice_error(c.member, #member, choices);          \
+        !error.empty()) return error;
+    SS_CONFIG_FIELDS(SS_CHECK_CHOICE)
+#undef SS_CHECK_CHOICE
     if (c.quantization_level != 0 && c.quantization_level != 1)
         return lmsg::bad_quantization_level.get();
     if (c.sb_lobes < 0 || c.sb_lobes > ColorBasis::kMaxSbLobes)
@@ -915,9 +913,8 @@ void TrainerSession::setup_region() {
     log(lfmt(lmsg::region_applied, {prog.num_nodes(), cfg.roi_outside_weight}));
 }
 
-// Unported-feature guards: fail early rather than ignore a flag.
 void TrainerSession::check_config() {
-    if (std::string what = train_config_unsupported(cfg); !what.empty())
+    if (std::string what = train_config_error(cfg); !what.empty())
         throw std::runtime_error(what);
     if (!cfg.init_ply.empty() && !cfg.resume.empty())
         log(lmsg::warn_init_ply_ignored.get());
@@ -1643,7 +1640,7 @@ std::map<std::string, float> TrainerSession::train_step(int step) {
     EngineStepConfig sc = build_step_config(cfg, st, step);
     auto losses = engine_train_step_managed(
         step, cfg.num_iterations, cfg.primitive, sh_degree_to_use,
-        cfg.packed || cfg.use_bvh, sc);
+        cfg.packed, sc);
     if (cfg.progressive_resolution) {
         // Streamed steps can cross an epoch boundary out of order; the schedule
         // only gets finer, so a switch is the first divisor below every one before.
@@ -1961,7 +1958,7 @@ std::string TrainerSession::progress_json() {
 ViewerRenderConfig TrainerSession::make_viewer_config() const {
     ViewerRenderConfig vc;
     vc.primitive = cfg.primitive;
-    vc.packed = cfg.packed || cfg.use_bvh;
+    vc.packed = cfg.packed;
     vc.sh_degree_warmup_every = cfg.sh_degree_warmup_every;
     vc.relative_scale = cfg.relative_scale;
     vc.output_median = cfg.mean_median_depth_weight > 0.0f ||

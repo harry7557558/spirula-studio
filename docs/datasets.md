@@ -55,6 +55,95 @@ takes seconds an image and an 11 GB install built from 45 GB streamed once
 (`spirula geometry --install marigold-v2`, or the GUI's download button).
 `src/marigold/README.md` has its numbers.
 
+### Primary GPU and Additional GPUs
+
+Dataset settings use **Primary GPU** for reconstruction, training and previews.
+Its **Auto** choice prefers usable discrete GPUs over integrated GPUs, then the
+GPU with the most memory. Between identical GPUs it takes the one other programs
+use less memory on, measured when the application first lists its GPUs (on
+Windows the adapter's dedicated memory in use, as Task Manager shows it;
+elsewhere the `VK_EXT_memory_budget` budget). A difference under 256 MiB counts
+as a tie, so idle cards keep their usual order. The primary choice freezes at
+the first GPU operation in a session; changing it afterwards requires
+restarting the application.
+
+**Additional GPUs** shares masking and depth & normals across the primary and
+selected extra GPUs, with one isolated process per GPU. **Auto** (the default)
+adds all other supported GPUs of the best kind present: discrete if available,
+otherwise integrated. Choose **None** for in-process serial inference on the
+primary, or select individual GPUs. With no extra GPU selected, inference is
+also serial. Reconstruction, training and previews stay on the primary GPU.
+Only usable discrete and integrated GPUs with UUIDs support workers.
+The additional selection is saved locally in `gui.conf` as `additional_gpus`;
+portable dataset presets do not carry it.
+
+`SS_WORKERS_PER_GPU` opts into multiple isolated inference processes per
+selected GPU. It must be an integer >= 1 and defaults to 1. For example,
+`SS_WORKERS_PER_GPU=2` runs two mask workers and two geometry workers per
+selected GPU, in their respective stages. With **None** or no extra GPU
+available, it instead runs two workers on the primary GPU. Each process
+loads its own models; the shared host-memory admission budget does not grow,
+and this setting does not impose a VRAM cap. Tracking sequences remain owned
+by one worker, so a single sequence cannot use all requested processes.
+
+Workers share a host-memory admission budget of half the machine's physical
+RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
+runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
+are charged against it; insufficient admission memory is an error, not a
+silent reduction in workers. A worker decodes its next image while the current
+one runs, and encodes finished outputs on a `WriterPool` before the parent
+accepts them, in the original order. Independent images go to workers in
+pairs; a tracked sequence stays one task, in frame order. Each worker's CPU
+loops and writers use `max(1, hardware_threads / workers)` threads. A mask
+task reserves two frames of the budget, a tracked sequence's included, and the
+step fails when that does not fit; a geometry pair that does not fit is sent
+as two single images.
+
+The geometry CLI can explicitly select worker UUIDs and override the shared
+budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
+The list includes every worker GPU, including the primary when desired; an
+empty list uses serial inference unless `SS_WORKERS_PER_GPU` is greater than 1,
+in which case it uses that many workers on the resolved primary GPU.
+Obtain UUIDs with `spirula sam devices`.
+Geometry output ownership, reuse and `--overwrite` rules are unchanged.
+
+### Reusing generated frames and geometry
+
+The GUI records the sources that made a workspace's frames, not just their
+paths. Replacing a video or an imported photo in place, changing the photo
+inventory, or editing a file-backed video LUT invalidates frame reuse.
+Runners check content hashes before planning and verify them again during
+preparation (after transfer for **Move** photo imports, before final frame
+completion otherwise); a same-size, same-timestamp replacement is still a
+change. Existing external-source frames without matching identities also
+need an explicit rebuild. **Keep them, run the rest** cannot bypass this guard:
+confirm **Redo them** on the dataset screen or choose a fresh workspace.
+Dataset images and photographs read in place are already the frames and are
+exempt from this external-source identity check. See
+[dataset reruns](notes/dataset-rerun.md#frame-source-identity) for details.
+
+When `spirula geometry` runs, it reuses a depth or normal map only if the
+map's sibling `<map filename>.geometry-complete` marker matches the request
+and its SHA-256 checksum matches the map. The request binds source image
+content, camera/face planning, model and inference options, colour/exposure,
+and output kind/encoding. Missing or empty maps and stale or damaged marked
+maps are regenerated; depth and normals are checked independently.
+
+**Nonempty outputs without a recognized completion marker are preserved,
+not silently adopted or replaced.** This includes older generated maps.
+To replace them intentionally, run:
+
+```sh
+spirula geometry <dataset> --overwrite
+```
+
+The GUI's geometry overwrite option also permits replacement. Keep markers
+with their maps when copying a dataset. The GUI plan's step-level reuse
+decision still uses the dataset record; per-map validation occurs when the
+geometry tool actually runs. See
+[completion and overwrite rules](notes/dataset-rerun.md#depth-and-normal-map-completion).
+
+
 ## Masks
 
 A training image's mask comes from up to two places:
@@ -300,10 +389,9 @@ Two paths, both gathering per destination pixel:
 
 ## Two-stage parse
 
-1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the raw
-   `train_frame="points"` frame — poses and points exactly as stored. The
-   normalized-frame similarity is computed only to obtain the
-   `train_frame_scale` scalar.
+1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the source
+   dataset frame, translated by `scene_center`. A normalized-frame similarity
+   supplies `train_frame_scale` and the viewer remapping.
 2. **`bake_post_split`** (`data/PostSplit.cpp`) → the post-split arrays
    `engine_setup_data_manager` consumes. This is either an identity (K=1)
    pass-through, or the split `camhost::plan_split_faces` plans for a wide
@@ -460,9 +548,9 @@ pixel count.
 
 That normalized-frame similarity is where `orientation_method` and
 `center_method` act — and only `up` / `poses` is implemented natively;
-anything else is approximated with a warning. Since `train_frame="points"`
-leaves splats in the raw frame, the choice moves `train_frame_scale` and the
-viewer's default camera, not the training coordinates. The unported methods
+anything else is approximated with a warning. Since training uses the dataset
+frame, the choice moves `train_frame_scale` and the viewer's default camera,
+not the training coordinates. The unported methods
 (`pca`, `vertical`, `gsplat`, `focus`) still have a working Python reference:
 [notes/pose-normalization.md](notes/pose-normalization.md).
 
@@ -772,6 +860,19 @@ degrees of elevation, 120 apart in azimuth -- rather than axis-aligned:
   `docs/notes/imu-gps-for-sfm.md` is the plan for what will.
 - **The operator.** Whoever is holding it is in the downward and rearward views
   of every frame of most captures, and wants masking out.
+
+## Training after dataset creation
+
+On the GUI's New Dataset screen, enable **Start training after dataset creation**
+to begin training when all dataset steps finish successfully. Choose a built-in
+or saved training preset and optionally override the step count, maximum splats,
+SH degree and floater suppression. Empty numeric fields and **Floater suppression
+per preset** inherit the preset's values. These controls are also available
+for batch training and partition queueing.
+
+The training settings are captured when dataset creation starts. Failed or
+cancelled dataset jobs do not start training. Training uses the resulting image
+and mask folders and writes runs under the dataset's `outputs/` folder.
 
 ## Frames out of a video
 

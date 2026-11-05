@@ -174,10 +174,9 @@ is impossible today because the child receives only a directory. Both output
 projections are available: equirectangular is carried end to end
 (`ColmapParser.cpp:90` reads model 17, the projection kernels have variants,
 `kSfmCameraModels` offers it), and per-face pinhole needs nothing new because
-the per-folder camera mechanism already describes a rig of faces. One caveat
-for the equirect route: `unproject_raydir` in `src/shaders/pixel_wise.slang`
-falls back to pinhole for `EQUIRECTANGULAR`, so depth and normal supervision on
-an equirect camera is wrong, silently.
+the per-folder camera mechanism already describes a rig of faces. `unproject_raydir`
+in `src/shaders/pixel_wise.slang` maps `EQUIRECTANGULAR` through `equirect_unproj`,
+so depth and normal supervision on equirectangular views is supported end to end.
 
 ---
 

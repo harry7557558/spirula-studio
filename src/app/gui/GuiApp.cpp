@@ -71,6 +71,7 @@
 // Side-effect-free native listing; it must not publish the engine selection.
 #if defined(SS_BUILD_SAM)
 #include "nn/Device.h"
+#include "app/InferenceWorkerDevices.h"
 #include "nn/vk/Context.h"
 #elif defined(SS_TOOL_SFM)
 #include "sfm/vk/VkContext.h"
@@ -442,6 +443,7 @@ void GuiApp::load_settings() {
         else if (k == "sfm_engine") _engine = v == "colmap" ? Engine::Colmap
                                                             : Engine::BuiltIn;
         else if (k == "batch_command") _batch_cmd = unescape_setting(v);
+        else if (k == "additional_gpus") _additional_gpus = unescape_setting(v);
         // accepted_license= is read from the file on demand (license_accepted).
         else if (k == "lang" && !v.empty()) saved_lang = v;
         else if (k == "ui_scale") _scale.set_user(std::clamp((float)atof(v.c_str()),
@@ -495,6 +497,7 @@ void GuiApp::save_settings() {
     std::fprintf(f, "sfm_engine=%s\n",
                  _engine == Engine::Colmap ? "colmap" : "builtin");
     std::fprintf(f, "batch_command=%s\n", escape_setting(_batch_cmd).c_str());
+    std::fprintf(f, "additional_gpus=%s\n", escape_setting(_additional_gpus).c_str());
     std::fprintf(f, "lang=%s\n", spirula::i18n::code(spirula::i18n::current()));
     std::fprintf(f, "ui_scale=%.3f\n", _scale.user());
     std::fprintf(f, "panel_w=%.1f\n", _panel_w);
@@ -684,6 +687,10 @@ void GuiApp::write_run_settings(std::ofstream& f) {
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     line("native_device", _native_device_uuid.empty() ? "auto" : _native_device_uuid);
     if (!_native_device_name.empty()) line("native_device_name", _native_device_name);
+#endif
+#ifdef SS_BUILD_SAM
+    line("additional_gpus", _additional_gpus);
+    line("worker_devices", resolved_worker_devices());
 #endif
 #ifndef SS_BACKEND_VULKAN
     if (_cuda_device_index >= 0)
@@ -3075,10 +3082,11 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             _pick_row = -1;
             break;
         case PickAction::BatchPresetFile:
-            if (!path.empty() && _pick_row == -2) {
+            if (!path.empty() && (_pick_row == -2 || _pick_row == -3)) {
                 try {
                     TrainPreset p = load_preset(path);
-                    _pq.run.preset = {p.path, p.name};
+                    BatchRun& run = _pick_row == -2 ? _pq.run : _dataset_training.run;
+                    run.preset = {p.path, p.name};
                 } catch (const std::exception& e) {
                     log(e.what());
                 }
@@ -3264,6 +3272,7 @@ void GuiApp::frame() {
             _download_model_id.clear();
     }
     pump_source_probes();
+    advance_dataset_training();
     // Before the reload check below: between two batch rows the runner is
     // briefly idle, and a stale _parse_dirty would start a dataset parse right
     // where the next row wants the engine.
@@ -3561,7 +3570,7 @@ void GuiApp::draw_menu_bar() {
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     {
         // Native choice is reachable before previews and engine work.
-        if (ui::BeginMenu(msg::menu_device)) {
+        if (ui::BeginMenu(msg::primary_gpu)) {
             draw_device_picker(/*as_menu=*/true);
             ImGui::EndMenu();
         }
@@ -4061,6 +4070,7 @@ void GuiApp::cancel_dataset_job() {
     // Cancelling the run on screen gives up the queue driving it, which is
     // what the trainer's stop confirmation already does.
     if (_batch_active) _batch_stop_after = _batch_stop_now = true;
+    _dataset_training.pending = false;
     _sfm.cancel();
     _colmap.cancel();
 }
@@ -4221,6 +4231,7 @@ void GuiApp::fill_masking(PrepJob& prep) const {
     // panel state and would otherwise drop it. Empty before the freeze, which
     // is exactly what an unstarted job wants.
     prep.device = _native_device_uuid;
+    prep.inference_devices = resolved_worker_devices();
 }
 
 void GuiApp::sync_dataset_jobs() {
@@ -4263,6 +4274,7 @@ void GuiApp::sync_dataset_jobs() {
     // The frozen choice, so a later edit cannot drop the UUID the run has
     // already committed to. Empty before the freeze.
     _colmap_job.device = _native_device_uuid;
+    _colmap_job.inference_devices = prep.inference_devices;
     _colmap_job.video_fps = prep.video_fps;
     _colmap_job.adaptive_fps = prep.adaptive_fps;
     _colmap_job.adaptive_range = prep.adaptive_range;
@@ -4310,6 +4322,7 @@ void GuiApp::sync_dataset_jobs() {
     _sfm_job.mask_features = _colmap_job.mask_features = _mask_features;
     // The same step either way: `spirula geometry` over the finished dataset.
     _sfm_job.geometry = _colmap_job.geometry = _geometry;
+    _sfm_job.geometry.worker_devices = _colmap_job.geometry.worker_devices = resolved_worker_devices();
     _sfm_job.dense = _colmap_job.dense = _dense;
     if (_redo_dense || _dense_rebuild) _sfm_job.dense.config.rebuild = _colmap_job.dense.config.rebuild = true;
     _sfm_job.dense.config.device = _colmap_job.dense.config.device = _native_device_uuid;
@@ -4349,6 +4362,45 @@ void GuiApp::update_dataset_job() {
     else                                           _colmap.update(_colmap_job);
 }
 
+void GuiApp::advance_dataset_training() {
+    if (!_dataset_training.pending || dataset_busy()) return;
+    _dataset_training.pending = false;
+    const bool builtin = _dataset_training.builtin;
+    const bool done = builtin ? _sfm.state() == SfmRunner::State::Done
+                              : _colmap.state() == ColmapRunner::State::Done;
+    if (!done || _batch_active || native_work_busy()) return;
+
+    TrainPreset& preset = _dataset_training.preset;
+    TrainConfig& cfg = preset.cfg;
+    cfg.data = builtin ? _sfm.dataset_dir() : _colmap.dataset_dir();
+    const std::string images = builtin ? _sfm.image_dir() : _colmap.image_dir();
+    const std::string masks = builtin ? _sfm.mask_dir() : _colmap.mask_dir();
+    if (!images.empty()) cfg.image_dir = images;
+    if (!masks.empty()) {
+        cfg.mask_dir = masks;
+        cfg.flip_mask = builtin ? _sfm.mask_flipped() : _colmap.mask_flipped();
+    }
+    cfg.output_dir_prefix = (fs::path(cfg.data) / "outputs").string();
+    if (_dense.enable && !_dense.use_for_training && cfg.seed_pointcloud.empty())
+        cfg.seed_pointcloud = spirula::dense::kSparseSeed;
+
+    _cfg = cfg;
+    _defaults = cfg;
+    _cfg_ui.touched = preset.touched;
+    _preset = preset.base;
+    _train_presets.file = preset.path;
+    _train_presets.display = preset.name;
+    _train_presets.desc.clear();
+    _train_presets.msg.clear();
+    _parse_dirty = false;
+    remember_dir("dataset", cfg.data);
+    remember(RecentKind::Dataset, cfg.data);
+    reset_dataset_preview();
+    close_source_preview();
+    _screen = Screen::Train;
+    launch_training(_cfg, _preset);
+}
+
 const DatasetPlan& GuiApp::dataset_plan() {
     sync_dataset_jobs();
     const WorkspaceState& ws = workspace_state();
@@ -4378,14 +4430,32 @@ void GuiApp::start_dataset_job() {
 }
 
 bool GuiApp::launch_dataset_job() {
-    // The first GPU-consuming operation of this session freezes the one native
-    // choice, before any preview, decode or child is dispatched. A rejected or
-    // conflicting request is reported and the run does not start.
+    // Device choice must freeze before any preview, decode or child process starts.
     if (native_work_busy()) return false;
     _ws_state_at = -1.0;
     if (!_redo_frames && !dataset_plan()[Step::Frames].can_keep) {
         log(dmsg::rerun_section_help.get());
         return false;
+    }
+    _dataset_training.pending = false;
+    _dataset_training.error.clear();
+    if (!_batch_active && _dataset_training.enabled) {
+        BatchRow row;
+        row.runs.push_back(_dataset_training.run);
+        TrainPreset& preset = _dataset_training.preset;
+        if (!batch_build_train_config(row, 0, _workspace, {}, {}, false,
+                                      preset.cfg, preset.base, _dataset_training.error,
+                                      &preset.touched)) {
+            log(_dataset_training.error);
+            return false;
+        }
+        _dataset_training.error = spirula::train_config_error(preset.cfg);
+        if (!_dataset_training.error.empty()) {
+            log(_dataset_training.error);
+            return false;
+        }
+        preset.path = _dataset_training.run.preset.path;
+        preset.name = _dataset_training.run.preset.name;
     }
     stop_inference_users();
     close_splat();
@@ -4438,6 +4508,8 @@ bool GuiApp::launch_dataset_job() {
     }
     _sfm_job.prep.review_frames = !_batch_active && effective_engine() == Engine::BuiltIn &&
                                   _sfm_job.prep.skip_blurry && _sfm_job.prep.blur_review;
+    _dataset_training.builtin = effective_engine() == Engine::BuiltIn;
+    _dataset_training.pending = !_batch_active && _dataset_training.enabled;
     if (effective_engine() == Engine::BuiltIn) _sfm.start(_sfm_job, films);
     else                                      _colmap.start(_colmap_job, films);
     // A run is what the column is for while it goes.
@@ -4509,11 +4581,12 @@ void GuiApp::draw_sensor_toggles(PrepInput& s) {
     }
     const bool colmap = effective_engine() != Engine::BuiltIn;
     // Nothing under Advanced quiets photo GPS entirely: --metric-gps none still
-    // lets it propose pairs and admit an equirect capture's level prior.
+    // lets it propose pairs and admit an equirect capture's level prior. A
+    // video's GPS has no such use unless --sensor-pairs asks.
     const Msg* imu_off = s.is_video ? (_sfm_job.sensor_gauge == 0 ? &dmsg::sfm_sensor_gauge : nullptr)
                                     : (_sfm_job.exif_attitude == 0 ? &dmsg::sfm_exif_attitude : nullptr);
     const Msg* gps_off =
-        s.is_video && _sfm_job.sensor_gauge == 0 ? &dmsg::sfm_sensor_gauge : nullptr;
+        s.is_video && _sfm_job.metric_gps == 0 ? &dmsg::sfm_metric_gps : nullptr;
     auto explain = [&](const Msg& help, const Msg* off) {
         if (colmap) {
             ui::help_on_hover_disabled(dmsg::sensors_unused_colmap);
@@ -5484,15 +5557,7 @@ void GuiApp::load_native_devices() {
     _native_devices.clear();
 #if defined(SS_BUILD_SAM)
     // The inference layer's own side-effect-free enumeration.
-    for (const nn::DeviceInfo& d : nn::list_devices()) {
-        NativeDeviceRow r;
-        r.name = d.name;
-        r.type = d.type;
-        r.uuid = d.uuid;
-        r.vram_bytes = d.vram_bytes;
-        r.usable = d.usable;
-        _native_devices.push_back(std::move(r));
-    }
+    _native_devices = nn::list_devices();
 #elif defined(SS_TOOL_SFM)
     // No inference layer, but SfM carries its own Vulkan context: a listing
     // that creates nothing. A build with neither has no native GPU work to
@@ -5608,7 +5673,7 @@ void GuiApp::draw_device_picker(bool as_menu) {
     } else {
         ImGui::BeginDisabled(disabled);
         ImGui::SetNextItemWidth(px(220.0f));
-        if (ui::BeginCombo(msg::menu_device,
+        if (ui::BeginCombo(msg::primary_gpu,
                            no_devices ? msg::no_device_found.get() : shown)) {
             if (ui::Selectable(msg::device_auto, auto_sel)) {
                 _native_device_choice_set = true;
@@ -5782,6 +5847,10 @@ void GuiApp::propagate_frozen_device() {
     _colmap_job.geometry.device_uuid = uuid;
     _geometry.device_uuid = uuid;
     _mesh_job.device_uuid = uuid;
+    const std::string workers = resolved_worker_devices();
+    _sfm_job.prep.inference_devices = _colmap_job.inference_devices = workers;
+    _sfm_job.geometry.worker_devices = _colmap_job.geometry.worker_devices =
+        _geometry.worker_devices = workers;
 }
 
 void GuiApp::open_mask_preview() {
@@ -5818,6 +5887,68 @@ GuiApp::MaskingPanel GuiApp::dataset_masking_panel() {
     p.open_preview = [this] { open_mask_preview(); };
     return p;
 }
+
+std::string GuiApp::resolved_worker_devices() const {
+    std::string csv;
+#ifdef SS_BUILD_SAM
+    for (const std::string& uuid :
+         app::worker_devices_for(_additional_gpus, _native_device_uuid, _native_devices,
+                                 app::workers_per_gpu())) {
+        if (!csv.empty()) csv += ',';
+        csv += uuid;
+    }
+#endif
+    return csv;
+}
+
+#ifdef SS_BUILD_SAM
+void GuiApp::draw_additional_gpus() {
+    load_native_devices();
+    std::string primary = _native_device_uuid;
+#ifdef SS_BACKEND_VULKAN
+    if (primary.empty()) {
+        const int index = backend::device_resolve(_native_device_request, _native_device_choice_set);
+        if (index >= 0) primary = backend::device_info(index).uuid;
+    }
+#endif
+    auto selected = app::worker_devices_for(_additional_gpus, primary, _native_devices);
+    if (!selected.empty()) selected.erase(selected.begin());
+    const auto row = [&](size_t i) {
+        return _native_devices[i].name + " [" + std::to_string(i) + "]";
+    };
+    std::string preview;
+    for (size_t i = 0; i < _native_devices.size(); ++i)
+        if (std::find(selected.begin(), selected.end(), _native_devices[i].uuid) != selected.end())
+            preview += (preview.empty() ? "" : ", ") + row(i);
+    const bool auto_mode = _additional_gpus == "auto";
+    ImGui::SetNextItemWidth(px(220.0f));
+    if (ui::BeginCombo(msg::additional_gpus, auto_mode ? msg::device_auto.get() :
+                      preview.empty() ? msg::additional_gpus_none.get() : preview.c_str())) {
+        std::string next = _additional_gpus;
+        if (ui::Selectable(msg::device_auto, auto_mode)) next = "auto";
+        if (ui::Selectable(msg::additional_gpus_none, _additional_gpus == "none")) next = "none";
+        ImGui::Separator();
+        for (size_t i = 0; i < _native_devices.size(); ++i) {
+            const auto& d = _native_devices[i];
+            if (!app::worker_device_supported(d) || d.uuid == primary) continue;
+            const auto found = std::find(selected.begin(), selected.end(), d.uuid);
+            bool on = found != selected.end();
+            if (!ui::CheckboxRaw((row(i) + "##" + d.uuid).c_str(), &on)) continue;
+            if (on) selected.push_back(d.uuid);
+            else selected.erase(found);
+            next.clear();
+            for (const auto& uuid : selected) next += (next.empty() ? "" : ",") + uuid;
+            if (next.empty()) next = "none";
+        }
+        if (next != _additional_gpus) {
+            _additional_gpus = next;
+            save_settings();
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(msg::additional_gpus_help);
+}
+#endif
 
 void GuiApp::draw_masking_options(const MaskingPanel& p) {
     std::vector<PrepInput>& inputs = *p.inputs;
@@ -8230,22 +8361,22 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::max_image_size_auto_help);
 
     // ---- what the sensors are allowed to settle ----
-    // A video's own IMU and GPS track, and per photograph the EXIF position
-    // and a drone's recorded attitude. Any one can be all an input has.
+    // GPS from a video's track or a photo's EXIF, a video's IMU, and a
+    // drone's recorded attitude. Any one can be all an input has.
     ImGui::Spacing();
     ui::SeparatorText(dmsg::section_sensors);
     ui::TextDisabledWrapped(dmsg::sensors_section_caption);
-    ImGui::SetNextItemWidth(px(260.0f));
-    ui::Combo(dmsg::sfm_sensor_gauge, &_sfm_job.sensor_gauge,
-              {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
-               &dmsg::sfm_sensor_gauge_auto});
-    ui::help_on_hover(dmsg::sfm_sensor_gauge_help);
-
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_metric_gps, &_sfm_job.metric_gps,
               {&dmsg::sfm_metric_gps_off, &dmsg::sfm_metric_gps_horizontal,
                &dmsg::sfm_metric_gps_full, &dmsg::sfm_metric_gps_auto});
     ui::help_on_hover(dmsg::sfm_metric_gps_help);
+
+    ImGui::SetNextItemWidth(px(260.0f));
+    ui::Combo(dmsg::sfm_sensor_gauge, &_sfm_job.sensor_gauge,
+              {&dmsg::sfm_sensor_gauge_off, &dmsg::sfm_sensor_gauge_up,
+               &dmsg::sfm_sensor_gauge_auto});
+    ui::help_on_hover(dmsg::sfm_sensor_gauge_help);
 
     ImGui::SetNextItemWidth(px(260.0f));
     ui::Combo(dmsg::sfm_exif_attitude, &_sfm_job.exif_attitude,
@@ -8463,13 +8594,7 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     // tall it is depends on what it is saying.
     ImGui::BeginChild("##dsform", ImVec2(0, height - _ds_action_h));
 
-    // What is greyed out is decided per section, by whether the step that
-    // reads it has started -- see dataset_locked. The whole form used to grey
-    // the instant a run began, which left nothing to do for the twenty minutes
-    // a capture takes to extract, and nothing to look at but the log.
-    //
-    // The inputs and the engine define the run and are the exception: they are
-    // fixed the moment it starts.
+    // Step settings stay editable until the runner consumes them; inputs and engine stay fixed.
     ImGui::BeginDisabled(native_work_busy());
     draw_dataset_source();
 
@@ -8512,6 +8637,11 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     // before any of them can be started.
 #if defined(SS_BUILD_SAM) || defined(SS_TOOL_SFM) || defined(SS_BACKEND_VULKAN)
     draw_device_picker();
+#ifdef SS_BUILD_SAM
+    ImGui::BeginDisabled(running);
+    draw_additional_gpus();
+    ImGui::EndDisabled();
+#endif
     ImGui::Spacing();
 #endif
     draw_dataset_basics();
@@ -8529,6 +8659,22 @@ void GuiApp::draw_dataset_form(float height, bool running) {
     draw_dense_options();
     ImGui::EndDisabled();
     ImGui::Spacing();
+
+    if (!_batch_active) {
+        ImGui::PushID("dataset_training");
+        ImGui::BeginDisabled(running || native_work_busy());
+        if (ui::Checkbox(dmsg::train_after_creation, &_dataset_training.enabled))
+            _dataset_training.error.clear();
+        if (_dataset_training.enabled) {
+            ui::Text(msg::batch_stage_train);
+            draw_batch_run(_dataset_training.run, -3, 0, false);
+            if (!_dataset_training.error.empty())
+                ui::TextColoredWrappedRaw(kErr, _dataset_training.error.c_str());
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+        ImGui::Spacing();
+    }
 
     ImGui::BeginDisabled(dataset_locked(Stage::Features));
     if (effective_engine() == Engine::BuiltIn) draw_sfm_advanced();
@@ -9973,7 +10119,6 @@ void GuiApp::draw_partition_queue_modal() {
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
     if (!_pq.ask_clear) {
-        // The same line a batch row shows: preset, then the three numbers.
         ImGui::SetNextItemWidth(px(520.0f));
         draw_batch_run(_pq.run, -2, 0, false);
         ui::Checkbox(pmsg::pq_merge, &_pq.merge);
@@ -10232,8 +10377,9 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
         ImGui::PushID((int)i);
         if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh)))
             batch_edited();
-        ImGui::SameLine(0, 2);
-        if (ui::ButtonRaw("x##rmrun")) drop = (int)i;
+        ImGui::SameLine();
+        if (ui::ButtonRaw("x##rmrun", ImVec2(bw, 0))) drop = (int)i;
+        ui::help_on_hover(dmsg::remove);
         ImGui::PopID();
     }
     if (drop >= 0) {
@@ -10261,22 +10407,30 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
 }
 
 
-// One training run on one line: which preset, the three numbers worth
-// changing without a preset for each combination, and -- when the row meshes
-// -- whether this is one of the runs it meshes.
 bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
     bool moved = false;
     const float num_w = px(84.0f);
     const float sp = ImGui::GetStyle().ItemSpacing.x;
     const float bw = ImGui::GetFrameHeight() + 6.0f;
-    const float boxes = 3.0f * (num_w + sp) + (meshing ? bw + sp : 0.0f);
+    const bool inline_floater = row >= 0;
+    const char* values[] = {"", "off", "mild", "strong"};
+    const Msg* choices[] = {&msg::floater_per_preset, &msg::floater_off,
+                            &msg::floater_mild, &msg::floater_strong};
+    int selected = 0;
+    float floater_w = 0.0f;
+    for (int k = 0; k < 4; k++) {
+        if (run.floater_suppression == values[k]) selected = k;
+        floater_w = std::max(floater_w, ImGui::CalcTextSize(choices[k]->get()).x);
+    }
+    floater_w += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float boxes = 3.0f * (num_w + sp) +
+                        (meshing ? ImGui::GetFrameHeight() + sp : 0.0f) +
+                        (inline_floater ? floater_w + sp + bw + sp : 0.0f);
     ImGui::SetNextItemWidth(std::max(px(120.0f),
-                                     ImGui::GetContentRegionAvail().x - bw - boxes));
+                                     ImGui::GetContentRegionAvail().x - boxes));
     moved |= draw_batch_train_preset(run.preset, "##trpreset", row, slot);
 
-    // Text boxes rather than spinners because empty means "whatever the preset
-    // says", and 0 is a legal SH degree. The hint is the column name, which is
-    // shown exactly when the box is empty and there is nothing else to say.
+    // Empty means inherit; SH degree 0 is an explicit override.
     const Msg* labels[] = {&msg::batch_col_splats, &msg::batch_col_sh,
                            &msg::batch_col_steps};
     std::string* fields[] = {&run.cap_max, &run.sh_degree, &run.iterations};
@@ -10290,6 +10444,19 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         ui::help_on_hover(msg::batch_override_help);
         ImGui::PopID();
     }
+    if (inline_floater) ImGui::SameLine(0, sp);
+    ImGui::SetNextItemWidth(floater_w);
+    if (ui::BeginComboRaw("##floater_suppression", choices[selected]->get())) {
+        for (int k = 0; k < 4; k++) {
+            if (ui::Selectable(*choices[k], selected == k)) {
+                run.floater_suppression = values[k];
+                moved = true;
+            }
+            if (selected == k) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(fld::floater_suppression_help);
     if (meshing) {
         ImGui::SameLine(0, sp);
         if (ui::CheckboxRaw("##runmesh", &run.mesh)) moved = true;

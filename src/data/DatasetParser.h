@@ -1,15 +1,7 @@
 #pragma once
 
-// DatasetParser -- dataset readers + camera bakes. No external deps: JSON via
-// data/Json.h, PLY reader in NerfstudioParser.cpp, images via stb in the
-// engine's DataManager.
-//
-// parse_colmap_dataset / parse_nerfstudio_dataset / parse_metashape_dataset
-// read one format each; parse_dataset identifies the format from its marker
-// files. All produce a ParsedDataset of PER-INPUT cameras in the raw
-// train_frame="points" frame. bake_post_split() (PostSplit.cpp) then expands
-// that to the POST-split arrays engine_setup_data_manager consumes: identity
-// at K=1, or the pinhole faces camhost::plan_split_faces cuts a wide camera into.
+// Dataset readers produce per-input cameras in the source frame, translated
+// by scene centering. PostSplit.cpp expands them into the engine's camera table.
 
 #include "data/SceneCenter.h"
 #include "data/SceneTransform.h"

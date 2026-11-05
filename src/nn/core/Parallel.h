@@ -1,5 +1,5 @@
 #pragma once
-// A one-function host thread helper.
+// Host thread helpers.
 //
 // The GPU does the model; the host still resizes a frame, thresholds a mask and
 // fills holes, and at 1008x1008x3 in double precision that resize alone is a
@@ -13,6 +13,8 @@
 #include "core/HardwareThreads.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <exception>
 #include <mutex>
 #include <thread>
@@ -20,14 +22,32 @@
 
 namespace nn {
 
+namespace detail {
+inline std::atomic<unsigned> parallel_thread_limit{0};
+}
+
+// Process-local cap, including the calling thread; zero restores automatic sizing.
+inline void set_parallel_threads(unsigned threads) {
+    detail::parallel_thread_limit.store(threads, std::memory_order_relaxed);
+}
+
+inline unsigned configured_parallel_threads() {
+    return detail::parallel_thread_limit.load(std::memory_order_relaxed);
+}
+
+inline unsigned parallel_threads() {
+    const unsigned limit = configured_parallel_threads();
+    const unsigned hw = std::max(1u, spirula::hardware_threads());
+    return limit ? std::min(limit, hw) : hw;
+}
+
 // Calls body(begin, end) on disjoint sub-ranges of [0, n) covering the whole
 // range. Runs inline when the range is small or the machine is single-core, so
 // the caller never has to special-case it.
 template <typename F>
 void parallel_for(int64_t n, const F& body, int64_t min_chunk = 1) {
     if (n <= 0) return;
-    unsigned hw = spirula::hardware_threads();
-    if (hw == 0) hw = 1;
+    const unsigned hw = parallel_threads();
     int64_t workers = std::min<int64_t>((int64_t)hw, (n + min_chunk - 1) / min_chunk);
     if (workers <= 1) {
         body((int64_t)0, n);

@@ -44,6 +44,9 @@
 #include "app/gui/TrainRunner.h"
 #include "app/gui/ViewportPanel.h"
 #include "data/PointCloudFile.h"
+#ifdef SS_BUILD_SAM
+#include "nn/Device.h"
+#endif
 
 #include <cstddef>
 #include <atomic>
@@ -326,6 +329,7 @@ private:
     // Push edits made while a job runs into the runner, which takes each half
     // as it reaches it (SfmRunner::update).
     void update_dataset_job();
+    void advance_dataset_training();
     // Copies the panel-level state into whichever job struct will run.
     void sync_dataset_jobs();
     // The selected checkpoint and detector; empty paths until both are here.
@@ -437,6 +441,10 @@ private:
     void draw_masking_options(const MaskingPanel& p);
     // The job's mask_* fields from the shared settings; `mask_enable` excepted.
     void fill_masking(PrepJob& prep) const;
+    std::string resolved_worker_devices() const;
+#ifdef SS_BUILD_SAM
+    void draw_additional_gpus();
+#endif
     void draw_geometry_options();
     // Opens the geometry preview on the output folder when it already holds a
     // reconstruction -- the only case where the real cameras are known -- and
@@ -577,8 +585,6 @@ private:
     // The built-in / saved picker one stage of one row uses. True when the
     // choice moved.
     bool draw_batch_train_preset(BatchPreset& p, const char* id, int row, int slot);
-    // One training run: its preset, its three overrides and whether the row's
-    // Mesh stage covers it, on one line.
     bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing);
     // The colour and format sets a row writes, over what its preset says.
     bool draw_batch_mesh_outputs(BatchMeshOptions& mesh);
@@ -745,11 +751,15 @@ private:
     // What the picker lists: the native Vulkan records when the build has one,
     // backend rows otherwise. Cached: enumeration spins up a throwaway
     // instance, and the machine's device set does not change under a session.
+#ifdef SS_BUILD_SAM
+    using NativeDeviceRow = nn::DeviceInfo;
+#else
     struct NativeDeviceRow {
         std::string name, type, uuid;   // uuid canonical, "" when unreported
         uint64_t vram_bytes = 0;
         bool usable = false;
     };
+#endif
     std::vector<NativeDeviceRow> _native_devices;
     bool _native_devices_loaded = false;
 
@@ -840,6 +850,13 @@ private:
     ColmapJob _colmap_job;
     SfmRunner _sfm;
     SfmJob _sfm_job;
+    struct DatasetTraining {
+        bool enabled = false, pending = false, builtin = false;
+        BatchRun run;
+        TrainPreset preset;
+        std::string error;
+    };
+    DatasetTraining _dataset_training;
     // ALIKED and LightGlue, when the advanced options ask for them. Fetched
     // here rather than by the run's child process, whose download nobody
     // asked for and nobody can see.
@@ -995,6 +1012,7 @@ private:
     bool _mask_memory = false;
     int  _mask_detect_every = 1;
     int  _mask_memory_frames = 0;
+    std::string _additional_gpus = "auto";
     // The static stencils are kept on the inputs themselves (PrepInput::
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.
@@ -1165,7 +1183,7 @@ private:
     int _pick_lut = -1;               // which input PickAction::SourceLut sets
     int _pick_source = -1;            // which input PickAction::SourceReplace edits
     std::string _pick_field;          // which flag PickAction::ConfigPath sets
-    // Which batch row the pending pick edits; -1 appends a new row.
+    // -1 appends a row; -2 edits the partition run; -3 edits post-creation training.
     int _pick_row = -1;
     // ... and which of that row's training runs, for a pick made in one of
     // their preset combos.

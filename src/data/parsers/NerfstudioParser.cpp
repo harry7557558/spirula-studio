@@ -524,9 +524,7 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
             points = read_ply_points((root / ply_rel).string());
     }
 
-    // ---- applied_transform inverse (train_frame="points" branch): poses and
-    // points go back to the ORIGINAL (pre-applied_transform) frame, which is
-    // where the centre is taken. -------------------------------------------
+    // Scene centering is measured in the frame before applied_transform.
     double A[3][3] = {{1,0,0},{0,1,0},{0,0,1}}, b[3] = {0, 0, 0};
     bool applied = false;
     if (const JsonValue* at = meta.find("applied_transform")) {

@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -234,16 +235,18 @@ static void logLensPlan(const LensPlan& p) {
 
 SensorCaptures loadSensorCaptures(const SfmConfig& cfg, bool verbose) {
     SensorCaptures out;
-    if (cfg.sensor_gauge == "none") return out;
+    // --sensor-gauge none is the IMU's off switch; the GPS log is --metric-gps's.
+    const bool imu_on = cfg.sensor_gauge != "none";
     for (const TelemetryInput& in : cfg.telemetry_inputs) {
-        if (!in.imu && !in.gps) continue;
+        const bool imu = in.imu && imu_on;
+        if (!imu && !in.gps) continue;
         Telemetry t;
         std::string err;
         if (!telemetry_read(in.path, t, err) || t.empty()) {
             L::warn(Tag::Orient, M::sensor_file_bad, {in.path, err.empty() ? "-" : err});
             continue;
         }
-        if (!in.imu) {
+        if (!imu) {
             t.gyro.clear();
             t.accel.clear();
             t.magnet.clear();
@@ -344,7 +347,8 @@ void reportSensorGauge(size_t i, const SensorGaugeResult& r,
         L::out(Tag::Orient, M::sensor_up,
                {model, (long long)r.up.votes, L::num(r.up.spread_deg, 2), (long long)r.up.outliers});
     if (r.fail == SensorFail::NoUp) {
-        L::err(Tag::Orient, M::sensor_declined, {model, M::sensor_fail_noup.get()});
+        const auto& why = r.up.votes > 0 ? M::sensor_fail_noup : M::sensor_fail_noup_noimu;
+        L::err(Tag::Orient, M::sensor_declined, {model, why.get()});
         return;
     }
     if (r.scale_imu_sigma > 0) {
@@ -671,10 +675,11 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
     }
     const std::vector<std::unique_ptr<LoadedCapture>>& loaded = sensors->loaded;
     std::vector<MetricFit> log_fit(models.size());   // the GPS log's, where it was fitted
-    if (!loaded.empty()) {
+    if (!loaded.empty() && (cfg.sensor_gauge != "none" || gps)) {
         std::vector<SensorCapture> caps = sensors->caps();
         SensorGaugeOptions opt;
-        opt.mode = cfg.sensor_gauge == "up" ? SensorMode::Up : SensorMode::Auto;
+        opt.mode = cfg.sensor_gauge == "auto" ? SensorMode::Auto : SensorMode::Up;
+        opt.gps = gps;
         opt.gps_full = cfg.metric_gps == "full";
         opt.gps_max_error = gps ? cfg.metric_max_error : 0.0;
         opt.gps_max_error_frac = cfg.metric_max_error_frac;
@@ -2696,7 +2701,15 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
         // on a large capture, with the last image long since placed.
         events::stage_begin(Stage::Refine);
         double t_finish = 0;
-        models = finishModels(mapper, std::move(models), cfg, verbose, t_finish);
+        try {
+            std::vector<Reconstruction> finished =
+                finishModels(mapper, models, cfg, verbose, t_finish);
+            models = std::move(finished);
+        } catch (const std::exception& e) {
+            L::err_raw(Tag::Map,
+                       "[map] finishing passes failed: " + std::string(e.what()) +
+                       "; continuing with current model");
+        }
         t_map += t_finish;
         events::stage_end(Stage::Refine);
     }

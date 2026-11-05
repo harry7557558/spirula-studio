@@ -200,9 +200,28 @@ void encode_geometry(const SamModel& m, vk::Arena& arena,
 // Fusion encoder
 // ---------------------------------------------------------------------------
 
+void fusion_encoder_prefix(const SamModel& m, vk::Arena& arena,
+                           const Tensor& feats, const Tensor& pos) {
+    if (m.hp().fenc_layers == 0) return;
+    vk::ArenaScope scope(arena);
+    const int64_t N = feats.rows(), D = m.hp().neck_dim;
+    const auto& W = m.w();
+    Tensor xn = nn::arena_tensor(arena, nn::DType::F32, N, D);
+    Tensor xnp = nn::arena_tensor(arena, nn::DType::F32, N, D);
+    nn::layer_norm(xn, feats, W.get("fenc.layers.0.norm1.weight"),
+                   W.get("fenc.layers.0.norm1.bias"));
+    nn::add(xnp, xn, pos);
+    mha_fused(arena, feats, xnp, xnp, xn, N, N,
+              W.get("fenc.layers.0.sa.in_proj_weight"),
+              W.get("fenc.layers.0.sa.in_proj_bias"),
+              W.get("fenc.layers.0.sa.out_proj.weight"),
+              W.get("fenc.layers.0.sa.out_proj.bias"), m.hp().fenc_heads,
+              AttnBias::None, {}, feats);
+}
+
 void fusion_encoder(const SamModel& m, vk::Arena& arena, const Tensor& feats,
                     const Tensor& pos, const Tensor& prompt, int64_t n_prompt,
-                    const Tensor& prompt_bias) {
+                    const Tensor& prompt_bias, bool prefix_done) {
     NN_SCOPED_TIMER("fusion_encoder");
     const Hparams& h = m.hp();
     const WeightStore& W = m.w();
@@ -216,15 +235,14 @@ void fusion_encoder(const SamModel& m, vk::Arena& arena, const Tensor& feats,
         auto wt = [&](const char* s) { return W.getf("%s.%s", p, s); };
 
         Tensor xn = nn::arena_tensor(arena, nn::DType::F32, N, D);
-        Tensor xnp = nn::arena_tensor(arena, nn::DType::F32, N, D);
-
-        // Self-attention over the image tokens: Q and K see the positional
-        // encoding, V does not.
-        nn::layer_norm(xn, feats, wt("norm1.weight"), wt("norm1.bias"));
-        nn::add(xnp, xn, pos);
-        mha_fused(arena, feats, xnp, xnp, xn, N, N, wt("sa.in_proj_weight"),
-                  wt("sa.in_proj_bias"), wt("sa.out_proj.weight"), wt("sa.out_proj.bias"),
-                  h.fenc_heads, AttnBias::None, {}, feats);
+        if (i != 0 || !prefix_done) {
+            Tensor xnp = nn::arena_tensor(arena, nn::DType::F32, N, D);
+            nn::layer_norm(xn, feats, wt("norm1.weight"), wt("norm1.bias"));
+            nn::add(xnp, xn, pos);
+            mha_fused(arena, feats, xnp, xnp, xn, N, N, wt("sa.in_proj_weight"),
+                      wt("sa.in_proj_bias"), wt("sa.out_proj.weight"), wt("sa.out_proj.bias"),
+                      h.fenc_heads, AttnBias::None, {}, feats);
+        }
 
         // Cross-attention from image tokens to the prompt (text + exemplars).
         nn::layer_norm(xn, feats, wt("norm2.weight"), wt("norm2.bias"));

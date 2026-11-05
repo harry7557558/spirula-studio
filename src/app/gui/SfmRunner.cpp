@@ -278,6 +278,7 @@ void SfmRunner::take_selection(PrepJob& prep) {
 void SfmRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.prep.mask_enable;
+    prep.inference_devices = _live.prep.inference_devices;
     prep.mask_prompt = _live.prep.mask_prompt;
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_feature_prompt = _live.prep.mask_feature_prompt;
@@ -821,6 +822,8 @@ void SfmRunner::run(SfmJob job) {
         if (prior.resumable())
             log(fmt(lmsg::sfm_resuming, {ws.string()}), /*detail=*/false);
 
+        std::string identity_error;
+        if (!snapshot_frame_sources(job.prep, identity_error)) return fail(identity_error);
         // Each step asks the plan again when it is reached, with the settings
         // the screen holds by then; what already ran stays as it went.
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);

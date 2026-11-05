@@ -358,7 +358,7 @@ void SplatViewer::run(std::string path) {
 
         ViewerRenderConfig vc;
         vc.primitive = cfg.primitive;
-        vc.packed = cfg.packed || cfg.use_bvh;
+        vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
         // Median and distortion buffers are training diagnostics computed from
         // regularizers this file has none of, so the viewer does not offer
