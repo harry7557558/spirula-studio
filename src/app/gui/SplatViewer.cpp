@@ -342,20 +342,14 @@ void SplatViewer::run(std::string path) {
             }
         }
 
-        int bg_deg = 0, bg_transfer = 0;
-        bool bg_is_linear = false;
+        const spirula::ColorResolution color = spirula::resolve_color(cfg);
+        int bg_deg = 0, bg_transfer = (int)color.splat_transfer;
+        bool bg_is_linear = color.splat_linear;
         std::vector<float3> bg_coeffs;
         fs::path ckpt_dir = fs::path(ply).parent_path();
         bool has_bg = ckpt::load_background_sh(ckpt_dir, bg_deg, bg_coeffs,
                                                bg_transfer, bg_is_linear);
-        if (!has_bg && !run_dir.empty()) {
-            has_bg = ckpt::load_background_sh(run_dir, bg_deg, bg_coeffs,
-                                              bg_transfer, bg_is_linear);
-        }
 
-        // The run's own color space, so the model opens looking the way it
-        // was trained rather than the way an untagged PLY defaults to.
-        const spirula::ColorResolution color = spirula::resolve_color(cfg);
         {
             std::lock_guard<std::mutex> lk(_mu);
             _gamut = color.splat_gamut;
@@ -430,7 +424,8 @@ void SplatViewer::run(std::string path) {
                 const int64_t n_bg = (int64_t)bg_coeffs.size();
                 TorchTensorView bg_tv((uint64_t)(uintptr_t)bg_coeffs.data(),
                                       (uint32_t)sizeof(float), {n_bg, 3LL});
-                engine_scene_set_background_sh(_pending_slot, bg_deg, bg_tv);
+                engine_scene_set_background_sh(_pending_slot, bg_deg, bg_tv,
+                                               bg_transfer, bg_is_linear);
             }
         }
 

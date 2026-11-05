@@ -399,6 +399,15 @@ foreach(test_src ${SS_CORE_TESTS})
     ss_configure_app(${test_name})
 endforeach()
 
+# Optional independent decoder for tests; the application has no WebP dependency.
+find_path(SS_TEST_WEBP_INCLUDE_DIR webp/decode.h)
+find_library(SS_TEST_WEBP_LIBRARY NAMES webp)
+if(SS_TEST_WEBP_INCLUDE_DIR AND SS_TEST_WEBP_LIBRARY)
+    target_include_directories(webp_writer_test PRIVATE ${SS_TEST_WEBP_INCLUDE_DIR})
+    target_link_libraries(webp_writer_test PRIVATE ${SS_TEST_WEBP_LIBRARY})
+    target_compile_definitions(webp_writer_test PRIVATE SS_TEST_WEBP_DECODER=1)
+endif()
+
 if(SS_BUILD_SAM)
     add_executable(dense_camera_test
         ${SS_SRC}/app/tests/dense_camera_test.cpp

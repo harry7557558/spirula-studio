@@ -56,9 +56,30 @@ static void saved_config() {
     check(!spirula::train_config_error(cfg).empty(), "quantization validation is preserved");
 }
 
+static void background_export_height() {
+    TrainConfig cfg;
+    check(cfg.background_export_height == 512, "background export defaults to 512 pixels");
+    train_config_from_json(json_parse(R"({"background_export_height": 768})"), cfg);
+    check(cfg.background_export_height == 768, "background export height loads from saved config");
+    bool saved = false;
+    for (const auto& [key, value] : train_config_json_pairs(cfg))
+        if (std::string(key) == "background_export_height") saved = value == "768";
+    check(saved, "background export height is serialized");
+    for (int height : {1, 512, 768, 8192}) {
+        cfg.background_export_height = height;
+        check(spirula::train_config_error(cfg).empty(), "valid background export height accepted");
+    }
+    for (int height : {-1, 0, 8193, 2147483647}) {
+        cfg.background_export_height = height;
+        check(spirula::train_config_error(cfg).find("--background-export-height") != std::string::npos,
+              "invalid background export height rejected before training");
+    }
+}
+
 int main() {
     presets();
     saved_config();
+    background_export_height();
     if (failures) return 1;
     std::puts("train_config_test: OK");
     return 0;

@@ -183,6 +183,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::string, background_mode, "color", "splats", "basic", "color|noise|pseudorandom|random|sh") \
     X(TrainVec3f, background_color, train_v3f(0.0f, 0.0f, 0.0f), "splats", "basic", "") \
     X(int, background_sh_degree, 4, "splats", "basic", "")                   \
+    X(int, background_export_height, 512, "splats", "basic", "")          \
     X(int, background_noise_warmup, 2000, "splats", "expert", "")            \
     X(float, background_noise_pre_warmup, 0.25f, "splats", "expert", "")     \
     X(bool, background_match_luminance, false, "splats", "advanced", "")     \

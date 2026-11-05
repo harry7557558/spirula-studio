@@ -668,7 +668,8 @@ void engine_scene_set_color_space(int slot, bool enabled, int transfer,
                                   std::vector<float> color_matrix);
 
 void engine_scene_set_background_sh(int slot, int sh_degree,
-                                   TorchTensorView coeffs);
+                                   TorchTensorView coeffs, int transfer = 0,
+                                   bool is_linear = false);
 
 // Overwrite one attribute array of a loaded slot in place, at the shape
 // engine_scene_set_data_3dgs uploaded it with. `field` names one of means /
@@ -704,26 +705,14 @@ std::string engine_vram_report();
 // SS_PROFILE is set.
 void engine_profile_capture_vram();
 
-// --- Checkpoint save ---
-//
-// Writes into `output_dir`:
-//   splat.ply  : cur_num_splats only, NaN+low-opacity-filtered (inference).
-//   state.tar  : POSIX ustar (zero-dep) containing
-//                  state.json          -- runtime + validation manifest
-//                  <slot_name>.npy     -- one flat typed array per saved pool
-//                                         slot (e.g. world.means.npy,
-//                                         eng.sh_quant.q.npy). Quantized codecs
-//                                         emit .q (packed) and .qb (bounds).
-// Which slots are saved is driven by SaveClass metadata (PoolSlots.h), so the
-// set can never drift from the live buffers:
-//   full_dump=false -> Always slots  (appearance / inference params)
-//   full_dump=true  -> Always+Resume (world raw params + all optimizer state,
-//                                      i.e. sufficient to resume training)
-// The device->host copy is chunked, using no extra device memory.
+// Writes splat.ply, state.tar and (for SH backgrounds) a 2:1 background.webp.
+// full_dump includes optimizer state for resume; otherwise saves appearance only.
+// Device buffers are copied in chunks; background_export_height is in pixels.
 void engine_save_checkpoint(
     std::string output_dir,
     bool full_dump,
-    int step
+    int step,
+    int background_export_height = 512
 );
 
 // Requires seeded world buffers and initialized appearance channels; returns the saved step.

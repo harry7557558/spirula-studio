@@ -167,8 +167,11 @@ static std::string _json_str(const std::string& s, const std::string& key) {
 void engine_save_checkpoint(
     std::string output_dir,
     bool full_dump,
-    int step
+    int step,
+    int background_export_height
 ) {
+    if (background_export_height < 1 || background_export_height > 8192)
+        throw std::runtime_error("background_export_height must be in [1, 8192]");
     EngineState& s = engine();
 
     fs::path out_root(output_dir);
@@ -387,10 +390,15 @@ void engine_save_checkpoint(
         backend::memcpy_sync(h_bg.data(), s.background.sh_coeffs.data_ptr(),
                              h_bg.size() * sizeof(float3),
                              backend::MemcpyKind::DeviceToHost);
-        ckpt::export_background_sh_webp(out_root / "background.webp", h_bg.data(),
-                                        s.background.sh_degree, 2048, 1024,
+        std::vector<float> matrix;
+        if (s.color_space.splat_enabled)
+            matrix = _ckpt_d2h(reinterpret_cast<const float*>(s.color_space.splat_color_matrix.data_ptr()), 9);
+        if (!ckpt::export_background_sh_webp(out_root / "background.webp", h_bg.data(),
+                                        s.background.sh_degree, 2 * background_export_height, background_export_height,
                                         s.background.splat_transfer,
-                                        s.background.splat_is_linear);
+                                        s.background.splat_is_linear,
+                                        matrix.empty() ? nullptr : matrix.data()))
+            throw std::runtime_error("failed to write " + (out_root / "background.webp").string());
     }
 }
 
@@ -458,25 +466,13 @@ int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth)
 
     for (const auto& m : members) {
         if (m.name == "eng.bg_sky.sh_coeffs.npy") {
-            auto info = ckpt::npy_locate(in, m.data_offset, m.size);
-            int64_t n_coeffs = (int64_t)(info.data_bytes / (3 * sizeof(float)));
-            int deg = (int)std::round(std::sqrt((double)n_coeffs)) - 1;
-            if (deg >= 0 && deg <= 4 && (deg + 1) * (deg + 1) == n_coeffs) {
-                int bg_transfer = s.background.splat_transfer;
-                bool bg_is_linear = s.background.splat_is_linear;
-                size_t bg_pos = sj.find("\"background\":");
-                if (bg_pos != std::string::npos) {
-                    size_t tr = sj.find("\"splat_transfer\":", bg_pos);
-                    if (tr != std::string::npos) bg_transfer = std::atoi(sj.c_str() + tr + 17);
-                    size_t lin = sj.find("\"splat_is_linear\":", bg_pos);
-                    if (lin != std::string::npos) bg_is_linear = (std::atoi(sj.c_str() + lin + 18) != 0);
-                }
-                if (s.background.mode != EngineBackground::Mode::Sh ||
-                    s.background.sh_degree != deg ||
-                    s.background.sh_coeffs.size() != n_coeffs) {
-                    engine_init_background_sh(deg, bg_transfer, bg_is_linear);
-                }
-            }
+            int deg = 0;
+            int bg_transfer = s.background.splat_transfer;
+            bool bg_is_linear = s.background.splat_is_linear;
+            std::vector<float3> coefficients;
+            if (!ckpt::load_background_sh(tarpath, deg, coefficients, bg_transfer, bg_is_linear))
+                throw std::runtime_error("engine_load_checkpoint: invalid SH background");
+            engine_init_background_sh(deg, bg_transfer, bg_is_linear);
             break;
         }
     }

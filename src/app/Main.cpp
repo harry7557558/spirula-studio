@@ -13,6 +13,7 @@
 #include "checkpoint/BackgroundExport.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
+#include "i18n/catalog/BackgroundExport.h"
 #include "i18n/catalog/Dense.h"
 #ifdef SS_HAVE_LPIPS
 #include "app/EvalLpips.h"
@@ -146,7 +147,7 @@ void print_usage() {
     std::printf("%s\n", cmsg::usage_commands.get());
     for (const Tool& t : tools())
         std::printf("  %-10s %s\n", t.name, t.summary->get());
-    std::printf("  %-10s %s\n", "export-bg", "export equirectangular SH background");
+    std::printf("  %-10s %s\n", "export-bg", spirula::i18n::msg::background_export::summary.get());
     std::printf("\n%s\n", cmsg::usage_per_command_help.get());
     std::printf("\n%s\n\n%s", cmsg::usage_lang.get(),
                 spirula::i18n::language_list().c_str());
@@ -256,21 +257,23 @@ int main(int argc, char** argv) {
     if (argc > 1) {
         const std::string a = argv[1];
         if (a == "export-bg" || a == "export_bg") {
-            if (argc < 3) {
-                std::fprintf(stderr, "Usage: spirula export-bg <checkpoint_dir|run_dir|state.tar> [output.webp]\n");
-                return 1;
+            namespace bgmsg = spirula::i18n::msg::background_export;
+            using spirula::i18n::format;
+            const bool help = argc == 3 && (std::string(argv[2]) == "--help" || std::string(argv[2]) == "-h");
+            if (argc < 3 || argc > 4 || help) {
+                std::fprintf(help ? stdout : stderr, "%s\n", format(bgmsg::usage,
+                    {"spirula export-bg <checkpoint_dir|run_dir|state.tar> [output.webp]"}).c_str());
+                return help ? 0 : 1;
             }
             std::filesystem::path ckpt_dir = argv[2];
-            std::filesystem::path out_path = (argc > 3) ? std::filesystem::path(argv[3]) : std::filesystem::path();
+            std::filesystem::path out_path = argc > 3 ? std::filesystem::path(argv[3])
+                : (ckpt_dir.filename() == "state.tar" ? ckpt_dir.parent_path() : ckpt_dir) / "background.webp";
             if (ckpt::export_background_from_checkpoint(ckpt_dir, out_path)) {
-                std::printf("Exported equirectangular background to %s\n",
-                            out_path.empty() ? (ckpt_dir / "background.webp").string().c_str() : out_path.string().c_str());
+                std::printf("%s\n", format(bgmsg::saved, {out_path.string()}).c_str());
                 return 0;
-            } else {
-                std::fprintf(stderr, "Failed to export background from %s (no SH background in checkpoint?)\n",
-                             ckpt_dir.string().c_str());
-                return 1;
             }
+            std::fprintf(stderr, "%s\n", format(bgmsg::failed, {ckpt_dir.string(), out_path.string()}).c_str());
+            return 1;
         }
         if (a == "help" || a == "--help" || a == "-h") {
             print_usage();

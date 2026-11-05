@@ -2,11 +2,11 @@
 
 #include "core/CheckpointIO.h"
 #include "core/ColorSpace.h"
-#include "external/stb_image_write.h"
+#include "core/WebpWriter.h"
+#include "checkpoint/Resume.h"
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -108,9 +108,18 @@ bool render_background_sh_equirectangular(const float3* coeffs, int degree,
                                           int width, int height,
                                           std::vector<uint8_t>& out_rgb8,
                                           int transfer,
-                                          bool is_linear) {
-    if (!coeffs || degree < 0 || degree > 4 || width <= 0 || height <= 0)
+                                          bool is_linear, const float* color_matrix) {
+    if (!coeffs || degree < 0 || degree > 4 || width <= 0 || height <= 0 ||
+        width > 16384 || height > 16384)
         return false;
+
+    for (int i = 0; i < (degree + 1) * (degree + 1); ++i)
+        if (!std::isfinite(coeffs[i].x) || !std::isfinite(coeffs[i].y) || !std::isfinite(coeffs[i].z))
+            return false;
+
+    colorspace::Mat3 matrix{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    if (color_matrix) std::copy_n(color_matrix, 9, matrix.begin());
+    for (float v : matrix) if (!std::isfinite(v)) return false;
 
     constexpr float kPi = 3.14159265358979323846f;
     out_rgb8.resize((size_t)width * height * 3);
@@ -133,17 +142,16 @@ bool render_background_sh_equirectangular(const float3* coeffs, int degree,
             col.y = std::max(col.y + 0.5f, 0.0f);
             col.z = std::max(col.z + 0.5f, 0.0f);
 
-            float r = col.x, g = col.y, b = col.z;
-            if (is_linear) {
-                r = colorspace::working_to_display(r, (colorspace::Transfer)transfer, true);
-                g = colorspace::working_to_display(g, (colorspace::Transfer)transfer, true);
-                b = colorspace::working_to_display(b, (colorspace::Transfer)transfer, true);
-            }
-
+            float rgb[] = {col.x, col.y, col.z};
+            if (!is_linear)
+                for (float& v : rgb) v = colorspace::srgb_to_linear(v);
+            colorspace::apply3x3(matrix, rgb);
             size_t idx = ((size_t)py * width + px) * 3;
-            out_rgb8[idx + 0] = (uint8_t)(std::clamp(r, 0.0f, 1.0f) * 255.0f + 0.5f);
-            out_rgb8[idx + 1] = (uint8_t)(std::clamp(g, 0.0f, 1.0f) * 255.0f + 0.5f);
-            out_rgb8[idx + 2] = (uint8_t)(std::clamp(b, 0.0f, 1.0f) * 255.0f + 0.5f);
+            for (int c = 0; c < 3; ++c) {
+                float v = colorspace::tone_encode(rgb[c], (colorspace::Transfer)transfer);
+                if (!std::isfinite(v)) v = v > 0 ? 1.0f : 0.0f;
+                out_rgb8[idx + c] = (uint8_t)(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);
+            }
         }
     }
     return true;
@@ -152,81 +160,66 @@ bool render_background_sh_equirectangular(const float3* coeffs, int degree,
 bool export_background_sh_webp(const fs::path& out_path,
                                const float3* coeffs, int degree,
                                int width, int height,
-                               int transfer, bool is_linear) {
+                               int transfer, bool is_linear, const float* color_matrix) {
     std::vector<uint8_t> rgb8;
     if (!render_background_sh_equirectangular(coeffs, degree, width, height,
-                                              rgb8, transfer, is_linear))
+                                              rgb8, transfer, is_linear, color_matrix))
         return false;
 
-    fs::path target = out_path;
-    if (target.extension() != ".webp") target.replace_extension(".webp");
+    std::vector<uint8_t> encoded;
+    if (!spirula::encode_webp_lossless(rgb8.data(), rgb8.size(), width, height, 3, encoded))
+        return false;
     std::error_code ec;
-    fs::create_directories(target.parent_path(), ec);
-
-    fs::path temp_png = target;
-    temp_png.replace_extension(".png");
-
-    if (!stbi_write_png(temp_png.string().c_str(), width, height, 3,
-                        rgb8.data(), width * 3))
-        return false;
-
-    std::string cmd = "ffmpeg -y -hide_banner -loglevel error -i \"" +
-                      temp_png.string() + "\" -q:v 90 \"" +
-                      target.string() + "\" 2>&1";
-    int ret = std::system(cmd.c_str());
-    if (ret != 0) {
-        std::string cmd2 = "cwebp -q 90 \"" + temp_png.string() +
-                           "\" -o \"" + target.string() + "\" 2>&1";
-        ret = std::system(cmd2.c_str());
+    if (!out_path.parent_path().empty()) {
+        fs::create_directories(out_path.parent_path(), ec);
+        if (ec) return false;
     }
-
-    if (ret == 0 && fs::is_regular_file(target, ec)) {
-        fs::remove(temp_png, ec);
-        return true;
-    }
-
-    return true;
+    std::ofstream out(out_path, std::ios::binary);
+    if (!out) return false;
+    out.write(reinterpret_cast<const char*>(encoded.data()), (std::streamsize)encoded.size());
+    out.close();
+    return !out.fail();
 }
 
 bool load_background_sh(const fs::path& ckpt_dir,
                         int& out_degree,
                         std::vector<float3>& out_coeffs,
                         int& out_transfer,
-                        bool& out_is_linear) {
-    fs::path tarpath;
-    std::error_code ec;
-    if (fs::is_regular_file(ckpt_dir / "state.tar", ec))
-        tarpath = ckpt_dir / "state.tar";
-    else if (fs::is_regular_file(ckpt_dir, ec) && ckpt_dir.filename() == "state.tar")
-        tarpath = ckpt_dir;
-    else if (fs::is_directory(ckpt_dir, ec)) {
-        for (const auto& entry : fs::directory_iterator(ckpt_dir, ec)) {
-            if (entry.is_directory(ec) && fs::is_regular_file(entry.path() / "state.tar", ec)) {
-                tarpath = entry.path() / "state.tar";
-                break;
-            }
-        }
-    }
-    if (tarpath.empty() || !fs::is_regular_file(tarpath, ec)) return false;
+                        bool& out_is_linear,
+                        std::vector<float>* out_color_matrix) try {
+    const fs::path tarpath = ckpt_dir.filename() == "state.tar" ? ckpt_dir
+        : resolve_checkpoint(ckpt_dir).ckpt_dir / "state.tar";
 
-    std::ifstream in(tarpath.string(), std::ios::binary);
+    std::ifstream in(tarpath, std::ios::binary);
     if (!in) return false;
 
     auto members = tar_index(in);
-    out_transfer = 0;
-    out_is_linear = false;
+    if (out_color_matrix) {
+        out_color_matrix->clear();
+        for (const auto& m : members) {
+            if (m.name != "color_space.splat_matrix.npy") continue;
+            if (m.size > 4096) return false;
+            auto info = npy_locate(in, m.data_offset, m.size);
+            // engine/EngineColorSpace.cpp reserves 3x3 float3 cells but stores nine floats.
+            if (info.descr != "<f4" || (info.data_bytes != 9 * sizeof(float) &&
+                                       info.data_bytes != 9 * sizeof(float3))) return false;
+            out_color_matrix->resize(9);
+            in.read(reinterpret_cast<char*>(out_color_matrix->data()), 9 * sizeof(float));
+            if (!in) return false;
+            break;
+        }
+    }
 
     for (const auto& m : members) {
         if (m.name == "state.json") {
-            std::string sj = tar_read_member(in, m);
-            size_t pos = sj.find("\"background\":");
-            if (pos != std::string::npos) {
-                size_t tr = sj.find("\"splat_transfer\":", pos);
-                if (tr != std::string::npos)
-                    out_transfer = std::atoi(sj.c_str() + tr + 17);
-                size_t lin = sj.find("\"splat_is_linear\":", pos);
-                if (lin != std::string::npos)
-                    out_is_linear = (std::atoi(sj.c_str() + lin + 18) != 0);
+            auto state = json_parse(tar_read_member(in, m));
+            if (const auto* bg = state.find("background")) {
+                double transfer = bg->get_double("splat_transfer", out_transfer);
+                if (!std::isfinite(transfer) || transfer < 0 || transfer >= colorspace::kNumTransfers)
+                    return false;
+                out_transfer = (int)transfer;
+                if (const auto* linear = bg->find("splat_is_linear"))
+                    out_is_linear = linear->as_bool(linear->as_double() != 0);
             }
             break;
         }
@@ -234,7 +227,11 @@ bool load_background_sh(const fs::path& ckpt_dir,
 
     for (const auto& m : members) {
         if (m.name == "eng.bg_sky.sh_coeffs.npy") {
+            if (m.size > 4096) return false;
             auto info = npy_locate(in, m.data_offset, m.size);
+            if (!in || info.descr != "<f4" || info.data_bytes == 0 ||
+                info.data_bytes > 25 * sizeof(float3) || info.data_bytes % sizeof(float3))
+                return false;
             int64_t n_coeffs = (int64_t)(info.data_bytes / (3 * sizeof(float)));
             int deg = (int)std::round(std::sqrt((double)n_coeffs)) - 1;
             if (deg < 0 || deg > 4 || (deg + 1) * (deg + 1) != n_coeffs)
@@ -245,11 +242,18 @@ bool load_background_sh(const fs::path& ckpt_dir,
             in.seekg((std::streamoff)info.data_offset, std::ios::beg);
             in.read(reinterpret_cast<char*>(out_coeffs.data()),
                     (std::streamsize)info.data_bytes);
-            return in.good();
+            if (!in) return false;
+            for (const auto& c : out_coeffs)
+                if (!std::isfinite(c.x) || !std::isfinite(c.y) || !std::isfinite(c.z))
+                    return false;
+            return true;
         }
     }
     return false;
+} catch (const std::exception&) {
+    return false;
 }
+
 
 bool export_background_from_checkpoint(const fs::path& ckpt_dir,
                                        const fs::path& out_path,
@@ -257,7 +261,8 @@ bool export_background_from_checkpoint(const fs::path& ckpt_dir,
     int degree = 0, transfer = 0;
     bool is_linear = false;
     std::vector<float3> coeffs;
-    if (!load_background_sh(ckpt_dir, degree, coeffs, transfer, is_linear))
+    std::vector<float> matrix;
+    if (!load_background_sh(ckpt_dir, degree, coeffs, transfer, is_linear, &matrix))
         return false;
 
     fs::path dst = out_path;
@@ -269,7 +274,7 @@ bool export_background_from_checkpoint(const fs::path& ckpt_dir,
             dst = ckpt_dir.parent_path() / "background.webp";
     }
     return export_background_sh_webp(dst, coeffs.data(), degree, width, height,
-                                     transfer, is_linear);
+                                     transfer, is_linear, matrix.empty() ? nullptr : matrix.data());
 }
 
 }  // namespace ckpt
