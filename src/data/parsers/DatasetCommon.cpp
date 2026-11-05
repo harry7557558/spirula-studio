@@ -71,14 +71,90 @@ static void exif_up_gl(uint8_t orientation, double up[3]) {
     up[1] = -up[1];
 }
 
-// ---------------------------------------------------------------------------
-// up = normalize(mean c2w Y column), R_align: up -> +Z, center = mean camera
-// position, scale = 1 / max |R_align (pos - center)|. The up/poses pair only;
-// the rest is reference/python/camera_utils.py and check_config() warns.
-// ---------------------------------------------------------------------------
+namespace {
+
+void eigen_symmetric_3x3(const double A_in[3][3], double w[3], double V[3][3]) {
+    double A[3][3];
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            A[r][c] = A_in[r][c];
+            V[r][c] = (r == c ? 1.0 : 0.0);
+        }
+    }
+    for (int sweep = 0; sweep < 30; sweep++) {
+        const double off = A[0][1] * A[0][1] + A[0][2] * A[0][2] + A[1][2] * A[1][2];
+        if (off < 1e-30) break;
+        for (int p = 0; p < 2; p++) {
+            for (int q = p + 1; q < 3; q++) {
+                if (std::abs(A[p][q]) < 1e-300) continue;
+                const double th = 0.5 * (A[q][q] - A[p][p]) / A[p][q];
+                const double t = (th >= 0.0 ? 1.0 : -1.0) / (std::abs(th) + std::sqrt(th * th + 1.0));
+                const double c = 1.0 / std::sqrt(t * t + 1.0);
+                const double s = t * c;
+                for (int k = 0; k < 3; k++) {
+                    const double akp = A[k][p], akq = A[k][q];
+                    A[k][p] = c * akp - s * akq;
+                    A[k][q] = s * akp + c * akq;
+                }
+                for (int k = 0; k < 3; k++) {
+                    const double apk = A[p][k], aqk = A[q][k];
+                    A[p][k] = c * apk - s * aqk;
+                    A[q][k] = s * apk + c * aqk;
+                }
+                for (int k = 0; k < 3; k++) {
+                    const double vkp = V[k][p], vkq = V[k][q];
+                    V[k][p] = c * vkp - s * vkq;
+                    V[k][q] = s * vkp + c * vkq;
+                }
+            }
+        }
+    }
+    int order[3] = {0, 1, 2};
+    std::sort(order, order + 3, [&](int i, int j) { return A[i][i] < A[j][j]; });
+    double V_sorted[3][3];
+    for (int k = 0; k < 3; k++) {
+        w[k] = A[order[k]][order[k]];
+        for (int r = 0; r < 3; r++) V_sorted[r][k] = V[r][order[k]];
+    }
+    std::copy(&V_sorted[0][0], &V_sorted[0][0] + 9, &V[0][0]);
+}
+
+inline double det3x3(const double M[3][3]) {
+    return M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) -
+           M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) +
+           M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+}
+
+void align_up_to_z(const double up[3], double R[3][3]) {
+    double axis[3] = {up[1], -up[0], 0.0};  // up x +z
+    double s = std::sqrt(axis[0]*axis[0] + axis[1]*axis[1]);
+    double c = up[2];
+    std::fill(&R[0][0], &R[0][0] + 9, 0.0);
+    R[0][0] = R[1][1] = R[2][2] = 1.0;
+    if (s > 1e-12) {
+        for (auto& a : axis) a /= s;
+        double C = 1.0 - c;
+        double Rr[3][3] = {
+            {c + axis[0]*axis[0]*C,         axis[0]*axis[1]*C - axis[2]*s, axis[1]*s},
+            {axis[0]*axis[1]*C + axis[2]*s, c + axis[1]*axis[1]*C,        -axis[0]*s},
+            {-axis[1]*s,                    axis[0]*s,                     c},
+        };
+        std::copy(&Rr[0][0], &Rr[0][0] + 9, &R[0][0]);
+    } else if (c < 0.0) {
+        R[1][1] = -1.0; R[2][2] = -1.0;  // up == -z: 180 deg flip
+    }
+}
+
+}  // namespace
+
+// T_n_from_camera = scale * [R_align | -R_align @ center]. Supports
+// orientation {up, pca, vertical, none} and center {poses, focus, none}.
 double compute_normalized_transform(const double* c2w, int64_t n,
-                                     double T_out[16], double R_out[9],
-                                     const uint8_t* exif_orientation) {
+                                    double T_out[16], double R_out[9],
+                                    const uint8_t* exif_orientation,
+                                    const std::string& orientation_method,
+                                    const std::string& center_method,
+                                    bool auto_scale_poses) {
     std::fill(T_out, T_out + 16, 0.0);
     T_out[0] = T_out[5] = T_out[10] = T_out[15] = 1.0;
     if (R_out) {
@@ -90,7 +166,7 @@ double compute_normalized_transform(const double* c2w, int64_t n,
     for (int64_t i = 0; i < n; i++)
         for (int r = 0; r < 3; r++) pos[i*3 + r] = c2w[i*12 + r*4 + 3];
     const std::vector<char> inlier = outlier_keep_mask(pos, n, kStrayCameraThreshold);
-    double up[3] = {0, 0, 0}, center[3] = {0, 0, 0};
+    double up[3] = {0, 0, 0}, mean_origin[3] = {0, 0, 0};
     int64_t n_inlier = 0;
     for (int64_t i = 0; i < n; i++) {
         double u[3] = {0, 1, 0};
@@ -99,27 +175,94 @@ double compute_normalized_transform(const double* c2w, int64_t n,
             for (int k = 0; k < 3; k++) up[r] += c2w[i*12 + r*4 + k] * u[k];
         if (!inlier[i]) continue;
         n_inlier++;
-        for (int r = 0; r < 3; r++) center[r] += pos[i*3 + r];
+        for (int r = 0; r < 3; r++) mean_origin[r] += pos[i*3 + r];
     }
     double un = std::sqrt(up[0]*up[0] + up[1]*up[1] + up[2]*up[2]);
     for (auto& u : up) u /= std::max(un, 1e-12);
-    for (auto& c : center) c /= (double)n_inlier;
+    if (n_inlier > 0) {
+        for (auto& c : mean_origin) c /= (double)n_inlier;
+    }
 
-    double axis[3] = {up[1], -up[0], 0.0};              // up x z
-    double s = std::sqrt(axis[0]*axis[0] + axis[1]*axis[1]);
-    double c = up[2];
+    double center[3] = {mean_origin[0], mean_origin[1], mean_origin[2]};
+    if (center_method == "focus") {
+        if (n_inlier > 0 && n_inlier < n) {
+            std::vector<double> inlier_c2w(n_inlier * 12);
+            int64_t idx = 0;
+            for (int64_t i = 0; i < n; i++) {
+                if (!inlier[i]) continue;
+                std::copy(c2w + i * 12, c2w + (i + 1) * 12, inlier_c2w.data() + idx * 12);
+                idx++;
+            }
+            std::array<double, 3> foc = focus_of_attention(inlier_c2w.data(), n_inlier, mean_origin);
+            center[0] = foc[0]; center[1] = foc[1]; center[2] = foc[2];
+        } else {
+            std::array<double, 3> foc = focus_of_attention(c2w, n, mean_origin);
+            center[0] = foc[0]; center[1] = foc[1]; center[2] = foc[2];
+        }
+    } else if (center_method == "none") {
+        center[0] = center[1] = center[2] = 0.0;
+    }
+
     double R[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
-    if (s > 1e-12) {
-        for (auto& a : axis) a /= s;
-        double C = 1.0 - c;
-        double Rr[3][3] = {
-            {c + axis[0]*axis[0]*C,         axis[0]*axis[1]*C - axis[2]*s, axis[1]*s},
-            {axis[0]*axis[1]*C + axis[2]*s, c + axis[1]*axis[1]*C,        -axis[0]*s},
-            {-axis[1]*s,                    axis[0]*s,                     c},
-        };
-        std::copy(&Rr[0][0], &Rr[0][0] + 9, &R[0][0]);
-    } else if (c < 0.0) {
-        R[1][1] = -1.0; R[2][2] = -1.0;                 // up == -z: flip
+    if (orientation_method == "pca") {
+        double C[3][3] = {};
+        for (int64_t i = 0; i < n; i++) {
+            if (!inlier[i]) continue;
+            double d[3];
+            for (int r = 0; r < 3; r++) d[r] = pos[i*3 + r] - mean_origin[r];
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++) C[r][c] += d[r] * d[c];
+        }
+        double w[3], V[3][3];
+        eigen_symmetric_3x3(C, w, V);
+        double V_flipped[3][3];
+        for (int r = 0; r < 3; r++) {
+            V_flipped[r][0] = V[r][2];
+            V_flipped[r][1] = V[r][1];
+            V_flipped[r][2] = V[r][0];
+        }
+        if (det3x3(V_flipped) < 0.0) {
+            for (int r = 0; r < 3; r++) V_flipped[r][2] = -V_flipped[r][2];
+        }
+        if (V_flipped[2][0] * up[0] + V_flipped[2][1] * up[1] + V_flipped[2][2] * up[2] < 0.0) {
+            for (int c = 0; c < 3; c++) {
+                V_flipped[1][c] = -V_flipped[1][c];
+                V_flipped[2][c] = -V_flipped[2][c];
+            }
+        }
+        std::copy(&V_flipped[0][0], &V_flipped[0][0] + 9, &R[0][0]);
+    } else if (orientation_method == "vertical") {
+        double M[3][3] = {};
+        for (int64_t i = 0; i < n; i++) {
+            double u_cam[3] = {0, 1, 0};
+            if (exif_orientation) exif_up_gl(exif_orientation[i], u_cam);
+            double x_cam[3] = {u_cam[1], -u_cam[0], 0.0};
+            double x_world[3] = {0, 0, 0};
+            for (int r = 0; r < 3; r++)
+                for (int k = 0; k < 3; k++) x_world[r] += c2w[i*12 + r*4 + k] * x_cam[k];
+            for (int r = 0; r < 3; r++)
+                for (int c = 0; c < 3; c++) M[r][c] += x_world[r] * x_world[c];
+        }
+        double w[3], V[3][3];
+        eigen_symmetric_3x3(M, w, V);
+        const double S1 = std::sqrt(std::max(0.0, w[1]));
+        double up_vert[3] = {up[0], up[1], up[2]};
+        if (S1 > 0.17 * std::sqrt((double)n)) {
+            double v2[3] = {V[0][0], V[1][0], V[2][0]};
+            const double dot = v2[0]*up[0] + v2[1]*up[1] + v2[2]*up[2];
+            for (int k = 0; k < 3; k++) up_vert[k] = (dot > 0.0 ? v2[k] : -v2[k]);
+        } else {
+            double v0[3] = {V[0][2], V[1][2], V[2][2]};
+            const double dot = v0[0]*up[0] + v0[1]*up[1] + v0[2]*up[2];
+            for (int k = 0; k < 3; k++) up_vert[k] -= dot * v0[k];
+            double l = std::sqrt(up_vert[0]*up_vert[0] + up_vert[1]*up_vert[1] + up_vert[2]*up_vert[2]);
+            for (int k = 0; k < 3; k++) up_vert[k] /= std::max(l, 1e-12);
+        }
+        align_up_to_z(up_vert, R);
+    } else if (orientation_method == "none") {
+        // R stays identity
+    } else {
+        align_up_to_z(up, R);
     }
 
     if (R_out) std::copy(&R[0][0], &R[0][0] + 9, R_out);
@@ -133,9 +276,7 @@ double compute_normalized_transform(const double* c2w, int64_t n,
             max_abs = std::max(max_abs,
                 std::abs(R[r][0]*d[0] + R[r][1]*d[1] + R[r][2]*d[2]));
     }
-    // Cameras all in one place (one photo, a tripod's turn) have no size to
-    // fit, and 1/1e-12 leaves train_to_normalized singular in float.
-    const double scale_factor = max_abs > 1e-9 ? 1.0 / max_abs : 1.0;
+    const double scale_factor = (auto_scale_poses && max_abs > 1e-9) ? 1.0 / max_abs : 1.0;
 
     // T_n_from_camera = scale * [R_align | -R_align @ center]
     for (int r = 0; r < 3; r++) {
