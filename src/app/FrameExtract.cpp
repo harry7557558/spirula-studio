@@ -101,7 +101,10 @@ bool use_ffmpeg(const FrameExtractJob& job, const FrameExtractSinks& sinks,
     if (cancelled(sinks, error)) return false;
     ff.sizes = ff.facts.tracks;
     if (ff.sizes.empty()) {
-        error = "no video track in " + job.input;
+        error = ff.facts.error.empty()
+                    ? "no video track in " + job.input
+                    : spirula::i18n::format(lmsg::err_ffmpeg_unrunnable,
+                                            {ff.facts.error});
         return false;
     }
     d = std::move(ff);

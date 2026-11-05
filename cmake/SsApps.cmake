@@ -475,6 +475,12 @@ add_executable(frame_mask_test
     ${SS_SRC}/app/FrameLook.cpp)
 ss_configure_app(frame_mask_test)
 
+add_executable(ffmpeg_probe_test
+    ${SS_SRC}/app/tests/ffmpeg_probe_test.cpp
+    ${SS_SRC}/app/FfmpegVideo.cpp
+    ${SS_SRC}/app/gui/Subprocess.cpp)
+ss_configure_app(ffmpeg_probe_test)
+
 # The GUI files with no GUI in them: the plan that decides which steps of a
 # dataset run are kept or redone, and the preset serializers. Named rather
 # than globbed -- each such test names its own sources.
