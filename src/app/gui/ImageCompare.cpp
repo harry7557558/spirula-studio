@@ -29,10 +29,16 @@ namespace gui {
 
 namespace {
 
+enum BlendPair { PhotoRender, PhotoError, RenderError, DepthRender, NormalRender, BlendPairCount };
+
+bool blends_error(int pair) { return pair == PhotoError || pair == RenderError; }
+
 const spirula::i18n::Msg* const kBlendPairs[][2] = {
     {&msg::compare_pane_gt, &msg::compare_pane_render},
     {&msg::compare_pane_gt, &msg::compare_pane_error},
     {&msg::compare_pane_render, &msg::compare_pane_error},
+    {&msg::compare_pane_gt_depth, &msg::compare_pane_render_depth},
+    {&msg::compare_pane_gt_normal, &msg::compare_pane_render_normal},
 };
 
 std::string blend_label(int pair) {
@@ -237,7 +243,10 @@ void ImageCompare::attach(spirula::TrainerSession& session) {
     _requested = Job{-1, false, false, false};
     _has_error_map =
         spirula::build_step_config(session.cfg, session.st, 0).loss.compute_loss_map;
-    if (!_has_error_map) _blend_pair = 0;
+    if ((!_has_error_map && blends_error(_blend_pair)) ||
+        (!session.has_depth && _blend_pair == DepthRender) ||
+        (!session.has_normal && _blend_pair == NormalRender))
+        _blend_pair = PhotoRender;
     _dirty = true;
     _running = true;
     _worker = std::thread([this] { worker_loop(); });
@@ -812,8 +821,10 @@ void ImageCompare::draw_toolbar(bool training) {
 
     place(check_w(msg::compare_separate));
     if (ui::RadioButton(msg::compare_separate, !_blend)) _blend = false;
+    ui::help_on_hover(msg::compare_separate_help);
     place(check_w(msg::compare_blend));
     if (ui::RadioButton(msg::compare_blend, _blend)) _blend = true;
+    ui::help_on_hover(msg::compare_blend_help);
 
     if (has_masks()) {
         const float w = ImGui::CalcTextSize(msg::compare_mask_dim.get()).x + 60;
@@ -887,17 +898,20 @@ void ImageCompare::draw_toolbar(bool training) {
     ui::help_on_hover(msg::compare_zoom_help);
 
     if (_blend) {
-        std::string labels[3];
+        static_assert(sizeof(_blend_amount) / sizeof(*_blend_amount) == BlendPairCount);
+        std::string labels[BlendPairCount];
         float pair_w = 0.0f;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < BlendPairCount; i++) {
             labels[i] = blend_label(i);
             pair_w = std::max(pair_w, ImGui::CalcTextSize(labels[i].c_str()).x);
         }
         pair_w += ImGui::GetFrameHeight() + 2.0f * st.FramePadding.x;
         ImGui::SetNextItemWidth(pair_w);
         if (ui::BeginComboRaw("##blendpair", labels[_blend_pair].c_str())) {
-            for (int i = 0; i < 3; i++) {
-                const bool unavailable = i > 0 && !_has_error_map;
+            for (int i = 0; i < BlendPairCount; i++) {
+                if ((i == DepthRender && !_session->has_depth) ||
+                    (i == NormalRender && !_session->has_normal)) continue;
+                const bool unavailable = blends_error(i) && !_has_error_map;
                 ImGui::PushID(i);
                 ImGui::BeginDisabled(unavailable);
                 if (ui::SelectableRaw(labels[i] + "###pair", i == _blend_pair)) _blend_pair = i;
@@ -1071,12 +1085,17 @@ int ImageCompare::collect(Block* out) const {
 void ImageCompare::draw_panes(const ImVec2& avail) {
     _hot = false;
     if (_blend) {
-        if (_blend_pair > 0 && _shot.err_map.empty()) {
+        if ((blends_error(_blend_pair) && _shot.err_map.empty()) ||
+            (_blend_pair == DepthRender && (_shot.gt_depth.empty() || _shot.render_depth.empty())) ||
+            (_blend_pair == NormalRender && (_shot.gt_normal.empty() || _shot.render_normal.empty()))) {
             centered_note(msg::viewport_rendering);
             return;
         }
-        const Pane& base = _blend_pair == 2 ? _render : _gt;
-        const Pane& overlay = _blend_pair == 0 ? _render : _err_map;
+        const Pane* bases[BlendPairCount] = {&_gt, &_gt, &_render, &_gt_depth, &_gt_normal};
+        const Pane* overlays[BlendPairCount] = {&_render, &_err_map, &_err_map,
+                                                &_render_depth, &_render_normal};
+        const Pane& base = *bases[_blend_pair];
+        const Pane& overlay = *overlays[_blend_pair];
         draw_pane(base, avail, "##blend", blend_label(_blend_pair).c_str(), &overlay,
                   _blend_amount[_blend_pair] / 100.0f);
         handle_view_input();
@@ -1190,7 +1209,7 @@ void ImageCompare::draw(bool training, int step) {
 
     // Pace refreshes in iterations, keeping preview work near 8% of training time.
     const Job want{_index, _color_correct, _source_gt && faces() == 1,
-                   _has_error_map && (_blend ? _blend_pair > 0 : _show_error)};
+                   _has_error_map && (_blend ? blends_error(_blend_pair) : _show_error)};
     bool follow = false;
     if (training && _live && _rendered_step >= 0 && step >= 0) {
         const int interval = (_job_secs > 0 && _step_secs > 0)

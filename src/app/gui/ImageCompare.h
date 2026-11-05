@@ -151,7 +151,7 @@ private:
     bool _show_error = true;
     bool _blend = false;
     int _blend_pair = 0;
-    float _blend_amount[3] = {50.0f, 50.0f, 50.0f};
+    float _blend_amount[5] = {50.0f, 50.0f, 50.0f, 50.0f, 50.0f};
     // Whether this run builds a densification error map at all -- a mode of
     // `none`, or a score taken entirely from the world gradient, builds none.
     bool _has_error_map = false;
