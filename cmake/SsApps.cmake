@@ -308,6 +308,10 @@ if(SS_BUILD_GUI)
             PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
         list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/gui/NativeDialogMac.mm)
         list(APPEND SS_TOOL_LIBS "-framework AppKit")
+        find_library(SS_UNIFORM_TYPE_IDENTIFIERS UniformTypeIdentifiers)
+        if(SS_UNIFORM_TYPE_IDENTIFIERS)
+            list(APPEND SS_TOOL_LIBS "-weak_framework UniformTypeIdentifiers")
+        endif()
     endif()
 
     # In-process segmentation and, with SS_ENABLE_PATENTED, video decoding.

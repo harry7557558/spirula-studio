@@ -28,7 +28,9 @@ either expressed or implied, of the Regents of The University of Michigan.
 // limitation: image size must be <32768 in width and height. This is
 // because we use a fixed-point 16 bit integer representation with one
 // fractional bit.
+#ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
+#endif
 #include <math.h>
 #include <assert.h>
 #include <string.h>

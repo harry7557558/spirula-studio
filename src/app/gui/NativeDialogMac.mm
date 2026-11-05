@@ -2,11 +2,35 @@
 // and runs modal, so the caller blocks until the panel is dismissed.
 
 #import <AppKit/AppKit.h>
+#if __has_include(<UniformTypeIdentifiers/UniformTypeIdentifiers.h>)
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#endif
 
 #include <string>
 #include <vector>
 
 namespace gui {
+
+static void set_extensions(NSSavePanel* panel, const std::vector<std::string>& extensions) {
+    NSMutableArray<NSString*>* names = [NSMutableArray array];
+    for (const std::string& e : extensions)
+        [names addObject:[NSString stringWithUTF8String:
+            e.c_str() + (!e.empty() && e[0] == '.' ? 1 : 0)]];
+#if __has_include(<UniformTypeIdentifiers/UniformTypeIdentifiers.h>)
+    if (@available(macOS 11.0, *)) {
+        NSMutableArray<UTType*>* types = [NSMutableArray array];
+        for (NSString* name in names)
+            if (UTType* type = [UTType typeWithFilenameExtension:name]) [types addObject:type];
+        panel.allowedContentTypes = types;
+        return;
+    }
+#endif
+    // Older SDKs and macOS versions only expose extension strings.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    panel.allowedFileTypes = names;
+#pragma clang diagnostic pop
+}
 
 std::vector<std::string> mac_pick(const std::string& title, bool folder,
                                   bool also_folders,
@@ -26,19 +50,7 @@ std::vector<std::string> mac_pick(const std::string& title, bool folder,
                 [NSString stringWithUTF8String:start_dir.c_str()]
                                            isDirectory:YES];
 
-        if (!folder && !extensions.empty()) {
-            // allowedFileTypes rather than allowedContentTypes: the newer one
-            // needs the 12.0 SDK, and this deprecated spelling builds against
-            // every SDK the rest of the program does.
-            NSMutableArray* types = [NSMutableArray array];
-            for (const std::string& e : extensions)
-                [types addObject:[NSString stringWithUTF8String:
-                    e.c_str() + (!e.empty() && e[0] == '.' ? 1 : 0)]];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            panel.allowedFileTypes = types;
-#pragma clang diagnostic pop
-        }
+        if (!folder && !extensions.empty()) set_extensions(panel, extensions);
 
         if ([panel runModal] == NSModalResponseOK)
             for (NSURL* url in panel.URLs)
@@ -63,14 +75,7 @@ std::vector<std::string> mac_save(const std::string& title,
                        [NSURL fileURLWithPath:
                                   [NSString stringWithUTF8String:start_dir.c_str()]
                                    isDirectory:YES]];
-        if (!extensions.empty()) {
-            NSMutableArray* types = [NSMutableArray array];
-            for (const std::string& e : extensions) {
-                std::string bare = e.empty() || e[0] != '.' ? e : e.substr(1);
-                [types addObject:[NSString stringWithUTF8String:bare.c_str()]];
-            }
-            [panel setAllowedFileTypes:types];
-        }
+        if (!extensions.empty()) set_extensions(panel, extensions);
         std::vector<std::string> out;
         if ([panel runModal] == NSModalResponseOK && [panel URL])
             out.push_back([[[panel URL] path] UTF8String]);

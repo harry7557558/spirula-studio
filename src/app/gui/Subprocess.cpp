@@ -951,8 +951,9 @@ pid_t fork_owned(OwnedChild& child, ExecArgs& exec) {
         // Nested guardians retain ancestor leases until their own descendants
         // have stopped. EOF is the reclamation barrier, not merely worker exit.
         if (!wait_completion(completion[0])) result = 1 << 8;
-        ::write(status[1], &result, sizeof result);
-        _exit(0);
+        ssize_t written;
+        do { written = ::write(status[1], &result, sizeof result); } while (written < 0 && errno == EINTR);
+        _exit(written == sizeof result ? 0 : 1);
     }
     close(completion[0]);
     close(completion[1]);
