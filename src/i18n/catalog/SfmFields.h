@@ -1218,48 +1218,57 @@ SS_MSG(spv_path_help,
 // ===========================================================================
 
 SS_MSG(matcher_help,
-    EN("How descriptors are matched. lightglue and loma-* are learned matchers, "
-       "each for the --features of the same name; both are an order of "
-       "magnitude slower per pair, so they only make sense behind pair selection"),
-    JA("記述子のマッチング方法。lightglue と loma-* は同名の --features 向けの"
-       "学習済みマッチャーで、1 ペアあたり 1 桁遅いため、ペア選択の後ろでのみ"
-       "意味があります"),
-    ZH_HANS("如何匹配描述子。lightglue 与 loma-* 是学习型匹配器，各自面向同名的 "
-            "--features；它们每对慢一个数量级，因此只有放在像对筛选之后才划算"),
-    ZH_HANT("如何匹配描述子。lightglue 與 loma-* 是學習型匹配器，各自面向同名的 "
-            "--features；它們每對慢一個數量級，因此只有放在影像對篩選之後才划算"),
-    KO("기술자를 매칭하는 방식. lightglue 와 loma-* 는 각각 같은 이름의 --features "
-       "용 학습된 매처로, 쌍당 한 자릿수만큼 느리므로 쌍 선택 뒤에서만 쓸 "
-       "만합니다"),
-    DE("Wie Deskriptoren zugeordnet werden. lightglue und loma-* sind gelernte "
-       "Matcher, jeder für die gleichnamigen --features; beide sind je Paar eine "
-       "Größenordnung langsamer und lohnen sich nur hinter der Paarauswahl"),
-    FR("Comment les descripteurs sont appariés. lightglue et loma-* sont des "
-       "apparieurs appris, chacun pour les --features du même nom ; tous deux "
-       "sont bien plus lents par paire, et n'ont de sens qu'après la sélection "
-       "de paires"),
-    ES("Cómo se emparejan los descriptores. lightglue y loma-* son emparejadores "
-       "aprendidos, cada uno para las --features del mismo nombre; ambos son un "
-       "orden de magnitud más lentos por par, así que solo tienen sentido tras "
-       "la selección de pares"),
-    PT("Como os descritores são emparelhados. lightglue e loma-* são emparelhadores "
-       "aprendidos, cada um para as --features de mesmo nome; ambos são uma ordem "
-       "de grandeza mais lentos por par, então só fazem sentido depois da seleção "
-       "de pares"),
-    IT("Come vengono abbinati i descrittori. lightglue e loma-* sono abbinatori "
-       "appresi, ciascuno per le --features dello stesso nome; entrambi sono un "
-       "ordine di grandezza più lenti per coppia, quindi hanno senso solo dopo "
-       "la selezione delle coppie"),
-    NL("Hoe descriptoren gematcht worden. lightglue en loma-* zijn geleerde "
-       "matchers, elk voor de gelijknamige --features; beide zijn per paar een "
-       "orde van grootte trager en lonen dus alleen achter de paarselectie"),
-    RU("Как сопоставляются дескрипторы. lightglue и loma-* -- обученные "
-       "сопоставители, каждый для одноимённых --features; оба на порядок "
-       "медленнее на пару, поэтому имеют смысл только после отбора пар"),
-    TR("Betimleyicilerin nasıl eşleştirileceği. lightglue ve loma-*, aynı adlı "
-       "--features için öğrenilmiş eşleştiricilerdir; ikisi de çift başına bir "
-       "büyüklük derecesi daha yavaştır, bu yüzden ancak çift seçiminin ardında "
-       "anlamlıdır"));
+    EN("How keypoints are matched. lightglue and loma-* are learned matchers, each "
+       "for the --features of the same name; flexglue reads the images and works "
+       "with any --features. All three are an order of magnitude slower per pair, "
+       "so they only make sense behind pair selection"),
+    JA("キーポイントのマッチング方法。lightglue と loma-* は同名の --features 向けの"
+       "学習済みマッチャー、flexglue は画像を読み、どの --features でも使えます。"
+       "いずれも 1 ペアあたり 1 桁遅いため、ペア選択の後ろでのみ意味があります"),
+    ZH_HANS("如何匹配关键点。lightglue 与 loma-* 是学习型匹配器，各自面向同名的 "
+            "--features；flexglue 读取图像，适用于任何 --features。三者每对都慢一个"
+            "数量级，因此只有放在像对筛选之后才划算"),
+    ZH_HANT("如何匹配關鍵點。lightglue 與 loma-* 是學習型匹配器，各自面向同名的 "
+            "--features；flexglue 讀取影像，適用於任何 --features。三者每對都慢一個"
+            "數量級，因此只有放在影像對篩選之後才划算"),
+    KO("키포인트를 매칭하는 방식. lightglue 와 loma-* 는 각각 같은 이름의 --features "
+       "용 학습된 매처이고, flexglue 는 이미지를 읽어 어떤 --features 와도 씁니다. "
+       "셋 다 쌍당 한 자릿수만큼 느리므로 쌍 선택 뒤에서만 쓸 만합니다"),
+    DE("Wie Schlüsselpunkte zugeordnet werden. lightglue und loma-* sind gelernte "
+       "Matcher, jeder für die gleichnamigen --features; flexglue liest die Bilder "
+       "und passt zu allen --features. Alle drei sind je Paar eine Größenordnung "
+       "langsamer und lohnen sich nur hinter der Paarauswahl"),
+    FR("Comment les points clés sont appariés. lightglue et loma-* sont des "
+       "apparieurs appris, chacun pour les --features du même nom ; flexglue lit "
+       "les images et convient à toutes les --features. Tous trois sont bien plus "
+       "lents par paire, et n'ont de sens qu'après la sélection de paires"),
+    ES("Cómo se emparejan los puntos clave. lightglue y loma-* son emparejadores "
+       "aprendidos, cada uno para las --features del mismo nombre; flexglue lee "
+       "las imágenes y sirve con cualquier --features. Los tres son un orden de "
+       "magnitud más lentos por par, así que solo tienen sentido tras la "
+       "selección de pares"),
+    PT("Como os pontos-chave são emparelhados. lightglue e loma-* são "
+       "emparelhadores aprendidos, cada um para as --features de mesmo nome; "
+       "flexglue lê as imagens e serve com quaisquer --features. Os três são uma "
+       "ordem de grandeza mais lentos por par, então só fazem sentido depois da "
+       "seleção de pares"),
+    IT("Come vengono abbinati i punti chiave. lightglue e loma-* sono abbinatori "
+       "appresi, ciascuno per le --features dello stesso nome; flexglue legge le "
+       "immagini e va con qualsiasi --features. Tutti e tre sono un ordine di "
+       "grandezza più lenti per coppia, quindi hanno senso solo dopo la selezione "
+       "delle coppie"),
+    NL("Hoe sleutelpunten gematcht worden. lightglue en loma-* zijn geleerde "
+       "matchers, elk voor de gelijknamige --features; flexglue leest de beelden "
+       "en werkt met elke --features. Alle drie zijn per paar een orde van grootte "
+       "trager en lonen dus alleen achter de paarselectie"),
+    RU("Как сопоставляются ключевые точки. lightglue и loma-* -- обученные "
+       "сопоставители, каждый для одноимённых --features; flexglue читает "
+       "изображения и подходит к любым --features. Все три на порядок медленнее "
+       "на пару, поэтому имеют смысл только после отбора пар"),
+    TR("Anahtar noktaların nasıl eşleştirileceği. lightglue ve loma-*, aynı adlı "
+       "--features için öğrenilmiş eşleştiricilerdir; flexglue görüntüleri okur ve "
+       "her --features ile çalışır. Üçü de çift başına bir kat daha yavaştır, bu "
+       "yüzden yalnızca çift seçiminin ardında anlamlıdır"));
 
 SS_MSG(loma_model_help,
     EN("Path to a LoMa .onnx checkpoint, overriding the one --features or "
@@ -1286,6 +1295,179 @@ SS_MSG(loma_model_help,
        "--features или --matcher"),
     TR("Bir LoMa .onnx denetim noktasının yolu; --features veya --matcher'ın "
        "adlandırdığının yerine geçer"));
+
+SS_MSG(flexglue_min_covisibility_help,
+    EN("Covisibility score below which FlexGlue rejects a whole pair as a "
+       "look-alike; 0 keeps every pair. COLMAP's default"),
+    JA("FlexGlue がペア全体を見かけだけの類似として棄却する共視性スコアの下限。"
+       "0 はすべてのペアを残します。COLMAP の既定値"),
+    ZH_HANS("共视度低于此值时，FlexGlue 将整个像对视为相似假象而拒绝；0 保留所有像对。"
+            "COLMAP 的默认值"),
+    ZH_HANT("共視度低於此值時，FlexGlue 將整個影像對視為相似假象而拒絕；0 保留所有"
+            "影像對。COLMAP 的預設值"),
+    KO("이 값보다 공시성 점수가 낮으면 FlexGlue 가 쌍 전체를 닮은꼴로 보고 버립니다. "
+       "0 은 모든 쌍을 남깁니다. COLMAP 기본값"),
+    DE("Kovisibilitätswert, unter dem FlexGlue ein ganzes Paar als Doppelgänger "
+       "verwirft; 0 behält jedes Paar. COLMAPs Standard"),
+    FR("Score de covisibilité sous lequel FlexGlue rejette une paire entière "
+       "comme sosie ; 0 garde toutes les paires. Valeur par défaut de COLMAP"),
+    ES("Puntuación de covisibilidad bajo la cual FlexGlue rechaza un par entero "
+       "como parecido engañoso; 0 conserva todos los pares. El valor de COLMAP"),
+    PT("Pontuação de covisibilidade abaixo da qual o FlexGlue rejeita um par "
+       "inteiro como sósia; 0 mantém todos os pares. O padrão do COLMAP"),
+    IT("Punteggio di covisibilità sotto il quale FlexGlue scarta un'intera "
+       "coppia come sosia; 0 tiene ogni coppia. Il valore predefinito di COLMAP"),
+    NL("Covisibiliteitsscore waaronder FlexGlue een heel paar als dubbelganger "
+       "verwerpt; 0 houdt elk paar. De standaard van COLMAP"),
+    RU("Оценка совместной видимости, ниже которой FlexGlue отбрасывает всю пару "
+       "как двойника; 0 сохраняет все пары. Значение COLMAP по умолчанию"),
+    TR("FlexGlue'nun bir çifti benzer görünüm diye bütünüyle reddettiği ortak "
+       "görünürlük puanı eşiği; 0 her çifti tutar. COLMAP'in varsayılanı"));
+
+SS_MSG(flexglue_min_score_help,
+    EN("Confidence a FlexGlue match must reach: the geometric mean of both "
+       "directions'"),
+    JA("FlexGlue の対応が達すべき信頼度。両方向の信頼度の幾何平均"),
+    ZH_HANS("FlexGlue 匹配必须达到的置信度：两个方向置信度的几何平均"),
+    ZH_HANT("FlexGlue 匹配必須達到的信賴度：兩個方向信賴度的幾何平均"),
+    KO("FlexGlue 대응이 넘어야 하는 신뢰도: 두 방향 신뢰도의 기하 평균"),
+    DE("Vertrauen, das eine FlexGlue-Zuordnung erreichen muss: das geometrische "
+       "Mittel beider Richtungen"),
+    FR("Confiance qu'un appariement FlexGlue doit atteindre : la moyenne "
+       "géométrique des deux sens"),
+    ES("Confianza que un emparejamiento FlexGlue debe alcanzar: la media "
+       "geométrica de ambos sentidos"),
+    PT("Confiança que uma correspondência FlexGlue deve alcançar: a média "
+       "geométrica dos dois sentidos"),
+    IT("Fiducia che una corrispondenza FlexGlue deve raggiungere: la media "
+       "geometrica delle due direzioni"),
+    NL("Vertrouwen dat een FlexGlue-match moet halen: het meetkundig gemiddelde "
+       "van beide richtingen"),
+    RU("Уверенность, которой должно достичь соответствие FlexGlue: среднее "
+       "геометрическое обоих направлений"),
+    TR("Bir FlexGlue eşleşmesinin ulaşması gereken güven: iki yönün geometrik "
+       "ortalaması"));
+
+SS_MSG(flexglue_max_distance_help,
+    EN("Largest distance between a keypoint and its match's prediction, averaged "
+       "over both directions, in pixels of the 512x512 input; 0 turns it off"),
+    JA("キーポイントと対応先の予測点の最大距離 (両方向の平均、512x512 入力の"
+       "ピクセル)。0 で無効"),
+    ZH_HANS("关键点与其匹配预测点之间的最大距离，取两个方向的平均，以 512x512 输入的"
+            "像素计；0 关闭"),
+    ZH_HANT("關鍵點與其匹配預測點之間的最大距離，取兩個方向的平均，以 512x512 輸入的"
+            "像素計；0 關閉"),
+    KO("키포인트와 대응 예측점 사이의 최대 거리. 두 방향 평균이며 512x512 입력의 "
+       "픽셀 단위. 0 은 끔"),
+    DE("Größter Abstand zwischen einem Schlüsselpunkt und der Vorhersage seiner "
+       "Zuordnung, über beide Richtungen gemittelt, in Pixeln der 512x512-Eingabe; "
+       "0 schaltet ihn ab"),
+    FR("Distance maximale entre un point clé et la prédiction de son apparié, "
+       "moyennée sur les deux sens, en pixels de l'entrée 512x512 ; 0 la désactive"),
+    ES("Distancia máxima entre un punto clave y la predicción de su pareja, "
+       "promediada en ambos sentidos, en píxeles de la entrada de 512x512; 0 la "
+       "desactiva"),
+    PT("Distância máxima entre um ponto-chave e a previsão do seu par, média dos "
+       "dois sentidos, em pixels da entrada 512x512; 0 desativa"),
+    IT("Distanza massima tra un punto chiave e la previsione del suo abbinato, "
+       "mediata sulle due direzioni, in pixel dell'ingresso 512x512; 0 la disattiva"),
+    NL("Grootste afstand tussen een sleutelpunt en de voorspelling van zijn match, "
+       "gemiddeld over beide richtingen, in pixels van de 512x512-invoer; 0 zet "
+       "hem uit"),
+    RU("Наибольшее расстояние между ключевой точкой и предсказанием её пары, "
+       "среднее по обоим направлениям, в пикселях входа 512x512; 0 отключает"),
+    TR("Bir anahtar nokta ile eşinin tahmini arasındaki en büyük uzaklık, iki "
+       "yönün ortalaması, 512x512 girişin pikseli cinsinden; 0 kapatır"));
+
+SS_MSG(flexglue_early_stop_decay_help,
+    EN("How early FlexGlue gives up on a pair that is clearly not covisible: "
+       "after layer k it stops below min-covisibility x (1 - decay)^(9 - k); "
+       "1 never stops early"),
+    JA("明らかに共視でないペアを FlexGlue がどれだけ早く諦めるか。層 k の後、"
+       "min-covisibility x (1 - decay)^(9 - k) 未満なら停止。1 は早期停止しません"),
+    ZH_HANS("FlexGlue 对明显不共视的像对放弃得有多早：第 k 层之后，若低于 "
+            "min-covisibility x (1 - decay)^(9 - k) 则停止；1 从不提前停止"),
+    ZH_HANT("FlexGlue 對明顯不共視的影像對放棄得有多早：第 k 層之後，若低於 "
+            "min-covisibility x (1 - decay)^(9 - k) 則停止；1 從不提前停止"),
+    KO("분명히 공시가 아닌 쌍을 FlexGlue 가 얼마나 일찍 포기하는지. 층 k 뒤에 "
+       "min-covisibility x (1 - decay)^(9 - k) 보다 낮으면 멈춥니다. 1 은 조기 중단 "
+       "없음"),
+    DE("Wie früh FlexGlue ein klar nicht kovisibles Paar aufgibt: nach Schicht k "
+       "unter min-covisibility x (1 - decay)^(9 - k); 1 bricht nie früh ab"),
+    FR("À quel point FlexGlue abandonne tôt une paire clairement non covisible : "
+       "après la couche k, sous min-covisibility x (1 - decay)^(9 - k) ; 1 "
+       "n'arrête jamais tôt"),
+    ES("Cuán pronto FlexGlue abandona un par claramente no covisible: tras la "
+       "capa k, bajo min-covisibility x (1 - decay)^(9 - k); 1 nunca se detiene "
+       "antes"),
+    PT("Quão cedo o FlexGlue desiste de um par claramente não covisível: após a "
+       "camada k, abaixo de min-covisibility x (1 - decay)^(9 - k); 1 nunca para "
+       "cedo"),
+    IT("Quanto presto FlexGlue rinuncia a una coppia chiaramente non covisibile: "
+       "dopo lo strato k, sotto min-covisibility x (1 - decay)^(9 - k); 1 non si "
+       "ferma mai prima"),
+    NL("Hoe vroeg FlexGlue een duidelijk niet-covisibel paar opgeeft: na laag k "
+       "onder min-covisibility x (1 - decay)^(9 - k); 1 stopt nooit vroeg"),
+    RU("Как рано FlexGlue сдаётся на явно не совместно видимой паре: после слоя "
+       "k, ниже min-covisibility x (1 - decay)^(9 - k); 1 никогда не "
+       "останавливается рано"),
+    TR("FlexGlue'nun açıkça ortak görünür olmayan bir çiftten ne kadar erken "
+       "vazgeçtiği: k katmanından sonra min-covisibility x (1 - decay)^(9 - k) "
+       "altında durur; 1 asla erken durmaz"));
+
+SS_MSG(flexglue_cache_help,
+    EN("Images whose FlexGlue features stay on the GPU, 4 MB each"),
+    JA("FlexGlue の特徴を GPU に保持する画像数 (1 枚 4 MB)"),
+    ZH_HANS("FlexGlue 特征保留在 GPU 上的图像数，每张 4 MB"),
+    ZH_HANT("FlexGlue 特徵保留在 GPU 上的影像數，每張 4 MB"),
+    KO("FlexGlue 특징을 GPU 에 남겨 두는 이미지 수, 장당 4 MB"),
+    DE("Bilder, deren FlexGlue-Merkmale auf der GPU bleiben, je 4 MB"),
+    FR("Images dont les caractéristiques FlexGlue restent sur le GPU, 4 Mo chacune"),
+    ES("Imágenes cuyas características FlexGlue quedan en la GPU, 4 MB cada una"),
+    PT("Imagens cujas características FlexGlue ficam na GPU, 4 MB cada"),
+    IT("Immagini le cui caratteristiche FlexGlue restano sulla GPU, 4 MB ciascuna"),
+    NL("Beelden waarvan de FlexGlue-kenmerken op de GPU blijven, 4 MB elk"),
+    RU("Изображения, признаки FlexGlue которых остаются на GPU, по 4 МБ"),
+    TR("FlexGlue özellikleri GPU'da kalan görüntüler, her biri 4 MB"));
+
+SS_MSG(flexglue_model_help,
+    EN("Path to flexglue.pth, overriding the fetched one"),
+    JA("flexglue.pth へのパス。取得済みのものを上書きします"),
+    ZH_HANS("flexglue.pth 的路径，覆盖已下载的那个"),
+    ZH_HANT("flexglue.pth 的路徑，覆蓋已下載的那個"),
+    KO("flexglue.pth 경로. 내려받은 것을 대신합니다"),
+    DE("Pfad zu flexglue.pth, der die geholte Datei ersetzt"),
+    FR("Chemin de flexglue.pth, qui remplace celui téléchargé"),
+    ES("Ruta de flexglue.pth, que sustituye al descargado"),
+    PT("Caminho de flexglue.pth, que substitui o baixado"),
+    IT("Percorso di flexglue.pth, che sostituisce quello scaricato"),
+    NL("Pad naar flexglue.pth, dat het opgehaalde vervangt"),
+    RU("Путь к flexglue.pth, заменяющему скачанный"),
+    TR("flexglue.pth yolu; indirilenin yerine geçer"));
+
+SS_MSG(flexglue_images_help,
+    EN("The image folder the features were extracted from: FlexGlue reads the "
+       "pixels while it matches"),
+    JA("特徴を抽出した画像フォルダー。FlexGlue はマッチング中に画素を読みます"),
+    ZH_HANS("提取特征所用的图像文件夹：FlexGlue 在匹配时读取像素"),
+    ZH_HANT("提取特徵所用的影像資料夾：FlexGlue 在匹配時讀取像素"),
+    KO("특징을 추출한 이미지 폴더. FlexGlue 는 매칭하면서 픽셀을 읽습니다"),
+    DE("Der Bildordner, aus dem die Merkmale stammen: FlexGlue liest beim "
+       "Zuordnen die Pixel"),
+    FR("Le dossier d'images dont viennent les caractéristiques : FlexGlue lit les "
+       "pixels pendant l'appariement"),
+    ES("La carpeta de imágenes de la que salieron las características: FlexGlue "
+       "lee los píxeles mientras empareja"),
+    PT("A pasta de imagens de onde vieram as características: o FlexGlue lê os "
+       "pixels enquanto emparelha"),
+    IT("La cartella di immagini da cui vengono le caratteristiche: FlexGlue legge "
+       "i pixel mentre abbina"),
+    NL("De beeldmap waaruit de kenmerken komen: FlexGlue leest de pixels tijdens "
+       "het matchen"),
+    RU("Папка изображений, из которой извлечены признаки: FlexGlue читает "
+       "пиксели во время сопоставления"),
+    TR("Özelliklerin çıkarıldığı görüntü klasörü: FlexGlue eşleştirirken pikselleri "
+       "okur"));
 
 SS_MSG(lightglue_min_score_help,
     EN("Assignment confidence a LightGlue match must reach"),

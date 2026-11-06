@@ -438,11 +438,11 @@ std::string SfmConfig::finalize(uint32_t cmd) {
                "' (sift, aliked-n16rot, aliked-n32, loma-b128 or loma-b)";
     if (matcher != "bruteforce" && !isLearnedMatcher(matcher))
         return "unknown --matcher '" + matcher +
-               "' (bruteforce, lightglue or loma-b128)";
+               "' (bruteforce, lightglue, flexglue or loma-b128)";
     // Matching SIFT with a learned matcher would run and return nonsense.
     // Only `auto` can check it here; `match` reads features off disk, so its
     // guard is on the descriptors themselves, in LearnedMatcher.cpp.
-    if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && isLearnedMatcher(matcher) &&
+    if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && matcherReadsDescriptors(matcher) &&
         !isAlikedType(features) && !isLomaType(features))
         return "--matcher " + matcher + " needs learned descriptors; add "
                "--features aliked-n16rot";
@@ -450,7 +450,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     // and a LoMa matcher reads DeDoDe's, and each would run on the other's and
     // return nonsense rather than fail.
     if ((cmd & (CMD_AUTO | CMD_EXTRACT)) && isLomaType(matcher) != isLomaType(features) &&
-        isLearnedMatcher(matcher))
+        matcherReadsDescriptors(matcher))
         return "--matcher " + matcher + " and --features " + features +
                " are different frontends; a learned matcher only reads the "
                "descriptors it was trained on";
@@ -480,6 +480,10 @@ std::string SfmConfig::finalize(uint32_t cmd) {
 
     lightglue.device = device;
     loma.device = loma_match.device = device;
+    flexglue.gamut = image_gamut;
+    flexglue.is_linear = image_is_linear;
+    flexglue.exposure = exposure;
+    flexglue.apply_exif_orientation = exif_orientation == "apply";
     if (max_image_size <= 0) max_image_size = defaultMaxImageSize(features);
 
     sift.device = match.device = prefilter.device = mapper.device = device;
@@ -488,7 +492,7 @@ std::string SfmConfig::finalize(uint32_t cmd) {
     mapper.threads = threads;
     const bool v = !quiet;
     sift.verbose = mapper.verbose = manager.verbose = merge.verbose = aliked.verbose = v;
-    lightglue.verbose = loma.verbose = loma_match.verbose = v;
+    lightglue.verbose = loma.verbose = loma_match.verbose = flexglue.verbose = v;
 
     // Scoring problems are ~1/32 the size of full matching, so the selection
     // pass batches at least as many pairs per submit as the matcher does.
@@ -557,7 +561,8 @@ std::string SfmConfig::resolveDevice() {
     }
     sift.device_selector = match.device_selector = prefilter.device_selector =
         mapper.device_selector = aliked.device_selector = lightglue.device_selector =
-            loma.device_selector = loma_match.device_selector = device_selector;
+            loma.device_selector = loma_match.device_selector = flexglue.device_selector =
+                device_selector;
     if (!device_selector.empty())
         sfm::slog::diag(sfm::slog::Tag::Device, "[gpu] running on %s",
                         device_selector.c_str());
