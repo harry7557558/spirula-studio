@@ -589,6 +589,29 @@ void printOptionLine(FILE* out, const std::string& flag, const std::string& valu
     printOption(out, flag, "", value, help, "");
 }
 
+namespace {
+FieldView::Kind kindOf(bool) { return FieldView::Kind::Switch; }
+FieldView::Kind kindOf(const std::string&) { return FieldView::Kind::Text; }
+template <class T>
+FieldView::Kind kindOf(T) {
+    return std::is_floating_point<T>::value ? FieldView::Kind::Real : FieldView::Kind::Integer;
+}
+// An editor shows an empty string as empty, not as `--help`'s "none".
+std::string editorValue(const std::string& v) { return v; }
+template <class T> std::string editorValue(const T& v) { return valueString(v); }
+}  // namespace
+
+std::vector<FieldView> describeConfigFields(const SfmConfig& cfg, uint32_t cmd) {
+    std::vector<FieldView> out;
+#define SFM_VIEW_FIELD(member, name, cmds, tier, group, lo, hi, choices, help)                     \
+    if (((uint32_t)(cmds) & cmd) && (tier) != Tier::Alias)                                         \
+        out.push_back({name, group, tier, kindOf(cfg.member), (double)(lo), (double)(hi), choices, \
+                       spirula::i18n::msg::sfmfield::help##_help.get(), editorValue(cfg.member)});
+    SFM_CONFIG_FIELDS(SFM_VIEW_FIELD)
+#undef SFM_VIEW_FIELD
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // stageSignature
 // ---------------------------------------------------------------------------

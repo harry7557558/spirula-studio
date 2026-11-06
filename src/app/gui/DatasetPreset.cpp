@@ -110,6 +110,7 @@ namespace {
     X("sfm_keep_intermediate",      sfm.keep_intermediate)                    \
     X("sfm_ba_cpu",                 sfm.ba_cpu)                               \
     X("sfm_subprocess",             sfm.subprocess)                           \
+    X("sfm_options",                sfm.options)                              \
     X("sfm_extra_args",             sfm.extra_args)                           \
     /* ---- COLMAP ---- */                                                    \
     X("colmap_camera_model",        colmap.camera_model)                      \

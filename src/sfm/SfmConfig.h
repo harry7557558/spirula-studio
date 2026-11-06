@@ -696,6 +696,23 @@ void printConfigOptions(FILE* out, uint32_t cmd, const SfmConfig& defaults);
 void printOptionLine(FILE* out, const std::string& flag, const std::string& value,
                      const std::string& help);
 
+// One row of the table as an options editor sees it: what to draw, and the
+// value it has in `cfg`, spelled the way the flag takes it.
+struct FieldView {
+    enum class Kind { Switch, Integer, Real, Text };
+    const char* name;
+    const char* group;
+    Tier tier;
+    Kind kind;
+    double lo, hi;
+    const char* choices;
+    const char* help;
+    std::string value;
+};
+
+// The rows of `cmd` minus aliases, in table order.
+std::vector<FieldView> describeConfigFields(const SfmConfig& cfg, uint32_t cmd);
+
 // Everything a stage's output depends on, as text: the table's rows for `cmd`
 // minus the ones that cannot change a byte of it, plus the camera overrides.
 // An interrupted run's leftovers are reusable exactly when this still matches.
