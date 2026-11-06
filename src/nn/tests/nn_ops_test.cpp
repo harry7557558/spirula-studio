@@ -9,6 +9,7 @@
 #include "nn/core/Half.h"
 #include "nn/core/Log.h"
 #include "nn/core/Parallel.h"
+#include "nn/Blocks.h"
 #include "nn/Ops.h"
 #include "nn/vk/Context.h"
 #include "nn/vk/MetalInterop.h"
@@ -1794,6 +1795,64 @@ void test_learned_frontend(vk::Arena& arena) {
                   {gap > 0.5 ? 1.0f : 0.0f}, {1.0f}, 0.0f);
             check(ac ? "grid_sample_points border align" : "grid_sample_points border noalign",
                   readback(to), want, 1e-4f);
+        }
+    }
+    {   // concat_ffn, with and without the message LayerNorm, against a scalar
+        // reference; the residual lands in x in place.
+        vk::ArenaScope scope(arena);
+        const int n = 37, d = 24;
+        auto x = randn((size_t)n * d), msg = randn((size_t)n * d);
+        auto w0 = randn((size_t)4 * d * d, 0.2f), b0 = randn((size_t)2 * d, 0.1f);
+        auto lw = randn((size_t)2 * d, 0.3f), lb = randn((size_t)2 * d, 0.1f);
+        auto w3 = randn((size_t)2 * d * d, 0.2f), b3 = randn((size_t)d, 0.1f);
+        auto mw = randn((size_t)d, 0.5f), mb = randn((size_t)d, 0.2f);
+        auto ln = [](std::vector<float> v, int cols, const std::vector<float>& g,
+                     const std::vector<float>& b) {
+            for (size_t r = 0; r < v.size() / cols; ++r) {
+                double m = 0, q = 0;
+                for (int c = 0; c < cols; ++c) m += v[r * cols + c];
+                m /= cols;
+                for (int c = 0; c < cols; ++c) q += (v[r * cols + c] - m) * (v[r * cols + c] - m);
+                const double inv = 1.0 / std::sqrt(q / cols + 1e-5);
+                for (int c = 0; c < cols; ++c)
+                    v[r * cols + c] = (float)((v[r * cols + c] - m) * inv * g[c] + b[c]);
+            }
+            return v;
+        };
+        for (bool norm : {false, true}) {
+            std::vector<float> m = norm ? ln(msg, d, mw, mb) : msg, h((size_t)n * 2 * d),
+                               want(x);
+            for (int r = 0; r < n; ++r)
+                for (int o = 0; o < 2 * d; ++o) {
+                    double a = b0[o];
+                    for (int c = 0; c < d; ++c)
+                        a += (double)w0[(size_t)o * 2 * d + c] * x[(size_t)r * d + c] +
+                             (double)w0[(size_t)o * 2 * d + d + c] * m[(size_t)r * d + c];
+                    h[(size_t)r * 2 * d + o] = (float)a;
+                }
+            h = ln(h, 2 * d, lw, lb);
+            for (float& v : h) v = act_ref(v, Act::GeluErf);
+            for (int r = 0; r < n; ++r)
+                for (int o = 0; o < d; ++o) {
+                    double a = b3[o];
+                    for (int c = 0; c < 2 * d; ++c)
+                        a += (double)w3[(size_t)o * 2 * d + c] * h[(size_t)r * 2 * d + c];
+                    want[(size_t)r * d + o] += (float)a;
+                }
+            Tensor tx = upload_f32(arena, x, n, d);
+            ConcatFfn f;
+            f.w0 = upload_f32(arena, w0, 2 * d, 2 * d);
+            f.b0 = upload_f32(arena, b0, 2 * d);
+            f.ln_w = upload_f32(arena, lw, 2 * d);
+            f.ln_b = upload_f32(arena, lb, 2 * d);
+            f.w3 = upload_f32(arena, w3, d, 2 * d);
+            f.b3 = upload_f32(arena, b3, d);
+            if (norm) {
+                f.msg_ln_w = upload_f32(arena, mw, d);
+                f.msg_ln_b = upload_f32(arena, mb, d);
+            }
+            concat_ffn(arena, tx, upload_f32(arena, msg, n, d), n, d, f);
+            check(norm ? "concat_ffn message norm" : "concat_ffn", readback(tx), want, 1e-4f);
         }
     }
     {   // l2_normalize_rows, including a row of exact zeros (a keypoint whose
