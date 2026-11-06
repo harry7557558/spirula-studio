@@ -30,6 +30,8 @@ struct GlobalReconstructionOptions {
     PriorSource* position_priors = nullptr;
     std::function<GlobalPositionResult(GlobalPositionProblem&, const GlobalPositionOptions&)>
         position_solver;
+    std::function<void(double)> progress;
+    std::function<void(const Reconstruction&)> preview;
     double max_initial_angle = 0.017453292519943295;
     double min_triangulation_angle = 0.02617993877991494;
 };
@@ -74,10 +76,19 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
         !(opt.max_initial_angle > 0 && opt.max_initial_angle <= 1.5707963267948966) ||
         !(opt.min_triangulation_angle >= 0 && opt.min_triangulation_angle <= 3.141592653589793))
         throw std::invalid_argument("global reconstruction: invalid inputs");
+    double reported_work = 0;
+    auto report = [&](double work) {
+        reported_work = std::clamp(work, reported_work, 1.0);
+        if (opt.progress) opt.progress(reported_work);
+    };
+    report(0);
     std::set<uint32_t> fixed_focals = known_focals;
     fixed_focals.insert(opt.fixed_focals.begin(), opt.fixed_focals.end());
     const auto calibration = calibrateViewGraph(db, features, camera_ids, camera_groups, fixed_focals,
-                                                opt.relative.geometry, opt.relative.threads, opt.focal);
+                                                opt.relative.geometry, opt.relative.threads, opt.focal,
+                                                [&](size_t done, size_t total) {
+        report(0.1 * (double)done / std::max<size_t>(1, total));
+    });
     const auto& calibrated_groups = calibration.cameras;
     stats.calibrated_focals = calibration.calibrated.size();
     std::vector<Camera> cameras(n);
@@ -88,10 +99,20 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
         cameras[i] = it->second;
         cameras[i].pixel_scale = features[i].pixelScale();
     }
-    const auto edges = buildRelativeViewGraph(db, features, cameras, opt.relative);
+    report(0.1);
+    auto relative = opt.relative;
+    relative.progress = [&](size_t done, size_t total) {
+        report(0.1 + 0.15 * (double)done / std::max<size_t>(1, total));
+    };
+    const auto edges = buildRelativeViewGraph(db, features, cameras, relative);
+    report(0.25);
+    auto rotation = opt.rotation;
+    rotation.progress = [&](int done, int total) {
+        report(0.25 + 0.05 * (double)done / std::max(1, total));
+    };
     RotationAverageResult rotations;
     if (!opt.rotation_priors) {
-        rotations = averageRigViewRotations(db, edges, opt.rigs, opt.rotation);
+        rotations = averageRigViewRotations(db, edges, opt.rigs, rotation);
     } else {
         MatchesDatabase rotation_db;
         rotation_db.images.resize(n);
@@ -134,7 +155,7 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
                 rotation_edges.push_back(std::move(edge));
                 stats.rotation_priors++;
             }
-        rotations = averageRigViewRotations(rotation_db, rotation_edges, opt.rigs, opt.rotation);
+        rotations = averageRigViewRotations(rotation_db, rotation_edges, opt.rigs, rotation);
     }
     const FixedRigFrames rig_frames = fixedRigFrames(n, opt.rigs);
     stats.rotation_converged = rotations.converged;
@@ -143,6 +164,7 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
         accepted_edges[i] = rotations.accepted[i];
         stats.edges += accepted_edges[i];
     }
+    report(0.3);
     const auto tracks = buildGlobalTracks(db, features, edges, 3, &accepted_edges);
     stats.tracks = tracks.size();
     stats.conflicting = tracks.conflicting;
@@ -164,7 +186,12 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
     std::map<size_t, std::vector<size_t>> groups;
     for (size_t t = 0; t < tracks.size(); t++) groups[root(n + t)].push_back(t);
     std::vector<Reconstruction> models;
+    size_t completed_tracks = 0;
     for (const auto& group : groups) {
+        const double begin = 0.35 + 0.65 * (double)completed_tracks / std::max<size_t>(1, tracks.size());
+        const double share = 0.65 * (double)group.second.size() / std::max<size_t>(1, tracks.size());
+        completed_tracks += group.second.size();
+        report(begin);
         cancel::check();
         std::set<uint32_t> image_set;
         for (size_t t : group.second)
@@ -208,10 +235,44 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
             }
         }
         if (problem.cameras.size() < 2 && !problem.metric_scale) continue;
+        auto position = opt.position;
+        int position_pass = 0;
+        position.progress = [&](int done, int total) {
+            const double fraction = (double)done / std::max(1, total);
+            report(begin + share * (opt.position_priors ? 0.45 * (position_pass + fraction)
+                                                       : 0.9 * fraction));
+        };
+        if (opt.preview) position.preview = [&](const GlobalPositionProblem& current) {
+            Reconstruction preview;
+            for (uint32_t id : images) {
+                Image image;
+                image.id = id;
+                image.camera_id = camera_ids[id];
+                image.name = db.images[id].name;
+                image.exif_orientation = features[id].exif_orientation;
+                image.registered = true;
+                image.pose.R = rotations.rotations[id];
+                image.pose.t = mul(image.pose.R, current.cameras[local[id]] + offsets[id]) * -1.0;
+                preview.cameras[image.camera_id] = calibrated_groups.at(image.camera_id);
+                preview.images.emplace(id, std::move(image));
+            }
+            constexpr size_t preview_points = 50000;
+            const size_t stride = std::max<size_t>(1, (current.points.size() + preview_points - 1) / preview_points);
+            for (size_t p = 0; p < current.points.size(); p += stride) {
+                Point3D point;
+                point.xyz = current.points[p];
+                const auto& obs = tracks.observations[tracks.offsets[group.second[p]]];
+                const auto& f = features[obs.image_id];
+                if (f.hasColors())
+                    for (int c = 0; c < 3; c++) point.rgb[c] = f.colors[3 * (size_t)obs.point2D_idx + c];
+                preview.points3D.emplace(p, std::move(point));
+            }
+            opt.preview(preview);
+        };
         initializeGlobalPosition(problem, opt.position.seed);
         const GlobalPositionResult solved = opt.position_solver
-            ? opt.position_solver(problem, opt.position)
-            : solveGlobalPosition(problem, opt.position);
+            ? opt.position_solver(problem, position)
+            : solveGlobalPosition(problem, position);
         if (!std::isfinite(solved.final_cost) || (!solved.accepted && !solved.converged)) continue;
         if (opt.position_priors) {
             std::vector<PosedImage> posed;
@@ -234,15 +295,17 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
                 (metric.metric_scale || prior_frames.size() >= 2)) {
                 const size_t prior_count = metric.position_priors.size();
                 metric.metric_scale = metric.metric_scale || prior_frames.size() >= 2;
+                position_pass = 1;
                 const GlobalPositionResult positioned = opt.position_solver
-                    ? opt.position_solver(metric, opt.position)
-                    : solveGlobalPosition(metric, opt.position);
+                    ? opt.position_solver(metric, position)
+                    : solveGlobalPosition(metric, position);
                 if (std::isfinite(positioned.final_cost) &&
                     (positioned.accepted || positioned.converged))
                     problem = std::move(metric);
                 stats.position_priors += prior_count;
             }
         }
+        report(begin + share * 0.9);
         Reconstruction model;
         if (problem.metric_scale) initializeMetricRigCalibrations(model, opt.rigs);
         for (size_t i = 0; i < images.size(); i++) {
@@ -298,8 +361,13 @@ inline std::vector<Reconstruction> buildGlobalReconstructions(
             if (count)
                 for (int c = 0; c < 3; c++) model.points3D[id].rgb[c] = (uint8_t)(colors[c] / count);
         }
-        if (model.points3D.size() >= 10) models.push_back(std::move(model));
+        if (model.points3D.size() >= 10) {
+            if (opt.preview) opt.preview(model);
+            models.push_back(std::move(model));
+        }
+        report(begin + share);
     }
+    report(1);
     stats.models = models.size();
     std::sort(models.begin(), models.end(), [](const Reconstruction& a, const Reconstruction& b) {
         return a.numRegistered() > b.numRegistered();

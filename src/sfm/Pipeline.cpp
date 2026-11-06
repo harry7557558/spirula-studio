@@ -1357,8 +1357,15 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     std::vector<Reconstruction> models;
     if (cfg.mapper_mode == "global") {
         if (!cfg.quiet) L::out(Tag::Map, M::map_global_start);
+        events::stage_begin(Stage::GlobalInitialize, 10000);
         mapper.bootstrapCameras();
         GlobalReconstructionOptions go;
+        go.progress = [](double work) {
+            events::progress(Stage::GlobalInitialize, (int64_t)(work * 10000), 10000);
+        };
+        if (progress::enabled()) go.preview = [](const Reconstruction& model) {
+            progress::model(model);
+        };
         go.relative.geometry = cfg.twoview;
         go.relative.threads = cfg.threads;
         go.rigs = mapper.rigs();
@@ -1377,6 +1384,9 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
             L::out(Tag::Map, M::map_global_initial,
                    {(long long)gs.edges, (long long)gs.tracks, (long long)gs.conflicting,
                     (long long)gs.models});
+        events::stage_end(Stage::GlobalInitialize);
+        events::stage_begin(Stage::Refine);
+        if (!models.empty()) progress::model(models.front(), true);
         for (Reconstruction& model : models) model = mapper.refine(model, false, true);
         mapper.claimAll(models);
         ao.tag = "global";

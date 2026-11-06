@@ -105,7 +105,22 @@ static bool checkRigPositioning() {
     opt.max_iterations = 100;
     opt.cg_iterations = 150;
     const auto ref = solveGlobalPosition(cpu, opt);
+    int reported = -1, previews = 0;
+    bool progress_ok = true, preview_ok = true;
+    opt.progress = [&](int done, int total) {
+        progress_ok = progress_ok && done > reported && done < total;
+        reported = done;
+    };
+    opt.preview = [&](const GlobalPositionProblem& current) {
+        previews++;
+        preview_ok = preview_ok && reported > 0 && current.cameras.size() == input.cameras.size();
+        for (const Vec3& x : current.points)
+            preview_ok = preview_ok && std::isfinite(x.x) && std::isfinite(x.y) && std::isfinite(x.z);
+    };
     const auto actual = solveGlobalPositionGpu(gpu, opt);
+    if (!progress_ok || !preview_ok || previews == 0) return false;
+    opt.progress = {};
+    opt.preview = {};
     double error = 0;
     for (size_t i = 0; i < cameras.size(); i++)
         error = std::max(error, (gpu.cameras[i] - cameras[i]).norm());

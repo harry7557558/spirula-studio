@@ -5,6 +5,8 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <functional>
+#include <mutex>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -276,7 +278,8 @@ inline FocalGraphResult calibrateViewGraph(
     const MatchesDatabase& db, const std::vector<FeatureSet>& features,
     const std::vector<uint32_t>& camera_ids, const std::map<uint32_t, Camera>& cameras,
     const std::set<uint32_t>& fixed, const TwoViewOptions& geometry, int threads,
-    const FocalGraphOptions& options = {}) {
+    const FocalGraphOptions& options = {},
+    const std::function<void(size_t, size_t)>& progress = {}) {
     if (features.size() != db.images.size() || camera_ids.size() != db.images.size())
         throw std::invalid_argument("view graph calibration: input counts differ");
     bool has_unknown = false;
@@ -290,39 +293,48 @@ inline FocalGraphResult calibrateViewGraph(
     const unsigned hc = std::thread::hardware_concurrency();
     const size_t requested = threads > 0 ? (size_t)threads : (hc ? hc : 1);
     const size_t count = std::max<size_t>(1, std::min(requested, db.pairs.size()));
+    std::mutex progress_mutex;
+    size_t done = 0;
     auto worker = [&] {
         for (size_t i = next.fetch_add(1); i < db.pairs.size() && !cancel::requested();
              i = next.fetch_add(1)) {
-            const TwoViewMatches& pair = db.pairs[i];
-            if (pair.config != (int)TwoViewConfig::Uncalibrated ||
-                pair.image1 >= features.size() || pair.image2 >= features.size() ||
-                pair.image1 == pair.image2 || pair.matches.size() > (size_t)std::numeric_limits<int>::max() ||
-                pair.matches.size() < (size_t)std::max(30, geometry.min_num_inliers)) continue;
-            const uint32_t ca = camera_ids[pair.image1], cb = camera_ids[pair.image2];
-            const auto a = cameras.find(ca), b = cameras.find(cb);
-            if (a == cameras.end() || b == cameras.end() ||
-                (fixed.count(ca) && fixed.count(cb)) || a->second.isFisheye() ||
-                b->second.isFisheye() || a->second.isSpherical() || b->second.isSpherical()) continue;
-            std::vector<Vec2> p1, p2;
-            p1.reserve(pair.matches.size()); p2.reserve(pair.matches.size());
-            for (const FeatureMatch& match : pair.matches) {
-                if (match.idx1 >= features[pair.image1].keypoints.size() ||
-                    match.idx2 >= features[pair.image2].keypoints.size()) break;
-                const Keypoint& x = features[pair.image1].keypoints[match.idx1];
-                const Keypoint& y = features[pair.image2].keypoints[match.idx2];
-                p1.push_back({x.x, x.y}); p2.push_back({y.x, y.y});
+            auto estimate = [&] {
+                const TwoViewMatches& pair = db.pairs[i];
+                if (pair.config != (int)TwoViewConfig::Uncalibrated ||
+                    pair.image1 >= features.size() || pair.image2 >= features.size() ||
+                    pair.image1 == pair.image2 || pair.matches.size() > (size_t)std::numeric_limits<int>::max() ||
+                    pair.matches.size() < (size_t)std::max(30, geometry.min_num_inliers)) return;
+                const uint32_t ca = camera_ids[pair.image1], cb = camera_ids[pair.image2];
+                const auto a = cameras.find(ca), b = cameras.find(cb);
+                if (a == cameras.end() || b == cameras.end() ||
+                    (fixed.count(ca) && fixed.count(cb)) || a->second.isFisheye() ||
+                    b->second.isFisheye() || a->second.isSpherical() || b->second.isSpherical()) return;
+                std::vector<Vec2> p1, p2;
+                p1.reserve(pair.matches.size()); p2.reserve(pair.matches.size());
+                for (const FeatureMatch& match : pair.matches) {
+                    if (match.idx1 >= features[pair.image1].keypoints.size() ||
+                        match.idx2 >= features[pair.image2].keypoints.size()) break;
+                    const Keypoint& x = features[pair.image1].keypoints[match.idx1];
+                    const Keypoint& y = features[pair.image2].keypoints[match.idx2];
+                    p1.push_back({x.x, x.y}); p2.push_back({y.x, y.y});
+                }
+                if (p1.size() != pair.matches.size()) return;
+                TwoViewOptions opt = geometry;
+                opt.estimate_homography = false;
+                opt.recover_pose = false;
+                opt.ransac.max_error *= 0.5 * (features[pair.image1].pixelScale() +
+                                               features[pair.image2].pixelScale());
+                const TwoViewGeometry g = estimateTwoView(p1, p2, opt);
+                if (g.config != TwoViewConfig::Uncalibrated ||
+                    g.num_inliers < std::max(30, geometry.min_num_inliers)) return;
+                estimated[i] = {ca, cb, g.F};
+                valid[i] = 1;
+            };
+            estimate();
+            if (progress) {
+                std::lock_guard<std::mutex> lock(progress_mutex);
+                progress(++done, db.pairs.size());
             }
-            if (p1.size() != pair.matches.size()) continue;
-            TwoViewOptions opt = geometry;
-            opt.estimate_homography = false;
-            opt.recover_pose = false;
-            opt.ransac.max_error *= 0.5 * (features[pair.image1].pixelScale() +
-                                           features[pair.image2].pixelScale());
-            const TwoViewGeometry g = estimateTwoView(p1, p2, opt);
-            if (g.config != TwoViewConfig::Uncalibrated ||
-                g.num_inliers < std::max(30, geometry.min_num_inliers)) continue;
-            estimated[i] = {ca, cb, g.F};
-            valid[i] = 1;
         }
     };
     std::vector<std::thread> pool;

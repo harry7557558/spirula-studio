@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <functional>
+#include <mutex>
 #include <cstdint>
 #include <stdexcept>
 #include <thread>
@@ -37,6 +39,7 @@ struct RelativeViewOptions {
     TwoViewOptions geometry;
     int threads = 0;
     double min_rotation_only_ratio = 0.9;
+    std::function<void(size_t, size_t)> progress;
 };
 
 namespace relative_view_detail {
@@ -215,9 +218,16 @@ inline std::vector<RelativeViewEdge> buildRelativeViewGraph(
     const unsigned hc = std::thread::hardware_concurrency();
     const size_t requested = options.threads > 0 ? (size_t)options.threads : (hc ? hc : 1);
     const size_t count = std::max<size_t>(1, std::min(requested, db.pairs.size()));
+    std::mutex progress_mutex;
+    size_t done = 0;
     auto worker = [&] {
-        for (size_t i = next.fetch_add(1); i < db.pairs.size() && !cancel::requested(); i = next.fetch_add(1))
+        for (size_t i = next.fetch_add(1); i < db.pairs.size() && !cancel::requested(); i = next.fetch_add(1)) {
             edges[i] = estimateRelativeView(db.pairs[i], features, cameras, options);
+            if (options.progress) {
+                std::lock_guard<std::mutex> lock(progress_mutex);
+                options.progress(++done, db.pairs.size());
+            }
+        }
     };
     std::vector<std::thread> pool;
     for (size_t i = 1; i < count; i++) pool.emplace_back(worker);

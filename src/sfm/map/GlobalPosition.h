@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
+#include <functional>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -46,6 +48,26 @@ struct GlobalPositionOptions {
     double huber = 0.1, initial_damping = 1e-3;
     double cg_tolerance = 1e-4, relative_tolerance = 1e-8;
     uint32_t seed = 1;
+    std::function<void(int, int)> progress;
+    std::function<void(const GlobalPositionProblem&)> preview;
+};
+
+class GlobalPositionReporter {
+public:
+    explicit GlobalPositionReporter(const GlobalPositionOptions& options) : opt(options) {}
+    bool update(int iteration, bool accepted) {
+        if (opt.progress) opt.progress(iteration, opt.max_iterations);
+        const auto now = std::chrono::steady_clock::now();
+        if (!opt.preview || !accepted ||
+            (started && std::chrono::duration<double>(now - last).count() < 1.5)) return false;
+        last = now;
+        started = true;
+        return true;
+    }
+private:
+    const GlobalPositionOptions& opt;
+    std::chrono::steady_clock::time_point last;
+    bool started = false;
 };
 
 struct GlobalPositionResult {
@@ -220,7 +242,9 @@ inline GlobalPositionResult solveGlobalPosition(GlobalPositionProblem& p,
         }
         return value;
     };
+    GlobalPositionReporter reporter(opt);
     for (int iteration = 0; iteration < opt.max_iterations; iteration++) {
+        if (reporter.update(iteration, result.accepted > 0)) opt.preview(p);
         cancel::check();
         std::fill(rhs.begin(), rhs.end(), 0);
         std::fill(diag.begin(), diag.end(), 0);

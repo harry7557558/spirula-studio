@@ -298,9 +298,27 @@ static int testGlobalFrontend(int argc, char** argv) {
     check(correct >= 100 && correct == tracks.size(), "end-to-end tracks reject outliers");
     GlobalReconstructionOptions reconstruction_opt;
     reconstruction_opt.relative = options;
+    double work = 0;
+    bool monotonic = true, early_preview = false, finite_preview = true;
+    int reports = 0;
+    reconstruction_opt.progress = [&](double value) {
+        monotonic = monotonic && value >= work && value <= 1;
+        work = value;
+        reports++;
+    };
+    reconstruction_opt.preview = [&](const Reconstruction& model) {
+        early_preview = early_preview || (work < 0.9 && !model.points3D.empty());
+        finite_preview = finite_preview && model.numRegistered() == nimages;
+        for (const auto& entry : model.points3D) {
+            const auto& x = entry.second.xyz;
+            finite_preview = finite_preview && std::isfinite(x.x) && std::isfinite(x.y) && std::isfinite(x.z);
+        }
+    };
     GlobalReconstructionStats stats;
     const auto models = buildGlobalReconstructions(db, features, std::vector<uint32_t>(nimages, 1),
                                                     {{1, cameras[0]}}, {1}, reconstruction_opt, stats);
+    check(monotonic && work == 1 && reports > 10, "global initialization reports monotonic work");
+    check(early_preview && finite_preview, "global preview precedes completed positioning");
     check(models.size() == 1 && models[0].numRegistered() == nimages &&
           models[0].points3D.size() >= 90, "global reconstruction from matches");
     if (!models.empty()) {

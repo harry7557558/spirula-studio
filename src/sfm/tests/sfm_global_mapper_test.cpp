@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "sfm/Pipeline.h"
+#include "sfm/core/Progress.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/tests/TestMain.h"
 
@@ -80,6 +81,19 @@ static int testGlobalMapper(int argc, char** argv) {
     cfg.manager.do_audit = false;
     cfg.assemble.reseed_trials = 0;
     Mapper mapper(db, features, cfg.mapper, std::vector<uint32_t>(nimages, 1), rig ? &rigs : nullptr);
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("spirula_global_mapper_test_" + std::to_string(nonce));
+    if (!std::filesystem::create_directory(path)) return 1;
+    RunContext context;
+    context.set_progress_dir((path / "progress").string());
+    bool early_preview = false;
+    context.set_events([&](const Event& event) {
+        progress::status(event);
+        if (event.stage == Stage::GlobalInitialize && event.kind == Event::Kind::Progress &&
+            event.done > 0 && event.done < 9000)
+            early_preview = early_preview || std::filesystem::exists(path / "progress" / "model.bin");
+    });
     AssembleStats stats;
     auto models = runMapper(mapper, db, features, cfg, stats);
     if (models.size() != 1 || models[0].numRegistered() != nimages ||
@@ -90,14 +104,10 @@ static int testGlobalMapper(int argc, char** argv) {
     double mean = 0, median = 0;
     size_t observations = 0;
     reprojStats(models[0], features, mean, median, observations);
-    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("spirula_global_mapper_test_" + std::to_string(nonce));
-    if (!std::filesystem::create_directory(path)) return 1;
     models[0].writeBinary(path.string());
     const Reconstruction loaded = Reconstruction::readBinary(path.string());
     std::filesystem::remove_all(path);
-    bool ok = std::isfinite(mean) && mean < 2 && observations >= 300 &&
+    bool ok = early_preview && std::isfinite(mean) && mean < 2 && observations >= 300 &&
               loaded.numRegistered() == nimages &&
               loaded.points3D.size() == models[0].points3D.size();
     if (rig) {

@@ -567,6 +567,14 @@ if(SS_BUILD_GUI)
     ss_configure_app(dense_live_preview_test)
     target_link_libraries(dense_live_preview_test PRIVATE glfw OpenGL::GL)
 
+    if(SS_BUILD_SFM)
+        add_executable(sfm_live_preview_test
+            ${SS_SRC}/app/gui/tests/sfm_live_preview_test.cpp
+            ${SS_SRC}/app/gui/SfmProgress.cpp)
+        ss_configure_app(sfm_live_preview_test)
+        target_link_libraries(sfm_live_preview_test PRIVATE ss_sfm)
+    endif()
+
     add_executable(align_fit_test
         ${SS_SRC}/app/gui/tests/align_fit_test.cpp)
     ss_configure_app(align_fit_test)

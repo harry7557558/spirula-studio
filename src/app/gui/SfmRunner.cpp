@@ -418,7 +418,8 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         // One bar over the whole step, whatever it is doing: a seed retry comes
         // back to seeding mid-run, and the finishing solves place no image.
-        case 2: case 3: case 4: case 8: case 9: {
+        case 2: case 3: case 4: case 8: case 9: case 11: {
+            if (st.stage == 11) _map_work.initialized(st.done, st.total);
             if (st.stage == 2) _map_work.placed(st.done, st.total);
             if (st.stage == 3) _map_work.levels(st.done, st.total);
             if (st.stage == 9) _map_work.refining();
@@ -1026,9 +1027,8 @@ void SfmRunner::run(SfmJob job) {
                 log(cmd);
                 rc = run_process(argv, "", [&](const std::string& l) {
                     log(l, !child_line_is_notable(l));
-                    poll_status();
                     note_line(l);
-                }, _cancel);
+                }, _cancel, [this] { poll_status(); });
                 // The last snapshot the child wrote, which is the one carrying
                 // its verdict; the loop above may have missed it between lines.
                 _status_mtime = 0;

@@ -330,6 +330,9 @@ int normal_cases() {
         stderr_seen |= line == "stderr tail";
     }
     if (status != 7 || !stdout_seen || !stderr_seen) return 1;
+    int polls = 0;
+    if (gui::run_process({executable, "quiet"}, "", {}, cancel, [&] { ++polls; }) != 0 ||
+        polls < 2) return 22;
     gui::ProcessPipe pipe;
     bool accepted = false;
     if (!pipe.start({executable, "consume"}, [&](const std::string& line) {
@@ -569,6 +572,7 @@ int main(int argc, char** argv) {
     executable = fs::absolute(argv[0]).string();
     if (argc == 1) return suite();
     const std::string mode = argv[1];
+    if (mode == "quiet") { std::this_thread::sleep_for(350ms); return 0; }
     if (mode == "check-normal") return normal_cases();
     if (mode == "runner" && argc == 5) return runner(argv[2], argv[3], argv[4]);
     return helper(mode, argc > 2 ? fs::path(argv[2]) : fs::path{});

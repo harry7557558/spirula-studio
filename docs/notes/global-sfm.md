@@ -71,3 +71,13 @@ including outliers and disconnected graphs. Synthetic success is not evidence
 of parity with GLOMAP or of quality on real image collections.
 `sfm_fixed_rotation_ba_test`, also with `--vulkan`, checks dense and CG BA
 with pose priors, fixed rotations and a subsequent free solve.
+
+With `--progress-dir`, accepted positioning states produce camera and coloured
+point previews at most once every 1.5 seconds, starting with the first accepted
+iterate. Points are limited to 50,000 before building the snapshot; feature
+arrays and full tracks are not copied. These early positions are provisional
+and can move substantially while the solve converges. Each component replaces
+the preview in its own gauge; the largest filtered model is forced to disk
+before refinement, and the usual final snapshot replaces it after assembly.
+The solver downloads only camera and point coordinates for these previews;
+observation scales remain on the device until the final readback.

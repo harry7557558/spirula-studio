@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -34,6 +35,7 @@ struct RotationAverageOptions {
     double ridge_regularization = 1e-9;
     double max_error_radians = 0.20;
     double cg_tolerance = 1e-6;
+    std::function<void(int, int)> progress;
 };
 
 struct RotationAverageResult {
@@ -151,6 +153,9 @@ inline RotationAverageResult averageViewRotations(const MatchesDatabase& db,
         return consistency[a] != consistency[b] ? consistency[a] > consistency[b]
                                                : views[a].inliers > views[b].inliers;
     });
+    int progress_done = 0;
+    const int progress_total = 2 * (std::min(opt.max_iterations, opt.l1_iterations) +
+                                    std::min(opt.max_iterations, opt.irls_iterations));
     auto solve = [&]() {
         std::vector<uint32_t> parent(n);
         std::iota(parent.begin(), parent.end(), 0);
@@ -323,6 +328,7 @@ inline RotationAverageResult averageViewRotations(const MatchesDatabase& db,
             int admm_iterations = opt.l1_admm_initial_iterations;
             const int iterations = std::min(opt.max_iterations, opt.l1_iterations);
             for (int iter = 0; iter < iterations; iter++) {
+                if (opt.progress) opt.progress(++progress_done, progress_total);
                 cancel::check();
                 std::fill(z.begin(), z.end(), Vec3{});
                 std::fill(dual.begin(), dual.end(), Vec3{});
@@ -396,6 +402,7 @@ inline RotationAverageResult averageViewRotations(const MatchesDatabase& db,
             std::vector<double> weights(views.size());
             const int iterations = std::min(opt.max_iterations, opt.irls_iterations);
             for (int iter = 0; iter < iterations; iter++) {
+                if (opt.progress) opt.progress(++progress_done, progress_total);
                 cancel::check();
                 for (size_t e : order) {
                     if (!out.accepted[e]) continue;

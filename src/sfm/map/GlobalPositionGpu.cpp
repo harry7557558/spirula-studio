@@ -133,7 +133,16 @@ public:
         result.initial_cost = cost;
         double damping = opt.initial_damping;
         int small_steps = 0;
+        GlobalPositionReporter reporter(opt);
+        std::vector<float> preview_nodes;
         for (int iteration = 0; iteration < opt.max_iterations; iteration++) {
+            if (reporter.update(iteration, result.accepted > 0)) {
+                preview_nodes.resize(3 * (size_t)nodes_);
+                ctx_.download(buffers_[2], preview_nodes.data(), preview_nodes.size() * sizeof(float));
+                for (uint32_t i = 0; i < nc_; i++) p.cameras[i] = get(preview_nodes, 3 * i);
+                for (uint32_t i = 0; i < np_; i++) p.points[i] = get(preview_nodes, 3 * (nc_ + i));
+                opt.preview(p);
+            }
             cancel::check();
             VkCommandBuffer cb = ctx_.begin();
             Push push = base(); push.f0 = (float)opt.huber;
