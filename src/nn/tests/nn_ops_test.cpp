@@ -1764,6 +1764,38 @@ void test_learned_frontend(vk::Arena& arena) {
                   readback(to), want, 1e-4f);
         }
     }
+    {   // grid_sample_points padding_mode='border': every point lands well
+        // outside on at least one axis, where zeros and border disagree.
+        vk::ArenaScope scope(arena);
+        const int H = 8, W = 6, C = 3, N = 64;
+        auto x = randn((size_t)H * W * C);
+        auto pos = randn((size_t)N * 2, 1.5f);
+        Tensor tx = upload_f32(arena, x, H, W, C);
+        Tensor tp = upload_f32(arena, pos, N, 2);
+        for (bool ac : {true, false}) {
+            Tensor to = arena_tensor(arena, DType::F32, N, C);
+            grid_sample_points(to, tx, tp, ac, GridPad::Border);
+            std::vector<float> want((size_t)N * C), zeros((size_t)N * C);
+            for (int n = 0; n < N; ++n) {
+                const float gx = pos[(size_t)n * 2], gy = pos[(size_t)n * 2 + 1];
+                float sx = ac ? (gx + 1) * 0.5f * (W - 1) : ((gx + 1) * W - 1) * 0.5f;
+                float sy = ac ? (gy + 1) * 0.5f * (H - 1) : ((gy + 1) * H - 1) * 0.5f;
+                for (int c = 0; c < C; ++c)
+                    zeros[(size_t)n * C + c] = sample_zero(x, H, W, C, c, sy, sx);
+                sx = std::min(std::max(sx, 0.0f), (float)(W - 1));
+                sy = std::min(std::max(sy, 0.0f), (float)(H - 1));
+                for (int c = 0; c < C; ++c)
+                    want[(size_t)n * C + c] = sample_zero(x, H, W, C, c, sy, sx);
+            }
+            double gap = 0;
+            for (size_t i = 0; i < want.size(); ++i)
+                gap = std::max(gap, (double)std::fabs(want[i] - zeros[i]));
+            check("grid_sample_points border fixture separates the modes",
+                  {gap > 0.5 ? 1.0f : 0.0f}, {1.0f}, 0.0f);
+            check(ac ? "grid_sample_points border align" : "grid_sample_points border noalign",
+                  readback(to), want, 1e-4f);
+        }
+    }
     {   // l2_normalize_rows, including a row of exact zeros (a keypoint whose
         // descriptor cancelled) -- eps must keep that finite, not NaN.
         vk::ArenaScope scope(arena);
