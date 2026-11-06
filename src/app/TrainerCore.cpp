@@ -1985,9 +1985,11 @@ ViewerRenderConfig TrainerSession::make_viewer_config() const {
     vc.color_space_on = color.splat_on();
     vc.centers = dsparse::scene_centers(ds);
     vc.center_cameras = ds.num_cameras > 0;
+    vc.orbit_navigation = dsparse::navigation_hint(ds.c2w.data(), ds.num_cameras).orbit;
     vc.train_frame_scale = ds.train_frame_scale;
     vc.train_to_normalized = ds.train_to_normalized;
     vc.base_camera_size = viewer_base_camera_size;
+    vc.held_out_cameras = dsparse::camera_wire(ds, ds.val_indices);
     return vc;
 }
 

@@ -1,6 +1,8 @@
 // ViewportPanel.cpp -- see ViewportPanel.h.
 
 #include "app/gui/ViewportPanel.h"
+#include "app/gui/ViewBookmarks.h"
+#include "data/FrustumTemplate.h"
 
 #include "app/gui/Layout.h"
 
@@ -192,10 +194,16 @@ bool ViewportPanel::maybe_frame(const spirula::TrainerSession& session) {
     std::string key = session.cfg.data + ":" +
         std::to_string(session.ds.num_cameras) + ":" +
         std::to_string(session.ds.points.num());
-    if (key == _framed_key) return false;   // same dataset: keep the pose
+    const bool first = key != _framed_key;
+    adopt_gauge(session.ds, first);
+    if (!first) return false;
     _framed_key = key;
     const dsparse::CenterTable centers = dsparse::scene_centers(session.ds);
     set_centers(&centers, session.ds.num_cameras > 0);
+    _cam.mode = dsparse::navigation_hint(session.ds.c2w.data(), session.ds.num_cameras).orbit
+        ? NavCamera::Turntable : NavCamera::Fps;
+    _center_mode = (int)(_cam.mode == NavCamera::Turntable && session.ds.num_cameras > 0
+        ? dsparse::CenterMode::CameraFocus : dsparse::CenterMode::CameraMedian);
     compute_framing(session);
     _show_cams = true;   // default on for a fresh dataset preview
     return true;
@@ -607,7 +615,7 @@ void ViewportPanel::build_request(ViewRequest& q, int W, int H) const {
     q.H = H;
     q.model = camera_model_name();
     q.key = _buffer_keys.empty() ? "rgb" : _buffer_keys[_buffer_idx];
-    q.show_cams = _show_cams;
+    q.show_cams = _show_cams && _has_cameras;
     q.show_grid = _show_grid && !external_grid();
     q.show_roi = _show_roi && _roi_engine != nullptr;
     q.grid_dist = nav_dist() / _m2s_scale;
@@ -766,7 +774,7 @@ void ViewportPanel::attach_preview(spirula::TrainerSession& session) {
         _last_error = "preview renderer unavailable (OpenGL 3.2 required)";
         return;
     }
-    adopt_gauge(session.ds, maybe_frame(session));
+    maybe_frame(session);
     _last_error.clear();
     _mode = Mode::Preview;
 }
@@ -792,11 +800,15 @@ void ViewportPanel::attach_preview_data(const ParsedDataset& ds,
         const dsparse::CenterTable centers = dsparse::scene_centers(ds);
         set_centers(&centers, ds.num_cameras > 0);
     }
+    adopt_gauge(ds, first);
     if (first) {
         _framed_key = key;
+        _cam.mode = dsparse::navigation_hint(ds.c2w.data(), ds.num_cameras).orbit
+            ? NavCamera::Turntable : NavCamera::Fps;
+        _center_mode = (int)(_cam.mode == NavCamera::Turntable && ds.num_cameras > 0
+            ? dsparse::CenterMode::CameraFocus : dsparse::CenterMode::CameraMedian);
         reset_pose(radius);
     }
-    adopt_gauge(ds, first);
     _last_error.clear();
     _mode = Mode::Preview;
 }
@@ -843,6 +855,7 @@ void ViewportPanel::attach_preview_mesh(const meshing::MeshData& mesh,
     }
     if (key != _framed_key) {
         _framed_key = key;
+        _cam.mode = NavCamera::Turntable;
         reset_pose(radius);
     }
     _last_error.clear();
@@ -866,7 +879,7 @@ void ViewportPanel::attach(spirula::TrainerSession& session) {
     _buffer_keys = _worker.buffer_keys();
     _buffer_idx = std::min<int>(_buffer_idx, (int)_buffer_keys.size() - 1);
     _has_cameras = session.ds.num_cameras > 0;
-    adopt_gauge(session.ds, maybe_frame(session));
+    maybe_frame(session);
     _pending = 0;
     _last_error.clear();
     _mode = Mode::Engine;
@@ -882,16 +895,17 @@ void ViewportPanel::attach_scene(const ViewerRenderConfig& cfg,
     _has_cameras = false;
     _show_cams = false;
     set_centers(&cfg.centers, cfg.center_cameras);
-    if (key != _framed_key) {
-        _framed_key = key;
-        reset_pose(radius);
-    }
     // A file, not a dataset: nothing rotated it and nothing says what a unit
     // is, but its own scale still sets what the grid's cell measures.
     _align_identity = true;
     _gauge_metric = false;
     _scene_scale = cfg.train_frame_scale > 0 ? cfg.train_frame_scale : 1.0f;
     rebuild_m2s();
+    if (key != _framed_key) {
+        _framed_key = key;
+        _cam.mode = NavCamera::Turntable;
+        reset_pose(radius);
+    }
     _pending = 0;
     _last_error.clear();
     _mode = Mode::Engine;
@@ -1368,9 +1382,68 @@ void ViewportPanel::draw_gizmo() const {
     }
 }
 
-// What is drawn over the image in either mode: the tool's overlay, then the
-// gizmo on top of it.
 void ViewportPanel::draw_overlays() {
+    if (!same_pose(_cam, _focus_pose)) _focus_until = ImGui::GetTime() + 0.45;
+    _focus_pose = _cam;
+    float w2c[12], eye[3], fx, fy;
+    int model;
+    nav_camera((int)_img_w, (int)_img_h, w2c, fx, fy, model, eye);
+    auto project = [&](const float p[3], ImVec2& pixel) {
+        double ray[3], uv[2];
+        for (int r = 0; r < 3; r++)
+            ray[r] = w2c[r*4]*p[0] + w2c[r*4+1]*p[1] + w2c[r*4+2]*p[2] + w2c[r*4+3];
+        const float distortion[8] = {};
+        if (!camhost::project_ray(ray, model, 0, distortion, uv)) return false;
+        pixel = ImVec2(_img_x + _img_w/2 + fx*uv[0], _img_y + _img_h/2 + fy*uv[1]);
+        return std::isfinite(pixel.x) && std::isfinite(pixel.y);
+    };
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(ImVec2(_img_x, _img_y), ImVec2(_img_x+_img_w, _img_y+_img_h), true);
+    if ((_cam.mode == NavCamera::Turntable || _cam.mode == NavCamera::Trackball)
+        && ImGui::GetTime() < _focus_until) {
+        ImVec2 p;
+        if (project(_cam.target, p)) {
+            dl->AddCircle(p, 6, IM_COL32(0, 0, 0, 220), 20, 4);
+            dl->AddCircle(p, 6, IM_COL32(255, 210, 80, 255), 20, 2);
+            dl->AddCircleFilled(p, 1.5f, IM_COL32(255, 210, 80, 255));
+        }
+    }
+    if (_views && _show_cams) {
+        const auto S = spirula::Sim3::from_3x4(_m2s) * _views_m2s.inverse();
+        const float size = 0.08f * _home_dist * _frustum_scale;
+        for (const auto& b : _views->slot) {
+            if (!b.set) continue;
+            NavCamera saved;
+            for (int k = 0; k < 3; k++) saved.pos[k] = (float)b.pos[k];
+            for (int k = 0; k < 4; k++) saved.rot[k] = (float)b.rot[(k+1)%4];
+            float pose[12]; saved.c2w(pose);
+            const int w = 1000, h = (int)(w / (b.aspect > 0 ? b.aspect : 1.0f));
+            float sx, sy;
+            fov_to_intrinsics(b.fov_deg, w, h, kViewerCameraModels[std::clamp(b.cam_model, 0, 3)].name, sx, sy);
+            if (b.cam_model == 3) { sx = w/(2*3.14159265f); sy = h/3.14159265f; }
+            const float dist[8] = {};
+            auto shape = camhost::frustum_template(b.cam_model, 0, w, h, sx, sy, w/2.f, h/2.f, dist);
+            auto mapped = [&](camhost::FrustumPoint p) {
+                double local[3], world[3];
+                for (int r = 0; r < 3; r++)
+                    local[r] = pose[r*4+3] + size/S.s * (pose[r*4]*p.x - pose[r*4+1]*p.y - pose[r*4+2]*p.z);
+                S.apply(local, world);
+                return std::array<float, 3>{(float)world[0], (float)world[1], (float)world[2]};
+            };
+            auto line = [&](camhost::FrustumPoint a, camhost::FrustumPoint b) {
+                ImVec2 pa, pb;
+                if (project(mapped(a).data(), pa) && project(mapped(b).data(), pb)
+                    && std::abs(pa.x-pb.x) < _img_w/2 && std::abs(pa.y-pb.y) < _img_h/2)
+                    dl->AddLine(pa, pb, IM_COL32(180, 125, 255, 230), 1.5f);
+            };
+            for (const auto& l : shape.lines) {
+                for (size_t i = 1; i < l.pts.size(); i++) line(l.pts[i-1], l.pts[i]);
+                if (l.closed && !l.pts.empty()) line(l.pts.back(), l.pts.front());
+            }
+            for (const auto& p : shape.anchors) line({0,0,0}, p);
+        }
+    }
+    dl->PopClipRect();
     if (_interactor) {
         ViewportOverlay ov;
         ov.dl = ImGui::GetWindowDrawList();
@@ -1456,7 +1529,7 @@ void ViewportPanel::draw_controls(bool engine) {
         ui::help_on_hover(msg::viewport_dataset_preview_help);
     }
     // No dataset behind a splat file, so nothing to draw a frustum for.
-    if (_has_cameras) {
+    if (_has_cameras || _views) {
         place(check_w(msg::viewport_cameras));
         if (ui::Checkbox(msg::viewport_cameras, &_show_cams)) _dirty = true;
         ui::help_on_hover(msg::viewport_cameras_help);

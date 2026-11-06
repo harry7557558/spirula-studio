@@ -336,6 +336,8 @@ private:
     PreviewRenderer _preview;
 
     // Browser-identical camera + navigation.
+    double _focus_until = 0;
+    NavCamera _focus_pose;
     NavCamera _cam;
     NavCamera _home;                 // pose restored by Reset view
     float _home_dist = 3.0f;         // scene radius (near/far for preview)

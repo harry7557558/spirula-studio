@@ -14,6 +14,7 @@
 // (try_get_result, GUI frame loop).
 
 #include "data/DatasetParser.h"
+#include "data/CameraWire.h"
 
 #include <array>
 #include <atomic>
@@ -57,6 +58,8 @@ struct ViewerRenderConfig {
     // is false over a file, which has none, so those modes are not offered.
     dsparse::CenterTable centers{};
     bool center_cameras = false;
+    bool orbit_navigation = true;
+    std::vector<dsparse::CameraWireSegment> held_out_cameras;
 };
 
 struct ViewerHooks {

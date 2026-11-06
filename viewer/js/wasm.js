@@ -503,6 +503,7 @@ export function dsReadCameras() {
   const out = [];
   if (!n) return out;
   const names = Module.ccall('ssv_ds_image_names', 'string', [], []).split('\n');
+  const heldOut = new Set(new Int32Array(Module.HEAP32.buffer, call('ssv_ds_validation') >>> 0, call('ssv_ds_num_validation')));
   const models  = new Int32Array(Module.HEAP32.buffer, call('ssv_ds_cam_models') >>> 0, n);
   const intr    = f32(call('ssv_ds_cam_intrins') >>> 0, n*4);
   const distPtr = call('ssv_ds_cam_dist') >>> 0;
@@ -515,6 +516,7 @@ export function dsReadCameras() {
   for (let i = 0; i < n; i++) {
     out.push({
       model: models[i],
+      heldOut: heldOut.has(i),
       fx: intr[i*4], fy: intr[i*4+1], cx: intr[i*4+2], cy: intr[i*4+3],
       distType: dtypes ? dtypes[i] : 0,
       dist: dist ? Array.from(dist.subarray(i*DIST_PARAMS, (i+1)*DIST_PARAMS)) : new Array(DIST_PARAMS).fill(0),
@@ -550,3 +552,5 @@ export function dsPickPoint(ox, oy, oz, dx, dy, dz) {
   return { index: p[0]|0, t: p[1], perp: p[2] };
 }
 export function dsFree() { call('ssv_ds_free'); }
+
+export function dsOrbitNavigation() { return !!call('ssv_ds_orbit_navigation'); }

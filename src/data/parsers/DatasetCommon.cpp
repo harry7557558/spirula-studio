@@ -767,8 +767,10 @@ template <typename T>
 CenterTable scene_centers_t(const double* c2w, int64_t n, const T* points,
                             int64_t m, int stride, const double* A) {
     CenterTable out{};
+    const auto nav = navigation_hint(c2w, n);
     for (int i = 0; i < kNumCenterModes; i++) {
-        const std::array<double, 3> c = scene_center_t(
+        const std::array<double, 3> c = i == (int)CenterMode::CameraFocus && nav.orbit && n > 0
+            ? nav.focus : scene_center_t(
             (CenterMode)i, c2w, n, points, m, stride, 1 << 18);
         for (int r = 0; r < 3; r++)
             out[i][r] = A ? (float)(A[r*4]*c[0] + A[r*4+1]*c[1] + A[r*4+2]*c[2] + A[r*4+3])
