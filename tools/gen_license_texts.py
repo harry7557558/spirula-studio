@@ -19,6 +19,7 @@ OUTPUTS = [
         ("kBirefnetMit", "LICENSES/MIT-BiRefNet.txt"),
         ("kRomaMit", "LICENSES/MIT-RoMaV2.txt"),
         ("kDinov3License", "LICENSES/DINOv3-License.txt"),
+        ("kFlexGlueMit", "LICENSES/MIT-FlexGlue.txt"),
     ]),
 ]
 
