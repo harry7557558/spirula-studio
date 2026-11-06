@@ -1,6 +1,6 @@
 // FlexGlue's forward pass next to its PyTorch reference (cvg/FlexGlue,
-// descriptor.py, flexglue.py, utils/modules.py): the DINOv3 ConvNeXt-B
-// descriptor, then the sparse matcher of onnx/export.py's SparseMatcherONNX
+// descriptor.py, flexglue.py, modules.py): the DINOv3 ConvNeXt-B
+// descriptor, then the sparse matcher of export.py's SparseMatcherONNX
 // with COLMAP's early-stop checks. Weights come from flexglue.pth by name.
 
 #include "flexglue/FlexGlue.h"

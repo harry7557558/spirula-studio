@@ -140,8 +140,7 @@ worked example.
 
 ## Tolerance policy
 
-This follows `tools/roma/compare_torch.py`. Every bar is
-`max(fixed bar, 2 x floor)`. The floor is the worst of four draws of torch
+Every bar is `max(fixed bar, 2 x floor)`. The floor is the worst of four draws of torch
 against its own CPU fp32 reference: a second torch device, and
 three CPU runs with the 512 input perturbed by N(0, 1e-6). The floor is
 computed at generation time and stored in the pair manifest, so `compare.py`
