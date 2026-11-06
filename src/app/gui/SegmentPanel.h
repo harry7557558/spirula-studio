@@ -44,9 +44,10 @@ public:
     // `src` carries the decoder and the FrameLook the run will use, so the
     // picture here is the file it writes. Video listing and probing run on the
     // panel worker; frame decoding follows there after the list is ready.
-    void open(const PreviewSource& src, const MaskModelFiles& model);
+    void open(const PreviewSource& src, const MaskModelFiles& model, int initial_frame = -1);
     bool is_open() const { return _open; }
     void close();
+    void set_frame_index(int frame_idx);
 
     // Draws the modal window. Call once per frame from the dataset screen,
     // inside its ImGui frame. Both arguments are edited in place.
@@ -138,6 +139,7 @@ private:
     std::vector<std::string> _all_files_pending;
     std::vector<std::string> _folders_pending;
     int  _frame_idx = 0;
+    int  _target_frame_idx = -1;
     bool _frame_dirty = true;           // the chosen frame changed
     bool _needs_run = false;            // prompt edited; rerun on release
     std::atomic<bool> _listing{false};

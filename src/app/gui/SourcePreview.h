@@ -60,6 +60,15 @@ public:
     // A video playing wants every frame drawn, not the idle rate.
     bool animating() const { return _video.playing(); }
 
+    int selected_frame() const {
+        if (_in.is_video) return _video.current_frame();
+        return _photos.selected();
+    }
+    bool take_selection_changed() {
+        return _photos.take_selection_changed() || _video.take_selection_changed();
+    }
+    void set_mask_preview_open(bool open) { _photos.set_mask_preview_open(open); }
+
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;
