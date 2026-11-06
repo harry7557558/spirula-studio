@@ -5,6 +5,7 @@
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/FastFloat.h"
+#include "data/FileBytes.h"
 
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
 #include "data/DistortionFit.h"
@@ -186,18 +187,8 @@ struct TextReader {
     std::string data;
     size_t pos = 0;
 
-    explicit TextReader(const std::string& p) {
-        FILE* f = std::fopen(p.c_str(), "rb");
-        if (!f) throw std::runtime_error("ColmapParser: cannot open " + p);
-        std::fseek(f, 0, SEEK_END);
-        long n = std::ftell(f);
-        std::fseek(f, 0, SEEK_SET);
-        data.resize(n > 0 ? (size_t)n : 0);
-        size_t got = data.empty() ? 0 : std::fread(&data[0], 1, data.size(), f);
-        std::fclose(f);
-        if (got != data.size())
-            throw std::runtime_error("ColmapParser: cannot read " + p);
-    }
+    explicit TextReader(const std::string& p)
+        : data(spirula::read_file_bytes(p, "ColmapParser")) {}
     // next non-comment, non-empty line; false at EOF
     bool next_line(const char** s, const char** e) {
         while (pos < data.size()) {

@@ -1,6 +1,7 @@
 #include "data/DatasetParser.h"
 #include "data/SparseEdit.h"
 #include "config/TrainConfigJson.h"
+#include "i18n/catalog/Data.h"
 
 #include <cmath>
 #include <chrono>
@@ -48,6 +49,39 @@ void write_ply(const fs::path& path, bool binary, int count = 2,
     }
 }
 
+// Past 2 GB without the disk or the time: everything after the vertex rows is a
+// trailing element of zeros, which resize_file leaves unwritten.
+void write_ply_past_2gb(const fs::path& path) {
+    const uint64_t filler = (uint64_t(1) << 31) + 4096;
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << "ply\nformat binary_little_endian 1.0\nelement vertex 1\n"
+               "property double x\nproperty double y\nproperty double z\n"
+               "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+               "element filler " << filler << "\nproperty uchar value\nend_header\n";
+        const double xyz[] = {1.5, 2.5, 3.5};
+        out.write(reinterpret_cast<const char*>(xyz), sizeof xyz);
+        out.write("\x0a\x14\x1e", 3);
+    }
+    fs::resize_file(path, fs::file_size(path) + filler);
+}
+
+void check_ply_past_2gb(const fs::path& path) {
+    try {
+        write_ply_past_2gb(path);
+        const auto big = read_ply_points(path.string());
+        check(big.num() == 1 && big.xyz[2] == 3.5 && big.rgb[2] == 30,
+              "a PLY past 2 GB reads");
+    } catch (const std::runtime_error& e) {
+        std::vector<std::string> got;
+        if (spirula::i18n::scan(spirula::i18n::msg::data::file_out_of_memory, e.what(), got))
+            std::printf("skip a PLY past 2 GB reads: %s\n", e.what());
+        else check(false, e.what());
+    }
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
 void write_colmap(const fs::path& root) {
     fs::create_directories(root / "sparse" / "0");
     std::ofstream(root / "sparse/0/cameras.txt") << "1 PINHOLE 640 480 500 500 320 240\n";
@@ -93,6 +127,7 @@ int main() {
         spirula::write_ply_points((root / "legacy.ply").string(), precise_xyz, precise_rgb, 1, nullptr);
         const auto legacy = read_ply_points((root / "legacy.ply").string());
         check(legacy.xyz[0] == (double)(float)precise_xyz[0], "shared PLY writer retains its default float format");
+        check_ply_past_2gb(root / "past_2gb.ply");
         for (bool binary : {false, true}) {
             write_ply(root / "lidar.ply", binary);
             cfg.seed_pointcloud = "lidar.ply";

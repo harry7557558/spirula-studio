@@ -5,6 +5,7 @@
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/FastFloat.h"
+#include "data/FileBytes.h"
 #include "data/Json.h"
 
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
@@ -19,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <new>
 #include <stdexcept>
 #include <string>
 
@@ -235,19 +237,7 @@ void PlyVertexReader::each(const std::vector<int>& cols,
 ColmapPoints3D read_ply_points(const std::string& path) {
     // One read of the whole file: per-row stdio (worse still under
     // Emscripten's virtual FS) made large ascii clouds take tens of seconds.
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) throw std::runtime_error("PLY: cannot open " + path);
-    std::string bytes;
-    {
-        struct Closer { FILE* f; ~Closer() { std::fclose(f); } } closer{f};
-        std::fseek(f, 0, SEEK_END);
-        long fsize = std::ftell(f);
-        std::fseek(f, 0, SEEK_SET);
-        bytes.resize((size_t)(fsize > 0 ? fsize : 0));
-        if (!bytes.empty() && std::fread(&bytes[0], 1, bytes.size(), f) != bytes.size())
-            throw std::runtime_error("PLY: cannot read " + path);
-    }
-    PlyVertexReader ply(std::move(bytes), path);
+    PlyVertexReader ply(spirula::read_file_bytes(path, "PLY"), path);
 
     int ix = ply.column("x"), iy = ply.column("y"), iz = ply.column("z");
     int ir = ply.column("red"), ig = ply.column("green"), ib = ply.column("blue");
@@ -261,8 +251,13 @@ ColmapPoints3D read_ply_points(const std::string& path) {
                                  ply.is_float(ig) ? 255.0 : 1.0,
                                  ply.is_float(ib) ? 255.0 : 1.0};
     ColmapPoints3D pts;
-    pts.xyz.resize(ply.count() * 3);
-    pts.rgb.resize(ply.count() * 3);
+    try {
+        pts.xyz.resize(ply.count() * 3);
+        pts.rgb.resize(ply.count() * 3);
+    } catch (const std::bad_alloc&) {
+        throw spirula::file_out_of_memory(
+            path, (std::uintmax_t)ply.count() * 3 * (sizeof(double) + sizeof(uint8_t)));
+    }
     int64_t i = 0;
     ply.each({ix, iy, iz, ir, ig, ib}, [&](const double* v) {
         for (int k = 0; k < 3; k++) {
