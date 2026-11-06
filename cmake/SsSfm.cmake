@@ -178,6 +178,10 @@ endif()
 target_compile_options(ss_sfm PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>
     $<$<COMPILE_LANGUAGE:C>:${SPLAT_C_FLAGS}>)
+if(MSVC)
+    # Pipeline.cpp exceeds COFF's section limit with the header-only mapper.
+    target_compile_options(ss_sfm PRIVATE /bigobj)
+endif()
 set_property(TARGET ss_sfm PROPERTY CXX_STANDARD 17)
 
 # Most of the pipeline is still header-only (the split into translation units is
