@@ -85,6 +85,15 @@ public:
     VkSemaphore timeline();
     uint64_t    lastSubmitted();
 
+    // Another API's work between this stream's submissions (nn/vk/MetalInterop.mm):
+    // flushes, returns the timeline value it waits for and the one it signals.
+    // The next submission here waits on `signal`, and hangs if it never comes.
+    struct Handoff { uint64_t wait, signal; };
+    Handoff handOff();
+    // Runs before this stream records into a fresh command buffer and before
+    // sync() waits, so the other API's open work is submitted first.
+    void setExternalCloser(void (*fn)());
+
     // --- escape hatch -----------------------------------------------------
     // Raw access to the open command buffer, for the handful of commands this
     // class does not wrap (image layout transitions and image<->buffer copies

@@ -186,6 +186,15 @@ else()
     option(SS_BUILD_SAM "Build the inference layer + SAM segmentation" OFF)
 endif()
 
+# MPSGraph attention and GEMM for the inference layer on macOS
+# (src/nn/OpMetal.mm), sharing MoltenVK's buffers through VK_EXT_metal_objects.
+# Whether it runs is SS_NN_METAL=0|1 at runtime; this only decides it is built.
+if(APPLE)
+    option(SS_NN_METAL "Build the inference layer's Metal path (MPSGraph)" ON)
+else()
+    set(SS_NN_METAL OFF)
+endif()
+
 # ---------------------------------------------------------------------------
 # Localization (src/i18n/, docs/i18n.md)
 #

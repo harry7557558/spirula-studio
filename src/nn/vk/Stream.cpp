@@ -73,6 +73,8 @@ struct Stream::Impl {
     std::vector<VkSemaphore> wait_sems;
     std::vector<uint64_t>    wait_values;
 
+    void (*external_closer)() = nullptr;
+
     // Staging: upload is write-combined, download asks for HOST_CACHED.
     DevicePtr up_addr = 0;   void* up_map = nullptr;   VkDeviceSize up_head = 0;
     DevicePtr dl_addr = 0;   void* dl_map = nullptr;
@@ -237,6 +239,7 @@ void wait_timeline(VkSemaphore timeline, uint64_t value) {
 VkCommandBuffer Stream::begin() {
     Impl& s = impl();
     if (s.recording) return s.cbs[s.cur];
+    if (s.external_closer) s.external_closer();
 
     Context& ctx = Context::get();
     // Wait until this ring slot's previous submission has retired.
@@ -375,6 +378,7 @@ void override_work_cap(double cap) { g_cap_override.store(cap); }
 
 void Stream::sync() {
     Impl& s = impl();
+    if (s.external_closer) s.external_closer();
     flush();
     if (s.submitted == 0) return;
     Context& ctx = Context::get();
@@ -410,6 +414,17 @@ void Stream::waitOn(VkSemaphore sem, uint64_t value) {
 }
 
 VkSemaphore Stream::timeline() { return impl().timeline; }
+
+Stream::Handoff Stream::handOff() {
+    Impl& s = impl();
+    flush();
+    Handoff h{s.submitted, ++s.submitted};
+    s.wait_sems.push_back(s.timeline);
+    s.wait_values.push_back(h.signal);
+    return h;
+}
+
+void Stream::setExternalCloser(void (*fn)()) { impl().external_closer = fn; }
 uint64_t    Stream::lastSubmitted() { return impl().submitted; }
 
 void Stream::Impl::resolveQueries() {
