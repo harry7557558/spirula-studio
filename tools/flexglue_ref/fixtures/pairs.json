@@ -1,0 +1,104 @@
+{
+ "images": {
+  "berlin1": {
+   "url": "https://raw.githubusercontent.com/cvg/FlexGlue/c6cbc7a933bb70ab58608e8835d99b6cc4adca1a/assets/berlin1.jpg",
+   "sha256": "c48d94f7f6f30fbb2802e9aeeea73c2982e600b561c15c744c7f83de9ed026b2",
+   "rgb_sha256": "92ac8696cc7bcf456dd2a8d53536020e8151802ccd27d87b835acc2766910ee4",
+   "source": "FlexGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "berlin2": {
+   "url": "https://raw.githubusercontent.com/cvg/FlexGlue/c6cbc7a933bb70ab58608e8835d99b6cc4adca1a/assets/berlin2.jpg",
+   "sha256": "98b9e8643929998a8e54ca2bd05490f4314c84f1c2bb6c5f9182001e1597e32a",
+   "rgb_sha256": "21cb7eac7368fa23a0e53b3361c8fd7fd31b8ec347173247200c268d0fa6a384",
+   "source": "FlexGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "lamar_cab_1446": {
+   "url": "https://raw.githubusercontent.com/cvg/FlexGlue/c6cbc7a933bb70ab58608e8835d99b6cc4adca1a/assets/lamar_cab_1446.jpg",
+   "sha256": "24d82b286a6bd47e3555e684355b517b465f821a0df6bd335ee02731ee4131c0",
+   "rgb_sha256": "3f88a9c402a104a6d8b1fedc391bdfad6b1473e4a56de25dc379d5f5f1f2e0bc",
+   "source": "FlexGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "lamar_cab_1450": {
+   "url": "https://raw.githubusercontent.com/cvg/FlexGlue/c6cbc7a933bb70ab58608e8835d99b6cc4adca1a/assets/lamar_cab_1450.jpg",
+   "sha256": "e59874d699342c1af08091c33ba3a448a336c29053b72450b75d9bb4c50f529d",
+   "rgb_sha256": "dbfc3424241749213b85ebb4f86939a1e29b2cf35a8568a3385d0dab16cba97d",
+   "source": "FlexGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "sacre_coeur1": {
+   "url": "https://raw.githubusercontent.com/cvg/LightGlue/5a650c444718caffc2669dc0094cde908f42dd73/assets/sacre_coeur1.jpg",
+   "sha256": "d274c3780b671fe637040bc976166962e2e48f8f512fb7ce939b71b07c85af83",
+   "rgb_sha256": "027a13099aa2a73860fbf35a853e55af89708c8fda294c4834ca03c6d723da0b",
+   "source": "LightGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "sacre_coeur2": {
+   "url": "https://raw.githubusercontent.com/cvg/LightGlue/5a650c444718caffc2669dc0094cde908f42dd73/assets/sacre_coeur2.jpg",
+   "sha256": "c6c0339235087c7c6c38faca5c6545250699bb59120b94b06f0fcf8227fbe64e",
+   "rgb_sha256": "a1a3bf9dadcc55741d650feacd7e183a09ec585f9beefa79a8254d8db7a6fc8d",
+   "source": "LightGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "DSC_0410": {
+   "url": "https://raw.githubusercontent.com/cvg/LightGlue/5a650c444718caffc2669dc0094cde908f42dd73/assets/DSC_0410.JPG",
+   "sha256": "1d6a86be44519faf4c86e9a869c5b298a5a7e1478f7479400c28aa2d018bd1b0",
+   "rgb_sha256": "273e9a05bf4b123465cf60d7e90ec66bd169a0db9594f9b772585ed4e93b9454",
+   "source": "LightGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  },
+  "DSC_0411": {
+   "url": "https://raw.githubusercontent.com/cvg/LightGlue/5a650c444718caffc2669dc0094cde908f42dd73/assets/DSC_0411.JPG",
+   "sha256": "7211ee48ec2fbc082d2dabf8dbf503c853a473712375c2ad32a29d538a168a47",
+   "rgb_sha256": "0304a53a514f9e5c54a5da4d4b723f5962b659e1ab70873a4578f0b81d9df4a9",
+   "source": "LightGlue repo assets, fetched at test time and never committed (README.md, Images)",
+   "border_keypoints": true
+  }
+ },
+ "pairs": {
+  "berlin": {
+   "images": [
+    "berlin1",
+    "berlin2"
+   ],
+   "expect": "overlapping"
+  },
+  "sacre_coeur": {
+   "images": [
+    "sacre_coeur1",
+    "sacre_coeur2"
+   ],
+   "expect": "overlapping"
+  },
+  "dsc": {
+   "images": [
+    "DSC_0410",
+    "DSC_0411"
+   ],
+   "expect": "overlapping"
+  },
+  "lamar_lookalike": {
+   "images": [
+    "lamar_cab_1446",
+    "lamar_cab_1450"
+   ],
+   "expect": "look-alike, not covisible"
+  },
+  "berlin_x_lamar": {
+   "images": [
+    "berlin1",
+    "lamar_cab_1446"
+   ],
+   "expect": "different places"
+  },
+  "sacre_x_dsc": {
+   "images": [
+    "sacre_coeur1",
+    "DSC_0410"
+   ],
+   "expect": "different places"
+  }
+ }
+}

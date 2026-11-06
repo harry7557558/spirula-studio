@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "tier": "probe",
+ "pairs": [
+  "berlin",
+  "berlin_x_lamar",
+  "dsc",
+  "lamar_lookalike",
+  "sacre_coeur",
+  "sacre_x_dsc"
+ ],
+ "upstream_commit": "c6cbc7a933bb70ab58608e8835d99b6cc4adca1a",
+ "torch": "2.15.0"
+}
