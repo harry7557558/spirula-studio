@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <string>
 #include <vector>
 
 #ifdef SS_TEST_WEBP_DECODER
