@@ -417,6 +417,8 @@ VkSemaphore Stream::timeline() { return impl().timeline; }
 
 Stream::Handoff Stream::handOff() {
     Impl& s = impl();
+    // Transfer waits must reach the timeline before another API consumes it.
+    if (!s.wait_sems.empty()) begin();
     flush();
     Handoff h{s.submitted, ++s.submitted};
     s.wait_sems.push_back(s.timeline);

@@ -763,6 +763,43 @@ void expect(bool ok, const char* name, const char* detail) {
     if (!ok) ++g_failures;
 }
 
+void test_external_handoff() {
+    auto& stream = vk::Stream::get();
+    stream.sync();
+    const VkDevice device = vk::Context::get().device();
+    VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
+    type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+    VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    info.pNext = &type;
+    VkSemaphore gate = VK_NULL_HANDLE;
+    NN_VK_CHECK(vkCreateSemaphore(device, &info, nullptr, &gate));
+    stream.waitOn(gate, 1);
+    const auto first = stream.handOff();
+    const VkSemaphore timeline = stream.timeline();
+    VkSemaphoreWaitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+    wait.semaphoreCount = 1;
+    wait.pSemaphores = &timeline;
+    wait.pValues = &first.wait;
+    expect(vkWaitSemaphores(device, &wait, 1000000) == VK_TIMEOUT,
+           "handoff waits for transfer", "");
+    VkSemaphoreSignalInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO};
+    signal.semaphore = gate;
+    signal.value = 1;
+    NN_VK_CHECK(vkSignalSemaphore(device, &signal));
+    vk::wait_timeline(timeline, first.wait);
+    signal.semaphore = timeline;
+    signal.value = first.signal;
+    NN_VK_CHECK(vkSignalSemaphore(device, &signal));
+    const auto second = stream.handOff();
+    expect(second.wait > first.signal, "handoff consumes prior wait", "");
+    vk::wait_timeline(timeline, second.wait);
+    signal.value = second.signal;
+    NN_VK_CHECK(vkSignalSemaphore(device, &signal));
+    stream.barrierNow();
+    stream.sync();
+    vkDestroySemaphore(device, gate, nullptr);
+}
+
 // How many MPSGraph ops `fn` ran, as (attention, gemm).
 template <class F>
 std::pair<uint64_t, uint64_t> metal_ops(F&& fn) {
@@ -2650,6 +2687,7 @@ int main(int argc, char** argv) {
         }
 
         std::printf("\nPointer span\n"); test_span(arena);
+        test_external_handoff();
         std::printf("GEMM\n");         test_gemm(arena);
         std::printf("Normalization\n");  test_norm(arena);
         std::printf("Attention\n");      test_attention(arena);
