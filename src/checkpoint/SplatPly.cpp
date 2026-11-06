@@ -36,6 +36,7 @@ struct PlyHeader {
     bool binary_le = false;
     bool ascii = false;
     int64_t num_vertex = 0;
+    std::string primitive;
     std::vector<PlyProp> props;
     size_t row_bytes = 0;
     std::streampos data_start = 0;
@@ -82,6 +83,13 @@ PlyHeader read_header(std::istream& f) {
             ss >> tok;
             h.binary_le = tok == "binary_little_endian";
             h.ascii = tok == "ascii";
+        } else if (tok == "comment") {
+            std::string rem;
+            std::getline(ss, rem);
+            if (rem.find("SplatRenderMode: mip") != std::string::npos ||
+                rem.find("antialiased 1") != std::string::npos) {
+                h.primitive = "mip";
+            }
         } else if (tok == "element") {
             std::string name;
             int64_t count = 0;
@@ -174,10 +182,12 @@ int sb_lobes_from_params(int n_params, const std::string& path) {
 }  // namespace
 
 
-std::string splat_ply_header(int64_t vertices, const ColorBasis& basis) {
+std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
+                             const std::string& primitive) {
     std::ostringstream h;
     h << "ply\n";
     h << "format binary_little_endian 1.0\n";
+    if (primitive == "mip") h << "comment SplatRenderMode: mip\n";
     h << "element vertex " << vertices << "\n";
     h << "property float x\nproperty float y\nproperty float z\n";
     h << "property float nx\nproperty float ny\nproperty float nz\n";
@@ -254,6 +264,7 @@ SplatCloud read_splat_ply(const std::string& path, bool want_sh) {
         }
     }
     SplatCloud out;
+    out.primitive = h.primitive;
     out.sh_degree = sh_degree_from_rest((int)crest.size(), path);
     out.sb_lobes = sb_lobes_from_params((int)csb.size(), path);
     const int64_t K_sh = out.dim_sh() - 1;        // SH coefficients past the DC
@@ -333,7 +344,7 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
     fs::create_directories(fs::path(path).parent_path(), ec);
     std::ofstream ply(path, std::ios::binary);
     if (!ply) throw std::runtime_error("cannot open for writing: " + path);
-    ply << splat_ply_header(kept, basis);
+    ply << splat_ply_header(kept, basis, c.primitive);
 
     const int row_floats = splat_ply_row_floats(basis);
     constexpr int kRowsPerFlush = 1024;

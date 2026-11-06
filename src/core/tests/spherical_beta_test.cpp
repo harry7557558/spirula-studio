@@ -145,6 +145,18 @@ int main() {
               back.means == c.means && back.opacities == c.opacities,
           "write then read gives the same cloud");
 
+    // ---- SplatRenderMode tag for mip ----
+    const std::string hdr_mip = spirula::splat_ply_header(10, c.basis(), "mip");
+    const std::string hdr_3dgs = spirula::splat_ply_header(10, c.basis(), "3dgs");
+    check(hdr_mip.find("comment SplatRenderMode: mip\n") != std::string::npos &&
+              hdr_3dgs.find("comment") == std::string::npos,
+          "splat_ply_header tags mip and leaves 3dgs untagged");
+    spirula::SplatCloud c_mip = c;
+    c_mip.primitive = "mip";
+    spirula::write_splat_ply(c_mip, (dir / "mip.ply").string());
+    const spirula::SplatCloud back_mip = spirula::read_splat_ply((dir / "mip.ply").string());
+    check(back_mip.primitive == "mip", "mip tag roundtrips through PLY header");
+
     // ---- a placement baked on save turns the lobes ----
     spirula::Sim3 T;
     random_rotation(rng, T.R);

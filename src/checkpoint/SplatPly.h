@@ -24,6 +24,7 @@ struct SplatCloud {
     int64_t num = 0;
     int sh_degree = 0;               // 0 when the file carries no f_rest
     int sb_lobes = 0;                // 0 when it carries no sb_params
+    std::string primitive;
     std::vector<float> means;        // [num, 3]
     std::vector<float> quats;        // [num, 4]  (w, x, y, z)
     std::vector<float> scales;       // [num, 3]  log
@@ -57,7 +58,8 @@ void write_splat_ply(const SplatCloud& c, const std::string& path,
 // The same layout for a writer that fills rows itself (EngineCheckpoint.cpp);
 // splat_ply_put_rest() turns a [basis.coeffs(), 3] colour row into the file
 // order that follows the DC.
-std::string splat_ply_header(int64_t vertices, const ColorBasis& basis);
+std::string splat_ply_header(int64_t vertices, const ColorBasis& basis,
+                             const std::string& primitive = "");
 int splat_ply_row_floats(const ColorBasis& basis);
 void splat_ply_put_rest(const float* rest, const ColorBasis& basis, float* out);
 
