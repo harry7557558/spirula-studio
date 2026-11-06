@@ -128,6 +128,7 @@ enum class SaveClass : uint8_t {
   X(EngVisitCounters               , "eng.visit_counters",                Splat    , Resume) \
   X(EngProjectiveState, "eng.projective_state", Splat, Resume) \
   X(EngProjectiveInformation, "eng.projective_information", Splat, Resume) \
+  X(EngProjectiveAngularBound, "eng.projective_angular_bound", Splat, Never) \
   X(EngProjectiveCenters, "eng.projective_centers", Other, Never) \
   X(EngMaxWeight                   , "eng.max_weight",                    Splat    , Never) \
   X(EngDensifyWorldGradScore       , "eng.densify.world_grad_score",      Splat    , Never) \

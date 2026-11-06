@@ -590,7 +590,7 @@ __global__ void fused_projection_bwd_optimizer_3dgs_kernel
         float3 mean = splats_world.means(gid), scale = splats_world.scales(gid);
         SlangProjectiveDepth::projective_depth_update(projective_anchor,projective_camera,
             depth.lr,depth.angular_lr,depth.single_photometric,depth.angular_relative,
-            projective_gradient,depth.information[gid],&projective_state,&mean,&scale);
+            projective_gradient,depth.information[gid],&projective_state,&mean,&scale,depth.angular_bound ? depth.angular_bound[gid] : -1.f);
         splats_world.means(gid) = mean;
         splats_world.scales(gid) = scale;
         depth.states[gid] = projective_state;

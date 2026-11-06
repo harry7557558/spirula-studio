@@ -25,6 +25,13 @@ __global__ void projective_observe_kernel(
     if (id == 0) return;
     float4 a = depth.centers[int(__uint_as_float(id))-1];
     float4 c = depth.centers[depth.camera_indices[camera]];
+    if (depth.angular_bound) {
+        float bound = SlangProjectiveDepth::projective_depth_angular_bound(
+            {a.x,a.y,a.z},{c.x,c.y,c.z},means[gaussian],depth.angular_relative);
+        if (depth.single_observation)
+            depth.angular_bound[gaussian] = fmaxf(depth.angular_bound[gaussian],bound);
+        else atomicMax(reinterpret_cast<uint32_t*>(depth.angular_bound)+gaussian,__float_as_uint(bound));
+    }
     float information = SlangProjectiveDepth::projective_depth_information(
         {a.x,a.y,a.z},{c.x,c.y,c.z},means[gaussian],scales[gaussian],quats[gaussian]);
     if (!(information > 0) || !isfinite(information)) return;

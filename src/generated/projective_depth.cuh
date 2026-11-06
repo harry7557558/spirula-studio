@@ -190,55 +190,71 @@ inline __device__ float projective_depth_gradient(float3  anchor_1, float3  came
     return gradient_0;
 }
 
-inline __device__ void projective_depth_update(float3  anchor_2, float3  camera_2, float lr_0, float angular_lr_0, bool single_photometric_1, bool angular_relative_0, float gradient_1, float information_0, float4  * state_0, float3  * mean_2, float3  * log_scale_1)
+inline __device__ float projective_depth_angular_bound(float3  anchor_2, float3  camera_2, float3  mean_2, bool relative_0)
 {
-    float3  baseline_1 = camera_2 - anchor_2;
-    bool _S9;
-    if(single_photometric_1)
-    {
-        _S9 = (dot_0(baseline_1, baseline_1)) == 0.0f;
-    }
-    else
-    {
-        _S9 = false;
-    }
-    if(_S9)
-    {
-        return;
-    }
-    float3  view_1 = *mean_2 - camera_2;
+    float3  view_1 = mean_2 - camera_2;
     float distance_1 = length_0(view_1);
     if(!(distance_1 > 0.0f))
     {
-        _S9 = true;
+        return 0.0f;
+    }
+    float3  ray_1 = view_1 / make_float3 (distance_1);
+    float3  baseline_1 = camera_2 - anchor_2;
+    float sensitivity_0 = length_0(baseline_1 - ray_1 * make_float3 (dot_0(ray_1, baseline_1)));
+    float _S9;
+    if(relative_0)
+    {
+        _S9 = sensitivity_0 / distance_1;
     }
     else
     {
-        _S9 = !(F32_isfinite((gradient_1)));
+        _S9 = sensitivity_0;
     }
-    if(_S9)
+    return _S9;
+}
+
+inline __device__ void projective_depth_update(float3  anchor_3, float3  camera_3, float lr_0, float angular_lr_0, bool single_photometric_1, bool angular_relative_0, float gradient_1, float information_0, float4  * state_0, float3  * mean_3, float3  * log_scale_1, float angular_bound_0)
+{
+    float3  baseline_2 = camera_3 - anchor_3;
+    bool _S10;
+    if(single_photometric_1)
+    {
+        _S10 = (dot_0(baseline_2, baseline_2)) == 0.0f;
+    }
+    else
+    {
+        _S10 = false;
+    }
+    if(_S10)
+    {
+        return;
+    }
+    if(!(F32_isfinite((gradient_1))))
+    {
+        _S10 = true;
+    }
+    else
+    {
+        _S10 = angular_lr_0 <= 0.0f;
+    }
+    if(_S10)
     {
         return;
     }
     float fraction_0;
-    if(!angular_relative_0)
+    if(angular_bound_0 < 0.0f)
     {
-        fraction_0 = angular_lr_0 / distance_1;
+        fraction_0 = projective_depth_angular_bound(anchor_3, camera_3, *mean_3, angular_relative_0);
     }
     else
     {
-        fraction_0 = angular_lr_0;
-    }
-    if(fraction_0 <= 0.0f)
-    {
-        return;
+        fraction_0 = angular_bound_0;
     }
     *&(state_0->y) = 0.89999997615814209f * (*state_0).y + 0.10000000149011612f * gradient_1;
     *&(state_0->z) = 0.99900001287460327f * (*state_0).z + 0.00100000004749745f * gradient_1 * gradient_1;
     *&(state_0->w) = *&(state_0->w) + 1.0f;
     float change_0 = - lr_0 * ((*state_0).y / (1.0f - (F32_pow((0.89999997615814209f), ((*state_0).w))))) / (((F32_sqrt(((*state_0).z / (1.0f - (F32_pow((0.99900001287460327f), ((*state_0).w))))))) + 1.00000000362749373e-15f) * (1.0f + information_0));
-    float3  ray_1 = view_1 / make_float3 (distance_1);
-    float projected_step_0 = length_0((baseline_1 - ray_1 * make_float3 (dot_0(ray_1, baseline_1))) / make_float3 (distance_1)) * change_0 / fraction_0;
+    float projected_step_0 = fraction_0 * change_0 / angular_lr_0;
     float change_1 = change_0 / (F32_sqrt((1.0f + projected_step_0 * projected_step_0)));
     if(change_1 == 0.0f)
     {
@@ -252,7 +268,7 @@ inline __device__ void projective_depth_update(float3  anchor_2, float3  camera_
     {
         fraction_0 = (F32_exp((change_1))) - 1.0f;
     }
-    *mean_2 = *mean_2 + make_float3 (fraction_0) * (*mean_2 - anchor_2);
+    *mean_3 = *mean_3 + make_float3 (fraction_0) * (*mean_3 - anchor_3);
     *log_scale_1 = *log_scale_1 + make_float3 (change_1);
     return;
 }
