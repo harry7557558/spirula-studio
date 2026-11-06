@@ -240,7 +240,7 @@ public:
 
     void assembleOnly(double damping) {
         jacobianPass();
-        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping, opt_.fix_rotations);
         pointPrep(damping);
         schurAssemble(damping);
         if (hasPriors_) addPriorDense();
@@ -252,7 +252,7 @@ public:
         if (!useCG_ || !haveFallback_)
             throw std::runtime_error("step comparison needs --solver cg + fallback on");
         jacobianPass();
-        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping, opt_.fix_rotations);
         pointPrep(damping);
         cgCamDiag(damping);
         if (hasPriors_) addPriorCg();
@@ -587,7 +587,7 @@ private:
             jacobianPass();
             Bp0_ = Bp_;
         }
-        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping);
+        if (hasPriors_) prior_.assemble(P_, P_.poses.data(), P_.exts.data(), damping, opt_.fix_rotations);
         if (!reuse && opt_.gradient_tol > 0 && gradientConverged()) return 0;
         prof_.jac += lap();
         pointPrep(damping);
@@ -690,7 +690,8 @@ private:
                             for (int row = 0; row < 2; row++) {
                                 const double* src = jcf + row * DOF;
                                 double* dst = jc + row * dofw;
-                                for (uint32_t a = 0; a < 6; a++) dst[a] = src[a] * sw;
+                                for (uint32_t a = 0; a < 6; a++)
+                                    dst[a] = opt_.fix_rotations && a < 3 ? 0 : src[a] * sw;
                                 for (uint32_t i = 0, k = 6; i < 6; i++)
                                     if ((emask >> i) & 1u) dst[k++] = src[6 + i] * sw;
                                 for (uint32_t i = 0; i < gz; i++)

@@ -40,14 +40,14 @@ paths=(':!src/external/' ':!src/generated/' ':!src/instantiations/'
        ':!reference/' ':!docs/notes/' ':!tools/check_comments.sh'
        ':!src/core/tests/source_path.cpp')
 
-tracked=$(git ls-files)
+tracked=$(git ls-files --cached --others --exclude-standard)
 fail=0
 
 resolves() {
     local p=$1
-    echo "$tracked" | grep -qxF "$p"      && return 0
-    echo "$tracked" | grep -qxF "src/$p"  && return 0
-    echo "$tracked" | grep -qE "/$(printf '%s' "$p" | sed 's/[.[\*^$]/\\&/g')\$"
+    grep -qxF "$p" <<< "$tracked"      && return 0
+    grep -qxF "src/$p" <<< "$tracked"  && return 0
+    grep -qE "/$(printf '%s' "$p" | sed 's/[.[\*^$]/\\&/g')\$" <<< "$tracked"
 }
 
 report() {
@@ -93,7 +93,7 @@ bare=$(printf '%s\n' "$prose" \
     | grep -oE '[A-Za-z0-9_-]+\.py$' | grep -vE "$EXTERNAL_PY" | sort -u)
 
 for p in $bare; do
-    printf '%s\n' "$tracked" | grep -qE "(^|/)$p\$" || report "$p"
+    grep -qE "(^|/)$p\$" <<< "$tracked" || report "$p"
 done
 
 if [ $fail -ne 0 ]; then

@@ -115,6 +115,10 @@ void MappingWork::placed(int64_t done, int64_t total) {
     raise(_place * (_merge > 0.0 ? x : x * std::sqrt(x)));
 }
 
+void MappingWork::initialized(int64_t done, int64_t total) {
+    if (total > 0) raise(_place * std::clamp((double)done / (double)total, 0.0, 1.0));
+}
+
 void MappingWork::levels(int64_t done, int64_t total) {
     if (total <= 0) return;
     raise(_place + _merge * std::min(1.0, (double)done / (double)total));

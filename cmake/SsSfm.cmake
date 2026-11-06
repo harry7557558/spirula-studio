@@ -104,6 +104,7 @@ endforeach()
 # watches, comma-separated defines. The matcher is built four times: with and
 # without the integer dot product, at 128- and 256-byte descriptors.
 foreach(stage sift:sift/sift.slang:sift:none
+              global_position:position/global_position.slang:position:none
               match:match/bruteforce.slang:match:none
               match_nodot:match/bruteforce.slang:match:-DNO_DOT4
               match_d256:match/bruteforce.slang:match:-DDESC_WORDS=64

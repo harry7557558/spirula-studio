@@ -251,7 +251,8 @@ void read_owned_lines(HANDLE process, OwnedJob& job, std::mutex& mutex,
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
     std::string cmdline;
     for (size_t i = 0; i < argv.size(); i++)
@@ -287,6 +288,7 @@ int run_process(const std::vector<std::string>& argv,
     bool output_open = true;
     bool exited = false;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
             terminate_owned_job(job);
             killed = true;
@@ -980,7 +982,8 @@ pid_t fork_owned(OwnedChild& child, ExecArgs& exec) {
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
     ExecArgs exec(argv);
     int fds[2];
@@ -1004,6 +1007,7 @@ int run_process(const std::vector<std::string>& argv,
     bool killed = false;
     bool output_open = true;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
             child.cancel();
             killed = true;

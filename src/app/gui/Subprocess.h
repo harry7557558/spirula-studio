@@ -21,14 +21,14 @@ namespace gui {
 constexpr int kSpawnFailed = -1;   // executable not found / spawn error
 constexpr int kCancelled   = -2;   // cancel flag was set; process killed
 
-// Runs argv[0] with argv[1..] as arguments, working directory `cwd` ("" =
-// inherit). stderr is merged into stdout; each completed line is passed to
-// on_line (without the newline). `cancel` is polled ~10x per second.
-// Blocking -- call from a worker thread.
+// Blocking; call from a worker. Empty cwd inherits; stderr is merged into stdout.
+// on_line receives complete lines without newlines. Cancellation is polled ~10 Hz.
+// on_poll runs on the same worker even while the child produces no output.
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel);
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll = {});
 
 // A child whose STDIN this process writes -- raw frames into an encoder.
 // Its merged stdout and stderr still arrive line by line, on a thread of the
