@@ -34,6 +34,9 @@ struct SpecList {
     }
 };
 
+// Includes the pinned subgroup limit for a one-dimensional workgroup.
+bool supports_workgroup_size(const char* entry_name, uint32_t threads);
+
 // Records into `stream`'s open batch: bind the (cached) pipeline for
 // `entry_name` ("<file-stem>.<entry>") specialized with `spec`, push
 // `params`, dispatch the workgroup grid, then the conservative global

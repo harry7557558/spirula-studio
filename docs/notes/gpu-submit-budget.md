@@ -75,10 +75,28 @@ backward, the bilateral grid, SSIM and the per-pixel losses -- go through
 `backend::vk::dispatch_budgeted`. Each keeps a rate per entry (per entry and
 tile size for the bilateral grid, whose selector's arms differ). A launch
 predicted past the target runs as ranges of its longest grid axis through
-`vkCmdDispatchBase`, so no kernel changed; a pipeline built for that is used
+`vkCmdDispatchBase`; a pipeline built for that is used
 only for split launches, and a launch that fits records exactly as before.
 Ranges also flush the open command buffer once the budgeted work in it would
 pass the target. The viewer's render is the same forward, so it is covered too.
+
+Split pipelines derive `WorkgroupId` from `GlobalInvocationId / LocalSize`
+in their SPIR-V (`backend/vulkan/SpirvDispatchBase.h`). On Windows with a
+GTX 1060 and driver 571.96, `vkCmdDispatchBase` adds the base to the global
+thread ID but leaves the workgroup ID relative to the dispatched range.
+Successive ranges then overwrite the first strip of an image. The adjustment
+preserves the shader ABI and leaves ordinary pipelines unchanged; it applies
+to the single-entry, literal-LocalSize modules emitted by the backend build.
+`vk_pipeline_smoke` checks both indexing forms, splitting every axis and a
+subvolume with nonzero bases on all three axes.
+
+On that GTX 1060, the regression fails eight cases without the adjustment and
+passes with it. The six parity tools below pass comparing `1000000` ms against
+`0.01` ms; the render and engine-render outputs are bit-identical. A ~2M-splat
+saved-model viewport at `1` ms also matches the unsplit image pixel for pixel.
+The training fixture disables scale clipping explicitly and rejects non-finite
+trained parameters: its zero default world-size limit otherwise clips every
+log-scale to `-inf`, which the tolerance comparison would skip.
 
 Timing is on the host, not timestamps: a sampled launch drains the queue and
 times each of its ranges alone, and the rate kept is the slowest solid range,

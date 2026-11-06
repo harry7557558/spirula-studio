@@ -14,10 +14,12 @@
 
 #include "backend/vulkan/kernels/KernelCommon.h"
 #include "core/PixelFormat.h"
+#include "core/Env.h"
 
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 
 // Quantile.cpp
 template <bool invert_quantile>
@@ -269,6 +271,16 @@ void dispatch_ssim(const char* entry, int64_t W, int64_t H, int64_t B,
                    uint32_t mode) {
     if (W <= 0 || H <= 0 || B <= 0) return;
     const uint32_t t = ssim_tile();
+    if (std::strcmp(entry, "fused_ssim.ssim_bt_bwd") == 0) {
+        const bool supported = backend::vk::supports_workgroup_size("fused_ssim.ssim_bt_bwd_wide", 512u);
+        const char* force = spirula::env("VK_SSIM_THREADS");
+        const int threads = force ? std::atoi(force) : (t == 24u && supported ? 512 : 256);
+        if (threads != 256 && threads != 512)
+            throw std::runtime_error("SS_VK_SSIM_THREADS must be 256 or 512");
+        if (threads == 512 && !supported)
+            throw std::runtime_error("SS_VK_SSIM_THREADS=512 exceeds the device workgroup limit");
+        if (threads == 512) entry = "fused_ssim.ssim_bt_bwd_wide";
+    }
     uint32_t gx = (uint32_t)((W + t - 1) / t), gy = (uint32_t)((H + t - 1) / t);
     if (gx > 65535 || gy > 65535 || B > 65535)
         throw std::runtime_error("ssim: tile grid dimension exceeds 65535");

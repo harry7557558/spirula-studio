@@ -5,6 +5,7 @@
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/FastFloat.h"
+#include "data/FileBytes.h"
 
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
 #include "data/DistortionFit.h"
@@ -186,18 +187,8 @@ struct TextReader {
     std::string data;
     size_t pos = 0;
 
-    explicit TextReader(const std::string& p) {
-        FILE* f = std::fopen(p.c_str(), "rb");
-        if (!f) throw std::runtime_error("ColmapParser: cannot open " + p);
-        std::fseek(f, 0, SEEK_END);
-        long n = std::ftell(f);
-        std::fseek(f, 0, SEEK_SET);
-        data.resize(n > 0 ? (size_t)n : 0);
-        size_t got = data.empty() ? 0 : std::fread(&data[0], 1, data.size(), f);
-        std::fclose(f);
-        if (got != data.size())
-            throw std::runtime_error("ColmapParser: cannot read " + p);
-    }
+    explicit TextReader(const std::string& p)
+        : data(spirula::read_file_bytes(p, "ColmapParser")) {}
     // next non-comment, non-empty line; false at EOF
     bool next_line(const char** s, const char** e) {
         while (pos < data.size()) {
@@ -852,7 +843,8 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
 
     double T_n[16], T_inv[16], R_align[9];
     double scale_factor = dsparse::compute_normalized_transform(
-        c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr);
+        c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr,
+        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses);
     dsparse::invert_affine4x4(T_n, T_inv);
     float train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
 

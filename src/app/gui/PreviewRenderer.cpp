@@ -846,11 +846,15 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
         }
         return it->second;
     };
+    std::vector<uint8_t> held_out((size_t)ds.num_cameras, 0);
+    for (int32_t i : ds.val_indices) if (i >= 0 && i < ds.num_cameras) held_out[i] = 1;
     std::unordered_map<std::string, FrustumTemplate> templates;
     for (int64_t i = 0; i < ds.num_cameras; i++) {
         const bool selected = cam_selected && cam_selected[i];
-        const uint32_t key_bright = cam_rgb ? color_key(&cam_rgb[i * 3], 1.0f) : 0;
-        const uint32_t key_dim = cam_rgb ? color_key(&cam_rgb[i * 3], 0.5f) : 0;
+        const float validation_color[3] = {1.0f, 0.35f, 0.65f};
+        const float* rgb = cam_rgb ? &cam_rgb[i*3] : held_out[i] && !selected ? validation_color : nullptr;
+        const uint32_t key_bright = rgb ? color_key(rgb, 1.0f) : 0;
+        const uint32_t key_dim = rgb ? color_key(rgb, 0.5f) : 0;
         const float* M = &ds.c2w[i*12];
         float c[3];
         float t[3] = {M[3], M[7], M[11]};
@@ -895,7 +899,7 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
             out.push_back(v);
         };
         for (const FrustumLine& line : tmpl.lines) {
-            std::vector<VL>& out = cam_rgb ? color_list(line.dim ? key_dim : key_bright)
+            std::vector<VL>& out = rgb ? color_list(line.dim ? key_dim : key_bright)
                                            : (selected ? hot : (line.dim ? dim : bright));
             size_t n = line.pts.size();
             for (size_t j = 0; j + 1 < n; j++) {
@@ -910,7 +914,7 @@ bool PreviewRenderer::build(const ParsedDataset& ds, const PostSplitCameras& pos
         // Anchor lines: apex -> corner / view direction, subdivided so they
         // curve correctly under nonlinear display projections.
         for (const P3& p : tmpl.anchors) {
-            std::vector<VL>& out = cam_rgb ? color_list(key_bright) : (selected ? hot : bright);
+            std::vector<VL>& out = rgb ? color_list(key_bright) : (selected ? hot : bright);
             for (int j = 0; j < kASeg; j++) {
                 emit(out, {p.x*j/kASeg, p.y*j/kASeg, p.z*j/kASeg});
                 emit(out, {p.x*(j+1)/kASeg, p.y*(j+1)/kASeg, p.z*(j+1)/kASeg});

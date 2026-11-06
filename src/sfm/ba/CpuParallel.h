@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 
 namespace bacpu {
 
@@ -63,7 +64,7 @@ private:
     Pool() {
         int threads = 0;
         if (const char* e = spirula::env("SFM_BA_THREADS")) threads = atoi(e);
-        unsigned hc = std::thread::hardware_concurrency();
+        unsigned hc = spirula::hardware_threads();
         int n = threads > 0 ? threads : (int)(hc ? hc : 1u);
         workers_.reserve((size_t)n - 1);
         for (int i = 1; i < n; i++) workers_.emplace_back([this, i] { loop(i); });

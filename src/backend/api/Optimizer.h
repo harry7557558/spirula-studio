@@ -11,3 +11,4 @@
 // backend/vulkan/kernels/ (SPIR-V pipeline dispatch). See backend/README.md.
 
 #include "kernels/optim/Optimizer.cuh"
+#include "kernels/optim/ProjectiveDepth.cuh"

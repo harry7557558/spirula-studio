@@ -170,6 +170,8 @@ share above it lifts 0.3 from +1.1 to +1.7. It also trains 2.6% faster (6.7% on
 kitchen), presumably because hidden splats that move stop adding to the
 overdraw (not measured).
 
+The `hdr` preset keeps opacity-only gating (`--noise-gate-peak-weight false`) for more stable training.
+
 ## Tried, not kept
 
 Same scenes and score, each on the defaults unless noted:

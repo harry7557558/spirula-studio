@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace blur { class EdgeWidthGpu; }
 
@@ -16,9 +17,13 @@ namespace app {
 // on its top row.
 void box_grey(const uint8_t* rgb, int width, int rows, int ow, int oh, float* out);
 
-// Matching extract_frames.py add_frame(): 512x512 grey, mean subtracted,
-// variance of the 3x3 Laplacian.
+// 512x512 grey, mean subtracted, variance of the 3x3 Laplacian.
 double sharpness_score(const uint8_t* rgb, int width, int height);
+double sharpness_score(const uint8_t* rgb, int width, int height,
+                       std::vector<float>& scratch);
+// Big-endian RGB16 samples, scored in the same 0..255 units as RGB8.
+double sharpness_score_rgb48be(const uint8_t* rgb, int width, int height,
+                               std::vector<float>& scratch);
 
 // How wide the sharpest of the frame's strong edges are, in its own pixels;
 // the wider of across-x and across-y, since motion smears one. A length, so it

@@ -262,11 +262,11 @@ void test_affine(Rng& r) {
  * PPISP family (autodiff-vs-handwritten bwd -> loose gradients)
  * ======================================================================== */
 
-void test_ppisp(Rng& r) {
-    const int L = 5, Hg = 6, Wg = 8;
+void test_ppisp(Rng& r, int L = 5) {
+    const int Hg = 6, Wg = 8;
 
     for (int vq = 0; vq < 2; vq++) {
-        const int N_img = 2, N_grids = 2, h = 30, w = 36;
+        const int N_img = 2, N_grids = 2, h = 96, w = 128;
         Grid g = make_grid(r, N_grids, 9, L, Hg, Wg, -0.7f, 0.7f, vq != 0);
         int64_t np = (int64_t)N_img * h * w;
         float* rgb = upload(r.vec(3 * np, 0.0f, 1.0f));
@@ -906,6 +906,8 @@ int main(int argc, char** argv) {
     test_fused_optim(r);
     test_fold_tail(r);
     test_utils(r);
+    Rng single_layer(260729u);
+    test_ppisp(single_layer, 1);
 
     auto write_all = [&](const char* path) {
         std::ofstream f(path, std::ios::binary);

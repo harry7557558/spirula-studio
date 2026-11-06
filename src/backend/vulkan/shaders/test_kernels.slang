@@ -36,3 +36,25 @@ void iota_u32(uint3 tid: SV_DispatchThreadID, uniform IotaParams p) {
     if (i >= p.n) return;
     p.out[i] = i + p.offset;
 }
+
+struct DispatchGridParams {
+    uint32_t* out;
+    uint32_t nx;
+    uint32_t ny;
+};
+
+[shader("compute")]
+[numthreads(4, 1, 1)]
+void dispatch_grid(uint3 wg: SV_GroupID, uint3 tid: SV_DispatchThreadID,
+                   uint lane: SV_GroupThreadID, uniform DispatchGridParams p) {
+    uint i = ((wg.z * p.ny + wg.y) * p.nx + wg.x) * 4 + lane;
+    p.out[i] = 1 + tid.x + 1024 * tid.y + 1048576 * tid.z;
+}
+
+[shader("compute")]
+[numthreads(4, 1, 1)]
+void dispatch_group_only(uint3 wg: SV_GroupID, uint lane: SV_GroupThreadID,
+                         uniform DispatchGridParams p) {
+    uint i = ((wg.z * p.ny + wg.y) * p.nx + wg.x) * 4 + lane;
+    p.out[i] = 1 + wg.x * 4 + lane + 1024 * wg.y + 1048576 * wg.z;
+}

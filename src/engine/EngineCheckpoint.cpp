@@ -12,6 +12,7 @@
 #include "engine/EngineInternal.h"
 #include "engine/EngineState.h"
 
+#include "checkpoint/BackgroundExport.h"
 #include "checkpoint/SplatPly.h"
 #include "core/CheckpointIO.h"
 #include "external/npy.hpp"
@@ -119,6 +120,12 @@ static std::string _build_state_json(EngineState& s, int step, bool full) {
     emit_bg("bilagrid_rgb",    s.bilagrid_rgb,    &s.bilagrid_rgb.type, s.bilagrid_rgb.C);
     emit_bg("bilagrid_depth",  s.bilagrid_depth,  nullptr, 0);
     emit_bg("bilagrid_normal", s.bilagrid_normal, nullptr, 0);
+    j << "  \"background\": {\"mode\": "
+      << (s.background.mode == EngineBackground::Mode::Sh ? "\"sh\"" : "\"other\"")
+      << ", \"sh_degree\": " << s.background.sh_degree
+      << ", \"splat_transfer\": " << s.background.splat_transfer
+      << ", \"splat_is_linear\": " << b(s.background.splat_is_linear)
+      << "},\n";
     j << "  \"ppisp\": {\"enabled\": " << b(s.ppisp.enabled);
     if (s.ppisp.enabled)
         j << ", \"param_type\": \"" << s.ppisp.param_type << "\""
@@ -160,8 +167,11 @@ static std::string _json_str(const std::string& s, const std::string& key) {
 void engine_save_checkpoint(
     std::string output_dir,
     bool full_dump,
-    int step
+    int step,
+    int background_export_height
 ) {
+    if (background_export_height < 1 || background_export_height > 8192)
+        throw std::runtime_error("background_export_height must be in [1, 8192]");
     EngineState& s = engine();
 
     fs::path out_root(output_dir);
@@ -310,7 +320,7 @@ void engine_save_checkpoint(
     {
         std::ofstream ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(kept, basis);
+        ply << spirula::splat_ply_header(kept, basis, s.primitive);
 
         // Buffer multiple rows per write for throughput.
         constexpr int ROWS_PER_FLUSH = 1024;
@@ -374,25 +384,26 @@ void engine_save_checkpoint(
                                    sl.ptr, sl.nbytes, sl.dtype_tag, host_stage);
     }
     ckpt::tar_finish(tar);
+
+    if (s.background.mode == EngineBackground::Mode::Sh && s.background.sh_coeffs.size() > 0) {
+        std::vector<float3> h_bg((size_t)s.background.sh_coeffs.size());
+        backend::memcpy_sync(h_bg.data(), s.background.sh_coeffs.data_ptr(),
+                             h_bg.size() * sizeof(float3),
+                             backend::MemcpyKind::DeviceToHost);
+        std::vector<float> matrix;
+        if (s.color_space.splat_enabled)
+            matrix = _ckpt_d2h(reinterpret_cast<const float*>(s.color_space.splat_color_matrix.data_ptr()), 9);
+        if (!ckpt::export_background_sh_webp(out_root / "background.webp", h_bg.data(),
+                                        s.background.sh_degree, 2 * background_export_height, background_export_height,
+                                        s.background.splat_transfer,
+                                        s.background.splat_is_linear,
+                                        matrix.empty() ? nullptr : matrix.data()))
+            throw std::runtime_error("failed to write " + (out_root / "background.webp").string());
+    }
 }
 
 
-// Restore engine state from a checkpoint's state.tar for resuming training.
-//
-// Preconditions (established by the resume flow from config.json): the engine
-// skeleton is configured -- world buffers seeded/allocated at max_num_splats
-// (set_data_3dgs), and any bilagrid/PPISP channels present in the checkpoint
-// initialized (engine_init_bilagrid_*/engine_init_ppisp). This function then:
-//   1. reads state.json and installs runtime scalars + the optimizer-state
-//      layout flags (quant bits, FPBO, bias correction),
-//   2. force-allocates optimizer + appearance-optimizer buffers to that layout
-//      (no training step is run; the _ensure_* calls only allocate + zero, and
-//      no-op for absent components),
-//   3. memcpies every saved .npy back into its pool slot by name (chunked
-//      H->D, no extra device memory), validating byte sizes,
-//   4. leaves *_initialized flags set so the lazy guards won't re-zero data.
-// Returns the saved training `step`.
-int engine_load_checkpoint(std::string input_dir) {
+int engine_load_checkpoint(std::string input_dir, bool restore_projective_depth) {
     EngineState& s = engine();
 
     fs::path tarpath = fs::path(input_dir) / "state.tar";
@@ -452,11 +463,25 @@ int engine_load_checkpoint(std::string input_dir) {
     engine_ensure_optim_state(sh_opt_bits, sh_val_bits, non_sh_bits, bias != 0);
     _ensure_bilagrid_optim_state();
     _ensure_ppisp_optim_state();
+
+    for (const auto& m : members) {
+        if (m.name == "eng.bg_sky.sh_coeffs.npy") {
+            int deg = 0;
+            int bg_transfer = s.background.splat_transfer;
+            bool bg_is_linear = s.background.splat_is_linear;
+            std::vector<float3> coefficients;
+            if (!ckpt::load_background_sh(tarpath, deg, coefficients, bg_transfer, bg_is_linear))
+                throw std::runtime_error("engine_load_checkpoint: invalid SH background");
+            engine_init_background_sh(deg, bg_transfer, bg_is_linear);
+            break;
+        }
+    }
     _ensure_bg_sh_optim_state();
 
     // Restore each saved .npy into its pool slot by name.
     std::vector<char> host_stage;
     int restored = 0;
+    if (!restore_projective_depth) engine_clear_projective_depth();
     for (auto& m : members) {
         const std::string& fn = m.name;
         if (fn.size() < 4 || fn.compare(fn.size() - 4, 4, ".npy") != 0) continue;
@@ -465,6 +490,13 @@ int engine_load_checkpoint(std::string input_dir) {
         PoolSlot slot; uint32_t sub;
         if (!parse_saved_name(base, slot, sub))
             throw std::runtime_error("engine_load_checkpoint: unknown slot '" + base + "'");
+
+        if (!restore_projective_depth &&
+            (slot == PoolSlot::EngProjectiveState || slot == PoolSlot::EngProjectiveInformation)) continue;
+        if (slot == PoolSlot::EngProjectiveState)
+            s.projective_state.resize(slot,s.max_num_splats);
+        if (slot == PoolSlot::EngProjectiveInformation)
+            s.projective_information.resize(slot,s.max_num_splats);
 
         void*  ptr    = nullptr;
         size_t nbytes = 0;

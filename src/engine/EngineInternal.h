@@ -18,6 +18,7 @@
 
 
 struct DensifyConfig;
+struct OptimConfig;
 
 // Readies DeadCriterion::MaxWeight's buffer for `step`'s raster backward:
 // set to opacity on first use, freed once nothing can relocate. Idempotent
@@ -237,3 +238,7 @@ struct SplatStageTimer {
     SplatStageTimer& operator=(const SplatStageTimer&) = delete;
     int _pair = -1;
 };
+
+void engine_prepare_projective_depth(const OptimConfig& cfg);
+void engine_observe_projective_depth();
+void engine_clear_projective_depth();

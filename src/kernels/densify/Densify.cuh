@@ -238,6 +238,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     // Non-SH Adam-state quant: when enabled, each relocated dst splat gets
     // its packed bytes set to codec-encoded zero against the current bound.
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     int64_t max_relocate,
     int64_t* num_dead_out
@@ -269,6 +270,7 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 );
 
@@ -290,6 +292,7 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 );
@@ -313,6 +316,7 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight   // [N] or empty: scales each live splat's draw
 );
@@ -324,7 +328,8 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    uint32_t seed
 );
 
 
@@ -337,7 +342,8 @@ void revised_add_noise_tensor(
     DeviceVector<float4> quats,
     DeviceVector<float> opacs,
     DeviceVector<float> peak_weight,
-    float peak_weight_scale
+    float peak_weight_scale,
+    uint32_t seed
 );
 
 

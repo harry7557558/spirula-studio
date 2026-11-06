@@ -72,6 +72,18 @@ int max_error(const app::CubeLut& lut, const Map& f) {
     return worst;
 }
 
+bool rgb48_matches_rgb8(const app::CubeLut& lut) {
+    std::vector<uint8_t> rgb8 = probe_pixels();
+    std::vector<uint8_t> rgb48(rgb8.size() * 2), mapped(rgb8.size());
+    for (size_t i = 0; i < rgb8.size(); i++) {
+        rgb48[i * 2] = rgb8[i];
+        rgb48[i * 2 + 1] = rgb8[i];
+    }
+    app::apply_cube_lut(lut, rgb8.data(), rgb8.size() / 3, 4);
+    app::apply_cube_lut_rgb48be(lut, rgb48.data(), mapped.data(), mapped.size() / 3, 4);
+    return mapped == rgb8;
+}
+
 }  // namespace
 
 int main() {
@@ -89,10 +101,13 @@ int main() {
                    lut.size == n && lut.title == "test",
                "identity " + std::to_string(n) + " parses " + err);
         expect(max_error(lut, identity) == 0, "identity " + std::to_string(n) + " is exact");
+        expect(rgb48_matches_rgb8(lut),
+               "identity " + std::to_string(n) + ": RGB16 and RGB8 exact samples agree");
     }
     expect(app::load_cube_lut(write_cube("affine.cube", 5, affine), lut, err),
            "affine parses " + err);
     expect(max_error(lut, affine) <= 1, "affine is reproduced within rounding");
+    expect(rgb48_matches_rgb8(lut), "affine: RGB16 and RGB8 exact samples agree");
 
     // A domain wider than [0, 1] reads the input as a fraction of it.
     const Map half = [](float r, float g, float b, float o[3]) { o[0] = 2 * r; o[1] = 2 * g; o[2] = 2 * b; };
@@ -104,10 +119,39 @@ int main() {
                half(r / 4, g / 4, b / 4, o);
            }) <= 1,
            "a wider domain scales the input");
+    expect(rgb48_matches_rgb8(lut), "wide domain: RGB16 and RGB8 exact samples agree");
     expect(app::load_cube_lut(write_cube("range.cube", 5, identity,
                                          "LUT_3D_INPUT_RANGE 0.0 4.0\n"),
                               lut, err) && lut.domain_max[0] == 4.0f,
            "LUT_3D_INPUT_RANGE sets the domain");
+
+    {
+        app::CubeLut steep;
+        expect(app::load_cube_lut(write_cube("steep.cube", 2, identity,
+                                             "DOMAIN_MIN .4 .4 .4\n"
+                                             "DOMAIN_MAX .42 .42 .42\n"), steep, err),
+               "steep domain parses " + err);
+        const uint16_t levels[] = {26432, 26496};
+        uint8_t rgb48[12], mapped[6]{}, quantized[6];
+        for (int p = 0; p < 2; p++)
+            for (int c = 0; c < 3; c++) {
+                const int i = p * 3 + c;
+                rgb48[i * 2] = (uint8_t)(levels[p] >> 8);
+                rgb48[i * 2 + 1] = (uint8_t)levels[p];
+                quantized[i] = (uint8_t)((levels[p] + 128) / 257);
+            }
+        app::apply_cube_lut_rgb48be(steep, rgb48, mapped, 2, 1);
+        app::apply_cube_lut(steep, quantized, 2, 1);
+        int worst = 0;
+        for (int p = 0; p < 2; p++) {
+            const int want = (int)std::lround(
+                std::clamp((levels[p] / 65535.0 - .4) / .02, 0.0, 1.0) * 255);
+            for (int c = 0; c < 3; c++)
+                worst = std::max(worst, std::abs(want - (int)mapped[p * 3 + c]));
+        }
+        expect(worst <= 1 && mapped[3] > mapped[0] + 10 && quantized[0] == quantized[3],
+               "steep LUT preserves close 10-bit levels that RGB8 input collapses");
+    }
 
     // What must be refused rather than half-read.
     {

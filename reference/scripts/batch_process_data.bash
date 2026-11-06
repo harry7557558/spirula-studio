@@ -89,7 +89,6 @@ for file in "${files[@]}"; do
 
     # ns-train spirulae-patched --data $dirname \
     #   --max_num_iterations 30000 \
-    #   --pipeline.model.use_camera_optimizer True \
     #   --pipeline.model.apply-loss-for-mask True \
     #   --pipeline.model.randomize_background False \
     #   --pipeline.model.mcmc_cap_max $num_gs \

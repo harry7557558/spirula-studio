@@ -2606,31 +2606,50 @@ SS_MSG(seed_blocking_help,
        "aynısını yeniden kurmaz"));
 
 SS_MSG(mapper_help,
-    EN("One incremental reconstruction of the whole capture, or small atoms of "
-       "the view graph reconstructed separately and merged upwards"),
+    EN("One incremental reconstruction of the whole capture, small atoms of the "
+       "view graph reconstructed separately and merged upwards, or (experimental) "
+       "every camera's rotation and position estimated together from the view graph"),
     JA("撮影全体を 1 つの逐次再構成で作るか、視点グラフの小さな原子を別々に"
-       "再構成して上へ統合するか"),
-    ZH_HANS("对整段拍摄做一次增量重建，或把视图图切成小原子分别重建再逐层向上合并"),
-    ZH_HANT("對整段拍攝做一次增量重建，或把視圖圖切成小原子分別重建再逐層向上合併"),
+       "再構成して上へ統合するか、（実験的）視点グラフから全カメラの向きと位置を"
+       "まとめて推定するか"),
+    ZH_HANS("对整段拍摄做一次增量重建，或把视图图切成小原子分别重建再逐层向上合并，"
+            "或（实验性）从视图图同时估计所有相机的方向和位置"),
+    ZH_HANT("對整段拍攝做一次增量重建，或把視圖圖切成小原子分別重建再逐層向上合併，"
+            "或（實驗性）從視圖圖同時估計所有相機的方向和位置"),
     KO("촬영 전체를 한 번의 증분 재구성으로 만들지, 뷰 그래프의 작은 원자들을 따로 "
-       "재구성해 위로 병합할지"),
-    DE("Eine inkrementelle Rekonstruktion der ganzen Aufnahme, oder kleine Atome "
-       "des Sichtgraphen einzeln rekonstruiert und nach oben zusammengeführt"),
-    FR("Une reconstruction incrémentale de toute la prise de vue, ou de petits "
-       "atomes du graphe de vues reconstruits séparément puis fusionnés vers le "
-       "haut"),
-    ES("Una reconstrucción incremental de toda la captura, o átomos pequeños del "
-       "grafo de vistas reconstruidos por separado y fusionados hacia arriba"),
-    PT("Uma reconstrução incremental de toda a captura, ou pequenos átomos do "
-       "grafo de vistas reconstruídos à parte e fundidos para cima"),
-    IT("Una ricostruzione incrementale dell'intera ripresa, o piccoli atomi del "
-       "grafo delle viste ricostruiti a parte e fusi verso l'alto"),
-    NL("Eén incrementele reconstructie van de hele opname, of kleine atomen van "
-       "de zichtgraaf apart gereconstrueerd en naar boven samengevoegd"),
-    RU("Одна инкрементальная реконструкция всей съёмки либо мелкие атомы графа "
-       "видов, восстановленные по отдельности и слитые вверх"),
-    TR("Tüm çekimin tek bir artımlı yeniden oluşturması ya da görüş çizgesinin "
-       "küçük atomlarının ayrı ayrı oluşturulup yukarı doğru birleştirilmesi"));
+       "재구성해 위로 병합할지, (실험적) 뷰 그래프에서 모든 카메라의 방향과 위치를 "
+       "함께 추정할지"),
+    DE("Eine inkrementelle Rekonstruktion der ganzen Aufnahme, kleine Atome des "
+       "Sichtgraphen einzeln rekonstruiert und nach oben zusammengeführt, oder "
+       "(experimentell) Drehung und Position aller Kameras gemeinsam aus dem "
+       "Sichtgraphen geschätzt"),
+    FR("Une reconstruction incrémentale de toute la prise de vue, de petits atomes "
+       "du graphe de vues reconstruits séparément puis fusionnés vers le haut, ou "
+       "(expérimental) la rotation et la position de toutes les caméras estimées "
+       "ensemble à partir du graphe de vues"),
+    ES("Una reconstrucción incremental de toda la captura, átomos pequeños del "
+       "grafo de vistas reconstruidos por separado y fusionados hacia arriba, o "
+       "(experimental) la rotación y la posición de todas las cámaras estimadas "
+       "a la vez a partir del grafo de vistas"),
+    PT("Uma reconstrução incremental de toda a captura, pequenos átomos do grafo "
+       "de vistas reconstruídos à parte e fundidos para cima, ou (experimental) a "
+       "rotação e a posição de todas as câmeras estimadas juntas a partir do grafo "
+       "de vistas"),
+    IT("Una ricostruzione incrementale dell'intera ripresa, piccoli atomi del grafo "
+       "delle viste ricostruiti a parte e fusi verso l'alto, o (sperimentale) "
+       "rotazione e posizione di tutte le fotocamere stimate insieme dal grafo "
+       "delle viste"),
+    NL("Eén incrementele reconstructie van de hele opname, kleine atomen van de "
+       "zichtgraaf apart gereconstrueerd en naar boven samengevoegd, of "
+       "(experimenteel) rotatie en positie van alle camera's samen geschat uit de "
+       "zichtgraaf"),
+    RU("Одна инкрементальная реконструкция всей съёмки, мелкие атомы графа видов, "
+       "восстановленные по отдельности и слитые вверх, либо (экспериментально) "
+       "повороты и положения всех камер, оценённые вместе по графу видов"),
+    TR("Tüm çekimin tek bir artımlı yeniden oluşturması, görüş çizgesinin küçük "
+       "atomlarının ayrı ayrı oluşturulup yukarı doğru birleştirilmesi ya da "
+       "(deneysel) tüm kameraların yönünün ve konumunun görüş çizgesinden birlikte "
+       "hesaplanması"));
 
 SS_MSG(bup_atom_size_help,
     EN("Images a view-graph atom is split until it is under"),
@@ -4143,86 +4162,111 @@ SS_MSG(metric_positions_help,
        "`image_name X Y Z`, metre); başarısız uyum bildirilir ve model ölçeklenmeden yazılır"));
 
 SS_MSG(metric_gps_help,
-    EN("Fit a local east-north-up metre frame to the images' EXIF GPS: `horizontal` reads "
-       "latitude and longitude and leaves the tilt to the cameras' own up axis, `full` reads "
-       "altitude too; accuracy is a few metres, so the capture must be tens of metres across"
-       ". `auto`, the default, picks `full` for a DJI telemetry track or EXIF fixes with an "
-       "altitude, `horizontal` for other telemetry, a phone's EXIF or fixes without an "
-       "altitude, and `none` without GPS or beside --metric-positions"),
-    JA("画像の EXIF GPS にローカルな東北上メートル座標系を当てはめます。`horizontal` は"
-       "緯度と経度だけを読み、傾きはカメラ自身の上方向に任せます。`full` は高度も読みます。"
-       "精度は数メートルなので、撮影範囲は数十メートル必要です"
-       "。`auto` (既定) は DJI のテレメトリか高度付きの EXIF には `full`、それ以外のテレメトリ、スマートフォンの EXIF、高度のない位置には "
-       "`horizontal`、GPS がないときや --metric-positions があるときは `none` を選びます"),
-    ZH_HANS("按图像 EXIF GPS 拟合本地东北天米制坐标系: `horizontal` 只读经纬度，倾斜交给相机"
-            "自身的上方向; `full` 连高度一起读。精度只有几米，所以采集范围要有几十米"
-            "。`auto` (默认) 对 DJI 遥测或带高度的 EXIF 选 `full`，对其他遥测、手机的 EXIF 或没有高度的定位选 `horizontal`，没有 "
-            "GPS 或给了 --metric-positions 时选 `none`"),
-    ZH_HANT("按影像 EXIF GPS 擬合本地東北天公尺座標系: `horizontal` 只讀經緯度，傾斜交給相機"
-            "自身的上方向; `full` 連高度一起讀。精度只有幾公尺，所以拍攝範圍要有數十公尺"
-            "。`auto` (預設) 對 DJI 遙測或帶高度的 EXIF 選 `full`，對其他遙測、手機的 EXIF 或沒有高度的定位選 `horizontal`，沒有 "
-            "GPS 或給了 --metric-positions 時選 `none`"),
-    KO("이미지의 EXIF GPS 에 지역 동북상 미터 좌표계를 맞춥니다. `horizontal` 은 위도와 경도만 "
-       "읽고 기울기는 카메라 자신의 위 방향에 맡기며, `full` 은 고도까지 읽습니다. 정확도가 "
-       "수 미터라 촬영 범위가 수십 미터는 되어야 합니다"
-       ". `auto` (기본값) 는 DJI 텔레메트리나 고도가 있는 EXIF 에는 `full`, 그 밖의 텔레메트리, 휴대폰의 EXIF, 고도 없는 "
-       "측위에는 `horizontal`, GPS 가 없거나 --metric-positions 가 있으면 `none` 을 고릅니다"),
-    DE("Einen lokalen Ost-Nord-Oben-Meterrahmen an das EXIF-GPS der Bilder anpassen: "
-       "`horizontal` liest Breite und Länge und überlässt die Neigung der eigenen Hochachse "
-       "der Kameras, `full` liest auch die Höhe; die Genauigkeit liegt bei einigen Metern, "
-       "die Aufnahme muss also zehner Meter groß sein"
-       ". `auto`, die Vorgabe, wählt `full` für eine DJI-Telemetriespur oder "
-       "EXIF-Positionen mit Höhe, `horizontal` für andere Telemetrie, das EXIF eines "
-       "Telefons oder Positionen ohne Höhe, und `none` ohne GPS oder neben "
-       "--metric-positions"),
-    FR("Ajuster un repère local est-nord-haut en mètres au GPS EXIF des images : `horizontal` "
-       "lit la latitude et la longitude et laisse l'inclinaison à l'axe vertical des caméras, "
-       "`full` lit aussi l'altitude ; la précision est de quelques mètres, la prise doit donc "
-       "faire des dizaines de mètres"
-       ". `auto`, le défaut, choisit `full` pour une piste de télémétrie DJI ou des points "
-       "EXIF avec altitude, `horizontal` pour une autre télémétrie, l'EXIF d'un téléphone "
-       "ou des points sans altitude, et `none` sans GPS ou à côté de --metric-positions"),
-    ES("Ajustar un marco local este-norte-arriba en metros al GPS EXIF de las imágenes: "
-       "`horizontal` lee latitud y longitud y deja la inclinación al eje vertical de las "
-       "cámaras, `full` lee también la altitud; la precisión es de unos metros, así que la "
-       "toma debe medir decenas de metros"
-       ". `auto`, el valor por defecto, elige `full` para una pista de telemetría DJI o "
-       "posiciones EXIF con altitud, `horizontal` para otra telemetría, el EXIF de un "
-       "teléfono o posiciones sin altitud, y `none` sin GPS o junto a --metric-positions"),
-    PT("Ajustar um referencial local este-norte-cima em metros ao GPS EXIF das imagens: "
-       "`horizontal` lê latitude e longitude e deixa a inclinação ao eixo vertical das "
-       "câmeras, `full` lê também a altitude; a precisão é de alguns metros, por isso a "
-       "captura tem de ter dezenas de metros"
-       ". `auto`, o padrão, escolhe `full` para uma faixa de telemetria DJI ou posições "
-       "EXIF com altitude, `horizontal` para outra telemetria, o EXIF de um telefone ou "
-       "posições sem altitude, e `none` sem GPS ou junto de --metric-positions"),
-    IT("Stimare un sistema locale est-nord-alto in metri dal GPS EXIF delle immagini: "
-       "`horizontal` legge latitudine e longitudine e lascia l'inclinazione all'asse "
-       "verticale delle camere, `full` legge anche la quota; la precisione è di alcuni metri, "
-       "quindi la ripresa deve misurare decine di metri"
-       ". `auto`, il predefinito, sceglie `full` per una traccia di telemetria DJI o punti "
-       "EXIF con quota, `horizontal` per altra telemetria, l'EXIF di un telefono o punti "
+    EN("Fit a local east-north-up metre frame to the GPS, the images' EXIF "
+       "and a video's telemetry alike: `horizontal` reads latitude and "
+       "longitude and leaves the tilt to the cameras' own up axis, `full` "
+       "reads altitude too; accuracy is a few metres, so the capture must "
+       "be tens of metres across. `auto`, the default, picks `full` for a "
+       "DJI telemetry track or EXIF fixes with an altitude, `horizontal` "
+       "for other telemetry, a phone's EXIF or fixes without an altitude, "
+       "and `none` without GPS or beside --metric-positions"),
+    JA("GPS (画像の EXIF と動画のテレメトリの両方) にローカルな東北上メート"
+       "ル座標系を当てはめます。`horizontal` は緯度と経度だけを読み、傾きは"
+       "カメラ自身の上方向に任せます。`full` は高度も読みます。精度は数メー"
+       "トルなので、撮影範囲は数十メートル必要です。`auto` (既定) は DJI の"
+       "テレメトリか高度付きの EXIF には `full`、それ以外のテレメトリ、スマ"
+       "ートフォンの EXIF、高度のない位置には `horizontal`、GPS がないとき"
+       "や --metric-positions があるときは `none` を選びます"),
+    ZH_HANS("按 GPS (图像 EXIF 与视频遥测都算) 拟合本地东北天米制坐标系: "
+            "`horizontal` 只读经纬度，倾斜交给相机自身的上方向; `full` 连高"
+            "度一起读。精度只有几米，所以采集范围要有几十米。`auto` (默认) "
+            "对 DJI 遥测或带高度的 EXIF 选 `full`，对其他遥测、手机的 EXIF "
+            "或没有高度的定位选 `horizontal`，没有 GPS 或给了 "
+            "--metric-positions 时选 `none`"),
+    ZH_HANT("按 GPS (影像 EXIF 與影片遙測都算) 擬合本地東北天公尺座標系: "
+            "`horizontal` 只讀經緯度，傾斜交給相機自身的上方向; `full` 連高"
+            "度一起讀。精度只有幾公尺，所以拍攝範圍要有數十公尺。`auto` (預"
+            "設) 對 DJI 遙測或帶高度的 EXIF 選 `full`，對其他遙測、手機的 "
+            "EXIF 或沒有高度的定位選 `horizontal`，沒有 GPS 或給了 "
+            "--metric-positions 時選 `none`"),
+    KO("GPS (이미지의 EXIF 와 동영상의 텔레메트리 모두) 에 지역 동북상 "
+       "미터 좌표계를 맞춥니다. `horizontal` 은 위도와 경도만 읽고 "
+       "기울기는 카메라 자신의 위 방향에 맡기며, `full` 은 고도까지 "
+       "읽습니다. 정확도가 수 미터라 촬영 범위가 수십 미터는 되어야 "
+       "합니다. `auto` (기본값) 는 DJI 텔레메트리나 고도가 있는 EXIF 에는 "
+       "`full`, 그 밖의 텔레메트리, 휴대폰의 EXIF, 고도 없는 측위에는 "
+       "`horizontal`, GPS 가 없거나 --metric-positions 가 있으면 `none` 을 "
+       "고릅니다"),
+    DE("Einen lokalen Ost-Nord-Oben-Meterrahmen an das GPS anpassen, aus "
+       "dem EXIF der Bilder wie aus der Telemetrie eines Videos: "
+       "`horizontal` liest Breite und Länge und überlässt die Neigung der "
+       "eigenen Hochachse der Kameras, `full` liest auch die Höhe; die "
+       "Genauigkeit liegt bei einigen Metern, die Aufnahme muss also "
+       "zehner Meter groß sein. `auto`, die Vorgabe, wählt `full` für eine "
+       "DJI-Telemetriespur oder EXIF-Positionen mit Höhe, `horizontal` für "
+       "andere Telemetrie, das EXIF eines Telefons oder Positionen ohne "
+       "Höhe, und `none` ohne GPS oder neben --metric-positions"),
+    FR("Ajuster un repère local est-nord-haut en mètres au GPS, celui des "
+       "EXIF des images comme celui de la télémétrie d'une vidéo : "
+       "`horizontal` lit la latitude et la longitude et laisse "
+       "l'inclinaison à l'axe vertical des caméras, `full` lit aussi "
+       "l'altitude ; la précision est de quelques mètres, la prise doit "
+       "donc faire des dizaines de mètres. `auto`, le défaut, choisit "
+       "`full` pour une piste de télémétrie DJI ou des points EXIF avec "
+       "altitude, `horizontal` pour une autre télémétrie, l'EXIF d'un "
+       "téléphone ou des points sans altitude, et `none` sans GPS ou à "
+       "côté de --metric-positions"),
+    ES("Ajustar un marco local este-norte-arriba en metros al GPS, tanto "
+       "el EXIF de las imágenes como la telemetría de un vídeo: "
+       "`horizontal` lee latitud y longitud y deja la inclinación al eje "
+       "vertical de las cámaras, `full` lee también la altitud; la "
+       "precisión es de unos metros, así que la toma debe medir decenas de "
+       "metros. `auto`, el valor por defecto, elige `full` para una pista "
+       "de telemetría DJI o posiciones EXIF con altitud, `horizontal` para "
+       "otra telemetría, el EXIF de un teléfono o posiciones sin altitud, "
+       "y `none` sin GPS o junto a --metric-positions"),
+    PT("Ajustar um referencial local este-norte-cima em metros ao GPS, "
+       "tanto o EXIF das imagens como a telemetria de um vídeo: "
+       "`horizontal` lê latitude e longitude e deixa a inclinação ao eixo "
+       "vertical das câmeras, `full` lê também a altitude; a precisão é de "
+       "alguns metros, por isso a captura tem de ter dezenas de metros. "
+       "`auto`, o padrão, escolhe `full` para uma faixa de telemetria DJI "
+       "ou posições EXIF com altitude, `horizontal` para outra telemetria, "
+       "o EXIF de um telefone ou posições sem altitude, e `none` sem GPS "
+       "ou junto de --metric-positions"),
+    IT("Stimare un sistema locale est-nord-alto in metri dal GPS, sia "
+       "dagli EXIF delle immagini sia dalla telemetria di un video: "
+       "`horizontal` legge latitudine e longitudine e lascia "
+       "l'inclinazione all'asse verticale delle camere, `full` legge anche "
+       "la quota; la precisione è di alcuni metri, quindi la ripresa deve "
+       "misurare decine di metri. `auto`, il predefinito, sceglie `full` "
+       "per una traccia di telemetria DJI o punti EXIF con quota, "
+       "`horizontal` per altra telemetria, l'EXIF di un telefono o punti "
        "senza quota, e `none` senza GPS o accanto a --metric-positions"),
-    NL("Een lokaal oost-noord-omhoog meterstelsel op de EXIF-GPS van de beelden fitten: "
-       "`horizontal` leest breedte en lengte en laat de kanteling aan de eigen verticale as "
-       "van de camera's, `full` leest ook de hoogte; de nauwkeurigheid is enkele meters, dus "
-       "de opname moet tientallen meters groot zijn"
-       ". `auto`, de standaard, kiest `full` voor een DJI-telemetriespoor of EXIF-posities "
-       "met hoogte, `horizontal` voor andere telemetrie, de EXIF van een telefoon of "
-       "posities zonder hoogte, en `none` zonder gps of naast --metric-positions"),
-    RU("Подогнать локальную метровую систему восток-север-верх к GPS из EXIF снимков: "
-       "`horizontal` читает широту и долготу, а наклон оставляет собственной вертикали камер, "
-       "`full` читает и высоту; точность в несколько метров, поэтому съёмка должна быть "
-       "десятки метров"
-       ". `auto`, по умолчанию, выбирает `full` для трека телеметрии DJI или отсчётов EXIF "
-       "с высотой, `horizontal` для другой телеметрии, EXIF телефона или отсчётов без "
+    NL("Een lokaal oost-noord-omhoog meterstelsel op de gps fitten, uit de "
+       "EXIF van de beelden en uit de telemetrie van een video: "
+       "`horizontal` leest breedte en lengte en laat de kanteling aan de "
+       "eigen verticale as van de camera's, `full` leest ook de hoogte; de "
+       "nauwkeurigheid is enkele meters, dus de opname moet tientallen "
+       "meters groot zijn. `auto`, de standaard, kiest `full` voor een "
+       "DJI-telemetriespoor of EXIF-posities met hoogte, `horizontal` voor "
+       "andere telemetrie, de EXIF van een telefoon of posities zonder "
+       "hoogte, en `none` zonder gps of naast --metric-positions"),
+    RU("Подогнать локальную метровую систему восток-север-верх к GPS — как "
+       "из EXIF снимков, так и из телеметрии видео: `horizontal` читает "
+       "широту и долготу, а наклон оставляет собственной вертикали камер, "
+       "`full` читает и высоту; точность в несколько метров, поэтому "
+       "съёмка должна быть десятки метров. `auto`, по умолчанию, выбирает "
+       "`full` для трека телеметрии DJI или отсчётов EXIF с высотой, "
+       "`horizontal` для другой телеметрии, EXIF телефона или отсчётов без "
        "высоты и `none` без GPS или рядом с --metric-positions"),
-    TR("Görüntülerin EXIF GPS'ine yerel bir doğu-kuzey-yukarı metre çerçevesi oturt: "
-       "`horizontal` enlem ve boylamı okur, eğimi kameraların kendi yukarı eksenine bırakır; "
-       "`full` yüksekliği de okur; doğruluk birkaç metre olduğundan çekim onlarca metre "
-       "olmalı"
-       ". Varsayılan `auto`, DJI telemetri izi ya da yükseklikli EXIF konumları için "
-       "`full`, başka telemetri, bir telefonun EXIF'i ya da yüksekliksiz konumlar için "
+    TR("Görüntülerin EXIF'indeki ve videoların telemetrisindeki GPS'e "
+       "yerel bir doğu-kuzey-yukarı metre çerçevesi oturt: `horizontal` "
+       "enlem ve boylamı okur, eğimi kameraların kendi yukarı eksenine "
+       "bırakır; `full` yüksekliği de okur; doğruluk birkaç metre "
+       "olduğundan çekim onlarca metre olmalı. Varsayılan `auto`, DJI "
+       "telemetri izi ya da yükseklikli EXIF konumları için `full`, başka "
+       "telemetri, bir telefonun EXIF'i ya da yüksekliksiz konumlar için "
        "`horizontal`, GPS yoksa ya da --metric-positions varsa `none` seçer"));
 
 SS_MSG(metric_max_error_frac_help,
@@ -4675,30 +4719,47 @@ SS_MSG(sensor_max_dt_help,
     TR("Bir jiroskop dönüş önseli iki görüntü arasında en fazla kaç saniyeyi kapsayabilir"));
 
 SS_MSG(sensor_gauge_help,
-    EN("What the telemetry fixes: `auto` takes up, scale and place from whatever passes its checks, "
-       "`up` the orientation alone, `none` ignores the sensors"),
-    JA("テレメトリで決めるもの: `auto` は検査を通ったものから上方向・縮尺・位置を、`up` は向きだけを"
-       "決め、`none` はセンサーを無視します"),
-    ZH_HANS("遥测决定什么: `auto` 从通过检查的来源取上方向、缩放和位置，`up` 只取朝向，`none` 忽略传感器"),
-    ZH_HANT("遙測決定什麼: `auto` 從通過檢查的來源取上方向、縮放和位置，`up` 只取朝向，`none` 忽略感測器"),
-    KO("텔레메트리로 정하는 것: `auto` 는 검사를 통과한 것에서 위 방향·축척·위치를, `up` 은 방향만 "
-       "정하고, `none` 은 센서를 무시합니다"),
-    DE("Was die Telemetrie festlegt: `auto` nimmt oben, Maßstab und Ort aus allem, was seine "
-       "Prüfungen besteht, `up` nur die Ausrichtung, `none` ignoriert die Sensoren"),
-    FR("Ce que la télémétrie fixe : `auto` prend la verticale, l'échelle et la position de tout ce "
-       "qui passe ses contrôles, `up` l'orientation seule, `none` ignore les capteurs"),
-    ES("Qué fija la telemetría: `auto` toma vertical, escala y posición de lo que pase sus "
-       "comprobaciones, `up` solo la orientación, `none` ignora los sensores"),
-    PT("O que a telemetria fixa: `auto` toma vertical, escala e posição do que passar as suas "
-       "verificações, `up` só a orientação, `none` ignora os sensores"),
-    IT("Cosa fissa la telemetria: `auto` prende verticale, scala e posizione da ciò che supera i "
-       "suoi controlli, `up` solo l'orientamento, `none` ignora i sensori"),
-    NL("Wat de telemetrie vastlegt: `auto` neemt omhoog, schaal en plaats uit alles wat de controles "
-       "doorstaat, `up` alleen de oriëntatie, `none` negeert de sensoren"),
-    RU("Что задаёт телеметрия: `auto` берёт верх, масштаб и место из всего, что прошло проверки, "
-       "`up` только ориентацию, `none` игнорирует датчики"),
-    TR("Telemetrinin belirlediği: `auto` denetimlerini geçen her şeyden yukarı, ölçek ve konumu, "
-       "`up` yalnızca yönü alır, `none` sensörleri yok sayar"));
+    EN("What the video's IMU fixes: `auto` takes up and the "
+       "accelerometer's scale where they pass their checks, `up` the "
+       "orientation alone, `none` ignores the IMU; the GPS log is "
+       "--metric-gps's"),
+    JA("動画の IMU で決めるもの: `auto` は検査を通れば上方向と加速度計によ"
+       "る縮尺を、`up` は向きだけを決め、`none` は IMU を無視します。GPS は"
+       " --metric-gps で決まります"),
+    ZH_HANS("视频 IMU 决定什么: `auto` 在通过检查时取上方向和加速度计给出的"
+            "缩放，`up` 只取朝向，`none` 忽略 IMU; GPS 由 --metric-gps 决定"),
+    ZH_HANT("影片 IMU 決定什麼: `auto` 在通過檢查時取上方向和加速度計給出的"
+            "縮放，`up` 只取朝向，`none` 忽略 IMU; GPS 由 --metric-gps 決定"),
+    KO("동영상 IMU 로 정하는 것: `auto` 는 검사를 통과하면 위 방향과 "
+       "가속도계의 축척을, `up` 은 방향만 정하고, `none` 은 IMU 를 "
+       "무시합니다. GPS 는 --metric-gps 가 정합니다"),
+    DE("Was die IMU des Videos festlegt: `auto` nimmt oben und den Maßstab "
+       "des Beschleunigungsmessers, wo sie ihre Prüfungen bestehen, `up` "
+       "nur die Ausrichtung, `none` ignoriert die IMU; das GPS regelt "
+       "--metric-gps"),
+    FR("Ce que l'IMU de la vidéo fixe : `auto` prend la verticale et "
+       "l'échelle de l'accéléromètre quand elles passent leurs contrôles, "
+       "`up` l'orientation seule, `none` ignore l'IMU ; le GPS relève de "
+       "--metric-gps"),
+    ES("Qué fija la IMU del vídeo: `auto` toma la vertical y la escala del "
+       "acelerómetro si pasan sus comprobaciones, `up` solo la "
+       "orientación, `none` ignora la IMU; el GPS lo decide --metric-gps"),
+    PT("O que a IMU do vídeo fixa: `auto` toma a vertical e a escala do "
+       "acelerómetro se passarem as suas verificações, `up` só a "
+       "orientação, `none` ignora a IMU; o GPS é decidido por --metric-gps"),
+    IT("Cosa fissa l'IMU del video: `auto` prende la verticale e la scala "
+       "dell'accelerometro se superano i loro controlli, `up` solo "
+       "l'orientamento, `none` ignora l'IMU; il GPS lo decide --metric-gps"),
+    NL("Wat de IMU van de video vastlegt: `auto` neemt omhoog en de schaal "
+       "van de versnellingsmeter als ze de controles doorstaan, `up` "
+       "alleen de oriëntatie, `none` negeert de IMU; de gps valt onder "
+       "--metric-gps"),
+    RU("Что задаёт IMU видео: `auto` берёт верх и масштаб по "
+       "акселерометру, если они прошли проверки, `up` только ориентацию, "
+       "`none` игнорирует IMU; GPS задаёт --metric-gps"),
+    TR("Videonun IMU'sunun belirlediği: `auto` denetimlerini geçerse "
+       "yukarı yönü ve ivmeölçerin ölçeğini, `up` yalnızca yönü alır, "
+       "`none` IMU'yu yok sayar; GPS'i --metric-gps belirler"));
 
 }  // namespace sfmfield
 }  // namespace msg

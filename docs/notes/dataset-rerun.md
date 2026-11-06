@@ -37,26 +37,25 @@ runs.
   marks it complete when it finishes.
 - **The videos the frames were cut from** (the frames step's `captures`: path,
   folder, what a stem counts), written when that step finishes. They are not
-  fields -- they follow from the fields and decide no reuse -- but they are
-  what gives frames brought back their video's IMU and GPS: a run that keeps
+  fields, but their timing must be known to reuse existing video frames. They
+  also give frames brought back their video's IMU and GPS: a run that keeps
   the frames reports these rather than what its own decoder would have
-  numbered (an ffmpeg extraction counts candidates, not source frames), and a
-  photo input that is some dataset's `images/` takes that dataset's
-  (`captures_behind`). A record without them, or a workspace with only the
-  legacy stamp, has them derived from its frames fields
-  (`recorded_captures`).
+  numbered, and a photo input that is some dataset's `images/` takes that
+  dataset's (`captures_behind`). A record without them, including a workspace
+  with only the legacy stamp, cannot infer the timing from the current decoder.
 
 The fields are a step's *inputs*, normalized so that the same output gives the
 same fields however the panel was arranged:
 
-- Frames: per input that writes images, its path and rate; the decoder,
-  selection and unwrap settings only when a video is there to use them. A
-  folder of photos depends on nothing else -- photos already gathered are kept
-  whatever the import mode says -- except the blur rule, which sorts gathered
-  photos as it does video frames: its threshold, the neighbour rule and the
-  similarity threshold are fields wherever it applies, listed only when the
-  rule is on (the similarity threshold is part of it), and a threshold set by
-  hand is a value of its own because that run pauses.
+- Frames: per input that writes images, its path, rate and source identity;
+  the decoder, selection and unwrap settings only when a video is there to
+  use them. Source identity covers the photo inventory or video and any
+  file-backed video LUT (details below). Photos already gathered are kept
+  whatever the import mode says, unless their source identity changes. The
+  blur rule also applies to gathered photos: its threshold, neighbour rule
+  and similarity threshold are fields wherever it applies, listed only when
+  the rule is on, and a threshold set by hand is a value of its own because
+  that run pauses.
 - Masks: per input, masks it brought and the stencil drawn on it; the
   segmentation settings, split into those that make training masks and those
   that make `feature_masks/`.
@@ -72,8 +71,9 @@ same fields however the panel was arranged:
   redo normals.
 
 A workspace written before the record carries `.spirula-frames` and
-`.spirula-recon`. Its frames step is read from the first, so the old guard
-against keeping frames unwrapped some other way still holds there. Its
+`.spirula-recon`. The first can restore the old extraction settings, but is
+not proof of source content or capture timing: external inputs require an
+explicit frame rebuild rather than silently adopting those frames. Its
 reconstruction has no record and is always kept; the second only fills the
 panel (`read_legacy_settings()`): the flags back onto the settings, and the
 manifest's per-folder lenses, rigs and sequences onto the camera folders.
@@ -89,17 +89,57 @@ Per step, in order, the first that applies:
 | asked to redo | redo | redo | redo | redo |
 | the frames are made again | -- | redo | redo | redo |
 | the reconstruction is made again | -- | -- | -- | redo |
-| no record | reuse | reuse | reuse | add what is missing |
+| no record | **redo, ask**¹ | reuse | reuse | check maps, add what is missing² |
 | made from an older output of the step before | -- | redo | redo | redo |
 | record incomplete, same fields | finish | finish | finish | finish |
 | fields differ | **redo, ask** | redo | **redo, ask** | redo |
 | same fields | reuse | reuse | reuse | reuse, or add kinds |
+
+¹ External frame sources cannot be kept without a matching source record.
+Dataset images and photographs read in place are reused by the first row.
+² Geometry reuse also requires each map's completion marker, below.
 
 "Ask" is the confirmation before the run: frames re-extracted or a
 reconstruction rebuilt that nobody asked to redo. Its other answer -- keep
 them, run the rest -- is `PlanRequest::keep_built`, also a checkbox in the
 list, which turns both into **keep** until the output folder or the inputs
 change.
+
+Existing video frames without capture timing cannot be kept. Both runners
+require `PlanRequest::redo_frames` before writing any step record or replacing
+those frames, independently of `keep_built`. The confirmation's **Redo them**
+sets that consent; **Keep them, run the rest** is disabled. A batch row has no
+frame-redo consent and fails before updating the dataset record. Rebuild on
+the dataset screen first, or use a fresh output folder for the batch.
+
+### Frame source identity
+
+An unchanged path is not proof of an unchanged capture. The panel compares a
+cheap inventory (relative image names, sizes and modification times for a
+photo folder; file metadata for a video and its file-backed LUT). Before
+planning a run, the runners also hash the source bytes with SHA-256. This
+detects a video, photo or LUT replaced in place even when its size and
+timestamp were preserved, as well as photographs added, removed or renamed.
+These identities are stored with the frames step.
+
+A changed source inventory or content requires frame extraction again:
+**Keep them, run the rest** cannot override it. An older record without the
+identities also needs a rebuild for external sources. Confirm **Redo them**
+on the dataset screen, or use a fresh workspace; a batch row cannot grant
+that consent. Rebuilding frames also invalidates the downstream masks,
+reconstruction and geometry. The panel's metadata preview can miss a
+same-size, same-timestamp replacement, but the runner's content check cannot.
+
+Sources are checked again before frame completion is recorded. For **Move**
+photo imports, that check happens immediately after transfer, using the
+original inventory names and each file's current source or destination
+location, before blur sorting can move the only copy into `images_skipped/`.
+The intentionally emptied source is not rehashed at final completion.
+A detected source change fails the step rather than publishing completion;
+rerun preparation. Unreadable sources fail identification. Dataset images
+and photographs read in place are exempt from these external-source checks:
+they are already the frames, not a capture to re-extract.
+
 
 ### Photographs the blur rule left out
 
@@ -178,6 +218,32 @@ frontend (its matcher cannot read them), and matches across a lens change,
 because `matches.bin` carries the camera setup verification used and keeping
 it would leave the new lens unused. `spirula sfm` refuses on its own to keep
 matches over a feature file the same run rewrote.
+
+### Depth and normal map completion
+
+The geometry tool does not trust a nonempty output file by itself. Each map
+has a sibling `<map filename>.geometry-complete` record, published only after
+the encoded map is fully written and closed. Reuse requires a recognized
+record matching the current request and the map's SHA-256 checksum. The
+request includes the input image content, camera and face plan, model and
+inference options, image colour/exposure settings, and map kind and encoding.
+Depth and normals are checked independently, so a completed normal map does
+not hide a missing depth map or an interrupted sibling write.
+
+Missing or empty maps and recognized records with a stale request or damaged
+output are regenerated when the geometry tool runs. A nonempty map with no
+recognized completion record is different: it is preserved, and the tool
+stops with an instruction to use **`spirula geometry <dataset> --overwrite`**
+to replace it. This includes legacy maps and maps whose marker was removed.
+The GUI's geometry overwrite option supplies the same consent. Merely
+finding `depths/` or `normals/` is not proof that every face was processed or
+that the encoder completed. Keep each marker with its map when moving a
+dataset; removing it does not request a safe automatic repair.
+
+The dataset plan still makes its step-level decision from the workspace
+record. Per-map marker and checksum validation happens when the geometry
+tool runs, not while the panel previews a fully reused geometry step.
+
 
 ## Restoring onto the dataset's own images/
 

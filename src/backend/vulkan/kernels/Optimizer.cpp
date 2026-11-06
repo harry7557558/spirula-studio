@@ -353,13 +353,13 @@ void fused_adam_step_quantized_value(
         }
         p.numel = checked_u32_numel(n, "fused_adam_step_quantized_value");
         p.num_blocks = (uint32_t)((n + 255) / 256);
-        // Spec IDs: 0 = kOptimBits, 1 = kValueBits, 2 = kColorTrust.
+        // Spec IDs: bits, value bits, colour trust, cell stride.
         vkk::Fold f = vkk::fold_1d(n, 256);
         p.wgs_per_row = f.per_row;
         vkk::dispatch_ring(
             "optimizer.fused_adam_qq",
             backend::vk::SpecList{(uint32_t)optim_bits, (uint32_t)value_bits,
-                                  ct},
+                                  ct, p.stride},
             f.per_row, f.rows, 1, &p, sizeof(p));
     }
 }
@@ -435,6 +435,9 @@ struct OptimGeoParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
+    uint64_t depth_states, depth_information, depth_centers, depth_cameras, depth_angular_bound;
+    float depth_lr, depth_angular_lr;
+    uint32_t has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc;
     float max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight,
@@ -446,7 +449,7 @@ struct OptimGeoParams {
         skip_unrendered_reg;
     uint32_t _pad0;
 };
-static_assert(sizeof(OptimGeoParams) == 42 * 8 + 26 * 4,
+static_assert(sizeof(OptimGeoParams) == 47 * 8 + 32 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -608,7 +611,7 @@ void fused_optim_3dgs_geometry(
     ColorTrustState color_trust,
     NonShQuantState non_sh,
     SplatVisitState visit,
-    GradQuantBuffers gq,
+    GradQuantBuffers gq, ProjectiveDepthOptim depth,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
     float grad_scale, bool zero_grad
 ) {
@@ -639,6 +642,16 @@ void fused_optim_3dgs_geometry(
     p.visit_counters = vkk::or_fallback(visit.counters);
     p.has_visit = visit.counters ? 1u : 0u;
     p.skip_unrendered_reg = visit.skip_unrendered_reg ? 1u : 0u;
+    p.depth_states = vkk::or_fallback(depth.states);
+    p.depth_information = vkk::or_fallback(depth.information);
+    p.depth_centers = vkk::or_fallback(depth.centers);
+    p.depth_cameras = vkk::or_fallback(depth.camera_indices);
+    p.depth_lr = depth.lr; p.depth_angular_lr = depth.angular_lr;
+    p.has_depth = depth.states ? 1u : 0u;
+    p.depth_photo = depth.single_photometric;
+    p.depth_relative = depth.angular_relative;
+    p.depth_angular_bound = vkk::or_fallback(depth.angular_bound);
+    p.depth_has_bound = depth.angular_bound ? 1u : 0u;
 
     uint32_t gq_mask = 0;
     p.gq_means_packed = vkk::or_fallback(gq.means_packed);

@@ -38,6 +38,7 @@
 #include <climits>
 #include <cstddef>
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -701,7 +702,7 @@ inline void ProgressBarRaw(float frac, const ImVec2& size, const char* overlay) 
 // to change that, and it spaces points by index. `xs` carries the x of each
 // sample -- the training step -- so the axis means elapsed training, not order.
 inline void PlotLinesRaw(const float* xs, const float* ys, int count,
-                         const ImVec2& size) {
+                         const ImVec2& size, bool log_y) {
     const ImGuiStyle& st = ImGui::GetStyle();
     ImVec2 frame = size;
     if (frame.x <= 0.0f) frame.x = ImGui::GetContentRegionAvail().x + frame.x;
@@ -723,9 +724,10 @@ inline void PlotLinesRaw(const float* xs, const float* ys, int count,
 
     float y_lo = FLT_MAX, y_hi = -FLT_MAX;
     for (int i = 0; i < count; i++) {
-        if (ys[i] != ys[i]) continue;   // NaN, as PlotEx does
-        if (ys[i] < y_lo) y_lo = ys[i];
-        if (ys[i] > y_hi) y_hi = ys[i];
+        float yi = log_y ? std::log(ys[i]) : ys[i];
+        if (yi != yi) continue;   // NaN, as PlotEx does
+        if (yi < y_lo) y_lo = yi;
+        if (yi > y_hi) y_hi = yi;
     }
     if (y_lo > y_hi) return;
     // A run that has not moved off its first step yet has no x extent to
@@ -739,7 +741,8 @@ inline void PlotLinesRaw(const float* xs, const float* ys, int count,
     const float inv_y = (y_hi > y_lo) ? 1.0f / (y_hi - y_lo) : 0.0f;
     const float inv_x = by_x ? 1.0f / (x_hi - x_lo) : 0.0f;
     auto point_at = [&](int i) {
-        const float v = (ys[i] == ys[i]) ? ys[i] : y_lo;
+        float yi = log_y ? std::log(ys[i]) : ys[i];
+        const float v = (yi == yi) ? yi : y_lo;
         const float tx = by_x ? (xs[i] - x_lo) * inv_x
                               : (float)i / (float)(count - 1);
         const float ty = 1.0f - (v - y_lo) * inv_y;

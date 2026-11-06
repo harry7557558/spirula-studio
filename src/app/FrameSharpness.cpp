@@ -18,7 +18,16 @@ namespace blur { class EdgeWidthGpu {}; }
 
 namespace app {
 
-void box_grey(const uint8_t* img, int W, int rows, int ow, int oh, float* out) {
+namespace {
+
+template <int Bytes>
+double rgb_sample(const uint8_t* p) {
+    if constexpr (Bytes == 1) return *p;
+    else return ((unsigned)p[0] * 256 + p[1]) / 257.0;
+}
+
+template <int Bytes>
+void box_grey_samples(const uint8_t* img, int W, int rows, int ow, int oh, float* out) {
     for (int y = 0; y < oh; y++) {
         int y0 = (int)((int64_t)y * rows / oh), y1 = (int)((int64_t)(y + 1) * rows / oh);
         if (y1 <= y0) y1 = y0 + 1;
@@ -28,19 +37,23 @@ void box_grey(const uint8_t* img, int W, int rows, int ow, int oh, float* out) {
             double acc = 0.0;
             for (int yy = y0; yy < y1; yy++)
                 for (int xx = x0; xx < x1; xx++) {
-                    const uint8_t* p = img + ((size_t)yy * W + xx) * 3;
-                    // BT.601 luma like cv2.cvtColor BGR2GRAY (RGB order here).
-                    acc += 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2];
+                    const uint8_t* p = img + ((size_t)yy * W + xx) * 3 * Bytes;
+                    // BT.601 luma in 8-bit sample units.
+                    acc += 0.299 * rgb_sample<Bytes>(p) +
+                           0.587 * rgb_sample<Bytes>(p + Bytes) +
+                           0.114 * rgb_sample<Bytes>(p + 2 * Bytes);
                 }
             out[(size_t)y * ow + x] = (float)(acc / ((y1 - y0) * (x1 - x0)));
         }
     }
 }
 
-double sharpness_score(const uint8_t* rgb, int width, int height) {
+template <int Bytes>
+double sharpness_samples(const uint8_t* rgb, int width, int height,
+                          std::vector<float>& gray) {
     constexpr int S = 512;
-    std::vector<float> gray((size_t)S * S);
-    box_grey(rgb, width, height, S, S, gray.data());
+    gray.resize((size_t)S * S);
+    box_grey_samples<Bytes>(rgb, width, height, S, S, gray.data());
     double mean = 0.0;
     for (float v : gray) mean += v;
     mean /= (double)gray.size();
@@ -57,6 +70,27 @@ double sharpness_score(const uint8_t* rgb, int width, int height) {
         }
     const double mu = sum / n;
     return sum2 / n - mu * mu;
+}
+
+}  // namespace
+
+void box_grey(const uint8_t* rgb, int width, int rows, int ow, int oh, float* out) {
+    box_grey_samples<1>(rgb, width, rows, ow, oh, out);
+}
+
+double sharpness_score(const uint8_t* rgb, int width, int height) {
+    std::vector<float> scratch;
+    return sharpness_score(rgb, width, height, scratch);
+}
+
+double sharpness_score(const uint8_t* rgb, int width, int height,
+                       std::vector<float>& scratch) {
+    return sharpness_samples<1>(rgb, width, height, scratch);
+}
+
+double sharpness_score_rgb48be(const uint8_t* rgb, int width, int height,
+                               std::vector<float>& scratch) {
+    return sharpness_samples<2>(rgb, width, height, scratch);
 }
 
 // ---------------------------------------------------------------------------

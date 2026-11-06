@@ -201,6 +201,25 @@ void densify_clip_scale(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
 // MCMC / revised noise (canonical device code from ../densify.slang)
 // ---------------------------------------------------------------------------
 
+// Integer hash matching hash_uint3 in core/Common.cuh bit-exactly.
+[ForceInline]
+uint _dn_hash_u3(uint a, uint b, uint c) {
+    uint hash = a;
+    hash *= 0x01000193u;
+    hash = (hash << 16) | (hash >> 16);
+    hash ^= b;
+    hash *= 0x01000193u;
+    hash = (hash << 16) | (hash >> 16);
+    hash ^= c;
+    hash *= 0x01000193u;
+    hash ^= hash >> 15;
+    hash *= 0x85ebca6bu;
+    hash ^= hash >> 13;
+    hash *= 0xc2b2ae35u;
+    hash ^= hash >> 16;
+    return hash;
+}
+
 struct DensifyNoiseParams {  // 72 bytes: pushed directly
     float* means;       // [N, 3] updated in place
     float* log_scales;  // [N, 3]
@@ -213,6 +232,7 @@ struct DensifyNoiseParams {  // 72 bytes: pushed directly
     uint wgs_per_row;
     float peak_weight_scale;  // stored -> current peak weight
     uint has_peak_weight;
+    uint seed;
 };
 
 [shader("compute")]
@@ -228,7 +248,8 @@ void densify_mcmc_add_noise(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     float4 quat = float4(p.quats[4 * idx], p.quats[4 * idx + 1],
                          p.quats[4 * idx + 2], p.quats[4 * idx + 3]);
     mcmc_add_noise_3dgs(p.scaler, mean, log_scale, quat,
-                        p.logit_opacs[idx]);
+                        p.logit_opacs[idx], uint4(_dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 0), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 1),
+                              _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 2), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 3)));
     p.means[3 * idx] = mean.x;
     p.means[3 * idx + 1] = mean.y;
     p.means[3 * idx + 2] = mean.z;
@@ -250,7 +271,9 @@ void densify_revised_add_noise(uint3 wg: SV_GroupID,
     revised_add_noise_3dgs(p.scaler, p.radii[idx], mean, log_scale, quat,
                            p.logit_opacs[idx],
                            p.has_peak_weight != 0
-                               ? p.peak_weight[idx] * p.peak_weight_scale : 1.0f);
+                               ? p.peak_weight[idx] * p.peak_weight_scale : 1.0f,
+                           uint4(_dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 0), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 1),
+                              _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 2), _dn_hash_u3(p.seed ^ 0x9e3779b9u, idx, 3)));
     p.means[3 * idx] = mean.x;
     p.means[3 * idx + 1] = mean.y;
     p.means[3 * idx + 2] = mean.z;
@@ -259,25 +282,6 @@ void densify_revised_add_noise(uint3 wg: SV_GroupID,
 // ---------------------------------------------------------------------------
 // Shared helpers for the relocation / MCMC kernels
 // ---------------------------------------------------------------------------
-
-// Integer hash matching hash_uint3 in core/Common.cuh bit-exactly.
-[ForceInline]
-uint _dn_hash_u3(uint a, uint b, uint c) {
-    uint hash = a;
-    hash *= 0x01000193u;
-    hash = (hash << 16) | (hash >> 16);
-    hash ^= b;
-    hash *= 0x01000193u;
-    hash = (hash << 16) | (hash >> 16);
-    hash ^= c;
-    hash *= 0x01000193u;
-    hash ^= hash >> 15;
-    hash *= 0x85ebca6bu;
-    hash ^= hash >> 13;
-    hash *= 0xc2b2ae35u;
-    hash ^= hash >> 16;
-    return hash;
-}
 
 // Spec axes shared by the relocate/MCMC kernels.
 //   kShOptimBits:  0 = fp32 SH Adam state, 8 / 4 = QuantizedAdamState bits
@@ -555,6 +559,8 @@ struct RelocLasParams {
     int* bias_steps;     // [cap] (has_bias_steps)
     uint* visit_counters; // [cap] (has_visit)
     float* max_weight;   // [cap] (has_max_weight)
+    float4* projective_state;
+    float* projective_information;
     float split_opacity_k;
     uint cur_num_splats;
     uint num_new_splats;
@@ -569,6 +575,7 @@ struct RelocLasParams {
     uint wgs_per_row;
     uint has_visit;
     uint has_max_weight;
+    uint has_projective_state;
 };
 
 [shader("compute")]
@@ -614,6 +621,11 @@ void densify_relocate_las(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                   max(_dn_sigmoid(opac), 1e-12f);
         p.max_weight[idx_src] = w;
         p.max_weight[idx_dst] = w;
+    }
+
+    if (p.has_projective_state != 0) {
+        p.projective_state[idx_dst] = p.projective_state[idx_src];
+        p.projective_information[idx_dst] = p.projective_information[idx_src];
     }
 
     // appearance - copy
@@ -1077,7 +1089,7 @@ void densify_mcmc_relocation(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if (p.has_bias_steps != 0) p.bias_steps[cur_idx] = 0;
 }
 
-struct McmcUpdateRelocParams {  // 72 bytes: pushed directly
+struct McmcUpdateRelocParams {  // 96 bytes: pushed directly
     int* index_map;      // [N]
     float* means;
     float* quats;
@@ -1085,6 +1097,9 @@ struct McmcUpdateRelocParams {  // 72 bytes: pushed directly
     float* opacs;
     float* features_dc;
     float* features_sh;  // (has_fp32_sh)
+    float4* projective_state;
+    float* projective_information;
+    uint has_projective, projective_pad;
     uint num_splats;
     uint num_sh;
     uint has_fp32_sh;
@@ -1102,6 +1117,11 @@ void densify_mcmc_update_reloc(uint3 wg: SV_GroupID,
     // only update on those relocated from
     uint id_src = uint(p.index_map[id_dst]);
     if (id_src == id_dst) return;
+
+    if (p.has_projective != 0) {
+        p.projective_state[id_dst] = p.projective_state[id_src];
+        p.projective_information[id_dst] = p.projective_information[id_src];
+    }
 
     [ForceUnroll]
     for (int i = 0; i < 3; i++) {
@@ -1189,6 +1209,9 @@ struct McmcUpdateAddParams {
     float4* nq_opacities_bounds;
     float4* nq_dc_bounds;
     int* bias_steps;  // (has_bias_steps)
+    float4* projective_state;
+    float* projective_information;
+    uint has_projective, projective_pad;
     uint num_splats;
     uint num_add;
     uint num_sh;
@@ -1212,6 +1235,10 @@ void densify_mcmc_update_add(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     uint id_dst = idx + p.num_splats;
     uint id_src = uint(p.index_map[idx]);
 
+    if (p.has_projective != 0) {
+        p.projective_state[id_dst] = p.projective_state[id_src];
+        p.projective_information[id_dst] = p.projective_information[id_src];
+    }
     // copy components
     [ForceUnroll]
     for (int i = 0; i < 3; i++) {

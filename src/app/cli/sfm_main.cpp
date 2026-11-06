@@ -33,6 +33,7 @@
 #include "core/ColorSpace.h"
 #include "core/Env.h"
 #include "core/ExrImage.h"
+#include "core/HardwareThreads.h"
 #include "sfm/SfmConfig.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Manifest.h"
@@ -385,7 +386,7 @@ static void printEvent(const sfm::Event& e) {
                                       "image", "pair", "model", "result"};
         static const char* kStage[] = {"extract", "match", "map",  "merge",
                                        "orient",  "finish", "load", "select",
-                                       "seed",    "refine", "focal",
+                                       "seed",    "refine", "focal", "global-init",
                                        "progressive"};
         static_assert(sizeof kStage / sizeof *kStage == sfm::kNumStages, "");
         L::diag(Tag::Run, "[ev] %-11s %-7s done=%lld/%lld reg=%lld pts=%lld %s",
@@ -826,7 +827,7 @@ static int cmdMap(int argc, char** argv) {
         // Descriptors are skipped: matching is over, and on a 5000-image
         // capture they are several gigabytes of file that nothing downstream
         // reads. Parallel because it is pure per-file work landing by index.
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = cfg.threads > 0 ? cfg.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)db.images.size()));
         std::atomic<size_t> next{0};

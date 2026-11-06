@@ -29,6 +29,48 @@ namespace gui {
 
 namespace {
 
+enum BlendPair { PhotoRender, PhotoError, RenderError, DepthRender, NormalRender, BlendPairCount };
+
+bool blends_error(int pair) { return pair == PhotoError || pair == RenderError; }
+
+const spirula::i18n::Msg* const kBlendPairs[][2] = {
+    {&msg::compare_pane_gt, &msg::compare_pane_render},
+    {&msg::compare_pane_gt, &msg::compare_pane_error},
+    {&msg::compare_pane_render, &msg::compare_pane_error},
+    {&msg::compare_pane_gt_depth, &msg::compare_pane_render_depth},
+    {&msg::compare_pane_gt_normal, &msg::compare_pane_render_normal},
+};
+
+std::string blend_label(int pair) {
+    const auto& names = kBlendPairs[pair];
+    return std::string(names[0]->get()) + " ↔ " + names[1]->get();
+}
+
+void blend_slider(float* amount, float width) {
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    const float h = ImGui::GetFrameHeight();
+    const float cy = p.y + h * 0.5f, cx = p.x + width * 0.5f;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImU32 track = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    dl->AddLine(ImVec2(p.x + h * 0.5f, cy), ImVec2(p.x + width - h * 0.5f, cy),
+                 track, px(2.0f));
+    dl->AddLine(ImVec2(cx, cy - px(4.0f)), ImVec2(cx, cy + px(4.0f)), track);
+
+    for (ImGuiCol color : {ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered, ImGuiCol_FrameBgActive})
+        ImGui::PushStyleColor(color, ImVec4(0, 0, 0, 0));
+    // ImGui's grab has two pixels of padding on each side; a square grab rounds to a circle.
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, h - 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, h * 0.5f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    ImGui::SetNextItemWidth(width);
+    ui::SliderFloatRaw("##blendamount", amount, 0.0f, 100.0f, "",
+                        ImGuiSliderFlags_NoInput | ImGuiSliderFlags_NoRoundToFormat);
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(3);
+    if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+}
+
 uint8_t to_byte(float v) {
     return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f + 0.5f);
 }
@@ -201,6 +243,10 @@ void ImageCompare::attach(spirula::TrainerSession& session) {
     _requested = Job{-1, false, false, false};
     _has_error_map =
         spirula::build_step_config(session.cfg, session.st, 0).loss.compute_loss_map;
+    if ((!_has_error_map && blends_error(_blend_pair)) ||
+        (!session.has_depth && _blend_pair == DepthRender) ||
+        (!session.has_normal && _blend_pair == NormalRender))
+        _blend_pair = PhotoRender;
     _dirty = true;
     _running = true;
     _worker = std::thread([this] { worker_loop(); });
@@ -312,7 +358,7 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
     for (int pi = 0; pi < npass; pi++) {
         std::lock_guard<std::mutex> lk(s.engine_mutex);
         const int views = engine_preview_forward(
-            j.index, s.cfg.primitive, sh_deg, s.cfg.packed || s.cfg.use_bvh,
+            j.index, s.cfg.primitive, sh_deg, s.cfg.packed,
             j.color_correct, step_cfg, pi, &npass);
         auto shape = engine_get_render_rgb_shape();
         Pass q;
@@ -773,6 +819,13 @@ void ImageCompare::draw_toolbar(bool training) {
 
     draw_image_picker();
 
+    place(check_w(msg::compare_separate));
+    if (ui::RadioButton(msg::compare_separate, !_blend)) _blend = false;
+    ui::help_on_hover(msg::compare_separate_help);
+    place(check_w(msg::compare_blend));
+    if (ui::RadioButton(msg::compare_blend, _blend)) _blend = true;
+    ui::help_on_hover(msg::compare_blend_help);
+
     if (has_masks()) {
         const float w = ImGui::CalcTextSize(msg::compare_mask_dim.get()).x + 60;
         place(w);
@@ -804,19 +857,17 @@ void ImageCompare::draw_toolbar(bool training) {
     ui::help_on_hover(split ? msg::compare_source_gt_split
                             : msg::compare_source_gt_help);
 
-    // Only where the run loads them: a toggle for a row that cannot appear
-    // says the dataset has something it has not.
-    if (_session->has_depth) {
+    if (!_blend && _session->has_depth) {
         place(check_w(msg::compare_show_depth));
         ui::Checkbox(msg::compare_show_depth, &_show_depth);
         ui::help_on_hover(msg::compare_show_depth_help);
     }
-    if (_session->has_normal) {
+    if (!_blend && _session->has_normal) {
         place(check_w(msg::compare_show_normal));
         ui::Checkbox(msg::compare_show_normal, &_show_normal);
         ui::help_on_hover(msg::compare_show_normal_help);
     }
-    if (_has_error_map) {
+    if (!_blend && _has_error_map) {
         place(check_w(msg::compare_show_error));
         ui::Checkbox(msg::compare_show_error, &_show_error);
         ui::help_on_hover(msg::compare_show_error_help);
@@ -845,6 +896,50 @@ void ImageCompare::draw_toolbar(bool training) {
     ImGui::SameLine();
     ui::TextDisabledRaw(z);
     ui::help_on_hover(msg::compare_zoom_help);
+
+    if (_blend) {
+        static_assert(sizeof(_blend_amount) / sizeof(*_blend_amount) == BlendPairCount);
+        std::string labels[BlendPairCount];
+        float pair_w = 0.0f;
+        for (int i = 0; i < BlendPairCount; i++) {
+            labels[i] = blend_label(i);
+            pair_w = std::max(pair_w, ImGui::CalcTextSize(labels[i].c_str()).x);
+        }
+        pair_w += ImGui::GetFrameHeight() + 2.0f * st.FramePadding.x;
+        ImGui::SetNextItemWidth(pair_w);
+        if (ui::BeginComboRaw("##blendpair", labels[_blend_pair].c_str())) {
+            for (int i = 0; i < BlendPairCount; i++) {
+                if ((i == DepthRender && !_session->has_depth) ||
+                    (i == NormalRender && !_session->has_normal)) continue;
+                const bool unavailable = blends_error(i) && !_has_error_map;
+                ImGui::PushID(i);
+                ImGui::BeginDisabled(unavailable);
+                if (ui::SelectableRaw(labels[i] + "###pair", i == _blend_pair)) _blend_pair = i;
+                ImGui::EndDisabled();
+                if (unavailable) ui::help_on_hover_disabled(msg::compare_error_unavailable);
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        const auto& left = *kBlendPairs[_blend_pair][0];
+        const auto& right = *kBlendPairs[_blend_pair][1];
+        const int right_share = (int)std::lround(_blend_amount[_blend_pair]);
+        const float value_w = ImGui::CalcTextSize("100%").x;
+        const float labels_w = ImGui::CalcTextSize(left.get()).x +
+                               ImGui::CalcTextSize(right.get()).x + 2.0f * value_w +
+                               4.0f * st.ItemSpacing.x;
+        ImGui::SameLine();
+        ui::TextDisabled(left);
+        ImGui::SameLine();
+        ui::TextDisabledRaw(std::to_string(100 - right_share) + "%");
+        ImGui::SameLine(0.0f, st.ItemSpacing.x + value_w - ImGui::GetItemRectSize().x);
+        blend_slider(&_blend_amount[_blend_pair],
+                      std::max(px(60.0f), _row_w - pair_w - st.ItemSpacing.x - labels_w));
+        ImGui::SameLine();
+        ui::TextDisabledRaw(std::to_string(right_share) + "%");
+        ImGui::SameLine(0.0f, st.ItemSpacing.x + value_w - ImGui::GetItemRectSize().x);
+        ui::TextDisabled(right);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -877,21 +972,19 @@ void ImageCompare::handle_view_input() {
 }
 
 void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
-                             const spirula::i18n::Msg& caption) {
+                             const char* id, const char* caption,
+                             const Pane* overlay, float opacity) {
     // No scrolling: the wheel is the zoom here, and a child that can scroll
     // eats it before the pane sees it.
-    ImGui::BeginChild(caption.id, box, ImGuiChildFlags_Borders,
+    ImGui::BeginChild(id, box, ImGuiChildFlags_Borders,
                       ImGuiWindowFlags_NoScrollbar |
                       ImGuiWindowFlags_NoScrollWithMouse);
-    ui::TextDisabled(caption);
+    ui::TextDisabledRaw(caption);
     ImVec2 avail = ImGui::GetContentRegionAvail();
     avail.x = std::max(avail.x, 16.0f);
     avail.y = std::max(avail.y, 16.0f);
 
     if (p.tex && p.canvas_w > 0 && p.canvas_h > 0) {
-        // The canvas is aspect-fit at zoom 1 and cropped beyond it, so the
-        // drawn area never overflows the pane: both panes stay the same size
-        // whatever each one's resolution is, and one zoom drives both.
         const float fit = std::min(avail.x / (float)p.canvas_w,
                                    avail.y / (float)p.canvas_h);
         const float disp_w = (float)p.canvas_w * fit * _zoom;
@@ -907,20 +1000,8 @@ void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
         const ImVec2 org = ImGui::GetCursorScreenPos();
         ImGui::Dummy(ImVec2(vw, vh));
 
-        // Canvas origin in screen space, and canvas pixels to screen. Each
-        // view is drawn straight from its slot in the packed texture onto its
-        // own quad, so the cells the cross leaves empty simply are not drawn.
         const float ox = org.x - (_cx - fu * 0.5f) * disp_w;
         const float oy = org.y - (_cy - fv * 0.5f) * disp_h;
-        const float sc = fit * _zoom;
-        // Half a texel in from each edge: adjacent cells come from slots that
-        // are NOT adjacent in the texture, and linear filtering at the seam
-        // would otherwise blend in whichever face happens to be packed next.
-        // A lone view has no neighbour to bleed from and is left exact, so a
-        // source-file photograph still lines up with the render texel for texel.
-        const bool inset = p.cells.size() > 1;
-        const float iu = inset ? 0.5f / (float)p.tex_w : 0.0f;
-        const float iv = inset ? 0.5f / (float)p.tex_h : 0.0f;
 
         const ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -931,32 +1012,39 @@ void ImageCompare::draw_pane(const Pane& p, const ImVec2& box,
                            pio.DrawCallback_SetSamplerLinear;
         dl->PushClipRect(org, ImVec2(org.x + vw, org.y + vh), true);
         if (point) dl->AddCallback(pio.DrawCallback_SetSamplerNearest, nullptr);
-        for (size_t v = 0; v < p.cells.size(); v++) {
-            const FaceCell& fc = p.cells[v];
-            const float x0 = ox + fc.x * sc, x1 = x0 + fc.w * sc;
-            const float y0 = oy + fc.y * sc, y1 = y0 + fc.h * sc;
-            if (x1 < org.x || x0 > org.x + vw || y1 < org.y || y0 > org.y + vh)
-                continue;
-            const AtlasRect& a = p.uv[v];
-            const float u0 = (float)a.x / p.tex_w + iu;
-            const float u1 = (float)(a.x + a.w) / p.tex_w - iu;
-            const float v0 = (float)a.y / p.tex_h + iv;
-            const float v1 = (float)(a.y + a.h) / p.tex_h - iv;
-            const ImVec2 quad[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
-            const ImVec2 uv[4]   = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
-            // A quarter turn clockwise is one step around the corner list.
-            const int t = fc.turns & 3;
-            dl->AddImageQuad((ImTextureID)(intptr_t)p.tex,
-                             quad[0], quad[1], quad[2], quad[3],
-                             uv[(4 - t) & 3], uv[(5 - t) & 3],
-                             uv[(6 - t) & 3], uv[(7 - t) & 3]);
-        }
+        auto layer = [&](const Pane& image, ImU32 tint) {
+            const float sx = disp_w / image.canvas_w, sy = disp_h / image.canvas_h;
+            // Half-texel insets prevent filtering across unrelated atlas slots.
+            // Single images stay exact so full-resolution photos align with the render.
+            const bool inset = image.cells.size() > 1;
+            const float iu = inset ? 0.5f / image.tex_w : 0.0f;
+            const float iv = inset ? 0.5f / image.tex_h : 0.0f;
+            for (size_t v = 0; v < image.cells.size(); v++) {
+                const FaceCell& fc = image.cells[v];
+                const float x0 = ox + fc.x * sx, x1 = x0 + fc.w * sx;
+                const float y0 = oy + fc.y * sy, y1 = y0 + fc.h * sy;
+                if (x1 < org.x || x0 > org.x + vw || y1 < org.y || y0 > org.y + vh)
+                    continue;
+                const AtlasRect& a = image.uv[v];
+                const float u0 = (float)a.x / image.tex_w + iu;
+                const float u1 = (float)(a.x + a.w) / image.tex_w - iu;
+                const float v0 = (float)a.y / image.tex_h + iv;
+                const float v1 = (float)(a.y + a.h) / image.tex_h - iv;
+                const ImVec2 quad[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+                const ImVec2 uv[4] = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
+                const int t = fc.turns & 3;  // Quarter turns clockwise.
+                dl->AddImageQuad((ImTextureID)(intptr_t)image.tex,
+                                 quad[0], quad[1], quad[2], quad[3],
+                                 uv[(4 - t) & 3], uv[(5 - t) & 3],
+                                 uv[(6 - t) & 3], uv[(7 - t) & 3], tint);
+            }
+        };
+        if (!overlay || opacity < 1.0f) layer(p, IM_COL32_WHITE);
+        if (overlay && opacity > 0.0f)
+            layer(*overlay, IM_COL32(255, 255, 255, (int)std::lround(opacity * 255.0f)));
         if (point) dl->AddCallback(pio.DrawCallback_SetSamplerLinear, nullptr);
         dl->PopClipRect();
 
-        // The wheel and the drag are applied ONCE per frame, after both panes
-        // (see draw_panes): handling them per pane would double every delta on
-        // a drag that leaves one pane hovered.
         if (ImGui::IsItemHovered()) {
             _hot = true;
             _hot_min = org;
@@ -995,6 +1083,25 @@ int ImageCompare::collect(Block* out) const {
 }
 
 void ImageCompare::draw_panes(const ImVec2& avail) {
+    _hot = false;
+    if (_blend) {
+        if ((blends_error(_blend_pair) && _shot.err_map.empty()) ||
+            (_blend_pair == DepthRender && (_shot.gt_depth.empty() || _shot.render_depth.empty())) ||
+            (_blend_pair == NormalRender && (_shot.gt_normal.empty() || _shot.render_normal.empty()))) {
+            centered_note(msg::viewport_rendering);
+            return;
+        }
+        const Pane* bases[BlendPairCount] = {&_gt, &_gt, &_render, &_gt_depth, &_gt_normal};
+        const Pane* overlays[BlendPairCount] = {&_render, &_err_map, &_err_map,
+                                                &_render_depth, &_render_normal};
+        const Pane& base = *bases[_blend_pair];
+        const Pane& overlay = *overlays[_blend_pair];
+        draw_pane(base, avail, "##blend", blend_label(_blend_pair).c_str(), &overlay,
+                  _blend_amount[_blend_pair] / 100.0f);
+        handle_view_input();
+        return;
+    }
+
     Block blocks[4];
     const int n = collect(blocks);
     const bool lone = blocks[n - 1].n == 1;
@@ -1026,7 +1133,6 @@ void ImageCompare::draw_panes(const ImVec2& avail) {
         cur.y + std::max(0.0f, (avail.y - g.rows * step_y +
                                 st.ItemSpacing.y) * 0.5f));
 
-    _hot = false;
     int cell_y = 0;
     for (int first = 0; first < n; first += g.bc) {
         const int last = std::min(first + g.bc, n);
@@ -1047,12 +1153,13 @@ void ImageCompare::draw_panes(const ImVec2& avail) {
                 const float oy = b.n == 2 ? (float)(k * (g.pair_h - 1))
                                           : (tall - 1) * 0.5f;
                 ImGui::SetCursorPos(ImVec2(x + ox * step_x, y + oy * step_y));
-                draw_pane(*b.pane[k], box, *b.caption[k]);
+                draw_pane(*b.pane[k], box, b.caption[k]->id, b.caption[k]->get());
             }
             x += (b.n == 2 ? g.pair_w : 1) * step_x;
         }
         cell_y += tall;
     }
+    // Apply input once after all panes; handling it per pane would multiply drag deltas.
     handle_view_input();
 }
 
@@ -1100,12 +1207,9 @@ void ImageCompare::draw(bool training, int step) {
     draw_toolbar(training);
     handle_keys();
 
-    // Re-request when the selection changed, and -- while training -- often
-    // enough to follow the optimization without taking much of it. Paced in
-    // ITERATIONS from the measured cost of a job against the cost of a step,
-    // so the share it takes does not depend on how fast the dataset trains.
-    const Job want{_index, _color_correct, _source_gt,
-                   _show_error && _has_error_map};
+    // Pace refreshes in iterations, keeping preview work near 8% of training time.
+    const Job want{_index, _color_correct, _source_gt && faces() == 1,
+                   _has_error_map && (_blend ? blends_error(_blend_pair) : _show_error)};
     bool follow = false;
     if (training && _live && _rendered_step >= 0 && step >= 0) {
         const int interval = (_job_secs > 0 && _step_secs > 0)
@@ -1114,7 +1218,7 @@ void ImageCompare::draw(bool training, int step) {
             : 50;
         follow = step - _rendered_step >= interval;
     }
-    if (!_in_flight && (_dirty || follow || !(want == _requested))) {
+    if (!_in_flight && (_dirty || follow || !_requested.covers(want))) {
         _dirty = false;
         _requested = want;
         submit(want);

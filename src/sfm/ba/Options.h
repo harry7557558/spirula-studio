@@ -85,6 +85,7 @@ struct SolverCheckpoint {
 
 struct SolverOptions {
     RealCfg real = RealCfg::F64;
+    bool fix_rotations = false;
     float loss_param = 1.0f;      // Huber delta / Cauchy c (unused by trivial loss)
     int max_iters = 50;
     double init_damping = 1e-2;

@@ -1,18 +1,7 @@
 #pragma once
 
-// ViewportPanel -- the native 3D viewport, with two backends behind the
-// browser-identical NavCamera navigation (see NavCamera.h: four modes,
-// mouse / keyboard / touch-via-OS-pointer / gamepad input):
-//
-//   Preview: pure-GL sparse point cloud + camera frusta (PreviewRenderer),
-//            shown as soon as a dataset is parsed, before training.
-//   Engine:  the shared RenderWorker (same latest-wins engine render path
-//            as the web viewer) once training has set up the engine; all
-//            web-viewer camera models (pinhole / fisheye-equidistant /
-//            fisheye-equisolid / equirectangular) with per-model FOV.
-//
-// GUI thread only. attach*() after the corresponding phase; detach() BEFORE
-// the session it renders from is destroyed.
+// Native viewport over GL previews or RenderWorker engine renders, with NavCamera navigation.
+// GUI thread only; detach before destroying the rendered session.
 
 #include "app/webviewer/RenderWorker.h"
 #include "core/ColorSpace.h"
@@ -94,6 +83,8 @@ public:
             apply_color_space,
         std::function<void()> on_primitive_changed);
     void detach();
+    // A saved placement can change the frame without changing element counts.
+    void invalidate_framing() { _framed_key.clear(); }
     bool attached() const { return _mode == Mode::Engine; }
 
     // Hide the controls the view link makes shared -- navigation, camera
@@ -122,6 +113,15 @@ public:
                      int& camera_model, float eye[3]) const;
     // Where the last draw put the image on screen, in ImGui coordinates.
     void image_rect(float& x, float& y, float& w, float& h) const;
+    struct WipeSource {
+        const ViewportPanel* panel;
+        std::string name;
+    };
+    // Sources include this panel first. Four sources use X/Y splits;
+    // otherwise splits are ordered fractions across the image.
+    void set_wipe(std::vector<WipeSource> sources = {}, std::vector<float>* splits = nullptr);
+    void render_only(const ImVec2& avail);
+    void last_avail(float& w, float& h) const { w = _last_avail_w; h = _last_avail_h; }
     // The same pose in the SHARED frame the camera navigates, which is where
     // a placement is dragged: the model moves through it, the grid does not.
     void nav_camera(int W, int H, float w2c[12], float& fx, float& fy,
@@ -326,13 +326,24 @@ private:
     void draw_controls(bool engine);
     void handle_input(float item_h);         // mouse/keys/gamepad on last item
     void draw_engine(bool training, const ImVec2& avail, int step);
+    void pump_engine(bool training, const ImVec2& avail, int step);
+    unsigned pump_preview(const ImVec2& avail, int& W, int& H);
     void draw_preview(const ImVec2& avail);
+    void draw_wipe(const ImVec2& tl, const ImVec2& size) const;
+    bool wipe_input(const ImVec2& tl, const ImVec2& size);
+    std::vector<WipeSource> _wipe_sources;
+    std::vector<float>* _wipe_splits = nullptr;
+    int _wipe_drag = -1;
+    float _last_avail_w = 0.0f, _last_avail_h = 0.0f;
+    unsigned _preview_tex = 0;
 
     Mode _mode = Mode::None;
     RenderWorker _worker;
     PreviewRenderer _preview;
 
     // Browser-identical camera + navigation.
+    double _focus_until = 0;
+    NavCamera _focus_pose;
     NavCamera _cam;
     NavCamera _home;                 // pose restored by Reset view
     float _home_dist = 3.0f;         // scene radius (near/far for preview)

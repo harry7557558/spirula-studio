@@ -237,6 +237,10 @@ struct SplatGrad {
 
 // Adam moment + densify aux state (pool-backed, persistent across steps).
 struct SplatOptim {
+    ProjectiveDepthOptim observe_projective;
+    bool projective_one_center = false;
+    int32_t projective_center_id = -1, projective_step_center_id = -1;
+    bool projective_step_one_center = false, projective_step_photometric = false;
     bool initialized = false;
     // SH Adam-state quantization bit depth (32 = off, 4 or 8 = packed). When
     // off, g1_features_sh / g2_features_sh hold full fp32 moments. When 4/8,
@@ -625,6 +629,10 @@ struct VisitStats {
 };
 
 struct EngineState {
+    DeviceVector<float4> projective_state, projective_centers;
+    DeviceVector<float> projective_information;
+    DeviceVector<float> projective_angular_bound;
+    std::vector<float4> projective_centers_host;
     // Top-level scalars + flags shared across sections.
     std::string primitive;
     int64_t cur_num_splats = 0;

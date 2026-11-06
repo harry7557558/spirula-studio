@@ -6,8 +6,8 @@
 // a single distant SfM outlier inflated the box, collapsed all points into
 // one cell, and degenerated the scan to O(N^2). The kd-tree median split is
 // insensitive to outliers and exact.
-//
-// Self-contained, no dependencies beyond the standard library.
+
+#include "core/HardwareThreads.h"
 
 #include <algorithm>
 #include <atomic>
@@ -138,7 +138,7 @@ inline std::vector<float> mean_knn_dist(
 
     KdTree3 tree(xyz.data(), n);
 
-    int n_threads = (int)std::max(1u, std::thread::hardware_concurrency());
+    int n_threads = (int)std::max(1u, spirula::hardware_threads());
     n_threads = (int)std::min<int64_t>(n_threads, n);
     std::atomic<int64_t> next(0);
     const int64_t CHUNK = 1024;

@@ -252,8 +252,8 @@ struct SfmConfig {
     std::string reuse_matches = "auto";
 
     // Runtime.
-    int threads = 0;           // host worker pools; 0 = hardware_concurrency
-    int decode_threads = 0;    // image decode pool; 0 = hardware_concurrency
+    int threads = 0;           // host worker pools; 0 = hardware_threads()
+    int decode_threads = 0;    // image decode pool; 0 = hardware_threads()
     int decode_budget_mb = 0;  // 0 = ImageLoadOptions default
     // Input spelling; downstream options carry the canonical UUID below.
     int device = -1;
@@ -578,7 +578,7 @@ struct SfmConfig {
       "mapper", 0, 0, "", rank_by_visibility)                                                      \
     F(mapper.seed_blocking, "seed-blocking", CMD_AUTO | CMD_MAP, Tier::Advanced, "mapper", 0, 0,   \
       "", seed_blocking)                                                                           \
-    F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up",    \
+    F(mapper_mode, "mapper", CMD_AUTO | CMD_MAP, Tier::Basic, "mapper", 0, 0, "flat|bottom-up|global", \
       mapper)                                                                                      \
     F(bup.partition.leaf_max_images, "bup-atom-size", CMD_AUTO | CMD_MAP, Tier::Advanced,          \
       "mapper", 8, 100000, "", bup_atom_size)                                                      \

@@ -76,8 +76,8 @@ bool save_depth_png16(const std::string& path, const uint16_t* data, int width,
 
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
-    const bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
-    std::fclose(f);
+    bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
+    if (std::fclose(f) != 0) ok = false;
     if (!ok) std::remove(path.c_str());
     return ok;
 }

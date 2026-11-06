@@ -9,6 +9,7 @@
 
 #include "core/ColorSpace.h"
 #include "core/HalfFloat.h"
+#include "core/HardwareThreads.h"
 #include "core/IccProfile.h"
 #include "core/MappedFile.h"
 #include "external/miniz.h"
@@ -580,7 +581,7 @@ std::string Decoder::decode_chunk(size_t k, std::vector<uint8_t>& raw,
 }
 
 size_t worker_count(int threads, size_t n) {
-    const unsigned hc = std::thread::hardware_concurrency();
+    const unsigned hc = spirula::hardware_threads();
     const size_t want = threads > 0 ? (size_t)threads : (hc > 0 ? (size_t)hc : 1);
     return std::max<size_t>(1, std::min(want, n));
 }

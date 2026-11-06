@@ -61,10 +61,12 @@ inline GeoOrigin telemetryGeoOrigin(const std::vector<SensorCapture>& caps,
     return {true, meanGeodetic(all), every_alt ? alt : ""};
 }
 
+// What the IMU settles: `Up` skips its scale. The GPS is `gps`'s, either way.
 enum class SensorMode { Auto, Up, None };
 
 struct SensorGaugeOptions {
     SensorMode mode = SensorMode::Auto;
+    bool gps = true;                // scale, heading and place from the GPS log
     bool gps_full = false;          // fit altitude too (D75 says not to)
     double gps_max_error = 0;       // metres, the RANSAC radius (0: the fixes' own scatter) ...
     double gps_max_error_frac = 0;  // ... or this fraction of the fixes' RMS radius
@@ -173,8 +175,8 @@ public:
                 consensus(out);
                 imuScale(out);
             }
-            gpsScale(out);
         }
+        if (_opt.gps) gpsScale(out);
         assemble(out);
         return out;
     }
@@ -555,7 +557,7 @@ private:
             out.applied = true;
             out.metric = false;
             out.scale = out.T.scale;
-            out.no_scale = _opt.mode != SensorMode::Auto ? SensorNoScale::NotAsked
+            out.no_scale = _opt.mode != SensorMode::Auto && !_opt.gps ? SensorNoScale::NotAsked
                            : (out.scale_imu_sigma > 0 && !imu) ? SensorNoScale::ImuWeak
                            : (out.gps_frames > 0 && !out.gps.ok) ? SensorNoScale::GpsRefused
                                                                   : SensorNoScale::NoSource;

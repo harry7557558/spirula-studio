@@ -683,25 +683,28 @@ int cmdSelftest(int argc, char** argv) {
         // B is A perturbed, not independent noise: 256 random unit vectors are
         // all nearly orthogonal, so an independent B produces a handful of
         // matches and exercises almost none of the reduction.
-        FeatureSet fb = fa;
-        fb.keypoints.resize(280);
-        fb.descriptors.resize((size_t)280 * 256 * sizeof(float));
-        {
-            float* d = reinterpret_cast<float*>(fb.descriptors.data());
-            uint32_t st = 4242u;
-            for (uint32_t i = 0; i < 280; i++) {
+        auto perturb = [&fa](uint32_t n, uint32_t seed) {
+            FeatureSet f = fa;
+            f.keypoints.resize(n);
+            f.descriptors.resize((size_t)n * 256 * sizeof(float));
+            float* d = reinterpret_cast<float*>(f.descriptors.data());
+            uint32_t st = seed;
+            for (uint32_t i = 0; i < n; i++) {
                 double sq = 0;
                 for (int c = 0; c < 256; c++) {
                     st = st * 1664525u + 1013904223u;
-                    const float n = ((float)((st >> 8) & 0xffff) / 32768.0f - 1.0f) * 0.05f;
-                    const float v = d[(size_t)i * 256 + c] + n;
+                    const float e = ((float)((st >> 8) & 0xffff) / 32768.0f - 1.0f) * 0.05f;
+                    const float v = d[(size_t)i * 256 + c] + e;
                     d[(size_t)i * 256 + c] = v;
                     sq += (double)v * v;
                 }
                 const float inv = (float)(1.0 / std::sqrt(sq));
                 for (int c = 0; c < 256; c++) d[(size_t)i * 256 + c] *= inv;
             }
-        }
+            return f;
+        };
+        FeatureSet fb = perturb(280, 4242u);
+        FeatureSet fc = perturb(250, 777u);
 
         MatchOptions mo;
         mo.device = opt.device;
@@ -757,6 +760,25 @@ int cmdSelftest(int argc, char** argv) {
         printf("  matcher 256-D vs host reference: %zu / %zu matches -> %s\n", gm.size(),
                ref.size(), ok ? "ok" : "BAD");
         if (!ok) fails++;
+
+        // Cross-checked pairs in one submit overlap, each folding its own
+        // colPartial region; every pair must come out as it does submitted alone.
+        const std::vector<FeatureSet> sets{fa, fb, fc};
+        const std::vector<std::pair<uint32_t, uint32_t>> bp{{0, 1}, {1, 0}, {0, 2},
+                                                            {2, 1}, {1, 2}, {2, 0}};
+        BruteForceMatcher batched(mo), alone(mo);
+        std::vector<std::vector<FeatureMatch>> all, one;
+        batched.matchBatch(sets, bp, 0, bp.size(), all);
+        bool bok = all.size() == bp.size();
+        for (size_t k = 0; k < bp.size() && bok; k++) {
+            alone.matchBatch(sets, bp, k, k + 1, one);
+            bok = !one[0].empty() && one[0].size() == all[k].size();
+            for (size_t i = 0; i < one[0].size() && bok; i++)
+                bok = one[0][i].idx1 == all[k][i].idx1 && one[0][i].idx2 == all[k][i].idx2;
+        }
+        printf("  matcher cross-check, %zu pairs batched vs one per submit -> %s\n", bp.size(),
+               bok ? "ok" : "BAD");
+        if (!bok) fails++;
     }
 
     // 7) brute-force matcher: self-match should be (near-)identity

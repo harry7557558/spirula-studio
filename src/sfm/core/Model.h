@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -15,6 +16,8 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "sfm/core/Camera.h"
@@ -34,7 +37,7 @@ struct TrackElement {
 struct Point3D {
     Vec3 xyz;
     uint8_t rgb[3] = {128, 128, 128};
-    double error = 0;
+    double error = -1;
     std::vector<TrackElement> track;
 };
 
@@ -119,9 +122,48 @@ struct Reconstruction {
         return id;
     }
 
+    void updatePointErrors();
     void writeBinary(const std::string& dir) const;
     static Reconstruction readBinary(const std::string& dir);
 };
+
+inline void Reconstruction::updatePointErrors() {
+    using ImageCamera = std::pair<const Image*, const Camera*>;
+    std::unordered_map<uint32_t, ImageCamera> image_cameras;
+    image_cameras.reserve(images.size());
+    for (const auto& kv : images) {
+        if (!kv.second.registered) continue;
+        auto camera = cameras.find(kv.second.camera_id);
+        if (camera != cameras.end()) image_cameras.emplace(kv.first, ImageCamera{&kv.second, &camera->second});
+    }
+    for (auto& kv : points3D) {
+        Point3D& point = kv.second;
+        double sum = 0;
+        size_t count = 0;
+        for (const TrackElement& observation : point.track) {
+            auto found = image_cameras.find(observation.image_id);
+            if (found == image_cameras.end()) continue;
+            const Image& image = *found->second.first;
+            const Camera& camera = *found->second.second;
+            if (observation.point2D_idx >= image.points2D.size()) continue;
+            const Vec2& keypoint = image.points2D[observation.point2D_idx];
+            if (!std::isfinite(keypoint.x) || !std::isfinite(keypoint.y)) continue;
+            Vec3 p = mul(image.pose.R, point.xyz) + image.pose.t;
+            if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) continue;
+            if (camera.wideFov()) {
+                if (!(p.dot(camera.bearing(keypoint)) > 0)) continue;
+            } else if (!(p.z >= 1e-8)) {
+                continue;
+            }
+            Vec2 pixel = camera.project(p);
+            double error = std::hypot(pixel.x - keypoint.x, pixel.y - keypoint.y);
+            if (!std::isfinite(error)) continue;
+            sum += error;
+            count++;
+        }
+        point.error = count ? sum / count : -1;
+    }
+}
 
 // A copy holding only `keep`, with the tracks trimmed to match: the operation
 // every "this model is really two models" decision ends in (D45). Images not

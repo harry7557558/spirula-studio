@@ -244,11 +244,12 @@ export function buildFrustums(cameras) {
   const colors = new Uint8Array(total*3);
   const ranges = new Array(N);
   const pickR = new Float32Array(N);
-  const DIM = FRUSTUM_COLOR.map(c => Math.round(c*0.5));   // interior gridlines
 
   let vp = 0;   // vertex pointer
   for (let i = 0; i < N; i++) {
     const cam = cameras[i];
+    const color = cam.heldOut ? [255, 89, 166] : FRUSTUM_COLOR;
+    const dim = color.map(c => Math.round(c*0.5));
     const tmpl = camTmpl[i];
     pickR[i] = tmpl.maxR;
 
@@ -277,7 +278,7 @@ export function buildFrustums(cameras) {
     };
     for (const line of tmpl.lines) {
       const pts = line.pts.map(off);
-      const col = line.dim ? DIM : FRUSTUM_COLOR;
+      const col = line.dim ? dim : color;
       const n = pts.length;
       for (let j = 0; j + 1 < n; j++) { push(pts[j], col); push(pts[j+1], col); }
       if (line.closed) { push(pts[n-1], col); push(pts[0], col); }
@@ -287,8 +288,8 @@ export function buildFrustums(cameras) {
     for (const p of tmpl.anchors) {
       const o = off(p);
       for (let j = 0; j < ASEG; j++) {
-        push([o[0]*j/ASEG, o[1]*j/ASEG, o[2]*j/ASEG], FRUSTUM_COLOR);
-        push([o[0]*(j+1)/ASEG, o[1]*(j+1)/ASEG, o[2]*(j+1)/ASEG], FRUSTUM_COLOR);
+        push([o[0]*j/ASEG, o[1]*j/ASEG, o[2]*j/ASEG], color);
+        push([o[0]*(j+1)/ASEG, o[1]*(j+1)/ASEG, o[2]*(j+1)/ASEG], color);
       }
     }
     ranges[i] = { start, count: vp - start };

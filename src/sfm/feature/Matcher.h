@@ -219,10 +219,9 @@ private:
                     std::vector<uint32_t>* counts, size_t outBase) {
         ensureResident(feats, pairs, begin, end);
 
-        // Lay out this batch's results: each dispatch writes nQuery uint4s, and
-        // the whole region comes back in one download. The column side (rB) is
-        // only ever read by the cross-check, so without it neither the
-        // reduce_cols dispatch nor its result slots are paid for.
+        // Lay out this batch's results: each dispatch writes nQuery uint4s, all
+        // downloaded at once. The column side (rB) exists only for the
+        // cross-check, so without it neither reduce_cols nor its slots are paid.
         const bool cc = opt_.cross_check;
         struct Slot { uint32_t a, b, na, nb; uint32_t oa, ob; };
         std::vector<Slot> slots;
@@ -251,10 +250,17 @@ private:
             ctx_.barrier(cb);
             normDirty_ = {0, 0};
         }
-        // One matrix per pair, then a fold of its column candidates. The two
-        // share colPartial, so they are separated by a barrier and consecutive
-        // pairs are too; each dispatch already fills the GPU, and the fold is
-        // tiny next to the matrix.
+        // One matrix per pair, then a fold of its column candidates. A matrix is
+        // only na/64 workgroups, too few to keep the device busy, so up to
+        // colSlots_ of them overlap, each with its own colPartial region.
+        std::vector<Push> inFlight;
+        auto fold = [&] {
+            if (inFlight.empty()) return;
+            ctx_.barrier(cb);
+            for (const Push& q : inFlight) ctx_.dispatch(cb, "reduce_cols", (q.u3 + 63) / 64, q);
+            ctx_.barrier(cb);  // the folds read regions the next matrices write
+            inFlight.clear();
+        };
         for (const Slot& s : slots) {
             if (s.na == 0 || s.nb == 0) continue;
             // Workgroups for the cross-check path, which is 64 queries wide;
@@ -270,24 +276,21 @@ private:
             p.u5 = s.ob;
             p.u6 = numWG;
             if (cc) {
-                // colPartial is shared between pairs, so each pair's matrix and
-                // column fold must retire before the next pair starts.
+                p.u7 = (uint32_t)(inFlight.size() * colWords_);
                 ctx_.dispatch(cb, "match_pair", numWG, p);
-                ctx_.barrier(cb);
-                ctx_.dispatch(cb, "reduce_cols", (s.nb + 63) / 64, p);
-                ctx_.barrier(cb);
+                inFlight.push_back(p);
+                if (inFlight.size() == colSlots_) fold();
             } else {
-                // Row-only dispatches write disjoint result regions and read
-                // nothing another pair writes: the whole batch runs with no
-                // barriers, which is what keeps thousands of small scoring
-                // dispatches from serializing on pipeline drains.
+                // Disjoint result regions, and nothing another pair writes: the
+                // batch runs barrier-free, so thousands of small scoring
+                // dispatches do not serialize on pipeline drains.
                 ctx_.dispatch(cb, "match_rows", (s.na + kRowThreads - 1) / kRowThreads, p);
             }
         }
-        // Readback in the same command buffer as the dispatches: one submit and
-        // one fence per chunk instead of two. Results are read straight out of
-        // the mapped staging buffer, so nothing is copied twice either. A chunk
-        // too large for the staging buffer falls back to the chunked download.
+        fold();
+        // Readback in the dispatches' command buffer (one submit and fence per
+        // chunk), read straight out of the mapped staging buffer; a chunk too
+        // large for it falls back to the chunked download.
         const VkDeviceSize bytes = (VkDeviceSize)outCount * 16;
         const bool fused = bytes <= VkContext::stagingCapacity();
         if (fused) {
@@ -358,6 +361,10 @@ private:
     // launch four times the workgroups, each redoing that streaming for
     // queries that are not even in range.
     static constexpr uint32_t kRowThreads = 256;
+    // colPartial VRAM for the cross-check pairs in flight, 16 at 8192 features.
+    // Exhaustive SIFT matching of COLMAP's South Building on a Radeon AI PRO R9700:
+    // 1.2 ms a pair, against 5.4 with one pair in flight.
+    static constexpr uint64_t kColBudgetBytes = 64ull << 20;
 
     // One byte per component either way: uint8 as SIFT writes them, or f32
     // normalized and quantized on upload (see kQuantHalfRange).
@@ -420,10 +427,9 @@ private:
         return n;
     }
 
-    // All three buffers and the descriptor set must exist before the pipelines
-    // load: createDescriptors is what builds the pipeline layout the compute
-    // pipelines are created against. Everything is sized once, from the whole
-    // feature set, so nothing is reallocated underneath a live pipeline.
+    // The buffers and descriptor set must exist before the pipelines load:
+    // createDescriptors builds the layout they are created against. All sized
+    // once, from the whole feature set, so nothing moves under a live pipeline.
     void ensureSetup(const std::vector<const FeatureSet*>& feats) {
         // Every image empty: nothing will be matched, but the buffers are still
         // sized and divided by, so pick the ordinary width.
@@ -434,10 +440,9 @@ private:
             maxCount = std::max<uint64_t>(maxCount, f->count());
         }
         if (setup_) {
-            // Buffers are allocated once and VkContext frees only at destruction
-            // (no per-buffer regrow), so a second feature set that needs more
-            // room cannot be served. Say so instead of overrunning: one
-            // matcher per feature set.
+            // VkContext frees buffers only at destruction, so a second feature
+            // set that needs more room cannot be served: one matcher per feature
+            // set, said instead of overrunning.
             if (maxCount > setupMaxCount_)
                 throw std::runtime_error(
                     "matcher was sized for a smaller feature set; use a fresh BruteForceMatcher");
@@ -457,15 +462,16 @@ private:
         // results, all at the largest feature count.
         resultCap_ = (uint32_t)std::max<uint64_t>(
             1, (uint64_t)std::max(1, opt_.batch_pairs) * 2 * std::max<uint64_t>(maxCount, 1));
-        // One pair's column candidates: ceil(nA/64) workgroups x nB columns.
-        // Reused pair to pair, so it is sized for the largest single pair.
+        // Column candidates: ceil(nA/64) workgroups x nB columns per pair in
+        // flight, sized for the largest pair.
         const uint64_t mc = std::max<uint64_t>(maxCount, 1);
-        uint64_t colCap = ((mc + 63) / 64) * mc;
+        colWords_ = ((mc + 63) / 64) * mc;
+        colSlots_ = std::max<uint64_t>(1, kColBudgetBytes / (colWords_ * 4));
 
         bDesc_ = ctx_.createBuffer((VkDeviceSize)descCap_ * descBytes());
         bNorm_ = ctx_.createBuffer((VkDeviceSize)descCap_ * 4);
         bResult_ = ctx_.createBuffer((VkDeviceSize)resultCap_ * 16);
-        bCol_ = ctx_.createBuffer((VkDeviceSize)colCap * 4);
+        bCol_ = ctx_.createBuffer((VkDeviceSize)(colWords_ * 4 * colSlots_));
         ctx_.createDescriptors({bDesc_.buf, bNorm_.buf, bResult_.buf, bCol_.buf});
 
         size_t words = 0;
@@ -564,6 +570,7 @@ private:
     std::pair<uint32_t, uint32_t> normDirty_{0, 0};  // descriptor range awaiting ||d||^2
     int desc_words_ = 0;                      // 32 or 64, from the first FeatureSet
     uint32_t used_ = 0, descCap_ = 0, resultCap_ = 0;
+    uint64_t colWords_ = 0, colSlots_ = 1;  // colPartial words per pair, pairs in flight
     uint64_t setupMaxCount_ = 0;  // largest feature count the buffers were sized for
 };
 

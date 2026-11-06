@@ -19,6 +19,7 @@
 #include "app/gui/mask/MaskSession.h"
 #include "app/gui/mask/MaskSlideshow.h"
 #include "app/gui/mask/MaskWindow.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageOrient.h"
 #include "core/MaskMargin.h"
 #include "core/SourcePath.h"
@@ -4339,7 +4340,7 @@ void bench_8k(const char* dir) {
         const int depth = mk::slide_depth(mk::slide_picture_bytes(src_w, src_h, target), 100);
         mk::SlidePrefetch p;
         p.set_target(target);
-        const int threads = mk::slide_threads(src_w, src_h, std::thread::hardware_concurrency());
+        const int threads = mk::slide_threads(src_w, src_h, spirula::hardware_threads());
         p.start(frames, threads);
         gui::Picture pic;
         // The first kWarm takes fill an empty ring from cold. Timing them puts
@@ -7372,7 +7373,7 @@ void test_slide_prefetch_keeps_buffers() {
     }
     const size_t one = mk::slide_picture_bytes(64, 48, 32);
     const int depth = 3;
-    const int threads = mk::slide_threads(64, 48, std::thread::hardware_concurrency());
+    const int threads = mk::slide_threads(64, 48, spirula::hardware_threads());
     mk::SlidePrefetch p;
     p.set_target(32);
     p.set_byte_budget_for_test((size_t)depth * one);
@@ -7832,7 +7833,7 @@ void test_session_slideshow_threads_from_largest_frame() {
     write_jpg_rgb(images / "cam1" / "c.jpg", 7680, 3840, big);
     std::error_code ec;
     fs::create_directories(masks, ec);
-    const unsigned hw = std::thread::hardware_concurrency();
+    const unsigned hw = spirula::hardware_threads();
     const int want = mk::slide_threads(7680, 3840, hw);
     check(want != mk::slide_threads(1920, 1080, hw),
           "mixed sizes: fixture: this machine budgets 8K and 1080p differently");

@@ -112,6 +112,8 @@ HEADER_SOURCES = dict([
     _fam("kernels/raster", "RasterizationEval3DFwd", "RasterizationEval3DFwd.cu"),
     _fam("kernels/raster", "RasterizationEval3DBwd", "RasterizationEval3DBwd.cu"),
 
+    _fam("kernels/optim", "ProjectiveDepth", "ProjectiveDepth.cu"),
+
     # Optimizer variants, split by function.
     _fam("kernels/optim", "Optimizer",
          "TensorSetZero.cu",           # set_zero_tensor

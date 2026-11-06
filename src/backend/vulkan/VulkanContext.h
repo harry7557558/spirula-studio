@@ -38,6 +38,8 @@ struct Capabilities {
     uint32_t subgroup_force = 0;      // SS_VK_SUBGROUP: one width for every kernel
     uint32_t max_push_constants = 128;
     uint32_t max_workgroup_invocations = 0;
+    uint32_t max_workgroup_size_x = 0;
+    uint32_t max_workgroup_subgroups = 0;
     uint32_t max_shared_memory = 0;
     VkDeviceSize non_coherent_atom_size = 64;
 };

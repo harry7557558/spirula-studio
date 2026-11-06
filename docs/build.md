@@ -25,7 +25,7 @@ Always build through the dev scripts.
 | `SsOptions.cmake` | options (`SS_BUILD_GUI`, `SS_DEBUG_SYMBOLS`, …), backend selection, tree paths (`SS_ROOT`, `SS_CSRC`, …) |
 | `SsSources.cmake` | `ss_collect_sources()` — expands `sources.txt` with `CONFIGURE_DEPENDS` |
 | `SsBackendCuda.cmake` | Torch probe, CUDA arch detection, flags, the `csrc` library, CUDA-side parity tools |
-| `SsBackendVulkan.cmake` | portable engine object lib, slangc + SPIR-V embed, `ss_backend_vulkan`, the Vulkan-side tests |
+| `SsBackendVulkan.cmake` | portable engine static library, slangc + SPIR-V embed, `ss_backend_vulkan`, the Vulkan-side tests |
 | `SsSlang.cmake` | `ss_find_slangc()` — pinned version, PATH lookup, fetch on miss |
 | `SsEmbed.cmake` | `ss_embed_file()` — bake a file into a byte-array header |
 | `SsApps.cmake` | the `spirula` executable — every tool the build has, in one binary (backend-agnostic) |
@@ -101,9 +101,10 @@ starts with no focal-length prior.
 
 Turning it on buys in-process GPU decoding and encoding: roughly 15× faster
 frame extraction (a 127-second 1080p30 clip in ten seconds rather than
-minutes), `spirula encode` for the render mode's videos, and no ffmpeg to
-install. A device without a video queue -- MoltenVK on every Mac -- decodes
-with ffmpeg even then.
+minutes), `spirula encode` for the render mode's videos, and no FFmpeg
+dependency for inputs supported by the device. Devices without a video queue
+(including MoltenVK on macOS) and unsupported codec profiles still decode
+with external FFmpeg.
 Nothing else in the build changes.
 
 If you distribute binaries, decide for your jurisdiction and your users before

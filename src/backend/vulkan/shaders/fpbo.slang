@@ -8,6 +8,7 @@
 // Spec IDs: 0..5 from proj_bwd_common.slang, this file's after, kDistortion
 // last.
 
+#include "shaders/projective_depth.slang"
 #define CudaDeviceExport ForceInline
 #include "aabb16.slang"
 #include "int64_compat.slang"
@@ -104,6 +105,13 @@ struct FpboParams {
     int* steps;            // per-splat steps (has_steps)
     uint* visit_counters;  // per-splat render counters (has_visit)
     // learning rates + regularizer weights (already divided by N host-side)
+    float4* depth_states;
+    float* depth_information;
+    float4* depth_centers;
+    int* depth_cameras;
+    float* depth_angular_bound;
+    float depth_lr, depth_angular_lr;
+    uint has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -237,6 +245,8 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     PbSplat s = {};
     PbGrads g = pb_grads_zero();
     bool regularize = true;
+    float projective_gradient = 0;
+    bool projective_active = false;
     if (inside) {
         s = pb_load_splat(p.means, p.quats, p.scales, p.opacities,
                           p.features_dc, gid);
@@ -273,6 +283,19 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.has_visit != 0)
             p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
         regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+
+        projective_active = p.has_depth != 0 && p.radii[gid] > 0
+            && dot(g.v_mean,g.v_mean)+dot(g.v_scale,g.v_scale) > 0;
+        if (projective_active) {
+            float anchor_id = p.depth_states[gid].x;
+            projective_active = anchor_id > 0;
+            if (projective_active) {
+                float3 projective_anchor = p.depth_centers[max(int(anchor_id),1)-1].xyz;
+                float3 projective_camera = p.depth_centers[p.depth_cameras[0]].xyz;
+                projective_gradient = projective_depth_gradient(projective_anchor,projective_camera,
+                    s.mean,g.v_mean,g.v_scale,p.depth_photo != 0);
+            }
+        }
 
         // per-splat regularizers -> gradient
         float v_losses[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
@@ -480,6 +503,20 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         }
     }
 
+    if (projective_active) {
+        float4 projective_state = p.depth_states[gid];
+        float3 projective_anchor = p.depth_centers[max(int(projective_state.x),1)-1].xyz;
+        float3 projective_camera = p.depth_centers[p.depth_cameras[0]].xyz;
+        float3 mean = float3(p.means[3*gid],p.means[3*gid+1],p.means[3*gid+2]);
+        float3 scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
+        projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
+            p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
+            projective_state,mean,scale,p.depth_has_bound != 0 ? p.depth_angular_bound[gid] : -1.f);
+        p.means[3*gid] = mean.x; p.means[3*gid+1] = mean.y; p.means[3*gid+2] = mean.z;
+        p.scales[3*gid] = scale.x; p.scales[3*gid+1] = scale.y; p.scales[3*gid+2] = scale.z;
+        p.depth_states[gid] = projective_state;
+    }
+
     // update features_dc
     if (inside) {
         float3 v_dc = g.v_dc;
@@ -667,7 +704,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         const int sb_c0 = 3 * int(p.sb_base);
 
         if (inside) {
-            for (int j = 0; j < num_sh; ++j) {
+            [ForceUnroll]
+            for (int j = 0; j < kVcMaxShCoeffs; ++j) {
+                if (j >= num_sh) continue;
                 float3 g1v, g2v;
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ch++) {
@@ -788,7 +827,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         uint* wp_v = elem_at(p.sh_value_packed, sh_base >> 1);
         if (inside) {
             uint pend_s = 0, pend_v = 0, w = 0u;
-            for (int j = 0; j < num_sh; ++j) {
+            [ForceUnroll]
+            for (int j = 0; j < kVcMaxShCoeffs; ++j) {
+                if (j >= num_sh) continue;
                 [ForceUnroll]
                 for (int ch = 0; ch < 3; ++ch) {
                     uint2 q = qadam_quantize_us<8>(u_sh_vals[j][ch],

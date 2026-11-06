@@ -10,13 +10,16 @@
 #include "app/AppPaths.h"
 #include "app/CrashLog.h"
 #include "app/Tools.h"
+#include "checkpoint/BackgroundExport.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Cli.h"
+#include "i18n/catalog/BackgroundExport.h"
 #include "i18n/catalog/Dense.h"
 #ifdef SS_HAVE_LPIPS
 #include "app/EvalLpips.h"
 #endif
 #ifdef SS_TOOL_SAM
+#include "app/InferenceWorkerDevices.h"
 #include "app/ModelLicenses.h"
 #include "app/cli/LicenseCli.h"   // --accept-license: the inference layer is in this build
 #include "nn/Device.h"
@@ -144,7 +147,8 @@ void print_usage() {
     std::printf("  spirula <command> [options]\n\n");
     std::printf("%s\n", cmsg::usage_commands.get());
     for (const Tool& t : tools())
-        std::printf("  %-8s %s\n", t.name, t.summary->get());
+        std::printf("  %-10s %s\n", t.name, t.summary->get());
+    std::printf("  %-10s %s\n", "export-bg", spirula::i18n::msg::background_export::summary.get());
     std::printf("\n%s\n", cmsg::usage_per_command_help.get());
     std::printf("\n%s\n\n%s", cmsg::usage_lang.get(),
                 spirula::i18n::language_list().c_str());
@@ -210,6 +214,7 @@ int main(int argc, char** argv) {
     // accepts a model licence. Removed from argv, so no tool's parser sees it;
     // the gate installed here answers every command that fetches a licensed model.
     try {
+        app::workers_per_gpu();   // a malformed SS_WORKERS_PER_GPU fails every command here
         app::register_model_licenses();
         app::install_license_gate();
         app::consume_accept_license_args(argc, argv);
@@ -254,6 +259,25 @@ int main(int argc, char** argv) {
 
     if (argc > 1) {
         const std::string a = argv[1];
+        if (a == "export-bg" || a == "export_bg") {
+            namespace bgmsg = spirula::i18n::msg::background_export;
+            using spirula::i18n::format;
+            const bool help = argc == 3 && (std::string(argv[2]) == "--help" || std::string(argv[2]) == "-h");
+            if (argc < 3 || argc > 4 || help) {
+                std::fprintf(help ? stdout : stderr, "%s\n", format(bgmsg::usage,
+                    {"spirula export-bg <checkpoint_dir|run_dir|state.tar> [output.webp]"}).c_str());
+                return help ? 0 : 1;
+            }
+            std::filesystem::path ckpt_dir = argv[2];
+            std::filesystem::path out_path = argc > 3 ? std::filesystem::path(argv[3])
+                : (ckpt_dir.filename() == "state.tar" ? ckpt_dir.parent_path() : ckpt_dir) / "background.webp";
+            if (ckpt::export_background_from_checkpoint(ckpt_dir, out_path)) {
+                std::printf("%s\n", format(bgmsg::saved, {out_path.string()}).c_str());
+                return 0;
+            }
+            std::fprintf(stderr, "%s\n", format(bgmsg::failed, {ckpt_dir.string(), out_path.string()}).c_str());
+            return 1;
+        }
         if (a == "help" || a == "--help" || a == "-h") {
             print_usage();
             return 0;

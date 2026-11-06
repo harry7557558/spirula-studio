@@ -31,6 +31,7 @@ namespace sfm {
 
 struct BundleOptions {
     RealCfg real = RealCfg::F64;
+    bool fix_rotations = false;
     int max_iters = 25;
     bool verbose = false;
     // Canonical uuid:<hex> of the device this solve runs on; "" = the shared
@@ -95,7 +96,7 @@ struct BundleOptions {
     // outlive one solve. The caller owns it and must keep (real, loss) fixed
     // across calls on the same context. Null = scoped context per call.
     VkContext* shared_ctx = nullptr;
-    // Host worker threads, for the `cpu` scalar; 0 = hardware_concurrency.
+    // Host worker threads, for the `cpu` scalar; 0 = hardware_threads().
     int threads = 0;
     // Rigs (sfm/core/Rig.h): with a table, every frame whose members have an
     // established calibration is one pose block and the member extrinsics are
@@ -399,6 +400,7 @@ inline BundleLayout buildBundle(Reconstruction& rec, const BundleOptions& bopt) 
 inline SolverOptions bundleSolverOptions(const BundleOptions& bopt) {
     SolverOptions sopt;
     sopt.real = bopt.real;
+    sopt.fix_rotations = bopt.fix_rotations;
     sopt.max_iters = bopt.max_iters;
     sopt.verbose = bopt.verbose;
     sopt.device_selector = bopt.device_selector;

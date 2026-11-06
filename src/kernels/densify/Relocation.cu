@@ -31,7 +31,8 @@ __global__ void relocate_with_long_axis_split_kernel(
     float2*__restrict__ densify_accum_buffer,
     int32_t* __restrict__ bias_correction_steps,
     uint32_t* __restrict__ visit_counters,
-    float* __restrict__ max_weight
+    float* __restrict__ max_weight,
+    float4* __restrict__ projective_state, float* __restrict__ projective_information
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_new_splats)
@@ -62,6 +63,11 @@ __global__ void relocate_with_long_axis_split_kernel(
         float w = max_weight[idx_src] * sigmoid(new_opac) / fmaxf(sigmoid(opac), 1e-12f);
         max_weight[idx_src] = w;
         max_weight[idx_dst] = w;
+    }
+
+    if (projective_state) {
+        projective_state[idx_dst] = projective_state[idx_src];
+        projective_information[idx_dst] = projective_information[idx_src];
     }
 
     // appearance - copy
@@ -263,6 +269,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     // Non-SH Adam-state quant: when enabled, each relocated dst splat gets
     // its packed bytes set to codec-encoded zero against the current bound.
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     int64_t max_relocate,
     int64_t* num_dead_out
@@ -340,7 +347,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
                 non_sh, \
                 densify_accum_buffer.data_ptr(), \
                 bias_correction_steps_ptr, visit_counters.data_ptr(), \
-                max_weight.data_ptr())
+                max_weight.data_ptr(), projective_state.data_ptr(), projective_information.data_ptr())
         if      (sh_optim_bits == 32) _DENSIFY_LAS_LAUNCH(float3, nullptr, false);
         else if (sh_optim_bits == 8)  _DENSIFY_LAS_LAUNCH(short3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
         else if (sh_optim_bits == 4)  _DENSIFY_LAS_LAUNCH(uchar3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
@@ -380,6 +387,7 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 ) {
     if (num_new_splats == 0)
@@ -412,7 +420,7 @@ void add_splats_with_long_axis_split_tensor(
             non_sh, \
             densify_accum_buffer.data_ptr(), \
             bias_correction_steps_ptr, visit_counters.data_ptr(), \
-            max_weight.data_ptr())
+            max_weight.data_ptr(), projective_state.data_ptr(), projective_information.data_ptr())
     if      (sh_optim_bits == 32) _DENSIFY_LAS_ADD_LAUNCH(float3, nullptr, false);
     else if (sh_optim_bits == 8)  _DENSIFY_LAS_ADD_LAUNCH(short3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);
     else if (sh_optim_bits == 4)  _DENSIFY_LAS_ADD_LAUNCH(uchar3, sh_quant_bounds.data_ptr(), sh_bounds_per_splat);

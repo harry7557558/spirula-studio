@@ -2,7 +2,7 @@
 // kernels/loss/FusedSSIM.cu's memory_efficient_ssim_backward_kernel<true>,
 // fused_scielab_kernel and fused_flip_kernel.
 //
-// All run logical tiles as flat 256-wide workgroups (VUID-02757: workgroup X
+// Logical tiles use flat 256- or 512-wide workgroups (VUID-02757: workgroup X
 // must be a multiple of the pinned 32-wide subgroup). Every per-pixel output is
 // a pure function of the input, so the tile edge only regroups the atomic
 // scalar (loose parity channel). Masked pixels -- and, with `sat` positive,
@@ -1213,7 +1213,6 @@ static const int BT_T = kSsimTile;
 static const int BT_S = BT_T + 2 * HALO;
 static const int BT_L = BT_T + 4 * HALO;
 static const int BT_R = 6;    // the largest kBtR
-static const int BT_NW = 5;   // window slots per thread, enough for tile 24
 static const int BB_T = 16;
 static const float kBtTemp = 50.0f;
 
@@ -1346,9 +1345,9 @@ float _bt_ssim(float mu1, float mu2, float s11, float s22, float s12,
 groupshared float _bt_sm[2 * BT_L * BT_L + 5 * BT_L * BT_S];   // 7272 / 11352
 groupshared float _bt_map[BT_T * BT_T];
 
-[shader("compute")]
-[numthreads(256, 1, 1)]
-void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtParams p) {
+[ForceInline]
+void _bt_backward<let THREADS : int>(uint3 wg, uint tid, BtParams p) {
+    const int BT_NW = (34 * 34 + THREADS - 1) / THREADS;
     const int b = int(wg.z);
     const int sx0 = int(wg.x) * BT_T, sy0 = int(wg.y) * BT_T;
     const uint fmt1 = uint(kSsimFmts) & 3u;
@@ -1366,30 +1365,32 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
     for (int ci = 0; ci < 3; ci++) {
         float m[BT_NW][5] = {};
         float gb[BT_NW][3];
+        [ForceUnroll]
         for (int pass = 0; pass < 2; pass++) {
             GroupMemoryBarrierWithGroupSync();
-            for (int i = int(tid); i < BT_L * BT_L; i += 256) {
+            for (int i = int(tid); i < BT_L * BT_L; i += THREADS) {
                 int gy = sy0 + i / BT_L - 2 * HALO, gx = sx0 + i % BT_L - 2 * HALO;
                 bool keep = _bt_mask(p, b, gy, gx);
                 float X = 0.0f;
                 if (keep && uint(gx) < uint(p.W) && uint(gy) < uint(p.H))
                     X = pass == 0 ? _fs_pix(p.img1, fmt1, b, gy, gx, ci, p.H, p.W)
                                   : p.blurred[((b * p.H + gy) * p.W + gx) * 3 + ci];
-                _bt_sm[i * 2] = X;
+                _bt_sm[THREADS == 512 ? i : i * 2] = X;
                 if (pass == 0)
-                    _bt_sm[i * 2 + 1] = keep ? _fs_pix(p.img2, fmt2, b, gy, gx, ci, p.H, p.W) : 0.0f;
+                    _bt_sm[THREADS == 512 ? BT_L * BT_L + i : i * 2 + 1] = keep ? _fs_pix(p.img2, fmt2, b, gy, gx, ci, p.H, p.W) : 0.0f;
             }
             GroupMemoryBarrierWithGroupSync();
             // Pass 1 needs only the blurred render's three sums; y's are kept.
             const int nk = pass == 0 ? 5 : 3;
-            for (int l = int(tid); l < BT_S * BT_L; l += 256) {
+            for (int l = int(tid); l < BT_S * BT_L; l += THREADS) {
                 int lx = l % BT_S + HALO, ly = l / BT_S;
                 float s[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
                 [ForceUnroll]
                 for (int d = -HALO; d <= HALO; d++) {
                     float w = kGauss[HALO - abs(d)];
-                    float X = _bt_sm[(ly * BT_L + lx + d) * 2];
-                    float Y = _bt_sm[(ly * BT_L + lx + d) * 2 + 1];
+                    int t = ly * BT_L + lx + d;
+                    float X = _bt_sm[THREADS == 512 ? t : t * 2];
+                    float Y = _bt_sm[THREADS == 512 ? BT_L * BT_L + t : t * 2 + 1];
                     s[0] += X * w;
                     s[1] += X * X * w;
                     s[2] += X * Y * w;
@@ -1405,7 +1406,7 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
             GroupMemoryBarrierWithGroupSync();
             [ForceUnroll]
             for (int k = 0; k < BT_NW; k++) {
-                int l = int(tid) + k * 256;
+                int l = int(tid) + k * THREADS;
                 if (l >= BT_S * BT_S) break;
                 int lx = l % BT_S, ly = l / BT_S + HALO;
                 float s[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
@@ -1467,16 +1468,17 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
         GroupMemoryBarrierWithGroupSync();
         [ForceUnroll]
         for (int k = 0; k < BT_NW; k++) {
-            int l = int(tid) + k * 256;
+            int l = int(tid) + k * THREADS;
             if (l >= BT_S * BT_S) break;
             [ForceUnroll]
             for (int j = 0; j < 3; j++) _bt_sm[ADJB + j * BT_S * BT_S + l] = gb[k][j];
         }
         // One branch at a time, so the 24-pixel tile fits 48 KB.
+        [ForceUnroll]
         for (int br = 0; br < 2; br++) {
             GroupMemoryBarrierWithGroupSync();
             const int G = br == 0 ? 0 : ADJB;
-            for (int l = int(tid); l < BT_S * BT_T; l += 256) {
+            for (int l = int(tid); l < BT_S * BT_T; l += THREADS) {
                 int yy = l / BT_T, cx = l % BT_T;
                 float a[3] = { 0.0f, 0.0f, 0.0f };
                 [ForceUnroll]
@@ -1491,7 +1493,7 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
             }
             GroupMemoryBarrierWithGroupSync();
             if ((p.flags & kSsimWriteGrad) == 0) continue;
-            for (int l = int(tid); l < BT_T * BT_T; l += 256) {
+            for (int l = int(tid); l < BT_T * BT_T; l += THREADS) {
                 int tx = l % BT_T, ty = l / BT_T;
                 int px = sx0 + tx, py = sy0 + ty;
                 if (px >= p.W || py >= p.H) continue;
@@ -1518,7 +1520,7 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
     }
 
     if (lm_active) {
-        for (int l = int(tid); l < BT_T * BT_T; l += 256) {
+        for (int l = int(tid); l < BT_T * BT_T; l += THREADS) {
             int px = sx0 + l % BT_T, py = sy0 + l / BT_T;
             if (px < p.W && py < p.H)
                 p.loss_map[(b * p.H + py) * p.W + px] += p.map_weight * (1.0f - _bt_map[l] / 3.0f);
@@ -1526,12 +1528,24 @@ void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtPar
     }
     if ((p.flags & kSsimHasVal) != 0) {
         GroupMemoryBarrierWithGroupSync();
-        _bt_map[tid] = val / (3.0f * float(p.B) * float(p.H) * float(p.W));
+        _bt_sm[tid] = val / (3.0f * float(p.B) * float(p.H) * float(p.W));
         GroupMemoryBarrierWithGroupSync();
-        for (uint s = 128; s > 0; s >>= 1) {
-            if (tid < s) _bt_map[tid] += _bt_map[tid + s];
+        for (uint s = THREADS / 2; s > 0; s >>= 1) {
+            if (tid < s) _bt_sm[tid] += _bt_sm[tid + s];
             GroupMemoryBarrierWithGroupSync();
         }
-        if (tid == 0 && _bt_map[0] != 0.0f) atomic_add_f32(p.val, _bt_map[0]);
+        if (tid == 0 && _bt_sm[0] != 0.0f) atomic_add_f32(p.val, _bt_sm[0]);
     }
+}
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void ssim_bt_bwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtParams p) {
+    _bt_backward<256>(wg, tid, p);
+}
+
+[shader("compute")]
+[numthreads(512, 1, 1)]
+void ssim_bt_bwd_wide(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform BtParams p) {
+    _bt_backward<512>(wg, tid, p);
 }

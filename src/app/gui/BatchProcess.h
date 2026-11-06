@@ -19,6 +19,7 @@
 #include "i18n/Message.h"
 
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -54,8 +55,6 @@ struct BatchPreset {
     std::string name;
 };
 
-// One training run of a row: which preset, and the three numbers changed often
-// enough that a preset per combination would be the wrong shape of work.
 struct BatchRun {
     BatchPreset preset{"", "3dgs"};
     // "" is "whatever the preset says". TEXT, because 0 is a legal
@@ -63,6 +62,7 @@ struct BatchRun {
     std::string cap_max;
     std::string sh_degree;
     std::string iterations;
+    std::string floater_suppression;
     // Does the row's Mesh stage cover this run? Off for the big appearance
     // run that would run out of memory meshing, on for the cheap one trained
     // beside it for exactly that purpose.
@@ -233,7 +233,8 @@ bool batch_build_train_config(const BatchRow& row, int variant,
                               const std::string& image_dir,
                               const std::string& mask_dir, bool mask_flipped,
                               TrainConfig& cfg, std::string& preset_base,
-                              std::string& error);
+                              std::string& error,
+                              std::set<std::string>* touched_fields = nullptr);
 
 // The meshing job for one model. `dataset` is what the row resolved; empty
 // lets the child read it out of the run's own config.json.

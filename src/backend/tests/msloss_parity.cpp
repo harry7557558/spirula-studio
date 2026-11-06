@@ -98,6 +98,7 @@ struct MsCfg {
     float nms_falloff;    // *_nms modes only; 0 = the hard canny suppression
     float sat;            // blown-highlight cutoff; <= 0 disables it
     int loss = 0;         // PerceptualLoss
+    int rgb_pattern = 0;
 };
 
 void run_ms_cfg(Rng& r, const MsCfg& c) {
@@ -109,6 +110,18 @@ void run_ms_cfg(Rng& r, const MsCfg& c) {
 
     auto rgb1 = r.vec(3 * np, 0.0f, 1.0f);
     auto rgb2 = r.vec(3 * np, 0.0f, 1.0f);
+    if (c.rgb_pattern == 3) {
+        for (size_t i = 0; i < rgb1.size(); ++i) rgb2[i] = rgb1[i] + 0.0001f;
+    }
+    else if (c.rgb_pattern != 0) {
+        for (int64_t i = 0; i < 3 * np; ++i) {
+            const int64_t x = (i / 3) % c.W, y = (i / 3 / c.W) % c.H;
+            const float value = c.rgb_pattern == 1 ? 0.5f
+                : 0.1f + 0.6f * float(x) / float(c.W - 1) + 0.1f * float(i % 3);
+            rgb1[i] = value;
+            rgb2[i] = value + (c.rgb_pattern == 2 ? 0.001f * float(y % 3 - 1) : 0.0001f);
+        }
+    }
     if (c.sat > 0.0f) {
         // One contiguous blown-out block rather than scattered pixels, so the
         // window coverage divide is exercised across its edge too.
@@ -455,6 +468,15 @@ int main(int argc, char** argv) {
     for (const MsCfg& c : cfgs) run_ms_cfg(r, c);
     run_quantile(r);
     run_normalize_clip(r);
+    // Near-identical windows expose cancellation hidden by unrelated noise.
+    Rng matched(260729u);
+    for (int pattern = 1; pattern <= 3; ++pattern) {
+        MsCfg c{"ssim_bt_matched", 1, 53, 79, 1, 0, 0, 0, 0, 0, 0,
+            false, false, true, (int)DensifyLossMapMode::SsimContrastStruct,
+            0.9f, 0.5f, -1.0f, (int)PerceptualLoss::SsimBlurTolerant};
+        c.rgb_pattern = pattern;
+        run_ms_cfg(matched, c);
+    }
 
     auto write_all = [&](const char* path) {
         std::ofstream f(path, std::ios::binary);

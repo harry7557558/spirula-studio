@@ -18,7 +18,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -51,15 +51,15 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libvulkan-dev libgl1-mesa-dev xorg-dev
-          sudo apt install -y libwayland-dev libwayland-bin wayland-protocols libxkbcommon0 libxkbcommon-x11-0 libxkbcommon-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev spirv-tools
+          sudo apt-get install -y libwayland-dev libwayland-bin wayland-protocols libxkbcommon0 libxkbcommon-x11-0 libxkbcommon-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev spirv-tools
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             build_vulkan/slang-*
@@ -68,6 +68,12 @@ jobs:
 
       - name: Build
         run: bash build_develop.bash -DSS_BACKEND=vulkan -DSS_ENABLE_PATENTED=ON
+
+      - name: Disk usage
+        if: always()
+        run: |
+          df -h .
+          du -sh build_vulkan
 
       - name: Smoke
         run: ./build_vulkan/spirula train --help
@@ -93,12 +99,15 @@ jobs:
   macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Dependencies
-        run: brew install cmake ninja libomp
+        run: |
+          for formula in cmake ninja libomp; do
+            brew list --versions "$formula" >/dev/null || brew install "$formula"
+          done
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             build/slang-*
@@ -138,7 +147,7 @@ jobs:
   windows:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Vulkan SDK
         shell: pwsh

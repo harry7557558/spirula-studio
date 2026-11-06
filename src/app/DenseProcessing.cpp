@@ -11,6 +11,7 @@
 #include "core/OwnedDirectory.h"
 #include "core/DistanceTransform.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "core/Sha256.h"
 #include "data/ImageProbe.h"
@@ -116,7 +117,7 @@ void dump_pair_prediction(uint32_t a, uint32_t b, const roma::PairPrediction& pr
 }
 
 unsigned worker_count(const DenseConfig& config) {
-    const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+    const unsigned hardware = std::max(1u, spirula::hardware_threads());
     return std::min(config.cpu_workers > 0 ? (unsigned)config.cpu_workers : hardware, hardware);
 }
 

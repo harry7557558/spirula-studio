@@ -1,9 +1,12 @@
 #pragma once
 
-// Minimal cross-platform subprocess runner for external tools (colmap,
-// ffmpeg). Streams merged stdout+stderr line-by-line to a callback and
-// supports cooperative cancellation (the process is killed). GUI-free: the
-// CLI's ffmpeg decoder (app/FfmpegVideo.h) links it too.
+// Cross-platform owned subprocesses for external tools (colmap, ffmpeg).
+// These APIs terminate owned descendants on cancel/kill, owner death, or
+// direct-child exit. Windows uses non-inherited kill-on-close jobs assigned at
+// creation; POSIX uses an owner-death pipe guardian and isolated process group.
+// run_process/finish join managed cleanup; kill only signals cancellation.
+// POSIX tools must retain private lease FDs/metadata and stay in their group.
+// open_url is detached. The CLI decoder links this GUI-free implementation too.
 
 #include <cstddef>
 #include <atomic>
@@ -18,14 +21,14 @@ namespace gui {
 constexpr int kSpawnFailed = -1;   // executable not found / spawn error
 constexpr int kCancelled   = -2;   // cancel flag was set; process killed
 
-// Runs argv[0] with argv[1..] as arguments, working directory `cwd` ("" =
-// inherit). stderr is merged into stdout; each completed line is passed to
-// on_line (without the newline). `cancel` is polled ~10x per second.
-// Blocking -- call from a worker thread.
+// Blocking; call from a worker. Empty cwd inherits; stderr is merged into stdout.
+// on_line receives complete lines without newlines. Cancellation is polled ~10 Hz.
+// on_poll runs on the same worker even while the child produces no output.
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel);
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll = {});
 
 // A child whose STDIN this process writes -- raw frames into an encoder.
 // Its merged stdout and stderr still arrive line by line, on a thread of the
@@ -39,7 +42,7 @@ public:
     // False once the child has stopped reading, which is how a crashed
     // encoder is noticed.
     bool write(const void* data, size_t bytes);
-    // Close its stdin and wait: the exit code, or kSpawnFailed.
+    // Close stdin and join owned cleanup: exit code, or kSpawnFailed.
     int finish();
     void kill();
 
@@ -58,7 +61,26 @@ public:
                std::function<void(const std::string&)> on_line);
     // Up to `bytes`; 0 at end of stream or on error. Blocks.
     size_t read(void* data, size_t bytes);
-    // Wait for the child: its exit code, or kSpawnFailed.
+    // Join owned cleanup: exit code, or kSpawnFailed.
+    int finish();
+    void kill();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
+};
+
+// One caller per read/write; join both before finish() drains stdout.
+// kill() unblocks I/O; the destructor kills and joins. stderr feeds on_stderr.
+class ProcessDuplex {
+public:
+    ProcessDuplex();
+    ~ProcessDuplex();
+    bool start(const std::vector<std::string>& argv,
+               std::function<void(const std::string&)> on_stderr);
+    // Full write or false; read may be short and returns zero at EOF/error.
+    bool write(const void* data, size_t bytes);
+    size_t read(void* data, size_t bytes);
     int finish();
     void kill();
 

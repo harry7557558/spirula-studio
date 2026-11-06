@@ -104,6 +104,8 @@ struct LossConfig {
 // that applies; the engine consumes them verbatim.
 struct OptimConfig {
     float lr_means        = 0.0f;
+    float lr_projective_depth = 0.0f;
+    bool projective_photometric = true;
     float lr_quats        = 0.0f;
     float lr_scales       = 0.0f;
     float lr_opacities    = 0.0f;

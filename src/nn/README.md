@@ -13,7 +13,19 @@ workflows; physical or logical device handles are never shared.
 
 Runtime knobs: `SS_NN_LOG=0..3`, `SS_VK_DEVICE=<index|name|auto|uuid:hex>`,
 `SS_PROFILE=1`, `SS_VK_VALIDATION=1`, `SS_NN_DEBUG_SYNC=1`, `SS_NN_COOPMAT=0`,
-`SS_SUBMIT_BUDGET_MS`, `SS_VK_SUBMIT_LOG` (docs/notes/gpu-submit-budget.md).
+`SS_SUBMIT_BUDGET_MS`, `SS_VK_SUBMIT_LOG` (docs/notes/gpu-submit-budget.md),
+`SS_NN_METAL=0|1` (macOS, below).
+
+Host loops in `core/Parallel.h` accept a process-local thread cap through
+`nn::set_parallel_threads(unsigned)`, including the calling thread.
+`nn::parallel_threads()` returns the effective cap, limited to hardware concurrency
+with a minimum of one. Zero restores the default automatic hardware sizing.
+The setting is atomic; each `parallel_for` snapshots it once, so changes do not
+resize an in-flight loop. It is a per-loop cap, not a shared pool across concurrent
+or nested calls. Worker processes set it before starting their host work.
+`nn::configured_parallel_threads()` returns the configured value, retaining zero
+for automatic sizing. `nn::load_image` forwards an explicit cap to EXR/TIFF
+decoders, but preserves their all-core default when no cap is configured.
 
 The context probes optional `VK_EXT_memory_budget`. `Context::memoryBudget`
 queries the selected device's current local-heap budgets and usage, or returns
@@ -207,6 +219,65 @@ same way, so the tolerances stay tight rather than being widened to absorb it.
   direct; transposed 2×2/stride-2 is a GEMM plus a scatter (the four kernel taps
   are four output-channel groups). One well-tuned matmul therefore carries ~95%
   of the model's FLOPs.
+
+## The Metal path (macOS)
+
+On Apple GPUs the SPIR-V kernels, translated by MoltenVK, use a fraction of the
+ALUs. `OpMetal.mm` therefore runs attention and the large GEMMs on MPSGraph.
+It is built on macOS (`-DSS_NN_METAL=ON`, the default there) and runs unless
+`SS_NN_METAL=0`, on any device that passes `nn/vk/MetalInterop.mm`'s probe.
+Every other op, and every other platform, runs the Vulkan kernels unchanged.
+
+- **Which ops.** `attention` with no bias, packed rows and a head dim of 16,
+  32, 64 or 128, at any batch. `linear` and `matmul_nt` with fp32 activations,
+  an fp32 or fp16 weight, an output of at least 128 x 128, and no neighbour
+  gather. GEMM executables leave M dynamic, so a row count that follows the
+  input (keypoints, chunk tails) does not compile a graph per call. The
+  executables live in an LRU of 128.
+- **Memory.** Every allocation is made exportable
+  (`VkExportMetalObjectCreateInfoEXT`). A tensor becomes a 1-D `MPSNDArray` over
+  its allocation's `MTLBuffer`, at its byte offset. Each wrap checks that the
+  range lies inside the allocation and the buffer. It also checks that the
+  buffer's GPU address equals the Vulkan device address, which is what proves
+  the two objects alias.
+- **Ordering, with no host stall.** Consecutive Metal ops share one command
+  buffer on a queue of our own (a section). Opening one flushes the stream and
+  waits on its timeline's `MTLSharedEvent`. Closing it signals the next value,
+  and the next Vulkan submission waits on that. `Stream` closes an open section
+  before it records again or syncs. A failed command buffer aborts the process,
+  because it never signals and Vulkan would wait forever. So does a section
+  that MPSGraph moves to a second command buffer, which nothing would order.
+- **In place.** MPSGraph does not say whether a result may alias an input. An
+  in-place op (`x = W h + b + x`) writes a graph-owned result and copies it out.
+- **fp16 tier.** `nn::Fp16Scope` makes the Metal path cast operands to fp16,
+  which the M5's GPU neural accelerators run, and honours `LinearOpts::x_scale`
+  as the tensor-core kernels do. It fails fp32 parity bars by design, so a model
+  opts in with its own flag and its own bars. Nothing in `nn` sets it.
+- **MPS bugs it avoids** (macOS 26.6). SDPA aborts the process at head dim 96,
+  is wrong at head dim 256, and aborts when the whole problem is one score
+  (batch x heads x queries x keys = 1). Those shapes stay on Vulkan.
+  `nn_ops_test --probe-attn B,nq,nk,H,D` runs one shape in its own process, to
+  check a new OS.
+- **Not covered.** `SS_PROFILE` times Vulkan dispatches only. Metal work shows
+  up as the gap between them.
+
+Measured on an Apple M5 Pro, macOS 26.6, MoltenVK 1.4.2:
+
+| workload | Vulkan | Metal fp32 | Metal fp16 |
+|---|---|---|---|
+| attention 4096 x 4096, 8 heads, d64 (`nn_ops_test --bench`) | 18.6 ms | 5.75 ms | 1.65 ms |
+| attention 5184 x 5184, 16 heads, d64 (SAM 3 ViT global) | 57.7 ms | 16.2 ms | 4.8 ms |
+| GEMM 4096 x 1024 x 1024, fp32 weight | 2.86 ms | 1.47 ms | 0.58 ms |
+| GEMM 5184 x 4736 x 1024 (SAM 3 ViT MLP) | 15.6 ms | 8.1 ms | 2.7 ms |
+| MoGe-2 ViT-L, 1800 tokens (`moge_test --repeat 5`) | 810-813 ms (a second run: 1296-1318) | 662-670 ms | |
+
+MoGe's stages agree with the Vulkan path to 3.2e-6 relative L2 or better.
+LoMa's descriptors agree to 2.0e-6, with identical keypoints and match counts.
+
+`nn_ops_test` reruns its suite with the Metal path on. It adds cases for
+hand-off ordering in both directions, aliasing, unaligned offsets, the range
+check, the smallest shapes and the fp16 tier. `nn_ops_test --bench` prints both
+paths side by side.
 
 ## Portability rules for new kernels
 

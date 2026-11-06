@@ -69,7 +69,7 @@ add_compile_definitions(SS_SOURCE_ROOT="${SS_ROOT}")
 
 # The version the apps report with --version. Declared here and nowhere else;
 # it used to be read out of pyproject.toml, back when there was a package.
-set(SS_VERSION "2026.10.16")
+set(SS_VERSION "2026.10.30")
 
 # The commit goes in it too, so a crash report names an exact tree without
 # anyone having to bump a string by hand. Read at configure time, which is
@@ -184,6 +184,15 @@ if(SS_BACKEND STREQUAL "vulkan")
     option(SS_BUILD_SAM "Build the inference layer + SAM segmentation" ON)
 else()
     option(SS_BUILD_SAM "Build the inference layer + SAM segmentation" OFF)
+endif()
+
+# MPSGraph attention and GEMM for the inference layer on macOS
+# (src/nn/OpMetal.mm), sharing MoltenVK's buffers through VK_EXT_metal_objects.
+# Whether it runs is SS_NN_METAL=0|1 at runtime; this only decides it is built.
+if(APPLE)
+    option(SS_NN_METAL "Build the inference layer's Metal path (MPSGraph)" ON)
+else()
+    set(SS_NN_METAL OFF)
 endif()
 
 # ---------------------------------------------------------------------------

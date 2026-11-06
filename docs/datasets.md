@@ -55,6 +55,95 @@ takes seconds an image and an 11 GB install built from 45 GB streamed once
 (`spirula geometry --install marigold-v2`, or the GUI's download button).
 `src/marigold/README.md` has its numbers.
 
+### Primary GPU and Additional GPUs
+
+Dataset settings use **Primary GPU** for reconstruction, training and previews.
+Its **Auto** choice prefers usable discrete GPUs over integrated GPUs, then the
+GPU with the most memory. Between identical GPUs it takes the one other programs
+use less memory on, measured when the application first lists its GPUs (on
+Windows the adapter's dedicated memory in use, as Task Manager shows it;
+elsewhere the `VK_EXT_memory_budget` budget). A difference under 256 MiB counts
+as a tie, so idle cards keep their usual order. The primary choice freezes at
+the first GPU operation in a session; changing it afterwards requires
+restarting the application.
+
+**Additional GPUs** shares masking and depth & normals across the primary and
+selected extra GPUs, with one isolated process per GPU. **Auto** (the default)
+adds all other supported GPUs of the best kind present: discrete if available,
+otherwise integrated. Choose **None** for in-process serial inference on the
+primary, or select individual GPUs. With no extra GPU selected, inference is
+also serial. Reconstruction, training and previews stay on the primary GPU.
+Only usable discrete and integrated GPUs with UUIDs support workers.
+The additional selection is saved locally in `gui.conf` as `additional_gpus`;
+portable dataset presets do not carry it.
+
+`SS_WORKERS_PER_GPU` opts into multiple isolated inference processes per
+selected GPU. It must be an integer >= 1 and defaults to 1. For example,
+`SS_WORKERS_PER_GPU=2` runs two mask workers and two geometry workers per
+selected GPU, in their respective stages. With **None** or no extra GPU
+available, it instead runs two workers on the primary GPU. Each process
+loads its own models; the shared host-memory admission budget does not grow,
+and this setting does not impose a VRAM cap. Tracking sequences remain owned
+by one worker, so a single sequence cannot use all requested processes.
+
+Workers share a host-memory admission budget of half the machine's physical
+RAM, with a minimum of 4 GiB. This is not a per-process allowance, a strict
+runtime RAM cap or a VRAM limit. Model residency, tasks and geometry warp plans
+are charged against it; insufficient admission memory is an error, not a
+silent reduction in workers. A worker decodes its next image while the current
+one runs, and encodes finished outputs on a `WriterPool` before the parent
+accepts them, in the original order. Independent images go to workers in
+pairs; a tracked sequence stays one task, in frame order. Each worker's CPU
+loops and writers use `max(1, hardware_threads / workers)` threads. A mask
+task reserves two frames of the budget, a tracked sequence's included, and the
+step fails when that does not fit; a geometry pair that does not fit is sent
+as two single images.
+
+The geometry CLI can explicitly select worker UUIDs and override the shared
+budget: `spirula geometry <dataset> --worker-devices <uuid,...> --worker-memory-mb 8192`.
+The list includes every worker GPU, including the primary when desired; an
+empty list uses serial inference unless `SS_WORKERS_PER_GPU` is greater than 1,
+in which case it uses that many workers on the resolved primary GPU.
+Obtain UUIDs with `spirula sam devices`.
+Geometry output ownership, reuse and `--overwrite` rules are unchanged.
+
+### Reusing generated frames and geometry
+
+The GUI records the sources that made a workspace's frames, not just their
+paths. Replacing a video or an imported photo in place, changing the photo
+inventory, or editing a file-backed video LUT invalidates frame reuse.
+Runners check content hashes before planning and verify them again during
+preparation (after transfer for **Move** photo imports, before final frame
+completion otherwise); a same-size, same-timestamp replacement is still a
+change. Existing external-source frames without matching identities also
+need an explicit rebuild. **Keep them, run the rest** cannot bypass this guard:
+confirm **Redo them** on the dataset screen or choose a fresh workspace.
+Dataset images and photographs read in place are already the frames and are
+exempt from this external-source identity check. See
+[dataset reruns](notes/dataset-rerun.md#frame-source-identity) for details.
+
+When `spirula geometry` runs, it reuses a depth or normal map only if the
+map's sibling `<map filename>.geometry-complete` marker matches the request
+and its SHA-256 checksum matches the map. The request binds source image
+content, camera/face planning, model and inference options, colour/exposure,
+and output kind/encoding. Missing or empty maps and stale or damaged marked
+maps are regenerated; depth and normals are checked independently.
+
+**Nonempty outputs without a recognized completion marker are preserved,
+not silently adopted or replaced.** This includes older generated maps.
+To replace them intentionally, run:
+
+```sh
+spirula geometry <dataset> --overwrite
+```
+
+The GUI's geometry overwrite option also permits replacement. Keep markers
+with their maps when copying a dataset. The GUI plan's step-level reuse
+decision still uses the dataset record; per-map validation occurs when the
+geometry tool actually runs. See
+[completion and overwrite rules](notes/dataset-rerun.md#depth-and-normal-map-completion).
+
+
 ## Masks
 
 A training image's mask comes from up to two places:
@@ -99,7 +188,7 @@ for its alpha.
 
 A dataset the GUI built may also carry `feature_masks/`, mirroring `masks/`:
 what its "Hide from the reconstruction only" prompt matched (the 360-camera
-preset's `sky; cloud`). Only the reconstruction reads it -- `spirula sfm
+preset's `sky; cloud; water; wave`). Only the reconstruction reads it -- `spirula sfm
 --feature-masks`, intersected with `--masks` -- so training never sees it and
 still learns the sky.
 
@@ -300,10 +389,9 @@ Two paths, both gathering per destination pixel:
 
 ## Two-stage parse
 
-1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the raw
-   `train_frame="points"` frame — poses and points exactly as stored. The
-   normalized-frame similarity is computed only to obtain the
-   `train_frame_scale` scalar.
+1. **`parse_dataset`** → `ParsedDataset`: per-**input** cameras in the source
+   dataset frame, translated by `scene_center`. A normalized-frame similarity
+   supplies `train_frame_scale` and the viewer remapping.
 2. **`bake_post_split`** (`data/PostSplit.cpp`) → the post-split arrays
    `engine_setup_data_manager` consumes. This is either an identity (K=1)
    pass-through, or the split `camhost::plan_split_faces` plans for a wide
@@ -460,9 +548,9 @@ pixel count.
 
 That normalized-frame similarity is where `orientation_method` and
 `center_method` act — and only `up` / `poses` is implemented natively;
-anything else is approximated with a warning. Since `train_frame="points"`
-leaves splats in the raw frame, the choice moves `train_frame_scale` and the
-viewer's default camera, not the training coordinates. The unported methods
+anything else is approximated with a warning. Since training uses the dataset
+frame, the choice moves `train_frame_scale` and the viewer's default camera,
+not the training coordinates. The unported methods
 (`pca`, `vertical`, `gsplat`, `focus`) still have a working Python reference:
 [notes/pose-normalization.md](notes/pose-normalization.md).
 
@@ -773,12 +861,26 @@ degrees of elevation, 120 apart in azimuth -- rather than axis-aligned:
 - **The operator.** Whoever is holding it is in the downward and rearward views
   of every frame of most captures, and wants masking out.
 
+## Training after dataset creation
+
+On the GUI's New Dataset screen, enable **Start training after dataset creation**
+to begin training when all dataset steps finish successfully. Choose a built-in
+or saved training preset and optionally override the step count, maximum splats,
+SH degree and floater suppression. Empty numeric fields and **Floater suppression
+per preset** inherit the preset's values. These controls are also available
+for batch training and partition queueing.
+
+The training settings are captured when dataset creation starts. Failed or
+cancelled dataset jobs do not start training. Training uses the resulting image
+and mask folders and writes runs under the dataset's `outputs/` folder.
+
 ## Frames out of a video
 
 One frame every `skip` source frames, the sharpest of a window of `keep`
-around each. Both decode paths choose the same frames (`app/FrameExtract.h`),
-and the GUI's rate is **per input**: a capture shot as several clips is rarely
-shot at one pace, so `PrepInput::fps` overrides the job's for that video.
+around each (`app/FrameExtract.h`). Both decoders use the same selection
+windows and source-frame naming; CPU and GPU sharpness scores can choose
+different near ties. The GUI's rate is **per input**: `PrepInput::fps`
+overrides the job's rate for that video.
 
 The rate is a column of the input list rather than a field in the settings, so
 it sits beside the video it describes. The first video's box holds the
@@ -799,15 +901,42 @@ differs -- a different rate, a different unwrap, another clip in the list --
 asks before it goes back to the video, and drops the features and matches that
 describe the old frames.
 
+### Decoder selection
+
+`spirula sam extract --decoder auto` and the GUI's normal extraction try the
+built-in decoder first. A video queue alone does not establish support: the
+codec profile, chroma subsampling, bit depth and dimensions must also fit the
+device. If the native decoder cannot open the input or initialize its first
+decode session, Auto logs that reason and uses external FFmpeg software
+decoding for that input. Other inputs can still use native decoding.
+
+`--decoder builtin` remains strict. `--decoder ffmpeg`, or the GUI's
+"Force external decode" setting, explicitly uses software decoding
+(`-hwaccel none`), not another attempt at the unsupported hardware profile.
+FFmpeg must be installed or selected in the tool locations. Cancellation,
+invalid options and decoding errors after startup are not retried as successful
+extractions; output already produced is not silently replayed.
+
+For example, HEVC Main10 10-bit 4:2:0 support does not imply HEVC RExt 10-bit
+4:2:2 support. LOG is a separate colour encoding, not a decoder capability.
+A missing MP4 `moov` index is a damaged or unfinished container, not a profile
+limitation; switching decoders cannot reconstruct that missing index.
+
 ### A clip of a video
 
 Only part of a video can be used: drag the handles under the dataset screen's
-preview, or `spirula sam extract --start 1:30 --end 2:45`. Frames keep the
-**source** frame index as their name in both decoders, which is what keeps a
-clip's frames on the camera's IMU and GPS; the GUI's ffmpeg fallback, which
-numbers its candidates from where it started reading, records that start as
-the capture's `time_offset` instead. The clip is part of what the frames were
-extracted with, so changing it re-extracts. docs/notes/source-preview.md.
+preview, or `spirula sam extract --start 1:30 --end 2:45`. Shared extraction
+keeps the **source** frame index as the filename with either decoder, including
+the GUI's software fallback. Builds without `SS_BUILD_SAM` retain the legacy
+candidate-file route, whose clipped stems instead use a recorded `time_offset`.
+Stored capture timing remains authoritative when frames are reused. Missing
+video provenance requires explicitly rebuilding the frames; Keep cannot
+silently reinterpret their names. Confirm **Redo them** or choose **Frames again**
+on the dataset screen to authorize replacement. Batch rows cannot give that
+consent: they fail without changing the existing frames or dataset record, so
+rebuild interactively first or choose a fresh output folder for the batch.
+Changing the clip also re-extracts.
+See docs/notes/source-preview.md and docs/notes/dataset-rerun.md.
 
 ### Colour LUTs
 
@@ -832,13 +961,20 @@ extract --lut <file.cube | name | auto>` is the same thing on the command line.
   a maker's LUT ships, and nothing is downloaded at run time.
 - **A .cube file** is read as is; one with a 1D shaper in front is refused.
 
-The built-in decoder maps the LUT in the YCbCr-to-RGB shader, before the
-8-bit rounding, so a 10-bit log clip keeps its precision through the
-expansion. The GUI's ffmpeg route uses ffmpeg's own `lut3d` (a built-in is
-written to a `.cube` in the temp directory for it); frame extraction decoding
-through ffmpeg maps the 8-bit frames it keeps, after the window has been
-scored, so the LUT cannot change which frames are chosen. The LUT is part of
-what the frames were extracted with, so changing it re-extracts.
+The built-in decoder maps the LUT in the YCbCr-to-RGB shader before 8-bit
+rounding. Shared FFmpeg extraction requests RGB48 when a LUT is selected,
+scores ungraded 16-bit samples, and maps the chosen frames before quantizing
+them to RGB8. Rejected-frame previews and saved rejected frames receive the
+same LUT exactly once. Without a LUT it retains the RGB24 path. Higher
+precision can move sharpness ties, but the LUT does not grade the scoring
+input. The current and best RGB48 buffers cost about 380 MiB per 8K track,
+plus about 95 MiB for selected RGB8 output, independent of window length.
+
+The legacy GUI route in builds without `SS_BUILD_SAM` uses FFmpeg's `lut3d`.
+The LUT is part of the extraction signature, so changing it re-extracts.
+Apple Log and Samsung Log require a supplied `.cube`; neither has a built-in
+LUT. Insta360 X6 I-Log can use `insta360-ilog`, selected explicitly rather
+than inferred from BT.709/BT.2020 tags. See docs/notes/log-luts.md.
 
 ### Adaptive spacing
 
@@ -928,28 +1064,20 @@ up to +100% on a 1080p clip, with the tracking itself overlapped with the
 decode. Nothing is buffered: a video's worth of pictures does not fit, and a
 plan cannot be made until the whole cost curve is known.
 
-In the GUI, without the built-in decoder the same plan is made from the
-candidate frames ffmpeg already extracts, at `fps x max(window, range)` instead of
-`fps x window` so there are enough of them for the fastest rate it may ask for
-(`gui/FrameSelect.h`). That path plans one video at a time -- the candidates of
-a whole group are not on disk at once -- and it numbers the frames it keeps by
-the candidate they were, not by how many it has kept. The stem is what times a
-frame against the video's IMU and GPS (`sfm/map/SensorGauge.h`), and an
-adaptive plan leaves nothing evenly spaced for a frame rate to recover it from.
+The GUI and `spirula sam extract` use the same streaming decoder path when
+`SS_BUILD_SAM` is enabled, including builds without `SS_ENABLE_PATENTED`,
+unsupported native profiles and forced FFmpeg. FFmpeg sends pictures over a
+pipe, one process per track, into `app/FrameDecode.h`: synchronized lenses,
+pooled motion budgets, 360 views, masking and source frame indices remain
+available. No candidate JPEG directory or per-track remux is needed.
+Its software motion pass reads each frame's Y plane and uses the same
+thumbnail reduction as the native path.
 
-`spirula sam extract` has no candidates on disk. Without the built-in decoder
-(a build without `SS_ENABLE_PATENTED`, a device without a video queue such as
-MoltenVK's, or `--decoder ffmpeg`) it reads decoded pictures out of ffmpeg over
-a pipe, one process per track, into the same loop the built-in decoder feeds
-(`app/FrameDecode.h`) -- so `--sync`, `--adaptive`, the 360 views and masking
-all work there too, and the stems are source frame indices either way. Its
-motion pass takes every frame's Y plane and reduces it on the host exactly as
-`video.slang`'s thumbnail does, which makes the plan the built-in one: on a
-1920 px dual-fisheye `.insv`, `--sync --adaptive --skip 30` gave identical
-motion costs and 93 of 94 kept frames in common, and a fixed `--skip 30` 39 of
-40 (the rest is the sharpness score, CPU against GPU). That pass decodes in
-software, because NVDEC's download squeezed a full-range Y plane into studio
-range: 38 s against 11 s on that clip.
+Only GUI builds without `SS_BUILD_SAM` retain disk candidates at
+`fps x max(window, range)` (`gui/FrameSelect.h`). That route plans one input
+at a time and records its resampled frame rate and clip offset. Retained
+legacy captures keep that timing; a full-rate legacy clip with a nonzero
+offset still has clip-relative, not absolute source, frame names.
 
 The pass reports as it goes, in two places. It enters the Frames step itself --
 nothing else has, since a whole rate group is measured before any of it is

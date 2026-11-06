@@ -226,6 +226,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     }
     _engine_step_image_stages(bilagrid_cam_indices);
 
+    engine_prepare_projective_depth(cfg.optim);
     auto losses = engine_compute_loss_backward(
         step, cfg.loss.weights, cfg.loss.w_ssim, cfg.loss.perceptual_loss,
         cfg.loss.num_loss_scales, cfg.loss.loss_scale_min_pixels,

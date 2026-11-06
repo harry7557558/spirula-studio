@@ -275,6 +275,7 @@ void bind_file_views(ViewportPanel& panel, const std::string& asked,
 
 void ViewportPanel::set_views(std::shared_ptr<ViewBookmarkSet> set,
                               const Sim3& model_to_store) {
+    if (set && set != _views) _show_cams = true;
     _views = std::move(set);
     _views_m2s = model_to_store;
 }

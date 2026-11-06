@@ -92,6 +92,7 @@ struct DeviceProbe {
     // VK_EXT_subgroup_size_control can pin compute pipelines within [min, max].
     bool subgroup_control = false;
     uint32_t min_subgroup = 0, max_subgroup = 0;
+    uint32_t max_workgroup_subgroups = 0;
 };
 
 DeviceProbe probe_device(VkPhysicalDevice pd) {
@@ -139,6 +140,7 @@ DeviceProbe probe_device(VkPhysicalDevice pd) {
                                (sp.requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT);
         out.min_subgroup = sp.minSubgroupSize;
         out.max_subgroup = sp.maxSubgroupSize;
+        out.max_workgroup_subgroups = sp.maxComputeWorkgroupSubgroups;
     }
     // 64 is the widest the kernels are tested at (AMD GCN has nothing narrower).
     const uint32_t narrowest =
@@ -478,6 +480,8 @@ void Context::init() {
     _caps.max_push_constants = probe.props.limits.maxPushConstantsSize;
     _caps.max_workgroup_invocations =
         probe.props.limits.maxComputeWorkGroupInvocations;
+    _caps.max_workgroup_size_x = probe.props.limits.maxComputeWorkGroupSize[0];
+    _caps.max_workgroup_subgroups = probe.max_workgroup_subgroups;
     _caps.max_shared_memory = probe.props.limits.maxComputeSharedMemorySize;
     _caps.non_coherent_atom_size = probe.props.limits.nonCoherentAtomSize;
     _caps.float32_atomic_add = probe.atomic_float;

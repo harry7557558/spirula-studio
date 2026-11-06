@@ -378,8 +378,11 @@ std::tuple<
             md ? 1u : 0u,   (uint32_t)accum_mode,
             need_viewmat_grad ? 1u : 0u, packed ? 1u : 0u,
             mw ? 1u : 0u,   cd.dist};
+        const char* entry = spec_dist == 0 && !md && (p.state_flags & 1u) == 0
+            ? "rasterize_bwd_nodepth.rasterize_bwd_3dgut_nodepth"
+            : "rasterize_bwd.rasterize_bwd_3dgut";
         vkk::dispatch_ring_budgeted(
-            "rasterize_bwd.rasterize_bwd_3dgut", spec, I,
+            entry, spec, I,
             tile_height << macro_log2, tile_width << macro_log2, &p,
             sizeof(p),
             vkk::raster_work(n_isects, macro_log2, I, image_width,

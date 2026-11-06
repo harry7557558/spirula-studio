@@ -227,11 +227,16 @@ void TrainRunner::start_training(const TrainConfig& cfg, const std::string& pres
             cb.on_data_error = [this](const std::string& what) {
                 return await_data_decision(what);
             };
-            cb.on_step = [this](const spirula::TrainerProgress& p) {
+            cb.on_step = [this, metrics_ready = false](const spirula::TrainerProgress& p) mutable {
                 std::lock_guard<std::mutex> lk(_mu);
                 _latest = p;
                 _latencies.push_back(p.step_latency);
                 if (_latencies.size() > 100) _latencies.pop_front();
+                // Scalar readbacks lag one step; the first callback has no metrics yet.
+                if (!metrics_ready) {
+                    metrics_ready = true;
+                    return;
+                }
                 MetricPoint m;
                 m.step = p.step;
                 auto get = [&](const char* k) {

@@ -2723,26 +2723,7 @@ SS_MSG(err_mesh_failed,
 // ===========================================================================
 // What the trainer says about its own limits
 // ===========================================================================
-//
-// The flag NAME in each of these is an identifier -- `--use-bvh` is
-// `--use-bvh` in every language -- so it arrives as {0} and is printed
-// verbatim. These reach the GUI's batch pre-flight as well as the log, which
-// is why they are messages and not sentences built in place.
 
-SS_MSG(not_supported_yet,
-    EN("{0} is not supported yet"),
-    JA("{0} はまだ対応していません"),
-    ZH_HANS("{0} 还不支持"),
-    ZH_HANT("{0} 還不支援"),
-    KO("{0}은(는) 아직 지원하지 않습니다"),
-    DE("{0} wird noch nicht unterstützt"),
-    FR("{0} n'est pas encore pris en charge"),
-    ES("{0} todavía no está admitido"),
-    PT("{0} ainda não é aceito"),
-    IT("{0} non è ancora supportato"),
-    NL("{0} wordt nog niet ondersteund"),
-    RU("{0} пока не поддерживается"),
-    TR("{0} henüz desteklenmiyor"));
 SS_MSG(ppisp_before_color_space_order,
     EN("{0} needs {1}: the per-photo color correction is always applied in sRGB"),
     JA("{0} には {1} が必要です。写真ごとの色補正はつねに sRGB で適用されます"),
@@ -3813,6 +3794,44 @@ SS_MSG(err_no_frames_extracted,
     NL("Er kwamen geen beelden uit de video."),
     RU("Из видео не получилось ни одного кадра."),
     TR("Videodan hiç kare çıkmadı."));
+
+SS_MSG(err_ffmpeg_unrunnable,
+    EN("ffmpeg could not be started ({0}). Install a build for this computer "
+       "(arm64 on Apple Silicon), or set the path to one under Tool locations "
+       "or with --ffmpeg."),
+    JA("ffmpeg を起動できませんでした（{0}）。このコンピュータ向けのビルド"
+       "（Apple Silicon では arm64）をインストールするか、「ツールの場所」または "
+       "--ffmpeg でそのパスを指定してください。"),
+    ZH_HANS("无法启动 ffmpeg（{0}）。请安装适用于本机的版本（Apple Silicon 上为 "
+            "arm64），或在“工具位置”或 --ffmpeg 中指定其路径。"),
+    ZH_HANT("無法啟動 ffmpeg（{0}）。請安裝適用於本機的版本（Apple Silicon 上為 "
+            "arm64），或在「工具位置」或 --ffmpeg 中指定其路徑。"),
+    KO("ffmpeg 을 시작할 수 없습니다({0}). 이 컴퓨터용 빌드(Apple Silicon 에서는 "
+       "arm64)를 설치하거나, \"도구 위치\" 또는 --ffmpeg 로 경로를 지정하세요."),
+    DE("ffmpeg konnte nicht gestartet werden ({0}). Installieren Sie eine für "
+       "diesen Rechner gebaute Version (arm64 auf Apple Silicon), oder tragen "
+       "Sie ihren Pfad unter Werkzeugpfade oder mit --ffmpeg ein."),
+    FR("ffmpeg n'a pas pu démarrer ({0}). Installez une version compilée pour "
+       "cet ordinateur (arm64 sur Apple Silicon), ou indiquez son chemin sous "
+       "Emplacements des outils ou avec --ffmpeg."),
+    ES("No se pudo iniciar ffmpeg ({0}). Instala una versión compilada para este "
+       "equipo (arm64 en Apple Silicon), o indica su ruta en Ubicaciones de "
+       "herramientas o con --ffmpeg."),
+    PT("Não foi possível iniciar o ffmpeg ({0}). Instale uma versão compilada "
+       "para este computador (arm64 em Apple Silicon), ou informe o caminho em "
+       "Locais das ferramentas ou com --ffmpeg."),
+    IT("Impossibile avviare ffmpeg ({0}). Installi una versione compilata per "
+       "questo computer (arm64 su Apple Silicon), oppure ne indichi il percorso "
+       "in Posizioni degli strumenti o con --ffmpeg."),
+    NL("ffmpeg kon niet worden gestart ({0}). Installeer een versie die voor "
+       "deze computer is gebouwd (arm64 op Apple Silicon), of geef het pad op "
+       "onder Gereedschapslocaties of met --ffmpeg."),
+    RU("Не удалось запустить ffmpeg ({0}). Установите сборку для этого "
+       "компьютера (arm64 на Apple Silicon) или укажите путь к ней в "
+       "«Расположение инструментов» либо через --ffmpeg."),
+    TR("ffmpeg başlatılamadı ({0}). Bu bilgisayar için derlenmiş bir sürüm kurun "
+       "(Apple Silicon'da arm64) ya da yolunu Araç konumları altında veya "
+       "--ffmpeg ile belirtin."));
 
 SS_MSG(err_ffmpeg_missing,
     EN("ffmpeg was not found ('{0}'). Install it, set its path under Tool "

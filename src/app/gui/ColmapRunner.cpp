@@ -285,6 +285,7 @@ void ColmapRunner::take_dense(ColmapJob& job) {
 void ColmapRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.mask_enable;
+    prep.inference_devices = _live.inference_devices;
     prep.mask_prompt = _live.mask_prompt;
     prep.mask_negative_prompt = _live.mask_negative_prompt;
     prep.mask_feature_prompt = _live.mask_feature_prompt;
@@ -449,6 +450,7 @@ PrepJob ColmapRunner::prep_job(const ColmapJob& job) {
     // masking use the same GPU as everything else. COLMAP's own device
     // routing is untouched.
     pj.device = job.device;
+    pj.inference_devices = job.inference_devices;
     pj.video_fps = job.video_fps;
     pj.adaptive_fps = job.adaptive_fps;
     pj.adaptive_range = job.adaptive_range;
@@ -458,6 +460,8 @@ PrepJob ColmapRunner::prep_job(const ColmapJob& job) {
     pj.blur_neighbour = job.blur_neighbour;
     pj.similar_bits = job.similar_bits;
     pj.keep_skipped = job.keep_skipped;
+    pj.sync_tracks = job.sync_tracks;
+    pj.auto_rotate = job.auto_rotate;
     pj.pano = job.pano;
     pj.max_frames = job.max_frames;
     pj.ffmpeg_exe = job.ffmpeg_exe;
@@ -508,9 +512,13 @@ void ColmapRunner::run(ColmapJob job) {
             log("Resuming previous run in " + ws.string() +
                 " (completed stages are reused)");
         PrepJob pj = prep_job(job);
+        std::string identity_error;
+        if (!snapshot_frame_sources(pj, identity_error)) return fail(identity_error);
         const DatasetRecord rec = read_plan_record(ws.string(), pj);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job, pj), prior, rec, req);
+        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+            return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string())) log(l);
@@ -536,8 +544,10 @@ void ColmapRunner::run(ColmapJob job) {
                 pj = p;
             };
             auto done = [&](Stage s, const PrepJob&) {
-                record.finish(s == Stage::Frames ? Step::Frames : Step::Masks);
+                if (s == Stage::Frames) record.finish(Step::Frames, prep.captures);
+                else record.finish(Step::Masks);
             };
+            pj.recorded_captures = recorded_captures(ws.string(), pj);
             if (!dp.run(pj, prep, err, refresh, done)) return fail(err);
         }
         const std::string images = prep.image_dir;

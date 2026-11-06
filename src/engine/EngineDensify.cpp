@@ -502,7 +502,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             dv_sh_quant_bounds, sh_bounds_per_splat,
             dv_sh_value_packed, dv_sh_value_bounds,
             sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-            non_sh,
+            non_sh, engine().projective_state, engine().projective_information,
             2 * step + 0,
             split_budget, &num_dead
         );
@@ -534,7 +534,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                     dv_sh_quant_bounds, sh_bounds_per_splat,
                     dv_sh_value_packed, dv_sh_value_bounds,
                     sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-                    non_sh,
+                    non_sh, engine().projective_state, engine().projective_information,
                     seed
                 );
             };
@@ -571,7 +571,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
             dv_sh_quant_bounds, sh_bounds_per_splat,
             dv_sh_value_packed, dv_sh_value_bounds,
             sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-            non_sh,
+            non_sh, engine().projective_state, engine().projective_information,
             2 * step + 0
         , engine().region.weight);
 
@@ -589,7 +589,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                 dv_sh_quant_bounds, sh_bounds_per_splat,
                 dv_sh_value_packed, dv_sh_value_bounds,
                 sh_value_bits, sh_value_bounds_per_splat, num_sh_buffer,
-                non_sh,
+                non_sh, engine().projective_state, engine().projective_information,
                 2 * step + 1
             , engine().region.weight);
         }
@@ -616,11 +616,11 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
                 cur_num_splats + num_added, noise_scalar,
                 dv_radii, dv_means, dv_scales, dv_quats, dv_opacs,
                 gate ? mwn.value : DeviceVector<float>(),
-                gate ? std::exp2(-(float)(step - mwn.base_step) / mwn.half_life) : 1.0f);
+                gate ? std::exp2(-(float)(step - mwn.base_step) / mwn.half_life) : 1.0f, step);
         } else {
             mcmc_add_noise_tensor(
                 cur_num_splats + num_added, noise_scalar,
-                dv_means, dv_scales, dv_quats, dv_opacs);
+                dv_means, dv_scales, dv_quats, dv_opacs, step);
         }
     }
 

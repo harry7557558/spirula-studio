@@ -29,7 +29,7 @@ using backend::MemcpyKind;
 static constexpr int64_t N = 3000;
 static constexpr int64_t C = 2;
 static constexpr uint32_t W = 200, H = 150;
-static constexpr int NUM_SH = 15;  // degree-3 buffer
+static constexpr int NUM_SH = 24;
 
 template <typename T>
 T* upload(const std::vector<T>& host) {
@@ -181,6 +181,8 @@ int main(int argc, char** argv) {
         {2, true, 1, 0, 1, 0, false, false},
         {0, false, 0, 2, 3, 8, false, false},
         {2, false, 3, 0, 3, 16, true, false},
+        {0, false, 0, 0, 4, 0, false, true},
+        {0, true, 0, 0, 4, 16, true, false},
     };
 
     for (const Cfg& cfg : cfgs) {

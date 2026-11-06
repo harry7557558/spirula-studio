@@ -1,30 +1,10 @@
-// Backend parity tool for the densification launch APIs: densify_clip_scale,
-// the MCMC/revised noise kernels, the long-axis-split relocate/add family
-// and the MCMC relocate/add family. The SAME source builds under both
-// backends:
-//
-//   CUDA build:   ./densify_parity dump ref.bin
-//   Vulkan build: ./densify_parity compare ref.bin   (per device)
-//
-// Ref format: [nf tight floats] [nl loose floats] [nc int32 codes].
-//
-// Channels: deterministic outputs (clip_scale) compare in the tight float
-// channel. Everything downstream of float-hash randomness sits in the LOOSE
-// float channel with a violation-fraction cap: randn3 noise and the
-// sampling draws (efraimidis keys, MCMC cumsum binary searches) hash
-// integers bit-exactly on both backends, but their float post-processing
-// (fract/log/cumsum association) can flip rare boundary cases
-// cross-backend, and one flipped sample rewrites one splat's row. Quantized
-// packed cells compare as integer codes with a +-1 allowance and the same
-// rationale for its violation cap.
-//
-// The long-axis-split RELOCATE path pairs sampled srcs with atomically
-// compacted dst slots, so the pairing is scheduling-dependent even on CUDA
-// alone. The relocate configs are therefore constructed with EXACTLY ONE
-// relocating splat (one low-opacity config, one non-finite config), making
-// the pairing trivial and the comparison elementwise; the ADD path (same
-// kernel, dst = cur + i deterministic) covers many concurrent dst splats,
-// including neighbor-word masked atomic stores in the quantized layouts.
+// Densification parity: dump a CUDA reference, compare it on Vulkan.
+// Ref format: tight floats, loose floats, integer codes.
+// Integer noise keys match exactly; transcendental functions and cumulative
+// sampling sums allow small numerical differences in the loose channel.
+// Relocation uses one destination per fixture because atomic compaction makes
+// source/destination pairing schedule-dependent. Addition tests concurrent
+// destinations, including masked stores to shared quantization words.
 
 #include <kernels/densify/Densify.cuh>
 
@@ -150,7 +130,7 @@ int main(int argc, char** argv) {
         float* d_opacs = upload(opacs);
         mcmc_add_noise_tensor(N, 2e-2f, dv<float3>(d_means, N),
                               dv<float3>(d_scales, N), dv<float4>(d_quats, N),
-                              dv<float>(d_opacs, N));
+                              dv<float>(d_opacs, N), 27);
         backend::device_synchronize();
         readback_f(lacc, d_means, 3 * N);
 
@@ -161,7 +141,7 @@ int main(int argc, char** argv) {
                                  dv<float3>(d_scales, N),
                                  dv<float4>(d_quats, N),
                                  dv<float>(d_opacs, N),
-                                 DeviceVector<float>(), 1.0f);
+                                 DeviceVector<float>(), 1.0f, 27);
         backend::device_synchronize();
         readback_f(lacc, d_means2, 3 * N);
 
@@ -175,7 +155,7 @@ int main(int argc, char** argv) {
                                  dv<float3>(d_scales, N),
                                  dv<float4>(d_quats, N),
                                  dv<float>(d_opacs, N),
-                                 dv<float>(d_peak, N), 0.5f);
+                                 dv<float>(d_peak, N), 0.5f, 27);
         backend::device_synchronize();
         readback_f(lacc, d_means3, 3 * N);
     }
@@ -197,6 +177,8 @@ int main(int argc, char** argv) {
         float* sh_value_bounds;         // float2 blocks
         uint8_t* nq_packed[5];
         float* nq_bounds[5];
+        float* projective_state;
+        float* projective_information;
         float* accum;                   // float2 [CAP]
         int32_t* bias_steps;
         uint32_t* visit;                // core/SplatVisitState.h counters
@@ -242,6 +224,15 @@ int main(int argc, char** argv) {
         m.scales = upload(scales);
         m.opacs = upload(opacs);
         m.dc = upload(dc);
+        std::vector<float> depth_state(4*CAP);
+        for (int64_t i = 0; i < CAP; ++i) {
+            for (int k = 0; k < 3; ++k) depth_state[4*i+k] = dc[3*i+k];
+            depth_state[4*i+3] = 42;
+        }
+        m.projective_state = upload(depth_state);
+        std::vector<float> information(CAP);
+        for (int64_t i = 0; i < CAP; ++i) information[i] = dc[3*i]*dc[3*i]+1;
+        m.projective_information = upload(information);
 
         if (sh_value_bits == 32) {
             std::vector<float> sh(3 * num_sh * CAP);
@@ -391,6 +382,21 @@ int main(int argc, char** argv) {
     };
 
     // Argument pack shared by the four API calls.
+    auto check_projective_state = [&](const Model& m) {
+        std::vector<float> colors(3*CAP), state(4*CAP), information(CAP);
+        backend::memcpy_sync(colors.data(),m.dc,colors.size()*4,MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(state.data(),m.projective_state,state.size()*4,MemcpyKind::DeviceToHost);
+        backend::memcpy_sync(information.data(),m.projective_information,information.size()*4,MemcpyKind::DeviceToHost);
+        for (int64_t i = 0; i < CAP; ++i) {
+            if (information[i] != colors[3*i]*colors[3*i]+1)
+                throw std::runtime_error("split child lost its bearing information");
+            for (int k = 0; k < 3; ++k)
+                if (colors[3*i+k] != state[4*i+k])
+                    throw std::runtime_error("split child lost its parent's projective state");
+            if (state[4*i+3] != 42) throw std::runtime_error("split child lost its optimizer age");
+        }
+    };
+
     auto call_relocate_las = [&](Model& m, float min_opacity, uint32_t seed,
                                  float* max_weight = nullptr,
                                  bool dead_by_opacity = true,
@@ -425,9 +431,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed, /*max_relocate=*/0, num_dead);
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     auto call_add_las = [&](Model& m, int64_t num_add, uint32_t seed,
@@ -462,9 +469,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed);
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     auto call_relocate_mcmc = [&](Model& m, float min_opacity,
@@ -496,9 +504,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed, DeviceVector<float>());
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     auto call_add_mcmc = [&](Model& m, int64_t num_add, float min_opacity,
@@ -530,9 +539,10 @@ int main(int argc, char** argv) {
             m.bounds_per_splat, dv<uint8_t>(m.sh_value_packed,
                                             m.sh_value_bytes),
             dv<float2>(m.sh_value_bounds, m.sh_value_bound_f / 2),
-            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq,
+            m.sh_value_bits, m.bounds_per_splat, (int)m.num_sh_buffer, m.nq, dv<float4>(m.projective_state, CAP), dv<float>(m.projective_information, CAP),
             seed, DeviceVector<float>());
         backend::device_synchronize();
+        check_projective_state(m);
     };
 
     // A recycled splat must come back alive. Parity cannot see this on its
@@ -831,6 +841,7 @@ int main(int argc, char** argv) {
         densify_max_weight_init_tensor(N, dv<float>(m.opacs, CAP), dv<float>(d_mw, CAP));
         densify_max_weight_scale_tensor(N, 0.5f, dv<float>(d_mw, CAP));
         backend::device_synchronize();
+        check_projective_state(m);
         backend::memcpy_sync(mw.data(), d_mw, CAP * 4, MemcpyKind::DeviceToHost);
         const bool init_ok = mw_ratio_ok(op, mw, N, [](int64_t) { return false; });
         const int64_t num_add = 555;

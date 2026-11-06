@@ -108,6 +108,7 @@ void _rb_load_pixel_state(
                      v_out_rgb[3 * image_pix + 2],
                      (state_flags & kRbDepthBound) != 0 ? v_out_depth[image_pix] : 0.0f);
     }
+#ifndef SS_RASTER_NODEPTH
     // depth channel: convert dL/d(render depth) to dL/d(accumulated C).
     {
         float inv_alpha = 1.0f / max(1.0f - T, 1e-10f);
@@ -122,6 +123,7 @@ void _rb_load_pixel_state(
             v_c.w *= inv_alpha;
         }
     }
+#endif
     _rb_Tg[pix] = float2(T, v_T);
     _rb_vpix[pix] = v_c;
 
@@ -164,8 +166,7 @@ void _rb_load_pixel_state(
     }
 }
 
-// Common pixel-undo math from alpha + color to (v_alpha, v_color) plus the
-// shared-state updates. Returns false when the pixel is skipped.
+// Shared compositing adjoint for both primitive families.
 [ForceInline]
 bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
                     out float v_alpha, out float4 v_color) {
@@ -174,6 +175,9 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
     float ra = 1.0f / (1.0f - alpha);
     float T0 = T1 * ra;
     float4 v_c = _rb_vpix[pix_id];
+#ifdef SS_RASTER_NODEPTH
+    v_c.w = 0.0f;
+#endif
 
     // ---- median depth backward (see CUDA comments) ----
     float v_depth_median = 0.0f;
@@ -223,6 +227,9 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
 
     if (kDistType != 0) v_color.w *= 1.0f / max(color.w, DEPTH_DIST_EPS);
     v_color.w += v_depth_median;
+#ifdef SS_RASTER_NODEPTH
+    v_color.w = 0.0f;
+#endif
 
     _rb_Tg[pix_id] = float2(T0, v_T0);
     return true;
@@ -232,6 +239,7 @@ bool _rb_pixel_grad(int pix_id, float alpha, float4 color,
 // 2D backward (Vanilla3DGS / MipSplatting)
 // ---------------------------------------------------------------------------
 
+#ifndef SS_RASTER_NODEPTH
 struct Raster2dBwdParams {  // via params ring
     float* s_screen;    // [.., SCR2_STRIDE]
     int* gaussian_ids;   // kPacked only (fallback-backed otherwise)
@@ -335,9 +343,7 @@ void _rb2_step(int pix_id, int splat_idx, bool active,
     touched = true;
 
     if (kAccumWeight != 0 || kMaxWeight != 0) {
-        float T0 = _rb_Tg[pix_id].x;  // just updated: T0 stored in .x
-        // CUDA computes the weight with the pre-update T0 = T1/(1-alpha);
-        // _rb_pixel_grad stored exactly that, so reuse it.
+        float T0 = _rb_Tg[pix_id].x;
         float w = alpha * T0;
         if (kMaxWeight != 0) max_weight = max(max_weight, w);
         if (kAccumWeight == kAccumMax)
@@ -533,6 +539,8 @@ void rasterize_bwd_2d(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     }
 }
 
+#endif
+
 // ---------------------------------------------------------------------------
 // 3DGUT backward
 // ---------------------------------------------------------------------------
@@ -636,6 +644,10 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     v_splat.iscl_rot += v_ir;
     v_splat.opacity += v_op;
 
+#ifdef SS_RASTER_NODEPTH
+    float3 v_ray_o_c = float3(0.0f), v_ray_d_c = float3(0.0f);
+    v_splat.rgb += v_color.xyz;
+#else
     float3 v_rgb;
     float3 v_ray_o_c, v_ray_d_c;
     evaluate_color_3dgs_vjp(splat.mean, splat.iscl_rot, splat.opacity,
@@ -645,6 +657,7 @@ void _rb3_step(Raster3dgutBwdParams p, int pix_id, int splat_idx,
     v_splat.iscl_rot += v_ir;
     v_splat.opacity += v_op;
     v_splat.rgb += v_rgb;
+#endif
 
     if (kAccumWeight != 0 || kMaxWeight != 0) {
         float T0 = _rb_Tg[pix_id].x;
@@ -682,10 +695,15 @@ void _rb3_reduce_add(float* dst, float val, uint tid) {
                           float2((px - intrin.z) / intrin.x,          \
                                  (py - intrin.w) / intrin.y), raydir)
 
+#ifdef SS_RASTER_NODEPTH
+[ForceInline]
+void rasterize_bwd_3dgut_body(uint3 wg, uint tid, uniform Raster3dgutBwdParams* pp) {
+#else
 [shader("compute")]
 [numthreads(32, 1, 1)]
 void rasterize_bwd_3dgut(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
                          uniform Raster3dgutBwdParams* pp) {
+#endif
     Raster3dgutBwdParams p = *pp;
     uint image_id = wg.x;
     uint tile_id = macro_tile_id(wg.y * TILE_SIZE_DY / TILE_SIZE_Y,

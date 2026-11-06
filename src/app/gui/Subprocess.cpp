@@ -11,6 +11,7 @@
 #include <mutex>
 #include <filesystem>
 #include <thread>
+#include <mutex>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -20,12 +21,19 @@
 #include <windows.h>
 #else
 #include <cerrno>
+#include <climits>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <cstdlib>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+extern char** environ;
 #endif
 
 namespace fs = std::filesystem;
@@ -84,12 +92,170 @@ std::string quote_arg(const std::string& a) {
     return out;
 }
 
+// The job is assigned atomically at creation: even death during launch cannot
+// strand a suspended child. Only this owner holds its non-inheritable handle.
+bool create_owned_process(char* command, const char* cwd, STARTUPINFOA& startup,
+                          DWORD flags, PROCESS_INFORMATION& process, HANDLE& job) {
+    job = CreateJobObjectA(nullptr, nullptr);
+    if (!job) return false;
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                 &limits, sizeof limits)) {
+        CloseHandle(job);
+        job = nullptr;
+        return false;
+    }
+    HANDLE inherited[3];
+    size_t count = 0;
+    for (HANDLE h : {startup.hStdInput, startup.hStdOutput, startup.hStdError}) {
+        if (!h || h == INVALID_HANDLE_VALUE) continue;
+        if (std::find(inherited, inherited + count, h) == inherited + count)
+            inherited[count++] = h;
+    }
+    SIZE_T bytes = 0;
+    InitializeProcThreadAttributeList(nullptr, 2, 0, &bytes);
+    std::vector<unsigned char> storage(bytes);
+    auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+    bool initialized = InitializeProcThreadAttributeList(attributes, 2, 0, &bytes);
+    STARTUPINFOEXA extended{};
+    extended.StartupInfo = startup;
+    extended.StartupInfo.cb = sizeof extended;
+    extended.lpAttributeList = attributes;
+    bool ok = initialized &&
+        UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                  inherited, count * sizeof(HANDLE), nullptr, nullptr) &&
+        UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                                  &job, sizeof job, nullptr, nullptr) &&
+        CreateProcessA(nullptr, command, nullptr, nullptr, TRUE,
+                       flags | EXTENDED_STARTUPINFO_PRESENT, nullptr, cwd,
+                       &extended.StartupInfo, &process);
+    if (initialized) DeleteProcThreadAttributeList(attributes);
+    if (!ok) {
+        CloseHandle(job);
+        job = nullptr;
+    }
+    return ok;
+}
+
+struct OwnedJob {
+    HANDLE handle = nullptr;
+    std::vector<HANDLE> members;
+    bool terminating = false;
+    bool cleanup_ok = true;
+};
+
+bool retain_job_members(OwnedJob& job) {
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    if (!QueryInformationJobObject(job.handle, JobObjectExtendedLimitInformation,
+                                   &limits, sizeof limits, nullptr)) return false;
+    limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    limits.BasicLimitInformation.ActiveProcessLimit = 0;
+    if (!SetInformationJobObject(job.handle, JobObjectExtendedLimitInformation,
+                                 &limits, sizeof limits)) return false;
+    constexpr size_t header = offsetof(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) /
+                              sizeof(ULONG_PTR);
+    std::vector<ULONG_PTR> storage(header + 16);
+    auto* list = reinterpret_cast<JOBOBJECT_BASIC_PROCESS_ID_LIST*>(storage.data());
+    for (;;) {
+        const size_t bytes = storage.size() * sizeof(ULONG_PTR);
+        if (bytes > MAXDWORD) return false;
+        if (QueryInformationJobObject(job.handle, JobObjectBasicProcessIdList,
+                                     list, (DWORD)bytes, nullptr)) break;
+        if (GetLastError() != ERROR_MORE_DATA) return false;
+        storage.resize(header + (size_t)list->NumberOfAssignedProcesses);
+        list = reinterpret_cast<JOBOBJECT_BASIC_PROCESS_ID_LIST*>(storage.data());
+    }
+    job.members.reserve(list->NumberOfProcessIdsInList);
+    for (DWORD i = 0; i < list->NumberOfProcessIdsInList; ++i) {
+        HANDLE member = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                                    FALSE, (DWORD)list->ProcessIdList[i]);
+        if (!member) return false;
+        BOOL belongs = FALSE;
+        if (!IsProcessInJob(member, job.handle, &belongs) || !belongs) {
+            CloseHandle(member);
+            return false;
+        }
+        job.members.push_back(member);
+    }
+    return true;
+}
+
+void terminate_owned_job(OwnedJob& job) {
+    if (!job.handle || job.terminating) return;
+    job.terminating = true;
+    job.cleanup_ok = retain_job_members(job);
+    if (!TerminateJobObject(job.handle, 1)) {
+        job.cleanup_ok = false;
+        CloseHandle(job.handle);
+        job.handle = nullptr;
+    }
+}
+
+void finish_owned_job(OwnedJob& job) {
+    if (!job.handle && job.members.empty()) return;
+    terminate_owned_job(job);
+    const ULONGLONG deadline = GetTickCount64() + 5000;
+    for (HANDLE member : job.members) {
+        const ULONGLONG now = GetTickCount64();
+        const DWORD remaining = now < deadline ? (DWORD)(deadline - now) : 0;
+        if (WaitForSingleObject(member, remaining) != WAIT_OBJECT_0)
+            job.cleanup_ok = false;
+        CloseHandle(member);
+    }
+    job.members.clear();
+    if (job.handle) {
+        for (;;) {
+            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+            if (!QueryInformationJobObject(job.handle, JobObjectBasicAccountingInformation,
+                                           &accounting, sizeof accounting, nullptr)) {
+                job.cleanup_ok = false;
+                break;
+            }
+            if (accounting.ActiveProcesses == 0) break;
+            if (GetTickCount64() >= deadline) { job.cleanup_ok = false; break; }
+            Sleep(1);
+        }
+        CloseHandle(job.handle);
+        job.handle = nullptr;
+    }
+}
+
+void close_owned_job(OwnedJob& job, std::mutex& mutex) {
+    std::lock_guard<std::mutex> lock(mutex);
+    finish_owned_job(job);
+}
+
+void read_owned_lines(HANDLE process, OwnedJob& job, std::mutex& mutex,
+                      HANDLE pipe, const std::function<void(const std::string&)>& on_line) {
+    std::string acc;
+    char buf[4096];
+    bool exited = false;
+    for (;;) {
+        if (!exited && WaitForSingleObject(process, 0) == WAIT_OBJECT_0) {
+            exited = true;
+            close_owned_job(job, mutex);
+        }
+        DWORD avail = 0, got = 0;
+        if (PeekNamedPipe(pipe, nullptr, 0, nullptr, &avail, nullptr) && avail) {
+            if (ReadFile(pipe, buf, (DWORD)std::min<size_t>(sizeof buf, avail), &got, nullptr) && got)
+                emit_lines(acc, buf, got, on_line);
+        } else if (exited) {
+            break;
+        } else {
+            WaitForSingleObject(process, 100);
+        }
+    }
+    emit_tail(acc, on_line);
+}
+
 }  // namespace
 
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
     std::string cmdline;
     for (size_t i = 0; i < argv.size(); i++)
@@ -111,9 +277,10 @@ int run_process(const std::vector<std::string>& argv,
     PROCESS_INFORMATION pi{};
     std::vector<char> cmd(cmdline.begin(), cmdline.end());
     cmd.push_back('\0');
-    BOOL ok = CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, TRUE,
-                             CREATE_NO_WINDOW, nullptr,
-                             cwd.empty() ? nullptr : cwd.c_str(), &si, &pi);
+    OwnedJob job;
+    BOOL ok = create_owned_process(cmd.data(),
+                                   cwd.empty() ? nullptr : cwd.c_str(),
+                                   si, CREATE_NO_WINDOW, pi, job.handle);
     CloseHandle(wr);
     if (!ok) { CloseHandle(rd); return kSpawnFailed; }
     CloseHandle(pi.hThread);
@@ -121,43 +288,48 @@ int run_process(const std::vector<std::string>& argv,
     std::string acc;
     char buf[4096];
     bool killed = false;
+    bool output_open = true;
+    bool exited = false;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
-            TerminateProcess(pi.hProcess, 1);
+            terminate_owned_job(job);
             killed = true;
         }
+        if (!exited && WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) {
+            exited = true;
+            finish_owned_job(job);
+        }
         DWORD avail = 0;
-        if (!PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr)) break;
+        if (output_open && !PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr))
+            output_open = false;
         if (avail > 0) {
             DWORD got = 0;
             if (!ReadFile(rd, buf, (DWORD)std::min<size_t>(sizeof buf, avail), &got, nullptr) || !got)
-                break;
-            emit_lines(acc, buf, got, on_line);
+                output_open = false;
+            else
+                emit_lines(acc, buf, got, on_line);
+        } else if (exited) {
+            break;
         } else {
-            if (WaitForSingleObject(pi.hProcess, 100) == WAIT_OBJECT_0) {
-                // Drain whatever is left.
-                while (PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr) && avail) {
-                    DWORD got = 0;
-                    if (!ReadFile(rd, buf, (DWORD)std::min<size_t>(sizeof buf, avail), &got, nullptr) || !got)
-                        break;
-                    emit_lines(acc, buf, got, on_line);
-                }
-                break;
-            }
+            WaitForSingleObject(pi.hProcess, 100);
         }
     }
     emit_tail(acc, on_line);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 1;
     GetExitCodeProcess(pi.hProcess, &code);
+    finish_owned_job(job);
     CloseHandle(pi.hProcess);
     CloseHandle(rd);
-    return killed ? kCancelled : (int)code;
+    return killed ? kCancelled : job.cleanup_ok ? (int)code : 1;
 }
 
 
 struct ProcessPipe::Impl {
     HANDLE process = nullptr;
+    OwnedJob job;
+    std::mutex job_mutex;
     HANDLE in_wr = nullptr;
     HANDLE out_rd = nullptr;
     std::thread reader;
@@ -194,9 +366,9 @@ bool ProcessPipe::start(const std::vector<std::string>& argv,
     cmd.push_back('\0');
     // An encoder saturates every core; the window showing its progress
     // must still draw, so it runs a notch below.
-    const BOOL ok = CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
-                                   nullptr, &si, &pi);
+    const BOOL ok = create_owned_process(cmd.data(), nullptr, si,
+                                         CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
+                                         pi, _impl->job.handle);
     CloseHandle(in_rd);
     CloseHandle(out_wr);
     if (!ok) {
@@ -207,15 +379,12 @@ bool ProcessPipe::start(const std::vector<std::string>& argv,
     }
     CloseHandle(pi.hThread);
     _impl->process = pi.hProcess;
+    _impl->job.cleanup_ok = true;
+    _impl->job.terminating = false;
     _impl->on_line = std::move(on_line);
     Impl* im = _impl.get();
     _impl->reader = std::thread([im] {
-        std::string acc;
-        char buf[4096];
-        DWORD got = 0;
-        while (ReadFile(im->out_rd, buf, sizeof buf, &got, nullptr) && got)
-            emit_lines(acc, buf, got, im->on_line);
-        emit_tail(acc, im->on_line);
+        read_owned_lines(im->process, im->job, im->job_mutex, im->out_rd, im->on_line);
     });
     return true;
 }
@@ -237,17 +406,20 @@ int ProcessPipe::finish() {
     if (!_impl->process) return kSpawnFailed;
     if (_impl->in_wr) { CloseHandle(_impl->in_wr); _impl->in_wr = nullptr; }
     WaitForSingleObject(_impl->process, INFINITE);
+    // Descendants must release inherited pipe writers before the reader joins.
+    close_owned_job(_impl->job, _impl->job_mutex);
     if (_impl->reader.joinable()) _impl->reader.join();
     DWORD code = 1;
     GetExitCodeProcess(_impl->process, &code);
     CloseHandle(_impl->process);
     CloseHandle(_impl->out_rd);
     _impl->process = _impl->out_rd = nullptr;
-    return (int)code;
+    return _impl->job.cleanup_ok ? (int)code : 1;
 }
 
 void ProcessPipe::kill() {
-    if (_impl->process) TerminateProcess(_impl->process, 1);
+    std::lock_guard<std::mutex> lock(_impl->job_mutex);
+    terminate_owned_job(_impl->job);
 }
 
 ProcessPipe::~ProcessPipe() {
@@ -260,6 +432,8 @@ ProcessPipe::~ProcessPipe() {
 
 struct ProcessReader::Impl {
     HANDLE process = nullptr;
+    OwnedJob job;
+    std::mutex job_mutex;
     HANDLE out_rd = nullptr, err_rd = nullptr;
     std::thread reader;
     std::function<void(const std::string&)> on_line;
@@ -293,8 +467,8 @@ bool ProcessReader::start(const std::vector<std::string>& argv,
     PROCESS_INFORMATION pi{};
     std::vector<char> cmd(cmdline.begin(), cmdline.end());
     cmd.push_back('\0');
-    const BOOL ok = CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+    const BOOL ok = create_owned_process(cmd.data(), nullptr, si,
+                                         CREATE_NO_WINDOW, pi, _impl->job.handle);
     CloseHandle(out_wr);
     CloseHandle(err_wr);
     if (!ok) {
@@ -305,15 +479,12 @@ bool ProcessReader::start(const std::vector<std::string>& argv,
     }
     CloseHandle(pi.hThread);
     _impl->process = pi.hProcess;
+    _impl->job.cleanup_ok = true;
+    _impl->job.terminating = false;
     _impl->on_line = std::move(on_line);
     Impl* im = _impl.get();
     _impl->reader = std::thread([im] {
-        std::string acc;
-        char buf[4096];
-        DWORD got = 0;
-        while (ReadFile(im->err_rd, buf, sizeof buf, &got, nullptr) && got)
-            emit_lines(acc, buf, got, im->on_line);
-        emit_tail(acc, im->on_line);
+        read_owned_lines(im->process, im->job, im->job_mutex, im->err_rd, im->on_line);
     });
     return true;
 }
@@ -331,17 +502,19 @@ int ProcessReader::finish() {
     // Closed first: a child still writing then fails instead of blocking.
     if (_impl->out_rd) { CloseHandle(_impl->out_rd); _impl->out_rd = nullptr; }
     WaitForSingleObject(_impl->process, INFINITE);
+    close_owned_job(_impl->job, _impl->job_mutex);
     if (_impl->reader.joinable()) _impl->reader.join();
     DWORD code = 1;
     GetExitCodeProcess(_impl->process, &code);
     CloseHandle(_impl->process);
     CloseHandle(_impl->err_rd);
     _impl->process = _impl->err_rd = nullptr;
-    return (int)code;
+    return _impl->job.cleanup_ok ? (int)code : 1;
 }
 
 void ProcessReader::kill() {
-    if (_impl->process) TerminateProcess(_impl->process, 1);
+    std::lock_guard<std::mutex> lock(_impl->job_mutex);
+    terminate_owned_job(_impl->job);
 }
 
 ProcessReader::~ProcessReader() {
@@ -349,6 +522,112 @@ ProcessReader::~ProcessReader() {
         kill();
         finish();
     }
+}
+
+struct ProcessDuplex::Impl {
+    HANDLE process = nullptr;
+    OwnedJob job;
+    std::mutex job_mutex;
+    HANDLE in_wr = nullptr, out_rd = nullptr, err_rd = nullptr;
+    std::thread diagnostics;
+    std::atomic<bool> cancelled{false};
+};
+
+bool ProcessDuplex::start(const std::vector<std::string>& argv,
+                          std::function<void(const std::string&)> on_stderr) {
+    if (argv.empty() || _impl->process) return false;
+    std::string command;
+    for (const auto& arg : argv)
+        command += (command.empty() ? "" : " ") + quote_arg(arg);
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof sa;
+    sa.bInheritHandle = TRUE;
+    HANDLE in_rd = nullptr, out_wr = nullptr, err_wr = nullptr;
+    const bool pipes =
+        CreatePipe(&in_rd, &_impl->in_wr, &sa, 1 << 20) &&
+        CreatePipe(&_impl->out_rd, &out_wr, &sa, 1 << 20) &&
+        CreatePipe(&_impl->err_rd, &err_wr, &sa, 0) &&
+        SetHandleInformation(_impl->in_wr, HANDLE_FLAG_INHERIT, 0) &&
+        SetHandleInformation(_impl->out_rd, HANDLE_FLAG_INHERIT, 0) &&
+        SetHandleInformation(_impl->err_rd, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOA startup{};
+    startup.cb = sizeof startup;
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = in_rd;
+    startup.hStdOutput = out_wr;
+    startup.hStdError = err_wr;
+    PROCESS_INFORMATION process{};
+    const bool started = pipes &&
+        create_owned_process(command.data(), nullptr, startup, CREATE_NO_WINDOW,
+                             process, _impl->job.handle);
+    for (HANDLE handle : {in_rd, out_wr, err_wr})
+        if (handle) CloseHandle(handle);
+    if (!started) {
+        for (HANDLE handle : {_impl->in_wr, _impl->out_rd, _impl->err_rd})
+            if (handle) CloseHandle(handle);
+        _impl->in_wr = _impl->out_rd = _impl->err_rd = nullptr;
+        return false;
+    }
+    CloseHandle(process.hThread);
+    _impl->process = process.hProcess;
+    _impl->job.cleanup_ok = true;
+    _impl->job.terminating = false;
+    _impl->cancelled.store(false);
+    Impl* im = _impl.get();
+    _impl->diagnostics = std::thread([im, on_stderr = std::move(on_stderr)] {
+        read_owned_lines(im->process, im->job, im->job_mutex, im->err_rd, on_stderr);
+    });
+    return true;
+}
+
+bool ProcessDuplex::write(const void* data, size_t bytes) {
+    if (!_impl->in_wr || _impl->cancelled.load()) return false;
+    const char* cursor = static_cast<const char*>(data);
+    while (bytes) {
+        DWORD put = 0;
+        if (_impl->cancelled.load() ||
+            !WriteFile(_impl->in_wr, cursor, (DWORD)std::min<size_t>(bytes, 1 << 24),
+                       &put, nullptr) || !put) return false;
+        cursor += put;
+        bytes -= put;
+    }
+    return true;
+}
+
+size_t ProcessDuplex::read(void* data, size_t bytes) {
+    if (!_impl->out_rd || _impl->cancelled.load()) return 0;
+    DWORD got = 0;
+    return ReadFile(_impl->out_rd, data, (DWORD)std::min<size_t>(bytes, 1 << 24),
+                    &got, nullptr) ? got : 0;
+}
+
+int ProcessDuplex::finish() {
+    if (!_impl->process) return kSpawnFailed;
+    CloseHandle(_impl->in_wr);
+    _impl->in_wr = nullptr;
+    char discard[4096];
+    while (read(discard, sizeof discard)) {}
+    WaitForSingleObject(_impl->process, INFINITE);
+    close_owned_job(_impl->job, _impl->job_mutex);
+    if (_impl->diagnostics.joinable()) _impl->diagnostics.join();
+    DWORD code = 1;
+    GetExitCodeProcess(_impl->process, &code);
+    CloseHandle(_impl->process);
+    CloseHandle(_impl->out_rd);
+    CloseHandle(_impl->err_rd);
+    _impl->process = _impl->out_rd = _impl->err_rd = nullptr;
+    return _impl->job.cleanup_ok ? (int)code : 1;
+}
+
+void ProcessDuplex::kill() {
+    _impl->cancelled.store(true);
+    std::lock_guard<std::mutex> lock(_impl->job_mutex);
+    terminate_owned_job(_impl->job);
+}
+
+ProcessDuplex::~ProcessDuplex() {
+    kill();
+    finish();
 }
 
 
@@ -397,54 +676,374 @@ bool open_url(const std::string& url) {
 // POSIX: fork/execvp + pipe, poll(2), process-group kill on cancel.
 // ---------------------------------------------------------------------------
 
+namespace {
+
+std::mutex spawn_mutex;
+std::vector<int> ownership_writers;
+
+constexpr char completion_key[] = "_SPIRULA_SUBPROCESS_COMPLETION_FDS=";
+
+std::vector<int> inherited_completions() {
+    std::vector<int> fds;
+    const char* text = std::getenv("_SPIRULA_SUBPROCESS_COMPLETION_FDS");
+    while (text && *text) {
+        char* end = nullptr;
+        const long value = std::strtol(text, &end, 10);
+        if (end == text || value < 3 || value > INT_MAX) break;
+        struct stat info{};
+        const int fd = static_cast<int>(value);
+        if (fstat(fd, &info) == 0 && S_ISFIFO(info.st_mode) &&
+            (fcntl(fd, F_GETFL) & O_ACCMODE) == O_WRONLY)
+            fds.push_back(fd);
+        text = *end == ',' ? end + 1 : nullptr;
+    }
+    return fds;
+}
+
+struct ExecArgs {
+    std::vector<char*> args, environment, shell;
+    std::vector<std::string> paths;
+    std::vector<int> ancestors = inherited_completions();
+    std::string metadata;
+
+    explicit ExecArgs(const std::vector<std::string>& argv) {
+        args.reserve(argv.size() + 1);
+        for (const auto& arg : argv) args.push_back(const_cast<char*>(arg.c_str()));
+        args.push_back(nullptr);
+        shell.reserve(argv.size() + 2);
+        shell.push_back(const_cast<char*>("/bin/sh"));
+        shell.push_back(nullptr);
+        for (size_t i = 1; i < argv.size(); ++i) shell.push_back(args[i]);
+        shell.push_back(nullptr);
+        if (argv[0].find('/') != std::string::npos) {
+            paths.push_back(argv[0]);
+        } else {
+            const char* path = std::getenv("PATH");
+            std::string search;
+            if (path) search = path;
+            else {
+                const size_t size = confstr(_CS_PATH, nullptr, 0);
+                if (size) {
+                    search.resize(size);
+                    confstr(_CS_PATH, search.data(), size);
+                    search.resize(size - 1);
+                }
+            }
+            size_t begin = 0;
+            for (;;) {
+                const size_t end = search.find(':', begin);
+                const std::string directory = search.substr(begin, end - begin);
+                paths.push_back(directory.empty() ? argv[0] : directory + "/" + argv[0]);
+                if (end == std::string::npos) break;
+                begin = end + 1;
+            }
+        }
+    }
+
+    void prepare(int completion) {
+        metadata = completion_key;
+        for (int fd : ancestors) metadata += std::to_string(fd) + ",";
+        metadata += std::to_string(completion);
+        for (char** entry = environ; entry && *entry; ++entry)
+            if (std::strncmp(*entry, completion_key, sizeof completion_key - 1) != 0)
+                environment.push_back(*entry);
+        environment.push_back(metadata.data());
+        environment.push_back(nullptr);
+    }
+
+    [[noreturn]] void report_failure() {
+        const int code = errno;
+        const char prefix[] = "cannot run ";
+        const char reason[] = ": exec failed, errno ";
+        char digits[16];
+        char* end = digits + sizeof digits;
+        *--end = '\n';
+        unsigned value = static_cast<unsigned>(code);
+        do { *--end = char('0' + value % 10); value /= 10; } while (value);
+        if (::write(STDERR_FILENO, prefix, sizeof prefix - 1) < 0) {}
+        if (::write(STDERR_FILENO, args[0], std::strlen(args[0])) < 0) {}
+        if (::write(STDERR_FILENO, reason, sizeof reason - 1) < 0) {}
+        if (::write(STDERR_FILENO, end, digits + sizeof digits - end) < 0) {}
+        _exit(127);
+    }
+
+    [[noreturn]] void execute() {
+        for (const auto& path : paths) {
+            execve(path.c_str(), args.data(), environment.data());
+            if (errno == ENOEXEC) {
+                shell[1] = const_cast<char*>(path.c_str());
+                execve("/bin/sh", shell.data(), environment.data());
+                report_failure();
+            }
+            if (errno != EACCES && errno != ENOENT && errno != ENOTDIR &&
+                errno != ESTALE && errno != ENODEV && errno != ETIMEDOUT) break;
+        }
+        report_failure();
+    }
+};
+
+bool owned_pipe(int fds[2]) {
+    std::lock_guard<std::mutex> lock(spawn_mutex);
+    if (pipe(fds) != 0) return false;
+    for (int i = 0; i < 2; ++i) {
+        int& fd = fds[i];
+        if (fd >= STDERR_FILENO + 1) continue;
+        const int original = fd;
+        fd = fcntl(original, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+        close(original);
+        if (fd < 0) {
+            close(fds[0]); close(fds[1]);
+            return false;
+        }
+    }
+    if (fcntl(fds[0], F_SETFD, FD_CLOEXEC) == 0 &&
+        fcntl(fds[1], F_SETFD, FD_CLOEXEC) == 0) return true;
+    close(fds[0]); close(fds[1]);
+    return false;
+}
+
+struct OwnedChild {
+    pid_t guardian = -1;
+    int owner = -1, status = -1;
+
+    void cancel() {
+        std::lock_guard<std::mutex> lock(spawn_mutex);
+        if (owner < 0) return;
+        ownership_writers.erase(std::find(ownership_writers.begin(),
+                                         ownership_writers.end(), owner));
+        close(owner);
+        owner = -1;
+    }
+
+    int wait() {
+        int result = 0;
+        ssize_t got;
+        do { got = ::read(status, &result, sizeof result); } while (got < 0 && errno == EINTR);
+        int ignored = 0;
+        while (waitpid(guardian, &ignored, 0) < 0 && errno == EINTR) {}
+        cancel();
+        close(status);
+        status = -1;
+        guardian = -1;
+        return got == sizeof result ? result : (1 << 8);
+    }
+};
+
+void close_guardian_fds(const std::vector<int>& keep, int max_fd) {
+#if defined(__linux__) && defined(SYS_close_range)
+    unsigned begin = 0;
+    bool complete = true;
+    for (int fd : keep) {
+        if (begin < (unsigned)fd &&
+            syscall(SYS_close_range, begin, (unsigned)fd - 1, 0) != 0) {
+            complete = false;
+            break;
+        }
+        begin = (unsigned)fd + 1;
+    }
+    if (complete && syscall(SYS_close_range, begin, ~0u, 0) == 0) return;
+#endif
+    for (int fd = 0; fd < max_fd; ++fd)
+        if (!std::binary_search(keep.begin(), keep.end(), fd)) close(fd);
+}
+
+bool wait_completion(int fd) {
+    char ignored[64];
+    ssize_t remaining;
+    do { remaining = ::read(fd, ignored, sizeof ignored); }
+    while (remaining > 0 || (remaining < 0 && errno == EINTR));
+    return remaining == 0;
+}
+
+// A guardian outside the work group owns its lifetime. EOF is also delivered
+// on SIGKILL of the caller, unlike a signal handler or atexit cleanup.
+pid_t fork_owned(OwnedChild& child, ExecArgs& exec) {
+    std::unique_lock<std::mutex> lock(spawn_mutex);
+    int owner[2], status[2], completion[2];
+    if (pipe(owner) != 0) return -1;
+    if (pipe(status) != 0) { close(owner[0]); close(owner[1]); return -1; }
+    if (pipe(completion) != 0) {
+        close(owner[0]); close(owner[1]); close(status[0]); close(status[1]);
+        return -1;
+    }
+    const int original = completion[1];
+    completion[1] = fcntl(original, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    close(original);
+    if (completion[1] < 0 || fcntl(completion[1], F_SETFD, 0) != 0 ||
+        fcntl(completion[0], F_SETFD, FD_CLOEXEC) != 0) {
+        close(owner[0]); close(owner[1]); close(status[0]); close(status[1]);
+        close(completion[0]); close(completion[1]);
+        return -1;
+    }
+    for (int fd : {owner[0], owner[1], status[0], status[1]}) {
+        if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+            close(owner[0]); close(owner[1]); close(status[0]); close(status[1]);
+            close(completion[0]); close(completion[1]);
+            return -1;
+        }
+    }
+    exec.prepare(completion[1]);
+    std::vector<int> keep = exec.ancestors;
+    keep.insert(keep.end(), {owner[0], status[1], completion[0]});
+    std::sort(keep.begin(), keep.end());
+    keep.erase(std::unique(keep.begin(), keep.end()), keep.end());
+    const int max_fd = getdtablesize();
+    struct sigaction pipe_signal{};
+    sigaction(SIGPIPE, nullptr, &pipe_signal);
+    struct sigaction child_signal{};
+    sigaction(SIGCHLD, nullptr, &child_signal);
+    const pid_t guardian = fork();
+    if (guardian < 0) {
+        close(owner[0]); close(owner[1]); close(status[0]); close(status[1]);
+        close(completion[0]); close(completion[1]);
+        return -1;
+    }
+    if (guardian == 0) {
+        if (setsid() < 0) _exit(1);
+        signal(SIGPIPE, SIG_IGN);
+        struct sigaction reap_signal{};
+        reap_signal.sa_handler = SIG_DFL;
+        sigemptyset(&reap_signal.sa_mask);
+        sigaction(SIGCHLD, &reap_signal, nullptr);
+        close(owner[1]);
+        close(status[0]);
+        for (int fd : ownership_writers) close(fd);
+        pid_t worker = fork();
+        if (worker == 0) {
+            sigaction(SIGPIPE, &pipe_signal, nullptr);
+            sigaction(SIGCHLD, &child_signal, nullptr);
+            close(owner[0]);
+            close(status[1]);
+            close(completion[0]);
+            if (setpgid(0, 0) != 0) _exit(127);
+            lock.release();
+            return 0;
+        }
+        close(completion[1]);
+        close_guardian_fds(keep, max_fd);
+        // Establish the group before reporting readiness to cancellation.
+        if (worker > 0 && setpgid(worker, worker) != 0 && getpgid(worker) != worker) {
+            ::kill(worker, SIGKILL);
+            int ignored;
+            while (waitpid(worker, &ignored, 0) < 0 && errno == EINTR) {}
+            worker = -1;
+        }
+        if (::write(status[1], &worker, sizeof worker) != sizeof worker || worker < 0) {
+            if (worker > 0) {
+                ::kill(-worker, SIGKILL);
+                int ignored;
+                while (waitpid(worker, &ignored, 0) < 0 && errno == EINTR) {}
+            }
+            wait_completion(completion[0]);
+            _exit(1);
+        }
+        int result = 0;
+        for (;;) {
+            siginfo_t info{};
+            const int done = waitid(P_PID, worker, &info, WEXITED | WNOHANG | WNOWAIT);
+            if (done == 0 && info.si_pid == worker) {
+                // Keep the leader unreaped until the group has been killed:
+                // its PID must not be recycled into somebody else's group.
+                ::kill(-worker, SIGKILL);
+                while (waitpid(worker, &result, 0) < 0 && errno == EINTR) {}
+                break;
+            }
+            if (done < 0 && errno != EINTR) {
+                if (errno != ECHILD) {
+                    ::kill(-worker, SIGKILL);
+                    while (waitpid(worker, &result, 0) < 0 && errno == EINTR) {}
+                }
+                result = 1 << 8;
+                break;
+            }
+            pollfd pfd{owner[0], POLLIN, 0};
+            const int ready = poll(&pfd, 1, 50);
+            if ((ready > 0 && pfd.revents) || (ready < 0 && errno != EINTR)) {
+                ::kill(-worker, SIGKILL);
+                while (waitpid(worker, &result, 0) < 0 && errno == EINTR) {}
+                break;
+            }
+        }
+        // Nested guardians retain ancestor leases until their own descendants
+        // have stopped. EOF is the reclamation barrier, not merely worker exit.
+        if (!wait_completion(completion[0])) result = 1 << 8;
+        ssize_t written;
+        do { written = ::write(status[1], &result, sizeof result); } while (written < 0 && errno == EINTR);
+        _exit(written == sizeof result ? 0 : 1);
+    }
+    close(completion[0]);
+    close(completion[1]);
+    close(owner[0]);
+    close(status[1]);
+    pid_t worker = -1;
+    ssize_t got;
+    do { got = ::read(status[0], &worker, sizeof worker); } while (got < 0 && errno == EINTR);
+    if (got != sizeof worker || worker < 0) {
+        close(owner[1]); close(status[0]);
+        int ignored;
+        while (waitpid(guardian, &ignored, 0) < 0 && errno == EINTR) {}
+        return -1;
+    }
+    child.guardian = guardian;
+    child.owner = owner[1];
+    child.status = status[0];
+    ownership_writers.push_back(child.owner);
+    return worker;
+}
+
+}  // namespace
+
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
+    ExecArgs exec(argv);
     int fds[2];
-    if (pipe(fds) != 0) return kSpawnFailed;
+    if (!owned_pipe(fds)) return kSpawnFailed;
 
-    pid_t pid = fork();
+    OwnedChild child;
+    pid_t pid = fork_owned(child, exec);
     if (pid < 0) { close(fds[0]); close(fds[1]); return kSpawnFailed; }
     if (pid == 0) {
-        // Child: own process group so cancel kills helpers too.
-        setpgid(0, 0);
         dup2(fds[1], STDOUT_FILENO);
         dup2(fds[1], STDERR_FILENO);
         close(fds[0]);
         close(fds[1]);
         if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(127);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec.execute();
     }
     close(fds[1]);
 
     std::string acc;
     char buf[4096];
     bool killed = false;
+    bool output_open = true;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
-            kill(-pid, SIGKILL);
+            child.cancel();
             killed = true;
         }
-        struct pollfd pfd{fds[0], POLLIN, 0};
-        int pr = poll(&pfd, 1, 100);
+        pollfd fds_to_poll[2]{{output_open ? fds[0] : -1, POLLIN, 0},
+                             {child.status, POLLIN, 0}};
+        const int pr = poll(fds_to_poll, 2, 100);
         if (pr > 0) {
-            ssize_t got = read(fds[0], buf, sizeof buf);
-            if (got <= 0) break;   // EOF or error: child exited
-            emit_lines(acc, buf, (size_t)got, on_line);
+            if (output_open && fds_to_poll[0].revents) {
+                const ssize_t got = read(fds[0], buf, sizeof buf);
+                if (got > 0) emit_lines(acc, buf, (size_t)got, on_line);
+                else if (got == 0 || errno != EINTR) output_open = false;
+            }
+            if (!output_open && fds_to_poll[1].revents) break;
         } else if (pr < 0 && errno != EINTR) {
+            child.cancel();
             break;
         }
     }
     emit_tail(acc, on_line);
     close(fds[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
+    const int status = child.wait();
     if (killed) return kCancelled;
     if (WIFEXITED(status)) {
         int code = WEXITSTATUS(status);
@@ -455,6 +1054,7 @@ int run_process(const std::vector<std::string>& argv,
 
 struct ProcessPipe::Impl {
     pid_t pid = -1;
+    OwnedChild child;
     int in_fd = -1, out_fd = -1;
     std::thread reader;
     std::function<void(const std::string&)> on_line;
@@ -463,34 +1063,28 @@ struct ProcessPipe::Impl {
 bool ProcessPipe::start(const std::vector<std::string>& argv,
                         std::function<void(const std::string&)> on_line) {
     if (argv.empty() || _impl->pid > 0) return false;
+    ExecArgs exec(argv);
     // A child that dies mid-frame must fail the write, not kill this process.
     signal(SIGPIPE, SIG_IGN);
     int in[2], out[2];
-    if (pipe(in) != 0) return false;
-    if (pipe(out) != 0) { close(in[0]); close(in[1]); return false; }
-    const pid_t pid = fork();
+    if (!owned_pipe(in)) return false;
+    if (!owned_pipe(out)) { close(in[0]); close(in[1]); return false; }
+    const pid_t pid = fork_owned(_impl->child, exec);
     if (pid < 0) {
         close(in[0]); close(in[1]); close(out[0]); close(out[1]);
         return false;
     }
     if (pid == 0) {
-        setpgid(0, 0);
         // Below the window, as on Windows.
         if (nice(10) == -1) {}
         dup2(in[0], STDIN_FILENO);
         dup2(out[1], STDOUT_FILENO);
         dup2(out[1], STDERR_FILENO);
         close(in[0]); close(in[1]); close(out[0]); close(out[1]);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec.execute();
     }
     close(in[0]);
     close(out[1]);
-    fcntl(in[1], F_SETFD, FD_CLOEXEC);
-    fcntl(out[0], F_SETFD, FD_CLOEXEC);
     _impl->pid = pid;
     _impl->in_fd = in[1];
     _impl->out_fd = out[0];
@@ -526,8 +1120,7 @@ bool ProcessPipe::write(const void* data, size_t bytes) {
 int ProcessPipe::finish() {
     if (_impl->pid <= 0) return kSpawnFailed;
     if (_impl->in_fd >= 0) { close(_impl->in_fd); _impl->in_fd = -1; }
-    int status = 0;
-    while (waitpid(_impl->pid, &status, 0) < 0 && errno == EINTR) {}
+    const int status = _impl->child.wait();
     if (_impl->reader.joinable()) _impl->reader.join();
     close(_impl->out_fd);
     _impl->out_fd = -1;
@@ -540,7 +1133,7 @@ int ProcessPipe::finish() {
 }
 
 void ProcessPipe::kill() {
-    if (_impl->pid > 0) ::kill(-_impl->pid, SIGKILL);
+    _impl->child.cancel();
 }
 
 ProcessPipe::~ProcessPipe() {
@@ -553,6 +1146,7 @@ ProcessPipe::~ProcessPipe() {
 
 struct ProcessReader::Impl {
     pid_t pid = -1;
+    OwnedChild child;
     int out_fd = -1, err_fd = -1;
     std::thread reader;
     std::function<void(const std::string&)> on_line;
@@ -561,31 +1155,26 @@ struct ProcessReader::Impl {
 bool ProcessReader::start(const std::vector<std::string>& argv,
                           std::function<void(const std::string&)> on_line) {
     if (argv.empty() || _impl->pid > 0) return false;
+    ExecArgs exec(argv);
     int out[2], err[2];
-    if (pipe(out) != 0) return false;
-    if (pipe(err) != 0) { close(out[0]); close(out[1]); return false; }
-    const pid_t pid = fork();
+    if (!owned_pipe(out)) return false;
+    if (!owned_pipe(err)) { close(out[0]); close(out[1]); return false; }
+    const pid_t pid = fork_owned(_impl->child, exec);
     if (pid < 0) {
         close(out[0]); close(out[1]); close(err[0]); close(err[1]);
         return false;
     }
     if (pid == 0) {
-        setpgid(0, 0);
         const int devnull = open("/dev/null", O_RDONLY);
         if (devnull >= 0) dup2(devnull, STDIN_FILENO);
+        if (devnull > STDERR_FILENO) close(devnull);
         dup2(out[1], STDOUT_FILENO);
         dup2(err[1], STDERR_FILENO);
         close(out[0]); close(out[1]); close(err[0]); close(err[1]);
-        std::vector<char*> args;
-        for (const auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
-        args.push_back(nullptr);
-        execvp(args[0], args.data());
-        _exit(127);
+        exec.execute();
     }
     close(out[1]);
     close(err[1]);
-    fcntl(out[0], F_SETFD, FD_CLOEXEC);
-    fcntl(err[0], F_SETFD, FD_CLOEXEC);
     _impl->pid = pid;
     _impl->out_fd = out[0];
     _impl->err_fd = err[0];
@@ -618,8 +1207,7 @@ int ProcessReader::finish() {
     if (_impl->pid <= 0) return kSpawnFailed;
     // Closed first: a child still writing then fails instead of blocking.
     if (_impl->out_fd >= 0) { close(_impl->out_fd); _impl->out_fd = -1; }
-    int status = 0;
-    while (waitpid(_impl->pid, &status, 0) < 0 && errno == EINTR) {}
+    const int status = _impl->child.wait();
     if (_impl->reader.joinable()) _impl->reader.join();
     close(_impl->err_fd);
     _impl->err_fd = -1;
@@ -632,7 +1220,7 @@ int ProcessReader::finish() {
 }
 
 void ProcessReader::kill() {
-    if (_impl->pid > 0) ::kill(-_impl->pid, SIGKILL);
+    _impl->child.cancel();
 }
 
 ProcessReader::~ProcessReader() {
@@ -640,6 +1228,127 @@ ProcessReader::~ProcessReader() {
         kill();
         finish();
     }
+}
+
+struct ProcessDuplex::Impl {
+    pid_t pid = -1;
+    OwnedChild child;
+    int in_fd = -1, out_fd = -1, err_fd = -1;
+    std::thread diagnostics;
+    std::atomic<bool> cancelled{false};
+};
+
+bool ProcessDuplex::start(const std::vector<std::string>& argv,
+                          std::function<void(const std::string&)> on_stderr) {
+    if (argv.empty() || _impl->pid > 0) return false;
+    ExecArgs exec(argv);
+    int in[2], out[2], err[2];
+    if (!owned_pipe(in)) return false;
+    if (!owned_pipe(out)) { close(in[0]); close(in[1]); return false; }
+    if (!owned_pipe(err)) {
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        return false;
+    }
+    const pid_t pid = fork_owned(_impl->child, exec);
+    if (pid < 0) {
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        close(err[0]); close(err[1]);
+        return false;
+    }
+    if (pid == 0) {
+        if (dup2(in[0], STDIN_FILENO) < 0 ||
+            dup2(out[1], STDOUT_FILENO) < 0 ||
+            dup2(err[1], STDERR_FILENO) < 0) _exit(127);
+        close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+        close(err[0]); close(err[1]);
+        exec.execute();
+    }
+    close(in[0]); close(out[1]); close(err[1]);
+    _impl->pid = pid;
+    _impl->in_fd = in[1];
+    _impl->out_fd = out[0];
+    _impl->err_fd = err[0];
+    _impl->cancelled.store(false);
+    Impl* im = _impl.get();
+    _impl->diagnostics = std::thread([im, on_stderr = std::move(on_stderr)] {
+        std::string acc;
+        char buffer[4096];
+        for (;;) {
+            const ssize_t got = ::read(im->err_fd, buffer, sizeof buffer);
+            if (got < 0 && errno == EINTR) continue;
+            if (got <= 0) break;
+            emit_lines(acc, buffer, (size_t)got, on_stderr);
+        }
+        emit_tail(acc, on_stderr);
+    });
+    return true;
+}
+
+bool ProcessDuplex::write(const void* data, size_t bytes) {
+    if (_impl->in_fd < 0 || _impl->cancelled.load()) return false;
+    sigset_t blocked, previous, pending;
+    sigemptyset(&blocked);
+    sigaddset(&blocked, SIGPIPE);
+    if (pthread_sigmask(SIG_BLOCK, &blocked, &previous) != 0) return false;
+    sigpending(&pending);
+    const bool already_pending = sigismember(&pending, SIGPIPE) == 1;
+    const char* cursor = static_cast<const char*>(data);
+    bool success = true;
+    while (bytes) {
+        if (_impl->cancelled.load()) { success = false; break; }
+        const ssize_t put = ::write(_impl->in_fd, cursor,
+                                    std::min<size_t>(bytes, 1 << 24));
+        if (put < 0 && errno == EINTR) continue;
+        if (put <= 0) { success = false; break; }
+        cursor += put;
+        bytes -= (size_t)put;
+    }
+    // Consume only a SIGPIPE generated by this write before restoring the mask.
+    sigpending(&pending);
+    if (!already_pending && sigismember(&pending, SIGPIPE) == 1) {
+        int ignored;
+        sigwait(&blocked, &ignored);
+    }
+    pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+    return success;
+}
+
+size_t ProcessDuplex::read(void* data, size_t bytes) {
+    if (_impl->out_fd < 0 || _impl->cancelled.load()) return 0;
+    for (;;) {
+        const ssize_t got = ::read(_impl->out_fd, data,
+                                   std::min<size_t>(bytes, 1 << 24));
+        if (got < 0 && errno == EINTR) continue;
+        return got > 0 ? (size_t)got : 0;
+    }
+}
+
+int ProcessDuplex::finish() {
+    if (_impl->pid <= 0) return kSpawnFailed;
+    close(_impl->in_fd);
+    _impl->in_fd = -1;
+    char discard[4096];
+    while (read(discard, sizeof discard)) {}
+    const int status = _impl->child.wait();
+    if (_impl->diagnostics.joinable()) _impl->diagnostics.join();
+    close(_impl->out_fd); close(_impl->err_fd);
+    _impl->out_fd = _impl->err_fd = -1;
+    _impl->pid = -1;
+    if (WIFEXITED(status)) {
+        const int code = WEXITSTATUS(status);
+        return code == 127 ? kSpawnFailed : code;
+    }
+    return 1;
+}
+
+void ProcessDuplex::kill() {
+    _impl->cancelled.store(true);
+    _impl->child.cancel();
+}
+
+ProcessDuplex::~ProcessDuplex() {
+    kill();
+    finish();
 }
 
 
@@ -678,9 +1387,14 @@ bool open_url(const std::string& url) {
 #endif
     for (const char* opener : openers) {
         if (!command_exists(opener)) continue;
+        std::unique_lock<std::mutex> lock(spawn_mutex);
+        const auto completion_fds = inherited_completions();
         const pid_t pid = fork();
         if (pid < 0) return false;
         if (pid == 0) {
+            lock.release();
+            for (int fd : completion_fds) close(fd);
+            for (int fd : ownership_writers) close(fd);
             // Double fork so the browser is reparented to init and this
             // process never has to reap it -- the GUI has no SIGCHLD handler
             // and would otherwise accumulate zombies.
@@ -701,6 +1415,7 @@ bool open_url(const std::string& url) {
             }
             _exit(0);
         }
+        lock.unlock();
         int status = 0;
         waitpid(pid, &status, 0);
         return true;
@@ -712,6 +1427,7 @@ bool open_url(const std::string& url) {
 
 ProcessPipe::ProcessPipe() : _impl(new Impl) {}
 ProcessReader::ProcessReader() : _impl(new Impl) {}
+ProcessDuplex::ProcessDuplex() : _impl(new Impl) {}
 
 // Platform-independent: argv assembly is the same everywhere.
 std::vector<std::string> split_args(const std::string& s) {

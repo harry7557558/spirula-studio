@@ -263,10 +263,12 @@ int main(int argc, char** argv) {
 
         int macro_log2 = kMacroLog2Default;
 
-        auto [isect_ids, flatten_ids, tile_offsets] = do_intersect_tile_generic(
+        auto intersections = do_intersect_tile_generic(
             aabb_2d, depths_nd, ellipse_view(splats_s, cfg.prim == 2), C,
             ttv(d_intr, {(int64_t)C, 4}), W, H, image_ids_ptr, /*tile_active=*/nullptr,
         macro_log2);
+        auto& flatten_ids = std::get<1>(intersections);
+        auto& tile_offsets = std::get<2>(intersections);
         backend::device_synchronize();
         if (check_error()) return 1;
 

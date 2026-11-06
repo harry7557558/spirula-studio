@@ -562,3 +562,12 @@ int engine_copy_background_to_host(TorchTensorView out_image) {
     for (int64_t i = 0; i < n; ++i) h[i] = fill;
     return 1;
 }
+
+
+bool engine_has_background_sh(int* out_degree) {
+    if (engine().background.enabled && engine().background.mode == EngineBackground::Mode::Sh) {
+        if (out_degree) *out_degree = engine().background.sh_degree;
+        return true;
+    }
+    return false;
+}

@@ -1,15 +1,6 @@
-// Backend parity tool for the rasterization backward. Runs the (already
-// parity-verified) forward chain — projection -> tile intersect ->
-// rasterize forward — to build real forward state, then drives
-// rasterize_to_pixels_{3dgs,3dgut}_bwd with deterministic output gradients.
-// The SAME source builds under both backends:
-//
-//   CUDA build:   ./raster_bwd_parity dump ref.bin
-//   Vulkan build: ./raster_bwd_parity compare ref.bin   (per device)
-//
-// Per-splat gradients are accumulated across macro tiles with atomic adds
-// whose order differs between backends (and between runs on CUDA), so the
-// comparison is tolerance-based with a small violation-fraction cap.
+// Raster backward parity from real projection/intersection/forward state.
+// CUDA: raster_bwd_parity dump ref.bin; Vulkan: compare ref.bin.
+// Atomic accumulation order varies; comparisons cap tolerance violations.
 
 #include <backend/tests/DistortionFixture.h>
 #include <kernels/tile/IntersectTile.cuh>
@@ -190,6 +181,7 @@ int main(int argc, char** argv) {
         bool vmg;  // 3dgut viewmat grad
         bool mw;   // peak-weight output
         float cut; // 3dgs kernel_cut: Primitive3DGS::kernel_vis
+        bool depth_grad = true;
     };
     // The 3dgs backward never sees the camera, so the tier sweep lives on the
     // 3dgut rows; the 3dgs rows carry it through the projection only.
@@ -204,6 +196,14 @@ int main(int argc, char** argv) {
         {2, false, 1, 2, DistortionType::D, true, DensifyAccumMode::Max, false, true, 0.0f},
         {2, false, 0, 1, DistortionType::RGB_D, false, DensifyAccumMode::Sum, false, false, 0.0f},
         {2, true, 0, 2, DistortionType::D, false, DensifyAccumMode::Avg, false, true, 0.0f},
+        {0, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, false, true, 0.0f, false},
+        {0, true, 1, 1, DistortionType::None, false, DensifyAccumMode::Avg, false, true, 4.0f, false},
+        {2, false, 0, 0, DistortionType::None, false, DensifyAccumMode::None, true, false, 0.0f, false},
+        {2, true, 1, 2, DistortionType::None, false, DensifyAccumMode::Avg, false, true, 0.0f, false},
+        {0, true, 1, 1, DistortionType::RGB_D, true, DensifyAccumMode::Max, false, false, 0.0f, false},
+        {2, false, 0, 1, DistortionType::D, true, DensifyAccumMode::Sum, true, true, 0.0f, false},
+        {0, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, false, false, 0.0f, false},
+        {2, false, 0, 0, DistortionType::None, true, DensifyAccumMode::None, true, false, 0.0f, false},
     };
     const char* cams[4] = {"PINHOLE", "FISHEYE", "EQUISOLID",
                            "EQUIRECTANGULAR"};
@@ -213,6 +213,8 @@ int main(int argc, char** argv) {
     };
 
     for (const Cfg& cfg : cfgs) {
+        auto v_render_cfg = v_renders;
+        if (!cfg.depth_grad) std::get<1>(v_render_cfg) = DeviceTensor3D<float>{};
         backend::memset_sync(d_radii, 0, N * sizeof(float));
 
         // --- projection ---
@@ -322,7 +324,7 @@ int main(int argc, char** argv) {
                     tile_offsets, flatten_ids, macro_log2,
                     render_Ts, last_ids, renders,
                     dist_fwd_opt, cfg.dt, DeviceTensor3D<float>{}, awmap_t,
-                    cfg.aw, mw_t, kMwScale, v_renders, t3f1(d_v_T), v_med_t,
+                    cfg.aw, mw_t, kMwScale, v_render_cfg, t3f1(d_v_T), v_med_t,
                     v_dist_opt, 0.0f, std::nullopt, std::nullopt, cfg.vmg);
             backend::device_synchronize();
             if (check_error()) return 1;
@@ -340,7 +342,7 @@ int main(int argc, char** argv) {
                 N, in_splats, splats_s, gauss_ids, W, H, tile_offsets,
                 flatten_ids, macro_log2, render_Ts, last_ids,
                 renders, dist_fwd_opt,
-                cfg.dt, awmap_t, cfg.aw, mw_t, kMwScale, cfg.cut, v_renders,
+                cfg.dt, awmap_t, cfg.aw, mw_t, kMwScale, cfg.cut, v_render_cfg,
                 t3f1(d_v_T), v_med_t, v_dist_opt, 0.0f,
                 std::nullopt, std::nullopt);
             backend::device_synchronize();
@@ -360,7 +362,7 @@ int main(int argc, char** argv) {
                         flatten_ids, macro_log2, render_Ts, last_ids,
                         renders, dist_fwd_opt, cfg.dt, awmap_t, cfg.aw,
                         DeviceVector<float>{}, 1.0f, cfg.cut,
-                        v_renders, t3f1(d_v_T), v_med_t,
+                        v_render_cfg, t3f1(d_v_T), v_med_t,
                         k == 0 ? v_dists_tied : v_dists_derived,
                         k == 0 ? 0.0f : kDistRatio, std::nullopt, std::nullopt);
                     backend::device_synchronize();

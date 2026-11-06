@@ -4,6 +4,7 @@
 #include "app/gui/SceneFrame.h"
 
 #include "backend/api/BackendRuntime.h"
+#include "checkpoint/BackgroundExport.h"
 #include "checkpoint/Resume.h"
 #include "checkpoint/SplatPly.h"
 #include "config/TrainConfig.h"
@@ -341,9 +342,14 @@ void SplatViewer::run(std::string path) {
             }
         }
 
-        // The run's own color space, so the model opens looking the way it
-        // was trained rather than the way an untagged PLY defaults to.
         const spirula::ColorResolution color = spirula::resolve_color(cfg);
+        int bg_deg = 0, bg_transfer = (int)color.splat_transfer;
+        bool bg_is_linear = color.splat_linear;
+        std::vector<float3> bg_coeffs;
+        fs::path ckpt_dir = fs::path(ply).parent_path();
+        bool has_bg = ckpt::load_background_sh(ckpt_dir, bg_deg, bg_coeffs,
+                                               bg_transfer, bg_is_linear);
+
         {
             std::lock_guard<std::mutex> lk(_mu);
             _gamut = color.splat_gamut;
@@ -357,8 +363,8 @@ void SplatViewer::run(std::string path) {
         set_frame(center, unit);
 
         ViewerRenderConfig vc;
-        vc.primitive = cfg.primitive;
-        vc.packed = cfg.packed || cfg.use_bvh;
+        vc.primitive = !cfg.primitive.empty() ? cfg.primitive : c.primitive;
+        vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
         // Median and distortion buffers are training diagnostics computed from
         // regularizers this file has none of, so the viewer does not offer
@@ -414,6 +420,13 @@ void SplatViewer::run(std::string path) {
                 color.splat_linear,
                 cs_on ? vec(spirula::gamut_to_rec709(color.splat_gamut))
                       : std::vector<float>{});
+            if (has_bg && !bg_coeffs.empty()) {
+                const int64_t n_bg = (int64_t)bg_coeffs.size();
+                TorchTensorView bg_tv((uint64_t)(uintptr_t)bg_coeffs.data(),
+                                      (uint32_t)sizeof(float), {n_bg, 3LL});
+                engine_scene_set_background_sh(_pending_slot, bg_deg, bg_tv,
+                                               bg_transfer, bg_is_linear);
+            }
         }
 
         _num_splats = c.num;

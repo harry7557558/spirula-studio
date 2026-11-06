@@ -1178,11 +1178,59 @@ SS_MSG(device_auto,
     PT("Automático"),    IT("Automatico"),   NL("Automatisch"),  RU("Автоматически"),
     TR("Otomatik"));
 
-SS_MSG(menu_device,
-    EN("Device"),        JA("デバイス"),       ZH_HANS("设备"),     ZH_HANT("裝置"),
-    KO("장치"),           DE("Gerät"),        FR("Périphérique"), ES("Dispositivo"),
-    PT("Dispositivo"),   IT("Dispositivo"),  NL("Apparaat"),     RU("Устройство"),
-    TR("Aygıt"));
+SS_MSG(primary_gpu,
+    EN("Primary GPU"), JA("メインGPU"), ZH_HANS("主 GPU"), ZH_HANT("主要 GPU"),
+    KO("주 GPU"), DE("Primäre GPU"), FR("GPU principal"), ES("GPU principal"),
+    PT("GPU principal"), IT("GPU principale"), NL("Primaire GPU"), RU("Основной GPU"),
+    TR("Birincil GPU"));
+
+SS_MSG(additional_gpus,
+    EN("Additional GPUs"), JA("追加GPU"), ZH_HANS("其他 GPU"), ZH_HANT("其他 GPU"),
+    KO("추가 GPU"), DE("Weitere GPUs"), FR("GPU supplémentaires"), ES("GPU adicionales"),
+    PT("GPUs adicionais"), IT("GPU aggiuntive"), NL("Extra GPU's"), RU("Дополнительные GPU"),
+    TR("Ek GPU'lar"));
+
+SS_MSG(additional_gpus_none,
+    EN("None"), JA("なし"), ZH_HANS("无"), ZH_HANT("無"), KO("없음"),
+    DE("Keine"), FR("Aucun"), ES("Ninguna"), PT("Nenhuma"), IT("Nessuna"),
+    NL("Geen"), RU("Нет"), TR("Yok"));
+
+SS_MSG(additional_gpus_help,
+    EN("Extra GPUs share masking and depth & normals with the primary GPU, one process each. "
+       "Reconstruction and training use only the primary GPU. Auto adds every other GPU of "
+       "the best kind present: discrete before integrated."),
+    JA("追加GPUはメインGPUとマスク、深度と法線の処理を分担し、各GPUで1つのプロセスを使います。"
+       "再構成と学習はメインGPUのみを使います。自動は独立GPUを優先し、なければ統合GPUを追加します。"),
+    ZH_HANS("其他 GPU 与主 GPU 分担遮罩、深度和法线处理，每个 GPU 一个进程。重建和训练仅使用主 GPU。"
+       "自动添加所有其他最佳类型的 GPU：优先独立 GPU，其次集成 GPU。"),
+    ZH_HANT("其他 GPU 與主要 GPU 分擔遮罩、深度和法線處理，每個 GPU 一個程序。重建和訓練僅使用主要 GPU。"
+       "自動加入所有其他最佳類型的 GPU：優先獨立 GPU，其次整合 GPU。"),
+    KO("추가 GPU는 주 GPU와 마스크, 깊이 및 법선 처리를 나누며 GPU마다 프로세스 하나를 사용합니다. "
+       "재구성과 학습은 주 GPU만 사용합니다. 자동은 외장 GPU 우선, 없으면 내장 GPU를 모두 추가합니다."),
+    DE("Weitere GPUs teilen Maskierung, Tiefe und Normalen mit der primären GPU, je ein Prozess. "
+       "Rekonstruktion und Training nutzen nur die primäre GPU. Automatisch ergänzt alle weiteren "
+       "GPUs der besten vorhandenen Art: dediziert vor integriert."),
+    FR("Les GPU supplémentaires partagent masques, profondeur et normales avec le GPU principal, "
+       "un processus chacun. Reconstruction et entraînement restent sur le GPU principal. "
+       "Auto ajoute tous les autres GPU du meilleur type présent : dédié avant intégré."),
+    ES("Los GPU adicionales comparten máscaras, profundidad y normales con el principal, un proceso "
+       "por GPU. Reconstrucción y entrenamiento usan solo el principal. Auto añade los demás GPU "
+       "del mejor tipo disponible: dedicado antes que integrado."),
+    PT("As GPUs adicionais partilham máscaras, profundidade e normais com a principal, um processo "
+       "por GPU. Reconstrução e treino usam só a principal. Auto adiciona todas as outras GPUs "
+       "do melhor tipo presente: dedicado antes de integrado."),
+    IT("Le GPU aggiuntive condividono maschere, profondità e normali con la principale, un processo "
+       "ciascuna. Ricostruzione e training usano solo la principale. Auto aggiunge le altre GPU "
+       "del tipo migliore presente: dedicato prima di integrato."),
+    NL("Extra GPU's delen maskers, diepte en normalen met de primaire GPU, elk met één proces. "
+       "Reconstructie en training gebruiken alleen de primaire GPU. Auto voegt alle andere GPU's "
+       "van het beste aanwezige type toe: afzonderlijk vóór geïntegreerd."),
+    RU("Дополнительные GPU делят маски, глубину и нормали с основным GPU, по одному процессу на GPU. "
+       "Реконструкция и обучение используют только основной GPU. Авто добавляет остальные GPU "
+       "лучшего доступного типа: дискретные перед встроенными."),
+    TR("Ek GPU'lar maskeleme, derinlik ve normalleri birincil GPU ile paylaşır; her birine bir süreç. "
+       "Yeniden oluşturma ve eğitim yalnızca birincil GPU'yu kullanır. Otomatik, en iyi türdeki "
+       "diğer tüm GPU'ları ekler: önce ayrık, yoksa tümleşik."));
 
 SS_MSG(device_help,
     EN("The GPU for built-in Vulkan jobs. Chosen once per session at the first "
@@ -1236,25 +1284,32 @@ SS_MSG(device_help,
        "ayarlar kullanır."));
 
 SS_MSG(device_auto_help,
-    EN("Let the application rank the devices and pick the best usable one."),
-    JA("アプリにデバイスを評価させ、使用可能な最良のものを選ばせます。"),
-    ZH_HANS("让程序对设备排序并选择最合适的可用设备。"),
-    ZH_HANT("讓程式對裝置排序並選擇最合適的可用裝置。"),
-    KO("앱이 장치를 평가해 사용 가능한 가장 좋은 것을 고르게 합니다."),
-    DE("Die Anwendung die Geräte bewerten und das beste nutzbare wählen lassen."),
-    FR("Laisser l'application classer les périphériques et prendre le meilleur "
-       "utilisable."),
-    ES("Dejar que la aplicación ordene los dispositivos y elija el mejor "
-       "utilizable."),
-    PT("Deixar o aplicativo classificar os dispositivos e escolher o melhor "
-       "utilizável."),
-    IT("Lasciare che l'applicazione ordini i dispositivi e scelga il migliore "
-       "utilizzabile."),
-    NL("De toepassing de apparaten laten rangschikken en het beste bruikbare "
-       "laten kiezen."),
-    RU("Позволить программе оценить устройства и выбрать лучшее доступное."),
-    TR("Uygulamanın aygıtları sıralayıp kullanılabilir en iyisini seçmesine izin "
-       "ver."));
+    EN("Picks the best usable GPU: discrete before integrated, then the one with the most memory; "
+       "between identical GPUs, the one with more free memory."),
+    JA("使用可能なGPUを選びます。独立GPU、統合GPUの順で、同じ種類ではメモリが最大のGPUを、"
+       "同じGPU同士では空きメモリが多い方を優先します。"),
+    ZH_HANS("选择最佳可用 GPU：优先独立 GPU，其次集成 GPU，同类型中选择内存最多的；"
+            "相同的 GPU 之间选择可用内存更多的。"),
+    ZH_HANT("選擇最佳可用 GPU：優先獨立 GPU，其次整合 GPU，同類型中選擇記憶體最多的；"
+            "相同的 GPU 之間選擇可用記憶體更多的。"),
+    KO("사용 가능한 GPU 중 외장, 내장 순으로 선택하고 같은 종류에서는 메모리가 가장 많은 GPU를, "
+       "동일한 GPU끼리는 여유 메모리가 더 많은 GPU를 선택합니다."),
+    DE("Wählt die beste nutzbare GPU: dediziert vor integriert, dann die mit dem meisten Speicher; "
+       "bei baugleichen GPUs die mit mehr freiem Speicher."),
+    FR("Choisit le meilleur GPU utilisable : dédié avant intégré, puis celui avec le plus de mémoire ; "
+       "entre GPU identiques, celui avec le plus de mémoire libre."),
+    ES("Elige el mejor GPU disponible: dedicado antes que integrado, luego el de mayor memoria; "
+       "entre GPU idénticos, el de más memoria libre."),
+    PT("Escolhe a melhor GPU disponível: dedicada antes de integrada, depois a de maior memória; "
+       "entre GPUs idênticas, a de mais memória livre."),
+    IT("Sceglie la migliore GPU utilizzabile: dedicata prima di integrata, poi quella con più memoria; "
+       "tra GPU identiche, quella con più memoria libera."),
+    NL("Kiest de beste bruikbare GPU: afzonderlijk vóór geïntegreerd, daarna die met het meeste geheugen; "
+       "bij identieke GPU's die met het meeste vrije geheugen."),
+    RU("Выбирает лучший доступный GPU: дискретный перед встроенным, затем с наибольшей памятью; "
+       "из одинаковых GPU — с большим объёмом свободной памяти."),
+    TR("En iyi kullanılabilir GPU'yu seçer: önce ayrık, sonra tümleşik; ardından en çok belleği olanı; "
+       "aynı GPU'lar arasında boş belleği daha çok olanı."));
 
 // {0} device name
 SS_MSG(device_frozen_at,
@@ -2686,20 +2741,31 @@ SS_MSG(status_idle,
 
 // The metric names are the ones the literature and the logs use; only the
 // labelling around them changes.
+SS_MSG(metric_loss,
+    EN("Loss"), JA("損失"), ZH_HANS("损失"), ZH_HANT("損失"),
+    KO("손실"), DE("Verlust"), FR("Perte"), ES("Pérdida"),
+    PT("Perda"), IT("Perdita"), NL("Verlies"), RU("Потери"), TR("Kayıp"));
+
+SS_MSG(metric_loss_log,
+    EN("Loss (log)"), JA("損失 (対数)"), ZH_HANS("损失 (对数)"), ZH_HANT("損失 (對數)"),
+    KO("손실 (로그)"), DE("Verlust (log)"), FR("Perte (log)"), ES("Pérdida (log)"),
+    PT("Perda (log)"), IT("Perdita (log)"), NL("Verlies (log)"), RU("Потери (лог)"),
+    TR("Kayıp (log)"));
+
 SS_MSG(status_metrics,
-    EN("splats: {0}   ssim: {1}   loss: {2}"),
-    JA("スプラット: {0}   ssim: {1}   損失: {2}"),
-    ZH_HANS("泼溅数：{0}   ssim：{1}   损失：{2}"),
-    ZH_HANT("潑濺數：{0}   ssim：{1}   損失：{2}"),
-    KO("스플랫: {0}   ssim: {1}   손실: {2}"),
-    DE("Splats: {0}   ssim: {1}   Verlust: {2}"),
-    FR("splats : {0}   ssim : {1}   perte : {2}"),
-    ES("splats: {0}   ssim: {1}   pérdida: {2}"),
-    PT("splats: {0}   ssim: {1}   perda: {2}"),
-    IT("splat: {0}   ssim: {1}   perdita: {2}"),
-    NL("splats: {0}   ssim: {1}   verlies: {2}"),
-    RU("сплатов: {0}   ssim: {1}   потери: {2}"),
-    TR("splat: {0}   ssim: {1}   kayıp: {2}"));
+    EN("splats: {0}   psnr: {1}   ssim: {2}   loss: {3}"),
+    JA("スプラット: {0}   psnr: {1}   ssim: {2}   損失: {3}"),
+    ZH_HANS("泼溅数：{0}   psnr: {1}   ssim：{2}   损失：{3}"),
+    ZH_HANT("潑濺數：{0}   psnr: {1}   ssim：{2}   損失：{3}"),
+    KO("스플랫: {0}   psnr: {1}   ssim: {2}   손실: {3}"),
+    DE("Splats: {0}   psnr: {1}   ssim: {2}   Verlust: {3}"),
+    FR("splats : {0}   psnr: {1}   ssim : {2}   perte : {3}"),
+    ES("splats: {0}   psnr: {1}   ssim: {2}   pérdida: {3}"),
+    PT("splats: {0}   psnr: {1}   ssim: {2}   perda: {3}"),
+    IT("splat: {0}   psnr: {1}   ssim: {2}   perdita: {3}"),
+    NL("splats: {0}   psnr: {1}   ssim: {2}   verlies: {3}"),
+    RU("сплатов: {0}   psnr: {1}   ssim: {2}   потери: {3}"),
+    TR("splat: {0}   psnr: {1}   ssim: {2}   kayıp: {3}"));
 
 SS_MSG(vram_help,
     EN("GPU memory (GiB): used by this process / total in use system-wide / "
@@ -4542,6 +4608,49 @@ SS_MSG(compare_link_views_help,
     TR("Tüm bölmeler için tek bir kamera; böylece sahnenin aynı yeri hepsinde "
        "aynı anda görünür."));
 
+SS_MSG(compare_wipe,
+    EN("Wipe"),
+    JA("ワイプ"),
+    ZH_HANS("划像对比"),
+    ZH_HANT("劃像對比"),
+    KO("와이프"),
+    DE("Wischen"),
+    FR("Volet"),
+    ES("Cortinilla"),
+    PT("Cortina"),
+    IT("Tendina"),
+    NL("Veegbalk"),
+    RU("Шторка"),
+    TR("Perde"));
+
+SS_MSG(compare_wipe_help,
+    EN("Show all open models in one pane with one camera. Drag the dividers to "
+       "adjust each model's section."),
+    JA("開いているすべてのモデルを同じカメラで1つのペインに表示します。"
+       "境界線をドラッグして各モデルの表示範囲を調整できます。"),
+    ZH_HANS("在一个窗格中用同一台相机显示所有已打开的模型。"
+            "拖动分界线可调整各模型的显示范围。"),
+    ZH_HANT("在一個窗格中用同一台相機顯示所有已開啟的模型。"
+            "拖動分界線可調整各模型的顯示範圍。"),
+    KO("열린 모든 모델을 같은 카메라로 한 창에 표시합니다. "
+       "경계선을 끌어서 각 모델의 표시 영역을 조절합니다."),
+    DE("Alle geöffneten Modelle in einem Bereich mit einer Kamera anzeigen. "
+       "Die Trennlinien ziehen, um den Bereich jedes Modells anzupassen."),
+    FR("Afficher tous les modèles ouverts dans un volet avec une seule caméra. "
+       "Faites glisser les séparateurs pour ajuster la zone de chaque modèle."),
+    ES("Muestra todos los modelos abiertos en un panel con una cámara. "
+       "Arrastra los separadores para ajustar la sección de cada modelo."),
+    PT("Mostra todos os modelos abertos num painel com uma câmera. "
+       "Arraste as divisórias para ajustar a seção de cada modelo."),
+    IT("Mostra tutti i modelli aperti in un riquadro con una telecamera. "
+       "Trascina i divisori per regolare la sezione di ogni modello."),
+    NL("Toon alle geopende modellen in één venster met één camera. "
+       "Sleep de scheidingslijnen om het deel van elk model aan te passen."),
+    RU("Все открытые модели в одной панели с одной камерой. "
+       "Перетаскивайте разделители, чтобы настроить область каждой модели."),
+    TR("Açık tüm modelleri tek bölmede, tek kamerayla gösterin. "
+       "Her modelin alanını ayarlamak için ayırıcıları sürükleyin."));
+
 SS_MSG(compare_placement_help,
     EN("Where this model sits, and where its pane is."),
     JA("このモデルの置き場所と、ペインの並び順です。"),
@@ -5739,8 +5848,59 @@ SS_MSG(batch_dataset_hint,
     NL("pad naar een gereconstrueerde dataset"),
     RU("путь к реконструированному набору данных"),
     TR("yeniden oluşturulmuş bir veri kümesinin yolu"));
-// The three columns that save making a near-identical preset for every
-// combination of the numbers people actually change.
+SS_MSG(floater_per_preset,
+    EN("Floater suppression per preset"),
+    JA("浮遊ノイズの抑制：プリセットに従う"),
+    ZH_HANS("抑制漂浮物：按预设"), ZH_HANT("抑制漂浮物：依預設"),
+    KO("프리셋에 따른 부유물 억제"),
+    DE("Schwebeteilunterdrückung laut Voreinstellung"),
+    FR("Suppression des artefacts flottants selon le préréglage"),
+    ES("Supresión de restos flotantes según el ajuste"),
+    PT("Supressão de resíduos flutuantes conforme a predefinição"),
+    IT("Soppressione dei frammenti fluttuanti da preimpostazione"),
+    NL("Zwevende artefacten onderdrukken volgens voorinstelling"),
+    RU("Подавление «летающих» артефактов по пресету"),
+    TR("Hazır ayara göre uçuşan artıkların bastırılması"));
+SS_MSG(floater_off,
+    EN("Floater suppression off"),
+    JA("浮遊ノイズの抑制：オフ"),
+    ZH_HANS("抑制漂浮物：关闭"), ZH_HANT("抑制漂浮物：關閉"),
+    KO("부유물 억제 끄기"),
+    DE("Schwebeteilunterdrückung aus"),
+    FR("Suppression des artefacts flottants désactivée"),
+    ES("Supresión de restos flotantes desactivada"),
+    PT("Supressão de resíduos flutuantes desativada"),
+    IT("Soppressione dei frammenti fluttuanti disattivata"),
+    NL("Onderdrukking van zwevende artefacten uit"),
+    RU("Подавление «летающих» артефактов выключено"),
+    TR("Uçuşan artıkların bastırılması kapalı"));
+SS_MSG(floater_mild,
+    EN("Mild floater suppression"),
+    JA("浮遊ノイズの抑制：弱"),
+    ZH_HANS("轻度抑制漂浮物"), ZH_HANT("輕度抑制漂浮物"),
+    KO("약한 부유물 억제"),
+    DE("Milde Schwebeteilunterdrückung"),
+    FR("Suppression légère des artefacts flottants"),
+    ES("Supresión leve de restos flotantes"),
+    PT("Supressão leve de resíduos flutuantes"),
+    IT("Soppressione lieve dei frammenti fluttuanti"),
+    NL("Milde onderdrukking van zwevende artefacten"),
+    RU("Мягкое подавление «летающих» артефактов"),
+    TR("Hafif uçuşan artık bastırma"));
+SS_MSG(floater_strong,
+    EN("Strong floater suppression"),
+    JA("浮遊ノイズの抑制：強"),
+    ZH_HANS("强力抑制漂浮物"), ZH_HANT("強力抑制漂浮物"),
+    KO("강한 부유물 억제"),
+    DE("Starke Schwebeteilunterdrückung"),
+    FR("Suppression forte des artefacts flottants"),
+    ES("Supresión fuerte de restos flotantes"),
+    PT("Supressão forte de resíduos flutuantes"),
+    IT("Soppressione forte dei frammenti fluttuanti"),
+    NL("Sterke onderdrukking van zwevende artefacten"),
+    RU("Сильное подавление «летающих» артефактов"),
+    TR("Güçlü uçuşan artık bastırma"));
+
 SS_MSG(batch_override_hint,
     EN("preset"),        JA("プリセット"),     ZH_HANS("预设"),     ZH_HANT("預設"),
     KO("프리셋"),         DE("Voreinstellung"), FR("préréglage"),  ES("ajuste"),
@@ -7869,6 +8029,61 @@ SS_MSG(overlay_grid_relative,
 // Photograph vs render (src/app/gui/ImageCompare.h)
 // ===========================================================================
 
+SS_MSG(compare_separate,
+    EN("Separate images"), JA("画像を並べる"), ZH_HANS("分开显示"), ZH_HANT("分開顯示"),
+    KO("이미지 나란히"), DE("Einzelbilder"), FR("Images séparées"), ES("Imágenes separadas"),
+    PT("Imagens separadas"), IT("Immagini separate"), NL("Afzonderlijke beelden"),
+    RU("Отдельные изображения"), TR("Ayrı görüntüler"));
+
+SS_MSG(compare_blend,
+    EN("Blend"), JA("重ね合わせ"), ZH_HANS("混合"), ZH_HANT("混合"),
+    KO("혼합"), DE("Überblenden"), FR("Fondu"), ES("Mezcla"),
+    PT("Mistura"), IT("Fusione"), NL("Overvloeien"), RU("Смешивание"), TR("Karıştır"));
+
+SS_MSG(compare_separate_help,
+    EN("Show the photograph and render side by side, with optional reference and rendered depth, normals, and the detail error map."),
+    JA("写真とレンダリングを並べて表示します。参照とレンダリングの深度・法線、詳細の誤差マップも表示できます。"),
+    ZH_HANS("并排显示照片和渲染结果，可选显示参考与渲染的深度、法线及细节误差图。"),
+    ZH_HANT("並排顯示照片和算繪結果，可選顯示參考與算繪的深度、法線及細節誤差圖。"),
+    KO("사진과 렌더링을 나란히 표시합니다. 참조 및 렌더링 깊이, 법선, 디테일 오차 맵도 선택하여 표시할 수 있습니다."),
+    DE("Foto und Rendering nebeneinander anzeigen, optional mit Referenz- und gerenderter Tiefe, Normalen und Detailfehlerkarte."),
+    FR("Affiche la photo et le rendu côte à côte, avec en option les profondeurs et normales de référence et rendues, ainsi que la carte d'erreur de détail."),
+    ES("Muestra la foto y el render en paralelo, con profundidad y normales de referencia y renderizadas, y el mapa de error de detalle opcionales."),
+    PT("Mostra a foto e a renderização lado a lado, com profundidade e normais de referência e renderizadas, e o mapa de erro de detalhe opcionais."),
+    IT("Mostra foto e render affiancati, con profondità e normali di riferimento e del render e la mappa dell'errore di dettaglio opzionali."),
+    NL("Toon foto en render naast elkaar, met optioneel referentie- en gerenderde diepte, normalen en de detailfoutkaart."),
+    RU("Показ снимка и рендера рядом, с дополнительным показом эталонной глубины и нормалей, глубины и нормалей рендера и карты ошибки детализации."),
+    TR("Fotoğraf ve görüntülemeyi yan yana gösterir; isteğe bağlı olarak referans ve görüntülenen derinlik, normaller ve ayrıntı hatası haritasını da gösterir."));
+
+SS_MSG(compare_blend_help,
+    EN("Overlay a selected pair: photograph and render, either with detail error, or reference and rendered depth or normals when available. The slider controls the mixture. Useful for checking whether the images align correctly."),
+    JA("選んだ組を重ねて表示します。写真とレンダリング、どちらかと詳細の誤差、または利用可能な参照とレンダリングの深度・法線を比較します。スライダーで混合比を調整します。画像が正しく位置合わせされているか確認するのに役立ちます。"),
+    ZH_HANS("叠加所选图像对：照片与渲染结果、任一图像与细节误差，或可用的参考与渲染深度或法线。滑块控制混合比例。有助于检查图像是否正确对齐。"),
+    ZH_HANT("疊加所選影像對：照片與算繪結果、任一影像與細節誤差，或可用的參考與算繪深度或法線。滑桿控制混合比例。有助於檢查影像是否正確對齊。"),
+    KO("선택한 쌍을 겹쳐 표시합니다. 사진과 렌더링, 둘 중 하나와 디테일 오차, 또는 사용 가능한 참조 및 렌더링 깊이나 법선을 비교합니다. 슬라이더로 혼합 비율을 조절합니다. 이미지가 올바르게 정렬되어 있는지 확인하는 데 유용합니다."),
+    DE("Ein gewähltes Paar überlagern: Foto und Rendering, eines davon mit Detailfehlern oder verfügbare Referenz- und gerenderte Tiefe oder Normalen. Der Regler steuert die Mischung. Hilfreich, um zu prüfen, ob die Bilder korrekt ausgerichtet sind."),
+    FR("Superpose une paire : photo et rendu, l'un des deux avec l'erreur de détail, ou profondeurs ou normales de référence et rendues si disponibles. Le curseur règle le mélange. Utile pour vérifier que les images sont correctement alignées."),
+    ES("Superpone un par: foto y render, cualquiera con el error de detalle, o profundidad o normales de referencia y renderizadas si están disponibles. El deslizador controla la mezcla. Útil para comprobar si las imágenes están correctamente alineadas."),
+    PT("Sobrepõe um par: foto e renderização, qualquer um com o erro de detalhe, ou profundidade ou normais de referência e renderizadas quando disponíveis. O controle deslizante ajusta a mistura. Útil para verificar se as imagens estão alinhadas corretamente."),
+    IT("Sovrappone una coppia: foto e render, uno dei due con l'errore di dettaglio, oppure profondità o normali di riferimento e del render se disponibili. Il cursore regola la fusione. Utile per verificare che le immagini siano allineate correttamente."),
+    NL("Leg een gekozen paar over elkaar: foto en render, een van beide met detailfouten, of beschikbare referentie- en gerenderde diepte of normalen. De schuifregelaar bepaalt de mengverhouding. Handig om te controleren of de beelden correct zijn uitgelijnd."),
+    RU("Наложение выбранной пары: снимок и рендер, любой из них с ошибкой детализации, либо эталонная глубина или нормали с соответствующим рендером, если доступны. Ползунок задаёт пропорцию смешивания. Помогает проверить, правильно ли совмещены изображения."),
+    TR("Seçili çifti üst üste gösterir: fotoğraf ve görüntüleme, bunlardan biriyle ayrıntı hatası veya varsa referans ve görüntülenen derinlik ya da normaller. Kaydırıcı karışım oranını ayarlar. Görüntülerin doğru hizalanıp hizalanmadığını kontrol etmek için kullanışlıdır."));
+
+SS_MSG(compare_error_unavailable,
+    EN("This run does not produce a detail error map."),
+    JA("この学習では詳細の誤差マップを生成しません。"),
+    ZH_HANS("本次训练不生成细节误差图。"), ZH_HANT("本次訓練不產生細節誤差圖。"),
+    KO("이 학습에서는 디테일 오차 맵을 생성하지 않습니다."),
+    DE("Dieser Trainingslauf erzeugt keine Detailfehlerkarte."),
+    FR("Cet entraînement ne produit pas de carte d'erreur de détail."),
+    ES("Este entrenamiento no genera un mapa de error de detalle."),
+    PT("Este treinamento não produz um mapa de erro de detalhe."),
+    IT("Questo addestramento non produce una mappa dell'errore di dettaglio."),
+    NL("Deze training maakt geen detailfoutkaart."),
+    RU("В этом запуске карта ошибки детализации не создаётся."),
+    TR("Bu eğitim ayrıntı hatası haritası üretmez."));
+
 SS_MSG(preview_mode_3d,
     EN("3D view"),       JA("3Dビュー"),      ZH_HANS("3D 视图"),  ZH_HANT("3D 檢視"),
     KO("3D 보기"),        DE("3D-Ansicht"),   FR("Vue 3D"),       ES("Vista 3D"),
@@ -9981,19 +10196,19 @@ SS_MSG(mesh_memory_help,
     TR("Ağ oluşturmanın şu anda kullandığı bellek. Her çubuk bu işi koyu, öngörülen tepeyi açık, diğer programları gri gösterir. Tepe, her aşamadan önce modelin boyutundan hesaplanır: noktaların üçgenlenmesi ve dokunun pişirilmesi en büyük ikisidir. Risk yüksekse yüzey ayrıntısı değerini artırın, doku boyutunu düşürün ya da diğer programları kapatın."));
 
 SS_MSG(sfm_memory_help,
-    EN("Memory the reconstruction is using now. Each bar shows this run solid, its projected peak faint, then other programs in grey. The peak is extrapolated from how memory has grown with the mapping step's progress so far, so it is wide early on and narrows as images join the model. If the risk is high, lower the image size or the features per image, or close other programs."),
-    JA("再構成が現在使用しているメモリです。各バーは、この処理を濃い色、予測ピークまでを薄い色、他のプログラムを灰色で示します。ピークはこれまでのマッピングの進み具合に対するメモリの増え方から外挿するため、序盤は幅が広く、画像がモデルに加わるにつれて狭まります。リスクが高い場合は、画像サイズや画像あたりの特徴点数を下げるか、他のプログラムを閉じてください。"),
-    ZH_HANS("重建当前使用的内存。每个条中，本次处理为实色，预测峰值为浅色，其他程序为灰色。峰值根据到目前为止内存随建图进度的增长外推，因此早期范围较宽，随着图像加入模型而变窄。如果风险高，请降低图像尺寸或每张图像的特征点数，或关闭其他程序。"),
-    ZH_HANT("重建目前使用的記憶體。每個條中，本次處理為實色，預測峰值為淺色，其他程式為灰色。峰值根據到目前為止記憶體隨建圖進度的增長外推，因此早期範圍較寬，隨著影像加入模型而變窄。如果風險高，請降低影像尺寸或每張影像的特徵點數，或關閉其他程式。"),
-    KO("재구성이 지금 사용 중인 메모리입니다. 각 막대는 이 작업을 진하게, 예측 최대치까지를 연하게, 다른 프로그램을 회색으로 보여 줍니다. 최대치는 지금까지 매핑 진행에 따라 메모리가 늘어난 정도에서 외삽하므로 초반에는 범위가 넓고 이미지가 모델에 더해질수록 좁아집니다. 위험이 높으면 이미지 크기나 이미지당 특징점 수를 낮추거나 다른 프로그램을 닫으세요."),
-    DE("Speicher, den die Rekonstruktion gerade belegt. Jeder Balken zeigt diesen Lauf kräftig, seine erwartete Spitze blass und andere Programme grau. Die Spitze wird daraus hochgerechnet, wie der Speicher bisher mit dem Fortschritt der Kartierung gewachsen ist; sie ist daher anfangs breit und wird schmaler, je mehr Bilder im Modell sind. Ist das Risiko hoch, die Bildgröße oder die Merkmale pro Bild senken oder andere Programme schließen."),
-    FR("Mémoire utilisée en ce moment par la reconstruction. Chaque barre montre ce calcul en plein, son pic prévu en clair, puis les autres programmes en gris. Le pic est extrapolé de la croissance de la mémoire avec l'avancement de la cartographie jusqu'ici : il est large au début et se resserre à mesure que les images rejoignent le modèle. Si le risque est élevé, réduisez la taille des images ou le nombre de points par image, ou fermez d'autres programmes."),
-    ES("Memoria que usa ahora la reconstrucción. Cada barra muestra este proceso en sólido, su pico previsto en claro y los demás programas en gris. El pico se extrapola de cómo ha crecido la memoria con el avance del mapeo hasta ahora, así que es amplio al principio y se estrecha a medida que las imágenes entran en el modelo. Si el riesgo es alto, baja el tamaño de imagen o los puntos por imagen, o cierra otros programas."),
-    PT("Memória que a reconstrução está usando agora. Cada barra mostra este processo em sólido, o pico previsto em claro e os outros programas em cinza. O pico é extrapolado de como a memória cresceu com o avanço do mapeamento até agora, por isso é largo no início e se estreita à medida que as imagens entram no modelo. Se o risco for alto, reduza o tamanho das imagens ou os pontos por imagem, ou feche outros programas."),
-    IT("Memoria che la ricostruzione sta usando ora. Ogni barra mostra questa elaborazione piena, il picco previsto chiaro e gli altri programmi in grigio. Il picco è estrapolato da come la memoria è cresciuta finora con l'avanzare della mappatura, quindi all'inizio è ampio e si restringe man mano che le immagini entrano nel modello. Se il rischio è alto, riduci la dimensione delle immagini o i punti per immagine, oppure chiudi altri programmi."),
-    NL("Geheugen dat de reconstructie nu gebruikt. Elke balk toont deze run vol, de verwachte piek licht en andere programma's grijs. De piek wordt geëxtrapoleerd uit hoe het geheugen tot nu toe met de voortgang van het mappen is gegroeid, dus hij is in het begin breed en wordt smaller naarmate er beelden bij het model komen. Is het risico hoog, verlaag dan de beeldgrootte of de kenmerken per beeld, of sluit andere programma's."),
-    RU("Память, которую сейчас использует реконструкция. Каждая полоса показывает этот процесс сплошным цветом, ожидаемый пик — бледным, другие программы — серым. Пик экстраполируется по тому, как память росла с ходом построения модели до сих пор, поэтому вначале диапазон широкий и сужается по мере добавления снимков в модель. Если риск высокий, уменьшите размер изображений или число особых точек на изображение либо закройте другие программы."),
-    TR("Yeniden oluşturmanın şu anda kullandığı bellek. Her çubuk bu işi koyu, öngörülen tepeyi açık, diğer programları gri gösterir. Tepe, belleğin şimdiye kadar eşleme ilerledikçe nasıl büyüdüğünden dışdeğerlenir; bu yüzden başta geniştir ve görüntüler modele katıldıkça daralır. Risk yüksekse görüntü boyutunu ya da görüntü başına öznitelik sayısını düşürün veya diğer programları kapatın."));
+    EN("Memory the reconstruction is using now. Each bar shows this run solid, its projected peak faint, then other programs in grey. The peak is extrapolated from how memory has grown with the mapping step's progress so far, so it is wide early on and narrows as images join the model. If the risk is high, lower the number of images or the features per image, or close other programs."),
+    JA("再構成が現在使用しているメモリです。各バーは、この処理を濃い色、予測ピークまでを薄い色、他のプログラムを灰色で示します。ピークはこれまでのマッピングの進み具合に対するメモリの増え方から外挿するため、序盤は幅が広く、画像がモデルに加わるにつれて狭まります。リスクが高い場合は、画像の枚数や画像あたりの特徴点数を下げるか、他のプログラムを閉じてください。"),
+    ZH_HANS("重建当前使用的内存。每个条中，本次处理为实色，预测峰值为浅色，其他程序为灰色。峰值根据到目前为止内存随建图进度的增长外推，因此早期范围较宽，随着图像加入模型而变窄。如果风险高，请减少图像数量或每张图像的特征点数，或关闭其他程序。"),
+    ZH_HANT("重建目前使用的記憶體。每個條中，本次處理為實色，預測峰值為淺色，其他程式為灰色。峰值根據到目前為止記憶體隨建圖進度的增長外推，因此早期範圍較寬，隨著影像加入模型而變窄。如果風險高，請減少影像數量或每張影像的特徵點數，或關閉其他程式。"),
+    KO("재구성이 지금 사용 중인 메모리입니다. 각 막대는 이 작업을 진하게, 예측 최대치까지를 연하게, 다른 프로그램을 회색으로 보여 줍니다. 최대치는 지금까지 매핑 진행에 따라 메모리가 늘어난 정도에서 외삽하므로 초반에는 범위가 넓고 이미지가 모델에 더해질수록 좁아집니다. 위험이 높으면 이미지 수나 이미지당 특징점 수를 낮추거나 다른 프로그램을 닫으세요."),
+    DE("Speicher, den die Rekonstruktion gerade belegt. Jeder Balken zeigt diesen Lauf kräftig, seine erwartete Spitze blass und andere Programme grau. Die Spitze wird daraus hochgerechnet, wie der Speicher bisher mit dem Fortschritt der Kartierung gewachsen ist; sie ist daher anfangs breit und wird schmaler, je mehr Bilder im Modell sind. Ist das Risiko hoch, die Anzahl der Bilder oder die Merkmale pro Bild senken oder andere Programme schließen."),
+    FR("Mémoire utilisée en ce moment par la reconstruction. Chaque barre montre ce calcul en plein, son pic prévu en clair, puis les autres programmes en gris. Le pic est extrapolé de la croissance de la mémoire avec l'avancement de la cartographie jusqu'ici : il est large au début et se resserre à mesure que les images rejoignent le modèle. Si le risque est élevé, réduisez le nombre d'images ou le nombre de points par image, ou fermez d'autres programmes."),
+    ES("Memoria que usa ahora la reconstrucción. Cada barra muestra este proceso en sólido, su pico previsto en claro y los demás programas en gris. El pico se extrapola de cómo ha crecido la memoria con el avance del mapeo hasta ahora, así que es amplio al principio y se estrecha a medida que las imágenes entran en el modelo. Si el riesgo es alto, baja el número de imágenes o los puntos por imagen, o cierra otros programas."),
+    PT("Memória que a reconstrução está usando agora. Cada barra mostra este processo em sólido, o pico previsto em claro e os outros programas em cinza. O pico é extrapolado de como a memória cresceu com o avanço do mapeamento até agora, por isso é largo no início e se estreita à medida que as imagens entram no modelo. Se o risco for alto, reduza o número de imagens ou os pontos por imagem, ou feche outros programas."),
+    IT("Memoria che la ricostruzione sta usando ora. Ogni barra mostra questa elaborazione piena, il picco previsto chiaro e gli altri programmi in grigio. Il picco è estrapolato da come la memoria è cresciuta finora con l'avanzare della mappatura, quindi all'inizio è ampio e si restringe man mano che le immagini entrano nel modello. Se il rischio è alto, riduci il numero di immagini o i punti per immagine, oppure chiudi altri programmi."),
+    NL("Geheugen dat de reconstructie nu gebruikt. Elke balk toont deze run vol, de verwachte piek licht en andere programma's grijs. De piek wordt geëxtrapoleerd uit hoe het geheugen tot nu toe met de voortgang van het mappen is gegroeid, dus hij is in het begin breed en wordt smaller naarmate er beelden bij het model komen. Is het risico hoog, verlaag dan het aantal beelden of de kenmerken per beeld, of sluit andere programma's."),
+    RU("Память, которую сейчас использует реконструкция. Каждая полоса показывает этот процесс сплошным цветом, ожидаемый пик — бледным, другие программы — серым. Пик экстраполируется по тому, как память росла с ходом построения модели до сих пор, поэтому вначале диапазон широкий и сужается по мере добавления снимков в модель. Если риск высокий, уменьшите количество изображений или число особых точек на изображение либо закройте другие программы."),
+    TR("Yeniden oluşturmanın şu anda kullandığı bellek. Her çubuk bu işi koyu, öngörülen tepeyi açık, diğer programları gri gösterir. Tepe, belleğin şimdiye kadar eşleme ilerledikçe nasıl büyüdüğünden dışdeğerlenir; bu yüzden başta geniştir ve görüntüler modele katıldıkça daralır. Risk yüksekse görüntü sayısını ya da görüntü başına öznitelik sayısını düşürün veya diğer programları kapatın."));
 
 SS_MSG(progress_time,
     EN("elapsed {0}   ETA {1}"),

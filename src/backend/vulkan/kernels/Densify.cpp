@@ -69,7 +69,7 @@ struct DensifyNoiseParams {
     float scaler;
     uint32_t num_splats, wgs_per_row;
     float peak_weight_scale;
-    uint32_t has_peak_weight, _pad0;
+    uint32_t has_peak_weight, seed;
 };
 static_assert(sizeof(DensifyNoiseParams) == 6 * 8 + 6 * 4,
               "params layout must match the slang struct");
@@ -105,13 +105,13 @@ struct RelocLasParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
-    uint64_t accum, bias_steps, visit_counters, max_weight;
+    uint64_t accum, bias_steps, visit_counters, max_weight, projective_state, projective_information;
     float split_opacity_k;
     uint32_t cur_num_splats, num_new_splats, num_sh;
     uint32_t has_dst, has_g1, has_fp32_sh, has_accum, has_bias_steps, non_sh,
-        sh_bounds_per_splat, wgs_per_row, has_visit, has_max_weight;
+        sh_bounds_per_splat, wgs_per_row, has_visit, has_max_weight, has_projective_state;
 };
-static_assert(sizeof(RelocLasParams) == 36 * 8 + 14 * 4,
+static_assert(sizeof(RelocLasParams) == 38 * 8 + 16 * 4,
               "params layout must match the slang struct");
 
 // Mirror AccumFinalizeParams / ScoreGatherParams / ScoreClipParams.
@@ -255,9 +255,11 @@ static_assert(sizeof(McmcRelocParams) == 28 * 8 + 8 * 4,
 // Mirrors McmcUpdateRelocParams.
 struct McmcUpdateRelocParams {
     uint64_t index_map, means, quats, scales, opacs, features_dc, features_sh;
+    uint64_t projective_state, projective_information;
+    uint32_t has_projective, projective_pad;
     uint32_t num_splats, num_sh, has_fp32_sh, wgs_per_row;
 };
-static_assert(sizeof(McmcUpdateRelocParams) == 7 * 8 + 4 * 4,
+static_assert(sizeof(McmcUpdateRelocParams) == 9 * 8 + 6 * 4,
               "params layout must match the slang struct");
 
 // Mirrors McmcComputeAddParams.
@@ -280,12 +282,14 @@ struct McmcUpdateAddParams {
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
     uint64_t bias_steps;
+    uint64_t projective_state, projective_information;
+    uint32_t has_projective, projective_pad;
     uint32_t num_splats, num_add, num_sh;
     uint32_t has_g1, has_fp32_sh, has_bias_steps, non_sh, sh_bounds_per_splat,
         wgs_per_row;
     uint32_t _pad0;
 };
-static_assert(sizeof(McmcUpdateAddParams) == 32 * 8 + 10 * 4,
+static_assert(sizeof(McmcUpdateAddParams) == 34 * 8 + 12 * 4,
               "params layout must match the slang struct");
 
 // kShOptimBits spec value: 0 = fp32 SH state, 8 / 4 = QuantizedAdamState.
@@ -667,7 +671,8 @@ void mcmc_add_noise_tensor(
     DeviceVector<float3> means,
     DeviceVector<float3> log_scales,
     DeviceVector<float4> quats,
-    DeviceVector<float> opacs
+    DeviceVector<float> opacs,
+    uint32_t seed
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -677,6 +682,7 @@ void mcmc_add_noise_tensor(
     p.logit_opacs = (uint64_t)opacs.data_ptr();
     p.radii = vkk::null_fallback();
     p.scaler = scaler;
+    p.seed = seed;
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_mcmc_add_noise", {}, num_splats, 256,
                        &p, sizeof(p), &p.wgs_per_row);
@@ -691,7 +697,8 @@ void revised_add_noise_tensor(
     DeviceVector<float4> quats,
     DeviceVector<float> opacs,
     DeviceVector<float> peak_weight,
-    float peak_weight_scale
+    float peak_weight_scale,
+    uint32_t seed
 ) {
     if (num_splats <= 0) return;
     DensifyNoiseParams p{};
@@ -704,6 +711,7 @@ void revised_add_noise_tensor(
     p.has_peak_weight = peak_weight.data_ptr() ? 1u : 0u;
     p.peak_weight_scale = peak_weight_scale;
     p.scaler = scaler;
+    p.seed = seed;
     p.num_splats = (uint32_t)num_splats;
     vkk::dispatch_flat("densify.densify_revised_add_noise", {}, num_splats,
                        256, &p, sizeof(p), &p.wgs_per_row);
@@ -727,7 +735,8 @@ static void launch_relocate_las(
     DeviceVector<int32_t>& bias_correction_steps,
     DeviceVector<uint32_t>& visit_counters, DeviceVector<float>& max_weight,
     int sh_optim_bits, int num_sh, DeviceVector<float4>& sh_quant_bounds,
-    bool sh_bounds_per_splat, const NonShQuantState& non_sh) {
+    bool sh_bounds_per_splat, const NonShQuantState& non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information) {
     RelocLasParams p{};
     p.src_indices = (uint64_t)src_indices;
     p.dst_indices = vkk::or_fallback(dst_indices);
@@ -759,6 +768,9 @@ static void launch_relocate_las(
     p.max_weight = vkk::or_fallback(max_weight.data_ptr());
     p.has_max_weight = max_weight.data_ptr() ? 1u : 0u;
 
+    p.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    p.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    p.has_projective_state = projective_state.data_ptr() ? 1u : 0u;
     vkk::Fold f = vkk::fold_1d(num_new_splats, 256);
     p.wgs_per_row = f.per_row;
     vkk::dispatch_ring("densify.densify_relocate_las",
@@ -790,6 +802,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     int64_t max_relocate,
     int64_t* num_dead_out
@@ -856,7 +869,7 @@ int64_t relocate_splats_with_long_axis_split_tensor(
                         g2_opacs, g2_features_dc, g2_features_sh,
                         densify_accum_buffer, bias_correction_steps,
                         visit_counters, max_weight, sh_optim_bits, num_sh,
-                        sh_quant_bounds, sh_bounds_per_splat, non_sh);
+                        sh_quant_bounds, sh_bounds_per_splat, non_sh, projective_state, projective_information);
 
     launch_copy_qsh_pairs(cur_num_splats, num_relocate, src_indices,
                           dst_indices.data_ptr(), sh_value_packed.data_ptr(),
@@ -887,6 +900,7 @@ void add_splats_with_long_axis_split_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed
 ) {
     if (num_new_splats == 0 || cur_num_splats <= 0) return;
@@ -909,7 +923,7 @@ void add_splats_with_long_axis_split_tensor(
                         g2_features_dc, g2_features_sh, densify_accum_buffer,
                         bias_correction_steps, visit_counters, max_weight,
                         sh_optim_bits, num_sh, sh_quant_bounds,
-                        sh_bounds_per_splat, non_sh);
+                        sh_bounds_per_splat, non_sh, projective_state, projective_information);
 
     launch_copy_qsh_pairs(cur_num_splats, num_new_splats, split_indices,
                           nullptr, sh_value_packed.data_ptr(),
@@ -934,6 +948,7 @@ void relocate_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight
 ) {
@@ -987,6 +1002,9 @@ void relocate_splats_mcmc_tensor(
     }
 
     McmcUpdateRelocParams up{};
+    up.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    up.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    up.has_projective = projective_state.data_ptr() ? 1u : 0u;
     up.index_map = (uint64_t)index_map.data_ptr();
     up.means = (uint64_t)means.data_ptr();
     up.quats = (uint64_t)quats.data_ptr();
@@ -1024,6 +1042,7 @@ void add_splats_mcmc_tensor(
     bool sh_value_bounds_per_splat,
     int  num_sh_buffer,
     NonShQuantState non_sh,
+    DeviceVector<float4> projective_state, DeviceVector<float> projective_information,
     uint32_t seed,
     DeviceVector<float> draw_weight
 ) {
@@ -1063,6 +1082,9 @@ void add_splats_mcmc_tensor(
                        256, &cp, sizeof(cp), &cp.wgs_per_row);
 
     McmcUpdateAddParams ap{};
+    ap.projective_state = vkk::or_fallback(projective_state.data_ptr());
+    ap.projective_information = vkk::or_fallback(projective_information.data_ptr());
+    ap.has_projective = projective_state.data_ptr() ? 1u : 0u;
     ap.index_map = (uint64_t)index_map.data_ptr();
     ap.means = (uint64_t)means.data_ptr();
     ap.quats = (uint64_t)quats.data_ptr();

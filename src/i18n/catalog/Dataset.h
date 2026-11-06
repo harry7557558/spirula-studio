@@ -391,6 +391,21 @@ SS_MSG(create_dataset,
     PT("Criar o conjunto de dados"), IT("Crea il set di dati"),
     NL("Dataset maken"), RU("Создать набор данных"), TR("Veri kümesini oluştur"));
 
+SS_MSG(train_after_creation,
+    EN("Start training after dataset creation"),
+    JA("データセット作成後に学習を開始"),
+    ZH_HANS("创建数据集后开始训练"),
+    ZH_HANT("建立資料集後開始訓練"),
+    KO("데이터셋 생성 후 학습 시작"),
+    DE("Training nach der Datensatzerstellung starten"),
+    FR("Démarrer l'entraînement après la création du jeu de données"),
+    ES("Iniciar el entrenamiento tras crear el conjunto de datos"),
+    PT("Iniciar o treino após criar o conjunto de dados"),
+    IT("Avvia l'addestramento dopo la creazione del set di dati"),
+    NL("Training starten na het maken van de dataset"),
+    RU("Начать обучение после создания набора данных"),
+    TR("Veri kümesi oluşturulduktan sonra eğitimi başlat"));
+
 SS_MSG(pick_input_first,
     EN("pick the input and the output folder first"),
     JA("先に入力と出力フォルダを選んでください"),
@@ -7352,6 +7367,12 @@ SS_MSG(subj_sky,
     PT("Céu"),          IT("Cielo"),      NL("Lucht"),       RU("Небо"),
     TR("Gökyüzü"));
 
+SS_MSG(subj_cloud,
+    EN("Cloud"), JA("雲"), ZH_HANS("云"), ZH_HANT("雲"),
+    KO("구름"), DE("Wolke"), FR("Nuage"), ES("Nube"),
+    PT("Nuvem"), IT("Nuvola"), NL("Wolk"), RU("Облако"),
+    TR("Bulut"));
+
 SS_MSG(subj_shadow,
     EN("Shadow of a person"),
     JA("人の影"),
@@ -7372,6 +7393,12 @@ SS_MSG(subj_water,
     KO("물"),            DE("Wasser"),     FR("Eau"),         ES("Agua"),
     PT("Água"),         IT("Acqua"),      NL("Water"),       RU("Вода"),
     TR("Su"));
+
+SS_MSG(subj_wave,
+    EN("Wave"), JA("波"), ZH_HANS("波浪"), ZH_HANT("波浪"),
+    KO("파도"), DE("Welle"), FR("Vague"), ES("Ola"),
+    PT("Onda"), IT("Onda"), NL("Golf"), RU("Волна"),
+    TR("Dalga"));
 
 SS_MSG(subj_reflection,
     EN("Reflection"),   JA("映り込み"),    ZH_HANS("倒影"),     ZH_HANT("倒影"),
@@ -9913,6 +9940,15 @@ SS_MSG(mapper_bottom_up,
     RU("Снизу вверх (атомы, объединяемые вверх)"),
     TR("Aşağıdan yukarı (atomlar, yukarı doğru birleştirilir)"));
 
+SS_MSG(mapper_global,
+    EN("Global (experimental)"), JA("グローバル（実験的）"),
+    ZH_HANS("全局（实验性）"), ZH_HANT("全域（實驗性）"),
+    KO("전역(실험적)"), DE("Global (experimentell)"),
+    FR("Global (expérimental)"), ES("Global (experimental)"),
+    PT("Global (experimental)"), IT("Globale (sperimentale)"),
+    NL("Globaal (experimenteel)"), RU("Глобальная (экспериментально)"),
+    TR("Küresel (deneysel)"));
+
 SS_MSG(progressive_alignment,
     EN("Progressive alignment"),
     JA("段階的な位置合わせ"),
@@ -10509,49 +10545,61 @@ SS_MSG(mapper_schedule_help,
     EN("How the scene is built. Flat grows one reconstruction image by image, "
        "and is the default for any capture. Bottom-up cuts the view graph "
        "into small groups, reconstructs them independently and merges "
-       "upwards."),
+       "upwards. Global estimates the camera orientations and positions together; "
+       "it is experimental."),
     JA("シーンをどう組み立てるかです。フラットは1つの再構成を画像ごとに"
        "育てていく方式で、どの撮影でも既定です。ボトムアップはビューグラフを"
-       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"),
+       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"
+       "グローバルはカメラの向きと位置をまとめて推定する実験的な方式です。"),
     ZH_HANS("场景如何构建。扁平方式逐张图像地扩展同一个重建，是任何拍摄的默认选择。"
-            "自下而上把视图图切成小组，各自独立重建后再向上合并。"),
+            "自下而上把视图图切成小组，各自独立重建后再向上合并。"
+            "全局方式同时估计相机方向和位置，目前为实验性功能。"),
     ZH_HANT("場景如何建構。扁平方式逐張影像地擴展同一個重建，是任何拍攝的預設選擇。"
-            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"),
+            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"
+            "全域方式同時估計相機方向和位置，目前為實驗性功能。"),
     KO("장면을 어떻게 만들지입니다. 평면 방식은 재구성 하나를 이미지마다 키워 "
        "가며, 어떤 촬영에서든 기본값입니다. 상향식은 뷰 그래프를 작은 묶음으로 "
-       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다."),
+       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다. 전역 방식은 카메라의 "
+       "방향과 위치를 함께 추정하는 실험적 기능입니다."),
     DE("Wie die Szene aufgebaut wird. Flach lässt eine Rekonstruktion Bild für "
        "Bild wachsen und ist die Vorgabe für jede Aufnahme. Von unten zerlegt "
        "den Sichtgraphen in kleine Gruppen, rekonstruiert sie unabhängig und "
-       "führt sie nach oben zusammen."),
+       "führt sie nach oben zusammen. Global schätzt Kamerarichtungen und Positionen "
+       "gemeinsam und ist experimentell."),
     FR("Comment la scène est construite. Le mode plat fait croître une seule "
        "reconstruction image par image, et c'est la valeur par défaut pour "
        "toute prise. Le mode ascendant découpe le graphe de vues en petits "
-       "groupes, les reconstruit indépendamment et fusionne vers le haut."),
+       "groupes, les reconstruit indépendamment et fusionne vers le haut. Le mode global "
+       "estime ensemble les orientations et les positions des caméras ; il est expérimental."),
     ES("Cómo se construye la escena. El modo plano hace crecer una sola "
        "reconstrucción imagen a imagen, y es lo predeterminado en cualquier "
        "captura. El ascendente corta el grafo de vistas en grupos pequeños, "
-       "los reconstruye por separado y los fusiona hacia arriba."),
+       "los reconstruye por separado y los fusiona hacia arriba. El modo global estima "
+       "las orientaciones y posiciones de las cámaras conjuntamente; es experimental."),
     PT("Como a cena é construída. O modo plano faz uma única reconstrução "
        "crescer imagem a imagem, e é o padrão para qualquer captura. O "
        "ascendente corta o grafo de vistas em grupos pequenos, reconstrói "
-       "cada um em separado e mescla para cima."),
+       "cada um em separado e mescla para cima. O modo global estima as orientações e "
+       "posições das câmeras em conjunto; é experimental."),
     IT("Come viene costruita la scena. Il modo piatto fa crescere una sola "
        "ricostruzione immagine dopo immagine ed è l'impostazione predefinita "
        "per qualsiasi ripresa. Quello dal basso taglia il grafo delle viste in "
        "piccoli gruppi, li ricostruisce in modo indipendente e li unisce verso "
-       "l'alto."),
+       "l'alto. Il modo globale stima insieme orientamenti e posizioni delle fotocamere; "
+       "è sperimentale."),
     NL("Hoe de scène wordt opgebouwd. Vlak laat één reconstructie beeld voor "
        "beeld groeien en is de standaard voor elke opname. Bottom-up knipt de "
        "beeldgraaf in kleine groepen, reconstrueert die apart en voegt ze naar "
-       "boven samen."),
+       "boven samen. Globaal schat de camerarichtingen en posities samen en is experimenteel."),
     RU("Как строится сцена. Плоская схема наращивает одну реконструкцию снимок "
        "за снимком и подходит любой съёмке. Схема снизу вверх режет граф видов "
-       "на небольшие группы, восстанавливает их независимо и объединяет вверх."),
+       "на небольшие группы, восстанавливает их независимо и объединяет вверх. Глобальная "
+       "схема совместно оценивает ориентации и положения камер; она экспериментальна."),
     TR("Sahnenin nasıl kurulacağı. Düz plan tek bir yeniden oluşturmayı "
        "görüntü görüntü büyütür ve her çekim için varsayılandır. Aşağıdan "
        "yukarı plan görünüm çizgesini küçük öbeklere böler, her birini ayrı "
-       "yeniden oluşturur ve yukarı doğru birleştirir."));
+       "yeniden oluşturur ve yukarı doğru birleştirir. Küresel plan kamera yönlerini ve "
+       "konumlarını birlikte tahmin eder; deneysel bir özelliktir."));
 
 SS_MSG(prefilter_sequential,
     EN("Also match neighbouring frames"),
@@ -10974,19 +11022,19 @@ SS_MSG(sfm_distortion_refinement_help,
        "korur."));
 
 SS_MSG(sfm_metric_gps,
-    EN("Photo GPS"),
-    JA("写真の GPS"),
-    ZH_HANS("照片 GPS"),
-    ZH_HANT("相片 GPS"),
-    KO("사진의 GPS"),
-    DE("GPS der Fotos"),
-    FR("GPS des photos"),
-    ES("GPS de las fotos"),
-    PT("GPS das fotos"),
-    IT("GPS delle foto"),
-    NL("Gps van de foto's"),
-    RU("GPS фотографий"),
-    TR("Fotoğrafların GPS'i"));
+    EN("GPS"),
+    JA("GPS"),
+    ZH_HANS("GPS"),
+    ZH_HANT("GPS"),
+    KO("GPS"),
+    DE("GPS"),
+    FR("GPS"),
+    ES("GPS"),
+    PT("GPS"),
+    IT("GPS"),
+    NL("Gps"),
+    RU("GPS"),
+    TR("GPS"));
 
 SS_MSG(sfm_metric_gps_off,
     EN("Off"),
@@ -11055,19 +11103,19 @@ SS_MSG(section_sensors,
     TR("Sensörler"));
 
 SS_MSG(sfm_sensor_gauge,
-    EN("Video IMU and GPS"),
-    JA("動画のIMU・GPS"),
-    ZH_HANS("视频 IMU 与 GPS"),
-    ZH_HANT("影片 IMU 與 GPS"),
-    KO("동영상 IMU 및 GPS"),
-    DE("IMU und GPS des Videos"),
-    FR("IMU et GPS de la vidéo"),
-    ES("IMU y GPS del vídeo"),
-    PT("IMU e GPS do vídeo"),
-    IT("IMU e GPS del video"),
-    NL("IMU en GPS van de video"),
-    RU("IMU и GPS видео"),
-    TR("Videonun IMU ve GPS'i"));
+    EN("Video IMU"),
+    JA("動画のIMU"),
+    ZH_HANS("视频 IMU"),
+    ZH_HANT("影片 IMU"),
+    KO("동영상 IMU"),
+    DE("IMU des Videos"),
+    FR("IMU de la vidéo"),
+    ES("IMU del vídeo"),
+    PT("IMU do vídeo"),
+    IT("IMU del video"),
+    NL("IMU van de video"),
+    RU("IMU видео"),
+    TR("Videonun IMU'su"));
 
 SS_MSG(sfm_sensor_gauge_off,
     EN("Ignore"),        JA("使わない"),      ZH_HANS("不使用"),    ZH_HANT("不使用"),
@@ -11106,65 +11154,94 @@ SS_MSG(sfm_sensor_gauge_auto,
     TR("Yukarı yönü ve metrik ölçek"));
 
 SS_MSG(sfm_sensor_gauge_help,
-    EN("Use the IMU and GPS a video records alongside its pictures: which way "
-       "is up, and how many metres across the scene is. Each is fitted with "
-       "its own uncertainty and dropped when it does not hold, so a capture "
-       "indoors or with no sensors simply gets less of it. Off is for a file "
-       "whose telemetry is known to be wrong."),
-    JA("動画が映像と一緒に記録しているIMUとGPSを使います。上がどちらか、シーンが"
-       "何メートルかを求めます。それぞれ不確かさ付きで推定し、成り立たないものは"
-       "捨てるので、屋内やセンサーのない撮影では使われる情報が減るだけです。"
-       "オフは、記録が明らかに誤っているファイル向けです。"),
-    ZH_HANS("使用视频随画面一同记录的 IMU 与 GPS：判断上方向，以及场景实际有多少"
-            "米。每一项都带不确定度拟合，不成立时会被舍弃，所以室内或无传感器的"
-            "拍摄只是可用信息更少。若已知某文件的遥测数据有误，可以关闭。"),
-    ZH_HANT("使用影片隨畫面一同記錄的 IMU 與 GPS：判斷上方向，以及場景實際有多少"
-            "公尺。每一項都帶不確定度擬合，不成立時會被捨棄，所以室內或無感測器的"
-            "拍攝只是可用資訊更少。若已知某檔案的遙測資料有誤，可以關閉。"),
-    KO("동영상이 영상과 함께 기록한 IMU와 GPS를 씁니다. 어느 쪽이 위인지, 장면이 "
-       "몇 미터인지를 구합니다. 각각 불확실도와 함께 맞추고 맞지 않으면 버리므로, "
-       "실내이거나 센서가 없는 촬영은 쓰이는 정보가 줄어들 뿐입니다. 끄기는 기록이 "
-       "틀린 것이 확실한 파일을 위한 것입니다."),
-    DE("Nutzt IMU und GPS, die ein Video neben den Bildern aufzeichnet: wo "
-       "oben ist und wie viele Meter die Szene misst. Jedes wird mit eigener "
-       "Unsicherheit geschätzt und verworfen, wenn es nicht trägt; drinnen "
-       "oder ohne Sensoren bleibt einfach weniger übrig. Aus ist für eine "
-       "Datei, deren Telemetrie nachweislich falsch ist."),
-    FR("Utilise l'IMU et le GPS qu'une vidéo enregistre avec ses images : où "
-       "est le haut, et combien de mètres fait la scène. Chacun est estimé "
-       "avec son incertitude et abandonné s'il ne tient pas ; en intérieur ou "
-       "sans capteurs, il en reste simplement moins. Désactiver convient à un "
-       "fichier dont la télémétrie est connue comme fausse."),
-    ES("Usa la IMU y el GPS que un vídeo graba junto a sus imágenes: hacia "
-       "dónde está arriba y cuántos metros mide la escena. Cada uno se ajusta "
-       "con su incertidumbre y se descarta si no se sostiene, así que en "
-       "interiores o sin sensores simplemente queda menos. Desactivar es para "
-       "un archivo cuya telemetría se sabe errónea."),
-    PT("Usa a IMU e o GPS que um vídeo grava junto das imagens: para onde é "
-       "cima e quantos metros mede a cena. Cada um é ajustado com a sua "
-       "incerteza e descartado se não se sustentar, pelo que no interior ou "
-       "sem sensores fica apenas menos. Desligar serve para um ficheiro cuja "
-       "telemetria se sabe errada."),
-    IT("Usa l'IMU e il GPS che un video registra accanto alle immagini: dove "
-       "è l'alto e quanti metri misura la scena. Ciascuno è stimato con la "
-       "propria incertezza e scartato se non regge, quindi al chiuso o senza "
-       "sensori resta semplicemente meno. Disattiva serve per un file la cui "
-       "telemetria è notoriamente sbagliata."),
-    NL("Gebruikt de IMU en gps die een video naast de beelden opneemt: welke "
-       "kant boven is en hoeveel meter de scène meet. Elk wordt met eigen "
-       "onzekerheid geschat en losgelaten als het niet standhoudt; binnen of "
-       "zonder sensoren blijft er eenvoudig minder over. Uit is voor een "
-       "bestand waarvan de telemetrie aantoonbaar fout is."),
-    RU("Использует IMU и GPS, которые видео пишет рядом с кадрами: где верх и "
-       "сколько метров занимает сцена. Каждое оценивается со своей "
-       "неопределённостью и отбрасывается, если не подтверждается, поэтому в "
-       "помещении или без датчиков просто останется меньше. «Не "
-       "использовать» — для файла с заведомо неверной телеметрией."),
-    TR("Bir videonun görüntülerin yanında kaydettiği IMU ve GPS'i kullanır: "
-       "yukarının nerede olduğunu ve sahnenin kaç metre olduğunu. Her biri "
-       "kendi belirsizliğiyle kestirilir ve tutmazsa bırakılır; iç mekanda ya "
-       "da sensörsüz çekimde yalnızca daha azı kalır. Kapalı, telemetrisi "
-       "yanlış olduğu bilinen bir dosya içindir."));
+    EN("Use the IMU a video records alongside its pictures -- gyro, "
+       "accelerometer and recorded orientation -- for which way is up and, "
+       "from the accelerometer, how many metres across the scene is. Each "
+       "is fitted with its own uncertainty and dropped when it does not "
+       "hold, so a capture that only pans, or a file with no IMU, simply "
+       "gets less of it. The video's GPS is the setting above. Ignore is "
+       "for a file whose IMU is known to be wrong."),
+    JA("動画が映像と一緒に記録しているIMU (ジャイロ、加速度計、記録された姿"
+       "勢) を使い、上がどちらかと、加速度計からシーンが何メートルかを求め"
+       "ます。それぞれ不確かさ付きで推定し、成り立たないものは捨てるので、"
+       "向きを変えるだけの撮影やIMUのないファイルでは使われる情報が減るだけ"
+       "です。動画のGPSは上の設定です。「使わない」は、IMUの記録が明らかに"
+       "誤っているファイル向けです。"),
+    ZH_HANS("使用视频随画面一同记录的 IMU (陀螺仪、加速度计和记录的姿态)："
+            "判断上方向，并由加速度计得出场景实际有多少米。每一项都带不确定"
+            "度拟合，不成立时会被舍弃，所以只转动不移动的拍摄或没有 IMU 的"
+            "文件只是可用信息更少。视频的 GPS 由上面的选项管。若已知某文件"
+            "的 IMU 数据有误，可以选“不使用”。"),
+    ZH_HANT("使用影片隨畫面一同記錄的 IMU (陀螺儀、加速度計和記錄的姿態)："
+            "判斷上方向，並由加速度計得出場景實際有多少公尺。每一項都帶不確"
+            "定度擬合，不成立時會被捨棄，所以只轉動不移動的拍攝或沒有 IMU "
+            "的檔案只是可用資訊更少。影片的 GPS 由上面的選項管。若已知某檔"
+            "案的 IMU 資料有誤，可以選「不使用」。"),
+    KO("동영상이 영상과 함께 기록한 IMU (자이로, 가속도계, 기록된 자세) 를 "
+       "씁니다. 어느 쪽이 위인지, 그리고 가속도계로 장면이 몇 미터인지를 "
+       "구합니다. 각각 불확실도와 함께 맞추고 맞지 않으면 버리므로, 방향만 "
+       "돌리는 촬영이나 IMU 가 없는 파일은 쓰이는 정보가 줄어들 뿐입니다. "
+       "동영상의 GPS 는 위의 설정입니다. '사용 안 함'은 IMU 기록이 틀린 "
+       "것이 확실한 파일을 위한 것입니다."),
+    DE("Nutzt die IMU, die ein Video neben den Bildern aufzeichnet -- "
+       "Gyroskop, Beschleunigungsmesser und aufgezeichnete Lage: wo oben "
+       "ist und, aus dem Beschleunigungsmesser, wie viele Meter die Szene "
+       "misst. Jedes wird mit eigener Unsicherheit geschätzt und "
+       "verworfen, wenn es nicht trägt; eine Aufnahme, die nur schwenkt, "
+       "oder eine Datei ohne IMU bekommt einfach weniger davon. Das GPS "
+       "des Videos ist die Einstellung darüber. Ignorieren ist für eine "
+       "Datei, deren IMU nachweislich falsch ist."),
+    FR("Utilise l'IMU qu'une vidéo enregistre avec ses images -- "
+       "gyroscope, accéléromètre et attitude enregistrée : où est le haut "
+       "et, par l'accéléromètre, combien de mètres fait la scène. Chacun "
+       "est estimé avec son incertitude et abandonné s'il ne tient pas ; "
+       "une prise qui ne fait que pivoter ou un fichier sans IMU en reçoit "
+       "simplement moins. Le GPS de la vidéo est le réglage au-dessus. "
+       "Ignorer convient à un fichier dont l'IMU est connue comme fausse."),
+    ES("Usa la IMU que un vídeo graba junto a sus imágenes -- giroscopio, "
+       "acelerómetro y actitud registrada: hacia dónde está arriba y, por "
+       "el acelerómetro, cuántos metros mide la escena. Cada uno se ajusta "
+       "con su incertidumbre y se descarta si no se sostiene; una toma que "
+       "solo gira o un archivo sin IMU simplemente recibe menos. El GPS "
+       "del vídeo es el ajuste de arriba. Ignorar es para un archivo cuya "
+       "IMU se sabe errónea."),
+    PT("Usa a IMU que um vídeo grava junto das imagens -- giroscópio, "
+       "acelerómetro e atitude registada: para onde é cima e, pelo "
+       "acelerómetro, quantos metros mede a cena. Cada um é ajustado com a "
+       "sua incerteza e descartado se não se sustentar; uma captura que só "
+       "roda ou um ficheiro sem IMU recebe apenas menos. O GPS do vídeo é "
+       "a opção acima. Ignorar serve para um ficheiro cuja IMU se sabe "
+       "errada."),
+    IT("Usa l'IMU che un video registra accanto alle immagini -- "
+       "giroscopio, accelerometro e assetto registrato: dove è l'alto e, "
+       "dall'accelerometro, quanti metri misura la scena. Ciascuno è "
+       "stimato con la propria incertezza e scartato se non regge; una "
+       "ripresa che ruota soltanto o un file senza IMU ne riceve "
+       "semplicemente meno. Il GPS del video è l'impostazione qui sopra. "
+       "Ignora serve per un file la cui IMU è notoriamente sbagliata."),
+    NL("Gebruikt de IMU die een video naast de beelden opneemt -- "
+       "gyroscoop, versnellingsmeter en opgenomen stand: welke kant boven "
+       "is en, uit de versnellingsmeter, hoeveel meter de scène meet. Elk "
+       "wordt met eigen onzekerheid geschat en losgelaten als het niet "
+       "standhoudt; een opname die alleen draait of een bestand zonder IMU "
+       "krijgt er eenvoudig minder van. De gps van de video is de "
+       "instelling hierboven. Negeren is voor een bestand waarvan de IMU "
+       "aantoonbaar fout is."),
+    RU("Использует IMU, которую видео пишет рядом с кадрами, — гироскоп, "
+       "акселерометр и записанную ориентацию: где верх и, по "
+       "акселерометру, сколько метров занимает сцена. Каждое оценивается "
+       "со своей неопределённостью и отбрасывается, если не "
+       "подтверждается, поэтому съёмка, где камера только поворачивается, "
+       "или файл без IMU просто получат меньше. GPS видео — настройка "
+       "выше. «Не использовать» — для файла с заведомо неверными данными "
+       "IMU."),
+    TR("Bir videonun görüntülerin yanında kaydettiği IMU'yu -- jiroskop, "
+       "ivmeölçer ve kaydedilen duruş -- kullanır: yukarının nerede "
+       "olduğunu ve ivmeölçerden sahnenin kaç metre olduğunu. Her biri "
+       "kendi belirsizliğiyle kestirilir ve tutmazsa bırakılır; yalnızca "
+       "dönen bir çekim ya da IMU'suz bir dosya daha azını alır. Videonun "
+       "GPS'i yukarıdaki ayardır. Yok say, IMU'su yanlış olduğu bilinen "
+       "bir dosya içindir."));
 
 SS_MSG(sfm_exif_attitude,
     EN("Photo attitude"),
@@ -11661,143 +11738,154 @@ SS_MSG(sensors_section_caption,
        "Burada kapatmak o sensörü tüm girdiler için kapatır."));
 
 SS_MSG(sfm_metric_gps_help,
-    EN("Write the model in metres, sized and turned to the GPS in the photos' "
-       "EXIF. Latitude and longitude alone is the safe choice: it takes the "
-       "scale and the compass heading from the fixes and leaves which way is "
-       "up to the cameras themselves. Adding altitude also levels the scene by "
-       "GPS, which a phone measures badly -- in a city it can tilt the whole "
-       "model by degrees. Either way the capture must be tens of metres across. "
-       "Photographs carrying no position are passed over, and a model that "
-       "cannot be fitted is written unscaled and says so; a video's own sensors "
-       "are the setting above."
+    EN("Write the model in metres, sized and turned to the GPS: the track "
+       "a video records, or the position in a photo's EXIF. Latitude and "
+       "longitude alone is the safe choice: it takes the scale and the "
+       "compass heading from the fixes and leaves which way is up to the "
+       "video's IMU or the cameras themselves. Adding altitude also levels "
+       "the scene by GPS, which a phone measures badly -- in a city it can "
+       "tilt the whole model by degrees. Either way the capture must be "
+       "tens of metres across. Images carrying no position are passed "
+       "over, and a model that cannot be fitted is written unscaled and "
+       "says so."
        " Automatic, the default, decides per capture: with altitude for a DJI drone's own "
        "GPS or photos whose GPS carries an altitude, latitude and longitude for a phone, an "
        "action camera or fixes without an altitude, and off where nothing carries GPS."),
-    JA("写真の EXIF にある GPS に合わせて、寸法と向きを決めたメートル単位の"
-       "モデルを書き出します。緯度と経度だけを使うのが安全です。位置から寸法と"
-       "方位だけを取り、どちらが上かはカメラ自身に任せます。高度も使うと傾きまで"
-       "GPS で決めますが、スマートフォンの高度は誤差が大きく、市街地ではモデル"
-       "全体が数度傾くことがあります。いずれの場合も撮影範囲は数十メートル必要です。"
-       "位置を持たない写真は対象外となり、当てはめられないモデルは寸法なしで"
-       "書き出してその旨を伝えます。動画自身のセンサーは上の設定です。"
+    JA("GPS (動画が記録する軌跡、または写真の EXIF にある位置) に合わせて、"
+       "寸法と向きを決めたメートル単位のモデルを書き出します。緯度と経度だ"
+       "けを使うのが安全です。位置から寸法と方位だけを取り、どちらが上かは"
+       "動画のIMUかカメラ自身に任せます。高度も使うと傾きまでGPS で決めます"
+       "が、スマートフォンの高度は誤差が大きく、市街地ではモデル全体が数度"
+       "傾くことがあります。いずれの場合も撮影範囲は数十メートル必要です。"
+       "位置を持たない画像は対象外となり、当てはめられないモデルは寸法なし"
+       "で書き出してその旨を伝えます。"
        "自動 (既定) は撮影ごとに決めます。DJI の機体自身の GPS や高度付きの写真なら高度も使い、スマートフォン、アクションカメラ、高度のない位置なら緯度と経度だけ、"
        "GPS がなければ使いません。"),
-    ZH_HANS("按照片 EXIF 中的 GPS 确定尺度和朝向，以米为单位写出模型。只用经纬度"
-            "更稳妥：只从定位取尺度和方位角，哪边朝上仍交给相机自身判断。连高度"
-            "一起用则连倾斜也由 GPS 决定，而手机测得的高度误差很大——在城市里可能"
-            "让整个模型倾斜几度。两种方式都要求采集范围有几十米。不带定位的照片会"
-            "被略过；拟合不成功时按未定尺度写出并给出说明。视频自身的传感器由上面"
-            "的选项管。"
+    ZH_HANS("按 GPS (视频记录的轨迹，或照片 EXIF 中的位置) 确定尺度和朝向，"
+            "以米为单位写出模型。只用经纬度更稳妥：只从定位取尺度和方位角，"
+            "哪边朝上仍交给视频的 IMU 或相机自身判断。连高度一起用则连倾斜"
+            "也由 GPS 决定，而手机测得的高度误差很大——在城市里可能让整个模"
+            "型倾斜几度。两种方式都要求采集范围有几十米。不带定位的图像会被"
+            "略过；拟合不成功时按未定尺度写出并给出说明。"
             "自动 (默认) 按每次采集决定：DJI 设备自身的 GPS 或带高度的照片连高度一起用，手机、运动相机或没有高度的定位只用经纬度，没有 GPS 则不使用。"),
-    ZH_HANT("按照片 EXIF 中的 GPS 確定尺度和朝向，以公尺為單位寫出模型。只用經緯度"
-            "更穩妥：只從定位取尺度和方位角，哪邊朝上仍交給相機自身判斷。連高度"
-            "一起用則連傾斜也由 GPS 決定，而手機測得的高度誤差很大——在城市裡可能"
-            "讓整個模型傾斜幾度。兩種方式都要求拍攝範圍有數十公尺。不帶定位的照片會"
-            "被略過；擬合不成功時按未定尺度寫出並給出說明。影片自身的感測器由上面"
-            "的選項管。"
+    ZH_HANT("按 GPS (影片記錄的軌跡，或相片 EXIF 中的位置) 確定尺度和朝向，"
+            "以公尺為單位寫出模型。只用經緯度更穩妥：只從定位取尺度和方位角"
+            "，哪邊朝上仍交給影片的 IMU 或相機自身判斷。連高度一起用則連傾"
+            "斜也由 GPS 決定，而手機測得的高度誤差很大——在城市裡可能讓整個"
+            "模型傾斜幾度。兩種方式都要求拍攝範圍有數十公尺。不帶定位的影像"
+            "會被略過；擬合不成功時按未定尺度寫出並給出說明。"
             "自動 (預設) 按每次拍攝決定：DJI 裝置自身的 GPS 或帶高度的照片連高度一起用，手機、運動相機或沒有高度的定位只用經緯度，沒有 GPS 則不使用。"),
-    KO("사진 EXIF 의 GPS 에 맞춰 크기와 방향을 정한 미터 단위 모델을 씁니다. "
-       "위도와 경도만 쓰는 쪽이 안전합니다. 위치에서 크기와 방위만 가져오고, "
-       "어느 쪽이 위인지는 카메라 자신에게 맡깁니다. 고도까지 쓰면 기울기도 GPS 로 "
-       "정하는데, 휴대전화의 고도는 오차가 커서 도심에서는 모델 전체가 몇 도 기울 "
-       "수 있습니다. 어느 쪽이든 촬영 범위가 수십 미터는 되어야 합니다. 위치가 없는 "
-       "사진은 건너뛰고, 맞추지 못한 모델은 크기 없이 쓰며 그 사실을 알립니다. "
-       "동영상 자체의 센서는 위의 설정입니다."
+    KO("GPS (동영상이 기록한 궤적, 또는 사진 EXIF 의 위치) 에 맞춰 크기와 "
+       "방향을 정한 미터 단위 모델을 씁니다. 위도와 경도만 쓰는 쪽이 "
+       "안전합니다. 위치에서 크기와 방위만 가져오고, 어느 쪽이 위인지는 "
+       "동영상의 IMU 나 카메라 자신에게 맡깁니다. 고도까지 쓰면 기울기도 "
+       "GPS 로 정하는데, 휴대전화의 고도는 오차가 커서 도심에서는 모델 "
+       "전체가 몇 도 기울 수 있습니다. 어느 쪽이든 촬영 범위가 수십 미터는 "
+       "되어야 합니다. 위치가 없는 이미지는 건너뛰고, 맞추지 못한 모델은 "
+       "크기 없이 쓰며 그 사실을 알립니다."
        " 자동 (기본값) 은 촬영마다 정합니다. DJI 기체 자체의 GPS 나 고도가 있는 사진은 고도까지, 휴대전화나 액션캠, 고도 없는 위치는 위도와 "
        "경도만 쓰고, GPS 가 없으면 쓰지 않습니다."),
-    DE("Das Modell in Metern schreiben, in Größe und Richtung an das GPS in den "
-       "EXIF-Daten der Fotos angepasst. Breite und Länge allein ist die sichere "
-       "Wahl: sie nehmen Maßstab und Himmelsrichtung aus den Positionen und "
-       "überlassen das Oben den Kameras selbst. Mit der Höhe richtet auch das "
-       "GPS die Szene aus, das ein Telefon schlecht misst -- in der Stadt kann "
-       "das das ganze Modell um Grade kippen. In beiden Fällen muss die Aufnahme "
-       "zehner Meter groß sein. Fotos ohne Position werden übergangen; ein "
-       "Modell, das nicht passt, wird unskaliert geschrieben und sagt das. Die "
-       "Sensoren eines Videos sind die Einstellung darüber."
+    DE("Das Modell in Metern schreiben, in Größe und Richtung an das GPS "
+       "angepasst: die Spur, die ein Video aufzeichnet, oder die Position "
+       "in den EXIF-Daten eines Fotos. Breite und Länge allein ist die "
+       "sichere Wahl: sie nehmen Maßstab und Himmelsrichtung aus den "
+       "Positionen und überlassen das Oben der IMU des Videos oder den "
+       "Kameras selbst. Mit der Höhe richtet auch das GPS die Szene aus, "
+       "das ein Telefon schlecht misst -- in der Stadt kann das das ganze "
+       "Modell um Grade kippen. In beiden Fällen muss die Aufnahme zehner "
+       "Meter groß sein. Bilder ohne Position werden übergangen; ein "
+       "Modell, das nicht passt, wird unskaliert geschrieben und sagt das."
        " Automatisch, die Vorgabe, entscheidet je Aufnahme: mit Höhe für das eigene GPS "
        "einer DJI-Drohne oder Fotos, deren GPS eine Höhe trägt, Breite und Länge für ein "
        "Telefon, eine Actionkamera oder Positionen ohne Höhe, und aus, wo nichts GPS trägt."),
-    FR("Écrire le modèle en mètres, dimensionné et orienté d'après le GPS des "
-       "EXIF des photos. La latitude et la longitude seules sont le choix sûr : "
-       "elles prennent l'échelle et le cap dans les positions et laissent le "
-       "haut aux caméras elles-mêmes. Avec l'altitude, le GPS redresse aussi la "
-       "scène, or un téléphone la mesure mal -- en ville cela peut incliner tout "
-       "le modèle de plusieurs degrés. Dans les deux cas la prise doit faire des "
-       "dizaines de mètres. Les photos sans position sont ignorées ; un modèle "
-       "qui ne s'ajuste pas est écrit sans échelle et le signale. Les capteurs "
-       "d'une vidéo sont le réglage au-dessus."
+    FR("Écrire le modèle en mètres, dimensionné et orienté d'après le GPS "
+       ": la trace qu'enregistre une vidéo, ou la position dans les EXIF "
+       "d'une photo. La latitude et la longitude seules sont le choix sûr "
+       ": elles prennent l'échelle et le cap dans les positions et "
+       "laissent le haut à l'IMU de la vidéo ou aux caméras elles-mêmes. "
+       "Avec l'altitude, le GPS redresse aussi la scène, or un téléphone "
+       "la mesure mal -- en ville cela peut incliner tout le modèle de "
+       "plusieurs degrés. Dans les deux cas la prise doit faire des "
+       "dizaines de mètres. Les images sans position sont ignorées ; un "
+       "modèle qui ne s'ajuste pas est écrit sans échelle et le signale."
        " Automatique, le défaut, décide par prise : avec l'altitude pour le GPS propre d'un "
        "drone DJI ou des photos dont le GPS porte une altitude, latitude et longitude pour "
        "un téléphone, une caméra d'action ou des points sans altitude, et désactivé quand "
        "rien ne porte de GPS."),
-    ES("Escribir el modelo en metros, con el tamaño y el giro que da el GPS de "
-       "los EXIF de las fotos. Solo latitud y longitud es la opción segura: toma "
-       "la escala y el rumbo de las posiciones y deja el arriba a las propias "
-       "cámaras. Con la altitud el GPS también nivela la escena, y un teléfono "
-       "la mide mal: en ciudad puede inclinar el modelo entero varios grados. En "
-       "ambos casos la toma debe medir decenas de metros. Las fotos sin posición "
-       "se pasan por alto; un modelo que no se puede ajustar se escribe sin "
-       "escalar y lo dice. Los sensores de un vídeo son el ajuste de arriba."
+    ES("Escribir el modelo en metros, con el tamaño y el giro que da el "
+       "GPS: la traza que graba un vídeo o la posición en los EXIF de una "
+       "foto. Solo latitud y longitud es la opción segura: toma la escala "
+       "y el rumbo de las posiciones y deja el arriba a la IMU del vídeo o "
+       "a las propias cámaras. Con la altitud el GPS también nivela la "
+       "escena, y un teléfono la mide mal: en ciudad puede inclinar el "
+       "modelo entero varios grados. En ambos casos la toma debe medir "
+       "decenas de metros. Las imágenes sin posición se pasan por alto; un "
+       "modelo que no se puede ajustar se escribe sin escalar y lo dice."
        " Automático, el valor por defecto, decide en cada toma: con la altitud para el GPS "
        "propio de un dron DJI o fotos cuyo GPS trae altitud, latitud y longitud para un "
        "teléfono, una cámara de acción o posiciones sin altitud, y desactivado cuando nada "
        "trae GPS."),
-    PT("Escrever o modelo em metros, dimensionado e virado conforme o GPS dos "
-       "EXIF das fotos. Só latitude e longitude é a escolha segura: tira a "
-       "escala e o rumo das posições e deixa o para cima às próprias câmeras. "
-       "Com a altitude o GPS também nivela a cena, e um telemóvel mede-a mal -- "
-       "na cidade pode inclinar o modelo inteiro em graus. Em qualquer dos casos "
-       "a captura tem de ter dezenas de metros. As fotos sem posição são "
-       "ignoradas; um modelo que não se ajusta é escrito sem escala e avisa "
-       "disso. Os sensores de um vídeo são a opção acima."
+    PT("Escrever o modelo em metros, dimensionado e virado conforme o GPS: "
+       "o trajeto que um vídeo grava ou a posição nos EXIF de uma foto. Só "
+       "latitude e longitude é a escolha segura: tira a escala e o rumo "
+       "das posições e deixa o para cima à IMU do vídeo ou às próprias "
+       "câmeras. Com a altitude o GPS também nivela a cena, e um telemóvel "
+       "mede-a mal -- na cidade pode inclinar o modelo inteiro em graus. "
+       "Em qualquer dos casos a captura tem de ter dezenas de metros. As "
+       "imagens sem posição são ignoradas; um modelo que não se ajusta é "
+       "escrito sem escala e avisa disso."
        " Automático, o padrão, decide em cada captura: com a altitude para o GPS próprio de "
        "um drone DJI ou fotos cujo GPS traz altitude, latitude e longitude para um "
        "telemóvel, uma câmara de ação ou posições sem altitude, e desligado quando nada "
        "traz GPS."),
-    IT("Scrivere il modello in metri, dimensionato e ruotato in base al GPS "
-       "negli EXIF delle foto. Solo latitudine e longitudine è la scelta sicura: "
-       "prende scala e direzione dalle posizioni e lascia l'alto alle camere "
-       "stesse. Con la quota anche l'inclinazione viene dal GPS, che un telefono "
-       "misura male: in città può inclinare l'intero modello di gradi. In "
-       "entrambi i casi la ripresa deve misurare decine di metri. Le foto senza "
-       "posizione vengono ignorate; un modello che non si stima viene scritto "
-       "senza scala e lo segnala. I sensori di un video sono l'impostazione "
-       "qui sopra."
+    IT("Scrivere il modello in metri, dimensionato e ruotato in base al "
+       "GPS: la traccia che un video registra o la posizione negli EXIF di "
+       "una foto. Solo latitudine e longitudine è la scelta sicura: prende "
+       "scala e direzione dalle posizioni e lascia l'alto all'IMU del "
+       "video o alle camere stesse. Con la quota anche l'inclinazione "
+       "viene dal GPS, che un telefono misura male: in città può inclinare "
+       "l'intero modello di gradi. In entrambi i casi la ripresa deve "
+       "misurare decine di metri. Le immagini senza posizione vengono "
+       "ignorate; un modello che non si stima viene scritto senza scala e "
+       "lo segnala."
        " Automatico, il predefinito, decide per ogni ripresa: con la quota per il GPS di un "
        "drone DJI o per foto il cui GPS porta la quota, latitudine e longitudine per un "
        "telefono, una action cam o punti senza quota, e disattivato quando nulla porta GPS."),
-    NL("Het model in meters schrijven, op maat en gedraaid volgens de GPS in de "
-       "EXIF van de foto's. Alleen breedte en lengte is de veilige keuze: die "
-       "halen de schaal en de kompasrichting uit de posities en laten het boven "
-       "aan de camera's zelf. Met de hoogte zet het GPS de scène ook waterpas, "
-       "en die meet een telefoon slecht -- in een stad kan dat het hele model "
-       "graden doen kantelen. In beide gevallen moet de opname tientallen meters "
-       "groot zijn. Foto's zonder positie worden overgeslagen; een model dat "
-       "niet past wordt ongeschaald geschreven en meldt dat. De sensoren van een "
-       "video zijn de instelling hierboven."
+    NL("Het model in meters schrijven, op maat en gedraaid volgens de gps: "
+       "het spoor dat een video opneemt, of de positie in de EXIF van een "
+       "foto. Alleen breedte en lengte is de veilige keuze: die halen de "
+       "schaal en de kompasrichting uit de posities en laten het boven aan "
+       "de IMU van de video of aan de camera's zelf. Met de hoogte zet de "
+       "gps de scène ook waterpas, en die meet een telefoon slecht -- in "
+       "een stad kan dat het hele model graden doen kantelen. In beide "
+       "gevallen moet de opname tientallen meters groot zijn. Beelden "
+       "zonder positie worden overgeslagen; een model dat niet past wordt "
+       "ongeschaald geschreven en meldt dat."
        " Automatisch, de standaard, beslist per opname: met hoogte voor de eigen gps van "
        "een DJI-drone of foto's waarvan de gps een hoogte draagt, breedte en lengte voor "
        "een telefoon, een actiecamera of posities zonder hoogte, en uit waar niets gps "
        "draagt."),
-    RU("Записать модель в метрах, с размером и поворотом по GPS из EXIF снимков. "
-       "Только широта и долгота — безопасный выбор: масштаб и направление берутся "
-       "из координат, а где верх, решают сами камеры. С высотой по GPS задаётся и "
-       "наклон, а телефон измеряет её плохо — в городе это может наклонить всю "
-       "модель на градусы. В обоих случаях съёмка должна быть десятки метров. "
-       "Снимки без координат пропускаются; модель, которую подобрать не удалось, "
-       "пишется без масштаба и сообщает об этом. Датчики самого видео — "
-       "настройка выше."
+    RU("Записать модель в метрах, с размером и поворотом по GPS: по треку, "
+       "который пишет видео, или по координатам в EXIF снимка. Только "
+       "широта и долгота — безопасный выбор: масштаб и направление берутся "
+       "из координат, а где верх, решают IMU видео или сами камеры. С "
+       "высотой по GPS задаётся и наклон, а телефон измеряет её плохо — в "
+       "городе это может наклонить всю модель на градусы. В обоих случаях "
+       "съёмка должна быть десятки метров. Изображения без координат "
+       "пропускаются; модель, которую подобрать не удалось, пишется без "
+       "масштаба и сообщает об этом."
        " Автоматически (по умолчанию) — решение для каждой съёмки: с высотой для "
        "собственного GPS дрона DJI или снимков, чей GPS несёт высоту, широта и долгота для "
        "телефона, экшн-камеры или отсчётов без высоты, и выключено, если GPS нигде нет."),
-    TR("Modeli, fotoğrafların EXIF'indeki GPS'e göre ölçeklenmiş ve döndürülmüş "
-       "olarak metre biriminde yaz. Yalnızca enlem ve boylam güvenli seçimdir: "
-       "ölçeği ve pusula yönünü konumlardan alır, yukarının neresi olduğunu "
-       "kameralara bırakır. Yükseklik de eklenirse sahneyi GPS düzler; telefonun "
-       "yükseklik ölçümü kötüdür ve şehirde tüm modeli derecelerce yatırabilir. "
-       "Her iki durumda da çekim onlarca metre olmalı. Konumu olmayan "
-       "fotoğraflar atlanır; oturtulamayan model ölçeksiz yazılır ve bunu "
-       "bildirir. Videonun kendi sensörleri yukarıdaki ayardır."
+    TR("Modeli GPS'e göre ölçeklenmiş ve döndürülmüş olarak metre "
+       "biriminde yaz: bir videonun kaydettiği iz ya da bir fotoğrafın "
+       "EXIF'indeki konum. Yalnızca enlem ve boylam güvenli seçimdir: "
+       "ölçeği ve pusula yönünü konumlardan alır, yukarının neresi "
+       "olduğunu videonun IMU'suna ya da kameralara bırakır. Yükseklik de "
+       "eklenirse sahneyi GPS düzler; telefonun yükseklik ölçümü kötüdür "
+       "ve şehirde tüm modeli derecelerce yatırabilir. Her iki durumda da "
+       "çekim onlarca metre olmalı. Konumu olmayan görüntüler atlanır; "
+       "oturtulamayan model ölçeksiz yazılır ve bunu bildirir."
        " Varsayılan Otomatik, her çekim için karar verir: bir DJI dronun kendi GPS'i ya da "
        "GPS'i yükseklik taşıyan fotoğraflar için yükseklikle, telefon, aksiyon kamerası ya "
        "da yüksekliksiz konumlar için enlem ve boylamla, hiçbir şey GPS taşımıyorsa kapalı."));

@@ -24,6 +24,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace {
 
@@ -163,18 +164,23 @@ std::vector<float> to_float(const nn::Image& img) {
     return out;
 }
 
-int pair(const char* gt_path, const char* render_path, const std::string& dir) {
-    const nn::Image gt = nn::load_image(gt_path), render = nn::load_image(render_path);
-    if (gt.empty() || render.empty() || gt.width != render.width || gt.height != render.height) {
-        std::printf("FAIL cannot read two images of one size\n");
-        return 1;
-    }
-    const std::vector<float> a = to_float(gt), b = to_float(render);
-    for (lpips::Net net : {lpips::Net::Alex, lpips::Net::Vgg}) {
-        lpips::Scorer s;
-        s.load(net, lpips::resolve(net, dir));
-        const double v = s.score(a.data(), {b.data()}, gt.width, gt.height, net == lpips::Net::Alex)[0];
-        std::printf("lpips_%s: %.9g\n", lpips::net_name(net), v);
+int pairs(const std::vector<std::pair<const char*,const char*>>& paths,
+          const std::string& dir, bool alex_only) {
+    for (lpips::Net net : {lpips::Net::Alex,lpips::Net::Vgg}) {
+        if (alex_only && net != lpips::Net::Alex) continue;
+        lpips::Scorer scorer;
+        scorer.load(net,lpips::resolve(net,dir));
+        for (const auto& [gt_path,render_path] : paths) {
+            const nn::Image gt = nn::load_image(gt_path), render = nn::load_image(render_path);
+            if (gt.empty() || render.empty() || gt.width != render.width || gt.height != render.height) {
+                std::printf("FAIL cannot read two images of one size\n");
+                return 1;
+            }
+            const std::vector<float> a = to_float(gt), b = to_float(render);
+            double value = scorer.score(a.data(),{b.data()},gt.width,gt.height,net == lpips::Net::Alex)[0];
+            if (paths.size() == 1) std::printf("lpips_%s: %.9g\n",lpips::net_name(net),value);
+            else std::printf("lpips_%s\t%s\t%s\t%.9g\n",lpips::net_name(net),gt_path,render_path,value);
+        }
     }
     return 0;
 }
@@ -182,13 +188,14 @@ int pair(const char* gt_path, const char* render_path, const std::string& dir) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    bool fetch = false;
+    bool fetch = false, alex_only = false;
     std::string dir;
-    std::vector<const char*> pair_args;
+    std::vector<std::pair<const char*,const char*>> pair_args;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--fetch")) fetch = true;
+        else if (!std::strcmp(argv[i], "--alex-only")) alex_only = true;
         else if (!std::strcmp(argv[i], "--pair") && i + 2 < argc) {
-            pair_args = {argv[i + 1], argv[i + 2]};
+            pair_args.emplace_back(argv[i + 1],argv[i + 2]);
             i += 2;
         } else dir = argv[i];
     }
@@ -198,7 +205,7 @@ int main(int argc, char** argv) {
             !lpips::missing_files({lpips::Net::Alex, lpips::Net::Vgg}).empty()) {
             std::printf("SKIP the LPIPS checkpoints are not cached (--fetch, or a folder)\n");
         } else if (!pair_args.empty()) {
-            rc = pair(pair_args[0], pair_args[1], dir);
+            rc = pairs(pair_args,dir,alex_only);
         } else {
             golden(dir);
         }

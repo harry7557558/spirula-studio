@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -32,6 +33,7 @@
 
 #include "core/ColorSpace.h"
 #include "core/Env.h"
+#include "core/HardwareThreads.h"
 #include "core/ImageFile.h"
 #include "sfm/core/Cancel.h"
 #include "sfm/core/Events.h"
@@ -58,6 +60,8 @@
 #include "sfm/geometry/TwoView.h"
 #include "sfm/map/Assemble.h"
 #include "sfm/map/AttitudeGauge.h"
+#include "sfm/map/GlobalPositionGpu.h"
+#include "sfm/map/GlobalReconstruction.h"
 #include "sfm/map/Mapper.h"
 #include "sfm/map/MetricGauge.h"
 #include "sfm/map/Orient.h"
@@ -234,16 +238,18 @@ static void logLensPlan(const LensPlan& p) {
 
 SensorCaptures loadSensorCaptures(const SfmConfig& cfg, bool verbose) {
     SensorCaptures out;
-    if (cfg.sensor_gauge == "none") return out;
+    // --sensor-gauge none is the IMU's off switch; the GPS log is --metric-gps's.
+    const bool imu_on = cfg.sensor_gauge != "none";
     for (const TelemetryInput& in : cfg.telemetry_inputs) {
-        if (!in.imu && !in.gps) continue;
+        const bool imu = in.imu && imu_on;
+        if (!imu && !in.gps) continue;
         Telemetry t;
         std::string err;
         if (!telemetry_read(in.path, t, err) || t.empty()) {
             L::warn(Tag::Orient, M::sensor_file_bad, {in.path, err.empty() ? "-" : err});
             continue;
         }
-        if (!in.imu) {
+        if (!imu) {
             t.gyro.clear();
             t.accel.clear();
             t.magnet.clear();
@@ -344,7 +350,8 @@ void reportSensorGauge(size_t i, const SensorGaugeResult& r,
         L::out(Tag::Orient, M::sensor_up,
                {model, (long long)r.up.votes, L::num(r.up.spread_deg, 2), (long long)r.up.outliers});
     if (r.fail == SensorFail::NoUp) {
-        L::err(Tag::Orient, M::sensor_declined, {model, M::sensor_fail_noup.get()});
+        const auto& why = r.up.votes > 0 ? M::sensor_fail_noup : M::sensor_fail_noup_noimu;
+        L::err(Tag::Orient, M::sensor_declined, {model, why.get()});
         return;
     }
     if (r.scale_imu_sigma > 0) {
@@ -578,7 +585,7 @@ void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<Featur
             ok[k] = 1;
         }
     };
-    const unsigned hc = std::thread::hardware_concurrency();
+    const unsigned hc = spirula::hardware_threads();
     const int nt = std::max(1, std::min<int>(threads > 0 ? threads : (hc ? (int)hc : 1),
                                              (int)std::max<size_t>(use.size(), 1)));
     std::vector<std::thread> pool;
@@ -671,10 +678,11 @@ bool fixGauge(std::vector<Reconstruction>& models, const SfmConfig& cfg,
     }
     const std::vector<std::unique_ptr<LoadedCapture>>& loaded = sensors->loaded;
     std::vector<MetricFit> log_fit(models.size());   // the GPS log's, where it was fitted
-    if (!loaded.empty()) {
+    if (!loaded.empty() && (cfg.sensor_gauge != "none" || gps)) {
         std::vector<SensorCapture> caps = sensors->caps();
         SensorGaugeOptions opt;
-        opt.mode = cfg.sensor_gauge == "up" ? SensorMode::Up : SensorMode::Auto;
+        opt.mode = cfg.sensor_gauge == "auto" ? SensorMode::Auto : SensorMode::Up;
+        opt.gps = gps;
         opt.gps_full = cfg.metric_gps == "full";
         opt.gps_max_error = gps ? cfg.metric_max_error : 0.0;
         opt.gps_max_error_frac = cfg.metric_max_error_frac;
@@ -1108,11 +1116,12 @@ RigTable readRigs(const fs::path& dir, Reconstruction& m) {
 // Every reconstruction as <dir>/0, <dir>/1, ... (D41) -- COLMAP's layout for a
 // view graph that is not connected. `sparse/0` has the most 3D points, so a
 // single-model dataset still writes exactly `sparse/0`.
-void writeModels(const std::vector<Reconstruction>& models, const fs::path& dir,
+void writeModels(std::vector<Reconstruction>& models, const fs::path& dir,
                  bool verbose, const std::vector<ModelGauge>& gauge, const RigTable* rigs) {
     for (size_t i = 0; i < models.size(); i++) {
         fs::path p = dir / std::to_string(i);
         fs::create_directories(p);
+        models[i].updatePointErrors();
         models[i].writeBinary(p.string());
         if (i < gauge.size()) writeGauge(p, gauge[i]);
         writeRigs(p, models[i], rigs);
@@ -1347,7 +1356,43 @@ std::vector<Reconstruction> runMapper(Mapper& mapper, const MatchesDatabase& db,
     AssembleOptions ao = cfg.assemble;
     ao.verbose = !cfg.quiet;
     std::vector<Reconstruction> models;
-    if (!bup) {
+    if (cfg.mapper_mode == "global") {
+        if (!cfg.quiet) L::out(Tag::Map, M::map_global_start);
+        events::stage_begin(Stage::GlobalInitialize, 10000);
+        mapper.bootstrapCameras();
+        GlobalReconstructionOptions go;
+        go.progress = [](double work) {
+            events::progress(Stage::GlobalInitialize, (int64_t)(work * 10000), 10000);
+        };
+        if (progress::enabled()) go.preview = [](const Reconstruction& model) {
+            progress::model(model);
+        };
+        go.relative.geometry = cfg.twoview;
+        go.relative.threads = cfg.threads;
+        go.rigs = mapper.rigs();
+        go.rotation_priors = mapper.priors();
+        go.position_priors = mapper.priors();
+        go.fixed_focals = mapper.options().given_focal_cameras;
+        go.min_triangulation_angle = cfg.mapper.min_tri_angle_deg * M_PI / 180.0;
+        go.position_solver = [&](GlobalPositionProblem& problem, const GlobalPositionOptions& options) {
+            return solveGlobalPositionGpu(problem, options, cfg.mapper.device, cfg.mapper.device_selector);
+        };
+        GlobalReconstructionStats gs;
+        models = buildGlobalReconstructions(db, feats, mapper.cameraIds(), mapper.startingCameras(),
+                                            mapper.options().known_focal_cameras, go, gs);
+        if (!gs.rotation_converged) L::warn(Tag::Map, M::map_global_rotation_unconverged);
+        if (!cfg.quiet)
+            L::out(Tag::Map, M::map_global_initial,
+                   {(long long)gs.edges, (long long)gs.tracks, (long long)gs.conflicting,
+                    (long long)gs.models});
+        events::stage_end(Stage::GlobalInitialize);
+        events::stage_begin(Stage::Refine);
+        if (!models.empty()) progress::model(models.front(), true);
+        for (Reconstruction& model : models) model = mapper.refine(model, false, true);
+        mapper.claimAll(models);
+        ao.tag = "global";
+        if (!models.empty()) models = assembleModels(mapper, std::move(models), cfg.manager, ao, ast);
+    } else if (!bup) {
         ao.tag = "map";
         models = assembleModels(mapper, mapper.run(), cfg.manager, ao, ast);
     } else {
@@ -1886,7 +1931,7 @@ int loadFeatureDir(const std::string& featdir, const SfmConfig& cfg, bool with_d
     db.images.resize(files.size());
     events::stage_begin(Stage::Load, (int64_t)files.size());
     {
-        const unsigned hc = std::thread::hardware_concurrency();
+        const unsigned hc = spirula::hardware_threads();
         int nt = cfg.threads > 0 ? cfg.threads : (hc > 0 ? (int)hc : 1);
         nt = std::max(1, std::min<int>(nt, (int)files.size()));
         std::atomic<size_t> next{0}, done{0};
@@ -2728,13 +2773,27 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     if (progressive && !progressive->writeReport(ws / "progressive.txt"))
         L::err_raw(Tag::Map, "cannot write " + (ws / "progressive.txt").string());
     double t_map = now() - t0;
+    if (models.empty()) {
+        L::fail(Tag::Map, M::map_no_model_to_work_with);
+        events::stage_end(Stage::Map);
+        r.exit_code = 1;
+        return r;
+    }
 
     {
         // A global solve per model, and up to two more passes over them: minutes
         // on a large capture, with the last image long since placed.
         events::stage_begin(Stage::Refine);
         double t_finish = 0;
-        models = finishModels(mapper, std::move(models), cfg, verbose, t_finish);
+        try {
+            std::vector<Reconstruction> finished =
+                finishModels(mapper, models, cfg, verbose, t_finish);
+            models = std::move(finished);
+        } catch (const std::exception& e) {
+            L::err_raw(Tag::Map,
+                       "[map] finishing passes failed: " + std::string(e.what()) +
+                       "; continuing with current model");
+        }
         t_map += t_finish;
         events::stage_end(Stage::Refine);
     }

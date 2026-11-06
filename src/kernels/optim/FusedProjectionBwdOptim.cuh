@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ProjectiveDepthState.h"
 #include "backend/api/BackendTypes.h"
 #include <cstdint>
 
@@ -42,7 +43,7 @@ void fused_projection_bwd_optimizer_3dgs(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -94,7 +95,7 @@ void fused_projection_bwd_optimizer_mip(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,
@@ -146,7 +147,7 @@ void fused_projection_bwd_optimizer_3dgut(
     const std::optional<TorchTensorView> sh_value_packed,
     const std::optional<TorchTensorView> sh_value_bounds,
     NonShQuantState non_sh,
-    SplatVisitState visit,
+    SplatVisitState visit, ProjectiveDepthOptim depth,
     DeviceVector<float> radii,
     DeviceVector<float> densify_score,
     const float lr_means,

@@ -9,6 +9,7 @@
 #include <fstream>
 
 #include "i18n/Locale.h"
+#include "i18n/catalog/Dataset.h"
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
 
@@ -293,6 +294,7 @@ void SfmRunner::take_selection(PrepJob& prep) {
 void SfmRunner::take_masking(PrepJob& prep) {
     std::lock_guard<std::mutex> lk(_mu);
     prep.mask_enable = _live.prep.mask_enable;
+    prep.inference_devices = _live.prep.inference_devices;
     prep.mask_prompt = _live.prep.mask_prompt;
     prep.mask_negative_prompt = _live.prep.mask_negative_prompt;
     prep.mask_feature_prompt = _live.prep.mask_feature_prompt;
@@ -432,10 +434,11 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         // One bar over the whole step, whatever it is doing: a seed retry comes
         // back to seeding mid-run, and the finishing solves place no image.
-        case 2: case 3: case 4: case 8: case 9: {
-            // Inside progressive alignment the attempt (11) drives label and bar.
+        case 2: case 3: case 4: case 8: case 9: case 11: {
+            // Inside progressive alignment the attempt (12) drives label and bar.
             if (st.stage == 9) _progressive_label.clear();
             if (!_progressive_label.empty()) break;
+            if (st.stage == 11) _map_work.initialized(st.done, st.total);
             if (st.stage == 2) _map_work.placed(st.done, st.total);
             if (st.stage == 3) _map_work.levels(st.done, st.total);
             if (st.stage == 9) _map_work.refining();
@@ -449,7 +452,7 @@ void SfmRunner::apply_status(const RunStatus& st) {
         }
         // Every attempt places the images again, so the bar counts attempts.
         // Each step begins the stage over, at 0, an instant before its count.
-        case 11: if (st.done <= 0) break;
+        case 12: if (st.done <= 0) break;
                  _progressive_label =
                      format(lmsg::stage_progressive, {(long long)st.done, (long long)st.total});
                  set_stage_if_new(Stage::Mapping, _progressive_label.c_str(), /*relabel=*/true);
@@ -879,11 +882,15 @@ void SfmRunner::run(SfmJob job) {
         if (prior.resumable())
             log(fmt(lmsg::sfm_resuming, {ws.string()}), /*detail=*/false);
 
+        std::string identity_error;
+        if (!snapshot_frame_sources(job.prep, identity_error)) return fail(identity_error);
         // Each step asks the plan again when it is reached, with the settings
         // the screen holds by then; what already ran stays as it went.
         const DatasetRecord rec = read_plan_record(ws.string(), job.prep);
         const PlanRequest req = job.request;
         DatasetPlan plan = plan_dataset(plan_job(job), prior, rec, req);
+        if (!req.redo_frames && !plan[Step::Frames].can_keep)
+            return fail(spirula::i18n::msg::dataset::rerun_section_help.get());
         StepRecorder record(ws.string(), rec);
         auto say = [&](Step s) {
             for (const std::string& l : plan_log_lines(s, plan[s], ws.string()))
@@ -1079,9 +1086,8 @@ void SfmRunner::run(SfmJob job) {
                 log(cmd);
                 rc = run_process(argv, "", [&](const std::string& l) {
                     log(l, !child_line_is_notable(l));
-                    poll_status();
                     note_line(l);
-                }, _cancel);
+                }, _cancel, [this] { poll_status(); });
                 // The last snapshot the child wrote, which is the one carrying
                 // its verdict; the loop above may have missed it between lines.
                 _status_mtime = 0;

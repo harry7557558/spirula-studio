@@ -134,6 +134,7 @@ SplatCloud merge_partition_splats(const ScenePartition& p, const std::vector<std
     out.sb_lobes = basis.sb_lobes;
     for (int k = 0; k < p.num_parts; k++) {
         if (clouds[(size_t)k].num == 0 && keeps[(size_t)k].empty()) continue;
+        if (clouds[(size_t)k].primitive == "mip") out.primitive = "mip";
         pad_color(clouds[(size_t)k], basis);
         append(out, clouds[(size_t)k], keeps[(size_t)k]);
         clouds[(size_t)k] = SplatCloud{};

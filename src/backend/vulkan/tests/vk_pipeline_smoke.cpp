@@ -1,6 +1,6 @@
 // Pipeline-layer smoke test: dispatches shaders/test_kernels.slang
 // through the embedded-SPIR-V pipeline cache and verifies results, including
-// specialization constants and batched dispatch ordering on one stream.
+// specialization constants, split ranges and batched ordering on one stream.
 
 #include "backend/api/BackendRuntime.h"
 #include "backend/vulkan/VulkanPipelines.h"
@@ -33,8 +33,63 @@ struct IotaParams {
     uint32_t offset;
 };
 
+static void check_dispatch_ranges(const char* entry) {
+    using namespace backend;
+    const uint32_t grid[3] = {7, 5, 3};
+    const uint32_t n = 7 * 5 * 3 * 4;
+    void* dev = device_malloc(n * sizeof(uint32_t));
+    CHECK(dev != nullptr);
+    if (!dev) return;
+    struct Params {
+        uint64_t out;
+        uint32_t nx, ny;
+    } p{(uint64_t)dev, grid[0], grid[1]};
+    std::vector<uint32_t> got(n);
+    for (int axis = -1; axis < 4; ++axis) {
+        memset_sync(dev, 0, n * sizeof(uint32_t));
+        if (axis < 0) {
+            CHECK(vk::dispatch(kDefaultStream, entry, {},
+                               grid[0], grid[1], grid[2], &p, sizeof(p)));
+        } else if (axis == 3) {
+            const uint32_t base[3] = {1, 1, 1}, count[3] = {5, 3, 1};
+            CHECK(vk::dispatch_range(kDefaultStream, entry, {}, base, count,
+                                     &p, sizeof(p)));
+        } else {
+            for (uint32_t offset = 0; offset < grid[axis]; ++offset) {
+                uint32_t base[3] = {}, count[3] = {7, 5, 3};
+                base[axis] = offset;
+                count[axis] = 1;
+                CHECK(vk::dispatch_range(kDefaultStream, entry, {}, base, count,
+                                         &p, sizeof(p)));
+            }
+        }
+        memcpy_sync(got.data(), dev, n * sizeof(uint32_t),
+                    MemcpyKind::DeviceToHost);
+        uint32_t bad = 0;
+        for (uint32_t z = 0; z < grid[2]; ++z)
+            for (uint32_t y = 0; y < grid[1]; ++y)
+                for (uint32_t x = 0; x < grid[0] * 4; ++x) {
+                    uint32_t i = (z * grid[1] + y) * grid[0] * 4 + x;
+                    uint32_t expected = 1 + x + 1024 * y + 1048576 * z;
+                    if (axis == 3 &&
+                        (x < 4 || x >= 24 || y < 1 || y >= 4 || z != 1))
+                        expected = 0;
+                    if (got[i] != expected && ++bad <= 3)
+                        std::printf("grid mismatch @%u: got %u want %u\n",
+                                    i, got[i], expected);
+                }
+        std::printf("%s axis %d: %u mismatches / %u\n", entry, axis, bad, n);
+        CHECK(bad == 0);
+        CHECK(last_error() == nullptr);
+    }
+    device_free(dev);
+}
+
 int main() {
     using namespace backend;
+
+    check_dispatch_ranges("test_kernels.dispatch_grid");
+    check_dispatch_ranges("test_kernels.dispatch_group_only");
 
     const uint32_t N = 1 << 20;
     void* dev_x = device_malloc(N * sizeof(float));
@@ -65,6 +120,13 @@ int main() {
     CHECK(vk::dispatch(kDefaultStream, "test_kernels.iota_u32",
                        vk::SpecList{}, (N + 255) / 256, 1, 1, &ip,
                        sizeof(ip)));
+    memset_sync(dev_i, 0, N * sizeof(uint32_t));
+    for (uint32_t offset : {0u, 3u}) {
+        const uint32_t base[3] = {offset, 0, 0};
+        const uint32_t count[3] = {offset == 0 ? 3u : N / 256 - 3, 1, 1};
+        CHECK(vk::dispatch_range(kDefaultStream, "test_kernels.iota_u32", {},
+                                 base, count, &ip, sizeof(ip)));
+    }
     device_synchronize();
     const char* err = last_error();
     if (err) std::printf("backend error: %s\n", err);
