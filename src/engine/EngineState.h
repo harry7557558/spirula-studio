@@ -631,6 +631,7 @@ struct VisitStats {
 struct EngineState {
     DeviceVector<float4> projective_state, projective_centers;
     DeviceVector<float> projective_information;
+    DeviceVector<float> projective_angular_bound;
     std::vector<float4> projective_centers_host;
     // Top-level scalars + flags shared across sections.
     std::string primitive;

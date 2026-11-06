@@ -256,6 +256,8 @@ static int run(int lobes) {
         auto depth_information = upload(std::vector<float>(N,100));
         ProjectiveDepthOptim f_depth{f_depth_rows,depth_information,depth_centers,depth_cameras,
                                     .01f,.0005f,false,false};
+        auto depth_bound = upload(std::vector<float>(N,50));
+        f_depth.angular_bound = depth_bound;
         ProjectiveDepthOptim s_depth = f_depth; s_depth.states = s_depth_rows;
 
         float* f_score = upload(std::vector<float>(N, 0.f));
@@ -419,6 +421,7 @@ static int run(int lobes) {
                 download((float*)s_depth_rows,4*N),tol);
         for (auto p : {f_depth_rows,s_depth_rows,depth_centers}) backend::device_free(p);
         backend::device_free(depth_cameras); backend::device_free(depth_information);
+        backend::device_free(depth_bound);
         if (!level1) {
             compare("features_sh", download(f_sh, SH_CELLS),
                     download(s_sh, SH_CELLS), sh_tol);

@@ -251,7 +251,8 @@ void read_owned_lines(HANDLE process, OwnedJob& job, std::mutex& mutex,
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
     std::string cmdline;
     for (size_t i = 0; i < argv.size(); i++)
@@ -287,6 +288,7 @@ int run_process(const std::vector<std::string>& argv,
     bool output_open = true;
     bool exited = false;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
             terminate_owned_job(job);
             killed = true;
@@ -951,8 +953,9 @@ pid_t fork_owned(OwnedChild& child, ExecArgs& exec) {
         // Nested guardians retain ancestor leases until their own descendants
         // have stopped. EOF is the reclamation barrier, not merely worker exit.
         if (!wait_completion(completion[0])) result = 1 << 8;
-        ::write(status[1], &result, sizeof result);
-        _exit(0);
+        ssize_t written;
+        do { written = ::write(status[1], &result, sizeof result); } while (written < 0 && errno == EINTR);
+        _exit(written == sizeof result ? 0 : 1);
     }
     close(completion[0]);
     close(completion[1]);
@@ -979,7 +982,8 @@ pid_t fork_owned(OwnedChild& child, ExecArgs& exec) {
 int run_process(const std::vector<std::string>& argv,
                 const std::string& cwd,
                 const std::function<void(const std::string&)>& on_line,
-                const std::atomic<bool>& cancel) {
+                const std::atomic<bool>& cancel,
+                const std::function<void()>& on_poll) {
     if (argv.empty()) return kSpawnFailed;
     ExecArgs exec(argv);
     int fds[2];
@@ -1003,6 +1007,7 @@ int run_process(const std::vector<std::string>& argv,
     bool killed = false;
     bool output_open = true;
     for (;;) {
+        if (on_poll) on_poll();
         if (cancel.load() && !killed) {
             child.cancel();
             killed = true;

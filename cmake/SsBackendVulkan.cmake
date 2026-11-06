@@ -17,11 +17,10 @@ find_package(Threads REQUIRED)
 # ---------------------------------------------------------------------------
 # Portable engine layer
 # ---------------------------------------------------------------------------
-# Compile-checked here; links against the Vulkan runtime once kernel launchers
-# exist for the symbols it needs.
 ss_collect_portable_sources(SS_PORTABLE_SOURCES)
 
-add_library(csrc_portable OBJECT ${SS_PORTABLE_SOURCES})
+# An OBJECT library pulls the engine and embedded shaders into every host test.
+add_library(csrc_portable STATIC ${SS_PORTABLE_SOURCES})
 # Without this the whole portable engine builds at -O0 (CMAKE_BUILD_TYPE is
 # deliberately empty), which the CUDA path avoids by applying the same list.
 target_compile_options(csrc_portable PRIVATE
@@ -72,6 +71,9 @@ target_compile_options(ss_backend_vulkan PRIVATE
 target_compile_definitions(ss_backend_vulkan PUBLIC SS_BACKEND_VULKAN)
 target_include_directories(ss_backend_vulkan PUBLIC ${SS_SRC})
 target_link_libraries(ss_backend_vulkan PUBLIC ss_vulkan ss_i18n)
+# Visualizer calls back into the engine; archive linkers must rescan both.
+target_link_libraries(csrc_portable PUBLIC ss_backend_vulkan)
+target_link_libraries(ss_backend_vulkan PUBLIC csrc_portable)
 
 # ---------------------------------------------------------------------------
 # Tests (run manually; see backend/vulkan/README.md)

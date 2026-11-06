@@ -558,6 +558,32 @@ struct RenderWorker::Impl {
                 spirula::draw_region_overlay(*ov, out_host.data(), W, H, scene.data(), c2w, q.fx, q.fy, q.cx, q.cy);
             }
         }
+        if (q.show_cams && !cfg.held_out_cameras.empty()) {
+            auto project = [&](const std::array<float, 3>& origin, const std::array<float, 3>& offset, double pixel[2]) {
+                double p[3], ray[3];
+                for (int k = 0; k < 3; k++) p[k] = origin[k] + cfg.base_camera_size*q.cam_size_scale*offset[k] - c2w[k*4+3];
+                for (int k = 0; k < 3; k++) ray[k] = (k ? -1 : 1)*(c2w[k]*p[0]+c2w[4+k]*p[1]+c2w[8+k]*p[2]);
+                const float dist[8] = {};
+                if (!camhost::project_ray(ray, (int)camera_model_from_name(q.model), 0, dist, pixel)) return false;
+                pixel[0] = pixel[0]*q.fx + q.cx;
+                pixel[1] = pixel[1]*q.fy + q.cy;
+                return std::isfinite(pixel[0]) && std::isfinite(pixel[1]);
+            };
+            for (const auto& line : cfg.held_out_cameras) {
+                double a[2], b[2];
+                if (!project(line.origin, line.a, a) || !project(line.origin, line.b, b)) continue;
+                double dx = b[0]-a[0], dy = b[1]-a[1];
+                if (std::abs(dx) > W/2 || std::abs(dy) > H/2) continue;
+                int steps = (int)std::ceil(std::max(std::abs(dx), std::abs(dy)));
+                for (int j = 0; j <= steps; j++) {
+                    double t = steps ? (double)j/steps : 0;
+                    double x = a[0]+t*dx, y = a[1]+t*dy;
+                    if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                    size_t pixel = ((size_t)y*W+(size_t)x)*3;
+                    out_host[pixel] = 255; out_host[pixel+1] = 89; out_host[pixel+2] = 166;
+                }
+            }
+        }
         return out_host;
     }
 };

@@ -17,6 +17,7 @@
 #include "nn/vk/Memory.h"
 
 #include <cstdint>
+#include <string>
 
 namespace nn {
 
@@ -100,6 +101,41 @@ struct Nf4Opts {
 };
 void dequant_nf4(const Tensor& out, const Tensor& codes, const Tensor& absmax,
                  const Nf4Opts& opts = {});
+
+// ================
+// Metal (macOS)
+// ================
+
+// MPSGraph runs attention (no bias, packed rows) and GEMMs of at least 128x128
+// output where MoltenVK shares memory with Metal; the rest stays on Vulkan.
+// On by default; $SS_NN_METAL=0|1 sets it, and this pair overrides it at runtime.
+bool metal_enabled();
+void set_metal_enabled(bool on);
+// What was asked for and what runs, e.g. "on (SS_NN_METAL=1)", "off: <why>".
+std::string metal_status();
+struct MetalCounts {
+    uint64_t attention = 0, gemm = 0;   // ops MPSGraph ran
+    uint64_t compiles = 0;              // MPSGraph executables built
+    uint64_t evictions = 0;             // and dropped from the LRU
+    uint64_t sections = 0;              // Vulkan -> Metal -> Vulkan hand-offs
+    uint64_t rotations = 0;             // must stay 0, see nn/vk/MetalInterop.h
+};
+MetalCounts metal_counts();
+
+// While one is alive the Metal path runs attention and GEMM operands in fp16,
+// which the M5's GPU neural accelerators execute. It is its own parity tier: a
+// model opts in with its own flag and its own bars, and nothing in nn sets it.
+class Fp16Scope {
+public:
+    explicit Fp16Scope(bool on);
+    ~Fp16Scope();
+    Fp16Scope(const Fp16Scope&) = delete;
+    Fp16Scope& operator=(const Fp16Scope&) = delete;
+
+private:
+    bool prev_;
+};
+bool fp16_active();
 
 // ================
 // Normalization

@@ -2291,31 +2291,50 @@ SS_MSG(seed_blocking_help,
        "aynısını yeniden kurmaz"));
 
 SS_MSG(mapper_help,
-    EN("One incremental reconstruction of the whole capture, or small atoms of "
-       "the view graph reconstructed separately and merged upwards"),
+    EN("One incremental reconstruction of the whole capture, small atoms of the "
+       "view graph reconstructed separately and merged upwards, or (experimental) "
+       "every camera's rotation and position estimated together from the view graph"),
     JA("撮影全体を 1 つの逐次再構成で作るか、視点グラフの小さな原子を別々に"
-       "再構成して上へ統合するか"),
-    ZH_HANS("对整段拍摄做一次增量重建，或把视图图切成小原子分别重建再逐层向上合并"),
-    ZH_HANT("對整段拍攝做一次增量重建，或把視圖圖切成小原子分別重建再逐層向上合併"),
+       "再構成して上へ統合するか、（実験的）視点グラフから全カメラの向きと位置を"
+       "まとめて推定するか"),
+    ZH_HANS("对整段拍摄做一次增量重建，或把视图图切成小原子分别重建再逐层向上合并，"
+            "或（实验性）从视图图同时估计所有相机的方向和位置"),
+    ZH_HANT("對整段拍攝做一次增量重建，或把視圖圖切成小原子分別重建再逐層向上合併，"
+            "或（實驗性）從視圖圖同時估計所有相機的方向和位置"),
     KO("촬영 전체를 한 번의 증분 재구성으로 만들지, 뷰 그래프의 작은 원자들을 따로 "
-       "재구성해 위로 병합할지"),
-    DE("Eine inkrementelle Rekonstruktion der ganzen Aufnahme, oder kleine Atome "
-       "des Sichtgraphen einzeln rekonstruiert und nach oben zusammengeführt"),
-    FR("Une reconstruction incrémentale de toute la prise de vue, ou de petits "
-       "atomes du graphe de vues reconstruits séparément puis fusionnés vers le "
-       "haut"),
-    ES("Una reconstrucción incremental de toda la captura, o átomos pequeños del "
-       "grafo de vistas reconstruidos por separado y fusionados hacia arriba"),
-    PT("Uma reconstrução incremental de toda a captura, ou pequenos átomos do "
-       "grafo de vistas reconstruídos à parte e fundidos para cima"),
-    IT("Una ricostruzione incrementale dell'intera ripresa, o piccoli atomi del "
-       "grafo delle viste ricostruiti a parte e fusi verso l'alto"),
-    NL("Eén incrementele reconstructie van de hele opname, of kleine atomen van "
-       "de zichtgraaf apart gereconstrueerd en naar boven samengevoegd"),
-    RU("Одна инкрементальная реконструкция всей съёмки либо мелкие атомы графа "
-       "видов, восстановленные по отдельности и слитые вверх"),
-    TR("Tüm çekimin tek bir artımlı yeniden oluşturması ya da görüş çizgesinin "
-       "küçük atomlarının ayrı ayrı oluşturulup yukarı doğru birleştirilmesi"));
+       "재구성해 위로 병합할지, (실험적) 뷰 그래프에서 모든 카메라의 방향과 위치를 "
+       "함께 추정할지"),
+    DE("Eine inkrementelle Rekonstruktion der ganzen Aufnahme, kleine Atome des "
+       "Sichtgraphen einzeln rekonstruiert und nach oben zusammengeführt, oder "
+       "(experimentell) Drehung und Position aller Kameras gemeinsam aus dem "
+       "Sichtgraphen geschätzt"),
+    FR("Une reconstruction incrémentale de toute la prise de vue, de petits atomes "
+       "du graphe de vues reconstruits séparément puis fusionnés vers le haut, ou "
+       "(expérimental) la rotation et la position de toutes les caméras estimées "
+       "ensemble à partir du graphe de vues"),
+    ES("Una reconstrucción incremental de toda la captura, átomos pequeños del "
+       "grafo de vistas reconstruidos por separado y fusionados hacia arriba, o "
+       "(experimental) la rotación y la posición de todas las cámaras estimadas "
+       "a la vez a partir del grafo de vistas"),
+    PT("Uma reconstrução incremental de toda a captura, pequenos átomos do grafo "
+       "de vistas reconstruídos à parte e fundidos para cima, ou (experimental) a "
+       "rotação e a posição de todas as câmeras estimadas juntas a partir do grafo "
+       "de vistas"),
+    IT("Una ricostruzione incrementale dell'intera ripresa, piccoli atomi del grafo "
+       "delle viste ricostruiti a parte e fusi verso l'alto, o (sperimentale) "
+       "rotazione e posizione di tutte le fotocamere stimate insieme dal grafo "
+       "delle viste"),
+    NL("Eén incrementele reconstructie van de hele opname, kleine atomen van de "
+       "zichtgraaf apart gereconstrueerd en naar boven samengevoegd, of "
+       "(experimenteel) rotatie en positie van alle camera's samen geschat uit de "
+       "zichtgraaf"),
+    RU("Одна инкрементальная реконструкция всей съёмки, мелкие атомы графа видов, "
+       "восстановленные по отдельности и слитые вверх, либо (экспериментально) "
+       "повороты и положения всех камер, оценённые вместе по графу видов"),
+    TR("Tüm çekimin tek bir artımlı yeniden oluşturması, görüş çizgesinin küçük "
+       "atomlarının ayrı ayrı oluşturulup yukarı doğru birleştirilmesi ya da "
+       "(deneysel) tüm kameraların yönünün ve konumunun görüş çizgesinden birlikte "
+       "hesaplanması"));
 
 SS_MSG(bup_atom_size_help,
     EN("Images a view-graph atom is split until it is under"),

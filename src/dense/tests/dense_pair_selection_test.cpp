@@ -95,6 +95,16 @@ int main() {
         options.mode = PairMode::Explicit; options.explicit_pairs = {{1,0}, {0,1}, {2,2}, {3,4}};
         selected = pairs(images, options);
         require(selected == std::vector<ImagePair>{{0,1}, {3,4}}, "explicit pairs not deduplicated");
+        {
+            auto reordered = images;
+            reordered[0].source_image = 30; reordered[1].source_image = 10;
+            reordered[2].source_image = 20; reordered[3].source_image = 40;
+            auto explicit_options = options;
+            explicit_options.explicit_pairs = {{0,2}, {3,1}, {2,1}, {0,1}};
+            reordered.resize(4);
+            require(pairs(reordered, explicit_options) == std::vector<ImagePair>{{1,2}, {0,1}, {1,3}, {0,2}},
+                    "explicit pair ordering must follow source identities, not input indices");
+        }
         images[1].center = images[0].center;
         require(pairs(images, options) == std::vector<ImagePair>{{3,4}}, "zero baseline survived explicit selection");
         options.mode = PairMode::Exhaustive; options.max_pairs = 3;

@@ -16,8 +16,8 @@ void require(bool condition, const char* message) {
 void require_no_projective_memory() {
     auto& s = engine();
     require(!s.projective_state.data_ptr() && !s.projective_information.data_ptr()
-        && !s.projective_centers.data_ptr(),"disabled projective depth retained a device view");
-    for (auto slot : {PoolSlot::EngProjectiveState,PoolSlot::EngProjectiveInformation,PoolSlot::EngProjectiveCenters}) {
+        && !s.projective_centers.data_ptr() && !s.projective_angular_bound.data_ptr(),"disabled projective depth retained a device view");
+    for (auto slot : {PoolSlot::EngProjectiveState,PoolSlot::EngProjectiveInformation,PoolSlot::EngProjectiveCenters,PoolSlot::EngProjectiveAngularBound}) {
         void* ptr = nullptr; size_t bytes = 0;
         require(!DevicePool::global().lookup(slot,0,ptr,bytes),"disabled projective depth retained a pool allocation");
     }

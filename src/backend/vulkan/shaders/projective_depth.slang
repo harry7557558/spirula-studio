@@ -11,7 +11,8 @@ struct ProjectiveObserveParams {
     float4* quats;
     uint* states;
     uint* information;
-    uint count, n, packed, stride, offset, wgs_per_row, single_camera, pad;
+    uint* angular_bound;
+    uint count, n, packed, stride, offset, wgs_per_row, single_camera, relative, has_bound, pad;
 };
 
 [shader("compute")]
@@ -27,6 +28,14 @@ void observe(uint3 group: SV_GroupID, uint lane: SV_GroupThreadID, uniform Proje
         if (id == 0) p.states[4*gaussian] = asuint(float(p.camera_map[camera]+1));
     } else InterlockedCompareExchange(p.states[4*gaussian],0,asuint(float(p.camera_map[camera]+1)),id);
     if (id == 0) return;
+    if (p.has_bound != 0) {
+        float bound = projective_depth_angular_bound(
+            p.centers[int(asfloat(id))-1].xyz,p.centers[p.camera_map[camera]].xyz,
+            p.means[gaussian],p.relative != 0);
+        if (p.single_camera != 0)
+            p.angular_bound[gaussian] = max(p.angular_bound[gaussian],asuint(bound));
+        else InterlockedMax(p.angular_bound[gaussian],asuint(bound));
+    }
     float information = projective_depth_information(
         p.centers[int(asfloat(id))-1].xyz,p.centers[p.camera_map[camera]].xyz,
         p.means[gaussian],p.scales[gaussian],p.quats[gaussian]);

@@ -47,6 +47,16 @@ int main() {
         _set_cur_cam_indices(device); engine_prepare_projective_depth(cfg);
         require(s.optim.observe_projective.single_photometric,
                 "device camera indices lost their coincident-center metadata");
+        float bound = 3;
+        backend::memcpy_sync(depth.angular_bound,&bound,4,backend::MemcpyKind::HostToDevice);
+        s.optim.skip_grad_zero = true;
+        select({1});
+        backend::memcpy_sync(&bound,s.projective_angular_bound.data_ptr(),4,backend::MemcpyKind::DeviceToHost);
+        require(bound == 3,"accumulated pass cleared the angular bound");
+        s.optim.skip_grad_zero = false;
+        select({1});
+        backend::memcpy_sync(&bound,s.projective_angular_bound.data_ptr(),4,backend::MemcpyKind::DeviceToHost);
+        require(bound == 0,"new step retained the previous angular bound");
         depth = select({0,2});
         require(!depth.single_photometric && !depth.single_observation,
                 "different camera centers incorrectly used the single-center derivative");

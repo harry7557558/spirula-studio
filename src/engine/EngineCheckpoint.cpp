@@ -320,7 +320,7 @@ void engine_save_checkpoint(
     {
         std::ofstream ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(kept, basis);
+        ply << spirula::splat_ply_header(kept, basis, s.primitive);
 
         // Buffer multiple rows per write for throughput.
         constexpr int ROWS_PER_FLUSH = 1024;

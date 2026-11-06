@@ -89,8 +89,9 @@ struct OptimGeoParams {
     float* depth_information;
     float4* depth_centers;
     int* depth_cameras;
+    float* depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint has_depth, depth_photo, depth_relative, depth_pad;
+    uint has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -434,7 +435,7 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
                 float3 updated_scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
                 projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
                     p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
-                    projective_state,updated_mean,updated_scale);
+                    projective_state,updated_mean,updated_scale,p.depth_has_bound != 0 ? p.depth_angular_bound[gid] : -1.f);
                 p.means[3*gid] = updated_mean.x; p.means[3*gid+1] = updated_mean.y; p.means[3*gid+2] = updated_mean.z;
                 p.scales[3*gid] = updated_scale.x; p.scales[3*gid+1] = updated_scale.y; p.scales[3*gid+2] = updated_scale.z;
                 p.depth_states[gid] = projective_state;

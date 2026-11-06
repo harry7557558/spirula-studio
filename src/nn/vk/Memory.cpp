@@ -1,5 +1,9 @@
 #include "nn/vk/Memory.h"
 
+#ifdef __APPLE__
+#include <vulkan/vulkan_metal.h>
+#endif
+
 #include "nn/core/Error.h"
 #include "nn/core/Log.h"
 
@@ -188,6 +192,17 @@ DevicePtr Allocator::allocRaw(VkDeviceSize bytes, VkBufferUsageFlags usage,
     fi.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
     VkMemoryAllocateInfo mai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     mai.pNext = &fi;
+#ifdef VK_EXT_metal_objects
+    // Without it MoltenVK has no MTLBuffer to export. It goes BEFORE `fi`:
+    // MoltenVK 1.4.2's switch falls through from this case and reads
+    // exportObjectType as the allocate flags, so the later `fi` must win.
+    VkExportMetalObjectCreateInfoEXT xi{VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT};
+    xi.exportObjectType = VK_EXPORT_METAL_OBJECT_TYPE_METAL_BUFFER_BIT_EXT;
+    if (ctx.hasMetalObjects()) {
+        xi.pNext = &fi;
+        mai.pNext = &xi;
+    }
+#endif
     mai.allocationSize = req.size;
     mai.memoryTypeIndex = type_index;
 

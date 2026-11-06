@@ -706,8 +706,6 @@ int self_check() {
     return failures || output_failures ? 1 : 0;
 }
 
-// Every image whose camera is byte-identical shares one warp plan; a dataset
-// usually has one camera and always has few.
 std::string camera_key(const ParsedDataset& ds, int64_t i) {
     std::string k;
     k.reserve(96);
@@ -925,12 +923,12 @@ int spirula_geometry_main(int argc, char** argv) {
         app::GeometryModel pred;
         if (o.worker_devices.empty()) pred.load(o.model, selector, o.want_depth, o.want_normal);
 
-        // ---- one warp plan per camera --------------------------------------
+        // ---- camera plans --------------------------------------------------
         uint64_t model_host_bytes = 0;
         const int patch = o.worker_devices.empty() ? pred.sizeGranularity()
             : app::geometry_model_preflight(o.model, o.want_depth, o.want_normal, model_host_bytes);
-        std::vector<app::GeometryWarp> warps(group_first.size());
-        for (size_t g = 0; g < group_first.size(); ++g) {
+        auto make_warp = [&](size_t g) {
+            app::GeometryWarp warp;
             const int64_t i = group_first[g];
             app::GeometryCamera cam;
             cam.model = ds.camera_models[(size_t)i];
@@ -948,8 +946,6 @@ int spirula_geometry_main(int argc, char** argv) {
                 std::copy(std::begin(ds.redistort[(size_t)i].params),
                           std::end(ds.redistort[(size_t)i].params),
                           std::begin(cam.source_params));
-                NN_LOG_WARN("%s\n",
-                            format(G::warn_fitted_camera, {(long long)g}).c_str());
             }
 
             // The output resolution: the source frame under the longest-side
@@ -965,23 +961,44 @@ int spirula_geometry_main(int argc, char** argv) {
                     ? camhost::splits_to_pinhole_faces(cam.model, cam.width,
                                                        cam.height, cam.fx, cam.fy)
                     : o.split == Tri::Yes;
-            warps[g].plan(cam, ow, oh, split, patch, o.max_size, o.face_res,
-                          app::GeometryModel::minFacePixels());
+            warp.plan(cam, ow, oh, split, patch, o.max_size, o.face_res,
+                      app::GeometryModel::minFacePixels());
 
+            return warp;
+        };
+        struct WarpInfo {
+            int out_w, out_h, sample_w, sample_h, faces;
+            uint64_t pixels;
+        };
+        // Prefetch and resume checks need dimensions, not resident pixel maps.
+        std::vector<WarpInfo> warps;
+        warps.reserve(group_first.size());
+        uint64_t max_warp_bytes = 0;
+        for (size_t g = 0; g < group_first.size(); ++g) {
+            const auto warp = make_warp(g);
+            uint64_t pixels = 0;
+            for (int k = 0; k < warp.faces(); ++k)
+                pixels += (uint64_t)warp.faceWidth(k) * warp.faceHeight(k);
+            warps.push_back({warp.outWidth(), warp.outHeight(), warp.sampleWidth(),
+                             warp.sampleHeight(), warp.faces(), pixels});
+            max_warp_bytes = std::max(max_warp_bytes, warp.bytes());
+            const size_t i = (size_t)group_first[g];
+            if (!ds.redistort.empty() && ds.redistort[i].source_model >= 0)
+                NN_LOG_WARN("%s\n", format(G::warn_fitted_camera, {(long long)g}).c_str());
             const char* model_name = camera_model_to_string(
-                (CameraModelType)cam.model);
+                (CameraModelType)ds.camera_models[i]);
             // The faces differ in size; the largest is the one the cost is.
             int fw = 0, fh = 0;
-            for (int k = 0; k < warps[g].faces(); ++k)
-                if ((int64_t)warps[g].faceWidth(k) * warps[g].faceHeight(k) >
+            for (int k = 0; k < warp.faces(); ++k)
+                if ((int64_t)warp.faceWidth(k) * warp.faceHeight(k) >
                     (int64_t)fw * fh) {
-                    fw = warps[g].faceWidth(k);
-                    fh = warps[g].faceHeight(k);
+                    fw = warp.faceWidth(k);
+                    fh = warp.faceHeight(k);
                 }
-            if (warps[g].split())
+            if (warp.split())
                 std::printf("  %s\n", format(G::log_camera_split,
                                              {(long long)g, model_name,
-                                              (long long)warps[g].faces(),
+                                              (long long)warp.faces(),
                                               (long long)fw, (long long)fh})
                                           .c_str());
             else
@@ -1050,13 +1067,13 @@ int spirula_geometry_main(int argc, char** argv) {
                              "multiple images own geometry output %s", path.string().c_str());
                 }
             }
-            const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
+            const WarpInfo& warp = warps[(size_t)group[(size_t)i]];
             const std::string source = spirula::sha256_file(ds.image_filenames[(size_t)i]);
             NN_CHECK(!source.empty(), "cannot hash geometry source %s",
                      ds.image_filenames[(size_t)i].c_str());
             t.key = source + "|" + keys[(size_t)i] + "|" +
-                o.model + "|" + std::to_string(warp.outWidth()) + "," +
-                std::to_string(warp.outHeight()) + "," + std::to_string(warp.faces()) + "|" +
+                o.model + "|" + std::to_string(warp.out_w) + "," +
+                std::to_string(warp.out_h) + "," + std::to_string(warp.faces) + "|" +
                 std::to_string(o.max_size) + "," + std::to_string(o.num_tokens) + "," +
                 std::to_string(o.refine_steps) + "," + std::to_string((int)o.split) + "," +
                 std::to_string((int)o.face_res) + "," + std::to_string((int)o.ray_depth) + "," +
@@ -1092,6 +1109,8 @@ int spirula_geometry_main(int argc, char** argv) {
             return (!o.want_normal || app::geometry_output_complete(t.np, normal_key(t))) &&
                    (!o.want_depth || app::geometry_output_complete(t.dp, t.key + "|depth"));
         };
+        std::optional<app::GeometryWarp> current_warp;
+        size_t current_group = group_first.size();
         auto process = [&](const std::vector<Todo>& todo) {
         app::WriterPool writers(o.worker ? (int)o.worker_threads : 0);
 
@@ -1099,14 +1118,14 @@ int spirula_geometry_main(int argc, char** argv) {
         auto read_at = [&](size_t j) {
             const int64_t i = todo[j].i;
             return std::async(std::launch::async, [&, i] {
-                const app::GeometryWarp& warp = warps[(size_t)group[(size_t)i]];
+                const WarpInfo& warp = warps[(size_t)group[(size_t)i]];
                 const nn::Image img =
                     nn::load_image(ds.image_filenames[(size_t)i], o.image_gamut,
                                    o.image_is_linear, o.image_exposure);
                 if (img.empty()) return std::vector<float>();
                 return app::resize_area(img.data.data(), img.width, img.height,
-                                        img.channels, warp.sampleWidth(),
-                                        warp.sampleHeight());
+                                        img.channels, warp.sample_w,
+                                        warp.sample_h);
             });
         };
 
@@ -1122,7 +1141,13 @@ int spirula_geometry_main(int argc, char** argv) {
 
         for (size_t j0 = 0; j0 < todo.size();) {
             const size_t g = (size_t)group[(size_t)todo[j0].i];
-            const app::GeometryWarp& warp = warps[g];
+            if (g != current_group) {
+                // Release the previous maps before allocating the next camera's maps.
+                current_warp.reset();
+                current_warp.emplace(make_warp(g));
+                current_group = g;
+            }
+            const app::GeometryWarp& warp = *current_warp;
             const size_t per = o.worker ? 1 : std::max<size_t>(
                 1, (size_t)pred.batchCapacity(app::face_request(warp, 0, o.num_tokens)) /
                        (size_t)std::max(1, warp.faces()));
@@ -1357,16 +1382,10 @@ int spirula_geometry_main(int argc, char** argv) {
             } cleanup{scratch};
             std::vector<std::vector<app::GeometryStagedOutput>> families;
             std::vector<app::WorkerTask> tasks;
-            uint64_t warp_bytes = 0;
-            for (const auto& warp : warps) {
-                NN_CHECK(warp.bytes() <= o.worker_memory - std::min(warp_bytes, o.worker_memory),
-                         "geometry warp plans exceed the worker memory budget");
-                warp_bytes += warp.bytes();
-            }
             const size_t children = std::min(worker_devices.size(), todo.size());
-            NN_CHECK(warp_bytes <= o.worker_memory / (children + 1),
+            NN_CHECK(max_warp_bytes <= o.worker_memory / children,
                      "resident geometry warp plans exceed the shared worker memory budget");
-            uint64_t task_budget = o.worker_memory - warp_bytes * (children + 1);
+            uint64_t task_budget = o.worker_memory - max_warp_bytes * children;
             NN_CHECK(model_host_bytes <= task_budget / children,
                      "resident geometry models exceed the shared worker memory budget");
             task_budget -= model_host_bytes * children;
@@ -1376,7 +1395,7 @@ int spirula_geometry_main(int argc, char** argv) {
                 NN_CHECK(probe_image_size(ds.image_filenames[(size_t)t.i].c_str(),
                                          &source_w, &source_h),
                          "cannot read geometry source dimensions");
-                uint64_t pixels = 0;
+                uint64_t pixels = warp.pixels;
                 auto add_pixels = [&](int w, int h) {
                     NN_CHECK(w > 0 && h > 0, "invalid geometry buffer dimensions");
                     const uint64_t area = (uint64_t)w * h;
@@ -1385,10 +1404,8 @@ int spirula_geometry_main(int argc, char** argv) {
                     pixels += area;
                 };
                 add_pixels(source_w, source_h);
-                add_pixels(warp.sampleWidth(), warp.sampleHeight());
-                add_pixels(warp.outWidth(), warp.outHeight());
-                for (int face = 0; face < warp.faces(); ++face)
-                    add_pixels(warp.faceWidth(face), warp.faceHeight(face));
+                add_pixels(warp.sample_w, warp.sample_h);
+                add_pixels(warp.out_w, warp.out_h);
                 NN_CHECK(pixels <= std::numeric_limits<uint64_t>::max() / 128,
                          "geometry task memory estimate overflow");
                 const fs::path folder = scratch / std::to_string(t.i);
@@ -1451,7 +1468,7 @@ int spirula_geometry_main(int argc, char** argv) {
                             for (const auto& output : families[index]) {
                                 int w = 0, h = 0;
                                 NN_CHECK(probe_image_size(output.staged.string().c_str(), &w, &h) &&
-                                         w == warp.outWidth() && h == warp.outHeight(),
+                                         w == warp.out_w && h == warp.out_h,
                                          "invalid staged geometry dimensions");
                             }
                             app::publish_geometry_family(families[index], o.overwrite);

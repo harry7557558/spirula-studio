@@ -346,10 +346,12 @@ void engine_clear_projective_depth() {
     s.optim.observe_projective = {};
     s.projective_state = DeviceVector<float4>();
     s.projective_information = DeviceVector<float>();
+    s.projective_angular_bound = DeviceVector<float>();
     s.projective_centers = DeviceVector<float4>();
     auto& pool = DevicePool::global();
     pool.free(PoolSlot::EngProjectiveState);
     pool.free(PoolSlot::EngProjectiveInformation);
+    pool.free(PoolSlot::EngProjectiveAngularBound);
     pool.free(PoolSlot::EngProjectiveCenters);
 }
 
@@ -374,6 +376,7 @@ static ProjectiveDepthOptim projective_depth_state(const OptimConfig& cfg) {
         s.projective_information.resize(PoolSlot::EngProjectiveInformation,s.max_num_splats);
         s.projective_information.zero();
     }
+    depth.angular_bound = s.projective_angular_bound.data_ptr();
     depth.states = s.projective_state.data_ptr();
     depth.information = s.projective_information.data_ptr();
     depth.centers = s.projective_centers.data_ptr();
@@ -410,6 +413,12 @@ void engine_prepare_projective_depth(const OptimConfig& cfg) {
         }
     }
     opt.observe_projective = projective_depth_state(cfg);
+    if (opt.observe_projective.states) {
+        s.projective_angular_bound.resize(PoolSlot::EngProjectiveAngularBound,s.max_num_splats);
+        opt.observe_projective.angular_bound = s.projective_angular_bound.data_ptr();
+        if (!opt.skip_grad_zero && !opt.zero_grad_in_optim)
+            backend::memset_async(opt.observe_projective.angular_bound,0,s.cur_num_splats*sizeof(float));
+    }
 }
 
 void engine_observe_projective_depth() {

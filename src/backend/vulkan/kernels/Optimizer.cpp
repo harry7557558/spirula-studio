@@ -435,9 +435,9 @@ struct OptimGeoParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
-    uint64_t depth_states, depth_information, depth_centers, depth_cameras;
+    uint64_t depth_states, depth_information, depth_centers, depth_cameras, depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint32_t has_depth, depth_photo, depth_relative, depth_pad;
+    uint32_t has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc;
     float max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight,
@@ -449,7 +449,7 @@ struct OptimGeoParams {
         skip_unrendered_reg;
     uint32_t _pad0;
 };
-static_assert(sizeof(OptimGeoParams) == 46 * 8 + 32 * 4,
+static_assert(sizeof(OptimGeoParams) == 47 * 8 + 32 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -650,6 +650,8 @@ void fused_optim_3dgs_geometry(
     p.has_depth = depth.states ? 1u : 0u;
     p.depth_photo = depth.single_photometric;
     p.depth_relative = depth.angular_relative;
+    p.depth_angular_bound = vkk::or_fallback(depth.angular_bound);
+    p.depth_has_bound = depth.angular_bound ? 1u : 0u;
 
     uint32_t gq_mask = 0;
     p.gq_means_packed = vkk::or_fallback(gq.means_packed);

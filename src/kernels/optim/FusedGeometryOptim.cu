@@ -359,7 +359,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
             float3 updated_mean = means[idx], updated_scale = scales[idx];
             SlangProjectiveDepth::projective_depth_update(projective_anchor,projective_camera,
                 depth.lr,depth.angular_lr,depth.single_photometric,depth.angular_relative,
-                projective_gradient,depth.information[idx],&projective_state,&updated_mean,&updated_scale);
+                projective_gradient,depth.information[idx],&projective_state,&updated_mean,&updated_scale,depth.angular_bound ? depth.angular_bound[idx] : -1.f);
             means[idx] = updated_mean;
             scales[idx] = updated_scale;
             depth.states[idx] = projective_state;

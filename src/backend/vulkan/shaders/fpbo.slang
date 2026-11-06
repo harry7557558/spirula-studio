@@ -109,8 +109,9 @@ struct FpboParams {
     float* depth_information;
     float4* depth_centers;
     int* depth_cameras;
+    float* depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint has_depth, depth_photo, depth_relative, depth_pad;
+    uint has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -510,7 +511,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
         projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
             p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
-            projective_state,mean,scale);
+            projective_state,mean,scale,p.depth_has_bound != 0 ? p.depth_angular_bound[gid] : -1.f);
         p.means[3*gid] = mean.x; p.means[3*gid+1] = mean.y; p.means[3*gid+2] = mean.z;
         p.scales[3*gid] = scale.x; p.scales[3*gid+1] = scale.y; p.scales[3*gid+2] = scale.z;
         p.depth_states[gid] = projective_state;

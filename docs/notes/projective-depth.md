@@ -67,39 +67,23 @@ There are three distinct camera roles:
 |---|---|
 | Anchor $\mathbf{a}$ | First accepted observation of that splat; inherited during densification and saved in full checkpoints. |
 | Information observations | Every accepted splat/camera observation in the current backward pass; combined with previous observations through an EMA. |
-| Angular-bound reference $\mathbf{c}_{\mathrm{ref}}$ | First entry of the currently installed camera-index array; shared by all splats in that optimizer launch. |
+| Angular safeguard | Maximum normalized angular sensitivity over every accepted splat/camera observation in the optimizer step, including every accumulated pass. |
 
-The Vulkan parameter `depth_cameras` is the same index array as CUDA's
-`ProjectiveDepthOptim::camera_indices`. If $\mathcal{C}$ is the table of world
-camera centers and $k_0$ is its first index, then
+The data derivative uses all batch gradients with the training driver's existing
+sum/mean normalization. It is computed once per splat, so batch size does not
+multiply Adam steps or change the coordinate's learning rate. Information is
+observed from every contributing camera as well.
 
-$$
-\mathbf{c}_{\mathrm{ref}}=\mathcal{C}[k_0].
-$$
+The angular maximum is specific to each splat: cameras with no accepted
+contribution do not constrain it. Packed observations use their camera IDs;
+unpacked observations use their camera rows. Split batches and heterogeneous
+resolution/warped-face passes accumulate into the same maximum until the
+optimizer runs. The first pass of the next step clears it.
 
-Here $k_0$ is `depth_cameras[0]`, not a newly sampled camera. The dataset
-scheduler selects the actual training images; the projective optimizer reuses
-their post-split camera IDs.
-
-| Training mode | Data gradient used for $g_t$ | Reference for the angular bound |
-|---|---|---|
-| One image/view | Current image's gradient | That image's camera. |
-| Unsplit batch, one shared center | Sum/mean of the batch gradients; stable identity applies | First virtual view, whose center is shared by the batch. |
-| Unsplit batch, different centers | Full aggregated chain-rule derivative | First camera of that batch. |
-| Split batch or heterogeneous passes | Accumulated gradients from all passes, with the driver's normalization | First camera of the **final** installed sub-batch/pass. |
-
-Heterogeneous resolutions and unequal-size warped faces can require multiple
-passes even without `--split-batch`. Virtual faces of one source image have
-one physical center. Their centers are canonicalized to avoid differences of
-an ulp from separately evaluating rotated extrinsics. The driver tracks the
-common-center and photometric-only conditions across accumulated passes.
-
-**The reference camera is not selected per splat.** In a batch it can have zero
-contribution to a particular splat that receives gradients from another camera.
-It is therefore not guaranteed to see that splat. For different-center batches,
-this camera affects the angular safeguard, while the gradient still includes
-all contributing views. That safeguard bounds motion for its reference camera;
-it does not guarantee a bound over every contributing camera in the batch.
+Virtual faces of one source image have one physical center. Their centers are
+canonicalized to avoid differences of an ulp from separately evaluating rotated
+extrinsics. The driver tracks common-center and photometric-only conditions
+across accumulated passes to select the stable derivative.
 
 Camera scheduling and mapping:
 
@@ -238,34 +222,36 @@ $$
 \qquad \varepsilon=10^{-15}.
 $$
 
-Using $\mathbf{c}_{\mathrm{ref}}$ in the definitions of $d,\mathbf{r},\mathbf{b},P$,
-let
+For every accepted camera $c$ of a splat, evaluate the local bearing derivative
+at the parameters used for rendering:
 
 $$
-\mathbf{h}=\frac{P\mathbf{b}}{d},
-\qquad
-\delta=
-\frac{\delta_0}
-{\sqrt{1+\left(\|\mathbf{h}\|_2\delta_0/\alpha\right)^2}}.
+\mathbf{h}_c=\frac{P_c(\mathbf{c}-\mathbf{a})}{d_c}.
 $$
 
-This gives the linearized reference-camera bound
+Let $A=\frac{10}{3}\eta_x$, and accumulate
 
 $$
-\|\mathbf{h}\delta\|_2\leq\alpha.
-$$
-
-The angular budget follows the position learning rate $\eta_x$:
-
-$$
-\alpha=
+H=\max_{c\ \mathrm{accepted}}
 \begin{cases}
-\frac{10}{3}\eta_x,
-&\text{scale-agnostic position updates},\\
-\frac{10}{3}\frac{\eta_x}{d},
-&\text{world-unit position updates}.
+\|\mathbf{h}_c\|_2,&\text{scale-agnostic position updates},\\
+d_c\|\mathbf{h}_c\|_2,&\text{world-unit position updates}.
 \end{cases}
 $$
+
+An empty maximum is zero. The smooth constrained proposal is
+
+$$
+\delta=\frac{\delta_0}{\sqrt{1+(H\delta_0/A)^2}}.
+$$
+
+Since each sensitivity is at most $H$, this guarantees the simultaneous
+linearized bounds $\|\mathbf{h}_c\delta\|_2\leq\alpha_c$ for every accepted
+camera, where $\alpha_c=A$ in scale-agnostic mode and $\alpha_c=A/d_c$
+in world-unit mode. For a fixed anchor, the maximum is independent of observation
+order and repeated virtual faces do not tighten it. It avoids diluting a nearby camera's constraint
+by averaging it with distant cameras. This is a local bound on the additional
+projective step, not a bound on the ordinary optimizer or finite reprojection.
 
 The update applies the coordinate with $t=\delta$. The projective learning rate
 defaults to $0.01$, decaying to $0.0001$. For a photometric common-center batch,
@@ -278,9 +264,9 @@ Implementation: `projective_depth_update` in
 and `fused_optim_3dgs_geometry_kernel` in
 [FusedGeometryOptim.cu](../../src/kernels/optim/FusedGeometryOptim.cu) capture the
 data derivative before ordinary updates and regularization, then apply the
-coordinate after position and scale updates. The derivative uses pre-update
-parameters; the retraction and angular safeguard use the ordinary optimizer's
-output. Vulkan uses `fpbo` in
+coordinate after position and scale updates. The derivative and angular
+sensitivities use pre-update parameters; the retraction uses the ordinary
+optimizer's output. Vulkan uses `fpbo` in
 [fpbo.slang](../../src/backend/vulkan/shaders/fpbo.slang) and
 `fused_optim_3dgs_geometry` in
 [optim_geometry.slang](../../src/backend/vulkan/shaders/optim_geometry.slang).
@@ -300,12 +286,25 @@ The current projective state remains FP32 at both quantization levels:
 
 Allocation follows the splat **capacity**, not just the live count: one million
 slots cost about 19.1 MiB. Enabled training also uploads 16 bytes per post-split
-camera center.
+camera center. A temporary FP32 angular maximum adds 4 bytes per capacity slot
+(3.81 MiB per million). It is not checkpointed or inherited during densification:
+the next training step clears it before use. Observation reuses the existing
+backward pass, adds one integer atomic maximum per accepted multi-camera
+observation, and needs no extra rendering or camera-by-splat traversal. A
+single-camera pass uses a plain maximum/store. One buffer clear per optimizer
+step and one scalar load per updated splat complete the added work.
+
+`projective_depth_test bench` measures one million packed observations across
+eight cameras (one contributing camera per splat). On an RTX 5070, Vulkan took
+about 0.133 ms with the angular reduction and clear versus 0.118 ms with that
+buffer disabled. CUDA took about 0.135 ms versus 0.128 ms. Both use medians
+of four interleaved pairs of 100 iterations. This measures the observation
+stage, not end-to-end training throughput.
 
 With `--projective-depth-lr 0`, the native trainer allocates none of these
 projective GPU buffers, including the camera table. Camera centers remain
 available on the CPU for lazy enablement. Turning the feature off frees its
-three pool slots at the next projective preparation/optimizer call; re-enabling
+four pool slots at the next projective preparation/optimizer call; re-enabling
 starts fresh moments unless a checkpoint restores them.
 
 When resuming with a zero projective learning rate,
@@ -324,7 +323,7 @@ Implementation:
 - `engine_setup_data_manager` in
   [EngineDataManager.cpp](../../src/engine/EngineDataManager.cpp) retains the
   host camera table. `projective_depth_state` lazily uploads it;
-  `engine_clear_projective_depth` frees all three slots in
+  `engine_clear_projective_depth` frees all four slots in
   [EngineOptim.cpp](../../src/engine/EngineOptim.cpp).
 - `TrainerSession::restore_checkpoint` in
   [TrainerCore.cpp](../../src/app/TrainerCore.cpp) and `engine_load_checkpoint`
@@ -454,7 +453,7 @@ floating-point GPU reductions can still introduce variation.
 
 | Test file | Coverage |
 |---|---|
-| [projective_depth_test.cpp](../../src/backend/tests/projective_depth_test.cpp) | Projection/footprint invariants, descent, angular bounds, information, packed observations, and backend agreement. |
+| [projective_depth_test.cpp](../../src/backend/tests/projective_depth_test.cpp) | Projection/footprint invariants, descent, all-camera angular bounds, split-pass accumulation, order independence, information, packed observations, and backend agreement. |
 | [fpbo_parity.cpp](../../src/backend/tests/fpbo_parity.cpp), [fpbo_split_parity.cpp](../../src/backend/tests/fpbo_split_parity.cpp) | Fused/separate updates and compressed ordinary optimizer state. |
 | [projective_camera_batches.cpp](../../src/backend/tests/engine/projective_camera_batches.cpp) | Camera maps, coincident virtual views, accumulated passes, and geometry-supervision fallback. |
 | [projective_memory.cpp](../../src/backend/tests/engine/projective_memory.cpp) | Zero disabled VRAM, lazy allocation, released pool capacity, and enabled/disabled checkpoint restoration. |

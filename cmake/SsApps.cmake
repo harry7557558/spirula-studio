@@ -308,6 +308,10 @@ if(SS_BUILD_GUI)
             PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
         list(APPEND SS_TOOL_SOURCES ${SS_SRC}/app/gui/NativeDialogMac.mm)
         list(APPEND SS_TOOL_LIBS "-framework AppKit")
+        find_library(SS_UNIFORM_TYPE_IDENTIFIERS UniformTypeIdentifiers)
+        if(SS_UNIFORM_TYPE_IDENTIFIERS)
+            list(APPEND SS_TOOL_LIBS "-weak_framework UniformTypeIdentifiers")
+        endif()
     endif()
 
     # In-process segmentation and, with SS_ENABLE_PATENTED, video decoding.
@@ -562,6 +566,14 @@ if(SS_BUILD_GUI)
         ${SS_SRC}/app/gui/GlLoader.cpp)
     ss_configure_app(dense_live_preview_test)
     target_link_libraries(dense_live_preview_test PRIVATE glfw OpenGL::GL)
+
+    if(SS_BUILD_SFM)
+        add_executable(sfm_live_preview_test
+            ${SS_SRC}/app/gui/tests/sfm_live_preview_test.cpp
+            ${SS_SRC}/app/gui/SfmProgress.cpp)
+        ss_configure_app(sfm_live_preview_test)
+        target_link_libraries(sfm_live_preview_test PRIVATE ss_sfm)
+    endif()
 
     add_executable(align_fit_test
         ${SS_SRC}/app/gui/tests/align_fit_test.cpp)

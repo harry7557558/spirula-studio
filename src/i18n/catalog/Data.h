@@ -28,6 +28,32 @@ namespace data {
 // The two words that qualify a line
 // ===========================================================================
 
+SS_MSG(file_out_of_memory,
+    EN("Not enough memory to read {0} ({1} GB). Close other programs to free "
+       "memory, then retry."),
+    JA("{0} ({1} GB) を読み込むにはメモリが不足しています。ほかのプログラムを閉じて"
+       "メモリを空けてからやり直してください。"),
+    ZH_HANS("内存不足，无法读取 {0}（{1} GB）。关闭其他程序腾出内存后重试。"),
+    ZH_HANT("記憶體不足，無法讀取 {0}（{1} GB）。關閉其他程式騰出記憶體後重試。"),
+    KO("{0} ({1} GB)을(를) 읽기에 메모리가 부족합니다. 다른 프로그램을 닫아 "
+       "메모리를 확보한 뒤 다시 시도하세요."),
+    DE("Zu wenig Speicher, um {0} ({1} GB) zu lesen. Schließen Sie andere "
+       "Programme, um Speicher freizugeben, und versuchen Sie es erneut."),
+    FR("Mémoire insuffisante pour lire {0} ({1} Go). Fermez d'autres programmes "
+       "pour libérer de la mémoire, puis réessayez."),
+    ES("Sin memoria suficiente para leer {0} ({1} GB). Cierra otros programas "
+       "para liberar memoria y reinténtalo."),
+    PT("Sem memória suficiente para ler {0} ({1} GB). Feche outros programas "
+       "para liberar memória e tente novamente."),
+    IT("Memoria insufficiente per leggere {0} ({1} GB). Chiudi altri programmi "
+       "per liberare memoria e riprova."),
+    NL("Onvoldoende geheugen om {0} ({1} GB) te lezen. Sluit andere programma's "
+       "om geheugen vrij te maken en probeer het opnieuw."),
+    RU("Не хватает памяти для чтения {0} ({1} ГБ). Закройте другие программы, "
+       "чтобы освободить память, и повторите попытку."),
+    TR("{0} ({1} GB) okumak için yeterli bellek yok. Bellek açmak için diğer "
+       "programları kapatıp yeniden deneyin."));
+
 SS_MSG(batch_out_of_memory,
     EN("Out of memory while staging a training batch. Close other programs to "
        "free memory, then retry -- or stop, and train at a lower resolution."),
