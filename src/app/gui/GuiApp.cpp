@@ -2722,6 +2722,9 @@ void GuiApp::clear_sources() {
     _mask_preview_input = 0;
     // A capture dropped again is restored from again (restore_from_record).
     _restored_ws.clear();
+    // A folder typed for the last capture is not this one's.
+    _workspace.clear();
+    _workspace_auto.clear();
     // A different capture is a different job, and the geometry options
     // are remembered nowhere: a run must never quietly cost an hour of
     // inference nobody asked for. (Not mid-run: that would disable it.)
