@@ -1,10 +1,4 @@
-// Essential matrix: derive from F + intrinsics, decompose to relative pose, and
-// select the pose by cheirality (src/sfm/README.md).
-//
-// The MVP recovers relative pose from an already-estimated fundamental matrix
-// via E = K2^T F K1 (calibrated verification / phase-4 initialization), rather
-// than the Nister 5-point minimal solver, which is deferred. Points are pinhole
-// pixels; K is the 3x3 intrinsics.
+// Essential-matrix decomposition and bearing-based cheirality selection.
 #pragma once
 
 #include <cmath>

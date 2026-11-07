@@ -52,6 +52,9 @@
 #include "sfm/core/SerialWorker.h"
 #include "sfm/feature/Matcher.h"
 #include "sfm/feature/PairSelection.h"
+#include "sfm/feature/PairExpansion.h"
+#include "sfm/core/Experiment.h"
+#include "sfm/core/FeatureCoordinates.h"
 #include "sfm/feature/Pairing.h"
 #include "sfm/feature/RigPairs.h"
 #include "sfm/feature/GpsPairs.h"
@@ -172,8 +175,9 @@ void sampleFeatureColors(FeatureSet& fs, const GrayImage& img) {
 // Put a freshly extracted set into the source image's frame and attach what
 // EXIF said about the camera. Called once per image, after anything that
 // indexes the *decoded* image (colors, masks) is done.
-void finishFeatures(FeatureSet& fs, const GrayImage& img) {
+void finishFeatures(FeatureSet& fs, const GrayImage& img, bool colmap_corners) {
     scaleKeypoints(fs, img.orig_width, img.orig_height);
+    if (colmap_corners) shiftKeypoints(fs, 0.5f, 0.5f);
     fs.exif_focal = exifFocalPx(img.exif, fs.width, fs.height);
     fs.exif_camera = exifCameraKey(img.exif, fs.width, fs.height);
     fs.exif_orientation = (uint8_t)img.exif.orientation;
@@ -1803,10 +1807,12 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
     std::unique_ptr<IFeatureExtractor> ext =
         createFeatureExtractor(cfg.features, opt, cfg.aliked, cfg.loma);
     if (opt.verbose) L::err(Tag::Extract, M::extract_frontend, {ext->name()});
+    const bool colmap_corners = experimentInt("SFM_PIXEL_CENTER", 0, 1) != 0;
     // Everything after extract() reads only the image and its features, so it
     // runs on its own thread while the device works on the next image.
     static const std::string kNoPath;
     auto postProcess = [&](size_t k, GrayImage& img, FeatureSet& f) {
+        if (colmap_corners) centerExtractedKeypoints(f, cfg.features == "sift");
         if (img.exif_mirror_dropped && !stats.warned_exif_mirror) {
             stats.warned_exif_mirror = true;
             L::warn(Tag::Extract, M::extract_exif_mirror_dropped,
@@ -1842,7 +1848,7 @@ int extractDirectory(const std::string& imagedir, const fs::path& outdir,
         // Back to the source file's coordinates (D46), so cameras.bin
         // describes the user's images and not the working copy. Everything
         // reading a keypoint against the decoded image has already run.
-        finishFeatures(f, img);
+        finishFeatures(f, img, colmap_corners);
         fs::create_directories(outs[k].parent_path());
         writeFeatures(outs[k].string(), f);
         stats.features += f.count();
@@ -2024,7 +2030,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         stats.scored = n_images * (n_images - 1) / 2;
         double t0 = now();
         events::stage_begin(Stage::Select, (int64_t)(n_images * (n_images - 1)));
-        pairs = prefilterPairs(feats, popt, sp, by_order);
+        pairs = prefilterPairs(feats, popt, sp, nullptr, by_order);
         events::stage_end(Stage::Select);
         stats.select_seconds = now() - t0;
         if (verbose)
@@ -2062,7 +2068,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             double t0 = now();
             events::stage_begin(Stage::Select, (int64_t)(n_images * (n_images - 1)));
             std::vector<std::pair<uint32_t, uint32_t>> extra =
-                prefilterPairs(feats, popt, sp, by_order);
+                prefilterPairs(feats, popt, sp, nullptr, by_order);
             events::stage_end(Stage::Select);
             stats.select_seconds = now() - t0;
             pairs.insert(pairs.end(), extra.begin(), extra.end());
@@ -2189,10 +2195,10 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         vopt.num_threads = cfg.threads;
         vopt.match_batch_pairs = opt.batch_pairs;
 
-        // Calibrated verification (D45), for fisheye captures only: see
-        // VerifyCalibration. Everything else keeps the pixel path, where the
-        // pinhole assumption is exact and results are long settled.
+        // Wide-FOV verification requires rays; rectilinear ray-space fitting is optional.
         BearingCache bc;
+        const int essential_mode = experimentInt("SFM_ESSENTIAL", 0, 3);
+        std::vector<char> essential_images(feats.size(), 0);
         std::vector<Camera> percam;
         VerifyPriorStats pstats;
         if (calib) {
@@ -2236,15 +2242,25 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 bootstrapGroupFocals(feats, cs.ids, sample, sm, cs.cameras, cs.focal_given,
                                      cs.focal_measured, tvopt, calib->sample_pairs, cfg.threads,
                                      verbose);
+            }
+            if (cs.anyWide() || essential_mode) {
                 std::vector<Camera> percam(feats.size());
-                for (size_t i = 0; i < feats.size(); i++) percam[i] = cs.cameras.at(cs.ids[i]);
+                for (size_t i = 0; i < feats.size(); i++) {
+                    percam[i] = cs.cameras.at(cs.ids[i]);
+                    essential_images[i] = essential_mode == 2 ||
+                        (essential_mode == 1 && cs.focal_given.count(cs.ids[i]));
+                }
+                if (essential_mode) vopt.essential_images = &essential_images;
                 double t_b = now();
-                // A mixed capture calibrates *everything*: its cross pairs have
-                // a fisheye on one side, and the pixel path cannot represent
-                // those at all. A wholly rectilinear capture keeps the pixel
-                // path, where the pinhole assumption is exact and results are
-                // long settled.
-                bc = precomputeBearings(feats, percam, /*wide_only=*/!cs.mixed(), cfg.threads);
+                bc = precomputeBearings(feats, percam, !cs.mixed() && !essential_mode, cfg.threads);
+                if (!cs.anyWide() && essential_mode != 3)
+                    for (size_t i = 0; i < essential_images.size(); ++i)
+                        if (!essential_images[i]) bc.bearings[i].clear();
+                if (essential_mode)
+                    L::diag(Tag::Match, "[essential] mode %d, five-point eligible images %zu/%zu",
+                            essential_mode,
+                            (size_t)std::count(essential_images.begin(), essential_images.end(), 1),
+                            essential_images.size());
                 vopt.bearings = &bc;
                 calib->used_bearings = true;
                 if (verbose) {
@@ -2437,6 +2453,30 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                        {(long long)kept, (long long)mates.size(), (long long)seeds.size()});
         }
         journal.close();
+        const int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32);
+        if (expansion && mode != PairMode::Exhaustive) {
+            PairSelectionOptions broad = popt;
+            broad.num_neighbors = std::min<uint32_t>(128, std::max<uint32_t>(64, 2 * popt.num_neighbors));
+            std::vector<uint32_t> retrieval_scores;
+            const auto retrieval = prefilterPairs(feats, broad, nullptr, &retrieval_scores);
+            const auto extra = expandVerifiedPairs(db, pairs, retrieval, expansion, retrieval_scores);
+            auto extraFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& matches) {
+                matcher->matchBatch(feats, extra, b, e, matches);
+            };
+            vopt.journal = nullptr;
+            vopt.progress_done_base = stats.pairs;
+            vopt.progress_total = stats.pairs + extra.size();
+            events::progress(Stage::Match, (int64_t)stats.pairs, (int64_t)vopt.progress_total);
+            uint64_t extra_putative = 0;
+            auto more = verifyPairs(feats, extra, extraFn, vopt, &extra_putative, progress, &pstats);
+            L::diag(Tag::Match, "[pairs] expansion proposed %zu verified %zu", extra.size(), more.size());
+            stats.pairs += extra.size();
+            stats.putative += extra_putative;
+            for (auto& p : more) db.pairs.push_back(std::move(p));
+            std::sort(db.pairs.begin(), db.pairs.end(), [](const auto& a, const auto& b) {
+                return std::make_pair(a.image1, a.image2) < std::make_pair(b.image1, b.image2);
+            });
+        }
         sfm::progress::flush();
         events::stage_end(Stage::Match);
         for (const TwoViewMatches& tvm : db.pairs) stats.inliers += tvm.matches.size();
@@ -2530,8 +2570,11 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // The signature is stored BEFORE the stage rather than after it, so that a
     // run interrupted half way through leaves files the next one may reuse.
     const fs::path rdir = resume::dir(_workspace);
-    const std::string extract_sig =
+    std::string extract_sig =
         stageSignature(cfg, CMD_EXTRACT) + resume::kSignedImages + _imagedir + "\n";
+    if (int grid = experimentInt("SFM_SIFT_GRID", 0, 16))
+        extract_sig += "sift-grid=" + std::to_string(grid) + "\n";
+    if (experimentInt("SFM_PIXEL_CENTER", 0, 1)) extract_sig += "pixel-corners=1\n";
     // What the files on disk were recorded as made with, before this run
     // records itself: matches over kept features were made under it.
     const std::string old_extract = resume::recorded(rdir / resume::kExtractSig);
@@ -2605,8 +2648,12 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
     // What this stage's output depends on: its own settings, the extraction
     // that produced its input, and the feature files themselves -- the pair
     // lists and the journal are indices into a particular set of those.
-    const std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
+    std::string match_settings = stageSignature(cfg, CMD_MATCH) + "pairs-resolved=" +
                                        std::to_string((int)mode) + "\n";
+    if (int expansion = experimentInt("SFM_PAIR_EXPAND", 0, 32))
+        match_settings += "pair-expansion=" + std::to_string(expansion) + "\n";
+    if (int essential = experimentInt("SFM_ESSENTIAL", 0, 3))
+        match_settings += "essential=" + std::to_string(essential) + "\n";
     const std::string features_before = "features=" + featureDirDigest(featdir) + "\n";
     // Kept features older than their image or mask are dated now, so the next
     // run counts them current as well.

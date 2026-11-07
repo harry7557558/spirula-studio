@@ -43,6 +43,8 @@
 #include "sfm/core/FeatureCompaction.h"
 #include "sfm/core/Log.h"
 #include "sfm/core/Features.h"
+#include "sfm/core/Experiment.h"
+#include "sfm/core/FeatureCoordinates.h"
 #include "sfm/core/Image.h"
 #include "sfm/core/ImageLoader.h"
 #include "sfm/map/Orient.h"
@@ -650,9 +652,11 @@ static int cmdExtract(int argc, char** argv) {
     std::unique_ptr<IFeatureExtractor> ext =
         createFeatureExtractor(cfg.features, cfg.sift, cfg.aliked, cfg.loma);
     FeatureSet fset = ext->extract(img);
+    const bool colmap_corners = experimentInt("SFM_PIXEL_CENTER", 0, 1) != 0;
+    if (colmap_corners) centerExtractedKeypoints(fset, cfg.features == "sift");
     sampleFeatureColors(fset, img);
     uint32_t masked_out = applyMask(fset, img.mask);
-    finishFeatures(fset, img);
+    finishFeatures(fset, img, colmap_corners);
     L::out(Tag::Extract, M::extract_one_done,
            {fset.count(), fset.dim, fset.width, fset.height});
     if (fset.exif_focal > 0)

@@ -1,21 +1,5 @@
-// Geometric verification of a whole pair list (src/sfm/README.md).
-//
-// `estimateTwoView` verifies one pair; this drives it over every pair produced
-// by `sfm/feature/Pairing.h` and is where the parallelism lives: host RANSAC on
-// every putative pair is the largest single cost in the `match` stage (it was
-// 83-85% of it, and ~70% of end-to-end wall clock, when this pool was written;
-// it is a third to two thirds of the stage now that the other stages have been
-// worked on, and still the reason the stage is CPU-bound).
-//
-// Shape: the GPU matcher owns one VkContext and one queue, so descriptor matching
-// stays on the calling thread; it acts as the producer and a pool of worker
-// threads consumes the putative matches. That overlaps host RANSAC with GPU
-// matching *and* spreads it across cores, which the serial loop did neither of.
-//
-// Results are collected by pair index and returned in the pair list's order, so
-// the output does not depend on thread count or scheduling. `estimateTwoView`
-// is reentrant (no globals; its RNG is seeded per call from RansacOptions), so
-// each pair's geometry is likewise thread-count-independent.
+// Parallel host geometric verification fed by a serial GPU matcher.
+// Results retain pair-list order regardless of worker scheduling.
 #pragma once
 
 #include <atomic>
@@ -534,6 +518,7 @@ struct VerificationOptions {
     // sphere; `two_view.ransac.max_error` stays in pixels and is converted per
     // pair with the two cameras' focal lengths.
     const BearingCache* bearings = nullptr;
+    const std::vector<char>* essential_images = nullptr;
     // Worker threads for the RANSAC. 0 = hardware_threads(), 1 = verify
     // inline on the calling thread (no pool, no queue).
     int num_threads = 0;
@@ -578,19 +563,8 @@ inline int verificationThreadCount(const VerificationOptions& opt) {
     return hc > 0 ? (int)hc : 1;
 }
 
-// Match and verify every pair. `matchFn(begin, end, out)` fills `out` with the
-// putative matches for pairs[begin..end) in order, and is only ever called on
-// the calling thread (GPU matchers are not thread-safe). Batching is the
-// matcher's business, not ours -- it lets a GPU matcher amortize uploads and
-// fence round trips over many pairs (D22) -- so we hand it a run and push the
-// results into the queue one at a time, keeping the backpressure per pair.
-// `progress(done, total)` is optional and also called only on the calling
-// thread.
-//
-// Returned entries keep the pair list's order and only cover pairs that
-// survived: fewer putatives than `min_num_inliers`, or a degenerate/undefined
-// two-view config, drops the pair entirely. `putative_out` accumulates the
-// pre-verification match count.
+// matchFn runs on the calling thread; workers verify its bounded batches.
+// Results retain input order and contain only pairs passing the inlier floor.
 inline std::vector<TwoViewMatches> verifyPairs(
     const std::vector<FeatureSet>& feats,
     const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
@@ -637,6 +611,8 @@ inline std::vector<TwoViewMatches> verifyPairs(
                 b2[k] = bearingOf(j, m[k].idx2);
             }
             TwoViewOptions tvb = tv;
+            tvb.calibrated_essential = opt.essential_images &&
+                (*opt.essential_images)[i] && (*opt.essential_images)[j];
             const double f = 0.5 * ((*opt.cameras)[i].focal() + (*opt.cameras)[j].focal());
             tvb.ransac.max_error = tv.ransac.max_error * sc / std::max(1.0, f);
             tvb.recover_pose = true;
@@ -696,6 +672,8 @@ inline std::vector<TwoViewMatches> verifyPairs(
                 b2[k] = bc.bearings[j][m[k].idx2];
             }
             TwoViewOptions tvb = tv;
+            tvb.calibrated_essential = opt.essential_images &&
+                (*opt.essential_images)[i] && (*opt.essential_images)[j];
             double f = 0.5 * (bc.cameras[i].focal() + bc.cameras[j].focal());
             tvb.ransac.max_error = tv.ransac.max_error * sc / std::max(1.0, f);  // px -> rad
             g = estimateTwoViewBearing(b1, b2, tvb);
@@ -725,10 +703,7 @@ inline std::vector<TwoViewMatches> verifyPairs(
 
     auto verifyOne = [&](size_t p, std::vector<FeatureMatch>& m) {
         const uint32_t i = pairs[p].first, j = pairs[p].second;
-        // Every pair, kept or not: a screen watching the matrix cannot tell a
-        // pair that failed from one nothing has reached yet unless both are
-        // reported. A no-op without --progress-dir, and called from the
-        // workers, which is what the lock inside it is for.
+        // Failed attempts must remain distinguishable from untested pairs in the viewer.
         const uint32_t inl = verifyBody(p, m, i, j);
         if (!opt.report) return;
         progress::pair(i, j, inl);
