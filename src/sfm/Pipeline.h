@@ -131,14 +131,14 @@ std::unique_ptr<ExifGpsPriors> makeExifGpsPriors(const SfmConfig& cfg, const std
                                                  const MatchesDatabase& db, const CameraSetup& cams,
                                                  bool verbose);
 
-// Calibrate `priors` against the gyro from pairs and their matches (a
-// sample's putative ones, or the database's verified ones), reporting per group.
-void calibrateSensorPriors(TelemetryPriors& priors, const std::vector<FeatureSet>& feats,
-                           const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
-                           const std::vector<std::vector<FeatureMatch>>& matches,
-                           const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
-                           int threads, bool verbose);
-void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDatabase& db,
+uint64_t sensorCalibrationFingerprint(const TelemetryPriors& priors,
+                                      const std::vector<FeatureSet>& feats,
+                                      const std::vector<Camera>& cams,
+                                      const TwoViewOptions& opt);
+
+// Replay saved calibration only for identical inputs, otherwise recalibrate
+// from verified matches, including databases without a calibration sample.
+void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, MatchesDatabase& db,
                                        const std::vector<FeatureSet>& feats,
                                        const std::vector<Camera>& cams,
                                        const TwoViewOptions& tvopt, int threads, bool verbose);

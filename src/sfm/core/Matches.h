@@ -14,6 +14,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -105,6 +106,12 @@ struct ImageEntry {
     uint32_t num_features = 0;
 };
 
+// Relative rotation R_j = R_ji R_i, before sensor-guided verification.
+struct PairRotationObs {
+    uint32_t i = 0, j = 0;
+    Mat3 R_ji;
+};
+
 struct MatchesDatabase {
     std::vector<ImageEntry> images;
     std::vector<TwoViewMatches> pairs;
@@ -121,6 +128,8 @@ struct MatchesDatabase {
     // apart from `focal_prior` because the mapper treats the two differently:
     // it re-refines a measured focal and leaves a given one alone (D45).
     std::vector<uint8_t> focal_measured;
+    std::optional<std::vector<PairRotationObs>> sensor_calibration;
+    uint64_t sensor_calibration_fingerprint = 0;
     bool hasCameras() const {
         return !cameras.empty() && camera_ids.size() == images.size();
     }
@@ -129,15 +138,15 @@ struct MatchesDatabase {
 };
 
 // ---------------------------------------------------------------------------
-// matches.bin -- "VKMT", u32 version=4; the layout is writeMatches below, and
-// an older file reads back as what it carried: v2 stops after the pairs and has
-// no cameras, v3 has cameras but no per-camera `focal_measured` byte.
+// matches.bin -- "VKMT", u32 version=5; the layout is writeMatches below.
+// v2 has no cameras, v3 has no focal_measured bytes, and v4 has no sensor
+// calibration observations. An engaged empty sample records a failed fit.
 // ---------------------------------------------------------------------------
 
 inline void writeMatches(const std::string& path, const MatchesDatabase& db) {
     std::ofstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("cannot write " + path);
-    uint32_t version = 4, nimg = (uint32_t)db.images.size();
+    uint32_t version = 5, nimg = (uint32_t)db.images.size();
     f.write("VKMT", 4);
     f.write((const char*)&version, 4);
     f.write((const char*)&nimg, 4);
@@ -183,6 +192,18 @@ inline void writeMatches(const std::string& path, const MatchesDatabase& db) {
             uint8_t m = c < db.focal_measured.size() ? db.focal_measured[c] : 0;
             f.write((const char*)&m, 1);
         }
+    }
+    const uint8_t calibrated = db.sensor_calibration.has_value();
+    f.write((const char*)&calibrated, 1);
+    if (calibrated) {
+        const uint32_t n = (uint32_t)db.sensor_calibration->size();
+        f.write((const char*)&n, 4);
+        for (const PairRotationObs& o : *db.sensor_calibration) {
+            f.write((const char*)&o.i, 4);
+            f.write((const char*)&o.j, 4);
+            f.write((const char*)o.R_ji.data(), 9 * 8);
+        }
+        f.write((const char*)&db.sensor_calibration_fingerprint, 8);
     }
 }
 
@@ -261,6 +282,26 @@ inline MatchesDatabase readMatches(const std::string& path) {
             db.focal_prior.clear();
             db.focal_measured.clear();
         }
+    }
+    if (version >= 5) {
+        uint8_t calibrated = 0;
+        f.read((char*)&calibrated, 1);
+        if (calibrated) {
+            uint32_t n = 0;
+            f.read((char*)&n, 4);
+            if (!f || n > 600) throw std::runtime_error("bad sensor calibration in " + path);
+            auto& obs = db.sensor_calibration.emplace(n);
+            for (PairRotationObs& o : obs) {
+                f.read((char*)&o.i, 4);
+                f.read((char*)&o.j, 4);
+                f.read((char*)o.R_ji.data(), 9 * 8);
+                if (!f || o.i >= nimg || o.j >= nimg)
+                    throw std::runtime_error("bad sensor calibration in " + path);
+            }
+            f.read((char*)&db.sensor_calibration_fingerprint, 8);
+            if (f.gcount() == 0 && f.eof()) f.clear();
+        }
+        if (!f) throw std::runtime_error("truncated sensor calibration in " + path);
     }
     return db;
 }
