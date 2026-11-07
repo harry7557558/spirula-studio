@@ -379,6 +379,39 @@ static int cmdManifestTest(int, char**) {
                   matches(restored, 0, cm.cameras[0].params) &&
                   matches(restored, 1, cm.cameras[1].params),
               "calibration survives the match-to-map file boundary");
+        check(!reread.sensor_calibration, "an uncalibrated match file has no sensor sample");
+        const std::string legacy = dir + "/legacy.bin";
+        writeMatches(legacy, db);
+        std::filesystem::resize_file(legacy, std::filesystem::file_size(legacy) - 1);
+        {
+            std::fstream f(legacy, std::ios::binary | std::ios::in | std::ios::out);
+            const uint32_t version = 4;
+            f.seekp(4);
+            f.write((const char*)&version, 4);
+        }
+        check(!readMatches(legacy).sensor_calibration,
+              "v4 matches load without sensor calibration provenance");
+        db.sensor_calibration = std::vector<PairRotationObs>{{0, 1, {0, -1, 0, 1, 0, 0, 0, 0, 1}}};
+        db.sensor_calibration_fingerprint = 0x123456789abcdef0ull;
+        writeMatches(dir + "/calibrated.bin", db);
+        reread = readMatches(dir + "/calibrated.bin");
+        check(reread.sensor_calibration && reread.sensor_calibration->size() == 1 &&
+                  reread.sensor_calibration->front().i == 0 &&
+                  reread.sensor_calibration->front().j == 1 &&
+                  reread.sensor_calibration->front().R_ji == db.sensor_calibration->front().R_ji,
+              "pre-verification rotations survive the match-to-map file boundary exactly");
+        check(reread.sensor_calibration_fingerprint == db.sensor_calibration_fingerprint,
+              "sensor calibration provenance survives the file boundary");
+        const std::string sample_path = dir + "/calibrated.bin";
+        std::filesystem::resize_file(sample_path, std::filesystem::file_size(sample_path) - 8);
+        reread = readMatches(sample_path);
+        check(reread.sensor_calibration && reread.sensor_calibration_fingerprint == 0,
+              "early v5 samples without provenance still load for recalibration");
+        db.sensor_calibration->clear();
+        writeMatches(dir + "/calibrated.bin", db);
+        reread = readMatches(dir + "/calibrated.bin");
+        check(reread.sensor_calibration && reread.sensor_calibration->empty(),
+              "a failed sensor calibration stays distinct from a missing sample");
         const auto old_signature = stageSignature(cc, CMD_MATCH);
         cc.camera.overrides[0].params[2] += 1e-9;
         check(stageSignature(cc, CMD_MATCH) != old_signature,

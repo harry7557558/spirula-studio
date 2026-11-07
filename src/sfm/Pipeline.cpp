@@ -540,13 +540,31 @@ std::unique_ptr<TelemetryPriors> makeSensorPriors(const SfmConfig& cfg,
 }
 
 
+void reportSensorPriors(const TelemetryPriors& priors) {
+    for (size_t c = 0; c < priors.timeOffsets().size(); c++)
+        if (priors.timeOffsets()[c].found)
+            L::err(Tag::Match, M::sensor_time_offset,
+                   {priors.groups().empty() ? std::string("?") : std::to_string(c),
+                    L::num(1000.0 * priors.timeOffsets()[c].offset, 1),
+                    (long long)priors.timeOffsets()[c].pairs});
+    for (const SensorGroupState& g : priors.groups()) {
+        if (g.ok)
+            L::out(Tag::Match, M::sensor_prior_calib,
+                   {g.name, (long long)g.pairs, L::num(g.fit.sig_rot_deg, 2)});
+        else
+            L::err(Tag::Match, M::sensor_prior_calib_failed,
+                   {g.name, (long long)g.pairs, extrinsicReason(g.fit.reason).get()});
+    }
+}
+
 // Relative rotations from two-view geometry on bearings, over the pairs the
 // source can calibrate on, then the source's own hand-eye fit.
 void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<FeatureSet>& feats,
                                const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
                                const std::vector<std::vector<FeatureMatch>>& matches,
                                const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
-                               int threads, bool verbose, bool inliers_only) {
+                               int threads, bool verbose, bool inliers_only,
+                               std::vector<PairRotationObs>* calibration = nullptr) {
     std::vector<size_t> use;
     for (size_t p = 0; p < pairs.size() && p < matches.size(); p++)
         if (priors.calibrationPair(pairs[p].first, pairs[p].second) &&
@@ -598,21 +616,8 @@ void calibrateSensorPriorsFrom(TelemetryPriors& priors, const std::vector<Featur
     for (size_t k = 0; k < obs.size(); k++)
         if (ok[k]) kept.push_back(obs[k]);
     priors.calibrateFromPairs(kept);
-    if (!verbose) return;
-    for (size_t c = 0; c < priors.timeOffsets().size(); c++)
-        if (priors.timeOffsets()[c].found)
-            L::err(Tag::Match, M::sensor_time_offset,
-                   {priors.groups().empty() ? std::string("?") : std::to_string(c),
-                    L::num(1000.0 * priors.timeOffsets()[c].offset, 1),
-                    (long long)priors.timeOffsets()[c].pairs});
-    for (const SensorGroupState& g : priors.groups()) {
-        if (g.ok)
-            L::out(Tag::Match, M::sensor_prior_calib,
-                   {g.name, (long long)g.pairs, L::num(g.fit.sig_rot_deg, 2)});
-        else
-            L::err(Tag::Match, M::sensor_prior_calib_failed,
-                   {g.name, (long long)g.pairs, extrinsicReason(g.fit.reason).get()});
-    }
+    if (calibration) *calibration = std::move(kept);
+    if (verbose) reportSensorPriors(priors);
 }
 
 
@@ -620,14 +625,57 @@ void calibrateSensorPriors(TelemetryPriors& priors, const std::vector<FeatureSet
                            const std::vector<std::pair<uint32_t, uint32_t>>& pairs,
                            const std::vector<std::vector<FeatureMatch>>& matches,
                            const std::vector<Camera>& cams, const TwoViewOptions& tvopt,
-                           int threads, bool verbose) {
-    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, false);
+                           int threads, bool verbose, std::vector<PairRotationObs>& calibration) {
+    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, false,
+                              &calibration);
 }
 
-void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDatabase& db,
+uint64_t sensorCalibrationFingerprint(const TelemetryPriors& priors,
+                                      const std::vector<FeatureSet>& feats,
+                                      const std::vector<Camera>& cams,
+                                      const TwoViewOptions& opt) {
+    Fingerprint h;
+    h.add(priors.calibrationFingerprint());
+    h.add(cams.size());
+    for (const Camera& c : cams) {
+        h.add(c.id);
+        h.add(c.model);
+        h.add(c.width);
+        h.add(c.height);
+        h.add(c.pixel_scale);
+        double p[16]{};
+        packColmap(c, p);
+        for (int i = 0; i < camColmapParams(c.model); i++) h.add(p[i]);
+    }
+    h.add(feats.size());
+    for (const FeatureSet& f : feats) h.add(f.pixelScale());
+    h.add(opt.min_num_inliers);
+    h.add(opt.max_H_inlier_ratio);
+    h.add(opt.estimate_homography);
+    h.add(opt.ransac.max_error);
+    h.add(opt.ransac.confidence);
+    h.add(opt.ransac.min_num_trials);
+    h.add(opt.ransac.max_num_trials);
+    h.add(opt.ransac.min_inlier_ratio);
+    h.add(opt.ransac.seed);
+    h.add(opt.ransac.lo_iters);
+    return h.value;
+}
+
+void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, MatchesDatabase& db,
                                        const std::vector<FeatureSet>& feats,
                                        const std::vector<Camera>& cams,
                                        const TwoViewOptions& tvopt, int threads, bool verbose) {
+    const uint64_t fingerprint = sensorCalibrationFingerprint(priors, feats, cams, tvopt);
+    if (db.sensor_calibration && db.sensor_calibration_fingerprint != 0 &&
+        db.sensor_calibration_fingerprint == fingerprint) {
+        priors.calibrateFromPairs(*db.sensor_calibration);
+        if (verbose) reportSensorPriors(priors);
+        return;
+    }
+    L::diag(Tag::Match, "[prior] %s; recalibrating sensors from verified inliers",
+            db.sensor_calibration ? "sensor calibration inputs changed or provenance missing" :
+                                    "no saved sensor calibration sample (legacy matches or fresh fallback)");
     std::vector<std::pair<uint32_t, uint32_t>> pairs;
     std::vector<std::vector<FeatureMatch>> matches;
     for (const TwoViewMatches& p : db.pairs) {
@@ -636,7 +684,9 @@ void calibrateSensorPriorsFromDatabase(TelemetryPriors& priors, const MatchesDat
         pairs.emplace_back(p.image1, p.image2);
         matches.push_back(p.matches.toVector());
     }
-    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, true);
+    calibrateSensorPriorsFrom(priors, feats, pairs, matches, cams, tvopt, threads, verbose, true,
+                              &db.sensor_calibration.emplace());
+    db.sensor_calibration_fingerprint = fingerprint;
 }
 
 
@@ -2284,7 +2334,10 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
             }
             const double t_c = now();
-            calibrateSensorPriors(*priors, feats, sample, sm, percam, tvopt, cfg.threads, verbose);
+            db.sensor_calibration_fingerprint =
+                sensorCalibrationFingerprint(*priors, feats, percam, tvopt);
+            calibrateSensorPriors(*priors, feats, sample, sm, percam, tvopt, cfg.threads, verbose,
+                                   db.sensor_calibration.emplace());
             if (verbose)
                 L::diag(Tag::Match, "[prior] calibrated on %zu pair(s) in %s", sample.size(),
                         format_duration(now() - t_c).c_str());
@@ -2465,6 +2518,7 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         // Calibrated on the verified pairs when the sample could not do it
         // (or was never asked for): the mapper wants the rotations too.
         if (priors && calib && !priors->anyRotation()) {
+            db.sensor_calibration.reset();
             if (percam.empty()) percam = perImageCameras(calib->cameras, feats.size());
             calibrateSensorPriorsFromDatabase(*priors, db, feats, percam, tvopt, cfg.threads,
                                               verbose);
@@ -2687,6 +2741,8 @@ AutoResult run_auto(SfmConfig& cfg, const AutoInputs& in) {
                 db.camera_ids = std::move(disk.camera_ids);
                 db.focal_prior = std::move(disk.focal_prior);
                 db.focal_measured = std::move(disk.focal_measured);
+                db.sensor_calibration = std::move(disk.sensor_calibration);
+                db.sensor_calibration_fingerprint = disk.sensor_calibration_fingerprint;
                 loadCameraSetup(db, calib.cameras);
                 mstats.images = feats.size();
                 mstats.kept = mstats.pairs = db.pairs.size();
