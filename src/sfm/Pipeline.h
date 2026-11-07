@@ -267,7 +267,7 @@ void warnIfMasksLookInverted(const ExtractStats& st);
 
 // Per-keypoint colours while the image is hot, then back to source pixels.
 void sampleFeatureColors(FeatureSet& fs, const GrayImage& img);
-void finishFeatures(FeatureSet& fs, const GrayImage& img);
+void finishFeatures(FeatureSet& fs, const GrayImage& img, bool colmap_corners = false);
 
 // An EXR or a TIFF with an ICC profile states its own colour space; adopt it
 // for any of `image-gamut` / `image-linear` that `seen` does not already name.

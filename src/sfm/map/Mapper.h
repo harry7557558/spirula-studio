@@ -58,12 +58,15 @@
 // include this header, so there is no cycle.
 #include "sfm/map/Merge.h"
 #include "sfm/map/Profile.h"
+#include "sfm/map/TrackPolicy.h"
 #include "core/Env.h"
 #include "core/HardwareThreads.h"
 
 namespace sfm {
 
 struct MapperOptions {
+    TrackPolicy tracks;
+    int seed_essential = 0;
     double focal = 0;                  // 0 = COLMAP default (1.2 * max dim)
     // Every pixel threshold below is in *extraction* pixels -- the frame the
     // keypoints were measured in, not the frame they are stored in. They are
@@ -256,12 +259,8 @@ struct MapperOptions {
     // fraction of max_reproj_error (the churn hysteresis); 0 disables the
     // retriangulation pass entirely.
     double retri_scale = 0.75;
-    // Fuse two 3D points a correspondence says are the same feature
-    // (Mapper::mergeTracks). Off is the pre-existing behaviour: creation-only
-    // tracks, which fragment wherever a point was triangulated twice before the
-    // pose joining the two halves existed. Measured worth 13 images and 2.4
-    // AUC@5 on a 1146-image capture, at the cost of the solver time longer
-    // tracks bring -- which kMergeMaxTrack is what bounds.
+    // Track fusion added 13 registered images and 2.4 AUC@5 on a 1146-image capture.
+    // tracks.merge_max_track bounds its union length independently of seam welding.
     bool merge_tracks = true;
     // A verified pair with seam_min_matches matches, of which the finished model explains
     // fewer than this fraction by a shared 3D point, is a seam candidate; Mapper::openSeams
@@ -343,20 +342,9 @@ struct MapperOptions {
     // rate is a small fraction of its fp32 rate -- every consumer card -- can be
     // the faster way to the same answer.
     std::string ba_real = "double";
-    // ... and the scalar for solves whose answer is provisional: a growth-phase
-    // refinement, or a merge-tree level that another level will re-solve. Those
-    // only need a step good enough to register and filter against, and fp32
-    // halves the bytes every kernel moves -- worth 25-35% of the mapping stage.
-    //
-    // It is nonetheless **double by default**, because fp32 there costs both
-    // accuracy and reproducibility. The Schur and Jacobian kernels accumulate
-    // with floating-point atomics, whose execution order is arbitrary; at fp64
-    // the resulting perturbation (~1e-16) never crosses a decision threshold
-    // and the whole pipeline is reproducible run to run, while at fp32 (~1e-7)
-    // it crosses them constantly. Measured over three identical runs each: a
-    // 379-image capture scored 96.1 AUC@10 every time in fp64 and 96.5 / 92.3 /
-    // 91.5 in fp32; an 896-image one 88.3 / 87.7 / 88.0 against 85.2 / 87.5 /
-    // 87.1. Not just noisier -- worse on average, by 2.7 and 1.4 points.
+    // Growth/merge-tree scalar: fp32 saved 25-35% mapping time but lost mean
+    // AUC@10 by 2.7/1.4 points on 379/896-image captures (src/sfm/README.md).
+    // fp64 reduces numerical variation; it does not make mapping deterministic.
     std::string ba_real_coarse = "double";
     int device = -1;
     // Canonical uuid:<hex>; every BA this mapper runs carries it. "" = shared
@@ -405,7 +393,10 @@ public:
         : db_(db), feats_(feats), opt_(opt), cam_ids_(std::move(camera_ids)),
           rigs_(rigs && !rigs->empty() && opt.use_rigs ? rigs : nullptr),
           seq_(seqs && !seqs->empty() ? seqs : nullptr),
-          priors_(priors && opt.use_priors ? priors : nullptr) {}
+          priors_(priors && opt.use_priors ? priors : nullptr) {
+        opt_.tracks.readExperiments();
+        opt_.seed_essential = experimentInt("SFM_SEED_ESSENTIAL", opt_.seed_essential, 3);
+    }
 
     const RigTable* rigs() const { return rigs_; }
     const SequenceTable* sequences() const { return seq_; }
@@ -2625,7 +2616,7 @@ private:
                 if (ik == rec_.points3D.end() || ig == rec_.points3D.end()) continue;
                 Point3D& P = ik->second;
                 const Point3D& Q = ig->second;
-                if (P.track.size() + Q.track.size() > kMergeMaxTrack) continue;
+                if (P.track.size() + Q.track.size() > kSeamMergeMaxTrack) continue;
                 bool clash = false;
                 for (const TrackElement& a : P.track) on_track[a.image_id] = 1;
                 for (const TrackElement& b : Q.track)
@@ -3893,6 +3884,9 @@ private:
         tvo.estimate_homography = opt_.seed_homography;
         const Camera& ca = camOf(a);
         const Camera& cb = camOf(b);
+        tvo.calibrated_essential = opt_.seed_essential == 2 ||
+            (opt_.seed_essential == 1 && opt_.given_focal_cameras.count(ca.id) &&
+             opt_.given_focal_cameras.count(cb.id));
         Mat3 Rp;
         double sig;
         if (priors_ && priors_->relativeRotation(a, b, Rp, sig)) {
@@ -3925,7 +3919,7 @@ private:
             }
             return g;
         }
-        if (ca.wideFov() || cb.wideFov()) {
+        if (ca.wideFov() || cb.wideFov() || tvo.calibrated_essential || opt_.seed_essential == 3) {
             // Same reason verification works on bearings (D45): a pinhole seed
             // throws away every wide correspondence, and the seed is what the
             // whole model is built on. The thresholds move from pixels to
@@ -3979,22 +3973,12 @@ private:
             seed_geom_[{todo[i]->image1, todo[i]->image2}] = std::move(out[i]);
     }
 
-    // Build the two-camera seed on one candidate pair and keep it if it clears
-    // the level's thresholds; otherwise roll the model back to empty. Split out
-    // of the candidate scan so the focal bootstrap can rebuild *the same* pair
-    // under a different focal -- comparing hypotheses on one pair is what makes
-    // its scores comparable.
+    // Focal hypotheses must rebuild the same seed pair for their scores to be comparable.
     bool trySeedPair(const TwoViewMatches& pm, double min_ang_deg, int min_inliers,
                      bool allow_forward, bool memoize) {
         const TwoViewMatches* p = &pm;
         const uint32_t a = p->image1, b = p->image2;
-        // Memoized (D38): relaxation levels and later seed attempts rescan
-        // the candidate list, and estimateTwoView (full two-view RANSAC) is by
-        // far its cost. The result is identical on every rescan -- cameras are
-        // pristine defaults whenever initialize() runs (resetModel precedes
-        // it), and the estimator is deterministic. The focal bootstrap passes
-        // memoize=false because it is *changing* the cameras between calls,
-        // which is exactly the assumption the cache rests on.
+        // Focal bootstrapping changes intrinsics, so it cannot reuse cached geometry (D38).
         TwoViewGeometry g;
         auto cached = memoize ? seed_geom_.find({a, b}) : seed_geom_.end();
         if (cached != seed_geom_.end()) {
@@ -4008,16 +3992,8 @@ private:
         if (g.config != TwoViewConfig::Uncalibrated) { init_tally_.config++; return false; }
         if (g.num_inliers < min_inliers) { init_tally_.few_inliers++; return false; }
 
-        // Near-pure forward motion: the baseline is parallel to the
-        // viewing directions, points triangulate on needle-thin cones
-        // around the epipole (COLMAP init_max_forward_motion).
-        //
-        // The veto is about what the *image* covers, not about the motion:
-        // a narrow lens pointed along its own baseline sees only the pencil of
-        // rays around the epipole. A spherical camera sees the whole sphere, so
-        // the points abeam have full parallax and driving straight forward is
-        // as well conditioned as any other motion -- the cap would be measuring
-        // a degeneracy that is not there (D49).
+        // Forward motion leaves narrow views poorly conditioned around the epipole.
+        // Spherical views retain transverse rays with useful parallax (D49).
         double fwd;
         {
             Vec3 c2 = cameraCenter(g.pose).normalized();  // cam1 is at origin
@@ -4043,6 +4019,7 @@ private:
         for (size_t k = 0; k < p->matches.size(); k++) {
             if (!g.inlier_mask[k]) continue;
             uint32_t fa = p->matches[k].idx1, fb = p->matches[k].idx2;
+            if (opt_.tracks.ignore_two_view && graph_.isolatedPair(a, fa)) continue;
             Vec3 X;
             if (!triangulatePair(a, fa, b, fb, X)) continue;
             double ang = triangulationAngle(X, cameraCenter(rec_.images[a].pose),
@@ -4286,32 +4263,77 @@ private:
         return out;
     }
 
-    // The 2D-3D correspondences an unregistered image has to the model, one 3D
-    // point per feature: the first a sequence neighbour sees, else the first
-    // seen. `nearf`, when asked for, says which came from a neighbour.
+    // Sequence-neighbor support takes precedence over more distant views.
     void gatherCorrespondences(uint32_t img, std::vector<Vec3>& X, std::vector<Vec3>& br,
                                std::vector<uint32_t>& feat, std::vector<uint64_t>& pid,
                                std::vector<char>* nearf = nullptr) const {
+        std::vector<AssociationVote> votes;
+        std::vector<PointAssociation> associations;
+        const bool unique_before = opt_.tracks.unique_points == 1;
+        const bool inspect = opt_.tracks.association || unique_before || MapProf::enabled();
         for (uint32_t f = 0; f < feats_[img].count(); f++) {
             uint64_t chosen = kInvalidPoint3D;
             bool from_near = false;
+            votes.clear();
             for (const Correspondence& c : graph_.at(img, f)) {
                 const Image& oi = rec_.images.at(c.image_id);
                 if (!oi.registered || oi.point3D_ids[c.feature_idx] == kInvalidPoint3D) continue;
-                if (chosen == kInvalidPoint3D) chosen = oi.point3D_ids[c.feature_idx];
-                if (!seq_) break;
-                if (nearby(img, c.image_id)) {
-                    chosen = oi.point3D_ids[c.feature_idx];
-                    from_near = true;
-                    break;
+                const uint64_t candidate = oi.point3D_ids[c.feature_idx];
+                const bool nearby_support = seq_ && nearby(img, c.image_id);
+                if (chosen == kInvalidPoint3D || (nearby_support && !from_near)) {
+                    chosen = candidate;
+                    from_near = nearby_support;
                 }
+                if (inspect) votes.push_back({candidate, c.image_id,
+                                              rec_.points3D.at(candidate).track.size(), nearby_support});
+                else if (!seq_ || nearby_support) break;
             }
             if (chosen == kInvalidPoint3D) continue;
+            size_t support = 0;
+            if (inspect) {
+                const TrackAssociation association = supportedAssociation(votes);
+                if (MapProf::enabled()) {
+                    ++g_map_prof.association_features;
+                    if (association.alternatives > 1) ++g_map_prof.association_ambiguous;
+                }
+                if (opt_.tracks.association) {
+                    if (opt_.tracks.association == 2 && association.tied) {
+                        if (MapProf::enabled()) ++g_map_prof.association_deferred;
+                        continue;
+                    }
+                    if (MapProf::enabled() && chosen != association.point)
+                        ++g_map_prof.association_changed;
+                    chosen = association.point;
+                    from_near = association.nearby;
+                }
+                if (unique_before)
+                    for (size_t k = 0; k < votes.size(); ++k)
+                        if (votes[k].point == chosen &&
+                            (!k || votes[k - 1].point != chosen || votes[k - 1].image != votes[k].image))
+                            ++support;
+            }
             X.push_back(rec_.points3D.at(chosen).xyz);
             br.push_back(bearing(img, f));
             feat.push_back(f);
             pid.push_back(chosen);
             if (nearf) nearf->push_back(from_near ? 1 : 0);
+            if (unique_before) associations.push_back({chosen, f, support, from_near});
+        }
+        if (unique_before) {
+            const auto kept = uniquePointAssociations(associations);
+            if (MapProf::enabled()) g_map_prof.association_duplicates += X.size() - kept.size();
+            for (size_t k = 0; k < kept.size(); ++k) {
+                X[k] = X[kept[k]];
+                br[k] = br[kept[k]];
+                feat[k] = feat[kept[k]];
+                pid[k] = pid[kept[k]];
+                if (nearf) (*nearf)[k] = (*nearf)[kept[k]];
+            }
+            X.resize(kept.size());
+            br.resize(kept.size());
+            feat.resize(kept.size());
+            pid.resize(kept.size());
+            if (nearf) nearf->resize(kept.size());
         }
     }
 
@@ -4381,18 +4403,33 @@ private:
         return true;
     }
 
-    // Commit a pose: register, continue the tracks its inliers belong to, and
-    // report. Shared by PnP and by the rig completion.
     void commitPose(uint32_t img, const Pose& pose, const std::vector<uint32_t>& feat,
                     const std::vector<uint64_t>& pid, const std::vector<char>& inlier,
                     int num_inliers, size_t pool) {
         rec_.images[img].pose = pose;
         rec_.images[img].registered = true;
+        std::vector<char> distinct;
+        if (opt_.tracks.unique_points == 2) {
+            std::vector<double> errors(pid.size(), std::numeric_limits<double>::infinity());
+            size_t eligible = 0;
+            for (size_t k = 0; k < pid.size(); ++k) {
+                if (!inlier[k] || rec_.images[img].point3D_ids[feat[k]] != kInvalidPoint3D) continue;
+                const double error = reprojErr(img, feat[k], rec_.points3D.at(pid[k]).xyz);
+                if (std::isfinite(error) && error <= errPx(img)) { errors[k] = error; ++eligible; }
+            }
+            const auto kept = bestPointObservations(pid, errors);
+            distinct.assign(pid.size(), 0);
+            for (size_t k : kept) distinct[k] = 1;
+            if (MapProf::enabled()) g_map_prof.association_duplicates += eligible - kept.size();
+        }
         for (size_t k = 0; k < feat.size(); k++) {
-            if (!inlier[k]) continue;
+            if (!inlier[k] || (!distinct.empty() && !distinct[k])) continue;
             uint32_t f = feat[k];
             if (rec_.images[img].point3D_ids[f] != kInvalidPoint3D) continue;
             Point3D& pt = rec_.points3D[pid[k]];
+            if (opt_.tracks.unique_points &&
+                std::any_of(pt.track.begin(), pt.track.end(),
+                            [img](const TrackElement& t) { return t.image_id == img; })) continue;
             if (reprojErr(img, f, pt.xyz) > errPx(img)) continue;
             pt.track.push_back({img, f});
             rec_.images[img].point3D_ids[f] = pid[k];
@@ -5209,7 +5246,7 @@ private:
                       const WorldRays* rays = nullptr) const {
         const Image& me = *mi.img[img];
         if (me.point3D_ids[f] != kInvalidPoint3D) return false;
-        // candidate observations: registered, feature not yet on a 3D point
+        if (opt_.tracks.ignore_two_view && graph_.isolatedPair(img, f)) return false;
         obs.clear();
         for (const Correspondence& c : graph_.at(img, f))
             if (mi.img[c.image_id]->registered &&
@@ -5234,6 +5271,7 @@ private:
         Vec3 bestX;
         double bestAng = -1;
         const Correspondence* bestC = nullptr;
+        std::vector<std::pair<double, Vec3>> hypotheses;
         for (size_t k = 0; k < obs.size(); k++) {
             const Correspondence& c = obs[k];
             const double lim = opt_.min_tri_angle_deg * M_PI / 180.0 - tol_a -
@@ -5256,10 +5294,53 @@ private:
             double ang = triangulationAngle(X, cameraCenter(me.pose),
                                             cameraCenter(mi.img[c.image_id]->pose));
             if (ang > bestAng) { bestAng = ang; bestX = X; bestC = &c; }
+            if (opt_.tracks.refine_points) {
+                hypotheses.emplace_back(ang, X);
+                std::sort(hypotheses.begin(), hypotheses.end(), [](const auto& a, const auto& b) {
+                    return a.first > b.first;
+                });
+                if (hypotheses.size() > 4) hypotheses.resize(4);
+            }
         }
         if (!bestC) return false;
 
-        // Build the track: this obs + every candidate that reprojects well.
+        if (opt_.tracks.refine_points) {
+            auto bestObservations = [&](const Vec3& x) {
+                std::map<uint32_t, std::pair<double, size_t>> chosen;
+                for (size_t k = 0; k < obs.size(); ++k) {
+                    const auto& c = obs[k];
+                    const double limit = err_scale * opt_.max_reproj_error * mi.pixel_scale[c.image_id];
+                    const double error = reprojErrAt(mi, c.image_id, c.feature_idx, x, bearingOf(k)) / limit;
+                    auto it = chosen.find(c.image_id);
+                    if (it == chosen.end() || error < it->second.first)
+                        chosen[c.image_id] = {error, k};
+                }
+                return chosen;
+            };
+            double best_cost = std::numeric_limits<double>::infinity();
+            for (const auto& candidate : hypotheses) {
+                double cost = 0;
+                for (const auto& entry : bestObservations(candidate.second)) {
+                    const double r = entry.second.first;
+                    cost += std::min(1.0, r * r);
+                }
+                if (cost < best_cost) { best_cost = cost; bestX = candidate.second; }
+            }
+            std::vector<PointObservation> observations;
+            observations.push_back({poseToP(me.pose), bf,
+                                    mi.cam[img]->errRad(err_scale * opt_.max_reproj_error)});
+            for (const auto& entry : bestObservations(bestX)) {
+                if (entry.second.first > 1) continue;
+                const size_t k = entry.second.second;
+                const auto& c = obs[k];
+                observations.push_back({poseToP(mi.img[c.image_id]->pose), bearingOf(k),
+                                        mi.cam[c.image_id]->errRad(err_scale * opt_.max_reproj_error)});
+            }
+            bestX = refineTriangulatedPoint(bestX, observations);
+            if (reprojErrAt(mi, img, f, bestX, bf) >
+                err_scale * opt_.max_reproj_error * mi.pixel_scale[img]) return false;
+        }
+
         std::vector<TrackElement>& track = out.track;
         track.clear();
         track.push_back({img, f});
@@ -5272,8 +5353,11 @@ private:
         if (track.size() < 2) return false;
         // Guard against two features from the same image on one track.
         std::sort(track.begin(), track.end(),
-                  [](const TrackElement& a, const TrackElement& b) {
-                      return a.image_id < b.image_id;
+                  [&](const TrackElement& a, const TrackElement& b) {
+                      if (a.image_id != b.image_id) return a.image_id < b.image_id;
+                      if (!opt_.tracks.refine_points) return false;
+                      return reprojErrAt(mi, a.image_id, a.point2D_idx, bestX) <
+                             reprojErrAt(mi, b.image_id, b.point2D_idx, bestX);
                   });
         track.erase(std::unique(track.begin(), track.end(),
                                 [](const TrackElement& a, const TrackElement& b) {
@@ -5281,6 +5365,13 @@ private:
                                 }),
                     track.end());
         if (track.size() < 2) return false;
+        if (opt_.tracks.refine_points) {
+            double angle = 0;
+            for (const auto& e : track)
+                angle = std::max(angle, triangulationAngle(bestX, cameraCenter(me.pose),
+                                                           cameraCenter(mi.img[e.image_id]->pose)));
+            if (angle < opt_.min_tri_angle_deg * M_PI / 180.0) return false;
+        }
         out.X = bestX;
         out.f = f;
         return true;
@@ -5328,20 +5419,14 @@ private:
 
     void commitNewTrack(const NewTrack& t) {
         rec_.addPoint3D(t.X, t.track);
+        if (MapProf::enabled()) g_map_prof.track_created += t.track.size();
         // Each element joins a point. Completion's direct track edits leave these
         // counts behind -- harmless: nothing ranks before rebuildScores().
         for (const TrackElement& e : t.track) attachObservation(e.image_id, e.point2D_idx);
     }
 
 
-    // ---- global refinement: BA + filtering + image de-registration ----
-    //
-    // COLMAP's IterativeGlobalRefinement in miniature: bundle-adjust, filter,
-    // and repeat while the model keeps changing, then de-register images the
-    // filtering hollowed out. De-registration is the mapper's undo: a
-    // registration that passed its PnP gates but stopped agreeing with the
-    // refined model exits (and may re-register later, better) instead of
-    // staying and bending everything around it (D36).
+    // Completion uses a stricter threshold than filtering to avoid observation churn.
     void globalRefine(bool final_pass, bool fixed_rotation_stage = false) {
         std::unordered_set<uint64_t> welded;
         welded.swap(welded_);
@@ -5352,15 +5437,14 @@ private:
         for (int i = 0; i < rounds; i++) {
             refine_rounds_ = i + 1;
             const bool weld_round = i == 0 && !welded.empty();
-            // Observations shredded by the previous round's filtering (or
-            // never triangulated because the poses were still rough) get a
-            // second chance against the refined geometry -- COLMAP's
-            // Retriangulate + CompleteTracks. Without it refinement can only
-            // ever LOSE observations, and on sparse match graphs the model
-            // starves right after bootstrap (D36).
-            if (i > 0 && opt_.retri_scale > 0 && !final_.no_retri) {
+            const bool complete_first = opt_.tracks.completion == 2 ||
+                                        (opt_.tracks.completion == 1 && final_pass) ||
+                                        (opt_.tracks.completion == 3 && final_pass &&
+                                         rec_.numRegistered() >= (uint32_t)std::max(3, opt_.min_model_size));
+            size_t track_changes = 0;
+            if ((i > 0 || complete_first) && opt_.retri_scale > 0 && !final_.no_retri) {
                 ProfTimer pt(g_map_prof.retri);
-                completeAndRetriangulate();
+                track_changes = completeAndRetriangulate();
             }
             size_t before = countObservations();
             BundleOptions bo;
@@ -5374,24 +5458,8 @@ private:
             bo.refine_principal_point = opt_.refine_principal_point || final_.pp;
             bo.refine_extra_params = opt_.refine_extra_params || final_.extra;
             bo.pp_min_images = opt_.pp_min_images;
-            // Convergence-adaptive iterations (D38): the first round of a
-            // growth refine runs to a loose tolerance -- most refines stop
-            // there because the model barely changed. A round beyond the
-            // first only happens when the previous one moved >ba_refine_change
-            // of the observations (retriangulation just rebuilt structure, or
-            // filtering shredded it), and those rounds run to the solver's
-            // full tolerance: the filters that follow are about to make
-            // kill/keep decisions against this geometry, and judging them
-            // against a half-converged model is what cost a dataset
-            // its tail under D37's fixed cap. Final passes are always tight.
-            //
-            // The scalar follows the *tolerance*, not the pass: fp32 belongs
-            // exactly where the stopping threshold is one it can reach. A round
-            // past the first runs to the solver's full tolerance even in a
-            // growth refine, and asking fp32 for that means the LM loop spends
-            // its whole iteration budget on a threshold below its noise floor.
-            // Measured on a 1194-image capture, getting this pairing wrong took
-            // the finishing passes from 48 s to 260 s.
+            // Precision follows tolerance: fp32 cannot reach the tight stopping threshold.
+            // Mismatching them took finishing passes from 48 s to 260 s on 1194 images (D38).
             const bool loose = !tight && i == 0 && opt_.ba_growth_rtol > 0;
             if (loose) {
                 bo.rtol = opt_.ba_growth_rtol;
@@ -5429,14 +5497,8 @@ private:
             double cost = runGlobalBA(rec_, bo);
             if (rigs_ && !final_.no_rig) snapRigFrames();
             ProfTimer pt(g_map_prof.filter);
-            // Runs after every mapping BA, and it is load-bearing: without it
-            // a capture whose distortion terms drift lands in a self-consistent
-            // pancake it cannot climb out of. Measured on an 811-image object
-            // capture, disabling it took AUC@10 from 84.3 to 0.0 and the focal
-            // to 25219 from a 2813 default. It was once disabled as breaking
-            // internet image collections; on the only such collection here
-            // (1363 images, one camera each) it is the other way round --
-            // AUC@10 83.2 with, 68.7 without.
+            // Unbounded distortion can flatten a model while keeping residuals low.
+            // Disabling sanitization took AUC@10 from 84.3 to 0.0 on an 811-image capture.
             if (!final_.no_sanitize) sanitizeCameras();
             int removedObs = 0, removedPts = 0;
             filterPoints(removedObs, removedPts, weld_round ? &welded : nullptr);
@@ -5447,7 +5509,14 @@ private:
                          {cost_s, (long long)removedObs, (long long)removedPts,
                           (long long)rec_.points3D.size()});
             }
-            const bool converged = !before || (double)removedObs / (double)before <=
+            if (MapProf::enabled()) {
+                g_map_prof.track_removed += removedObs;
+                slog::diag(slog::Tag::Map,
+                           "[tracks] refine final %d round %d observations %zu changed %zu removed %d",
+                           final_pass, i + 1, before, track_changes, removedObs);
+            }
+            const size_t changed = removedObs + (complete_first ? track_changes : 0);
+            const bool converged = !before || (double)changed / (double)before <=
                                                    opt_.ba_refine_change;
             if (converged && refine_rounds_ >= std::max(1, final_.min_rounds)) break;
         }
@@ -5463,32 +5532,14 @@ private:
         if (rigs_ && !final_.no_rig) completeRigFrames();
     }
 
-    // Fuse two 3D points that a correspondence says are the same feature
-    // (COLMAP's IncrementalTriangulator::MergeTracks). Track *creation* only
-    // ever gathers features that are still free, so a point triangulated from
-    // images A,B and one triangulated from C,D stay separate for good once the
-    // pose that connects them arrives -- every later pass sees both features
-    // already assigned and leaves them alone. Fusing them is what turns a
-    // revisit into a loop closure: one long track constrains the two ends of
-    // the loop against each other, two short ones constrain nothing.
-    //
-    // A merge is accepted only if *every* element of the union reprojects
-    // within `err` of the track-length-weighted average position -- the same
-    // all-inliers rule COLMAP uses -- if the union keeps at most one
-    // observation per image, the invariant the rest of the mapper relies on,
-    // and if it still subtends the minimum triangulation angle (D54).
+    // A correspondence permits fusion only when the entire union still fits.
     size_t mergeTracks(const ModelIndex& mi, double err_scale) {
         const double err = err_scale * opt_.max_reproj_error;
         size_t merged = 0;
         std::vector<uint64_t> ids;
         ids.reserve(rec_.points3D.size());
         for (const auto& kv : rec_.points3D) ids.push_back(kv.first);
-        // Pairs already judged, so a pair reached from both of its ends costs
-        // one test rather than two. Keyed by the two ids packed into one word:
-        // this set takes a lookup per (observation, correspondence) over the
-        // whole model, which is millions per pass, and a tree node each was
-        // most of the cost. Point ids are handed out one per triangulation, so
-        // the 32-bit halves are not a practical limit.
+        // Point IDs occupy 32-bit halves; duplicate graph paths must not repeat a merge test.
         std::unordered_set<uint64_t> tried;
         tried.reserve(4 * rec_.points3D.size());
         std::vector<uint8_t> on_track(db_.images.size(), 0);
@@ -5509,10 +5560,7 @@ private:
         return merged;
     }
 
-    // One merge attempt over every correspondence of `pid`'s track; returns the
-    // number of observations absorbed (0 if nothing merged).
-    // Observations a merged track may reach; see the note in mergeOne.
-    static constexpr size_t kMergeMaxTrack = 20;
+    static constexpr size_t kSeamMergeMaxTrack = 20;
 
     size_t mergeOne(const ModelIndex& mi, uint64_t pid, double err,
                     std::unordered_set<uint64_t>& tried, std::vector<uint8_t>& on_track,
@@ -5531,25 +5579,34 @@ private:
                 if (qit == rec_.points3D.end()) continue;
                 Point3D& q = qit->second;
 
-                // The reduced camera system the solver builds has an entry per
-                // image *pair* on a track, so a track of length t costs
-                // t(t+1)/2 -- fusing two length-10 tracks into one costs three
-                // times what the two cost apart, for a twentieth observation
-                // that constrains a point nineteen views already pin down. On a
-                // 1194-image fisheye capture, unbounded fusion took the mean
-                // track from 3.5 to 7.2 observations and the bundle adjustment
-                // from 0.03 to 0.36 seconds per iteration.
-                if (pt.track.size() + q.track.size() > kMergeMaxTrack) continue;
+                // Dense Schur work grows quadratically with track length; PCG does not form it.
+                if (!opt_.tracks.allowsMerge(pt.track.size(), q.track.size())) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_cap;
+                    continue;
+                }
                 // One observation per image, or the union is not a track.
                 bool clash = false;
                 for (const TrackElement& a : pt.track) on_track[a.image_id] = 1;
                 for (const TrackElement& b : q.track)
                     if (on_track[b.image_id]) { clash = true; break; }
                 for (const TrackElement& a : pt.track) on_track[a.image_id] = 0;
-                if (clash) continue;
+                if (clash) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_clash;
+                    continue;
+                }
 
                 const double wa = (double)pt.track.size(), wb = (double)q.track.size();
-                const Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+                Vec3 x = (pt.xyz * wa + q.xyz * wb) * (1.0 / (wa + wb));
+                if (opt_.tracks.refine_fusion) {
+                    std::vector<PointObservation> observations;
+                    observations.reserve(pt.track.size() + q.track.size());
+                    for (const auto* track : {&pt.track, &q.track})
+                        for (const auto& el : *track)
+                            observations.push_back({poseToP(mi.img[el.image_id]->pose),
+                                mi.cam[el.image_id]->bearing(kp(el.image_id, el.point2D_idx)),
+                                mi.cam[el.image_id]->errRad(err)});
+                    x = refineTriangulatedPoint(x, observations);
+                }
                 bool ok = true;
                 for (const std::vector<TrackElement>* tr : {&pt.track, &q.track}) {
                     for (const TrackElement& el : *tr)
@@ -5557,15 +5614,15 @@ private:
                             err * mi.pixel_scale[el.image_id]) { ok = false; break; }
                     if (!ok) break;
                 }
-                if (!ok) continue;
-                // The union must still be a triangulation. Without this a merge
-                // can produce a point whose views all sit on one line -- every
-                // observation reprojects, so the test above passes -- and the
-                // very next filterPoints kills it for lost parallax. The two
-                // halves are then retriangulated and merged again on the next
-                // round: churn that costs a bundle adjustment each time and
-                // ends where it started.
-                if (!wellTriangulated(pt.track, q.track, x, centers)) continue;
+                if (!ok) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_error;
+                    continue;
+                }
+                // A union with no parallax would be filtered and rebuilt on the next round.
+                if (!wellTriangulated(pt.track, q.track, x, centers)) {
+                    if (MapProf::enabled()) ++g_map_prof.fusion_angle;
+                    continue;
+                }
 
                 const size_t absorbed = q.track.size();
                 pt.xyz = x;
@@ -5604,17 +5661,10 @@ private:
         return false;
     }
 
-    // Extend existing tracks to unassigned features that reproject well
-    // (transitively: added elements are sources for further completion), then
-    // re-run triangulation for every registered image so features whose
-    // earlier points were filtered can rebuild them from the refined poses, and
-    // finally fuse the tracks that turn out to be the same point.
-    //
-    // Everything re-added must clear a *stricter* bar (0.75x) than the filter
-    // kills at: without the hysteresis, junk in the borderline band churns --
-    // filtered at >4 px, immediately re-created at <=4 px -- and every BA
-    // round drags the poses toward it again (D36).
-    void completeAndRetriangulate() {
+    // Hysteresis keeps borderline observations from being removed and recreated each round.
+    size_t completeAndRetriangulate() {
+        const size_t before = countObservations();
+        size_t completed = 0, merged = 0;
         const double err = opt_.retri_scale * opt_.max_reproj_error;  // x pixel_scale below
         ModelIndex mi = indexModel();
         std::vector<std::pair<uint64_t, Point3D*>> pts;
@@ -5643,6 +5693,7 @@ private:
             for (const TrackElement& e : clash ? redo : added[i]) {
                 pt.track.push_back(e);
                 mi.img[e.image_id]->point3D_ids[e.point2D_idx] = pts[i].first;
+                ++completed;
             }
         }
 
@@ -5664,8 +5715,11 @@ private:
             commitCollected(mi, imgs[i], made[i], opt_.retri_scale);
         if (opt_.merge_tracks) {
             ProfTimer pt(g_map_prof.merge);
-            g_map_prof.n_merged += mergeTracks(mi, opt_.retri_scale);
+            merged = mergeTracks(mi, opt_.retri_scale);
+            g_map_prof.n_merged += merged;
         }
+        if (MapProf::enabled()) g_map_prof.track_completed += completed;
+        return countObservations() - before + merged;
     }
 
     // The observations track completion adds to `pt`: every correspondence of

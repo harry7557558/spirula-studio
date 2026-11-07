@@ -110,17 +110,21 @@ a few dozen images the scalar makes no difference at all because those solves
 are bounded by dispatch count instead (`sfm_cholesky_test --bench` measures
 both).
 
-It is fp64 anyway (D61). The Schur and Jacobian kernels accumulate with
-floating-point atomics, whose execution order is arbitrary, so no two solves
-agree in their last bits. At fp64 that perturbation is ~1e-16 and never crosses
-a decision threshold — the whole pipeline is reproducible run to run. At fp32
-it is ~1e-7 and crosses them constantly, and LM's accept/reject plus the
-mapper's filters turn a last-bit difference into a different reconstruction:
-over three identical runs a 379-image capture scored 96.1 AUC@10 every time in
-fp64, and 96.5 / 92.3 / 91.5 in fp32 — noisier *and* 2.7 points worse on
-average. `--ba-real-coarse float` is there for anyone who wants the speed and
-can live with that; the two scalars keep separate persistent contexts, because
-a context caches the module it was compiled from.
+The default remains fp64 (D61). Floating-point atomic accumulation has an
+unspecified order, and LM acceptance and mapper filtering can amplify small
+numerical differences. The recorded scalar comparison used three identical
+runs per configuration:
+
+| Capture size | AUC@10 with fp64 | AUC@10 with fp32 |
+|---|---|---|
+| 379 images | 96.1 / 96.1 / 96.1 | 96.5 / 92.3 / 91.5 |
+| 896 images | 88.3 / 87.7 / 88.0 | 85.2 / 87.5 / 87.1 |
+
+fp64 reduces this numerical risk; it does not make the full pipeline
+deterministic. The [quality experiments](../../docs/notes/sfm-quality-experiments.md)
+also observe different coverage and calibration across unchanged mapper runs.
+`--ba-real-coarse float` exposes the speed/accuracy tradeoff. The two scalars
+keep separate persistent contexts because a context caches its compiled module.
 
 Where the scalar does change is with the *tolerance*, not with the pass: a
 growth refinement's first round stops at a loose threshold, every round after
@@ -900,9 +904,9 @@ What the run does with it, in the order it happens:
   into its two lenses and spent five minutes merging them back.
 
 `--final-free-rig` (off) runs one last bundle adjustment with the rig set
-aside, for a mount that flexed or lenses that did not fire together. With no
-`--rig` and no `rigs:` nothing above runs and the mapper is byte-for-byte the
-one before rigs existed.
+aside, for a mount that flexed or lenses that did not fire together. Without
+`--rig` or manifest `rigs:`, image poses are optimized without shared rig-frame
+constraints.
 
 Extraction is where a video's lenses become a rig or not. `spirula sam extract
 --sync` (Spirula Studio: "Synchronize lenses") decodes a multi-track file in
@@ -929,8 +933,8 @@ Studio writes one entry per input whose "Sequential" switch is on -- off by
 default for videos and photo folders alike, since content alone came out more
 accurate on captures with nothing repeated in them. `match` and `map` take
 `--sequence` too.
-With no sequence given nothing below runs and the pipeline is byte-for-byte
-the one before sequences existed.
+Without a sequence, mapper association votes have no temporal-neighbor
+preference.
 
 **What it is for.** A repeated structure -- one turn of a spiral staircase
 against the next, the two identical faces of a racing gate, the same corridor
@@ -1007,11 +1011,17 @@ the rival's) to read such a spot from the log.
 
 ### Retriangulation
 
-Every global refinement round after the first starts by completing tracks and
+Global refinement rounds after the first start by completing tracks and
 retriangulating the whole model (`completeAndRetriangulate`, COLMAP's
-CompleteTracks + Retriangulate): each point's correspondences are tested
-against it, and each registered image's free features against their
-registered partners. Both were serial whole-model passes, so on a long video
+CompleteTracks + Retriangulate). Final refinements also run this before their
+first BA round once at least `max(3, min_model_size)` images register, and
+include additions and fusions in the convergence statistic. Growth refinements
+retain the later-round schedule. Explicit no-retriangulation controls and
+protected seam refinements suppress these passes.
+
+Each point's correspondences are tested against it, and each registered
+image's free features against their registered partners. Both were serial
+whole-model passes, so on a long video
 they were the stretch between two bundle adjustments where the GPU idles and
 one core works -- 34 s of a 3000-frame capture's 332 s of mapping, as much as
 the seed search and registration together.
@@ -1197,6 +1207,11 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_ba_cpu_test` | host bundle adjustment against the written-out normal equations, rigs included | no |
 | `sfm_cholesky_test` | dense GPU Cholesky vs a CPU reference | yes |
 | `sfm_geometry_test` | F, H, E, P3P, triangulation, RANSAC, SVD/eigen kernels | no |
+| `sfm_essential_test` | five-point solver, polynomial roots, noisy/outlier estimation, planar and panoramic competition | no |
+| `sfm_calibration_test` | track/graph audits, mapping holdouts, third-view prediction, robust point gradients | no |
+| `sfm_track_policy_test` | association votes, ties, duplicate candidates, completion guard, fusion limits, isolated two-view tracks | no |
+| `sfm_frontend_policy_test` | bounded verified-pair expansion and spatial feature selection | no |
+| `sfm_feature_coordinates_test` | physical SIFT localization, decoded-image color/mask sampling, coordinate scaling | yes |
 | `sfm_merge_test` | Sim(3) algebra, model alignment, track splicing, fold detection | no |
 | `sfm_attitude_test` | the XMP attitude, its angle convention, the gauge's vote and refusals | no |
 | `sfm_mask_test` | mask uv sampling, decode, file discovery | no |
@@ -1208,22 +1223,102 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_prior_test` | pose priors in bundle adjustment: Jacobians against central differences, device against host, a gauge recovered from priors alone (`--no-gpu` keeps to the host) | yes |
 | `sfm_sensor_prior_test` | the fixed-rotation two-view and PnP estimators on scenes with equipment and outliers; the telemetry source's calibration, rotations and factors on the synthetic walk | no |
 
-End to end, the check that matters is a reconstruction on a public dataset
-scored against the reference that ships with it: `tools/sfm/eval_poses.py` reads
+End-to-end comparisons report registration and geometric agreement with an
+existing reference. `tools/sfm/eval_poses.py` reads
 a COLMAP model (binary or text), a Nerfstudio `transforms.json` or a Metashape
 `.xml` (`tools/sfm/metashape_ref.py`) and reports registration rate, an
-alignment-free relative-pose AUC and Sim(3)-aligned absolute errors.
+alignment-free relative-pose AUC and Sim(3)-aligned absolute errors. Reference
+agreement is one signal; the [quality experiments](../../docs/notes/sfm-quality-experiments.md)
+also compare mapping holdouts and splat rendering on fixed image cohorts.
 
 Two things about that metric are worth knowing before reading a number:
 
 - **A pair touching an unregistered image counts as a 180 degree failure**, so
   the AUC is capped by `(registered / total)^2`. On a model whose registered
-  poses are all good, AUC *is* the registration rate; do not read it as
+  poses are all good, AUC largely reflects coverage; do not read it as
   accuracy until coverage is accounted for.
 - **The references mostly held the principal point at the image centre**, so a
   model that refines it (D51) is scored against one that absorbed the offset
   into its rotations. That shows up as a uniform relative-rotation error of
   about `dx / f` radians and it is not necessarily the model being worse.
+
+## Quality experiments
+
+The [SfM quality review](../../docs/notes/sfm-quality-review.md) ranks proposed
+work on track fragmentation, unordered registration, matching and merge
+robustness against quality, generality, risk, runtime and memory. Options
+0, 1, 2, 3, 4, 6, 7 and 8 have measured prototypes. Supporting-image voting
+with tie deferral and guarded final completion are enabled by default; the
+[experiment report](../../docs/notes/sfm-quality-experiments.md#default-decision)
+records the gains, regressions, and resource tradeoffs. The other prototypes
+remain opt-in. Research switches are process environment variables,
+independent of saved GUI presets:
+
+| Variable (`SS_` prefix) | Default | Experiment |
+| --- | --- | --- |
+| `SFM_TRACK_COMPLETION` | `3` | `0`: legacy later-round schedule; `1`: before the first BA round of each final refinement; `2`: before the first round of every global refinement; `3`: as `1`, only after at least `max(3, min_model_size)` images register. Include track changes in convergence on the selected refinements. |
+| `SFM_TRACK_ASSOCIATION` | `2` | `0`: first eligible landmark; `1`: rank by distinct supporting images; `2`: defer tied support. Sequence-neighbor preference remains. |
+| `SFM_TRACK_UNIQUE` | `0` | `1`: deduplicate landmarks before PnP; `2`: keep the PnP pool and choose the best-reprojecting inlier per landmark afterward. Both enforce one observation per image when committing registration. |
+| `SFM_TRACK_MERGE_CAP` | `20` | Maximum union length for ordinary track fusion; `0` removes the cap. Seam welding retains its separate cap. |
+| `SFM_TRACK_REFINE` | `0` | `1`: score several parallax hypotheses and refine the point over multiple views. |
+| `SFM_TRACK_REFINE_FUSION` | `0` | `1`: refine a proposed fused point before the existing union checks. |
+| `SFM_ACUTE_PARALLAX` | `0` | `1`: use the smaller ray-intersection angle for triangulation, seeding, point filtering, and shared-structure merge checks. |
+| `SFM_IGNORE_TWO_VIEW` | `0` | `1`: skip graph-isolated reciprocal feature pairs during seed and new-point creation. A track that can grow into another image remains eligible. |
+| `SFM_PAIR_EXPAND` | `0` | `1`–`32`: additional pairs to match and verify per image, prioritizing component bridges and weakly connected views. |
+| `SFM_ESSENTIAL` | `0` | `1`: five-point verification for pairs marked as having given focals; `2`: all cameras; `3`: bearing-space seven-point control. |
+| `SFM_SEED_ESSENTIAL` | `0` | The same modes for mapper seed estimation. |
+| `SFM_SIFT_GRID` | `0` | `1`–`16`: round-robin selection over an N-by-N grid, after describing up to four times the feature budget. |
+| `SFM_PIXEL_CENTER` | `0` | `1`: convert extractor coordinates to COLMAP pixel corners after decoded-image color/mask sampling. |
+
+These switches accept integer values. Distinct images are not necessarily
+independent viewpoints: bracket exposures and synchronized rig members can
+provide correlated support. Unique mode `2` preserves the existing PnP inlier
+counts, including repeated-landmark support; its guarantee concerns committed
+track observations. Five-point mode `1` follows `focal_given`, which
+includes EXIF and explicit inputs, and excludes focal bootstrapping marked as
+measured. That flag does not establish an exact calibration; EXIF and assumed
+distortion can still be inaccurate.
+
+Extraction signatures include the grid and pixel-coordinate policies;
+matching signatures include pair expansion and essential estimation. `auto`
+invalidates affected caches. An explicit `--reuse-features keep` retains the
+old coordinates and feature selection, so use a fresh workspace for extraction
+comparisons. Mapper-only comparisons should preserve input indexing:
+
+```bash
+SS_SFM_TRACK_ASSOCIATION=0 SS_SFM_TRACK_COMPLETION=3 spirula sfm map \
+  workspace/matches.bin workspace/features -o completion/sparse \
+  --no-compact-unused-features
+```
+
+That command isolates completion from association voting. Set both variables
+to `0` for the legacy policy, or leave both unset for the selected defaults.
+
+`sfm_calibration_test` also supplies audit/evaluation modes:
+
+```bash
+build_vulkan/sfm_calibration_test --audit workspace/sparse/0
+build_vulkan/sfm_calibration_test --graph-audit workspace/matches.bin
+build_vulkan/sfm_calibration_test --split workspace/matches.bin train.bin heldout.bin
+build_vulkan/sfm_calibration_test --evaluate-observable \
+  candidate/sparse/0 heldout.bin workspace/features baseline/sparse/0
+```
+
+The reference model fixes an observable evaluation cohort; it is not assumed
+to be ground truth. See the review's protocol for leakage, missing-view,
+conflicted-track and rendering limitations. `SS_SFM_MAP_PROF` enables the new
+track lifecycle and association counters as well as existing timing output.
+Leave it unset for production-speed comparisons.
+Counters accumulate processing events, including repeated visits to the same
+feature or track. `created` counts observations committed by new tracks after
+seeding, including retriangulation;
+`completed` counts completion-pass attachments, and `removed` counts global
+point-filter removals. They exclude seed creation, PnP attachments, and
+removals from image deregistration; work later rolled back remains counted.
+Fusion refusals record the first failed gate. A cap refusal has not been
+tested for geometric compatibility.
+The [experiment report](../../docs/notes/sfm-quality-experiments.md)
+records ablations and their evaluation limits.
 
 ## Not done yet
 
@@ -1240,7 +1335,7 @@ port. Ordered by what blocks the most.
    images, and its cost sits in the last few full-size ones. Those are the ones
    local BA does not replace. What made the difference at that size was the
    linear solver's dense/CG crossover (`--ba-solver`) and bounding track length
-   (`kMergeMaxTrack`), both of which act on exactly those passes — and, once
+   (`MapperOptions::tracks.merge_max_track`), both of which act on exactly those passes — and, once
    the CG path stopped requiring per-image intrinsics groups, the crossover
    started applying to ordinary captures at all (`ba/README.md`).
 2. **Shared GPU primitives**: radix sort, prefix scan, segmented reduction, a
@@ -1266,9 +1361,10 @@ port. Ordered by what blocks the most.
    `Mapper::mergeTracks` fuses two 3D points a correspondence says are the same
    feature, subject to an all-inliers reprojection test, one observation per
    image, the union still subtending the minimum triangulation angle, and a cap
-   on the merged track's length — the reduced camera system has an entry per
-   image *pair* on a track, so unbounded fusion buys a twentieth observation of
-   an already-pinned point and pays for it in the solver.
+   of 20 on the combined length. Creation and completion can produce longer
+   tracks. Dense Schur assembly pays for image pairs on a track; implicit-Schur
+   PCG avoids forming those pairs. Whether a different fusion policy improves
+   cross-region constraints at acceptable cost needs measuring on both paths.
 7. **Misregistration on large unordered sets** — images placed in the wrong part
    of the scene. Diagnosed, then parked in favour of throughput work; the
    visibility ranking of item 5 helped and did not close it.
@@ -1333,5 +1429,7 @@ port. Ordered by what blocks the most.
 
 **Deliberately out of scope**, so they are not silently skipped: GPS /
 geo-registration beyond the metric gauge, MVS / dense reconstruction,
-incremental database updates, and relating two models that share neither an
-image nor a rig frame.
+and incremental database updates. Models without shared images or rig frames
+can already align through verified shared structure (`Mapper::alignByStructure`).
+Models with no usable overlap or other alignment evidence cannot be joined
+automatically on visual evidence alone.

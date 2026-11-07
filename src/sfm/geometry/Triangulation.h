@@ -8,6 +8,7 @@
 #include <cmath>
 #include <vector>
 
+#include "sfm/core/Experiment.h"
 #include "sfm/geometry/LinAlg.h"
 
 namespace sfm {
@@ -62,12 +63,89 @@ inline Vec3 triangulateDLT(const Mat34& P1, const Mat34& P2, const Vec3& b1, con
     return {h[0] / h[3], h[1] / h[3], h[2] / h[3]};
 }
 
-// Angle (radians) at X between rays to camera centers c1 and c2.
+struct PointObservation {
+    Mat34 projection;
+    Vec3 bearing;
+    double angular_error;
+};
+
+inline double pointAngularCost(const Vec3& X, const std::vector<PointObservation>& obs,
+                               Mat3* normal = nullptr, Vec3* gradient = nullptr) {
+    if (normal) *normal = {};
+    if (gradient) *gradient = {};
+    double cost = 0;
+    for (const auto& o : obs) {
+        const auto& P = o.projection;
+        const Vec3 p{P[0]*X.x + P[1]*X.y + P[2]*X.z + P[3],
+                     P[4]*X.x + P[5]*X.y + P[6]*X.z + P[7],
+                     P[8]*X.x + P[9]*X.y + P[10]*X.z + P[11]};
+        const double depth = p.norm();
+        if (!(depth > 1e-15) || p.dot(o.bearing) <= 0) {
+            cost += 1e6;
+            continue;
+        }
+        const Vec3 ray = p * (1.0 / depth), residual = ray - o.bearing;
+        const double scale = std::max(1e-12, o.angular_error);
+        const double r = residual.norm() / scale;
+        cost += r <= 1 ? 0.5 * r * r : r - 0.5;
+        if (!normal || !gradient) continue;
+        const double weight = (r > 1 ? 1.0 / r : 1.0) / (scale * scale);
+        double J[9];
+        const double u[] = {ray.x, ray.y, ray.z};
+        const double e[] = {residual.x, residual.y, residual.z};
+        for (int col = 0; col < 3; ++col) {
+            double dot = 0;
+            for (int row = 0; row < 3; ++row) dot += u[row] * P[4 * row + col];
+            for (int row = 0; row < 3; ++row)
+                J[3 * row + col] = (P[4 * row + col] - u[row] * dot) / depth;
+        }
+        double g[3] = {};
+        for (int i = 0; i < 3; ++i) {
+            for (int row = 0; row < 3; ++row) g[i] += weight * J[3 * row + i] * e[row];
+            for (int j = 0; j < 3; ++j)
+                for (int row = 0; row < 3; ++row)
+                    (*normal)[3 * i + j] += weight * J[3 * row + i] * J[3 * row + j];
+        }
+        *gradient = *gradient + Vec3{g[0], g[1], g[2]};
+    }
+    return cost;
+}
+
+// Unit-ray residuals keep refinement valid for fisheye observations behind the image plane.
+inline Vec3 refineTriangulatedPoint(Vec3 X, const std::vector<PointObservation>& obs,
+                                   int iterations = 10) {
+    if (obs.size() < 2) return X;
+    double damping = 1e-4;
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        Mat3 normal;
+        Vec3 gradient;
+        const double cost = pointAngularCost(X, obs, &normal, &gradient);
+        for (int i = 0; i < 3; ++i)
+            normal[4 * i] += damping * std::max(1e-12, normal[4 * i]);
+        bool invertible;
+        const Mat3 inverse = inverse3(normal, &invertible);
+        if (!invertible) break;
+        const Vec3 step = mul(inverse, gradient);
+        const Vec3 candidate = X - step;
+        const double next = pointAngularCost(candidate, obs);
+        if (std::isfinite(next) && next < cost) {
+            X = candidate;
+            damping = std::max(1e-10, damping * 0.25);
+            if (cost - next <= 1e-10 * std::max(1.0, cost)) break;
+        } else {
+            damping *= 10;
+        }
+    }
+    return X;
+}
+
+// Opposed rays also leave depth unobservable; the acute policy folds them onto zero.
 inline double triangulationAngle(const Vec3& X, const Vec3& c1, const Vec3& c2) {
+    static const bool acute = experimentInt("SFM_ACUTE_PARALLAX", 0, 1) != 0;
     Vec3 r1 = (X - c1).normalized();
     Vec3 r2 = (X - c2).normalized();
     double c = std::max(-1.0, std::min(1.0, r1.dot(r2)));
-    return std::acos(c);
+    return std::acos(acute ? std::fabs(c) : c);
 }
 
 }  // namespace sfm
