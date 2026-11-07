@@ -11018,7 +11018,9 @@ void GuiApp::draw_train_settings() {
         TrainConfig parse_before = _cfg;
         ImGui::BeginDisabled(busy);
         ui::SeparatorText(msg::section_preset);
-        draw_preset_picker();
+        // A preset reloads the dataset itself; against the old snapshot the
+        // preset's own values would look like an edit and load it again.
+        if (draw_preset_picker()) parse_before = _cfg;
 
         ui::SeparatorText(msg::section_basic_options);
         draw_basic_options();
@@ -11172,12 +11174,13 @@ void GuiApp::draw_mesh_preset_picker() {
 // The built-in NAME is the command line's word for it and is not translated:
 // the picker shows the label from i18n/catalog/Train.h with the name beside
 // it, so a user who read the README still recognises the row they want.
-void GuiApp::draw_preset_picker() {
+bool GuiApp::draw_preset_picker() {
     static_assert(sizeof(kTrainPresets) / sizeof(kTrainPresets[0]) ==
                       i18n::msg::train::kNumPresetText,
                   "config/TrainConfig.h and i18n/catalog/Train.h disagree "
                   "about how many presets there are");
 
+    bool applied = false;
     const std::string preview =
         _train_presets.file.empty() ? preset_label(_preset) : _train_presets.display;
     ImGui::SetNextItemWidth(px(-8.0f));
@@ -11191,8 +11194,10 @@ void GuiApp::draw_preset_picker() {
         ui::SeparatorText(msg::preset_builtin_group);
         for (const auto& p : kTrainPresets) {
             bool sel = _train_presets.file.empty() && _preset == p.name;
-            if (ui::SelectableRaw(preset_label(p.name), sel))
+            if (ui::SelectableRaw(preset_label(p.name), sel)) {
                 apply_preset(p.name);
+                applied = true;
+            }
             preset_hover(preset_help(p.name), {});
             if (sel) ImGui::SetItemDefaultFocus();
         }
@@ -11201,7 +11206,10 @@ void GuiApp::draw_preset_picker() {
         for (const auto& p : _train_presets.items) {
             ImGui::PushID(p.path.c_str());
             bool sel = _train_presets.file == p.path;
-            if (ui::SelectableRaw(p.name, sel)) apply_user_preset(p);
+            if (ui::SelectableRaw(p.name, sel)) {
+                apply_user_preset(p);
+                applied = true;
+            }
             preset_hover(p);
             if (sel) ImGui::SetItemDefaultFocus();
             ImGui::PopID();
@@ -11234,6 +11242,7 @@ void GuiApp::draw_preset_picker() {
         ui::TextColoredWrappedRaw(_train_presets.msg_err ? kErr : kOk, _train_presets.msg);
     else
         ui::TextColoredWrapped(kDim, msg::preset_drop_hint);
+    return applied;
 }
 
 // Deleting removes a file, so it asks first -- and names both the preset and

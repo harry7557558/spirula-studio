@@ -625,7 +625,25 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     ds.widths.reserve(N);
     ds.heights.reserve(N);
 
-    std::vector<std::string> mask_files(N), depth_files(N), normal_files(N);
+    // The per-image file lookups first, in parallel. A frame naming its own
+    // auxiliary file gets "" here, which find_aux_files skips.
+    std::vector<std::string> paths_n(N), mask_rel(N), depth_rel(N), normal_rel(N);
+    for (int64_t j = 0; j < N; j++) {
+        const Frame& F = frames[subset[j]];
+        paths_n[j] = F.abs;
+        std::string rel = dsparse::relative_under(F.abs, (root / cfg.image_dir).string());
+        if (rel.empty()) rel = dsparse::relative_under(F.abs, root.string());
+        if (!F.j->find("mask_path")) mask_rel[j] = rel;
+        if (!F.j->find("depth_file_path")) depth_rel[j] = rel;
+        if (!F.j->find("normal_file_path")) normal_rel[j] = rel;
+    }
+    const std::vector<dsparse::ImageSize> sizes = dsparse::probe_image_sizes(cfg, paths_n);
+    std::vector<std::string> mask_files =
+        dsparse::find_aux_files((root / cfg.mask_dir).string(), mask_rel, "mask");
+    std::vector<std::string> depth_files =
+        dsparse::find_aux_files((root / cfg.depth_dir).string(), depth_rel, "depth");
+    std::vector<std::string> normal_files =
+        dsparse::find_aux_files((root / cfg.normal_dir).string(), normal_rel, "normal");
     bool any_mask = false, any_depth = false, any_normal = false;
     const int EQUIRECT_V = (int)camera_model_from_name("EQUIRECTANGULAR");
     const int PINHOLE_V  = (int)camera_model_from_name("PINHOLE");
@@ -747,7 +765,7 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
             ds.exif_quarter_turns[j] = (uint8_t)turns;
         }
         dsparse::fit_camera_resolution(
-            cfg, F.abs, W, H, fx, fy, cx, cy,
+            cfg, F.abs, sizes[j], W, H, fx, fy, cx, cy,
             ds.redistort.empty() ? nullptr : &ds.redistort[j], turns);
 
         // Equirectangular: canonical panorama intrinsics.
@@ -767,27 +785,14 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         ds.intrins[j*4 + 3] = (float)cy;
         for (int k = 0; k < 12; k++) ds.c2w[j*12 + k] = (float)c2w_world[subset[j]*12 + k];
 
-        // Auxiliary buffers: explicit frame paths win; directory-convention
-        // probing as fallback (_add_auxiliary_buffers). Unlike the Python
-        // parser (which requires all-or-none), per-image absence is allowed
-        // -- the C++ DataManager's convention ("" = none for this image).
-        std::string rel = dsparse::relative_under(F.abs, (root / cfg.image_dir).string());
-        if (rel.empty()) rel = dsparse::relative_under(F.abs, root.string());
+        // Explicit frame paths win over the convention found above. Unlike the
+        // Python parser's all-or-none, per-image absence is allowed ("" = none).
         if (const JsonValue* v = fr.find("mask_path"))
             mask_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            mask_files[j] = dsparse::find_aux_file(
-                (root / cfg.mask_dir).string(), rel, "mask");
         if (const JsonValue* v = fr.find("depth_file_path"))
             depth_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            depth_files[j] = dsparse::find_aux_file(
-                (root / cfg.depth_dir).string(), rel, "depth");
         if (const JsonValue* v = fr.find("normal_file_path"))
             normal_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            normal_files[j] = dsparse::find_aux_file(
-                (root / cfg.normal_dir).string(), rel, "normal");
         any_mask   |= !mask_files[j].empty();
         any_depth  |= !depth_files[j].empty();
         any_normal |= !normal_files[j].empty();

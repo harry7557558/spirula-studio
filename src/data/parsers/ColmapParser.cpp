@@ -34,37 +34,67 @@ constexpr double kPi = 3.14159265358979323846;   // MSVC has no M_PI by default
 
 namespace {
 
+// Its own buffer: a seek through stdio drops stdio's, and points3D.bin is a
+// few small fields and a skip per point. Keep `buffer` small where the skips
+// are long, or the reader reads what it skips.
 struct BinReader {
     FILE* f = nullptr;
     std::string path;
+    std::vector<uint8_t> buf;
+    size_t pos = 0, end = 0;
 
-    explicit BinReader(const std::string& p) : path(p) {
+    explicit BinReader(const std::string& p, size_t buffer = 1 << 20)
+        : path(p), buf(buffer) {
         f = std::fopen(p.c_str(), "rb");
         if (!f) throw std::runtime_error("ColmapParser: cannot open " + p);
     }
     ~BinReader() { if (f) std::fclose(f); }
 
+    [[noreturn]] void truncated() const {
+        throw std::runtime_error("ColmapParser: truncated file " + path);
+    }
+    // At least `n` (<= buf.size()) bytes buffered from `pos` on.
+    void need(size_t n) {
+        if (end - pos >= n) return;
+        std::memmove(buf.data(), buf.data() + pos, end - pos);
+        end -= pos;
+        pos = 0;
+        end += std::fread(buf.data() + end, 1, buf.size() - end, f);
+        if (end < n) truncated();
+    }
+
     template <typename T>
     T read() {
         // COLMAP files are little-endian; so is every platform we target.
+        need(sizeof(T));
         T v;
-        if (std::fread(&v, sizeof(T), 1, f) != 1)
-            throw std::runtime_error("ColmapParser: truncated file " + path);
+        std::memcpy(&v, buf.data() + pos, sizeof(T));
+        pos += sizeof(T);
         return v;
     }
-    void skip(size_t bytes) {
-        if (std::fseek(f, (long)bytes, SEEK_CUR) != 0)
-            throw std::runtime_error("ColmapParser: truncated file " + path);
+    void skip(uint64_t bytes) {
+        if (bytes <= end - pos) { pos += (size_t)bytes; return; }
+        const uint64_t ahead = bytes - (end - pos);
+        pos = end = 0;
+#ifdef _WIN32
+        const bool ok = _fseeki64(f, (long long)ahead, SEEK_CUR) == 0;
+#else
+        const bool ok = fseeko(f, (off_t)ahead, SEEK_CUR) == 0;
+#endif
+        if (!ok) truncated();
+        // A seek past the end succeeds; the next read is what fails.
     }
     std::string read_cstring() {
         std::string s;
         for (;;) {
-            int c = std::fgetc(f);
-            if (c == EOF) throw std::runtime_error("ColmapParser: truncated file " + path);
-            if (c == '\0') break;
-            s.push_back((char)c);
+            need(1);
+            const uint8_t* b = buf.data() + pos;
+            const void* z = std::memchr(b, 0, end - pos);
+            const size_t n = z ? (size_t)((const uint8_t*)z - b) : end - pos;
+            s.append((const char*)b, n);
+            pos += n;
+            if (z) { pos++; return s; }
         }
-        return s;
     }
 };
 
@@ -137,7 +167,7 @@ std::map<int32_t, ColmapCamera> read_cameras_binary(const std::string& recon_dir
 }
 
 std::map<int32_t, ColmapImage> read_images_binary(const std::string& recon_dir) {
-    BinReader r(recon_dir + "/images.bin");
+    BinReader r(recon_dir + "/images.bin", 4096);   // skips 2D points
     std::map<int32_t, ColmapImage> images;
     uint64_t n = r.read<uint64_t>();
     for (uint64_t i = 0; i < n; i++) {
@@ -757,20 +787,35 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     struct Frame { const ColmapImage* im; std::string path, sort_key, aux_name; };
     std::vector<Frame> frames;
     frames.reserve(images.size());
-    std::vector<std::string> missing;
-    for (const auto& [id, im] : images) {
+    std::vector<const ColmapImage*> listed;
+    listed.reserve(images.size());
+    for (const auto& [id, im] : images) listed.push_back(&im);
+    std::vector<fs::path> paths(listed.size());
+    std::vector<char> found(listed.size(), 0);
+    const int64_t n_listed = (int64_t)listed.size();
+#pragma omp parallel for schedule(dynamic, 64)
+    for (int64_t k = 0; k < n_listed; k++) {
         std::error_code ec;
-        fs::path path = (fs::path(image_dir) / im.name).lexically_normal();
-        const fs::path in_dataset = (fs::path(dataset_dir) / im.name).lexically_normal();
-        if (!fs::exists(path, ec) && fs::exists(in_dataset, ec)) path = in_dataset;
-        if (cfg.require_image_files && !fs::exists(path, ec)) {
+        paths[k] = (fs::path(image_dir) / listed[k]->name).lexically_normal();
+        found[k] = fs::exists(paths[k], ec);
+        if (found[k]) continue;
+        const fs::path in_dataset = (fs::path(dataset_dir) / listed[k]->name).lexically_normal();
+        if (fs::exists(in_dataset, ec)) {
+            paths[k] = in_dataset;
+            found[k] = 1;
+        }
+    }
+    std::vector<std::string> missing;
+    for (int64_t k = 0; k < n_listed; k++) {
+        const fs::path& path = paths[k];
+        if (cfg.require_image_files && !found[k]) {
             missing.push_back(path.string());
             continue;
         }
         std::string aux_name = dsparse::relative_under(path.string(), image_dir);
         if (aux_name.empty())
             aux_name = dsparse::relative_under(path.string(), dataset_dir);
-        frames.push_back({&im, path.string(), path.generic_string(), std::move(aux_name)});
+        frames.push_back({listed[k], path.string(), path.generic_string(), std::move(aux_name)});
     }
     // Exporters list images they did not write (RealityScan leaves the ones
     // it failed to align, with NaN observations), so skip those. None found
@@ -889,13 +934,29 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     print_fit_reports(fit_reports);
     if (any_redistort) ds.redistort.resize(N);
 
-    std::vector<std::string> mask_files(N), depth_files(N), normal_files(N);
-    bool any_mask = false, any_depth = false, any_normal = false;
+    // The per-image file lookups first, in parallel; the loop below is serial
+    // for its warnings' order.
+    std::vector<std::string> paths_n(N), names_n(N);
+    for (int64_t j = 0; j < N; j++) {
+        paths_n[j] = frames[subset[j]].path;
+        names_n[j] = frames[subset[j]].aux_name;
+    }
+    const std::vector<dsparse::ImageSize> sizes = dsparse::probe_image_sizes(cfg, paths_n);
+    auto aux = [&](const std::string& dir, const char* tag) {
+        return dsparse::find_aux_files((fs::path(dataset_dir) / dir).string(), names_n, tag);
+    };
+    std::vector<std::string> mask_files = aux(cfg.mask_dir, "mask");
+    std::vector<std::string> depth_files = aux(cfg.depth_dir, "depth");
+    std::vector<std::string> normal_files = aux(cfg.normal_dir, "normal");
+    auto any_of = [](const std::vector<std::string>& v) {
+        return std::any_of(v.begin(), v.end(), [](const std::string& f) { return !f.empty(); });
+    };
+    const bool any_mask = any_of(mask_files), any_depth = any_of(depth_files),
+               any_normal = any_of(normal_files);
 
     for (int64_t j = 0; j < N; j++) {
         const int64_t i = subset[j];
         const ColmapImage& im = *frames[i].im;
-        const std::string& name = frames[i].aux_name;
         auto cam_it = cameras.find(im.camera_id);
         if (cam_it == cameras.end())
             throw std::runtime_error("ColmapParser: image " + im.name +
@@ -912,7 +973,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
         BakedIntrins bi = baked.at(im.camera_id);
         double W = (double)cam.width, H = (double)cam.height;
         double fx = bi.fx, fy = bi.fy, cx = bi.cx, cy = bi.cy;
-        dsparse::fit_camera_resolution(cfg, ds.image_filenames.back(),
+        dsparse::fit_camera_resolution(cfg, ds.image_filenames.back(), sizes[j],
                                        W, H, fx, fy, cx, cy, &bi.source, turns);
         ds.widths.push_back((int32_t)W);
         ds.heights.push_back((int32_t)H);
@@ -928,17 +989,6 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
         if (any_redistort) ds.redistort[j] = bi.source;
 
         for (int k = 0; k < 12; k++) ds.c2w[j*12 + k] = (float)c2w_all[i*12 + k];
-
-        // Auxiliary supervision buffers, discovered by filename convention.
-        mask_files[j]   = dsparse::find_aux_file(
-            (fs::path(dataset_dir) / cfg.mask_dir).string(),   name, "mask");
-        depth_files[j]  = dsparse::find_aux_file(
-            (fs::path(dataset_dir) / cfg.depth_dir).string(),  name, "depth");
-        normal_files[j] = dsparse::find_aux_file(
-            (fs::path(dataset_dir) / cfg.normal_dir).string(), name, "normal");
-        any_mask   |= !mask_files[j].empty();
-        any_depth  |= !depth_files[j].empty();
-        any_normal |= !normal_files[j].empty();
     }
     if (any_mask)   ds.mask_filenames   = std::move(mask_files);
     if (any_depth)  ds.depth_filenames  = std::move(depth_files);

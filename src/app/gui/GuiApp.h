@@ -627,7 +627,7 @@ private:
     // one choice reaches the dataset, mask/geometry previews, reconstruction,
     // geometry child and mesh child. Called from the freeze point.
     void propagate_frozen_device();
-    void draw_preset_picker();       // built-in + saved presets, save / load
+    bool draw_preset_picker();       // built-in + saved presets; true once one applies
     void draw_preset_save_modal();
     void draw_preset_delete_modal();
     void draw_basic_options();
