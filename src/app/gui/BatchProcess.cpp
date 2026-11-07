@@ -11,6 +11,7 @@
 #include "checkpoint/SplatPly.h"
 #include "data/Json.h"
 #include "data/JsonWrite.h"
+#include "data/RoiDocument.h"
 #include "i18n/catalog/Gui.h"
 #include "i18n/catalog/Log.h"
 
@@ -173,14 +174,14 @@ bool same_run(const BatchRun& a, const BatchRun& b) {
     if (a.preset.path != b.preset.path) return false;
     if (a.preset.path.empty() && a.preset.name != b.preset.name) return false;
     return a.cap_max == b.cap_max && a.sh_degree == b.sh_degree &&
-           a.iterations == b.iterations && a.floater_suppression == b.floater_suppression;
+           a.iterations == b.iterations && a.floater_suppression == b.floater_suppression &&
+           a.roi_region == b.roi_region;
 }
 
 bool same_train_work(const BatchRow& a, const BatchRow& b) {
     if (a.dataset != b.dataset || a.dataset.empty()) return false;
     if (a.does(BatchStage::Merge) != b.does(BatchStage::Merge)) return false;
     if (a.partition != b.partition || a.partition_part != b.partition_part) return false;
-    if (a.roi_region != b.roi_region) return false;
     if (a.runs.size() != b.runs.size()) return false;
     for (size_t i = 0; i < a.runs.size(); i++)
         if (!same_run(a.runs[i], b.runs[i])) return false;
@@ -524,6 +525,17 @@ void check_train_stage(const BatchRow& row, const BatchCapabilities& caps,
             issue.fatal = true;
             out.push_back(std::move(issue));
         }
+        if (!made_here && !run.roi_region.empty() && fs::is_directory(row.dataset, ec)) {
+            const spirula::RoiChoice roi = spirula::resolve_roi_setting(run.roi_region, row.dataset);
+            if (!roi.path.empty() && !fs::is_regular_file(roi.path, ec)) {
+                BatchIssue issue;
+                issue.raw = spirula::i18n::format(spirula::i18n::msg::log::roi_file_missing,
+                                                  {roi.path});
+                issue.stage = kSt;
+                issue.fatal = true;
+                out.push_back(std::move(issue));
+            }
+        }
 
         const BatchPreset& p = run.preset;
         TrainConfig cfg;
@@ -781,9 +793,7 @@ bool batch_build_train_config(const BatchRow& row, int variant,
         cfg.partition = row.partition;
         cfg.partition_part = row.partition_part;
     }
-    if (!row.roi_region.empty()) {
-        cfg.roi_region = row.roi_region;
-    }
+    if (!run.roi_region.empty()) cfg.roi_region = run.roi_region;
     cfg.output_dir_prefix = row.output_dir.empty()
                                 ? (fs::path(dataset) / "outputs").string()
                                 : row.output_dir;
@@ -870,6 +880,7 @@ void read_overrides(const JsonValue& j, BatchRun& run) {
         run.iterations = v->as_string();
     if (const JsonValue* v = j.find("floater_suppression"))
         run.floater_suppression = v->as_string();
+    if (const JsonValue* v = j.find("roi_region")) run.roi_region = v->as_string();
 }
 
 BatchRow read_row(const JsonValue& j) {
@@ -883,7 +894,6 @@ BatchRow read_row(const JsonValue& j) {
     if (const JsonValue* v = j.find("mask_flipped")) r.mask_flipped = v->as_bool(false);
     if (const JsonValue* v = j.find("model")) r.model = v->as_string();
     if (const JsonValue* v = j.find("output_dir")) r.output_dir = v->as_string();
-    if (const JsonValue* v = j.find("roi_region")) r.roi_region = v->as_string();
     if (const JsonValue* v = j.find("partition")) r.partition = v->as_string();
     if (const JsonValue* v = j.find("partition_part")) r.partition_part = (int)v->as_int(-1);
     r.dataset_preset = read_preset(j.find("dataset_preset"));
@@ -982,7 +992,6 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
         }
         w.field("model", r.model);
         w.field("output_dir", r.output_dir);
-        if (!r.roi_region.empty()) w.field("roi_region", r.roi_region);
         if (!r.partition.empty()) {
             w.field("partition", r.partition);
             w.field("partition_part", r.partition_part);
@@ -1002,6 +1011,7 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
             w.field("sh_degree", run.sh_degree);
             w.field("num_iterations", run.iterations);
             w.field("floater_suppression", run.floater_suppression);
+            w.field("roi_region", run.roi_region);
             w.field("mesh", run.mesh);
             w.end();
         }

@@ -1480,11 +1480,12 @@ void GuiApp::run_pending_if_stopped() {
 // Append a row for `dataset`, seeded with whatever preset the trainer screen
 // is on -- a queue is usually built right after tuning the settings it should
 // run with. Shared by the picker, the recents menu and drag-and-drop.
-BatchRun GuiApp::batch_run_on_screen() const {
+BatchRun GuiApp::batch_run_on_screen(const std::string& dataset) const {
     BatchRun run;
     run.preset.path = _train_presets.file;
     run.preset.name =
         _train_presets.file.empty() ? _preset : _train_presets.display;
+    if (!dataset.empty() && dataset == _cfg.data) run.roi_region = _cfg.roi_region;
     return run;
 }
 
@@ -1493,9 +1494,7 @@ void GuiApp::add_batch_row(const std::string& dataset) {
     BatchRow r;
     r.dataset = dataset;
     r.does(BatchStage::Train) = true;
-    if (dataset == _cfg.data && !_cfg.roi_region.empty())
-        r.roi_region = _cfg.roi_region;
-    r.runs.push_back(batch_run_on_screen());
+    r.runs.push_back(batch_run_on_screen(dataset));
     _batch.push_back(std::move(r));
     _batch_open_row = (int)_batch.size() - 1;
     batch_edited();
@@ -7559,8 +7558,6 @@ int GuiApp::add_batch_partition_rows(const DatasetFolders& f, const std::string&
         r.partition = partition;
         r.partition_part = k;
         r.does(BatchStage::Train) = true;
-        if (f.dir == _cfg.data && !_cfg.roi_region.empty())
-            r.roi_region = _cfg.roi_region;
         r.runs.push_back(_pq.run);
         _batch.push_back(std::move(r));
     }
@@ -9690,13 +9687,15 @@ std::string GuiApp::batch_row_summary(const BatchRow& row) const {
     }
     if (row.does(BatchStage::Merge) && !row.partition.empty()) return row.partition;
     if (!row.dataset.empty()) {
+        // The regions the runs name, each once; a run on the default adds none.
         std::string s = row.dataset;
-        if (!row.roi_region.empty()) {
-            if (row.roi_region == "off") {
-                s += " [" + std::string(spirula::i18n::msg::roi::train_none.get()) + "]";
-            } else {
-                s += " [" + fs::path(row.roi_region).stem().string() + "]";
-            }
+        for (const BatchRun& run : row.runs) {
+            if (run.roi_region.empty()) continue;
+            const std::string tag =
+                " [" + (run.roi_region == "off"
+                            ? std::string(spirula::i18n::msg::roi::train_none.get())
+                            : fs::path(run.roi_region).stem().string()) + "]";
+            if (s.find(tag) == std::string::npos) s += tag;
         }
         return s;
     }
@@ -10016,7 +10015,7 @@ void GuiApp::open_partition_queue(const DatasetFolders& f, const std::string& pa
     _pq.folders = f;
     _pq.partition = partition;
     _pq.num_parts = num_parts;
-    _pq.run = batch_run_on_screen();
+    _pq.run = batch_run_on_screen(f.dir);
     _pq.open = true;
 }
 
@@ -10313,10 +10312,18 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
     ui::SeparatorText(msg::batch_stage_train);
     ui::Text(msg::batch_runs);
     const float bw = ImGui::GetFrameHeight() + 6.0f;
+    // One region column for all the runs, so they line up. A region given by
+    // path still shows with none saved, so it can be turned off.
+    const std::string ds = !row.dataset.empty() ? row.dataset : batch_dataset_workspace(row);
+    const std::vector<std::string> roi_files =
+        ds.empty() ? std::vector<std::string>() : spirula::list_roi_files(ds);
+    bool roi_column = !roi_files.empty();
+    for (const BatchRun& run : row.runs) roi_column = roi_column || !run.roi_region.empty();
     int drop = -1;
     for (size_t i = 0; i < row.runs.size(); i++) {
         ImGui::PushID((int)i);
-        if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh)))
+        if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh),
+                           roi_column ? ds : std::string(), roi_files))
             batch_edited();
         ImGui::SameLine();
         if (ui::ButtonRaw("x##rmrun", ImVec2(bw, 0))) drop = (int)i;
@@ -10329,55 +10336,10 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
     }
     if (row.runs.empty()) ui::TextDisabled(msg::batch_runs_default);
     if (ui::Button(msg::batch_add_run)) {
-        row.runs.push_back(batch_run_on_screen());
+        row.runs.push_back(batch_run_on_screen(row.dataset));
         batch_edited();
     }
     ui::help_on_hover(msg::batch_add_run_help);
-
-    const std::string ds = !row.dataset.empty() ? row.dataset : batch_dataset_workspace(row);
-    if (!ds.empty()) {
-        const std::vector<std::string> roi_files = spirula::list_roi_files(ds);
-        const spirula::RoiChoice roi_now = spirula::resolve_roi_setting(row.roi_region, ds);
-        if (!roi_files.empty() || !roi_now.path.empty() || roi_now.off) {
-            namespace roimsg = spirula::i18n::msg::roi;
-            ui::Text(roimsg::train_label);
-            ui::help_on_hover(roimsg::train_help);
-            auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
-            const std::string shown = roi_now.off
-                                          ? std::string(roimsg::train_none.get())
-                                          : (!roi_now.path.empty() ? stem(roi_now.path)
-                                                                   : std::string(roimsg::train_none.get()));
-            const float edit_w = ImGui::CalcTextSize(roimsg::train_edit_region.get()).x +
-                                 2 * ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ItemSpacing.x;
-            ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - edit_w - px(8.0f)));
-            std::string pick;
-            bool picked = false;
-            if (ui::BeginComboRaw("##batchroi", shown.c_str())) {
-                for (size_t k = 0; k < roi_files.size(); k++) {
-                    ImGui::PushID((int)k);
-                    std::error_code ec;
-                    const bool on = !roi_now.off && fs::equivalent(roi_now.path, roi_files[k], ec);
-                    if (ui::SelectableRaw(stem(roi_files[k]), on) && !on) {
-                        pick = "roi/" + fs::path(roi_files[k]).filename().generic_string();
-                        picked = true;
-                    }
-                    ImGui::PopID();
-                }
-                if (ui::Selectable(roimsg::train_none, roi_now.off)) {
-                    pick = "off";
-                    picked = true;
-                }
-                ImGui::EndCombo();
-            }
-            if (picked && pick != row.roi_region) {
-                row.roi_region = pick;
-                batch_edited();
-            }
-            ImGui::SameLine();
-            if (ui::Button(roimsg::train_edit_region))
-                open_roi_editor(ds, !roi_now.off && !roi_now.path.empty() ? roi_now.path : std::string());
-        }
-    }
 
     ui::Text(msg::batch_col_output);
     ImGui::SetNextItemWidth(-bw);
@@ -10393,7 +10355,9 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
 }
 
 
-bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
+bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
+                            const std::string& roi_dataset,
+                            const std::vector<std::string>& roi_files) {
     bool moved = false;
     const float num_w = px(84.0f);
     const float sp = ImGui::GetStyle().ItemSpacing.x;
@@ -10409,9 +10373,19 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         floater_w = std::max(floater_w, ImGui::CalcTextSize(choices[k]->get()).x);
     }
     floater_w += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    // Capped: the list itself opens as wide as its longest entry.
+    float roi_w = 0.0f;
+    if (!roi_dataset.empty()) {
+        roi_w = ImGui::CalcTextSize(spirula::i18n::msg::roi::train_none.get()).x;
+        for (const std::string& f : roi_files)
+            roi_w = std::max(roi_w, ImGui::CalcTextSize(fs::path(f).stem().string().c_str()).x);
+        roi_w = std::min(roi_w + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f,
+                         px(200.0f));
+    }
     const float boxes = 3.0f * (num_w + sp) +
                         (meshing ? ImGui::GetFrameHeight() + sp : 0.0f) +
-                        (inline_floater ? floater_w + sp + bw + sp : 0.0f);
+                        (inline_floater ? floater_w + sp + bw + sp : 0.0f) +
+                        (roi_w > 0.0f ? roi_w + sp : 0.0f);
     ImGui::SetNextItemWidth(std::max(px(120.0f),
                                      ImGui::GetContentRegionAvail().x - boxes));
     moved |= draw_batch_train_preset(run.preset, "##trpreset", row, slot);
@@ -10443,12 +10417,59 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         ImGui::EndCombo();
     }
     ui::help_on_hover(fld::floater_suppression_help);
+    if (roi_w > 0.0f) {
+        ImGui::SameLine(0, sp);
+        moved |= draw_batch_run_roi(run, roi_dataset, roi_files, roi_w);
+    }
     if (meshing) {
         ImGui::SameLine(0, sp);
         if (ui::CheckboxRaw("##runmesh", &run.mesh)) moved = true;
         ui::help_on_hover(msg::batch_run_mesh_help);
     }
     return moved;
+}
+
+
+// The region a run trains in. Editing one is a right-click on its entry in
+// the list, which keeps a button off every run line.
+bool GuiApp::draw_batch_run_roi(BatchRun& run, const std::string& dataset,
+                                const std::vector<std::string>& files, float width) {
+    namespace roimsg = spirula::i18n::msg::roi;
+    const spirula::RoiChoice now = spirula::resolve_roi_setting(run.roi_region, dataset);
+    auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
+    const std::string shown = now.off || now.path.empty() ? std::string(roimsg::train_none.get())
+                                                          : stem(now.path);
+    std::string pick;
+    bool edit = false;
+    std::string edit_file;
+    ImGui::SetNextItemWidth(width);
+    if (ui::BeginComboRaw("##runroi", shown.c_str())) {
+        for (size_t k = 0; k <= files.size(); k++) {
+            const bool none = k == files.size();
+            std::error_code ec;
+            const bool on = none ? now.off : !now.off && fs::equivalent(now.path, files[k], ec);
+            ImGui::PushID((int)k);
+            const bool clicked =
+                none ? ui::Selectable(roimsg::train_none, on) : ui::SelectableRaw(stem(files[k]), on);
+            if (clicked && !on)
+                pick = none ? "off" : "roi/" + fs::path(files[k]).filename().generic_string();
+            if (ImGui::BeginPopupContextItem("##roimenu")) {
+                if (ui::MenuItem(roimsg::train_edit_region)) {
+                    edit = true;
+                    edit_file = none ? std::string() : files[k];
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        if (edit) ImGui::CloseCurrentPopup();
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(roimsg::batch_run_help);
+    if (edit) open_roi_editor(dataset, edit_file);
+    if (pick.empty() || pick == run.roi_region) return false;
+    run.roi_region = pick;
+    return true;
 }
 
 

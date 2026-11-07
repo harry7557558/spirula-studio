@@ -63,6 +63,9 @@ struct BatchRun {
     std::string sh_degree;
     std::string iterations;
     std::string floater_suppression;
+    // --roi-region's spelling: "" the dataset's first region, "off" none,
+    // "roi/<name>.json" that one.
+    std::string roi_region;
     // Does the row's Mesh stage cover this run? Off for the big appearance
     // run that would run out of memory meshing, on for the cheap one trained
     // beside it for exactly that purpose.
@@ -99,7 +102,6 @@ struct BatchRow {
     // just says "train this" needs nothing filled in.
     std::vector<BatchRun> runs;
     std::string output_dir;             // "" = <dataset>/outputs
-    std::string roi_region;
     // One part of a scene partition (data/ScenePartition.h), trained with
     // --partition / --partition-part; a Merge row names the partition with no
     // part and joins the parts' models found under `output_dir`.

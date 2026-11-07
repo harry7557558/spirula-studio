@@ -271,8 +271,8 @@ private:
     void add_batch_source_row(const std::vector<std::string>& sources);
     void add_batch_mesh_row(const std::string& model);
     // The training run a new row (or a new run on one) starts with: whatever
-    // the trainer screen is on.
-    BatchRun batch_run_on_screen() const;
+    // the trainer screen is on, its region too when `dataset` is open there.
+    BatchRun batch_run_on_screen(const std::string& dataset = {}) const;
     void batch_edited();                    // persist, and re-check
     // Pre-flight every row. Cheap enough (a few stats and a small JSON per
     // preset) that nothing waits for a button: check_batch_if_stale() runs it
@@ -578,7 +578,12 @@ private:
     // The built-in / saved picker one stage of one row uses. True when the
     // choice moved.
     bool draw_batch_train_preset(BatchPreset& p, const char* id, int row, int slot);
-    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing);
+    // A non-empty `roi_dataset` adds the region column, choosing among `roi_files`.
+    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
+                        const std::string& roi_dataset = {},
+                        const std::vector<std::string>& roi_files = {});
+    bool draw_batch_run_roi(BatchRun& run, const std::string& dataset,
+                            const std::vector<std::string>& files, float width);
     // The colour and format sets a row writes, over what its preset says.
     bool draw_batch_mesh_outputs(BatchMeshOptions& mesh);
     void draw_batch_issues();
