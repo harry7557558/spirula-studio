@@ -65,7 +65,7 @@ SegmentPanel::~SegmentPanel() {
     if (_worker.joinable()) _worker.join();
 }
 
-void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
+void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, int initial_frame) {
     _cancel = true;
     if (_worker.joinable()) _worker.join();
     _cancel = false;
@@ -78,6 +78,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     _model = model;
     _folder_idx = 0;
     _frame_idx = 0;
+    _target_frame_idx = initial_frame;
     _frame_dirty = true;
     _needs_run = true;
     _border = app::BorderDetect{};
@@ -136,7 +137,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
             PreviewSource listed = requested;
             std::vector<PreviewFrame> frames;
             std::vector<std::string> all_files;
-            collect_preview_frames(listed, listed.is_video ? 8 : 12, frames,
+            collect_preview_frames(listed, 0, frames,
                                    all_files, _cancel);
             if (_cancel.load()) return;
             std::vector<std::string> folders = preview_folders(listed);
@@ -155,6 +156,20 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
             }
         }
     });
+}
+
+void SegmentPanel::set_frame_index(int frame_idx) {
+    if (frame_idx < 0) return;
+    if (_frames.empty()) {
+        _target_frame_idx = frame_idx;
+        return;
+    }
+    const int clamped = std::clamp(frame_idx, 0, (int)_frames.size() - 1);
+    if (clamped != _frame_idx) {
+        _frame_idx = clamped;
+        _frame_dirty = true;
+        _needs_run = true;
+    }
 }
 
 void SegmentPanel::close() {
@@ -1610,6 +1625,12 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _folders = std::move(_folders_pending);
             _frames_ready = false;
             _cameras = camera_names();
+            if (_target_frame_idx >= 0 && !_frames.empty()) {
+                _frame_idx = std::clamp(_target_frame_idx, 0, (int)_frames.size() - 1);
+                _target_frame_idx = -1;
+                _frame_dirty = true;
+                _needs_run = true;
+            }
         }
     }
     upload_preview();
@@ -1782,19 +1803,40 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     }
     if (_frames.size() > 1) {
         ImGui::Spacing();
-        ImGui::SetNextItemWidth(-1);
         int idx = _frame_idx;
-        // The slider's own overlay format string: the index is substituted by
-        // ImGui, so this is not a place a placeholder can be used.
-        const std::string fmt = spirula::i18n::format(
-            dmsg::preview_frame, {(long long)_frames[(size_t)_frame_idx].index});
-        if (ui::SliderIntRaw("##frame", &idx, 0, (int)_frames.size() - 1,
-                             fmt.c_str())) {
-            _frame_idx = idx;
+        const int max_idx = (int)_frames.size() - 1;
+        const std::string slider_fmt = spirula::i18n::format(dmsg::preview_frame, {"%d"});
+
+        const float input_w = px(70.0f);
+        const float gap = px(4.0f);
+        const float slider_w = ImGui::GetContentRegionAvail().x - input_w - gap;
+
+        ImGui::SetNextItemWidth(slider_w);
+        if (ui::SliderIntRaw("##frame", &idx, 0, max_idx, slider_fmt.c_str())) {
+            _frame_idx = std::clamp(idx, 0, max_idx);
             _frame_dirty = true;
             _needs_run = true;
         }
         ui::help_on_hover(dmsg::preview_frame_help);
+
+        ImGui::SameLine(0.0f, gap);
+        ImGui::SetNextItemWidth(input_w);
+        int input_val = idx;
+        if (ui::InputIntRaw("##frame_input", &input_val)) {
+            input_val = std::clamp(input_val, 0, max_idx);
+            if (input_val != _frame_idx) {
+                _frame_idx = input_val;
+                _frame_dirty = true;
+                _needs_run = true;
+            }
+        }
+        ui::help_on_hover(dmsg::preview_frame_help);
+
+        if (!_src.is_video && !_frames[(size_t)_frame_idx].path.empty()) {
+            const std::string name =
+                fs::path(_frames[(size_t)_frame_idx].path).filename().string();
+            ui::TextDisabledRaw(elide_middle(name, panel_w - px(16.0f)));
+        }
     }
 
     ImGui::Spacing();

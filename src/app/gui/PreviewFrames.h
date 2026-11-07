@@ -83,8 +83,8 @@ PreviewSource gated(const PreviewSource& src, DecodeGate& gate,
 // `folder` argument below selects. One empty name for a single camera.
 std::vector<std::string> preview_folders(const PreviewSource& src);
 
-// `offers` frames spread through the input. `all_files` comes back holding
-// every image of a photo folder (what a border fit reads), empty for a video.
+// `offers` frames spread through the input (0 = all frames). `all_files`
+// comes back holding every image of a photo folder, empty for a video.
 void collect_preview_frames(PreviewSource& src, int offers,
                             std::vector<PreviewFrame>& frames,
                             std::vector<std::string>& all_files,

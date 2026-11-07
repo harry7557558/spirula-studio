@@ -63,6 +63,8 @@ public:
     VideoSummary facts() const;
     double playhead() const { return _playhead; }
     void set_playhead(double seconds);
+    int current_frame() const;
+    bool take_selection_changed() { return std::exchange(_selection_changed, false); }
 
     // Playing at the video's own speed, offered only where frames come off the
     // GPU: ffmpeg takes longer to seek than a frame lasts.
@@ -157,6 +159,7 @@ private:
 
     double _playhead = 0.0;
     bool _playing = false;
+    bool _selection_changed = false;
     double _play_end = 0.0;
     bool _jumped = false;            // the playhead moved other than by playing
     double _settle_at = 0.0;         // when the playhead last moved, for the exact frame

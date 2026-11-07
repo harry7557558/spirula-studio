@@ -81,6 +81,7 @@ void PhotoBrowser::set(const std::string& key, std::vector<PhotoItem> items, Pho
     _any_mask = std::any_of(_items.begin(), _items.end(),
                             [](const PhotoItem& p) { return !p.mask.empty(); });
     _single = -1;
+    if (_selected >= (int)_items.size()) _selected = -1;
 }
 
 void PhotoBrowser::clear() {
@@ -90,11 +91,15 @@ void PhotoBrowser::clear() {
     _items.clear();
     _load = nullptr;
     _single = -1;
+    _selected = -1;
+    _selection_changed = false;
 }
 
 void PhotoBrowser::open(size_t i) {
     if (i >= _items.size()) return;
     _single = (int)i;
+    _selected = (int)i;
+    _selection_changed = true;
 }
 
 void PhotoBrowser::destroy_gl() {
@@ -238,8 +243,14 @@ void PhotoBrowser::draw_grid(float height) {
                 if (c > 0) ImGui::SameLine();
                 ImGui::PushID((int)i);
                 const ImVec2 at = ImGui::GetCursorScreenPos();
-                if (ui::InvisibleButtonRaw("##thumb", ImVec2(cell, cell))) opened = (int)i;
+                const bool clicked = ui::InvisibleButtonRaw("##thumb", ImVec2(cell, cell));
                 const bool hovered = ImGui::IsItemHovered();
+                const bool dbl = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                if (clicked || dbl) {
+                    if (!_mask_preview_open || dbl) opened = (int)i;
+                    _selected = (int)i;
+                    _selection_changed = true;
+                }
                 ImGui::PopID();
                 const ImVec2 corner(at.x + cell, at.y + cell);
                 dl->AddRectFilled(at, corner, back);
@@ -264,7 +275,7 @@ void PhotoBrowser::draw_grid(float height) {
                     fit_rect((float)tex->w, (float)tex->h, at, ImVec2(cell, cell), lo, hi);
                     dl->AddImage(tex->id(), lo, hi);
                 }
-                if ((int)i == _big_tex_index)
+                if ((int)i == _selected || (int)i == _big_tex_index)
                     dl->AddRect(at, corner, last, 0.0f, 0, px(2.0f));
                 if (hovered) {
                     dl->AddRect(at, corner, edge, 0.0f, 0, px(2.0f));
@@ -285,7 +296,11 @@ void PhotoBrowser::draw_grid(float height) {
     ImGui::EndChild();
     ImGui::PopStyleVar();
     if (!want.empty()) _cv.notify_all();
-    if (opened >= 0) _single = opened;
+    if (opened >= 0) {
+        _single = opened;
+        _selected = opened;
+        _selection_changed = true;
+    }
 
     // Least recently drawn first, never one on screen or being loaded.
     std::lock_guard<std::mutex> lk(_mu);
@@ -303,6 +318,7 @@ void PhotoBrowser::draw_grid(float height) {
 
 void PhotoBrowser::draw_single(float height, const std::function<void(size_t)>& info) {
     const int n = (int)_items.size();
+    const int before = _single;
     ImGui::SameLine();
     ImGui::BeginDisabled(_single <= 0);
     if (ui::ArrowButtonRaw("##prev", ImGuiDir_Left)) _single--;
@@ -335,6 +351,10 @@ void PhotoBrowser::draw_single(float height, const std::function<void(size_t)>& 
             ImGui::EndChild();
             return;
         }
+    }
+    if (_single != before && _single >= 0) {
+        _selected = _single;
+        _selection_changed = true;
     }
     const float info_h = info ? ImGui::GetTextLineHeightWithSpacing() * 3.2f : 0.0f;
     const ImVec2 box(ImGui::GetContentRegionAvail().x,

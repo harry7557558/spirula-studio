@@ -5873,8 +5873,12 @@ void GuiApp::open_mask_preview() {
     stop_inference_users();
     close_splat();
     if (!freeze_native_device()) return;
+    int initial_frame = -1;
+    if (selected_source() == _mask_preview_input)
+        initial_frame = _source_view.selected_frame();
     _segment.open(preview_source((size_t)_mask_preview_input),
-                  _mask_enable ? selected_mask_model() : MaskModelFiles{});
+                  _mask_enable ? selected_mask_model() : MaskModelFiles{},
+                  initial_frame);
 }
 
 GuiApp::MaskingPanel GuiApp::dataset_masking_panel() {
@@ -6641,6 +6645,7 @@ void GuiApp::draw_source_preview(float height) {
     } else {
         h = std::max(px(80.0f), h - ImGui::GetCursorPosY() + ImGui::GetCursorStartPos().y);
     }
+    _source_view.set_mask_preview_open(_segment.is_open());
     const int i = selected_source();
     PrepInput* video = i >= 0 && _sources[(size_t)i].is_video ? &_sources[(size_t)i] : nullptr;
     ImGui::BeginChild("##sourcepreview", ImVec2(0, h));
@@ -6648,6 +6653,9 @@ void GuiApp::draw_source_preview(float height) {
         _source_view.draw(ImGui::GetContentRegionAvail().y, video ? &video->clip_start : nullptr,
                           video ? &video->clip_end : nullptr);
     ImGui::EndChild();
+    if (_segment.is_open() && selected_source() == _mask_preview_input &&
+        _source_view.take_selection_changed())
+        _segment.set_frame_index(_source_view.selected_frame());
     if (r.want_gpu) freeze_native_device();
     if (r.clip_changed && video) {
         // Frames offered by an open mask preview, and clicks drawn on them,
