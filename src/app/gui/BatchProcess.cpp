@@ -180,6 +180,7 @@ bool same_train_work(const BatchRow& a, const BatchRow& b) {
     if (a.dataset != b.dataset || a.dataset.empty()) return false;
     if (a.does(BatchStage::Merge) != b.does(BatchStage::Merge)) return false;
     if (a.partition != b.partition || a.partition_part != b.partition_part) return false;
+    if (a.roi_region != b.roi_region) return false;
     if (a.runs.size() != b.runs.size()) return false;
     for (size_t i = 0; i < a.runs.size(); i++)
         if (!same_run(a.runs[i], b.runs[i])) return false;
@@ -780,6 +781,9 @@ bool batch_build_train_config(const BatchRow& row, int variant,
         cfg.partition = row.partition;
         cfg.partition_part = row.partition_part;
     }
+    if (!row.roi_region.empty()) {
+        cfg.roi_region = row.roi_region;
+    }
     cfg.output_dir_prefix = row.output_dir.empty()
                                 ? (fs::path(dataset) / "outputs").string()
                                 : row.output_dir;
@@ -879,6 +883,7 @@ BatchRow read_row(const JsonValue& j) {
     if (const JsonValue* v = j.find("mask_flipped")) r.mask_flipped = v->as_bool(false);
     if (const JsonValue* v = j.find("model")) r.model = v->as_string();
     if (const JsonValue* v = j.find("output_dir")) r.output_dir = v->as_string();
+    if (const JsonValue* v = j.find("roi_region")) r.roi_region = v->as_string();
     if (const JsonValue* v = j.find("partition")) r.partition = v->as_string();
     if (const JsonValue* v = j.find("partition_part")) r.partition_part = (int)v->as_int(-1);
     r.dataset_preset = read_preset(j.find("dataset_preset"));
@@ -977,6 +982,7 @@ void save_batch_list(const std::vector<BatchRow>& rows) {
         }
         w.field("model", r.model);
         w.field("output_dir", r.output_dir);
+        if (!r.roi_region.empty()) w.field("roi_region", r.roi_region);
         if (!r.partition.empty()) {
             w.field("partition", r.partition);
             w.field("partition_part", r.partition_part);

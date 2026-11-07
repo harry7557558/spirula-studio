@@ -1500,6 +1500,8 @@ void GuiApp::add_batch_row(const std::string& dataset) {
     BatchRow r;
     r.dataset = dataset;
     r.does(BatchStage::Train) = true;
+    if (dataset == _cfg.data && !_cfg.roi_region.empty())
+        r.roi_region = _cfg.roi_region;
     r.runs.push_back(batch_run_on_screen());
     _batch.push_back(std::move(r));
     _batch_open_row = (int)_batch.size() - 1;
@@ -7625,6 +7627,8 @@ int GuiApp::add_batch_partition_rows(const DatasetFolders& f, const std::string&
         r.partition = partition;
         r.partition_part = k;
         r.does(BatchStage::Train) = true;
+        if (f.dir == _cfg.data && !_cfg.roi_region.empty())
+            r.roi_region = _cfg.roi_region;
         r.runs.push_back(_pq.run);
         _batch.push_back(std::move(r));
     }
@@ -9758,7 +9762,17 @@ std::string GuiApp::batch_row_summary(const BatchRow& row) const {
         return s;
     }
     if (row.does(BatchStage::Merge) && !row.partition.empty()) return row.partition;
-    if (!row.dataset.empty()) return row.dataset;
+    if (!row.dataset.empty()) {
+        std::string s = row.dataset;
+        if (!row.roi_region.empty()) {
+            if (row.roi_region == "off") {
+                s += " [" + std::string(spirula::i18n::msg::roi::train_none.get()) + "]";
+            } else {
+                s += " [" + fs::path(row.roi_region).stem().string() + "]";
+            }
+        }
+        return s;
+    }
     if (!row.model.empty()) return row.model;
     return {};
 }
@@ -10392,6 +10406,51 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
         batch_edited();
     }
     ui::help_on_hover(msg::batch_add_run_help);
+
+    const std::string ds = !row.dataset.empty() ? row.dataset : batch_dataset_workspace(row);
+    if (!ds.empty()) {
+        const std::vector<std::string> roi_files = spirula::list_roi_files(ds);
+        const spirula::RoiChoice roi_now = spirula::resolve_roi_setting(row.roi_region, ds);
+        if (!roi_files.empty() || !roi_now.path.empty() || roi_now.off) {
+            namespace roimsg = spirula::i18n::msg::roi;
+            ui::Text(roimsg::train_label);
+            ui::help_on_hover(roimsg::train_help);
+            auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
+            const std::string shown = roi_now.off
+                                          ? std::string(roimsg::train_none.get())
+                                          : (!roi_now.path.empty() ? stem(roi_now.path)
+                                                                   : std::string(roimsg::train_none.get()));
+            const float edit_w = ImGui::CalcTextSize(roimsg::train_edit_region.get()).x +
+                                 2 * ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ItemSpacing.x;
+            ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - edit_w - px(8.0f)));
+            std::string pick;
+            bool picked = false;
+            if (ui::BeginComboRaw("##batchroi", shown.c_str())) {
+                for (size_t k = 0; k < roi_files.size(); k++) {
+                    ImGui::PushID((int)k);
+                    std::error_code ec;
+                    const bool on = !roi_now.off && fs::equivalent(roi_now.path, roi_files[k], ec);
+                    if (ui::SelectableRaw(stem(roi_files[k]), on) && !on) {
+                        pick = "roi/" + fs::path(roi_files[k]).filename().generic_string();
+                        picked = true;
+                    }
+                    ImGui::PopID();
+                }
+                if (ui::Selectable(roimsg::train_none, roi_now.off)) {
+                    pick = "off";
+                    picked = true;
+                }
+                ImGui::EndCombo();
+            }
+            if (picked && pick != row.roi_region) {
+                row.roi_region = pick;
+                batch_edited();
+            }
+            ImGui::SameLine();
+            if (ui::Button(roimsg::train_edit_region))
+                open_roi_editor(ds, !roi_now.off && !roi_now.path.empty() ? roi_now.path : std::string());
+        }
+    }
 
     ui::Text(msg::batch_col_output);
     ImGui::SetNextItemWidth(-bw);
