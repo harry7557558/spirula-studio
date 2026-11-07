@@ -337,6 +337,7 @@ public:
 private:
     // ds.points drawn at random when --random-init asks for it.
     void seed_at_random();
+    void set_downscale_cache(DataManagerConfig& dm) const;
     void set_alpha_config(DataManagerConfig& dm,
                           const std::vector<uint8_t>& alpha) const;
 

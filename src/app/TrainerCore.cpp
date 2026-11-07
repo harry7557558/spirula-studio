@@ -952,6 +952,14 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
     }
 }
 
+void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
+    const float d = cfg.train_resolution_divisor;
+    if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
+    dm.downscale_cache_divisor = (int)d;
+    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
+    dm.downscale_rounding_mode = cfg.downscale_rounding_mode;
+}
+
 // After relative_scale, so the cloud is sized by the cameras it will train
 // with. Into ds.points itself: the GUI's preview draws the seed that is used.
 void TrainerSession::seed_at_random() {
@@ -1418,6 +1426,7 @@ void TrainerSession::setup_engine() {
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = ds.exif_quarter_turns;
+    set_downscale_cache(dm);
     dm.deficit_sampling  = cfg.view_sampling == "deficit";
     dm.deficit_power     = cfg.view_deficit_power;
     dm.deficit_max_ratio = cfg.view_deficit_max_ratio;
@@ -2102,6 +2111,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;
+    set_downscale_cache(dm);
     std::vector<int32_t> all_idx((size_t)eds.num_cameras);
     std::iota(all_idx.begin(), all_idx.end(), 0);
 

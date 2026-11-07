@@ -150,6 +150,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(int, sampling_seed, 0, "dataset", "expert", "")                         \
     X(float, train_resolution_divisor, 0.0f, "dataset", "basic", "")         \
     X(std::string, downscale_rounding_mode, "floor", "dataset", "advanced", "floor|ceil|round") \
+    X(bool, cache_downscaled_images, true, "dataset", "advanced", "")        \
     X(bool, progressive_resolution, false, "dataset", "basic", "")           \
     X(int, progressive_resolution_start, 4, "dataset", "advanced", "")       \
     X(float, progressive_resolution_full_at, 0.3f, "dataset", "advanced", "") \

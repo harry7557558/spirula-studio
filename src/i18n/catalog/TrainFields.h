@@ -1914,6 +1914,88 @@ SS_MSG(downscale_rounding_mode_help,
        "yuvarlanacağı: `floor` asla yukarı yuvarlamaz, `round` en yakını "
        "alır, `ceil` her zaman yukarı yuvarlar."));
 
+SS_MSG(cache_downscaled_images,
+    EN("Cache downscaled images"), JA("縮小画像をキャッシュ"),
+    ZH_HANS("缓存缩小后的图像"), ZH_HANT("快取縮小後的影像"),
+    KO("축소 이미지 캐시"),
+    DE("Verkleinerte Bilder zwischenspeichern"),
+    FR("Mettre en cache les images réduites"),
+    ES("Guardar en caché las imágenes reducidas"),
+    PT("Guardar em cache as imagens reduzidas"),
+    IT("Memorizza le immagini ridotte"),
+    NL("Verkleinde beelden cachen"),
+    RU("Кэшировать уменьшенные изображения"),
+    TR("Küçültülmüş görüntüleri önbelleğe al"));
+SS_MSG(cache_downscaled_images_help,
+    EN("With a whole-number training resolution divisor, write each JPEG or "
+       "PNG image at the reduced size into a folder beside the image folder "
+       "(images_2, images_4, ...) and load those on later runs, so training "
+       "stops waiting on decoding large files. Files already there are used "
+       "when their size fits and are never overwritten."),
+    JA("学習解像度の分母が整数のとき、JPEG と PNG の画像を縮小したサイズで画像"
+       "フォルダの隣のフォルダ（images_2、images_4 など）に書き出し、次回からは"
+       "そちらを読み込みます。大きなファイルのデコード待ちで学習が止まらなくなり"
+       "ます。既にあるファイルはサイズが合えば使い、上書きはしません。"),
+    ZH_HANS("当训练分辨率缩小倍数为整数时，把每张 JPEG 或 PNG 图像按缩小后的"
+            "尺寸写入图像目录旁的文件夹（images_2、images_4 等），之后的运行直"
+            "接读取它们，训练不再等待解码大文件。已有的文件尺寸相符时会被使用，"
+            "且永不覆盖。"),
+    ZH_HANT("當訓練解析度縮小倍數為整數時，把每張 JPEG 或 PNG 影像按縮小後的"
+            "尺寸寫入影像目錄旁的資料夾（images_2、images_4 等），之後的執行直"
+            "接讀取它們，訓練不再等待解碼大檔案。已有的檔案尺寸相符時會被使用，"
+            "且永不覆寫。"),
+    KO("학습 해상도 축소 배수가 정수이면 각 JPEG·PNG 이미지를 줄인 크기로 이미지 "
+       "폴더 옆 폴더(images_2, images_4 등)에 써 두고 다음 실행부터 그것을 "
+       "읽습니다. 큰 파일 디코딩을 기다리느라 학습이 멈추지 않습니다. 이미 있는 "
+       "파일은 크기가 맞으면 사용하고 덮어쓰지 않습니다."),
+    DE("Bei ganzzahligem Teiler der Trainingsauflösung wird jedes JPEG- oder "
+       "PNG-Bild verkleinert in einen Ordner neben dem Bildordner geschrieben "
+       "(images_2, images_4, ...) und bei späteren Läufen von dort geladen, "
+       "damit das Training nicht auf das Dekodieren großer Dateien wartet. "
+       "Vorhandene Dateien werden genutzt, wenn ihre Größe passt, und nie "
+       "überschrieben."),
+    FR("Avec un diviseur de résolution entier, chaque image JPEG ou PNG est "
+       "écrite à taille réduite dans un dossier voisin du dossier d'images "
+       "(images_2, images_4, ...) et relue de là aux exécutions suivantes, "
+       "pour que l'entraînement n'attende plus le décodage de gros fichiers. "
+       "Les fichiers déjà présents sont utilisés si leur taille convient et "
+       "ne sont jamais écrasés."),
+    ES("Con un divisor de resolución entero, cada imagen JPEG o PNG se escribe "
+       "a tamaño reducido en una carpeta junto a la de imágenes (images_2, "
+       "images_4, ...) y se carga de ahí en las ejecuciones siguientes, para "
+       "que el entrenamiento no espere a decodificar archivos grandes. Los "
+       "archivos ya presentes se usan si su tamaño encaja y nunca se "
+       "sobrescriben."),
+    PT("Com um divisor de resolução inteiro, cada imagem JPEG ou PNG é gravada "
+       "em tamanho reduzido numa pasta ao lado da pasta de imagens (images_2, "
+       "images_4, ...) e carregada de lá nas execuções seguintes, para que o "
+       "treino não espere a decodificação de arquivos grandes. Arquivos já "
+       "existentes são usados se o tamanho servir e nunca são sobrescritos."),
+    IT("Con un divisore di risoluzione intero, ogni immagine JPEG o PNG viene "
+       "scritta ridotta in una cartella accanto a quella delle immagini "
+       "(images_2, images_4, ...) e caricata da lì nelle esecuzioni "
+       "successive, così l'addestramento non attende la decodifica di file "
+       "grandi. I file già presenti si usano se la dimensione combacia e non "
+       "vengono mai sovrascritti."),
+    NL("Bij een gehele deler van de trainingsresolutie wordt elk JPEG- of "
+       "PNG-beeld verkleind weggeschreven in een map naast de beeldmap "
+       "(images_2, images_4, ...) en bij latere runs daaruit geladen, zodat "
+       "de training niet wacht op het decoderen van grote bestanden. "
+       "Bestaande bestanden worden gebruikt als hun grootte past en nooit "
+       "overschreven."),
+    RU("При целом делителе разрешения каждое изображение JPEG или PNG "
+       "записывается уменьшенным в папку рядом с папкой изображений "
+       "(images_2, images_4, ...) и при следующих запусках читается оттуда, "
+       "чтобы обучение не ждало декодирования больших файлов. Уже лежащие "
+       "там файлы используются, если подходит размер, и никогда не "
+       "перезаписываются."),
+    TR("Eğitim çözünürlüğü böleni tam sayı olduğunda her JPEG veya PNG "
+       "görüntü küçültülmüş hâliyle görüntü klasörünün yanındaki bir klasöre "
+       "(images_2, images_4, ...) yazılır ve sonraki çalıştırmalarda oradan "
+       "yüklenir; böylece eğitim büyük dosyaların çözülmesini beklemez. Orada "
+       "zaten bulunan dosyalar boyutu uyuyorsa kullanılır ve asla üzerine "
+       "yazılmaz."));
+
 SS_MSG(eval_mode,
     EN("Evaluation split"), JA("評価用の分け方"), ZH_HANS("评估集划分方式"),
     ZH_HANT("評估集劃分方式"), KO("평가용 분할 방식"),

@@ -697,6 +697,18 @@ images' own size. This is the "train smaller to go faster" knob — the GUI's
 Image resolution combo writes it — and it is relative to the images, not to the
 reconstruction.
 
+When the divisor is a whole number above 1, `cache_downscaled_images` (on by
+default) keeps the shrunk colour images beside the originals, at
+`<image_dir>_<d>/<same relative path>` (`data/DownscaleCache.h`), and later
+loads decode those, so a run over large images stops being bound by decoding
+them. JPEG and PNG only (8/16-bit, grey, RGB, RGBA; RGBA is filtered with
+premultiplied alpha), each in its own format, JPEG at quality 95. A file
+already there is used when its size is the original's divided by `d` under any
+rounding mode and it ends like a whole file; otherwise the original loads, and
+that file is never overwritten. Masks, depths and normals are not affected:
+they load at their own size whatever the divisor. On 60 MP JPEGs at divisor 8,
+500 steps took 49 s uncached, 10 s on the run that writes the cache, 5 s after.
+
 A caller with no image decoders leaves `probe_image_size` null and gets the
 reconstruction's resolution unchanged; the WebAssembly viewer does exactly that.
 
