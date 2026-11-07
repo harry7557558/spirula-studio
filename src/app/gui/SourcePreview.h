@@ -38,6 +38,7 @@ struct PreviewInput {
     float kept_fps = 0.0f;             // the rate a video is extracted at; 0 every frame
     bool clip_locked = false;          // the run has read the clip
     std::string lut;                   // the LUT its frames go through, for Details
+    int active_track = -1;
 };
 
 class SourcePreview {
@@ -63,9 +64,10 @@ public:
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;
+        bool tracks_changed = false;
     };
     // `clip_*` point at the selected video's clip, null for anything else.
-    Result draw(float height, double* clip_start, double* clip_end);
+    Result draw(float height, double* clip_start, double* clip_end, int* active_track = nullptr);
     void destroy_gl();
 
 private:

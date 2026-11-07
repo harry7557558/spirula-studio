@@ -781,6 +781,7 @@ std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in) {
         if (out.size() < 2) out.clear();
         return out;
     }
+    if (in.active_track >= 0) return out;
     for (int t = 0; in.video_tracks >= 2 && t < in.video_tracks; t++)
         out.push_back("cam" + std::to_string(t));
     return out;
@@ -1212,6 +1213,8 @@ static std::string frame_source_identity_impl(
         const uint8_t zero = 0;
         identity.update(&zero, 1);
     };
+    if (in.is_video && in.active_track >= 0)
+        append("active_track=" + std::to_string(in.active_track));
     for (size_t i = 0; i < files.size(); ++i) {
         const fs::path& name = files[i];
         const fs::path& file = transferred ? (*transferred)[i].second : name;
@@ -1999,6 +2002,7 @@ static bool streaming_job(const PrepJob& job, const PrepInput& in,
     const double src_fps = source.fps > 1.0 ? source.fps : 30.0;
     fx.clip_start = in.clip_start;
     fx.clip_end = in.clip_end;
+    fx.track = in.active_track;
     const bool every = every_frame(job, in);
     const int window = every ? 1 : std::max(job.sharp_window, 1);
     fx.input = in.path;
@@ -2136,7 +2140,7 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     if (_frame_threads > 0) fx.threads = std::max(1, _frame_threads - 1);
     const std::vector<app::Pano360View>& views = fx.views;
     if (!views.empty()) out.per_folder_cameras = out.per_folder_cameras || views.size() > 1;
-    else if (source.tracks > 1) out.per_folder_cameras = true;
+    else if (source.tracks > 1 && in.active_track < 0) out.per_folder_cameras = true;
     const size_t row = input_index(job, in);
     if (row < _plans.size()) fx.plan = _plans[row];
     if (!views.empty())
@@ -2275,7 +2279,7 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     VideoFacts facts;
     ffmpeg_probe_video(job.ffmpeg_exe, in.path, facts, _cancel);
     size_t streams = 1;
-    if (is_dual_fisheye_path(in.path) && facts.tracks.size() > 1)
+    if (is_dual_fisheye_path(in.path) && facts.tracks.size() > 1 && in.active_track < 0)
         streams = facts.tracks.size();
     if (streams > 1) out.per_folder_cameras = true;
     // A packed frame's lenses are one picture, so only separate tracks drift.
@@ -2286,7 +2290,9 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     const int group = candidate_group(job, in);
     const bool fisheye = streams > 1 && !facts.tracks.empty() &&
                          facts.tracks[0].first == facts.tracks[0].second;
-    for (size_t tr = 0; tr < streams; tr++) {
+    const size_t start_tr = in.active_track >= 0 ? (size_t)in.active_track : 0;
+    const size_t end_tr = in.active_track >= 0 ? start_tr + 1 : streams;
+    for (size_t tr = start_tr; tr < end_tr; tr++) {
         std::string track_path = in.path;
         const fs::path out_dir = streams > 1
             ? fs::path(images) / ("cam" + std::to_string(tr))
@@ -2297,7 +2303,7 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                 /*detail=*/false);
             continue;
         }
-        if (streams > 1) {
+        if (in.active_track >= 0 || streams > 1) {
             enter(Stage::Frames, fmt(lmsg::stage_split_track, {(long long)tr}));
             const fs::path tmp_track =
                 ws / ("track_cam" + std::to_string(tr) + ".mp4");

@@ -6571,6 +6571,7 @@ PreviewInput GuiApp::source_preview_input() const {
     in.mask_flipped = _use_found_masks && _flip_found_masks;
     in.kept_fps = input_fps(_sources, _sfm_job.prep.video_fps, (size_t)i);
     in.clip_locked = dataset_busy();
+    in.active_track = s.active_track;
     if (s.is_video)
         if (const std::string lut = input_lut(_sources, (size_t)i); !lut.empty())
             in.lut = app::is_builtin_lut(lut) ? app::lut_display_name(lut) : lut;
@@ -6646,9 +6647,13 @@ void GuiApp::draw_source_preview(float height) {
     ImGui::BeginChild("##sourcepreview", ImVec2(0, h));
     const SourcePreview::Result r =
         _source_view.draw(ImGui::GetContentRegionAvail().y, video ? &video->clip_start : nullptr,
-                          video ? &video->clip_end : nullptr);
+                          video ? &video->clip_end : nullptr,
+                          video ? &video->active_track : nullptr);
     ImGui::EndChild();
     if (r.want_gpu) freeze_native_device();
+    if (r.tracks_changed && video) {
+        if (_segment.is_open() || _geometry_panel.is_open()) close_native_previews();
+    }
     if (r.clip_changed && video) {
         // Frames offered by an open mask preview, and clicks drawn on them,
         // were placed in the old clip.

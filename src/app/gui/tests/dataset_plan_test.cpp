@@ -1010,6 +1010,16 @@ int main() {
                "a row set to every frame opens a group of its own");
     }
 
+    {
+        PrepInput in = insv();
+        expect(is_dual_lens(in), "dual-fisheye clip defaults to dual lens");
+        expect(lens_dirs(PrepJob{}, in).size() == 2, "dual-fisheye clip has two lens dirs");
+        in.active_track = 0;
+        expect(!is_dual_lens(in), "selecting single track is not dual lens");
+        expect(lens_dirs(PrepJob{}, in).empty(), "single active track produces no lens subfolders");
+        expect(has_fisheye_lens(in), "single active track retains fisheye lens model");
+    }
+
     fs::remove_all(ws);
     std::printf(g_failures ? "\nFAILED: %d\n" : "\nall passed\n", g_failures);
     return g_failures ? 1 : 0;
