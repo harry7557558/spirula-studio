@@ -2135,8 +2135,30 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         todo = pairs;
     }
 
+    // FlexGlue reads each image's pixels, so it is handed the file behind
+    // every feature set.
+    FlexGlueMatchOptions fgopt = cfg.flexglue;
+    if (cfg.matcher == "flexglue") {
+        if (fgopt.image_dir.empty() && calib) fgopt.image_dir = calib->image_dir;
+        if (fgopt.image_dir.empty() || !fs::is_directory(fgopt.image_dir)) {
+            L::fail(Tag::Match, M::run_not_a_directory,
+                    {fgopt.image_dir.empty() ? "--flexglue-images" : fgopt.image_dir});
+            return 1;
+        }
+        const std::map<std::string, std::string> stem2name = imageStemMap(fgopt.image_dir);
+        fgopt.image_paths.resize(n_images);
+        for (size_t i = 0; i < n_images; i++) {
+            auto it = stem2name.find(db.images[i].name);
+            if (it == stem2name.end()) {
+                L::fail(Tag::Match, M::match_flexglue_no_image,
+                        {db.images[i].name, fgopt.image_dir});
+                return 1;
+            }
+            fgopt.image_paths[i] = (fs::path(fgopt.image_dir) / it->second).string();
+        }
+    }
     std::unique_ptr<IFeatureMatcher> matcher =
-        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
+        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match, fgopt);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
     // Pairs the focal search already matched, by pairKey: with a camera per

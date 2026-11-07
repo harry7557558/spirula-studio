@@ -2472,6 +2472,49 @@ SS_MSG(match_prefilter_params,
     TR("çift seçimi -- en iyi öznitelik: {0}, komşu: {1}"));
 
 // The matcher's name is an identifier (`lightglue`), so it stays as it is.
+SS_MSG(match_flexglue_no_image,
+    EN("FlexGlue reads the images while it matches, and {0} has none under {1}."),
+    JA("FlexGlue はマッチング中に画像を読みますが、{1} に {0} の画像がありません。"),
+    ZH_HANS("FlexGlue 在匹配时读取图像，但 {1} 下没有 {0} 的图像。"),
+    ZH_HANT("FlexGlue 在匹配時讀取影像，但 {1} 下沒有 {0} 的影像。"),
+    KO("FlexGlue 는 매칭하면서 이미지를 읽는데, {1} 아래에 {0} 의 이미지가 없습니다."),
+    DE("FlexGlue liest beim Zuordnen die Bilder, und unter {1} gibt es keines für {0}."),
+    FR("FlexGlue lit les images pendant l'appariement, et {1} n'en contient aucune pour {0}."),
+    ES("FlexGlue lee las imágenes mientras empareja, y en {1} no hay ninguna para {0}."),
+    PT("O FlexGlue lê as imagens enquanto emparelha, e em {1} não há nenhuma para {0}."),
+    IT("FlexGlue legge le immagini mentre abbina, e sotto {1} non ce n'è nessuna per {0}."),
+    NL("FlexGlue leest de beelden tijdens het matchen, en onder {1} is er geen voor {0}."),
+    RU("FlexGlue читает изображения при сопоставлении, а в {1} нет изображения для {0}."),
+    TR("FlexGlue eşleştirirken görüntüleri okur ve {1} altında {0} için görüntü yok."));
+
+SS_MSG(match_flexglue_summary,
+    EN("FlexGlue: {0} of {1} pairs below covisibility {2}, {3} stopped early; "
+       "{4} s per pair, {5} s per image described"),
+    JA("FlexGlue: {1} ペア中 {0} ペアが共視性 {2} 未満、{3} ペアが早期停止。"
+       "1 ペア {4} 秒、1 画像の記述 {5} 秒"),
+    ZH_HANS("FlexGlue：{1} 个像对中 {0} 个共视度低于 {2}，{3} 个提前停止；"
+            "每对 {4} 秒，每张图像描述 {5} 秒"),
+    ZH_HANT("FlexGlue：{1} 個影像對中 {0} 個共視度低於 {2}，{3} 個提前停止；"
+            "每對 {4} 秒，每張影像描述 {5} 秒"),
+    KO("FlexGlue: {1}쌍 중 {0}쌍이 공시성 {2} 미만, {3}쌍 조기 중단; "
+       "쌍당 {4}초, 이미지당 기술 {5}초"),
+    DE("FlexGlue: {0} von {1} Paaren unter Kovisibilität {2}, {3} früh beendet; "
+       "{4} s je Paar, {5} s je beschriebenem Bild"),
+    FR("FlexGlue : {0} paires sur {1} sous la covisibilité {2}, {3} arrêtées tôt ; "
+       "{4} s par paire, {5} s par image décrite"),
+    ES("FlexGlue: {0} de {1} pares bajo la covisibilidad {2}, {3} detenidos antes; "
+       "{4} s por par, {5} s por imagen descrita"),
+    PT("FlexGlue: {0} de {1} pares abaixo da covisibilidade {2}, {3} parados cedo; "
+       "{4} s por par, {5} s por imagem descrita"),
+    IT("FlexGlue: {0} coppie su {1} sotto la covisibilità {2}, {3} fermate prima; "
+       "{4} s per coppia, {5} s per immagine descritta"),
+    NL("FlexGlue: {0} van {1} paren onder covisibiliteit {2}, {3} vroeg gestopt; "
+       "{4} s per paar, {5} s per beschreven beeld"),
+    RU("FlexGlue: {0} из {1} пар ниже совместной видимости {2}, {3} остановлены рано; "
+       "{4} с на пару, {5} с на описание изображения"),
+    TR("FlexGlue: {1} çiftten {0} tanesi {2} ortak görünürlüğün altında, {3} tanesi erken durdu; "
+       "çift başına {4} sn, betimlenen görüntü başına {5} sn"));
+
 SS_MSG(match_matcher_name,
     EN("matcher: {0}"),
     JA("マッチャー: {0}"),

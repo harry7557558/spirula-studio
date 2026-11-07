@@ -41,6 +41,9 @@ An op runs when you call it, writing into a caller-provided output — usually a
 is deliberate: a module's forward pass reads as straight-line C++ next to its
 PyTorch reference, and the arena's scoping is the whole memory strategy.
 
+`Blocks.h` holds the few composites more than one model is built from (the
+LightGlue-family message FFN). They take their weights as arguments, like an op.
+
 ### Layout conventions
 
 Shapes are **PyTorch order** (row-major, slowest dim first). ggml's reversed

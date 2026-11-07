@@ -91,10 +91,11 @@ const char* sfm_pick(const char* const (&table)[N], int i, int fallback = 0) {
     return table[(i >= 0 && i < N) ? i : fallback];
 }
 
-// The matcher combo is two entries -- brute force, or "the learned matcher for
-// this frontend" -- because a learned matcher only reads the descriptors it
-// was trained on. Which one that is follows --features.
+// SfmJob::matcher: 0 brute force, 1 "the learned matcher for this frontend"
+// (a learned matcher only reads the descriptors it was trained on, so which one
+// follows --features), 2 FlexGlue, which reads pixels and takes any frontend.
 inline const char* sfm_matcher_for(int features, int matcher) {
+    if (matcher == 2) return "flexglue";
     if (features == 0 || matcher != 1) return "bruteforce";
     const std::string f = sfm_pick(kSfmFeatures, features);
     return f.rfind("loma", 0) == 0 ? sfm_pick(kSfmFeatures, features) : "lightglue";
@@ -158,9 +159,8 @@ struct SfmJob {
     // learned ones run on their own resolution ladder, so the quality preset
     // means something different for each.
     int features = 0;
-    // 0 brute force, 1 LightGlue. Only meaningful with a learned frontend, and
-    // an order of magnitude slower per pair -- the panel greys it out for SIFT
-    // and the CLI refuses the combination outright.
+    // 0 brute force, 1 the frontend's learned matcher (not for SIFT), 2
+    // FlexGlue (any frontend). See sfm_matcher_for.
     int matcher = 0;
     // Any GPS, video or EXIF: 0 off, 1 latitude and longitude, 2 with altitude,
     // 3 (default) the CLI's `auto`. Saved in presets, so `auto` is appended.

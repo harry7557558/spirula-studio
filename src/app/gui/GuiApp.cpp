@@ -8291,23 +8291,27 @@ void GuiApp::draw_sfm_advanced() {
     ui::help_on_hover(dmsg::features_help);
 
     {
-        // Brute force is the only option for SIFT, so say so by disabling the
-        // combo. The second entry is whichever learned matcher goes with the
-        // frontend above: each reads only the descriptors it was trained on.
+        // The middle entry is whichever learned matcher goes with the frontend
+        // above, since each reads only the descriptors it was trained on; SIFT
+        // has none, so its list skips it. FlexGlue reads pixels and takes any.
         const bool learned = _sfm_job.features != 0;
         const bool is_loma = _sfm_job.features >= 3;
-        ImGui::BeginDisabled(!learned);
         ImGui::SetNextItemWidth(px(260.0f));
-        int shown = learned ? _sfm_job.matcher : 0;
-        if (ui::Combo(dmsg::matcher, &shown,
+        if (learned) {
+            ui::Combo(dmsg::matcher, &_sfm_job.matcher,
                       {&dmsg::matcher_brute_force,
-                       is_loma ? &dmsg::matcher_loma : &dmsg::matcher_lightglue}) &&
-            learned)
-            _sfm_job.matcher = shown;
-        ImGui::EndDisabled();
-        ui::help_on_hover(learned ? dmsg::matcher_help
-                                  : dmsg::matcher_needs_learned);
-        if (learned) draw_feature_download();
+                       is_loma ? &dmsg::matcher_loma : &dmsg::matcher_lightglue,
+                       &dmsg::matcher_flexglue});
+        } else {
+            int shown = _sfm_job.matcher == 2 ? 1 : 0;
+            if (ui::Combo(dmsg::matcher, &shown,
+                          {&dmsg::matcher_brute_force, &dmsg::matcher_flexglue}))
+                _sfm_job.matcher = shown == 1 ? 2 : 0;
+        }
+        ui::help_on_hover(_sfm_job.matcher == 2 ? dmsg::matcher_flexglue_help
+                          : learned            ? dmsg::matcher_help
+                                               : dmsg::matcher_needs_learned);
+        if (learned || _sfm_job.matcher == 2) draw_feature_download();
     }
 
     ImGui::SetNextItemWidth(px(260.0f));

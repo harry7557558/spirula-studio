@@ -419,7 +419,9 @@ DeDoDe's are not. One matcher cannot mix widths, and says so.
 `lightglue` for the ALIKED ones and `loma-b128` / `loma-b` / `loma-r` /
 `loma-l` / `loma-g` for the LoMa ones. The families do not mix -- a learned
 matcher only reads the descriptors it was trained on, and `auto` says so rather
-than running.
+than running. `--matcher flexglue` is the exception: it reads the images and
+only the keypoint locations, so it takes any `--features`, SIFT included
+(`src/flexglue/README.md`).
 
 `--quality low|medium|high|extreme` sets the working resolution, the feature cap
 and the pair-selection breadth; `--data-type individual|video|internet` sets the
