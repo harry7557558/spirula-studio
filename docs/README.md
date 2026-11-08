@@ -17,6 +17,7 @@ the detail.
 | [notes/compare-view.md](notes/compare-view.md) | showing several models at once: engine scene slots, the shared navigation frame |
 | [notes/spherical-beta.md](notes/spherical-beta.md) | spherical-beta lobes: the colour row they share with SH, training, rotation, the PLY layout, results |
 | [notes/s-cielab.md](notes/s-cielab.md) | the S-CIELAB alternative to SSIM: colour pipeline, blur radii, the `auto` densification map |
+| [notes/pca-reg.md](notes/pca-reg.md) | the local-PCA surface regularizer (PCAsplat): its terms, the six ways of finding neighbours, and what each costs |
 | [notes/flip.md](notes/flip.md) | the FLIP alternative: the viewing distance that makes its filters 11x11, where it departs from the reference, its two densification maps |
 | [notes/ssim-blur-tolerance.md](notes/ssim-blur-tolerance.md) | blur-tolerant SSIM, so blurry photos stop blurring the scene; the loss and map study behind it on degraded mip-NeRF 360 scenes |
 | [notes/web-viewer-robustness.md](notes/web-viewer-robustness.md) | what web viewers draw differently, training on PlayCanvas's kernel for part of the steps, the peak-weight noise gate, the per-coefficient SH reg, and what did not help |

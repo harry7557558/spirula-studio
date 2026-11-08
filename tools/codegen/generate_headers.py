@@ -97,6 +97,7 @@ HEADER_SOURCES = dict([
     _fam("kernels/loss", "PerSplatLoss", "PerSplatLoss.cu"),
     _fam("kernels/loss", "PerPixelLoss", "PerPixelLoss.cu"),
     _fam("kernels/loss", "FusedSSIM", "FusedSSIM.cu"),
+    _fam("kernels/loss", "PcaReg", "PcaReg.cu"),
     _fam("kernels/visualize", "Visualizer", "Visualizer.cu"),
     _fam("kernels/bilagrid", "BilagridUtils", "BilagridUtils.cu"),
 

@@ -358,6 +358,24 @@ struct BilagridRGB {
     int         C = 0;
 };
 
+// The local-PCA regularizer's neighbour caches and this step's gradient
+// (engine/EnginePcaReg.cpp). A cache is keyed by what built it; splat_epoch
+// moves whenever densify relocates or adds splats, which reorders the rows.
+struct PcaRegState {
+    DeviceVector<int32_t> perm;    // rank -> splat at the last build
+    DeviceVector<int32_t> nbrs;    // [N, k] splat ids by rank, for the cached kNN
+    int64_t  cache_n     = 0;
+    int      cache_k     = 0;
+    int      cache_knn   = -1;
+    int      cache_step  = 0;
+    uint64_t cache_epoch = 0;
+    uint64_t splat_epoch = 0;
+    // Arena slices the fused optim step adds for 3dgs / mip; empty otherwise.
+    DeviceVector<float3> v_means;
+    DeviceVector<float4> v_quats;
+    DeviceVector<float3> v_scales;
+};
+
 // Color-shift regularizer (design 1): EMA of mean_per_pixel(sign(post-pre))
 // per channel, all on device. `steps` counts EMA updates so far (host int);
 // the device-side EMA is not bias-corrected itself -- ColorShiftReg.cu applies
@@ -730,6 +748,7 @@ struct EngineState {
     ColorSpaceState  color_space;
     AppearanceState  appearance;
     ColorShiftRegState color_shift_reg;
+    PcaRegState        pca_reg;
 
     // Viewer (BVH + thumbnail cache + dataset camera arrays).
     EngineViewerState viewer;

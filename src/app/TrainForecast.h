@@ -66,6 +66,10 @@ struct ForecastSetup {
     int distinct_batches = 1;      // views a step can draw, for the peak draw
     int sh_degree = 0;             // the step's SH degree is
     int sh_degree_every = 0;       //   min(step / sh_degree_every, sh_degree)
+    // Splat memory first allocated, for cap_max, at a later step: the
+    // local-PCA regularizer's neighbour caches.
+    uint64_t deferred_bytes = 0;
+    int deferred_step = 0;
 };
 
 struct MemorySample {

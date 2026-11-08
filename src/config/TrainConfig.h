@@ -279,6 +279,18 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, median_normal_supervision_weight, 0.0f, "geometry", "expert", "") \
     X(float, median_render_normal_reg_weight, 0.0f, "geometry", "expert", "")\
     X(int, median_warmup, 6000, "geometry", "expert", "")                    \
+    X(int, pca_reg_neighbors, 0, "geometry", "advanced", "")                 \
+    X(std::string, pca_reg_knn, "morton-best", "geometry", "advanced", "exact|exact-cached|morton|morton-cached|morton-best|morton-best-cached") \
+    X(int, pca_reg_window, 0, "geometry", "expert", "")                      \
+    X(int, pca_reg_refresh_every, 0, "geometry", "expert", "")               \
+    X(int, pca_reg_start_iter, 7000, "geometry", "advanced", "")             \
+    X(float, pca_reg_weight, 0.1f, "geometry", "advanced", "")               \
+    X(std::optional<float>, pca_reg_weight_final, 1.0f, "geometry", "advanced", "") \
+    X(std::string, pca_reg_schedule, "linear", "geometry", "expert", "linear|exponential|cosine") \
+    X(float, pca_reg_tangent_weight, 0.001f, "geometry", "advanced", "")     \
+    X(float, pca_reg_normal_weight, 0.1f, "geometry", "advanced", "")        \
+    X(float, pca_reg_surfel_weight, 0.0f, "geometry", "advanced", "")        \
+    X(bool, pca_reg_scale_agnostic, true, "geometry", "advanced", "")       \
                                                                              \
     /* ==== shape -- keeping individual splats compact and well behaved ==== */ \
     X(float, opacity_reg, 0.01f, "shape", "basic", "")                      \
@@ -527,6 +539,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.median_render_normal_reg_weight = 0.01f;
         c.erank_reg = 0.01f;
         c.erank_reg_s3 = 0.01f;
+        c.pca_reg_neighbors = 31;
         return true;
     }
     if (name == "academic-baseline") {

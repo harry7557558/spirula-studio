@@ -366,6 +366,11 @@ public:
         return _arena.reserve + _tail[(size_t)_phase] <= _arena.cap;
     }
 
+    PoolPhase phase() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        return _phase;
+    }
+
     struct ArenaStats { size_t cap_bytes; size_t want_bytes; size_t slots; };
     ArenaStats arenaStats() const {
         std::lock_guard<std::mutex> lock(_mu);
