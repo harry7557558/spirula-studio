@@ -485,6 +485,33 @@ void test_frames_reel_counts_images() {
     check(reel.size() == 11, "reel: reused frames remain available for preview");
 }
 
+// One lens of each .insp is written, and which one is a setting, not a source
+// that changed: the plan refuses to keep frames when the identity moves.
+void test_packed_photo_one_lens() {
+    const fs::path root = scratch("one_lens");
+    const fs::path ws = root / "dataset";
+    for (int i = 0; i < 3; i++) write_jpg(root / "dual" / ("d" + std::to_string(i) + ".insp"), 32, 16, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = (root / "dual").string();
+    in.packed_lenses = 2;
+    in.active_lens = 1;
+    job.inputs.push_back(in);
+    gui::RunProgress prog;
+    std::string err;
+    const bool ran = run_prep(job, prog, err);
+    check(ran, "one lens: run: " + err);
+    std::error_code ec;
+    check(!fs::exists(ws / "images" / "cam0", ec) && files_in(ws / "images" / "cam1") == 3,
+          "one lens: only the lens kept is written");
+    const std::string identity = gui::frame_source_identity(job, job.inputs[0], false);
+    job.inputs[0].active_lens = 0;
+    check(!identity.empty() && gui::frame_source_identity(job, job.inputs[0], false) == identity,
+          "one lens: another lens is the same source");
+}
+
 // A review's sheet: a looser threshold brings a frame back by a rename, and
 // what is still left out is deleted without touching anything else there.
 void test_pick_sheet_discards() {
@@ -811,6 +838,7 @@ int main() {
     test_heif_folder();
     test_skipped_photos();
     test_frames_reel_counts_images();
+    test_packed_photo_one_lens();
     test_pick_sheet_discards();
     test_sort_in_place();
     test_sort_rig_in_place();

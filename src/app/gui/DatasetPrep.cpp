@@ -804,6 +804,11 @@ int probe_video_tracks(const std::string& ffmpeg_exe, const std::string& path,
 
 std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in) {
     std::vector<std::string> out;
+    // One lens of the file keeps its own folder, so what is keyed by it -- the
+    // file's lens calibration (sfm/core/LensCalibration.h), a drawn area, a
+    // clicked prompt -- still finds it.
+    if (in.active_lens >= 0 && !in.pano360.valid())
+        return {"cam" + std::to_string(in.active_lens)};
     for (int k = 0; in.packed_lenses >= 2 && k < in.packed_lenses; k++)
         out.push_back("cam" + std::to_string(k));
     if (!out.empty() || !in.is_video) return out;
@@ -823,6 +828,8 @@ std::vector<std::string> stencil_cameras(const PrepJob& job, const PrepInput& in
     for (const SubCamera& sc : in.subcameras) out.push_back(sc.rel);
     if (out.empty() && !in.pano360.valid() && !is_pano360_path(in.path))
         out = lens_dirs(job, in);
+    // The other lens of a file cut to one writes nothing, whatever it has drawn.
+    if (in.active_lens >= 0) return out;
     for (const auto& [camera, cs] : in.stencil.cameras)
         if (std::find(out.begin(), out.end(), camera) == out.end()) out.push_back(camera);
     if (out.empty()) out.push_back("");
@@ -1403,10 +1410,10 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
         return n;
     }
     // A 360 capture writes one image per view; its two tracks are one frame.
-    const int per_frame =
-        in.pano360.valid()
-            ? (int)app::pano360_views(in.pano360, job.pano).size()
-            : std::max(in.packed_lenses, 0);
+    const int per_frame = in.pano360.valid()
+                              ? (int)app::pano360_views(in.pano360, job.pano).size()
+                          : in.active_lens >= 0 ? 1
+                                                : std::max(in.packed_lenses, 0);
 #ifdef SS_BUILD_SAM
     FrameSourceInfo source;
     std::string error;
@@ -2011,7 +2018,7 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
             log(fmt(lmsg::resume_keep_frames, {(long long)have, images}),
                 /*detail=*/false);
             std::error_code ec;
-            if (fs::is_directory(fs::path(images) / "cam1", ec))
+            if (in.active_lens < 0 && fs::is_directory(fs::path(images) / "cam1", ec))
                 out.per_folder_cameras = true;
             auto capture = std::find_if(
                 job.recorded_captures.begin(), job.recorded_captures.end(),
@@ -2050,6 +2057,7 @@ static bool streaming_job(const PrepJob& job, const PrepInput& in,
     const double src_fps = source.fps > 1.0 ? source.fps : 30.0;
     fx.clip_start = in.clip_start;
     fx.clip_end = in.clip_end;
+    fx.track = kept_track(in);
     const bool every = every_frame(job, in);
     const int window = every ? 1 : std::max(job.sharp_window, 1);
     fx.input = in.path;
@@ -2183,11 +2191,13 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     app::FrameExtractJob fx;
     FrameSourceInfo source;
     if (!streaming_job(job, in, fx, source, _cancel, error)) return false;
-    fx.image_dir = images;
+    fx.image_dir = kept_track(in) >= 0
+                       ? (fs::path(images) / lens_dirs(job, in).front()).string()
+                       : images;
     if (_frame_threads > 0) fx.threads = std::max(1, _frame_threads - 1);
     const std::vector<app::Pano360View>& views = fx.views;
     if (!views.empty()) out.per_folder_cameras = out.per_folder_cameras || views.size() > 1;
-    else if (source.tracks > 1) out.per_folder_cameras = true;
+    else if (source.tracks > 1 && in.active_lens < 0) out.per_folder_cameras = true;
     const size_t row = input_index(job, in);
     if (row < _plans.size()) fx.plan = _plans[row];
     if (!views.empty())
@@ -2325,9 +2335,10 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     // stream list, which calls an attached cover picture a video track.
     VideoFacts facts;
     ffmpeg_probe_video(job.ffmpeg_exe, in.path, facts, _cancel);
+    const bool lens_tracks = is_dual_fisheye_path(in.path) && facts.tracks.size() > 1;
+    const int kept = kept_track(in);
     size_t streams = 1;
-    if (is_dual_fisheye_path(in.path) && facts.tracks.size() > 1)
-        streams = facts.tracks.size();
+    if (lens_tracks && kept < 0) streams = facts.tracks.size();
     if (streams > 1) out.per_folder_cameras = true;
     // A packed frame's lenses are one picture, so only separate tracks drift.
     if (streams > 1 && job.sync_tracks) log(lmsg::sync_needs_builtin.get(), /*detail=*/false);
@@ -2335,11 +2346,13 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     const bool every = every_frame(job, in);
     const int window = every ? 1 : std::max(job.sharp_window, 1);
     const int group = candidate_group(job, in);
-    const bool fisheye = streams > 1 && !facts.tracks.empty() &&
-                         facts.tracks[0].first == facts.tracks[0].second;
-    for (size_t tr = 0; tr < streams; tr++) {
+    const bool fisheye = lens_tracks && facts.tracks[0].first == facts.tracks[0].second;
+    const size_t start_tr = kept >= 0 ? (size_t)kept : 0;
+    const size_t end_tr = kept >= 0 ? start_tr + 1 : streams;
+    for (size_t tr = start_tr; tr < end_tr; tr++) {
         std::string track_path = in.path;
-        const fs::path out_dir = streams > 1
+        const bool lens_folder = streams > 1 || kept >= 0;
+        const fs::path out_dir = lens_folder
             ? fs::path(images) / ("cam" + std::to_string(tr))
             : fs::path(images);
         if (job.resume && !job.redo_frames &&
@@ -2348,7 +2361,7 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
                 /*detail=*/false);
             continue;
         }
-        if (streams > 1) {
+        if (lens_folder) {
             enter(Stage::Frames, fmt(lmsg::stage_split_track, {(long long)tr}));
             const fs::path tmp_track =
                 ws / ("track_cam" + std::to_string(tr) + ".mp4");
@@ -2418,7 +2431,7 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         so.blur_neighbour = rule.neighbour;
         so.similar_bits = every ? 0 : rule.similar_bits;
         fs::path skipped = under((ws / "images_skipped").string(), in.subdir);
-        if (streams > 1) skipped /= "cam" + std::to_string(tr);
+        if (lens_folder) skipped /= "cam" + std::to_string(tr);
         remove_tree(skipped);
         if (job.keep_skipped || job.review_frames) so.skipped_dir = skipped.string();
         // Each track picks and is ruled on alone here, so the view has the
@@ -2809,8 +2822,8 @@ bool convert_to_jpeg(const fs::path& from, const fs::path& to,
     return true;
 }
 
-// `from`'s lenses in frame order, one file each in `to`, each turned by
-// `orientation` after the cut: the lenses are laid out in the STORED pixels.
+// `from`'s lenses in frame order, one file each in `to` (empty skips the lens),
+// turned by `orientation` after the cut: the layout is in the STORED pixels.
 // The last is written last, so its existence means the set is whole.
 bool split_packed_image(const fs::path& from, const std::vector<fs::path>& to,
                         int orientation) {
@@ -2823,6 +2836,7 @@ bool split_packed_image(const fs::path& from, const std::vector<fs::path>& to,
     std::error_code ec;
     bool ok = true;
     for (size_t k = 0; k < to.size() && ok; k++) {
+        if (to[k].empty()) continue;
         std::vector<uint8_t> lens;
         int lw = 0, lh = 0;
         app::packed_lens_crop(px, w, h, 3, (int)to.size(), (int)k, lens, lw, lh);
@@ -2868,7 +2882,7 @@ struct PhotoMove {
 std::vector<PhotoMove> plan_photo_moves(const std::vector<fs::path>& files,
                                         const fs::path& from, const fs::path& to,
                                         const fs::path& mask_root, bool convert,
-                                        std::vector<std::string>& notes) {
+                                        int kept_lens, std::vector<std::string>& notes) {
     std::vector<PhotoMove> plan;
     plan.reserve(files.size());
     std::set<fs::path> taken, mask_taken;
@@ -2890,17 +2904,23 @@ std::vector<PhotoMove> plan_photo_moves(const std::vector<fs::path>& files,
                                    : 1;
             if (!exact) note_packed_shape(f, w, h, lenses, warned, notes);
             std::string stem = rel.stem().string();
+            bool first = true;
             for (int k = 0; k < lenses; k++) {
+                if (lenses > 1 && kept_lens >= 0 && k != kept_lens) {
+                    m.split.emplace_back();
+                    continue;
+                }
                 const fs::path dir = lenses > 1 ? to / ("cam" + std::to_string(k)) : to;
                 fs::path cand = dir / rel.parent_path() / (stem + ".jpg");
-                if (k == 0 && taken.count(cand)) {
+                if (first && taken.count(cand)) {
                     stem += "_insp";
                     cand = dir / rel.parent_path() / (stem + ".jpg");
                 }
+                first = false;
                 taken.insert(cand);
                 m.split.push_back(cand);
+                m.to = cand;
             }
-            m.to = m.split.back();
             m.orientation = sfm::exifOrientation(f.string());
             plan.push_back(std::move(m));
             continue;
@@ -3280,7 +3300,7 @@ bool DatasetPrep::gather_photos(const PrepJob& job, const PrepInput& in,
             convert && !with_masks ? fs::path(masks) : fs::path();
         std::vector<std::string> shape_notes;
         const std::vector<PhotoMove> plan = plan_photo_moves(
-            files, t.from, t.to, derived_masks, convert, shape_notes);
+            files, t.from, t.to, derived_masks, convert, in.active_lens, shape_notes);
         for (const std::string& n : shape_notes) log(n, /*detail=*/false);
         bool any_split = false, any_heif = false;
         for (const PhotoMove& m : plan) {
@@ -3485,7 +3505,7 @@ bool DatasetPrep::split_packed_frames(const PrepInput& in,
                                       const std::string& images,
                                       PrepResult& out, std::string& error) {
     if (in.packed_lenses < 2) return true;
-    out.per_folder_cameras = true;
+    if (in.active_lens < 0) out.per_folder_cameras = true;
     // A review moves whole frames between images/ and images_skipped/, so
     // the lenses are cut apart only once it is over (run() calls again).
     if (_split_later) return true;
@@ -3517,12 +3537,14 @@ bool DatasetPrep::split_packed_frames(const PrepInput& in,
             const size_t i = next.fetch_add(1);
             if (i >= frames.size() || failed.load() || _cancel.load()) return;
             const fs::path& f = frames[i];
-            std::vector<fs::path> to;
+            std::vector<fs::path> to((size_t)in.packed_lenses);
             for (int k = 0; k < in.packed_lenses; k++)
-                to.push_back(fs::path(images) / ("cam" + std::to_string(k)) /
-                             f.filename());
+                if (in.active_lens < 0 || in.active_lens == k)
+                    to[(size_t)k] = fs::path(images) / ("cam" + std::to_string(k)) /
+                                    f.filename();
+            const fs::path& last = in.active_lens < 0 ? to.back() : to[(size_t)in.active_lens];
             std::error_code fec;
-            if (fs::exists(to.back(), fec) || split_packed_image(f, to, 1)) {
+            if (fs::exists(last, fec) || split_packed_image(f, to, 1)) {
                 fs::remove(f, fec);
                 continue;
             }

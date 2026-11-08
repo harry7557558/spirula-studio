@@ -273,6 +273,7 @@ std::string encode_record_inputs(const RecordInputs& in) {
             w.field("clip_start", s.clip_start);
             w.field("clip_end", s.clip_end);
         }
+        if (s.active_lens >= 0) w.field("active_lens", s.active_lens);
         w.field("lut", s.lut);
         w.field("sequential", s.sequential);
         w.field("imu", s.use_imu);
@@ -324,6 +325,7 @@ RecordInputs decode_record_inputs(const JsonValue& v) {
             s.fps = (float)r.get_double("fps", 0.0);
             s.clip_start = r.get_double("clip_start", 0.0);
             s.clip_end = r.get_double("clip_end", 0.0);
+            s.active_lens = (int)r.get_double("active_lens", -1.0);
             s.lut = text(r, "lut");
             s.sequential = r.find("sequential") && r.find("sequential")->as_bool();
             s.use_imu = !r.find("imu") || r.find("imu")->as_bool();

@@ -63,9 +63,10 @@ public:
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;
+        bool lens_changed = false;
     };
     // `clip_*` point at the selected video's clip, null for anything else.
-    Result draw(float height, double* clip_start, double* clip_end);
+    Result draw(float height, double* clip_start, double* clip_end, int* active_lens = nullptr);
     void destroy_gl();
 
 private:

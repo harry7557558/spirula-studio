@@ -525,7 +525,7 @@ namespace {
 // 360 packing's views sit where extraction chose; a dual fisheye's back to back.
 bool apply_known_lenses(const PrepJob& prep, const PrepResult* res, const PrepInput& in,
                         sfm::RigDef& d) {
-    if (!in.subcameras.empty()) return false;
+    if (!in.subcameras.empty() || in.active_lens >= 0) return false;
     if (in.packed_lenses == 2 && d.members.size() == 2) {
         d.kind = "dual-fisheye";
         return sfm::applyRigKind(d).empty();

@@ -1041,6 +1041,61 @@ int main() {
                "a row set to every frame opens a group of its own");
     }
 
+    {
+        PrepInput in = insv();
+        expect(is_dual_lens(in), "dual-fisheye clip defaults to dual lens");
+        expect(lens_dirs(PrepJob{}, in).size() == 2, "dual-fisheye clip has two lens dirs");
+        in.active_lens = 1;
+        expect(!is_dual_lens(in), "selecting single track is not dual lens");
+        expect(lens_dirs(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "a single track keeps its own lens folder, where its calibration is looked up");
+        expect(has_fisheye_lens(in), "single active track retains fisheye lens model");
+        in.stencil.cameras["cam0"].mask.shapes.resize(1);
+        in.stencil.cameras["cam1"].mask.shapes.resize(2);
+        expect(stencil_cameras(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "the fixed areas list the extracted lens only");
+    }
+    {
+        PrepInput in = insv();
+        in.path = "/captures/walk.prx";
+        in.video_tracks = 1;
+        in.packed_lenses = 2;
+        expect(is_dual_lens(in) && lens_dirs(PrepJob{}, in).size() == 2, "a packed clip is two lenses");
+        in.active_lens = 1;
+        expect(!is_dual_lens(in), "one lens of a packed clip is not a dual-lens input");
+        expect(lens_dirs(PrepJob{}, in) == std::vector<std::string>{"cam1"},
+               "one packed lens keeps its own folder");
+        expect(kept_track(in) == -1, "a packed lens is cut from the clip's one track");
+        PrepInput tracks = insv();
+        tracks.active_lens = 1;
+        expect(kept_track(tracks) == 1, "a lens with a track of its own is decoded alone");
+        PrepInput photos;
+        photos.path = "/captures/shots";
+        photos.packed_lenses = 2;
+        photos.active_lens = 0;
+        expect(lens_dirs(PrepJob{}, photos) == std::vector<std::string>{"cam0"},
+               "one lens of packed photographs keeps its own folder");
+    }
+    {
+        const fs::path w = ws.string() + "_track";
+        SfmJob both = video_job(w), one = video_job(w);
+        one.prep.inputs[0].active_lens = 1;
+        bool named = false;
+        for (const StepField& f : frames_fields(one.prep))
+            named = named || (f.key == "active_lens" && f.value == "cam1");
+        expect(named && !(frames_fields(both.prep) == frames_fields(one.prep)),
+               "the lens extracted is a frames setting of its own");
+        build(w, one);
+        SfmJob back = video_job(w);
+        restore_record_inputs(read_dataset_record(w.string()), back.prep, back.camera_model);
+        expect(back.prep.inputs[0].active_lens == 1, "the lens extracted comes back from the record");
+        expect(plan(back)[Step::Frames].act == Act::Reuse, "... and its frames are reused");
+        const DatasetPlan p = plan(both);
+        expect(p[Step::Frames].act == Act::Redo && p[Step::Frames].can_keep,
+               "both lenses again is a setting changed, not a source that went stale");
+        fs::remove_all(w);
+    }
+
     fs::remove_all(ws);
     std::printf(g_failures ? "\nFAILED: %d\n" : "\nall passed\n", g_failures);
     return g_failures ? 1 : 0;

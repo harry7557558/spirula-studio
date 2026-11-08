@@ -472,6 +472,36 @@ SS_MSG(streams_side_by_side,
     RU("Видеопотоков: {0}, показаны рядом"),
     TR("Video akışı: {0}, yan yana gösteriliyor"));
 
+SS_MSG(camera_toggle_help,
+    EN("Include or exclude this camera's frames from the dataset while preserving telemetry."),
+    JA("テレメトリを保持したまま、このカメラのフレームをデータセットに含めるか除外します。"),
+    ZH_HANS("在保留遥测数据的同时，将此相机的帧包含在数据集中或从中排除。"),
+    ZH_HANT("在保留遙測資料的同時，將此相機的影格包含在資料集中或從中排除。"),
+    KO("원격 측정을 유지하면서 이 카메라의 프레임을 데이터셋에 포함하거나 제외합니다."),
+    DE("Bilder dieser Kamera in den Datensatz aufnehmen oder ausschließen, während Telemetriedaten erhalten bleiben."),
+    FR("Inclure ou exclure les images de cette caméra du jeu de données tout en conservant la télémétrie."),
+    ES("Incluir o excluir los fotogramas de esta cámara del conjunto de datos conservando la telemetría."),
+    PT("Incluir ou excluir os quadros desta câmera do conjunto de dados mantendo a telemetria."),
+    IT("Includi o escludi i fotogrammi di questa fotocamera dal set di dati conservando la telemetria."),
+    NL("Beelden van deze camera in de dataset opnemen of uitsluiten met behoud van telemetrie."),
+    RU("Включить или исключить кадры этой камеры из датасета, сохраняя телеметрию."),
+    TR("Telemetriyi koruyarak bu kameranın karelerini veri kümesine dahil edin veya hariç tutun."));
+
+SS_MSG(camera_disabled,
+    EN("Excluded"),
+    JA("除外"),
+    ZH_HANS("已排除"),
+    ZH_HANT("已排除"),
+    KO("제외됨"),
+    DE("Ausgeschlossen"),
+    FR("Exclu"),
+    ES("Excluido"),
+    PT("Excluído"),
+    IT("Escluso"),
+    NL("Uitgesloten"),
+    RU("Исключено"),
+    TR("Hariç tutuldu"));
+
 SS_MSG(lenses_side_by_side,
     EN("Lenses in one picture: {0}, cut apart and shown side by side"),
     JA("1 枚に収まったレンズ: {0}（切り分けて並べて表示）"),
@@ -3294,6 +3324,21 @@ SS_MSG(log_clicks_dropped_clip,
        "которых они сделаны, могут больше не извлекаться."),
     TR("{0} üzerindeki maske tıklamaları atıldı: kesiti değişti, bu yüzden "
        "üzerlerinde tıklandıkları kareler artık çıkarılmayabilir."));
+
+SS_MSG(plan_active_lens,
+    EN("Lens extracted"),
+    JA("取り出すレンズ"),
+    ZH_HANS("提取的镜头"),
+    ZH_HANT("提取的鏡頭"),
+    KO("추출할 렌즈"),
+    DE("Extrahiertes Objektiv"),
+    FR("Objectif extrait"),
+    ES("Objetivo extraído"),
+    PT("Lente extraída"),
+    IT("Obiettivo estratto"),
+    NL("Geëxtraheerde lens"),
+    RU("Извлекаемый объектив"),
+    TR("Çıkarılan mercek"));
 
 SS_MSG(plan_clip,
     EN("Clip"),
