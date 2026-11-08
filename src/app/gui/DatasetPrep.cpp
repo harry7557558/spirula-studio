@@ -781,9 +781,25 @@ std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in) {
         if (out.size() < 2) out.clear();
         return out;
     }
-    if (in.active_track >= 0) return out;
+    // One lens of the file keeps its own folder, so what is keyed by it -- the
+    // file's lens calibration (sfm/core/LensCalibration.h), a drawn area, a
+    // clicked prompt -- still finds it.
+    if (in.active_track >= 0) return {"cam" + std::to_string(in.active_track)};
     for (int t = 0; in.video_tracks >= 2 && t < in.video_tracks; t++)
         out.push_back("cam" + std::to_string(t));
+    return out;
+}
+
+std::vector<std::string> stencil_cameras(const PrepJob& job, const PrepInput& in) {
+    std::vector<std::string> out;
+    for (const SubCamera& sc : in.subcameras) out.push_back(sc.rel);
+    if (out.empty() && !in.pano360.valid() && !is_pano360_path(in.path))
+        out = lens_dirs(job, in);
+    // The other lens of a file cut to one writes nothing, whatever it has drawn.
+    if (in.is_video && in.active_track >= 0) return out;
+    for (const auto& [camera, cs] : in.stencil.cameras)
+        if (std::find(out.begin(), out.end(), camera) == out.end()) out.push_back(camera);
+    if (out.empty()) out.push_back("");
     return out;
 }
 
@@ -2136,7 +2152,9 @@ bool DatasetPrep::extract_video_streaming(const PrepJob& job, const PrepInput& i
     app::FrameExtractJob fx;
     FrameSourceInfo source;
     if (!streaming_job(job, in, fx, source, _cancel, error)) return false;
-    fx.image_dir = images;
+    fx.image_dir = in.active_track >= 0
+                       ? (fs::path(images) / lens_dirs(job, in).front()).string()
+                       : images;
     if (_frame_threads > 0) fx.threads = std::max(1, _frame_threads - 1);
     const std::vector<app::Pano360View>& views = fx.views;
     if (!views.empty()) out.per_folder_cameras = out.per_folder_cameras || views.size() > 1;
@@ -2278,9 +2296,9 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     // stream list, which calls an attached cover picture a video track.
     VideoFacts facts;
     ffmpeg_probe_video(job.ffmpeg_exe, in.path, facts, _cancel);
+    const bool lens_tracks = is_dual_fisheye_path(in.path) && facts.tracks.size() > 1;
     size_t streams = 1;
-    if (is_dual_fisheye_path(in.path) && facts.tracks.size() > 1 && in.active_track < 0)
-        streams = facts.tracks.size();
+    if (lens_tracks && in.active_track < 0) streams = facts.tracks.size();
     if (streams > 1) out.per_folder_cameras = true;
     // A packed frame's lenses are one picture, so only separate tracks drift.
     if (streams > 1 && job.sync_tracks) log(lmsg::sync_needs_builtin.get(), /*detail=*/false);
@@ -2288,13 +2306,13 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
     const bool every = every_frame(job, in);
     const int window = every ? 1 : std::max(job.sharp_window, 1);
     const int group = candidate_group(job, in);
-    const bool fisheye = streams > 1 && !facts.tracks.empty() &&
-                         facts.tracks[0].first == facts.tracks[0].second;
+    const bool fisheye = lens_tracks && facts.tracks[0].first == facts.tracks[0].second;
     const size_t start_tr = in.active_track >= 0 ? (size_t)in.active_track : 0;
     const size_t end_tr = in.active_track >= 0 ? start_tr + 1 : streams;
     for (size_t tr = start_tr; tr < end_tr; tr++) {
         std::string track_path = in.path;
-        const fs::path out_dir = streams > 1
+        const bool lens_folder = streams > 1 || in.active_track >= 0;
+        const fs::path out_dir = lens_folder
             ? fs::path(images) / ("cam" + std::to_string(tr))
             : fs::path(images);
         if (job.resume && !job.redo_frames &&
@@ -2373,7 +2391,7 @@ bool DatasetPrep::extract_video_ffmpeg(const PrepJob& job, const PrepInput& in,
         so.blur_neighbour = rule.neighbour;
         so.similar_bits = every ? 0 : rule.similar_bits;
         fs::path skipped = under((ws / "images_skipped").string(), in.subdir);
-        if (streams > 1) skipped /= "cam" + std::to_string(tr);
+        if (lens_folder) skipped /= "cam" + std::to_string(tr);
         remove_tree(skipped);
         if (job.keep_skipped || job.review_frames) so.skipped_dir = skipped.string();
         // Each track picks and is ruled on alone here, so the view has the

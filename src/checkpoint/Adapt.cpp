@@ -269,6 +269,8 @@ std::optional<SlotClass> classify(const std::string& name) {
     }
     if (name == "eng.radii")        { SlotClass c; c.ch = 1; return c; }
     if (name == "eng.accum_buffer") { SlotClass c; c.ch = 2; return c; }
+    if (name == "eng.projective_state")       { SlotClass c; c.ch = 4; return c; }
+    if (name == "eng.projective_information") { SlotClass c; c.ch = 1; return c; }
     if (name == "eng.bias_correction_steps") {
         SlotClass c; c.ch = 1; c.is_int = true; return c;
     }
@@ -746,6 +748,11 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
         }
 
         // --- everything else (bg_sky, colour matrices): fixed size ---------
+        PoolSlot slot;
+        if (pool_slot_from_name(base, slot) &&
+            slot_category(slot) == VramCategory::Splat)
+            throw std::runtime_error("checkpoint adapt: no rule to resize "
+                                     "per-splat buffer '" + base + "'");
         if (parts.plain) emit[base] = *parts.plain;
         else if (parts.q && parts.qb) {
             emit[base + ".q"] = *parts.q;

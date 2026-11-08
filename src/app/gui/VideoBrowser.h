@@ -78,7 +78,8 @@ public:
         bool tracks_changed = false;
     };
     // `clip_*` are the input's, `locked` once the run has read them;
-    // `kept_fps` is the rate it extracts at, 0 every frame.
+    // `kept_fps` is the rate it extracts at, 0 every frame. `active_track`
+    // (PrepInput::active_track) is offered as a switch per lens of two tracks.
     Result draw(float height, double& clip_start, double& clip_end, bool locked,
                 float kept_fps, int* active_track = nullptr);
     void destroy_gl();
@@ -109,8 +110,8 @@ private:
     long long index_at(double seconds) const;
     int streams(bool stitched) const;
     void take_frames();
-    void draw_frame(const ImVec2& box, int* active_track = nullptr, bool locked = false,
-                    Result* r = nullptr);
+    // `active_track` dims the lens a dual-track file is not extracting.
+    void draw_frame(const ImVec2& box, const int* active_track = nullptr);
     bool draw_timeline(float width, double& clip_start, double& clip_end, bool locked);
 
     std::string _key;

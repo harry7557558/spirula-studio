@@ -56,6 +56,7 @@ struct PreviewSource {
     // other way.
     std::string device_error;
     int tracks = 1;         // video tracks in the file
+    int track = -1;         // the one extracted (PrepInput::active_track), -1 all
     // The same input color metadata passed to dataset masking.
     std::string image_gamut;
     std::optional<bool> image_is_linear;

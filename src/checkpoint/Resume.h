@@ -23,7 +23,8 @@ struct ResolvedCheckpoint {
     std::filesystem::path ckpt_dir;   // holds state.tar
 };
 
-// Accepts a run directory or a step-*.ckpt directory. Throws if neither.
+// Accepts a run directory (its newest step-*.ckpt that has a state.tar) or a
+// step-*.ckpt directory. Throws if neither.
 ResolvedCheckpoint resolve_checkpoint(const std::filesystem::path& path);
 
 // The state.json member of ckpt_dir/state.tar.

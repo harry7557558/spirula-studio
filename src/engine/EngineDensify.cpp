@@ -627,6 +627,7 @@ int engine_densify_step(int step, int max_steps, const DensifyConfig& cfg) {
     if (do_densify) {
         engine().optim.last_num_dead      = num_dead;
         engine().optim.last_num_relocated = num_relocated;
+        ++engine().pca_reg.splat_epoch;
     }
     // SS_VISIT_LOG=1: what the render counters hold at each refine step, in
     // English like the other deep diagnostics.

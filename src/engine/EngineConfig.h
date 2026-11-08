@@ -348,11 +348,36 @@ struct PpispStepConfig {
 };
 
 
+// How the local-PCA regularizer finds each splat's neighbours
+// (TrainConfig::pca_reg_knn); docs/notes/pca-reg.md.
+enum class PcaRegKnn : int {
+    Exact = 0, ExactCached, Morton, MortonCached, MortonBest, MortonBestCached,
+};
+
+// The local-PCA regularizer (PCAsplat, arXiv 2610.11011) at this step. The
+// weights are the paper's, on means over the splats; the engine divides by N.
+struct PcaRegConfig {
+    int       neighbors     = 0;    // besides the splat itself; 0 is off
+    PcaRegKnn knn           = PcaRegKnn::Exact;
+    int       window        = 0;    // MortonBest's candidates in Morton order
+    int       refresh_every = 100;  // the cached methods' rebuild interval
+    float     w_pca         = 0.0f; // on lambda_1 + tangent * (lambda_3 - lambda_2)
+    float     tangent       = 0.0f;
+    float     w_normal      = 0.0f; // on 1 - |<v_1, splat normal>|
+    float     w_surfel      = 0.0f; // on the smallest scale
+    // Lambdas over their sum, smallest scale over largest: Sim(3)-invariant.
+    bool      scale_agnostic = false;
+    // The scale-agnostic mean step cannot take a gradient on a splat this step
+    // did not project (OptimConfig::use_scale_agnostic_mean).
+    bool      rendered_means_only = false;
+};
+
 // Bundle passed to engine_train_step covering all per-step config groups.
 struct EngineStepConfig {
     LossConfig           loss;
     OptimConfig          optim;
     DensifyConfig        densify;
+    PcaRegConfig         pca_reg;
     BilagridStepConfig   bilagrid;
     PpispStepConfig      ppisp;
     BackgroundStepConfig background;

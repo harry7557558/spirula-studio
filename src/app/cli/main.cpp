@@ -586,7 +586,8 @@ int spirula_train_main(int argc, char** argv) {
                                           (long long)p.num_splats,
                                           format_duration(session.elapsed_seconds()),
                                           format_duration(session.eta_seconds())}).c_str());
-                for (const char* k : {"rgb_loss", "ssim", "delta_e", "flip", "psnr"}) {
+                for (const char* k : {"rgb_loss", "ssim", "delta_e", "flip", "psnr",
+                                      "pca_lambda1", "pca_tangent", "pca_normal"}) {
                     auto it = p.losses.find(k);
                     if (it != p.losses.end()) std::printf("  %s=%.4g", k, it->second);
                 }

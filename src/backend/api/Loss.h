@@ -2,7 +2,7 @@
 // Backend API module — GENERATED forwarder by
 // tools/codegen/generate_backend_api.py. DO NOT EDIT.
 //
-// Fused SSIM, multi-scale per-pixel losses, per-splat losses.
+// Fused SSIM, multi-scale per-pixel losses, per-splat losses, the local-PCA neighbourhood regularizer.
 //
 // Authoritative declarations live in the per-kernel headers included below
 // (declaration sections generated from /*[AutoHeaderGeneratorExport]*/
@@ -13,3 +13,4 @@
 #include "kernels/loss/FusedSSIM.cuh"
 #include "kernels/loss/PerPixelLoss.cuh"
 #include "kernels/loss/PerSplatLoss.cuh"
+#include "kernels/loss/PcaReg.cuh"

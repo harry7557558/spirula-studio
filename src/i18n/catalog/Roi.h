@@ -1019,6 +1019,43 @@ SS_MSG(train_help,
        "pikseller eğitimin dışında kalır. Varsayılan olarak bu veri kümesi için "
        "kaydedilen ilk bölge kullanılır."));
 
+SS_MSG(batch_run_help,
+    EN("Region of interest: this run grows the model only inside it. By default the "
+       "first region saved for the dataset is used. Right-click a region in the list "
+       "to edit it."),
+    JA("関心領域: この実行ではモデルがこの中でだけ成長します。既定ではデータセットに"
+       "最初に保存された領域を使います。一覧の領域を右クリックすると編集できます。"),
+    ZH_HANS("感兴趣区域：本次运行的模型只在其中增长。默认使用为数据集保存的第一个"
+            "区域。在列表中右键单击某个区域即可编辑。"),
+    ZH_HANT("感興趣區域：本次執行的模型只在其中增長。預設使用為資料集儲存的第一個"
+            "區域。在清單中按右鍵點選某個區域即可編輯。"),
+    KO("관심 영역: 이 실행에서는 모델이 이 안에서만 자랍니다. 기본값은 데이터셋에 "
+       "저장된 첫 번째 영역입니다. 목록에서 영역을 오른쪽 클릭하면 편집할 수 있습니다."),
+    DE("Interessenbereich: Dieser Lauf lässt das Modell nur darin wachsen. "
+       "Standardmäßig gilt der erste für den Datensatz gespeicherte Bereich. Einen "
+       "Bereich in der Liste mit der rechten Maustaste anklicken, um ihn zu bearbeiten."),
+    FR("Région d'intérêt : cette exécution ne fait croître le modèle qu'à l'intérieur. "
+       "Par défaut, c'est la première région enregistrée pour le jeu de données. "
+       "Cliquez avec le bouton droit sur une région de la liste pour la modifier."),
+    ES("Región de interés: esta ejecución solo hace crecer el modelo dentro de ella. "
+       "Por defecto se usa la primera región guardada para el conjunto de datos. Haga "
+       "clic derecho en una región de la lista para editarla."),
+    PT("Região de interesse: esta execução só faz crescer o modelo dentro dela. Por "
+       "padrão usa-se a primeira região guardada para o conjunto de dados. Clique com o "
+       "botão direito numa região da lista para a editar."),
+    IT("Regione di interesse: questa esecuzione fa crescere il modello solo al suo "
+       "interno. Per impostazione predefinita si usa la prima regione salvata per il "
+       "dataset. Fai clic destro su una regione dell'elenco per modificarla."),
+    NL("Interessegebied: deze run laat het model alleen daarbinnen groeien. Standaard "
+       "geldt het eerste gebied dat voor de dataset is opgeslagen. Klik met de "
+       "rechtermuisknop op een gebied in de lijst om het te bewerken."),
+    RU("Область интереса: в этом запуске модель растёт только внутри неё. По умолчанию "
+       "берётся первая область, сохранённая для набора данных. Щёлкните область в "
+       "списке правой кнопкой мыши, чтобы изменить её."),
+    TR("İlgi bölgesi: bu çalıştırmada model yalnızca bunun içinde büyür. Varsayılan "
+       "olarak veri kümesi için kaydedilen ilk bölge kullanılır. Düzenlemek için "
+       "listedeki bir bölgeye sağ tıklayın."));
+
 }  // namespace roi
 }  // namespace msg
 }  // namespace i18n

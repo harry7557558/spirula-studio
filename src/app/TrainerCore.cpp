@@ -27,6 +27,7 @@
 #include "data/LabelField.h"
 #include "dense/Artifact.h"
 #include "data/Knn.h"
+#include "kernels/loss/PcaReg.cuh"
 #include "sfm/core/Exif.h"
 
 #ifndef _WIN32
@@ -498,6 +499,16 @@ DeadCriterion dead_criterion_enum(const std::string& c) {
     throw std::runtime_error("unknown dead_criterion: " + c);
 }
 
+PcaRegKnn pca_reg_knn_enum(const std::string& m) {
+    if (m == "exact")              return PcaRegKnn::Exact;
+    if (m == "exact-cached")       return PcaRegKnn::ExactCached;
+    if (m == "morton")             return PcaRegKnn::Morton;
+    if (m == "morton-cached")      return PcaRegKnn::MortonCached;
+    if (m == "morton-best")        return PcaRegKnn::MortonBest;
+    if (m == "morton-best-cached") return PcaRegKnn::MortonBestCached;
+    throw std::runtime_error("unknown pca_reg_knn: " + m);
+}
+
 int densify_accum_mode_int(const std::string& mode) {
     if (mode == "max") return (int)DensifyAccumMode::Max;
     if (mode == "sum") return (int)DensifyAccumMode::Sum;
@@ -687,6 +698,31 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
               (double)c.dead_after_epochs * (double)st.steps_per_epoch)))
         : 0;
     cfg.densify.growth_caps = st.growth_caps;
+
+    // ---- local-PCA regularizer ------------------------------------------
+    if (c.pca_reg_neighbors > 0 && step >= c.pca_reg_start_iter) {
+        cfg.pca_reg.neighbors = c.pca_reg_neighbors;
+        cfg.pca_reg.knn = pca_reg_knn_enum(c.pca_reg_knn);
+        cfg.pca_reg.window = c.pca_reg_window;
+        cfg.pca_reg.refresh_every = c.pca_reg_refresh_every > 0
+            ? c.pca_reg_refresh_every : std::max(c.refine_every, 1);
+        const float t = std::clamp(
+            (float)(step - c.pca_reg_start_iter) /
+                (float)std::max(max_steps_lr - c.pca_reg_start_iter, 1), 0.0f, 1.0f);
+        const float w0 = c.pca_reg_weight;
+        const float w1 = c.pca_reg_weight_final.value_or(w0);
+        float w = w0 + (w1 - w0) * t;
+        if (c.pca_reg_schedule == "exponential" && w0 > 0.0f && w1 > 0.0f)
+            w = w0 * std::pow(w1 / w0, t);
+        else if (c.pca_reg_schedule == "cosine")
+            w = w0 + (w1 - w0) * 0.5f * (1.0f - std::cos(3.14159265f * t));
+        cfg.pca_reg.w_pca    = w;
+        cfg.pca_reg.tangent  = c.pca_reg_tangent_weight;
+        cfg.pca_reg.w_normal = c.pca_reg_normal_weight;
+        cfg.pca_reg.w_surfel = c.pca_reg_surfel_weight;
+        cfg.pca_reg.scale_agnostic = c.pca_reg_scale_agnostic;
+        cfg.pca_reg.rendered_means_only = c.use_scale_agnostic_mean;
+    }
 
     // ---- bilagrid LRs + TV ---------------------------------------------
     if (st.bilagrid_rgb_init) {
@@ -1799,6 +1835,13 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         fs.distinct_batches = _batches_per_epoch;
         fs.sh_degree = cfg.sh_degree;
         fs.sh_degree_every = cfg.sh_degree_warmup_every;
+        if (cfg.pca_reg_neighbors > 0 && cfg.pca_reg_knn.find("-cached") != std::string::npos) {
+            const uint64_t k = (uint64_t)std::min(cfg.pca_reg_neighbors, kPcaRegMaxNeighbors - 1);
+            const bool lists = cfg.pca_reg_knn != "morton-cached";
+            fs.deferred_bytes =
+                (uint64_t)engine_get_max_num_splats() * 4u * (1u + (lists ? k : 0u));
+            fs.deferred_step = std::max(cfg.pca_reg_start_iter, start_step);
+        }
         _forecast.reset(fs);
         _live_splats = engine_get_cur_num_splats();
         _warned_risk = OomRisk::Low;

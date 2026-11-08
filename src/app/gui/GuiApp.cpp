@@ -1487,11 +1487,12 @@ void GuiApp::run_pending_if_stopped() {
 // Append a row for `dataset`, seeded with whatever preset the trainer screen
 // is on -- a queue is usually built right after tuning the settings it should
 // run with. Shared by the picker, the recents menu and drag-and-drop.
-BatchRun GuiApp::batch_run_on_screen() const {
+BatchRun GuiApp::batch_run_on_screen(const std::string& dataset) const {
     BatchRun run;
     run.preset.path = _train_presets.file;
     run.preset.name =
         _train_presets.file.empty() ? _preset : _train_presets.display;
+    if (!dataset.empty() && dataset == _cfg.data) run.roi_region = _cfg.roi_region;
     return run;
 }
 
@@ -1500,7 +1501,7 @@ void GuiApp::add_batch_row(const std::string& dataset) {
     BatchRow r;
     r.dataset = dataset;
     r.does(BatchStage::Train) = true;
-    r.runs.push_back(batch_run_on_screen());
+    r.runs.push_back(batch_run_on_screen(dataset));
     _batch.push_back(std::move(r));
     _batch_open_row = (int)_batch.size() - 1;
     batch_edited();
@@ -2697,6 +2698,9 @@ bool GuiApp::add_sources(const std::vector<std::string>& paths, bool replace) {
         _border_enable = true;
         if (in.stencil.empty()) in.stencil.detect_border = true;
     }
+    std::vector<bool> fisheye;
+    for (const PrepInput& in : _sources) fisheye.push_back(has_fisheye_lens(in));
+    adopt_rows_above(_sources, stencil_table_rows(_sources), first_new, fisheye);
     apply_frame_shapes(_sources, _frame_shapes, first_new);
     for (const std::string& masks : mask_folders) {
         if (attach_mask_folder(_sources, masks))
@@ -2765,6 +2769,190 @@ void GuiApp::save_run_stencils() {
     const std::vector<std::string> written = save_dataset_stencils(_workspace, inputs, err);
     if (!err.empty()) log(i18n::format(dmsg::stencil_save_failed, {err}));
     for (const std::string& f : written) log(i18n::format(dmsg::stencil_autosaved, {f}));
+}
+
+void GuiApp::load_stencil_sets() {
+    _stencil_sets = list_stencil_presets();
+    _stencil_set_shapes.assign(_stencil_sets.size(), app::MaskSet{});
+    std::string err;
+    for (size_t k = 0; k < _stencil_sets.size(); k++)
+        load_stencil_preset(_stencil_sets[k].path, _stencil_set_shapes[k], err);
+    _stencil_sets_stale = false;
+}
+
+std::vector<StencilRow> GuiApp::stencil_table_rows(const std::vector<PrepInput>& inputs) const {
+    std::vector<std::vector<std::string>> keys;
+    keys.reserve(inputs.size());
+    for (const PrepInput& in : inputs) keys.push_back(stencil_cameras(_sfm_job.prep, in));
+    return stencil_rows(keys);
+}
+
+void GuiApp::refresh_frame_shapes(const std::vector<PrepInput>& inputs,
+                                  std::string& frame_shapes) {
+    if (_stencil_sets_stale) load_stencil_sets();
+    const int s = common_set(_stencil_set_shapes, inputs, stencil_table_rows(inputs));
+    frame_shapes = s < 0 ? std::string() : _stencil_sets[(size_t)s].name;
+}
+
+void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
+    std::vector<PrepInput>& inputs = *p.inputs;
+    if (inputs.empty()) return;
+    if (_stencil_sets_stale) load_stencil_sets();
+    const std::vector<StencilRow> rows = stencil_table_rows(inputs);
+    settle_follow(inputs, rows);
+
+    // "dome" on an input's first row, "dome/cam1" where a row is named.
+    std::vector<std::string> bases(rows.size()), names(rows.size());
+    float base_w = 0.0f, cam_w = 0.0f;
+    for (size_t r = 0; r < rows.size(); r++) {
+        const PrepInput& in = inputs[rows[r].input];
+        fs::path path(in.path);
+        if (path.filename().empty()) path = path.parent_path();   // trailing separator
+        bases[r] = in.subdir.empty() ? path.filename().string() : in.subdir;
+        names[r] = rows[r].camera.empty() ? bases[r] : bases[r] + "/" + rows[r].camera;
+        base_w = std::max(base_w, ImGui::CalcTextSize(bases[r].c_str()).x);
+        cam_w = std::max(cam_w, ImGui::CalcTextSize(rows[r].camera.c_str()).x);
+    }
+    // The border column takes just over half of what the names leave, so the
+    // areas combo keeps its arrow on a narrow pane or in a long language.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float name_w = std::min(base_w, px(150.0f));
+    const float rest = std::max(px(240.0f), ImGui::GetContentRegionAvail().x - name_w - cam_w -
+                                                8.0f * style.CellPadding.x);
+    const float border_w = std::min(rest * 0.55f, px(230.0f));
+    const float combo_w = std::floor(border_w * 0.56f);
+    const float slider_w = border_w - combo_w - style.ItemSpacing.x;
+    const ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoSavedSettings;
+    if (!ImGui::BeginTable("##stencil_rows", 4, flags)) return;
+    ui::TableSetupColumn(dmsg::stencil_rows_input, ImGuiTableColumnFlags_WidthFixed, name_w);
+    ui::TableSetupColumnRaw("##camera", ImGuiTableColumnFlags_WidthFixed, cam_w);
+    ui::TableSetupColumn(dmsg::stencil_rows_border, ImGuiTableColumnFlags_WidthFixed, border_w);
+    ui::TableSetupColumn(dmsg::stencil_areas_preset, ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+    for (int c = 0; c < 4; c++) {
+        if (!ImGui::TableSetColumnIndex(c)) continue;
+        ImGui::TableHeader(ImGui::TableGetColumnName(c));
+        if (c == 0) ui::help_on_hover(dmsg::stencil_rows_help);
+        if (c == 2) ui::help_on_hover(dmsg::stencil_border_help);
+        if (c == 3) ui::help_on_hover(dmsg::stencil_areas_help);
+    }
+
+    const bool preview_blocked = native_work_busy() || !p.preview_ready;
+    for (size_t r = 0; r < rows.size(); r++) {
+        const StencilRow& row = rows[r];
+        const PrepInput& in = inputs[row.input];
+        // A copy: an edit below rewrites the stencil it would point into.
+        const app::CameraStencil cs = row_stencil(inputs, row);
+        const std::string above = row.above >= 0 ? names[(size_t)row.above] : std::string();
+        ImGui::TableNextRow();
+        ImGui::PushID(in.path.c_str());
+        ImGui::PushID(row.camera.c_str());
+
+        ImGui::TableNextColumn();
+        if (r == 0 || rows[r - 1].input != row.input) {
+            ImGui::AlignTextToFramePadding();
+            ui::TextRaw(bases[r]);
+            if (ImGui::IsItemHovered()) ui::SetTooltipRaw(in.path);
+        }
+        ImGui::TableNextColumn();
+        if (!row.camera.empty()) {
+            ImGui::AlignTextToFramePadding();
+            ui::TextDisabledRaw(row.camera);
+        }
+
+        ImGui::TableNextColumn();
+        const bool border_follows = row_follows(inputs, rows, r, StencilPart::Border);
+        const char* border_shown = border_follows    ? dmsg::lens_same_as_above.get()
+                                   : cs.detect_border ? dmsg::stencil_rows_cut.get()
+                                                      : dmsg::stencil_rows_off.get();
+        ImGui::SetNextItemWidth(combo_w);
+        if (ui::BeginComboRaw("##border", border_shown)) {
+            if (row.above >= 0) {
+                if (ui::Selectable(dmsg::lens_same_as_above, border_follows)) {
+                    follow_above(inputs, rows, r, StencilPart::Border);
+                }
+                ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
+                ImGui::Separator();
+            }
+            if (ui::Selectable(dmsg::stencil_rows_cut, !border_follows && cs.detect_border)) {
+                set_row_border(inputs, rows, r, true, cs.shrink);
+            }
+            ui::help_on_hover(dmsg::stencil_border_help);
+            if (ui::Selectable(dmsg::stencil_rows_off, !border_follows && !cs.detect_border)) {
+                set_row_border(inputs, rows, r, false, cs.shrink);
+            }
+            ui::help_on_hover(dmsg::stencil_rows_off_help);
+            ImGui::EndCombo();
+        }
+        if (border_follows) ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
+        else ui::help_on_hover(cs.detect_border ? dmsg::stencil_border_help
+                                                : dmsg::stencil_rows_off_help);
+        if (cs.detect_border) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(slider_w);
+            float pct = cs.shrink * 100.0f;
+            if (ui::SliderFloatRaw("##shrink", &pct, -10.0f, 30.0f, "%.1f%%",
+                                   ImGuiSliderFlags_AlwaysClamp)) {
+                set_row_border(inputs, rows, r, true, pct / 100.0f);
+            }
+            ui::help_on_hover(dmsg::stencil_shrink_help);
+        }
+
+        ImGui::TableNextColumn();
+        const bool areas_follow = row_follows(inputs, rows, r, StencilPart::Areas);
+        const int set = row_set(_stencil_set_shapes, row, cs);
+        const std::string areas_shown =
+            areas_follow           ? std::string(dmsg::lens_same_as_above.get())
+            : cs.mask.shapes.empty() ? std::string(dmsg::stencil_rows_none.get())
+            : set >= 0             ? stencil_preset_label(_stencil_sets[(size_t)set])
+                                   : std::string(dmsg::stencil_rows_drawn.get());
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (ui::BeginComboRaw("##areas", areas_shown.c_str(), ImGuiComboFlags_HeightLarge)) {
+            if (row.above >= 0) {
+                if (ui::Selectable(dmsg::lens_same_as_above, areas_follow)) {
+                    follow_above(inputs, rows, r, StencilPart::Areas);
+                }
+                ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
+                ImGui::Separator();
+            }
+            if (ui::Selectable(dmsg::stencil_rows_none,
+                               !areas_follow && cs.mask.shapes.empty())) {
+                set_row_areas(inputs, rows, r, app::MaskSet{});
+            }
+            if (!areas_follow && !cs.mask.shapes.empty() && set < 0)
+                ui::Selectable(dmsg::stencil_rows_drawn, true);
+            // A per-camera set only on an input with one of its cameras.
+            for (size_t k = 0; k < _stencil_sets.size(); k++) {
+                const app::MaskSet& ms = _stencil_set_shapes[k];
+                if (ms.empty()) continue;
+                bool fits = !ms.per_camera();
+                for (const StencilRow& other : rows)
+                    fits = fits || (other.input == row.input && ms.cameras.count(other.camera));
+                if (!fits) continue;
+                if (ui::SelectableRaw(stencil_preset_label(_stencil_sets[k]),
+                                      !areas_follow && set == (int)k)) {
+                    set_row_areas(inputs, rows, r, ms);
+                }
+            }
+            ImGui::Separator();
+            ImGui::BeginDisabled(preview_blocked);
+            if (ui::Selectable(dmsg::stencil_rows_draw, false)) {
+                *p.preview_input = (int)row.input;
+                p.open_preview();
+            }
+            ImGui::EndDisabled();
+            ui::help_on_hover_disabled(dmsg::stencil_rows_draw_help);
+            ImGui::EndCombo();
+        }
+        if (areas_follow) ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
+        else ui::help_on_hover(dmsg::stencil_areas_help);
+
+        ImGui::PopID();
+        ImGui::PopID();
+    }
+    ImGui::EndTable();
+    // Every frame, so removing an input or a saved set is seen too.
+    refresh_frame_shapes(inputs, *p.frame_shapes);
 }
 
 void GuiApp::apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
@@ -2968,8 +3156,15 @@ void GuiApp::handle_dialog_result(const std::vector<std::string>& paths) {
             _pick_lut = -1;
             break;
         case PickAction::StencilFile:
-            if (_segment.is_open() && _mask_preview_input < (int)_sources.size())
-                _segment.load_file(_sources[(size_t)_mask_preview_input].stencil, path);
+            if (_segment.is_open() && _mask_preview_input < (int)_sources.size()) {
+                const size_t edited = (size_t)_mask_preview_input;
+                const std::vector<StencilRow> rows = stencil_table_rows(_sources);
+                settle_follow(_sources, rows);
+                const std::vector<app::CameraStencil> before = row_stencils(_sources, rows);
+                _segment.load_file(_sources[edited].stencil, path);
+                follow_edit(_sources, rows, before, edited);
+                refresh_frame_shapes(_sources, _frame_shapes);
+            }
             break;
         case PickAction::MeshPhotos:
             _mesh_job.data_dir = path;
@@ -5383,7 +5578,7 @@ void GuiApp::draw_source_cameras() {
                      idx < 0 ? labels[(size_t)shown] : nullptr);
         // "This input's lenses" only means something for an input with
         // several: a lone photo folder or a one-lens video has none to rig.
-        const bool multi = g.sub >= 0 || !lens_dirs(_sfm_job.prep, in).empty();
+        const bool multi = g.sub >= 0 || lens_dirs(_sfm_job.prep, in).size() >= 2;
         int& rig = group_rig(_sources, g);
         if (!multi && rig == kRigOwn) rig = kRigNone;
         if (_ds_advanced) {
@@ -5530,6 +5725,7 @@ PreviewSource GuiApp::preview_source(size_t input) const {
     src.builtin_decode =
         !_sfm_job.prep.force_external_decode && backends().builtin_video;
     src.tracks = std::max(in.video_tracks, 1);
+    src.track = in.is_video ? in.active_track : -1;
     src.look.packed_lenses = in.packed_lenses;
     if (in.is_video) src.look.lut = input_lut(_sources, input);
     // The one frozen choice, so a preview decodes and segments on the GPU the
@@ -5991,24 +6187,9 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
                 in.stencil.detect_border = true;
     }
     ui::help_on_hover(dmsg::mask_border_enable_help);
-    std::string& frame_shapes = *p.frame_shapes;
     if (*p.border) {
         ImGui::Indent();
-        ImGui::SetNextItemWidth(px(240.0f));
-        const std::string shown =
-            frame_shapes.empty() ? dmsg::stencil_areas_per_input.get() : frame_shapes;
-        if (ui::BeginCombo(dmsg::stencil_areas_preset, shown.c_str())) {
-            if (ImGui::IsWindowAppearing()) _frame_shapes_list = list_stencil_presets();
-            if (ui::Selectable(dmsg::stencil_areas_per_input, frame_shapes.empty()))
-                frame_shapes.clear();
-            for (const StencilPreset& sp : _frame_shapes_list)
-                if (ui::SelectableRaw(stencil_preset_label(sp), sp.name == frame_shapes)) {
-                    frame_shapes = sp.name;
-                    apply_frame_shapes(inputs, frame_shapes);
-                }
-            ImGui::EndCombo();
-        }
-        ui::help_on_hover(dmsg::stencil_areas_preset_help);
+        draw_stencil_rows(p);
         ImGui::Unindent();
     }
 
@@ -7924,6 +8105,7 @@ std::string plan_key_label(const std::string& key) {
         {"geometry_max_size", &dmsg::geom_max_size},
         {"geometry_tokens", &dmsg::geom_num_tokens},
         {"jpeg_quality", &dmsg::geom_jpeg_quality}, {"clip", &svmsg::plan_clip},
+        {"track", &svmsg::plan_track},
     };
     for (const auto& [k, m] : labels)
         if (key == k) return m->get();
@@ -8913,6 +9095,12 @@ void GuiApp::draw_new_dataset() {
     }
     draw_log_panel(log_h);
 
+    // What it saved is listed once it has closed.
+    if (_segment_was_open && !_segment.is_open()) {
+        _stencil_sets_stale = true;
+        refresh_frame_shapes(_sources, _frame_shapes);
+    }
+    _segment_was_open = _segment.is_open();
     if (_segment.is_open()) {
         // It edits one input's stencil and shows one input's frames, so it
         // cannot outlive the list it was opened against.
@@ -8921,8 +9109,14 @@ void GuiApp::draw_new_dataset() {
         } else {
             if (_mask_preview_input >= (int)_sources.size()) _mask_preview_input = 0;
             _segment.set_workspace(_workspace);
-            _segment.draw(_mask, _sources[(size_t)_mask_preview_input].stencil);
-            if (_segment.take_shapes_edited()) _frame_shapes.clear();
+            // Rows that read "same as above" of what it edits follow the edit.
+            const size_t edited = (size_t)_mask_preview_input;
+            const std::vector<StencilRow> rows = stencil_table_rows(_sources);
+            settle_follow(_sources, rows);
+            const std::vector<app::CameraStencil> before = row_stencils(_sources, rows);
+            _segment.draw(_mask, _sources[edited].stencil);
+            follow_edit(_sources, rows, before, edited);
+            if (_segment.take_shapes_edited()) refresh_frame_shapes(_sources, _frame_shapes);
             if (_segment.take_browse_request())
                 open_pick(PickAction::StencilFile, dmsg::stencil_pick_file.get(),
                           FileDialog::Mode::File, {".svg"});
@@ -9766,7 +9960,19 @@ std::string GuiApp::batch_row_summary(const BatchRow& row) const {
         return s;
     }
     if (row.does(BatchStage::Merge) && !row.partition.empty()) return row.partition;
-    if (!row.dataset.empty()) return row.dataset;
+    if (!row.dataset.empty()) {
+        // The regions the runs name, each once; a run on the default adds none.
+        std::string s = row.dataset;
+        for (const BatchRun& run : row.runs) {
+            if (run.roi_region.empty()) continue;
+            const std::string tag =
+                " [" + (run.roi_region == "off"
+                            ? std::string(spirula::i18n::msg::roi::train_none.get())
+                            : fs::path(run.roi_region).stem().string()) + "]";
+            if (s.find(tag) == std::string::npos) s += tag;
+        }
+        return s;
+    }
     if (!row.model.empty()) return row.model;
     return {};
 }
@@ -10083,7 +10289,7 @@ void GuiApp::open_partition_queue(const DatasetFolders& f, const std::string& pa
     _pq.folders = f;
     _pq.partition = partition;
     _pq.num_parts = num_parts;
-    _pq.run = batch_run_on_screen();
+    _pq.run = batch_run_on_screen(f.dir);
     _pq.open = true;
 }
 
@@ -10380,10 +10586,18 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
     ui::SeparatorText(msg::batch_stage_train);
     ui::Text(msg::batch_runs);
     const float bw = ImGui::GetFrameHeight() + 6.0f;
+    // One region column for all the runs, so they line up. A region given by
+    // path still shows with none saved, so it can be turned off.
+    const std::string ds = !row.dataset.empty() ? row.dataset : batch_dataset_workspace(row);
+    const std::vector<std::string> roi_files =
+        ds.empty() ? std::vector<std::string>() : spirula::list_roi_files(ds);
+    bool roi_column = !roi_files.empty();
+    for (const BatchRun& run : row.runs) roi_column = roi_column || !run.roi_region.empty();
     int drop = -1;
     for (size_t i = 0; i < row.runs.size(); i++) {
         ImGui::PushID((int)i);
-        if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh)))
+        if (draw_batch_run(row.runs[i], index, (int)i, row.does(BatchStage::Mesh),
+                           roi_column ? ds : std::string(), roi_files))
             batch_edited();
         ImGui::SameLine();
         if (ui::ButtonRaw("x##rmrun", ImVec2(bw, 0))) drop = (int)i;
@@ -10396,7 +10610,7 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
     }
     if (row.runs.empty()) ui::TextDisabled(msg::batch_runs_default);
     if (ui::Button(msg::batch_add_run)) {
-        row.runs.push_back(batch_run_on_screen());
+        row.runs.push_back(batch_run_on_screen(row.dataset));
         batch_edited();
     }
     ui::help_on_hover(msg::batch_add_run_help);
@@ -10415,7 +10629,9 @@ void GuiApp::draw_batch_row_train(BatchRow& row, int index) {
 }
 
 
-bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
+bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
+                            const std::string& roi_dataset,
+                            const std::vector<std::string>& roi_files) {
     bool moved = false;
     const float num_w = px(84.0f);
     const float sp = ImGui::GetStyle().ItemSpacing.x;
@@ -10431,9 +10647,19 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         floater_w = std::max(floater_w, ImGui::CalcTextSize(choices[k]->get()).x);
     }
     floater_w += ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    // Capped: the list itself opens as wide as its longest entry.
+    float roi_w = 0.0f;
+    if (!roi_dataset.empty()) {
+        roi_w = ImGui::CalcTextSize(spirula::i18n::msg::roi::train_none.get()).x;
+        for (const std::string& f : roi_files)
+            roi_w = std::max(roi_w, ImGui::CalcTextSize(fs::path(f).stem().string().c_str()).x);
+        roi_w = std::min(roi_w + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f,
+                         px(200.0f));
+    }
     const float boxes = 3.0f * (num_w + sp) +
                         (meshing ? ImGui::GetFrameHeight() + sp : 0.0f) +
-                        (inline_floater ? floater_w + sp + bw + sp : 0.0f);
+                        (inline_floater ? floater_w + sp + bw + sp : 0.0f) +
+                        (roi_w > 0.0f ? roi_w + sp : 0.0f);
     ImGui::SetNextItemWidth(std::max(px(120.0f),
                                      ImGui::GetContentRegionAvail().x - boxes));
     moved |= draw_batch_train_preset(run.preset, "##trpreset", row, slot);
@@ -10465,12 +10691,59 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing) {
         ImGui::EndCombo();
     }
     ui::help_on_hover(fld::floater_suppression_help);
+    if (roi_w > 0.0f) {
+        ImGui::SameLine(0, sp);
+        moved |= draw_batch_run_roi(run, roi_dataset, roi_files, roi_w);
+    }
     if (meshing) {
         ImGui::SameLine(0, sp);
         if (ui::CheckboxRaw("##runmesh", &run.mesh)) moved = true;
         ui::help_on_hover(msg::batch_run_mesh_help);
     }
     return moved;
+}
+
+
+// The region a run trains in. Editing one is a right-click on its entry in
+// the list, which keeps a button off every run line.
+bool GuiApp::draw_batch_run_roi(BatchRun& run, const std::string& dataset,
+                                const std::vector<std::string>& files, float width) {
+    namespace roimsg = spirula::i18n::msg::roi;
+    const spirula::RoiChoice now = spirula::resolve_roi_setting(run.roi_region, dataset);
+    auto stem = [](const std::string& p) { return fs::path(p).stem().string(); };
+    const std::string shown = now.off || now.path.empty() ? std::string(roimsg::train_none.get())
+                                                          : stem(now.path);
+    std::string pick;
+    bool edit = false;
+    std::string edit_file;
+    ImGui::SetNextItemWidth(width);
+    if (ui::BeginComboRaw("##runroi", shown.c_str())) {
+        for (size_t k = 0; k <= files.size(); k++) {
+            const bool none = k == files.size();
+            std::error_code ec;
+            const bool on = none ? now.off : !now.off && fs::equivalent(now.path, files[k], ec);
+            ImGui::PushID((int)k);
+            const bool clicked =
+                none ? ui::Selectable(roimsg::train_none, on) : ui::SelectableRaw(stem(files[k]), on);
+            if (clicked && !on)
+                pick = none ? "off" : "roi/" + fs::path(files[k]).filename().generic_string();
+            if (ImGui::BeginPopupContextItem("##roimenu")) {
+                if (ui::MenuItem(roimsg::train_edit_region)) {
+                    edit = true;
+                    edit_file = none ? std::string() : files[k];
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopID();
+        }
+        if (edit) ImGui::CloseCurrentPopup();
+        ImGui::EndCombo();
+    }
+    ui::help_on_hover(roimsg::batch_run_help);
+    if (edit) open_roi_editor(dataset, edit_file);
+    if (pick.empty() || pick == run.roi_region) return false;
+    run.roi_region = pick;
+    return true;
 }
 
 

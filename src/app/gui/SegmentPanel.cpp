@@ -76,7 +76,8 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     _src = src;
     if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
     _model = model;
-    _folder_idx = 0;
+    // A file cut to one lens shows that one: its frames are all the run writes.
+    _folder_idx = std::max(_src.track, 0);
     _frame_idx = 0;
     _frame_dirty = true;
     _needs_run = true;
@@ -253,7 +254,9 @@ std::string SegmentPanel::shown_camera() const {
 
 std::vector<std::string> SegmentPanel::camera_names() const {
     std::set<std::string> out;
-    if (_src.is_video) {
+    if (_src.is_video && _src.track >= 0 && _src.track < (int)_folders.size()) {
+        out.insert(_folders[(size_t)_src.track]);
+    } else if (_src.is_video) {
         out.insert(_folders.begin(), _folders.end());
     } else {
         for (const std::string& f : _all_files) {
@@ -271,9 +274,11 @@ app::CameraStencil& SegmentPanel::scope(app::FrameStencil& s) {
     if (!s.per_camera()) return s;
     const std::string cam = shown_camera();
     auto it = s.cameras.find(cam);
-    if (it == s.cameras.end())
-        it = s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first;
-    return it->second;
+    if (it != s.cameras.end()) return it->second;
+    // Nothing is shown until the listing lands, and "" is then no camera the
+    // run writes; the fixed-areas table would list it as one.
+    if (cam.empty() && _cameras.empty()) return s;
+    return s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first->second;
 }
 
 // On: every camera starts as a copy of the input's, so nothing changes until
@@ -1764,7 +1769,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     draw_stencil(stencil, edited);
 
     // ---- which camera, then which frame ----
-    if (_folders.size() > 1) {
+    if (_folders.size() > 1 && _src.track < 0) {
         ImGui::Spacing();
         ui::Text(dmsg::preview_camera);
         ImGui::SetNextItemWidth(-1);

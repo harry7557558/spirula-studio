@@ -39,6 +39,7 @@
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
+#include "app/gui/StencilRows.h"
 #include "app/gui/TelemetryProbe.h"
 #include "app/gui/TrainPreset.h"
 #include "app/gui/TrainRunner.h"
@@ -274,8 +275,8 @@ private:
     void add_batch_source_row(const std::vector<std::string>& sources);
     void add_batch_mesh_row(const std::string& model);
     // The training run a new row (or a new run on one) starts with: whatever
-    // the trainer screen is on.
-    BatchRun batch_run_on_screen() const;
+    // the trainer screen is on, its region too when `dataset` is open there.
+    BatchRun batch_run_on_screen(const std::string& dataset = {}) const;
     void batch_edited();                    // persist, and re-check
     // Pre-flight every row. Cheap enough (a few stats and a small JSON per
     // preset) that nothing waits for a button: check_batch_if_stale() runs it
@@ -585,7 +586,12 @@ private:
     // The built-in / saved picker one stage of one row uses. True when the
     // choice moved.
     bool draw_batch_train_preset(BatchPreset& p, const char* id, int row, int slot);
-    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing);
+    // A non-empty `roi_dataset` adds the region column, choosing among `roi_files`.
+    bool draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
+                        const std::string& roi_dataset = {},
+                        const std::vector<std::string>& roi_files = {});
+    bool draw_batch_run_roi(BatchRun& run, const std::string& dataset,
+                            const std::vector<std::string>& files, float width);
     // The colour and format sets a row writes, over what its preset says.
     bool draw_batch_mesh_outputs(BatchMeshOptions& mesh);
     void draw_batch_issues();
@@ -1017,10 +1023,19 @@ private:
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.
     bool _border_enable = false;
-    // A saved stencil drawn on every input, by name (StencilPreset.h); cleared
-    // once the panel edits what it drew, since the name no longer says what is.
+    // The saved stencil every input draws, by name (StencilPreset.h), which a
+    // dataset preset keeps; recomputed after every edit (common_set).
     std::string _frame_shapes;
-    std::vector<StencilPreset> _frame_shapes_list;   // read when the picker opens
+    // The saved sets, loaded, for naming what a row draws. Reloaded after the
+    // panel, which saves them, has closed.
+    std::vector<StencilPreset> _stencil_sets;
+    std::vector<app::MaskSet> _stencil_set_shapes;
+    bool _stencil_sets_stale = true;
+    bool _segment_was_open = false;
+    void load_stencil_sets();
+    std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
+    void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
+    void draw_stencil_rows(const MaskingPanel& p);
     void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
                             size_t first_input = 0);
     void save_run_stencils();

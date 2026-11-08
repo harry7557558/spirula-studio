@@ -476,9 +476,12 @@ void TrainForecast::refresh_vram(const MemorySample& m) {
     const double C = std::max(1, _setup.distinct_batches);
     const double seen = expected_max(std::min<double>(_window_len, C));
     double hw_mean = _grow_hw, hw_sd = 0.0;
+    const double deferred =
+        next <= _setup.deferred_step ? (double)_setup.deferred_bytes : 0.0;
     auto band = [&](int step, double g_mean, double g_sd) {
         const bool extra = provisional && step >= first;
-        const double mean = fixed + g_mean + (extra ? extra_mean : 0.0);
+        const double mean = fixed + g_mean + (extra ? extra_mean : 0.0) +
+                            (step >= _setup.deferred_step ? deferred : 0.0);
         const double sd = std::sqrt(g_sd * g_sd + (extra ? extra_sd * extra_sd : 0.0));
         v.projection.push_back({(double)step, mean, sd});
     };

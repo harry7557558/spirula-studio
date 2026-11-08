@@ -8082,53 +8082,242 @@ SS_MSG(stencil_areas_preset,
     ES("Áreas dibujadas"), PT("Áreas desenhadas"), IT("Aree disegnate"),
     NL("Getekende gebieden"), RU("Области"),   TR("Çizili alanlar"));
 
-SS_MSG(stencil_areas_per_input,
-    EN("As drawn on each input"),  JA("入力ごとに描いたとおり"),
-    ZH_HANS("按每个输入各自绘制"),  ZH_HANT("按每個輸入各自繪製"),
-    KO("입력마다 그린 대로"),       DE("Wie je Eingabe gezeichnet"),
-    FR("Tel que dessiné sur chaque entrée"), ES("Como se dibujó en cada entrada"),
-    PT("Como desenhado em cada entrada"), IT("Come disegnato su ogni input"),
-    NL("Zoals per invoer getekend"), RU("Как нарисовано на каждом входе"),
-    TR("Her girdide çizildiği gibi"));
+SS_MSG(stencil_areas_help,
+    EN("Shapes over what is never scene: a watermark, the operator, the pole. "
+       "Pick a set saved from Try the mask..., or Draw... to draw on this input "
+       "there. A lens that follows gets the set's list for that lens, or the first "
+       "lens's where it has none. When every row draws one set, a dataset preset keeps its name for a batch run."),
+    JA("透かし、撮影者、棒など、シーンではないものに重ねる図形です。「マスクを"
+       "試す…」で保存したセットを選ぶか、「描く...」でこの入力にそこで描きます。"
+       "追従するレンズには、セットのそのレンズ用の図形が、なければ最初のレンズの"
+       "ものが入ります。すべての行が"
+       "同じセットを描いていれば、その名前がデータセットのプリセットに残り、"
+       "バッチ処理でも使われます。"),
+    ZH_HANS("盖在不属于场景的东西上的图形：水印、拍摄者、杆子。选一组在“试一下蒙版…”"
+            "里保存的区域，或用“绘制...”到那里给这个输入画。跟随的镜头会得到这组"
+            "中属于它的区域，没有的话就用第一个镜头的。所有行都画同一组时，数据集预设会记下它的名字，"
+            "批处理也会用到。"),
+    ZH_HANT("蓋在不屬於場景的東西上的圖形：浮水印、拍攝者、桿子。選一組在「試一下遮罩…」"
+            "裡儲存的區域，或用「繪製...」到那裡給這個輸入畫。跟隨的鏡頭會得到這組"
+            "中屬於它的區域，沒有的話就用第一個鏡頭的。所有行都畫同一組時，資料集預設會記下它的名字，"
+            "批次處理也會用到。"),
+    KO("워터마크, 촬영자, 장대처럼 장면이 아닌 것 위에 얹는 도형입니다. '마스크 "
+       "시험해 보기…'에서 저장한 세트를 고르거나, '그리기...'로 거기서 이 입력에 "
+       "그립니다. 따르는 렌즈에는 세트에서 그 렌즈 몫이, 없으면 첫 렌즈의 것이 들어갑니다. 모든 행이 한 "
+       "세트를 그리면 데이터셋 프리셋이 그 이름을 기억해 일괄 처리에도 쓰입니다."),
+    DE("Formen über allem, was nie Szene ist: ein Wasserzeichen, der Filmende, die "
+       "Stange. Eine unter „Maske ausprobieren …“ gespeicherte Zeichnung wählen, "
+       "oder mit „Zeichnen...“ dort auf dieser Eingabe zeichnen. Folgende "
+       "Objektive bekommen die Bereiche ihres Objektivs, sonst die des ersten. Zeichnet jede Zeile "
+       "dieselbe, behält eine Datensatz-Voreinstellung ihren Namen für einen "
+       "Stapellauf."),
+    FR("Des formes sur ce qui n'est jamais la scène : un filigrane, l'opérateur, la "
+       "perche. Choisissez un ensemble enregistré depuis « Essayer le masque… », ou "
+       "« Dessiner... » pour dessiner là-bas sur cette entrée. Les objectifs "
+       "qui suivent reçoivent les zones de leur objectif, ou à défaut celles du premier. Quand chaque ligne "
+       "dessine le même, un préréglage du jeu de données garde son nom pour un "
+       "traitement par lots."),
+    ES("Formas sobre lo que nunca es escena: una marca de agua, el operador, el "
+       "palo. Elija un conjunto guardado desde «Probar la máscara…», o «Dibujar...» "
+       "para dibujar allí sobre esta entrada. Los objetivos que siguen reciben "
+       "las áreas de su objetivo, o las del primero si no las hay. Si todas las filas dibujan el mismo, el ajuste "
+       "predefinido guarda su nombre para un lote."),
+    PT("Formas sobre o que nunca é cena: uma marca d'água, o operador, o bastão. "
+       "Escolha um conjunto salvo em «Testar a máscara…», ou «Desenhar...» para "
+       "desenhar lá nesta entrada. As lentes que seguem recebem as áreas "
+       "da sua lente, ou as da primeira quando não houver. Quando todas as linhas desenham o mesmo, a predefinição do "
+       "conjunto de dados guarda o nome dele para um lote."),
+    IT("Forme su ciò che non è mai scena: una filigrana, l'operatore, l'asta. "
+       "Scegli un insieme salvato da «Prova la maschera…», o «Disegna...» per "
+       "disegnare lì su questo input. Gli obiettivi che seguono ricevono le "
+       "aree del proprio obiettivo, o quelle del primo se mancano. Se ogni riga disegna lo stesso, il preset del dataset "
+       "ne conserva il nome per un'elaborazione in batch."),
+    NL("Vormen over wat nooit scène is: een watermerk, de cameraman, de stok. Kies "
+       "een set opgeslagen via ‘Masker uitproberen…’, of ‘Tekenen...’ om daar op "
+       "deze invoer te tekenen. Lenzen die volgen krijgen de gebieden van hun "
+       "lens, of anders die van de eerste. Tekent elke rij dezelfde, dan bewaart een datasetvoorinstelling "
+       "de naam voor een batch."),
+    RU("Фигуры поверх того, что не относится к сцене: водяного знака, оператора, "
+       "палки. Выберите набор, сохранённый в «Проверить маску…», или «Нарисовать...», "
+       "чтобы нарисовать там на этом входе. Следующие объективы получают области "
+       "своего объектива, а если их нет -- области первого. Если все строки рисуют один набор, пресет набора "
+       "данных хранит его имя для пакетного запуска."),
+    TR("Hiç sahne olmayanın üstüne çizilen biçimler: filigran, çeken kişi, çubuk. "
+       "\"Maskeyi dene…\" içinden kaydedilmiş bir set seçin ya da orada bu girdiye "
+       "çizmek için \"Çiz...\". İzleyen mercekler setten kendi "
+       "merceğinin alanlarını, yoksa ilk merceğinkini alır. Her satır aynı seti çiziyorsa, veri kümesi ön ayarı adını "
+       "toplu işlem için saklar."));
 
-SS_MSG(stencil_areas_preset_help,
-    EN("A saved set of drawn areas, drawn on every input in place of what each "
-       "has, and kept in a dataset preset so a batch run gets it too. Save one "
-       "from Try the mask..."),
-    JA("保存した描画範囲を、各入力のものに代えてすべての入力に描きます。データ"
-       "セットのプリセットにも保存されるので、バッチ処理でも使われます。保存は"
-       "「マスクを試す…」から行います。"),
-    ZH_HANS("一组已保存的绘制区域，会替换每个输入原有的内容画到所有输入上，并随数据集"
-            "预设一起保存，批处理也会用到。在“试一下蒙版…”中保存。"),
-    ZH_HANT("一組已儲存的繪製區域，會取代每個輸入原有的內容畫到所有輸入上，並隨資料集"
-            "預設一起儲存，批次處理也會用到。在「試一下遮罩…」中儲存。"),
-    KO("저장한 그린 영역을 각 입력에 있던 것 대신 모든 입력에 그립니다. 데이터셋 "
-       "프리셋에도 저장되어 일괄 처리에도 쓰입니다. '마스크 시험해 보기…'에서 "
-       "저장합니다."),
-    DE("Eine gespeicherte Zeichnung, auf jede Eingabe statt deren eigener gezeichnet "
-       "und in einer Datensatz-Voreinstellung mitgespeichert, damit auch ein "
-       "Stapellauf sie bekommt. Gespeichert wird unter „Maske ausprobieren …“."),
-    FR("Un ensemble enregistré de zones dessinées, tracé sur chaque entrée à la "
-       "place du sien, et conservé dans le préréglage du jeu de données pour qu'un "
-       "traitement par lots l'ait aussi. On l'enregistre depuis « Essayer le masque… »."),
-    ES("Un conjunto guardado de áreas dibujadas, trazado en cada entrada en lugar "
-       "del suyo y guardado en el ajuste predefinido para que un lote también lo "
-       "use. Se guarda desde «Probar la máscara…»."),
-    PT("Um conjunto salvo de áreas desenhadas, traçado em cada entrada no lugar do "
-       "seu e guardado na predefinição do conjunto de dados, para que um lote "
-       "também o use. Salve-o em «Testar a máscara…»."),
-    IT("Un insieme salvato di aree disegnate, tracciato su ogni input al posto del "
-       "suo e conservato nel preset del dataset, così anche un'elaborazione in "
-       "batch lo usa. Si salva da «Prova la maschera…»."),
-    NL("Een opgeslagen set getekende gebieden, op elke invoer getekend in plaats "
-       "van de eigen, en bewaard in een datasetvoorinstelling zodat een batch hem "
-       "ook krijgt. Opslaan doe je via ‘Masker uitproberen…’."),
-    RU("Сохранённые области, нарисованные на каждом входе вместо его собственных и "
-       "хранящиеся в пресете набора данных, чтобы их получил и пакетный запуск. "
-       "Сохраняются в окне «Проверить маску…»."),
-    TR("Kayıtlı bir çizili alan seti; her girdiye kendi çiziminin yerine çizilir ve "
-       "veri kümesi ön ayarında saklanır, böylece toplu işlem de onu alır. “Maskeyi "
-       "dene…” penceresinden kaydedilir."));
+SS_MSG(stencil_rows_help,
+    EN("One row per input, and per lens of a camera with several. A row that "
+       "starts out matching the row it follows -- the row above, or for an input's "
+       "first lens, the first lens of the input just above -- reads (same as above) and changes "
+       "when that row does, until something else is picked for it. So a capture "
+       "shot on one camera is set up on its first row."),
+    JA("入力ごと、複数レンズのカメラならレンズごとに 1 行です。追従先の行（すぐ上の"
+       "行、入力の最初のレンズならすぐ上の入力の最初のレンズ）と最初から同じ行は「（上と同じ）」と"
+       "表示され、別の選択肢を選ぶまでその行と一緒に変わります。1台のカメラで撮った"
+       "素材なら最初の行だけで設定できます。"),
+    ZH_HANS("每个输入一行，有多个镜头的相机则每个镜头一行。一开始就与它跟随的那一行"
+            "（上一行，输入的第一个镜头则是正上方那个输入的第一个镜头）相同的行显示“（同上）”，"
+            "在给它选别的选项之前，那一行变了它也跟着变。所以用一台相机拍的素材在"
+            "第一行设好即可。"),
+    ZH_HANT("每個輸入一行，有多個鏡頭的相機則每個鏡頭一行。一開始就與它跟隨的那一行"
+            "（上一行，輸入的第一個鏡頭則是正上方那個輸入的第一個鏡頭）相同的行顯示「（同上）」，"
+            "在給它選別的選項之前，那一行變了它也跟著變。所以用一台相機拍的素材在"
+            "第一行設好即可。"),
+    KO("입력마다 한 행, 렌즈가 여럿인 카메라는 렌즈마다 한 행입니다. 따르는 행(바로 "
+       "위 행, 입력의 첫 렌즈라면 바로 위 입력의 첫 렌즈)과 처음부터 같은 행은 '(위와 같음)'"
+       "으로 보이고, 다른 것을 고르기 전까지 그 행이 바뀌면 함께 바뀝니다. 한 "
+       "카메라로 찍은 촬영은 첫 행에서 설정하면 됩니다."),
+    DE("Eine Zeile je Eingabe, bei einer Kamera mit mehreren Objektiven je Objektiv. "
+       "Eine Zeile, die anfangs der Zeile gleicht, der sie folgt -- der darüber, beim "
+       "ersten Objektiv einer Eingabe dem ersten Objektiv der Eingabe direkt darüber --, zeigt (wie "
+       "oben) und ändert sich mit ihr, bis für sie etwas anderes gewählt wird. Eine "
+       "Aufnahme mit einer Kamera wird also in ihrer ersten Zeile eingerichtet."),
+    FR("Une ligne par entrée, et par objectif pour une caméra qui en a plusieurs. "
+       "Une ligne qui égale au départ la ligne qu'elle suit -- celle du dessus, ou "
+       "pour le premier objectif d'une entrée le premier objectif de l'entrée juste au-dessus -- affiche "
+       "(comme ci-dessus) et change avec elle, jusqu'à ce qu'on lui choisisse autre "
+       "chose. Une prise faite avec une seule caméra se règle donc sur sa première "
+       "ligne."),
+    ES("Una fila por entrada, y por objetivo en una cámara con varios. Una fila que "
+       "al principio coincide con la fila a la que sigue -- la de arriba, o para el "
+       "primer objetivo de una entrada el primer objetivo de la entrada justo encima -- muestra (igual que "
+       "arriba) y cambia con ella hasta que se le elija otra cosa. Así, una captura "
+       "hecha con una cámara se ajusta en su primera fila."),
+    PT("Uma linha por entrada, e por lente numa câmera com várias. Uma linha que de "
+       "início coincide com a linha que segue -- a de cima, ou, para a primeira lente de uma "
+       "entrada, a primeira lente da entrada logo acima -- mostra (igual ao de cima) e muda com ela "
+       "até que se escolha outra coisa para ela. Assim, uma captura feita com uma "
+       "câmera se ajusta na primeira linha."),
+    IT("Una riga per input, e per obiettivo in una fotocamera che ne ha più d'uno. "
+       "Una riga che all'inizio coincide con la riga che segue -- quella sopra, o per "
+       "il primo obiettivo di un input il primo obiettivo dell'input subito sopra -- mostra (come "
+       "sopra) e cambia con quella finché non le si sceglie altro. Una ripresa fatta "
+       "con una sola fotocamera si imposta quindi sulla prima riga."),
+    NL("Eén rij per invoer, en per lens bij een camera met meerdere. Een rij die "
+       "aanvankelijk gelijk is aan de rij die hij volgt -- de rij erboven, of voor de "
+       "eerste lens van een invoer de eerste lens van de invoer direct erboven -- toont (zelfde als "
+       "hierboven) en verandert mee tot je er iets anders voor kiest. Een opname met "
+       "één camera stel je dus in op de eerste rij."),
+    RU("Строка на каждый вход, а у камеры с несколькими объективами -- на каждый "
+       "объектив. Строка, которая сначала совпадает со строкой, за которой следует, "
+       "-- верхней, а для первого объектива входа первым объективом входа прямо над ней, -- "
+       "показывает «(как выше)» и меняется вместе с ней, пока для неё не выбрано "
+       "что-то другое. Съёмку одной камерой достаточно настроить в первой строке."),
+    TR("Her girdi için bir satır, birden çok merceği olan kamerada her mercek için "
+       "bir satır. İzlediği satırla -- üstteki satır ya da bir girdinin ilk merceği için hemen "
+       "üstteki girdinin ilk merceği -- başta aynı olan bir satır (yukarıdakiyle "
+       "aynı) gösterir ve onun için başka bir şey seçilene kadar onunla birlikte "
+       "değişir. Tek kamerayla çekilmiş bir çekim bu yüzden ilk satırında ayarlanır."));
+
+SS_MSG(stencil_rows_same_help,
+    EN("The same as {0}, and changes when it does. Pick a choice of this row's own "
+       "to stop following it."),
+    JA("{0} と同じで、それが変わると一緒に変わります。追従をやめるには、この行"
+       "独自の選択肢を選んでください。"),
+    ZH_HANS("与 {0} 相同，它变了这一行也跟着变。选一个这一行自己的选项即可不再跟随。"),
+    ZH_HANT("與 {0} 相同，它變了這一行也跟著變。選一個這一行自己的選項即可不再跟隨。"),
+    KO("{0}과(와) 같으며, 그것이 바뀌면 함께 바뀝니다. 따르지 않으려면 이 행만의 "
+       "선택지를 고르세요."),
+    DE("Wie {0}, und ändert sich mit ihr. Eine eigene Auswahl für diese Zeile beendet "
+       "das Folgen."),
+    FR("Comme {0}, et change avec elle. Choisissez une option propre à cette ligne "
+       "pour cesser de la suivre."),
+    ES("Igual que {0}, y cambia cuando ella cambia. Elija una opción propia de esta "
+       "fila para dejar de seguirla."),
+    PT("Igual a {0}, e muda quando ela muda. Escolha uma opção própria desta linha "
+       "para deixar de segui-la."),
+    IT("Come {0}, e cambia quando cambia quella. Scegli un'opzione propria di questa "
+       "riga per smettere di seguirla."),
+    NL("Zelfde als {0}, en verandert mee. Kies een eigen keuze voor deze rij om niet "
+       "meer te volgen."),
+    RU("Как {0}, и меняется вместе с ней. Выберите для этой строки свой вариант, "
+       "чтобы перестать за ней следовать."),
+    TR("{0} ile aynı ve o değişince değişir. İzlemeyi bırakmak için bu satıra özgü "
+       "bir seçenek seçin."));
+
+SS_MSG(stencil_rows_input,
+    EN("Input"), JA("入力"), ZH_HANS("输入"), ZH_HANT("輸入"), KO("입력"),
+    DE("Eingabe"), FR("Entrée"), ES("Entrada"), PT("Entrada"), IT("Input"),
+    NL("Invoer"), RU("Вход"), TR("Girdi"));
+
+SS_MSG(stencil_rows_border,
+    EN("Fisheye border"), JA("魚眼の黒枠"), ZH_HANS("鱼眼黑边"), ZH_HANT("魚眼黑邊"),
+    KO("어안 테두리"), DE("Fisheye-Rand"), FR("Bord du fisheye"),
+    ES("Borde de ojo de pez"), PT("Borda olho-de-peixe"), IT("Bordo fisheye"),
+    NL("Fisheye-rand"), RU("Край фишая"), TR("Balıkgözü kenarı"));
+
+SS_MSG(stencil_rows_cut,
+    EN("Cut away"), JA("切り落とす"), ZH_HANS("裁掉"), ZH_HANT("裁掉"),
+    KO("잘라내기"), DE("Wegschneiden"), FR("Découper"), ES("Recortar"),
+    PT("Recortar"), IT("Ritagliare"), NL("Wegsnijden"), RU("Срезать"), TR("Kes"));
+
+SS_MSG(stencil_rows_off,
+    EN("Off"), JA("しない"), ZH_HANS("不裁"), ZH_HANT("不裁"),
+    KO("안 함"), DE("Aus"), FR("Non"), ES("No"), PT("Não"), IT("No"),
+    NL("Uit"), RU("Нет"), TR("Kapalı"));
+
+SS_MSG(stencil_rows_off_help,
+    EN("Keep the whole frame up to its edge. Drawn areas still apply."),
+    JA("画面を端まで残します。描画範囲はそのまま適用されます。"),
+    ZH_HANS("保留整个画面直到边缘。绘制区域照常生效。"),
+    ZH_HANT("保留整個畫面直到邊緣。繪製區域照常生效。"),
+    KO("화면을 가장자리까지 그대로 둡니다. 그린 영역은 그대로 적용됩니다."),
+    DE("Das ganze Bild bis zum Rand behalten. Gezeichnete Bereiche gelten weiter."),
+    FR("Garder toute l'image jusqu'au bord. Les zones dessinées s'appliquent "
+       "toujours."),
+    ES("Conservar el fotograma entero hasta el borde. Las áreas dibujadas siguen "
+       "aplicándose."),
+    PT("Manter o quadro inteiro até a borda. As áreas desenhadas continuam valendo."),
+    IT("Tenere l'intero fotogramma fino al bordo. Le aree disegnate valgono comunque."),
+    NL("Het hele beeld tot de rand houden. Getekende gebieden gelden nog steeds."),
+    RU("Оставить кадр целиком до края. Нарисованные области по-прежнему действуют."),
+    TR("Kareyi kenarına kadar tut. Çizili alanlar yine uygulanır."));
+
+SS_MSG(stencil_rows_none,
+    EN("None"), JA("なし"), ZH_HANS("无"), ZH_HANT("無"), KO("없음"),
+    DE("Keine"), FR("Aucune"), ES("Ninguna"), PT("Nenhuma"), IT("Nessuna"),
+    NL("Geen"), RU("Нет"), TR("Yok"));
+
+SS_MSG(stencil_rows_drawn,
+    EN("Drawn by hand"), JA("手描き"), ZH_HANS("手绘"), ZH_HANT("手繪"),
+    KO("직접 그림"), DE("Von Hand gezeichnet"), FR("Dessiné à la main"),
+    ES("Dibujado a mano"), PT("Desenhado à mão"), IT("Disegnato a mano"),
+    NL("Met de hand getekend"), RU("Нарисовано вручную"), TR("Elle çizildi"));
+
+SS_MSG(stencil_rows_draw,
+    EN("Draw..."), JA("描く..."), ZH_HANS("绘制..."), ZH_HANT("繪製..."),
+    KO("그리기..."), DE("Zeichnen..."), FR("Dessiner..."), ES("Dibujar..."),
+    PT("Desenhar..."), IT("Disegna..."), NL("Tekenen..."), RU("Нарисовать..."),
+    TR("Çiz..."));
+
+SS_MSG(stencil_rows_draw_help,
+    EN("Open Try the mask on this input to draw its areas. Rows that are the same "
+       "as this one follow what is drawn."),
+    JA("この入力で「マスクを試す」を開き、範囲を描きます。この行と同じ行は、描いた"
+       "内容に従います。"),
+    ZH_HANS("在这个输入上打开“试一下蒙版”来画它的区域。与这一行相同的行会跟着所画的变。"),
+    ZH_HANT("在這個輸入上開啟「試一下遮罩」來畫它的區域。與這一行相同的行會跟著所畫的變。"),
+    KO("이 입력에서 '마스크 시험해 보기'를 열어 영역을 그립니다. 이 행과 같은 행은 "
+       "그린 대로 따라갑니다."),
+    DE("„Maske ausprobieren“ für diese Eingabe öffnen, um ihre Bereiche zu zeichnen. "
+       "Zeilen, die dieser gleichen, folgen dem Gezeichneten."),
+    FR("Ouvrir « Essayer le masque » sur cette entrée pour dessiner ses zones. Les "
+       "lignes identiques à celle-ci suivent ce qui est dessiné."),
+    ES("Abrir «Probar la máscara» en esta entrada para dibujar sus áreas. Las filas "
+       "iguales a esta siguen lo que se dibuje."),
+    PT("Abrir «Testar a máscara» nesta entrada para desenhar suas áreas. As linhas "
+       "iguais a esta seguem o que for desenhado."),
+    IT("Apri «Prova la maschera» su questo input per disegnarne le aree. Le righe "
+       "uguali a questa seguono ciò che viene disegnato."),
+    NL("‘Masker uitproberen’ op deze invoer openen om de gebieden te tekenen. Rijen "
+       "die gelijk zijn aan deze volgen wat er getekend wordt."),
+    RU("Открыть «Проверить маску» на этом входе, чтобы нарисовать его области. "
+       "Строки, совпадающие с этой, последуют за нарисованным."),
+    TR("Alanlarını çizmek için bu girdide \"Maskeyi dene\"yi açın. Bu satırla aynı "
+       "olan satırlar çizileni izler."));
 
 SS_MSG(stencil_add_path_help,
     EN("Click along an edge on the picture to drop anchors; the path snaps to the edge "

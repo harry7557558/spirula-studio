@@ -604,23 +604,16 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
         ui::help_on_hover(pmsg::view_recorded_help);
     } else if (f.sizes.size() > 1) {
         ui::TextDisabled(pmsg::streams_side_by_side, {(long long)f.sizes.size()});
-        if (active_track && f.sizes.size() == 2) {
+        // Named as the folders the lenses are written to (cam0/, cam1/), which
+        // is how every other list on the screen names them.
+        for (int k = 0; active_track && f.sizes.size() == 2 && k < 2; k++) {
             ImGui::SameLine();
-            ui::TextDisabledRaw("·");
-            ImGui::SameLine();
-            bool cam0 = (*active_track < 0 || *active_track == 0);
-            ImGui::BeginDisabled(locked || (cam0 && *active_track == 0));
-            if (ui::Checkbox(pmsg::camera_1, &cam0)) {
-                *active_track = cam0 ? -1 : 1;
-                r.tracks_changed = true;
-            }
-            ImGui::EndDisabled();
-            ui::help_on_hover(pmsg::camera_toggle_help);
-            ImGui::SameLine();
-            bool cam1 = (*active_track < 0 || *active_track == 1);
-            ImGui::BeginDisabled(locked || (cam1 && *active_track == 1));
-            if (ui::Checkbox(pmsg::camera_2, &cam1)) {
-                *active_track = cam1 ? -1 : 0;
+            bool on = *active_track < 0 || *active_track == k;
+            // The last lens left cannot go too.
+            ImGui::BeginDisabled(locked || *active_track == k);
+            const std::string label = "cam" + std::to_string(k) + "##track";
+            if (ui::CheckboxRaw(label.c_str(), &on)) {
+                *active_track = on ? -1 : 1 - k;
                 r.tracks_changed = true;
             }
             ImGui::EndDisabled();
@@ -794,8 +787,7 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
     return r;
 }
 
-void VideoBrowser::draw_frame(const ImVec2& box, int* active_track, bool locked, Result* r) {
-    (void)locked; (void)r;
+void VideoBrowser::draw_frame(const ImVec2& box, const int* active_track) {
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ui::InvisibleButtonRaw("##videoframe", ImVec2(std::max(box.x, 1.0f), std::max(box.y, 1.0f)));
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -861,8 +853,7 @@ void VideoBrowser::draw_frame(const ImVec2& box, int* active_track, bool locked,
                 dl->AddText(ImVec2(lo.x + (w - dts.x) * 0.5f, lo.y + (s - dts.y) * 0.5f),
                             IM_COL32(220, 220, 220, 180), dis_text);
             }
-            const std::string cam_lbl =
-                spirula::i18n::format(pmsg::camera_slot, {(long long)(k + 1)});
+            const std::string cam_lbl = "cam" + std::to_string(k);
             const char* clabel = cam_lbl.c_str();
             const ImVec2 cts = ImGui::CalcTextSize(clabel);
             const ImVec2 cpad(px(5.0f), px(2.0f));
