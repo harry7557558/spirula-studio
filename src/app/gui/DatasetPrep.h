@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -69,6 +70,13 @@ inline std::string rig_letter(int letter) {
         s.insert(s.begin(), (char)('A' + (n - 1) % 26));
     return s;
 }
+
+// Which parts of a row of the fixed-areas table follow the row above it
+// (StencilRows.h); a part that does not is the row's own choice.
+struct StencilFollow {
+    bool border = false;
+    bool areas = false;
+};
 
 // PrepInput::fps for "every frame" -- a 0 there already means "^". Everywhere
 // else, a rate of 0 is every frame.
@@ -156,6 +164,8 @@ struct PrepInput {
     // resolved per camera folder when it asks for the border to be fitted
     // (app::FrameStencil), which is what gives a dual-fisheye file two circles.
     app::FrameStencil stencil;
+    // Its rows' "same as above", by FrameStencil camera key (settle_follow).
+    std::map<std::string, StencilFollow> stencil_follow;
 };
 
 // One row of the "Camera / lens per input" list. `rel` is the prefix
@@ -600,6 +610,11 @@ int probe_video_tracks(const std::string& ffmpeg_exe, const std::string& path,
 // The folders under images/<input> a video's frames go to: one per lens of a
 // dual-fisheye file or per view of a 360 plan, none for a single lens.
 std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in);
+
+// The cameras the fixed-areas table gives `in` a row each, as FrameStencil
+// keys them: its camera folders or lenses, plus any camera its stencil already
+// names. {""} for one camera. A 360 file's views share one row until split.
+std::vector<std::string> stencil_cameras(const PrepJob& job, const PrepInput& in);
 
 // The frame sequences a `sequential` input is, as folders under images/: a
 // video's lens folders, or a photo folder -- one per top-level camera folder

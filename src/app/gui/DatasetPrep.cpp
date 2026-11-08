@@ -786,6 +786,17 @@ std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in) {
     return out;
 }
 
+std::vector<std::string> stencil_cameras(const PrepJob& job, const PrepInput& in) {
+    std::vector<std::string> out;
+    for (const SubCamera& sc : in.subcameras) out.push_back(sc.rel);
+    if (out.empty() && !in.pano360.valid() && !is_pano360_path(in.path))
+        out = lens_dirs(job, in);
+    for (const auto& [camera, cs] : in.stencil.cameras)
+        if (std::find(out.begin(), out.end(), camera) == out.end()) out.push_back(camera);
+    if (out.empty()) out.push_back("");
+    return out;
+}
+
 std::vector<std::vector<std::string>> input_sequences(const PrepJob& job,
                                                       const PrepInput& in) {
     auto join = [](const std::string& a, const std::string& b) {

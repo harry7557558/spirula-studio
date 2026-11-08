@@ -5,8 +5,8 @@ per input, a fitted fisheye border plus shapes drawn by hand, optionally
 different for each of the input's cameras. Both are geometry, not segmentation,
 so they need no model and are the same on every frame of a camera. This note
 covers the drawn half: what a shape is, the tools that draw one, per-camera
-areas, the SVG file a set of them is saved as, and how a saved set reaches a
-dataset preset and a batch run.
+areas, the SVG file a set of them is saved as, the per-input table on the
+dataset screen, and how a saved set reaches a dataset preset and a batch run.
 
 ## Shapes
 
@@ -204,13 +204,20 @@ are keyed the same way.
   the cameras it names, and is refused, with its camera names, on an input
   that has none of them. The list shows a per-camera set once, as
   `Name [cam0, cam1]`.
-- **Every input**: the dataset screen's **Drawn areas** picker, under the
-  fixed-areas checkbox, draws a saved set on every input, per camera for a
-  per-camera set, including inputs added afterwards. Editing the shapes in the
-  panel drops the name, since it no longer describes what is drawn.
-- **Presets and batch**: the name is `mask_frame_shapes` in a dataset preset.
-  A batch row whose preset has the fixed-areas option on gets the border fit
-  and that set on every input; a name that no longer resolves fails the row.
+- **Any row of the table** (below): its **Drawn areas** combo lists every
+  saved set, a per-camera set only on an input with one of its cameras, and
+  puts it on that row and the rows following it, each its camera's list. A
+  lens the set does not name gets its first camera's list, so a set drawn on
+  `cam0` alone, the usual way, reaches a following `cam1` too. A dataset
+  preset names a set only when `apply_mask_set` would draw what the rows
+  draw, so not that one.
+- **Presets and batch**: when every row draws one saved set (each row its
+  camera's list), its name is `mask_frame_shapes` in a dataset preset
+  (`GuiApp::refresh_frame_shapes`, `common_set`); otherwise the preset keeps
+  none. Applying a preset with a name draws that set on every input, and so
+  does adding inputs while one is named. A batch row whose preset has the
+  fixed-areas option on gets the border fit and that set on every input; a
+  name that no longer resolves fails the row.
 - **With the dataset**: a run writes each input's set to
   `<dataset>/frame_stencil/`: `<input>.svg`, or `<input>-<camera>.svg` per
   camera when its cameras differ, titled `<dataset> - <input file>`. Two
@@ -221,6 +228,61 @@ are keyed the same way.
 - **CLI**: `spirula sam mask --shape <file>.svg` reads the same files; one
   camera's file brings its set, each camera's list for its own folder under
   `--frames`.
+
+## The table on the dataset screen
+
+Under **Remove fixed areas of the frame**, while it is ticked, the dataset
+screen lists a row per input, or per camera of an input with several
+(`stencil_cameras`: its camera folders, a dual-fisheye file's lenses, and any
+camera its stencil already names; a 360 file's views share one row until the
+panel splits them). Each row has the border fit (Cut away / Off, with the
+shrink slider) and its drawn areas (None, a saved set, or Draw..., which opens
+Try the mask on that input). The logic is `app/gui/StencilRows.h`, with no
+ImGui; `stencil_rows_test` covers it.
+
+Each row follows a row above it. An input's first row follows the same
+camera of the input directly above when that input has one, else the row
+before it; its other rows follow the row before them. So the two lenses of a
+dual-fisheye file share by default, as they usually do (the same pole, the
+same operator), each file's `cam0` follows the `cam0` above, and nothing
+reaches past the input above: a GoPro sphere under a dual-fisheye file follows
+that file's last lens, not a sphere further up.
+
+Whether each part of a row follows is stored, per camera, in
+`PrepInput::stencil_follow`. A row seen for the first time follows each part
+that matches the row above (`settle_follow`), which is what makes a capture
+shot on one camera read "(same as above)" all the way down -- its drawn areas
+only when the border fit is alike too, since a row whose fit differs is
+another kind of lens (that sphere again), whose areas would mean nothing on
+the one above. From then on it
+is the user's choice: picking anything other than "(same as above)" makes the
+part the row's own even when it equals the row above -- a row set to None
+under a row drawing nothing stays None and ignores what is drawn above it
+later -- and picking "(same as above)" copies the row followed and follows it
+again. A following row that stops matching keeps its value as its own: the
+panel drew on it, or an input was removed and it now follows another row.
+Comparing values instead, as the lens column does, turned every explicit
+choice that happened to equal the row above back into "(same as above)".
+
+Changing a part changes it on every row following it, through any number of
+rows (`set_row_border`, `set_row_areas`). The border and the areas follow and
+are set separately: drawn areas never turn the border fit on or off, even a
+list starting with a keep shape, which the panel's Load does (above). A border
+that is off matches any other that is off whatever its shrink, which it keeps
+for when it is turned back on.
+
+Rows write `PrepInput::stencil`, so the run, the plan and the saved
+`frame_stencil/` files see nothing new. An input whose rows all agree is one
+stencil; one whose rows differ gets an entry per camera, as Separate areas for
+each camera would.
+
+Edits in Try the mask are carried the same way: the screen snapshots the rows
+before the panel draws and, after, passes each changed row of that input to
+the rows of other inputs that follow it (`follow_edit`). The input's own
+other rows stay as the panel left them, so drawing on `cam0` with separate
+areas on does not reach `cam1`. An input added later takes the drawn areas
+and the shrink of the row it follows when both are, or both are not, fisheye
+files (`adopt_rows_above`).
 
 ## Adding a shape kind
 

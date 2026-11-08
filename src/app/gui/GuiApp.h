@@ -39,6 +39,7 @@
 #include "app/gui/SourceList.h"
 #include "app/gui/SourceProbe.h"
 #include "app/gui/SourcePreview.h"
+#include "app/gui/StencilRows.h"
 #include "app/gui/TelemetryProbe.h"
 #include "app/gui/TrainPreset.h"
 #include "app/gui/TrainRunner.h"
@@ -1022,10 +1023,19 @@ private:
     // stencil); this only says whether the run is given them, so that turning
     // the option off and on again does not throw away what was drawn.
     bool _border_enable = false;
-    // A saved stencil drawn on every input, by name (StencilPreset.h); cleared
-    // once the panel edits what it drew, since the name no longer says what is.
+    // The saved stencil every input draws, by name (StencilPreset.h), which a
+    // dataset preset keeps; recomputed after every edit (common_set).
     std::string _frame_shapes;
-    std::vector<StencilPreset> _frame_shapes_list;   // read when the picker opens
+    // The saved sets, loaded, for naming what a row draws. Reloaded after the
+    // panel, which saves them, has closed.
+    std::vector<StencilPreset> _stencil_sets;
+    std::vector<app::MaskSet> _stencil_set_shapes;
+    bool _stencil_sets_stale = true;
+    bool _segment_was_open = false;
+    void load_stencil_sets();
+    std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
+    void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
+    void draw_stencil_rows(const MaskingPanel& p);
     void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
                             size_t first_input = 0);
     void save_run_stencils();

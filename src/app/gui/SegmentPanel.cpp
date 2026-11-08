@@ -271,9 +271,11 @@ app::CameraStencil& SegmentPanel::scope(app::FrameStencil& s) {
     if (!s.per_camera()) return s;
     const std::string cam = shown_camera();
     auto it = s.cameras.find(cam);
-    if (it == s.cameras.end())
-        it = s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first;
-    return it->second;
+    if (it != s.cameras.end()) return it->second;
+    // Nothing is shown until the listing lands, and "" is then no camera the
+    // run writes; the fixed-areas table would list it as one.
+    if (cam.empty() && _cameras.empty()) return s;
+    return s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first->second;
 }
 
 // On: every camera starts as a copy of the input's, so nothing changes until
