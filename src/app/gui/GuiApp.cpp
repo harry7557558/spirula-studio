@@ -5677,7 +5677,8 @@ void GuiApp::draw_source_cameras() {
         // several: a lone photo folder or a one-lens video has none to rig.
         const bool multi = g.sub >= 0 || lens_dirs(_sfm_job.prep, in).size() >= 2;
         int& rig = group_rig(_sources, g);
-        if (!multi && rig == kRigOwn) rig = kRigNone;
+        // A lens switched off can come back, and the rig with it.
+        if (!multi && rig == kRigOwn && in.active_lens < 0) rig = kRigNone;
         if (_ds_advanced) {
             ImGui::SameLine();
             ImGui::SetNextItemWidth(px(90.0f));
@@ -5826,7 +5827,7 @@ PreviewSource GuiApp::preview_source_for(const PrepInput& in, const std::string&
     src.builtin_decode =
         !_sfm_job.prep.force_external_decode && backends().builtin_video;
     src.tracks = std::max(in.video_tracks, 1);
-    src.track = in.is_video ? in.active_track : -1;
+    src.lens = in.active_lens;
     src.look.packed_lenses = in.packed_lenses;
     src.look.lut = lut;
     // The one frozen choice, so a preview decodes and segments on the GPU the
@@ -6894,7 +6895,6 @@ PreviewInput GuiApp::source_preview_input() const {
     in.mask_flipped = _use_found_masks && _flip_found_masks;
     in.kept_fps = input_fps(_sources, _sfm_job.prep.video_fps, (size_t)i);
     in.clip_locked = dataset_busy();
-    in.active_track = s.active_track;
     if (s.is_video)
         if (const std::string lut = input_lut(_sources, (size_t)i); !lut.empty())
             in.lut = app::is_builtin_lut(lut) ? app::lut_display_name(lut) : lut;
@@ -6966,36 +6966,51 @@ void GuiApp::draw_source_preview(float height) {
         h = std::max(px(80.0f), h - ImGui::GetCursorPosY() + ImGui::GetCursorStartPos().y);
     }
     const int i = selected_source();
-    PrepInput* video = i >= 0 && _sources[(size_t)i].is_video ? &_sources[(size_t)i] : nullptr;
+    PrepInput* sel = i >= 0 ? &_sources[(size_t)i] : nullptr;
+    PrepInput* video = sel && sel->is_video ? sel : nullptr;
+    // A photo folder has lenses to pick from only in a packed .insp's frames.
+    PrepInput* lenses =
+        video || (sel && sel->packed_lenses == 2 && sel->subcameras.empty()) ? sel : nullptr;
     ImGui::BeginChild("##sourcepreview", ImVec2(0, h));
     const SourcePreview::Result r =
         _source_view.draw(ImGui::GetContentRegionAvail().y, video ? &video->clip_start : nullptr,
                           video ? &video->clip_end : nullptr,
-                          video ? &video->active_track : nullptr);
+                          lenses ? &lenses->active_lens : nullptr);
     ImGui::EndChild();
     if (r.want_gpu) freeze_native_device();
-    if (r.tracks_changed && video) {
+    const auto drop_clicks = [&](const PrepInput& in, const auto& doomed) {
+        auto& clicks = _mask.clicks;
+        const size_t before = clicks.size();
+        clicks.erase(std::remove_if(clicks.begin(), clicks.end(),
+                                    [&](const MaskClick& c) {
+                                        return (c.source == in.path ||
+                                                (c.source.empty() && _sources.size() == 1)) &&
+                                               doomed(c);
+                                    }),
+                     clicks.end());
+        if (clicks.size() == before) return false;
+        if (clicks.empty()) {
+            _mask.object_count = 1;
+            _mask.current_object = 0;
+        }
+        return true;
+    };
+    if (r.lens_changed && lenses) {
         if (_segment.is_open() || _geometry_panel.is_open()) close_native_previews();
+        // seeds_from_clicks would move a click on the lens now off onto the other.
+        if (lenses->active_lens >= 0) {
+            const std::string kept = "cam" + std::to_string(lenses->active_lens);
+            drop_clicks(*lenses, [&](const MaskClick& c) {
+                return c.camera != kept && c.camera.rfind(kept + "/", 0) != 0;
+            });
+        }
     }
     if (r.clip_changed && video) {
         // Frames offered by an open mask preview, and clicks drawn on them,
         // were placed in the old clip.
         if (_segment.is_open() || _geometry_panel.is_open()) close_native_previews();
-        auto& clicks = _mask.clicks;
-        const size_t before = clicks.size();
-        clicks.erase(std::remove_if(clicks.begin(), clicks.end(),
-                                    [&](const MaskClick& c) {
-                                        return c.source == video->path ||
-                                               (c.source.empty() && _sources.size() == 1);
-                                    }),
-                     clicks.end());
-        if (clicks.size() != before) {
+        if (drop_clicks(*video, [](const MaskClick&) { return true; }))
             log(i18n::format(svmsg::log_clicks_dropped_clip, {video->path}));
-            if (clicks.empty()) {
-                _mask.object_count = 1;
-                _mask.current_object = 0;
-            }
-        }
     }
 }
 
@@ -8249,7 +8264,7 @@ std::string plan_key_label(const std::string& key) {
         {"geometry_max_size", &dmsg::geom_max_size},
         {"geometry_tokens", &dmsg::geom_num_tokens},
         {"jpeg_quality", &dmsg::geom_jpeg_quality}, {"clip", &svmsg::plan_clip},
-        {"track", &svmsg::plan_track},
+        {"active_lens", &svmsg::plan_active_lens},
     };
     for (const auto& [k, m] : labels)
         if (key == k) return m->get();

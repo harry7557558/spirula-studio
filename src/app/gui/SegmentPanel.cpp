@@ -77,7 +77,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
     _model = model;
     // A file cut to one lens shows that one: its frames are all the run writes.
-    _folder_idx = std::max(_src.track, 0);
+    _folder_idx = std::max(_src.lens, 0);
     _frame_idx = 0;
     _frame_dirty = true;
     _needs_run = true;
@@ -259,16 +259,17 @@ std::string SegmentPanel::shown_camera() const {
 
 std::vector<std::string> SegmentPanel::camera_names() const {
     std::set<std::string> out;
-    if (_src.is_video && _src.track >= 0 && _src.track < (int)_folders.size()) {
-        out.insert(_folders[(size_t)_src.track]);
-    } else if (_src.is_video) {
-        out.insert(_folders.begin(), _folders.end());
+    std::vector<std::string> lenses = _folders;
+    if (_src.lens >= 0 && _src.lens < (int)_folders.size())
+        lenses = {_folders[(size_t)_src.lens]};
+    if (_src.is_video) {
+        out.insert(lenses.begin(), lenses.end());
     } else {
         for (const std::string& f : _all_files) {
             const std::string sub = camera_of(f);
             if (_src.look.packed_lenses < 2) out.insert(sub);
             else
-                for (const std::string& lens : _folders)
+                for (const std::string& lens : lenses)
                     out.insert(sub.empty() ? lens : lens + "/" + sub);
         }
     }
@@ -1774,7 +1775,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     draw_stencil(stencil, edited);
 
     // ---- which camera, then which frame ----
-    if (_folders.size() > 1 && _src.track < 0) {
+    if (_folders.size() > 1 && _src.lens < 0) {
         ImGui::Spacing();
         ui::Text(dmsg::preview_camera);
         ImGui::SetNextItemWidth(-1);

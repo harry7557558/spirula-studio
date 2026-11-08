@@ -60,6 +60,35 @@ void extract(const fs::path& video, const fs::path& workspace, bool block_write)
     }
 }
 
+void one_packed_lens(const fs::path& video, const fs::path& workspace) {
+    gui::PrepJob job;
+    job.workspace = workspace.string();
+    job.resume = false;
+    job.force_external_decode = true;
+    job.video_fps = gui::kFpsEveryFrame;
+    job.sharp_window = 1;
+    job.max_frames = 4;
+    gui::PrepInput input;
+    input.path = video.string();
+    input.is_video = true;
+    input.lut = gui::kLutNone;
+    input.packed_lenses = 2;
+    input.active_lens = 1;
+    job.inputs.push_back(input);
+    gui::RunProgress progress;
+    std::atomic<bool> cancel{false};
+    gui::DatasetPrep prep(&progress, {}, cancel);
+    gui::PrepResult out;
+    std::string error;
+    check(prep.run(job, out, error), "one packed lens: " + error);
+    check(!out.per_folder_cameras, "one packed lens is one camera");
+    const fs::path images = workspace / "images";
+    check(!fs::exists(images / "cam0") &&
+              gui::DatasetPrep::count_images((images / "cam1").string()) == 4 &&
+              gui::DatasetPrep::count_images(images.string()) == 4,
+          "only the lens kept is written, and no whole frame is left");
+}
+
 void parallel_extract(const fs::path& video, const fs::path& root, bool blur = false) {
     gui::PrepJob job;
     job.resume = false;
@@ -141,6 +170,7 @@ int main() {
     if (rc == 0) {
         extract(video, root / "blocked", true);
         extract(video, root / "complete", false);
+        one_packed_lens(video, root / "one_lens");
         parallel_extract(video, root);
         parallel_extract(video, root / "blur", true);
     }

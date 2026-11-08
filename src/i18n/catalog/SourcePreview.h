@@ -3325,7 +3325,7 @@ SS_MSG(log_clicks_dropped_clip,
     TR("{0} üzerindeki maske tıklamaları atıldı: kesiti değişti, bu yüzden "
        "üzerlerinde tıklandıkları kareler artık çıkarılmayabilir."));
 
-SS_MSG(plan_track,
+SS_MSG(plan_active_lens,
     EN("Lens extracted"),
     JA("取り出すレンズ"),
     ZH_HANS("提取的镜头"),

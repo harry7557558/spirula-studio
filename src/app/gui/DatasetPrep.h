@@ -142,9 +142,9 @@ struct PrepInput {
     bool use_imu = true;
     bool use_gps = true;
     int video_tracks = 0;            // 0 = not probed yet
-    // The one track of a multi-track video extracted, into its own cam<k>/
-    // as when all are; -1 for all of them.
-    int active_track = -1;
+    // The one lens of a two-lens input kept, a track or a packed half, into
+    // its own cam<k>/ as when all are; -1 for all of them.
+    int active_lens = -1;
     // The camera folders found under this input, when it arrived with more
     // than one. Empty means the lens above describes all of it.
     std::vector<SubCamera> subcameras;
@@ -554,9 +554,14 @@ bool is_pano360_path(const std::string& path);
 // into each frame, which PrepInput::packed_lenses counts.
 bool is_packed_lens_path(const std::string& path);
 
-// Two fisheye lenses back to back, as tracks or packed into one frame.
+// Two fisheye lenses back to back, as tracks or packed into one frame, both kept.
 inline bool is_dual_lens(const PrepInput& in) {
-    return (is_dual_fisheye_path(in.path) && in.active_track < 0) || in.packed_lenses >= 2;
+    return in.active_lens < 0 && (is_dual_fisheye_path(in.path) || in.packed_lenses >= 2);
+}
+// The video track the lens kept is decoded from; -1 for every track, which is
+// also a packed frame's case: its lens is cut out of the picture afterwards.
+inline int kept_track(const PrepInput& in) {
+    return in.packed_lenses >= 2 ? -1 : in.active_lens;
 }
 // A lens the default camera model does not fit.
 inline bool has_fisheye_lens(const PrepInput& in) {
