@@ -55,6 +55,8 @@ int main() {
                              coefficients.size() * sizeof(float), backend::MemcpyKind::HostToDevice);
         engine_save_checkpoint(root.string(), true, 123);
         require(fs::file_size(root / "background.webp") > 25, "checkpoint did not export background");
+        for (const auto& e : fs::directory_iterator(root))
+            require(e.path().extension() != ".tmp", "checkpoint left a staged .tmp file");
         check_dimensions(root / "background.webp", 1024, 512);
         engine_save_checkpoint((root / "custom").string(), true, 123, 64);
         check_dimensions(root / "custom" / "background.webp", 128, 64);
