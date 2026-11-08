@@ -584,11 +584,28 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     const bool exif_level = cfg.exif_orientation == "orient" && !exif_o.empty();
     const bool exif_turn = cfg.exif_orientation == "apply" && !exif_o.empty();
 
+    // gsplat's normalization reads the seed points, which are in the world
+    // frame while c2w_all is in the file's: p_file = A p_world once the centre
+    // is off (the translation b went with it above).
+    const bool wants_points =
+        cfg.orientation_method == "gsplat" || cfg.center_method == "gsplat";
+    std::vector<double> points_file;
+    if (wants_points) {
+        points_file.resize((size_t)points.num() * 3);
+        for (int64_t i = 0; i < points.num(); i++) {
+            const double* p = &points.xyz[i*3];
+            for (int r = 0; r < 3; r++)
+                points_file[i*3 + r] = A[r][0]*p[0] + A[r][1]*p[1] + A[r][2]*p[2];
+        }
+    }
+
     double T_n_from_camera[16], R_align[9];
+    bool gsplat_fell_back = false;
     double scale_factor = dsparse::compute_normalized_transform(
         c2w_all.data(), n_all, T_n_from_camera, R_align,
         exif_level ? exif_o.data() : nullptr,
-        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses);
+        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses,
+        points_file.data(), points.num(), &gsplat_fell_back);
     // train_to_normalized = inv(T_n_from_camera @ [A | 0])
     double T_n_from_train[16];
     for (int r = 0; r < 4; r++)
@@ -609,6 +626,7 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     const int64_t N = (int64_t)subset.size();
     ds.num_cameras = N;
     ds.train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
+    ds.pose_normalization_fell_back = gsplat_fell_back;
     ds.center = center;
     for (int r = 0; r < 3; ++r) {
         for (int c = 0; c < 3; ++c) ds.raw_to_file[r * 4 + c] = A[r][c];

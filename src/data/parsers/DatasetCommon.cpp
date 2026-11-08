@@ -144,27 +144,266 @@ void align_up_to_z(const double up[3], double R[3][3]) {
     }
 }
 
+using Vec3 = std::array<double, 3>;
+using Mat3 = std::array<std::array<double, 3>, 3>;
+
+Vec3 mat_vec(const Mat3& M, const Vec3& v) {
+    Vec3 o{};
+    for (int r = 0; r < 3; r++) o[r] = M[r][0]*v[0] + M[r][1]*v[1] + M[r][2]*v[2];
+    return o;
+}
+
+Mat3 mat_mul(const Mat3& A, const Mat3& B) {
+    Mat3 C{};
+    for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++)
+            C[r][c] = A[r][0]*B[0][c] + A[r][1]*B[1][c] + A[r][2]*B[2][c];
+    return C;
+}
+
+Vec3 cross3(const Vec3& a, const Vec3& b) {
+    return {a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]};
+}
+
+double dot3(const Vec3& a, const Vec3& b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+
+bool normalize3(Vec3& v) {
+    const double l = std::sqrt(dot3(v, v));
+    if (!(l > 1e-12) || !std::isfinite(l)) return false;
+    for (double& x : v) x /= l;
+    return true;
+}
+
+// Median of `v`, which it reorders.
+double median_reordering(std::vector<double>& v) {
+    if (v.empty()) return 0.0;
+    const size_t mid = v.size() / 2;
+    std::nth_element(v.begin(), v.begin() + mid, v.end());
+    const double hi = v[mid];
+    if (v.size() % 2 == 1) return hi;
+    return 0.5 * (*std::max_element(v.begin(), v.begin() + mid) + hi);
+}
+
+Vec3 median_per_axis(const std::vector<Vec3>& pts) {
+    Vec3 m{};
+    std::vector<double> col(pts.size());
+    for (int d = 0; d < 3; d++) {
+        for (size_t i = 0; i < pts.size(); i++) col[i] = pts[i][d];
+        m[d] = median_reordering(col);
+    }
+    return m;
+}
+
+// Proper rotation taking unit `a` onto unit `b` by the shortest arc; nearly
+// opposite vectors turn half a revolution about an orthogonal axis (det +1).
+Mat3 rotation_between(const Vec3& a, const Vec3& b) {
+    Mat3 R{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+    const double c = dot3(a, b);
+    if (1.0 + c > 1e-8) {
+        const Vec3 v = cross3(a, b);
+        const Mat3 K{{{0, -v[2], v[1]}, {v[2], 0, -v[0]}, {-v[1], v[0], 0}}};
+        const Mat3 K2 = mat_mul(K, K);
+        for (int r = 0; r < 3; r++)
+            for (int k = 0; k < 3; k++)
+                R[r][k] += K[r][k] + K2[r][k] / (1.0 + c);
+        return R;
+    }
+    Vec3 axis = std::abs(a[0]) < 0.9 ? Vec3{1, 0, 0} : Vec3{0, 1, 0};
+    const double along = dot3(axis, a);
+    for (int k = 0; k < 3; k++) axis[k] -= along * a[k];
+    normalize3(axis);
+    for (int r = 0; r < 3; r++)
+        for (int k = 0; k < 3; k++)
+            R[r][k] = 2.0 * axis[r] * axis[k] - (r == k ? 1.0 : 0.0);
+    return R;
+}
+
+// gsplat rigid map p' = R p + t and scene scale (camera up -> -y, point PCA on
+// axes, floor test; details and differences in docs/notes/pose-normalization.md).
+// Returns false on failure (<4 points, degenerate spread, or no valid cameras).
+bool gsplat_rigid_transform(const double* c2w, int64_t n,
+                            const std::vector<char>& inlier,
+                            const uint8_t* exif_orientation,
+                            const double* points_xyz, int64_t n_points,
+                            Mat3& R_out, Vec3& t_out, double& scene_scale_out) {
+    if (!points_xyz || n_points <= 0 || n <= 0) return false;
+
+    // A point cloud of tens of millions costs a per-axis nth_element per pass;
+    // every statistic below is a median or a covariance, and a strided sample of
+    // four million of them is not distinguishable from the whole.
+    constexpr int64_t kMaxSamples = int64_t(1) << 22;
+    const int64_t step = n_points > kMaxSamples ? (n_points + kMaxSamples - 1) / kMaxSamples : 1;
+    std::vector<Vec3> pts;
+    pts.reserve((size_t)(n_points / step + 1));
+    for (int64_t i = 0; i < n_points; i += step) {
+        const double* p = points_xyz + i * 3;
+        if (std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]))
+            pts.push_back({p[0], p[1], p[2]});
+    }
+    if (pts.size() < 4) return false;
+
+    struct Cam { Vec3 pos, fwd; };
+    std::vector<Cam> cams;
+    Vec3 up{0, 0, 0};
+    for (int64_t i = 0; i < n; i++) {
+        if (!inlier[i]) continue;
+        const double* m = c2w + i * 12;
+        Cam c;
+        c.pos = {m[3], m[7], m[11]};
+        c.fwd = {-m[2], -m[6], -m[10]};      // OpenGL: the optical axis is -z
+        if (!std::isfinite(c.pos[0] + c.pos[1] + c.pos[2])) continue;
+        double u[3] = {0, 1, 0};
+        if (exif_orientation) exif_up_gl(exif_orientation[i], u);
+        for (int r = 0; r < 3; r++)
+            up[r] += m[r*4 + 0] * u[0] + m[r*4 + 1] * u[1] + m[r*4 + 2] * u[2];
+        cams.push_back(c);
+    }
+    if (cams.empty() || !normalize3(up)) return false;
+
+    // 1. Level: the mean camera up goes to -y, the way gsplat's frame is built.
+    const Mat3 R_level = rotation_between(up, Vec3{0, -1, 0});
+    std::vector<Vec3> nearest;
+    nearest.reserve(cams.size());
+    for (Cam& c : cams) {
+        c.pos = mat_vec(R_level, c.pos);
+        c.fwd = mat_vec(R_level, c.fwd);
+        if (!normalize3(c.fwd)) continue;
+        // The point of the optical axis closest to the origin.
+        const double s = -dot3(c.fwd, c.pos);
+        nearest.push_back({c.pos[0] + s * c.fwd[0], c.pos[1] + s * c.fwd[1],
+                           c.pos[2] + s * c.fwd[2]});
+    }
+    if (nearest.empty()) return false;
+    const Vec3 med = median_per_axis(nearest);
+    const Vec3 t_level = {-med[0], -med[1], -med[2]};
+    for (Vec3& p : pts) {
+        p = mat_vec(R_level, p);
+        for (int k = 0; k < 3; k++) p[k] += t_level[k];
+    }
+
+    // 2. Principal axes of the points about their per-axis median.
+    const Vec3 centroid = median_per_axis(pts);
+    double C[3][3] = {};
+    for (const Vec3& p : pts) {
+        const double d[3] = {p[0] - centroid[0], p[1] - centroid[1], p[2] - centroid[2]};
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++) C[r][c] += d[r] * d[c];
+    }
+    // The solver stops on an absolute tolerance, so hand it a unit-trace matrix:
+    // a scene a millimetre across must resolve its axes as well as a city.
+    const double trace = C[0][0] + C[1][1] + C[2][2];
+    if (!(trace > 0.0) || !std::isfinite(trace)) return false;
+    for (auto& row : C)
+        for (double& x : row) x /= trace;
+    double w[3], V[3][3];
+    eigen_symmetric_3x3(C, w, V);          // ascending: V's column 2 is the largest
+    if (!(w[2] > 0.0) || !std::isfinite(w[2])) return false;
+    auto axis_of = [&](int col) {
+        Vec3 v = {V[0][col], V[1][col], V[2][col]};
+        int big = 0;
+        for (int k = 1; k < 3; k++)
+            if (std::abs(v[k]) > std::abs(v[big])) big = k;
+        if (v[big] < 0.0) for (double& x : v) x = -x;
+        return v;
+    };
+    const Vec3 ax = axis_of(2), ay = axis_of(1);
+    Vec3 az = cross3(ax, ay);              // right-handed, so det(R_pca) = +1
+    if (!normalize3(az)) return false;
+    const Mat3 R_pca{{{ax[0], ax[1], ax[2]}, {ay[0], ay[1], ay[2]}, {az[0], az[1], az[2]}}};
+
+    // 3. Which way is up: the heavy side of the height distribution is the floor.
+    std::vector<double> height(pts.size());
+    double mean_height = 0.0;
+    for (size_t i = 0; i < pts.size(); i++) {
+        const Vec3 d = {pts[i][0] - centroid[0], pts[i][1] - centroid[1],
+                        pts[i][2] - centroid[2]};
+        height[i] = dot3(az, d);
+        mean_height += height[i];
+    }
+    mean_height /= (double)pts.size();
+    const bool flip = median_reordering(height) > mean_height;
+    const Mat3 R_flip{{{1, 0, 0}, {0, flip ? -1.0 : 1.0, 0}, {0, 0, flip ? -1.0 : 1.0}}};
+
+    // p' = R_flip R_pca (R_level p + t_level - centroid)
+    const Mat3 R_all = mat_mul(R_flip, mat_mul(R_pca, R_level));
+    const Vec3 shift = {t_level[0] - centroid[0], t_level[1] - centroid[1],
+                        t_level[2] - centroid[2]};
+    R_out = R_all;
+    t_out = mat_vec(mat_mul(R_flip, R_pca), shift);
+
+    // Scene scale: 1.1 x the farthest camera from the cameras' mean, in the
+    // final frame (gsplat's `scene_scale`).
+    std::vector<Vec3> final_pos;
+    final_pos.reserve(cams.size());
+    Vec3 mean_pos{0, 0, 0};
+    for (int64_t i = 0; i < n; i++) {
+        if (!inlier[i]) continue;
+        const double* m = c2w + i * 12;
+        Vec3 p = mat_vec(R_all, Vec3{m[3], m[7], m[11]});
+        if (!std::isfinite(p[0] + p[1] + p[2])) continue;
+        for (int k = 0; k < 3; k++) p[k] += t_out[k];
+        final_pos.push_back(p);
+        for (int k = 0; k < 3; k++) mean_pos[k] += p[k];
+    }
+    if (final_pos.empty()) return false;
+    for (double& x : mean_pos) x /= (double)final_pos.size();
+    double max_dist = 0.0;
+    for (const Vec3& p : final_pos) {
+        const Vec3 d = {p[0] - mean_pos[0], p[1] - mean_pos[1], p[2] - mean_pos[2]};
+        max_dist = std::max(max_dist, std::sqrt(dot3(d, d)));
+    }
+    scene_scale_out = 1.1 * max_dist;
+    return true;
+}
+
 }  // namespace
 
-// T_n_from_camera = scale * [R_align | -R_align @ center]. Supports
-// orientation {up, pca, vertical, none} and center {poses, focus, none}.
+// T_n_from_camera = scale * [R_align | -R_align @ center]. Supports orientation
+// {up, pca, vertical, none} and center {poses, focus, none}, or `gsplat` for both.
+// With unusable seed points gsplat falls back to up/poses (*gsplat_fell_back = true).
 double compute_normalized_transform(const double* c2w, int64_t n,
                                     double T_out[16], double R_out[9],
                                     const uint8_t* exif_orientation,
                                     const std::string& orientation_method,
                                     const std::string& center_method,
-                                    bool auto_scale_poses) {
+                                    bool auto_scale_poses,
+                                    const double* points_xyz,
+                                    int64_t n_points,
+                                    bool* gsplat_fell_back) {
     std::fill(T_out, T_out + 16, 0.0);
     T_out[0] = T_out[5] = T_out[10] = T_out[15] = 1.0;
     if (R_out) {
         std::fill(R_out, R_out + 9, 0.0);
         R_out[0] = R_out[4] = R_out[8] = 1.0;
     }
+    if (gsplat_fell_back) *gsplat_fell_back = false;
     if (n <= 0) return 1.0;
     std::vector<double> pos(n * 3);
     for (int64_t i = 0; i < n; i++)
         for (int r = 0; r < 3; r++) pos[i*3 + r] = c2w[i*12 + r*4 + 3];
     const std::vector<char> inlier = outlier_keep_mask(pos, n, kStrayCameraThreshold);
+
+    if (orientation_method == "gsplat" || center_method == "gsplat") {
+        Mat3 Rg;
+        Vec3 tg;
+        double scene_scale = 0.0;
+        if (gsplat_rigid_transform(c2w, n, inlier, exif_orientation, points_xyz,
+                                   n_points, Rg, tg, scene_scale)) {
+            const double scale_factor =
+                (auto_scale_poses && scene_scale > 1e-9) ? 1.0 / scene_scale : 1.0;
+            for (int r = 0; r < 3; r++) {
+                for (int c = 0; c < 3; c++) {
+                    T_out[r*4 + c] = Rg[r][c] * scale_factor;
+                    if (R_out) R_out[r*3 + c] = Rg[r][c];
+                }
+                T_out[r*4 + 3] = tg[r] * scale_factor;
+            }
+            return scale_factor;
+        }
+        if (gsplat_fell_back) *gsplat_fell_back = true;
+        // Falls through: neither name below is a method it knows, which is
+        // `up` for the orientation and `poses` for the centre.
+    }
     double up[3] = {0, 0, 0}, mean_origin[3] = {0, 0, 0};
     int64_t n_inlier = 0;
     for (int64_t i = 0; i < n; i++) {

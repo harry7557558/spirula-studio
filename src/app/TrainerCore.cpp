@@ -967,10 +967,12 @@ void TrainerSession::check_config() {
     const bool orient_ok = (cfg.orientation_method == "up" ||
                             cfg.orientation_method == "pca" ||
                             cfg.orientation_method == "vertical" ||
-                            cfg.orientation_method == "none");
+                            cfg.orientation_method == "none" ||
+                            cfg.orientation_method == "gsplat");
     const bool center_ok = (cfg.center_method == "poses" ||
                             cfg.center_method == "focus" ||
-                            cfg.center_method == "none");
+                            cfg.center_method == "none" ||
+                            cfg.center_method == "gsplat");
     if (!orient_ok || !center_ok)
         log(lfmt(lmsg::warn_pose_normalization_approx,
                  {cfg.orientation_method, cfg.center_method}));
@@ -1063,6 +1065,10 @@ void TrainerSession::load_dataset() {
     roi.reset();
     apply_partition_config(ds);
     load_region();
+    // `gsplat` needs seed points; without them `up` / `poses` were used.
+    if (ds.pose_normalization_fell_back)
+        log(lfmt(lmsg::warn_pose_normalization_approx,
+                 {cfg.orientation_method, cfg.center_method}));
     if (ds.center_mode != "none") {
         char xyz[96];
         std::snprintf(xyz, sizeof xyz, "%.12g, %.12g, %.12g",
