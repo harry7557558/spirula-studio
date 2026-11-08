@@ -166,6 +166,9 @@ struct PrepInput {
     app::FrameStencil stencil;
     // Its rows' "same as above", by FrameStencil camera key (settle_follow).
     std::map<std::string, StencilFollow> stencil_follow;
+    // The laser scan these photographs came out of (LidarStep.h), "" for
+    // anything else. Their drawn areas are the scan's, PrepJob::scan_stencils.
+    std::string scan;
 };
 
 // One row of the "Camera / lens per input" list. `rel` is the prefix
@@ -253,6 +256,9 @@ inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
+    // Drawn areas for a laser scan's photographs, by scan file: given to the
+    // inputs they become (add_scan_photo_inputs) and recorded under the scan.
+    std::map<std::string, app::FrameStencil> scan_stencils;
     // Frozen by the runner before planning; empty in the panel's cheap preview.
     std::vector<std::string> source_content;
     std::string workspace;           // output dataset dir (created)

@@ -166,7 +166,7 @@ bool MaskSession::open(const std::string& workspace, const std::string& image_di
         return false;
     }
     _frames.clear();
-    const auto groups = app::group_frames_by_camera(_image_root, _mask_root);
+    const auto groups = app::group_frames_by_camera(_image_root, {_mask_root});
     for (const auto& [camera, files] : groups)
         for (const std::string& f : files)
             _frames.push_back({f, frame_key(_image_root, f), camera});

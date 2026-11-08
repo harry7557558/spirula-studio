@@ -439,6 +439,9 @@ private:
         std::function<void()> open_preview;
     };
     MaskingPanel dataset_masking_panel();
+    // The checkpoint picker of the dataset screen, also offered in the panel.
+    void draw_dataset_model_picker();
+    void open_segment(const PreviewSource& src);
     void draw_masking_options(const MaskingPanel& p);
     // The job's mask_* fields from the shared settings; `mask_enable` excepted.
     void fill_masking(PrepJob& prep) const;
@@ -523,6 +526,8 @@ private:
     // How a panel must read one input's frames: the decoder the run will use,
     // and the FrameLook it will write them with.
     PreviewSource preview_source(size_t input) const;
+    // The same for any input, `lut` the one its frames go through.
+    PreviewSource preview_source_for(const PrepInput& in, const std::string& lut) const;
     // Opens "Try the mask" on the input the combo points at, which is also the
     // input whose clicks and stencil it edits.
     void open_mask_preview();
@@ -841,6 +846,9 @@ private:
         int64_t points = 0;           // as the header declares
         int64_t photos = 0;           // images an E57 carries with poses
         std::vector<spirula::cloud::Station> stations;
+        // Drawn areas for its photographs, apart from every input's (issue #99).
+        app::FrameStencil stencil;
+        std::map<std::string, StencilFollow> stencil_follow;
     };
     bool read_lidar_input(const std::string& path, LidarInput& in);
     std::vector<LidarInput> _lidar;
@@ -1034,8 +1042,30 @@ private:
     bool _segment_was_open = false;
     void load_stencil_sets();
     std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
+    // The table as drawn: the inputs' rows, then those of each scan whose
+    // photographs join the run, which start a chain of their own.
+    struct StencilTable {
+        StencilOwners owners;
+        std::vector<StencilRow> rows;
+        std::vector<std::string> names, paths;   // per owner
+        size_t inputs = 0;           // owners [0, inputs) are _sources
+        std::vector<size_t> scans;   // the _lidar row of each owner past them
+    };
+    StencilTable stencil_table();
+    // The owner the open panel edits, or -1.
+    int panel_owner(const StencilTable& t) const;
     void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
     void draw_stencil_rows(const MaskingPanel& p);
+    // Try the mask on a scan's photographs, extracted first on a worker.
+    void open_scan_mask_preview(size_t scan);
+    void pump_scan_photos();
+    bool scan_photos_busy() const;
+    std::future<std::pair<std::string, std::string>> _scan_photos;   // folder, error
+    size_t _scan_photos_for = 0;
+    int _mask_preview_scan = -1;                // the _lidar row the panel shows, or -1
+    int _mask_try_scan = -1;                    // the one "Try the mask" opens, or -1
+    // Rows past a removed scan move up; the panel on that scan closes.
+    void forget_scan(size_t scan);
     void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,
                             size_t first_input = 0);
     void save_run_stencils();

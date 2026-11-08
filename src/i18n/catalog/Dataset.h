@@ -9167,6 +9167,49 @@ SS_MSG(preview_frame_unreadable,
     RU("Из этого видео не удалось прочитать ни одного кадра."),
     TR("Bu videodan hiçbir kare okunamadı."));
 
+// A click or a prompt in "Try the mask" with no model to find it; {0} is the
+// mask_enable checkbox, which taking the model also ticks.
+SS_MSG(preview_needs_model,
+    EN("Clicks and prompts need a segmentation model. Pick one below; using it "
+       "also ticks \"{0}\"."),
+    JA("クリックやプロンプトにはセグメンテーションモデルが必要です。下で選んでください。"
+       "使うと「{0}」にもチェックが入ります。"),
+    ZH_HANS("点击和提示需要一个分割模型。请在下面选一个；使用它也会勾选“{0}”。"),
+    ZH_HANT("點擊和提示需要一個分割模型。請在下面選一個；使用它也會勾選「{0}」。"),
+    KO("클릭과 프롬프트에는 분할 모델이 필요합니다. 아래에서 고르세요. 사용하면 "
+       "\"{0}\"도 함께 켜집니다."),
+    DE("Klicks und Beschreibungen brauchen ein Segmentierungsmodell. Wählen Sie "
+       "unten eines; wird es verwendet, ist auch „{0}“ angehakt."),
+    FR("Les clics et les descriptions demandent un modèle de segmentation. "
+       "Choisissez-en un ci-dessous ; l'utiliser coche aussi « {0} »."),
+    ES("Los clics y las descripciones necesitan un modelo de segmentación. Elija "
+       "uno abajo; al usarlo también se marca «{0}»."),
+    PT("Cliques e descrições precisam de um modelo de segmentação. Escolha um "
+       "abaixo; usá-lo também marca \"{0}\"."),
+    IT("Clic e descrizioni richiedono un modello di segmentazione. Sceglietene "
+       "uno qui sotto; usarlo spunta anche «{0}»."),
+    NL("Klikken en beschrijvingen hebben een segmentatiemodel nodig. Kies er "
+       "hieronder een; als u het gebruikt, wordt ook \"{0}\" aangevinkt."),
+    RU("Для щелчков и подсказок нужна модель сегментации. Выберите её ниже; "
+       "при этом также включится «{0}»."),
+    TR("Tıklamalar ve istemler bir bölütleme modeli gerektirir. Aşağıdan birini "
+       "seçin; kullanmak \"{0}\" seçeneğini de işaretler."));
+
+SS_MSG(preview_use_model,
+    EN("Use this model"),
+    JA("このモデルを使う"),
+    ZH_HANS("使用这个模型"),
+    ZH_HANT("使用這個模型"),
+    KO("이 모델 사용"),
+    DE("Dieses Modell verwenden"),
+    FR("Utiliser ce modèle"),
+    ES("Usar este modelo"),
+    PT("Usar este modelo"),
+    IT("Usa questo modello"),
+    NL("Dit model gebruiken"),
+    RU("Использовать эту модель"),
+    TR("Bu modeli kullan"));
+
 SS_MSG(preview_kept_fraction,
     EN("{0}% of the frame is kept"),
     JA("フレームの {0}% が残ります"),

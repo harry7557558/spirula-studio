@@ -860,8 +860,17 @@ void SfmRunner::run(SfmJob job) {
         LidarPrep lidar;
         {
             std::string err;
-            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.inputs, lidar, err))
+            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.scan_stencils,
+                                       job.prep.inputs, lidar, err))
                 return fail(err);
+        }
+        // Their files are this run's own, just extracted from the scans, so
+        // their identity is taken now; the check after the frames covers them.
+        for (size_t i = job.prep.source_content.size(); i < job.prep.inputs.size(); i++) {
+            std::string identity = frame_source_identity(job.prep, job.prep.inputs[i], true);
+            if (identity.empty())
+                return fail("Cannot identify frame source: " + job.prep.inputs[i].path);
+            job.prep.source_content.push_back(std::move(identity));
         }
         PrepResult prep;
         {

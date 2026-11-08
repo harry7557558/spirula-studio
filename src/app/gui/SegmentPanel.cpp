@@ -117,6 +117,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
         _preview_dirty = false;
         _status = dmsg::preview_working.get();
         _error.clear();
+        _model_missing = false;
         _livewire_pending.reset();
         _livewire_pending_key.clear();
         _livewire_ready = false;
@@ -128,9 +129,12 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     _open = true;
     const PreviewSource requested = _src;
     _worker = std::thread([this, requested] {
+        // A listing handed over stays "listing" until draw() takes it, or a
+        // job could start in between on no frames.
         struct ListingGuard {
             std::atomic<bool>& flag;
-            ~ListingGuard() { flag = false; }
+            bool handed = false;
+            ~ListingGuard() { if (!handed) flag = false; }
         } listing_guard{_listing};
         try {
             PreviewSource listed = requested;
@@ -146,6 +150,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
             _all_files_pending = std::move(all_files);
             _folders_pending = std::move(folders);
             _frames_ready = true;
+            listing_guard.handed = true;
             _status.clear();
         } catch (const std::exception& e) {
             if (!_cancel.load()) {
@@ -508,14 +513,13 @@ void SegmentPanel::start_job(const MaskSettings& s,
             if (wants_model)
                 set_error(spirula::i18n::msg::log::err_no_builtin_segmentation.get());
 #else
-            if (!wants_model) {
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _model_missing = wants_model && model.empty();
+            }
+            if (!wants_model || model.empty()) {
                 stencil_only();
                 return;
-            }
-            if (model.empty()) {
-                stencil_only();
-                return set_error(
-                    spirula::i18n::msg::log::err_no_model_selected.get());
             }
 
             // ---- the model ----
@@ -1611,6 +1615,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _all_files = std::move(_all_files_pending);
             _folders = std::move(_folders_pending);
             _frames_ready = false;
+            _listing = false;
             _cameras = camera_names();
         }
     }
@@ -1815,15 +1820,31 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
 
     ImGui::Spacing();
     float kept_fraction = -1.0f, feature_fraction = -1.0f;
+    bool model_missing = false;
     {
         std::lock_guard<std::mutex> lk(_mu);
+        model_missing = _model_missing;
         // Segmentation errors and progress come from the inference layer.
         if (!_error.empty())
             ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _error);
-        else if (!_status.empty())
+        else if (!_status.empty() && !model_missing)
             ui::TextDisabledRaw(_status);
         kept_fraction = _kept_fraction;
         feature_fraction = _feature_fraction;
+    }
+    if (model_missing && !_pick_model) {
+        ui::TextColoredWrapped(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
+                               spirula::i18n::msg::log::err_no_model_selected);
+    } else if (model_missing) {
+        ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), dmsg::preview_needs_model,
+                               {dmsg::mask_enable.get()});
+        const MaskModelFiles picked = _pick_model();
+        if (!picked.empty()) {
+            _model = picked;
+            _needs_run = true;
+            std::lock_guard<std::mutex> lk(_mu);
+            _model_missing = false;
+        }
     }
     if (kept_fraction >= 0.0f) {
         char pct[16];

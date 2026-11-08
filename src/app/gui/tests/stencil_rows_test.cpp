@@ -6,6 +6,7 @@
 #include "core/SourcePath.h"
 
 #include <cstdio>
+#include <map>
 #include <string>
 
 using gui::StencilPart;
@@ -242,6 +243,32 @@ void test_explicit() {
           "a following row that no longer matches keeps its value as its own");
 }
 
+// A laser scan's photographs after the inputs: rows of their own.
+void test_scans() {
+    std::vector<gui::PrepInput> in = {fisheye(false), fisheye(false)};
+    app::FrameStencil scan_a, scan_b;
+    std::map<std::string, gui::StencilFollow> follow_a, follow_b;
+    gui::StencilOwners owners = gui::stencil_owners(in);
+    owners.push_back({&scan_a, &follow_a});
+    owners.push_back({&scan_b, &follow_b});
+    auto rows = gui::stencil_rows({{""}, {""}});
+    gui::append_rows(rows, {{""}, {""}}, 2);
+    check(rows.size() == 4 && rows[2].input == 2 && rows[2].above == -1 && rows[3].above == 2,
+          "scan rows start a chain of their own");
+    gui::settle_follow(owners, rows);
+    app::MaskSet stick;
+    stick.shapes = {box(0.4f)};
+    gui::set_row_areas(owners, rows, 0, stick);
+    check(in[1].stencil.mask.shapes.size() == 1 && scan_a.mask.shapes.empty(),
+          "areas drawn on the inputs never reach a scan's photographs");
+    app::MaskSet tripod;
+    tripod.shapes = {box(0.1f), box(0.2f)};
+    gui::set_row_areas(owners, rows, 2, tripod);
+    check(scan_a.mask.shapes.size() == 2 && scan_b.mask.shapes.size() == 2 &&
+              in[0].stencil.mask.shapes.size() == 1,
+          "a scan's areas reach the scan below that follows it, and no input");
+}
+
 void test_adopt() {
     std::vector<gui::PrepInput> in = {fisheye(), fisheye(), fisheye(false)};
     in[0].stencil.shrink = 0.05f;
@@ -268,6 +295,7 @@ int main() {
     test_lenses();
     test_panel_edit();
     test_explicit();
+    test_scans();
     test_adopt();
     std::printf("%s: %d failure(s)\n", SS_FILE, g_failures);
     return g_failures;

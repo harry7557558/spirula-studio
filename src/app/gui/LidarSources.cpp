@@ -126,6 +126,10 @@ void GuiApp::replace_lidar_source(size_t i, const std::string& path) {
 
 void GuiApp::clear_lidar_sources() {
     _lidar.clear();
+    if (_mask_preview_scan >= 0) _segment.close();
+    _mask_preview_scan = -1;
+    _mask_try_scan = -1;
+    _scan_photos_for = SIZE_MAX;
     _lidar_photos = true;
     _lidar_in_frame = false;
     _lidar_keep_poses = true;
@@ -162,7 +166,10 @@ bool GuiApp::scanner_poses_offered() const {
 
 LidarJob GuiApp::lidar_job() const {
     LidarJob j;
-    for (const LidarInput& l : _lidar) j.clouds.push_back(l.path);
+    for (const LidarInput& l : _lidar) {
+        j.clouds.push_back(l.path);
+        if (l.photos > 0) j.with_photos.push_back(l.path);
+    }
     // With nothing else, the scans' photographs are the dataset: always used,
     // and there is no other model to be in their frame.
     j.scan_photos = _lidar_photos || _sources.empty();
@@ -203,6 +210,7 @@ void GuiApp::draw_lidar_rows(float path_w, bool one_line) {
     ImGui::PopID();
     if (remove >= 0 && !dataset_busy()) {
         _lidar.erase(_lidar.begin() + remove);
+        forget_scan((size_t)remove);
         refresh_sources();
     }
 }
