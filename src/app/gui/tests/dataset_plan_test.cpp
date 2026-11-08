@@ -917,6 +917,37 @@ int main() {
         fs::remove_all(w);
     }
 
+    {
+        // A scan's drawn areas: the plan before the run has no input for its
+        // photographs yet, the run has; both must record the same.
+        PrepJob before = video_job(ws).prep;
+        before.scan_stencils["/scans/hall.e57"].mask.shapes.resize(1);
+        PrepJob during = before;
+        PrepInput photos;
+        photos.path = (ws / "lidar" / "photos" / "scan_hall").string();
+        photos.subdir = "scan_hall";
+        photos.scan = "/scans/hall.e57";
+        photos.stencil = before.scan_stencils.begin()->second;
+        during.inputs.push_back(photos);
+        expect(masks_fields(before) == masks_fields(during),
+               "a scan's drawn areas are recorded under the scan, before and during the run");
+        PrepJob changed = before;
+        changed.scan_stencils.begin()->second.mask.shapes.resize(2);
+        expect(!(masks_fields(changed) == masks_fields(before)),
+               "... and drawing on them again is a masks setting changed");
+
+        SfmJob plain = video_job(ws), scanned = video_job(ws);
+        scanned.lidar.clouds = scanned.lidar.with_photos = {"/scans/hall.e57"};
+        SfmJob running = scanned;
+        photos.camera_model = "equirectangular";
+        photos.sequential = true;
+        running.prep.inputs.push_back(photos);
+        expect(model_fields(scanned) == model_fields(running),
+               "the model records a scan's photographs by scan, before and during the run");
+        expect(!(model_fields(plain) == model_fields(scanned)),
+               "... and a scan's photographs joining is a model change");
+    }
+
     // ---- and what the old stamps still say, back on the panel --------------
     {
         std::ofstream(ws / ".spirula-recon")

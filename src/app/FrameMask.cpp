@@ -1060,20 +1060,21 @@ bool mask_file_holds(const std::string& path, const std::vector<uint8_t>& px,
 }  // namespace
 
 std::map<std::string, std::vector<std::string>> group_frames_by_camera(
-    const std::string& dir, const std::string& skip_dir) {
+    const std::string& dir, const std::vector<std::string>& skip_dirs) {
     std::map<std::string, std::vector<std::string>> groups;
     std::error_code ec;
-    const std::string skip =
-        skip_dir.empty() ? std::string()
-                         : fs::path(skip_dir).lexically_normal().generic_string() + "/";
+    std::vector<std::string> skips;
+    for (const std::string& s : skip_dirs)
+        if (!s.empty()) skips.push_back(fs::path(s).lexically_normal().generic_string() + "/");
     const fs::path root(dir);
     for (fs::recursive_directory_iterator it(
              root, fs::directory_options::skip_permission_denied |
                        fs::directory_options::follow_directory_symlink, ec), end;
          !ec && it != end; it.increment(ec)) {
         if (!it->is_regular_file(ec) || !is_image_file(it->path())) continue;
-        if (!skip.empty() &&
-            it->path().lexically_normal().generic_string().rfind(skip, 0) == 0)
+        const std::string at = it->path().lexically_normal().generic_string();
+        if (std::any_of(skips.begin(), skips.end(),
+                        [&](const std::string& s) { return at.rfind(s, 0) == 0; }))
             continue;
         // Lexical: fs::relative resolves symlinks, and an images/ of links
         // into a raw capture then relativizes to "../../<capture>/...", which
@@ -1088,7 +1089,7 @@ std::map<std::string, std::vector<std::string>> group_frames_by_camera(
 
 int64_t apply_frame_stencil(const FrameStencilRun& run,
                             const FrameStencilSinks& sinks, std::string& error) {
-    const auto groups = group_frames_by_camera(run.image_dir, run.skip_dir);
+    const auto groups = group_frames_by_camera(run.image_dir, run.skip_dirs);
     if (groups.empty()) {
         error = run.image_dir;
         return -1;

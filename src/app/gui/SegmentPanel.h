@@ -26,6 +26,7 @@
 #include "app/gui/mask/PenTool.h"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -61,6 +62,11 @@ public:
     void set_workspace(const std::string& w) { _workspace = w; }
     // Load menu's "Other file...": the caller owns the file picker.
     bool take_browse_request() { return std::exchange(_browse_requested, false); }
+    // Shown where a click or prompt finds no model: draws a picker and returns
+    // the model once the user takes one, empty until then.
+    void set_model_picker(std::function<MaskModelFiles()> pick) {
+        _pick_model = std::move(pick);
+    }
     void load_file(app::FrameStencil& stencil, const std::string& path);
 
 private:
@@ -192,6 +198,8 @@ private:
     std::vector<StencilPreset> _in_dataset;
     std::string _workspace;
     bool _browse_requested = false;
+    std::function<MaskModelFiles()> _pick_model;
+    bool _model_missing = false;        // under _mu: a prompt wants one
     std::string _save_name;
     std::string _saved_msg;
     bool _saved_msg_err = false;

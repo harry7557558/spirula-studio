@@ -175,14 +175,19 @@ constexpr fs::directory_options kWalk =
     fs::directory_options::follow_directory_symlink;
 
 // Images under `dir`, sorted, never descending into `skip` (see count_images).
-std::vector<fs::path> walk_images(const fs::path& dir, const fs::path& skip = {}) {
+std::vector<fs::path> walk_images(const fs::path& dir, const std::vector<fs::path>& skip) {
     std::vector<fs::path> out;
     std::error_code ec;
-    const bool guard = !skip.empty() && fs::is_directory(skip, ec);
+    std::vector<fs::path> guard;
+    for (const fs::path& s : skip)
+        if (!s.empty() && fs::is_directory(s, ec)) guard.push_back(s);
     for (fs::recursive_directory_iterator it(dir, kWalk, ec), end; !ec && it != end;
          it.increment(ec)) {
-        if (guard && it->is_directory(ec) &&
-            fs::equivalent(it->path(), skip, ec)) {
+        if (!guard.empty() && it->is_directory(ec) &&
+            std::any_of(guard.begin(), guard.end(), [&](const fs::path& s) {
+                std::error_code eq;
+                return fs::equivalent(it->path(), s, eq);
+            })) {
             it.disable_recursion_pending();
             continue;
         }
@@ -191,6 +196,33 @@ std::vector<fs::path> walk_images(const fs::path& dir, const fs::path& skip = {}
     }
     std::sort(out.begin(), out.end());
     return out;
+}
+std::vector<fs::path> walk_images(const fs::path& dir, const fs::path& skip = {}) {
+    return walk_images(dir, std::vector<fs::path>{skip});
+}
+
+// The other inputs' folders inside this one's `images`: a lone video keeps
+// images/ to itself, and the photographs of a scan join it in folders of their own.
+std::vector<fs::path> nested_inputs(const PrepJob& job, const PrepInput& in,
+                                    const fs::path& images) {
+    std::vector<fs::path> out;
+    const std::string mine =
+        in.subdir.empty() ? "" : fs::path(in.subdir).lexically_normal().generic_string() + "/";
+    for (const PrepInput& o : job.inputs) {
+        if (o.subdir.empty()) continue;
+        const std::string theirs = fs::path(o.subdir).lexically_normal().generic_string();
+        if (theirs.size() > mine.size() && theirs.compare(0, mine.size(), mine) == 0)
+            out.push_back(images / theirs.substr(mine.size()));
+    }
+    return out;
+}
+
+// An input's own images: neither its masks nor another input's folder in it.
+std::vector<fs::path> own_images(const PrepJob& job, const PrepInput& in,
+                                 const std::string& images, const std::string& masks) {
+    std::vector<fs::path> skip = nested_inputs(job, in, images);
+    skip.push_back(masks);
+    return walk_images(images, skip);
 }
 
 // Where a file sits under the tree it was walked from. Lexical on purpose:
@@ -1369,7 +1401,7 @@ int64_t DatasetPrep::estimate_frames(const PrepJob& job, const PrepInput& in,
                                      const std::string& images) {
     // What a resumed run keeps is exactly what is there already.
     if (job.resume && !job.redo_frames) {
-        const int have = count_images(images);
+        const int64_t have = (int64_t)own_images(job, in, images, "").size();
         if (have > 0) return have;
     }
     if (!in.is_video) {
@@ -1438,7 +1470,9 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         const StepRecord& frames = record.step(Step::Frames);
         for (size_t i = 0; i < job.inputs.size(); ++i) {
             const PrepInput& in = job.inputs[i];
-            if (!in.is_video || count_images(under((ws / "images").string(), in.subdir).string()) == 0)
+            if (!in.is_video ||
+                own_images(job, in, under((ws / "images").string(), in.subdir).string(), "")
+                    .empty())
                 continue;
             const std::string scope = in.subdir.empty() ? "." : in.subdir;
             const bool identified = std::any_of(frames.fields.begin(), frames.fields.end(),
@@ -1584,7 +1618,8 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 #ifdef SS_BUILD_SAM
         for (size_t i = 0; i < job.inputs.size(); ++i)
             if (job.inputs[i].is_video &&
-                !(job.resume && !job.redo_frames && count_images(per[i].images) > 0) &&
+                !(job.resume && !job.redo_frames &&
+                  !own_images(job, job.inputs[i], per[i].images, per[i].masks).empty()) &&
                 !plan_group(job, i, error))
                 return false;
         std::vector<bool> extracted(job.inputs.size(), false);
@@ -1646,7 +1681,8 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
 #endif
             if (in.is_video) {
                 const bool keeping =
-                    job.resume && !job.redo_frames && count_images(p.images) > 0;
+                    job.resume && !job.redo_frames &&
+                    !own_images(job, in, p.images, p.masks).empty();
                 if (!keeping && !plan_group(job, i, error))
                     return false;
 #ifdef SS_BUILD_SAM
@@ -1662,7 +1698,7 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
             }
             if (job.sort_frames && !every_frame(job, in) && !sort_frames(job, in, p.images, error))
                 return false;
-            int64_t produced = count_images(p.images);
+            int64_t produced = (int64_t)own_images(job, in, p.images, p.masks).size();
             if (!in.is_video && !in.mask_dir.empty())
                 produced += count_images(p.masks);
             _frames_tally.settle(produced, planned[i]);
@@ -1760,8 +1796,10 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
     // Reused frames and lenses split after decoding also need reel entries.
     if (_films.frames) {
         std::vector<FilmFrame> listed;
-        for (const Prepared& p : per)
-            for (const fs::path& f : walk_images(p.images, p.masks)) {
+        for (size_t i = 0; i < per.size(); i++)
+            for (const fs::path& f :
+                 own_images(job, job.inputs[i], per[i].images, per[i].masks)) {
+                const Prepared& p = per[i];
                 FilmFrame ff;
                 ff.name = under_root(f, p.images).generic_string();
                 ff.image_path = f.string();
@@ -1837,7 +1875,8 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         }
         for (size_t i = 0; i < job.inputs.size(); i++)
             if (!per[i].have_masks || want_features) {
-                mask_planned[i] = count_images(per[i].images, per[i].masks);
+                mask_planned[i] = (int64_t)own_images(job, job.inputs[i], per[i].images,
+                                                      per[i].masks).size();
                 _masks_tally.plan(mask_planned[i]);
             }
     }
@@ -1850,7 +1889,8 @@ bool DatasetPrep::run(const PrepJob& job_in, PrepResult& out, std::string& error
         if (folds && !per[i].have_masks && !job.inputs[i].stencil.empty())
             continue;
         if (!job.inputs[i].stencil.empty() || !per[i].merge_from.empty()) {
-            stencil_planned[i] = count_images(per[i].images, per[i].masks);
+            stencil_planned[i] = (int64_t)own_images(job, job.inputs[i], per[i].images,
+                                                         per[i].masks).size();
             _masks_tally.plan(stencil_planned[i]);
         }
     }
@@ -1974,7 +2014,7 @@ bool DatasetPrep::extract_video(const PrepJob& job, const PrepInput& in,
     // The run preflight checked the completed record and this source's bytes.
     if (job.redo_frames) clear_generated(images, job.workspace);
     if (job.resume && !job.redo_frames) {
-        const int have = count_images(images);
+        const int have = (int)own_images(job, in, images, "").size();
         if (have > 0) {
             log(fmt(lmsg::resume_keep_frames, {(long long)have, images}),
                 /*detail=*/false);
@@ -3558,7 +3598,7 @@ bool DatasetPrep::generate_masks_builtin(const PrepJob& job, const PrepInput& in
     // Never the masks themselves: a nested masks/ is only possible for photos
     // read where they are, and those already have masks -- but the guard costs
     // nothing and the alternative is masking a folder of masks.
-    std::vector<fs::path> files = walk_images(images, masks);
+    std::vector<fs::path> files = own_images(job, in, images, masks);
     const bool features = !feature_masks.empty();
     if (features)
         files.erase(std::remove_if(files.begin(), files.end(),
@@ -3991,7 +4031,9 @@ bool DatasetPrep::apply_stencil(const PrepJob& job, const PrepInput& in,
     app::FrameStencilRun run;
     run.image_dir = images;
     run.mask_dir = masks;
-    run.skip_dir = masks;
+    run.skip_dirs = {masks};
+    for (const fs::path& other : nested_inputs(job, in, images))
+        run.skip_dirs.push_back(other.string());
     run.stencil = in.stencil;
     run.merge_dir = merge_from;
     run.flip_merge = job.flip_found_masks && !merge_from.empty();
