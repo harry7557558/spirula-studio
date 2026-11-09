@@ -330,7 +330,9 @@ inline PackedCameraRanges build_packed_camera_ranges(
 
     PackedCameraRanges out;
     const int64_t nnz = gaussian_ids.size();
-    out.camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, N + 1);
+    if (DevicePool::global().phase() != PoolPhase::RasterBwd)
+        pool_begin_phase(PoolPhase::RasterBwd);
+    out.camera_id_bounds.resize_reused(PoolSlot::FusedProjBwdCamBounds, N + 1);
     CamBoundsParams bp{};
     bp.gaussian_ids_sorted = (uint64_t)gaussian_ids.data_ptr();
     bp.camera_id_bounds = (uint64_t)out.camera_id_bounds.data_ptr();

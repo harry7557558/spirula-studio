@@ -175,7 +175,9 @@ struct ForwardCache {
     PixelFormat                       rgb_fmt = PixelFormat::F32;
     RenderOutput::TensorTuple         distortions;  // [C,H,W,...] D=W*S-C^2, only the dist_type channels allocated
     DistortionType                    dist_type = DistortionType::None;  // which distortion channels the forward emitted
-    DeviceVector<float>               accum_weight; // [max_num_splats] per-splat score from raster bwd
+    // [max_num_splats] per-splat score from raster bwd; lives in the RasterBwd
+    // alias arena, cleared at step start, on forward, and after densify.
+    DeviceVector<float>               accum_weight;
     // What produced accum_weight, so densify folds and finalizes it the same
     // way regardless of which train-step path filled it.
     DensifyAccumMode                  accum_mode = DensifyAccumMode::None;

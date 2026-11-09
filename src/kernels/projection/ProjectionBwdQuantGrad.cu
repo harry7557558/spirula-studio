@@ -110,8 +110,10 @@ static inline void launch_projection_bwd_quantgrad(
     // non-decreasing and cid_t is itself the out_idx.
     DeviceVector<int32_t> camera_id_bounds;
     if (is_packed) {
+        if (DevicePool::global().phase() != PoolPhase::RasterBwd)
+            pool_begin_phase(PoolPhase::RasterBwd);
         long nnz = camera_ids.size();
-        camera_id_bounds.resize(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
+        camera_id_bounds.resize_reused(PoolSlot::FusedProjBwdCamBounds, (int64_t)(N+1));
         qg_camera_id_bounds_kernel<<<_LAUNCH_ARGS_1D(N+1, 256)>>>(
             nnz, N, gaussian_ids.data_ptr(), camera_id_bounds.data_ptr());
         CHECK_DEVICE_ERROR(cudaGetLastError());

@@ -520,6 +520,10 @@ enum class PoolPhase : uint8_t {
      projection backward, or stashed for the fused optim step -- all before \
      the next forward's intersection. forward_3dgs drops the stashed view. */ \
   X(RasterBwdVScreen   , RasterBwd) \
+  /* Per-splat densification score from raster backward. */ \
+  X(RasterBwdAccumWeight, RasterBwd) \
+  /* Camera ID bounds for packed projection backward / FPBO. */ \
+  X(FusedProjBwdCamBounds, RasterBwd) \
   /* The PCA regularizer runs between the backward and the optim step, which \
      reads its gradient; its sort and search tree die with the call. */ \
   X(PcaRegKeys         , RasterBwd) \
@@ -588,8 +592,7 @@ static_assert(ce_alias_rows_unique(),
 // densifies, which the training VRAM forecast assumes.
 #define POOL_LIVE_SPLAT_TABLE(X) \
   X(EngSubbatchAccumWeightSum)       X(EngDensifyOversizeWeight) \
-  X(RasterBwdAccumWeight)            X(RasterBwdVWorld) \
-  X(FusedProjBwdCamBounds)           X(PcaRegPermCache) \
+  X(RasterBwdVWorld)                 X(PcaRegPermCache) \
   X(PcaRegNbrsCache)
 
 inline constexpr PoolSlot kLiveSplatSlots[] = {
