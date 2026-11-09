@@ -84,62 +84,69 @@ __global__ void pca_reg_build_kernel(uint32_t n, float4* sorted, uint32_t* box,
 
 template <int K, bool SA>
 __device__ float3 pca_reg_owner_k(uint32_t r, uint32_t mode, uint32_t n, uint32_t k,
-                                  uint32_t window, float* means, float* quats, float* scales,
+                                  uint32_t window, float* means, float* quats, float* scales, float* opacities, uint32_t covariance, uint32_t terms,
                                   int32_t* perm, float4* sorted, float4* nodes, int4* meta,
                                   int32_t* ranges, int32_t* nbrs, uint32_t store_list,
                                   float* radii, uint32_t gate_means,
-                                  float* v_means, float* v_quats, float* v_scales,
+                                  float* v_means, float* v_quats, float* v_scales, float* v_opacities,
                                   float w_plane, float w_tangent, float w_normal,
-                                  float w_surfel) {
-#define PCA_REG_PASS                                                                    \
-    r, mode, n, k, window, means, quats, scales, perm, sorted, nodes, meta, ranges,   \
-        nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, w_plane,      \
-        w_tangent, w_normal, w_surfel
+                                  float w_surfel, float w_erank, float w_transparency, float2* extra) {
+#define SS_PCA_REG_PASS                                                                    \
+    r, mode, n, k, window, means, quats, scales, opacities, covariance, terms, perm, sorted, nodes, meta, ranges,   \
+        nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, v_opacities, w_plane,      \
+        w_tangent, w_normal, w_surfel, w_erank, w_transparency, extra
     if constexpr (SA) {
-        if constexpr (K == 8) return SlangPcaReg::pca_reg_owner_k8_sa(PCA_REG_PASS);
-        else if constexpr (K == 16) return SlangPcaReg::pca_reg_owner_k16_sa(PCA_REG_PASS);
-        else return SlangPcaReg::pca_reg_owner_k32_sa(PCA_REG_PASS);
+        if constexpr (K == 8) return SlangPcaReg::pca_reg_owner_k8_sa(SS_PCA_REG_PASS);
+        else if constexpr (K == 16) return SlangPcaReg::pca_reg_owner_k16_sa(SS_PCA_REG_PASS);
+        else return SlangPcaReg::pca_reg_owner_k32_sa(SS_PCA_REG_PASS);
     } else {
-        if constexpr (K == 8) return SlangPcaReg::pca_reg_owner_k8(PCA_REG_PASS);
-        else if constexpr (K == 16) return SlangPcaReg::pca_reg_owner_k16(PCA_REG_PASS);
-        else return SlangPcaReg::pca_reg_owner_k32(PCA_REG_PASS);
+        if constexpr (K == 8) return SlangPcaReg::pca_reg_owner_k8(SS_PCA_REG_PASS);
+        else if constexpr (K == 16) return SlangPcaReg::pca_reg_owner_k16(SS_PCA_REG_PASS);
+        else return SlangPcaReg::pca_reg_owner_k32(SS_PCA_REG_PASS);
     }
-#undef PCA_REG_PASS
+#undef SS_PCA_REG_PASS
 }
 
-template <int K, bool SA>
+template <int K, bool SA, bool Extended>
 __global__ void pca_reg_owner_kernel(
     uint32_t n, uint32_t mode, uint32_t k, uint32_t window, float* means, float* quats,
-    float* scales, int32_t* perm, float4* sorted, float4* nodes, int4* meta,
+    float* scales, float* opacities, uint32_t covariance, uint32_t terms, int32_t* perm, float4* sorted, float4* nodes, int4* meta,
     int32_t* ranges, int32_t* nbrs, uint32_t store_list, float* radii, uint32_t gate_means,
-    float* v_means, float* v_quats, float* v_scales,
-    float w_plane, float w_tangent, float w_normal, float w_surfel,
+    float* v_means, float* v_quats, float* v_scales, float* v_opacities,
+    float w_plane, float w_tangent, float w_normal, float w_surfel, float w_erank, float w_transparency,
     float* __restrict__ loss_sums) {
-    __shared__ float red[3][kOwnerBlock / 32];
+    __shared__ float red[5][kOwnerBlock / 32];
     const uint32_t r = blockIdx.x * blockDim.x + threadIdx.x;
     // Every lane runs the search, whose votes take the full warp; a lane past
     // n repeats the last rank and writes nothing.
     const bool valid = r < n;
     const float on = valid ? 1.0f : 0.0f;
+    float2 extra;
     float3 l = pca_reg_owner_k<K, SA>(
-        valid ? r : n - 1, mode, n, k, window, means, quats, scales, perm, sorted, nodes, meta,
-        ranges, nbrs, valid ? store_list : 0u, radii, gate_means, v_means, v_quats, v_scales,
+        valid ? r : n - 1, mode, n, k, window, means, quats, scales, opacities,
+        Extended ? covariance : 0u, Extended ? terms : (terms & 3u), perm, sorted, nodes, meta,
+        ranges, nbrs, valid ? store_list : 0u, radii, gate_means, v_means, v_quats, v_scales, v_opacities,
         on * w_plane,
-        on * w_tangent, on * w_normal, on * w_surfel);
-    if (!valid) l = make_float3(0.f, 0.f, 0.f);
+        on * w_tangent, on * w_normal, on * w_surfel,
+        Extended ? on * w_erank : 0.0f, Extended ? on * w_transparency : 0.0f, &extra);
+    if (!valid) { l = make_float3(0.f, 0.f, 0.f); extra = make_float2(0.f, 0.f); }
     for (int o = 16; o > 0; o >>= 1) {
         l.x += __shfl_xor_sync(0xffffffffu, l.x, o);
         l.y += __shfl_xor_sync(0xffffffffu, l.y, o);
         l.z += __shfl_xor_sync(0xffffffffu, l.z, o);
+        extra.x += __shfl_xor_sync(0xffffffffu, extra.x, o);
+        extra.y += __shfl_xor_sync(0xffffffffu, extra.y, o);
     }
     const int warp = threadIdx.x / 32, lane = threadIdx.x % 32;
     if (lane == 0) {
         red[0][warp] = l.x;
         red[1][warp] = l.y;
         red[2][warp] = l.z;
+        red[3][warp] = extra.x;
+        red[4][warp] = extra.y;
     }
     __syncthreads();
-    if (threadIdx.x < 3) {
+    if (threadIdx.x < 5) {
         float v = 0.f;
         for (int w = 0; w < kOwnerBlock / 32; w++) v += red[threadIdx.x][w];
         atomicAdd(loss_sums + threadIdx.x, v);
@@ -236,6 +243,8 @@ void pca_reg_neighborhood_tensor(
     DeviceVector<float3> means,
     DeviceVector<float4> quats,
     DeviceVector<float3> scales,
+    DeviceVector<float> opacities,
+    int covariance,                // PcaRegCovariance
     DeviceVector<int32_t> perm,     // [N] rank -> splat
     DeviceVector<float4> sorted,    // [N] by rank; unused by List
     DeviceVector<float4> nodes,     // Tree only: pca_reg_tree_tensor's
@@ -247,29 +256,40 @@ void pca_reg_neighborhood_tensor(
     bool gate_means,                // means of splats with radius 0 get nothing
     bool scale_agnostic,            // the terms relative to the spread and largest scale
     DeviceVector<float3> v_means,   // accumulated
-    DeviceVector<float4> v_quats,   // accumulated when w_normal != 0
-    DeviceVector<float3> v_scales,  // accumulated when w_surfel != 0
+    DeviceVector<float4> v_quats,
+    DeviceVector<float3> v_scales,
+    DeviceVector<float> v_opacities,
     float w_plane,
     float w_tangent,
     float w_normal,
     float w_surfel,
-    DeviceVector<float> loss_sums   // [3] accumulated, unweighted sums
+    float w_erank,
+    float w_transparency,
+    DeviceVector<float> loss_sums   // [5] accumulated, unweighted sums
 ) {
     if (num_splats <= 0 || k <= 0) return;
     const int cap = pca_reg_capacity(k);
+    const uint32_t terms = pca_reg_terms(w_normal, w_surfel, w_erank, w_transparency);
     auto kernel = scale_agnostic
-        ? (cap == 8 ? pca_reg_owner_kernel<8, true>
-           : cap == 16 ? pca_reg_owner_kernel<16, true> : pca_reg_owner_kernel<32, true>)
-        : (cap == 8 ? pca_reg_owner_kernel<8, false>
-           : cap == 16 ? pca_reg_owner_kernel<16, false> : pca_reg_owner_kernel<32, false>);
+        ? (cap == 8 ? pca_reg_owner_kernel<8, true, true>
+           : cap == 16 ? pca_reg_owner_kernel<16, true, true> : pca_reg_owner_kernel<32, true, true>)
+        : (cap == 8 ? pca_reg_owner_kernel<8, false, true>
+           : cap == 16 ? pca_reg_owner_kernel<16, false, true> : pca_reg_owner_kernel<32, false, true>);
+    if (covariance == 0 && w_erank == 0 && w_transparency == 0)
+        kernel = scale_agnostic
+            ? (cap == 8 ? pca_reg_owner_kernel<8, true, false>
+               : cap == 16 ? pca_reg_owner_kernel<16, true, false> : pca_reg_owner_kernel<32, true, false>)
+            : (cap == 8 ? pca_reg_owner_kernel<8, false, false>
+               : cap == 16 ? pca_reg_owner_kernel<16, false, false> : pca_reg_owner_kernel<32, false, false>);
     kernel<<<_LAUNCH_ARGS_1D(num_splats, kOwnerBlock)>>>(
         (uint32_t)num_splats, (uint32_t)mode, (uint32_t)k, (uint32_t)window,
         (float*)means.data_ptr(), (float*)quats.data_ptr(), (float*)scales.data_ptr(),
+        opacities.data_ptr(), (uint32_t)covariance, terms,
         perm.data_ptr(), sorted.data_ptr(), nodes.data_ptr(), meta.data_ptr(),
         ranges.data_ptr(), nbrs.data_ptr(), store_list ? 1u : 0u, radii.data_ptr(),
         gate_means && radii.data_ptr() ? 1u : 0u, (float*)v_means.data_ptr(),
-        (float*)v_quats.data_ptr(), (float*)v_scales.data_ptr(), w_plane, w_tangent,
-        v_quats.data_ptr() ? w_normal : 0.0f, v_scales.data_ptr() ? w_surfel : 0.0f,
+        (float*)v_quats.data_ptr(), (float*)v_scales.data_ptr(), v_opacities.data_ptr(), w_plane, w_tangent,
+        w_normal, w_surfel, w_erank, w_transparency,
         loss_sums.data_ptr());
     CHECK_DEVICE_ERROR(cudaGetLastError());
 }

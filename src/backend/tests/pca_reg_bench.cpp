@@ -1,7 +1,7 @@
 // Device time of the local-PCA regularizer's parts on a trained model's
 // splats, per neighbour search; same source on both backends.
 //
-// ./pca_reg_bench <splat.ply | uniform:N> [k=16] [iters=20]
+// ./pca_reg_bench <splat.ply | uniform:N> [k=16] [iters=20] [cov=0] [erank=0] [transparency=0]
 
 #include <kernels/loss/PcaReg.cuh>
 
@@ -40,7 +40,8 @@ struct Timer {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <splat.ply> [k=16] [iters=20]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <splat.ply | uniform:N> [k=16] [iters=20] "
+                     "[cov=0] [erank=0] [transparency=0]\n", argv[0]);
         return 2;
     }
     spirula::SplatCloud c;
@@ -52,6 +53,7 @@ int main(int argc, char** argv) {
         for (int64_t i = 0; i < c.num; i++) {
             c.means.insert(c.means.end(), {u(), u(), u()});
             c.quats.insert(c.quats.end(), {1, 0, 0, 0});
+            c.opacities.push_back(0.0f);
             c.scales.insert(c.scales.end(), {-5, -5, -6});
         }
     } else {
@@ -65,6 +67,10 @@ int main(int argc, char** argv) {
     auto means = dev<float3>(n, c.means.data());
     auto quats = dev<float4>(n, c.quats.data());
     auto scales = dev<float3>(n, c.scales.data());
+    auto opacities = dev<float>(n, c.opacities.data());
+    const int covariance = argc > 4 ? std::atoi(argv[4]) : 0;
+    const float erank = argc > 5 ? std::atof(argv[5]) : 0;
+    const float transparency = argc > 6 ? std::atof(argv[6]) : 0;
     DeviceVector<int32_t> perm, ranges;
     DeviceVector<float4> sorted, nodes;
     DeviceVector<int4> meta;
@@ -73,15 +79,16 @@ int main(int argc, char** argv) {
     auto vm = dev<float3>(n);
     auto vq = dev<float4>(n);
     auto vs = dev<float3>(n);
-    auto sums = dev<float>(3);
+    auto vo = dev<float>(n);
+    auto sums = dev<float>(5);
     const float w = 1.0f / (float)n;
     Timer t;
 
     auto pass = [&](PcaRegMode mode, bool store, bool sa = false) {
-        pca_reg_neighborhood_tensor(n, (int)mode, k, 4 * (k + 1), means, quats, scales, perm,
+        pca_reg_neighborhood_tensor(n, (int)mode, k, 4 * (k + 1), means, quats, scales, opacities, covariance, perm,
                                     sorted, nodes, meta, ranges, nbrs, store,
-                                    DeviceVector<float>(), false, sa, vm, vq, vs, w,
-                                    0.001f * w, 0.1f * w, w, sums);
+                                    DeviceVector<float>(), false, sa, vm, vq, vs, vo, w,
+                                    0.001f * w, 0.1f * w, w, erank * w, transparency * w, sums);
     };
     auto kept = dev<int32_t>(n);
     double order = 0, tree = 0, gather = 0;
@@ -119,7 +126,9 @@ int main(int argc, char** argv) {
         {"list (from the window)", PcaRegMode::List, false, false},
     };
     for (const auto& p : passes) {
-        pass(p.mode, p.store, p.sa);
+        // Vulkan's submit budget can create a second pipeline after its first sample.
+        for (int warmup = 0; warmup < 8; warmup++) pass(p.mode, p.store, p.sa);
+        backend::device_synchronize();
         t.start();
         for (int i = 0; i < iters; i++) pass(p.mode, p.store, p.sa);
         std::printf("%-24s %.3f ms\n", p.name, t.stop() / iters);

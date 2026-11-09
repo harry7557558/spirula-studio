@@ -268,6 +268,7 @@ static void _engine_step_optim_and_densify(
     engine().pca_reg.v_means = DeviceVector<float3>();
     engine().pca_reg.v_quats = DeviceVector<float4>();
     engine().pca_reg.v_scales = DeviceVector<float3>();
+    engine().pca_reg.v_opacities = DeviceVector<float>();
 
     if (engine().background.enabled) {
         engine_background_optim_step(step, cfg.background);

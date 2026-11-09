@@ -102,6 +102,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
     float3* __restrict__ g2_scales,
     float* __restrict__ opacities,
     float* __restrict__ v_opacities,
+    const float* __restrict__ auxiliary_opacities,
     float* __restrict__ g1_opacities,
     float* __restrict__ g2_opacities,
     // features_dc -- only consumed when non_sh_quant is on; the non-quant path
@@ -213,7 +214,7 @@ __global__ void fused_optim_3dgs_geometry_kernel(
         }
         v_scale += grad_scale * gd_scale;
         v_quat  += grad_scale * gd_quat;
-        v_opac  += grad_scale * gd_opac;
+        v_opac  += grad_scale * (gd_opac + (auxiliary_opacities ? auxiliary_opacities[idx] : 0.0f));
         if constexpr (zero_grad) {
             if (!gq.scales_packed) v_scales[idx] = make_float3(0.0f);
             if (!gq.quats_packed)  v_quats[idx] = make_float4(0.0f);
@@ -471,7 +472,7 @@ void fused_optim_3dgs_geometry(
     SplatVisitState visit,
     GradQuantBuffers gq, ProjectiveDepthOptim depth,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
-    float grad_scale, bool zero_grad
+    float grad_scale, bool zero_grad, DeviceVector<float> auxiliary_opacities
 ) {
     if (num_splats == 0)
         return;
@@ -483,7 +484,7 @@ void fused_optim_3dgs_geometry(
         float3*, float3*, float3*, float3*,
         float4*, float4*, float4*, float4*,
         float3*, float3*, float3*, float3*,
-        float*,  float*,  float*,  float*,
+        float*,  float*, const float*, float*, float*,
         float3*, float3*,
         const float*,
         float*,
@@ -515,7 +516,7 @@ void fused_optim_3dgs_geometry(
         means.data_ptr(), v_means.data_ptr(), g1_means.data_ptr(), g2_means.data_ptr(),
         quats.data_ptr(), v_quats.data_ptr(), g1_quats.data_ptr(), g2_quats.data_ptr(),
         scales.data_ptr(), v_scales.data_ptr(), g1_scales.data_ptr(), g2_scales.data_ptr(),
-        opacities.data_ptr(), v_opacities.data_ptr(), g1_opacities.data_ptr(), g2_opacities.data_ptr(),
+        opacities.data_ptr(), v_opacities.data_ptr(), auxiliary_opacities.data_ptr(), g1_opacities.data_ptr(), g2_opacities.data_ptr(),
         features_dc.data_ptr(), v_features_dc.data_ptr(),
         (const float*)radii.data_ptr(),
         densify_score.data_ptr(),

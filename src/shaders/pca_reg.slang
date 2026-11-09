@@ -1,12 +1,10 @@
-// Local-PCA regularizer (PCAsplat, arXiv 2610.11011): each splat's centre and
-// its nearest centres, the eigenspectrum of their covariance, and the
-// gradients of L_PCA and L_normal. Device math for both backends; the methods
-// that pick the neighbours and what each costs are docs/notes/pca-reg.md.
+// Local covariance losses and derivatives, shared by CUDA and Vulkan.
+// Neighborhood search and objectives: docs/notes/pca-reg.md.
 // Positions are float*, three floats a splat; quats are (w, x, y, z).
 
 // Overridden by the Vulkan entries, whose float atomics are atomic_float.slang's.
-#ifndef PCA_REG_ATOMIC_ADD
-#define PCA_REG_ATOMIC_ADD(ptr, v) InterlockedAdd((ptr)[0], v)
+#ifndef SS_PCA_REG_ATOMIC_ADD
+#define SS_PCA_REG_ATOMIC_ADD(ptr, v) InterlockedAdd((ptr)[0], v)
 #endif
 
 // A neighbourhood holds at most this many centres, its own included.
@@ -324,29 +322,94 @@ void pca_sym3_eigen(float3 d, float3 o, out float3 ev, out float3 e0, out float3
     e2 = v2;
 }
 
-// |<column `axis` of the rotation of quat, v>|.
 [Differentiable]
-float pca_axis_align(float4 quat, no_diff float3 v, no_diff uint axis) {
+float3 pca_axis(float4 quat, no_diff uint axis) {
     float inv = rsqrt(max(dot(quat, quat), 1e-20));
     float w = quat.x * inv, x = quat.y * inv, y = quat.z * inv, z = quat.w * inv;
-    float3 c;
     if (axis == 0)
-        c = float3(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + z * w), 2.0 * (x * z - y * w));
-    else if (axis == 1)
-        c = float3(2.0 * (x * y - z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + x * w));
-    else
-        c = float3(2.0 * (x * z + y * w), 2.0 * (y * z - x * w), 1.0 - 2.0 * (x * x + y * y));
-    return abs(dot(c, v));
+        return float3(1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + z * w), 2.0 * (x * z - y * w));
+    if (axis == 1)
+        return float3(2.0 * (x * y - z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + x * w));
+    return float3(2.0 * (x * z + y * w), 2.0 * (y * z - x * w), 1.0 - 2.0 * (x * x + y * y));
 }
 
-// Rank r's neighbourhood (its splat, perm[r], and k < K others): adds the
-// gradients of the terms in docs/notes/pca-reg.md (SA: scale-agnostic) into
-// v_* and returns its unweighted (lambda_1, lambda_3 - lambda_2, 1 - |<v_1, n>|).
+[Differentiable]
+float pca_axis_align(float4 quat, float3 v, no_diff uint axis) {
+    return abs(dot(pca_axis(quat, axis), v));
+}
+
+float4 pca_load4(float* p, uint i) {
+    return float4(p[4 * i], p[4 * i + 1], p[4 * i + 2], p[4 * i + 3]);
+}
+
+float3x3 pca_outer(float3 a, float3 b) {
+    return float3x3(a.x * b, a.y * b, a.z * b);
+}
+
+[Differentiable]
+float pca_opacity(float logit) {
+    float e = exp(logit >= 0.0 ? -logit : logit);
+    return logit >= 0.0 ? 1.0 / (1.0 + e) : e / (1.0 + e);
+}
+
+float3x3 pca_sigma(float4 q, float3 ls) {
+    float3 a = pca_axis(q, 0), b = pca_axis(q, 1), c = pca_axis(q, 2);
+    float3 s2 = exp(2.0 * ls);
+    return s2.x * pca_outer(a, a) + s2.y * pca_outer(b, b) + s2.z * pca_outer(c, c);
+}
+
+[Differentiable]
+float pca_sigma_contract(float4 q, float3 ls, no_diff float3x3 G) {
+    float3 a = pca_axis(q, 0), b = pca_axis(q, 1), c = pca_axis(q, 2);
+    float3 s2 = exp(2.0 * ls);
+    return s2.x * dot(a, mul(G, a)) + s2.y * dot(b, mul(G, b)) + s2.z * dot(c, mul(G, c));
+}
+
+// The orthographic footprint is the peak along the line, not a 3D density integral.
+[Differentiable]
+float pca_ray_alpha(float3 d, float4 q, float3 ls, float logit, float3 normal) {
+    float3 a = pca_axis(q, 0), b = pca_axis(q, 1), c = pca_axis(q, 2);
+    float3 inv_s = exp(-ls);
+    float3 u = float3(dot(a, d), dot(b, d), dot(c, d)) * inv_s;
+    float3 v = float3(dot(a, normal), dot(b, normal), dot(c, normal)) * inv_s;
+    float t = dot(u, v) / max(dot(v, v), 1e-30);
+    float3 residual = u - float3(t) * v;
+    return min(pca_opacity(logit) * exp(-0.5 * dot(residual, residual)), 0.999);
+}
+
+void pca_add3(float* dst, uint id, float3 v) {
+    SS_PCA_REG_ATOMIC_ADD(dst + 3 * id, v.x);
+    SS_PCA_REG_ATOMIC_ADD(dst + 3 * id + 1, v.y);
+    SS_PCA_REG_ATOMIC_ADD(dst + 3 * id + 2, v.z);
+}
+
+void pca_add4(float* dst, uint id, float4 v) {
+    for (uint c = 0; c < 4; c++) SS_PCA_REG_ATOMIC_ADD(dst + 4 * id + c, v[c]);
+}
+
+// Probability smoothing is relative to trace, preserving similarity invariance.
+float pca_erank_loss(float3 ev, out float3 grad) {
+    float3 x = max(ev, float3(0.0));
+    float trace = x.x + x.y + x.z;
+    grad = float3(0.0);
+    if (!(trace > 1e-30)) return 0.0;
+    float3 p = (x / trace + float3(1e-8)) / (1.0 + 3e-8);
+    float3 lp = log(p);
+    float rank = exp(-dot(p, lp));
+    float excess = max(rank - 2.0, 0.0);
+    float3 h = -(lp + float3(1.0)) / (1.0 + 3e-8);
+    grad = (2.0 * excess * rank / trace) * (h - float3(dot(h, x / trace)));
+    grad *= float3(ev.x > 0.0 ? 1.0 : 0.0, ev.y > 0.0 ? 1.0 : 0.0, ev.z > 0.0 ? 1.0 : 0.0);
+    return excess * excess;
+}
+
 float3 pca_reg_owner<let K : int, let SA : bool>(
     uint r, uint mode, uint n, uint k, uint window, float* means, float* quats,
-    float* scales, int* perm, float4* sorted, float4* nodes, int4* meta, int* ranges,
+    float* scales, float* opacities, uint covariance, uint terms, int* perm, float4* sorted, float4* nodes, int4* meta, int* ranges,
     int* nbrs, uint store_list, float* radii, uint gate_means, float* v_means, float* v_quats,
-    float* v_scales, float w_plane, float w_tangent, float w_normal, float w_surfel) {
+    float* v_scales, float* v_opacities, float w_plane, float w_tangent, float w_normal,
+    float w_surfel, float w_erank, float w_transparency, out float2 extra) {
+    extra = float2(0.0);
     PcaKnn<K> h;
     h.reset();
     bool by_rank = mode != kPcaModeList;
@@ -392,96 +455,151 @@ float3 pca_reg_owner<let K : int, let SA : bool>(
     }
     if (cnt < 2) return float3(0.0);
 
-    // Moments about the query, which is a member: the shift costs no precision.
-    float3 s1 = float3(0.0), sd = float3(0.0), so = float3(0.0);
+    float total = covariance == 0u ? 1.0 : pca_opacity(opacities[self]);
+    float3 mean = float3(0.0);
     [ForceUnroll]
     for (int j = 0; j < K; j++) {
         if (uint(j) >= k || !(h.d[j] < kPcaFar)) continue;
-        float3 d = (by_rank ? sorted[h.id[j]].xyz : pca_load3(means, h.id[j])) - q;
-        s1 += d;
-        sd += d * d;
-        so += float3(d.x * d.y, d.x * d.z, d.y * d.z);
-    }
-    float inv_k = 1.0 / float(cnt + 1);
-    float3 mean = s1 * inv_k;
-    float3 cd = sd * inv_k - mean * mean;
-    float3 co = so * inv_k - float3(mean.x * mean.y, mean.x * mean.z, mean.y * mean.z);
-    float3 ev, e0, e1, e2;
-    pca_sym3_eigen(cd, co, ev, e0, e1, e2);
-    if (!all(isfinite(ev)) || !all(isfinite(e0))) return float3(0.0);
-    float inv_t = 1.0;
-    if (SA) {
-        // Held fixed. A spread under the centres' float rounding has no shape.
-        float t = ev.x + ev.y + ev.z;
-        inv_t = t > 1e-12 * dot(q, q) + 1e-30 ? 1.0 / t : 0.0;
-    }
-
-    // d lambda_m / d mu_j = (2/K) <v_m, mu_j - mean> v_m, so each member's
-    // gradient is G (mu_j - mean) with G the weighted sum of v_m v_m^T.
-    float g = 2.0 * inv_k * inv_t;
-    float3x3 G = (g * w_plane) * float3x3(e0.x * e0, e0.y * e0, e0.z * e0) +
-                 (g * w_tangent) * (float3x3(e2.x * e2, e2.y * e2, e2.z * e2) -
-                                    float3x3(e1.x * e1, e1.y * e1, e1.z * e1));
-    float3 v = mul(G, -mean);
-    bool scatter = w_plane != 0.0 || w_tangent != 0.0;
-    // The scale-agnostic mean step divides by the splat's screen radius: one
-    // this step did not project would take a step of ~1/eps.
-    if (scatter && (gate_means == 0u || radii[self] > 0.0)) {
-        PCA_REG_ATOMIC_ADD(v_means + 3 * self, v.x);
-        PCA_REG_ATOMIC_ADD(v_means + 3 * self + 1, v.y);
-        PCA_REG_ATOMIC_ADD(v_means + 3 * self + 2, v.z);
-    }
-    [ForceUnroll]
-    for (int j = 0; j < K; j++) {
-        if (!scatter || uint(j) >= k || !(h.d[j] < kPcaFar)) continue;
         uint id = by_rank ? uint(perm[h.id[j]]) : h.id[j];
-        if (gate_means != 0u && !(radii[id] > 0.0)) continue;
-        float3 d = (by_rank ? sorted[h.id[j]].xyz : pca_load3(means, h.id[j])) - q - mean;
-        v = mul(G, d);
-        PCA_REG_ATOMIC_ADD(v_means + 3 * id, v.x);
-        PCA_REG_ATOMIC_ADD(v_means + 3 * id + 1, v.y);
-        PCA_REG_ATOMIC_ADD(v_means + 3 * id + 2, v.z);
+        float weight = covariance == 0u ? 1.0 : pca_opacity(opacities[id]);
+        mean += weight * ((by_rank ? sorted[h.id[j]].xyz : pca_load3(means, id)) - q);
+        total += weight;
     }
-
-    float3 ls = pca_load3(scales, self);
-    uint axis = ls.x <= ls.y ? (ls.x <= ls.z ? 0u : 2u) : (ls.y <= ls.z ? 1u : 2u);
-    float4 quat = float4(quats[4 * self], quats[4 * self + 1], quats[4 * self + 2],
-                         quats[4 * self + 3]);
-    float align = pca_axis_align(quat, e0, axis);
-    // Only the owner's thread writes these rows.
-    if (w_normal != 0.0) {
-        var dq = diffPair(quat);
-        bwd_diff(pca_axis_align)(dq, e0, axis, -w_normal);
-        for (uint c = 0; c < 4; c++) v_quats[4 * self + c] += dq.d[c];
+    if (!(total > 1e-20)) return float3(0.0);
+    mean /= total;
+    float3x3 C = float3x3(0.0);
+    [ForceUnroll]
+    for (int j = 0; j <= K; j++) {
+        if (j < K && (uint(j) >= k || !(h.d[j] < kPcaFar))) continue;
+        uint id = j == K ? self : (by_rank ? uint(perm[h.id[j]]) : h.id[j]);
+        float weight = covariance == 0u ? 1.0 : pca_opacity(opacities[id]);
+        float3 point = j == K ? q : (by_rank ? sorted[h.id[j]].xyz : pca_load3(means, id));
+        float3 d = point - q - mean;
+        float3x3 moment = pca_outer(d, d);
+        if (covariance == 2u) moment += pca_sigma(pca_load4(quats, id), pca_load3(scales, id));
+        C += (weight / total) * moment;
     }
-    if (w_surfel != 0.0) {
-        float smin = axis == 0 ? ls.x : (axis == 1 ? ls.y : ls.z);
-        if (SA) smin -= max(ls.x, max(ls.y, ls.z));
-        v_scales[3 * self + axis] += w_surfel * exp(smin);
+    float3 ev, e0, e1, e2;
+    pca_sym3_eigen(float3(C[0][0], C[1][1], C[2][2]),
+                  float3(C[0][1], C[0][2], C[1][2]), ev, e0, e1, e2);
+    if (!all(isfinite(ev)) || !all(isfinite(e0))) return float3(0.0);
+    float trace = max(ev.x + ev.y + ev.z, 0.0);
+    float inv_t = SA ? (trace > 1e-30 ? 1.0 / trace : 0.0) : 1.0;
+    float3 ge = inv_t * float3(w_plane, -w_tangent, w_tangent);
+    if (ev.y == ev.z) ge.yz = float2(0.0);
+    if ((terms & 4u) != 0u) {
+        float3 rank_grad;
+        extra.x = pca_erank_loss(ev, rank_grad);
+        ge += w_erank * rank_grad;
     }
-    return float3(ev.x * inv_t, (ev.z - ev.y) * inv_t, 1.0 - align);
+    float3x3 G = ge.x * pca_outer(e0, e0) + ge.y * pca_outer(e1, e1) + ge.z * pca_outer(e2, e2);
+    float3 v_normal = float3(0.0);
+    bool directional = ev.y - ev.x > 1e-6 * max(trace, 1e-30);
+    float align_loss = 0.0;
+    if ((terms & 1u) != 0u || (terms & 2u) != 0u) {
+        float3 ls = pca_load3(scales, self);
+        uint axis = ls.x <= ls.y ? (ls.x <= ls.z ? 0u : 2u) : (ls.y <= ls.z ? 1u : 2u);
+        if ((terms & 1u) != 0u && directional) {
+            float4 quat = pca_load4(quats, self);
+            align_loss = 1.0 - pca_axis_align(quat, e0, axis);
+            var dq = diffPair(quat);
+            var dn = diffPair(e0);
+            bwd_diff(pca_axis_align)(dq, dn, axis, -w_normal);
+            pca_add4(v_quats, self, dq.d);
+            v_normal += dn.d;
+        }
+        if ((terms & 2u) != 0u) {
+            float smin = ls[axis];
+            if (SA) smin -= max(ls.x, max(ls.y, ls.z));
+            SS_PCA_REG_ATOMIC_ADD(v_scales + 3 * self + axis, w_surfel * exp(smin));
+        }
+    }
+    if ((terms & 8u) != 0u && directional) {
+        float log_t = 0.0;
+        [ForceUnroll]
+        for (int j = 0; j <= K; j++) {
+            if (j < K && (uint(j) >= k || !(h.d[j] < kPcaFar))) continue;
+            uint id = j == K ? self : (by_rank ? uint(perm[h.id[j]]) : h.id[j]);
+            float a = pca_ray_alpha(pca_load3(means, id) - q, pca_load4(quats, id),
+                                    pca_load3(scales, id), opacities[id], e0);
+            log_t += log(1.0 - a);
+        }
+        extra.y = exp(log_t);
+        float3 query_grad = float3(0.0);
+        [ForceUnroll]
+        for (int j = 0; j <= K; j++) {
+            if (j < K && (uint(j) >= k || !(h.d[j] < kPcaFar))) continue;
+            uint id = j == K ? self : (by_rank ? uint(perm[h.id[j]]) : h.id[j]);
+            var dd = diffPair(pca_load3(means, id) - q);
+            var dq = diffPair(pca_load4(quats, id));
+            var ds = diffPair(pca_load3(scales, id));
+            var da = diffPair(opacities[id]);
+            var dn = diffPair(e0);
+            float a = pca_ray_alpha(dd.p, dq.p, ds.p, da.p, dn.p);
+            bwd_diff(pca_ray_alpha)(dd, dq, ds, da, dn, -w_transparency * extra.y / (1.0 - a));
+            if (gate_means == 0u || radii[id] > 0.0) pca_add3(v_means, id, dd.d);
+            query_grad -= dd.d;
+            pca_add4(v_quats, id, dq.d);
+            pca_add3(v_scales, id, ds.d);
+            SS_PCA_REG_ATOMIC_ADD(v_opacities + id, da.d);
+            v_normal += dn.d;
+        }
+        if (gate_means == 0u || radii[self] > 0.0) pca_add3(v_means, self, query_grad);
+    }
+    // Eigenvector VJP; the smallest eigenspace is unique only across a resolved gap.
+    if (directional && ((terms & 9u) != 0u)) {
+        float3 u = (dot(e1, v_normal) / (ev.x - ev.y)) * e1 +
+                   (dot(e2, v_normal) / (ev.x - ev.z)) * e2;
+        G += 0.5 * (pca_outer(u, e0) + pca_outer(e0, u));
+    }
+    if (w_plane != 0.0 || w_tangent != 0.0 || w_normal != 0.0 || w_erank != 0.0 || w_transparency != 0.0) {
+        float gc = dot(G[0], C[0]) + dot(G[1], C[1]) + dot(G[2], C[2]);
+        [ForceUnroll]
+        for (int j = 0; j <= K; j++) {
+            if (j < K && (uint(j) >= k || !(h.d[j] < kPcaFar))) continue;
+            uint id = j == K ? self : (by_rank ? uint(perm[h.id[j]]) : h.id[j]);
+            float weight = covariance == 0u ? 1.0 : pca_opacity(opacities[id]);
+            float beta = weight / total;
+            float3 point = j == K ? q : (by_rank ? sorted[h.id[j]].xyz : pca_load3(means, id));
+            float3 d = point - q - mean;
+            if (gate_means == 0u || radii[id] > 0.0) pca_add3(v_means, id, (2.0 * beta) * mul(G, d));
+            float moment = dot(d, mul(G, d));
+            if (covariance == 2u) {
+                var dq = diffPair(pca_load4(quats, id));
+                var ds = diffPair(pca_load3(scales, id));
+                moment += pca_sigma_contract(dq.p, ds.p, G);
+                bwd_diff(pca_sigma_contract)(dq, ds, G, beta);
+                pca_add4(v_quats, id, dq.d);
+                pca_add3(v_scales, id, ds.d);
+            }
+            if (covariance != 0u)
+                SS_PCA_REG_ATOMIC_ADD(v_opacities + id, beta * (1.0 - weight) * (moment - gc));
+        }
+    }
+    return float3(ev.x * inv_t, (ev.z - ev.y) * inv_t, align_loss);
 }
 
-#define PCA_REG_OWNER_ARGS                                                          \
+#define SS_PCA_REG_OWNER_ARGS                                                          \
     uint r, uint mode, uint n, uint k, uint window, float* means, float* quats,     \
-        float* scales, int* perm, float4* sorted, float4* nodes, int4* meta,        \
+        float* scales, float* opacities, uint covariance, uint terms, int* perm, float4* sorted, float4* nodes, int4* meta,        \
         int* ranges, int* nbrs, uint store_list, float* radii, uint gate_means,     \
-        float* v_means, float* v_quats, float* v_scales,                            \
-        float w_plane, float w_tangent, float w_normal, float w_surfel
-#define PCA_REG_OWNER_PASS                                                          \
-    r, mode, n, k, window, means, quats, scales, perm, sorted, nodes, meta, ranges, \
-        nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, w_plane,   \
+        float* v_means, float* v_quats, float* v_scales, float* v_opacities,                            \
+        float w_plane, float w_tangent, float w_normal, float w_surfel, \
+        float w_erank, float w_transparency, out float2 extra
+#define SS_PCA_REG_OWNER_PASS                                                          \
+    r, mode, n, k, window, means, quats, scales, opacities, covariance, terms, perm, sorted, nodes, meta, ranges, \
+        nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, v_opacities, w_plane,   \
         w_tangent, w_normal,                                                        \
-        w_surfel
+        w_surfel, w_erank, w_transparency, extra
 
 // One per capacity, smallest >= k (pca_reg_capacity in kernels/loss/PcaReg.cuh),
 // and per scale mode, _sa the scale-agnostic one.
-#define PCA_REG_OWNER_EXPORT(NAME, K, SA)                                          \
+#define SS_PCA_REG_OWNER_EXPORT(NAME, K, SA)                                          \
     [CudaDeviceExport]                                                              \
-    float3 NAME(PCA_REG_OWNER_ARGS) { return pca_reg_owner<K, SA>(PCA_REG_OWNER_PASS); }
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k8, 8, false)
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k16, 16, false)
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k32, 32, false)
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k8_sa, 8, true)
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k16_sa, 16, true)
-PCA_REG_OWNER_EXPORT(pca_reg_owner_k32_sa, 32, true)
+    float3 NAME(SS_PCA_REG_OWNER_ARGS) { return pca_reg_owner<K, SA>(SS_PCA_REG_OWNER_PASS); }
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k8, 8, false)
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k16, 16, false)
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k32, 32, false)
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k8_sa, 8, true)
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k16_sa, 16, true)
+SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k32_sa, 32, true)

@@ -34,13 +34,14 @@ static_assert(sizeof(PcaBuildParams) == 6 * 8 + 2 * 4, "params layout must match
 
 struct PcaOwnerParams {
     uint64_t means, quats, scales, perm, sorted, nodes, meta, ranges, nbrs, radii, v_means,
-        v_quats, v_scales, loss_sums;
+        v_quats, v_scales, loss_sums, opacities, v_opacities;
     uint32_t n, mode, k, window;
     uint32_t store_list, wgs_per_row;
     float w_plane, w_tangent, w_normal, w_surfel;
     uint32_t gate_means, _pad0;
+    float w_erank, w_transparency;
 };
-static_assert(sizeof(PcaOwnerParams) == 14 * 8 + 12 * 4, "params layout must match the slang struct");
+static_assert(sizeof(PcaOwnerParams) == 16 * 8 + 14 * 4, "params layout must match the slang struct");
 
 constexpr uint32_t kBoxGroup = 256;
 constexpr uint32_t kOwnerGroup = 128;
@@ -136,17 +137,20 @@ std::tuple<DeviceVector<float4>, DeviceVector<int4>, DeviceVector<int32_t>> pca_
 
 void pca_reg_neighborhood_tensor(
     int64_t num_splats, int mode, int k, int window, DeviceVector<float3> means,
-    DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<int32_t> perm,
+    DeviceVector<float4> quats, DeviceVector<float3> scales, DeviceVector<float> opacities,
+    int covariance, DeviceVector<int32_t> perm,
     DeviceVector<float4> sorted, DeviceVector<float4> nodes, DeviceVector<int4> meta,
     DeviceVector<int32_t> ranges, DeviceVector<int32_t> nbrs, bool store_list,
     DeviceVector<float> radii, bool gate_means, bool scale_agnostic, DeviceVector<float3> v_means,
-    DeviceVector<float4> v_quats, DeviceVector<float3> v_scales, float w_plane,
-    float w_tangent, float w_normal, float w_surfel, DeviceVector<float> loss_sums) {
+    DeviceVector<float4> v_quats, DeviceVector<float3> v_scales, DeviceVector<float> v_opacities, float w_plane,
+    float w_tangent, float w_normal, float w_surfel, float w_erank, float w_transparency, DeviceVector<float> loss_sums) {
     if (num_splats <= 0 || k <= 0) return;
     PcaOwnerParams p{};
     p.means = (uint64_t)means.data_ptr();
     p.quats = (uint64_t)quats.data_ptr();
     p.scales = (uint64_t)scales.data_ptr();
+    p.opacities = vkk::or_fallback(opacities.data_ptr());
+    p.v_opacities = vkk::or_fallback(v_opacities.data_ptr());
     p.perm = (uint64_t)perm.data_ptr();
     p.sorted = vkk::or_fallback(sorted.data_ptr());
     p.nodes = vkk::or_fallback(nodes.data_ptr());
@@ -166,8 +170,10 @@ void pca_reg_neighborhood_tensor(
     p.store_list = store_list ? 1u : 0u;
     p.w_plane = w_plane;
     p.w_tangent = w_tangent;
-    p.w_normal = v_quats.data_ptr() ? w_normal : 0.0f;
-    p.w_surfel = v_scales.data_ptr() ? w_surfel : 0.0f;
+    p.w_normal = w_normal;
+    p.w_surfel = w_surfel;
+    p.w_erank = w_erank;
+    p.w_transparency = w_transparency;
     const vkk::Fold f = vkk::fold_1d(num_splats, kOwnerGroup);
     p.wgs_per_row = f.per_row;
     const int cap = pca_reg_capacity(k);
@@ -175,6 +181,8 @@ void pca_reg_neighborhood_tensor(
         {"pca_reg.pca_owner_k8", "pca_reg.pca_owner_k16", "pca_reg.pca_owner_k32"},
         {"pca_reg.pca_owner_k8_sa", "pca_reg.pca_owner_k16_sa", "pca_reg.pca_owner_k32_sa"}};
     const char* entry = kEntries[scale_agnostic ? 1 : 0][cap == 8 ? 0 : (cap == 16 ? 1 : 2)];
-    vkk::dispatch_ring_budgeted(entry, {}, f.per_row, f.rows, 1, &p, sizeof(p),
-                                (double)num_splats * (double)(k + 1), nullptr);
+    const int terms = (int)pca_reg_terms(w_normal, w_surfel, w_erank, w_transparency) |
+                      ((w_plane != 0 || w_tangent != 0) ? 16 : 0);
+    vkk::dispatch_ring_budgeted(entry, {covariance, terms, mode}, f.per_row, f.rows, 1,
+                                &p, sizeof(p), (double)num_splats * (double)(k + 1), nullptr);
 }

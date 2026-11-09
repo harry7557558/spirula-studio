@@ -62,9 +62,11 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
     s.v_means = DeviceVector<float3>();
     s.v_quats = DeviceVector<float4>();
     s.v_scales = DeviceVector<float3>();
+    s.v_opacities = DeviceVector<float>();
     const int64_t n = e.cur_num_splats;
     if (cfg.neighbors <= 0 || n < 3 ||
-        (cfg.w_pca == 0.0f && cfg.w_normal == 0.0f && cfg.w_surfel == 0.0f))
+        (cfg.w_pca == 0.0f && cfg.w_normal == 0.0f && cfg.w_surfel == 0.0f &&
+         cfg.w_erank == 0.0f && cfg.w_transparency == 0.0f))
         return;
     const int k = (int)std::min<int64_t>(
         {(int64_t)cfg.neighbors, (int64_t)kPcaRegMaxNeighbors - 1, n - 1});
@@ -84,6 +86,12 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
     const float w_tangent = cfg.w_pca * cfg.tangent * inv_n;
     const float w_normal = cfg.w_normal * inv_n;
     const float w_surfel = cfg.w_surfel * inv_n;
+    const float w_erank = cfg.w_erank * inv_n;
+    const float w_transparency = cfg.w_transparency * inv_n;
+    const bool mixture = cfg.covariance == PcaRegCovariance::GaussianMixture;
+    const bool need_quats = w_normal != 0 || mixture || w_transparency != 0;
+    const bool need_scales = w_surfel != 0 || mixture || w_transparency != 0;
+    const bool need_opacities = cfg.covariance != PcaRegCovariance::Centers || w_transparency != 0;
 
     // The backward leaves RasterBwd open with the fused step's screen
     // gradients in it; these slices join that phase (POOL_ALIAS_TABLE).
@@ -95,17 +103,23 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
     timer.mark(0);
 
     DeviceVector<float3> v_means = e.grad.means;
-    DeviceVector<float4> v_quats = w_normal != 0.0f ? e.grad.quats : DeviceVector<float4>();
-    DeviceVector<float3> v_scales = w_surfel != 0.0f ? e.grad.scales : DeviceVector<float3>();
+    DeviceVector<float4> v_quats = need_quats ? e.grad.quats : DeviceVector<float4>();
+    DeviceVector<float3> v_scales = need_scales ? e.grad.scales : DeviceVector<float3>();
+    DeviceVector<float> v_opacities;
+    if (need_opacities) {
+        s.v_opacities.resize(PoolSlot::PcaRegVOpacities, n);
+        backend::memset_async(s.v_opacities.data_ptr(), 0, n * sizeof(float), backend::kDefaultStream);
+        v_opacities = s.v_opacities;
+    }
     if (own_grad) {
         s.v_means.resize(PoolSlot::PcaRegVMeans, n);
         backend::memset_async(s.v_means.data_ptr(), 0, n * sizeof(float3), backend::kDefaultStream);
-        if (w_normal != 0.0f) {
+        if (need_quats) {
             s.v_quats.resize(PoolSlot::PcaRegVQuats, n);
             backend::memset_async(s.v_quats.data_ptr(), 0, n * sizeof(float4),
                                   backend::kDefaultStream);
         }
-        if (w_surfel != 0.0f) {
+        if (need_scales) {
             s.v_scales.resize(PoolSlot::PcaRegVScales, n);
             backend::memset_async(s.v_scales.data_ptr(), 0, n * sizeof(float3),
                                   backend::kDefaultStream);
@@ -159,23 +173,25 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
     }
 
     DeviceVector<float> sums;
-    sums.resize(PoolSlot::PcaRegLossSums, 3);
-    backend::memset_async(sums.data_ptr(), 0, 3 * sizeof(float), backend::kDefaultStream);
+    sums.resize(PoolSlot::PcaRegLossSums, 5);
+    backend::memset_async(sums.data_ptr(), 0, 5 * sizeof(float), backend::kDefaultStream);
     const int window = cfg.window > 0 ? cfg.window : 4 * (k + 1);
     pca_reg_neighborhood_tensor(n, (int)mode, k, window, e.world.means, e.world.quats,
-                                e.world.scales, perm, sorted, nodes, meta, ranges, nbrs,
+                                e.world.scales, e.world.opacities, (int)cfg.covariance, perm, sorted, nodes, meta, ranges, nbrs,
                                 lists && rebuild, e.optim.radii, cfg.rendered_means_only,
-                                cfg.scale_agnostic, v_means, v_quats, v_scales, w_plane,
-                                w_tangent, w_normal, w_surfel, sums);
+                                cfg.scale_agnostic, v_means, v_quats, v_scales, v_opacities, w_plane,
+                                w_tangent, w_normal, w_surfel, w_erank, w_transparency, sums);
     timer.mark(3);
     timer.finish(n, k, cfg.knn, rebuild);
 
-    static AsyncReadout<float> readout(3);
+    static AsyncReadout<float> readout(5);
     static int64_t readout_n = 1;
     if (const float* h = readout.read_previous()) {
         loss_dict["pca_lambda1"] = h[0] / (float)readout_n;
         loss_dict["pca_tangent"] = h[1] / (float)readout_n;
         loss_dict["pca_normal"] = h[2] / (float)readout_n;
+        if (cfg.w_erank != 0) loss_dict["pca_erank"] = h[3] / (float)readout_n;
+        if (cfg.w_transparency != 0) loss_dict["pca_transparency"] = h[4] / (float)readout_n;
     }
     readout.issue(sums.data_ptr());
     readout_n = n;

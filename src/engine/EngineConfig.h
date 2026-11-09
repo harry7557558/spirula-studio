@@ -7,6 +7,7 @@
 // this step: scheduling lives in the caller (TrainerCore), never here.
 
 #include "kernels/loss/PerPixelLoss.cuh"   // LossWeightIndex
+#include "kernels/loss/PcaReg.cuh"
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
 
 #include <algorithm>
@@ -365,6 +366,9 @@ struct PcaRegConfig {
     float     tangent       = 0.0f;
     float     w_normal      = 0.0f; // on 1 - |<v_1, splat normal>|
     float     w_surfel      = 0.0f; // on the smallest scale
+    float     w_erank       = 0.0f;
+    float     w_transparency = 0.0f;
+    PcaRegCovariance covariance = PcaRegCovariance::Centers;
     // Lambdas over their sum, smallest scale over largest: Sim(3)-invariant.
     bool      scale_agnostic = false;
     // The scale-agnostic mean step cannot take a gradient on a splat this step

@@ -1,109 +1,227 @@
-# Local-PCA regularizer
+# Local covariance regularization
 
-PCAsplat (Matias et al., arXiv 2610.11011) regularizes the splats' centres
-directly in space instead of through renders, so it reaches splats no camera
-sees well. For each splat `i` and its `K - 1` nearest centres, with
-`C_i` the covariance of those `K` centres about their mean and
-`lambda_1 <= lambda_2 <= lambda_3` its eigenvalues (`v_m` the eigenvectors):
+The reference is [PCAsplat, arXiv 2610.11011v1](https://arxiv.org/html/2610.11011v1),
+Eqs. (2)–(5). Each neighborhood contains its owner and `pca_reg_neighbors`
+other centers, so the paper's `K` is this setting plus one. Eigenvalues are
+ordered `lambda_1 <= lambda_2 <= lambda_3`, with eigenvectors `v_m`.
+
+## Paper audit
+
+The center covariance, division by `K`, eigenspectrum objective, smallest-scale
+normal, quaternion normalization, and division by the number of live splats
+in commit `91027e0c456dbc9a726422be735f7461d0035c43` agree with the published
+formulas:
 
 ```
-L_PCA    = mean_i [ lambda_1 + gamma * (lambda_3 - lambda_2) ]          (w_PCA)
-L_normal = w_normal * mean_i (1 - |<v_1, n_i>|) + w_surfel * mean_i min(s_i)
+C_i      = mean_j [(mu_j - mean(mu)) (mu_j - mean(mu))^T]
+L_PCA    = mean_i [lambda_1 + gamma * (lambda_3 - lambda_2)]
+L_normal = mean_i [1 - abs(dot(v_1, n_i))]
+L_surfel = mean_i min(s_i)
 ```
 
-`n_i` is the rotation column of the splat's smallest scale. `lambda_1` is the
-neighbourhood's mean squared distance to its fitted plane, so lowering it pulls
-centres onto a common surface; the `gamma` term spreads them evenly across it.
-The paper ramps `w_PCA` from 1 to 10 after 7k steps of photometric-only
-training, `gamma = 0.001`, and gives no `K`, `w_normal` or `w_surfel`.
+There was a missing derivative of the published normal objective: holding
+`v_1` fixed updated only the owner's quaternion. The implemented derivative
+now also propagates through the eigenvector and covariance. This follows the
+published objective; the paper does not specify a stop-gradient on that normal.
+For a covariance adjoint `G`, center gradients are `2 G (mu_j - mean) / K`.
+The normal's contribution is
 
-## The gradient
+```
+u = sum_(m=2,3) v_m * dot(v_m, dL/dv_1) / (lambda_1 - lambda_m)
+G_normal = (u v_1^T + v_1 u^T) / 2
+```
 
-With fixed neighbourhoods and distinct eigenvalues,
-`d lambda_m / d mu_j = (2/K) <v_m, mu_j - mean> v_m` (Greenbaum et al.), so a
-member's gradient is `G (mu_j - mean)` with `G` the weighted sum of
-`v_m v_m^T`. The normal term's gradient goes to the quaternion only (`v_1` is
-held fixed), the surfel term's to the smallest log scale. The `1/N` of the
-means is the live splat count, as for every other per-splat term.
+A repeated smallest eigenvalue has no unique normal. Normal alignment and
+normal transparency are skipped when `lambda_2 - lambda_1 <= 1e-6 trace(C)`;
+this is a relative conditioning guard, not a different eigenspectrum penalty.
+At equal tangent eigenvalues the isotropy term uses the zero subgradient.
+Covariance uses centered second moments in a second pass to avoid subtracting
+nearly equal raw moments. Five cyclic Jacobi sweeps solve the 3x3 system.
 
-The default mean optimizer (`--use-scale-agnostic-mean`) divides a mean's
-step by the splat's screen radius this step. A splat outside every camera of
-the step has radius 0, and any gradient on its mean then moves it by ~1/eps:
-the first bicycle run with the paper's weights sent centres to 1e16 within a
-step of the regularizer starting, and the scene never recovered. So with that
-optimizer only splats the step projected take the mean gradient -- occluded
-ones still do, out-of-view ones on the steps that see them -- while every
-centre still counts towards its neighbours' PCA. Plain Adam
-(`--use-scale-agnostic-mean 0`) takes it everywhere, as the paper does.
+Matching formulas does not reproduce the paper's full experiment:
 
-Each thread owns one neighbourhood, scatters `G (mu_j - mean)` into its
-members' mean gradients with float atomics, and writes its own splat's
-quaternion and scale gradient. The eigenpairs are five cyclic Jacobi sweeps on
-the 3x3 covariance, which reach float rounding; the covariance is accumulated
-about the owner's centre, which is a member, so the shift costs no precision.
+- The paper uses a RaDe-GS base with PGSR multi-view geometric and NCC losses.
+  These local terms do not supply those constraints.
+- It starts PCA at 7k iterations and schedules its weight from 1 to 10, with
+  `gamma=0.001`. It does not specify `K`, the normal/surfel weights, or the
+  precise interpolation of that schedule.
+- Scene units matter: scaling coordinates by `a` multiplies the paper's PCA
+  loss by `a^2` and surfel loss by `a`. Sparse neighborhoods can dominate the
+  mean. `pca_reg_scale_agnostic=false` does not change scene normalization.
+- The separate `use_scale_agnostic_mean` optimizer divides a step by the
+  current screen radius. Out-of-view centers have radius zero, so PCA center
+  gradients are suppressed there to avoid unbounded steps. Set this optimizer
+  flag to false for all-center updates as in the paper. Occluded but projected
+  centers still receive gradients. Rotation, scale and opacity are not gated.
+- Cached/approximate neighbor searches, densification, image losses, and Adam
+  settings can change the result. For formula comparisons use `exact`.
+
+## Covariance modes
+
+`--pca-reg-covariance centers` is the default and the paper's covariance.
+`opacity-centers` uses normalized opacity weights. `gaussian-mixture` also
+includes each Gaussian's covariance, by the law of total covariance:
+
+```
+a_j = sigmoid(opacity_logit_j), beta_j = a_j / sum_k a_k
+m   = sum_j beta_j mu_j
+C   = sum_j beta_j [(mu_j-m)(mu_j-m)^T + Sigma_j]
+Sigma_j = R_j diag(exp(2 log_scale_j)) R_j^T
+```
+
+For `opacity-centers`, omit `Sigma_j`; for `centers`, also set all weights
+equal. This is a mixture of normalized Gaussian distributions with opacity
+as mixture weight, not a volume-weighted integral of unnormalized kernels.
+It measures both center thickness and the spatial extent of the splats.
+
+All losses use the selected covariance. Mixture gradients reach centers,
+log scales, quaternions and opacity logits, including weight normalization:
+
+```
+dL/dmu_j = 2 beta_j G (mu_j - m)
+dL/dSigma_j = beta_j G
+dL/dlogit_j = beta_j (1-a_j) [G : ((mu_j-m)(mu_j-m)^T + Sigma_j - C)]
+```
+
+The analogous expression without `Sigma_j` applies to opacity-weighted
+centers. Fully transparent neighborhoods with summed opacity at most `1e-20`
+are skipped. Opacity weighting can reduce the influence of a bad splat by
+reducing its opacity; it is not exclusively a positional constraint.
+
+## Effective rank
+
+`--pca-reg-erank-weight` adds a mean over neighborhoods of
+
+```
+p_m = lambda_m / trace(C)
+erank(C) = exp(-sum_m p_m log(p_m))
+L_erank = max(erank(C) - 2, 0)^2
+```
+
+This dimensionless penalty is active only above rank two. The implementation
+clamps roundoff-negative eigenvalues to zero and smooths the probabilities
+as `(p + 1e-8)/(1 + 3e-8)`. It differentiates the trace, probabilities and
+entropy. This differs from the existing per-splat `erank_reg` shape penalty.
+
+Rank below two is allowed: this term alone does not prevent lines, and a
+strongly elongated volume can also have effective rank below two. Exactly
+isotropic covariance is stationary for any differentiable spectral penalty;
+photometric gradients or perturbations must break that symmetry. Retaining a
+small PCA thickness/isotropy term can be useful.
+
+## Transparency along the normal
+
+`--pca-reg-transparency-weight` adds the mean remaining transmittance of an
+orthographic line through each owner's center, directed along its PCA normal.
+Each neighbor, including the owner, contributes its projected Gaussian:
+
+```
+d_j = mu_j - mu_i, A_j = inverse(Sigma_j), n = v_1
+rho_j^2 = min_t (d_j - t n)^T A_j (d_j - t n)
+alpha_j = min(0.999, sigmoid(logit_j) exp(-rho_j^2/2))
+T_i = product_j (1 - alpha_j)
+L_transparency = mean_i T_i
+```
+
+Whitening by the Gaussian's rotation and inverse scales evaluates the line
+minimum without a matrix inverse or subtracting large quadratic forms.
+Transmittance is accumulated in log space. It is independent of ordering and
+normal sign, so no depth sort or second direction is needed. Gradients include
+the query center, neighbor centers, Gaussian shapes, opacity, and PCA normal.
+The opacity cap matches the usual splat compositing bound; its saturated
+branch has zero derivative. The term is invariant to scene scale.
+
+This is a local coverage proxy over a finite KNN set, with one line per
+center. It does not render a full view, sample holes between centers, enforce
+thinness, or penalize layers separated along that line. Raising the owner's
+opacity can satisfy it. Use it with geometric regularization and start weakly,
+especially for vegetation, glass, or scenes with genuine transparency.
 
 ## Scale (`--pca-reg-scale-agnostic`)
 
-The terms do not change under a translation or a rotation of the scene: they
-are eigenvalues of a covariance and an angle between two directions. They do
-change with its scale, which the photometric loss does not: scaling by `s`
-multiplies every `lambda` by `s^2` and `min(s_i)` by `s`. Training runs in the
-dataset's own units (bicycle's cameras span 4.36 of them), so the same weights
-are a different balance against the images on every capture -- a model in
-millimetres would get 10^6 times the pull of one in metres. Within a scene,
-the paper's mean is dominated by its sparsest neighbourhoods: on bicycle's 1M
-splats before any regularization (k = 16), `lambda_1` runs from 7e-8 to 166,
-and 1% of the neighbourhoods carry 55% of its sum.
+The scale-agnostic variant divides each PCA term by its neighborhood trace
+and the surfel term by the splat's largest scale. These denominators are
+**held fixed in the gradient**: this is a reweighted contraction objective,
+not the full derivative of the displayed ratio. It avoids a denominator
+gradient that could reduce the ratio by spreading centers or enlarging splats.
+The fixed denominators also apply in mixture mode. Normal alignment, effective
+rank and transparency already have no units; effective rank differentiates
+its normalization in both scale modes.
 
-`--pca-reg-scale-agnostic` measures each term in the units of what it is about:
+A zero-spread covariance contributes no normalized eigenspectrum gradient.
+The numerical floor is `trace(C) > 1e-30`, independent of the world's origin.
+The finite-difference checks freeze only these documented denominators.
 
-```
-L_PCA    = mean_i [ lambda_1 + gamma * (lambda_3 - lambda_2) ] / T_i,    T_i = lambda_1 + lambda_2 + lambda_3
-L_surfel = mean_i min(s_i) / max(s_i)
-```
+## Starting experiments
 
-`lambda_1 / T` is the surface variation of Pauly et al. (2002): 0 on a plane,
-1/3 for an isotropic blob, 0.12 at the median of that bicycle model. The
-normal term is an angle already. With the flag, the regularizer is invariant
-to any similarity of the scene, and its gradients move with the splats:
-`pca_reg_parity` transforms a cloud by one (scale 7.3) and checks it, along
-with the paper's terms growing by `s^2` and `s`.
+Both new weights default to zero, covariance defaults to `centers`, and all
+terms are enabled at `pca_reg_start_iter` when `pca_reg_neighbors > 0`. The new
+weights are constant after that start; `pca_reg_weight(_final)` schedules only
+the PCA eigenspectrum term. Diagnostics `pca_erank` and `pca_transparency` are
+unweighted means, reported when the corresponding term is enabled.
 
-`T_i` and `max(s_i)` are held fixed in the gradient, so every neighbourhood
-and splat is pulled in the same direction as by the paper's term, by
-`1 / T_i` (or `1 / max(s_i)`) as much. Differentiating through `T_i` would
-add a push that spreads the neighbourhood within its plane to keep `T_i`
-constant: the derivative of a scale-free term has no component that shrinks
-or grows the neighbourhood. A neighbourhood whose spread is below the float
-rounding of its centres (`T_i <= 1e-12 |mu_i|^2`) contributes nothing.
+These are starting ranges, not dataset-validated recommendations:
 
-The same weight means something else under the flag. On that bicycle model,
-the per-splat gradient of `L_PCA` is 1.2x the paper's at the 1st percentile,
-132x at the median and 8000x at the 99th (`1 / T_i` at 1.4, 141 and 8400).
-A median splat pulled as hard as before needs about 1/130 of the weight; the
-sparse background is pulled less than before. A global normalizer, the
-cameras' extent, would also be scale-invariant, but would keep the sparse
-background's dominance.
+| Experiment | Settings |
+|---|---|
+| Paper units | `pca_reg_scale_agnostic=false`, `use_scale_agnostic_mean=false`, `pca_reg_covariance=centers`, `pca_reg_knn=exact`, PCA weight `1 -> 10`, tangent `0.001` |
+| Normalized baseline | PCA weight `0.01 -> 0.1`, tangent `0.001`, normal `0.01`, surfel `0`, scale-agnostic true |
+| Rank ablation | New rank weight `0.01`, then `0.03`, `0.1`; transparency `0` |
+| Coverage ablation | Transparency weight `0.001`, then `0.003`, `0.01`; hold geometry settings fixed |
+| Mixture ablation | Compare `centers`, `opacity-centers`, `gaussian-mixture` at the same normalized weights |
 
-Bicycle, the default preset, 10k steps, `morton-best`, k = 16 from step 1000,
-CUDA; flatness scored afterwards on the exact 16 nearest:
+Try 15 or 31 neighbors initially and start at 7k before moving earlier.
+For an isolated new-loss ablation, set **both** `pca_reg_weight` and
+`pca_reg_weight_final` to zero, and normal/surfel weights to zero; the final
+PCA weight otherwise still defaults to one. Normal alignment now moves
+centers too, so old normal-weight tuning is not directly transferable.
 
-| terms, `w_PCA` | train, s | rgb_loss, 7k-10k | mean `lambda_1 / T` | median `lambda_1 / T` | median `lambda_1` |
-|---|---|---|---|---|---|
-| none | 89.5 | 0.086 | 0.124 | 0.123 | 8.4e-4 |
-| paper's, 1 to 10 | 98.2 | 0.078 | 0.065 | 0.049 | 1.3e-4 |
-| scale-agnostic, 1 to 10 | 97.7 | 0.110 | 0.0037 | 0.0007 | 8.8e-7 |
-| scale-agnostic, 0.01 to 0.1 | 97.4 | 0.078 | 0.053 | 0.038 | 1.2e-4 |
+## Execution and validation
 
-(rgb_loss is the logged training loss, averaged over the 31 logged steps.)
+The CUDA exports and Vulkan entries use the same Slang math. Vulkan specializes
+on covariance mode, enabled normal/surfel/rank/transparency/PCA terms, and
+neighbor-search mode. Zero weights remove their derivative branches at pipeline
+creation; weight schedules do not create new pipelines while their nonzero
+mask stays unchanged. CUDA has a separate specialization for center covariance
+with both new weights zero, removing the optional mixture/coverage code.
+Covariance and gradient accumulation reuse each search;
+no extra neighbor lists or per-neighbor matrices are stored. Opacity gradients
+need one extra float per splat when active.
 
-The flag is compiled, not branched on: the neighbourhood pass exists per scale
-mode (`pca_reg_owner_k*_sa`, the Vulkan entries `pca_owner_k*_sa`). It costs
-the same as the paper's: on the 1M model, the tree search 10.78 ms against
-10.67 on CUDA (14.0 and 14.0 on Vulkan), the cached list 1.93 against 1.97
-(3.25 and 3.28). The Morton methods' neighbour choice depends on the
-axes, since the curve walks a fixed grid: a rotation changes which
-approximate neighbours they find, not the terms on given neighbours.
+All shared quaternion, scale and opacity gradient writes are atomic, including
+the owner's contributions. The optimizers receive opacity gradients
+without treating regularizer-only updates as camera observations.
+
+`pca_reg_parity` checks double-precision forward values and finite differences
+for all four parameter channels, each covariance mode, both scale modes,
+separate losses and their combination. Its larger clouds test exact neighbors,
+cached lists, approximate search, degenerate neighborhoods, visibility gates,
+and similarity transformations. Opacity checks cover zero and saturated logits.
+`pca_reg_step` exercises all three primitives,
+split and fused optimizers, fp32 and quantized states, and unseen splats.
+`pca_reg_bench` accepts optional covariance
+index (`0`, `1`, `2`), rank weight, and transparency weight after its iteration
+count for performance comparisons.
+
+Steady-state timings on an RTX 5070, `uniform:100000 16 30`, in milliseconds
+per neighborhood pass (sort/tree construction excluded; both scale modes are
+available, this table uses paper units). The baseline enables PCA, normal and
+surfel; rank adds weight `0.03`, transparency adds `0.003`.
+
+| Terms / covariance | CUDA exact search | CUDA cached list | Vulkan exact search | Vulkan cached list |
+|---|---:|---:|---:|---:|
+| Baseline / centers | 0.83 | 0.17 | 0.82 | 0.21 |
+| + rank / centers | 0.86 | 0.18 | 0.77 | 0.23 |
+| + rank / mixture | 1.15 | 0.62 | 1.00 | 0.56 |
+| + rank + transparency / mixture | 1.56 | 1.14 | 1.54 | 1.09 |
+
+The original CUDA center-only implementation measured 0.66 / 0.14 ms for
+exact search / cached lists on the same cloud; the corrected normal derivative
+and centered covariance add work. Small differences between adjacent rows are
+timing noise. Pipeline compilation and submit-budget calibration are warmed
+before measurement. First use of a Vulkan specialization still incurs that
+one-time compilation cost. Real neighborhood density and opacity affect cost;
+these measurements do not establish training quality or full-step speed.
 
 ## Where it runs
 
@@ -165,7 +283,7 @@ The k nearest so far live in registers: the neighbourhood pass is compiled for
 capacities 8, 16 and 32 (the smallest that holds k), so every index into the
 list is static and an insert is a compare-swap chain.
 
-### What the search costs
+### Initial center-only implementation: search measurements
 
 `pca_reg_bench <splat.ply> [k] [iters]` times each part on a trained model.
 Bicycle's 1M splats after 10k steps of the default preset, k = 16, RTX 5070,
@@ -202,7 +320,7 @@ pays. The exact search costs about 5x it. What was measured on the way:
   that carry their children's boxes.
 - No effect: a wider seed window, a branch-free skip, a 32-deep stack.
 
-### What it costs a training run
+### Initial center-only implementation: training measurements
 
 Bicycle (`images`, 1237x822), the default preset, 10k steps, at the 1M
 cap from step 5.3k; `--pca-reg-neighbors 16 --pca-reg-start-iter 1000` and the

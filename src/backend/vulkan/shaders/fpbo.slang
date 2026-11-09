@@ -264,8 +264,6 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             g.v_scale += float3(p.vw_scales[3 * gid],
                                 p.vw_scales[3 * gid + 1],
                                 p.vw_scales[3 * gid + 2]);
-        if ((kVwMask & 8) != 0)
-            g.v_opacity += p.vw_opacities[gid];
         if ((kVwMask & 16) != 0)
             g.v_dc += float3(p.vw_dc[3 * gid], p.vw_dc[3 * gid + 1],
                              p.vw_dc[3 * gid + 2]);
@@ -283,6 +281,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.has_visit != 0)
             p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
         regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+        // A geometry regularizer does not count as a camera observation.
+        if ((kVwMask & 8) != 0)
+            g.v_opacity += p.vw_opacities[gid];
 
         projective_active = p.has_depth != 0 && p.radii[gid] > 0
             && dot(g.v_mean,g.v_mean)+dot(g.v_scale,g.v_scale) > 0;

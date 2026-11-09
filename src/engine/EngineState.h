@@ -374,6 +374,7 @@ struct PcaRegState {
     DeviceVector<float3> v_means;
     DeviceVector<float4> v_quats;
     DeviceVector<float3> v_scales;
+    DeviceVector<float> v_opacities;
 };
 
 // Color-shift regularizer (design 1): EMA of mean_per_pixel(sign(post-pre))

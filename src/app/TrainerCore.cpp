@@ -720,6 +720,16 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
         cfg.pca_reg.tangent  = c.pca_reg_tangent_weight;
         cfg.pca_reg.w_normal = c.pca_reg_normal_weight;
         cfg.pca_reg.w_surfel = c.pca_reg_surfel_weight;
+        cfg.pca_reg.w_erank = c.pca_reg_erank_weight;
+        cfg.pca_reg.w_transparency = c.pca_reg_transparency_weight;
+        if (c.pca_reg_covariance == "centers")
+            cfg.pca_reg.covariance = PcaRegCovariance::Centers;
+        else if (c.pca_reg_covariance == "opacity-centers")
+            cfg.pca_reg.covariance = PcaRegCovariance::OpacityCenters;
+        else if (c.pca_reg_covariance == "gaussian-mixture")
+            cfg.pca_reg.covariance = PcaRegCovariance::GaussianMixture;
+        else
+            throw std::runtime_error("unknown pca_reg_covariance: " + c.pca_reg_covariance);
         cfg.pca_reg.scale_agnostic = c.pca_reg_scale_agnostic;
         cfg.pca_reg.rendered_means_only = c.use_scale_agnostic_mean;
     }

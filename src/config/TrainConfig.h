@@ -289,8 +289,11 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(std::string, pca_reg_schedule, "linear", "geometry", "expert", "linear|exponential|cosine") \
     X(float, pca_reg_tangent_weight, 0.001f, "geometry", "advanced", "")     \
     X(float, pca_reg_normal_weight, 0.1f, "geometry", "advanced", "")        \
-    X(float, pca_reg_surfel_weight, 0.0f, "geometry", "advanced", "")        \
-    X(bool, pca_reg_scale_agnostic, true, "geometry", "advanced", "")       \
+    X(float, pca_reg_surfel_weight, 0.0f, "geometry", "expert", "")        \
+    X(float, pca_reg_erank_weight, 0.01f, "geometry", "advanced", "")        \
+    X(float, pca_reg_transparency_weight, 0.0f, "geometry", "expert", "")  \
+    X(std::string, pca_reg_covariance, "gaussian-mixture", "geometry", "expert", "centers|opacity-centers|gaussian-mixture") \
+    X(bool, pca_reg_scale_agnostic, true, "geometry", "expert", "")       \
                                                                              \
     /* ==== shape -- keeping individual splats compact and well behaved ==== */ \
     X(float, opacity_reg, 0.01f, "shape", "basic", "")                      \

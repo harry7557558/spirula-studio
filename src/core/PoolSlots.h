@@ -224,6 +224,7 @@ enum class SaveClass : uint8_t {
   X(PcaRegVMeans                   , "pca_reg.v_means",                   SplatXImg, Never) \
   X(PcaRegVQuats                   , "pca_reg.v_quats",                   SplatXImg, Never) \
   X(PcaRegVScales                  , "pca_reg.v_scales",                  SplatXImg, Never) \
+  X(PcaRegVOpacities               , "pca_reg.v_opacities",               SplatXImg, Never) \
   X(PcaRegPermCache                , "pca_reg.perm_cache",                Splat    , Never) \
   X(PcaRegNbrsCache                , "pca_reg.nbrs_cache",                Splat    , Never) \
   X(PcaRegLossSums                 , "pca_reg.loss_sums",                 Other    , Never) \
@@ -531,6 +532,7 @@ enum class PoolPhase : uint8_t {
   X(PcaRegVMeans       , RasterBwd) \
   X(PcaRegVQuats       , RasterBwd) \
   X(PcaRegVScales      , RasterBwd) \
+  X(PcaRegVOpacities   , RasterBwd) \
   /* The perceptual losses' per-call scratch, re-acquired per pyramid scale \
      (acquire_reused): scale 0 sizes it. */ \
   X(SsimMaskWeight     , Loss) \

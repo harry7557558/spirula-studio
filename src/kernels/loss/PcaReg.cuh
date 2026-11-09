@@ -11,7 +11,13 @@
 
 // Must match kPcaMode* and kPcaMaxNeighbors in shaders/pca_reg.slang.
 enum class PcaRegMode : int { Tree = 0, Window = 1, Best = 2, List = 3 };
+enum class PcaRegCovariance : int { Centers = 0, OpacityCenters = 1, GaussianMixture = 2 };
 inline constexpr int kPcaRegMaxNeighbors = 32;
+
+inline uint32_t pca_reg_terms(float normal, float surfel, float erank, float transparency) {
+    return (normal != 0 ? 1u : 0u) | (surfel != 0 ? 2u : 0u) |
+           (erank != 0 ? 4u : 0u) | (transparency != 0 ? 8u : 0u);
+}
 
 // The compiled neighbour capacities, kPcaRegMaxNeighbors the largest: the
 // pass for k others runs the smallest that holds them.
@@ -52,6 +58,8 @@ void pca_reg_neighborhood_tensor(
     DeviceVector<float3> means,
     DeviceVector<float4> quats,
     DeviceVector<float3> scales,
+    DeviceVector<float> opacities,
+    int covariance,                // PcaRegCovariance
     DeviceVector<int32_t> perm,     // [N] rank -> splat
     DeviceVector<float4> sorted,    // [N] by rank; unused by List
     DeviceVector<float4> nodes,     // Tree only: pca_reg_tree_tensor's
@@ -63,11 +71,14 @@ void pca_reg_neighborhood_tensor(
     bool gate_means,                // means of splats with radius 0 get nothing
     bool scale_agnostic,            // the terms relative to the spread and largest scale
     DeviceVector<float3> v_means,   // accumulated
-    DeviceVector<float4> v_quats,   // accumulated when w_normal != 0
-    DeviceVector<float3> v_scales,  // accumulated when w_surfel != 0
+    DeviceVector<float4> v_quats,
+    DeviceVector<float3> v_scales,
+    DeviceVector<float> v_opacities,
     float w_plane,
     float w_tangent,
     float w_normal,
     float w_surfel,
-    DeviceVector<float> loss_sums   // [3] accumulated, unweighted sums
+    float w_erank,
+    float w_transparency,
+    DeviceVector<float> loss_sums   // [5] accumulated, unweighted sums
 );

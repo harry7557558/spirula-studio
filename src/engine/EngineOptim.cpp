@@ -457,7 +457,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             DeviceTensorFloatND(engine().grad.means),         // [N, 3]
             DeviceTensorFloatND(engine().grad.quats),         // [N, 4]
             DeviceTensorFloatND(engine().grad.scales),        // [N, 3]
-            DeviceTensorFloatND(),                            // opacities -- null
+            pca.v_opacities.data_ptr() ? DeviceTensorFloatND(pca.v_opacities) : DeviceTensorFloatND(),
             DeviceTensorFloatND(),                            // features_dc -- null
             DeviceTensorFloatND(),                            // features_sh -- null
         };
@@ -466,7 +466,7 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             DeviceTensorFloatND(pca.v_means),
             pca.v_quats.data_ptr() ? DeviceTensorFloatND(pca.v_quats) : DeviceTensorFloatND(),
             pca.v_scales.data_ptr() ? DeviceTensorFloatND(pca.v_scales) : DeviceTensorFloatND(),
-            DeviceTensorFloatND(),
+            pca.v_opacities.data_ptr() ? DeviceTensorFloatND(pca.v_opacities) : DeviceTensorFloatND(),
             DeviceTensorFloatND(),
             DeviceTensorFloatND(),
         };
@@ -749,7 +749,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         visit,
         grad_q, projective_depth_state(cfg),
         step + 1, per_splat_steps,
-        grad_scale, zero_grad
+        grad_scale, zero_grad, engine().pca_reg.v_opacities
     );
 
     // DC color update path. When non-SH quant is on the geometry kernel
