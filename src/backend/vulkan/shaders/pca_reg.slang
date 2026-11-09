@@ -136,6 +136,24 @@ struct PcaOwnerParams {  // through the params ring
 groupshared float3 g_loss[kOwnerGroup];
 groupshared float2 g_extra[kOwnerGroup];
 
+void pca_owner_reduce(uint tid, float3 l, float2 extra, float* loss_sums) {
+    g_loss[tid] = l;
+    g_extra[tid] = extra;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint s = kOwnerGroup / 2; s > 0; s >>= 1) {
+        if (tid < s) { g_loss[tid] += g_loss[tid + s]; g_extra[tid] += g_extra[tid + s]; }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (tid == 0) {
+        float3 t = g_loss[0];
+        atomic_add_f32(loss_sums, t.x);
+        atomic_add_f32(loss_sums + 1, t.y);
+        atomic_add_f32(loss_sums + 2, t.z);
+        atomic_add_f32(loss_sums + 3, g_extra[0].x);
+        atomic_add_f32(loss_sums + 4, g_extra[0].y);
+    }
+}
+
 // One entry per capacity (pca_reg_capacity in kernels/loss/PcaReg.cuh) and
 // scale mode, as the CUDA exports.
 void pca_owner<let K : int, let SA : bool>(uint3 wg, uint tid, PcaOwnerParams p) {
@@ -156,21 +174,7 @@ void pca_owner<let K : int, let SA : bool>(uint3 wg, uint tid, PcaOwnerParams p)
                                 on * ((kTerms & 4u) != 0u ? p.w_erank : 0.0),
                                 on * ((kTerms & 8u) != 0u ? p.w_transparency : 0.0), extra);
     if (!valid) { l = float3(0.0); extra = float2(0.0); }
-    g_loss[tid] = l;
-    g_extra[tid] = extra;
-    GroupMemoryBarrierWithGroupSync();
-    for (uint s = kOwnerGroup / 2; s > 0; s >>= 1) {
-        if (tid < s) { g_loss[tid] += g_loss[tid + s]; g_extra[tid] += g_extra[tid + s]; }
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if (tid == 0) {
-        float3 t = g_loss[0];
-        atomic_add_f32(p.loss_sums, t.x);
-        atomic_add_f32(p.loss_sums + 1, t.y);
-        atomic_add_f32(p.loss_sums + 2, t.z);
-        atomic_add_f32(p.loss_sums + 3, g_extra[0].x);
-        atomic_add_f32(p.loss_sums + 4, g_extra[0].y);
-    }
+    pca_owner_reduce(tid, l, extra, p.loss_sums);
 }
 
 [shader("compute")]
@@ -207,4 +211,54 @@ void pca_owner_k16_sa(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform 
 [numthreads(128, 1, 1)]
 void pca_owner_k32_sa(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
     pca_owner<32, true>(wg, tid, *pp);
+}
+
+void pca_slab<let K : int, let SA : bool>(uint3 wg, uint tid, PcaOwnerParams p) {
+    float2 extra;
+    float3 l = pca_reg_slab<K, SA>(tid, (wg.y * p.wgs_per_row + wg.x) * kOwnerGroup, p.n, p.k,
+                                   p.window, p.quats, p.scales, p.opacities, kCovariance, kTerms,
+                                   p.perm, p.sorted, p.nbrs, p.store_list, p.radii, p.gate_means,
+                                   p.v_means, p.v_quats, p.v_scales, p.v_opacities,
+                                   (kTerms & 16u) != 0u ? p.w_plane : 0.0,
+                                   (kTerms & 16u) != 0u ? p.w_tangent : 0.0,
+                                   (kTerms & 1u) != 0u ? p.w_normal : 0.0,
+                                   (kTerms & 2u) != 0u ? p.w_surfel : 0.0,
+                                   (kTerms & 4u) != 0u ? p.w_erank : 0.0, extra);
+    pca_owner_reduce(tid, l, extra, p.loss_sums);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k8(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<8, false>(wg, tid, *pp);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k8_sa(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<8, true>(wg, tid, *pp);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k16(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<16, false>(wg, tid, *pp);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k16_sa(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<16, true>(wg, tid, *pp);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k32(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<32, false>(wg, tid, *pp);
+}
+
+[shader("compute")]
+[numthreads(128, 1, 1)]
+void pca_slab_k32_sa(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID, uniform PcaOwnerParams* pp) {
+    pca_slab<32, true>(wg, tid, *pp);
 }

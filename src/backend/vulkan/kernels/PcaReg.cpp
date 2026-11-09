@@ -177,10 +177,13 @@ void pca_reg_neighborhood_tensor(
     const vkk::Fold f = vkk::fold_1d(num_splats, kOwnerGroup);
     p.wgs_per_row = f.per_row;
     const int cap = pca_reg_capacity(k);
-    static const char* const kEntries[2][3] = {
-        {"pca_reg.pca_owner_k8", "pca_reg.pca_owner_k16", "pca_reg.pca_owner_k32"},
-        {"pca_reg.pca_owner_k8_sa", "pca_reg.pca_owner_k16_sa", "pca_reg.pca_owner_k32_sa"}};
-    const char* entry = kEntries[scale_agnostic ? 1 : 0][cap == 8 ? 0 : (cap == 16 ? 1 : 2)];
+    static const char* const kEntries[2][2][3] = {
+        {{"pca_reg.pca_owner_k8", "pca_reg.pca_owner_k16", "pca_reg.pca_owner_k32"},
+         {"pca_reg.pca_owner_k8_sa", "pca_reg.pca_owner_k16_sa", "pca_reg.pca_owner_k32_sa"}},
+        {{"pca_reg.pca_slab_k8", "pca_reg.pca_slab_k16", "pca_reg.pca_slab_k32"},
+         {"pca_reg.pca_slab_k8_sa", "pca_reg.pca_slab_k16_sa", "pca_reg.pca_slab_k32_sa"}}};
+    const char* entry = kEntries[pca_reg_uses_slab(mode, k, window, w_transparency) ? 1 : 0]
+                                [scale_agnostic ? 1 : 0][cap == 8 ? 0 : (cap == 16 ? 1 : 2)];
     const int terms = (int)pca_reg_terms(w_normal, w_surfel, w_erank, w_transparency) |
                       ((w_plane != 0 || w_tangent != 0) ? 16 : 0);
     vkk::dispatch_ring_budgeted(entry, {covariance, terms, mode}, f.per_row, f.rows, 1,

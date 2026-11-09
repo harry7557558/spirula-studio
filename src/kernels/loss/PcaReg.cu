@@ -82,6 +82,32 @@ __global__ void pca_reg_build_kernel(uint32_t n, float4* sorted, uint32_t* box,
     SlangPcaReg::pca_reg_build(i, n, sorted, box, nodes, (uint32_t*)nodes, meta, ranges);
 }
 
+// red: [5][kOwnerBlock / 32] of __shared__ floats, the caller's.
+__device__ __forceinline__ void pca_reg_reduce_losses(float3 l, float2 extra, float* red,
+                                                      float* loss_sums) {
+    for (int o = 16; o > 0; o >>= 1) {
+        l.x += __shfl_xor_sync(0xffffffffu, l.x, o);
+        l.y += __shfl_xor_sync(0xffffffffu, l.y, o);
+        l.z += __shfl_xor_sync(0xffffffffu, l.z, o);
+        extra.x += __shfl_xor_sync(0xffffffffu, extra.x, o);
+        extra.y += __shfl_xor_sync(0xffffffffu, extra.y, o);
+    }
+    const int warps = kOwnerBlock / 32, warp = threadIdx.x / 32, lane = threadIdx.x % 32;
+    if (lane == 0) {
+        red[0 * warps + warp] = l.x;
+        red[1 * warps + warp] = l.y;
+        red[2 * warps + warp] = l.z;
+        red[3 * warps + warp] = extra.x;
+        red[4 * warps + warp] = extra.y;
+    }
+    __syncthreads();
+    if (threadIdx.x < 5) {
+        float v = 0.f;
+        for (int w = 0; w < warps; w++) v += red[threadIdx.x * warps + w];
+        atomicAdd(loss_sums + threadIdx.x, v);
+    }
+}
+
 template <int K, bool SA>
 __device__ float3 pca_reg_owner_k(uint32_t r, uint32_t mode, uint32_t n, uint32_t k,
                                   uint32_t window, float* means, float* quats, float* scales, float* opacities, uint32_t covariance, uint32_t terms,
@@ -130,27 +156,34 @@ __global__ void pca_reg_owner_kernel(
         on * w_tangent, on * w_normal, on * w_surfel,
         Extended ? on * w_erank : 0.0f, Extended ? on * w_transparency : 0.0f, &extra);
     if (!valid) { l = make_float3(0.f, 0.f, 0.f); extra = make_float2(0.f, 0.f); }
-    for (int o = 16; o > 0; o >>= 1) {
-        l.x += __shfl_xor_sync(0xffffffffu, l.x, o);
-        l.y += __shfl_xor_sync(0xffffffffu, l.y, o);
-        l.z += __shfl_xor_sync(0xffffffffu, l.z, o);
-        extra.x += __shfl_xor_sync(0xffffffffu, extra.x, o);
-        extra.y += __shfl_xor_sync(0xffffffffu, extra.y, o);
+    pca_reg_reduce_losses(l, extra, (float*)red, loss_sums);
+}
+
+template <int K, bool SA>
+__global__ void pca_reg_slab_kernel(
+    uint32_t n, uint32_t k, uint32_t window, float* quats, float* scales, float* opacities,
+    uint32_t covariance, uint32_t terms, int32_t* perm, float4* sorted, int32_t* nbrs,
+    uint32_t store_list, float* radii, uint32_t gate_means, float* v_means, float* v_quats,
+    float* v_scales, float* v_opacities, float w_plane, float w_tangent, float w_normal,
+    float w_surfel, float w_erank, float* __restrict__ loss_sums) {
+    __shared__ float red[5][kOwnerBlock / 32];
+    float2 extra;
+#define SS_PCA_REG_PASS                                                                      \
+    threadIdx.x, blockIdx.x * blockDim.x, n, k, window, quats, scales, opacities, covariance, \
+        terms, perm, sorted, nbrs, store_list, radii, gate_means, v_means, v_quats, v_scales, \
+        v_opacities, w_plane, w_tangent, w_normal, w_surfel, w_erank, &extra
+    float3 l;
+    if constexpr (SA) {
+        if constexpr (K == 8) l = SlangPcaReg::pca_reg_slab_k8_sa(SS_PCA_REG_PASS);
+        else if constexpr (K == 16) l = SlangPcaReg::pca_reg_slab_k16_sa(SS_PCA_REG_PASS);
+        else l = SlangPcaReg::pca_reg_slab_k32_sa(SS_PCA_REG_PASS);
+    } else {
+        if constexpr (K == 8) l = SlangPcaReg::pca_reg_slab_k8(SS_PCA_REG_PASS);
+        else if constexpr (K == 16) l = SlangPcaReg::pca_reg_slab_k16(SS_PCA_REG_PASS);
+        else l = SlangPcaReg::pca_reg_slab_k32(SS_PCA_REG_PASS);
     }
-    const int warp = threadIdx.x / 32, lane = threadIdx.x % 32;
-    if (lane == 0) {
-        red[0][warp] = l.x;
-        red[1][warp] = l.y;
-        red[2][warp] = l.z;
-        red[3][warp] = extra.x;
-        red[4][warp] = extra.y;
-    }
-    __syncthreads();
-    if (threadIdx.x < 5) {
-        float v = 0.f;
-        for (int w = 0; w < kOwnerBlock / 32; w++) v += red[threadIdx.x][w];
-        atomicAdd(loss_sums + threadIdx.x, v);
-    }
+#undef SS_PCA_REG_PASS
+    pca_reg_reduce_losses(l, extra, (float*)red, loss_sums);
 }
 
 }  // namespace
@@ -270,6 +303,22 @@ void pca_reg_neighborhood_tensor(
     if (num_splats <= 0 || k <= 0) return;
     const int cap = pca_reg_capacity(k);
     const uint32_t terms = pca_reg_terms(w_normal, w_surfel, w_erank, w_transparency);
+    if (pca_reg_uses_slab(mode, k, window, w_transparency)) {
+        auto slab = scale_agnostic
+            ? (cap == 8 ? pca_reg_slab_kernel<8, true>
+               : cap == 16 ? pca_reg_slab_kernel<16, true> : pca_reg_slab_kernel<32, true>)
+            : (cap == 8 ? pca_reg_slab_kernel<8, false>
+               : cap == 16 ? pca_reg_slab_kernel<16, false> : pca_reg_slab_kernel<32, false>);
+        slab<<<_LAUNCH_ARGS_1D(num_splats, kOwnerBlock)>>>(
+            (uint32_t)num_splats, (uint32_t)k, (uint32_t)window, (float*)quats.data_ptr(),
+            (float*)scales.data_ptr(), opacities.data_ptr(), (uint32_t)covariance, terms,
+            perm.data_ptr(), sorted.data_ptr(), nbrs.data_ptr(), store_list ? 1u : 0u,
+            radii.data_ptr(), gate_means && radii.data_ptr() ? 1u : 0u, (float*)v_means.data_ptr(),
+            (float*)v_quats.data_ptr(), (float*)v_scales.data_ptr(), v_opacities.data_ptr(),
+            w_plane, w_tangent, w_normal, w_surfel, w_erank, loss_sums.data_ptr());
+        CHECK_DEVICE_ERROR(cudaGetLastError());
+        return;
+    }
     auto kernel = scale_agnostic
         ? (cap == 8 ? pca_reg_owner_kernel<8, true, true>
            : cap == 16 ? pca_reg_owner_kernel<16, true, true> : pca_reg_owner_kernel<32, true, true>)

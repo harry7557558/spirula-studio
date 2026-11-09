@@ -230,7 +230,10 @@ before the optim step. On the fused 3dgs / mip path the optimizer has no world
 gradient buffers of its own, so the regularizer writes `pca_reg.v_*` and the
 fused kernel loads them as world gradients (both backends already guard each
 channel); elsewhere it adds into `engine().grad` scaled by `1 / grad_scale`.
-The non-fused quantized-gradient path has no fp32 buffer and refuses.
+A run with this regularizer leaves the non-fused path's gradient accumulators
+in fp32 (`keep_fp32_grad`), quantization or not, because that is the buffer it
+adds into. The fused path is unaffected; an engine caller that sets neither
+gets the refusal in `engine_pca_reg_step`.
 
 Everything recomputed per step -- the sort, the Morton-ordered centres, the
 search tree, the fused path's gradients -- is in the `RasterBwd` phase of the
@@ -239,6 +242,52 @@ fused step's screen gradients in it, and nothing reads either after the optim
 step. It adds to that phase, so the arena grows by whatever the phase now
 exceeds the largest other one by. Only the cached methods own memory, booked
 for `cap_max`.
+
+## One workgroup over the window
+
+Best-of-window (`morton-best`, the default) with `pca_reg_uses_slab` true runs
+`pca_reg_slab` in shaders/pca_reg.slang: 128 owners, the 256 ranks their windows
+can reach copied once into shared memory, 26.6 KB against Vulkan's guaranteed
+32 KB. It allocates nothing. Three phases, each ending at a group barrier:
+
+1. Each thread fills two slots: world centre, opacity weight, `Sigma`, splat id.
+2. Each thread is an owner. The k nearest are a min/max chain over packed
+   `distance | slot` keys, one register a neighbour. It publishes `G / total`,
+   `-(G : C) / total` and its mean, and sets its bit in every chosen target's
+   `g_pca_who` row.
+3. Each thread takes two targets and walks only the owners that chose them,
+   summing `H = sum G_o / total_o`, `g = sum H_o d` and `s = sum d^T H_o d - (G_o : C_o) / total_o`.
+   One flush then gives
+
+```
+dL/dmu    = 2 a g
+dL/dSigma = a H
+dL/dlogit = a (1 - a) (s + H : Sigma)
+```
+
+`d` stays relative to each owner, `(t - q_o) - mean_o`, so precision does not
+depend on where the group sits; anchoring the slab to one splat loses the
+whole group to a floater at the group's first rank.
+
+A tree or cached-list neighbour can be any rank, so `exact`, the cached methods'
+reuse steps, transparency and `--pca-reg-window` above 128 use the
+neighbour-at-a-time path. `pca_reg_parity` holds the two to each other on the
+lists the slab chose, every covariance and scale mode.
+
+`pca_reg_bench` on bicycle's 1M splats, k = 31, gaussian-mixture, rank weight
+0.01, RTX 5070, ms per pass (the extreme floater-suppression defaults):
+
+| | Vulkan | CUDA |
+|---|---:|---:|
+| neighbour-at-a-time | 7.48 | 8.74 |
+| slab | 2.13 | 1.67 |
+
+What the 7.5 ms was: 352 float atomics an owner cost about 3 ms, the window
+search 2.3, and the neighbour math and loads 2.3; the atomics overlap the rest,
+so removing only them gave 4.55. On the slab, 26 atomics an owner remain, and
+ablation splits the 2.13 ms into 0.9 scan and chain, 0.6 target walk, 0.6 the
+rest. A centre-out scan with an early reject measured no faster, since every
+lane of a warp must agree to skip.
 
 ## Finding the neighbours (`--pca-reg-knn`)
 

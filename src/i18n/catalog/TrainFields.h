@@ -7933,52 +7933,52 @@ SS_MSG(floater_suppression_help,
     EN("Clean up floating blobs and see-through surfaces. Tightens the depth "
        "and colour consistency penalties and holds view-dependent colour "
        "back; `strong` gives the crispest geometry but can flatten thin or "
-       "genuinely translucent detail."),
+       "genuinely translucent detail. `extreme` adds a neighbourhood regularizer on top of `strong`, which can be slower, especially with a large number of Gaussians."),
     JA("浮いた塊や透けて見える面を整理します。深度と色の一貫性ペナルティを強め、"
        "視点依存の色を抑えます。`strong` はもっともくっきりしたジオメトリにな"
-       "りますが、薄いものや本当に半透明なものが平坦になることがあります。"),
+       "りますが、薄いものや本当に半透明なものが平坦になることがあります。 `extreme` は `strong` に近傍の正則化を加えます。処理が遅くなることがあり、ガウシアンの数が多いほど顕著です。"),
     ZH_HANS("清理漂浮的团块和穿透的表面。它会加强深度和颜色一致性惩罚，并抑制"
             "视角相关颜色；`strong` 给出最清爽的几何，但可能压平细薄或真正半透"
-            "明的细节。"),
+            "明的细节。 `extreme` 在 `strong` 的基础上加入邻域正则化，可能更慢，高斯数量很大时尤其明显。"),
     ZH_HANT("清理漂浮的團塊和穿透的表面。它會加強深度和顏色一致性懲罰，並抑制"
             "視角相關顏色；`strong` 給出最清爽的幾何，但可能壓平細薄或真正半透"
-            "明的細節。"),
+            "明的細節。 `extreme` 在 `strong` 的基礎上加入鄰域正則化，可能更慢，高斯數量很大時尤其明顯。"),
     KO("떠다니는 덩어리와 비쳐 보이는 면을 정리합니다. 깊이와 색 일관성 페널티"
        "를 강화하고 시점 의존 색을 억제하며, `strong`은 가장 또렷한 지오메트리"
-       "를 주지만 얇거나 실제로 반투명한 디테일을 납작하게 만들 수 있습니다."),
+       "를 주지만 얇거나 실제로 반투명한 디테일을 납작하게 만들 수 있습니다. `extreme`은 `strong`에 이웃 정규화를 더하며, 특히 가우시안 수가 많으면 더 느려질 수 있습니다."),
     DE("Schwebende Klumpen und durchscheinende Flächen aufräumen. Verschärft "
        "die Strafen für Tiefen- und Farbkonsistenz und hält blickabhängige "
        "Farbe zurück; `strong` liefert die knackigste Geometrie, kann aber "
-       "dünne oder tatsächlich lichtdurchlässige Details flach machen."),
+       "dünne oder tatsächlich lichtdurchlässige Details flach machen. `extreme` ergänzt `strong` um eine Nachbarschafts-Regularisierung und kann langsamer sein, besonders bei sehr vielen Gaussians."),
     FR("Nettoyer les amas flottants et les surfaces qui transparaissent. "
        "Resserre les pénalités de cohérence de profondeur et de couleur et "
        "bride la couleur dépendante de la vue ; `strong` donne la géométrie "
        "la plus nette mais peut aplatir les détails fins ou réellement "
-       "translucides."),
+       "translucides. `extreme` ajoute à `strong` une régularisation de voisinage, ce qui peut ralentir l'entraînement, surtout avec un grand nombre de gaussiennes."),
     ES("Limpiar los grumos flotantes y las superficies que se transparentan. "
        "Aprieta las penalizaciones de coherencia de profundidad y color y "
        "frena el color dependiente de la vista; `strong` da la geometría más "
-       "nítida pero puede aplanar detalles finos o realmente translúcidos."),
+       "nítida pero puede aplanar detalles finos o realmente translúcidos. `extreme` añade a `strong` una regularización de vecindad y puede ser más lento, sobre todo con un gran número de gaussianas."),
     PT("Limpar os grumos flutuantes e as superfícies que ficam transparentes. "
        "Aperta as penalidades de coerência de profundidade e cor e segura a "
        "cor dependente da vista; `strong` dá a geometria mais nítida, mas "
-       "pode achatar detalhes finos ou realmente translúcidos."),
+       "pode achatar detalhes finos ou realmente translúcidos. `extreme` acrescenta a `strong` uma regularização de vizinhança e pode ser mais lento, sobretudo com um grande número de gaussianas."),
     IT("Ripulire i grumi fluttuanti e le superfici che si vedono attraverso. "
        "Stringe le penalità di coerenza di profondità e colore e trattiene il "
        "colore dipendente dalla vista; `strong` dà la geometria più nitida ma "
-       "può appiattire i dettagli sottili o davvero traslucidi."),
+       "può appiattire i dettagli sottili o davvero traslucidi. `extreme` aggiunge a `strong` una regolarizzazione di vicinato e può essere più lento, soprattutto con un gran numero di gaussiane."),
     NL("Zwevende klodders en doorschijnende oppervlakken opruimen. Het scherpt "
        "de straffen voor diepte- en kleurconsistentie aan en houdt "
        "kijkrichtingafhankelijke kleur in toom; `strong` geeft de strakste "
-       "geometrie maar kan dun of werkelijk doorschijnend detail platslaan."),
+       "geometrie maar kan dun of werkelijk doorschijnend detail platslaan. `extreme` voegt aan `strong` een buurtregularisatie toe en kan trager zijn, vooral bij een groot aantal Gaussians."),
     RU("Убрать висящие сгустки и просвечивающие поверхности. Усиливает штрафы "
        "за согласованность глубины и цвета и придерживает цвет, зависящий от "
        "вида; `strong` даёт самую чёткую геометрию, но может сплющить тонкие "
-       "или по-настоящему полупрозрачные детали."),
+       "или по-настоящему полупрозрачные детали. `extreme` добавляет к `strong` регуляризацию по соседям и может работать медленнее, особенно при большом числе гауссиан."),
     TR("Havada duran topakları ve içi görünen yüzeyleri temizler. Derinlik ve "
        "renk tutarlılığı cezalarını sıkar, bakışa bağlı rengi dizginler; "
        "`strong` en keskin geometriyi verir ama ince ya da gerçekten yarı "
-       "saydam ayrıntıları düzleştirebilir."));
+       "saydam ayrıntıları düzleştirebilir. `extreme`, `strong` üzerine komşuluk düzenlemesi ekler ve özellikle çok sayıda Gauss ile daha yavaş olabilir."));
 
 SS_MSG(depth_distortion_reg,
     EN("Depth consistency"), JA("深度の一貫性"), ZH_HANS("深度一致性"),
@@ -14025,6 +14025,12 @@ SS_MSG(choice_strong,
     PT("forte"),         IT("forte"),        NL("sterk"),        RU("сильное"),
     TR("güçlü"));
 
+SS_MSG(choice_extreme,
+    EN("extreme"),       JA("最大"),          ZH_HANS("极强"),     ZH_HANT("極強"),
+    KO("매우 강하게"),    DE("extrem"),       FR("extrême"),      ES("extrema"),
+    PT("extrema"),       IT("estrema"),      NL("extreem"),      RU("экстремальное"),
+    TR("aşırı"));
+
 SS_MSG(choice_low,
     EN("low"),           JA("低"),            ZH_HANS("低"),       ZH_HANT("低"),
     KO("낮음"),           DE("niedrig"),      FR("faible"),       ES("baja"),
@@ -14339,6 +14345,7 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"floater_suppression", "off",    &choice_off},
     {"floater_suppression", "mild",   &choice_mild},
     {"floater_suppression", "strong", &choice_strong},
+    {"floater_suppression", "extreme", &choice_extreme},
 
     {"distraction_robustness", "off",    &choice_off},
     {"distraction_robustness", "mild",   &choice_mild},

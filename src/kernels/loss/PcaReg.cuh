@@ -23,6 +23,12 @@ inline uint32_t pca_reg_terms(float normal, float surfel, float erank, float tra
 // pass for k others runs the smallest that holds them.
 inline int pca_reg_capacity(int k) { return k <= 8 ? 8 : (k <= 16 ? 16 : 32); }
 
+// The window must fit one workgroup's slab: kPcaMaxHalf in shaders/pca_reg.slang.
+inline bool pca_reg_uses_slab(int mode, int k, int window, float w_transparency) {
+    return mode == (int)PcaRegMode::Best && (window > k + 1 ? window : k + 1) / 2 <= 64 &&
+           w_transparency == 0;
+}
+
 
 /* == AUTO HEADER GENERATOR - DO NOT EDIT THIS LINE OR ANYTHING BELOW THIS LINE == */
 

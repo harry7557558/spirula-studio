@@ -73,10 +73,16 @@ static void training_overrides(const fs::path& root) {
     SS_CHECK(touched.count("cap_max") && touched.count("num_iterations") &&
              touched.count("sh_degree") && touched.count("floater_suppression"));
 
+    run.floater_suppression = "extreme";
+    SS_CHECK(build());
+    SS_CHECK(cfg.pca_reg_neighbors == 31);
+    SS_CHECK(close(cfg.depth_distortion_reg, 0.1f) && close(cfg.max_screen_size, 0.1f));
+
     run.floater_suppression = "off";
     SS_CHECK(build());
     TrainConfig stock;
     train_apply_preset(stock, base);
+    SS_CHECK(cfg.pca_reg_neighbors == stock.pca_reg_neighbors);
     SS_CHECK(close(cfg.depth_distortion_reg, stock.depth_distortion_reg));
     SS_CHECK(close(cfg.rgb_distortion_reg, stock.rgb_distortion_reg));
     SS_CHECK(close(cfg.max_screen_size, stock.max_screen_size));
@@ -150,9 +156,9 @@ static void region_per_run(const fs::path& root) {
 static void queue_roundtrip(const fs::path& root) {
     gui::BatchRow row;
     row.dataset = root.string();
-    const char* regions[] = {"", "roi/castle.json", "off", "roi/castle.json"};
+    const char* regions[] = {"", "roi/castle.json", "off", "roi/castle.json", "off"};
     int n = 0;
-    for (const auto& value : {"", "off", "mild", "strong"}) {
+    for (const auto& value : {"", "off", "mild", "strong", "extreme"}) {
         gui::BatchRun run;
         run.iterations = "123";
         run.cap_max = "456";

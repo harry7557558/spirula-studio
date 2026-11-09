@@ -1,7 +1,7 @@
 // Device time of the local-PCA regularizer's parts on a trained model's
 // splats, per neighbour search; same source on both backends.
 //
-// ./pca_reg_bench <splat.ply | uniform:N> [k=16] [iters=20] [cov=0] [erank=0] [transparency=0]
+// ./pca_reg_bench <splat.ply | uniform:N> [k=16] [iters=20] [cov=0] [erank=0] [transparency=0] [surfel=1]
 
 #include <kernels/loss/PcaReg.cuh>
 
@@ -41,7 +41,7 @@ struct Timer {
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <splat.ply | uniform:N> [k=16] [iters=20] "
-                     "[cov=0] [erank=0] [transparency=0]\n", argv[0]);
+                     "[cov=0] [erank=0] [transparency=0] [surfel=1]\n", argv[0]);
         return 2;
     }
     spirula::SplatCloud c;
@@ -71,6 +71,7 @@ int main(int argc, char** argv) {
     const int covariance = argc > 4 ? std::atoi(argv[4]) : 0;
     const float erank = argc > 5 ? std::atof(argv[5]) : 0;
     const float transparency = argc > 6 ? std::atof(argv[6]) : 0;
+    const float surfel = argc > 7 ? std::atof(argv[7]) : 1;
     DeviceVector<int32_t> perm, ranges;
     DeviceVector<float4> sorted, nodes;
     DeviceVector<int4> meta;
@@ -88,7 +89,7 @@ int main(int argc, char** argv) {
         pca_reg_neighborhood_tensor(n, (int)mode, k, 4 * (k + 1), means, quats, scales, opacities, covariance, perm,
                                     sorted, nodes, meta, ranges, nbrs, store,
                                     DeviceVector<float>(), false, sa, vm, vq, vs, vo, w,
-                                    0.001f * w, 0.1f * w, w, erank * w, transparency * w, sums);
+                                    0.001f * w, 0.1f * w, surfel * w, erank * w, transparency * w, sums);
     };
     auto kept = dev<int32_t>(n);
     double order = 0, tree = 0, gather = 0;
@@ -123,6 +124,7 @@ int main(int argc, char** argv) {
         {"window", PcaRegMode::Window, false, false},
         {"best of window + store", PcaRegMode::Best, true, false},
         {"best of window", PcaRegMode::Best, false, false},
+        {"best of window, agnostic", PcaRegMode::Best, false, true},
         {"list (from the window)", PcaRegMode::List, false, false},
     };
     for (const auto& p : passes) {

@@ -155,8 +155,9 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
     // (FPBO already avoids fp32 grad buffers) and only when quantization is on.
     // Preserves split_batch via the projection-bwd kernel's requantize-accumulate.
-    engine().grad.quantize_grad =
-        !cfg.optim.use_fused_proj_bwd_optim && (cfg.optim.quantization_level != 0);
+    engine().grad.quantize_grad = !cfg.optim.use_fused_proj_bwd_optim &&
+                                  (cfg.optim.quantization_level != 0) &&
+                                  !cfg.optim.keep_fp32_grad;
 
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_max_weight_begin_step(step, max_steps, cfg.densify);

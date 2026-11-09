@@ -403,6 +403,72 @@ float pca_erank_loss(float3 ev, out float3 grad) {
     return excess * excess;
 }
 
+// A neighbourhood's eigenpairs and G, the loss's adjoint dL/dC.
+struct PcaSolved {
+    bool ok, directional;
+    float3 ev, e0, e1, e2, v_normal;
+    float inv_t, align_loss;
+    float3x3 G;
+};
+
+// C is (xx, yy, zz), (xy, xz, yz). Adds the owner's normal and surfel gradients.
+PcaSolved pca_reg_solve<let SA : bool>(float3 cd, float3 co, uint self, float* quats, float* scales,
+                                       float* v_quats, float* v_scales, uint terms, float w_plane,
+                                       float w_tangent, float w_normal, float w_surfel,
+                                       float w_erank, inout float2 extra) {
+    PcaSolved s;
+    s.ok = false;
+    s.directional = false;
+    s.v_normal = float3(0.0);
+    s.align_loss = 0.0;
+    pca_sym3_eigen(cd, co, s.ev, s.e0, s.e1, s.e2);
+    if (!all(isfinite(s.ev)) || !all(isfinite(s.e0))) return s;
+    s.ok = true;
+    float3 ev = s.ev;
+    float trace = max(ev.x + ev.y + ev.z, 0.0);
+    s.inv_t = SA ? (trace > 1e-30 ? 1.0 / trace : 0.0) : 1.0;
+    float3 ge = s.inv_t * float3(w_plane, -w_tangent, w_tangent);
+    if (ev.y == ev.z) ge.yz = float2(0.0);
+    if ((terms & 4u) != 0u) {
+        float3 rank_grad;
+        extra.x = pca_erank_loss(ev, rank_grad);
+        ge += w_erank * rank_grad;
+    }
+    s.G = ge.x * pca_outer(s.e0, s.e0) + ge.y * pca_outer(s.e1, s.e1) + ge.z * pca_outer(s.e2, s.e2);
+    s.directional = ev.y - ev.x > 1e-6 * max(trace, 1e-30);
+    if ((terms & 1u) != 0u || (terms & 2u) != 0u) {
+        float3 ls = pca_load3(scales, self);
+        uint axis = ls.x <= ls.y ? (ls.x <= ls.z ? 0u : 2u) : (ls.y <= ls.z ? 1u : 2u);
+        if ((terms & 1u) != 0u && s.directional) {
+            float4 quat = pca_load4(quats, self);
+            s.align_loss = 1.0 - pca_axis_align(quat, s.e0, axis);
+            var dq = diffPair(quat);
+            var dn = diffPair(s.e0);
+            bwd_diff(pca_axis_align)(dq, dn, axis, -w_normal);
+            pca_add4(v_quats, self, dq.d);
+            s.v_normal += dn.d;
+        }
+        if ((terms & 2u) != 0u) {
+            float smin = ls[axis];
+            if (SA) smin -= max(ls.x, max(ls.y, ls.z));
+            SS_PCA_REG_ATOMIC_ADD(v_scales + 3 * self + axis, w_surfel * exp(smin));
+        }
+    }
+    return s;
+}
+
+// Eigenvector VJP; the smallest eigenspace is unique only across a resolved gap.
+void pca_reg_finish(inout PcaSolved s, uint terms) {
+    if (!s.directional || (terms & 9u) == 0u) return;
+    float3 u = (dot(s.e1, s.v_normal) / (s.ev.x - s.ev.y)) * s.e1 +
+               (dot(s.e2, s.v_normal) / (s.ev.x - s.ev.z)) * s.e2;
+    s.G += 0.5 * (pca_outer(u, s.e0) + pca_outer(s.e0, u));
+}
+
+float3 pca_solved_losses(PcaSolved s) {
+    return float3(s.ev.x * s.inv_t, (s.ev.z - s.ev.y) * s.inv_t, s.align_loss);
+}
+
 float3 pca_reg_owner<let K : int, let SA : bool>(
     uint r, uint mode, uint n, uint k, uint window, float* means, float* quats,
     float* scales, float* opacities, uint covariance, uint terms, int* perm, float4* sorted, float4* nodes, int4* meta, int* ranges,
@@ -479,49 +545,19 @@ float3 pca_reg_owner<let K : int, let SA : bool>(
         if (covariance == 2u) moment += pca_sigma(pca_load4(quats, id), pca_load3(scales, id));
         C += (weight / total) * moment;
     }
-    float3 ev, e0, e1, e2;
-    pca_sym3_eigen(float3(C[0][0], C[1][1], C[2][2]),
-                  float3(C[0][1], C[0][2], C[1][2]), ev, e0, e1, e2);
-    if (!all(isfinite(ev)) || !all(isfinite(e0))) return float3(0.0);
-    float trace = max(ev.x + ev.y + ev.z, 0.0);
-    float inv_t = SA ? (trace > 1e-30 ? 1.0 / trace : 0.0) : 1.0;
-    float3 ge = inv_t * float3(w_plane, -w_tangent, w_tangent);
-    if (ev.y == ev.z) ge.yz = float2(0.0);
-    if ((terms & 4u) != 0u) {
-        float3 rank_grad;
-        extra.x = pca_erank_loss(ev, rank_grad);
-        ge += w_erank * rank_grad;
-    }
-    float3x3 G = ge.x * pca_outer(e0, e0) + ge.y * pca_outer(e1, e1) + ge.z * pca_outer(e2, e2);
-    float3 v_normal = float3(0.0);
-    bool directional = ev.y - ev.x > 1e-6 * max(trace, 1e-30);
-    float align_loss = 0.0;
-    if ((terms & 1u) != 0u || (terms & 2u) != 0u) {
-        float3 ls = pca_load3(scales, self);
-        uint axis = ls.x <= ls.y ? (ls.x <= ls.z ? 0u : 2u) : (ls.y <= ls.z ? 1u : 2u);
-        if ((terms & 1u) != 0u && directional) {
-            float4 quat = pca_load4(quats, self);
-            align_loss = 1.0 - pca_axis_align(quat, e0, axis);
-            var dq = diffPair(quat);
-            var dn = diffPair(e0);
-            bwd_diff(pca_axis_align)(dq, dn, axis, -w_normal);
-            pca_add4(v_quats, self, dq.d);
-            v_normal += dn.d;
-        }
-        if ((terms & 2u) != 0u) {
-            float smin = ls[axis];
-            if (SA) smin -= max(ls.x, max(ls.y, ls.z));
-            SS_PCA_REG_ATOMIC_ADD(v_scales + 3 * self + axis, w_surfel * exp(smin));
-        }
-    }
-    if ((terms & 8u) != 0u && directional) {
+    PcaSolved st = pca_reg_solve<SA>(float3(C[0][0], C[1][1], C[2][2]),
+                                     float3(C[0][1], C[0][2], C[1][2]), self, quats, scales,
+                                     v_quats, v_scales, terms, w_plane, w_tangent, w_normal,
+                                     w_surfel, w_erank, extra);
+    if (!st.ok) return float3(0.0);
+    if ((terms & 8u) != 0u && st.directional) {
         float log_t = 0.0;
         [ForceUnroll]
         for (int j = 0; j <= K; j++) {
             if (j < K && (uint(j) >= k || !(h.d[j] < kPcaFar))) continue;
             uint id = j == K ? self : (by_rank ? uint(perm[h.id[j]]) : h.id[j]);
             float a = pca_ray_alpha(pca_load3(means, id) - q, pca_load4(quats, id),
-                                    pca_load3(scales, id), opacities[id], e0);
+                                    pca_load3(scales, id), opacities[id], st.e0);
             log_t += log(1.0 - a);
         }
         extra.y = exp(log_t);
@@ -534,7 +570,7 @@ float3 pca_reg_owner<let K : int, let SA : bool>(
             var dq = diffPair(pca_load4(quats, id));
             var ds = diffPair(pca_load3(scales, id));
             var da = diffPair(opacities[id]);
-            var dn = diffPair(e0);
+            var dn = diffPair(st.e0);
             float a = pca_ray_alpha(dd.p, dq.p, ds.p, da.p, dn.p);
             bwd_diff(pca_ray_alpha)(dd, dq, ds, da, dn, -w_transparency * extra.y / (1.0 - a));
             if (gate_means == 0u || radii[id] > 0.0) pca_add3(v_means, id, dd.d);
@@ -542,16 +578,12 @@ float3 pca_reg_owner<let K : int, let SA : bool>(
             pca_add4(v_quats, id, dq.d);
             pca_add3(v_scales, id, ds.d);
             SS_PCA_REG_ATOMIC_ADD(v_opacities + id, da.d);
-            v_normal += dn.d;
+            st.v_normal += dn.d;
         }
         if (gate_means == 0u || radii[self] > 0.0) pca_add3(v_means, self, query_grad);
     }
-    // Eigenvector VJP; the smallest eigenspace is unique only across a resolved gap.
-    if (directional && ((terms & 9u) != 0u)) {
-        float3 u = (dot(e1, v_normal) / (ev.x - ev.y)) * e1 +
-                   (dot(e2, v_normal) / (ev.x - ev.z)) * e2;
-        G += 0.5 * (pca_outer(u, e0) + pca_outer(e0, u));
-    }
+    pca_reg_finish(st, terms);
+    float3x3 G = st.G;
     if (w_plane != 0.0 || w_tangent != 0.0 || w_normal != 0.0 || w_erank != 0.0 || w_transparency != 0.0) {
         float gc = dot(G[0], C[0]) + dot(G[1], C[1]) + dot(G[2], C[2]);
         [ForceUnroll]
@@ -576,7 +608,7 @@ float3 pca_reg_owner<let K : int, let SA : bool>(
                 SS_PCA_REG_ATOMIC_ADD(v_opacities + id, beta * (1.0 - weight) * (moment - gc));
         }
     }
-    return float3(ev.x * inv_t, (ev.z - ev.y) * inv_t, align_loss);
+    return pca_solved_losses(st);
 }
 
 #define SS_PCA_REG_OWNER_ARGS                                                          \
@@ -603,3 +635,209 @@ SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k32, 32, false)
 SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k8_sa, 8, true)
 SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k16_sa, 16, true)
 SS_PCA_REG_OWNER_EXPORT(pca_reg_owner_k32_sa, 32, true)
+
+// ================
+// Best-of-window, one workgroup at a time
+// ================
+// Scatter costs one flush per target instead of 11 atomics per neighbour;
+// design and measurements: docs/notes/pca-reg.md. Launch with exactly kPcaGroup threads.
+static const uint kPcaGroup = 128;
+static const uint kPcaMaxHalf = 64;  // pca_reg_uses_slab in kernels/loss/PcaReg.cuh
+static const uint kPcaSlabMax = 256;
+// A packed key at or above this is empty, or a non-finite distance.
+static const uint kPcaKeyFar = 0x7f800000u;
+
+groupshared float4 g_pca_pos[kPcaSlabMax];  // world xyz, w opacity weight
+groupshared float4 g_pca_sd[kPcaSlabMax];   // Sigma xx, yy, zz
+groupshared float4 g_pca_so[kPcaSlabMax];   // Sigma xy, xz, yz
+groupshared uint g_pca_id[kPcaSlabMax];
+groupshared float4 g_pca_hd[kPcaGroup];     // G / total xx, yy, zz; w = -(G : C) / total
+groupshared float4 g_pca_ho[kPcaGroup];     // G / total xy, xz, yz
+groupshared float4 g_pca_mn[kPcaGroup];     // weighted mean, from the owner's centre
+groupshared uint g_pca_who[kPcaSlabMax * 4]; // per target: which owners chose it, a bit each
+
+void pca_slab_fill(uint s, uint rank, uint covariance, int* perm, float4* sorted, float* quats,
+                   float* scales, float* opacities) {
+    uint id = uint(perm[rank]);
+    g_pca_id[s] = id;
+    for (uint w = 0; w < 4; w++) g_pca_who[4 * s + w] = 0u;
+    g_pca_pos[s] = float4(sorted[rank].xyz, covariance == 0u ? 1.0 : pca_opacity(opacities[id]));
+    if (covariance == 2u) {
+        float3x3 S = pca_sigma(pca_load4(quats, id), pca_load3(scales, id));
+        g_pca_sd[s] = float4(S[0][0], S[1][1], S[2][2], 0.0);
+        g_pca_so[s] = float4(S[0][1], S[0][2], S[1][2], 0.0);
+    }
+}
+
+float3 pca_slab_owner<let K : int, let SA : bool>(
+    uint o, uint r, uint lo, uint n, uint k, uint half_, uint covariance, uint terms, int* nbrs,
+    uint store_list, float* quats, float* scales, float* v_quats, float* v_scales, float w_plane,
+    float w_tangent, float w_normal, float w_surfel, float w_erank, inout float2 extra) {
+    uint sr = r - lo;
+    float4 own = g_pca_pos[sr];
+    float3 q = own.xyz;
+    // Distance over slot, one register a neighbour: the ascending list is a
+    // min/max chain. The 8 low mantissa bits only break near-ties.
+    uint keys[K];
+    [ForceUnroll]
+    for (int j = 0; j < K; j++) keys[j] = 0xffffffffu;
+    uint last = min(r + half_ + 1, n);
+    for (uint c = r > half_ ? r - half_ : 0; c < last; c++) {
+        if (c == r) continue;
+        uint s = c - lo;
+        float3 e = g_pca_pos[s].xyz - q;
+        uint x = (asuint(dot(e, e)) & 0xffffff00u) | s;
+        [ForceUnroll]
+        for (int j = 0; j < K; j++) {
+            uint t = min(keys[j], x);
+            x = max(keys[j], x);
+            keys[j] = t;
+        }
+    }
+    uint cnt = 0;
+    float total = own.w;
+    float3 mean = float3(0.0);
+    [ForceUnroll]
+    for (int j = 0; j < K; j++) {
+        if (uint(j) >= k) continue;
+        bool live = keys[j] < kPcaKeyFar;
+        uint s = keys[j] & 0xffu;
+        if (store_list != 0u) nbrs[r * k + uint(j)] = live ? int(g_pca_id[s]) : -1;
+        if (!live) continue;
+        cnt++;
+        float4 p = g_pca_pos[s];
+        total += p.w;
+        mean += p.w * (p.xyz - q);
+    }
+    if (cnt < 2 || !(total > 1e-20)) return float3(0.0);
+    mean /= total;
+    float3 cd = float3(0.0), co = float3(0.0);
+    [ForceUnroll]
+    for (int j = 0; j <= K; j++) {
+        if (j < K && (uint(j) >= k || keys[j] >= kPcaKeyFar)) continue;
+        uint s = j == K ? sr : keys[j] & 0xffu;
+        float4 p = g_pca_pos[s];
+        float3 d = p.xyz - q - mean;
+        float beta = p.w / total;
+        cd += beta * d * d;
+        co += beta * float3(d.x * d.y, d.x * d.z, d.y * d.z);
+        if (covariance == 2u) {
+            cd += beta * g_pca_sd[s].xyz;
+            co += beta * g_pca_so[s].xyz;
+        }
+    }
+    PcaSolved st = pca_reg_solve<SA>(cd, co, g_pca_id[sr], quats, scales, v_quats, v_scales, terms,
+                                     w_plane, w_tangent, w_normal, w_surfel, w_erank, extra);
+    if (!st.ok) return float3(0.0);
+    pca_reg_finish(st, terms);
+    float3 gd = float3(st.G[0][0], st.G[1][1], st.G[2][2]);
+    float3 go = float3(st.G[0][1], st.G[0][2], st.G[1][2]);
+    g_pca_hd[o] = float4(gd / total, -(dot(gd, cd) + 2.0 * dot(go, co)) / total);
+    g_pca_ho[o] = float4(go / total, 0.0);
+    g_pca_mn[o] = float4(mean, 0.0);
+    uint bit = 1u << (o & 31u), word = o >> 5;
+    [ForceUnroll]
+    for (int j = 0; j <= K; j++) {
+        if (j < K && (uint(j) >= k || keys[j] >= kPcaKeyFar)) continue;
+        uint s = j == K ? sr : keys[j] & 0xffu;
+        InterlockedOr(g_pca_who[4 * s + word], bit);
+    }
+    return pca_solved_losses(st);
+}
+
+// Sum what the group's owners published for one rank, then one flush.
+void pca_slab_target(uint s, uint first_owner_slot, uint covariance, float* quats, float* scales,
+                     float* radii, uint gate_means, float* v_means, float* v_quats,
+                     float* v_scales, float* v_opacities) {
+    float3 g = float3(0.0), hd = float3(0.0), ho = float3(0.0);
+    float sum = 0.0;
+    bool any_hit = false;
+    float4 t = g_pca_pos[s];
+    [ForceUnroll]
+    for (int w = 0; w < 4; w++) {
+        uint m = g_pca_who[4 * s + uint(w)];
+        while (m != 0u) {
+            uint o = 32u * uint(w) + firstbitlow(m);
+            m &= m - 1u;
+            float4 h0 = g_pca_hd[o], h1 = g_pca_ho[o];
+            float3 d = t.xyz - g_pca_pos[first_owner_slot + o].xyz - g_pca_mn[o].xyz;
+            float3 hv = float3(h0.x * d.x + h1.x * d.y + h1.y * d.z,
+                               h1.x * d.x + h0.y * d.y + h1.z * d.z,
+                               h1.y * d.x + h1.z * d.y + h0.z * d.z);
+            g += hv;
+            hd += h0.xyz;
+            ho += h1.xyz;
+            sum += dot(d, hv) + h0.w;
+            any_hit = true;
+        }
+    }
+    if (!any_hit) return;
+    uint id = g_pca_id[s];
+    float a = t.w;
+    if (gate_means == 0u || radii[id] > 0.0) pca_add3(v_means, id, (2.0 * a) * g);
+    if (covariance == 2u) {
+        float3x3 h = float3x3(hd.x, ho.x, ho.y, ho.x, hd.y, ho.z, ho.y, ho.z, hd.z);
+        var dq = diffPair(pca_load4(quats, id));
+        var ds = diffPair(pca_load3(scales, id));
+        bwd_diff(pca_sigma_contract)(dq, ds, h, a);
+        pca_add4(v_quats, id, dq.d);
+        pca_add3(v_scales, id, ds.d);
+        sum += dot(hd, g_pca_sd[s].xyz) + 2.0 * dot(ho, g_pca_so[s].xyz);
+    }
+    if (covariance != 0u) SS_PCA_REG_ATOMIC_ADD(v_opacities + id, a * (1.0 - a) * sum);
+}
+
+float3 pca_reg_slab<let K : int, let SA : bool>(
+    uint tid, uint group_base, uint n, uint k, uint window, float* quats, float* scales,
+    float* opacities, uint covariance, uint terms, int* perm, float4* sorted, int* nbrs,
+    uint store_list, float* radii, uint gate_means, float* v_means, float* v_quats,
+    float* v_scales, float* v_opacities, float w_plane, float w_tangent, float w_normal,
+    float w_surfel, float w_erank, out float2 extra) {
+    extra = float2(0.0);
+    uint half_ = max(window, k + 1) / 2;
+    uint lo = group_base > half_ ? group_base - half_ : 0;
+    uint hi = min(group_base + kPcaGroup + half_, n);
+    uint owners_end = min(group_base + kPcaGroup, n);
+    [ForceUnroll]
+    for (int i = 0; i < 2; i++) {
+        uint rank = lo + 2 * tid + uint(i);
+        if (rank < hi)
+            pca_slab_fill(rank - lo, rank, covariance, perm, sorted, quats, scales, opacities);
+    }
+    GroupMemoryBarrierWithGroupSync();
+    float3 l = float3(0.0);
+    uint r = group_base + tid;
+    if (r < owners_end)
+        l = pca_slab_owner<K, SA>(tid, r, lo, n, k, half_, covariance, terms, nbrs, store_list,
+                                  quats, scales, v_quats, v_scales, w_plane, w_tangent, w_normal,
+                                  w_surfel, w_erank, extra);
+    GroupMemoryBarrierWithGroupSync();
+    [ForceUnroll]
+    for (int i = 0; i < 2; i++) {
+        uint rank = lo + 2 * tid + uint(i);
+        if (rank < hi)
+            pca_slab_target(rank - lo, group_base - lo, covariance, quats, scales, radii,
+                            gate_means, v_means, v_quats, v_scales, v_opacities);
+    }
+    return l;
+}
+
+#define SS_PCA_REG_SLAB_EXPORT(NAME, K, SA)                                            \
+    [CudaDeviceExport]                                                                 \
+    float3 NAME(uint tid, uint group_base, uint n, uint k, uint window, float* quats,  \
+                float* scales, float* opacities, uint covariance, uint terms, int* perm, \
+                float4* sorted, int* nbrs, uint store_list, float* radii, uint gate_means, \
+                float* v_means, float* v_quats, float* v_scales, float* v_opacities,   \
+                float w_plane, float w_tangent, float w_normal, float w_surfel,        \
+                float w_erank, out float2 extra) {                                     \
+        return pca_reg_slab<K, SA>(tid, group_base, n, k, window, quats, scales, opacities, \
+                                   covariance, terms, perm, sorted, nbrs, store_list, radii, \
+                                   gate_means, v_means, v_quats, v_scales, v_opacities, w_plane, \
+                                   w_tangent, w_normal, w_surfel, w_erank, extra);     \
+    }
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k8, 8, false)
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k16, 16, false)
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k32, 32, false)
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k8_sa, 8, true)
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k16_sa, 16, true)
+SS_PCA_REG_SLAB_EXPORT(pca_reg_slab_k32_sa, 32, true)

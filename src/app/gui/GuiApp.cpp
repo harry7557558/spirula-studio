@@ -10803,12 +10803,13 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
     const float sp = ImGui::GetStyle().ItemSpacing.x;
     const float bw = ImGui::GetFrameHeight() + 6.0f;
     const bool inline_floater = row >= 0;
-    const char* values[] = {"", "off", "mild", "strong"};
-    const Msg* choices[] = {&msg::floater_per_preset, &msg::floater_off,
-                            &msg::floater_mild, &msg::floater_strong};
+    const char* values[] = {"", "off", "mild", "strong", "extreme"};
+    const Msg* choices[] = {&msg::floater_per_preset, &msg::floater_off, &msg::floater_mild,
+                            &msg::floater_strong, &msg::floater_extreme};
+    const int num_choices = IM_ARRAYSIZE(values);
     int selected = 0;
     float floater_w = 0.0f;
-    for (int k = 0; k < 4; k++) {
+    for (int k = 0; k < num_choices; k++) {
         if (run.floater_suppression == values[k]) selected = k;
         floater_w = std::max(floater_w, ImGui::CalcTextSize(choices[k]->get()).x);
     }
@@ -10847,7 +10848,7 @@ bool GuiApp::draw_batch_run(BatchRun& run, int row, int slot, bool meshing,
     if (inline_floater) ImGui::SameLine(0, sp);
     ImGui::SetNextItemWidth(floater_w);
     if (ui::BeginComboRaw("##floater_suppression", choices[selected]->get())) {
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < num_choices; k++) {
             if (ui::Selectable(*choices[k], selected == k)) {
                 run.floater_suppression = values[k];
                 moved = true;
@@ -12209,7 +12210,7 @@ void GuiApp::draw_basic_options() {
     // the problem they name.
     macro_option("floater_suppression", _cfg.floater_suppression,
                  fld::floater_suppression, fld::floater_suppression_help,
-                 {"off", "mild", "strong"});
+                 {"off", "mild", "strong", "extreme"});
     macro_option("distraction_robustness", _cfg.distraction_robustness,
                  fld::distraction_robustness, fld::distraction_robustness_help,
                  {"off", "mild", "strong"});

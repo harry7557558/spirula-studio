@@ -857,6 +857,69 @@ void test_covariance_limits() {
     }
 }
 
+// Best's one-workgroup path against the neighbour-at-a-time path replaying the
+// lists it chose: every covariance, scale mode, gate and gradient channel.
+void test_slab_matches_list(bool messy, int k) {
+    const Cloud c = make_cloud(1200, messy, 101 + (uint32_t)k);
+    const int64_t n = c.n();
+    const std::string tag = std::string(messy ? "messy" : "clean") + " slab k=" +
+                            std::to_string(k) + ": ";
+    DeviceCloud d(c);
+    std::mt19937 rng((uint32_t)k);
+    std::normal_distribution<float> g(0.f, 1.5f);
+    std::vector<float> ha((size_t)n);
+    for (float& a : ha) a = g(rng);
+    const Dev<float> opacities(n, ha.data());
+    const std::vector<float> hr = make_radii(n);
+    const Dev<float> radii(n, hr.data());
+    Dev<int32_t> perm(n);
+    Dev<float4> sorted(n);
+    {
+        pool_begin_phase(PoolPhase::RasterBwd);
+        auto [p, srt, box] = pca_reg_order_tensor(n, d.means.v(), DeviceVector<int32_t>());
+        backend::memcpy_sync(perm.p, p.data_ptr(), n * sizeof(int32_t), MemcpyKind::DeviceToDevice);
+        backend::memcpy_sync(sorted.p, srt.data_ptr(), n * sizeof(float4), MemcpyKind::DeviceToDevice);
+    }
+    Dev<int32_t> nbrs(n * k);
+    const int window = 4 * (k + 1);
+    check(pca_reg_uses_slab((int)PcaRegMode::Best, k, window, 0.0f), tag + "best takes the slab");
+    const float w = 1.0f / (float)n;
+    for (int cov = 0; cov < 3; cov++) for (bool sa : {false, true}) for (bool gate : {false, true}) {
+        auto go = [&](PcaRegMode mode, bool store) {
+            Dev<float3> vm(n), vs(n);
+            Dev<float4> vq(n);
+            Dev<float> vo(n), sums(5);
+            pca_reg_neighborhood_tensor(n, (int)mode, k, window, d.means.v(), d.quats.v(),
+                d.scales.v(), opacities.v(), cov, perm.v(), sorted.v(), {}, {}, {}, nbrs.v(), store,
+                gate ? radii.v() : DeviceVector<float>(), gate, sa, vm.v(), vq.v(), vs.v(), vo.v(),
+                w, 0.001f * w, 0.1f * w, 0.2f * w, 0.03f * w, 0.0f, sums.v());
+            backend::device_synchronize();
+            const auto m = vm.host();
+            const auto q = vq.host();
+            const auto s = vs.host();
+            return std::array<std::vector<float>, 5>{
+                std::vector<float>((const float*)m.data(), (const float*)m.data() + 3 * n),
+                std::vector<float>((const float*)q.data(), (const float*)q.data() + 4 * n),
+                std::vector<float>((const float*)s.data(), (const float*)s.data() + 3 * n),
+                vo.host(), sums.host()};
+        };
+        const auto slab = go(PcaRegMode::Best, true);
+        const auto list = go(PcaRegMode::List, false);
+        const char* const names[] = {"means", "quats", "scales", "opacities", "sums"};
+        for (int ch = 0; ch < 5; ch++) {
+            double worst = 0, norm = 0;
+            for (size_t i = 0; i < list[ch].size(); i++) {
+                worst = std::max(worst, (double)std::fabs(slab[ch][i] - list[ch][i]));
+                norm = std::max(norm, (double)std::fabs(list[ch][i]));
+            }
+            check(worst <= 2e-3 * norm + 1e-30,
+                  tag + "cov=" + std::to_string(cov) + " sa=" + std::to_string(sa) + " gate=" +
+                      std::to_string(gate) + " " + names[ch] + " match the list path (" +
+                      std::to_string(worst / std::max(norm, 1e-300)) + " of max)");
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -867,6 +930,10 @@ int main() {
     test_cloud(false, 31);
     test_cloud(true, 15);
     test_sim3(16);
+    test_slab_matches_list(false, 31);
+    test_slab_matches_list(true, 31);
+    test_slab_matches_list(false, 8);
+    test_slab_matches_list(true, 16);
     std::printf("%s\n", g_failures ? "FAILED" : "PASSED");
     return g_failures ? 1 : 0;
 }
