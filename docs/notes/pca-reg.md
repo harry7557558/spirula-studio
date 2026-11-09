@@ -230,10 +230,15 @@ before the optim step. On the fused 3dgs / mip path the optimizer has no world
 gradient buffers of its own, so the regularizer writes `pca_reg.v_*` and the
 fused kernel loads them as world gradients (both backends already guard each
 channel); elsewhere it adds into `engine().grad` scaled by `1 / grad_scale`.
-A run with this regularizer leaves the non-fused path's gradient accumulators
-in fp32 (`keep_fp32_grad`), quantization or not, because that is the buffer it
-adds into. The fused path is unaffected; an engine caller that sets neither
-gets the refusal in `engine_pca_reg_step`.
+On the non-fused quantized path a run with this regularizer keeps means, quats
+and scales in fp32 (`keep_fp32_geometry_grad`, the layout 3dgut already uses),
+because those are the buffers it adds into: 20 bytes more per splat than
+quantizing them. Opacity, DC and SH stay quantized, the regularizer's opacity
+gradient reaching the optimizer through its auxiliary input. Training takes
+that path at a batch size above 1, which the default `max_batch_per_epoch` of
+800 gives from 1200 training images, and on rigs with unequal face sizes. The
+fused path is unaffected; an engine caller that sets neither gets the refusal
+in `engine_pca_reg_step`.
 
 Everything recomputed per step -- the sort, the Morton-ordered centres, the
 search tree, the fused path's gradients -- is in the `RasterBwd` phase of the
@@ -280,12 +285,12 @@ lists the slab chose, every covariance and scale mode.
 | | Vulkan | CUDA |
 |---|---:|---:|
 | neighbour-at-a-time | 7.48 | 8.74 |
-| slab | 2.13 | 1.67 |
+| slab | 2.16 | 1.73 |
 
 What the 7.5 ms was: 352 float atomics an owner cost about 3 ms, the window
 search 2.3, and the neighbour math and loads 2.3; the atomics overlap the rest,
 so removing only them gave 4.55. On the slab, 26 atomics an owner remain, and
-ablation splits the 2.13 ms into 0.9 scan and chain, 0.6 target walk, 0.6 the
+ablation splits the 2.1 ms into 0.9 scan and chain, 0.6 target walk, 0.6 the
 rest. A centre-out scan with an early reject measured no faster, since every
 lane of a warp must agree to skip.
 

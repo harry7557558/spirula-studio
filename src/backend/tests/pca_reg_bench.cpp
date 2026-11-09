@@ -7,6 +7,7 @@
 
 #include "checkpoint/SplatPly.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <string>

@@ -203,20 +203,9 @@ struct GTData {
     bool has_mask = false;
 };
 
-// Splat parameter gradients (pool-backed, zeroed each backward).
-//
-// GRADIENT QUANTIZATION (non-FPBO path, quantization_level != 0):
-//   When `quantize_grad` is set, the per-splat world-gradient accumulator is
-//   stored block-wise quantized instead of the fp32 buffers above -- 16-bit
-//   linear for the non-SH attributes and 8-bit linear for SH. Layout is
-//   per-SPLAT-block (one float2 bound per 256 splats, mirroring the FPBO
-//   Adam-state `_NonShQ` convention): n_bounds = ceil(N/256); the SH bound
-//   covers all 3*K cells of its 256 splats. The projection-backward kernel
-//   (ProjectionBwdQuantGrad) does decode -> accumulate -> block-reduce bounds
-//   -> encode each sub-batch; the optim step decodes on read. For 3dgut,
-//   means/quats/scales receive rasterization-backward atomicAdds and therefore
-//   stay fp32 (only opacities/features_dc/features_sh are quantized); for
-//   3dgs/mip all six are quantized and the fp32 buffers above are left empty.
+// Per-splat gradients. `quantize_grad` (non-FPBO, quantization_level != 0) stores
+// them 16-bit (SH 8-bit) with one bound per 256 splats; 3dgut and `fp32_geometry`
+// keep means/quats/scales fp32. ProjectionBwdQuantGrad re-encodes each sub-batch.
 struct SplatGrad {
     DeviceVector<float3>   means;
     DeviceVector<float4>   quats;
@@ -227,6 +216,7 @@ struct SplatGrad {
 
     // Block-wise quantized accumulators (populated only when quantize_grad).
     bool quantize_grad = false;
+    bool fp32_geometry = false;
     QuantizedTensor<16, 256> means_q;         // 3 cells/splat
     QuantizedTensor<16, 256> quats_q;         // 4 cells/splat
     QuantizedTensor<16, 256> scales_q;        // 3 cells/splat

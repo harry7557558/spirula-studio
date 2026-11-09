@@ -72,7 +72,7 @@ void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
         {(int64_t)cfg.neighbors, (int64_t)kPcaRegMaxNeighbors - 1, n - 1});
 
     const bool fused = e.optim.use_fused_proj_bwd_optim;
-    if (!fused && e.grad.quantize_grad)
+    if (!fused && e.grad.quantize_grad && e.grad.means.data_ptr() == nullptr)
         throw std::runtime_error(
             "pca_reg: the quantized-gradient path (quantization_level > 0 without the "
             "fused projection-backward optimizer) has no fp32 buffer to add into");

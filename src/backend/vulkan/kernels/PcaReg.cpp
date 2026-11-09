@@ -186,6 +186,7 @@ void pca_reg_neighborhood_tensor(
                                 [scale_agnostic ? 1 : 0][cap == 8 ? 0 : (cap == 16 ? 1 : 2)];
     const int terms = (int)pca_reg_terms(w_normal, w_surfel, w_erank, w_transparency) |
                       ((w_plane != 0 || w_tangent != 0) ? 16 : 0);
-    vkk::dispatch_ring_budgeted(entry, {covariance, terms, mode}, f.per_row, f.rows, 1,
+    vkk::dispatch_ring_budgeted(entry, {(uint32_t)covariance, (uint32_t)terms, (uint32_t)mode},
+                                f.per_row, f.rows, 1,
                                 &p, sizeof(p), (double)num_splats * (double)(k + 1), nullptr);
 }

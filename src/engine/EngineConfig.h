@@ -162,9 +162,10 @@ struct OptimConfig {
     // reads only the level, but non-FPBO paths and EngineState read the
     // individual bits.
     int   quantization_level           = 0;
-    // The local-PCA regularizer adds fp32 gradients; split-batch runs keep
-    // fp32 accumulators for it, from the first step so the forecast sees them.
-    bool  keep_fp32_grad               = false;
+    // The local-PCA regularizer adds fp32 mean, quat and scale gradients;
+    // split-batch runs keep those three fp32, from the first step so the
+    // forecast sees them.
+    bool  keep_fp32_geometry_grad      = false;
     bool  use_per_splat_bias_correction   = false;
     // Per-splat regularizers act only on splats some camera rendered this step.
     bool  reg_rendered_only               = false;

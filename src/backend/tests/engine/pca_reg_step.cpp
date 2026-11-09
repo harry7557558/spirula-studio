@@ -29,7 +29,7 @@ bool run(const char* primitive, bool fused, bool quantized) {
     EngineStepConfig cfg{};
     cfg.optim.use_fused_proj_bwd_optim = fused;
     cfg.optim.quantization_level = quantized ? 1 : 0;
-    cfg.optim.keep_fp32_grad = true;
+    cfg.optim.keep_fp32_geometry_grad = true;
     cfg.optim.sh_value_bits = quantized ? 16 : 32;
     cfg.optim.sh_optim_bits = quantized ? 8 : 32;
     cfg.optim.non_sh_optim_bits = quantized ? 16 : 32;
