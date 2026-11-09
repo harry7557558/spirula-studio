@@ -91,6 +91,8 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     _tool.cancel();
     _history.clear();
     _saved_msg.clear();
+    _edit_request.reset();
+    _editing.reset();
     _path.cancel();
     _pen.cancel();
     _pt_part = PenPart::None;
@@ -1360,13 +1362,13 @@ void SegmentPanel::draw_tools(app::FrameStencil& stencil, bool& edited) {
 
 // One list goes where the tools draw; a per-camera set goes on the cameras it
 // names, with separate areas turned on, and refuses an input that has none.
-void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
+bool SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
     app::MaskSet set;
     std::string err;
     if (!load_stencil_preset(path, set, err)) {
         _saved_msg = spirula::i18n::format(dmsg::stencil_load_failed, {err});
         _saved_msg_err = true;
-        return;
+        return false;
     }
     if (set.per_camera() && !_cameras.empty()) {
         std::string names;
@@ -1378,7 +1380,7 @@ void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
         if (!any) {
             _saved_msg = spirula::i18n::format(dmsg::stencil_set_no_camera, {names});
             _saved_msg_err = true;
-            return;
+            return false;
         }
     }
     bool edited = false;
@@ -1392,6 +1394,30 @@ void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
     _shape_sel = -1;
     _drag_handle = -1;
     _saved_msg.clear();
+    _editing.reset();
+    _needs_run = true;
+    return true;
+}
+
+void SegmentPanel::start_editing(app::FrameStencil& s, const StencilPreset& set) {
+    if (!load_file(s, set.path)) return;
+    _editing = set;
+    _save_name = set.name;
+}
+
+void SegmentPanel::show_camera(const std::string& camera) {
+    if (_src.is_video) {
+        const auto it = std::find(_folders.begin(), _folders.end(), camera);
+        if (it == _folders.end()) return;
+        _folder_idx = (int)(it - _folders.begin());
+    } else {
+        const auto it = std::find_if(_frames.begin(), _frames.end(), [&](const PreviewFrame& f) {
+            return file_camera(f.path) == camera;
+        });
+        if (it == _frames.end()) return;
+        _frame_idx = (int)(it - _frames.begin());
+    }
+    _frame_dirty = true;
     _needs_run = true;
 }
 
@@ -1401,22 +1427,33 @@ void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
         _in_dataset = list_dataset_stencils(_workspace);
         ImGui::OpenPopup("##stencilload");
     }
+    std::optional<StencilPreset> edit;
     if (ImGui::BeginPopup("##stencilload")) {
+        auto list = [&](const std::vector<StencilPreset>& sets, const char* id) {
+            for (const StencilPreset& p : sets) {
+                if (ui::SelectableRaw(stencil_preset_label(p) + id + p.path, false))
+                    load_file(s, p.path);
+                if (_set_menu.item(p)) edit = p;
+            }
+        };
         ui::SeparatorText(dmsg::stencil_saved_areas);
-        for (const StencilPreset& p : _saved)
-            if (ui::SelectableRaw(stencil_preset_label(p) + "##" + p.path, false))
-                load_file(s, p.path);
+        list(_saved, "##");
         // Kept by earlier runs into this output folder, saved or not.
         if (!_in_dataset.empty()) {
             ui::SeparatorText(dmsg::stencil_in_dataset);
-            for (const StencilPreset& p : _in_dataset)
-                if (ui::SelectableRaw(stencil_preset_label(p) + "##ds" + p.path, false))
-                    load_file(s, p.path);
+            list(_in_dataset, "##ds");
         }
         ImGui::Separator();
         if (ui::Selectable(dmsg::stencil_other_file)) _browse_requested = true;
+        if (edit) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
+    if (edit) start_editing(s, *edit);
+    if (const auto change = _set_menu.draw_dialogs(_saved_msg, _saved_msg_err))
+        if (_editing && _editing->path == change->was) {
+            _editing = change->now;
+            if (_editing) _save_name = _editing->name;
+        }
     // With separate areas on, the set is the whole input's: a file per camera
     // when the cameras differ.
     const app::MaskSet to_save =
@@ -1450,6 +1487,22 @@ void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
         ImGui::EndPopup();
     }
     ui::help_on_hover(dmsg::stencil_saved_areas);
+    if (_editing) {
+        ui::TextDisabledWrapped(dmsg::stencil_editing, {stencil_preset_label(*_editing)});
+        // A one-list set stays one, where Save... would write every camera's.
+        const app::MaskSet edited = _editing->cameras.empty()
+                                        ? app::MaskSet{scope(s).mask.shapes, {}}
+                                        : app::mask_set_of(s);
+        ImGui::BeginDisabled(edited.empty());
+        if (ui::SmallButton(dmsg::stencil_save_changes)) {
+            std::string err;
+            _saved_msg_err = !update_stencil_preset(*_editing, edited, err);
+            _saved_msg = spirula::i18n::format(
+                _saved_msg_err ? dmsg::stencil_save_failed : dmsg::stencil_saved_as,
+                {_saved_msg_err ? err : _editing->path});
+        }
+        ImGui::EndDisabled();
+    }
     if (!_saved_msg.empty()) {
         if (_saved_msg_err)
             ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _saved_msg);
@@ -1622,6 +1675,12 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _listing = false;
             _cameras = camera_names();
         }
+    }
+    if (_edit_request && !_listing.load()) {
+        const EditRequest request = std::move(*_edit_request);
+        _edit_request.reset();
+        show_camera(request.camera);
+        start_editing(stencil, request.set);
     }
     upload_preview();
     {

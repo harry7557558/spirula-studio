@@ -225,6 +225,16 @@ are keyed the same way.
   never load back as one set. The folder holds only the latest run's, so they
   survive a session nobody saved from. **Load...** lists them under "In this
   dataset", and **Other file...** loads any SVG, with its set.
+- **Changing a saved set**: right-clicking one in **Load...** or a row's
+  **Drawn areas** combo offers Edit, Rename and Delete (`StencilSetMenu.h`).
+  Edit loads it into the panel, on that row's input and camera, and **Save
+  changes** writes it back into the folder it came from; it keeps a one-list
+  set one list even with separate areas on. Rename changes the title and the
+  files, and refuses a name in use or one that would write over another set's
+  file (names differing only in case or punctuation share one). Delete asks
+  first, and takes every camera's file of the entry and nothing else of its
+  name. An input already drawing that set keeps its shapes; a preset or batch
+  row naming it by the old name no longer resolves.
 - **CLI**: `spirula sam mask --shape <file>.svg` reads the same files; one
   camera's file brings its set, each camera's list for its own folder under
   `--frames`.

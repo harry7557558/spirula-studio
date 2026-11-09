@@ -57,6 +57,7 @@
 #include <functional>
 #include <future>
 #include <map>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -1040,6 +1041,10 @@ private:
     std::vector<app::MaskSet> _stencil_set_shapes;
     bool _stencil_sets_stale = true;
     bool _segment_was_open = false;
+    StencilSetMenu _stencil_set_menu;
+    void draw_stencil_set_dialogs();
+    // The panel a scan's Edit opens only once its photographs are out.
+    std::optional<SegmentPanel::EditRequest> _scan_edit;
     void load_stencil_sets();
     std::vector<StencilRow> stencil_table_rows(const std::vector<PrepInput>& inputs) const;
     // The table as drawn: the inputs' rows, then those of each scan whose

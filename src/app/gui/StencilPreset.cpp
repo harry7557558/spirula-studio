@@ -21,6 +21,10 @@ std::string stem_for(const std::string& name) {
     return fs::path(preset_file_name(name)).stem().string();
 }
 
+std::string set_name(const fs::path& file, const std::string& title) {
+    return title.empty() ? file.stem().string() : title;
+}
+
 // Every set in `dir`: a file naming no camera on its own, and the files
 // naming one grouped by title.
 std::vector<StencilPreset> list_sets(const fs::path& dir) {
@@ -35,7 +39,7 @@ std::vector<StencilPreset> list_sets(const fs::path& dir) {
         std::vector<app::MaskShape> shapes;
         std::string title, camera, err;
         if (!app::load_mask_svg(f.string(), shapes, title, err, &camera)) continue;
-        const std::string name = title.empty() ? f.stem().string() : title;
+        const std::string name = set_name(f, title);
         if (camera.empty()) {
             out.push_back({name, f.string(), {}});
             continue;
@@ -81,6 +85,45 @@ bool stem_taken(const fs::path& dir, const std::string& stem, const app::MaskSet
     return false;
 }
 
+bool replace_set(const fs::path& dir, const std::string& name, const app::MaskSet& set,
+                 std::string& path, std::string& error) {
+    path.clear();
+    std::error_code ec;
+    // Every file of the old set goes, so a set drawn once per camera and saved
+    // again as one list leaves no stale camera file to be read back.
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != ".svg") continue;
+        std::vector<app::MaskShape> shapes;
+        std::string title, err;
+        if (app::load_mask_svg(it->path().string(), shapes, title, err) &&
+            set_name(it->path(), title) == name)
+            fs::remove(it->path(), ec);
+    }
+    std::vector<std::string> written;
+    if (!write_set(dir, stem_for(name), set, name, written, error)) return false;
+    if (!written.empty()) path = written.front();
+    return true;
+}
+
+// What the list calls `p`, sorted as the list reads them: its file, or every
+// camera's.
+std::vector<fs::path> files_of(const StencilPreset& p) {
+    if (p.cameras.empty()) return {p.path};
+    std::vector<fs::path> files;
+    std::error_code ec;
+    const fs::path dir = fs::path(p.path).parent_path();
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != ".svg") continue;
+        std::vector<app::MaskShape> shapes;
+        std::string title, camera, err;
+        if (app::load_mask_svg(it->path().string(), shapes, title, err, &camera) &&
+            !camera.empty() && set_name(it->path(), title) == p.name)
+            files.push_back(it->path());
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
 }  // namespace
 
 std::string stencil_preset_label(const StencilPreset& p) {
@@ -121,23 +164,71 @@ bool load_stencil_preset(const std::string& name_or_path, app::MaskSet& out,
 
 bool save_stencil_preset(const std::string& name, const app::MaskSet& set, std::string& path,
                          std::string& error) {
-    path.clear();
-    const fs::path dir = stencil_preset_dir();
-    std::error_code ec;
-    // Every file of the old set goes, so a set drawn once per camera and saved
-    // again as one list leaves no stale camera file to be read back.
-    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
-        if (it->path().extension() != ".svg") continue;
-        std::vector<app::MaskShape> shapes;
-        std::string title, err;
-        if (app::load_mask_svg(it->path().string(), shapes, title, err) &&
-            (title.empty() ? it->path().stem().string() : title) == name)
-            fs::remove(it->path(), ec);
-    }
-    std::vector<std::string> written;
-    if (!write_set(dir, stem_for(name), set, name, written, error)) return false;
-    if (!written.empty()) path = written.front();
+    return replace_set(stencil_preset_dir(), name, set, path, error);
+}
+
+bool update_stencil_preset(StencilPreset& p, const app::MaskSet& set, std::string& error) {
+    std::string path;
+    if (!replace_set(fs::path(p.path).parent_path(), p.name, set, path, error)) return false;
+    p.path = path;
+    p.cameras.clear();
+    for (const auto& [camera, shapes] : set.cameras)
+        if (!shapes.empty()) p.cameras.push_back(camera);
     return true;
+}
+
+bool delete_stencil_preset(const StencilPreset& p, std::string& error) {
+    std::error_code ec;
+    for (const fs::path& f : files_of(p)) {
+        fs::remove(f, ec);
+        if (ec) {
+            error = f.string() + ": " + ec.message();
+            return false;
+        }
+    }
+    return true;
+}
+
+StencilRename rename_stencil_preset(StencilPreset& p, const std::string& name, std::string& error) {
+    if (name == p.name) return StencilRename::Done;
+    const fs::path dir = fs::path(p.path).parent_path();
+    for (const StencilPreset& other : list_sets(dir))
+        if (other.name == name) return StencilRename::NameTaken;
+
+    struct Moved {
+        fs::path to;
+        std::string camera;
+        std::vector<app::MaskShape> shapes;
+    };
+    const std::vector<fs::path> old = files_of(p);
+    if (old.empty()) {
+        error = p.path;
+        return StencilRename::Failed;
+    }
+    const std::string stem = stem_for(name);
+    std::vector<Moved> moved;
+    std::error_code ec;
+    for (const fs::path& f : old) {
+        Moved m;
+        std::string title;
+        if (!app::load_mask_svg(f.string(), m.shapes, title, error, &m.camera))
+            return StencilRename::Failed;
+        m.to = dir / (stem + (m.camera.empty() ? "" : "-" + stem_for(m.camera)) + ".svg");
+        // Names differing only in case or punctuation share a file; the set's
+        // own may be overwritten, another's may not.
+        if (fs::exists(m.to, ec) && std::find(old.begin(), old.end(), m.to) == old.end())
+            return StencilRename::NameTaken;
+        moved.push_back(std::move(m));
+    }
+    for (const Moved& m : moved)
+        if (!app::save_mask_svg(m.to.string(), m.shapes, name, error, m.camera))
+            return StencilRename::Failed;
+    for (const fs::path& f : old)
+        if (std::none_of(moved.begin(), moved.end(), [&](const Moved& m) { return m.to == f; }))
+            fs::remove(f, ec);
+    p.name = name;
+    p.path = moved.front().to.string();
+    return StencilRename::Done;
 }
 
 std::vector<std::string> save_dataset_stencils(

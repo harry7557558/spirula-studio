@@ -2885,6 +2885,19 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         // A copy: an edit below rewrites the stencil it would point into.
         const app::CameraStencil cs = row_stencil(owners, row);
         const std::string above = row.above >= 0 ? names[(size_t)row.above] : std::string();
+        // A scan's photographs are taken out of it first, into the dataset.
+        const bool can_draw =
+            !native_work_busy() && (scan ? !_workspace.empty() : p.preview_ready);
+        auto open_panel = [&] {
+            if (scan) {
+                _mask_try_scan = (int)t.scans[row.input - t.inputs];
+                open_scan_mask_preview((size_t)_mask_try_scan);
+            } else {
+                _mask_try_scan = -1;
+                *p.preview_input = (int)row.input;
+                p.open_preview();
+            }
+        };
         ImGui::TableNextRow();
         ImGui::PushID(path.c_str());
         ImGui::PushID(row.camera.c_str());
@@ -2943,6 +2956,7 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
             : cs.mask.shapes.empty() ? std::string(dmsg::stencil_rows_none.get())
             : set >= 0             ? stencil_preset_label(_stencil_sets[(size_t)set])
                                    : std::string(dmsg::stencil_rows_drawn.get());
+        std::optional<StencilPreset> edit;
         ImGui::SetNextItemWidth(-FLT_MIN);
         if (ui::BeginComboRaw("##areas", areas_shown.c_str(), ImGuiComboFlags_HeightLarge)) {
             if (row.above >= 0) {
@@ -2966,27 +2980,24 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
                 if (ui::SelectableRaw(stencil_preset_label(_stencil_sets[k]),
                                       !areas_follow && set == (int)k))
                     set_row_areas(owners, rows, r, ms);
+                if (_stencil_set_menu.item(_stencil_sets[k], can_draw)) edit = _stencil_sets[k];
             }
             ImGui::Separator();
-            // A scan's photographs are taken out of it first, into the dataset.
-            ImGui::BeginDisabled(native_work_busy() ||
-                                 (scan ? _workspace.empty() : !p.preview_ready));
-            if (ui::Selectable(dmsg::stencil_rows_draw, false)) {
-                if (scan) {
-                    _mask_try_scan = (int)t.scans[row.input - t.inputs];
-                    open_scan_mask_preview((size_t)_mask_try_scan);
-                } else {
-                    _mask_try_scan = -1;
-                    *p.preview_input = (int)row.input;
-                    p.open_preview();
-                }
-            }
+            ImGui::BeginDisabled(!can_draw);
+            if (ui::Selectable(dmsg::stencil_rows_draw, false)) open_panel();
             ImGui::EndDisabled();
             ui::help_on_hover_disabled(dmsg::stencil_rows_draw_help);
+            if (edit) ImGui::CloseCurrentPopup();
             ImGui::EndCombo();
         }
         if (areas_follow) ui::help_on_hover(dmsg::stencil_rows_same_help, {above});
         else ui::help_on_hover(dmsg::stencil_areas_help);
+        if (edit) {
+            const SegmentPanel::EditRequest request{*edit, row.camera};
+            if (scan) _scan_edit = request;
+            open_panel();
+            if (!scan && _segment.is_open()) _segment.edit_saved(request);
+        }
 
         ImGui::PopID();
         ImGui::PopID();
@@ -3018,6 +3029,7 @@ void GuiApp::open_scan_mask_preview(size_t scan) {
 void GuiApp::pump_scan_photos() {
     if (!_scan_photos.valid() || scan_photos_busy()) return;
     const auto [dir, err] = _scan_photos.get();
+    const std::optional<SegmentPanel::EditRequest> edit = std::exchange(_scan_edit, std::nullopt);
     const size_t scan = _scan_photos_for;
     if (scan >= _lidar.size()) return;   // removed meanwhile (forget_scan)
     if (!err.empty()) {
@@ -3032,6 +3044,18 @@ void GuiApp::pump_scan_photos() {
     PrepInput photos;
     photos.path = dir;
     open_segment(preview_source_for(photos, ""));
+    if (edit) _segment.edit_saved(*edit);
+}
+
+void GuiApp::draw_stencil_set_dialogs() {
+    std::string message;
+    bool failed = false;
+    if (_stencil_set_menu.draw_dialogs(message, failed)) {
+        _stencil_sets_stale = true;
+        // Rows naming the set as it was would fail at launch.
+        _batch_checked = false;
+    }
+    if (!message.empty()) log(message);
 }
 
 void GuiApp::forget_scan(size_t scan) {
@@ -9294,6 +9318,7 @@ void GuiApp::draw_new_dataset() {
     draw_clear_project_modal();
     draw_drop_intermediate_modal();
     draw_rebuild_confirm_modal();
+    draw_stencil_set_dialogs();
     // The model on disk was mapped from the matches before the edit.
     if (_matrix_editor.is_open() && _matrix_editor.draw(dataset_busy())) {
         _matches_mtime = 0;

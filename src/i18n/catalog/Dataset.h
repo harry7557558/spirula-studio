@@ -8054,8 +8054,103 @@ SS_MSG(stencil_other_file,
     IT("Altro file..."),       NL("Ander bestand..."),     RU("Другой файл..."),
     TR("Başka dosya..."));
 
+SS_MSG(stencil_edit,
+    EN("Edit"),          JA("編集"),          ZH_HANS("编辑"),     ZH_HANT("編輯"),
+    KO("편집"),           DE("Bearbeiten"),    FR("Modifier"),      ES("Editar"),
+    PT("Editar"),        IT("Modifica"),      NL("Bewerken"),      RU("Изменить"),
+    TR("Düzenle"));
+
+SS_MSG(stencil_editing,
+    EN("Editing: {0}"),        JA("編集中: {0}"),          ZH_HANS("正在编辑：{0}"),
+    ZH_HANT("正在編輯：{0}"),    KO("편집 중: {0}"),         DE("In Bearbeitung: {0}"),
+    FR("En cours de modification : {0}"), ES("Editando: {0}"),  PT("Editando: {0}"),
+    IT("In modifica: {0}"),    NL("Wordt bewerkt: {0}"),   RU("Редактируется: {0}"),
+    TR("Düzenleniyor: {0}"));
+
+SS_MSG(stencil_save_changes,
+    EN("Save changes"),        JA("変更を保存"),           ZH_HANS("保存更改"),
+    ZH_HANT("儲存變更"),        KO("변경 내용 저장"),        DE("Änderungen speichern"),
+    FR("Enregistrer les modifications"), ES("Guardar cambios"), PT("Salvar alterações"),
+    IT("Salva modifiche"),     NL("Wijzigingen opslaan"),  RU("Сохранить изменения"),
+    TR("Değişiklikleri kaydet"));
+
+SS_MSG(stencil_delete_title,
+    EN("Delete Drawn Areas"),  JA("描画範囲を削除"),       ZH_HANS("删除绘制区域"),
+    ZH_HANT("刪除繪製區域"),    KO("그린 영역 삭제"),       DE("Zeichnung löschen"),
+    FR("Supprimer les zones dessinées"), ES("Eliminar áreas dibujadas"),
+    PT("Excluir áreas desenhadas"), IT("Elimina aree disegnate"),
+    NL("Getekende gebieden verwijderen"), RU("Удаление областей"), TR("Çizili alanları sil"));
+
+// IRREVERSIBLE -- human review in every language.
+SS_MSG(stencil_delete_confirm,
+    EN("Delete the saved drawn areas \"{0}\"?"),
+    JA("保存した描画範囲「{0}」を削除しますか？"),
+    ZH_HANS("要删除已保存的绘制区域「{0}」吗？"),
+    ZH_HANT("要刪除已儲存的繪製區域「{0}」嗎？"),
+    KO("저장한 그린 영역 ‘{0}’을(를) 삭제할까요?"),
+    DE("Die gespeicherte Zeichnung „{0}“ löschen?"),
+    FR("Supprimer les zones dessinées enregistrées « {0} » ?"),
+    ES("¿Eliminar las áreas dibujadas guardadas «{0}»?"),
+    PT("Excluir as áreas desenhadas salvas “{0}”?"),
+    IT("Eliminare le aree disegnate salvate «{0}»?"),
+    NL("De opgeslagen getekende gebieden „{0}” verwijderen?"),
+    RU("Удалить сохранённые области «{0}»?"),
+    TR("«{0}» kayıtlı çizili alanları silinsin mi?"));
+
+SS_MSG(stencil_deleted,
+    EN("Deleted: {0}"),        JA("削除しました: {0}"),    ZH_HANS("已删除：{0}"),
+    ZH_HANT("已刪除：{0}"),     KO("삭제했습니다: {0}"),    DE("Gelöscht: {0}"),
+    FR("Supprimé : {0}"),      ES("Eliminado: {0}"),       PT("Excluído: {0}"),
+    IT("Eliminato: {0}"),      NL("Verwijderd: {0}"),      RU("Удалено: {0}"),
+    TR("Silindi: {0}"));
+
+SS_MSG(stencil_delete_failed,
+    EN("Could not delete: {0}"), JA("削除できませんでした: {0}"), ZH_HANS("无法删除：{0}"),
+    ZH_HANT("無法刪除：{0}"),   KO("삭제하지 못했습니다: {0}"), DE("Löschen fehlgeschlagen: {0}"),
+    FR("Suppression impossible : {0}"), ES("No se pudo eliminar: {0}"),
+    PT("Não foi possível excluir: {0}"), IT("Impossibile eliminare: {0}"),
+    NL("Verwijderen mislukt: {0}"), RU("Не удалось удалить: {0}"), TR("Silinemedi: {0}"));
+
+SS_MSG(stencil_rename_title,
+    EN("Rename Drawn Areas"),  JA("描画範囲の名前を変更"), ZH_HANS("重命名绘制区域"),
+    ZH_HANT("重新命名繪製區域"), KO("그린 영역 이름 바꾸기"), DE("Zeichnung umbenennen"),
+    FR("Renommer les zones dessinées"), ES("Renombrar áreas dibujadas"),
+    PT("Renomear áreas desenhadas"), IT("Rinomina aree disegnate"),
+    NL("Getekende gebieden hernoemen"), RU("Переименование областей"),
+    TR("Çizili alanları yeniden adlandır"));
+
+SS_MSG(stencil_renamed,
+    EN("Renamed to: {0}"),     JA("名前を変更しました: {0}"), ZH_HANS("已重命名为：{0}"),
+    ZH_HANT("已重新命名為：{0}"), KO("이름을 바꿨습니다: {0}"), DE("Umbenannt in: {0}"),
+    FR("Renommé en : {0}"),    ES("Renombrado a: {0}"),    PT("Renomeado para: {0}"),
+    IT("Rinominato in: {0}"),  NL("Hernoemd naar: {0}"),   RU("Новое имя: {0}"),
+    TR("Yeni ad: {0}"));
+
+SS_MSG(stencil_rename_failed,
+    EN("Could not rename: {0}"), JA("名前を変更できませんでした: {0}"), ZH_HANS("无法重命名：{0}"),
+    ZH_HANT("無法重新命名：{0}"), KO("이름을 바꾸지 못했습니다: {0}"),
+    DE("Umbenennen fehlgeschlagen: {0}"), FR("Renommage impossible : {0}"),
+    ES("No se pudo renombrar: {0}"), PT("Não foi possível renomear: {0}"),
+    IT("Impossibile rinominare: {0}"), NL("Hernoemen mislukt: {0}"),
+    RU("Не удалось переименовать: {0}"), TR("Yeniden adlandırılamadı: {0}"));
+
+SS_MSG(stencil_name_taken,
+    EN("Saved drawn areas named \"{0}\" already exist."),
+    JA("「{0}」という名前の描画範囲はすでにあります。"),
+    ZH_HANS("名为「{0}」的绘制区域已存在。"),
+    ZH_HANT("名為「{0}」的繪製區域已存在。"),
+    KO("‘{0}’(이)라는 이름의 그린 영역이 이미 있습니다."),
+    DE("Eine Zeichnung namens „{0}“ gibt es bereits."),
+    FR("Des zones dessinées nommées « {0} » existent déjà."),
+    ES("Ya existen áreas dibujadas llamadas «{0}»."),
+    PT("Já existem áreas desenhadas chamadas “{0}”."),
+    IT("Esistono già aree disegnate chiamate «{0}»."),
+    NL("Er bestaan al getekende gebieden met de naam „{0}”."),
+    RU("Области с именем «{0}» уже есть."),
+    TR("«{0}» adlı çizili alanlar zaten var."));
+
 SS_MSG(stencil_pick_file,
-    EN("Load drawn areas"),    JA("描画範囲を読み込む"),   ZH_HANS("载入绘制区域"),
+    EN("Load drawn areas"),  JA("描画範囲を読み込む"),   ZH_HANS("载入绘制区域"),
     ZH_HANT("載入繪製區域"),    KO("그린 영역 불러오기"),   DE("Zeichnung laden"),
     FR("Charger des zones dessinées"), ES("Cargar áreas dibujadas"),
     PT("Carregar áreas desenhadas"), IT("Carica aree disegnate"),

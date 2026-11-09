@@ -2,6 +2,7 @@
 // what each tool's stroke becomes, hit tests and moves, a pen shape's points,
 // undo, and saving a set of drawn areas and finding it again by name.
 
+#include "app/FrameMaskSvg.h"
 #include "app/gui/StencilEdit.h"
 #include "app/gui/StencilPreset.h"
 #include "core/SourcePath.h"
@@ -299,6 +300,73 @@ void test_presets() {
               gui::load_stencil_preset("Rig", back, err) && !back.per_camera(),
           "per camera: saved again as one list, the camera files go");
 
+    // Right-click Edit and Delete act on the entry the list showed.
+    auto find_set = [](const std::string& name, size_t cameras) {
+        gui::StencilPreset out;
+        for (const gui::StencilPreset& p : gui::list_stencil_presets())
+            if (p.name == name && p.cameras.size() == cameras) out = p;
+        return out;
+    };
+    gui::StencilPreset selfie = find_set("Selfie stick", 0);
+    check(gui::update_stencil_preset(selfie, one_list({shapes[0]}), err) &&
+              gui::load_stencil_preset("Selfie stick", back, err) && back.shapes.size() == 1 &&
+              gui::list_stencil_presets().size() == 2,
+          "update: replaces the shapes, listed once");
+    check(gui::update_stencil_preset(selfie, rig, err) && selfie.cameras.size() == 2 &&
+              fs::exists(selfie.path) && !fs::exists(dir / "selfie-stick.svg") &&
+              gui::load_stencil_preset("Selfie stick", back, err) && back.cameras.size() == 2,
+          "update: one list to per camera drops the old file and describes the new");
+    check(gui::delete_stencil_preset(selfie, err) && !fs::exists(dir / "selfie-stick-cam0.svg") &&
+              !fs::exists(dir / "selfie-stick-cam1.svg") && gui::list_stencil_presets().size() == 1,
+          "delete: every camera's file of a set, no other set");
+
+    // Two entries of one name: only the one asked for goes.
+    check(gui::save_stencil_preset("Twin", rig, path, err) &&
+              app::save_mask_svg((dir / "twin-list.svg").string(), shapes, "Twin", err),
+          "delete: same-name setup: " + err);
+    const gui::StencilPreset twin_list = find_set("Twin", 0);
+    check(gui::delete_stencil_preset(find_set("Twin", 2), err) && fs::exists(twin_list.path) &&
+              !fs::exists(dir / "twin-cam0.svg"),
+          "delete: a per-camera set leaves a one-list set of its name");
+    check(gui::delete_stencil_preset(twin_list, err) && !fs::exists(twin_list.path),
+          "delete: a one-list set is its one file");
+    check(gui::delete_stencil_preset(twin_list, err), "delete: already gone is not an error");
+
+    using gui::StencilRename;
+    check(gui::save_stencil_preset("Pole", one_list(shapes), path, err) &&
+              gui::save_stencil_preset("Arm", rig, path, err),
+          "rename: setup: " + err);
+    gui::StencilPreset pole = find_set("Pole", 0);
+    check(gui::rename_stencil_preset(pole, "Long pole", err) == StencilRename::Done &&
+              pole.name == "Long pole" && pole.path == (dir / "long-pole.svg").string() &&
+              !fs::exists(dir / "pole.svg") && !gui::load_stencil_preset("Pole", back, err) &&
+              gui::load_stencil_preset("Long pole", back, err) && back.shapes.size() == 2,
+          "rename: one list: new file and title, same shapes");
+    gui::StencilPreset arm = find_set("Arm", 2);
+    check(gui::rename_stencil_preset(arm, "Boom", err) == StencilRename::Done &&
+              arm.path == (dir / "boom-cam0.svg").string() && arm.cameras.size() == 2 &&
+              fs::exists(dir / "boom-cam1.svg") && !fs::exists(dir / "arm-cam0.svg") &&
+              !fs::exists(dir / "arm-cam1.svg") && gui::load_stencil_preset("Boom", back, err) &&
+              back.cameras.size() == 2 && back.cameras["cam1"].size() == 2,
+          "rename: per camera: every file, each camera's own shapes");
+    const std::string pole_path = pole.path;
+    check(gui::rename_stencil_preset(pole, "Boom", err) == StencilRename::NameTaken &&
+              pole.path == pole_path && fs::exists(pole_path) &&
+              gui::load_stencil_preset("Boom", back, err) && back.cameras.size() == 2,
+          "rename: a name in use is refused and nothing moves");
+    check(gui::rename_stencil_preset(pole, "RIG?", err) == StencilRename::NameTaken &&
+              fs::exists(pole_path) && gui::load_stencil_preset("Rig", back, err),
+          "rename: another title sharing the file name is refused too");
+    check(gui::rename_stencil_preset(pole, "LONG POLE", err) == StencilRename::Done &&
+              pole.path == pole_path && fs::exists(pole_path) &&
+              find_set("LONG POLE", 0).path == pole_path && find_set("Long pole", 0).path.empty(),
+          "rename: changing only the case keeps the file");
+    check(gui::rename_stencil_preset(pole, "LONG POLE", err) == StencilRename::Done,
+          "rename: to its own name does nothing");
+    check(gui::delete_stencil_preset(pole, err) && gui::delete_stencil_preset(arm, err) &&
+              gui::list_stencil_presets().size() == 1,
+          "rename: the renamed sets delete cleanly");
+
     // A run keeps its inputs' shapes beside the dataset: one file for an
     // input, one per camera when its cameras differ.
     const fs::path ws = root / "capture_dataset";
@@ -340,6 +408,23 @@ void test_presets() {
     check(dual_back, "dataset stencils: the first dual's set loads back per camera, not mixed "
                      "with the second's");
     check(gui::list_dataset_stencils("").empty(), "dataset stencils: no workspace, nothing listed");
+
+    gui::StencilPreset in_ds = kept.front();
+    const std::string in_ds_name = in_ds.name;
+    check(gui::update_stencil_preset(in_ds, one_list({shapes[0]}), err) &&
+              fs::path(in_ds.path).parent_path() == ws / gui::kDatasetStencilDir &&
+              gui::list_dataset_stencils(ws.string()).size() == 4 &&
+              gui::list_stencil_presets().size() == 1,
+          "update: a dataset's set stays in the dataset");
+    check(gui::delete_stencil_preset(in_ds, err) &&
+              gui::list_dataset_stencils(ws.string()).size() == 3,
+          "delete: a dataset's set: " + in_ds_name);
+    gui::StencilPreset moved_ds = gui::list_dataset_stencils(ws.string()).front();
+    check(gui::rename_stencil_preset(moved_ds, "Front rig", err) == gui::StencilRename::Done &&
+              fs::path(moved_ds.path).parent_path() == ws / gui::kDatasetStencilDir &&
+              gui::list_dataset_stencils(ws.string()).size() == 3 &&
+              gui::list_stencil_presets().size() == 1,
+          "rename: a dataset's set stays in the dataset");
     fs::remove_all(root, ec);
 }
 
