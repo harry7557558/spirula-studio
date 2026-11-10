@@ -113,7 +113,7 @@ bool load_ffmpeg_stills(const PreviewSource& src, double seconds,
 
 // A spread for a fit that wants several frames (the fisheye border): `samples`
 // of `files`, or for a video the first few hundred frames -- as far forward as
-// a decoder that cannot seek can afford -- and `offers` where ffmpeg seeks.
+// a decoder that cannot seek can afford -- and eight of `offers` where ffmpeg seeks.
 std::vector<PreviewFrame> spread_preview_frames(
     const PreviewSource& src, const std::vector<PreviewFrame>& offers,
     const std::vector<std::string>& files, int samples);

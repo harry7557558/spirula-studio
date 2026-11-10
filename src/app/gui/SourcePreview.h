@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -60,10 +61,8 @@ public:
     // A video playing wants every frame drawn, not the idle rate.
     bool animating() const { return _video.playing(); }
 
-    int selected_frame() const {
-        if (_in.kind == PreviewInput::Kind::Video) return _video.current_frame();
-        return _photos.selected();
-    }
+    // As SegmentPanel::show_frame() takes it; none with no photo picked.
+    std::optional<PreviewFrame> selected_frame() const;
     bool take_selection_changed() {
         return _photos.take_selection_changed() || _video.take_selection_changed();
     }

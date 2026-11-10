@@ -368,7 +368,14 @@ std::vector<PreviewFrame> spread_preview_frames(
         }
         return out;
     }
-    if (!src.builtin_decode) return offers;
+    // A process of its own per frame where ffmpeg seeks, so eight through the clip.
+    if (!src.builtin_decode) {
+        const size_t n = offers.size();
+        const size_t want = std::min<size_t>(n, 8);
+        for (size_t i = 0; i < want; i++)
+            out.push_back(offers[want > 1 ? i * (n - 1) / (want - 1) : 0]);
+        return out;
+    }
     // 720 is about half a minute, and the fit wants a moving camera rather
     // than a long one: reading further costs a decode per frame for nothing.
     const long long total = std::max(1LL, src.video_frames);

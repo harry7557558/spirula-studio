@@ -65,7 +65,8 @@ SegmentPanel::~SegmentPanel() {
     if (_worker.joinable()) _worker.join();
 }
 
-void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, int initial_frame) {
+void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model,
+                        std::optional<PreviewFrame> initial) {
     _cancel = true;
     if (_worker.joinable()) _worker.join();
     _cancel = false;
@@ -79,7 +80,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
     // A file cut to one lens shows that one: its frames are all the run writes.
     _folder_idx = std::max(_src.lens, 0);
     _frame_idx = 0;
-    _target_frame_idx = initial_frame;
+    _target_frame = std::move(initial);
     _frame_dirty = true;
     _needs_run = true;
     _border = app::BorderDetect{};
@@ -166,18 +167,36 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
     });
 }
 
-void SegmentPanel::set_frame_index(int frame_idx) {
-    if (frame_idx < 0) return;
+void SegmentPanel::show_frame(const PreviewFrame& frame) {
     if (_frames.empty()) {
-        _target_frame_idx = frame_idx;
+        _target_frame = frame;
         return;
     }
-    const int clamped = std::clamp(frame_idx, 0, (int)_frames.size() - 1);
-    if (clamped != _frame_idx) {
-        _frame_idx = clamped;
-        _frame_dirty = true;
-        _needs_run = true;
+    const int at = frame_position(frame);
+    if (at < 0 || at == _frame_idx) return;
+    _frame_idx = at;
+    _frame_dirty = true;
+    _needs_run = true;
+}
+
+int SegmentPanel::frame_position(const PreviewFrame& frame) const {
+    if (_frames.empty()) return -1;
+    if (_src.is_video) {
+        const auto it = std::lower_bound(
+            _frames.begin(), _frames.end(), frame.index,
+            [](const PreviewFrame& f, long long index) { return f.index < index; });
+        if (it == _frames.end()) return (int)_frames.size() - 1;
+        const int at = (int)(it - _frames.begin());
+        if (at > 0 && frame.index - _frames[(size_t)at - 1].index < it->index - frame.index)
+            return at - 1;
+        return at;
     }
+    if (frame.path.empty()) return -1;
+    // By path, not position: the source grid leaves out a masks/ inside the folder.
+    const fs::path want(frame.path);
+    for (size_t i = 0; i < _frames.size(); i++)
+        if (fs::path(_frames[i].path) == want) return (int)i;
+    return -1;
 }
 
 void SegmentPanel::close() {
@@ -1589,6 +1608,7 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
             start_detect();
         if (!_busy.load() && !_detecting.load() && !_listing.load() &&
             _border.found && shown_camera() == _border_camera) {
+            ImGui::SameLine();
             if (ui::SmallButton(dmsg::stencil_edit_border)) {
                 // The ellipse fits one lens: on a many-camera input it is that
                 // camera's, and the others keep their own fits.
@@ -1689,11 +1709,14 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _frames_ready = false;
             _listing = false;
             _cameras = camera_names();
-            if (_target_frame_idx >= 0 && !_frames.empty()) {
-                _frame_idx = std::clamp(_target_frame_idx, 0, (int)_frames.size() - 1);
-                _target_frame_idx = -1;
-                _frame_dirty = true;
-                _needs_run = true;
+            if (_target_frame) {
+                const int at = frame_position(*_target_frame);
+                _target_frame.reset();
+                if (at >= 0) {
+                    _frame_idx = at;
+                    _frame_dirty = true;
+                    _needs_run = true;
+                }
             }
         }
     }

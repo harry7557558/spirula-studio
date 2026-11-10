@@ -442,7 +442,8 @@ private:
     MaskingPanel dataset_masking_panel();
     // The checkpoint picker of the dataset screen, also offered in the panel.
     void draw_dataset_model_picker();
-    void open_segment(const PreviewSource& src, int initial_frame = -1);
+    void open_segment(const PreviewSource& src,
+                      std::optional<PreviewFrame> initial = std::nullopt);
     void draw_masking_options(const MaskingPanel& p);
     // The job's mask_* fields from the shared settings; `mask_enable` excepted.
     void fill_masking(PrepJob& prep) const;

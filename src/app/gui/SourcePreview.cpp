@@ -290,6 +290,19 @@ void SourcePreview::yield_gpu() {
     _video.abort(false);
 }
 
+std::optional<PreviewFrame> SourcePreview::selected_frame() const {
+    PreviewFrame f;
+    if (_in.kind == PreviewInput::Kind::Video) {
+        f.index = _video.current_frame();
+        return f;
+    }
+    const int i = _photos.selected();
+    if (_in.kind != PreviewInput::Kind::Photos || i < 0 || i >= (int)_photos.size())
+        return std::nullopt;
+    f.path = _photos.items()[(size_t)i].path;
+    return f;
+}
+
 void SourcePreview::show(const PreviewInput& in) {
     const std::string key = reload_key(in);
     _in.kept_fps = in.kept_fps;
