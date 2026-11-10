@@ -240,9 +240,9 @@ inline Mat3 projectToEssential(const Mat3& E) {
 // approximation as sampsonSq, but the perturbation lives in each bearing's
 // tangent plane (2 DOF on the sphere) rather than on the z=1 image plane --
 // which is what makes it meaningful for a ray pointing sideways.
-inline double sampsonSqBearing(const Mat3& E, const Vec3& b1, const Vec3& b2) {
+inline double sampsonSqBearing(const Mat3& E, const Mat3& Et, const Vec3& b1, const Vec3& b2) {
     Vec3 Eb1 = mul(E, b1);
-    Vec3 Etb2 = mul(transpose(E), b2);
+    Vec3 Etb2 = mul(Et, b2);
     double num = b2.dot(Eb1);
     // project each gradient onto the tangent plane of its own bearing
     Vec3 g1 = Etb2 - b1 * b1.dot(Etb2);
@@ -252,15 +252,23 @@ inline double sampsonSqBearing(const Mat3& E, const Vec3& b1, const Vec3& b2) {
     return num * num / den;
 }
 
+inline double sampsonSqBearing(const Mat3& E, const Vec3& b1, const Vec3& b2) {
+    return sampsonSqBearing(E, transpose(E), b1, b2);
+}
+
 // Squared Sampson distance for correspondence a (image 1) <-> b (image 2).
-inline double sampsonSq(const Mat3& F, const Vec2& a, const Vec2& b) {
+inline double sampsonSq(const Mat3& F, const Mat3& Ft, const Vec2& a, const Vec2& b) {
     Vec3 x1 = {a.x, a.y, 1}, x2 = {b.x, b.y, 1};
     Vec3 Fx1 = mul(F, x1);
-    Vec3 Ftx2 = mul(transpose(F), x2);
+    Vec3 Ftx2 = mul(Ft, x2);
     double num = x2.dot(Fx1);
     double den = Fx1.x * Fx1.x + Fx1.y * Fx1.y + Ftx2.x * Ftx2.x + Ftx2.y * Ftx2.y;
     if (den < 1e-30) return 1e30;
     return num * num / den;
+}
+
+inline double sampsonSq(const Mat3& F, const Vec2& a, const Vec2& b) {
+    return sampsonSq(F, transpose(F), a, b);
 }
 
 }  // namespace sfm

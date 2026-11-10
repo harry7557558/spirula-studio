@@ -49,22 +49,19 @@ using FitFn = std::function<std::vector<Model>(const std::vector<int>&)>;
 template <class Model>
 using ResidualFn = std::function<double(const Model&, int)>;
 
-// Score a model over all points; fills inliers, returns MSAC score (lower
-// better) and inlier count. `res` is a template parameter, not a
-// std::function: this runs `trials * n` times per estimate and an indirect
-// call per residual was pure overhead against a few flops of work.
-//
-// `need` is the inlier count a model must be able to reach to be worth
-// finishing: once the points left cannot lift `count` to it, the model can
-// neither beat nor tie the incumbent, so scoring stops and `count` is returned
-// as -1. Most trials of a RANSAC are such models, and each of them was
-// previously scored against every correspondence. The saving is exact -- a
-// model that would have won is never cut, because the bail needs
-// count + remaining < need, not <=.
+template <class Res, class Model, class = void>
+struct HasPrepare : std::false_type {};
+template <class Res, class Model>
+struct HasPrepare<Res, Model, std::void_t<decltype(std::declval<Res&>().prepare(std::declval<const Model&>()))>> : std::true_type {};
+
+// Score a model over all points; bail early when remaining points cannot beat `need`.
+// Writes inliers during the pass without pre-zeroing; mask is valid whenever scoring completes.
 template <class Model, class Res>
 static double scoreModel(const Model& m, int n, double thr2, const Res& res,
                          std::vector<char>& inliers, int& count, int need = 0) {
-    inliers.assign(n, 0);
+    if constexpr (HasPrepare<Res, Model>::value) {
+        res.prepare(m);
+    }
     count = 0;
     double score = 0;
     for (int i = 0; i < n; i++) {
@@ -74,6 +71,7 @@ static double scoreModel(const Model& m, int n, double thr2, const Res& res,
             count++;
             score += r2;
         } else {
+            inliers[i] = 0;
             score += thr2;
             if (count + (n - 1 - i) < need) { count = -1; return score; }
         }
@@ -106,10 +104,7 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
     std::mt19937 rng(opt.seed);
     std::uniform_int_distribution<int> uni(0, n - 1);
 
-    // Scratch reused across trials. `consider` ran thousands of times per
-    // estimate and allocated a fresh mask each time; now the winning mask is
-    // swapped into `best` and the loser's storage comes back as scratch.
-    std::vector<char> inl;
+    std::vector<char> inl(n, 0);
     auto consider = [&](const Model& m) {
         int cnt = 0;
         double sc = scoreModel(m, n, thr2, res, inl, cnt, best.num_inliers);
@@ -120,6 +115,7 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
             best.num_inliers = cnt;
             best.score = sc;
             best.success = cnt >= min_samples;
+            inl.resize(n);
         }
     };
 
@@ -145,10 +141,14 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
     std::vector<int> sample;
     sample.reserve(min_samples);
     for (; trial < max_trials; trial++) {
-        // random distinct minimal sample
+        // progressive pool: early trials sample from the top-ranked subset
+        const int pool = (trial < 100)
+            ? std::min(n, std::max(min_samples + 4, (int)((int64_t)n * (trial + 1) / 100)))
+            : n;
+        std::uniform_int_distribution<int> pool_uni(0, pool - 1);
         sample.clear();
         while ((int)sample.size() < min_samples) {
-            int idx = uni(rng);
+            int idx = pool_uni(rng);
             if (std::find(sample.begin(), sample.end(), idx) == sample.end()) sample.push_back(idx);
         }
         const int before = best.num_inliers;
@@ -167,8 +167,10 @@ RansacReport<Model> loransac(int n, int min_samples, const Fit& fit, const Refit
             double denom = std::log(1.0 - std::pow(w, min_samples));
             if (denom < 0) {
                 double need = std::log(1.0 - opt.confidence) / denom;
-                int dyn = (int)std::ceil(need);
-                int cap = std::max(opt.min_num_trials, std::min(opt.max_num_trials, dyn));
+                int cap = opt.max_num_trials;
+                if (need < opt.max_num_trials) {
+                    cap = std::max(opt.min_num_trials, (int)std::ceil(need));
+                }
                 if (trial + 1 >= cap) { trial++; break; }
             }
         }

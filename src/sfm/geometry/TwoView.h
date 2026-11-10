@@ -43,6 +43,7 @@ struct TwoViewOptions {
     TwoViewOptions() {
         ransac.max_error = 3.0;
         ransac.min_inlier_ratio = 0.0;
+        ransac.max_num_trials = 2000;
     }
 };
 
@@ -112,12 +113,19 @@ inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
                                                   opt.ransac.max_error, pose, 8);
         return std::vector<Mat3>{mul(crossMatrix(pose.t), pose.R)};
     };
-    auto fRes = [&](const Mat3& E, int i) { return sampsonSqBearing(E, b1[i], b2[i]); };
+    struct EssentialResidual {
+        const std::vector<Vec3>& b1;
+        const std::vector<Vec3>& b2;
+        mutable Mat3 Et{};
+        void prepare(const Mat3& E) const { Et = transpose(E); }
+        double operator()(const Mat3& E, int i) const { return sampsonSqBearing(E, Et, b1[i], b2[i]); }
+    };
+    EssentialResidual fRes{b1, b2};
     RansacReport<Mat3> fRep = loransac<Mat3>(n, opt.calibrated_essential ? 5 : 7,
                                            fFit, fRefit, fRes, opt.ransac);
 
     RansacReport<detail::HModel> hRep;
-    if (opt.estimate_homography) {
+    if (opt.estimate_homography && fRep.num_inliers >= 4) {
         auto hFit = [&](const std::vector<int>& s) {
             std::vector<detail::HModel> out;
             for (const Mat3& H : estimateHomographyBearing(b1, b2, s))
@@ -152,14 +160,21 @@ inline TwoViewGeometry estimateTwoView(const std::vector<Vec2>& p1, const std::v
     if (n < opt.min_num_inliers) return g;
 
     // --- Fundamental ---
+    struct FundamentalResidual {
+        const std::vector<Vec2>& p1;
+        const std::vector<Vec2>& p2;
+        mutable Mat3 Ft{};
+        void prepare(const Mat3& F) const { Ft = transpose(F); }
+        double operator()(const Mat3& F, int i) const { return sampsonSq(F, Ft, p1[i], p2[i]); }
+    };
+    FundamentalResidual fRes{p1, p2};
     auto fFit = [&](const std::vector<int>& s) { return estimateFundamental7(p1, p2, s); };
     auto fRefit = [&](const std::vector<int>& s) { return estimateFundamental8(p1, p2, s); };
-    auto fRes = [&](const Mat3& F, int i) { return sampsonSq(F, p1[i], p2[i]); };
     RansacReport<Mat3> fRep = loransac<Mat3>(n, 7, fFit, fRefit, fRes, opt.ransac);
 
     // --- Homography ---
     RansacReport<detail::HModel> hRep;
-    if (opt.estimate_homography) {
+    if (opt.estimate_homography && fRep.num_inliers >= 4) {
         auto hFit = [&](const std::vector<int>& s) {
             std::vector<detail::HModel> out;
             for (const Mat3& H : estimateHomography(p1, p2, s)) out.push_back({H, inverse3(H)});

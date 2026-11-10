@@ -31,21 +31,26 @@ struct FeatureMatch {
     uint32_t idx1 = 0, idx2 = 0;
 };
 
-// Keep the `cap` matches of smallest `dist` (parallel to `m`), ordered as
-// std::partial_sort leaves them.
+// Keep the `cap` matches of smallest `dist` (parallel to `m`), sorted ascending by distance.
 inline void keepClosest(std::vector<FeatureMatch>& m, const std::vector<float>& dist,
                         size_t cap) {
-    if (cap == 0 || m.size() <= cap) return;
+    if (m.empty()) return;
     struct Scored {
         float d;
         FeatureMatch m;
     };
     std::vector<Scored> s(m.size());
     for (size_t k = 0; k < m.size(); k++) s[k] = {dist[k], m[k]};
-    std::partial_sort(s.begin(), s.begin() + (std::ptrdiff_t)cap, s.end(),
-                      [](const Scored& a, const Scored& b) { return a.d < b.d; });
-    m.resize(cap);
-    for (size_t k = 0; k < cap; k++) m[k] = s[k].m;
+    const size_t nkeep = (cap > 0 && cap < m.size()) ? cap : m.size();
+    if (nkeep < m.size()) {
+        std::partial_sort(s.begin(), s.begin() + (std::ptrdiff_t)nkeep, s.end(),
+                          [](const Scored& a, const Scored& b) { return a.d < b.d; });
+    } else {
+        std::sort(s.begin(), s.end(),
+                  [](const Scored& a, const Scored& b) { return a.d < b.d; });
+    }
+    m.resize(nkeep);
+    for (size_t k = 0; k < nkeep; k++) m[k] = s[k].m;
 }
 
 static_assert(sizeof(FeatureMatch) == 8, "matches.bin and spillMatches write it as is");
