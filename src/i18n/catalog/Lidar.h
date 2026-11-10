@@ -1366,6 +1366,34 @@ SS_MSG(scan_unreadable,
     KO("{0}: {1}"), DE("{0}: {1}"), FR("{0} : {1}"), ES("{0}: {1}"), PT("{0}: {1}"),
     IT("{0}: {1}"), NL("{0}: {1}"), RU("{0}: {1}"), TR("{0}: {1}"));
 
+SS_MSG(scan_is_splat,
+    EN("{0} is a Gaussian splat, a finished reconstruction, not a laser scan. Add the "
+       "point cloud the scanner wrote (E57, LAS or PLY)."),
+    JA("{0} はガウシアンスプラット（再構成の結果）で、レーザースキャンではありません。"
+       "スキャナーが書き出した点群（E57、LAS、PLY）を追加してください。"),
+    ZH_HANS("{0} 是高斯泼溅（重建的结果），不是激光扫描。请加入扫描仪写出的点云"
+            "（E57、LAS 或 PLY）。"),
+    ZH_HANT("{0} 是高斯潑濺（重建的結果），不是雷射掃描。請加入掃描器寫出的點雲"
+            "（E57、LAS 或 PLY）。"),
+    KO("{0}은(는) 가우시안 스플랫(재구성 결과)이며 레이저 스캔이 아닙니다. 스캐너가 "
+       "기록한 포인트 클라우드(E57, LAS 또는 PLY)를 추가하세요."),
+    DE("{0} ist ein Gaussian Splat, eine fertige Rekonstruktion, kein Laserscan. Die "
+       "Punktwolke hinzufügen, die der Scanner geschrieben hat (E57, LAS oder PLY)."),
+    FR("{0} est un splat gaussien, une reconstruction terminée, pas un scan laser. "
+       "Ajoutez le nuage de points écrit par le scanner (E57, LAS ou PLY)."),
+    ES("{0} es un splat gaussiano, una reconstrucción terminada, no un escaneo láser. "
+       "Añada la nube de puntos que escribió el escáner (E57, LAS o PLY)."),
+    PT("{0} é um splat gaussiano, uma reconstrução pronta, não uma varredura a laser. "
+       "Adicione a nuvem de pontos que o scanner gravou (E57, LAS ou PLY)."),
+    IT("{0} è uno splat gaussiano, una ricostruzione finita, non una scansione laser. "
+       "Aggiungere la nuvola di punti scritta dallo scanner (E57, LAS o PLY)."),
+    NL("{0} is een Gaussian splat, een voltooide reconstructie, geen laserscan. Voeg "
+       "de puntenwolk toe die de scanner schreef (E57, LAS of PLY)."),
+    RU("{0} — гауссов сплат, готовая реконструкция, а не лазерный скан. Добавьте "
+       "облако точек, записанное сканером (E57, LAS или PLY)."),
+    TR("{0} bir Gauss splat'i, yani bitmiş bir yeniden oluşturma; lazer taraması "
+       "değil. Tarayıcının yazdığı nokta bulutunu ekleyin (E57, LAS veya PLY)."));
+
 SS_MSG(scan_photos_extracting,
     EN("Taking the photographs out of {0} to draw on..."),
     JA("{0} から描画用に写真を取り出しています..."),
