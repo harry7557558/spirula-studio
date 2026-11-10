@@ -6196,7 +6196,9 @@ void GuiApp::open_mask_preview() {
     stop_inference_users();
     close_splat();
     if (!freeze_native_device()) return;
-    open_segment(preview_source((size_t)_mask_preview_input));
+    std::optional<PreviewFrame> initial;
+    if (selected_source() == _mask_preview_input) initial = _source_view.selected_frame();
+    open_segment(preview_source((size_t)_mask_preview_input), std::move(initial));
 }
 
 void GuiApp::draw_dataset_model_picker() {
@@ -6213,7 +6215,7 @@ void GuiApp::draw_dataset_model_picker() {
     if (was_subject && !is_subject && _mask.prompt.empty()) _mask.keep_subject = false;
 }
 
-void GuiApp::open_segment(const PreviewSource& src) {
+void GuiApp::open_segment(const PreviewSource& src, std::optional<PreviewFrame> initial) {
     // A click or a prompt with no model asks for one in the panel; taking it
     // ticks masking, so the run does what the panel shows.
     _segment.set_model_picker([this] {
@@ -6226,7 +6228,8 @@ void GuiApp::open_segment(const PreviewSource& src) {
         _mask_enable = true;
         return m;
     });
-    _segment.open(src, _mask_enable ? selected_mask_model() : MaskModelFiles{});
+    _segment.open(src, _mask_enable ? selected_mask_model() : MaskModelFiles{},
+                  std::move(initial));
 }
 
 GuiApp::MaskingPanel GuiApp::dataset_masking_panel() {
@@ -6989,6 +6992,7 @@ void GuiApp::draw_source_preview(float height) {
     } else {
         h = std::max(px(80.0f), h - ImGui::GetCursorPosY() + ImGui::GetCursorStartPos().y);
     }
+    _source_view.set_mask_preview_open(_segment.is_open());
     const int i = selected_source();
     PrepInput* sel = i >= 0 ? &_sources[(size_t)i] : nullptr;
     PrepInput* video = sel && sel->is_video ? sel : nullptr;
@@ -7001,6 +7005,11 @@ void GuiApp::draw_source_preview(float height) {
                           video ? &video->clip_end : nullptr,
                           lenses ? &lenses->active_lens : nullptr);
     ImGui::EndChild();
+    if (_segment.is_open() && _mask_preview_scan < 0 &&
+        selected_source() == _mask_preview_input && _source_view.take_selection_changed()) {
+        if (const std::optional<PreviewFrame> f = _source_view.selected_frame())
+            _segment.show_frame(*f);
+    }
     if (r.want_gpu) freeze_native_device();
     const auto drop_clicks = [&](const PrepInput& in, const auto& doomed) {
         auto& clicks = _mask.clicks;

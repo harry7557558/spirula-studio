@@ -65,7 +65,8 @@ SegmentPanel::~SegmentPanel() {
     if (_worker.joinable()) _worker.join();
 }
 
-void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
+void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model,
+                        std::optional<PreviewFrame> initial) {
     _cancel = true;
     if (_worker.joinable()) _worker.join();
     _cancel = false;
@@ -79,6 +80,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
     // A file cut to one lens shows that one: its frames are all the run writes.
     _folder_idx = std::max(_src.lens, 0);
     _frame_idx = 0;
+    _target_frame = std::move(initial);
     _frame_dirty = true;
     _needs_run = true;
     _border = app::BorderDetect{};
@@ -143,7 +145,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
             PreviewSource listed = requested;
             std::vector<PreviewFrame> frames;
             std::vector<std::string> all_files;
-            collect_preview_frames(listed, listed.is_video ? 8 : 12, frames,
+            collect_preview_frames(listed, 0, frames,
                                    all_files, _cancel);
             if (_cancel.load()) return;
             std::vector<std::string> folders = preview_folders(listed);
@@ -163,6 +165,38 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model) {
             }
         }
     });
+}
+
+void SegmentPanel::show_frame(const PreviewFrame& frame) {
+    if (_frames.empty()) {
+        _target_frame = frame;
+        return;
+    }
+    const int at = frame_position(frame);
+    if (at < 0 || at == _frame_idx) return;
+    _frame_idx = at;
+    _frame_dirty = true;
+    _needs_run = true;
+}
+
+int SegmentPanel::frame_position(const PreviewFrame& frame) const {
+    if (_frames.empty()) return -1;
+    if (_src.is_video) {
+        const auto it = std::lower_bound(
+            _frames.begin(), _frames.end(), frame.index,
+            [](const PreviewFrame& f, long long index) { return f.index < index; });
+        if (it == _frames.end()) return (int)_frames.size() - 1;
+        const int at = (int)(it - _frames.begin());
+        if (at > 0 && frame.index - _frames[(size_t)at - 1].index < it->index - frame.index)
+            return at - 1;
+        return at;
+    }
+    if (frame.path.empty()) return -1;
+    // By path, not position: the source grid leaves out a masks/ inside the folder.
+    const fs::path want(frame.path);
+    for (size_t i = 0; i < _frames.size(); i++)
+        if (fs::path(_frames[i].path) == want) return (int)i;
+    return -1;
 }
 
 void SegmentPanel::close() {
@@ -1574,6 +1608,7 @@ void SegmentPanel::draw_stencil(app::FrameStencil& s, bool& edited) {
             start_detect();
         if (!_busy.load() && !_detecting.load() && !_listing.load() &&
             _border.found && shown_camera() == _border_camera) {
+            ImGui::SameLine();
             if (ui::SmallButton(dmsg::stencil_edit_border)) {
                 // The ellipse fits one lens: on a many-camera input it is that
                 // camera's, and the others keep their own fits.
@@ -1674,6 +1709,15 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _frames_ready = false;
             _listing = false;
             _cameras = camera_names();
+            if (_target_frame) {
+                const int at = frame_position(*_target_frame);
+                _target_frame.reset();
+                if (at >= 0) {
+                    _frame_idx = at;
+                    _frame_dirty = true;
+                    _needs_run = true;
+                }
+            }
         }
     }
     if (_edit_request && !_listing.load()) {
@@ -1852,19 +1896,40 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     }
     if (_frames.size() > 1) {
         ImGui::Spacing();
-        ImGui::SetNextItemWidth(-1);
         int idx = _frame_idx;
-        // The slider's own overlay format string: the index is substituted by
-        // ImGui, so this is not a place a placeholder can be used.
-        const std::string fmt = spirula::i18n::format(
-            dmsg::preview_frame, {(long long)_frames[(size_t)_frame_idx].index});
-        if (ui::SliderIntRaw("##frame", &idx, 0, (int)_frames.size() - 1,
-                             fmt.c_str())) {
-            _frame_idx = idx;
+        const int max_idx = (int)_frames.size() - 1;
+        const std::string slider_fmt = spirula::i18n::format(dmsg::preview_frame, {"%d"});
+
+        const float input_w = px(70.0f);
+        const float gap = px(4.0f);
+        const float slider_w = ImGui::GetContentRegionAvail().x - input_w - gap;
+
+        ImGui::SetNextItemWidth(slider_w);
+        if (ui::SliderIntRaw("##frame", &idx, 0, max_idx, slider_fmt.c_str())) {
+            _frame_idx = std::clamp(idx, 0, max_idx);
             _frame_dirty = true;
             _needs_run = true;
         }
         ui::help_on_hover(dmsg::preview_frame_help);
+
+        ImGui::SameLine(0.0f, gap);
+        ImGui::SetNextItemWidth(input_w);
+        int input_val = idx;
+        if (ui::InputIntRaw("##frame_input", &input_val)) {
+            input_val = std::clamp(input_val, 0, max_idx);
+            if (input_val != _frame_idx) {
+                _frame_idx = input_val;
+                _frame_dirty = true;
+                _needs_run = true;
+            }
+        }
+        ui::help_on_hover(dmsg::preview_frame_help);
+
+        if (!_src.is_video && !_frames[(size_t)_frame_idx].path.empty()) {
+            const std::string name =
+                fs::path(_frames[(size_t)_frame_idx].path).filename().string();
+            ui::TextDisabledRaw(elide_middle(name, panel_w - px(16.0f)));
+        }
     }
 
     ImGui::Spacing();

@@ -47,9 +47,13 @@ public:
     // `src` carries the decoder and the FrameLook the run will use, so the
     // picture here is the file it writes. Video listing and probing run on the
     // panel worker; frame decoding follows there after the list is ready.
-    void open(const PreviewSource& src, const MaskModelFiles& model);
+    void open(const PreviewSource& src, const MaskModelFiles& model,
+              std::optional<PreviewFrame> initial = std::nullopt);
     bool is_open() const { return _open; }
     void close();
+    // The source preview's frame: a video's frame number, or a photo's path. A
+    // frame outside the clip lands on its nearer end.
+    void show_frame(const PreviewFrame& frame);
 
     // Draws the modal window. Call once per frame from the dataset screen,
     // inside its ImGui frame. Both arguments are edited in place.
@@ -89,6 +93,8 @@ private:
     // The key the worker's Job uses for the shown frame, so the panel can
     // tell whether the edge map it holds is this frame's.
     std::string shown_frame_key() const;
+    // Where show_frame()'s frame sits in _frames; -1 for a photo not in it.
+    int frame_position(const PreviewFrame& frame) const;
     void upload_preview();
     // `win` is the part of the frame on screen, normalized (u0, v0, u1, v1).
     void upload_stencil(const app::FrameMask& stencil, const float win[4], int w, int h);
@@ -148,7 +154,7 @@ private:
     int  _folder_idx = 0;
     std::vector<PreviewFrame> _frames;
     // Every image of a photo input; the border fit reads the ones sharing the
-    // shown frame's camera folder. The slider offers a dozen, a fit two dozen.
+    // shown frame's camera folder. The slider offers all of them, a fit two dozen.
     std::vector<std::string> _all_files;
     bool _frames_ready = false;         // guarded by _mu
     PreviewSource _listed_src;          // guarded by _mu
@@ -156,6 +162,7 @@ private:
     std::vector<std::string> _all_files_pending;
     std::vector<std::string> _folders_pending;
     int  _frame_idx = 0;
+    std::optional<PreviewFrame> _target_frame;   // until the listing lands
     bool _frame_dirty = true;           // the chosen frame changed
     bool _needs_run = false;            // prompt edited; rerun on release
     std::atomic<bool> _listing{false};

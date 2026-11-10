@@ -221,6 +221,7 @@ void VideoBrowser::clear() {
     _frame_tex_side = 0;
     _playhead = 0.0;
     _playing = false;
+    _selection_changed = false;
     _drag = 0;
     _editing = 0;
 }
@@ -258,8 +259,16 @@ int VideoBrowser::streams(bool stitched) const {
     return stitched && _pano.valid() ? 1 : std::max(1, (int)_ui_facts.pictures.size());
 }
 
+int VideoBrowser::current_frame() const {
+    return (int)index_at(_playhead);
+}
+
 void VideoBrowser::set_playhead(double seconds) {
-    _playhead = std::clamp(seconds, 0.0, std::max(0.0, _ui_facts.seconds));
+    const double clamped = std::clamp(seconds, 0.0, std::max(0.0, _ui_facts.seconds));
+    if (clamped != _playhead) {
+        _playhead = clamped;
+        _selection_changed = true;
+    }
     _settle_at = 0.0;
     _jumped = true;
 }
@@ -944,6 +953,7 @@ bool VideoBrowser::draw_timeline(float width, double& clip_start, double& clip_e
         if (_playhead != before) {
             _settle_at = ImGui::GetTime();
             _jumped = true;
+            _selection_changed = true;
         }
     }
 
