@@ -1,17 +1,66 @@
 # Pose normalization: orientation, centering and scale
 
 `orientation_method`, `center_method` and `auto_scale_poses` are accepted by
-the CLI and GUI. Orientation and centering methods are only partially
-implemented. This note describes the native behavior and preserves the
-historical reference for the other methods.
+the CLI and GUI, and every value of them is implemented natively. This note
+describes the native behavior and preserves the historical reference.
 
 ## Status
 
 | config | native behaviour |
 |---|---|
-| `orientation_method` | `up`, `pca`, `vertical`, `none` supported; `gsplat` warns and is approximated |
-| `center_method` | `poses`, `focus`, `none` supported; `gsplat` warns and is approximated |
+| `orientation_method` | `up`, `pca`, `vertical`, `none`, `gsplat` supported |
+| `center_method` | `poses`, `focus`, `none`, `gsplat` supported |
 | `auto_scale_poses` | supported — when off, `scale_factor` is 1.0; when on, folded into `train_frame_scale` |
+
+### `gsplat`
+
+Either option set to `gsplat` selects gsplat's joint orientation + centering
+for **both**, and the other option is ignored (as the Python dataparser this
+was ported from did). `dsparse::compute_normalized_transform` runs it
+(`gsplat_rigid_transform` in `DatasetCommon.cpp`), from the cameras and the
+seed points:
+
+1. level the cameras by their mean up, and put the origin at the per-axis
+   median of the nearest points on their optical axes
+   (`similarity_from_cameras`);
+2. move the per-axis median of the points to the origin and turn their
+   principal axes onto the coordinate axes, the thinnest along z
+   (`align_principal_axes`);
+3. if the points' median height is above their mean, turn the scene over
+   (more points toward the bottom is a ground plane);
+4. `scale_factor = 1 / (1.1 * the farthest camera from the cameras' mean)`,
+   or 1 with `auto_scale_poses` off (the Python ignored that option here).
+
+gsplat's own similarity carries a uniform scale out of step 1 that every later
+step commutes with and the dataparser divides back out, so it cancels and is
+never computed. Where this differs from `reference/python/camera_utils.py`, on
+purpose:
+
+- That code is written for OpenCV cameras and was fed OpenGL ones, which
+  levelled the scene upside down and left step 3 to repair it. The port uses
+  the OpenGL cameras it is given, right way up.
+- Its up-aligning branch for a world already y-up was a reflection (det -1),
+  which mirrors the scene. The port rotates (det +1), also for nearly-y-up.
+- A principal axis' sign is fixed (its largest component positive) instead of
+  left to the eigensolver, so equal input gives equal output.
+- Only cameras the stray-camera test keeps (`kStrayCameraThreshold`) set the
+  levelling, the origin and the scale.
+- Point statistics use a strided sample of at most 4M points, and skip
+  non-finite ones.
+
+The seed points must be in the frame of the poses it is given. COLMAP's are;
+transforms.json poses are in the file's frame, so the parser maps the points
+through `applied_transform`'s rotation first.
+
+It needs usable points: at least four finite ones with some spread. Without
+them (a transforms.json with no cloud, say) `up` / `poses` stand in, the
+dataset reports `pose_normalization_fell_back`, and the trainer logs the
+"approximated" warning.
+
+`sparse_transform_test` covers the other methods; `pose_normalization_test`
+covers `gsplat`: any rotation, offset, scale and up axis (including exactly
+y-up) must come out with the principal axes on the coordinate axes, the cameras'
+up on +z, a proper rotation, and the cameras spanning 1/1.1.
 
 **Where the frame now comes from.** `spirula sfm` applies this same
 similarity to the model before writing it (`src/sfm/map/Orient.h`,
@@ -30,12 +79,12 @@ scaled by `relative_scale`. The orientation/centering choice does **not** move t
 only changes `train_frame_scale` (and hence the LR / regularizer rescaling
 that hangs off it) and `train_to_normalized`, the similarity the web viewer
 uses to place its default camera. That is why the native trainer can warn and
-carry on rather than refuse: the approximation is real but bounded.
+carry on rather than refuse when a method cannot be computed (`gsplat` without
+seed points): the approximation is real but bounded.
 
 `src/data/parsers/DatasetCommon.cpp::compute_normalized_transform` is the C++
-side. It implements `up`, `pca`, `vertical`, `none` orientation, `poses`,
-`focus`, `none` centering, and respects `auto_scale_poses`. `gsplat` remains
-approximated with a warning.
+side. It implements every orientation and centering method above, and
+respects `auto_scale_poses`.
 
 ## Reference implementation
 

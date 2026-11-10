@@ -194,8 +194,8 @@ struct DatasetParserConfig {
     std::string exif_orientation = "none";
 
     // How the dataset's cameras are oriented and centered in the normalized
-    // frame: orientation_method in {"up", "pca", "vertical", "none"},
-    // center_method in {"poses", "focus", "none"}.
+    // frame: orientation_method in {"up", "pca", "vertical", "none", "gsplat"},
+    // center_method in {"poses", "focus", "none", "gsplat"}.
     std::string orientation_method = "up";
     std::string center_method = "poses";
     bool        auto_scale_poses = true;
@@ -262,6 +262,10 @@ struct ParsedDataset {
     // 1 / scale_factor of the would-be normalized frame. Computed over ALL
     // frames, before the eval_mode subset is dropped.
     float                    train_frame_scale = 1.0f;
+
+    // orientation_method / center_method `gsplat` needed seed points and had
+    // none usable, so `up` / `poses` were used for the normalized frame.
+    bool                     pose_normalization_fell_back = false;
 
     // inv(T_n_from_train), row-major 4x4: normalized frame -> training frame,
     // what the viewers remap their c2w through. A train_frame_scale of 1 does
@@ -402,8 +406,9 @@ ColmapPoints3D read_seed_pointcloud(const std::string& dataset_dir,
 // kStrayOverMedian in data/FrustumSize.h.
 constexpr float kStrayCameraThreshold = 20.0f;
 
-// T_n_from_camera = scale * [R_align | -R_align @ center] (row-major 4x4).
-// Returns scale_factor; `R_out` is R_align alone.
+// T_n_from_camera = scale * [R_align | -R_align @ center]; returns scale_factor.
+// `gsplat` reads seed points in the `c2w` frame; without usable points it falls
+// back to up/poses with *gsplat_fell_back set (docs/notes/pose-normalization.md).
 double compute_normalized_transform(const double* c2w, int64_t n,
                                     double T_out[16], double R_out[9] = nullptr,
                                     // [N]: level by the up each image's EXIF
@@ -411,7 +416,10 @@ double compute_normalized_transform(const double* c2w, int64_t n,
                                     const uint8_t* exif_orientation = nullptr,
                                     const std::string& orientation_method = "up",
                                     const std::string& center_method = "poses",
-                                    bool auto_scale_poses = true);
+                                    bool auto_scale_poses = true,
+                                    const double* points_xyz = nullptr,
+                                    int64_t n_points = 0,
+                                    bool* gsplat_fell_back = nullptr);
 
 // Each image's EXIF Orientation, 1 where the file carries none. Empty when
 // `mode` is "none" or nothing in the set asks for a turn, which is the test

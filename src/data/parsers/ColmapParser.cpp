@@ -887,9 +887,11 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     const bool exif_turn = cfg.exif_orientation == "apply" && !exif_o.empty();
 
     double T_n[16], T_inv[16], R_align[9];
+    bool gsplat_fell_back = false;
     double scale_factor = dsparse::compute_normalized_transform(
         c2w_all.data(), n_all, T_n, R_align, exif_level ? exif_o.data() : nullptr,
-        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses);
+        cfg.orientation_method, cfg.center_method, cfg.auto_scale_poses,
+        points.xyz.data(), points.num(), &gsplat_fell_back);
     dsparse::invert_affine4x4(T_n, T_inv);
     float train_frame_scale = (float)(scale_factor != 0.0 ? 1.0 / scale_factor : 1.0);
 
@@ -900,6 +902,7 @@ ParsedDataset parse_colmap_dataset(const std::string& dataset_dir,
     const int64_t N = (int64_t)subset.size();
     ds.num_cameras = N;
     ds.train_frame_scale = train_frame_scale;
+    ds.pose_normalization_fell_back = gsplat_fell_back;
     for (int k = 0; k < 16; k++) ds.train_to_normalized[k] = (float)T_inv[k];
     for (int k = 0; k < 9; k++) ds.normalized_rotation[k] = (float)R_align[k];
     ds.center = center;

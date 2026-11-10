@@ -16,16 +16,12 @@
 
 REFERENCE IMPLEMENTATION -- nothing imports this module.
 
-It is kept, deliberately, because `orientation_method` and `center_method` are
-config options the native pipeline does NOT implement yet. `spirula train`
-accepts them and warns:
-
-    warning: orientation/center method '<x>'/'<y>' approximated as 'up'/'poses'
-             (affects only train_frame_scale)
-
-`src/data/parsers/DatasetCommon.cpp::compute_normalized_transform` is the C++
-side, and it hardcodes the up/poses behaviour. When someone ports the rest,
-this file is the specification:
+It is kept, deliberately, as the specification the native pipeline was checked
+against. `orientation_method` and `center_method` are all implemented natively
+now; `src/data/parsers/DatasetCommon.cpp::compute_normalized_transform` is the
+C++ side, and its `gsplat` branch (`gsplat_rigid_transform`) is the port of
+`orient_and_center_poses_gsplat()` below, with the deliberate differences listed
+in `docs/notes/pose-normalization.md`. This file is the reference for both:
 
   * `auto_orient_and_center_poses()`  -- orientation_method in
     {pca, up, vertical, none} x center_method in {poses, focus, none}, plus
