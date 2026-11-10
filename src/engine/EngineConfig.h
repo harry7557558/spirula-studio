@@ -353,6 +353,17 @@ struct PpispStepConfig {
 };
 
 
+// The per-image ground-truth warp (docs/notes/calib-warp.md), fixed for a run.
+// `step` scales each Gauss-Newton step; `smooth` is the neighbour prior,
+// relative to the image's own curvature.
+struct CalibWarpConfig {
+    int   grid = 9;
+    bool  parallax = false;
+    int   start_step = 1000;
+    float step = 0.5f;
+    float smooth = 0.05f;
+};
+
 // How the local-PCA regularizer finds each splat's neighbours
 // (TrainConfig::pca_reg_knn); docs/notes/pca-reg.md.
 enum class PcaRegKnn : int {

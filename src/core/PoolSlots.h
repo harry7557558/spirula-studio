@@ -301,6 +301,8 @@ enum class SaveClass : uint8_t {
   X(EngPpispRegRawLosses           , "eng.ppisp.reg_raw_losses",          Appearance, Never) \
   X(EngPpispVRegLosses             , "eng.ppisp.v_reg_losses",            Appearance, Never) \
   X(EngPpispVRegParams             , "eng.ppisp.v_reg_params",            Appearance, Never) \
+  /* ---- calibration warp (engine/EngineCalibWarp.cpp) ---- */ \
+  X(EngCalibWarpParams             , "eng.calib_warp.params",             Appearance, Always) \
   /* ---- color-shift reg ---- */ \
   X(EngColorShiftRegEma            , "eng.color_shift_reg.ema",           Appearance, Always) \
   X(EngColorShiftRegBatchSum       , "eng.color_shift_reg.batch_sum",     Appearance, Never) \

@@ -580,8 +580,8 @@ int engine_eval_forward(int index, std::string primitive, int sh_degree, bool pa
 
 int engine_preview_forward(int index, std::string primitive, int sh_degree,
                            bool packed, bool apply_color_correction,
-                           const EngineStepConfig& cfg, int pass,
-                           int* out_passes) {
+                           bool apply_calib_warp, const EngineStepConfig& cfg,
+                           int pass, int* out_passes) {
     if (!engine().dm)
         throw std::runtime_error(
             "engine_preview_forward: DataManager not configured — call "
@@ -624,5 +624,6 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
     forward_3dgs(std::move(primitive), sh_degree, packed,
                  /*output_median=*/false, (int)dist_type);
     if (apply_color_correction) _engine_step_image_stages(cam_view);
+    if (apply_calib_warp) _engine_calib_warp_preview();
     return views;
 }

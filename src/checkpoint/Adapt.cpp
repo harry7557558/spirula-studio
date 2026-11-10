@@ -486,6 +486,13 @@ const std::optional<std::array<int, 3>>& target_grid(const TargetLayout& t,
         "this run.");
 }
 
+// The checkpoint's calibration-warp table layout, as TargetLayout holds it.
+std::optional<std::array<int, 2>> calib_warp_layout(const JsonValue& state) {
+    const JsonValue* c = state.find("calib_warp");
+    if (!c || c->get_double("enabled", 0) == 0) return std::nullopt;
+    return std::array<int, 2>{(int)c->get_double("grid", 0), (int)c->get_double("D", 0)};
+}
+
 }  // namespace
 
 
@@ -509,6 +516,7 @@ bool needs_adapt(const JsonValue& state, const TargetLayout& t) {
     const JsonValue* p = state.find("ppisp");
     bool ck_ppisp = p && p->get_double("enabled", 0) != 0;
     if (ck_ppisp != t.ppisp) return true;
+    if (calib_warp_layout(state) != t.calib_warp) return true;
     return false;
 }
 
@@ -731,6 +739,16 @@ bool adapt_checkpoint(const fs::path& ckpt_dir, const TargetLayout& t,
                     emit[base + ".qb"] = *parts.qb;
                 }
             }
+            continue;
+        }
+
+        // --- calibration warp: kept as is, or dropped to be fitted again ---
+        if (starts_with(base, "eng.calib_warp.")) {
+            const auto ck = calib_warp_layout(state);
+            if (!t.calib_warp || ck != t.calib_warp || !parts.plain) continue;
+            const int64_t row = (int64_t)(*ck)[0] * (*ck)[0] * (*ck)[1];
+            if ((int64_t)parts.plain->numel() != row * n_img) continue;
+            emit[base] = *parts.plain;
             continue;
         }
 

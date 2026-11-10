@@ -537,6 +537,22 @@ struct PpispState {
     bool forward_pending_after_encode = false;
 };
 
+// Per-image warp of the ground truth onto the render (engine/EngineCalibWarp.cpp,
+// table layout in kernels/pixelwise/CalibWarp.cuh).
+struct CalibWarpState {
+    bool  enabled = false;
+    int   grid_n = 9, D = 2;
+    int   start_step = 1000;
+    float step = 0.5f, smooth = 0.05f;
+    DeviceTensor2D<float> params;     // [N, n*n*D]
+    DeviceTensor2D<float> grad, hess; // [C, ...] for the step's images
+    int64_t zeroed_rows = 0;
+    // While gt.rgb points at the warped copy: the step's own ground truth.
+    TorchTensorView src_gt;
+    bool swapped = false;
+    bool active_this_step = false;
+};
+
 // What the fused appearance chain did in this step's forward, for the backward
 // to replay. `fused` false means the per-stage kernels ran instead.
 struct AppearanceState {
@@ -740,6 +756,7 @@ struct EngineState {
     PpispState       ppisp;
     ColorSpaceState  color_space;
     AppearanceState  appearance;
+    CalibWarpState   calib_warp;
     ColorShiftRegState color_shift_reg;
     PcaRegState        pca_reg;
 

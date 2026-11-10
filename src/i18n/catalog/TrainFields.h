@@ -553,6 +553,109 @@ SS_MSG(eval_lpips_help,
        "durur. Çıkarım katmanı (SS_BUILD_SAM) olmayan bir derleme LPIPS'i "
        "reference/python/eval_lpips.py'ye bırakır."));
 
+SS_MSG(eval_align,
+    EN("Align eval views before scoring"), JA("採点の前に評価用の視点を位置合わせ"),
+    ZH_HANS("评分前先对齐评估视角"), ZH_HANT("評分前先對齊評估視角"),
+    KO("채점 전에 평가 시점 정렬"),
+    DE("Auswertungsansichten vor der Bewertung ausrichten"),
+    FR("Aligner les vues d'évaluation avant de les noter"),
+    ES("Alinear las vistas de evaluación antes de puntuar"),
+    PT("Alinhar as vistas de avaliação antes de pontuar"),
+    IT("Allineare le viste prima della valutazione"),
+    NL("Evaluatieaanzichten uitlijnen vóór het scoren"),
+    RU("Совмещать виды перед оценкой"),
+    TR("Puanlamadan önce değerlendirme görünümlerini hizala"));
+SS_MSG(eval_align_help,
+    EN("When views are held out, also score them after warping each render onto its "
+       "photo with a smooth fitted flow, as al_ (aligned) and alcc_ (aligned, then "
+       "color-corrected) metrics in metrics.json, and as masked_al_ and masked_alcc_ "
+       "where there are masks. A held-out camera has a calibration error of its own "
+       "that no trained warp can know, so these say how good the reconstruction looks "
+       "rather than how well it lines up. `auto` scores them when the calibration "
+       "correction is on."),
+    JA("評価用に視点を取り分けたとき、各描画を滑らかに当てはめたフローで写真に重ねて"
+       "からも採点し、al_（位置合わせ後）と alcc_（位置合わせして色補正した後）の指標"
+       "として、マスクがあれば masked_al_ と masked_alcc_ としても metrics.json に書き"
+       "ます。取り分けたカメラには、学習したワープでは知りようのない固有のキャリブレー"
+       "ション誤差があるため、これらの指標は再構成がどれだけ揃っているかではなく、"
+       "どれだけ良く見えるかを表します。`auto` ではキャリブレーション補正が有効なとき"
+       "に採点します。"),
+    ZH_HANS("留出评估视角时，先用拟合出的平滑光流把每幅渲染对到照片上再评分一次，作为 "
+            "al_（对齐后）和 alcc_（对齐并校色后）指标写入 metrics.json；有遮罩时还写入 "
+            "masked_al_ 和 masked_alcc_。留出的相机有自己的标定误差，任何训练出的形变都"
+            "无从得知；因此这些指标衡量的是重建看起来有多好，而不是它对得有多准。`auto` "
+            "在开启标定校正时评分。"),
+    ZH_HANT("留出評估視角時，先用擬合出的平滑光流把每幅算繪對到照片上再評分一次，作為 "
+            "al_（對齊後）與 alcc_（對齊並校色後）指標寫入 metrics.json；有遮罩時還寫入 "
+            "masked_al_ 與 masked_alcc_。留出的相機有自己的校準誤差，任何訓練出的形變都"
+            "無從得知；因此這些指標衡量的是重建看起來有多好，而不是它對得有多準。`auto` "
+            "在開啟校準修正時評分。"),
+    KO("평가용으로 시점을 떼어 두면, 각 렌더링을 맞춰 구한 부드러운 흐름으로 사진에 "
+       "겹친 뒤에도 채점해 al_(정렬 후)와 alcc_(정렬하고 색 보정한 후) 지표로, 마스크가 "
+       "있으면 masked_al_과 masked_alcc_로도 metrics.json에 씁니다. 떼어 둔 카메라에는 "
+       "학습된 워프가 알 수 없는 고유한 캘리브레이션 오차가 있으므로, 이 지표들은 "
+       "재구성이 얼마나 잘 맞는지가 아니라 얼마나 좋아 보이는지를 나타냅니다. `auto`는 "
+       "캘리브레이션 보정이 켜져 있을 때 채점합니다."),
+    DE("Werden Ansichten zurückgehalten, sie zusätzlich bewerten, nachdem jedes "
+       "Rendering mit einem glatten, angepassten Fluss auf sein Foto verzerrt wurde, "
+       "als Metriken al_ (ausgerichtet) und alcc_ (ausgerichtet, dann farbkorrigiert) in "
+       "metrics.json, und als masked_al_ und masked_alcc_, wo es Masken gibt. Eine "
+       "zurückgehaltene Kamera hat einen eigenen Kalibrierfehler, den keine trainierte "
+       "Verzerrung kennen kann; diese Werte sagen also, wie gut die Rekonstruktion "
+       "aussieht, nicht wie genau sie passt. `auto` bewertet sie, wenn die "
+       "Kalibrierkorrektur an ist."),
+    FR("Quand des vues sont mises de côté, les noter aussi après avoir déformé chaque "
+       "rendu sur sa photo par un flot lisse ajusté, comme métriques al_ (aligné) et "
+       "alcc_ (aligné, puis corrigé en couleur) dans metrics.json, et comme masked_al_ et "
+       "masked_alcc_ là où il y a des masques. Une caméra mise de côté a sa propre "
+       "erreur d'étalonnage, qu'aucune déformation entraînée ne peut connaître ; ces "
+       "valeurs disent donc à quel point la reconstruction est belle, non à quel point "
+       "elle tombe juste. `auto` les note quand la correction d'étalonnage est activée."),
+    ES("Cuando se apartan vistas, puntuarlas también tras deformar cada renderizado "
+       "sobre su foto con un flujo suave ajustado, como métricas al_ (alineado) y alcc_ "
+       "(alineado y luego con el color corregido) en metrics.json, y como masked_al_ y "
+       "masked_alcc_ donde hay máscaras. Una cámara apartada tiene su propio error de "
+       "calibración, que ninguna deformación entrenada puede conocer; estas métricas "
+       "dicen, pues, lo bien que se ve la reconstrucción, no lo bien que encaja. `auto` "
+       "las puntúa cuando la corrección de calibración está activada."),
+    PT("Quando vistas são separadas, pontuá-las também depois de deformar cada "
+       "renderização sobre sua foto com um fluxo suave ajustado, como métricas al_ "
+       "(alinhado) e alcc_ (alinhado e depois com a cor corrigida) em metrics.json, e "
+       "como masked_al_ e masked_alcc_ onde há máscaras. Uma câmera separada tem seu "
+       "próprio erro de calibração, que nenhuma deformação treinada pode conhecer; essas "
+       "métricas dizem, então, quão boa a reconstrução parece, e não quão bem ela se "
+       "encaixa. `auto` as pontua quando a correção de calibração está ativada."),
+    IT("Quando delle viste sono tenute da parte, valutarle anche dopo aver deformato "
+       "ogni rendering sulla sua foto con un flusso liscio adattato, come metriche al_ "
+       "(allineato) e alcc_ (allineato, poi con colore corretto) in metrics.json, e come "
+       "masked_al_ e masked_alcc_ dove ci sono maschere. Una camera tenuta da parte ha un "
+       "proprio errore di calibrazione che nessuna deformazione addestrata può "
+       "conoscere; queste metriche dicono quindi quanto la ricostruzione appare buona, "
+       "non quanto combacia. `auto` le calcola quando la correzione della calibrazione "
+       "è attiva."),
+    NL("Worden aanzichten achtergehouden, ze dan ook scoren nadat elke render met een "
+       "gladde, aangepaste stroming op zijn foto is vervormd, als metrieken al_ "
+       "(uitgelijnd) en alcc_ (uitgelijnd, daarna kleurgecorrigeerd) in metrics.json, en "
+       "als masked_al_ en masked_alcc_ waar er maskers zijn. Een achtergehouden camera "
+       "heeft een eigen kalibratiefout die geen getrainde vervorming kan kennen; deze "
+       "waarden zeggen dus hoe goed de reconstructie eruitziet, niet hoe precies hij "
+       "aansluit. `auto` scoort ze wanneer de kalibratiecorrectie aan staat."),
+    RU("Когда виды отложены для оценки, оценивать их также после того, как каждый "
+       "рендер наложен на свой снимок подобранным гладким потоком, — как метрики al_ "
+       "(совмещено) и alcc_ (совмещено, затем скорректирован цвет) в metrics.json, а при "
+       "наличии масок ещё и как masked_al_ и masked_alcc_. У отложенной камеры своя "
+       "ошибка калибровки, которую не может знать ни одна обученная деформация, поэтому "
+       "эти метрики говорят о том, насколько хорошо выглядит реконструкция, а не "
+       "насколько точно она совпадает. `auto` вычисляет их, когда включена коррекция "
+       "калибровки."),
+    TR("Görünümler ayrıldığında, her işlemeyi uydurulmuş yumuşak bir akışla "
+       "fotoğrafının üzerine büktükten sonra da puanlar; metrics.json'a al_ (hizalı) ve "
+       "alcc_ (hizalı, sonra renk düzeltilmiş) metrikleri olarak, maske olan yerlerde de "
+       "masked_al_ ve masked_alcc_ olarak yazar. Ayrılan bir kameranın, hiçbir eğitilmiş "
+       "bükmenin bilemeyeceği kendi kalibrasyon hatası vardır; bu yüzden bu metrikler "
+       "yeniden yapılandırmanın ne kadar iyi göründüğünü söyler, ne kadar iyi "
+       "oturduğunu değil. `auto`, kalibrasyon düzeltmesi açıkken bunları puanlar."));
+
 SS_MSG(lpips_checkpoints,
     EN("LPIPS checkpoints folder"),
     JA("LPIPS チェックポイントのフォルダー"),
@@ -11975,6 +12078,350 @@ SS_MSG(ppisp_lr_warmup_help,
        "Kademeli devreye girmek, splat'lar henüz parlaklık kazanmadan modelin "
        "parlaklığı sahiplenmesini engeller."));
 
+SS_MSG(calib_correction,
+    EN("Calibration correction"), JA("キャリブレーション補正"),
+    ZH_HANS("标定校正"), ZH_HANT("校準修正"),
+    KO("캘리브레이션 보정"), DE("Kalibrierkorrektur"),
+    FR("Correction d'étalonnage"), ES("Corrección de calibración"),
+    PT("Correção de calibração"), IT("Correzione della calibrazione"),
+    NL("Kalibratiecorrectie"), RU("Коррекция калибровки"),
+    TR("Kalibrasyon düzeltmesi"));
+SS_MSG(calib_correction_help,
+    EN("Correct what the camera calibration missed (focus breathing, stabilization, "
+       "rolling shutter, a slightly wrong pose) by giving each photo a smooth warp of "
+       "its own that lines it up with the reconstruction. `basic` warps each photo in "
+       "its image plane; `accurate` also moves near content more than far content, as "
+       "an error in the camera's position does, and renders depth every step to do "
+       "it. Costs a few percent of training time."),
+    JA("カメラのキャリブレーションで取りきれなかったずれ（フォーカスブリージング、"
+       "手ぶれ補正、ローリングシャッター、わずかな姿勢の誤差）を、写真ごとに再構成と"
+       "位置が合うような滑らかなワープを与えて補正します。`basic` は写真を画像面の中で"
+       "ゆがめ、`accurate` はさらに、カメラ位置の誤差がそうするように近くのものを遠くの"
+       "ものより大きく動かし、そのために毎ステップ深度を描画します。学習時間が数パーセント"
+       "増えます。"),
+    ZH_HANS("给每张照片各自加上一个使它与重建对齐的平滑形变，校正相机标定没有消除的"
+            "偏差：对焦呼吸、防抖、卷帘快门、略有偏差的位姿。`basic` 在像平面内形变"
+            "照片；`accurate` 还像相机位置的误差那样把近处的内容移得比远处多，为此每一步"
+            "都要渲染深度。训练时间多出百分之几。"),
+    ZH_HANT("給每張照片各自加上一個使它與重建對齊的平滑形變，校正相機校準沒有消除的"
+            "偏差：對焦呼吸、防手震、捲簾快門、略有偏差的位姿。`basic` 在像平面內形變"
+            "照片；`accurate` 還像相機位置的誤差那樣把近處的內容移得比遠處多，為此每一步"
+            "都要算繪深度。訓練時間多出百分之幾。"),
+    KO("사진마다 재구성과 맞도록 부드러운 워프를 따로 주어, 카메라 캘리브레이션이 "
+       "놓친 오차(포커스 브리딩, 손떨림 보정, 롤링 셔터, 약간 틀린 자세)를 보정합니다. "
+       "`basic`은 사진을 이미지 평면 안에서 휘게 하고, `accurate`는 카메라 위치의 오차가 "
+       "그러하듯 가까운 내용을 먼 내용보다 더 많이 움직이며, 이를 위해 매 스텝 깊이를 "
+       "렌더링합니다. 학습 시간이 몇 퍼센트 늘어납니다."),
+    DE("Korrigieren, was die Kamerakalibrierung übersehen hat (Fokusatmen, "
+       "Bildstabilisierung, Rolling Shutter, eine leicht falsche Pose), indem jedes Foto "
+       "eine eigene glatte Verzerrung bekommt, die es mit der Rekonstruktion zur Deckung "
+       "bringt. `basic` verzerrt jedes Foto in seiner Bildebene; `accurate` verschiebt "
+       "zusätzlich nahe Inhalte stärker als ferne, wie es ein Fehler in der "
+       "Kameraposition tut, und rendert dafür in jedem Schritt die Tiefe. Kostet einige "
+       "Prozent Trainingszeit."),
+    FR("Corriger ce que l'étalonnage de la caméra a manqué (respiration de mise au "
+       "point, stabilisation, obturateur roulant, une pose légèrement fausse) en donnant "
+       "à chaque photo sa propre déformation lisse qui l'aligne sur la reconstruction. "
+       "`basic` déforme chaque photo dans son plan image ; `accurate` déplace aussi le "
+       "contenu proche plus que le lointain, comme le fait une erreur sur la position de "
+       "la caméra, et rend pour cela la profondeur à chaque étape. Coûte quelques pour "
+       "cent du temps d'entraînement."),
+    ES("Corregir lo que la calibración de la cámara pasó por alto (respiración del "
+       "enfoque, estabilización, obturador rodante, una pose ligeramente errónea) dando "
+       "a cada foto su propia deformación suave que la alinea con la reconstrucción. "
+       "`basic` deforma cada foto en su plano de imagen; `accurate` además mueve el "
+       "contenido cercano más que el lejano, como lo hace un error en la posición de la "
+       "cámara, y para ello renderiza la profundidad en cada paso. Cuesta un pequeño "
+       "porcentaje del tiempo de entrenamiento."),
+    PT("Corrigir o que a calibração da câmera deixou passar (respiração do foco, "
+       "estabilização, obturador rolante, uma pose ligeiramente errada) dando a cada foto "
+       "sua própria deformação suave que a alinha com a reconstrução. `basic` deforma "
+       "cada foto em seu plano de imagem; `accurate` também move o conteúdo próximo mais "
+       "do que o distante, como faz um erro na posição da câmera, e para isso renderiza "
+       "a profundidade a cada passo. Custa alguns por cento do tempo de treinamento."),
+    IT("Correggere ciò che la calibrazione della camera ha mancato (respirazione della "
+       "messa a fuoco, stabilizzazione, rolling shutter, una posa leggermente sbagliata) "
+       "dando a ogni foto una propria deformazione liscia che la allinea alla "
+       "ricostruzione. `basic` deforma ogni foto nel suo piano immagine; `accurate` "
+       "sposta anche il contenuto vicino più di quello lontano, come fa un errore nella "
+       "posizione della camera, e per farlo renderizza la profondità a ogni passo. Costa "
+       "qualche punto percentuale del tempo di addestramento."),
+    NL("Corrigeren wat de camerakalibratie heeft gemist (focus breathing, "
+       "beeldstabilisatie, rolling shutter, een iets verkeerde pose) door elke foto een "
+       "eigen gladde vervorming te geven die hem op de reconstructie laat aansluiten. "
+       "`basic` vervormt elke foto in zijn beeldvlak; `accurate` verschuift daarnaast "
+       "nabije inhoud meer dan verre, zoals een fout in de camerapositie doet, en rendert "
+       "daarvoor elke stap de diepte. Kost een paar procent trainingstijd."),
+    RU("Исправлять то, что упустила калибровка камеры («дыхание» фокуса, "
+       "стабилизацию, скользящий затвор, слегка неверную позу), давая каждому снимку "
+       "собственную гладкую деформацию, совмещающую его с реконструкцией. `basic` "
+       "деформирует снимок в его плоскости изображения; `accurate` вдобавок сдвигает "
+       "близкое сильнее далёкого, как это делает ошибка в положении камеры, и для этого "
+       "рендерит глубину на каждом шаге. Обучение идёт на несколько процентов дольше."),
+    TR("Kamera kalibrasyonunun kaçırdığını (odak nefes alması, sabitleme, kayan perde, "
+       "biraz yanlış bir poz) her fotoğrafa onu yeniden yapılandırmayla hizalayan "
+       "kendine ait yumuşak bir bükme vererek düzeltir. `basic` her fotoğrafı kendi "
+       "görüntü düzleminde büker; `accurate` ayrıca, kamera konumundaki bir hatanın "
+       "yaptığı gibi, yakındaki içeriği uzaktakinden daha çok kaydırır ve bunun için her "
+       "adımda derinlik işler. Eğitim süresini yüzde birkaç artırır."));
+
+SS_MSG(use_calib_warp,
+    EN("Per-photo calibration warp"), JA("写真ごとのキャリブレーションワープ"),
+    ZH_HANS("逐张照片的标定形变"), ZH_HANT("逐張照片的校準形變"),
+    KO("사진별 캘리브레이션 워프"), DE("Kalibrierverzerrung je Foto"),
+    FR("Déformation d'étalonnage par photo"),
+    ES("Deformación de calibración por foto"),
+    PT("Deformação de calibração por foto"),
+    IT("Deformazione di calibrazione per foto"),
+    NL("Kalibratievervorming per foto"),
+    RU("Деформация калибровки для каждого снимка"),
+    TR("Fotoğraf başına kalibrasyon bükmesi"));
+SS_MSG(use_calib_warp_help,
+    EN("The warp the calibration correction turns on: each photo gets a smooth warp of "
+       "its own, fitted during training, that lines it up with the reconstruction."),
+    JA("キャリブレーション補正が有効にするワープです。学習中に当てはめた、各写真を再構成"
+       "と揃える滑らかなワープを写真ごとに持たせます。"),
+    ZH_HANS("标定校正所开启的形变：每张照片各有一个在训练中拟合、使它与重建对齐的平滑"
+            "形变。"),
+    ZH_HANT("校準修正所開啟的形變：每張照片各有一個在訓練中擬合、使它與重建對齊的平滑"
+            "形變。"),
+    KO("캘리브레이션 보정이 켜는 워프입니다. 사진마다 학습 중에 맞춘, 재구성과 맞도록 "
+       "하는 부드러운 워프를 따로 갖습니다."),
+    DE("Die Verzerrung, die die Kalibrierkorrektur einschaltet: Jedes Foto bekommt eine "
+       "eigene glatte, im Training angepasste Verzerrung, die es mit der Rekonstruktion "
+       "zur Deckung bringt."),
+    FR("La déformation qu'active la correction d'étalonnage : chaque photo reçoit sa "
+       "propre déformation lisse, ajustée pendant l'entraînement, qui l'aligne sur la "
+       "reconstruction."),
+    ES("La deformación que activa la corrección de calibración: cada foto recibe su "
+       "propia deformación suave, ajustada durante el entrenamiento, que la alinea con "
+       "la reconstrucción."),
+    PT("A deformação que a correção de calibração ativa: cada foto recebe sua própria "
+       "deformação suave, ajustada durante o treinamento, que a alinha com a "
+       "reconstrução."),
+    IT("La deformazione che la correzione della calibrazione attiva: ogni foto riceve "
+       "una propria deformazione liscia, adattata durante l'addestramento, che la "
+       "allinea alla ricostruzione."),
+    NL("De vervorming die de kalibratiecorrectie inschakelt: elke foto krijgt een eigen "
+       "gladde vervorming, tijdens het trainen aangepast, die hem op de reconstructie "
+       "laat aansluiten."),
+    RU("Деформация, которую включает коррекция калибровки: каждый снимок получает "
+       "собственную гладкую деформацию, подобранную при обучении и совмещающую его с "
+       "реконструкцией."),
+    TR("Kalibrasyon düzeltmesinin açtığı bükme: her fotoğraf, eğitim sırasında "
+       "uydurulan ve onu yeniden yapılandırmayla hizalayan kendine ait yumuşak bir "
+       "bükme alır."));
+
+SS_MSG(calib_warp_grid,
+    EN("Calibration correction grid"), JA("キャリブレーション補正のグリッド"),
+    ZH_HANS("标定校正网格"), ZH_HANT("校準修正網格"),
+    KO("캘리브레이션 보정 격자"), DE("Raster der Kalibrierkorrektur"),
+    FR("Grille de la correction d'étalonnage"),
+    ES("Rejilla de la corrección de calibración"),
+    PT("Grade da correção de calibração"),
+    IT("Griglia della correzione di calibrazione"),
+    NL("Raster van de kalibratiecorrectie"),
+    RU("Сетка коррекции калибровки"),
+    TR("Kalibrasyon düzeltmesinin ızgarası"));
+SS_MSG(calib_warp_grid_help,
+    EN("How many control points the warp has along each side of a photo, 2 to 16. More "
+       "points follow finer distortion, such as a rolling shutter's, but each needs more "
+       "of the photo to pin it down."),
+    JA("写真の各辺に沿ったワープの制御点の数（2〜16）です。点が多いほどローリング"
+       "シャッターのような細かいゆがみに追従できますが、1 点を決めるのに写真のより"
+       "多くの部分が必要になります。"),
+    ZH_HANS("形变在照片每条边上的控制点数，2 到 16。点越多，越能跟上卷帘快门这类更细的"
+            "畸变，但每个点需要照片中更多的内容来确定。"),
+    ZH_HANT("形變在照片每條邊上的控制點數，2 到 16。點越多，越能跟上捲簾快門這類更細的"
+            "畸變，但每個點需要照片中更多的內容來確定。"),
+    KO("사진의 각 변을 따라 워프가 갖는 제어점의 수(2~16)입니다. 점이 많을수록 롤링 "
+       "셔터 같은 더 세밀한 왜곡을 따라가지만, 점 하나를 정하는 데 사진의 더 많은 "
+       "부분이 필요합니다."),
+    DE("Wie viele Kontrollpunkte die Verzerrung entlang jeder Fotoseite hat, 2 bis 16. "
+       "Mehr Punkte folgen feineren Verzerrungen wie der eines Rolling Shutters, aber "
+       "jeder braucht mehr vom Foto, um festgelegt zu werden."),
+    FR("Combien de points de contrôle la déformation a le long de chaque côté d'une "
+       "photo, de 2 à 16. Plus de points suivent des distorsions plus fines, comme celle "
+       "d'un obturateur roulant, mais chacun demande davantage de la photo pour être "
+       "fixé."),
+    ES("Cuántos puntos de control tiene la deformación a lo largo de cada lado de una "
+       "foto, de 2 a 16. Más puntos siguen distorsiones más finas, como la de un "
+       "obturador rodante, pero cada uno necesita más de la foto para quedar fijado."),
+    PT("Quantos pontos de controle a deformação tem ao longo de cada lado de uma foto, "
+       "de 2 a 16. Mais pontos acompanham distorções mais finas, como a de um obturador "
+       "rolante, mas cada um precisa de mais da foto para ser determinado."),
+    IT("Quanti punti di controllo ha la deformazione lungo ogni lato di una foto, da 2 "
+       "a 16. Più punti seguono distorsioni più fini, come quella di un rolling shutter, "
+       "ma ciascuno ha bisogno di una parte maggiore della foto per essere fissato."),
+    NL("Hoeveel controlepunten de vervorming langs elke zijde van een foto heeft, 2 tot "
+       "16. Meer punten volgen fijnere vervorming, zoals die van een rolling shutter, "
+       "maar elk heeft meer van de foto nodig om vast te liggen."),
+    RU("Сколько контрольных точек у деформации вдоль каждой стороны снимка, от 2 до 16. "
+       "Чем больше точек, тем более мелкие искажения, вроде искажений скользящего "
+       "затвора, они передают, но каждой нужна бо́льшая часть снимка, чтобы её задать."),
+    TR("Bükmenin bir fotoğrafın her kenarı boyunca kaç kontrol noktası olduğu, 2 ile 16 "
+       "arası. Daha çok nokta, kayan perdeninki gibi daha ince bozulmaları izler, ama "
+       "her biri sabitlenmek için fotoğrafın daha büyük bir kısmına ihtiyaç duyar."));
+
+SS_MSG(calib_warp_parallax,
+    EN("Depth-dependent calibration correction"), JA("奥行きに応じたキャリブレーション補正"),
+    ZH_HANS("随深度变化的标定校正"), ZH_HANT("隨深度變化的校準修正"),
+    KO("깊이에 따른 캘리브레이션 보정"), DE("Tiefenabhängige Kalibrierkorrektur"),
+    FR("Correction d'étalonnage selon la profondeur"),
+    ES("Corrección de calibración según la profundidad"),
+    PT("Correção de calibração dependente da profundidade"),
+    IT("Correzione di calibrazione dipendente dalla profondità"),
+    NL("Diepteafhankelijke kalibratiecorrectie"),
+    RU("Коррекция калибровки с учётом глубины"),
+    TR("Derinliğe bağlı kalibrasyon düzeltmesi"));
+SS_MSG(calib_warp_parallax_help,
+    EN("Let the warp also move near content more than far content, the way a small "
+       "error in the camera's position does. It renders depth every step, which makes "
+       "training slower."),
+    JA("カメラ位置の小さな誤差がそうするように、近くのものを遠くのものより大きく動かす"
+       "こともワープに許します。毎ステップ深度を描画するため、学習が遅くなります。"),
+    ZH_HANS("让形变像相机位置的小误差那样，把近处的内容移得比远处多。每一步都要渲染"
+            "深度，训练会变慢。"),
+    ZH_HANT("讓形變像相機位置的小誤差那樣，把近處的內容移得比遠處多。每一步都要算繪"
+            "深度，訓練會變慢。"),
+    KO("카메라 위치의 작은 오차가 그러하듯, 가까운 내용을 먼 내용보다 더 많이 움직이는 "
+       "것도 워프에 허용합니다. 매 스텝 깊이를 렌더링하므로 학습이 느려집니다."),
+    DE("Die Verzerrung nahe Inhalte auch stärker verschieben lassen als ferne, so wie es "
+       "ein kleiner Fehler in der Kameraposition tut. Rendert in jedem Schritt die "
+       "Tiefe, was das Training verlangsamt."),
+    FR("Laisser aussi la déformation déplacer le contenu proche plus que le lointain, "
+       "comme le fait une petite erreur sur la position de la caméra. Rend la profondeur "
+       "à chaque étape, ce qui ralentit l'entraînement."),
+    ES("Dejar que la deformación también mueva el contenido cercano más que el lejano, "
+       "como lo hace un pequeño error en la posición de la cámara. Renderiza la "
+       "profundidad en cada paso, lo que hace más lento el entrenamiento."),
+    PT("Deixar a deformação também mover o conteúdo próximo mais do que o distante, "
+       "como faz um pequeno erro na posição da câmera. Renderiza a profundidade a cada "
+       "passo, o que deixa o treinamento mais lento."),
+    IT("Lasciare che la deformazione sposti anche il contenuto vicino più di quello "
+       "lontano, come fa un piccolo errore nella posizione della camera. Renderizza la "
+       "profondità a ogni passo, il che rallenta l'addestramento."),
+    NL("De vervorming ook nabije inhoud meer laten verschuiven dan verre, zoals een "
+       "kleine fout in de camerapositie doet. Rendert elke stap de diepte, wat het "
+       "trainen trager maakt."),
+    RU("Позволить деформации сдвигать близкое сильнее далёкого, как это делает "
+       "небольшая ошибка в положении камеры. Требует рендера глубины на каждом шаге, "
+       "что замедляет обучение."),
+    TR("Bükmenin, kamera konumundaki küçük bir hatanın yaptığı gibi, yakındaki içeriği "
+       "uzaktakinden daha çok kaydırmasına da izin verir. Her adımda derinlik işler, bu "
+       "da eğitimi yavaşlatır."));
+
+SS_MSG(calib_warp_start_iter,
+    EN("Calibration correction start"), JA("キャリブレーション補正の開始"),
+    ZH_HANS("标定校正的起始步"), ZH_HANT("校準修正的起始步"),
+    KO("캘리브레이션 보정 시작"), DE("Start der Kalibrierkorrektur"),
+    FR("Début de la correction d'étalonnage"),
+    ES("Inicio de la corrección de calibración"),
+    PT("Início da correção de calibração"),
+    IT("Inizio della correzione di calibrazione"),
+    NL("Start van de kalibratiecorrectie"),
+    RU("Начало коррекции калибровки"),
+    TR("Kalibrasyon düzeltmesinin başlangıcı"));
+SS_MSG(calib_warp_start_iter_help,
+    EN("The step from which the warp is fitted. Before it the renders are too rough to "
+       "line photos up with."),
+    JA("ワープの当てはめを始めるステップです。それより前の描画は粗すぎて、写真を合わせる"
+       "基準になりません。"),
+    ZH_HANS("从哪一步开始拟合形变。在此之前渲染太粗糙，无法拿来对齐照片。"),
+    ZH_HANT("從哪一步開始擬合形變。在此之前算繪太粗糙，無法拿來對齊照片。"),
+    KO("워프를 맞추기 시작하는 스텝입니다. 그 전의 렌더링은 너무 거칠어서 사진을 맞출 "
+       "기준이 되지 못합니다."),
+    DE("Der Schritt, ab dem die Verzerrung angepasst wird. Davor sind die Renderings zu "
+       "grob, um Fotos daran auszurichten."),
+    FR("L'étape à partir de laquelle la déformation est ajustée. Avant, les rendus sont "
+       "trop grossiers pour y aligner les photos."),
+    ES("El paso a partir del cual se ajusta la deformación. Antes, los renderizados son "
+       "demasiado toscos para alinear las fotos con ellos."),
+    PT("O passo a partir do qual a deformação é ajustada. Antes disso, as renderizações "
+       "são toscas demais para alinhar as fotos a elas."),
+    IT("Il passo da cui la deformazione viene adattata. Prima, i rendering sono troppo "
+       "grezzi per allinearvi le foto."),
+    NL("De stap vanaf waar de vervorming wordt aangepast. Daarvoor zijn de renders te "
+       "ruw om foto's op af te stemmen."),
+    RU("Шаг, с которого подбирается деформация. До него рендеры слишком грубы, чтобы "
+       "совмещать с ними снимки."),
+    TR("Bükmenin uydurulmaya başladığı adım. Öncesinde işlemeler, fotoğrafları onlarla "
+       "hizalamak için fazla kabadır."));
+
+SS_MSG(calib_warp_step,
+    EN("Calibration correction step size"), JA("キャリブレーション補正のステップ幅"),
+    ZH_HANS("标定校正步长"), ZH_HANT("校準修正步長"),
+    KO("캘리브레이션 보정 스텝 크기"), DE("Schrittweite der Kalibrierkorrektur"),
+    FR("Pas de la correction d'étalonnage"),
+    ES("Tamaño de paso de la corrección de calibración"),
+    PT("Tamanho do passo da correção de calibração"),
+    IT("Ampiezza del passo della correzione di calibrazione"),
+    NL("Stapgrootte van de kalibratiecorrectie"),
+    RU("Размер шага коррекции калибровки"),
+    TR("Kalibrasyon düzeltmesinin adım boyu"));
+SS_MSG(calib_warp_step_help,
+    EN("How much of each Gauss-Newton step the warp takes when its photo is trained on; "
+       "1 takes the whole step."),
+    JA("その写真で学習するたびに、ワープがガウス・ニュートン法の一歩のうちどれだけ進むか"
+       "です。1 で一歩をまるごと進みます。"),
+    ZH_HANS("每次用某张照片训练时，形变走高斯-牛顿一步中的多少；1 表示走完整一步。"),
+    ZH_HANT("每次用某張照片訓練時，形變走高斯-牛頓一步中的多少；1 表示走完整一步。"),
+    KO("해당 사진으로 학습할 때마다 워프가 가우스-뉴턴 한 스텝 중 얼마나 나아가는지"
+       "입니다. 1이면 한 스텝을 다 갑니다."),
+    DE("Welchen Anteil jedes Gauß-Newton-Schritts die Verzerrung geht, wenn mit ihrem "
+       "Foto trainiert wird; 1 geht den ganzen Schritt."),
+    FR("Quelle part de chaque pas de Gauss-Newton la déformation effectue quand sa "
+       "photo sert à l'entraînement ; 1 fait le pas entier."),
+    ES("Qué parte de cada paso de Gauss-Newton da la deformación cuando se entrena con "
+       "su foto; 1 da el paso completo."),
+    PT("Que parte de cada passo de Gauss-Newton a deformação dá quando sua foto é usada "
+       "no treinamento; 1 dá o passo inteiro."),
+    IT("Quanta parte di ogni passo di Gauss-Newton compie la deformazione quando si "
+       "addestra sulla sua foto; 1 compie il passo intero."),
+    NL("Welk deel van elke Gauss-Newton-stap de vervorming zet wanneer op zijn foto "
+       "wordt getraind; 1 zet de hele stap."),
+    RU("Какую долю каждого шага Гаусса — Ньютона делает деформация, когда обучение идёт "
+       "на её снимке; 1 — весь шаг."),
+    TR("Fotoğrafıyla eğitim yapıldığında bükmenin her Gauss-Newton adımının ne kadarını "
+       "attığı; 1 adımın tamamını atar."));
+
+SS_MSG(calib_warp_smooth,
+    EN("Calibration correction smoothness"), JA("キャリブレーション補正のなめらかさ"),
+    ZH_HANS("标定校正平滑度"), ZH_HANT("校準修正平滑度"),
+    KO("캘리브레이션 보정 매끄러움"), DE("Glätte der Kalibrierkorrektur"),
+    FR("Lissage de la correction d'étalonnage"),
+    ES("Suavidad de la corrección de calibración"),
+    PT("Suavidade da correção de calibração"),
+    IT("Levigatezza della correzione di calibrazione"),
+    NL("Gladheid van de kalibratiecorrectie"),
+    RU("Гладкость коррекции калибровки"),
+    TR("Kalibrasyon düzeltmesinin pürüzsüzlüğü"));
+SS_MSG(calib_warp_smooth_help,
+    EN("How strongly neighbouring control points are pulled together, relative to how "
+       "much the photo itself pins them down."),
+    JA("隣り合う制御点どうしを引き寄せる強さです。写真そのものがそれらをどれだけ決めて"
+       "いるかに対する比で表します。"),
+    ZH_HANS("相邻控制点彼此拉近的力度，相对于照片本身对它们的约束程度。"),
+    ZH_HANT("相鄰控制點彼此拉近的力度，相對於照片本身對它們的約束程度。"),
+    KO("이웃한 제어점끼리 서로 끌어당기는 세기로, 사진 자체가 그 점들을 얼마나 붙잡는지"
+       "에 대한 비율입니다."),
+    DE("Wie stark benachbarte Kontrollpunkte zueinander gezogen werden, gemessen daran, "
+       "wie fest das Foto selbst sie festlegt."),
+    FR("Avec quelle force les points de contrôle voisins sont rapprochés, par rapport à "
+       "ce que la photo elle-même impose."),
+    ES("Con qué fuerza se atraen entre sí los puntos de control vecinos, en relación con "
+       "cuánto los fija la propia foto."),
+    PT("Com que força os pontos de controle vizinhos são puxados uns para os outros, em "
+       "relação a quanto a própria foto os determina."),
+    IT("Con quanta forza i punti di controllo vicini vengono attratti tra loro, rispetto "
+       "a quanto li vincola la foto stessa."),
+    NL("Hoe sterk naburige controlepunten naar elkaar worden getrokken, vergeleken met "
+       "hoe vast de foto zelf ze legt."),
+    RU("Насколько сильно соседние контрольные точки стягиваются друг к другу — "
+       "относительно того, насколько их задаёт сам снимок."),
+    TR("Komşu kontrol noktalarının birbirine ne kadar güçlü çekildiği; fotoğrafın "
+       "kendisinin onları ne kadar sabitlediğine göre."));
+
 
 // ===========================================================================
 // Color Space
@@ -14031,6 +14478,18 @@ SS_MSG(choice_extreme,
     PT("extrema"),       IT("estrema"),      NL("extreem"),      RU("экстремальное"),
     TR("aşırı"));
 
+SS_MSG(choice_basic,
+    EN("basic"),         JA("基本"),          ZH_HANS("基本"),     ZH_HANT("基本"),
+    KO("기본"),           DE("einfach"),      FR("simple"),       ES("básica"),
+    PT("básica"),        IT("base"),         NL("eenvoudig"),    RU("базовая"),
+    TR("temel"));
+
+SS_MSG(choice_accurate,
+    EN("accurate"),      JA("高精度"),        ZH_HANS("精确"),     ZH_HANT("精確"),
+    KO("정밀"),           DE("genau"),        FR("précise"),      ES("precisa"),
+    PT("precisa"),       IT("accurata"),     NL("nauwkeurig"),   RU("точная"),
+    TR("hassas"));
+
 SS_MSG(choice_low,
     EN("low"),           JA("低"),            ZH_HANS("低"),       ZH_HANT("低"),
     KO("낮음"),           DE("niedrig"),      FR("faible"),       ES("baja"),
@@ -14350,6 +14809,10 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"distraction_robustness", "off",    &choice_off},
     {"distraction_robustness", "mild",   &choice_mild},
     {"distraction_robustness", "strong", &choice_strong},
+
+    {"calib_correction", "off",      &choice_off},
+    {"calib_correction", "basic",    &choice_basic},
+    {"calib_correction", "accurate", &choice_accurate},
 
     {"eval_mode", "all",      &choice_all},
     {"eval_mode", "interval", &choice_interval},

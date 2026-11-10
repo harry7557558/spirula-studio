@@ -735,6 +735,8 @@ static std::map<std::string, float> _engine_loss(
         return {};
     }
 
+    _engine_calib_warp_after_loss(pixel_grads.v_render_rgb);
+
     // --- Color-shift regularizer (combined bilagrid + PPISP) ---
     // Inject the design-(1) gradient on v_render_rgb BEFORE either bilagrid /
     // PPISP bwd runs, so each transform's vjp routes the contribution to its

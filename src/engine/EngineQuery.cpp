@@ -221,6 +221,14 @@ void engine_copy_gt_rgb_to_host(TorchTensorView out) {
                              backend::MemcpyKind::DeviceToHost);
         return;
     }
+    if (std::get<1>(t) == 2) {
+        std::vector<uint16_t> halves(n);
+        backend::memcpy_sync(halves.data(), (const void*)std::get<0>(t), n * sizeof(uint16_t),
+                             backend::MemcpyKind::DeviceToHost);
+        const float* table = spirula::half_to_float_table();
+        for (size_t i = 0; i < n; ++i) dst[i] = table[halves[i]];
+        return;
+    }
     std::vector<uint8_t> bytes(n);
     backend::memcpy_sync(bytes.data(), (const void*)std::get<0>(t), n,
                          backend::MemcpyKind::DeviceToHost);

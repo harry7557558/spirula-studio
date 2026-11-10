@@ -114,6 +114,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(bool, save_full_checkpoint, false, "run", "advanced", "")              \
     X(bool, save_eval_images, false, "run", "advanced", "")                  \
     X(bool, eval_lpips, true, "run", "advanced", "")                         \
+    X(std::optional<bool>, eval_align, std::nullopt, "run", "advanced", "")  \
     X(std::string, lpips_checkpoints, "", "run", "advanced", "<folder>")     \
     X(bool, log_performance, false, "run", "advanced", "")                   \
     X(int, viewer_port, 7007, "run", "advanced", "")                         \
@@ -352,6 +353,13 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(float, ppisp_lr, 0.002f, "correction", "advanced", "")                 \
     X(std::optional<float>, ppisp_lr_final, 2e-05f, "correction", "advanced", "") \
     X(int, ppisp_lr_warmup, 500, "correction", "advanced", "")               \
+    X(std::string, calib_correction, "basic", "correction", "basic", "off|basic|accurate") \
+    X(bool, use_calib_warp, true, "correction", "basic", "")                 \
+    X(int, calib_warp_grid, 9, "correction", "advanced", "")                 \
+    X(bool, calib_warp_parallax, false, "correction", "basic", "")           \
+    X(int, calib_warp_start_iter, 1000, "correction", "expert", "")          \
+    X(float, calib_warp_step, 0.5f, "correction", "expert", "")              \
+    X(float, calib_warp_smooth, 0.05f, "correction", "expert", "")           \
                                                                              \
     /* ==== colorspace -- linear vs display encoding, and which gamut ==== */\
     X(std::optional<bool>, image_color_is_linear, std::nullopt, "colorspace", "basic", "") \
@@ -522,6 +530,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         // c.min_init_fraction = 0.02f;
         c.use_bilateral_grid = false;
         c.use_ppisp = false;
+        c.calib_correction = "off";
         c.use_bilateral_grid_for_geometry = false;
         c.long_axis_split_opacity_k = {0.5f, 0.55f, 25000.0f};
         return true;
@@ -558,6 +567,7 @@ inline bool train_apply_preset(TrainConfig& c, const std::string& name) {
         c.use_bilateral_grid = false;
         c.use_bilateral_grid_for_geometry = false;
         c.use_ppisp = false;
+        c.calib_correction = "off";
         c.use_revised_densification = false;
         c.reg_rendered_only = false;
         c.dead_after_epochs = 0.0f;
@@ -683,6 +693,16 @@ inline void train_resolve_macros(TrainConfig& c,
                 c.densify_robust_edge_aware_quantile, 0.75f);
             put("densify_score_mode", c.densify_score_mode, "median");
         }
+    }
+
+    // `basic` is the defaults below it; `accurate` adds the depth-dependent term.
+    restore("calib_correction", "use_calib_warp", &TrainConfig::use_calib_warp);
+    restore("calib_correction", "calib_warp_parallax", &TrainConfig::calib_warp_parallax);
+    restore("calib_correction", "calib_warp_grid", &TrainConfig::calib_warp_grid);
+    if (c.calib_correction != "basic" || explicit_flags.count("calib_correction")) {
+        put("use_calib_warp", c.use_calib_warp, c.calib_correction != "off");
+        put("calib_warp_parallax", c.calib_warp_parallax, c.calib_correction == "accurate");
+        put("calib_warp_grid", c.calib_warp_grid, c.calib_correction == "accurate" ? 15 : 9);
     }
 
     // Lobes take the place of the SH bands unless both are asked for. A

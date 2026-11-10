@@ -127,6 +127,10 @@ static std::string _build_state_json(EngineState& s, int step, bool full) {
       << ", \"splat_transfer\": " << s.background.splat_transfer
       << ", \"splat_is_linear\": " << b(s.background.splat_is_linear)
       << "},\n";
+    j << "  \"calib_warp\": {\"enabled\": " << b(s.calib_warp.enabled);
+    if (s.calib_warp.enabled)
+        j << ", \"grid\": " << s.calib_warp.grid_n << ", \"D\": " << s.calib_warp.D;
+    j << "},\n";
     j << "  \"ppisp\": {\"enabled\": " << b(s.ppisp.enabled);
     if (s.ppisp.enabled)
         j << ", \"param_type\": \"" << s.ppisp.param_type << "\""

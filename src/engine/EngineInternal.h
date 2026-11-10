@@ -227,6 +227,14 @@ void _engine_ppisp_backward_hook(TorchTensorView v_render_rgb);
 void _engine_ppisp_forward_current();
 void _ensure_ppisp_optim_state();
 
+// Calibration warp: fit and swap gt.rgb for the warped copy before the loss,
+// the loss-gradient update after it, and the swap undone after the backward.
+void _engine_calib_warp_before_loss(int step);
+void _engine_calib_warp_after_loss(TorchTensorView v_render_rgb);
+void _engine_calib_warp_restore_gt();
+// The compare view's: gt.rgb as the loss would read it for the installed view.
+void _engine_calib_warp_preview();
+
 // Force-allocate splat optimizer state to a given quant layout (checkpoint
 // loader; no training step). Defined in EngineOptim.cpp.
 void engine_ensure_optim_state(int sh_optim_bits, int sh_value_bits,

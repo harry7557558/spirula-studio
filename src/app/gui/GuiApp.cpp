@@ -12244,6 +12244,9 @@ void GuiApp::draw_basic_options() {
         _cfg_ui.touched.insert("use_ppisp");
     ui::help_on_hover(msg::opt_ppisp_help);
 
+    macro_option("calib_correction", _cfg.calib_correction, fld::calib_correction,
+                 fld::calib_correction_help, {"off", "basic", "accurate"});
+
     ImGui::Spacing();
 
     // The two "if the capture went wrong" dials, last because a first run
@@ -12252,11 +12255,13 @@ void GuiApp::draw_basic_options() {
     macro_option("floater_suppression", _cfg.floater_suppression,
                  fld::floater_suppression, fld::floater_suppression_help,
                  {"off", "mild", "strong", "extreme"});
+#if 0
     macro_option("distraction_robustness", _cfg.distraction_robustness,
                  fld::distraction_robustness, fld::distraction_robustness_help,
                  {"off", "mild", "strong"});
     if (_cfg.distraction_robustness != "off")
         ui::TextColoredWrapped(kWarn, msg::opt_distraction_warn);
+#endif
 
     draw_dataset_aux(w);
 }

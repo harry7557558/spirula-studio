@@ -152,6 +152,7 @@ HEADER_SOURCES["kernels/pixelwise/PixelWise"] = [
     "kernels/pixelwise/GtDepthNormalWarp.cu", # GT depth/normal wide -> pinhole warps
     "kernels/ppisp/Ppisp.cu",                 # per-pixel image signal processing
 ]
+HEADER_SOURCES["kernels/pixelwise/CalibWarp"] = ["kernels/pixelwise/CalibWarp.cu"]
 
 
 def generate_headers():

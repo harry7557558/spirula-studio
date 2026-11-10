@@ -38,7 +38,9 @@
 
 #include <algorithm>
 #include <climits>
+#include <array>
 #include <cmath>
+#include <map>
 #include <condition_variable>
 #include <cstdio>
 #include <fstream>
@@ -1607,6 +1609,17 @@ void TrainerSession::setup_engine() {
                           cfg.ppisp_exposure_arithmetic_mean, exif_ev);
         st.ppisp_init = true;
     }
+    if (cfg.use_calib_warp) {
+        CalibWarpConfig cw;
+        cw.grid = cfg.calib_warp_grid;
+        cw.parallax = cfg.calib_warp_parallax;
+        cw.start_step = cfg.calib_warp_start_iter;
+        cw.step = cfg.calib_warp_step;
+        cw.smooth = cfg.calib_warp_smooth;
+        engine_init_calib_warp(n_grids, cw);
+    } else {
+        engine_init_calib_warp(0, CalibWarpConfig{});
+    }
 
     // ---- Resume --------------------------------------------------------
     // Last, because engine_load_checkpoint() overwrites the skeleton just
@@ -1654,6 +1667,8 @@ void TrainerSession::restore_checkpoint() {
     if (st.bilagrid_depth_init)  target.bilagrid_depth  = lhw(cfg.bilagrid_shape_geometry);
     if (st.bilagrid_normal_init) target.bilagrid_normal = lhw(cfg.bilagrid_shape_geometry);
     target.ppisp = st.ppisp_init;
+    if (cfg.use_calib_warp)
+        target.calib_warp = std::array<int, 2>{cfg.calib_warp_grid, cfg.calib_warp_parallax ? 4 : 2};
 
     fs::path load_from = r.ckpt_dir;
     fs::path tmp;
@@ -2205,11 +2220,16 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         int64_t index = 0;
         int H = 0, W = 0, C = 0;
         std::vector<float> gt, pred;
+        std::vector<float> aligned;   // pred warped onto gt (eval_align), or empty
         std::vector<uint8_t> mask;
     };
     struct ViewScore {
         bool  filled = false;
         float l1 = 0, psnr = 0, ssim = 0, cc_l1 = 0, cc_psnr = 0, cc_ssim = 0;
+        std::vector<float> aligned;   // al_ l1/psnr/ssim, then alcc_ l1/psnr/ssim
+        std::vector<float> al_lpips, alcc_lpips;
+        std::vector<float> masked_aligned;   // the same six over the mask
+        std::vector<float> masked_al_lpips, masked_alcc_lpips;
         std::vector<float> masked;
         std::vector<float> masked_lpips, masked_cc_lpips;
         std::vector<float> lpips, cc_lpips;   // one per lpips_names entry
@@ -2271,6 +2291,24 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         s.cc_l1   = image_l1(g, cc.data(), view_px);
         s.cc_psnr = image_psnr(g, cc.data(), view_px);
         s.cc_ssim = image_ssim(g, cc.data(), j.H, j.W, j.C);
+        thread_local std::vector<float> alcc, alcc_m;
+        if (!j.aligned.empty()) {
+            const float* a = j.aligned.data();
+            color_correct_into(a, g, (int64_t)j.H * j.W, j.C, alcc);
+            s.aligned = {image_l1(g, a, view_px), image_psnr(g, a, view_px),
+                         image_ssim(g, a, j.H, j.W, j.C),
+                         image_l1(g, alcc.data(), view_px), image_psnr(g, alcc.data(), view_px),
+                         image_ssim(g, alcc.data(), j.H, j.W, j.C)};
+            if (!j.mask.empty()) {
+                const uint8_t* m = j.mask.data();
+                color_correct_into(a, g, (int64_t)j.H * j.W, j.C, alcc_m, 5, 0.5f / 255.0f, m);
+                s.masked_aligned = {image_l1(g, a, view_px, m, j.C),
+                    image_psnr(g, a, view_px, m, j.C), image_ssim(g, a, j.H, j.W, j.C, m),
+                    image_l1(g, alcc_m.data(), view_px, m, j.C),
+                    image_psnr(g, alcc_m.data(), view_px, m, j.C),
+                    image_ssim(g, alcc_m.data(), j.H, j.W, j.C, m)};
+            }
+        }
         if (!j.mask.empty()) {
             const uint8_t* m = j.mask.data();
             color_correct_into(j.pred.data(), g, (int64_t)j.H * j.W, j.C, cc,
@@ -2292,6 +2330,19 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
             try {
                 if (j.C != 3) throw std::runtime_error("LPIPS needs RGB views");
                 std::vector<const float*> predictions{j.pred.data(),cc.data()};
+                const size_t n_base = j.mask.empty() ? 2 : 4;
+                thread_local std::vector<float> valid_al, valid_alcc;
+                if (!j.aligned.empty()) {
+                    quantize_8bit(j.aligned);
+                    color_correct_into(j.aligned.data(), g, (int64_t)j.H * j.W, j.C, alcc);
+                    if (!j.mask.empty()) {
+                        valid_al = j.aligned;
+                        color_correct_into(j.aligned.data(), g, (int64_t)j.H * j.W, j.C,
+                                           valid_alcc, 5, 0.5f / 255.0f, j.mask.data());
+                        for (size_t p = 0; p < valid_al.size(); ++p)
+                            if (!j.mask[p / j.C]) valid_al[p] = valid_alcc[p] = g[p];
+                    }
+                }
                 thread_local std::vector<float> valid_pred, valid_cc;
                 if (!j.mask.empty()) {
                     valid_pred = j.pred;
@@ -2302,6 +2353,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     predictions.push_back(valid_pred.data());
                     predictions.push_back(valid_cc.data());
                 }
+                if (!j.aligned.empty()) {
+                    predictions.push_back(j.aligned.data());
+                    predictions.push_back(alcc.data());
+                    if (!j.mask.empty()) {
+                        predictions.push_back(valid_al.data());
+                        predictions.push_back(valid_alcc.data());
+                    }
+                }
                 std::lock_guard<std::mutex> lk(lpips_mu);
                 for (const std::vector<float>& m : lpips->score(g,predictions,j.W,j.H)) {
                     s.lpips.push_back(m[0]);
@@ -2309,6 +2368,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     if (!j.mask.empty()) {
                         s.masked_lpips.push_back(m[2]);
                         s.masked_cc_lpips.push_back(m[3]);
+                    }
+                    if (!j.aligned.empty()) {
+                        s.al_lpips.push_back(m[n_base]);
+                        s.alcc_lpips.push_back(m[n_base + 1]);
+                        if (!j.mask.empty()) {
+                            s.masked_al_lpips.push_back(m[n_base + 2]);
+                            s.masked_alcc_lpips.push_back(m[n_base + 3]);
+                        }
                     }
                 }
             } catch (const std::exception& e) {
@@ -2380,13 +2447,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     }
 
     const int sh_deg = cfg.sh_degree;
+    const bool eval_align = cfg.eval_align.value_or(cfg.use_calib_warp);
     int64_t next_slot = 0;
     bool stopped = false;
 
     for (int64_t i = 0; i < eds.num_cameras; i++) {
         if (stop_requested.load() || worker_failed.load()) break;
         int64_t H = 0, W = 0, B = 0, Cc = 0;
-        std::vector<float> gt, render;
+        std::vector<float> gt, render, aligned;
         std::vector<uint8_t> mask;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
@@ -2421,6 +2489,27 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                             }
                 }
             }
+            // eval_align: the same views warped onto their ground truth, the
+            // flow fitted on the colour-corrected render (docs/notes/calib-warp.md).
+            // Under the lock that staged the view, so the camera table is still its.
+            if (eval_align && Cc == 3) {
+                const int64_t vp = H * W * Cc;
+                std::vector<float> est((size_t)(B * vp)), clamped = render, cc_v;
+                for (float& x : clamped) x = std::min(std::max(x, 0.0f), 1.0f);
+                for (int64_t v = 0; v < B; ++v) {
+                    if (mask.empty())
+                        color_correct_into(clamped.data() + v * vp, gt.data() + v * vp, H * W,
+                                           (int)Cc, cc_v);
+                    else
+                        color_correct_into(clamped.data() + v * vp, gt.data() + v * vp, H * W,
+                                           (int)Cc, cc_v, 5, 0.5f / 255.0f,
+                                           mask.data() + v * H * W);
+                    std::copy(cc_v.begin(), cc_v.end(), est.begin() + v * vp);
+                }
+                aligned.resize(clamped.size());
+                engine_calib_warp_align_to_gt(est.data(), clamped.data(), aligned.data(),
+                                              !mask.empty());
+            }
         }
 
         // Per POST-split view inside the batch (K faces of one input image).
@@ -2440,6 +2529,11 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     continue;
             }
             for (float& x : job.pred) x = std::min(std::max(x, 0.0f), 1.0f);
+            if (!aligned.empty()) {
+                job.aligned.assign(aligned.begin() + (size_t)(v * view_px),
+                                   aligned.begin() + (size_t)((v + 1) * view_px));
+                for (float& x : job.aligned) x = std::min(std::max(x, 0.0f), 1.0f);
+            }
             {
                 std::unique_lock<std::mutex> lk(qmu);
                 spacecv.wait(lk, [&] {
@@ -2478,6 +2572,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         per_image["cc_l1"].push_back(s.cc_l1);
         per_image["cc_psnr"].push_back(s.cc_psnr);
         per_image["cc_ssim"].push_back(s.cc_ssim);
+        constexpr const char* aligned_keys[] = {"al_l1", "al_psnr", "al_ssim",
+            "alcc_l1", "alcc_psnr", "alcc_ssim"};
+        for (size_t m = 0; m < s.aligned.size(); ++m)
+            per_image[aligned_keys[m]].push_back(s.aligned[m]);
+        constexpr const char* masked_aligned_keys[] = {"masked_al_l1", "masked_al_psnr",
+            "masked_al_ssim", "masked_alcc_l1", "masked_alcc_psnr", "masked_alcc_ssim"};
+        for (size_t m = 0; m < s.masked_aligned.size(); ++m)
+            per_image[masked_aligned_keys[m]].push_back(s.masked_aligned[m]);
         constexpr const char* masked_keys[] = {"masked_l1", "masked_psnr", "masked_ssim",
             "masked_cc_l1", "masked_cc_psnr", "masked_cc_ssim"};
         for (size_t m = 0; m < s.masked.size(); ++m)
@@ -2485,6 +2587,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         for (size_t m = 0; with_lpips && m < lpips_names.size(); ++m) {
             per_image[lpips_names[m]].push_back(s.lpips[m]);
             per_image["cc_" + lpips_names[m]].push_back(s.cc_lpips[m]);
+            if (!s.al_lpips.empty()) {
+                per_image["al_" + lpips_names[m]].push_back(s.al_lpips[m]);
+                per_image["alcc_" + lpips_names[m]].push_back(s.alcc_lpips[m]);
+            }
+            if (!s.masked_al_lpips.empty()) {
+                per_image["masked_al_" + lpips_names[m]].push_back(s.masked_al_lpips[m]);
+                per_image["masked_alcc_" + lpips_names[m]].push_back(s.masked_alcc_lpips[m]);
+            }
             if (!s.masked_lpips.empty()) {
                 per_image["masked_" + lpips_names[m]].push_back(s.masked_lpips[m]);
                 per_image["masked_cc_" + lpips_names[m]].push_back(s.masked_cc_lpips[m]);

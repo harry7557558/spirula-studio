@@ -89,7 +89,8 @@ void _engine_arm_step_forward(const EngineStepConfig& cfg,
             w[(int)LossWeightIndex::MeanMedianDepthSup] == 0.0f &&
             w[(int)LossWeightIndex::MedianDepthNormalReg] == 0.0f &&
             w[(int)LossWeightIndex::MedianNormalSup] == 0.0f &&
-            w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f;
+            w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f &&
+            !engine_calib_warp_wants_depth();
     }
     auto& pp = engine().ppisp;
     pp.cur_run_before_bilagrid = cfg.ppisp.run_before_bilagrid;
@@ -226,6 +227,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
     }
     _engine_step_image_stages(bilagrid_cam_indices);
+    _engine_calib_warp_before_loss(step);
 
     engine_prepare_projective_depth(cfg.optim);
     auto losses = engine_compute_loss_backward(
@@ -243,6 +245,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.overexposure_reg_weight,
         cfg.loss.color_shift_reg_weight,
         cfg.loss.color_shift_reg_beta);
+    _engine_calib_warp_restore_gt();
     engine().fwd.kernel_cut = 0.0f;
     engine_bin_tile_observe(std::chrono::duration<double>(
         std::chrono::steady_clock::now() - step_t0).count());
