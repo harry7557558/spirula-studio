@@ -418,7 +418,8 @@ void SfmRunner::apply_status(const RunStatus& st) {
                 _prog.count(Stage::Matching, st.done, st.total); break;
         // One bar over the whole step, whatever it is doing: a seed retry comes
         // back to seeding mid-run, and the finishing solves place no image.
-        case 2: case 3: case 4: case 8: case 9: {
+        case 2: case 3: case 4: case 8: case 9: case 11: {
+            if (st.stage == 11) _map_work.initialized(st.done, st.total);
             if (st.stage == 2) _map_work.placed(st.done, st.total);
             if (st.stage == 3) _map_work.levels(st.done, st.total);
             if (st.stage == 9) _map_work.refining();
@@ -524,7 +525,7 @@ namespace {
 // 360 packing's views sit where extraction chose; a dual fisheye's back to back.
 bool apply_known_lenses(const PrepJob& prep, const PrepResult* res, const PrepInput& in,
                         sfm::RigDef& d) {
-    if (!in.subcameras.empty()) return false;
+    if (!in.subcameras.empty() || in.active_lens >= 0) return false;
     if (in.packed_lenses == 2 && d.members.size() == 2) {
         d.kind = "dual-fisheye";
         return sfm::applyRigKind(d).empty();
@@ -859,8 +860,17 @@ void SfmRunner::run(SfmJob job) {
         LidarPrep lidar;
         {
             std::string err;
-            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.inputs, lidar, err))
+            if (!add_scan_photo_inputs(job.lidar, ws.string(), job.prep.scan_stencils,
+                                       job.prep.inputs, lidar, err))
                 return fail(err);
+        }
+        // Their files are this run's own, just extracted from the scans, so
+        // their identity is taken now; the check after the frames covers them.
+        for (size_t i = job.prep.source_content.size(); i < job.prep.inputs.size(); i++) {
+            std::string identity = frame_source_identity(job.prep, job.prep.inputs[i], true);
+            if (identity.empty())
+                return fail("Cannot identify frame source: " + job.prep.inputs[i].path);
+            job.prep.source_content.push_back(std::move(identity));
         }
         PrepResult prep;
         {
@@ -1026,9 +1036,8 @@ void SfmRunner::run(SfmJob job) {
                 log(cmd);
                 rc = run_process(argv, "", [&](const std::string& l) {
                     log(l, !child_line_is_notable(l));
-                    poll_status();
                     note_line(l);
-                }, _cancel);
+                }, _cancel, [this] { poll_status(); });
                 // The last snapshot the child wrote, which is the one carrying
                 // its verdict; the loop above may have missed it between lines.
                 _status_mtime = 0;

@@ -41,27 +41,34 @@ float projective_depth_gradient(
 }
 
 [CudaDeviceExport]
+float projective_depth_angular_bound(float3 anchor, float3 camera, float3 mean, bool relative) {
+    float3 view = mean-camera;
+    float distance = length(view);
+    if (!(distance > 0)) return 0;
+    float3 ray = view/distance;
+    float3 baseline = camera-anchor;
+    float sensitivity = length(baseline-ray*dot(ray,baseline));
+    return relative ? sensitivity/distance : sensitivity;
+}
+
+[CudaDeviceExport]
 void projective_depth_update(
     float3 anchor, float3 camera, float lr, float angular_lr,
     bool single_photometric, bool angular_relative, float gradient, float information,
-    inout float4 state, inout float3 mean, inout float3 log_scale
+    inout float4 state, inout float3 mean, inout float3 log_scale, float angular_bound
 ) {
     float3 baseline = camera-anchor;
     if (single_photometric && dot(baseline,baseline) == 0) return;
-    float3 view = mean-camera;
-    float distance = length(view);
-    if (!(distance > 0) || !isfinite(gradient)) return;
-    if (!angular_relative) angular_lr /= distance;
-    if (angular_lr <= 0) return;
+    if (!isfinite(gradient) || angular_lr <= 0) return;
+    if (angular_bound < 0)
+        angular_bound = projective_depth_angular_bound(anchor,camera,mean,angular_relative);
     state.y = .9f*state.y+.1f*gradient;
     state.z = .999f*state.z+.001f*gradient*gradient;
     state.w += 1;
     float m = state.y/(1-pow(.9f,state.w));
     float v = state.z/(1-pow(.999f,state.w));
     float change = -lr*m/((sqrt(v)+1e-15f)*(1+information));
-    float3 ray = view/distance;
-    float3 derivative = (baseline-ray*dot(ray,baseline))/distance;
-    float projected_step = length(derivative)*change/angular_lr;
+    float projected_step = angular_bound*change/angular_lr;
     change /= sqrt(1+projected_step*projected_step);
     if (change == 0) return;
     // The series avoids exp(t)-1 cancellation and rounding the anchor subtraction twice.

@@ -104,6 +104,7 @@ endforeach()
 # watches, comma-separated defines. The matcher is built four times: with and
 # without the integer dot product, at 128- and 256-byte descriptors.
 foreach(stage sift:sift/sift.slang:sift:none
+              global_position:position/global_position.slang:position:none
               match:match/bruteforce.slang:match:none
               match_nodot:match/bruteforce.slang:match:-DNO_DOT4
               match_d256:match/bruteforce.slang:match:-DDESC_WORDS=64
@@ -177,6 +178,10 @@ endif()
 target_compile_options(ss_sfm PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>
     $<$<COMPILE_LANGUAGE:C>:${SPLAT_C_FLAGS}>)
+if(MSVC)
+    # Pipeline.cpp exceeds COFF's section limit with the header-only mapper.
+    target_compile_options(ss_sfm PRIVATE /bigobj)
+endif()
 set_property(TARGET ss_sfm PROPERTY CXX_STANDARD 17)
 
 # Most of the pipeline is still header-only (the split into translation units is

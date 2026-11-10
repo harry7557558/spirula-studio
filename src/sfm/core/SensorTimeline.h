@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "sfm/core/Fingerprint.h"
 #include "sfm/core/Pose.h"
 #include "sfm/core/Preintegration.h"
 #include "sfm/core/Telemetry.h"
@@ -125,6 +126,28 @@ public:
     }
 
     bool hasRotation() const { return _use_gyro || _use_att; }
+
+    uint64_t rotationFingerprint() const {
+        Fingerprint h;
+        h.add(time_offset);
+        h.add(_use_gyro);
+        h.add(_use_att);
+        h.add(attitudeSenseOpen());
+        for (double v : _P) h.add(v);
+        h.add(_gyro.size());
+        for (const auto& s : _gyro) {
+            h.add(s.t);
+            h.add(s.v.x);
+            h.add(s.v.y);
+            h.add(s.v.z);
+        }
+        h.add(_att.size());
+        for (const auto& s : _att) {
+            h.add(s.t);
+            for (double v : s.q) h.add(v);
+        }
+        return h.value;
+    }
     bool hasGyro() const { return _use_gyro; }
     bool hasUp() const { return !_accel.empty() || _up_declared; }
     // No accelerometer settled which way the attitude maps, so `sign` -1

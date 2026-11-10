@@ -156,6 +156,13 @@ public:
                 r.data + (size_t)r.starts[feature + 1] * stride_, stride_, shift_};
     }
 
+    bool isolatedPair(uint32_t image, uint32_t feature) const {
+        const auto matches = at(image, feature);
+        if (matches.size() != 1) return false;
+        const auto other = *matches.begin();
+        return at(other.image_id, other.feature_idx).size() == 1;
+    }
+
     size_t numImages() const { return rows_.size(); }
     uint32_t numFeatures(uint32_t image) const { return rows_[image].features; }
 

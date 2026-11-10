@@ -52,15 +52,14 @@ std::vector<uint8_t> read_exif_orientations(const std::string& mode,
     std::vector<uint8_t> out;
     if (mode.empty() || mode == "none") return out;
     out.assign(paths.size(), 1);
-    bool any = false;
-    for (size_t i = 0; i < paths.size(); i++) {
+    const int64_t n = (int64_t)paths.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++) {
         std::string ext = fs::path(paths[i]).extension().string();
         for (char& c : ext) c = (char)std::tolower((unsigned char)c);
-        if (ext != ".jpg" && ext != ".jpeg") continue;
-        out[i] = (uint8_t)sfm::exifOrientation(paths[i]);
-        any = any || out[i] != 1;
+        if (ext == ".jpg" || ext == ".jpeg") out[i] = (uint8_t)sfm::exifOrientation(paths[i]);
     }
-    if (!any) out.clear();
+    if (std::all_of(out.begin(), out.end(), [](uint8_t o) { return o == 1; })) out.clear();
     return out;
 }
 
@@ -430,6 +429,19 @@ std::shared_ptr<const std::vector<std::string>> listed_files(const fs::path& dir
 }
 }  // namespace
 
+std::vector<std::string> find_aux_files(const std::string& aux_dir,
+                                        const std::vector<std::string>& rel_names,
+                                        const char* suffix_tag) {
+    std::vector<std::string> out(rel_names.size());
+    std::error_code ec;
+    if (!fs::is_directory(aux_dir, ec)) return out;
+    const int64_t n = (int64_t)rel_names.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++)
+        if (!rel_names[i].empty()) out[i] = find_aux_file(aux_dir, rel_names[i], suffix_tag);
+    return out;
+}
+
 std::string find_aux_file(const std::string& aux_dir_s, const std::string& rel_name,
                           const char* suffix_tag) {
     fs::path aux_dir(aux_dir_s);
@@ -767,8 +779,10 @@ template <typename T>
 CenterTable scene_centers_t(const double* c2w, int64_t n, const T* points,
                             int64_t m, int stride, const double* A) {
     CenterTable out{};
+    const auto nav = navigation_hint(c2w, n);
     for (int i = 0; i < kNumCenterModes; i++) {
-        const std::array<double, 3> c = scene_center_t(
+        const std::array<double, 3> c = i == (int)CenterMode::CameraFocus && nav.orbit && n > 0
+            ? nav.focus : scene_center_t(
             (CenterMode)i, c2w, n, points, m, stride, 1 << 18);
         for (int r = 0; r < 3; r++)
             out[i][r] = A ? (float)(A[r*4]*c[0] + A[r*4+1]*c[1] + A[r*4+2]*c[2] + A[r*4+3])
@@ -846,8 +860,23 @@ void warn(const spirula::i18n::Msg& m, std::initializer_list<spirula::i18n::Arg>
 
 }  // namespace
 
+std::vector<ImageSize> probe_image_sizes(const DatasetParserConfig& cfg,
+                                         const std::vector<std::string>& paths) {
+    std::vector<ImageSize> out(paths.size());
+    if (!cfg.probe_image_size) return out;
+    const int64_t n = (int64_t)paths.size();
+#pragma omp parallel for schedule(dynamic, 16)
+    for (int64_t i = 0; i < n; i++) {
+        int w = 0, h = 0;
+        if (!paths[i].empty() && cfg.probe_image_size(paths[i].c_str(), &w, &h) && w > 0 &&
+            h > 0)
+            out[i] = {w, h};
+    }
+    return out;
+}
+
 void fit_camera_resolution(const DatasetParserConfig& cfg,
-                           const std::string& image_path,
+                           const std::string& image_path, ImageSize probed,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
                            RedistortSource* src, int turns_cw)
@@ -855,8 +884,9 @@ void fit_camera_resolution(const DatasetParserConfig& cfg,
     if (!(W > 0.0) || !(H > 0.0)) return;
     double tw = W, th = H;
     int iw = 0, ih = 0;
-    if (cfg.probe_image_size && !image_path.empty() &&
-        cfg.probe_image_size(image_path.c_str(), &iw, &ih) && iw > 0 && ih > 0) {
+    if (probed.w > 0 && probed.h > 0) {
+        iw = probed.w;
+        ih = probed.h;
         // The camera describes the image as it will be LOADED, which a quarter
         // turn transposes.
         if (turns_cw & 1) std::swap(iw, ih);

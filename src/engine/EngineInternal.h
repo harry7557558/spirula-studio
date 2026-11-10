@@ -15,10 +15,18 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include <map>
+#include <string>
 
 
 struct DensifyConfig;
 struct OptimConfig;
+struct PcaRegConfig;
+
+// The local-PCA regularizer's gradient, between the backward and the optim
+// step that consumes it; its loss terms go into `loss_dict` (EnginePcaReg.cpp).
+void engine_pca_reg_step(int step, const PcaRegConfig& cfg,
+                         std::map<std::string, float>& loss_dict);
 
 // Readies DeadCriterion::MaxWeight's buffer for `step`'s raster backward:
 // set to opacity on first use, freed once nothing can relocate. Idempotent

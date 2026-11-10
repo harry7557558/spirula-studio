@@ -718,6 +718,15 @@ the engine level.
     loose floats + 2.8M codes; 10 configs over sh_optim_bits 32/8/4 x
     sh_value_bits 32/16/8 x bounds layouts x non-SH quant x degree
     warmup). All three devices pass; validation clean.
+- **Local covariance regularization**: `kernels/PcaReg.cpp` uses the shared
+  Slang PCA math for centers, opacity-weighted centers, or Gaussian mixtures.
+  It supports PCAsplat eigenspectrum/normal/surfel losses, an effective-rank
+  upper bound, and transmittance along the PCA normal. Specialization IDs are
+  covariance mode 0, enabled-term mask 1, search mode 2; capacities and scale
+  modes have separate entries. `pca_reg_parity` checks double-precision values,
+  finite differences, neighbor search and degenerate inputs. `pca_reg_step`
+  checks optimizer integration, including opacity updates without false camera
+  visits. See [the math and tuning notes](../../../docs/notes/pca-reg.md).
 - **Projective depth**: `kernels/ProjectiveDepth.cpp` and
   `backend/vulkan/shaders/projective_depth.slang` observe existing raster
   gradients to update each splat's anchor and geometric information. FPBO and

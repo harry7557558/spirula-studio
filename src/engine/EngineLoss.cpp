@@ -49,18 +49,15 @@ static void _alloc_grad_buffers() {
         return;
     }
 
-    // Block-wise quantized gradient accumulation (non-FPBO, grad-quant path).
-    // Per-splat-block bounds: one float2 per 256 splats (n_bounds = ceil(N/256)).
-    // 3dgs/mip quantize all six attributes; 3dgut keeps means/quats/scales fp32
-    // (they receive rasterization-backward atomicAdds) and quantizes the rest.
-    // Zeroing is skip_grad_zero-gated (first sub-batch only); the projection-bwd
-    // kernel then decode-accumulates each sub-batch. Zero bounds -> decode 0.
+    // Non-FPBO quantized accumulators, one float2 bound per 256 splats; 3dgut and
+    // fp32_geometry keep means/quats/scales fp32. Only the first sub-batch zeroes
+    // (skip_grad_zero); the projection backward decode-accumulates the rest.
     if (engine().grad.quantize_grad) {
-        const bool is_gut = (engine().primitive == "3dgut");
+        const bool fp32_geometry = engine().grad.fp32_geometry || engine().primitive == "3dgut";
         const int64_t n_bounds = (N + 255) / 256;
         const bool skip_zero = engine().optim.skip_grad_zero;
 
-        if (is_gut) {
+        if (fp32_geometry) {
             engine().grad.means.resize(PoolSlot::EngVMeans, N);
             engine().grad.quats.resize(PoolSlot::EngVQuats, N);
             engine().grad.scales.resize(PoolSlot::EngVScales, N);
@@ -177,17 +174,9 @@ static void _engine_raster_proj_backward(
         );
     }
 
-    // Build the world-grad vector handed to rasterize_*_bwd. Three cases:
-    //   - non-fused: all six slots are real per-channel grad buffers.
-    //   - fused + 3dgs / mip: empty vector; raster_*_bwd writes nothing into
-    //     the world buffer (its atomicStore is screen-only for those prims).
-    //   - fused + 3dgut: mean/quat/scale slots are real (raster_*_bwd atomic-
-    //     adds them); opacity/dc/sh slots are null (those flow via screen or
-    //     are accumulated inside the FPBO kernel).
-    //   - grad-quant (non-fused, quantized grad): same raster handoff as fused
-    //     -- 3dgs/mip empty (screen-only), 3dgut mean/quat/scale into the fp32
-    //     world buffer; the projection contribution is folded in by the
-    //     requantize-accumulate projection-bwd kernel below.
+    // World-grad slots for rasterize_*_bwd: all six when non-fused and fp32; when
+    // fused or quantized, empty for 3dgs/mip (screen-only raster) and mean/quat/
+    // scale alone for 3dgut or quantized fp32_geometry.
     const bool grad_q = engine().grad.quantize_grad;
     std::vector<DeviceTensorFloatND> v_splats_w;
     if (!engine().optim.use_fused_proj_bwd_optim && !grad_q) {
@@ -205,7 +194,7 @@ static void _engine_raster_proj_backward(
             DeviceTensorFloatND(engine().grad.features_dc),   // [N, 3]
             DeviceTensorFloatND(engine().grad.features_sh),   // [N, K, 3]
         };
-    } else if (engine().primitive == "3dgut") {
+    } else if (engine().primitive == "3dgut" || (grad_q && engine().grad.fp32_geometry)) {
         v_splats_w = {
             DeviceTensorFloatND(engine().grad.means),         // [N, 3]
             DeviceTensorFloatND(engine().grad.quats),         // [N, 4]
@@ -348,10 +337,9 @@ static void _engine_raster_proj_backward(
                 sh_bounds_stride = 256;
             }
         }
-        // Grad-quant path: non-atomic, block-wise quantized requantize-accumulate
-        // projection backward. Reads/writes engine().grad.*_q (per-splat-block);
-        // for 3dgut, means/quats/scales are the fp32 v_splats_w_out (raster's
-        // world contribution) that the kernel adds the projection grad onto.
+        // Grad-quant path: block-wise requantize-accumulate projection backward
+        // into engine().grad.*_q; with 3dgut or fp32_geometry, means/quats/scales
+        // add onto the fp32 v_splats_w_out instead.
         if (grad_q) {
             GradQuantBuffers gq;
             auto& g = engine().grad;

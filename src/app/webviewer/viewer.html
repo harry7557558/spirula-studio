@@ -954,6 +954,10 @@ async function fetchScene() {
     const j = await response.json();
     Scene.modes = j.center_modes || [];
     Scene.hasCameras = !!j.has_cameras;
+    Nav.mode = j.orbit_navigation === false ? "fly" : "turntable";
+    $("nav-mode").value = Nav.mode;
+    showHint(hintFor(Nav.mode));
+    Scene.mode = Scene.hasCameras && j.orbit_navigation ? 3 : 2;
   } catch (e) {
     // A server without /scene (an older build) keeps the model origin.
     Scene.modes = [];
@@ -1359,13 +1363,45 @@ window.addEventListener("keyup", e => {
 });
 
 // Keyboard tick loop
-let _lastTick = performance.now();
+let _lastTick = performance.now(), focusUntil = 0, focusPose = '';
+const focusMarker = document.createElement('div');
+focusMarker.style.cssText = 'position:fixed;pointer-events:none;width:12px;height:12px;border:2px solid #ffd250;border-radius:50%;box-shadow:0 0 0 2px #000a;transform:translate(-50%,-50%);display:none;z-index:5';
+document.body.appendChild(focusMarker);
+function updateFocus(now) {
+  const pose = JSON.stringify([cam.pos, cam.rot, cam.target]);
+  if (pose !== focusPose) focusUntil = now + 450;
+  focusPose = pose;
+  focusMarker.style.display = 'none';
+  if (now >= focusUntil || !['turntable','trackball'].includes(Nav.mode)) return;
+  const delta = v3.sub(cam.target, cam.pos);
+  const x = v3.dot(delta, cam.right()), y = -v3.dot(delta, cam.up()), z = v3.dot(delta, cam.forward());
+  const model = $('camera-model').value;
+  let u, v;
+  if (model === 'PINHOLE') { if (z <= 0) return; u=x/z; v=y/z; }
+  else if (model === 'EQUIRECTANGULAR') { u=Math.atan2(x,z); v=Math.atan2(y,Math.hypot(x,z)); }
+  else {
+    const r = Math.hypot(x,y), theta = Math.atan2(r,z);
+    const scale = r > 1e-12 ? (model === 'EQUISOLID' ? 2*Math.sin(theta/2) : theta)/r : 0;
+    u=x*scale; v=y*scale;
+  }
+  const res = getResolution($('res-slider').value);
+  const intr = model === 'EQUIRECTANGULAR' ? {fx:res.w/(2*Math.PI),fy:res.h/Math.PI}
+    : fovToIntrinsics($('fov-slider').value,res.w,res.h,model);
+  const px=res.w/2+intr.fx*u, py=res.h/2+intr.fy*v;
+  if (!(px>=0 && px<=res.w && py>=0 && py<=res.h)) return;
+  const rect=$('canvas-img').getBoundingClientRect();
+  const scale=Math.min(rect.width/res.w,rect.height/res.h);
+  focusMarker.style.left=`${rect.left+(rect.width-res.w*scale)/2+px*scale}px`;
+  focusMarker.style.top=`${rect.top+(rect.height-res.h*scale)/2+py*scale}px`;
+  focusMarker.style.display='block';
+}
 function keyboardLoop() {
   const now = performance.now();
   const dt = Math.min((now - _lastTick) / 1000, 0.1);
   _lastTick = now;
   Nav.keyboardTick(dt);
   Nav.gamepadTick(dt);
+  updateFocus(now);
   requestAnimationFrame(keyboardLoop);
 }
 requestAnimationFrame(keyboardLoop);

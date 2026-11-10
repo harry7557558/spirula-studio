@@ -363,7 +363,7 @@ void SplatViewer::run(std::string path) {
         set_frame(center, unit);
 
         ViewerRenderConfig vc;
-        vc.primitive = cfg.primitive;
+        vc.primitive = !cfg.primitive.empty() ? cfg.primitive : c.primitive;
         vc.packed = cfg.packed;
         vc.sh_degree_warmup_every = 1;
         // Median and distortion buffers are training diagnostics computed from

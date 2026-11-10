@@ -14,6 +14,7 @@
 
 #include "checkpoint/BackgroundExport.h"
 #include "checkpoint/SplatPly.h"
+#include "core/AtomicFile.h"
 #include "core/CheckpointIO.h"
 #include "external/npy.hpp"
 #include <cmath>
@@ -160,6 +161,27 @@ static std::string _json_str(const std::string& s, const std::string& key) {
     size_t e = s.find('"', v + 1);
     return (e == std::string::npos) ? "" : s.substr(v + 1, e - v - 1);
 }
+
+// A save killed part way (a second Ctrl-C, a force-quit) must not leave a
+// truncated splat.ply or state.tar that a viewer or --resume takes for the
+// latest: each file is written as <name>.tmp and renamed once all are on disk.
+struct StagedFiles {
+    std::vector<fs::path> finals;
+
+    static fs::path temp_of(const fs::path& p) { return fs::path(p).concat(".tmp"); }
+    fs::path add(const fs::path& final_path) {
+        finals.push_back(final_path);
+        return temp_of(final_path);
+    }
+    void publish() {
+        for (const fs::path& p : finals) spirula::replace_file(temp_of(p), p);
+        finals.clear();
+    }
+    ~StagedFiles() {
+        std::error_code ec;
+        for (const fs::path& p : finals) fs::remove(temp_of(p), ec);
+    }
+};
 
 } // anon namespace
 
@@ -316,11 +338,12 @@ void engine_save_checkpoint(
                                  " colour coefficients are no whole SH degree "
                                  "plus " + std::to_string(s.sb_lobes) + " lobes");
     const int vertex_floats = spirula::splat_ply_row_floats(basis);
-    fs::path ply_path = out_root / "splat.ply";
+    StagedFiles staged;
+    const fs::path ply_path = staged.add(out_root / "splat.ply");
     {
         std::ofstream ply(ply_path, std::ios::binary);
         if (!ply) throw std::runtime_error("Failed to open PLY for write: " + ply_path.string());
-        ply << spirula::splat_ply_header(kept, basis);
+        ply << spirula::splat_ply_header(kept, basis, s.primitive);
 
         // Buffer multiple rows per write for throughput.
         constexpr int ROWS_PER_FLUSH = 1024;
@@ -359,16 +382,18 @@ void engine_save_checkpoint(
             if (rows_in_buf == ROWS_PER_FLUSH) flush();
         }
         flush();
+        ply.close();
+        if (!ply) throw std::runtime_error("Failed to write " + ply_path.string());
     }
 
     // --- state.tar: metadata-driven resume payload (see file header) ---------
     // Which buffers to serialize: Always (base) or Always+Resume (full resume).
     const SaveClass save_min = full_dump ? SaveClass::Resume : SaveClass::Always;
 
-    std::ofstream tar((out_root / "state.tar").string(), std::ios::binary);
+    const fs::path tar_path = staged.add(out_root / "state.tar");
+    std::ofstream tar(tar_path, std::ios::binary);
     if (!tar)
-        throw std::runtime_error("Failed to open state.tar for write: "
-                                 + (out_root / "state.tar").string());
+        throw std::runtime_error("Failed to open state.tar for write: " + tar_path.string());
 
     // state.json -- runtime + validation manifest (config lives in config.json).
     {
@@ -384,6 +409,8 @@ void engine_save_checkpoint(
                                    sl.ptr, sl.nbytes, sl.dtype_tag, host_stage);
     }
     ckpt::tar_finish(tar);
+    tar.close();
+    if (!tar) throw std::runtime_error("Failed to write " + tar_path.string());
 
     if (s.background.mode == EngineBackground::Mode::Sh && s.background.sh_coeffs.size() > 0) {
         std::vector<float3> h_bg((size_t)s.background.sh_coeffs.size());
@@ -393,13 +420,15 @@ void engine_save_checkpoint(
         std::vector<float> matrix;
         if (s.color_space.splat_enabled)
             matrix = _ckpt_d2h(reinterpret_cast<const float*>(s.color_space.splat_color_matrix.data_ptr()), 9);
-        if (!ckpt::export_background_sh_webp(out_root / "background.webp", h_bg.data(),
+        const fs::path webp_path = staged.add(out_root / "background.webp");
+        if (!ckpt::export_background_sh_webp(webp_path, h_bg.data(),
                                         s.background.sh_degree, 2 * background_export_height, background_export_height,
                                         s.background.splat_transfer,
                                         s.background.splat_is_linear,
                                         matrix.empty() ? nullptr : matrix.data()))
-            throw std::runtime_error("failed to write " + (out_root / "background.webp").string());
+            throw std::runtime_error("failed to write " + webp_path.string());
     }
+    staged.publish();
 }
 
 

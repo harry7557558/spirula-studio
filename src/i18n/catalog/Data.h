@@ -28,6 +28,32 @@ namespace data {
 // The two words that qualify a line
 // ===========================================================================
 
+SS_MSG(file_out_of_memory,
+    EN("Not enough memory to read {0} ({1} GB). Close other programs to free "
+       "memory, then retry."),
+    JA("{0} ({1} GB) を読み込むにはメモリが不足しています。ほかのプログラムを閉じて"
+       "メモリを空けてからやり直してください。"),
+    ZH_HANS("内存不足，无法读取 {0}（{1} GB）。关闭其他程序腾出内存后重试。"),
+    ZH_HANT("記憶體不足，無法讀取 {0}（{1} GB）。關閉其他程式騰出記憶體後重試。"),
+    KO("{0} ({1} GB)을(를) 읽기에 메모리가 부족합니다. 다른 프로그램을 닫아 "
+       "메모리를 확보한 뒤 다시 시도하세요."),
+    DE("Zu wenig Speicher, um {0} ({1} GB) zu lesen. Schließen Sie andere "
+       "Programme, um Speicher freizugeben, und versuchen Sie es erneut."),
+    FR("Mémoire insuffisante pour lire {0} ({1} Go). Fermez d'autres programmes "
+       "pour libérer de la mémoire, puis réessayez."),
+    ES("Sin memoria suficiente para leer {0} ({1} GB). Cierra otros programas "
+       "para liberar memoria y reinténtalo."),
+    PT("Sem memória suficiente para ler {0} ({1} GB). Feche outros programas "
+       "para liberar memória e tente novamente."),
+    IT("Memoria insufficiente per leggere {0} ({1} GB). Chiudi altri programmi "
+       "per liberare memoria e riprova."),
+    NL("Onvoldoende geheugen om {0} ({1} GB) te lezen. Sluit andere programma's "
+       "om geheugen vrij te maken en probeer het opnieuw."),
+    RU("Не хватает памяти для чтения {0} ({1} ГБ). Закройте другие программы, "
+       "чтобы освободить память, и повторите попытку."),
+    TR("{0} ({1} GB) okumak için yeterli bellek yok. Bellek açmak için diğer "
+       "programları kapatıp yeniden deneyin."));
+
 SS_MSG(batch_out_of_memory,
     EN("Out of memory while staging a training batch. Close other programs to "
        "free memory, then retry -- or stop, and train at a lower resolution."),
@@ -710,6 +736,46 @@ SS_MSG(camera_image_aspect,
 // ===========================================================================
 // Loading the images
 // ===========================================================================
+
+SS_MSG(downscale_cache_writing,
+    EN("Caching downscaled training images in {0}"),
+    JA("縮小した学習画像を {0} にキャッシュします"),
+    ZH_HANS("将缩小后的训练图像缓存到 {0}"),
+    ZH_HANT("將縮小後的訓練影像快取到 {0}"),
+    KO("축소한 학습 이미지를 {0} 에 캐시합니다"),
+    DE("Verkleinerte Trainingsbilder werden in {0} zwischengespeichert"),
+    FR("Mise en cache des images d'entraînement réduites dans {0}"),
+    ES("Guardando en caché las imágenes de entrenamiento reducidas en {0}"),
+    PT("Guardando em cache as imagens de treino reduzidas em {0}"),
+    IT("Le immagini di addestramento ridotte vengono memorizzate in {0}"),
+    NL("Verkleinde trainingsbeelden worden in {0} gecachet"),
+    RU("Уменьшенные обучающие изображения кэшируются в {0}"),
+    TR("Küçültülmüş eğitim görüntüleri {0} içinde önbelleğe alınıyor"));
+
+SS_MSG(downscale_cache_unwritable,
+    EN("Could not write downscaled images to {0}; every load decodes the "
+       "full-size files."),
+    JA("縮小画像を {0} に書き込めませんでした。読み込みのたびに元のサイズの"
+       "ファイルをデコードします。"),
+    ZH_HANS("无法将缩小后的图像写入 {0}；每次加载都会解码原尺寸文件。"),
+    ZH_HANT("無法將縮小後的影像寫入 {0}；每次載入都會解碼原尺寸檔案。"),
+    KO("축소 이미지를 {0} 에 쓰지 못했습니다. 매번 원본 크기 파일을 디코딩합니다."),
+    DE("Verkleinerte Bilder konnten nicht nach {0} geschrieben werden; jedes "
+       "Laden dekodiert die Dateien in voller Größe."),
+    FR("Impossible d'écrire les images réduites dans {0} ; chaque chargement "
+       "décode les fichiers en taille réelle."),
+    ES("No se pudieron escribir las imágenes reducidas en {0}; cada carga "
+       "decodifica los archivos a tamaño completo."),
+    PT("Não foi possível gravar as imagens reduzidas em {0}; cada carga "
+       "decodifica os arquivos em tamanho real."),
+    IT("Impossibile scrivere le immagini ridotte in {0}; ogni caricamento "
+       "decodifica i file a grandezza piena."),
+    NL("Verkleinde beelden konden niet naar {0} worden geschreven; elke keer "
+       "laden decodeert de bestanden op volle grootte."),
+    RU("Не удалось записать уменьшенные изображения в {0}; каждая загрузка "
+       "декодирует файлы полного размера."),
+    TR("Küçültülmüş görüntüler {0} içine yazılamadı; her yükleme tam boyutlu "
+       "dosyaları çözer."));
 
 SS_MSG(rgb_shape_mismatch,
     EN("'{0}' is {1}x{2} but its camera says {3}x{4}. The file is being resized "

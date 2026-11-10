@@ -19,6 +19,7 @@
 #include "app/gui/PreviewFrames.h"
 #include "app/gui/StencilEdit.h"
 #include "app/gui/StencilPreset.h"
+#include "app/gui/StencilSetMenu.h"
 #include "app/gui/edit/EditTool.h"
 #include "app/gui/mask/Livewire.h"
 #include "app/gui/mask/MaskWindow.h"
@@ -26,8 +27,10 @@
 #include "app/gui/mask/PenTool.h"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -62,7 +65,20 @@ public:
     void set_workspace(const std::string& w) { _workspace = w; }
     // Load menu's "Other file...": the caller owns the file picker.
     bool take_browse_request() { return std::exchange(_browse_requested, false); }
-    void load_file(app::FrameStencil& stencil, const std::string& path);
+    // Shown where a click or prompt finds no model: draws a picker and returns
+    // the model once the user takes one, empty until then.
+    void set_model_picker(std::function<MaskModelFiles()> pick) {
+        _pick_model = std::move(pick);
+    }
+    bool load_file(app::FrameStencil& stencil, const std::string& path);
+    // A saved set to change here, on `camera` where there are several. Call
+    // after open(); draw() loads it once the frames are listed, because where
+    // it goes depends on the cameras.
+    struct EditRequest {
+        StencilPreset set;
+        std::string camera;
+    };
+    void edit_saved(EditRequest request) { _edit_request = std::move(request); }
 
 private:
     struct Rgb;
@@ -83,6 +99,8 @@ private:
     void draw_stencil(app::FrameStencil& stencil, bool& edited);
     void draw_tools(app::FrameStencil& stencil, bool& edited);
     void draw_saved_areas(app::FrameStencil& stencil);
+    void start_editing(app::FrameStencil& stencil, const StencilPreset& set);
+    void show_camera(const std::string& camera);
     // A pen shape's anchors and handles under Points, or the pen with Ctrl:
     // hover, grab, drag, and the history step on release. True: the pointer
     // is on one of them, so the click is not the canvas's.
@@ -192,8 +210,13 @@ private:
     bool _shapes_edited = false;
     std::vector<StencilPreset> _saved;  // refreshed when the load popup opens
     std::vector<StencilPreset> _in_dataset;
+    StencilSetMenu _set_menu;
+    std::optional<EditRequest> _edit_request;
+    std::optional<StencilPreset> _editing;  // what Save changes writes over
     std::string _workspace;
     bool _browse_requested = false;
+    std::function<MaskModelFiles()> _pick_model;
+    bool _model_missing = false;        // under _mu: a prompt wants one
     std::string _save_name;
     std::string _saved_msg;
     bool _saved_msg_err = false;

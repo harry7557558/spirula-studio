@@ -38,6 +38,11 @@ struct VideoSummary {
     std::string error;
 };
 
+// One switch per lens of a two-lens input, named as the folders they are
+// written to, as every other list on the screen names them. `active_lens` is
+// PrepInput's; true when it changed.
+bool draw_lens_switches(int& active_lens, bool locked);
+
 class VideoBrowser {
 public:
     VideoBrowser();
@@ -77,11 +82,13 @@ public:
     struct Result {
         bool clip_changed = false;
         bool want_gpu = false;   // the "decode on the GPU" button was pressed
+        bool lens_changed = false;
     };
     // `clip_*` are the input's, `locked` once the run has read them;
-    // `kept_fps` is the rate it extracts at, 0 every frame.
+    // `kept_fps` is the rate it extracts at, 0 every frame. `active_lens`
+    // (PrepInput::active_lens) is offered as a switch per lens of two.
     Result draw(float height, double& clip_start, double& clip_end, bool locked,
-                float kept_fps);
+                float kept_fps, int* active_lens = nullptr);
     void destroy_gl();
 
 private:
@@ -110,7 +117,8 @@ private:
     long long index_at(double seconds) const;
     int streams(bool stitched) const;
     void take_frames();
-    void draw_frame(const ImVec2& box);
+    // `active_lens` dims the lens a two-lens file is not extracting.
+    void draw_frame(const ImVec2& box, const int* active_lens = nullptr);
     bool draw_timeline(float width, double& clip_start, double& clip_end, bool locked);
 
     std::string _key;

@@ -155,8 +155,9 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
     // (FPBO already avoids fp32 grad buffers) and only when quantization is on.
     // Preserves split_batch via the projection-bwd kernel's requantize-accumulate.
-    engine().grad.quantize_grad =
-        !cfg.optim.use_fused_proj_bwd_optim && (cfg.optim.quantization_level != 0);
+    engine().grad.quantize_grad = !cfg.optim.use_fused_proj_bwd_optim &&
+                                  (cfg.optim.quantization_level != 0);
+    engine().grad.fp32_geometry = cfg.optim.keep_fp32_geometry_grad;
 
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_max_weight_begin_step(step, max_steps, cfg.densify);
@@ -260,10 +261,15 @@ static void _engine_step_optim_and_densify(
     const EngineStepConfig& cfg,
     std::map<std::string, float>& loss_dict
 ) {
+    engine_pca_reg_step(step, cfg.pca_reg, loss_dict);
     {
         SplatStageTimer stage_timer;
         engine_optim_step(step, cfg.optim);
     }
+    engine().pca_reg.v_means = DeviceVector<float3>();
+    engine().pca_reg.v_quats = DeviceVector<float4>();
+    engine().pca_reg.v_scales = DeviceVector<float3>();
+    engine().pca_reg.v_opacities = DeviceVector<float>();
 
     if (engine().background.enabled) {
         engine_background_optim_step(step, cfg.background);

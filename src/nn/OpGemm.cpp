@@ -5,6 +5,7 @@
 #include <cstring>
 #include "core/Env.h"
 #include "nn/core/Log.h"
+#include "nn/OpMetal.h"
 #include "nn/Ops.h"
 #include "nn/vk/Memory.h"
 #include "nn/vk/Stream.h"
@@ -195,6 +196,9 @@ void dispatch_gemm(const Tensor& out, const Tensor& x_in, const Tensor& w_in,
     if (bias.valid())
         NN_CHECK(bias.numel() >= N, "gemm: bias has %lld entries, need %lld",
                    (long long)bias.numel(), (long long)N);
+    // MPSGraph has no neighbour gather; those stay on the Vulkan kernel.
+    if (!gather && metal_gemm(out, x, w, bias, residual, act, alpha, x_row_stride, x_scale))
+        return;
 
     GemmParams p{};
     p.out = out.ptr;

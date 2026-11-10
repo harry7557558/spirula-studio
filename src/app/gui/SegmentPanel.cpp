@@ -76,7 +76,8 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
     _src = src;
     if (_src.ffmpeg_exe.empty()) _src.ffmpeg_exe = "ffmpeg";
     _model = model;
-    _folder_idx = 0;
+    // A file cut to one lens shows that one: its frames are all the run writes.
+    _folder_idx = std::max(_src.lens, 0);
     _frame_idx = 0;
     _target_frame_idx = initial_frame;
     _frame_dirty = true;
@@ -91,6 +92,8 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
     _tool.cancel();
     _history.clear();
     _saved_msg.clear();
+    _edit_request.reset();
+    _editing.reset();
     _path.cancel();
     _pen.cancel();
     _pt_part = PenPart::None;
@@ -118,6 +121,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
         _preview_dirty = false;
         _status = dmsg::preview_working.get();
         _error.clear();
+        _model_missing = false;
         _livewire_pending.reset();
         _livewire_pending_key.clear();
         _livewire_ready = false;
@@ -129,9 +133,12 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
     _open = true;
     const PreviewSource requested = _src;
     _worker = std::thread([this, requested] {
+        // A listing handed over stays "listing" until draw() takes it, or a
+        // job could start in between on no frames.
         struct ListingGuard {
             std::atomic<bool>& flag;
-            ~ListingGuard() { flag = false; }
+            bool handed = false;
+            ~ListingGuard() { if (!handed) flag = false; }
         } listing_guard{_listing};
         try {
             PreviewSource listed = requested;
@@ -147,6 +154,7 @@ void SegmentPanel::open(const PreviewSource& src, const MaskModelFiles& model, i
             _all_files_pending = std::move(all_files);
             _folders_pending = std::move(folders);
             _frames_ready = true;
+            listing_guard.handed = true;
             _status.clear();
         } catch (const std::exception& e) {
             if (!_cancel.load()) {
@@ -268,14 +276,17 @@ std::string SegmentPanel::shown_camera() const {
 
 std::vector<std::string> SegmentPanel::camera_names() const {
     std::set<std::string> out;
+    std::vector<std::string> lenses = _folders;
+    if (_src.lens >= 0 && _src.lens < (int)_folders.size())
+        lenses = {_folders[(size_t)_src.lens]};
     if (_src.is_video) {
-        out.insert(_folders.begin(), _folders.end());
+        out.insert(lenses.begin(), lenses.end());
     } else {
         for (const std::string& f : _all_files) {
             const std::string sub = camera_of(f);
             if (_src.look.packed_lenses < 2) out.insert(sub);
             else
-                for (const std::string& lens : _folders)
+                for (const std::string& lens : lenses)
                     out.insert(sub.empty() ? lens : lens + "/" + sub);
         }
     }
@@ -286,9 +297,11 @@ app::CameraStencil& SegmentPanel::scope(app::FrameStencil& s) {
     if (!s.per_camera()) return s;
     const std::string cam = shown_camera();
     auto it = s.cameras.find(cam);
-    if (it == s.cameras.end())
-        it = s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first;
-    return it->second;
+    if (it != s.cameras.end()) return it->second;
+    // Nothing is shown until the listing lands, and "" is then no camera the
+    // run writes; the fixed-areas table would list it as one.
+    if (cam.empty() && _cameras.empty()) return s;
+    return s.cameras.emplace(cam, static_cast<const app::CameraStencil&>(s)).first->second;
 }
 
 // On: every camera starts as a copy of the input's, so nothing changes until
@@ -521,14 +534,13 @@ void SegmentPanel::start_job(const MaskSettings& s,
             if (wants_model)
                 set_error(spirula::i18n::msg::log::err_no_builtin_segmentation.get());
 #else
-            if (!wants_model) {
+            {
+                std::lock_guard<std::mutex> lk(_mu);
+                _model_missing = wants_model && model.empty();
+            }
+            if (!wants_model || model.empty()) {
                 stencil_only();
                 return;
-            }
-            if (model.empty()) {
-                stencil_only();
-                return set_error(
-                    spirula::i18n::msg::log::err_no_model_selected.get());
             }
 
             // ---- the model ----
@@ -1365,13 +1377,13 @@ void SegmentPanel::draw_tools(app::FrameStencil& stencil, bool& edited) {
 
 // One list goes where the tools draw; a per-camera set goes on the cameras it
 // names, with separate areas turned on, and refuses an input that has none.
-void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
+bool SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
     app::MaskSet set;
     std::string err;
     if (!load_stencil_preset(path, set, err)) {
         _saved_msg = spirula::i18n::format(dmsg::stencil_load_failed, {err});
         _saved_msg_err = true;
-        return;
+        return false;
     }
     if (set.per_camera() && !_cameras.empty()) {
         std::string names;
@@ -1383,7 +1395,7 @@ void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
         if (!any) {
             _saved_msg = spirula::i18n::format(dmsg::stencil_set_no_camera, {names});
             _saved_msg_err = true;
-            return;
+            return false;
         }
     }
     bool edited = false;
@@ -1397,6 +1409,30 @@ void SegmentPanel::load_file(app::FrameStencil& s, const std::string& path) {
     _shape_sel = -1;
     _drag_handle = -1;
     _saved_msg.clear();
+    _editing.reset();
+    _needs_run = true;
+    return true;
+}
+
+void SegmentPanel::start_editing(app::FrameStencil& s, const StencilPreset& set) {
+    if (!load_file(s, set.path)) return;
+    _editing = set;
+    _save_name = set.name;
+}
+
+void SegmentPanel::show_camera(const std::string& camera) {
+    if (_src.is_video) {
+        const auto it = std::find(_folders.begin(), _folders.end(), camera);
+        if (it == _folders.end()) return;
+        _folder_idx = (int)(it - _folders.begin());
+    } else {
+        const auto it = std::find_if(_frames.begin(), _frames.end(), [&](const PreviewFrame& f) {
+            return file_camera(f.path) == camera;
+        });
+        if (it == _frames.end()) return;
+        _frame_idx = (int)(it - _frames.begin());
+    }
+    _frame_dirty = true;
     _needs_run = true;
 }
 
@@ -1406,22 +1442,33 @@ void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
         _in_dataset = list_dataset_stencils(_workspace);
         ImGui::OpenPopup("##stencilload");
     }
+    std::optional<StencilPreset> edit;
     if (ImGui::BeginPopup("##stencilload")) {
+        auto list = [&](const std::vector<StencilPreset>& sets, const char* id) {
+            for (const StencilPreset& p : sets) {
+                if (ui::SelectableRaw(stencil_preset_label(p) + id + p.path, false))
+                    load_file(s, p.path);
+                if (_set_menu.item(p)) edit = p;
+            }
+        };
         ui::SeparatorText(dmsg::stencil_saved_areas);
-        for (const StencilPreset& p : _saved)
-            if (ui::SelectableRaw(stencil_preset_label(p) + "##" + p.path, false))
-                load_file(s, p.path);
+        list(_saved, "##");
         // Kept by earlier runs into this output folder, saved or not.
         if (!_in_dataset.empty()) {
             ui::SeparatorText(dmsg::stencil_in_dataset);
-            for (const StencilPreset& p : _in_dataset)
-                if (ui::SelectableRaw(stencil_preset_label(p) + "##ds" + p.path, false))
-                    load_file(s, p.path);
+            list(_in_dataset, "##ds");
         }
         ImGui::Separator();
         if (ui::Selectable(dmsg::stencil_other_file)) _browse_requested = true;
+        if (edit) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
+    if (edit) start_editing(s, *edit);
+    if (const auto change = _set_menu.draw_dialogs(_saved_msg, _saved_msg_err))
+        if (_editing && _editing->path == change->was) {
+            _editing = change->now;
+            if (_editing) _save_name = _editing->name;
+        }
     // With separate areas on, the set is the whole input's: a file per camera
     // when the cameras differ.
     const app::MaskSet to_save =
@@ -1455,6 +1502,22 @@ void SegmentPanel::draw_saved_areas(app::FrameStencil& s) {
         ImGui::EndPopup();
     }
     ui::help_on_hover(dmsg::stencil_saved_areas);
+    if (_editing) {
+        ui::TextDisabledWrapped(dmsg::stencil_editing, {stencil_preset_label(*_editing)});
+        // A one-list set stays one, where Save... would write every camera's.
+        const app::MaskSet edited = _editing->cameras.empty()
+                                        ? app::MaskSet{scope(s).mask.shapes, {}}
+                                        : app::mask_set_of(s);
+        ImGui::BeginDisabled(edited.empty());
+        if (ui::SmallButton(dmsg::stencil_save_changes)) {
+            std::string err;
+            _saved_msg_err = !update_stencil_preset(*_editing, edited, err);
+            _saved_msg = spirula::i18n::format(
+                _saved_msg_err ? dmsg::stencil_save_failed : dmsg::stencil_saved_as,
+                {_saved_msg_err ? err : _editing->path});
+        }
+        ImGui::EndDisabled();
+    }
     if (!_saved_msg.empty()) {
         if (_saved_msg_err)
             ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _saved_msg);
@@ -1624,6 +1687,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
             _all_files = std::move(_all_files_pending);
             _folders = std::move(_folders_pending);
             _frames_ready = false;
+            _listing = false;
             _cameras = camera_names();
             if (_target_frame_idx >= 0 && !_frames.empty()) {
                 _frame_idx = std::clamp(_target_frame_idx, 0, (int)_frames.size() - 1);
@@ -1632,6 +1696,12 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
                 _needs_run = true;
             }
         }
+    }
+    if (_edit_request && !_listing.load()) {
+        const EditRequest request = std::move(*_edit_request);
+        _edit_request.reset();
+        show_camera(request.camera);
+        start_editing(stencil, request.set);
     }
     upload_preview();
     {
@@ -1785,7 +1855,7 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
     draw_stencil(stencil, edited);
 
     // ---- which camera, then which frame ----
-    if (_folders.size() > 1) {
+    if (_folders.size() > 1 && _src.lens < 0) {
         ImGui::Spacing();
         ui::Text(dmsg::preview_camera);
         ImGui::SetNextItemWidth(-1);
@@ -1855,15 +1925,31 @@ void SegmentPanel::draw(MaskSettings& settings, app::FrameStencil& stencil) {
 
     ImGui::Spacing();
     float kept_fraction = -1.0f, feature_fraction = -1.0f;
+    bool model_missing = false;
     {
         std::lock_guard<std::mutex> lk(_mu);
+        model_missing = _model_missing;
         // Segmentation errors and progress come from the inference layer.
         if (!_error.empty())
             ui::TextColoredWrappedRaw(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), _error);
-        else if (!_status.empty())
+        else if (!_status.empty() && !model_missing)
             ui::TextDisabledRaw(_status);
         kept_fraction = _kept_fraction;
         feature_fraction = _feature_fraction;
+    }
+    if (model_missing && !_pick_model) {
+        ui::TextColoredWrapped(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
+                               spirula::i18n::msg::log::err_no_model_selected);
+    } else if (model_missing) {
+        ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), dmsg::preview_needs_model,
+                               {dmsg::mask_enable.get()});
+        const MaskModelFiles picked = _pick_model();
+        if (!picked.empty()) {
+            _model = picked;
+            _needs_run = true;
+            std::lock_guard<std::mutex> lk(_mu);
+            _model_missing = false;
+        }
     }
     if (kept_fraction >= 0.0f) {
         char pct[16];

@@ -583,8 +583,26 @@ void VideoBrowser::take_frames() {
     _cv.notify_all();
 }
 
+bool draw_lens_switches(int& active_lens, bool locked) {
+    bool changed = false;
+    for (int k = 0; k < 2; k++) {
+        if (k) ImGui::SameLine();
+        bool on = active_lens < 0 || active_lens == k;
+        // The last lens left cannot go too.
+        ImGui::BeginDisabled(locked || active_lens == k);
+        const std::string label = "cam" + std::to_string(k) + "##lens";
+        if (ui::CheckboxRaw(label.c_str(), &on)) {
+            active_lens = on ? -1 : 1 - k;
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        ui::help_on_hover(pmsg::camera_toggle_help);
+    }
+    return changed;
+}
+
 VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double& clip_end,
-                                        bool locked, float kept_fps) {
+                                        bool locked, float kept_fps, int* active_lens) {
     Result r;
     if (_key.empty()) return r;
     set_paused(false);
@@ -611,10 +629,16 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
         ImGui::SameLine();
         if (ui::RadioButton(pmsg::view_recorded, !_stitched)) _stitched = false;
         ui::help_on_hover(pmsg::view_recorded_help);
-    } else if (f.sizes.size() > 1) {
-        ui::TextDisabled(pmsg::streams_side_by_side, {(long long)f.sizes.size()});
     } else if (f.pictures.size() > 1) {
-        ui::TextDisabled(pmsg::lenses_side_by_side, {(long long)f.pictures.size()});
+        // First, so a caption too long for the pane is what the edge cuts off.
+        if (active_lens && f.pictures.size() == 2) {
+            r.lens_changed = draw_lens_switches(*active_lens, locked);
+            ImGui::SameLine();
+        }
+        if (f.sizes.size() > 1)
+            ui::TextDisabled(pmsg::streams_side_by_side, {(long long)f.sizes.size()});
+        else
+            ui::TextDisabled(pmsg::lenses_side_by_side, {(long long)f.pictures.size()});
     }
     if (!_gate->allowed.load() && !_have_ffmpeg.load() && _src.builtin_decode) {
         ui::TextColoredWrapped(ImVec4(0.95f, 0.75f, 0.30f, 1.0f), pmsg::video_needs_gpu);
@@ -661,7 +685,7 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
         }
     }
 
-    draw_frame(box);
+    draw_frame(box, active_lens);
     if (draw_timeline(box.x, clip_start, clip_end, locked)) r.clip_changed = true;
 
     // What to decode next. On the GPU every move of the playhead is a frame
@@ -770,9 +794,10 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
 
     const long long frames = kept_fps > 0.0f ? (long long)std::llround(kept * kept_fps)
                                              : (long long)std::llround(kept * f.fps);
-    if (f.sizes.size() > 1 && !_pano.valid())
+    const bool single_active = active_lens && *active_lens >= 0;
+    if (f.sizes.size() > 1 && !_pano.valid() && !single_active)
         ui::TextDisabled(pmsg::clip_frames_per_camera, {count_text(frames)});
-    else if (f.pictures.size() > 1 && !_pano.valid())
+    else if (f.pictures.size() > 1 && !_pano.valid() && !single_active)
         ui::TextDisabled(pmsg::clip_frames_per_lens, {count_text(frames)});
     else
         ui::TextDisabled(pmsg::clip_frames, {count_text(frames)});
@@ -780,7 +805,7 @@ VideoBrowser::Result VideoBrowser::draw(float height, double& clip_start, double
     return r;
 }
 
-void VideoBrowser::draw_frame(const ImVec2& box) {
+void VideoBrowser::draw_frame(const ImVec2& box, const int* active_lens) {
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ui::InvisibleButtonRaw("##videoframe", ImVec2(std::max(box.x, 1.0f), std::max(box.y, 1.0f)));
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -837,6 +862,25 @@ void VideoBrowser::draw_frame(const ImVec2& box) {
         const ImVec2 lo(x, y), hi(x + w, y + s);
         if (tex[(size_t)k]) dl->AddImage(tex[(size_t)k]->id(), lo, hi);
         else dl->AddRectFilled(lo, hi, IM_COL32(32, 33, 38, 255));
+        if (active_lens && n == 2 && !_pano.valid()) {
+            const bool enabled = (*active_lens < 0 || *active_lens == k);
+            if (!enabled) {
+                dl->AddRectFilled(lo, hi, IM_COL32(8, 8, 12, 180));
+                const char* dis_text = pmsg::camera_disabled.get();
+                const ImVec2 dts = ImGui::CalcTextSize(dis_text);
+                dl->AddText(ImVec2(lo.x + (w - dts.x) * 0.5f, lo.y + (s - dts.y) * 0.5f),
+                            IM_COL32(220, 220, 220, 180), dis_text);
+            }
+            const std::string cam_lbl = "cam" + std::to_string(k);
+            const char* clabel = cam_lbl.c_str();
+            const ImVec2 cts = ImGui::CalcTextSize(clabel);
+            const ImVec2 cpad(px(5.0f), px(2.0f));
+            const ImVec2 clo(hi.x - cts.x - 2 * cpad.x - px(6.0f), lo.y + px(6.0f));
+            const ImVec2 chi(hi.x - px(6.0f), lo.y + px(6.0f) + cts.y + 2 * cpad.y);
+            dl->AddRectFilled(clo, chi, enabled ? IM_COL32(0, 0, 0, 150) : IM_COL32(40, 20, 20, 180), px(3.0f));
+            dl->AddText(ImVec2(clo.x + cpad.x, clo.y + cpad.y),
+                        enabled ? IM_COL32(235, 235, 235, 255) : IM_COL32(180, 180, 180, 180), clabel);
+        }
         x += w + gap;
     }
 

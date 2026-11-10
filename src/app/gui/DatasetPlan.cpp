@@ -92,6 +92,8 @@ bool masks_wanted(const PrepJob& job) {
     if (job.mask_enable) return true;
     for (const PrepInput& in : job.inputs)
         if (!in.mask_dir.empty() || !in.stencil.empty()) return true;
+    for (const auto& [scan, st] : job.scan_stencils)
+        if (!st.empty()) return true;
     return false;
 }
 
@@ -142,7 +144,8 @@ void add_lenses(StepFields& f, const PrepJob& p, const std::string& camera_model
     const std::vector<CameraGroup> rows = camera_groups(p.inputs);
     const std::vector<std::string> models =
         camera_group_models(p.inputs, rows, camera_model);
-    for (const PrepInput& in : p.inputs)
+    for (const PrepInput& in : p.inputs) {
+        if (!in.scan.empty()) continue;
         for (const std::string& leaf : leaf_folders(p, in)) {
             int best = -1;
             for (size_t r = 0; r < rows.size(); r++) {
@@ -165,6 +168,7 @@ void add_lenses(StepFields& f, const PrepJob& p, const std::string& camera_model
             add(f, "lens", scope_of(leaf), model);
             if (focal > 0) add(f, "focal", scope_of(leaf), num(focal));
         }
+    }
 }
 
 // The rigs build_rigs() will make, as their member folders and what is known
@@ -216,13 +220,15 @@ void add_rigs(StepFields& f, const PrepJob& p) {
 
 void add_sequences(StepFields& f, const PrepJob& p) {
     for (const PrepInput& in : p.inputs)
-        for (const std::vector<std::string>& members : input_sequences(p, in))
+        for (const std::vector<std::string>& members :
+             in.scan.empty() ? input_sequences(p, in) : std::vector<std::vector<std::string>>{})
             add(f, "sequence", joined(members), "on");
 }
 
 // Only what is switched off, so a run from before the switches compares equal.
 void add_sensors(StepFields& f, const PrepJob& p) {
     for (const PrepInput& in : p.inputs) {
+        if (!in.scan.empty()) continue;
         if (!in.use_imu) add(f, in.is_video ? "imu" : "attitude", scope_of(in.subdir), "off");
         if (!in.use_gps) add(f, "gps", scope_of(in.subdir), "off");
     }
@@ -235,7 +241,8 @@ std::string image_dir_field(const PrepJob& p) {
 
 int effective_camera_mode(const PrepJob& p, int mode) {
     size_t folders = 0;
-    for (const PrepInput& in : p.inputs) folders += leaf_folders(p, in).size();
+    for (const PrepInput& in : p.inputs)
+        if (in.scan.empty()) folders += leaf_folders(p, in).size();
     return mode == 0 && folders > 1 ? 1 : mode;
 }
 
@@ -660,6 +667,7 @@ StepFields frames_fields(const PrepJob& job) {
         const size_t index = input_index(job, in);
         if (index < job.source_content.size())
             add(f, "source_content", scope, job.source_content[index]);
+        if (in.active_lens >= 0) add(f, "active_lens", scope, lens_dirs(job, in).front());
         if (!in.is_video) continue;
         video = true;
         const bool every = every_frame(job, in);
@@ -721,8 +729,12 @@ StepFields masks_fields(const PrepJob& job) {
         else if (!input_masks_in_dataset(job, in))
             add(f, "found_masks", scope, norm_path(in.mask_dir));
         if (!in.mask_dir.empty() && job.flip_found_masks) add(f, "flip_masks", scope, "on");
-        if (!in.stencil.empty()) add(f, "stencil", scope, stencil_digest(in.stencil));
+        if (!in.stencil.empty() && in.scan.empty())
+            add(f, "stencil", scope, stencil_digest(in.stencil));
     }
+    // Under the scan, which the plan knows before its photographs are inputs.
+    for (const auto& [scan, st] : job.scan_stencils)
+        if (!st.empty()) add(f, "scan_stencil", norm_path(scan), stencil_digest(st));
     if (!job.mask_enable) return f;
     const bool feature = !job.mask_feature_prompt.empty();
     if (!segment && !feature) return f;
@@ -788,6 +800,10 @@ StepFields model_fields(const SfmJob& job) {
     add_rigs(f, p);
     add_sequences(f, p);
     add_sensors(f, p);
+    // The scans' photographs are inputs only once the run has taken them out,
+    // so the plan before it names them by scan; how they go in is the scan's.
+    if (job.lidar.enabled() && job.lidar.scan_photos && !job.lidar.in_frame)
+        for (const std::string& c : job.lidar.with_photos) add(f, "scan_photos", norm_path(c), "on");
     add(f, "masks_for_features", "", onoff(masks_reach_features(p, job.mask_features)));
     add(f, "feature_only_masks", "",
         onoff(p.mask_enable && !p.mask_feature_prompt.empty()));
@@ -1251,6 +1267,7 @@ void restore_record_inputs(const DatasetRecord& rec, PrepJob& job,
                 rows[i].lut = rates.rows[i].lut;
                 rows[i].clip_start = rates.rows[i].clip_start;
                 rows[i].clip_end = rates.rows[i].clip_end;
+                rows[i].active_lens = rates.rows[i].active_lens;
             }
         if (same_rows(clicks)) job.mask_clicks = clicks.clicks;
         if (!rows.empty()) camera_model = rows[0].camera_model;

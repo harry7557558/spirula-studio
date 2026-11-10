@@ -109,8 +109,9 @@ struct FpboParams {
     float* depth_information;
     float4* depth_centers;
     int* depth_cameras;
+    float* depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint has_depth, depth_photo, depth_relative, depth_pad;
+    uint has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means;
     float lr_quats;
     float lr_scales;
@@ -263,8 +264,6 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
             g.v_scale += float3(p.vw_scales[3 * gid],
                                 p.vw_scales[3 * gid + 1],
                                 p.vw_scales[3 * gid + 2]);
-        if ((kVwMask & 8) != 0)
-            g.v_opacity += p.vw_opacities[gid];
         if ((kVwMask & 16) != 0)
             g.v_dc += float3(p.vw_dc[3 * gid], p.vw_dc[3 * gid + 1],
                              p.vw_dc[3 * gid + 2]);
@@ -282,6 +281,9 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         if (p.has_visit != 0)
             p.visit_counters[gid] = visit_step(p.visit_counters[gid], rendered);
         regularize = !(p.skip_unrendered_reg != 0 && !rendered);
+        // A geometry regularizer does not count as a camera observation.
+        if ((kVwMask & 8) != 0)
+            g.v_opacity += p.vw_opacities[gid];
 
         projective_active = p.has_depth != 0 && p.radii[gid] > 0
             && dot(g.v_mean,g.v_mean)+dot(g.v_scale,g.v_scale) > 0;
@@ -510,7 +512,7 @@ void fpbo(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
         float3 scale = float3(p.scales[3*gid],p.scales[3*gid+1],p.scales[3*gid+2]);
         projective_depth_update(projective_anchor,projective_camera,p.depth_lr,p.depth_angular_lr,
             p.depth_photo != 0,p.depth_relative != 0,projective_gradient,p.depth_information[gid],
-            projective_state,mean,scale);
+            projective_state,mean,scale,p.depth_has_bound != 0 ? p.depth_angular_bound[gid] : -1.f);
         p.means[3*gid] = mean.x; p.means[3*gid+1] = mean.y; p.means[3*gid+2] = mean.z;
         p.scales[3*gid] = scale.x; p.scales[3*gid+1] = scale.y; p.scales[3*gid+2] = scale.z;
         p.depth_states[gid] = projective_state;

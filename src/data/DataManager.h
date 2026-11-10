@@ -104,6 +104,13 @@ struct DataManagerConfig {
     // same frame and turn with it. Empty when no image asks for one.
     std::vector<uint8_t> exif_quarter_turns;
 
+    // Integer train_resolution_divisor whose downscaled RGB is cached on disk
+    // (data/DownscaleCache.h), 0 for none; `image_dir` is the dataset's
+    // absolute image folder, `downscale_rounding_mode` how the cache sizes them.
+    int         downscale_cache_divisor = 0;
+    std::string image_dir;
+    std::string downscale_rounding_mode = "floor";
+
     // Dilate (+) or erode (-) the final mask by this fraction of sqrt(W*H) of
     // the decoded mask, by an exact squared distance transform; 0 disables.
     float mask_boundary_offset = 0.0f;

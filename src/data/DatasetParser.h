@@ -452,6 +452,11 @@ void read_gauge(const std::string& dir, ParsedDataset& ds);
 std::string find_aux_file(const std::string& aux_dir, const std::string& rel_name,
                           const char* suffix_tag);
 
+// find_aux_file of each name, in parallel; "" names cost nothing.
+std::vector<std::string> find_aux_files(const std::string& aux_dir,
+                                        const std::vector<std::string>& rel_names,
+                                        const char* suffix_tag);
+
 // `path` relative to `dir`, both folded lexically; "" when it is not under `dir`.
 std::string relative_under(const std::string& path, const std::string& dir);
 
@@ -460,11 +465,18 @@ std::string relative_under(const std::string& path, const std::string& dir);
 std::vector<char> outlier_keep_mask(const std::vector<double>& positions,
                                     int64_t n, float threshold);
 
-// The resolution one camera trains at: its image file's size when cfg probes
-// for one, divided by train_resolution_divisor. W/H and the intrinsics come in
-// as the reconstruction's and leave scaled to that; `src` (may be null) too.
+struct ImageSize { int w = 0, h = 0; };
+
+// cfg.probe_image_size of each path, in parallel: on a cold disk the opens are
+// the wait. {0, 0} where there is no probe or it fails.
+std::vector<ImageSize> probe_image_sizes(const DatasetParserConfig& cfg,
+                                         const std::vector<std::string>& paths);
+
+// The resolution one camera trains at: `probed` (probe_image_sizes) divided
+// by train_resolution_divisor. W/H and the intrinsics come in as the
+// reconstruction's and leave scaled to that; `src` (may be null) too.
 void fit_camera_resolution(const DatasetParserConfig& cfg,
-                           const std::string& image_path,
+                           const std::string& image_path, ImageSize probed,
                            double& W, double& H,
                            double& fx, double& fy, double& cx, double& cy,
                            RedistortSource* src, int turns_cw = 0);

@@ -1914,6 +1914,88 @@ SS_MSG(downscale_rounding_mode_help,
        "yuvarlanacağı: `floor` asla yukarı yuvarlamaz, `round` en yakını "
        "alır, `ceil` her zaman yukarı yuvarlar."));
 
+SS_MSG(cache_downscaled_images,
+    EN("Cache downscaled images"), JA("縮小画像をキャッシュ"),
+    ZH_HANS("缓存缩小后的图像"), ZH_HANT("快取縮小後的影像"),
+    KO("축소 이미지 캐시"),
+    DE("Verkleinerte Bilder zwischenspeichern"),
+    FR("Mettre en cache les images réduites"),
+    ES("Guardar en caché las imágenes reducidas"),
+    PT("Guardar em cache as imagens reduzidas"),
+    IT("Memorizza le immagini ridotte"),
+    NL("Verkleinde beelden cachen"),
+    RU("Кэшировать уменьшенные изображения"),
+    TR("Küçültülmüş görüntüleri önbelleğe al"));
+SS_MSG(cache_downscaled_images_help,
+    EN("With a whole-number training resolution divisor, write each JPEG or "
+       "PNG image at the reduced size into a folder beside the image folder "
+       "(images_2, images_4, ...) and load those on later runs, so training "
+       "stops waiting on decoding large files. Files already there are used "
+       "when their size fits and are never overwritten."),
+    JA("学習解像度の分母が整数のとき、JPEG と PNG の画像を縮小したサイズで画像"
+       "フォルダの隣のフォルダ（images_2、images_4 など）に書き出し、次回からは"
+       "そちらを読み込みます。大きなファイルのデコード待ちで学習が止まらなくなり"
+       "ます。既にあるファイルはサイズが合えば使い、上書きはしません。"),
+    ZH_HANS("当训练分辨率缩小倍数为整数时，把每张 JPEG 或 PNG 图像按缩小后的"
+            "尺寸写入图像目录旁的文件夹（images_2、images_4 等），之后的运行直"
+            "接读取它们，训练不再等待解码大文件。已有的文件尺寸相符时会被使用，"
+            "且永不覆盖。"),
+    ZH_HANT("當訓練解析度縮小倍數為整數時，把每張 JPEG 或 PNG 影像按縮小後的"
+            "尺寸寫入影像目錄旁的資料夾（images_2、images_4 等），之後的執行直"
+            "接讀取它們，訓練不再等待解碼大檔案。已有的檔案尺寸相符時會被使用，"
+            "且永不覆寫。"),
+    KO("학습 해상도 축소 배수가 정수이면 각 JPEG·PNG 이미지를 줄인 크기로 이미지 "
+       "폴더 옆 폴더(images_2, images_4 등)에 써 두고 다음 실행부터 그것을 "
+       "읽습니다. 큰 파일 디코딩을 기다리느라 학습이 멈추지 않습니다. 이미 있는 "
+       "파일은 크기가 맞으면 사용하고 덮어쓰지 않습니다."),
+    DE("Bei ganzzahligem Teiler der Trainingsauflösung wird jedes JPEG- oder "
+       "PNG-Bild verkleinert in einen Ordner neben dem Bildordner geschrieben "
+       "(images_2, images_4, ...) und bei späteren Läufen von dort geladen, "
+       "damit das Training nicht auf das Dekodieren großer Dateien wartet. "
+       "Vorhandene Dateien werden genutzt, wenn ihre Größe passt, und nie "
+       "überschrieben."),
+    FR("Avec un diviseur de résolution entier, chaque image JPEG ou PNG est "
+       "écrite à taille réduite dans un dossier voisin du dossier d'images "
+       "(images_2, images_4, ...) et relue de là aux exécutions suivantes, "
+       "pour que l'entraînement n'attende plus le décodage de gros fichiers. "
+       "Les fichiers déjà présents sont utilisés si leur taille convient et "
+       "ne sont jamais écrasés."),
+    ES("Con un divisor de resolución entero, cada imagen JPEG o PNG se escribe "
+       "a tamaño reducido en una carpeta junto a la de imágenes (images_2, "
+       "images_4, ...) y se carga de ahí en las ejecuciones siguientes, para "
+       "que el entrenamiento no espere a decodificar archivos grandes. Los "
+       "archivos ya presentes se usan si su tamaño encaja y nunca se "
+       "sobrescriben."),
+    PT("Com um divisor de resolução inteiro, cada imagem JPEG ou PNG é gravada "
+       "em tamanho reduzido numa pasta ao lado da pasta de imagens (images_2, "
+       "images_4, ...) e carregada de lá nas execuções seguintes, para que o "
+       "treino não espere a decodificação de arquivos grandes. Arquivos já "
+       "existentes são usados se o tamanho servir e nunca são sobrescritos."),
+    IT("Con un divisore di risoluzione intero, ogni immagine JPEG o PNG viene "
+       "scritta ridotta in una cartella accanto a quella delle immagini "
+       "(images_2, images_4, ...) e caricata da lì nelle esecuzioni "
+       "successive, così l'addestramento non attende la decodifica di file "
+       "grandi. I file già presenti si usano se la dimensione combacia e non "
+       "vengono mai sovrascritti."),
+    NL("Bij een gehele deler van de trainingsresolutie wordt elk JPEG- of "
+       "PNG-beeld verkleind weggeschreven in een map naast de beeldmap "
+       "(images_2, images_4, ...) en bij latere runs daaruit geladen, zodat "
+       "de training niet wacht op het decoderen van grote bestanden. "
+       "Bestaande bestanden worden gebruikt als hun grootte past en nooit "
+       "overschreven."),
+    RU("При целом делителе разрешения каждое изображение JPEG или PNG "
+       "записывается уменьшенным в папку рядом с папкой изображений "
+       "(images_2, images_4, ...) и при следующих запусках читается оттуда, "
+       "чтобы обучение не ждало декодирования больших файлов. Уже лежащие "
+       "там файлы используются, если подходит размер, и никогда не "
+       "перезаписываются."),
+    TR("Eğitim çözünürlüğü böleni tam sayı olduğunda her JPEG veya PNG "
+       "görüntü küçültülmüş hâliyle görüntü klasörünün yanındaki bir klasöre "
+       "(images_2, images_4, ...) yazılır ve sonraki çalıştırmalarda oradan "
+       "yüklenir; böylece eğitim büyük dosyaların çözülmesini beklemez. Orada "
+       "zaten bulunan dosyalar boyutu uyuyorsa kullanılır ve asla üzerine "
+       "yazılmaz."));
+
 SS_MSG(eval_mode,
     EN("Evaluation split"), JA("評価用の分け方"), ZH_HANS("评估集划分方式"),
     ZH_HANT("評估集劃分方式"), KO("평가용 분할 방식"),
@@ -7851,52 +7933,52 @@ SS_MSG(floater_suppression_help,
     EN("Clean up floating blobs and see-through surfaces. Tightens the depth "
        "and colour consistency penalties and holds view-dependent colour "
        "back; `strong` gives the crispest geometry but can flatten thin or "
-       "genuinely translucent detail."),
+       "genuinely translucent detail. `extreme` adds a neighbourhood regularizer on top of `strong`, which can be slower, especially with a large number of Gaussians."),
     JA("浮いた塊や透けて見える面を整理します。深度と色の一貫性ペナルティを強め、"
        "視点依存の色を抑えます。`strong` はもっともくっきりしたジオメトリにな"
-       "りますが、薄いものや本当に半透明なものが平坦になることがあります。"),
+       "りますが、薄いものや本当に半透明なものが平坦になることがあります。 `extreme` は `strong` に近傍の正則化を加えます。処理が遅くなることがあり、ガウシアンの数が多いほど顕著です。"),
     ZH_HANS("清理漂浮的团块和穿透的表面。它会加强深度和颜色一致性惩罚，并抑制"
             "视角相关颜色；`strong` 给出最清爽的几何，但可能压平细薄或真正半透"
-            "明的细节。"),
+            "明的细节。 `extreme` 在 `strong` 的基础上加入邻域正则化，可能更慢，高斯数量很大时尤其明显。"),
     ZH_HANT("清理漂浮的團塊和穿透的表面。它會加強深度和顏色一致性懲罰，並抑制"
             "視角相關顏色；`strong` 給出最清爽的幾何，但可能壓平細薄或真正半透"
-            "明的細節。"),
+            "明的細節。 `extreme` 在 `strong` 的基礎上加入鄰域正則化，可能更慢，高斯數量很大時尤其明顯。"),
     KO("떠다니는 덩어리와 비쳐 보이는 면을 정리합니다. 깊이와 색 일관성 페널티"
        "를 강화하고 시점 의존 색을 억제하며, `strong`은 가장 또렷한 지오메트리"
-       "를 주지만 얇거나 실제로 반투명한 디테일을 납작하게 만들 수 있습니다."),
+       "를 주지만 얇거나 실제로 반투명한 디테일을 납작하게 만들 수 있습니다. `extreme`은 `strong`에 이웃 정규화를 더하며, 특히 가우시안 수가 많으면 더 느려질 수 있습니다."),
     DE("Schwebende Klumpen und durchscheinende Flächen aufräumen. Verschärft "
        "die Strafen für Tiefen- und Farbkonsistenz und hält blickabhängige "
        "Farbe zurück; `strong` liefert die knackigste Geometrie, kann aber "
-       "dünne oder tatsächlich lichtdurchlässige Details flach machen."),
+       "dünne oder tatsächlich lichtdurchlässige Details flach machen. `extreme` ergänzt `strong` um eine Nachbarschafts-Regularisierung und kann langsamer sein, besonders bei sehr vielen Gaussians."),
     FR("Nettoyer les amas flottants et les surfaces qui transparaissent. "
        "Resserre les pénalités de cohérence de profondeur et de couleur et "
        "bride la couleur dépendante de la vue ; `strong` donne la géométrie "
        "la plus nette mais peut aplatir les détails fins ou réellement "
-       "translucides."),
+       "translucides. `extreme` ajoute à `strong` une régularisation de voisinage, ce qui peut ralentir l'entraînement, surtout avec un grand nombre de gaussiennes."),
     ES("Limpiar los grumos flotantes y las superficies que se transparentan. "
        "Aprieta las penalizaciones de coherencia de profundidad y color y "
        "frena el color dependiente de la vista; `strong` da la geometría más "
-       "nítida pero puede aplanar detalles finos o realmente translúcidos."),
+       "nítida pero puede aplanar detalles finos o realmente translúcidos. `extreme` añade a `strong` una regularización de vecindad y puede ser más lento, sobre todo con un gran número de gaussianas."),
     PT("Limpar os grumos flutuantes e as superfícies que ficam transparentes. "
        "Aperta as penalidades de coerência de profundidade e cor e segura a "
        "cor dependente da vista; `strong` dá a geometria mais nítida, mas "
-       "pode achatar detalhes finos ou realmente translúcidos."),
+       "pode achatar detalhes finos ou realmente translúcidos. `extreme` acrescenta a `strong` uma regularização de vizinhança e pode ser mais lento, sobretudo com um grande número de gaussianas."),
     IT("Ripulire i grumi fluttuanti e le superfici che si vedono attraverso. "
        "Stringe le penalità di coerenza di profondità e colore e trattiene il "
        "colore dipendente dalla vista; `strong` dà la geometria più nitida ma "
-       "può appiattire i dettagli sottili o davvero traslucidi."),
+       "può appiattire i dettagli sottili o davvero traslucidi. `extreme` aggiunge a `strong` una regolarizzazione di vicinato e può essere più lento, soprattutto con un gran numero di gaussiane."),
     NL("Zwevende klodders en doorschijnende oppervlakken opruimen. Het scherpt "
        "de straffen voor diepte- en kleurconsistentie aan en houdt "
        "kijkrichtingafhankelijke kleur in toom; `strong` geeft de strakste "
-       "geometrie maar kan dun of werkelijk doorschijnend detail platslaan."),
+       "geometrie maar kan dun of werkelijk doorschijnend detail platslaan. `extreme` voegt aan `strong` een buurtregularisatie toe en kan trager zijn, vooral bij een groot aantal Gaussians."),
     RU("Убрать висящие сгустки и просвечивающие поверхности. Усиливает штрафы "
        "за согласованность глубины и цвета и придерживает цвет, зависящий от "
        "вида; `strong` даёт самую чёткую геометрию, но может сплющить тонкие "
-       "или по-настоящему полупрозрачные детали."),
+       "или по-настоящему полупрозрачные детали. `extreme` добавляет к `strong` регуляризацию по соседям и может работать медленнее, особенно при большом числе гауссиан."),
     TR("Havada duran topakları ve içi görünen yüzeyleri temizler. Derinlik ve "
        "renk tutarlılığı cezalarını sıkar, bakışa bağlı rengi dizginler; "
        "`strong` en keskin geometriyi verir ama ince ya da gerçekten yarı "
-       "saydam ayrıntıları düzleştirebilir."));
+       "saydam ayrıntıları düzleştirebilir. `extreme`, `strong` üzerine komşuluk düzenlemesi ekler ve özellikle çok sayıda Gauss ile daha yavaş olabilir."));
 
 SS_MSG(depth_distortion_reg,
     EN("Depth consistency"), JA("深度の一貫性"), ZH_HANS("深度一致性"),
@@ -8658,6 +8740,713 @@ SS_MSG(median_warmup_help,
        "полную силу."),
     TR("En dolu derinlikle ilgili dört cezanın tam güce ulaşması için gereken "
        "adım sayısı."));
+
+SS_MSG(pca_reg_neighbors,
+    EN("Local-PCA neighbours"),
+    JA("局所 PCA の近傍数"),
+    ZH_HANS("局部 PCA 邻居数"),
+    ZH_HANT("局部 PCA 鄰居數"),
+    KO("로컬 PCA 이웃 수"),
+    DE("Nachbarn für lokale PCA"),
+    FR("Voisins de la PCA locale"),
+    ES("Vecinos de la PCA local"),
+    PT("Vizinhos da PCA local"),
+    IT("Vicini della PCA locale"),
+    NL("Buren voor lokale PCA"),
+    RU("Соседи локального PCA"),
+    TR("Yerel PCA komşuları"));
+SS_MSG(pca_reg_neighbors_help,
+    EN("How many nearby splats each splat is grouped with to fit a local surface "
+       "(PCAsplat). The group's spread pulls splats onto that surface, including "
+       "ones no photo shows well. 0 turns it off; at most 31."),
+    JA("局所的な面を当てはめるために、各スプラットを近くのいくつのスプラットとま"
+       "とめるかです（PCAsplat）。まとまりの広がりがスプラットをその面へ引き寄せ"
+       "、写真によく写らないものにも効きます。0 でオフ、最大 31 です。"),
+    ZH_HANS("每个泼溅与附近多少个泼溅归为一组来拟合局部表面（PCAsplat）。组的分布会把"
+            "泼溅拉向该表面，包括照片中看不清的泼溅。0 表示关闭，最多 31。"),
+    ZH_HANT("每個潑濺與附近多少個潑濺歸為一組來擬合局部表面（PCAsplat）。組的分佈會把"
+            "潑濺拉向該表面，包括照片中看不清的潑濺。0 表示關閉，最多 31。"),
+    KO("국소 표면을 맞추기 위해 각 스플랫을 근처의 몇 개 스플랫과 "
+       "묶을지입니다(PCAsplat). 묶음의 퍼짐이 스플랫을 그 표면으로 끌어당기며, "
+       "사진에 잘 보이지 않는 스플랫에도 작용합니다. 0이면 끄고, 최대 31입니다."),
+    DE("Mit wie vielen nahen Splats jeder Splat zu einer Gruppe zusammengefasst "
+       "wird, an die eine lokale Fläche angepasst wird (PCAsplat). Die Streuung "
+       "der Gruppe zieht Splats auf diese Fläche, auch solche, die kein Foto gut "
+       "zeigt. 0 schaltet es ab; höchstens 31."),
+    FR("Avec combien de splats proches chaque splat est regroupé pour ajuster "
+       "une surface locale (PCAsplat). L'étalement du groupe attire les splats "
+       "sur cette surface, y compris ceux qu'aucune photo ne montre bien. 0 le "
+       "désactive ; 31 au plus."),
+    ES("Con cuántos splats cercanos se agrupa cada splat para ajustar una "
+       "superficie local (PCAsplat). La dispersión del grupo atrae los splats "
+       "hacia esa superficie, incluidos los que ninguna foto muestra bien. 0 lo "
+       "desactiva; 31 como máximo."),
+    PT("Com quantos splats próximos cada splat é agrupado para ajustar uma "
+       "superfície local (PCAsplat). A dispersão do grupo puxa os splats para "
+       "essa superfície, inclusive os que nenhuma foto mostra bem. 0 desliga; no "
+       "máximo 31."),
+    IT("Con quanti splat vicini viene raggruppato ogni splat per adattare una "
+       "superficie locale (PCAsplat). La dispersione del gruppo attira gli splat "
+       "su quella superficie, anche quelli che nessuna foto mostra bene. 0 lo "
+       "disattiva; al massimo 31."),
+    NL("Met hoeveel nabije splats elke splat wordt gegroepeerd om er een lokaal "
+       "oppervlak door te passen (PCAsplat). De spreiding van de groep trekt "
+       "splats naar dat oppervlak, ook splats die geen foto goed laat zien. 0 "
+       "schakelt het uit; hoogstens 31."),
+    RU("Со сколькими ближайшими сплатами объединяется каждый сплат, чтобы "
+       "подогнать локальную поверхность (PCAsplat). Разброс группы притягивает "
+       "сплаты к этой поверхности, в том числе те, которые плохо видны на "
+       "фотографиях. 0 выключает; не больше 31."),
+    TR("Her splat'ın yerel bir yüzey oturtmak için yakındaki kaç splat'la "
+       "gruplandığı (PCAsplat). Grubun yayılımı splat'ları bu yüzeye çeker; "
+       "hiçbir fotoğrafta iyi görünmeyenler de buna dahildir. 0 kapatır; en "
+       "fazla 31."));
+
+SS_MSG(pca_reg_knn,
+    EN("Local-PCA neighbour search"),
+    JA("局所 PCA の近傍探索"),
+    ZH_HANS("局部 PCA 邻居搜索"),
+    ZH_HANT("局部 PCA 鄰居搜尋"),
+    KO("로컬 PCA 이웃 탐색"),
+    DE("Nachbarsuche der lokalen PCA"),
+    FR("Recherche des voisins de la PCA locale"),
+    ES("Búsqueda de vecinos de la PCA local"),
+    PT("Busca de vizinhos da PCA local"),
+    IT("Ricerca dei vicini della PCA locale"),
+    NL("Zoeken naar buren voor lokale PCA"),
+    RU("Поиск соседей локального PCA"),
+    TR("Yerel PCA komşu araması"));
+SS_MSG(pca_reg_knn_help,
+    EN("How the nearby splats are found. `exact` searches a tree for the true "
+       "nearest every step; `morton` takes the splats next to it along a "
+       "space-filling curve, which is cheaper but can mix distant pieces; "
+       "`morton-best` keeps the nearest from a longer stretch of that curve. The "
+       "`-cached` forms keep what they found and search again only at the "
+       "refresh interval and after splats are added or relocated."),
+    JA("近くのスプラットの見つけ方です。`exact` は毎ステップ木構造を探索して真の"
+       "最近傍を求めます。`morton` は空間充填曲線上で隣り合うスプラットを取り、"
+       "軽い代わりに離れた部分が混ざることがあります。`morton-best` はその曲線上"
+       "のより長い区間から最も近いものを残します。`-cached` 付きは見つけた結果を"
+       "保持し、更新間隔ごとと、スプラットの追加や移動のあとにだけ探し直します。"),
+    ZH_HANS("如何找到附近的泼溅。`exact` 每一步都在树中搜索真正的最近邻；`morton` 取"
+            "空间填充曲线上相邻的泼溅，开销更小，但可能混入相距很远的部分；`"
+            "morton-best` 从该曲线上更长的一段中保留最近的那些。带 `-cached` 的形式会"
+            "保留找到的结果，只在刷新间隔到达时以及新增或迁移泼溅之后重新搜索。"),
+    ZH_HANT("如何找到附近的潑濺。`exact` 每一步都在樹中搜尋真正的最近鄰；`morton` 取"
+            "空間填充曲線上相鄰的潑濺，開銷更小，但可能混入相距很遠的部分；`"
+            "morton-best` 從該曲線上更長的一段中保留最近的那些。帶 `-cached` 的形式會"
+            "保留找到的結果，只在刷新間隔到達時以及新增或遷移潑濺之後重新搜尋。"),
+    KO("근처 스플랫을 찾는 방법입니다. `exact`는 매 스텝 트리를 탐색해 실제 "
+       "최근접 이웃을 찾습니다. `morton`은 공간 채움 곡선에서 바로 옆의 스플랫을 "
+       "취해 더 가볍지만 멀리 떨어진 부분이 섞일 수 있습니다. `morton-best`는 그 "
+       "곡선의 더 긴 구간에서 가장 가까운 것들을 남깁니다. `-cached`가 붙은 "
+       "형식은 찾은 결과를 유지하고, 갱신 간격마다 그리고 스플랫을 추가하거나 "
+       "옮긴 뒤에만 다시 찾습니다."),
+    DE("Wie die nahen Splats gefunden werden. `exact` durchsucht jeden Schritt "
+       "einen Baum nach den wirklich nächsten; `morton` nimmt die Splats, die "
+       "entlang einer raumfüllenden Kurve daneben liegen – billiger, kann aber "
+       "weit entfernte Teile mischen; `morton-best` behält die nächsten aus "
+       "einem längeren Stück dieser Kurve. Die `-cached`-Formen behalten, was "
+       "sie gefunden haben, und suchen erst nach dem Auffrischungsintervall neu "
+       "sowie nachdem Splats hinzukamen oder umgezogen sind."),
+    FR("Comment les splats proches sont trouvés. `exact` parcourt un arbre à "
+       "chaque étape pour trouver les vrais plus proches ; `morton` prend les "
+       "splats voisins le long d'une courbe de remplissage de l'espace, moins "
+       "coûteux mais pouvant mêler des morceaux éloignés ; `morton-best` garde "
+       "les plus proches sur un tronçon plus long de cette courbe. Les formes "
+       "`-cached` conservent ce qu'elles ont trouvé et ne cherchent à nouveau "
+       "qu'à l'intervalle de rafraîchissement et après l'ajout ou le déplacement "
+       "de splats."),
+    ES("Cómo se encuentran los splats cercanos. `exact` recorre un árbol en cada "
+       "paso para hallar los verdaderos más cercanos; `morton` toma los splats "
+       "contiguos a lo largo de una curva que llena el espacio, más barato pero "
+       "puede mezclar trozos lejanos; `morton-best` conserva los más cercanos de "
+       "un tramo más largo de esa curva. Las formas `-cached` guardan lo que "
+       "encontraron y solo vuelven a buscar en el intervalo de actualización y "
+       "después de añadir o reubicar splats."),
+    PT("Como os splats próximos são encontrados. `exact` percorre uma árvore a "
+       "cada passo para achar os verdadeiros mais próximos; `morton` pega os "
+       "splats vizinhos ao longo de uma curva que preenche o espaço, mais "
+       "barato, mas pode misturar pedaços distantes; `morton-best` mantém os "
+       "mais próximos de um trecho mais longo dessa curva. As formas `-cached` "
+       "guardam o que encontraram e só buscam de novo no intervalo de "
+       "atualização e depois que splats são acrescentados ou realocados."),
+    IT("Come vengono trovati gli splat vicini. `exact` percorre un albero a ogni "
+       "passo per trovare i veri più vicini; `morton` prende gli splat adiacenti "
+       "lungo una curva che riempie lo spazio, più economico ma può mescolare "
+       "parti lontane; `morton-best` tiene i più vicini da un tratto più lungo "
+       "di quella curva. Le forme `-cached` conservano ciò che hanno trovato e "
+       "cercano di nuovo solo all'intervallo di aggiornamento e dopo che sono "
+       "stati aggiunti o spostati degli splat."),
+    NL("Hoe de nabije splats worden gevonden. `exact` doorzoekt elke stap een "
+       "boom naar de echte dichtstbijzijnde; `morton` neemt de splats die "
+       "ernaast liggen langs een ruimtevullende kromme, goedkoper maar kan ver "
+       "uit elkaar liggende stukken mengen; `morton-best` houdt de "
+       "dichtstbijzijnde over uit een langer stuk van die kromme. De "
+       "`-cached`-vormen bewaren wat ze vonden en zoeken pas opnieuw na het "
+       "verversingsinterval en nadat splats zijn toegevoegd of verplaatst."),
+    RU("Как находятся ближайшие сплаты. `exact` на каждом шаге обходит дерево и "
+       "находит настоящих ближайших; `morton` берёт сплаты, соседние вдоль "
+       "заполняющей пространство кривой, — дешевле, но может смешивать далёкие "
+       "части; `morton-best` оставляет ближайших из более длинного отрезка этой "
+       "кривой. Варианты `-cached` сохраняют найденное и ищут заново только "
+       "через интервал обновления и после добавления или перемещения сплатов."),
+    TR("Yakındaki splat'ların nasıl bulunduğu. `exact` her adımda bir ağacı "
+       "tarayarak gerçek en yakınları bulur; `morton` uzayı dolduran bir eğri "
+       "boyunca yanındaki splat'ları alır, daha ucuzdur ama birbirinden uzak "
+       "parçaları karıştırabilir; `morton-best` bu eğrinin daha uzun bir "
+       "parçasından en yakınları tutar. `-cached` biçimleri bulduklarını saklar "
+       "ve yalnızca yenileme aralığında ve splat eklendikten ya da taşındıktan "
+       "sonra yeniden arar."));
+
+SS_MSG(pca_reg_window,
+    EN("Local-PCA search window"),
+    JA("局所 PCA の探索幅"),
+    ZH_HANS("局部 PCA 搜索窗口"),
+    ZH_HANT("局部 PCA 搜尋視窗"),
+    KO("로컬 PCA 탐색 창"),
+    DE("Suchfenster der lokalen PCA"),
+    FR("Fenêtre de recherche de la PCA locale"),
+    ES("Ventana de búsqueda de la PCA local"),
+    PT("Janela de busca da PCA local"),
+    IT("Finestra di ricerca della PCA locale"),
+    NL("Zoekvenster van lokale PCA"),
+    RU("Окно поиска локального PCA"),
+    TR("Yerel PCA arama penceresi"));
+SS_MSG(pca_reg_window_help,
+    EN("How many splats along the curve `morton-best` chooses the nearest from. "
+       "More finds truer neighbours and costs more; 0 uses four times the group "
+       "size."),
+    JA("`morton-best` が最も近いものを選ぶ、曲線上のスプラット数です。多いほど本"
+       "当の近傍に近づきますが重くなります。0 でまとまりの大きさの 4 倍を使いま"
+       "す。"),
+    ZH_HANS("`morton-best` 在曲线上从多少个泼溅中挑选最近的。越多找到的邻居越接近真实"
+            "，开销也越大；0 表示使用组大小的四倍。"),
+    ZH_HANT("`morton-best` 在曲線上從多少個潑濺中挑選最近的。越多找到的鄰居越接近真實"
+            "，開銷也越大；0 表示使用組大小的四倍。"),
+    KO("`morton-best`가 곡선에서 몇 개의 스플랫 중 가장 가까운 것을 "
+       "고를지입니다. 많을수록 실제 이웃에 가까워지지만 비용이 늘어납니다. 0이면 "
+       "묶음 크기의 네 배를 씁니다."),
+    DE("Aus wie vielen Splats entlang der Kurve `morton-best` die nächsten "
+       "auswählt. Mehr findet echtere Nachbarn und kostet mehr; 0 nimmt das "
+       "Vierfache der Gruppengröße."),
+    FR("Parmi combien de splats le long de la courbe `morton-best` choisit les "
+       "plus proches. Plus trouve des voisins plus fidèles et coûte plus ; 0 "
+       "prend quatre fois la taille du groupe."),
+    ES("Entre cuántos splats a lo largo de la curva elige `morton-best` los más "
+       "cercanos. Más encuentra vecinos más fieles y cuesta más; 0 usa cuatro "
+       "veces el tamaño del grupo."),
+    PT("Entre quantos splats ao longo da curva `morton-best` escolhe os mais "
+       "próximos. Mais encontra vizinhos mais fiéis e custa mais; 0 usa quatro "
+       "vezes o tamanho do grupo."),
+    IT("Tra quanti splat lungo la curva `morton-best` sceglie i più vicini. Di "
+       "più trova vicini più fedeli e costa di più; 0 usa quattro volte la "
+       "dimensione del gruppo."),
+    NL("Uit hoeveel splats langs de kromme `morton-best` de dichtstbijzijnde "
+       "kiest. Meer vindt echtere buren en kost meer; 0 neemt vier keer de "
+       "groepsgrootte."),
+    RU("Из скольких сплатов вдоль кривой `morton-best` выбирает ближайших. "
+       "Больше находит более настоящих соседей и стоит дороже; 0 берёт "
+       "учетверённый размер группы."),
+    TR("`morton-best`'in eğri boyunca en yakınları kaç splat arasından seçtiği. "
+       "Daha fazlası gerçeğe daha yakın komşular bulur ve daha pahalıdır; 0 grup "
+       "boyutunun dört katını kullanır."));
+
+SS_MSG(pca_reg_refresh_every,
+    EN("Local-PCA neighbour refresh"),
+    JA("局所 PCA の近傍更新間隔"),
+    ZH_HANS("局部 PCA 邻居刷新间隔"),
+    ZH_HANT("局部 PCA 鄰居刷新間隔"),
+    KO("로컬 PCA 이웃 갱신 간격"),
+    DE("Auffrischung der Nachbarn der lokalen PCA"),
+    FR("Rafraîchissement des voisins de la PCA locale"),
+    ES("Actualización de vecinos de la PCA local"),
+    PT("Atualização dos vizinhos da PCA local"),
+    IT("Aggiornamento dei vicini della PCA locale"),
+    NL("Verversen van buren voor lokale PCA"),
+    RU("Обновление соседей локального PCA"),
+    TR("Yerel PCA komşu yenileme aralığı"));
+SS_MSG(pca_reg_refresh_every_help,
+    EN("How many steps the `-cached` searches reuse their neighbours before "
+       "searching again; they also search again whenever splats are added or "
+       "relocated. 0 follows the interval between those rounds."),
+    JA("`-cached` 付きの探索が、探し直すまでに近傍を何ステップ使い回すかです。ス"
+       "プラットを追加したり移したりしたときにも探し直します。0 でそのラウンドの"
+       "間隔に合わせます。"),
+    ZH_HANS("带 `-cached` 的搜索在重新搜索前复用邻居多少步；每当新增或迁移泼溅时也会"
+            "重新搜索。0 表示跟随这些轮次之间的间隔。"),
+    ZH_HANT("帶 `-cached` 的搜尋在重新搜尋前重複使用鄰居多少步；每當新增或遷移潑濺時"
+            "也會重新搜尋。0 表示跟隨這些輪次之間的間隔。"),
+    KO("`-cached`가 붙은 탐색이 다시 찾기 전까지 이웃을 몇 스텝 동안 "
+       "재사용할지입니다. 스플랫을 추가하거나 옮길 때도 다시 찾습니다. 0이면 그 "
+       "회차 사이의 간격을 따릅니다."),
+    DE("Wie viele Schritte die `-cached`-Suchen ihre Nachbarn wiederverwenden, "
+       "bevor sie neu suchen; sie suchen auch jedes Mal neu, wenn Splats "
+       "hinzukommen oder umziehen. 0 folgt dem Abstand zwischen diesen Runden."),
+    FR("Pendant combien d'étapes les recherches `-cached` réutilisent leurs "
+       "voisins avant de chercher à nouveau ; elles cherchent aussi à nouveau "
+       "chaque fois que des splats sont ajoutés ou déplacés. 0 suit l'intervalle "
+       "entre ces cycles."),
+    ES("Durante cuántos pasos reutilizan sus vecinos las búsquedas `-cached` "
+       "antes de volver a buscar; también vuelven a buscar cada vez que se "
+       "añaden o reubican splats. 0 sigue el intervalo entre esas rondas."),
+    PT("Por quantos passos as buscas `-cached` reutilizam seus vizinhos antes de "
+       "buscar de novo; também buscam de novo sempre que splats são "
+       "acrescentados ou realocados. 0 segue o intervalo entre essas rodadas."),
+    IT("Per quanti passi le ricerche `-cached` riusano i loro vicini prima di "
+       "cercare di nuovo; cercano di nuovo anche ogni volta che vengono aggiunti "
+       "o spostati degli splat. 0 segue l'intervallo tra quei cicli."),
+    NL("Hoeveel stappen de `-cached`-zoektochten hun buren hergebruiken voordat "
+       "ze opnieuw zoeken; ze zoeken ook opnieuw telkens wanneer splats worden "
+       "toegevoegd of verplaatst. 0 volgt het interval tussen die rondes."),
+    RU("Сколько шагов поиски `-cached` используют найденных соседей, прежде чем "
+       "искать заново; заново они ищут и всякий раз, когда сплаты добавляются "
+       "или перемещаются. 0 следует интервалу между этими раундами."),
+    TR("`-cached` aramalarının yeniden aramadan önce komşularını kaç adım "
+       "boyunca yeniden kullandığı; splat eklendiğinde ya da taşındığında da "
+       "yeniden ararlar. 0 bu turlar arasındaki aralığı izler."));
+
+SS_MSG(pca_reg_start_iter,
+    EN("Local-PCA start step"),
+    JA("局所 PCA の開始ステップ"),
+    ZH_HANS("局部 PCA 起始步"),
+    ZH_HANT("局部 PCA 起始步"),
+    KO("로컬 PCA 시작 스텝"),
+    DE("Startschritt der lokalen PCA"),
+    FR("Étape de départ de la PCA locale"),
+    ES("Paso de inicio de la PCA local"),
+    PT("Passo inicial da PCA local"),
+    IT("Passo di avvio della PCA locale"),
+    NL("Startstap van lokale PCA"),
+    RU("Начальный шаг локального PCA"),
+    TR("Yerel PCA başlangıç adımı"));
+SS_MSG(pca_reg_start_iter_help,
+    EN("The step the local-PCA terms switch on. Earlier pins splats to surfaces "
+       "before the scene has settled."),
+    JA("局所 PCA の項が有効になるステップです。早いほど、シーンが落ち着く前から"
+       "スプラットを面に留めます。"),
+    ZH_HANS("局部 PCA 项从哪一步开始生效。越早，就越会在场景稳定下来之前把泼溅固定在"
+            "表面上。"),
+    ZH_HANT("局部 PCA 項從哪一步開始生效。越早，就越會在場景穩定下來之前把潑濺固定在"
+            "表面上。"),
+    KO("로컬 PCA 항이 켜지는 스텝입니다. 이를수록 장면이 자리 잡기 전부터 "
+       "스플랫을 표면에 붙잡아 둡니다."),
+    DE("Der Schritt, ab dem die Terme der lokalen PCA wirken. Früher heftet "
+       "Splats an Flächen, bevor sich die Szene gesetzt hat."),
+    FR("L'étape à laquelle les termes de la PCA locale s'activent. Plus tôt fixe "
+       "les splats aux surfaces avant que la scène se soit stabilisée."),
+    ES("El paso en que se activan los términos de la PCA local. Antes fija los "
+       "splats a las superficies antes de que la escena se haya asentado."),
+    PT("O passo em que os termos da PCA local entram em ação. Mais cedo prende "
+       "os splats às superfícies antes de a cena se assentar."),
+    IT("Il passo in cui si attivano i termini della PCA locale. Prima fissa gli "
+       "splat alle superfici prima che la scena si sia assestata."),
+    NL("De stap waarop de termen van de lokale PCA ingaan. Eerder zet splats "
+       "vast op oppervlakken voordat de scène tot rust is gekomen."),
+    RU("Шаг, с которого включаются члены локального PCA. Раньше — прижимает "
+       "сплаты к поверхностям до того, как сцена устоится."),
+    TR("Yerel PCA terimlerinin devreye girdiği adım. Daha erken, sahne oturmadan "
+       "önce splat'ları yüzeylere sabitler."));
+
+SS_MSG(pca_reg_weight,
+    EN("Local-PCA flatness"),
+    JA("局所 PCA の平坦さ"),
+    ZH_HANS("局部 PCA 平整度"),
+    ZH_HANT("局部 PCA 平整度"),
+    KO("로컬 PCA 평탄도"),
+    DE("Flachheit der lokalen PCA"),
+    FR("Planéité de la PCA locale"),
+    ES("Planitud de la PCA local"),
+    PT("Planicidade da PCA local"),
+    IT("Planarità della PCA locale"),
+    NL("Vlakheid van lokale PCA"),
+    RU("Плоскостность локального PCA"),
+    TR("Yerel PCA düzlüğü"));
+SS_MSG(pca_reg_weight_help,
+    EN("Weight on how thick each group of splats is across its fitted surface, "
+       "which pulls their centres onto it and away from floating in front of it."),
+    JA("スプラットのまとまりが、当てはめた面に対してどれだけ厚いかへの重みです。"
+       "中心をその面へ引き寄せ、面の手前に浮かぶのを防ぎます。"),
+    ZH_HANS("对每组泼溅在拟合表面法向上有多厚的权重，它把泼溅中心拉到该表面上，避免悬"
+            "浮在表面前方。"),
+    ZH_HANT("對每組潑濺在擬合表面法向上有多厚的權重，它把潑濺中心拉到該表面上，避免懸"
+            "浮在表面前方。"),
+    KO("스플랫 묶음이 맞춘 표면에 대해 얼마나 두꺼운지에 대한 가중치입니다. "
+       "중심을 그 표면으로 끌어당겨 표면 앞에 떠 있지 않게 합니다."),
+    DE("Gewicht darauf, wie dick jede Gruppe von Splats quer zu ihrer "
+       "angepassten Fläche ist; es zieht ihre Mittelpunkte auf die Fläche, statt "
+       "sie davor schweben zu lassen."),
+    FR("Poids sur l'épaisseur de chaque groupe de splats en travers de sa "
+       "surface ajustée, qui attire leurs centres sur celle-ci plutôt que de les "
+       "laisser flotter devant."),
+    ES("Peso sobre lo grueso que es cada grupo de splats a través de su "
+       "superficie ajustada, que atrae sus centros hacia ella en lugar de "
+       "dejarlos flotar delante."),
+    PT("Peso sobre a espessura de cada grupo de splats através da sua superfície "
+       "ajustada, que puxa os centros para ela em vez de deixá-los flutuar à "
+       "frente."),
+    IT("Peso su quanto è spesso ogni gruppo di splat attraverso la sua "
+       "superficie adattata, che ne attira i centri su di essa invece di "
+       "lasciarli fluttuare davanti."),
+    NL("Gewicht op hoe dik elke groep splats dwars op haar gepaste oppervlak is; "
+       "het trekt hun middelpunten naar dat oppervlak in plaats van ze ervoor te "
+       "laten zweven."),
+    RU("Вес толщины каждой группы сплатов поперёк подогнанной к ней поверхности: "
+       "он притягивает их центры к поверхности, не давая висеть перед ней."),
+    TR("Her splat grubunun oturtulan yüzeyine dik doğrultuda ne kadar kalın "
+       "olduğuna verilen ağırlık; merkezlerini yüzeyin önünde süzülmek yerine "
+       "yüzeye çeker."));
+
+SS_MSG(pca_reg_weight_final,
+    EN("Final local-PCA flatness"),
+    JA("局所 PCA の最終平坦さ"),
+    ZH_HANS("局部 PCA 最终平整度"),
+    ZH_HANT("局部 PCA 最終平整度"),
+    KO("로컬 PCA 최종 평탄도"),
+    DE("Endgültige Flachheit der lokalen PCA"),
+    FR("Planéité finale de la PCA locale"),
+    ES("Planitud final de la PCA local"),
+    PT("Planicidade final da PCA local"),
+    IT("Planarità finale della PCA locale"),
+    NL("Uiteindelijke vlakheid van lokale PCA"),
+    RU("Итоговая плоскостность локального PCA"),
+    TR("Yerel PCA son düzlüğü"));
+SS_MSG(pca_reg_weight_final_help,
+    EN("The flatness weight the schedule reaches at the last step. Unset keeps "
+       "it at the start value."),
+    JA("最後のステップでスケジュールが到達する平坦さの重みです。未設定なら開始値"
+       "のままです。"),
+    ZH_HANS("调度在最后一步达到的平整度权重。不设置则保持起始值。"),
+    ZH_HANT("排程在最後一步達到的平整度權重。不設定則保持起始值。"),
+    KO("마지막 스텝에서 스케줄이 도달하는 평탄도 가중치입니다. 설정하지 않으면 "
+       "시작 값을 유지합니다."),
+    DE("Das Flachheitsgewicht, das der Verlauf im letzten Schritt erreicht. "
+       "Nicht gesetzt bleibt es beim Startwert."),
+    FR("Le poids de planéité que le calendrier atteint à la dernière étape. Non "
+       "défini, il reste à la valeur de départ."),
+    ES("El peso de planitud que alcanza la programación en el último paso. Sin "
+       "definir, se queda en el valor inicial."),
+    PT("O peso de planicidade que o cronograma atinge no último passo. Sem "
+       "definir, fica no valor inicial."),
+    IT("Il peso di planarità che la pianificazione raggiunge all'ultimo passo. "
+       "Se non impostato resta al valore iniziale."),
+    NL("Het vlakheidsgewicht dat het verloop bij de laatste stap bereikt. Niet "
+       "ingesteld blijft het op de beginwaarde."),
+    RU("Вес плоскостности, которого расписание достигает к последнему шагу. Если "
+       "не задан, остаётся начальным."),
+    TR("Takvimin son adımda ulaştığı düzlük ağırlığı. Ayarlanmazsa başlangıç "
+       "değerinde kalır."));
+
+SS_MSG(pca_reg_schedule,
+    EN("Local-PCA flatness schedule"),
+    JA("局所 PCA の平坦さの推移"),
+    ZH_HANS("局部 PCA 平整度调度"),
+    ZH_HANT("局部 PCA 平整度排程"),
+    KO("로컬 PCA 평탄도 스케줄"),
+    DE("Verlauf der Flachheit der lokalen PCA"),
+    FR("Calendrier de planéité de la PCA locale"),
+    ES("Programación de planitud de la PCA local"),
+    PT("Cronograma de planicidade da PCA local"),
+    IT("Pianificazione della planarità della PCA locale"),
+    NL("Verloop van vlakheid van lokale PCA"),
+    RU("Расписание плоскостности локального PCA"),
+    TR("Yerel PCA düzlük takvimi"));
+SS_MSG(pca_reg_schedule_help,
+    EN("How the flatness weight moves from its start value to its final one: "
+       "`linear` in equal steps, `exponential` by equal factors, `cosine` slowly "
+       "at both ends."),
+    JA("平坦さの重みが開始値から最終値へどう移るかです。`linear` は等しい幅で、`"
+       "exponential` は等しい倍率で、`cosine` は両端でゆっくり変わります。"),
+    ZH_HANS("平整度权重如何从起始值变到最终值：`linear` 按相等的增量，`exponential` "
+            "按相等的倍数，`cosine` 在两端变化较慢。"),
+    ZH_HANT("平整度權重如何從起始值變到最終值：`linear` 按相等的增量，`exponential` "
+            "按相等的倍數，`cosine` 在兩端變化較慢。"),
+    KO("평탄도 가중치가 시작 값에서 최종 값으로 어떻게 바뀌는지입니다. "
+       "`linear`는 같은 폭으로, `exponential`은 같은 배율로, `cosine`은 양 "
+       "끝에서 천천히 바뀝니다."),
+    DE("Wie das Flachheitsgewicht vom Start- zum Endwert wandert: `linear` in "
+       "gleichen Schritten, `exponential` um gleiche Faktoren, `cosine` an "
+       "beiden Enden langsam."),
+    FR("Comment le poids de planéité passe de sa valeur de départ à sa valeur "
+       "finale : `linear` par pas égaux, `exponential` par facteurs égaux, "
+       "`cosine` lentement aux deux bouts."),
+    ES("Cómo pasa el peso de planitud de su valor inicial al final: `linear` en "
+       "pasos iguales, `exponential` por factores iguales, `cosine` despacio en "
+       "ambos extremos."),
+    PT("Como o peso de planicidade vai do valor inicial ao final: `linear` em "
+       "passos iguais, `exponential` por fatores iguais, `cosine` devagar nas "
+       "duas pontas."),
+    IT("Come il peso di planarità passa dal valore iniziale a quello finale: "
+       "`linear` a passi uguali, `exponential` per fattori uguali, `cosine` "
+       "lentamente alle due estremità."),
+    NL("Hoe het vlakheidsgewicht van zijn beginwaarde naar zijn eindwaarde gaat: "
+       "`linear` in gelijke stappen, `exponential` met gelijke factoren, "
+       "`cosine` langzaam aan beide uiteinden."),
+    RU("Как вес плоскостности переходит от начального значения к итоговому: "
+       "`linear` — равными шагами, `exponential` — равными множителями, `cosine` "
+       "— медленно на обоих концах."),
+    TR("Düzlük ağırlığının başlangıç değerinden son değerine nasıl geçtiği: "
+       "`linear` eşit adımlarla, `exponential` eşit çarpanlarla, `cosine` iki "
+       "uçta yavaşça."));
+
+SS_MSG(pca_reg_tangent_weight,
+    EN("Local-PCA even spread"),
+    JA("局所 PCA の均等な広がり"),
+    ZH_HANS("局部 PCA 均匀铺展"),
+    ZH_HANT("局部 PCA 均勻鋪展"),
+    KO("로컬 PCA 고른 퍼짐"),
+    DE("Gleichmäßige Verteilung der lokalen PCA"),
+    FR("Étalement régulier de la PCA locale"),
+    ES("Reparto uniforme de la PCA local"),
+    PT("Distribuição uniforme da PCA local"),
+    IT("Distribuzione uniforme della PCA locale"),
+    NL("Gelijkmatige spreiding van lokale PCA"),
+    RU("Равномерность локального PCA"),
+    TR("Yerel PCA düzgün yayılımı"));
+SS_MSG(pca_reg_tangent_weight_help,
+    EN("Weight, as a share of the flatness weight, on how unevenly a group "
+       "spreads in the two directions along its surface. Higher spreads splats "
+       "evenly instead of in strands."),
+    JA("平坦さの重みに対する割合で、まとまりが面に沿った 2 方向にどれだけ不均等"
+       "に広がるかへの重みです。高いほど、スプラットが筋状でなく均等に広がります"
+       "。"),
+    ZH_HANS("以平整度权重的比例表示，对每组在表面内两个方向上铺展不均程度的权重。越高"
+            "，泼溅越均匀地铺开，而不是排成条状。"),
+    ZH_HANT("以平整度權重的比例表示，對每組在表面內兩個方向上鋪展不均程度的權重。越高"
+            "，潑濺越均勻地鋪開，而不是排成條狀。"),
+    KO("평탄도 가중치에 대한 비율로, 묶음이 표면을 따라 두 방향으로 얼마나 "
+       "고르지 않게 퍼지는지에 대한 가중치입니다. 높을수록 스플랫이 줄 모양이 "
+       "아니라 고르게 퍼집니다."),
+    DE("Gewicht, als Anteil des Flachheitsgewichts, darauf, wie ungleich sich "
+       "eine Gruppe in den beiden Richtungen entlang ihrer Fläche verteilt. "
+       "Höher verteilt Splats gleichmäßig statt in Strängen."),
+    FR("Poids, en part du poids de planéité, sur l'irrégularité avec laquelle un "
+       "groupe s'étale dans les deux directions de sa surface. Plus élevé étale "
+       "les splats régulièrement plutôt qu'en filaments."),
+    ES("Peso, como fracción del peso de planitud, sobre lo desigual que se "
+       "reparte un grupo en las dos direcciones de su superficie. Más alto "
+       "reparte los splats de forma uniforme en lugar de en hebras."),
+    PT("Peso, como fração do peso de planicidade, sobre quão desigual um grupo "
+       "se espalha nas duas direções ao longo da sua superfície. Mais alto "
+       "espalha os splats por igual em vez de em fios."),
+    IT("Peso, come frazione del peso di planarità, su quanto un gruppo si "
+       "distribuisce in modo diseguale nelle due direzioni lungo la sua "
+       "superficie. Più alto distribuisce gli splat in modo uniforme invece che "
+       "in filamenti."),
+    NL("Gewicht, als deel van het vlakheidsgewicht, op hoe ongelijk een groep "
+       "zich spreidt in de twee richtingen langs haar oppervlak. Hoger spreidt "
+       "splats gelijkmatig in plaats van in slierten."),
+    RU("Вес, в долях веса плоскостности, неравномерности, с которой группа "
+       "распределена по двум направлениям вдоль своей поверхности. Больше — "
+       "сплаты распределяются ровно, а не нитями."),
+    TR("Düzlük ağırlığının bir payı olarak, bir grubun yüzeyi boyunca iki "
+       "doğrultuda ne kadar eşitsiz yayıldığına verilen ağırlık. Daha yüksek, "
+       "splat'ları iplikler yerine düzgünce yayar."));
+
+SS_MSG(pca_reg_normal_weight,
+    EN("Local-PCA normal alignment"),
+    JA("局所 PCA の法線の揃え"),
+    ZH_HANS("局部 PCA 法线对齐"),
+    ZH_HANT("局部 PCA 法線對齊"),
+    KO("로컬 PCA 법선 정렬"),
+    DE("Normalenausrichtung der lokalen PCA"),
+    FR("Alignement des normales de la PCA locale"),
+    ES("Alineación de normales de la PCA local"),
+    PT("Alinhamento das normais da PCA local"),
+    IT("Allineamento delle normali della PCA locale"),
+    NL("Normaaluitlijning van lokale PCA"),
+    RU("Выравнивание нормалей локального PCA"),
+    TR("Yerel PCA normal hizalaması"));
+SS_MSG(pca_reg_normal_weight_help,
+    EN("Weight on turning each splat's thinnest axis to its group's surface "
+       "normal, so splats lie flat in the surface they belong to."),
+    JA("各スプラットの最も薄い軸を、まとまりの面の法線に向ける重みです。スプラッ"
+       "トが自分の属する面に平らに寝るようになります。"),
+    ZH_HANS("让每个泼溅最薄的轴朝向其所在组表面法线的权重，使泼溅平躺在它所属的表面内"
+            "。"),
+    ZH_HANT("讓每個潑濺最薄的軸朝向其所在組表面法線的權重，使潑濺平躺在它所屬的表面內"
+            "。"),
+    KO("각 스플랫의 가장 얇은 축을 묶음 표면의 법선 방향으로 돌리는 "
+       "가중치입니다. 스플랫이 자신이 속한 표면에 납작하게 눕게 됩니다."),
+    DE("Gewicht darauf, die dünnste Achse jedes Splats auf die Flächennormale "
+       "seiner Gruppe zu drehen, damit Splats flach in der Fläche liegen, zu der "
+       "sie gehören."),
+    FR("Poids sur l'orientation de l'axe le plus mince de chaque splat selon la "
+       "normale à la surface de son groupe, pour que les splats reposent à plat "
+       "dans la surface à laquelle ils appartiennent."),
+    ES("Peso sobre girar el eje más delgado de cada splat hacia la normal de la "
+       "superficie de su grupo, para que los splats queden planos en la "
+       "superficie a la que pertenecen."),
+    PT("Peso sobre girar o eixo mais fino de cada splat para a normal da "
+       "superfície do seu grupo, para que os splats fiquem deitados na "
+       "superfície a que pertencem."),
+    IT("Peso sul ruotare l'asse più sottile di ogni splat verso la normale della "
+       "superficie del suo gruppo, così che gli splat giacciano piatti nella "
+       "superficie a cui appartengono."),
+    NL("Gewicht op het draaien van de dunste as van elke splat naar de "
+       "oppervlaknormaal van zijn groep, zodat splats plat liggen in het "
+       "oppervlak waar ze bij horen."),
+    RU("Вес поворота самой тонкой оси каждого сплата по нормали к поверхности "
+       "его группы, чтобы сплаты лежали плашмя в той поверхности, к которой "
+       "относятся."),
+    TR("Her splat'ın en ince eksenini grubunun yüzey normaline çevirmeye verilen "
+       "ağırlık; böylece splat'lar ait oldukları yüzeyde düz yatar."));
+
+SS_MSG(pca_reg_surfel_weight,
+    EN("Local-PCA disc shape"),
+    JA("局所 PCA の円盤化"),
+    ZH_HANS("局部 PCA 圆盘化"),
+    ZH_HANT("局部 PCA 圓盤化"),
+    KO("로컬 PCA 원반화"),
+    DE("Scheibenform der lokalen PCA"),
+    FR("Forme de disque de la PCA locale"),
+    ES("Forma de disco de la PCA local"),
+    PT("Forma de disco da PCA local"),
+    IT("Forma a disco della PCA locale"),
+    NL("Schijfvorm van lokale PCA"),
+    RU("Дисковая форма локального PCA"),
+    TR("Yerel PCA disk biçimi"));
+SS_MSG(pca_reg_surfel_weight_help,
+    EN("Weight on each splat's smallest size, which flattens it into a disc."),
+    JA("各スプラットの最も小さい大きさへの重みで、スプラットを円盤状に平らにしま"
+       "す。"),
+    ZH_HANS("对每个泼溅最小尺寸的权重，把泼溅压扁成圆盘。"),
+    ZH_HANT("對每個潑濺最小尺寸的權重，把潑濺壓扁成圓盤。"),
+    KO("각 스플랫의 가장 작은 크기에 대한 가중치로, 스플랫을 원반 모양으로 "
+       "납작하게 만듭니다."),
+    DE("Gewicht auf die kleinste Ausdehnung jedes Splats, das ihn zu einer "
+       "Scheibe abflacht."),
+    FR("Poids sur la plus petite taille de chaque splat, qui l'aplatit en "
+       "disque."),
+    ES("Peso sobre el tamaño más pequeño de cada splat, que lo aplana en un "
+       "disco."),
+    PT("Peso sobre o menor tamanho de cada splat, que o achata num disco."),
+    IT("Peso sulla dimensione più piccola di ogni splat, che lo appiattisce in "
+       "un disco."),
+    NL("Gewicht op de kleinste afmeting van elke splat, waardoor die tot een "
+       "schijf afplat."),
+    RU("Вес наименьшего размера каждого сплата, который сплющивает его в диск."),
+    TR("Her splat'ın en küçük boyutuna verilen ağırlık; splat'ı bir diske "
+       "yassılaştırır."));
+SS_MSG(pca_reg_erank_weight,
+    EN("Local covariance rank weight"), JA("局所共分散ランクの重み"),
+    ZH_HANS("局部协方差秩权重"), ZH_HANT("局部共變異數秩權重"), KO("로컬 공분산 순위 가중치"),
+    DE("Gewicht des lokalen Kovarianzrangs"), FR("Poids du rang de covariance locale"),
+    ES("Peso del rango de covarianza local"), PT("Peso do posto da covariância local"),
+    IT("Peso del rango della covarianza locale"), NL("Gewicht lokale covariantierang"),
+    RU("Вес ранга локальной ковариации"), TR("Yerel kovaryans rank ağırlığı"));
+SS_MSG(pca_reg_erank_weight_help,
+    EN("Weight on max(erank(C) - 2, 0) squared. Uses covariance eigenvalue entropy; independent of scene scale. Enabled from pca_reg_start_iter; 0 disables it."),
+    JA("max(erank(C) - 2, 0) の二乗の重み。共分散固有値のエントロピーを使用し、シーンの縮尺に依存しません。pca_reg_start_iter から有効。0 で無効。"),
+    ZH_HANS("max(erank(C) - 2, 0) 平方的权重。使用协方差特征值分布的平均信息量，与场景尺度无关。从 pca_reg_start_iter 开始启用；0 禁用。"),
+    ZH_HANT("max(erank(C) - 2, 0) 平方的權重。使用共變異數特徵值分布的平均資訊量，與場景尺度無關。從 pca_reg_start_iter 開始啟用；0 停用。"),
+    KO("max(erank(C) - 2, 0)의 제곱에 대한 가중치. 공분산 고유값 엔트로피를 사용하며 장면 크기와 무관합니다. pca_reg_start_iter부터 활성화되며 0이면 비활성화됩니다."),
+    DE("Gewicht auf max(erank(C) - 2, 0) zum Quadrat. Nutzt die Entropie der Kovarianzeigenwerte, unabhängig vom Szenenmaßstab. Ab pca_reg_start_iter aktiv; 0 deaktiviert."),
+    FR("Poids de max(erank(C) - 2, 0) au carré. Utilise l'entropie des valeurs propres de covariance, indépendamment de l'échelle. Actif dès pca_reg_start_iter ; 0 désactive."),
+    ES("Peso de max(erank(C) - 2, 0) al cuadrado. Usa la entropía de los valores propios de covarianza, independiente de la escala. Activo desde pca_reg_start_iter; 0 lo desactiva."),
+    PT("Peso de max(erank(C) - 2, 0) ao quadrado. Usa a entropia dos autovalores da covariância, independentemente da escala. Ativo desde pca_reg_start_iter; 0 desativa."),
+    IT("Peso di max(erank(C) - 2, 0) al quadrato. Usa l'entropia degli autovalori della covarianza, indipendentemente dalla scala. Attivo da pca_reg_start_iter; 0 disattiva."),
+    NL("Gewicht op max(erank(C) - 2, 0) in het kwadraat. Gebruikt de entropie van covariantie-eigenwaarden, onafhankelijk van de scèneschaal. Actief vanaf pca_reg_start_iter; 0 schakelt uit."),
+    RU("Вес квадрата max(erank(C) - 2, 0). Использует энтропию собственных значений ковариации, независимо от масштаба сцены. Включается с pca_reg_start_iter; 0 отключает."),
+    TR("max(erank(C) - 2, 0) karesinin ağırlığı. Kovaryans özdeğer entropisini kullanır; sahne ölçeğinden bağımsızdır. pca_reg_start_iter ile başlar; 0 devre dışı bırakır."));
+SS_MSG(pca_reg_transparency_weight,
+    EN("Normal transparency weight"), JA("法線方向の透明度の重み"),
+    ZH_HANS("法线方向透明度权重"), ZH_HANT("法線方向透明度權重"), KO("법선 방향 투명도 가중치"),
+    DE("Gewicht der Transparenz in Normalenrichtung"), FR("Poids de transparence suivant la normale"),
+    ES("Peso de transparencia en dirección normal"), PT("Peso de transparência na direção normal"),
+    IT("Peso della trasparenza lungo la normale"), NL("Gewicht transparantie langs de normaal"),
+    RU("Вес прозрачности вдоль нормали"), TR("Normal yönündeki saydamlık ağırlığı"));
+SS_MSG(pca_reg_transparency_weight_help,
+    EN("Weight on remaining transmittance after blending the neighbourhood along its PCA normal through each center. Enabled from pca_reg_start_iter; 0 disables it."),
+    JA("各中心を通る PCA 法線に沿って近傍を合成した後の透過率の重み。pca_reg_start_iter から有効。0 で無効。"),
+    ZH_HANS("沿穿过每个中心的 PCA 法线混合邻域后，剩余透射率的权重。从 pca_reg_start_iter 开始启用；0 禁用。"),
+    ZH_HANT("沿穿過每個中心的 PCA 法線混合鄰域後，剩餘透射率的權重。從 pca_reg_start_iter 開始啟用；0 停用。"),
+    KO("각 중심을 통과하는 PCA 법선을 따라 이웃을 합성한 후 남는 투과율의 가중치. pca_reg_start_iter부터 활성화되며 0이면 비활성화됩니다."),
+    DE("Gewicht der verbleibenden Transmission nach dem Mischen der Nachbarschaft entlang ihrer PCA-Normalen durch jedes Zentrum. Ab pca_reg_start_iter aktiv; 0 deaktiviert."),
+    FR("Poids de la transmittance restante après composition du voisinage suivant sa normale PCA passant par chaque centre. Actif dès pca_reg_start_iter ; 0 désactive."),
+    ES("Peso de la transmitancia restante tras componer el vecindario a lo largo de su normal PCA por cada centro. Activo desde pca_reg_start_iter; 0 lo desactiva."),
+    PT("Peso da transmitância restante após compor a vizinhança ao longo da normal PCA por cada centro. Ativo desde pca_reg_start_iter; 0 desativa."),
+    IT("Peso della trasmittanza residua dopo la composizione del vicinato lungo la normale PCA attraverso ogni centro. Attivo da pca_reg_start_iter; 0 disattiva."),
+    NL("Gewicht op de resterende transmissie na compositie van de buurt langs de PCA-normaal door elk centrum. Actief vanaf pca_reg_start_iter; 0 schakelt uit."),
+    RU("Вес оставшегося пропускания после смешивания окрестности вдоль нормали PCA через каждый центр. Включается с pca_reg_start_iter; 0 отключает."),
+    TR("Her merkezden geçen PCA normali boyunca komşuluk harmanlandıktan sonra kalan geçirgenliğin ağırlığı. pca_reg_start_iter ile başlar; 0 devre dışı bırakır."));
+SS_MSG(pca_reg_covariance,
+    EN("Local covariance model"), JA("局所共分散モデル"),
+    ZH_HANS("局部协方差模型"), ZH_HANT("局部共變異數模型"), KO("로컬 공분산 모델"),
+    DE("Lokales Kovarianzmodell"), FR("Modèle de covariance locale"),
+    ES("Modelo de covarianza local"), PT("Modelo de covariância local"),
+    IT("Modello di covarianza locale"), NL("Lokaal covariantiemodel"),
+    RU("Модель локальной ковариации"), TR("Yerel kovaryans modeli"));
+SS_MSG(pca_reg_covariance_help,
+    EN("centers: equal-weight centers (PCAsplat); opacity-centers: opacity-weighted centers; gaussian-mixture: opacity-weighted centers plus each Gaussian covariance. Weights are normalized and differentiated."),
+    JA("centers: 中心を均等に重み付け (PCAsplat)。opacity-centers: 不透明度で重み付け。gaussian-mixture: 不透明度で重み付けした中心と各ガウスの共分散。重みは正規化して微分します。"),
+    ZH_HANS("centers：等权中心 (PCAsplat)；opacity-centers：按不透明度加权的中心；gaussian-mixture：按不透明度加权的中心加各高斯协方差。权重经过归一化并参与求导。"),
+    ZH_HANT("centers：等權中心 (PCAsplat)；opacity-centers：按不透明度加權的中心；gaussian-mixture：按不透明度加權的中心加各高斯共變異數。權重經過正規化並參與求導。"),
+    KO("centers: 동일 가중치 중심(PCAsplat). opacity-centers: 불투명도 가중 중심. gaussian-mixture: 불투명도 가중 중심과 각 가우시안 공분산. 가중치는 정규화하고 미분합니다."),
+    DE("centers: gleich gewichtete Zentren (PCAsplat); opacity-centers: nach Deckkraft gewichtete Zentren; gaussian-mixture: zusätzlich die Kovarianz jeder Gaußfunktion. Gewichte werden normalisiert und differenziert."),
+    FR("centers : centres équipondérés (PCAsplat) ; opacity-centers : centres pondérés par opacité ; gaussian-mixture : ajoute la covariance de chaque gaussienne. Les poids sont normalisés et différenciés."),
+    ES("centers: centros con igual peso (PCAsplat); opacity-centers: centros ponderados por opacidad; gaussian-mixture: añade la covarianza de cada gaussiana. Los pesos se normalizan y diferencian."),
+    PT("centers: centros com pesos iguais (PCAsplat); opacity-centers: centros ponderados por opacidade; gaussian-mixture: adiciona a covariância de cada gaussiana. Os pesos são normalizados e diferenciados."),
+    IT("centers: centri con peso uguale (PCAsplat); opacity-centers: centri pesati per opacità; gaussian-mixture: aggiunge la covarianza di ogni gaussiana. I pesi sono normalizzati e differenziati."),
+    NL("centers: gelijk gewogen centra (PCAsplat); opacity-centers: centra gewogen naar dekking; gaussian-mixture: voegt de covariantie van elke Gaussiaan toe. Gewichten worden genormaliseerd en gedifferentieerd."),
+    RU("centers: центры с равными весами (PCAsplat); opacity-centers: веса по непрозрачности; gaussian-mixture: дополнительно ковариация каждой гауссианы. Веса нормализуются и дифференцируются."),
+    TR("centers: eşit ağırlıklı merkezler (PCAsplat); opacity-centers: saydamsızlık ağırlıklı merkezler; gaussian-mixture: her Gauss kovaryansını da ekler. Ağırlıklar normalize edilir ve türevleri alınır."));
+
+SS_MSG(pca_reg_scale_agnostic,
+    EN("Scale-agnostic local PCA"),
+    JA("スケール非依存の局所 PCA"),
+    ZH_HANS("与尺度无关的局部 PCA"),
+    ZH_HANT("與尺度無關的局部 PCA"),
+    KO("스케일 무관 로컬 PCA"),
+    DE("Skalenunabhängige lokale PCA"),
+    FR("PCA locale indépendante de l'échelle"),
+    ES("PCA local independiente de la escala"),
+    PT("PCA local independente da escala"),
+    IT("PCA locale indipendente dalla scala"),
+    NL("Schaalonafhankelijke lokale PCA"),
+    RU("Локальный PCA, не зависящий от масштаба"),
+    TR("Ölçekten bağımsız yerel PCA"));
+SS_MSG(pca_reg_scale_agnostic_help,
+    EN("Measure flatness against each neighbourhood's own spread and disc shape "
+       "against each splat's largest size, so the same weights act the same at "
+       "any scene scale."),
+    JA("平らさを各近傍自身の広がりに対して、円盤化を各スプラットの最も大きい大き"
+       "さに対して測り、同じ重みがどのシーンの縮尺でも同じように働くようにしま"
+       "す。"),
+    ZH_HANS("平整度相对每个邻域自身的分布范围衡量，圆盘化相对每个泼溅的最大尺寸衡"
+            "量，使同样的权重在任何场景尺度下作用相同。"),
+    ZH_HANT("平整度相對每個鄰域自身的分佈範圍衡量，圓盤化相對每個潑濺的最大尺寸衡"
+            "量，使同樣的權重在任何場景尺度下作用相同。"),
+    KO("평탄도는 각 이웃 자체의 퍼짐에 대해, 원반화는 각 스플랫의 가장 큰 "
+       "크기에 대해 측정하여, 같은 가중치가 어떤 장면 크기에서도 똑같이 "
+       "작용하게 합니다."),
+    DE("Misst die Ebenheit an der eigenen Ausdehnung jeder Nachbarschaft und "
+       "die Scheibenform an der größten Ausdehnung jedes Splats, sodass "
+       "dieselben Gewichte bei jedem Szenenmaßstab gleich wirken."),
+    FR("Mesure la planéité par rapport à l'étendue propre de chaque voisinage "
+       "et la forme de disque par rapport à la plus grande taille de chaque "
+       "splat, pour que les mêmes poids agissent de même à toute échelle de "
+       "scène."),
+    ES("Mide la planitud respecto a la extensión propia de cada vecindario y "
+       "la forma de disco respecto al mayor tamaño de cada splat, para que los "
+       "mismos pesos actúen igual a cualquier escala de escena."),
+    PT("Mede a planura em relação à extensão própria de cada vizinhança e a "
+       "forma de disco em relação ao maior tamanho de cada splat, para que os "
+       "mesmos pesos atuem igual em qualquer escala de cena."),
+    IT("Misura la planarità rispetto all'estensione propria di ogni intorno e "
+       "la forma a disco rispetto alla dimensione più grande di ogni splat, "
+       "così gli stessi pesi agiscono allo stesso modo a ogni scala della "
+       "scena."),
+    NL("Meet de vlakheid ten opzichte van de eigen spreiding van elke buurt en "
+       "de schijfvorm ten opzichte van de grootste afmeting van elke splat, "
+       "zodat dezelfde gewichten op elke scèneschaal hetzelfde werken."),
+    RU("Измеряет плоскостность относительно собственного разброса каждой "
+       "окрестности, а дисковую форму — относительно наибольшего размера "
+       "каждого сплата, чтобы одни и те же веса действовали одинаково при "
+       "любом масштабе сцены."),
+    TR("Düzlüğü her komşuluğun kendi yayılımına, disk biçimini her splat'ın en "
+       "büyük boyutuna göre ölçer; böylece aynı ağırlıklar her sahne "
+       "ölçeğinde aynı etkiyi gösterir."));
 
 
 // ===========================================================================
@@ -13236,6 +14025,12 @@ SS_MSG(choice_strong,
     PT("forte"),         IT("forte"),        NL("sterk"),        RU("сильное"),
     TR("güçlü"));
 
+SS_MSG(choice_extreme,
+    EN("extreme"),       JA("最大"),          ZH_HANS("极强"),     ZH_HANT("極強"),
+    KO("매우 강하게"),    DE("extrem"),       FR("extrême"),      ES("extrema"),
+    PT("extrema"),       IT("estrema"),      NL("extreem"),      RU("экстремальное"),
+    TR("aşırı"));
+
 SS_MSG(choice_low,
     EN("low"),           JA("低"),            ZH_HANS("低"),       ZH_HANT("低"),
     KO("낮음"),           DE("niedrig"),      FR("faible"),       ES("baja"),
@@ -13550,6 +14345,7 @@ inline constexpr ChoiceText kChoiceText[] = {
     {"floater_suppression", "off",    &choice_off},
     {"floater_suppression", "mild",   &choice_mild},
     {"floater_suppression", "strong", &choice_strong},
+    {"floater_suppression", "extreme", &choice_extreme},
 
     {"distraction_robustness", "off",    &choice_off},
     {"distraction_robustness", "mild",   &choice_mild},

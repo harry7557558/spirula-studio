@@ -427,7 +427,7 @@ struct OptimGeoParams {
     uint64_t scales, v_scales, g1_scales, g2_scales;
     uint64_t opacities, v_opacities, g1_opacities, g2_opacities;
     uint64_t features_dc, v_features_dc;
-    uint64_t radii, densify_score, steps, visit_counters;
+    uint64_t radii, densify_score, steps, visit_counters, auxiliary_opacities;
     uint64_t gq_means_packed, gq_means_bounds, gq_quats_packed,
         gq_quats_bounds, gq_scales_packed, gq_scales_bounds, gq_opac_packed,
         gq_opac_bounds, gq_dc_packed, gq_dc_bounds;
@@ -435,9 +435,9 @@ struct OptimGeoParams {
         nq_opacities_packed, nq_dc_packed;
     uint64_t nq_means_bounds, nq_quats_bounds, nq_scales_bounds,
         nq_opacities_bounds, nq_dc_bounds;
-    uint64_t depth_states, depth_information, depth_centers, depth_cameras;
+    uint64_t depth_states, depth_information, depth_centers, depth_cameras, depth_angular_bound;
     float depth_lr, depth_angular_lr;
-    uint32_t has_depth, depth_photo, depth_relative, depth_pad;
+    uint32_t has_depth, depth_photo, depth_relative, depth_has_bound;
     float lr_means, lr_quats, lr_scales, lr_opacs, lr_features_dc;
     float max_gauss_ratio, scale_regularization_weight,
         mcmc_opacity_reg_weight, mcmc_scale_reg_weight, erank_reg_weight,
@@ -447,9 +447,9 @@ struct OptimGeoParams {
     int32_t scalar_step;
     uint32_t has_steps, has_densify_score, numel, wgs_per_row, has_visit,
         skip_unrendered_reg;
-    uint32_t _pad0;
+    uint32_t has_auxiliary_opacities;
 };
-static_assert(sizeof(OptimGeoParams) == 46 * 8 + 32 * 4,
+static_assert(sizeof(OptimGeoParams) == 48 * 8 + 32 * 4,
               "params layout must match the slang struct");
 
 int64_t tv_numel(const TorchTensorView& tv) {
@@ -613,11 +613,13 @@ void fused_optim_3dgs_geometry(
     SplatVisitState visit,
     GradQuantBuffers gq, ProjectiveDepthOptim depth,
     int32_t step, DeviceVector<int32_t> per_splat_steps,
-    float grad_scale, bool zero_grad
+    float grad_scale, bool zero_grad, DeviceVector<float> auxiliary_opacities
 ) {
     if (num_splats == 0) return;
 
     OptimGeoParams p{};
+    p.auxiliary_opacities = vkk::or_fallback(auxiliary_opacities.data_ptr());
+    p.has_auxiliary_opacities = auxiliary_opacities.data_ptr() ? 1u : 0u;
     p.means = (uint64_t)means.data_ptr();
     p.v_means = vkk::or_fallback(v_means.data_ptr());
     p.g1_means = vkk::or_fallback(g1_means.data_ptr());
@@ -650,6 +652,8 @@ void fused_optim_3dgs_geometry(
     p.has_depth = depth.states ? 1u : 0u;
     p.depth_photo = depth.single_photometric;
     p.depth_relative = depth.angular_relative;
+    p.depth_angular_bound = vkk::or_fallback(depth.angular_bound);
+    p.depth_has_bound = depth.angular_bound ? 1u : 0u;
 
     uint32_t gq_mask = 0;
     p.gq_means_packed = vkk::or_fallback(gq.means_packed);

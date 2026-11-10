@@ -684,7 +684,7 @@ int cmd_mask(const Options& o) {
     run.image_dir = o.frames;
     run.mask_dir = o.out_dir.empty() ? (root.parent_path() / "masks").string()
                                      : o.out_dir;
-    run.skip_dir = run.mask_dir;
+    run.skip_dirs = {run.mask_dir};
     run.replace = o.replace;
     run.dry_run = o.print_only;
     run.detect = o.border;
@@ -735,7 +735,7 @@ int cmd_mask(const Options& o) {
             return;
         }
         if (!preview_left.empty() && !fm.empty()) {
-            const auto groups = app::group_frames_by_camera(run.image_dir, run.skip_dir);
+            const auto groups = app::group_frames_by_camera(run.image_dir, run.skip_dirs);
             const auto it = groups.find(rel);
             if (it != groups.end() && !it->second.empty())
                 write_preview(it->second.front(), fm, preview_left,

@@ -25,6 +25,7 @@ shaders=(
     "shaders/primitive_3dgs.slang:${out_dir}/primitive_3dgs.cu"
     "shaders/harmonics.slang:${out_dir}/harmonics.cu"
     "shaders/region.slang:${out_dir}/region.cu"
+    "shaders/pca_reg.slang:${out_dir}/pca_reg.cu"
 )
 
 # Files to rename from .cu -> .cuh after postprocessing
@@ -41,6 +42,7 @@ mv_targets=(
     "${out_dir}/primitive_3dgs.cu"
     "${out_dir}/harmonics.cu"
     "${out_dir}/region.cu"
+    "${out_dir}/pca_reg.cu"
 )
 
 declare -a pids=()

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "sfm/Pipeline.h"
 #include "sfm/core/Log.h"
 #include "sfm/core/PriorSource.h"
 #include "sfm/core/SensorTimeline.h"
@@ -225,6 +226,83 @@ static void testTelemetryPriors() {
         check(src.timeOffsets()[0].found && std::fabs(src.timeOffsets()[0].offset - sc.clock_offset) < 0.006,
               "pair calibration: clock offset recovered");
     }
+    {
+        std::vector<FeatureSet> feats(names.size());
+        std::vector<Camera> cameras(names.size(), Camera::defaultFor(1, 1024, 1024, 500));
+        TwoViewOptions tv;
+        const auto fingerprint = [&](const TelemetryPriors& p) {
+            return sensorCalibrationFingerprint(p, feats, cameras, tv);
+        };
+        const uint64_t original = fingerprint(src);
+        MatchesDatabase db;
+        db.sensor_calibration = obs;
+        db.sensor_calibration_fingerprint = original;
+        TelemetryPriors replay({cap}, names, cams, po);
+        calibrateSensorPriorsFromDatabase(replay, db, feats, cameras, tv, 1, false);
+        check(replay.groups()[0].ok && replay.groups()[0].pairs == src.groups()[0].pairs &&
+                  replay.groups()[0].X == src.groups()[0].X,
+              "unchanged calibration inputs replay the saved rotations exactly");
+
+        cameras[0].fx += 1;
+        TelemetryPriors changed_camera({cap}, names, cams, po);
+        calibrateSensorPriorsFromDatabase(changed_camera, db, feats, cameras, tv, 1, false);
+        check(!changed_camera.groups()[0].ok && db.sensor_calibration->empty() &&
+                  db.sensor_calibration_fingerprint != original,
+              "camera overrides discard old rotations and reconsider verified pairs");
+        cameras[0].fx -= 1;
+
+        SensorCapture corrected = cap;
+        corrected.time_offset += 0.1;
+        TelemetryPriors changed_time({corrected}, names, cams, po);
+        db.sensor_calibration.emplace();
+        db.sensor_calibration_fingerprint = original;
+        calibrateSensorPriorsFromDatabase(changed_time, db, feats, cameras, tv, 1, false);
+        check(db.sensor_calibration_fingerprint == fingerprint(changed_time) &&
+                  db.sensor_calibration_fingerprint != original,
+              "corrected manifest timing reconsiders even an empty saved sample");
+
+        corrected = cap;
+        corrected.fps += 1;
+        TelemetryPriors changed_fps({corrected}, names, cams, po);
+        check(fingerprint(changed_fps) != original, "capture frame rate belongs to provenance");
+        corrected = cap;
+        corrected.readout += 0.001;
+        TelemetryPriors changed_readout({corrected}, names, cams, po);
+        check(fingerprint(changed_readout) != original, "capture readout belongs to provenance");
+        auto changed_ids = cams;
+        changed_ids[0]++;
+        TelemetryPriors changed_groups({cap}, names, changed_ids, po);
+        check(fingerprint(changed_groups) != original, "camera grouping belongs to provenance");
+        SensorPriorOptions shorter = po;
+        shorter.max_dt *= 0.5;
+        TelemetryPriors changed_gap({cap}, names, cams, shorter);
+        check(fingerprint(changed_gap) != original, "pair sampling gap belongs to provenance");
+
+        Telemetry changed = t;
+        changed.gyro[0].x += 0.01;
+        SensorTimeline changed_timeline;
+        check(changed_timeline.init(changed, telemetry_check(changed), err),
+              "changed telemetry timeline initializes");
+        corrected = cap;
+        corrected.timeline = &changed_timeline;
+        TelemetryPriors changed_gyro({corrected}, names, cams, po);
+        check(fingerprint(changed_gyro) != original, "gyro contents belong to provenance");
+
+        db.sensor_calibration.reset();
+        db.sensor_calibration_fingerprint = 0;
+        TelemetryPriors legacy({cap}, names, cams, po);
+        std::string notice;
+        slog::set_sink([&](slog::Tag, slog::Level level, const std::string& line) {
+            if (level == slog::Level::Diag) notice = line;
+        });
+        calibrateSensorPriorsFromDatabase(legacy, db, feats, cameras, tv, 1, false);
+        slog::set_sink({});
+        check(notice.find("no saved sensor calibration sample") != std::string::npos &&
+                  notice.find("recalibrating sensors from verified inliers") != std::string::npos,
+              "legacy calibration fallback emits a diagnostic notice");
+        check(db.sensor_calibration && db.sensor_calibration_fingerprint == original,
+              "legacy matches take the verified-pair calibration fallback");
+    }
     // Relative rotations against the poses.
     double worst = 0;
     int n_rel = 0;
@@ -322,7 +400,11 @@ static void testTelemetryPriors() {
     Mat3 Ra, Rb;
     double sa, sb;
     const bool ok_a = sub.relativeRotation(0, 1, Ra, sa), ok_b = src.relativeRotation(20, 21, Rb, sb);
-    check(ok_a && ok_b && angleDeg(Ra, Rb) < 1e-9, "remapped: relative rotation");
+    double rotation_diff = 0;
+    if (ok_a && ok_b)
+        for (int k = 0; k < 9; k++) rotation_diff = std::max(rotation_diff, std::abs(Ra[k] - Rb[k]));
+    check(ok_a && ok_b && rotation_diff < 1e-12 && std::abs(sa - sb) < 1e-12,
+          "remapped: relative rotation");
     check(!sub.has(45) || sub.neighbours(5).size() >= 2, "remapped: neighbours");
     std::vector<PosedImage> local;
     for (uint32_t k = 0; k < to_global.size(); k++)

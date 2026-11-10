@@ -43,6 +43,8 @@
 #include "sfm/core/FeatureCompaction.h"
 #include "sfm/core/Log.h"
 #include "sfm/core/Features.h"
+#include "sfm/core/Experiment.h"
+#include "sfm/core/FeatureCoordinates.h"
 #include "sfm/core/Image.h"
 #include "sfm/core/ImageLoader.h"
 #include "sfm/map/Orient.h"
@@ -386,7 +388,7 @@ static void printEvent(const sfm::Event& e) {
                                       "image", "pair", "model", "result"};
         static const char* kStage[] = {"extract", "match", "map",  "merge",
                                        "orient",  "finish", "load", "select",
-                                       "seed",    "refine", "focal"};
+                                       "seed",    "refine", "focal", "global-init"};
         static_assert(sizeof kStage / sizeof *kStage == sfm::kNumStages, "");
         L::diag(Tag::Run, "[ev] %-11s %-7s done=%lld/%lld reg=%lld pts=%lld %s",
                 kKind[(int)e.kind], kStage[(int)e.stage], (long long)e.done,
@@ -649,9 +651,11 @@ static int cmdExtract(int argc, char** argv) {
     std::unique_ptr<IFeatureExtractor> ext =
         createFeatureExtractor(cfg.features, cfg.sift, cfg.aliked, cfg.loma);
     FeatureSet fset = ext->extract(img);
+    const bool colmap_corners = experimentInt("SFM_PIXEL_CENTER", 0, 1) != 0;
+    if (colmap_corners) centerExtractedKeypoints(fset, cfg.features == "sift");
     sampleFeatureColors(fset, img);
     uint32_t masked_out = applyMask(fset, img.mask);
-    finishFeatures(fset, img);
+    finishFeatures(fset, img, colmap_corners);
     L::out(Tag::Extract, M::extract_one_done,
            {fset.count(), fset.dim, fset.width, fset.height});
     if (fset.exif_focal > 0)
@@ -927,7 +931,6 @@ static int cmdMap(int argc, char** argv) {
         L::fail(Tag::Map, M::rig_bad, {e.what()});
         return 1;
     }
-    // The sensors, calibrated against the gyro on the verified pairs.
     const SensorCaptures sensors = loadSensorCaptures(cfg, opt.verbose);
     applyMetricGpsAuto(cfg, sensors, cfg.image_dir);
     std::unique_ptr<TelemetryPriors> priors =

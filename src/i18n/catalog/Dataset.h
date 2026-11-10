@@ -8054,8 +8054,103 @@ SS_MSG(stencil_other_file,
     IT("Altro file..."),       NL("Ander bestand..."),     RU("Другой файл..."),
     TR("Başka dosya..."));
 
+SS_MSG(stencil_edit,
+    EN("Edit"),          JA("編集"),          ZH_HANS("编辑"),     ZH_HANT("編輯"),
+    KO("편집"),           DE("Bearbeiten"),    FR("Modifier"),      ES("Editar"),
+    PT("Editar"),        IT("Modifica"),      NL("Bewerken"),      RU("Изменить"),
+    TR("Düzenle"));
+
+SS_MSG(stencil_editing,
+    EN("Editing: {0}"),        JA("編集中: {0}"),          ZH_HANS("正在编辑：{0}"),
+    ZH_HANT("正在編輯：{0}"),    KO("편집 중: {0}"),         DE("In Bearbeitung: {0}"),
+    FR("En cours de modification : {0}"), ES("Editando: {0}"),  PT("Editando: {0}"),
+    IT("In modifica: {0}"),    NL("Wordt bewerkt: {0}"),   RU("Редактируется: {0}"),
+    TR("Düzenleniyor: {0}"));
+
+SS_MSG(stencil_save_changes,
+    EN("Save changes"),        JA("変更を保存"),           ZH_HANS("保存更改"),
+    ZH_HANT("儲存變更"),        KO("변경 내용 저장"),        DE("Änderungen speichern"),
+    FR("Enregistrer les modifications"), ES("Guardar cambios"), PT("Salvar alterações"),
+    IT("Salva modifiche"),     NL("Wijzigingen opslaan"),  RU("Сохранить изменения"),
+    TR("Değişiklikleri kaydet"));
+
+SS_MSG(stencil_delete_title,
+    EN("Delete Drawn Areas"),  JA("描画範囲を削除"),       ZH_HANS("删除绘制区域"),
+    ZH_HANT("刪除繪製區域"),    KO("그린 영역 삭제"),       DE("Zeichnung löschen"),
+    FR("Supprimer les zones dessinées"), ES("Eliminar áreas dibujadas"),
+    PT("Excluir áreas desenhadas"), IT("Elimina aree disegnate"),
+    NL("Getekende gebieden verwijderen"), RU("Удаление областей"), TR("Çizili alanları sil"));
+
+// IRREVERSIBLE -- human review in every language.
+SS_MSG(stencil_delete_confirm,
+    EN("Delete the saved drawn areas \"{0}\"?"),
+    JA("保存した描画範囲「{0}」を削除しますか？"),
+    ZH_HANS("要删除已保存的绘制区域「{0}」吗？"),
+    ZH_HANT("要刪除已儲存的繪製區域「{0}」嗎？"),
+    KO("저장한 그린 영역 ‘{0}’을(를) 삭제할까요?"),
+    DE("Die gespeicherte Zeichnung „{0}“ löschen?"),
+    FR("Supprimer les zones dessinées enregistrées « {0} » ?"),
+    ES("¿Eliminar las áreas dibujadas guardadas «{0}»?"),
+    PT("Excluir as áreas desenhadas salvas “{0}”?"),
+    IT("Eliminare le aree disegnate salvate «{0}»?"),
+    NL("De opgeslagen getekende gebieden „{0}” verwijderen?"),
+    RU("Удалить сохранённые области «{0}»?"),
+    TR("«{0}» kayıtlı çizili alanları silinsin mi?"));
+
+SS_MSG(stencil_deleted,
+    EN("Deleted: {0}"),        JA("削除しました: {0}"),    ZH_HANS("已删除：{0}"),
+    ZH_HANT("已刪除：{0}"),     KO("삭제했습니다: {0}"),    DE("Gelöscht: {0}"),
+    FR("Supprimé : {0}"),      ES("Eliminado: {0}"),       PT("Excluído: {0}"),
+    IT("Eliminato: {0}"),      NL("Verwijderd: {0}"),      RU("Удалено: {0}"),
+    TR("Silindi: {0}"));
+
+SS_MSG(stencil_delete_failed,
+    EN("Could not delete: {0}"), JA("削除できませんでした: {0}"), ZH_HANS("无法删除：{0}"),
+    ZH_HANT("無法刪除：{0}"),   KO("삭제하지 못했습니다: {0}"), DE("Löschen fehlgeschlagen: {0}"),
+    FR("Suppression impossible : {0}"), ES("No se pudo eliminar: {0}"),
+    PT("Não foi possível excluir: {0}"), IT("Impossibile eliminare: {0}"),
+    NL("Verwijderen mislukt: {0}"), RU("Не удалось удалить: {0}"), TR("Silinemedi: {0}"));
+
+SS_MSG(stencil_rename_title,
+    EN("Rename Drawn Areas"),  JA("描画範囲の名前を変更"), ZH_HANS("重命名绘制区域"),
+    ZH_HANT("重新命名繪製區域"), KO("그린 영역 이름 바꾸기"), DE("Zeichnung umbenennen"),
+    FR("Renommer les zones dessinées"), ES("Renombrar áreas dibujadas"),
+    PT("Renomear áreas desenhadas"), IT("Rinomina aree disegnate"),
+    NL("Getekende gebieden hernoemen"), RU("Переименование областей"),
+    TR("Çizili alanları yeniden adlandır"));
+
+SS_MSG(stencil_renamed,
+    EN("Renamed to: {0}"),     JA("名前を変更しました: {0}"), ZH_HANS("已重命名为：{0}"),
+    ZH_HANT("已重新命名為：{0}"), KO("이름을 바꿨습니다: {0}"), DE("Umbenannt in: {0}"),
+    FR("Renommé en : {0}"),    ES("Renombrado a: {0}"),    PT("Renomeado para: {0}"),
+    IT("Rinominato in: {0}"),  NL("Hernoemd naar: {0}"),   RU("Новое имя: {0}"),
+    TR("Yeni ad: {0}"));
+
+SS_MSG(stencil_rename_failed,
+    EN("Could not rename: {0}"), JA("名前を変更できませんでした: {0}"), ZH_HANS("无法重命名：{0}"),
+    ZH_HANT("無法重新命名：{0}"), KO("이름을 바꾸지 못했습니다: {0}"),
+    DE("Umbenennen fehlgeschlagen: {0}"), FR("Renommage impossible : {0}"),
+    ES("No se pudo renombrar: {0}"), PT("Não foi possível renomear: {0}"),
+    IT("Impossibile rinominare: {0}"), NL("Hernoemen mislukt: {0}"),
+    RU("Не удалось переименовать: {0}"), TR("Yeniden adlandırılamadı: {0}"));
+
+SS_MSG(stencil_name_taken,
+    EN("Saved drawn areas named \"{0}\" already exist."),
+    JA("「{0}」という名前の描画範囲はすでにあります。"),
+    ZH_HANS("名为「{0}」的绘制区域已存在。"),
+    ZH_HANT("名為「{0}」的繪製區域已存在。"),
+    KO("‘{0}’(이)라는 이름의 그린 영역이 이미 있습니다."),
+    DE("Eine Zeichnung namens „{0}“ gibt es bereits."),
+    FR("Des zones dessinées nommées « {0} » existent déjà."),
+    ES("Ya existen áreas dibujadas llamadas «{0}»."),
+    PT("Já existem áreas desenhadas chamadas “{0}”."),
+    IT("Esistono già aree disegnate chiamate «{0}»."),
+    NL("Er bestaan al getekende gebieden met de naam „{0}”."),
+    RU("Области с именем «{0}» уже есть."),
+    TR("«{0}» adlı çizili alanlar zaten var."));
+
 SS_MSG(stencil_pick_file,
-    EN("Load drawn areas"),    JA("描画範囲を読み込む"),   ZH_HANS("载入绘制区域"),
+    EN("Load drawn areas"),  JA("描画範囲を読み込む"),   ZH_HANS("载入绘制区域"),
     ZH_HANT("載入繪製區域"),    KO("그린 영역 불러오기"),   DE("Zeichnung laden"),
     FR("Charger des zones dessinées"), ES("Cargar áreas dibujadas"),
     PT("Carregar áreas desenhadas"), IT("Carica aree disegnate"),
@@ -8082,53 +8177,242 @@ SS_MSG(stencil_areas_preset,
     ES("Áreas dibujadas"), PT("Áreas desenhadas"), IT("Aree disegnate"),
     NL("Getekende gebieden"), RU("Области"),   TR("Çizili alanlar"));
 
-SS_MSG(stencil_areas_per_input,
-    EN("As drawn on each input"),  JA("入力ごとに描いたとおり"),
-    ZH_HANS("按每个输入各自绘制"),  ZH_HANT("按每個輸入各自繪製"),
-    KO("입력마다 그린 대로"),       DE("Wie je Eingabe gezeichnet"),
-    FR("Tel que dessiné sur chaque entrée"), ES("Como se dibujó en cada entrada"),
-    PT("Como desenhado em cada entrada"), IT("Come disegnato su ogni input"),
-    NL("Zoals per invoer getekend"), RU("Как нарисовано на каждом входе"),
-    TR("Her girdide çizildiği gibi"));
+SS_MSG(stencil_areas_help,
+    EN("Shapes over what is never scene: a watermark, the operator, the pole. "
+       "Pick a set saved from Try the mask..., or Draw... to draw on this input "
+       "there. A lens that follows gets the set's list for that lens, or the first "
+       "lens's where it has none. When every row draws one set, a dataset preset keeps its name for a batch run."),
+    JA("透かし、撮影者、棒など、シーンではないものに重ねる図形です。「マスクを"
+       "試す…」で保存したセットを選ぶか、「描く...」でこの入力にそこで描きます。"
+       "追従するレンズには、セットのそのレンズ用の図形が、なければ最初のレンズの"
+       "ものが入ります。すべての行が"
+       "同じセットを描いていれば、その名前がデータセットのプリセットに残り、"
+       "バッチ処理でも使われます。"),
+    ZH_HANS("盖在不属于场景的东西上的图形：水印、拍摄者、杆子。选一组在“试一下蒙版…”"
+            "里保存的区域，或用“绘制...”到那里给这个输入画。跟随的镜头会得到这组"
+            "中属于它的区域，没有的话就用第一个镜头的。所有行都画同一组时，数据集预设会记下它的名字，"
+            "批处理也会用到。"),
+    ZH_HANT("蓋在不屬於場景的東西上的圖形：浮水印、拍攝者、桿子。選一組在「試一下遮罩…」"
+            "裡儲存的區域，或用「繪製...」到那裡給這個輸入畫。跟隨的鏡頭會得到這組"
+            "中屬於它的區域，沒有的話就用第一個鏡頭的。所有行都畫同一組時，資料集預設會記下它的名字，"
+            "批次處理也會用到。"),
+    KO("워터마크, 촬영자, 장대처럼 장면이 아닌 것 위에 얹는 도형입니다. '마스크 "
+       "시험해 보기…'에서 저장한 세트를 고르거나, '그리기...'로 거기서 이 입력에 "
+       "그립니다. 따르는 렌즈에는 세트에서 그 렌즈 몫이, 없으면 첫 렌즈의 것이 들어갑니다. 모든 행이 한 "
+       "세트를 그리면 데이터셋 프리셋이 그 이름을 기억해 일괄 처리에도 쓰입니다."),
+    DE("Formen über allem, was nie Szene ist: ein Wasserzeichen, der Filmende, die "
+       "Stange. Eine unter „Maske ausprobieren …“ gespeicherte Zeichnung wählen, "
+       "oder mit „Zeichnen...“ dort auf dieser Eingabe zeichnen. Folgende "
+       "Objektive bekommen die Bereiche ihres Objektivs, sonst die des ersten. Zeichnet jede Zeile "
+       "dieselbe, behält eine Datensatz-Voreinstellung ihren Namen für einen "
+       "Stapellauf."),
+    FR("Des formes sur ce qui n'est jamais la scène : un filigrane, l'opérateur, la "
+       "perche. Choisissez un ensemble enregistré depuis « Essayer le masque… », ou "
+       "« Dessiner... » pour dessiner là-bas sur cette entrée. Les objectifs "
+       "qui suivent reçoivent les zones de leur objectif, ou à défaut celles du premier. Quand chaque ligne "
+       "dessine le même, un préréglage du jeu de données garde son nom pour un "
+       "traitement par lots."),
+    ES("Formas sobre lo que nunca es escena: una marca de agua, el operador, el "
+       "palo. Elija un conjunto guardado desde «Probar la máscara…», o «Dibujar...» "
+       "para dibujar allí sobre esta entrada. Los objetivos que siguen reciben "
+       "las áreas de su objetivo, o las del primero si no las hay. Si todas las filas dibujan el mismo, el ajuste "
+       "predefinido guarda su nombre para un lote."),
+    PT("Formas sobre o que nunca é cena: uma marca d'água, o operador, o bastão. "
+       "Escolha um conjunto salvo em «Testar a máscara…», ou «Desenhar...» para "
+       "desenhar lá nesta entrada. As lentes que seguem recebem as áreas "
+       "da sua lente, ou as da primeira quando não houver. Quando todas as linhas desenham o mesmo, a predefinição do "
+       "conjunto de dados guarda o nome dele para um lote."),
+    IT("Forme su ciò che non è mai scena: una filigrana, l'operatore, l'asta. "
+       "Scegli un insieme salvato da «Prova la maschera…», o «Disegna...» per "
+       "disegnare lì su questo input. Gli obiettivi che seguono ricevono le "
+       "aree del proprio obiettivo, o quelle del primo se mancano. Se ogni riga disegna lo stesso, il preset del dataset "
+       "ne conserva il nome per un'elaborazione in batch."),
+    NL("Vormen over wat nooit scène is: een watermerk, de cameraman, de stok. Kies "
+       "een set opgeslagen via ‘Masker uitproberen…’, of ‘Tekenen...’ om daar op "
+       "deze invoer te tekenen. Lenzen die volgen krijgen de gebieden van hun "
+       "lens, of anders die van de eerste. Tekent elke rij dezelfde, dan bewaart een datasetvoorinstelling "
+       "de naam voor een batch."),
+    RU("Фигуры поверх того, что не относится к сцене: водяного знака, оператора, "
+       "палки. Выберите набор, сохранённый в «Проверить маску…», или «Нарисовать...», "
+       "чтобы нарисовать там на этом входе. Следующие объективы получают области "
+       "своего объектива, а если их нет -- области первого. Если все строки рисуют один набор, пресет набора "
+       "данных хранит его имя для пакетного запуска."),
+    TR("Hiç sahne olmayanın üstüne çizilen biçimler: filigran, çeken kişi, çubuk. "
+       "\"Maskeyi dene…\" içinden kaydedilmiş bir set seçin ya da orada bu girdiye "
+       "çizmek için \"Çiz...\". İzleyen mercekler setten kendi "
+       "merceğinin alanlarını, yoksa ilk merceğinkini alır. Her satır aynı seti çiziyorsa, veri kümesi ön ayarı adını "
+       "toplu işlem için saklar."));
 
-SS_MSG(stencil_areas_preset_help,
-    EN("A saved set of drawn areas, drawn on every input in place of what each "
-       "has, and kept in a dataset preset so a batch run gets it too. Save one "
-       "from Try the mask..."),
-    JA("保存した描画範囲を、各入力のものに代えてすべての入力に描きます。データ"
-       "セットのプリセットにも保存されるので、バッチ処理でも使われます。保存は"
-       "「マスクを試す…」から行います。"),
-    ZH_HANS("一组已保存的绘制区域，会替换每个输入原有的内容画到所有输入上，并随数据集"
-            "预设一起保存，批处理也会用到。在“试一下蒙版…”中保存。"),
-    ZH_HANT("一組已儲存的繪製區域，會取代每個輸入原有的內容畫到所有輸入上，並隨資料集"
-            "預設一起儲存，批次處理也會用到。在「試一下遮罩…」中儲存。"),
-    KO("저장한 그린 영역을 각 입력에 있던 것 대신 모든 입력에 그립니다. 데이터셋 "
-       "프리셋에도 저장되어 일괄 처리에도 쓰입니다. '마스크 시험해 보기…'에서 "
-       "저장합니다."),
-    DE("Eine gespeicherte Zeichnung, auf jede Eingabe statt deren eigener gezeichnet "
-       "und in einer Datensatz-Voreinstellung mitgespeichert, damit auch ein "
-       "Stapellauf sie bekommt. Gespeichert wird unter „Maske ausprobieren …“."),
-    FR("Un ensemble enregistré de zones dessinées, tracé sur chaque entrée à la "
-       "place du sien, et conservé dans le préréglage du jeu de données pour qu'un "
-       "traitement par lots l'ait aussi. On l'enregistre depuis « Essayer le masque… »."),
-    ES("Un conjunto guardado de áreas dibujadas, trazado en cada entrada en lugar "
-       "del suyo y guardado en el ajuste predefinido para que un lote también lo "
-       "use. Se guarda desde «Probar la máscara…»."),
-    PT("Um conjunto salvo de áreas desenhadas, traçado em cada entrada no lugar do "
-       "seu e guardado na predefinição do conjunto de dados, para que um lote "
-       "também o use. Salve-o em «Testar a máscara…»."),
-    IT("Un insieme salvato di aree disegnate, tracciato su ogni input al posto del "
-       "suo e conservato nel preset del dataset, così anche un'elaborazione in "
-       "batch lo usa. Si salva da «Prova la maschera…»."),
-    NL("Een opgeslagen set getekende gebieden, op elke invoer getekend in plaats "
-       "van de eigen, en bewaard in een datasetvoorinstelling zodat een batch hem "
-       "ook krijgt. Opslaan doe je via ‘Masker uitproberen…’."),
-    RU("Сохранённые области, нарисованные на каждом входе вместо его собственных и "
-       "хранящиеся в пресете набора данных, чтобы их получил и пакетный запуск. "
-       "Сохраняются в окне «Проверить маску…»."),
-    TR("Kayıtlı bir çizili alan seti; her girdiye kendi çiziminin yerine çizilir ve "
-       "veri kümesi ön ayarında saklanır, böylece toplu işlem de onu alır. “Maskeyi "
-       "dene…” penceresinden kaydedilir."));
+SS_MSG(stencil_rows_help,
+    EN("One row per input, and per lens of a camera with several. A row that "
+       "starts out matching the row it follows -- the row above, or for an input's "
+       "first lens, the first lens of the input just above -- reads (same as above) and changes "
+       "when that row does, until something else is picked for it. So a capture "
+       "shot on one camera is set up on its first row."),
+    JA("入力ごと、複数レンズのカメラならレンズごとに 1 行です。追従先の行（すぐ上の"
+       "行、入力の最初のレンズならすぐ上の入力の最初のレンズ）と最初から同じ行は「（上と同じ）」と"
+       "表示され、別の選択肢を選ぶまでその行と一緒に変わります。1台のカメラで撮った"
+       "素材なら最初の行だけで設定できます。"),
+    ZH_HANS("每个输入一行，有多个镜头的相机则每个镜头一行。一开始就与它跟随的那一行"
+            "（上一行，输入的第一个镜头则是正上方那个输入的第一个镜头）相同的行显示“（同上）”，"
+            "在给它选别的选项之前，那一行变了它也跟着变。所以用一台相机拍的素材在"
+            "第一行设好即可。"),
+    ZH_HANT("每個輸入一行，有多個鏡頭的相機則每個鏡頭一行。一開始就與它跟隨的那一行"
+            "（上一行，輸入的第一個鏡頭則是正上方那個輸入的第一個鏡頭）相同的行顯示「（同上）」，"
+            "在給它選別的選項之前，那一行變了它也跟著變。所以用一台相機拍的素材在"
+            "第一行設好即可。"),
+    KO("입력마다 한 행, 렌즈가 여럿인 카메라는 렌즈마다 한 행입니다. 따르는 행(바로 "
+       "위 행, 입력의 첫 렌즈라면 바로 위 입력의 첫 렌즈)과 처음부터 같은 행은 '(위와 같음)'"
+       "으로 보이고, 다른 것을 고르기 전까지 그 행이 바뀌면 함께 바뀝니다. 한 "
+       "카메라로 찍은 촬영은 첫 행에서 설정하면 됩니다."),
+    DE("Eine Zeile je Eingabe, bei einer Kamera mit mehreren Objektiven je Objektiv. "
+       "Eine Zeile, die anfangs der Zeile gleicht, der sie folgt -- der darüber, beim "
+       "ersten Objektiv einer Eingabe dem ersten Objektiv der Eingabe direkt darüber --, zeigt (wie "
+       "oben) und ändert sich mit ihr, bis für sie etwas anderes gewählt wird. Eine "
+       "Aufnahme mit einer Kamera wird also in ihrer ersten Zeile eingerichtet."),
+    FR("Une ligne par entrée, et par objectif pour une caméra qui en a plusieurs. "
+       "Une ligne qui égale au départ la ligne qu'elle suit -- celle du dessus, ou "
+       "pour le premier objectif d'une entrée le premier objectif de l'entrée juste au-dessus -- affiche "
+       "(comme ci-dessus) et change avec elle, jusqu'à ce qu'on lui choisisse autre "
+       "chose. Une prise faite avec une seule caméra se règle donc sur sa première "
+       "ligne."),
+    ES("Una fila por entrada, y por objetivo en una cámara con varios. Una fila que "
+       "al principio coincide con la fila a la que sigue -- la de arriba, o para el "
+       "primer objetivo de una entrada el primer objetivo de la entrada justo encima -- muestra (igual que "
+       "arriba) y cambia con ella hasta que se le elija otra cosa. Así, una captura "
+       "hecha con una cámara se ajusta en su primera fila."),
+    PT("Uma linha por entrada, e por lente numa câmera com várias. Uma linha que de "
+       "início coincide com a linha que segue -- a de cima, ou, para a primeira lente de uma "
+       "entrada, a primeira lente da entrada logo acima -- mostra (igual ao de cima) e muda com ela "
+       "até que se escolha outra coisa para ela. Assim, uma captura feita com uma "
+       "câmera se ajusta na primeira linha."),
+    IT("Una riga per input, e per obiettivo in una fotocamera che ne ha più d'uno. "
+       "Una riga che all'inizio coincide con la riga che segue -- quella sopra, o per "
+       "il primo obiettivo di un input il primo obiettivo dell'input subito sopra -- mostra (come "
+       "sopra) e cambia con quella finché non le si sceglie altro. Una ripresa fatta "
+       "con una sola fotocamera si imposta quindi sulla prima riga."),
+    NL("Eén rij per invoer, en per lens bij een camera met meerdere. Een rij die "
+       "aanvankelijk gelijk is aan de rij die hij volgt -- de rij erboven, of voor de "
+       "eerste lens van een invoer de eerste lens van de invoer direct erboven -- toont (zelfde als "
+       "hierboven) en verandert mee tot je er iets anders voor kiest. Een opname met "
+       "één camera stel je dus in op de eerste rij."),
+    RU("Строка на каждый вход, а у камеры с несколькими объективами -- на каждый "
+       "объектив. Строка, которая сначала совпадает со строкой, за которой следует, "
+       "-- верхней, а для первого объектива входа первым объективом входа прямо над ней, -- "
+       "показывает «(как выше)» и меняется вместе с ней, пока для неё не выбрано "
+       "что-то другое. Съёмку одной камерой достаточно настроить в первой строке."),
+    TR("Her girdi için bir satır, birden çok merceği olan kamerada her mercek için "
+       "bir satır. İzlediği satırla -- üstteki satır ya da bir girdinin ilk merceği için hemen "
+       "üstteki girdinin ilk merceği -- başta aynı olan bir satır (yukarıdakiyle "
+       "aynı) gösterir ve onun için başka bir şey seçilene kadar onunla birlikte "
+       "değişir. Tek kamerayla çekilmiş bir çekim bu yüzden ilk satırında ayarlanır."));
+
+SS_MSG(stencil_rows_same_help,
+    EN("The same as {0}, and changes when it does. Pick a choice of this row's own "
+       "to stop following it."),
+    JA("{0} と同じで、それが変わると一緒に変わります。追従をやめるには、この行"
+       "独自の選択肢を選んでください。"),
+    ZH_HANS("与 {0} 相同，它变了这一行也跟着变。选一个这一行自己的选项即可不再跟随。"),
+    ZH_HANT("與 {0} 相同，它變了這一行也跟著變。選一個這一行自己的選項即可不再跟隨。"),
+    KO("{0}과(와) 같으며, 그것이 바뀌면 함께 바뀝니다. 따르지 않으려면 이 행만의 "
+       "선택지를 고르세요."),
+    DE("Wie {0}, und ändert sich mit ihr. Eine eigene Auswahl für diese Zeile beendet "
+       "das Folgen."),
+    FR("Comme {0}, et change avec elle. Choisissez une option propre à cette ligne "
+       "pour cesser de la suivre."),
+    ES("Igual que {0}, y cambia cuando ella cambia. Elija una opción propia de esta "
+       "fila para dejar de seguirla."),
+    PT("Igual a {0}, e muda quando ela muda. Escolha uma opção própria desta linha "
+       "para deixar de segui-la."),
+    IT("Come {0}, e cambia quando cambia quella. Scegli un'opzione propria di questa "
+       "riga per smettere di seguirla."),
+    NL("Zelfde als {0}, en verandert mee. Kies een eigen keuze voor deze rij om niet "
+       "meer te volgen."),
+    RU("Как {0}, и меняется вместе с ней. Выберите для этой строки свой вариант, "
+       "чтобы перестать за ней следовать."),
+    TR("{0} ile aynı ve o değişince değişir. İzlemeyi bırakmak için bu satıra özgü "
+       "bir seçenek seçin."));
+
+SS_MSG(stencil_rows_input,
+    EN("Input"), JA("入力"), ZH_HANS("输入"), ZH_HANT("輸入"), KO("입력"),
+    DE("Eingabe"), FR("Entrée"), ES("Entrada"), PT("Entrada"), IT("Input"),
+    NL("Invoer"), RU("Вход"), TR("Girdi"));
+
+SS_MSG(stencil_rows_border,
+    EN("Fisheye border"), JA("魚眼の黒枠"), ZH_HANS("鱼眼黑边"), ZH_HANT("魚眼黑邊"),
+    KO("어안 테두리"), DE("Fisheye-Rand"), FR("Bord du fisheye"),
+    ES("Borde de ojo de pez"), PT("Borda olho-de-peixe"), IT("Bordo fisheye"),
+    NL("Fisheye-rand"), RU("Край фишая"), TR("Balıkgözü kenarı"));
+
+SS_MSG(stencil_rows_cut,
+    EN("Cut away"), JA("切り落とす"), ZH_HANS("裁掉"), ZH_HANT("裁掉"),
+    KO("잘라내기"), DE("Wegschneiden"), FR("Découper"), ES("Recortar"),
+    PT("Recortar"), IT("Ritagliare"), NL("Wegsnijden"), RU("Срезать"), TR("Kes"));
+
+SS_MSG(stencil_rows_off,
+    EN("Off"), JA("しない"), ZH_HANS("不裁"), ZH_HANT("不裁"),
+    KO("안 함"), DE("Aus"), FR("Non"), ES("No"), PT("Não"), IT("No"),
+    NL("Uit"), RU("Нет"), TR("Kapalı"));
+
+SS_MSG(stencil_rows_off_help,
+    EN("Keep the whole frame up to its edge. Drawn areas still apply."),
+    JA("画面を端まで残します。描画範囲はそのまま適用されます。"),
+    ZH_HANS("保留整个画面直到边缘。绘制区域照常生效。"),
+    ZH_HANT("保留整個畫面直到邊緣。繪製區域照常生效。"),
+    KO("화면을 가장자리까지 그대로 둡니다. 그린 영역은 그대로 적용됩니다."),
+    DE("Das ganze Bild bis zum Rand behalten. Gezeichnete Bereiche gelten weiter."),
+    FR("Garder toute l'image jusqu'au bord. Les zones dessinées s'appliquent "
+       "toujours."),
+    ES("Conservar el fotograma entero hasta el borde. Las áreas dibujadas siguen "
+       "aplicándose."),
+    PT("Manter o quadro inteiro até a borda. As áreas desenhadas continuam valendo."),
+    IT("Tenere l'intero fotogramma fino al bordo. Le aree disegnate valgono comunque."),
+    NL("Het hele beeld tot de rand houden. Getekende gebieden gelden nog steeds."),
+    RU("Оставить кадр целиком до края. Нарисованные области по-прежнему действуют."),
+    TR("Kareyi kenarına kadar tut. Çizili alanlar yine uygulanır."));
+
+SS_MSG(stencil_rows_none,
+    EN("None"), JA("なし"), ZH_HANS("无"), ZH_HANT("無"), KO("없음"),
+    DE("Keine"), FR("Aucune"), ES("Ninguna"), PT("Nenhuma"), IT("Nessuna"),
+    NL("Geen"), RU("Нет"), TR("Yok"));
+
+SS_MSG(stencil_rows_drawn,
+    EN("Drawn by hand"), JA("手描き"), ZH_HANS("手绘"), ZH_HANT("手繪"),
+    KO("직접 그림"), DE("Von Hand gezeichnet"), FR("Dessiné à la main"),
+    ES("Dibujado a mano"), PT("Desenhado à mão"), IT("Disegnato a mano"),
+    NL("Met de hand getekend"), RU("Нарисовано вручную"), TR("Elle çizildi"));
+
+SS_MSG(stencil_rows_draw,
+    EN("Draw..."), JA("描く..."), ZH_HANS("绘制..."), ZH_HANT("繪製..."),
+    KO("그리기..."), DE("Zeichnen..."), FR("Dessiner..."), ES("Dibujar..."),
+    PT("Desenhar..."), IT("Disegna..."), NL("Tekenen..."), RU("Нарисовать..."),
+    TR("Çiz..."));
+
+SS_MSG(stencil_rows_draw_help,
+    EN("Open Try the mask on this input to draw its areas. Rows that are the same "
+       "as this one follow what is drawn."),
+    JA("この入力で「マスクを試す」を開き、範囲を描きます。この行と同じ行は、描いた"
+       "内容に従います。"),
+    ZH_HANS("在这个输入上打开“试一下蒙版”来画它的区域。与这一行相同的行会跟着所画的变。"),
+    ZH_HANT("在這個輸入上開啟「試一下遮罩」來畫它的區域。與這一行相同的行會跟著所畫的變。"),
+    KO("이 입력에서 '마스크 시험해 보기'를 열어 영역을 그립니다. 이 행과 같은 행은 "
+       "그린 대로 따라갑니다."),
+    DE("„Maske ausprobieren“ für diese Eingabe öffnen, um ihre Bereiche zu zeichnen. "
+       "Zeilen, die dieser gleichen, folgen dem Gezeichneten."),
+    FR("Ouvrir « Essayer le masque » sur cette entrée pour dessiner ses zones. Les "
+       "lignes identiques à celle-ci suivent ce qui est dessiné."),
+    ES("Abrir «Probar la máscara» en esta entrada para dibujar sus áreas. Las filas "
+       "iguales a esta siguen lo que se dibuje."),
+    PT("Abrir «Testar a máscara» nesta entrada para desenhar suas áreas. As linhas "
+       "iguais a esta seguem o que for desenhado."),
+    IT("Apri «Prova la maschera» su questo input per disegnarne le aree. Le righe "
+       "uguali a questa seguono ciò che viene disegnato."),
+    NL("‘Masker uitproberen’ op deze invoer openen om de gebieden te tekenen. Rijen "
+       "die gelijk zijn aan deze volgen wat er getekend wordt."),
+    RU("Открыть «Проверить маску» на этом входе, чтобы нарисовать его области. "
+       "Строки, совпадающие с этой, последуют за нарисованным."),
+    TR("Alanlarını çizmek için bu girdide \"Maskeyi dene\"yi açın. Bu satırla aynı "
+       "olan satırlar çizileni izler."));
 
 SS_MSG(stencil_add_path_help,
     EN("Click along an edge on the picture to drop anchors; the path snaps to the edge "
@@ -8978,6 +9262,49 @@ SS_MSG(preview_frame_unreadable,
     RU("Из этого видео не удалось прочитать ни одного кадра."),
     TR("Bu videodan hiçbir kare okunamadı."));
 
+// A click or a prompt in "Try the mask" with no model to find it; {0} is the
+// mask_enable checkbox, which taking the model also ticks.
+SS_MSG(preview_needs_model,
+    EN("Clicks and prompts need a segmentation model. Pick one below; using it "
+       "also ticks \"{0}\"."),
+    JA("クリックやプロンプトにはセグメンテーションモデルが必要です。下で選んでください。"
+       "使うと「{0}」にもチェックが入ります。"),
+    ZH_HANS("点击和提示需要一个分割模型。请在下面选一个；使用它也会勾选“{0}”。"),
+    ZH_HANT("點擊和提示需要一個分割模型。請在下面選一個；使用它也會勾選「{0}」。"),
+    KO("클릭과 프롬프트에는 분할 모델이 필요합니다. 아래에서 고르세요. 사용하면 "
+       "\"{0}\"도 함께 켜집니다."),
+    DE("Klicks und Beschreibungen brauchen ein Segmentierungsmodell. Wählen Sie "
+       "unten eines; wird es verwendet, ist auch „{0}“ angehakt."),
+    FR("Les clics et les descriptions demandent un modèle de segmentation. "
+       "Choisissez-en un ci-dessous ; l'utiliser coche aussi « {0} »."),
+    ES("Los clics y las descripciones necesitan un modelo de segmentación. Elija "
+       "uno abajo; al usarlo también se marca «{0}»."),
+    PT("Cliques e descrições precisam de um modelo de segmentação. Escolha um "
+       "abaixo; usá-lo também marca \"{0}\"."),
+    IT("Clic e descrizioni richiedono un modello di segmentazione. Sceglietene "
+       "uno qui sotto; usarlo spunta anche «{0}»."),
+    NL("Klikken en beschrijvingen hebben een segmentatiemodel nodig. Kies er "
+       "hieronder een; als u het gebruikt, wordt ook \"{0}\" aangevinkt."),
+    RU("Для щелчков и подсказок нужна модель сегментации. Выберите её ниже; "
+       "при этом также включится «{0}»."),
+    TR("Tıklamalar ve istemler bir bölütleme modeli gerektirir. Aşağıdan birini "
+       "seçin; kullanmak \"{0}\" seçeneğini de işaretler."));
+
+SS_MSG(preview_use_model,
+    EN("Use this model"),
+    JA("このモデルを使う"),
+    ZH_HANS("使用这个模型"),
+    ZH_HANT("使用這個模型"),
+    KO("이 모델 사용"),
+    DE("Dieses Modell verwenden"),
+    FR("Utiliser ce modèle"),
+    ES("Usar este modelo"),
+    PT("Usar este modelo"),
+    IT("Usa questo modello"),
+    NL("Dit model gebruiken"),
+    RU("Использовать эту модель"),
+    TR("Bu modeli kullan"));
+
 SS_MSG(preview_kept_fraction,
     EN("{0}% of the frame is kept"),
     JA("フレームの {0}% が残ります"),
@@ -9498,53 +9825,74 @@ SS_MSG(mapper_bottom_up,
     RU("Снизу вверх (атомы, объединяемые вверх)"),
     TR("Aşağıdan yukarı (atomlar, yukarı doğru birleştirilir)"));
 
+SS_MSG(mapper_global,
+    EN("Global (experimental)"), JA("グローバル（実験的）"),
+    ZH_HANS("全局（实验性）"), ZH_HANT("全域（實驗性）"),
+    KO("전역(실험적)"), DE("Global (experimentell)"),
+    FR("Global (expérimental)"), ES("Global (experimental)"),
+    PT("Global (experimental)"), IT("Globale (sperimentale)"),
+    NL("Globaal (experimenteel)"), RU("Глобальная (экспериментально)"),
+    TR("Küresel (deneysel)"));
+
 SS_MSG(mapper_schedule_help,
     EN("How the scene is built. Flat grows one reconstruction image by image, "
        "and is the default for any capture. Bottom-up cuts the view graph "
        "into small groups, reconstructs them independently and merges "
-       "upwards."),
+       "upwards. Global estimates the camera orientations and positions together; "
+       "it is experimental."),
     JA("シーンをどう組み立てるかです。フラットは1つの再構成を画像ごとに"
        "育てていく方式で、どの撮影でも既定です。ボトムアップはビューグラフを"
-       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"),
+       "小さなグループに切り、それぞれを独立に再構成してから上へ統合します。"
+       "グローバルはカメラの向きと位置をまとめて推定する実験的な方式です。"),
     ZH_HANS("场景如何构建。扁平方式逐张图像地扩展同一个重建，是任何拍摄的默认选择。"
-            "自下而上把视图图切成小组，各自独立重建后再向上合并。"),
+            "自下而上把视图图切成小组，各自独立重建后再向上合并。"
+            "全局方式同时估计相机方向和位置，目前为实验性功能。"),
     ZH_HANT("場景如何建構。扁平方式逐張影像地擴展同一個重建，是任何拍攝的預設選擇。"
-            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"),
+            "由下而上把視圖圖切成小組，各自獨立重建後再向上合併。"
+            "全域方式同時估計相機方向和位置，目前為實驗性功能。"),
     KO("장면을 어떻게 만들지입니다. 평면 방식은 재구성 하나를 이미지마다 키워 "
        "가며, 어떤 촬영에서든 기본값입니다. 상향식은 뷰 그래프를 작은 묶음으로 "
-       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다."),
+       "자르고 각각 독립적으로 재구성한 뒤 위로 병합합니다. 전역 방식은 카메라의 "
+       "방향과 위치를 함께 추정하는 실험적 기능입니다."),
     DE("Wie die Szene aufgebaut wird. Flach lässt eine Rekonstruktion Bild für "
        "Bild wachsen und ist die Vorgabe für jede Aufnahme. Von unten zerlegt "
        "den Sichtgraphen in kleine Gruppen, rekonstruiert sie unabhängig und "
-       "führt sie nach oben zusammen."),
+       "führt sie nach oben zusammen. Global schätzt Kamerarichtungen und Positionen "
+       "gemeinsam und ist experimentell."),
     FR("Comment la scène est construite. Le mode plat fait croître une seule "
        "reconstruction image par image, et c'est la valeur par défaut pour "
        "toute prise. Le mode ascendant découpe le graphe de vues en petits "
-       "groupes, les reconstruit indépendamment et fusionne vers le haut."),
+       "groupes, les reconstruit indépendamment et fusionne vers le haut. Le mode global "
+       "estime ensemble les orientations et les positions des caméras ; il est expérimental."),
     ES("Cómo se construye la escena. El modo plano hace crecer una sola "
        "reconstrucción imagen a imagen, y es lo predeterminado en cualquier "
        "captura. El ascendente corta el grafo de vistas en grupos pequeños, "
-       "los reconstruye por separado y los fusiona hacia arriba."),
+       "los reconstruye por separado y los fusiona hacia arriba. El modo global estima "
+       "las orientaciones y posiciones de las cámaras conjuntamente; es experimental."),
     PT("Como a cena é construída. O modo plano faz uma única reconstrução "
        "crescer imagem a imagem, e é o padrão para qualquer captura. O "
        "ascendente corta o grafo de vistas em grupos pequenos, reconstrói "
-       "cada um em separado e mescla para cima."),
+       "cada um em separado e mescla para cima. O modo global estima as orientações e "
+       "posições das câmeras em conjunto; é experimental."),
     IT("Come viene costruita la scena. Il modo piatto fa crescere una sola "
        "ricostruzione immagine dopo immagine ed è l'impostazione predefinita "
        "per qualsiasi ripresa. Quello dal basso taglia il grafo delle viste in "
        "piccoli gruppi, li ricostruisce in modo indipendente e li unisce verso "
-       "l'alto."),
+       "l'alto. Il modo globale stima insieme orientamenti e posizioni delle fotocamere; "
+       "è sperimentale."),
     NL("Hoe de scène wordt opgebouwd. Vlak laat één reconstructie beeld voor "
        "beeld groeien en is de standaard voor elke opname. Bottom-up knipt de "
        "beeldgraaf in kleine groepen, reconstrueert die apart en voegt ze naar "
-       "boven samen."),
+       "boven samen. Globaal schat de camerarichtingen en posities samen en is experimenteel."),
     RU("Как строится сцена. Плоская схема наращивает одну реконструкцию снимок "
        "за снимком и подходит любой съёмке. Схема снизу вверх режет граф видов "
-       "на небольшие группы, восстанавливает их независимо и объединяет вверх."),
+       "на небольшие группы, восстанавливает их независимо и объединяет вверх. Глобальная "
+       "схема совместно оценивает ориентации и положения камер; она экспериментальна."),
     TR("Sahnenin nasıl kurulacağı. Düz plan tek bir yeniden oluşturmayı "
        "görüntü görüntü büyütür ve her çekim için varsayılandır. Aşağıdan "
        "yukarı plan görünüm çizgesini küçük öbeklere böler, her birini ayrı "
-       "yeniden oluşturur ve yukarı doğru birleştirir."));
+       "yeniden oluşturur ve yukarı doğru birleştirir. Küresel plan kamera yönlerini ve "
+       "konumlarını birlikte tahmin eder; deneysel bir özelliktir."));
 
 SS_MSG(prefilter_sequential,
     EN("Also match neighbouring frames"),

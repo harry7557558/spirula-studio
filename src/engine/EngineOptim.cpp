@@ -346,10 +346,12 @@ void engine_clear_projective_depth() {
     s.optim.observe_projective = {};
     s.projective_state = DeviceVector<float4>();
     s.projective_information = DeviceVector<float>();
+    s.projective_angular_bound = DeviceVector<float>();
     s.projective_centers = DeviceVector<float4>();
     auto& pool = DevicePool::global();
     pool.free(PoolSlot::EngProjectiveState);
     pool.free(PoolSlot::EngProjectiveInformation);
+    pool.free(PoolSlot::EngProjectiveAngularBound);
     pool.free(PoolSlot::EngProjectiveCenters);
 }
 
@@ -374,6 +376,7 @@ static ProjectiveDepthOptim projective_depth_state(const OptimConfig& cfg) {
         s.projective_information.resize(PoolSlot::EngProjectiveInformation,s.max_num_splats);
         s.projective_information.zero();
     }
+    depth.angular_bound = s.projective_angular_bound.data_ptr();
     depth.states = s.projective_state.data_ptr();
     depth.information = s.projective_information.data_ptr();
     depth.centers = s.projective_centers.data_ptr();
@@ -410,6 +413,12 @@ void engine_prepare_projective_depth(const OptimConfig& cfg) {
         }
     }
     opt.observe_projective = projective_depth_state(cfg);
+    if (opt.observe_projective.states) {
+        s.projective_angular_bound.resize(PoolSlot::EngProjectiveAngularBound,s.max_num_splats);
+        opt.observe_projective.angular_bound = s.projective_angular_bound.data_ptr();
+        if (!opt.skip_grad_zero && !opt.zero_grad_in_optim)
+            backend::memset_async(opt.observe_projective.angular_bound,0,s.cur_num_splats*sizeof(float));
+    }
 }
 
 void engine_observe_projective_depth() {
@@ -438,17 +447,28 @@ void engine_fused_proj_bwd_optim_step(int step, const OptimConfig& cfg) {
             "engine_fused_proj_bwd_optim_step: v_splats_s not stashed; "
             "engine_compute_loss_backward must run first");
 
-    // 3DGUT adds raster world gradients; 3DGS/Mip receive only projection gradients.
-    // Null channels are guarded by both raster stores and fused projection loads.
+    // 3DGUT adds raster world gradients; 3DGS/Mip receive only projection
+    // gradients, plus the PCA regularizer's when it ran. Null channels are
+    // guarded by both raster stores and fused projection loads.
     std::vector<DeviceTensorFloatND> v_splats_w;
+    const auto& pca = engine().pca_reg;
     if (engine().grad.means.data_ptr() != nullptr) {
         v_splats_w = {
             DeviceTensorFloatND(engine().grad.means),         // [N, 3]
             DeviceTensorFloatND(engine().grad.quats),         // [N, 4]
             DeviceTensorFloatND(engine().grad.scales),        // [N, 3]
-            DeviceTensorFloatND(),                            // opacities -- null
+            pca.v_opacities.data_ptr() ? DeviceTensorFloatND(pca.v_opacities) : DeviceTensorFloatND(),
             DeviceTensorFloatND(),                            // features_dc -- null
             DeviceTensorFloatND(),                            // features_sh -- null
+        };
+    } else if (pca.v_means.data_ptr() != nullptr) {
+        v_splats_w = {
+            DeviceTensorFloatND(pca.v_means),
+            pca.v_quats.data_ptr() ? DeviceTensorFloatND(pca.v_quats) : DeviceTensorFloatND(),
+            pca.v_scales.data_ptr() ? DeviceTensorFloatND(pca.v_scales) : DeviceTensorFloatND(),
+            pca.v_opacities.data_ptr() ? DeviceTensorFloatND(pca.v_opacities) : DeviceTensorFloatND(),
+            DeviceTensorFloatND(),
+            DeviceTensorFloatND(),
         };
     }
 
@@ -729,7 +749,7 @@ void engine_optim_step(int step, const OptimConfig& cfg) {
         visit,
         grad_q, projective_depth_state(cfg),
         step + 1, per_splat_steps,
-        grad_scale, zero_grad
+        grad_scale, zero_grad, engine().pca_reg.v_opacities
     );
 
     // DC color update path. When non-SH quant is on the geometry kernel

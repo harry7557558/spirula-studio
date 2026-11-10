@@ -1,17 +1,11 @@
-// Two-view geometric verification (src/sfm/README.md).
-//
-// Given putative correspondences, robustly estimate a fundamental matrix and a
-// homography, pick the model that best explains the data (COLMAP's H-inlier
-// ratio test), and return the surviving inliers and a config label. Optionally
-// recover the calibrated relative pose from F + intrinsics.
-//
-// This is the filter that turns the phase-2 matcher's putative matches into
-// trustworthy two-view geometries for the phase-4 mapper.
+// Two-view verification on pixels or unit bearings, with planar-model competition.
 #pragma once
 
 #include <vector>
 
 #include "sfm/geometry/Essential.h"
+#include "sfm/geometry/EssentialFivePoint.h"
+#include "sfm/geometry/KnownRotation.h"
 #include "sfm/geometry/Fundamental.h"
 #include "sfm/geometry/Homography.h"
 #include "sfm/geometry/LinAlg.h"
@@ -36,24 +30,15 @@ inline const char* twoViewConfigName(TwoViewConfig c) {
 }
 
 struct TwoViewOptions {
-    // Confidence, trial counts and the rest are COLMAP's. The inlier radius is
-    // not: it is 3 px of the image SIFT ran on, not 4 px of the source file
-    // (D47). The unit differs from COLMAP's, so the number cannot match it; 3
-    // is what a sweep over six scenes at both extraction scales chose.
+    // Error is measured in extraction pixels; bearing callers convert it to radians.
     RansacOptions ransac;
     int min_num_inliers = 15;
     double max_H_inlier_ratio = 0.8;
-    // Fit the homography too, or take the caller's word that this pair is not
-    // planar or panoramic. Verification itself always fits it -- this is the
-    // test. A caller re-running the estimate on a pair verification already
-    // labelled, over the inliers verification kept, is asking a settled
-    // question from less data, and paying for the more expensive of the two
-    // RANSACs to do it: on a non-planar pair H's inlier ratio is low, so its
-    // trial count adapts into the hundreds while F, fed its own inliers,
-    // converges in a handful. That caller is the mapper's seed search.
+    // Seed search can reuse verification's planar verdict.
     bool estimate_homography = true;
     // Optional calibrated pose recovery from the F inliers.
     bool recover_pose = false;
+    bool calibrated_essential = false;
     Mat3 K1 = mat3Identity(), K2 = mat3Identity();
     TwoViewOptions() {
         ransac.max_error = 3.0;
@@ -106,17 +91,7 @@ inline void selectTwoViewModel(TwoViewGeometry& g, const RansacReport<Mat3>& fRe
 }
 }  // namespace detail
 
-// Verify one pair from unit bearings rather than pixels (D45).
-//
-// Everything the pixel path does, one coordinate system down: the epipolar
-// constraint and the plane-induced homography both hold exactly for viewing
-// rays whatever the field of view, whereas on raw pixels they hold only for a
-// pinhole. `opt.ransac.max_error` is in **radians** here (the caller converts
-// its pixel budget with the focal length), and residuals are angular.
-//
-// The config labels are deliberately the same as the pixel path's, so a
-// verified pair means the same thing to matches.bin and to the mapper however
-// it was verified.
+// Unit-ray verification; ransac.max_error is in radians, including backward fisheye rays.
 inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
                                               const std::vector<Vec3>& b2,
                                               const TwoViewOptions& opt) {
@@ -124,10 +99,22 @@ inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
     int n = (int)b1.size();
     if (n < opt.min_num_inliers) return g;
 
-    auto fFit = [&](const std::vector<int>& s) { return estimateEpipolar7Bearing(b1, b2, s); };
-    auto fRefit = [&](const std::vector<int>& s) { return estimateEpipolar8Bearing(b1, b2, s); };
+    auto fFit = [&](const std::vector<int>& sample) {
+        return opt.calibrated_essential ? estimateEssential5Bearing(b1, b2, sample)
+                                        : estimateEpipolar7Bearing(b1, b2, sample);
+    };
+    auto fRefit = [&](const std::vector<int>& sample, const Mat3& incumbent) {
+        if (!opt.calibrated_essential) return estimateEpipolar8Bearing(b1, b2, sample);
+        std::vector<char> mask(n, 0);
+        for (int i : sample) mask[i] = 1;
+        Pose pose = decomposeEssential(incumbent).front();
+        known_rotation_detail::refineNearRotation(b1, b2, mask, pose.R, 0,
+                                                  opt.ransac.max_error, pose, 8);
+        return std::vector<Mat3>{mul(crossMatrix(pose.t), pose.R)};
+    };
     auto fRes = [&](const Mat3& E, int i) { return sampsonSqBearing(E, b1[i], b2[i]); };
-    RansacReport<Mat3> fRep = loransac<Mat3>(n, 7, fFit, fRefit, fRes, opt.ransac);
+    RansacReport<Mat3> fRep = loransac<Mat3>(n, opt.calibrated_essential ? 5 : 7,
+                                           fFit, fRefit, fRes, opt.ransac);
 
     RansacReport<detail::HModel> hRep;
     if (opt.estimate_homography) {
@@ -150,7 +137,6 @@ inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
         std::vector<int> idx;
         for (int i = 0; i < n; i++)
             if (g.inlier_mask[i]) idx.push_back(i);
-        // Only now impose the essential constraint the 7-point fit left free.
         int cnt = 0;
         g.pose = recoverRelativePoseBearing(b1, b2, idx, projectToEssential(g.F), cnt);
         g.has_pose = cnt > 0;

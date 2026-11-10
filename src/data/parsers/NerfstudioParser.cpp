@@ -5,6 +5,7 @@
 #include "data/DatasetParser.h"
 #include "i18n/catalog/Data.h"
 #include "data/FastFloat.h"
+#include "data/FileBytes.h"
 #include "data/Json.h"
 
 #include "core/CameraModel.h"   // camera_model_from_name (CUDA-free)
@@ -19,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <new>
 #include <stdexcept>
 #include <string>
 
@@ -235,19 +237,7 @@ void PlyVertexReader::each(const std::vector<int>& cols,
 ColmapPoints3D read_ply_points(const std::string& path) {
     // One read of the whole file: per-row stdio (worse still under
     // Emscripten's virtual FS) made large ascii clouds take tens of seconds.
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) throw std::runtime_error("PLY: cannot open " + path);
-    std::string bytes;
-    {
-        struct Closer { FILE* f; ~Closer() { std::fclose(f); } } closer{f};
-        std::fseek(f, 0, SEEK_END);
-        long fsize = std::ftell(f);
-        std::fseek(f, 0, SEEK_SET);
-        bytes.resize((size_t)(fsize > 0 ? fsize : 0));
-        if (!bytes.empty() && std::fread(&bytes[0], 1, bytes.size(), f) != bytes.size())
-            throw std::runtime_error("PLY: cannot read " + path);
-    }
-    PlyVertexReader ply(std::move(bytes), path);
+    PlyVertexReader ply(spirula::read_file_bytes(path, "PLY"), path);
 
     int ix = ply.column("x"), iy = ply.column("y"), iz = ply.column("z");
     int ir = ply.column("red"), ig = ply.column("green"), ib = ply.column("blue");
@@ -261,8 +251,13 @@ ColmapPoints3D read_ply_points(const std::string& path) {
                                  ply.is_float(ig) ? 255.0 : 1.0,
                                  ply.is_float(ib) ? 255.0 : 1.0};
     ColmapPoints3D pts;
-    pts.xyz.resize(ply.count() * 3);
-    pts.rgb.resize(ply.count() * 3);
+    try {
+        pts.xyz.resize(ply.count() * 3);
+        pts.rgb.resize(ply.count() * 3);
+    } catch (const std::bad_alloc&) {
+        throw spirula::file_out_of_memory(
+            path, (std::uintmax_t)ply.count() * 3 * (sizeof(double) + sizeof(uint8_t)));
+    }
     int64_t i = 0;
     ply.each({ix, iy, iz, ir, ig, ib}, [&](const double* v) {
         for (int k = 0; k < 3; k++) {
@@ -630,7 +625,25 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
     ds.widths.reserve(N);
     ds.heights.reserve(N);
 
-    std::vector<std::string> mask_files(N), depth_files(N), normal_files(N);
+    // The per-image file lookups first, in parallel. A frame naming its own
+    // auxiliary file gets "" here, which find_aux_files skips.
+    std::vector<std::string> paths_n(N), mask_rel(N), depth_rel(N), normal_rel(N);
+    for (int64_t j = 0; j < N; j++) {
+        const Frame& F = frames[subset[j]];
+        paths_n[j] = F.abs;
+        std::string rel = dsparse::relative_under(F.abs, (root / cfg.image_dir).string());
+        if (rel.empty()) rel = dsparse::relative_under(F.abs, root.string());
+        if (!F.j->find("mask_path")) mask_rel[j] = rel;
+        if (!F.j->find("depth_file_path")) depth_rel[j] = rel;
+        if (!F.j->find("normal_file_path")) normal_rel[j] = rel;
+    }
+    const std::vector<dsparse::ImageSize> sizes = dsparse::probe_image_sizes(cfg, paths_n);
+    std::vector<std::string> mask_files =
+        dsparse::find_aux_files((root / cfg.mask_dir).string(), mask_rel, "mask");
+    std::vector<std::string> depth_files =
+        dsparse::find_aux_files((root / cfg.depth_dir).string(), depth_rel, "depth");
+    std::vector<std::string> normal_files =
+        dsparse::find_aux_files((root / cfg.normal_dir).string(), normal_rel, "normal");
     bool any_mask = false, any_depth = false, any_normal = false;
     const int EQUIRECT_V = (int)camera_model_from_name("EQUIRECTANGULAR");
     const int PINHOLE_V  = (int)camera_model_from_name("PINHOLE");
@@ -752,7 +765,7 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
             ds.exif_quarter_turns[j] = (uint8_t)turns;
         }
         dsparse::fit_camera_resolution(
-            cfg, F.abs, W, H, fx, fy, cx, cy,
+            cfg, F.abs, sizes[j], W, H, fx, fy, cx, cy,
             ds.redistort.empty() ? nullptr : &ds.redistort[j], turns);
 
         // Equirectangular: canonical panorama intrinsics.
@@ -772,27 +785,14 @@ ParsedDataset parse_nerfstudio_meta(const JsonValue& meta,
         ds.intrins[j*4 + 3] = (float)cy;
         for (int k = 0; k < 12; k++) ds.c2w[j*12 + k] = (float)c2w_world[subset[j]*12 + k];
 
-        // Auxiliary buffers: explicit frame paths win; directory-convention
-        // probing as fallback (_add_auxiliary_buffers). Unlike the Python
-        // parser (which requires all-or-none), per-image absence is allowed
-        // -- the C++ DataManager's convention ("" = none for this image).
-        std::string rel = dsparse::relative_under(F.abs, (root / cfg.image_dir).string());
-        if (rel.empty()) rel = dsparse::relative_under(F.abs, root.string());
+        // Explicit frame paths win over the convention found above. Unlike the
+        // Python parser's all-or-none, per-image absence is allowed ("" = none).
         if (const JsonValue* v = fr.find("mask_path"))
             mask_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            mask_files[j] = dsparse::find_aux_file(
-                (root / cfg.mask_dir).string(), rel, "mask");
         if (const JsonValue* v = fr.find("depth_file_path"))
             depth_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            depth_files[j] = dsparse::find_aux_file(
-                (root / cfg.depth_dir).string(), rel, "depth");
         if (const JsonValue* v = fr.find("normal_file_path"))
             normal_files[j] = (root / v->as_string()).lexically_normal().string();
-        else
-            normal_files[j] = dsparse::find_aux_file(
-                (root / cfg.normal_dir).string(), rel, "normal");
         any_mask   |= !mask_files[j].empty();
         any_depth  |= !depth_files[j].empty();
         any_normal |= !normal_files[j].empty();
