@@ -1,0 +1,5 @@
+# Written by flexglue_ref.py fixtures and fetch_images.py, never committed
+# (README.md, "Tiers" and "Images"); pairs.json is the spec they are built from.
+/*
+!/.gitignore
+!/pairs.json

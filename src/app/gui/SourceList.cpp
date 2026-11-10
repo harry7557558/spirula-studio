@@ -323,6 +323,14 @@ bool any_pano360(const std::vector<PrepInput>& sources) {
     return false;
 }
 
+bool any_fisheye_or_pano_lens(const std::vector<PrepInput>& sources,
+                              const std::string& fallback) {
+    for (const std::string& m :
+         camera_group_models(sources, camera_groups(sources), fallback))
+        if (sfm_model_is_fisheye(m) || m == "equirectangular") return true;
+    return false;
+}
+
 
 // The size box shows what the run will actually use, not a zero standing for
 // "work it out later": it is the one number here a user might want to change.

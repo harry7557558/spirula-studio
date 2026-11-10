@@ -170,10 +170,12 @@ target_link_libraries(ss_sfm PUBLIC ss_vulkan Threads::Threads ss_i18n)
 # a machine that only wants SIFT. PUBLIC because sfm/feature/Extractor.h's
 # factory is compiled into whatever links this.
 if(SS_BUILD_SAM)
-    target_link_libraries(ss_sfm PUBLIC ss_aliked ss_loma)
-    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=1 SS_HAVE_LOMA=1)
+    target_link_libraries(ss_sfm PUBLIC ss_aliked ss_loma ss_flexglue)
+    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=1 SS_HAVE_LOMA=1
+                                             SS_HAVE_FLEXGLUE=1)
 else()
-    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=0 SS_HAVE_LOMA=0)
+    target_compile_definitions(ss_sfm PUBLIC SS_HAVE_ALIKED=0 SS_HAVE_LOMA=0
+                                             SS_HAVE_FLEXGLUE=0)
 endif()
 target_compile_options(ss_sfm PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${SPLAT_CXX_FLAGS}>

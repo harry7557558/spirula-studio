@@ -2185,12 +2185,34 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
         todo = pairs;
     }
 
+    // FlexGlue reads each image's pixels, so it is handed the file behind
+    // every feature set.
+    FlexGlueMatchOptions fgopt = cfg.flexglue;
+    if (cfg.matcher == "flexglue") {
+        if (fgopt.image_dir.empty() && calib) fgopt.image_dir = calib->image_dir;
+        if (fgopt.image_dir.empty() || !fs::is_directory(fgopt.image_dir)) {
+            L::fail(Tag::Match, M::run_not_a_directory,
+                    {fgopt.image_dir.empty() ? "--flexglue-images" : fgopt.image_dir});
+            return 1;
+        }
+        const std::map<std::string, std::string> stem2name = imageStemMap(fgopt.image_dir);
+        fgopt.image_paths.resize(n_images);
+        for (size_t i = 0; i < n_images; i++) {
+            auto it = stem2name.find(db.images[i].name);
+            if (it == stem2name.end()) {
+                L::fail(Tag::Match, M::match_flexglue_no_image,
+                        {db.images[i].name, fgopt.image_dir});
+                return 1;
+            }
+            fgopt.image_paths[i] = (fs::path(fgopt.image_dir) / it->second).string();
+        }
+    }
     std::unique_ptr<IFeatureMatcher> matcher =
-        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match);
+        createFeatureMatcher(cfg.matcher, opt, cfg.lightglue, cfg.loma_match, fgopt);
     if (verbose && cfg.matcher != "bruteforce")
         L::err(Tag::Match, M::match_matcher_name, {matcher->name()});
-    // Pairs the focal search already matched, by pairKey: with a camera per
-    // image its sample is every pair, which matching them again would double.
+    // Pairs the focal or gyro sample already matched, by pairKey: with a camera
+    // per image the focal sample is every pair, which matching again would double.
     std::unordered_map<uint64_t, std::vector<FeatureMatch>> premat;
     auto matchFn = [&](size_t b, size_t e, std::vector<std::vector<FeatureMatch>>& mout) {
         if (premat.empty()) {
@@ -2327,11 +2349,22 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
                 for (size_t k = 0; k < 900; k++) thin.push_back(sample[(size_t)(k * step)]);
                 sample.swap(thin);
             }
-            std::vector<std::vector<FeatureMatch>> sm, chunk;
-            for (size_t b = 0; b < sample.size(); b += 16) {
-                const size_t e = std::min(b + 16, sample.size());
-                matcher->matchBatch(feats, sample, b, e, chunk);
-                for (size_t k = b; k < e; k++) sm.push_back(std::move(chunk[k - b]));
+            std::vector<std::vector<FeatureMatch>> sm(sample.size()), chunk;
+            std::vector<std::pair<uint32_t, uint32_t>> rest;
+            std::vector<size_t> rest_at;
+            for (size_t k = 0; k < sample.size(); k++) {
+                const auto it = premat.find(resume::pairKey(sample[k].first, sample[k].second));
+                if (it != premat.end()) {
+                    sm[k] = it->second;
+                } else {
+                    rest.push_back(sample[k]);
+                    rest_at.push_back(k);
+                }
+            }
+            for (size_t b = 0; b < rest.size(); b += 16) {
+                const size_t e = std::min(b + 16, rest.size());
+                matcher->matchBatch(feats, rest, b, e, chunk);
+                for (size_t k = b; k < e; k++) sm[rest_at[k]] = std::move(chunk[k - b]);
             }
             const double t_c = now();
             db.sensor_calibration_fingerprint =
@@ -2341,6 +2374,9 @@ int matchFeatureDir(const std::string& featdir, const SfmConfig& cfg, PairMode m
             if (verbose)
                 L::diag(Tag::Match, "[prior] calibrated on %zu pair(s) in %s", sample.size(),
                         format_duration(now() - t_c).c_str());
+            for (size_t k : rest_at)
+                premat.emplace(resume::pairKey(sample[k].first, sample[k].second),
+                               std::move(sm[k]));
             if (priors->anyRotation()) {
                 vopt.priors = priors;
                 vopt.cameras = &percam;

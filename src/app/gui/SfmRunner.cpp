@@ -23,6 +23,10 @@
 #include "i18n/catalog/Sfm.h"
 #endif
 
+#if defined(SS_TOOL_SFM) && defined(SS_HAVE_FLEXGLUE) && SS_HAVE_FLEXGLUE
+#include "app/ModelLicenses.h"
+#include "flexglue/model/Fetch.h"
+#endif
 #if defined(SS_TOOL_SFM) && defined(SS_HAVE_ALIKED) && SS_HAVE_ALIKED
 #include "aliked/model/Fetch.h"
 #include "loma/Loma.h"
@@ -138,6 +142,15 @@ std::vector<PendingDownload> sfm_feature_downloads(int features, int matcher) {
     auto want_loma = [&](const std::string& id) {
         if (const loma::ModelSource* src = loma::find_model_source(id)) take(src->onnx);
     };
+#if defined(SS_HAVE_FLEXGLUE) && SS_HAVE_FLEXGLUE
+    if (matcher == 2) {
+        app::register_model_licenses();
+        namespace dm = spirula::i18n::msg::dataset;
+        register_license_info(flexglue::kLicenseFamily, &dm::license_flexglue_title,
+                              &dm::license_flexglue_terms);
+        take(flexglue::kCheckpoint);
+    }
+#endif
     if (features <= 0) return out;
 
     const std::string f = sfm_pick(kSfmFeatures, features);
@@ -687,8 +700,8 @@ std::vector<std::string> SfmRunner::recon_args(const SfmJob& job,
         "--camera-mode", sfm_pick(kSfmCameraMode, job.camera_mode, 1),
         "--mapper", sfm_pick(kSfmMapper, job.mapper),
         "--features", sfm_pick(kSfmFeatures, job.features),
-        // A learned matcher only exists for the learned descriptors; asking
-        // for one with SIFT selected is a usage error.
+        // A descriptor-reading matcher with SIFT is a usage error, so the
+        // choice goes through the frontend.
         "--matcher", sfm_matcher_for(job.features, job.matcher),
     };
     if (job.pairs > 0) {

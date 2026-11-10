@@ -311,11 +311,14 @@ void resize_nearest(const Tensor& out, const Tensor& in, float scale_y, float sc
 // kernel".
 void avgpool(const Tensor& out, const Tensor& in, int kernel, int stride = 0, int pad = 0);
 
+// torch's grid_sample padding_mode: 'zeros' reads zero outside, 'border'
+// clamps the source coordinate to the edge pixels first.
+enum class GridPad : uint32_t { Zeros = 0, Border = 1 };
+
 // out[N, C] = bilinear sample of in[H, W, C] at `pos`, an f32 [N, 2] tensor of
-// normalized (x, y) in [-1, 1]. Reads zero outside, i.e. torch's
-// padding_mode='zeros'. See the shader for why align_corners matters.
+// normalized (x, y) in [-1, 1]. See the shader for why align_corners matters.
 void grid_sample_points(const Tensor& out, const Tensor& in, const Tensor& pos,
-                        bool align_corners = true);
+                        bool align_corners = true, GridPad pad = GridPad::Zeros);
 
 // Warp-centered bilinear correlation, zero padding, channel dot scaled by 1/sqrt(C).
 // out[H,W,(2r+1)^2], window order (dy,dx); warp[H,W,2] uses align_corners=false.

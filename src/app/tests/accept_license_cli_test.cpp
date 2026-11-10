@@ -104,6 +104,12 @@ int main() {
           "a registered family (RoMa): known to the CLI, both texts printed, recorded");
 
     fresh();
+    r = run("--accept-license flexglue=yes --version");
+    check(r.code == 0 && has(slurp(gui_conf()), "accepted_license=flexglue\n") &&
+              has(r.out, "DINOv3 License") && has(r.out, "Computer Vision and Geometry Lab"),
+          "a registered family (FlexGlue): known to the CLI, both texts printed, recorded");
+
+    fresh();
     r = run("--version --accept-license=birefnet=yes");
     check(r.code == 0 && has(slurp(gui_conf()), "accepted_license=birefnet\n"),
           "trailing --accept-license=family=yes spelling is consumed too");

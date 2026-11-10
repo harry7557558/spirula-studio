@@ -515,7 +515,10 @@ void apply_legacy_recon(const std::vector<std::string>& a, const std::string& im
         else if (flag == "--camera-mode") job.camera_mode = index_in(kSfmCameraMode, take(), 1);
         else if (flag == "--mapper") job.mapper = index_in(kSfmMapper, take(), 0);
         else if (flag == "--features") job.features = index_in(kSfmFeatures, take(), 0);
-        else if (flag == "--matcher") job.matcher = take() == "bruteforce" ? 0 : 1;
+        else if (flag == "--matcher") {
+            const std::string m = take();
+            job.matcher = m == "bruteforce" ? 0 : m == "flexglue" ? 2 : 1;
+        }
         else if (flag == "--pairs") job.pairs = index_in(kSfmPairs, take(), 0);
         else if (flag == "--overlap") job.overlap = (int)to_float(take());
         else if (flag == "--no-loop-closure") job.loop_closure = false;

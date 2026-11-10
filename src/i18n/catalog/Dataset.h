@@ -9688,6 +9688,132 @@ SS_MSG(matcher_loma,
     IT("LoMa (appreso)"), NL("LoMa (geleerd)"),
     RU("LoMa (обученный)"), TR("LoMa (öğrenilmiş)"));
 
+SS_MSG(matcher_flexglue,
+    EN("FlexGlue (learned, any features)"),
+    JA("FlexGlue（学習型、任意の特徴）"), ZH_HANS("FlexGlue（学习型，任意特征）"),
+    ZH_HANT("FlexGlue（學習型，任意特徵）"), KO("FlexGlue(학습형, 모든 특징)"),
+    DE("FlexGlue (gelernt, alle Merkmale)"), FR("FlexGlue (appris, toutes caractéristiques)"),
+    ES("FlexGlue (aprendido, cualquier característica)"),
+    PT("FlexGlue (aprendido, quaisquer características)"),
+    IT("FlexGlue (appreso, qualsiasi caratteristica)"), NL("FlexGlue (geleerd, alle kenmerken)"),
+    RU("FlexGlue (обученный, любые признаки)"), TR("FlexGlue (öğrenilmiş, her öznitelik)"));
+
+SS_MSG(matcher_flexglue_help,
+    EN("FlexGlue matches the keypoints of any detector through features of the images "
+       "themselves, and rejects a pair whose views do not overlap -- a repeated facade, "
+       "a look-alike room. It is much slower per pair than brute force, so it suits a "
+       "shortlist of pairs. It downloads a 570 MB model on first use."),
+    JA("FlexGlue は画像そのものの特徴を通じて任意の検出器のキーポイントを照合し、"
+       "視野が重ならないペア（繰り返す外壁、似た部屋）を棄却します。ペアあたりの処理は"
+       "総当たりよりかなり遅いので、絞り込んだペアに向きます。初回使用時に 570 MB の"
+       "モデルをダウンロードします。"),
+    ZH_HANS("FlexGlue 通过图像本身的特征匹配任意检测器的关键点，并拒绝视野不重叠的"
+            "像对（重复的立面、相似的房间）。它每对比暴力匹配慢得多，适合筛选后的像对。"
+            "首次使用时下载 570 MB 的模型。"),
+    ZH_HANT("FlexGlue 透過影像本身的特徵比對任意偵測器的關鍵點，並拒絕視野不重疊的"
+            "影像對（重複的立面、相似的房間）。它每對比暴力比對慢得多，適合篩選後的"
+            "影像對。首次使用時下載 570 MB 的模型。"),
+    KO("FlexGlue 는 이미지 자체의 특징으로 어떤 검출기의 키포인트든 맞추고, 시야가 "
+       "겹치지 않는 쌍(반복되는 외벽, 닮은 방)을 버립니다. 쌍당 전수 매칭보다 훨씬 "
+       "느리므로 추린 쌍에 알맞습니다. 처음 쓸 때 570 MB 모델을 내려받습니다."),
+    DE("FlexGlue ordnet die Schlüsselpunkte jedes Detektors über Merkmale der Bilder "
+       "selbst zu und verwirft ein Paar, dessen Ansichten sich nicht überlappen -- eine "
+       "wiederholte Fassade, ein ähnlicher Raum. Je Paar ist es viel langsamer als Brute "
+       "Force, also für eine Auswahl an Paaren. Beim ersten Einsatz lädt es ein "
+       "570-MB-Modell."),
+    FR("FlexGlue apparie les points clés de n'importe quel détecteur à travers des "
+       "caractéristiques des images elles-mêmes, et rejette une paire dont les vues ne "
+       "se recouvrent pas -- une façade répétée, une pièce semblable. Il est bien plus "
+       "lent par paire que la force brute, donc pour une sélection de paires. Il "
+       "télécharge un modèle de 570 Mo à la première utilisation."),
+    ES("FlexGlue empareja los puntos clave de cualquier detector mediante "
+       "características de las propias imágenes, y rechaza un par cuyas vistas no se "
+       "solapan: una fachada repetida, una habitación parecida. Es mucho más lento por "
+       "par que la fuerza bruta, así que conviene para una selección de pares. Descarga "
+       "un modelo de 570 MB en el primer uso."),
+    PT("O FlexGlue emparelha os pontos-chave de qualquer detector por meio de "
+       "características das próprias imagens, e rejeita um par cujas vistas não se "
+       "sobrepõem -- uma fachada repetida, um cômodo parecido. É muito mais lento por "
+       "par que a força bruta, então serve para uma seleção de pares. Baixa um modelo "
+       "de 570 MB no primeiro uso."),
+    IT("FlexGlue abbina i punti chiave di qualsiasi rilevatore attraverso "
+       "caratteristiche delle immagini stesse, e scarta una coppia le cui viste non si "
+       "sovrappongono -- una facciata ripetuta, una stanza simile. Per coppia è molto "
+       "più lento della forza bruta, quindi adatto a una selezione di coppie. Al primo "
+       "uso scarica un modello da 570 MB."),
+    NL("FlexGlue matcht de sleutelpunten van elke detector via kenmerken van de beelden "
+       "zelf, en verwerpt een paar waarvan de aanzichten niet overlappen -- een herhaalde "
+       "gevel, een gelijkende kamer. Per paar is het veel trager dan brute force, dus voor "
+       "een selectie van paren. Bij het eerste gebruik downloadt het een model van 570 MB."),
+    RU("FlexGlue сопоставляет ключевые точки любого детектора через признаки самих "
+       "изображений и отбрасывает пару, виды которой не перекрываются, -- повторяющийся "
+       "фасад, похожую комнату. На пару он намного медленнее полного перебора, поэтому "
+       "подходит для отобранных пар. При первом использовании скачивает модель размером "
+       "570 МБ."),
+    TR("FlexGlue, herhangi bir bulucunun anahtar noktalarını görüntülerin kendi "
+       "öznitelikleri üzerinden eşleştirir ve görünümleri örtüşmeyen bir çifti -- "
+       "tekrarlayan bir cephe, benzer bir oda -- reddeder. Çift başına kaba kuvvetten çok "
+       "daha yavaştır, bu yüzden seçilmiş çiftlere uygundur. İlk kullanımda 570 MB'lık "
+       "bir model indirir."));
+
+SS_MSG(matcher_flexglue_wide_lens,
+    EN("FlexGlue is meant for ordinary lenses. This capture has fisheye or panorama "
+       "images, which it may match poorly."),
+    JA("FlexGlue は通常のレンズ向けです。この素材には魚眼またはパノラマの画像があり、"
+       "うまく照合できないことがあります。"),
+    ZH_HANS("FlexGlue 面向普通镜头。这份素材含有鱼眼或全景图像，它可能匹配得不好。"),
+    ZH_HANT("FlexGlue 針對一般鏡頭。這份素材含有魚眼或全景影像，它可能比對得不好。"),
+    KO("FlexGlue 는 일반 렌즈용입니다. 이 촬영본에는 어안 또는 파노라마 이미지가 있어 "
+       "잘 맞추지 못할 수 있습니다."),
+    DE("FlexGlue ist für gewöhnliche Objektive gedacht. Diese Aufnahme enthält "
+       "Fischaugen- oder Panoramabilder, die es womöglich schlecht zuordnet."),
+    FR("FlexGlue est conçu pour des objectifs ordinaires. Cette prise contient des "
+       "images fisheye ou panoramiques, qu'il risque de mal apparier."),
+    ES("FlexGlue está pensado para objetivos normales. Esta toma tiene imágenes de ojo "
+       "de pez o panorámicas, que puede emparejar mal."),
+    PT("O FlexGlue foi feito para lentes comuns. Esta captura tem imagens olho de peixe "
+       "ou panorâmicas, que ele pode emparelhar mal."),
+    IT("FlexGlue è pensato per obiettivi comuni. Questa ripresa contiene immagini "
+       "fisheye o panoramiche, che potrebbe abbinare male."),
+    NL("FlexGlue is bedoeld voor gewone objectieven. Deze opname bevat fisheye- of "
+       "panoramabeelden, die het mogelijk slecht matcht."),
+    RU("FlexGlue рассчитан на обычные объективы. В этой съёмке есть изображения "
+       "«рыбьего глаза» или панорамы — их он может сопоставить плохо."),
+    TR("FlexGlue sıradan objektifler için tasarlanmıştır. Bu çekimde balıkgözü ya da "
+       "panorama görüntüleri var; bunları kötü eşleştirebilir."));
+
+SS_MSG(license_flexglue_title,
+    EN("DINOv3 License (Meta) and FlexGlue License (MIT)"),
+    JA("DINOv3 ライセンス（Meta）と FlexGlue ライセンス（MIT）"),
+    ZH_HANS("DINOv3 许可协议（Meta）与 FlexGlue 许可协议（MIT）"),
+    ZH_HANT("DINOv3 授權條款（Meta）與 FlexGlue 授權條款（MIT）"),
+    KO("DINOv3 라이선스(Meta) 및 FlexGlue 라이선스(MIT)"),
+    DE("DINOv3-Lizenz (Meta) und FlexGlue-Lizenz (MIT)"),
+    FR("Licence DINOv3 (Meta) et licence FlexGlue (MIT)"),
+    ES("Licencia de DINOv3 (Meta) y licencia de FlexGlue (MIT)"),
+    PT("Licença do DINOv3 (Meta) e licença do FlexGlue (MIT)"),
+    IT("Licenza DINOv3 (Meta) e licenza FlexGlue (MIT)"),
+    NL("DINOv3-licentie (Meta) en FlexGlue-licentie (MIT)"),
+    RU("Лицензия DINOv3 (Meta) и лицензия FlexGlue (MIT)"),
+    TR("DINOv3 Lisansı (Meta) ve FlexGlue Lisansı (MIT)"));
+
+// LEGAL -- human review in every language. Mirrors dense::terms (RoMa v2), which
+// carries the same DINOv3 weights.
+SS_MSG(license_flexglue_terms,
+    EN("FlexGlue uses DINOv3 weights under Meta's custom terms. Review those terms and FlexGlue's MIT license before downloading. Weights are downloaded at runtime and are not bundled. A local checkpoint path is also supported."),
+    JA("FlexGlue は Meta の独自条件に従う DINOv3 重みを使用します。ダウンロード前にその条件と FlexGlue の MIT ライセンスをご確認ください。重みは実行時に取得し、同梱しません。ローカルのチェックポイントも使用できます。"),
+    ZH_HANS("FlexGlue 使用遵循 Meta 自定义条款的 DINOv3 权重。下载前请阅读这些条款及 FlexGlue 的 MIT 许可。权重在运行时下载，不随程序打包。也支持本地检查点路径。"),
+    ZH_HANT("FlexGlue 使用遵循 Meta 自訂條款的 DINOv3 權重。下載前請閱讀這些條款及 FlexGlue 的 MIT 授權。權重在執行時下載，不隨程式打包。也支援本機檢查點路徑。"),
+    KO("FlexGlue는 Meta의 사용자 지정 약관에 따른 DINOv3 가중치를 사용합니다. 다운로드 전에 해당 약관과 FlexGlue MIT 라이선스를 확인하세요. 가중치는 실행 시 다운로드되며 포함되지 않습니다. 로컬 체크포인트 경로도 지원합니다."),
+    DE("FlexGlue verwendet DINOv3-Gewichte unter Metas eigenen Bedingungen. Lesen Sie diese und FlexGlues MIT-Lizenz vor dem Download. Gewichte werden zur Laufzeit geladen und nicht mitgeliefert. Ein lokaler Checkpoint ist ebenfalls möglich."),
+    FR("FlexGlue utilise les poids DINOv3 soumis aux conditions de Meta. Consultez ces conditions et la licence MIT de FlexGlue avant le téléchargement. Les poids sont téléchargés à l'exécution et ne sont pas inclus. Un checkpoint local est aussi accepté."),
+    ES("FlexGlue usa pesos DINOv3 bajo las condiciones propias de Meta. Revise esas condiciones y la licencia MIT de FlexGlue antes de descargar. Los pesos se descargan al ejecutar y no se incluyen. También se acepta un checkpoint local."),
+    PT("FlexGlue usa pesos DINOv3 sob os termos próprios da Meta. Leia esses termos e a licença MIT do FlexGlue antes de baixar. Os pesos são baixados em execução e não são incluídos. Um checkpoint local também é aceito."),
+    IT("FlexGlue usa pesi DINOv3 soggetti alle condizioni di Meta. Leggere queste condizioni e la licenza MIT di FlexGlue prima del download. I pesi si scaricano durante l'esecuzione e non sono inclusi. È supportato anche un checkpoint locale."),
+    NL("FlexGlue gebruikt DINOv3-gewichten onder Meta's eigen voorwaarden. Lees die voorwaarden en FlexGlues MIT-licentie voor het downloaden. Gewichten worden tijdens gebruik gedownload en niet meegeleverd. Een lokaal checkpoint wordt ook ondersteund."),
+    RU("FlexGlue использует веса DINOv3 по особым условиям Meta. Изучите эти условия и лицензию MIT FlexGlue до загрузки. Веса загружаются при работе и не входят в программу. Также поддерживается локальный файл весов."),
+    TR("FlexGlue, Meta'nın özel koşulları altındaki DINOv3 ağırlıklarını kullanır. İndirmeden önce bu koşulları ve FlexGlue MIT lisansını inceleyin. Ağırlıklar çalışma sırasında indirilir ve paketlenmez. Yerel kontrol noktası yolu da desteklenir."));
+
 SS_MSG(matcher_help,
     EN("How descriptors are matched. LightGlue is a learned matcher: it "
        "generally gives a better success rate on hard pairs, at the cost of "
