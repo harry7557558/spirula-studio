@@ -219,10 +219,9 @@ public:
         const flexglue::Model::SelfCacheStats c = model_.selfCacheStats();
         L::diag(L::Tag::Match,
                 "[flexglue] layer-1 self cache: %llu hits, %llu misses, %llu evictions "
-                "(capacity %d); sample repeats: %zu reused, %zu not kept (%.0f MB budget)",
+                "(capacity %d)",
                 (unsigned long long)c.hits, (unsigned long long)c.misses,
-                (unsigned long long)c.evictions, c.capacity, done_hits_, done_refused_,
-                kDoneBudget / 1048576.0);
+                (unsigned long long)c.evictions, c.capacity);
     }
 
     const char* name() const override { return "flexglue"; }
@@ -245,16 +244,6 @@ public:
             const uint32_t i = pairs[k].first, j = pairs[k].second;
             const FeatureSet &a = feats[i], &b = feats[j];
             if (a.count() == 0 || b.count() == 0) continue;
-            // The focal and gyro searches match a sample before verification
-            // matches every pair; the repeat takes the sample's result.
-            const uint64_t key = ((uint64_t)i << 32) | j;
-            if (auto hit = done_.find(key); hit != done_.end()) {
-                done_bytes_ -= hit->second.size() * sizeof(FeatureMatch);
-                out[k - begin] = std::move(hit->second);
-                done_.erase(hit);
-                ++done_hits_;
-                continue;
-            }
             const auto fa = dense(i), fb = dense(j);
             std::vector<float> ka, kb;
             const auto t0 = std::chrono::steady_clock::now();
@@ -273,13 +262,6 @@ public:
                     dist.push_back(1.0f - r.scores0[q]);
                 }
             keepClosest(m, dist, match_.max_num_matches);
-            const size_t bytes = m.size() * sizeof(FeatureMatch);
-            if (done_bytes_ + bytes <= kDoneBudget) {
-                done_[key] = m;
-                done_bytes_ += bytes;
-            } else {
-                ++done_refused_;
-            }
         }
     }
 
@@ -333,11 +315,6 @@ private:
     std::list<uint32_t>     lru_;
     std::unordered_map<uint32_t, std::pair<std::shared_ptr<flexglue::DenseFeatures>,
                                            std::list<uint32_t>::iterator>> cache_;
-    // Pairs held for a repeat: an entry leaves on its first reuse, and once the
-    // budget is spent nothing new is held, so the samples (matched first) stay.
-    static constexpr size_t kDoneBudget = 256ull << 20;
-    std::unordered_map<uint64_t, std::vector<FeatureMatch>> done_;
-    size_t done_bytes_ = 0, done_hits_ = 0, done_refused_ = 0;
     size_t pairs_ = 0, rejected_ = 0, stopped_ = 0, described_ = 0;
     double match_s_ = 0, describe_s_ = 0;
 };

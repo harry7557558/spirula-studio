@@ -1,6 +1,6 @@
-// FlexGlue against the committed reference pairs in tools/flexglue_ref/fixtures
-// (PyTorch, fp32, COLMAP's configuration; README.md there has the format and
-// the tolerance policy, whose fixed bars are used here).
+// FlexGlue against the reference pairs `flexglue_ref.py fixtures` writes to
+// tools/flexglue_ref/fixtures (PyTorch, fp32, COLMAP's configuration; README.md
+// there has the format and the tolerance policy, whose fixed bars are used here).
 //
 //   flexglue_test [--fixtures ROOT] [--pair NAME] [--checkpoint PATH] [--bench N] [--require-model] [--warm-cache]
 //
@@ -8,7 +8,7 @@
 // the readout always runs) and `colmap` (COLMAP's defaults, early stops on).
 // With SS_FLEXGLUE_DUMP=<dir> and one --pair, every stage is written there for
 // tools/flexglue_ref/compare.py, which also applies the torch-vs-torch floors.
-// No checkpoint or no fetched images SKIPS (fails under --require-model);
+// No checkpoint, fixtures or images SKIPS (fails under --require-model);
 // --warm-cache makes the dumped run take the layer-1 self-cache hit path.
 
 #include "flexglue/FlexGlue.h"
@@ -460,7 +460,13 @@ int main(int argc, char** argv) {
     }
     check(nn::sha256_file(ckpt) == flexglue::kCheckpoint.sha256,
           "checkpoint SHA-256 matches the pinned release");
-    // The images are fetched, not committed: tools/flexglue_ref/README.md, "Images".
+    // Neither is committed: tools/flexglue_ref/README.md, "Tiers" and "Images".
+    if (!fs::exists(fs::path(root) / "manifest.json")) {
+        std::printf("%s: no reference fixtures under %s; "
+                    "run uv run tools/flexglue_ref/flexglue_ref.py fixtures\n",
+                    require_model ? "FAIL" : "SKIP", root.c_str());
+        return require_model ? 1 : 0;
+    }
     if (!fs::exists(fs::path(root) / "images" / "berlin1" / "image.png")) {
         std::printf("%s: no fixture images under %s/images; "
                     "run uv run tools/flexglue_ref/fetch_images.py\n",

@@ -13,7 +13,7 @@ against upstream's end-to-end `FlexGlue.match(..., sparse=True)`. With
 --check-onnx it also checks them against the ONNX graphs COLMAP runs.
 
     uv run tools/flexglue_ref/flexglue_ref.py dump --pairs SPEC.json --out DIR
-    uv run tools/flexglue_ref/flexglue_ref.py fixtures      # the committed tier
+    uv run tools/flexglue_ref/flexglue_ref.py fixtures      # the probe tier, flexglue_test's
     uv run tools/flexglue_ref/flexglue_ref.py time --pairs SPEC.json --device cuda
 
 Names, layouts and the two tiers are described in tools/flexglue_ref/README.md.
@@ -56,7 +56,7 @@ GATES = {"colmap": (COLMAP["min_covisibility"], COLMAP["early_stop_decay"]),
 N_LAYERS = 9
 
 PROBES = 4096
-PROBE_MIN_NUMEL = 65536         # smaller tensors are committed whole
+PROBE_MIN_NUMEL = 65536         # smaller tensors are written whole
 
 DESC_STAGES = ("desc_norm", "f4", "f8", "f16", "f32", "head_stem", "head_fine", "head_x",
                "features")

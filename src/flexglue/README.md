@@ -39,8 +39,8 @@ its image directory and `match` needs `--flexglue-images`. Every flag has
 COLMAP's default; `--flexglue-min-covisibility` is the pair filter (0 keeps
 every pair) and `--flexglue-early-stop-decay` how early a clear non-pair stops.
 The dense features of the last `--flexglue-cache` images stay resident (4 MB
-each). A pair the focal or gyro sample matched is not matched again; those
-results are held until reused, within 256 MB.
+each). A pair the focal or gyro sample matched is not matched again
+(`premat` in `src/sfm/Pipeline.cpp`, shared by every matcher).
 
 Layer 1's self block (input projection, self attention, FFN) reads one image
 only, so `match()` keeps its output, 8 MB, for the 64 most recently used live
@@ -54,8 +54,10 @@ It is bit-identical to the uncached path (`flexglue_test`'s self-cache checks;
 reference did (`nostop`, then `colmap`), against the fixed bars of
 `tools/flexglue_ref/README.md`. `SS_FLEXGLUE_DUMP=<dir> flexglue_test --pair
 NAME` writes every stage for `compare.py check`, which also applies the
-torch-vs-torch floors. The fixture images are fetched, not committed: run
-`uv run tools/flexglue_ref/fetch_images.py` first. One sampling path cannot be
+torch-vs-torch floors. Neither the fixtures nor their images are committed:
+`uv run tools/flexglue_ref/flexglue_ref.py fixtures` writes both (it needs torch
+and the checkpoint), and `fetch_images.py` restores the images alone for a
+fixture tree from elsewhere. One sampling path cannot be
 pinned: `f_match` is read at a mean of cell centres, which never reaches the
 outer half-cell, so its border padding is unobservable.
 
