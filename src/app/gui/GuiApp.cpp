@@ -8308,6 +8308,9 @@ void GuiApp::draw_sfm_advanced() {
         ui::help_on_hover(_sfm_job.matcher == 2 ? dmsg::matcher_flexglue_help
                           : learned            ? dmsg::matcher_help
                                                : dmsg::matcher_needs_learned);
+        if (_sfm_job.matcher == 2 &&
+            any_fisheye_or_pano_lens(_sources, _sfm_job.camera_model))
+            ui::TextColoredWrapped(kWarn, dmsg::matcher_flexglue_wide_lens);
         if (learned || _sfm_job.matcher == 2) draw_feature_download();
     }
 

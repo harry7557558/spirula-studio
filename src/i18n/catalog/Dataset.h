@@ -9429,6 +9429,32 @@ SS_MSG(matcher_flexglue_help,
        "daha yavaştır, bu yüzden seçilmiş çiftlere uygundur. İlk kullanımda 570 MB'lık "
        "bir model indirir."));
 
+SS_MSG(matcher_flexglue_wide_lens,
+    EN("FlexGlue is meant for ordinary lenses. This capture has fisheye or panorama "
+       "images, which it may match poorly."),
+    JA("FlexGlue は通常のレンズ向けです。この素材には魚眼またはパノラマの画像があり、"
+       "うまく照合できないことがあります。"),
+    ZH_HANS("FlexGlue 面向普通镜头。这份素材含有鱼眼或全景图像，它可能匹配得不好。"),
+    ZH_HANT("FlexGlue 針對一般鏡頭。這份素材含有魚眼或全景影像，它可能比對得不好。"),
+    KO("FlexGlue 는 일반 렌즈용입니다. 이 촬영본에는 어안 또는 파노라마 이미지가 있어 "
+       "잘 맞추지 못할 수 있습니다."),
+    DE("FlexGlue ist für gewöhnliche Objektive gedacht. Diese Aufnahme enthält "
+       "Fischaugen- oder Panoramabilder, die es womöglich schlecht zuordnet."),
+    FR("FlexGlue est conçu pour des objectifs ordinaires. Cette prise contient des "
+       "images fisheye ou panoramiques, qu'il risque de mal apparier."),
+    ES("FlexGlue está pensado para objetivos normales. Esta toma tiene imágenes de ojo "
+       "de pez o panorámicas, que puede emparejar mal."),
+    PT("O FlexGlue foi feito para lentes comuns. Esta captura tem imagens olho de peixe "
+       "ou panorâmicas, que ele pode emparelhar mal."),
+    IT("FlexGlue è pensato per obiettivi comuni. Questa ripresa contiene immagini "
+       "fisheye o panoramiche, che potrebbe abbinare male."),
+    NL("FlexGlue is bedoeld voor gewone objectieven. Deze opname bevat fisheye- of "
+       "panoramabeelden, die het mogelijk slecht matcht."),
+    RU("FlexGlue рассчитан на обычные объективы. В этой съёмке есть изображения "
+       "«рыбьего глаза» или панорамы — их он может сопоставить плохо."),
+    TR("FlexGlue sıradan objektifler için tasarlanmıştır. Bu çekimde balıkgözü ya da "
+       "panorama görüntüleri var; bunları kötü eşleştirebilir."));
+
 SS_MSG(license_flexglue_title,
     EN("DINOv3 License (Meta) and FlexGlue License (MIT)"),
     JA("DINOv3 ライセンス（Meta）と FlexGlue ライセンス（MIT）"),
