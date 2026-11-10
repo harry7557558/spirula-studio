@@ -314,6 +314,8 @@ static void _engine_step_optim_and_densify(
         SplatStageTimer stage_timer;
         num_added = engine_densify_step(step, max_steps, cfg.densify);
     }
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     loss_dict["num_added"] = (float)num_added;
     if (densify_grows_at(cfg.densify, step, max_steps)) {
@@ -348,6 +350,9 @@ std::map<std::string, float> _engine_train_step_after_setup(
     // happens.
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_viewer_capture_thumbnails(bilagrid_cam_indices);
+
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     if (engine().background.enabled) {
         engine_set_background_step_params(cfg.background.seed,

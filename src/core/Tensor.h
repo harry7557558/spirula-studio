@@ -766,6 +766,11 @@ public:
         _numel = numel;
     }
 
+    void resize_reused(PoolSlot slot, int64_t numel) {
+        _data_ptr = DevicePool::global().acquire_reused<T>(slot, (size_t)numel);
+        _numel = numel;
+    }
+
     // Dynamic-keyed resize for Never-class scratch whose name is built at
     // runtime (prefix + index / suffix). Routes to the pool's side map with an
     // explicit category. See DevicePool::acquire_dynamic.

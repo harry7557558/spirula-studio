@@ -247,6 +247,9 @@ static void _engine_raster_proj_backward(
         if (accum_weight.data_ptr()) {
             engine().fwd.accum_weight = accum_weight;
             engine().fwd.accum_mode = accum_mode;
+        } else {
+            engine().fwd.accum_weight = DeviceVector<float>();
+            engine().fwd.accum_mode = DensifyAccumMode::None;
         }
     } else if (engine().primitive == "3dgut") {
         auto [vw, vs, vviewmats, accum_weight] = rasterize_to_pixels_3dgut_bwd(
@@ -289,6 +292,9 @@ static void _engine_raster_proj_backward(
         if (accum_weight.data_ptr()) {
             engine().fwd.accum_weight = accum_weight;
             engine().fwd.accum_mode = accum_mode;
+        } else {
+            engine().fwd.accum_weight = DeviceVector<float>();
+            engine().fwd.accum_mode = DensifyAccumMode::None;
         }
     } else {
         throw std::runtime_error("engine raster/proj backward: unknown primitive: " + engine().primitive);
