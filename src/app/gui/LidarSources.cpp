@@ -86,6 +86,13 @@ bool GuiApp::read_lidar_input(const std::string& path, LidarInput& in) {
     std::error_code ec;
     in = LidarInput{};
     in.path = in.edit = fs::absolute(path, ec).string();
+    // A trained splat reads as points too, but it holds no scanner position
+    // and keeps its colour in f_dc_*: no view of it can place the photos, and
+    // the Align step would fail only after the whole reconstruction.
+    if (spirula::is_splat_ply(in.path)) {
+        log(format(ldmsg::scan_is_splat, {in.path}));
+        return false;
+    }
     try {
         spirula::cloud::Reader r(in.path);
         if (r.e57())
