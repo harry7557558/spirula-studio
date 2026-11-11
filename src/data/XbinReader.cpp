@@ -1,5 +1,7 @@
 #include "data/XbinReader.h"
 
+#include "external/miniz.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -18,43 +20,51 @@ namespace fs = std::filesystem;
 
 constexpr size_t kBatch = 1 << 18;
 constexpr size_t kChunkHeader = 48;
-constexpr size_t kIndexHeader = 24;
+constexpr size_t kBlockHeader = 24;   // the topic table's and the index's
+constexpr size_t kTrailer = 4;        // every block ends in the CRC-32 of its stored bytes
 constexpr uint64_t kMaxChunk = 1ull << 30;
-// The u16 pair at +4 of the file header and the u16 at +6 of each chunk and of
-// the index header, alike in every capture measured. Any other may lay out the
-// rest differently, so it is refused rather than read.
+// The u16 pair at +4 of the file header and the u16 at +6 of each block, alike
+// in every capture measured. Any other may lay out the rest differently, so it
+// is refused rather than read.
 constexpr uint16_t kFileVersion[2] = {512, 1};
-constexpr uint16_t kChunkTag = 36, kIndexTag = 12;
+constexpr uint16_t kChunkTag = 36, kBlockTag = 12;
+// The u16 at +4 of each block. Not its compression: the topic table and the
+// index are both LZ4 and differ there.
+constexpr uint16_t kTopicsType = 0, kChunkType = 1, kIndexType = 255;
+// The topic table: 64-byte records, a u32 id and the topic's name. Index entry
+// field 1 and the u32 at +40 of each chunk name the topic by that id.
+constexpr uint64_t kTopicsAt = 0x1000;
+constexpr size_t kTopicRecord = 64;
 
-constexpr uint32_t kChannelFiles = 0;
-constexpr uint32_t kChannelImu = 2;
-constexpr uint32_t kChannelLidar = 6;
-constexpr uint32_t kChannelTrajectory = 42;
+constexpr const char* kTopicFiles = "/config_file";
+constexpr const char* kTopicImu = "/imu";
+constexpr const char* kTopicLidar = "/lidar";
+constexpr const char* kTopicTrajectory = "/project_data";
 // 0.99e-4 and 1.01e-4 fit the turns between poses worse.
 constexpr double kGyroRadPerCount = 1e-4;
 // The gap carries the gyro's bias, which the spread takes out as well: the
 // worst gap measured, bias included, was 0.47 deg.
 constexpr double kMaxGyroGap = 2.0 * 3.14159265358979323846 / 180.0;
-// Which channel holds which calibrated camera, by the device code and model of
-// the device message. Nothing the reader parses says which; measured by projecting
-// the sweeps into the photos, the two pinholes told apart by their stereo shift.
-struct CameraChannel {
+// Which topic holds which camera of camera.yaml, by device code and model. No
+// key in the file joins the two: measured by projecting the sweeps into the
+// photos, the two pinholes told apart by their stereo shift.
+struct CameraTopic {
     const char* code;
     const char* model;
-    uint32_t channel;
+    const char* topic;
     const char* name;
     bool spare;   // LCC Studio takes no frame of it: off unless picked
 };
-constexpr CameraChannel kCameraChannels[] = {{"AA", "PortalCam", 28, "camera_0", false},
-                                             {"AA", "PortalCam", 36, "camera_1", false},
-                                             {"AA", "PortalCam", 32, "camera_2", false},
-                                             {"AA", "PortalCam", 40, "camera_3", true}};
+constexpr CameraTopic kCameraTopics[] = {{"AA", "PortalCam", "/camera_left_main/h264", "camera_0", false},
+                                         {"AA", "PortalCam", "/camera_right_main/h264", "camera_1", false},
+                                         {"AA", "PortalCam", "/camera_left_seco/h264", "camera_2", false},
+                                         {"AA", "PortalCam", "/camera_right_seco/h264", "camera_3", true}};
 // The PortalCam's device message is 172 bytes.
 constexpr uint32_t kMaxDeviceMessage = 1 << 16;
 
 // Points this close are the device itself and the hand holding it.
 constexpr double kMinRange = 0.5;
-// Bytes of channel 6 per point, headers included: 18.6 on a 110 s indoor scan.
+// Bytes of /lidar per point, headers included: 18.6 on a 110 s indoor scan.
 constexpr int64_t kBytesPerPoint = 18;
 
 // Each frame is decoded on its own, so it must hold an IDR slice and its own
@@ -177,6 +187,10 @@ void mat4_inverse(const double a[16], double out[16]) {
         r[i * 4 + 3] = -(r[i * 4] * a[3] + r[i * 4 + 1] * a[7] + r[i * 4 + 2] * a[11]);
     r[15] = 1;
     std::memcpy(out, r, sizeof r);
+}
+
+bool crc_matches(const std::vector<uint8_t>& stored, size_t n) {
+    return (uint32_t)mz_crc32(MZ_CRC32_INIT, stored.data(), n) == rd<uint32_t>(stored.data() + n);
 }
 
 // ---- rotations: quaternions x y z w, the order of poses.csv ----
@@ -325,10 +339,11 @@ struct Reader::Impl {
     std::string path;
     std::ifstream f;
     uint64_t file_size = 0;
-    std::map<uint32_t, std::vector<uint64_t>> chunks;   // channel -> chunk offsets
+    std::map<uint32_t, std::string> topics;              // id -> name, from the topic table
+    std::map<uint32_t, std::vector<uint64_t>> chunks;   // topic id -> chunk offsets
     std::map<uint32_t, int64_t> messages, bytes;
-    std::map<uint32_t, std::pair<int64_t, int64_t>> span;   // channel -> first, last time (us)
-    std::map<std::string, std::string> files;           // what channels 0 and 42 carry
+    std::map<uint32_t, std::pair<int64_t, int64_t>> span;   // topic id -> first, last time (us)
+    std::map<std::string, std::string> files;           // what /config_file and /project_data carry
     std::vector<int64_t> pose_t;
     std::vector<Vec3> pose_c;                           // IMU centre in world
     // Its attitude, gyro-filled between the poses: 10 Hz misses a hand's turns.
@@ -337,32 +352,64 @@ struct Reader::Impl {
     double imu_from_lidar[16] = {};
     double lidar_from_cam0[16] = {};
     std::vector<std::array<double, 16>> cam0_from_cam;
-    std::vector<uint32_t> camera_channel;
+    std::vector<uint32_t> camera_topic;
     std::string device_name;
 
-    std::vector<uint8_t> chunk(uint64_t at) {
+    // The id of the topic named `name`, or one no chunk has.
+    uint32_t id_of(const std::string& name) const {
+        for (const auto& [id, n] : topics)
+            if (n == name) return id;
+        return UINT32_MAX;
+    }
+
+    std::vector<uint8_t> chunk(uint64_t at, uint32_t topic) {
         uint8_t h[kChunkHeader];
         if (at > file_size || file_size - at < kChunkHeader) throw std::runtime_error("the file ends inside a chunk header");
         f.clear();
         f.seekg((std::streamoff)at);
         if (!f.read((char*)h, sizeof h)) throw std::runtime_error("the file ends inside a chunk header");
-        if (rd<uint16_t>(h + 4) != 1) throw std::runtime_error("a compressed data chunk, which this does not read");
+        if (rd<uint16_t>(h + 4) != kChunkType)
+            throw std::runtime_error("a block of type " + std::to_string(rd<uint16_t>(h + 4)) +
+                                     " where the index has a data chunk");
         if (rd<uint16_t>(h + 6) != kChunkTag)
             throw std::runtime_error("a chunk header laid out in a way this does not read");
         const uint32_t size = rd<uint32_t>(h + 16);
+        if (rd<uint32_t>(h + 40) != topic) throw std::runtime_error("a chunk of another topic where the index has one");
         if (size > kMaxChunk) throw std::runtime_error("a chunk larger than 1 GB");
-        if (size > file_size - at - kChunkHeader) throw std::runtime_error("the file ends inside a chunk");
-        std::vector<uint8_t> out(size);
-        if (!f.read((char*)out.data(), (std::streamsize)size)) throw std::runtime_error("the file ends inside a chunk");
+        if (size + kTrailer > file_size - at - kChunkHeader) throw std::runtime_error("the file ends inside a chunk");
+        std::vector<uint8_t> out(size + kTrailer);
+        if (!f.read((char*)out.data(), (std::streamsize)out.size())) throw std::runtime_error("the file ends inside a chunk");
+        if (!crc_matches(out, size)) throw std::runtime_error("a damaged chunk: its CRC-32 does not match");
+        out.resize(size);
         return out;
     }
 
-    // Each message of `channel`; `fn` returns false to stop.
-    template <class Fn> void each_message(uint32_t channel, Fn&& fn) {
-        const auto it = chunks.find(channel);
+    // The topic table or the index: a 24-byte header, one LZ4 block, its CRC-32.
+    // `missing` when `at` holds no block of `type`.
+    std::vector<uint8_t> block(uint64_t at, uint16_t type, const std::string& what, const std::string& missing) {
+        uint8_t h[kBlockHeader];
+        f.clear();
+        f.seekg((std::streamoff)at);
+        if (at > file_size || file_size - at < kBlockHeader || !f.read((char*)h, sizeof h) ||
+            rd<uint16_t>(h + 4) != type)
+            throw std::runtime_error(missing);
+        const uint32_t raw = rd<uint32_t>(h + 16), packed = rd<uint32_t>(h + 20);
+        if (raw > kMaxChunk || packed > kMaxChunk) throw std::runtime_error("a " + what + " larger than 1 GB");
+        if (rd<uint16_t>(h + 6) != kBlockTag)
+            throw std::runtime_error("a " + what + " laid out in a way this does not read");
+        if (packed + kTrailer > file_size - at - kBlockHeader) throw std::runtime_error("the file ends inside its " + what);
+        std::vector<uint8_t> z(packed + kTrailer);
+        if (!f.read((char*)z.data(), (std::streamsize)z.size())) throw std::runtime_error("the file ends inside its " + what);
+        if (!crc_matches(z, packed)) throw std::runtime_error("a damaged " + what + ": its CRC-32 does not match");
+        return lz4_block(z.data(), packed, raw);
+    }
+
+    // Each message of topic `id`; `fn` returns false to stop.
+    template <class Fn> void each_message(uint32_t id, Fn&& fn) {
+        const auto it = chunks.find(id);
         if (it == chunks.end()) return;
         for (uint64_t at : it->second) {
-            const std::vector<uint8_t> c = chunk(at);
+            const std::vector<uint8_t> c = chunk(at, id);
             Fields m(c.data(), c.size());
             while (m.next())
                 if (m.field == 1 && m.wire == 2 && !fn(m.data, m.size)) return;
@@ -404,16 +451,17 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
     if (!I.f.read((char*)h, sizeof h) || std::memcmp(h, "XBAG", 4) != 0)
         fail(path, "not an XGRIDS capture");
     const uint64_t first_chunk = rd<uint64_t>(h + 16), index_at = rd<uint64_t>(h + 24);
-    // Before the first chunk: u32 length, a message naming the device, then bytes
-    // this does not read. Read before the index, so that another device is refused
+    // Before the topic table: u32 length, a message naming the device, then bytes
+    // this does not read. Read before the rest, so that another device is refused
     // by name even where the rest of its file is laid out differently.
+    const uint64_t device_end = std::min(first_chunk, kTopicsAt);
     std::string firmware, model, code;
     if (first_chunk > sizeof h) {
         uint8_t n[4];
         if (!I.f.read((char*)n, sizeof n)) fail(path, "the file ends inside its device message");
         if (rd<uint32_t>(n) > kMaxDeviceMessage) fail(path, "a device message larger than 64 KB");
-        if (first_chunk < sizeof h + sizeof n || rd<uint32_t>(n) > first_chunk - sizeof h - sizeof n)
-            fail(path, "its device message runs past the first chunk");
+        if (device_end < sizeof h + sizeof n || rd<uint32_t>(n) > device_end - sizeof h - sizeof n)
+            fail(path, "its device message runs past byte " + std::to_string(device_end));
         std::vector<uint8_t> info(rd<uint32_t>(n));
         if (!I.f.read((char*)info.data(), (std::streamsize)info.size()))
             fail(path, "the file ends inside its device message");
@@ -432,9 +480,9 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
     if (code.empty())
         fail(path, model.empty() ? std::string("the device message names no XGRIDS device")
                                  : "the device message of an XGRIDS " + model + " names no device code");
-    std::vector<const CameraChannel*> layout;
-    for (const CameraChannel& cc : kCameraChannels)
-        if (code == cc.code && model == cc.model) layout.push_back(&cc);
+    std::vector<const CameraTopic*> layout;
+    for (const CameraTopic& ct : kCameraTopics)
+        if (code == ct.code && model == ct.model) layout.push_back(&ct);
     I.device_name = "XGRIDS" + (model.empty() ? "" : " " + model) + " (device code " + code +
                     (firmware.empty() ? "" : ", firmware " + firmware) + ")";
     if (layout.empty()) fail(path, "the camera layout of an " + I.device_name + " is not known");
@@ -443,28 +491,25 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
                        std::to_string(rd<uint16_t>(h + 6)) + " of an " + I.device_name +
                        " is not known");
 
-    uint8_t ih[kIndexHeader];
-    I.f.seekg((std::streamoff)index_at);
-    // Laid out as a chunk header, its compression 0xff for LZ4.
-    if (!I.f.read((char*)ih, sizeof ih) || rd<uint16_t>(ih + 4) != 0xff)
-        fail(path, "no chunk index where the header says (the capture did not finish?)");
-    if (rd<uint16_t>(ih + 6) != kIndexTag) fail(path, "a chunk index laid out in a way this does not read");
-    const uint32_t raw = rd<uint32_t>(ih + 16), packed = rd<uint32_t>(ih + 20);
-    if (raw > kMaxChunk || packed > kMaxChunk) fail(path, "a chunk index larger than 1 GB");
-    if (packed > I.file_size - index_at - kIndexHeader) fail(path, "the file ends inside its index");
-    std::vector<uint8_t> z(packed);
-    if (!I.f.read((char*)z.data(), (std::streamsize)packed)) fail(path, "the file ends inside its index");
     try {
-        const std::vector<uint8_t> index = lz4_block(z.data(), z.size(), raw);
+        const std::vector<uint8_t> table =
+            I.block(kTopicsAt, kTopicsType, "topic table", "no topic table before the first chunk");
+        if (table.size() % kTopicRecord) throw std::runtime_error("a topic table laid out in a way this does not read");
+        for (size_t at = 0; at < table.size(); at += kTopicRecord) {
+            const char* name = (const char*)table.data() + at + 4;
+            I.topics[rd<uint32_t>(&table[at])] = std::string(name, std::find(name, name + kTopicRecord - 4, '\0'));
+        }
+
+        const std::vector<uint8_t> index = I.block(index_at, kIndexType, "chunk index",
+                                                   "no chunk index where the header says (the capture did not finish?)");
         Fields top(index.data(), index.size());
         while (top.next()) {
             if (top.field != 1 || top.wire != 2) continue;
-            uint32_t channel = 0;
-            int64_t count = 0, size = 0, first = 0, last = 0;
+            int64_t id = 0, count = 0, size = 0, first = 0, last = 0;
             std::vector<uint64_t> offsets;
             Fields e(top.data, top.size);
             while (e.next()) {
-                if (e.field == 1 && e.wire == 0) channel = (uint32_t)e.value;
+                if (e.field == 1 && e.wire == 0) id = zigzag(e.value);
                 else if (e.field == 2 && e.wire == 0) count = (int64_t)e.value;
                 else if (e.field == 3 && e.wire == 0) size = (int64_t)e.value;
                 else if (e.field == 4 && e.wire == 0) first = zigzag(e.value);
@@ -475,13 +520,17 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
                         offsets.push_back(packed_offsets.varint());
                 }
             }
-            I.chunks[channel] = std::move(offsets);
-            I.messages[channel] = count;
-            I.bytes[channel] = size;
-            I.span[channel] = {first, last};
+            // Field 1 is the topic's id, zigzag like the times: twice the id as read.
+            if (id < 0 || !I.topics.count((uint32_t)id))
+                throw std::runtime_error("an index entry for topic " + std::to_string(id) +
+                                         ", which its topic table does not name");
+            I.chunks[(uint32_t)id] = std::move(offsets);
+            I.messages[(uint32_t)id] = count;
+            I.bytes[(uint32_t)id] = size;
+            I.span[(uint32_t)id] = {first, last};
         }
-        for (uint32_t ch : {kChannelFiles, kChannelTrajectory})
-            I.each_message(ch, [&](const uint8_t* d, size_t n) {
+        for (const char* topic : {kTopicFiles, kTopicTrajectory})
+            I.each_message(I.id_of(topic), [&](const uint8_t* d, size_t n) {
                 std::string name, body;
                 Fields m(d, n);
                 while (m.next()) {
@@ -497,10 +546,10 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
     }
 
     for (const auto& entry : I.chunks) {
-        const uint32_t ch = entry.first;
-        bool known = ch == kChannelFiles || ch == kChannelImu || ch == kChannelLidar || ch == kChannelTrajectory;
-        for (const CameraChannel* cc : layout) known = known || ch == cc->channel;
-        if (!known) fail(path, "channel " + std::to_string(ch) + " is not known for an " + I.device_name);
+        const std::string& topic = I.topics[entry.first];
+        bool known = topic == kTopicFiles || topic == kTopicImu || topic == kTopicLidar || topic == kTopicTrajectory;
+        for (const CameraTopic* ct : layout) known = known || topic == ct->topic;
+        if (!known) fail(path, "topic " + topic + " is not known for an " + I.device_name);
     }
 
     auto file = [&](const char* name) -> const std::string& {
@@ -532,10 +581,10 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
             const size_t rest = s.find_first_not_of(' ', colon + 1);
             const std::string key = s.substr(0, colon);
             if ((rest == std::string::npos || s[rest] == '#' || s[rest] == '{') &&
-                std::none_of(layout.begin(), layout.end(), [&](const CameraChannel* cc) { return key == cc->name; }))
+                std::none_of(layout.begin(), layout.end(), [&](const CameraTopic* ct) { return key == ct->name; }))
                 fail(path, "camera.yaml calibrates " + key + ", which an " + I.device_name + " does not have");
         }
-        for (const CameraChannel* cc : layout) {
+        for (const CameraTopic* cc : layout) {
             size_t from = l.size(), to = l.size();
             for (size_t i = 0; i < l.size(); i++) {
                 if (from == l.size() && l[i] == std::string(cc->name) + ":") from = i + 1;
@@ -545,9 +594,10 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
                 }
             }
             if (from == l.size()) fail(path, std::string("camera.yaml has no ") + cc->name);
-            if (!I.chunks.count(cc->channel))
-                fail(path, std::string("no photographs of ") + cc->name + " in channel " +
-                               std::to_string(cc->channel) + ", where an " + I.device_name + " has them");
+            const uint32_t id = I.id_of(cc->topic);
+            if (!I.chunks.count(id))
+                fail(path, std::string("no photographs of ") + cc->name + " in " + cc->topic + ", where an " +
+                               I.device_name + " has them");
             Camera c;
             c.name = cc->name;
             c.spare = cc->spare;
@@ -564,13 +614,13 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
                 fail(path, cc->name + std::string(": incomplete calibration"));
             std::copy(K.begin(), K.end(), c.params);
             std::copy(D.begin(), D.end(), c.params + 4);
-            c.frames = I.messages[cc->channel];
-            const auto [first, last] = I.span[cc->channel];
+            c.frames = I.messages[id];
+            const auto [first, last] = I.span[id];
             if (first > 0 && last > first) c.seconds = (double)(last - first) * 1e-6;
             std::array<double, 16> T;
             std::copy(pose.begin(), pose.end(), T.begin());
             I.cam0_from_cam.push_back(T);
-            I.camera_channel.push_back(cc->channel);
+            I.camera_topic.push_back(id);
             _cameras.push_back(c);
         }
     }
@@ -595,13 +645,13 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
         }
         if (I.pose_t.size() < 2) fail(path, "poses.csv holds no trajectory");
     }
-    // Channel 2: header field 1 (its field 2 the time), accelerometer 2-4,
-    // gyro 5-7, in the IMU frame of poses.csv. A channel this cannot read
-    // leaves the poses alone, as for no channel.
+    // /imu: header field 1 (its field 2 the time), accelerometer 2-4, gyro 5-7,
+    // in the IMU frame of poses.csv. A topic this cannot read leaves the poses
+    // alone, as for none.
     std::vector<int64_t> gyro_t;
     std::vector<Vec3> gyro;
     try {
-        I.each_message(kChannelImu, [&](const uint8_t* d, size_t n) {
+        I.each_message(I.id_of(kTopicImu), [&](const uint8_t* d, size_t n) {
             int64_t t = 0, v[8] = {};
             Fields m(d, n);
             while (m.next()) {
@@ -629,12 +679,12 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
 Reader::~Reader() = default;
 
 int64_t Reader::sweeps() const {
-    const auto it = _impl->messages.find(kChannelLidar);
+    const auto it = _impl->messages.find(_impl->id_of(kTopicLidar));
     return it == _impl->messages.end() ? 0 : it->second;
 }
 
 int64_t Reader::points_estimate() const {
-    const auto it = _impl->bytes.find(kChannelLidar);
+    const auto it = _impl->bytes.find(_impl->id_of(kTopicLidar));
     return it == _impl->bytes.end() ? 0 : it->second / kBytesPerPoint;
 }
 
@@ -646,7 +696,7 @@ bool Reader::read_points(const std::function<void(const e57::Point*, size_t)>& s
     batch.reserve(kBatch);
     bool stopped = false;
     try {
-        I.each_message(kChannelLidar, [&](const uint8_t* d, size_t n) {
+        I.each_message(I.id_of(kTopicLidar), [&](const uint8_t* d, size_t n) {
             if (cancel && cancel->load()) {
                 stopped = true;
                 return false;
@@ -714,7 +764,7 @@ void Reader::read_frames(size_t cam, const std::function<bool(const Frame&)>& si
     if (cam >= _cameras.size()) return;
     const Camera& c = _cameras[cam];
     try {
-        _impl->each_message(_impl->camera_channel[cam], [&](const uint8_t* d, size_t n) {
+        _impl->each_message(_impl->camera_topic[cam], [&](const uint8_t* d, size_t n) {
             Frame fr;
             int64_t width = 0, height = 0;
             Fields m(d, n);

@@ -65,6 +65,23 @@ Bytes lz4_literals(const Bytes& raw) {
     return out;
 }
 
+// CRC-32 bit by bit, apart from the reader's table.
+uint32_t crc32(const Bytes& b, size_t from, size_t n) {
+    uint32_t c = 0xffffffffu;
+    for (size_t i = from; i < from + n; i++) {
+        c ^= b[i];
+        for (int k = 0; k < 8; k++) c = c & 1 ? (c >> 1) ^ 0xedb88320u : c >> 1;
+    }
+    return ~c;
+}
+
+// The topics of a PortalCam's table that the test writes, by id: half the channel.
+const std::map<uint32_t, std::string> kTopics = {
+    {0, "/config_file"},          {1, "/imu"},           {3, "/lidar"},
+    {14, "/camera_left_main/h264"}, {16, "/camera_left_seco/h264"}, {18, "/camera_right_main/h264"},
+    {20, "/camera_right_seco/h264"}, {21, "/project_data"}, {22, "/raw_ntrip_log"}};
+constexpr uint64_t kTopicsAt = 0x1000;
+
 Bytes file_message(const std::string& name, const std::string& body) {
     Bytes m;
     field(m, 2, text(name));
@@ -134,14 +151,15 @@ std::vector<Bytes> gyro_messages(double fast, double slow) {
 
 // A capture's device and the faults written into it; the defaults are a PortalCam's.
 struct Layout {
-    std::string code = "AA";     // "" writes no device message
+    std::string code = "AA";     // "" writes an empty device message
     std::string model = "PortalCam";
-    uint32_t extra_channel = 0;
+    uint32_t extra_channel = 0;                    // index field 1, twice the topic id
     uint32_t missing_channel = 0;                  // a camera channel left out
+    bool seco_swapped = false;                     // the table names the two pinhole topics the other way
     std::string extra_yaml;
     std::string missing_section;                   // a camera.yaml section left out
     int64_t frame_width = 40, frame_height = 30;   // 0 leaves the field out
-    uint32_t device_overrun = 0;                   // bytes the device length claims past its message
+    uint32_t device_overrun = 0;                   // bytes the device length claims past the topic table
     bool device_truncated = false;                 // its message ends inside a field
     bool index_lost = false;                       // the header's index offset is 0
     bool code_written = true;                      // field 7 of the device message
@@ -196,19 +214,41 @@ Bytes capture_bytes(const char* poses, const std::vector<Bytes>& imu, const Layo
     put<uint64_t>(file, 1000000);
     put<uint64_t>(file, 0);   // the first chunk's offset, patched below
     put<uint64_t>(file, 0);   // the index offset, patched below
-    if (!layout.code.empty()) {
+    {
         Bytes device;
-        field(device, 1, text("X000000000"));
-        field(device, 2, text("V3.2.5"));
-        field(device, 3, text("V3.2.5-20260402.131505"));
-        field(device, 6, text(layout.model));
-        if (layout.code_written) field(device, 7, text(layout.code));
-        field(device, 8, text("rs_airy"));
+        if (!layout.code.empty()) field(device, 1, text("X000000000"));
+        if (!layout.code.empty()) {
+            field(device, 2, text("V3.2.5"));
+            field(device, 3, text("V3.2.5-20260402.131505"));
+            field(device, 6, text(layout.model));
+            if (layout.code_written) field(device, 7, text(layout.code));
+            field(device, 8, text("rs_airy"));
+        }
         if (layout.device_truncated) device.insert(device.end(), {0x0a, 0x05, 'A'});
-        put<uint32_t>(file, (uint32_t)device.size() + layout.device_overrun);
+        const uint32_t room = (uint32_t)kTopicsAt - 36;
+        put<uint32_t>(file, layout.device_overrun ? room + layout.device_overrun : (uint32_t)device.size());
         file.insert(file.end(), device.begin(), device.end());
-        // A real capture has 4311 bytes here that are no protobuf.
-        file.insert(file.end(), 16, 0xbb);
+        // A real capture has bytes here that are no protobuf, up to the topic table.
+        file.resize(kTopicsAt, 0xbb);
+    }
+    {
+        Bytes table;
+        for (const auto& [id, topic] : kTopics) {
+            std::string name = topic;
+            if (layout.seco_swapped && (id == 16 || id == 20)) name = kTopics.at(36 - id);
+            put<uint32_t>(table, id);
+            name.resize(60, '\0');
+            table.insert(table.end(), name.begin(), name.end());
+        }
+        const Bytes packed = lz4_literals(table);
+        put<uint32_t>(file, (uint32_t)(packed.size() + 28));
+        put<uint16_t>(file, 0);
+        put<uint16_t>(file, 12);
+        put<uint64_t>(file, 1000000);
+        put<uint32_t>(file, (uint32_t)table.size());
+        put<uint32_t>(file, (uint32_t)packed.size());
+        file.insert(file.end(), packed.begin(), packed.end());
+        put<uint32_t>(file, crc32(file, file.size() - packed.size(), packed.size()));
     }
     const uint64_t first_chunk = file.size();
     std::memcpy(&file[16], layout.first_chunk ? &layout.first_chunk : &first_chunk, 8);
@@ -225,9 +265,10 @@ Bytes capture_bytes(const char* poses, const std::vector<Bytes>& imu, const Layo
         put<uint32_t>(file, (uint32_t)messages.size());
         put<uint64_t>(file, 1000000);
         put<uint64_t>(file, 2000000);
-        put<uint32_t>(file, 0);
+        put<uint32_t>(file, ch / 2);
         put<uint32_t>(file, (uint32_t)payload.size());
         file.insert(file.end(), payload.begin(), payload.end());
+        put<uint32_t>(file, crc32(payload, 0, payload.size()));
         Bytes entry, offsets;
         if (ch) field(entry, 1, ch);
         field(entry, 2, messages.size());
@@ -251,6 +292,7 @@ Bytes capture_bytes(const char* poses, const std::vector<Bytes>& imu, const Layo
     put<uint32_t>(file, (uint32_t)index.size());
     put<uint32_t>(file, (uint32_t)packed.size());
     file.insert(file.end(), packed.begin(), packed.end());
+    put<uint32_t>(file, crc32(packed, 0, packed.size()));
     if (layout.cut_at) file.resize(layout.cut_at);
     return file;
 }
@@ -311,6 +353,15 @@ void check_capture(const fs::path& dir, const fs::path& path) {
     check(frames.size() == 1 && frames[0].time_us == 1250032 && frames[0].h264.size() == 16 &&
               frames[0].h264[15] == 32,
           "camera_2 is channel 32");
+    {
+        Layout swapped;
+        swapped.seco_swapped = true;
+        spirula::xbin::Reader s(write_capture(dir / "swapped", kPoses, {}, swapped).string());
+        frames.clear();
+        s.read_frames(2, [&](const spirula::xbin::Frame& f) { frames.push_back(f); return true; });
+        check(frames.size() == 1 && frames[0].h264.size() == 16 && frames[0].h264[15] == 40,
+              "a camera is found by its topic's name, not by its channel");
+    }
 
     spirula::cloud::Reader cr(path.string());
     check(cr.info().format == spirula::cloud::Format::Xbin && cr.xbin() && !cr.info().has_color &&
@@ -400,10 +451,10 @@ void check_refusals(const fs::path& dir) {
     check(refusal(write_capture(dir / "anonymous", kPoses, {}, none)).find("names no XGRIDS device") != std::string::npos,
           "a header naming no device is refused");
     Layout overrun;
-    overrun.device_overrun = 17;   // one byte more than the padding holds
-    check(refusal(write_capture(dir / "overrun", kPoses, {}, overrun)).find("runs past the first chunk") !=
+    overrun.device_overrun = 1;
+    check(refusal(write_capture(dir / "overrun", kPoses, {}, overrun)).find("runs past byte 4096") !=
               std::string::npos,
-          "a device length that runs into the first chunk is refused");
+          "a device length that runs into the topic table is refused");
     Layout truncated;
     truncated.device_truncated = true;
     check(refusal(write_capture(dir / "truncated", kPoses, {}, truncated)).find("its device message: ") !=
@@ -419,8 +470,13 @@ void check_refusals(const fs::path& dir) {
           "a header with a model and no code names the model");
     Layout extra;
     extra.extra_channel = 44;
-    check(refusal(write_capture(dir / "extra", kPoses, {}, extra)).find("channel 44") != std::string::npos,
-          "a channel the device does not have is refused");
+    check(refusal(write_capture(dir / "extra", kPoses, {}, extra)).find("topic /raw_ntrip_log is not known") !=
+              std::string::npos,
+          "a topic the reader does not read is refused, by name");
+    extra.extra_channel = 2 * 29;
+    check(refusal(write_capture(dir / "unnamed", kPoses, {}, extra)).find("index entry for topic 29") !=
+              std::string::npos,
+          "an index entry for a topic the table does not name is refused");
     Layout fifth;
     bool all_refused = true;
     for (const char* section : {"camera_4:\n  camera_model: kb4\n", "camera_4: # spare\n", "camera_4: {}\n"}) {
@@ -451,7 +507,7 @@ void check_refusals(const fs::path& dir) {
     check(cut_refused, "a file that ends inside its device message is refused");
     Layout tiny;
     tiny.first_chunk = 34;
-    check(refusal(write_capture(dir / "tiny", kPoses, {}, tiny)).find("runs past the first chunk") != std::string::npos,
+    check(refusal(write_capture(dir / "tiny", kPoses, {}, tiny)).find("runs past byte 34") != std::string::npos,
           "a first chunk too close to the header for a device length is refused");
     Layout huge;
     huge.first_chunk = 1 << 20;
@@ -473,7 +529,7 @@ void check_refusals(const fs::path& dir) {
     Layout no_photos;
     no_photos.missing_channel = 40;
     check(refusal(write_capture(dir / "no_photos", kPoses, {}, no_photos))
-                  .find("no photographs of camera_3 in channel 40") != std::string::npos,
+                  .find("no photographs of camera_3 in /camera_right_seco/h264") != std::string::npos,
           "a camera without its photographs is refused");
     Layout no_section;
     no_section.missing_section = "camera_3";
@@ -499,6 +555,16 @@ void check_refusals(const fs::path& dir) {
           "a chunk header laid out otherwise is refused");
     check(patched("index_tag", index_at + 6, 13).find("chunk index laid out") != std::string::npos,
           "an index header laid out otherwise is refused");
+    check(patched("chunk_type", first_chunk + 4, 0).find("a block of type 0 where the index has a data chunk") !=
+              std::string::npos,
+          "a block of another type where a chunk should be is refused");
+    check(patched("chunk_topic", first_chunk + 40, 1).find("a chunk of another topic") != std::string::npos,
+          "a chunk of another topic than its index entry is refused");
+    check(patched("chunk_crc", first_chunk + 48, 0xffff).find("a damaged chunk") != std::string::npos,
+          "a chunk whose CRC-32 does not match is refused");
+    check(patched("topics_type", kTopicsAt + 4, 1).find("no topic table before the first chunk") !=
+              std::string::npos,
+          "a capture without its topic table is refused");
     Layout predicted;
     predicted.frame_predicted = true;
     check(refusal(write_capture(dir / "predicted", kPoses, {}, predicted)).find("camera_3 of an XGRIDS PortalCam") !=
@@ -545,15 +611,24 @@ void check_corruption(const fs::path& dir) {
         return false;
     };
     check(attempt(good), "the capture the corruption starts from reads");
-    for (size_t n = 0; n < good.size(); n++) attempt(Bytes(good.begin(), good.begin() + (std::ptrdiff_t)n));
+    // The bytes between the device message and the topic table, which nothing
+    // reads: one cut there stands for all of them.
+    uint32_t device = 0;
+    std::memcpy(&device, &good[32], 4);
+    const size_t gap_from = 36 + device + 1;
+    auto in_gap = [&](size_t i) { return i >= gap_from && i < kTopicsAt; };
+    for (size_t n = 0; n < good.size(); n++)
+        if (!in_gap(n)) attempt(Bytes(good.begin(), good.begin() + (std::ptrdiff_t)n));
     for (size_t i = 0; i < good.size(); i++)
         for (uint8_t v : {(uint8_t)0, (uint8_t)0xff, (uint8_t)(good[i] + 1), (uint8_t)(good[i] - 1)}) {
+            if (in_gap(i)) continue;
             Bytes b = good;
             b[i] = v;
             attempt(b);
         }
+    std::printf("  %d cut or corrupted copies\n", cases);
     if (unnamed) std::printf("  %d of %d, e.g. %s\n", unnamed, cases, example.c_str());
-    check(unnamed == 0, "a cut or corrupted capture reads or is refused by its path, every byte");
+    check(unnamed == 0, "a cut or corrupted capture reads or is refused by its path, every byte it reads");
 }
 
 int run() {

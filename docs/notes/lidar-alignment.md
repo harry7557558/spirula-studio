@@ -154,7 +154,7 @@ taken for it. Every case above was exercised on the FJD workspace
   calibration and the H.264 frames of its four cameras, in one container
   (`data/XbinReader.h`). The points read as a scan, each placed by the
   trajectory at its own time: the 10 Hz poses for position, and for attitude the
-  poses with the 200 Hz gyro (channel 2, 1e-4 rad/s per count) turning between
+  poses with the 200 Hz gyro (`/imu`, 1e-4 rad/s per count) turning between
   them, its gap to the next pose spread over the interval. The spread also
   takes out the gyro's bias: subtracting `Bg` of `imu.yaml` changed nothing.
   Against LCC Studio's 200 Hz trajectory of a 975 s capture, the rotation
@@ -163,7 +163,7 @@ taken for it. Every case above was exercised on the FJD workspace
   voxels than with interpolation, and the camera poses at the frames' times
   differ from the interpolated ones by 0.17 deg (median), 0.42 deg at the 90th
   percentile. An interval the gyro does not cover, or whose gap exceeds 2 deg,
-  keeps the interpolation, as does a capture without a readable channel 2. The
+  keeps the interpolation, as does a capture without a readable `/imu`. The
   photographs are extracted like an E57's (`app/XbinAnchors.h`: ffmpeg decodes
   each camera's frames, which are all intra-coded), with poses from the same trajectory and
   their own lenses -- two `OPENCV_FISHEYE`, two `OPENCV` -- so "Use the
@@ -178,18 +178,23 @@ taken for it. Every case above was exercised on the FJD workspace
   deskewed, gave a sharper map (occupied 5 cm voxels 137k) than KISS-ICP on the
   raw sweeps (266k, 29 cm from the device's path), and the photographs'
   colours agree across frames under `inverse(extrinsic_camera_lidar)`, not under
-  the file as written. The channel numbers and the field layout are measured,
-  not documented. The device message after the file header names the device
-  (model, a device code -- `AA` on the PortalCam -- and firmware), but
-  nothing the reader parses says which channel holds which camera, so it
-  keeps a measured layout for each device code and model, the PortalCam's
-  alone so far. Its firmware is not checked: another firmware of the same
-  device is read with the same layout.
+  the file as written. The field layout is measured, not documented. The
+  device message after the file header names the device (model, a device
+  code -- `AA` on the PortalCam -- and firmware). A table at byte 4096 names
+  each topic (`/imu`, `/lidar`, `/camera_left_main/h264` ...), and the index
+  and each chunk header name their topic by its id, so the reader takes each
+  stream by name. No key in the file joins a camera topic to its
+  `camera.yaml` section, so the reader keeps a measured table for each device
+  code and model, the PortalCam's alone so far. Its firmware is not checked:
+  another firmware of the same device is read with the same table. Every
+  block ends in the CRC-32 of its stored bytes, which the reader checks.
   When the file opens, the reader refuses a device message that names no
-  device or a device that was not measured, an index channel the device does
-  not have, and a `camera.yaml` section the device does not have. When the
-  photographs are extracted, it refuses a frame whose size is not its
-  calibration's. These refusals name the device as far as the message does.
+  device or a device that was not measured, a topic the device does not
+  have, and a `camera.yaml` section the device does not have. A damaged block
+  is refused when it is read, except in `/imu`, which then leaves the poses
+  interpolated. When the photographs are extracted, it refuses a frame whose
+  size is not its calibration's. These refusals name the device as far as the
+  message does.
 
   The frames are named by their frame counter (`000123.jpg`), which all four
   cameras share: one instant has one name in each camera folder, at most
