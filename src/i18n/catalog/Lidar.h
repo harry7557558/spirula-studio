@@ -1273,25 +1273,32 @@ SS_MSG(scan_photos_place_only,
     TR("Çekim fotoğraflarını yalnızca hizalama için kullan"));
 
 SS_MSG(scan_photos_place_only_help,
-    EN("Capture photos join reconstruction and put your own photos in scan frame. Training then "
-       "drops capture photos. It uses only your own photos and scan points."),
-    JA("キャプチャの写真は再構成に加わり、あなたの写真をスキャンの座標系に置きます。その後、学習では"
-       "キャプチャの写真を外し、あなたの写真とスキャンの点だけを使います。"),
-    ZH_HANS("采集的照片参与重建，把您自己的照片放进扫描的坐标系。之后训练去掉采集的照片，只使用您自己的"
-            "照片和扫描的点。"),
-    ZH_HANT("擷取的照片參與重建，把您自己的照片放進掃描的座標系。之後訓練去掉擷取的照片，只使用您自己的"
-            "照片和掃描的點。"),
-    KO("캡처 사진은 재구성에 참여해 직접 찍은 사진을 스캔 좌표계에 놓습니다. 그 뒤 학습은 캡처 사진을 "
-       "빼고 직접 찍은 사진과 스캔의 점만 씁니다."),
-    DE("Die Fotos der Aufnahme bringen Ihre Fotos in das Bezugssystem des Scans. Das Training lässt sie danach weg und nutzt nur Ihre Fotos und die Scanpunkte."),
-    FR("Les photos de la capture placent vos photos dans le repère du scan. L'entraînement les retire ensuite et n'utilise que vos photos et les points du scan."),
-    ES("Las fotos de la captura colocan sus fotos en el marco del escaneo. Después, el entrenamiento las quita y usa solo sus fotos y los puntos del escaneo."),
-    PT("As fotos da captura colocam as suas fotos no referencial da varredura. Depois o treino retira-as e usa só as suas fotos e os pontos da varredura."),
-    IT("Le foto dell'acquisizione mettono le tue foto nel sistema della scansione. Poi l'addestramento le toglie e usa solo le tue foto e i punti della scansione."),
-    NL("De foto's van de opname plaatsen uw foto's in het assenstelsel van de scan. Daarna laat de training ze weg en gebruikt alleen uw foto's en de scanpunten."),
-    RU("Фото съёмки участвуют в реконструкции и ставят ваши собственные фото в систему координат "
-       "скана. Затем обучение убирает их и использует только ваши фото и точки скана."),
-    TR("Çekim fotoğrafları sizin fotoğraflarınızı tarama sistemine yerleştirir. Sonra eğitim onları çıkarır ve yalnızca sizin fotoğraflarınızla tarama noktalarını kullanır."));
+    EN("Capture photos place your own photos in the scan, then training drops them. Only those near "
+       "your own photos help, so a lower camera rate saves time."),
+    JA("キャプチャの写真はあなたの写真をスキャンに合わせ、その後の学習では外されます。"
+       "あなたの写真の近くの写真だけが役立つので、レートを下げると時間を節約できます。"),
+    ZH_HANS("采集的照片把您自己的照片放进扫描，之后训练会去掉它们。只有靠近您照片的采集照片有用，"
+            "所以降低帧率可以节省时间。"),
+    ZH_HANT("擷取的照片把您自己的照片放進掃描，之後訓練會去掉它們。只有靠近您照片的擷取照片有用，"
+            "所以降低幀率可以節省時間。"),
+    KO("캡처 사진은 직접 찍은 사진을 스캔에 맞추고, 그 뒤 학습에서는 빠집니다. 직접 찍은 사진 근처의 "
+       "사진만 도움이 되므로 비율을 낮추면 시간이 줄어듭니다."),
+    DE("Die Fotos der Aufnahme bringen Ihre Fotos in den Scan, das Training lässt sie danach weg. Nur die "
+       "nahe Ihren Fotos helfen, eine niedrigere Rate spart also Zeit."),
+    FR("Les photos de la capture placent vos photos dans le scan, puis l'entraînement les retire. Seules "
+       "celles proches de vos photos aident : un débit plus bas fait gagner du temps."),
+    ES("Las fotos de la captura colocan sus fotos en el escaneo y luego el entrenamiento las quita. Solo "
+       "ayudan las cercanas a sus fotos, así que una tasa menor ahorra tiempo."),
+    PT("As fotos da captura colocam as suas fotos na varredura e depois o treino retira-as. Só ajudam as "
+       "próximas das suas fotos, por isso uma taxa menor poupa tempo."),
+    IT("Le foto dell'acquisizione allineano le tue foto alla scansione, poi l'addestramento le toglie. "
+       "Servono solo quelle vicine alle tue: meno foto al secondo, meno tempo."),
+    NL("De foto's van de opname plaatsen uw foto's in de scan, daarna laat de training ze weg. Alleen "
+       "die bij uw foto's helpen, dus een lagere rate spaart tijd."),
+    RU("Фото съёмки ставят ваши фото в скан, затем обучение их убирает. Помогают только фото рядом с "
+       "вашими, поэтому меньшая частота экономит время."),
+    TR("Çekim fotoğrafları fotoğraflarınızı taramaya yerleştirir, eğitim sonra onları çıkarır. "
+       "Yalnız sizinkilere yakın olanlar işe yarar; düşük hız zaman kazandırır."));
 
 SS_MSG(capture_camera_fps_help,
     EN("Photos per second to take from camera. Camera records {0}. Lower rate gives fewer photos and "
@@ -1473,34 +1480,47 @@ SS_MSG(scanner_poses_used,
        "korurlar ve yeniden oluşturma çalışmaz"));
 
 SS_MSG(scan_in_frame,
-    EN("Cameras already line up with scan"),
-    JA("カメラはすでにスキャンと位置が合っている"),
-    ZH_HANS("相机已与扫描对齐"),
-    ZH_HANT("相機已與掃描對齊"),
-    KO("카메라가 이미 스캔과 맞춰져 있음"),
-    DE("Die Kameras passen schon zum Scan"),
-    FR("Les caméras sont déjà alignées sur le scan"),
-    ES("Las cámaras ya están alineadas con el escaneo"),
-    PT("As câmeras já estão alinhadas com a varredura"),
-    IT("Le fotocamere sono già allineate alla scansione"),
-    NL("De camera's staan al gelijk met de scan"),
-    RU("Камеры уже совмещены со сканом"),
-    TR("Kameralar taramayla zaten hizalı"));
+    EN("All cameras are scan-native (placed by the scanner)"),
+    JA("すべてのカメラはスキャナーが配置したもの"),
+    ZH_HANS("所有相机都已由扫描仪定位"),
+    ZH_HANT("所有相機都已由掃描儀定位"),
+    KO("모든 카메라를 스캐너가 이미 배치함"),
+    DE("Alle Kameras stammen aus dem Scan (vom Scanner platziert)"),
+    FR("Toutes les caméras viennent du scan (placées par le scanner)"),
+    ES("Todas las cámaras vienen del escaneo (colocadas por el escáner)"),
+    PT("Todas as câmeras vêm da varredura (posicionadas pelo scanner)"),
+    IT("Tutte le fotocamere vengono dalla scansione (posizionate dallo scanner)"),
+    NL("Alle camera's komen uit de scan (door de scanner geplaatst)"),
+    RU("Все камеры из скана (расставлены сканером)"),
+    TR("Tüm kameralar taramadan gelir (tarayıcı yerleştirdi)"));
 
 SS_MSG(scan_in_frame_help,
-    EN("For an export whose cameras the scanner's software placed, such as an XGRIDS one: nothing is moved, the scan only adds seed points, depth and normals."),
-    JA("XGRIDS のエクスポートのように、スキャナーのソフトウェアがカメラを配置したものに使います。\n何も動かさず、スキャンは初期点、深度、法線を加えるだけです。"),
-    ZH_HANS("用于相机由扫描仪软件定位的导出数据，例如 XGRIDS 的导出：不移动任何东西，扫描只添加初始点、深度和法线。"),
-    ZH_HANT("用於相機由掃描儀軟體定位的匯出資料，例如 XGRIDS 的匯出：不移動任何東西，掃描只加入初始點、深度和法線。"),
-    KO("XGRIDS 내보내기처럼 스캐너 소프트웨어가 카메라를 배치한 내보내기용입니다.\n아무것도 옮기지 않고, 스캔은 초기 점, 깊이, 법선만 더합니다."),
-    DE("Für vom Scanner platzierte Kameras, etwa XGRIDS: Der Scan fügt nur Startpunkte, Tiefe und Normalen hinzu. Nichts wird verschoben."),
-    FR("Pour des caméras placées par le scanner, comme XGRIDS : le scan ajoute points initiaux, profondeur et normales sans rien déplacer."),
-    ES("Para una exportación cuyas cámaras situó el software del escáner, como una de XGRIDS: no se mueve nada, el escaneo solo añade puntos iniciales, profundidad y normales."),
-    PT("Para uma exportação cujas câmeras o software do scanner posicionou, como uma da XGRIDS: nada é movido, a varredura só acrescenta pontos iniciais, profundidade e normais."),
-    IT("Per camere posizionate dal software dello scanner, come XGRIDS: aggiunge punti iniziali, profondità e normali senza spostare nulla."),
-    NL("Voor camera’s geplaatst door scannersoftware, zoals XGRIDS: de scan voegt beginpunten, diepte en normalen toe zonder iets te verplaatsen."),
-    RU("Для экспорта, камеры которого расставило ПО сканера, например экспорта XGRIDS: ничего не сдвигается, скан лишь добавляет начальные точки, глубину и нормали."),
-    TR("XGRIDS gibi kameraları tarayıcı yazılımınca yerleştirilmiş veriler için: tarama nokta, derinlik ve normal ekler; hiçbir şey taşınmaz."));
+    EN("For cameras the scanner's software placed, as in an export of scan and photos: nothing is "
+       "moved, the scan only adds points, depth and normals. Leave off for your own photos."),
+    JA("スキャナーのソフトウェアが配置したカメラ用です。何も動かさず、スキャンは点、深度、法線を加えるだけです。"
+       "自分の写真ではオフにします。"),
+    ZH_HANS("用于由扫描仪软件定位的相机，例如扫描与照片一起导出：不移动任何东西，扫描只添加点、深度和法线。"
+            "自己拍的照片请关闭。"),
+    ZH_HANT("用於由掃描儀軟體定位的相機，例如掃描與照片一起匯出：不移動任何東西，掃描只加入點、深度和法線。"
+            "自己拍的照片請關閉。"),
+    KO("스캐너 소프트웨어가 배치한 카메라용입니다. 아무것도 옮기지 않고, 스캔은 점, 깊이, 법선만 "
+       "더합니다. 직접 찍은 사진에는 끄세요."),
+    DE("Für vom Scanner platzierte Kameras, etwa ein Export von Scan und Fotos: Nichts wird verschoben, "
+       "der Scan fügt nur Punkte, Tiefe und Normalen hinzu. Für eigene Fotos aus."),
+    FR("Pour des caméras placées par le scanner, comme un export scan et photos : rien ne bouge, le scan "
+       "ajoute points, profondeur et normales. À désactiver pour vos photos."),
+    ES("Para cámaras situadas por el escáner, como una exportación de escaneo y fotos: nada se mueve, "
+       "solo se añaden puntos, profundidad y normales. Desactívelo con sus fotos."),
+    PT("Para câmeras posicionadas pelo scanner, como uma exportação de varredura e fotos: nada se move, "
+       "só se acrescentam pontos, profundidade e normais. Desligue com as suas fotos."),
+    IT("Per fotocamere posizionate dallo scanner, come un export di scansione e foto: nulla si sposta, "
+       "si aggiungono solo punti, profondità e normali. Disattiva per le tue foto."),
+    NL("Voor camera's geplaatst door de scanner, zoals een export van scan en foto's: niets verschuift, "
+       "de scan voegt alleen punten, diepte en normalen toe. Uit voor eigen foto's."),
+    RU("Для камер, которые расставило ПО сканера, например экспорт скана с фото: ничего не сдвигается, "
+       "скан лишь добавляет точки, глубину и нормали. Для своих фото выключите."),
+    TR("Tarayıcının yerleştirdiği kameralar için, ör. tarama ve fotoğraf dışa aktarımı: hiçbir şey "
+       "taşınmaz, yalnızca nokta, derinlik ve normal eklenir. Kendi fotoğraflarınızda kapatın."));
 
 SS_MSG(scan_needs_builtin,
     EN("Laser scans need the built-in reconstruction"),
