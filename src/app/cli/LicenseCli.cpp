@@ -40,8 +40,9 @@ namespace {
 // The whole agreement on the terminal, then the one question. A reader who
 // scrolls past it still answers for the full text: it is all printed.
 void print_terms(const lic::Terms& t, const ConsentIO& io) {
+    const char* text = spirula::i18n::ascii_copy(t.text);
     std::fprintf(io.out, "\n==== %s ====\n%s\n\n%s\n==== end of %s ====\n\n", t.title, t.url,
-                 t.text, t.title);
+                 text, t.title);
 }
 
 void record_and_say(const lic::Terms& t, const ConsentIO& io) {

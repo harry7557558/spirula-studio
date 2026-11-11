@@ -77,43 +77,19 @@ SS_MSG(preset_360_camera,
     TR("360 derece kamera"));
 
 SS_MSG(preset_360_camera_help,
-    EN("Preset for training on original distorted images captured by 360 "
-       "cameras. Recommended if your dataset contains very wide fisheye "
-       "images with a circle visible."),
-    JA("360度カメラで撮った歪んだ元画像のまま学習するためのプリセットです。"
-       "画角が非常に広く、円形に写った魚眼画像が含まれるデータセットに"
-       "向いています。"),
-    ZH_HANS("用于直接在 360 相机拍摄的原始畸变图像上训练。如果数据集里的鱼眼"
-            "图像视角很大、能看到圆形边界，推荐用它。"),
-    ZH_HANT("用於直接在 360 相機拍攝的原始變形影像上訓練。若資料集裡的魚眼"
-            "影像視角很大、看得到圓形邊界，建議使用。"),
-    KO("360도 카메라로 찍은 왜곡된 원본 이미지를 그대로 학습하기 위한 "
-       "프리셋입니다. 화각이 아주 넓고 원형이 보이는 어안 이미지가 들어 있는 "
-       "데이터셋에 알맞습니다."),
-    DE("Voreinstellung für das Training auf den unbearbeiteten, verzeichneten "
-       "Bildern von 360-Grad-Kameras. Empfohlen, wenn der Datensatz sehr "
-       "weitwinklige Fisheye-Bilder mit sichtbarem Kreis enthält."),
-    FR("Préréglage pour l'entraînement sur les images d'origine, distordues, "
-       "des caméras 360. Recommandé si le jeu de données contient des images "
-       "fisheye très ouvertes où le cercle est visible."),
-    ES("Preajuste para entrenar con las imágenes originales distorsionadas de "
-       "cámaras 360. Recomendado si el conjunto de datos contiene imágenes de "
-       "ojo de pez muy angulares con el círculo visible."),
-    PT("Predefinição para treinar com as imagens originais distorcidas de "
-       "câmeras 360. Recomendada se o conjunto de dados contiver imagens "
-       "olho-de-peixe muito abertas com o círculo visível."),
-    IT("Preimpostazione per addestrare sulle immagini originali distorte delle "
-       "fotocamere 360. Consigliata se il set di dati contiene immagini "
-       "fisheye molto aperte con il cerchio visibile."),
-    NL("Voorinstelling om te trainen op de originele, vervormde beelden van "
-       "360-gradencamera's. Aanbevolen als de dataset zeer wijde "
-       "fisheyebeelden met een zichtbare cirkel bevat."),
-    RU("Пресет для обучения на исходных искажённых снимках камер 360. "
-       "Рекомендуется, если в наборе данных есть очень широкие кадры «рыбий "
-       "глаз» с видимым кругом."),
-    TR("360 derece kameraların çektiği özgün, bozuk görüntüler üzerinde "
-       "eğitim için hazır ayar. Veri kümenizde çemberi görünen, çok geniş "
-       "açılı balıkgözü görüntüler varsa önerilir."));
+    EN("Preset for training on original distorted images captured by 360 cameras."),
+    JA("360度カメラで撮った歪んだ元画像のまま学習するためのプリセットです。"),
+    ZH_HANS("用于直接在 360 相机拍摄的原始畸变图像上训练。"),
+    ZH_HANT("用於直接在 360 相機拍攝的原始變形影像上訓練。"),
+    KO("360도 카메라로 찍은 왜곡된 원본 이미지를 그대로 학습하기 위한 프리셋입니다."),
+    DE("Voreinstellung für das Training auf den unbearbeiteten, verzeichneten Bildern von 360-Grad-Kameras."),
+    FR("Préréglage pour l'entraînement sur les images d'origine, distordues, des caméras 360."),
+    ES("Preajuste para entrenar con las imágenes originales distorsionadas de cámaras 360."),
+    PT("Predefinição para treinar com as imagens originais distorcidas de câmeras 360."),
+    IT("Preimpostazione per addestrare sulle immagini originali distorte delle fotocamere 360."),
+    NL("Voorinstelling om te trainen op de originele, vervormde beelden van 360-gradencamera's."),
+    RU("Пресет для обучения на исходных искажённых снимках камер 360."),
+    TR("360 derece kameraların çektiği özgün, bozuk görüntüler üzerinde eğitim için hazır ayar."));
 
 SS_MSG(preset_in_the_wild,
     EN("Internet or mixed photos"),
@@ -131,42 +107,19 @@ SS_MSG(preset_in_the_wild,
     TR("İnternetten veya karışık kaynaklı fotoğraflar"));
 
 SS_MSG(preset_in_the_wild_help,
-    EN("Preset for datasets consisting of internet images, with extreme "
-       "lighting variation, with un-masked outliers, and/or shot with long "
-       "focal lengths."),
-    JA("ネット上の画像を集めたデータセット、明るさの差が極端なもの、余計な"
-       "写り込みをマスクしていないもの、望遠で撮ったものに向いたプリセット"
-       "です。"),
-    ZH_HANS("适用于由网络图片组成的数据集，以及光照差异极大、未遮罩杂物、"
-            "或用长焦拍摄的数据集。"),
-    ZH_HANT("適用於由網路圖片組成的資料集，以及光線差異極大、未遮罩雜物、"
-            "或用長焦拍攝的資料集。"),
-    KO("인터넷 이미지를 모은 데이터셋, 밝기 차이가 극심한 데이터셋, 가리지 "
-       "않은 이물이 있는 데이터셋, 망원으로 찍은 데이터셋에 맞는 프리셋입니다."),
-    DE("Voreinstellung für Datensätze aus Internetbildern, mit extremen "
-       "Helligkeitsunterschieden, mit nicht maskierten Störobjekten und/oder "
-       "mit langen Brennweiten aufgenommen."),
-    FR("Préréglage pour les jeux de données faits d'images trouvées en ligne, "
-       "aux écarts d'éclairage extrêmes, aux intrus non masqués et/ou pris "
-       "avec de longues focales."),
-    ES("Preajuste para conjuntos de datos formados por imágenes de internet, "
-       "con variaciones extremas de iluminación, con intrusos sin enmascarar "
-       "y/o tomadas con focales largas."),
-    PT("Predefinição para conjuntos de dados formados por imagens da internet, "
-       "com variação extrema de iluminação, com intrusos não mascarados e/ou "
-       "fotografados com distâncias focais longas."),
-    IT("Preimpostazione per set di dati fatti di immagini trovate in rete, con "
-       "variazioni di luce estreme, con intrusi non mascherati e/o scattate "
-       "con focali lunghe."),
-    NL("Voorinstelling voor datasets van internetbeelden, met extreme "
-       "lichtverschillen, met niet-gemaskeerde stoorobjecten en/of met lange "
-       "brandpuntsafstanden gemaakt."),
-    RU("Пресет для наборов из интернет-снимков, с крайне разным освещением, с "
-       "незамаскированными посторонними объектами и (или) снятых длиннофокусной "
-       "оптикой."),
-    TR("İnternetten toplanmış görüntülerden oluşan, aydınlatması aşırı "
-       "değişken, maskelenmemiş yabancı nesneler içeren ve/veya uzun odaklı "
-       "çekilmiş veri kümeleri için hazır ayar."));
+    EN("Preset for datasets consisting of internet images, with extreme lighting variation, with un-masked outliers, and/or shot with long focal lengths."),
+    JA("ネット上の画像を集めたデータセット、明るさの差が極端なもの、余計な写り込みをマスクしていないもの、望遠で撮ったものに向いたプリセットです。"),
+    ZH_HANS("适用于由网络图片组成的数据集，以及光照差异极大、未遮罩杂物、或用长焦拍摄的数据集。"),
+    ZH_HANT("適用於由網路圖片組成的資料集，以及光線差異極大、未遮罩雜物、或用長焦拍攝的資料集。"),
+    KO("인터넷 이미지를 모은 데이터셋, 밝기 차이가 극심한 데이터셋, 가리지 않은 이물이 있는 데이터셋, 망원으로 찍은 데이터셋에 맞는 프리셋입니다."),
+    DE("Voreinstellung für Datensätze aus Internetbildern, mit extremen Helligkeitsunterschieden, mit nicht maskierten Störobjekten und/oder mit langen Brennweiten aufgenommen."),
+    FR("Préréglage pour les jeux de données faits d'images trouvées en ligne, aux écarts d'éclairage extrêmes, aux intrus non masqués et/ou pris avec de longues focales."),
+    ES("Preajuste para conjuntos de datos formados por imágenes de internet, con variaciones extremas de iluminación, con intrusos sin enmascarar y/o tomadas con focales largas."),
+    PT("Para imagens da internet, luz muito variável, intrusos sem máscara ou fotografias com distâncias focais longas."),
+    IT("Preimpostazione per set di dati fatti di immagini trovate in rete, con variazioni di luce estreme, con intrusi non mascherati e/o scattate con focali lunghe."),
+    NL("Voorinstelling voor datasets van internetbeelden, met extreme lichtverschillen, met niet-gemaskeerde stoorobjecten en/of met lange brandpuntsafstanden gemaakt."),
+    RU("Пресет для наборов из интернет-снимков, с крайне разным освещением, с незамаскированными посторонними объектами и (или) снятых длиннофокусной оптикой."),
+    TR("İnternetten toplanmış görüntülerden oluşan, aydınlatması aşırı değişken, maskelenmemiş yabancı nesneler içeren ve/veya uzun odaklı çekilmiş veri kümeleri için hazır ayar."));
 
 SS_MSG(preset_centered_object,
     EN("Centered object"),
@@ -567,72 +520,19 @@ SS_MSG(device_issue_amd_windows_title,
 
 // {0} is the device name the driver reports.
 SS_MSG(device_issue_amd_windows,
-    EN("With AMD's Windows driver, training on {0} either crashes or produces a "
-       "model that is black or empty. This is a driver problem on Radeon RX 6000 "
-       "series and older GPUs, and no driver version is known to fix it yet. On "
-       "Linux, the default Mesa (RADV) driver trains correctly on these GPUs; "
-       "otherwise, use a different GPU."),
-    JA("AMD の Windows ドライバーでは、{0} での学習はクラッシュするか、真っ黒または"
-       "空のモデルになります。これは Radeon RX 6000 シリーズ以前の GPU で起きる"
-       "ドライバーの問題で、解決するドライバーのバージョンはまだ見つかっていません。"
-       "Linux の標準の Mesa (RADV) ドライバーなら、これらの GPU でも正しく学習"
-       "できます。それ以外の場合は、別の GPU を使ってください。"),
-    ZH_HANS("使用 AMD 的 Windows 驱动时，在 {0} 上训练要么崩溃，要么得到全黑或空的"
-            "模型。这是 Radeon RX 6000 系列及更早 GPU 的驱动问题，目前还没有已知能"
-            "修复它的驱动版本。在 Linux 上，默认的 Mesa (RADV) 驱动可以在这些 GPU "
-            "上正常训练；否则请换用其他 GPU。"),
-    ZH_HANT("使用 AMD 的 Windows 驅動程式時，在 {0} 上訓練不是當機，就是得到全黑或"
-            "空白的模型。這是 Radeon RX 6000 系列及更早 GPU 的驅動程式問題，目前還"
-            "沒有已知能修正它的驅動程式版本。在 Linux 上，預設的 Mesa (RADV) 驅動"
-            "程式可以在這些 GPU 上正常訓練；否則請改用其他 GPU。"),
-    KO("AMD Windows 드라이버에서는 {0}의 학습이 충돌하거나, 검은색 또는 빈 모델이 "
-       "만들어집니다. Radeon RX 6000 시리즈 및 그 이전 GPU의 드라이버 문제이며, 이를 "
-       "고친 드라이버 버전은 아직 알려져 있지 않습니다. Linux의 기본 Mesa(RADV) "
-       "드라이버에서는 이 GPU들에서도 정상적으로 학습됩니다. 그렇지 않으면 다른 GPU를 "
-       "사용하세요."),
-    DE("Mit dem Windows-Treiber von AMD stürzt das Training auf {0} entweder ab oder "
-       "liefert ein schwarzes oder leeres Modell. Das ist ein Treiberproblem bei GPUs "
-       "der Radeon-RX-6000-Serie und älter, und bisher ist keine Treiberversion "
-       "bekannt, die es behebt. Unter Linux trainiert der vorinstallierte "
-       "Mesa-Treiber (RADV) auf diesen GPUs korrekt; verwenden Sie andernfalls eine "
-       "andere GPU."),
-    FR("Avec le pilote Windows d'AMD, l'entraînement sur {0} plante ou produit un "
-       "modèle noir ou vide. C'est un problème de pilote sur les GPU Radeon RX "
-       "série 6000 et plus anciens, et aucune version du pilote ne le corrige à ce "
-       "jour. Sous Linux, le pilote Mesa (RADV) installé par défaut entraîne "
-       "correctement sur ces GPU ; sinon, utilisez un autre GPU."),
-    ES("Con el controlador de AMD para Windows, el entrenamiento en {0} se cierra "
-       "inesperadamente o produce un modelo negro o vacío. Es un problema del "
-       "controlador en las GPU Radeon RX serie 6000 y anteriores, y por ahora no se "
-       "conoce ninguna versión del controlador que lo corrija. En Linux, el "
-       "controlador Mesa (RADV) incluido por defecto entrena correctamente en estas "
-       "GPU; si no, use otra GPU."),
-    PT("Com o driver da AMD para Windows, o treinamento em {0} fecha "
-       "inesperadamente ou produz um modelo preto ou vazio. É um problema do driver "
-       "nas GPUs Radeon RX série 6000 e anteriores, e ainda não se conhece nenhuma "
-       "versão do driver que o corrija. No Linux, o driver Mesa (RADV) padrão "
-       "treina corretamente nessas GPUs; caso contrário, use outra GPU."),
-    IT("Con il driver AMD per Windows, l'addestramento su {0} va in crash oppure "
-       "produce un modello nero o vuoto. È un problema del driver sulle GPU Radeon "
-       "RX serie 6000 e precedenti, e finora non si conosce nessuna versione del "
-       "driver che lo risolva. Su Linux il driver Mesa (RADV) predefinito addestra "
-       "correttamente su queste GPU; altrimenti usa un'altra GPU."),
-    NL("Met het Windows-stuurprogramma van AMD crasht de training op {0} of levert "
-       "die een zwart of leeg model op. Dit is een probleem van het stuurprogramma "
-       "op GPU's uit de Radeon RX 6000-serie en ouder, en er is nog geen versie van "
-       "het stuurprogramma bekend die het verhelpt. Onder Linux traint het "
-       "standaard Mesa-stuurprogramma (RADV) correct op deze GPU's; gebruik anders "
-       "een andere GPU."),
-    RU("С драйвером AMD для Windows обучение на {0} либо завершается аварийно, либо "
-       "даёт чёрную или пустую модель. Это проблема драйвера на GPU Radeon RX серии "
-       "6000 и более старых, и версия драйвера, которая бы её исправляла, пока "
-       "неизвестна. В Linux стандартный драйвер Mesa (RADV) обучает на этих GPU "
-       "правильно; в остальных случаях используйте другой GPU."),
-    TR("AMD'nin Windows sürücüsüyle {0} üzerinde eğitim ya çöküyor ya da siyah veya "
-       "boş bir model üretiyor. Bu, Radeon RX 6000 serisi ve daha eski GPU'larda "
-       "görülen bir sürücü sorunu; henüz bunu düzelten bir sürücü sürümü "
-       "bilinmiyor. Linux'ta varsayılan Mesa (RADV) sürücüsü bu GPU'larda doğru "
-       "şekilde eğitim yapıyor; aksi hâlde başka bir GPU kullanın."));
+    EN("Training on {0} may crash or produce a black/empty model with AMD Windows drivers.\n- Affects RX 6000 and older; no known driver fix.\n- Linux Mesa (RADV) works; otherwise use another GPU."),
+    JA("AMD Windowsドライバーでは {0} の学習がクラッシュしたり、黒・空のモデルになります。\n- RX 6000以前が対象で、修正済みドライバーは不明です。\n- LinuxのMesa（RADV）は動作します。他のGPUも利用できます。"),
+    ZH_HANS("AMD Windows 驱动下，{0} 训练可能崩溃或产生黑色/空模型。\n- 影响 RX 6000 及更旧 GPU，尚无已知驱动修复。\n- Linux Mesa（RADV）可用，否则请换 GPU。"),
+    ZH_HANT("AMD Windows 驅動下，{0} 訓練可能當機或產生黑色/空模型。\n- 影響 RX 6000 及更舊 GPU，尚無已知驅動修復。\n- Linux Mesa（RADV）可用，否則請換 GPU。"),
+    KO("AMD Windows 드라이버에서 {0} 학습이 충돌하거나 검은색/빈 모델을 만들 수 있습니다.\n- RX 6000 및 이전 GPU에 해당하며 알려진 드라이버 수정은 없습니다.\n- Linux Mesa(RADV)는 작동합니다. 아니면 다른 GPU를 사용하세요."),
+    DE("Training auf {0} kann mit AMD-Windows-Treibern abstürzen oder schwarze/leere Modelle erzeugen.\n- Betrifft RX 6000 und ältere GPUs; kein bekannter Treiberfix.\n- Linux Mesa (RADV) funktioniert; sonst andere GPU nutzen."),
+    FR("Avec les pilotes AMD Windows, l’entraînement sur {0} peut planter ou produire un modèle noir/vide.\n- RX 6000 et GPU plus anciens ; aucun correctif connu.\n- Linux Mesa (RADV) fonctionne ; sinon, utiliser un autre GPU."),
+    ES("Con drivers AMD Windows, entrenar en {0} puede fallar o dar un modelo negro/vacío.\n- RX 6000 y anteriores; sin arreglo de driver conocido.\n- Linux Mesa (RADV) funciona; si no, usa otra GPU."),
+    PT("Com drivers AMD Windows, treinar em {0} pode falhar ou gerar modelo preto/vazio.\n- RX 6000 e anteriores; sem correção de driver conhecida.\n- Linux Mesa (RADV) funciona; senão, use outra GPU."),
+    IT("Con driver AMD Windows, l’addestramento su {0} può bloccarsi o dare modelli neri/vuoti.\n- RX 6000 e precedenti; nessuna correzione driver nota.\n- Linux Mesa (RADV) funziona; altrimenti usa un’altra GPU."),
+    NL("Training op {0} kan met AMD-Windows-drivers crashen of een zwart/leeg model geven.\n- RX 6000 en ouder; geen bekende driveroplossing.\n- Linux Mesa (RADV) werkt; gebruik anders een andere GPU."),
+    RU("С драйвером AMD Windows обучение на {0} может упасть или дать чёрную/пустую модель.\n- RX 6000 и старее; исправленный драйвер неизвестен.\n- Linux Mesa (RADV) работает; иначе используйте другой GPU."),
+    TR("AMD Windows sürücüsüyle {0} eğitimi çökebilir veya siyah/boş model üretebilir.\n- RX 6000 ve öncesi; bilinen sürücü düzeltmesi yok.\n- Linux Mesa (RADV) çalışır; yoksa başka GPU kullanın."));
 
 }  // namespace train
 }  // namespace msg

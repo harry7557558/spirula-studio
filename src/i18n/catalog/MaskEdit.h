@@ -80,18 +80,18 @@ SS_MSG(correct_masks,
     TR("Maskeleri düzelt"));
 
 SS_MSG(correct_masks_help,
-    EN("Paint corrections onto the masks a run wrote. They are kept in mask_edits/ beside the dataset and re-applied when masking runs again."),
-    JA("実行が書き出したマスクに修正を描き込みます。修正はデータセット横の mask_edits/ に保存され、マスク処理を再実行しても再適用されます。"),
-    ZH_HANS("在运行生成的蒙版上绘制修正。修正保存在数据集旁的 mask_edits/ 中，重新运行蒙版处理时会再次应用。"),
-    ZH_HANT("在執行產生的遮罩上繪製修正。修正保存在資料集旁的 mask_edits/ 中，重新執行遮罩處理時會再次套用。"),
-    KO("실행이 기록한 마스크 위에 수정을 칠합니다. 수정은 데이터셋 옆 mask_edits/에 보관되며 마스킹을 다시 실행해도 다시 적용됩니다."),
-    DE("Korrekturen auf die Masken malen, die ein Lauf geschrieben hat. Sie liegen in mask_edits/ neben dem Datensatz und werden nach einem erneuten Maskieren wieder angewendet."),
-    FR("Peindre des corrections sur les masques écrits par une exécution. Elles sont conservées dans mask_edits/ à côté du jeu de données et réappliquées quand le masquage est relancé."),
-    ES("Pinta correcciones sobre las máscaras que escribió una ejecución. Se guardan en mask_edits/ junto al conjunto de datos y se vuelven a aplicar cuando se repite el enmascarado."),
-    PT("Pinte correções sobre as máscaras que uma execução escreveu. Elas ficam em mask_edits/ ao lado do conjunto de dados e são reaplicadas quando o mascaramento é executado de novo."),
-    IT("Dipingi correzioni sulle maschere scritte da un'esecuzione. Sono conservate in mask_edits/ accanto al dataset e riapplicate quando il mascheramento viene rieseguito."),
-    NL("Schilder correcties op de maskers die een run heeft geschreven. Ze staan in mask_edits/ naast de dataset en worden opnieuw toegepast als het maskeren opnieuw draait."),
-    RU("Нанесите исправления на маски, записанные прогоном. Они хранятся в mask_edits/ рядом с набором данных и применяются заново при повторном маскировании."),
+    EN("Paint corrections onto the masks a run wrote.\nThey are kept in mask_edits/ beside the dataset and re-applied when masking runs again."),
+    JA("実行が書き出したマスクに修正を描き込みます。\n修正はデータセット横の mask_edits/ に保存され、マスク処理を再実行しても再適用されます。"),
+    ZH_HANS("在运行生成的蒙版上绘制修正。\n修正保存在数据集旁的 mask_edits/ 中，重新运行蒙版处理时会再次应用。"),
+    ZH_HANT("在執行產生的遮罩上繪製修正。\n修正保存在資料集旁的 mask_edits/ 中，重新執行遮罩處理時會再次套用。"),
+    KO("실행이 기록한 마스크 위에 수정을 칠합니다.\n수정은 데이터셋 옆 mask_edits/에 보관되며 마스킹을 다시 실행해도 다시 적용됩니다."),
+    DE("Korrekturen auf die Masken malen, die ein Lauf geschrieben hat.\nSie liegen in mask_edits/ neben dem Datensatz und werden nach einem erneuten Maskieren wieder angewendet."),
+    FR("Peindre des corrections sur les masques écrits par une exécution.\nElles sont conservées dans mask_edits/ à côté du jeu de données et réappliquées quand le masquage est relancé."),
+    ES("Pinta correcciones sobre las máscaras que escribió una ejecución.\nSe guardan en mask_edits/ junto al conjunto de datos y se vuelven a aplicar cuando se repite el enmascarado."),
+    PT("Pinte correções sobre as máscaras que uma execução escreveu.\nElas ficam em mask_edits/ ao lado do conjunto de dados e são reaplicadas quando o mascaramento é executado de novo."),
+    IT("Dipingi correzioni sulle maschere scritte da un'esecuzione.\nSono conservate in mask_edits/ accanto al dataset e riapplicate quando il mascheramento viene rieseguito."),
+    NL("Schilder correcties op de maskers die een run heeft geschreven.\nZe staan in mask_edits/ naast de dataset en worden opnieuw toegepast als het maskeren opnieuw draait."),
+    RU("Нанесите исправления на маски, записанные прогоном.\nОни хранятся в mask_edits/ рядом с набором данных и применяются заново при повторном маскировании."),
     TR("Bir çalıştırmanın yazdığı maskelere düzeltmeler çizin. Düzeltmeler veri kümesinin yanındaki mask_edits/ içinde tutulur ve maskeleme yeniden çalıştığında yeniden uygulanır."));
 
 SS_MSG(window_title,
@@ -200,17 +200,17 @@ SS_MSG(revert_all,
     TR("Tümünü geri al"));
 
 SS_MSG(revert_all_help,
-    EN("Delete every hand correction in this dataset and put each mask back exactly as the run wrote it. Asks first; this cannot be undone."),
-    JA("このデータセットの手動修正をすべて削除し、各マスクを実行が書き出した状態に完全に戻します。実行前に確認します。元に戻すことはできません。"),
+    EN("Delete every hand correction in this dataset and put each mask back exactly as the run wrote it. Asks first;\nthis cannot be undone."),
+    JA("このデータセットの手動修正をすべて削除し、各マスクを実行が書き出した状態に完全に戻します。 実行前に確認します。\n元に戻すことはできません。"),
     ZH_HANS("删除此数据集中的所有手动修正，并将每个蒙版完全恢复为运行写出时的原样。执行前会先确认；此操作无法撤销。"),
     ZH_HANT("刪除此資料集中的所有手動修正，並將每個遮罩完全恢復為執行寫出時的原樣。執行前會先確認；此操作無法復原。"),
-    KO("이 데이터셋의 모든 수동 수정을 삭제하고 각 마스크를 실행이 기록한 그대로 되돌립니다. 먼저 확인을 받으며, 되돌릴 수 없습니다."),
-    DE("Alle Handkorrekturen dieses Datensatzes löschen und jede Maske genau so wiederherstellen, wie der Lauf sie geschrieben hat. Fragt vorher nach; lässt sich nicht rückgängig machen."),
-    FR("Supprime toutes les corrections manuelles de ce jeu de données et remet chaque masque exactement tel que l'exécution l'a écrit. Demande d'abord confirmation ; irréversible."),
+    KO("이 데이터셋의 모든 수동 수정을 삭제하고 각 마스크를 실행이 기록한 그대로 되돌립니다.\n먼저 확인을 받으며, 되돌릴 수 없습니다."),
+    DE("Alle Handkorrekturen löschen und die ursprünglichen Masken wiederherstellen. Fragt vorher nach; nicht rückgängig zu machen."),
+    FR("Supprime toutes les corrections manuelles et rétablit les masques d’origine. Demande confirmation ; irréversible."),
     ES("Elimina todas las correcciones manuales de este conjunto de datos y devuelve cada máscara exactamente a como la escribió la ejecución. Pide confirmación antes; no se puede deshacer."),
-    PT("Apaga todas as correções manuais deste conjunto de dados e repõe cada máscara exatamente como a execução a escreveu. Pede confirmação primeiro; não pode ser anulado."),
+    PT("Apaga todas as correções manuais deste conjunto de dados e repõe cada máscara exatamente como a execução a escreveu.\nPede confirmação primeiro; não pode ser anulado."),
     IT("Elimina tutte le correzioni manuali di questo dataset e riporta ogni maschera esattamente a come l'esecuzione l'ha scritta. Chiede prima conferma; non si può annullare."),
-    NL("Verwijdert alle handmatige correcties van deze dataset en zet elk masker precies terug zoals de run het schreef. Vraagt eerst om bevestiging; kan niet ongedaan worden gemaakt."),
+    NL("Verwijdert alle handmatige correcties van deze dataset en zet elk masker precies terug zoals de run het schreef.\nVraagt eerst om bevestiging; kan niet ongedaan worden gemaakt."),
     RU("Удаляет все ручные исправления этого набора данных и возвращает каждую маску ровно в том виде, в каком её записал прогон. Сначала спрашивает; отменить нельзя."),
     TR("Bu veri kümesindeki tüm elle yapılmış düzeltmeleri siler ve her maskeyi çalıştırmanın yazdığı haline tam olarak geri döndürür. Önce onay ister; geri alınamaz."));
 
@@ -230,17 +230,17 @@ SS_MSG(revert_all_title,
     TR("Tüm düzeltmeler silinsin mi?"));
 
 SS_MSG(revert_all_confirm,
-    EN("Every hand correction in this dataset is deleted, and each corrected mask goes back exactly as the run wrote it. This cannot be undone."),
-    JA("このデータセットの手動修正はすべて削除され、修正済みの各マスクは実行が書き出した状態に完全に戻ります。この操作は元に戻せません。"),
+    EN("Every hand correction in this dataset is deleted, and each corrected mask goes back exactly as the run wrote it.\nThis cannot be undone."),
+    JA("このデータセットの手動修正はすべて削除され、修正済みの各マスクは実行が書き出した状態に完全に戻ります。\nこの操作は元に戻せません。"),
     ZH_HANS("此数据集中的所有手动修正都将被删除，每个已修正的蒙版都会完全恢复为运行写出时的原样。此操作无法撤销。"),
     ZH_HANT("此資料集中的所有手動修正都將被刪除，每個已修正的遮罩都會完全恢復為執行寫出時的原樣。此操作無法復原。"),
-    KO("이 데이터셋의 모든 수동 수정이 삭제되고, 수정된 각 마스크는 실행이 기록한 그대로 돌아갑니다. 이 작업은 되돌릴 수 없습니다."),
-    DE("Alle Handkorrekturen dieses Datensatzes werden gelöscht, und jede korrigierte Maske wird genau so wiederhergestellt, wie der Lauf sie geschrieben hat. Das lässt sich nicht rückgängig machen."),
-    FR("Toutes les corrections manuelles de ce jeu de données sont supprimées, et chaque masque corrigé redevient exactement tel que l'exécution l'a écrit. Cette action est irréversible."),
+    KO("이 데이터셋의 모든 수동 수정이 삭제되고, 수정된 각 마스크는 실행이 기록한 그대로 돌아갑니다.\n이 작업은 되돌릴 수 없습니다."),
+    DE("Alle Handkorrekturen löschen und die Masken auf die ursprüngliche Ausgabe zurücksetzen. Dies kann nicht rückgängig gemacht werden."),
+    FR("Supprime toutes les corrections manuelles et rétablit les masques d’origine du traitement. Cette action est irréversible."),
     ES("Se eliminan todas las correcciones manuales de este conjunto de datos y cada máscara corregida vuelve exactamente a como la escribió la ejecución. No se puede deshacer."),
     PT("Todas as correções manuais deste conjunto de dados são apagadas e cada máscara corrigida volta exatamente ao que a execução escreveu. Não pode ser anulado."),
     IT("Tutte le correzioni manuali di questo dataset vengono eliminate e ogni maschera corretta torna esattamente a come l'esecuzione l'ha scritta. Non si può annullare."),
-    NL("Alle handmatige correcties van deze dataset worden verwijderd en elk gecorrigeerd masker gaat precies terug naar hoe de run het schreef. Dit kan niet ongedaan worden gemaakt."),
+    NL("Verwijdert alle handmatige correcties en herstelt de oorspronkelijke maskers van de run. Dit kan niet ongedaan worden gemaakt."),
     RU("Все ручные исправления этого набора данных будут удалены, а каждая исправленная маска вернётся ровно в тот вид, в каком её записал прогон. Отменить это нельзя."),
     TR("Bu veri kümesindeki tüm elle yapılmış düzeltmeler silinir ve düzeltilmiş her maske çalıştırmanın yazdığı haline tam olarak döner. Bu işlem geri alınamaz."));
 
@@ -353,38 +353,38 @@ SS_MSG(mode_subtract,
     NL("Aftrekken"),   RU("Вычесть"),    TR("Çıkar"));
 
 SS_MSG(mode_help,
-    EN("What a plain drag or click does. Add grows the masked (removed) area; Subtract takes it back and keeps those pixels. Ctrl does the other one."),
-    JA("通常のドラッグやクリックの動作です。追加はマスクされる（除外される）範囲を広げ、削除はそれを戻してピクセルを保持します。Ctrl でもう一方になります。"),
-    ZH_HANS("普通拖动或单击的作用。添加会扩大被遮罩（移除）的区域；减去会把它收回并保留这些像素。按住 Ctrl 则为另一种。"),
-    ZH_HANT("一般拖曳或點一下的作用。新增會擴大被遮罩（移除）的區域；減去會把它收回並保留這些像素。按住 Ctrl 則為另一種。"),
-    KO("일반 드래그나 클릭의 동작입니다. 추가는 마스크된(제거되는) 영역을 넓히고, 빼기는 그 영역을 되돌려 해당 픽셀을 유지합니다. Ctrl을 누르면 반대로 동작합니다."),
-    DE("Was ein normales Ziehen oder Klicken tut. Hinzufügen vergrößert den maskierten (entfernten) Bereich; Abziehen nimmt ihn zurück und behält diese Pixel. Mit Ctrl das jeweils andere."),
-    FR("Ce que fait un simple glisser ou clic. Ajouter agrandit la zone masquée (retirée) ; Soustraire la reprend et conserve ces pixels. Ctrl fait l'inverse."),
-    ES("Lo que hace un arrastre o clic normal. Añadir amplía el área enmascarada (eliminada); Restar la recupera y conserva esos píxeles. Ctrl hace lo contrario."),
-    PT("O que um arrastar ou clique normal faz. Adicionar aumenta a área mascarada (removida); Subtrair a recupera e mantém esses pixels. Ctrl faz o contrário."),
-    IT("Cosa fa un normale trascinamento o clic. Aggiungi allarga l'area mascherata (rimossa); Sottrai la riprende e mantiene quei pixel. Ctrl fa l'opposto."),
-    NL("Wat gewoon slepen of klikken doet. Toevoegen vergroot het gemaskeerde (verwijderde) gebied; Aftrekken neemt het terug en behoudt die pixels. Ctrl doet het andere."),
-    RU("Что делает обычное перетаскивание или щелчок. «Добавить» расширяет замаскированную (удаляемую) область; «Вычесть» возвращает её и сохраняет эти пиксели. С Ctrl — наоборот."),
-    TR("Normal sürükleme veya tıklamanın yaptığı şey. Ekle, maskelenen (kaldırılan) alanı büyütür; Çıkar onu geri alır ve o pikselleri tutar. Ctrl diğerini yapar."));
+    EN("What a plain drag or click does.\n- Add grows the masked (removed) area; Subtract takes it back and keeps those pixels.\n- Ctrl does the other one."),
+    JA("通常のドラッグやクリックの動作です。\n- 追加はマスクされる（除外される）範囲を広げ、削除はそれを戻してピクセルを保持します。\n- Ctrl でもう一方になります。"),
+    ZH_HANS("普通拖动或单击的作用。\n- 添加会扩大被遮罩（移除）的区域；减去会把它收回并保留这些像素。\n- 按住 Ctrl 则为另一种。"),
+    ZH_HANT("一般拖曳或點一下的作用。\n- 新增會擴大被遮罩（移除）的區域；減去會把它收回並保留這些像素。\n- 按住 Ctrl 則為另一種。"),
+    KO("일반 드래그나 클릭의 동작입니다.\n- 추가는 마스크된(제거되는) 영역을 넓히고, 빼기는 그 영역을 되돌려 해당 픽셀을 유지합니다.\n- Ctrl을 누르면 반대로 동작합니다."),
+    DE("Was ein normales Ziehen oder Klicken tut.\n- Hinzufügen vergrößert den maskierten (entfernten) Bereich; Abziehen nimmt ihn zurück und behält diese Pixel.\n- Mit Ctrl das jeweils andere."),
+    FR("Ce que fait un simple glisser ou clic.\n- Ajouter agrandit la zone masquée (retirée) ; Soustraire la reprend et conserve ces pixels.\n- Ctrl fait l'inverse."),
+    ES("Lo que hace un arrastre o clic normal.\n- Añadir amplía el área enmascarada (eliminada); Restar la recupera y conserva esos píxeles.\n- Ctrl hace lo contrario."),
+    PT("O que um arrastar ou clique normal faz.\n- Adicionar aumenta a área mascarada (removida); Subtrair a recupera e mantém esses pixels.\n- Ctrl faz o contrário."),
+    IT("Cosa fa un normale trascinamento o clic.\n- Aggiungi allarga l'area mascherata (rimossa); Sottrai la riprende e mantiene quei pixel.\n- Ctrl fa l'opposto."),
+    NL("Wat gewoon slepen of klikken doet.\n- Toevoegen vergroot het gemaskeerde (verwijderde) gebied; Aftrekken neemt het terug en behoudt die pixels.\n- Ctrl doet het andere."),
+    RU("Что делает обычное перетаскивание или щелчок.\n- «Добавить» расширяет замаскированную (удаляемую) область; «Вычесть» возвращает её и сохраняет эти пиксели.\n- С Ctrl — наоборот."),
+    TR("Normal sürükleme veya tıklamanın yaptığı şey.\n- Ekle, maskelenen (kaldırılan) alanı büyütür; Çıkar onu geri alır ve o pikselleri tutar.\n- Ctrl diğerini yapar."));
 
 // ===========================================================================
 // The status strip
 // ===========================================================================
 
 SS_MSG(hint_buttons,
-    EN("Drag or Shift+drag: force drop. Ctrl+drag: force keep. Shift+Ctrl+drag: clear the correction. Right click closes a polygon."),
-    JA("ドラッグまたは Shift+ドラッグ: 強制的に除外。Ctrl+ドラッグ: 強制的に保持。Shift+Ctrl+ドラッグ: 修正を消去。右クリックで多角形を閉じる。"),
+    EN("- Drag or Shift+drag: force drop. Ctrl+drag: force keep. Shift+Ctrl+drag: clear the correction.\n- Right click closes a polygon."),
+    JA("- ドラッグまたは Shift+ドラッグ: 強制的に除外。 Ctrl+ドラッグ: 強制的に保持。 Shift+Ctrl+ドラッグ: 修正を消去。\n- 右クリックで多角形を閉じる。"),
     ZH_HANS("拖动或 Shift+拖动：强制丢弃。Ctrl+拖动：强制保留。Shift+Ctrl+拖动：清除修正。右键单击闭合多边形。"),
     ZH_HANT("拖曳或 Shift+拖曳：強制捨棄。Ctrl+拖曳：強制保留。Shift+Ctrl+拖曳：清除修正。右鍵點一下閉合多邊形。"),
-    KO("드래그 또는 Shift+드래그: 강제 제외. Ctrl+드래그: 강제 유지. Shift+Ctrl+드래그: 수정 지우기. 오른쪽 클릭으로 다각형 닫기."),
-    DE("Ziehen oder Shift+Ziehen: erzwungen verwerfen. Ctrl+Ziehen: erzwungen behalten. Shift+Ctrl+Ziehen: Korrektur löschen. Rechtsklick schließt ein Polygon."),
-    FR("Glisser ou Shift+glisser : exclusion forcée. Ctrl+glisser : conservation forcée. Shift+Ctrl+glisser : effacer la correction. Un clic droit ferme un polygone."),
-    ES("Arrastrar o Shift+arrastrar: descartar a la fuerza. Ctrl+arrastrar: conservar a la fuerza. Shift+Ctrl+arrastrar: borrar la corrección. Un clic derecho cierra un polígono."),
-    PT("Arrastar ou Shift+arrastar: descartar à força. Ctrl+arrastar: manter à força. Shift+Ctrl+arrastar: apagar a correção. Um clique direito fecha um polígono."),
-    IT("Trascina o Shift+trascina: scarta forzatamente. Ctrl+trascina: mantieni forzatamente. Shift+Ctrl+trascina: cancella la correzione. Un clic destro chiude un poligono."),
-    NL("Slepen of Shift+slepen: geforceerd weglaten. Ctrl+slepen: geforceerd behouden. Shift+Ctrl+slepen: correctie wissen. Rechtsklik sluit een veelhoek."),
-    RU("Перетаскивание или Shift+перетаскивание: принудительно убрать. Ctrl+перетаскивание: принудительно оставить. Shift+Ctrl+перетаскивание: стереть исправление. Правый щелчок замыкает многоугольник."),
-    TR("Sürükleme veya Shift+sürükleme: zorla at. Ctrl+sürükleme: zorla tut. Shift+Ctrl+sürükleme: düzeltmeyi sil. Sağ tık çokgeni kapatır."));
+    KO("- 드래그 또는 Shift+드래그: 강제 제외. Ctrl+드래그: 강제 유지. Shift+Ctrl+드래그: 수정 지우기.\n- 오른쪽 클릭으로 다각형 닫기."),
+    DE("- Ziehen oder Shift+Ziehen: erzwungen verwerfen. Ctrl+Ziehen: erzwungen behalten.\n- Shift+Ctrl+Ziehen: Korrektur löschen. Rechtsklick schließt ein Polygon."),
+    FR("- Glisser ou Shift+glisser : exclusion forcée. Ctrl+glisser : conservation forcée.\n- Shift+Ctrl+glisser : effacer la correction. Un clic droit ferme un polygone."),
+    ES("- Arrastrar o Shift+arrastrar: descartar a la fuerza. Ctrl+arrastrar: conservar a la fuerza.\n- Shift+Ctrl+arrastrar: borrar la corrección. Un clic derecho cierra un polígono."),
+    PT("- Arrastar ou Shift+arrastar: descartar à força. Ctrl+arrastar: manter à força.\n- Shift+Ctrl+arrastar: apagar a correção. Um clique direito fecha um polígono."),
+    IT("- Trascina o Shift+trascina: scarta forzatamente. Ctrl+trascina: mantieni forzatamente.\n- Shift+Ctrl+trascina: cancella la correzione. Un clic destro chiude un poligono."),
+    NL("- Slepen of Shift+slepen: geforceerd weglaten. Ctrl+slepen: geforceerd behouden. Shift+Ctrl+slepen: correctie wissen.\n- Rechtsklik sluit een veelhoek."),
+    RU("- Перетаскивание или Shift+перетаскивание: принудительно убрать. Ctrl+перетаскивание: принудительно оставить.\n- Shift+Ctrl+перетаскивание: стереть исправление. Правый щелчок замыкает многоугольник."),
+    TR("- Sürükleme veya Shift+sürükleme: zorla at. Ctrl+sürükleme: zorla tut. Shift+Ctrl+sürükleme: düzeltmeyi sil.\n- Sağ tık çokgeni kapatır."));
 
 SS_MSG(hint_view,
     EN("Wheel: zoom. Alt+wheel, [ and ]: brush or eraser size. Middle drag or Space+drag: pan. Esc: cancel the stroke."),
@@ -676,19 +676,19 @@ SS_MSG(err_write,
     TR("{0} yazılamadı."));
 
 SS_MSG(err_other_mask_root,
-    EN("The corrections in this project were made against the mask folder {0}, so they cannot be read against another one. Point the run back at that folder, or discard the corrections."),
-    JA("このプロジェクトの修正はマスクフォルダー {0} に対して行われたため、別のフォルダーには適用できません。実行をそのフォルダーに戻すか、修正を破棄してください。"),
+    EN("The corrections in this project were made against the mask folder {0}, so they cannot be read against another one.\nPoint the run back at that folder, or discard the corrections."),
+    JA("このプロジェクトの修正はマスクフォルダー {0} に対して行われたため、別のフォルダーには適用できません。\n実行をそのフォルダーに戻すか、修正を破棄してください。"),
     ZH_HANS("本项目的修正是针对蒙版文件夹 {0} 做的，无法用于其他文件夹。请把运行指回该文件夹，或放弃这些修正。"),
     ZH_HANT("本專案的修正是針對遮罩資料夾 {0} 做的，無法用於其他資料夾。請把執行指回該資料夾，或捨棄這些修正。"),
-    KO("이 프로젝트의 수정은 마스크 폴더 {0}을(를) 기준으로 이루어졌으므로 다른 폴더에는 적용할 수 없습니다. 실행을 그 폴더로 되돌리거나 수정을 버리세요."),
-    DE("Die Korrekturen dieses Projekts entstanden gegen den Maskenordner {0} und lassen sich nicht auf einen anderen anwenden. Richten Sie den Lauf wieder auf diesen Ordner oder verwerfen Sie die Korrekturen."),
-    FR("Les corrections de ce projet ont été faites sur le dossier de masques {0} et ne peuvent pas servir pour un autre. Repointez le traitement sur ce dossier, ou abandonnez les corrections."),
-    ES("Las correcciones de este proyecto se hicieron sobre la carpeta de máscaras {0}, así que no sirven para otra. Vuelve a apuntar la ejecución a esa carpeta o descarta las correcciones."),
-    PT("As correções deste projeto foram feitas sobre a pasta de máscaras {0}, por isso não servem para outra. Aponte a execução de volta para essa pasta ou descarte as correções."),
-    IT("Le correzioni di questo progetto sono state fatte sulla cartella di maschere {0}, quindi non valgono per un'altra. Riporta l'esecuzione su quella cartella, oppure scarta le correzioni."),
-    NL("De correcties in dit project zijn gemaakt op de maskermap {0} en gelden niet voor een andere. Richt de run weer op die map, of gooi de correcties weg."),
-    RU("Исправления в этом проекте сделаны для папки масок {0}, поэтому к другой они неприменимы. Верните запуск к этой папке или откажитесь от исправлений."),
-    TR("Bu projedeki düzeltmeler {0} maske klasörüne göre yapıldı, bu yüzden başka bir klasöre uygulanamaz. Çalışmayı o klasöre geri yönlendirin ya da düzeltmeleri atın."));
+    KO("이 프로젝트의 수정은 마스크 폴더 {0}을(를) 기준으로 이루어졌으므로 다른 폴더에는 적용할 수 없습니다.\n실행을 그 폴더로 되돌리거나 수정을 버리세요."),
+    DE("Korrekturen gehören zum Maskenordner {0}, nicht zu einem anderen. Diesen Ordner wieder wählen oder die Korrekturen verwerfen."),
+    FR("Les corrections de ce projet ont été faites sur le dossier de masques {0} et ne peuvent pas servir pour un autre.\nRepointez le traitement sur ce dossier, ou abandonnez les corrections."),
+    ES("Las correcciones de este proyecto se hicieron sobre la carpeta de máscaras {0}, así que no sirven para otra.\nVuelve a apuntar la ejecución a esa carpeta o descarta las correcciones."),
+    PT("As correções deste projeto foram feitas sobre a pasta de máscaras {0}, por isso não servem para outra.\nAponte a execução de volta para essa pasta ou descarte as correções."),
+    IT("Le correzioni di questo progetto sono state fatte sulla cartella di maschere {0}, quindi non valgono per un'altra.\nRiporta l'esecuzione su quella cartella, oppure scarta le correzioni."),
+    NL("De correcties in dit project zijn gemaakt op de maskermap {0} en gelden niet voor een andere.\nRicht de run weer op die map, of gooi de correcties weg."),
+    RU("Исправления в этом проекте сделаны для папки масок {0}, поэтому к другой они неприменимы.\nВерните запуск к этой папке или откажитесь от исправлений."),
+    TR("Bu projedeki düzeltmeler {0} maske klasörüne göre yapıldı, bu yüzden başka bir klasöre uygulanamaz.\nÇalışmayı o klasöre geri yönlendirin ya da düzeltmeleri atın."));
 
 SS_MSG(err_other_mask_polarity,
     EN("The corrections in this project were made while the masks were read the other way round. Put \"Flip masks\" back as it was, or discard the corrections."),
@@ -761,53 +761,19 @@ SS_MSG(tool_path,
     NL("Pad"),        RU("Контур"),     TR("Yol"));
 
 SS_MSG(hint_path,
-    EN("Click along an edge to drop anchors; the path snaps to the edge. Ctrl+click the "
-       "first anchor to keep instead, Shift+Ctrl to clear. Click the first anchor, Enter "
-       "or right-click closes it and paints its inside. Ctrl+Z takes an anchor back; Esc "
-       "cancels."),
-    JA("輪郭に沿ってクリックして点を置くと、パスが輪郭に沿います。最初の点を Ctrl+クリック"
-       "すると保持になり、Shift+Ctrl でクリアします。最初の点をクリックするか Enter か右ク"
-       "リックで閉じ、内側を塗ります。Ctrl+Z で点を戻し、Esc で中止します。"),
-    ZH_HANS("沿边缘点击放下锚点，路径会贴合边缘。Ctrl+点击第一个锚点改为保留，Shift+Ctrl "
-            "则清除。点击第一个锚点、按 Enter 或右键闭合并涂抹其内部。Ctrl+Z 撤回一个锚点，"
-            "Esc 取消。"),
-    ZH_HANT("沿邊緣點擊放下錨點，路徑會貼合邊緣。Ctrl+點擊第一個錨點改為保留，Shift+Ctrl "
-            "則清除。點擊第一個錨點、按 Enter 或右鍵閉合並塗抹其內部。Ctrl+Z 收回一個錨點，"
-            "Esc 取消。"),
-    KO("윤곽을 따라 클릭해 앵커를 놓으면 경로가 윤곽에 붙습니다. 첫 앵커를 Ctrl+클릭하면 "
-       "유지로 바뀌고, Shift+Ctrl은 지웁니다. 첫 앵커 클릭, Enter 또는 오른쪽 클릭으로 닫고 "
-       "안쪽을 칠합니다. Ctrl+Z는 앵커를 되돌리고 Esc는 취소합니다."),
-    DE("Entlang einer Kante klicken, um Anker zu setzen; der Pfad legt sich an die Kante. "
-       "Strg+Klick auf den ersten Anker behält ihn stattdessen, Umschalt+Strg löscht die "
-       "Korrektur. Erster Anker, Eingabe oder Rechtsklick schließt ihn und malt sein "
-       "Inneres. Strg+Z nimmt einen Anker zurück, Esc bricht ab."),
-    FR("Cliquez le long d'un contour pour poser des ancres ; le chemin épouse le contour. "
-       "Ctrl+clic sur la première ancre la conserve à la place, Shift+Ctrl efface. La "
-       "première ancre, Entrée ou un clic droit le ferme et peint son intérieur. Ctrl+Z "
-       "retire une ancre, Échap annule."),
-    ES("Haga clic a lo largo de un borde para poner anclas; el trazado se ajusta al borde. "
-       "Ctrl+clic en la primera ancla la conserva en su lugar, Shift+Ctrl la borra. La "
-       "primera ancla, Intro o clic derecho lo cierra y pinta su interior. Ctrl+Z quita "
-       "un ancla; Esc cancela."),
-    PT("Clique ao longo de um contorno para pôr âncoras; o traçado cola-se ao contorno. "
-       "Ctrl+clique na primeira âncora mantém-na em vez disso, Shift+Ctrl apaga. A "
-       "primeira âncora, Enter ou clique direito fecha-o e pinta o interior. Ctrl+Z retira "
-       "uma âncora; Esc cancela."),
-    IT("Fai clic lungo un bordo per posare ancoraggi; il tracciato segue il bordo. Ctrl+clic "
-       "sul primo ancoraggio lo mantiene invece, Shift+Ctrl cancella. Il primo ancoraggio, "
-       "Invio o clic destro lo chiude e ne dipinge l'interno. Ctrl+Z toglie un ancoraggio; "
-       "Esc annulla."),
-    NL("Klik langs een rand om ankers te zetten; het pad volgt de rand. Ctrl+klik op het "
-       "eerste anker behoudt het juist, Shift+Ctrl wist. Het eerste anker, Enter of "
-       "rechtsklik sluit het en schildert de binnenkant. Ctrl+Z neemt een anker terug; Esc "
-       "breekt af."),
-    RU("Щёлкайте вдоль края, чтобы ставить опорные точки; контур прилипает к краю. "
-       "Ctrl+щелчок по первой точке сохраняет её, Shift+Ctrl стирает. Первая точка, Enter "
-       "или правая кнопка замыкают его и закрашивают внутренность. Ctrl+Z убирает точку, "
-       "Esc отменяет."),
-    TR("Kenar boyunca tıklayarak çapalar bırakın; yol kenara yapışır. İlk çapaya "
-       "Ctrl+tıklamak onu tutar, Shift+Ctrl siler. İlk çapa, Enter veya sağ tık onu kapatır "
-       "ve içini boyar. Ctrl+Z bir çapayı geri alır; Esc iptal eder."));
+    EN("Click along an edge to place anchors. The path snaps to the edge.\n- At the first anchor, Ctrl+click keeps and Shift+Ctrl+click clears.\n- Close and paint with the first anchor, Enter or right-click.\n- Ctrl+Z undoes an anchor. Esc cancels."),
+    JA("輪郭に沿ってクリックして点を置くと、パスが輪郭に沿います。\n- 最初の点を Ctrl+クリックすると保持になり、Shift+Ctrl でクリアします。\n- 最初の点をクリックするか Enter か右クリックで閉じ、内側を塗ります。 Ctrl+Z で点を戻し、Esc で中止します。"),
+    ZH_HANS("沿边缘点击放下锚点，路径会贴合边缘。Ctrl+点击第一个锚点改为保留，Shift+Ctrl 则清除。点击第一个锚点、按 Enter 或右键闭合并涂抹其内部。Ctrl+Z 撤回一个锚点，Esc 取消。"),
+    ZH_HANT("沿邊緣點擊放下錨點，路徑會貼合邊緣。Ctrl+點擊第一個錨點改為保留，Shift+Ctrl 則清除。點擊第一個錨點、按 Enter 或右鍵閉合並塗抹其內部。Ctrl+Z 收回一個錨點，Esc 取消。"),
+    KO("윤곽을 따라 클릭해 앵커를 놓으면 경로가 윤곽에 붙습니다.\n- 첫 앵커를 Ctrl+클릭하면 유지로 바뀌고, Shift+Ctrl은 지웁니다.\n- 첫 앵커 클릭, Enter 또는 오른쪽 클릭으로 닫고 안쪽을 칠합니다. Ctrl+Z는 앵커를 되돌리고 Esc는 취소합니다."),
+    DE("Entlang einer Kante klicken, um Anker zu setzen;\n- der Pfad legt sich an die Kante.\n- Strg+Klick auf den ersten Anker behält ihn stattdessen, Umschalt+Strg löscht die Korrektur.\n- Erster Anker, Eingabe oder Rechtsklick schließt ihn und malt sein Inneres.\n- Strg+Z nimmt einen Anker zurück, Esc bricht ab."),
+    FR("Cliquez le long d'un contour pour poser des ancres ;\n- le chemin épouse le contour. Ctrl+clic sur la première ancre la conserve à la place, Shift+Ctrl efface.\n- La première ancre, Entrée ou un clic droit le ferme et peint son intérieur.\n- Ctrl+Z retire une ancre, Échap annule."),
+    ES("Haga clic a lo largo de un borde para poner anclas;\n- el trazado se ajusta al borde. Ctrl+clic en la primera ancla la conserva en su lugar, Shift+Ctrl la borra.\n- La primera ancla, Intro o clic derecho lo cierra y pinta su interior. Ctrl+Z quita un ancla; Esc cancela."),
+    PT("Clique ao longo de um contorno para pôr âncoras;\n- o traçado cola-se ao contorno. Ctrl+clique na primeira âncora mantém-na em vez disso, Shift+Ctrl apaga.\n- A primeira âncora, Enter ou clique direito fecha-o e pinta o interior. Ctrl+Z retira uma âncora; Esc cancela."),
+    IT("Fai clic lungo un bordo per posare ancoraggi;\n- il tracciato segue il bordo. Ctrl+clic sul primo ancoraggio lo mantiene invece, Shift+Ctrl cancella.\n- Il primo ancoraggio, Invio o clic destro lo chiude e ne dipinge l'interno. Ctrl+Z toglie un ancoraggio;\n- Esc annulla."),
+    NL("Klik langs een rand om ankers te zetten;\n- het pad volgt de rand. Ctrl+klik op het eerste anker behoudt het juist, Shift+Ctrl wist.\n- Het eerste anker, Enter of rechtsklik sluit het en schildert de binnenkant. Ctrl+Z neemt een anker terug;\n- Esc breekt af."),
+    RU("Щёлкайте вдоль края, чтобы ставить опорные точки;\n- контур прилипает к краю. Ctrl+щелчок по первой точке сохраняет её, Shift+Ctrl стирает.\n- Первая точка, Enter или правая кнопка замыкают его и закрашивают внутренность.\n- Ctrl+Z убирает точку, Esc отменяет."),
+    TR("Kenar boyunca tıklayarak çapalar bırakın;\n- yol kenara yapışır. İlk çapaya Ctrl+tıklamak onu tutar, Shift+Ctrl siler.\n- İlk çapa, Enter veya sağ tık onu kapatır ve içini boyar. Ctrl+Z bir çapayı geri alır; Esc iptal eder."));
 
 SS_MSG(path_building,
     EN("Preparing the edge map for this frame..."),
@@ -880,84 +846,19 @@ SS_MSG(tool_pen,
     NL("Pen"),        RU("Перо"),        TR("Kalem"));
 
 SS_MSG(hint_pen,
-    EN("Click for a corner, drag for a curve. Shift keeps 45-degree steps; Alt while "
-       "dragging moves one handle alone; Space while dragging moves the anchor. Click the "
-       "last anchor to straighten the next segment; Ctrl+drag moves a point or handle "
-       "already placed. Hold Ctrl (keep) or Shift+Ctrl (clear) for the first anchor. Click "
-       "the first anchor, Enter or right-click closes it and paints its inside. Ctrl+Z or "
-       "Backspace takes an anchor back; Esc cancels."),
-    JA("クリックで角、ドラッグで曲線の点を置きます。Shift で 45 度刻み、ドラッグ中の Alt で"
-       "片方のハンドルだけを、ドラッグ中の Space で点そのものを動かします。最後の点を"
-       "クリックすると次の線分がまっすぐになり、Ctrl+ドラッグで置いた点やハンドルを"
-       "動かせます。最初の点を置くときに Ctrl で保持、Shift+Ctrl でクリアになります。"
-       "最初の点のクリック、Enter か右クリックで閉じて内側を塗ります。Ctrl+Z か "
-       "Backspace で点を戻し、Esc で中止します。"),
-    ZH_HANS("点击放下角点，拖动放下曲线点。Shift 以 45 度为步长；拖动时按 Alt 只移动一侧"
-            "手柄；拖动时按 Space 移动锚点本身。点击最后一个锚点可让下一段变直；Ctrl+拖动"
-            "可移动已放下的点或手柄。放下第一个锚点时按住 Ctrl 为保留，Shift+Ctrl 为清除。"
-            "点击第一个锚点、按 Enter 或右键闭合并涂抹其内部。Ctrl+Z 或 Backspace 撤回"
-            "一个锚点，Esc 取消。"),
-    ZH_HANT("點擊放下角點，拖曳放下曲線點。Shift 以 45 度為步長；拖曳時按 Alt 只移動一側"
-            "控制把手；拖曳時按 Space 移動錨點本身。點擊最後一個錨點可讓下一段變直；"
-            "Ctrl+拖曳可移動已放下的點或控制把手。放下第一個錨點時按住 Ctrl 為保留，"
-            "Shift+Ctrl 為清除。點擊第一個錨點、按 Enter 或右鍵閉合並塗抹其內部。Ctrl+Z "
-            "或 Backspace 收回一個錨點，Esc 取消。"),
-    KO("클릭하면 모서리, 드래그하면 곡선 앵커를 놓습니다. Shift는 45도 단위로 맞추고, "
-       "드래그 중 Alt는 핸들 한쪽만, 드래그 중 Space는 앵커 자체를 옮깁니다. 마지막 앵커를 "
-       "클릭하면 다음 선분이 곧게 이어지고, Ctrl+드래그로 이미 놓은 점이나 핸들을 옮깁니다. "
-       "첫 앵커를 놓을 때 Ctrl은 유지, Shift+Ctrl은 지우기입니다. 첫 앵커 클릭, Enter 또는 "
-       "오른쪽 클릭으로 닫고 안쪽을 칠합니다. Ctrl+Z나 Backspace는 앵커를 되돌리고 Esc는 "
-       "취소합니다."),
-    DE("Klick setzt eine Ecke, Ziehen einen Kurvenpunkt. Umschalt rastet in 45-Grad-"
-       "Schritten ein; Alt beim Ziehen bewegt nur einen Griff, Leertaste beim Ziehen den "
-       "Anker selbst. Ein Klick auf den letzten Anker macht den nächsten Abschnitt gerade; "
-       "Strg+Ziehen verschiebt einen schon gesetzten Punkt oder Griff. Strg (behalten) oder "
-       "Umschalt+Strg (löschen) beim ersten Anker halten. Erster Anker, Eingabe oder "
-       "Rechtsklick schließt ihn und malt sein Inneres. Strg+Z oder Rücktaste nimmt einen "
-       "Anker zurück, Esc bricht ab."),
-    FR("Un clic pose un angle, un glissé un point de courbe. Maj force des pas de 45 degrés ; "
-       "Alt pendant le glissé déplace une seule poignée, Espace déplace l'ancre elle-même. "
-       "Un clic sur la dernière ancre rend le segment suivant droit ; Ctrl+glisser déplace "
-       "un point ou une poignée déjà posé. Maintenez Ctrl (conserver) ou Maj+Ctrl (effacer) "
-       "pour la première ancre. La première ancre, Entrée ou un clic droit le ferme et peint "
-       "son intérieur. Ctrl+Z ou Retour arrière retire une ancre, Échap annule."),
-    ES("Un clic pone una esquina y un arrastre, un punto de curva. Mayús fija pasos de 45 "
-       "grados; Alt al arrastrar mueve un solo tirador y Espacio al arrastrar mueve el "
-       "ancla. Un clic en la última ancla deja recto el siguiente segmento; Ctrl+arrastrar "
-       "mueve un punto o tirador ya puesto. Mantenga Ctrl (conservar) o Mayús+Ctrl (borrar) "
-       "para la primera ancla. La primera ancla, Intro o clic derecho lo cierra y pinta su "
-       "interior. Ctrl+Z o Retroceso quita un ancla; Esc cancela."),
-    PT("Um clique põe um canto e um arraste, um ponto de curva. Shift fixa passos de 45 "
-       "graus; Alt ao arrastar move só uma alça e Espaço ao arrastar move a própria âncora. "
-       "Um clique na última âncora deixa reto o segmento seguinte; Ctrl+arrastar move um "
-       "ponto ou alça já posto. Segure Ctrl (manter) ou Shift+Ctrl (limpar) na primeira "
-       "âncora. A primeira âncora, Enter ou clique direito o fecha e pinta seu interior. "
-       "Ctrl+Z ou Backspace tira uma âncora; Esc cancela."),
-    IT("Un clic mette un angolo, un trascinamento un punto di curva. Maiusc blocca a passi "
-       "di 45 gradi; Alt durante il trascinamento muove una sola maniglia, Spazio muove "
-       "l'ancoraggio stesso. Un clic sull'ultimo ancoraggio rende dritto il segmento "
-       "successivo; Ctrl+trascina sposta un punto o una maniglia già messi. Tenga premuto "
-       "Ctrl (mantieni) o Maiusc+Ctrl (cancella) per il primo ancoraggio. Il primo "
-       "ancoraggio, Invio o il clic destro lo chiude e ne dipinge l'interno. Ctrl+Z o "
-       "Backspace toglie un ancoraggio; Esc annulla."),
-    NL("Klik zet een hoek, slepen een kromme. Shift houdt stappen van 45 graden aan; Alt "
-       "tijdens het slepen beweegt één greep, Spatie tijdens het slepen het anker zelf. Klik "
-       "op het laatste anker om het volgende stuk recht te maken; Ctrl+slepen verplaatst een "
-       "al gezet punt of greep. Houd Ctrl (behouden) of Shift+Ctrl (wissen) bij het eerste "
-       "anker. Het eerste anker, Enter of rechtsklik sluit het en schildert de binnenkant. "
-       "Ctrl+Z of Backspace neemt een anker terug; Esc breekt af."),
-    RU("Щелчок ставит угол, перетаскивание — точку кривой. Shift держит шаг 45 градусов; "
-       "Alt при перетаскивании двигает только одну ручку, пробел — саму точку. Щелчок по "
-       "последней точке выпрямляет следующий отрезок; Ctrl+перетаскивание двигает уже "
-       "поставленную точку или ручку. Держите Ctrl (сохранить) или Shift+Ctrl (стереть) для "
-       "первой точки. Первая точка, Enter или правая кнопка замыкают контур и закрашивают "
-       "внутренность. Ctrl+Z или Backspace убирает точку, Esc отменяет."),
-    TR("Tıklama bir köşe, sürükleme bir eğri noktası bırakır. Shift 45 derecelik adımlar "
-       "tutar; sürüklerken Alt tek bir tutamacı, Boşluk çapanın kendisini taşır. Son çapaya "
-       "tıklamak sonraki parçayı düz yapar; Ctrl+sürükleme önceden konmuş bir noktayı ya da "
-       "tutamacı taşır. İlk çapa için Ctrl (tut) veya Shift+Ctrl (temizle) basılı tutun. İlk "
-       "çapa, Enter veya sağ tık onu kapatır ve içini boyar. Ctrl+Z veya Backspace bir "
-       "çapayı geri alır; Esc iptal eder."));
+    EN("Click for a corner or drag for a curve.\n- Shift snaps to 45°. Alt moves one handle. Space moves the anchor. Ctrl+drag edits an existing point or handle.\n- Click the last anchor to straighten the next segment. Start with Ctrl to keep or Shift+Ctrl to clear.\n- Close and paint with the first anchor, Enter or right-click.\n- Ctrl+Z or Backspace undoes an anchor. Esc cancels."),
+    JA("クリックで角、ドラッグで曲線の点を置きます。 Shift で 45 度刻み、ドラッグ中の Alt で片方のハンドルだけを、ドラッグ中の Space で点そのものを動かします。\n- 最後の点をクリックすると次の線分がまっすぐになり、Ctrl+ドラッグで置いた点やハンドルを動かせます。最初の点を置くときに Ctrl で保持、Shift+Ctrl でクリアになります。\n- 最初の点のクリック、Enter か右クリックで閉じて内側を塗ります。 Ctrl+Z か Backspace で点を戻し、Esc で中止します。"),
+    ZH_HANS("点击放下角点，拖动放下曲线点。 Shift 以 45 度为步长；拖动时按 Alt 只移动一侧手柄；拖动时按 Space 移动锚点本身。点击最后一个锚点可让下一段变直； Ctrl+拖动可移动已放下的点或手柄。\n- 放下第一个锚点时按住 Ctrl 为保留，Shift+Ctrl 为清除。\n- 点击第一个锚点、按 Enter 或右键闭合并涂抹其内部。 Ctrl+Z 或 Backspace 撤回一个锚点，Esc 取消。"),
+    ZH_HANT("點擊放下角點，拖曳放下曲線點。 Shift 以 45 度為步長；拖曳時按 Alt 只移動一側控制把手；拖曳時按 Space 移動錨點本身。\n- 點擊最後一個錨點可讓下一段變直； Ctrl+拖曳可移動已放下的點或控制把手。\n- 放下第一個錨點時按住 Ctrl 為保留，Shift+Ctrl 為清除。\n- 點擊第一個錨點、按 Enter 或右鍵閉合並塗抹其內部。 Ctrl+Z 或 Backspace 收回一個錨點，Esc 取消。"),
+    KO("클릭하면 모서리, 드래그하면 곡선 앵커를 놓습니다. Shift는 45도 단위로 맞추고, 드래그 중 Alt는 핸들 한쪽만, 드래그 중 Space는 앵커 자체를 옮깁니다.\n- 마지막 앵커를 클릭하면 다음 선분이 곧게 이어지고, Ctrl+드래그로 이미 놓은 점이나 핸들을 옮깁니다.\n- 첫 앵커를 놓을 때 Ctrl은 유지, Shift+Ctrl은 지우기입니다.\n- 첫 앵커 클릭, Enter 또는 오른쪽 클릭으로 닫고 안쪽을 칠합니다. Ctrl+Z나 Backspace는 앵커를 되돌리고 Esc는 취소합니다."),
+    DE("Klick setzt eine Ecke, Ziehen einen Kurvenpunkt. Umschalt rastet in 45-Grad-Schritten ein; Alt beim Ziehen bewegt nur einen Griff, Leertaste beim Ziehen den Anker selbst.\n- Ein Klick auf den letzten Anker macht den nächsten Abschnitt gerade; Strg+Ziehen verschiebt einen schon gesetzten Punkt oder Griff.\n- Strg (behalten) oder Umschalt+Strg (löschen) beim ersten Anker halten. Erster Anker, Eingabe oder Rechtsklick schließt ihn und malt sein Inneres. Strg+Z oder Rücktaste nimmt einen Anker zurück, Esc bricht ab."),
+    FR("Un clic pose un angle, un glissé un point de courbe. Maj force des pas de 45 degrés ; Alt pendant le glissé déplace une seule poignée, Espace déplace l'ancre elle-même. Un clic sur la dernière ancre rend le segment suivant droit ;\n- Ctrl+glisser déplace un point ou une poignée déjà posé.\n- Maintenez Ctrl (conserver) ou Maj+Ctrl (effacer) pour la première ancre. La première ancre, Entrée ou un clic droit le ferme et peint son intérieur.\n- Ctrl+Z ou Retour arrière retire une ancre, Échap annule."),
+    ES("Un clic pone una esquina y un arrastre, un punto de curva. Mayús fija pasos de 45 grados; Alt al arrastrar mueve un solo tirador y Espacio al arrastrar mueve el ancla.\n- Un clic en la última ancla deja recto el siguiente segmento; Ctrl+arrastrar mueve un punto o tirador ya puesto.\n- Mantenga Ctrl (conservar) o Mayús+Ctrl (borrar) para la primera ancla.\n- La primera ancla, Intro o clic derecho lo cierra y pinta su interior. Ctrl+Z o Retroceso quita un ancla; Esc cancela."),
+    PT("Um clique põe um canto e um arraste, um ponto de curva. Shift fixa passos de 45 graus; Alt ao arrastar move só uma alça e Espaço ao arrastar move a própria âncora.\n- Um clique na última âncora deixa reto o segmento seguinte;\n- Ctrl+arrastar move um ponto ou alça já posto. Segure Ctrl (manter) ou Shift+Ctrl (limpar) na primeira âncora.\n- A primeira âncora, Enter ou clique direito o fecha e pinta seu interior.\n- Ctrl+Z ou Backspace tira uma âncora; Esc cancela."),
+    IT("Un clic mette un angolo, un trascinamento un punto di curva. Maiusc blocca a passi di 45 gradi;\n- Alt durante il trascinamento muove una sola maniglia, Spazio muove l'ancoraggio stesso. Un clic sull'ultimo ancoraggio rende dritto il segmento successivo;\n- Ctrl+trascina sposta un punto o una maniglia già messi.\n- Tenga premuto Ctrl (mantieni) o Maiusc+Ctrl (cancella) per il primo ancoraggio. Il primo ancoraggio, Invio o il clic destro lo chiude e ne dipinge l'interno.\n- Ctrl+Z o Backspace toglie un ancoraggio; Esc annulla."),
+    NL("Klik zet een hoek, slepen een kromme. Shift houdt stappen van 45 graden aan; Alt tijdens het slepen beweegt één greep, Spatie tijdens het slepen het anker zelf.\n- Klik op het laatste anker om het volgende stuk recht te maken; Ctrl+slepen verplaatst een al gezet punt of greep.\n- Houd Ctrl (behouden) of Shift+Ctrl (wissen) bij het eerste anker. Het eerste anker, Enter of rechtsklik sluit het en schildert de binnenkant.\n- Ctrl+Z of Backspace neemt een anker terug; Esc breekt af."),
+    RU("Щелчок ставит угол, перетаскивание — точку кривой. Shift держит шаг 45 градусов; Alt при перетаскивании двигает только одну ручку, пробел — саму точку.\n- Щелчок по последней точке выпрямляет следующий отрезок;\n- Ctrl+перетаскивание двигает уже поставленную точку или ручку. Держите Ctrl (сохранить) или Shift+Ctrl (стереть) для первой точки. Первая точка, Enter или правая кнопка замыкают контур и закрашивают внутренность.\n- Ctrl+Z или Backspace убирает точку, Esc отменяет."),
+    TR("Tıklama bir köşe, sürükleme bir eğri noktası bırakır. Shift 45 derecelik adımlar tutar; sürüklerken Alt tek bir tutamacı, Boşluk çapanın kendisini taşır.\n- Son çapaya tıklamak sonraki parçayı düz yapar;\n- Ctrl+sürükleme önceden konmuş bir noktayı ya da tutamacı taşır. İlk çapa için Ctrl (tut) veya Shift+Ctrl (temizle) basılı tutun.\n- İlk çapa, Enter veya sağ tık onu kapatır ve içini boyar. Ctrl+Z veya Backspace bir çapayı geri alır; Esc iptal eder."));
 
 SS_MSG(pen_anchors,
     EN("Pen anchors: {0}"),
@@ -1060,33 +961,19 @@ SS_MSG(tool_sam,
     NL("SAM"),        RU("SAM"),        TR("SAM"));
 
 SS_MSG(sam_hint,
-    EN("Click an object to drop it; Ctrl+click keeps it; Shift+Ctrl+click clears its corrections; "
-       "right-click a part to leave it out. Ctrl+Z takes back the last click. Esc cancels."),
-    JA("オブジェクトをクリックすると除外します。Ctrl+クリックで保持、Shift+Ctrl+クリックで修正を消去します。"
-       "右クリックでその部分を対象から外します。Ctrl+Z で最後のクリックを取り消します。Esc で中止します。"),
-    ZH_HANS("点击物体将其丢弃；Ctrl+点击保留；Shift+Ctrl+点击清除其修正；右键点击某一部分可将其排除。"
-            "Ctrl+Z 撤回最后一次点击。Esc 取消。"),
-    ZH_HANT("點擊物件將其捨棄；Ctrl+點擊保留；Shift+Ctrl+點擊清除其修正；在某一部分按右鍵可將其排除。"
-            "Ctrl+Z 收回最後一次點擊。Esc 取消。"),
-    KO("개체를 클릭하면 제외합니다. Ctrl+클릭은 유지, Shift+Ctrl+클릭은 수정을 지웁니다. 일부를 오른쪽 "
-       "클릭하면 대상에서 뺍니다. Ctrl+Z는 마지막 클릭을 되돌립니다. Esc로 취소합니다."),
-    DE("Klicken Sie auf ein Objekt, um es zu verwerfen; Ctrl+Klick behält es; Shift+Ctrl+Klick löscht "
-       "seine Korrekturen; ein Rechtsklick auf einen Teil nimmt ihn aus. Strg+Z nimmt den letzten "
-       "Klick zurück. Esc bricht ab."),
-    FR("Cliquez sur un objet pour l'exclure ; Ctrl+clic le conserve ; Shift+Ctrl+clic efface ses "
-       "corrections ; un clic droit sur une partie l'en retire. Ctrl+Z retire le dernier clic. Esc annule."),
-    ES("Haga clic en un objeto para descartarlo; Ctrl+clic lo conserva; Shift+Ctrl+clic borra sus "
-       "correcciones; un clic derecho en una parte la excluye. Ctrl+Z quita el último clic. Esc cancela."),
-    PT("Clique em um objeto para descartá-lo; Ctrl+clique o mantém; Shift+Ctrl+clique apaga suas "
-       "correções; um clique direito em uma parte a exclui. Ctrl+Z desfaz o último clique. Esc cancela."),
-    IT("Fai clic su un oggetto per scartarlo; Ctrl+clic lo mantiene; Shift+Ctrl+clic ne cancella le "
-       "correzioni; il clic destro su una parte la esclude. Ctrl+Z toglie l'ultimo clic. Esc annulla."),
-    NL("Klik op een object om het weg te laten; Ctrl+klik behoudt het; Shift+Ctrl+klik wist de correcties "
-       "ervan; rechtsklik op een deel sluit het uit. Ctrl+Z neemt de laatste klik terug. Esc annuleert."),
-    RU("Щёлкните объект, чтобы убрать его; Ctrl+щелчок оставляет его; Shift+Ctrl+щелчок стирает его "
-       "исправления; правый щелчок по части исключает её. Ctrl+Z отменяет последний щелчок. Esc отменяет."),
-    TR("Atmak için bir nesneye tıklayın; Ctrl+tık onu tutar; Shift+Ctrl+tık düzeltmelerini siler; bir "
-       "parçaya sağ tık onu hariç tutar. Ctrl+Z son tıklamayı geri alır. Esc iptal eder."));
+    EN("Click an object to drop it; Ctrl+click keeps it; Shift+Ctrl+click clears its corrections;\nright-click a part to leave it out. Ctrl+Z takes back the last click. Esc cancels."),
+    JA("オブジェクトをクリックすると除外します。 Ctrl+クリックで保持、Shift+Ctrl+クリックで修正を消去します。\n右クリックでその部分を対象から外します。 Ctrl+Z で最後のクリックを取り消します。 Esc で中止します。"),
+    ZH_HANS("点击物体将其丢弃； Ctrl+点击保留； Shift+Ctrl+点击清除其修正； 右键点击某一部分可将其排除。\nCtrl+Z 撤回最后一次点击。 Esc 取消。"),
+    ZH_HANT("點擊物件將其捨棄； Ctrl+點擊保留； Shift+Ctrl+點擊清除其修正； 在某一部分按右鍵可將其排除。\nCtrl+Z 收回最後一次點擊。 Esc 取消。"),
+    KO("개체를 클릭하면 제외합니다. Ctrl+클릭은 유지, Shift+Ctrl+클릭은 수정을 지웁니다.\n일부를 오른쪽 클릭하면 대상에서 뺍니다. Ctrl+Z는 마지막 클릭을 되돌립니다. Esc로 취소합니다."),
+    DE("Klicken Sie auf ein Objekt, um es zu verwerfen; Ctrl+Klick behält es; Shift+Ctrl+Klick löscht seine Korrekturen;\nein Rechtsklick auf einen Teil nimmt ihn aus. Strg+Z nimmt den letzten Klick zurück. Esc bricht ab."),
+    FR("Cliquez sur un objet pour l'exclure ; Ctrl+clic le conserve ; Shift+Ctrl+clic efface ses corrections ;\nun clic droit sur une partie l'en retire. Ctrl+Z retire le dernier clic. Esc annule."),
+    ES("Haga clic en un objeto para descartarlo; Ctrl+clic lo conserva; Shift+Ctrl+clic borra sus correcciones;\nun clic derecho en una parte la excluye. Ctrl+Z quita el último clic. Esc cancela."),
+    PT("Clique em um objeto para descartá-lo; Ctrl+clique o mantém; Shift+Ctrl+clique apaga suas correções;\num clique direito em uma parte a exclui. Ctrl+Z desfaz o último clique. Esc cancela."),
+    IT("Fai clic su un oggetto per scartarlo; Ctrl+clic lo mantiene; Shift+Ctrl+clic ne cancella le correzioni;\nil clic destro su una parte la esclude. Ctrl+Z toglie l'ultimo clic. Esc annulla."),
+    NL("Klik op een object om het weg te laten; Ctrl+klik behoudt het; Shift+Ctrl+klik wist de correcties ervan;\nrechtsklik op een deel sluit het uit. Ctrl+Z neemt de laatste klik terug. Esc annuleert."),
+    RU("Щёлкните объект, чтобы убрать его; Ctrl+щелчок оставляет его; Shift+Ctrl+щелчок стирает его исправления;\nправый щелчок по части исключает её. Ctrl+Z отменяет последний щелчок. Esc отменяет."),
+    TR("Atmak için bir nesneye tıklayın; Ctrl+tık onu tutar; Shift+Ctrl+tık düzeltmelerini siler;\nbir parçaya sağ tık onu hariç tutar. Ctrl+Z son tıklamayı geri alır. Esc iptal eder."));
 
 SS_MSG(sam_cancel_slow,
     EN("Esc cancels once the step already running finishes: loading the model, reading the frame, or finding the object."),
@@ -1249,19 +1136,19 @@ SS_MSG(view_side_by_side,
     TR("Yan yana"));
 
 SS_MSG(view_help,
-    EN("Overlay tints the dropped pixels over the photo. Mask only shows the mask with the corrections tinted. Side by side shows the bare photo on the left and the mask on the right; both take strokes. V cycles the views."),
-    JA("オーバーレイは写真の上で除外ピクセルに色を付けます。マスクのみは修正に色を付けたマスクを表示します。並べて表示は左に元の写真、右にマスクを表示し、どちらにも描き込めます。V で表示を切り替えます。"),
-    ZH_HANS("叠加在照片上为丢弃的像素着色。仅蒙版显示蒙版并为修正着色。并排在左侧显示原始照片、右侧显示蒙版，两侧都可以绘制。按 V 切换视图。"),
-    ZH_HANT("疊加在照片上為捨棄的像素著色。僅遮罩顯示遮罩並為修正著色。並排在左側顯示原始照片、右側顯示遮罩，兩側都可以繪製。按 V 切換檢視。"),
-    KO("오버레이는 사진 위에 제외된 픽셀을 색으로 표시합니다. 마스크만은 수정을 색으로 표시한 마스크를 보여줍니다. 나란히는 왼쪽에 원본 사진, 오른쪽에 마스크를 보여주며 양쪽 모두에 그릴 수 있습니다. V 키로 보기를 전환합니다."),
-    DE("Überlagerung färbt die verworfenen Pixel über dem Foto ein. Nur Maske zeigt die Maske mit eingefärbten Korrekturen. Nebeneinander zeigt links das reine Foto und rechts die Maske; beide nehmen Striche an. V wechselt die Ansicht."),
-    FR("Superposition teinte les pixels exclus sur la photo. Masque seul montre le masque avec les corrections teintées. Côte à côte montre la photo nue à gauche et le masque à droite ; les deux acceptent les traits. V fait défiler les vues."),
-    ES("Superposición tiñe los píxeles descartados sobre la foto. Solo máscara muestra la máscara con las correcciones teñidas. Lado a lado muestra la foto sin más a la izquierda y la máscara a la derecha; ambas aceptan trazos. V alterna las vistas."),
-    PT("Sobreposição tinge os pixels descartados sobre a foto. Só máscara mostra a máscara com as correções tingidas. Lado a lado mostra a foto pura à esquerda e a máscara à direita; ambas aceitam traços. V alterna as vistas."),
-    IT("Sovrapposizione colora i pixel scartati sopra la foto. Solo maschera mostra la maschera con le correzioni colorate. Affiancate mostra la foto nuda a sinistra e la maschera a destra; entrambe accettano i tratti. V scorre le viste."),
-    NL("Overlay kleurt de weggelaten pixels over de foto. Alleen masker toont het masker met de correcties gekleurd. Naast elkaar toont links de kale foto en rechts het masker; beide nemen streken aan. V wisselt de weergave."),
-    RU("Наложение подкрашивает убранные пиксели поверх фото. Только маска показывает маску с подкрашенными исправлениями. Рядом показывает слева чистое фото, справа маску; рисовать можно на обеих. V переключает виды."),
-    TR("Bindirme, atılan pikselleri fotoğrafın üzerinde renklendirir. Yalnızca maske, düzeltmeleri renklendirilmiş maskeyi gösterir. Yan yana solda çıplak fotoğrafı, sağda maskeyi gösterir; ikisine de çizilebilir. V görünümleri değiştirir."));
+    EN("- Overlay tints the dropped pixels over the photo. Mask only shows the mask with the corrections tinted.\n- Side by side shows the bare photo on the left and the mask on the right; both take strokes. V cycles the views."),
+    JA("- オーバーレイは写真の上で除外ピクセルに色を付けます。 マスクのみは修正に色を付けたマスクを表示します。\n- 並べて表示は左に元の写真、右にマスクを表示し、どちらにも描き込めます。 V で表示を切り替えます。"),
+    ZH_HANS("- 叠加在照片上为丢弃的像素着色。 仅蒙版显示蒙版并为修正着色。 并排在左侧显示原始照片、右侧显示蒙版，两侧都可以绘制。\n- 按 V 切换视图。"),
+    ZH_HANT("- 疊加在照片上為捨棄的像素著色。 僅遮罩顯示遮罩並為修正著色。 並排在左側顯示原始照片、右側顯示遮罩，兩側都可以繪製。\n- 按 V 切換檢視。"),
+    KO("- 오버레이는 사진 위에 제외된 픽셀을 색으로 표시합니다. 마스크만은 수정을 색으로 표시한 마스크를 보여줍니다.\n- 나란히는 왼쪽에 원본 사진, 오른쪽에 마스크를 보여주며 양쪽 모두에 그릴 수 있습니다. V 키로 보기를 전환합니다."),
+    DE("- Überlagerung färbt die verworfenen Pixel über dem Foto ein.\n- Nur Maske zeigt die Maske mit eingefärbten Korrekturen.\n- Nebeneinander zeigt links das reine Foto und rechts die Maske; beide nehmen Striche an. V wechselt die Ansicht."),
+    FR("- Superposition : pixels exclus teintés. Masque seul : corrections teintées. V change de vue.\n- Côte à côte : photo à gauche, masque à droite ; on peut tracer sur les deux."),
+    ES("- Superposición: píxeles excluidos teñidos. Solo máscara: correcciones teñidas. V cambia la vista.\n- Lado a lado: foto a la izquierda, máscara a la derecha; ambas aceptan trazos."),
+    PT("- Sobreposição tinge os pixels descartados sobre a foto. Só máscara mostra a máscara com as correções tingidas.\n- Lado a lado mostra a foto pura à esquerda e a máscara à direita; ambas aceitam traços. V alterna as vistas."),
+    IT("- Sovrapposizione colora i pixel scartati sopra la foto.\n- Solo maschera mostra la maschera con le correzioni colorate.\n- Affiancate mostra la foto nuda a sinistra e la maschera a destra; entrambe accettano i tratti. V scorre le viste."),
+    NL("- Overlay kleurt de weggelaten pixels over de foto. Alleen masker toont het masker met de correcties gekleurd.\n- Naast elkaar toont links de kale foto en rechts het masker; beide nemen streken aan. V wisselt de weergave."),
+    RU("- Наложение подкрашивает убранные пиксели поверх фото.\n- Только маска показывает маску с подкрашенными исправлениями.\n- Рядом показывает слева чистое фото, справа маску; рисовать можно на обеих. V переключает виды."),
+    TR("- Bindirme, atılan pikselleri fotoğrafın üzerinde renklendirir.\n- Yalnızca maske, düzeltmeleri renklendirilmiş maskeyi gösterir.\n- Yan yana solda çıplak fotoğrafı, sağda maskeyi gösterir; ikisine de çizilebilir. V görünümleri değiştirir."));
 
 SS_MSG(view_locked,
     EN("Finish the shape, or press Esc to cancel it, before changing the view."),
@@ -1418,19 +1305,19 @@ SS_MSG(prop_go,
     TR("Yay"));
 
 SS_MSG(prop_go_help,
-    EN("Copy this frame's corrections, not its mask, onto other frames of the same camera. They replace the corrections those frames already had; each keeps its own model output underneath. A frame whose mask has another size is refused. Edits made here afterwards, by hand or with SAM, are not carried over."),
-    JA("このフレームの修正（マスクではなく）を同じカメラの他のフレームにコピーします。コピー先に既にある修正は置き換えられ、各フレームは修正の下に自身のモデル出力を保ちます。マスクのサイズが異なるフレームは拒否されます。この後ここで手作業や SAM で行った編集は反映されません。"),
-    ZH_HANS("将此帧的修正（而非蒙版）复制到同一相机的其他帧。它们会替换这些帧原有的修正；每一帧在修正之下保留自己的模型输出。蒙版尺寸不同的帧会被拒绝。之后在此帧上手动或用 SAM 所做的编辑不会带过去。"),
-    ZH_HANT("將此影格的修正（而非遮罩）複製到同一相機的其他影格。它們會取代這些影格原有的修正；每一影格在修正之下保留自己的模型輸出。遮罩尺寸不同的影格會被拒絕。之後在此影格上手動或用 SAM 所做的編輯不會帶過去。"),
-    KO("이 프레임의 수정(마스크가 아님)을 같은 카메라의 다른 프레임에 복사합니다. 그 프레임들이 이미 가진 수정은 대체되며, 각 프레임은 수정 아래에 자신의 모델 출력을 유지합니다. 마스크 크기가 다른 프레임은 거부됩니다. 이후 여기서 손으로 또는 SAM으로 한 편집은 전달되지 않습니다."),
-    DE("Die Korrekturen dieses Bildes, nicht seine Maske, auf andere Bilder derselben Kamera übertragen. Sie ersetzen die Korrekturen, die diese Bilder schon hatten; jedes behält darunter seine eigene Modellausgabe. Ein Bild mit einer anders großen Maske wird abgelehnt. Spätere Änderungen hier, von Hand oder mit SAM, werden nicht mitgenommen."),
-    FR("Copie les corrections de cette image, pas son masque, sur d'autres images de la même caméra. Elles remplacent les corrections que ces images avaient déjà ; chacune garde dessous sa propre sortie du modèle. Une image dont le masque a une autre taille est refusée. Les modifications faites ici ensuite, à la main ou avec SAM, ne suivent pas."),
-    ES("Copia las correcciones de este fotograma, no su máscara, a otros fotogramas de la misma cámara. Sustituyen las correcciones que esos fotogramas ya tenían; cada uno conserva debajo su propia salida del modelo. Un fotograma cuya máscara tenga otro tamaño se rechaza. Las ediciones hechas aquí después, a mano o con SAM, no se trasladan."),
-    PT("Copia as correções deste quadro, não a sua máscara, para outros quadros da mesma câmera. Substituem as correções que esses quadros já tinham; cada um mantém por baixo a sua própria saída do modelo. Um quadro cuja máscara tenha outro tamanho é recusado. As edições feitas aqui depois, à mão ou com o SAM, não são levadas."),
-    IT("Copia le correzioni di questo fotogramma, non la sua maschera, su altri fotogrammi della stessa fotocamera. Sostituiscono le correzioni che quei fotogrammi avevano già; ognuno conserva sotto la propria uscita del modello. Un fotogramma con una maschera di altra dimensione viene rifiutato. Le modifiche fatte qui in seguito, a mano o con SAM, non vengono riportate."),
-    NL("Kopieert de correcties van dit frame, niet het masker, naar andere frames van dezelfde camera. Ze vervangen de correcties die die frames al hadden; elk houdt eronder zijn eigen modeluitvoer. Een frame met een masker van een andere grootte wordt geweigerd. Latere bewerkingen hier, met de hand of met SAM, gaan niet mee."),
-    RU("Копирует исправления этого кадра, но не его маску, на другие кадры той же камеры. Они заменяют исправления, которые у этих кадров уже были; каждый сохраняет под ними собственный результат модели. Кадр с маской другого размера отклоняется. Последующие правки здесь, вручную или через SAM, не переносятся."),
-    TR("Bu karenin düzeltmelerini (maskesini değil) aynı kameranın diğer karelerine kopyalar. O karelerin zaten sahip olduğu düzeltmelerin yerini alır; her kare altında kendi model çıktısını korur. Maskesi farklı boyutta olan kare reddedilir. Sonradan burada elle veya SAM ile yapılan düzenlemeler aktarılmaz."));
+    EN("Copy this frame's corrections, not its mask, onto other frames of the same camera.\n- They replace the corrections those frames already had; each keeps its own model output underneath.\n- A frame whose mask has another size is refused.\n- Edits made here afterwards, by hand or with SAM, are not carried over."),
+    JA("このフレームの修正（マスクではなく）を同じカメラの他のフレームにコピーします。\n- コピー先に既にある修正は置き換えられ、各フレームは修正の下に自身のモデル出力を保ちます。\n- マスクのサイズが異なるフレームは拒否されます。 この後ここで手作業や SAM で行った編集は反映されません。"),
+    ZH_HANS("将此帧的修正（而非蒙版）复制到同一相机的其他帧。\n- 它们会替换这些帧原有的修正； 每一帧在修正之下保留自己的模型输出。 蒙版尺寸不同的帧会被拒绝。\n- 之后在此帧上手动或用 SAM 所做的编辑不会带过去。"),
+    ZH_HANT("將此影格的修正（而非遮罩）複製到同一相機的其他影格。\n- 它們會取代這些影格原有的修正； 每一影格在修正之下保留自己的模型輸出。 遮罩尺寸不同的影格會被拒絕。\n- 之後在此影格上手動或用 SAM 所做的編輯不會帶過去。"),
+    KO("이 프레임의 수정(마스크가 아님)을 같은 카메라의 다른 프레임에 복사합니다.\n- 그 프레임들이 이미 가진 수정은 대체되며, 각 프레임은 수정 아래에 자신의 모델 출력을 유지합니다.\n- 마스크 크기가 다른 프레임은 거부됩니다. 이후 여기서 손으로 또는 SAM으로 한 편집은 전달되지 않습니다."),
+    DE("Die Korrekturen dieses Bildes, nicht seine Maske, auf andere Bilder derselben Kamera übertragen.\n- Sie ersetzen die Korrekturen, die diese Bilder schon hatten; jedes behält darunter seine eigene Modellausgabe.\n- Ein Bild mit einer anders großen Maske wird abgelehnt.\n- Spätere Änderungen hier, von Hand oder mit SAM, werden nicht mitgenommen."),
+    FR("Copie les corrections de cette image, pas son masque, sur d'autres images de la même caméra.\n- Elles remplacent les corrections que ces images avaient déjà ; chacune garde dessous sa propre sortie du modèle.\n- Une image dont le masque a une autre taille est refusée.\n- Les modifications faites ici ensuite, à la main ou avec SAM, ne suivent pas."),
+    ES("Copia las correcciones de este fotograma, no su máscara, a otros fotogramas de la misma cámara.\n- Sustituyen las correcciones que esos fotogramas ya tenían; cada uno conserva debajo su propia salida del modelo.\n- Un fotograma cuya máscara tenga otro tamaño se rechaza.\n- Las ediciones hechas aquí después, a mano o con SAM, no se trasladan."),
+    PT("Copia as correções deste quadro, não a sua máscara, para outros quadros da mesma câmera.\n- Substituem as correções que esses quadros já tinham; cada um mantém por baixo a sua própria saída do modelo.\n- Um quadro cuja máscara tenha outro tamanho é recusado.\n- As edições feitas aqui depois, à mão ou com o SAM, não são levadas."),
+    IT("Copia le correzioni di questo fotogramma, non la sua maschera, su altri fotogrammi della stessa fotocamera.\n- Sostituiscono le correzioni che quei fotogrammi avevano già; ognuno conserva sotto la propria uscita del modello.\n- Un fotogramma con una maschera di altra dimensione viene rifiutato.\n- Le modifiche fatte qui in seguito, a mano o con SAM, non vengono riportate."),
+    NL("Kopieert de correcties van dit frame, niet het masker, naar andere frames van dezelfde camera.\n- Ze vervangen de correcties die die frames al hadden; elk houdt eronder zijn eigen modeluitvoer.\n- Een frame met een masker van een andere grootte wordt geweigerd.\n- Latere bewerkingen hier, met de hand of met SAM, gaan niet mee."),
+    RU("Копирует исправления этого кадра, но не его маску, на другие кадры той же камеры.\n- Они заменяют исправления, которые у этих кадров уже были; каждый сохраняет под ними собственный результат модели.\n- Кадр с маской другого размера отклоняется. Последующие правки здесь, вручную или через SAM, не переносятся."),
+    TR("Bu karenin düzeltmelerini (maskesini değil) aynı kameranın diğer karelerine kopyalar.\n- O karelerin zaten sahip olduğu düzeltmelerin yerini alır; her kare altında kendi model çıktısını korur.\n- Maskesi farklı boyutta olan kare reddedilir. Sonradan burada elle veya SAM ile yapılan düzenlemeler aktarılmaz."));
 
 SS_MSG(prop_warn_moves,
     EN("Propagate copies pixels: it does not follow an object that moves between frames."),
@@ -1508,34 +1395,34 @@ SS_MSG(prop_failed_restored,
     TR("{0} üzerinde başarısız: {1} okunamadı veya yazılamadı. O kare olduğu gibi bırakıldı."));
 
 SS_MSG(prop_failed_not_restored,
-    EN("Failed on {0}: {1} could not be written, and the frame could not be put back. Frames not put back: {2}. Use Undo propagate to try again."),
-    JA("{0} で失敗: {1} を書き込めず、そのフレームを元に戻せませんでした。元に戻せなかったフレーム: {2}。「伝播を元に戻す」で再試行してください。"),
-    ZH_HANS("{0} 失败：无法写入 {1}，且该帧未能恢复。未能恢复的帧：{2}。使用“撤销传播”重试。"),
-    ZH_HANT("{0} 失敗：無法寫入 {1}，且該影格未能恢復。未能恢復的影格：{2}。使用「復原傳播」重試。"),
-    KO("{0}에서 실패: {1}을(를) 쓸 수 없고 해당 프레임을 되돌리지 못했습니다. 되돌리지 못한 프레임: {2}. '전파 취소'로 다시 시도하세요."),
-    DE("Fehler bei {0}: {1} konnte nicht geschrieben und das Bild nicht zurückgesetzt werden. Nicht zurückgesetzte Bilder: {2}. Mit „Übertragen rückgängig“ erneut versuchen."),
-    FR("Échec sur {0} : impossible d'écrire {1}, et l'image n'a pas pu être remise en état. Images non remises en état : {2}. Utilisez « Annuler la propagation » pour réessayer."),
-    ES("Fallo en {0}: no se pudo escribir {1} y el fotograma no se pudo restaurar. Fotogramas sin restaurar: {2}. Use «Deshacer propagación» para reintentar."),
-    PT("Falha em {0}: não foi possível escrever {1} e o quadro não pôde ser restaurado. Quadros não restaurados: {2}. Use \"Desfazer propagação\" para tentar de novo."),
-    IT("Errore su {0}: impossibile scrivere {1} e il fotogramma non è stato ripristinato. Fotogrammi non ripristinati: {2}. Usa «Annulla propagazione» per riprovare."),
-    NL("Mislukt bij {0}: kon {1} niet schrijven en het frame kon niet worden teruggezet. Niet teruggezette frames: {2}. Gebruik 'Doorvoeren ongedaan maken' om het opnieuw te proberen."),
-    RU("Сбой на {0}: не удалось записать {1}, и кадр не удалось восстановить. Не восстановлено кадров: {2}. Нажмите «Отменить распространение», чтобы повторить попытку."),
-    TR("{0} üzerinde başarısız: {1} yazılamadı ve kare geri alınamadı. Geri alınamayan kare sayısı: {2}. Yeniden denemek için 'Yaymayı geri al'ı kullanın."));
+    EN("Failed on {0}: {1} could not be written, and the frame could not be put back.\n- Frames not put back: {2}.\n- Use Undo propagate to try again."),
+    JA("{0} で失敗: {1} を書き込めず、そのフレームを元に戻せませんでした。\n- 元に戻せなかったフレーム: {2}。\n- 「伝播を元に戻す」で再試行してください。"),
+    ZH_HANS("{0} 失败：无法写入 {1}，且该帧未能恢复。\n- 未能恢复的帧：{2}。\n- 使用“撤销传播”重试。"),
+    ZH_HANT("{0} 失敗：無法寫入 {1}，且該影格未能恢復。\n- 未能恢復的影格：{2}。\n- 使用「復原傳播」重試。"),
+    KO("{0}에서 실패: {1}을(를) 쓸 수 없고 해당 프레임을 되돌리지 못했습니다.\n- 되돌리지 못한 프레임: {2}.\n- '전파 취소'로 다시 시도하세요."),
+    DE("Fehler bei {0}: {1} konnte nicht geschrieben und das Bild nicht zurückgesetzt werden.\n- Nicht zurückgesetzte Bilder: {2}.\n- Mit „Übertragen rückgängig“ erneut versuchen."),
+    FR("Échec sur {0} : impossible d'écrire {1}, et l'image n'a pas pu être remise en état.\n- Images non remises en état : {2}.\n- Utilisez « Annuler la propagation » pour réessayer."),
+    ES("Fallo en {0}: no se pudo escribir {1} y el fotograma no se pudo restaurar.\n- Fotogramas sin restaurar: {2}.\n- Use «Deshacer propagación» para reintentar."),
+    PT("Falha em {0}: não foi possível escrever {1} e o quadro não pôde ser restaurado.\n- Quadros não restaurados: {2}.\n- Use \"Desfazer propagação\" para tentar de novo."),
+    IT("Errore su {0}: impossibile scrivere {1} e il fotogramma non è stato ripristinato.\n- Fotogrammi non ripristinati: {2}.\n- Usa «Annulla propagazione» per riprovare."),
+    NL("Mislukt bij {0}: kon {1} niet schrijven en het frame kon niet worden teruggezet.\n- Niet teruggezette frames: {2}.\n- Gebruik 'Doorvoeren ongedaan maken' om het opnieuw te proberen."),
+    RU("Сбой на {0}: не удалось записать {1}, и кадр не удалось восстановить.\n- Не восстановлено кадров: {2}.\n- Нажмите «Отменить распространение», чтобы повторить попытку."),
+    TR("{0} üzerinde başarısız: {1} yazılamadı ve kare geri alınamadı.\n- Geri alınamayan kare sayısı: {2}.\n- Yeniden denemek için 'Yaymayı geri al'ı kullanın."));
 
 SS_MSG(prop_failed_not_restored_final,
-    EN("Failed on {0}: {1} could not be written, and the frame could not be put back. Frames not put back: {2}. The propagate was too large to record, so it cannot be undone."),
-    JA("{0} で失敗: {1} を書き込めず、そのフレームを元に戻せませんでした。元に戻せなかったフレーム: {2}。伝播の記録が大きすぎるため、元に戻せません。"),
-    ZH_HANS("{0} 失败：无法写入 {1}，且该帧未能恢复。未能恢复的帧：{2}。传播记录过大，无法撤销。"),
-    ZH_HANT("{0} 失敗：無法寫入 {1}，且該影格未能恢復。未能恢復的影格：{2}。傳播記錄過大，無法復原。"),
-    KO("{0}에서 실패: {1}을(를) 쓸 수 없고 해당 프레임을 되돌리지 못했습니다. 되돌리지 못한 프레임: {2}. 전파 기록이 너무 커서 취소할 수 없습니다."),
-    DE("Fehler bei {0}: {1} konnte nicht geschrieben und das Bild nicht zurückgesetzt werden. Nicht zurückgesetzte Bilder: {2}. Die Übertragung war zu groß zum Aufzeichnen und lässt sich nicht rückgängig machen."),
-    FR("Échec sur {0} : impossible d'écrire {1}, et l'image n'a pas pu être remise en état. Images non remises en état : {2}. La propagation était trop grosse pour être enregistrée et ne peut pas être annulée."),
-    ES("Fallo en {0}: no se pudo escribir {1} y el fotograma no se pudo restaurar. Fotogramas sin restaurar: {2}. La propagación era demasiado grande para registrarla y no se puede deshacer."),
-    PT("Falha em {0}: não foi possível escrever {1} e o quadro não pôde ser restaurado. Quadros não restaurados: {2}. A propagação era grande demais para ser registrada e não pode ser desfeita."),
-    IT("Errore su {0}: impossibile scrivere {1} e il fotogramma non è stato ripristinato. Fotogrammi non ripristinati: {2}. La propagazione era troppo grande per essere registrata e non si può annullare."),
-    NL("Mislukt bij {0}: kon {1} niet schrijven en het frame kon niet worden teruggezet. Niet teruggezette frames: {2}. Het doorvoeren was te groot om vast te leggen en kan niet ongedaan worden gemaakt."),
-    RU("Сбой на {0}: не удалось записать {1}, и кадр не удалось восстановить. Не восстановлено кадров: {2}. Распространение слишком велико для записи, его нельзя отменить."),
-    TR("{0} üzerinde başarısız: {1} yazılamadı ve kare geri alınamadı. Geri alınamayan kare sayısı: {2}. Yayma kaydedilemeyecek kadar büyüktü, geri alınamaz."));
+    EN("Failed on {0}: {1} could not be written, and the frame could not be put back.\n- Frames not put back: {2}.\n- The propagate was too large to record, so it cannot be undone."),
+    JA("{0} で失敗: {1} を書き込めず、そのフレームを元に戻せませんでした。\n- 元に戻せなかったフレーム: {2}。\n- 伝播の記録が大きすぎるため、元に戻せません。"),
+    ZH_HANS("{0} 失败：无法写入 {1}，且该帧未能恢复。\n- 未能恢复的帧：{2}。\n- 传播记录过大，无法撤销。"),
+    ZH_HANT("{0} 失敗：無法寫入 {1}，且該影格未能恢復。\n- 未能恢復的影格：{2}。\n- 傳播記錄過大，無法復原。"),
+    KO("{0}에서 실패: {1}을(를) 쓸 수 없고 해당 프레임을 되돌리지 못했습니다.\n- 되돌리지 못한 프레임: {2}.\n- 전파 기록이 너무 커서 취소할 수 없습니다."),
+    DE("Fehler bei {0}: {1} konnte nicht geschrieben und das Bild nicht zurückgesetzt werden.\n- Nicht zurückgesetzte Bilder: {2}.\n- Die Übertragung war zu groß zum Aufzeichnen und lässt sich nicht rückgängig machen."),
+    FR("Échec sur {0} : impossible d'écrire {1}, et l'image n'a pas pu être remise en état.\n- Images non remises en état : {2}.\n- La propagation était trop grosse pour être enregistrée et ne peut pas être annulée."),
+    ES("Fallo en {0}: no se pudo escribir {1} y el fotograma no se pudo restaurar.\n- Fotogramas sin restaurar: {2}.\n- La propagación era demasiado grande para registrarla y no se puede deshacer."),
+    PT("Falha em {0}: não foi possível escrever {1} e o quadro não pôde ser restaurado.\n- Quadros não restaurados: {2}.\n- A propagação era grande demais para ser registrada e não pode ser desfeita."),
+    IT("Errore su {0}: impossibile scrivere {1} e il fotogramma non è stato ripristinato.\n- Fotogrammi non ripristinati: {2}.\n- La propagazione era troppo grande per essere registrata e non si può annullare."),
+    NL("Mislukt bij {0}: kon {1} niet schrijven en het frame kon niet worden teruggezet.\n- Niet teruggezette frames: {2}.\n- Het doorvoeren was te groot om vast te leggen en kan niet ongedaan worden gemaakt."),
+    RU("Сбой на {0}: не удалось записать {1}, и кадр не удалось восстановить.\n- Не восстановлено кадров: {2}.\n- Распространение слишком велико для записи, его нельзя отменить."),
+    TR("{0} üzerinde başarısız: {1} yazılamadı ve kare geri alınamadı.\n- Geri alınamayan kare sayısı: {2}.\n- Yayma kaydedilemeyecek kadar büyüktü, geri alınamaz."));
 
 SS_MSG(prop_refused_size,
     EN("Refused {0}: its mask is {1} x {2}, this frame's is {3} x {4}."),
@@ -1718,19 +1605,19 @@ SS_MSG(prop_undo_failed,
     TR("{0} geri alınamadı: {1} okunamadı veya yazılamadı. Yeniden denemek için 'Yaymayı geri al'ı kullanın."));
 
 SS_MSG(prop_failed_stray_base,
-    EN("Skipped {0}: {1} is left over from an unfinished save of that frame, so a propagate there could not be undone. That frame was left as it was."),
-    JA("{0} をスキップしました: {1} はそのフレームの保存が途中で終わった名残のため、そこへの伝播は元に戻せません。そのフレームは元のままです。"),
+    EN("Skipped {0}: {1} is left over from an unfinished save of that frame, so a propagate there could not be undone.\nThat frame was left as it was."),
+    JA("{0} をスキップしました: {1} はそのフレームの保存が途中で終わった名残のため、そこへの伝播は元に戻せません。\nそのフレームは元のままです。"),
     ZH_HANS("已跳过 {0}：{1} 是该帧一次未完成的保存留下的，在此传播将无法撤销。该帧保持原状。"),
     ZH_HANT("已略過 {0}：{1} 是該影格一次未完成的儲存所留下的，在此傳播將無法復原。該影格保持原狀。"),
-    KO("{0} 건너뜀: {1}은(는) 그 프레임의 저장이 끝나지 않아 남은 파일이라 그곳으로의 전파는 취소할 수 없습니다. 해당 프레임은 원래대로 두었습니다."),
-    DE("{0} übersprungen: {1} ist von einem unvollständigen Speichern dieses Bildes übrig, daher ließe sich ein Übertragen dorthin nicht rückgängig machen. Dieses Bild blieb, wie es war."),
+    KO("{0} 건너뜀: {1}은(는) 그 프레임의 저장이 끝나지 않아 남은 파일이라 그곳으로의 전파는 취소할 수 없습니다.\n해당 프레임은 원래대로 두었습니다."),
+    DE("{0} übersprungen: {1} stammt aus unvollständigem Speichern; Übertragen wäre nicht rückgängig zu machen. Das Bild bleibt unverändert."),
     FR("{0} ignorée : {1} reste d'un enregistrement inachevé de cette image, une propagation n'y serait donc pas annulable. Cette image est restée telle quelle."),
     ES("{0} omitido: {1} quedó de un guardado sin terminar de ese fotograma, así que una propagación ahí no se podría deshacer. Ese fotograma quedó como estaba."),
-    PT("{0} ignorado: {1} sobrou de um salvamento inacabado desse quadro, então uma propagação ali não poderia ser desfeita. Esse quadro ficou como estava."),
+    PT("{0} ignorado: {1} sobrou de um salvamento inacabado desse quadro, então uma propagação ali não poderia ser desfeita.\nEsse quadro ficou como estava."),
     IT("{0} saltato: {1} è rimasto da un salvataggio incompiuto di quel fotogramma, quindi una propagazione lì non si potrebbe annullare. Quel fotogramma è rimasto com'era."),
     NL("{0} overgeslagen: {1} is overgebleven van een onvoltooide opslag van dat frame, dus doorvoeren daarheen zou niet ongedaan te maken zijn. Dat frame is gebleven zoals het was."),
     RU("{0} пропущен: {1} остался от незавершённого сохранения этого кадра, поэтому распространение на него нельзя было бы отменить. Этот кадр оставлен как был."),
-    TR("{0} atlandı: {1} o karenin yarım kalmış bir kaydından arta kaldı, bu yüzden oraya yayma geri alınamazdı. O kare olduğu gibi bırakıldı."));
+    TR("{0} atlandı: {1} o karenin yarım kalmış bir kaydından arta kaldı, bu yüzden oraya yayma geri alınamazdı.\nO kare olduğu gibi bırakıldı."));
 
 // ===========================================================================
 // Find missing
@@ -1797,19 +1684,19 @@ SS_MSG(find_next,
     TR("Sonraki eksik"));
 
 SS_MSG(find_help,
-    EN("A frame is missing when it has no mask file, or when its kept fraction lies outside the band. Near 0 is an inverted mask; near 100 is a mask that masked nothing. M and Shift+M jump to the next and previous one."),
-    JA("マスクファイルがない、または保持率が範囲外のフレームを欠落とみなします。0 付近は反転したマスク、100 付近は何もマスクしていないマスクです。M と Shift+M で次と前の欠落へ移動します。"),
-    ZH_HANS("没有蒙版文件、或保留比例超出范围的帧视为缺失。接近 0 是反转的蒙版；接近 100 是什么都没遮住的蒙版。M 和 Shift+M 跳到下一个和上一个。"),
-    ZH_HANT("沒有遮罩檔案、或保留比例超出範圍的影格視為缺失。接近 0 是反轉的遮罩；接近 100 是什麼都沒遮住的遮罩。M 和 Shift+M 跳到下一個和上一個。"),
-    KO("마스크 파일이 없거나 유지 비율이 범위를 벗어난 프레임을 누락으로 봅니다. 0에 가까우면 반전된 마스크, 100에 가까우면 아무것도 가리지 않은 마스크입니다. M과 Shift+M으로 다음과 이전으로 이동합니다."),
-    DE("Ein Bild fehlt, wenn es keine Maskendatei hat oder sein behaltener Anteil außerhalb des Bandes liegt. Nahe 0 ist eine invertierte Maske; nahe 100 eine Maske, die nichts maskiert hat. M und Shift+M springen zum nächsten und vorherigen."),
-    FR("Une image manque quand elle n'a pas de fichier de masque, ou quand sa fraction conservée sort de la bande. Près de 0, c'est un masque inversé ; près de 100, un masque qui n'a rien masqué. M et Shift+M sautent à la suivante et à la précédente."),
-    ES("Un fotograma falta cuando no tiene archivo de máscara o cuando su fracción conservada queda fuera de la banda. Cerca de 0 es una máscara invertida; cerca de 100, una máscara que no enmascaró nada. M y Shift+M saltan al siguiente y al anterior."),
-    PT("Um quadro está faltando quando não tem arquivo de máscara ou quando a sua fração mantida sai da banda. Perto de 0 é uma máscara invertida; perto de 100, uma máscara que não mascarou nada. M e Shift+M vão para o próximo e o anterior."),
-    IT("Un fotogramma manca quando non ha un file di maschera o quando la sua frazione mantenuta è fuori dalla banda. Vicino a 0 è una maschera invertita; vicino a 100 una maschera che non ha mascherato nulla. M e Shift+M saltano al successivo e al precedente."),
-    NL("Een frame ontbreekt als het geen maskerbestand heeft of als zijn behouden deel buiten de band valt. Dicht bij 0 is een omgekeerd masker; dicht bij 100 een masker dat niets maskeerde. M en Shift+M springen naar de volgende en vorige."),
-    RU("Кадр считается пропущенным, если у него нет файла маски или доля оставленного выходит за полосу. Около 0 это инвертированная маска; около 100 это маска, которая ничего не скрыла. M и Shift+M переходят к следующему и предыдущему."),
-    TR("Maske dosyası olmayan veya tutulan oranı bandın dışında kalan kare eksik sayılır. 0'a yakın ters çevrilmiş maske, 100'e yakın hiçbir şeyi maskelememiş maskedir. M ve Shift+M sonrakine ve öncekine atlar."));
+    EN("A frame is missing when it has no mask file, or when its kept fraction lies outside the band.\nNear 0 is an inverted mask; near 100 is a mask that masked nothing. M and Shift+M jump to the next and previous one."),
+    JA("マスクファイルがない、または保持率が範囲外のフレームを欠落とみなします。\n0 付近は反転したマスク、100 付近は何もマスクしていないマスクです。 M と Shift+M で次と前の欠落へ移動します。"),
+    ZH_HANS("没有蒙版文件、或保留比例超出范围的帧视为缺失。 接近 0 是反转的蒙版； 接近 100 是什么都没遮住的蒙版。\nM 和 Shift+M 跳到下一个和上一个。"),
+    ZH_HANT("沒有遮罩檔案、或保留比例超出範圍的影格視為缺失。 接近 0 是反轉的遮罩； 接近 100 是什麼都沒遮住的遮罩。\nM 和 Shift+M 跳到下一個和上一個。"),
+    KO("마스크가 없거나 유지 비율이 범위 밖이면 누락입니다. 0 근처는 반전, 100 근처는 아무것도 가리지 않은 마스크입니다.\nM: 다음, Shift+M: 이전."),
+    DE("Ein Bild fehlt, wenn es keine Maskendatei hat oder sein behaltener Anteil außerhalb des Bandes liegt.\n- Nahe 0 ist eine invertierte Maske; nahe 100 eine Maske, die nichts maskiert hat.\n- M und Shift+M springen zum nächsten und vorherigen."),
+    FR("Une image manque quand elle n'a pas de fichier de masque, ou quand sa fraction conservée sort de la bande.\n- Près de 0, c'est un masque inversé ; près de 100, un masque qui n'a rien masqué.\n- M et Shift+M sautent à la suivante et à la précédente."),
+    ES("Un fotograma falta cuando no tiene archivo de máscara o cuando su fracción conservada queda fuera de la banda.\n- Cerca de 0 es una máscara invertida; cerca de 100, una máscara que no enmascaró nada.\n- M y Shift+M saltan al siguiente y al anterior."),
+    PT("Um quadro está faltando quando não tem arquivo de máscara ou quando a sua fração mantida sai da banda.\n- Perto de 0 é uma máscara invertida; perto de 100, uma máscara que não mascarou nada.\n- M e Shift+M vão para o próximo e o anterior."),
+    IT("Un fotogramma manca quando non ha un file di maschera o quando la sua frazione mantenuta è fuori dalla banda.\n- Vicino a 0 è una maschera invertita; vicino a 100 una maschera che non ha mascherato nulla.\n- M e Shift+M saltano al successivo e al precedente."),
+    NL("Een frame ontbreekt als het geen maskerbestand heeft of als zijn behouden deel buiten de band valt.\n- Dicht bij 0 is een omgekeerd masker; dicht bij 100 een masker dat niets maskeerde.\n- M en Shift+M springen naar de volgende en vorige."),
+    RU("Кадр считается пропущенным, если у него нет файла маски или доля оставленного выходит за полосу.\n- Около 0 это инвертированная маска; около 100 это маска, которая ничего не скрыла.\n- M и Shift+M переходят к следующему и предыдущему."),
+    TR("Eksik: maskesiz veya tutulan oranı aralık dışında. 0’a yakın: ters; 100’e yakın: maskeleme yok.\nM: sonraki; Shift+M: önceki."));
 
 SS_MSG(find_band_lo,
     EN("Min kept %"),
@@ -1951,19 +1838,19 @@ SS_MSG(slide_fps,
     TR("Kare hızı"));
 
 SS_MSG(slide_help,
-    EN("Plays the corrected masks over their photos at the chosen rate, so a wrong frame is seen at speed. Any key or click stops on the frame shown. Frames are decoded a few ahead; a rate the decoder cannot keep up with shows as a lower shown rate, never as skipped frames."),
-    JA("修正済みマスクを写真に重ねて指定レートで再生し、誤ったフレームを素早く見つけます。キーやクリックで表示中のフレームで停止します。数フレーム先までデコードします。デコードが追いつかないレートでは表示レートが下がりますが、フレームは飛ばされません。"),
-    ZH_HANS("以选定速率在照片上播放修正后的蒙版，以便快速发现错误的帧。任意按键或点击会停在当前显示的帧。提前解码几帧；解码跟不上的速率表现为显示速率下降，而不会跳帧。"),
-    ZH_HANT("以選定速率在照片上播放修正後的遮罩，以便快速發現錯誤的影格。任意按鍵或點擊會停在目前顯示的影格。提前解碼幾格；解碼跟不上的速率表現為顯示速率下降，而不會跳格。"),
-    KO("수정된 마스크를 사진 위에 선택한 속도로 재생해 잘못된 프레임을 빠르게 찾습니다. 아무 키나 클릭으로 표시 중인 프레임에서 멈춥니다. 몇 프레임 앞까지 미리 디코딩합니다. 디코더가 따라가지 못하는 속도에서는 표시 속도가 낮아질 뿐 프레임을 건너뛰지 않습니다."),
-    DE("Spielt die korrigierten Masken über ihren Fotos mit der gewählten Rate ab, damit ein falsches Bild im Lauf auffällt. Jede Taste und jeder Klick hält auf dem gezeigten Bild an. Einige Bilder werden vorab dekodiert; eine Rate, der der Dekoder nicht folgen kann, zeigt sich als niedrigere Anzeigerate, nie als übersprungene Bilder."),
-    FR("Lit les masques corrigés sur leurs photos à la cadence choisie, pour repérer une image fausse au passage. Toute touche ou clic arrête sur l'image affichée. Quelques images sont décodées d'avance ; une cadence que le décodeur ne suit pas se traduit par une cadence affichée plus basse, jamais par des images sautées."),
-    ES("Reproduce las máscaras corregidas sobre sus fotos a la cadencia elegida, para ver un fotograma erróneo al vuelo. Cualquier tecla o clic se detiene en el fotograma mostrado. Se decodifican unos fotogramas por adelantado; una cadencia que el decodificador no alcanza se ve como una cadencia mostrada menor, nunca como fotogramas saltados."),
-    PT("Reproduz as máscaras corrigidas sobre as suas fotos à cadência escolhida, para ver um quadro errado em andamento. Qualquer tecla ou clique para no quadro mostrado. Alguns quadros são decodificados com antecedência; uma cadência que o decodificador não acompanha aparece como uma cadência mostrada mais baixa, nunca como quadros saltados."),
-    IT("Riproduce le maschere corrette sulle loro foto alla frequenza scelta, per notare un fotogramma sbagliato al volo. Qualsiasi tasto o clic ferma sul fotogramma mostrato. Alcuni fotogrammi vengono decodificati in anticipo; una frequenza che il decodificatore non regge si vede come una frequenza mostrata più bassa, mai come fotogrammi saltati."),
-    NL("Speelt de gecorrigeerde maskers over hun foto's af op de gekozen snelheid, zodat een fout frame op snelheid opvalt. Elke toets of klik stopt op het getoonde frame. Enkele frames worden vooruit gedecodeerd; een snelheid die de decoder niet bijhoudt, blijkt uit een lagere getoonde snelheid, nooit uit overgeslagen frames."),
-    RU("Показывает исправленные маски поверх фото с выбранной частотой, чтобы неверный кадр был заметен на ходу. Любая клавиша или щелчок останавливает на показанном кадре. Несколько кадров декодируются заранее; частота, за которой декодер не успевает, проявляется как меньшая показанная частота, но кадры не пропускаются."),
-    TR("Düzeltilmiş maskeleri fotoğraflarının üzerinde seçilen hızda oynatır; yanlış bir kare akışta fark edilir. Herhangi bir tuş veya tıklama gösterilen karede durdurur. Birkaç kare önceden çözülür; çözücünün yetişemediği hız, atlanan kare olarak değil, daha düşük gösterilen hız olarak görünür."));
+    EN("Plays the corrected masks over their photos at the chosen rate, so a wrong frame is seen at speed.\n- Any key or click stops on the frame shown. Frames are decoded a few ahead;\n- a rate the decoder cannot keep up with shows as a lower shown rate, never as skipped frames."),
+    JA("修正済みマスクを写真に重ねて指定レートで再生し、誤ったフレームを素早く見つけます。\n- キーやクリックで表示中のフレームで停止します。 数フレーム先までデコードします。\n- デコードが追いつかないレートでは表示レートが下がりますが、フレームは飛ばされません。"),
+    ZH_HANS("以选定速率在照片上播放修正后的蒙版，以便快速发现错误的帧。 任意按键或点击会停在当前显示的帧。 提前解码几帧；\n解码跟不上的速率表现为显示速率下降，而不会跳帧。"),
+    ZH_HANT("以選定速率在照片上播放修正後的遮罩，以便快速發現錯誤的影格。 任意按鍵或點擊會停在目前顯示的影格。 提前解碼幾格；\n解碼跟不上的速率表現為顯示速率下降，而不會跳格。"),
+    KO("수정된 마스크를 사진 위에 선택한 속도로 재생해 잘못된 프레임을 빠르게 찾습니다.\n- 아무 키나 클릭으로 표시 중인 프레임에서 멈춥니다. 몇 프레임 앞까지 미리 디코딩합니다.\n- 디코더가 따라가지 못하는 속도에서는 표시 속도가 낮아질 뿐 프레임을 건너뛰지 않습니다."),
+    DE("Korrigierte Masken über Fotos abspielen. Jede Taste oder jeder Klick hält auf dem gezeigten Bild an.\nBilder werden vorab dekodiert. Bei Überlast sinkt die Rate; es werden keine Bilder übersprungen."),
+    FR("Lit les masques sur les photos. Toute touche ou clic arrête sur l’image affichée.\nDécodage anticipé ; si trop lent, la cadence baisse sans sauter d’images."),
+    ES("Reproduce máscaras sobre las fotos. Cualquier tecla o clic detiene el fotograma mostrado.\nDecodifica por adelantado; si no alcanza la cadencia, la reduce sin saltar fotogramas."),
+    PT("Reproduz máscaras sobre as fotos. Qualquer tecla ou clique para no quadro mostrado.\nDecodifica com antecedência; se não atingir a cadência, reduz sem pular quadros."),
+    IT("Riproduce maschere sulle foto. Qualsiasi tasto o clic ferma il fotogramma mostrato.\nDecodifica in anticipo; se troppo lenta, la cadenza scende senza saltare fotogrammi."),
+    NL("Speelt de gecorrigeerde maskers over hun foto's af op de gekozen snelheid, zodat een fout frame op snelheid opvalt.\n- Elke toets of klik stopt op het getoonde frame. Enkele frames worden vooruit gedecodeerd;\n- een snelheid die de decoder niet bijhoudt, blijkt uit een lagere getoonde snelheid, nooit uit overgeslagen frames."),
+    RU("Показывает исправленные маски поверх фото с выбранной частотой, чтобы неверный кадр был заметен на ходу.\n- Любая клавиша или щелчок останавливает на показанном кадре. Несколько кадров декодируются заранее;\n- частота, за которой декодер не успевает, проявляется как меньшая показанная частота, но кадры не пропускаются."),
+    TR("Düzeltilmiş maskeleri fotoğraflarının üzerinde seçilen hızda oynatır; yanlış bir kare akışta fark edilir.\n- Herhangi bir tuş veya tıklama gösterilen karede durdurur. Birkaç kare önceden çözülür;\n- çözücünün yetişemediği hız, atlanan kare olarak değil, daha düşük gösterilen hız olarak görünür."));
 
 SS_MSG(slide_stats,
     EN("Slideshow: shown {0} fps, longest gap {1} ms"),

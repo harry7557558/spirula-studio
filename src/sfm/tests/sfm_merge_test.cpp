@@ -443,6 +443,40 @@ int cmdMergeSelftest(int, char**) {
             check(fparts.size() == 2 && fcut.reattached == 0,
                   "the overlap bar rejected a genuine fold");
         }
+
+        // The pipeline refines the pieces after a fold split, and the refine can fold a
+        // piece back into the main model (4412-image rig). A piece wholly inside another
+        // model must not survive; a genuine fold must still come out as two models.
+        {
+            ManagerOptions mopt;
+            auto contained = [&](const std::vector<Reconstruction>& ms) {
+                for (size_t i = 0; i < ms.size(); i++)
+                    for (size_t j = 0; j < ms.size(); j++) {
+                        if (i == j) continue;
+                        size_t in = 0;
+                        for (const auto& kv : ms[i].images)
+                            if (kv.second.registered && ms[j].images.count(kv.first) &&
+                                ms[j].images.at(kv.first).registered) in++;
+                        if ((double)in >= mopt.redundant_ratio * ms[i].numRegistered()) return true;
+                    }
+                return false;
+            };
+            ModelMemo memo1, memo2;
+            ManagerStats st1, st2;
+            std::vector<Reconstruction> two = splitDuplicateStructure(folded, rep, 4);
+            std::vector<Reconstruction> kept = refineAfterFoldSplit(
+                two, memo1, mopt, st1, [](const Reconstruction& m) { return m; });
+            check(kept.size() == 2 && !contained(kept),
+                  "a genuine fold did not stay two models after the post-split refine");
+            // Refine re-registers its input over both copies (the memo audits only one:
+            // both pieces share a signature).
+            std::vector<Reconstruction> merged = refineAfterFoldSplit(
+                two, memo2, mopt, st2, [&](const Reconstruction&) { return folded; });
+            printf("  ... refine folds the piece back into the main model: %zu model(s), "
+                   "%zu dropped\n", merged.size(), st2.dropped_redundant);
+            check(merged.size() == 1 && !contained(merged),
+                  "a piece fully inside the main model survived the post-split refine");
+        }
     }
 
     printf("%s\n", fails == 0 ? "PASS" : "FAIL");

@@ -140,6 +140,14 @@ rerun preparation. Unreadable sources fail identification. Dataset images
 and photographs read in place are exempt from these external-source checks:
 they are already the frames, not a capture to re-extract.
 
+A laser scan's photographs are inputs only once the run has extracted them
+from the E57 (`add_scan_photo_inputs`), after the first snapshot, so they are
+identified right after that. For the same reason no step records them as
+inputs: the panel plans before they exist. The masks step records a scan's
+drawn areas under the scan (`scan_stencil`), and the reconstruction records
+which scans bring photographs (`scan_photos`); everything else about them --
+their lens, their order, their folders -- follows from the scan file.
+
 
 ### Photographs the blur rule left out
 

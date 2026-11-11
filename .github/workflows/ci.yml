@@ -31,6 +31,8 @@ jobs:
           bash tools/check_private_paths.sh
           python3 tools/check_font_coverage.py
           python3 tools/check_winmacro.py
+          python3 tools/check_ui_text.py --all --quiet
+          python3 -m unittest discover -s tools/tests -p 'test_*.py'
 
       - name: Generated files are current
         run: |
@@ -42,11 +44,12 @@ jobs:
             exit 1
           }
 
-      - name: Comment budget
+      - name: Changed source budgets
         if: github.event_name == 'pull_request'
         run: |
           git reset --soft ${{ github.event.pull_request.base.sha }}
           python3 tools/check_comment_length.py
+          python3 tools/check_ui_text.py
 
   linux:
     runs-on: ubuntu-24.04

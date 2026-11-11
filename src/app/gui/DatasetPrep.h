@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -69,6 +70,13 @@ inline std::string rig_letter(int letter) {
         s.insert(s.begin(), (char)('A' + (n - 1) % 26));
     return s;
 }
+
+// Which parts of a row of the fixed-areas table follow the row above it
+// (StencilRows.h); a part that does not is the row's own choice.
+struct StencilFollow {
+    bool border = false;
+    bool areas = false;
+};
 
 // PrepInput::fps for "every frame" -- a 0 there already means "^". Everywhere
 // else, a rate of 0 is every frame.
@@ -134,6 +142,9 @@ struct PrepInput {
     bool use_imu = true;
     bool use_gps = true;
     int video_tracks = 0;            // 0 = not probed yet
+    // The one lens of a two-lens input kept, a track or a packed half, into
+    // its own cam<k>/ as when all are; -1 for all of them.
+    int active_lens = -1;
     // The camera folders found under this input, when it arrived with more
     // than one. Empty means the lens above describes all of it.
     std::vector<SubCamera> subcameras;
@@ -156,6 +167,11 @@ struct PrepInput {
     // resolved per camera folder when it asks for the border to be fitted
     // (app::FrameStencil), which is what gives a dual-fisheye file two circles.
     app::FrameStencil stencil;
+    // Its rows' "same as above", by FrameStencil camera key (settle_follow).
+    std::map<std::string, StencilFollow> stencil_follow;
+    // The laser scan these photographs came out of (LidarStep.h), "" for
+    // anything else. Their drawn areas are the scan's, PrepJob::scan_stencils.
+    std::string scan;
 };
 
 // One row of the "Camera / lens per input" list. `rel` is the prefix
@@ -243,6 +259,9 @@ inline constexpr const char* kSkippedListFile = ".spirula-skipped";
 
 struct PrepJob {
     std::vector<PrepInput> inputs;   // in the order the user added them
+    // Drawn areas for a laser scan's photographs, by scan file: given to the
+    // inputs they become (add_scan_photo_inputs) and recorded under the scan.
+    std::map<std::string, app::FrameStencil> scan_stencils;
     // Frozen by the runner before planning; empty in the panel's cheap preview.
     std::vector<std::string> source_content;
     std::string workspace;           // output dataset dir (created)
@@ -535,9 +554,14 @@ bool is_pano360_path(const std::string& path);
 // into each frame, which PrepInput::packed_lenses counts.
 bool is_packed_lens_path(const std::string& path);
 
-// Two fisheye lenses back to back, as tracks or packed into one frame.
+// Two fisheye lenses back to back, as tracks or packed into one frame, both kept.
 inline bool is_dual_lens(const PrepInput& in) {
-    return is_dual_fisheye_path(in.path) || in.packed_lenses >= 2;
+    return in.active_lens < 0 && (is_dual_fisheye_path(in.path) || in.packed_lenses >= 2);
+}
+// The video track the lens kept is decoded from; -1 for every track, which is
+// also a packed frame's case: its lens is cut out of the picture afterwards.
+inline int kept_track(const PrepInput& in) {
+    return in.packed_lenses >= 2 ? -1 : in.active_lens;
 }
 // A lens the default camera model does not fit.
 inline bool has_fisheye_lens(const PrepInput& in) {
@@ -600,6 +624,11 @@ int probe_video_tracks(const std::string& ffmpeg_exe, const std::string& path,
 // The folders under images/<input> a video's frames go to: one per lens of a
 // dual-fisheye file or per view of a 360 plan, none for a single lens.
 std::vector<std::string> lens_dirs(const PrepJob& job, const PrepInput& in);
+
+// The cameras the fixed-areas table gives `in` a row each, as FrameStencil
+// keys them: its camera folders or lenses, plus any camera its stencil already
+// names. {""} for one camera. A 360 file's views share one row until split.
+std::vector<std::string> stencil_cameras(const PrepJob& job, const PrepInput& in);
 
 // The frame sequences a `sequential` input is, as folders under images/: a
 // video's lens folders, or a photo folder -- one per top-level camera folder

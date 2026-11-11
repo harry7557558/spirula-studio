@@ -53,6 +53,9 @@ std::string ensure_file(const FetchFile& f, const char* tag);
 // that names a family is refused, so forgetting one cannot let it through.
 using LicenseGate = std::function<void(const char* families)>;
 void set_license_gate(LicenseGate gate);
+// The same gate for a file that is not downloaded: a model whose every
+// checkpoint carries licensed weights asks before it opens a path the user named.
+void require_licenses(const char* families);
 
 // Lowercase hex SHA-256 of a file's contents. Empty when it cannot be read.
 std::string sha256_file(const std::string& path);

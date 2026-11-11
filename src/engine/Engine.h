@@ -261,6 +261,16 @@ void engine_ppisp_forward(TorchTensorView cam_indices);
 // in PPISPRegLossIndex order.
 void engine_ppisp_optim_step(int step, const PpispStepConfig& cfg);
 
+// Per-image warp of the ground truth onto the render (docs/notes/calib-warp.md);
+// one table row per post camera, none when n_cams is 0.
+void engine_init_calib_warp(int n_cams, const CalibWarpConfig& cfg);
+bool engine_calib_warp_wants_depth();
+// After engine_eval_forward: `src` (the view's render, host [C,H,W,3]) warped onto
+// the staged GT into `out`, by a flow fitted on `est` (it colour-corrected), the
+// staged mask's pixels left out with `use_mask`; outside pixels take the GT.
+void engine_calib_warp_align_to_gt(const float* est, const float* src, float* out,
+                                   bool use_mask);
+
 // --- Background blending (applied BEFORE bilagrid/PPISP) ---
 // Exactly one of these init calls activates it; `--background-mode` picks.
 
@@ -487,13 +497,13 @@ void engine_resolve_data_error(bool retry);
 // The installed GT remains available to the host-copy functions. Returns face count.
 int engine_eval_forward(int index, std::string primitive, int sh_degree, bool packed);
 
-// Same, for ONE image by dataset index (the GUI's compare view), rendering one
-// pass of its faces as step `cfg` would: returns that pass's views, `out_passes`
-// the image's count. Overwrites a step's GT and camera -- BETWEEN steps, under its mutex.
+// Same, for ONE image (the GUI's compare view), one pass of its faces as step `cfg`
+// renders it: returns its views, `out_passes` the image's count. `apply_calib_warp`
+// stages the GT the loss reads. Overwrites a step's GT and camera -- BETWEEN steps.
 int engine_preview_forward(int index, std::string primitive, int sh_degree,
                            bool packed, bool apply_color_correction,
-                           const EngineStepConfig& cfg, int pass = 0,
-                           int* out_passes = nullptr);
+                           bool apply_calib_warp, const EngineStepConfig& cfg,
+                           int pass = 0, int* out_passes = nullptr);
 
 // --- Debug rendering ---
 

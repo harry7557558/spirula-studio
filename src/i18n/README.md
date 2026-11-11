@@ -225,3 +225,61 @@ run prints, everything a reconstruction prints, everything a meshing run
 prints, and everything reading a dataset says about it are all translated --
 because a terminal has no language picker to fix it with afterwards, and
 because the GUI shows that terminal.
+
+## Copy length review
+
+See AGENTS.md's “UI text — keep it short” section for the writing policy.
+`python3 tools/check_ui_text.py` reports changed logical messages, including
+staged and unstaged text, against HEAD. `--all` includes existing debt;
+`--base REV` compares current text with that revision (use a merge base for
+branch review). `--json` includes the full text and every finding; `--limit N`
+limits only the human-readable listing. Unexcluded length findings and ASCII
+violations fail the check. Invalid inputs or unsupported catalog syntax also
+fail. CMake runs the changed-copy check before building targets, and CI checks
+the full catalog. Clean catalogs are skipped in the changed-copy check.
+
+The initial 60-column line estimate counts Unicode wide/fullwidth characters
+as two columns, ordinary letters as one, and combining/format characters as
+zero. Explicit newlines count. `--columns N` allows calibration at other widths.
+This is not pixel measurement: proportional glyph advances, shaping, expanded
+placeholders and panel size still need visual review. The 420-scaled-pixel
+hover wrapper is the first calibration target; 60 columns is provisional.
+
+`tools/ui_text_policy.json` assigns budgets to roles. Specific message entries
+override catalog roles; remaining help/hint names are inferred as tooltips and
+other messages as ordinary interface text. Usage names are inferred as CLI
+copy. Inference is a review aid, not proof of how a message is displayed.
+The policy’s `exclusions` map records reviewed exceptions with a reason
+and a usage location. Text and JSON reports show exclusions separately from
+over-budget copy.
+
+GUI and CLI prose has a three-line budget. A list may open with one prose
+paragraph of up to three wrapped lines. Use up to four explicit `- ` or `• `
+items, two wrapped lines per item, and eight wrapped lines total including
+the overview. Write the overview on one logical line, followed immediately
+by the bullets. For one follow-up, a second plain line can replace the
+bullet. That line can wrap to two display lines. The checker reserves two
+display columns for each bullet marker.
+Verbatim legal text remains exempt.
+
+English terminal message templates pass through the replacements in
+`src/i18n/AsciiPunctuation.inc` before formatting. GUI messages and other
+languages use their original strings. Formatted arguments retain their text,
+including Unicode paths. Both English spellings must fit the length budget.
+The checker rejects unsupported English catalog characters even in
+length-excluded messages. Raw string literals in
+`src/app/cli/` and `src/app/Main.cpp` must already be ASCII.
+Embedded English license text uses the same conversion for terminal display,
+and its characters are checked against the replacement table.
+`Main.cpp` enables terminal rendering, and the GUI entry point disables it.
+`i18n::scan` accepts the terminal spelling when reading child-process output.
+
+Shared GUI/CLI messages need the GUI budget. Every explicit assignment carries
+a reason; check mixed-use catalogs at call sites before adding exceptions.
+
+Mask shrink/expansion hover help uses the same compact policy in all locales.
+The percentage is relative to each detected object's size: at 5%, an object
+400 pixels across gets roughly a 20-pixel margin. Smaller distant objects get
+smaller margins. Shrinking removes background rims from kept subjects and does
+not trim the frame boundary; expansion removes color fringes around excluded
+objects. Zero preserves the detected outline.

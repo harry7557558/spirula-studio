@@ -357,9 +357,10 @@ void ImageCompare::run_job(const Job& j, Shot& out) {
 
     for (int pi = 0; pi < npass; pi++) {
         std::lock_guard<std::mutex> lk(s.engine_mutex);
+        // The file itself is shown unwarped; the training copy as the loss reads it.
         const int views = engine_preview_forward(
             j.index, s.cfg.primitive, sh_deg, s.cfg.packed,
-            j.color_correct, step_cfg, pi, &npass);
+            j.color_correct, !j.source_gt, step_cfg, pi, &npass);
         auto shape = engine_get_render_rgb_shape();
         Pass q;
         q.views = (int)std::get<0>(shape);

@@ -246,14 +246,13 @@ beside the new one.
 
 ### Candidates not yet taken
 
-`raster_bwd.accum_weight` (114 MiB) would fit the `RasterBwd` phase and balance
-it against the intersect phase, for a net ~53 MiB (`fused_proj_bwd.cam_bounds`,
-4 bytes a splat, likewise; `eng.densify.oversize_weight`, 8, is filled by the
-engine before the draw opens its phase, so it would need the draw to compute it). It is not tagged because
-the non-split training path can leave `engine().fwd.accum_weight` pointing at
-the previous step's buffer when a step produces none -- harmless today (stale
-but plausible numbers), garbage once the bytes are reused. Fix that stale view
-the way `_engine_train_step_split_batch` already does, then tag it.
+`raster_bwd.accum_weight` (114 MiB) and `fused_proj_bwd.cam_bounds` (4 bytes a
+splat) are now in `POOL_ALIAS_TABLE` under `RasterBwd`. Stale views in the
+non-split training path are cleared before forward/backward and after densify,
+saving ~53 to 114 MiB peak VRAM during backward without lifetime hazards.
+Remaining candidate: `eng.densify.oversize_weight` (8 bytes a splat), which is
+filled by the engine before the draw opens its phase, so it would need the
+draw to compute it.
 
 ## The packed AABB
 

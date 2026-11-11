@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 # Python files that live in someone else's repo and are referenced as
 # provenance -- upstream model definitions and the sam3.cpp converters.
-EXTERNAL_PY='^(embeddings|functional|metrics|transformer_qwenimage|autoencoder_kl_qwenimage|lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama|dad|dedode|loma|birefnet|modeling_grounding_dino|modeling_swin|swin_transformer|sparse_unet|flex_sparse_blocks|v2|v3)\.py$'
+EXTERNAL_PY='^(embeddings|functional|metrics|transformer_qwenimage|autoencoder_kl_qwenimage|lightglue|aliked|blocks|hieradet|sam2|sam3|convert_sam2_to_ggml|convert_sam3_to_ggml|ViT_DINO_reg|RAFTDepthNormalDPTDecoder5|vision_transformer|modules|infer_panorama|dad|dedode|loma|birefnet|modeling_grounding_dino|modeling_swin|swin_transformer|sparse_unet|flex_sparse_blocks|v2|v3|descriptor|flexglue|export)\.py$'
 
 # Include roots owned by a toolchain or a vendored dependency.
 EXTERNAL_DIR='^(cub|vulkan|GLFW|glm|thrust|cooperative_groups|backends|misc|geogram|nets|functional|imgui)/'
@@ -54,7 +54,7 @@ report() {
     [ $fail -eq 0 ] && echo "Comments cite files that are not in the tree:" && echo ""
     fail=1
     echo "  $1"
-    git grep -nIE "(^|[^A-Za-z0-9_/.-])$(printf '%s' "$1" | sed 's/\./\\./g')" \
+    git grep -nIE "(^|[^A-Za-z0-9_/.-]|\\\\[nrt])$(printf '%s' "$1" | sed 's/\./\\./g')" \
         -- "${paths[@]}" "${globs[@]}" \
         | grep -vE "$URL" | sed 's/^/      /' | head -3
     echo ""
@@ -65,7 +65,7 @@ report() {
 URL='https?://|www\.|github\.com|githubusercontent|huggingface\.co'
 globs=(':(glob)**/*.'{h,cpp,cu,cuh,slang,cmake,bash,md})
 lines=$(git grep -hIE "[A-Za-z0-9_.-]+\.($EXTS)\b" -- "${paths[@]}" "${globs[@]}" \
-        | grep -vE "$URL")
+        | grep -vE "$URL" | sed -E 's/\\[nrt]/ /g')
 
 # ---- rule 1: qualified paths -----------------------------------------------
 # Scanned over every line, not just comments: the `scripts/mask.py` this was
@@ -86,7 +86,7 @@ prose=$( { git grep -hIE '\.py\b' -- "${paths[@]}" \
              ':(glob)**/*.'{h,cpp,cu,cuh,slang,cmake,bash} \
              | grep -E '^[[:space:]]*(//|\*|#)|//'
            git grep -hIE '\.py\b' -- "${paths[@]}" ':(glob)**/*.md'
-         } | grep -vE "$URL")
+         } | grep -vE "$URL" | sed -E 's/\\[nrt]/ /g')
 
 bare=$(printf '%s\n' "$prose" \
     | grep -oE '(^|[^A-Za-z0-9_/.-])[A-Za-z0-9_-]+\.py\b' \

@@ -932,7 +932,6 @@ static int cmdMap(int argc, char** argv) {
         L::fail(Tag::Map, M::rig_bad, {e.what()});
         return 1;
     }
-    // The sensors, calibrated against the gyro on the verified pairs.
     const SensorCaptures sensors = loadSensorCaptures(cfg, opt.verbose);
     applyMetricGpsAuto(cfg, sensors, cfg.image_dir);
     std::unique_ptr<TelemetryPriors> priors =

@@ -366,6 +366,11 @@ public:
         return _arena.reserve + _tail[(size_t)_phase] <= _arena.cap;
     }
 
+    PoolPhase phase() const {
+        std::lock_guard<std::mutex> lock(_mu);
+        return _phase;
+    }
+
     struct ArenaStats { size_t cap_bytes; size_t want_bytes; size_t slots; };
     ArenaStats arenaStats() const {
         std::lock_guard<std::mutex> lock(_mu);
@@ -758,6 +763,11 @@ public:
     // QuantizedTensor* codecs pass kSubPacked / kSubBounds.
     void resize(PoolSlot slot, int64_t numel, uint32_t sub = kSubMain) {
         _data_ptr = DevicePool::global().acquire<T>(slot, (size_t)numel, sub);
+        _numel = numel;
+    }
+
+    void resize_reused(PoolSlot slot, int64_t numel) {
+        _data_ptr = DevicePool::global().acquire_reused<T>(slot, (size_t)numel);
         _numel = numel;
     }
 

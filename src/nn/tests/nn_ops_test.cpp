@@ -9,6 +9,7 @@
 #include "nn/core/Half.h"
 #include "nn/core/Log.h"
 #include "nn/core/Parallel.h"
+#include "nn/Blocks.h"
 #include "nn/Ops.h"
 #include "nn/vk/Context.h"
 #include "nn/vk/MetalInterop.h"
@@ -1762,6 +1763,96 @@ void test_learned_frontend(vk::Arena& arena) {
             // by orders of magnitude.
             check(ac ? "grid_sample_points align" : "grid_sample_points noalign",
                   readback(to), want, 1e-4f);
+        }
+    }
+    {   // grid_sample_points padding_mode='border': every point lands well
+        // outside on at least one axis, where zeros and border disagree.
+        vk::ArenaScope scope(arena);
+        const int H = 8, W = 6, C = 3, N = 64;
+        auto x = randn((size_t)H * W * C);
+        auto pos = randn((size_t)N * 2, 1.5f);
+        Tensor tx = upload_f32(arena, x, H, W, C);
+        Tensor tp = upload_f32(arena, pos, N, 2);
+        for (bool ac : {true, false}) {
+            Tensor to = arena_tensor(arena, DType::F32, N, C);
+            grid_sample_points(to, tx, tp, ac, GridPad::Border);
+            std::vector<float> want((size_t)N * C), zeros((size_t)N * C);
+            for (int n = 0; n < N; ++n) {
+                const float gx = pos[(size_t)n * 2], gy = pos[(size_t)n * 2 + 1];
+                float sx = ac ? (gx + 1) * 0.5f * (W - 1) : ((gx + 1) * W - 1) * 0.5f;
+                float sy = ac ? (gy + 1) * 0.5f * (H - 1) : ((gy + 1) * H - 1) * 0.5f;
+                for (int c = 0; c < C; ++c)
+                    zeros[(size_t)n * C + c] = sample_zero(x, H, W, C, c, sy, sx);
+                sx = std::min(std::max(sx, 0.0f), (float)(W - 1));
+                sy = std::min(std::max(sy, 0.0f), (float)(H - 1));
+                for (int c = 0; c < C; ++c)
+                    want[(size_t)n * C + c] = sample_zero(x, H, W, C, c, sy, sx);
+            }
+            double gap = 0;
+            for (size_t i = 0; i < want.size(); ++i)
+                gap = std::max(gap, (double)std::fabs(want[i] - zeros[i]));
+            check("grid_sample_points border fixture separates the modes",
+                  {gap > 0.5 ? 1.0f : 0.0f}, {1.0f}, 0.0f);
+            check(ac ? "grid_sample_points border align" : "grid_sample_points border noalign",
+                  readback(to), want, 1e-4f);
+        }
+    }
+    {   // concat_ffn, with and without the message LayerNorm, against a scalar
+        // reference; the residual lands in x in place.
+        vk::ArenaScope scope(arena);
+        const int n = 37, d = 24;
+        auto x = randn((size_t)n * d), msg = randn((size_t)n * d);
+        auto w0 = randn((size_t)4 * d * d, 0.2f), b0 = randn((size_t)2 * d, 0.1f);
+        auto lw = randn((size_t)2 * d, 0.3f), lb = randn((size_t)2 * d, 0.1f);
+        auto w3 = randn((size_t)2 * d * d, 0.2f), b3 = randn((size_t)d, 0.1f);
+        auto mw = randn((size_t)d, 0.5f), mb = randn((size_t)d, 0.2f);
+        auto ln = [](std::vector<float> v, int cols, const std::vector<float>& g,
+                     const std::vector<float>& b) {
+            for (size_t r = 0; r < v.size() / cols; ++r) {
+                double m = 0, q = 0;
+                for (int c = 0; c < cols; ++c) m += v[r * cols + c];
+                m /= cols;
+                for (int c = 0; c < cols; ++c) q += (v[r * cols + c] - m) * (v[r * cols + c] - m);
+                const double inv = 1.0 / std::sqrt(q / cols + 1e-5);
+                for (int c = 0; c < cols; ++c)
+                    v[r * cols + c] = (float)((v[r * cols + c] - m) * inv * g[c] + b[c]);
+            }
+            return v;
+        };
+        for (bool norm : {false, true}) {
+            std::vector<float> m = norm ? ln(msg, d, mw, mb) : msg, h((size_t)n * 2 * d),
+                               want(x);
+            for (int r = 0; r < n; ++r)
+                for (int o = 0; o < 2 * d; ++o) {
+                    double a = b0[o];
+                    for (int c = 0; c < d; ++c)
+                        a += (double)w0[(size_t)o * 2 * d + c] * x[(size_t)r * d + c] +
+                             (double)w0[(size_t)o * 2 * d + d + c] * m[(size_t)r * d + c];
+                    h[(size_t)r * 2 * d + o] = (float)a;
+                }
+            h = ln(h, 2 * d, lw, lb);
+            for (float& v : h) v = act_ref(v, Act::GeluErf);
+            for (int r = 0; r < n; ++r)
+                for (int o = 0; o < d; ++o) {
+                    double a = b3[o];
+                    for (int c = 0; c < 2 * d; ++c)
+                        a += (double)w3[(size_t)o * 2 * d + c] * h[(size_t)r * 2 * d + c];
+                    want[(size_t)r * d + o] += (float)a;
+                }
+            Tensor tx = upload_f32(arena, x, n, d);
+            ConcatFfn f;
+            f.w0 = upload_f32(arena, w0, 2 * d, 2 * d);
+            f.b0 = upload_f32(arena, b0, 2 * d);
+            f.ln_w = upload_f32(arena, lw, 2 * d);
+            f.ln_b = upload_f32(arena, lb, 2 * d);
+            f.w3 = upload_f32(arena, w3, d, 2 * d);
+            f.b3 = upload_f32(arena, b3, d);
+            if (norm) {
+                f.msg_ln_w = upload_f32(arena, mw, d);
+                f.msg_ln_b = upload_f32(arena, mb, d);
+            }
+            concat_ffn(arena, tx, upload_f32(arena, msg, n, d), n, d, f);
+            check(norm ? "concat_ffn message norm" : "concat_ffn", readback(tx), want, 1e-4f);
         }
     }
     {   // l2_normalize_rows, including a row of exact zeros (a keypoint whose

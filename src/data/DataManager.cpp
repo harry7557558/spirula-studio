@@ -8,6 +8,7 @@
 #include "core/HardwareThreads.h"
 #include "core/ImageOrient.h"
 #include "core/TiffImage.h"
+#include "data/DownscaleCache.h"
 #include "data/ImageProbe.h"
 #include "data/ResolutionSchedule.h"
 #include "data/SourceCamera.h"
@@ -442,6 +443,31 @@ void place_rgb_over(const std::string& path, const T* px, int w, int h, const fl
     place_rgb(path, px, w, h, turns_cw, expected_h, expected_w, dst);
 }
 
+// The stb_image formats, from `mem` when it is set and from `path` otherwise.
+void decode_stbi_rgb_into(const std::string& path, const std::vector<uint8_t>* mem,
+                          int expected_h, int expected_w, PixelDType dtype, uint8_t* dst,
+                          int turns_cw, const float* over)
+{
+    int w, h, ch;
+    const int want = over ? 4 : 3;
+    const int len = mem ? (int)mem->size() : 0;
+    if (dtype == PixelDType::UINT16) {
+        stbi_us* img = mem ? stbi_load_16_from_memory(mem->data(), len, &w, &h, &ch, want)
+                           : stbi_load_16(path.c_str(), &w, &h, &ch, want);
+        if (!img) throw std::runtime_error(decode_failure(path));
+        place_rgb_over(path, img, w, h, over, turns_cw, expected_h, expected_w, dst);
+        stbi_image_free(img);
+    } else if (dtype == PixelDType::UINT8) {
+        stbi_uc* img = mem ? stbi_load_from_memory(mem->data(), len, &w, &h, &ch, want)
+                           : stbi_load(path.c_str(), &w, &h, &ch, want);
+        if (!img) throw std::runtime_error(decode_failure(path));
+        place_rgb_over(path, img, w, h, over, turns_cw, expected_h, expected_w, dst);
+        stbi_image_free(img);
+    } else {
+        throw std::runtime_error("DataManager: unsupported RGB pixel type for '" + path + "'");
+    }
+}
+
 // `decode_threads` is what an EXR or TIFF may use: 1 on the worker pool, which
 // is already 16 wide, and every core for a lone image the viewer asked for.
 // `over`, when set, composites the file's alpha onto that colour.
@@ -475,7 +501,6 @@ void decode_rgb_into(const std::string& path,
             throw std::runtime_error(decode_failure(path));   // rewritten since the probe
         return;
     }
-    int w, h, ch;
     if (dtype == PixelDType::FLOAT32) {
         exr::Info info;
         exr::Options opt;
@@ -497,18 +522,8 @@ void decode_rgb_into(const std::string& path,
         }
         place_rgb(path, px.data(), info.width, info.height, turns_cw, expected_h, expected_w,
                   dst);
-    } else if (dtype == PixelDType::UINT16) {
-        stbi_us* img = stbi_load_16(path.c_str(), &w, &h, &ch, over ? 4 : 3);
-        if (!img) throw std::runtime_error(decode_failure(path));
-        place_rgb_over(path, img, w, h, over, turns_cw, expected_h, expected_w, dst);
-        stbi_image_free(img);
-    } else if (dtype == PixelDType::UINT8) {
-        stbi_uc* img = stbi_load(path.c_str(), &w, &h, &ch, over ? 4 : 3);
-        if (!img) throw std::runtime_error(decode_failure(path));
-        place_rgb_over(path, img, w, h, over, turns_cw, expected_h, expected_w, dst);
-        stbi_image_free(img);
     } else {
-        throw std::runtime_error("DataManager: unsupported RGB pixel type for '" + path + "'");
+        decode_stbi_rgb_into(path, nullptr, expected_h, expected_w, dtype, dst, turns_cw, over);
     }
 }
 
@@ -550,6 +565,99 @@ void decode_mask_into(const std::string& path,
         for (size_t i = 0; i < (size_t)dst_h * dst_w; i++) dst[i] = (uint8_t)!dst[i];
 
     apply_boundary_offset(dst, dst_h, dst_w, boundary_offset_frac);
+}
+
+// cpu_area_resize with colour weighted by the last channel, alpha: compositing
+// the result over a colour equals filtering the composite.
+template<typename T, int C>
+void cpu_area_resize_alpha(const T* src, int sh, int sw, T* dst, int dh, int dw)
+{
+    const double top = (double)std::numeric_limits<T>::max();
+    const double sy = (double)sh / dh, sx = (double)sw / dw;
+    for (int y = 0; y < dh; ++y) {
+        const double v0 = y * sy, v1 = (y + 1) * sy;
+        const int y0 = (int)v0, y1 = std::min(sh, std::max((int)std::ceil(v1), y0 + 1));
+        for (int x = 0; x < dw; ++x) {
+            const double u0 = x * sx, u1 = (x + 1) * sx;
+            const int x0 = (int)u0, x1 = std::min(sw, std::max((int)std::ceil(u1), x0 + 1));
+            double acc[C] = {}, wsum = 0.0;
+            for (int yy = y0; yy < y1; ++yy) {
+                const double wy = std::min((double)yy + 1, v1) - std::max((double)yy, v0);
+                for (int xx = x0; xx < x1; ++xx) {
+                    const double w = wy * (std::min((double)xx + 1, u1) - std::max((double)xx, u0));
+                    const T* p = src + ((size_t)yy * sw + xx) * C;
+                    const double wa = w * (double)p[C - 1];
+                    for (int c = 0; c < C - 1; ++c) acc[c] += wa * (double)p[c];
+                    acc[C - 1] += wa;
+                    wsum += w;
+                }
+            }
+            T* q = dst + ((size_t)y * dw + x) * C;
+            for (int c = 0; c < C - 1; ++c)
+                q[c] = acc[C - 1] > 0.0
+                           ? (T)std::min(top, std::round(acc[c] / acc[C - 1])) : (T)0;
+            q[C - 1] = (T)std::min(top, std::round(wsum > 0.0 ? acc[C - 1] / wsum : 0.0));
+        }
+    }
+}
+
+// An image of 1-4 channels area-filtered to dh x dw.
+template<typename T>
+std::vector<T> shrink_native(const T* src, int sh, int sw, int n, int dh, int dw)
+{
+    std::vector<T> out((size_t)dh * dw * n);
+    switch (n) {
+        case 1: cpu_area_resize<T, 1>(src, sh, sw, out.data(), dh, dw); break;
+        case 2: cpu_area_resize_alpha<T, 2>(src, sh, sw, out.data(), dh, dw); break;
+        case 3: cpu_area_resize<T, 3>(src, sh, sw, out.data(), dh, dw); break;
+        default: cpu_area_resize_alpha<T, 4>(src, sh, sw, out.data(), dh, dw); break;
+    }
+    return out;
+}
+
+// One message per cache folder, however many images and workers write into it.
+void note_cache_dir_once(const std::string& cached, bool written) {
+    static std::mutex mu;
+    static std::set<std::string> seen;
+    const std::string dir = std::filesystem::path(cached).parent_path().string();
+    std::lock_guard<std::mutex> lk(mu);
+    if (!seen.insert(dir).second) return;
+    if (written)
+        std::printf("%s\n", format(dmsg::downscale_cache_writing, {dir}).c_str());
+    else
+        std::fprintf(stderr, "%s %s\n", dmsg::word_warning.get(),
+                     format(dmsg::downscale_cache_unwritable, {dir}).c_str());
+    std::fflush(written ? stdout : stderr);
+}
+
+// `src` shrunk by `d` in its own format and channels, kept at `cached`, and
+// decoded into `dst` from those bytes. False when `src` would not decode or
+// encode, for the caller to decode it the ordinary way.
+bool decode_rgb_via_new_cache(const std::string& src, const std::string& cached, int d,
+                              const std::string& rounding, int expected_h, int expected_w,
+                              PixelDType dtype, uint8_t* dst, int turns_cw,
+                              const float* over)
+{
+    const dscache::Format fmt = dscache::format_of(src);
+    const bool sixteen = fmt == dscache::Format::Png && stbi_is_16_bit(src.c_str());
+    int w = 0, h = 0, n = 0;
+    void* px = sixteen ? (void*)stbi_load_16(src.c_str(), &w, &h, &n, 0)
+                       : (void*)stbi_load(src.c_str(), &w, &h, &n, 0);
+    if (!px) return false;
+    const int tw = dscache::scaled_side(w, d, rounding), th = dscache::scaled_side(h, d, rounding);
+    std::vector<uint8_t> bytes;
+    if (sixteen) {
+        const std::vector<uint16_t> shrunk = shrink_native((const uint16_t*)px, h, w, n, th, tw);
+        bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 16);
+    } else {
+        const std::vector<uint8_t> shrunk = shrink_native((const uint8_t*)px, h, w, n, th, tw);
+        bytes = dscache::encode(fmt, shrunk.data(), tw, th, n, 8);
+    }
+    stbi_image_free(px);
+    if (bytes.empty()) return false;
+    note_cache_dir_once(cached, dscache::store(cached, bytes));
+    decode_stbi_rgb_into(cached, &bytes, expected_h, expected_w, dtype, dst, turns_cw, over);
+    return true;
 }
 
 // An image's alpha as a 0/1 mask at dst_h x dst_w: area-resampled first, so a
@@ -987,6 +1095,10 @@ private:
     // Image i's mask at dst_h x dst_w, from whichever of mask_present's
     // sources it has.
     void decode_mask_of(int64_t i, int dst_h, int dst_w, uint8_t* dst) const;
+    // Image i's colour at dst_h x dst_w, through the downscale cache when the
+    // run has one.
+    void decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType dt, uint8_t* dst,
+                       int decode_threads) const;
 
     // ---- Setup helpers ---------------------------------------------------
     void probe_dtypes();
@@ -1323,6 +1435,30 @@ void DataManagerImpl::warn_mask_aspect() const {
     }
 }
 
+void DataManagerImpl::decode_rgb_of(int64_t i, int dst_h, int dst_w, PixelDType dt,
+                                    uint8_t* dst, int decode_threads) const {
+    const std::string& src = _image_filenames[(size_t)i];
+    const int d = _cfg.downscale_cache_divisor;
+    const std::string cached =
+        d > 1 && dt != PixelDType::FLOAT32 ? dscache::path_for(src, _cfg.image_dir, d) : "";
+    if (!cached.empty()) {
+        std::error_code ec;
+        if (dscache::usable(cached, src, d)) {
+            try {
+                decode_rgb_into(cached, dst_h, dst_w, dt, dst, turns_of(i), decode_threads,
+                                composite_of(i));
+                return;
+            } catch (const std::exception&) {}   // a damaged cache: the original
+        } else if (!std::filesystem::exists(cached, ec) &&
+                   decode_rgb_via_new_cache(src, cached, d, _cfg.downscale_rounding_mode,
+                                            dst_h, dst_w, dt, dst, turns_of(i),
+                                            composite_of(i))) {
+            return;
+        }
+    }
+    decode_rgb_into(src, dst_h, dst_w, dt, dst, turns_of(i), decode_threads, composite_of(i));
+}
+
 void DataManagerImpl::decode_mask_of(int64_t i, int dst_h, int dst_w,
                                      uint8_t* dst) const {
     const std::string& file = _mask_filenames[(size_t)i];
@@ -1540,9 +1676,7 @@ void DataManagerImpl::preload_cpu_cache() {
                     PixelDType dt = _rgb_dtype[i];
                     size_t bytes = (size_t)W * H * 3 * pixel_dtype_size(dt);
                     _rgb_cache[i].assign(bytes, 0);
-                    decode_rgb_into(_image_filenames[i], H, W, dt,
-                                    _rgb_cache[i].data(), turns_of(i), 1,
-                                    composite_of(i));
+                    decode_rgb_of(i, H, W, dt, _rgb_cache[i].data(), 1);
                     for (int d : coarse) {
                         const int w = progressive::scaled_extent(W, d), h = progressive::scaled_extent(H, d);
                         auto& row = _rgb_cache_scaled[d][i];
@@ -2185,9 +2319,7 @@ void DataManagerImpl::worker_loop_rgb() {
         size_t row = (size_t)H * W * 3 * pixel_dtype_size(b.rgb_dtype);
         uint8_t* dst = b.rgb_buffer.data() + (size_t)job.slot * row;
         if (!decode_or_park([&]{
-                decode_rgb_into(_image_filenames[job.ds_index], H, W,
-                                b.rgb_dtype, dst, turns_of(job.ds_index), 1,
-                                composite_of(job.ds_index)); }))
+                decode_rgb_of(job.ds_index, H, W, b.rgb_dtype, dst, 1); }))
             return;
         publish_if_done(job);
     }
@@ -2523,10 +2655,8 @@ void DataManagerImpl::fetch_one(int32_t index, DecodedBatch& out) {
     if (_cfg.cache_mode == CacheMode::CPU) {
         fill_batch_from_cache(out);
     } else {
-        decode_rgb_into(_image_filenames[index], out.input_height,
-                        out.input_width, out.rgb_dtype, out.rgb_buffer.data(),
-                        turns_of(index), /*decode_threads=*/0,
-                        composite_of(index));
+        decode_rgb_of(index, out.input_height, out.input_width, out.rgb_dtype,
+                      out.rgb_buffer.data(), /*decode_threads=*/0);
         // No mask of its own: the row stays zero, as the training path
         // leaves it.
         if (!out.mask_buffer.empty() && mask_present(index))

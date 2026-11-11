@@ -353,7 +353,7 @@ static int run(int lobes) {
             /*use_scale_agnostic_mean=*/false, color_trust, s_non_sh,
             SplatVisitState{},
             GradQuantBuffers{}, s_depth, kStep, DeviceVector<int32_t>(),
-            /*grad_scale=*/1.f, /*zero_grad=*/false);
+            /*grad_scale=*/1.f, /*zero_grad=*/false, {});
 
         // The engine's dispatch: quantized state folds DC into the geometry
         // kernel, fp32 splits it into the trust-region or plain Adam kernel.

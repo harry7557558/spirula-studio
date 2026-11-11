@@ -418,6 +418,7 @@ int main(int argc, char** argv) {
                   : cfg.prim == 1 ? fused_projection_bwd_optimizer_mip
                                   : fused_projection_bwd_optimizer_3dgut;
         for (int call = 0; call < 2; call++) {
+            pool_begin_phase(PoolPhase::RasterBwd);
             if (cfg.packed && call == 1)
                 backend::memcpy_sync(gauss_ids.data_ptr(), gauss_host.data(),
                                      n_isect * 4, MemcpyKind::HostToDevice);

@@ -63,6 +63,9 @@ struct BatchRun {
     std::string sh_degree;
     std::string iterations;
     std::string floater_suppression;
+    // --roi-region's spelling: "" the dataset's first region, "off" none,
+    // "roi/<name>.json" that one.
+    std::string roi_region;
     // Does the row's Mesh stage cover this run? Off for the big appearance
     // run that would run out of memory meshing, on for the cheap one trained
     // beside it for exactly that purpose.

@@ -89,7 +89,8 @@ void _engine_arm_step_forward(const EngineStepConfig& cfg,
             w[(int)LossWeightIndex::MeanMedianDepthSup] == 0.0f &&
             w[(int)LossWeightIndex::MedianDepthNormalReg] == 0.0f &&
             w[(int)LossWeightIndex::MedianNormalSup] == 0.0f &&
-            w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f;
+            w[(int)LossWeightIndex::MedianRenderNormalReg] == 0.0f &&
+            !engine_calib_warp_wants_depth();
     }
     auto& pp = engine().ppisp;
     pp.cur_run_before_bilagrid = cfg.ppisp.run_before_bilagrid;
@@ -155,8 +156,9 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
     // Block-wise quantized gradient accumulation: only on the non-FPBO path
     // (FPBO already avoids fp32 grad buffers) and only when quantization is on.
     // Preserves split_batch via the projection-bwd kernel's requantize-accumulate.
-    engine().grad.quantize_grad =
-        !cfg.optim.use_fused_proj_bwd_optim && (cfg.optim.quantization_level != 0);
+    engine().grad.quantize_grad = !cfg.optim.use_fused_proj_bwd_optim &&
+                                  (cfg.optim.quantization_level != 0);
+    engine().grad.fp32_geometry = cfg.optim.keep_fp32_geometry_grad;
 
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_max_weight_begin_step(step, max_steps, cfg.densify);
@@ -225,6 +227,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         forward_3dgs(primitive, sh_degree, packed, /*output_median=*/false, (int)dist_type);
     }
     _engine_step_image_stages(bilagrid_cam_indices);
+    _engine_calib_warp_before_loss(step);
 
     engine_prepare_projective_depth(cfg.optim);
     auto losses = engine_compute_loss_backward(
@@ -242,6 +245,7 @@ static std::map<std::string, float> _engine_step_fwd_bwd_only(
         cfg.loss.overexposure_reg_weight,
         cfg.loss.color_shift_reg_weight,
         cfg.loss.color_shift_reg_beta);
+    _engine_calib_warp_restore_gt();
     engine().fwd.kernel_cut = 0.0f;
     engine_bin_tile_observe(std::chrono::duration<double>(
         std::chrono::steady_clock::now() - step_t0).count());
@@ -260,10 +264,15 @@ static void _engine_step_optim_and_densify(
     const EngineStepConfig& cfg,
     std::map<std::string, float>& loss_dict
 ) {
+    engine_pca_reg_step(step, cfg.pca_reg, loss_dict);
     {
         SplatStageTimer stage_timer;
         engine_optim_step(step, cfg.optim);
     }
+    engine().pca_reg.v_means = DeviceVector<float3>();
+    engine().pca_reg.v_quats = DeviceVector<float4>();
+    engine().pca_reg.v_scales = DeviceVector<float3>();
+    engine().pca_reg.v_opacities = DeviceVector<float>();
 
     if (engine().background.enabled) {
         engine_background_optim_step(step, cfg.background);
@@ -308,6 +317,8 @@ static void _engine_step_optim_and_densify(
         SplatStageTimer stage_timer;
         num_added = engine_densify_step(step, max_steps, cfg.densify);
     }
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     loss_dict["num_added"] = (float)num_added;
     if (densify_grows_at(cfg.densify, step, max_steps)) {
@@ -342,6 +353,9 @@ std::map<std::string, float> _engine_train_step_after_setup(
     // happens.
     _set_cur_cam_indices(bilagrid_cam_indices);
     engine_viewer_capture_thumbnails(bilagrid_cam_indices);
+
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     if (engine().background.enabled) {
         engine_set_background_step_params(cfg.background.seed,

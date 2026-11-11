@@ -7,6 +7,7 @@
 // this step: scheduling lives in the caller (TrainerCore), never here.
 
 #include "kernels/loss/PerPixelLoss.cuh"   // LossWeightIndex
+#include "kernels/loss/PcaReg.cuh"
 #include "kernels/pixelwise/PixelWise.cuh"      // PPISPRegLossIndex
 
 #include <algorithm>
@@ -161,6 +162,10 @@ struct OptimConfig {
     // reads only the level, but non-FPBO paths and EngineState read the
     // individual bits.
     int   quantization_level           = 0;
+    // The local-PCA regularizer adds fp32 mean, quat and scale gradients;
+    // split-batch runs keep those three fp32, from the first step so the
+    // forecast sees them.
+    bool  keep_fp32_geometry_grad      = false;
     bool  use_per_splat_bias_correction   = false;
     // Per-splat regularizers act only on splats some camera rendered this step.
     bool  reg_rendered_only               = false;
@@ -348,11 +353,50 @@ struct PpispStepConfig {
 };
 
 
+// The per-image ground-truth warp (docs/notes/calib-warp.md), fixed for a run.
+// `step` scales each Gauss-Newton step; `smooth` is the neighbour prior,
+// relative to the image's own curvature.
+struct CalibWarpConfig {
+    int   grid = 9;
+    bool  parallax = false;
+    int   start_step = 1000;
+    float step = 0.5f;
+    float smooth = 0.05f;
+};
+
+// How the local-PCA regularizer finds each splat's neighbours
+// (TrainConfig::pca_reg_knn); docs/notes/pca-reg.md.
+enum class PcaRegKnn : int {
+    Exact = 0, ExactCached, Morton, MortonCached, MortonBest, MortonBestCached,
+};
+
+// The local-PCA regularizer (PCAsplat, arXiv 2610.11011) at this step. The
+// weights are the paper's, on means over the splats; the engine divides by N.
+struct PcaRegConfig {
+    int       neighbors     = 0;    // besides the splat itself; 0 is off
+    PcaRegKnn knn           = PcaRegKnn::Exact;
+    int       window        = 0;    // MortonBest's candidates in Morton order
+    int       refresh_every = 100;  // the cached methods' rebuild interval
+    float     w_pca         = 0.0f; // on lambda_1 + tangent * (lambda_3 - lambda_2)
+    float     tangent       = 0.0f;
+    float     w_normal      = 0.0f; // on 1 - |<v_1, splat normal>|
+    float     w_surfel      = 0.0f; // on the smallest scale
+    float     w_erank       = 0.0f;
+    float     w_transparency = 0.0f;
+    PcaRegCovariance covariance = PcaRegCovariance::Centers;
+    // Lambdas over their sum, smallest scale over largest: Sim(3)-invariant.
+    bool      scale_agnostic = false;
+    // The scale-agnostic mean step cannot take a gradient on a splat this step
+    // did not project (OptimConfig::use_scale_agnostic_mean).
+    bool      rendered_means_only = false;
+};
+
 // Bundle passed to engine_train_step covering all per-step config groups.
 struct EngineStepConfig {
     LossConfig           loss;
     OptimConfig          optim;
     DensifyConfig        densify;
+    PcaRegConfig         pca_reg;
     BilagridStepConfig   bilagrid;
     PpispStepConfig      ppisp;
     BackgroundStepConfig background;

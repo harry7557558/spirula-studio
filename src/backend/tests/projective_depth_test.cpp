@@ -95,7 +95,7 @@ std::vector<float> test() {
         fused_optim_3dgs_geometry(n,means,grad,buffers[0],buffers[1],
             quats,qgrad,q1,q2,scales,gs,buffers[2],buffers[3],opac,og,o1,o2,
             dc,buffers[4],radii,{},0,0,0,0,0,1000000.f,0,0,0,0,0,0,0,0,.3f,0,
-            true,{},{},{},{},depth,1,{},1,false);
+            true,{},{},{},{},depth,1,{},1,false,{});
     };
     update(5);
     auto m = read(means); auto s = read(scales); auto state = read(states);

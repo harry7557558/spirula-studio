@@ -496,52 +496,19 @@ SS_MSG(trk_keep_prompted,
        "oluşturma hattının istediği budur"));
 
 SS_MSG(mask_dilate,
-    EN("move every detection's outline by this share of its own size before it "
-       "joins the mask. Positive grows it, covering the rim of colour a tight "
-       "outline leaves behind; negative trims it back inside. 0 turns the "
-       "margin off"),
-    JA("マスクに加える前に、検出ごとに輪郭を自身の大きさのこの割合だけ動かします。"
-       "正なら外側へ広げて、輪郭がきつすぎて残る色の縁を覆います。負なら内側へ"
-       "削ります。0 で余白なし"),
-    ZH_HANS("在并入蒙版之前，把每个检测的轮廓按自身尺寸的这个比例移动。正值向外"
-            "扩张，用来盖住紧贴轮廓留下的一圈残色；负值向内收进去。填 0 关闭"),
-    ZH_HANT("在併入遮罩之前，把每個偵測的輪廓按自身尺寸的這個比例移動。正值向外"
-            "擴張，用來蓋住緊貼輪廓留下的一圈殘色；負值向內收進去。填 0 關閉"),
-    KO("마스크에 합치기 전에 각 검출의 윤곽선을 자기 크기의 이 비율만큼 옮깁니다. "
-       "양수면 바깥으로 넓혀 윤곽선이 너무 딱 맞아 남는 테두리 색을 덮고, 음수면 "
-       "안쪽으로 깎습니다. 0이면 여백 없음"),
-    DE("die Kontur jeder Erkennung vor dem Zusammenfassen um diesen Anteil "
-       "ihrer eigenen Größe verschieben. Positiv lässt sie wachsen und deckt "
-       "den Farbsaum ab, den eine zu enge Kontur zurücklässt; negativ trägt sie "
-       "nach innen ab. 0 schaltet den Rand ab"),
-    FR("déplacer le contour de chaque détection de cette fraction de sa propre "
-       "taille avant de la fondre dans le masque. Positif l'élargit et couvre "
-       "le liseré que laisse un contour trop serré ; négatif le rentre. 0 "
-       "supprime la marge"),
-    ES("mover el contorno de cada detección en esta fracción de su propio "
-       "tamaño antes de unirla a la máscara. En positivo lo agranda y tapa el "
-       "borde que deja un contorno demasiado ceñido; en negativo lo mete hacia "
-       "dentro. 0 quita el margen"),
-    PT("mover o contorno de cada detecção nesta fração do seu próprio tamanho "
-       "antes de a juntar à máscara. Positivo aumenta-o e tapa a orla que um "
-       "contorno demasiado justo deixa; negativo puxa-o para dentro. 0 desliga "
-       "a margem"),
-    IT("spostare il contorno di ogni rilevamento di questa frazione della "
-       "propria dimensione prima di unirlo alla maschera. Positivo lo ingrandisce "
-       "e copre il bordo che un contorno troppo aderente lascia; negativo lo "
-       "ritira all'interno. 0 toglie il margine"),
-    NL("de omtrek van elke detectie met dit deel van haar eigen grootte "
-       "verplaatsen voordat ze in het masker opgaat. Positief laat hem groeien "
-       "en dekt de kleurrand die een te strakke omtrek achterlaat; negatief "
-       "trekt hem naar binnen. 0 zet de marge uit"),
-    RU("сместить контур каждого обнаружения на эту долю его собственного "
-       "размера перед объединением в маску. Положительное расширяет его и "
-       "закрывает кайму, которую оставляет слишком плотный контур; "
-       "отрицательное втягивает внутрь. 0 отключает поле"),
-    TR("her algılamanın dış çizgisini maskeye katılmadan önce kendi boyutunun "
-       "bu oranı kadar kaydırır. Artı değer büyütür ve fazla dar bir sınırın "
-       "bıraktığı renk kenarını kapatır; eksi değer içeri çeker. 0 payı "
-       "kapatır"));
+    EN("move every detection's outline by this share of its own size before it joins the mask.\n- Positive grows it, covering the rim of colour a tight outline leaves behind;\n- negative trims it back inside. 0 turns the margin off"),
+    JA("マスクに加える前に、検出ごとに輪郭を自身の大きさのこの割合だけ動かします。\n正なら外側へ広げて、輪郭がきつすぎて残る色の縁を覆います。 負なら内側へ削ります。 0 で余白なし"),
+    ZH_HANS("在并入蒙版之前，把每个检测的轮廓按自身尺寸的这个比例移动。 正值向外扩张，用来盖住紧贴轮廓留下的一圈残色；\n负值向内收进去。 填 0 关闭"),
+    ZH_HANT("在併入遮罩之前，把每個偵測的輪廓按自身尺寸的這個比例移動。 正值向外擴張，用來蓋住緊貼輪廓留下的一圈殘色；\n負值向內收進去。 填 0 關閉"),
+    KO("마스크에 합치기 전에 각 검출의 윤곽선을 자기 크기의 이 비율만큼 옮깁니다.\n양수면 바깥으로 넓혀 윤곽선이 너무 딱 맞아 남는 테두리 색을 덮고, 음수면 안쪽으로 깎습니다. 0이면 여백 없음"),
+    DE("die Kontur jeder Erkennung vor dem Zusammenfassen um diesen Anteil ihrer eigenen Größe verschieben.\n- Positiv lässt sie wachsen und deckt den Farbsaum ab, den eine zu enge Kontur zurücklässt;\n- negativ trägt sie nach innen ab. 0 schaltet den Rand ab"),
+    FR("déplacer le contour de chaque détection de cette fraction de sa propre taille avant de la fondre dans le masque.\n- Positif l'élargit et couvre le liseré que laisse un contour trop serré ;\n- négatif le rentre. 0 supprime la marge"),
+    ES("mover el contorno de cada detección en esta fracción de su propio tamaño antes de unirla a la máscara.\n- En positivo lo agranda y tapa el borde que deja un contorno demasiado ceñido;\n- en negativo lo mete hacia dentro. 0 quita el margen"),
+    PT("mover o contorno de cada detecção nesta fração do seu próprio tamanho antes de a juntar à máscara.\n- Positivo aumenta-o e tapa a orla que um contorno demasiado justo deixa;\n- negativo puxa-o para dentro. 0 desliga a margem"),
+    IT("Sposta ogni contorno in proporzione alla dimensione dell’oggetto prima di unirlo alla maschera.\nPositivo espande per coprire aloni; negativo ritira. 0 disattiva il margine."),
+    NL("de omtrek van elke detectie met dit deel van haar eigen grootte verplaatsen voordat ze in het masker opgaat.\n- Positief laat hem groeien en dekt de kleurrand die een te strakke omtrek achterlaat;\n- negatief trekt hem naar binnen. 0 zet de marge uit"),
+    RU("сместить контур каждого обнаружения на эту долю его собственного размера перед объединением в маску.\n- Положительное расширяет его и закрывает кайму, которую оставляет слишком плотный контур;\n- отрицательное втягивает внутрь. 0 отключает поле"),
+    TR("her algılamanın dış çizgisini maskeye katılmadan önce kendi boyutunun bu oranı kadar kaydırır.\nArtı değer büyütür ve fazla dar bir sınırın bıraktığı renk kenarını kapatır; eksi değer içeri çeker. 0 payı kapatır"));
 
 SS_MSG(trk_overlay,
     EN("write a colour overlay instead"),
@@ -720,42 +687,19 @@ SS_MSG(xh_360_section,
     TR("360 kameralar:"));
 
 SS_MSG(xh_360,
-    EN("what a GoPro MAX .360 becomes: faces (ten seam-free perspective views, "
-       "five per lens), equirect (one 2:1 panorama) or off (the raw tracks). "
-       "Default: faces"),
-    JA("GoPro MAX の .360 の変換先: faces（継ぎ目のない透視ビュー 10 枚、レンズ"
-       "ごとに 5 枚）、equirect（2:1 のパノラマ 1 枚）、off（生のトラック）。既定は "
-       "faces"),
-    ZH_HANS("GoPro MAX .360 的展开方式：faces（十个无拼缝透视视角，每镜头五个）、"
-            "equirect（一张 2:1 全景）或 off（原始轨道）。默认 faces"),
-    ZH_HANT("GoPro MAX .360 的展開方式：faces（十個無拼縫透視視角，每鏡頭五個）、"
-            "equirect（一張 2:1 全景）或 off（原始軌道）。預設 faces"),
-    KO("GoPro MAX .360을 무엇으로 바꿀지: faces(이음매 없는 원근 뷰 10장, 렌즈당 "
-       "5장), equirect(2:1 파노라마 1장), off(원본 트랙). 기본값 faces"),
-    DE("wozu eine GoPro-MAX-.360 wird: faces (zehn nahtfreie perspektivische "
-       "Ansichten, fünf je Objektiv), equirect (ein 2:1-Panorama) oder off (die "
-       "rohen Spuren). Vorgabe: faces"),
-    FR("ce que devient un .360 GoPro MAX : faces (dix vues en perspective sans "
-       "couture, cinq par objectif), equirect (un panorama 2:1) ou off (les "
-       "pistes brutes). Défaut : faces"),
-    ES("en qué se convierte un .360 de GoPro MAX: faces (diez vistas en "
-       "perspectiva sin costuras, cinco por objetivo), equirect (un panorama "
-       "2:1) u off (las pistas en bruto). Por defecto: faces"),
-    PT("no que um .360 da GoPro MAX se torna: faces (dez vistas em perspectiva "
-       "sem emendas, cinco por lente), equirect (um panorama 2:1) ou off (as "
-       "faixas brutas). Padrão: faces"),
-    IT("in che cosa diventa un .360 GoPro MAX: faces (dieci viste prospettiche "
-       "senza cuciture, cinque per obiettivo), equirect (un panorama 2:1) "
-       "oppure off (le tracce grezze). Predefinito: faces"),
-    NL("wat een GoPro MAX-.360 wordt: faces (tien naadloze perspectiefaanzichten, "
-       "vijf per lens), equirect (één 2:1-panorama) of off (de ruwe sporen). "
-       "Standaard: faces"),
-    RU("во что превращается .360 с GoPro MAX: faces (десять перспективных видов "
-       "без швов, по пять на объектив), equirect (одна панорама 2:1) или off "
-       "(исходные дорожки). По умолчанию: faces"),
-    TR("GoPro MAX .360 dosyasının neye dönüşeceği: faces (dikişsiz on perspektif "
-       "görünüm, objektif başına beş), equirect (tek 2:1 panorama) veya off (ham "
-       "izler). Varsayılan: faces"));
+    EN("what a GoPro MAX .360 becomes: faces (ten seam-free perspective views, five per lens), equirect (one 2:1 panorama) or off (the raw tracks). Default: faces"),
+    JA("GoPro MAX の .360 の変換先: faces（継ぎ目のない透視ビュー 10 枚、レンズごとに 5 枚）、equirect（2:1 のパノラマ 1 枚）、off（生のトラック）。既定は faces"),
+    ZH_HANS("GoPro MAX .360 的展开方式：faces（十个无拼缝透视视角，每镜头五个）、equirect（一张 2:1 全景）或 off（原始轨道）。\n默认 faces"),
+    ZH_HANT("GoPro MAX .360 的展開方式：faces（十個無拼縫透視視角，每鏡頭五個）、equirect（一張 2:1 全景）或 off（原始軌道）。\n預設 faces"),
+    KO("GoPro MAX .360을 무엇으로 바꿀지: faces(이음매 없는 원근 뷰 10장, 렌즈당 5장), equirect(2:1 파노라마 1장), off(원본 트랙). 기본값 faces"),
+    DE("wozu eine GoPro-MAX-.360 wird: faces (zehn nahtfreie perspektivische Ansichten, fünf je Objektiv), equirect (ein 2:1-Panorama) oder off (die rohen Spuren). Vorgabe: faces"),
+    FR("ce que devient un .360 GoPro MAX : faces (dix vues en perspective sans couture, cinq par objectif), equirect (un panorama 2:1) ou off (les pistes brutes). Défaut : faces"),
+    ES("GoPro MAX .360: faces (defecto), diez vistas sin costuras, cinco por objetivo.\nequirect: panorama 2:1; off: pistas sin procesar."),
+    PT("no que um .360 da GoPro MAX se torna: faces (dez vistas em perspectiva sem emendas, cinco por lente), equirect (um panorama 2:1) ou off (as faixas brutas). Padrão: faces"),
+    IT("GoPro MAX .360: faces (default), dieci viste senza cuciture, cinque per lente.\nequirect: panorama 2:1; off: tracce grezze."),
+    NL("wat een GoPro MAX-.360 wordt: faces (tien naadloze perspectiefaanzichten, vijf per lens), equirect (één 2:1-panorama) of off (de ruwe sporen). Standaard: faces"),
+    RU("GoPro MAX .360: faces (по умолчанию), десять видов без швов, по пять на объектив.\nequirect: панорама 2:1; off: исходные дорожки."),
+    TR("GoPro MAX .360 dosyasının neye dönüşeceği: faces (dikişsiz on perspektif görünüm, objektif başına beş), equirect (tek 2:1 panorama) veya off (ham izler). Varsayılan: faces"));
 
 SS_MSG(xh_360_size,
     EN("pixels a side for each face, or the width of the equirectangular "
@@ -1013,75 +957,34 @@ SS_MSG(xh_scale,
     TR("yeniden boyutlandırma katsayısı, en çok 1"));
 
 SS_MSG(xh_sync,
-    EN("decode a multi-track file in lockstep so every track keeps the same instants "
-       "(one sharpness window over all of them); the frames of one stem are then a rig"),
-    JA("複数トラックのファイルを同期して読み、全トラックで同じ瞬間を残します（シャープさの判定窓は"
-       "全トラック共通）。同じステムのフレームがリグになります"),
-    ZH_HANS("多轨道文件同步解码，让每条轨道保留相同时刻（清晰度窗口对所有轨道共用）；同一文件名的帧"
-            "就构成装置"),
-    ZH_HANT("多軌道檔案同步解碼，讓每條軌道保留相同時刻（清晰度視窗對所有軌道共用）；同一檔名的幀"
-            "就構成裝置"),
-    KO("다중 트랙 파일을 맞물려 디코딩해 모든 트랙이 같은 순간을 남기게 합니다(선명도 창은 전체 "
-       "트랙에 하나). 같은 이름의 프레임이 리그가 됩니다"),
-    DE("eine Mehrspur-Datei im Gleichschritt lesen, sodass jede Spur dieselben Augenblicke "
-       "behält (ein Schärfefenster über alle); die Bilder eines Stamms sind dann ein Rig"),
-    FR("décoder un fichier multipiste en synchronisme pour que chaque piste garde les mêmes "
-       "instants (une fenêtre de netteté sur toutes) ; les images d'un même nom forment "
-       "alors un rig"),
-    ES("decodificar un archivo multipista al unísono para que cada pista conserve los mismos "
-       "instantes (una ventana de nitidez sobre todas); los fotogramas de un mismo nombre "
-       "forman entonces un rig"),
-    PT("decodificar um ficheiro multipista em sincronia para que cada pista guarde os mesmos "
-       "instantes (uma janela de nitidez sobre todas); os quadros de um mesmo nome formam "
-       "então um rig"),
-    IT("decodificare un file multitraccia in sincronia perché ogni traccia tenga gli stessi "
-       "istanti (una finestra di nitidezza su tutte); i fotogrammi di uno stesso nome sono "
-       "allora un rig"),
-    NL("een meersporenbestand gelijkop decoderen zodat elk spoor dezelfde momenten houdt (één "
-       "scherptevenster over alle); de beelden van één naam vormen dan een rig"),
-    RU("декодировать многодорожечный файл синхронно, чтобы каждая дорожка сохраняла те же "
-       "мгновения (одно окно резкости на все); кадры с одним именем тогда образуют риг"),
-    TR("çok izli bir dosyayı adım adım birlikte çözerek her izin aynı anları tutmasını sağla "
-       "(tüm izler için tek keskinlik penceresi); aynı adlı kareler böylece bir rig olur"));
+    EN("decode a multi-track file in lockstep so every track keeps the same instants (one sharpness window over all of them);\nthe frames of one stem are then a rig"),
+    JA("複数トラックのファイルを同期して読み、全トラックで同じ瞬間を残します（シャープさの判定窓は全トラック共通）。\n同じステムのフレームがリグになります"),
+    ZH_HANS("多轨道文件同步解码，让每条轨道保留相同时刻（清晰度窗口对所有轨道共用）；同一文件名的帧就构成装置"),
+    ZH_HANT("多軌道檔案同步解碼，讓每條軌道保留相同時刻（清晰度視窗對所有軌道共用）；同一檔名的幀就構成裝置"),
+    KO("다중 트랙 파일을 맞물려 디코딩해 모든 트랙이 같은 순간을 남기게 합니다(선명도 창은 전체 트랙에 하나).\n같은 이름의 프레임이 리그가 됩니다"),
+    DE("eine Mehrspur-Datei im Gleichschritt lesen, sodass jede Spur dieselben Augenblicke behält (ein Schärfefenster über alle); die Bilder eines Stamms sind dann ein Rig"),
+    FR("Décode les pistes aux mêmes instants, avec une seule fenêtre de netteté. Les images de même nom forment un rig."),
+    ES("Decodifica las pistas en los mismos instantes, con una ventana de nitidez común. Los fotogramas del mismo nombre forman un rig."),
+    PT("Decodifica as pistas nos mesmos instantes, com janela de nitidez comum. Os quadros de mesmo nome formam um rig."),
+    IT("Decodifica le tracce agli stessi istanti, con finestra di nitidezza comune. I fotogrammi con lo stesso nome formano un rig."),
+    NL("een meersporenbestand gelijkop decoderen zodat elk spoor dezelfde momenten houdt (één scherptevenster over alle);\nde beelden van één naam vormen dan een rig"),
+    RU("декодировать многодорожечный файл синхронно, чтобы каждая дорожка сохраняла те же мгновения (одно окно резкости на все); кадры с одним именем тогда образуют риг"),
+    TR("çok izli bir dosyayı adım adım birlikte çözerek her izin aynı anları tutmasını sağla (tüm izler için tek keskinlik penceresi); aynı adlı kareler böylece bir rig olur"));
 
 SS_MSG(xh_adaptive,
-    EN("space the kept frames by how much the view changes rather than by time: "
-       "more where the camera moves fast or passes close to something, fewer "
-       "where it turns on the spot. --skip then sets the average"),
-    JA("残すフレームの間隔を時間ではなく見えの変化量で決めます。速く動いたときや近くの物の"
-       "そばを通ったときは多く、その場で向きを変えただけのときは少なくなります。--skip は"
-       "平均値の指定になります"),
-    ZH_HANS("按画面变化量而不是按时间来安排保留的帧：相机移动快或贴近物体时多取，原地转动时"
-            "少取。--skip 此时表示平均值"),
-    ZH_HANT("依畫面變化量而非時間安排保留的影格：相機移動快或貼近物體時多取，原地轉動時少取。"
-            "--skip 此時表示平均值"),
-    KO("남길 프레임 간격을 시간이 아니라 시야가 바뀐 정도로 정합니다. 빠르게 움직이거나 "
-       "가까운 물체를 지날 때는 많이, 제자리에서 돌기만 할 때는 적게 남깁니다. --skip은 "
-       "평균값이 됩니다"),
-    DE("die behaltenen Bilder nach der Änderung des Blicks statt nach der Zeit verteilen: "
-       "mehr, wo die Kamera schnell fährt oder dicht an etwas vorbeikommt, weniger, wo sie "
-       "sich nur dreht. --skip gibt dann den Durchschnitt an"),
-    FR("espacer les images conservées selon le changement de vue plutôt que selon le temps : "
-       "davantage là où la caméra va vite ou frôle un objet, moins là où elle pivote sur "
-       "place. --skip donne alors la moyenne"),
-    ES("espaciar los fotogramas conservados según cuánto cambia la vista y no según el tiempo: "
-       "más donde la cámara va rápido o pasa cerca de algo, menos donde solo gira sobre sí "
-       "misma. --skip pasa a indicar el promedio"),
-    PT("espaçar os quadros guardados pela mudança da vista em vez do tempo: mais onde a câmara "
-       "anda depressa ou passa perto de algo, menos onde apenas gira no lugar. --skip passa a "
-       "indicar a média"),
-    IT("distanziare i fotogrammi tenuti in base a quanto cambia la vista anziché al tempo: di "
-       "più dove la camera va veloce o sfiora qualcosa, di meno dove ruota sul posto. --skip "
-       "indica allora la media"),
-    NL("de bewaarde beelden verdelen naar hoeveel het beeld verandert in plaats van naar tijd: "
-       "meer waar de camera snel gaat of vlak langs iets komt, minder waar hij alleen draait. "
-       "--skip geeft dan het gemiddelde"),
-    RU("располагать сохраняемые кадры по изменению вида, а не по времени: чаще там, где камера "
-       "идёт быстро или проходит близко к предмету, реже там, где она лишь поворачивается на "
-       "месте. --skip тогда задаёт среднее"),
-    TR("saklanan kareleri zamana göre değil görüntünün ne kadar değiştiğine göre yerleştir: "
-       "kamera hızlı giderken ya da bir şeyin yakınından geçerken daha sık, yerinde dönerken "
-       "daha seyrek. --skip böylece ortalamayı verir"));
+    EN("Space frames by view change: more during fast or close motion, fewer during rotation in place. --skip sets the average spacing."),
+    JA("視点変化でフレーム間隔を調整。速い移動や近接時は多く、その場の回転では少なく残します。--skip は平均間隔。"),
+    ZH_HANS("按视图变化安排帧间隔：快速移动或近距离时多留，原地旋转时少留。--skip 设定平均间隔。"),
+    ZH_HANT("按視圖變化安排影格間隔：快速移動或近距離時多留，原地旋轉時少留。--skip 設定平均間隔。"),
+    KO("시점 변화로 간격을 조절합니다. 빠르거나 가까운 이동은 촘촘히, 제자리 회전은 드물게 남깁니다. --skip은 평균 간격입니다."),
+    DE("Bildabstände nach Ansichtsänderung: mehr bei schneller/naher Bewegung, weniger bei Drehung am Ort. --skip setzt den mittleren Abstand."),
+    FR("Espace selon le changement de vue : plus en mouvement rapide/proche, moins en rotation sur place. --skip fixe l’écart moyen."),
+    ES("Espacia según cambio de vista: más con movimiento rápido o cercano, menos al girar en el sitio. --skip fija el intervalo medio."),
+    PT("Espaça conforme mudança de vista: mais em movimento rápido ou próximo, menos ao girar parado. --skip define o intervalo médio."),
+    IT("Spazia secondo il cambio di vista: più in movimento rapido o vicino, meno ruotando sul posto. --skip fissa l’intervallo medio."),
+    NL("Beeldafstand op basis van zichtverandering: meer bij snelle/nabije beweging, minder bij draaien op de plek. --skip stelt het gemiddelde in."),
+    RU("Интервал по смене вида: чаще при быстром/близком движении, реже при вращении на месте. --skip задаёт средний интервал."),
+    TR("Kare aralığı görünüm değişimine göre: hızlı/yakın harekette sık, yerinde dönüşte seyrek. --skip ortalama aralığı belirler."));
 
 SS_MSG(xh_adaptive_range,
     EN("how far the adaptive rate may stray from the average, either way "
@@ -1108,79 +1011,34 @@ SS_MSG(xh_adaptive_range,
        "(varsayılan 4: dörtte birinden dört katına)"));
 
 SS_MSG(xh_blur_reject,
-    EN("measure how blurred each chosen frame is, from how wide its edges "
-       "are, and leave out a frame blurred across more than this many "
-       "pixels, never more than two in a row (default 0: off)"),
-    JA("選ばれた各フレームのぶれをエッジの幅から測り、この画素数を超えてぶれたフ"
-       "レームを除外します。連続して除外するのは 2 枚まで（既定 0: オフ）"),
-    ZH_HANS("根据边缘宽度测量每个选中帧的模糊程度，剔除模糊超过此像素数的帧，连续最多"
-            "剔除两帧（默认 0：关闭）"),
-    ZH_HANT("依邊緣寬度測量每個選中影格的模糊程度，剔除模糊超過此像素數的影格，連續最"
-            "多剔除兩個（預設 0：關閉）"),
-    KO("선택된 각 프레임이 얼마나 흐린지 가장자리 폭으로 측정하고, 이 "
-       "픽셀 수보다 더 흐린 프레임을 뺍니다. 연속으로는 두 장까지만 뺍"
-       "니다(기본값 0: 끔)"),
-    DE("misst an der Breite der Kanten, wie unscharf jedes gewählte Bild "
-       "ist, und lässt ein Bild aus, das über mehr als so viele Pixel "
-       "verwischt ist, nie mehr als zwei in Folge (Standard 0: aus)"),
-    FR("mesure le flou de chaque image choisie d’après la largeur de ses "
-       "contours et écarte une image floue sur plus de ce nombre de "
-       "pixels, jamais plus de deux de suite (0 par défaut : désactivé)"),
-    ES("mide lo borroso que está cada fotograma elegido por el ancho de "
-       "sus bordes y descarta el que esté desenfocado en más de estos "
-       "píxeles, nunca más de dos seguidos (por defecto 0: desactivado)"),
-    PT("mede o quanto cada quadro escolhido está borrado pela largura das "
-       "suas bordas e deixa de fora o que estiver borrado em mais do que "
-       "estes pixels, nunca mais de dois seguidos (padrão 0: desligado)"),
-    IT("misura quanto è sfocato ogni fotogramma scelto dalla larghezza dei"
-       " suoi bordi e scarta quello sfocato per più di questi pixel, mai "
-       "più di due di seguito (predefinito 0: disattivato)"),
-    NL("meet aan de breedte van de randen hoe onscherp elk gekozen beeld "
-       "is en laat een beeld weg dat over meer dan dit aantal pixels "
-       "vervaagd is, nooit meer dan twee achter elkaar (standaard 0: uit)"),
-    RU("измеряет по ширине границ, насколько размыт каждый выбранный кадр,"
-       " и исключает кадр, размытый более чем на столько пикселей, но не "
-       "более двух подряд (по умолчанию 0: выключено)"),
-    TR("seçilen her karenin ne kadar bulanık olduğunu kenar genişliğinden "
-       "ölçer ve bu piksel sayısından fazla bulanık kareyi dışarıda "
-       "bırakır; art arda en çok iki kare (varsayılan 0: kapalı)"));
+    EN("Reject frames with edges blurred wider than this many pixels; never reject more than two in a row. 0 disables blur rejection."),
+    JA("エッジのぼけ幅がこのピクセル数を超えるフレームを除外します。3枚以上連続では除外しません。0は無効。"),
+    ZH_HANS("剔除边缘模糊宽度超过此像素数的帧，最多连续剔除两帧。0 关闭模糊剔除。"),
+    ZH_HANT("剔除邊緣模糊寬度超過此像素數的影格，最多連續剔除兩影格。0 關閉模糊剔除。"),
+    KO("가장자리 흐림 폭이 이 픽셀 수를 넘는 프레임을 제외합니다. 연속 두 장까지만 제외하며, 0은 끕니다."),
+    DE("Bilder mit über dieser Pixelzahl breiten unscharfen Kanten verwerfen, nie mehr als zwei in Folge. 0 deaktiviert die Unschärfeprüfung."),
+    FR("Rejette les images aux bords flous plus larges que ce nombre de pixels, jamais plus de deux de suite. 0 désactive le rejet."),
+    ES("Rechaza imágenes con bordes borrosos más anchos que estos píxeles, nunca más de dos seguidas. 0 desactiva el rechazo."),
+    PT("Rejeita imagens com bordas borradas maiores que estes pixels, nunca mais de duas seguidas. 0 desliga a rejeição."),
+    IT("Scarta fotogrammi con bordi sfocati più larghi di questi pixel, mai più di due di fila. 0 disattiva il filtro."),
+    NL("Verwerp beelden met randen die breder dan dit aantal pixels vervaagd zijn, nooit meer dan twee op rij. 0 schakelt dit uit."),
+    RU("Отбрасывает кадры с краями, размытыми шире этого числа пикселей; не более двух подряд. 0 отключает отбрасывание."),
+    TR("Kenar bulanıklığı bu piksel sayısından geniş kareleri eler; art arda en fazla iki kare. 0 bulanıklık elemesini kapatır."));
 
 SS_MSG(xh_similar,
-    EN("leave out a frame whose 64-bit fingerprint differs from the last "
-       "kept frame's by fewer than n bits, as when the camera stood still "
-       "(default 0: off)"),
-    JA("64 ビットの指紋が直前に残したフレームと n ビット未満しか違わないフ"
-       "レームを除外します。カメラが止まっていたときなど（既定 0: オフ）"),
-    ZH_HANS("剔除 64 位指纹与上一个保留帧相差不足 n 位的帧，例如相机静止时（默"
-            "认 0：关闭）"),
-    ZH_HANT("剔除 64 位元指紋與上一個保留影格相差不足 n 位元的影格，例如相機靜"
-            "止時（預設 0：關閉）"),
-    KO("64비트 지문이 마지막으로 남긴 프레임과 n비트 미만으로만 다른 "
-       "프레임을 뺍니다. 카메라가 멈춰 있었을 때 등(기본값 0: 끔)"),
-    DE("lässt ein Bild aus, dessen 64-Bit-Fingerabdruck sich um weniger "
-       "als n Bits vom zuletzt behaltenen Bild unterscheidet, etwa wenn "
-       "die Kamera stillstand (Standard 0: aus)"),
-    FR("écarte une image dont l’empreinte de 64 bits diffère de moins de n"
-       " bits de celle de la dernière image gardée, comme quand la caméra "
-       "était immobile (0 par défaut : désactivé)"),
-    ES("descarta el fotograma cuya huella de 64 bits difiere en menos de n"
-       " bits de la del último conservado, como cuando la cámara estaba "
-       "quieta (por defecto 0: desactivado)"),
-    PT("deixa de fora o quadro cuja impressão digital de 64 bits difere em"
-       " menos de n bits da do último quadro mantido, como quando a câmera"
-       " estava parada (padrão 0: desligado)"),
-    IT("scarta il fotogramma la cui impronta a 64 bit differisce per meno "
-       "di n bit da quella dell’ultimo tenuto, come quando la fotocamera "
-       "era ferma (predefinito 0: disattivato)"),
-    NL("laat een beeld weg waarvan de 64-bits vingerafdruk minder dan n "
-       "bits verschilt van die van het laatst behouden beeld, zoals "
-       "wanneer de camera stilstond (standaard 0: uit)"),
-    RU("исключает кадр, 64-битный отпечаток которого отличается от "
-       "отпечатка последнего оставленного кадра менее чем на n бит, "
-       "например когда камера стояла на месте (по умолчанию 0: выключено)"),
-    TR("64 bitlik parmak izi son tutulan kareninkinden n bitten az farklı "
-       "olan kareyi dışarıda bırakır; örneğin kamera sabit durduğunda "
-       "(varsayılan 0: kapalı)"));
+    EN("leave out a frame whose 64-bit fingerprint differs from the last kept frame's by fewer than n bits, as when the camera stood still (default 0: off)"),
+    JA("64 ビットの指紋が直前に残したフレームと n ビット未満しか違わないフレームを除外します。\nカメラが止まっていたときなど（既定 0: オフ）"),
+    ZH_HANS("剔除 64 位指纹与上一个保留帧相差不足 n 位的帧，例如相机静止时（默认 0：关闭）"),
+    ZH_HANT("剔除 64 位元指紋與上一個保留影格相差不足 n 位元的影格，例如相機靜止時（預設 0：關閉）"),
+    KO("64비트 지문이 마지막으로 남긴 프레임과 n비트 미만으로만 다른 프레임을 뺍니다.\n카메라가 멈춰 있었을 때 등(기본값 0: 끔)"),
+    DE("Bild überspringen, wenn sein 64-Bit-Fingerabdruck weniger als n Bits vom letzten behaltenen abweicht, etwa bei Stillstand. 0: aus."),
+    FR("écarte une image dont l’empreinte de 64 bits diffère de moins de n bits de celle de la dernière image gardée, comme quand la caméra était immobile (0 par défaut : désactivé)"),
+    ES("descarta el fotograma cuya huella de 64 bits difiere en menos de n bits de la del último conservado, como cuando la cámara estaba quieta (por defecto 0: desactivado)"),
+    PT("deixa de fora o quadro cuja impressão digital de 64 bits difere em menos de n bits da do último quadro mantido, como quando a câmera estava parada (padrão 0: desligado)"),
+    IT("scarta il fotogramma la cui impronta a 64 bit differisce per meno di n bit da quella dell’ultimo tenuto, come quando la fotocamera era ferma (predefinito 0: disattivato)"),
+    NL("laat een beeld weg waarvan de 64-bits vingerafdruk minder dan n bits verschilt van die van het laatst behouden beeld, zoals wanneer de camera stilstond (standaard 0: uit)"),
+    RU("Пропускает кадр, если его 64-битный отпечаток отличается от последнего сохранённого менее чем на n бит, например при остановке. 0: выкл."),
+    TR("64 bitlik parmak izi son tutulan kareninkinden n bitten az farklı olan kareyi dışarıda bırakır;\nörneğin kamera sabit durduğunda (varsayılan 0: kapalı)"));
 
 SS_MSG(xh_skipped_dir,
     EN("write the frames left out to this folder rather than nowhere (one "
@@ -1579,44 +1437,19 @@ SS_MSG(xh_overlay,
 // ---------------------------------------------------------------------------
 
 SS_MSG(cmd_mask,
-    EN("Mask the part of every frame that is never scene: a fisheye border, a "
-       "watermark, the rig in shot. Needs no model -- it is in the same place "
-       "in every frame, so it is a shape, not an object."),
-    JA("どのフレームでも風景ではない部分にマスクをかけます。魚眼の黒枠、透かし、"
-       "写り込んだ機材など。モデルは不要です。位置がどのフレームでも同じなので、"
-       "物体ではなく図形として扱えます。"),
-    ZH_HANS("为每一帧中始终不是景物的部分做掩码：鱼眼黑边、水印、入镜的器材。"
-            "不需要模型——它在每一帧的位置都相同，所以是图形，不是物体。"),
-    ZH_HANT("為每一格中始終不是景物的部分做遮罩：魚眼黑邊、浮水印、入鏡的器材。"
-            "不需要模型——它在每一格的位置都相同，所以是圖形，不是物體。"),
-    KO("어느 프레임에서도 장면이 아닌 부분을 가립니다. 어안 검은 테두리, "
-       "워터마크, 화면에 든 장비 같은 것들입니다. 모델은 필요 없습니다. "
-       "자리가 프레임마다 같으니 물체가 아니라 도형입니다."),
-    DE("Den Teil jedes Bildes maskieren, der nie Szene ist: ein Fisheye-Rand, "
-       "ein Wasserzeichen, das Stativ im Bild. Ohne Modell -- er steht in "
-       "jedem Bild an derselben Stelle, ist also eine Form, kein Objekt."),
-    FR("Masquer la part de chaque image qui n'est jamais la scène : bord de "
-       "fisheye, filigrane, matériel dans le champ. Sans modèle : c'est au "
-       "même endroit sur chaque image, donc une forme, pas un objet."),
-    ES("Enmascarar la parte de cada fotograma que nunca es la escena: el borde "
-       "de ojo de pez, una marca de agua, el equipo en cuadro. Sin modelo: "
-       "está en el mismo sitio en todos, así que es una forma, no un objeto."),
-    PT("Mascarar a parte de cada quadro que nunca é a cena: a borda de "
-       "olho-de-peixe, uma marca d'água, o equipamento em quadro. Sem modelo: "
-       "fica no mesmo lugar em todos, então é uma forma, não um objeto."),
-    IT("Mascherare la parte di ogni fotogramma che non è mai la scena: il "
-       "bordo fisheye, una filigrana, l'attrezzatura in campo. Senza modello: "
-       "sta sempre nello stesso punto, quindi è una forma, non un oggetto."),
-    NL("Het deel van elk beeld maskeren dat nooit scène is: een fisheye-rand, "
-       "een watermerk, de statiefkop in beeld. Zonder model -- het staat in "
-       "elk beeld op dezelfde plek, dus het is een vorm, geen object."),
-    RU("Замаскировать ту часть каждого кадра, которая никогда не является "
-       "сценой: чёрный край фишая, водяной знак, штатив в кадре. Модель не "
-       "нужна: место одно и то же во всех кадрах, так что это фигура, а не "
-       "объект."),
-    TR("Her karede sahne olmayan bölümü maskele: balıkgözü kenarı, filigran, "
-       "kadrajdaki ekipman. Model gerekmez -- her karede aynı yerde durur, "
-       "yani nesne değil, biçimdir."));
+    EN("Mask the part of every frame that is never scene: a fisheye border, a watermark, the rig in shot.\nNeeds no model -- it is in the same place in every frame, so it is a shape, not an object."),
+    JA("どのフレームでも風景ではない部分にマスクをかけます。 魚眼の黒枠、透かし、写り込んだ機材など。 モデルは不要です。\n位置がどのフレームでも同じなので、物体ではなく図形として扱えます。"),
+    ZH_HANS("为每一帧中始终不是景物的部分做掩码：鱼眼黑边、水印、入镜的器材。\n不需要模型——它在每一帧的位置都相同，所以是图形，不是物体。"),
+    ZH_HANT("為每一格中始終不是景物的部分做遮罩：魚眼黑邊、浮水印、入鏡的器材。\n不需要模型——它在每一格的位置都相同，所以是圖形，不是物體。"),
+    KO("어느 프레임에서도 장면이 아닌 부분을 가립니다. 어안 검은 테두리, 워터마크, 화면에 든 장비 같은 것들입니다.\n모델은 필요 없습니다. 자리가 프레임마다 같으니 물체가 아니라 도형입니다."),
+    DE("Den Teil jedes Bildes maskieren, der nie Szene ist: ein Fisheye-Rand, ein Wasserzeichen, das Stativ im Bild.\nOhne Modell -- er steht in jedem Bild an derselben Stelle, ist also eine Form, kein Objekt."),
+    FR("Masquer la part de chaque image qui n'est jamais la scène : bord de fisheye, filigrane, matériel dans le champ.\nSans modèle : c'est au même endroit sur chaque image, donc une forme, pas un objet."),
+    ES("Enmascara zonas fijas ajenas a la escena: borde de ojo de pez, marca de agua o equipo. Usa formas en el mismo sitio, sin modelo."),
+    PT("Mascara áreas fixas fora da cena: borda fisheye, marca d’água ou equipamento. Usa formas na mesma posição, sem modelo."),
+    IT("Maschera aree fisse estranee alla scena: bordo fisheye, filigrana o attrezzatura. Usa forme nella stessa posizione, senza modello."),
+    NL("Het deel van elk beeld maskeren dat nooit scène is: een fisheye-rand, een watermerk, de statiefkop in beeld.\nZonder model -- het staat in elk beeld op dezelfde plek, dus het is een vorm, geen object."),
+    RU("Маскирует постоянные зоны вне сцены: край фишая, водяной знак, оборудование. Использует фигуры в одном месте, без модели."),
+    TR("Her karede sahne olmayan bölümü maskele: balıkgözü kenarı, filigran, kadrajdaki ekipman.\nModel gerekmez -- her karede aynı yerde durur, yani nesne değil, biçimdir."));
 
 SS_MSG(mh_out,
     EN("where the masks go (default: 'masks' beside the image directory)"),
@@ -1634,57 +1467,19 @@ SS_MSG(mh_out,
     TR("maskelerin gideceği yer (varsayılan: görüntülerin yanındaki 'masks')"));
 
 SS_MSG(mh_shape,
-    EN("use these shapes instead of looking for a border; ';' separates them "
-       "and a leading '-' cuts one out again. A path ending in .svg reads the "
-       "shapes the GUI saves; a file saved for one camera brings the rest of its "
-       "set, each for its own camera folder"),
-    JA("枠を探す代わりにこの図形を使います。';' で区切り、先頭の '-' はその"
-       "図形の内側を逆に取り除きます。.svg で終わるパスは GUI が保存した"
-       "図形を読み込みます。カメラ 1 台分として保存したファイルは、同じ組の"
-       "ほかのファイルも読み込み、それぞれ自分のカメラのフォルダーに使います"),
-    ZH_HANS("用这些图形，而不是去找边框；用 ';' 分隔，开头的 '-' 表示反过来去掉"
-            "该图形内部。以 .svg 结尾的路径会读取 GUI 保存的图形；为某一台相机保存的"
-            "文件会连同同组的其他文件一起读取，各自用于自己的相机文件夹"),
-    ZH_HANT("用這些圖形，而不是去找邊框；用 ';' 分隔，開頭的 '-' 表示反過來去掉"
-            "該圖形內部。以 .svg 結尾的路徑會讀取 GUI 儲存的圖形；為某一台相機儲存的"
-            "檔案會連同同組的其他檔案一起讀取，各自用於自己的相機資料夾"),
-    KO("테두리를 찾는 대신 이 도형을 씁니다. ';' 로 나누고, 앞의 '-' 는 그 "
-       "도형 안쪽을 도로 없앱니다. .svg 로 끝나는 경로는 GUI 가 저장한 "
-       "도형을 읽습니다. 카메라 한 대용으로 저장한 파일은 같은 묶음의 나머지 "
-       "파일도 함께 읽어 각자 자기 카메라 폴더에 씁니다"),
-    DE("diese Formen benutzen statt einen Rand zu suchen; ';' trennt sie, ein "
-       "vorangestelltes '-' schneidet eine wieder heraus. Ein Pfad auf .svg "
-       "liest die Formen, die die GUI speichert; eine für eine Kamera gespeicherte "
-       "Datei bringt den Rest ihres Satzes mit, jede für ihren eigenen Kameraordner"),
-    FR("utiliser ces formes au lieu de chercher un bord ; ';' les sépare, un "
-       "'-' en tête en retire une au contraire. Un chemin en .svg lit les "
-       "formes que l'interface enregistre ; un fichier enregistré pour une caméra "
-       "amène le reste de son ensemble, chacun pour son propre dossier de caméra"),
-    ES("usar estas formas en vez de buscar un borde; ';' las separa y un '-' "
-       "delante recorta una en lugar de conservarla. Una ruta terminada en .svg "
-       "lee las formas que guarda la interfaz; un archivo guardado para una cámara "
-       "trae el resto de su juego, cada uno para su propia carpeta de cámara"),
-    PT("usar estas formas em vez de procurar uma borda; ';' as separa e um '-' "
-       "à frente recorta uma em vez de mantê-la. Um caminho terminado em .svg "
-       "lê as formas que a interface salva; um arquivo salvo para uma câmera "
-       "traz o resto do seu conjunto, cada um para a sua pasta de câmera"),
-    IT("usare queste forme invece di cercare un bordo; ';' le separa e un '-' "
-       "davanti ne ritaglia una invece di tenerla. Un percorso che termina in "
-       ".svg legge le forme salvate dall'interfaccia; un file salvato per una "
-       "fotocamera porta con sé il resto del suo insieme, ognuno per la propria "
-       "cartella di fotocamera"),
-    NL("deze vormen gebruiken in plaats van een rand te zoeken; ';' scheidt "
-       "ze, een '-' ervoor snijdt er juist een weg. Een pad op .svg leest de "
-       "vormen die de GUI opslaat; een bestand dat voor één camera is opgeslagen "
-       "brengt de rest van zijn set mee, elk voor zijn eigen cameramap"),
-    RU("взять эти фигуры вместо поиска края; ';' разделяет их, а '-' в начале "
-       "наоборот вырезает фигуру. Путь, оканчивающийся на .svg, читает фигуры, "
-       "сохранённые в интерфейсе; файл, сохранённый для одной камеры, подтягивает "
-       "остальные файлы своего набора, каждый для своей папки камеры"),
-    TR("kenar aramak yerine bu biçimleri kullan; ';' ayırır, baştaki '-' ise "
-       "biçimin içini tersine keser. .svg ile biten bir yol, arayüzün kaydettiği "
-       "biçimleri okur; tek bir kamera için kaydedilmiş bir dosya, takımının geri "
-       "kalanını da getirir, her biri kendi kamera klasörü için"));
+    EN("use these shapes instead of looking for a border; ';' separates them and a leading '-' cuts one out again.\n- A path ending in .svg reads the shapes the GUI saves;\n- a file saved for one camera brings the rest of its set, each for its own camera folder"),
+    JA("枠を探す代わりにこの図形を使います。 ';' で区切り、先頭の '-' はその図形の内側を逆に取り除きます。\n- .svg で終わるパスは GUI が保存した図形を読み込みます。\n- カメラ 1 台分として保存したファイルは、同じ組のほかのファイルも読み込み、それぞれ自分のカメラのフォルダーに使います"),
+    ZH_HANS("用这些图形，而不是去找边框； 用 ';' 分隔，开头的 '-' 表示反过来去掉该图形内部。\n- 以 .svg 结尾的路径会读取 GUI 保存的图形；\n- 为某一台相机保存的文件会连同同组的其他文件一起读取，各自用于自己的相机文件夹"),
+    ZH_HANT("用這些圖形，而不是去找邊框； 用 ';' 分隔，開頭的 '-' 表示反過來去掉該圖形內部。\n- 以 .svg 結尾的路徑會讀取 GUI 儲存的圖形；\n- 為某一台相機儲存的檔案會連同同組的其他檔案一起讀取，各自用於自己的相機資料夾"),
+    KO("테두리를 찾는 대신 이 도형을 씁니다. ';' 로 나누고, 앞의 '-' 는 그 도형 안쪽을 도로 없앱니다.\n- .svg 로 끝나는 경로는 GUI 가 저장한 도형을 읽습니다.\n- 카메라 한 대용으로 저장한 파일은 같은 묶음의 나머지 파일도 함께 읽어 각자 자기 카메라 폴더에 씁니다"),
+    DE("Formen statt Randsuche nutzen; ';' trennt Formen, führendes '-' zieht ab.\n.svg liest GUI-Formen. Kameradateien laden den Satz mit, jeweils für den passenden Kameraordner."),
+    FR("utiliser ces formes au lieu de chercher un bord ; ';' les sépare, un '-' en tête en retire une au contraire.\n- Un chemin en .svg lit les formes que l'interface enregistre ;\n- un fichier enregistré pour une caméra amène le reste de son ensemble, chacun pour son propre dossier de caméra"),
+    ES("Usa formas en lugar de buscar bordes; ';' separa formas, '-' inicial recorta.\n.svg lee formas de la interfaz. Un archivo de cámara carga el juego para sus carpetas correspondientes."),
+    PT("usar estas formas em vez de procurar uma borda; ';' as separa e um '-' à frente recorta uma em vez de mantê-la.\n- Um caminho terminado em .svg lê as formas que a interface salva;\n- um arquivo salvo para uma câmera traz o resto do seu conjunto, cada um para a sua pasta de câmera"),
+    IT("Usa forme anziché cercare bordi; ';' separa forme, '-' iniziale sottrae.\n.svg legge forme della GUI. Un file camera carica il set, ciascuno per la propria cartella camera."),
+    NL("deze vormen gebruiken in plaats van een rand te zoeken; ';' scheidt ze, een '-' ervoor snijdt er juist een weg.\n- Een pad op .svg leest de vormen die de GUI opslaat;\n- een bestand dat voor één camera is opgeslagen brengt de rest van zijn set mee, elk voor zijn eigen cameramap"),
+    RU("взять эти фигуры вместо поиска края; ';' разделяет их, а '-' в начале наоборот вырезает фигуру.\n- Путь, оканчивающийся на .svg, читает фигуры, сохранённые в интерфейсе;\n- файл, сохранённый для одной камеры, подтягивает остальные файлы своего набора, каждый для своей папки камеры"),
+    TR("kenar aramak yerine bu biçimleri kullan; ';' ayırır, baştaki '-' ise biçimin içini tersine keser.\n- .svg ile biten bir yol, arayüzün kaydettiği biçimleri okur;\n- tek bir kamera için kaydedilmiş bir dosya, takımının geri kalanını da getirir, her biri kendi kamera klasörü için"));
 
 SS_MSG(mh_shrink,
     EN("pull the found boundary inwards, as a fraction of its radius "
@@ -1840,84 +1635,34 @@ SS_MSG(mh_replace,
 // ---- the non-SAM models ----
 
 SS_MSG(model_kinds,
-    EN("--model also takes birefnet or birefnet-lite (or a BiRefNet .safetensors "
-       "file), which masks the main subject of each image by itself: it reads no "
-       "prompt, and the subject is what is kept."),
-    JA("--model には birefnet または birefnet-lite（あるいは BiRefNet の "
-       ".safetensors ファイル）も指定できます。これは各画像の主な被写体を自動で"
-       "マスクします。プロンプトは読まず、残るのは被写体です。"),
-    ZH_HANS("--model 也接受 birefnet 或 birefnet-lite（或 BiRefNet 的 .safetensors "
-            "文件），它会自动遮出每张图像的主体：不读取提示词，保留的是主体。"),
-    ZH_HANT("--model 也接受 birefnet 或 birefnet-lite（或 BiRefNet 的 .safetensors "
-            "檔案），它會自動遮出每張影像的主體：不讀取提示詞，保留的是主體。"),
-    KO("--model 에는 birefnet 이나 birefnet-lite(또는 BiRefNet 의 .safetensors "
-       "파일)도 줄 수 있습니다. 각 이미지의 주 피사체를 스스로 마스크하며, "
-       "프롬프트는 읽지 않고 남기는 쪽이 피사체입니다."),
-    DE("--model nimmt auch birefnet oder birefnet-lite (oder eine "
-       "BiRefNet-.safetensors-Datei); das maskiert das Hauptmotiv jedes Bildes von "
-       "selbst: es liest keinen Prompt, und behalten wird das Motiv."),
-    FR("--model accepte aussi birefnet ou birefnet-lite (ou un fichier .safetensors "
-       "de BiRefNet), qui masque seul le sujet principal de chaque image : il ne lit "
-       "aucune consigne, et c'est le sujet qui est conservé."),
-    ES("--model también admite birefnet o birefnet-lite (o un archivo .safetensors "
-       "de BiRefNet), que enmascara por sí solo el sujeto principal de cada imagen: "
-       "no lee ninguna indicación y lo que se conserva es el sujeto."),
-    PT("--model também aceita birefnet ou birefnet-lite (ou um arquivo .safetensors "
-       "do BiRefNet), que mascara sozinho o objeto principal de cada imagem: não lê "
-       "nenhum comando, e o que se mantém é o objeto."),
-    IT("--model accetta anche birefnet o birefnet-lite (o un file .safetensors di "
-       "BiRefNet), che maschera da solo il soggetto principale di ogni immagine: non "
-       "legge alcun prompt e ciò che resta è il soggetto."),
-    NL("--model neemt ook birefnet of birefnet-lite (of een "
-       "BiRefNet-.safetensors-bestand), dat uit zichzelf het hoofdonderwerp van elk "
-       "beeld maskeert: het leest geen prompt, en het onderwerp blijft behouden."),
-    RU("--model принимает также birefnet или birefnet-lite (или файл .safetensors "
-       "BiRefNet): он сам выделяет главный объект каждого изображения, запрос не "
-       "читает, и сохраняется именно объект."),
-    TR("--model ayrıca birefnet ya da birefnet-lite (veya bir BiRefNet .safetensors "
-       "dosyası) alır; bu, her görüntünün ana öznesini kendiliğinden maskeler: istem "
-       "okumaz ve korunan özne olur."));
+    EN("--model also accepts birefnet, birefnet-lite or BiRefNet .safetensors. It keeps each image’s main subject without a prompt."),
+    JA("--model は birefnet、birefnet-lite、BiRefNet .safetensors も指定可能。プロンプトなしで各画像の主被写体を残します。"),
+    ZH_HANS("--model 也支持 birefnet、birefnet-lite 或 BiRefNet .safetensors，无需提示，保留各图的主体。"),
+    ZH_HANT("--model 也支援 birefnet、birefnet-lite 或 BiRefNet .safetensors，無需提示，保留各圖的主體。"),
+    KO("--model은 birefnet, birefnet-lite, BiRefNet .safetensors도 받습니다. 프롬프트 없이 각 이미지의 주 피사체를 남깁니다."),
+    DE("--model nimmt auch birefnet, birefnet-lite oder BiRefNet .safetensors. Behält das Hauptmotiv jedes Bilds ohne Prompt."),
+    FR("--model accepte aussi birefnet, birefnet-lite ou BiRefNet .safetensors. Garde le sujet principal de chaque image sans invite."),
+    ES("--model acepta birefnet, birefnet-lite o BiRefNet .safetensors. Conserva el sujeto principal de cada imagen sin prompt."),
+    PT("--model aceita birefnet, birefnet-lite ou BiRefNet .safetensors. Mantém o assunto principal de cada imagem sem prompt."),
+    IT("--model accetta birefnet, birefnet-lite o BiRefNet .safetensors. Mantiene il soggetto principale di ogni immagine senza prompt."),
+    NL("--model neemt ook birefnet, birefnet-lite of BiRefNet .safetensors. Behoudt het hoofdonderwerp per beeld zonder prompt."),
+    RU("--model также принимает birefnet, birefnet-lite или BiRefNet .safetensors. Оставляет главный объект каждого снимка без подсказки."),
+    TR("--model birefnet, birefnet-lite veya BiRefNet .safetensors da kabul eder. İstem olmadan her görüntünün ana konusunu korur."));
 
 SS_MSG(opt_detector,
-    EN("Grounding DINO for the text prompts: gdino-tiny, gdino-base or a "
-       ".safetensors file. It finds the boxes and the SAM model segments them, which "
-       "lets a SAM 2 checkpoint take words"),
-    JA("テキストプロンプトに使う Grounding DINO：gdino-tiny、gdino-base、または "
-       ".safetensors ファイル。矩形を見つけ、それを SAM モデルが分割するので、"
-       "SAM 2 のチェックポイントでも言葉で指定できます"),
-    ZH_HANS("用于文本提示的 Grounding DINO：gdino-tiny、gdino-base 或一个 "
-            ".safetensors 文件。它找出框，再由 SAM 模型分割，从而让 SAM 2 "
-            "检查点也能接受文字"),
-    ZH_HANT("用於文字提示的 Grounding DINO：gdino-tiny、gdino-base 或一個 "
-            ".safetensors 檔案。它找出框，再由 SAM 模型分割，從而讓 SAM 2 "
-            "檢查點也能接受文字"),
-    KO("텍스트 프롬프트에 쓰는 Grounding DINO: gdino-tiny, gdino-base 또는 "
-       ".safetensors 파일. 상자를 찾으면 SAM 모델이 그것을 분할하므로 SAM 2 "
-       "체크포인트도 말로 지정할 수 있습니다"),
-    DE("Grounding DINO für die Textprompts: gdino-tiny, gdino-base oder eine "
-       ".safetensors-Datei. Es findet die Kästen, und das SAM-Modell segmentiert sie; "
-       "so versteht auch ein SAM-2-Prüfpunkt Wörter"),
-    FR("Grounding DINO pour les consignes textuelles : gdino-tiny, gdino-base ou un "
-       "fichier .safetensors. Il trouve les boîtes et le modèle SAM les segmente, ce "
-       "qui permet à un point de contrôle SAM 2 de comprendre des mots"),
-    ES("Grounding DINO para las indicaciones de texto: gdino-tiny, gdino-base o un "
-       "archivo .safetensors. Encuentra las cajas y el modelo SAM las segmenta, lo que "
-       "permite a un punto de control de SAM 2 entender palabras"),
-    PT("Grounding DINO para os comandos de texto: gdino-tiny, gdino-base ou um "
-       "arquivo .safetensors. Ele encontra as caixas e o modelo SAM as segmenta, o que "
-       "permite que um ponto de verificação do SAM 2 entenda palavras"),
-    IT("Grounding DINO per i prompt testuali: gdino-tiny, gdino-base o un file "
-       ".safetensors. Trova i riquadri e il modello SAM li segmenta, così anche un "
-       "checkpoint SAM 2 capisce le parole"),
-    NL("Grounding DINO voor de tekstprompts: gdino-tiny, gdino-base of een "
-       ".safetensors-bestand. Het vindt de kaders en het SAM-model segmenteert ze, "
-       "zodat ook een SAM 2-controlepunt woorden begrijpt"),
-    RU("Grounding DINO для текстовых запросов: gdino-tiny, gdino-base или файл "
-       ".safetensors. Он находит рамки, а модель SAM их сегментирует, так что и "
-       "контрольная точка SAM 2 понимает слова"),
-    TR("Metin istemleri için Grounding DINO: gdino-tiny, gdino-base ya da bir "
-       ".safetensors dosyası. Kutuları bulur, SAM modeli de onları bölütler; böylece "
-       "bir SAM 2 denetim noktası da sözcükleri anlar"));
+    EN("Grounding DINO for the text prompts: gdino-tiny, gdino-base or a .safetensors file.\nIt finds the boxes and the SAM model segments them, which lets a SAM 2 checkpoint take words"),
+    JA("テキストプロンプトに使う Grounding DINO：gdino-tiny、gdino-base、または .safetensors ファイル。\n矩形を見つけ、それを SAM モデルが分割するので、SAM 2 のチェックポイントでも言葉で指定できます"),
+    ZH_HANS("用于文本提示的 Grounding DINO：gdino-tiny、gdino-base 或一个 .safetensors 文件。\n它找出框，再由 SAM 模型分割，从而让 SAM 2 检查点也能接受文字"),
+    ZH_HANT("用於文字提示的 Grounding DINO：gdino-tiny、gdino-base 或一個 .safetensors 檔案。\n它找出框，再由 SAM 模型分割，從而讓 SAM 2 檢查點也能接受文字"),
+    KO("텍스트 프롬프트에 쓰는 Grounding DINO: gdino-tiny, gdino-base 또는 .safetensors 파일.\n상자를 찾으면 SAM 모델이 그것을 분할하므로 SAM 2 체크포인트도 말로 지정할 수 있습니다"),
+    DE("Grounding DINO für die Textprompts: gdino-tiny, gdino-base oder eine .safetensors-Datei.\nEs findet die Kästen, und das SAM-Modell segmentiert sie; so versteht auch ein SAM-2-Prüfpunkt Wörter"),
+    FR("Grounding DINO pour les consignes textuelles : gdino-tiny, gdino-base ou un fichier .safetensors.\nIl trouve les boîtes et le modèle SAM les segmente, ce qui permet à un point de contrôle SAM 2 de comprendre des mots"),
+    ES("Grounding DINO para las indicaciones de texto: gdino-tiny, gdino-base o un archivo .safetensors.\nEncuentra las cajas y el modelo SAM las segmenta, lo que permite a un punto de control de SAM 2 entender palabras"),
+    PT("Grounding DINO: gdino-tiny, gdino-base ou .safetensors. Detecta caixas por texto, segmentadas pelo SAM, permitindo prompts de texto no SAM 2."),
+    IT("Grounding DINO per i prompt testuali: gdino-tiny, gdino-base o un file .safetensors.\nTrova i riquadri e il modello SAM li segmenta, così anche un checkpoint SAM 2 capisce le parole"),
+    NL("Grounding DINO voor de tekstprompts: gdino-tiny, gdino-base of een .safetensors-bestand.\nHet vindt de kaders en het SAM-model segmenteert ze, zodat ook een SAM 2-controlepunt woorden begrijpt"),
+    RU("Grounding DINO для текстовых запросов: gdino-tiny, gdino-base или файл .safetensors.\nОн находит рамки, а модель SAM их сегментирует, так что и контрольная точка SAM 2 понимает слова"),
+    TR("Metin istemleri için Grounding DINO: gdino-tiny, gdino-base ya da bir .safetensors dosyası.\nKutuları bulur, SAM modeli de onları bölütler; böylece bir SAM 2 denetim noktası da sözcükleri anlar"));
 
 SS_MSG(opt_detector_threshold,
     EN("how sure Grounding DINO must be of a box, 0..1 (default 0.3)"),

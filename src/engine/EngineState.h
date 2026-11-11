@@ -175,7 +175,9 @@ struct ForwardCache {
     PixelFormat                       rgb_fmt = PixelFormat::F32;
     RenderOutput::TensorTuple         distortions;  // [C,H,W,...] D=W*S-C^2, only the dist_type channels allocated
     DistortionType                    dist_type = DistortionType::None;  // which distortion channels the forward emitted
-    DeviceVector<float>               accum_weight; // [max_num_splats] per-splat score from raster bwd
+    // [max_num_splats] per-splat score from raster bwd; lives in the RasterBwd
+    // alias arena, cleared at step start, on forward, and after densify.
+    DeviceVector<float>               accum_weight;
     // What produced accum_weight, so densify folds and finalizes it the same
     // way regardless of which train-step path filled it.
     DensifyAccumMode                  accum_mode = DensifyAccumMode::None;
@@ -203,20 +205,9 @@ struct GTData {
     bool has_mask = false;
 };
 
-// Splat parameter gradients (pool-backed, zeroed each backward).
-//
-// GRADIENT QUANTIZATION (non-FPBO path, quantization_level != 0):
-//   When `quantize_grad` is set, the per-splat world-gradient accumulator is
-//   stored block-wise quantized instead of the fp32 buffers above -- 16-bit
-//   linear for the non-SH attributes and 8-bit linear for SH. Layout is
-//   per-SPLAT-block (one float2 bound per 256 splats, mirroring the FPBO
-//   Adam-state `_NonShQ` convention): n_bounds = ceil(N/256); the SH bound
-//   covers all 3*K cells of its 256 splats. The projection-backward kernel
-//   (ProjectionBwdQuantGrad) does decode -> accumulate -> block-reduce bounds
-//   -> encode each sub-batch; the optim step decodes on read. For 3dgut,
-//   means/quats/scales receive rasterization-backward atomicAdds and therefore
-//   stay fp32 (only opacities/features_dc/features_sh are quantized); for
-//   3dgs/mip all six are quantized and the fp32 buffers above are left empty.
+// Per-splat gradients. `quantize_grad` (non-FPBO, quantization_level != 0) stores
+// them 16-bit (SH 8-bit) with one bound per 256 splats; 3dgut and `fp32_geometry`
+// keep means/quats/scales fp32. ProjectionBwdQuantGrad re-encodes each sub-batch.
 struct SplatGrad {
     DeviceVector<float3>   means;
     DeviceVector<float4>   quats;
@@ -227,6 +218,7 @@ struct SplatGrad {
 
     // Block-wise quantized accumulators (populated only when quantize_grad).
     bool quantize_grad = false;
+    bool fp32_geometry = false;
     QuantizedTensor<16, 256> means_q;         // 3 cells/splat
     QuantizedTensor<16, 256> quats_q;         // 4 cells/splat
     QuantizedTensor<16, 256> scales_q;        // 3 cells/splat
@@ -356,6 +348,25 @@ struct BilagridRGB {
     bool                       fwd_pre_transient = false;
     std::string type;
     int         C = 0;
+};
+
+// The local-PCA regularizer's neighbour caches and this step's gradient
+// (engine/EnginePcaReg.cpp). A cache is keyed by what built it; splat_epoch
+// moves whenever densify relocates or adds splats, which reorders the rows.
+struct PcaRegState {
+    DeviceVector<int32_t> perm;    // rank -> splat at the last build
+    DeviceVector<int32_t> nbrs;    // [N, k] splat ids by rank, for the cached kNN
+    int64_t  cache_n     = 0;
+    int      cache_k     = 0;
+    int      cache_knn   = -1;
+    int      cache_step  = 0;
+    uint64_t cache_epoch = 0;
+    uint64_t splat_epoch = 0;
+    // Arena slices the fused optim step adds for 3dgs / mip; empty otherwise.
+    DeviceVector<float3> v_means;
+    DeviceVector<float4> v_quats;
+    DeviceVector<float3> v_scales;
+    DeviceVector<float> v_opacities;
 };
 
 // Color-shift regularizer (design 1): EMA of mean_per_pixel(sign(post-pre))
@@ -524,6 +535,22 @@ struct PpispState {
     // The same for PPISP after the encode and ahead of the bilateral grid,
     // which only the fused appearance chain takes inside the forward.
     bool forward_pending_after_encode = false;
+};
+
+// Per-image warp of the ground truth onto the render (engine/EngineCalibWarp.cpp,
+// table layout in kernels/pixelwise/CalibWarp.cuh).
+struct CalibWarpState {
+    bool  enabled = false;
+    int   grid_n = 9, D = 2;
+    int   start_step = 1000;
+    float step = 0.5f, smooth = 0.05f;
+    DeviceTensor2D<float> params;     // [N, n*n*D]
+    DeviceTensor2D<float> grad, hess; // [C, ...] for the step's images
+    int64_t zeroed_rows = 0;
+    // While gt.rgb points at the warped copy: the step's own ground truth.
+    TorchTensorView src_gt;
+    bool swapped = false;
+    bool active_this_step = false;
 };
 
 // What the fused appearance chain did in this step's forward, for the backward
@@ -729,7 +756,9 @@ struct EngineState {
     PpispState       ppisp;
     ColorSpaceState  color_space;
     AppearanceState  appearance;
+    CalibWarpState   calib_warp;
     ColorShiftRegState color_shift_reg;
+    PcaRegState        pca_reg;
 
     // Viewer (BVH + thumbnail cache + dataset camera arrays).
     EngineViewerState viewer;

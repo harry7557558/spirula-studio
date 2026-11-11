@@ -208,6 +208,7 @@ int main(int argc, char** argv) {
     // file, which is a step below --lang and the environment.
     const char* lang = spirula::i18n::take_lang_arg(&argc, argv);
     spirula::i18n::init(lang, nullptr);
+    spirula::i18n::set_terminal_output(true);
 
 #ifdef SS_TOOL_SAM
     // --accept-license, anywhere in argv and for every command: how a terminal

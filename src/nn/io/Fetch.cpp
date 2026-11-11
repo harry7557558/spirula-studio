@@ -91,6 +91,13 @@ void require_license(const FetchFile& f) {
 
 void set_license_gate(LicenseGate gate) { g_gate = std::move(gate); }
 
+void require_licenses(const char* families) {
+    FetchFile f;
+    f.file = "this model";
+    f.license_family = families;
+    require_license(f);
+}
+
 std::string ensure_file(const FetchFile& f, const char* tag) {
     const fs::path dst = cached_path(f);
     std::error_code ec;

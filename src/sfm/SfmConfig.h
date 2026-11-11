@@ -277,6 +277,7 @@ struct SfmConfig {
     LomaOptions loma;
     LightGlueOptions lightglue;
     LomaMatchOptions loma_match;
+    FlexGlueMatchOptions flexglue;
     MatchOptions match;
     PairSelectionOptions prefilter;
     TwoViewOptions twoview;
@@ -464,11 +465,25 @@ struct SfmConfig {
     F(sift.spv_path, "spv-path", CMD_EXTRACT, Tier::Advanced, "features", 0, 0, "", spv_path)      \
     /* ---- matching ---- */                                                                       \
     F(matcher, "matcher", CMD_AUTO | CMD_MATCH, Tier::Basic, "matching", 0, 0,                     \
-      "bruteforce|lightglue|loma-b128|loma-b|loma-r|loma-l|loma-g", matcher)                       \
+      "bruteforce|lightglue|flexglue|loma-b128|loma-b|loma-r|loma-l|loma-g", matcher)              \
     F(lightglue.min_score, "lightglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,            \
       "matching", 0, 1, "", lightglue_min_score)                                                   \
     F(lightglue.model, "lightglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,  \
       "", lightglue_model)                                                                         \
+    F(flexglue.min_covisibility, "flexglue-min-covisibility", CMD_AUTO | CMD_MATCH,               \
+      Tier::Advanced, "matching", 0, 1, "", flexglue_min_covisibility)                             \
+    F(flexglue.min_score, "flexglue-min-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,              \
+      "matching", 0, 1, "", flexglue_min_score)                                                    \
+    F(flexglue.max_distance, "flexglue-max-distance", CMD_AUTO | CMD_MATCH, Tier::Advanced,        \
+      "matching", 0, 512, "", flexglue_max_distance)                                               \
+    F(flexglue.early_stop_decay, "flexglue-early-stop-decay", CMD_AUTO | CMD_MATCH,               \
+      Tier::Advanced, "matching", 0, 1, "", flexglue_early_stop_decay)                             \
+    F(flexglue.cache_size, "flexglue-cache", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 2,  \
+      1000000, "", flexglue_cache)                                                                 \
+    F(flexglue.model, "flexglue-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching", 0, 0,    \
+      "", flexglue_model)                                                                          \
+    F(flexglue.image_dir, "flexglue-images", CMD_MATCH, Tier::Advanced, "matching", 0, 0, "",      \
+      flexglue_images)                                                                             \
     F(loma_match.min_score, "loma-min-match-score", CMD_AUTO | CMD_MATCH, Tier::Advanced,          \
       "matching", 0, 1, "", loma_min_match_score)                                                  \
     F(loma_match.model, "loma-matcher-model", CMD_AUTO | CMD_MATCH, Tier::Advanced, "matching",    \

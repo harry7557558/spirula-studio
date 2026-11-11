@@ -62,6 +62,7 @@ struct OptimGeoParams {
     float* densify_score;  // optional output (has_densify_score)
     int* steps;            // per-splat steps (has_steps)
     uint* visit_counters;  // per-splat render counters (has_visit)
+    float* auxiliary_opacities;
     // block-wise 16-bit quantized gradients (kGqMask; bound per 256 splats)
     uint* gq_means_packed;
     float2* gq_means_bounds;
@@ -117,7 +118,7 @@ struct OptimGeoParams {
     uint32_t wgs_per_row;
     uint32_t has_visit;
     uint32_t skip_unrendered_reg;
-    uint32_t _pad0;
+    uint32_t has_auxiliary_opacities;
 };
 
 // Data gradient for a PRIMS-wide attribute: decode from the 16-bit
@@ -225,6 +226,8 @@ void fused_optim_3dgs_geometry(uint3 wg: SV_GroupID,
         v_quat += p.grad_scale * float4(gd_quat[0], gd_quat[1], gd_quat[2],
                                         gd_quat[3]);
         v_opac += p.grad_scale * gd_opac[0];
+        if (p.has_auxiliary_opacities != 0)
+            v_opac += p.grad_scale * p.auxiliary_opacities[gid];
         if (kZeroGrad != 0) {
             if ((kGqMask & 4) == 0) {
                 p.v_scales[3 * gid] = 0.0f;

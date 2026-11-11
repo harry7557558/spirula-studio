@@ -55,42 +55,19 @@ SS_MSG(file_out_of_memory,
        "programları kapatıp yeniden deneyin."));
 
 SS_MSG(batch_out_of_memory,
-    EN("Out of memory while staging a training batch. Close other programs to "
-       "free memory, then retry -- or stop, and train at a lower resolution."),
-    JA("学習バッチの準備中にメモリが不足しました。ほかのプログラムを閉じて"
-       "メモリを空けてからやり直すか、停止して解像度を下げて学習してください。"),
-    ZH_HANS("准备训练批次时内存不足。关闭其他程序腾出内存后重试，"
-            "或者停止训练并改用更低的分辨率。"),
-    ZH_HANT("準備訓練批次時記憶體不足。關閉其他程式騰出記憶體後重試，"
-            "或者停止訓練並改用更低的解析度。"),
-    KO("학습 배치를 준비하는 중 메모리가 부족했습니다. 다른 프로그램을 닫아 "
-       "메모리를 확보한 뒤 다시 시도하거나, 중지하고 더 낮은 해상도로 "
-       "학습하세요."),
-    DE("Zu wenig Speicher beim Bereitstellen eines Trainings-Batches. Schließen "
-       "Sie andere Programme, um Speicher freizugeben, und versuchen Sie es "
-       "erneut -- oder halten Sie an und trainieren Sie mit geringerer "
-       "Auflösung."),
-    FR("Mémoire insuffisante lors de la préparation d'un lot d'entraînement. "
-       "Fermez d'autres programmes pour libérer de la mémoire, puis réessayez "
-       "-- ou arrêtez et entraînez à une résolution plus basse."),
-    ES("Sin memoria al preparar un lote de entrenamiento. Cierra otros "
-       "programas para liberar memoria y reinténtalo, o detén el "
-       "entrenamiento y usa una resolución más baja."),
-    PT("Sem memória ao preparar um lote de treinamento. Feche outros programas "
-       "para liberar memória e tente novamente, ou pare e treine com uma "
-       "resolução menor."),
-    IT("Memoria esaurita durante la preparazione di un lotto di addestramento. "
-       "Chiudi altri programmi per liberare memoria e riprova, oppure fermati "
-       "e addestra a una risoluzione più bassa."),
-    NL("Onvoldoende geheugen bij het klaarzetten van een trainingsbatch. Sluit "
-       "andere programma's om geheugen vrij te maken en probeer het opnieuw, "
-       "of stop en train op een lagere resolutie."),
-    RU("Не хватило памяти при подготовке обучающей партии. Закройте другие "
-       "программы, чтобы освободить память, и повторите — или остановитесь и "
-       "обучайте в более низком разрешении."),
-    TR("Bir eğitim yığını hazırlanırken bellek yetersiz kaldı. Bellek açmak "
-       "için diğer programları kapatıp yeniden deneyin ya da durdurup daha "
-       "düşük çözünürlükte eğitin."));
+    EN("Out of memory while staging a training batch. Close other programs to free memory, then retry -- or stop, and train at a lower resolution."),
+    JA("学習バッチの準備中にメモリが不足しました。ほかのプログラムを閉じてメモリを空けてからやり直すか、停止して解像度を下げて学習してください。"),
+    ZH_HANS("准备训练批次时内存不足。关闭其他程序腾出内存后重试，或者停止训练并改用更低的分辨率。"),
+    ZH_HANT("準備訓練批次時記憶體不足。關閉其他程式騰出記憶體後重試，或者停止訓練並改用更低的解析度。"),
+    KO("학습 배치를 준비하는 중 메모리가 부족했습니다. 다른 프로그램을 닫아 메모리를 확보한 뒤 다시 시도하거나, 중지하고 더 낮은 해상도로 학습하세요."),
+    DE("Zu wenig Speicher für den Trainings-Batch. Andere Programme schließen und erneut versuchen oder mit geringerer Auflösung neu trainieren."),
+    FR("Mémoire insuffisante pour le lot. Fermer d’autres applis et réessayer, ou arrêter puis entraîner à une résolution réduite."),
+    ES("Sin memoria al preparar un lote de entrenamiento. Cierra otros programas para liberar memoria y reinténtalo, o detén el entrenamiento y usa una resolución más baja."),
+    PT("Sem memória ao preparar um lote de treinamento. Feche outros programas para liberar memória e tente novamente, ou pare e treine com uma resolução menor."),
+    IT("Memoria insufficiente per il batch. Chiudi altre app e riprova, oppure ferma e riaddestra a risoluzione inferiore."),
+    NL("Te weinig geheugen voor de batch. Sluit andere apps en probeer opnieuw, of stop en train op lagere resolutie."),
+    RU("Не хватило памяти при подготовке обучающей партии. Закройте другие программы, чтобы освободить память, и повторите — или остановитесь и обучайте в более низком разрешении."),
+    TR("Bir eğitim yığını hazırlanırken bellek yetersiz kaldı. Bellek açmak için diğer programları kapatıp yeniden deneyin ya da durdurup daha düşük çözünürlükte eğitin."));
 
 SS_MSG(word_warning,
     EN("WARNING:"),
@@ -182,159 +159,64 @@ SS_MSG(equirect_not_2to1,
        "bir 360x180 panorama varsaydığı için dikey ölçeği yanlış alacak."));
 
 SS_MSG(camera_model_fitted,
-    EN("no exact match here for the {0} camera model ({1} in this dataset); "
-       "fitted as {2} with {3} distortion, max error {4} px. Its images are "
-       "re-distorted to match."),
-    JA("{0} カメラモデル（このデータセットに {1} 台）には厳密に一致するものがないため、"
-       "{2} と {3} 歪みで近似しました（最大誤差 {4} px）。画像はそれに合わせて"
-       "再歪曲されます。"),
-    ZH_HANS("{0} 相机模型（本数据集中 {1} 台）没有精确对应的模型，已用 {2} 与 {3} "
-            "畸变拟合，最大误差 {4} 像素。其图像会相应重新畸变。"),
-    ZH_HANT("{0} 相機模型（本資料集中 {1} 台）沒有精確對應的模型，已用 {2} 與 {3} "
-            "畸變擬合，最大誤差 {4} 像素。其影像會相應重新畸變。"),
-    KO("{0} 카메라 모델(이 데이터셋에 {1} 대)은 정확히 일치하는 모델이 없어 {2} 와 "
-       "{3} 왜곡으로 근사했습니다. 최대 오차 {4} px. 해당 이미지는 그에 맞게 다시 "
-       "왜곡됩니다."),
-    ES("el modelo de cámara {0} ({1} en este conjunto) no tiene equivalente "
-       "exacto; ajustado como {2} con distorsión {3}, error máximo {4} px. Sus "
-       "imágenes se redistorsionan."),
-    FR("le modèle de caméra {0} ({1} dans ce jeu de données) n'a pas "
-       "d'équivalent exact ; ajusté en {2} avec la distorsion {3}, erreur "
-       "maximale {4} px. Ses images sont redistordues."),
-    DE("für das Kameramodell {0} ({1} in diesem Datensatz) gibt es hier keine "
-       "exakte Entsprechung; angepasst als {2} mit {3}-Verzeichnung, maximaler "
-       "Fehler {4} px. Ihre Bilder werden entsprechend neu verzeichnet."),
-    PT("o modelo de câmera {0} ({1} neste conjunto) não tem equivalente exato; "
-       "ajustado como {2} com distorção {3}, erro máximo {4} px. As imagens são "
-       "redistorcidas."),
-    IT("il modello di camera {0} ({1} in questo dataset) non ha un equivalente "
-       "esatto; approssimato come {2} con distorsione {3}, errore massimo {4} "
-       "px. Le immagini vengono ridistorte di conseguenza."),
-    NL("het cameramodel {0} ({1} in deze dataset) heeft hier geen exacte "
-       "tegenhanger; benaderd als {2} met {3}-vervorming, maximale fout {4} px. "
-       "De beelden worden opnieuw vervormd."),
-    RU("модель камеры {0} ({1} в этом наборе) не имеет точного соответствия; "
-       "приближена как {2} с искажением {3}, максимальная ошибка {4} пикс. Её "
-       "изображения переискажаются соответственно."),
-    TR("{0} kamera modeli (bu veri kumesinde {1} adet) icin birebir karsilik "
-       "yok; {2} ve {3} bozulmasi ile yaklasildi, en buyuk hata {4} px. "
-       "Goruntuleri buna gore yeniden bozuluyor."));
+    EN("no exact match here for the {0} camera model ({1} in this dataset);\nfitted as {2} with {3} distortion, max error {4} px. Its images are re-distorted to match."),
+    JA("{0} カメラモデル（このデータセットに {1} 台）には厳密に一致するものがないため、{2} と {3} 歪みで近似しました（最大誤差 {4} px）。画像はそれに合わせて再歪曲されます。"),
+    ZH_HANS("{0} 相机模型（本数据集中 {1} 台）没有精确对应的模型，已用 {2} 与 {3} 畸变拟合，最大误差 {4} 像素。\n其图像会相应重新畸变。"),
+    ZH_HANT("{0} 相機模型（本資料集中 {1} 台）沒有精確對應的模型，已用 {2} 與 {3} 畸變擬合，最大誤差 {4} 像素。\n其影像會相應重新畸變。"),
+    KO("{0} 카메라 모델(이 데이터셋에 {1} 대)은 정확히 일치하는 모델이 없어 {2} 와 {3} 왜곡으로 근사했습니다.\n최대 오차 {4} px. 해당 이미지는 그에 맞게 다시 왜곡됩니다."),
+    ES("el modelo de cámara {0} ({1} en este conjunto) no tiene equivalente exacto;\najustado como {2} con distorsión {3}, error máximo {4} px. Sus imágenes se redistorsionan."),
+    FR("le modèle de caméra {0} ({1} dans ce jeu de données) n'a pas d'équivalent exact ;\najusté en {2} avec la distorsion {3}, erreur maximale {4} px. Ses images sont redistordues."),
+    DE("für das Kameramodell {0} ({1} in diesem Datensatz) gibt es hier keine exakte Entsprechung;\nangepasst als {2} mit {3}-Verzeichnung, maximaler Fehler {4} px. Ihre Bilder werden entsprechend neu verzeichnet."),
+    PT("o modelo de câmera {0} ({1} neste conjunto) não tem equivalente exato;\najustado como {2} com distorção {3}, erro máximo {4} px. As imagens são redistorcidas."),
+    IT("il modello di camera {0} ({1} in questo dataset) non ha un equivalente esatto;\napprossimato come {2} con distorsione {3}, errore massimo {4} px. Le immagini vengono ridistorte di conseguenza."),
+    NL("het cameramodel {0} ({1} in deze dataset) heeft hier geen exacte tegenhanger;\nbenaderd als {2} met {3}-vervorming, maximale fout {4} px. De beelden worden opnieuw vervormd."),
+    RU("модель камеры {0} ({1} в этом наборе) не имеет точного соответствия;\nприближена как {2} с искажением {3}, максимальная ошибка {4} пикс. Её изображения переискажаются соответственно."),
+    TR("{0} kamera modeli (bu veri kumesinde {1} adet) icin birebir karsilik yok;\n{2} ve {3} bozulmasi ile yaklasildi, en buyuk hata {4} px. Goruntuleri buna gore yeniden bozuluyor."));
 
 SS_MSG(camera_model_fitted_exact,
-    EN("no exact match here for the {0} camera model ({1} in this dataset); "
-       "fitted as {2} with {3} distortion to within {4} px, so its images are "
-       "used as they are."),
-    JA("{0} カメラモデル（このデータセットに {1} 台）には厳密に一致するものがないため、"
-       "{2} と {3} 歪みで近似しました（誤差 {4} px 以内）。画像はそのまま使います。"),
-    ZH_HANS("{0} 相机模型（本数据集中 {1} 台）没有精确对应的模型，已用 {2} 与 {3} "
-            "畸变拟合，误差在 {4} 像素以内，因此其图像按原样使用。"),
-    ZH_HANT("{0} 相機模型（本資料集中 {1} 台）沒有精確對應的模型，已用 {2} 與 {3} "
-            "畸變擬合，誤差在 {4} 像素以內，因此其影像按原樣使用。"),
-    KO("{0} 카메라 모델(이 데이터셋에 {1} 대)은 정확히 일치하는 모델이 없어 {2} 와 "
-       "{3} 왜곡으로 근사했습니다. 오차 {4} px 이내이므로 이미지는 그대로 사용합니다."),
-    ES("el modelo de cámara {0} ({1} en este conjunto) no tiene equivalente "
-       "exacto; ajustado como {2} con distorsión {3} con un error de {4} px, "
-       "así que sus imágenes se usan tal cual."),
-    FR("le modèle de caméra {0} ({1} dans ce jeu de données) n'a pas "
-       "d'équivalent exact ; ajusté en {2} avec la distorsion {3} à {4} px "
-       "près, donc ses images sont utilisées telles quelles."),
-    DE("für das Kameramodell {0} ({1} in diesem Datensatz) gibt es hier keine "
-       "exakte Entsprechung; angepasst als {2} mit {3}-Verzeichnung auf {4} px "
-       "genau, ihre Bilder werden daher unverändert verwendet."),
-    PT("o modelo de câmera {0} ({1} neste conjunto) não tem equivalente exato; "
-       "ajustado como {2} com distorção {3} com erro de {4} px, então as "
-       "imagens são usadas como estão."),
-    IT("il modello di camera {0} ({1} in questo dataset) non ha un equivalente "
-       "esatto; approssimato come {2} con distorsione {3} entro {4} px, quindi "
-       "le immagini sono usate così come sono."),
-    NL("het cameramodel {0} ({1} in deze dataset) heeft hier geen exacte "
-       "tegenhanger; benaderd als {2} met {3}-vervorming tot op {4} px, dus de "
-       "beelden worden ongewijzigd gebruikt."),
-    RU("модель камеры {0} ({1} в этом наборе) не имеет точного соответствия; "
-       "приближена как {2} с искажением {3} с точностью {4} пикс., поэтому её "
-       "изображения используются как есть."),
-    TR("{0} kamera modeli (bu veri kumesinde {1} adet) icin birebir karsilik "
-       "yok; {2} ve {3} bozulmasi ile {4} px hata payiyla yaklasildi, bu "
-       "yuzden goruntuleri oldugu gibi kullaniliyor."));
+    EN("no exact match here for the {0} camera model ({1} in this dataset);\nfitted as {2} with {3} distortion to within {4} px, so its images are used as they are."),
+    JA("{0} カメラモデル（このデータセットに {1} 台）には厳密に一致するものがないため、{2} と {3} 歪みで近似しました（誤差 {4} px 以内）。画像はそのまま使います。"),
+    ZH_HANS("{0} 相机模型（本数据集中 {1} 台）没有精确对应的模型，已用 {2} 与 {3} 畸变拟合，误差在 {4} 像素以内，因此其图像按原样使用。"),
+    ZH_HANT("{0} 相機模型（本資料集中 {1} 台）沒有精確對應的模型，已用 {2} 與 {3} 畸變擬合，誤差在 {4} 像素以內，因此其影像按原樣使用。"),
+    KO("{0} 카메라 모델(이 데이터셋에 {1} 대)은 정확히 일치하는 모델이 없어 {2} 와 {3} 왜곡으로 근사했습니다.\n오차 {4} px 이내이므로 이미지는 그대로 사용합니다."),
+    ES("el modelo de cámara {0} ({1} en este conjunto) no tiene equivalente exacto;\najustado como {2} con distorsión {3} con un error de {4} px, así que sus imágenes se usan tal cual."),
+    FR("le modèle de caméra {0} ({1} dans ce jeu de données) n'a pas d'équivalent exact ;\najusté en {2} avec la distorsion {3} à {4} px près, donc ses images sont utilisées telles quelles."),
+    DE("für das Kameramodell {0} ({1} in diesem Datensatz) gibt es hier keine exakte Entsprechung;\nangepasst als {2} mit {3}-Verzeichnung auf {4} px genau, ihre Bilder werden daher unverändert verwendet."),
+    PT("o modelo de câmera {0} ({1} neste conjunto) não tem equivalente exato;\najustado como {2} com distorção {3} com erro de {4} px, então as imagens são usadas como estão."),
+    IT("il modello di camera {0} ({1} in questo dataset) non ha un equivalente esatto;\napprossimato come {2} con distorsione {3} entro {4} px, quindi le immagini sono usate così come sono."),
+    NL("het cameramodel {0} ({1} in deze dataset) heeft hier geen exacte tegenhanger;\nbenaderd als {2} met {3}-vervorming tot op {4} px, dus de beelden worden ongewijzigd gebruikt."),
+    RU("модель камеры {0} ({1} в этом наборе) не имеет точного соответствия;\nприближена как {2} с искажением {3} с точностью {4} пикс., поэтому её изображения используются как есть."),
+    TR("{0} kamera modeli (bu veri kumesinde {1} adet) icin birebir karsilik yok;\n{2} ve {3} bozulmasi ile {4} px hata payiyla yaklasildi, bu yuzden goruntuleri oldugu gibi kullaniliyor."));
 
 SS_MSG(camera_sensor_skew,
-    EN("the camera for {0} has a {1} px sensor skew, which no supported camera "
-       "model carries; its images are re-distorted onto a {2} camera with {3} "
-       "distortion, max error {4} px."),
-    JA("{0} のカメラには {1} px のセンサースキューがあり、対応するモデルがありません。"
-       "画像は {2} カメラ（{3} 歪み）に合わせて再歪曲します（最大誤差 {4} px）。"),
-    ZH_HANS("{0} 的相机存在 {1} 像素的传感器切变，没有支持的相机模型能表示；其图像会"
-            "重新畸变到 {2} 相机与 {3} 畸变上，最大误差 {4} 像素。"),
-    ZH_HANT("{0} 的相機存在 {1} 像素的感光元件切變，沒有支援的相機模型能表示；其影像會"
-            "重新畸變到 {2} 相機與 {3} 畸變上，最大誤差 {4} 像素。"),
-    KO("{0} 의 카메라에 {1} px 센서 스큐가 있는데 이를 담는 카메라 모델이 없습니다. "
-       "이미지는 {2} 카메라와 {3} 왜곡에 맞춰 다시 왜곡됩니다. 최대 오차 {4} px."),
-    ES("la cámara de {0} tiene una inclinación de sensor de {1} px que ningún "
-       "modelo admitido representa; sus imágenes se redistorsionan a una cámara "
-       "{2} con distorsión {3}, error máximo {4} px."),
-    FR("la caméra de {0} a un cisaillement de capteur de {1} px qu'aucun modèle "
-       "pris en charge ne porte ; ses images sont redistordues vers une caméra "
-       "{2} avec la distorsion {3}, erreur maximale {4} px."),
-    DE("die Kamera von {0} hat eine Sensorscherung von {1} px, die kein "
-       "unterstütztes Kameramodell trägt; ihre Bilder werden auf eine "
-       "{2}-Kamera mit {3}-Verzeichnung umverzeichnet, maximaler Fehler {4} px."),
-    PT("a câmera de {0} tem uma inclinação de sensor de {1} px que nenhum modelo "
-       "suportado carrega; suas imagens são redistorcidas para uma câmera {2} "
-       "com distorção {3}, erro máximo {4} px."),
-    IT("la camera di {0} ha uno scorrimento del sensore di {1} px che nessun "
-       "modello supportato porta; le sue immagini vengono ridistorte su una "
-       "camera {2} con distorsione {3}, errore massimo {4} px."),
-    NL("de camera van {0} heeft een sensorschuining van {1} px die geen enkel "
-       "ondersteund cameramodel draagt; de beelden worden opnieuw vervormd naar "
-       "een {2}-camera met {3}-vervorming, maximale fout {4} px."),
-    RU("камера для {0} имеет наклон матрицы {1} пикс., которого нет ни в одной "
-       "поддерживаемой модели; её изображения переискажаются в камеру {2} с "
-       "искажением {3}, максимальная ошибка {4} пикс."),
-    TR("{0} icin kamerada {1} px sensor egimi var, bunu tasiyan desteklenen bir "
-       "kamera modeli yok; goruntuleri {3} bozulmali bir {2} kameraya yeniden "
-       "bozuluyor, en buyuk hata {4} px."));
+    EN("the camera for {0} has a {1} px sensor skew, which no supported camera model carries;\nits images are re-distorted onto a {2} camera with {3} distortion, max error {4} px."),
+    JA("{0} のカメラには {1} px のセンサースキューがあり、対応するモデルがありません。\n画像は {2} カメラ（{3} 歪み）に合わせて再歪曲します（最大誤差 {4} px）。"),
+    ZH_HANS("{0} 的相机存在 {1} 像素的传感器切变，没有支持的相机模型能表示；\n其图像会重新畸变到 {2} 相机与 {3} 畸变上，最大误差 {4} 像素。"),
+    ZH_HANT("{0} 的相機存在 {1} 像素的感光元件切變，沒有支援的相機模型能表示；\n其影像會重新畸變到 {2} 相機與 {3} 畸變上，最大誤差 {4} 像素。"),
+    KO("{0} 의 카메라에 {1} px 센서 스큐가 있는데 이를 담는 카메라 모델이 없습니다.\n이미지는 {2} 카메라와 {3} 왜곡에 맞춰 다시 왜곡됩니다. 최대 오차 {4} px."),
+    ES("la cámara de {0} tiene una inclinación de sensor de {1} px que ningún modelo admitido representa;\nsus imágenes se redistorsionan a una cámara {2} con distorsión {3}, error máximo {4} px."),
+    FR("la caméra de {0} a un cisaillement de capteur de {1} px qu'aucun modèle pris en charge ne porte ;\nses images sont redistordues vers une caméra {2} avec la distorsion {3}, erreur maximale {4} px."),
+    DE("die Kamera von {0} hat eine Sensorscherung von {1} px, die kein unterstütztes Kameramodell trägt;\nihre Bilder werden auf eine {2}-Kamera mit {3}-Verzeichnung umverzeichnet, maximaler Fehler {4} px."),
+    PT("a câmera de {0} tem uma inclinação de sensor de {1} px que nenhum modelo suportado carrega;\nsuas imagens são redistorcidas para uma câmera {2} com distorção {3}, erro máximo {4} px."),
+    IT("la camera di {0} ha uno scorrimento del sensore di {1} px che nessun modello supportato porta;\nle sue immagini vengono ridistorte su una camera {2} con distorsione {3}, errore massimo {4} px."),
+    NL("de camera van {0} heeft een sensorschuining van {1} px die geen enkel ondersteund cameramodel draagt;\nde beelden worden opnieuw vervormd naar een {2}-camera met {3}-vervorming, maximale fout {4} px."),
+    RU("камера для {0} имеет наклон матрицы {1} пикс., которого нет ни в одной поддерживаемой модели;\nеё изображения переискажаются в камеру {2} с искажением {3}, максимальная ошибка {4} пикс."),
+    TR("{0} icin kamerada {1} px sensor egimi var, bunu tasiyan desteklenen bir kamera modeli yok;\ngoruntuleri {3} bozulmali bir {2} kameraya yeniden bozuluyor, en buyuk hata {4} px."));
 
 SS_MSG(camera_model_fit_failed,
-    EN("the {0} camera model ({1} in this dataset) projects nothing this reader "
-       "understands, so it could not be fitted; falling back to a plain {2}. "
-       "What is reconstructed from those cameras will be wrong."),
-    JA("{0} カメラモデル（このデータセットに {1} 台）はこのリーダーが解釈できる投影を"
-       "返さず、近似できませんでした。素の {2} で代用します。これらのカメラからの"
-       "復元は正しくなりません。"),
-    ZH_HANS("{0} 相机模型（本数据集中 {1} 台）未给出本读取器能理解的投影，无法拟合；"
-            "改用普通的 {2}。由这些相机重建的结果会是错的。"),
-    ZH_HANT("{0} 相機模型（本資料集中 {1} 台）未給出本讀取器能理解的投影，無法擬合；"
-            "改用普通的 {2}。由這些相機重建的結果會是錯的。"),
-    KO("{0} 카메라 모델(이 데이터셋에 {1} 대)은 이 리더가 이해할 수 있는 투영을 "
-       "내놓지 않아 근사할 수 없었습니다. 기본 {2} 로 대체합니다. 이 카메라들로부터의 "
-       "복원은 잘못됩니다."),
-    ES("el modelo de cámara {0} ({1} en este conjunto) no proyecta nada que "
-       "este lector entienda, así que no se pudo ajustar; se usa una {2} "
-       "simple. Lo que se reconstruya desde esas cámaras estará mal."),
-    FR("le modèle de caméra {0} ({1} dans ce jeu de données) ne projette rien "
-       "que ce lecteur comprenne, il n'a donc pas pu être ajusté ; repli sur "
-       "une {2} simple. Ce qui sera reconstruit depuis ces caméras sera faux."),
-    DE("das Kameramodell {0} ({1} in diesem Datensatz) liefert keine Projektion, "
-       "die dieser Leser versteht, und ließ sich daher nicht anpassen; "
-       "ersatzweise eine schlichte {2}. Was aus diesen Kameras rekonstruiert "
-       "wird, ist falsch."),
-    PT("o modelo de câmera {0} ({1} neste conjunto) não projeta nada que este "
-       "leitor entenda, então não pôde ser ajustado; usando uma {2} simples. O "
-       "que for reconstruído a partir dessas câmeras ficará errado."),
-    IT("il modello di camera {0} ({1} in questo dataset) non proietta nulla che "
-       "questo lettore capisca, quindi non è stato possibile approssimarlo; si "
-       "ripiega su una {2} semplice. Ciò che viene ricostruito da queste camere "
-       "sarà sbagliato."),
-    NL("het cameramodel {0} ({1} in deze dataset) projecteert niets wat deze "
-       "lezer begrijpt en kon dus niet benaderd worden; er wordt teruggevallen "
-       "op een gewone {2}. Wat uit die camera's gereconstrueerd wordt, klopt "
-       "niet."),
-    RU("модель камеры {0} ({1} в этом наборе) не даёт проекции, понятной этому "
-       "загрузчику, поэтому приблизить её не удалось; берётся обычная {2}. "
-       "Всё, что будет восстановлено с этих камер, окажется неверным."),
-    TR("{0} kamera modeli (bu veri kumesinde {1} adet) bu okuyucunun anladigi "
-       "bir izdusum vermiyor, bu yuzden yaklasilamadi; duz bir {2} "
-       "kullaniliyor. Bu kameralardan yeniden olusturulan sey yanlis olacak."));
+    EN("Cannot fit camera model {0} ({1} in this dataset); falling back to {2}. Reconstruction from these cameras will be wrong."),
+    JA("カメラモデル {0}（このデータセットでは {1}）を近似できず、{2} に代替します。これらのカメラの再構成は正しくなりません。"),
+    ZH_HANS("无法拟合相机模型 {0}（本数据集中为 {1}），改用 {2}。这些相机的重建结果将不正确。"),
+    ZH_HANT("無法擬合相機模型 {0}（本資料集中為 {1}），改用 {2}。這些相機的重建結果將不正確。"),
+    KO("카메라 모델 {0}(이 데이터셋의 {1})을 맞출 수 없어 {2}로 대체합니다. 이 카메라들의 재구성은 잘못됩니다."),
+    DE("Kameramodell {0} ({1} im Datensatz) nicht anpassbar; Ersatz: {2}. Die Rekonstruktion dieser Kameras wird falsch sein."),
+    FR("Impossible d’ajuster le modèle {0} ({1} dans les données) ; repli sur {2}. Ces caméras produiront une reconstruction incorrecte."),
+    ES("No se puede ajustar el modelo {0} ({1} en estos datos); se usa {2}. La reconstrucción de estas cámaras será incorrecta."),
+    PT("Não é possível ajustar o modelo {0} ({1} nestes dados); usa-se {2}. A reconstrução destas câmaras será incorreta."),
+    IT("Impossibile adattare il modello {0} ({1} nei dati); ripiego su {2}. La ricostruzione di queste camere sarà errata."),
+    NL("Kan cameramodel {0} ({1} in de dataset) niet aanpassen; gebruikt {2}. Reconstructie van deze camera’s zal onjuist zijn."),
+    RU("Не удалось подобрать модель камеры {0} ({1} в данных); используется {2}. Реконструкция этих камер будет неверной."),
+    TR("Kamera modeli {0} (veride {1}) uydurulamıyor; {2} kullanılıyor. Bu kameraların yeniden yapımı yanlış olacaktır."));
 
 SS_MSG(colmap_parse_failed,
     EN("the COLMAP data could not be read: {0}"),
@@ -656,47 +538,19 @@ SS_MSG(camera_fit_to_image,
        "yapılacak. Bu ikili için sonraki iletiler bastırılıyor."));
 
 SS_MSG(camera_image_transposed,
-    EN("'{0}' is {1} and its camera {2} -- each is the other turned a quarter. "
-       "A reconstruction and the run that reads it must take the photos' EXIF "
-       "orientation the same way; see `--exif-orientation`."),
-    JA("'{0}' は {1}、カメラは {2} で、互いに 90 度回した関係です。復元結果と"
-       "それを読む実行は、写真の EXIF 回転情報を同じように扱う必要があります。"
-       "`--exif-orientation` を確認してください。"),
-    ZH_HANS("'{0}' 是 {1}，其相机是 {2}：二者正好相差 90 度。重建结果与读取它的"
-            "这次运行必须以同样的方式对待照片的 EXIF 方向，参见 "
-            "`--exif-orientation`。"),
-    ZH_HANT("'{0}' 是 {1}，其相機是 {2}：兩者正好相差 90 度。重建結果與讀取它的"
-            "這次執行必須以同樣的方式對待照片的 EXIF 方向，參見 "
-            "`--exif-orientation`。"),
-    KO("'{0}' 은(는) {1}, 카메라는 {2} 로 서로 90도 돌아간 관계입니다. 복원 결과와 "
-       "그것을 읽는 실행은 사진의 EXIF 방향을 같은 방식으로 다뤄야 합니다. "
-       "`--exif-orientation` 을 확인하세요."),
-    DE("'{0}' ist {1}, seine Kamera {2} -- das eine ist das andere um eine "
-       "Vierteldrehung gedreht. Eine Rekonstruktion und der Lauf, der sie "
-       "liest, müssen die EXIF-Ausrichtung der Fotos gleich behandeln; siehe "
-       "`--exif-orientation`."),
-    FR("'{0}' est {1} et sa caméra {2} : l'un est l'autre tourné d'un quart de "
-       "tour. Une reconstruction et le run qui la lit doivent traiter de la "
-       "même façon l'orientation EXIF des photos ; voir `--exif-orientation`."),
-    ES("'{0}' es {1} y su cámara {2}: cada uno es el otro girado un cuarto de "
-       "vuelta. Una reconstrucción y la ejecución que la lee deben tratar igual "
-       "la orientación EXIF de las fotos; vea `--exif-orientation`."),
-    PT("'{0}' é {1} e a sua câmara {2}: um é o outro rodado um quarto de volta. "
-       "Uma reconstrução e a execução que a lê têm de tratar da mesma forma a "
-       "orientação EXIF das fotos; veja `--exif-orientation`."),
-    IT("'{0}' è {1} e la sua camera {2}: l'uno è l'altro ruotato di un quarto. "
-       "Una ricostruzione e l'esecuzione che la legge devono trattare allo "
-       "stesso modo l'orientamento EXIF delle foto; vedi `--exif-orientation`."),
-    NL("'{0}' is {1} en zijn camera {2} -- de een is de ander een kwartslag "
-       "gedraaid. Een reconstructie en de run die hem leest moeten de "
-       "EXIF-oriëntatie van de foto's op dezelfde manier opvatten; zie "
-       "`--exif-orientation`."),
-    RU("'{0}' имеет размер {1}, а его камера {2}: одно есть другое, повёрнутое "
-       "на четверть оборота. Реконструкция и запуск, который её читает, должны "
-       "одинаково понимать ориентацию EXIF снимков; см. `--exif-orientation`."),
-    TR("'{0}' {1}, kamerası {2}: biri diğerinin çeyrek tur döndürülmüş hâli. "
-       "Bir yeniden oluşturma ile onu okuyan çalıştırma, fotoğrafların EXIF "
-       "yönlendirmesini aynı şekilde ele almalı; bkz. `--exif-orientation`."));
+    EN("Image {0}: {1}; camera: {2}. Dimensions are transposed. Reconstruction and training must use the same --exif-orientation."),
+    JA("画像 {0}：{1}、カメラ：{2}。縦横が逆です。再構成と学習で --exif-orientation を揃えてください。"),
+    ZH_HANS("图像 {0}：{1}；相机：{2}。宽高颠倒。重建和训练必须使用相同的 --exif-orientation。"),
+    ZH_HANT("影像 {0}：{1}；相機：{2}。寬高顛倒。重建與訓練必須使用相同的 --exif-orientation。"),
+    KO("이미지 {0}: {1}, 카메라: {2}. 가로세로가 바뀌었습니다. 재구성과 학습의 --exif-orientation을 맞추세요."),
+    DE("Bild {0}: {1}; Kamera: {2}. Maße vertauscht. Rekonstruktion und Training müssen dasselbe --exif-orientation nutzen."),
+    FR("Image {0} : {1} ; caméra : {2}. Dimensions inversées. Reconstruction et entraînement doivent partager --exif-orientation."),
+    ES("Imagen {0}: {1}; cámara: {2}. Dimensiones invertidas. Reconstrucción y entrenamiento deben usar el mismo --exif-orientation."),
+    PT("Imagem {0}: {1}; câmara: {2}. Dimensões trocadas. Reconstrução e treino devem usar o mesmo --exif-orientation."),
+    IT("Immagine {0}: {1}; camera: {2}. Dimensioni invertite. Ricostruzione e addestramento devono usare lo stesso --exif-orientation."),
+    NL("Beeld {0}: {1}; camera: {2}. Afmetingen verwisseld. Gebruik dezelfde --exif-orientation voor reconstructie en training."),
+    RU("Снимок {0}: {1}; камера: {2}. Размеры переставлены. Для реконструкции и обучения нужен одинаковый --exif-orientation."),
+    TR("Görüntü {0}: {1}; kamera: {2}. Boyutlar ters. Yeniden yapım ve eğitim aynı --exif-orientation kullanmalı."));
 
 SS_MSG(camera_image_aspect,
     EN("'{0}' is {1} and its camera {2} -- a different shape, not just a "
@@ -737,6 +591,46 @@ SS_MSG(camera_image_aspect,
 // Loading the images
 // ===========================================================================
 
+SS_MSG(downscale_cache_writing,
+    EN("Caching downscaled training images in {0}"),
+    JA("縮小した学習画像を {0} にキャッシュします"),
+    ZH_HANS("将缩小后的训练图像缓存到 {0}"),
+    ZH_HANT("將縮小後的訓練影像快取到 {0}"),
+    KO("축소한 학습 이미지를 {0} 에 캐시합니다"),
+    DE("Verkleinerte Trainingsbilder werden in {0} zwischengespeichert"),
+    FR("Mise en cache des images d'entraînement réduites dans {0}"),
+    ES("Guardando en caché las imágenes de entrenamiento reducidas en {0}"),
+    PT("Guardando em cache as imagens de treino reduzidas em {0}"),
+    IT("Le immagini di addestramento ridotte vengono memorizzate in {0}"),
+    NL("Verkleinde trainingsbeelden worden in {0} gecachet"),
+    RU("Уменьшенные обучающие изображения кэшируются в {0}"),
+    TR("Küçültülmüş eğitim görüntüleri {0} içinde önbelleğe alınıyor"));
+
+SS_MSG(downscale_cache_unwritable,
+    EN("Could not write downscaled images to {0}; every load decodes the "
+       "full-size files."),
+    JA("縮小画像を {0} に書き込めませんでした。読み込みのたびに元のサイズの"
+       "ファイルをデコードします。"),
+    ZH_HANS("无法将缩小后的图像写入 {0}；每次加载都会解码原尺寸文件。"),
+    ZH_HANT("無法將縮小後的影像寫入 {0}；每次載入都會解碼原尺寸檔案。"),
+    KO("축소 이미지를 {0} 에 쓰지 못했습니다. 매번 원본 크기 파일을 디코딩합니다."),
+    DE("Verkleinerte Bilder konnten nicht nach {0} geschrieben werden; jedes "
+       "Laden dekodiert die Dateien in voller Größe."),
+    FR("Impossible d'écrire les images réduites dans {0} ; chaque chargement "
+       "décode les fichiers en taille réelle."),
+    ES("No se pudieron escribir las imágenes reducidas en {0}; cada carga "
+       "decodifica los archivos a tamaño completo."),
+    PT("Não foi possível gravar as imagens reduzidas em {0}; cada carga "
+       "decodifica os arquivos em tamanho real."),
+    IT("Impossibile scrivere le immagini ridotte in {0}; ogni caricamento "
+       "decodifica i file a grandezza piena."),
+    NL("Verkleinde beelden konden niet naar {0} worden geschreven; elke keer "
+       "laden decodeert de bestanden op volle grootte."),
+    RU("Не удалось записать уменьшенные изображения в {0}; каждая загрузка "
+       "декодирует файлы полного размера."),
+    TR("Küçültülmüş görüntüler {0} içine yazılamadı; her yükleme tam boyutlu "
+       "dosyaları çözer."));
+
 SS_MSG(rgb_shape_mismatch,
     EN("'{0}' is {1}x{2} but its camera says {3}x{4}. The file is being resized "
        "to match. Further warnings for this group are suppressed."),
@@ -769,40 +663,19 @@ SS_MSG(rgb_shape_mismatch,
        "boyutlandırılıyor. Bu grup için sonraki uyarılar bastırılıyor."));
 
 SS_MSG(mask_shape_mismatch,
-    EN("mask shapes differ within a {0}x{1} group; upsampling them to {2}x{3} "
-       "(bilinear, then nearest). Further mask warnings are suppressed."),
-    JA("{0}x{1} のグループ内でマスクの形が揃っていません。{2}x{3} に拡大します"
-       "（バイリニアのあと最近傍）。以降のマスク警告は出しません。"),
-    ZH_HANS("{0}x{1} 组内的掩码尺寸不一致，将上采样到 {2}x{3}（先双线性后最近邻）。"
-            "后续掩码警告不再输出。"),
-    ZH_HANT("{0}x{1} 群組內的遮罩尺寸不一致，將上採樣到 {2}x{3}（先雙線性後最近鄰）。"
-            "後續遮罩警告不再輸出。"),
-    KO("{0}x{1} 그룹 안에서 마스크 크기가 다릅니다. {2}x{3} 으로 키웁니다"
-       "(이중선형 후 최근접). 이후 마스크 경고는 생략합니다."),
-    DE("die Maskenformate innerhalb einer {0}x{1}-Gruppe stimmen nicht überein; "
-       "sie werden auf {2}x{3} hochgerechnet (bilinear, dann nächster Nachbar). "
-       "Weitere Maskenwarnungen entfallen."),
-    FR("les tailles de masque diffèrent au sein d'un groupe {0}x{1} ; "
-       "suréchantillonnage vers {2}x{3} (bilinéaire, puis plus proche voisin). "
-       "Les avertissements de masque suivants sont supprimés."),
-    ES("las máscaras de un grupo {0}x{1} tienen tamaños distintos; se amplían a "
-       "{2}x{3} (bilineal y luego vecino más cercano). Se omiten los avisos "
-       "siguientes sobre máscaras."),
-    PT("as máscaras de um grupo {0}x{1} têm tamanhos diferentes; serão ampliadas "
-       "para {2}x{3} (bilinear e depois vizinho mais próximo). Os avisos "
-       "seguintes sobre máscaras são omitidos."),
-    IT("le maschere in un gruppo {0}x{1} hanno dimensioni diverse; vengono "
-       "ingrandite a {2}x{3} (bilineare, poi vicino più prossimo). Gli avvisi "
-       "successivi sulle maschere sono soppressi."),
-    NL("de maskergroottes binnen een {0}x{1}-groep verschillen; ze worden "
-       "opgeschaald naar {2}x{3} (bilineair, dan dichtstbijzijnde). Verdere "
-       "maskerwaarschuwingen vervallen."),
-    RU("в группе {0}x{1} размеры масок различаются; они увеличиваются до {2}x{3} "
-       "(билинейно, затем ближайший сосед). Дальнейшие предупреждения о масках "
-       "подавлены."),
-    TR("{0}x{1} grubunda maske boyutları farklı; {2}x{3} boyutuna büyütülüyor "
-       "(çift doğrusal, sonra en yakın komşu). Sonraki maske uyarıları "
-       "bastırılıyor."));
+    EN("mask shapes differ within a {0}x{1} group; upsampling them to {2}x{3} (bilinear, then nearest).\nFurther mask warnings are suppressed."),
+    JA("{0}x{1} のグループ内でマスクの形が揃っていません。 {2}x{3} に拡大します（バイリニアのあと最近傍）。\n以降のマスク警告は出しません。"),
+    ZH_HANS("{0}x{1} 组内的掩码尺寸不一致，将上采样到 {2}x{3}（先双线性后最近邻）。后续掩码警告不再输出。"),
+    ZH_HANT("{0}x{1} 群組內的遮罩尺寸不一致，將上採樣到 {2}x{3}（先雙線性後最近鄰）。後續遮罩警告不再輸出。"),
+    KO("{0}x{1} 그룹 안에서 마스크 크기가 다릅니다. {2}x{3} 으로 키웁니다(이중선형 후 최근접).\n이후 마스크 경고는 생략합니다."),
+    DE("die Maskenformate innerhalb einer {0}x{1}-Gruppe stimmen nicht überein;\nsie werden auf {2}x{3} hochgerechnet (bilinear, dann nächster Nachbar). Weitere Maskenwarnungen entfallen."),
+    FR("les tailles de masque diffèrent au sein d'un groupe {0}x{1} ;\n- suréchantillonnage vers {2}x{3} (bilinéaire, puis plus proche voisin).\n- Les avertissements de masque suivants sont supprimés."),
+    ES("las máscaras de un grupo {0}x{1} tienen tamaños distintos;\nse amplían a {2}x{3} (bilineal y luego vecino más cercano). Se omiten los avisos siguientes sobre máscaras."),
+    PT("as máscaras de um grupo {0}x{1} têm tamanhos diferentes;\n- serão ampliadas para {2}x{3} (bilinear e depois vizinho mais próximo).\n- Os avisos seguintes sobre máscaras são omitidos."),
+    IT("le maschere in un gruppo {0}x{1} hanno dimensioni diverse;\n- vengono ingrandite a {2}x{3} (bilineare, poi vicino più prossimo).\n- Gli avvisi successivi sulle maschere sono soppressi."),
+    NL("de maskergroottes binnen een {0}x{1}-groep verschillen;\nze worden opgeschaald naar {2}x{3} (bilineair, dan dichtstbijzijnde). Verdere maskerwaarschuwingen vervallen."),
+    RU("в группе {0}x{1} размеры масок различаются;\nони увеличиваются до {2}x{3} (билинейно, затем ближайший сосед). Дальнейшие предупреждения о масках подавлены."),
+    TR("{0}x{1} grubunda maske boyutları farklı; {2}x{3} boyutuna büyütülüyor (çift doğrusal, sonra en yakın komşu).\nSonraki maske uyarıları bastırılıyor."));
 
 SS_MSG(depth_shape_mismatch,
     EN("depth shapes differ within a {0}x{1} group; upsampling them to {2}x{3} "
@@ -839,116 +712,49 @@ SS_MSG(depth_shape_mismatch,
        "(çift doğrusal). Sonraki derinlik uyarıları bastırılıyor."));
 
 SS_MSG(normal_shape_mismatch,
-    EN("normal-map shapes differ within a {0}x{1} group; upsampling them to "
-       "{2}x{3} (bilinear). Further normal-map warnings are suppressed."),
-    JA("{0}x{1} のグループ内で法線マップの形が揃っていません。{2}x{3} に拡大します"
-       "（バイリニア）。以降の法線マップ警告は出しません。"),
-    ZH_HANS("{0}x{1} 组内的法线图尺寸不一致，将上采样到 {2}x{3}（双线性）。"
-            "后续法线图警告不再输出。"),
-    ZH_HANT("{0}x{1} 群組內的法線圖尺寸不一致，將上採樣到 {2}x{3}（雙線性）。"
-            "後續法線圖警告不再輸出。"),
-    KO("{0}x{1} 그룹 안에서 법선 맵 크기가 다릅니다. {2}x{3} 으로 키웁니다"
-       "(이중선형). 이후 법선 맵 경고는 생략합니다."),
-    DE("die Normalenkarten innerhalb einer {0}x{1}-Gruppe stimmen im Format "
-       "nicht überein; sie werden auf {2}x{3} hochgerechnet (bilinear). Weitere "
-       "Warnungen zu Normalenkarten entfallen."),
-    FR("les tailles de carte de normales diffèrent au sein d'un groupe {0}x{1} ; "
-       "suréchantillonnage vers {2}x{3} (bilinéaire). Les avertissements "
-       "suivants sur les normales sont supprimés."),
-    ES("los mapas de normales de un grupo {0}x{1} tienen tamaños distintos; se "
-       "amplían a {2}x{3} (bilineal). Se omiten los avisos siguientes sobre "
-       "normales."),
-    PT("os mapas de normais de um grupo {0}x{1} têm tamanhos diferentes; serão "
-       "ampliados para {2}x{3} (bilinear). Os avisos seguintes sobre normais "
-       "são omitidos."),
-    IT("le mappe di normali in un gruppo {0}x{1} hanno dimensioni diverse; "
-       "vengono ingrandite a {2}x{3} (bilineare). Gli avvisi successivi sulle "
-       "normali sono soppressi."),
-    NL("de normaalkaarten binnen een {0}x{1}-groep verschillen in grootte; ze "
-       "worden opgeschaald naar {2}x{3} (bilineair). Verdere waarschuwingen "
-       "over normaalkaarten vervallen."),
-    RU("в группе {0}x{1} размеры карт нормалей различаются; они увеличиваются до "
-       "{2}x{3} (билинейно). Дальнейшие предупреждения о картах нормалей "
-       "подавлены."),
-    TR("{0}x{1} grubunda normal haritası boyutları farklı; {2}x{3} boyutuna "
-       "büyütülüyor (çift doğrusal). Sonraki normal haritası uyarıları "
-       "bastırılıyor."));
+    EN("normal-map shapes differ within a {0}x{1} group; upsampling them to {2}x{3} (bilinear).\nFurther normal-map warnings are suppressed."),
+    JA("{0}x{1} のグループ内で法線マップの形が揃っていません。 {2}x{3} に拡大します（バイリニア）。\n以降の法線マップ警告は出しません。"),
+    ZH_HANS("{0}x{1} 组内的法线图尺寸不一致，将上采样到 {2}x{3}（双线性）。后续法线图警告不再输出。"),
+    ZH_HANT("{0}x{1} 群組內的法線圖尺寸不一致，將上採樣到 {2}x{3}（雙線性）。後續法線圖警告不再輸出。"),
+    KO("{0}x{1} 그룹 안에서 법선 맵 크기가 다릅니다. {2}x{3} 으로 키웁니다(이중선형). 이후 법선 맵 경고는 생략합니다."),
+    DE("die Normalenkarten innerhalb einer {0}x{1}-Gruppe stimmen im Format nicht überein;\nsie werden auf {2}x{3} hochgerechnet (bilinear). Weitere Warnungen zu Normalenkarten entfallen."),
+    FR("les tailles de carte de normales diffèrent au sein d'un groupe {0}x{1} ;\nsuréchantillonnage vers {2}x{3} (bilinéaire). Les avertissements suivants sur les normales sont supprimés."),
+    ES("los mapas de normales de un grupo {0}x{1} tienen tamaños distintos; se amplían a {2}x{3} (bilineal).\nSe omiten los avisos siguientes sobre normales."),
+    PT("os mapas de normais de um grupo {0}x{1} têm tamanhos diferentes; serão ampliados para {2}x{3} (bilinear).\nOs avisos seguintes sobre normais são omitidos."),
+    IT("le mappe di normali in un gruppo {0}x{1} hanno dimensioni diverse; vengono ingrandite a {2}x{3} (bilineare).\nGli avvisi successivi sulle normali sono soppressi."),
+    NL("de normaalkaarten binnen een {0}x{1}-groep verschillen in grootte; ze worden opgeschaald naar {2}x{3} (bilineair).\nVerdere waarschuwingen over normaalkaarten vervallen."),
+    RU("в группе {0}x{1} размеры карт нормалей различаются; они увеличиваются до {2}x{3} (билинейно).\nДальнейшие предупреждения о картах нормалей подавлены."),
+    TR("{0}x{1} grubunda normal haritası boyutları farklı; {2}x{3} boyutuna büyütülüyor (çift doğrusal).\nSonraki normal haritası uyarıları bastırılıyor."));
 
 SS_MSG(mask_image_aspect,
-    EN("mask '{0}' is {1} and its image {2} -- a different shape, not just a "
-       "different size. It is stretched onto the image; check that it belongs "
-       "to it."),
-    JA("マスク '{0}' は {1}、画像は {2} で、大きさだけでなく縦横比も違います。"
-       "画像に合わせて引き伸ばします。この画像のマスクか確認してください。"),
-    ZH_HANS("蒙版 '{0}' 是 {1}，其图像是 {2}：不只是尺寸不同，长宽比也不同。"
-            "将把它拉伸到图像上；请确认它属于该图像。"),
-    ZH_HANT("遮罩 '{0}' 是 {1}，其影像是 {2}：不只是尺寸不同，長寬比也不同。"
-            "將把它拉伸到影像上；請確認它屬於該影像。"),
-    KO("마스크 '{0}' 은(는) {1}, 이미지는 {2} 입니다. 크기뿐 아니라 가로세로 "
-       "비율도 다릅니다. 이미지에 맞춰 늘립니다. 이 이미지의 마스크인지 "
-       "확인하세요."),
-    DE("Maske '{0}' ist {1}, ihr Bild {2} -- nicht nur eine andere Größe, "
-       "sondern ein anderes Seitenverhältnis. Sie wird auf das Bild gestreckt; "
-       "prüfen Sie, ob sie zu ihm gehört."),
-    FR("le masque '{0}' fait {1} et son image {2} : le rapport d'aspect "
-       "diffère, pas seulement la taille. Il est étiré sur l'image ; vérifiez "
-       "qu'il lui correspond."),
-    ES("la máscara '{0}' es de {1} y su imagen de {2}: cambia la relación de "
-       "aspecto, no solo el tamaño. Se estira sobre la imagen; compruebe que "
-       "le corresponde."),
-    PT("a máscara '{0}' é {1} e a sua imagem {2}: muda a proporção, não apenas "
-       "o tamanho. Ela é esticada sobre a imagem; verifique se pertence a ela."),
-    IT("la maschera '{0}' è {1} e la sua immagine {2}: cambia il rapporto "
-       "d'aspetto, non solo la dimensione. Viene stirata sull'immagine; "
-       "verifica che le appartenga."),
-    NL("masker '{0}' is {1} en zijn beeld {2}: een andere beeldverhouding, "
-       "niet alleen een ander formaat. Het wordt over het beeld uitgerekt; "
-       "controleer of het erbij hoort."),
-    RU("маска '{0}' имеет размер {1}, а её изображение {2}: отличается не "
-       "только размер, но и соотношение сторон. Она растягивается по "
-       "изображению; проверьте, что она к нему относится."),
-    TR("'{0}' maskesi {1}, görüntüsü ise {2}: yalnızca boyut değil, en-boy "
-       "oranı da farklı. Görüntüye uyacak şekilde geriliyor; bu görüntüye ait "
-       "olduğunu doğrulayın."));
+    EN("mask '{0}' is {1} and its image {2} -- a different shape, not just a different size.\nIt is stretched onto the image; check that it belongs to it."),
+    JA("マスク '{0}' は {1}、画像は {2} で、大きさだけでなく縦横比も違います。\n- 画像に合わせて引き伸ばします。\n- この画像のマスクか確認してください。"),
+    ZH_HANS("蒙版 '{0}' 是 {1}，其图像是 {2}：不只是尺寸不同，长宽比也不同。\n将把它拉伸到图像上；请确认它属于该图像。"),
+    ZH_HANT("遮罩 '{0}' 是 {1}，其影像是 {2}：不只是尺寸不同，長寬比也不同。\n將把它拉伸到影像上；請確認它屬於該影像。"),
+    KO("마스크 '{0}' 은(는) {1}, 이미지는 {2} 입니다. 크기뿐 아니라 가로세로 비율도 다릅니다. 이미지에 맞춰 늘립니다. 이 이미지의 마스크인지 확인하세요."),
+    DE("Maske '{0}' ist {1}, ihr Bild {2} -- nicht nur eine andere Größe, sondern ein anderes Seitenverhältnis.\nSie wird auf das Bild gestreckt; prüfen Sie, ob sie zu ihm gehört."),
+    FR("le masque '{0}' fait {1} et son image {2} : le rapport d'aspect diffère, pas seulement la taille.\nIl est étiré sur l'image ; vérifiez qu'il lui correspond."),
+    ES("la máscara '{0}' es de {1} y su imagen de {2}: cambia la relación de aspecto, no solo el tamaño.\nSe estira sobre la imagen; compruebe que le corresponde."),
+    PT("a máscara '{0}' é {1} e a sua imagem {2}: muda a proporção, não apenas o tamanho.\nEla é esticada sobre a imagem; verifique se pertence a ela."),
+    IT("la maschera '{0}' è {1} e la sua immagine {2}: cambia il rapporto d'aspetto, non solo la dimensione.\nViene stirata sull'immagine; verifica che le appartenga."),
+    NL("masker '{0}' is {1} en zijn beeld {2}: een andere beeldverhouding, niet alleen een ander formaat.\nHet wordt over het beeld uitgerekt; controleer of het erbij hoort."),
+    RU("маска '{0}' имеет размер {1}, а её изображение {2}: отличается не только размер, но и соотношение сторон.\nОна растягивается по изображению; проверьте, что она к нему относится."),
+    TR("'{0}' maskesi {1}, görüntüsü ise {2}: yalnızca boyut değil, en-boy oranı da farklı.\nGörüntüye uyacak şekilde geriliyor; bu görüntüye ait olduğunu doğrulayın."));
 
 SS_MSG(random_init_no_spread,
-    EN("Cannot size the random seed points: the cameras do not spread around "
-       "{0} (--random-init-center). Pick another centre, or give the dataset a "
-       "point cloud."),
-    JA("ランダム初期点の大きさを決められません。カメラが {0}（--random-init-c"
-       "enter）の周りに広がっていません。別の中心を選ぶか、データセットに点群"
-       "を用意してください。"),
-    ZH_HANS("无法确定随机初始点的范围：相机没有分布在 {0}（--random-init-cent"
-            "er）周围。请换一个中心，或为数据集提供点云。"),
-    ZH_HANT("無法決定隨機初始點的範圍：相機沒有分布在 {0}（--random-init-cent"
-            "er）周圍。請換一個中心，或為資料集提供點雲。"),
-    KO("무작위 초기 점의 크기를 정할 수 없습니다. 카메라가 {0}(--random-init-"
-       "center) 주위에 퍼져 있지 않습니다. 다른 중심을 고르거나 데이터셋에 점"
-       "군을 넣으세요."),
-    DE("Die zufälligen Startpunkte lassen sich nicht bemessen: Die Kameras "
-       "streuen nicht um {0} (--random-init-center). Wählen Sie eine andere "
-       "Mitte, oder geben Sie dem Datensatz eine Punktwolke."),
-    FR("Impossible de dimensionner les points de départ aléatoires : les "
-       "caméras ne s'étalent pas autour de {0} (--random-init-center). "
-       "Choisissez un autre centre, ou fournissez un nuage de points."),
-    ES("No se pueden dimensionar los puntos iniciales aleatorios: las cámaras "
-       "no se dispersan en torno a {0} (--random-init-center). Elija otro "
-       "centro o dé al conjunto una nube de puntos."),
-    PT("Não é possível dimensionar os pontos iniciais aleatórios: as câmeras "
-       "não se dispersam em torno de {0} (--random-init-center). Escolha outro "
-       "centro ou dê ao conjunto uma nuvem de pontos."),
-    IT("Impossibile dimensionare i punti iniziali casuali: le camere non si "
-       "disperdono attorno a {0} (--random-init-center). Scegliete un altro "
-       "centro, oppure fornite una nuvola di punti."),
-    NL("De willekeurige beginpunten zijn niet af te meten: de camera's "
-       "spreiden niet rond {0} (--random-init-center). Kies een ander midden, "
-       "of geef de dataset een puntenwolk."),
-    RU("Невозможно задать размер случайных начальных точек: камеры не "
-       "разбросаны вокруг {0} (--random-init-center). Выберите другой центр "
-       "или добавьте в набор облако точек."),
-    TR("Rastgele başlangıç noktaları boyutlandırılamıyor: kameralar {0} "
-       "(--random-init-center) çevresine yayılmıyor. Başka bir merkez seçin ya "
-       "da veri kümesine bir nokta bulutu verin."));
+    EN("Cannot size the random seed points: the cameras do not spread around {0} (--random-init-center). Pick another centre, or give the dataset a point cloud."),
+    JA("ランダム初期点の大きさを決められません。カメラが {0}（--random-init-center）の周りに広がっていません。別の中心を選ぶか、データセットに点群を用意してください。"),
+    ZH_HANS("无法确定随机初始点的范围：相机没有分布在 {0}（--random-init-center）周围。请换一个中心，或为数据集提供点云。"),
+    ZH_HANT("無法決定隨機初始點的範圍：相機沒有分布在 {0}（--random-init-center）周圍。請換一個中心，或為資料集提供點雲。"),
+    KO("무작위 초기 점의 크기를 정할 수 없습니다. 카메라가 {0}(--random-init-center) 주위에 퍼져 있지 않습니다. 다른 중심을 고르거나 데이터셋에 점군을 넣으세요."),
+    DE("Zufällige Startpunkte nicht skalierbar: keine Kamerastreuuung um {0} (--random-init-center). Andere Mitte oder Punktwolke wählen."),
+    FR("Impossible de dimensionner les points aléatoires : caméras sans dispersion autour de {0} (--random-init-center). Changer de centre ou fournir un nuage."),
+    ES("No se pueden dimensionar puntos aleatorios: cámaras sin dispersión en torno a {0} (--random-init-center). Cambia el centro o aporta una nube."),
+    PT("Não se podem dimensionar pontos aleatórios: câmaras sem dispersão em torno de {0} (--random-init-center). Mude o centro ou forneça uma nuvem."),
+    IT("Impossibile dimensionare i punti casuali: camere senza dispersione attorno a {0} (--random-init-center). Cambia centro o fornisci una nuvola."),
+    NL("De willekeurige beginpunten zijn niet af te meten: de camera's spreiden niet rond {0} (--random-init-center). Kies een ander midden, of geef de dataset een puntenwolk."),
+    RU("Невозможно задать размер случайных начальных точек: камеры не разбросаны вокруг {0} (--random-init-center). Выберите другой центр или добавьте в набор облако точек."),
+    TR("Rastgele başlangıç noktaları boyutlandırılamıyor: kameralar {0} (--random-init-center) çevresine yayılmıyor. Başka bir merkez seçin ya da veri kümesine bir nokta bulutu verin."));
 
 // Redrawn in place on one line, so it stays short.
 SS_MSG(loading_images,

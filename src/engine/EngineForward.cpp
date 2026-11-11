@@ -187,6 +187,8 @@ void forward_3dgs(
     // reuses, so this view is already dead. Dropping it turns a stale
     // fused-optim read into that step's "v_splats_s not stashed" error.
     engine().fwd.v_splats_s.clear();
+    engine().fwd.accum_weight = DeviceVector<float>();
+    engine().fwd.accum_mode = DensifyAccumMode::None;
 
     // Build splats as DeviceTensorFloatND from typed device buffers.
     // For DeviceVector<float> (opacities), build a [N, 1] shape FND manually.

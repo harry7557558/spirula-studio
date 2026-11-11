@@ -27,6 +27,7 @@
 #include "data/LabelField.h"
 #include "dense/Artifact.h"
 #include "data/Knn.h"
+#include "kernels/loss/PcaReg.cuh"
 #include "sfm/core/Exif.h"
 
 #ifndef _WIN32
@@ -37,7 +38,9 @@
 
 #include <algorithm>
 #include <climits>
+#include <array>
 #include <cmath>
+#include <map>
 #include <condition_variable>
 #include <cstdio>
 #include <fstream>
@@ -498,6 +501,16 @@ DeadCriterion dead_criterion_enum(const std::string& c) {
     throw std::runtime_error("unknown dead_criterion: " + c);
 }
 
+PcaRegKnn pca_reg_knn_enum(const std::string& m) {
+    if (m == "exact")              return PcaRegKnn::Exact;
+    if (m == "exact-cached")       return PcaRegKnn::ExactCached;
+    if (m == "morton")             return PcaRegKnn::Morton;
+    if (m == "morton-cached")      return PcaRegKnn::MortonCached;
+    if (m == "morton-best")        return PcaRegKnn::MortonBest;
+    if (m == "morton-best-cached") return PcaRegKnn::MortonBestCached;
+    throw std::runtime_error("unknown pca_reg_knn: " + m);
+}
+
 int densify_accum_mode_int(const std::string& mode) {
     if (mode == "max") return (int)DensifyAccumMode::Max;
     if (mode == "sum") return (int)DensifyAccumMode::Sum;
@@ -633,6 +646,7 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
     cfg.optim.use_scale_agnostic_mean     = c.use_scale_agnostic_mean;
     // quantization level -> bit depths
     cfg.optim.quantization_level = c.quantization_level;
+    cfg.optim.keep_fp32_geometry_grad = c.pca_reg_neighbors > 0;
     cfg.optim.sh_optim_bits      = c.quantization_level == 0 ? 32 : 8;
     cfg.optim.sh_value_bits      = c.quantization_level == 0 ? 32 : 16;
     cfg.optim.non_sh_optim_bits  = c.quantization_level == 0 ? 32 : 16;
@@ -687,6 +701,41 @@ EngineStepConfig build_step_config(const TrainConfig& c, const RunState& st, int
               (double)c.dead_after_epochs * (double)st.steps_per_epoch)))
         : 0;
     cfg.densify.growth_caps = st.growth_caps;
+
+    // ---- local-PCA regularizer ------------------------------------------
+    if (c.pca_reg_neighbors > 0 && step >= c.pca_reg_start_iter) {
+        cfg.pca_reg.neighbors = c.pca_reg_neighbors;
+        cfg.pca_reg.knn = pca_reg_knn_enum(c.pca_reg_knn);
+        cfg.pca_reg.window = c.pca_reg_window;
+        cfg.pca_reg.refresh_every = c.pca_reg_refresh_every > 0
+            ? c.pca_reg_refresh_every : std::max(c.refine_every, 1);
+        const float t = std::clamp(
+            (float)(step - c.pca_reg_start_iter) /
+                (float)std::max(max_steps_lr - c.pca_reg_start_iter, 1), 0.0f, 1.0f);
+        const float w0 = c.pca_reg_weight;
+        const float w1 = c.pca_reg_weight_final.value_or(w0);
+        float w = w0 + (w1 - w0) * t;
+        if (c.pca_reg_schedule == "exponential" && w0 > 0.0f && w1 > 0.0f)
+            w = w0 * std::pow(w1 / w0, t);
+        else if (c.pca_reg_schedule == "cosine")
+            w = w0 + (w1 - w0) * 0.5f * (1.0f - std::cos(3.14159265f * t));
+        cfg.pca_reg.w_pca    = w;
+        cfg.pca_reg.tangent  = c.pca_reg_tangent_weight;
+        cfg.pca_reg.w_normal = c.pca_reg_normal_weight;
+        cfg.pca_reg.w_surfel = c.pca_reg_surfel_weight;
+        cfg.pca_reg.w_erank = c.pca_reg_erank_weight;
+        cfg.pca_reg.w_transparency = c.pca_reg_transparency_weight;
+        if (c.pca_reg_covariance == "centers")
+            cfg.pca_reg.covariance = PcaRegCovariance::Centers;
+        else if (c.pca_reg_covariance == "opacity-centers")
+            cfg.pca_reg.covariance = PcaRegCovariance::OpacityCenters;
+        else if (c.pca_reg_covariance == "gaussian-mixture")
+            cfg.pca_reg.covariance = PcaRegCovariance::GaussianMixture;
+        else
+            throw std::runtime_error("unknown pca_reg_covariance: " + c.pca_reg_covariance);
+        cfg.pca_reg.scale_agnostic = c.pca_reg_scale_agnostic;
+        cfg.pca_reg.rendered_means_only = c.use_scale_agnostic_mean;
+    }
 
     // ---- bilagrid LRs + TV ---------------------------------------------
     if (st.bilagrid_rgb_init) {
@@ -931,10 +980,12 @@ void TrainerSession::check_config() {
     const bool orient_ok = (cfg.orientation_method == "up" ||
                             cfg.orientation_method == "pca" ||
                             cfg.orientation_method == "vertical" ||
-                            cfg.orientation_method == "none");
+                            cfg.orientation_method == "none" ||
+                            cfg.orientation_method == "gsplat");
     const bool center_ok = (cfg.center_method == "poses" ||
                             cfg.center_method == "focus" ||
-                            cfg.center_method == "none");
+                            cfg.center_method == "none" ||
+                            cfg.center_method == "gsplat");
     if (!orient_ok || !center_ok)
         log(lfmt(lmsg::warn_pose_normalization_approx,
                  {cfg.orientation_method, cfg.center_method}));
@@ -950,6 +1001,14 @@ void TrainerSession::set_alpha_config(DataManagerConfig& dm,
         dm.composite_alpha = alpha;
         for (int c = 0; c < 3; c++) dm.composite_color[c] = cfg.background_color[c];
     }
+}
+
+void TrainerSession::set_downscale_cache(DataManagerConfig& dm) const {
+    const float d = cfg.train_resolution_divisor;
+    if (!cfg.cache_downscaled_images || !(d >= 2.0f) || d != std::floor(d)) return;
+    dm.downscale_cache_divisor = (int)d;
+    dm.image_dir = (fs::path(cfg.data) / cfg.image_dir).lexically_normal().string();
+    dm.downscale_rounding_mode = cfg.downscale_rounding_mode;
 }
 
 // After relative_scale, so the cloud is sized by the cameras it will train
@@ -1019,6 +1078,10 @@ void TrainerSession::load_dataset() {
     roi.reset();
     apply_partition_config(ds);
     load_region();
+    // `gsplat` needs seed points; without them `up` / `poses` were used.
+    if (ds.pose_normalization_fell_back)
+        log(lfmt(lmsg::warn_pose_normalization_approx,
+                 {cfg.orientation_method, cfg.center_method}));
     if (ds.center_mode != "none") {
         char xyz[96];
         std::snprintf(xyz, sizeof xyz, "%.12g, %.12g, %.12g",
@@ -1418,6 +1481,7 @@ void TrainerSession::setup_engine() {
     set_alpha_config(dm, alpha_images);
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = ds.exif_quarter_turns;
+    set_downscale_cache(dm);
     dm.deficit_sampling  = cfg.view_sampling == "deficit";
     dm.deficit_power     = cfg.view_deficit_power;
     dm.deficit_max_ratio = cfg.view_deficit_max_ratio;
@@ -1545,6 +1609,17 @@ void TrainerSession::setup_engine() {
                           cfg.ppisp_exposure_arithmetic_mean, exif_ev);
         st.ppisp_init = true;
     }
+    if (cfg.use_calib_warp) {
+        CalibWarpConfig cw;
+        cw.grid = cfg.calib_warp_grid;
+        cw.parallax = cfg.calib_warp_parallax;
+        cw.start_step = cfg.calib_warp_start_iter;
+        cw.step = cfg.calib_warp_step;
+        cw.smooth = cfg.calib_warp_smooth;
+        engine_init_calib_warp(n_grids, cw);
+    } else {
+        engine_init_calib_warp(0, CalibWarpConfig{});
+    }
 
     // ---- Resume --------------------------------------------------------
     // Last, because engine_load_checkpoint() overwrites the skeleton just
@@ -1592,6 +1667,8 @@ void TrainerSession::restore_checkpoint() {
     if (st.bilagrid_depth_init)  target.bilagrid_depth  = lhw(cfg.bilagrid_shape_geometry);
     if (st.bilagrid_normal_init) target.bilagrid_normal = lhw(cfg.bilagrid_shape_geometry);
     target.ppisp = st.ppisp_init;
+    if (cfg.use_calib_warp)
+        target.calib_warp = std::array<int, 2>{cfg.calib_warp_grid, cfg.calib_warp_parallax ? 4 : 2};
 
     fs::path load_from = r.ckpt_dir;
     fs::path tmp;
@@ -1790,6 +1867,13 @@ void TrainerSession::train(const TrainerCallbacks& cb) {
         fs.distinct_batches = _batches_per_epoch;
         fs.sh_degree = cfg.sh_degree;
         fs.sh_degree_every = cfg.sh_degree_warmup_every;
+        if (cfg.pca_reg_neighbors > 0 && cfg.pca_reg_knn.find("-cached") != std::string::npos) {
+            const uint64_t k = (uint64_t)std::min(cfg.pca_reg_neighbors, kPcaRegMaxNeighbors - 1);
+            const bool lists = cfg.pca_reg_knn != "morton-cached";
+            fs.deferred_bytes =
+                (uint64_t)engine_get_max_num_splats() * 4u * (1u + (lists ? k : 0u));
+            fs.deferred_step = std::max(cfg.pca_reg_start_iter, start_step);
+        }
         _forecast.reset(fs);
         _live_splats = engine_get_cur_num_splats();
         _warned_risk = OomRisk::Low;
@@ -2102,6 +2186,7 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     dm.flip_mask = cfg.flip_mask;
     dm.mask_boundary_offset = cfg.mask_boundary_offset;
     dm.exif_quarter_turns = eds.exif_quarter_turns;
+    set_downscale_cache(dm);
     std::vector<int32_t> all_idx((size_t)eds.num_cameras);
     std::iota(all_idx.begin(), all_idx.end(), 0);
 
@@ -2135,11 +2220,16 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         int64_t index = 0;
         int H = 0, W = 0, C = 0;
         std::vector<float> gt, pred;
+        std::vector<float> aligned;   // pred warped onto gt (eval_align), or empty
         std::vector<uint8_t> mask;
     };
     struct ViewScore {
         bool  filled = false;
         float l1 = 0, psnr = 0, ssim = 0, cc_l1 = 0, cc_psnr = 0, cc_ssim = 0;
+        std::vector<float> aligned;   // al_ l1/psnr/ssim, then alcc_ l1/psnr/ssim
+        std::vector<float> al_lpips, alcc_lpips;
+        std::vector<float> masked_aligned;   // the same six over the mask
+        std::vector<float> masked_al_lpips, masked_alcc_lpips;
         std::vector<float> masked;
         std::vector<float> masked_lpips, masked_cc_lpips;
         std::vector<float> lpips, cc_lpips;   // one per lpips_names entry
@@ -2201,6 +2291,24 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         s.cc_l1   = image_l1(g, cc.data(), view_px);
         s.cc_psnr = image_psnr(g, cc.data(), view_px);
         s.cc_ssim = image_ssim(g, cc.data(), j.H, j.W, j.C);
+        thread_local std::vector<float> alcc, alcc_m;
+        if (!j.aligned.empty()) {
+            const float* a = j.aligned.data();
+            color_correct_into(a, g, (int64_t)j.H * j.W, j.C, alcc);
+            s.aligned = {image_l1(g, a, view_px), image_psnr(g, a, view_px),
+                         image_ssim(g, a, j.H, j.W, j.C),
+                         image_l1(g, alcc.data(), view_px), image_psnr(g, alcc.data(), view_px),
+                         image_ssim(g, alcc.data(), j.H, j.W, j.C)};
+            if (!j.mask.empty()) {
+                const uint8_t* m = j.mask.data();
+                color_correct_into(a, g, (int64_t)j.H * j.W, j.C, alcc_m, 5, 0.5f / 255.0f, m);
+                s.masked_aligned = {image_l1(g, a, view_px, m, j.C),
+                    image_psnr(g, a, view_px, m, j.C), image_ssim(g, a, j.H, j.W, j.C, m),
+                    image_l1(g, alcc_m.data(), view_px, m, j.C),
+                    image_psnr(g, alcc_m.data(), view_px, m, j.C),
+                    image_ssim(g, alcc_m.data(), j.H, j.W, j.C, m)};
+            }
+        }
         if (!j.mask.empty()) {
             const uint8_t* m = j.mask.data();
             color_correct_into(j.pred.data(), g, (int64_t)j.H * j.W, j.C, cc,
@@ -2222,6 +2330,19 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
             try {
                 if (j.C != 3) throw std::runtime_error("LPIPS needs RGB views");
                 std::vector<const float*> predictions{j.pred.data(),cc.data()};
+                const size_t n_base = j.mask.empty() ? 2 : 4;
+                thread_local std::vector<float> valid_al, valid_alcc;
+                if (!j.aligned.empty()) {
+                    quantize_8bit(j.aligned);
+                    color_correct_into(j.aligned.data(), g, (int64_t)j.H * j.W, j.C, alcc);
+                    if (!j.mask.empty()) {
+                        valid_al = j.aligned;
+                        color_correct_into(j.aligned.data(), g, (int64_t)j.H * j.W, j.C,
+                                           valid_alcc, 5, 0.5f / 255.0f, j.mask.data());
+                        for (size_t p = 0; p < valid_al.size(); ++p)
+                            if (!j.mask[p / j.C]) valid_al[p] = valid_alcc[p] = g[p];
+                    }
+                }
                 thread_local std::vector<float> valid_pred, valid_cc;
                 if (!j.mask.empty()) {
                     valid_pred = j.pred;
@@ -2232,6 +2353,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     predictions.push_back(valid_pred.data());
                     predictions.push_back(valid_cc.data());
                 }
+                if (!j.aligned.empty()) {
+                    predictions.push_back(j.aligned.data());
+                    predictions.push_back(alcc.data());
+                    if (!j.mask.empty()) {
+                        predictions.push_back(valid_al.data());
+                        predictions.push_back(valid_alcc.data());
+                    }
+                }
                 std::lock_guard<std::mutex> lk(lpips_mu);
                 for (const std::vector<float>& m : lpips->score(g,predictions,j.W,j.H)) {
                     s.lpips.push_back(m[0]);
@@ -2239,6 +2368,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     if (!j.mask.empty()) {
                         s.masked_lpips.push_back(m[2]);
                         s.masked_cc_lpips.push_back(m[3]);
+                    }
+                    if (!j.aligned.empty()) {
+                        s.al_lpips.push_back(m[n_base]);
+                        s.alcc_lpips.push_back(m[n_base + 1]);
+                        if (!j.mask.empty()) {
+                            s.masked_al_lpips.push_back(m[n_base + 2]);
+                            s.masked_alcc_lpips.push_back(m[n_base + 3]);
+                        }
                     }
                 }
             } catch (const std::exception& e) {
@@ -2310,13 +2447,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
     }
 
     const int sh_deg = cfg.sh_degree;
+    const bool eval_align = cfg.eval_align.value_or(cfg.use_calib_warp);
     int64_t next_slot = 0;
     bool stopped = false;
 
     for (int64_t i = 0; i < eds.num_cameras; i++) {
         if (stop_requested.load() || worker_failed.load()) break;
         int64_t H = 0, W = 0, B = 0, Cc = 0;
-        std::vector<float> gt, render;
+        std::vector<float> gt, render, aligned;
         std::vector<uint8_t> mask;
         {
             std::lock_guard<std::mutex> lk(engine_mutex);
@@ -2351,6 +2489,27 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                             }
                 }
             }
+            // eval_align: the same views warped onto their ground truth, the
+            // flow fitted on the colour-corrected render (docs/notes/calib-warp.md).
+            // Under the lock that staged the view, so the camera table is still its.
+            if (eval_align && Cc == 3) {
+                const int64_t vp = H * W * Cc;
+                std::vector<float> est((size_t)(B * vp)), clamped = render, cc_v;
+                for (float& x : clamped) x = std::min(std::max(x, 0.0f), 1.0f);
+                for (int64_t v = 0; v < B; ++v) {
+                    if (mask.empty())
+                        color_correct_into(clamped.data() + v * vp, gt.data() + v * vp, H * W,
+                                           (int)Cc, cc_v);
+                    else
+                        color_correct_into(clamped.data() + v * vp, gt.data() + v * vp, H * W,
+                                           (int)Cc, cc_v, 5, 0.5f / 255.0f,
+                                           mask.data() + v * H * W);
+                    std::copy(cc_v.begin(), cc_v.end(), est.begin() + v * vp);
+                }
+                aligned.resize(clamped.size());
+                engine_calib_warp_align_to_gt(est.data(), clamped.data(), aligned.data(),
+                                              !mask.empty());
+            }
         }
 
         // Per POST-split view inside the batch (K faces of one input image).
@@ -2370,6 +2529,11 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
                     continue;
             }
             for (float& x : job.pred) x = std::min(std::max(x, 0.0f), 1.0f);
+            if (!aligned.empty()) {
+                job.aligned.assign(aligned.begin() + (size_t)(v * view_px),
+                                   aligned.begin() + (size_t)((v + 1) * view_px));
+                for (float& x : job.aligned) x = std::min(std::max(x, 0.0f), 1.0f);
+            }
             {
                 std::unique_lock<std::mutex> lk(qmu);
                 spacecv.wait(lk, [&] {
@@ -2408,6 +2572,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         per_image["cc_l1"].push_back(s.cc_l1);
         per_image["cc_psnr"].push_back(s.cc_psnr);
         per_image["cc_ssim"].push_back(s.cc_ssim);
+        constexpr const char* aligned_keys[] = {"al_l1", "al_psnr", "al_ssim",
+            "alcc_l1", "alcc_psnr", "alcc_ssim"};
+        for (size_t m = 0; m < s.aligned.size(); ++m)
+            per_image[aligned_keys[m]].push_back(s.aligned[m]);
+        constexpr const char* masked_aligned_keys[] = {"masked_al_l1", "masked_al_psnr",
+            "masked_al_ssim", "masked_alcc_l1", "masked_alcc_psnr", "masked_alcc_ssim"};
+        for (size_t m = 0; m < s.masked_aligned.size(); ++m)
+            per_image[masked_aligned_keys[m]].push_back(s.masked_aligned[m]);
         constexpr const char* masked_keys[] = {"masked_l1", "masked_psnr", "masked_ssim",
             "masked_cc_l1", "masked_cc_psnr", "masked_cc_ssim"};
         for (size_t m = 0; m < s.masked.size(); ++m)
@@ -2415,6 +2587,14 @@ void TrainerSession::eval(const std::function<void(const EvalProgress&)>& on_pro
         for (size_t m = 0; with_lpips && m < lpips_names.size(); ++m) {
             per_image[lpips_names[m]].push_back(s.lpips[m]);
             per_image["cc_" + lpips_names[m]].push_back(s.cc_lpips[m]);
+            if (!s.al_lpips.empty()) {
+                per_image["al_" + lpips_names[m]].push_back(s.al_lpips[m]);
+                per_image["alcc_" + lpips_names[m]].push_back(s.alcc_lpips[m]);
+            }
+            if (!s.masked_al_lpips.empty()) {
+                per_image["masked_al_" + lpips_names[m]].push_back(s.masked_al_lpips[m]);
+                per_image["masked_alcc_" + lpips_names[m]].push_back(s.masked_alcc_lpips[m]);
+            }
             if (!s.masked_lpips.empty()) {
                 per_image["masked_" + lpips_names[m]].push_back(s.masked_lpips[m]);
                 per_image["masked_cc_" + lpips_names[m]].push_back(s.masked_cc_lpips[m]);

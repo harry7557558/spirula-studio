@@ -227,6 +227,42 @@ void test_per_camera_stencil() {
           "per camera: cam1 has its own, the right half out");
 }
 
+// A lone input keeps images/ to itself, and a scan's photographs join it in a
+// folder of their own: each folder gets its own input's stencil, not both.
+void test_nested_input_stencils() {
+    const int W = 40, H = 20;
+    const fs::path root = scratch("nested");
+    const fs::path a = root / "video", b = root / "scan", ws = root / "dataset";
+    for (const char* f : {"f.jpg", "g.jpg", "h.jpg"}) {
+        write_jpg(a / f, W, H, 0);
+        write_jpg(b / f, W, H, 1);
+    }
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    gui::PrepInput lone, scan;
+    lone.path = a.string();
+    scan.path = b.string();
+    scan.subdir = "scan_b";
+    std::string err;
+    app::parse_mask_shapes("-rect 0,0,0.5,1", lone.stencil.mask.shapes, err);
+    app::parse_mask_shapes("-rect 0.5,0,1,1", scan.stencil.mask.shapes, err);
+    job.inputs = {lone, scan};
+    gui::RunProgress prog;
+    check(run_prep(job, prog, err), "nested: run: " + err);
+    std::vector<uint8_t> mine, theirs;
+    int w = 0, h = 0;
+    const bool read =
+        app::load_stencil((ws / "masks" / "f.png").string(), w, h, mine) &&
+        app::load_stencil((ws / "masks" / "scan_b" / "f.png").string(), w, h, theirs) &&
+        mine.size() == (size_t)W * H && theirs.size() == mine.size();
+    check(read, "nested: a mask for each input's photographs");
+    if (!read) return;
+    check(at(mine, W, 5, 10) == 0 && at(mine, W, 35, 10) == 255,
+          "nested: the lone input's photographs have its shape");
+    check(at(theirs, W, 5, 10) == 255 && at(theirs, W, 35, 10) == 0,
+          "nested: the folder inside it has its own input's shape only");
+}
+
 // feature_masks/ is the run's own, so a workspace holding only it is one to
 // resume and one "clear this project" empties; and COLMAP, which reads one
 // mask tree, gets it intersected with masks/ -- the flipped one read flipped.
@@ -447,6 +483,33 @@ void test_frames_reel_counts_images() {
     reel.clear();
     check(run_prep(job, prog, err, nullptr, &reel), "reel: resume: " + err);
     check(reel.size() == 11, "reel: reused frames remain available for preview");
+}
+
+// One lens of each .insp is written, and which one is a setting, not a source
+// that changed: the plan refuses to keep frames when the identity moves.
+void test_packed_photo_one_lens() {
+    const fs::path root = scratch("one_lens");
+    const fs::path ws = root / "dataset";
+    for (int i = 0; i < 3; i++) write_jpg(root / "dual" / ("d" + std::to_string(i) + ".insp"), 32, 16, i);
+    gui::PrepJob job;
+    job.workspace = ws.string();
+    job.photo_import = gui::PhotoImport::Copy;
+    gui::PrepInput in;
+    in.path = (root / "dual").string();
+    in.packed_lenses = 2;
+    in.active_lens = 1;
+    job.inputs.push_back(in);
+    gui::RunProgress prog;
+    std::string err;
+    const bool ran = run_prep(job, prog, err);
+    check(ran, "one lens: run: " + err);
+    std::error_code ec;
+    check(!fs::exists(ws / "images" / "cam0", ec) && files_in(ws / "images" / "cam1") == 3,
+          "one lens: only the lens kept is written");
+    const std::string identity = gui::frame_source_identity(job, job.inputs[0], false);
+    job.inputs[0].active_lens = 0;
+    check(!identity.empty() && gui::frame_source_identity(job, job.inputs[0], false) == identity,
+          "one lens: another lens is the same source");
 }
 
 // A review's sheet: a looser threshold brings a frame back by a rename, and
@@ -769,11 +832,13 @@ int main() {
     test_rerun_reapplies_corrections();
     test_camera_scan_skips_mask_edits();
     test_per_camera_stencil();
+    test_nested_input_stencils();
     test_feature_masks_workspace();
     test_model_masking_needs_segmentation();
     test_heif_folder();
     test_skipped_photos();
     test_frames_reel_counts_images();
+    test_packed_photo_one_lens();
     test_pick_sheet_discards();
     test_sort_in_place();
     test_sort_rig_in_place();

@@ -420,7 +420,9 @@ DeDoDe's are not. One matcher cannot mix widths, and says so.
 `lightglue` for the ALIKED ones and `loma-b128` / `loma-b` / `loma-r` /
 `loma-l` / `loma-g` for the LoMa ones. The families do not mix -- a learned
 matcher only reads the descriptors it was trained on, and `auto` says so rather
-than running.
+than running. `--matcher flexglue` is the exception: it reads the images and
+only the keypoint locations, so it takes any `--features`, SIFT included
+(`src/flexglue/README.md`).
 
 `--quality low|medium|high|extreme` sets the working resolution, the feature cap
 and the pair-selection breadth; `--data-type individual|video|internet` sets the
@@ -722,6 +724,18 @@ factor while the altitudes agree with the fit to within its inlier radius
 ends with how many registrations the gyro re-solved or refused and how many
 factors the last solve held; `SS_SFM_PRIOR_DUMP=1` prints each one. With no
 telemetry none of it runs and the pipeline is the one before it existed.
+
+`matches.bin` v5 retains the two-view rotations used to calibrate the IMU
+before sensor-guided verification, with provenance for the camera parameters
+and grouping, feature scales, estimation options, capture timing and loaded
+gyro/attitude data. Unchanged inputs replay that sample, preserving fresh
+mapping results. Changed inputs or missing provenance trigger a logged
+recalibration from verified inliers, including an empty saved sample after a
+timing correction. Older files still load; use `--reuse-matches redo` once
+to get fresh/reuse equivalence with telemetry.
+`tools/sfm/check_reuse.py EXE IMAGES NEW_WORKSPACE -- --manifest MANIFEST`
+checks model files and matches byte-for-byte; additional `sfm auto` options
+follow the separator.
 
 During growth with GPS (`--gps-scale-band`, on) each registration reads the chain it
 extends against the GPS: model over GPS chord sums between nodes 5 m apart on the model's own

@@ -1,4 +1,5 @@
 #include "checkpoint/BackgroundExport.h"
+#include "checkpoint/Resume.h"
 #include "core/CheckpointIO.h"
 #include "core/ColorSpace.h"
 
@@ -120,6 +121,11 @@ static void test_state_tar_roundtrip() {
     fs::create_directories(latest);
     fs::copy_file(tarpath, latest / "state.tar");
     { std::ofstream empty(old_ckpt / "state.tar", std::ios::binary); ckpt::tar_finish(empty); }
+    fs::path unfinished = tmp_dir / "run" / "step-000000003.ckpt";
+    fs::create_directories(unfinished);
+    { std::ofstream partial(unfinished / "state.tar.tmp", std::ios::binary); partial << "x"; }
+    check(ckpt::resolve_checkpoint(tmp_dir / "run").ckpt_dir == latest,
+          "run directory skips a checkpoint whose save never finished");
     check(ckpt::load_background_sh(tmp_dir / "run", deg, loaded, transfer, is_linear),
           "run directory picks latest checkpoint");
     check(!ckpt::load_background_sh(old_ckpt, deg, loaded, transfer, is_linear),

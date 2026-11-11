@@ -109,13 +109,15 @@ bool load_photo_file(const PreviewSource& base, DecodeGate& gate, bool mask_flip
     else src.builtin_decode = false;
     int w = 0, h = 0;
     std::vector<uint8_t> rgb;
-    const bool thumb_sized = max_side > 0 && max_side <= 400 && !with_mask;
+    // An .insp's EXIF thumbnail is the whole frame, not the lens kept.
+    const bool thumb_sized = max_side > 0 && max_side <= 400 && !with_mask && src.lens < 0;
     if (thumb_sized && exif_thumbnail(it.path, max_side, it.w, it.h, w, h, rgb)) {
         if (!src.photos_as_stored) app::turn_pixels(app::photo_turn(it.path), 3, rgb, w, h);
     } else {
         PreviewFrame f;
         f.path = it.path;
-        if (!load_preview_frame(src, f, 0, w, h, rgb, error, cancel)) return false;
+        if (!load_preview_frame(src, f, std::max(src.lens, 0), w, h, rgb, error, cancel))
+            return false;
     }
     std::vector<uint8_t> mask;
     if (with_mask && !it.mask.empty()) {
@@ -240,6 +242,8 @@ std::string SourcePreview::reload_key(const PreviewInput& in) const {
                     in.src.image_gamut + '\n' + in.src.image_exposure + '\n' +
                     std::to_string(in.src.image_is_linear.value_or(false)) +
                     std::to_string(in.src.image_is_linear.has_value());
+    // A video draws both lenses whichever is kept; a photo shows the one kept.
+    if (in.kind == PreviewInput::Kind::Photos) k += '\n' + std::to_string(in.src.lens);
     if (in.pano.valid())
         k += '\n' + std::to_string(in.pano_orient.yaw) + ',' + std::to_string(in.pano_orient.pitch) +
              ',' + std::to_string(in.pano_orient.roll);
@@ -284,6 +288,19 @@ void SourcePreview::yield_gpu() {
         _video.drop_decoder();
     }
     _video.abort(false);
+}
+
+std::optional<PreviewFrame> SourcePreview::selected_frame() const {
+    PreviewFrame f;
+    if (_in.kind == PreviewInput::Kind::Video) {
+        f.index = _video.current_frame();
+        return f;
+    }
+    const int i = _photos.selected();
+    if (_in.kind != PreviewInput::Kind::Photos || i < 0 || i >= (int)_photos.size())
+        return std::nullopt;
+    f.path = _photos.items()[(size_t)i].path;
+    return f;
 }
 
 void SourcePreview::show(const PreviewInput& in) {
@@ -457,7 +474,8 @@ void SourcePreview::start_listing() {
     });
 }
 
-SourcePreview::Result SourcePreview::draw(float height, double* clip_start, double* clip_end) {
+SourcePreview::Result SourcePreview::draw(float height, double* clip_start, double* clip_end,
+                                           int* active_lens) {
     Result r;
     if (!active()) return r;
     {
@@ -514,15 +532,23 @@ SourcePreview::Result SourcePreview::draw(float height, double* clip_start, doub
             double unused_start = 0.0, unused_end = 0.0;
             const VideoBrowser::Result v = _video.draw(
                 h, clip_start ? *clip_start : unused_start, clip_end ? *clip_end : unused_end,
-                _in.clip_locked || !clip_start, _in.kept_fps);
+                _in.clip_locked || !clip_start, _in.kept_fps, active_lens);
             r.clip_changed = v.clip_changed && clip_start;
             r.want_gpu = v.want_gpu;
+            r.lens_changed = v.lens_changed;
             break;
         }
         case Tab::Photos:
             if (!L) ui::TextDisabled(pmsg::listing_photos);
             else if (L->photos.empty()) ui::TextDisabled(pmsg::no_photos);
-            else _photos.draw(h, [this](size_t i) { draw_photo_info(i); });
+            else {
+                // On the tabs' row, so `h` still holds.
+                if (active_lens) {
+                    ImGui::SameLine();
+                    r.lens_changed = draw_lens_switches(*active_lens, _in.clip_locked);
+                }
+                _photos.draw(h, [this](size_t i) { draw_photo_info(i); });
+            }
             break;
         case Tab::Sensors: {
             // The video's clock runs here too: the playhead walks the track.
