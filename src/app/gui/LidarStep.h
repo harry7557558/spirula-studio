@@ -37,6 +37,11 @@ struct LidarJob {
     bool refine_capture = false;       // the scanner's poses refined on the run's matches instead
     bool overwrite = false;            // align again although nothing it was made from changed
     bool enabled() const { return !clouds.empty(); }
+    // A capture's photographs are taken whatever `scan_photos` says: its points
+    // have no colour, so views rendered from them would place nothing.
+    bool takes_photos(const std::string& cloud) const {
+        return !in_frame && (scan_photos || xbin_cameras.count(cloud) > 0);
+    }
 };
 
 struct LidarPrep {
@@ -62,7 +67,7 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
 // keeps of `camera`, in `scratch`, which the caller removes.
 bool extract_scan_photos(const LidarJob& job, size_t scan, const std::string& workspace,
                          const std::string& scratch, const std::string& camera,
-                         std::string& dir, std::string& error);
+                         const std::atomic<bool>& cancel, std::string& dir, std::string& error);
 
 // After the frames: views of the scans without photographs rendered into
 // `image_dir`/scan_views as anchors, unless one sharing their frame has them,

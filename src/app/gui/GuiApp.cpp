@@ -356,7 +356,13 @@ void GuiApp::shutdown() {
     stop_inference_users();
     _segment.destroy_gl();
     _segment.close();
-    if (_scan_photos.valid()) _scan_photos.wait();
+    _scan_photos_cancel = true;
+    if (_scan_photos.valid()) {
+        // Frames decoded but never shown are in a folder of their own.
+        const ScanPhotos got = _scan_photos.get();
+        std::error_code ec;
+        if (!got.scratch.empty() && got.scratch != _scan_scratch) fs::remove_all(got.scratch, ec);
+    }
     drop_scan_scratch();
     // Same ordering as _compare above: destroy_gl while GL is still current.
     _mask_editor.destroy_gl();
@@ -2818,11 +2824,10 @@ GuiApp::StencilTable GuiApp::stencil_table() {
     }
     t.rows = stencil_table_rows(_sources);
     const LidarJob lj = lidar_job();
-    if (!lj.scan_photos || lj.in_frame) return t;
     std::vector<std::vector<std::string>> keys;
     for (size_t i = 0; i < _lidar.size(); i++) {
         LidarInput& l = _lidar[i];
-        if (l.photos <= 0) continue;
+        if (l.photos <= 0 || !lj.takes_photos(l.path)) continue;
         t.owners.push_back({&l.stencil, &l.stencil_follow});
         t.scans.push_back(i);
         t.names.push_back(fs::path(l.path).filename().string());
@@ -3056,11 +3061,13 @@ void GuiApp::open_scan_mask_preview(size_t scan, const std::string& camera) {
                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
                   .string();
     _scan_photos_for = scan;
+    _scan_photos_cancel = false;
     log(i18n::format(ldmsg::scan_photos_extracting, {l.path}));
-    _scan_photos = std::async(std::launch::async, [job, scan, ws, scratch, cam] {
+    _scan_photos = std::async(std::launch::async, [this, job, scan, ws, scratch, cam] {
         ScanPhotos out;
         out.scratch = scratch;
-        if (!extract_scan_photos(job, scan, ws, scratch, cam, out.dir, out.error) &&
+        if (!extract_scan_photos(job, scan, ws, scratch, cam, _scan_photos_cancel, out.dir,
+                                 out.error) &&
             out.error.empty())
             out.error = "-";
         return out;
@@ -3123,7 +3130,10 @@ void GuiApp::forget_scan(size_t scan) {
     shift(_mask_preview_scan);
     shift(_mask_try_scan);
     // Its photographs, still being taken out, open nothing.
-    if (_scan_photos_for == scan) _scan_photos_for = SIZE_MAX;
+    if (_scan_photos_for == scan) {
+        _scan_photos_for = SIZE_MAX;
+        _scan_photos_cancel = true;
+    }
     else if (_scan_photos_for > scan && _scan_photos_for != SIZE_MAX) _scan_photos_for--;
 }
 
@@ -4639,9 +4649,10 @@ void GuiApp::sync_dataset_jobs() {
     _sfm_job.prep = prep;
     _sfm_job.lidar = lidar_job();
     // Only for scans whose photographs become inputs; read nowhere else.
-    if (_border_enable && _sfm_job.lidar.scan_photos && !_sfm_job.lidar.in_frame)
+    if (_border_enable)
         for (const LidarInput& l : _lidar)
-            if (l.photos > 0 && !l.stencil.empty()) _sfm_job.prep.scan_stencils[l.path] = l.stencil;
+            if (l.photos > 0 && !l.stencil.empty() && _sfm_job.lidar.takes_photos(l.path))
+                _sfm_job.prep.scan_stencils[l.path] = l.stencil;
 
     _colmap_job.inputs = prep.inputs;
     _colmap_job.workspace = prep.workspace;
@@ -11368,7 +11379,10 @@ float GuiApp::batch_task_fraction() {
             const int at = std::clamp((int)p->current(), 0, kNumStages - 1);
             const StageProgress sp = p->stage((Stage)at);
             const float inner = sp.fraction >= 0.0f ? sp.fraction : 0.5f;
-            return std::min(1.0f, ((float)at + inner) / (float)kNumStages);
+            // A run without scan photographs never enters that first step, so it has no slot.
+            const StageStatus first = p->stage(Stage::ScanPhotos).status;
+            const int skip = first == StageStatus::Pending || first == StageStatus::Skipped ? 1 : 0;
+            return std::min(1.0f, ((float)std::max(0, at - skip) + inner) / (float)(kNumStages - skip));
         }
         case BatchStage::Train:
             tick_train_clock();

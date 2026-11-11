@@ -106,11 +106,12 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
     std::error_code ec;
     // Written afresh every run, so a scan taken off the list leaves nothing.
     fs::remove(anchors, ec);
-    if (!job.enabled() || job.in_frame || !job.scan_photos) return true;
+    if (!job.enabled() || job.in_frame) return true;
     try {
         const std::vector<std::string> subs = scan_photo_subdirs(job.clouds);
         for (size_t i = 0; i < job.clouds.size(); i++) {
             const std::string& c = job.clouds[i];
+            if (!job.takes_photos(c)) continue;
             const std::string& sub = subs[i];
             const auto drawn = stencils.find(c);
             if (spirula::xbin::is_xbin_path(c)) {
@@ -186,7 +187,7 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
 
 bool extract_scan_photos(const LidarJob& job, size_t scan, const std::string& workspace,
                          const std::string& scratch, const std::string& camera,
-                         std::string& dir, std::string& error) {
+                         const std::atomic<bool>& cancel, std::string& dir, std::string& error) {
     const std::vector<std::string>& clouds = job.clouds;
     if (scan >= clouds.size()) return false;
     const std::string sub = scan_photo_subdirs(clouds)[scan];
@@ -199,11 +200,13 @@ bool extract_scan_photos(const LidarJob& job, size_t scan, const std::string& wo
             // As many as the border fit reads; the panel offers fewer.
             app::lidar::extract_xbin_samples(clouds[scan], root.string(),
                                              xbin_cameras_of(job, clouds[scan]), camera,
-                                             app::BorderDetectOptions{}.samples, job.ffmpeg_exe);
+                                             app::BorderDetectOptions{}.samples, job.ffmpeg_exe,
+                                             &cancel);
         } catch (const std::exception& e) {
             error = e.what();
             return false;
         }
+        if (cancel.load()) return false;
         dir = root.string();
         return true;
     }

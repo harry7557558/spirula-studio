@@ -120,6 +120,12 @@ bool GuiApp::read_lidar_input(const std::string& path, LidarInput& in) {
         log(format(ldmsg::scan_unreadable, {in.path, std::string(e.what())}));
         return false;
     }
+    // A row per camera from the start, its fisheyes cut, as a 360
+    // camera's own files are: the lens border is in every one of their frames.
+    for (const LidarInput::Camera& c : in.cameras) {
+        in.stencil.cameras[c.name].detect_border = c.fisheye;
+        _border_enable = _border_enable || c.fisheye;
+    }
     return true;
 }
 
@@ -132,12 +138,6 @@ void GuiApp::add_lidar_sources(const std::vector<std::string>& paths) {
         if (std::any_of(_lidar.begin(), _lidar.end(),
                         [&](const LidarInput& l) { return l.path == in.path; }))
             continue;
-        // A row per camera from the start, its fisheyes cut, as a 360
-        // camera's own files are: the lens border is in every one of their frames.
-        for (const LidarInput::Camera& c : in.cameras) {
-            in.stencil.cameras[c.name].detect_border = c.fisheye;
-            _border_enable = _border_enable || c.fisheye;
-        }
         _lidar.push_back(std::move(in));
     }
     if (first_new < _lidar.size()) select_source(_lidar[first_new].path, true);

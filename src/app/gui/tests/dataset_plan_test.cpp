@@ -946,6 +946,21 @@ int main() {
                "the model records a scan's photographs by scan, before and during the run");
         expect(!(model_fields(plain) == model_fields(scanned)),
                "... and a scan's photographs joining is a model change");
+
+        SfmJob unticked = scanned, without = scanned;
+        unticked.lidar.scan_photos = false;
+        without.lidar.with_photos.clear();
+        expect(model_fields(unticked) == model_fields(without),
+               "an E57's photographs unticked stay out of the model");
+        SfmJob capture = plain;
+        capture.lidar.clouds = capture.lidar.with_photos = {"/scans/site.xbin"};
+        capture.lidar.xbin_cameras["/scans/site.xbin"] = {app::lidar::XbinCameraPick{}};
+        SfmJob capture_unticked = capture, capture_without = capture;
+        capture_unticked.lidar.scan_photos = false;
+        capture_without.lidar.with_photos.clear();
+        expect(model_fields(capture_unticked) == model_fields(capture) &&
+                   !(model_fields(capture) == model_fields(capture_without)),
+               "... and a capture's are taken however that box is set");
     }
 
     // ---- and what the old stamps still say, back on the panel --------------

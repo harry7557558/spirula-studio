@@ -477,6 +477,25 @@ void check_refusals(const fs::path& dir) {
     check(refusal(write_capture(dir / "no_section", kPoses, {}, no_section)).find("camera.yaml has no camera_3") !=
               std::string::npos,
           "a camera without its calibration is refused");
+    const Bytes portalcam = capture_bytes(kPoses, {}, {});
+    auto patched = [&](const char* name, uint64_t at, uint16_t v) {
+        Bytes b = portalcam;
+        std::memcpy(&b[at], &v, 2);
+        const fs::path p = dir / name / "capture.xbin";
+        fs::create_directories(p.parent_path());
+        std::ofstream(p, std::ios::binary).write((const char*)b.data(), (std::streamsize)b.size());
+        return refusal(p);
+    };
+    uint64_t first_chunk = 0, index_at = 0;
+    std::memcpy(&first_chunk, &portalcam[16], 8);
+    std::memcpy(&index_at, &portalcam[24], 8);
+    check(patched("version", 4, 513).find("file version 513.1 of an XGRIDS PortalCam (device code AA") !=
+              std::string::npos,
+          "another file version is refused, by name");
+    check(patched("chunk_tag", first_chunk + 6, 37).find("chunk header laid out") != std::string::npos,
+          "a chunk header laid out otherwise is refused");
+    check(patched("index_tag", index_at + 6, 13).find("chunk index laid out") != std::string::npos,
+          "an index header laid out otherwise is refused");
     check(refusal(write_capture(dir / "portalcam")).empty(), "a PortalCam reads through to its frames");
 }
 

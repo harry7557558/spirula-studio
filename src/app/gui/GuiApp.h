@@ -1089,6 +1089,7 @@ private:
         std::string scratch;   // a capture's frames, outside the dataset
     };
     std::future<ScanPhotos> _scan_photos;
+    std::atomic<bool> _scan_photos_cancel{false};   // on shutdown, or its scan removed
     size_t _scan_photos_for = 0;
     // The frames the panel shows of a capture; removed once it shows something else.
     std::string _scan_scratch;
