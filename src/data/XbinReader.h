@@ -4,8 +4,8 @@
 // the factory calibration and the photographs of its cameras. The container
 // has no published specification; what is read here was measured on PortalCam
 // firmware V3.2.5 (docs/notes/lidar-alignment.md). The device message after
-// the file header names the device; a device or a channel that was not
-// measured is refused.
+// the file header names the device, and a table before the first chunk names
+// each topic; a device or a topic that was not measured is refused.
 
 #include "data/E57Reader.h"
 
