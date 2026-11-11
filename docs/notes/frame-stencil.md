@@ -297,7 +297,7 @@ files (`adopt_rows_above`).
 ### A laser scan's photographs
 
 An E57 that carries photographs, while they join the reconstruction (not
-"already in the scan's frame"), gets rows after the inputs: one, or one per
+"All cameras are scan-native"), gets rows after the inputs: one, or one per
 camera folder once Try the mask splits it (`pinhole` and `panorama` when it
 has both). They are a chain of their own, whose first row follows nothing,
 so a scan's photographs never take a video's areas (issue #99); the rows edit
