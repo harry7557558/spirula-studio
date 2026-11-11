@@ -25,8 +25,9 @@ of this file and in the port plan.
 - **Compute on the GPU, control flow on the host.** Slang kernels do the
   per-pixel / per-feature / per-observation work; the host owns graph
   structure, RANSAC bookkeeping and the mapper's decisions. RANSAC in
-  particular stays on the host deliberately: thousands of tiny minimal solves
-  with data-dependent control flow, and not the bottleneck.
+  particular stays on the host: thousands of tiny minimal solves with
+  data-dependent control flow. Verification can bottleneck matching even when
+  GPU descriptor matching and disk I/O are mostly idle.
 - **Port algorithms, not code.** COLMAP is the reference for behaviour and
   parameter defaults; the implementation is ours, against our own data
   structures. Numerics that had to match are called out in the comments by
@@ -1221,6 +1222,7 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_ba_cpu_test` | host bundle adjustment against the written-out normal equations, rigs included | no |
 | `sfm_cholesky_test` | dense GPU Cholesky vs a CPU reference | yes |
 | `sfm_geometry_test` | F, H, E, P3P, triangulation, RANSAC, SVD/eigen kernels | no |
+| `sfm_ransac_test` | uniform sampling, confidence bounds, MSAC parity, independent homography fallback, shuffled perspective/fisheye/equirectangular pairs; `--bench` times verification | no |
 | `sfm_essential_test` | five-point solver, polynomial roots, noisy/outlier estimation, planar and panoramic competition | no |
 | `sfm_calibration_test` | track/graph audits, mapping holdouts, third-view prediction, robust point gradients | no |
 | `sfm_track_policy_test` | association votes, ties, duplicate candidates, completion guard, fusion limits, isolated two-view tracks | no |
@@ -1236,6 +1238,37 @@ PASS/FAIL and returns 0/1 — the same convention as `src/backend/tests/`.
 | `sfm_gps_scale_test` | the block scale check during growth (`--gps-scale-band`) on a corridor with a hover and a loop, true scale and with its GPS tail stretched | yes |
 | `sfm_prior_test` | pose priors in bundle adjustment: Jacobians against central differences, device against host, a gauge recovered from priors alone (`--no-gpu` keeps to the host) | yes |
 | `sfm_sensor_prior_test` | the fixed-rotation two-view and PnP estimators on scenes with equipment and outliers; the telemetry source's calibration, rotations and factors on the synthetic walk | no |
+
+`sfm_ransac_test --bench` measures 3,000 shuffled correspondences per pair for
+perspective, fisheye and equirectangular cameras: ordinary geometry, pure
+rotation, 75% outliers and independent random matches. It reports true/false
+inliers, classification and a mask checksum beside the time. Compare identical
+trial budgets and sampling policies when measuring solver changes. The shared
+RANSAC samples uniformly because pose and alignment inputs carry no confidence
+ranking; two-view verification retains the 10,000-trial ceiling and estimates
+homographies independently of whether the epipolar fit succeeded.
+
+On a Ryzen 7 7800X3D with GCC 13.3 (`-O3`), six alternating runs of each of
+those twelve cases measured 1.02–1.16x faster verification with contiguous QR
+updates and streamed symmetric normal matrices, against the same search with
+the scalar matrix loops. Matrices, classifications and inlier masks matched
+exactly. Isolated minimal solves improved 2.1–2.2x and 6,000-row refits 4.0x;
+refit scratch moved 1,368 bytes from the heap to fixed-size stack arrays.
+These are synthetic verification measurements, not whole-reconstruction times.
+
+On a 470-image dual-fisheye capture (9,147 selected pairs), replaying SIFT
+matching and verification with saved focal/gyro calibration took 32.47 s,
+including progress and resume writes to an external NTFS volume. GPU matching
+took 6.11 s; the producer spent 26.16 s waiting for verification's bounded
+queue. Moving progress writes to a local SSD or reducing batches from 64 to
+16 pairs did not materially improve throughput. Capping the homography's
+forward transfer error at the MSAC threshold before evaluating its reverse
+transfer reduced the replay to 26.09 s (20%): the 9,021 accepted pairs and
+3,696,897 inlier correspondences had identical checksums. A rebuilt CLI run
+also reproduced every primary pair's saved GUI match record byte for byte.
+Peak RSS stayed at 1.19 GiB, and no device buffers changed. The uncapped residual remains
+available to callers that need the full error. Hardware: Ryzen 7 7800X3D,
+eight workers, RTX 5070, GCC 13.3 `-O3`.
 
 End-to-end comparisons report registration and geometric agreement with an
 existing reference. `tools/sfm/eval_poses.py` reads

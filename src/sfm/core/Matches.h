@@ -31,8 +31,7 @@ struct FeatureMatch {
     uint32_t idx1 = 0, idx2 = 0;
 };
 
-// Keep the `cap` matches of smallest `dist` (parallel to `m`), ordered as
-// std::partial_sort leaves them.
+// Keep the `cap` matches of smallest `dist` (parallel to `m`). Zero means no cap.
 inline void keepClosest(std::vector<FeatureMatch>& m, const std::vector<float>& dist,
                         size_t cap) {
     if (cap == 0 || m.size() <= cap) return;
