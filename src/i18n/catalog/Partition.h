@@ -32,84 +32,19 @@ SS_MSG(tagline,
     TR("Bir yeniden oluşturmayı ayrı eğitilen parçalara bölmek ve modelleri geri birleştirmek"));
 
 SS_MSG(usage_intro,
-    EN("`split` reads a COLMAP, Nerfstudio or Metashape dataset, cuts its cameras "
-       "where they share the least, gives every part the region its cameras see "
-       "and a ring of outside cameras that see it too, and writes partition.json. "
-       "Train each part with `spirula train <dataset> --partition <file> "
-       "--partition-part <k>`, then `merge` keeps each model's splats inside its "
-       "own region and writes them as one file."),
-    JA("`split` は COLMAP / Nerfstudio / Metashape のデータセットを読み、カメラを"
-       "共有の最も少ない所で切り、各パートにそのカメラが見る領域と、それを見てい"
-       "る外側のカメラの輪を与えて partition.json を書き出します。各パートは "
-       "`spirula train <dataset> --partition <file> --partition-part <k>` で学習"
-       "し、`merge` が各モデルのスプラットを自分の領域内だけ残してひとつのファイ"
-       "ルにまとめます。"),
-    ZH_HANS("`split` 读取 COLMAP、Nerfstudio 或 Metashape 数据集，在相机共视最少"
-            "处切开，给每个分区分配其相机所见的区域和同样看到该区域的外围相机环，"
-            "写出 partition.json。用 `spirula train <dataset> --partition <file> "
-            "--partition-part <k>` 训练各分区，再用 `merge` 只保留各模型在自身区"
-            "域内的泼溅并写成一个文件。"),
-    ZH_HANT("`split` 讀取 COLMAP、Nerfstudio 或 Metashape 資料集，在相機共視最少"
-            "處切開，給每個分區分配其相機所見的區域和同樣看到該區域的外圍相機環，"
-            "寫出 partition.json。用 `spirula train <dataset> --partition <file> "
-            "--partition-part <k>` 訓練各分區，再用 `merge` 只保留各模型在自身區"
-            "域內的潑濺並寫成一個檔案。"),
-    KO("`split`은 COLMAP, Nerfstudio 또는 Metashape 데이터셋을 읽어 카메라를 가장 "
-       "적게 공유하는 곳에서 잘라, 각 파트에 그 카메라가 보는 영역과 그 영역을 함께 "
-       "보는 바깥 카메라의 고리를 주고 partition.json을 씁니다. 각 파트는 `spirula "
-       "train <dataset> --partition <file> --partition-part <k>`로 학습하고, `merge`"
-       "가 각 모델의 스플랫을 자기 영역 안의 것만 남겨 한 파일로 씁니다."),
-    DE("`split` liest einen COLMAP-, Nerfstudio- oder Metashape-Datensatz, "
-       "schneidet die Kameras dort, wo sie am wenigsten gemeinsam sehen, gibt "
-       "jedem Teil den Bereich, den seine Kameras sehen, und einen Ring äußerer "
-       "Kameras, die ihn mitsehen, und schreibt partition.json. Jeder Teil wird "
-       "mit `spirula train <dataset> --partition <file> --partition-part <k>` "
-       "trainiert; `merge` behält von jedem Modell die Splats im eigenen Bereich "
-       "und schreibt sie als eine Datei."),
-    FR("`split` lit un jeu de données COLMAP, Nerfstudio ou Metashape, coupe les "
-       "caméras là où elles partagent le moins, donne à chaque partie la région "
-       "que voient ses caméras et un anneau de caméras extérieures qui la voient "
-       "aussi, et écrit partition.json. Entraînez chaque partie avec `spirula "
-       "train <dataset> --partition <file> --partition-part <k>`, puis `merge` "
-       "garde de chaque modèle les splats de sa propre région et les écrit en un "
-       "seul fichier."),
-    ES("`split` lee un conjunto COLMAP, Nerfstudio o Metashape, corta las cámaras "
-       "donde menos comparten, da a cada parte la región que ven sus cámaras y un "
-       "anillo de cámaras externas que también la ven, y escribe partition.json. "
-       "Entrena cada parte con `spirula train <dataset> --partition <file> "
-       "--partition-part <k>`; después `merge` conserva de cada modelo los splats "
-       "dentro de su región y los escribe en un solo archivo."),
-    PT("`split` lê um conjunto COLMAP, Nerfstudio ou Metashape, corta as câmaras "
-       "onde menos partilham, dá a cada parte a região que as suas câmaras veem e "
-       "um anel de câmaras exteriores que também a veem, e escreve partition.json. "
-       "Treine cada parte com `spirula train <dataset> --partition <file> "
-       "--partition-part <k>`; depois `merge` guarda de cada modelo os splats "
-       "dentro da sua região e escreve-os num só ficheiro."),
-    IT("`split` legge un insieme COLMAP, Nerfstudio o Metashape, taglia le "
-       "fotocamere dove condividono meno, dà a ogni parte la regione che le sue "
-       "fotocamere vedono e un anello di fotocamere esterne che la vedono anche "
-       "loro, e scrive partition.json. Addestra ogni parte con `spirula train "
-       "<dataset> --partition <file> --partition-part <k>`; poi `merge` tiene di "
-       "ogni modello gli splat dentro la propria regione e li scrive in un solo "
-       "file."),
-    NL("`split` leest een COLMAP-, Nerfstudio- of Metashape-dataset, snijdt de "
-       "camera's waar ze het minst delen, geeft elk deel het gebied dat zijn "
-       "camera's zien plus een ring buitencamera's die het ook zien, en schrijft "
-       "partition.json. Train elk deel met `spirula train <dataset> --partition "
-       "<file> --partition-part <k>`; daarna houdt `merge` van elk model de splats "
-       "binnen het eigen gebied en schrijft ze als één bestand."),
-    RU("`split` читает набор COLMAP, Nerfstudio или Metashape, режет камеры там, "
-       "где они меньше всего пересекаются, даёт каждой части область, которую "
-       "видят её камеры, и кольцо внешних камер, которые тоже её видят, и пишет "
-       "partition.json. Каждую часть обучают `spirula train <dataset> --partition "
-       "<file> --partition-part <k>`, затем `merge` оставляет от каждой модели "
-       "сплаты внутри её области и записывает их одним файлом."),
-    TR("`split` bir COLMAP, Nerfstudio ya da Metashape veri kümesini okur, "
-       "kameraları en az paylaştıkları yerden keser, her parçaya kameralarının "
-       "gördüğü bölgeyi ve onu da gören dış kameralardan bir halka verir ve "
-       "partition.json yazar. Her parçayı `spirula train <dataset> --partition "
-       "<file> --partition-part <k>` ile eğitin; sonra `merge` her modelin kendi "
-       "bölgesindeki splatlarını tutup tek dosya yazar."));
+    EN("`split` partitions a COLMAP, Nerfstudio or Metashape dataset where cameras share the least.\n- Writes partition.json with visible regions and a ring of neighboring cameras.\n- Train each part with `spirula train <dataset> --partition <file> --partition-part <k>`.\n- `merge` combines the splats inside each part’s region."),
+    JA("`split` は COLMAP / Nerfstudio / Metashape のデータセットを読み、カメラを共有の最も少ない所で切り、各パートにそのカメラが見る領域と、それを見ている外側のカメラの輪を与えて partition.json を書き出します。\n各パートは `spirula train <dataset> --partition <file> --partition-part <k>` で学習し、`merge` が各モデルのスプラットを自分の領域内だけ残してひとつのファイルにまとめます。"),
+    ZH_HANS("`split` 读取 COLMAP、Nerfstudio 或 Metashape 数据集，在相机共视最少处切开，给每个分区分配其相机所见的区域和同样看到该区域的外围相机环，写出 partition.json。\n用 `spirula train <dataset> --partition <file> --partition-part <k>` 训练各分区，再用 `merge` 只保留各模型在自身区域内的泼溅并写成一个文件。"),
+    ZH_HANT("`split` 讀取 COLMAP、Nerfstudio 或 Metashape 資料集，在相機共視最少處切開，給每個分區分配其相機所見的區域和同樣看到該區域的外圍相機環，寫出 partition.json。\n用 `spirula train <dataset> --partition <file> --partition-part <k>` 訓練各分區，再用 `merge` 只保留各模型在自身區域內的潑濺並寫成一個檔案。"),
+    KO("`split`은 COLMAP, Nerfstudio 또는 Metashape 데이터셋을 읽어 카메라를 가장 적게 공유하는 곳에서 잘라, 각 파트에 그 카메라가 보는 영역과 그 영역을 함께 보는 바깥 카메라의 고리를 주고 partition.json을 씁니다.\n각 파트는 `spirula train <dataset> --partition <file> --partition-part <k>`로 학습하고, `merge`가 각 모델의 스플랫을 자기 영역 안의 것만 남겨 한 파일로 씁니다."),
+    DE("`split` liest einen COLMAP-, Nerfstudio- oder Metashape-Datensatz, schneidet die Kameras dort, wo sie am wenigsten gemeinsam sehen, gibt jedem Teil den Bereich, den seine Kameras sehen, und einen Ring äußerer Kameras, die ihn mitsehen, und schreibt partition.json.\n- Jeder Teil wird mit `spirula train <dataset> --partition <file> --partition-part <k>` trainiert;\n- `merge` behält von jedem Modell die Splats im eigenen Bereich und schreibt sie als eine Datei."),
+    FR("`split` lit un jeu de données COLMAP, Nerfstudio ou Metashape, coupe les caméras là où elles partagent le moins, donne à chaque partie la région que voient ses caméras et un anneau de caméras extérieures qui la voient aussi, et écrit partition.json.\nEntraînez chaque partie avec `spirula train <dataset> --partition <file> --partition-part <k>`, puis `merge` garde de chaque modèle les splats de sa propre région et les écrit en un seul fichier."),
+    ES("`split` lee un conjunto COLMAP, Nerfstudio o Metashape, corta las cámaras donde menos comparten, da a cada parte la región que ven sus cámaras y un anillo de cámaras externas que también la ven, y escribe partition.json.\n- Entrena cada parte con `spirula train <dataset> --partition <file> --partition-part <k>`;\n- después `merge` conserva de cada modelo los splats dentro de su región y los escribe en un solo archivo."),
+    PT("`split` lê um conjunto COLMAP, Nerfstudio ou Metashape, corta as câmaras onde menos partilham, dá a cada parte a região que as suas câmaras veem e um anel de câmaras exteriores que também a veem, e escreve partition.json.\n- Treine cada parte com `spirula train <dataset> --partition <file> --partition-part <k>`;\n- depois `merge` guarda de cada modelo os splats dentro da sua região e escreve-os num só ficheiro."),
+    IT("`split` legge un insieme COLMAP, Nerfstudio o Metashape, taglia le fotocamere dove condividono meno, dà a ogni parte la regione che le sue fotocamere vedono e un anello di fotocamere esterne che la vedono anche loro, e scrive partition.json. Addestra ogni parte con `spirula train <dataset> --partition <file> --partition-part <k>`;\npoi `merge` tiene di ogni modello gli splat dentro la propria regione e li scrive in un solo file."),
+    NL("`split` leest een COLMAP-, Nerfstudio- of Metashape-dataset, snijdt de camera's waar ze het minst delen, geeft elk deel het gebied dat zijn camera's zien plus een ring buitencamera's die het ook zien, en schrijft partition.json.\n- Train elk deel met `spirula train <dataset> --partition <file> --partition-part <k>`;\n- daarna houdt `merge` van elk model de splats binnen het eigen gebied en schrijft ze als één bestand."),
+    RU("`split` читает набор COLMAP, Nerfstudio или Metashape, режет камеры там, где они меньше всего пересекаются, даёт каждой части область, которую видят её камеры, и кольцо внешних камер, которые тоже её видят, и пишет partition.json.\nКаждую часть обучают `spirula train <dataset> --partition <file> --partition-part <k>`, затем `merge` оставляет от каждой модели сплаты внутри её области и записывает их одним файлом."),
+    TR("`split` bir COLMAP, Nerfstudio ya da Metashape veri kümesini okur, kameraları en az paylaştıkları yerden keser, her parçaya kameralarının gördüğü bölgeyi ve onu da gören dış kameralardan bir halka verir ve partition.json yazar.\n- Her parçayı `spirula train <dataset> --partition <file> --partition-part <k>` ile eğitin;\n- sonra `merge` her modelin kendi bölgesindeki splatlarını tutup tek dosya yazar."));
 
 SS_MSG(head_options,
     EN("Options"), JA("オプション"), ZH_HANS("选项"), ZH_HANT("選項"),
@@ -248,82 +183,34 @@ SS_MSG(opt_max_seeds,
        "kameralar her zaman içindedir. Varsayılan: 1000000"));
 
 SS_MSG(opt_method,
-    EN("graph cuts the cameras and the points together where the least view "
-       "crosses, so each camera sees most of its part; viewgraph cuts the "
-       "cameras alone and takes regions from their positions. Default: graph"),
-    JA("graph はカメラと点をまとめて、視野の交差が最も少ない所で切り、各カメラが自分の"
-       "パートを最もよく見るようにします。viewgraph はカメラだけを切り、領域は位置から"
-       "決めます。既定: graph"),
-    ZH_HANS("graph 把相机和点一起在视野交叉最少处切分，让每台相机看到的大多是自己的"
-            "分区；viewgraph 只切分相机，区域按相机位置推出。默认：graph"),
-    ZH_HANT("graph 把相機和點一起在視野交叉最少處切分，讓每台相機看到的大多是自己的"
-            "分區；viewgraph 只切分相機，區域按相機位置推出。預設：graph"),
-    KO("graph는 카메라와 점을 함께, 시야가 가장 적게 걸치는 곳에서 잘라 각 카메라가 "
-       "자기 파트를 가장 많이 보게 합니다. viewgraph는 카메라만 자르고 영역은 위치에서 "
-       "정합니다. 기본값: graph"),
-    DE("graph schneidet Kameras und Punkte gemeinsam dort, wo am wenigsten Sicht "
-       "die Grenze kreuzt, sodass jede Kamera meist ihren eigenen Teil sieht; "
-       "viewgraph schneidet nur die Kameras und nimmt die Bereiche aus ihren "
-       "Positionen. Standard: graph"),
-    FR("graph coupe caméras et points ensemble là où le moins de vue traverse, "
-       "pour que chaque caméra voie surtout sa partie ; viewgraph ne coupe que "
-       "les caméras et tire les régions de leurs positions. Défaut : graph"),
-    ES("graph corta cámaras y puntos juntos por donde menos vista cruza, para "
-       "que cada cámara vea sobre todo su parte; viewgraph corta solo las "
-       "cámaras y saca las regiones de sus posiciones. Predeterminado: graph"),
-    PT("graph corta câmaras e pontos juntos por onde menos vista atravessa, para "
-       "que cada câmara veja sobretudo a sua parte; viewgraph corta só as "
-       "câmaras e tira as regiões das suas posições. Predefinição: graph"),
-    IT("graph taglia fotocamere e punti insieme dove passa meno vista, così ogni "
-       "fotocamera vede soprattutto la propria parte; viewgraph taglia solo le "
-       "fotocamere e ricava le regioni dalle loro posizioni. Predefinito: graph"),
-    NL("graph snijdt camera's en punten samen waar het minste zicht de grens "
-       "kruist, zodat elke camera vooral haar eigen deel ziet; viewgraph snijdt "
-       "alleen de camera's en haalt de gebieden uit hun posities. Standaard: graph"),
-    RU("graph режет камеры и точки вместе там, где границу пересекает меньше "
-       "всего обзора, чтобы каждая камера видела в основном свою часть; viewgraph "
-       "режет только камеры, а области берёт из их положений. По умолчанию: graph"),
-    TR("graph kameraları ve noktaları birlikte, sınırı en az görüşün kestiği "
-       "yerden böler; böylece her kamera çoğunlukla kendi parçasını görür. "
-       "viewgraph yalnızca kameraları böler, bölgeleri konumlarından çıkarır. "
-       "Varsayılan: graph"));
+    EN("- graph cuts the cameras and the points together where the least view crosses, so each camera sees most of its part;\n- viewgraph cuts the cameras alone and takes regions from their positions. Default: graph"),
+    JA("- graph はカメラと点をまとめて、視野の交差が最も少ない所で切り、各カメラが自分のパートを最もよく見るようにします。\n- viewgraph はカメラだけを切り、領域は位置から決めます。 既定: graph"),
+    ZH_HANS("- graph 把相机和点一起在视野交叉最少处切分，让每台相机看到的大多是自己的分区；\n- viewgraph 只切分相机，区域按相机位置推出。 默认：graph"),
+    ZH_HANT("- graph 把相機和點一起在視野交叉最少處切分，讓每台相機看到的大多是自己的分區；\n- viewgraph 只切分相機，區域按相機位置推出。 預設：graph"),
+    KO("- graph는 카메라와 점을 함께, 시야가 가장 적게 걸치는 곳에서 잘라 각 카메라가 자기 파트를 가장 많이 보게 합니다.\n- viewgraph는 카메라만 자르고 영역은 위치에서 정합니다. 기본값: graph"),
+    DE("- graph (Standard): Kameras und Punkte gemeinsam schneiden, mit möglichst wenig Sicht über Grenzen.\n- viewgraph: nur Kameras schneiden und Bereiche aus ihren Positionen ableiten."),
+    FR("- graph (défaut) : coupe caméras et points en minimisant les vues traversant les limites.\n- viewgraph : coupe les caméras seules et tire les régions de leurs positions."),
+    ES("- graph corta cámaras y puntos juntos por donde menos vista cruza, para que cada cámara vea sobre todo su parte;\n- viewgraph corta solo las cámaras y saca las regiones de sus posiciones. Predeterminado: graph"),
+    PT("- graph (padrão): divide câmeras e pontos, minimizando vistas que cruzam fronteiras.\n- viewgraph: divide só câmeras e obtém regiões das suas posições."),
+    IT("- graph (default): divide camere e punti minimizzando le viste che attraversano i confini.\n- viewgraph: divide solo camere e ricava regioni dalle loro posizioni."),
+    NL("- graph (standaard): verdeelt camera’s en punten met zo weinig mogelijk zicht over grenzen.\n- viewgraph: verdeelt alleen camera’s en leidt gebieden af uit hun posities."),
+    RU("- graph (по умолчанию): делит камеры и точки, сводя к минимуму обзор через границы.\n- viewgraph: делит только камеры; области определяет по их положениям."),
+    TR("- graph kameraları ve noktaları birlikte, sınırı en az görüşün kestiği yerden böler;\n- böylece her kamera çoğunlukla kendi parçasını görür.\n- viewgraph yalnızca kameraları böler, bölgeleri konumlarından çıkarır. Varsayılan: graph"));
 
 SS_MSG(opt_source,
-    EN("Where covisibility comes from. auto takes the model's own tracks, else "
-       "projects the seed cloud into every frame, else uses camera positions "
-       "alone. Default: auto"),
-    JA("共視性の出どころ。auto はモデル自身のトラックを使い、なければ初期点群を全"
-       "フレームに投影し、それもなければカメラ位置だけを使います。既定: auto"),
-    ZH_HANS("共视关系的来源。auto 优先用模型自带的轨迹，否则把种子点云投影到每一帧，"
-            "再否则只用相机位置。默认：auto"),
-    ZH_HANT("共視關係的來源。auto 優先用模型自帶的軌跡，否則把種子點雲投影到每一幀，"
-            "再否則只用相機位置。預設：auto"),
-    KO("공가시성의 출처. auto는 모델의 트랙을 쓰고, 없으면 시드 점 구름을 모든 "
-       "프레임에 투영하며, 그것도 없으면 카메라 위치만 씁니다. 기본값: auto"),
-    DE("Woher die Kovisibilität kommt. auto nimmt die Spuren des Modells, sonst "
-       "projiziert es die Startpunktwolke in jedes Bild, sonst nur die "
-       "Kamerapositionen. Standard: auto"),
-    FR("D'où vient la covisibilité. auto prend les pistes du modèle, sinon "
-       "projette le nuage d'amorce dans chaque image, sinon n'utilise que les "
-       "positions des caméras. Défaut : auto"),
-    ES("De dónde sale la covisibilidad. auto toma las pistas del modelo; si no, "
-       "proyecta la nube semilla en cada imagen; si no, solo las posiciones de "
-       "las cámaras. Predeterminado: auto"),
-    PT("De onde vem a covisibilidade. auto usa as pistas do modelo; senão, "
-       "projeta a nuvem semente em cada imagem; senão, só as posições das "
-       "câmaras. Predefinição: auto"),
-    IT("Da dove viene la covisibilità. auto prende le tracce del modello, "
-       "altrimenti proietta la nuvola seme in ogni immagine, altrimenti usa solo "
-       "le posizioni delle fotocamere. Predefinito: auto"),
-    NL("Waar covisibiliteit vandaan komt. auto neemt de sporen van het model, "
-       "anders projecteert het de zaadwolk in elk beeld, anders alleen de "
-       "cameraposities. Standaard: auto"),
-    RU("Откуда берётся совидимость. auto берёт треки модели, иначе проецирует "
-       "начальное облако в каждый кадр, иначе использует только положения камер. "
-       "По умолчанию: auto"),
-    TR("Ortak görünürlüğün kaynağı. auto modelin kendi izlerini alır, yoksa tohum "
-       "bulutunu her kareye yansıtır, o da yoksa yalnız kamera konumlarını kullanır. "
-       "Varsayılan: auto"));
+    EN("- Where covisibility comes from.\n- auto takes the model's own tracks, else projects the seed cloud into every frame, else uses camera positions alone.\n- Default: auto"),
+    JA("- 共視性の出どころ。\n- auto はモデル自身のトラックを使い、なければ初期点群を全フレームに投影し、それもなければカメラ位置だけを使います。\n- 既定: auto"),
+    ZH_HANS("共视关系的来源。auto 优先用模型自带的轨迹，否则把种子点云投影到每一帧，再否则只用相机位置。默认：auto"),
+    ZH_HANT("共視關係的來源。auto 優先用模型自帶的軌跡，否則把種子點雲投影到每一幀，再否則只用相機位置。預設：auto"),
+    KO("- 공가시성의 출처.\n- auto는 모델의 트랙을 쓰고, 없으면 시드 점 구름을 모든 프레임에 투영하며, 그것도 없으면 카메라 위치만 씁니다.\n- 기본값: auto"),
+    DE("Woher die Kovisibilität kommt. auto nimmt die Spuren des Modells, sonst projiziert es die Startpunktwolke in jedes Bild, sonst nur die Kamerapositionen. Standard: auto"),
+    FR("D'où vient la covisibilité. auto prend les pistes du modèle, sinon projette le nuage d'amorce dans chaque image, sinon n'utilise que les positions des caméras. Défaut : auto"),
+    ES("- De dónde sale la covisibilidad. auto toma las pistas del modelo; si no, proyecta la nube semilla en cada imagen;\n- si no, solo las posiciones de las cámaras. Predeterminado: auto"),
+    PT("- De onde vem a covisibilidade. auto usa as pistas do modelo; senão, projeta a nuvem semente em cada imagem;\n- senão, só as posições das câmaras. Predefinição: auto"),
+    IT("auto (default): usa tracce del modello, altrimenti proietta i punti iniziali nei fotogrammi; senza punti usa le posizioni delle camere."),
+    NL("- Waar covisibiliteit vandaan komt.\n- auto neemt de sporen van het model, anders projecteert het de zaadwolk in elk beeld, anders alleen de cameraposities.\n- Standaard: auto"),
+    RU("- Откуда берётся совидимость.\n- auto берёт треки модели, иначе проецирует начальное облако в каждый кадр, иначе использует только положения камер.\n- По умолчанию: auto"),
+    TR("Ortak görünürlüğün kaynağı. auto modelin kendi izlerini alır, yoksa tohum bulutunu her kareye yansıtır, o da yoksa yalnız kamera konumlarını kullanır. Varsayılan: auto"));
 
 SS_MSG(opt_output,
     EN("Where to write the partition. Default: <dataset>/partition.json"),
@@ -694,55 +581,19 @@ SS_MSG(status_cancelled,
     TR("İptal edildi; gösterilen bölümleme, varsa, öncekidir."));
 
 SS_MSG(warn_no_tracks,
-    EN("This dataset has no feature tracks (which camera saw which point), so the "
-       "split guesses visibility by projecting the points into the frames. A COLMAP "
-       "reconstruction of the same capture (sparse/0 with images.bin and points3D.bin) "
-       "has them and gives much better parts."),
-    JA("このデータセットには特徴トラック（どのカメラがどの点を見たか）がないため、"
-       "点をフレームに投影して可視性を推測します。同じ撮影の COLMAP 再構成"
-       "（images.bin と points3D.bin を含む sparse/0）にはトラックがあり、"
-       "はるかに良い分割になります。"),
-    ZH_HANS("此数据集没有特征轨迹（哪台相机看到了哪个点），因此分区只能把点投影到各帧中"
-            "来猜测可见性。同一拍摄的 COLMAP 重建（含 images.bin 和 points3D.bin 的 "
-            "sparse/0）带有轨迹，分区效果会好得多。"),
-    ZH_HANT("此資料集沒有特徵軌跡（哪台相機看到了哪個點），因此分區只能把點投影到各幀中"
-            "來猜測可見性。同一拍攝的 COLMAP 重建（含 images.bin 和 points3D.bin 的 "
-            "sparse/0）帶有軌跡，分區效果會好得多。"),
-    KO("이 데이터셋에는 특징 트랙(어느 카메라가 어느 점을 봤는지)이 없어서, 점을 "
-       "프레임에 투영해 가시성을 추측합니다. 같은 촬영의 COLMAP 재구성(images.bin과 "
-       "points3D.bin이 있는 sparse/0)에는 트랙이 있어 훨씬 나은 분할을 얻습니다."),
-    DE("Dieser Datensatz hat keine Feature-Spuren (welche Kamera welchen Punkt sah), "
-       "daher schätzt die Teilung die Sichtbarkeit, indem sie die Punkte in die Bilder "
-       "projiziert. Eine COLMAP-Rekonstruktion derselben Aufnahme (sparse/0 mit "
-       "images.bin und points3D.bin) hat sie und ergibt viel bessere Teile."),
-    FR("Ce jeu de données n'a pas de pistes de points (quelle caméra a vu quel point) : "
-       "le découpage devine donc la visibilité en projetant les points dans les images. "
-       "Une reconstruction COLMAP de la même prise (sparse/0 avec images.bin et "
-       "points3D.bin) les contient et donne de bien meilleures parties."),
-    ES("Este conjunto de datos no tiene pistas de puntos (qué cámara vio qué punto), "
-       "así que la división adivina la visibilidad proyectando los puntos en los "
-       "fotogramas. Una reconstrucción de COLMAP de la misma captura (sparse/0 con "
-       "images.bin y points3D.bin) las tiene y da partes mucho mejores."),
-    PT("Este conjunto de dados não tem pistas de pontos (que câmara viu que ponto), "
-       "por isso a divisão adivinha a visibilidade projetando os pontos nas imagens. "
-       "Uma reconstrução COLMAP da mesma captura (sparse/0 com images.bin e "
-       "points3D.bin) tem-nas e dá partes muito melhores."),
-    IT("Questo dataset non ha tracce dei punti (quale fotocamera ha visto quale "
-       "punto), quindi la divisione indovina la visibilità proiettando i punti nei "
-       "fotogrammi. Una ricostruzione COLMAP della stessa ripresa (sparse/0 con "
-       "images.bin e points3D.bin) le ha e dà parti molto migliori."),
-    NL("Deze dataset heeft geen puntsporen (welke camera welk punt zag), dus de "
-       "splitsing raadt de zichtbaarheid door de punten in de beelden te projecteren. "
-       "Een COLMAP-reconstructie van dezelfde opname (sparse/0 met images.bin en "
-       "points3D.bin) heeft ze en geeft veel betere delen."),
-    RU("В этом наборе данных нет треков (какая камера видела какую точку), поэтому "
-       "разбиение угадывает видимость, проецируя точки в кадры. Реконструкция COLMAP "
-       "той же съёмки (sparse/0 с images.bin и points3D.bin) содержит их и даёт "
-       "гораздо лучшие части."),
-    TR("Bu veri kümesinde nokta izleri (hangi kameranın hangi noktayı gördüğü) yok; "
-       "bu yüzden bölme, noktaları karelere izdüşürerek görünürlüğü tahmin ediyor. "
-       "Aynı çekimin bir COLMAP yeniden oluşturması (images.bin ve points3D.bin içeren "
-       "sparse/0) bu izleri içerir ve çok daha iyi parçalar verir."));
+    EN("No feature tracks: visibility is estimated by projecting points into images.\nFor better partitions, use a COLMAP model with sparse/0/images.bin and points3D.bin."),
+    JA("特徴トラックがないため、点を画像へ投影して可視性を推定します。\nより良い分割には sparse/0/images.bin と points3D.bin を持つCOLMAPモデルを使ってください。"),
+    ZH_HANS("无特征轨迹，使用点云投影估算可见性。\n使用含 sparse/0/images.bin 和 points3D.bin 的 COLMAP 模型可获得更好的分区。"),
+    ZH_HANT("無特徵軌跡，使用點雲投影估算可見性。\n使用含 sparse/0/images.bin 和 points3D.bin 的 COLMAP 模型可獲得更好的分區。"),
+    KO("특징 트랙이 없어 점을 이미지에 투영해 가시성을 추정합니다.\n더 나은 분할을 위해 sparse/0/images.bin과 points3D.bin이 있는 COLMAP 모델을 쓰세요."),
+    DE("Keine Feature-Tracks: Sichtbarkeit wird durch Projektion der Punkte geschätzt.\nBessere Teile mit COLMAP-Modell und sparse/0/images.bin sowie points3D.bin."),
+    FR("Pas de pistes : visibilité estimée par projection des points.\nPour mieux découper, utilisez un modèle COLMAP avec sparse/0/images.bin et points3D.bin."),
+    ES("Sin tracks: visibilidad estimada proyectando puntos.\nPara mejores partes, usa un modelo COLMAP con sparse/0/images.bin y points3D.bin."),
+    PT("Sem tracks: visibilidade estimada projetando pontos.\nPara partes melhores, use um modelo COLMAP com sparse/0/images.bin e points3D.bin."),
+    IT("Senza tracce: visibilità stimata proiettando i punti.\nPer parti migliori usa un modello COLMAP con sparse/0/images.bin e points3D.bin."),
+    NL("Geen featuretracks: zichtbaarheid geschat door punten te projecteren.\nGebruik voor betere delen een COLMAP-model met sparse/0/images.bin en points3D.bin."),
+    RU("Нет треков: видимость оценивается проекцией точек.\nДля лучшего деления используйте COLMAP-модель с sparse/0/images.bin и points3D.bin."),
+    TR("Özellik izleri yok: görünürlük noktalar izdüşürülerek tahmin edilir.\nDaha iyi parçalar için sparse/0/images.bin ve points3D.bin içeren COLMAP modeli kullanın."));
 
 SS_MSG(status_summary,
     EN("Parts: {0}   cameras: {1}   points: {2}   covisibility cut: {3}%   from {4}"),
@@ -807,44 +658,19 @@ SS_MSG(src_proximity,
     TR("Kamera konumları"));
 
 SS_MSG(lbl_source_help,
-    EN("What decides which cameras belong together. The model's own tracks are "
-       "exact and free; a dataset without them gets the seed cloud projected into "
-       "every frame; a dataset with no cloud is cut by where the cameras stand."),
-    JA("どのカメラが同じパートに入るかを決めるもの。モデル自身のトラックは正確で追"
-       "加コストなし。トラックがないデータセットは初期点群を全フレームに投影し、点"
-       "群もなければカメラの位置で切ります。"),
-    ZH_HANS("决定哪些相机归为一组的依据。模型自带的轨迹最准且无额外开销；没有轨迹的"
-            "数据集把种子点云投影到每一帧；连点云都没有的按相机位置切分。"),
-    ZH_HANT("決定哪些相機歸為一組的依據。模型自帶的軌跡最準且無額外開銷；沒有軌跡的"
-            "資料集把種子點雲投影到每一幀；連點雲都沒有的按相機位置切分。"),
-    KO("어떤 카메라가 함께 묶이는지를 정하는 근거. 모델의 트랙은 정확하고 비용이 "
-       "없고, 트랙이 없는 데이터셋은 시드 점 구름을 모든 프레임에 투영하며, 점 구름"
-       "도 없으면 카메라 위치로 나눕니다."),
-    DE("Was entscheidet, welche Kameras zusammengehören. Die Spuren des Modells "
-       "sind exakt und kostenlos; ein Datensatz ohne sie bekommt die "
-       "Startpunktwolke in jedes Bild projiziert; einer ohne Wolke wird nach den "
-       "Kamerastandorten geschnitten."),
-    FR("Ce qui décide quelles caméras vont ensemble. Les pistes du modèle sont "
-       "exactes et gratuites ; sans elles, le nuage d'amorce est projeté dans "
-       "chaque image ; sans nuage, la coupe suit la position des caméras."),
-    ES("Lo que decide qué cámaras van juntas. Las pistas del modelo son exactas y "
-       "gratis; sin ellas se proyecta la nube semilla en cada imagen; sin nube, se "
-       "corta por la posición de las cámaras."),
-    PT("O que decide quais câmaras ficam juntas. As pistas do modelo são exatas e "
-       "sem custo; sem elas a nuvem semente é projetada em cada imagem; sem nuvem, "
-       "corta-se pela posição das câmaras."),
-    IT("Ciò che decide quali fotocamere stanno insieme. Le tracce del modello sono "
-       "esatte e gratuite; senza di esse la nuvola seme viene proiettata in ogni "
-       "immagine; senza nuvola si taglia per la posizione delle fotocamere."),
-    NL("Wat bepaalt welke camera's bij elkaar horen. De sporen van het model zijn "
-       "exact en gratis; zonder die wordt de zaadwolk in elk beeld geprojecteerd; "
-       "zonder wolk wordt gesneden op waar de camera's staan."),
-    RU("Что решает, какие камеры относятся к одной части. Треки модели точны и "
-       "бесплатны; без них начальное облако проецируется в каждый кадр; без облака "
-       "разрез идёт по положениям камер."),
-    TR("Hangi kameraların birlikte olacağını ne belirler. Modelin izleri kesin ve "
-       "bedavadır; izi olmayan veri kümesinde tohum bulutu her kareye yansıtılır; "
-       "bulutu da olmayan kameraların durduğu yere göre kesilir."));
+    EN("What decides which cameras belong together. The model's own tracks are exact and free;\n- a dataset without them gets the seed cloud projected into every frame;\n- a dataset with no cloud is cut by where the cameras stand."),
+    JA("どのカメラが同じパートに入るかを決めるもの。 モデル自身のトラックは正確で追加コストなし。\nトラックがないデータセットは初期点群を全フレームに投影し、点群もなければカメラの位置で切ります。"),
+    ZH_HANS("决定哪些相机归为一组的依据。 模型自带的轨迹最准且无额外开销； 没有轨迹的数据集把种子点云投影到每一帧；\n连点云都没有的按相机位置切分。"),
+    ZH_HANT("決定哪些相機歸為一組的依據。 模型自帶的軌跡最準且無額外開銷； 沒有軌跡的資料集把種子點雲投影到每一幀；\n連點雲都沒有的按相機位置切分。"),
+    KO("모델 트랙이 있으면 그대로 씁니다. 없으면 초기 점군을 각 프레임에 투영하고, 점군도 없으면 카메라 위치로 나눕니다."),
+    DE("Was entscheidet, welche Kameras zusammengehören. Die Spuren des Modells sind exakt und kostenlos;\n- ein Datensatz ohne sie bekommt die Startpunktwolke in jedes Bild projiziert;\n- einer ohne Wolke wird nach den Kamerastandorten geschnitten."),
+    FR("Ce qui décide quelles caméras vont ensemble. Les pistes du modèle sont exactes et gratuites ;\nsans elles, le nuage d'amorce est projeté dans chaque image ; sans nuage, la coupe suit la position des caméras."),
+    ES("Lo que decide qué cámaras van juntas. Las pistas del modelo son exactas y gratis;\nsin ellas se proyecta la nube semilla en cada imagen; sin nube, se corta por la posición de las cámaras."),
+    PT("O que decide quais câmaras ficam juntas. As pistas do modelo são exatas e sem custo;\nsem elas a nuvem semente é projetada em cada imagem; sem nuvem, corta-se pela posição das câmaras."),
+    IT("Ciò che decide quali fotocamere stanno insieme. Le tracce del modello sono esatte e gratuite;\n- senza di esse la nuvola seme viene proiettata in ogni immagine;\n- senza nuvola si taglia per la posizione delle fotocamere."),
+    NL("Wat bepaalt welke camera's bij elkaar horen. De sporen van het model zijn exact en gratis;\nzonder die wordt de zaadwolk in elk beeld geprojecteerd; zonder wolk wordt gesneden op waar de camera's staan."),
+    RU("Что решает, какие камеры относятся к одной части. Треки модели точны и бесплатны;\nбез них начальное облако проецируется в каждый кадр; без облака разрез идёт по положениям камер."),
+    TR("Hangi kameraların birlikte olacağını ne belirler. Modelin izleri kesin ve bedavadır;\n- izi olmayan veri kümesinde tohum bulutu her kareye yansıtılır;\n- bulutu da olmayan kameraların durduğu yere göre kesilir."));
 
 SS_MSG(lbl_split_by,
     EN("Split by"), JA("分割の基準"), ZH_HANS("拆分依据"), ZH_HANT("拆分依據"),
@@ -896,48 +722,19 @@ SS_MSG(lbl_ring,
     PT("Limiar do anel"), IT("Soglia dell'anello"), NL("Ringaandeel"), RU("Порог кольца"),
     TR("Halka payı"));
 SS_MSG(lbl_ring_help,
-    EN("An outside camera trains with a part when at least this share of the "
-       "points it sees belongs to the part. Higher means fewer borrowed cameras "
-       "and faster parts; lower means seams seen from both sides by more views."),
-    JA("外側のカメラは、見ている点のうちこの割合以上がパートに属するときそのパー"
-       "トと一緒に学習します。高くすると借りるカメラが減って速く、低くすると継ぎ目"
-       "を両側から見る視点が増えます。"),
-    ZH_HANS("外围相机所见点中属于该分区的比例达到此值时，与该分区一起训练。值越高借"
-            "用的相机越少、训练越快；值越低则有更多视角从两侧覆盖接缝。"),
-    ZH_HANT("外圍相機所見點中屬於該分區的比例達到此值時，與該分區一起訓練。值越高借"
-            "用的相機越少、訓練越快；值越低則有更多視角從兩側覆蓋接縫。"),
-    KO("바깥 카메라는 자신이 보는 점 중 이 비율 이상이 파트에 속할 때 그 파트와 함께 "
-       "학습합니다. 높이면 빌리는 카메라가 줄어 빨라지고, 낮추면 더 많은 시점이 이음"
-       "새를 양쪽에서 봅니다."),
-    DE("Eine äußere Kamera trainiert mit einem Teil, wenn mindestens dieser Anteil "
-       "der von ihr gesehenen Punkte zum Teil gehört. Höher heißt weniger "
-       "geliehene Kameras und schnellere Teile; niedriger heißt Nähte, die mehr "
-       "Ansichten von beiden Seiten sehen."),
-    FR("Une caméra extérieure s'entraîne avec une partie quand au moins cette part "
-       "des points qu'elle voit lui appartient. Plus haut : moins de caméras "
-       "empruntées et des parties plus rapides ; plus bas : des coutures vues des "
-       "deux côtés par plus de vues."),
-    ES("Una cámara externa entrena con una parte cuando al menos esta fracción de "
-       "los puntos que ve pertenece a la parte. Más alto: menos cámaras prestadas "
-       "y partes más rápidas; más bajo: costuras vistas desde ambos lados por más "
-       "vistas."),
-    PT("Uma câmara exterior treina com uma parte quando pelo menos esta fração dos "
-       "pontos que vê lhe pertence. Mais alto: menos câmaras emprestadas e partes "
-       "mais rápidas; mais baixo: costuras vistas de ambos os lados por mais vistas."),
-    IT("Una fotocamera esterna si addestra con una parte quando almeno questa quota "
-       "dei punti che vede le appartiene. Più alto: meno fotocamere prese in "
-       "prestito e parti più veloci; più basso: cuciture viste da entrambi i lati "
-       "da più viste."),
-    NL("Een buitencamera traint mee met een deel als minstens dit aandeel van de "
-       "punten die ze ziet bij het deel hoort. Hoger: minder geleende camera's en "
-       "snellere delen; lager: naden die door meer beelden van beide kanten worden "
-       "gezien."),
-    RU("Внешняя камера обучается с частью, если хотя бы такая доля видимых ею точек "
-       "принадлежит части. Выше -- меньше заимствованных камер и быстрее части; "
-       "ниже -- швы видны с обеих сторон большим числом видов."),
-    TR("Dış bir kamera, gördüğü noktaların en az bu payı parçaya aitse o parçayla "
-       "eğitilir. Yüksek: daha az ödünç kamera ve daha hızlı parçalar; düşük: "
-       "dikişleri iki yandan gören daha çok görünüm."));
+    EN("An outside camera trains with a part when at least this share of the points it sees belongs to the part.\nHigher means fewer borrowed cameras and faster parts; lower means seams seen from both sides by more views."),
+    JA("外側のカメラは、見ている点のうちこの割合以上がパートに属するときそのパートと一緒に学習します。\n高くすると借りるカメラが減って速く、低くすると継ぎ目を両側から見る視点が増えます。"),
+    ZH_HANS("外围相机所见点中属于该分区的比例达到此值时，与该分区一起训练。 值越高借用的相机越少、训练越快；\n值越低则有更多视角从两侧覆盖接缝。"),
+    ZH_HANT("外圍相機所見點中屬於該分區的比例達到此值時，與該分區一起訓練。 值越高借用的相機越少、訓練越快；\n值越低則有更多視角從兩側覆蓋接縫。"),
+    KO("바깥 카메라는 자신이 보는 점 중 이 비율 이상이 파트에 속할 때 그 파트와 함께 학습합니다.\n높이면 빌리는 카메라가 줄어 빨라지고, 낮추면 더 많은 시점이 이음새를 양쪽에서 봅니다."),
+    DE("Eine äußere Kamera wird mittrainiert, wenn dieser Anteil ihrer sichtbaren Punkte zum Teil gehört.\nHöher: weniger Kameras, schneller. Niedriger: mehr Ansichten beiderseits der Nähte."),
+    FR("Une caméra extérieure s'entraîne avec une partie quand au moins cette part des points qu'elle voit lui appartient.\n- Plus haut : moins de caméras empruntées et des parties plus rapides ;\n- plus bas : des coutures vues des deux côtés par plus de vues."),
+    ES("Una cámara externa entrena con una parte cuando al menos esta fracción de los puntos que ve pertenece a la parte.\n- Más alto: menos cámaras prestadas y partes más rápidas;\n- más bajo: costuras vistas desde ambos lados por más vistas."),
+    PT("Uma câmara exterior treina com uma parte quando pelo menos esta fração dos pontos que vê lhe pertence.\n- Mais alto: menos câmaras emprestadas e partes mais rápidas;\n- mais baixo: costuras vistas de ambos os lados por mais vistas."),
+    IT("Una fotocamera esterna si addestra con una parte quando almeno questa quota dei punti che vede le appartiene.\n- Più alto: meno fotocamere prese in prestito e parti più veloci;\n- più basso: cuciture viste da entrambi i lati da più viste."),
+    NL("Een buitencamera traint mee met een deel als minstens dit aandeel van de punten die ze ziet bij het deel hoort.\n- Hoger: minder geleende camera's en snellere delen;\n- lager: naden die door meer beelden van beide kanten worden gezien."),
+    RU("Внешняя камера обучается с частью, если хотя бы такая доля видимых ею точек принадлежит части.\nВыше -- меньше заимствованных камер и быстрее части; ниже -- швы видны с обеих сторон большим числом видов."),
+    TR("Dış bir kamera, gördüğü noktaların en az bu payı parçaya aitse o parçayla eğitilir.\nYüksek: daha az ödünç kamera ve daha hızlı parçalar; düşük: dikişleri iki yandan gören daha çok görünüm."));
 
 SS_MSG(lbl_seeds,
     EN("Ownership seeds"), JA("所有領域の点"), ZH_HANS("归属种子点"), ZH_HANT("歸屬種子點"),
@@ -945,52 +742,19 @@ SS_MSG(lbl_seeds,
     ES("Semillas de pertenencia"), PT("Sementes de pertença"), IT("Semi di appartenenza"),
     NL("Eigendomszaden"), RU("Точки принадлежности"), TR("Aidiyet tohumları"));
 SS_MSG(lbl_seeds_help,
-    EN("Every point of space belongs to the nearest of these seeds -- the cloud's "
-       "points, each knowing which side it was seen from, and the cameras. More "
-       "seeds follow the cloud more closely at the seams and cost the merge and "
-       "each refine step a little more."),
-    JA("空間の各点は、これらの初期点（見られた側を知っている点群の点とカメラ）のう"
-       "ち最も近いものに属します。点が多いほど継ぎ目で点群に忠実になり、結合と各"
-       "リファインステップのコストが少し増えます。"),
-    ZH_HANS("空间中每一点都归属于这些种子点中最近的一个——点云里知道自己被从哪一侧看"
-            "到的点，以及相机。种子越多，接缝处越贴近点云，合并和每次细化的开销略增。"),
-    ZH_HANT("空間中每一點都歸屬於這些種子點中最近的一個——點雲裡知道自己被從哪一側看"
-            "到的點，以及相機。種子越多，接縫處越貼近點雲，合併和每次細化的開銷略增。"),
-    KO("공간의 모든 점은 이 시드 중 가장 가까운 것에 속합니다. 어느 쪽에서 보였는지 "
-       "아는 점 구름의 점과 카메라입니다. 시드가 많을수록 이음새에서 점 구름을 더 "
-       "가깝게 따르고 병합과 각 정제 단계 비용이 조금 늘어납니다."),
-    DE("Jeder Punkt des Raums gehört zum nächsten dieser Punkte -- den Punkten "
-       "der Wolke, die wissen, von welcher Seite sie gesehen wurden, und den "
-       "Kameras. Mehr Punkte folgen der Wolke an den Nähten enger und kosten die "
-       "Zusammenführung und jeden Verfeinerungsschritt etwas mehr."),
-    FR("Chaque point de l'espace appartient au plus proche de ces points : ceux "
-       "du nuage, qui savent de quel côté ils ont été vus, et les caméras. Plus "
-       "de points suivent le nuage de plus près aux coutures et coûtent un peu "
-       "plus à la fusion et à chaque raffinement."),
-    ES("Cada punto del espacio pertenece a la más cercana de estas semillas: los "
-       "puntos de la nube, que saben desde qué lado se vieron, y las cámaras. Más "
-       "semillas siguen la nube más de cerca en las costuras y encarecen un poco "
-       "la fusión y cada paso de refinado."),
-    PT("Cada ponto do espaço pertence à mais próxima destas sementes: os pontos "
-       "da nuvem, que sabem de que lado foram vistos, e as câmaras. Mais sementes "
-       "seguem a nuvem mais de perto nas costuras e custam um pouco mais à fusão "
-       "e a cada passo de refinação."),
-    IT("Ogni punto dello spazio appartiene al più vicino di questi semi: i punti "
-       "della nuvola, che sanno da che lato sono stati visti, e le fotocamere. "
-       "Più semi seguono la nuvola più da vicino alle cuciture e costano un po' "
-       "di più all'unione e a ogni passo di raffinamento."),
-    NL("Elk punt in de ruimte hoort bij het dichtstbijzijnde van deze zaden: de "
-       "punten van de wolk, die weten van welke kant ze gezien zijn, en de "
-       "camera's. Meer zaden volgen de wolk nauwer bij de naden en kosten het "
-       "samenvoegen en elke verfijningsstap iets meer."),
-    RU("Каждая точка пространства принадлежит ближайшей из этих точек -- точкам "
-       "облака, знающим, с какой стороны их видели, и камерам. Больше точек -- "
-       "точнее следование облаку на швах и чуть дороже объединение и каждый шаг "
-       "уточнения."),
-    TR("Uzaydaki her nokta bu tohumlardan en yakınına aittir: hangi yandan "
-       "görüldüğünü bilen bulut noktaları ve kameralar. Daha çok tohum dikişlerde "
-       "bulutu daha yakından izler; birleştirme ve her arıtma adımı biraz daha "
-       "pahalıdır."));
+    EN("Nearest cloud/camera seed owns each location. More seeds follow scene seams better but increase merge and refinement work."),
+    JA("最も近い点群・カメラのシードが各位置を所有します。多いほど境界が形状に沿いますが、結合と精細化の負荷が増えます。"),
+    ZH_HANS("每处空间归最近的点云或相机种子所有。种子越多，边界越贴合场景，但增加合并和细化工作量。"),
+    ZH_HANT("每處空間歸最近的點雲或相機種子所有。種子越多，邊界越貼合場景，但增加合併和細化工作量。"),
+    KO("각 위치는 가장 가까운 점군·카메라 시드에 속합니다. 많을수록 경계가 장면을 잘 따르지만 병합·정제 작업이 늘어납니다."),
+    DE("Der nächste Punkt-/Kameraseed bestimmt jeden Ort. Mehr Seeds folgen Szenennähten genauer, erhöhen aber Arbeit bei Fusion und Verfeinerung."),
+    FR("Chaque lieu appartient au germe de point/caméra le plus proche. Plus de germes affinent les limites mais coûtent en fusion et affinage."),
+    ES("Cada lugar pertenece a la semilla de punto/cámara más cercana. Más semillas afinan los límites, pero aumentan fusión y refinado."),
+    PT("Cada local pertence à semente de ponto/câmera mais próxima. Mais sementes refinam limites, mas aumentam fusão e refinamento."),
+    IT("Ogni posizione appartiene al seme punto/camera più vicino. Più semi seguono meglio i confini ma aumentano fusione e affinamento."),
+    NL("Elke plek hoort bij de dichtstbijzijnde punt-/cameraseed. Meer seeds volgen naden beter, maar kosten meer samenvoeging en verfijning."),
+    RU("Каждое место принадлежит ближайшему сиду точки/камеры. Больше сидов точнее задаёт границы, но повышает затраты слияния и уточнения."),
+    TR("Her konum en yakın nokta/kamera tohumuna aittir. Çok tohum sınırları daha iyi izler, birleştirme ve iyileştirme işini artırır."));
 
 SS_MSG(btn_compute,
     EN("Compute"), JA("計算"), ZH_HANS("计算"), ZH_HANT("計算"), KO("계산"),
@@ -1064,39 +828,19 @@ SS_MSG(show_grid,
     ES("Mostrar regiones"), PT("Mostrar regiões"), IT("Mostra regioni"),
     NL("Gebieden tonen"), RU("Показать области"), TR("Bölgeleri göster"));
 SS_MSG(show_grid_help,
-    EN("The surface around the space each part owns, tinted in its colour with a "
-       "dashed outline: the seams where the merge will switch from one model to "
-       "the next, through empty space as well."),
-    JA("各パートが所有する空間を囲む面を、そのパートの色と破線の輪郭で表示します。"
-       "マージがモデルを切り替える継ぎ目が、何もない空間でも見えます。"),
-    ZH_HANS("每个部分所拥有空间的边界面，以其颜色着色并带虚线轮廓：即合并时从一个模型切换到另一个模型的接缝，空旷处也可见。"),
-    ZH_HANT("每個部分所擁有空間的邊界面，以其顏色著色並帶虛線輪廓：即合併時從一個模型切換到另一個模型的接縫，空曠處也可見。"),
-    KO("각 파트가 소유한 공간을 둘러싼 면을 그 파트의 색과 점선 윤곽으로 표시합니다. "
-       "병합이 한 모델에서 다음 모델로 넘어가는 이음새가 빈 공간에서도 보입니다."),
-    DE("Die Fläche um den Raum, der jedem Teil gehört, in seiner Farbe getönt und "
-       "gestrichelt umrandet: die Nähte, an denen das Zusammenführen von einem "
-       "Modell zum nächsten wechselt, auch durch leeren Raum."),
-    FR("La surface autour de l'espace de chaque partie, teintée de sa couleur avec "
-       "un contour pointillé : les coutures où la fusion passe d'un modèle au "
-       "suivant, y compris dans le vide."),
-    ES("La superficie que rodea el espacio de cada parte, tintada de su color con "
-       "contorno discontinuo: las costuras donde la fusión pasa de un modelo al "
-       "siguiente, también en el espacio vacío."),
-    PT("A superfície em torno do espaço de cada parte, tingida da sua cor com "
-       "contorno tracejado: as costuras onde a fusão passa de um modelo ao "
-       "seguinte, também no espaço vazio."),
-    IT("La superficie attorno allo spazio di ogni parte, colorata col suo colore e "
-       "con contorno tratteggiato: le cuciture dove l'unione passa da un modello al "
-       "successivo, anche nello spazio vuoto."),
-    NL("Het oppervlak rond de ruimte van elk deel, getint in zijn kleur met een "
-       "gestippelde omtrek: de naden waar het samenvoegen van het ene model naar "
-       "het volgende overgaat, ook door lege ruimte."),
-    RU("Поверхность вокруг пространства каждой части, в её цвете с пунктирным "
-       "контуром: швы, где слияние переходит от одной модели к другой, в том числе "
-       "в пустом пространстве."),
-    TR("Her parçanın sahip olduğu alanı saran yüzey, kendi renginde ve kesikli bir "
-       "çerçeveyle: birleştirmenin bir modelden diğerine geçtiği dikişler, boş "
-       "alanda da."));
+    EN("Colored surfaces with dashed borders show each part’s space and the merge seams, including boundaries through empty space."),
+    JA("色付き面と破線で各部分の領域と結合境界を表示します。何もない空間を通る境界も含みます。"),
+    ZH_HANS("彩色面及虚线显示各分区范围与合并边界，也包括穿过空白空间的边界。"),
+    ZH_HANT("彩色面及虛線顯示各分區範圍與合併邊界，也包括穿過空白空間的邊界。"),
+    KO("색칠한 면과 점선으로 각 부분의 공간과 병합 경계를 보여줍니다. 빈 공간을 지나는 경계도 포함합니다."),
+    DE("Farbige Flächen mit gestrichelten Rändern zeigen Teilräume und Fusionsnähte, auch durch leeren Raum."),
+    FR("Les surfaces colorées à bord pointillé montrent l’espace de chaque partie et les limites de fusion, même dans le vide."),
+    ES("Superficies de color con bordes discontinuos muestran el espacio de cada parte y los límites de fusión, incluso en el vacío."),
+    PT("Superfícies coloridas com bordas tracejadas mostram o espaço de cada parte e os limites de fusão, inclusive no vazio."),
+    IT("Superfici colorate con bordi tratteggiati mostrano lo spazio di ogni parte e i confini di fusione, anche nel vuoto."),
+    NL("Gekleurde vlakken met stippelranden tonen deelruimten en samenvoegnaden, ook door lege ruimte."),
+    RU("Цветные поверхности с пунктирными краями показывают области частей и границы слияния, включая пустое пространство."),
+    TR("Renkli yüzler ve kesikli kenarlar, boş alandan geçenler dahil her parçanın alanını ve birleşme sınırını gösterir."));
 
 SS_MSG(lbl_file, EN("File"), JA("ファイル"), ZH_HANS("文件"), ZH_HANT("檔案"), KO("파일"),
     DE("Datei"), FR("Fichier"), ES("Archivo"), PT("Ficheiro"), IT("File"), NL("Bestand"),
@@ -1120,45 +864,19 @@ SS_MSG(btn_batch,
     NL("Delen in Batch zetten"), RU("Поставить части в пакет"),
     TR("Parçaları Toplu İşe sırala"));
 SS_MSG(btn_batch_help,
-    EN("Saves the partition, then queues one training run per part on the Batch "
-       "screen -- this dataset with the run's part set -- using the training "
-       "preset shown there. Merge here once they have all trained."),
-    JA("分割を保存し、バッチ画面にパートごとの学習を 1 つずつ並べます。このデータ"
-       "セットに各パートを指定し、バッチ画面の学習プリセットを使います。全部の学習"
-       "が終わったらここで結合します。"),
-    ZH_HANS("保存分区，然后在批处理页面为每个分区排一次训练：用本数据集并指定该分区，"
-            "训练预设取批处理页面所示。全部训练完后回到这里合并。"),
-    ZH_HANT("儲存分區，然後在批次處理頁面為每個分區排一次訓練：用本資料集並指定該分區，"
-            "訓練預設取批次處理頁面所示。全部訓練完後回到這裡合併。"),
-    KO("분할을 저장한 뒤 배치 화면에 파트마다 학습 하나씩을 넣습니다. 이 데이터셋에 "
-       "해당 파트를 지정하고, 배치 화면의 학습 프리셋을 씁니다. 모두 끝나면 여기서 "
-       "병합합니다."),
-    DE("Speichert die Partition und stellt dann pro Teil einen Trainingslauf in "
-       "den Stapel -- dieser Datensatz mit dem jeweiligen Teil -- mit dem dort "
-       "gezeigten Trainingspreset. Hier zusammenführen, wenn alle trainiert sind."),
-    FR("Enregistre la partition, puis met en file un entraînement par partie sur "
-       "l'écran Lot -- ce jeu de données avec la partie du run -- avec le préréglage "
-       "d'entraînement affiché là. Fusionnez ici quand tout est entraîné."),
-    ES("Guarda la partición y pone en cola una ejecución por parte en la pantalla "
-       "Lote (este conjunto de datos con la parte de cada ejecución), con el ajuste "
-       "de entrenamiento que allí se muestra. Fusiona aquí cuando todas hayan "
-       "terminado."),
-    PT("Guarda a partição e põe em fila um treino por parte no ecrã Lote -- este "
-       "conjunto de dados com a parte de cada treino -- com a predefinição de "
-       "treino aí mostrada. Funda aqui quando todos tiverem terminado."),
-    IT("Salva la partizione e mette in coda un addestramento per parte nella "
-       "schermata Lotto -- questo insieme di dati con la parte di ogni esecuzione "
-       "-- con il preset di addestramento mostrato lì. Unisci qui quando hanno "
-       "tutte finito."),
-    NL("Slaat de partitie op en zet dan per deel één trainingsrun op het "
-       "Batch-scherm -- deze dataset met het deel van de run -- met het daar "
-       "getoonde trainingspreset. Voeg hier samen als alles getraind is."),
-    RU("Сохраняет разбиение и ставит по одному запуску обучения на часть на экране "
-       "пакета -- этот набор с указанной частью -- с показанным там пресетом. "
-       "Объединяйте здесь, когда все обучены."),
-    TR("Bölümlemeyi kaydeder, sonra Toplu İş ekranına parça başına bir eğitim "
-       "çalıştırması sıralar -- bu veri kümesi, çalıştırmanın parçası ayarlı -- "
-       "oradaki eğitim ön ayarıyla. Hepsi eğitilince burada birleştirin."));
+    EN("Save and queue one training run per part in Batch, using its training preset. Merge here after all parts finish."),
+    JA("保存し、バッチ画面の学習プリセットで各部分の学習を登録します。全部分の完了後、ここで結合してください。"),
+    ZH_HANS("保存并按批处理页面的训练预设，为每个分区排队训练。全部完成后在此合并。"),
+    ZH_HANT("儲存並按批次處理頁面的訓練預設，為每個分區排程訓練。全部完成後在此合併。"),
+    KO("저장 후 배치 화면의 학습 프리셋으로 부분별 학습을 대기열에 넣습니다. 모두 끝나면 여기서 병합하세요."),
+    DE("Speichern und je Teil ein Training in Batch mit dessen Trainingspreset einreihen. Nach Abschluss aller Teile hier zusammenführen."),
+    FR("Enregistre et met chaque partie en file dans Lot avec son préréglage d’entraînement. Fusionnez ici quand tout est fini."),
+    ES("Guarda y pone cada parte en la cola de Lote con su ajuste de entrenamiento. Fusiona aquí al terminar todas."),
+    PT("Salva e coloca cada parte na fila de Lote com sua predefinição de treino. Faça a fusão aqui quando todas terminarem."),
+    IT("Salva e accoda un training per parte in Batch con il suo preset. Unisci qui al termine di tutte le parti."),
+    NL("Bewaar en zet training per deel in Batch met de trainingspreset daar. Voeg hier samen nadat alle delen klaar zijn."),
+    RU("Сохраняет и ставит обучение каждой части в очередь Batch с его пресетом. Объедините здесь после завершения всех частей."),
+    TR("Kaydedip her parça için Toplu ekranının eğitim önayarını kullanan işi sıraya koyar. Hepsi bitince burada birleştirin."));
 SS_MSG(batch_added,
     EN("Runs queued: {0}. Start them on the Batch screen."),
     JA("学習を {0} 件並べました。バッチ画面で開始してください。"),

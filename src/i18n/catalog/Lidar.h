@@ -33,127 +33,34 @@ SS_MSG(tagline,
        "ekle"));
 
 SS_MSG(usage_about,
-    EN("Moves the reconstruction in the dataset folder into the scan's frame -- rotation, "
-       "translation and scale, fitted to the scan's images where they were part of the "
-       "reconstruction and then to its surface -- and writes it back as one COLMAP model "
-       "whose seed points are the scan's own, each listing the images that see it. Depth "
-       "and normal maps are rendered from the scan for every image. The reconstruction it "
-       "started from is kept in sparse_unaligned/."),
-    JA("データセットフォルダの再構成をスキャンの座標系へ移します。回転・平行移動・"
-       "スケールは、スキャンの画像が再構成に含まれていればまずその画像に、続いて"
-       "スキャンの表面に合わせます。結果は 1 つの COLMAP モデルとして書き戻し、その"
-       "初期点はスキャン自身の点で、各点にはその点を見ている画像を記録します。深度"
-       "マップと法線マップは、すべての画像についてスキャンからレンダリングします。"
-       "元の再構成は sparse_unaligned/ に残します。"),
-    ZH_HANS("把数据集文件夹中的重建移到扫描的坐标系中——旋转、平移和缩放先拟合到"
-            "参与了重建的扫描图像，再拟合到扫描的表面——然后写回为一个 COLMAP 模型，"
-            "其初始点就是扫描自己的点，每个点都列出能看到它的图像。深度图和法线图会"
-            "为每张图像从扫描渲染。原来的重建保留在 sparse_unaligned/ 中。"),
-    ZH_HANT("把資料集資料夾中的重建移到掃描的座標系中——旋轉、平移和縮放先擬合到"
-            "參與了重建的掃描影像，再擬合到掃描的表面——然後寫回為一個 COLMAP 模型，"
-            "其初始點就是掃描自己的點，每個點都列出能看到它的影像。深度圖和法線圖會"
-            "為每張影像從掃描渲染。原來的重建保留在 sparse_unaligned/ 中。"),
-    KO("데이터셋 폴더의 재구성을 스캔의 좌표계로 옮깁니다. 회전, 이동, 스케일은 "
-       "스캔의 이미지가 재구성에 들어 있으면 먼저 그 이미지에, 이어서 스캔 표면에 "
-       "맞춥니다. 결과는 하나의 COLMAP 모델로 다시 쓰며, 그 초기 점은 스캔 자신의 "
-       "점이고 각 점에는 그 점을 보는 이미지가 기록됩니다. 깊이 맵과 법선 맵은 모든 "
-       "이미지에 대해 스캔에서 렌더링합니다. 원래 재구성은 sparse_unaligned/에 "
-       "남겨 둡니다."),
-    DE("Verschiebt die Rekonstruktion im Datensatzordner in das Bezugssystem des "
-       "Scans -- Rotation, Translation und Maßstab, angepasst an die Bilder des Scans, "
-       "soweit sie Teil der Rekonstruktion waren, und dann an seine Oberfläche -- und "
-       "schreibt sie als ein COLMAP-Modell zurück, dessen Startpunkte die des Scans "
-       "sind, jeder mit den Bildern, die ihn sehen. Tiefen- und Normalenkarten werden "
-       "für jedes Bild aus dem Scan gerendert. Die Ausgangsrekonstruktion bleibt in "
-       "sparse_unaligned/ erhalten."),
-    FR("Déplace la reconstruction du dossier du jeu de données dans le repère du scan "
-       "-- rotation, translation et échelle, ajustées sur les images du scan lorsqu'elles "
-       "faisaient partie de la reconstruction, puis sur sa surface -- et la réécrit en un "
-       "seul modèle COLMAP dont les points de départ sont ceux du scan, chacun listant "
-       "les images qui le voient. Des cartes de profondeur et de normales sont rendues "
-       "depuis le scan pour chaque image. La reconstruction de départ est conservée dans "
-       "sparse_unaligned/."),
-    ES("Mueve la reconstrucción de la carpeta del conjunto de datos al sistema de "
-       "referencia del escaneo -- rotación, traslación y escala, ajustadas a las imágenes "
-       "del escaneo cuando formaban parte de la reconstrucción y después a su superficie "
-       "-- y la vuelve a escribir como un único modelo COLMAP cuyos puntos iniciales son "
-       "los del propio escaneo, cada uno con la lista de imágenes que lo ven. Se "
-       "renderizan mapas de profundidad y normales desde el escaneo para cada imagen. La "
-       "reconstrucción de partida se conserva en sparse_unaligned/."),
-    PT("Move a reconstrução da pasta do conjunto de dados para o referencial da "
-       "varredura -- rotação, translação e escala, ajustadas às imagens da varredura "
-       "quando faziam parte da reconstrução e depois à sua superfície -- e a grava de "
-       "volta como um único modelo COLMAP cujos pontos iniciais são os da própria "
-       "varredura, cada um listando as imagens que o veem. Mapas de profundidade e "
-       "normais são renderizados a partir da varredura para cada imagem. A reconstrução "
-       "de partida é mantida em sparse_unaligned/."),
-    IT("Sposta la ricostruzione della cartella del set di dati nel sistema di "
-       "riferimento della scansione -- rotazione, traslazione e scala, adattate alle "
-       "immagini della scansione quando facevano parte della ricostruzione e poi alla "
-       "sua superficie -- e la riscrive come un unico modello COLMAP i cui punti "
-       "iniziali sono quelli della scansione stessa, ciascuno con l'elenco delle "
-       "immagini che lo vedono. Le mappe di profondità e normali vengono renderizzate "
-       "dalla scansione per ogni immagine. La ricostruzione di partenza resta in "
-       "sparse_unaligned/."),
-    NL("Verplaatst de reconstructie in de datasetmap naar het assenstelsel van de scan "
-       "-- rotatie, translatie en schaal, gepast op de beelden van de scan voor zover die "
-       "deel uitmaakten van de reconstructie en daarna op het oppervlak ervan -- en "
-       "schrijft haar terug als één COLMAP-model waarvan de beginpunten die van de scan "
-       "zelf zijn, elk met de beelden die het zien. Diepte- en normaalkaarten worden "
-       "voor elk beeld uit de scan gerenderd. De oorspronkelijke reconstructie blijft "
-       "bewaard in sparse_unaligned/."),
-    RU("Переносит реконструкцию из папки набора данных в систему координат скана -- "
-       "поворот, сдвиг и масштаб подгоняются по изображениям скана, если они входили в "
-       "реконструкцию, а затем по его поверхности -- и записывает её обратно как одну "
-       "модель COLMAP, начальные точки которой -- точки самого скана, и у каждой "
-       "указаны изображения, которые её видят. Карты глубины и нормалей рендерятся из "
-       "скана для каждого изображения. Исходная реконструкция сохраняется в "
-       "sparse_unaligned/."),
-    TR("Veri kümesi klasöründeki yeniden oluşturmayı taramanın koordinat sistemine "
-       "taşır -- dönme, öteleme ve ölçek, taramanın görüntüleri yeniden oluşturmaya "
-       "dahilse önce onlara, sonra taramanın yüzeyine uydurulur -- ve sonucu, başlangıç "
-       "noktaları taramanın kendi noktaları olan tek bir COLMAP modeli olarak geri "
-       "yazar; her nokta onu gören görüntüleri listeler. Derinlik ve normal haritaları "
-       "her görüntü için taramadan işlenir. Başlangıçtaki yeniden oluşturma "
-       "sparse_unaligned/ içinde saklanır."));
+    EN("Fit a reconstruction to the scan using its images, when available, then its surface.\n- Writes a COLMAP model in scan coordinates with scan points and their image tracks.\n- Renders scan depth and normals for each image.\n- Keeps the original in sparse_unaligned/."),
+    JA("データセットフォルダの再構成をスキャンの座標系へ移します。回転・平行移動・スケールは、スキャンの画像が再構成に含まれていればまずその画像に、続いてスキャンの表面に合わせます。\n- 結果は 1 つの COLMAP モデルとして書き戻し、その初期点はスキャン自身の点で、各点にはその点を見ている画像を記録します。\n- 深度マップと法線マップは、すべての画像についてスキャンからレンダリングします。\n- 元の再構成は sparse_unaligned/ に残します。"),
+    ZH_HANS("把数据集文件夹中的重建移到扫描的坐标系中——旋转、平移和缩放先拟合到参与了重建的扫描图像，再拟合到扫描的表面——然后写回为一个 COLMAP 模型，其初始点就是扫描自己的点，每个点都列出能看到它的图像。深度图和法线图会为每张图像从扫描渲染。\n原来的重建保留在 sparse_unaligned/ 中。"),
+    ZH_HANT("把資料集資料夾中的重建移到掃描的座標系中——旋轉、平移和縮放先擬合到參與了重建的掃描影像，再擬合到掃描的表面——然後寫回為一個 COLMAP 模型，其初始點就是掃描自己的點，每個點都列出能看到它的影像。深度圖和法線圖會為每張影像從掃描渲染。\n原來的重建保留在 sparse_unaligned/ 中。"),
+    KO("데이터셋 폴더의 재구성을 스캔의 좌표계로 옮깁니다. 회전, 이동, 스케일은 스캔의 이미지가 재구성에 들어 있으면 먼저 그 이미지에, 이어서 스캔 표면에 맞춥니다.\n- 결과는 하나의 COLMAP 모델로 다시 쓰며, 그 초기 점은 스캔 자신의 점이고 각 점에는 그 점을 보는 이미지가 기록됩니다.\n- 깊이 맵과 법선 맵은 모든 이미지에 대해 스캔에서 렌더링합니다. 원래 재구성은 sparse_unaligned/에 남겨 둡니다."),
+    DE("Verschiebt die Rekonstruktion im Datensatzordner in das Bezugssystem des Scans -- Rotation, Translation und Maßstab, angepasst an die Bilder des Scans, soweit sie Teil der Rekonstruktion waren, und dann an seine Oberfläche -- und schreibt sie als ein COLMAP-Modell zurück, dessen Startpunkte die des Scans sind, jeder mit den Bildern, die ihn sehen.\nTiefen- und Normalenkarten werden für jedes Bild aus dem Scan gerendert. Die Ausgangsrekonstruktion bleibt in sparse_unaligned/ erhalten."),
+    FR("Déplace la reconstruction du dossier du jeu de données dans le repère du scan -- rotation, translation et échelle, ajustées sur les images du scan lorsqu'elles faisaient partie de la reconstruction, puis sur sa surface -- et la réécrit en un seul modèle COLMAP dont les points de départ sont ceux du scan, chacun listant les images qui le voient.\nDes cartes de profondeur et de normales sont rendues depuis le scan pour chaque image. La reconstruction de départ est conservée dans sparse_unaligned/."),
+    ES("Mueve la reconstrucción de la carpeta del conjunto de datos al sistema de referencia del escaneo -- rotación, traslación y escala, ajustadas a las imágenes del escaneo cuando formaban parte de la reconstrucción y después a su superficie -- y la vuelve a escribir como un único modelo COLMAP cuyos puntos iniciales son los del propio escaneo, cada uno con la lista de imágenes que lo ven.\nSe renderizan mapas de profundidad y normales desde el escaneo para cada imagen. La reconstrucción de partida se conserva en sparse_unaligned/."),
+    PT("Move a reconstrução da pasta do conjunto de dados para o referencial da varredura -- rotação, translação e escala, ajustadas às imagens da varredura quando faziam parte da reconstrução e depois à sua superfície -- e a grava de volta como um único modelo COLMAP cujos pontos iniciais são os da própria varredura, cada um listando as imagens que o veem.\n- Mapas de profundidade e normais são renderizados a partir da varredura para cada imagem.\n- A reconstrução de partida é mantida em sparse_unaligned/."),
+    IT("Sposta la ricostruzione della cartella del set di dati nel sistema di riferimento della scansione -- rotazione, traslazione e scala, adattate alle immagini della scansione quando facevano parte della ricostruzione e poi alla sua superficie -- e la riscrive come un unico modello COLMAP i cui punti iniziali sono quelli della scansione stessa, ciascuno con l'elenco delle immagini che lo vedono.\n- Le mappe di profondità e normali vengono renderizzate dalla scansione per ogni immagine.\n- La ricostruzione di partenza resta in sparse_unaligned/."),
+    NL("Verplaatst de reconstructie in de datasetmap naar het assenstelsel van de scan -- rotatie, translatie en schaal, gepast op de beelden van de scan voor zover die deel uitmaakten van de reconstructie en daarna op het oppervlak ervan -- en schrijft haar terug als één COLMAP-model waarvan de beginpunten die van de scan zelf zijn, elk met de beelden die het zien.\nDiepte- en normaalkaarten worden voor elk beeld uit de scan gerenderd. De oorspronkelijke reconstructie blijft bewaard in sparse_unaligned/."),
+    RU("Переносит реконструкцию из папки набора данных в систему координат скана -- поворот, сдвиг и масштаб подгоняются по изображениям скана, если они входили в реконструкцию, а затем по его поверхности -- и записывает её обратно как одну модель COLMAP, начальные точки которой -- точки самого скана, и у каждой указаны изображения, которые её видят.\n- Карты глубины и нормалей рендерятся из скана для каждого изображения.\n- Исходная реконструкция сохраняется в sparse_unaligned/."),
+    TR("Veri kümesi klasöründeki yeniden oluşturmayı taramanın koordinat sistemine taşır -- dönme, öteleme ve ölçek, taramanın görüntüleri yeniden oluşturmaya dahilse önce onlara, sonra taramanın yüzeyine uydurulur -- ve sonucu, başlangıç noktaları taramanın kendi noktaları olan tek bir COLMAP modeli olarak geri yazar;\n- her nokta onu gören görüntüleri listeler. Derinlik ve normal haritaları her görüntü için taramadan işlenir.\n- Başlangıçtaki yeniden oluşturma sparse_unaligned/ içinde saklanır."));
 
 SS_MSG(usage_extract,
-    EN("--extract writes the images an E57 file carries into a dataset's image folder and "
-       "records their poses, so a reconstruction that includes them can be aligned by them."),
-    JA("--extract は E57 ファイルに含まれる画像をデータセットの画像フォルダに書き出し、"
-       "その姿勢を記録します。これで、それらの画像を含む再構成をその画像によって"
-       "位置合わせできます。"),
-    ZH_HANS("--extract 把 E57 文件中的图像写入数据集的图像文件夹并记录它们的位姿，"
-            "这样包含这些图像的重建就能借助它们对齐。"),
-    ZH_HANT("--extract 把 E57 檔案中的影像寫入資料集的影像資料夾並記錄它們的位姿，"
-            "這樣包含這些影像的重建就能藉助它們對齊。"),
-    KO("--extract는 E57 파일에 담긴 이미지를 데이터셋의 이미지 폴더에 쓰고 그 자세를 "
-       "기록합니다. 그러면 이 이미지를 포함한 재구성을 이 이미지로 정렬할 수 "
-       "있습니다."),
-    DE("--extract schreibt die Bilder einer E57-Datei in den Bildordner eines "
-       "Datensatzes und hält ihre Posen fest, sodass eine Rekonstruktion, die sie "
-       "enthält, an ihnen ausgerichtet werden kann."),
-    FR("--extract écrit les images que contient un fichier E57 dans le dossier "
-       "d'images d'un jeu de données et enregistre leurs poses, pour qu'une "
-       "reconstruction qui les inclut puisse être alignée grâce à elles."),
-    ES("--extract escribe las imágenes que lleva un archivo E57 en la carpeta de "
-       "imágenes de un conjunto de datos y guarda sus poses, para que una "
-       "reconstrucción que las incluya pueda alinearse con ellas."),
-    PT("--extract grava as imagens que um arquivo E57 contém na pasta de imagens de "
-       "um conjunto de dados e registra suas poses, para que uma reconstrução que as "
-       "inclua possa ser alinhada por elas."),
-    IT("--extract scrive le immagini contenute in un file E57 nella cartella delle "
-       "immagini di un set di dati e ne registra le pose, così una ricostruzione che le "
-       "include può essere allineata grazie a esse."),
-    NL("--extract schrijft de beelden die een E57-bestand bevat naar de beeldenmap van "
-       "een dataset en legt hun poses vast, zodat een reconstructie die ze bevat erop "
-       "kan worden uitgelijnd."),
-    RU("--extract записывает изображения из файла E57 в папку изображений набора "
-       "данных и сохраняет их позы, чтобы реконструкцию, в которую они входят, можно "
-       "было совместить по ним."),
-    TR("--extract, bir E57 dosyasındaki görüntüleri bir veri kümesinin görüntü "
-       "klasörüne yazar ve pozlarını kaydeder; böylece bu görüntüleri içeren bir yeniden "
-       "oluşturma onlara göre hizalanabilir."));
+    EN("--extract writes the images an E57 file carries into a dataset's image folder and records their poses, so a reconstruction that includes them can be aligned by them."),
+    JA("--extract は E57 ファイルに含まれる画像をデータセットの画像フォルダに書き出し、その姿勢を記録します。\nこれで、それらの画像を含む再構成をその画像によって位置合わせできます。"),
+    ZH_HANS("--extract 把 E57 文件中的图像写入数据集的图像文件夹并记录它们的位姿，这样包含这些图像的重建就能借助它们对齐。"),
+    ZH_HANT("--extract 把 E57 檔案中的影像寫入資料集的影像資料夾並記錄它們的位姿，這樣包含這些影像的重建就能藉助它們對齊。"),
+    KO("--extract는 E57 파일에 담긴 이미지를 데이터셋의 이미지 폴더에 쓰고 그 자세를 기록합니다.\n그러면 이 이미지를 포함한 재구성을 이 이미지로 정렬할 수 있습니다."),
+    DE("--extract schreibt E57-Bilder mit Posen in den Bildordner des Datensatzes. Eine Rekonstruktion mit diesen Bildern lässt sich daran ausrichten."),
+    FR("--extract écrit les images E57 et leurs poses dans le dossier d’images. Une reconstruction qui les inclut peut être alignée sur elles."),
+    ES("--extract guarda fotos E57 y sus poses en la carpeta de imágenes. Una reconstrucción que las incluya puede alinearse con ellas."),
+    PT("--extract grava fotos E57 e poses na pasta de imagens. Uma reconstrução que as inclua pode ser alinhada por elas."),
+    IT("--extract salva foto E57 e pose nella cartella delle immagini. Una ricostruzione che le include può essere allineata tramite esse."),
+    NL("--extract schrijft de beelden die een E57-bestand bevat naar de beeldenmap van een dataset en legt hun poses vast, zodat een reconstructie die ze bevat erop kan worden uitgelijnd."),
+    RU("--extract пишет снимки E57 и их позы в папку изображений. Реконструкцию с этими снимками можно совместить по ним."),
+    TR("--extract, bir E57 dosyasındaki görüntüleri bir veri kümesinin görüntü klasörüne yazar ve pozlarını kaydeder;\nböylece bu görüntüleri içeren bir yeniden oluşturma onlara göre hizalanabilir."));
 
 SS_MSG(head_options,
     EN("Options:"), JA("オプション:"), ZH_HANS("选项："), ZH_HANT("選項："),
@@ -185,53 +92,19 @@ SS_MSG(opt_cloud,
        "çok için tekrarlayın"));
 
 SS_MSG(opt_mode,
-    EN("auto (default) fits the anchors, then the surface; anchors fits the anchors alone; "
-       "keep leaves a model that is already in the scan's frame where it is; refine fits "
-       "the surface from where the model is"),
-    JA("auto（既定）はアンカー画像に合わせてから表面に合わせます。anchors はアンカー"
-       "画像だけに合わせます。keep はすでにスキャンの座標系にあるモデルをそのままに"
-       "します。refine はモデルの今の位置から表面に合わせます"),
-    ZH_HANS("auto（默认）先拟合锚定图像，再拟合表面；anchors 只拟合锚定图像；keep "
-            "让已经处于扫描坐标系中的模型保持原位；refine 从模型当前的位置开始拟合"
-            "表面"),
-    ZH_HANT("auto（預設）先擬合錨定影像，再擬合表面；anchors 只擬合錨定影像；keep "
-            "讓已經位於掃描座標系中的模型保持原位；refine 從模型目前的位置開始擬合"
-            "表面"),
-    KO("auto(기본값)는 앵커 이미지에 맞춘 뒤 표면에 맞춥니다. anchors는 앵커 "
-       "이미지에만 맞춥니다. keep은 이미 스캔 좌표계에 있는 모델을 그대로 둡니다. "
-       "refine은 모델의 현재 위치에서 시작해 표면에 맞춥니다"),
-    DE("auto (Standard) passt an die Ankerbilder an, dann an die Oberfläche; anchors "
-       "passt nur an die Ankerbilder an; keep lässt ein Modell, das schon im "
-       "Bezugssystem des Scans liegt, wo es ist; refine passt ab der aktuellen Lage des "
-       "Modells an die Oberfläche an"),
-    FR("auto (par défaut) ajuste sur les images d'ancrage, puis sur la surface ; "
-       "anchors ajuste sur les images d'ancrage seules ; keep laisse en place un modèle "
-       "déjà dans le repère du scan ; refine ajuste sur la surface à partir de la "
-       "position actuelle du modèle"),
-    ES("auto (por defecto) ajusta a las imágenes ancla y luego a la superficie; "
-       "anchors ajusta solo a las imágenes ancla; keep deja donde está un modelo que ya "
-       "está en el sistema de referencia del escaneo; refine ajusta a la superficie "
-       "desde donde está el modelo"),
-    PT("auto (padrão) ajusta às imagens âncora e depois à superfície; anchors ajusta "
-       "só às imagens âncora; keep deixa onde está um modelo que já está no "
-       "referencial da varredura; refine ajusta à superfície a partir de onde o modelo "
-       "está"),
-    IT("auto (predefinito) adatta alle immagini di ancoraggio, poi alla superficie; "
-       "anchors adatta solo alle immagini di ancoraggio; keep lascia dov'è un modello "
-       "che è già nel sistema di riferimento della scansione; refine adatta alla "
-       "superficie partendo da dove si trova il modello"),
-    NL("auto (standaard) past op de ankerbeelden en daarna op het oppervlak; anchors "
-       "past alleen op de ankerbeelden; keep laat een model dat al in het assenstelsel "
-       "van de scan staat waar het is; refine past op het oppervlak vanaf waar het "
-       "model staat"),
-    RU("auto (по умолчанию) подгоняет по опорным изображениям, затем по поверхности; "
-       "anchors -- только по опорным изображениям; keep оставляет на месте модель, "
-       "которая уже в системе координат скана; refine подгоняет по поверхности от "
-       "текущего положения модели"),
-    TR("auto (varsayılan) önce çapa görüntülerine, sonra yüzeye uydurur; anchors "
-       "yalnızca çapa görüntülerine uydurur; keep, zaten taramanın koordinat sisteminde "
-       "olan bir modeli yerinde bırakır; refine, modelin bulunduğu yerden başlayarak "
-       "yüzeye uydurur"));
+    EN("- auto (default) fits the anchors, then the surface; anchors fits the anchors alone;\n- keep leaves a model that is already in the scan's frame where it is;\n- refine fits the surface from where the model is"),
+    JA("- auto（既定）はアンカー画像に合わせてから表面に合わせます。 anchors はアンカー画像だけに合わせます。\n- keep はすでにスキャンの座標系にあるモデルをそのままにします。 refine はモデルの今の位置から表面に合わせます"),
+    ZH_HANS("- auto（默认）先拟合锚定图像，再拟合表面； anchors 只拟合锚定图像； keep 让已经处于扫描坐标系中的模型保持原位；\n- refine 从模型当前的位置开始拟合表面"),
+    ZH_HANT("- auto（預設）先擬合錨定影像，再擬合表面； anchors 只擬合錨定影像； keep 讓已經位於掃描座標系中的模型保持原位；\n- refine 從模型目前的位置開始擬合表面"),
+    KO("- auto(기본값)는 앵커 이미지에 맞춘 뒤 표면에 맞춥니다. anchors는 앵커 이미지에만 맞춥니다.\n- keep은 이미 스캔 좌표계에 있는 모델을 그대로 둡니다. refine은 모델의 현재 위치에서 시작해 표면에 맞춥니다"),
+    DE("- auto (Standard) passt an die Ankerbilder an, dann an die Oberfläche; anchors passt nur an die Ankerbilder an;\n- keep lässt ein Modell, das schon im Bezugssystem des Scans liegt, wo es ist;\n- refine passt ab der aktuellen Lage des Modells an die Oberfläche an"),
+    FR("- auto (par défaut) ajuste sur les images d'ancrage, puis sur la surface ;\n- anchors ajuste sur les images d'ancrage seules ; keep laisse en place un modèle déjà dans le repère du scan ;\n- refine ajuste sur la surface à partir de la position actuelle du modèle"),
+    ES("- auto (por defecto) ajusta a las imágenes ancla y luego a la superficie; anchors ajusta solo a las imágenes ancla;\n- keep deja donde está un modelo que ya está en el sistema de referencia del escaneo;\n- refine ajusta a la superficie desde donde está el modelo"),
+    PT("- auto (padrão) ajusta às imagens âncora e depois à superfície; anchors ajusta só às imagens âncora;\n- keep deixa onde está um modelo que já está no referencial da varredura;\n- refine ajusta à superfície a partir de onde o modelo está"),
+    IT("- auto (default): immagini di ancoraggio, poi superficie; anchors: solo ancoraggi.\n- keep: lascia il modello già nel sistema della scansione; refine: adatta la superficie dalla posa attuale."),
+    NL("- auto (standaard) past op de ankerbeelden en daarna op het oppervlak; anchors past alleen op de ankerbeelden;\n- keep laat een model dat al in het assenstelsel van de scan staat waar het is;\n- refine past op het oppervlak vanaf waar het model staat"),
+    RU("- auto (по умолчанию) подгоняет по опорным изображениям, затем по поверхности;\n- anchors -- только по опорным изображениям; keep оставляет на месте модель, которая уже в системе координат скана;\n- refine подгоняет по поверхности от текущего положения модели"),
+    TR("- auto (varsayılan) önce çapa görüntülerine, sonra yüzeye uydurur; anchors yalnızca çapa görüntülerine uydurur;\n- keep, zaten taramanın koordinat sisteminde olan bir modeli yerinde bırakır;\n- refine, modelin bulunduğu yerden başlayarak yüzeye uydurur"));
 
 SS_MSG(opt_points,
     EN("Seed points kept from the scan, thinned by voxels (default {0}); all keeps every "
@@ -378,55 +251,19 @@ SS_MSG(opt_mask_dir,
        "Maskenin görüntüyü çıkardığı yerlerde derinlik ve normaller boş kalır"));
 
 SS_MSG(opt_scan_frames,
-    EN("Whether the clouds share one frame: `shared` (one registration wrote them), "
-       "`separate` (each has its own, and is placed through its images in the "
-       "reconstruction), or `auto`, the default: shared when no two files put their "
-       "scanner in one place"),
-    JA("点群が 1 つの座標系を共有するかどうか。`shared`（1 回のレジストレーションで"
-       "書き出されたもの）、`separate`（それぞれ独自の座標系を持ち、再構成内の画像を"
-       "通して配置する）、または既定の `auto`（スキャナーの位置が同じになるファイルの"
-       "組がなければ共有とみなす）"),
-    ZH_HANS("这些点云是否共享一个坐标系：`shared`（由同一次配准写出）、`separate`"
-            "（各有自己的坐标系，通过它在重建中的图像来放置），或默认的 `auto`："
-            "没有两个文件把扫描仪放在同一处时视为共享"),
-    ZH_HANT("這些點雲是否共享一個座標系：`shared`（由同一次對位寫出）、`separate`"
-            "（各有自己的座標系，透過它在重建中的影像來放置），或預設的 `auto`："
-            "沒有兩個檔案把掃描儀放在同一處時視為共享"),
-    KO("포인트 클라우드들이 하나의 좌표계를 공유하는지: `shared`(한 번의 정합으로 "
-       "내보낸 것), `separate`(각자 좌표계가 있고 재구성 안의 이미지를 통해 배치), "
-       "또는 기본값 `auto`: 스캐너를 같은 곳에 두는 두 파일이 없으면 공유로 봄"),
-    DE("Ob die Punktwolken ein Bezugssystem teilen: `shared` (eine Registrierung hat "
-       "sie geschrieben), `separate` (jede hat ihr eigenes und wird über ihre Bilder in "
-       "der Rekonstruktion platziert) oder `auto`, der Standard: geteilt, wenn keine zwei "
-       "Dateien ihren Scanner an dieselbe Stelle setzen"),
-    FR("Si les nuages partagent un repère : `shared` (une seule consolidation les a "
-       "écrits), `separate` (chacun a le sien et est placé par ses images dans la "
-       "reconstruction), ou `auto`, par défaut : partagé quand deux fichiers ne placent "
-       "jamais leur scanner au même endroit"),
-    ES("Si las nubes comparten un sistema de referencia: `shared` (las escribió un solo "
-       "registro), `separate` (cada una tiene el suyo y se sitúa mediante sus imágenes "
-       "en la reconstrucción) o `auto`, por defecto: compartido cuando no hay dos "
-       "archivos que pongan su escáner en el mismo sitio"),
-    PT("Se as nuvens compartilham um referencial: `shared` (um único registro as "
-       "gravou), `separate` (cada uma tem o seu e é posicionada pelas suas imagens na "
-       "reconstrução) ou `auto`, o padrão: compartilhado quando não há dois arquivos que "
-       "ponham o scanner no mesmo lugar"),
-    IT("Se le nuvole condividono un sistema di riferimento: `shared` (le ha scritte "
-       "un'unica registrazione), `separate` (ognuna ha il proprio e viene posizionata "
-       "tramite le sue immagini nella ricostruzione) o `auto`, il predefinito: condiviso "
-       "quando nessuna coppia di file mette lo scanner nello stesso punto"),
-    NL("Of de puntenwolken één assenstelsel delen: `shared` (één registratie schreef ze), "
-       "`separate` (elk heeft een eigen en wordt geplaatst via zijn beelden in de "
-       "reconstructie) of `auto`, de standaard: gedeeld als geen twee bestanden hun "
-       "scanner op dezelfde plek zetten"),
-    RU("Общая ли у облаков система координат: `shared` (их записала одна регистрация), "
-       "`separate` (у каждого своя, и оно размещается по своим изображениям в "
-       "реконструкции) или `auto`, по умолчанию: общая, если никакие два файла не ставят "
-       "сканер в одно место"),
-    TR("Bulutların tek bir koordinat sistemini paylaşıp paylaşmadığı: `shared` (tek bir "
-       "kayıt yazdı), `separate` (her birinin kendi sistemi var ve yeniden oluşturmadaki "
-       "görüntüleriyle yerleştirilir) ya da varsayılan `auto`: hiçbir iki dosya "
-       "tarayıcıyı aynı yere koymuyorsa paylaşılır"));
+    EN("Coordinate frames for multiple scans.\n- shared: clouds already registered together.\n- separate: place each cloud through its images in the reconstruction.\n- auto (default): shared when no two files place their scanner in the same position."),
+    JA("点群が 1 つの座標系を共有するかどうか。\n`shared`（1 回のレジストレーションで書き出されたもの）、`separate`（それぞれ独自の座標系を持ち、再構成内の画像を通して配置する）、または既定の `auto`（スキャナーの位置が同じになるファイルの組がなければ共有とみなす）"),
+    ZH_HANS("这些点云是否共享一个坐标系： `shared`（由同一次配准写出）、`separate`（各有自己的坐标系，通过它在重建中的图像来放置），或默认的 `auto`：\n没有两个文件把扫描仪放在同一处时视为共享"),
+    ZH_HANT("這些點雲是否共享一個座標系： `shared`（由同一次對位寫出）、`separate`（各有自己的座標系，透過它在重建中的影像來放置），或預設的 `auto`：\n沒有兩個檔案把掃描儀放在同一處時視為共享"),
+    KO("포인트 클라우드들이 하나의 좌표계를 공유하는지:\n`shared`(한 번의 정합으로 내보낸 것), `separate`(각자 좌표계가 있고 재구성 안의 이미지를 통해 배치), 또는 기본값 `auto`: 스캐너를 같은 곳에 두는 두 파일이 없으면 공유로 봄"),
+    DE("Ob die Punktwolken ein Bezugssystem teilen:\n`shared` (eine Registrierung hat sie geschrieben), `separate` (jede hat ihr eigenes und wird über ihre Bilder in der Rekonstruktion platziert) oder `auto`, der Standard: geteilt, wenn keine zwei Dateien ihren Scanner an dieselbe Stelle setzen"),
+    FR("Si les nuages partagent un repère :\n`shared` (une seule consolidation les a écrits), `separate` (chacun a le sien et est placé par ses images dans la reconstruction), ou `auto`, par défaut : partagé quand deux fichiers ne placent jamais leur scanner au même endroit"),
+    ES("Si las nubes comparten un sistema de referencia:\n`shared` (las escribió un solo registro), `separate` (cada una tiene el suyo y se sitúa mediante sus imágenes en la reconstrucción) o `auto`, por defecto: compartido cuando no hay dos archivos que pongan su escáner en el mismo sitio"),
+    PT("Se as nuvens compartilham um referencial:\n`shared` (um único registro as gravou), `separate` (cada uma tem o seu e é posicionada pelas suas imagens na reconstrução) ou `auto`, o padrão: compartilhado quando não há dois arquivos que ponham o scanner no mesmo lugar"),
+    IT("Se le nuvole condividono un sistema di riferimento:\n`shared` (le ha scritte un'unica registrazione), `separate` (ognuna ha il proprio e viene posizionata tramite le sue immagini nella ricostruzione) o `auto`, il predefinito: condiviso quando nessuna coppia di file mette lo scanner nello stesso punto"),
+    NL("Of de puntenwolken één assenstelsel delen:\n`shared` (één registratie schreef ze), `separate` (elk heeft een eigen en wordt geplaatst via zijn beelden in de reconstructie) of `auto`, de standaard: gedeeld als geen twee bestanden hun scanner op dezelfde plek zetten"),
+    RU("Общая ли у облаков система координат:\n`shared` (их записала одна регистрация), `separate` (у каждого своя, и оно размещается по своим изображениям в реконструкции) или `auto`, по умолчанию: общая, если никакие два файла не ставят сканер в одно место"),
+    TR("Bulutların tek bir koordinat sistemini paylaşıp paylaşmadığı:\n`shared` (tek bir kayıt yazdı), `separate` (her birinin kendi sistemi var ve yeniden oluşturmadaki görüntüleriyle yerleştirilir) ya da varsayılan `auto`: hiçbir iki dosya tarayıcıyı aynı yere koymuyorsa paylaşılır"));
 
 SS_MSG(opt_flip_masks,
     EN("The dataset's masks are white where an image is NOT kept"),
@@ -444,42 +281,19 @@ SS_MSG(opt_flip_masks,
     TR("Veri kümesinin maskeleri, görüntünün TUTULMADIĞI yerlerde beyazdır"));
 
 SS_MSG(opt_render,
-    EN("--render-anchors <scan>... <dataset folder>: views of the scan from where the "
-       "scanner stood, written as images with known poses, for a scan that has no "
-       "photographs"),
-    JA("--render-anchors <scan>... <dataset folder>: スキャナーを据えた位置から見た"
-       "スキャンのビューを、姿勢が分かっている画像として書き出します。写真のない"
-       "スキャン向けです"),
-    ZH_HANS("--render-anchors <scan>... <dataset folder>：从扫描仪所在位置渲染扫描的"
-            "视图，作为位姿已知的图像写出，用于没有照片的扫描"),
-    ZH_HANT("--render-anchors <scan>... <dataset folder>：從掃描儀所在位置渲染掃描的"
-            "視圖，作為位姿已知的影像寫出，用於沒有照片的掃描"),
-    KO("--render-anchors <scan>... <dataset folder>: 스캐너가 서 있던 곳에서 본 "
-       "스캔의 뷰를 자세가 알려진 이미지로 씁니다. 사진이 없는 스캔용입니다"),
-    DE("--render-anchors <scan>... <dataset folder>: Ansichten des Scans von den "
-       "Standpunkten des Scanners, als Bilder mit bekannten Posen geschrieben, für "
-       "einen Scan ohne Fotos"),
-    FR("--render-anchors <scan>... <dataset folder> : des vues du scan depuis "
-       "l'emplacement du scanner, écrites comme images aux poses connues, pour un scan "
-       "sans photos"),
-    ES("--render-anchors <scan>... <dataset folder>: vistas del escaneo desde donde "
-       "estuvo el escáner, escritas como imágenes con poses conocidas, para un escaneo "
-       "sin fotografías"),
-    PT("--render-anchors <scan>... <dataset folder>: vistas da varredura de onde o "
-       "scanner estava, gravadas como imagens com poses conhecidas, para uma varredura "
-       "sem fotografias"),
-    IT("--render-anchors <scan>... <dataset folder>: viste della scansione da dove "
-       "stava lo scanner, scritte come immagini con pose note, per una scansione senza "
-       "fotografie"),
-    NL("--render-anchors <scan>... <dataset folder>: aanzichten van de scan vanaf waar "
-       "de scanner stond, geschreven als beelden met bekende poses, voor een scan "
-       "zonder foto's"),
-    RU("--render-anchors <scan>... <dataset folder>: виды скана с тех мест, где стоял "
-       "сканер, записанные как изображения с известными позами, для скана без "
-       "фотографий"),
-    TR("--render-anchors <scan>... <dataset folder>: taramanın, tarayıcının durduğu "
-       "yerlerden görünümleri; fotoğrafı olmayan bir tarama için pozu bilinen "
-       "görüntüler olarak yazılır"));
+    EN("--render-anchors <scan>... <dataset folder>: views of the scan from where the scanner stood, written as images with known poses, for a scan that has no photographs"),
+    JA("--render-anchors <scan>...\n- <dataset folder>: スキャナーを据えた位置から見たスキャンのビューを、姿勢が分かっている画像として書き出します。\n- 写真のないスキャン向けです"),
+    ZH_HANS("--render-anchors <scan>...\n<dataset folder>：从扫描仪所在位置渲染扫描的视图，作为位姿已知的图像写出，用于没有照片的扫描"),
+    ZH_HANT("--render-anchors <scan>...\n<dataset folder>：從掃描儀所在位置渲染掃描的視圖，作為位姿已知的影像寫出，用於沒有照片的掃描"),
+    KO("--render-anchors <scan>... <dataset folder>: 스캐너가 서 있던 곳에서 본 스캔의 뷰를 자세가 알려진 이미지로 씁니다.\n사진이 없는 스캔용입니다"),
+    DE("--render-anchors <scan>... <dataset folder>: Ansichten des Scans von den Standpunkten des Scanners, als Bilder mit bekannten Posen geschrieben, für einen Scan ohne Fotos"),
+    FR("--render-anchors <scan>... <dataset folder> : des vues du scan depuis l'emplacement du scanner, écrites comme images aux poses connues, pour un scan sans photos"),
+    ES("--render-anchors <scan>... <dataset folder>: crea vistas desde las posiciones del escáner con poses conocidas, para escaneos sin fotos."),
+    PT("--render-anchors <scan>... <dataset folder>: vistas da varredura de onde o scanner estava, gravadas como imagens com poses conhecidas, para uma varredura sem fotografias"),
+    IT("--render-anchors <scan>... <dataset folder>: viste della scansione da dove stava lo scanner, scritte come immagini con pose note, per una scansione senza fotografie"),
+    NL("--render-anchors <scan>... <dataset folder>: aanzichten van de scan vanaf waar de scanner stond, geschreven als beelden met bekende poses, voor een scan zonder foto's"),
+    RU("--render-anchors <scan>... <dataset folder>: виды скана с тех мест, где стоял сканер, записанные как изображения с известными позами, для скана без фотографий"),
+    TR("--render-anchors <scan>... <dataset folder>: taramanın, tarayıcının durduğu yerlerden görünümleri;\nfotoğrafı olmayan bir tarama için pozu bilinen görüntüler olarak yazılır"));
 
 SS_MSG(opt_overwrite,
     EN("Align again even when nothing it depends on has changed"),
@@ -625,47 +439,19 @@ SS_MSG(err_no_points,
     TR("Nokta bulutlarında hiç nokta yok"));
 
 SS_MSG(err_none_aligned,
-    EN("No model could be aligned: none of them holds an image whose pose in the scan is "
-       "known. Add the scan's own images to the reconstruction, or use --mode keep for a "
-       "model that is already in the scan's frame."),
-    JA("どのモデルも位置合わせできませんでした。スキャン内での姿勢が分かっている画像を"
-       "含むモデルがありません。スキャン自身の画像を再構成に加えるか、すでにスキャンの"
-       "座標系にあるモデルなら --mode keep を使ってください。"),
-    ZH_HANS("没有任何模型能够对齐：其中没有一个包含在扫描中位姿已知的图像。请把扫描"
-            "自己的图像加入重建，或者对已经处于扫描坐标系中的模型使用 --mode keep。"),
-    ZH_HANT("沒有任何模型能夠對齊：其中沒有一個包含在掃描中位姿已知的影像。請把掃描"
-            "自己的影像加入重建，或者對已經位於掃描座標系中的模型使用 --mode keep。"),
-    KO("정렬할 수 있는 모델이 없습니다. 스캔 안에서의 자세가 알려진 이미지를 가진 "
-       "모델이 하나도 없습니다. 스캔 자체의 이미지를 재구성에 추가하거나, 이미 스캔 "
-       "좌표계에 있는 모델이라면 --mode keep을 쓰세요."),
-    DE("Kein Modell ließ sich ausrichten: Keines enthält ein Bild, dessen Pose im Scan "
-       "bekannt ist. Die eigenen Bilder des Scans in die Rekonstruktion aufnehmen, oder "
-       "--mode keep für ein Modell verwenden, das schon im Bezugssystem des Scans liegt."),
-    FR("Aucun modèle n'a pu être aligné : aucun ne contient d'image dont la pose dans "
-       "le scan est connue. Ajoutez les images du scan lui-même à la reconstruction, ou "
-       "utilisez --mode keep pour un modèle déjà dans le repère du scan."),
-    ES("No se pudo alinear ningún modelo: ninguno contiene una imagen cuya pose en el "
-       "escaneo se conozca. Añada las imágenes del propio escaneo a la reconstrucción, o "
-       "use --mode keep para un modelo que ya está en el sistema de referencia del "
-       "escaneo."),
-    PT("Nenhum modelo pôde ser alinhado: nenhum contém uma imagem cuja pose na "
-       "varredura seja conhecida. Adicione as imagens da própria varredura à "
-       "reconstrução, ou use --mode keep para um modelo que já está no referencial da "
-       "varredura."),
-    IT("Nessun modello è stato allineato: nessuno contiene un'immagine la cui posa "
-       "nella scansione sia nota. Aggiungere le immagini della scansione stessa alla "
-       "ricostruzione, oppure usare --mode keep per un modello che è già nel sistema di "
-       "riferimento della scansione."),
-    NL("Geen enkel model kon worden uitgelijnd: geen van alle bevat een beeld waarvan "
-       "de pose in de scan bekend is. Voeg de eigen beelden van de scan aan de "
-       "reconstructie toe, of gebruik --mode keep voor een model dat al in het "
-       "assenstelsel van de scan staat."),
-    RU("Ни одну модель не удалось совместить: ни в одной нет изображения, поза "
-       "которого в скане известна. Добавьте в реконструкцию изображения самого скана "
-       "или используйте --mode keep для модели, которая уже в системе координат скана."),
-    TR("Hiçbir model hizalanamadı: hiçbiri, taramadaki pozu bilinen bir görüntü "
-       "içermiyor. Taramanın kendi görüntülerini yeniden oluşturmaya ekleyin ya da "
-       "zaten taramanın koordinat sisteminde olan bir model için --mode keep kullanın."));
+    EN("No scan-photo poses found in the models. Add the scan photos to reconstruction, or use --mode keep if already in the scan frame."),
+    JA("モデルにスキャン写真の既知姿勢がありません。写真を再構成に追加するか、既にスキャン座標なら --mode keep を使ってください。"),
+    ZH_HANS("模型中没有已知扫描照片位姿。请将扫描照片加入重建；若已在扫描坐标系中，用 --mode keep。"),
+    ZH_HANT("模型中沒有已知掃描相片位姿。請將掃描相片加入重建；若已在掃描座標系中，用 --mode keep。"),
+    KO("모델에 스캔 사진의 알려진 자세가 없습니다. 사진을 재구성에 추가하거나, 이미 스캔 좌표계라면 --mode keep을 쓰세요."),
+    DE("Keine Scanfotoposen im Modell. Scanfotos zur Rekonstruktion hinzufügen; bei Modellen im Scanrahmen --mode keep nutzen."),
+    FR("Aucune pose de photo du scan dans les modèles. Ajoutez ces photos, ou utilisez --mode keep si déjà dans le repère du scan."),
+    ES("No hay poses de fotos del escaneo en los modelos. Añade esas fotos o usa --mode keep si ya están en el marco del escaneo."),
+    PT("Sem poses de fotos da varredura nos modelos. Adicione essas fotos ou use --mode keep se já estiverem no referencial da varredura."),
+    IT("Nessuna posa di foto della scansione nei modelli. Aggiungi le foto o usa --mode keep se già nel riferimento della scansione."),
+    NL("Geen scanfotoposes in de modellen. Voeg scanfoto’s toe aan de reconstructie, of gebruik --mode keep als het scanframe al klopt."),
+    RU("В моделях нет известных поз снимков скана. Добавьте их в реконструкцию или используйте --mode keep, если система скана уже верна."),
+    TR("Modellerde bilinen tarama fotoğrafı pozu yok. Fotoğrafları yeniden oluşturmaya ekleyin; tarama çerçevesindeyse --mode keep kullanın."));
 
 SS_MSG(info_cloud,
     EN("{0}: {1}   Points: {2}   Colour: {3}   Scanner positions: {4}"),
@@ -1290,54 +1076,19 @@ SS_MSG(add_scan,
     TR("LiDAR taraması ekle..."));
 
 SS_MSG(add_scan_help,
-    EN("A laser scan of the same place (E57, LAS or PLY). The reconstruction is moved into "
-       "its frame -- position, rotation and true scale -- and takes its points as seed "
-       "points and its depth and normals as supervision. An E57 that carries photographs "
-       "can be the only input."),
-    JA("同じ場所のレーザースキャン（E57、LAS、PLY）です。再構成はその座標系へ移され"
-       "（位置、回転、実寸のスケール）、スキャンの点を初期点に、深度と法線を教師信号"
-       "として使います。写真を含む E57 なら、それだけを入力にできます。"),
-    ZH_HANS("同一地点的激光扫描（E57、LAS 或 PLY）。重建会被移入它的坐标系——位置、"
-            "旋转和真实尺度——并以它的点作为初始点、以它的深度与法线作为监督。带照片"
-            "的 E57 可以作为唯一输入。"),
-    ZH_HANT("同一地點的雷射掃描（E57、LAS 或 PLY）。重建會被移入它的座標系——位置、"
-            "旋轉和真實尺度——並以它的點作為初始點、以它的深度與法線作為監督。帶照片"
-            "的 E57 可以作為唯一輸入。"),
-    KO("같은 장소의 레이저 스캔(E57, LAS, PLY)입니다. 재구성은 그 좌표계로 "
-       "옮겨지고(위치, 회전, 실제 스케일), 스캔의 점을 초기 점으로, 깊이와 법선을 "
-       "지도 학습으로 씁니다. 사진이 든 E57이라면 그것만 입력으로 써도 됩니다."),
-    DE("Ein Laserscan desselben Orts (E57, LAS oder PLY). Die Rekonstruktion wird in "
-       "sein Bezugssystem verschoben -- Position, Rotation und echter Maßstab -- und "
-       "übernimmt seine Punkte als Startpunkte und seine Tiefe und Normalen als "
-       "Überwachung. Ein E57 mit Fotos kann die einzige Eingabe sein."),
-    FR("Un scan laser du même lieu (E57, LAS ou PLY). La reconstruction est déplacée "
-       "dans son repère -- position, rotation et échelle réelle -- et prend ses points "
-       "comme points de départ, sa profondeur et ses normales comme supervision. Un E57 "
-       "qui contient des photos peut être la seule entrée."),
-    ES("Un escaneo láser del mismo lugar (E57, LAS o PLY). La reconstrucción se mueve "
-       "a su sistema de referencia -- posición, rotación y escala real -- y toma sus "
-       "puntos como puntos iniciales y su profundidad y normales como supervisión. Un "
-       "E57 que lleva fotografías puede ser la única entrada."),
-    PT("Uma varredura a laser do mesmo lugar (E57, LAS ou PLY). A reconstrução é "
-       "movida para o seu referencial -- posição, rotação e escala real -- e usa os "
-       "seus pontos como pontos iniciais e a sua profundidade e normais como "
-       "supervisão. Um E57 com fotografias pode ser a única entrada."),
-    IT("Una scansione laser dello stesso luogo (E57, LAS o PLY). La ricostruzione "
-       "viene spostata nel suo sistema di riferimento -- posizione, rotazione e scala "
-       "reale -- e ne prende i punti come punti iniziali e profondità e normali come "
-       "supervisione. Un E57 che contiene fotografie può essere l'unico ingresso."),
-    NL("Een laserscan van dezelfde plek (E57, LAS of PLY). De reconstructie wordt naar "
-       "het assenstelsel ervan verplaatst -- positie, rotatie en ware schaal -- en "
-       "neemt de punten over als beginpunten en de diepte en normalen als supervisie. "
-       "Een E57 met foto's kan de enige invoer zijn."),
-    RU("Лазерный скан того же места (E57, LAS или PLY). Реконструкция переносится в "
-       "его систему координат -- положение, поворот и истинный масштаб -- и берёт его "
-       "точки как начальные, а его глубину и нормали -- для контроля. E57 с "
-       "фотографиями может быть единственным входом."),
-    TR("Aynı yerin lazer taraması (E57, LAS veya PLY). Yeniden oluşturma onun "
-       "koordinat sistemine taşınır -- konum, dönme ve gerçek ölçek -- ve onun "
-       "noktalarını başlangıç noktası, derinliğini ve normallerini denetim olarak alır. "
-       "Fotoğraf içeren bir E57 tek girdi olabilir."));
+    EN("E57/LAS/PLY scan: place the model in its frame; use its points, depth and normals for training.\nAn E57 with photos can be the only input."),
+    JA("E57/LAS/PLYスキャンにモデルの位置・向き・尺度を合わせ、点群・深度・法線を学習に使います。\n写真付きE57なら単独で入力できます。"),
+    ZH_HANS("E57/LAS/PLY 扫描：将模型对齐到扫描坐标系，用其点云、深度及法线训练。\n含照片的 E57 可作为唯一输入。"),
+    ZH_HANT("E57/LAS/PLY 掃描：將模型對齊到掃描座標系，用其點雲、深度及法線訓練。\n含相片的 E57 可作為唯一輸入。"),
+    KO("E57/LAS/PLY 스캔에 모델의 위치·회전·크기를 맞추고 점·깊이·법선을 학습에 씁니다.\n사진이 있는 E57은 단독 입력도 가능합니다."),
+    DE("E57/LAS/PLY-Scan: Modell im Scanrahmen ausrichten; Punkte, Tiefe und Normalen zum Training nutzen.\nEin E57 mit Fotos genügt als einzige Eingabe."),
+    FR("Scan E57/LAS/PLY : aligne le modèle dans son repère ; utilise points, profondeur et normales.\nUn E57 avec photos peut être la seule entrée."),
+    ES("Escaneo E57/LAS/PLY: alinea el modelo y usa sus puntos, profundidad y normales para entrenar.\nUn E57 con fotos puede ser la única entrada."),
+    PT("Varredura E57/LAS/PLY: alinha o modelo e usa pontos, profundidade e normais no treino.\nUm E57 com fotos pode ser a única entrada."),
+    IT("Scansione E57/LAS/PLY: allinea il modello e usa punti, profondità e normali nel training.\nUn E57 con foto può essere l’unico input."),
+    NL("E57/LAS/PLY-scan: lijn het model uit op het scanframe; gebruik punten, diepte en normalen voor training.\nEen E57 met foto’s kan de enige invoer zijn."),
+    RU("Скан E57/LAS/PLY: совмещает модель с его системой; использует точки, глубину и нормали в обучении.\nE57 со снимками может быть единственным входом."),
+    TR("E57/LAS/PLY taraması: modeli tarama çerçevesine hizalar; nokta, derinlik ve normalleri eğitimde kullanır.\nFotoğraflı E57 tek girdi olabilir."));
 
 SS_MSG(pick_scan,
     EN("Choose laser scans"), JA("レーザースキャンを選択"), ZH_HANS("选择激光扫描"),
@@ -1412,54 +1163,19 @@ SS_MSG(use_scan_photos,
     TR("Taramaların fotoğraflarını diğerleriyle birlikte yeniden oluştur"));
 
 SS_MSG(use_scan_photos_help,
-    EN("Their poses in the scan are what places the reconstruction. Off, or for a scan "
-       "without photographs, views rendered from where the scanner stood do that instead. "
-       "Photographs the reconstruction cannot place keep the scanner's pose."),
-    JA("スキャン内でのこれらの写真の姿勢が、再構成の位置を決めます。オフにした場合や"
-       "写真のないスキャンでは、スキャナーを据えた位置からレンダリングしたビューが"
-       "その役を担います。再構成で配置できなかった写真は、スキャナーの姿勢のままに"
-       "します。"),
-    ZH_HANS("这些照片在扫描中的位姿决定重建的位置。关闭此项，或扫描没有照片时，改由"
-            "从扫描仪所在位置渲染的视图来完成这件事。重建无法定位的照片保留扫描仪的"
-            "位姿。"),
-    ZH_HANT("這些照片在掃描中的位姿決定重建的位置。關閉此項，或掃描沒有照片時，改由"
-            "從掃描儀所在位置渲染的視圖來完成這件事。重建無法定位的照片保留掃描儀的"
-            "位姿。"),
-    KO("스캔 안에서의 이 사진들의 자세가 재구성의 위치를 정합니다. 끄거나 사진이 "
-       "없는 스캔이면, 스캐너가 서 있던 곳에서 렌더링한 뷰가 대신 그 일을 합니다. "
-       "재구성이 배치하지 못한 사진은 스캐너의 자세를 유지합니다."),
-    DE("Ihre Posen im Scan sind es, die die Rekonstruktion platzieren. Ausgeschaltet, "
-       "oder bei einem Scan ohne Fotos, übernehmen das vom Scannerstandpunkt gerenderte "
-       "Ansichten. Fotos, die die Rekonstruktion nicht platzieren kann, behalten die "
-       "Pose des Scanners."),
-    FR("Ce sont leurs poses dans le scan qui placent la reconstruction. Désactivé, ou "
-       "pour un scan sans photos, des vues rendues depuis l'emplacement du scanner s'en "
-       "chargent. Les photos que la reconstruction ne peut pas placer gardent la pose "
-       "du scanner."),
-    ES("Sus poses en el escaneo son las que sitúan la reconstrucción. Desactivado, o "
-       "con un escaneo sin fotografías, lo hacen en su lugar vistas renderizadas desde "
-       "donde estuvo el escáner. Las fotografías que la reconstrucción no puede situar "
-       "conservan la pose del escáner."),
-    PT("As poses delas na varredura são o que posiciona a reconstrução. Desligado, ou "
-       "numa varredura sem fotografias, vistas renderizadas de onde o scanner estava "
-       "fazem isso. As fotografias que a reconstrução não consegue posicionar mantêm a "
-       "pose do scanner."),
-    IT("Sono le loro pose nella scansione a posizionare la ricostruzione. Se "
-       "disattivato, o per una scansione senza fotografie, lo fanno viste renderizzate "
-       "da dove stava lo scanner. Le fotografie che la ricostruzione non riesce a "
-       "posizionare mantengono la posa dello scanner."),
-    NL("Hun poses in de scan bepalen waar de reconstructie komt. Uitgeschakeld, of bij "
-       "een scan zonder foto's, doen aanzichten die vanaf de plek van de scanner zijn "
-       "gerenderd dat. Foto's die de reconstructie niet kan plaatsen, houden de pose "
-       "van de scanner."),
-    RU("Именно их позы в скане задают положение реконструкции. Если выключено или в "
-       "скане нет фотографий, это делают виды, отрендеренные с мест, где стоял сканер. "
-       "Фотографии, которые реконструкция не смогла разместить, сохраняют позу "
-       "сканера."),
-    TR("Yeniden oluşturmayı yerleştiren, bu fotoğrafların taramadaki pozlarıdır. "
-       "Kapalıysa ya da fotoğrafsız bir taramada, bunu tarayıcının durduğu yerden "
-       "işlenen görünümler yapar. Yeniden oluşturmanın yerleştiremediği fotoğraflar "
-       "tarayıcının pozunu korur."));
+    EN("Their poses in the scan are what places the reconstruction.\n- Off, or for a scan without photographs, views rendered from where the scanner stood do that instead.\n- Photographs the reconstruction cannot place keep the scanner's pose."),
+    JA("スキャン内でのこれらの写真の姿勢が、再構成の位置を決めます。\n- オフにした場合や写真のないスキャンでは、スキャナーを据えた位置からレンダリングしたビューがその役を担います。\n- 再構成で配置できなかった写真は、スキャナーの姿勢のままにします。"),
+    ZH_HANS("这些照片在扫描中的位姿决定重建的位置。 关闭此项，或扫描没有照片时，改由从扫描仪所在位置渲染的视图来完成这件事。\n重建无法定位的照片保留扫描仪的位姿。"),
+    ZH_HANT("這些照片在掃描中的位姿決定重建的位置。 關閉此項，或掃描沒有照片時，改由從掃描儀所在位置渲染的視圖來完成這件事。\n重建無法定位的照片保留掃描儀的位姿。"),
+    KO("스캔 안에서의 이 사진들의 자세가 재구성의 위치를 정합니다.\n- 끄거나 사진이 없는 스캔이면, 스캐너가 서 있던 곳에서 렌더링한 뷰가 대신 그 일을 합니다.\n- 재구성이 배치하지 못한 사진은 스캐너의 자세를 유지합니다."),
+    DE("Ihre Posen im Scan sind es, die die Rekonstruktion platzieren.\n- Ausgeschaltet, oder bei einem Scan ohne Fotos, übernehmen das vom Scannerstandpunkt gerenderte Ansichten.\n- Fotos, die die Rekonstruktion nicht platzieren kann, behalten die Pose des Scanners."),
+    FR("Ce sont leurs poses dans le scan qui placent la reconstruction.\n- Désactivé, ou pour un scan sans photos, des vues rendues depuis l'emplacement du scanner s'en chargent.\n- Les photos que la reconstruction ne peut pas placer gardent la pose du scanner."),
+    ES("Sitúa el modelo con las poses de las fotos; desactivado o sin fotos, usa vistas desde el escáner.\nLas fotos que no se pueden registrar conservan la pose del escáner."),
+    PT("As poses delas na varredura são o que posiciona a reconstrução.\n- Desligado, ou numa varredura sem fotografias, vistas renderizadas de onde o scanner estava fazem isso.\n- As fotografias que a reconstrução não consegue posicionar mantêm a pose do scanner."),
+    IT("Sono le loro pose nella scansione a posizionare la ricostruzione.\n- Se disattivato, o per una scansione senza fotografie, lo fanno viste renderizzate da dove stava lo scanner.\n- Le fotografie che la ricostruzione non riesce a posizionare mantengono la posa dello scanner."),
+    NL("Plaatst het model via fotoposes; uitgeschakeld of zonder foto’s via aanzichten vanaf de scanner.\nFoto’s die niet geregistreerd kunnen worden behouden de scannerpose."),
+    RU("Именно их позы в скане задают положение реконструкции.\n- Если выключено или в скане нет фотографий, это делают виды, отрендеренные с мест, где стоял сканер.\n- Фотографии, которые реконструкция не смогла разместить, сохраняют позу сканера."),
+    TR("Yeniden oluşturmayı yerleştiren, bu fotoğrafların taramadaki pozlarıdır.\n- Kapalıysa ya da fotoğrafsız bir taramada, bunu tarayıcının durduğu yerden işlenen görünümler yapar.\n- Yeniden oluşturmanın yerleştiremediği fotoğraflar tarayıcının pozunu korur."));
 
 SS_MSG(keep_scanner_poses,
     EN("Use the scanner's camera poses as they are"),
@@ -1477,51 +1193,19 @@ SS_MSG(keep_scanner_poses,
     TR("Tarayıcının kamera pozlarını olduğu gibi kullan"));
 
 SS_MSG(keep_scanner_poses_help,
-    EN("The scans' photographs are the only images, so they are placed where the scanner "
-       "recorded them and no reconstruction runs. Untick to reconstruct them instead: for "
-       "a scanner whose camera poses are less accurate than a reconstruction would be."),
-    JA("画像はスキャンの写真だけなので、スキャナーが記録した位置に置き、再構成は"
-       "行いません。オフにすると代わりに再構成します。スキャナーのカメラ姿勢が再構成"
-       "より不正確な場合に使います。"),
-    ZH_HANS("图像只有扫描中的照片，因此直接放在扫描仪记录的位置，不运行重建。取消"
-            "勾选则改为重建它们：适用于相机位姿不如重建准确的扫描仪。"),
-    ZH_HANT("影像只有掃描中的照片，因此直接放在掃描儀記錄的位置，不執行重建。取消"
-            "勾選則改為重建它們：適用於相機位姿不如重建準確的掃描儀。"),
-    KO("이미지가 스캔의 사진뿐이므로 스캐너가 기록한 위치에 두고 재구성은 하지 "
-       "않습니다. 끄면 대신 재구성합니다. 카메라 자세가 재구성보다 부정확한 스캐너에 "
-       "씁니다."),
-    DE("Die Fotos der Scans sind die einzigen Bilder, also werden sie dort platziert, "
-       "wo der Scanner sie aufgezeichnet hat, und keine Rekonstruktion läuft. "
-       "Abschalten, um sie stattdessen zu rekonstruieren: für einen Scanner, dessen "
-       "Kameraposen ungenauer sind, als eine Rekonstruktion es wäre."),
-    FR("Les photos des scans sont les seules images : elles sont placées là où le "
-       "scanner les a enregistrées et aucune reconstruction n'a lieu. Décocher pour les "
-       "reconstruire à la place : pour un scanner dont les poses de caméra sont moins "
-       "précises que ne le serait une reconstruction."),
-    ES("Las fotografías de los escaneos son las únicas imágenes, así que se colocan "
-       "donde las registró el escáner y no se ejecuta ninguna reconstrucción. "
-       "Desmárcalo para reconstruirlas en su lugar: para un escáner cuyas poses de "
-       "cámara son menos precisas de lo que sería una reconstrucción."),
-    PT("As fotografias das varreduras são as únicas imagens, então são colocadas onde "
-       "o scanner as registrou e nenhuma reconstrução é executada. Desmarque para "
-       "reconstruí-las em vez disso: para um scanner cujas poses de câmera são menos "
-       "precisas do que seria uma reconstrução."),
-    IT("Le fotografie delle scansioni sono le uniche immagini, quindi vengono messe "
-       "dove le ha registrate lo scanner e non si esegue alcuna ricostruzione. "
-       "Deseleziona per ricostruirle invece: per uno scanner le cui pose della "
-       "fotocamera sono meno precise di quanto sarebbe una ricostruzione."),
-    NL("De foto's van de scans zijn de enige beelden, dus ze worden neergezet waar de "
-       "scanner ze vastlegde en er draait geen reconstructie. Uitvinken om ze in "
-       "plaats daarvan te reconstrueren: voor een scanner waarvan de cameraposes minder "
-       "nauwkeurig zijn dan een reconstructie zou zijn."),
-    RU("Фотографии сканов -- единственные изображения, поэтому они ставятся туда, где "
-       "их записал сканер, и реконструкция не запускается. Снимите флажок, чтобы вместо "
-       "этого реконструировать их: для сканера, чьи позы камер менее точны, чем была бы "
-       "реконструкция."),
-    TR("Tek görüntüler taramaların fotoğrafları olduğundan, tarayıcının kaydettiği "
-       "yere konur ve yeniden oluşturma çalışmaz. Bunun yerine onları yeniden "
-       "oluşturmak için işareti kaldırın: kamera pozları bir yeniden oluşturmadan daha "
-       "az doğru olan bir tarayıcı için."));
+    EN("With scan photos as the only input, use recorded poses without reconstruction. Untick to reconstruct more accurate camera poses."),
+    JA("スキャン写真だけを入力するとき、記録姿勢を使って再構成を省きます。外すと写真からより正確な姿勢を再構成します。"),
+    ZH_HANS("仅输入扫描照片时，使用记录位姿，不运行重建。取消勾选可通过重建获得更准确的相机位姿。"),
+    ZH_HANT("僅輸入掃描相片時，使用記錄位姿，不執行重建。取消勾選可透過重建獲得更準確的相機位姿。"),
+    KO("스캔 사진만 입력할 때 기록된 자세로 재구성을 생략합니다. 해제하면 더 정확한 카메라 자세를 재구성합니다."),
+    DE("Bei Scanfotos als einziger Eingabe gespeicherte Posen ohne Rekonstruktion nutzen. Abwählen, um genauere Kameraposen zu rekonstruieren."),
+    FR("Avec seulement les photos du scan, utilise les poses enregistrées sans reconstruction. Décochez pour reconstruire des poses plus précises."),
+    ES("Si solo hay fotos del escaneo, usa las poses grabadas sin reconstruir. Desmarca para reconstruir poses de cámara más precisas."),
+    PT("Com apenas fotos da varredura, usa poses gravadas sem reconstruir. Desmarque para reconstruir poses de câmera mais precisas."),
+    IT("Con sole foto della scansione, usa le pose registrate senza ricostruzione. Deseleziona per ricostruire pose più precise."),
+    NL("Bij alleen scanfoto’s: gebruik vastgelegde poses zonder reconstructie. Uitvinken om nauwkeurigere cameraposes te reconstrueren."),
+    RU("Если вход — только снимки скана, использует записанные позы без реконструкции. Снимите флажок для уточнения поз реконструкцией."),
+    TR("Yalnız tarama fotoğrafları varsa kayıtlı pozları kullanır, yeniden oluşturmaz. Daha doğru kamera pozları için işareti kaldırın."));
 
 SS_MSG(scanner_poses_used,
     EN("The scans' photographs are the only images: they keep the poses the scanner "
@@ -1565,40 +1249,19 @@ SS_MSG(scan_in_frame,
     TR("Veri kümesi zaten taramanın koordinat sisteminde"));
 
 SS_MSG(scan_in_frame_help,
-    EN("For an export whose cameras the scanner's software placed, such as an XGRIDS "
-       "one: nothing is moved, the scan only adds seed points, depth and normals."),
-    JA("XGRIDS のエクスポートのように、スキャナーのソフトウェアがカメラを配置した"
-       "ものに使います。何も動かさず、スキャンは初期点、深度、法線を加えるだけです。"),
-    ZH_HANS("用于相机由扫描仪软件定位的导出数据，例如 XGRIDS 的导出：不移动任何东西，"
-            "扫描只添加初始点、深度和法线。"),
-    ZH_HANT("用於相機由掃描儀軟體定位的匯出資料，例如 XGRIDS 的匯出：不移動任何東西，"
-            "掃描只加入初始點、深度和法線。"),
-    KO("XGRIDS 내보내기처럼 스캐너 소프트웨어가 카메라를 배치한 내보내기용입니다. "
-       "아무것도 옮기지 않고, 스캔은 초기 점, 깊이, 법선만 더합니다."),
-    DE("Für einen Export, dessen Kameras die Software des Scanners platziert hat, etwa "
-       "einen von XGRIDS: Nichts wird verschoben, der Scan fügt nur Startpunkte, Tiefe "
-       "und Normalen hinzu."),
-    FR("Pour un export dont les caméras ont été placées par le logiciel du scanner, "
-       "comme un export XGRIDS : rien n'est déplacé, le scan ajoute seulement des "
-       "points de départ, la profondeur et les normales."),
-    ES("Para una exportación cuyas cámaras situó el software del escáner, como una de "
-       "XGRIDS: no se mueve nada, el escaneo solo añade puntos iniciales, profundidad y "
-       "normales."),
-    PT("Para uma exportação cujas câmeras o software do scanner posicionou, como uma "
-       "da XGRIDS: nada é movido, a varredura só acrescenta pontos iniciais, "
-       "profundidade e normais."),
-    IT("Per un'esportazione le cui fotocamere sono state posizionate dal software "
-       "dello scanner, come una di XGRIDS: non si sposta nulla, la scansione aggiunge "
-       "solo punti iniziali, profondità e normali."),
-    NL("Voor een export waarvan de software van de scanner de camera's plaatste, zoals "
-       "een van XGRIDS: er wordt niets verplaatst, de scan voegt alleen beginpunten, "
-       "diepte en normalen toe."),
-    RU("Для экспорта, камеры которого расставило ПО сканера, например экспорта "
-       "XGRIDS: ничего не сдвигается, скан лишь добавляет начальные точки, глубину и "
-       "нормали."),
-    TR("Kameralarını tarayıcının yazılımının yerleştirdiği bir dışa aktarım için, "
-       "örneğin bir XGRIDS dışa aktarımı: hiçbir şey taşınmaz, tarama yalnızca "
-       "başlangıç noktaları, derinlik ve normaller ekler."));
+    EN("For an export whose cameras the scanner's software placed, such as an XGRIDS one: nothing is moved, the scan only adds seed points, depth and normals."),
+    JA("XGRIDS のエクスポートのように、スキャナーのソフトウェアがカメラを配置したものに使います。\n何も動かさず、スキャンは初期点、深度、法線を加えるだけです。"),
+    ZH_HANS("用于相机由扫描仪软件定位的导出数据，例如 XGRIDS 的导出：不移动任何东西，扫描只添加初始点、深度和法线。"),
+    ZH_HANT("用於相機由掃描儀軟體定位的匯出資料，例如 XGRIDS 的匯出：不移動任何東西，掃描只加入初始點、深度和法線。"),
+    KO("XGRIDS 내보내기처럼 스캐너 소프트웨어가 카메라를 배치한 내보내기용입니다.\n아무것도 옮기지 않고, 스캔은 초기 점, 깊이, 법선만 더합니다."),
+    DE("Für vom Scanner platzierte Kameras, etwa XGRIDS: Der Scan fügt nur Startpunkte, Tiefe und Normalen hinzu. Nichts wird verschoben."),
+    FR("Pour des caméras placées par le scanner, comme XGRIDS : le scan ajoute points initiaux, profondeur et normales sans rien déplacer."),
+    ES("Para una exportación cuyas cámaras situó el software del escáner, como una de XGRIDS: no se mueve nada, el escaneo solo añade puntos iniciales, profundidad y normales."),
+    PT("Para uma exportação cujas câmeras o software do scanner posicionou, como uma da XGRIDS: nada é movido, a varredura só acrescenta pontos iniciais, profundidade e normais."),
+    IT("Per camere posizionate dal software dello scanner, come XGRIDS: aggiunge punti iniziali, profondità e normali senza spostare nulla."),
+    NL("Voor camera’s geplaatst door scannersoftware, zoals XGRIDS: de scan voegt beginpunten, diepte en normalen toe zonder iets te verplaatsen."),
+    RU("Для экспорта, камеры которого расставило ПО сканера, например экспорта XGRIDS: ничего не сдвигается, скан лишь добавляет начальные точки, глубину и нормали."),
+    TR("XGRIDS gibi kameraları tarayıcı yazılımınca yerleştirilmiş veriler için: tarama nokta, derinlik ve normal ekler; hiçbir şey taşınmaz."));
 
 SS_MSG(scan_needs_builtin,
     EN("Laser scans need the built-in reconstruction"),

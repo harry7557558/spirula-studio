@@ -2,6 +2,7 @@
 // every command, wherever it stands in argv, before the command sees argv.
 // Scratch config directory, stdin from /dev/null (so there is no terminal to ask).
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -89,13 +90,15 @@ int main() {
     const std::string version = r.out;
 
     fresh();
-    r = run("--accept-license sam3=yes,birefnet=yes --version");
+    r = run("--lang en --accept-license sam3=yes,birefnet=yes --version");
     const std::string conf = slurp(gui_conf());
     check(r.code == 0 && has(r.out, version), "leading flag: the command still runs (--version)");
     check(has(conf, "accepted_license=sam3\n") && has(conf, "accepted_license=birefnet\n"),
           "leading flag: both families recorded in gui.conf");
     check(has(r.out, "SAM License") && has(r.out, "MIT License"),
           "leading flag: the full terms were printed first");
+    check(std::all_of(r.out.begin(), r.out.end(), [](unsigned char c) { return c < 128; }),
+          "English license output uses ASCII punctuation");
 
     fresh();
     r = run("--accept-license roma=yes --version");
@@ -144,7 +147,7 @@ int main() {
                              "extract clip.mp4"}) {
         fresh();
         r = run(std::string("sam ") + verb + " --model sam3-f16.ggml");
-        check(r.code == 2 && has(r.out, "--accept-license sam3=yes") && has(r.out, "no terminal") &&
+        check(r.code == 2 && has(r.out, "--accept-license sam3=yes") && has(r.out, "No terminal available") &&
                   !fs::exists(gui_conf()),
               std::string("sam ") + verb + ": refused without consent, naming --accept-license");
         r = run("--accept-license sam3=yes sam " + std::string(verb) + " --model sam3-f16.ggml");

@@ -621,54 +621,19 @@ SS_MSG(no_tetrahedra,
     TR("üçgenlemeden hiç dörtyüzlü çıkmadı"));
 
 SS_MSG(too_many_gaussians,
-    EN("too many Gaussians to mesh: {0}. The tetrahedralization takes at most "
-       "{1} sample points, which is {2} Gaussians at 7 points each, and RAM "
-       "runs out well before that. Retrain with a lower --cap-max."),
-    JA("メッシュにするにはガウシアンが多すぎます: {0}。四面体分割が扱えるのは"
-       "最大 {1} 個のサンプル点、1 ガウシアンあたり 7 点なので {2} ガウシアン"
-       "までで、それより手前でメモリが尽きます。--cap-max を小さくして"
-       "学習し直してください。"),
-    ZH_HANS("高斯球太多，无法生成网格：{0}。四面体剖分最多接受 {1} "
-            "个采样点，即每个高斯球 7 个点时的 {2} 个高斯球，而内存远在这之前"
-            "就会耗尽。请调小 --cap-max 重新训练。"),
-    ZH_HANT("高斯球太多，無法產生網格：{0}。四面體剖分最多接受 {1} "
-            "個取樣點，即每個高斯球 7 個點時的 {2} 個高斯球，而記憶體遠在這之前"
-            "就會耗盡。請調小 --cap-max 重新訓練。"),
-    KO("메시로 만들기에 가우시안이 너무 많습니다: {0}. 사면체 분할이 받는 "
-       "표본점은 최대 {1}개, 가우시안당 7점이므로 {2}개 가우시안까지이고, "
-       "메모리는 그보다 훨씬 앞에서 바닥납니다. --cap-max 를 낮춰 다시 "
-       "학습하세요."),
-    DE("zu viele Gaußfunktionen für ein Netz: {0}. Die Tetraedrisierung nimmt "
-       "höchstens {1} Abtastpunkte, also {2} Gaußfunktionen bei 7 Punkten je "
-       "Stück, und der Arbeitsspeicher geht schon weit davor aus. Trainiere "
-       "mit kleinerem --cap-max neu."),
-    FR("trop de gaussiennes pour un maillage : {0}. La tétraédrisation accepte "
-       "au plus {1} points d'échantillonnage, soit {2} gaussiennes à 7 points "
-       "chacune, et la mémoire s'épuise bien avant. Réentraînez avec un "
-       "--cap-max plus bas."),
-    ES("demasiadas gaussianas para mallar: {0}. La tetraedrización acepta como "
-       "mucho {1} puntos de muestreo, es decir {2} gaussianas a 7 puntos cada "
-       "una, y la memoria se agota mucho antes. Reentrena con un --cap-max más "
-       "bajo."),
-    PT("gaussianas demais para gerar malha: {0}. A tetraedrização aceita no "
-       "máximo {1} pontos de amostragem, ou seja {2} gaussianas a 7 pontos "
-       "cada, e a memória acaba bem antes disso. Retreine com um --cap-max "
-       "menor."),
-    IT("troppe gaussiane per la mesh: {0}. La tetraedrizzazione accetta al "
-       "massimo {1} punti di campionamento, cioè {2} gaussiane a 7 punti "
-       "ciascuna, e la memoria finisce molto prima. Riaddestra con un "
-       "--cap-max più basso."),
-    NL("te veel gaussianen voor een mesh: {0}. De tetraëdrisatie neemt hoogstens "
-       "{1} steekproefpunten, oftewel {2} gaussianen bij 7 punten per stuk, en "
-       "het geheugen raakt daar ruim voor op. Train opnieuw met een lagere "
-       "--cap-max."),
-    RU("слишком много гауссиан для меша: {0}. Тетраэдризация принимает не "
-       "более {1} точек выборки, то есть {2} гауссиан по 7 точек каждая, а "
-       "память заканчивается намного раньше. Переобучите с меньшим --cap-max."),
-    TR("ağ oluşturmak için çok fazla gaussian var: {0}. Dörtyüzlüleme en fazla "
-       "{1} örnek nokta alır, yani her biri 7 nokta olan {2} gaussian, ve "
-       "bellek bundan çok önce tükenir. Daha düşük bir --cap-max ile yeniden "
-       "eğitin."));
+    EN("{0} Gaussians exceed meshing limits: {1} samples = {2} Gaussians at 7 samples each. RAM runs out sooner. Retrain with lower --cap-max."),
+    JA("ガウス数 {0} はメッシュ化の上限超過：{1} サンプル＝各7点で {2} 個。RAMはさらに早く尽きます。--cap-max を下げて再学習してください。"),
+    ZH_HANS("{0} 个高斯超过网格化上限：{1} 个样本＝每个 7 点时 {2} 个高斯。RAM 会更早耗尽。降低 --cap-max 后重训。"),
+    ZH_HANT("{0} 個高斯超過網格化上限：{1} 個樣本＝每個 7 點時 {2} 個高斯。RAM 會更早耗盡。降低 --cap-max 後重訓。"),
+    KO("가우스 {0}개는 메시 한도 초과: 샘플 {1}개 = 각 7점씩 가우스 {2}개. RAM은 더 일찍 소진됩니다. --cap-max를 낮춰 재학습하세요."),
+    DE("{0} Gauß-Verteilungen überschreiten das Mesh-Limit: {1} Samples = {2} bei je 7 Punkten. RAM endet früher. Mit kleinerem --cap-max neu trainieren."),
+    FR("{0} gaussiennes dépassent la limite : {1} échantillons = {2} à 7 points chacune. La RAM manque avant. Réentraîner avec --cap-max réduit."),
+    ES("{0} gaussianas superan el límite: {1} muestras = {2} a 7 puntos cada una. La RAM se agota antes. Reentrena con menor --cap-max."),
+    PT("{0} gaussianas excedem o limite: {1} amostras = {2} a 7 pontos cada. A RAM acaba antes. Treine de novo com --cap-max menor."),
+    IT("{0} gaussiane superano il limite: {1} campioni = {2} con 7 punti ciascuna. La RAM finisce prima. Riaddestra con --cap-max inferiore."),
+    NL("{0} Gaussians overschrijden de grens: {1} samples = {2} bij 7 punten elk. RAM raakt eerder op. Train opnieuw met lagere --cap-max."),
+    RU("{0} гауссиан превышают предел: {1} отсчётов = {2} по 7 точек на каждую. RAM кончится раньше. Переобучите с меньшим --cap-max."),
+    TR("{0} Gauss sınırı aşıyor: {1} örnek = her biri 7 noktadan {2} Gauss. RAM daha erken tükenir. Daha düşük --cap-max ile yeniden eğitin."));
 
 SS_MSG(occupancy_start,
     EN("evaluating the points (total: {0})..."),
@@ -985,51 +950,19 @@ SS_MSG(stats_empty,
     TR("ağ boş"));
 
 SS_MSG(stats_line,
-    EN("vertices: {0}, faces: {1}, components: {2}; edges -- boundary: {3}, "
-       "non-manifold: {4}, mis-oriented: {5}; duplicate faces: {6}; smallest "
-       "angle: {7} deg (faces under 5 deg: {8}, under 15 deg: {9})"),
-    JA("頂点: {0}、面: {1}、連結成分: {2}、辺 -- 境界: {3}、非多様体: {4}、"
-       "向き不整合: {5}、重複面: {6}、最小角: {7} 度（5 度未満の面: {8}、"
-       "15 度未満: {9}）"),
-    ZH_HANS("顶点：{0}，面：{1}，连通块：{2}；边 —— 边界：{3}，非流形：{4}，"
-            "朝向不一致：{5}；重复面：{6}；最小角：{7} 度（小于 5 度的面：{8}，"
-            "小于 15 度：{9}）"),
-    ZH_HANT("頂點：{0}，面：{1}，連通塊：{2}；邊 —— 邊界：{3}，非流形：{4}，"
-            "朝向不一致：{5}；重複面：{6}；最小角：{7} 度（小於 5 度的面：{8}，"
-            "小於 15 度：{9}）"),
-    KO("정점: {0}, 면: {1}, 연결 성분: {2}; 모서리 -- 경계: {3}, 비다양체: {4}, "
-       "방향 어긋남: {5}; 중복 면: {6}; 최소 각: {7}도(5도 미만 면: {8}, "
-       "15도 미만: {9})"),
-    DE("Ecken: {0}, Flächen: {1}, Komponenten: {2}; Kanten -- Rand: {3}, "
-       "nicht-mannigfaltig: {4}, falsch orientiert: {5}; doppelte Flächen: {6}; "
-       "kleinster Winkel: {7} Grad (Flächen unter 5 Grad: {8}, unter 15 "
-       "Grad: {9})"),
-    FR("sommets : {0}, faces : {1}, composantes : {2} ; arêtes -- bord : {3}, "
-       "non variétés : {4}, mal orientées : {5} ; faces en double : {6} ; plus "
-       "petit angle : {7} degrés (faces sous 5 degrés : {8}, sous 15 "
-       "degrés : {9})"),
-    ES("vértices: {0}, caras: {1}, componentes: {2}; aristas: de borde: {3}, "
-       "no variedad: {4}, mal orientadas: {5}; caras duplicadas: {6}; ángulo "
-       "menor: {7} grados (caras por debajo de 5 grados: {8}, por debajo de 15 "
-       "grados: {9})"),
-    PT("vértices: {0}, faces: {1}, componentes: {2}; arestas -- de borda: {3}, "
-       "não variedade: {4}, mal orientadas: {5}; faces duplicadas: {6}; menor "
-       "ângulo: {7} graus (faces abaixo de 5 graus: {8}, abaixo de 15 "
-       "graus: {9})"),
-    IT("vertici: {0}, facce: {1}, componenti: {2}; spigoli -- di bordo: {3}, "
-       "non-varietà: {4}, mal orientati: {5}; facce duplicate: {6}; angolo "
-       "minimo: {7} gradi (facce sotto 5 gradi: {8}, sotto 15 gradi: {9})"),
-    NL("hoekpunten: {0}, vlakken: {1}, componenten: {2}; randen -- rand: {3}, "
-       "niet-variëteit: {4}, verkeerd georiënteerd: {5}; dubbele vlakken: {6}; "
-       "kleinste hoek: {7} graden (vlakken onder 5 graden: {8}, onder 15 "
-       "graden: {9})"),
-    RU("вершины: {0}, грани: {1}, компоненты: {2}; рёбра -- граничные: {3}, "
-       "немногообразные: {4}, с неверной ориентацией: {5}; дублирующие "
-       "грани: {6}; наименьший угол: {7} градусов (грани меньше 5 градусов: {8}, "
-       "меньше 15 градусов: {9})"),
-    TR("köşe: {0}, yüz: {1}, bileşen: {2}; kenarlar -- sınır: {3}, çok-katmanlı "
-       "olmayan: {4}, yönü yanlış: {5}; yinelenen yüz: {6}; en küçük açı: {7} "
-       "derece (5 derecenin altındaki yüz: {8}, 15 derecenin altında: {9})"));
+    EN("- vertices: {0}, faces: {1}, components: {2}; edges -- boundary: {3}, non-manifold: {4}, mis-oriented: {5};\n- duplicate faces: {6}; smallest angle: {7} deg (faces under 5 deg: {8}, under 15 deg: {9})"),
+    JA("頂点: {0}、面: {1}、連結成分: {2}、辺 -- 境界: {3}、非多様体: {4}、向き不整合: {5}、重複面: {6}、最小角: {7} 度（5 度未満の面: {8}、15 度未満: {9}）"),
+    ZH_HANS("- 顶点：{0}，面：{1}，连通块：{2}； 边 —— 边界：{3}，非流形：{4}，朝向不一致：{5}； 重复面：{6}；\n- 最小角：{7} 度（小于 5 度的面：{8}，小于 15 度：{9}）"),
+    ZH_HANT("- 頂點：{0}，面：{1}，連通塊：{2}； 邊 —— 邊界：{3}，非流形：{4}，朝向不一致：{5}； 重複面：{6}；\n- 最小角：{7} 度（小於 5 度的面：{8}，小於 15 度：{9}）"),
+    KO("- 정점: {0}, 면: {1}, 연결 성분: {2}; 모서리 -- 경계: {3}, 비다양체: {4}, 방향 어긋남: {5}; 중복 면: {6};\n- 최소 각: {7}도(5도 미만 면: {8}, 15도 미만: {9})"),
+    DE("- Ecken: {0}, Flächen: {1}, Komponenten: {2};\n- Kanten -- Rand: {3}, nicht-mannigfaltig: {4}, falsch orientiert: {5}; doppelte Flächen: {6};\n- kleinster Winkel: {7} Grad (Flächen unter 5 Grad: {8}, unter 15 Grad: {9})"),
+    FR("- sommets : {0}, faces : {1}, composantes : {2} ; arêtes -- bord : {3}, non variétés : {4}, mal orientées : {5} ;\n- faces en double : {6} ; plus petit angle : {7} degrés (faces sous 5 degrés : {8}, sous 15 degrés : {9})"),
+    ES("- vértices: {0}, caras: {1}, componentes: {2}; aristas: de borde: {3}, no variedad: {4}, mal orientadas: {5};\n- caras duplicadas: {6}; ángulo menor: {7} grados (caras por debajo de 5 grados: {8}, por debajo de 15 grados: {9})"),
+    PT("- vértices: {0}, faces: {1}, componentes: {2}; arestas -- de borda: {3}, não variedade: {4}, mal orientadas: {5};\n- faces duplicadas: {6}; menor ângulo: {7} graus (faces abaixo de 5 graus: {8}, abaixo de 15 graus: {9})"),
+    IT("- vertici: {0}, facce: {1}, componenti: {2}; spigoli -- di bordo: {3}, non-varietà: {4}, mal orientati: {5};\n- facce duplicate: {6}; angolo minimo: {7} gradi (facce sotto 5 gradi: {8}, sotto 15 gradi: {9})"),
+    NL("- hoekpunten: {0}, vlakken: {1}, componenten: {2};\n- randen -- rand: {3}, niet-variëteit: {4}, verkeerd georiënteerd: {5}; dubbele vlakken: {6};\n- kleinste hoek: {7} graden (vlakken onder 5 graden: {8}, onder 15 graden: {9})"),
+    RU("- вершины: {0}, грани: {1}, компоненты: {2};\n- рёбра -- граничные: {3}, немногообразные: {4}, с неверной ориентацией: {5}; дублирующие грани: {6};\n- наименьший угол: {7} градусов (грани меньше 5 градусов: {8}, меньше 15 градусов: {9})"),
+    TR("- köşe: {0}, yüz: {1}, bileşen: {2}; kenarlar -- sınır: {3}, çok-katmanlı olmayan: {4}, yönü yanlış: {5};\n- yinelenen yüz: {6}; en küçük açı: {7} derece (5 derecenin altındaki yüz: {8}, 15 derecenin altında: {9})"));
 
 SS_MSG(done_summary,
     EN("vertices: {0}, faces: {1} (total {2}s)"),
@@ -1255,45 +1188,19 @@ SS_MSG(help_usage,
     TR("kullanım: {0} <checkpoint> [--flag value ...]"));
 
 SS_MSG(help_intro,
-    EN("Extract a surface mesh from a trained 3DGS model.\n"
-       "<checkpoint> is a run directory (config.json plus step-*.ckpt/), a\n"
-       "*.ckpt directory, or a splat.ply file."),
-    JA("学習済みの 3DGS モデルから表面メッシュを取り出します。\n"
-       "<checkpoint> は実行ディレクトリ（config.json と step-*.ckpt/）、\n"
-       "*.ckpt ディレクトリ、または splat.ply ファイルです。"),
-    ZH_HANS("从训练好的 3DGS 模型中提取表面网格。\n"
-            "<checkpoint> 可以是运行目录（含 config.json 与 step-*.ckpt/）、\n"
-            "*.ckpt 目录，或 splat.ply 文件。"),
-    ZH_HANT("從訓練好的 3DGS 模型中擷取表面網格。\n"
-            "<checkpoint> 可以是執行目錄（含 config.json 與 step-*.ckpt/）、\n"
-            "*.ckpt 目錄，或 splat.ply 檔案。"),
-    KO("학습을 마친 3DGS 모델에서 표면 메시를 뽑아냅니다.\n"
-       "<checkpoint> 는 실행 디렉터리(config.json 과 step-*.ckpt/), *.ckpt\n"
-       "디렉터리, 또는 splat.ply 파일입니다."),
-    DE("Ein Oberflächennetz aus einem trainierten 3DGS-Modell gewinnen.\n"
-       "<checkpoint> ist ein Laufverzeichnis (config.json und step-*.ckpt/),\n"
-       "ein *.ckpt-Verzeichnis oder eine splat.ply-Datei."),
-    FR("Extraire un maillage de surface d'un modèle 3DGS entraîné.\n"
-       "<checkpoint> est un dossier d'exécution (config.json et step-*.ckpt/),\n"
-       "un dossier *.ckpt, ou un fichier splat.ply."),
-    ES("Extrae una malla de superficie de un modelo 3DGS entrenado.\n"
-       "<checkpoint> es una carpeta de ejecución (config.json y step-*.ckpt/),\n"
-       "una carpeta *.ckpt, o un archivo splat.ply."),
-    PT("Extrai uma malha de superfície de um modelo 3DGS treinado.\n"
-       "<checkpoint> é uma pasta de execução (config.json e step-*.ckpt/),\n"
-       "uma pasta *.ckpt, ou um arquivo splat.ply."),
-    IT("Estrae una mesh di superficie da un modello 3DGS addestrato.\n"
-       "<checkpoint> è una cartella di esecuzione (config.json e step-*.ckpt/),\n"
-       "una cartella *.ckpt, o un file splat.ply."),
-    NL("Haal een oppervlaktemesh uit een getraind 3DGS-model.\n"
-       "<checkpoint> is een uitvoermap (config.json en step-*.ckpt/), een\n"
-       "*.ckpt-map, of een splat.ply-bestand."),
-    RU("Извлечь поверхностный меш из обученной модели 3DGS.\n"
-       "<checkpoint> -- это каталог запуска (config.json и step-*.ckpt/),\n"
-       "каталог *.ckpt или файл splat.ply."),
-    TR("Eğitilmiş bir 3DGS modelinden yüzey ağı çıkarır.\n"
-       "<checkpoint>, bir çalışma dizini (config.json ve step-*.ckpt/), bir\n"
-       "*.ckpt dizini veya bir splat.ply dosyasıdır."));
+    EN("Extract a surface mesh from 3DGS. <checkpoint>: run folder (config.json + step-*.ckpt/), *.ckpt folder or splat.ply."),
+    JA("3DGSから表面メッシュを抽出。<checkpoint>：実行フォルダ（config.json + step-*.ckpt/）、*.ckpt フォルダ、または splat.ply。"),
+    ZH_HANS("从 3DGS 提取表面网格。<checkpoint>：运行目录（config.json + step-*.ckpt/）、*.ckpt 目录或 splat.ply。"),
+    ZH_HANT("從 3DGS 擷取表面網格。<checkpoint>：執行目錄（config.json + step-*.ckpt/）、*.ckpt 目錄或 splat.ply。"),
+    KO("3DGS에서 표면 메시 추출. <checkpoint>: 실행 폴더(config.json + step-*.ckpt/), *.ckpt 폴더 또는 splat.ply."),
+    DE("Oberflächen-Mesh aus 3DGS extrahieren. <checkpoint>: Lauf-Ordner (config.json + step-*.ckpt/), *.ckpt-Ordner oder splat.ply."),
+    FR("Extraire un maillage de 3DGS. <checkpoint> : dossier d’exécution (config.json + step-*.ckpt/), dossier *.ckpt ou splat.ply."),
+    ES("Extrae una malla de 3DGS. <checkpoint>: carpeta de ejecución (config.json + step-*.ckpt/), carpeta *.ckpt o splat.ply."),
+    PT("Extrai uma malha de 3DGS. <checkpoint>: pasta de execução (config.json + step-*.ckpt/), pasta *.ckpt ou splat.ply."),
+    IT("Estrai una mesh da 3DGS. <checkpoint>: cartella di esecuzione (config.json + step-*.ckpt/), cartella *.ckpt o splat.ply."),
+    NL("Extraheer een oppervlakmesh uit 3DGS. <checkpoint>: run-map (config.json + step-*.ckpt/), *.ckpt-map of splat.ply."),
+    RU("Извлечь сетку из 3DGS. <checkpoint>: папка запуска (config.json + step-*.ckpt/), папка *.ckpt или splat.ply."),
+    TR("3DGS’den yüzey ağı çıkarır. <checkpoint>: çalışma klasörü (config.json + step-*.ckpt/), *.ckpt klasörü veya splat.ply."));
 
 SS_MSG(help_data,
     EN("dataset for camera-based occupancy and colors\n"
@@ -1354,32 +1261,19 @@ SS_MSG(help_data_format,
     TR("colmap|nerfstudio|metashape (varsayılan: kendi bulsun)"));
 
 SS_MSG(help_device,
-    EN("GPU to run on: an index, part of a name, `auto`, or\n"
-       "uuid:<32 hex digits> (default: the environment, then auto)"),
-    JA("使用する GPU: 番号、名前の一部、`auto`、\n"
-       "または uuid:<32 桁の 16 進数>（既定: 環境変数、次に自動）"),
-    ZH_HANS("要使用的 GPU：序号、名称的一部分、`auto`，\n"
-            "或 uuid:<32 位十六进制>（默认：环境变量，然后自动）"),
-    ZH_HANT("要使用的 GPU：序號、名稱的一部分、`auto`，\n"
-            "或 uuid:<32 位十六進位>（預設：環境變數，然後自動）"),
-    KO("사용할 GPU: 번호, 이름의 일부, `auto`, 또는\n"
-       "uuid:<32자리 16진수> (기본값: 환경 변수, 그다음 자동)"),
-    DE("GPU, auf der gerechnet wird: ein Index, ein Teil des Namens, `auto` "
-       "oder\nuuid:<32 Hexziffern> (Vorgabe: die Umgebung, dann automatisch)"),
-    FR("GPU à utiliser : un indice, une partie d'un nom, `auto`, ou\n"
-       "uuid:<32 chiffres hexadécimaux> (défaut : l'environnement, puis auto)"),
-    ES("GPU que se usará: un índice, parte de un nombre, `auto`, o\n"
-       "uuid:<32 dígitos hexadecimales> (por defecto: el entorno, luego auto)"),
-    PT("GPU a usar: um índice, parte de um nome, `auto`, ou\n"
-       "uuid:<32 dígitos hexadecimais> (padrão: o ambiente, depois auto)"),
-    IT("GPU da usare: un indice, parte di un nome, `auto`, o\n"
-       "uuid:<32 cifre esadecimali> (predefinito: l'ambiente, poi automatico)"),
-    NL("GPU om op te rekenen: een index, deel van een naam, `auto`, of\n"
-       "uuid:<32 hexcijfers> (standaard: de omgeving, dan automatisch)"),
-    RU("GPU для работы: номер, часть имени, `auto` или\n"
-       "uuid:<32 шестнадцатеричные цифры> (по умолчанию: окружение, затем авто)"),
-    TR("Üzerinde çalışılacak GPU: bir sıra, adın bir parçası, `auto` veya\n"
-       "uuid:<32 onaltılık basamak> (varsayılan: ortam, sonra otomatik)"));
+    EN("GPU to run on: an index, part of a name, `auto`, or uuid:<32 hex digits> (default: the environment, then auto)"),
+    JA("使用する GPU: 番号、名前の一部、`auto`、 または uuid:<32 桁の 16 進数>（既定: 環境変数、次に自動）"),
+    ZH_HANS("要使用的 GPU：序号、名称的一部分、`auto`， 或 uuid:<32 位十六进制>（默认：环境变量，然后自动）"),
+    ZH_HANT("要使用的 GPU：序號、名稱的一部分、`auto`， 或 uuid:<32 位十六進位>（預設：環境變數，然後自動）"),
+    KO("사용할 GPU: 번호, 이름의 일부, `auto`, 또는 uuid:<32자리 16진수> (기본값: 환경 변수, 그다음 자동)"),
+    DE("GPU, auf der gerechnet wird: ein Index, ein Teil des Namens, `auto` oder uuid:<32 Hexziffern> (Vorgabe: die Umgebung, dann automatisch)"),
+    FR("GPU à utiliser : un indice, une partie d'un nom, `auto`, ou uuid:<32 chiffres hexadécimaux> (défaut : l'environnement, puis auto)"),
+    ES("GPU que se usará: un índice, parte de un nombre, `auto`, o uuid:<32 dígitos hexadecimales> (por defecto: el entorno, luego auto)"),
+    PT("GPU a usar: um índice, parte de um nome, `auto`, ou uuid:<32 dígitos hexadecimais> (padrão: o ambiente, depois auto)"),
+    IT("GPU da usare: un indice, parte di un nome, `auto`, o uuid:<32 cifre esadecimali> (predefinito: l'ambiente, poi automatico)"),
+    NL("GPU om op te rekenen: een index, deel van een naam, `auto`, of uuid:<32 hexcijfers> (standaard: de omgeving, dan automatisch)"),
+    RU("GPU для работы: номер, часть имени, `auto` или uuid:<32 шестнадцатеричные цифры> (по умолчанию: окружение, затем авто)"),
+    TR("Üzerinde çalışılacak GPU: bir sıra, adın bir parçası, `auto` veya uuid:<32 onaltılık basamak> (varsayılan: ortam, sonra otomatik)"));
 SS_MSG(help_device_cuda,
     EN("CUDA device index to run on (default: the current CUDA device)"),
     JA("使用する CUDA デバイス番号（既定: 現在の CUDA デバイス）"),
@@ -1424,104 +1318,34 @@ SS_MSG(help_output,
        "bilinen bir uzantı kırpılır"));
 
 SS_MSG(help_format,
-    EN("comma-separated: ply,obj,gltf,glb,stl [{0}].\n"
-       "With --color texture a format may carry a texture\n"
-       "encoding: glb+png (default), glb+jpg (JPEG q95),\n"
-       "glb+jpeg75 (JPEG q75)"),
-    JA("カンマ区切り: ply,obj,gltf,glb,stl [{0}]。\n"
-       "--color texture のときは形式にテクスチャの符号化を\n"
-       "付けられます: glb+png（既定）、glb+jpg（JPEG q95）、\n"
-       "glb+jpeg75（JPEG q75）"),
-    ZH_HANS("逗号分隔：ply,obj,gltf,glb,stl [{0}]。\n"
-            "配合 --color texture 时，格式后可加纹理编码：\n"
-            "glb+png（默认）、glb+jpg（JPEG q95）、\n"
-            "glb+jpeg75（JPEG q75）"),
-    ZH_HANT("逗號分隔：ply,obj,gltf,glb,stl [{0}]。\n"
-            "搭配 --color texture 時，格式後可加紋理編碼：\n"
-            "glb+png（預設）、glb+jpg（JPEG q95）、\n"
-            "glb+jpeg75（JPEG q75）"),
-    KO("쉼표로 구분: ply,obj,gltf,glb,stl [{0}].\n"
-       "--color texture 일 때는 형식에 텍스처 부호화를 붙일 수\n"
-       "있습니다: glb+png(기본), glb+jpg(JPEG q95),\n"
-       "glb+jpeg75(JPEG q75)"),
-    DE("kommagetrennt: ply,obj,gltf,glb,stl [{0}].\n"
-       "Mit --color texture kann ein Format eine\n"
-       "Texturkodierung tragen: glb+png (Vorgabe),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    FR("séparés par des virgules : ply,obj,gltf,glb,stl [{0}].\n"
-       "Avec --color texture, un format peut porter un\n"
-       "encodage de texture : glb+png (défaut),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    ES("separados por comas: ply,obj,gltf,glb,stl [{0}].\n"
-       "Con --color texture, un formato puede llevar una\n"
-       "codificación de textura: glb+png (por defecto),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    PT("separados por vírgulas: ply,obj,gltf,glb,stl [{0}].\n"
-       "Com --color texture, um formato pode levar uma\n"
-       "codificação de textura: glb+png (padrão),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    IT("separati da virgole: ply,obj,gltf,glb,stl [{0}].\n"
-       "Con --color texture un formato può portare una\n"
-       "codifica di texture: glb+png (predefinito),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    NL("kommagescheiden: ply,obj,gltf,glb,stl [{0}].\n"
-       "Met --color texture kan een formaat een\n"
-       "textuurcodering dragen: glb+png (standaard),\n"
-       "glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
-    RU("через запятую: ply,obj,gltf,glb,stl [{0}].\n"
-       "С --color texture формат может нести кодировку\n"
-       "текстуры: glb+png (по умолчанию), glb+jpg (JPEG q95),\n"
-       "glb+jpeg75 (JPEG q75)"),
-    TR("virgülle ayrılmış: ply,obj,gltf,glb,stl [{0}].\n"
-       "--color texture ile bir biçim doku kodlaması\n"
-       "taşıyabilir: glb+png (varsayılan), glb+jpg (JPEG q95),\n"
-       "glb+jpeg75 (JPEG q75)"));
+    EN("comma-separated: ply,obj,gltf,glb,stl [{0}]. With --color texture a format may carry a texture encoding: glb+png (default), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
+    JA("カンマ区切り: ply,obj,gltf,glb,stl [{0}]。 --color texture のときは形式にテクスチャの符号化を 付けられます: glb+png（既定）、glb+jpg（JPEG q95）、 glb+jpeg75（JPEG q75）"),
+    ZH_HANS("逗号分隔：ply,obj,gltf,glb,stl [{0}]。 配合 --color texture 时，格式后可加纹理编码： glb+png（默认）、glb+jpg（JPEG q95）、 glb+jpeg75（JPEG q75）"),
+    ZH_HANT("逗號分隔：ply,obj,gltf,glb,stl [{0}]。 搭配 --color texture 時，格式後可加紋理編碼： glb+png（預設）、glb+jpg（JPEG q95）、 glb+jpeg75（JPEG q75）"),
+    KO("쉼표로 구분: ply,obj,gltf,glb,stl [{0}]. --color texture 일 때는 형식에 텍스처 부호화를 붙일 수 있습니다: glb+png(기본), glb+jpg(JPEG q95), glb+jpeg75(JPEG q75)"),
+    DE("kommagetrennt: ply,obj,gltf,glb,stl [{0}]. Mit --color texture kann ein Format eine Texturkodierung tragen: glb+png (Vorgabe), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
+    FR("Formats séparés par virgules : ply,obj,gltf,glb,stl [{0}].\n--color texture : glb+png (défaut), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)."),
+    ES("Formatos separados por comas: ply,obj,gltf,glb,stl [{0}].\n--color texture: glb+png (por defecto), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)."),
+    PT("Formatos separados por vírgulas: ply,obj,gltf,glb,stl [{0}].\n--color texture: glb+png (padrão), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)."),
+    IT("Formati separati da virgole: ply,obj,gltf,glb,stl [{0}].\n--color texture: glb+png (predefinito), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)."),
+    NL("kommagescheiden: ply,obj,gltf,glb,stl [{0}]. Met --color texture kan een formaat een textuurcodering dragen: glb+png (standaard), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
+    RU("через запятую: ply,obj,gltf,glb,stl [{0}]. С --color texture формат может нести кодировку текстуры: glb+png (по умолчанию), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"),
+    TR("virgülle ayrılmış: ply,obj,gltf,glb,stl [{0}]. --color texture ile bir biçim doku kodlaması taşıyabilir: glb+png (varsayılan), glb+jpg (JPEG q95), glb+jpeg75 (JPEG q75)"));
 
 SS_MSG(help_color,
-    EN("comma-separated: none,vertex,texture [{0}]\n"
-       "(one run may write several; a pair no format can\n"
-       "carry, such as PLY with a texture, is skipped)"),
-    JA("カンマ区切り: none,vertex,texture [{0}]\n"
-       "（1 回の実行で複数書けます。PLY にテクスチャのように\n"
-       "形式が持てない組み合わせは飛ばします）"),
-    ZH_HANS("逗号分隔：none,vertex,texture [{0}]\n"
-            "（一次运行可写多个；格式装不下的组合，\n"
-            "例如 PLY 配纹理，会跳过）"),
-    ZH_HANT("逗號分隔：none,vertex,texture [{0}]\n"
-            "（一次執行可寫多個；格式裝不下的組合，\n"
-            "例如 PLY 配紋理，會跳過）"),
-    KO("쉼표로 구분: none,vertex,texture [{0}]\n"
-       "(한 번의 실행으로 여러 개를 쓸 수 있으며, 텍스처를 붙인\n"
-       "PLY 처럼 형식이 담을 수 없는 조합은 건너뜁니다)"),
-    DE("kommagetrennt: none,vertex,texture [{0}]\n"
-       "(ein Lauf kann mehrere schreiben; ein Paar, das kein\n"
-       "Format tragen kann, etwa PLY mit Textur, wird\n"
-       "übersprungen)"),
-    FR("séparés par des virgules : none,vertex,texture [{0}]\n"
-       "(une exécution peut en écrire plusieurs ; une paire\n"
-       "qu'aucun format ne porte, comme PLY avec texture,\n"
-       "est ignorée)"),
-    ES("separados por comas: none,vertex,texture [{0}]\n"
-       "(una ejecución puede escribir varios; un par que\n"
-       "ningún formato admite, como PLY con textura, se omite)"),
-    PT("separados por vírgulas: none,vertex,texture [{0}]\n"
-       "(uma execução pode escrever vários; um par que nenhum\n"
-       "formato aceita, como PLY com textura, é ignorado)"),
-    IT("separati da virgole: none,vertex,texture [{0}]\n"
-       "(un'esecuzione può scriverne più di uno; una coppia che\n"
-       "nessun formato può portare, come PLY con texture,\n"
-       "viene saltata)"),
-    NL("kommagescheiden: none,vertex,texture [{0}]\n"
-       "(één run kan er meerdere schrijven; een paar dat geen\n"
-       "formaat kan dragen, zoals PLY met textuur, wordt\n"
-       "overgeslagen)"),
-    RU("через запятую: none,vertex,texture [{0}]\n"
-       "(за один запуск можно записать несколько; пара, которую\n"
-       "не несёт ни один формат, например PLY с текстурой,\n"
-       "пропускается)"),
-    TR("virgülle ayrılmış: none,vertex,texture [{0}]\n"
-       "(bir çalıştırma birkaçını yazabilir; hiçbir biçimin\n"
-       "taşıyamadığı bir çift, dokulu PLY gibi, atlanır)"));
+    EN("comma-separated: none,vertex,texture [{0}] (one run may write several; a pair no format can carry, such as PLY with a texture, is skipped)"),
+    JA("カンマ区切り: none,vertex,texture [{0}] （1 回の実行で複数書けます。PLY にテクスチャのように 形式が持てない組み合わせは飛ばします）"),
+    ZH_HANS("逗号分隔：none,vertex,texture [{0}] （一次运行可写多个；格式装不下的组合， 例如 PLY 配纹理，会跳过）"),
+    ZH_HANT("逗號分隔：none,vertex,texture [{0}] （一次執行可寫多個；格式裝不下的組合， 例如 PLY 配紋理，會跳過）"),
+    KO("쉼표로 구분: none,vertex,texture [{0}] (한 번의 실행으로 여러 개를 쓸 수 있으며, 텍스처를 붙인 PLY 처럼 형식이 담을 수 없는 조합은 건너뜁니다)"),
+    DE("kommagetrennt: none,vertex,texture [{0}] (ein Lauf kann mehrere schreiben; ein Paar, das kein Format tragen kann, etwa PLY mit Textur, wird übersprungen)"),
+    FR("séparés par des virgules : none,vertex,texture [{0}] (une exécution peut en écrire plusieurs ; une paire qu'aucun format ne porte, comme PLY avec texture, est ignorée)"),
+    ES("separados por comas: none,vertex,texture [{0}] (una ejecución puede escribir varios; un par que ningún formato admite, como PLY con textura, se omite)"),
+    PT("separados por vírgulas: none,vertex,texture [{0}] (uma execução pode escrever vários; um par que nenhum formato aceita, como PLY com textura, é ignorado)"),
+    IT("Separati da virgole: none,vertex,texture [{0}]. Un’esecuzione può usarne più di uno; combinazioni incompatibili come PLY con texture sono saltate."),
+    NL("kommagescheiden: none,vertex,texture [{0}] (één run kan er meerdere schrijven; een paar dat geen formaat kan dragen, zoals PLY met textuur, wordt overgeslagen)"),
+    RU("через запятую: none,vertex,texture [{0}] (за один запуск можно записать несколько; пара, которую не несёт ни один формат, например PLY с текстурой, пропускается)"),
+    TR("virgülle ayrılmış: none,vertex,texture [{0}] (bir çalıştırma birkaçını yazabilir; hiçbir biçimin taşıyamadığı bir çift, dokulu PLY gibi, atlanır)"));
 
 SS_MSG(help_texture_size,
     EN("texture atlas resolution; 0 takes it from the\n"

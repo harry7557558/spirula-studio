@@ -37,54 +37,19 @@ SS_MSG(tagline,
        "kümesi"));
 
 SS_MSG(usage_about,
-    EN("Writes the images the scan carries, their poses and a thinned copy of "
-       "its point cloud as a dataset the trainer opens directly: images/, "
-       "transforms.json and sparse_pc.ply. The folder defaults to one beside "
-       "the scan, named after it."),
-    JA("スキャンに含まれる画像とその姿勢、間引いた点群を、トレーナーがそのまま"
-       "開けるデータセット（images/、transforms.json、sparse_pc.ply）として"
-       "書き出します。フォルダを指定しなければ、スキャンの隣に同じ名前で作ります。"),
-    ZH_HANS("把扫描中的图像、它们的位姿和精简后的点云写成训练器可直接打开的数据集："
-            "images/、transforms.json 和 sparse_pc.ply。默认文件夹位于扫描文件旁，"
-            "与其同名。"),
-    ZH_HANT("把掃描中的影像、它們的位姿和精簡後的點雲寫成訓練器可直接開啟的資料集："
-            "images/、transforms.json 和 sparse_pc.ply。預設資料夾位於掃描檔旁，"
-            "與其同名。"),
-    KO("스캔에 담긴 이미지와 그 자세, 솎아 낸 포인트 클라우드를 트레이너가 바로 "
-       "여는 데이터셋(images/, transforms.json, sparse_pc.ply)으로 씁니다. "
-       "폴더를 지정하지 않으면 스캔 옆에 같은 이름으로 만듭니다."),
-    DE("Schreibt die Bilder des Scans, ihre Posen und eine ausgedünnte Kopie "
-       "seiner Punktwolke als Datensatz, den der Trainer direkt öffnet: "
-       "images/, transforms.json und sparse_pc.ply. Ohne Angabe liegt der "
-       "Ordner neben dem Scan und trägt seinen Namen."),
-    FR("Écrit les images du scan, leurs poses et une copie allégée de son nuage "
-       "de points sous forme d'un jeu de données que l'entraînement ouvre "
-       "directement : images/, transforms.json et sparse_pc.ply. Par défaut, le "
-       "dossier est placé à côté du scan et porte son nom."),
-    ES("Escribe las imágenes del escaneo, sus poses y una copia aligerada de su "
-       "nube de puntos como un conjunto de datos que el entrenador abre "
-       "directamente: images/, transforms.json y sparse_pc.ply. Por defecto, la "
-       "carpeta queda junto al escaneo y lleva su nombre."),
-    PT("Grava as imagens da varredura, suas poses e uma cópia reduzida da nuvem "
-       "de pontos como um conjunto de dados que o treinador abre diretamente: "
-       "images/, transforms.json e sparse_pc.ply. Por padrão, a pasta fica ao "
-       "lado da varredura, com o mesmo nome."),
-    IT("Scrive le immagini della scansione, le loro pose e una copia sfoltita "
-       "della nuvola di punti come un set di dati che l'addestratore apre "
-       "direttamente: images/, transforms.json e sparse_pc.ply. Per impostazione "
-       "predefinita la cartella sta accanto alla scansione, con lo stesso nome."),
-    NL("Schrijft de beelden van de scan, hun poses en een uitgedunde kopie van "
-       "de puntenwolk als een dataset die de trainer direct opent: images/, "
-       "transforms.json en sparse_pc.ply. Standaard komt de map naast de scan, "
-       "met dezelfde naam."),
-    RU("Записывает изображения скана, их позы и прореженную копию облака точек "
-       "как набор данных, который тренажёр открывает сразу: images/, "
-       "transforms.json и sparse_pc.ply. По умолчанию папка создаётся рядом со "
-       "сканом и называется так же."),
-    TR("Taramadaki görüntüleri, pozlarını ve nokta bulutunun seyreltilmiş bir "
-       "kopyasını eğiticinin doğrudan açtığı bir veri kümesi olarak yazar: "
-       "images/, transforms.json ve sparse_pc.ply. Varsayılan klasör taramanın "
-       "yanında, onunla aynı adla oluşturulur."));
+    EN("Export scan photos, poses and thinned points as images/, transforms.json and sparse_pc.ply.\nDefault output: beside the scan, with the same name."),
+    JA("スキャンの写真・姿勢・間引いた点群を images/、transforms.json、sparse_pc.ply として書き出します。\n既定の出力先はスキャンの隣の同名フォルダ。"),
+    ZH_HANS("将扫描照片、位姿及稀疏化点云导出为 images/、transforms.json、sparse_pc.ply。\n默认输出到扫描文件旁的同名文件夹。"),
+    ZH_HANT("將掃描相片、位姿及稀疏化點雲匯出為 images/、transforms.json、sparse_pc.ply。\n預設輸出到掃描檔旁的同名資料夾。"),
+    KO("스캔 사진·자세·줄인 점군을 images/, transforms.json, sparse_pc.ply로 내보냅니다.\n기본 출력은 스캔 옆의 같은 이름 폴더입니다."),
+    DE("Scanfotos, Posen und ausgedünnte Punkte als images/, transforms.json und sparse_pc.ply exportieren.\nStandardziel: neben dem Scan, mit gleichem Namen."),
+    FR("Exporte photos, poses et points réduits vers images/, transforms.json et sparse_pc.ply.\nSortie par défaut : à côté du scan, sous le même nom."),
+    ES("Exporta fotos, poses y puntos reducidos como images/, transforms.json y sparse_pc.ply.\nDestino por defecto: junto al escaneo, con el mismo nombre."),
+    PT("Exporta fotos, poses e pontos reduzidos como images/, transforms.json e sparse_pc.ply.\nDestino padrão: ao lado da varredura, com o mesmo nome."),
+    IT("Esporta foto, pose e punti ridotti come images/, transforms.json e sparse_pc.ply.\nDestinazione default: accanto alla scansione, con lo stesso nome."),
+    NL("Exporteer scanfoto’s, poses en uitgedunde punten als images/, transforms.json en sparse_pc.ply.\nStandaard: naast de scan, met dezelfde naam."),
+    RU("Экспортирует снимки, позы и прореженные точки в images/, transforms.json и sparse_pc.ply.\nПо умолчанию: рядом со сканом, под тем же именем."),
+    TR("Tarama fotoğrafları, pozlar ve seyreltilmiş noktaları images/, transforms.json ve sparse_pc.ply olarak yazar.\nVarsayılan: tarama yanında, aynı adla."));
 
 SS_MSG(head_options,
     EN("Options"), JA("オプション"), ZH_HANS("选项"), ZH_HANT("選項"),
@@ -702,52 +667,19 @@ SS_MSG(title,
     TR("E57'den veri kümesi oluştur"));
 
 SS_MSG(intro,
-    EN("A laser scanner that also takes photos has already placed every one of "
-       "them. This writes them out as a dataset, with their poses and a thinned "
-       "copy of the scan's point cloud to start the splats from, so training "
-       "needs no reconstruction."),
-    JA("写真も撮るレーザースキャナーは、すべての写真の位置をすでに求めています。"
-       "ここでは写真をその姿勢と、スプラットの出発点になる間引いた点群と一緒に"
-       "データセットとして書き出すので、再構成なしで学習できます。"),
-    ZH_HANS("同时拍照的激光扫描仪已经确定了每张照片的位置。这里把照片连同位姿和"
-            "精简后的点云（作为高斯点的起点）写成数据集，训练无需重建。"),
-    ZH_HANT("同時拍照的雷射掃描儀已經確定了每張照片的位置。這裡把照片連同位姿和"
-            "精簡後的點雲（作為高斯點的起點）寫成資料集，訓練無需重建。"),
-    KO("사진도 찍는 레이저 스캐너는 이미 모든 사진의 위치를 알고 있습니다. 여기서는 "
-       "사진을 자세, 그리고 스플랫의 출발점이 될 솎아 낸 포인트 클라우드와 함께 "
-       "데이터셋으로 써서, 재구성 없이 학습할 수 있게 합니다."),
-    DE("Ein Laserscanner, der auch fotografiert, hat jedes Foto bereits "
-       "platziert. Hier werden sie mit ihren Posen und einer ausgedünnten Kopie "
-       "der Punktwolke als Startpunkte für die Splats in einen Datensatz "
-       "geschrieben, sodass das Training keine Rekonstruktion braucht."),
-    FR("Un scanner laser qui prend aussi des photos les a déjà toutes placées. "
-       "Elles sont écrites ici en jeu de données, avec leurs poses et une copie "
-       "allégée du nuage de points pour démarrer les splats : l'entraînement se "
-       "passe de reconstruction."),
-    ES("Un escáner láser que también toma fotos ya ha situado cada una de "
-       "ellas. Aquí se escriben como un conjunto de datos, con sus poses y una "
-       "copia aligerada de la nube de puntos para iniciar los splats, así que el "
-       "entrenamiento no necesita reconstrucción."),
-    PT("Um scanner a laser que também tira fotos já posicionou cada uma delas. "
-       "Aqui elas são gravadas como um conjunto de dados, com suas poses e uma "
-       "cópia reduzida da nuvem de pontos para iniciar os splats, de modo que o "
-       "treino dispensa reconstrução."),
-    IT("Uno scanner laser che scatta anche foto le ha già posizionate tutte. "
-       "Qui vengono scritte come set di dati, con le loro pose e una copia "
-       "sfoltita della nuvola di punti da cui far partire gli splat, così "
-       "l'addestramento non richiede ricostruzione."),
-    NL("Een laserscanner die ook foto's maakt, heeft elke foto al geplaatst. "
-       "Hier worden ze als dataset geschreven, met hun poses en een uitgedunde "
-       "kopie van de puntenwolk om de splats mee te beginnen, zodat de training "
-       "geen reconstructie nodig heeft."),
-    RU("Лазерный сканер, который ещё и фотографирует, уже знает, где снят каждый "
-       "кадр. Здесь снимки записываются как набор данных вместе с позами и "
-       "прореженной копией облака точек, с которой начинаются сплаты, поэтому "
-       "обучению не нужна реконструкция."),
-    TR("Fotoğraf da çeken bir lazer tarayıcı her fotoğrafın yerini zaten "
-       "belirlemiştir. Burada fotoğraflar pozlarıyla ve splat'lerin başlangıcı "
-       "olacak seyreltilmiş nokta bulutuyla birlikte bir veri kümesine yazılır; "
-       "eğitim yeniden oluşturma gerektirmez."));
+    EN("Build a training dataset from scan photos, their known poses and a thinned point cloud. No reconstruction needed."),
+    JA("スキャン写真、既知の姿勢、間引いた点群から学習用データセットを作ります。再構成は不要です。"),
+    ZH_HANS("用扫描照片、已知位姿及稀疏化点云生成训练数据集，无需重建。"),
+    ZH_HANT("用掃描相片、已知位姿及稀疏化點雲產生訓練資料集，無需重建。"),
+    KO("스캔 사진, 알려진 자세, 줄인 점군으로 학습 데이터셋을 만듭니다. 재구성은 필요 없습니다."),
+    DE("Trainingsdatensatz aus Scanfotos, bekannten Posen und ausgedünnter Punktwolke erstellen. Keine Rekonstruktion nötig."),
+    FR("Crée un jeu d’entraînement avec les photos du scan, leurs poses connues et un nuage réduit. Sans reconstruction."),
+    ES("Crea datos de entrenamiento con fotos del escaneo, poses conocidas y nube reducida. No hace falta reconstrucción."),
+    PT("Cria dados de treino com fotos da varredura, poses conhecidas e nuvem reduzida. Não precisa de reconstrução."),
+    IT("Crea dati di training da foto della scansione, pose note e nuvola ridotta. Non serve ricostruzione."),
+    NL("Maak trainingsgegevens van scanfoto’s, bekende poses en een uitgedunde wolk. Geen reconstructie nodig."),
+    RU("Создаёт набор для обучения из снимков скана, известных поз и прореженного облака. Реконструкция не нужна."),
+    TR("Tarama fotoğrafları, bilinen pozlar ve seyreltilmiş buluttan eğitim verisi oluşturur. Yeniden oluşturma gerekmez."));
 
 SS_MSG(source,
     EN("E57 file"), JA("E57 ファイル"), ZH_HANS("E57 文件"), ZH_HANT("E57 檔案"),
@@ -827,57 +759,19 @@ SS_MSG(points,
     NL("Beginpunten"), RU("Начальные точки"), TR("Başlangıç noktaları"));
 
 SS_MSG(points_help,
-    EN("The scan's point cloud is thinned to about this many points, one per "
-       "voxel, so the splats start evenly over everything the scanner saw "
-       "rather than crowded around each station. The trainer's own maximum "
-       "still applies. 0 writes no cloud."),
-    JA("スキャンの点群をボクセルごとに 1 点へ間引いて、およそこの数にします。"
-       "スプラットは各設置点のまわりに偏らず、スキャナーが見た範囲全体から均等に"
-       "始まります。トレーナー側の上限はそのまま効きます。0 なら点群を書き出し"
-       "ません。"),
-    ZH_HANS("把扫描点云按体素精简到约这么多个点（每个体素一个），让高斯点均匀地"
-            "从扫描仪看到的所有地方开始，而不是挤在每个测站周围。训练器自身的上限"
-            "仍然有效。0 表示不写点云。"),
-    ZH_HANT("把掃描點雲按體素精簡到約這麼多個點（每個體素一個），讓高斯點均勻地"
-            "從掃描儀看到的所有地方開始，而不是擠在每個測站周圍。訓練器自身的上限"
-            "仍然有效。0 表示不寫點雲。"),
-    KO("스캔 포인트 클라우드를 복셀마다 한 점씩 솎아 대략 이만큼으로 만듭니다. "
-       "그래서 스플랫이 각 설치 지점 주변에 몰리지 않고 스캐너가 본 모든 곳에서 "
-       "고르게 시작합니다. 트레이너 자체의 최대값은 그대로 적용됩니다. 0이면 "
-       "클라우드를 쓰지 않습니다."),
-    DE("Die Punktwolke des Scans wird auf etwa so viele Punkte ausgedünnt, "
-       "einer je Voxel, damit die Splats gleichmäßig überall beginnen, wo der "
-       "Scanner hingesehen hat, statt sich um jeden Standpunkt zu drängen. Das "
-       "Maximum des Trainers gilt weiterhin. 0 schreibt keine Wolke."),
-    FR("Le nuage de points du scan est allégé à environ ce nombre de points, un "
-       "par voxel, pour que les splats partent uniformément de tout ce que le "
-       "scanner a vu plutôt que de s'entasser autour de chaque station. Le "
-       "maximum de l'entraînement reste appliqué. 0 n'écrit aucun nuage."),
-    ES("La nube de puntos del escaneo se aligera hasta unos tantos puntos, uno "
-       "por vóxel, para que los splats empiecen de forma uniforme en todo lo que "
-       "vio el escáner en vez de amontonarse alrededor de cada estación. El "
-       "máximo del entrenador sigue vigente. 0 no escribe ninguna nube."),
-    PT("A nuvem de pontos da varredura é reduzida a cerca de tantos pontos, um "
-       "por voxel, para que os splats comecem de forma uniforme em tudo o que o "
-       "scanner viu, em vez de se amontoarem em volta de cada estação. O máximo "
-       "do treinador continua valendo. 0 não grava nuvem."),
-    IT("La nuvola di punti della scansione viene sfoltita a circa questo numero "
-       "di punti, uno per voxel, così gli splat partono in modo uniforme da "
-       "tutto ciò che lo scanner ha visto invece di ammassarsi attorno a ogni "
-       "stazione. Il massimo dell'addestratore resta valido. 0 non scrive "
-       "alcuna nuvola."),
-    NL("De puntenwolk van de scan wordt uitgedund tot ongeveer zoveel punten, "
-       "één per voxel, zodat de splats gelijkmatig beginnen overal waar de "
-       "scanner keek in plaats van rond elke opstelling samen te klonteren. Het "
-       "maximum van de trainer blijft gelden. 0 schrijft geen wolk."),
-    RU("Облако точек скана прореживается примерно до стольких точек, по одной на "
-       "воксель, чтобы сплаты начинались равномерно везде, куда смотрел сканер, "
-       "а не скапливались вокруг каждой станции. Собственный максимум тренажёра "
-       "по-прежнему действует. 0 -- облако не записывается."),
-    TR("Taramanın nokta bulutu voksel başına bir nokta olacak şekilde yaklaşık "
-       "bu kadar noktaya seyreltilir; böylece splat'ler her istasyonun çevresinde "
-       "yığılmak yerine tarayıcının gördüğü her yerden eşit başlar. Eğiticinin "
-       "kendi üst sınırı yine geçerlidir. 0 bulut yazmaz."));
+    EN("Approximate seed point count, thinned to one point per voxel. The trainer’s maximum still applies. 0 writes no cloud."),
+    JA("ボクセルごとに1点へ間引いた初期点数の目安。トレーナーの上限も適用されます。0は点群を書き出しません。"),
+    ZH_HANS("初始点数约值，按每个体素一点稀疏化。仍受训练器上限约束；0 不写出点云。"),
+    ZH_HANT("初始點數約值，按每個體素一點稀疏化。仍受訓練器上限約束；0 不寫出點雲。"),
+    KO("복셀당 한 점으로 줄인 대략적인 초기 점 수입니다. 트레이너 상한도 적용됩니다. 0은 점군을 쓰지 않습니다."),
+    DE("Ungefähre Startpunktzahl, auf einen Punkt pro Voxel ausgedünnt. Das Trainermaximum gilt weiterhin. 0 schreibt keine Wolke."),
+    FR("Nombre approximatif de points initiaux, un par voxel. La limite du moteur d’entraînement s’applique aussi. 0 n’écrit aucun nuage."),
+    ES("Cantidad aproximada de puntos iniciales, uno por vóxel. Sigue aplicándose el máximo del entrenador. 0 no escribe nube."),
+    PT("Número aproximado de pontos iniciais, um por voxel. O máximo do treinador ainda se aplica. 0 não grava nuvem."),
+    IT("Numero indicativo di punti iniziali, uno per voxel. Vale anche il massimo del trainer. 0 non scrive la nuvola."),
+    NL("Geschat aantal beginpunten, uitgedund tot één per voxel. Het maximum van de trainer blijft gelden. 0 schrijft geen wolk."),
+    RU("Примерное число начальных точек, по одной на воксель. Ограничение тренера тоже действует. 0 не записывает облако."),
+    TR("Voksel başına bir noktaya seyreltilmiş yaklaşık başlangıç noktası sayısı. Eğitici sınırı da geçerlidir. 0 bulut yazmaz."));
 
 SS_MSG(use_pinhole,
     EN("Pinhole images"), JA("ピンホール画像"), ZH_HANS("针孔图像"),
@@ -953,49 +847,19 @@ SS_MSG(use_all_points,
     TR("Tüm noktaları kullan"));
 
 SS_MSG(use_all_points_help,
-    EN("Seed with the scan's whole point cloud instead of a thinned copy. A "
-       "large scan makes a large file, and the trainer still keeps at most its "
-       "Maximum splats of them, drawn at random, so raise that too."),
-    JA("間引いたコピーではなく、スキャンの点群全体を初期点にします。大きなスキャン"
-       "ではファイルも大きくなります。トレーナーはスプラット数の上限までしか残さず、"
-       "残りを無作為に捨てるので、その値も上げてください。"),
-    ZH_HANS("用扫描的完整点云而不是精简副本作为初始点。大扫描会生成大文件，而且训练"
-            "器最多只随机保留“泼溅数量上限”个点，所以也请调高该值。"),
-    ZH_HANT("用掃描的完整點雲而不是精簡副本作為初始點。大掃描會產生大檔案，而且訓練"
-            "器最多只隨機保留「潑濺數量上限」個點，所以也請調高該值。"),
-    KO("솎아 낸 사본 대신 스캔의 전체 포인트 클라우드를 초기 점으로 씁니다. 큰 "
-       "스캔은 큰 파일이 되고, 트레이너는 최대 스플랫 수까지만 무작위로 남기므로 "
-       "그 값도 올리세요."),
-    DE("Mit der ganzen Punktwolke des Scans statt einer ausgedünnten Kopie "
-       "beginnen. Ein großer Scan ergibt eine große Datei, und der Trainer behält "
-       "davon höchstens seine Höchstzahl der Splats, zufällig gezogen – diese "
-       "also ebenfalls erhöhen."),
-    FR("Partir du nuage de points complet du scan plutôt que d'une copie "
-       "allégée. Un grand scan donne un grand fichier, et l'entraînement n'en "
-       "garde au plus que son nombre maximal de splats, tirés au hasard : "
-       "augmentez-le aussi."),
-    ES("Empezar con la nube de puntos completa del escaneo en vez de una copia "
-       "aligerada. Un escaneo grande produce un archivo grande, y el entrenador "
-       "solo conserva como mucho su número máximo de splats, elegidos al azar, "
-       "así que súbalo también."),
-    PT("Começar com a nuvem de pontos completa da varredura em vez de uma cópia "
-       "reduzida. Uma varredura grande gera um arquivo grande, e o treinador "
-       "mantém no máximo o seu número máximo de splats, sorteados, então "
-       "aumente-o também."),
-    IT("Partire dall'intera nuvola di punti della scansione invece che da una "
-       "copia sfoltita. Una scansione grande produce un file grande, e "
-       "l'addestratore ne tiene al massimo il suo numero massimo di splat, "
-       "estratti a caso: aumentalo anche."),
-    NL("Beginnen met de volledige puntenwolk van de scan in plaats van een "
-       "uitgedunde kopie. Een grote scan geeft een groot bestand, en de trainer "
-       "houdt er hoogstens zijn maximum aantal splats van over, willekeurig "
-       "gekozen, dus verhoog dat ook."),
-    RU("Начинать с полного облака точек скана, а не с прореженной копии. "
-       "Большой скан даёт большой файл, а тренажёр оставит из него не больше "
-       "своего максимума сплатов, выбранных случайно, так что увеличьте и его."),
-    TR("İnceltilmiş bir kopya yerine taramanın tüm nokta bulutuyla başla. Büyük "
-       "bir tarama büyük bir dosya üretir ve eğitici bunlardan en fazla splat "
-       "sayısı kadarını rastgele tutar; onu da artırın."));
+    EN("Use the full scan cloud: larger files. Training still randomly keeps at most Maximum splats points; raise that limit too."),
+    JA("スキャンの全点群を使い、ファイルが大きくなります。学習時はスプラット数上限までランダムに残すので、上限も上げてください。"),
+    ZH_HANS("使用完整扫描点云，文件会更大。训练仍随机保留不超过“最大高斯数”的点，需同时提高该上限。"),
+    ZH_HANT("使用完整掃描點雲，檔案會更大。訓練仍隨機保留不超過「最大高斯數」的點，需同時提高該上限。"),
+    KO("전체 스캔 점군을 사용해 파일이 커집니다. 학습은 최대 스플랫 수만큼 무작위로 남기므로 그 상한도 높이세요."),
+    DE("Volle Scanwolke nutzen: größere Dateien. Das Training behält zufällig höchstens Maximum Splats Punkte; diese Grenze ebenfalls erhöhen."),
+    FR("Utilise tout le nuage : fichiers plus gros. L’entraînement garde au hasard au plus le maximum de splats ; augmentez aussi cette limite."),
+    ES("Usa toda la nube: archivos mayores. El entrenamiento conserva al azar hasta el máximo de splats; aumenta también ese límite."),
+    PT("Usa a nuvem inteira: arquivos maiores. O treino retém aleatoriamente até o máximo de splats; aumente esse limite também."),
+    IT("Usa tutta la nuvola: file più grandi. Il training conserva a caso fino al massimo di splat; aumenta anche quel limite."),
+    NL("Gebruik de hele scanwolk: grotere bestanden. Training behoudt willekeurig hoogstens Maximum splats punten; verhoog die grens ook."),
+    RU("Использует всё облако: файл больше. Обучение случайно оставляет не больше максимума сплатов; увеличьте и этот предел."),
+    TR("Tüm tarama bulutunu kullanır: dosya büyür. Eğitim en fazla Maksimum splat sayısı kadar rastgele nokta tutar; bu sınırı da artırın."));
 
 SS_MSG(depth_maps,
     EN("Depth and normal maps from the scan"),
@@ -1013,46 +877,19 @@ SS_MSG(depth_maps,
     TR("Taramadan derinlik ve normal haritaları"));
 
 SS_MSG(depth_maps_help,
-    EN("Renders what the laser measured behind each pixel into depths/ and "
-       "normals/, where the trainer's depth and normal supervision read it. "
-       "Pixels the scan did not reach, the sky among them, are left without."),
-    JA("レーザーが各画素の奥で測った距離を depths/ と normals/ に書き出します。"
-       "トレーナーの深度・法線の教師信号はここから読みます。スキャンが届かなかった"
-       "画素（空など）には何も入れません。"),
-    ZH_HANS("把激光在每个像素后方测得的结果渲染到 depths/ 和 normals/，训练器的"
-            "深度与法线监督从这里读取。扫描未覆盖的像素（包括天空）留空。"),
-    ZH_HANT("把雷射在每個像素後方測得的結果渲染到 depths/ 和 normals/，訓練器的"
-            "深度與法線監督從這裡讀取。掃描未涵蓋的像素（包括天空）留空。"),
-    KO("레이저가 각 픽셀 뒤에서 잰 값을 depths/와 normals/에 그려 넣습니다. "
-       "트레이너의 깊이·법선 지도 학습이 여기서 읽습니다. 스캔이 닿지 않은 "
-       "픽셀(하늘 등)은 비워 둡니다."),
-    DE("Rendert, was der Laser hinter jedem Pixel gemessen hat, nach depths/ "
-       "und normals/, wo die Tiefen- und Normalenüberwachung des Trainers liest. "
-       "Pixel, die der Scan nicht erreicht hat, darunter der Himmel, bleiben leer."),
-    FR("Rend ce que le laser a mesuré derrière chaque pixel dans depths/ et "
-       "normals/, où la supervision de profondeur et de normales de "
-       "l'entraînement le lit. Les pixels que le scan n'a pas atteints, dont le "
-       "ciel, restent vides."),
-    ES("Renderiza lo que el láser midió detrás de cada píxel en depths/ y "
-       "normals/, de donde leen la supervisión de profundidad y de normales del "
-       "entrenador. Los píxeles que el escaneo no alcanzó, entre ellos el cielo, "
-       "quedan vacíos."),
-    PT("Renderiza o que o laser mediu atrás de cada pixel em depths/ e normals/, "
-       "de onde a supervisão de profundidade e de normais do treinador lê. Os "
-       "pixels que a varredura não alcançou, entre eles o céu, ficam vazios."),
-    IT("Rende ciò che il laser ha misurato dietro ogni pixel in depths/ e "
-       "normals/, da cui leggono la supervisione di profondità e normali "
-       "dell'addestratore. I pixel che la scansione non ha raggiunto, cielo "
-       "compreso, restano vuoti."),
-    NL("Rendert wat de laser achter elke pixel mat naar depths/ en normals/, "
-       "waar de diepte- en normaalsupervisie van de trainer het leest. Pixels "
-       "die de scan niet bereikte, waaronder de lucht, blijven leeg."),
-    RU("Записывает в depths/ и normals/ то, что лазер измерил за каждым "
-       "пикселем; оттуда их читает контроль глубины и нормалей тренажёра. "
-       "Пиксели, до которых скан не дошёл, в том числе небо, остаются пустыми."),
-    TR("Lazerin her pikselin ardında ölçtüğünü depths/ ve normals/ içine işler; "
-       "eğiticinin derinlik ve normal denetimi buradan okur. Taramanın "
-       "ulaşmadığı pikseller, gökyüzü dahil, boş bırakılır."));
+    EN("Write scan depth and normal maps to depths/ and normals/ for training. Pixels with no scan coverage have no supervision."),
+    JA("学習用の深度・法線を depths/ と normals/ に書きます。スキャンが届かない画素は教師データなしになります。"),
+    ZH_HANS("将扫描深度和法线写入 depths/ 与 normals/ 用于训练。扫描未覆盖的像素无监督数据。"),
+    ZH_HANT("將掃描深度和法線寫入 depths/ 與 normals/ 用於訓練。掃描未覆蓋的像素無監督資料。"),
+    KO("학습용 스캔 깊이와 법선을 depths/와 normals/에 씁니다. 스캔이 없는 픽셀에는 지도 데이터가 없습니다."),
+    DE("Scantiefen und Normalen für das Training nach depths/ und normals/ schreiben. Pixel ohne Scanabdeckung liefern keine Vorgaben."),
+    FR("Écrit profondeur et normales dans depths/ et normals/ pour l’entraînement. Les pixels non couverts par le scan n’ont pas de cible."),
+    ES("Escribe profundidad y normales en depths/ y normals/ para entrenar. Los píxeles sin cobertura del escaneo no tienen supervisión."),
+    PT("Grava profundidade e normais em depths/ e normals/ para treino. Pixels sem cobertura da varredura não têm supervisão."),
+    IT("Scrive profondità e normali in depths/ e normals/ per il training. I pixel non coperti dalla scansione non hanno supervisione."),
+    NL("Schrijft scandiepte en normalen naar depths/ en normals/ voor training. Pixels buiten de scan krijgen geen supervisie."),
+    RU("Пишет глубину и нормали скана в depths/ и normals/ для обучения. Пиксели вне скана не получают целевых данных."),
+    TR("Tarama derinliği ve normallerini eğitim için depths/ ve normals/ içine yazar. Tarama dışındaki pikseller için hedef veri yoktur."));
 
 SS_MSG(preview_frames,
     EN("Extracting the photos to try the mask on..."),

@@ -325,7 +325,7 @@ std::map<std::string, float> engine_train_step_managed(
 {
     if (!engine().dm) {
         throw std::runtime_error(
-            "engine_train_step_managed: DataManager not configured — "
+            "engine_train_step_managed: DataManager not configured -- "
             "call engine_setup_data_manager(...) first.");
     }
 
@@ -428,7 +428,7 @@ std::map<std::string, float> engine_train_step_managed(
         if (b.K > 1 || !b.input_source_models.empty()) {
             throw std::runtime_error(
                 "engine_train_step_managed: warp sub-batch (K>1 or re-distort) "
-                "inside a multi-sub-batch step — the scheduler must never pack "
+                "inside a multi-sub-batch step -- the scheduler must never pack "
                 "these.");
         }
         build_bg_idx(b, bg_bufs[i]);
@@ -566,7 +566,7 @@ static int _install_and_forward(const DecodedBatch& b, std::string primitive,
 int engine_eval_forward(int index, std::string primitive, int sh_degree, bool packed) {
     if (!engine().dm)
         throw std::runtime_error(
-            "engine_eval_forward: DataManager not configured — call "
+            "engine_eval_forward: DataManager not configured -- call "
             "engine_setup_data_manager(...) with the eval split first.");
 
     static DecodedBatch b;
@@ -584,7 +584,7 @@ int engine_preview_forward(int index, std::string primitive, int sh_degree,
                            int pass, int* out_passes) {
     if (!engine().dm)
         throw std::runtime_error(
-            "engine_preview_forward: DataManager not configured — call "
+            "engine_preview_forward: DataManager not configured -- call "
             "engine_setup_data_manager(...) first.");
 
     // Static: the buffers the views point into must outlive the forward, and

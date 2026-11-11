@@ -1631,41 +1631,19 @@ SS_MSG(gps_no_fix,
     TR("Konum kilidi yok (gösterilir, kullanılmaz): {0}"));
 
 SS_MSG(gps_no_fix_help,
-    EN("Positions the receiver itself did not mark as a fix, often the last "
-       "place it saw the sky. They are marked × in amber on the map, and the "
-       "reconstruction leaves them out."),
-    JA("受信機自身が測位として示さなかった位置です。多くは最後に空が見えた場所で"
-       "す。地図上に黄色の × で示し、再構成では使いません。"),
-    ZH_HANS("接收器自身未标记为定位的位置，通常是它最后一次看到天空的地方。在地图上用"
-            "黄色 × 标出，重建不会使用。"),
-    ZH_HANT("接收器本身未標記為定位的位置，通常是它最後一次看到天空的地方。在地圖上以"
-            "黃色 × 標出，重建不會使用。"),
-    KO("수신기가 스스로 측위로 표시하지 않은 위치로, 대개 마지막으로 하늘이 보인 "
-       "곳입니다. 지도에 노란색 ×로 표시하며 재구성에는 쓰지 않습니다."),
-    DE("Positionen, die der Empfänger selbst nicht als Fix markiert hat, oft "
-       "der Ort, an dem er zuletzt den Himmel sah. Auf der Karte gelb mit × "
-       "markiert; die Rekonstruktion lässt sie weg."),
-    FR("Positions que le récepteur lui-même n'a pas marquées comme fixées, "
-       "souvent le dernier endroit où il voyait le ciel. Marquées × en jaune "
-       "sur la carte ; la reconstruction les écarte."),
-    ES("Posiciones que el propio receptor no marcó como fijas, a menudo el "
-       "último lugar donde vio el cielo. Se marcan con × en amarillo en el "
-       "mapa y la reconstrucción las descarta."),
-    PT("Posições que o próprio receptor não marcou como fixas, muitas vezes o "
-       "último lugar onde viu o céu. Marcadas com × em amarelo no mapa; a "
-       "reconstrução deixa-as de fora."),
-    IT("Posizioni che il ricevitore stesso non ha segnato come fix, spesso "
-       "l'ultimo punto in cui vedeva il cielo. Segnate con × in giallo sulla "
-       "mappa; la ricostruzione le esclude."),
-    NL("Posities die de ontvanger zelf niet als fix markeerde, vaak de laatste "
-       "plek waar hij de hemel zag. Op de kaart geel gemarkeerd met ×; de "
-       "reconstructie laat ze weg."),
-    RU("Положения, которые сам приёмник не отметил как фиксацию, часто последнее "
-       "место, где он видел небо. На карте отмечены жёлтым ×, реконструкция их "
-       "не использует."),
-    TR("Alıcının kendisinin konum kilidi olarak işaretlemediği konumlar; çoğu "
-       "zaman gökyüzünü son gördüğü yer. Haritada sarı × ile işaretlidir ve "
-       "yeniden oluşturma bunları kullanmaz."));
+    EN("Positions the receiver itself did not mark as a fix, often the last place it saw the sky.\nThey are marked × in amber on the map, and the reconstruction leaves them out."),
+    JA("受信機自身が測位として示さなかった位置です。\n- 多くは最後に空が見えた場所です。\n- 地図上に黄色の × で示し、再構成では使いません。"),
+    ZH_HANS("接收器自身未标记为定位的位置，通常是它最后一次看到天空的地方。\n在地图上用黄色 × 标出，重建不会使用。"),
+    ZH_HANT("接收器本身未標記為定位的位置，通常是它最後一次看到天空的地方。\n在地圖上以黃色 × 標出，重建不會使用。"),
+    KO("수신기가 스스로 측위로 표시하지 않은 위치로, 대개 마지막으로 하늘이 보인 곳입니다.\n지도에 노란색 ×로 표시하며 재구성에는 쓰지 않습니다."),
+    DE("Positionen, die der Empfänger selbst nicht als Fix markiert hat, oft der Ort, an dem er zuletzt den Himmel sah. Auf der Karte gelb mit × markiert; die Rekonstruktion lässt sie weg."),
+    FR("Positions que le récepteur lui-même n'a pas marquées comme fixées, souvent le dernier endroit où il voyait le ciel.\nMarquées × en jaune sur la carte ; la reconstruction les écarte."),
+    ES("Posiciones que el propio receptor no marcó como fijas, a menudo el último lugar donde vio el cielo.\nSe marcan con × en amarillo en el mapa y la reconstrucción las descarta."),
+    PT("Posições que o próprio receptor não marcou como fixas, muitas vezes o último lugar onde viu o céu.\nMarcadas com × em amarelo no mapa; a reconstrução deixa-as de fora."),
+    IT("Posizioni che il ricevitore stesso non ha segnato come fix, spesso l'ultimo punto in cui vedeva il cielo.\nSegnate con × in giallo sulla mappa; la ricostruzione le esclude."),
+    NL("Posities die de ontvanger zelf niet als fix markeerde, vaak de laatste plek waar hij de hemel zag.\nOp de kaart geel gemarkeerd met ×; de reconstructie laat ze weg."),
+    RU("Положения, которые сам приёмник не отметил как фиксацию, часто последнее место, где он видел небо.\nНа карте отмечены жёлтым ×, реконструкция их не использует."),
+    TR("Alıcının kendisinin konum kilidi olarak işaretlemediği konumlar; çoğu zaman gökyüzünü son gördüğü yer.\nHaritada sarı × ile işaretlidir ve yeniden oluşturma bunları kullanmaz."));
 
 SS_MSG(map_fit,
     EN("Fit"),
@@ -1805,44 +1783,19 @@ SS_MSG(track_3d,
     TR("3D"));
 
 SS_MSG(track_3d_help,
-    EN("The track in 3D, its height included: altitude that drifts shows as a "
-       "slope or a step. Drag to turn it, right-drag to move it, scroll to "
-       "zoom, double-click to fit."),
-    JA("高さも含めた 3D の軌跡です。高度がずれていくと、坂や段差として見えます。"
-       "ドラッグで回転、右ドラッグで移動、スクロールで拡大縮小、ダブルクリックで"
-       "全体表示。"),
-    ZH_HANS("包含高度的 3D 轨迹：漂移的高度会显示为斜坡或台阶。拖动可旋转，右键拖动可"
-            "移动，滚轮可缩放，双击可适应。"),
-    ZH_HANT("包含高度的 3D 軌跡：漂移的高度會顯示為斜坡或台階。拖曳可旋轉，右鍵拖曳可"
-            "移動，捲動可縮放，按兩下可符合。"),
-    KO("높이까지 담은 3D 궤적입니다. 고도가 틀어지면 비탈이나 계단으로 보입니다"
-       ". 끌면 회전, 오른쪽 버튼으로 끌면 이동, 스크롤하면 확대·축소, 더블클릭하"
-       "면 맞춥니다."),
-    DE("Die Spur in 3D, mit ihrer Höhe: eine wegdriftende Höhe zeigt sich als "
-       "Steigung oder Stufe. Ziehen dreht, Ziehen mit der rechten Taste "
-       "verschiebt, Scrollen zoomt, Doppelklick passt ein."),
-    FR("La trace en 3D, altitude comprise : une altitude qui dérive se voit "
-       "comme une pente ou une marche. Faites glisser pour tourner, glissez "
-       "avec le bouton droit pour déplacer, défilez pour zoomer, double-cliquez "
-       "pour ajuster."),
-    ES("La traza en 3D, con su altura: una altitud que deriva se ve como una "
-       "pendiente o un escalón. Arrastra para girarla, arrastra con el botón "
-       "derecho para moverla, desplaza para hacer zoom, doble clic para ajustar."),
-    PT("O trajeto em 3D, com a altura: uma altitude que deriva aparece como uma "
-       "rampa ou um degrau. Arraste para girar, arraste com o botão direito "
-       "para mover, role para dar zoom, clique duas vezes para ajustar."),
-    IT("La traccia in 3D, altezza compresa: un'altitudine che deriva si vede "
-       "come una salita o un gradino. Trascina per ruotarla, trascina col tasto "
-       "destro per spostarla, scorri per lo zoom, doppio clic per adattarla."),
-    NL("Het spoor in 3D, met de hoogte erbij: een hoogte die wegdrijft is te "
-       "zien als een helling of een trede. Slepen draait, slepen met de "
-       "rechterknop verschuift, scrollen zoomt, dubbelklikken maakt passend."),
-    RU("Трек в 3D, вместе с высотой: уплывающая высота видна как склон или "
-       "ступенька. Перетаскивание вращает, перетаскивание правой кнопкой "
-       "сдвигает, прокрутка масштабирует, двойной щелчок вписывает."),
-    TR("Yüksekliğiyle birlikte 3D iz: kayan yükseklik bir eğim ya da basamak "
-       "olarak görünür. Döndürmek için sürükleyin, taşımak için sağ tuşla "
-       "sürükleyin, yakınlaştırmak için kaydırın, sığdırmak için çift tıklayın."));
+    EN("The track in 3D, its height included: altitude that drifts shows as a slope or a step.\nDrag to turn it, right-drag to move it, scroll to zoom, double-click to fit."),
+    JA("高さも含めた 3D の軌跡です。 高度がずれていくと、坂や段差として見えます。\nドラッグで回転、右ドラッグで移動、スクロールで拡大縮小、ダブルクリックで全体表示。"),
+    ZH_HANS("包含高度的 3D 轨迹：漂移的高度会显示为斜坡或台阶。拖动可旋转，右键拖动可移动，滚轮可缩放，双击可适应。"),
+    ZH_HANT("包含高度的 3D 軌跡：漂移的高度會顯示為斜坡或台階。拖曳可旋轉，右鍵拖曳可移動，捲動可縮放，按兩下可符合。"),
+    KO("높이까지 담은 3D 궤적입니다. 고도가 틀어지면 비탈이나 계단으로 보입니다.\n끌면 회전, 오른쪽 버튼으로 끌면 이동, 스크롤하면 확대·축소, 더블클릭하면 맞춥니다."),
+    DE("Die Spur in 3D, mit ihrer Höhe: eine wegdriftende Höhe zeigt sich als Steigung oder Stufe.\nZiehen dreht, Ziehen mit der rechten Taste verschiebt, Scrollen zoomt, Doppelklick passt ein."),
+    FR("Trace en 3D : la dérive d’altitude forme une pente ou une marche.\nGlisser : tourner ; glisser droit : déplacer ; molette : zoom ; double-clic : ajuster."),
+    ES("Traza en 3D: la deriva de altitud forma una pendiente o escalón.\nArrastrar: girar; botón derecho: mover; rueda: zoom; doble clic: ajustar."),
+    PT("O trajeto em 3D, com a altura: uma altitude que deriva aparece como uma rampa ou um degrau.\nArraste para girar, arraste com o botão direito para mover, role para dar zoom, clique duas vezes para ajustar."),
+    IT("La traccia in 3D, altezza compresa: un'altitudine che deriva si vede come una salita o un gradino.\nTrascina per ruotarla, trascina col tasto destro per spostarla, scorri per lo zoom, doppio clic per adattarla."),
+    NL("Het spoor in 3D, met de hoogte erbij: een hoogte die wegdrijft is te zien als een helling of een trede.\nSlepen draait, slepen met de rechterknop verschuift, scrollen zoomt, dubbelklikken maakt passend."),
+    RU("Трек в 3D: дрейф высоты виден как склон или ступенька.\nПеретаскивание: вращать; правой кнопкой: сдвигать; колесо: масштаб; двойной щелчок: вписать."),
+    TR("3D iz: yükseklik kayması eğim ya da basamak olarak görünür.\nSürükle: döndür; sağ sürükle: taşı; kaydır: yakınlaştır; çift tık: sığdır."));
 
 SS_MSG(height_scale,
     EN("Height"),
@@ -1890,52 +1843,19 @@ SS_MSG(height_auto,
     TR("Otomatik ({0})"));
 
 SS_MSG(height_scale_help,
-    EN("Stretches the heights, so that a few metres of drift along a long track "
-       "can be seen. Auto stretches until the climb is a fifth of the track's "
-       "width; at 1× the track is true to scale. The ruler is in true metres "
-       "either way."),
-    JA("高さを引き伸ばして、長い軌跡に沿った数メートルの高度のずれを見えるように"
-       "します。自動では、上り下りの幅が軌跡の幅の 5 分の 1 になるまで引き伸ばし"
-       "ます。1× では縮尺どおりです。目盛りはどちらでも実際のメートルです。"),
-    ZH_HANS("拉伸高度，让长轨迹上几米的高度漂移也能看出来。“自动”会拉伸到高度起伏等于"
-            "轨迹宽度的五分之一；1× 时比例真实。两种情况下标尺都是真实的米数。"),
-    ZH_HANT("拉伸高度，讓長軌跡上幾公尺的高度漂移也能看出來。「自動」會拉伸到高度起伏"
-            "等於軌跡寬度的五分之一；1× 時比例真實。兩種情況下尺規都是真實的公尺數。"),
-    KO("높이를 늘려서 긴 궤적을 따라 생긴 몇 미터의 고도 틀어짐도 보이게 합니다"
-       ". 자동은 오르내림이 궤적 폭의 5분의 1이 될 때까지 늘립니다. 1×이면 실제 "
-       "축척입니다. 눈금자는 어느 경우든 실제 미터입니다."),
-    DE("Streckt die Höhen, damit ein paar Meter Drift entlang einer langen Spur "
-       "zu sehen sind. Automatisch streckt, bis der Höhenunterschied ein "
-       "Fünftel der Spurbreite ist; bei 1× ist die Spur maßstabsgetreu. Das "
-       "Lineal zeigt in jedem Fall echte Meter."),
-    FR("Étire les hauteurs, pour que quelques mètres de dérive le long d'une "
-       "longue trace se voient. Auto étire jusqu'à ce que le dénivelé fasse un "
-       "cinquième de la largeur de la trace ; à 1×, la trace est à l'échelle. "
-       "La règle est en vrais mètres dans tous les cas."),
-    ES("Estira las alturas para que se vean unos pocos metros de deriva a lo "
-       "largo de una traza larga. Auto estira hasta que el desnivel sea una "
-       "quinta parte del ancho de la traza; a 1× la traza está a escala. La "
-       "regla está en metros reales en ambos casos."),
-    PT("Estica as alturas, para que alguns metros de deriva ao longo de um "
-       "trajeto longo apareçam. Auto estica até o desnível ser um quinto da "
-       "largura do trajeto; em 1× o trajeto está em escala. A régua fica em "
-       "metros reais nos dois casos."),
-    IT("Allunga le altezze, perché si vedano pochi metri di deriva lungo una "
-       "traccia lunga. Auto allunga finché il dislivello è un quinto della "
-       "larghezza della traccia; a 1× la traccia è in scala. Il righello è in "
-       "metri veri in ogni caso."),
-    NL("Rekt de hoogtes uit, zodat een paar meter drift langs een lang spoor te "
-       "zien is. Automatisch rekt uit tot het hoogteverschil een vijfde van de "
-       "breedte van het spoor is; bij 1× is het spoor op schaal. De liniaal is "
-       "hoe dan ook in echte meters."),
-    RU("Растягивает высоты, чтобы стали видны несколько метров дрейфа вдоль "
-       "длинного трека. «Авто» растягивает, пока перепад высот не станет пятой "
-       "частью ширины трека; при 1× трек в масштабе. Линейка в любом случае в "
-       "настоящих метрах."),
-    TR("Uzun bir iz boyunca birkaç metrelik kaymanın görülebilmesi için "
-       "yükseklikleri uzatır. Otomatik, yükseklik farkı izin genişliğinin beşte "
-       "biri olana dek uzatır; 1× konumunda iz ölçeğine uygundur. Cetvel her "
-       "durumda gerçek metredir."));
+    EN("Stretches the heights, so that a few metres of drift along a long track can be seen.\n- Auto stretches until the climb is a fifth of the track's width; at 1× the track is true to scale.\n- The ruler is in true metres either way."),
+    JA("高さを引き伸ばして、長い軌跡に沿った数メートルの高度のずれを見えるようにします。\n- 自動では、上り下りの幅が軌跡の幅の 5 分の 1 になるまで引き伸ばします。 1× では縮尺どおりです。\n- 目盛りはどちらでも実際のメートルです。"),
+    ZH_HANS("拉伸高度，让长轨迹上几米的高度漂移也能看出来。 “自动”会拉伸到高度起伏等于轨迹宽度的五分之一； 1× 时比例真实。\n两种情况下标尺都是真实的米数。"),
+    ZH_HANT("拉伸高度，讓長軌跡上幾公尺的高度漂移也能看出來。 「自動」會拉伸到高度起伏等於軌跡寬度的五分之一； 1× 時比例真實。\n兩種情況下尺規都是真實的公尺數。"),
+    KO("높이를 늘려서 긴 궤적을 따라 생긴 몇 미터의 고도 틀어짐도 보이게 합니다.\n- 자동은 오르내림이 궤적 폭의 5분의 1이 될 때까지 늘립니다. 1×이면 실제 축척입니다.\n- 눈금자는 어느 경우든 실제 미터입니다."),
+    DE("Streckt die Höhen, damit ein paar Meter Drift entlang einer langen Spur zu sehen sind.\n- Automatisch streckt, bis der Höhenunterschied ein Fünftel der Spurbreite ist; bei 1× ist die Spur maßstabsgetreu.\n- Das Lineal zeigt in jedem Fall echte Meter."),
+    FR("Étire les hauteurs, pour que quelques mètres de dérive le long d'une longue trace se voient.\n- Auto étire jusqu'à ce que le dénivelé fasse un cinquième de la largeur de la trace ;\n- à 1×, la trace est à l'échelle. La règle est en vrais mètres dans tous les cas."),
+    ES("Estira las alturas para que se vean unos pocos metros de deriva a lo largo de una traza larga.\n- Auto estira hasta que el desnivel sea una quinta parte del ancho de la traza; a 1× la traza está a escala.\n- La regla está en metros reales en ambos casos."),
+    PT("Estica as alturas, para que alguns metros de deriva ao longo de um trajeto longo apareçam.\n- Auto estica até o desnível ser um quinto da largura do trajeto; em 1× o trajeto está em escala.\n- A régua fica em metros reais nos dois casos."),
+    IT("Allunga le altezze, perché si vedano pochi metri di deriva lungo una traccia lunga.\n- Auto allunga finché il dislivello è un quinto della larghezza della traccia; a 1× la traccia è in scala.\n- Il righello è in metri veri in ogni caso."),
+    NL("Rekt de hoogtes uit, zodat een paar meter drift langs een lang spoor te zien is.\n- Automatisch rekt uit tot het hoogteverschil een vijfde van de breedte van het spoor is;\n- bij 1× is het spoor op schaal. De liniaal is hoe dan ook in echte meters."),
+    RU("Растягивает высоты, чтобы стали видны несколько метров дрейфа вдоль длинного трека.\n- «Авто» растягивает, пока перепад высот не станет пятой частью ширины трека; при 1× трек в масштабе.\n- Линейка в любом случае в настоящих метрах."),
+    TR("Uzun bir iz boyunca birkaç metrelik kaymanın görülebilmesi için yükseklikleri uzatır.\n- Otomatik, yükseklik farkı izin genişliğinin beşte biri olana dek uzatır; 1× konumunda iz ölçeğine uygundur.\n- Cetvel her durumda gerçek metredir."));
 
 SS_MSG(no_altitude,
     EN("No altitude was recorded: the track is drawn flat."),

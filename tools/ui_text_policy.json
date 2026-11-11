@@ -1,0 +1,299 @@
+{
+  "roles": {
+    "tooltip": {
+      "max_lines": 3
+    },
+    "interface": {
+      "max_lines": 3
+    },
+    "cli": {
+      "max_lines": 3
+    },
+    "legal": {
+      "max_lines": null
+    }
+  },
+  "catalogs": {
+    "Cli.h": {
+      "role": "cli",
+      "reason": "Command-line messages."
+    },
+    "Data.h": {
+      "role": "cli",
+      "reason": "Dataset diagnostics and terminal output."
+    },
+    "Log.h": {
+      "role": "cli",
+      "reason": "Job logs, also displayed in the GUI terminal."
+    },
+    "Mesh.h": {
+      "role": "cli",
+      "reason": "Meshing subcommand output."
+    },
+    "Sfm.h": {
+      "role": "cli",
+      "reason": "Reconstruction subcommand output."
+    },
+    "SfmHelp.h": {
+      "role": "cli",
+      "reason": "Command-line help."
+    },
+    "SamHelp.h": {
+      "role": "cli",
+      "reason": "Command-line help."
+    },
+    "Train.h": {
+      "role": "cli",
+      "reason": "Training command-line messages."
+    }
+  },
+  "messages": {
+    "Dense.h:help": {
+      "role": "cli",
+      "reason": "Dense command-line overview."
+    },
+    "Dense.h:terms": {
+      "role": "legal",
+      "reason": "Model download consent summary."
+    },
+    "Dataset.h:license_sam3_summary": {
+      "role": "legal",
+      "reason": "Model download consent summary; review separately from tooltips."
+    },
+    "Dataset.h:license_flexglue_terms": {
+      "role": "legal",
+      "reason": "Model download consent summary."
+    },
+    "Dataset.h:mask_shrink_help": {
+      "role": "tooltip",
+      "reason": "Mask margin control hover help."
+    },
+    "Dataset.h:mask_dilate_help": {
+      "role": "tooltip",
+      "reason": "Mask margin control hover help."
+    },
+    "MaskEdit.h:hint_pen": {
+      "role": "interface",
+      "reason": "Persistent pen instructions below the editor."
+    }
+  },
+  "lists": {
+    "max_items": 4,
+    "max_item_lines": 2,
+    "max_total_lines": 8
+  },
+  "exclusions": {
+    "SfmFields.h:metric_gps_help": {
+      "reason": "GPS modes have source-specific automatic defaults, altitude/tilt consequences and minimum capture scale. Review per-mode setup details so compact copy retains these decisions.",
+      "usage": "src/sfm/SfmConfig.cpp: printConfigOptions for --metric-gps"
+    },
+    "SfmFields.h:level_help": {
+      "reason": "Ground leveling rotates and centers unmeasured models but only shifts sensor-leveled ones vertically. Review a per-mode explanation to retain coordinate-frame consequences.",
+      "usage": "src/sfm/SfmConfig.cpp: printConfigOptions for leveling"
+    },
+    "SfmFields.h:seam_weld_help": {
+      "reason": "Welding has several joint eligibility conditions (100+ verified matches, unexplained fraction, almost no shared neighbors) and a disabling value. Review a clear condition list rather than silently omit a guard.",
+      "usage": "src/sfm/SfmConfig.cpp: printConfigOptions for --seam-weld"
+    },
+    "Sfm.h:metric_done": {
+      "reason": "Nine formatted quantities include metric units and a lower-bound uncertainty assumption. A structured diagnostic layout needs review before changing labels or dropping the statistical qualification.",
+      "usage": "src/sfm/Pipeline.cpp: metric_done emitted after metric alignment"
+    },
+    "Sfm.h:sensor_verify_summary": {
+      "reason": "Six diagnostic counts distinguish retained inliers, rejected matches, gyro-only verification, disagreement and reversed turn. Review a structured diagnostic display to keep these counts interpretable.",
+      "usage": "src/sfm/Pipeline.cpp: sensor_verify_summary after gyro-constrained verification"
+    },
+    "Dataset.h:sfm_metric_gps_help": {
+      "reason": "Combines GPS mode selection, altitude-induced tilt risk, minimum capture extent, unscaled fallback, and per-source automatic defaults. These are consequential choices; needs per-mode details or an explicit help view before removing information.",
+      "usage": "src/app/gui/GuiApp.cpp:8762 hover help for metric GPS alignment"
+    },
+    "Dataset.h:rig_dual_fisheye_help": {
+      "reason": "Documents required folder/file-name layout and synchronized exposures, plus the rig constraints. Incorrect activation can misconstruct a scene; review a short tooltip plus setup instructions.",
+      "usage": "src/app/gui/GuiApp.cpp:5780 hover help for manual dual-fisheye rig setup"
+    },
+    "Dataset.h:stencil_tool_pen_help": {
+      "reason": "Shortcut reference covering construction, cancellation, anchor editing and handles. A compact gesture reference or explicit detailed help is preferable to deleting discoverable controls.",
+      "usage": "src/app/gui/SegmentPanel.cpp:1317 pen-tool hover help"
+    },
+    "Dataset.h:pano360_output_help": {
+      "reason": "Explains why perspective output avoids the dual-lens parallax seam and why a panorama can degrade reconstruction. Review the output tradeoff with a short summary and accessible details.",
+      "usage": "src/app/gui/GuiApp.cpp:5603 hover help for 360 output choice"
+    },
+    "Dataset.h:sfm_sensor_gauge_help": {
+      "reason": "Combines IMU scale/up-axis semantics, confidence-based rejection, missing sensors and when to ignore corrupt telemetry. Needs per-choice details to preserve failure-mode guidance.",
+      "usage": "src/app/gui/GuiApp.cpp:8768 hover help for video IMU use"
+    },
+    "Dataset.h:sfm_exif_attitude_help": {
+      "reason": "Explains drone attitude orientation, bad up-axis estimates for downward-facing cameras, disagreement rejection and invalid EXIF override. Review how to retain this diagnostic guidance outside hover text.",
+      "usage": "src/app/gui/GuiApp.cpp:8774 hover help for EXIF camera attitude"
+    },
+    "Dataset.h:photo_import_convert_help": {
+      "reason": "Image conversion changes encoding, preserves transparency as a separate training mask, and exempts high-bit-depth/EXR and existing JPEG. Needs concise format-specific presentation without hiding conversion consequences.",
+      "usage": "src/app/gui/GuiApp.cpp:4856 photo-import mode help table"
+    },
+    "Dataset.h:stencil_rows_help": {
+      "reason": "Documents the non-obvious live inheritance between input/lens rows and when choosing a value breaks it. Needs a UI explanation of inheritance instead of losing behavior from the tooltip.",
+      "usage": "src/app/gui/GuiApp.cpp:2876 first-column stencil-row hover help"
+    },
+    "Dataset.h:stencil_per_camera_help": {
+      "reason": "Describes initialization from shared shapes and the destructive-looking transition back to one set, which retains the displayed camera's settings. Preserve this transition consequence in a clearer layout.",
+      "usage": "src/app/gui/SegmentPanel.cpp:1564 per-camera stencil toggle hover help"
+    },
+    "Dataset.h:stencil_save_help": {
+      "reason": "Explains which shapes save, exclusion of fitted lens circles, normalized coordinates and per-camera restoration/reuse. This is file-format and workflow guidance that needs a separate help destination.",
+      "usage": "src/app/gui/SegmentPanel.cpp:1499 disabled-aware save-stencil hover help"
+    },
+    "Dataset.h:colmap_distortion_refinement_help": {
+      "reason": "Contains backend-specific optimization timing, stability guidance and lens-dependent automatic defaults. Prefer explanations attached to the individual choices rather than deleting the defaults.",
+      "usage": "src/app/gui/GuiApp.cpp:8847 distortion-refinement choice hover help"
+    },
+    "Dataset.h:geom_model_marigold_blurb": {
+      "reason": "Describes model quality, measured runtime, depth scaling and installation size.",
+      "usage": "src/app/gui/GeometryRunner.cpp geometry model selection description"
+    },
+    "Dataset.h:rig_guess_help": {
+      "reason": "Rig inference also removes unmatched folders from rigs. That potentially surprising configuration change and synchronization/name assumptions warrant human review before simplifying.",
+      "usage": "src/app/gui/GuiApp.cpp automatic rig grouping hover help"
+    },
+    "Dataset.h:rig_help": {
+      "reason": "Explains fixed relative pose, same-letter grouping by filename and rigs spanning multiple input videos. These setup conventions need dedicated group/rig help to avoid silently losing requirements.",
+      "usage": "src/app/gui/GuiApp.cpp rig grouping hover help"
+    },
+    "Dense.h:reference_coverage_help": {
+      "reason": "Automatic reference selection is surface coverage rather than an image count, and zero changes the algorithm to all views. Needs detailed help or a per-mode explanation before compression.",
+      "usage": "src/app/gui/DensePanel.cpp:233 (advanced option hover help)"
+    },
+    "Dense.h:neighbors_help": {
+      "reason": "Meaning differs between automatic and original-image modes; automatic selection can take twice the partner count and three-image support needs at least two. Prefer mode-specific text before shortening.",
+      "usage": "src/app/gui/DensePanel.cpp:228 (advanced option hover help)"
+    },
+    "Dense.h:log_performance_help": {
+      "reason": "Names the recorded resource and progress measurements and where to find the logs.",
+      "usage": "src/app/gui/DensePanel.cpp:314 (performance logging hover help)"
+    },
+    "MaskEdit.h:hint_pen": {
+      "reason": "Persistent keyboard and mouse reference for the pen tool. Important modifier combinations would disappear if shortened to three lines; needs a shortcut reference or contextual hints.",
+      "usage": "src/app/gui/mask/MaskPanel.cpp:818 (TextDisabledWrapped)"
+    },
+    "Render.h:tr_help": {
+      "reason": "Explains a large effect list. Prefer descriptions for individual transition choices rather than deleting effects from the combined explanation.",
+      "usage": "src/app/gui/render/RenderPanel.cpp:1188 (transition choice hover help)"
+    },
+    "Render.h:tl_track_help": {
+      "reason": "Contains distinct timeline gestures and shot-transition handles. Needs a shortcut reference or hover help per handle rather than omitting controls.",
+      "usage": "src/app/gui/render/RenderTimeline.cpp:386 (timeline hover help)"
+    },
+    "Dense.h:help": {
+      "reason": "Combines file artifacts, config/checkpoint workflows, boolean syntax, pairing modes, and cycle/support constraints. Needs a structured command help page; reducing it to three items would remove usage requirements.",
+      "usage": "src/app/cli/dense_main.cpp:70 (dense command help overview)"
+    },
+    "Geometry.h:opt_install": {
+      "reason": "Preserves the Marigold download and installed sizes and the switches that choose the networks.",
+      "usage": "src/app/cli/geometry_main.cpp:120 (--install help)"
+    },
+    "Lidar.h:opt_scan_frames": {
+      "reason": "Three coordinate-frame modes include a non-obvious auto heuristic. Mode-specific help should preserve how separate scans are placed and when auto chooses shared.",
+      "usage": "src/app/cli/lidar_main.cpp:62 (--scan-frames help)"
+    },
+    "Lidar.h:usage_about": {
+      "reason": "Alignment rewrites a model in the scan frame and preserves a backup; it also emits visibility-tracked seed points and supervision maps. Needs an explicit input/output section to retain consequences of the write.",
+      "usage": "src/app/cli/lidar_main.cpp:47 (alignment command overview)"
+    },
+    "Partition.h:usage_intro": {
+      "reason": "Describes split artifacts, borrowed cameras, a complete train command and region-restricted merge semantics. A structured split/train/merge example is needed instead of abbreviating the workflow command.",
+      "usage": "src/app/cli/partition_main.cpp:48 (partition command overview)"
+    },
+    "Render.h:model_primitive_help": {
+      "reason": "Explains when automatic rendering selects 3DGUT and when it uses the trained primitive.",
+      "usage": "src/app/gui/render/RenderPanel.cpp:1113 (primitive selection hover help)"
+    },
+    "Render.h:pv_help": {
+      "reason": "Three preview layouts carry distinct resize, full-preview and steering gestures. Contextual help for each layout would preserve the controls while reducing the combined tooltip.",
+      "usage": "src/app/gui/render/RenderTimeline.cpp:104 (preview layout hover help)"
+    },
+    "SfmHelp.h:desc_auto_1": {
+      "reason": "Defines the multi-stage automatic pipeline, workspace artifacts and ordering of disconnected components. Needs a small pipeline/output section, not deletion of output semantics.",
+      "usage": "src/app/cli/sfm_main.cpp:190 (automatic reconstruction help)"
+    },
+    "SfmHelp.h:desc_auto_2": {
+      "reason": "Explains positional-path equivalence and automatic masks discovery. Needs a path example and explicit discovery note so shortening does not obscure which dataset is read.",
+      "usage": "src/app/cli/sfm_main.cpp:190 (automatic reconstruction input help)"
+    },
+    "SfmHelp.h:desc_extract_1": {
+      "reason": "Extraction memory behavior involves largest-first allocation, a shared GPU context and a decode-budget pool. Preserve operational guidance in a structured memory/performance section.",
+      "usage": "src/app/cli/sfm_main.cpp:201 (feature extraction overview)"
+    },
+    "SfmHelp.h:desc_match_2": {
+      "reason": "Describes fisheye verification, focal-length estimation and the camera settings carried into mapping.",
+      "usage": "src/app/cli/sfm_main.cpp:210 (matching calibration overview)"
+    },
+    "SfmHelp.h:desc_map_1": {
+      "reason": "Explains component outputs, their size ordering, shared-image merge and subsequent growth after incremental mapping. Needs structured stages and output layout.",
+      "usage": "src/app/cli/sfm_main.cpp:220 (mapping overview)"
+    },
+    "SfmHelp.h:desc_map_2": {
+      "reason": "Dataset-wide versus PREFIX=VALUE camera overrides coexist with verification-inherited calibration. A syntax example and precedence table should preserve both mechanisms.",
+      "usage": "src/app/cli/sfm_main.cpp:220 (mapping camera configuration help)"
+    },
+    "SfmHelp.h:opt_sequence": {
+      "reason": "Sequence ordering, temporal-neighbor trust, repeated geometry protection and shared-position camera groups are distinct constraints. Needs examples for videos and multi-lens rigs, not silent omission.",
+      "usage": "src/app/cli/sfm_main.cpp:157 and :176 (--sequence help)"
+    },
+    "SfmHelp.h:ba_desc_1": {
+      "reason": "Bundle adjustment defaults include Huber scale, rig-file precedence, overwrite semantics and CPU checkpoint fallback. Needs separate options/output/recovery help to retain these details.",
+      "usage": "src/app/cli/sfm_ba.cpp:51 (bundle-adjustment overview)"
+    },
+    "TrainFields.h:eval_align_help": {
+      "reason": "Defines four aligned/color-corrected metric families, mask variants, auto activation, and calibration-error interpretation. Needs a decision on per-metric reference help versus a short option description.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:log_performance_help": {
+      "reason": "Names the recorded resource and timing measurements and where to find the logs.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:warp_back_face_help": {
+      "reason": "Combines a >135-degree applicability rule, real rear-facing coverage caveat, appearance-slot/20% bilateral-grid memory cost, and unconditional six-face panoramas. Choose a concise layout preserving lens and memory warnings.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:scene_center_help": {
+      "reason": "Covers explicit coordinate choice, saved scene_transform.json, auto far-origin criterion, none behavior, and georeferenced precision risk. Decide which coordinate-frame details remain on-screen.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:background_mode_help": {
+      "reason": "Compares fixed color, three distinct stochastic patch scales, and learned skybox behavior. Decide whether patch-scale differences should move to individual-choice help rather than vanish from the summary.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:seed_pointcloud_help": {
+      "reason": "Includes dense/sparse selection, source coordinate frame, relative paths, seed-versus-trained-PLY distinction, and random/init/resume precedence. These setup interactions need deliberate grouping.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:dead_criterion_help": {
+      "reason": "Explains opacity and peak-contribution recycling, render-history half-life, hidden/out-of-view splats, and either composition. Decide where to put the precise time-decay definition before shortening.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:densify_loss_map_mode_help": {
+      "reason": "Enumerates more than ten error modes, NMS behavior and automatic mapping to perceptual loss. Three bullets cannot usefully explain the alternatives; needs per-choice help or a smaller summary plus reference.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:densify_learned_score_help": {
+      "reason": "Explains learned score fitting and its distinction from averaging, score scale, attribution at edges, and required densification/error modes. Review which preconditions and attribution explanation must remain.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:pca_reg_knn_help": {
+      "reason": "Compares exact and two Morton searches, approximation risks, and cached invalidation after adds/relocations. Choose a concise comparison layout while preserving accuracy and cache-update behavior.",
+      "usage": "src/app/gui/ConfigUI.cpp:538 (field_row); src/app/cli/main.cpp: print_help (training option help)"
+    },
+    "TrainFields.h:calib_correction_help": {
+      "reason": "Explains what per-photo warping corrects and how the basic and accurate modes differ.",
+      "usage": "src/app/gui/ConfigUI.cpp generated calib_correction row; src/app/cli/main.cpp training flag help"
+    },
+    "TrainFields.h:image_color_transfer_help": {
+      "reason": "Controls loss-domain input transfer with separate input-linearity semantics and HDR highlight behavior. Color-pipeline interpretation needs human review rather than losing the distinction between transfer and storage.",
+      "usage": "src/app/gui/ConfigUI.cpp generated image_color_transfer row; src/app/cli/main.cpp training flag help"
+    },
+    "TrainFields.h:splat_color_transfer_help": {
+      "reason": "Changes how high-range splat values explain clipped inputs and requires matching viewer transfer plus zero overexposure regularization. Human decision needed on presenting these coupled requirements.",
+      "usage": "src/app/gui/ConfigUI.cpp generated splat_color_transfer row; src/app/cli/main.cpp training flag help"
+    }
+  }
+}

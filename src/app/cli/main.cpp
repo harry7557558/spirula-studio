@@ -181,63 +181,6 @@ template <typename T, size_t N> std::string value_str(const std::array<T, N>& v)
     return s;
 }
 
-// ---- Help text shortening ---------------------------------------------------
-
-// Display columns of one UTF-8 codepoint: the CJK blocks are drawn full-width
-// in every terminal that can draw them at all, so a Japanese line fits half as
-// many characters as an English one.
-int char_columns(unsigned cp) {
-    return (cp >= 0x1100 && cp <= 0x115F) ||    // Hangul jamo
-           (cp >= 0x2E80 && cp <= 0xA4CF) ||    // radicals .. Yi
-           (cp >= 0xAC00 && cp <= 0xD7A3) ||    // Hangul syllables
-           (cp >= 0xF900 && cp <= 0xFAFF) ||    // compatibility ideographs
-           (cp >= 0xFE30 && cp <= 0xFE6F) ||    // CJK compatibility forms
-           (cp >= 0xFF00 && cp <= 0xFF60) ||    // full-width forms
-           (cp >= 0xFFE0 && cp <= 0xFFE6) ||
-           (cp >= 0x20000 && cp <= 0x3FFFD)     // ideographic planes
-           ? 2 : 1;
-}
-
-// The first sentence of a help string, cut to one terminal line. Not
-// substr(0, s.find(". ")): a CJK sentence ends in "。" with no space after
-// it, and a byte limit would both split a character and overflow the line.
-std::string help_summary(const char* text, size_t max_columns = 110) {
-    std::string s = text;
-
-    struct Ender { const char* text; size_t keep; };
-    static const Ender kEnders[] = {
-        {". ", 1}, {"! ", 1}, {"? ", 1},        // space-separated
-        {"\xe3\x80\x82", 3},                    // 。 ideographic full stop
-        {"\xef\xbc\x81", 3}, {"\xef\xbc\x9f", 3},  // ！ ？ full-width
-    };
-    size_t at = std::string::npos, keep = 0;
-    for (const Ender& e : kEnders) {
-        size_t p = s.find(e.text);
-        if (p != std::string::npos && (at == std::string::npos || p < at)) {
-            at = p;
-            keep = e.keep;
-        }
-    }
-    if (at != std::string::npos) s.resize(at + keep);
-
-    size_t cols = 0, i = 0;
-    while (i < s.size()) {
-        unsigned char c = (unsigned char)s[i];
-        size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : 4;
-        if (i + len > s.size()) break;
-        unsigned cp = c < 0x80 ? c : c & (0xFF >> (len + 1));
-        for (size_t k = 1; k < len; k++) cp = (cp << 6) | (s[i + k] & 0x3F);
-        size_t w = (size_t)char_columns(cp);
-        if (cols + w > max_columns - 3) {
-            s = s.substr(0, i) + "...";
-            break;
-        }
-        cols += w;
-        i += len;
-    }
-    return s;
-}
-
 // ---- Compute device listing / selection -----------------------------------
 
 // A Windows console renders ANSI colour only once asked to; a pipe or a file
@@ -386,15 +329,15 @@ void print_help(const char* argv0, const TrainConfig& c, int max_tier) {
         }                                                                      \
     }                                                                          \
     if (train_tier_rank(tier) <= max_tier) {                                   \
-        std::string h =                                                        \
-            help_summary(spirula::i18n::msg::field::member##_help.get());      \
         std::string ch = choices;                                              \
         std::string key_disp = #member;                                        \
         for (auto& ck : key_disp) if (ck == '_') ck = '-';                     \
-        std::printf("  --%-38s [%s]%s%s\n      %s\n", key_disp.c_str(),        \
+        std::printf("  --%-38s [%s]%s\n", key_disp.c_str(),                  \
                     value_str(c.member).c_str(),                               \
-                    train_choices_free_form(choices) ? "" : (" {" + ch + "}").c_str(), \
-                    "", h.c_str());                                            \
+                    train_choices_free_form(choices) ? "" : (" {" + ch + "}").c_str()); \
+        for (const std::string& line : i18n::wrap(                              \
+                 spirula::i18n::msg::field::member##_help.get(), 76))            \
+            std::printf("      %s\n", line.c_str());                           \
     }
     SS_CONFIG_FIELDS(SS_PRINT_HELP)
 #undef SS_PRINT_HELP

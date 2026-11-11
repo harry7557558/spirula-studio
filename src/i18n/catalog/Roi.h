@@ -22,41 +22,19 @@ SS_MSG(editor_button,
     RU("Область интереса"), TR("İlgi Bölgesi"));
 
 SS_MSG(editor_button_help,
-    EN("Mark the part of the scene to train with boxes, ellipsoids, cylinders and "
-       "outlines, added together or cut from each other. The trainer uses the saved "
-       "region on its own."),
-    JA("学習するシーンの範囲を、ボックス・楕円体・円柱・輪郭を足したり切り抜いたり"
-       "して指定します。保存した領域はトレーナーが自動で使います。"),
-    ZH_HANS("用盒、椭球、圆柱和轮廓相加或相减，标出要训练的场景范围。保存的区域会被"
-            "训练器自动使用。"),
-    ZH_HANT("用盒、橢球、圓柱和輪廓相加或相減，標出要訓練的場景範圍。儲存的區域會被"
-            "訓練器自動使用。"),
-    KO("상자, 타원체, 원기둥, 윤곽을 더하거나 잘라 내어 학습할 장면 범위를 지정합니다. "
-       "저장한 영역은 트레이너가 자동으로 사용합니다."),
-    DE("Den zu trainierenden Teil der Szene mit Quadern, Ellipsoiden, Zylindern und "
-       "Umrissen markieren, die addiert oder voneinander abgezogen werden. Der Trainer "
-       "nutzt den gespeicherten Bereich von selbst."),
-    FR("Délimiter la partie de la scène à entraîner avec des boîtes, ellipsoïdes, "
-       "cylindres et contours, ajoutés ou découpés les uns des autres. L'entraînement "
-       "utilise la région enregistrée de lui-même."),
-    ES("Marcar la parte de la escena que se entrena con cajas, elipsoides, cilindros y "
-       "contornos, sumados o recortados entre sí. El entrenador usa la región guardada "
-       "por sí solo."),
-    PT("Marcar a parte da cena a treinar com caixas, elipsoides, cilindros e "
-       "contornos, somados ou recortados uns dos outros. O treino usa a região guardada "
-       "por si só."),
-    IT("Delimitare la parte della scena da addestrare con scatole, ellissoidi, "
-       "cilindri e contorni, sommati o ritagliati l'uno dall'altro. L'addestramento usa "
-       "da solo la regione salvata."),
-    NL("Het te trainen deel van de scène aangeven met dozen, ellipsoïden, cilinders en "
-       "omtrekken, opgeteld of van elkaar afgetrokken. De trainer gebruikt het "
-       "opgeslagen gebied vanzelf."),
-    RU("Отметить обучаемую часть сцены коробками, эллипсоидами, цилиндрами и "
-       "контурами, складывая их или вырезая друг из друга. Сохранённую область "
-       "обучение использует само."),
-    TR("Eğitilecek sahne bölümünü kutular, elipsoitler, silindirler ve ana hatlarla, "
-       "bunları toplayarak ya da birbirinden keserek işaretleyin. Kaydedilen bölgeyi "
-       "eğitim kendiliğinden kullanır."));
+    EN("Mark the part of the scene to train with boxes, ellipsoids, cylinders and outlines, added together or cut from each other. The trainer uses the saved region on its own."),
+    JA("学習するシーンの範囲を、ボックス・楕円体・円柱・輪郭を足したり切り抜いたりして指定します。\n保存した領域はトレーナーが自動で使います。"),
+    ZH_HANS("用盒、椭球、圆柱和轮廓相加或相减，标出要训练的场景范围。保存的区域会被训练器自动使用。"),
+    ZH_HANT("用盒、橢球、圓柱和輪廓相加或相減，標出要訓練的場景範圍。儲存的區域會被訓練器自動使用。"),
+    KO("상자, 타원체, 원기둥, 윤곽을 더하거나 잘라 내어 학습할 장면 범위를 지정합니다.\n저장한 영역은 트레이너가 자동으로 사용합니다."),
+    DE("Trainingsbereich mit Quadern, Ellipsoiden, Zylindern und Umrissen durch Addition oder Abzug formen. Der Trainer nutzt ihn nach dem Speichern."),
+    FR("Délimite la zone d’entraînement par ajout ou retrait de boîtes, ellipsoïdes, cylindres et contours. La région enregistrée est utilisée automatiquement."),
+    ES("Marcar la parte de la escena que se entrena con cajas, elipsoides, cilindros y contornos, sumados o recortados entre sí. El entrenador usa la región guardada por sí solo."),
+    PT("Marcar a parte da cena a treinar com caixas, elipsoides, cilindros e contornos, somados ou recortados uns dos outros. O treino usa a região guardada por si só."),
+    IT("Delimitare la parte della scena da addestrare con scatole, ellissoidi, cilindri e contorni, sommati o ritagliati l'uno dall'altro. L'addestramento usa da solo la regione salvata."),
+    NL("Vorm het trainingsgebied door dozen, ellipsoïden, cilinders en omtrekken op te tellen of af te trekken. Na opslaan gebruikt de trainer het automatisch."),
+    RU("Отметить обучаемую часть сцены коробками, эллипсоидами, цилиндрами и контурами, складывая их или вырезая друг из друга. Сохранённую область обучение использует само."),
+    TR("Eğitim bölgesini kutu, elipsoit, silindir ve ana hatları ekleyip çıkararak belirler. Kaydedilen bölge eğitimde otomatik kullanılır."));
 
 SS_MSG(editor_title,
     EN("Region of Interest"), JA("関心領域"), ZH_HANS("感兴趣区域"), ZH_HANT("感興趣區域"),
@@ -351,41 +329,19 @@ SS_MSG(start_outline,
     RU("Контур, нарисованный в этом виде"), TR("Bu Görünümde Çizilen Ana Hat"));
 
 SS_MSG(start_outline_help,
-    EN("The view turns orthographic, looking the way it does now; click the corners "
-       "of the area as you see it. The outline runs along your line of sight, as deep "
-       "as the points inside it reach."),
-    JA("現在の向きのまま正射投影に切り替わります。見えているとおりに範囲の角をクリック"
-       "してください。輪郭は視線の方向に伸び、内側の点が届く深さまで取られます。"),
-    ZH_HANS("视图保持当前方向切换为正交投影；按所见点击区域的各个角。轮廓沿视线方向延伸，"
-            "深度覆盖其内部的点。"),
-    ZH_HANT("視圖保持目前方向切換為正交投影；依所見點擊區域的各個角。輪廓沿視線方向延伸，"
-            "深度涵蓋其內部的點。"),
-    KO("보기가 현재 방향 그대로 직교 투영으로 바뀝니다. 보이는 대로 영역의 모서리를 "
-       "클릭하세요. 윤곽은 시선 방향으로 뻗어, 안쪽 점들이 닿는 깊이까지 이어집니다."),
-    DE("Die Ansicht wird in ihrer jetzigen Richtung orthografisch; die Ecken des "
-       "Gebiets so anklicken, wie es zu sehen ist. Der Umriss reicht entlang der "
-       "Blickrichtung so tief wie die Punkte darin."),
-    FR("La vue passe en orthographique sans changer de direction ; cliquez les coins "
-       "de la zone telle que vous la voyez. Le contour s'étend le long de votre ligne "
-       "de visée, aussi loin que les points qu'il contient."),
-    ES("La vista pasa a ortográfica sin cambiar de dirección; haz clic en las esquinas "
-       "de la zona tal como la ves. El contorno se extiende a lo largo de tu línea de "
-       "visión, tan hondo como llegan los puntos que contiene."),
-    PT("A vista passa a ortográfica sem mudar de direção; clique nos cantos da área tal "
-       "como a vê. O contorno estende-se ao longo da sua linha de visão, tão fundo "
-       "quanto os pontos que contém."),
-    IT("La vista passa all'ortografica senza cambiare direzione; fai clic sugli angoli "
-       "dell'area così come la vedi. Il contorno si estende lungo la linea di vista, "
-       "profondo quanto i punti al suo interno."),
-    NL("De weergave wordt orthografisch in de huidige richting; klik op de hoeken van "
-       "het gebied zoals je het ziet. De omtrek loopt langs je kijkrichting, zo diep "
-       "als de punten erin reiken."),
-    RU("Вид переходит в ортографическую проекцию, не меняя направления; щёлкните углы "
-       "области так, как вы её видите. Контур тянется вдоль линии взгляда на всю "
-       "глубину точек внутри него."),
-    TR("Görünüm yönü değişmeden ortografik olur; alanın köşelerine gördüğünüz gibi "
-       "tıklayın. Ana hat bakış doğrultunuz boyunca, içindeki noktaların uzandığı "
-       "derinliğe kadar uzanır."));
+    EN("The view turns orthographic, looking the way it does now; click the corners of the area as you see it.\nThe outline runs along your line of sight, as deep as the points inside it reach."),
+    JA("現在の向きのまま正射投影に切り替わります。\n- 見えているとおりに範囲の角をクリックしてください。\n- 輪郭は視線の方向に伸び、内側の点が届く深さまで取られます。"),
+    ZH_HANS("视图保持当前方向切换为正交投影；按所见点击区域的各个角。\n轮廓沿视线方向延伸，深度覆盖其内部的点。"),
+    ZH_HANT("視圖保持目前方向切換為正交投影；依所見點擊區域的各個角。\n輪廓沿視線方向延伸，深度涵蓋其內部的點。"),
+    KO("보기가 현재 방향 그대로 직교 투영으로 바뀝니다.\n- 보이는 대로 영역의 모서리를 클릭하세요.\n- 윤곽은 시선 방향으로 뻗어, 안쪽 점들이 닿는 깊이까지 이어집니다."),
+    DE("Die Ansicht wird in ihrer jetzigen Richtung orthografisch; die Ecken des Gebiets so anklicken, wie es zu sehen ist.\nDer Umriss reicht entlang der Blickrichtung so tief wie die Punkte darin."),
+    FR("La vue passe en orthographique sans changer de direction ; cliquez les coins de la zone telle que vous la voyez.\nLe contour s'étend le long de votre ligne de visée, aussi loin que les points qu'il contient."),
+    ES("La vista pasa a ortográfica sin cambiar de dirección; haz clic en las esquinas de la zona tal como la ves.\nEl contorno se extiende a lo largo de tu línea de visión, tan hondo como llegan los puntos que contiene."),
+    PT("A vista passa a ortográfica sem mudar de direção; clique nos cantos da área tal como a vê.\nO contorno estende-se ao longo da sua linha de visão, tão fundo quanto os pontos que contém."),
+    IT("La vista passa all'ortografica senza cambiare direzione; fai clic sugli angoli dell'area così come la vedi.\nIl contorno si estende lungo la linea di vista, profondo quanto i punti al suo interno."),
+    NL("De weergave wordt orthografisch in de huidige richting; klik op de hoeken van het gebied zoals je het ziet.\nDe omtrek loopt langs je kijkrichting, zo diep als de punten erin reiken."),
+    RU("Вид переходит в ортографическую проекцию, не меняя направления; щёлкните углы области так, как вы её видите.\nКонтур тянется вдоль линии взгляда на всю глубину точек внутри него."),
+    TR("Görünüm yönü değişmeden ortografik olur; alanın köşelerine gördüğünüz gibi tıklayın.\nAna hat bakış doğrultunuz boyunca, içindeki noktaların uzandığı derinliğe kadar uzanır."));
 
 // ===========================================================================
 // The shapes
@@ -471,41 +427,19 @@ SS_MSG(op_overlap,
     IT("Sovrapposizione"), NL("Overlap"), RU("Пересечение"), TR("Kesişim"));
 
 SS_MSG(op_help,
-    EN("Add joins the shape to the shapes above it, Cut removes it from them, and "
-       "Overlap keeps only where it overlaps them. A list that starts with a cut keeps "
-       "everything else."),
-    JA("「足す」は上の図形に加え、「切り抜く」は上の図形から取り除き、「重なり」は重"
-       "なる所だけを残します。切り抜きで始まるリストは、それ以外のすべてを残します。"),
-    ZH_HANS("“相加”把形状并入上方的形状，“挖去”从中移除它，“交叠”只保留重叠之处。"
-            "以挖去开头的列表会保留其余一切。"),
-    ZH_HANT("「相加」把形狀併入上方的形狀，「挖去」從中移除它，「交疊」只保留重疊之處。"
-            "以挖去開頭的列表會保留其餘一切。"),
-    KO("더하기는 위쪽 도형에 합치고, 잘라 내기는 거기서 빼며, 겹침은 겹치는 곳만 "
-       "남깁니다. 잘라 내기로 시작하는 목록은 그 밖의 모든 곳을 남깁니다."),
-    DE("Addieren fügt die Form zu den Formen darüber hinzu, Ausschneiden nimmt sie "
-       "heraus, Überschneidung behält nur, wo sie sich überlappen. Eine Liste, die mit "
-       "einem Ausschnitt beginnt, behält alles andere."),
-    FR("Ajouter joint la forme aux formes au-dessus, Découper l'en retire et "
-       "Recouvrement ne garde que là où elles se recouvrent. Une liste qui commence par "
-       "une découpe garde tout le reste."),
-    ES("Sumar une la forma a las formas de encima, Recortar la quita de ellas y "
-       "Solapamiento conserva solo donde se solapan. Una lista que empieza por un "
-       "recorte conserva todo lo demás."),
-    PT("Somar junta a forma às formas acima, Recortar retira-a delas e Sobreposição "
-       "mantém apenas onde se sobrepõem. Uma lista que começa por um recorte mantém "
-       "todo o resto."),
-    IT("Aggiungi unisce la forma a quelle sopra, Ritaglia la toglie da esse e "
-       "Sovrapposizione tiene solo dove si sovrappongono. Un elenco che inizia con un "
-       "ritaglio tiene tutto il resto."),
-    NL("Optellen voegt de vorm bij de vormen erboven, Uitsnijden haalt hem eruit en "
-       "Overlap houdt alleen over waar ze overlappen. Een lijst die met een uitsnede "
-       "begint, houdt al het andere."),
-    RU("«Добавить» присоединяет фигуру к фигурам выше, «Вырезать» удаляет её из них, а "
-       "«Пересечение» оставляет только общую часть. Список, начинающийся с вырезания, "
-       "оставляет всё остальное."),
-    TR("Ekle, şekli üstteki şekillere katar; Kes, onları bu şekilden ayırır; Kesişim "
-       "yalnızca örtüştükleri yeri bırakır. Kesme ile başlayan bir liste geri kalan her "
-       "şeyi tutar."));
+    EN("Add joins the shape to the shapes above it, Cut removes it from them, and Overlap keeps only where it overlaps them.\nA list that starts with a cut keeps everything else."),
+    JA("「足す」は上の図形に加え、「切り抜く」は上の図形から取り除き、「重なり」は重なる所だけを残します。\n切り抜きで始まるリストは、それ以外のすべてを残します。"),
+    ZH_HANS("“相加”把形状并入上方的形状，“挖去”从中移除它，“交叠”只保留重叠之处。以挖去开头的列表会保留其余一切。"),
+    ZH_HANT("「相加」把形狀併入上方的形狀，「挖去」從中移除它，「交疊」只保留重疊之處。以挖去開頭的列表會保留其餘一切。"),
+    KO("더하기는 위쪽 도형에 합치고, 잘라 내기는 거기서 빼며, 겹침은 겹치는 곳만 남깁니다.\n잘라 내기로 시작하는 목록은 그 밖의 모든 곳을 남깁니다."),
+    DE("Addieren: mit obigen Formen vereinen. Ausschneiden: davon abziehen. Überschneidung: nur Gemeinsames.\nBeginnt die Liste mit Ausschneiden, bleibt alles andere erhalten."),
+    FR("Ajouter : unit aux formes précédentes. Découper : retire. Recouvrement : garde l’intersection.\nUne découpe en tête de liste garde tout le reste."),
+    ES("Sumar une la forma a las formas de encima, Recortar la quita de ellas y Solapamiento conserva solo donde se solapan. Una lista que empieza por un recorte conserva todo lo demás."),
+    PT("Somar junta a forma às formas acima, Recortar retira-a delas e Sobreposição mantém apenas onde se sobrepõem.\nUma lista que começa por um recorte mantém todo o resto."),
+    IT("Aggiungi unisce la forma a quelle sopra, Ritaglia la toglie da esse e Sovrapposizione tiene solo dove si sovrappongono. Un elenco che inizia con un ritaglio tiene tutto il resto."),
+    NL("Optellen: verenigt met eerdere vormen. Uitsnijden: trekt ervan af. Overlap: alleen het gezamenlijke.\nEen uitsnede aan het begin behoudt alles daarbuiten."),
+    RU("Добавить: объединить с фигурами выше. Вырезать: вычесть. Пересечение: оставить общее.\nВырезание в начале списка сохраняет всё остальное."),
+    TR("Ekle, şekli üstteki şekillere katar; Kes, onları bu şekilden ayırır;\nKesişim yalnızca örtüştükleri yeri bırakır. Kesme ile başlayan bir liste geri kalan her şeyi tutar."));
 
 SS_MSG(list_empty,
     EN("No shapes yet. Start from one of the buttons above, or add a shape."),
@@ -594,52 +528,19 @@ SS_MSG(position_help,
        "koordinatlarında."));
 
 SS_MSG(sides_help,
-    EN("Where each pair of opposite sides sits along the shape's own axes, measured "
-       "from its pivot, and the length between them. Moving one side leaves the other "
-       "where it is; a new length moves both. An outline's corners stretch with its X "
-       "and Y sides."),
-    JA("図形自身の軸に沿って、向かい合う各面がピボットからどこにあるかと、その間の長さ。"
-       "片方の面を動かしても反対側はそのままで、長さを変えると両方が動きます。輪郭の角は "
-       "X と Y の面に合わせて伸び縮みします。"),
-    ZH_HANS("沿形状自身各轴，每对相对的面距枢轴点的位置，以及两者之间的长度。移动一面时，"
-            "对面保持不动；修改长度则两面一起移动。轮廓的角点会随其 X、Y 两面伸缩。"),
-    ZH_HANT("沿形狀自身各軸，每對相對的面距樞軸點的位置，以及兩者之間的長度。移動一面時，"
-            "對面保持不動；修改長度則兩面一起移動。輪廓的角點會隨其 X、Y 兩面伸縮。"),
-    KO("도형 자체 축을 따라 마주 보는 두 면이 피벗에서 어디에 있는지와 그 사이의 길이. "
-       "한 면을 옮기면 반대쪽은 그대로이고, 길이를 바꾸면 양쪽이 함께 움직입니다. 윤곽의 "
-       "모서리는 X와 Y 면에 맞춰 늘어나거나 줄어듭니다."),
-    DE("Wo jedes Paar gegenüberliegender Seiten entlang der eigenen Achsen der Form "
-       "liegt, gemessen vom Drehpunkt, und die Länge dazwischen. Eine verschobene Seite "
-       "lässt die andere, wo sie ist; eine neue Länge verschiebt beide. Die Ecken eines "
-       "Umrisses dehnen sich mit seinen X- und Y-Seiten."),
-    FR("Où se trouve chaque paire de côtés opposés le long des axes propres de la "
-       "forme, mesurée depuis son pivot, et la longueur qui les sépare. Déplacer un côté "
-       "laisse l'autre en place ; une nouvelle longueur déplace les deux. Les coins d'un "
-       "contour s'étirent avec ses côtés X et Y."),
-    ES("Dónde está cada par de lados opuestos a lo largo de los ejes propios de la "
-       "forma, medido desde su pivote, y la longitud entre ellos. Mover un lado deja el "
-       "otro donde está; una longitud nueva mueve ambos. Las esquinas de un contorno se "
-       "estiran con sus lados X e Y."),
-    PT("Onde fica cada par de lados opostos ao longo dos eixos próprios da forma, "
-       "medido a partir do pivô, e o comprimento entre eles. Mover um lado deixa o outro "
-       "onde está; um novo comprimento move os dois. Os cantos de um contorno esticam "
-       "com os lados X e Y."),
-    IT("Dove si trova ogni coppia di lati opposti lungo gli assi propri della forma, "
-       "misurata dal perno, e la lunghezza tra loro. Spostare un lato lascia l'altro "
-       "dov'è; una nuova lunghezza li sposta entrambi. Gli angoli di un contorno si "
-       "allungano con i lati X e Y."),
-    NL("Waar elk paar tegenoverliggende zijden langs de eigen assen van de vorm ligt, "
-       "gemeten vanaf het draaipunt, en de lengte ertussen. Een zijde verschuiven laat "
-       "de andere staan; een nieuwe lengte verschuift beide. De hoeken van een omtrek "
-       "rekken mee met de X- en Y-zijden."),
-    RU("Где лежит каждая пара противоположных сторон вдоль собственных осей фигуры, "
-       "считая от опорной точки, и длина между ними. Сдвиг одной стороны оставляет "
-       "другую на месте; новая длина сдвигает обе. Углы контура растягиваются вместе с "
-       "его сторонами X и Y."),
-    TR("Karşılıklı her kenar çiftinin şeklin kendi eksenleri boyunca pivottan ölçülen "
-       "yeri ve aralarındaki uzunluk. Bir kenarı taşımak diğerini yerinde bırakır; yeni "
-       "bir uzunluk ikisini de taşır. Bir ana hattın köşeleri X ve Y kenarlarıyla "
-       "birlikte esner."));
+    EN("Where each pair of opposite sides sits along the shape's own axes, measured from its pivot, and the length between them.\n- Moving one side leaves the other where it is; a new length moves both.\n- An outline's corners stretch with its X and Y sides."),
+    JA("図形自身の軸に沿って、向かい合う各面がピボットからどこにあるかと、その間の長さ。\n- 片方の面を動かしても反対側はそのままで、長さを変えると両方が動きます。\n- 輪郭の角は X と Y の面に合わせて伸び縮みします。"),
+    ZH_HANS("沿形状自身各轴，每对相对的面距枢轴点的位置，以及两者之间的长度。移动一面时，对面保持不动；修改长度则两面一起移动。轮廓的角点会随其 X、Y 两面伸缩。"),
+    ZH_HANT("沿形狀自身各軸，每對相對的面距樞軸點的位置，以及兩者之間的長度。移動一面時，對面保持不動；修改長度則兩面一起移動。輪廓的角點會隨其 X、Y 兩面伸縮。"),
+    KO("도형 자체 축을 따라 마주 보는 두 면이 피벗에서 어디에 있는지와 그 사이의 길이.\n- 한 면을 옮기면 반대쪽은 그대로이고, 길이를 바꾸면 양쪽이 함께 움직입니다.\n- 윤곽의 모서리는 X와 Y 면에 맞춰 늘어나거나 줄어듭니다."),
+    DE("Wo jedes Paar gegenüberliegender Seiten entlang der eigenen Achsen der Form liegt, gemessen vom Drehpunkt, und die Länge dazwischen.\n- Eine verschobene Seite lässt die andere, wo sie ist; eine neue Länge verschiebt beide.\n- Die Ecken eines Umrisses dehnen sich mit seinen X- und Y-Seiten."),
+    FR("Où se trouve chaque paire de côtés opposés le long des axes propres de la forme, mesurée depuis son pivot, et la longueur qui les sépare.\n- Déplacer un côté laisse l'autre en place ; une nouvelle longueur déplace les deux.\n- Les coins d'un contour s'étirent avec ses côtés X et Y."),
+    ES("Dónde está cada par de lados opuestos a lo largo de los ejes propios de la forma, medido desde su pivote, y la longitud entre ellos.\n- Mover un lado deja el otro donde está; una longitud nueva mueve ambos.\n- Las esquinas de un contorno se estiran con sus lados X e Y."),
+    PT("Onde fica cada par de lados opostos ao longo dos eixos próprios da forma, medido a partir do pivô, e o comprimento entre eles.\n- Mover um lado deixa o outro onde está; um novo comprimento move os dois.\n- Os cantos de um contorno esticam com os lados X e Y."),
+    IT("Dove si trova ogni coppia di lati opposti lungo gli assi propri della forma, misurata dal perno, e la lunghezza tra loro.\n- Spostare un lato lascia l'altro dov'è; una nuova lunghezza li sposta entrambi.\n- Gli angoli di un contorno si allungano con i lati X e Y."),
+    NL("Waar elk paar tegenoverliggende zijden langs de eigen assen van de vorm ligt, gemeten vanaf het draaipunt, en de lengte ertussen.\n- Een zijde verschuiven laat de andere staan; een nieuwe lengte verschuift beide.\n- De hoeken van een omtrek rekken mee met de X- en Y-zijden."),
+    RU("Где лежит каждая пара противоположных сторон вдоль собственных осей фигуры, считая от опорной точки, и длина между ними.\n- Сдвиг одной стороны оставляет другую на месте; новая длина сдвигает обе.\n- Углы контура растягиваются вместе с его сторонами X и Y."),
+    TR("Karşılıklı her kenar çiftinin şeklin kendi eksenleri boyunca pivottan ölçülen yeri ve aralarındaki uzunluk.\n- Bir kenarı taşımak diğerini yerinde bırakır; yeni bir uzunluk ikisini de taşır.\n- Bir ana hattın köşeleri X ve Y kenarlarıyla birlikte esner."));
 
 SS_MSG(btn_center_pivot,
     EN("Center Pivot"), JA("ピボットを中央へ"), ZH_HANS("枢轴居中"), ZH_HANT("樞軸置中"),
@@ -759,50 +660,19 @@ SS_MSG(hint_none,
     TR("Seçmek için bir şekle tıklayın. Etrafa bakmak için başka bir yeri sürükleyin."));
 
 SS_MSG(hint_adjust,
-    EN("Drag any side of the shape to push or pull just that side; Shift moves the "
-       "opposite side too. On an outline, drag a wall or a corner, drag a midpoint to "
-       "add a corner, double-click a corner to remove it."),
-    JA("図形の面をドラッグすると、その面だけを押し引きできます。Shift を押すと反対側も"
-       "動きます。輪郭では壁や角をドラッグし、中点をドラッグして角を追加し、角をダブル"
-       "クリックして削除します。"),
-    ZH_HANS("拖动形状的任一面，只推拉该面；按住 Shift 对面也一起移动。对轮廓，可拖动侧壁"
-            "或角点，拖动中点以添加角点，双击角点将其删除。"),
-    ZH_HANT("拖動形狀的任一面，只推拉該面；按住 Shift 對面也一起移動。對輪廓，可拖動側壁"
-            "或角點，拖動中點以新增角點，雙擊角點將其刪除。"),
-    KO("도형의 아무 면이나 끌면 그 면만 밀고 당깁니다. Shift를 누르면 반대쪽도 함께 "
-       "움직입니다. 윤곽에서는 벽이나 모서리를 끌고, 중점을 끌어 모서리를 추가하고, "
-       "모서리를 두 번 클릭해 지웁니다."),
-    DE("Eine beliebige Seite der Form ziehen, um nur diese Seite zu schieben oder zu "
-       "ziehen; mit Umschalt bewegt sich die gegenüberliegende mit. Bei einem Umriss eine "
-       "Wand oder Ecke ziehen, einen Mittelpunkt ziehen, um eine Ecke hinzuzufügen, eine "
-       "Ecke doppelklicken, um sie zu entfernen."),
-    FR("Faites glisser n'importe quel côté de la forme pour pousser ou tirer ce seul "
-       "côté ; avec Maj, le côté opposé bouge aussi. Sur un contour, tirez une paroi ou un "
-       "coin, tirez un milieu pour ajouter un coin, double-cliquez un coin pour le "
-       "retirer."),
-    ES("Arrastra cualquier lado de la forma para empujar o tirar solo de ese lado; con "
-       "Mayús se mueve también el opuesto. En un contorno, arrastra una pared o una "
-       "esquina, arrastra un punto medio para añadir una esquina y haz doble clic en una "
-       "esquina para quitarla."),
-    PT("Arraste qualquer lado da forma para empurrar ou puxar só esse lado; com Shift o "
-       "lado oposto também se move. Num contorno, arraste uma parede ou um canto, arraste "
-       "um ponto médio para acrescentar um canto e faça duplo clique num canto para o "
-       "remover."),
-    IT("Trascina un lato qualsiasi della forma per spingere o tirare solo quel lato; con "
-       "Maiusc si muove anche quello opposto. Su un contorno, trascina una parete o un "
-       "angolo, trascina un punto medio per aggiungere un angolo, fai doppio clic su un "
-       "angolo per toglierlo."),
-    NL("Sleep een willekeurige zijde van de vorm om alleen die zijde te duwen of te "
-       "trekken; met Shift beweegt de tegenoverliggende mee. Bij een omtrek: sleep een "
-       "wand of hoek, sleep een middelpunt om een hoek toe te voegen, dubbelklik op een "
-       "hoek om hem te verwijderen."),
-    RU("Тащите любую сторону фигуры, чтобы двигать только её; с Shift противоположная "
-       "сторона движется тоже. У контура тащите стенку или угол, тащите середину стороны, "
-       "чтобы добавить угол, двойной щелчок по углу удаляет его."),
-    TR("Yalnızca o kenarı itmek ya da çekmek için şeklin herhangi bir kenarını "
-       "sürükleyin; Shift ile karşı kenar da hareket eder. Bir ana hatta bir duvarı ya da "
-       "köşeyi sürükleyin, köşe eklemek için orta noktayı sürükleyin, silmek için köşeye "
-       "çift tıklayın."));
+    EN("Drag any side of the shape to push or pull just that side; Shift moves the opposite side too.\nOn an outline, drag a wall or a corner, drag a midpoint to add a corner, double-click a corner to remove it."),
+    JA("図形の面をドラッグすると、その面だけを押し引きできます。 Shift を押すと反対側も動きます。\n輪郭では壁や角をドラッグし、中点をドラッグして角を追加し、角をダブルクリックして削除します。"),
+    ZH_HANS("拖动形状的任一面，只推拉该面； 按住 Shift 对面也一起移动。\n对轮廓，可拖动侧壁或角点，拖动中点以添加角点，双击角点将其删除。"),
+    ZH_HANT("拖動形狀的任一面，只推拉該面； 按住 Shift 對面也一起移動。\n對輪廓，可拖動側壁或角點，拖動中點以新增角點，雙擊角點將其刪除。"),
+    KO("도형의 아무 면이나 끌면 그 면만 밀고 당깁니다. Shift를 누르면 반대쪽도 함께 움직입니다.\n윤곽에서는 벽이나 모서리를 끌고, 중점을 끌어 모서리를 추가하고, 모서리를 두 번 클릭해 지웁니다."),
+    DE("Seite ziehen: nur diese verschieben. Shift: Gegenseite mitbewegen.\nUmriss: Wand/Ecke ziehen; Mittelpunkt ziehen fügt eine Ecke hinzu, Doppelklick auf Ecke entfernt sie."),
+    FR("Glisser un côté le déplace seul ; Maj déplace aussi l’opposé.\nContour : glisser paroi/coin ; glisser un milieu ajoute un coin, double-clic sur un coin le retire."),
+    ES("Arrastra un lado para mover solo ese lado; Mayús mueve también el opuesto.\nContorno: arrastra pared/esquina; arrastra un punto medio para añadir esquina, doble clic para quitarla."),
+    PT("Arraste um lado para movê-lo sozinho; Shift move também o oposto.\nContorno: arraste parede/canto; arraste um ponto médio para criar canto, clique duplo para removê-lo."),
+    IT("Trascina un lato per muovere solo quello; Maiusc muove anche l’opposto.\nContorno: trascina parete/angolo; trascina un punto medio per aggiungere un angolo, doppio clic per toglierlo."),
+    NL("Zijde slepen: alleen die zijde bewegen. Shift beweegt ook de overzijde.\nOmtrek: wand/hoek slepen; middelpunt slepen voegt hoek toe, dubbelklik op hoek verwijdert die."),
+    RU("Тащите любую сторону фигуры, чтобы двигать только её; с Shift противоположная сторона движется тоже.\nУ контура тащите стенку или угол, тащите середину стороны, чтобы добавить угол, двойной щелчок по углу удаляет его."),
+    TR("Kenarı sürüklemek yalnız onu taşır; Shift karşı kenarı da taşır.\nAna hat: duvar/köşe sürükleyin; orta nokta sürüklemek köşe ekler, köşeye çift tık siler."));
 
 SS_MSG(hint_move,
     EN("Drag the shape along the ground, or an arrow along its axis. Delete removes it, "
@@ -831,40 +701,19 @@ SS_MSG(hint_move,
        "kaldırır, Esc seçimi bırakır."));
 
 SS_MSG(hint_resize,
-    EN("Drag a side's handle to stretch the shape evenly along that axis, or a corner "
-       "handle to scale all of it about its middle. Ctrl scales in tenths."),
-    JA("面のハンドルをドラッグするとその軸に沿って両側へ均等に伸縮し、角のハンドルを"
-       "ドラッグすると中心を基準に全体を拡大縮小します。Ctrl で 0.1 倍刻み。"),
-    ZH_HANS("拖动面上的手柄，沿该轴向两侧均匀伸缩；拖动角上的手柄，以中心为基准整体缩放。"
-            "按住 Ctrl 以 0.1 倍为步长。"),
-    ZH_HANT("拖動面上的控點，沿該軸向兩側均勻伸縮；拖動角上的控點，以中心為基準整體縮放。"
-            "按住 Ctrl 以 0.1 倍為步長。"),
-    KO("면의 핸들을 끌면 그 축을 따라 양쪽으로 고르게 늘어나고, 모서리 핸들을 끌면 "
-       "가운데를 기준으로 전체 크기가 바뀝니다. Ctrl을 누르면 0.1배씩 바뀝니다."),
-    DE("Den Griff einer Seite ziehen, um die Form entlang dieser Achse gleichmäßig zu "
-       "dehnen, oder einen Eckgriff, um sie als Ganzes um ihre Mitte zu skalieren. Strg "
-       "skaliert in Zehnteln."),
-    FR("Tirez la poignée d'un côté pour étirer la forme également le long de cet axe, ou "
-       "une poignée de coin pour la mettre à l'échelle tout entière autour de son milieu. "
-       "Ctrl procède par dixièmes."),
-    ES("Arrastra el tirador de un lado para estirar la forma por igual a lo largo de ese "
-       "eje, o uno de esquina para escalarla entera alrededor de su centro. Ctrl escala "
-       "en décimas."),
-    PT("Arraste a pega de um lado para esticar a forma por igual ao longo desse eixo, ou "
-       "uma pega de canto para a redimensionar inteira em torno do seu centro. Ctrl "
-       "escala em décimas."),
-    IT("Trascina la maniglia di un lato per allungare la forma in modo uniforme lungo "
-       "quell'asse, o una maniglia d'angolo per ridimensionarla tutta attorno al suo "
-       "centro. Ctrl procede per decimi."),
-    NL("Sleep de greep van een zijde om de vorm gelijkmatig langs die as uit te rekken, "
-       "of een hoekgreep om hem in zijn geheel om zijn midden te schalen. Ctrl schaalt in "
-       "tienden."),
-    RU("Тащите маркер стороны, чтобы равномерно растянуть фигуру вдоль этой оси, или "
-       "угловой маркер, чтобы масштабировать её целиком относительно середины. Ctrl — "
-       "шагами по десятой."),
-    TR("Şekli o eksen boyunca eşit biçimde germek için bir kenarın tutamacını, ortası "
-       "etrafında bütünüyle ölçeklemek için bir köşe tutamacını sürükleyin. Ctrl onda "
-       "birlik adımlarla ölçekler."));
+    EN("Drag a side's handle to stretch the shape evenly along that axis, or a corner handle to scale all of it about its middle. Ctrl scales in tenths."),
+    JA("面のハンドルをドラッグするとその軸に沿って両側へ均等に伸縮し、角のハンドルをドラッグすると中心を基準に全体を拡大縮小します。Ctrl で 0.1 倍刻み。"),
+    ZH_HANS("拖动面上的手柄，沿该轴向两侧均匀伸缩；拖动角上的手柄，以中心为基准整体缩放。按住 Ctrl 以 0.1 倍为步长。"),
+    ZH_HANT("拖動面上的控點，沿該軸向兩側均勻伸縮；拖動角上的控點，以中心為基準整體縮放。按住 Ctrl 以 0.1 倍為步長。"),
+    KO("면의 핸들을 끌면 그 축을 따라 양쪽으로 고르게 늘어나고, 모서리 핸들을 끌면 가운데를 기준으로 전체 크기가 바뀝니다.\nCtrl을 누르면 0.1배씩 바뀝니다."),
+    DE("Seitengriff: gleichmäßig entlang einer Achse strecken. Eckgriff: die ganze Form um ihre Mitte skalieren. Ctrl: Zehntelschritte."),
+    FR("Poignée latérale : étire selon l’axe. Poignée de coin : redimensionne tout autour du centre. Ctrl : pas d’un dixième."),
+    ES("Arrastra el tirador de un lado para estirar la forma por igual a lo largo de ese eje, o uno de esquina para escalarla entera alrededor de su centro. Ctrl escala en décimas."),
+    PT("Arraste a pega de um lado para esticar a forma por igual ao longo desse eixo, ou uma pega de canto para a redimensionar inteira em torno do seu centro. Ctrl escala em décimas."),
+    IT("Maniglia laterale: allunga lungo l’asse. Maniglia d’angolo: scala tutto attorno al centro. Ctrl: passi di un decimo."),
+    NL("Sleep de greep van een zijde om de vorm gelijkmatig langs die as uit te rekken, of een hoekgreep om hem in zijn geheel om zijn midden te schalen. Ctrl schaalt in tienden."),
+    RU("Тащите маркер стороны, чтобы равномерно растянуть фигуру вдоль этой оси, или угловой маркер, чтобы масштабировать её целиком относительно середины. Ctrl — шагами по десятой."),
+    TR("Kenar tutamacı: eksende eşit germe. Köşe tutamacı: tüm şekli merkezi etrafında ölçekleme. Ctrl: onda birlik adımlar."));
 
 SS_MSG(hint_rotate,
     EN("Drag a ring to turn the shape about that axis. Ctrl turns in 15-degree steps."),
@@ -983,78 +832,34 @@ SS_MSG(train_edit_region,
     NL("Gebied bewerken"), RU("Изменить область"), TR("Bölgeyi Düzenle"));
 
 SS_MSG(train_help,
-    EN("The model grows only inside this region, and pixels that show only what lies "
-       "outside it are left out of training. By default the first region saved for "
-       "this dataset is used."),
-    JA("モデルはこの領域の中でだけ成長し、領域外しか写っていない画素は学習から外され"
-       "ます。既定ではこのデータセットに最初に保存された領域を使います。"),
-    ZH_HANS("模型只在该区域内增长，只拍到区域外内容的像素不参与训练。默认使用为本"
-            "数据集保存的第一个区域。"),
-    ZH_HANT("模型只在該區域內增長，只拍到區域外內容的像素不參與訓練。預設使用為本"
-            "資料集儲存的第一個區域。"),
-    KO("모델은 이 영역 안에서만 자라고, 영역 밖만 보이는 픽셀은 학습에서 빠집니다. "
-       "기본값은 이 데이터셋에 저장된 첫 번째 영역입니다."),
-    DE("Das Modell wächst nur innerhalb dieses Bereichs, und Pixel, die nur zeigen, "
-       "was außerhalb liegt, bleiben beim Training außen vor. Standardmäßig gilt der "
-       "erste für diesen Datensatz gespeicherte Bereich."),
-    FR("Le modèle ne croît qu'à l'intérieur de cette région, et les pixels qui ne "
-       "montrent que l'extérieur sont écartés de l'entraînement. Par défaut, c'est la "
-       "première région enregistrée pour ce jeu de données."),
-    ES("El modelo solo crece dentro de esta región, y los píxeles que solo muestran lo "
-       "que queda fuera se excluyen del entrenamiento. Por defecto se usa la primera "
-       "región guardada para este conjunto de datos."),
-    PT("O modelo só cresce dentro desta região, e os píxeis que só mostram o que fica "
-       "fora dela ficam fora do treino. Por padrão usa-se a primeira região guardada "
-       "para este conjunto de dados."),
-    IT("Il modello cresce solo dentro questa regione, e i pixel che mostrano solo ciò "
-       "che sta fuori sono esclusi dall'addestramento. Per impostazione predefinita si "
-       "usa la prima regione salvata per questo dataset."),
-    NL("Het model groeit alleen binnen dit gebied, en pixels die alleen tonen wat "
-       "erbuiten ligt, doen niet mee met de training. Standaard geldt het eerste "
-       "gebied dat voor deze dataset is opgeslagen."),
-    RU("Модель растёт только внутри этой области, а пиксели, на которых видно лишь то, "
-       "что снаружи, исключаются из обучения. По умолчанию берётся первая область, "
-       "сохранённая для этого набора данных."),
-    TR("Model yalnızca bu bölgenin içinde büyür; yalnızca dışarıdakini gösteren "
-       "pikseller eğitimin dışında kalır. Varsayılan olarak bu veri kümesi için "
-       "kaydedilen ilk bölge kullanılır."));
+    EN("The model grows only inside this region, and pixels that show only what lies outside it are left out of training.\nBy default the first region saved for this dataset is used."),
+    JA("モデルはこの領域の中でだけ成長し、領域外しか写っていない画素は学習から外されます。\n既定ではこのデータセットに最初に保存された領域を使います。"),
+    ZH_HANS("模型只在该区域内增长，只拍到区域外内容的像素不参与训练。默认使用为本数据集保存的第一个区域。"),
+    ZH_HANT("模型只在該區域內增長，只拍到區域外內容的像素不參與訓練。預設使用為本資料集儲存的第一個區域。"),
+    KO("모델은 이 영역 안에서만 자라고, 영역 밖만 보이는 픽셀은 학습에서 빠집니다.\n기본값은 이 데이터셋에 저장된 첫 번째 영역입니다."),
+    DE("Wachstum nur in diesem Bereich; Pixel mit ausschließlich äußerem Inhalt werden nicht trainiert.\nStandard: erster gespeicherter Bereich dieses Datensatzes."),
+    FR("Croissance dans cette région uniquement ; les pixels ne montrant que l’extérieur sont exclus.\nDéfaut : première région enregistrée du jeu de données."),
+    ES("Crece solo en esta región; los píxeles que solo muestran el exterior no se entrenan.\nPor defecto: primera región guardada del conjunto."),
+    PT("O modelo só cresce dentro desta região, e os píxeis que só mostram o que fica fora dela ficam fora do treino.\nPor padrão usa-se a primeira região guardada para este conjunto de dados."),
+    IT("Cresce solo in questa regione; i pixel che mostrano solo l’esterno sono esclusi dal training.\nDefault: prima regione salvata del dataset."),
+    NL("Groei alleen in dit gebied; pixels met uitsluitend inhoud erbuiten worden niet getraind.\nStandaard: eerste opgeslagen gebied van deze dataset."),
+    RU("Рост только внутри области; пиксели, показывающие лишь внешнее содержимое, исключены.\nПо умолчанию: первая сохранённая область набора."),
+    TR("Model yalnızca bu bölgenin içinde büyür; yalnızca dışarıdakini gösteren pikseller eğitimin dışında kalır.\nVarsayılan olarak bu veri kümesi için kaydedilen ilk bölge kullanılır."));
 
 SS_MSG(batch_run_help,
-    EN("Region of interest: this run grows the model only inside it. By default the "
-       "first region saved for the dataset is used. Right-click a region in the list "
-       "to edit it."),
-    JA("関心領域: この実行ではモデルがこの中でだけ成長します。既定ではデータセットに"
-       "最初に保存された領域を使います。一覧の領域を右クリックすると編集できます。"),
-    ZH_HANS("感兴趣区域：本次运行的模型只在其中增长。默认使用为数据集保存的第一个"
-            "区域。在列表中右键单击某个区域即可编辑。"),
-    ZH_HANT("感興趣區域：本次執行的模型只在其中增長。預設使用為資料集儲存的第一個"
-            "區域。在清單中按右鍵點選某個區域即可編輯。"),
-    KO("관심 영역: 이 실행에서는 모델이 이 안에서만 자랍니다. 기본값은 데이터셋에 "
-       "저장된 첫 번째 영역입니다. 목록에서 영역을 오른쪽 클릭하면 편집할 수 있습니다."),
-    DE("Interessenbereich: Dieser Lauf lässt das Modell nur darin wachsen. "
-       "Standardmäßig gilt der erste für den Datensatz gespeicherte Bereich. Einen "
-       "Bereich in der Liste mit der rechten Maustaste anklicken, um ihn zu bearbeiten."),
-    FR("Région d'intérêt : cette exécution ne fait croître le modèle qu'à l'intérieur. "
-       "Par défaut, c'est la première région enregistrée pour le jeu de données. "
-       "Cliquez avec le bouton droit sur une région de la liste pour la modifier."),
-    ES("Región de interés: esta ejecución solo hace crecer el modelo dentro de ella. "
-       "Por defecto se usa la primera región guardada para el conjunto de datos. Haga "
-       "clic derecho en una región de la lista para editarla."),
-    PT("Região de interesse: esta execução só faz crescer o modelo dentro dela. Por "
-       "padrão usa-se a primeira região guardada para o conjunto de dados. Clique com o "
-       "botão direito numa região da lista para a editar."),
-    IT("Regione di interesse: questa esecuzione fa crescere il modello solo al suo "
-       "interno. Per impostazione predefinita si usa la prima regione salvata per il "
-       "dataset. Fai clic destro su una regione dell'elenco per modificarla."),
-    NL("Interessegebied: deze run laat het model alleen daarbinnen groeien. Standaard "
-       "geldt het eerste gebied dat voor de dataset is opgeslagen. Klik met de "
-       "rechtermuisknop op een gebied in de lijst om het te bewerken."),
-    RU("Область интереса: в этом запуске модель растёт только внутри неё. По умолчанию "
-       "берётся первая область, сохранённая для набора данных. Щёлкните область в "
-       "списке правой кнопкой мыши, чтобы изменить её."),
-    TR("İlgi bölgesi: bu çalıştırmada model yalnızca bunun içinde büyür. Varsayılan "
-       "olarak veri kümesi için kaydedilen ilk bölge kullanılır. Düzenlemek için "
-       "listedeki bir bölgeye sağ tıklayın."));
+    EN("Region of interest: this run grows the model only inside it.\n- By default the first region saved for the dataset is used.\n- Right-click a region in the list to edit it."),
+    JA("関心領域: この実行ではモデルがこの中でだけ成長します。\n- 既定ではデータセットに最初に保存された領域を使います。\n- 一覧の領域を右クリックすると編集できます。"),
+    ZH_HANS("感兴趣区域：本次运行的模型只在其中增长。\n- 默认使用为数据集保存的第一个区域。\n- 在列表中右键单击某个区域即可编辑。"),
+    ZH_HANT("感興趣區域：本次執行的模型只在其中增長。\n- 預設使用為資料集儲存的第一個區域。\n- 在清單中按右鍵點選某個區域即可編輯。"),
+    KO("관심 영역: 이 실행에서는 모델이 이 안에서만 자랍니다.\n- 기본값은 데이터셋에 저장된 첫 번째 영역입니다.\n- 목록에서 영역을 오른쪽 클릭하면 편집할 수 있습니다."),
+    DE("Interessenbereich: Dieser Lauf lässt das Modell nur darin wachsen.\n- Standardmäßig gilt der erste für den Datensatz gespeicherte Bereich.\n- Einen Bereich in der Liste mit der rechten Maustaste anklicken, um ihn zu bearbeiten."),
+    FR("Région d'intérêt : cette exécution ne fait croître le modèle qu'à l'intérieur.\n- Par défaut, c'est la première région enregistrée pour le jeu de données.\n- Cliquez avec le bouton droit sur une région de la liste pour la modifier."),
+    ES("Región de interés: esta ejecución solo hace crecer el modelo dentro de ella.\n- Por defecto se usa la primera región guardada para el conjunto de datos.\n- Haga clic derecho en una región de la lista para editarla."),
+    PT("Região de interesse: esta execução só faz crescer o modelo dentro dela.\n- Por padrão usa-se a primeira região guardada para o conjunto de dados.\n- Clique com o botão direito numa região da lista para a editar."),
+    IT("Regione di interesse: questa esecuzione fa crescere il modello solo al suo interno.\n- Per impostazione predefinita si usa la prima regione salvata per il dataset.\n- Fai clic destro su una regione dell'elenco per modificarla."),
+    NL("Interessegebied: deze run laat het model alleen daarbinnen groeien.\n- Standaard geldt het eerste gebied dat voor de dataset is opgeslagen.\n- Klik met de rechtermuisknop op een gebied in de lijst om het te bewerken."),
+    RU("Область интереса: в этом запуске модель растёт только внутри неё.\n- По умолчанию берётся первая область, сохранённая для набора данных.\n- Щёлкните область в списке правой кнопкой мыши, чтобы изменить её."),
+    TR("İlgi bölgesi: bu çalıştırmada model yalnızca bunun içinde büyür.\n- Varsayılan olarak veri kümesi için kaydedilen ilk bölge kullanılır.\n- Düzenlemek için listedeki bir bölgeye sağ tıklayın."));
 
 }  // namespace roi
 }  // namespace msg

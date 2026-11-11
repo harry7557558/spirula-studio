@@ -485,6 +485,79 @@ coming. If you touch a function whose comment breaks a rule above, fix the
 comment in the same diff. Deleting a stale comment needs no justification and
 no ceremony — do not ask, do not leave a note saying you removed it.
 
+## UI text — keep it short
+
+Interface copy lives in `src/i18n/catalog/`. A tooltip should answer what the
+control does or when to change it. Aim for 1–2 rendered lines, with 3 as the
+maximum. Ordinary inline help and confirmations should also fit within 3
+lines; labels should fit on one. CLI option descriptions use the same budget.
+Preserve consequences such as data loss,
+units and prerequisites before keeping rationale or examples.
+
+Do not put an algorithm comparison, shortcut manual or implementation essay in
+a tooltip. Put longer explanations in documentation or explicit detailed help;
+use short descriptions for individual choices. Do not split a paragraph into
+several messages to evade the budget, or concatenate fragments into sentences.
+Shared GUI/CLI help uses the same budget. Preserve necessary instructions in
+concise copy or accessible detailed help. Never truncate copy to meet a limit.
+
+Use a short bullet list for choices, effects or caveats. Start with a plain
+overview when the items need context. The overview follows the ordinary
+3-line budget. Use up to 4 bullets, at most 2 wrapped lines per bullet, and
+at most 8 wrapped lines for the whole message. Start each item on its own
+line with `- ` or `• `. Keep the overview and list in one translated message.
+Use complete items and give each its own point. A single follow-up can go
+on a new line without a marker and still has a 2-line budget. Skip an item
+when its option label already tells the reader what they need.
+
+### Measurement and exceptions
+
+`python3 tools/check_ui_text.py` reports changed messages, including every
+translation, against HEAD. `--all` surveys existing debt; `--base REV` compares
+with a branch base; `--json` emits a complete report. It fails on over-budget
+copy and unsupported English CLI characters. The build runs it through
+`cmake/SsChecks.cmake`, including explicit targets such
+as `spirula`. CI checks all copy and compares pull requests with their base.
+Fix findings or record a reviewed length exception with a reason and usage
+location. A policy or punctuation-table change rechecks all messages.
+`-DSS_CHECK_UI_TEXT=OFF` disables the local build check. Git and Python remain
+optional for building a source checkout.
+
+Measure display width, never UTF-8 bytes or source lines. The initial report
+uses 60 display columns per line: wide/fullwidth characters count as two,
+ordinary Latin and Cyrillic letters as one, combining marks as zero. This is
+an estimate, not a guarantee for the GUI's proportional fonts. Verify important
+copy at the actual panel or tooltip width, including translations and formatted
+arguments. Keep the 1–2-line target even when a sentence fits the 3-line ceiling.
+
+`tools/ui_text_policy.json` records presentation roles and exceptions with a
+reason. CLI output has the same prose/list budgets as GUI help. Legal text
+has a separate role; verbatim agreements are exempt. Inferred roles in reports need call-site review
+before enforcement. Use a specific message exception for mixed catalogs,
+not a whole-file exemption for one long message. License summaries can still
+be shortened with care; verbatim agreements must retain their required text.
+
+The `exclusions` map records reviewed exceptions with a reason and usage
+location. Reports count those messages separately from over-budget copy.
+Resolve entries as their content is fixed.
+
+When editing a message, shorten all translations together and preserve the
+meaning and placeholders. Run the report and the existing i18n/font checks.
+Length checks cannot decide whether a short sentence is useful.
+
+### English terminal output
+
+English terminal message templates use ASCII. Common punctuation and symbols
+are converted through `src/i18n/AsciiPunctuation.inc` before argument
+substitution. Keep user-supplied paths and other arguments intact.
+The length check covers both the catalog and converted English spelling.
+The checker rejects English catalog characters missing from that shared table,
+including length-excluded messages. Raw string literals in `src/app/cli/` and
+`src/app/Main.cpp` must already be ASCII. Add shared CLI copy to the catalogs.
+Embedded English license text uses the same conversion on the terminal, and
+its characters are checked against the replacement table.
+GUI rendering and other languages use their original localized strings.
+
 ## Conventions
 
 - Files are named after **what they do**, not after the file they were split

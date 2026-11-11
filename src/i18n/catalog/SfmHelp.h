@@ -282,595 +282,154 @@ SS_MSG(sum_ba,
 // ===========================================================================
 
 SS_MSG(desc_auto_1,
-    EN("Runs extract -> match -> map -> merge with COLMAP's "
-       "automatic_reconstructor presets and writes "
-       "WORKSPACE/{features,matches.bin,sparse/0}. A capture that is not one "
-       "connected view graph also writes sparse/1, sparse/2, ... -- the "
-       "remaining components, largest first."),
-    JA("extract -> match -> map -> merge を COLMAP の automatic_reconstructor "
-       "プリセットで走らせ、WORKSPACE/{features,matches.bin,sparse/0} を書き出します。"
-       "1 つの連結した視点グラフになっていない撮影では sparse/1、sparse/2、... も"
-       "書き出します（残りの成分を大きい順に）。"),
-    ZH_HANS("按 COLMAP 的 automatic_reconstructor 预设依次运行 extract -> match -> "
-            "map -> merge，并写出 WORKSPACE/{features,matches.bin,sparse/0}。"
-            "若拍摄不是一个连通的视图图，还会写出 sparse/1、sparse/2……即其余的连通块，"
-            "从大到小。"),
-    ZH_HANT("按 COLMAP 的 automatic_reconstructor 預設依次執行 extract -> match -> "
-            "map -> merge，並寫出 WORKSPACE/{features,matches.bin,sparse/0}。"
-            "若拍攝不是一個連通的視圖圖，還會寫出 sparse/1、sparse/2……即其餘的連通塊，"
-            "從大到小。"),
-    KO("extract -> match -> map -> merge 를 COLMAP 의 automatic_reconstructor "
-       "프리셋으로 돌리고 WORKSPACE/{features,matches.bin,sparse/0} 을 씁니다. "
-       "하나로 이어진 뷰 그래프가 아닌 촬영이면 sparse/1, sparse/2, ... 도 씁니다 "
-       "-- 남은 성분을 큰 것부터."),
-    DE("Führt extract -> match -> map -> merge mit den Voreinstellungen von "
-       "COLMAPs automatic_reconstructor aus und schreibt "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Eine Aufnahme, die kein "
-       "zusammenhängender Sichtgraph ist, schreibt zusätzlich sparse/1, "
-       "sparse/2, ... -- die übrigen Komponenten, die größte zuerst."),
-    FR("Enchaîne extract -> match -> map -> merge avec les préréglages de "
-       "l'automatic_reconstructor de COLMAP et écrit "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Une prise de vue qui n'est "
-       "pas un seul graphe de vues connexe écrit aussi sparse/1, sparse/2, ... "
-       "-- les composantes restantes, la plus grande d'abord."),
-    ES("Ejecuta extract -> match -> map -> merge con los ajustes del "
-       "automatic_reconstructor de COLMAP y escribe "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Una captura que no es un "
-       "único grafo de vistas conexo escribe además sparse/1, sparse/2, ...: las "
-       "componentes restantes, la mayor primero."),
-    PT("Executa extract -> match -> map -> merge com as predefinições do "
-       "automatic_reconstructor do COLMAP e escreve "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Uma captura que não é um único "
-       "grafo de vistas conexo escreve também sparse/1, sparse/2, ...: os "
-       "componentes restantes, o maior primeiro."),
-    IT("Esegue extract -> match -> map -> merge con le preimpostazioni "
-       "dell'automatic_reconstructor di COLMAP e scrive "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Una ripresa che non è un "
-       "unico grafo delle viste connesso scrive anche sparse/1, sparse/2, ...: "
-       "le componenti restanti, la più grande per prima."),
-    NL("Draait extract -> match -> map -> merge met de voorinstellingen van "
-       "COLMAP's automatic_reconstructor en schrijft "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Een opname die geen "
-       "samenhangende zichtgraaf is, schrijft ook sparse/1, sparse/2, ... -- de "
-       "overige componenten, de grootste eerst."),
-    RU("Выполняет extract -> match -> map -> merge с предустановками "
-       "automatic_reconstructor из COLMAP и пишет "
-       "WORKSPACE/{features,matches.bin,sparse/0}. Съёмка, не образующая один "
-       "связный граф видов, даёт ещё sparse/1, sparse/2, ... -- остальные "
-       "компоненты, начиная с наибольшей."),
-    TR("extract -> match -> map -> merge adımlarını COLMAP'in "
-       "automatic_reconstructor ön ayarlarıyla çalıştırır ve "
-       "WORKSPACE/{features,matches.bin,sparse/0} yazar. Tek bir bağlı görüş "
-       "çizgesi olmayan bir çekim ayrıca sparse/1, sparse/2, ... yazar -- kalan "
-       "bileşenler, en büyükten başlayarak."));
+    EN("Runs extract → match → map → merge with COLMAP’s automatic_reconstructor presets.\n- Writes WORKSPACE/{features,matches.bin,sparse/0}.\n- Disconnected components go to sparse/1, sparse/2, etc., largest first."),
+    JA("extract -> match -> map -> merge を COLMAP の automatic_reconstructor プリセットで走らせ、WORKSPACE/{features,matches.bin,sparse/0} を書き出します。\n1 つの連結した視点グラフになっていない撮影では sparse/1、sparse/2、... も書き出します（残りの成分を大きい順に）。"),
+    ZH_HANS("按 COLMAP 的 automatic_reconstructor 预设依次运行 extract -> match -> map -> merge，并写出 WORKSPACE/{features,matches.bin,sparse/0}。\n若拍摄不是一个连通的视图图，还会写出 sparse/1、sparse/2……即其余的连通块，从大到小。"),
+    ZH_HANT("按 COLMAP 的 automatic_reconstructor 預設依次執行 extract -> match -> map -> merge，並寫出 WORKSPACE/{features,matches.bin,sparse/0}。\n若拍攝不是一個連通的視圖圖，還會寫出 sparse/1、sparse/2……即其餘的連通塊，從大到小。"),
+    KO("extract -> match -> map -> merge 를 COLMAP 의 automatic_reconstructor 프리셋으로 돌리고 WORKSPACE/{features,matches.bin,sparse/0} 을 씁니다.\n하나로 이어진 뷰 그래프가 아닌 촬영이면 sparse/1, sparse/2, ... 도 씁니다 -- 남은 성분을 큰 것부터."),
+    DE("Führt extract -> match -> map -> merge mit den Voreinstellungen von COLMAPs automatic_reconstructor aus und schreibt WORKSPACE/{features,matches.bin,sparse/0}.\nEine Aufnahme, die kein zusammenhängender Sichtgraph ist, schreibt zusätzlich sparse/1, sparse/2, ... -- die übrigen Komponenten, die größte zuerst."),
+    FR("Enchaîne extract -> match -> map -> merge avec les préréglages de l'automatic_reconstructor de COLMAP et écrit WORKSPACE/{features,matches.bin,sparse/0}.\nUne prise de vue qui n'est pas un seul graphe de vues connexe écrit aussi sparse/1, sparse/2, ... -- les composantes restantes, la plus grande d'abord."),
+    ES("Ejecuta extract -> match -> map -> merge con los ajustes del automatic_reconstructor de COLMAP y escribe WORKSPACE/{features,matches.bin,sparse/0}.\nUna captura que no es un único grafo de vistas conexo escribe además sparse/1, sparse/2, ...: las componentes restantes, la mayor primero."),
+    PT("Executa extract -> match -> map -> merge com as predefinições do automatic_reconstructor do COLMAP e escreve WORKSPACE/{features,matches.bin,sparse/0}.\nUma captura que não é um único grafo de vistas conexo escreve também sparse/1, sparse/2, ...: os componentes restantes, o maior primeiro."),
+    IT("Esegue extract -> match -> map -> merge con le preimpostazioni dell'automatic_reconstructor di COLMAP e scrive WORKSPACE/{features,matches.bin,sparse/0}.\nUna ripresa che non è un unico grafo delle viste connesso scrive anche sparse/1, sparse/2, ...: le componenti restanti, la più grande per prima."),
+    NL("Draait extract -> match -> map -> merge met de voorinstellingen van COLMAP's automatic_reconstructor en schrijft WORKSPACE/{features,matches.bin,sparse/0}.\nEen opname die geen samenhangende zichtgraaf is, schrijft ook sparse/1, sparse/2, ... -- de overige componenten, de grootste eerst."),
+    RU("Выполняет extract -> match -> map -> merge с предустановками automatic_reconstructor из COLMAP и пишет WORKSPACE/{features,matches.bin,sparse/0}.\nСъёмка, не образующая один связный граф видов, даёт ещё sparse/1, sparse/2, ... -- остальные компоненты, начиная с наибольшей."),
+    TR("extract -> match -> map -> merge adımlarını COLMAP'in automatic_reconstructor ön ayarlarıyla çalıştırır ve WORKSPACE/{features,matches.bin,sparse/0} yazar.\nTek bir bağlı görüş çizgesi olmayan bir çekim ayrıca sparse/1, sparse/2, ... yazar -- kalan bileşenler, en büyükten başlayarak."));
 
 SS_MSG(desc_auto_2,
-    EN("The positional defaults to `images`; a dataset directory containing "
-       "`images/` is accepted and that sub-directory used, so `auto DATASET` and "
-       "`auto DATASET/images` behave the same. `masks` beside the image "
-       "directory is picked up automatically."),
-    JA("位置引数の既定は `images` です。`images/` を含むデータセットディレクトリも"
-       "受け付け、そのサブディレクトリを使うため、`auto DATASET` と "
-       "`auto DATASET/images` は同じ動きになります。画像ディレクトリの隣にある "
-       "`masks` は自動的に拾われます。"),
-    ZH_HANS("位置参数默认为 `images`；也接受包含 `images/` 的数据集目录并改用该子目录，"
-            "因此 `auto DATASET` 与 `auto DATASET/images` 行为相同。"
-            "图像目录旁边的 `masks` 会被自动采用。"),
-    ZH_HANT("位置參數預設為 `images`；也接受包含 `images/` 的資料集目錄並改用該子目錄，"
-            "因此 `auto DATASET` 與 `auto DATASET/images` 行為相同。"
-            "影像目錄旁邊的 `masks` 會被自動採用。"),
-    KO("위치 인자의 기본값은 `images` 입니다. `images/` 를 담은 데이터셋 디렉터리도 "
-       "받아 그 하위 디렉터리를 쓰므로 `auto DATASET` 과 `auto DATASET/images` 는 "
-       "같게 동작합니다. 이미지 디렉터리 옆의 `masks` 는 저절로 집어 옵니다."),
-    DE("Das Positionsargument ist standardmäßig `images`; ein "
-       "Datensatzverzeichnis mit `images/` wird ebenfalls angenommen und jenes "
-       "Unterverzeichnis benutzt, sodass `auto DATASET` und `auto "
-       "DATASET/images` gleich wirken. Ein `masks` neben dem Bildverzeichnis "
-       "wird von selbst aufgegriffen."),
-    FR("Le positionnel vaut `images` par défaut ; un dossier de jeu de données "
-       "contenant `images/` est accepté et ce sous-dossier employé, si bien que "
-       "`auto DATASET` et `auto DATASET/images` se comportent pareil. Un `masks` "
-       "à côté du dossier d'images est repris automatiquement."),
-    ES("El posicional vale `images` por defecto; también se acepta una carpeta "
-       "de conjunto de datos que contenga `images/` y se usa esa subcarpeta, así "
-       "que `auto DATASET` y `auto DATASET/images` se comportan igual. Un "
-       "`masks` junto a la carpeta de imágenes se recoge solo."),
-    PT("O posicional vale `images` por padrão; também se aceita uma pasta de "
-       "conjunto de dados que contenha `images/` e usa-se essa subpasta, de modo "
-       "que `auto DATASET` e `auto DATASET/images` se comportam igual. Um "
-       "`masks` ao lado da pasta de imagens é apanhado sozinho."),
-    IT("Il posizionale vale `images` per impostazione predefinita; si accetta "
-       "anche una cartella di dataset che contenga `images/` e si usa quella "
-       "sottocartella, così `auto DATASET` e `auto DATASET/images` si comportano "
-       "allo stesso modo. Un `masks` accanto alla cartella delle immagini viene "
-       "raccolto da sé."),
-    NL("Het positionele argument is standaard `images`; een datasetmap met "
-       "`images/` erin wordt ook aanvaard en die submap gebruikt, zodat `auto "
-       "DATASET` en `auto DATASET/images` hetzelfde doen. Een `masks` naast de "
-       "beeldmap wordt vanzelf opgepakt."),
-    RU("Позиционный аргумент по умолчанию -- `images`; принимается и каталог "
-       "набора данных, содержащий `images/`, и берётся этот подкаталог, так что "
-       "`auto DATASET` и `auto DATASET/images` ведут себя одинаково. `masks` "
-       "рядом с каталогом изображений подхватывается сам."),
-    TR("Konumsal argüman varsayılan olarak `images`'tır; `images/` içeren bir "
-       "veri kümesi dizini de kabul edilir ve o alt dizin kullanılır, böylece "
-       "`auto DATASET` ile `auto DATASET/images` aynı davranır. Görüntü dizininin "
-       "yanındaki `masks` kendiliğinden alınır."));
+    EN("Input defaults to `images`. `auto DATASET` uses DATASET/images just like `auto DATASET/images`.\nA `masks` folder beside the image directory is picked up automatically."),
+    JA("位置引数の既定は `images` です。 `images/` を含むデータセットディレクトリも受け付け、そのサブディレクトリを使うため、`auto DATASET` と `auto DATASET/images` は同じ動きになります。\n画像ディレクトリの隣にある `masks` は自動的に拾われます。"),
+    ZH_HANS("位置参数默认为 `images`；也接受包含 `images/` 的数据集目录并改用该子目录，因此 `auto DATASET` 与 `auto DATASET/images` 行为相同。\n图像目录旁边的 `masks` 会被自动采用。"),
+    ZH_HANT("位置參數預設為 `images`；也接受包含 `images/` 的資料集目錄並改用該子目錄，因此 `auto DATASET` 與 `auto DATASET/images` 行為相同。\n影像目錄旁邊的 `masks` 會被自動採用。"),
+    KO("위치 인자의 기본값은 `images` 입니다. `images/` 를 담은 데이터셋 디렉터리도 받아 그 하위 디렉터리를 쓰므로 `auto DATASET` 과 `auto DATASET/images` 는 같게 동작합니다.\n이미지 디렉터리 옆의 `masks` 는 저절로 집어 옵니다."),
+    DE("Das Positionsargument ist standardmäßig `images`; ein Datensatzverzeichnis mit `images/` wird ebenfalls angenommen und jenes Unterverzeichnis benutzt, sodass `auto DATASET` und `auto DATASET/images` gleich wirken.\nEin `masks` neben dem Bildverzeichnis wird von selbst aufgegriffen."),
+    FR("Le positionnel vaut `images` par défaut ; un dossier de jeu de données contenant `images/` est accepté et ce sous-dossier employé, si bien que `auto DATASET` et `auto DATASET/images` se comportent pareil.\nUn `masks` à côté du dossier d'images est repris automatiquement."),
+    ES("El posicional vale `images` por defecto; también se acepta una carpeta de conjunto de datos que contenga `images/` y se usa esa subcarpeta, así que `auto DATASET` y `auto DATASET/images` se comportan igual.\nUn `masks` junto a la carpeta de imágenes se recoge solo."),
+    PT("O posicional vale `images` por padrão; também se aceita uma pasta de conjunto de dados que contenha `images/` e usa-se essa subpasta, de modo que `auto DATASET` e `auto DATASET/images` se comportam igual.\nUm `masks` ao lado da pasta de imagens é apanhado sozinho."),
+    IT("Il posizionale vale `images` per impostazione predefinita; si accetta anche una cartella di dataset che contenga `images/` e si usa quella sottocartella, così `auto DATASET` e `auto DATASET/images` si comportano allo stesso modo.\nUn `masks` accanto alla cartella delle immagini viene raccolto da sé."),
+    NL("Het positionele argument is standaard `images`; een datasetmap met `images/` erin wordt ook aanvaard en die submap gebruikt, zodat `auto DATASET` en `auto DATASET/images` hetzelfde doen.\nEen `masks` naast de beeldmap wordt vanzelf opgepakt."),
+    RU("Позиционный аргумент по умолчанию -- `images`; принимается и каталог набора данных, содержащий `images/`, и берётся этот подкаталог, так что `auto DATASET` и `auto DATASET/images` ведут себя одинаково.\n`masks` рядом с каталогом изображений подхватывается сам."),
+    TR("Konumsal argüman varsayılan olarak `images`'tır; `images/` içeren bir veri kümesi dizini de kabul edilir ve o alt dizin kullanılır, böylece `auto DATASET` ile `auto DATASET/images` aynı davranır.\nGörüntü dizininin yanındaki `masks` kendiliğinden alınır."));
 
 SS_MSG(desc_auto_3,
-    EN("Two knobs decide the rest: --quality and --data-type. Anything they set "
-       "can be overridden by naming the flag explicitly, and the run reports "
-       "what they moved."),
-    JA("残りは --quality と --data-type の 2 つのつまみが決めます。これらが設定した"
-       "ものはフラグを明示すれば上書きでき、実行時にはそれらが動かした内容が"
-       "報告されます。"),
-    ZH_HANS("其余由两个旋钮决定：--quality 与 --data-type。它们设定的任何值都可以"
-            "通过显式写出对应标志来覆盖，运行时也会报告它们改动了什么。"),
-    ZH_HANT("其餘由兩個旋鈕決定：--quality 與 --data-type。它們設定的任何值都可以"
-            "透過明確寫出對應旗標來覆蓋，執行時也會回報它們改動了什麼。"),
-    KO("나머지는 --quality 와 --data-type 두 손잡이가 정합니다. 이들이 정한 값은 "
-       "해당 플래그를 직접 쓰면 덮어쓸 수 있고, 실행 중에 무엇을 옮겼는지 알려 줍니다."),
-    DE("Den Rest bestimmen zwei Regler: --quality und --data-type. Was sie "
-       "setzen, lässt sich durch ausdrückliches Nennen der Option überschreiben, "
-       "und der Lauf meldet, was sie bewegt haben."),
-    FR("Deux molettes décident du reste : --quality et --data-type. Tout ce "
-       "qu'elles fixent peut être remplacé en nommant l'option explicitement, et "
-       "l'exécution indique ce qu'elles ont déplacé."),
-    ES("Dos mandos deciden el resto: --quality y --data-type. Todo lo que fijan "
-       "puede sustituirse nombrando la opción de forma explícita, y la ejecución "
-       "informa de lo que movieron."),
-    PT("Dois botões decidem o resto: --quality e --data-type. Tudo o que eles "
-       "fixam pode ser substituído nomeando a opção explicitamente, e a execução "
-       "relata o que eles moveram."),
-    IT("Due manopole decidono il resto: --quality e --data-type. Tutto ciò che "
-       "fissano si può sovrascrivere nominando l'opzione esplicitamente, e "
-       "l'esecuzione riferisce che cosa hanno spostato."),
-    NL("Twee knoppen bepalen de rest: --quality en --data-type. Alles wat zij "
-       "instellen kan overschreven worden door de optie uitdrukkelijk te noemen, "
-       "en de run meldt wat zij verschoven hebben."),
-    RU("Остальное решают две ручки: --quality и --data-type. Всё, что они "
-       "задают, можно перекрыть, назвав флаг явно, а запуск сообщает, что именно "
-       "они сдвинули."),
-    TR("Gerisini iki düğme belirler: --quality ve --data-type. Bunların "
-       "belirlediği her şey, ilgili bayrağı açıkça yazarak değiştirilebilir ve "
-       "çalışma neyi oynattıklarını bildirir."));
+    EN("Two knobs decide the rest: --quality and --data-type.\nAnything they set can be overridden by naming the flag explicitly, and the run reports what they moved."),
+    JA("残りは --quality と --data-type の 2 つのつまみが決めます。\nこれらが設定したものはフラグを明示すれば上書きでき、実行時にはそれらが動かした内容が報告されます。"),
+    ZH_HANS("其余由两个旋钮决定：--quality 与 --data-type。\n它们设定的任何值都可以通过显式写出对应标志来覆盖，运行时也会报告它们改动了什么。"),
+    ZH_HANT("其餘由兩個旋鈕決定：--quality 與 --data-type。\n它們設定的任何值都可以透過明確寫出對應旗標來覆蓋，執行時也會回報它們改動了什麼。"),
+    KO("나머지는 --quality 와 --data-type 두 손잡이가 정합니다.\n이들이 정한 값은 해당 플래그를 직접 쓰면 덮어쓸 수 있고, 실행 중에 무엇을 옮겼는지 알려 줍니다."),
+    DE("--quality und --data-type setzen die Vorgaben. Jede Option kann explizit überschrieben werden; der Lauf meldet geänderte Vorgaben."),
+    FR("--quality et --data-type fixent les réglages. Chaque option explicite les remplace ; le traitement signale les réglages modifiés."),
+    ES("Dos mandos deciden el resto: --quality y --data-type. Todo lo que fijan puede sustituirse nombrando la opción de forma explícita, y la ejecución informa de lo que movieron."),
+    PT("Dois botões decidem o resto: --quality e --data-type. Tudo o que eles fixam pode ser substituído nomeando a opção explicitamente, e a execução relata o que eles moveram."),
+    IT("--quality e --data-type fissano le opzioni. Ogni flag esplicito le sostituisce; l’esecuzione segnala i valori modificati."),
+    NL("--quality en --data-type bepalen de opties. Elke expliciete optie overschrijft ze; de run meldt gewijzigde instellingen."),
+    RU("Остальное решают две ручки: --quality и --data-type.\nВсё, что они задают, можно перекрыть, назвав флаг явно, а запуск сообщает, что именно они сдвинули."),
+    TR("Gerisini iki düğme belirler: --quality ve --data-type. Bunların belirlediği her şey, ilgili bayrağı açıkça yazarak değiştirilebilir ve çalışma neyi oynattıklarını bildirir."));
 
 SS_MSG(desc_extract_1,
-    EN("GPU SIFT over one image or, recursively, a directory. A directory reuses "
-       "one GPU context and processes largest-first, so device buffers are "
-       "allocated once; decoding runs on a pool sized to fit --decode-budget, "
-       "and peak memory does not grow with the number of images. Feature files "
-       "mirror the image tree."),
-    JA("画像 1 枚、またはディレクトリを再帰的にたどって GPU 上で SIFT を実行します。"
-       "ディレクトリの場合は GPU コンテキストを 1 つ使い回し、大きいものから処理する"
-       "ため、デバイス側のバッファは一度だけ確保されます。デコードは "
-       "--decode-budget に収まる大きさのプールで動き、ピークメモリは画像枚数とともに"
-       "増えません。特徴点ファイルは画像のツリー構造をそのまま写します。"),
-    ZH_HANS("在 GPU 上对单张图像执行 SIFT，或递归遍历一个目录。处理目录时复用同一个 "
-            "GPU 上下文并从大到小处理，因此设备缓冲只分配一次；解码在一个按 "
-            "--decode-budget 定大小的线程池上进行，峰值内存不随图像数量增长。"
-            "特征点文件与图像目录结构一一对应。"),
-    ZH_HANT("在 GPU 上對單張影像執行 SIFT，或遞迴走訪一個目錄。處理目錄時重用同一個 "
-            "GPU 內容並從大到小處理，因此裝置緩衝只配置一次；解碼在一個按 "
-            "--decode-budget 定大小的執行緒池上進行，尖峰記憶體不隨影像數量增長。"
-            "特徵點檔案與影像目錄結構一一對應。"),
-    KO("이미지 하나 또는 디렉터리를 재귀로 돌며 GPU 에서 SIFT 를 실행합니다. "
-       "디렉터리를 처리할 때는 GPU 컨텍스트 하나를 재사용하고 큰 것부터 처리하므로 "
-       "장치 버퍼는 한 번만 잡습니다. 디코딩은 --decode-budget 에 맞춘 풀에서 돌고, "
-       "최대 메모리는 이미지 수에 따라 늘지 않습니다. 특징점 파일은 이미지 트리를 "
-       "그대로 본뜹니다."),
-    DE("GPU-SIFT über ein Bild oder, rekursiv, über ein Verzeichnis. Ein "
-       "Verzeichnis nutzt einen GPU-Kontext wieder und arbeitet die größten "
-       "zuerst ab, sodass Gerätepuffer nur einmal belegt werden; das Dekodieren "
-       "läuft auf einem Pool in der Größe von --decode-budget, und der "
-       "Spitzenspeicher wächst nicht mit der Bildzahl. Die Merkmalsdateien "
-       "spiegeln den Bildbaum."),
-    FR("SIFT sur GPU pour une image ou, récursivement, pour un dossier. Un "
-       "dossier réutilise un seul contexte GPU et traite les plus grandes "
-       "d'abord, si bien que les tampons du périphérique ne sont alloués qu'une "
-       "fois ; le décodage tourne sur une réserve taillée pour --decode-budget, "
-       "et la mémoire de pointe ne croît pas avec le nombre d'images. Les "
-       "fichiers de points reproduisent l'arborescence des images."),
-    ES("SIFT en la GPU sobre una imagen o, de forma recursiva, sobre una "
-       "carpeta. Una carpeta reutiliza un solo contexto de GPU y procesa las "
-       "mayores primero, así que los búferes del dispositivo se reservan una "
-       "vez; la descodificación corre en una reserva ajustada a "
-       "--decode-budget, y la memoria de pico no crece con el número de "
-       "imágenes. Los archivos de rasgos reflejan el árbol de imágenes."),
-    PT("SIFT na GPU sobre uma imagem ou, recursivamente, sobre uma pasta. Uma "
-       "pasta reaproveita um único contexto de GPU e processa as maiores "
-       "primeiro, então os buffers do dispositivo são reservados uma vez; a "
-       "decodificação corre numa reserva ajustada a --decode-budget, e a memória "
-       "de pico não cresce com o número de imagens. Os arquivos de traços "
-       "espelham a árvore de imagens."),
-    IT("SIFT su GPU per un'immagine o, ricorsivamente, per una cartella. Una "
-       "cartella riusa un solo contesto GPU e lavora prima le più grandi, così i "
-       "buffer del dispositivo si allocano una volta sola; la decodifica gira su "
-       "un pool dimensionato su --decode-budget, e la memoria di picco non "
-       "cresce col numero di immagini. I file dei punti rispecchiano l'albero "
-       "delle immagini."),
-    NL("GPU-SIFT over één beeld of, recursief, over een map. Een map hergebruikt "
-       "één GPU-context en verwerkt de grootste eerst, zodat apparaatbuffers "
-       "eenmaal worden gereserveerd; het decoderen draait op een pool ter grootte "
-       "van --decode-budget, en het piekgeheugen groeit niet mee met het aantal "
-       "beelden. De kenmerkbestanden spiegelen de beeldboom."),
-    RU("SIFT на GPU по одному изображению или, рекурсивно, по каталогу. Для "
-       "каталога переиспользуется один контекст GPU, и обработка идёт от "
-       "крупнейших, так что буферы устройства выделяются однажды; декодирование "
-       "работает в пуле под --decode-budget, а пиковая память не растёт с числом "
-       "изображений. Файлы признаков повторяют дерево изображений."),
-    TR("Bir görüntü üzerinde ya da özyinelemeli olarak bir dizin üzerinde GPU "
-       "SIFT. Bir dizin tek bir GPU bağlamını yeniden kullanır ve en büyükten "
-       "başlayarak işler, böylece aygıt tamponları bir kez ayrılır; çözme "
-       "--decode-budget'a göre boyutlanmış bir havuzda çalışır ve tepe bellek "
-       "görüntü sayısıyla büyümez. Öznitelik dosyaları görüntü ağacını yansıtır."));
+    EN("Run GPU SIFT on one image or a directory tree.\n- A directory shares one GPU context and processes largest images first, reusing buffers.\n- --decode-budget limits decoder memory. Peak memory stays bounded as images are added.\n- Feature files mirror the image tree."),
+    JA("画像 1 枚、またはディレクトリを再帰的にたどって GPU 上で SIFT を実行します。ディレクトリの場合は GPU コンテキストを 1 つ使い回し、大きいものから処理するため、デバイス側のバッファは一度だけ確保されます。\n- デコードは --decode-budget に収まる大きさのプールで動き、ピークメモリは画像枚数とともに増えません。\n- 特徴点ファイルは画像のツリー構造をそのまま写します。"),
+    ZH_HANS("在 GPU 上对单张图像执行 SIFT，或递归遍历一个目录。处理目录时复用同一个 GPU 上下文并从大到小处理，因此设备缓冲只分配一次；\n解码在一个按 --decode-budget 定大小的线程池上进行，峰值内存不随图像数量增长。特征点文件与图像目录结构一一对应。"),
+    ZH_HANT("在 GPU 上對單張影像執行 SIFT，或遞迴走訪一個目錄。處理目錄時重用同一個 GPU 內容並從大到小處理，因此裝置緩衝只配置一次；\n- 解碼在一個按 --decode-budget 定大小的執行緒池上進行，尖峰記憶體不隨影像數量增長。\n- 特徵點檔案與影像目錄結構一一對應。"),
+    KO("이미지 하나 또는 디렉터리를 재귀로 돌며 GPU 에서 SIFT 를 실행합니다. 디렉터리를 처리할 때는 GPU 컨텍스트 하나를 재사용하고 큰 것부터 처리하므로 장치 버퍼는 한 번만 잡습니다.\n- 디코딩은 --decode-budget 에 맞춘 풀에서 돌고, 최대 메모리는 이미지 수에 따라 늘지 않습니다.\n- 특징점 파일은 이미지 트리를 그대로 본뜹니다."),
+    DE("GPU-SIFT über ein Bild oder, rekursiv, über ein Verzeichnis. Ein Verzeichnis nutzt einen GPU-Kontext wieder und arbeitet die größten zuerst ab, sodass Gerätepuffer nur einmal belegt werden;\ndas Dekodieren läuft auf einem Pool in der Größe von --decode-budget, und der Spitzenspeicher wächst nicht mit der Bildzahl. Die Merkmalsdateien spiegeln den Bildbaum."),
+    FR("SIFT sur GPU pour une image ou, récursivement, pour un dossier. Un dossier réutilise un seul contexte GPU et traite les plus grandes d'abord, si bien que les tampons du périphérique ne sont alloués qu'une fois ; le décodage tourne sur une réserve taillée pour --decode-budget, et la mémoire de pointe ne croît pas avec le nombre d'images.\nLes fichiers de points reproduisent l'arborescence des images."),
+    ES("SIFT en la GPU sobre una imagen o, de forma recursiva, sobre una carpeta. Una carpeta reutiliza un solo contexto de GPU y procesa las mayores primero, así que los búferes del dispositivo se reservan una vez;\n- la descodificación corre en una reserva ajustada a --decode-budget, y la memoria de pico no crece con el número de imágenes.\n- Los archivos de rasgos reflejan el árbol de imágenes."),
+    PT("SIFT na GPU sobre uma imagem ou, recursivamente, sobre uma pasta. Uma pasta reaproveita um único contexto de GPU e processa as maiores primeiro, então os buffers do dispositivo são reservados uma vez;\n- a decodificação corre numa reserva ajustada a --decode-budget, e a memória de pico não cresce com o número de imagens.\n- Os arquivos de traços espelham a árvore de imagens."),
+    IT("SIFT su GPU per un'immagine o, ricorsivamente, per una cartella. Una cartella riusa un solo contesto GPU e lavora prima le più grandi, così i buffer del dispositivo si allocano una volta sola;\n- la decodifica gira su un pool dimensionato su --decode-budget, e la memoria di picco non cresce col numero di immagini.\n- I file dei punti rispecchiano l'albero delle immagini."),
+    NL("GPU-SIFT over één beeld of, recursief, over een map. Een map hergebruikt één GPU-context en verwerkt de grootste eerst, zodat apparaatbuffers eenmaal worden gereserveerd;\n- het decoderen draait op een pool ter grootte van --decode-budget, en het piekgeheugen groeit niet mee met het aantal beelden.\n- De kenmerkbestanden spiegelen de beeldboom."),
+    RU("SIFT на GPU по одному изображению или, рекурсивно, по каталогу. Для каталога переиспользуется один контекст GPU, и обработка идёт от крупнейших, так что буферы устройства выделяются однажды;\n- декодирование работает в пуле под --decode-budget, а пиковая память не растёт с числом изображений.\n- Файлы признаков повторяют дерево изображений."),
+    TR("Bir görüntü üzerinde ya da özyinelemeli olarak bir dizin üzerinde GPU SIFT. Bir dizin tek bir GPU bağlamını yeniden kullanır ve en büyükten başlayarak işler, böylece aygıt tamponları bir kez ayrılır;\n- çözme --decode-budget'a göre boyutlanmış bir havuzda çalışır ve tepe bellek görüntü sayısıyla büyümez.\n- Öznitelik dosyaları görüntü ağacını yansıtır."));
 
 SS_MSG(desc_extract_2,
-    EN("Keypoints are written in the *source* image's coordinates even when "
-       "--max-image-size downscaled it, and each file records what EXIF said "
-       "about the focal length and the camera, so `match` and `map` can build "
-       "intrinsics for the images on disk without seeing them (D46)."),
-    JA("--max-image-size で縮小した場合でも、キーポイントは*元*画像の座標で"
-       "書き出されます。また各ファイルには EXIF が伝える焦点距離とカメラの情報が"
-       "記録されるため、`match` と `map` はディスク上の画像を見ずに内部パラメータを"
-       "組み立てられます（D46）。"),
-    ZH_HANS("即使 --max-image-size 缩小过图像，关键点仍按*源*图像的坐标写出；"
-            "每个文件还记录 EXIF 关于焦距与相机的信息，因此 `match` 与 `map` "
-            "无需看到磁盘上的图像也能构造内参（D46）。"),
-    ZH_HANT("即使 --max-image-size 縮小過影像，關鍵點仍按*原始*影像的座標寫出；"
-            "每個檔案還記錄 EXIF 關於焦距與相機的資訊，因此 `match` 與 `map` "
-            "無需看到磁碟上的影像也能建構內參（D46）。"),
-    KO("--max-image-size 로 줄였더라도 키포인트는 *원본* 이미지 좌표로 씁니다. 또 "
-       "각 파일에 EXIF 가 말한 초점 거리와 카메라 정보를 적어 두므로, `match` 와 "
-       "`map` 은 디스크의 이미지를 보지 않고도 내부 파라미터를 세울 수 있습니다"
-       "(D46)."),
-    DE("Schlüsselpunkte werden in den Koordinaten des *Quellbildes* geschrieben, "
-       "selbst wenn --max-image-size es verkleinert hat, und jede Datei hält "
-       "fest, was EXIF über Brennweite und Kamera sagte, sodass `match` und "
-       "`map` Intrinsics für die Bilder auf der Platte bauen können, ohne sie zu "
-       "sehen (D46)."),
-    FR("Les points clés sont écrits dans les coordonnées de l'image *source*, "
-       "même quand --max-image-size l'a réduite, et chaque fichier consigne ce "
-       "que l'EXIF disait de la focale et de l'appareil, de sorte que `match` et "
-       "`map` peuvent bâtir les paramètres internes des images sur disque sans "
-       "les voir (D46)."),
-    ES("Los puntos clave se escriben en coordenadas de la imagen *de origen*, "
-       "incluso cuando --max-image-size la redujo, y cada archivo anota lo que "
-       "el EXIF decía de la focal y de la cámara, de modo que `match` y `map` "
-       "pueden construir los parámetros internos de las imágenes en disco sin "
-       "verlas (D46)."),
-    PT("Os pontos-chave são escritos nas coordenadas da imagem *de origem*, "
-       "mesmo quando --max-image-size a reduziu, e cada arquivo anota o que o "
-       "EXIF dizia da focal e da câmera, de modo que `match` e `map` podem "
-       "construir os parâmetros internos das imagens em disco sem as ver (D46)."),
-    IT("I punti chiave sono scritti nelle coordinate dell'immagine *di origine*, "
-       "anche quando --max-image-size l'ha ridotta, e ogni file annota ciò che "
-       "l'EXIF diceva della focale e della camera, così `match` e `map` possono "
-       "costruire i parametri interni delle immagini su disco senza vederle "
-       "(D46)."),
-    NL("Sleutelpunten worden geschreven in de coördinaten van het *bronbeeld*, "
-       "ook wanneer --max-image-size het verkleind heeft, en elk bestand noteert "
-       "wat de EXIF zei over brandpuntsafstand en camera, zodat `match` en `map` "
-       "intrinsieken voor de beelden op schijf kunnen bouwen zonder ze te zien "
-       "(D46)."),
-    RU("Ключевые точки пишутся в координатах *исходного* изображения, даже когда "
-       "--max-image-size его уменьшил, а каждый файл сохраняет то, что EXIF "
-       "сообщил о фокусном расстоянии и камере, так что `match` и `map` строят "
-       "внутренние параметры для изображений на диске, не видя их (D46)."),
-    TR("Anahtar noktalar, --max-image-size küçültmüş olsa bile *kaynak* "
-       "görüntünün koordinatlarıyla yazılır ve her dosya EXIF'in odak uzaklığı "
-       "ile kamera hakkında söylediğini kaydeder; böylece `match` ve `map`, "
-       "diskteki görüntüleri görmeden onlar için iç parametre kurabilir (D46)."));
+    EN("Keypoints use source-image coordinates, even with --max-image-size.\nEXIF camera and focal data let match and map build intrinsics without rereading images (D46)."),
+    JA("--max-image-size を使っても、特徴点は元画像の座標です。\nmatch と map は記録した EXIF のカメラと焦点距離から内部パラメータを作ります。画像の再読込は不要です（D46）。"),
+    ZH_HANS("即使使用 --max-image-size，特征点仍用原图坐标。\nmatch 与 map 用保存的 EXIF 相机和焦距数据建立内参，无需重读图像（D46）。"),
+    ZH_HANT("即使使用 --max-image-size，特徵點仍用原圖座標。\nmatch 與 map 用儲存的 EXIF 相機和焦距資料建立內參，無需重讀影像（D46）。"),
+    KO("--max-image-size를 써도 특징점은 원본 이미지 좌표입니다.\nmatch와 map은 저장된 EXIF 카메라와 초점 거리로 내부 파라미터를 구합니다. 이미지를 다시 읽지 않습니다(D46)."),
+    DE("Merkmale bleiben mit --max-image-size in Originalbildkoordinaten.\nEXIF-Kamera und Brennweite liefern match und map die Intrinsik ohne erneutes Bildlesen (D46)."),
+    FR("Points en coordonnées d’origine, même avec --max-image-size.\nLes données EXIF de focale et de caméra donnent les intrinsèques à match et map sans relire les images (D46)."),
+    ES("Puntos en coordenadas originales, incluso con --max-image-size.\nCámara y focal EXIF dan los intrínsecos a match y map sin releer imágenes (D46)."),
+    PT("Pontos nas coordenadas originais, mesmo com --max-image-size.\nCâmara e focal EXIF dão os intrínsecos a match e map sem reler imagens (D46)."),
+    IT("Punti in coordinate originali, anche con --max-image-size.\nCamera e focale EXIF danno a match e map gli intrinseci senza rileggere le immagini (D46)."),
+    NL("Kenmerken in bronbeeldcoördinaten, ook met --max-image-size.\nEXIF-camera en brandpunt geven match en map de intrinsieken zonder beelden te herlezen (D46)."),
+    RU("Точки в координатах исходного снимка даже с --max-image-size.\nКамера и фокус EXIF дают match и map внутренние параметры без перечитывания снимков (D46)."),
+    TR("--max-image-size ile de noktalar kaynak görüntü koordinatındadır.\nEXIF kamera ve odak verileri, match ve map için görüntüleri tekrar okumadan iç parametreleri verir (D46)."));
 
 SS_MSG(desc_match_1,
-    EN("Brute-force descriptor matching on the GPU, then two-view geometric "
-       "verification (F/H RANSAC) on a worker pool fed by the matcher. "
-       "Verification is where the time goes; --threads sizes it and results do "
-       "not depend on the count."),
-    JA("GPU 上で総当たりの記述子マッチングを行い、続いてマッチャーが供給する"
-       "ワーカープールで 2 視点の幾何検証（F/H の RANSAC）を行います。時間はこの検証で"
-       "使われます。--threads がその規模を決めますが、結果はその数に依存しません。"),
-    ZH_HANS("先在 GPU 上做暴力描述子匹配，再由匹配器供料的工作线程池做双视图几何验证"
-            "（F/H 的 RANSAC）。时间主要花在验证上；--threads 决定其规模，"
-            "而结果与线程数无关。"),
-    ZH_HANT("先在 GPU 上做暴力描述子匹配，再由匹配器供料的工作執行緒池做雙視圖幾何驗證"
-            "（F/H 的 RANSAC）。時間主要花在驗證上；--threads 決定其規模，"
-            "而結果與執行緒數無關。"),
-    KO("GPU 에서 전수 기술자 매칭을 한 뒤, 매처가 먹여 주는 작업 풀에서 두 시점 기하 "
-       "검증(F/H RANSAC)을 합니다. 시간은 이 검증에서 쓰이며, --threads 가 그 규모를 "
-       "정하지만 결과는 그 수에 좌우되지 않습니다."),
-    DE("Deskriptorzuordnung mit Gewalt auf der GPU, danach geometrische "
-       "Zweiansichtsprüfung (F/H-RANSAC) auf einem Arbeiterpool, den der Matcher "
-       "speist. Die Zeit steckt in der Prüfung; --threads bemisst sie, und die "
-       "Ergebnisse hängen nicht von der Zahl ab."),
-    FR("Appariement de descripteurs en force brute sur le GPU, puis vérification "
-       "géométrique à deux vues (RANSAC F/H) sur une réserve d'ouvriers "
-       "alimentée par l'apparieur. C'est la vérification qui prend le temps ; "
-       "--threads la dimensionne et les résultats ne dépendent pas du nombre."),
-    ES("Emparejamiento de descriptores por fuerza bruta en la GPU y luego "
-       "verificación geométrica de dos vistas (RANSAC de F/H) en una reserva de "
-       "trabajadores que alimenta el emparejador. El tiempo se va en la "
-       "verificación; --threads la dimensiona y los resultados no dependen del "
-       "número."),
-    PT("Emparelhamento de descritores por força bruta na GPU e depois "
-       "verificação geométrica de duas vistas (RANSAC de F/H) numa reserva de "
-       "trabalhadores alimentada pelo emparelhador. O tempo vai-se na "
-       "verificação; --threads dimensiona-a e os resultados não dependem do "
-       "número."),
-    IT("Abbinamento dei descrittori a forza bruta sulla GPU, poi verifica "
-       "geometrica a due viste (RANSAC F/H) su un pool di worker alimentato "
-       "dall'abbinatore. Il tempo se ne va nella verifica; --threads la "
-       "dimensiona e i risultati non dipendono dal numero."),
-    NL("Brute-force descriptormatching op de GPU, daarna meetkundige "
-       "tweebeeldverificatie (F/H-RANSAC) op een werkerspool die de matcher "
-       "voedt. De tijd gaat in de verificatie zitten; --threads bepaalt de "
-       "omvang en de uitkomsten hangen niet van het aantal af."),
-    RU("Полный перебор при сопоставлении дескрипторов на GPU, затем двухвидовая "
-       "геометрическая проверка (RANSAC для F/H) в пуле рабочих потоков, который "
-       "питает сопоставитель. Время уходит на проверку; --threads задаёт её "
-       "размер, а результаты от их числа не зависят."),
-    TR("GPU'da kaba kuvvetle betimleyici eşleştirme, ardından eşleştiricinin "
-       "beslediği bir işçi havuzunda iki görüşlü geometrik doğrulama (F/H "
-       "RANSAC). Zaman doğrulamada geçer; --threads onu boyutlandırır ve "
-       "sonuçlar sayıya bağlı değildir."));
+    EN("GPU brute-force matching, then F/H RANSAC verification on a worker pool. --threads sets verification workers; results are independent of the count."),
+    JA("GPU全探索の後、ワーカープールでF/H RANSAC検証。--threads が検証ワーカー数を設定します。結果は数に依存しません。"),
+    ZH_HANS("GPU 暴力匹配后，由工作线程池进行 F/H RANSAC 验证。--threads 设置验证线程数，不影响结果。"),
+    ZH_HANT("GPU 暴力匹配後，由工作執行緒池進行 F/H RANSAC 驗證。--threads 設定驗證執行緒數，不影響結果。"),
+    KO("GPU 전수 매칭 후 작업 풀에서 F/H RANSAC 검증을 합니다. --threads는 검증 작업자 수이며 결과는 수에 무관합니다."),
+    DE("GPU-Brute-Force-Abgleich, dann F/H-RANSAC-Prüfung im Workerpool. --threads setzt Prüfworker; Ergebnisse sind unabhängig von ihrer Zahl."),
+    FR("Appariement exhaustif GPU puis vérification F/H RANSAC sur un pool. --threads fixe les workers ; le nombre ne change pas les résultats."),
+    ES("Emparejamiento exhaustivo GPU y verificación F/H RANSAC en un grupo. --threads fija los hilos; el número no cambia los resultados."),
+    PT("Correspondência exaustiva GPU e verificação F/H RANSAC em um pool. --threads define trabalhadores; o número não muda os resultados."),
+    IT("Abbinamento esaustivo GPU, poi verifica F/H RANSAC su un pool. --threads fissa i worker; il numero non cambia i risultati."),
+    NL("GPU-bruteforcekoppeling, dan F/H-RANSAC-controle in een pool. --threads stelt controleworkers in; hun aantal verandert de resultaten niet."),
+    RU("Полный перебор на GPU, затем проверка F/H RANSAC в пуле. --threads задаёт число проверяющих потоков; оно не влияет на результат."),
+    TR("GPU tam tarama eşleştirmesi, sonra havuzda F/H RANSAC doğrulaması. --threads doğrulama işçisi sayısıdır; sonuçlar sayıdan bağımsızdır."));
 
 SS_MSG(desc_match_2,
-    EN("A fisheye --camera-model switches verification to unit bearings, where "
-       "the epipolar constraint holds at any field of view; the focal is "
-       "searched per camera group on a sample of pairs unless --focal or EXIF "
-       "gives one (D45/D46). The camera grouping and the focals this stage "
-       "settles on travel in the match database, so `map` inherits them instead "
-       "of re-deriving them (D47)."),
-    JA("魚眼の --camera-model を指定すると、検証は単位方位ベクトルに切り替わります。"
-       "そこではエピポーラ拘束がどんな画角でも成り立ちます。--focal や EXIF が"
-       "焦点距離を与えない場合は、ペアの標本上でカメラグループごとに探索します"
-       "（D45/D46）。この段階が定めたカメラのグループ分けと焦点距離は対応データベースに"
-       "入るので、`map` は導き直さずに引き継ぎます（D47）。"),
-    ZH_HANS("指定鱼眼的 --camera-model 后，验证会改用单位方向向量，此时对极约束在"
-            "任意视场角下都成立；若 --focal 或 EXIF 没有给出焦距，则在一部分像对上"
-            "按相机组搜索（D45/D46）。本阶段定下的相机分组与焦距会写入匹配数据库，"
-            "因此 `map` 直接沿用而不再重新推导（D47）。"),
-    ZH_HANT("指定魚眼的 --camera-model 後，驗證會改用單位方向向量，此時對極約束在"
-            "任意視場角下都成立；若 --focal 或 EXIF 沒有給出焦距，則在一部分影像對上"
-            "按相機群組搜尋（D45/D46）。本階段定下的相機分組與焦距會寫入匹配資料庫，"
-            "因此 `map` 直接沿用而不再重新推導（D47）。"),
-    KO("어안 --camera-model 을 주면 검증이 단위 방향 벡터로 바뀌며, 그곳에서는 "
-       "에피폴라 제약이 어떤 화각에서도 성립합니다. --focal 이나 EXIF 가 초점 거리를 "
-       "주지 않으면 쌍의 표본에서 카메라 그룹별로 탐색합니다(D45/D46). 이 단계가 "
-       "정한 카메라 묶음과 초점 거리는 대응 데이터베이스에 실려 가므로, `map` 은 "
-       "다시 끌어내지 않고 물려받습니다(D47)."),
-    DE("Ein Fischaugen---camera-model schaltet die Prüfung auf "
-       "Einheitsrichtungen um, wo die Epipolarbedingung bei jedem Bildwinkel "
-       "gilt; die Brennweite wird je Kameragruppe an einer Stichprobe von Paaren "
-       "gesucht, sofern nicht --focal oder EXIF eine liefert (D45/D46). Die "
-       "Kameragruppierung und die Brennweiten, auf die sich diese Stufe "
-       "festlegt, reisen in der Zuordnungsdatenbank mit, sodass `map` sie erbt, "
-       "statt sie neu herzuleiten (D47)."),
-    FR("Un --camera-model fisheye fait passer la vérification à des directions "
-       "unitaires, où la contrainte épipolaire tient à n'importe quel champ ; la "
-       "focale est cherchée par groupe de caméras sur un échantillon de paires, "
-       "sauf si --focal ou l'EXIF en fournit une (D45/D46). Le regroupement des "
-       "caméras et les focales arrêtés à cette étape voyagent dans la base "
-       "d'appariements, si bien que `map` en hérite au lieu de les redériver "
-       "(D47)."),
-    ES("Un --camera-model de ojo de pez pasa la verificación a direcciones "
-       "unitarias, donde la restricción epipolar se cumple con cualquier campo "
-       "de visión; la focal se busca por grupo de cámaras sobre una muestra de "
-       "pares, salvo que --focal o el EXIF den una (D45/D46). La agrupación de "
-       "cámaras y las focales que fija esta etapa viajan en la base de "
-       "emparejamientos, así que `map` las hereda en vez de rededucirlas (D47)."),
-    PT("Um --camera-model olho de peixe passa a verificação a direções "
-       "unitárias, onde a restrição epipolar vale em qualquer campo de visão; a "
-       "focal é procurada por grupo de câmeras numa amostra de pares, salvo se "
-       "--focal ou o EXIF derem uma (D45/D46). O agrupamento de câmeras e as "
-       "focais que esta etapa fixa viajam na base de correspondências, então "
-       "`map` herda-os em vez de os deduzir de novo (D47)."),
-    IT("Un --camera-model fisheye porta la verifica su direzioni unitarie, dove "
-       "il vincolo epipolare vale a qualunque campo visivo; la focale si cerca "
-       "per gruppo di camere su un campione di coppie, a meno che --focal o "
-       "l'EXIF non ne diano una (D45/D46). Il raggruppamento delle camere e le "
-       "focali fissate da questa fase viaggiano nel database degli abbinamenti, "
-       "così `map` le eredita invece di riderivarle (D47)."),
-    NL("Een fisheye---camera-model zet de verificatie om naar "
-       "eenheidsrichtingen, waar de epipolaire voorwaarde bij elk beeldveld "
-       "geldt; de brandpuntsafstand wordt per cameragroep gezocht op een "
-       "steekproef van paren, tenzij --focal of de EXIF er een geeft (D45/D46). "
-       "De cameragroepering en de brandpuntsafstanden die deze fase vastlegt "
-       "reizen mee in de matchdatabase, zodat `map` ze erft in plaats van ze "
-       "opnieuw af te leiden (D47)."),
-    RU("Рыбий глаз в --camera-model переводит проверку на единичные направления, "
-       "где эпиполярное условие выполняется при любом поле зрения; фокусное "
-       "расстояние ищется по группам камер на выборке пар, если его не дают "
-       "--focal или EXIF (D45/D46). Группировка камер и фокусные расстояния, на "
-       "которых остановилась эта стадия, едут в базе соответствий, так что `map` "
-       "наследует их, а не выводит заново (D47)."),
-    TR("Balıkgözü bir --camera-model, doğrulamayı birim yön vektörlerine "
-       "geçirir; orada epipolar kısıt her görüş açısında geçerlidir. --focal ya "
-       "da EXIF bir odak vermiyorsa, odak bir çift örneklemi üzerinde kamera "
-       "grubu başına aranır (D45/D46). Bu aşamanın karar kıldığı kamera "
-       "gruplaması ve odaklar eşleşme veritabanıyla birlikte gider, böylece "
-       "`map` onları yeniden türetmek yerine devralır (D47)."));
+    EN("Fisheye --camera-model verifies unit bearings at any field of view.\n- Estimates focal length from sampled pairs per camera group unless --focal or EXIF supplies it.\n- The match database carries camera groups and focals into map."),
+    JA("魚眼の --camera-model を指定すると、検証は単位方位ベクトルに切り替わります。そこではエピポーラ拘束がどんな画角でも成り立ちます。--focal や EXIF が焦点距離を与えない場合は、ペアの標本上でカメラグループごとに探索します。\nこの段階が定めたカメラのグループ分けと焦点距離は対応データベースに入るので、`map` は導き直さずに引き継ぎます。"),
+    ZH_HANS("指定鱼眼的 --camera-model 后，验证会改用单位方向向量，此时对极约束在任意视场角下都成立；若 --focal 或 EXIF 没有给出焦距，则在一部分像对上按相机组搜索。\n本阶段定下的相机分组与焦距会写入匹配数据库，因此 `map` 直接沿用而不再重新推导。"),
+    ZH_HANT("指定魚眼的 --camera-model 後，驗證會改用單位方向向量，此時對極約束在任意視場角下都成立；若 --focal 或 EXIF 沒有給出焦距，則在一部分影像對上按相機群組搜尋。\n本階段定下的相機分組與焦距會寫入匹配資料庫，因此 `map` 直接沿用而不再重新推導。"),
+    KO("어안 --camera-model 을 주면 검증이 단위 방향 벡터로 바뀌며, 그곳에서는 에피폴라 제약이 어떤 화각에서도 성립합니다. --focal 이나 EXIF 가 초점 거리를 주지 않으면 쌍의 표본에서 카메라 그룹별로 탐색합니다.\n이 단계가 정한 카메라 묶음과 초점 거리는 대응 데이터베이스에 실려 가므로, `map` 은 다시 끌어내지 않고 물려받습니다."),
+    DE("Ein Fischaugen---camera-model schaltet die Prüfung auf Einheitsrichtungen um, wo die Epipolarbedingung bei jedem Bildwinkel gilt; die Brennweite wird je Kameragruppe an einer Stichprobe von Paaren gesucht, sofern nicht --focal oder EXIF eine liefert.\nDie Kameragruppierung und die Brennweiten, auf die sich diese Stufe festlegt, reisen in der Zuordnungsdatenbank mit, sodass `map` sie erbt, statt sie neu herzuleiten."),
+    FR("Un --camera-model fisheye fait passer la vérification à des directions unitaires, où la contrainte épipolaire tient à n'importe quel champ ; la focale est cherchée par groupe de caméras sur un échantillon de paires, sauf si --focal ou l'EXIF en fournit une.\nLe regroupement des caméras et les focales arrêtés à cette étape voyagent dans la base d'appariements, si bien que `map` en hérite au lieu de les redériver."),
+    ES("Un --camera-model de ojo de pez pasa la verificación a direcciones unitarias, donde la restricción epipolar se cumple con cualquier campo de visión;\n- la focal se busca por grupo de cámaras sobre una muestra de pares, salvo que --focal o el EXIF den una.\n- La agrupación de cámaras y las focales que fija esta etapa viajan en la base de emparejamientos, así que `map` las hereda en vez de rededucirlas."),
+    PT("Um --camera-model olho de peixe passa a verificação a direções unitárias, onde a restrição epipolar vale em qualquer campo de visão;\n- a focal é procurada por grupo de câmeras numa amostra de pares, salvo se --focal ou o EXIF derem uma.\n- O agrupamento de câmeras e as focais que esta etapa fixa viajam na base de correspondências, então `map` herda-os em vez de os deduzir de novo."),
+    IT("Un --camera-model fisheye porta la verifica su direzioni unitarie, dove il vincolo epipolare vale a qualunque campo visivo; la focale si cerca per gruppo di camere su un campione di coppie, a meno che --focal o l'EXIF non ne diano una.\nIl raggruppamento delle camere e le focali fissate da questa fase viaggiano nel database degli abbinamenti, così `map` le eredita invece di riderivarle."),
+    NL("Een fisheye---camera-model zet de verificatie om naar eenheidsrichtingen, waar de epipolaire voorwaarde bij elk beeldveld geldt; de brandpuntsafstand wordt per cameragroep gezocht op een steekproef van paren, tenzij --focal of de EXIF er een geeft.\nDe cameragroepering en de brandpuntsafstanden die deze fase vastlegt reizen mee in de matchdatabase, zodat `map` ze erft in plaats van ze opnieuw af te leiden."),
+    RU("Рыбий глаз в --camera-model переводит проверку на единичные направления, где эпиполярное условие выполняется при любом поле зрения;\n- фокусное расстояние ищется по группам камер на выборке пар, если его не дают --focal или EXIF.\n- Группировка камер и фокусные расстояния, на которых остановилась эта стадия, едут в базе соответствий, так что `map` наследует их, а не выводит заново."),
+    TR("Balıkgözü bir --camera-model, doğrulamayı birim yön vektörlerine geçirir;\n- orada epipolar kısıt her görüş açısında geçerlidir. --focal ya da EXIF bir odak vermiyorsa, odak bir çift örneklemi üzerinde kamera grubu başına aranır.\n- Bu aşamanın karar kıldığı kamera gruplaması ve odaklar eşleşme veritabanıyla birlikte gider, böylece `map` onları yeniden türetmek yerine devralır."));
 
 SS_MSG(desc_map_1,
-    EN("Seed, register, triangulate, bundle-adjust, filter -- then the merge "
-       "levels and the finishing passes. A capture that is not one connected "
-       "view graph reconstructs as several models, written to <out>/0, <out>/1, "
-       "... largest first (COLMAP's layout); they are then merged where they "
-       "share images and grown into whatever else they can register."),
-    JA("シード選び、登録、三角測量、バンドル調整、フィルタリング -- そのあとに統合の"
-       "各段と仕上げのパスが続きます。1 つの連結した視点グラフになっていない撮影は"
-       "複数のモデルとして再構成され、<out>/0、<out>/1、... に大きい順で書き出されます"
-       "（COLMAP の配置）。それらは画像を共有するところで統合され、さらに登録できる"
-       "ものを取り込んで成長します。"),
-    ZH_HANS("选种子、注册、三角化、平差、过滤 —— 然后是各层合并与收尾阶段。"
-            "若拍摄不是一个连通的视图图，就会重建成多个模型，按从大到小写入 "
-            "<out>/0、<out>/1……（COLMAP 的布局）；随后在共享图像处把它们合并，"
-            "并把还能注册的图像继续并入。"),
-    ZH_HANT("選種子、註冊、三角化、平差、過濾 —— 然後是各層合併與收尾階段。"
-            "若拍攝不是一個連通的視圖圖，就會重建成多個模型，按從大到小寫入 "
-            "<out>/0、<out>/1……（COLMAP 的配置）；隨後在共享影像處把它們合併，"
-            "並把還能註冊的影像繼續併入。"),
-    KO("씨앗 고르기, 등록, 삼각측량, 번들 조정, 걸러내기 -- 그다음 병합 층들과 마무리 "
-       "단계가 이어집니다. 하나로 이어진 뷰 그래프가 아닌 촬영은 여러 모델로 "
-       "재구성되어 <out>/0, <out>/1, ... 에 큰 것부터 쓰입니다(COLMAP 의 배치). "
-       "이후 이미지를 공유하는 곳에서 병합되고, 더 등록할 수 있는 것을 받아들이며 "
-       "자랍니다."),
-    DE("Startpaar, Registrieren, Triangulieren, Ausgleichen, Filtern -- dann die "
-       "Zusammenführungsebenen und die Schlussdurchgänge. Eine Aufnahme, die "
-       "kein zusammenhängender Sichtgraph ist, wird zu mehreren Modellen, "
-       "geschrieben nach <out>/0, <out>/1, ... das größte zuerst (COLMAPs "
-       "Anordnung); sie werden dort zusammengeführt, wo sie Bilder teilen, und "
-       "um alles erweitert, was sie sonst noch registrieren können."),
-    FR("Amorcer, enregistrer, trianguler, ajuster, filtrer -- puis les niveaux "
-       "de fusion et les passes de finition. Une prise de vue qui n'est pas un "
-       "seul graphe de vues connexe se reconstruit en plusieurs modèles, écrits "
-       "dans <out>/0, <out>/1, ... du plus grand au plus petit (la disposition "
-       "de COLMAP) ; ils sont ensuite fusionnés là où ils partagent des images, "
-       "et étendus à tout ce qu'ils peuvent encore enregistrer."),
-    ES("Sembrar, registrar, triangular, ajustar, filtrar; luego los niveles de "
-       "fusión y las pasadas de acabado. Una captura que no es un único grafo de "
-       "vistas conexo se reconstruye como varios modelos, escritos en <out>/0, "
-       "<out>/1, ... del mayor al menor (la disposición de COLMAP); después se "
-       "fusionan donde comparten imágenes y crecen con todo lo que aún puedan "
-       "registrar."),
-    PT("Semear, registrar, triangular, ajustar, filtrar -- depois os níveis de "
-       "fusão e as passagens de acabamento. Uma captura que não é um único grafo "
-       "de vistas conexo reconstrói-se como vários modelos, escritos em "
-       "<out>/0, <out>/1, ... do maior para o menor (a disposição do COLMAP); "
-       "em seguida são fundidos onde partilham imagens e crescem com tudo o que "
-       "ainda conseguirem registrar."),
-    IT("Innescare, registrare, triangolare, aggiustare, filtrare -- poi i "
-       "livelli di fusione e i passaggi di rifinitura. Una ripresa che non è un "
-       "unico grafo delle viste connesso si ricostruisce come più modelli, "
-       "scritti in <out>/0, <out>/1, ... dal più grande (la disposizione di "
-       "COLMAP); vengono poi fusi dove condividono immagini e accresciuti con "
-       "tutto ciò che riescono ancora a registrare."),
-    NL("Zaaien, registreren, trianguleren, aanpassen, filteren -- daarna de "
-       "samenvoegniveaus en de afwerkgangen. Een opname die geen samenhangende "
-       "zichtgraaf is, wordt gereconstrueerd als meerdere modellen, geschreven "
-       "naar <out>/0, <out>/1, ... grootste eerst (COLMAP's indeling); daarna "
-       "worden ze samengevoegd waar ze beelden delen en uitgebreid met al wat ze "
-       "nog kunnen registreren."),
-    RU("Начальная пара, регистрация, триангуляция, уравнивание, отсев -- затем "
-       "уровни слияния и завершающие проходы. Съёмка, не образующая один связный "
-       "граф видов, восстанавливается как несколько моделей, записываемых в "
-       "<out>/0, <out>/1, ... начиная с наибольшей (раскладка COLMAP); потом их "
-       "сливают там, где у них общие изображения, и наращивают всем, что они ещё "
-       "могут зарегистрировать."),
-    TR("Tohumla, kaydet, üçgenle, dengele, ele -- ardından birleştirme düzeyleri "
-       "ve bitirme geçişleri. Tek bir bağlı görüş çizgesi olmayan bir çekim "
-       "birden çok model olarak oluşturulur ve <out>/0, <out>/1, ... içine en "
-       "büyükten başlayarak yazılır (COLMAP'in düzeni); sonra görüntü "
-       "paylaştıkları yerde birleştirilir ve kaydedebildikleri her şeyle "
-       "büyütülür."));
+    EN("Seed, register, triangulate, bundle-adjust and filter, then run merge and finishing passes.\n- Disconnected components go to <out>/0, <out>/1, etc., largest first.\n- Merges models with shared images and registers remaining views where possible."),
+    JA("シード選び、登録、三角測量、バンドル調整、フィルタリング -- そのあとに統合の各段と仕上げのパスが続きます。\n- 1 つの連結した視点グラフになっていない撮影は複数のモデルとして再構成され、<out>/0、<out>/1、... に大きい順で書き出されます（COLMAP の配置）。\n- それらは画像を共有するところで統合され、さらに登録できるものを取り込んで成長します。"),
+    ZH_HANS("选种子、注册、三角化、平差、过滤 —— 然后是各层合并与收尾阶段。若拍摄不是一个连通的视图图，就会重建成多个模型，按从大到小写入 <out>/0、<out>/1……（COLMAP 的布局）；\n随后在共享图像处把它们合并，并把还能注册的图像继续并入。"),
+    ZH_HANT("選種子、註冊、三角化、平差、過濾 —— 然後是各層合併與收尾階段。若拍攝不是一個連通的視圖圖，就會重建成多個模型，按從大到小寫入 <out>/0、<out>/1……（COLMAP 的配置）；\n隨後在共享影像處把它們合併，並把還能註冊的影像繼續併入。"),
+    KO("씨앗 고르기, 등록, 삼각측량, 번들 조정, 걸러내기 -- 그다음 병합 층들과 마무리 단계가 이어집니다. 하나로 이어진 뷰 그래프가 아닌 촬영은 여러 모델로 재구성되어 <out>/0, <out>/1, ... 에 큰 것부터 쓰입니다(COLMAP 의 배치).\n이후 이미지를 공유하는 곳에서 병합되고, 더 등록할 수 있는 것을 받아들이며 자랍니다."),
+    DE("Startpaar, Registrieren, Triangulieren, Ausgleichen, Filtern -- dann die Zusammenführungsebenen und die Schlussdurchgänge.\n- Eine Aufnahme, die kein zusammenhängender Sichtgraph ist, wird zu mehreren Modellen, geschrieben nach <out>/0, <out>/1, ... das größte zuerst (COLMAPs Anordnung);\n- sie werden dort zusammengeführt, wo sie Bilder teilen, und um alles erweitert, was sie sonst noch registrieren können."),
+    FR("Amorcer, enregistrer, trianguler, ajuster, filtrer -- puis les niveaux de fusion et les passes de finition.\n- Une prise de vue qui n'est pas un seul graphe de vues connexe se reconstruit en plusieurs modèles, écrits dans <out>/0, <out>/1, ... du plus grand au plus petit (la disposition de COLMAP) ;\n- ils sont ensuite fusionnés là où ils partagent des images, et étendus à tout ce qu'ils peuvent encore enregistrer."),
+    ES("Sembrar, registrar, triangular, ajustar, filtrar; luego los niveles de fusión y las pasadas de acabado. Una captura que no es un único grafo de vistas conexo se reconstruye como varios modelos, escritos en <out>/0, <out>/1, ... del mayor al menor (la disposición de COLMAP);\ndespués se fusionan donde comparten imágenes y crecen con todo lo que aún puedan registrar."),
+    PT("Semear, registrar, triangular, ajustar, filtrar -- depois os níveis de fusão e as passagens de acabamento. Uma captura que não é um único grafo de vistas conexo reconstrói-se como vários modelos, escritos em <out>/0, <out>/1, ... do maior para o menor (a disposição do COLMAP);\nem seguida são fundidos onde partilham imagens e crescem com tudo o que ainda conseguirem registrar."),
+    IT("Innescare, registrare, triangolare, aggiustare, filtrare -- poi i livelli di fusione e i passaggi di rifinitura.\n- Una ripresa che non è un unico grafo delle viste connesso si ricostruisce come più modelli, scritti in <out>/0, <out>/1, ... dal più grande (la disposizione di COLMAP);\n- vengono poi fusi dove condividono immagini e accresciuti con tutto ciò che riescono ancora a registrare."),
+    NL("Zaaien, registreren, trianguleren, aanpassen, filteren -- daarna de samenvoegniveaus en de afwerkgangen.\n- Een opname die geen samenhangende zichtgraaf is, wordt gereconstrueerd als meerdere modellen, geschreven naar <out>/0, <out>/1, ... grootste eerst (COLMAP's indeling);\n- daarna worden ze samengevoegd waar ze beelden delen en uitgebreid met al wat ze nog kunnen registreren."),
+    RU("Начальная пара, регистрация, триангуляция, уравнивание, отсев -- затем уровни слияния и завершающие проходы. Съёмка, не образующая один связный граф видов, восстанавливается как несколько моделей, записываемых в <out>/0, <out>/1, ... начиная с наибольшей (раскладка COLMAP);\nпотом их сливают там, где у них общие изображения, и наращивают всем, что они ещё могут зарегистрировать."),
+    TR("Tohumla, kaydet, üçgenle, dengele, ele -- ardından birleştirme düzeyleri ve bitirme geçişleri.\n- Tek bir bağlı görüş çizgesi olmayan bir çekim birden çok model olarak oluşturulur ve <out>/0, <out>/1, ... içine en büyükten başlayarak yazılır (COLMAP'in düzeni);\n- sonra görüntü paylaştıkları yerde birleştirilir ve kaydedebildikleri her şeyle büyütülür."));
 
 SS_MSG(desc_map_2,
-    EN("--camera-model, --focal and --distortion take either a dataset-wide "
-       "value or PREFIX=VALUE naming one camera group by image path, so a rig "
-       "can mix models. Say nothing about cameras and the setup recorded by "
-       "verification is used as it stands."),
-    JA("--camera-model と --focal と --distortion は、データセット全体に効く値の"
-       "ほか、画像パスでカメラグループを 1 つ指定する PREFIX=VALUE の形も取れる"
-       "ため、リグごとにモデルを混在させられます。カメラについて何も指定しなければ、"
-       "検証が記録した構成がそのまま使われます。"),
-    ZH_HANS("--camera-model、--focal 与 --distortion 既可给出作用于整个数据集的值，"
-            "也可写成 PREFIX=VALUE，按图像路径指定某一个相机组，因此同一套设备可以"
-            "混用不同模型。若完全不提相机，就直接沿用验证阶段记录下来的配置。"),
-    ZH_HANT("--camera-model、--focal 與 --distortion 既可給出作用於整個資料集的值，"
-            "也可寫成 PREFIX=VALUE，按影像路徑指定某一個相機群組，因此同一套設備"
-            "可以混用不同模型。若完全不提相機，就直接沿用驗證階段記錄下來的組態。"),
-    KO("--camera-model 과 --focal 과 --distortion 은 데이터셋 전체에 걸리는 값은 "
-       "물론, 이미지 경로로 카메라 그룹 하나를 지목하는 PREFIX=VALUE 형태도 받으므로 "
-       "한 리그에서 여러 모델을 섞을 수 있습니다. 카메라에 대해 아무것도 말하지 "
-       "않으면 검증이 기록한 구성을 그대로 씁니다."),
-    DE("--camera-model, --focal und --distortion nehmen entweder einen Wert für "
-       "den ganzen Datensatz oder PREFIX=VALUE, das über den Bildpfad eine "
-       "Kameragruppe benennt, sodass ein Rig Modelle mischen kann. Sagt man "
-       "nichts über Kameras, wird der von der Prüfung vermerkte Aufbau "
-       "unverändert verwendet."),
-    FR("--camera-model, --focal et --distortion acceptent soit une valeur pour "
-       "tout le jeu de données, soit PREFIX=VALUE désignant un groupe de caméras "
-       "par chemin d'image, si bien qu'un rig peut mêler des modèles. Ne rien "
-       "dire des caméras et la configuration consignée par la vérification est "
-       "reprise telle quelle."),
-    ES("--camera-model, --focal y --distortion aceptan o bien un valor para todo "
-       "el conjunto de datos, o bien PREFIX=VALUE que nombra un grupo de cámaras "
-       "por ruta de imagen, de modo que un equipo puede mezclar modelos. Si no se "
-       "dice nada sobre las cámaras, se usa tal cual la configuración que anotó "
-       "la verificación."),
-    PT("--camera-model, --focal e --distortion aceitam ou um valor para todo o "
-       "conjunto de dados, ou PREFIX=VALUE que nomeia um grupo de câmeras pelo "
-       "caminho da imagem, de modo que um equipamento pode misturar modelos. Se "
-       "nada for dito sobre as câmeras, usa-se tal como está a configuração que a "
-       "verificação anotou."),
-    IT("--camera-model, --focal e --distortion accettano o un valore per l'intero "
-       "dataset o PREFIX=VALUE che nomina un gruppo di camere tramite il percorso "
-       "dell'immagine, così un rig può mescolare modelli. Se non si dice nulla "
-       "sulle camere, si usa così com'è la configurazione annotata dalla "
-       "verifica."),
-    NL("--camera-model, --focal en --distortion nemen ofwel een waarde voor de "
-       "hele dataset, ofwel PREFIX=VALUE dat via het beeldpad één cameragroep "
-       "noemt, zodat een rig modellen kan mengen. Zeg niets over camera's en de "
-       "door de verificatie genoteerde opzet wordt onveranderd gebruikt."),
-    RU("--camera-model, --focal и --distortion принимают либо значение на весь "
-       "набор данных, либо PREFIX=VALUE, называющее одну группу камер по пути "
-       "изображения, так что установка может смешивать модели. Ничего не сказав о "
-       "камерах, вы получите тот состав, что записала проверка, как есть."),
-    TR("--camera-model, --focal ve --distortion, ya tüm veri kümesi için bir "
-       "değer alır ya da görüntü yoluyla tek bir kamera grubunu adlandıran "
-       "PREFIX=VALUE biçimini alır; böylece bir düzenek modelleri karıştırabilir. "
-       "Kameralar hakkında hiçbir şey söylenmezse, doğrulamanın kaydettiği düzen "
-       "olduğu gibi kullanılır."));
+    EN("--camera-model, --focal and --distortion accept one value or PREFIX=VALUE by image path.\nWithout overrides, map uses the camera setup saved by verification."),
+    JA("--camera-model と --focal と --distortion は、データセット全体に効く値のほか、画像パスでカメラグループを 1 つ指定する PREFIX=VALUE の形も取れるため、リグごとにモデルを混在させられます。\nカメラについて何も指定しなければ、検証が記録した構成がそのまま使われます。"),
+    ZH_HANS("--camera-model、--focal 与 --distortion 既可给出作用于整个数据集的值，也可写成 PREFIX=VALUE，按图像路径指定某一个相机组，因此同一套设备可以混用不同模型。\n若完全不提相机，就直接沿用验证阶段记录下来的配置。"),
+    ZH_HANT("--camera-model、--focal 與 --distortion 既可給出作用於整個資料集的值，也可寫成 PREFIX=VALUE，按影像路徑指定某一個相機群組，因此同一套設備可以混用不同模型。\n若完全不提相機，就直接沿用驗證階段記錄下來的組態。"),
+    KO("--camera-model 과 --focal 과 --distortion 은 데이터셋 전체에 걸리는 값은 물론, 이미지 경로로 카메라 그룹 하나를 지목하는 PREFIX=VALUE 형태도 받으므로 한 리그에서 여러 모델을 섞을 수 있습니다.\n카메라에 대해 아무것도 말하지 않으면 검증이 기록한 구성을 그대로 씁니다."),
+    DE("--camera-model, --focal und --distortion nehmen entweder einen Wert für den ganzen Datensatz oder PREFIX=VALUE, das über den Bildpfad eine Kameragruppe benennt, sodass ein Rig Modelle mischen kann.\nSagt man nichts über Kameras, wird der von der Prüfung vermerkte Aufbau unverändert verwendet."),
+    FR("--camera-model, --focal et --distortion acceptent soit une valeur pour tout le jeu de données, soit PREFIX=VALUE désignant un groupe de caméras par chemin d'image, si bien qu'un rig peut mêler des modèles.\nNe rien dire des caméras et la configuration consignée par la vérification est reprise telle quelle."),
+    ES("--camera-model, --focal y --distortion aceptan o bien un valor para todo el conjunto de datos, o bien PREFIX=VALUE que nombra un grupo de cámaras por ruta de imagen, de modo que un equipo puede mezclar modelos.\nSi no se dice nada sobre las cámaras, se usa tal cual la configuración que anotó la verificación."),
+    PT("--camera-model, --focal e --distortion aceitam ou um valor para todo o conjunto de dados, ou PREFIX=VALUE que nomeia um grupo de câmeras pelo caminho da imagem, de modo que um equipamento pode misturar modelos.\nSe nada for dito sobre as câmeras, usa-se tal como está a configuração que a verificação anotou."),
+    IT("--camera-model, --focal e --distortion accettano o un valore per l'intero dataset o PREFIX=VALUE che nomina un gruppo di camere tramite il percorso dell'immagine, così un rig può mescolare modelli.\nSe non si dice nulla sulle camere, si usa così com'è la configurazione annotata dalla verifica."),
+    NL("--camera-model, --focal en --distortion nemen ofwel een waarde voor de hele dataset, ofwel PREFIX=VALUE dat via het beeldpad één cameragroep noemt, zodat een rig modellen kan mengen.\nZeg niets over camera's en de door de verificatie genoteerde opzet wordt onveranderd gebruikt."),
+    RU("--camera-model, --focal и --distortion принимают либо значение на весь набор данных, либо PREFIX=VALUE, называющее одну группу камер по пути изображения, так что установка может смешивать модели.\nНичего не сказав о камерах, вы получите тот состав, что записала проверка, как есть."),
+    TR("--camera-model, --focal ve --distortion, ya tüm veri kümesi için bir değer alır ya da görüntü yoluyla tek bir kamera grubunu adlandıran PREFIX=VALUE biçimini alır;\n- böylece bir düzenek modelleri karıştırabilir.\n- Kameralar hakkında hiçbir şey söylenmezse, doğrulamanın kaydettiği düzen olduğu gibi kullanılır."));
 
 SS_MSG(desc_merge_1,
-    EN("Merges models on the images they share: those give the similarity "
-       "transform between the two gauges (D43). A directory holding 0/, 1/, ... "
-       "is expanded to all of them. Models built from different features cannot "
-       "be merged."),
-    JA("モデルどうしを、共有している画像の上で統合します。その画像が 2 つのゲージの間の"
-       "相似変換を与えます（D43）。0/、1/、... を含むディレクトリはそのすべてに"
-       "展開されます。異なる特徴点から作られたモデルは統合できません。"),
-    ZH_HANS("在模型共享的图像上把它们合并：这些图像给出两套基准之间的相似变换（D43）。"
-            "若给的是含 0/、1/……的目录，会展开为其中全部模型。"
-            "由不同特征点构建的模型无法合并。"),
-    ZH_HANT("在模型共享的影像上把它們合併：這些影像給出兩套基準之間的相似變換（D43）。"
-            "若給的是含 0/、1/……的目錄，會展開為其中全部模型。"
-            "由不同特徵點建構的模型無法合併。"),
-    KO("모델들을 서로 공유하는 이미지 위에서 병합합니다. 그 이미지들이 두 기준 사이의 "
-       "닮음 변환을 줍니다(D43). 0/, 1/, ... 을 담은 디렉터리는 그 전부로 펼쳐집니다. "
-       "서로 다른 특징점으로 만든 모델은 병합할 수 없습니다."),
-    DE("Führt Modelle über die Bilder zusammen, die sie teilen: diese liefern die "
-       "Ähnlichkeitstransformation zwischen den beiden Eichungen (D43). Ein "
-       "Verzeichnis mit 0/, 1/, ... wird zu allen davon aufgefaltet. Modelle aus "
-       "verschiedenen Merkmalen lassen sich nicht zusammenführen."),
-    FR("Fusionne les modèles sur les images qu'ils partagent : celles-ci donnent "
-       "la transformation de similitude entre les deux jauges (D43). Un dossier "
-       "contenant 0/, 1/, ... est développé en tous ceux-là. Des modèles bâtis "
-       "sur des points différents ne peuvent pas être fusionnés."),
-    ES("Fusiona los modelos sobre las imágenes que comparten: estas dan la "
-       "transformación de semejanza entre los dos marcos (D43). Una carpeta que "
-       "contenga 0/, 1/, ... se despliega en todos ellos. Los modelos "
-       "construidos con rasgos distintos no pueden fusionarse."),
-    PT("Funde os modelos sobre as imagens que partilham: estas dão a "
-       "transformação de semelhança entre os dois referenciais (D43). Uma pasta "
-       "que contenha 0/, 1/, ... é expandida para todos eles. Modelos "
-       "construídos a partir de traços diferentes não podem ser fundidos."),
-    IT("Fonde i modelli sulle immagini che condividono: queste danno la "
-       "trasformazione di similitudine tra i due riferimenti (D43). Una cartella "
-       "che contiene 0/, 1/, ... viene espansa a tutti quelli. Modelli costruiti "
-       "da punti diversi non si possono fondere."),
-    NL("Voegt modellen samen op de beelden die ze delen: die geven de "
-       "gelijkvormigheidstransformatie tussen de twee ijkingen (D43). Een map "
-       "met 0/, 1/, ... wordt uitgevouwen tot al die modellen. Modellen gebouwd "
-       "op verschillende kenmerken kunnen niet samengevoegd worden."),
-    RU("Сливает модели по изображениям, которые у них общие: те задают "
-       "преобразование подобия между двумя калибровками (D43). Каталог, "
-       "содержащий 0/, 1/, ..., разворачивается во все из них. Модели, "
-       "построенные на разных признаках, слить нельзя."),
-    TR("Modelleri paylaştıkları görüntüler üzerinde birleştirir: bunlar iki ölçek "
-       "arasındaki benzerlik dönüşümünü verir (D43). 0/, 1/, ... içeren bir dizin "
-       "hepsine açılır. Farklı özniteliklerden kurulmuş modeller "
-       "birleştirilemez."));
+    EN("Merge models by shared images, which determine the similarity transform between their frames.\n- A directory with 0/, 1/, ... loads all models.\n- Models must use the same features."),
+    JA("共通画像から座標系間の相似変換を求めてモデルを結合。\n- 0/、1/、...を持つフォルダは全モデルを読み込みます。\n- 同じ特徴点を使ったモデルである必要があります。"),
+    ZH_HANS("通过共有图像求坐标系间的相似变换，合并模型。\n- 含 0/、1/、... 的目录会加载全部模型。\n- 模型必须使用相同的特征。"),
+    ZH_HANT("透過共有影像求座標系間的相似變換，合併模型。\n- 含 0/、1/、... 的目錄會載入全部模型。\n- 模型必須使用相同的特徵。"),
+    KO("공통 이미지로 좌표계 간 유사 변환을 구해 모델을 병합합니다.\n- 0/, 1/, ... 폴더는 모든 모델을 읽습니다.\n- 모델은 같은 특징을 사용해야 합니다."),
+    DE("Modelle über gemeinsame Bilder und die daraus bestimmte Ähnlichkeitstransformation zusammenführen.\n- Ein Ordner mit 0/, 1/, ... lädt alle Modelle.\n- Modelle müssen dieselben Features nutzen."),
+    FR("Fusionne via les images communes qui fixent la similitude entre repères.\n- Un dossier avec 0/, 1/, ... charge tous les modèles.\n- Les modèles doivent utiliser les mêmes points caractéristiques."),
+    ES("Fusiona por imágenes comunes, que determinan la transformación entre marcos.\n- Una carpeta con 0/, 1/, ... carga todos los modelos.\n- Deben usar los mismos rasgos."),
+    PT("Funde pelas imagens comuns, que definem a transformação entre referenciais.\n- Uma pasta com 0/, 1/, ... carrega todos os modelos.\n- Devem usar as mesmas características."),
+    IT("Fonde tramite immagini comuni, che definiscono la similitudine tra riferimenti.\n- Una cartella con 0/, 1/, ... carica tutti i modelli.\n- Devono usare le stesse feature."),
+    NL("Voeg samen via gedeelde beelden die de gelijkvormigheid tussen frames bepalen.\n- Een map met 0/, 1/, ... laadt alle modellen.\n- Modellen moeten dezelfde kenmerken gebruiken."),
+    RU("Сливает по общим снимкам, определяющим подобие между системами координат.\n- Папка с 0/, 1/, ... загружает все модели.\n- Модели должны использовать одинаковые признаки."),
+    TR("Ortak görüntülerin belirlediği benzerlik dönüşümüyle modelleri birleştirir.\n- 0/, 1/, ... içeren klasör tüm modelleri yükler.\n- Modeller aynı özellikleri kullanmalıdır."));
 
 SS_MSG(desc_merge_3,
     EN("A single model is accepted only with --metric-positions or --metric-gps: "
@@ -902,43 +461,19 @@ SS_MSG(desc_merge_3,
        "edilir: birleştirilecek bir şey yoktur, çalıştırma onu yalnızca metreye çevirir."));
 
 SS_MSG(desc_merge_2,
-    EN("A merged model is two independently optimized halves glued along a seam "
-       "no bundle adjustment has ever seen, so one runs across it afterwards "
-       "unless --no-ba."),
-    JA("統合されたモデルは、別々に最適化された 2 つの半分を、どのバンドル調整も"
-       "見たことのないシームで貼り合わせたものです。そのため --no-ba を指定しない限り、"
-       "あとからシームをまたぐ調整を 1 回走らせます。"),
-    ZH_HANS("合并后的模型是两半各自优化的结果，沿着一条任何平差都不曾见过的接缝拼在一起；"
-            "因此除非指定 --no-ba，之后会跨接缝再做一次平差。"),
-    ZH_HANT("合併後的模型是兩半各自最佳化的結果，沿著一條任何平差都不曾見過的接縫拼在一起；"
-            "因此除非指定 --no-ba，之後會跨接縫再做一次平差。"),
-    KO("병합된 모델은 따로 최적화된 두 반쪽을, 어떤 번들 조정도 본 적 없는 솔기를 따라 "
-       "붙인 것입니다. 그래서 --no-ba 를 주지 않는 한 뒤에 솔기를 가로지르는 조정을 "
-       "한 번 돌립니다."),
-    DE("Ein vereintes Modell besteht aus zwei unabhängig optimierten Hälften, "
-       "entlang einer Naht verklebt, die kein Bündelausgleich je gesehen hat; "
-       "darum läuft danach einer darüber, sofern nicht --no-ba."),
-    FR("Un modèle fusionné, ce sont deux moitiés optimisées séparément et collées "
-       "le long d'une couture qu'aucun ajustement n'a jamais vue ; on en fait "
-       "donc passer un dessus ensuite, sauf --no-ba."),
-    ES("Un modelo fusionado son dos mitades optimizadas por separado y pegadas a "
-       "lo largo de una costura que ningún ajuste ha visto nunca, así que "
-       "después se pasa uno por encima, salvo con --no-ba."),
-    PT("Um modelo fundido são duas metades otimizadas em separado e coladas ao "
-       "longo de uma costura que nenhum ajuste jamais viu, por isso passa-se um "
-       "por cima depois, salvo com --no-ba."),
-    IT("Un modello fuso è fatto di due metà ottimizzate a parte e incollate lungo "
-       "una cucitura che nessun aggiustamento ha mai visto, perciò dopo se ne "
-       "passa uno sopra, a meno di --no-ba."),
-    NL("Een samengevoegd model is twee apart geoptimaliseerde helften, aan elkaar "
-       "geplakt langs een naad die geen enkele bundelaanpassing ooit zag; daarom "
-       "gaat er daarna een overheen, tenzij --no-ba."),
-    RU("Слитая модель -- это две независимо оптимизированные половины, склеенные "
-       "по шву, которого не видело ни одно уравнивание, поэтому потом по нему "
-       "проходит одно, если не задан --no-ba."),
-    TR("Birleştirilmiş bir model, ayrı ayrı optimize edilmiş iki yarının, hiçbir "
-       "demet dengelemesinin görmediği bir dikiş boyunca yapıştırılmasıdır; bu "
-       "yüzden --no-ba verilmedikçe sonradan üzerinden bir tane geçirilir."));
+    EN("Bundle adjustment runs across the merged seam to reconcile the independently optimized models, unless --no-ba is set."),
+    JA("独立に最適化されたモデルを結合境界で整合させるため、--no-ba でなければバンドル調整を行います。"),
+    ZH_HANS("合并后跨接缝运行光束平差，协调独立优化的模型；--no-ba 可关闭。"),
+    ZH_HANT("合併後跨接縫執行光束平差，協調獨立最佳化的模型；--no-ba 可關閉。"),
+    KO("독립 최적화된 모델의 접합부를 맞추기 위해 병합 후 번들 조정을 합니다. --no-ba로 끌 수 있습니다."),
+    DE("Nach dem Zusammenführen gleicht ein Bündelausgleich die Naht zwischen separat optimierten Modellen ab, außer bei --no-ba."),
+    FR("Un ajustement de faisceaux corrige la jonction des modèles optimisés séparément après fusion, sauf avec --no-ba."),
+    ES("Tras fusionar, un ajuste de haces corrige la unión de los modelos optimizados por separado, salvo con --no-ba."),
+    PT("Após fundir, um ajuste de feixes corrige a união dos modelos otimizados separadamente, salvo com --no-ba."),
+    IT("Dopo la fusione, un bundle adjustment corregge la giunzione dei modelli ottimizzati separatamente, salvo --no-ba."),
+    NL("Na samenvoegen corrigeert bundelaanpassing de naad tussen afzonderlijk geoptimaliseerde modellen, tenzij --no-ba."),
+    RU("После слияния уравнивание согласует шов между независимо оптимизированными моделями, если не задан --no-ba."),
+    TR("Birleşim sonrası demet dengelemesi ayrı optimize edilmiş modellerin dikişini düzeltir; --no-ba ile kapatılır."));
 
 // ===========================================================================
 // The options each command parses itself
@@ -969,174 +504,49 @@ SS_MSG(opt_auto_output,
        "iner."));
 
 SS_MSG(opt_rig,
-    EN("Images under these path prefixes with the same name are one rig frame "
-       "and keep a fixed relative pose (cam0,cam1 pairs cam0/x.jpg with "
-       "cam1/x.jpg). Repeat for several rigs; the manifest's `rigs:` can also "
-       "carry known extrinsics."
-       " A `dual-fisheye=` prefix says the first two are the back-to-back lenses of "
-       "one 360 camera."),
-    JA("これらのパス接頭辞の下で同名の画像を 1 つのリグフレームとして、相対姿勢を固定します"
-       "（cam0,cam1 なら cam0/x.jpg と cam1/x.jpg が組になります）。複数のリグには繰り返し"
-       "指定します。マニフェストの `rigs:` では既知の外部パラメータも渡せます。"
-       "`dual-fisheye=` を前に付けると、最初の 2 つが 1 台の 360 カメラの背中合わせのレンズであることを示します。"),
-    ZH_HANS("这些路径前缀下同名的图像构成一个装置帧，保持固定的相对位姿（cam0,cam1 把 "
-            "cam0/x.jpg 和 cam1/x.jpg 配对）。多个装置可重复指定；清单的 `rigs:` 还能"
-            "给出已知外参。"
-       "加上 `dual-fisheye=` 前缀表示前两个是同一台 360 相机背靠背的镜头。"),
-    ZH_HANT("這些路徑前綴下同名的影像構成一個裝置幀，保持固定的相對姿態（cam0,cam1 把 "
-            "cam0/x.jpg 和 cam1/x.jpg 配對）。多個裝置可重複指定；清單的 `rigs:` 還能"
-            "給出已知外參。"
-       "加上 `dual-fisheye=` 前綴表示前兩個是同一台 360 相機背靠背的鏡頭。"),
-    KO("이 경로 접두사 아래 이름이 같은 이미지는 하나의 리그 프레임이 되어 상대 자세가 고정됩니다"
-       "(cam0,cam1 은 cam0/x.jpg 와 cam1/x.jpg 를 짝지음). 리그가 여럿이면 반복하세요. "
-       "매니페스트의 `rigs:` 로 알려진 외부 파라미터도 줄 수 있습니다."
-       " `dual-fisheye=` 를 앞에 붙이면 처음 둘이 한 360 카메라의 등을 맞댄 렌즈임을 뜻합니다."),
-    DE("Bilder mit gleichem Namen unter diesen Pfadpräfixen bilden einen Rig-Frame "
-       "mit fester relativer Pose (cam0,cam1 paart cam0/x.jpg mit cam1/x.jpg). "
-       "Für mehrere Rigs wiederholen; `rigs:` im Manifest kann auch bekannte "
-       "Extrinsik tragen."
-       " Das Präfix `dual-fisheye=` sagt, dass die ersten beiden die Rücken an "
-       "Rücken liegenden Objektive einer 360-Kamera sind."),
-    FR("Les images de même nom sous ces préfixes de chemin forment une image de "
-       "rig à pose relative fixe (cam0,cam1 apparie cam0/x.jpg à cam1/x.jpg). "
-       "Répéter pour plusieurs rigs ; `rigs:` dans le manifeste peut aussi porter "
-       "des extrinsèques connus."
-       " Le préfixe `dual-fisheye=` indique que les deux premiers sont les "
-       "objectifs dos à dos d'une caméra 360."),
-    ES("Las imágenes con el mismo nombre bajo estos prefijos de ruta forman un "
-       "cuadro de rig con pose relativa fija (cam0,cam1 empareja cam0/x.jpg con "
-       "cam1/x.jpg). Repetir para varios rigs; `rigs:` en el manifiesto puede "
-       "llevar también extrínsecos conocidos."
-       " El prefijo `dual-fisheye=` indica que los dos primeros son las lentes "
-       "espalda con espalda de una cámara 360."),
-    PT("Imagens com o mesmo nome sob estes prefixos de caminho formam um quadro "
-       "de rig com pose relativa fixa (cam0,cam1 emparelha cam0/x.jpg com "
-       "cam1/x.jpg). Repita para vários rigs; `rigs:` no manifesto também pode "
-       "trazer extrínsecos conhecidos."
-       " O prefixo `dual-fisheye=` diz que os dois primeiros são as lentes costas "
-       "com costas de uma câmera 360."),
-    IT("Le immagini con lo stesso nome sotto questi prefissi di percorso formano "
-       "un fotogramma di rig a posa relativa fissa (cam0,cam1 accoppia cam0/x.jpg "
-       "con cam1/x.jpg). Ripetere per più rig; `rigs:` nel manifesto può anche "
-       "portare estrinseci noti."
-       " Il prefisso `dual-fisheye=` dice che i primi due sono gli obiettivi "
-       "schiena contro schiena di una fotocamera 360."),
-    NL("Beelden met dezelfde naam onder deze padvoorvoegsels vormen één rigframe "
-       "met vaste relatieve pose (cam0,cam1 koppelt cam0/x.jpg aan cam1/x.jpg). "
-       "Herhaal voor meerdere rigs; `rigs:` in het manifest kan ook bekende "
-       "extrinsieken bevatten."
-       " Het voorvoegsel `dual-fisheye=` zegt dat de eerste twee de "
-       "rug-aan-rug-lenzen van één 360-camera zijn."),
-    RU("Изображения с одинаковым именем под этими префиксами пути образуют один "
-       "кадр рига с фиксированной относительной позой (cam0,cam1 объединяет "
-       "cam0/x.jpg и cam1/x.jpg). Повторите для нескольких ригов; `rigs:` в "
-       "манифесте может также нести известные экстринсики."
-       " Префикс `dual-fisheye=` означает, что первые два -- расположенные спиной к "
-       "спине объективы одной 360-камеры."),
-    TR("Bu yol öneklerinin altındaki aynı adlı görüntüler sabit göreli duruşlu tek "
-       "bir rig karesi olur (cam0,cam1, cam0/x.jpg ile cam1/x.jpg'yi eşler). Birden "
-       "çok rig için yineleyin; bildirimdeki `rigs:` bilinen dış parametreleri de "
-       "taşıyabilir."
-       " `dual-fisheye=` öneki, ilk ikisinin tek bir 360 kameranın sırt sırta "
-       "mercekleri olduğunu söyler."));
+    EN("Images under these path prefixes with the same name are one rig frame and keep a fixed relative pose (cam0,cam1 pairs cam0/x.jpg with cam1/x.jpg).\n- Repeat for several rigs; the manifest's `rigs:` can also carry known extrinsics.\n- A `dual-fisheye=` prefix says the first two are the back-to-back lenses of one 360 camera."),
+    JA("これらのパス接頭辞の下で同名の画像を 1 つのリグフレームとして、相対姿勢を固定します（cam0,cam1 なら cam0/x.jpg と cam1/x.jpg が組になります）。\n- 複数のリグには繰り返し指定します。 マニフェストの `rigs:` では既知の外部パラメータも渡せます。\n- `dual-fisheye=` を前に付けると、最初の 2 つが 1 台の 360 カメラの背中合わせのレンズであることを示します。"),
+    ZH_HANS("这些路径前缀下同名的图像构成一个装置帧，保持固定的相对位姿（cam0,cam1 把 cam0/x.jpg 和 cam1/x.jpg 配对）。\n- 多个装置可重复指定； 清单的 `rigs:` 还能给出已知外参。\n- 加上 `dual-fisheye=` 前缀表示前两个是同一台 360 相机背靠背的镜头。"),
+    ZH_HANT("這些路徑前綴下同名的影像構成一個裝置幀，保持固定的相對姿態（cam0,cam1 把 cam0/x.jpg 和 cam1/x.jpg 配對）。\n- 多個裝置可重複指定； 清單的 `rigs:` 還能給出已知外參。\n- 加上 `dual-fisheye=` 前綴表示前兩個是同一台 360 相機背靠背的鏡頭。"),
+    KO("이 경로 접두사 아래 이름이 같은 이미지는 하나의 리그 프레임이 되어 상대 자세가 고정됩니다(cam0,cam1 은 cam0/x.jpg 와 cam1/x.jpg 를 짝지음).\n- 리그가 여럿이면 반복하세요. 매니페스트의 `rigs:` 로 알려진 외부 파라미터도 줄 수 있습니다.\n- `dual-fisheye=` 를 앞에 붙이면 처음 둘이 한 360 카메라의 등을 맞댄 렌즈임을 뜻합니다."),
+    DE("Gleichnamige Bilder unter diesen Präfixen bilden einen Rig-Frame mit fester relativer Pose.\n- cam0,cam1 paart cam0/x.jpg mit cam1/x.jpg. Für weitere Rigs wiederholen.\n- Das Manifest kann bekannte Extrinsik unter rigs: angeben.\n- dual-fisheye= setzt die ersten zwei Objektive einer 360-Kamera Rücken an Rücken."),
+    FR("Les images de même nom sous ces préfixes de chemin forment une image de rig à pose relative fixe (cam0,cam1 apparie cam0/x.jpg à cam1/x.jpg).\n- Répéter pour plusieurs rigs ; `rigs:` dans le manifeste peut aussi porter des extrinsèques connus.\n- Le préfixe `dual-fisheye=` indique que les deux premiers sont les objectifs dos à dos d'une caméra 360."),
+    ES("Las imágenes con el mismo nombre bajo estos prefijos de ruta forman un cuadro de rig con pose relativa fija (cam0,cam1 empareja cam0/x.jpg con cam1/x.jpg).\n- Repetir para varios rigs; `rigs:` en el manifiesto puede llevar también extrínsecos conocidos.\n- El prefijo `dual-fisheye=` indica que los dos primeros son las lentes espalda con espalda de una cámara 360."),
+    PT("Imagens com o mesmo nome sob estes prefixos de caminho formam um quadro de rig com pose relativa fixa (cam0,cam1 emparelha cam0/x.jpg com cam1/x.jpg).\n- Repita para vários rigs; `rigs:` no manifesto também pode trazer extrínsecos conhecidos.\n- O prefixo `dual-fisheye=` diz que os dois primeiros são as lentes costas com costas de uma câmera 360."),
+    IT("Le immagini con lo stesso nome sotto questi prefissi di percorso formano un fotogramma di rig a posa relativa fissa (cam0,cam1 accoppia cam0/x.jpg con cam1/x.jpg).\n- Ripetere per più rig; `rigs:` nel manifesto può anche portare estrinseci noti.\n- Il prefisso `dual-fisheye=` dice che i primi due sono gli obiettivi schiena contro schiena di una fotocamera 360."),
+    NL("Beelden met dezelfde naam onder deze padvoorvoegsels vormen één rigframe met vaste relatieve pose (cam0,cam1 koppelt cam0/x.jpg aan cam1/x.jpg).\n- Herhaal voor meerdere rigs; `rigs:` in het manifest kan ook bekende extrinsieken bevatten.\n- Het voorvoegsel `dual-fisheye=` zegt dat de eerste twee de rug-aan-rug-lenzen van één 360-camera zijn."),
+    RU("Изображения с одинаковым именем под этими префиксами пути образуют один кадр рига с фиксированной относительной позой (cam0,cam1 объединяет cam0/x.jpg и cam1/x.jpg).\n- Повторите для нескольких ригов; `rigs:` в манифесте может также нести известные экстринсики.\n- Префикс `dual-fisheye=` означает, что первые два -- расположенные спиной к спине объективы одной 360-камеры."),
+    TR("Bu yol öneklerinin altındaki aynı adlı görüntüler sabit göreli duruşlu tek bir rig karesi olur (cam0,cam1, cam0/x.jpg ile cam1/x.jpg'yi eşler).\n- Birden çok rig için yineleyin; bildirimdeki `rigs:` bilinen dış parametreleri de taşıyabilir.\n- `dual-fisheye=` öneki, ilk ikisinin tek bir 360 kameranın sırt sırta mercekleri olduğunu söyler."));
 
 SS_MSG(opt_manifest,
-    EN("Read the capture's description from FILE (YAML or JSON): where the "
-       "images and masks are, how the cameras are grouped, each group's "
-       "lens and focal length, the rigs the lenses form, and the videos "
-       "whose IMU and GPS cover them. "
-       "A flag on the command line beats the file."),
-    JA("撮影内容の説明を FILE (YAML または JSON) から読みます。画像とマスクの場所、"
-       "カメラの分け方、各グループのレンズと焦点距離、レンズが組むリグ、そして IMU と GPS を記録した動画です。"
-       "コマンドラインの指定のほうが優先されます。"),
-    ZH_HANS("从 FILE (YAML 或 JSON) 读取这次拍摄的描述: 图像和掩码的位置、相机的分组、"
-            "每组的镜头和焦距、镜头组成的相机组，以及记录了 IMU 和 GPS 的视频。命令行上的选项优先于文件。"),
-    ZH_HANT("從 FILE (YAML 或 JSON) 讀取這次拍攝的描述: 影像和遮罩的位置、相機的分組、"
-            "每組的鏡頭和焦距、鏡頭組成的相機組，以及記錄了 IMU 和 GPS 的影片。命令列上的選項優先於檔案。"),
-    KO("촬영 내용을 FILE (YAML 또는 JSON) 에서 읽습니다. 이미지와 마스크의 위치, "
-       "카메라를 나누는 방법, 그룹마다의 렌즈와 초점 거리, 렌즈들이 이루는 리그, 그리고 IMU 와 GPS 를 담은 영상입니다. "
-       "명령줄에서 준 값이 파일보다 우선합니다."),
-    DE("Die Beschreibung der Aufnahme aus FILE lesen (YAML oder JSON): wo die "
-       "Bilder und Masken liegen, wie die Kameras gruppiert sind, welches "
-       "Objektiv und welche Brennweite jede Gruppe hat, welche Rigs die "
-       "Objektive bilden, und welche Videos IMU und GPS dazu tragen. Ein Flag auf der Kommandozeile schlägt die Datei."),
-    FR("Lire la description de la prise depuis FILE (YAML ou JSON) : où sont "
-       "les images et les masques, comment les caméras sont groupées, "
-       "l'objectif et la focale de chaque groupe, les rigs que forment les "
-       "objectifs, et les vidéos dont l'IMU et le GPS les couvrent. Une option en ligne de commande l'emporte sur le "
-       "fichier."),
-    ES("Leer la descripción de la captura desde FILE (YAML o JSON): dónde están "
-       "las imágenes y las máscaras, cómo se agrupan las cámaras, el objetivo "
-       "y la focal de cada grupo, los rigs que forman los objetivos, y los "
-       "vídeos cuya IMU y GPS las cubren. Una "
-       "opción en la línea de órdenes gana al fichero."),
-    PT("Ler a descrição da captura de FILE (YAML ou JSON): onde estão as "
-       "imagens e as máscaras, como as câmaras são agrupadas, a objetiva e a "
-       "distância focal de cada grupo, os rigs que as objetivas formam, e os "
-       "vídeos cuja IMU e GPS as cobrem. "
-       "Uma opção na linha de comandos ganha ao ficheiro."),
-    IT("Leggere la descrizione della ripresa da FILE (YAML o JSON): dove sono "
-       "le immagini e le maschere, come sono raggruppate le fotocamere, "
-       "l'obiettivo e la focale di ogni gruppo, i rig che formano gli "
-       "obiettivi, e i video la cui IMU e GPS le coprono. Un'opzione da riga di comando vince sul file."),
-    NL("De beschrijving van de opname uit FILE lezen (YAML of JSON): waar de "
-       "beelden en maskers staan, hoe de camera's gegroepeerd zijn, de lens "
-       "en brandpuntsafstand van elke groep, de rigs die de lenzen vormen, en "
-       "de video's waarvan IMU en GPS ze dekken. Een optie op de opdrachtregel wint van het bestand."),
-    RU("Прочитать описание съёмки из FILE (YAML или JSON): где лежат снимки и "
-       "маски, как сгруппированы камеры, какой у каждой группы объектив и "
-       "фокусное расстояние, какие риги образуют объективы, и какие видео "
-       "несут IMU и GPS к ним. Параметр в "
-       "командной строке важнее файла."),
-    TR("Çekimin tanımını FILE dosyasından okur (YAML ya da JSON): görüntülerin "
-       "ve maskelerin yeri, kameraların nasıl gruplandığı, her grubun objektifi "
-       "ve odak uzaklığı, objektiflerin oluşturduğu rigler, ve IMU ile GPS'i "
-       "bunları kapsayan videolar. Komut "
-       "satırındaki seçenek dosyayı yener."));
+    EN("YAML/JSON capture file: images, masks, camera groups/lenses/focals, rigs, and videos with IMU/GPS. Explicit command-line flags override it."),
+    JA("YAML/JSON撮影記述：画像、マスク、カメラ群・レンズ・焦点距離、リグ、IMU/GPS付き動画。コマンドラインの明示指定が優先。"),
+    ZH_HANS("YAML/JSON 拍摄描述：图像、蒙版、相机分组/镜头/焦距、刚性相机组及含 IMU/GPS 的视频。显式命令行参数优先。"),
+    ZH_HANT("YAML/JSON 拍攝描述：影像、遮罩、相機分組/鏡頭/焦距、剛性相機組及含 IMU/GPS 的影片。明確指定的命令列參數優先。"),
+    KO("YAML/JSON 촬영 파일: 이미지, 마스크, 카메라 그룹·렌즈·초점거리, 리그, IMU/GPS 동영상. 명시적 명령줄 옵션이 우선입니다."),
+    DE("YAML/JSON-Aufnahmebeschreibung: Bilder, Masken, Kameragruppen/Objektive/Brennweiten, Rigs, Videos mit IMU/GPS. Explizite CLI-Optionen gehen vor."),
+    FR("Fichier YAML/JSON : images, masques, groupes/lentilles/focales, rigs, vidéos IMU/GPS. Les options explicites en ligne de commande priment."),
+    ES("Archivo YAML/JSON: imágenes, máscaras, grupos/lentes/focales, rigs y vídeos IMU/GPS. Las opciones explícitas de consola prevalecen."),
+    PT("Arquivo YAML/JSON: imagens, máscaras, grupos/lentes/focais, rigs e vídeos IMU/GPS. Opções explícitas de linha de comando têm prioridade."),
+    IT("File YAML/JSON: immagini, maschere, gruppi/lenti/focali, rig e video IMU/GPS. Le opzioni esplicite da riga di comando hanno priorità."),
+    NL("YAML/JSON-opnamebestand: beelden, maskers, cameragroepen/lenzen/brandpunten, rigs, video’s met IMU/GPS. Expliciete CLI-opties gaan voor."),
+    RU("YAML/JSON-файл съёмки: снимки, маски, группы/объективы/фокусные, риги и видео с IMU/GPS. Явные флаги командной строки приоритетнее."),
+    TR("YAML/JSON çekim dosyası: görüntü, maske, kamera grubu/lens/odak, rig ve IMU/GPS videoları. Açık komut satırı bayrakları önceliklidir."));
 
 SS_MSG(opt_progress_dir,
-    EN("Write snapshots of the run into DIR while it goes -- the current model "
-       "and the pair matrix -- for a front end that is watching. Off by "
-       "default; the graphical interface passes it to its own child."),
-    JA("実行中の様子を DIR に書き出します。今の再構成と画像ペアの対応表で、"
-       "画面で見ているものが読み取ります。既定では書き出しません。"
-       "グラフィカル版が自分の子プロセスに渡します。"),
-    ZH_HANS("运行时把过程快照写入 DIR —— 当前的重建结果和图像配对表 —— 供正在观察的"
-            "界面读取。默认不写。图形界面会把它传给自己的子进程。"),
-    ZH_HANT("執行時把過程快照寫入 DIR —— 目前的重建結果和影像配對表 —— 供正在觀察的"
-            "介面讀取。預設不寫。圖形介面會把它傳給自己的子行程。"),
-    KO("실행 중의 상태를 DIR 에 씁니다. 지금까지의 재구성과 이미지 짝 표로, "
-       "화면에서 지켜보는 쪽이 읽습니다. 기본값은 쓰지 않기입니다. "
-       "그래픽 화면이 자기 자식 프로세스에 넘깁니다."),
-    DE("Während des Laufs Momentaufnahmen nach DIR schreiben -- das aktuelle "
-       "Modell und die Paarmatrix -- für eine Oberfläche, die zusieht. "
-       "Standardmäßig aus; die grafische Oberfläche gibt es ihrem eigenen "
-       "Kindprozess mit."),
-    FR("Écrire des instantanés de l'exécution dans DIR au fur et à mesure -- le "
-       "modèle courant et la matrice des paires -- pour une interface qui "
-       "regarde. Désactivé par défaut ; l'interface graphique le passe à son "
-       "propre processus enfant."),
-    ES("Escribir instantáneas de la ejecución en DIR sobre la marcha (el modelo "
-       "actual y la matriz de pares) para una interfaz que está mirando. "
-       "Desactivado por omisión; la interfaz gráfica se lo pasa a su propio "
-       "proceso hijo."),
-    PT("Escrever instantâneos da execução em DIR conforme ela anda -- o modelo "
-       "atual e a matriz de pares -- para uma interface que está olhando. "
-       "Desligado por padrão; a interface gráfica passa isso ao próprio "
-       "processo filho."),
-    IT("Scrivere istantanee dell'esecuzione in DIR mentre procede -- il modello "
-       "corrente e la matrice delle coppie -- per un'interfaccia che sta "
-       "guardando. Disattivo per impostazione predefinita; l'interfaccia "
-       "grafica lo passa al proprio processo figlio."),
-    NL("Tijdens de run momentopnamen naar DIR schrijven -- het huidige model en "
-       "de parenmatrix -- voor een schil die meekijkt. Standaard uit; de "
-       "grafische schil geeft het aan zijn eigen kindproces mee."),
-    RU("По ходу работы писать снимки в DIR -- текущую модель и матрицу пар -- "
-       "для оболочки, которая за этим следит. По умолчанию выключено; "
-       "графическая оболочка передаёт это своему дочернему процессу."),
-    TR("Çalışma sürerken anlık görüntüleri DIR içine yaz -- şu anki model ve "
-       "çift dizeyi -- izleyen bir arayüz için. Öntanımlı olarak kapalı; "
-       "grafik arayüz bunu kendi alt sürecine geçirir."));
+    EN("Write current model and pair-matrix snapshots to DIR for a watching front end. Default: off; the GUI enables it for its child process."),
+    JA("監視する画面向けに現在のモデルとペア行列をDIRへ書き出します。既定は無効。GUIは子プロセスに指定します。"),
+    ZH_HANS("将当前模型和图像对矩阵快照写入 DIR，供前端监控。默认关闭；GUI 会为子进程启用。"),
+    ZH_HANT("將目前模型和影像對矩陣快照寫入 DIR，供前端監控。預設關閉；GUI 會為子程序啟用。"),
+    KO("현재 모델과 쌍 행렬 스냅샷을 DIR에 써 프런트엔드에서 봅니다. 기본은 끄기이며 GUI는 자식 프로세스에 켭니다."),
+    DE("Aktuelles Modell und Paarmatrix als Momentaufnahmen nach DIR für eine Oberfläche schreiben. Standard: aus; GUI aktiviert es im Kindprozess."),
+    FR("Écrit modèle courant et matrice des paires dans DIR pour suivi par une interface. Désactivé par défaut ; la GUI l’active pour son enfant."),
+    ES("Escribe modelo actual y matriz de pares en DIR para una interfaz de seguimiento. Por defecto no; la GUI lo activa para su proceso hijo."),
+    PT("Grava modelo atual e matriz de pares em DIR para uma interface de acompanhamento. Padrão: desligado; a GUI ativa para o processo filho."),
+    IT("Scrive modello e matrice delle coppie in DIR per un’interfaccia di monitoraggio. Default: spento; la GUI lo attiva per il processo figlio."),
+    NL("Schrijft huidig model en parenmatrix naar DIR voor een meekijkende interface. Standaard uit; de GUI activeert dit voor het kindproces."),
+    RU("Пишет снимки модели и матрицы пар в DIR для наблюдающего интерфейса. По умолчанию выкл.; GUI включает для дочернего процесса."),
+    TR("İzleyen arayüz için güncel model ve çift matrisi anlık görüntülerini DIR’e yazar. Varsayılan kapalı; GUI alt süreç için açar."));
 
 SS_MSG(opt_no_masks,
     EN("Ignore a masks directory even if one is sitting beside the images."),
@@ -1244,43 +654,19 @@ SS_MSG(opt_map_output,
     TR("Modellerin yazılacağı dizin: 0/, 1/, ... en büyükten başlayarak."));
 
 SS_MSG(opt_map_audit,
-    EN("Audit every pose against the correspondence graph before anything else, "
-       "and re-register what the model cannot support. Use with --resume on "
-       "models from elsewhere."),
-    JA("何よりも先に、すべての姿勢を対応グラフに照らして監査し、モデルが支持できない"
-       "ものを登録し直します。よそから持ってきたモデルには --resume と併せて"
-       "使ってください。"),
-    ZH_HANS("先于一切，对照对应关系图审计每一个位姿，并把模型无法支撑的重新注册。"
-            "对来自别处的模型请与 --resume 一同使用。"),
-    ZH_HANT("先於一切，對照對應關係圖稽核每一個位姿，並把模型無法支撐的重新註冊。"
-            "對來自別處的模型請與 --resume 一同使用。"),
-    KO("무엇보다 먼저 모든 자세를 대응 그래프에 비추어 감사하고, 모델이 뒷받침하지 "
-       "못하는 것을 다시 등록합니다. 다른 곳에서 온 모델에는 --resume 과 함께 "
-       "쓰세요."),
-    DE("Vor allem anderen jede Pose gegen den Korrespondenzgraphen prüfen und neu "
-       "registrieren, was das Modell nicht tragen kann. Bei Modellen von "
-       "anderswo zusammen mit --resume verwenden."),
-    FR("Auditer chaque pose contre le graphe de correspondances avant toute "
-       "chose, et réenregistrer ce que le modèle ne peut soutenir. À employer "
-       "avec --resume sur des modèles venus d'ailleurs."),
-    ES("Auditar cada pose contra el grafo de correspondencias antes que nada, y "
-       "volver a registrar lo que el modelo no puede sostener. Úsese con "
-       "--resume en modelos de otra procedencia."),
-    PT("Auditar cada pose contra o grafo de correspondências antes de tudo, e "
-       "registrar de novo o que o modelo não consegue sustentar. Use com "
-       "--resume em modelos vindos de outro lugar."),
-    IT("Verificare ogni posa rispetto al grafo delle corrispondenze prima di "
-       "ogni altra cosa, e registrare di nuovo ciò che il modello non regge. Da "
-       "usare con --resume su modelli venuti da altrove."),
-    NL("Voor alles elke pose toetsen aan de correspondentiegraaf en opnieuw "
-       "registreren wat het model niet kan dragen. Gebruik dit met --resume bij "
-       "modellen van elders."),
-    RU("Прежде всего сверить каждую позу с графом соответствий и "
-       "перерегистрировать то, что модель не выдерживает. Применяйте вместе с "
-       "--resume к моделям со стороны."),
-    TR("Her şeyden önce her duruşu karşılık çizgesine göre denetle ve modelin "
-       "destekleyemediğini yeniden kaydet. Başka yerden gelen modellerde "
-       "--resume ile birlikte kullanın."));
+    EN("Audit every pose against the correspondence graph before anything else, and re-register what the model cannot support. Use with --resume on models from elsewhere."),
+    JA("何よりも先に、すべての姿勢を対応グラフに照らして監査し、モデルが支持できないものを登録し直します。\nよそから持ってきたモデルには --resume と併せて使ってください。"),
+    ZH_HANS("先于一切，对照对应关系图审计每一个位姿，并把模型无法支撑的重新注册。对来自别处的模型请与 --resume 一同使用。"),
+    ZH_HANT("先於一切，對照對應關係圖稽核每一個位姿，並把模型無法支撐的重新註冊。對來自別處的模型請與 --resume 一同使用。"),
+    KO("무엇보다 먼저 모든 자세를 대응 그래프에 비추어 감사하고, 모델이 뒷받침하지 못하는 것을 다시 등록합니다.\n다른 곳에서 온 모델에는 --resume 과 함께 쓰세요."),
+    DE("Posen zuerst am Korrespondenzgraphen prüfen und ungestützte neu registrieren. Für fremde Modelle mit --resume verwenden."),
+    FR("Vérifie d’abord les poses contre le graphe et réenregistre celles non étayées. Utilisez avec --resume pour les modèles externes."),
+    ES("Auditar cada pose contra el grafo de correspondencias antes que nada, y volver a registrar lo que el modelo no puede sostener. Úsese con --resume en modelos de otra procedencia."),
+    PT("Verifica poses primeiro pelo grafo e registra de novo as sem suporte. Use com --resume em modelos externos."),
+    IT("Verifica prima le pose sul grafo e registra di nuovo quelle senza supporto. Usa con --resume per modelli esterni."),
+    NL("Voor alles elke pose toetsen aan de correspondentiegraaf en opnieuw registreren wat het model niet kan dragen.\nGebruik dit met --resume bij modellen van elders."),
+    RU("Прежде всего сверить каждую позу с графом соответствий и перерегистрировать то, что модель не выдерживает.\nПрименяйте вместе с --resume к моделям со стороны."),
+    TR("Her şeyden önce her duruşu karşılık çizgesine göre denetle ve modelin destekleyemediğini yeniden kaydet.\nBaşka yerden gelen modellerde --resume ile birlikte kullanın."));
 
 SS_MSG(opt_no_manage_map,
     EN("Skip merging, growing, reseeding and splitting."),
@@ -1413,136 +799,34 @@ SS_MSG(exit_4,
     TR("model yazıldı, ancak istenen metrik çerçevede değil"));
 
 SS_MSG(ba_desc_1,
-    EN("Reads a COLMAP sparse model, runs on it the global bundle adjustment the "
-       "mapper runs (Huber 2 px unless --loss says otherwise, with the rigs in "
-       "the model's rigs.txt unless --rig names others), and writes the refined "
-       "model to OUTPUT, which may be the input directory itself. If the GPU "
-       "fails partway (VK_ERROR_DEVICE_LOST, or out of memory), the CPU carries "
-       "on from the last checkpoint the GPU saved."),
-    JA("COLMAP の疎なモデルを読み込み、マッパーが行うのと同じ全体バンドル調整を"
-       "実行して（--loss の指定がなければ Huber 2 px、--rig で別のリグを指定"
-       "しなければモデルの rigs.txt のリグを使用）、精密化したモデルを OUTPUT "
-       "に書き出します。OUTPUT は入力ディレクトリそのものでも構いません。GPU が"
-       "途中で失敗した場合（VK_ERROR_DEVICE_LOST やメモリ不足）は、GPU が最後に"
-       "保存したチェックポイントから CPU が続きを実行します。"),
-    ZH_HANS("读取 COLMAP 稀疏模型，对其执行与建图器相同的全局平差（除非 --loss "
-            "另有指定，否则用 Huber 2 px；除非 --rig 指定了别的装配，否则使用模型"
-            " rigs.txt 中的装配），并把精化后的模型写到 OUTPUT，OUTPUT 可以就是"
-            "输入目录本身。若 GPU 中途失败（VK_ERROR_DEVICE_LOST 或显存不足），"
-            "CPU 会从 GPU 最后保存的检查点接着算。"),
-    ZH_HANT("讀取 COLMAP 稀疏模型，對其執行與建圖器相同的全域平差（除非 --loss "
-            "另有指定，否則用 Huber 2 px；除非 --rig 指定了別的裝配，否則使用模型"
-            " rigs.txt 中的裝配），並把精化後的模型寫到 OUTPUT，OUTPUT 可以就是"
-            "輸入目錄本身。若 GPU 中途失敗（VK_ERROR_DEVICE_LOST 或顯示記憶體不足），"
-            "CPU 會從 GPU 最後儲存的檢查點接著算。"),
-    KO("COLMAP 성긴 모델을 읽어 매퍼가 돌리는 것과 같은 전역 번들 조정을 실행하고"
-       "(--loss 로 달리 말하지 않으면 Huber 2 px, --rig 로 다른 리그를 지정하지 "
-       "않으면 모델의 rigs.txt 에 있는 리그 사용), 정련된 모델을 OUTPUT 에 씁니다. "
-       "OUTPUT 은 입력 디렉터리 자체여도 됩니다. GPU 가 도중에 실패하면"
-       "(VK_ERROR_DEVICE_LOST 또는 메모리 부족) GPU 가 마지막으로 저장한 "
-       "체크포인트부터 CPU 가 이어서 계산합니다."),
-    DE("Liest ein dünnes COLMAP-Modell, führt darauf den globalen Bündelausgleich "
-       "aus, den der Kartierer ausführt (Huber 2 px, sofern --loss nichts anderes "
-       "sagt, mit den Rigs aus der rigs.txt des Modells, sofern --rig keine "
-       "anderen nennt), und schreibt das verfeinerte Modell nach OUTPUT, das auch "
-       "das Eingabeverzeichnis selbst sein darf. Scheitert die GPU unterwegs "
-       "(VK_ERROR_DEVICE_LOST oder Speichermangel), rechnet die CPU ab dem letzten "
-       "Prüfpunkt weiter, den die GPU gesichert hat."),
-    FR("Lit un modèle épars COLMAP, y exécute l'ajustement de faisceaux global "
-       "que le cartographe exécute (Huber 2 px sauf indication de --loss, avec "
-       "les rigs du rigs.txt du modèle sauf si --rig en nomme d'autres), et écrit "
-       "le modèle affiné dans OUTPUT, qui peut être le dossier d'entrée lui-même. "
-       "Si le GPU échoue en cours de route (VK_ERROR_DEVICE_LOST, ou mémoire "
-       "épuisée), le CPU reprend au dernier point de contrôle sauvegardé par le "
-       "GPU."),
-    ES("Lee un modelo disperso de COLMAP, ejecuta sobre él el ajuste de haces "
-       "global que ejecuta el cartógrafo (Huber 2 px salvo que --loss diga otra "
-       "cosa, con los rigs del rigs.txt del modelo salvo que --rig nombre otros) "
-       "y escribe el modelo refinado en OUTPUT, que puede ser la propia carpeta de "
-       "entrada. Si la GPU falla a mitad (VK_ERROR_DEVICE_LOST, o sin memoria), "
-       "la CPU continúa desde el último punto de control que guardó la GPU."),
-    PT("Lê um modelo esparso do COLMAP, executa sobre ele o ajuste de feixes "
-       "global que o cartógrafo executa (Huber 2 px salvo se --loss disser outra "
-       "coisa, com os rigs do rigs.txt do modelo salvo se --rig nomear outros) e "
-       "escreve o modelo refinado em OUTPUT, que pode ser a própria pasta de "
-       "entrada. Se a GPU falhar a meio (VK_ERROR_DEVICE_LOST, ou sem memória), a "
-       "CPU continua a partir do último ponto de controle que a GPU guardou."),
-    IT("Legge un modello sparso COLMAP, vi esegue il bundle adjustment globale "
-       "che esegue il cartografo (Huber 2 px salvo diverso --loss, con i rig del "
-       "rigs.txt del modello salvo che --rig ne indichi altri) e scrive il modello "
-       "affinato in OUTPUT, che può essere la cartella di ingresso stessa. Se la "
-       "GPU fallisce a metà (VK_ERROR_DEVICE_LOST, o memoria esaurita), la CPU "
-       "prosegue dall'ultimo punto di controllo salvato dalla GPU."),
-    NL("Leest een ijl COLMAP-model, draait daarop de globale bundelaanpassing die "
-       "de kaartmaker draait (Huber 2 px tenzij --loss anders zegt, met de rigs "
-       "uit de rigs.txt van het model tenzij --rig andere noemt), en schrijft het "
-       "verfijnde model naar OUTPUT, dat ook de invoermap zelf mag zijn. Faalt de "
-       "GPU halverwege (VK_ERROR_DEVICE_LOST, of geheugen op), dan rekent de CPU "
-       "verder vanaf het laatste controlepunt dat de GPU bewaarde."),
-    RU("Читает разреженную модель COLMAP, выполняет на ней то глобальное "
-       "уравнивание, которое выполняет картограф (Huber 2 px, если --loss не "
-       "задаёт иное, с ригами из rigs.txt модели, если --rig не называет другие), "
-       "и записывает уточнённую модель в OUTPUT — это может быть и сам входной "
-       "каталог. Если GPU сбоит посреди работы (VK_ERROR_DEVICE_LOST или нехватка "
-       "памяти), CPU продолжает с последней контрольной точки, сохранённой GPU."),
-    TR("Bir COLMAP seyrek modelini okur, üzerinde haritalayıcının çalıştırdığı "
-       "genel demet dengelemesini çalıştırır (--loss aksini söylemedikçe Huber "
-       "2 px; --rig başkalarını belirtmedikçe modelin rigs.txt dosyasındaki "
-       "düzeneklerle) ve iyileştirilmiş modeli OUTPUT'a yazar; OUTPUT girdi "
-       "dizininin kendisi de olabilir. GPU yarı yolda başarısız olursa "
-       "(VK_ERROR_DEVICE_LOST ya da bellek yetersizliği), CPU GPU'nun kaydettiği "
-       "son denetim noktasından devam eder."));
+    EN("Refine a COLMAP sparse model with global bundle adjustment. OUTPUT may be the input directory.\n- Default loss: Huber 2 px. Change it with --loss.\n- Uses the model’s rigs.txt unless --rig overrides it.\n- If the GPU runs out of memory or loses the device, the CPU resumes from the last GPU checkpoint."),
+    JA("COLMAP の疎なモデルを読み込み、マッパーが行うのと同じ全体バンドル調整を実行して（--loss の指定がなければ Huber 2 px、--rig で別のリグを指定しなければモデルの rigs.txt のリグを使用）、精密化したモデルを OUTPUT に書き出します。\n- OUTPUT は入力ディレクトリそのものでも構いません。\n- GPU が途中で失敗した場合（VK_ERROR_DEVICE_LOST やメモリ不足）は、GPU が最後に保存したチェックポイントから CPU が続きを実行します。"),
+    ZH_HANS("读取 COLMAP 稀疏模型，对其执行与建图器相同的全局平差（除非 --loss 另有指定，否则用 Huber 2 px；除非 --rig 指定了别的装配，否则使用模型 rigs.txt 中的装配），并把精化后的模型写到 OUTPUT，OUTPUT 可以就是输入目录本身。\n若 GPU 中途失败（VK_ERROR_DEVICE_LOST 或显存不足），CPU 会从 GPU 最后保存的检查点接着算。"),
+    ZH_HANT("讀取 COLMAP 稀疏模型，對其執行與建圖器相同的全域平差（除非 --loss 另有指定，否則用 Huber 2 px；除非 --rig 指定了別的裝配，否則使用模型 rigs.txt 中的裝配），並把精化後的模型寫到 OUTPUT，OUTPUT 可以就是輸入目錄本身。\n若 GPU 中途失敗（VK_ERROR_DEVICE_LOST 或顯示記憶體不足），CPU 會從 GPU 最後儲存的檢查點接著算。"),
+    KO("COLMAP 성긴 모델을 읽어 매퍼가 돌리는 것과 같은 전역 번들 조정을 실행하고(--loss 로 달리 말하지 않으면 Huber 2 px, --rig 로 다른 리그를 지정하지 않으면 모델의 rigs.txt 에 있는 리그 사용), 정련된 모델을 OUTPUT 에 씁니다.\nOUTPUT 은 입력 디렉터리 자체여도 됩니다. GPU 가 도중에 실패하면(VK_ERROR_DEVICE_LOST 또는 메모리 부족) GPU 가 마지막으로 저장한 체크포인트부터 CPU 가 이어서 계산합니다."),
+    DE("Liest ein dünnes COLMAP-Modell, führt darauf den globalen Bündelausgleich aus, den der Kartierer ausführt (Huber 2 px, sofern --loss nichts anderes sagt, mit den Rigs aus der rigs.txt des Modells, sofern --rig keine anderen nennt), und schreibt das verfeinerte Modell nach OUTPUT, das auch das Eingabeverzeichnis selbst sein darf.\nScheitert die GPU unterwegs (VK_ERROR_DEVICE_LOST oder Speichermangel), rechnet die CPU ab dem letzten Prüfpunkt weiter, den die GPU gesichert hat."),
+    FR("Lit un modèle épars COLMAP, y exécute l'ajustement de faisceaux global que le cartographe exécute (Huber 2 px sauf indication de --loss, avec les rigs du rigs.txt du modèle sauf si --rig en nomme d'autres), et écrit le modèle affiné dans OUTPUT, qui peut être le dossier d'entrée lui-même.\nSi le GPU échoue en cours de route (VK_ERROR_DEVICE_LOST, ou mémoire épuisée), le CPU reprend au dernier point de contrôle sauvegardé par le GPU."),
+    ES("Lee un modelo disperso de COLMAP, ejecuta sobre él el ajuste de haces global que ejecuta el cartógrafo (Huber 2 px salvo que --loss diga otra cosa, con los rigs del rigs.txt del modelo salvo que --rig nombre otros) y escribe el modelo refinado en OUTPUT, que puede ser la propia carpeta de entrada.\nSi la GPU falla a mitad (VK_ERROR_DEVICE_LOST, o sin memoria), la CPU continúa desde el último punto de control que guardó la GPU."),
+    PT("Lê um modelo esparso do COLMAP, executa sobre ele o ajuste de feixes global que o cartógrafo executa (Huber 2 px salvo se --loss disser outra coisa, com os rigs do rigs.txt do modelo salvo se --rig nomear outros) e escreve o modelo refinado em OUTPUT, que pode ser a própria pasta de entrada.\nSe a GPU falhar a meio (VK_ERROR_DEVICE_LOST, ou sem memória), a CPU continua a partir do último ponto de controle que a GPU guardou."),
+    IT("Legge un modello sparso COLMAP, vi esegue il bundle adjustment globale che esegue il cartografo (Huber 2 px salvo diverso --loss, con i rig del rigs.txt del modello salvo che --rig ne indichi altri) e scrive il modello affinato in OUTPUT, che può essere la cartella di ingresso stessa.\nSe la GPU fallisce a metà (VK_ERROR_DEVICE_LOST, o memoria esaurita), la CPU prosegue dall'ultimo punto di controllo salvato dalla GPU."),
+    NL("Leest een ijl COLMAP-model, draait daarop de globale bundelaanpassing die de kaartmaker draait (Huber 2 px tenzij --loss anders zegt, met de rigs uit de rigs.txt van het model tenzij --rig andere noemt), en schrijft het verfijnde model naar OUTPUT, dat ook de invoermap zelf mag zijn.\nFaalt de GPU halverwege (VK_ERROR_DEVICE_LOST, of geheugen op), dan rekent de CPU verder vanaf het laatste controlepunt dat de GPU bewaarde."),
+    RU("Читает разреженную модель COLMAP, выполняет на ней то глобальное уравнивание, которое выполняет картограф (Huber 2 px, если --loss не задаёт иное, с ригами из rigs.txt модели, если --rig не называет другие), и записывает уточнённую модель в OUTPUT — это может быть и сам входной каталог.\nЕсли GPU сбоит посреди работы (VK_ERROR_DEVICE_LOST или нехватка памяти), CPU продолжает с последней контрольной точки, сохранённой GPU."),
+    TR("Bir COLMAP seyrek modelini okur, üzerinde haritalayıcının çalıştırdığı genel demet dengelemesini çalıştırır (--loss aksini söylemedikçe Huber 2 px; --rig başkalarını belirtmedikçe modelin rigs.txt dosyasındaki düzeneklerle) ve iyileştirilmiş modeli OUTPUT'a yazar;\n- OUTPUT girdi dizininin kendisi de olabilir.\n- GPU yarı yolda başarısız olursa (VK_ERROR_DEVICE_LOST ya da bellek yetersizliği), CPU GPU'nun kaydettiği son denetim noktasından devam eder."));
 
 SS_MSG(ba_desc_2,
-    EN("Given a problem file in Bundle Adjustment in the Large format instead, "
-       "it runs the solver on that and writes the refined points to OUTPUT as a "
-       "PLY. That is how the solver is benchmarked against a published reference; "
-       "the pipeline itself never reads BAL."),
-    JA("代わりに Bundle Adjustment in the Large 形式の問題ファイルを渡すと、それに"
-       "対してソルバーを走らせ、精密化した点を PLY として OUTPUT に書き出します。"
-       "公開されているリファレンスと突き合わせてソルバーをベンチマークする方法"
-       "です。パイプライン自体が BAL を読むことはありません。"),
-    ZH_HANS("若改为传入 Bundle Adjustment in the Large 格式的问题文件，它会对其运行"
-            "求解器，并把精化后的点以 PLY 写到 OUTPUT。这是拿已发表的参考实现给"
-            "求解器做基准测试的方式；流程本身从不读取 BAL。"),
-    ZH_HANT("若改為傳入 Bundle Adjustment in the Large 格式的問題檔，它會對其執行"
-            "求解器，並把精化後的點以 PLY 寫到 OUTPUT。這是拿已發表的參考實作給"
-            "求解器做基準測試的方式；流程本身從不讀取 BAL。"),
-    KO("대신 Bundle Adjustment in the Large 형식의 문제 파일을 주면 거기에 솔버를 "
-       "돌리고, 정련된 점을 PLY 로 OUTPUT 에 씁니다. 공개된 참조 구현과 견주어 "
-       "솔버를 벤치마크하는 방법이며, 파이프라인 자체는 BAL 을 읽지 않습니다."),
-    DE("Bekommt es stattdessen eine Problemdatei im Format Bundle Adjustment in "
-       "the Large, lässt es den Löser darauf laufen und schreibt die verfeinerten "
-       "Punkte als PLY nach OUTPUT. So wird der Löser gegen eine veröffentlichte "
-       "Referenz gemessen; die Pipeline selbst liest nie BAL."),
-    FR("Si on lui donne plutôt un fichier de problème au format Bundle Adjustment "
-       "in the Large, il y fait tourner le solveur et écrit les points affinés "
-       "dans OUTPUT en PLY. C'est ainsi que le solveur est étalonné face à une "
-       "référence publiée ; la chaîne elle-même ne lit jamais BAL."),
-    ES("Si en su lugar se le da un archivo de problema en formato Bundle "
-       "Adjustment in the Large, ejecuta el solucionador sobre él y escribe los "
-       "puntos refinados en OUTPUT como PLY. Así se mide el solucionador frente a "
-       "una referencia publicada; la cadena en sí nunca lee BAL."),
-    PT("Se em vez disso receber um ficheiro de problema no formato Bundle "
-       "Adjustment in the Large, executa o solucionador sobre ele e escreve os "
-       "pontos refinados em OUTPUT como PLY. É assim que o solucionador é medido "
-       "face a uma referência publicada; a cadeia em si nunca lê BAL."),
-    IT("Se invece riceve un file di problema in formato Bundle Adjustment in the "
-       "Large, vi esegue il risolutore e scrive i punti affinati in OUTPUT come "
-       "PLY. È così che il risolutore viene misurato contro un riferimento "
-       "pubblicato; la catena stessa non legge mai BAL."),
-    NL("Krijgt het in plaats daarvan een probleembestand in het formaat Bundle "
-       "Adjustment in the Large, dan draait het de oplosser daarop en schrijft de "
-       "verfijnde punten als PLY naar OUTPUT. Zo wordt de oplosser gemeten tegen "
-       "een gepubliceerde referentie; de keten zelf leest nooit BAL."),
-    RU("Если же ему дать файл задачи в формате Bundle Adjustment in the Large, "
-       "он запустит решатель на нём и запишет уточнённые точки в OUTPUT в виде "
-       "PLY. Так решатель сверяют с опубликованным эталоном; сам конвейер BAL "
-       "никогда не читает."),
-    TR("Bunun yerine Bundle Adjustment in the Large biçiminde bir problem dosyası "
-       "verilirse, çözücüyü onun üzerinde çalıştırır ve iyileştirilmiş noktaları "
-       "OUTPUT'a PLY olarak yazar. Çözücü, yayımlanmış bir referansa karşı böyle "
-       "kıyaslanır; işlem hattının kendisi BAL'ı hiç okumaz."));
+    EN("For a Bundle Adjustment in the Large (BAL) problem, refine it and write points as PLY to OUTPUT. Used for solver benchmarks, not by the pipeline."),
+    JA("Bundle Adjustment in the Large（BAL）問題を最適化し、点群をPLYでOUTPUTへ書きます。ソルバーベンチマーク用で、パイプラインでは使いません。"),
+    ZH_HANS("对 Bundle Adjustment in the Large（BAL）问题优化，将点以 PLY 写入 OUTPUT。用于求解器基准测试，流水线不使用 BAL。"),
+    ZH_HANT("對 Bundle Adjustment in the Large（BAL）問題最佳化，將點以 PLY 寫入 OUTPUT。用於求解器基準測試，流程不使用 BAL。"),
+    KO("Bundle Adjustment in the Large(BAL) 문제를 최적화해 점을 PLY로 OUTPUT에 씁니다. 솔버 벤치마크용이며 파이프라인은 쓰지 않습니다."),
+    DE("Bundle Adjustment in the Large (BAL) lösen und verfeinerte Punkte als PLY nach OUTPUT schreiben. Für Solverbenchmarks, nicht die Pipeline."),
+    FR("Optimise un problème Bundle Adjustment in the Large (BAL), écrit les points en PLY dans OUTPUT. Pour benchmarks, pas pour le pipeline."),
+    ES("Optimiza un problema Bundle Adjustment in the Large (BAL) y escribe puntos PLY en OUTPUT. Para pruebas del solver, no para la canalización."),
+    PT("Otimiza um problema Bundle Adjustment in the Large (BAL) e grava pontos PLY em OUTPUT. Para testes do solver, não para o pipeline."),
+    IT("Ottimizza un problema Bundle Adjustment in the Large (BAL) e scrive punti PLY in OUTPUT. Per benchmark del solver, non per la pipeline."),
+    NL("Verfijn een Bundle Adjustment in the Large (BAL)-probleem en schrijf punten als PLY naar OUTPUT. Voor solvertests, niet voor de pijplijn."),
+    RU("Уточняет задачу Bundle Adjustment in the Large (BAL), пишет точки PLY в OUTPUT. Для тестов решателя, не для конвейера."),
+    TR("Bundle Adjustment in the Large (BAL) problemini iyileştirip noktaları PLY olarak OUTPUT’a yazar. Çözücü testi içindir, işlem hattı kullanmaz."));
 
 SS_MSG(ba_note,
     EN("A (--real, --loss) pair that was trimmed out of the build reports "
@@ -1949,97 +1233,19 @@ SS_MSG(ba_res_vram,
 
 
 SS_MSG(opt_sequence,
-    EN("Images under these path prefixes were taken in file-name order (a "
-       "video's frames, a folder shot in a walk). Their neighbours are matched, "
-       "and the mapper trusts a neighbour's correspondences before any other, "
-       "which keeps repeated structure from folding the model onto itself. "
-       "Images with the same name under two members share a position, so a "
-       "rig's lenses are one sequence (cam0,cam1). Repeat for several "
-       "sequences; `.` is the image directory itself."),
-    JA("これらのパス接頭辞の下の画像はファイル名順に撮影されたものです（動画の"
-       "フレーム、歩きながら撮ったフォルダー）。隣接画像同士をマッチングし、"
-       "マッパーは隣接画像との対応を他のどれよりも先に信頼するので、繰り返し"
-       "構造でモデルが自身の上に折り畳まれるのを防ぎます。2 つのメンバーの下で"
-       "同名の画像は同じ位置を共有するため、リグのレンズは 1 つのシーケンスです"
-       "（cam0,cam1）。複数のシーケンスには繰り返し指定します。`.` は画像"
-       "ディレクトリ自体です。"),
-    ZH_HANS("这些路径前缀下的图像按文件名顺序拍摄（视频帧、边走边拍的文件夹）。"
-            "相邻图像会被匹配，建图时先信任相邻图像的对应关系，再参考其他部分，"
-            "以免重复结构把模型折叠到自身上。两个成员下同名的图像共享同一位置，"
-            "所以一个装置的镜头是同一个序列（cam0,cam1）。多个序列可重复指定；"
-            "`.` 表示图像目录本身。"),
-    ZH_HANT("這些路徑前綴下的影像按檔名順序拍攝（影片影格、邊走邊拍的資料夾）。"
-            "相鄰影像會被比對，建圖時先信任相鄰影像的對應關係，再參考其他部分，"
-            "以免重複結構把模型摺疊到自身上。兩個成員下同名的影像共用同一位置，"
-            "所以一個裝置的鏡頭是同一個序列（cam0,cam1）。多個序列可重複指定；"
-            "`.` 表示影像目錄本身。"),
-    KO("이 경로 접두사 아래의 이미지는 파일 이름 순서로 촬영되었습니다(동영상 "
-       "프레임, 걸으며 찍은 폴더). 이웃끼리 매칭하고, 매퍼는 이웃과의 대응을 "
-       "다른 무엇보다 먼저 신뢰하므로 반복되는 구조가 모델을 자기 위로 접는 일을 "
-       "막습니다. 두 멤버 아래 같은 이름의 이미지는 같은 위치를 공유하므로 리그의 "
-       "렌즈들은 하나의 시퀀스입니다(cam0,cam1). 여러 시퀀스에는 반복해서 지정합니다. "
-       "`.`은 이미지 디렉터리 자체입니다."),
-    DE("Die Bilder unter diesen Pfadpräfixen wurden in Dateinamensreihenfolge "
-       "aufgenommen (die Frames eines Videos, ein im Gehen aufgenommener Ordner). "
-       "Ihre Nachbarn werden zugeordnet, und der Mapper vertraut den "
-       "Korrespondenzen eines Nachbarn vor allen anderen, was verhindert, dass "
-       "wiederholte Struktur das Modell auf sich selbst faltet. Bilder gleichen "
-       "Namens unter zwei Mitgliedern teilen eine Position, sodass die Objektive "
-       "eines Rigs eine Sequenz sind (cam0,cam1). Für mehrere Sequenzen "
-       "wiederholen; `.` ist das Bildverzeichnis selbst."),
-    FR("Les images sous ces préfixes de chemin ont été prises dans l'ordre des noms "
-       "de fichier (les images d'une vidéo, un dossier filmé en marchant). Leurs "
-       "voisines sont appariées, et le mapper fait confiance aux correspondances "
-       "d'une voisine avant toute autre, ce qui empêche une structure répétée de "
-       "replier le modèle sur lui-même. Les images de même nom sous deux membres "
-       "partagent une position, si bien que les objectifs d'un rig forment une "
-       "seule séquence (cam0,cam1). À répéter pour plusieurs séquences ; `.` "
-       "désigne le répertoire d'images lui-même."),
-    ES("Las imágenes bajo estos prefijos de ruta se tomaron en orden de nombre de "
-       "archivo (los fotogramas de un vídeo, una carpeta grabada caminando). Sus "
-       "vecinas se emparejan, y el mapeador confía en las correspondencias de una "
-       "vecina antes que en cualquier otra, lo que evita que una estructura "
-       "repetida pliegue el modelo sobre sí mismo. Las imágenes con el mismo "
-       "nombre bajo dos miembros comparten posición, así que las lentes de un rig "
-       "son una sola secuencia (cam0,cam1). Repítase para varias secuencias; `.` "
-       "es el propio directorio de imágenes."),
-    PT("As imagens sob estes prefixos de caminho foram captadas por ordem de nome "
-       "de ficheiro (os quadros de um vídeo, uma pasta gravada a andar). As suas "
-       "vizinhas são comparadas, e o mapeador confia nas correspondências de uma "
-       "vizinha antes de qualquer outra, o que impede que uma estrutura repetida "
-       "dobre o modelo sobre si mesmo. Imagens com o mesmo nome sob dois membros "
-       "partilham uma posição, pelo que as lentes de um rig são uma só sequência "
-       "(cam0,cam1). Repita para várias sequências; `.` é o próprio diretório de "
-       "imagens."),
-    IT("Le immagini sotto questi prefissi di percorso sono state riprese in ordine "
-       "di nome di file (i fotogrammi di un video, una cartella ripresa "
-       "camminando). Le vicine vengono abbinate e il mapper si fida delle "
-       "corrispondenze di una vicina prima di ogni altra, il che impedisce a una "
-       "struttura ripetuta di ripiegare il modello su se stesso. Le immagini con "
-       "lo stesso nome sotto due membri condividono una posizione, così gli "
-       "obiettivi di un rig sono una sola sequenza (cam0,cam1). Ripetere per più "
-       "sequenze; `.` è la directory delle immagini stessa."),
-    NL("De beelden onder deze padvoorvoegsels zijn in bestandsnaamvolgorde "
-       "opgenomen (de frames van een video, een al lopend opgenomen map). Hun "
-       "buren worden gematcht, en de mapper vertrouwt de correspondenties van een "
-       "buur vóór alle andere, wat voorkomt dat herhaalde structuur het model op "
-       "zichzelf vouwt. Beelden met dezelfde naam onder twee leden delen een "
-       "positie, zodat de lenzen van een rig één reeks zijn (cam0,cam1). Herhaal "
-       "voor meerdere reeksen; `.` is de beeldmap zelf."),
-    RU("Изображения под этими префиксами пути сняты в порядке имён файлов (кадры "
-       "видео, папка, снятая на ходу). Их соседи сопоставляются, а маппер доверяет "
-       "соответствиям соседа прежде всех остальных, что не даёт повторяющейся "
-       "структуре сложить модель саму на себя. Изображения с одинаковым именем под "
-       "двумя элементами делят одну позицию, поэтому объективы рига — одна "
-       "последовательность (cam0,cam1). Повторите для нескольких "
-       "последовательностей; `.` — сам каталог изображений."),
-    TR("Bu yol öneklerinin altındaki görüntüler dosya adı sırasıyla çekilmiştir "
-       "(bir videonun kareleri, yürürken çekilen bir klasör). Komşuları "
-       "eşleştirilir ve haritalayıcı bir komşunun eşleşmelerine diğer her şeyden "
-       "önce güvenir; bu, yinelenen yapının modeli kendi üzerine katlamasını "
-       "önler. İki üyenin altındaki aynı adlı görüntüler aynı konumu paylaşır, "
-       "bu yüzden bir rigin lensleri tek bir dizidir (cam0,cam1). Birden çok dizi "
-       "için yineleyin; `.` görüntü dizininin kendisidir."));
+    EN("Use for images under these prefixes taken in filename order.\n- Matches neighbors and prioritizes them during mapping to avoid repeated-structure folds.\n- Same filenames across members share a position, e.g. cam0,cam1 for a rig.\n- Repeat for several sequences. Use `.` for the image directory."),
+    JA("これらのパス接頭辞の下の画像はファイル名順に撮影されたものです（動画のフレーム、歩きながら撮ったフォルダー）。\n- 隣接画像同士をマッチングし、マッパーは隣接画像との対応を他のどれよりも先に信頼するので、繰り返し構造でモデルが自身の上に折り畳まれるのを防ぎます。\n- 2 つのメンバーの下で同名の画像は同じ位置を共有するため、リグのレンズは 1 つのシーケンスです（cam0,cam1）。\n- 複数のシーケンスには繰り返し指定します。 `.` は画像ディレクトリ自体です。"),
+    ZH_HANS("这些路径前缀下的图像按文件名顺序拍摄（视频帧、边走边拍的文件夹）。相邻图像会被匹配，建图时先信任相邻图像的对应关系，再参考其他部分，以免重复结构把模型折叠到自身上。\n- 两个成员下同名的图像共享同一位置，所以一个装置的镜头是同一个序列（cam0,cam1）。\n- 多个序列可重复指定； `.` 表示图像目录本身。"),
+    ZH_HANT("這些路徑前綴下的影像按檔名順序拍攝（影片影格、邊走邊拍的資料夾）。相鄰影像會被比對，建圖時先信任相鄰影像的對應關係，再參考其他部分，以免重複結構把模型摺疊到自身上。\n- 兩個成員下同名的影像共用同一位置，所以一個裝置的鏡頭是同一個序列（cam0,cam1）。\n- 多個序列可重複指定； `.` 表示影像目錄本身。"),
+    KO("이 경로 접두사 아래의 이미지는 파일 이름 순서로 촬영되었습니다(동영상 프레임, 걸으며 찍은 폴더). 이웃끼리 매칭하고, 매퍼는 이웃과의 대응을 다른 무엇보다 먼저 신뢰하므로 반복되는 구조가 모델을 자기 위로 접는 일을 막습니다.\n- 두 멤버 아래 같은 이름의 이미지는 같은 위치를 공유하므로 리그의 렌즈들은 하나의 시퀀스입니다(cam0,cam1).\n- 여러 시퀀스에는 반복해서 지정합니다. `.`은 이미지 디렉터리 자체입니다."),
+    DE("Die Bilder unter diesen Pfadpräfixen wurden in Dateinamensreihenfolge aufgenommen (die Frames eines Videos, ein im Gehen aufgenommener Ordner). Ihre Nachbarn werden zugeordnet, und der Mapper vertraut den Korrespondenzen eines Nachbarn vor allen anderen, was verhindert, dass wiederholte Struktur das Modell auf sich selbst faltet.\n- Bilder gleichen Namens unter zwei Mitgliedern teilen eine Position, sodass die Objektive eines Rigs eine Sequenz sind (cam0,cam1). Für mehrere Sequenzen wiederholen;\n- `.` ist das Bildverzeichnis selbst."),
+    FR("Les images sous ces préfixes de chemin ont été prises dans l'ordre des noms de fichier (les images d'une vidéo, un dossier filmé en marchant). Leurs voisines sont appariées, et le mapper fait confiance aux correspondances d'une voisine avant toute autre, ce qui empêche une structure répétée de replier le modèle sur lui-même.\nLes images de même nom sous deux membres partagent une position, si bien que les objectifs d'un rig forment une seule séquence (cam0,cam1). À répéter pour plusieurs séquences ; `.` désigne le répertoire d'images lui-même."),
+    ES("Las imágenes bajo estos prefijos de ruta se tomaron en orden de nombre de archivo (los fotogramas de un vídeo, una carpeta grabada caminando). Sus vecinas se emparejan, y el mapeador confía en las correspondencias de una vecina antes que en cualquier otra, lo que evita que una estructura repetida pliegue el modelo sobre sí mismo.\nLas imágenes con el mismo nombre bajo dos miembros comparten posición, así que las lentes de un rig son una sola secuencia (cam0,cam1). Repítase para varias secuencias; `.` es el propio directorio de imágenes."),
+    PT("As imagens sob estes prefixos de caminho foram captadas por ordem de nome de ficheiro (os quadros de um vídeo, uma pasta gravada a andar). As suas vizinhas são comparadas, e o mapeador confia nas correspondências de uma vizinha antes de qualquer outra, o que impede que uma estrutura repetida dobre o modelo sobre si mesmo.\n- Imagens com o mesmo nome sob dois membros partilham uma posição, pelo que as lentes de um rig são uma só sequência (cam0,cam1). Repita para várias sequências;\n- `.` é o próprio diretório de imagens."),
+    IT("Le immagini sotto questi prefissi di percorso sono state riprese in ordine di nome di file (i fotogrammi di un video, una cartella ripresa camminando).\nLe vicine vengono abbinate e il mapper si fida delle corrispondenze di una vicina prima di ogni altra, il che impedisce a una struttura ripetuta di ripiegare il modello su se stesso. Le immagini con lo stesso nome sotto due membri condividono una posizione, così gli obiettivi di un rig sono una sola sequenza (cam0,cam1). Ripetere per più sequenze; `.` è la directory delle immagini stessa."),
+    NL("De beelden onder deze padvoorvoegsels zijn in bestandsnaamvolgorde opgenomen (de frames van een video, een al lopend opgenomen map).\n- Hun buren worden gematcht, en de mapper vertrouwt de correspondenties van een buur vóór alle andere, wat voorkomt dat herhaalde structuur het model op zichzelf vouwt. Beelden met dezelfde naam onder twee leden delen een positie, zodat de lenzen van een rig één reeks zijn (cam0,cam1).\n- Herhaal voor meerdere reeksen; `.` is de beeldmap zelf."),
+    RU("Изображения под этими префиксами пути сняты в порядке имён файлов (кадры видео, папка, снятая на ходу).\n- Их соседи сопоставляются, а маппер доверяет соответствиям соседа прежде всех остальных, что не даёт повторяющейся структуре сложить модель саму на себя.\n- Изображения с одинаковым именем под двумя элементами делят одну позицию, поэтому объективы рига — одна последовательность (cam0,cam1). Повторите для нескольких последовательностей; `.` — сам каталог изображений."),
+    TR("Bu yol öneklerinin altındaki görüntüler dosya adı sırasıyla çekilmiştir (bir videonun kareleri, yürürken çekilen bir klasör). Komşuları eşleştirilir ve haritalayıcı bir komşunun eşleşmelerine diğer her şeyden önce güvenir; bu, yinelenen yapının modeli kendi üzerine katlamasını önler.\n- İki üyenin altındaki aynı adlı görüntüler aynı konumu paylaşır, bu yüzden bir rigin lensleri tek bir dizidir (cam0,cam1). Birden çok dizi için yineleyin;\n- `.` görüntü dizininin kendisidir."));
 
 }  // namespace sfmhelp
 }  // namespace msg

@@ -603,39 +603,19 @@ SS_MSG(extract_mask_dir_missing,
     TR("Maske dizini {0} yok; maskesiz çıkarım yapılıyor."));
 
 SS_MSG(extract_no_mask_matches,
-    EN("No mask in {0} matches any image (tried \"{1}.png\" and \"<name>.png\"). "
-       "Fix --masks or drop it: continuing unmasked would quietly produce a "
-       "different reconstruction."),
-    JA("{0} のどのマスクも画像に一致しません（\"{1}.png\" と \"<名前>.png\" を試しました）。"
-       "--masks を直すか外してください。マスクなしで続けると、黙って別の復元結果になります。"),
-    ZH_HANS("{0} 里没有任何蒙版能对应到图像（试过 \"{1}.png\" 和 \"<名称>.png\"）。"
-            "请修正 --masks 或去掉它: 不用蒙版继续会悄悄得到另一个重建结果。"),
-    ZH_HANT("{0} 裡沒有任何遮罩能對應到影像（試過 \"{1}.png\" 和 \"<名稱>.png\"）。"
-            "請修正 --masks 或拿掉它: 不用遮罩繼續會悄悄得到另一個重建結果。"),
-    KO("{0} 안의 어떤 마스크도 이미지와 맞지 않습니다(\"{1}.png\" 와 \"<이름>.png\" 를 시도). "
-       "--masks 를 고치거나 빼세요. 마스크 없이 계속하면 조용히 다른 복원 결과가 나옵니다."),
-    DE("Keine Maske in {0} passt zu einem Bild (versucht: \"{1}.png\" und \"<Name>.png\"). "
-       "Korrigieren Sie --masks oder lassen Sie es weg: unmaskiert weiterzumachen ergäbe "
-       "stillschweigend eine andere Rekonstruktion."),
-    FR("Aucun masque de {0} ne correspond à une image (essais : \"{1}.png\" et \"<nom>.png\"). "
-       "Corrigez --masks ou retirez-le : continuer sans masques produirait discrètement "
-       "une autre reconstruction."),
-    ES("Ninguna máscara de {0} corresponde a una imagen (se probó \"{1}.png\" y \"<nombre>.png\"). "
-       "Corrija --masks o quítelo: seguir sin máscaras produciría en silencio otra reconstrucción."),
-    PT("Nenhuma máscara em {0} corresponde a alguma imagem (tentou-se \"{1}.png\" e \"<nome>.png\"). "
-       "Corrija --masks ou remova-o: continuar sem máscaras produziria silenciosamente "
-       "outra reconstrução."),
-    IT("Nessuna maschera in {0} corrisponde a un'immagine (provati \"{1}.png\" e \"<nome>.png\"). "
-       "Corregga --masks o lo tolga: proseguire senza maschere darebbe in silenzio "
-       "un'altra ricostruzione."),
-    NL("Geen enkel masker in {0} hoort bij een afbeelding (geprobeerd: \"{1}.png\" en \"<naam>.png\"). "
-       "Corrigeer --masks of laat het weg: zonder maskers doorgaan geeft stilletjes "
-       "een andere reconstructie."),
-    RU("Ни одна маска в {0} не соответствует изображению (пробовались \"{1}.png\" и \"<имя>.png\"). "
-       "Исправьте --masks или уберите его: продолжение без масок молча даст другую реконструкцию."),
-    TR("{0} içindeki hiçbir maske bir görüntüyle eşleşmiyor (\"{1}.png\" ve \"<ad>.png\" denendi). "
-       "--masks seçeneğini düzeltin ya da kaldırın: maskesiz devam etmek sessizce "
-       "başka bir yeniden oluşturma üretir."));
+    EN("No mask in {0} matches any image (tried \"{1}.png\" and \"<name>.png\"). Fix --masks or drop it: continuing unmasked would quietly produce a different reconstruction."),
+    JA("{0} のどのマスクも画像に一致しません（\"{1}.png\" と \"<名前>.png\" を試しました）。--masks を直すか外してください。マスクなしで続けると、黙って別の復元結果になります。"),
+    ZH_HANS("{0} 里没有任何蒙版能对应到图像（试过 \"{1}.png\" 和 \"<名称>.png\"）。请修正 --masks 或去掉它: 不用蒙版继续会悄悄得到另一个重建结果。"),
+    ZH_HANT("{0} 裡沒有任何遮罩能對應到影像（試過 \"{1}.png\" 和 \"<名稱>.png\"）。請修正 --masks 或拿掉它: 不用遮罩繼續會悄悄得到另一個重建結果。"),
+    KO("{0} 안의 어떤 마스크도 이미지와 맞지 않습니다(\"{1}.png\" 와 \"<이름>.png\" 를 시도). --masks 를 고치거나 빼세요. 마스크 없이 계속하면 조용히 다른 복원 결과가 나옵니다."),
+    DE("Keine Maske in {0} passt (versucht: \"{1}.png\", \"<Name>.png\"). --masks korrigieren oder entfernen; ohne Masken ändert sich die Rekonstruktion."),
+    FR("Aucun masque de {0} ne correspond (\"{1}.png\", \"<nom>.png\" essayés). Corriger ou retirer --masks ; sans masques, la reconstruction change."),
+    ES("Ninguna máscara en {0} coincide (probados \"{1}.png\", \"<nombre>.png\"). Corrige o quita --masks; sin máscaras cambia la reconstrucción."),
+    PT("Nenhuma máscara em {0} corresponde (testados \"{1}.png\", \"<nome>.png\"). Corrija ou remova --masks; sem máscaras a reconstrução muda."),
+    IT("Nessuna maschera in {0} coincide (provati \"{1}.png\", \"<nome>.png\"). Correggi o rimuovi --masks; senza maschere la ricostruzione cambia."),
+    NL("Geen passend masker in {0} (\"{1}.png\", \"<naam>.png\" geprobeerd). Corrigeer of verwijder --masks; zonder maskers verandert de reconstructie."),
+    RU("Нет подходящей маски в {0} (проверены \"{1}.png\", \"<имя>.png\"). Исправьте или уберите --masks; без масок реконструкция меняется."),
+    TR("{0} içinde eşleşen maske yok (\"{1}.png\", \"<ad>.png\" denendi). --masks düzeltin ya da kaldırın; maskesiz yeniden yapım değişir."));
 
 SS_MSG(extract_some_unmasked,
     EN("Images with no mask: {0} (for example {1}); their features are kept in full."),
@@ -668,108 +648,50 @@ SS_MSG(extract_mask_undecodable,
     TR("{0} maskesi çözülemedi, bu yüzden {1} maskesiz bırakıldı."));
 
 SS_MSG(extract_mask_aspect,
-    EN("The mask {0} is {1}x{2} but the image is {3}x{4}; a different aspect ratio "
-       "means it will be stretched over the wrong content. Further warnings for "
-       "this size pair are suppressed."),
-    JA("マスク {0} は {1}x{2} ですが画像は {3}x{4} です。縦横比が違うので、"
-       "誤った位置に引き伸ばされます。このサイズの組み合わせの警告は以後省略します。"),
-    ZH_HANS("蒙版 {0} 是 {1}x{2}，而图像是 {3}x{4}; 长宽比不同意味着它会被拉伸到错误的内容上。"
-            "此尺寸组合的后续警告将不再显示。"),
-    ZH_HANT("遮罩 {0} 是 {1}x{2}，而影像是 {3}x{4}; 長寬比不同表示它會被拉伸到錯誤的內容上。"
-            "此尺寸組合的後續警告將不再顯示。"),
-    KO("마스크 {0} 은(는) {1}x{2} 인데 이미지는 {3}x{4} 입니다. 종횡비가 달라 엉뚱한 내용 위로 "
-       "늘어납니다. 이 크기 조합에 대한 이후 경고는 생략합니다."),
-    DE("Die Maske {0} ist {1}x{2}, das Bild aber {3}x{4}; bei abweichendem Seitenverhältnis "
-       "wird sie über den falschen Inhalt gezogen. Weitere Warnungen zu diesem Größenpaar "
-       "werden unterdrückt."),
-    FR("Le masque {0} fait {1}x{2} alors que l'image fait {3}x{4} ; un rapport d'aspect "
-       "différent signifie qu'il sera étiré sur le mauvais contenu. Les avertissements "
-       "suivants pour ce couple de tailles sont supprimés."),
-    ES("La máscara {0} es de {1}x{2} pero la imagen es de {3}x{4}; una relación de aspecto "
-       "distinta significa que se estirará sobre el contenido equivocado. Se omiten los "
-       "avisos siguientes para este par de tamaños."),
-    PT("A máscara {0} é {1}x{2} mas a imagem é {3}x{4}; uma proporção diferente significa "
-       "que ela será esticada sobre o conteúdo errado. Os avisos seguintes para este par "
-       "de tamanhos são suprimidos."),
-    IT("La maschera {0} è {1}x{2} ma l'immagine è {3}x{4}; un rapporto d'aspetto diverso "
-       "significa che verrà stirata sul contenuto sbagliato. Gli avvisi successivi per "
-       "questa coppia di dimensioni sono soppressi."),
-    NL("Het masker {0} is {1}x{2} maar de afbeelding is {3}x{4}; een andere "
-       "beeldverhouding betekent dat het over de verkeerde inhoud wordt uitgerekt. "
-       "Verdere waarschuwingen voor dit maatpaar blijven achterwege."),
-    RU("Маска {0} имеет размер {1}x{2}, а изображение {3}x{4}; иное соотношение сторон "
-       "означает, что она растянется по неверному содержимому. Дальнейшие предупреждения "
-       "для этой пары размеров подавлены."),
-    TR("{0} maskesi {1}x{2}, ama görüntü {3}x{4}; farklı en-boy oranı, maskenin yanlış "
-       "içeriğin üzerine gerileceği anlamına gelir. Bu boyut çifti için sonraki uyarılar "
-       "gösterilmez."));
+    EN("The mask {0} is {1}x{2} but the image is {3}x{4};\n- a different aspect ratio means it will be stretched over the wrong content.\n- Further warnings for this size pair are suppressed."),
+    JA("マスク {0} は {1}x{2} ですが画像は {3}x{4} です。 縦横比が違うので、誤った位置に引き伸ばされます。\nこのサイズの組み合わせの警告は以後省略します。"),
+    ZH_HANS("蒙版 {0} 是 {1}x{2}，而图像是 {3}x{4}; 长宽比不同意味着它会被拉伸到错误的内容上。此尺寸组合的后续警告将不再显示。"),
+    ZH_HANT("遮罩 {0} 是 {1}x{2}，而影像是 {3}x{4}; 長寬比不同表示它會被拉伸到錯誤的內容上。此尺寸組合的後續警告將不再顯示。"),
+    KO("마스크 {0} 은(는) {1}x{2} 인데 이미지는 {3}x{4} 입니다. 종횡비가 달라 엉뚱한 내용 위로 늘어납니다.\n이 크기 조합에 대한 이후 경고는 생략합니다."),
+    DE("Die Maske {0} ist {1}x{2}, das Bild aber {3}x{4};\n- bei abweichendem Seitenverhältnis wird sie über den falschen Inhalt gezogen.\n- Weitere Warnungen zu diesem Größenpaar werden unterdrückt."),
+    FR("Le masque {0} fait {1}x{2} alors que l'image fait {3}x{4} ;\n- un rapport d'aspect différent signifie qu'il sera étiré sur le mauvais contenu.\n- Les avertissements suivants pour ce couple de tailles sont supprimés."),
+    ES("La máscara {0} es de {1}x{2} pero la imagen es de {3}x{4};\n- una relación de aspecto distinta significa que se estirará sobre el contenido equivocado.\n- Se omiten los avisos siguientes para este par de tamaños."),
+    PT("A máscara {0} é {1}x{2} mas a imagem é {3}x{4};\n- uma proporção diferente significa que ela será esticada sobre o conteúdo errado.\n- Os avisos seguintes para este par de tamanhos são suprimidos."),
+    IT("La maschera {0} è {1}x{2} ma l'immagine è {3}x{4};\n- un rapporto d'aspetto diverso significa che verrà stirata sul contenuto sbagliato.\n- Gli avvisi successivi per questa coppia di dimensioni sono soppressi."),
+    NL("Het masker {0} is {1}x{2} maar de afbeelding is {3}x{4};\n- een andere beeldverhouding betekent dat het over de verkeerde inhoud wordt uitgerekt.\n- Verdere waarschuwingen voor dit maatpaar blijven achterwege."),
+    RU("Маска {0} имеет размер {1}x{2}, а изображение {3}x{4};\n- иное соотношение сторон означает, что она растянется по неверному содержимому.\n- Дальнейшие предупреждения для этой пары размеров подавлены."),
+    TR("{0} maskesi {1}x{2}, ama görüntü {3}x{4};\n- farklı en-boy oranı, maskenin yanlış içeriğin üzerine gerileceği anlamına gelir.\n- Bu boyut çifti için sonraki uyarılar gösterilmez."));
 
 // {0} is an image file name.
 SS_MSG(extract_exif_mirror_dropped,
-    EN("{0} and others ask to be mirrored as well as turned. Only the turn is "
-       "applied: no camera pose fits a mirrored picture, so the reconstruction "
-       "would be the mirror image of the real one."),
-    JA("{0} などは回転に加えて左右反転も指定しています。適用するのは回転だけです。"
-       "反転した画像に合うカメラ姿勢は存在せず、復元結果が実物の鏡像になってしまいます。"),
-    ZH_HANS("{0} 等图像除了旋转还要求左右镜像。这里只做旋转：镜像后的画面没有与之相符的"
-            "相机位姿，重建结果会变成真实场景的镜像。"),
-    ZH_HANT("{0} 等影像除了旋轉還要求左右鏡像。這裡只做旋轉：鏡像後的畫面沒有與之相符的"
-            "相機姿態，重建結果會變成真實場景的鏡像。"),
-    KO("{0} 등은 회전뿐 아니라 좌우 반전도 요구합니다. 회전만 적용합니다. 반전된 그림에 "
-       "맞는 카메라 자세는 없어서, 복원 결과가 실제의 거울상이 되어 버립니다."),
-    DE("{0} und weitere verlangen neben der Drehung auch eine Spiegelung. Nur die "
-       "Drehung wird angewandt: zu einem gespiegelten Bild passt keine Kamerapose, "
-       "die Rekonstruktion wäre das Spiegelbild der Wirklichkeit."),
-    FR("{0} et d'autres demandent un miroir en plus de la rotation. Seule la rotation "
-       "est appliquée : aucune pose de caméra ne correspond à une image miroir, et la "
-       "reconstruction serait l'image inversée de la réalité."),
-    ES("{0} y otras piden un espejado además del giro. Solo se aplica el giro: ninguna "
-       "pose de cámara encaja con una imagen espejada, y la reconstrucción saldría "
-       "como el reflejo de la realidad."),
-    PT("{0} e outras pedem espelhamento além da rotação. Só a rotação é aplicada: "
-       "nenhuma pose de câmara corresponde a uma imagem espelhada, e a reconstrução "
-       "sairia como o reflexo da realidade."),
-    IT("{0} e altre chiedono una specchiatura oltre alla rotazione. Si applica solo la "
-       "rotazione: nessuna posa di camera corrisponde a un'immagine specchiata, e la "
-       "ricostruzione verrebbe come il riflesso della realtà."),
-    NL("{0} en andere vragen naast de draaiing ook om spiegeling. Alleen de draaiing "
-       "wordt toegepast: bij een gespiegeld beeld past geen camerapositie, en de "
-       "reconstructie zou het spiegelbeeld van de werkelijkheid zijn."),
-    RU("{0} и другие требуют не только поворота, но и зеркального отражения. "
-       "Применяется только поворот: зеркальному изображению не соответствует ни одна "
-       "поза камеры, и реконструкция вышла бы зеркальной."),
-    TR("{0} ve diğerleri döndürmenin yanı sıra aynalanmayı da istiyor. Yalnızca "
-       "döndürme uygulanıyor: aynalanmış bir görüntüye uyan kamera duruşu yoktur, "
-       "yeniden oluşturma gerçeğin ayna görüntüsü olurdu."));
+    EN("{0} and others request EXIF mirroring. Rotation alone is applied: cameras cannot fit mirrored images without mirroring the scene."),
+    JA("{0} などにEXIF反転指定があります。回転だけ適用します。画像を反転するとシーンも鏡像になるためです。"),
+    ZH_HANS("{0} 等图像要求 EXIF 镜像。仅应用旋转：镜像图像若要拟合相机，也会使场景镜像。"),
+    ZH_HANT("{0} 等影像要求 EXIF 鏡像。僅套用旋轉：鏡像影像若要擬合相機，也會使場景鏡像。"),
+    KO("{0} 등에 EXIF 반전이 지정되어 있습니다. 회전만 적용합니다. 반전된 이미지에 카메라를 맞추면 장면도 거울상이 됩니다."),
+    DE("{0} und weitere verlangen EXIF-Spiegelung. Nur Drehung angewandt: Gespiegelte Bilder würden auch die Szene spiegeln."),
+    FR("{0} et d’autres demandent un miroir EXIF. Rotation seule appliquée : ajuster les caméras aux images miroir inverserait la scène."),
+    ES("{0} y otras piden reflejo EXIF. Solo se aplica rotación: ajustar cámaras a imágenes reflejadas invertiría la escena."),
+    PT("{0} e outras pedem espelhamento EXIF. Só se aplica rotação: ajustar câmaras a imagens espelhadas inverteria a cena."),
+    IT("{0} e altre richiedono specchiatura EXIF. Applico solo la rotazione: adattare le camere a immagini specchiate invertirebbe la scena."),
+    NL("{0} en andere vragen EXIF-spiegeling. Alleen rotatie toegepast: camera’s op gespiegelde beelden passen zou ook de scène spiegelen."),
+    RU("{0} и другие требуют отражения EXIF. Применён лишь поворот: подбор камер к отражённым снимкам отразил бы и сцену."),
+    TR("{0} ve diğerleri EXIF aynalama istiyor. Yalnız döndürme uygulanır: aynalanan görüntülere kamera uydurmak sahneyi de aynalar."));
 
 SS_MSG(extract_mask_empty,
-    EN("The mask {0} left no keypoints at all in {1}. Masks keep the white pixels "
-       "and ignore the black ones, so an inverted mask masks out the whole image."),
-    JA("マスク {0} により {1} の特徴点がすべて消えました。マスクは白い画素を残し黒い画素を無視するので、"
-       "白黒が逆のマスクは画像全体を消してしまいます。"),
-    ZH_HANS("蒙版 {0} 让 {1} 里一个特征点也没剩下。蒙版保留白色像素、忽略黑色像素，"
-            "所以反相的蒙版会把整张图都排除掉。"),
-    ZH_HANT("遮罩 {0} 讓 {1} 裡一個特徵點也沒剩下。遮罩保留白色像素、忽略黑色像素，"
-            "所以反相的遮罩會把整張圖都排除掉。"),
-    KO("마스크 {0} 때문에 {1} 의 특징점이 하나도 남지 않았습니다. 마스크는 흰 픽셀을 남기고 "
-       "검은 픽셀을 무시하므로, 반전된 마스크는 이미지 전체를 가려버립니다."),
-    DE("Die Maske {0} hat in {1} keinen einzigen Merkmalspunkt übrig gelassen. Masken "
-       "behalten die weißen Pixel und ignorieren die schwarzen, eine invertierte Maske "
-       "blendet also das ganze Bild aus."),
-    FR("Le masque {0} n'a laissé aucun point dans {1}. Les masques conservent les pixels "
-       "blancs et ignorent les noirs : un masque inversé écarte donc toute l'image."),
-    ES("La máscara {0} no dejó ni un punto en {1}. Las máscaras conservan los píxeles "
-       "blancos e ignoran los negros, así que una máscara invertida descarta la imagen entera."),
-    PT("A máscara {0} não deixou nenhum ponto em {1}. As máscaras mantêm os pixels brancos "
-       "e ignoram os pretos, então uma máscara invertida descarta a imagem inteira."),
-    IT("La maschera {0} non ha lasciato alcun punto in {1}. Le maschere tengono i pixel "
-       "bianchi e ignorano i neri, quindi una maschera invertita esclude l'intera immagine."),
-    NL("Het masker {0} liet in {1} geen enkel kenmerkpunt over. Maskers behouden de witte "
-       "pixels en negeren de zwarte, dus een omgekeerd masker maskeert het hele beeld weg."),
-    RU("Маска {0} не оставила в {1} ни одной точки. Маски сохраняют белые пиксели и "
-       "игнорируют чёрные, поэтому инвертированная маска убирает всё изображение."),
-    TR("{0} maskesi {1} içinde tek bir anahtar nokta bırakmadı. Maskeler beyaz pikselleri "
-       "tutar, siyahları yok sayar; ters çevrilmiş bir maske tüm görüntüyü eler."));
+    EN("The mask {0} left no keypoints at all in {1}. Masks keep the white pixels and ignore the black ones, so an inverted mask masks out the whole image."),
+    JA("マスク {0} により {1} の特徴点がすべて消えました。マスクは白い画素を残し黒い画素を無視するので、白黒が逆のマスクは画像全体を消してしまいます。"),
+    ZH_HANS("蒙版 {0} 让 {1} 里一个特征点也没剩下。蒙版保留白色像素、忽略黑色像素，所以反相的蒙版会把整张图都排除掉。"),
+    ZH_HANT("遮罩 {0} 讓 {1} 裡一個特徵點也沒剩下。遮罩保留白色像素、忽略黑色像素，所以反相的遮罩會把整張圖都排除掉。"),
+    KO("마스크 {0} 때문에 {1} 의 특징점이 하나도 남지 않았습니다. 마스크는 흰 픽셀을 남기고 검은 픽셀을 무시하므로, 반전된 마스크는 이미지 전체를 가려버립니다."),
+    DE("Maske {0} ließ keine Merkmale in {1}. Weiß bleibt, Schwarz wird ignoriert; eine invertierte Maske kann das ganze Bild ausschließen."),
+    FR("Le masque {0} n'a laissé aucun point dans {1}. Les masques conservent les pixels blancs et ignorent les noirs : un masque inversé écarte donc toute l'image."),
+    ES("La máscara {0} no dejó ni un punto en {1}. Las máscaras conservan los píxeles blancos e ignoran los negros, así que una máscara invertida descarta la imagen entera."),
+    PT("A máscara {0} não deixou nenhum ponto em {1}. As máscaras mantêm os pixels brancos e ignoram os pretos, então uma máscara invertida descarta a imagem inteira."),
+    IT("La maschera {0} non ha lasciato alcun punto in {1}. Le maschere tengono i pixel bianchi e ignorano i neri, quindi una maschera invertita esclude l'intera immagine."),
+    NL("Het masker {0} liet in {1} geen enkel kenmerkpunt over. Maskers behouden de witte pixels en negeren de zwarte, dus een omgekeerd masker maskeert het hele beeld weg."),
+    RU("Маска {0} не оставила в {1} ни одной точки. Маски сохраняют белые пиксели и игнорируют чёрные, поэтому инвертированная маска убирает всё изображение."),
+    TR("{0} maskesi {1} içinde tek bir anahtar nokta bırakmadı. Maskeler beyaz pikselleri tutar, siyahları yok sayar; ters çevrilmiş bir maske tüm görüntüyü eler."));
 
 // --image-exposure: what the detectors were shown, in signed EV. {0} and {1}
 // are the least and the most any one image was given.
@@ -806,42 +728,19 @@ SS_MSG(extract_exposure_fixed,
 // Read as linear, and the largest value across all of them is exactly 1.0 --
 // what display-encoded pixels labelled linear look like.
 SS_MSG(extract_linear_peak_one,
-    EN("Images read as linear light normally go past 1.0, and none of these does: "
-       "either they are display-encoded (--no-image-linear), or their highlights "
-       "were clipped at white"),
-    JA("リニア光として読み込む画像は通常 1.0 を超えますが、これらはどれも超えていません。"
-       "表示用エンコードの画像（--no-image-linear）か、ハイライトが白でクリップされています"),
-    ZH_HANS("按线性光读取的图像通常会超过 1.0，而这些图像都没有：要么是显示编码的"
-            "（--no-image-linear），要么高光已在白点处被截断"),
-    ZH_HANT("依線性光讀取的影像通常會超過 1.0，而這些影像都沒有：要麼是顯示編碼的"
-            "（--no-image-linear），要麼高光已在白點處被截斷"),
-    KO("선형 광으로 읽는 이미지는 보통 1.0을 넘지만 이 이미지들은 하나도 넘지 않습니다. "
-       "디스플레이 인코딩된 이미지이거나(--no-image-linear) 하이라이트가 흰색에서 "
-       "잘렸습니다"),
-    DE("Als lineares Licht gelesene Bilder gehen meist über 1.0 hinaus, diese aber "
-       "nicht: Entweder sind sie anzeigecodiert (--no-image-linear), oder ihre "
-       "Lichter wurden bei Weiß abgeschnitten"),
-    FR("Des images lues en lumière linéaire dépassent normalement 1.0, et aucune "
-       "de celles-ci : soit elles sont encodées pour l'affichage "
-       "(--no-image-linear), soit leurs hautes lumières ont été écrêtées au blanc"),
-    ES("Las imágenes leídas como luz lineal suelen pasar de 1.0, y ninguna de estas "
-       "lo hace: o están codificadas para pantalla (--no-image-linear), o sus luces "
-       "se recortaron en el blanco"),
-    PT("Imagens lidas como luz linear costumam passar de 1.0, e nenhuma destas "
-       "passa: ou estão codificadas para exibição (--no-image-linear), ou os "
-       "realces foram cortados no branco"),
-    IT("Le immagini lette come luce lineare di solito superano 1.0, e nessuna di "
-       "queste lo fa: o sono codificate per lo schermo (--no-image-linear), o le "
-       "alte luci sono state tagliate al bianco"),
-    NL("Beelden die als lineair licht worden gelezen komen meestal boven 1.0, en "
-       "geen van deze doet dat: ze zijn weergavegecodeerd (--no-image-linear), of "
-       "hun hooglichten zijn bij wit afgekapt"),
-    RU("Изображения, читаемые как линейный свет, обычно выходят за 1.0, а эти — "
-       "нет: либо они экранно закодированы (--no-image-linear), либо их света "
-       "обрезаны на белом"),
-    TR("Doğrusal ışık olarak okunan görüntüler genellikle 1.0'ı aşar; bunların "
-       "hiçbiri aşmıyor: ya ekran kodlular (--no-image-linear) ya da parlak "
-       "alanları beyazda kırpılmış"));
+    EN("No image exceeds 1.0. Linear-light images usually do: these may be display-encoded (use --no-image-linear) or clipped at white."),
+    JA("リニア光として読み込む画像は通常 1.0 を超えますが、これらはどれも超えていません。表示用エンコードの画像（--no-image-linear）か、ハイライトが白でクリップされています"),
+    ZH_HANS("按线性光读取的图像通常会超过 1.0，而这些图像都没有：要么是显示编码的（--no-image-linear），要么高光已在白点处被截断"),
+    ZH_HANT("依線性光讀取的影像通常會超過 1.0，而這些影像都沒有：要麼是顯示編碼的（--no-image-linear），要麼高光已在白點處被截斷"),
+    KO("선형 광으로 읽는 이미지는 보통 1.0을 넘지만 이 이미지들은 하나도 넘지 않습니다. 디스플레이 인코딩된 이미지이거나(--no-image-linear) 하이라이트가 흰색에서 잘렸습니다"),
+    DE("Kein Bild überschreitet 1.0, wie bei linearem Licht üblich. Evtl. anzeigecodiert (--no-image-linear) oder Lichter bei Weiß abgeschnitten."),
+    FR("Aucune image ne dépasse 1.0, contrairement au linéaire habituel : encodage d’affichage (--no-image-linear) ou hautes lumières écrêtées."),
+    ES("Las imágenes leídas como luz lineal suelen pasar de 1.0, y ninguna de estas lo hace: o están codificadas para pantalla (--no-image-linear), o sus luces se recortaron en el blanco"),
+    PT("Imagens lidas como luz linear costumam passar de 1.0, e nenhuma destas passa: ou estão codificadas para exibição (--no-image-linear), ou os realces foram cortados no branco"),
+    IT("Nessuna immagine supera 1.0, come tipico della luce lineare: forse codifica per schermo (--no-image-linear) o luci tagliate al bianco."),
+    NL("Geen beeld boven 1.0, wat bij lineair licht gebruikelijk is. Mogelijk weergavegecodeerd (--no-image-linear) of hooglichten afgekapt."),
+    RU("Изображения, читаемые как линейный свет, обычно выходят за 1.0, а эти — нет: либо они экранно закодированы (--no-image-linear), либо их света обрезаны на белом"),
+    TR("Doğrusal ışık olarak okunan görüntüler genellikle 1.0'ı aşar; bunların hiçbiri aşmıyor: ya ekran kodlular (--no-image-linear) ya da parlak alanları beyazda kırpılmış"));
 
 SS_MSG(extract_reusing,
     EN("Features an earlier run already wrote: {0}/{1} images -- keeping them."),
@@ -874,44 +773,19 @@ SS_MSG(extract_kept_other_settings,
     TR("{0} içindeki öznitelikler başka ayarlarla yapılmış olsa da korunuyor (--reuse-features keep)."));
 
 SS_MSG(extract_masks_look_inverted,
-    EN("Masks dropped {0}% of all keypoints. Unless this capture is a single object "
-       "on a masked-out background, the masks are probably inverted -- this pipeline "
-       "keeps what is WHITE, as COLMAP does. Re-run with --no-masks to check."),
-    JA("マスクにより全特徴点の {0}% が失われました。背景をマスクした単一被写体の撮影でないなら、"
-       "マスクの白黒が逆の可能性が高いです。このパイプラインはCOLMAPと同じく白い部分を残します。"
-       "--no-masks を付けて再実行すると確認できます。"),
-    ZH_HANS("蒙版排除了全部特征点的 {0}%。除非这是把背景遮住的单一物体拍摄，否则蒙版很可能是反的——"
-            "本流程和 COLMAP 一样保留白色部分。加 --no-masks 重新运行即可确认。"),
-    ZH_HANT("遮罩排除了全部特徵點的 {0}%。除非這是把背景遮住的單一物體拍攝，否則遮罩很可能是反的——"
-            "本流程和 COLMAP 一樣保留白色部分。加 --no-masks 重新執行即可確認。"),
-    KO("마스크가 전체 특징점의 {0}% 를 없앴습니다. 배경을 가린 단일 피사체 촬영이 아니라면 "
-       "마스크가 반전되어 있을 가능성이 큽니다. 이 파이프라인은 COLMAP 처럼 흰 부분을 남깁니다. "
-       "--no-masks 로 다시 실행해 확인해 보세요."),
-    DE("Masken haben {0}% aller Merkmalspunkte entfernt. Sofern dies keine Aufnahme eines "
-       "einzelnen Objekts vor maskiertem Hintergrund ist, sind die Masken vermutlich "
-       "invertiert -- diese Pipeline behält wie COLMAP das WEISSE. Zur Probe mit --no-masks "
-       "erneut ausführen."),
-    FR("Les masques ont écarté {0}% de tous les points. À moins qu'il ne s'agisse d'un objet "
-       "unique sur fond masqué, les masques sont probablement inversés -- cette chaîne "
-       "conserve le BLANC, comme COLMAP. Relancez avec --no-masks pour vérifier."),
-    ES("Las máscaras descartaron el {0}% de todos los puntos. Salvo que sea la captura de un "
-       "solo objeto con el fondo enmascarado, es probable que las máscaras estén invertidas: "
-       "esta cadena conserva lo BLANCO, como COLMAP. Vuelva a ejecutar con --no-masks para comprobarlo."),
-    PT("As máscaras descartaram {0}% de todos os pontos. A menos que esta seja a captura de um "
-       "único objeto com o fundo mascarado, as máscaras provavelmente estão invertidas -- este "
-       "fluxo mantém o BRANCO, como o COLMAP. Execute de novo com --no-masks para conferir."),
-    IT("Le maschere hanno scartato il {0}% di tutti i punti. A meno che non sia la ripresa di "
-       "un solo oggetto su sfondo mascherato, le maschere sono probabilmente invertite: questa "
-       "catena tiene il BIANCO, come COLMAP. Rilanci con --no-masks per verificare."),
-    NL("Maskers lieten {0}% van alle kenmerkpunten vallen. Tenzij dit één object met een "
-       "gemaskeerde achtergrond is, staan de maskers waarschijnlijk omgekeerd -- deze pijplijn "
-       "houdt het WITTE, net als COLMAP. Voer opnieuw uit met --no-masks om dat te toetsen."),
-    RU("Маски отсекли {0}% всех точек. Если это не съёмка одного объекта на замаскированном "
-       "фоне, маски, скорее всего, инвертированы: этот конвейер сохраняет БЕЛОЕ, как COLMAP. "
-       "Перезапустите с --no-masks, чтобы проверить."),
-    TR("Maskeler tüm anahtar noktaların %{0} kadarını eledi. Bu, arka planı maskelenmiş tek bir "
-       "nesnenin çekimi değilse maskeler büyük olasılıkla ters -- bu işlem hattı, COLMAP gibi, "
-       "BEYAZ olanı tutar. Denetlemek için --no-masks ile yeniden çalıştırın."));
+    EN("Masks removed {0}% of keypoints. Unless isolating one subject, masks may be inverted: WHITE is kept. Check with --no-masks."),
+    JA("マスクで特徴点の {0}% が除外されました。単一の被写体切り抜きでなければ反転の疑い：白が保持領域です。--no-masks で確認してください。"),
+    ZH_HANS("蒙版移除了 {0}% 的特征点。若非只保留单一主体，蒙版可能反转：白色保留。用 --no-masks 检查。"),
+    ZH_HANT("遮罩移除了 {0}% 的特徵點。若非只保留單一主體，遮罩可能反轉：白色保留。用 --no-masks 檢查。"),
+    KO("마스크가 특징점 {0}%를 제거했습니다. 단일 피사체만 남기는 경우가 아니면 반전일 수 있습니다. 흰색이 유지됩니다. --no-masks로 확인하세요."),
+    DE("Masken entfernten {0}% der Merkmale. Außer bei einzelnen freigestellten Motiven evtl. invertiert: WEISS bleibt. Mit --no-masks prüfen."),
+    FR("Masques : {0}% des points retirés. Sauf pour isoler un sujet, ils sont peut-être inversés : BLANC conservé. Vérifier avec --no-masks."),
+    ES("Las máscaras quitaron {0}% de puntos. Salvo si aíslan un sujeto, quizá estén invertidas: se conserva BLANCO. Comprueba con --no-masks."),
+    PT("As máscaras retiraram {0}% dos pontos. Exceto ao isolar um sujeito, podem estar invertidas: BRANCO fica. Verifique com --no-masks."),
+    IT("Le maschere hanno tolto {0}% dei punti. Se non isolano un soggetto, potrebbero essere invertite: BIANCO conservato. Verifica con --no-masks."),
+    NL("Maskers verwijderden {0}% van kenmerken. Tenzij één onderwerp wordt vrijgesteld mogelijk omgekeerd: WIT blijft. Controleer met --no-masks."),
+    RU("Маски убрали {0}% признаков. Если это не выделение одного объекта, возможна инверсия: БЕЛОЕ сохраняется. Проверьте с --no-masks."),
+    TR("Maskeler noktaların %{0} kadarını çıkardı. Tek özne ayırmıyorsanız ters olabilir: BEYAZ korunur. --no-masks ile denetleyin."));
 
 // ===========================================================================
 // Matching and the camera grouping it settles
@@ -1230,32 +1104,19 @@ SS_MSG(match_need_two,
     TR("{0} içinde en az 2 öznitelik dosyası gerekli."));
 
 SS_MSG(match_switch_to_selection,
-    EN("Images: {0}, at or above the exhaustive cutoff -- switching from {1} pairing "
-       "to content-based pair selection. --pairs {1} forces the old behaviour."),
-    JA("画像 {0} 枚は総当たりの上限以上です。{1} のペア選択から内容に基づくペア選択に切り替えます。"
-       "--pairs {1} を指定すると従来どおりになります。"),
-    ZH_HANS("图像 {0} 张，达到或超过穷举上限——从 {1} 配对切换到基于内容的配对选择。"
-            "指定 --pairs {1} 可保持原行为。"),
-    ZH_HANT("影像 {0} 張，達到或超過窮舉上限——從 {1} 配對切換到基於內容的配對選擇。"
-            "指定 --pairs {1} 可保持原行為。"),
-    KO("이미지 {0} 장으로 전수 비교 한계 이상입니다. {1} 짝짓기에서 내용 기반 선택으로 바꿉니다. "
-       "--pairs {1} 을(를) 주면 이전 동작을 유지합니다."),
-    DE("Bilder: {0}, an oder über der Grenze für vollständige Paarbildung -- es wird von {1} "
-       "auf inhaltsbasierte Paarauswahl umgestellt. --pairs {1} erzwingt das alte Verhalten."),
-    FR("Images : {0}, au niveau ou au-delà du seuil exhaustif -- passage de l'appariement {1} "
-       "à une sélection de paires fondée sur le contenu. --pairs {1} force l'ancien comportement."),
-    ES("Imágenes: {0}, en el umbral exhaustivo o por encima: se pasa del emparejamiento {1} "
-       "a una selección de pares basada en el contenido. --pairs {1} fuerza el comportamiento anterior."),
-    PT("Imagens: {0}, no limite exaustivo ou acima dele -- passando do pareamento {1} para uma "
-       "seleção de pares baseada no conteúdo. --pairs {1} força o comportamento antigo."),
-    IT("Immagini: {0}, alla soglia esaustiva o oltre: si passa dall'accoppiamento {1} a una "
-       "selezione di coppie basata sul contenuto. --pairs {1} impone il comportamento precedente."),
-    NL("Afbeeldingen: {0}, op of boven de uitputtende drempel -- er wordt van {1}-paarvorming "
-       "overgestapt op inhoudsgebaseerde paarselectie. --pairs {1} dwingt het oude gedrag af."),
-    RU("Изображений: {0} — на пороге полного перебора или выше: переход от режима {1} к отбору "
-       "пар по содержимому. --pairs {1} возвращает прежнее поведение."),
-    TR("Görüntü: {0}, tam tarama eşiğinde veya üzerinde -- {1} çift seçiminden içerik temelli "
-       "çift seçimine geçiliyor. --pairs {1} eski davranışı zorlar."));
+    EN("Images: {0}, at or above the exhaustive cutoff -- switching from {1} pairing to content-based pair selection. --pairs {1} forces the old behaviour."),
+    JA("画像 {0} 枚は総当たりの上限以上です。{1} のペア選択から内容に基づくペア選択に切り替えます。--pairs {1} を指定すると従来どおりになります。"),
+    ZH_HANS("图像 {0} 张，达到或超过穷举上限——从 {1} 配对切换到基于内容的配对选择。指定 --pairs {1} 可保持原行为。"),
+    ZH_HANT("影像 {0} 張，達到或超過窮舉上限——從 {1} 配對切換到基於內容的配對選擇。指定 --pairs {1} 可保持原行為。"),
+    KO("이미지 {0} 장으로 전수 비교 한계 이상입니다. {1} 짝짓기에서 내용 기반 선택으로 바꿉니다. --pairs {1} 을(를) 주면 이전 동작을 유지합니다."),
+    DE("{0} Bilder erreichen die Vollpaar-Grenze: wechselt von {1} zu inhaltsbasierter Auswahl. --pairs {1} erzwingt das bisherige Verhalten."),
+    FR("{0} images atteignent le seuil exhaustif : passage de {1} à la sélection par contenu. --pairs {1} impose le comportement précédent."),
+    ES("Imágenes: {0}, en el umbral exhaustivo o por encima: se pasa del emparejamiento {1} a una selección de pares basada en el contenido. --pairs {1} fuerza el comportamiento anterior."),
+    PT("Imagens: {0}, no limite exaustivo ou acima dele -- passando do pareamento {1} para uma seleção de pares baseada no conteúdo. --pairs {1} força o comportamento antigo."),
+    IT("Immagini: {0}, alla soglia esaustiva o oltre: si passa dall'accoppiamento {1} a una selezione di coppie basata sul contenuto. --pairs {1} impone il comportamento precedente."),
+    NL("Afbeeldingen: {0}, op of boven de uitputtende drempel -- er wordt van {1}-paarvorming overgestapt op inhoudsgebaseerde paarselectie. --pairs {1} dwingt het oude gedrag af."),
+    RU("Изображений: {0} — на пороге полного перебора или выше: переход от режима {1} к отбору пар по содержимому. --pairs {1} возвращает прежнее поведение."),
+    TR("Görüntü: {0}, tam tarama eşiğinde veya üzerinde -- {1} çift seçiminden içerik temelli çift seçimine geçiliyor. --pairs {1} eski davranışı zorlar."));
 
 SS_MSG(match_exhaustive_quadratic,
     EN("Images: {0} with exhaustive pairing means {1} pairs, which grows with the square "
@@ -1306,40 +1167,19 @@ SS_MSG(focal_search,
 // ===========================================================================
 
 SS_MSG(map_feature_compaction,
-    EN("Unused-feature compaction: features {0} -> {1}; removed {2} ({3}%); images {4}; "
-       "zero-active images {5}; stored pairs {6}; correspondences {7}"),
-    JA("未使用特徴点の整理: 特徴点 {0} -> {1}; 削除 {2} ({3}%); 画像 {4}; "
-       "使用特徴点がない画像 {5}; 保存されたペア {6}; 対応点 {7}"),
-    ZH_HANS("整理未用特征点: 特征点 {0} -> {1}; 移除 {2} ({3}%); 图像 {4}; "
-            "使用特征点为零的图像 {5}; 已存储图像对 {6}; 对应关系 {7}"),
-    ZH_HANT("整理未用特徵點: 特徵點 {0} -> {1}; 移除 {2} ({3}%); 影像 {4}; "
-            "使用特徵點為零的影像 {5}; 已儲存影像對 {6}; 對應關係 {7}"),
-    KO("미사용 특징점 정리: 특징점 {0} -> {1}; 제거 {2} ({3}%); 이미지 {4}; "
-       "사용 특징점이 없는 이미지 {5}; 저장된 쌍 {6}; 대응점 {7}"),
-    DE("Komprimierung ungenutzter Merkmale: Merkmale {0} -> {1}; entfernt {2} ({3}%); "
-       "Bilder {4}; Bilder ohne aktive Merkmale {5}; gespeicherte Paare {6}; "
-       "Korrespondenzen {7}"),
-    FR("Compactage des points inutilisés : points {0} -> {1} ; retirés {2} ({3} %) ; "
-       "images {4} ; images sans point actif {5} ; paires stockées {6} ; "
-       "correspondances {7}"),
-    ES("Compactación de puntos no usados: puntos {0} -> {1}; eliminados {2} ({3}%); "
-       "imágenes {4}; imágenes sin puntos activos {5}; pares almacenados {6}; "
-       "correspondencias {7}"),
-    PT("Compactação de pontos não usados: pontos {0} -> {1}; removidos {2} ({3}%); "
-       "imagens {4}; imagens sem pontos ativos {5}; pares armazenados {6}; "
-       "correspondências {7}"),
-    IT("Compattazione dei punti inutilizzati: punti {0} -> {1}; rimossi {2} ({3}%); "
-       "immagini {4}; immagini senza punti attivi {5}; coppie memorizzate {6}; "
-       "corrispondenze {7}"),
-    NL("Compactie van ongebruikte kenmerken: kenmerken {0} -> {1}; verwijderd {2} ({3}%); "
-       "afbeeldingen {4}; afbeeldingen zonder actieve kenmerken {5}; opgeslagen paren {6}; "
-       "overeenkomsten {7}"),
-    RU("Сжатие неиспользуемых признаков: признаки {0} -> {1}; удалено {2} ({3}%); "
-       "изображения {4}; изображения без активных признаков {5}; сохранённые пары {6}; "
-       "соответствия {7}"),
-    TR("Kullanılmayan öznitelik sıkıştırması: öznitelikler {0} -> {1}; kaldırılan {2} "
-       "({3}%); görüntüler {4}; etkin özniteliği olmayan görüntüler {5}; saklanan çiftler "
-       "{6}; eşleşmeler {7}"));
+    EN("- Unused-feature compaction: features {0} -> {1}; removed {2} ({3}%); images {4}; zero-active images {5};\n- stored pairs {6}; correspondences {7}"),
+    JA("- 未使用特徴点の整理: 特徴点 {0} -> {1}; 削除 {2} ({3}%); 画像 {4}; 使用特徴点がない画像 {5}; 保存されたペア {6};\n- 対応点 {7}"),
+    ZH_HANS("- 整理未用特征点: 特征点 {0} -> {1}; 移除 {2} ({3}%); 图像 {4}; 使用特征点为零的图像 {5}; 已存储图像对 {6};\n- 对应关系 {7}"),
+    ZH_HANT("- 整理未用特徵點: 特徵點 {0} -> {1}; 移除 {2} ({3}%); 影像 {4}; 使用特徵點為零的影像 {5}; 已儲存影像對 {6};\n- 對應關係 {7}"),
+    KO("- 미사용 특징점 정리: 특징점 {0} -> {1}; 제거 {2} ({3}%); 이미지 {4}; 사용 특징점이 없는 이미지 {5}; 저장된 쌍 {6};\n- 대응점 {7}"),
+    DE("- Komprimierung ungenutzter Merkmale: Merkmale {0} -> {1}; entfernt {2} ({3}%); Bilder {4};\n- Bilder ohne aktive Merkmale {5}; gespeicherte Paare {6}; Korrespondenzen {7}"),
+    FR("- Compactage des points inutilisés : points {0} -> {1} ; retirés {2} ({3} %) ; images {4} ;\n- images sans point actif {5} ; paires stockées {6} ; correspondances {7}"),
+    ES("- Compactación de puntos no usados: puntos {0} -> {1}; eliminados {2} ({3}%); imágenes {4};\n- imágenes sin puntos activos {5}; pares almacenados {6}; correspondencias {7}"),
+    PT("- Compactação de pontos não usados: pontos {0} -> {1}; removidos {2} ({3}%); imagens {4};\n- imagens sem pontos ativos {5}; pares armazenados {6}; correspondências {7}"),
+    IT("- Compattazione dei punti inutilizzati: punti {0} -> {1}; rimossi {2} ({3}%); immagini {4};\n- immagini senza punti attivi {5}; coppie memorizzate {6}; corrispondenze {7}"),
+    NL("- Compactie van ongebruikte kenmerken: kenmerken {0} -> {1}; verwijderd {2} ({3}%); afbeeldingen {4};\n- afbeeldingen zonder actieve kenmerken {5}; opgeslagen paren {6}; overeenkomsten {7}"),
+    RU("- Сжатие неиспользуемых признаков: признаки {0} -> {1}; удалено {2} ({3}%); изображения {4};\n- изображения без активных признаков {5}; сохранённые пары {6}; соответствия {7}"),
+    TR("- Kullanılmayan öznitelik sıkıştırması: öznitelikler {0} -> {1}; kaldırılan {2} ({3}%); görüntüler {4};\n- etkin özniteliği olmayan görüntüler {5}; saklanan çiftler {6}; eşleşmeler {7}"));
 
 SS_MSG(map_seed_relax,
     EN("No seed pair passed the current thresholds; relaxing to inliers {0}, angle {1} degrees"),
@@ -1424,40 +1264,19 @@ SS_MSG(map_global_ba,
     TR("Genel demet düzeltmesi (maliyet {0}): {1} gözlem / {2} nokta elendi, {3} nokta kaldı"));
 
 SS_MSG(ba_host_fallback,
-    EN("Bundle adjustment could not finish on the GPU ({0}). Running it on the CPU instead: "
-       "slower, but it finishes. --ba-real cpu --ba-real-coarse cpu starts there next time."),
-    JA("バンドル調整を GPU で完了できませんでした（{0}）。代わりに CPU で実行します。"
-       "遅くなりますが最後まで進みます。次回から --ba-real cpu --ba-real-coarse cpu を渡すと"
-       "最初から CPU で計算します。"),
-    ZH_HANS("光束法平差无法在 GPU 上完成（{0}）。改在 CPU 上运行: 更慢，但能跑完。"
-            "下次加上 --ba-real cpu --ba-real-coarse cpu 就直接从 CPU 开始。"),
-    ZH_HANT("光束法平差無法在 GPU 上完成（{0}）。改在 CPU 上執行: 更慢，但能跑完。"
-            "下次加上 --ba-real cpu --ba-real-coarse cpu 就直接從 CPU 開始。"),
-    KO("번들 조정을 GPU에서 끝내지 못했습니다({0}). 대신 CPU에서 실행합니다. 느리지만 "
-       "끝까지 갑니다. 다음부터는 --ba-real cpu --ba-real-coarse cpu 로 처음부터 CPU에서 "
-       "계산합니다."),
-    DE("Die Bündelausgleichung konnte auf der GPU nicht abgeschlossen werden ({0}). Sie läuft "
-       "stattdessen auf der CPU: langsamer, aber sie kommt zu Ende. Mit --ba-real cpu "
-       "--ba-real-coarse cpu beginnt sie beim nächsten Mal dort."),
-    FR("L'ajustement de faisceaux n'a pas pu se terminer sur le GPU ({0}). Il tourne sur le CPU "
-       "à la place : plus lent, mais il aboutit. --ba-real cpu --ba-real-coarse cpu y commence "
-       "la prochaine fois."),
-    ES("El ajuste de haces no pudo terminar en la GPU ({0}). Se ejecuta en la CPU: más lento, "
-       "pero termina. Con --ba-real cpu --ba-real-coarse cpu empieza allí la próxima vez."),
-    PT("O ajustamento de feixes não conseguiu terminar na GPU ({0}). Está rodando na CPU: mais "
-       "lento, mas termina. Com --ba-real cpu --ba-real-coarse cpu ele começa aí da próxima vez."),
-    IT("Il bundle adjustment non è riuscito a finire sulla GPU ({0}). Ora gira sulla CPU: più "
-       "lento, ma arriva in fondo. Con --ba-real cpu --ba-real-coarse cpu parte da lì la "
-       "prossima volta."),
-    NL("De bundelaanpassing kon niet op de GPU worden afgemaakt ({0}). Hij draait nu op de CPU: "
-       "langzamer, maar hij komt klaar. Met --ba-real cpu --ba-real-coarse cpu begint hij daar "
-       "de volgende keer."),
-    RU("Уравнивание связок не удалось завершить на GPU ({0}). Оно выполняется на CPU: медленнее, "
-       "но доходит до конца. С --ba-real cpu --ba-real-coarse cpu оно сразу начнётся там в "
-       "следующий раз."),
-    TR("Demet düzeltmesi GPU'da tamamlanamadı ({0}). Bunun yerine CPU'da çalışıyor: daha yavaş "
-       "ama bitiyor. --ba-real cpu --ba-real-coarse cpu bir dahaki sefere doğrudan orada "
-       "başlatır."));
+    EN("Bundle adjustment could not finish on the GPU ({0}). Running it on the CPU instead: slower, but it finishes.\n--ba-real cpu --ba-real-coarse cpu starts there next time."),
+    JA("バンドル調整を GPU で完了できませんでした（{0}）。 代わりに CPU で実行します。 遅くなりますが最後まで進みます。\n次回から --ba-real cpu --ba-real-coarse cpu を渡すと最初から CPU で計算します。"),
+    ZH_HANS("光束法平差无法在 GPU 上完成（{0}）。 改在 CPU 上运行: 更慢，但能跑完。\n下次加上 --ba-real cpu --ba-real-coarse cpu 就直接从 CPU 开始。"),
+    ZH_HANT("光束法平差無法在 GPU 上完成（{0}）。 改在 CPU 上執行: 更慢，但能跑完。\n下次加上 --ba-real cpu --ba-real-coarse cpu 就直接從 CPU 開始。"),
+    KO("번들 조정을 GPU에서 끝내지 못했습니다({0}). 대신 CPU에서 실행합니다. 느리지만 끝까지 갑니다.\n다음부터는 --ba-real cpu --ba-real-coarse cpu 로 처음부터 CPU에서 계산합니다."),
+    DE("Die Bündelausgleichung konnte auf der GPU nicht abgeschlossen werden ({0}).\n- Sie läuft stattdessen auf der CPU: langsamer, aber sie kommt zu Ende.\n- Mit --ba-real cpu --ba-real-coarse cpu beginnt sie beim nächsten Mal dort."),
+    FR("L'ajustement de faisceaux n'a pas pu se terminer sur le GPU ({0}).\n- Il tourne sur le CPU à la place : plus lent, mais il aboutit.\n- --ba-real cpu --ba-real-coarse cpu y commence la prochaine fois."),
+    ES("El ajuste de haces no pudo terminar en la GPU ({0}). Se ejecuta en la CPU: más lento, pero termina.\nCon --ba-real cpu --ba-real-coarse cpu empieza allí la próxima vez."),
+    PT("O ajustamento de feixes não conseguiu terminar na GPU ({0}). Está rodando na CPU: mais lento, mas termina.\nCom --ba-real cpu --ba-real-coarse cpu ele começa aí da próxima vez."),
+    IT("Il bundle adjustment non è riuscito a finire sulla GPU ({0}). Ora gira sulla CPU: più lento, ma arriva in fondo.\nCon --ba-real cpu --ba-real-coarse cpu parte da lì la prossima volta."),
+    NL("De bundelaanpassing kon niet op de GPU worden afgemaakt ({0}).\n- Hij draait nu op de CPU: langzamer, maar hij komt klaar.\n- Met --ba-real cpu --ba-real-coarse cpu begint hij daar de volgende keer."),
+    RU("Уравнивание связок не удалось завершить на GPU ({0}). Оно выполняется на CPU: медленнее, но доходит до конца.\nС --ba-real cpu --ba-real-coarse cpu оно сразу начнётся там в следующий раз."),
+    TR("Demet düzeltmesi GPU'da tamamlanamadı ({0}). Bunun yerine CPU'da çalışıyor: daha yavaş ama bitiyor.\n--ba-real cpu --ba-real-coarse cpu bir dahaki sefere doğrudan orada başlatır."));
 
 SS_MSG(map_registered,
     EN("Registered image {0} (PnP inliers {1}/{2}); images in the model: {3}"),
@@ -1756,41 +1575,19 @@ SS_MSG(map_per_image_done,
     TR("{0} model üzerinde görüntü başına iç parametre iyileştirmesi: {1}"));
 
 SS_MSG(map_init_failed,
-    EN("Initialization failed: {0} candidate pair(s) tried, best median triangulation "
-       "angle {1} degrees. Nothing has enough parallax to triangulate on -- the camera "
-       "may not have moved, or every pair may be too similar."),
-    JA("初期化に失敗しました: 候補ペア {0} 組を試し、三角測量角の中央値は最大 {1} 度でした。"
-       "視差が足りず三角測量できません。カメラが動いていないか、どのペアも似すぎている可能性があります。"),
-    ZH_HANS("初始化失败: 尝试了 {0} 组候选配对，最佳三角化角度中位数为 {1} 度。视差不足，无法三角化——"
-            "可能相机没有移动，或者每一对都太相似。"),
-    ZH_HANT("初始化失敗: 嘗試了 {0} 組候選配對，最佳三角化角度中位數為 {1} 度。視差不足，無法三角化——"
-            "可能相機沒有移動，或者每一對都太相似。"),
-    KO("초기화에 실패했습니다: 후보 쌍 {0} 개를 시도했고 최고 삼각측량 각도 중앙값은 {1} 도였습니다. "
-       "시차가 부족해 삼각측량을 할 수 없습니다. 카메라가 움직이지 않았거나 모든 쌍이 너무 비슷할 수 있습니다."),
-    DE("Initialisierung fehlgeschlagen: {0} Kandidatenpaar(e) versucht, bester medianer "
-       "Triangulationswinkel {1} Grad. Nirgends genug Parallaxe zum Triangulieren -- die Kamera "
-       "hat sich vielleicht nicht bewegt, oder alle Paare sind zu ähnlich."),
-    FR("Échec de l'initialisation : {0} paire(s) candidate(s) essayée(s), meilleur angle de "
-       "triangulation médian {1} degrés. Pas assez de parallaxe pour trianguler -- la caméra n'a "
-       "peut-être pas bougé, ou toutes les paires se ressemblent trop."),
-    ES("Falló la inicialización: se probaron {0} pareja(s) candidata(s), mejor ángulo de "
-       "triangulación mediano {1} grados. No hay paralaje suficiente para triangular: puede que "
-       "la cámara no se moviera, o que todas las parejas sean demasiado parecidas."),
-    PT("A inicialização falhou: {0} par(es) candidato(s) tentado(s), melhor ângulo de "
-       "triangulação mediano {1} graus. Não há paralaxe suficiente para triangular -- talvez a "
-       "câmera não tenha se movido, ou todos os pares sejam parecidos demais."),
-    IT("Inizializzazione fallita: provate {0} coppie candidate, miglior angolo di triangolazione "
-       "mediano {1} gradi. Non c'è parallasse sufficiente per triangolare: forse la fotocamera "
-       "non si è mossa, o tutte le coppie sono troppo simili."),
-    NL("Initialisatie mislukt: {0} kandidaatpa(a)r(en) geprobeerd, beste mediane "
-       "triangulatiehoek {1} graden. Nergens genoeg parallax om te trianguleren -- misschien "
-       "bewoog de camera niet, of lijken alle paren te veel op elkaar."),
-    RU("Инициализация не удалась: испробовано пар-кандидатов: {0}, лучший медианный угол "
-       "триангуляции {1} градусов. Параллакса не хватает для триангуляции — возможно, камера не "
-       "двигалась или все пары слишком похожи."),
-    TR("Başlatma başarısız: {0} aday çift denendi, en iyi ortanca üçgenleme açısı {1} derece. "
-       "Üçgenlemeye yetecek paralaks yok -- kamera hiç hareket etmemiş ya da bütün çiftler "
-       "birbirine fazla benziyor olabilir."));
+    EN("Initialization failed after {0} pairs; best median triangulation angle {1} degrees. Insufficient parallax: camera still or views too similar."),
+    JA("初期化失敗：{0} ペアを試行、最良の三角測量角中央値は {1} 度。視差不足です。カメラが動いていないか、視点が似すぎています。"),
+    ZH_HANS("尝试 {0} 对后初始化失败；最佳三角测量角中位数为 {1} 度。视差不足：相机未移动或视图过于相似。"),
+    ZH_HANT("嘗試 {0} 對後初始化失敗；最佳三角測量角中位數為 {1} 度。視差不足：相機未移動或視圖過於相似。"),
+    KO("{0}쌍 후 초기화 실패. 최고 삼각측량 각도 중앙값 {1}도. 시차 부족: 카메라가 고정됐거나 뷰가 너무 비슷합니다."),
+    DE("Initialisierung nach {0} Paaren gescheitert; bester Median-Triangulationswinkel {1} Grad. Zu wenig Parallaxe: Kamera still oder Ansichten zu ähnlich."),
+    FR("Échec après {0} paires ; meilleur angle médian de triangulation : {1} degrés. Parallaxe insuffisante : caméra fixe ou vues trop proches."),
+    ES("Falló tras {0} pares; mejor ángulo mediano de triangulación: {1} grados. Falta paralaje: cámara fija o vistas demasiado similares."),
+    PT("Falhou após {0} pares; melhor ângulo mediano de triangulação: {1} graus. Falta paralaxe: câmara fixa ou vistas semelhantes demais."),
+    IT("Fallita dopo {0} coppie; miglior angolo mediano di triangolazione: {1} gradi. Parallasse insufficiente: camera ferma o viste troppo simili."),
+    NL("Initialisatie mislukt na {0} paren; beste mediane triangulatiehoek {1} graden. Te weinig parallax: camera stil of beelden te gelijk."),
+    RU("Сбой инициализации после {0} пар; лучший медианный угол триангуляции {1} градусов. Мало параллакса: камера неподвижна или виды слишком похожи."),
+    TR("{0} çift sonrası başlatma başarısız; en iyi medyan üçgenleme açısı {1} derece. Paralaks yetersiz: kamera sabit veya görünümler çok benzer."));
 
 SS_MSG(map_assembled,
     EN("Assembly: {0}   Models: {1} -> {2} over {3} level(s)   Merged: {4}   Refused: {5}   "
@@ -1821,37 +1618,19 @@ SS_MSG(map_assembled,
        "Eklenen: {6} görüntü   Kapsama: {7} -> {8} görüntü"));
 
 SS_MSG(map_finishing,
-    EN("Finishing passes ({0}): split {1}, folds cut {2}, reseeded {3}, dropped {4}, "
-       "repaired by the audit {5}, dropped by the audit {6}, seams welded {7}"),
-    JA("仕上げ処理（{0}）: 分割 {1}、折り返しの切断 {2}、再シード {3}、除外 {4}、"
-       "監査で修復 {5}、監査で除外 {6}、継ぎ目の結合 {7}"),
-    ZH_HANS("收尾处理（{0}）: 拆分 {1}，切开折叠 {2}，重新播种 {3}，丢弃 {4}，"
-            "审查修复 {5}，审查丢弃 {6}，接缝合并 {7}"),
-    ZH_HANT("收尾處理（{0}）: 拆分 {1}，切開折疊 {2}，重新播種 {3}，丟棄 {4}，"
-            "稽核修復 {5}，稽核丟棄 {6}，接縫合併 {7}"),
-    KO("마무리 단계({0}): 분할 {1}, 접힘 절단 {2}, 재시드 {3}, 제외 {4}, "
-       "감사로 복구 {5}, 감사로 제외 {6}, 이음매 결합 {7}"),
-    DE("Abschlussdurchgänge ({0}): geteilt {1}, Faltungen getrennt {2}, neu gesät {3}, "
-       "verworfen {4}, von der Prüfung repariert {5}, von der Prüfung verworfen {6}, "
-       "Nähte verschweißt {7}"),
-    FR("Passes finales ({0}) : scindés {1}, plis coupés {2}, réamorcés {3}, écartés {4}, "
-       "réparés par l'audit {5}, écartés par l'audit {6}, coutures soudées {7}"),
-    ES("Pasadas finales ({0}): divididos {1}, pliegues cortados {2}, resembrados {3}, "
-       "descartados {4}, reparados por la auditoría {5}, descartados por la auditoría {6}, "
-       "costuras soldadas {7}"),
-    PT("Passagens finais ({0}): divididos {1}, dobras cortadas {2}, ressemeados {3}, "
-       "descartados {4}, reparados pela auditoria {5}, descartados pela auditoria {6}, "
-       "costuras soldadas {7}"),
-    IT("Passate finali ({0}): divisi {1}, pieghe tagliate {2}, riseminati {3}, scartati {4}, "
-       "riparati dall'audit {5}, scartati dall'audit {6}, cuciture saldate {7}"),
-    NL("Afrondende rondes ({0}): gesplitst {1}, vouwen doorgesneden {2}, opnieuw gezaaid {3}, "
-       "afgevallen {4}, hersteld door de controle {5}, afgevallen door de controle {6}, "
-       "naden gelast {7}"),
-    RU("Завершающие проходы ({0}): разделено {1}, складок разрезано {2}, пересеяно {3}, "
-       "отброшено {4}, исправлено проверкой {5}, отброшено проверкой {6}, "
-       "сварено швов {7}"),
-    TR("Bitirme geçişleri ({0}): bölünen {1}, kesilen katlanma {2}, yeniden tohumlanan {3}, "
-       "elenen {4}, denetimle onarılan {5}, denetimle elenen {6}, kaynatılan dikiş {7}"));
+    EN("Finishing passes ({0}): split {1}, folds cut {2}, reseeded {3}, dropped {4}, repaired by the audit {5}, dropped by the audit {6}, seams welded {7}"),
+    JA("仕上げ処理（{0}）: 分割 {1}、折り返しの切断 {2}、再シード {3}、除外 {4}、監査で修復 {5}、監査で除外 {6}、継ぎ目の結合 {7}"),
+    ZH_HANS("收尾处理（{0}）: 拆分 {1}，切开折叠 {2}，重新播种 {3}，丢弃 {4}，审查修复 {5}，审查丢弃 {6}，接缝合并 {7}"),
+    ZH_HANT("收尾處理（{0}）: 拆分 {1}，切開折疊 {2}，重新播種 {3}，丟棄 {4}，稽核修復 {5}，稽核丟棄 {6}，接縫合併 {7}"),
+    KO("마무리 단계({0}): 분할 {1}, 접힘 절단 {2}, 재시드 {3}, 제외 {4}, 감사로 복구 {5}, 감사로 제외 {6}, 이음매 결합 {7}"),
+    DE("Abschlussdurchgänge ({0}): geteilt {1}, Faltungen getrennt {2}, neu gesät {3}, verworfen {4}, von der Prüfung repariert {5}, von der Prüfung verworfen {6}, Nähte verschweißt {7}"),
+    FR("Passes finales ({0}) : scindés {1}, plis coupés {2}, réamorcés {3}, écartés {4}, réparés par l'audit {5}, écartés par l'audit {6}, coutures soudées {7}"),
+    ES("Pasadas finales ({0}): divididos {1}, pliegues cortados {2}, resembrados {3}, descartados {4}, reparados por la auditoría {5}, descartados por la auditoría {6}, costuras soldadas {7}"),
+    PT("Passagens finais ({0}): divididos {1}, dobras cortadas {2}, ressemeados {3}, descartados {4}, reparados pela auditoria {5}, descartados pela auditoria {6}, costuras soldadas {7}"),
+    IT("Passate finali ({0}): divisi {1}, pieghe tagliate {2}, riseminati {3}, scartati {4}, riparati dall'audit {5}, scartati dall'audit {6}, cuciture saldate {7}"),
+    NL("Afronding ({0}): splits {1}, vouwen geknipt {2}, herzaaid {3}, verwijderd {4}, audit hersteld {5}/verwijderd {6}, naden gelast {7}"),
+    RU("Завершающие проходы ({0}): разделено {1}, складок разрезано {2}, пересеяно {3}, отброшено {4}, исправлено проверкой {5}, отброшено проверкой {6}, сварено швов {7}"),
+    TR("Bitirme geçişleri ({0}): bölünen {1}, kesilen katlanma {2}, yeniden tohumlanan {3}, elenen {4}, denetimle onarılan {5}, denetimle elenen {6}, kaynatılan dikiş {7}"));
 
 
 // ===========================================================================
@@ -2079,40 +1858,19 @@ SS_MSG(sum_folder_line,
     TR("{0}: {1}/{2} görüntü kaydedildi"));
 
 SS_MSG(sum_folder_empty,
-    EN("Not one image under {0} was registered. The model describes the rest of the "
-       "capture only: those views may share no features with the others, or their "
-       "camera model may be wrong."),
-    JA("{0} の画像は1枚も登録されませんでした。モデルは残りの撮影分だけを表しています。"
-       "これらの視点は他と特徴点を共有していないか、カメラモデルが違う可能性があります。"),
-    ZH_HANS("{0} 下没有任何一张图像被配准。模型只描述了其余部分: 这些视角可能与其他图像没有共同特征，"
-            "或者它们的相机模型选错了。"),
-    ZH_HANT("{0} 下沒有任何一張影像被註冊。模型只描述了其餘部分: 這些視角可能與其他影像沒有共同特徵，"
-            "或者它們的相機模型選錯了。"),
-    KO("{0} 아래의 이미지는 한 장도 등록되지 않았습니다. 모델은 나머지 촬영분만 나타냅니다. "
-       "이 시점들이 다른 이미지와 공통 특징이 없거나, 카메라 모델이 틀렸을 수 있습니다."),
-    DE("Kein einziges Bild unter {0} wurde registriert. Das Modell beschreibt nur den Rest der "
-       "Aufnahme: diese Ansichten teilen womöglich keine Merkmale mit den übrigen, oder ihr "
-       "Kameramodell stimmt nicht."),
-    FR("Aucune image sous {0} n'a été enregistrée. Le modèle ne décrit que le reste de la prise "
-       "de vue : ces vues ne partagent peut-être aucun point avec les autres, ou leur modèle de "
-       "caméra est erroné."),
-    ES("No se registró ni una imagen bajo {0}. El modelo describe solo el resto de la captura: "
-       "puede que esas vistas no compartan puntos con las demás, o que su modelo de cámara "
-       "sea el equivocado."),
-    PT("Nenhuma imagem sob {0} foi registrada. O modelo descreve apenas o resto da captura: "
-       "essas vistas podem não compartilhar pontos com as demais, ou o modelo de câmera delas "
-       "pode estar errado."),
-    IT("Nessuna immagine sotto {0} è stata registrata. Il modello descrive solo il resto della "
-       "ripresa: quelle viste potrebbero non condividere punti con le altre, o il loro modello "
-       "di fotocamera potrebbe essere sbagliato."),
-    NL("Geen enkele afbeelding onder {0} is geregistreerd. Het model beschrijft alleen de rest "
-       "van de opname: die beelden delen misschien geen kenmerken met de andere, of hun "
-       "cameramodel klopt niet."),
-    RU("Ни одно изображение из {0} не зарегистрировано. Модель описывает только остальную часть "
-       "съёмки: эти виды могут не иметь общих точек с прочими, либо у них неверная модель камеры."),
-    TR("{0} altındaki hiçbir görüntü kaydedilmedi. Model yalnızca çekimin geri kalanını "
-       "anlatıyor: bu görünümler diğerleriyle hiç öznitelik paylaşmıyor ya da kamera modelleri "
-       "yanlış olabilir."));
+    EN("No image in {0} was registered; only the rest of the capture is modeled. Check feature overlap and the camera model for these views."),
+    JA("{0} の画像は登録されず、他の撮影範囲だけをモデル化しました。これらの視点の特徴の重なりとカメラモデルを確認してください。"),
+    ZH_HANS("{0} 中无图像注册成功；仅重建了其他部分。请检查这些视图的特征重叠和相机模型。"),
+    ZH_HANT("{0} 中無影像註冊成功；僅重建了其他部分。請檢查這些視圖的特徵重疊與相機模型。"),
+    KO("{0}의 이미지가 등록되지 않아 나머지 촬영만 모델링됐습니다. 이 뷰들의 특징 겹침과 카메라 모델을 확인하세요."),
+    DE("Kein Bild in {0} registriert; nur der übrige Teil wurde modelliert. Merkmalsüberlappung und Kameramodell dieser Ansichten prüfen."),
+    FR("Aucune image de {0} enregistrée ; seul le reste est modélisé. Vérifier les caractéristiques communes et le modèle de caméra."),
+    ES("Ninguna imagen de {0} registrada; solo se modeló el resto. Comprueba el solapamiento de rasgos y el modelo de cámara."),
+    PT("Nenhuma imagem de {0} registada; só o resto foi modelado. Verifique características comuns e o modelo de câmara."),
+    IT("Nessuna immagine di {0} registrata; modellato solo il resto. Controlla caratteristiche comuni e modello di camera."),
+    NL("Geen beeld in {0} geregistreerd; alleen de rest is gemodelleerd. Controleer kenmerkoverlap en het cameramodel van deze beelden."),
+    RU("В {0} нет зарегистрированных снимков; построена лишь остальная съёмка. Проверьте общие признаки и модель камеры этих видов."),
+    TR("{0} içinde görüntü kaydedilmedi; yalnız çekimin kalanı modellendi. Bu görünümlerin özellik örtüşmesini ve kamera modelini denetleyin."));
 
 SS_MSG(sum_written,
     EN("Written to {0}"),
@@ -3136,41 +2894,19 @@ SS_MSG(metric_source_positions,
     TR("konum dosyası"));
 
 SS_MSG(metric_done,
-    EN("Model {0}: metric frame from {1} -- scale {2}, cameras within {3} m: {4}/{5}, "
-       "RMS {6} m; assuming uncorrelated reference error, which is a lower bound, "
-       "scale uncertainty {7}% and orientation uncertainty {8} deg"),
-    JA("モデル {0}: {1} によるメートル座標系 -- 縮尺 {2}、{3} m 以内のカメラ: {4}/{5}、"
-       "RMS {6} m。基準の誤差が無相関という下限の仮定で、縮尺の不確かさ {7}%、向きの不確かさ {8} 度"),
-    ZH_HANS("模型 {0}: 由{1}确定的米制坐标系 -- 缩放 {2}，{3} m 以内的相机: {4}/{5}，"
-            "RMS {6} m; 按参考误差互不相关这一下限假设，缩放不确定度 {7}%、朝向不确定度 {8} 度"),
-    ZH_HANT("模型 {0}: 由{1}確定的公尺座標系 -- 縮放 {2}，{3} m 以內的相機: {4}/{5}，"
-            "RMS {6} m; 按參考誤差互不相關這一下限假設，縮放不確定度 {7}%、朝向不確定度 {8} 度"),
-    KO("모델 {0}: {1} 기준 미터 좌표계 -- 배율 {2}, {3} m 이내 카메라: {4}/{5}, "
-       "RMS {6} m; 기준 오차가 무상관이라는 하한 가정에서 배율 불확실도 {7}%, 방향 불확실도 {8} 도"),
-    DE("Modell {0}: metrischer Rahmen aus {1} -- Maßstab {2}, Kameras innerhalb {3} m: "
-       "{4}/{5}, RMS {6} m; unter der Untergrenzannahme unkorrelierter Referenzfehler "
-       "Maßstabsunsicherheit {7}% und Orientierungsunsicherheit {8} Grad"),
-    FR("Modèle {0} : repère métrique d'après {1} -- échelle {2}, caméras à moins de {3} m : "
-       "{4}/{5}, RMS {6} m ; en supposant une erreur de référence non corrélée, ce qui est "
-       "une borne inférieure, incertitude d'échelle {7}% et d'orientation {8} degrés"),
-    ES("Modelo {0}: marco métrico a partir de {1} -- escala {2}, cámaras dentro de {3} m: "
-       "{4}/{5}, RMS {6} m; suponiendo error de referencia no correlacionado, que es una cota "
-       "inferior, incertidumbre de escala {7}% y de orientación {8} grados"),
-    PT("Modelo {0}: referencial métrico a partir de {1} -- escala {2}, câmeras dentro de {3} m: "
-       "{4}/{5}, RMS {6} m; supondo erro de referência não correlacionado, que é um limite "
-       "inferior, incerteza de escala {7}% e de orientação {8} graus"),
-    IT("Modello {0}: sistema metrico da {1} -- scala {2}, camere entro {3} m: {4}/{5}, "
-       "RMS {6} m; assumendo errore di riferimento non correlato, che è un limite inferiore, "
-       "incertezza di scala {7}% e di orientamento {8} gradi"),
-    NL("Model {0}: metrisch stelsel uit {1} -- schaal {2}, camera's binnen {3} m: {4}/{5}, "
-       "RMS {6} m; uitgaande van ongecorreleerde referentiefout, wat een ondergrens is, "
-       "schaalonzekerheid {7}% en oriëntatieonzekerheid {8} graden"),
-    RU("Модель {0}: метрическая система по источнику {1} -- масштаб {2}, камер в пределах "
-       "{3} м: {4}/{5}, СКО {6} м; в предположении некоррелированной ошибки эталона, что даёт "
-       "нижнюю границу, неопределённость масштаба {7}% и ориентации {8} градусов"),
-    TR("Model {0}: {1} kaynaklı metrik çerçeve -- ölçek {2}, {3} m içindeki kameralar: "
-       "{4}/{5}, RMS {6} m; ilişkisiz referans hatası varsayımıyla, ki bu bir alt sınırdır, "
-       "ölçek belirsizliği {7}% ve yönelim belirsizliği {8} derece"));
+    EN("Model {0}: metric frame from {1}.\n- Scale {2}. Within {3} m: {4}/{5} cameras. RMS {6} m.\n- Lower-bound uncertainty with uncorrelated reference errors: scale {7}%, orientation {8} deg."),
+    JA("モデル {0}: {1} によるメートル座標系 -- 縮尺 {2}、{3} m 以内のカメラ: {4}/{5}、RMS {6} m。\n基準の誤差が無相関という下限の仮定で、縮尺の不確かさ {7}%、向きの不確かさ {8} 度"),
+    ZH_HANS("模型 {0}: 由{1}确定的米制坐标系 -- 缩放 {2}，{3} m 以内的相机: {4}/{5}，RMS {6} m;\n按参考误差互不相关这一下限假设，缩放不确定度 {7}%、朝向不确定度 {8} 度"),
+    ZH_HANT("模型 {0}: 由{1}確定的公尺座標系 -- 縮放 {2}，{3} m 以內的相機: {4}/{5}，RMS {6} m;\n按參考誤差互不相關這一下限假設，縮放不確定度 {7}%、朝向不確定度 {8} 度"),
+    KO("모델 {0}: {1} 기준 미터 좌표계 -- 배율 {2}, {3} m 이내 카메라: {4}/{5}, RMS {6} m;\n기준 오차가 무상관이라는 하한 가정에서 배율 불확실도 {7}%, 방향 불확실도 {8} 도"),
+    DE("Modell {0}: metrischer Rahmen aus {1} -- Maßstab {2}, Kameras innerhalb {3} m: {4}/{5}, RMS {6} m;\nunter der Untergrenzannahme unkorrelierter Referenzfehler Maßstabsunsicherheit {7}% und Orientierungsunsicherheit {8} Grad"),
+    FR("Modèle {0} : repère métrique d'après {1} -- échelle {2}, caméras à moins de {3} m : {4}/{5}, RMS {6} m ;\nen supposant une erreur de référence non corrélée, ce qui est une borne inférieure, incertitude d'échelle {7}% et d'orientation {8} degrés"),
+    ES("Modelo {0}: marco métrico a partir de {1} -- escala {2}, cámaras dentro de {3} m: {4}/{5}, RMS {6} m;\nsuponiendo error de referencia no correlacionado, que es una cota inferior, incertidumbre de escala {7}% y de orientación {8} grados"),
+    PT("Modelo {0}: referencial métrico a partir de {1} -- escala {2}, câmeras dentro de {3} m: {4}/{5}, RMS {6} m;\nsupondo erro de referência não correlacionado, que é um limite inferior, incerteza de escala {7}% e de orientação {8} graus"),
+    IT("Modello {0}: sistema metrico da {1} -- scala {2}, camere entro {3} m: {4}/{5}, RMS {6} m;\nassumendo errore di riferimento non correlato, che è un limite inferiore, incertezza di scala {7}% e di orientamento {8} gradi"),
+    NL("Model {0}: metrisch stelsel uit {1} -- schaal {2}, camera's binnen {3} m: {4}/{5}, RMS {6} m;\nuitgaande van ongecorreleerde referentiefout, wat een ondergrens is, schaalonzekerheid {7}% en oriëntatieonzekerheid {8} graden"),
+    RU("Модель {0}: метрическая система по источнику {1} -- масштаб {2}, камер в пределах {3} м: {4}/{5}, СКО {6} м;\nв предположении некоррелированной ошибки эталона, что даёт нижнюю границу, неопределённость масштаба {7}% и ориентации {8} градусов"),
+    TR("Model {0}: {1} kaynaklı metrik çerçeve -- ölçek {2}, {3} m içindeki kameralar: {4}/{5}, RMS {6} m;\nilişkisiz referans hatası varsayımıyla, ki bu bir alt sınırdır, ölçek belirsizliği {7}% ve yönelim belirsizliği {8} derece"));
 
 SS_MSG(metric_failed,
     EN("Model {0}: metric frame NOT applied, written in the normalized frame instead -- {1}"),
@@ -3277,61 +3013,34 @@ SS_MSG(metric_fail_inliers,
     TR("uyuma {0} m içinde olan kamera: {1}/{2}, yarısı gerekli"));
 
 SS_MSG(metric_fail_collinear,
-    EN("the cameras lie too close to a line: the spread across it is {0}% of the whole "
-       "and {1}% is the minimum, so this reference amplifies orientation error {2}x"),
-    JA("カメラがほぼ一直線に並んでいます。直線を横切る広がりは全体の {0}% で、最小は {1}% です。"
-       "この基準では向きの誤差が {2} 倍に拡大します"),
-    ZH_HANS("相机太接近一条直线: 横向展开只占整体的 {0}%，最小需要 {1}%，这样的参考会把朝向误差"
-            "放大 {2} 倍"),
-    ZH_HANT("相機太接近一條直線: 橫向展開只占整體的 {0}%，最小需要 {1}%，這樣的參考會把朝向誤差"
-            "放大 {2} 倍"),
-    KO("카메라가 거의 일직선에 놓여 있습니다. 직선을 가로지르는 퍼짐이 전체의 {0}% 이고 최소는 "
-       "{1}% 입니다. 이런 기준은 방향 오차를 {2} 배로 키웁니다"),
-    DE("die Kameras liegen zu nah an einer Linie: die Streuung quer dazu ist {0}% des Ganzen, "
-       "das Minimum ist {1}%, also verstärkt diese Referenz den Orientierungsfehler um das "
-       "{2}-fache"),
-    FR("les caméras sont trop proches d'une ligne : l'étalement en travers vaut {0}% du total "
-       "et le minimum est {1}%, donc cette référence amplifie l'erreur d'orientation {2} fois"),
-    ES("las cámaras están demasiado cerca de una línea: la dispersión transversal es el {0}% "
-       "del total y el mínimo es {1}%, así que esta referencia amplifica el error de "
-       "orientación {2} veces"),
-    PT("as câmeras estão demasiado perto de uma linha: a dispersão transversal é {0}% do total "
-       "e o mínimo é {1}%, portanto esta referência amplifica o erro de orientação {2} vezes"),
-    IT("le camere sono troppo vicine a una linea: la dispersione trasversale è il {0}% del "
-       "totale e il minimo è {1}%, quindi questo riferimento amplifica l'errore di "
-       "orientamento {2} volte"),
-    NL("de camera's liggen te dicht bij een lijn: de spreiding dwars erop is {0}% van het "
-       "geheel en {1}% is het minimum, dus deze referentie versterkt de oriëntatiefout {2} keer"),
-    RU("камеры лежат слишком близко к прямой: разброс поперёк неё составляет {0}% от общего "
-       "при минимуме {1}%, поэтому такой эталон усиливает ошибку ориентации в {2} раз"),
-    TR("kameralar bir doğruya fazla yakın: enine yayılım bütünün {0}% kadarı ve en az {1}% "
-       "olmalı, yani bu referans yönelim hatasını {2} kat büyütür"));
+    EN("the cameras lie too close to a line: the spread across it is {0}% of the whole and {1}% is the minimum, so this reference amplifies orientation error {2}x"),
+    JA("カメラがほぼ一直線に並んでいます。直線を横切る広がりは全体の {0}% で、最小は {1}% です。この基準では向きの誤差が {2} 倍に拡大します"),
+    ZH_HANS("相机太接近一条直线: 横向展开只占整体的 {0}%，最小需要 {1}%，这样的参考会把朝向误差放大 {2} 倍"),
+    ZH_HANT("相機太接近一條直線: 橫向展開只占整體的 {0}%，最小需要 {1}%，這樣的參考會把朝向誤差放大 {2} 倍"),
+    KO("카메라가 거의 일직선에 놓여 있습니다. 직선을 가로지르는 퍼짐이 전체의 {0}% 이고 최소는 {1}% 입니다. 이런 기준은 방향 오차를 {2} 배로 키웁니다"),
+    DE("Kameras fast auf einer Linie: Querstreuung {0}%, Minimum {1}%. Diese Referenz verstärkt den Orientierungsfehler {2}-fach."),
+    FR("les caméras sont trop proches d'une ligne : l'étalement en travers vaut {0}% du total et le minimum est {1}%, donc cette référence amplifie l'erreur d'orientation {2} fois"),
+    ES("Cámaras casi en línea: dispersión transversal {0}%, mínimo {1}%. Esta referencia amplifica el error de orientación {2} veces."),
+    PT("as câmeras estão demasiado perto de uma linha: a dispersão transversal é {0}% do total e o mínimo é {1}%, portanto esta referência amplifica o erro de orientação {2} vezes"),
+    IT("Camere quasi in linea: dispersione trasversale {0}%, minimo {1}%. Il riferimento amplifica l’errore di orientamento {2} volte."),
+    NL("de camera's liggen te dicht bij een lijn: de spreiding dwars erop is {0}% van het geheel en {1}% is het minimum, dus deze referentie versterkt de oriëntatiefout {2} keer"),
+    RU("камеры лежат слишком близко к прямой: разброс поперёк неё составляет {0}% от общего при минимуме {1}%, поэтому такой эталон усиливает ошибку ориентации в {2} раз"),
+    TR("kameralar bir doğruya fazla yakın: enine yayılım bütünün {0}% kadarı ve en az {1}% olmalı, yani bu referans yönelim hatasını {2} kat büyütür"));
 
 SS_MSG(metric_fail_tilted,
-    EN("the level fit's scale {0} is {1}x the {2} the 3D distances give: the up it was "
-       "levelled about tips the camera path"),
-    JA("水平の当てはめの縮尺 {0} は 3D 距離から得た {2} の {1} 倍です。水平を取った上方向が"
-       "カメラの軌跡を傾けています"),
+    EN("the level fit's scale {0} is {1}x the {2} the 3D distances give: the up it was levelled about tips the camera path"),
+    JA("水平の当てはめの縮尺 {0} は 3D 距離から得た {2} の {1} 倍です。水平を取った上方向がカメラの軌跡を傾けています"),
     ZH_HANS("水平拟合的缩放 {0} 是三维距离给出的 {2} 的 {1} 倍: 用来摆正的向上方向让相机轨迹倾斜了"),
     ZH_HANT("水平擬合的縮放 {0} 是三維距離給出的 {2} 的 {1} 倍: 用來擺正的向上方向讓相機軌跡傾斜了"),
-    KO("수평 맞춤의 축척 {0} 이(가) 3D 거리로 얻은 {2} 의 {1} 배입니다. 수평을 잡은 위쪽 방향이 "
-       "카메라 경로를 기울이고 있습니다"),
-    DE("der Maßstab der waagrechten Anpassung, {0}, ist das {1}-fache der {2} aus den "
-       "3D-Abständen: die Aufwärtsrichtung, nach der sie ausgerichtet wurde, kippt den Kamerapfad"),
-    FR("l'échelle de l'ajustement horizontal, {0}, vaut {1} fois les {2} des distances 3D : "
-       "le haut qui l'a mis d'aplomb incline la trajectoire des caméras"),
-    ES("la escala del ajuste horizontal, {0}, es {1} veces la de {2} que dan las distancias 3D: "
-       "el arriba con que se niveló inclina la trayectoria de las cámaras"),
-    PT("a escala do ajuste horizontal, {0}, é {1} vezes a de {2} que as distâncias 3D dão: o "
-       "cima com que foi nivelado inclina a trajetória das câmeras"),
-    IT("la scala della stima orizzontale, {0}, è {1} volte quella di {2} data dalle distanze 3D: "
-       "l'alto con cui è stata raddrizzata inclina il percorso delle fotocamere"),
-    NL("de schaal van de waterpas-fit, {0}, is {1}x de {2} die de 3D-afstanden geven: de "
-       "omhoog-richting waarlangs hij is genivelleerd kantelt het camerapad"),
-    RU("масштаб горизонтальной подгонки {0} в {1} раз больше {2}, который дают 3D-расстояния: "
-       "направление вверх, по которому её выровняли, наклоняет путь камер"),
-    TR("yatay uyumun ölçeği {0}, 3B uzaklıkların verdiği {2} değerinin {1} katı: hizalamada "
-       "kullanılan yukarı yönü kamera yolunu eğiyor"));
+    KO("수평 맞춤의 축척 {0} 이(가) 3D 거리로 얻은 {2} 의 {1} 배입니다. 수평을 잡은 위쪽 방향이 카메라 경로를 기울이고 있습니다"),
+    DE("Waagrechte Skalierung {0} ist {1}× der {2} aus 3D-Abständen: Die zum Nivellieren genutzte Oben-Richtung kippt den Kamerapfad."),
+    FR("l'échelle de l'ajustement horizontal, {0}, vaut {1} fois les {2} des distances 3D : le haut qui l'a mis d'aplomb incline la trajectoire des caméras"),
+    ES("la escala del ajuste horizontal, {0}, es {1} veces la de {2} que dan las distancias 3D: el arriba con que se niveló inclina la trayectoria de las cámaras"),
+    PT("a escala do ajuste horizontal, {0}, é {1} vezes a de {2} que as distâncias 3D dão: o cima com que foi nivelado inclina a trajetória das câmeras"),
+    IT("la scala della stima orizzontale, {0}, è {1} volte quella di {2} data dalle distanze 3D: l'alto con cui è stata raddrizzata inclina il percorso delle fotocamere"),
+    NL("de schaal van de waterpas-fit, {0}, is {1}x de {2} die de 3D-afstanden geven: de omhoog-richting waarlangs hij is genivelleerd kantelt het camerapad"),
+    RU("масштаб горизонтальной подгонки {0} в {1} раз больше {2}, который дают 3D-расстояния: направление вверх, по которому её выровняли, наклоняет путь камер"),
+    TR("yatay uyumun ölçeği {0}, 3B uzaklıkların verdiği {2} değerinin {1} katı: hizalamada kullanılan yukarı yönü kamera yolunu eğiyor"));
 
 SS_MSG(metric_matched,
     EN("Positions file: matched {0}/{1} cameras (names not in the model: {2})"),
@@ -3686,37 +3395,19 @@ SS_MSG(sensor_calib_mirrored,
     TR("Kamera {0}: IMU eksenleri lense göre sol elli"));
 
 SS_MSG(sensor_calib_yaw_free,
-    EN("Camera {0}: the capture turned about one axis only, so the IMU-to-lens rotation "
-       "is known up to a turn about it: up is used, the accelerometer scale is not"),
-    JA("カメラ {0}: 撮影中の回転が一軸のみで、IMU とレンズ間の回転はその軸まわりを除いてしか"
-       "決まりません。上方向は使い、加速度計の縮尺は使いません"),
-    ZH_HANS("相机 {0}: 拍摄只绕一个轴转动，IMU 到镜头的旋转只确定到绕该轴的转角: 使用上方向，"
-            "不使用加速度计缩放"),
-    ZH_HANT("相機 {0}: 拍攝只繞一個軸轉動，IMU 到鏡頭的旋轉只確定到繞該軸的轉角: 使用上方向，"
-            "不使用加速度計縮放"),
-    KO("카메라 {0}: 촬영이 한 축으로만 돌아 IMU-렌즈 회전이 그 축 둘레의 회전만큼 미정입니다. "
-       "위 방향은 쓰고 가속도계 축척은 쓰지 않습니다"),
-    DE("Kamera {0}: die Aufnahme drehte sich nur um eine Achse, die Rotation IMU zu Objektiv "
-       "ist bis auf eine Drehung darum bekannt: oben wird verwendet, der "
-       "Beschleunigungssensor-Maßstab nicht"),
-    FR("Caméra {0} : la prise n'a tourné qu'autour d'un axe, la rotation IMU vers objectif "
-       "n'est connue qu'à une rotation près autour de lui : la verticale est utilisée, "
-       "l'échelle de l'accéléromètre non"),
-    ES("Cámara {0}: la toma solo giró en torno a un eje, así que la rotación IMU a objetivo se "
-       "conoce salvo un giro en torno a él: se usa la vertical, no la escala del acelerómetro"),
-    PT("Câmera {0}: a captura só rodou em torno de um eixo, por isso a rotação IMU para "
-       "objetiva só se conhece a menos de uma rotação em torno dele: usa-se a vertical, não a "
-       "escala do acelerómetro"),
-    IT("Camera {0}: la ripresa ha ruotato attorno a un solo asse, quindi la rotazione "
-       "IMU-obiettivo è nota a meno di un giro attorno a esso: si usa la verticale, non la "
-       "scala dell'accelerometro"),
-    NL("Camera {0}: de opname draaide alleen om één as, dus de rotatie IMU naar lens is tot op "
-       "een draai daarom bekend: omhoog wordt gebruikt, de versnellingsmeterschaal niet"),
-    RU("Камера {0}: съёмка вращалась только вокруг одной оси, поэтому поворот IMU к объективу "
-       "известен с точностью до поворота вокруг неё: верх используется, масштаб по "
-       "акселерометру нет"),
-    TR("Kamera {0}: çekim yalnızca bir eksen etrafında döndü, IMU-lens dönüşü o eksen "
-       "etrafındaki bir dönüşe kadar bilinir: yukarı kullanılır, ivmeölçer ölçeği kullanılmaz"));
+    EN("Camera {0}: the capture turned about one axis only, so the IMU-to-lens rotation is known up to a turn about it: up is used, the accelerometer scale is not"),
+    JA("カメラ {0}: 撮影中の回転が一軸のみで、IMU とレンズ間の回転はその軸まわりを除いてしか決まりません。上方向は使い、加速度計の縮尺は使いません"),
+    ZH_HANS("相机 {0}: 拍摄只绕一个轴转动，IMU 到镜头的旋转只确定到绕该轴的转角: 使用上方向，不使用加速度计缩放"),
+    ZH_HANT("相機 {0}: 拍攝只繞一個軸轉動，IMU 到鏡頭的旋轉只確定到繞該軸的轉角: 使用上方向，不使用加速度計縮放"),
+    KO("카메라 {0}: 촬영이 한 축으로만 돌아 IMU-렌즈 회전이 그 축 둘레의 회전만큼 미정입니다. 위 방향은 쓰고 가속도계 축척은 쓰지 않습니다"),
+    DE("Kamera {0}: nur Drehung um eine Achse. IMU-Objektiv-Rotation bleibt darum unbestimmt; Oben wird genutzt, Beschleunigungsskala nicht."),
+    FR("Caméra {0} : rotation sur un seul axe. Rotation IMU-objectif indéterminée autour de cet axe ; verticale utilisée, pas l’échelle accélérométrique."),
+    ES("Cámara {0}: la toma solo giró en torno a un eje, así que la rotación IMU a objetivo se conoce salvo un giro en torno a él: se usa la vertical, no la escala del acelerómetro"),
+    PT("Câmara {0}: rotação num só eixo. Rotação IMU-objetiva indeterminada nesse eixo; usa-se vertical, não escala do acelerómetro."),
+    IT("Camera {0}: rotazione su un solo asse. Rotazione IMU-obiettivo indeterminata attorno ad esso; usa verticale, non scala accelerometrica."),
+    NL("Camera {0}: de opname draaide alleen om één as, dus de rotatie IMU naar lens is tot op een draai daarom bekend: omhoog wordt gebruikt, de versnellingsmeterschaal niet"),
+    RU("Камера {0}: вращение лишь вокруг одной оси. Поворот IMU к объективу вокруг неё не определён; верх используется, масштаб акселерометра — нет."),
+    TR("Kamera {0}: çekim yalnızca bir eksen etrafında döndü, IMU-lens dönüşü o eksen etrafındaki bir dönüşe kadar bilinir: yukarı kullanılır, ivmeölçer ölçeği kullanılmaz"));
 
 SS_MSG(sensor_calib_failed,
     EN("Camera {0}: IMU-to-lens rotation not calibrated -- {1}"),
@@ -4100,37 +3791,19 @@ SS_MSG(sensor_untimed,
 // ===========================================================================
 
 SS_MSG(attitude_up,
-    EN("Model {0}: up from the camera attitude {1}/{2} images record; they agree to {3} deg, "
-       "{4} outliers; the cameras' mean up axis was {5} deg off"),
-    JA("モデル {0}: {1}/{2} 枚の画像が記録したカメラ姿勢から上方向を決定。一致 {3} 度、"
-       "外れ値 {4}。カメラの平均上方向は {5} 度ずれていました"),
-    ZH_HANS("模型 {0}: 由 {1}/{2} 张图像记录的相机姿态确定上方向; 一致到 {3} 度，外点 {4} 个; "
-            "相机平均上方向偏了 {5} 度"),
-    ZH_HANT("模型 {0}: 由 {1}/{2} 張影像記錄的相機姿態確定上方向; 一致到 {3} 度，外點 {4} 個; "
-            "相機平均上方向偏了 {5} 度"),
-    KO("모델 {0}: 이미지 {1}/{2} 장이 기록한 카메라 자세로 위 방향을 정했습니다. 일치 {3} 도, "
-       "이상치 {4} 개. 카메라 평균 위 방향은 {5} 도 어긋나 있었습니다"),
-    DE("Modell {0}: oben aus der Kameralage, die {1}/{2} Bilder aufzeichnen; sie stimmen auf "
-       "{3} Grad überein, {4} Ausreißer; die mittlere Hochachse der Kameras lag {5} Grad daneben"),
-    FR("Modèle {0} : verticale d'après l'attitude de caméra enregistrée par {1}/{2} images ; "
-       "cohérentes à {3} degrés, {4} aberrantes ; l'axe vertical moyen des caméras était décalé "
-       "de {5} degrés"),
-    ES("Modelo {0}: vertical a partir de la actitud de cámara que registran {1}/{2} imágenes; "
-       "coherentes hasta {3} grados, {4} atípicas; el eje vertical medio de las cámaras se "
-       "desviaba {5} grados"),
-    PT("Modelo {0}: vertical a partir da atitude de câmera que {1}/{2} imagens registam; "
-       "coerentes até {3} graus, {4} atípicas; o eixo vertical médio das câmeras desviava "
-       "{5} graus"),
-    IT("Modello {0}: verticale dall'assetto della fotocamera registrato da {1}/{2} immagini; "
-       "coerenti a {3} gradi, {4} anomale; l'asse verticale medio delle fotocamere era fuori di "
-       "{5} gradi"),
-    NL("Model {0}: omhoog uit de camerastand die {1}/{2} beelden vastleggen; ze komen tot {3} "
-       "graden overeen, {4} uitschieters; de gemiddelde omhoog-as van de camera's zat er {5} "
-       "graden naast"),
-    RU("Модель {0}: верх по ориентации камеры, записанной в {1}/{2} снимках; сходятся до {3} "
-       "град., выбросов {4}; средняя ось верха камер отклонялась на {5} град."),
-    TR("Model {0}: {1}/{2} görüntünün kaydettiği kamera duruşundan yukarı; {3} dereceye kadar "
-       "uyuşuyor, {4} aykırı; kameraların ortalama yukarı ekseni {5} derece sapmıştı"));
+    EN("Model {0}: up from the camera attitude {1}/{2} images record; they agree to {3} deg, {4} outliers;\nthe cameras' mean up axis was {5} deg off"),
+    JA("モデル {0}: {1}/{2} 枚の画像が記録したカメラ姿勢から上方向を決定。 一致 {3} 度、外れ値 {4}。\nカメラの平均上方向は {5} 度ずれていました"),
+    ZH_HANS("模型 {0}: 由 {1}/{2} 张图像记录的相机姿态确定上方向; 一致到 {3} 度，外点 {4} 个; 相机平均上方向偏了 {5} 度"),
+    ZH_HANT("模型 {0}: 由 {1}/{2} 張影像記錄的相機姿態確定上方向; 一致到 {3} 度，外點 {4} 個; 相機平均上方向偏了 {5} 度"),
+    KO("모델 {0}: 이미지 {1}/{2} 장이 기록한 카메라 자세로 위 방향을 정했습니다. 일치 {3} 도, 이상치 {4} 개.\n카메라 평균 위 방향은 {5} 도 어긋나 있었습니다"),
+    DE("Modell {0}: oben aus der Kameralage, die {1}/{2} Bilder aufzeichnen;\nsie stimmen auf {3} Grad überein, {4} Ausreißer; die mittlere Hochachse der Kameras lag {5} Grad daneben"),
+    FR("Modèle {0} : verticale d'après l'attitude de caméra enregistrée par {1}/{2} images ;\ncohérentes à {3} degrés, {4} aberrantes ; l'axe vertical moyen des caméras était décalé de {5} degrés"),
+    ES("Modelo {0}: vertical a partir de la actitud de cámara que registran {1}/{2} imágenes;\ncoherentes hasta {3} grados, {4} atípicas; el eje vertical medio de las cámaras se desviaba {5} grados"),
+    PT("Modelo {0}: vertical a partir da atitude de câmera que {1}/{2} imagens registam;\ncoerentes até {3} graus, {4} atípicas; o eixo vertical médio das câmeras desviava {5} graus"),
+    IT("Modello {0}: verticale dall'assetto della fotocamera registrato da {1}/{2} immagini;\ncoerenti a {3} gradi, {4} anomale; l'asse verticale medio delle fotocamere era fuori di {5} gradi"),
+    NL("Model {0}: omhoog uit de camerastand die {1}/{2} beelden vastleggen;\n- ze komen tot {3} graden overeen, {4} uitschieters;\n- de gemiddelde omhoog-as van de camera's zat er {5} graden naast"),
+    RU("Модель {0}: верх по ориентации камеры, записанной в {1}/{2} снимках; сходятся до {3} град., выбросов {4};\nсредняя ось верха камер отклонялась на {5} град."),
+    TR("Model {0}: {1}/{2} görüntünün kaydettiği kamera duruşundan yukarı; {3} dereceye kadar uyuşuyor, {4} aykırı;\nkameraların ortalama yukarı ekseni {5} derece sapmıştı"));
 
 SS_MSG(attitude_north,
     EN("Model {0}: north from the recorded heading; {1} images agree to {2} deg, {3} outliers"),
@@ -4278,34 +3951,19 @@ SS_MSG(sequence_table,
     TR("Dizi {0}: üyeler {1}; {3} konumda {2} görüntü; {4} içindeki komşular"));
 
 SS_MSG(map_prior_summary,
-    EN("Sensor priors: {0} registrations re-solved with the gyro's rotation, {1} refused; "
-       "the last solve held {2} rotation, {3} gravity and {4} position factors"),
-    JA("センサー事前情報: ジャイロの回転で解き直した登録 {0}、拒否 {1}。"
-       "最後の解は回転 {2}、重力 {3}、位置 {4} 個の因子を保持"),
+    EN("- Sensor priors: {0} registrations re-solved with the gyro's rotation, {1} refused;\n- the last solve held {2} rotation, {3} gravity and {4} position factors"),
+    JA("- センサー事前情報: ジャイロの回転で解き直した登録 {0}、拒否 {1}。\n- 最後の解は回転 {2}、重力 {3}、位置 {4} 個の因子を保持"),
     ZH_HANS("传感器先验: 用陀螺仪旋转重解的注册 {0} 个，拒绝 {1} 个; 最后一次求解含旋转 {2}、重力 {3}、位置 {4} 个因子"),
     ZH_HANT("感測器先驗: 用陀螺儀旋轉重解的註冊 {0} 個，拒絕 {1} 個; 最後一次求解含旋轉 {2}、重力 {3}、位置 {4} 個因子"),
-    KO("센서 사전 정보: 자이로 회전으로 다시 푼 등록 {0}, 거부 {1}. 마지막 풀이는 회전 {2}, 중력 {3}, 위치 {4} 개 인자를 유지"),
-    DE("Sensorpriors: {0} Registrierungen mit der Gyroskop-Drehung neu gelöst, {1} abgelehnt; "
-       "der letzte Ausgleich hielt {2} Dreh-, {3} Schwerkraft- und {4} Positionsfaktoren"),
-    FR("A priori des capteurs : {0} enregistrements résolus à nouveau avec la rotation du "
-       "gyroscope, {1} refusés ; le dernier ajustement tenait {2} facteurs de rotation, {3} de "
-       "gravité et {4} de position"),
-    ES("Previos de sensores: {0} registros resueltos de nuevo con la rotación del giroscopio, {1} "
-       "rechazados; el último ajuste sujetó {2} factores de rotación, {3} de gravedad y {4} de "
-       "posición"),
-    PT("Priors dos sensores: {0} registos resolvidos de novo com a rotação do giroscópio, {1} "
-       "recusados; o último ajuste prendeu {2} fatores de rotação, {3} de gravidade e {4} de "
-       "posição"),
-    IT("Prior dei sensori: {0} registrazioni risolte di nuovo con la rotazione del giroscopio, {1} "
-       "rifiutate; l'ultimo aggiustamento teneva {2} fattori di rotazione, {3} di gravità e {4} "
-       "di posizione"),
-    NL("Sensorpriors: {0} registraties opnieuw opgelost met de gyroscooprotatie, {1} geweigerd; "
-       "de laatste oplossing hield {2} rotatie-, {3} zwaartekracht- en {4} positiefactoren"),
-    RU("Априорные данные датчиков: {0} регистраций пересчитано с поворотом гироскопа, {1} "
-       "отклонено; последнее уравнивание держало факторов: поворота {2}, силы тяжести {3}, "
-       "положения {4}"),
-    TR("Sensör önselleri: {0} kayıt jiroskop dönüşüyle yeniden çözüldü, {1} reddedildi; son "
-       "çözüm {2} dönüş, {3} yerçekimi ve {4} konum çarpanı tuttu"));
+    KO("- 센서 사전 정보: 자이로 회전으로 다시 푼 등록 {0}, 거부 {1}.\n- 마지막 풀이는 회전 {2}, 중력 {3}, 위치 {4} 개 인자를 유지"),
+    DE("- Sensorpriors: {0} Registrierungen mit der Gyroskop-Drehung neu gelöst, {1} abgelehnt;\n- der letzte Ausgleich hielt {2} Dreh-, {3} Schwerkraft- und {4} Positionsfaktoren"),
+    FR("- A priori des capteurs : {0} enregistrements résolus à nouveau avec la rotation du gyroscope, {1} refusés ;\n- le dernier ajustement tenait {2} facteurs de rotation, {3} de gravité et {4} de position"),
+    ES("- Previos de sensores: {0} registros resueltos de nuevo con la rotación del giroscopio, {1} rechazados;\n- el último ajuste sujetó {2} factores de rotación, {3} de gravedad y {4} de posición"),
+    PT("- Priors dos sensores: {0} registos resolvidos de novo com a rotação do giroscópio, {1} recusados;\n- o último ajuste prendeu {2} fatores de rotação, {3} de gravidade e {4} de posição"),
+    IT("- Prior dei sensori: {0} registrazioni risolte di nuovo con la rotazione del giroscopio, {1} rifiutate;\n- l'ultimo aggiustamento teneva {2} fattori di rotazione, {3} di gravità e {4} di posizione"),
+    NL("- Sensorpriors: {0} registraties opnieuw opgelost met de gyroscooprotatie, {1} geweigerd;\n- de laatste oplossing hield {2} rotatie-, {3} zwaartekracht- en {4} positiefactoren"),
+    RU("- Априорные данные датчиков: {0} регистраций пересчитано с поворотом гироскопа, {1} отклонено;\n- последнее уравнивание держало факторов: поворота {2}, силы тяжести {3}, положения {4}"),
+    TR("- Sensör önselleri: {0} kayıt jiroskop dönüşüyle yeniden çözüldü, {1} reddedildi;\n- son çözüm {2} dönüş, {3} yerçekimi ve {4} konum çarpanı tuttu"));
 
 SS_MSG(sensor_prior_calib,
     EN("Sensor priors: {0} calibrated against the gyro from {1} pairs; rotations agree to {2} deg"),
@@ -4346,41 +4004,19 @@ SS_MSG(sensor_prior_calib_failed,
     TR("Sensör önselleri: {0} kalibre edilmedi ({1} çift): {2}"));
 
 SS_MSG(sensor_verify_summary,
-    EN("Verified {0} pairs with the gyro's rotation held: {1} kept its inliers ({2} matches it "
-       "rejected, {3} pairs only it could verify), {4} disagreed with it, {5} dropped for turning "
-       "the wrong way"),
-    JA("ジャイロの回転を固定して {0} ペアを検証: {1} ペアがそのインライアを採用 ({2} マッチを"
-       "除外、{3} ペアはそれでのみ検証可能)、{4} ペアは不一致、{5} ペアは回転方向が違うため除外"),
-    ZH_HANS("固定陀螺仪旋转验证了 {0} 个像对: {1} 个采用其内点 (剔除 {2} 个匹配，{3} 个像对只有它能验证)，"
-            "{4} 个与之不符，{5} 个因转向不符而丢弃"),
-    ZH_HANT("固定陀螺儀旋轉驗證了 {0} 個影像對: {1} 個採用其內點 (剔除 {2} 個匹配，{3} 個影像對只有它能驗證)，"
-            "{4} 個與之不符，{5} 個因轉向不符而丟棄"),
-    KO("자이로 회전을 고정해 {0} 쌍을 검증: {1} 쌍이 그 인라이어를 채택 ({2} 매칭 제외, {3} 쌍은 "
-       "그것으로만 검증 가능), {4} 쌍은 불일치, {5} 쌍은 회전 방향이 달라 제외"),
-    DE("{0} Paare mit festgehaltener Gyroskop-Drehung geprüft: {1} behielten deren Inlier ({2} "
-       "Zuordnungen verworfen, {3} Paare nur so prüfbar), {4} widersprachen ihr, {5} wegen "
-       "falscher Drehrichtung verworfen"),
-    FR("{0} paires vérifiées avec la rotation du gyroscope fixée : {1} ont gardé ses inliers ({2} "
-       "correspondances rejetées, {3} paires vérifiables par elle seule), {4} en désaccord, {5} "
-       "écartées pour avoir tourné dans le mauvais sens"),
-    ES("{0} pares verificados con la rotación del giroscopio fija: {1} conservaron sus inliers "
-       "({2} correspondencias rechazadas, {3} pares que solo ella verificó), {4} en desacuerdo, "
-       "{5} descartados por girar en sentido erróneo"),
-    PT("{0} pares verificados com a rotação do giroscópio fixa: {1} mantiveram os seus inliers "
-       "({2} correspondências rejeitadas, {3} pares que só ela verificou), {4} em desacordo, {5} "
-       "descartados por rodar no sentido errado"),
-    IT("{0} coppie verificate con la rotazione del giroscopio fissa: {1} ne hanno tenuto gli "
-       "inlier ({2} corrispondenze rifiutate, {3} coppie verificabili solo da essa), {4} in "
-       "disaccordo, {5} scartate per aver girato nel verso sbagliato"),
-    NL("{0} paren geverifieerd met de gyroscooprotatie vast: {1} hielden zijn inliers ({2} "
-       "matches verworpen, {3} paren alleen zo verifieerbaar), {4} weken ervan af, {5} verworpen "
-       "om de verkeerde kant op te draaien"),
-    RU("Проверено {0} пар с зафиксированным поворотом гироскопа: {1} взяли его инлайеры "
-       "(отброшено соответствий {2}, только им проверено пар {3}), {4} с ним разошлись, {5} "
-       "отброшено за поворот не в ту сторону"),
-    TR("{0} çift jiroskop dönüşü sabit tutularak doğrulandı: {1} onun iç noktalarını tuttu ({2} "
-       "eşleşme reddedildi, {3} çifti yalnızca o doğrulayabildi), {4} onunla uyuşmadı, {5} yanlış "
-       "yöne döndüğü için atıldı"));
+    EN("Verified {0} pairs with gyro rotation fixed.\n- {1} kept gyro inliers, with {2} matches rejected and {3} pairs verified only by gyro.\n- {4} disagreed with gyro. {5} dropped for turning the wrong way."),
+    JA("ジャイロの回転を固定して {0} ペアを検証:\n{1} ペアがそのインライアを採用 ({2} マッチを除外、{3} ペアはそれでのみ検証可能)、{4} ペアは不一致、{5} ペアは回転方向が違うため除外"),
+    ZH_HANS("固定陀螺仪旋转验证了 {0} 个像对:\n{1} 个采用其内点 (剔除 {2} 个匹配，{3} 个像对只有它能验证)，{4} 个与之不符，{5} 个因转向不符而丢弃"),
+    ZH_HANT("固定陀螺儀旋轉驗證了 {0} 個影像對:\n{1} 個採用其內點 (剔除 {2} 個匹配，{3} 個影像對只有它能驗證)，{4} 個與之不符，{5} 個因轉向不符而丟棄"),
+    KO("자이로 회전을 고정해 {0} 쌍을 검증:\n{1} 쌍이 그 인라이어를 채택 ({2} 매칭 제외, {3} 쌍은 그것으로만 검증 가능), {4} 쌍은 불일치, {5} 쌍은 회전 방향이 달라 제외"),
+    DE("{0} Paare mit festgehaltener Gyroskop-Drehung geprüft:\n{1} behielten deren Inlier ({2} Zuordnungen verworfen, {3} Paare nur so prüfbar), {4} widersprachen ihr, {5} wegen falscher Drehrichtung verworfen"),
+    FR("{0} paires vérifiées avec la rotation du gyroscope fixée :\n{1} ont gardé ses inliers ({2} correspondances rejetées, {3} paires vérifiables par elle seule), {4} en désaccord, {5} écartées pour avoir tourné dans le mauvais sens"),
+    ES("{0} pares verificados con la rotación del giroscopio fija:\n{1} conservaron sus inliers ({2} correspondencias rechazadas, {3} pares que solo ella verificó), {4} en desacuerdo, {5} descartados por girar en sentido erróneo"),
+    PT("{0} pares verificados com a rotação do giroscópio fixa:\n{1} mantiveram os seus inliers ({2} correspondências rejeitadas, {3} pares que só ela verificou), {4} em desacordo, {5} descartados por rodar no sentido errado"),
+    IT("{0} coppie verificate con la rotazione del giroscopio fissa:\n{1} ne hanno tenuto gli inlier ({2} corrispondenze rifiutate, {3} coppie verificabili solo da essa), {4} in disaccordo, {5} scartate per aver girato nel verso sbagliato"),
+    NL("{0} paren geverifieerd met de gyroscooprotatie vast:\n{1} hielden zijn inliers ({2} matches verworpen, {3} paren alleen zo verifieerbaar), {4} weken ervan af, {5} verworpen om de verkeerde kant op te draaien"),
+    RU("Проверено {0} пар с зафиксированным поворотом гироскопа:\n{1} взяли его инлайеры (отброшено соответствий {2}, только им проверено пар {3}), {4} с ним разошлись, {5} отброшено за поворот не в ту сторону"),
+    TR("{0} çift jiroskop dönüşü sabit tutularak doğrulandı:\n{1} onun iç noktalarını tuttu ({2} eşleşme reddedildi, {3} çifti yalnızca o doğrulayabildi), {4} onunla uyuşmadı, {5} yanlış yöne döndüğü için atıldı"));
 
 SS_MSG(sensor_gps_pairs_added,
     EN("GPS added {0} pairs of images within {1} m of each other ({2} images positioned). "

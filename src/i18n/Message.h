@@ -83,6 +83,7 @@ struct Msg {
 
     // The string for the language the UI is currently in.
     const char* get() const;
+    const char* terminal() const;
 
     const char* in(Lang l) const { return v[unsigned(l)]; }
 };
@@ -106,6 +107,7 @@ constexpr Msg en_only(const char* id, const char* s) {
 // log line, in the previous language.
 namespace detail {
 extern std::atomic<Lang> g_current;
+extern std::atomic<bool> g_terminal_output;
 }
 
 inline Lang current() {
@@ -113,7 +115,20 @@ inline Lang current() {
 }
 void set_current(Lang l);
 
-inline const char* Msg::get() const { return v[unsigned(current())]; }
+void set_terminal_output(bool enabled);
+// Converted templates are cached for the lifetime of the process.
+const char* ascii_copy(const char* text);
+
+inline const char* Msg::terminal() const {
+    const Lang lang = current();
+    const char* text = in(lang);
+    return lang == Lang::en ? ascii_copy(text) : text;
+}
+
+inline const char* Msg::get() const {
+    return detail::g_terminal_output.load(std::memory_order_relaxed)
+        ? terminal() : in(current());
+}
 
 // ---------------------------------------------------------------------------
 // Positional substitution
@@ -197,7 +212,10 @@ std::vector<std::string> wrap(const std::string& text, int columns);
 
 inline bool scan(const Msg& m, const std::string& text,
                  std::vector<std::string>& out) {
-    return scan(m.get(), text, out);
+    const char* pattern = m.get();
+    if (scan(pattern, text, out)) return true;
+    const char* terminal = m.terminal();
+    return terminal != pattern && scan(terminal, text, out);
 }
 
 }  // namespace i18n
