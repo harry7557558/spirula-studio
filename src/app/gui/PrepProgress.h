@@ -24,9 +24,9 @@ namespace gui {
 // The steps a dataset run goes through, in order. Both engines report through
 // the same list; a step a run does not need is never entered.
 enum class Stage {
-    Frames, Masks, Features, Matching, Mapping, Align, Dense, Geometry, Finishing
+    ScanPhotos, Frames, Masks, Features, Matching, Mapping, Align, Dense, Geometry, Finishing
 };
-inline constexpr int kNumStages = 9;
+inline constexpr int kNumStages = 10;
 
 enum class StageStatus { Pending, Running, Done, Skipped, Failed };
 

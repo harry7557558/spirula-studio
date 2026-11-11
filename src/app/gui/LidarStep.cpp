@@ -1,9 +1,11 @@
 #include "app/gui/LidarStep.h"
 
 #include "app/AppPaths.h"
+#include "app/FrameMask.h"
 #include "app/LidarDataset.h"
 #include "app/gui/Subprocess.h"
 #include "data/PointCloudFile.h"
+#include "data/XbinReader.h"
 #include "i18n/Locale.h"
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Log.h"
@@ -42,6 +44,45 @@ std::string folder_name(const std::string& cloud) {
     return s;
 }
 
+// The dataset's copies of a capture's frames follow what `photos`/`sub` now
+// holds: a run at a higher rate, or with another camera, left frames there
+// that the frames step does not remove and the reconstruction would read.
+void prune_capture_copies(const fs::path& workspace, const fs::path& photos,
+                          const std::string& sub) {
+    for (const char* tree : {"images", "masks", "depths", "normals"}) {
+        std::error_code ec;
+        std::vector<fs::path> cams;
+        for (fs::directory_iterator it(workspace / tree / sub, ec), end; !ec && it != end;
+             it.increment(ec))
+            if (it->is_directory(ec)) cams.push_back(it->path());
+        for (const fs::path& cam : cams) {
+            // A folder that could not be read is no answer: nothing goes on its say.
+            const fs::path source = photos / sub / cam.filename();
+            const bool there = fs::exists(source, ec);
+            if (ec) continue;
+            if (!there) {
+                fs::remove_all(cam, ec);
+                continue;
+            }
+            std::set<std::string> kept;
+            for (fs::directory_iterator it(source, ec), end; !ec && it != end; it.increment(ec))
+                kept.insert(it->path().stem().string());
+            if (ec || kept.empty()) continue;
+            std::vector<fs::path> gone;
+            for (fs::directory_iterator it(cam, ec), end; !ec && it != end; it.increment(ec))
+                if (it->is_regular_file(ec) && !kept.count(it->path().stem().string()))
+                    gone.push_back(it->path());
+            for (const fs::path& f : gone) fs::remove(f, ec);
+        }
+    }
+}
+
+std::vector<app::lidar::XbinCameraPick> xbin_cameras_of(const LidarJob& job,
+                                                        const std::string& cloud) {
+    const auto it = job.xbin_cameras.find(cloud);
+    return it == job.xbin_cameras.end() ? std::vector<app::lidar::XbinCameraPick>{} : it->second;
+}
+
 }  // namespace
 
 std::vector<std::string> scan_photo_subdirs(const std::vector<std::string>& clouds) {
@@ -58,7 +99,8 @@ std::vector<std::string> scan_photo_subdirs(const std::vector<std::string>& clou
 
 bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
                            const std::map<std::string, app::FrameStencil>& stencils,
-                           std::vector<PrepInput>& inputs, LidarPrep& out, std::string& error) {
+                           std::vector<PrepInput>& inputs, LidarPrep& out, RunProgress& prog,
+                           const std::atomic<bool>& cancel, std::string& error) {
     const fs::path root = fs::path(workspace) / "lidar";
     const fs::path anchors = root / "anchors.json";
     std::error_code ec;
@@ -69,12 +111,46 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
         const std::vector<std::string> subs = scan_photo_subdirs(job.clouds);
         for (size_t i = 0; i < job.clouds.size(); i++) {
             const std::string& c = job.clouds[i];
+            const std::string& sub = subs[i];
+            const auto drawn = stencils.find(c);
+            if (spirula::xbin::is_xbin_path(c)) {
+                prog.enter(Stage::ScanPhotos, format(ldmsg::scan_photos_taking, {c}));
+                const std::vector<app::lidar::XbinCameraFolder> folders =
+                    app::lidar::extract_xbin_anchors(
+                        c, (root / "photos").string(), sub, anchors.string(),
+                        xbin_cameras_of(job, c), job.xbin_place_only.count(c) > 0,
+                        job.ffmpeg_exe, &cancel,
+                        [&](const std::string& camera, int64_t done, int64_t total) {
+                            prog.count(Stage::ScanPhotos, done, total);
+                            prog.detail(Stage::ScanPhotos, camera + "   " + std::to_string(done) +
+                                                               " / " + std::to_string(total));
+                        });
+                if (cancel.load()) return false;
+                prune_capture_copies(workspace, root / "photos", sub);
+                for (const app::lidar::XbinCameraFolder& f : folders) {
+                    PrepInput in;
+                    in.path = (root / "photos" / f.rel).string();
+                    in.subdir = f.rel;
+                    in.camera_model = f.fisheye ? "opencv-fisheye" : "opencv";
+                    in.focal_factor = (float)f.focal_factor;
+                    in.lens_params = f.params;
+                    in.lens_width = f.width;
+                    in.sequential = true;
+                    in.scan = c;
+                    if (drawn != stencils.end())
+                        static_cast<app::CameraStencil&>(in.stencil) =
+                            drawn->second.for_camera(fs::path(f.rel).filename().string());
+                    inputs.push_back(in);
+                    out.photos += f.frames;
+                }
+                if (!folders.empty()) out.photographed.push_back(c);
+                continue;
+            }
             spirula::cloud::Reader r(c);
             if (!r.e57() || r.e57()->images().empty()) continue;
-            const std::string& sub = subs[i];
+            prog.enter(Stage::ScanPhotos, format(ldmsg::scan_photos_taking, {c}));
             const app::lidar::ExtractedPhotos x = app::lidar::extract_e57_anchors(
                 c, (root / "photos").string(), sub, anchors.string());
-            const auto drawn = stencils.find(c);
             auto add = [&](const std::string& rel, bool pinhole) {
                 PrepInput in;
                 in.path = (root / "photos" / rel).string();
@@ -103,14 +179,36 @@ bool add_scan_photo_inputs(const LidarJob& job, const std::string& workspace,
         error = e.what();
         return false;
     }
+    if (prog.stage(Stage::ScanPhotos).status == StageStatus::Running)
+        prog.mark(Stage::ScanPhotos, StageStatus::Done);
     return true;
 }
 
-bool extract_scan_photos(const std::vector<std::string>& clouds, size_t scan,
-                         const std::string& workspace, std::string& dir, std::string& error) {
-    if (scan >= clouds.size() || workspace.empty()) return false;
-    const fs::path photos = fs::path(workspace) / "lidar" / "photos";
+bool extract_scan_photos(const LidarJob& job, size_t scan, const std::string& workspace,
+                         const std::string& scratch, const std::string& camera,
+                         std::string& dir, std::string& error) {
+    const std::vector<std::string>& clouds = job.clouds;
+    if (scan >= clouds.size()) return false;
     const std::string sub = scan_photo_subdirs(clouds)[scan];
+    if (spirula::xbin::is_xbin_path(clouds[scan])) {
+        if (scratch.empty() || camera.empty()) return false;
+        // A folder of its own holding only <camera>/, so the panel's slider and
+        // border fit are all that camera's, and the others stay decoded beside it.
+        const fs::path root = fs::path(scratch) / sub / camera;
+        try {
+            // As many as the border fit reads; the panel offers fewer.
+            app::lidar::extract_xbin_samples(clouds[scan], root.string(),
+                                             xbin_cameras_of(job, clouds[scan]), camera,
+                                             app::BorderDetectOptions{}.samples, job.ffmpeg_exe);
+        } catch (const std::exception& e) {
+            error = e.what();
+            return false;
+        }
+        dir = root.string();
+        return true;
+    }
+    if (workspace.empty()) return false;
+    const fs::path photos = fs::path(workspace) / "lidar" / "photos";
     const fs::path anchors = fs::path(workspace) / "lidar" / ("preview-" + sub + ".json");
     std::error_code ec;
     try {
@@ -180,6 +278,7 @@ bool run_lidar_step(const LidarJob& job, const std::string& dataset,
     if (job.in_frame) argv.insert(argv.end(), {"--mode", "keep"});
     if (job.flip_masks) argv.push_back("--flip-masks");
     if (job.scanner_poses_only) argv.push_back("--scanner-poses");
+    if (job.refine_capture) argv.push_back("--refine");
     if (job.overwrite) argv.push_back("--overwrite");
     std::string cmd;
     for (const std::string& a : argv) cmd += (cmd.empty() ? "$ " : " ") + a;

@@ -11,6 +11,7 @@
 #include "app/gui/SceneFrame.h"
 #include "app/gui/Ui.h"
 #include "data/PointCloudFile.h"
+#include "data/XbinReader.h"
 #include "data/SparseEdit.h"
 #include "external/stb_image.h"
 #include "i18n/catalog/SourcePreview.h"
@@ -398,9 +399,10 @@ void SourcePreview::start_listing() {
             // grid, then its points thinned to what a preview draws.
             spirula::cloud::Reader r(in.path);
             const spirula::cloud::Info& info = r.info();
-            L->format = info.format == spirula::cloud::Format::E57   ? "E57"
-                        : info.format == spirula::cloud::Format::Las ? "LAS"
-                                                                     : "PLY";
+            L->format = info.format == spirula::cloud::Format::E57    ? "E57"
+                        : info.format == spirula::cloud::Format::Las  ? "LAS"
+                        : info.format == spirula::cloud::Format::Xbin ? "XGRIDS"
+                                                                      : "PLY";
             L->colour = info.has_color;
             L->points = info.points;
             L->stations = (int64_t)info.stations.size();
@@ -427,6 +429,13 @@ void SourcePreview::start_listing() {
                     return load_e57_image(images, it, side, out, err);
                 };
             }
+            // A capture's trajectory poses all but its first few frames. They
+            // are decoded only by a run or the mask panel, so the grid stays empty.
+            if (spirula::xbin::Reader* x = r.xbin())
+                for (const spirula::xbin::Camera& c : x->cameras()) {
+                    L->images += c.frames;
+                    L->posed += c.frames;
+                }
             publish(false);
 
             _points_read = 0;

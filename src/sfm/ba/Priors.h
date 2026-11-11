@@ -25,11 +25,13 @@ struct PriorRotation {
     double sigma = 0.01;   // radians
 };
 
-// R_i up_w ~ u: the world up axis seen from image i's camera frame.
+// R_i w ~ u: a world axis seen from image i's camera frame -- up_w, unless
+// `w` names another. Two such factors on one image state its whole attitude.
 struct PriorUp {
     uint32_t i = 0;
     Vec3 u{0, -1, 0};
     double sigma = 0.05;   // radians
+    Vec3 w{0, 0, 0};       // zero = PosePriors::up_w
 };
 
 // sum_k A_k c_{img_k} ~ b on camera centres, each axis weighted by 1/sigma
@@ -367,7 +369,7 @@ private:
         if (f.kind == 1) {
             const PriorUp& q = pr.ups[f.index];
             const Cam c = camOf(P, poses, exts, q.i);
-            const Vec3 g = mul(c.Rc, pr.up_w);
+            const Vec3 g = mul(c.Rc, q.w.norm() > 0 ? q.w : pr.up_w);
             const double inv = 1.0 / q.sigma;
             ev.r[0] = (g.x - q.u.x) * inv;
             ev.r[1] = (g.y - q.u.y) * inv;

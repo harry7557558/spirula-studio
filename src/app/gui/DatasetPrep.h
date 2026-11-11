@@ -111,6 +111,10 @@ struct PrepInput {
     // job's dataset-wide one; a factor of 0 means no focal prior.
     std::string camera_model;
     float focal_factor = 0.0f;       // fx = fy = factor * image width
+    // A complete lens the source states for `camera_model` (COLMAP order, in
+    // pixels of a `lens_width` wide image), which then replaces the factor.
+    std::vector<double> lens_params;
+    int lens_width = 0;
     // Which rig this input's lenses belong to (kRig*). A multi-lens video
     // starts on its own; folders sharing a letter form one rig by file name.
     int rig = kRigNone;
