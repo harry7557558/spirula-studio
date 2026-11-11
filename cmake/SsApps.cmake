@@ -132,6 +132,7 @@ list(APPEND SS_TOOL_SOURCES
      ${SS_SRC}/app/E57Dataset.cpp
      ${SS_SRC}/app/LidarAlign.cpp
      ${SS_SRC}/app/LidarDataset.cpp
+     ${SS_SRC}/app/XbinAnchors.cpp
      ${SS_SRC}/app/ScanDepth.cpp
      ${SS_SRC}/app/DepthPng.cpp)
 list(APPEND SS_TOOL_DEFS SS_TOOL_E57=1)
@@ -146,7 +147,8 @@ if(SS_BUILD_SFM)
     # nothing with the training engine.
     list(APPEND SS_TOOL_SOURCES
          ${SS_SRC}/app/cli/sfm_main.cpp
-         ${SS_SRC}/app/cli/sfm_ba.cpp)
+         ${SS_SRC}/app/cli/sfm_ba.cpp
+         ${SS_SRC}/app/AnchorRefine.cpp)
     list(APPEND SS_TOOL_DEFS SS_TOOL_SFM=1)
     list(APPEND SS_TOOL_LIBS ss_sfm)
 endif()
@@ -466,6 +468,10 @@ add_executable(frame_pick_test
     ${SS_SRC}/app/FrameSharpness.cpp)
 ss_configure_app(frame_pick_test)
 
+# Which frames of an XGRIDS camera a rate keeps: header only.
+add_executable(xbin_frame_rate_test ${SS_SRC}/app/tests/xbin_frame_rate_test.cpp)
+ss_configure_app(xbin_frame_rate_test)
+
 add_executable(model_download_test
     ${SS_SRC}/app/tests/model_download_test.cpp
     ${SS_SRC}/app/gui/ModelCache.cpp
@@ -530,6 +536,15 @@ add_executable(lidar_align_test
     ${SS_SRC}/app/ScanDepth.cpp
     ${SS_SRC}/app/DepthPng.cpp)
 ss_configure_app(lidar_align_test)
+
+# The capture refinement on a synthetic rig: the SfM bundle adjustment.
+if(SS_BUILD_SFM)
+    add_executable(anchor_refine_test
+        ${SS_SRC}/app/tests/anchor_refine_test.cpp
+        ${SS_SRC}/app/AnchorRefine.cpp)
+    ss_configure_app(anchor_refine_test)
+    target_link_libraries(anchor_refine_test PRIVATE ss_sfm)
+endif()
 
 add_executable(system_recorder_test
     ${SS_SRC}/app/tests/system_recorder_test.cpp)

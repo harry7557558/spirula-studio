@@ -1155,7 +1155,8 @@ docs/notes/dataset-rerun.md.
 
 ## E57 laser scans
 
-Two ways in. On the GUI's dataset screen a laser scan (E57, LAS or PLY) is an
+Two ways in. On the GUI's dataset screen a laser scan (E57, LAS, PLY or an
+XGRIDS `.xbin`) is an
 input like photos and videos -- **Add LiDAR scan...**, or drop the file: the
 reconstruction runs, then is aligned with the scan (rotation, translation and
 scale) and written as a COLMAP model whose seed points are the scan's, with

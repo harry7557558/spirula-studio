@@ -42,6 +42,7 @@
 #include "i18n/catalog/Lidar.h"
 #include "i18n/catalog/Geometry.h"
 #include "data/SparseEdit.h"
+#include "data/XbinReader.h"
 #include "i18n/catalog/Edit.h"
 #include "i18n/catalog/Gui.h"
 #include "i18n/catalog/Log.h"
@@ -354,6 +355,9 @@ void GuiApp::shutdown() {
     _mesh_preview_open = false;
     stop_inference_users();
     _segment.destroy_gl();
+    _segment.close();
+    if (_scan_photos.valid()) _scan_photos.wait();
+    drop_scan_scratch();
     // Same ordering as _compare above: destroy_gl while GL is still current.
     _mask_editor.destroy_gl();
     _mask_editor.close();
@@ -2227,7 +2231,9 @@ void GuiApp::handle_drop(const std::vector<std::string>& paths) {
     std::vector<std::string> scans, clouds, rest;
     for (const std::string& p : paths) {
         const bool file = fs::is_regular_file(p, ec);
-        if (file && is_lidar_drop(p)) scans.push_back(p);
+        const std::string capture = file ? "" : spirula::xbin::capture_in_folder(p);
+        if (!capture.empty()) scans.push_back(capture);
+        else if (file && is_lidar_drop(p)) scans.push_back(p);
         else if (file && ply_is_point_cloud(p)) clouds.push_back(p);
         else rest.push_back(p);
     }
@@ -2741,6 +2747,10 @@ void GuiApp::clear_sources() {
 
 void GuiApp::add_existing_dataset(const std::string& dir) {
     if (dir.empty() || add_xgrids_export(dir)) return;
+    if (const std::string capture = spirula::xbin::capture_in_folder(dir); !capture.empty()) {
+        add_lidar_sources({capture});
+        return;
+    }
     add_dataset_folder(dir);
 }
 
@@ -2885,13 +2895,16 @@ void GuiApp::draw_stencil_rows(const MaskingPanel& p) {
         // A copy: an edit below rewrites the stencil it would point into.
         const app::CameraStencil cs = row_stencil(owners, row);
         const std::string above = row.above >= 0 ? names[(size_t)row.above] : std::string();
-        // A scan's photographs are taken out of it first, into the dataset.
+        // A scan's photographs are taken out of it first: an E57's into the dataset.
         const bool can_draw =
-            !native_work_busy() && (scan ? !_workspace.empty() : p.preview_ready);
+            !native_work_busy() &&
+            (scan ? !(scan_preview_needs_workspace(t.scans[row.input - t.inputs]) && _workspace.empty())
+                  : p.preview_ready);
         auto open_panel = [&] {
             if (scan) {
                 _mask_try_scan = (int)t.scans[row.input - t.inputs];
-                open_scan_mask_preview((size_t)_mask_try_scan);
+                _mask_try_camera = row.camera;
+                open_scan_mask_preview((size_t)_mask_try_scan, _mask_try_camera);
             } else {
                 _mask_try_scan = -1;
                 *p.preview_input = (int)row.input;
@@ -3012,28 +3025,69 @@ bool GuiApp::scan_photos_busy() const {
            _scan_photos.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
 }
 
-void GuiApp::open_scan_mask_preview(size_t scan) {
-    if (native_work_busy() || scan >= _lidar.size() || _workspace.empty()) return;
-    std::vector<std::string> clouds;
-    for (const LidarInput& l : _lidar) clouds.push_back(l.path);
+bool GuiApp::scan_preview_needs_workspace(size_t scan) const {
+    return scan < _lidar.size() && _lidar[scan].cameras.empty();
+}
+
+void GuiApp::open_scan_mask_preview(size_t scan, const std::string& camera) {
+    if (native_work_busy() || scan >= _lidar.size() ||
+        (scan_preview_needs_workspace(scan) && _workspace.empty()))
+        return;
+    const LidarInput& l = _lidar[scan];
+    std::string cam = camera;
+    if (!l.cameras.empty() &&
+        std::none_of(l.cameras.begin(), l.cameras.end(), [&](const LidarInput::Camera& c) {
+            return c.name == cam && c.pick.taken;
+        }))
+        for (const LidarInput::Camera& c : l.cameras)
+            if (c.pick.taken) {
+                cam = c.name;
+                break;
+            }
+    _mask_try_camera = cam;
+    const LidarJob job = lidar_job();
     const std::string ws = _workspace;
+    // The cameras already decoded stay while the panel is on this capture.
+    const std::string scratch =
+        !_scan_scratch.empty() && _scan_scratch_for == l.path
+            ? _scan_scratch
+            : (fs::temp_directory_path() /
+               ("spirula-scan-preview-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
+                  .string();
     _scan_photos_for = scan;
-    log(i18n::format(ldmsg::scan_photos_extracting, {_lidar[scan].path}));
-    _scan_photos = std::async(std::launch::async, [clouds, scan, ws] {
-        std::string dir, err;
-        if (!extract_scan_photos(clouds, scan, ws, dir, err) && err.empty()) err = "-";
-        return std::make_pair(dir, err);
+    log(i18n::format(ldmsg::scan_photos_extracting, {l.path}));
+    _scan_photos = std::async(std::launch::async, [job, scan, ws, scratch, cam] {
+        ScanPhotos out;
+        out.scratch = scratch;
+        if (!extract_scan_photos(job, scan, ws, scratch, cam, out.dir, out.error) &&
+            out.error.empty())
+            out.error = "-";
+        return out;
     });
+}
+
+void GuiApp::drop_scan_scratch() {
+    std::error_code ec;
+    if (!_scan_scratch.empty()) fs::remove_all(_scan_scratch, ec);
+    _scan_scratch.clear();
+    _scan_scratch_for.clear();
 }
 
 void GuiApp::pump_scan_photos() {
     if (!_scan_photos.valid() || scan_photos_busy()) return;
-    const auto [dir, err] = _scan_photos.get();
+    ScanPhotos got = _scan_photos.get();
+    // Removed on every way out but the panel opening on them, which takes the
+    // ones it showed until now instead: opening joins the threads reading them.
+    struct Drop {
+        std::string dir;
+        ~Drop() { std::error_code ec; if (!dir.empty()) fs::remove_all(dir, ec); }
+    } drop{got.scratch == _scan_scratch ? std::string() : got.scratch};
     const std::optional<SegmentPanel::EditRequest> edit = std::exchange(_scan_edit, std::nullopt);
     const size_t scan = _scan_photos_for;
     if (scan >= _lidar.size()) return;   // removed meanwhile (forget_scan)
-    if (!err.empty()) {
-        log(i18n::format(ldmsg::scan_photos_failed, {_lidar[scan].path, err}));
+    if (!got.error.empty()) {
+        log(i18n::format(ldmsg::scan_photos_failed, {_lidar[scan].path, got.error}));
         return;
     }
     if (native_work_busy()) return;
@@ -3042,8 +3096,10 @@ void GuiApp::pump_scan_photos() {
     if (!freeze_native_device()) return;
     _mask_preview_scan = (int)scan;
     PrepInput photos;
-    photos.path = dir;
+    photos.path = got.dir;
     open_segment(preview_source_for(photos, ""));
+    drop.dir = got.scratch == _scan_scratch ? std::string() : std::exchange(_scan_scratch, got.scratch);
+    _scan_scratch_for = _lidar[scan].path;
     if (edit) _segment.edit_saved(*edit);
 }
 
@@ -4950,24 +5006,6 @@ std::string clip_clock(double s) {
     return b;
 }
 
-// The rate box's text, with the unit; "0 fps" is every frame. A row following
-// the one above shows the caret the lens column uses for the same idea.
-std::string fps_label(float fps) {
-    char b[32];
-    std::snprintf(b, sizeof b, "%g fps", (double)std::max(fps, 0.0f));
-    return b;
-}
-
-// And back: a number is a rate, with or without the unit typed back, and 0 is
-// every frame. Nothing readable is nullopt.
-std::optional<float> parse_fps(const std::string& text) {
-    const char* first = text.c_str();
-    char* end = nullptr;
-    const double v = std::strtod(first, &end);
-    if (end == first || !(v >= 0.0)) return std::nullopt;
-    return (float)v;
-}
-
 // The row whose box holds the dataset's own rate: it has nothing above it to
 // follow, so it is never a caret.
 size_t first_video_row(const std::vector<PrepInput>& sources) {
@@ -4977,6 +5015,23 @@ size_t first_video_row(const std::vector<PrepInput>& sources) {
 }
 
 }  // namespace
+
+// With the unit; "0 fps" is every frame. A row following the one above shows
+// the caret the lens column uses for the same idea.
+std::string GuiApp::fps_label(float fps) {
+    char b[32];
+    std::snprintf(b, sizeof b, "%g fps", (double)std::max(fps, 0.0f));
+    return b;
+}
+
+// A number is a rate, with or without the unit typed back. Nothing readable is nullopt.
+std::optional<float> GuiApp::parse_fps(const std::string& text) {
+    const char* first = text.c_str();
+    char* end = nullptr;
+    const double v = std::strtod(first, &end);
+    if (end == first || !(v >= 0.0)) return std::nullopt;
+    return (float)v;
+}
 
 // The LUT box of a video row. Automatic is what the file says it was shot
 // for, else the row above's choice; the rest are choices of its own.
@@ -5229,7 +5284,7 @@ void GuiApp::draw_dataset_source() {
     if (ui::Button(ldmsg::add_scan)) {
         _pick_lidar = -1;
         open_pick(PickAction::LidarSource, ldmsg::pick_scan.get(), FileDialog::Mode::File,
-                  {".e57", ".las", ".ply"}, "", /*multi_select=*/true);
+                  {".e57", ".las", ".ply", ".xbin"}, "", /*multi_select=*/true);
     }
     ui::help_on_hover(ldmsg::add_scan_help);
     if (_sources.empty() && _lidar.empty()) {
@@ -6401,42 +6456,75 @@ void GuiApp::draw_masking_options(const MaskingPanel& p) {
     int tried_scan = -1;
     for (size_t k = 0; k < tried.scans.size(); k++)
         if ((int)tried.scans[k] == _mask_try_scan) tried_scan = (int)k;
+    // With no input of its own, a scan's photographs are all there is to try it on.
+    if (tried_scan < 0 && tried.inputs == 0 && !tried.scans.empty()) {
+        tried_scan = 0;
+        _mask_try_scan = (int)tried.scans[0];
+    }
     const bool mask_preview_busy = native_work_busy();
+    const bool scan_no_workspace = tried_scan >= 0 &&
+                                   scan_preview_needs_workspace((size_t)_mask_try_scan) &&
+                                   _workspace.empty();
     const bool mask_preview_blocked =
-        mask_preview_busy || (tried_scan >= 0 ? _workspace.empty() : !p.preview_ready);
+        mask_preview_busy || (tried_scan >= 0 ? scan_no_workspace : !p.preview_ready);
     ImGui::BeginDisabled(mask_preview_blocked);
     if (ui::Button(dmsg::mask_try)) {
-        if (tried_scan >= 0) open_scan_mask_preview((size_t)_mask_try_scan);
+        if (tried_scan >= 0) open_scan_mask_preview((size_t)_mask_try_scan, _mask_try_camera);
         else p.open_preview();
     }
     ImGui::EndDisabled();
     ui::help_on_hover_disabled(
         mask_preview_busy ? dmsg::step_locked
-        : tried_scan >= 0 && _workspace.empty() ? dmsg::pick_input_first
+        : scan_no_workspace ? dmsg::pick_input_first
         : tried_scan < 0 && !p.preview_ready && p.preview_wait ? *p.preview_wait
                                                                : dmsg::mask_try_help);
     // Which input it opens, and so which input a NEW click prompts; the ones
-    // already made stay with their own (MaskClick::source).
-    if (tried.names.size() > 1) {
+    // already made stay with their own (MaskClick::source). A capture is one
+    // entry for each camera it gives photographs from: each has its own lens.
+    struct TryEntry {
+        size_t owner;
+        std::string camera, name;
+    };
+    std::vector<TryEntry> entries;
+    for (size_t o = 0; o < tried.names.size(); o++) {
+        const LidarInput* scan = o < tried.inputs ? nullptr : &_lidar[tried.scans[o - tried.inputs]];
+        if (!scan || scan->cameras.empty()) {
+            entries.push_back({o, "", tried.names[o]});
+            continue;
+        }
+        for (const LidarInput::Camera& c : scan->cameras)
+            if (c.pick.taken) entries.push_back({o, c.name, tried.names[o] + " / " + c.name});
+    }
+    if (entries.size() > 1) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(px(220.0f));
         std::vector<const char*> names;
-        for (const std::string& n : tried.names) names.push_back(n.c_str());
-        const int shown = tried_scan >= 0 ? (int)(tried.inputs + (size_t)tried_scan)
-                                          : *p.preview_input;
+        for (const TryEntry& e : entries) names.push_back(e.name.c_str());
+        const size_t owner = tried_scan >= 0 ? tried.inputs + (size_t)tried_scan
+                                             : (size_t)std::max(*p.preview_input, 0);
+        int shown = 0;
+        for (size_t k = 0; k < entries.size(); k++)
+            if (entries[k].owner == owner &&
+                (entries[k].camera.empty() || entries[k].camera == _mask_try_camera)) {
+                shown = (int)k;
+                break;
+            }
         int pick = shown;
         if (ui::ComboRaw(ui::detail::label(dmsg::mask_on_input), &pick,
                          names.data(), (int)names.size()) &&
             pick != shown) {
             // An open panel is showing the old input's frames and editing its
             // stencil; point both at the new one.
-            if ((size_t)pick < tried.inputs) {
+            const TryEntry& e = entries[(size_t)pick];
+            if (e.owner < tried.inputs) {
                 _mask_try_scan = -1;
-                *p.preview_input = pick;
+                *p.preview_input = (int)e.owner;
                 if (_segment.is_open()) p.open_preview();
             } else {
-                _mask_try_scan = (int)tried.scans[(size_t)pick - tried.inputs];
-                if (_segment.is_open()) open_scan_mask_preview((size_t)_mask_try_scan);
+                _mask_try_scan = (int)tried.scans[e.owner - tried.inputs];
+                _mask_try_camera = e.camera;
+                if (_segment.is_open())
+                    open_scan_mask_preview((size_t)_mask_try_scan, _mask_try_camera);
             }
         }
         ui::help_on_hover(dmsg::mask_on_input_help);
@@ -6776,6 +6864,7 @@ namespace {
 
 const Msg& step_name(Stage s) {
     switch (s) {
+        case Stage::ScanPhotos: return spirula::i18n::msg::lidar::step_scan_photos;
         case Stage::Frames:    return dmsg::step_frames;
         case Stage::Masks:     return dmsg::step_masks;
         case Stage::Features:  return dmsg::step_features;
@@ -7064,6 +7153,12 @@ void GuiApp::draw_dataset_steps() {
         // Only a run with a laser scan has the step at all.
         if ((Stage)i == Stage::Align && _lidar.empty() &&
             dataset_steps()->stage(Stage::Align).status == StageStatus::Pending)
+            continue;
+        // ... and only one whose scans carry photographs takes them out.
+        const StageStatus taken = dataset_steps()->stage(Stage::ScanPhotos).status;
+        if ((Stage)i == Stage::ScanPhotos &&
+            std::none_of(_lidar.begin(), _lidar.end(), [](const LidarInput& l) { return l.photos > 0; }) &&
+            (taken == StageStatus::Pending || taken == StageStatus::Skipped))
             continue;
         all.push_back({(Stage)i, &step_name((Stage)i)});
     }
@@ -7363,6 +7458,7 @@ int GuiApp::preview_for_stage() {
     // would hide it behind a click nobody knows to make.
     if (!dataset_busy()) return _preview_last_stage;
     switch (dataset_steps()->current()) {
+        case Stage::ScanPhotos: return 0;
         // Nothing is written while the motion is being measured, so the reel
         // has nothing to show and the curves have everything.
         case Stage::Frames:
@@ -9217,6 +9313,15 @@ void GuiApp::draw_new_dataset() {
     // whether there is anything to show is what decides whether the screen is
     // one column or two.
     poll_sfm_progress();
+    if (LiveModel aligned; _sfm.take_aligned_model(aligned)) {
+        _live_model = std::move(aligned);
+        const float up[3] = {0.0f, 0.0f, 1.0f};
+        if (_live_model.ds.gauge_oriented) _model_view.set_nav_up(up);
+        _model_view.attach_preview_data(_live_model.ds, _live_model.post, "lidar-aligned",
+                                        /*radius=*/1.0f, /*with_cameras=*/true);
+        _model_attached = true;
+        _preview_last_stage = 4;
+    }
     poll_dense_progress();
     // The memory of the steps that can run out of it -- mapping and dense --
     // sits in a strip above the log, where training keeps its status.
@@ -9301,6 +9406,7 @@ void GuiApp::draw_new_dataset() {
     }
     _segment_was_open = _segment.is_open();
     pump_scan_photos();
+    if (!scan_photos_busy() && (!_segment.is_open() || _mask_preview_scan < 0)) drop_scan_scratch();
     if (_segment.is_open()) {
         // It edits one input's stencil, or one scan's, and shows its frames,
         // so it cannot outlive the list it was opened against.

@@ -846,13 +846,27 @@ private:
         std::string path;
         std::string edit;             // the path box, until it is committed
         int64_t points = 0;           // as the header declares
-        int64_t photos = 0;           // images an E57 carries with poses
+        int64_t photos = 0;           // images it carries with poses, of the cameras taken
         std::vector<spirula::cloud::Station> stations;
+        // An XGRIDS capture's cameras, and the photographs each gives.
+        struct Camera {
+            std::string name;
+            bool fisheye = false;
+            int64_t frames = 0;
+            double seconds = 0;           // first frame to last
+            app::lidar::XbinCameraPick pick;
+            std::string fps_text;         // its rate box, kept while typed in
+            bool fps_editing = false;
+        };
+        std::vector<Camera> cameras;
+        bool place_only = false;      // its photographs place the model, the others train it
         // Drawn areas for its photographs, apart from every input's (issue #99).
         app::FrameStencil stencil;
         std::map<std::string, StencilFollow> stencil_follow;
     };
     bool read_lidar_input(const std::string& path, LidarInput& in);
+    static int64_t taken_photos(const LidarInput& in);
+    void draw_capture_cameras(LidarInput& in, float rate_x);
     std::vector<LidarInput> _lidar;
     int _pick_lidar = -1;             // the row a Browse... replaces; -1 adds
     bool _lidar_photos = true;        // the scans' photographs join the reconstruction
@@ -966,6 +980,9 @@ private:
     // nothing (draw_dataset_source).
     std::vector<std::string> _fps_text;
     int _fps_editing = -1;
+    // What a rate box shows, and what a typed one is: 0 is every frame.
+    static std::string fps_label(float fps);
+    static std::optional<float> parse_fps(const std::string& text);
     // The screen's "Advanced" header as last drawn. What a beginner should not
     // have to read -- an input's LUT, starting focal, rig -- shows in place only
     // while it is open, so the input list is never drawn twice.
@@ -1062,14 +1079,26 @@ private:
     int panel_owner(const StencilTable& t) const;
     void refresh_frame_shapes(const std::vector<PrepInput>& inputs, std::string& frame_shapes);
     void draw_stencil_rows(const MaskingPanel& p);
-    // Try the mask on a scan's photographs, extracted first on a worker.
-    void open_scan_mask_preview(size_t scan);
+    // Try the mask on a scan's photographs, extracted first on a worker. A
+    // capture's come one camera at a time: `camera`, "" its first one taken.
+    void open_scan_mask_preview(size_t scan, const std::string& camera);
     void pump_scan_photos();
     bool scan_photos_busy() const;
-    std::future<std::pair<std::string, std::string>> _scan_photos;   // folder, error
+    struct ScanPhotos {
+        std::string dir, error;
+        std::string scratch;   // a capture's frames, outside the dataset
+    };
+    std::future<ScanPhotos> _scan_photos;
     size_t _scan_photos_for = 0;
+    // The frames the panel shows of a capture; removed once it shows something else.
+    std::string _scan_scratch;
+    std::string _scan_scratch_for;              // the capture they came from
+    void drop_scan_scratch();
+    // An E57's photographs go into the dataset; a capture's need no folder for it.
+    bool scan_preview_needs_workspace(size_t scan) const;
     int _mask_preview_scan = -1;                // the _lidar row the panel shows, or -1
     int _mask_try_scan = -1;                    // the one "Try the mask" opens, or -1
+    std::string _mask_try_camera;               // ... and of a capture, its camera
     // Rows past a removed scan move up; the panel on that scan closes.
     void forget_scan(size_t scan);
     void apply_frame_shapes(std::vector<PrepInput>& inputs, std::string& preset,

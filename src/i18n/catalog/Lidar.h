@@ -311,6 +311,21 @@ SS_MSG(opt_overwrite,
        "изменилось"),
     TR("Bağlı olduğu hiçbir şey değişmemiş olsa bile yeniden hizala"));
 
+SS_MSG(opt_refine,
+    EN("Place the scan's photographs from the scanner's poses, refined on the reconstruction's matches (needs features/ and matches.bin)"),
+    JA("スキャンの写真をスキャナーの姿勢から置き、再構成の対応で補正します (features/ と matches.bin が必要)"),
+    ZH_HANS("从扫描仪的位姿放置扫描照片，并用重建的匹配修正（需要 features/ 和 matches.bin）"),
+    ZH_HANT("從掃描儀的位姿放置掃描照片，並用重建的匹配修正（需要 features/ 和 matches.bin）"),
+    KO("스캔 사진을 스캐너의 자세에서 두고 재구성의 매칭으로 보정합니다 (features/와 matches.bin 필요)"),
+    DE("Die Fotos des Scans ab den Posen des Scanners setzen, verfeinert an den Zuordnungen der Rekonstruktion (braucht features/ und matches.bin)"),
+    FR("Placer les photos du scan depuis les poses du scanner, affinées sur les correspondances de la reconstruction (demande features/ et matches.bin)"),
+    ES("Colocar las fotos del escaneo desde las poses del escáner, refinadas con las correspondencias de la reconstrucción (necesita features/ y matches.bin)"),
+    PT("Colocar as fotos da varredura a partir das poses do scanner, refinadas nas correspondências da reconstrução (precisa de features/ e matches.bin)"),
+    IT("Mettere le foto della scansione dalle pose dello scanner, affinate sulle corrispondenze della ricostruzione (richiede features/ e matches.bin)"),
+    NL("De foto's van de scan plaatsen vanaf de poses van de scanner, verfijnd op de overeenkomsten van de reconstructie (vraagt features/ en matches.bin)"),
+    RU("Поставить фотографии скана по позам сканера, уточнённым по сопоставлениям реконструкции (нужны features/ и matches.bin)"),
+    TR("Taramanın fotoğraflarını tarayıcının pozlarından yerleştir, yeniden yapılandırmanın eşleşmeleriyle iyileştir (features/ ve matches.bin gerekir)"));
+
 SS_MSG(opt_scanner_poses,
     EN("Use no reconstruction: place the scan's photographs where the scanner recorded them"),
     JA("再構成を使わず、スキャンの写真をスキャナーが記録した位置に置きます"),
@@ -531,6 +546,81 @@ SS_MSG(anchors_read,
     NL("Beelden met een bekende pose in de scan: {0}"),
     RU("Изображений с известной позой в скане: {0}"),
     TR("Taramada pozu bilinen görüntü: {0}"));
+
+SS_MSG(refine_head,
+    EN("Refining the photographs from the scanner's poses: {0} of {1} have features, {2} instants"),
+    JA("スキャナーの姿勢から写真を補正します: {1} 枚中 {0} 枚に特徴点、瞬間 {2}"),
+    ZH_HANS("从扫描仪的位姿修正照片：{1} 张中有 {0} 张有特征点，时刻 {2} 个"),
+    ZH_HANT("從掃描儀的位姿修正照片：{1} 張中有 {0} 張有特徵點，時刻 {2} 個"),
+    KO("스캐너의 자세에서 사진을 보정합니다: {1}장 중 {0}장에 특징점, 순간 {2}개"),
+    DE("Fotos werden ab den Posen des Scanners verfeinert: {0} von {1} mit Merkmalen, {2} Zeitpunkte"),
+    FR("Affinage des photos à partir des poses du scanner : {0} sur {1} ont des points, {2} instants"),
+    ES("Refinando las fotos desde las poses del escáner: {0} de {1} con puntos, {2} instantes"),
+    PT("Refinando as fotos a partir das poses do scanner: {0} de {1} com pontos, {2} instantes"),
+    IT("Affinamento delle foto dalle pose dello scanner: {0} di {1} con punti, {2} istanti"),
+    NL("Foto's worden verfijnd vanaf de poses van de scanner: {0} van {1} met punten, {2} momenten"),
+    RU("Уточнение фотографий от поз сканера: признаки у {0} из {1}, моментов {2}"),
+    TR("Fotoğraflar tarayıcının pozlarından iyileştiriliyor: {1} fotoğraftan {0} tanesinde nokta, {2} an"));
+
+SS_MSG(refine_done,
+    EN("Refined: points {0}, reprojection {1} px (median), moved {2} m and turned {3} deg from the scanner's poses (median)"),
+    JA("補正済み: 点 {0}、再投影 {1} px (中央値)、スキャナーの姿勢から移動 {2} m、回転 {3} 度 (中央値)"),
+    ZH_HANS("已修正：点 {0} 个，重投影 {1} px（中位数），相对扫描仪位姿移动 {2} m、旋转 {3} 度（中位数）"),
+    ZH_HANT("已修正：點 {0} 個，重投影 {1} px（中位數），相對掃描儀位姿移動 {2} m、旋轉 {3} 度（中位數）"),
+    KO("보정됨: 점 {0}개, 재투영 {1} px (중앙값), 스캐너 자세에서 이동 {2} m, 회전 {3}도 (중앙값)"),
+    DE("Verfeinert: Punkte {0}, Reprojektion {1} px (Median), gegenüber den Posen des Scanners {2} m verschoben und {3} Grad gedreht (Median)"),
+    FR("Affiné : points {0}, reprojection {1} px (médiane), déplacé de {2} m et tourné de {3} degrés depuis les poses du scanner (médiane)"),
+    ES("Refinado: puntos {0}, reproyección {1} px (mediana), movido {2} m y girado {3} grados desde las poses del escáner (mediana)"),
+    PT("Refinado: pontos {0}, reprojeção {1} px (mediana), movido {2} m e girado {3} graus a partir das poses do scanner (mediana)"),
+    IT("Affinato: punti {0}, riproiezione {1} px (mediana), spostato di {2} m e ruotato di {3} gradi dalle pose dello scanner (mediana)"),
+    NL("Verfijnd: punten {0}, herprojectie {1} px (mediaan), {2} m verschoven en {3} graden gedraaid ten opzichte van de poses van de scanner (mediaan)"),
+    RU("Уточнено: точек {0}, перепроекция {1} px (медиана), сдвиг от поз сканера {2} м и поворот {3} град. (медиана)"),
+    TR("İyileştirildi: nokta {0}, yeniden izdüşüm {1} px (ortanca), tarayıcının pozlarından {2} m kayma ve {3} derece dönme (ortanca)"));
+
+SS_MSG(refine_none,
+    EN("No photograph of the scans has features in {0}: the scanner's poses are used as they are"),
+    JA("{0} にはスキャンの写真の特徴点がありません。スキャナーの姿勢をそのまま使います"),
+    ZH_HANS("{0} 中没有扫描照片的特征点：按原样使用扫描仪的位姿"),
+    ZH_HANT("{0} 中沒有掃描照片的特徵點：按原樣使用掃描儀的位姿"),
+    KO("{0}에 스캔 사진의 특징점이 없습니다. 스캐너의 자세를 그대로 씁니다"),
+    DE("Kein Foto der Scans hat Merkmale in {0}: die Posen des Scanners werden unverändert verwendet"),
+    FR("Aucune photo des scans n'a de points dans {0} : les poses du scanner sont utilisées telles quelles"),
+    ES("Ninguna foto de los escaneos tiene puntos en {0}: se usan las poses del escáner tal cual"),
+    PT("Nenhuma foto das varreduras tem pontos em {0}: as poses do scanner são usadas como estão"),
+    IT("Nessuna foto delle scansioni ha punti in {0}: le pose dello scanner sono usate così come sono"),
+    NL("Geen foto van de scans heeft punten in {0}: de poses van de scanner worden gebruikt zoals ze zijn"),
+    RU("Ни у одной фотографии сканов нет признаков в {0}: позы сканера используются как есть"),
+    TR("{0} içinde taramaların hiçbir fotoğrafında nokta yok: tarayıcının pozları olduğu gibi kullanılıyor"));
+
+SS_MSG(err_refine_no_matches,
+    EN("Refining the photographs needs the reconstruction's features and matches, and {0} has no matches.bin"),
+    JA("写真の補正には再構成の特徴点と対応が必要ですが、{0} に matches.bin がありません"),
+    ZH_HANS("修正照片需要重建的特征点和匹配，但 {0} 中没有 matches.bin"),
+    ZH_HANT("修正照片需要重建的特徵點和匹配，但 {0} 中沒有 matches.bin"),
+    KO("사진 보정에는 재구성의 특징점과 매칭이 필요하지만 {0}에 matches.bin이 없습니다"),
+    DE("Das Verfeinern der Fotos braucht die Merkmale und Zuordnungen der Rekonstruktion, und {0} hat keine matches.bin"),
+    FR("L'affinage des photos demande les points et correspondances de la reconstruction, et {0} n'a pas de matches.bin"),
+    ES("Refinar las fotos necesita los puntos y correspondencias de la reconstrucción, y {0} no tiene matches.bin"),
+    PT("Refinar as fotos precisa dos pontos e correspondências da reconstrução, e {0} não tem matches.bin"),
+    IT("L'affinamento delle foto richiede i punti e le corrispondenze della ricostruzione, e {0} non ha matches.bin"),
+    NL("Het verfijnen van de foto's vraagt de punten en overeenkomsten van de reconstructie, en {0} heeft geen matches.bin"),
+    RU("Для уточнения фотографий нужны признаки и сопоставления реконструкции, а в {0} нет matches.bin"),
+    TR("Fotoğrafları iyileştirmek yeniden yapılandırmanın noktalarını ve eşleşmelerini ister, ama {0} içinde matches.bin yok"));
+
+SS_MSG(err_refine_unbuilt,
+    EN("This build has no structure from motion, so it cannot refine the photographs"),
+    JA("このビルドには SfM がないため、写真を補正できません"),
+    ZH_HANS("此版本不含 SfM，无法修正照片"),
+    ZH_HANT("此版本不含 SfM，無法修正照片"),
+    KO("이 빌드에는 SfM이 없어 사진을 보정할 수 없습니다"),
+    DE("Dieser Build enthält kein SfM und kann die Fotos nicht verfeinern"),
+    FR("Cette version n'a pas de SfM et ne peut pas affiner les photos"),
+    ES("Esta versión no tiene SfM y no puede refinar las fotos"),
+    PT("Esta versão não tem SfM e não pode refinar as fotos"),
+    IT("Questa versione non ha SfM e non può affinare le foto"),
+    NL("Deze build heeft geen SfM en kan de foto's niet verfijnen"),
+    RU("В этой сборке нет SfM, поэтому фотографии уточнить нельзя"),
+    TR("Bu sürümde SfM yok, bu yüzden fotoğraflar iyileştirilemez"));
 
 SS_MSG(model_head,
     EN("Model {0}: images {1}, points {2}"),
@@ -1076,19 +1166,19 @@ SS_MSG(add_scan,
     TR("LiDAR taraması ekle..."));
 
 SS_MSG(add_scan_help,
-    EN("E57/LAS/PLY scan: place the model in its frame; use its points, depth and normals for training.\nAn E57 with photos can be the only input."),
-    JA("E57/LAS/PLYスキャンにモデルの位置・向き・尺度を合わせ、点群・深度・法線を学習に使います。\n写真付きE57なら単独で入力できます。"),
-    ZH_HANS("E57/LAS/PLY 扫描：将模型对齐到扫描坐标系，用其点云、深度及法线训练。\n含照片的 E57 可作为唯一输入。"),
-    ZH_HANT("E57/LAS/PLY 掃描：將模型對齊到掃描座標系，用其點雲、深度及法線訓練。\n含相片的 E57 可作為唯一輸入。"),
-    KO("E57/LAS/PLY 스캔에 모델의 위치·회전·크기를 맞추고 점·깊이·법선을 학습에 씁니다.\n사진이 있는 E57은 단독 입력도 가능합니다."),
-    DE("E57/LAS/PLY-Scan: Modell im Scanrahmen ausrichten; Punkte, Tiefe und Normalen zum Training nutzen.\nEin E57 mit Fotos genügt als einzige Eingabe."),
-    FR("Scan E57/LAS/PLY : aligne le modèle dans son repère ; utilise points, profondeur et normales.\nUn E57 avec photos peut être la seule entrée."),
-    ES("Escaneo E57/LAS/PLY: alinea el modelo y usa sus puntos, profundidad y normales para entrenar.\nUn E57 con fotos puede ser la única entrada."),
-    PT("Varredura E57/LAS/PLY: alinha o modelo e usa pontos, profundidade e normais no treino.\nUm E57 com fotos pode ser a única entrada."),
-    IT("Scansione E57/LAS/PLY: allinea il modello e usa punti, profondità e normali nel training.\nUn E57 con foto può essere l’unico input."),
-    NL("E57/LAS/PLY-scan: lijn het model uit op het scanframe; gebruik punten, diepte en normalen voor training.\nEen E57 met foto’s kan de enige invoer zijn."),
-    RU("Скан E57/LAS/PLY: совмещает модель с его системой; использует точки, глубину и нормали в обучении.\nE57 со снимками может быть единственным входом."),
-    TR("E57/LAS/PLY taraması: modeli tarama çerçevesine hizalar; nokta, derinlik ve normalleri eğitimde kullanır.\nFotoğraflı E57 tek girdi olabilir."));
+    EN("E57/LAS/PLY scan or XGRIDS PortalCam capture (.xbin): place the model in its frame; use its points, depth and normals for training.\nAn E57 or .xbin with photos can be the only input."),
+    JA("E57/LAS/PLYスキャンまたはXGRIDS PortalCamのキャプチャ（.xbin）にモデルの位置・向き・尺度を合わせ、点群・深度・法線を学習に使います。\n写真付きE57や.xbinなら単独で入力できます。"),
+    ZH_HANS("E57/LAS/PLY 扫描或 XGRIDS PortalCam 采集（.xbin）：将模型对齐到扫描坐标系，用其点云、深度及法线训练。\n含照片的 E57 或 .xbin 可作为唯一输入。"),
+    ZH_HANT("E57/LAS/PLY 掃描或 XGRIDS PortalCam 擷取（.xbin）：將模型對齊到掃描座標系，用其點雲、深度及法線訓練。\n含相片的 E57 或 .xbin 可作為唯一輸入。"),
+    KO("E57/LAS/PLY 스캔 또는 XGRIDS PortalCam 캡처(.xbin)에 모델의 위치·회전·크기를 맞추고 점·깊이·법선을 학습에 씁니다.\n사진이 있는 E57이나 .xbin은 단독 입력도 가능합니다."),
+    DE("E57/LAS/PLY-Scan oder XGRIDS-PortalCam-Aufnahme (.xbin): Modell im Scanrahmen ausrichten; Punkte, Tiefe und Normalen zum Training nutzen.\nEin E57 oder .xbin mit Fotos genügt als einzige Eingabe."),
+    FR("Scan E57/LAS/PLY ou capture XGRIDS PortalCam (.xbin) : aligne le modèle dans son repère ; utilise points, profondeur et normales.\nUn E57 ou .xbin avec photos peut être la seule entrée."),
+    ES("Escaneo E57/LAS/PLY o captura XGRIDS PortalCam (.xbin): alinea el modelo y usa sus puntos, profundidad y normales para entrenar.\nUn E57 o .xbin con fotos puede ser la única entrada."),
+    PT("Varredura E57/LAS/PLY ou captura XGRIDS PortalCam (.xbin): alinha o modelo e usa pontos, profundidade e normais no treino.\nUm E57 ou .xbin com fotos pode ser a única entrada."),
+    IT("Scansione E57/LAS/PLY o acquisizione XGRIDS PortalCam (.xbin): allinea il modello e usa punti, profondità e normali nel training.\nUn E57 o .xbin con foto può essere l’unico input."),
+    NL("E57/LAS/PLY-scan of XGRIDS PortalCam-opname (.xbin): lijn het model uit op het scanframe; gebruik punten, diepte en normalen voor training.\nEen E57 of .xbin met foto’s kan de enige invoer zijn."),
+    RU("Скан E57/LAS/PLY или съёмка XGRIDS PortalCam (.xbin): совмещает модель с его системой; использует точки, глубину и нормали в обучении.\nE57 или .xbin со снимками может быть единственным входом."),
+    TR("E57/LAS/PLY taraması veya XGRIDS PortalCam çekimi (.xbin): modeli tarama çerçevesine hizalar; nokta, derinlik ve normalleri eğitimde kullanır.\nFotoğraflı E57 veya .xbin tek girdi olabilir."));
 
 SS_MSG(pick_scan,
     EN("Choose laser scans"), JA("レーザースキャンを選択"), ZH_HANS("选择激光扫描"),
@@ -1144,6 +1234,90 @@ SS_MSG(scan_is_splat,
        "облако точек, записанное сканером (E57, LAS или PLY)."),
     TR("{0} bir Gauss splat'i, yani bitmiş bir yeniden oluşturma; lazer taraması "
        "değil. Tarayıcının yazdığı nokta bulutunu ekleyin (E57, LAS veya PLY)."));
+
+SS_MSG(step_scan_photos,
+    EN("Scan photos"),            JA("スキャンの写真"),       ZH_HANS("扫描照片"),
+    ZH_HANT("掃描照片"),          KO("스캔 사진"),            DE("Scan-Fotos"),
+    FR("Photos du scan"),         ES("Fotos del escaneo"),    PT("Fotos da varredura"),
+    IT("Foto della scansione"),   NL("Scanfoto's"),           RU("Фото скана"),
+    TR("Tarama fotoğrafları"));
+
+SS_MSG(scan_photos_taking,
+    EN("Taking the photographs out of {0}..."),
+    JA("{0} から写真を取り出しています..."),
+    ZH_HANS("正在从 {0} 中取出照片..."),
+    ZH_HANT("正在從 {0} 中取出照片..."),
+    KO("{0}에서 사진을 꺼내는 중..."),
+    DE("Die Fotos werden aus {0} geholt..."),
+    FR("Extraction des photos de {0}..."),
+    ES("Sacando las fotografías de {0}..."),
+    PT("Tirando as fotografias de {0}..."),
+    IT("Estrazione delle fotografie da {0}..."),
+    NL("De foto's worden uit {0} gehaald..."),
+    RU("Фотографии извлекаются из {0}..."),
+    TR("Fotoğraflar {0} içinden çıkarılıyor..."));
+
+SS_MSG(scan_photos_place_only,
+    EN("Use capture photos only for alignment"),
+    JA("キャプチャの写真は位置合わせだけに使う"),
+    ZH_HANS("采集的照片只用于对齐"),
+    ZH_HANT("擷取的照片只用於對齊"),
+    KO("캡처 사진은 정렬에만 사용"),
+    DE("Fotos der Aufnahme nur zum Ausrichten verwenden"),
+    FR("Utiliser les photos de la capture seulement pour l'alignement"),
+    ES("Usar las fotos de la captura solo para alinear"),
+    PT("Usar as fotos da captura só para alinhar"),
+    IT("Usare le foto dell'acquisizione solo per l'allineamento"),
+    NL("Foto's van de opname alleen gebruiken om uit te lijnen"),
+    RU("Фото съёмки только для выравнивания"),
+    TR("Çekim fotoğraflarını yalnızca hizalama için kullan"));
+
+SS_MSG(scan_photos_place_only_help,
+    EN("Capture photos join reconstruction and put your own photos in scan frame. Training then "
+       "drops capture photos. It uses only your own photos and scan points."),
+    JA("キャプチャの写真は再構成に加わり、あなたの写真をスキャンの座標系に置きます。その後、学習では"
+       "キャプチャの写真を外し、あなたの写真とスキャンの点だけを使います。"),
+    ZH_HANS("采集的照片参与重建，把您自己的照片放进扫描的坐标系。之后训练去掉采集的照片，只使用您自己的"
+            "照片和扫描的点。"),
+    ZH_HANT("擷取的照片參與重建，把您自己的照片放進掃描的座標系。之後訓練去掉擷取的照片，只使用您自己的"
+            "照片和掃描的點。"),
+    KO("캡처 사진은 재구성에 참여해 직접 찍은 사진을 스캔 좌표계에 놓습니다. 그 뒤 학습은 캡처 사진을 "
+       "빼고 직접 찍은 사진과 스캔의 점만 씁니다."),
+    DE("Die Fotos der Aufnahme bringen Ihre Fotos in das Bezugssystem des Scans. Das Training lässt sie danach weg und nutzt nur Ihre Fotos und die Scanpunkte."),
+    FR("Les photos de la capture placent vos photos dans le repère du scan. L'entraînement les retire ensuite et n'utilise que vos photos et les points du scan."),
+    ES("Las fotos de la captura colocan sus fotos en el marco del escaneo. Después, el entrenamiento las quita y usa solo sus fotos y los puntos del escaneo."),
+    PT("As fotos da captura colocam as suas fotos no referencial da varredura. Depois o treino retira-as e usa só as suas fotos e os pontos da varredura."),
+    IT("Le foto dell'acquisizione mettono le tue foto nel sistema della scansione. Poi l'addestramento le toglie e usa solo le tue foto e i punti della scansione."),
+    NL("De foto's van de opname plaatsen uw foto's in het assenstelsel van de scan. Daarna laat de training ze weg en gebruikt alleen uw foto's en de scanpunten."),
+    RU("Фото съёмки участвуют в реконструкции и ставят ваши собственные фото в систему координат "
+       "скана. Затем обучение убирает их и использует только ваши фото и точки скана."),
+    TR("Çekim fotoğrafları sizin fotoğraflarınızı tarama sistemine yerleştirir. Sonra eğitim onları çıkarır ve yalnızca sizin fotoğraflarınızla tarama noktalarını kullanır."));
+
+SS_MSG(capture_camera_fps_help,
+    EN("Photos per second to take from camera. Camera records {0}. Lower rate gives fewer photos and "
+       "faster run. 0 keeps every photo."),
+    JA("このカメラから取る毎秒の写真数です。カメラの記録は {0} です。低くすると写真が減り、処理が"
+       "速くなります。0 ですべての写真を使います。"),
+    ZH_HANS("从该相机每秒取用的照片数。相机记录 {0}。降低后照片更少，运行更快。0 保留全部照片。"),
+    ZH_HANT("從該相機每秒取用的照片數。相機記錄 {0}。降低後照片更少，執行更快。0 保留全部照片。"),
+    KO("이 카메라에서 초당 가져올 사진 수입니다. 카메라는 {0}로 기록합니다. 낮추면 사진이 줄고 "
+       "실행이 빨라집니다. 0은 모든 사진을 씁니다."),
+    DE("Fotos pro Sekunde von dieser Kamera. Die Kamera nimmt {0} auf. Ein niedrigerer Wert gibt "
+       "weniger Fotos und einen schnelleren Lauf. 0 behält jedes Foto."),
+    FR("Photos par seconde prises de cette caméra. La caméra enregistre {0}. Une valeur plus basse "
+       "donne moins de photos et un calcul plus rapide. 0 garde chaque photo."),
+    ES("Fotos por segundo que se toman de esta cámara. La cámara graba {0}. Un valor más bajo da "
+       "menos fotos y una ejecución más rápida. 0 conserva cada foto."),
+    PT("Fotos por segundo tiradas desta câmera. A câmera grava {0}. Um valor menor dá menos fotos e "
+       "uma execução mais rápida. 0 mantém todas as fotos."),
+    IT("Foto al secondo prese da questa fotocamera. La fotocamera registra {0}. Un valore più basso "
+       "dà meno foto e un'esecuzione più rapida. 0 tiene ogni foto."),
+    NL("Foto's per seconde van deze camera. De camera neemt {0} op. Een lagere waarde geeft minder "
+       "foto's en een snellere run. 0 houdt elke foto."),
+    RU("Фото в секунду с этой камеры. Камера снимает {0}. Меньшее значение даёт меньше фото и более "
+       "быстрый запуск. 0 оставляет каждое фото."),
+    TR("Bu kameradan saniyede alınacak fotoğraf sayısı. Kamera {0} kaydeder. Daha düşük bir değer "
+       "daha az fotoğraf ve daha hızlı bir çalışma verir. 0 her fotoğrafı tutar."));
 
 SS_MSG(scan_photos_extracting,
     EN("Taking the photographs out of {0} to draw on..."),
@@ -1262,19 +1436,19 @@ SS_MSG(scanner_poses_used,
        "korurlar ve yeniden oluşturma çalışmaz"));
 
 SS_MSG(scan_in_frame,
-    EN("The dataset is already in the scan's frame"),
-    JA("データセットはすでにスキャンの座標系にある"),
-    ZH_HANS("数据集已处于扫描的坐标系中"),
-    ZH_HANT("資料集已位於掃描的座標系中"),
-    KO("데이터셋이 이미 스캔 좌표계에 있음"),
-    DE("Der Datensatz liegt bereits im Bezugssystem des Scans"),
-    FR("Le jeu de données est déjà dans le repère du scan"),
-    ES("El conjunto de datos ya está en el sistema de referencia del escaneo"),
-    PT("O conjunto de dados já está no referencial da varredura"),
-    IT("Il set di dati è già nel sistema di riferimento della scansione"),
-    NL("De dataset staat al in het assenstelsel van de scan"),
-    RU("Набор данных уже в системе координат скана"),
-    TR("Veri kümesi zaten taramanın koordinat sisteminde"));
+    EN("Cameras already line up with scan"),
+    JA("カメラはすでにスキャンと位置が合っている"),
+    ZH_HANS("相机已与扫描对齐"),
+    ZH_HANT("相機已與掃描對齊"),
+    KO("카메라가 이미 스캔과 맞춰져 있음"),
+    DE("Die Kameras passen schon zum Scan"),
+    FR("Les caméras sont déjà alignées sur le scan"),
+    ES("Las cámaras ya están alineadas con el escaneo"),
+    PT("As câmeras já estão alinhadas com a varredura"),
+    IT("Le fotocamere sono già allineate alla scansione"),
+    NL("De camera's staan al gelijk met de scan"),
+    RU("Камеры уже совмещены со сканом"),
+    TR("Kameralar taramayla zaten hizalı"));
 
 SS_MSG(scan_in_frame_help,
     EN("For an export whose cameras the scanner's software placed, such as an XGRIDS one: nothing is moved, the scan only adds seed points, depth and normals."),
@@ -1361,6 +1535,21 @@ SS_MSG(extracted,
     NL("Uit de scan gehaalde beelden: {0}   Pinhole: {1}   Panorama: {2}"),
     RU("Изображений извлечено из скана: {0}   Обскура: {1}   Панорамы: {2}"),
     TR("Taramadan alınan görüntü: {0}   İğne deliği: {1}   Panorama: {2}"));
+
+SS_MSG(extracted_xbin,
+    EN("Images taken from the scan: {0}   Pinhole: {1}   Fisheye: {2}"),
+    JA("スキャンから取り出した画像: {0}   ピンホール: {1}   魚眼: {2}"),
+    ZH_HANS("从扫描取出的图像：{0}   针孔：{1}   鱼眼：{2}"),
+    ZH_HANT("從掃描取出的影像：{0}   針孔：{1}   魚眼：{2}"),
+    KO("스캔에서 꺼낸 이미지: {0}   핀홀: {1}   어안: {2}"),
+    DE("Aus dem Scan entnommene Bilder: {0}   Lochkamera: {1}   Fisheye: {2}"),
+    FR("Images tirées du scan : {0}   Sténopé : {1}   Fisheye : {2}"),
+    ES("Imágenes extraídas del escaneo: {0}   Estenopeicas: {1}   Ojo de pez: {2}"),
+    PT("Imagens tiradas da varredura: {0}   Pinhole: {1}   Olho de peixe: {2}"),
+    IT("Immagini estratte dalla scansione: {0}   Stenopeiche: {1}   Fisheye: {2}"),
+    NL("Uit de scan gehaalde beelden: {0}   Pinhole: {1}   Fisheye: {2}"),
+    RU("Изображений извлечено из скана: {0}   Обскура: {1}   Фишай: {2}"),
+    TR("Taramadan alınan görüntü: {0}   İğne deliği: {1}   Balıkgözü: {2}"));
 
 }  // namespace lidar
 }  // namespace msg
