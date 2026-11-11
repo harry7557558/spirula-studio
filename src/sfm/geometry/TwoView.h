@@ -43,7 +43,6 @@ struct TwoViewOptions {
     TwoViewOptions() {
         ransac.max_error = 3.0;
         ransac.min_inlier_ratio = 0.0;
-        ransac.max_num_trials = 2000;
     }
 };
 
@@ -125,7 +124,7 @@ inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
                                            fFit, fRefit, fRes, opt.ransac);
 
     RansacReport<detail::HModel> hRep;
-    if (opt.estimate_homography && fRep.num_inliers >= 4) {
+    if (opt.estimate_homography) {
         auto hFit = [&](const std::vector<int>& s) {
             std::vector<detail::HModel> out;
             for (const Mat3& H : estimateHomographyBearing(b1, b2, s))
@@ -133,7 +132,8 @@ inline TwoViewGeometry estimateTwoViewBearing(const std::vector<Vec3>& b1,
             return out;
         };
         auto hRes = [&](const detail::HModel& m, int i) {
-            return angularTransferSq(m.H, m.Hinv, b1[i], b2[i]);
+            return angularTransferSq(m.H, m.Hinv, b1[i], b2[i],
+                                     opt.ransac.max_error * opt.ransac.max_error);
         };
         hRep = loransac<detail::HModel>(n, 4, hFit, hFit, hRes, opt.ransac);
     }
@@ -174,7 +174,7 @@ inline TwoViewGeometry estimateTwoView(const std::vector<Vec2>& p1, const std::v
 
     // --- Homography ---
     RansacReport<detail::HModel> hRep;
-    if (opt.estimate_homography && fRep.num_inliers >= 4) {
+    if (opt.estimate_homography) {
         auto hFit = [&](const std::vector<int>& s) {
             std::vector<detail::HModel> out;
             for (const Mat3& H : estimateHomography(p1, p2, s)) out.push_back({H, inverse3(H)});

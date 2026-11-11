@@ -236,10 +236,7 @@ inline Mat3 projectToEssential(const Mat3& E) {
     return mul(mul(s.U, D), transpose(s.V));
 }
 
-// Sampson error on the sphere, in squared radians. Same first-order geometric
-// approximation as sampsonSq, but the perturbation lives in each bearing's
-// tangent plane (2 DOF on the sphere) rather than on the z=1 image plane --
-// which is what makes it meaningful for a ray pointing sideways.
+// Squared-radian Sampson error in each bearing's tangent plane, valid for sideways rays.
 inline double sampsonSqBearing(const Mat3& E, const Mat3& Et, const Vec3& b1, const Vec3& b2) {
     Vec3 Eb1 = mul(E, b1);
     Vec3 Etb2 = mul(Et, b2);
