@@ -1423,39 +1423,30 @@ SS_MSG(prefilter_ratio_help,
        "kadar sıkı değildir"));
 
 SS_MSG(order_weight_help,
-    EN("How much pair selection favours images close in file order within a folder; "
-       "an adjacent image's score counts 1 + this times. 0 is off"),
-    JA("ペア選択が同じフォルダ内でファイル順の近い画像をどれだけ優先するか。"
-       "隣の画像のスコアは 1 + この値 倍になります。0 で無効"),
-    ZH_HANS("像对筛选对同一文件夹中文件顺序相近的图像的偏好程度；"
-            "相邻图像的分数按 1 + 此值 倍计。0 为关闭"),
-    ZH_HANT("影像對篩選對同一資料夾中檔案順序相近的影像的偏好程度；"
-            "相鄰影像的分數按 1 + 此值 倍計。0 為關閉"),
-    KO("같은 폴더 안에서 파일 순서가 가까운 이미지를 쌍 선택이 얼마나 우대하는지. "
-       "바로 옆 이미지의 점수는 1 + 이 값 배가 됩니다. 0 은 끔"),
-    DE("Wie stark die Paarauswahl Bilder bevorzugt, die in einem Ordner in "
-       "Dateireihenfolge nahe liegen; der Wert eines direkten Nachbarn zählt "
-       "1 + diesen Wert fach. 0 ist aus"),
-    FR("À quel point la sélection de paires favorise les images proches dans "
-       "l'ordre des fichiers d'un même dossier ; le score d'une image voisine "
-       "compte 1 + cette valeur fois. 0 désactive"),
-    ES("Cuánto favorece la selección de pares a las imágenes cercanas en el orden "
-       "de archivos de una carpeta; la puntuación de una imagen contigua cuenta "
-       "1 + este valor veces. 0 lo desactiva"),
-    PT("Quanto a seleção de pares favorece imagens próximas na ordem dos arquivos "
-       "de uma pasta; a pontuação de uma imagem vizinha conta 1 + este valor "
-       "vezes. 0 desliga"),
-    IT("Quanto la selezione delle coppie favorisce le immagini vicine nell'ordine "
-       "dei file di una cartella; il punteggio di un'immagine adiacente conta "
-       "1 + questo valore volte. 0 la disattiva"),
-    NL("Hoeveel de paarselectie beelden voortrekt die binnen een map dicht bij "
-       "elkaar in bestandsvolgorde liggen; de score van een naastgelegen beeld "
-       "telt 1 + deze waarde keer. 0 is uit"),
-    RU("Насколько отбор пар предпочитает изображения, близкие в порядке файлов "
-       "одной папки; оценка соседнего изображения умножается на 1 + это значение. "
-       "0 выключает"),
-    TR("Çift seçiminin bir klasörde dosya sırasında yakın görüntüleri ne kadar "
-       "kayırdığı; bitişik bir görüntünün puanı 1 + bu değer kat sayılır. 0 kapalı"));
+    EN("How much pair selection favours neighbours in file order: their score is "
+       "multiplied by up to 1 + this value. 0 turns it off."),
+    JA("ペア選択がファイル順の近傍をどれだけ優先するか。スコアは最大で 1 + この値 "
+       "倍になります。0 で無効。"),
+    ZH_HANS("像对筛选对文件顺序相邻图像的偏好程度：其分数最多乘以 1 + 此值。0 为关闭。"),
+    ZH_HANT("影像對篩選對檔案順序相鄰影像的偏好程度：其分數最多乘以 1 + 此值。0 為關閉。"),
+    KO("쌍 선택이 파일 순서상 이웃을 얼마나 우대하는지. 점수에 최대 1 + 이 값을 "
+       "곱합니다. 0 이면 끕니다."),
+    DE("Wie stark die Paarauswahl Nachbarn in Dateireihenfolge bevorzugt: ihr Wert wird "
+       "mit bis zu 1 + diesem Wert multipliziert. 0 schaltet es ab."),
+    FR("Préférence de la sélection de paires pour les voisines dans l'ordre des fichiers : "
+       "leur score est multiplié jusqu'à 1 + cette valeur. 0 la désactive."),
+    ES("Cuánto favorece la selección de pares a las vecinas en orden de archivos: su "
+       "puntuación se multiplica hasta por 1 + este valor. 0 lo desactiva."),
+    PT("Quanto a seleção de pares favorece vizinhas na ordem dos arquivos: a pontuação é "
+       "multiplicada por até 1 + este valor. 0 desliga."),
+    IT("Quanto la selezione delle coppie favorisce le vicine nell'ordine dei file: il "
+       "punteggio è moltiplicato fino a 1 + questo valore. 0 la disattiva."),
+    NL("Hoe sterk de paarselectie buren in bestandsvolgorde voortrekt: hun score wordt "
+       "met maximaal 1 + deze waarde vermenigvuldigd. 0 schakelt het uit."),
+    RU("Насколько выбор пар предпочитает соседей в порядке файлов: их оценка "
+       "умножается максимум на 1 + это значение. 0 отключает."),
+    TR("Çift seçiminin dosya sırasındaki komşuları ne kadar kayırdığı: puanları en fazla "
+       "1 + bu değer ile çarpılır. 0 kapatır."));
 
 SS_MSG(order_decay_help,
     EN("File-order distance, in images, over which the --order-weight bonus falls "

@@ -1089,40 +1089,30 @@ SS_MSG(model_pick_item,
     TR("{0}: görüntü {1}"));
 
 SS_MSG(model_pick_help,
-    EN("A reconstruction can end as several separate models when no images tie them "
-       "together. 1 is the largest; the others are the parts left apart. The list follows "
-       "the run: models that merge or are dropped leave it."),
-    JA("画像でつながらない部分があると、再構成は複数の別々のモデルで終わることがあります。1 "
-       "が最大のモデルで、ほかは離れたまま残った部分です。一覧は実行に合わせて変わり、統合または破棄されたモデルは消えます。"),
-    ZH_HANS("当没有图像把各部分连起来时，重建可能以多个独立的模型结束。1 是最大的模型，其余是分开留下的部分。列表随运行更新：合并或被丢弃的模型会从中消失。"),
-    ZH_HANT("當沒有影像把各部分連起來時，重建可能以多個獨立的模型結束。1 是最大的模型，其餘是分開留下的部分。清單隨執行更新：合併或被捨棄的模型會從中消失。"),
-    KO("이미지로 이어지지 않는 부분이 있으면 재구성은 여러 개의 별도 모델로 끝날 수 있습니다. 1이 가장 큰 모델이고, 나머지는 떨어져 남은 부분입니다. "
-       "목록은 실행을 따라가며, 합쳐지거나 버려진 모델은 사라집니다."),
-    DE("Eine Rekonstruktion kann in mehreren getrennten Modellen enden, wenn keine Bilder "
-       "sie verbinden. 1 ist das größte; die anderen sind die abgetrennt gebliebenen Teile. "
-       "Die Liste folgt dem Lauf: zusammengeführte oder verworfene Modelle verschwinden "
-       "daraus."),
-    FR("Une reconstruction peut aboutir à plusieurs modèles séparés quand aucune image ne "
-       "les relie. 1 est le plus grand ; les autres sont les parties restées à part. La "
-       "liste suit le calcul : les modèles fusionnés ou écartés en disparaissent."),
-    ES("Una reconstrucción puede terminar en varios modelos separados cuando ninguna imagen "
-       "los une. 1 es el mayor; los demás son las partes que quedaron aparte. La lista "
-       "sigue la ejecución: los modelos que se fusionan o se descartan desaparecen de ella."),
-    PT("Uma reconstrução pode terminar em vários modelos separados quando nenhuma imagem os "
-       "liga. 1 é o maior; os outros são as partes que ficaram à parte. A lista acompanha a "
-       "execução: modelos que se fundem ou são descartados saem dela."),
-    IT("Una ricostruzione può finire in più modelli separati quando nessuna immagine li "
-       "collega. 1 è il più grande; gli altri sono le parti rimaste a sé. L'elenco segue "
-       "l'esecuzione: i modelli uniti o scartati ne escono."),
-    NL("Een reconstructie kan eindigen in meerdere losse modellen als geen beelden ze "
-       "verbinden. 1 is het grootste; de andere zijn de delen die apart bleven. De lijst "
-       "volgt de run: samengevoegde of weggegooide modellen verdwijnen eruit."),
-    RU("Реконструкция может закончиться несколькими отдельными моделями, если их не "
-       "связывают снимки. 1 — крупнейшая; остальные — части, оставшиеся отдельно. Список "
-       "следует за расчётом: объединённые или отброшенные модели из него исчезают."),
-    TR("Hiçbir görüntü onları bağlamadığında bir yeniden yapılandırma birkaç ayrı modelle "
-       "bitebilir. 1 en büyüğüdür; diğerleri ayrı kalan parçalardır. Liste çalışmayı izler: "
-       "birleşen ya da atılan modeller listeden çıkar."));
+    EN("Separate models appear when no images link their parts. 1 is the largest; merged or "
+       "dropped models leave the list."),
+    JA("画像でつながらない部分は別々のモデルになります。1 が最大で、統合または破棄されたモデルは"
+       "一覧から消えます。"),
+    ZH_HANS("没有图像相连的部分会成为独立的模型。1 是最大的；合并或被丢弃的模型会从列表中消失。"),
+    ZH_HANT("沒有影像相連的部分會成為獨立的模型。1 是最大的；合併或被捨棄的模型會從清單中消失。"),
+    KO("이미지로 이어지지 않는 부분은 별도 모델이 됩니다. 1이 가장 크며, 합쳐지거나 버려진 모델"
+       "은 목록에서 사라집니다."),
+    DE("Teile ohne Bildverbindung werden getrennte Modelle. 1 ist das größte; zusammengeführte "
+       "oder verworfene verlassen die Liste."),
+    FR("Les parties sans image de liaison forment des modèles séparés. 1 est le plus grand ; "
+       "fusionnés ou écartés, ils quittent la liste."),
+    ES("Las partes sin imágenes que las unan forman modelos separados. 1 es el mayor; los "
+       "fusionados o descartados salen de la lista."),
+    PT("Partes sem imagens que as liguem viram modelos separados. 1 é o maior; modelos fundidos "
+       "ou descartados saem da lista."),
+    IT("Le parti senza immagini che le colleghino formano modelli separati. 1 è il più grande; "
+       "quelli uniti o scartati escono dall'elenco."),
+    NL("Delen zonder verbindende beelden worden aparte modellen. 1 is het grootste; "
+       "samengevoegde of weggegooide verdwijnen."),
+    RU("Части без связывающих снимков становятся отдельными моделями. 1 — крупнейшая; "
+       "объединённые или отброшенные пропадают из списка."),
+    TR("Görüntülerle bağlanmayan parçalar ayrı model olur. 1 en büyüğüdür; birleşen ya da "
+       "atılan modeller listeden çıkar."));
 
 SS_MSG(camera_color,
     EN("Camera colour"),
@@ -1185,125 +1175,94 @@ SS_MSG(camera_color_points,
     TR("3B nokta sayısına göre"));
 
 SS_MSG(camera_color_help,
-    EN("Colours each placed camera by how well it fits the model, from red through yellow "
-       "to green. Reprojection error uses the image's mean error, on a straight scale from "
-       "a third of progressive alignment's starting pixel error (red) to a third of its "
-       "final one (green), since an image's mean sits near a third of the limit it was "
-       "placed under; cameras start red and turn green as the attempts tighten. Without "
-       "progressive alignment the scale runs from a third of the maximum error, 1 px unless "
-       "set otherwise, down to 0. 3D points is how many of the image's features the model "
-       "uses, against the median of the placed images from the same folder: green at the "
-       "median or above, red at an eighth of it or fewer."),
-    JA("配置済みの各カメラを、モデルへの当てはまりの良さで赤から黄、緑へと色分けします。再投影誤差には画像の平均誤差を使い、段階的な位置合わせの開始ピクセル誤差の 3 分の "
-       "1 (赤) から最終誤差の 3 分の 1 (緑) までの直線的な目盛りで表します。画像の平均誤差は、配置されたときの上限のおよそ 3 分の 1 "
-       "になるためです。カメラは赤で始まり、試行が締まるにつれて緑になります。段階的な位置合わせを使わない場合は、最大誤差の 3 分の 1 (指定がなければ 1 px) から "
-       "0 までの目盛りです。3D 点は、画像の特徴点のうちモデルが使っている数を、同じフォルダーの配置済み画像の中央値と比べたものです。中央値以上で緑、その 8 分の 1 "
-       "以下で赤です。"),
-    ZH_HANS("按每台已放置相机与模型的吻合程度着色，从红经黄到绿。重投影误差取该图像的平均误差，按从渐进对齐起始像素误差的三分之一（红）到最终误差的三分之一（绿）的线性刻度着色，因为图像的平均误差通常约为其放置时上限的三分之一；相机以红色开始，随尝试收紧逐渐变绿。不使用渐进对齐时，刻度从最大误差的三分之一（未设置时为 "
-            "1 px）到 0。3D 点是模型用到的该图像特征点数量，与同一文件夹中已放置图像的中位数比较：达到中位数及以上为绿，不足其八分之一为红。"),
-    ZH_HANT("依每台已放置相機與模型的吻合程度著色，從紅經黃到綠。重投影誤差取該影像的平均誤差，依從漸進對齊起始像素誤差的三分之一（紅）到最終誤差的三分之一（綠）的線性刻度著色，因為影像的平均誤差通常約為其放置時上限的三分之一；相機以紅色開始，隨嘗試收緊逐漸變綠。不使用漸進對齊時，刻度從最大誤差的三分之一（未設定時為 "
-            "1 px）到 0。3D 點是模型用到的該影像特徵點數量，與同一資料夾中已放置影像的中位數比較：達到中位數及以上為綠，不足其八分之一為紅。"),
-    KO("배치된 각 카메라를 모델과 얼마나 잘 맞는지에 따라 빨강에서 노랑, 초록으로 표시합니다. 재투영 오차는 이미지의 평균 오차를 쓰며, 단계적 정렬의 "
-       "시작 픽셀 오차의 3분의 1(빨강)부터 최종 오차의 3분의 1(초록)까지의 직선 눈금으로 나타냅니다. 이미지의 평균 오차는 배치될 때의 한계의 약 "
-       "3분의 1이기 때문입니다. 카메라는 빨강으로 시작해 시도가 조여질수록 초록이 됩니다. 단계적 정렬을 쓰지 않으면 최대 오차의 3분의 1(지정하지 "
-       "않으면 1 px)부터 0까지의 눈금입니다. 3D 점은 모델이 사용하는 이미지 특징점 수를 같은 폴더에서 배치된 이미지의 중앙값과 비교한 것입니다. "
-       "중앙값 이상이면 초록, 그 8분의 1 이하면 빨강입니다."),
-    DE("Färbt jede platzierte Kamera danach, wie gut sie zum Modell passt, von Rot über "
-       "Gelb bis Grün. Der Rückprojektionsfehler nimmt den mittleren Fehler des Bildes, auf "
-       "einer linearen Skala von einem Drittel des Start-Pixelfehlers (Rot) bis zu einem "
-       "Drittel des End-Pixelfehlers (Grün) der schrittweisen Ausrichtung, denn der "
-       "Mittelwert eines Bildes liegt nahe einem Drittel der Grenze, unter der es platziert "
-       "wurde; die Kameras beginnen rot und werden grün, je enger die Versuche werden. Ohne "
-       "schrittweise Ausrichtung reicht die Skala von einem Drittel des Maximalfehlers, 1 "
-       "px sofern nicht anders gesetzt, bis 0. 3D-Punkte ist, wie viele Merkmale des Bildes "
-       "das Modell nutzt, gemessen am Median der platzierten Bilder desselben Ordners: Grün "
-       "ab dem Median, Rot bei einem Achtel davon oder weniger."),
-    FR("Colore chaque caméra placée selon son accord avec le modèle, du rouge au vert en "
-       "passant par le jaune. L'erreur de reprojection prend l'erreur moyenne de l'image, "
-       "sur une échelle linéaire allant d'un tiers de l'erreur de départ (rouge) à un tiers "
-       "de l'erreur finale (vert) de l'alignement progressif, car la moyenne d'une image se "
-       "situe vers un tiers de la limite sous laquelle elle a été placée ; les caméras "
-       "commencent en rouge et virent au vert à mesure que les tentatives se resserrent. "
-       "Sans alignement progressif, l'échelle va d'un tiers de l'erreur maximale, 1 px sauf "
-       "réglage contraire, jusqu'à 0. Les points 3D sont le nombre de points clés de "
-       "l'image que le modèle utilise, comparé à la médiane des images placées du même "
-       "dossier : vert à la médiane ou au-dessus, rouge à un huitième ou moins."),
-    ES("Colorea cada cámara colocada según lo bien que encaja en el modelo, de rojo a verde "
-       "pasando por amarillo. El error de reproyección usa el error medio de la imagen, en "
-       "una escala lineal desde un tercio del error de píxel inicial (rojo) hasta un tercio "
-       "del final (verde) de la alineación progresiva, porque la media de una imagen ronda "
-       "un tercio del límite con el que se colocó; las cámaras empiezan en rojo y se "
-       "vuelven verdes a medida que los intentos se ajustan. Sin alineación progresiva, la "
-       "escala va de un tercio del error máximo, 1 px salvo que se indique otro, hasta 0. "
-       "Los puntos 3D son cuántos puntos clave de la imagen usa el modelo, comparados con "
-       "la mediana de las imágenes colocadas de la misma carpeta: verde en la mediana o por "
-       "encima, rojo en un octavo de ella o menos."),
-    PT("Colore cada câmera posicionada pelo quanto ela se ajusta ao modelo, do vermelho ao "
-       "verde passando pelo amarelo. O erro de reprojeção usa o erro médio da imagem, numa "
-       "escala linear de um terço do erro de pixel inicial (vermelho) a um terço do final "
-       "(verde) do alinhamento progressivo, pois a média de uma imagem fica perto de um "
-       "terço do limite sob o qual ela foi posicionada; as câmeras começam vermelhas e "
-       "ficam verdes à medida que as tentativas se ajustam. Sem alinhamento progressivo, a "
-       "escala vai de um terço do erro máximo, 1 px salvo outra definição, até 0. Pontos 3D "
-       "é quantos pontos-chave da imagem o modelo usa, comparado à mediana das imagens "
-       "posicionadas da mesma pasta: verde na mediana ou acima, vermelho em um oitavo dela "
-       "ou menos."),
-    IT("Colora ogni fotocamera posizionata in base a quanto si accorda con il modello, dal "
-       "rosso al verde passando per il giallo. L'errore di riproiezione usa l'errore medio "
-       "dell'immagine, su una scala lineare da un terzo dell'errore iniziale in pixel "
-       "(rosso) a un terzo di quello finale (verde) dell'allineamento progressivo, perché "
-       "la media di un'immagine si aggira su un terzo del limite con cui è stata "
-       "posizionata; le fotocamere iniziano rosse e diventano verdi man mano che i "
-       "tentativi si stringono. Senza allineamento progressivo la scala va da un terzo "
-       "dell'errore massimo, 1 px se non impostato altrimenti, fino a 0. I punti 3D sono "
-       "quanti punti chiave dell'immagine il modello usa, rispetto alla mediana delle "
-       "immagini posizionate della stessa cartella: verde dalla mediana in su, rosso a un "
-       "ottavo di essa o meno."),
-    NL("Kleurt elke geplaatste camera naar hoe goed die bij het model past, van rood via "
-       "geel naar groen. De herprojectiefout neemt de gemiddelde fout van het beeld, op een "
-       "lineaire schaal van een derde van de begin-pixelfout (rood) tot een derde van de "
-       "eind-pixelfout (groen) van de stapsgewijze uitlijning, omdat het gemiddelde van een "
-       "beeld rond een derde ligt van de grens waaronder het geplaatst werd; camera's "
-       "beginnen rood en worden groen naarmate de pogingen strakker worden. Zonder "
-       "stapsgewijze uitlijning loopt de schaal van een derde van de maximale fout, 1 px "
-       "tenzij anders ingesteld, tot 0. 3D-punten is hoeveel kenmerken van het beeld het "
-       "model gebruikt, vergeleken met de mediaan van de geplaatste beelden uit dezelfde "
-       "map: groen vanaf de mediaan, rood bij een achtste ervan of minder."),
-    RU("Окрашивает каждую размещённую камеру по тому, насколько хорошо она согласуется с "
-       "моделью, от красного через жёлтый к зелёному. Для ошибки перепроекции берётся "
-       "средняя ошибка снимка на линейной шкале от трети начальной ошибки в пикселях "
-       "(красный) до трети конечной (зелёный) постепенного выравнивания, так как средняя "
-       "ошибка снимка обычно близка к трети предела, при котором он размещён; камеры "
-       "начинают красными и зеленеют по мере ужесточения попыток. Без постепенного "
-       "выравнивания шкала идёт от трети максимальной ошибки (1 px, если не задано иное) до "
-       "0. 3D-точки — сколько признаков снимка использует модель, относительно медианы "
-       "размещённых снимков из той же папки: зелёный — на уровне медианы и выше, красный — "
-       "восьмая её часть и меньше."),
-    TR("Yerleşen her kamerayı modele ne kadar iyi uyduğuna göre kırmızıdan sarıya, oradan "
-       "yeşile renklendirir. Yeniden izdüşüm hatası, görüntünün ortalama hatasını kademeli "
-       "hizalamanın başlangıç piksel hatasının üçte birinden (kırmızı) son hatasının üçte "
-       "birine (yeşil) uzanan doğrusal bir ölçekte kullanır; çünkü bir görüntünün "
-       "ortalaması, yerleştirildiği sınırın üçte biri civarındadır. Kameralar kırmızı "
-       "başlar ve denemeler sıkılaştıkça yeşile döner. Kademeli hizalama yoksa ölçek, aksi "
-       "ayarlanmadıkça 1 px olan en büyük hatanın üçte birinden 0'a uzanır. 3B noktalar, "
-       "modelin görüntünün özniteliklerinden kaçını kullandığıdır ve aynı klasörde yerleşen "
-       "görüntülerin medyanıyla karşılaştırılır: medyan ve üstü yeşil, onun sekizde biri ve "
-       "altı kırmızı."));
+    EN("Colours each placed camera from red to green by how well it fits the model.\n"
+       "- Reprojection error: red at a third of the starting error, green at a third of the "
+       "final one.\n"
+       "- 3D points: features used vs. the folder's median; green at or above it, red at an "
+       "eighth or less."),
+    JA("配置済みの各カメラを、モデルへの当てはまりで赤から緑に色分けします。\n"
+       "- 再投影誤差: 画像の平均誤差。開始誤差の 3 分の 1 (赤) から最終誤差の 3 分の 1 (緑)。\n"
+       "- 3D 点: モデルが使う特徴点の数。同じフォルダーの中央値以上で緑、8 分の 1 以下で赤。"),
+    ZH_HANS("按与模型的吻合程度，将每台已放置相机从红到绿着色。\n"
+            "- 重投影误差：图像的平均误差，从起始误差的三分之一（红）到最终误差的三分之一（绿）"
+            "。\n"
+            "- 3D 点：模型用到的特征点数，与同一文件夹的中位数比较：达到中位数为绿，不足八分之一"
+            "为红。"),
+    ZH_HANT("依與模型的吻合程度，將每台已放置相機從紅到綠著色。\n"
+            "- 重投影誤差：影像的平均誤差，從起始誤差的三分之一（紅）到最終誤差的三分之一（綠）"
+            "。\n"
+            "- 3D 點：模型用到的特徵點數，與同一資料夾的中位數比較：達到中位數為綠，不足八分之一"
+            "為紅。"),
+    KO("배치된 각 카메라를 모델과 맞는 정도에 따라 빨강에서 초록으로 표시합니다.\n"
+       "- 재투영 오차: 이미지의 평균 오차로, 시작 오차의 3분의 1(빨강)부터 최종 오차의 3분의 1("
+       "초록)까지.\n"
+       "- 3D 점: 모델이 쓰는 특징점 수를 같은 폴더의 중앙값과 비교. 중앙값 이상이면 초록, 8분의 "
+       "1 이하면 빨강."),
+    DE("Färbt jede platzierte Kamera von Rot bis Grün danach, wie gut sie zum Modell passt.\n"
+       "- Rückprojektionsfehler: Rot bei einem Drittel des Startfehlers, Grün bei einem Drittel "
+       "des Endfehlers.\n"
+       "- 3D-Punkte: genutzte Merkmale gegenüber dem Ordner-Median; Grün ab Median, Rot bei "
+       "einem Achtel oder weniger."),
+    FR("Colore chaque caméra placée du rouge au vert selon son accord avec le modèle.\n"
+       "- Erreur de reprojection : rouge à un tiers de l'erreur de départ, vert à un tiers de "
+       "l'erreur finale.\n"
+       "- Points 3D : points clés utilisés vs médiane du dossier ; vert dès la médiane, rouge à "
+       "un huitième ou moins."),
+    ES("Colorea cada cámara colocada de rojo a verde según lo bien que encaja con el modelo.\n"
+       "- Error de reproyección: rojo a un tercio del error inicial, verde a un tercio del "
+       "final.\n"
+       "- Puntos 3D: puntos clave usados vs. mediana de la carpeta; verde desde la mediana, "
+       "rojo con un octavo o menos."),
+    PT("Colore cada câmera posicionada de vermelho a verde conforme o ajuste ao modelo.\n"
+       "- Erro de reprojeção: vermelho a um terço do erro inicial, verde a um terço do final.\n"
+       "- Pontos 3D: pontos-chave usados vs. mediana da pasta; verde desde a mediana, vermelho "
+       "com um oitavo ou menos."),
+    IT("Colora ogni fotocamera posizionata dal rosso al verde in base a quanto si accorda con "
+       "il modello.\n"
+       "- Errore di riproiezione: rosso a un terzo dell'errore iniziale, verde a un terzo di "
+       "quello finale.\n"
+       "- Punti 3D: punti chiave usati vs. mediana della cartella; verde dalla mediana, rosso a "
+       "un ottavo o meno."),
+    NL("Kleurt elke geplaatste camera van rood naar groen naar hoe goed die bij het model past.\n"
+       "- Herprojectiefout: rood bij een derde van de beginfout, groen bij een derde van de "
+       "eindfout.\n"
+       "- 3D-punten: gebruikte kenmerken vs. mediaan van de map; groen vanaf de mediaan, rood "
+       "bij een achtste of minder."),
+    RU("Окрашивает каждую размещённую камеру от красного к зелёному по тому, насколько она "
+       "согласуется с моделью.\n"
+       "- Ошибка перепроекции: красный при трети начальной ошибки, зелёный при трети конечной.\n"
+       "- 3D-точки: используемые признаки к медиане папки; зелёный от медианы, красный от "
+       "восьмой части и ниже."),
+    TR("Yerleşen her kamerayı modele ne kadar uyduğuna göre kırmızıdan yeşile renklendirir.\n"
+       "- Yeniden izdüşüm hatası: kırmızı başlangıç hatasının, yeşil son hatanın üçte biridir.\n"
+       "- 3B noktalar: kullanılan öznitelikler, klasör medyanına göre; medyan ve üstü yeşil, "
+       "sekizde biri ve altı kırmızı."));
 
 SS_MSG(images_help,
-    EN("Every image of the model as it stands: whether it is placed, how many 3D points it sees and how far those points land from where the image saw them. Click a column to sort, and an image to see it beside the list; an image placed with few points or a large error is the first to doubt."),
-    JA("現時点のモデルの全画像です。配置されたか、いくつの 3D 点が見えているか、その点が画像上の観測位置からどれだけずれるかを示します。列をクリックすると並べ替え、画像をクリックすると一覧の横に表示します。点が少ない、または誤差が大きい配置済み画像から疑ってください。"),
-    ZH_HANS("当前模型中的所有图像：是否已放置、能看到多少 3D 点，以及这些点偏离图像观测位置多远。点击列可排序，点击图像可在列表旁查看；点少或误差大的已放置图像最值得怀疑。"),
-    ZH_HANT("目前模型中的所有影像：是否已放置、能看到多少 3D 點，以及這些點偏離影像觀測位置多遠。點選欄位可排序，點選影像可在清單旁檢視；點少或誤差大的已放置影像最值得懷疑。"),
-    KO("현재 모델의 모든 이미지입니다. 배치 여부, 보이는 3D 점 수, 그 점들이 이미지에서 관측된 위치와 얼마나 떨어지는지를 보여 줍니다. 열을 클릭하면 정렬되고, 이미지를 클릭하면 목록 옆에 표시됩니다. 점이 적거나 오차가 큰 배치된 이미지를 먼저 의심하세요."),
-    DE("Alle Bilder des Modells, wie es gerade steht: ob sie platziert sind, wie viele 3D-Punkte sie sehen und wie weit diese Punkte von der Stelle liegen, an der das Bild sie sah. Klicken Sie auf eine Spalte, um zu sortieren, und auf ein Bild, um es neben der Liste zu sehen; ein platziertes Bild mit wenigen Punkten oder großem Fehler ist das erste, dem zu misstrauen ist."),
-    FR("Toutes les images du modèle en l'état : placées ou non, combien de points 3D elles voient et à quelle distance ces points tombent de l'endroit où l'image les a vus. Cliquez sur une colonne pour trier, et sur une image pour la voir à côté de la liste ; une image placée avec peu de points ou une grande erreur est la première à remettre en question."),
-    ES("Todas las imágenes del modelo tal como está: si están colocadas, cuántos puntos 3D ven y a qué distancia caen esos puntos de donde la imagen los vio. Haga clic en una columna para ordenar y en una imagen para verla junto a la lista; una imagen colocada con pocos puntos o un error grande es la primera de la que dudar."),
-    PT("Todas as imagens do modelo como está: se estão posicionadas, quantos pontos 3D veem e a que distância esses pontos caem de onde a imagem os viu. Clique em uma coluna para ordenar e em uma imagem para vê-la ao lado da lista; uma imagem posicionada com poucos pontos ou erro grande é a primeira a ser posta em dúvida."),
-    IT("Tutte le immagini del modello così com'è: se sono posizionate, quanti punti 3D vedono e quanto lontano cadono quei punti da dove l'immagine li ha visti. Fai clic su una colonna per ordinare e su un'immagine per vederla accanto all'elenco; un'immagine posizionata con pochi punti o un errore grande è la prima di cui dubitare."),
-    NL("Alle beelden van het model zoals het nu is: of ze geplaatst zijn, hoeveel 3D-punten ze zien en hoe ver die punten liggen van waar het beeld ze zag. Klik op een kolom om te sorteren en op een beeld om het naast de lijst te zien; een geplaatst beeld met weinig punten of een grote fout is het eerste om aan te twijfelen."),
-    RU("Все снимки модели в текущем состоянии: размещён ли снимок, сколько 3D-точек он видит и как далеко эти точки от того места, где их увидел снимок. Щёлкните столбец, чтобы отсортировать, и снимок, чтобы увидеть его рядом со списком; размещённый снимок с малым числом точек или большой ошибкой — первый кандидат на сомнение."),
-    TR("Modelin şu anki tüm görüntüleri: yerleşip yerleşmediği, kaç 3B nokta gördüğü ve bu noktaların görüntünün onları gördüğü yerden ne kadar uzağa düştüğü. Sıralamak için bir sütuna, listenin yanında görmek için bir görüntüye tıklayın; az noktayla veya büyük hatayla yerleşen bir görüntü, ilk şüphelenilecek olandır."));
+    EN("Every image: placed or not, its 3D points and reprojection error. Click a column to "
+       "sort, an image to view it."),
+    JA("全画像の配置状況、3D 点の数、再投影誤差を表示します。列をクリックで並べ替え、画像をクリ"
+       "ックで表示します。"),
+    ZH_HANS("列出所有图像：是否已放置、3D 点数和重投影误差。点击列可排序，点击图像可查看。"),
+    ZH_HANT("列出所有影像：是否已放置、3D 點數和重投影誤差。點選欄位可排序，點選影像可檢視。"),
+    KO("모든 이미지의 배치 여부, 3D 점 수, 재투영 오차를 보여 줍니다. 열을 클릭하면 정렬되고, 이"
+       "미지를 클릭하면 표시됩니다."),
+    DE("Alle Bilder: platziert, 3D-Punkte, Rückprojektionsfehler. Spalte anklicken sortiert, "
+       "Bild anklicken zeigt es."),
+    FR("Toutes les images : placement, points 3D, erreur de reprojection. Cliquez une colonne "
+       "pour trier, une image pour la voir."),
+    ES("Todas las imágenes: colocación, puntos 3D, error de reproyección. Clic en una columna "
+       "para ordenar, en una imagen para verla."),
+    PT("Todas as imagens: posicionamento, pontos 3D, erro de reprojeção. Clique em uma coluna "
+       "para ordenar, em uma imagem para vê-la."),
+    IT("Tutte le immagini: posizionamento, punti 3D, errore di riproiezione. Clic su una "
+       "colonna per ordinare, su un'immagine per vederla."),
+    NL("Alle beelden: geplaatst, 3D-punten, herprojectiefout. Klik op een kolom om te sorteren, "
+       "op een beeld om het te zien."),
+    RU("Все снимки: размещение, 3D-точки, ошибка перепроекции. Щёлкните столбец для сортировки, "
+       "снимок — чтобы открыть."),
+    TR("Tüm görüntüler: yerleşme, 3B noktalar, yeniden izdüşüm hatası. Sıralamak için sütuna, "
+       "görmek için görüntüye tıklayın."));
 
 SS_MSG(images_view_from_camera,
     EN("View from this camera"),
@@ -1321,19 +1280,32 @@ SS_MSG(images_view_from_camera,
     TR("Bu kameradan bak"));
 
 SS_MSG(images_view_from_camera_help,
-    EN("Shows the model from where this image was taken, at its lens, so the points can be compared with the photo. Only for a placed image of the model on screen."),
-    JA("この画像を撮った位置から、そのレンズでモデルを表示し、点と写真を見比べられるようにします。表示中のモデルに配置された画像だけが対象です。"),
-    ZH_HANS("从拍摄此图像的位置、以其镜头显示模型，以便将点与照片对照。仅适用于屏幕上模型中已放置的图像。"),
-    ZH_HANT("從拍攝此影像的位置、以其鏡頭顯示模型，以便將點與照片對照。僅適用於畫面上模型中已放置的影像。"),
-    KO("이 이미지를 찍은 위치에서 그 렌즈로 모델을 보여 주어 점과 사진을 비교할 수 있게 합니다. 화면의 모델에 배치된 이미지에만 쓸 수 있습니다."),
-    DE("Zeigt das Modell von dort, wo dieses Bild aufgenommen wurde, mit seinem Objektiv, sodass sich die Punkte mit dem Foto vergleichen lassen. Nur für ein platziertes Bild des angezeigten Modells."),
-    FR("Montre le modèle depuis l'endroit où cette image a été prise, avec son objectif, pour comparer les points à la photo. Seulement pour une image placée du modèle affiché."),
-    ES("Muestra el modelo desde donde se tomó esta imagen, con su objetivo, para comparar los puntos con la foto. Solo para una imagen colocada del modelo en pantalla."),
-    PT("Mostra o modelo de onde esta imagem foi tirada, com sua lente, para comparar os pontos com a foto. Apenas para uma imagem posicionada do modelo na tela."),
-    IT("Mostra il modello da dove è stata scattata questa immagine, con il suo obiettivo, per confrontare i punti con la foto. Solo per un'immagine posizionata del modello sullo schermo."),
-    NL("Toont het model vanaf de plek waar dit beeld is gemaakt, met zijn lens, zodat de punten met de foto te vergelijken zijn. Alleen voor een geplaatst beeld van het getoonde model."),
-    RU("Показывает модель с того места, откуда сделан этот снимок, с его объективом, чтобы сравнить точки с фотографией. Только для размещённого снимка модели на экране."),
-    TR("Modeli bu görüntünün çekildiği yerden, onun lensiyle gösterir; böylece noktalar fotoğrafla karşılaştırılabilir. Yalnızca ekrandaki modelde yerleşmiş bir görüntü için."));
+    EN("Shows the model from this image's camera, to compare points with the photo. Only for a "
+       "placed image of the shown model."),
+    JA("このカメラの位置とレンズでモデルを表示し、点と写真を見比べます。表示中のモデルに配置され"
+       "た画像のみ。"),
+    ZH_HANS("从此图像的相机位置和镜头显示模型，便于将点与照片对照。仅适用于所显示模型中已放置的"
+            "图像。"),
+    ZH_HANT("從此影像的相機位置和鏡頭顯示模型，便於將點與照片對照。僅適用於所顯示模型中已放置的"
+            "影像。"),
+    KO("이 이미지의 카메라에서 모델을 보여 주어 점과 사진을 비교합니다. 표시된 모델에 배치된 이"
+       "미지에만 쓸 수 있습니다."),
+    DE("Zeigt das Modell aus der Kamera dieses Bildes, zum Vergleich von Punkten und Foto. Nur "
+       "für ein platziertes Bild des angezeigten Modells."),
+    FR("Montre le modèle depuis la caméra de cette image, pour comparer points et photo. "
+       "Seulement pour une image placée du modèle affiché."),
+    ES("Muestra el modelo desde la cámara de esta imagen, para comparar puntos y foto. Solo "
+       "para una imagen colocada del modelo mostrado."),
+    PT("Mostra o modelo da câmera desta imagem, para comparar pontos e foto. Apenas para uma "
+       "imagem posicionada do modelo exibido."),
+    IT("Mostra il modello dalla fotocamera di questa immagine, per confrontare punti e foto. "
+       "Solo per un'immagine posizionata del modello mostrato."),
+    NL("Toont het model vanuit de camera van dit beeld, om punten en foto te vergelijken. "
+       "Alleen voor een geplaatst beeld van het getoonde model."),
+    RU("Показывает модель из камеры этого снимка, для сравнения точек с фото. Только для "
+       "размещённого снимка показанной модели."),
+    TR("Modeli bu görüntünün kamerasından gösterir; noktalar fotoğrafla karşılaştırılır. "
+       "Yalnızca gösterilen modelde yerleşmiş görüntü için."));
 
 SS_MSG(images_no_file,
     EN("The image file was not found in the dataset's image folder."),
@@ -7187,78 +7159,65 @@ SS_MSG(progressive_alignment,
     TR("Kademeli hizalama"));
 
 SS_MSG(progressive_alignment_help,
-    EN("For captures where some images don't align. Runs in two stages. Stage 1 aligns "
-       "everything with a loose pixel error, then again with tighter ones, so images "
-       "rejected only because the lens was not yet solved can get in; it re-checks the "
-       "matches the run already has and finds no new ones. Stage 2 takes the images still "
-       "left out, detects their features again in more detail and matches them again; this "
-       "is the stage that can add matches. Slower than a single alignment."),
-    JA("一部の画像が位置合わせできない撮影向けです。2 段階で動きます。段階 1 "
-       "は、まず緩いピクセル誤差で全体を位置合わせし、次第に厳しい誤差でやり直します。レンズがまだ求まっていないだけで外された画像を取り込めます。使うのは既にあるマッチだけで、新しいマッチは見つけません。段階 "
-       "2 は、まだ外れている画像の特徴点をより細かく検出し直してマッチし直します。新しいマッチを加えられるのはこの段階です。1 回の位置合わせより時間がかかります。"),
-    ZH_HANS("适用于部分图像无法对齐的拍摄。分两个阶段进行。阶段 1 "
-            "先用宽松的像素误差对齐全部图像，再逐步收紧误差重新对齐，让仅因镜头尚未解算而被拒绝的图像得以加入；它只复查已有的匹配，不会找到新的匹配。阶段 2 "
-            "对仍未对齐的图像更细致地重新检测特征并重新匹配，能增加匹配的是这一阶段。比单次对齐更慢。"),
-    ZH_HANT("適用於部分影像無法對齊的拍攝。分兩個階段進行。階段 1 "
-            "先用寬鬆的像素誤差對齊全部影像，再逐步收緊誤差重新對齊，讓僅因鏡頭尚未解算而被拒絕的影像得以加入；它只複查已有的匹配，不會找到新的匹配。階段 2 "
-            "對仍未對齊的影像更細緻地重新偵測特徵並重新匹配，能增加匹配的是這一階段。比單次對齊更慢。"),
-    KO("일부 이미지가 정렬되지 않는 촬영용입니다. 두 단계로 진행합니다. 1단계는 느슨한 픽셀 오차로 전체를 정렬한 뒤 점점 엄격한 오차로 다시 정렬하여, "
-       "렌즈가 아직 풀리지 않아 거부된 이미지를 받아들입니다. 이미 있는 매칭만 다시 확인하며 새 매칭은 찾지 않습니다. 2단계는 아직 빠진 이미지의 "
-       "특징점을 더 자세히 다시 검출하고 다시 매칭합니다. 새 매칭을 더할 수 있는 단계는 이것입니다. 한 번의 정렬보다 느립니다."),
-    DE("Für Aufnahmen, bei denen sich einige Bilder nicht ausrichten lassen. Läuft in zwei "
-       "Stufen. Stufe 1 richtet alles mit einem großzügigen Pixelfehler aus und dann erneut "
-       "mit engeren, sodass Bilder hineinkommen, die nur abgelehnt wurden, weil das "
-       "Objektiv noch nicht bestimmt war; sie prüft nur die vorhandenen Zuordnungen erneut "
-       "und findet keine neuen. Stufe 2 erkennt die Merkmale der noch fehlenden Bilder "
-       "genauer neu und ordnet sie erneut zu; nur diese Stufe kann Zuordnungen hinzufügen. "
-       "Langsamer als eine einzelne Ausrichtung."),
-    FR("Pour les prises de vue dont certaines images ne s'alignent pas. Se déroule en deux "
-       "étapes. L'étape 1 aligne tout avec une erreur en pixels large, puis à nouveau avec "
-       "des erreurs plus serrées, pour faire entrer les images rejetées seulement parce que "
-       "l'objectif n'était pas encore résolu ; elle revérifie les correspondances "
-       "existantes et n'en trouve pas de nouvelles. L'étape 2 redétecte plus finement les "
-       "points clés des images encore exclues et les met à nouveau en correspondance ; "
-       "c'est elle qui peut ajouter des correspondances. Plus lent qu'un seul alignement."),
-    ES("Para capturas en las que algunas imágenes no se alinean. Funciona en dos etapas. La "
-       "etapa 1 alinea todo con un error de píxel amplio y luego otra vez con errores más "
-       "estrictos, para que entren imágenes rechazadas solo porque el objetivo aún no "
-       "estaba resuelto; solo revisa las correspondencias existentes y no encuentra nuevas. "
-       "La etapa 2 vuelve a detectar con más detalle los puntos clave de las imágenes que "
-       "siguen fuera y las vuelve a emparejar; es la etapa que puede añadir "
-       "correspondencias. Más lento que una sola alineación."),
-    PT("Para capturas em que algumas imagens não se alinham. Funciona em duas etapas. A "
-       "etapa 1 alinha tudo com um erro de pixel amplo e depois de novo com erros mais "
-       "rígidos, para que entrem imagens rejeitadas só porque a lente ainda não estava "
-       "resolvida; ela só reverifica as correspondências existentes e não encontra novas. A "
-       "etapa 2 detecta de novo, com mais detalhe, os pontos-chave das imagens ainda de "
-       "fora e as corresponde de novo; é a etapa que pode acrescentar correspondências. "
-       "Mais lento que um único alinhamento."),
-    IT("Per riprese in cui alcune immagini non si allineano. Procede in due fasi. La fase 1 "
-       "allinea tutto con un errore in pixel ampio e poi di nuovo con errori più stretti, "
-       "così entrano le immagini scartate solo perché l'obiettivo non era ancora risolto; "
-       "ricontrolla soltanto le corrispondenze esistenti e non ne trova di nuove. La fase 2 "
-       "rileva di nuovo, più in dettaglio, i punti chiave delle immagini ancora escluse e "
-       "le abbina di nuovo; è la fase che può aggiungere corrispondenze. Più lento di un "
-       "solo allineamento."),
-    NL("Voor opnames waarbij sommige beelden niet uitlijnen. Werkt in twee fasen. Fase 1 "
-       "lijnt alles uit met een ruime pixelfout en daarna opnieuw met strengere, zodat "
-       "beelden binnenkomen die alleen werden afgewezen omdat de lens nog niet was "
-       "opgelost; ze controleert alleen de bestaande overeenkomsten opnieuw en vindt geen "
-       "nieuwe. Fase 2 detecteert de kenmerken van de beelden die nog buiten vallen opnieuw "
-       "en gedetailleerder en koppelt ze opnieuw; alleen deze fase kan overeenkomsten "
-       "toevoegen. Trager dan één uitlijning."),
-    RU("Для съёмок, где часть снимков не выравнивается. Работает в два этапа. Этап 1 "
-       "выравнивает всё со свободной ошибкой в пикселях, затем снова со всё более строгими, "
-       "чтобы вошли снимки, отклонённые лишь потому, что объектив ещё не был определён; он "
-       "лишь перепроверяет имеющиеся сопоставления и новых не находит. Этап 2 заново и "
-       "подробнее находит признаки у снимков, оставшихся вне модели, и сопоставляет их "
-       "снова; добавить сопоставления может только он. Медленнее одного выравнивания."),
-    TR("Bazı görüntülerin hizalanmadığı çekimler içindir. İki aşamada çalışır. Aşama 1 her "
-       "şeyi gevşek bir piksel hatasıyla, ardından giderek sıkılaşan hatalarla yeniden "
-       "hizalar; böylece yalnızca lens henüz çözülmediği için reddedilen görüntüler "
-       "girebilir. Yalnızca mevcut eşleşmeleri yeniden denetler, yeni eşleşme bulmaz. Aşama "
-       "2 hâlâ dışarıda kalan görüntülerin özniteliklerini daha ayrıntılı yeniden algılar "
-       "ve yeniden eşler; eşleşme ekleyebilen aşama budur. Tek bir hizalamadan yavaştır."));
+    EN("For captures where some images don't align, in two stages. Slower than a single "
+       "alignment.\n"
+       "- Stage 1: aligns at a loose pixel error, then tighter ones; finds no new matches.\n"
+       "- Stage 2: re-detects features of images still left out and matches them again."),
+    JA("一部の画像が位置合わせできない撮影向けに、2 段階で動きます。1 回の位置合わせより時間がか"
+       "かります。\n"
+       "- 段階 1: 緩いピクセル誤差から厳しい誤差へ位置合わせし直します。新しいマッチは見つけませ"
+       "ん。\n"
+       "- 段階 2: 外れている画像の特徴点を検出し直し、マッチし直します。"),
+    ZH_HANS("适用于部分图像无法对齐的拍摄，分两个阶段。比单次对齐更慢。\n"
+            "- 阶段 1：先用宽松的像素误差对齐，再逐步收紧；不会找到新的匹配。\n"
+            "- 阶段 2：对仍未对齐的图像重新检测特征并重新匹配。"),
+    ZH_HANT("適用於部分影像無法對齊的拍攝，分兩個階段。比單次對齊更慢。\n"
+            "- 階段 1：先用寬鬆的像素誤差對齊，再逐步收緊；不會找到新的匹配。\n"
+            "- 階段 2：對仍未對齊的影像重新偵測特徵並重新匹配。"),
+    KO("일부 이미지가 정렬되지 않는 촬영용으로, 두 단계로 진행합니다. 한 번의 정렬보다 느립니다.\n"
+       "- 1단계: 느슨한 픽셀 오차에서 엄격한 오차로 다시 정렬하며, 새 매칭은 찾지 않습니다.\n"
+       "- 2단계: 아직 빠진 이미지의 특징점을 다시 검출하고 다시 매칭합니다."),
+    DE("Für Aufnahmen, bei denen sich Bilder nicht ausrichten lassen; zwei Stufen. Langsamer "
+       "als eine einzelne Ausrichtung.\n"
+       "- Stufe 1: richtet mit großzügigem, dann engerem Pixelfehler aus; keine neuen "
+       "Zuordnungen.\n"
+       "- Stufe 2: erkennt Merkmale der noch fehlenden Bilder neu und ordnet sie erneut zu."),
+    FR("Pour les prises de vue dont des images ne s'alignent pas ; deux étapes. Plus lent qu'un "
+       "seul alignement.\n"
+       "- Étape 1 : aligne avec une erreur en pixels large, puis plus serrée ; aucune nouvelle "
+       "correspondance.\n"
+       "- Étape 2 : redétecte les points clés des images exclues et les remet en correspondance."),
+    ES("Para capturas donde algunas imágenes no se alinean; dos etapas. Más lento que una sola "
+       "alineación.\n"
+       "- Etapa 1: alinea con un error de píxel amplio y luego más estricto; sin "
+       "correspondencias nuevas.\n"
+       "- Etapa 2: vuelve a detectar los puntos clave de las imágenes excluidas y las empareja "
+       "de nuevo."),
+    PT("Para capturas em que algumas imagens não se alinham; duas etapas. Mais lento que um "
+       "único alinhamento.\n"
+       "- Etapa 1: alinha com erro de pixel amplo e depois mais rígido; sem correspondências "
+       "novas.\n"
+       "- Etapa 2: detecta de novo os pontos-chave das imagens ainda de fora e as corresponde "
+       "de novo."),
+    IT("Per riprese in cui alcune immagini non si allineano; due fasi. Più lento di un solo "
+       "allineamento.\n"
+       "- Fase 1: allinea con errore in pixel ampio, poi più stretto; nessuna nuova "
+       "corrispondenza.\n"
+       "- Fase 2: rileva di nuovo i punti chiave delle immagini escluse e le abbina di nuovo."),
+    NL("Voor opnames waarbij sommige beelden niet uitlijnen; twee fasen. Trager dan één "
+       "uitlijning.\n"
+       "- Fase 1: lijnt uit met een ruime, daarna strengere pixelfout; geen nieuwe "
+       "overeenkomsten.\n"
+       "- Fase 2: detecteert de kenmerken van buitenvallende beelden opnieuw en koppelt ze "
+       "opnieuw."),
+    RU("Для съёмок, где часть снимков не выравнивается; два этапа. Медленнее одного "
+       "выравнивания.\n"
+       "- Этап 1: выравнивает с широкой, затем более узкой ошибкой в пикселях; новых "
+       "сопоставлений не ищет.\n"
+       "- Этап 2: заново находит признаки оставшихся снимков и сопоставляет их снова."),
+    TR("Bazı görüntülerin hizalanmadığı çekimler için; iki aşama. Tek bir hizalamadan yavaştır.\n"
+       "- Aşama 1: önce gevşek, sonra daha sıkı piksel hatasıyla hizalar; yeni eşleşme bulmaz.\n"
+       "- Aşama 2: dışarıda kalan görüntülerin özniteliklerini yeniden algılar ve yeniden eşler."));
 
 SS_MSG(progressive_stage1,
     EN("Stage 1: loosen, then tighten the pixel error"),
@@ -7276,51 +7235,32 @@ SS_MSG(progressive_stage1,
     TR("Aşama 1: piksel hatasını gevşet, sonra sıkılaştır"));
 
 SS_MSG(progressive_stage1_help,
-    EN("Aligns once at the starting error, then again at each step down to the final one, "
-       "keeping the cameras already placed. It uses only the matches the run already has. "
-       "When a few attempts in a row place no new image (Stop a stage after, below), the "
-       "rest are skipped and it goes straight to the final error."),
-    JA("まず開始誤差で一度位置合わせし、最終誤差まで段階ごとにやり直します。配置済みのカメラはそのまま残します。使うのは既にあるマッチだけです。新しい画像が入らない試行が続くと "
-       "(下の「段階を止めるまで」)、残りを飛ばして最終誤差に進みます。"),
-    ZH_HANS("先用起始误差对齐一次，再逐级对齐直到最终误差，保留已放置的相机。只使用已有的匹配。连续几次尝试都没有新图像加入时（见下方“阶段停止于”），跳过其余尝试，直接进行"
-            "最终误差。"),
-    ZH_HANT("先用起始誤差對齊一次，再逐級對齊直到最終誤差，保留已放置的相機。只使用已有的匹配。連續幾次嘗試都沒有新影像加入時（見下方「階段停止於」），略過其餘嘗試，直接進行"
-            "最終誤差。"),
-    KO("시작 오차로 한 번 정렬한 뒤 최종 오차까지 단계마다 다시 정렬하며, 이미 배치된 카메라는 유지합니다. 이미 있는 매칭만 사용합니다. 새 이미지가 "
-       "들어오지 않는 시도가 몇 번 이어지면(아래 '단계 중지 조건') 나머지를 건너뛰고 바로 최종 오차로 갑니다."),
-    DE("Richtet einmal mit dem Startfehler aus, dann bei jeder Stufe erneut bis zum "
-       "Endfehler, und behält die bereits platzierten Kameras. Nutzt nur die vorhandenen "
-       "Zuordnungen. Platzieren einige Versuche in Folge kein neues Bild (Stufe beenden "
-       "nach, unten), werden die übrigen übersprungen und es geht direkt zum Endfehler."),
-    FR("Aligne une fois à l'erreur de départ, puis à chaque palier jusqu'à l'erreur finale, "
-       "en gardant les caméras déjà placées. N'utilise que les correspondances existantes. "
-       "Quand quelques tentatives d'affilée ne placent aucune nouvelle image (Arrêter une "
-       "étape après, ci-dessous), les suivantes sont sautées et l'on passe directement à "
-       "l'erreur finale."),
-    ES("Alinea una vez con el error inicial y luego en cada paso hasta el final, "
-       "conservando las cámaras ya colocadas. Solo usa las correspondencias existentes. "
-       "Cuando varios intentos seguidos no colocan ninguna imagen nueva (Detener una etapa "
-       "tras, abajo), se saltan los demás y se pasa directamente al error final."),
-    PT("Alinha uma vez com o erro inicial e depois a cada passo até o final, mantendo as "
-       "câmeras já posicionadas. Usa só as correspondências existentes. Quando algumas "
-       "tentativas seguidas não posicionam nenhuma imagem nova (Parar uma etapa após, "
-       "abaixo), as restantes são puladas e passa-se direto ao erro final."),
-    IT("Allinea una volta con l'errore iniziale, poi a ogni passo fino a quello finale, "
-       "mantenendo le fotocamere già posizionate. Usa solo le corrispondenze esistenti. "
-       "Quando alcuni tentativi di fila non posizionano nuove immagini (Fermare una fase "
-       "dopo, sotto), i restanti vengono saltati e si passa subito all'errore finale."),
-    NL("Lijnt eenmaal uit met de beginfout en daarna bij elke stap opnieuw tot de eindfout, "
-       "met behoud van de al geplaatste camera's. Gebruikt alleen de bestaande "
-       "overeenkomsten. Plaatsen een paar pogingen op rij geen nieuw beeld (Fase stoppen "
-       "na, hieronder), dan worden de rest overgeslagen en gaat het meteen naar de eindfout."),
-    RU("Выравнивает один раз с начальной ошибкой, затем на каждом шаге до конечной, "
-       "сохраняя уже размещённые камеры. Использует только имеющиеся сопоставления. Если "
-       "несколько попыток подряд не размещают новых снимков (Остановить этап после, ниже), "
-       "остальные пропускаются и сразу выполняется конечная ошибка."),
-    TR("Önce başlangıç hatasıyla bir kez, sonra son hataya kadar her adımda yeniden hizalar "
-       "ve yerleşmiş kameraları korur. Yalnızca mevcut eşleşmeleri kullanır. Art arda "
-       "birkaç deneme yeni görüntü yerleştirmezse (aşağıda Aşamayı durdur), kalanlar "
-       "atlanır ve doğrudan son hataya geçilir."));
+    EN("Aligns from the starting error down to the final one using existing matches. Skips to "
+       "the final error once attempts add no new image."),
+    JA("既存のマッチだけで、開始誤差から最終誤差まで位置合わせします。新しい画像が入らなくなると"
+       "最終誤差へ飛びます。"),
+    ZH_HANS("仅用已有匹配，从起始误差逐级对齐到最终误差。尝试不再加入新图像时，直接跳到最终误差"
+            "。"),
+    ZH_HANT("僅用既有匹配，從起始誤差逐級對齊到最終誤差。嘗試不再加入新影像時，直接跳到最終誤差"
+            "。"),
+    KO("이미 있는 매칭만으로 시작 오차에서 최종 오차까지 정렬합니다. 시도가 새 이미지를 더하지 "
+       "못하면 바로 최종 오차로 넘어갑니다."),
+    DE("Richtet mit den vorhandenen Zuordnungen vom Start- bis zum Endfehler aus. Springt zum "
+       "Endfehler, sobald Versuche kein neues Bild mehr platzieren."),
+    FR("Aligne de l'erreur de départ à l'erreur finale avec les correspondances existantes. "
+       "Passe à l'erreur finale quand les tentatives ne placent plus d'image."),
+    ES("Alinea del error inicial al final con las correspondencias existentes. Salta al error "
+       "final cuando los intentos dejan de colocar imágenes nuevas."),
+    PT("Alinha do erro inicial ao final com as correspondências existentes. Pula para o erro "
+       "final quando as tentativas deixam de posicionar imagens novas."),
+    IT("Allinea dall'errore iniziale a quello finale con le corrispondenze esistenti. Passa "
+       "all'errore finale quando i tentativi non posizionano nuove immagini."),
+    NL("Lijnt uit van de beginfout tot de eindfout met de bestaande overeenkomsten. Springt "
+       "naar de eindfout zodra pogingen geen nieuwe beelden meer plaatsen."),
+    RU("Выравнивает от начальной до конечной ошибки по имеющимся сопоставлениям. Переходит к "
+       "конечной ошибке, когда попытки перестают размещать новые снимки."),
+    TR("Mevcut eşleşmelerle başlangıç hatasından son hataya kadar hizalar. Denemeler yeni "
+       "görüntü yerleştirmeyi bırakınca doğrudan son hataya geçer."));
 
 SS_MSG(progressive_error_start,
     EN("Starting pixel error"),
@@ -7388,41 +7328,30 @@ SS_MSG(progressive_error_end,
     TR("Son piksel hatası"));
 
 SS_MSG(progressive_error_end_help,
-    EN("The last attempt's error, which the written model is held to. 0 uses "
-       "the reconstruction's own maximum error (3 unless changed under "
-       "advanced options)."),
-    JA("最後の試行の誤差で、書き出すモデルはこれに従います。0 は再構成自体の"
-       "最大誤差（詳細設定で変えなければ 3）を使います。"),
-    ZH_HANS("最后一次尝试的误差，写出的模型以此为准。0 表示使用重建本身的最大误差"
-            "（除非在高级选项中修改，否则为 3）。"),
-    ZH_HANT("最後一次嘗試的誤差，寫出的模型以此為準。0 表示使用重建本身的最大誤差"
-            "（除非在進階選項中修改，否則為 3）。"),
-    KO("마지막 시도의 오차로, 기록되는 모델이 이를 따릅니다. 0 은 재구성 자체의 "
-       "최대 오차(고급 옵션에서 바꾸지 않으면 3)를 씁니다."),
-    DE("Der Fehler des letzten Versuchs, den das geschriebene Modell einhält. 0 "
-       "nimmt den Höchstfehler der Rekonstruktion selbst (3, sofern unter den "
-       "erweiterten Optionen nicht geändert)."),
-    FR("L'erreur du dernier essai, que respecte le modèle écrit. 0 prend "
-       "l'erreur maximale de la reconstruction elle-même (3 sauf changement "
-       "dans les options avancées)."),
-    ES("El error del último intento, que cumple el modelo escrito. 0 usa el "
-       "error máximo de la propia reconstrucción (3 salvo que se cambie en las "
-       "opciones avanzadas)."),
-    PT("O erro da última tentativa, que o modelo gravado respeita. 0 usa o "
-       "erro máximo da própria reconstrução (3, a menos que seja alterado nas "
-       "opções avançadas)."),
-    IT("L'errore dell'ultimo tentativo, che il modello scritto rispetta. 0 usa "
-       "l'errore massimo della ricostruzione stessa (3 se non cambiato nelle "
-       "opzioni avanzate)."),
-    NL("De fout van de laatste poging, waaraan het weggeschreven model zich "
-       "houdt. 0 neemt de maximale fout van de reconstructie zelf (3, tenzij "
-       "gewijzigd bij de geavanceerde opties)."),
-    RU("Ошибка последней попытки; её держит записанная модель. 0 берёт "
-       "максимальную ошибку самой реконструкции (3, если не изменена в "
-       "расширенных настройках)."),
-    TR("Son denemenin hatası; yazılan model buna uyar. 0, yeniden yapılandırmanın "
-       "kendi en büyük hatasını kullanır (gelişmiş seçeneklerde "
-       "değiştirilmediyse 3)."));
+    EN("Error of the last attempt, which the written model must meet. 0 uses the "
+       "reconstruction's maximum error (3 by default)."),
+    JA("最後の試行の誤差で、書き出すモデルはこれを満たします。0 は再構成の最大誤差 (既定 3) を使"
+       "います。"),
+    ZH_HANS("最后一次尝试的误差，写出的模型须满足它。0 表示使用重建的最大误差（默认为 3）。"),
+    ZH_HANT("最後一次嘗試的誤差，寫出的模型須滿足它。0 表示使用重建的最大誤差（預設為 3）。"),
+    KO("마지막 시도의 오차로, 기록되는 모델이 이를 만족해야 합니다. 0 은 재구성의 최대 오차(기본"
+       "값 3)를 씁니다."),
+    DE("Fehler des letzten Versuchs, den das geschriebene Modell einhält. 0 nimmt den "
+       "Höchstfehler der Rekonstruktion (standardmäßig 3)."),
+    FR("Erreur du dernier essai, que respecte le modèle écrit. 0 prend l'erreur maximale de la "
+       "reconstruction (3 par défaut)."),
+    ES("Error del último intento, que cumple el modelo escrito. 0 usa el error máximo de la "
+       "reconstrucción (3 por defecto)."),
+    PT("Erro da última tentativa, que o modelo gravado cumpre. 0 usa o erro máximo da "
+       "reconstrução (3 por padrão)."),
+    IT("Errore dell'ultimo tentativo, che il modello scritto rispetta. 0 usa l'errore massimo "
+       "della ricostruzione (3 per impostazione predefinita)."),
+    NL("Fout van de laatste poging, waaraan het weggeschreven model voldoet. 0 neemt de "
+       "maximale fout van de reconstructie (standaard 3)."),
+    RU("Ошибка последней попытки, которой подчиняется записанная модель. 0 берёт максимальную "
+       "ошибку реконструкции (по умолчанию 3)."),
+    TR("Son denemenin hatası; yazılan model buna uyar. 0, yeniden yapılandırmanın en büyük "
+       "hatasını kullanır (varsayılan 3)."));
 
 SS_MSG(progressive_attempts,
     EN("Attempts"),
@@ -7440,44 +7369,30 @@ SS_MSG(progressive_attempts,
     TR("Denemeler"));
 
 SS_MSG(progressive_attempts_help,
-    EN("How many alignments run from the starting error to the final one, both included. "
-       "Each step cuts the error by the same ratio: 20 to 3 in 5 is 20, 12.4, 7.7, 4.8, 3. "
-       "Once attempts stop placing new images, the rest are skipped."),
-    JA("開始誤差から最終誤差まで、両端を含めて何回位置合わせするか。各段階で誤差は同じ比率で減ります。20 から 3 を 5 回なら 20、12.4、7.7、4.8、3 "
-       "です。新しい画像が入らなくなると、残りの試行は飛ばします。"),
-    ZH_HANS("从起始误差到最终误差（含两端）共对齐几次。每一步按相同比例缩小误差：20 到 3 分 5 次为 20、12.4、7.7、4.8、3。尝试不再放入新图像后，跳过其余尝试。"),
-    ZH_HANT("從起始誤差到最終誤差（含兩端）共對齊幾次。每一步按相同比例縮小誤差：20 到 3 分 5 次為 20、12.4、7.7、4.8、3。嘗試不再放入新影像後，略過其餘嘗試。"),
-    KO("시작 오차부터 최종 오차까지(양끝 포함) 몇 번 정렬할지입니다. 단계마다 같은 비율로 오차를 줄입니다. 20에서 3까지 5번이면 20, 12.4, "
-       "7.7, 4.8, 3입니다. 시도가 새 이미지를 더 이상 배치하지 못하면 나머지는 건너뜁니다."),
-    DE("Wie viele Ausrichtungen vom Start- bis zum Endfehler laufen, beide eingeschlossen. "
-       "Jede Stufe senkt den Fehler um dasselbe Verhältnis: 20 bis 3 in 5 ist 20, 12,4, "
-       "7,7, 4,8, 3. Sobald Versuche keine neuen Bilder mehr platzieren, werden die übrigen "
-       "übersprungen."),
-    FR("Nombre d'alignements de l'erreur de départ à l'erreur finale, les deux incluses. "
-       "Chaque palier réduit l'erreur du même rapport : de 20 à 3 en 5 donne 20, 12,4, 7,7, "
-       "4,8, 3. Dès que les tentatives ne placent plus de nouvelles images, les suivantes "
-       "sont sautées."),
-    ES("Cuántas alineaciones se ejecutan del error inicial al final, ambos incluidos. Cada "
-       "paso reduce el error en la misma proporción: de 20 a 3 en 5 es 20, 12,4, 7,7, 4,8, "
-       "3. Cuando los intentos dejan de colocar imágenes nuevas, se saltan los demás."),
-    PT("Quantos alinhamentos rodam do erro inicial ao final, ambos incluídos. Cada passo "
-       "reduz o erro na mesma proporção: de 20 a 3 em 5 é 20, 12,4, 7,7, 4,8, 3. Quando as "
-       "tentativas deixam de posicionar imagens novas, as restantes são puladas."),
-    IT("Quanti allineamenti vanno dall'errore iniziale a quello finale, entrambi inclusi. "
-       "Ogni passo riduce l'errore dello stesso rapporto: da 20 a 3 in 5 è 20, 12,4, 7,7, "
-       "4,8, 3. Quando i tentativi smettono di posizionare nuove immagini, i restanti "
-       "vengono saltati."),
-    NL("Hoeveel uitlijningen er lopen van de begin- tot de eindfout, beide inbegrepen. Elke "
-       "stap verkleint de fout met dezelfde verhouding: 20 naar 3 in 5 is 20, 12,4, 7,7, "
-       "4,8, 3. Zodra pogingen geen nieuwe beelden meer plaatsen, worden de rest "
-       "overgeslagen."),
-    RU("Сколько выравниваний выполняется от начальной ошибки до конечной, включая обе. "
-       "Каждый шаг уменьшает ошибку в одно и то же число раз: от 20 до 3 за 5 — это 20; "
-       "12,4; 7,7; 4,8; 3. Когда попытки перестают размещать новые снимки, остальные "
-       "пропускаются."),
-    TR("Başlangıç hatasından son hataya, ikisi de dahil, kaç hizalama yapılacağı. Her adım "
-       "hatayı aynı oranda küçültür: 5 adımda 20'den 3'e 20, 12,4, 7,7, 4,8, 3'tür. "
-       "Denemeler yeni görüntü yerleştirmeyi bırakınca kalanlar atlanır."));
+    EN("Number of alignments from the starting error to the final one, both included; each step "
+       "shrinks the error by the same ratio."),
+    JA("開始誤差から最終誤差まで (両端を含む) の位置合わせ回数です。各段階で誤差は同じ比率で減り"
+       "ます。"),
+    ZH_HANS("从起始误差到最终误差（含两端）的对齐次数。每一步按相同比例缩小误差。"),
+    ZH_HANT("從起始誤差到最終誤差（含兩端）的對齊次數。每一步按相同比例縮小誤差。"),
+    KO("시작 오차부터 최종 오차까지(양끝 포함) 정렬하는 횟수입니다. 단계마다 같은 비율로 오차가 "
+       "줄어듭니다."),
+    DE("Anzahl der Ausrichtungen vom Start- bis zum Endfehler, beide eingeschlossen; jede Stufe "
+       "senkt den Fehler um dasselbe Verhältnis."),
+    FR("Nombre d'alignements de l'erreur de départ à l'erreur finale, les deux incluses ; "
+       "chaque palier réduit l'erreur du même rapport."),
+    ES("Número de alineaciones del error inicial al final, ambos incluidos; cada paso reduce el "
+       "error en la misma proporción."),
+    PT("Número de alinhamentos do erro inicial ao final, ambos incluídos; cada passo reduz o "
+       "erro na mesma proporção."),
+    IT("Numero di allineamenti dall'errore iniziale a quello finale, entrambi inclusi; ogni "
+       "passo riduce l'errore dello stesso rapporto."),
+    NL("Aantal uitlijningen van de beginfout tot de eindfout, beide inbegrepen; elke stap "
+       "verkleint de fout met dezelfde verhouding."),
+    RU("Число выравниваний от начальной до конечной ошибки включительно; каждый шаг уменьшает "
+       "ошибку в одно и то же число раз."),
+    TR("Başlangıç hatasından son hataya (ikisi dahil) kaç hizalama yapılacağı; her adım hatayı "
+       "aynı oranda azaltır."));
 
 SS_MSG(progressive_redetect,
     EN("Stage 2: detect features again on the images left out"),
@@ -7495,66 +7410,32 @@ SS_MSG(progressive_redetect,
     TR("Aşama 2: dışarıda kalan görüntülerde öznitelikleri yeniden algıla"));
 
 SS_MSG(progressive_redetect_help,
-    EN("After stage 1, the images still outside the main model that have some real matches "
-       "are detected again, each pass at a larger size and with more features, and matched "
-       "against the main model with the same matcher; the end of stage 1 then runs again. A "
-       "pass is kept only if more images align; otherwise it is undone. Images with almost "
-       "no matches are left alone."),
-    JA("段階 1 "
-       "の後、まだメインモデルの外にあり、実際のマッチを少し持つ画像を検出し直します。パスごとに大きなサイズで、より多くの特徴点を検出し、同じマッチャーでメインモデルとマッチします。その後、段階 "
-       "1 の終盤をもう一度実行します。より多くの画像が位置合わせできたパスだけを残し、それ以外は取り消します。マッチがほとんどない画像はそのままにします。"),
-    ZH_HANS("阶段 1 之后，对仍在主模型之外、但有一些真实匹配的图像重新检测特征，每一遍使用更大的尺寸和更多的特征，并用同一匹配器与主模型匹配；随后再次运行阶段 1 "
-            "的末尾部分。只有对齐了更多图像的那一遍才会保留，否则撤销。几乎没有匹配的图像不作处理。"),
-    ZH_HANT("階段 1 之後，對仍在主模型之外、但有一些真實匹配的影像重新偵測特徵，每一遍使用更大的尺寸和更多的特徵，並用同一匹配器與主模型匹配；隨後再次執行階段 1 "
-            "的末尾部分。只有對齊了更多影像的那一遍才會保留，否則撤銷。幾乎沒有匹配的影像不作處理。"),
-    KO("1단계 후, 아직 주 모델 밖에 있지만 실제 매칭이 어느 정도 있는 이미지를 다시 검출합니다. 패스마다 더 큰 크기와 더 많은 특징점으로 검출하고 "
-       "같은 매처로 주 모델과 매칭한 뒤, 1단계의 끝부분을 다시 실행합니다. 더 많은 이미지가 정렬된 패스만 남기고 나머지는 되돌립니다. 매칭이 거의 없는 "
-       "이미지는 그대로 둡니다."),
-    DE("Nach Stufe 1 werden die Bilder, die noch außerhalb des Hauptmodells liegen und "
-       "echte Zuordnungen haben, neu erkannt, jeder Durchgang größer und mit mehr "
-       "Merkmalen, und mit demselben Matcher gegen das Hauptmodell zugeordnet; danach läuft "
-       "das Ende von Stufe 1 erneut. Ein Durchgang bleibt nur, wenn sich mehr Bilder "
-       "ausrichten, sonst wird er verworfen. Bilder mit fast keinen Zuordnungen bleiben "
-       "unberührt."),
-    FR("Après l'étape 1, les images encore hors du modèle principal qui ont de vraies "
-       "correspondances sont redétectées, chaque passe à une taille plus grande et avec "
-       "plus de points clés, puis mises en correspondance avec le modèle principal par le "
-       "même appareilleur ; la fin de l'étape 1 est ensuite relancée. Une passe n'est "
-       "gardée que si davantage d'images s'alignent, sinon elle est annulée. Les images "
-       "presque sans correspondances sont laissées de côté."),
-    ES("Tras la etapa 1, las imágenes que siguen fuera del modelo principal y tienen "
-       "correspondencias reales se vuelven a detectar, cada pasada a mayor tamaño y con más "
-       "puntos clave, y se emparejan con el modelo principal con el mismo emparejador; "
-       "después se repite el final de la etapa 1. Una pasada solo se conserva si se alinean "
-       "más imágenes; si no, se deshace. Las imágenes casi sin correspondencias no se tocan."),
-    PT("Após a etapa 1, as imagens ainda fora do modelo principal que têm correspondências "
-       "reais são detectadas de novo, cada passagem em tamanho maior e com mais "
-       "pontos-chave, e correspondidas ao modelo principal com o mesmo correspondente; "
-       "depois o final da etapa 1 roda de novo. Uma passagem só é mantida se mais imagens "
-       "se alinharem; senão, é desfeita. Imagens quase sem correspondências ficam como "
-       "estão."),
-    IT("Dopo la fase 1, le immagini ancora fuori dal modello principale che hanno "
-       "corrispondenze reali vengono rilevate di nuovo, ogni passaggio a dimensione "
-       "maggiore e con più punti chiave, e abbinate al modello principale con lo stesso "
-       "abbinatore; poi la parte finale della fase 1 viene rieseguita. Un passaggio resta "
-       "solo se si allineano più immagini, altrimenti viene annullato. Le immagini quasi "
-       "senza corrispondenze restano escluse."),
-    NL("Na fase 1 worden de beelden die nog buiten het hoofdmodel vallen en echte "
-       "overeenkomsten hebben opnieuw gedetecteerd, elke ronde op een groter formaat en met "
-       "meer kenmerken, en met dezelfde matcher aan het hoofdmodel gekoppeld; daarna loopt "
-       "het einde van fase 1 opnieuw. Een ronde blijft alleen als er meer beelden "
-       "uitlijnen, anders wordt ze teruggedraaid. Beelden met bijna geen overeenkomsten "
-       "blijven ongemoeid."),
-    RU("После этапа 1 снимки, оставшиеся вне основной модели, но имеющие настоящие "
-       "сопоставления, обрабатываются заново: каждый проход — в большем размере и с большим "
-       "числом признаков, с сопоставлением с основной моделью тем же сопоставителем; затем "
-       "снова выполняется конец этапа 1. Проход сохраняется, только если выровнялось больше "
-       "снимков, иначе он отменяется. Снимки почти без сопоставлений не трогаются."),
-    TR("Aşama 1'den sonra, hâlâ ana modelin dışında kalan ama gerçek eşleşmeleri olan "
-       "görüntüler yeniden algılanır; her geçişte daha büyük boyutta ve daha çok "
-       "öznitelikle algılanıp aynı eşleştiriciyle ana modele eşlenir, ardından Aşama 1'in "
-       "sonu yeniden çalışır. Bir geçiş yalnızca daha çok görüntü hizalanırsa tutulur, "
-       "yoksa geri alınır. Neredeyse hiç eşleşmesi olmayan görüntülere dokunulmaz."));
+    EN("Re-detects features of images left out, larger and denser, then re-matches them. A pass "
+       "is kept only if more images align."),
+    JA("外れている画像の特徴点をより大きなサイズで、より多く検出し直し、マッチし直します。より多"
+       "くの画像が位置合わせできたパスだけを残します。"),
+    ZH_HANS("对仍被排除的图像以更大尺寸、更多特征重新检测并重新匹配。只有对齐了更多图像的那一遍"
+            "才会保留。"),
+    ZH_HANT("對仍被排除的影像以更大尺寸、更多特徵重新偵測並重新匹配。只有對齊了更多影像的那一遍"
+            "才會保留。"),
+    KO("빠진 이미지의 특징점을 더 큰 크기로 더 많이 다시 검출하고 다시 매칭합니다. 더 많은 이미"
+       "지가 정렬된 패스만 남깁니다."),
+    DE("Erkennt Merkmale ausgeschlossener Bilder größer und dichter neu und ordnet sie erneut "
+       "zu. Ein Durchgang bleibt nur, wenn sich mehr Bilder ausrichten."),
+    FR("Redétecte les points clés des images exclues, plus grands et plus nombreux, puis les "
+       "remet en correspondance. Une passe n'est gardée que si plus d'images s'alignent."),
+    ES("Vuelve a detectar y emparejar los puntos clave de las imágenes excluidas, con mayor "
+       "tamaño y densidad. Una pasada se conserva solo si se alinean más imágenes."),
+    PT("Detecta de novo os pontos-chave das imagens de fora, em tamanho maior e mais numerosos, "
+       "e as corresponde de novo. Uma passagem só é mantida se mais imagens se alinharem."),
+    IT("Rileva di nuovo i punti chiave delle immagini escluse, più grandi e numerosi, e le "
+       "abbina di nuovo. Un passaggio resta solo se si allineano più immagini."),
+    NL("Detecteert de kenmerken van buitengesloten beelden opnieuw, groter en talrijker, en "
+       "koppelt ze opnieuw. Een ronde blijft alleen als meer beelden uitlijnen."),
+    RU("Заново находит признаки исключённых снимков в большем размере и числе и сопоставляет "
+       "снова. Проход сохраняется, только если выравнивается больше снимков."),
+    TR("Dışarıda kalan görüntülerin özniteliklerini daha büyük boyutta ve daha çok algılayıp "
+       "yeniden eşler. Bir geçiş yalnızca daha çok görüntü hizalanırsa korunur."));
 
 SS_MSG(progressive_features_end,
     EN("Feature limit at the end"),

@@ -180,8 +180,9 @@ view lists it; picking an image shows the photo and can put the model view
 at its camera. The model's cameras are coloured red to green by an image's
 mean error -- the measure the run reports and passes are judged by -- linear
 from a third of the ladder's start (red) to a third of its end (green): an
-image's mean sat near a third of its gate (1.5 px at 20, 0.9 px at 3). Or by
-3D points against the median of the placed images in the same folder (an
+image's mean sat near a third of its gate (1.5 px at 20, 0.9 px at 3). Without
+the ladder the scale runs from a third of the maximum error (3 px unless set
+otherwise) down to 0. Or by 3D points against the median of the placed images in the same folder (an
 eighth of it up to it): a 360 image covers about fourteen times a 64-degree
 lens's view, so one median over both cameras judged each by the other's.
 "View from this camera" also takes the image's lens type (perspective, either
