@@ -669,6 +669,117 @@ void pca_slab_fill(uint s, uint rank, uint covariance, int* perm, float4* sorted
     }
 }
 
+// Sorting networks over a register list, written out because slangc fails to
+// unroll the generic loops (E40020). Sort: Batcher's odd-even merge sort.
+// Merge: the bitonic cleaner, for what min(a[j], b[K-1-j]) leaves.
+#define SS_PCA_CE(i, j) { uint lo_ = min(b[i], b[j]); b[j] = max(b[i], b[j]); b[i] = lo_; }
+void pca_sort_net<let K : int>(inout uint b[K]) {
+    if (K == 8) {
+        SS_PCA_CE(0, 1) SS_PCA_CE(2, 3) SS_PCA_CE(0, 2) SS_PCA_CE(1, 3) SS_PCA_CE(1, 2)
+        SS_PCA_CE(4, 5) SS_PCA_CE(6, 7) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7) SS_PCA_CE(5, 6)
+        SS_PCA_CE(0, 4) SS_PCA_CE(2, 6) SS_PCA_CE(2, 4) SS_PCA_CE(1, 5) SS_PCA_CE(3, 7)
+        SS_PCA_CE(3, 5) SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6)
+    } else if (K == 16) {
+        SS_PCA_CE(0, 1) SS_PCA_CE(2, 3) SS_PCA_CE(0, 2) SS_PCA_CE(1, 3) SS_PCA_CE(1, 2)
+        SS_PCA_CE(4, 5) SS_PCA_CE(6, 7) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7) SS_PCA_CE(5, 6)
+        SS_PCA_CE(0, 4) SS_PCA_CE(2, 6) SS_PCA_CE(2, 4) SS_PCA_CE(1, 5) SS_PCA_CE(3, 7)
+        SS_PCA_CE(3, 5) SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6) SS_PCA_CE(8, 9)
+        SS_PCA_CE(10, 11) SS_PCA_CE(8, 10) SS_PCA_CE(9, 11) SS_PCA_CE(9, 10)
+        SS_PCA_CE(12, 13) SS_PCA_CE(14, 15) SS_PCA_CE(12, 14) SS_PCA_CE(13, 15)
+        SS_PCA_CE(13, 14) SS_PCA_CE(8, 12) SS_PCA_CE(10, 14) SS_PCA_CE(10, 12)
+        SS_PCA_CE(9, 13) SS_PCA_CE(11, 15) SS_PCA_CE(11, 13) SS_PCA_CE(9, 10)
+        SS_PCA_CE(11, 12) SS_PCA_CE(13, 14) SS_PCA_CE(0, 8) SS_PCA_CE(4, 12) SS_PCA_CE(4, 8)
+        SS_PCA_CE(2, 10) SS_PCA_CE(6, 14) SS_PCA_CE(6, 10) SS_PCA_CE(2, 4) SS_PCA_CE(6, 8)
+        SS_PCA_CE(10, 12) SS_PCA_CE(1, 9) SS_PCA_CE(5, 13) SS_PCA_CE(5, 9) SS_PCA_CE(3, 11)
+        SS_PCA_CE(7, 15) SS_PCA_CE(7, 11) SS_PCA_CE(3, 5) SS_PCA_CE(7, 9) SS_PCA_CE(11, 13)
+        SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6) SS_PCA_CE(7, 8) SS_PCA_CE(9, 10)
+        SS_PCA_CE(11, 12) SS_PCA_CE(13, 14)
+    } else {
+        SS_PCA_CE(0, 1) SS_PCA_CE(2, 3) SS_PCA_CE(0, 2) SS_PCA_CE(1, 3) SS_PCA_CE(1, 2)
+        SS_PCA_CE(4, 5) SS_PCA_CE(6, 7) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7) SS_PCA_CE(5, 6)
+        SS_PCA_CE(0, 4) SS_PCA_CE(2, 6) SS_PCA_CE(2, 4) SS_PCA_CE(1, 5) SS_PCA_CE(3, 7)
+        SS_PCA_CE(3, 5) SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6) SS_PCA_CE(8, 9)
+        SS_PCA_CE(10, 11) SS_PCA_CE(8, 10) SS_PCA_CE(9, 11) SS_PCA_CE(9, 10)
+        SS_PCA_CE(12, 13) SS_PCA_CE(14, 15) SS_PCA_CE(12, 14) SS_PCA_CE(13, 15)
+        SS_PCA_CE(13, 14) SS_PCA_CE(8, 12) SS_PCA_CE(10, 14) SS_PCA_CE(10, 12)
+        SS_PCA_CE(9, 13) SS_PCA_CE(11, 15) SS_PCA_CE(11, 13) SS_PCA_CE(9, 10)
+        SS_PCA_CE(11, 12) SS_PCA_CE(13, 14) SS_PCA_CE(0, 8) SS_PCA_CE(4, 12) SS_PCA_CE(4, 8)
+        SS_PCA_CE(2, 10) SS_PCA_CE(6, 14) SS_PCA_CE(6, 10) SS_PCA_CE(2, 4) SS_PCA_CE(6, 8)
+        SS_PCA_CE(10, 12) SS_PCA_CE(1, 9) SS_PCA_CE(5, 13) SS_PCA_CE(5, 9) SS_PCA_CE(3, 11)
+        SS_PCA_CE(7, 15) SS_PCA_CE(7, 11) SS_PCA_CE(3, 5) SS_PCA_CE(7, 9) SS_PCA_CE(11, 13)
+        SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6) SS_PCA_CE(7, 8) SS_PCA_CE(9, 10)
+        SS_PCA_CE(11, 12) SS_PCA_CE(13, 14) SS_PCA_CE(16, 17) SS_PCA_CE(18, 19)
+        SS_PCA_CE(16, 18) SS_PCA_CE(17, 19) SS_PCA_CE(17, 18) SS_PCA_CE(20, 21)
+        SS_PCA_CE(22, 23) SS_PCA_CE(20, 22) SS_PCA_CE(21, 23) SS_PCA_CE(21, 22)
+        SS_PCA_CE(16, 20) SS_PCA_CE(18, 22) SS_PCA_CE(18, 20) SS_PCA_CE(17, 21)
+        SS_PCA_CE(19, 23) SS_PCA_CE(19, 21) SS_PCA_CE(17, 18) SS_PCA_CE(19, 20)
+        SS_PCA_CE(21, 22) SS_PCA_CE(24, 25) SS_PCA_CE(26, 27) SS_PCA_CE(24, 26)
+        SS_PCA_CE(25, 27) SS_PCA_CE(25, 26) SS_PCA_CE(28, 29) SS_PCA_CE(30, 31)
+        SS_PCA_CE(28, 30) SS_PCA_CE(29, 31) SS_PCA_CE(29, 30) SS_PCA_CE(24, 28)
+        SS_PCA_CE(26, 30) SS_PCA_CE(26, 28) SS_PCA_CE(25, 29) SS_PCA_CE(27, 31)
+        SS_PCA_CE(27, 29) SS_PCA_CE(25, 26) SS_PCA_CE(27, 28) SS_PCA_CE(29, 30)
+        SS_PCA_CE(16, 24) SS_PCA_CE(20, 28) SS_PCA_CE(20, 24) SS_PCA_CE(18, 26)
+        SS_PCA_CE(22, 30) SS_PCA_CE(22, 26) SS_PCA_CE(18, 20) SS_PCA_CE(22, 24)
+        SS_PCA_CE(26, 28) SS_PCA_CE(17, 25) SS_PCA_CE(21, 29) SS_PCA_CE(21, 25)
+        SS_PCA_CE(19, 27) SS_PCA_CE(23, 31) SS_PCA_CE(23, 27) SS_PCA_CE(19, 21)
+        SS_PCA_CE(23, 25) SS_PCA_CE(27, 29) SS_PCA_CE(17, 18) SS_PCA_CE(19, 20)
+        SS_PCA_CE(21, 22) SS_PCA_CE(23, 24) SS_PCA_CE(25, 26) SS_PCA_CE(27, 28)
+        SS_PCA_CE(29, 30) SS_PCA_CE(0, 16) SS_PCA_CE(8, 24) SS_PCA_CE(8, 16)
+        SS_PCA_CE(4, 20) SS_PCA_CE(12, 28) SS_PCA_CE(12, 20) SS_PCA_CE(4, 8)
+        SS_PCA_CE(12, 16) SS_PCA_CE(20, 24) SS_PCA_CE(2, 18) SS_PCA_CE(10, 26)
+        SS_PCA_CE(10, 18) SS_PCA_CE(6, 22) SS_PCA_CE(14, 30) SS_PCA_CE(14, 22)
+        SS_PCA_CE(6, 10) SS_PCA_CE(14, 18) SS_PCA_CE(22, 26) SS_PCA_CE(2, 4) SS_PCA_CE(6, 8)
+        SS_PCA_CE(10, 12) SS_PCA_CE(14, 16) SS_PCA_CE(18, 20) SS_PCA_CE(22, 24)
+        SS_PCA_CE(26, 28) SS_PCA_CE(1, 17) SS_PCA_CE(9, 25) SS_PCA_CE(9, 17)
+        SS_PCA_CE(5, 21) SS_PCA_CE(13, 29) SS_PCA_CE(13, 21) SS_PCA_CE(5, 9)
+        SS_PCA_CE(13, 17) SS_PCA_CE(21, 25) SS_PCA_CE(3, 19) SS_PCA_CE(11, 27)
+        SS_PCA_CE(11, 19) SS_PCA_CE(7, 23) SS_PCA_CE(15, 31) SS_PCA_CE(15, 23)
+        SS_PCA_CE(7, 11) SS_PCA_CE(15, 19) SS_PCA_CE(23, 27) SS_PCA_CE(3, 5) SS_PCA_CE(7, 9)
+        SS_PCA_CE(11, 13) SS_PCA_CE(15, 17) SS_PCA_CE(19, 21) SS_PCA_CE(23, 25)
+        SS_PCA_CE(27, 29) SS_PCA_CE(1, 2) SS_PCA_CE(3, 4) SS_PCA_CE(5, 6) SS_PCA_CE(7, 8)
+        SS_PCA_CE(9, 10) SS_PCA_CE(11, 12) SS_PCA_CE(13, 14) SS_PCA_CE(15, 16)
+        SS_PCA_CE(17, 18) SS_PCA_CE(19, 20) SS_PCA_CE(21, 22) SS_PCA_CE(23, 24)
+        SS_PCA_CE(25, 26) SS_PCA_CE(27, 28) SS_PCA_CE(29, 30)
+    }
+}
+
+void pca_merge_net<let K : int>(inout uint b[K]) {
+    if (K == 8) {
+        SS_PCA_CE(0, 4) SS_PCA_CE(1, 5) SS_PCA_CE(2, 6) SS_PCA_CE(3, 7) SS_PCA_CE(0, 2)
+        SS_PCA_CE(1, 3) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7) SS_PCA_CE(0, 1) SS_PCA_CE(2, 3)
+        SS_PCA_CE(4, 5) SS_PCA_CE(6, 7)
+    } else if (K == 16) {
+        SS_PCA_CE(0, 8) SS_PCA_CE(1, 9) SS_PCA_CE(2, 10) SS_PCA_CE(3, 11) SS_PCA_CE(4, 12)
+        SS_PCA_CE(5, 13) SS_PCA_CE(6, 14) SS_PCA_CE(7, 15) SS_PCA_CE(0, 4) SS_PCA_CE(1, 5)
+        SS_PCA_CE(2, 6) SS_PCA_CE(3, 7) SS_PCA_CE(8, 12) SS_PCA_CE(9, 13) SS_PCA_CE(10, 14)
+        SS_PCA_CE(11, 15) SS_PCA_CE(0, 2) SS_PCA_CE(1, 3) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7)
+        SS_PCA_CE(8, 10) SS_PCA_CE(9, 11) SS_PCA_CE(12, 14) SS_PCA_CE(13, 15)
+        SS_PCA_CE(0, 1) SS_PCA_CE(2, 3) SS_PCA_CE(4, 5) SS_PCA_CE(6, 7) SS_PCA_CE(8, 9)
+        SS_PCA_CE(10, 11) SS_PCA_CE(12, 13) SS_PCA_CE(14, 15)
+    } else {
+        SS_PCA_CE(0, 16) SS_PCA_CE(1, 17) SS_PCA_CE(2, 18) SS_PCA_CE(3, 19) SS_PCA_CE(4, 20)
+        SS_PCA_CE(5, 21) SS_PCA_CE(6, 22) SS_PCA_CE(7, 23) SS_PCA_CE(8, 24) SS_PCA_CE(9, 25)
+        SS_PCA_CE(10, 26) SS_PCA_CE(11, 27) SS_PCA_CE(12, 28) SS_PCA_CE(13, 29)
+        SS_PCA_CE(14, 30) SS_PCA_CE(15, 31) SS_PCA_CE(0, 8) SS_PCA_CE(1, 9) SS_PCA_CE(2, 10)
+        SS_PCA_CE(3, 11) SS_PCA_CE(4, 12) SS_PCA_CE(5, 13) SS_PCA_CE(6, 14) SS_PCA_CE(7, 15)
+        SS_PCA_CE(16, 24) SS_PCA_CE(17, 25) SS_PCA_CE(18, 26) SS_PCA_CE(19, 27)
+        SS_PCA_CE(20, 28) SS_PCA_CE(21, 29) SS_PCA_CE(22, 30) SS_PCA_CE(23, 31)
+        SS_PCA_CE(0, 4) SS_PCA_CE(1, 5) SS_PCA_CE(2, 6) SS_PCA_CE(3, 7) SS_PCA_CE(8, 12)
+        SS_PCA_CE(9, 13) SS_PCA_CE(10, 14) SS_PCA_CE(11, 15) SS_PCA_CE(16, 20)
+        SS_PCA_CE(17, 21) SS_PCA_CE(18, 22) SS_PCA_CE(19, 23) SS_PCA_CE(24, 28)
+        SS_PCA_CE(25, 29) SS_PCA_CE(26, 30) SS_PCA_CE(27, 31) SS_PCA_CE(0, 2)
+        SS_PCA_CE(1, 3) SS_PCA_CE(4, 6) SS_PCA_CE(5, 7) SS_PCA_CE(8, 10) SS_PCA_CE(9, 11)
+        SS_PCA_CE(12, 14) SS_PCA_CE(13, 15) SS_PCA_CE(16, 18) SS_PCA_CE(17, 19)
+        SS_PCA_CE(20, 22) SS_PCA_CE(21, 23) SS_PCA_CE(24, 26) SS_PCA_CE(25, 27)
+        SS_PCA_CE(28, 30) SS_PCA_CE(29, 31) SS_PCA_CE(0, 1) SS_PCA_CE(2, 3) SS_PCA_CE(4, 5)
+        SS_PCA_CE(6, 7) SS_PCA_CE(8, 9) SS_PCA_CE(10, 11) SS_PCA_CE(12, 13)
+        SS_PCA_CE(14, 15) SS_PCA_CE(16, 17) SS_PCA_CE(18, 19) SS_PCA_CE(20, 21)
+        SS_PCA_CE(22, 23) SS_PCA_CE(24, 25) SS_PCA_CE(26, 27) SS_PCA_CE(28, 29)
+        SS_PCA_CE(30, 31)
+    }
+}
+#undef SS_PCA_CE
+
 float3 pca_slab_owner<let K : int, let SA : bool>(
     uint o, uint r, uint lo, uint n, uint k, uint half_, uint covariance, uint terms, int* nbrs,
     uint store_list, float* quats, float* scales, float* v_quats, float* v_scales, float w_plane,
@@ -676,23 +787,28 @@ float3 pca_slab_owner<let K : int, let SA : bool>(
     uint sr = r - lo;
     float4 own = g_pca_pos[sr];
     float3 q = own.xyz;
-    // Distance over slot, one register a neighbour: the ascending list is a
-    // min/max chain. The 8 low mantissa bits only break near-ties.
+    // Distance over slot, one register a neighbour, ascending. The 8 low
+    // mantissa bits only break near-ties; the slot makes every key unique, so
+    // any exact selection returns this list.
     uint keys[K];
     [ForceUnroll]
     for (int j = 0; j < K; j++) keys[j] = 0xffffffffu;
-    uint last = min(r + half_ + 1, n);
-    for (uint c = r > half_ ? r - half_ : 0; c < last; c++) {
-        if (c == r) continue;
-        uint s = c - lo;
-        float3 e = g_pca_pos[s].xyz - q;
-        uint x = (asuint(dot(e, e)) & 0xffffff00u) | s;
+    uint first = r > half_ ? r - half_ : 0;
+    uint count = min(r + half_ + 1, n) - first - 1;   // the window less r
+    for (uint c0 = 0; c0 < count; c0 += uint(K)) {
+        uint b[K];
         [ForceUnroll]
         for (int j = 0; j < K; j++) {
-            uint t = min(keys[j], x);
-            x = max(keys[j], x);
-            keys[j] = t;
+            uint i = c0 + uint(j);
+            uint s = first + i + (first + i >= r ? 1u : 0u) - lo;
+            float3 e = g_pca_pos[min(s, kPcaSlabMax - 1u)].xyz - q;
+            b[j] = i < count ? (asuint(dot(e, e)) & 0xffffff00u) | s : 0xffffffffu;
         }
+        pca_sort_net<K>(b);
+        // keys and b ascending: the K smallest of both, as a bitonic sequence.
+        [ForceUnroll]
+        for (int j = 0; j < K; j++) keys[j] = min(keys[j], b[K - 1 - j]);
+        pca_merge_net<K>(keys);
     }
     uint cnt = 0;
     float total = own.w;

@@ -823,6 +823,15 @@ the engine level.
     but remain opt-in because their atomic contention measured slower.
     Depth/normal v2 specializes away discarded input gradients; RGB PPISP
     v2 retains its image-gradient pass.
+  - **Uniform PPISP backward, Vulkan only**: wherever a 16x16 pixel tile
+    spans at most two cells per axis and L <= 8, every v1 arm runs
+    `bilagrid_ppisp_bwd_tile` instead. v1's grid kernel repeats each
+    pixel's PPISP backward for the ~4 grid nodes that gather it; the tile
+    kernel runs it once per pixel, stages the 9 parameter gradients in
+    groupshared, and sums one (cell, level) row per thread over 32-pixel
+    chunks. Garden at 2594x1681, 2.5M splats: grid + rgb 4.65 ms ->
+    1.31 ms a step. Reducing per subgroup instead cost more than v1 did:
+    a tile's pixels spread over most of the levels.
 - **Multi-scale per-pixel loss stack (phase 5, seventh slice)**:
   `kernels/PerPixelLoss.cpp` mirrors `compute_multi_scale_per_pixel_losses`
   (PerPixelLoss.cu) end to end — pyramid construction, per-scale grad

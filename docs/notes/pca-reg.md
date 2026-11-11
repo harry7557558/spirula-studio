@@ -256,8 +256,9 @@ can reach copied once into shared memory, 26.6 KB against Vulkan's guaranteed
 32 KB. It allocates nothing. Three phases, each ending at a group barrier:
 
 1. Each thread fills two slots: world centre, opacity weight, `Sigma`, splat id.
-2. Each thread is an owner. The k nearest are a min/max chain over packed
-   `distance | slot` keys, one register a neighbour. It publishes `G / total`,
+2. Each thread is an owner. The k nearest are packed `distance | slot` keys,
+   one register a neighbour: each batch of K window candidates is sorted by a
+   sorting network and merged into the list (below). It publishes `G / total`,
    `-(G : C) / total` and its mean, and sets its bit in every chosen target's
    `g_pca_who` row.
 3. Each thread takes two targets and walks only the owners that chose them,
@@ -273,6 +274,14 @@ dL/dlogit = a (1 - a) (s + H : Sigma)
 `d` stays relative to each owner, `(t - q_o) - mean_o`, so precision does not
 depend on where the group sits; anchoring the slab to one splat loses the
 whole group to a floater at the group's first rank.
+
+The slot makes every key unique, so any exact selection returns the same
+list. A min/max chain inserting one candidate at a time costs K compare-swaps
+a candidate; Batcher's odd-even merge sort of a batch (191 at K = 32) plus
+`min(list[j], batch[K-1-j])` and a bitonic cleaner (80) cost about a third of
+that. On garden's 2.5M splats after 12k steps (`images_2`), k = 31, centres,
+scale-agnostic, rank 0.01, Vulkan: 4.65 -> 3.81 ms a pass. The networks are
+written out per K because slangc cannot unroll the generic loops (E40020).
 
 A tree or cached-list neighbour can be any rank, so `exact`, the cached methods'
 reuse steps, transparency and `--pca-reg-window` above 128 use the

@@ -67,6 +67,16 @@ it measured 2.061 against 2.317 ms. Shared storage is unchanged; the final
 scalar reduction reuses dead moment storage. Plain SSIM retains its
 existing shader and workgroup size.
 
+Every separable pass of the Vulkan kernel (both forward window sums, both
+adjoint branches) gives a thread two neighbouring outputs, which read 12
+taps rather than 22 and each still add theirs in the original order. Register
+moments go from 3 x 5 to 2 x 2 x 5 a thread at 512 threads. The whole stack
+at 2594x1681 with an fp16 render (`image_loss_bench ssim_bt_f16`, RTX 3070
+Laptop) went from 16.1 to 12.1 ms a call. Outputs agree with the unblocked
+kernel to rounding: msloss_parity's tight channel moves by at most 1e-6 on
+NVIDIA, and llvmpipe, which fuses differently, moves its cancellation-heavy
+matched-window maps by up to 3e-5.
+
 Per loss call at 780x520 on an RTX 3070 Laptop, everything a call runs
 (`compute_multi_scale_per_pixel_losses`, L1 and the `ssim_cs` map),
 interleaved:

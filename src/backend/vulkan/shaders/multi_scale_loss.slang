@@ -331,25 +331,9 @@ void _ms_load_pixel(PplParams p, int batch_idx, gindex_t idx, int x_dst,
                                     p.H_ref_alpha);
 }
 
-groupshared float _ms_red[256];
-
-// Workgroup sum of `v`, valid on thread 0. Two barriers, against the
-// groupshared tree's one per level -- ppl_fwd reduces once per raw loss, so
-// the tree cost ~200 workgroup barriers a launch and this costs 40.
-float _ms_block_sum(float v, uint tid) {
-    uint wsize = WaveGetLaneCount();
-    float wsum = WaveActiveSum(v);
-    GroupMemoryBarrierWithGroupSync();  // previous call done reading _ms_red
-    if (WaveIsFirstLane()) _ms_red[tid / wsize] = wsum;
-    GroupMemoryBarrierWithGroupSync();
-    float total = 0.0f;
-    if (tid < wsize) {  // wave 0, whole-wave uniform
-        float part = 0.0f;
-        for (uint k = tid; k < 256 / wsize; k += wsize) part += _ms_red[k];
-        total = WaveActiveSum(part);
-    }
-    return total;
-}
+// One partial per wave and raw loss (256 / 8 waves at llvmpipe's width), so
+// every loss reduces behind one barrier rather than two each.
+groupshared float _ms_red[32 * kNRaw];
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -408,19 +392,27 @@ void ppl_fwd(uint3 wg: SV_GroupID, uint tid: SV_GroupThreadID,
     if ((p.in_flags & kInCam) != 0)
         row_b = uint(int(i64mem_get(p.camera_indices[batch_idx])));
 
+    uint wsize = WaveGetLaneCount();
+    uint wave = tid / wsize;
+    [ForceUnroll]
     for (int i = 0; i < kNRaw; i++) {
         float loss = inside ? losses[i] : 0.0f;
         loss = _ms_finite(loss) ? loss : 0.0f;
-        float sum = _ms_block_sum(loss, tid);
-        if (tid == 0) {
-            if (sum != 0.0f && _ms_finite(sum)) {
-                int which = _ms_add_which(i);
-                if (which == 0 || which == 2)
-                    atomic_add_f32(p.losses + i, sum);
-                if (which == 1 || which == 2)
-                    atomic_add_f32(p.losses + (row_b + 1) * uint(kNRaw) + i,
-                                   sum);
-            }
+        // Most terms are off in any one run; a ballot is cheaper than the sum.
+        float wsum = WaveActiveAnyTrue(loss != 0.0f) ? WaveActiveSum(loss) : 0.0f;
+        if (WaveIsFirstLane()) _ms_red[wave * uint(kNRaw) + uint(i)] = wsum;
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (tid < uint(kNRaw)) {
+        int i = int(tid);
+        float sum = 0.0f;
+        for (uint w = 0; w < 256 / wsize; w++) sum += _ms_red[w * uint(kNRaw) + tid];
+        if (sum != 0.0f && _ms_finite(sum)) {
+            int which = _ms_add_which(i);
+            if (which == 0 || which == 2)
+                atomic_add_f32(p.losses + i, sum);
+            if (which == 1 || which == 2)
+                atomic_add_f32(p.losses + (row_b + 1) * uint(kNRaw) + i, sum);
         }
     }
 }
