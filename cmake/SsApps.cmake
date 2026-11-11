@@ -488,6 +488,17 @@ add_test(NAME subprocess_lifecycle_test COMMAND subprocess_lifecycle_test)
 set_tests_properties(subprocess_lifecycle_test PROPERTIES
     LABELS "cpu;headless" TIMEOUT 600)
 
+if(NOT WIN32)
+    add_executable(http_server_test
+        ${SS_SRC}/app/tests/http_server_test.cpp
+        ${SS_SRC}/app/webviewer/HttpServer.cpp)
+    target_include_directories(http_server_test PRIVATE ${SS_SRC})
+    target_link_libraries(http_server_test PRIVATE Threads::Threads)
+    set_property(TARGET http_server_test PROPERTY CXX_STANDARD 17)
+    add_test(NAME http_server_test COMMAND http_server_test)
+    set_tests_properties(http_server_test PROPERTIES LABELS "cpu;headless" TIMEOUT 60)
+endif()
+
 add_executable(inference_worker_test ${SS_SRC}/app/tests/inference_worker_test.cpp)
 target_include_directories(inference_worker_test PRIVATE ${SS_SRC})
 target_link_libraries(inference_worker_test PRIVATE ss_inference_worker)

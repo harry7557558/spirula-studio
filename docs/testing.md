@@ -264,6 +264,7 @@ as GPU image caching. It runs without a GPU on either backend.
 | H.265 reference handling | `hevc_reference_retention_test` on a non-NVIDIA Vulkan video-decode device with `SS_ENABLE_PATENTED=ON` |
 | H.265 encode dimensions or HEIF image correctness | `hevc_sps_crop_test` (CPU) and `heif_test` (non-NVIDIA Vulkan encode/decode); fixtures are generated at runtime |
 | `run_process`, `ProcessPipe`, `ProcessReader` or `ProcessDuplex` | `subprocess_lifecycle_test` (CPU): cancellation and owner death stop nested children too |
+| the web viewer's `HttpServer` | `http_server_test` (CPU, not Windows): a connection that never sends stalls neither other requests nor `stop()` |
 | how masking or depth/normal work is split across GPUs | `inference_worker_test`, `inference_worker_devices_test`, `mask_worker_manifest_test`, `geometry_model_budget_test` (CPU); `mask_worker_parity_test` with a cached model on one GPU, then two |
 | anything | one short training run per backend on a public scene |
 
