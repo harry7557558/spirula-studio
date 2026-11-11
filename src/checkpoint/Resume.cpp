@@ -123,6 +123,8 @@ TrainConfig build_resume_config(const TrainConfig& cli,
 
     TrainConfig base = config_from_json(cfg_path);
     base.resume = cli.resume;
+    // This invocation's alone: a run folder from elsewhere must not run one.
+    base.finish_command = cli.finish_command;
 
     // Continue writing into the checkpoint's own run folder, so new
     // checkpoints, eval images and logs land beside the old ones. An explicit

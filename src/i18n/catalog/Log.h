@@ -4321,6 +4321,83 @@ SS_MSG(perf_log_report,
     RU("Статистика производительности сохранена. Для отчёта выполните: python tools/perf/perf_report.py \"{0}\""),
     TR("Performans istatistikleri kaydedildi. Rapor için şunu çalıştırın: python tools/perf/perf_report.py \"{0}\""));
 
+
+// ===========================================================================
+// The command a finished batch queue or training run runs (--finish-command)
+// ===========================================================================
+
+SS_MSG(finish_cmd_running,
+    EN("Running the finish command: {0}"),
+    JA("終了時のコマンドを実行します: {0}"),
+    ZH_HANS("正在运行结束命令：{0}"),
+    ZH_HANT("正在執行結束命令：{0}"),
+    KO("종료 명령을 실행합니다: {0}"),
+    DE("Abschlussbefehl wird ausgeführt: {0}"),
+    FR("Exécution de la commande de fin : {0}"),
+    ES("Ejecutando el comando de fin: {0}"),
+    PT("Executando o comando de fim: {0}"),
+    IT("Esecuzione del comando di fine: {0}"),
+    NL("De afsluitopdracht draait: {0}"),
+    RU("Запускается команда завершения: {0}"),
+    TR("Bitiş komutu çalıştırılıyor: {0}"));
+SS_MSG(finish_cmd_missing,
+    EN("Could not run the finish command: {0} was not found."),
+    JA("終了時のコマンドを実行できませんでした: {0} が見つかりません。"),
+    ZH_HANS("无法运行结束命令：找不到 {0}。"),
+    ZH_HANT("無法執行結束命令：找不到 {0}。"),
+    KO("종료 명령을 실행할 수 없습니다: {0} 을(를) 찾을 수 없습니다."),
+    DE("Der Abschlussbefehl ließ sich nicht ausführen: {0} wurde nicht "
+       "gefunden."),
+    FR("Impossible de lancer la commande de fin : {0} est introuvable."),
+    ES("No se ha podido ejecutar el comando de fin: no se encuentra {0}."),
+    PT("Não foi possível executar o comando de fim: {0} não foi encontrado."),
+    IT("Non è stato possibile eseguire il comando di fine: {0} non si trova."),
+    NL("De afsluitopdracht kon niet draaien: {0} is niet gevonden."),
+    RU("Не удалось выполнить команду завершения: {0} не найден."),
+    TR("Bitiş komutu çalıştırılamadı: {0} bulunamadı."));
+SS_MSG(finish_cmd_exit,
+    EN("The finish command exited with code {0}."),
+    JA("終了時のコマンドが終了コード {0} で終わりました。"),
+    ZH_HANS("结束命令退出，返回码 {0}。"),
+    ZH_HANT("結束命令結束，回傳碼 {0}。"),
+    KO("종료 명령이 코드 {0}(으)로 끝났습니다."),
+    DE("Der Abschlussbefehl endete mit Code {0}."),
+    FR("La commande de fin s’est terminée avec le code {0}."),
+    ES("El comando de fin ha terminado con el código {0}."),
+    PT("O comando de fim terminou com o código {0}."),
+    IT("Il comando di fine è terminato con codice {0}."),
+    NL("De afsluitopdracht eindigde met code {0}."),
+    RU("Команда завершения закончилась с кодом {0}."),
+    TR("Bitiş komutu {0} koduyla sona erdi."));
+SS_MSG(finish_cmd_ok,
+    EN("The finish command finished."),
+    JA("終了時のコマンドが完了しました。"),
+    ZH_HANS("结束命令已完成。"),
+    ZH_HANT("結束命令已完成。"),
+    KO("종료 명령이 끝났습니다."),
+    DE("Der Abschlussbefehl ist durch."),
+    FR("La commande de fin est terminée."),
+    ES("El comando de fin ha terminado."),
+    PT("O comando de fim terminou."),
+    IT("Il comando di fine è finito."),
+    NL("De afsluitopdracht is klaar."),
+    RU("Команда завершения выполнена."),
+    TR("Bitiş komutu tamamlandı."));
+SS_MSG(finish_cmd_busy,
+    EN("The finish command is already running; this one was not started."),
+    JA("終了時のコマンドはすでに実行中です。今回は実行しませんでした。"),
+    ZH_HANS("结束命令已经在运行，这一次没有再启动。"),
+    ZH_HANT("結束命令已經在執行，這一次沒有再啟動。"),
+    KO("종료 명령이 이미 실행 중이어서 이번에는 실행하지 않았습니다."),
+    DE("Der Abschlussbefehl läuft schon; dieser wurde nicht gestartet."),
+    FR("La commande de fin est déjà en cours ; celle-ci n’a pas été lancée."),
+    ES("El comando de fin ya se está ejecutando; este no se ha iniciado."),
+    PT("O comando de fim já está em execução; este não foi iniciado."),
+    IT("Il comando di fine è già in esecuzione; questo non è stato avviato."),
+    NL("De afsluitopdracht draait al; deze is niet gestart."),
+    RU("Команда завершения уже выполняется; эта не запущена."),
+    TR("Bitiş komutu zaten çalışıyor; bu çalıştırılmadı."));
+
 }  // namespace log
 }  // namespace msg
 }  // namespace i18n

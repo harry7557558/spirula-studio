@@ -33,6 +33,7 @@ static void training_overrides(const fs::path& root) {
     preset.cfg.floater_suppression = "strong";
     preset.cfg.sh_reg = 0.25f;
     preset.touched = {"quality", "floater_suppression", "sh_reg"};
+    preset.cfg.finish_command = "shutdown now";
     train_resolve_macros(preset.cfg, preset.touched);
     const std::string path = (root / "train.json").string();
     gui::save_preset(preset, path);
@@ -58,6 +59,7 @@ static void training_overrides(const fs::path& root) {
     SS_CHECK(cfg.image_dir == "external-images" && cfg.mask_dir == "external-masks");
     SS_CHECK(cfg.flip_mask && cfg.disable_viewer);
     SS_CHECK(cfg.output_dir_prefix == (root / "outputs").string());
+    SS_CHECK(cfg.finish_command.empty());
 
     run.iterations = "12";
     run.cap_max = "12345";
@@ -109,6 +111,18 @@ static void training_overrides(const fs::path& root) {
     run.sh_degree = "0";
     run.preset.path = (root / "missing.json").string();
     SS_CHECK(!build());
+}
+
+// A run folder's config.json records its --finish-command; loading it as a
+// preset must not arm that command for the next run.
+static void finish_command_not_loaded(const fs::path& root) {
+    const fs::path path = root / "config.json";
+    std::ofstream(path) << R"({"preset": "3dgs", "sh_degree": 2, )"
+                           R"("finish_command": "shutdown now"})";
+    const gui::TrainPreset p = gui::load_preset(path.string());
+    SS_CHECK(p.cfg.sh_degree == 2);
+    SS_CHECK(p.cfg.finish_command.empty());
+    SS_CHECK(!p.touched.count("finish_command"));
 }
 
 // Each run of one row trains in its own region; a region since deleted is
@@ -203,6 +217,7 @@ int main() {
     setenv("XDG_CONFIG_HOME", root.string().c_str(), 1);
 #endif
     training_overrides(root);
+    finish_command_not_loaded(root);
     region_per_run(root);
     queue_roundtrip(root);
     fs::remove_all(root);

@@ -99,6 +99,7 @@ namespace dmsg = spirula::i18n::msg::dataset;
 namespace ldmsg = spirula::i18n::msg::lidar;
 namespace gmsg = spirula::i18n::msg::geometry;
 namespace tmsg = spirula::i18n::msg::train;
+namespace lmsg = spirula::i18n::msg::log;
 namespace rmsg = spirula::i18n::msg::render;
 namespace mmsg = spirula::i18n::msg::maskedit;
 namespace svmsg = spirula::i18n::msg::preview;
@@ -834,7 +835,7 @@ void GuiApp::append_logs() {
     }
     for (auto& s : _compare.drain_log()) log(s);
     for (auto& s : _mesh.drain_log()) log(s);
-    poll_batch_command();
+    poll_finish_command();
     for (auto& s : _download.drain_log()) log(s);
     for (auto& s : _font_download.drain_log()) log(s);
     // A finished font download is the one thing besides a language switch
@@ -879,8 +880,10 @@ void GuiApp::apply_preset(const std::string& preset) {
     _train_presets.display.clear();
     _train_presets.desc.clear();
     _train_presets.msg.clear();   // whatever it reported was about the last preset
-    _cfg = fresh;
     _defaults = fresh;
+    // Not a preset value, so it stays out of _defaults and shows as edited.
+    fresh.finish_command = _cfg.finish_command;
+    _cfg = fresh;
     _cfg_ui.touched.clear();
     if (!_cfg.data.empty()) {
         detach_session_views();
@@ -914,8 +917,9 @@ void GuiApp::apply_user_preset(const TrainPreset& p) {
     _train_presets.display = p.name;
     _train_presets.desc = p.description;
     _train_presets.msg.clear();   // whatever it reported was about the last preset
-    _cfg = fresh;
     _defaults = fresh;
+    fresh.finish_command = _cfg.finish_command;   // as apply_preset
+    _cfg = fresh;
     // What the preset spelled out is off limits to the macro options, exactly
     // as if the user had just typed it (train_resolve_macros).
     _cfg_ui.touched = p.touched;
@@ -2086,25 +2090,30 @@ void GuiApp::finish_batch() {
 // it can do on its own behalf is tell somebody it is over. Runs however the
 // queue ended -- finished, failed or stopped; the message says which.
 void GuiApp::run_batch_command(const std::string& message) {
-    if (_batch_cmd.empty()) return;
+    run_finish_command(_batch_cmd, message);
+}
+
+void GuiApp::run_finish_command(const std::string& command,
+                                const std::string& message) {
+    if (command.empty()) return;
     const std::vector<std::string> argv =
-        command_argv(_batch_cmd, kBatchMessageToken, message);
+        command_argv(command, kMessageToken, message);
     if (argv.empty()) return;
-    log(i18n::format(msg::batch_cmd_running, {_batch_cmd}));
-    if (!_batch_cmd_run.start(argv)) log(msg::batch_cmd_busy.get());
+    log(i18n::format(lmsg::finish_cmd_running, {command}));
+    if (!_finish_cmd_run.start(argv)) log(lmsg::finish_cmd_busy.get());
 }
 
 // What it printed and how it ended, in the log like any other runner's.
-void GuiApp::poll_batch_command() {
-    for (const std::string& s : _batch_cmd_run.drain_log()) log(s);
-    const int code = _batch_cmd_run.take_exit_code();
+void GuiApp::poll_finish_command() {
+    for (const std::string& s : _finish_cmd_run.drain_log()) log(s);
+    const int code = _finish_cmd_run.take_exit_code();
     if (code == CommandRunner::kNoResult || code == kCancelled) return;
     if (code == kSpawnFailed)
-        log(i18n::format(msg::batch_cmd_missing, {_batch_cmd_run.program()}));
+        log(i18n::format(lmsg::finish_cmd_missing, {_finish_cmd_run.program()}));
     else if (code != 0)
-        log(i18n::format(msg::batch_cmd_exit, {(long long)code}));
+        log(i18n::format(lmsg::finish_cmd_exit, {(long long)code}));
     else
-        log(msg::batch_cmd_ok.get());
+        log(lmsg::finish_cmd_ok.get());
 }
 
 void GuiApp::cancel_batch() {
@@ -3596,9 +3605,21 @@ void GuiApp::frame() {
     // A run that saved its model is one to come back to; a batch's too.
     if (const TrainRunner::Phase ph = _runner.phase(); ph != _seen_phase) {
         _seen_phase = ph;
-        if (ph == TrainRunner::Phase::Done && _runner.saved_on_stop() && _runner.session()) {
+        const spirula::TrainerSession* s = _runner.session();
+        if (ph == TrainRunner::Phase::Done && _runner.saved_on_stop() && s) {
             std::error_code ec;
-            remember(RecentKind::Run, fs::absolute(_runner.session()->out_dir, ec).u8string());
+            remember(RecentKind::Run, fs::absolute(s->out_dir, ec).u8string());
+        }
+        // Not after a stop: someone is at the screen, and the command may be a shutdown.
+        if ((ph == TrainRunner::Phase::Done || ph == TrainRunner::Phase::TrainError) &&
+            s && !s->stop_requested.load()) {
+            std::error_code ec;
+            run_finish_command(
+                s->cfg.finish_command,
+                ph == TrainRunner::Phase::Done
+                    ? i18n::format(tmsg::finish_cmd_trained,
+                                   {fs::absolute(s->out_dir, ec).u8string()})
+                    : i18n::format(tmsg::finish_cmd_failed, {_runner.error()}));
         }
     }
 
@@ -4703,8 +4724,9 @@ void GuiApp::advance_dataset_training() {
     if (_dense.enable && !_dense.use_for_training && cfg.seed_pointcloud.empty())
         cfg.seed_pointcloud = spirula::dense::kSparseSeed;
 
-    _cfg = cfg;
     _defaults = cfg;
+    cfg.finish_command = _cfg.finish_command;   // as apply_preset
+    _cfg = cfg;
     _cfg_ui.touched = preset.touched;
     _preset = preset.base;
     _train_presets.file = preset.path;
@@ -11163,7 +11185,7 @@ void GuiApp::draw_batch_command() {
     // Split rather than empty: a field holding only spaces names no program,
     // and a Test button that does nothing at all is worse than a greyed one.
     const bool can_test =
-        !split_args(_batch_cmd).empty() && !_batch_cmd_run.busy();
+        !split_args(_batch_cmd).empty() && !_finish_cmd_run.busy();
     const float button_w =
         ImGui::CalcTextSize(msg::batch_cmd_test.get()).x +
         ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -12870,6 +12892,7 @@ void GuiApp::open_resume(const std::string& path) {
     try {
         TrainConfig request;
         request.resume = path;
+        request.finish_command = _cfg.finish_command;
         cfg = ckpt::build_resume_config(request, "", {});
         if (!fs::is_directory(fs::u8path(cfg.data)))
             throw std::runtime_error("the run's dataset folder no longer exists: " + cfg.data);

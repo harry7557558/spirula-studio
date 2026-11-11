@@ -501,6 +501,28 @@ SS_MSG(keep_viewer_alive_help,
     NL("Het programma na de training laten doorlopen zodat het resultaat in de viewer open blijft.\n- Druk op Ctrl-C om af te sluiten.\n- Zonder effect als de viewer uit staat."),
     RU("Не завершать программу после обучения, чтобы результат оставался открытым в просмотрщике.\n- Для выхода нажмите Ctrl-C.\n- Без действия, когда просмотрщик отключён."),
     TR("Eğitimden sonra programı ve sonucu görüntüleyicide açık tutar.\n- Çıkmak için Ctrl-C’ye basın.\n- Görüntüleyici kapalıysa etkisi yoktur."));
+SS_MSG(finish_command,
+    EN("Command to run at the end"), JA("終了時に実行するコマンド"),
+    ZH_HANS("结束时运行的命令"), ZH_HANT("結束時執行的命令"),
+    KO("끝날 때 실행할 명령"), DE("Befehl nach dem Training"),
+    FR("Commande à lancer à la fin"), ES("Comando al terminar"),
+    PT("Comando a executar no fim"), IT("Comando da eseguire alla fine"),
+    NL("Opdracht aan het eind"), RU("Команда по завершении"),
+    TR("Bitince çalışacak komut"));
+SS_MSG(finish_command_help,
+    EN("Runs when training finishes or fails, not when you stop it.\n- {message} becomes a one-line summary, always passed as one argument.\n- Executes without a shell; quotes around the summary are optional."),
+    JA("学習が終わったときや失敗したときに実行します。自分で止めたときは実行しません。\n- {message} は1行の要約に置き換わり、常に1つの引数になります。\n- シェルを使わず直接実行します。要約を囲む引用符は任意です。"),
+    ZH_HANS("训练完成或失败时运行；手动停止时不运行。\n- {message} 替换为单行摘要，始终作为一个参数传递。\n- 直接执行，不通过 shell；摘要可加或不加引号。"),
+    ZH_HANT("訓練完成或失敗時執行；手動停止時不執行。\n- {message} 替換為單行摘要，始終作為一個參數傳遞。\n- 直接執行，不經 shell；摘要可加或不加引號。"),
+    KO("학습이 끝나거나 실패하면 실행되며, 직접 중지하면 실행되지 않습니다.\n- {message}는 한 줄 요약이 되며 항상 단일 인수로 전달됩니다.\n- 셸 없이 직접 실행합니다. 요약을 감싸는 따옴표는 선택 사항입니다."),
+    DE("Läuft, wenn das Training fertig ist oder fehlschlägt, nicht nach einem Abbruch von Hand.\n- {message} wird zur einzeiligen Zusammenfassung, immer als ein Argument.\n- Direkte Ausführung ohne Shell; Anführungszeichen um die Zusammenfassung sind optional."),
+    FR("S’exécute quand l’entraînement se termine ou échoue, pas quand vous l’arrêtez.\n- {message} devient un résumé sur une ligne, toujours passé en un seul argument.\n- Exécution sans shell ; les guillemets autour du résumé sont facultatifs."),
+    ES("Se ejecuta cuando el entrenamiento termina o falla, no al detenerlo.\n- {message} se sustituye por un resumen de una línea, siempre como un argumento.\n- Ejecución sin shell; las comillas alrededor del resumen son opcionales."),
+    PT("Executa quando o treinamento termina ou falha, não quando você o interrompe.\n- {message} torna-se um resumo de uma linha, sempre passado como um argumento.\n- Execução sem shell; aspas à volta do resumo são opcionais."),
+    IT("Esegue quando l’addestramento finisce o fallisce, non quando lo si interrompe.\n- {message} diventa un riepilogo su una riga, sempre come singolo argomento.\n- Esecuzione senza shell; virgolette attorno al riepilogo facoltative."),
+    NL("Wordt uitgevoerd als de training klaar is of mislukt, niet als u die zelf stopt.\n- {message} wordt een samenvatting op één regel, altijd als één argument.\n- Uitvoering zonder shell; aanhalingstekens rond de samenvatting zijn optioneel."),
+    RU("Выполняется, когда обучение завершилось или упало, но не при ручной остановке.\n- {message} заменяется однострочным итогом, всегда как один аргумент.\n- Запуск без оболочки; кавычки вокруг итога необязательны."),
+    TR("Eğitim bittiğinde veya başarısız olduğunda çalışır; elle durdurulunca çalışmaz.\n- {message} tek satırlık özete dönüşür ve daima tek argüman olarak iletilir.\n- Kabuk olmadan çalışır; özeti tırnak içine almak isteğe bağlıdır."));
 
 
 // ===========================================================================

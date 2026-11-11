@@ -59,8 +59,10 @@ spirula train --resume outputs/<run>/step-000012000.ckpt
 
 The first form picks the latest checkpoint in the run. Settings come from the
 run's `config.json`; any flag given explicitly on the command line overrides
-them, and `--preset` re-applies a preset's overrides. The GUI uses the same
-code path (`ckpt::build_resume_config`, `src/checkpoint/Resume.h`).
+them, and `--preset` re-applies a preset's overrides. `--finish-command` is the
+exception: it is never read back, so a resume runs one only if it is given one
+again. The GUI uses the same code path (`ckpt::build_resume_config`,
+`src/checkpoint/Resume.h`).
 
 Ctrl-C during `spirula train` works like **Stop and Save**: the current step
 finishes, a resumable checkpoint is written and the command prints the line

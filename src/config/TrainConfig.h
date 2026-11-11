@@ -120,6 +120,7 @@ inline bool train_choice_valid(const std::string& value, const char* choices) {
     X(int, viewer_port, 7007, "run", "advanced", "")                         \
     X(bool, disable_viewer, false, "run", "advanced", "")                    \
     X(bool, keep_viewer_alive, true, "run", "advanced", "")                  \
+    X(std::string, finish_command, "", "run", "basic", "none")               \
                                                                              \
     /* ==== dataset -- which files are read, and which images are held out ==== */ \
     X(std::string, data_format, "", "dataset", "basic", "colmap|nerfstudio|metashape|none") \

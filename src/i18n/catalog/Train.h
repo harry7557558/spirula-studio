@@ -534,6 +534,43 @@ SS_MSG(device_issue_amd_windows,
     RU("С драйвером AMD Windows обучение на {0} может упасть или дать чёрную/пустую модель.\n- RX 6000 и старее; исправленный драйвер неизвестен.\n- Linux Mesa (RADV) работает; иначе используйте другой GPU."),
     TR("AMD Windows sürücüsüyle {0} eğitimi çökebilir veya siyah/boş model üretebilir.\n- RX 6000 ve öncesi; bilinen sürücü düzeltmesi yok.\n- Linux Mesa (RADV) çalışır; yoksa başka GPU kullanın."));
 
+
+// ===========================================================================
+// What --finish-command's {message} becomes
+// ===========================================================================
+
+// {0} is the run's output folder. The product name is localized as in
+// gui::batch_cmd_test_message.
+SS_MSG(finish_cmd_trained,
+    EN("Spirula Studio: training finished. Output: {0}"),
+    JA("スピルラ・スタジオ: 学習が終了しました。出力: {0}"),
+    ZH_HANS("旋影工坊：训练完成。输出：{0}"),
+    ZH_HANT("旋影工坊：訓練完成。輸出：{0}"),
+    KO("스피룰라 스튜디오: 학습이 끝났습니다. 출력: {0}"),
+    DE("Spirula Studio: Training beendet. Ausgabe: {0}"),
+    FR("Spirula Studio : entraînement terminé. Sortie : {0}"),
+    ES("Spirula Studio: entrenamiento terminado. Salida: {0}"),
+    PT("Spirula Studio: treinamento concluído. Saída: {0}"),
+    IT("Spirula Studio: addestramento terminato. Output: {0}"),
+    NL("Spirula Studio: training klaar. Uitvoer: {0}"),
+    RU("Spirula Studio: обучение завершено. Результат: {0}"),
+    TR("Spirula Studio: eğitim bitti. Çıktı: {0}"));
+// {0} is the error.
+SS_MSG(finish_cmd_failed,
+    EN("Spirula Studio: training failed: {0}"),
+    JA("スピルラ・スタジオ: 学習に失敗しました: {0}"),
+    ZH_HANS("旋影工坊：训练失败：{0}"),
+    ZH_HANT("旋影工坊：訓練失敗：{0}"),
+    KO("스피룰라 스튜디오: 학습에 실패했습니다: {0}"),
+    DE("Spirula Studio: Training fehlgeschlagen: {0}"),
+    FR("Spirula Studio : échec de l’entraînement : {0}"),
+    ES("Spirula Studio: el entrenamiento ha fallado: {0}"),
+    PT("Spirula Studio: o treinamento falhou: {0}"),
+    IT("Spirula Studio: addestramento non riuscito: {0}"),
+    NL("Spirula Studio: training mislukt: {0}"),
+    RU("Spirula Studio: обучение не удалось: {0}"),
+    TR("Spirula Studio: eğitim başarısız oldu: {0}"));
+
 }  // namespace train
 }  // namespace msg
 }  // namespace i18n

@@ -620,10 +620,13 @@ private:
     // `_batch_current` indexes the TASKS, which outnumber the rows.
     const BatchRow* batch_running_row() const;
     // The command the queue runs when it is over: the field and its Test
-    // button, starting it with a message, and reporting how it went.
+    // button, and starting it with a message.
     void draw_batch_command();
     void run_batch_command(const std::string& message);
-    void poll_batch_command();
+    // A finished queue's command or a run's --finish-command, one at a time,
+    // and what it printed and how it ended.
+    void run_finish_command(const std::string& command, const std::string& message);
+    void poll_finish_command();
     const spirula::i18n::Msg& batch_stage_name(BatchStage s) const;
     void draw_train_settings();      // left panel
     void draw_device_issue_banner();
@@ -1226,7 +1229,7 @@ private:
     // "run nothing", and it is kept in gui.conf rather than in the list: it
     // belongs to this machine, not to the rows.
     std::string _batch_cmd;
-    CommandRunner _batch_cmd_run;
+    CommandRunner _finish_cmd_run;
 
     FileDialog _dialog;
     PickAction _pick = PickAction::None;
@@ -1243,7 +1246,8 @@ private:
     // Settings (persisted).
     RecentList _recent;
     double _recent_probed_at = -1.0;
-    // Last frame's phase: a run is recorded as it reaches Done.
+    // Last frame's phase: a run is recorded, and its --finish-command started,
+    // as it ends.
     TrainRunner::Phase _seen_phase = TrainRunner::Phase::Idle;
     // Where a pick of each kind last landed, so a session opens where the last
     // one left off rather than at the home directory.

@@ -102,6 +102,11 @@ std::vector<std::string> split_args(const std::string& s);
 // command line. Quotes curl (” ’), a backslash becomes '/', spaces collapse.
 std::string safe_arg(const std::string& text);
 
+// What stands for the summary inside a finish command (a batch queue's, or
+// --finish-command's). Braces because the alternatives are punctuation a shell
+// would eat: `<>` is redirection, `%..%` and `$..` are variables.
+inline constexpr char kMessageToken[] = "{message}";
+
 // split_args(command) with every `token` inside an argument replaced by
 // safe_arg(value). The value lands in ONE argument whether or not the token
 // was quoted, so nothing in it can be read as syntax.
