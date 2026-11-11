@@ -20,6 +20,11 @@ constexpr size_t kBatch = 1 << 18;
 constexpr size_t kChunkHeader = 48;
 constexpr size_t kIndexHeader = 24;
 constexpr uint64_t kMaxChunk = 1ull << 30;
+// The u16 pair at +4 of the file header and the u16 at +6 of each chunk and of
+// the index header, alike in every capture measured. Any other may lay out the
+// rest differently, so it is refused rather than read.
+constexpr uint16_t kFileVersion[2] = {512, 1};
+constexpr uint16_t kChunkTag = 36, kIndexTag = 12;
 
 constexpr uint32_t kChannelFiles = 0;
 constexpr uint32_t kChannelImu = 2;
@@ -46,7 +51,7 @@ constexpr CameraChannel kCameraChannels[] = {{"AA", "PortalCam", 28, "camera_0"}
 // The PortalCam's device message is 172 bytes.
 constexpr uint32_t kMaxDeviceMessage = 1 << 16;
 
-// Returns this close are the device itself and the hand holding it.
+// Points this close are the device itself and the hand holding it.
 constexpr double kMinRange = 0.5;
 // Bytes of channel 6 per point, headers included: 18.6 on a 110 s indoor scan.
 constexpr int64_t kBytesPerPoint = 18;
@@ -327,6 +332,8 @@ struct Reader::Impl {
         f.seekg((std::streamoff)at);
         if (!f.read((char*)h, sizeof h)) throw std::runtime_error("the file ends inside a chunk header");
         if (rd<uint16_t>(h + 4) != 1) throw std::runtime_error("a compressed data chunk, which this does not read");
+        if (rd<uint16_t>(h + 6) != kChunkTag)
+            throw std::runtime_error("a chunk header laid out in a way this does not read");
         const uint32_t size = rd<uint32_t>(h + 16);
         if (size > kMaxChunk) throw std::runtime_error("a chunk larger than 1 GB");
         if (size > file_size - at - kChunkHeader) throw std::runtime_error("the file ends inside a chunk");
@@ -416,12 +423,17 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
     I.device_name = "XGRIDS" + (model.empty() ? "" : " " + model) + " (device code " + code +
                     (firmware.empty() ? "" : ", firmware " + firmware) + ")";
     if (layout.empty()) fail(path, "the camera layout of an " + I.device_name + " is not known");
+    if (rd<uint16_t>(h + 4) != kFileVersion[0] || rd<uint16_t>(h + 6) != kFileVersion[1])
+        fail(path, "file version " + std::to_string(rd<uint16_t>(h + 4)) + "." +
+                       std::to_string(rd<uint16_t>(h + 6)) + " of an " + I.device_name +
+                       " is not known");
 
     uint8_t ih[kIndexHeader];
     I.f.seekg((std::streamoff)index_at);
     // Laid out as a chunk header, its compression 0xff for LZ4.
     if (!I.f.read((char*)ih, sizeof ih) || rd<uint16_t>(ih + 4) != 0xff)
         fail(path, "no chunk index where the header says (the capture did not finish?)");
+    if (rd<uint16_t>(ih + 6) != kIndexTag) fail(path, "a chunk index laid out in a way this does not read");
     const uint32_t raw = rd<uint32_t>(ih + 16), packed = rd<uint32_t>(ih + 20);
     if (raw > kMaxChunk || packed > kMaxChunk) fail(path, "a chunk index larger than 1 GB");
     if (packed > I.file_size - index_at - kIndexHeader) fail(path, "the file ends inside its index");
