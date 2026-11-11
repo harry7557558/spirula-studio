@@ -39,7 +39,7 @@ public:
     ~Reader();
 
     const Info& info() const { return _info; }
-    // The E57 file behind this reader, for its images; null for LAS and PLY.
+    // The E57 file behind this reader, for its images; null for any other format.
     e57::Reader* e57() { return _e57.get(); }
     // The XGRIDS capture behind this reader, for its cameras; null otherwise.
     xbin::Reader* xbin() { return _xbin.get(); }

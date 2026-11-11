@@ -91,6 +91,14 @@ bool decode(const std::string& ffmpeg_exe, const fs::path& stream, const fs::pat
         throw std::runtime_error("ffmpeg could not decode " + stream.string() +
                                  (last.empty() ? "" : ": " + last));
     }
+    // One more than fed would shift every frame onto the next one's pose.
+    char extra[32];
+    std::snprintf(extra, sizeof extra, "%s%06zu.jpg", kDecodedPrefix, counters.size());
+    if (fs::exists(dir / extra, ec)) {
+        remove_decoded(dir);
+        throw std::runtime_error("ffmpeg decoded more than the " + std::to_string(counters.size()) +
+                                 " frames of " + stream.string());
+    }
     for (size_t i = 0; i < counters.size(); i++) {
         char name[32];
         std::snprintf(name, sizeof name, "%s%06zu.jpg", kDecodedPrefix, i);

@@ -43,11 +43,12 @@ struct CameraChannel {
     const char* model;
     uint32_t channel;
     const char* name;
+    bool spare;   // LCC Studio takes no frame of it: off unless picked
 };
-constexpr CameraChannel kCameraChannels[] = {{"AA", "PortalCam", 28, "camera_0"},
-                                             {"AA", "PortalCam", 36, "camera_1"},
-                                             {"AA", "PortalCam", 32, "camera_2"},
-                                             {"AA", "PortalCam", 40, "camera_3"}};
+constexpr CameraChannel kCameraChannels[] = {{"AA", "PortalCam", 28, "camera_0", false},
+                                             {"AA", "PortalCam", 36, "camera_1", false},
+                                             {"AA", "PortalCam", 32, "camera_2", false},
+                                             {"AA", "PortalCam", 40, "camera_3", true}};
 // The PortalCam's device message is 172 bytes.
 constexpr uint32_t kMaxDeviceMessage = 1 << 16;
 
@@ -55,6 +56,20 @@ constexpr uint32_t kMaxDeviceMessage = 1 << 16;
 constexpr double kMinRange = 0.5;
 // Bytes of channel 6 per point, headers included: 18.6 on a 110 s indoor scan.
 constexpr int64_t kBytesPerPoint = 18;
+
+// Each frame is decoded on its own, so it must hold an IDR slice and its own
+// SPS and PPS; every PortalCam frame measured does.
+bool decodes_alone(const std::vector<uint8_t>& au) {
+    bool idr = false, sps = false, pps = false;
+    for (size_t i = 0; i + 3 < au.size(); i++)
+        if (au[i] == 0 && au[i + 1] == 0 && au[i + 2] == 1) {
+            const int type = au[i + 3] & 0x1f;
+            idr = idr || type == 5;
+            sps = sps || type == 7;
+            pps = pps || type == 8;
+        }
+    return idr && sps && pps;
+}
 
 [[noreturn]] void fail(const std::string& path, const std::string& why) {
     throw std::runtime_error(path + ": " + why);
@@ -535,6 +550,7 @@ Reader::Reader(const std::string& path) : _impl(std::make_unique<Impl>()) {
                                std::to_string(cc->channel) + ", where an " + I.device_name + " has them");
             Camera c;
             c.name = cc->name;
+            c.spare = cc->spare;
             const std::string lens = scalar(l, from, to, "camera_model");
             if (lens != "kb4" && lens != "pinhole")
                 fail(path, cc->name + std::string(": unknown camera model '") + lens + "'");
@@ -661,7 +677,7 @@ bool Reader::read_points(const std::function<void(const e57::Point*, size_t)>& s
                 e57::Point& o = batch.emplace_back();
                 for (int r = 0; r < 3; r++)
                     o.xyz[r] = R[r * 3] * p[0] + R[r * 3 + 1] * p[1] + R[r * 3 + 2] * p[2] + c[r];
-                o.rgb[0] = o.rgb[1] = o.rgb[2] = (uint8_t)std::min<int64_t>(255, v[4]);
+                o.rgb[0] = o.rgb[1] = o.rgb[2] = (uint8_t)std::clamp<int64_t>(v[4], 0, 255);
                 if (batch.size() == kBatch) {
                     sink(batch.data(), batch.size());
                     batch.clear();
@@ -722,6 +738,9 @@ void Reader::read_frames(size_t cam, const std::function<bool(const Frame&)>& si
                                          std::to_string(width) + "x" + std::to_string(height) +
                                          ", calibrated for " + std::to_string(c.width) + "x" +
                                          std::to_string(c.height));
+            if (!decodes_alone(fr.h264))
+                throw std::runtime_error(c.name + " of an " + _impl->device_name +
+                                         ": a frame that does not decode alone, which this does not read");
             return sink(fr);
         });
     } catch (const std::runtime_error& e) {

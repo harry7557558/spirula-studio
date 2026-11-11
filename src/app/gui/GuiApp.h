@@ -854,6 +854,7 @@ private:
             bool fisheye = false;
             int64_t frames = 0;
             double seconds = 0;           // first frame to last
+            bool spare = false;           // off at first, as in LCC Studio
             app::lidar::XbinCameraPick pick;
             std::string fps_text;         // its rate box, kept while typed in
             bool fps_editing = false;
